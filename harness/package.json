@@ -1,0 +1,122 @@
+{
+  "name": "workflow-code",
+  "version": "0.2.4",
+  "packageManager": "pnpm@10.15.1",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./agent": {
+      "types": "./dist/agent.d.ts",
+      "development": "./src/agent/index.ts",
+      "import": "./dist/agent.js"
+    },
+    "./runtime-api": {
+      "types": "./dist/runtime-api.d.ts",
+      "development": "./src/runtime-api.ts",
+      "import": "./dist/runtime-api.js"
+    },
+    "./node/output": {
+      "types": "./dist/node/output.d.ts",
+      "development": "./src/node/output/index.ts",
+      "import": "./dist/node/output.js"
+    },
+    "./types/context": {
+      "types": "./dist/types/context.d.ts",
+      "development": "./src/types/context.ts",
+      "import": "./dist/types/context.js"
+    },
+    "./executor/rules": {
+      "types": "./dist/executor/rules.d.ts",
+      "development": "./src/executor/rules.ts",
+      "import": "./dist/executor/rules.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "./agent": {
+        "types": "./dist/agent.d.ts",
+        "import": "./dist/agent.js"
+      },
+      "./runtime-api": {
+        "types": "./dist/runtime-api.d.ts",
+        "import": "./dist/runtime-api.js"
+      },
+      "./node/output": {
+        "types": "./dist/node/output.d.ts",
+        "import": "./dist/node/output.js"
+      },
+      "./types/context": {
+        "types": "./dist/types/context.d.ts",
+        "import": "./dist/types/context.js"
+      },
+      "./executor/rules": {
+        "types": "./dist/executor/rules.d.ts",
+        "import": "./dist/executor/rules.js"
+      }
+    }
+  },
+  "scripts": {
+    "bootstrap": "node scripts/bootstrap.mjs",
+    "pnpm:devPreinstall": "node scripts/install-guard.mjs",
+    "check:boundaries": "node scripts/check-repository-boundaries.mjs",
+    "check:secrets": "node scripts/check-secret-files.mjs",
+    "build": "tsup --config tsup.config.ts && node scripts/bundle-agent-types.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --conditions=development --test --test-reporter=spec --test-concurrency=2 src/__tests__/*.test.ts",
+    "coverage": "tsx --conditions=development --test --test-reporter=spec --experimental-test-coverage --test-concurrency=2 src/__tests__/*.test.ts",
+    "test:scripts": "node --test --test-reporter=spec scripts/__tests__/*.test.mjs",
+    "test:agent-dist": "node scripts/smoke-agent-dist.mjs",
+    "test:workspace": "corepack pnpm build && corepack pnpm -C workspace install --frozen-lockfile && corepack pnpm -C workspace test",
+    "release:prepare": "node scripts/prepare-release.mjs",
+    "release:feature": "node scripts/feature-release.mjs tag",
+    "prepack": "pnpm build"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.72",
+    "@ai-sdk/openai": "^3.0.54",
+    "@date-fns/tz": "1.5.0",
+    "@types/json-schema": "^7.0.15",
+    "@types/node": "^25.6.0",
+    "ai": "^6.0.169",
+    "cron-parser": "5.7.0",
+    "dotenv": "^17.4.2",
+    "typescript": "^6.0.3"
+  },
+  "devDependencies": {
+    "@earendil-works/chord": "1.2.0",
+    "@earendil-works/pi-agent-core": "1.2.0",
+    "@earendil-works/pi-ai": "1.2.0",
+    "@earendil-works/pi-codemode": "1.2.0",
+    "@earendil-works/pi-durable": "1.2.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@vitest/coverage-v8": "^4.1.7",
+    "@workflow-code/auth-config": "workspace:*",
+    "@workflow-code/kanban-project": "workspace:*",
+    "@workflow-code/openai-responses": "workspace:*",
+    "@workflow-code/project-dependencies": "workspace:*",
+    "@workflow-code/project-info": "workspace:*",
+    "@workflow-code/project-types": "workspace:*",
+    "@workflow-code/workflow-schedules": "workspace:*",
+    "semver": "^7.7.4",
+    "tsup": "^8.5.1",
+    "tsx": "^4.21.0"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}

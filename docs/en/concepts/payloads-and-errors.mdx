@@ -1,0 +1,135 @@
+---
+title: "Payload and error"
+description: "WorkflowPayload, execution results, and current constraints for error reporting."
+---
+
+# Payload and error
+
+All data types passed between nodes, I .e. workflow payload, must inherit `WorkflowPayload`. The type comes from the core package:
+
+```ts
+export interface WorkflowPayload {
+  errCode: number;
+  errMessage: string;
+}
+```
+
+Successful output unified use:
+
+```ts
+{
+  errCode: 0,
+  errMessage: ""
+}
+```
+
+## Output payload
+
+Output node should explicitly return objects containing `errCode`, `errMessage`, and `items`:
+
+```ts
+interface WorkflowOutputItem {
+  id: string;
+  title: string;
+  content: unknown;
+  contentType?: "markdown" | "text" | "json" | "audio" | "video";
+  collapsed?: boolean;
+}
+
+interface OutputPayload extends WorkflowPayload {
+  items: WorkflowOutputItem[];
+}
+
+const outputNode = workflow.createOutputNode<Parsed, OutputPayload>({
+  name: "output",
+  format(result) {
+    return workflow.createOutputPayload({
+      items: [{
+        title: "Result",
+        content: result,
+        contentType: "json",
+        collapsed: false,
+      }],
+    });
+  },
+});
+```
+
+`items` is currently the only user-visible output carrier. This array is read by CLI Web and CLI JSON; the full output of assistant messages is also stored in `items` instead of the top-level `content`. In a Conversation project, the default markdown/text assistant answer titled `Output` is rendered directly in the transcript even when it carries a finish reason, token usage, or Provider metadata. Details blocks remain reserved for tool calls, reasoning, diagnostics, structured supporting results, and explicitly customized or collapsed output.
+
+If the business fails but executor does not crash, you can return a non-zero `errCode` and a readable `errMessage`. The external Dify style API reads the `errCode` in the final report: only executor succeeds and `errCode === 0` is mapped to `succeeded`.
+
+## Video output item
+
+When `contentType: "video"`, the UI renders the item through the browser native `<video controls preload="metadata" playsInline>` element. `content` must be an object with the following shape:
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `src` | `string` | Yes | A safe `data:video/mp4;base64,...` value or a publicly reachable `http(s)` video URL. |
+| `mimeType` | `"video/mp4"` | Yes | Only `video/mp4` is supported today. |
+| `name` | `string` | Yes | File name shown above the metadata strip. |
+| `durationMs` | `number` | No | Known duration in milliseconds; rendered through `formatTimerDuration`. |
+| `format` | `"mp4"` | No | Container hint; only `mp4` is allowed at the moment. |
+
+`src` must be a `data:video/<sub>;base64,...` value or an `http(s)` URL. Local or private schemes such as `file://` or `blob:` are considered unsafe and force a text fallback. Any missing required field or unsafe `src` causes the UI to render a localized fallback message (default `videoPlaybackUnsupported`) and to fall back to a `<pre>` preview of the raw content.
+
+Signed OSS URLs fall under the `http(s)` category, but the UI does not cache them and they expire or stop working without notice. Do not publish generated video assets only through signed OSS URLs without a stable fallback; if persistent playback is required, store the asset in a local or OSS public location and surface the canonical URL or an external link in the metadata. Callers must not leave `src` empty and must not combine non-`http(s)`/`data` schemes such as `file://` or `blob:`.
+
+## WorkflowResult
+
+The underlying safe run will first normalize the execution result of workflow:
+
+```ts
+type WorkflowResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: SerializedWorkflowError };
+```
+
+When generating an execution report,runtime converts the failure result of `ok: false` into a readable payload:
+
+```ts
+{
+  ok: true,
+  data: {
+    errCode,
+    errMessage,
+    output: null
+  }
+}
+```
+
+This way CLI Web and CLI JSON can all read `result.data.errCode` together. A normal success result will synthesize the final return value and the node output named `output` into `result.data.output`; if either payload has a non-zero `errCode`, the report retains the business error code.
+
+## User Input Waiting
+
+The user input node will pause workflow into the persistent `waiting_for_input` state instead of marking it as a normal failure. The report will contain:
+
+|Field|Description|
+| --- | --- |
+| `pendingUserInput` |The currently waiting request, including `requestId`, node name, title, description, form `params`, default value, and node metadata.|
+| `resolvedUserInputs` |An array of submitted answers for this run, containing `requestId`, node names, `values`, and `submittedAt`.|
+
+Runtime event emits `user_input_requested` and `user_input_resolved`. The standard error code mapping for the wait state is `202`, which is used to indicate that workflow is still recoverable; the node payload after a successful recovery must still inherit `WorkflowPayload`, which contains `errCode: 0`, `errMessage: ""`, `requestId`, `values`, and `submittedAt` by default.
+
+## WorkflowError
+
+Can proactively throw `workflow.WorkflowError`, with type, message, node and metadata. The framework also converts ordinary exceptions to `WorkflowError`.
+
+Common error types include:
+
+- Input validation failed.
+- Node execution failed.
+- workflow execution failed.
+- User input waits.
+- Tool permission denied.
+- File parsing failed.
+- provider call failed.
+- abort or timeout.
+
+Errors are serialized to avoid directly exposing the full stack or the original response of a third-party SDK.
+
+## Errors in the UI
+
+- A local local host run writes stdout, stderr, and the report to the local run cache.
+- `waiting_for_input` run will keep `pendingUserInput`, and CLI Web can submit the answer to restore the same `runId`.
+- The external blocking API returns `data.error`;streaming API fails through SSE `error` or final `workflow_finished` expression.

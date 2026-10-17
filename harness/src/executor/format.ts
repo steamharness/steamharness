@@ -1,0 +1,197 @@
+import type {
+  WorkflowDefinitionEvent,
+  WorkflowExecutionReport,
+  WorkflowOutputReport,
+  WorkflowStructureReport,
+} from "./report";
+import type { WorkflowDefinedNode } from "./rules";
+
+export interface WorkflowExecutionFormatOptions {
+  includeDefinedNodes?: boolean;
+  includeJson?: boolean;
+}
+
+export function formatWorkflowDefinitionEvent(
+  event: WorkflowDefinitionEvent,
+): string {
+  return [
+    "Workflow Definition",
+    `Workflow: ${event.workflowName}`,
+    "Loaded Nodes:",
+    ...formatDefinedNodeLines(event.nodes),
+  ].join("\n");
+}
+
+export function formatWorkflowStructureReport(
+  report: WorkflowStructureReport,
+): string {
+  return formatJson(report);
+}
+
+export function formatWorkflowResultOnly(
+  report: WorkflowExecutionReport,
+): string {
+  return [
+    "Workflow Result",
+    `Workflow: ${report.workflowName || "(missing)"}`,
+    `Status: ${report.status}`,
+    `Duration: ${formatDuration(report.durationMs)}`,
+    "",
+    "Result:",
+    indent(formatWorkflowResult(report), 2),
+  ].join("\n");
+}
+
+export function formatWorkflowExecutionReport(
+  report: WorkflowExecutionReport,
+  options: WorkflowExecutionFormatOptions = {},
+): string {
+  const includeDefinedNodes = options.includeDefinedNodes ?? true;
+  const includeJson = options.includeJson ?? true;
+  const lines = [
+    "Workflow Execution",
+    `Workflow: ${report.workflowName || "(missing)"}`,
+    `Status: ${report.status}`,
+    `Duration: ${formatDuration(report.durationMs)}`,
+    `Started: ${report.startedAt.toISOString()}`,
+    `Ended: ${report.endedAt.toISOString()}`,
+    "",
+  ];
+
+  if (includeDefinedNodes) {
+    lines.push("Loaded Nodes:", ...formatDefinedNodeLines(report.definedNodes), "");
+  }
+
+  lines.push(
+    "Executed Nodes:",
+    ...formatExecutedNodeLines(report),
+    "",
+    "Output Node Results:",
+    ...formatOutputLines(report.outputs),
+    "",
+    "Workflow Result:",
+    indent(formatWorkflowResult(report), 2),
+  );
+
+  if (includeJson) {
+    lines.push("", "JSON Report:", formatJson(report));
+  }
+
+  return lines.join("\n");
+}
+
+export function formatWorkflowExecutionJson(report: WorkflowExecutionReport): string {
+  return formatJson(report);
+}
+
+function formatDefinedNodeLines(nodes: WorkflowDefinedNode[]): string[] {
+  if (nodes.length === 0) {
+    return ["  (none)"];
+  }
+
+  return nodes.map((node) => {
+    return `  ${node.order}. ${padRight(node.name, 12)} ${formatLocation(node.location)}`;
+  });
+}
+
+function formatExecutedNodeLines(report: WorkflowExecutionReport): string[] {
+  if (report.nodes.length === 0) {
+    return ["  (none)"];
+  }
+
+  return report.nodes.map((node) => {
+    const errorSuffix =
+      node.error === undefined ? "" : ` error="${node.error.message}"`;
+
+    return [
+      `  ${node.order}.`,
+      padRight(node.name, 12),
+      padRight(node.status, 8),
+      padRight(formatDuration(node.durationMs ?? 0), 8),
+      node.kind,
+      errorSuffix,
+    ].join(" ").trimEnd();
+  });
+}
+
+function formatOutputLines(outputs: WorkflowOutputReport[]): string[] {
+  if (outputs.length === 0) {
+    return ["  (none)"];
+  }
+
+  return outputs.flatMap((output) => {
+    return [
+      `  ${output.order}. ${output.nodeName} node #${output.nodeOrder}`,
+      indent(formatJson(output.output), 4),
+    ];
+  });
+}
+
+function formatWorkflowResult(report: WorkflowExecutionReport): string {
+  if (report.result.ok) {
+    return formatJson(report.result.data);
+  }
+
+  return formatJson(report.result.error);
+}
+
+function formatLocation(location: WorkflowDefinedNode["location"]): string {
+  return `${location.file}:${location.line}:${location.column}`;
+}
+
+function formatDuration(durationMs: number): string {
+  if (durationMs < 1000) {
+    return `${durationMs}ms`;
+  }
+
+  return `${(durationMs / 1000).toFixed(2)}s`;
+}
+
+function formatJson(value: unknown): string {
+  return JSON.stringify(value, createSafeJsonReplacer(), 2);
+}
+
+function createSafeJsonReplacer(): (key: string, value: unknown) => unknown {
+  const ancestors: object[] = [];
+
+  return function replacer(this: unknown, _key, value) {
+    if (typeof value === "bigint") {
+      return `${value.toString()}n`;
+    }
+
+    if (typeof value === "function") {
+      return `[Function ${value.name || "anonymous"}]`;
+    }
+
+    if (typeof value === "symbol") {
+      return value.toString();
+    }
+
+    if (typeof value === "object" && value !== null) {
+      while (ancestors.length > 0 && ancestors.at(-1) !== this) {
+        ancestors.pop();
+      }
+
+      if (ancestors.includes(value)) {
+        return "[Circular]";
+      }
+
+      ancestors.push(value);
+    }
+
+    return value;
+  };
+}
+
+function indent(value: string, spaces: number): string {
+  const padding = " ".repeat(spaces);
+
+  return value
+    .split("\n")
+    .map((line) => `${padding}${line}`)
+    .join("\n");
+}
+
+function padRight(value: string, length: number): string {
+  return value.padEnd(length, " ");
+}

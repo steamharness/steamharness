@@ -1,0 +1,34 @@
+{
+  "name": "@workflow-code/knowledge-base",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "exports": {
+    ".": {
+      "types": "./index.ts",
+      "import": "./index.ts"
+    },
+    "./types": {
+      "types": "./types.ts",
+      "import": "./types.ts"
+    }
+  },
+  "dependencies": {
+    "@workflow-code/i18n": "workspace:*",
+    "highlight.js": "^11.11.1",
+    "lucide-react": "^0.487.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-markdown": "^10.1.0",
+    "react-zoom-pan-pinch": "^4.0.3",
+    "remark-breaks": "^4.0.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^6.0.0"
+  }
+}

@@ -1,0 +1,406 @@
+---
+title: "defineExecutor"
+description: "定义 Workflow 的入口目录，或 Conversation 的单入口执行配置。"
+---
+
+# defineExecutor
+
+`workflow.defineExecutor<Input, Output>()` 定义项目的执行协议。Workflow 使用它声明默认入口和多个独立 `entrypoints`；Conversation 继续把 workflow、参数和输入构造直接声明在 executor 上。
+
+## 签名
+
+```ts
+workflow.defineExecutor<Input, Output>(
+  definition: WorkflowExecutorDefinition<Input, Output>,
+): WorkflowExecutorDefinition<Input, Output>
+```
+
+## 参数
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| `definition` | `WorkflowExecutorDefinition<Input, Output>` | 平台发现和执行 workflow 的入口配置。 |
+
+## Workflow executor
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `projectType` | `"workflow"` | Workflow 项目的类型标记。必填。 |
+| `defaultEntrypoint` | `string` | 省略入口选择时使用的入口 ID。必须是静态字符串并命中 `entrypoints`。 |
+| `entrypoints` | `WorkflowEntrypointDefinition[]` | 非空静态入口数组；每项必须直接调用 [`workflow.defineEntrypoint()`](/core-api/define-entrypoint)。 |
+
+Workflow 的 `workflow`、`params`、`createInput`、`resolveParams`、`createContext`、`requiredProviders`、`tools`、`tokenUsage` 和 `registry` 全部属于具体 entrypoint，不能放在 executor 顶层。入口按声明顺序展示；选择任一入口会直接创建该入口的 run，不会先执行默认入口。
+
+Workflow 可以在 `package.json.workflowCode.schedulePresets` 中声明建议计划。每项静态引用一个 entrypoint，并包含 IANA 时区、时间窗口或五字段 Cron，以及默认参数值。该目录会进入 Structure 报告，但宿主必须显示确认界面，不能因导入或发布项目自动创建计划。Conversation 和 Kanban 声明此字段会被 Structure 拒绝。完整格式与运行边界参见 [Workflow 定时运行](/concepts/workflow-schedules)。
+
+## Conversation executor
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `projectType` | `"conversation"` | Conversation 项目的类型标记。必填。 |
+| `workflow` | `WorkflowDefinition<Input, Output>` | Conversation 的唯一 workflow。必填。 |
+| `createInput` | `(context) => Input` | 把 args、环境和会话 ID 转成业务输入。必填。 |
+| `resolveParams` | `(context) => WorkflowParamResolveResult` | 可选参数联动回调。 |
+| `createContext` | `(context) => Partial<WorkflowContext>` | 增补 providers、metadata 和 hooks。 |
+| `requiredProviders` | `ExecutorProviderName[]` | 声明必需 provider。 |
+| `params` | `WorkflowConversationParamDeclaration[]` | Conversation 的有序 Auxiliary、Quick、Mode、Slash 入口声明。 |
+| `tools` | `WorkflowToolPermissionDefinition[]` | Conversation 可调用的工具和默认策略。 |
+| `conversation` | `WorkflowConversationDefinition` | 配置附件、输入队列和可选 OpenAI 网关。标准主输入框无需配置。 |
+| `tokenUsage` | `WorkflowTokenUsageDefinition` | 开启 token 用量统计。 |
+| `registry` | `WorkflowNodeRegistryEntry[]` | 注册可单独调试的节点。 |
+
+Conversation 不声明 `defaultEntrypoint` 或 `entrypoints`。CLI 收到非空入口选择时会返回错误，不会忽略该值。
+
+持久 Agent 项目可内联声明 `conversation.recovery: { enabled: true }` 与 `conversation.durable: { enabled: true }`，同时给 Agent 配置 `session`。前者启用宿主崩溃恢复，后者让 CLI Web / Studio 使用 Harness 队列、双向控制和常驻 owner，并在 Studio Trace 中提供完整任务视图。此时输入的 steer / followUp / reject 和撤回由 Harness 持久处理。`defineAgentConversationExecutor({ session })` 自动设置 durable 声明；静态结构项目仍须内联对象。显式 `tools` 列表需声明 `update_plan` 及启用时的 `subagent`，参见 [会话控制](/core-api/create-agent#持久会话控制)。执行由本地 CLI / Studio 宿主负责，Server 仅提供项目与数据管理。
+
+## `WorkflowExecutorContext`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `workflowName` | `string` | 当前 workflow 名称。 |
+| `workflowDir` | `string` | 当前 workflow 目录。 |
+| `entrypointId` | `string \| undefined` | Workflow 当前所选入口 ID；Conversation 为 `undefined`。 |
+| `entrypointTitle` | `string \| undefined` | Workflow 当前所选入口标题；Conversation 为 `undefined`。 |
+| `args` | `string[]` | 原始 CLI 风格参数。 |
+| `paramValues` | `Record<string, string \| string[]>` | 按 `params` 解析后的结构化值。单值保持字符串，多选为字符串数组。 |
+| `env` | `NodeJS.ProcessEnv` | 环境变量集合。 |
+| `abortSignal` | `AbortSignal` | 中断信号；本地宿主取消运行时会传递到 workflow 和支持 signal 的 SDK/provider 调用。 |
+| `conversationId` | `string \| undefined` | 会话 ID。 |
+| `toolPermissionPolicies` | `WorkflowToolPermissionPolicyMap \| undefined` | 宿主传入的工具策略覆盖值。workflow 通常不直接读取该字段，而是使用 `context.toolPermissions` 或 `workflow.createToolApprovalGate()`。 |
+
+## `WorkflowParamDeclaration`
+
+`params` 是有序声明数组，Workflow 写在对应 `defineEntrypoint` 中，Conversation 写在 `defineExecutor` 中。Workflow 可以直接声明普通主表单字段；Conversation 始终使用标准主输入框，只接受 `kind: "auxiliary"`、`kind: "quick"`、`kind: "mode"` 或 `kind: "slash"` 声明，不接受自定义主字段。可重复声明多个入口，工具栏按数组顺序从左到右展示。Auxiliary 和 Quick 的 `fields` 各自可以有多个字段；每个 Auxiliary 是独立参数面板，每个 Quick 是独立摘要菜单，Mode 是单击轮换的独立开关。Slash 参数出现在输入框上方的 `/` 菜单中，不生成工具栏按钮。`name` 和 flag 在整个 `params` 数组中必须唯一，Auxiliary/Quick 的 `id` 也必须在两类组之间唯一。Conversation 的 `--message`、`--images`、`--videos`、`--files` 保留给标准输入，不能作为参数 flag。
+
+```ts
+params: [
+  {
+    kind: "auxiliary", id: "workspace", label: "工作区",
+    fields: [
+      { name: "workdir", flag: "--workdir", type: "string" },
+      { name: "trace", flag: "--trace", type: "boolean" },
+    ],
+  },
+  {
+    kind: "quick", id: "ai", label: "AI", summary: ["model", "effort"],
+    fields: [
+      { name: "model", flag: "--model", type: "string", control: "select", options: [{ value: "sol", label: "Sol" }] },
+      { name: "effort", flag: "--effort", type: "string", control: "select", options: [{ value: "high", label: "High" }] },
+    ],
+  },
+  { kind: "mode", name: "agentMode", flag: "--agent-mode", label: "模式", options: [{ value: "ask", label: "Ask" }, { value: "build", label: "Build" }] },
+  { kind: "auxiliary", id: "output", label: "输出", fields: [{ name: "format", flag: "--format", type: "string" }] },
+],
+```
+
+普通字段及组内字段使用以下属性。源码声明中的字段不再填写 `panel`；结构报告仍把字段展平为 `WorkflowParamDefinition[]`，并用 `paramLayout.actions` 保存组名、字段归属和顺序，供宿主渲染。CLI、定时和外部 API 继续按相同的 flag 和 `paramValues[name]` 处理。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `name` | `string` | 参数名。必填。 |
+| `flag` | `string` | 长参数，例如 `--message`。 |
+| `shortFlag` | `string` | 短参数，例如 `-m`。 |
+| `type` | `WorkflowParamType` | 参数类型。必填。 |
+| `required` | `boolean` | 是否必填。 |
+| `description` | `string` | 参数说明。 |
+| `defaultValue` | `string` | 默认值。 |
+| `multiple` | `boolean` | 是否允许多个值。 |
+| `control` | `"text" \| "textarea" \| "radio" \| "select" \| "checkboxes" \| "audio" \| "date" \| "time" \| "datetime" \| "date-range"` | CLI Web 的表单控件提示；`audio` 必须与 `type: "file"` 一起使用，日期相关控件仍使用 `type: "string"`。 |
+| `step` | `number` | 这个字段属于第几步，从 `1` 开始。同一步的字段一起问；声明了 `step` 的请求在用户输入节点里一次只展示一步（问题上方有「‹ 第 N / M 问 ›」前后翻页，未答的必答题会在那里标出）。一次问多个独立问题时用它，同一个问题的多个字段不要拆步。 |
+| `resolveOnInput` | `boolean` | 是否在主输入内容变化时执行 `resolveParams`。默认 `false`；只有联动确实依赖输入文本时才设为 `true`。 |
+| `options` | `{ value, label?, description?, command? }[]` | 枚举选项；Slash 选项的 `command` 是不带 `/` 的命令名，默认使用 `value`。 |
+| `accept` | `string[]` | 文件类型限制。 |
+| `audio` | `{ maxDurationSeconds?: number, maxBytes?: number }` | 音频文件可选时长和大小限制；音频输入只能接受一个文件，默认限制由宿主提供。 |
+| `format` | `"json"` | file param 使用 JSON 引用格式。 |
+
+Quick 的 `summary` 必须列出当前组内互不重复的字段名，决定摘要显示内容和顺序。Quick 字段只能是 `type: "string"` 且 `control: "select" | "radio" | "checkboxes"` 的枚举；Mode 直接声明 `name`、`flag`、可选 `label` / `defaultValue` 和至少两个不同的非空 `options`，只适用于 Conversation。省略 Mode 的 `defaultValue` 时采用第一个选项，显式默认值必须属于选项。Auxiliary 可容纳普通表单字段。组内字段不能再包含 `panel` 或嵌套组，空组、重复名称/flag/id、无效摘要会被静态分析和运行时拒绝。
+
+## Slash 菜单与底部文字
+
+Conversation 的 `kind: "slash"` 支持单选 `type: "string"` 和开关 `type: "boolean"`，必须声明 `name`、`flag`，不能声明 `control`、`panel` 或 `multiple`。单选必须提供非空 `options`，默认使用首个选项；显式 `defaultValue` 必须属于选项。Boolean 默认 `"false"`，不提供 `options`，可用参数级 `command` 自定义命令名，默认使用 `name`。所有命令在项目内唯一，匹配 `/^[a-z][a-z0-9_-]*$/`。
+
+```ts
+params: [
+  { kind: "slash", name: "plan", flag: "--plan", type: "boolean", defaultValue: "false", label: "Plan" },
+  { kind: "slash", name: "webSearch", flag: "--web-search", type: "boolean", command: "search", label: "联网搜索" },
+],
+conversation: {
+  commands: [
+    { command: "export", label: "Export conversation", localizedLabel: { "zh-CN": "导出对话" }, action: { kind: "export" } },
+    { command: "compact", label: "Summarize context", localizedLabel: { "zh-CN": "上下文总结" }, action: { kind: "prompt", text: "/compact" } },
+  ],
+  footer: [
+    { text: "Plan mode", localizedText: { "zh-CN": "Plan 模式" }, when: { param: "plan", value: "true" } },
+    { param: "webSearch" },
+  ],
+  userInput: {
+    hideComposer: true,
+    effects: [
+      { when: { type: "agent-plan-approval", values: { decision: "approve" } }, params: { plan: "false" } },
+    ],
+  },
+},
+```
+
+CLI Web 单独输入 `/` 时向上弹出全部命令，继续输入可筛选命令或标签。菜单项使用紧凑尺寸，外层圆角，不显示左侧对号。选择单选参数写入对应选项值，选择 boolean 参数切换 `"true"` / `"false"`，触发参数联动而不发送消息。菜单遵守参数及选项的可见性、禁用状态和 `resolvedOptions`；动态选项可声明 `command`，省略时先沿用同值静态选项的命令，再回退到 `value`，也必须满足命令格式及唯一性要求。
+
+`conversation.commands` 使用静态 `WorkflowConversationCommandDefinition[]` 声明执行命令，与参数命令一起展示。每项包含 `command`、非空 `label`、可选 `description`、`localizedLabel`、`localizedDescription` 和 `action`。`action: { kind: "prompt", text }` 将声明的文字作为独立回合交给该项目的 Workflow 执行，可用于任意业务命令；`action: { kind: "export" }` 生成当前会话完整记录的 JSON 下载，并把命令及结果保存到对话正文。命令名不得与参数命令重复；翻译缺失回退到原文。选择时只移除光标处的命令，保留其他正文与附件；执行命令在会话运行、等待审批、队列未清空或编辑队列时不可执行。
+
+CLI Web 在参数刷新和发送时校验累积的动态选项与执行命令是否冲突；非法更新报错并保留上一次有效参数。发送时保留未被本次补丁替换的动态选项，选项状态补丁中省略的 `visible` 或 `disabled` 保留原值；明确替换或恢复选项列表时清除旧状态。导出文件包含本次导出命令及结果，结果中的消息数量与文件内 `messages.length` 一致。
+
+`conversation.footer` 是静态数组，显示在标准输入框外下方。每项只能声明非空 `text` 或已有参数名 `param`：文字按原文展示，可通过 `localizedText` 提供语言键到文字的映射，缺失翻译回退到 `text`；参数展示当前选项标签，无标签时显示参数值。可选 `when: { param, value }` 仅在该参数当前值匹配时显示，引用的参数隐藏时也隐藏对应文字。内容始终作为纯文字渲染，不解析 HTML 或 Markdown。
+
+`conversation.userInput` 是通用用户输入交互配置，必须写为静态对象。`hideComposer` 默认 `true`：当前会话存在待回答问题或审批时隐藏整个底部输入区，运行时确认答案或请求停止后恢复，草稿和附件不清空；设为 `false` 可保留输入区。`effects` 按声明顺序应用，使用 `when.type` 匹配请求的 `metadata.type`、`when.nodeName` 匹配节点名、`when.values` 匹配提交值，可组合且须全部匹配；至少声明一个条件。答案匹配值支持 string、有限 number、boolean 和 string 数组，数组按顺序精确匹配。`params` 是非空的已有参数名到字符串或字符串数组的映射，boolean 使用 `"true"` / `"false"`；它更新当前会话后续输入的参数，Slash 菜单、Quick 和底部文字同步刷新并持久化。当前运行仍按原始参数恢复，不会因参数更新重放已执行步骤。每个请求确认后只应用一次，失败提交不应用，迟到的参数刷新不能覆盖它；多个规则写同一参数时后项生效。例如，普通审核节点也可以声明 `{ when: { nodeName: "review", values: { accepted: true } }, params: { webSearch: "false" } }`，无需宿主为业务添加判断。
+
+小助手默认 Build，只有一个 `/plan` 开关：开启时 `createInput` 把 `paramValues.plan === "true"` 映射为 `agent: "plan"`，底部显示“Plan 模式”；再次执行恢复 Build 并隐藏提示。`/export` 导出当前会话的全部消息和执行记录；`/compact` 立即调用 Core Agent 的真实上下文总结，显示“正在执行中”及完成或失败状态，摘要持久化为后续回合使用的上下文，原对话正文仍保留。
+
+## `WorkflowParamStatePatch`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `value` | `string \| string[] \| null` | 替换当前参数值；`null` 表示显式清空。 |
+| `visible` | `boolean` | 控制参数是否显示。 |
+| `disabled` | `boolean` | 控制参数是否可操作。 |
+| `resolvedOptions` | `{ value, label?, description?, command? }[] \| null` | 数组替换参数当前的完整选项列表；`null` 恢复静态 `options`。 |
+| `options` | `Record<string, { visible?, disabled? }>` | 修改当前选项列表中单个值的显示或禁用状态。 |
+
+## `WorkflowNodeRegistryEntry`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `name` | `string` | registry 中的调试节点名。必填。 |
+| `node` | `NodeDefinition \| StreamNodeDefinition` | 实际执行的节点对象。必填。 |
+| `metadata` | `WorkflowNodeMetadataInput` | 覆盖节点展示元信息。 |
+| `stream` | `boolean` | 标记节点是否按流式节点执行。 |
+| `createInput` | `(context) => Input` | 单节点调试时的输入构造函数。 |
+
+## 执行流程
+
+| 阶段 | 说明 |
+| --- | --- |
+| 平台选择配置 | Workflow 按显式 ID 或 `defaultEntrypoint` 选择一个入口；Conversation 使用 executor 本身。 |
+| 创建上下文 | runtime 根据 args、env、workflowName、入口和 conversationId 创建 `WorkflowExecutorContext`。 |
+| `createInput` | 调用所选入口或 Conversation executor 的输入构造。 |
+| `createContext` | 调用同一执行配置的可选上下文扩展。 |
+| workflow `run` | 只执行所选入口的 workflow，或 Conversation 的唯一 workflow。 |
+
+## 快捷参数和联动
+
+每个 `kind: "quick"` 声明产生一个摘要入口，可见参数数量以 `resolveParams` 的当前状态为准。只有一个可见参数时，点击直接展示选项，不显示参数列表或返回按钮；单选后关闭菜单并恢复入口焦点，多选可连续切换。多个可见参数时，一级菜单按 `fields` 顺序列出参数及当前值，选择参数后再进入单选或多选列表；宽屏并排展示，窄屏在同一弹层中钻取。菜单底部的“重置为默认值”只恢复该组字段并触发一次 `resolveParams`，保留其它 Quick、Auxiliary、Mode、Main、未知 Raw 参数以及 Conversation 未发送的正文和附件。`summary` 显式指定摘要字段，不再依赖 `model`、`effort` 等特殊命名。
+
+Quick 可用 `icon` 声明 Codicon 名称，例如 `sparkle`、`shield`；省略时使用 `settings`，名称必须匹配 `/^[a-z][a-z0-9-]*$/` 并写为静态字符串。CLI Web 的入口只显示图标和 `summary` 当前选中值，不重复组名或显示上箭头；组名仍用于菜单标题、悬停提示和无障碍名称。工具栏按实际可用宽度从右到左收起 Quick 文字，宽度恢复后自动展开，收起后仍可打开菜单。
+
+```ts
+params: [
+  {
+    kind: "quick", id: "writing", label: "写作", icon: "edit", summary: ["tone"],
+    fields: [
+      { name: "tone", flag: "--tone", type: "string", resolveOnInput: true,
+        control: "select", defaultValue: "balanced", options: [
+          { value: "balanced", label: "Balanced" },
+          { value: "precise", label: "Precise" },
+          { value: "creative", label: "Creative" },
+        ] },
+      { name: "sources", flag: "--sources", type: "string", control: "checkboxes", options: [
+        { value: "web", label: "Web" },
+        { value: "docs", label: "Docs" },
+      ] },
+    ],
+  },
+],
+resolveParams({ draftText, paramValues }) {
+  const docsQuestion = draftText.includes("文档");
+  return {
+    params: {
+      tone: {
+        value: docsQuestion ? "precise" : paramValues.tone,
+        options: { creative: { disabled: docsQuestion } },
+      },
+      sources: { value: docsQuestion ? ["docs"] : paramValues.sources },
+    },
+  };
+},
+createInput({ paramValues }) {
+  return {
+    tone: String(paramValues.tone),
+    sources: Array.isArray(paramValues.sources) ? paramValues.sources : [],
+  };
+},
+```
+
+`resolveParams` 会在初始化以及 main、Advanced、Quick 中任意 Form 参数值变化时执行。主输入内容变化只有在至少一个参数设置 `resolveOnInput: true` 时才会触发，避免普通消息输入造成无关的远程求值。它应保持无写入副作用和幂等，不执行写文件、写 KV 或修改外部状态；只读动态目录应传入回调提供的 `abortSignal`。补丁中的 `visible` / `disabled` 不会隐式清空已有值；需要清空时显式返回 `value: null`。初始化在 Raw 模式返回值补丁时，宿主只更新对应已声明参数，保留其它 Raw 参数及其值。
+
+`resolvedOptions` 用于动态替换枚举：返回数组会完整替换参数的静态 `options`，返回 `null` 恢复静态选项，省略则保留当前动态选项。数组中的 `value` 必须是非空唯一字符串，`label` 和 `description` 必须是字符串。替换选项时旧 option 状态会清除；宿主会统一把动态选项应用到 Quick 与 Advanced，并区分 loading、empty、error。conversation 宿主按 conversation ID 重新求值，已经过期的异步响应不会覆盖当前会话。
+
+## 日期参数
+
+日期相关控件使用固定的本地时间字符串，不进行时区转换：
+
+| `control` | 字符串格式 | 行为 |
+| --- | --- | --- |
+| `date` | `YYYY-MM-DD` | 选择单个日期后立即写回。 |
+| `time` | `HH:mm:ss` | 24 小时制，包含秒。 |
+| `datetime` | `YYYY-MM-DDTHH:mm:ss` | 选择日期和时间后通过“确定”写回。 |
+| `date-range` | `YYYY-MM-DD/YYYY-MM-DD` | 闭区间；只在起止日期完整且结束不早于开始时写回。 |
+
+这些控件只支持 `type: "string"`，可以作为普通字段或放进 Auxiliary，不能放进 Quick 或 Mode，也不能声明 `options` 或 `multiple: true`；TypeScript、静态结构分析和 runtime 都会拒绝非法组合。日期参数也不能通过 `resolveParams` 返回 `resolvedOptions` 或 option 状态补丁。
+
+空值保持 `""`；可选参数可以清除，必填参数不显示清除操作。非空无效默认值、Raw 参数或 `resolveParams` 返回值会原样进入表单并显示字段错误，不会被静默修正；修正前 Run、Send 或 Submit 保持禁用，不会把已知无效值传给 `createInput`。合法值的 `args` 与 `paramValues` 仍按原字符串传递。
+
+点击日历标题会打开紧凑的年份、月份双列滚动选择器；滚动过程只更新草稿，选择“完成”后才切换日历，“取消”保持原月份。年份限制为 `0001` 到 `9999`，滚轮只加载当前年份附近的有限选项。在宽屏界面中，`date-range` 会显示两个可独立切换年月的日历；重新打开时分别定位到已选的开始月份和结束月份，起止在同一个月时右侧显示下一个月。切换其中一个日历不会改变另一个日历当前展示的月份。窄屏界面使用单个日历，日期范围的值格式和完整范围提交规则保持不变。
+
+```ts
+params: [
+  { name: "publishDate", flag: "--publish-date", type: "string", control: "date" },
+  { kind: "auxiliary", id: "schedule", label: "计划时间", fields: [
+    { name: "startsAt", flag: "--starts-at", type: "string", control: "datetime" },
+  ] },
+  { name: "period", flag: "--period", type: "string", control: "date-range" },
+],
+resolveParams({ paramValues, trigger }) {
+  const publishDate = typeof paramValues.publishDate === "string" ? paramValues.publishDate : "";
+  const period = typeof paramValues.period === "string" ? paramValues.period : "";
+  const preferPeriod = trigger.kind === "param" && trigger.paramName === "period";
+  const usePeriod = period !== "" && (preferPeriod || publishDate === "");
+  const useDate = publishDate !== "" && !usePeriod;
+
+  return {
+    params: {
+      publishDate: usePeriod
+        ? { visible: false, value: null }
+        : { visible: true },
+      period: useDate
+        ? { visible: false, value: null }
+        : { visible: true },
+    },
+  };
+},
+createInput({ paramValues }) {
+  return {
+    publishDate: String(paramValues.publishDate ?? ""),
+    startsAt: String(paramValues.startsAt ?? ""),
+    period: String(paramValues.period ?? ""),
+  };
+},
+```
+
+该互斥示例在选择单日后隐藏并清空范围，选择范围后隐藏并清空单日；清除当前值后两个字段重新显示。初始化时若外部 args 同时提供两者，会确定性地保留单日并清空范围。只返回 `visible: false` 会保留旧值，并继续把它放入 `args` 和 `paramValues`，不适合互斥参数。
+
+每个 executor 都必须静态声明 `projectType`。`projectType: "conversation"` 会自动启用 conversation ID、上下文和会话存储，workflow 代码可以调用 `context.conversation.setTitle(title)` 给 CLI Web 或 CLI Web 提供可读会话标题。`projectType: "workflow"` 禁止声明 `conversation`，其会话上下文保持禁用，并必须声明静态 `defaultEntrypoint` 与 `entrypoints`。缺失、未知类型或遗留 `conversation.enabled` 都会作为迁移错误拒绝加载，不会回退成 Workflow。
+
+`workflow.defineExecutor(...)` 必须接收内联对象字面量，并把返回值作为模块的 `executor` 命名导出或默认导出。不能先把配置保存到变量后再传入，也不能继续使用顶层 `workflow`、`createInput`、`projectType` 等旧式分散导出；静态结构分析不会执行配置代码，runtime 也不会再把这些字段拼装成 executor。
+
+Conversation 固定使用标准主输入框，无需声明开关，也不能关闭或替换为自定义主表单。可选的附件能力直接写在 `conversation.attachments` 中；`conversation.defaultInput` 已移除，旧配置会报错：
+
+```ts
+export const executor = workflow.defineExecutor<Input, Output>({
+  projectType: "conversation",
+  workflow: conversationWorkflow,
+  conversation: {
+    recovery: { enabled: true },
+    inputQueue: {
+      enabled: true,
+    },
+    attachments: {
+      images: true,
+      videos: true,
+      files: true,
+    },
+  },
+  createInput({ args }) {
+    return workflow.parseConversationDefaultInputArgs(args);
+  },
+});
+```
+
+标准输入由宿主绘制，不会自动改写 `WorkflowContext`。workflow 仍需在 `createInput({ args })` 中显式读取固定参数名：
+
+- 文本：`--message`
+- 图片附件：`--images`
+- 普通文件附件：`--files`
+- 视频附件：`--videos`（启用 `attachments.videos: true` 时）
+
+推荐直接使用 [`workflow.parseConversationDefaultInputArgs(args)`](/core-api/parse-conversation-default-input-args)：
+
+```ts
+createInput({ args }) {
+  const defaults = workflow.parseConversationDefaultInputArgs(args);
+  return {
+    message: defaults.message,
+    images: defaults.images,
+    videos: defaults.videos,
+    files: defaults.files,
+  };
+}
+```
+
+`--images` / `--videos` / `--files` 复用现有 file reference 协议，可以是 managed file JSON refs，也可以是本地 path。宿主负责把粘贴、拖拽或上传的 `File` 先转成 managed refs，再写回这些固定参数。未启用 `videos` 的旧项目仍可通过 `files: true` 上传视频，并继续使用 `--files`。
+
+`conversation.recovery: { enabled: true }` 声明该项目可用原 `runId`、参数及已解析答案跨进程恢复。只为使用持久 Agent 等可恢复执行的项目启用；普通 Workflow 或包含不可重放前置副作用的项目不能仅靠此标记获得恢复能力。CLI Web / Studio 在启动和 worker 意外退出时恢复，最多自动重试 3 次，耗尽后由原回答的重试按钮继续。显式停止持久取消，关闭宿主保留检查点。
+
+未启用 Durable session 时，如果还声明了 `conversation.inputQueue: { enabled: true }`，CLI Web
+会在当前会话运行中允许继续提交新输入。新增输入不会立刻执行，而是进入共享输入队列：
+
+- 队列由 CLI Web 管理；命令行 `run` / `json` 不使用队列。
+- 宿主会持久化等待中的输入；重开或刷新 CLI Web 后，队列仍保留。
+- 恢复后的队列不会自动续跑，需要先手动发送一条新输入，后续排队项才会按顺序继续执行。
+- 当前 run 完成、失败或取消后，宿主会清理该会话的 active 运行标记；后续新输入恢复为普通发送，不会继续进入等待队列。
+- 队列项支持引导、编辑、删除和拖动排序；引导会先中断当前运行，再立即执行目标队列项。
+
+开启 `tokenUsage.enabled` 后，runtime 会把 token 用量写入 KV，并把本次 run 聚合写入运行 report。聚合包含 `inputTokens`、`outputTokens`、`totalTokens`、`reasoningTokens`、`cachedInputTokens`、`cacheCreationTokens` 和 `calls`。`display` 省略时默认等于 `enabled`，CLI Web 只在 `display === true` 且有数据时展示 badge；badge 默认显示总量，hover/focus 分别展示 Input、Output、Reasoning、Cache read、Cache write 和 Calls。
+
+## 工具权限
+
+`tools` 用于注册 workflow 业务工具的默认权限。每个工具包含稳定 `name`，以及可选 `label`、`description`、`enabled` 和 `autoApprove`。`enabled` 默认 `true`，`autoApprove` 默认 `false`。CLI Web 可以在运行前缓存用户选择并传入覆盖值；runtime 只接受已注册工具的 `enabled/autoApprove` 覆盖，未知工具会被忽略。
+
+workflow 代码可以使用 [`workflow.createToolApprovalGate()`](/core-api/create-tool-approval-gate) 包装工具函数。工具未注册时会以 `input_validation` 失败；工具被禁用时会以 `tool_permission_denied` 拒绝；工具启用但未自动批准时，会复用 `workflow.createUserInputNode(...)` 的等待/恢复协议生成 `tool-approval` 请求，批准后继续同一个 run，拒绝后返回 `tool_permission_denied`。
+
+## 示例
+
+```ts
+export const executor = workflow.defineExecutor<Input, Output>({
+  projectType: "workflow",
+  defaultEntrypoint: "main",
+  entrypoints: [
+    workflow.defineEntrypoint<Input, Output>({
+      id: "main",
+      title: "完整流程",
+      workflow: exampleWorkflow,
+      tokenUsage: { enabled: true, display: true },
+      tools: [
+        {
+          name: "search",
+          label: "Search",
+          description: "调用外部搜索工具。",
+          enabled: true,
+          autoApprove: false,
+        },
+      ],
+      params: [
+        {
+          name: "message",
+          flag: "--message",
+          type: "string",
+          required: true,
+          control: "textarea",
+          description: "输入文本。",
+        },
+      ],
+      createInput({ args }) {
+        return { message: readMessage(args) };
+      },
+    }),
+  ],
+});
+```
+
+## 注意事项
+
+| 规则 | 说明 |
+| --- | --- |
+| `createInput` 是必填 | 每个 Workflow entrypoint 和 Conversation executor 都必须声明。 |
+| `paramValues` 是正式结构化值 | `createInput` 可直接读取参数值；`args` 继续用于需要完整 CLI 参数或未知参数的场景。 |
+| Workflow 运行配置属于 entrypoint | 顶层旧字段会给出迁移错误，不再保留兼容别名。 |
+| `tools` 必须静态声明 | CLI Web 只能展示所选入口或 Conversation executor 静态分析到的工具；工具名必须稳定。 |
+| `tokenUsage.enabled` 默认关闭 | 未配置时不会写 KV，也不会展示用量。关闭时 `context.tokenUsage.report()` 是 no-op。 |
+| `registry` 用于单节点调试 | Workflow 只搜索所选入口的 registry；没有注册的节点不能通过 debug API 单独运行。 |

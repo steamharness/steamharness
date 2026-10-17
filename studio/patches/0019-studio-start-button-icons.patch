@@ -1,0 +1,12 @@
+diff --git a/src/vs/workbench/browser/parts/editor/media/studioStart.css b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+index 45d0b146..76f54219 100644
+--- a/src/vs/workbench/browser/parts/editor/media/studioStart.css
++++ b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+@@ -28,6 +28,7 @@
+ .studio-start-quick { display:flex; flex-direction:column; align-items:stretch; }
+ .studio-start-primary { width:auto; color:var(--vscode-button-foreground); background:var(--vscode-button-background); }
+ .studio-start-primary:hover { color:var(--vscode-button-foreground); background:var(--vscode-button-hoverBackground); }
++.studio-start .studio-start-primary > .codicon { color:#fff; }
+ .studio-start-current { grid-column:1 / -1; }
+ .studio-start-current .studio-start-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); align-items:stretch; gap:12px; }
+ .studio-start-project-card { display:flex; flex-direction:column; box-sizing:border-box; min-width:0; padding:16px; border:1px solid var(--vscode-widget-border,var(--vscode-panel-border)); border-radius:6px; }

@@ -1,0 +1,59 @@
+{
+  "workflowName": "runtime-timer",
+  "projectType": "workflow",
+  "files": [
+    "index.ts",
+    "interface.ts"
+  ],
+  "nodes": [
+    {
+      "id": "timerNode",
+      "factory": "createTimerNode",
+      "standardName": "timer",
+      "configuredName": "business-timer"
+    },
+    {
+      "id": "outputNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "runtime-timer-output"
+    }
+  ],
+  "defaultEntrypoint": "main",
+  "entrypoints": [
+    {
+      "id": "main",
+      "title": "Runtime Timer",
+      "workflowName": "runtime-timer",
+      "params": [
+        {
+          "name": "title",
+          "flag": "--title",
+          "type": "string",
+          "required": false,
+          "defaultValue": "业务阶段计时"
+        },
+        {
+          "name": "milliseconds",
+          "flag": "--milliseconds",
+          "type": "number",
+          "required": false,
+          "defaultValue": "2000"
+        }
+      ],
+      "registry": [],
+      "execution": {
+        "kind": "sequence",
+        "counts": {
+          "sequence": 1,
+          "node": 2
+        },
+        "callees": [
+          "runNode"
+        ],
+        "branchLabels": [],
+        "loopLabels": []
+      }
+    }
+  ]
+}

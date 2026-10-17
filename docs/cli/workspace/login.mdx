@@ -1,0 +1,61 @@
+---
+title: "workspace login"
+description: "通过 browser device flow 登录 Workflow Server，并保存 workspace CLI 登录态。"
+---
+
+# workspace login
+
+`workspace login` 会向 Workflow Server 发起 device flow 登录请求，打开浏览器授权页，等待用户在 Web 端批准后把 CLI 专用 API Key 写入本地 `workflow-auth.json`。无需手工输入 token。
+
+## 命令格式
+
+```bash
+pnpm exec workflow-code workspace login --server <url>
+```
+
+## 参数
+
+| 参数 | 说明 |
+| --- | --- |
+| `--server <url>` | 必填。Workflow Server 地址。 |
+
+## 验证方式
+
+| 步骤 | 说明 |
+| --- | --- |
+| 创建设备码 | CLI 调用 `POST /api/auth/device/start`。 |
+| 打开浏览器 | 自动打开 `verificationUriComplete`；无浏览器时输出 URL 和 user code。 |
+| 轮询结果 | CLI 轮询 `POST /api/auth/device/token`，直到成功、拒绝、过期或被限流。 |
+| 写入配置 | 成功后写入 `workflow-auth.json`，保存 server、API Key、过期时间和用户信息。 |
+
+## 配置文件
+
+| 配置 | 说明 |
+| --- | --- |
+| 文件名 | `workflow-auth.json` |
+| macOS 默认目录 | `~/Library/Application Support/workflow-code` |
+| Windows 默认目录 | `%APPDATA%/workflow-code` |
+| Linux 默认目录 | `$XDG_CONFIG_HOME/workflow-code` 或 `~/.config/workflow-code` |
+| 自定义目录 | 设置 `WORKFLOW_CLI_AUTH_DIR` |
+
+## 输出
+
+| 情况 | 输出 |
+| --- | --- |
+| 登录成功 | `{ errCode: 0, errMessage: "", data: { loggedIn: true, serverUrl, user, expiresAt, apiKeyPrefix } }` |
+| 授权被拒绝或过期 | 输出 server 返回的错误响应，退出码为 `1`。 |
+| 参数缺失 | 输出错误信息，退出码为 `1`。 |
+
+## 示例
+
+```bash
+pnpm exec workflow-code workspace login --server http://localhost:7125
+```
+
+## 相关命令
+
+| 目标 | 命令 |
+| --- | --- |
+| 查看登录状态 | [`status`](/cli/workspace/status) |
+| 清空登录态 | [`logout`](/cli/workspace/logout) |
+| 检查服务健康 | [`health`](/cli/workspace/health) |

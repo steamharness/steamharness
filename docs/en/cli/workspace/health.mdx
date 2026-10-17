@@ -1,0 +1,51 @@
+---
+title: "workspace health"
+description: "Check Workflow Server health status."
+---
+
+# workspace health
+
+`workspace health` requests the `/health` interface of Workflow Server. This command does not require a token and is suitable for confirming whether the server is reachable before signing in, uploading, or downloading.
+
+## Command Format
+
+```bash
+pnpm exec workflow-code workspace health [--server <url>]
+```
+
+## Parameter
+
+|Parameter|Description|
+| --- | --- |
+| `--server <url>` |Optional. If not passed, the server URL is resolved according to the configured priority.|
+
+## Server URL Priority
+
+|Order|Source|
+| --- | --- |
+| 1 | `--server <url>` |
+| 2 | `WORKFLOW_SERVER_URL` |
+| 3 |CLI Login state file|
+| 4 | `http://localhost:7125` |
+
+## Output
+
+|Situation|Output|
+| --- | --- |
+|server reachable|The JSON returned by server `/health`.|
+|The server returned a non-zero `errCode`|Output JSON, exit code is `1`.|
+|Network or parse failure|Output error message with exit code `1`.|
+
+## Example
+
+```bash
+pnpm exec workflow-code workspace health
+pnpm exec workflow-code workspace health --server http://localhost:7125
+```
+
+## Common uses
+
+|Scene|Description|
+| --- | --- |
+|Pre-Release Check|Verify that the server is started and that the URL is correct.|
+|Troubleshoot login failure|Distinguish between server unreachability and invalid token.|

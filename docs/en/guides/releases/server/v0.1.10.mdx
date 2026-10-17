@@ -1,0 +1,66 @@
+---
+title: "Server 0.1.10"
+description: "Release notes for Server 0.1.10."
+---
+
+# Server 0.1.10
+
+2026-09-05 · Tag `server/v0.1.10` · 当前设备
+
+<span id="server-0-1-10" className="release-version-anchor"></span>
+<span id="server.0.1.10" className="release-version-anchor"></span>
+
+#### New Features
+
+- **Local execution mode**: `pnpm dev` and `pnpm start:local` run cloud Workflows on the host without a Runner or container build. See [Deployment](/en/guides/server/deployment).
+- **Cross-service related project calls**: run containers read a target project's knowledge base and invoke its entrypoints as the calling user. See [Project management](/en/guides/server/project-management).
+- **Project KV entry deletion**: `DELETE /api/workflows/:name/kv/entry` removes a single project KV entry by scope and key.
+
+#### Breaking Changes
+
+- The public Embed HTTP endpoints and the `server-live` relay unit are removed, along with the `embed.manage` permission.
+  Migration: browser runs move to the Desktop home Web build, and the console only manages cloud projects.
+- The Server execution surface drops local dependency install, builds, Node subprocesses, and local fallback.
+  Migration: project versions must be built and run by a remote Runner against a fixed Core, runtime protocol, architecture, and OCI digest.
+- `listWorkflows` no longer accepts `origin`, and project summaries no longer return `embedEnabled` or `embedPublicUrl`.
+  Migration: callers rely on the default project list fields instead of an Embed toggle.
+- Anonymous `/web` visits redirect to login and back, and `?next=` only accepts route names rather than arbitrary paths.
+  Migration: never put an absolute path in `next`, which is rejected to avoid an open redirect.
+
+#### Added
+
+- Added a persistent Runner pool with nodes, leases, task ordering events, artifacts, and a runtime capability control plane.
+- Added nodes registering, renewing, and claiming tasks over outbound HTTPS, so project containers never get database or admin credentials.
+- Added runtime KV, PersistentValue, related project, and file APIs whose tokens bind to project, user, task, and expiry.
+- Added renaming and deletion for run records, restricted to project admins and the run's initiator.
+- Added display names and stable `cardId` values for run records so embedded cards stop being recreated on scroll.
+- Added an optional local object storage driver writing artifacts and avatars to disk via `WORKFLOW_STORAGE_DRIVER=local`.
+- Added startup without any OSS credentials, with avatars served read-only from `/storage/avatars`.
+- Added the wflive relay on ECS, with Stable and Alpha listening on 7150 and 7151 respectively.
+- Added a `delete` operation to `POST /api/project-storage` returning `{ removed: false }` for missing entries.
+- Added the `kv.manage` permission, granted to the Developer role while Operator and Viewer stay read-only.
+- Added optional grouping metadata on the Workflow entrypoint structure for partitioned public Embeds.
+
+#### Changed
+
+- Changed `server:start` to keep source mode and dev ports while disabling backend listening and Web hot reload.
+- Changed related project knowledge base and entrypoint calls to require explicit grants from the target project, checked per key.
+- Changed entrypoint calls to run once as the initiating user, with the called project gaining no related access itself.
+- Changed `WORKFLOW_OSS_ENDPOINT` to accept a same-region internal endpoint while signing URLs with the public endpoint.
+
+#### Fixed
+
+- Fixed Runner artifact uploads being cut off by the OSS client's 60 second timeout, now budgeted at 5 minutes.
+- Fixed local execution accessing Server as the initiating user by issuing a run-scoped key valid for 6 hours.
+- Fixed the local execution subprocess environment to be allowlisted, keeping database, OSS, and LLM secrets away from project code.
+- Fixed nested runs of related projects being unable to reach further, returning `503` when the originating run cannot be verified.
+- Fixed related project knowledge base writes being validated per document key instead of per whole modification.
+- Fixed `/related/run` returning nested failures with their status and error codes instead of collapsing them into request errors.
+- Fixed related project entrypoint lists sampling `latest` to match what `runEntrypoint` actually executes.
+
+#### Removed
+
+- Removed `GET/PUT /api/workflows/{workflowName}/embed` and every `/embed/**` route.
+- Removed the `wfembed` host and `WORKFLOW_EMBED_PUBLIC_BASE_URL`; `workflow_embed_configs` stays expand-only.
+- Removed the Server Web `/web` entry page with its runnable version list and `next=web` redirect.
+- Removed the `server-live` release unit, the `/api/desktop/v1/*` and `/api/web-runs/*` routes, and the `web` release target.

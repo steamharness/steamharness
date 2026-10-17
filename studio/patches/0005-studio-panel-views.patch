@@ -1,0 +1,72 @@
+diff --git a/src/vs/base/common/product.ts b/src/vs/base/common/product.ts
+index f746203ed60..a8bfd4c0578 100644
+--- a/src/vs/base/common/product.ts
++++ b/src/vs/base/common/product.ts
+@@ -294,6 +294,7 @@ export interface IProductConfiguration {
+ 
+ 	readonly onboardingKeymaps?: readonly IProductOnboardingKeymap[];
+ 	readonly onboardingThemes?: readonly IProductOnboardingTheme[];
++	readonly disabledWorkbenchViews?: readonly string[];
+ 
+ 	/**
+ 	 * When running as an embedded app, the parent VS Code's policy
+diff --git a/src/vs/workbench/common/views.ts b/src/vs/workbench/common/views.ts
+index 236e55696b1..86e8fd3c9e9 100644
+--- a/src/vs/workbench/common/views.ts
++++ b/src/vs/workbench/common/views.ts
+@@ -26,6 +26,7 @@ import { registerIcon } from '../../platform/theme/common/iconRegistry.js';
+ import { CancellationToken } from '../../base/common/cancellation.js';
+ import { VSDataTransfer } from '../../base/common/dataTransfer.js';
+ import { ILocalizedString } from '../../platform/action/common/action.js';
++import product from '../../platform/product/common/product.js';
+ 
+ export const VIEWS_LOG_ID = 'views';
+ export const VIEWS_LOG_NAME = localize('views log', "Views");
+@@ -465,6 +466,10 @@ class ViewsRegistry extends Disposable implements IViewsRegistry {
+ 	}
+ 
+ 	registerViews2(views: { views: IViewDescriptor[]; viewContainer: ViewContainer }[]): void {
++		views = views.map(({ views, viewContainer }) => ({
++			views: views.filter(view => !product.disabledWorkbenchViews?.includes(view.id)),
++			viewContainer
++		})).filter(({ views }) => views.length > 0);
+ 		views.forEach(({ views, viewContainer }) => this.addViews(views, viewContainer));
+ 		this._onViewsRegistered.fire(views);
+ 	}
+diff --git a/src/vs/workbench/services/views/test/browser/viewDescriptorService.test.ts b/src/vs/workbench/services/views/test/browser/viewDescriptorService.test.ts
+index b9b7158a00e..0bfc441fe76 100644
+--- a/src/vs/workbench/services/views/test/browser/viewDescriptorService.test.ts
++++ b/src/vs/workbench/services/views/test/browser/viewDescriptorService.test.ts
+@@ -18,6 +18,7 @@ import { IStorageService, StorageScope, StorageTarget } from '../../../../../pla
+ import { generateUuid } from '../../../../../base/common/uuid.js';
+ import { compare } from '../../../../../base/common/strings.js';
+ import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
++import product from '../../../../../platform/product/common/product.js';
+ 
+ const ViewsRegistry = Registry.as<IViewsRegistry>(ViewContainerExtensions.ViewsRegistry);
+ const ViewContainersRegistry = Registry.as<IViewContainersRegistry>(ViewContainerExtensions.ViewContainersRegistry);
+@@ -99,6 +100,24 @@ suite('ViewDescriptorService', () => {
+ 		assert.strictEqual(panelViews.activeViewDescriptors.length, 0, 'Panel should have no views');
+ 	});
+ 
++	test('Product-disabled views are excluded from registration and registration events', () => {
++		const previous = product.disabledWorkbenchViews;
++		const registered: string[] = [];
++		const listener = ViewsRegistry.onViewsRegistered(groups => registered.push(...groups.flatMap(group => group.views.map(view => view.id))));
++		const viewDescriptors: IViewDescriptor[] = ['disabled', 'enabled'].map(id => ({
++			id, ctorDescriptor: null!, name: nls.localize2('Test View', 'Test View'), canMoveView: true
++		}));
++		try {
++			Object.assign(product, { disabledWorkbenchViews: ['disabled'] });
++			ViewsRegistry.registerViews(viewDescriptors, panelContainer);
++			assert.deepStrictEqual([ViewsRegistry.getViews(panelContainer).map(view => view.id), registered], [['enabled'], ['enabled']]);
++		} finally {
++			listener.dispose();
++			ViewsRegistry.deregisterViews(viewDescriptors, panelContainer);
++			Object.assign(product, { disabledWorkbenchViews: previous });
++		}
++	});
++
+ 	test('move views to existing containers', async function () {
+ 		const testObject = aViewDescriptorService();
+ 		const viewDescriptors: IViewDescriptor[] = [

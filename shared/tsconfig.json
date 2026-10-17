@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "ignoreDeprecations": "6.0",
+    "types": ["node", "vitest/globals"],
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "jsx": "react-jsx",
+    "noEmit": true
+  },
+  "include": ["*/**/*.ts", "*/**/*.tsx", "vitest.config.ts", "tests/**/*.ts"],
+  "exclude": ["coverage", "dist", "node_modules"]
+}

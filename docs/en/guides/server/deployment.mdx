@@ -1,0 +1,64 @@
+---
+title: "Deployment and release"
+description: "Prepare local and production configuration, persistent storage, and the static site for Workflow Server."
+---
+
+# Deployment and release
+
+Workflow Server runs locally or as a self-hosted service. Production deployments should put the database, runtime data, object storage, and static documentation in explicit persistent locations.
+
+## Environments
+
+| Environment | Use | Guidance |
+| --- | --- | --- |
+| Development | Local Server and project work | Copy `*.env.example` to a local `.env`; Git ignores real env files. |
+| Production | Administration, project, and data APIs | Use protected CI/CD Variables or a `.env.production` that exists only on the deployment host. |
+
+Start Server for development:
+
+```sh
+pnpm bootstrap
+pnpm dev
+```
+
+Build and start a production checkout:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm build:all
+pnpm start
+```
+
+Never commit real `.env` files, database connection strings, or service keys. `*.env.example` files contain variable names and placeholders only.
+
+## Persistent configuration
+
+Prepare backups and write access for at least:
+
+| Variable | Purpose |
+| --- | --- |
+| `WORKFLOW_SERVER_DATA_DIR` | Server runtime data, caches, and local object storage. |
+| `WORKFLOW_DATABASE_URL` | PostgreSQL connection string. |
+| `WORKFLOW_STORAGE_DRIVER` | Object storage backend; only `local` is accepted, writing artifacts and avatars to this machine's disk. |
+| `WORKFLOW_LOCAL_STORAGE_ROOT` | Absolute path used by the `local` driver. |
+| `WORKFLOW_PUBLIC_BASE_URL` | Public administration URL. |
+| `WORKFLOW_API_PUBLIC_BASE_URL` | Public HTTP(S) origin for the API. |
+| `WORKFLOW_DOCS_PUBLIC_BASE_URL` | Documentation site URL. |
+
+Server never installs dependencies, builds, or loads uploaded project code. Back up source snapshots, avatars, KV data, and knowledge data according to the deployment policy.
+
+## Health checks and reverse proxy
+
+Check a running service with:
+
+```sh
+curl -i "$WORKFLOW_PUBLIC_BASE_URL/health"
+```
+
+The reverse proxy should forward HTTPS, Host, and WebSocket headers and expose only required ports. If a health check fails, preserve data and inspect service logs and database connectivity before rollback or recovery.
+
+## Alpha and stable deployments
+
+Alpha and stable use separate runtime directories, processes, logs, and ports. Use explicit artifacts and migration plans for both environments; database changes remain expand-only and must not delete or rename live fields from a deployment script.
+
+Release jobs read production variables only from protected refs and verify build versions and static assets. Recovery does not remove data volumes, commit runtime configuration, or place secrets in artifacts.

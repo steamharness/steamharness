@@ -1,0 +1,213 @@
+diff --git a/src/vs/workbench/contrib/studioStart/browser/media/studioProjectUploadDialog.css b/src/vs/workbench/contrib/studioStart/browser/media/studioProjectUploadDialog.css
+new file mode 100644
+index 00000000..0ea72b31
+--- /dev/null
++++ b/src/vs/workbench/contrib/studioStart/browser/media/studioProjectUploadDialog.css
+@@ -0,0 +1,29 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++.monaco-dialog-modal-block .monaco-dialog-box.studio-upload-dialog { box-sizing:border-box; width:560px; max-width:calc(100vw - 32px); min-width:0; border-radius:6px; user-select:text; }
++.studio-upload-dialog .dialog-message-container { min-width:0; width:100%; }
++.studio-upload-dialog .dialog-buttons-row { display:none; }
++.studio-upload-form { display:flex; flex-direction:column; gap:18px; padding-top:12px; min-width:0; letter-spacing:0; }
++.studio-upload-metadata { display:grid; grid-template-columns:auto minmax(0,1fr); gap:8px 20px; margin:0; font-size:12px; line-height:18px; }
++.studio-upload-metadata dt { margin:0; color:var(--vscode-descriptionForeground); }
++.studio-upload-metadata dd { margin:0; min-width:0; overflow-wrap:anywhere; white-space:pre-wrap; }
++.studio-upload-field label { display:block; margin-bottom:8px; font-size:12px; font-weight:600; }
++.studio-upload-field textarea { display:block; box-sizing:border-box; width:100%; min-height:110px; max-height:240px; padding:8px; resize:vertical; border:1px solid var(--vscode-input-border,transparent); border-radius:3px; background:var(--vscode-input-background); color:var(--vscode-input-foreground); font:inherit; line-height:20px; }
++.studio-upload-status { min-height:36px; margin:0; color:var(--vscode-descriptionForeground); white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; line-height:18px; }
++.studio-upload-form.has-error .studio-upload-status { color:var(--vscode-errorForeground); }
++.studio-upload-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px; }
++.studio-upload-actions button { display:inline-flex; align-items:center; justify-content:center; gap:6px; box-sizing:border-box; min-width:96px; min-height:30px; padding:4px 12px; border:1px solid var(--vscode-button-border,transparent); border-radius:3px; font:inherit; cursor:pointer; }
++.studio-upload-actions .studio-upload-submit { background:var(--vscode-button-background); color:var(--vscode-button-foreground); }
++.studio-upload-actions .studio-upload-submit:hover:not(:disabled) { background:var(--vscode-button-hoverBackground); }
++.studio-upload-actions .studio-upload-submit .codicon { color:inherit; }
++.studio-upload-actions .studio-upload-cancel { background:var(--vscode-button-secondaryBackground); color:var(--vscode-button-secondaryForeground); }
++.studio-upload-actions .studio-upload-cancel:hover:not(:disabled) { background:var(--vscode-button-secondaryHoverBackground); }
++.studio-upload-actions button:disabled { cursor:default; opacity:.6; }
++.studio-upload-actions button[hidden] { display:none; }
++.studio-upload-form button:focus-visible, .studio-upload-form textarea:focus { outline:1px solid var(--vscode-focusBorder); outline-offset:1px; }
++.studio-upload-dialog, .studio-upload-dialog button, .studio-upload-dialog textarea { user-select:text; -webkit-user-select:text; }
++.studio-upload-dialog .dialog-message-container, .studio-upload-field textarea { scrollbar-width:thin; scrollbar-color:transparent transparent; }
++.studio-upload-dialog .dialog-message-container:hover, .studio-upload-field textarea:hover { scrollbar-color:var(--vscode-scrollbarSlider-background) transparent; }
++@media (max-width:380px) { .studio-upload-metadata { grid-template-columns:minmax(0,1fr); gap:4px; } .studio-upload-metadata dd:not(:last-child) { margin-bottom:6px; } }
+diff --git a/src/vs/workbench/contrib/studioStart/browser/studioProjectUploadDialog.ts b/src/vs/workbench/contrib/studioStart/browser/studioProjectUploadDialog.ts
+new file mode 100644
+index 00000000..ea1074a7
+--- /dev/null
++++ b/src/vs/workbench/contrib/studioStart/browser/studioProjectUploadDialog.ts
+@@ -0,0 +1,145 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { $, addDisposableListener, append } from '../../../../base/browser/dom.js';
++import { Dialog } from '../../../../base/browser/ui/dialog/dialog.js';
++import { Disposable } from '../../../../base/common/lifecycle.js';
++import { generateUuid } from '../../../../base/common/uuid.js';
++import { ICommandService } from '../../../../platform/commands/common/commands.js';
++import { IKeybindingService } from '../../../../platform/keybinding/common/keybinding.js';
++import { ILayoutService } from '../../../../platform/layout/browser/layoutService.js';
++import { createWorkbenchDialogOptions } from '../../../browser/parts/dialogs/dialog.js';
++import { IHostService } from '../../../services/host/browser/host.js';
++import './media/studioProjectUploadDialog.css';
++
++export interface ProjectUploadDialogRequest {
++	id: string;
++	name: string;
++	version: string;
++	serverUrl: string;
++	folderPath: string;
++	labels: Record<string, string>;
++}
++
++/** Keeps upload input, progress, and results in one native dialog. */
++export class StudioProjectUploadDialog extends Disposable {
++	private readonly dialog: Dialog;
++	private form!: HTMLElement;
++	private notes!: HTMLTextAreaElement;
++	private status!: HTMLElement;
++	private uploadButton!: HTMLButtonElement;
++	private cancelButton!: HTMLButtonElement;
++	private busy = false;
++	private cancelling = false;
++	private closed = false;
++	private uploaded = false;
++
++	constructor(
++		private readonly request: ProjectUploadDialogRequest,
++		@ICommandService private readonly commands: ICommandService,
++		@IKeybindingService keybindings: IKeybindingService,
++		@ILayoutService layout: ILayoutService,
++		@IHostService host: IHostService,
++	) {
++		super();
++		this.dialog = this._register(new Dialog(layout.activeContainer, this.text('title'), [], createWorkbenchDialogOptions({
++			type: 'none', disableDefaultAction: true, extraClasses: ['studio-upload-dialog'],
++			renderBody: container => this.render(container),
++			focusableElements: () => Array.from(this.form.querySelectorAll<HTMLElement>('textarea,button')).filter(element => !element.matches(':disabled') && !element.hidden),
++		}, keybindings, layout, host)));
++	}
++
++	private text(key: string): string { return this.request.labels[key] ?? key; }
++
++	private render(container: HTMLElement): void {
++		this.form = append(container, $('.studio-upload-form'));
++		const metadata = append(this.form, $('dl.studio-upload-metadata'));
++		for (const [key, value] of [['project', this.request.name], ['version', this.request.version || this.text('unavailable')], ['server', this.request.serverUrl], ['directory', this.request.folderPath]]) {
++			append(metadata, $('dt', undefined, this.text(key)));
++			append(metadata, $('dd', undefined, value));
++		}
++		const field = append(this.form, $('.studio-upload-field'));
++		const id = generateUuid();
++		append(field, $('label', { for: id }, this.text('releaseLog')));
++		this.notes = append(field, $<HTMLTextAreaElement>('textarea', { id, rows: 5 }));
++		this.status = append(this.form, $('p.studio-upload-status', { role: 'status', 'aria-live': 'polite' }));
++		const actions = append(this.form, $('.studio-upload-actions'));
++		this.uploadButton = append(actions, $<HTMLButtonElement>('button.studio-upload-submit', { type: 'button' }));
++		append(this.uploadButton, $('span.codicon.codicon-cloud-upload', { 'aria-hidden': 'true' }));
++		append(this.uploadButton, $('span', undefined, this.text('upload')));
++		this.cancelButton = append(actions, $<HTMLButtonElement>('button.studio-upload-cancel', { type: 'button' }, this.text('cancel')));
++		for (const button of [this.uploadButton, this.cancelButton]) {
++			this._register(addDisposableListener(button, 'keydown', event => {
++				if ((event.key === 'Enter' || event.key === ' ') && !event.isComposing) {
++					event.preventDefault(); event.stopPropagation();
++					if (!event.repeat) { button.click(); }
++				}
++			}));
++		}
++		this._register(addDisposableListener(this.uploadButton, 'click', () => { void this.submit(); }));
++		this._register(addDisposableListener(this.cancelButton, 'click', () => {
++			if (!this.busy) { this.dialog.dispose(); return; }
++			this.cancelling = true;
++			this.cancelButton.disabled = true;
++			this.status.textContent = this.text('cancelling');
++			void this.commands.executeCommand('studio.internalCancelProjectUpload', this.request.id).catch(error => {
++				if (!this.closed) { this.status.textContent = String(error); this.cancelButton.disabled = false; }
++			});
++		}));
++	}
++
++	update(progress: { id: string; message: string }): void {
++		if (!this.closed && this.busy && !this.cancelling && progress.id === this.request.id) { this.status.textContent = progress.message; }
++	}
++
++	private async submit(): Promise<void> {
++		if (this.busy || this.uploaded || this.closed) { return; }
++		this.busy = true;
++		this.cancelling = false;
++		this.form.setAttribute('aria-busy', 'true');
++		this.form.classList.remove('has-error');
++		this.notes.readOnly = true;
++		this.uploadButton.disabled = true;
++		this.uploadButton.lastElementChild!.textContent = this.text('uploading');
++		this.status.textContent = this.text('preparing');
++		try {
++			const result = await this.commands.executeCommand<{ success?: boolean; error?: string }>('studio.internalUploadProject', { id: this.request.id, releaseLog: this.notes.value });
++			if (this.closed) { return; }
++			if (!result?.success) { throw new Error(result?.error ?? this.text('failed')); }
++			this.uploaded = true;
++			this.uploadButton.hidden = true;
++			this.cancelButton.textContent = this.text('close');
++			this.status.textContent = this.text('success');
++		} catch (error) {
++			if (!this.closed) {
++				this.form.classList.add('has-error');
++				this.status.textContent = error instanceof Error ? error.message : String(error);
++			}
++		} finally {
++			this.busy = false;
++			if (!this.closed) {
++				this.form.setAttribute('aria-busy', 'false');
++				this.notes.readOnly = this.uploaded;
++				this.uploadButton.disabled = this.uploaded;
++				this.uploadButton.lastElementChild!.textContent = this.text('upload');
++				this.cancelButton.disabled = false;
++				(this.uploaded ? this.cancelButton : this.uploadButton).focus();
++			}
++		}
++	}
++
++	async show(): Promise<void> {
++		const result = this.dialog.show();
++		this.notes.focus();
++		await result;
++	}
++
++	override dispose(): void {
++		if (this.closed) { return; }
++		this.closed = true;
++		if (this.busy) { void this.commands.executeCommand('studio.internalCancelProjectUpload', this.request.id).catch(() => {}); }
++		super.dispose();
++	}
++}
+diff --git a/src/vs/workbench/contrib/studioStart/browser/studioStart.contribution.ts b/src/vs/workbench/contrib/studioStart/browser/studioStart.contribution.ts
+index a6b9f02e..68395857 100644
+--- a/src/vs/workbench/contrib/studioStart/browser/studioStart.contribution.ts
++++ b/src/vs/workbench/contrib/studioStart/browser/studioStart.contribution.ts
+@@ -20,6 +20,7 @@ import { EditorInput } from '../../../common/editor/editorInput.js';
+ import { IEditorGroup } from '../../../services/editor/common/editorGroupsService.js';
+ import { IEditorService } from '../../../services/editor/common/editorService.js';
+ import { ProjectCreationDialogRequest, StudioProjectCreateDialog } from './studioProjectCreateDialog.js';
++import { ProjectUploadDialogRequest, StudioProjectUploadDialog } from './studioProjectUploadDialog.js';
+ 
+ class StudioStartInput extends EditorInput {
+ 	static readonly ID = 'studio.start';
+@@ -65,3 +66,14 @@ CommandsRegistry.registerCommand('studio.internalShowCreateProject', async (acce
+ 	try { return await dialog.show(); }
+ 	finally { dialog.dispose(); }
+ });
++
++let projectUploadDialog: StudioProjectUploadDialog | undefined;
++CommandsRegistry.registerCommand('studio.internalShowProjectUpload', async (accessor, request: ProjectUploadDialogRequest) => {
++	if (projectUploadDialog) { return; }
++	const dialog = projectUploadDialog = accessor.get(IInstantiationService).createInstance(StudioProjectUploadDialog, request);
++	try { await dialog.show(); }
++	finally { dialog.dispose(); projectUploadDialog = undefined; }
++});
++CommandsRegistry.registerCommand('studio.internalUpdateProjectUpload', (_accessor, progress: { id: string; message: string }) => {
++	projectUploadDialog?.update(progress);
++});

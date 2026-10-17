@@ -1,0 +1,39 @@
+name: workflow-ecs
+
+services:
+  workflow-postgres:
+    image: postgres:15-alpine
+    container_name: workflow-ecs-postgres
+    restart: unless-stopped
+    command: postgres -c max_connections=40 -c shared_buffers=32MB -c work_mem=2MB
+    ports:
+      - "127.0.0.1:7125:5432"
+    environment:
+      POSTGRES_DB: ${WORKFLOW_POSTGRES_DB:-workflow}
+      POSTGRES_USER: ${WORKFLOW_POSTGRES_USER:-workflow}
+      POSTGRES_PASSWORD: ${WORKFLOW_POSTGRES_PASSWORD:?Set WORKFLOW_POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 10s
+    volumes:
+      - ${WORKFLOW_RELEASE_STORAGE_ROOT:?Set WORKFLOW_RELEASE_STORAGE_ROOT}/postgres-data:/var/lib/postgresql/data
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: workflow-ecs-nginx
+    restart: unless-stopped
+    network_mode: host
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    volumes:
+      - ${WORKFLOW_RELEASE_STORAGE_ROOT:?Set WORKFLOW_RELEASE_STORAGE_ROOT}/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ${WORKFLOW_RELEASE_STORAGE_ROOT:?Set WORKFLOW_RELEASE_STORAGE_ROOT}/nginx/proxy_params:/etc/nginx/proxy_params:ro
+      - ${WORKFLOW_RELEASE_STORAGE_ROOT:?Set WORKFLOW_RELEASE_STORAGE_ROOT}/certs:/etc/nginx/certs:ro
+      - ${WORKFLOW_RELEASE_STORAGE_ROOT:?Set WORKFLOW_RELEASE_STORAGE_ROOT}/acme:/var/www/acme:ro
+      - ${WORKFLOW_RELEASE_STORAGE_ROOT:?Set WORKFLOW_RELEASE_STORAGE_ROOT}/nginx/logs:/var/log/nginx

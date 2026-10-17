@@ -1,0 +1,12 @@
+node_modules
+dist
+coverage
+.pnpm-store
+*.tsbuildinfo
+test-results
+.release/
+.ci-artifacts/
+!.env.example
+!**/.env.example
+.DS_Store
+__pycache__

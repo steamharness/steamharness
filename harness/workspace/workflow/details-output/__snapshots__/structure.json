@@ -1,0 +1,67 @@
+{
+  "workflowName": "details-output",
+  "projectType": "workflow",
+  "files": [
+    "index.ts",
+    "interface.ts"
+  ],
+  "nodes": [
+    {
+      "id": "inputNode",
+      "factory": "createInputNode",
+      "standardName": "input",
+      "configuredName": "details-input"
+    },
+    {
+      "id": "detailsOutputNode",
+      "factory": "createDetailsOutputNode",
+      "standardName": "output",
+      "configuredName": "output"
+    }
+  ],
+  "defaultEntrypoint": "main",
+  "entrypoints": [
+    {
+      "id": "main",
+      "title": "Details Output",
+      "workflowName": "details-output",
+      "params": [
+        {
+          "name": "icon",
+          "flag": "--icon",
+          "type": "string",
+          "required": false,
+          "defaultValue": "info",
+          "control": "radio"
+        },
+        {
+          "name": "title",
+          "flag": "--title",
+          "type": "string",
+          "required": false,
+          "defaultValue": "点击展开"
+        },
+        {
+          "name": "content",
+          "flag": "--content",
+          "type": "string",
+          "required": false,
+          "defaultValue": "这里是被折叠的内容。\n\n- 列表\n- **加粗**\n- `代码`"
+        }
+      ],
+      "registry": [],
+      "execution": {
+        "kind": "sequence",
+        "counts": {
+          "sequence": 1,
+          "node": 2
+        },
+        "callees": [
+          "runNode"
+        ],
+        "branchLabels": [],
+        "loopLabels": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "workflowName": "gitlab-webhook",
+  "projectType": "conversation",
+  "files": [
+    "index.ts",
+    "interface.ts"
+  ],
+  "nodes": [
+    {
+      "id": "inputNode",
+      "factory": "createInputNode",
+      "standardName": "input",
+      "configuredName": "gitlab-webhook-input"
+    },
+    {
+      "id": "outputNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "gitlab-webhook-output"
+    }
+  ],
+  "params": [
+    {
+      "name": "payload",
+      "flag": "--payload",
+      "type": "string",
+      "required": false,
+      "panel": "auxiliary"
+    }
+  ],
+  "registry": [],
+  "execution": {
+    "kind": "sequence",
+    "counts": {
+      "sequence": 1,
+      "node": 2
+    },
+    "callees": [
+      "runNode",
+      "runStreamNode"
+    ],
+    "branchLabels": [],
+    "loopLabels": []
+  }
+}

@@ -1,0 +1,77 @@
+---
+title: "defineAgentConversationExecutor"
+description: "为宿主嵌入或测试一步构造完整的 Conversation Agent executor。"
+---
+
+# defineAgentConversationExecutor
+
+`workflow.defineAgentConversationExecutor()` 用一次调用生成完整的 conversation executor：conversation 配置、token usage、工具声明、参数、输入/输出节点编排和 OpenAI 网关对接全部由 runtime 提供。它适合宿主嵌入或测试。需要通过 `workflow-code structure` 的项目必须在 `workflow.defineExecutor({...})` 内联声明 `conversation`、`tokenUsage`、`tools` 和 `params`，并复用 `workflow.createAgentConversationWorkflow(...)` 与 `workflow.createAgentProjectInput(...)`；否则静态结构报告无法读到这些声明。
+
+这层封装让嵌入方无需实现流式循环、审批、压缩或输出项拼装。项目也可复用其中的工作流与输入实现，同时保留可被宿主读取的内联声明。
+
+## 签名
+
+```ts
+workflow.defineAgentConversationExecutor(options?: AgentProjectOptions):
+  WorkflowConversationExecutorDefinition<AgentInput, AgentOutputPayload>
+```
+
+返回值已经由 Core 校验，可以供嵌入方使用；把它传给项目入口的 `defineExecutor` 仍不能让静态结构分析看到内部字段。
+
+## 选项
+
+`session` 可启用 [持久会话控制](./create-agent.mdx#持久会话控制)。便捷 executor 自动声明 `conversation.durable: { enabled: true }`，默认权限列表增加 `update_plan` 和启用时的 `subagent`。自定义 `toolDefinitions` 时须自行包含这些声明。静态内联项目须同时声明 recovery/durable 并传 session；例如 `session: { subagents: { tools: ["read", "grep", "find", "ls"], maxAgents: 4 }, planFork: "asOf" }`。子 Agent 工具只收紧父权限，后台结果自动单次回传。CLI Web / Studio 保持执行 owner 存活，在四个侧栏视图展示任务、计划、记录和用量。
+
+除 [createAgentNode](./create-agent-node.mdx) 的全部选项外：
+
+| 参数 | 类型 | 默认 | 说明 |
+| --- | --- | --- | --- |
+| `projectName` | `string` | — | 项目展示名。 |
+| `workflowName` | `string` | `agent` | workflow 名，也是节点名前缀（`<name>-input`、`<name>-output`、`<name>-agent`）。 |
+| `outputItemId` | `string` | `agent-answer` | 助手正文回答的 item id，同时写入 `conversation.openai.outputItemId`。正文 item 用的就是这个值本身，因此适配器按 id 查找时一定能找到它。 |
+| `params` | `WorkflowConversationParamDeclaration[]` | 见下 | 完全覆盖默认参数表，只允许 Auxiliary、Quick 和 Mode。标准主输入框始终展示。 |
+
+## 生成的 executor
+
+| 部分 | 内容 |
+| --- | --- |
+| `projectType` | `"conversation"` |
+| `conversation` | 标准主输入框始终启用；`inputQueue.enabled`、`recovery.enabled`、`openai.outputItemId` |
+| `tokenUsage` | 启用并展示 |
+| `tools` | `read`、`write`、`edit`、`bash`、`grep`、`find`、`ls` |
+| `params` | `workdir`、`provider`、`model`、`effort`、`agent`、`contextWindow`、`modelAttributes`、`permissionPolicy` |
+| `workflow` | 输入节点解析 → agent 节点流式执行 → 输出节点落 conversation |
+
+参数默认值来自传入的选项，例如 `provider: "anthropic"` 会让 provider 参数的默认值变成 `anthropic`。
+
+## 输入与输出
+
+输入沿用 [createAgent](./create-agent.mdx) 的 `AgentInput`；`createInput` 会读取宿主 composer 的消息和上述参数（`--workdir` / `-C`、`--provider`、`--model` / `-m`、`--effort`、`--agent`、`--permission-policy`），composer 没给消息时把剩余位置参数拼成 prompt。
+
+输出是 `AgentOutputPayload`，同时把本轮的用户消息和助手回答写入 conversation，因此宿主的历史列表、标题和导出都按普通 conversation 运行处理。
+
+两点例外：只调用了工具、没有任何正文的一轮不写空的助手消息；带 `hostInput` 的一轮（OpenAI / Responses 网关）完全不写 conversation，因为网关自己保管这段历史——与内置 Conversation 项目的处理一致。
+
+**多轮上下文和未完成任务由 Pi Durable 保存。** Core 按项目、会话和 `sessionKey` 选择 SQLite 文件，按提交保存消息、工具意图与结果、审批等待和用量身份。相同 `runId` 恢复同一请求；已完成请求只重建自身的输出。旧 KV transcript 不再读取，存储失败终止运行。多个 Agent 节点须使用不同 `sessionKey`；`hostInput` 网关运行默认使用内存存储。详见 [createAgentNode](./create-agent-node.mdx)。
+
+封装启用 `conversation.recovery: { enabled: true }`。需要静态结构分析的项目应在 `defineExecutor` 中内联声明相同字段；CLI Web / Studio 据此恢复中断 worker。
+
+> **正文 item 的 id 必须与 `conversation.openai.outputItemId` 一致。** OpenAI / Responses 适配器是在 `report.outputs[].output.items` 里**按 id 查找**这段正文的：CLI 本地网关与 `__openai-responses-runner` 都走这条查找，两者不一致时运行会以「did not produce output item」失败。
+
+这个条目只在**宿主驱动的运行**里产出（适配器按 id 读回的就是整轮完整文本）。普通会话运行把正文写成 `partType: "text"` 的行——两条活动行之间的每段文字各占一行，写在它被说出的位置——再把它们拼回会话消息。
+
+## 示例
+
+宿主嵌入或测试中的用法：
+
+```ts
+const agentExecutor = workflow.defineAgentConversationExecutor({
+  projectName: "Pi",
+  workflowName: "pi",
+  outputItemId: "pi-answer",
+  provider: "anthropic",
+  effort: "high",
+});
+```
+
+项目入口应写成 `workflow.defineExecutor({ projectType: "conversation", workflow: workflow.createAgentConversationWorkflow(...), conversation: {...}, tokenUsage: {...}, tools: [...], params: [...], createInput({ args }) { return workflow.createAgentProjectInput(args); } })`，其中对象与数组必须是内联字面量，`outputItemId` 在 workflow 和 `conversation.openai` 中保持一致。参数联动可加 `resolveParams: workflow.createAgentProjectParamResolver()`。需要自定义前后节点时使用 [createAgentNode](./create-agent-node.mdx)；完整声明规则见 [defineExecutor](./define-executor.mdx)。

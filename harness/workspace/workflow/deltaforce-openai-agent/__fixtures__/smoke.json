@@ -1,0 +1,65 @@
+{
+  "args": [
+    "--message",
+    "我需要配置 M7，操控速度高",
+    "--max-rounds",
+    "2"
+  ],
+  "conversationId": "deltaforce-openai-fixture-thread",
+  "expected": {
+    "errCode": 0,
+    "output": {
+      "success": true,
+      "toolCallCount": 1,
+      "historyLength": 2
+    },
+    "contentIncludes": [
+      "M7"
+    ],
+    "itemCount": 2,
+    "items": [
+      {
+        "index": 0,
+        "title": "Tool: get_api_guns",
+        "contentType": "markdown",
+        "iconPreset": "success",
+        "collapsed": true,
+        "metadata": {
+          "kind": "openai-agents-tool-call",
+          "toolName": "get_api_guns",
+          "status": "success"
+        },
+        "contentIncludes": [
+          "工具调用",
+          "get_api_guns",
+          "M7 战斗步枪"
+        ]
+      },
+      {
+        "index": 1,
+        "title": "Output",
+        "contentType": "markdown",
+        "collapsed": false,
+        "contentIncludes": [
+          "M7",
+          "离线 mock 推荐"
+        ]
+      }
+    ],
+    "nodes": [
+      "input",
+      "run-workflow",
+      "output"
+    ],
+    "outputCount": 1,
+    "conversationMessages": 2,
+    "tokenUsage": {
+      "calls": 1,
+      "inputTokens": 24,
+      "outputTokens": 16,
+      "totalTokens": 40,
+      "cachedInputTokens": 6,
+      "cacheCreationTokens": 8
+    }
+  }
+}

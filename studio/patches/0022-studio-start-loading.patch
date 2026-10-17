@@ -1,0 +1,117 @@
+diff --git a/src/vs/workbench/browser/parts/editor/media/studioStart.css b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+index 8402f8a2..ca9e8870 100644
+--- a/src/vs/workbench/browser/parts/editor/media/studioStart.css
++++ b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+@@ -14,7 +14,24 @@
+ .studio-start .studio-start-logo { font-size:28px; color:var(--vscode-textLink-foreground); }
+ .studio-start h1 { font-size:24px; font-weight:500; margin:0; line-height:1.3; overflow-wrap:anywhere; }
+ .studio-start-toolbar { display:flex; align-items:center; gap:8px; margin-left:auto; }
+-.studio-start-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr)); gap:28px 40px; }
++.studio-start-grid, .studio-start-loading-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr)); gap:28px 40px; }
++.studio-start.loading .studio-start-toolbar, .studio-start.loading .studio-start-grid, .studio-start:not(.loading) .studio-start-loading, .studio-start:not(.loading) .studio-start-loading-indicator { display:none; }
++.studio-start-loading-indicator { margin-left:auto; color:var(--vscode-descriptionForeground); }
++.studio-start-loading-projects { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); gap:12px; margin-bottom:28px; }
++.studio-start-skeleton { height:12px; max-width:100%; border-radius:3px; background:var(--vscode-descriptionForeground); opacity:.12; animation:studio-start-pulse 1.6s ease-in-out infinite; }
++.studio-start-skeleton-heading { width:112px; height:14px; margin:3px 0 15px; }
++.studio-start-skeleton-type { width:64px; margin-bottom:12px; }
++.studio-start-skeleton-path { width:85%; margin-bottom:24px; }
++.studio-start-skeleton-button { width:96px; height:32px; margin-top:auto; }
++.studio-start-loading-row { display:flex; align-items:center; gap:16px; height:32px; }
++.studio-start-skeleton-key { flex:0 0 90px; }
++.studio-start-skeleton-value { width:62%; }
++.studio-start-loading-row:nth-child(odd) .studio-start-skeleton-value { width:48%; }
++.studio-start-loading-quick .studio-start-skeleton-key { flex-basis:16px; height:16px; }
++.studio-start-loading-quick .studio-start-loading-row { gap:8px; }
++@keyframes studio-start-pulse { 50% { opacity:.06; } }
++.monaco-reduce-motion .studio-start-skeleton, .monaco-reduce-motion .studio-start .studio-start-loading-indicator { animation:none; }
++@media (prefers-reduced-motion:reduce) { .studio-start-skeleton, .studio-start .studio-start-loading-indicator.codicon-modifier-spin { animation:none; } }
+ .studio-start section { min-width:0; }
+ .studio-start h2 { font-size:14px; font-weight:600; line-height:20px; margin:0 0 12px; }
+ .studio-start-action { display:grid; grid-template-columns:16px minmax(0,1fr); align-items:start; gap:8px; box-sizing:border-box; width:100%; min-width:0; min-height:32px; padding:6px 8px; border:0; border-radius:var(--vscode-cornerRadius-small,4px); color:var(--vscode-textLink-foreground); background:transparent; font:inherit; line-height:20px; text-align:left; cursor:pointer; max-width:100%; user-select:text; }
+@@ -31,7 +48,7 @@
+ .studio-start .studio-start-primary > .codicon { color:#fff; }
+ .studio-start-current { grid-column:1 / -1; }
+ .studio-start-current .studio-start-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); align-items:stretch; gap:12px; }
+-.studio-start-project-card { display:flex; flex-direction:column; box-sizing:border-box; min-width:0; padding:16px; border:1px solid var(--vscode-widget-border,var(--vscode-panel-border)); border-radius:6px; }
++.studio-start-project-card, .studio-start-loading-card { display:flex; flex-direction:column; box-sizing:border-box; min-width:0; padding:16px; border:1px solid var(--vscode-widget-border,var(--vscode-panel-border)); border-radius:6px; }
+ .studio-start-project-heading { display:grid; grid-template-columns:20px minmax(0,1fr); align-items:start; gap:8px; }
+ .studio-start-project-heading > .codicon { line-height:20px; color:var(--vscode-descriptionForeground); }
+ .studio-start-project-heading h3 { margin:0; font-size:14px; font-weight:600; line-height:20px; overflow-wrap:anywhere; }
+@@ -55,5 +72,5 @@
+   .studio-start-inner { padding:20px; }
+   .studio-start-header { display:grid; grid-template-columns:minmax(0,1fr) auto; }
+   .studio-start h1 { grid-column:1 / -1; grid-row:2; font-size:20px; }
+-  .studio-start-toolbar { grid-column:2; grid-row:1; margin-left:0; }
++  .studio-start-toolbar, .studio-start-loading-indicator { grid-column:2; grid-row:1; margin-left:0; }
+ }
+diff --git a/src/vs/workbench/browser/parts/editor/studioStart.ts b/src/vs/workbench/browser/parts/editor/studioStart.ts
+index 8a6a8764..474f4acb 100644
+--- a/src/vs/workbench/browser/parts/editor/studioStart.ts
++++ b/src/vs/workbench/browser/parts/editor/studioStart.ts
+@@ -85,16 +85,18 @@ export class StudioStartView extends Disposable {
+ 		@ICommandService private readonly commands: ICommandService
+ 	) {
+ 		super();
+-		this.element = append(container, $('main.studio-start'));
++		this.element = append(container, $('main.studio-start.loading'));
+ 		this.element.tabIndex = -1;
+ 		this.element.setAttribute('aria-label', 'Workflow Studio');
+ 		const inner = append(this.element, $('.studio-start-inner'));
+ 		const header = append(inner, $('header.studio-start-header'));
+ 		append(header, $('span.codicon.codicon-layout.studio-start-logo')).setAttribute('aria-hidden', 'true');
+ 		append(header, $('h1', undefined, 'Workflow Studio'));
++		append(header, $('span.codicon.codicon-loading.codicon-modifier-spin.studio-start-loading-indicator')).setAttribute('aria-hidden', 'true');
+ 		const top = append(header, $('.studio-start-toolbar'));
+ 		this.button(top, 'create', 'add', 'studio.createProject', undefined, true).classList.add('studio-start-primary');
+ 		this.button(top, 'refresh', 'refresh', 'studio.refreshStart', undefined, false, true);
++		this.createLoadingPlaceholder(inner);
+ 		const grid = append(inner, $('.studio-start-grid'));
+ 		this.section(grid, 'current');
+ 		this.section(grid, 'recent');
+@@ -133,7 +135,31 @@ export class StudioStartView extends Disposable {
+ 		this.publishVisibility();
+ 	}
+ 
+-	focus(): void { this.element.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus(); }
++	focus(): void { (this.element.querySelector<HTMLButtonElement>('button:not(:disabled)') ?? this.element).focus(); }
++
++	private createLoadingPlaceholder(parent: HTMLElement): void {
++		const loading = append(parent, $('.studio-start-loading', { role: 'progressbar', 'aria-label': 'Workflow Studio' }));
++		const content = append(loading, $('div', { 'aria-hidden': 'true' }));
++		append(content, $('.studio-start-skeleton.studio-start-skeleton-heading'));
++		const projects = append(content, $('.studio-start-loading-projects'));
++		for (let index = 0; index < 3; index++) {
++			const card = append(projects, $('.studio-start-loading-card'));
++			append(card, $('.studio-start-skeleton.studio-start-skeleton-heading'));
++			append(card, $('.studio-start-skeleton.studio-start-skeleton-type'));
++			append(card, $('.studio-start-skeleton.studio-start-skeleton-path'));
++			append(card, $('.studio-start-skeleton.studio-start-skeleton-button'));
++		}
++		const grid = append(content, $('.studio-start-loading-grid'));
++		for (const [key, count] of [['recent', 4], ['system', 10], ['quick', 5]] as const) {
++			const section = append(grid, $(`div.studio-start-loading-${key}`));
++			append(section, $('.studio-start-skeleton.studio-start-skeleton-heading'));
++			for (let index = 0; index < count; index++) {
++				const row = append(section, $('.studio-start-loading-row'));
++				if (key !== 'recent') { append(row, $('.studio-start-skeleton.studio-start-skeleton-key')); }
++				append(row, $('.studio-start-skeleton.studio-start-skeleton-value'));
++			}
++		}
++	}
+ 
+ 	private section(parent: HTMLElement, key: string): HTMLElement {
+ 		const section = append(parent, $(`section.studio-start-${key}`));
+@@ -173,7 +199,12 @@ export class StudioStartView extends Disposable {
+ 
+ 	private render(): void {
+ 		const state = this.service.state;
+-		if (!state) { return; }
++		this.element.classList.toggle('loading', !state);
++		this.element.setAttribute('aria-busy', String(!state));
++		if (!state) {
++			for (const action of this.actions) { action.button.disabled = true; }
++			return;
++		}
+ 		const text = (key: string): string => state.labels[key] ?? key;
+ 		for (const [key, element] of this.labels) { if (element.textContent !== text(key)) { element.textContent = text(key); } }
+ 		for (const action of this.actions) {

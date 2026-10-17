@@ -1,0 +1,65 @@
+{
+  "name": "@workflow-code/cli",
+  "version": "0.2.4",
+  "packageManager": "pnpm@10.15.1",
+  "type": "module",
+  "bin": {
+    "workflow-code": "./dist/index.js"
+  },
+  "files": [
+    ".env.example",
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "bootstrap": "node scripts/bootstrap.mjs",
+    "pnpm:devPreinstall": "node scripts/install-guard.mjs",
+    "check:boundaries": "node scripts/check-repository-boundaries.mjs",
+    "dev": "node scripts/dev.mjs",
+    "build": "tsup --config tsup.config.ts && node scripts/build-web.mjs && node scripts/build-project-templates.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "pnpm build && vitest run",
+    "coverage": "pnpm build && vitest run --coverage",
+    "test:scripts": "node --test --test-reporter=spec scripts/__tests__/*.test.mjs",
+    "release:prepare": "node scripts/prepare-release.mjs",
+    "release:feature": "node scripts/feature-release.mjs tag",
+    "prepack": "pnpm build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "dotenv": "^17.4.2",
+    "import-meta-resolve": "4.2.0",
+    "tsx": "^4.21.0",
+    "zod": "4.4.3"
+  },
+  "peerDependencies": {
+    "workflow-code": "0.2.4-20261016007.codex-studio-integration-durable"
+  },
+  "devDependencies": {
+    "@dagrejs/dagre": "1.1.8",
+    "@vscode/codicons": "0.0.45",
+    "dompurify": "3.3.1",
+    "marked": "17.0.1",
+    "esbuild": "0.28.2",
+    "@types/node": "^25.6.0",
+    "@workflow-code/auth-config": "workspace:*",
+    "@workflow-code/i18n": "workspace:*",
+    "@workflow-code/kanban-project": "workspace:*",
+    "@workflow-code/openai-responses": "workspace:*",
+    "@workflow-code/project-dependencies": "workspace:*",
+    "@workflow-code/project-info": "workspace:*",
+    "@workflow-code/project-upload": "workspace:*",
+    "@workflow-code/runtime-compatibility": "workspace:*",
+    "@workflow-code/workflow-ids": "workspace:*",
+    "@workflow-code/workflow-mcp": "workspace:*",
+    "@vitest/coverage-v8": "^4.1.7",
+    "semver": "^7.7.4",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7",
+    "workflow-code": "0.2.4-20261016007.codex-studio-integration-durable"
+  }
+}

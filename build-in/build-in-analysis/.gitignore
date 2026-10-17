@@ -1,0 +1,8 @@
+node_modules/
+test-results/
+.release/
+.workflow-local/
+.env
+.env.*
+!.env.example
+.DS_Store

@@ -1,0 +1,177 @@
+{
+  "workflowName": "deltaforce-bilibili-collect",
+  "projectType": "workflow",
+  "files": [
+    "__tests__/deltaforce-bilibili-collect.test.ts",
+    "index.ts",
+    "interface.ts",
+    "lib/bilibili.ts",
+    "lib/ffmpeg.ts",
+    "lib/link.ts",
+    "lib/minimax.ts",
+    "lib/mock.ts",
+    "lib/multipart.ts",
+    "lib/sse.ts",
+    "lib/transcript.ts",
+    "lib/values.ts",
+    "nodes/collect.ts",
+    "nodes/output.ts"
+  ],
+  "nodes": [
+    {
+      "id": "inputNode",
+      "factory": "createInputNode",
+      "standardName": "input",
+      "configuredName": "deltaforce-bilibili-collect-input"
+    },
+    {
+      "id": "outputNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "deltaforce-bilibili-collect-output"
+    }
+  ],
+  "defaultEntrypoint": "main",
+  "entrypoints": [
+    {
+      "id": "main",
+      "title": "Bilibili Collect",
+      "workflowName": "deltaforceBilibiliCollectWorkflow",
+      "params": [
+        {
+          "name": "videoUrl",
+          "flag": "--video-url",
+          "type": "positional",
+          "required": false,
+          "defaultValue": ""
+        },
+        {
+          "name": "mm_file",
+          "flag": "--mm-file",
+          "type": "string",
+          "required": false,
+          "defaultValue": ""
+        },
+        {
+          "name": "question",
+          "flag": "--question",
+          "type": "string",
+          "required": true,
+          "defaultValue": ""
+        },
+        {
+          "name": "model",
+          "flag": "--model",
+          "type": "string",
+          "required": false,
+          "defaultValue": "MiniMax-M3",
+          "panel": "auxiliary"
+        },
+        {
+          "name": "maxTokens",
+          "flag": "--max-tokens",
+          "type": "number",
+          "required": false,
+          "defaultValue": "524288",
+          "panel": "auxiliary"
+        },
+        {
+          "name": "quality",
+          "flag": "--quality",
+          "type": "number",
+          "required": false,
+          "defaultValue": "32",
+          "panel": "auxiliary"
+        },
+        {
+          "name": "videoCodec",
+          "flag": "--video-codec",
+          "type": "string",
+          "required": false,
+          "defaultValue": "auto",
+          "control": "select",
+          "panel": "auxiliary"
+        },
+        {
+          "name": "maxDuration",
+          "flag": "--max-duration",
+          "type": "number",
+          "required": false,
+          "panel": "auxiliary"
+        },
+        {
+          "name": "outputDir",
+          "flag": "--output",
+          "type": "string",
+          "required": false,
+          "panel": "auxiliary"
+        },
+        {
+          "name": "keepVideo",
+          "flag": "--keep-video",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false",
+          "panel": "auxiliary"
+        },
+        {
+          "name": "pageIndex",
+          "flag": "--page-index",
+          "type": "number",
+          "required": false,
+          "defaultValue": "1",
+          "panel": "auxiliary"
+        },
+        {
+          "name": "documentTitle",
+          "flag": "--document-title",
+          "type": "string",
+          "required": false,
+          "panel": "auxiliary"
+        },
+        {
+          "name": "documentId",
+          "flag": "--document-id",
+          "type": "string",
+          "required": false,
+          "panel": "auxiliary"
+        },
+        {
+          "name": "dryRun",
+          "flag": "--dry-run",
+          "type": "boolean",
+          "required": false,
+          "defaultValue": "false",
+          "panel": "auxiliary"
+        }
+      ],
+      "registry": [
+        {
+          "name": "collect-input",
+          "type": "input",
+          "title": "deltaforce-bilibili-collect-input",
+          "version": "1.0.0"
+        },
+        {
+          "name": "collect-progress-output",
+          "type": "output",
+          "title": "deltaforce-bilibili-collect-output",
+          "version": "1.0.0"
+        }
+      ],
+      "execution": {
+        "kind": "sequence",
+        "counts": {
+          "sequence": 1,
+          "node": 2
+        },
+        "callees": [
+          "runNode",
+          "runStreamNode"
+        ],
+        "branchLabels": [],
+        "loopLabels": []
+      }
+    }
+  ]
+}

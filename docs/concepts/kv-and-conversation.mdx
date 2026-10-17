@@ -1,0 +1,307 @@
+---
+title: "KV 与会话"
+description: "context.storage、context.conversation 和 conversation_id 的行为。"
+---
+
+# KV 与会话
+
+workflow runtime 为每次执行注入本地/服务器 KV、PersistentValue 和 conversation 能力。项目的 [`dataStorage.mode`](/concepts/data-storage) 严格限定可以访问的位置。
+
+```ts
+await context.storage.local.kv.setValue("project-key", { count: 1 });
+await context.storage.local.kv.conversation.setValue("conversation-key", true);
+await context.storage.server.persistentValue.setValue("durable-key", { saved: true });
+```
+
+删除单条 entry 使用 `deleteValue(key)`，它返回布尔值：`true` 表示确实删除了已存在的条目，`false` 表示该键本来就不存在。删除是永久的，没有回收站，未删到的键也不算错误。由于 KV value 不允许是 `undefined`，删除是独立操作而不是一次写入，存储的 `null` 不会被当成缺失。在 `withLock()` 事务里先写后删会提交为删除；本地 store 的删除会同时清掉值文件、元数据文件和检查索引行，并和其它写入一样可以从事务日志恢复。
+
+对需要读取后更新的单个值使用 `updateValue()`。本地存储会在当前 namespace 锁内完成更新；服务器连接会基于服务端行版本进行 compare-and-set 重试，因此并发递增不会静默丢失写入。由于重试时 updater 可能执行多次，它应保持纯函数，不要在其中发送请求或产生其它副作用。本地文件后端的 `withLock()` 只覆盖一个 namespace；持锁期间访问其它 scope、项目或存储种类会被拒绝，跨 namespace 工作应拆成独立操作。在 Windows 上，创建独占锁文件时短暂出现的 `EPERM` 或 `EACCES` 会在锁等待时限内重试；持续无法获取锁时仍会返回超时错误。
+
+## KV 作用域
+
+| Scope | 隔离维度 |
+| --- | --- |
+| `context.storage.<location>.kv` | 当前 `projectId`。 |
+| `context.storage.<location>.kv.conversation` | 当前 `projectId + conversationId`。 |
+| `context.storage.<location>.persistentValue` | 当前 `projectId`，使用与 KV 强制隔离的存储域。 |
+| `context.storage.<location>.persistentValue.conversation` | 当前 `projectId + conversationId`，同样位于 PersistentValue 域。 |
+
+`location` 是 `local` 或 `server`。同一项目的多个 entrypoint 共享每个位置内的项目级 namespace；入口 ID 不会自动加入 key，需要入口隔离时应在业务 key 中显式加入稳定前缀。Store scope 只有 `project | conversation`，不存在 global/workflow scope，也不存在 `kv.workflow`、`persistentValue.workflow`、`context.kv` 或 `context.persistentValue`。
+
+KV value 必须可 JSON 序列化，不能是 `undefined`。`context.storage.local` 与 `context.storage.server` 始终指向独立数据集；声明禁止或宿主未提供的位置会抛错，不会回退到另一位置。
+
+Kanban 页面只开放当前项目的 `kv.getValue(key)` 和 `kv.setValue(key, value)`。它没有 list/delete 接口，也不能访问 conversation scope。需要按命名配置隔离页面状态时，把 `getConfiguration().id || "default"` 纳入 key；配置切换后重新读取对应 key，并用请求代次防止旧读取覆盖新配置。
+
+## 关联项目 KV
+
+通用关联项目声明位于双方各自的 `package.json.workflowCode.projectInfo.relatedProjects`：
+
+```json
+{
+  "alias": "inventory",
+  "projectId": "f4ee23d7-abbb-4ba3-8baf-75b7c6c0b964",
+  "grantToRelatedProject": {
+    "read": { "mode": "all" },
+    "write": { "mode": "none" }
+  }
+}
+```
+
+`grantToRelatedProject` 的方向是“允许对方访问当前项目”。项目 A 用自己的 alias 找到项目 B，但 A 实际访问 B 时读取的是 B 对 A 的授权。只有 B 的声明也按 A 的 UUID 指回 A 时关系才确认；双方 alias 可以不同。单边声明属于待确认：可以保存、发布并进入小助手代码工作区，但不授予 KV 权限，也不进入 included 依赖组。
+
+读写规则的 `mode` 只能是 `none | all | prefixes`。`prefixes` 必须携带 1 至 32 个非空、无重复前缀，key 只要以其中任一项开头即可。新建双方关系默认都显式写入 `read: all`、`write: none`；需要双向写入或单向访问时分别修改双方声明。`getValue` 检查目标对当前项目的读权限，`setValue` 与 `deleteValue` 检查写权限，`updateValue` 同时检查读写权限。每次访问都会重新读取当前声明，因此删除关系或收紧规则立即生效。
+
+alias 必须匹配 `[a-z][a-z0-9_-]{0,63}`。每个项目最多 32 个关系；同一项目内 alias 和 `projectId` 都不得重复，也不能指向自身。关联访问只支持直接关系，不会通过 B 递归访问 C；目标项目的其它持久值与会话 KV 不开放，`kv` 提供 `getValue` / `setValue` / `updateValue` / `deleteValue`（没有 list：key 空间对消费者不可枚举），其中删除按写权限判定。
+
+### 关联项目的知识库与入口
+
+同一个 `get(alias)` 还提供目标项目的**知识库**与**入口**，两者同样由目标项目授权：
+
+```json
+{
+  "alias": "database",
+  "projectId": "f4ee23d7-abbb-4ba3-8baf-75b7c6c0b964",
+  "grantToRelatedProject": {
+    "read": { "mode": "all" },
+    "write": { "mode": "none" },
+    "knowledge": {
+      "read": { "mode": "all" },
+      "write": { "mode": "all" }
+    },
+    "entrypoints": { "mode": "prefixes", "prefixes": ["kb_"] }
+  }
+}
+```
+
+- `knowledge` 提供 `listDocuments` / `getDocument` / `createDocument` / `editDocument` / `deleteDocument` / `searchDocuments` / `readDocumentLines`，就是本项目的知识库 helper 绑在目标项目上。**不写 `knowledge` 就是不开放**——「允许对方读我的 KV」不等于「把知识库也交出去」。读写逐个 key 判定，前缀授权因此可以只开放指定文档；列名录与搜索要动所有文档共用的索引，会被拒绝并指出是哪个 key。写入（create / edit / delete）会同时改文档与它所在的索引，两处都要被授权覆盖——所以前缀要能盖住索引 key（例如 `knowledge.documents`）才能写入；整次写入是交给目标存储执行的，判定在移交之前完成，说不清会碰哪些 key 的写入会被拒绝。
+- `entrypoints` 决定对方能调哪些入口：`listEntrypoints()` 只列出授权覆盖的入口，`runEntrypoint(id, args)` 执行其中一个，`args` 就是该入口自己的 `createInput` 解析的那套命令行参数，返回该入口的输出 payload；目标入口失败时抛出的是它自己的错误信息，而不是一个和「入口没返回东西」无法区分的空值。
+- 关系只走一跳：被调起来的项目**自己**没有关联访问能力，不会经由它再访问第三个项目。
+
+关联入口始终在本机从显式指定的目标目录执行。KV 使用 `WORKFLOW_KV_STORE_DIR`，知识库使用 `WORKFLOW_PERSISTENT_VALUE_STORE_DIR`，并按目标项目 UUID 隔离；未配置知识库目录时直接报错。服务器位置只提供远程数据访问，Server 不启动目标项目。关联调用只走一跳，被调用项目不会获得继续访问第三个项目的能力。
+
+```ts
+const inventory = context.storage.local.relatedProjects.get("inventory");
+const current = await inventory.kv.getValue("stock:item-1");
+await inventory.kv.setValue("stock:item-1", { count: 8 });
+await inventory.kv.updateValue("stock:item-1", (value) => updateStock(value));
+```
+
+解析器严格跟随调用位置：`storage.local` 只访问目标项目的本地 KV，`storage.server` 只访问服务器 KV，任一侧不允许该位置或后端不可用时均直接失败，不回退。CLI 还要求用可重复的 `--related-project alias=/绝对项目目录` 显式提供每个目标目录，不扫描父目录或兄弟目录。
+
+### Core workspace 示例
+
+Core 仓库的 `workspace/workflow` 提供两组可运行的数据访问示例：`local-data-parent`、`local-data-child`、`local-data-grandchild` 固定使用 `context.storage.local`；`server-data-parent`、`server-data-child`、`server-data-grandchild` 固定使用 `context.storage.server`。每个项目都有两个可独立运行的入口：默认 `store` 直接接收 `--content`，以随机 UUID 保存内容并返回 `id`；`get` 只接收该 `--id` 并返回原内容。两者都可选传入 `--alias` 访问直接关联项目，留空时访问当前项目。本地一组的父项目与子项目还有一个 `note` 入口，用来验证知识库与关联入口：子项目的 `note` 把文档写进**它自己**的知识库并返回文档 id，父项目的 `note` 先经关联调用子项目的 `note`，再通过 `relatedProjects.get("child").knowledge` 把文档读回来。
+
+每组只声明相邻关系：父项目以 `child` 连接子项目，子项目以 `parent` / `grandchild` 连接两侧，孙项目以 `parent` 连接子项目。示例为直接关系显式授予双向读写，便于验证自动 id 的当前项目隔离、父子和子孙双向访问，以及 local/server 位置不回退。父项目与孙项目没有直接关系，使用未声明 alias 的越级 KV 访问会失败，不会递归穿过子项目。这些合同由 workspace 结构快照和层级访问测试持续维护。
+
+Server 上，读取要求消费项目 A 的读取权限；写入还要求 A 的数据写权限。用户无需成为 B 成员，但双方关系和 B 对 A 的对应 key 授权必须有效。直接打开或管理 B、以及绕过 A 直接请求 B 数据，仍按 B 自身权限校验。关联请求只提交消费项目 UUID 和 alias，调用方不能指定目标 UUID。
+
+Kanban 使用同一关系和授权：
+
+```js
+const inventory = window.workflowCodeKanban.relatedProjects.get("inventory");
+const value = await inventory.kv.getValue("stock:item-1");
+await inventory.kv.setValue("stock:item-1", { count: 8 });
+const unsubscribe = inventory.kv.subscribe(({ alias, revision }) => {
+  scheduleRefresh(alias, revision);
+});
+```
+
+Bridge 请求只携带 alias 和 key；iframe 不能传入目标 UUID、scope、target 或数据库路径。`subscribe()` 只通知 alias 和不透明 revision，页面应防抖后重新 `getValue()`，并在卸载或配置切换时调用返回的取消函数。关系、读权限或目标失效时，现有订阅和后续访问立即失效。本地与 Server 数据库相互独立，项目组上传、发布和下载也不会复制 KV。
+
+| 数据 | 本地 CLI 目录 | 说明 |
+| --- | --- | --- |
+| `context.storage.local.kv` | `WORKFLOW_KV_STORE_DIR` | 普通 KV、conversation 状态等本地数据。 |
+| `context.storage.local.persistentValue` | `WORKFLOW_PERSISTENT_VALUE_STORE_DIR` | 持久值和项目知识库。 |
+
+本地 CLI 为 `context.storage.local` 注入上述目录；`context.storage.server` 通过项目 UUID 和已登录服务器连接访问 Server。`server` 模式的本地运行会把服务器位置作为宿主位置；`both` 模式默认按当前宿主运行，同时允许源码显式访问另一位置。任何位置不可用时调用都会报错，本地目录与服务器数据不会自动同步。
+
+## 最后写入来源
+
+KV 和 PersistentValue 在宿主提供来源信息时会记录最后写入来源，例如 project、run 和 conversation。Server KV 查看器展示这些来源标识，但不提供服务器运行日志关联；本地数据查看器也会展示本地记录的来源信息。
+
+## 项目知识库
+
+项目知识库基于所选存储位置顶层、当前项目的 `persistentValue` 保存 markdown 文档：
+
+| scope | key | 内容 |
+| --- | --- | --- |
+| project | `knowledge.documents` | v2 索引元数据，记录总数、递增序列和首页 page ID。 |
+| project | `knowledge.documents.page.<pageId>` | 最多 128 条文档摘要的有界页块。 |
+| project | `knowledge.documents.locator.<id>` | 文档到页块的定位记录；删除后为 tombstone。 |
+| project | `knowledge.document.<id>` | 单篇 markdown 文档正文；删除后为 tombstone。 |
+
+业务 workflow 可以通过 core helper 管理文档：
+
+```ts
+const storage = context.storage.local;
+
+const document = await workflow.createKnowledgeDocument(storage, {
+  title: "Runbook",
+  markdown: "# Runbook
+
+Persistent notes.",
+});
+
+const result = await workflow.searchKnowledgeDocuments(storage, {
+  query: "Persistent",
+  documentId: document.id,
+  beforeLines: 1,
+  afterLines: 1,
+});
+```
+
+可用方法包括 `listKnowledgeDocuments`、`getKnowledgeDocument`、`createKnowledgeDocument`、`editKnowledgeDocument`、`deleteKnowledgeDocument`、`searchKnowledgeDocuments` 和 `readKnowledgeDocumentLines`。`listKnowledgeDocumentPage()` 的游标是只可原样回传的不透明 token，首次读取只访问元数据和所需页块，不读取正文或扫描旧页。索引固定为 v2 页块格式，旧的单数组索引不会被读取或迁移。这些方法不会把知识库写入普通 CLI 本地 KV；设置 `WORKFLOW_PERSISTENT_VALUE_STORE_DIR` 时会写入本地知识库，显式使用服务器存储时会写入服务器数据库。本地与服务器知识库使用各自后端，读取数据不会传输到另一端。创建、编辑和删除会在同一 PersistentValue namespace 中串行执行；使用服务器连接的本地运行会把这类变更作为一个服务端请求完成，并在同一 PostgreSQL 事务内提交或回滚文档索引、正文和 tombstone，避免并发写入或单次失败留下不一致数据。用于列表和写入 summary 响应的 markdownPreview 只扫描正文开头最多 16K 字符，避免多 MB 文档额外复制或阻塞保存；读取完整正文仍使用 get 接口。
+
+Kanban 的 `knowledge.listDocuments/getDocument/createDocument/editDocument/deleteDocument/searchDocuments/readDocumentLines` 复用这些文档格式和存储语义。本地资源面板展示本地数据，Server Web 静态预览展示服务器数据。命名配置按用户隔离；项目 KV 与知识库按项目共享，writer 及管理角色可写，viewer 只读。
+
+### Agent 内置项目 MCP
+
+内置 Codex 和 OpenCode 项目会在每个 agent turn 期间创建 Knowledge 与 KV 两个仅绑定 `127.0.0.1` 的临时 Streamable HTTP MCP endpoint，并通过各自 SDK config 注入 agent。小助手复用 OpenCode 时还会增加一个全局记忆 endpoint。endpoint 使用随机路径和 Bearer token，turn 完成、失败、取消或重试清理时会关闭，不需要单独部署 MCP 服务。
+
+| 项目 | Tool 管理名称 | MCP 工具 | 数据映射 |
+| --- | --- | --- | --- |
+| Codex | `mcp__workflow-knowledge__knowledge_documents` | `knowledge_documents` | 通过知识库 helper 访问项目声明与运行宿主选定位置的 markdown 文档。 |
+| Codex | `mcp__workflow-kv__kv_store` | `kv_store` | `project` 与 `conversation` 访问同一选定位置的项目/会话 KV scope。 |
+| OpenCode | `workflow-knowledge_knowledge_documents` | `knowledge_documents` | 通过相同知识库 helper 访问项目 markdown 文档。 |
+| OpenCode | `workflow-kv_kv_store` | `kv_store` | 使用与 Codex 相同的 project / conversation KV scope。 |
+| 小助手 | `workflow-memory_global_memory` | `global_memory` | 在小助手稳定 Knowledge namespace 中执行 `list/get/search/remember/forget`。 |
+
+知识库工具支持 `list/get/create/edit/delete/search/read_lines`；KV 工具只开放底层 KV 已支持的 `get/set`，且 value 必须可 JSON 序列化。这些工具都注册在对应 executor 的 `tools` 中，默认启用并自动批准。CLI Web Tool 管理可以逐项禁用或改为人工批准；人工批准仍由 `workflow.createToolApprovalGate()` 和现有 waiting-input 恢复协议处理。Codex 使用 SDK `approve` 模式跳过内部第二层审批；OpenCode 将 workflow MCP 工具设为可调用，但实际操作仍先经过同一个 workflow approval gate。
+
+小助手的 `global_memory` 只记录稳定、可复用的用户偏好、变更和项目决策。`remember` 使用稳定 `memoryId` 对 `assistant-memory-*` 文档执行 upsert；`forget` 删除对应文档。工具会拒绝常见密钥、Token、密码和私钥内容，也不应保存一次性进度或临时错误。该 namespace 在本机小助手范围内跨目标项目共享，但不自动同步到 Workflow Server、其它设备或普通项目 Knowledge。
+
+## Conversation 文档镜像
+
+`conversation-knowledge` 示例展示了把会话转成知识库文档的模式：同一个 conversation id 对应一篇 markdown 文档，每轮消息先写入 `context.conversation`，再把完整 transcript 同步到知识库。
+
+```ts
+const state = await context.conversation.appendMessage({
+  role: "assistant",
+  content: `已记录到知识库文档: ${input.message}`,
+});
+
+await workflow.editKnowledgeDocument(context.storage.local, {
+  id: documentId,
+  title,
+  markdown: renderTranscript(state.messages),
+});
+```
+
+文档 id 可以从 `conversationId` 派生，因此同一个 conversation 后续运行会更新同一篇文档。
+
+## Token 用量统计
+
+Token 用量统计默认关闭。executor 显式配置后，runtime 只把累计值写入当前项目 KV，并在存在会话时同时写入该会话 KV；本地宿主可以聚合各项目总量，不再维护单独的系统 KV。runtime 还会把本次运行聚合写入 report 和 runtime event：
+
+```ts
+export const executor = workflow.defineExecutor<Input, OutputPayload>({
+  projectType: "workflow",
+  defaultEntrypoint: "main",
+  entrypoints: [
+    workflow.defineEntrypoint<Input, OutputPayload>({
+      id: "main",
+      title: "完整流程",
+      workflow: assistantWorkflow,
+      tokenUsage: {
+        enabled: true,
+        display: true,
+      },
+      createInput({ args }) {
+        return { message: args.join(" ") };
+      },
+    }),
+  ],
+});
+```
+
+`enabled` 控制统计与 KV 写入；`display` 控制 CLI Web 前端是否展示 token badge。`display` 省略时默认跟随 `enabled`。badge 正文显示总量，hover 或键盘聚焦后会分别展示 Input、Output、Reasoning、Cache read、Cache write 和 Calls。
+
+通过 `workflow.getLLMProvider()` 解析出的 provider 会自动读取 provider 返回的 `usage`。自定义节点也可以手动上报：
+
+```ts
+await context.tokenUsage.report({
+  inputTokens: 120,
+  outputTokens: 80,
+  totalTokens: 200,
+  reasoningTokens: 12,
+  cachedInputTokens: 40,
+  cacheCreationTokens: 16,
+  nodeName: "answer",
+  providerName: "openai",
+  modelId: "gpt-5",
+});
+```
+
+未开启 `tokenUsage.enabled` 时，`context.tokenUsage.report()` 是安全 no-op。
+
+## 开启会话
+
+会话能力由 executor 的显式项目类型启用：
+
+```ts
+export const executor = workflow.defineExecutor<Input, OutputPayload>({
+  projectType: "conversation",
+  workflow: conversationWorkflow,
+  createInput({ args, conversationId }) {
+    return { message: args.join(" "), conversationId };
+  },
+});
+```
+
+声明后可以使用：
+
+```ts
+const state = await context.conversation.getValue();
+await context.conversation.appendMessage({ role: "user", content: input.message });
+await context.conversation.setValue("topic", "weather");
+await context.conversation.setTitle("天气助手");
+```
+
+`setTitle(title)` 会把标题写入会话状态，并在 CLI Web 中触发标题更新事件。标题为空字符串时会清除标题；`projectType: "workflow"` 时，`setTitle` 是安全 no-op。
+
+## 默认输入框
+
+Conversation 始终展示标准主输入框，无需开关配置，也不支持自定义主字段。附件能力通过 `conversation.attachments` 声明，输入序列化为以下 CLI 参数：
+
+未发送的正文、附件和附加参数会作为同一份草稿同步；调整 Advanced 或快捷参数时，已输入的正文和附件保持不变。
+
+CLI Web 的 Conversation 使用通用 `/` 命令菜单：`kind: "slash"` 声明单选或 boolean 参数，`conversation.commands` 声明独立执行操作；单独输入 `/` 显示全部命令。`conversation.footer` 在输入框外下方展示纯文字并按参数值控制可见性。小助手默认 Build，用一个 `/plan` 开关控制 Plan 模式和底部提示；`/export` 导出当前会话全部记录并在正文展示结果；`/compact` 展示总结执行中、完成或失败，并持久化后续 Agent 使用的摘要，保留原始对话记录。完整声明见 [Slash 菜单与底部文字](/core-api/define-executor#slash-菜单与底部文字)。
+
+- 文本：`--message`
+- 图片附件：`--images`
+- 普通文件附件：`--files`
+- 视频附件：`--videos`（需要 `attachments.videos: true`）
+
+workflow 仍需在 `createInput({ args })` 中显式读取这些参数；推荐使用 [`workflow.parseConversationDefaultInputArgs(args)`](/core-api/parse-conversation-default-input-args)。该 helper 会取最后一个 `--message`，并分别合并 `--images` / `--videos` / `--files` 文件引用。旧项目仅启用 `files: true` 时，视频仍归入 `--files`；视频转换为模型内容由项目负责。
+
+`codex` 和 `opencode` 示例都启用了图片附件。Codex 在 SDK turn 期间转换为 `local_image`，OpenCode 转换为 data URL file part；两者都只把图片引用随用户消息持久化，以便 CLI Web 回放附件。
+
+## 输入队列
+
+启用 `conversation.durable: { enabled: true }` 与 Agent `session` 时，输入队列、消费状态、撤回和 steer 回执以 Harness 为唯一权威。宿主保存未确认命令的稳定 requestId，进程恢复后重发；快照中的 receipts 可补回丢失确认。后台任务、事务计划和父子用量与执行历史一同提交，KV / Conversation 文档只是展示投影。reset 保留可见历史并新建上下文世代；fork 在同一 SQLite 内拥有独立 conversation / provider 身份和队列，计划按 initial/current/asOf 继承。多客户端以各自会话选择共享快照，不能额外执行同一数据库。操作与界面见 [Studio Trace](/cli/workflow-code#持久-agent-与-studio-trace)。
+
+未启用 Durable session 的 workflow 声明 `conversation.inputQueue: { enabled: true }` 时，CLI Web 会在当前会话运行时继续接受新的输入，并把它们放入宿主持久化队列。当前 run 完成后，队列项会按顺序继续执行；`codex` 和 `opencode` workflow 都启用了该模式。
+
+## conversation_id
+
+本地会话可以传入或生成 conversation id。
+
+- 本地宿主会为每个本地 chat session 生成并复用 conversation id。
+- 本地 CLI 使用 `--conversation-id` 指定稳定的 conversation id。
+- 本地客户端可以在 `createInput` 中返回稳定的 `conversationId`。
+- CLI Web 回放使用本地会话记录展示用户输入与附件。
+
+## 会话状态结构
+
+```ts
+interface WorkflowConversationState {
+  conversationId: string;
+  workflowName: string;
+  title?: string;
+  values: Record<string, unknown>;
+  messages: WorkflowConversationMessage[];
+}
+```
+
+会话消息应保存可展示内容和必要引用。大型文件建议保存 file reference，不要把原始二进制或 base64 长文本写进会话状态。

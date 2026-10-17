@@ -1,0 +1,51 @@
+{
+  "args": [
+    "--dry-run",
+    "--message",
+    "记录第三阶段对话知识",
+    "--title",
+    "Issue 86 Conversation"
+  ],
+  "conversationId": "issue-86-thread",
+  "expected": {
+    "errCode": 0,
+    "output": {
+      "documentId": "conversation.issue-86-thread.g0xfrg",
+      "documentTitle": "Issue 86 Conversation",
+      "messageCount": 2,
+      "conversationMessages": 2,
+      "knowledgeWritten": false,
+      "dryRun": true
+    },
+    "contentIncludes": [
+      "# Issue 86 Conversation",
+      "Conversation ID: `issue-86-thread`",
+      "记录第三阶段对话知识",
+      "已记录到知识库文档: 记录第三阶段对话知识"
+    ],
+    "itemCount": 1,
+    "items": [
+      {
+        "id": "conversation.issue-86-thread.g0xfrg",
+        "title": "Knowledge document preview",
+        "contentType": "markdown",
+        "iconPreset": "info",
+        "collapsed": false,
+        "contentIncludes": [
+          "## 1. User",
+          "## 2. Assistant"
+        ],
+        "metadata": {
+          "documentId": "conversation.issue-86-thread.g0xfrg",
+          "dryRun": true
+        }
+      }
+    ],
+    "nodes": [
+      "input",
+      "output"
+    ],
+    "outputCount": 1,
+    "conversationMessages": 2
+  }
+}

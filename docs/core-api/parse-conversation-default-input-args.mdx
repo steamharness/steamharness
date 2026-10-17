@@ -1,0 +1,86 @@
+---
+title: "parseConversationDefaultInputArgs"
+description: "解析 conversation 默认输入框序列化出来的 message、images、videos 和 files 参数。"
+---
+
+# parseConversationDefaultInputArgs
+
+`workflow.parseConversationDefaultInputArgs(args)` 解析 conversation 默认输入框写入的固定参数。它只读取 `--message`、`--images`、`--videos` 和 `--files`，不会自动读取 `WorkflowContext`，也不会替代 executor 的 `createInput`。
+
+Conversation 始终使用标准主输入框，无需配置开关。宿主按 `conversation.attachments` 声明的附件能力序列化这些参数；workflow 需要在 `createInput({ args })` 中显式调用本 helper。
+
+## 签名
+
+```ts
+workflow.parseConversationDefaultInputArgs(
+  args: string[],
+): {
+  message: string;
+  images: WorkflowFileReference[];
+  videos: WorkflowFileReference[];
+  files: WorkflowFileReference[];
+}
+```
+
+## 解析规则
+
+| 参数 | 行为 |
+| --- | --- |
+| `--message <text>` | 读取最后一次出现的值，并执行 `trim()`；未传时返回空字符串。 |
+| `--images <value>` | 每次出现都会解析为一个或多个 `WorkflowFileReference`，最终合并为数组。 |
+| `--videos <value>` | 每次出现都会解析为一个或多个 `WorkflowFileReference`，最终合并为数组。 |
+| `--files <value>` | 每次出现都会解析为一个或多个 `WorkflowFileReference`，最终合并为数组。 |
+| 缺少值 | 该 flag 会被忽略。 |
+| 其它参数 | 保留给业务代码自行解析，本 helper 不处理。 |
+
+`--images`、`--videos` 和 `--files` 复用文件引用协议，参数值可以是文件引用 JSON 或本地路径字符串。解析逻辑与文件输入节点相同，底层使用 `parseWorkflowFileReferences()`。只有显式启用 `attachments.videos: true` 的项目使用 `--videos`；旧项目仅启用 `files: true` 时，视频继续使用 `--files`。
+
+## executor 配置
+
+```ts
+export const executor = workflow.defineExecutor<Input, OutputPayload>({
+  projectType: "conversation",
+  workflow: conversationWorkflow,
+  conversation: {
+    attachments: {
+      images: true,
+      videos: true,
+      files: true,
+    },
+  },
+  createInput({ args, conversationId }) {
+    const defaults = workflow.parseConversationDefaultInputArgs(args);
+    return {
+      conversationId,
+      message: defaults.message,
+      images: defaults.images,
+      videos: defaults.videos,
+      files: defaults.files,
+    };
+  },
+});
+```
+
+## 与文件输入节点配合
+
+helper 只把参数解析成 `WorkflowFileReference[]`。如果需要读取文件内容，再把引用传给 `workflow.createFileInputNode()`：
+
+```ts
+const imageInputNode = workflow.createFileInputNode({
+  name: "images",
+  accept: ["image/png", "image/jpeg", "image/webp"],
+  multiple: true,
+});
+
+const images = await workflow.runNode(imageInputNode, input.images, context);
+const imageParts = await Promise.all(images.map((file) => file.toLLMImagePart()));
+```
+
+## 注意事项
+
+| 场景 | 说明 |
+| --- | --- |
+| 多次传 `--message` | 返回最后一个值，适合宿主用后一次输入覆盖前一次草稿。 |
+| 多次传附件 | `--images` / `--videos` / `--files` 各自合并所有出现次数。 |
+| 标准主输入框 | 始终展示，仍需要在 `createInput` 中显式调用 helper。 |
+| CLI 手动调试 | 可以直接传 `--message`、`--images`、`--videos`、`--files` 模拟默认输入框。 |

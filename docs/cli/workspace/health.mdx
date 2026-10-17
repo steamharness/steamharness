@@ -1,0 +1,51 @@
+---
+title: "workspace health"
+description: "检查 Workflow Server 健康状态。"
+---
+
+# workspace health
+
+`workspace health` 请求 Workflow Server 的 `/health` 接口。该命令不需要 token，适合在登录、上传或下载前确认 server 是否可达。
+
+## 命令格式
+
+```bash
+pnpm exec workflow-code workspace health [--server <url>]
+```
+
+## 参数
+
+| 参数 | 说明 |
+| --- | --- |
+| `--server <url>` | 可选。未传时按配置优先级解析 server URL。 |
+
+## server URL 优先级
+
+| 顺序 | 来源 |
+| --- | --- |
+| 1 | `--server <url>` |
+| 2 | `WORKFLOW_SERVER_URL` |
+| 3 | CLI 登录态文件 |
+| 4 | `http://localhost:7125` |
+
+## 输出
+
+| 情况 | 输出 |
+| --- | --- |
+| server 可达 | server `/health` 返回的 JSON。 |
+| server 返回非零 `errCode` | 输出 JSON，退出码为 `1`。 |
+| 网络或解析失败 | 输出错误信息，退出码为 `1`。 |
+
+## 示例
+
+```bash
+pnpm exec workflow-code workspace health
+pnpm exec workflow-code workspace health --server http://localhost:7125
+```
+
+## 常见用途
+
+| 场景 | 说明 |
+| --- | --- |
+| 发布前检查 | 确认 server 已启动且 URL 正确。 |
+| 排查登录失败 | 区分 server 不可达和 token 无效。 |

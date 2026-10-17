@@ -1,0 +1,69 @@
+---
+title: "LLM Provider"
+description: "在 workflow 中声明自有 LLM provider、环境变量和节点。"
+---
+
+# LLM Provider
+
+LLM 能力通过统一的 provider 接口注入 workflow。公开 workflow 使用自己的 provider 配置和 API key；服务端不会替 workflow 保存或代理第三方模型凭据。
+
+## 创建 provider ref
+
+推荐在 workflow 中创建 provider ref，让节点运行时读取配置：
+
+```ts
+const llmProvider = workflow.createLLMProviderRef("default", () => {
+  return workflow.createLLMProviderFromEnv();
+});
+```
+
+节点运行时才解析 provider，避免业务代码在模块加载阶段读取环境变量。
+
+## LLM 节点
+
+非流式节点：
+
+```ts
+const llmNode = workflow.createLLMNode<Input>({
+  name: "answer-llm",
+  provider: llmProvider,
+  mapInput(input) {
+    return {
+      system: "你是一个简洁助手。",
+      prompt: input.message,
+      maxOutputTokens: 300,
+    };
+  },
+});
+```
+
+流式节点使用同一个 provider：
+
+```ts
+const llmStreamNode = workflow.createLLMStreamNode<Input>({
+  name: "answer-stream",
+  provider: llmProvider,
+  mapInput(input) {
+    return { messages: [{ role: "user", content: input.message }] };
+  },
+});
+```
+
+## 项目环境变量
+
+`workflow.createLLMProviderFromEnv()` 读取以下变量：
+
+- `LLM_TYPE`
+- `LLM_API_KEY`
+- `LLM_BASE_URL`
+- `LLM_MODEL`
+
+这些变量来自项目 `.env` 和宿主进程环境，已有进程变量优先。`LLM_BASE_URL` 必须是没有用户名、密码、查询参数或片段的 HTTP(S) 地址。
+
+第三方服务可以使用自己的环境变量和 `workflow.getEnv()`，但不能读取宿主的账户凭据或系统服务配置。
+
+## Provider 类型与错误
+
+provider factory 支持的类型来自 `LLM_PROVIDER_TYPES`。未配置模型时，会按 provider 类型选择默认模型；测试时可以使用 mock provider。
+
+provider 调用失败会被包装为 workflow 错误并进入执行报告。模型不支持的可选参数可能产生 compatibility warning；鉴权失败、模型不可用和上游请求失败仍然会直接失败。

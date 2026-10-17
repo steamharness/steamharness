@@ -1,0 +1,210 @@
+diff --git a/src/vs/workbench/browser/parts/editor/editorGroupView.ts b/src/vs/workbench/browser/parts/editor/editorGroupView.ts
+index 57087fd2..3fdcc62c 100644
+--- a/src/vs/workbench/browser/parts/editor/editorGroupView.ts
++++ b/src/vs/workbench/browser/parts/editor/editorGroupView.ts
+@@ -5,7 +5,7 @@
+ 
+ import './media/editorgroupview.css';
+ import { EditorGroupModel, IEditorOpenOptions, IGroupModelChangeEvent, ISerializedEditorGroupModel, isGroupEditorCloseEvent, isGroupEditorOpenEvent, isSerializedEditorGroupModel } from '../../../common/editor/editorGroupModel.js';
+-import { GroupIdentifier, CloseDirection, IEditorCloseEvent, IEditorPane, SaveReason, IEditorPartOptionsChangeEvent, EditorsOrder, IVisibleEditorPane, EditorResourceAccessor, EditorInputCapabilities, IUntypedEditorInput, DEFAULT_EDITOR_ASSOCIATION, SideBySideEditor, EditorCloseContext, IEditorWillMoveEvent, IEditorWillOpenEvent, IMatchEditorOptions, GroupModelChangeKind, IActiveEditorChangeEvent, IFindEditorOptions, TEXT_DIFF_EDITOR_ID } from '../../../common/editor.js';
++import { GroupIdentifier, CloseDirection, IEditorCloseEvent, IEditorPane, SaveReason, IEditorPartOptionsChangeEvent, EditorsOrder, IVisibleEditorPane, EditorResourceAccessor, EditorInputCapabilities, IUntypedEditorInput, SideBySideEditor, EditorCloseContext, IEditorWillMoveEvent, IEditorWillOpenEvent, IMatchEditorOptions, GroupModelChangeKind, IActiveEditorChangeEvent, IFindEditorOptions, TEXT_DIFF_EDITOR_ID } from '../../../common/editor.js';
+ import { ActiveEditorGroupLockedContext, ActiveEditorDirtyContext, EditorGroupEditorsCountContext, ActiveEditorStickyContext, ActiveEditorPinnedContext, ActiveEditorLastInGroupContext, ActiveEditorFirstInGroupContext, ResourceContextKey, applyAvailableEditorIds, ActiveEditorAvailableEditorIdsContext, ActiveEditorCanSplitInGroupContext, SideBySideEditorActiveContext, TextCompareEditorVisibleContext, TextCompareEditorActiveContext, ActiveEditorContext, ActiveEditorReadonlyContext, ActiveEditorCanRevertContext, ActiveEditorCanToggleReadonlyContext, ActiveCompareEditorCanSwapContext, MultipleEditorsSelectedInGroupContext, TwoEditorsSelectedInGroupContext, SelectedEditorsInGroupFileOrUntitledResourceContextKey, ActiveEditorCannotCloseContext } from '../../../common/contextkeys.js';
+ import { EditorInput } from '../../../common/editor/editorInput.js';
+ import { SideBySideEditorInput } from '../../../common/editor/sideBySideEditorInput.js';
+@@ -399,21 +399,6 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
+ 
+ 	private registerContainerListeners(): void {
+ 
+-		// Open new file via doubleclick on empty container
+-		this._register(addDisposableListener(this.element, EventType.DBLCLICK, e => {
+-			if (this.isEmpty) {
+-				EventHelper.stop(e);
+-
+-				this.editorService.openEditor({
+-					resource: undefined,
+-					options: {
+-						pinned: true,
+-						override: DEFAULT_EDITOR_ASSOCIATION.id
+-					}
+-				}, this.id);
+-			}
+-		}));
+-
+ 		// Close empty editor group via middle mouse click
+ 		this._register(addDisposableListener(this.element, EventType.AUXCLICK, e => {
+ 			if (this.isEmpty && e.button === 1 /* Middle Button */) {
+diff --git a/src/vs/workbench/browser/parts/editor/media/studioStart.css b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+index 409e5e44..8402f8a2 100644
+--- a/src/vs/workbench/browser/parts/editor/media/studioStart.css
++++ b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+@@ -50,12 +50,6 @@
+ .studio-start-pending { display:flex; flex-wrap:wrap; grid-column:1 / -1; gap:5px 10px; align-items:center; margin-bottom:10px; overflow-wrap:anywhere; }
+ .studio-start-pending > .studio-start-action:not(.studio-start-action-icon) { width:auto; }
+ .studio-start-pending small { color:var(--vscode-descriptionForeground); }
+-/* Paint above the minimap (5) and below editor widgets such as Find (35). */
+-.studio-start-overlay { position:absolute; top:0; left:0; z-index:6; pointer-events:none; }
+-.studio-start-overlay .studio-start { pointer-events:none; }
+-.studio-start-overlay .studio-start-inner > *, .studio-start-overlay .studio-start-action { pointer-events:auto; }
+-.studio-start-overlay .studio-start-grid { pointer-events:none; }
+-.studio-start-overlay .studio-start-grid > section { pointer-events:auto; }
+ @media (max-width:600px) { .studio-start-inner { padding:20px; } }
+ @container (max-width:360px) {
+   .studio-start-inner { padding:20px; }
+diff --git a/src/vs/workbench/browser/parts/editor/multiEditorTabsControl.ts b/src/vs/workbench/browser/parts/editor/multiEditorTabsControl.ts
+index c1089df6..a4b30953 100644
+--- a/src/vs/workbench/browser/parts/editor/multiEditorTabsControl.ts
++++ b/src/vs/workbench/browser/parts/editor/multiEditorTabsControl.ts
+@@ -6,7 +6,7 @@
+ import './media/multieditortabscontrol.css';
+ import { isLinux, isMacintosh, isWindows } from '../../../../base/common/platform.js';
+ import { shorten } from '../../../../base/common/labels.js';
+-import { EditorResourceAccessor, Verbosity, IEditorPartOptions, SideBySideEditor, DEFAULT_EDITOR_ASSOCIATION, EditorInputCapabilities, IUntypedEditorInput, preventEditorClose, EditorCloseMethod, EditorsOrder, IToolbarActions } from '../../../common/editor.js';
++import { EditorResourceAccessor, Verbosity, IEditorPartOptions, SideBySideEditor, EditorInputCapabilities, IUntypedEditorInput, preventEditorClose, EditorCloseMethod, EditorsOrder, IToolbarActions } from '../../../common/editor.js';
+ import { EditorInput } from '../../../common/editor/editorInput.js';
+ import { computeEditorAriaLabel } from '../../editor.js';
+ import { StandardKeyboardEvent } from '../../../../base/browser/keyboardEvent.js';
+@@ -421,36 +421,6 @@ export class MultiEditorTabsControl extends EditorTabsControl {
+ 			}
+ 		}));
+ 
+-		// New file when double-clicking on tabs container (but not tabs)
+-		for (const eventType of [TouchEventType.Tap, EventType.DBLCLICK]) {
+-			this._register(addDisposableListener(tabsContainer, eventType, (e: MouseEvent | GestureEvent) => {
+-				if (eventType === EventType.DBLCLICK) {
+-					if (e.target !== tabsContainer) {
+-						return; // ignore if target is not tabs container
+-					}
+-				} else {
+-					if ((<GestureEvent>e).tapCount !== 2) {
+-						return; // ignore single taps
+-					}
+-
+-					if ((<GestureEvent>e).initialTarget !== tabsContainer) {
+-						return; // ignore if target is not tabs container
+-					}
+-				}
+-
+-				EventHelper.stop(e);
+-
+-				this.editorService.openEditor({
+-					resource: undefined,
+-					options: {
+-						pinned: true,
+-						index: this.groupView.count, // always at the end
+-						override: DEFAULT_EDITOR_ASSOCIATION.id
+-					}
+-				}, this.groupView.id);
+-			}));
+-		}
+-
+ 		// Prevent auto-scrolling (https://github.com/microsoft/vscode/issues/16690)
+ 		this._register(addDisposableListener(tabsContainer, EventType.MOUSE_DOWN, e => {
+ 			if (e.button === 1) {
+diff --git a/src/vs/workbench/browser/parts/editor/studioStart.ts b/src/vs/workbench/browser/parts/editor/studioStart.ts
+index d8bbecda..8a6a8764 100644
+--- a/src/vs/workbench/browser/parts/editor/studioStart.ts
++++ b/src/vs/workbench/browser/parts/editor/studioStart.ts
+@@ -67,7 +67,7 @@ class StudioStartService extends Disposable implements IStudioStartService {
+ }
+ registerSingleton(IStudioStartService, StudioStartService, InstantiationType.Delayed);
+ 
+-/** Shared native view for empty groups, untitled editors and the Start editor. */
++/** Shared native view for empty groups and the Start editor. */
+ export class StudioStartView extends Disposable {
+ 	readonly element: HTMLElement;
+ 	private readonly id = generateUuid();
+diff --git a/src/vs/workbench/contrib/codeEditor/browser/emptyTextEditorHint/emptyTextEditorHint.ts b/src/vs/workbench/contrib/codeEditor/browser/emptyTextEditorHint/emptyTextEditorHint.ts
+index f31606a3..3d1899f8 100644
+--- a/src/vs/workbench/contrib/codeEditor/browser/emptyTextEditorHint/emptyTextEditorHint.ts
++++ b/src/vs/workbench/contrib/codeEditor/browser/emptyTextEditorHint/emptyTextEditorHint.ts
+@@ -11,7 +11,7 @@ import { WorkbenchActionExecutedClassification, WorkbenchActionExecutedEvent } f
+ import { Event } from '../../../../../base/common/event.js';
+ import { Disposable } from '../../../../../base/common/lifecycle.js';
+ import { Schemas } from '../../../../../base/common/network.js';
+-import { ContentWidgetPositionPreference, ICodeEditor, IContentWidget, IContentWidgetPosition, IOverlayWidget } from '../../../../../editor/browser/editorBrowser.js';
++import { ContentWidgetPositionPreference, ICodeEditor, IContentWidget, IContentWidgetPosition } from '../../../../../editor/browser/editorBrowser.js';
+ import { EditorContributionInstantiation, registerEditorContribution } from '../../../../../editor/browser/editorExtensions.js';
+ import { ConfigurationChangedEvent, EditorOption } from '../../../../../editor/common/config/editorOptions.js';
+ import { Position } from '../../../../../editor/common/core/position.js';
+@@ -32,8 +32,6 @@ import { ChatAgentLocation } from '../../../chat/common/constants.js';
+ import { IInlineChatSessionService } from '../../../inlineChat/browser/inlineChatSessionService.js';
+ import { EmptyTextEditorHintContributionId, IEmptyTextEditorHintContribution } from './emptyTextEditorHintTypes.js';
+ import './emptyTextEditorHint.css';
+-import { StudioStartView } from '../../../../browser/parts/editor/studioStart.js';
+-import { KeyCode } from '../../../../../base/common/keyCodes.js';
+ 
+ export const emptyTextEditorHintSetting = 'workbench.editor.empty.hint';
+ export class EmptyTextEditorHintContribution extends Disposable implements IEmptyTextEditorHintContribution {
+@@ -41,7 +39,6 @@ export class EmptyTextEditorHintContribution extends Disposable implements IEmpt
+ 	static readonly ID = EmptyTextEditorHintContributionId;
+ 
+ 	private textHintContentWidget: EmptyTextEditorHintContentWidget | undefined;
+-	private studioStartWidget: StudioStartOverlayWidget | undefined;
+ 
+ 	constructor(
+ 		protected readonly editor: ICodeEditor,
+@@ -63,7 +60,7 @@ export class EmptyTextEditorHintContribution extends Disposable implements IEmpt
+ 			}
+ 		}));
+ 		this._register(this.configurationService.onDidChangeConfiguration(e => {
+-			if (e.affectsConfiguration(emptyTextEditorHintSetting) || e.affectsConfiguration('studio.startPage.enabled')) {
++			if (e.affectsConfiguration(emptyTextEditorHintSetting)) {
+ 				this.update();
+ 			}
+ 		}));
+@@ -117,17 +114,6 @@ export class EmptyTextEditorHintContribution extends Disposable implements IEmpt
+ 	}
+ 
+ 	protected update(): void {
+-		const model = this.editor.getModel();
+-		const showStart = this.configurationService.getValue<boolean>('studio.startPage.enabled') === true && !this.editor.isSimpleWidget
+-			&& !this.editor.getOption(EditorOption.readOnly) && !this.editor.getOption(EditorOption.inDiffEditor)
+-			&& model?.uri.scheme === Schemas.untitled && model.getValueLength() === 0;
+-		if (showStart) {
+-			if (!this.studioStartWidget) { this.studioStartWidget = this.instantiationService.createInstance(StudioStartOverlayWidget, this.editor); }
+-			this.disposeHint();
+-			return;
+-		}
+-		this.studioStartWidget?.dispose();
+-		this.studioStartWidget = undefined;
+ 		const shouldRenderHint = this.shouldRenderHint();
+ 		if (shouldRenderHint && !this.textHintContentWidget) {
+ 			this.textHintContentWidget = this.instantiationService.createInstance(EmptyTextEditorHintContentWidget, this.editor);
+@@ -143,37 +129,11 @@ export class EmptyTextEditorHintContribution extends Disposable implements IEmpt
+ 
+ 	override dispose(): void {
+ 		super.dispose();
+-		this.studioStartWidget?.dispose();
+ 
+ 		this.disposeHint();
+ 	}
+ }
+ 
+-class StudioStartOverlayWidget extends Disposable implements IOverlayWidget {
+-	private readonly element = $('.studio-start-overlay');
+-	constructor(editor: ICodeEditor, @IInstantiationService instantiationService: IInstantiationService) {
+-		super();
+-		const view = this._register(instantiationService.createInstance(StudioStartView, this.element));
+-		const layout = () => {
+-			const size = editor.getLayoutInfo();
+-			this.element.style.width = `${size.width}px`;
+-			this.element.style.height = `${size.height}px`;
+-		};
+-		this._register(editor.onDidLayoutChange(layout));
+-		this._register(editor.onKeyDown(event => {
+-			if (editor.hasTextFocus() && event.keyCode === KeyCode.Tab && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+-				event.preventDefault(); event.stopPropagation(); view.focus();
+-			}
+-		}));
+-		editor.addOverlayWidget(this);
+-		layout();
+-		this._register({ dispose: () => editor.removeOverlayWidget(this) });
+-	}
+-	getId(): string { return 'studio.startPage'; }
+-	getDomNode(): HTMLElement { return this.element; }
+-	getPosition() { return null; }
+-}
+-
+ class EmptyTextEditorHintContentWidget extends Disposable implements IContentWidget {
+ 
+ 	private static readonly ID = 'editor.widget.emptyHint';

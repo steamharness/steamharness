@@ -1,0 +1,156 @@
+---
+title: "runWorkflow"
+description: "在当前 WorkflowContext 中调用另一个 workflow，并复用父级上下文。"
+---
+
+# runWorkflow
+
+`workflow.runWorkflow()` 用于在一个 workflow 内调用另一个已 import 的 `WorkflowDefinition<Input, Output>`。它复用父级 `WorkflowContext`，适合把通用 workflow 当作另一个 workflow 的方法来组合。
+
+它与项目 entrypoint 是两层不同概念：entrypoint 是本地 CLI 可直接启动的一层扁平目录；`runWorkflow()` 是一次 run 内部的业务组合。运行某个 entrypoint 不会自动运行默认入口或其它入口。需要“主流程调用子流程”时，由所选入口的 workflow 显式调用 `runWorkflow(childWorkflow, ...)`。
+
+## 签名
+
+```ts
+workflow.runWorkflow<Input, Output>(
+  workflow: WorkflowDefinition<Input, Output>,
+  input: Input,
+  context: WorkflowContext,
+  options?: {
+    name?: string;
+    metadata?: Partial<WorkflowNodeMetadata>;
+    conversationMode?: "shared" | "shared-readonly";
+    kvMode?: "shared" | "isolated";
+    outputVisibility?: "visible" | "hidden";
+    emitNode?: boolean;
+    maxDepth?: number;
+    onOutputChunk?: (chunk: unknown, event: NodeExecutionHookChunkEvent) => void | Promise<void>;
+    onOutput?: (output: Output, event?: NodeExecutionHookFinishEvent) => void | Promise<void>;
+  },
+): Promise<Output>
+```
+
+## 参数
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| `workflow` | `WorkflowDefinition<Input, Output>` | 要复用的子 workflow。 |
+| `input` | `Input` | 传给子 workflow 的输入。 |
+| `context` | `WorkflowContext` | 父 workflow 当前上下文。 |
+| `options.name` | `string` | 父 trace 中显示的子 workflow 调用标题。 |
+| `options.metadata` | `Partial<WorkflowNodeMetadata>` | 覆盖 trace 节点元信息，默认 type 为 `workflow`。 |
+| `options.conversationMode` | `"shared" \| "shared-readonly"` | 子 workflow 如何使用父会话。默认 `shared`。 |
+| `options.kvMode` | `"shared" \| "isolated"` | 子 workflow 如何使用父 KV。默认 `shared`；`isolated` 会给 project/conversation KV key 加子 workflow 前缀。 |
+| `options.outputVisibility` | `"visible" \| "hidden"` | 子 workflow output 是否进入父级可见 outputs。默认 `visible`。 |
+| `options.emitNode` | `boolean` | 是否在父 trace 中增加 `run-workflow` 包裹节点。默认 `true`；顶层 executor 入口不走该插桩路径。 |
+| `options.maxDepth` | `number` | 嵌套 `runWorkflow` 最大深度。默认 `16`，用于防止递归或环路调用。 |
+| `options.onOutputChunk` | `(chunk, event) => void` | 接收子 workflow output stream chunks，可在父级 output node 中原样转发。 |
+| `options.onOutput` | `(output, event?) => void` | 接收子 workflow 非流式 output；如果子 workflow 没有 output node，则接收它的最终返回值。 |
+
+## 上下文复用
+
+子 workflow 默认使用同一个 `storage`、`conversation`、`tokenUsage`、`files`、`providers`、`abortSignal` 和 `nodeHooks`。它不会创建独立 run report；`runWorkflow` 调用本身和子节点事件都会进入父 workflow trace。普通顶层执行入口 `safeRunWorkflow` 直接调用 `workflow.run(input, context)`，不会额外生成 `run-workflow` 包裹节点，因此静态结构和运行时 report 不会在根部多出一个合成节点。
+
+业务流程可以继续嵌套调用 `runWorkflow()`，但默认总深度上限是 `16`。这个深度只存在于执行 trace，不会生成多级 entrypoint 路径，也不会改变 API、权限或历史记录的入口标识。
+
+`conversationMode: "shared-readonly"` 会让子 workflow 读取父会话快照，但 `appendMessage`、`setValue` 和 `setTitle` 不会写回父会话。推荐由父 workflow 统一追加 user/assistant transcript 和设置标题，避免父子 workflow 重复写入消息。
+
+`conversationMode` 只控制 `context.conversation`。如果子 workflow 会写本地或服务器的 project/conversation KV，推荐同时传入 `kvMode: "isolated"`，让两个位置的 KV key 都写到以子 workflow 名称为前缀的隔离命名空间。该选项只隔离普通 KV，不改变 PersistentValue 或关联项目 KV。
+
+## 执行记录与输出
+
+runtime 默认会在父 trace 中增加一个 `run-workflow` 包裹节点，`name` / `metadata` 只用于覆盖这个节点的展示标题和元信息。完成事件的 `executionInfo` 包含：
+
+```json
+{
+  "workflowName": "openai-agents",
+  "conversationMode": "shared-readonly",
+  "kvMode": "isolated",
+  "outputVisibility": "hidden",
+  "outputBridge": true
+}
+```
+
+默认 `runWorkflow(child, input, context)` 和 `runWorkflow(child, input, context, { name })` 都保持 `conversationMode: "shared"` 与 `outputVisibility: "visible"`。只给 trace 增加显示名不会改变会话写入或输出可见性。需要父级统一管理会话和输出时，应显式传入 `conversationMode: "shared-readonly"` 和 `outputVisibility: "hidden"`。
+
+当父 workflow 想“原封不动展示被调用 workflow”的输出时，把 `runWorkflow`
+放在父级 output node 的 `stream` 中，并传入 `onOutputChunk` / `onOutput`：
+子 workflow 支持流式输出时，`onOutputChunk` 会在子 output node 每次产生 chunk
+时同步触发；子 workflow 只有非流式 output node 时，`onOutput` 会在 output
+完成后触发；如果子 workflow 没有 output node 但直接返回 payload，`onOutput`
+会在子 workflow 返回后收到该返回值。
+
+`onOutputChunk` / `onOutput` 属于执行语义的一部分。如果 handler 抛错，`runWorkflow` 会尽早失败并停止继续桥接后续 output；错误 metadata 中会带 `outputBridgeFailed: true`。
+
+静态结构分析会把 `workflow.runWorkflow(childWorkflow, input, context, options)` 识别为 `run-workflow` 执行节点。动态拼装 workflow 引用仍可运行，但 Diagram 只能显示表达式形式的子 workflow 引用。
+
+## 示例
+
+```ts
+import { openaiAgentsWorkflow } from "../openai-agents/index";
+
+const agentOutput = await workflow.runWorkflow(
+  openaiAgentsWorkflow,
+  {
+    message: input.query,
+    defaultTools: false,
+    memoryTools: false,
+    testTool: false,
+    writeConversation: false,
+    writeAgentState: false,
+    customTools: deltaforceTools,
+  },
+  context,
+  {
+    name: "OpenAI Agents core",
+    conversationMode: "shared-readonly",
+    kvMode: "isolated",
+    outputVisibility: "hidden",
+  },
+);
+
+return workflow.runNode(parentOutputNode, {
+  query: input.query,
+  answer: agentOutput.items[0]?.content,
+}, context);
+```
+
+流式桥接示例：
+
+```ts
+const outputNode = workflow.createOutputNode({
+  name: "output",
+  async *stream(input, context) {
+    // createAsyncQueue 是示意 helper，需要在 workflow 中自行实现，
+    // 或替换成项目已有的 async iterable/queue 工具。
+    const queue = createAsyncQueue();
+
+    const childRun = workflow.runWorkflow(childWorkflow, input, context, {
+      conversationMode: "shared-readonly",
+      kvMode: "isolated",
+      outputVisibility: "hidden",
+      onOutputChunk(chunk) {
+        queue.push(chunk);
+      },
+      onOutput(output) {
+        queue.push(output);
+      },
+    }).finally(() => queue.end());
+
+    yield* queue;
+    await childRun;
+  },
+  format(stream) {
+    return workflow.createOutputPayload({ items: stream.items });
+  },
+});
+```
+
+## 错误
+
+| 情况 | 错误类型 | 说明 |
+| --- | --- | --- |
+| 子 workflow 抛错 | `workflow_execution` | 原错误会被包装，并在 metadata 中保留子 workflow 名称。 |
+| 执行前已中断 | `execution_aborted` | 来自父级 `context.abortSignal`。 |
+| 嵌套过深 | `workflow_execution` | 超过 `maxDepth` 时中止，避免递归或环路调用导致栈溢出。 |
+| 输出桥接 handler 抛错 | `stream_interrupted` 或 `workflow_execution` | `metadata.outputBridgeFailed` 为 `true`，cause 中保留 handler 错误。 |

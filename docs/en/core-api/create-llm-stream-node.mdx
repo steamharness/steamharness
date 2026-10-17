@@ -1,0 +1,87 @@
+---
+title: "createLLMStreamNode"
+description: "Create streaming LLM nodes to produce LLMStreamChunk and aggregate text output."
+---
+
+# createLLMStreamNode
+
+`workflow.createLLMStreamNode()` Creates a streaming LLM invocation node. When the node is executed, `provider.stream(llmInput)` is called, `LLMStreamChunk` is produced, and `runStreamNode` collects chunks and returns aggregate text.
+
+## Signature
+
+```ts
+workflow.createLLMStreamNode<Input>(
+  options: Pick<
+    LLMNodeOptions<Input>,
+    "name" | "provider" | "mapInput" | "historyLimit" | "metadata"
+  >,
+): BaseStreamNode<Input, LLMStreamChunk, string>
+```
+
+## Parameter
+
+|Parameter|Type|Description|
+| --- | --- | --- |
+| `options` | `LLMStreamNodeOptions<Input>` |Define provider, input mappings, and node meta information.|
+
+## Options Field
+
+|Field|Type|Description|
+| --- | --- | --- |
+| `name` | `string` |Node name, default `"llm-stream"`.|
+| `provider` | `LLMProviderSource` |provider instance, provider id, provider ref, or resolver. Required.|
+| `mapInput` | `(input, context) => LLMChatInput` |Translate the business input into an LLM request. Required.|
+| `historyLimit` | `number` |The number of nodes retained in the execution history. The default value is `50`.|
+| `metadata` | `WorkflowNodeMetadataInput` |The node displays meta information.|
+
+## `LLMStreamChunk`
+
+|Type|Field|Description|
+| --- | --- | --- |
+| `text-delta` | `text: string` |A piece of incremental text.|
+| `finish` | `finishReason?: FinishReason` |Stream end reason.|
+| `finish` | `usage?: LanguageModelUsage` |token usage.|
+| `finish` | `providerMetadata?: ProviderMetadata` |provider meta information.|
+
+## Return value
+
+|Return|Type|Description|
+| --- | --- | --- |
+|Node Object| `BaseStreamNode<Input, LLMStreamChunk, string>` |Execute via `workflow.runStreamNode`.|
+| chunks | `LLMStreamChunk[]` |`runStreamNode` All chunks collected.|
+| output | `string` |Node `finalize` splices all `text-delta.text`.|
+
+When executor is configured with `tokenUsage: { enabled: true }`, the token usage is automatically reported from the `usage` of the stream finish chunk by using the provider parsed by `getLLMProvider()` during node execution. the same stream is reported only once. if the provider does not return the usage, the token usage is not written. Automatic reporting retains the input, output, reasoning, cached input, and cache creation/write token details.
+
+## Call process
+
+|Phase|Input|Result|
+| --- | --- | --- |
+|Upstream node| `Input` |Business input|
+| `mapInput` | `Input`, `NodeContext` | `LLMChatInput` |
+| provider `stream` | `LLMChatInput` | `AsyncIterable<LLMStreamChunk>` |
+| `runStreamNode` | chunks | `{ chunks, output: string }` |
+
+## Example
+
+```ts
+const streamNode = workflow.createLLMStreamNode<ParsedInput>({
+  name: "draft-stream",
+  provider: workflow.createLLMProviderRef("default"),
+  mapInput(input) {
+    return {
+      prompt: input.message,
+      temperature: 0.3,
+    };
+  },
+});
+
+const { chunks, output } = await workflow.runStreamNode(streamNode, parsed, context);
+```
+
+## Difference from `createLLMNode`
+
+|Method|Output method|Suitable scenarios|
+| --- | --- | --- |
+| `createLLMNode` |One-time return of `LLMChatOutput` or `mapOutput` results|Background processing, non-real-time output.|
+| `createLLMStreamNode` |Chunk-by-chunk output, finally aggregated into a string|Streaming text needs to be shown in CLI Web.|

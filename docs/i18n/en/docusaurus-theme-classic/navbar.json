@@ -1,0 +1,22 @@
+{
+  "logo.alt": {
+    "message": "Workflow Code",
+    "description": "The alt text of navbar logo"
+  },
+  "item.label.指南": {
+    "message": "Guides",
+    "description": "Navbar item with label 指南"
+  },
+  "item.label.参考手册": {
+    "message": "Reference",
+    "description": "Navbar item with label 参考手册"
+  },
+  "item.label.发布日志": {
+    "message": "Release notes",
+    "description": "Navbar item with label 发布日志"
+  },
+  "item.label.服务端 API": {
+    "message": "Server API",
+    "description": "Navbar item with label 服务端 API"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "params": [
+    { "name": "title", "type": "string", "label": "Board Title", "defaultValue": "My Board" },
+    { "name": "showDone", "type": "boolean", "label": "Show Completed Tasks", "defaultValue": "true" }
+  ]
+}

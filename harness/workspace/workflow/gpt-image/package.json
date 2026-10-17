@@ -1,0 +1,29 @@
+{
+  "id": "4251d6de-df9b-4e5b-ac7d-f240dc391948",
+  "name": "@workflow-code/gpt-image-workflow",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "openai": "^6.39.0"
+  },
+  "scripts": {
+    "dev": "workflow-code run .",
+    "inspect": "workflow-code structure .",
+    "run:json": "workflow-code json .",
+    "workspace:upload": "workflow-code workspace upload .",
+    "workspace:publish": "workflow-code workspace publish ."
+  },
+  "devDependencies": {
+    "@workflow-code/cli": "0.2.3-20260901001",
+    "workflow-code": "0.2.3-20260901001"
+  },
+  "workflowCode": {
+    "projectInfo": {
+      "dataStorage": {
+        "mode": "local"
+      }
+    },
+    "projectType": "conversation"
+  }
+}

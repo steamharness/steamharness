@@ -1,0 +1,44 @@
+diff --git a/src/vs/workbench/browser/parts/globalCompositeBar.ts b/src/vs/workbench/browser/parts/globalCompositeBar.ts
+index 4c4affa1451..8d9315e1141 100644
+--- a/src/vs/workbench/browser/parts/globalCompositeBar.ts
++++ b/src/vs/workbench/browser/parts/globalCompositeBar.ts
+@@ -19,7 +19,7 @@ import { ThemeIcon } from '../../../base/common/themables.js';
+ import { registerIcon } from '../../../platform/theme/common/iconRegistry.js';
+ import { Action, IAction, Separator, SubmenuAction, toAction } from '../../../base/common/actions.js';
+ import { Emitter } from '../../../base/common/event.js';
+-import { IMenu, IMenuService, MenuId } from '../../../platform/actions/common/actions.js';
++import { IMenu, IMenuService, MenuId, MenuRegistry } from '../../../platform/actions/common/actions.js';
+ import { addDisposableListener, EventType, append, clearNode, hide, show, EventHelper, $, runWhenWindowIdle, getWindow } from '../../../base/browser/dom.js';
+ import { StandardKeyboardEvent } from '../../../base/browser/keyboardEvent.js';
+ import { StandardMouseEvent } from '../../../base/browser/mouseEvent.js';
+@@ -28,7 +28,7 @@ import { AnchorAlignment, AnchorAxisAlignment } from '../../../base/browser/ui/c
+ import { Lazy } from '../../../base/common/lazy.js';
+ import { getActionBarActions } from '../../../platform/actions/browser/menuEntryActionViewItem.js';
+ import { IConfigurationService } from '../../../platform/configuration/common/configuration.js';
+-import { IContextKeyService } from '../../../platform/contextkey/common/contextkey.js';
++import { ContextKeyExpr, IContextKeyService } from '../../../platform/contextkey/common/contextkey.js';
+ import { IContextMenuService } from '../../../platform/contextview/browser/contextView.js';
+ import { IKeybindingService } from '../../../platform/keybinding/common/keybinding.js';
+ import { ILogService } from '../../../platform/log/common/log.js';
+@@ -52,6 +52,21 @@ import { IDefaultAccountService } from '../../../platform/defaultAccount/common/
+ import { WORKBENCH_MENU_MOTION_CLASS, workbenchMenuCloseAnimation } from '../actions/menuMotion.js';
+ import { createCodexAccountMenuActions, ICodexAccountService, shouldShowCodexAccount } from '../../services/agentHost/browser/codexAccountService.js';
+ 
++for (const [id, title, authenticated] of [
++	['studio.openWorkflowAccount', localize('studio.workflowAccount', "\u767b\u5f55\u4e0e\u7ba1\u7406\u8d26\u53f7"), false],
++	['studio.validateWorkflowLogin', localize('studio.validateWorkflowLogin', "\u9a8c\u8bc1\u767b\u5f55"), true],
++	['studio.logoutWorkflow', localize('studio.logoutWorkflow', "\u9000\u51fa\u767b\u5f55"), true],
++] as const) {
++	MenuRegistry.appendMenuItem(MenuId.AccountsContext, {
++		command: { id, title },
++		when: ContextKeyExpr.and(
++			ContextKeyExpr.equals('studio.workflowAccountAvailable', true),
++			authenticated ? ContextKeyExpr.equals('studio.workflowAuthenticated', true) : undefined
++		),
++		group: '0_workflow'
++	});
++}
++
+ export class GlobalCompositeBar extends Disposable {
+ 
+ 	private static readonly ACCOUNTS_ACTION_INDEX = 0;

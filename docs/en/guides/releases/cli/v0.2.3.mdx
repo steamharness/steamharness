@@ -1,0 +1,41 @@
+---
+title: "CLI 0.2.3"
+description: "Release notes for CLI 0.2.3."
+---
+
+# CLI 0.2.3
+
+2026-09-01 · Tag `@workflow-code/cli/v0.2.3` · npm
+
+<span id="@workflow-code/cli-0-2-3" className="release-version-anchor"></span>
+<span id="@workflow-code/cli.0.2.3" className="release-version-anchor"></span>
+
+#### New Features
+
+- **Local MCP endpoint**: `workflow-code mcp <workflow-dir>` exposes every entrypoint as a standard stdio MCP tool.
+- **Related project access**: `--related-project` explicitly enables mutually confirmed related-project KV access.
+- **MCP lifecycle reporting**: hosted by the headless Desktop launcher, the CLI reports complete snapshots over dedicated IPC. See [CLI](/en/cli/workflow-code).
+
+#### Breaking Changes
+
+- The `--grant-data-access` and Kanban `dataSources` grant flows are removed.
+  Migration: project-group dependencies now come from mutually confirmed `workflowCode.projectInfo.relatedProjects`.
+- `workspace upload --create` requires a predeclared top-level UUID and `dataStorage.mode`.
+  Migration: Server no longer assigns or writes back project IDs.
+
+#### Added
+
+- Added `workflow-code mcp <workflow-dir>`, exposing every entrypoint as a standard stdio MCP tool.
+- Added a repeatable `--related-project <alias>=<absolute-project-dir>` option for local runs.
+
+#### Changed
+
+- Changed local `kv.*` and `persistentValue.*` to bind directly to the current project instead of a global scope.
+- Changed headless Desktop-hosted MCP runs to report full lifecycle snapshots for one runId over dedicated IPC.
+- Changed stdio stdout to carry only JSON-RPC, keeping input, args, report, stdout, and stderr in the snapshot.
+
+#### Fixed
+
+- Fixed MCP form elicitation terminating the waiting run and recording a diagnostic on invalid or failed responses.
+- Fixed the OpenAI Responses internal runner no longer writing AI SDK compatibility warnings to `stderr`.
+- Fixed `workflow-code structure` validating the complete `projectInfo` contract before analysis, exiting `1` on unsupported fields.

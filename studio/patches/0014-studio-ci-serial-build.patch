@@ -1,0 +1,71 @@
+diff --git a/build/gulpfile.extensions.ts b/build/gulpfile.extensions.ts
+index fdf68387..83d6d5e2 100644
+--- a/build/gulpfile.extensions.ts
++++ b/build/gulpfile.extensions.ts
+@@ -235,7 +235,8 @@ const tasks = compilations.map(function (tsconfigFile) {
+ const transpileExtensionsTask = task.define('transpile-extensions', task.parallel(...tasks.map(t => t.transpileTask)));
+ task.task(transpileExtensionsTask);
+ 
+-export const compileExtensionsTask = task.define('compile-extensions', task.parallel(...tasks.map(t => t.compileTask)));
++export const compileExtensionsTask = task.define('compile-extensions',
++	(process.env.STUDIO_CI_SERIAL_BUILD === '1' ? task.series : task.parallel)(...tasks.map(t => t.compileTask)));
+ task.task(compileExtensionsTask);
+ 
+ export const watchExtensionsTask = task.define('watch-extensions', task.parallel(...tasks.map(t => t.watchTask)));
+diff --git a/build/next/build-fast.ts b/build/next/build-fast.ts
+index ca0cb3b3..01d822de 100644
+--- a/build/next/build-fast.ts
++++ b/build/next/build-fast.ts
+@@ -106,17 +106,17 @@ export async function runBuildFast(repoRoot: string, force: boolean): Promise<vo
+ 			before = await collectSnapshot(repoRoot);
+ 		}
+ 
+-		const tasks: Promise<void>[] = [];
++		const tasks: (() => Promise<void>)[] = [];
+ 		if (plan.client === 'full') {
+-			tasks.push(runCommand(repoRoot, process.execPath, [path.join(repoRoot, 'build', 'next', 'index.ts'), 'transpile'], 'client'));
++			tasks.push(() => runCommand(repoRoot, process.execPath, [path.join(repoRoot, 'build', 'next', 'index.ts'), 'transpile'], 'client'));
+ 		} else if (plan.client === 'incremental') {
+-			tasks.push(runTimed('client', () => applyIncrementalClientChanges(repoRoot, 'out', prerequisites.clientChangedPaths)));
++			tasks.push(() => runTimed('client', () => applyIncrementalClientChanges(repoRoot, 'out', prerequisites.clientChangedPaths)));
+ 		}
+ 		if (plan.extensions === 'full') {
+-			tasks.push(runCommand(repoRoot, npmCommand(), EXTENSION_BUILD_ARGS, 'extensions'));
++			tasks.push(() => runCommand(repoRoot, npmCommand(), EXTENSION_BUILD_ARGS, 'extensions'));
+ 		}
+ 		if (plan.copilot === 'full') {
+-			tasks.push(runCommand(repoRoot, npmCommand(), COPILOT_BUILD_ARGS, 'copilot'));
++			tasks.push(() => runCommand(repoRoot, npmCommand(), COPILOT_BUILD_ARGS, 'copilot'));
+ 		}
+ 
+ 		await waitForTasks(tasks);
+@@ -379,9 +379,9 @@ async function runAllFull(repoRoot: string): Promise<void> {
+ 		'compile-extension-point-names',
+ 	], 'prerequisites');
+ 	await waitForTasks([
+-		runCommand(repoRoot, process.execPath, [path.join(repoRoot, 'build', 'next', 'index.ts'), 'transpile'], 'client'),
+-		runCommand(repoRoot, npmCommand(), EXTENSION_BUILD_ARGS, 'extensions'),
+-		runCommand(repoRoot, npmCommand(), COPILOT_BUILD_ARGS, 'copilot'),
++		() => runCommand(repoRoot, process.execPath, [path.join(repoRoot, 'build', 'next', 'index.ts'), 'transpile'], 'client'),
++		() => runCommand(repoRoot, npmCommand(), EXTENSION_BUILD_ARGS, 'extensions'),
++		() => runCommand(repoRoot, npmCommand(), COPILOT_BUILD_ARGS, 'copilot'),
+ 	]);
+ }
+ 
+@@ -400,8 +400,14 @@ async function runCommand(cwd: string, command: string, args: readonly string[],
+ 	}));
+ }
+ 
+-async function waitForTasks(tasks: readonly Promise<void>[]): Promise<void> {
+-	const results = await Promise.allSettled(tasks);
++async function waitForTasks(tasks: readonly (() => Promise<void>)[]): Promise<void> {
++	if (process.env.STUDIO_CI_SERIAL_BUILD === '1') {
++		for (const task of tasks) {
++			await task();
++		}
++		return;
++	}
++	const results = await Promise.allSettled(tasks.map(task => task()));
+ 	const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+ 	if (failure) {
+ 		throw failure.reason;

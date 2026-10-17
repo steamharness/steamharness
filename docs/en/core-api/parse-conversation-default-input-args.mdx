@@ -1,0 +1,86 @@
+---
+title: "parseConversationDefaultInputArgs"
+description: "Parses message, images, videos, and files from the default conversation input."
+---
+
+# parseConversationDefaultInputArgs
+
+`workflow.parseConversationDefaultInputArgs(args)` parses the fixed `--message`, `--images`, `--videos`, and `--files` parameters written by the default conversation input. It does not read `WorkflowContext` or replace the executor's `createInput`.
+
+Conversation always uses the standard message input without an enable setting. Hosts serialize attachments according to `conversation.attachments`. Call this helper explicitly in `createInput({ args })`.
+
+## Signature
+
+```ts
+workflow.parseConversationDefaultInputArgs(
+  args: string[],
+): {
+  message: string;
+  images: WorkflowFileReference[];
+  videos: WorkflowFileReference[];
+  files: WorkflowFileReference[];
+}
+```
+
+## parsing rules
+
+|Parameter|Behavior|
+| --- | --- |
+| `--message <text>` |Reads the last occurrence of the value and executes `trim()`; returns an empty string if not passed.|
+| `--images <value>` |Each occurrence is parsed into one or more `WorkflowFileReference` s and eventually merged into an array.|
+| `--videos <value>` | Each occurrence is parsed into one or more references and merged into the videos array. |
+| `--files <value>` |Each occurrence is parsed into one or more `WorkflowFileReference` s and eventually merged into an array.|
+|Missing value|The flag is ignored.|
+|Other parameters|Reserved for business code to parse, this helper does not process.|
+
+`--images`, `--videos`, and `--files` accept file reference JSON or local path strings using `parseWorkflowFileReferences()`, just like the file input node. Only projects with `attachments.videos: true` use `--videos`; existing projects with only `files: true` continue to serialize videos under `--files`.
+
+## executor Configuration
+
+```ts
+export const executor = workflow.defineExecutor<Input, OutputPayload>({
+  projectType: "conversation",
+  workflow: conversationWorkflow,
+  conversation: {
+    attachments: {
+      images: true,
+      videos: true,
+      files: true,
+    },
+  },
+  createInput({ args, conversationId }) {
+    const defaults = workflow.parseConversationDefaultInputArgs(args);
+    return {
+      conversationId,
+      message: defaults.message,
+      images: defaults.images,
+      videos: defaults.videos,
+      files: defaults.files,
+    };
+  },
+});
+```
+
+## with file input node
+
+The helper only resolves the parameter to `WorkflowFileReference[]`. If you need to read the contents of the file, pass the reference to `workflow.createFileInputNode()`:
+
+```ts
+const imageInputNode = workflow.createFileInputNode({
+  name: "images",
+  accept: ["image/png", "image/jpeg", "image/webp"],
+  multiple: true,
+});
+
+const images = await workflow.runNode(imageInputNode, input.images, context);
+const imageParts = await Promise.all(images.map((file) => file.toLLMImagePart()));
+```
+
+## Precautions
+
+|Scene|Description|
+| --- | --- |
+|Multiple `--message`|Returns the last value suitable for the host to overwrite the previous draft with the next input.|
+|Multiple attachments|`--images`, `--videos`, and `--files` each merge all occurrences.|
+|Enable default input box|You still need to explicitly call the helper in `createInput`.|
+|CLI Manual debugging|Pass `--message`, `--images`, `--videos`, and `--files` to simulate the default input box.|

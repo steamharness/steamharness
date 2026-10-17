@@ -1,0 +1,23 @@
+diff --git a/src/vs/workbench/contrib/markers/browser/markers.contribution.ts b/src/vs/workbench/contrib/markers/browser/markers.contribution.ts
+index 43a883c5..7b3ccc4f 100644
+--- a/src/vs/workbench/contrib/markers/browser/markers.contribution.ts
++++ b/src/vs/workbench/contrib/markers/browser/markers.contribution.ts
+@@ -39,6 +39,7 @@ import { problemsConfigurationNodeBase } from '../../../common/configuration.js'
+ import { MarkerChatContextContribution } from './markersChatContext.js';
+ import { AccessibleViewRegistry } from '../../../../platform/accessibility/browser/accessibleViewRegistry.js';
+ import { ProblemsAccessibilityHelp } from './markersAccessibilityHelp.js';
++import product from '../../../../platform/product/common/product.js';
+ 
+ KeybindingsRegistry.registerCommandAndKeybindingRule({
+ 	id: Markers.MARKER_OPEN_ACTION_ID,
+@@ -689,7 +690,9 @@ class MarkersStatusBarContributions extends Disposable implements IWorkbenchCont
+ 	}
+ }
+ 
+-workbenchRegistry.registerWorkbenchContribution(MarkersStatusBarContributions, LifecyclePhase.Restored);
++if (!product.disabledWorkbenchViews?.includes(Markers.MARKERS_VIEW_ID)) {
++	workbenchRegistry.registerWorkbenchContribution(MarkersStatusBarContributions, LifecyclePhase.Restored);
++}
+ 
+ registerWorkbenchContribution2(MarkerChatContextContribution.ID, MarkerChatContextContribution, WorkbenchPhase.AfterRestored);
+ 

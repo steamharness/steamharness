@@ -1,0 +1,421 @@
+diff --git a/src/vs/base/browser/ui/dialog/dialog.ts b/src/vs/base/browser/ui/dialog/dialog.ts
+index 34d22b5d..871b5229 100644
+--- a/src/vs/base/browser/ui/dialog/dialog.ts
++++ b/src/vs/base/browser/ui/dialog/dialog.ts
+@@ -62,6 +62,8 @@ export interface IDialogOptions {
+ 	readonly inputs?: IDialogInputOptions[];
+ 	readonly keyEventProcessor?: (event: StandardKeyboardEvent) => void;
+ 	readonly renderBody?: (container: HTMLElement) => void;
++	/** Additional controls in a custom body, in visual tab order. */
++	readonly focusableElements?: () => readonly HTMLElement[];
+ 	readonly renderFooter?: (container: HTMLElement) => void;
+ 	readonly icon?: ThemeIcon;
+ 	readonly buttonOptions?: Array<undefined | { sublabel?: string; styleButton?: (button: IButton) => void }>;
+@@ -358,6 +360,7 @@ export class Dialog extends Disposable {
+ 			const window = getWindow(this.container);
+ 			let sawEscapeKeyDown = false;
+ 			this._register(addDisposableListener(window, 'keydown', e => {
++				if (isHTMLElement(e.target) && this.options.isExternalFocusAllowed?.(e.target)) { return; }
+ 				const evt = new StandardKeyboardEvent(e);
+ 
+ 				if (evt.equals(KeyCode.Escape)) {
+@@ -425,6 +428,10 @@ export class Dialog extends Disposable {
+ 							}
+ 						}
+ 					}
++					for (const element of this.options.focusableElements?.() ?? []) {
++						focusableElements.push(element);
++						if (isActiveElement(element)) { focusedIndex = focusableElements.length - 1; }
++					}
+ 
+ 					for (const input of this.inputs) {
+ 						focusableElements.push(input);
+@@ -442,6 +449,7 @@ export class Dialog extends Disposable {
+ 
+ 					if (this.buttonBar) {
+ 						for (const button of this.buttonBar.buttons) {
++							if (!button.enabled) { continue; }
+ 							if (button instanceof ButtonWithDropdown) {
+ 								focusableElements.push(button.primaryButton);
+ 								if (button.primaryButton.hasFocus()) {
+@@ -502,6 +510,7 @@ export class Dialog extends Disposable {
+ 			}, true));
+ 
+ 			this._register(addDisposableListener(window, 'keyup', e => {
++				if (isHTMLElement(e.target) && this.options.isExternalFocusAllowed?.(e.target)) { return; }
+ 				EventHelper.stop(e, true);
+ 				const evt = new StandardKeyboardEvent(e);
+ 
+diff --git a/src/vs/workbench/browser/parts/editor/media/studioStart.css b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+index adee7783..45d0b146 100644
+--- a/src/vs/workbench/browser/parts/editor/media/studioStart.css
++++ b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+@@ -13,7 +13,7 @@
+ .studio-start-header { display:flex; align-items:center; gap:12px; margin-bottom:28px; }
+ .studio-start .studio-start-logo { font-size:28px; color:var(--vscode-textLink-foreground); }
+ .studio-start h1 { font-size:24px; font-weight:500; margin:0; line-height:1.3; overflow-wrap:anywhere; }
+-.studio-start-toolbar { margin-left:auto; }
++.studio-start-toolbar { display:flex; align-items:center; gap:8px; margin-left:auto; }
+ .studio-start-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr)); gap:28px 40px; }
+ .studio-start section { min-width:0; }
+ .studio-start h2 { font-size:14px; font-weight:600; line-height:20px; margin:0 0 12px; }
+@@ -25,9 +25,18 @@
+ .studio-start-action-label { min-width:0; overflow-wrap:anywhere; }
+ .studio-start-action-icon { display:flex; align-items:center; justify-content:center; flex:none; width:32px; height:32px; padding:8px; }
+ .studio-start-action-icon > .codicon { height:16px; }
+-.studio-start-create .studio-start-list, .studio-start-quick { display:flex; flex-direction:column; align-items:stretch; }
+-.studio-start-example { margin-bottom:8px; }
+-.studio-start-example p { margin:0 8px 4px 32px; color:var(--vscode-descriptionForeground); font-size:12px; line-height:20px; overflow-wrap:anywhere; }
++.studio-start-quick { display:flex; flex-direction:column; align-items:stretch; }
++.studio-start-primary { width:auto; color:var(--vscode-button-foreground); background:var(--vscode-button-background); }
++.studio-start-primary:hover { color:var(--vscode-button-foreground); background:var(--vscode-button-hoverBackground); }
++.studio-start-current { grid-column:1 / -1; }
++.studio-start-current .studio-start-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); align-items:stretch; gap:12px; }
++.studio-start-project-card { display:flex; flex-direction:column; box-sizing:border-box; min-width:0; padding:16px; border:1px solid var(--vscode-widget-border,var(--vscode-panel-border)); border-radius:6px; }
++.studio-start-project-heading { display:grid; grid-template-columns:20px minmax(0,1fr); align-items:start; gap:8px; }
++.studio-start-project-heading > .codicon { line-height:20px; color:var(--vscode-descriptionForeground); }
++.studio-start-project-heading h3 { margin:0; font-size:14px; font-weight:600; line-height:20px; overflow-wrap:anywhere; }
++.studio-start-project-type { margin:8px 0 4px; font-size:12px; line-height:18px; color:var(--vscode-descriptionForeground); }
++.studio-start-project-path { margin:0; min-height:36px; font-size:12px; line-height:18px; color:var(--vscode-descriptionForeground); overflow-wrap:anywhere; }
++.studio-start-project-actions { display:flex; align-items:center; gap:8px; margin-top:auto; padding-top:14px; }
+ .studio-start-project { display:grid; grid-template-columns:minmax(0,1fr) 32px; align-items:start; gap:4px; }
+ .studio-start-recent [data-action="studio.removeRecentProject"] { opacity:0; pointer-events:none; }
+ .studio-start-recent .studio-start-project:hover > [data-action="studio.removeRecentProject"], .studio-start-recent .studio-start-project:focus-within > [data-action="studio.removeRecentProject"] { opacity:1; pointer-events:auto; }
+@@ -37,7 +46,7 @@
+ .studio-start-stats dd { margin:0; overflow-wrap:anywhere; }
+ .studio-start-muted { color:var(--vscode-descriptionForeground); line-height:1.5; margin:0; }
+ .studio-start-error { color:var(--vscode-errorForeground); white-space:pre-wrap; overflow-wrap:anywhere; margin:24px 0 0; line-height:1.5; }
+-.studio-start-pending { display:flex; flex-wrap:wrap; gap:5px 10px; align-items:center; margin-bottom:10px; overflow-wrap:anywhere; }
++.studio-start-pending { display:flex; flex-wrap:wrap; grid-column:1 / -1; gap:5px 10px; align-items:center; margin-bottom:10px; overflow-wrap:anywhere; }
+ .studio-start-pending > .studio-start-action:not(.studio-start-action-icon) { width:auto; }
+ .studio-start-pending small { color:var(--vscode-descriptionForeground); }
+ .studio-start-overlay { position:absolute; top:0; left:0; pointer-events:none; }
+diff --git a/src/vs/workbench/browser/parts/editor/studioStart.ts b/src/vs/workbench/browser/parts/editor/studioStart.ts
+index 9d181da5..d8bbecda 100644
+--- a/src/vs/workbench/browser/parts/editor/studioStart.ts
++++ b/src/vs/workbench/browser/parts/editor/studioStart.ts
+@@ -18,7 +18,7 @@ export interface StudioStartState {
+ 	version: 1;
+ 	labels: Record<string, string>;
+ 	templates: { id: string; projectType: string; kind: string; name: string; description: string }[];
+-	projects: { uri: string; name: string; projectType: string }[];
++	projects: { uri: string; name: string; projectType: string; folderPath: string }[];
+ 	recent: { uri: string; label: string; kind: string; lastOpened: number; projectType?: string }[];
+ 	pending: { id: string; name: string; directory: string; status: string; error?: string }[];
+ 	environment: { studio: string; vscode: string; node?: string; core?: string; cli?: string; account: string; server: string; error?: string };
+@@ -93,11 +93,10 @@ export class StudioStartView extends Disposable {
+ 		append(header, $('span.codicon.codicon-layout.studio-start-logo')).setAttribute('aria-hidden', 'true');
+ 		append(header, $('h1', undefined, 'Workflow Studio'));
+ 		const top = append(header, $('.studio-start-toolbar'));
++		this.button(top, 'create', 'add', 'studio.createProject', undefined, true).classList.add('studio-start-primary');
+ 		this.button(top, 'refresh', 'refresh', 'studio.refreshStart', undefined, false, true);
+ 		const grid = append(inner, $('.studio-start-grid'));
+-		this.section(grid, 'create');
+ 		this.section(grid, 'current');
+-		this.section(grid, 'examples');
+ 		this.section(grid, 'recent');
+ 		const system = this.section(grid, 'system');
+ 		const details = append(system, $('dl.studio-start-stats'));
+@@ -139,7 +138,7 @@ export class StudioStartView extends Disposable {
+ 	private section(parent: HTMLElement, key: string): HTMLElement {
+ 		const section = append(parent, $(`section.studio-start-${key}`));
+ 		this.labels.set(key, append(section, $('h2')));
+-		if (['create', 'current', 'examples', 'recent'].includes(key)) {
++		if (['current', 'recent'].includes(key)) {
+ 			this.lists.set(key, { element: append(section, $('.studio-start-list')), key: '', disposables: this._register(new DisposableStore()) });
+ 		}
+ 		return section;
+@@ -184,26 +183,18 @@ export class StudioStartView extends Disposable {
+ 			action.button.disabled = action.creation && (!state.canCreate || state.busy);
+ 		}
+ 		const listKey = { labels: state.labels, busy: state.busy, canCreate: state.canCreate };
+-		this.list('create', { ...listKey, templates: state.templates.filter(template => template.kind === 'starter') }, (root, store) => {
+-			for (const template of state.templates.filter(template => template.kind === 'starter')) {
+-				const button = this.button(root, template.name, studioProjectIcon(template.projectType) ?? 'folder', 'studio.createProject', template.projectType, true, false, store);
+-				button.disabled = !state.canCreate || state.busy;
+-			}
+-		});
+-		this.list('examples', { ...listKey, templates: state.templates.filter(template => template.kind === 'example') }, (root, store) => {
+-			for (const template of state.templates.filter(template => template.kind === 'example')) {
+-				const row = append(root, $('.studio-start-example'));
+-				const button = this.button(row, template.name, studioProjectIcon(template.projectType) ?? 'folder', 'studio.createExample', template.id, true, false, store);
+-				button.disabled = !state.canCreate || state.busy;
+-				append(row, $('p', undefined, template.description));
+-			}
+-		});
+ 		this.list('current', { projects: state.projects, pending: state.pending, installing: state.installing, ...listKey }, (root, store) => {
+ 			if (!state.projects.length && !state.pending.length) { append(root, $('p.studio-start-muted', undefined, text('noCurrent'))); }
+ 			for (const project of state.projects) {
+-				const row = append(root, $('.studio-start-project'));
+-				this.button(row, project.name, studioProjectIcon(project.projectType) ?? 'folder', 'studio.openWorkflow', { uri: project.uri }, false, false, store);
+-				this.button(row, text('source'), 'code', 'studio.openWorkflowSource', { uri: project.uri }, false, true, store);
++				const card = append(root, $('article.studio-start-project-card'));
++				const heading = append(card, $('.studio-start-project-heading'));
++				append(heading, $(`span.codicon.codicon-${studioProjectIcon(project.projectType) ?? 'folder'}`)).setAttribute('aria-hidden', 'true');
++				append(heading, $('h3', undefined, project.name));
++				append(card, $('p.studio-start-project-type', undefined, text(`type.${project.projectType}`)));
++				append(card, $('p.studio-start-project-path', undefined, project.folderPath));
++				const actions = append(card, $('.studio-start-project-actions'));
++				this.button(actions, text('run'), 'play', 'studio.openWorkflow', { uri: project.uri }, false, false, store).classList.add('studio-start-primary');
++				this.button(actions, text('source'), 'code', 'studio.openWorkflowSource', { uri: project.uri }, false, true, store);
+ 			}
+ 			for (const project of state.pending) {
+ 				const row = append(root, $('.studio-start-pending'));
+diff --git a/src/vs/workbench/contrib/studioStart/browser/media/studioProjectCreateDialog.css b/src/vs/workbench/contrib/studioStart/browser/media/studioProjectCreateDialog.css
+new file mode 100644
+index 00000000..77ce2932
+--- /dev/null
++++ b/src/vs/workbench/contrib/studioStart/browser/media/studioProjectCreateDialog.css
+@@ -0,0 +1,34 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++.monaco-dialog-modal-block .monaco-dialog-box.studio-create-dialog { box-sizing:border-box; width:560px; max-width:calc(100vw - 32px); min-width:0; border-radius:6px; user-select:text; }
++.studio-create-dialog .dialog-message-container { min-width:0; width:100%; scrollbar-width:thin; scrollbar-color:transparent transparent; }
++.studio-create-dialog .dialog-message-container:hover, .studio-create-dialog .dialog-message-container:focus-within { scrollbar-color:var(--vscode-scrollbarSlider-background) transparent; }
++.studio-create-form { display:flex; flex-direction:column; gap:18px; padding-top:12px; min-width:0; letter-spacing:0; }
++.studio-create-form fieldset { border:0; padding:0; margin:0; min-width:0; }
++.studio-create-form legend, .studio-create-field > label { display:block; font-size:12px; font-weight:600; padding:0; margin:0 0 8px; }
++.studio-create-types { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px; }
++.studio-create-type { display:flex; align-items:center; justify-content:center; gap:6px; padding:8px 4px; border:1px solid var(--vscode-input-border,transparent); background:var(--vscode-input-background); border-radius:4px; cursor:pointer; min-width:0; overflow-wrap:anywhere; }
++.studio-create-type:has(:checked) { border-color:var(--vscode-focusBorder); background:var(--vscode-list-activeSelectionBackground); color:var(--vscode-list-activeSelectionForeground); }
++.studio-create-type input { position:absolute; opacity:0; width:1px; height:1px; }
++.studio-create-type:focus-within { outline:1px solid var(--vscode-focusBorder); outline-offset:2px; }
++.studio-create-options { max-height:230px; overflow:auto; scrollbar-width:thin; scrollbar-color:transparent transparent; }
++.studio-create-options:hover, .studio-create-options:focus-within { scrollbar-color:var(--vscode-scrollbarSlider-background) transparent; }
++.studio-create-template { display:grid; grid-template-columns:16px minmax(0,1fr); align-items:start; gap:8px; padding:10px 8px; border-bottom:1px solid var(--vscode-widget-border,transparent); cursor:pointer; }
++.studio-create-template:hover { background:var(--vscode-list-hoverBackground); }
++.studio-create-template input { margin:3px 0 0; accent-color:var(--vscode-focusBorder); }
++.studio-create-template-details { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 12px; font-size:13px; line-height:18px; overflow-wrap:anywhere; }
++.studio-create-template-kind, .studio-create-template-description { color:var(--vscode-descriptionForeground); font-size:12px; }
++.studio-create-template-description { grid-column:1/-1; }
++.studio-create-field { min-width:0; }
++.studio-create-directory { display:grid; grid-template-columns:minmax(0,1fr) 30px; align-items:end; gap:8px; }
++.studio-create-browse { display:flex; align-items:center; justify-content:center; height:28px; padding:0; border:0; border-radius:4px; background:transparent; color:var(--vscode-icon-foreground); cursor:pointer; }
++.studio-create-browse:hover { background:var(--vscode-toolbar-hoverBackground); }
++.studio-create-browse:focus-visible { outline:1px solid var(--vscode-focusBorder); }
++.studio-create-error { min-height:18px; margin:0; color:var(--vscode-errorForeground); font-size:12px; line-height:18px; white-space:pre-wrap; overflow-wrap:anywhere; }
++@media (max-width:480px) {
++ .studio-create-type { flex-direction:column; font-size:12px; }
++ .studio-create-template-details { grid-template-columns:minmax(0,1fr); }
++ .studio-create-template-description { grid-column:auto; }
++}
+diff --git a/src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts b/src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts
+new file mode 100644
+index 00000000..20440063
+--- /dev/null
++++ b/src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts
+@@ -0,0 +1,191 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { $, addDisposableListener, append, clearNode } from '../../../../base/browser/dom.js';
++import { IButton } from '../../../../base/browser/ui/button/button.js';
++import { Dialog } from '../../../../base/browser/ui/dialog/dialog.js';
++import { InputBox } from '../../../../base/browser/ui/inputbox/inputBox.js';
++import { Disposable, DisposableStore } from '../../../../base/common/lifecycle.js';
++import { generateUuid } from '../../../../base/common/uuid.js';
++import { ICommandService } from '../../../../platform/commands/common/commands.js';
++import { IKeybindingService } from '../../../../platform/keybinding/common/keybinding.js';
++import { ILayoutService } from '../../../../platform/layout/browser/layoutService.js';
++import { defaultInputBoxStyles } from '../../../../platform/theme/browser/defaultStyles.js';
++import { createWorkbenchDialogOptions } from '../../../browser/parts/dialogs/dialog.js';
++import { StudioStartState } from '../../../browser/parts/editor/studioStart.js';
++import { studioProjectIcon } from '../../../common/studioProjectIcons.js';
++import { IHostService } from '../../../services/host/browser/host.js';
++import './media/studioProjectCreateDialog.css';
++
++interface ProjectCreationInput { templateId: string; name: string; parentDirectory: string }
++export interface ProjectCreationDialogRequest {
++	templates: StudioStartState['templates'];
++	labels: Record<string, string>;
++	parentDirectory: string;
++	templateId?: string;
++	projectType?: string;
++}
++
++/** Native form shared by the Start action and project creation commands. */
++export class StudioProjectCreateDialog extends Disposable {
++	private readonly dialog: Dialog;
++	private readonly choices = this._register(new DisposableStore());
++	private form!: HTMLElement;
++	private name!: InputBox;
++	private parent!: InputBox;
++	private error!: HTMLElement;
++	private createButton: IButton | undefined;
++	private templateId: string;
++	private projectType: string;
++	private revision = 0;
++	private timer: ReturnType<typeof setTimeout> | undefined;
++	private closed = false;
++	private browsing = false;
++
++	constructor(
++		private readonly request: ProjectCreationDialogRequest,
++		@ICommandService private readonly commands: ICommandService,
++		@IKeybindingService keybindings: IKeybindingService,
++		@ILayoutService layout: ILayoutService,
++		@IHostService host: IHostService,
++	) {
++		super();
++		const initial = request.templates.find(template => template.id === request.templateId)
++			?? request.templates.find(template => template.projectType === request.projectType)
++			?? request.templates[0];
++		this.projectType = initial?.projectType ?? 'workflow';
++		this.templateId = initial?.id ?? '';
++		this.dialog = this._register(new Dialog(layout.activeContainer, this.text('create'), [this.text('confirmCreate'), this.text('cancel')],
++			createWorkbenchDialogOptions({
++				type: 'none', cancelId: 1, extraClasses: ['studio-create-dialog'],
++				renderBody: container => this.render(container),
++				focusableElements: () => Array.from(this.form.querySelectorAll<HTMLElement>('input,button')).filter(element => element.tabIndex >= 0 && !element.matches(':disabled')),
++				isExternalFocusAllowed: element => this.browsing && !!element.closest('.quick-input-widget'),
++				buttonOptions: [{ styleButton: button => { this.createButton = button; button.enabled = false; } }],
++			}, keybindings, layout, host)));
++	}
++
++	private text(key: string): string { return this.request.labels[key] ?? key; }
++
++	private input(parent: HTMLElement, key: string, value = ''): InputBox {
++		const field = append(parent, $('.studio-create-field'));
++		const id = generateUuid();
++		append(field, $('label', { for: id }, this.text(key)));
++		const control = this._register(new InputBox(field, undefined, { ariaLabel: this.text(key), inputBoxStyles: defaultInputBoxStyles }));
++		control.inputElement.id = id;
++		control.inputElement.dataset.field = key;
++		control.value = value;
++		this._register(control.onDidChange(() => this.validate()));
++		return control;
++	}
++
++	private render(container: HTMLElement): void {
++		this.form = append(container, $('.studio-create-form'));
++		const types = append(this.form, $('fieldset.studio-create-types'));
++		append(types, $('legend', undefined, this.text('projectType')));
++		const templates = append(this.form, $('fieldset.studio-create-templates'));
++		append(templates, $('legend', undefined, this.text('template')));
++		const options = append(templates, $('.studio-create-options'));
++		for (const type of ['workflow', 'conversation', 'kanban']) {
++			const label = append(types, $('label.studio-create-type'));
++			const radio = append(label, $<HTMLInputElement>('input', { type: 'radio', name: 'projectType', value: type }));
++			radio.checked = this.projectType === type;
++			radio.tabIndex = radio.checked ? 0 : -1;
++			append(label, $(`span.codicon.codicon-${studioProjectIcon(type)}`)).setAttribute('aria-hidden', 'true');
++			append(label, $('span', undefined, this.text(`type.${type}`)));
++			this._register(addDisposableListener(radio, 'change', () => {
++				if (!radio.checked) { return; }
++				this.projectType = type;
++				for (const input of types.querySelectorAll<HTMLInputElement>('input')) { input.tabIndex = input.checked ? 0 : -1; }
++				this.renderTemplates(options);
++				this.validate();
++			}));
++		}
++		this.renderTemplates(options);
++		this.name = this.input(this.form, 'projectName');
++		const directory = append(this.form, $('.studio-create-directory'));
++		this.parent = this.input(directory, 'parentDirectory', this.request.parentDirectory);
++		const browse = append(directory, $<HTMLButtonElement>('button.studio-create-browse', { type: 'button', title: this.text('browse'), 'aria-label': this.text('browse') }));
++		append(browse, $('span.codicon.codicon-folder-opened')).setAttribute('aria-hidden', 'true');
++		this._register(addDisposableListener(browse, 'click', async () => {
++			if (this.browsing) { return; }
++			this.browsing = true;
++			browse.disabled = true;
++			try {
++				const selected = await this.commands.executeCommand<string | undefined>('studio.internalChooseProjectParent', this.parent.value);
++				if (!this.closed && selected) { this.parent.value = selected; this.validate(); }
++			} catch (error) {
++				if (!this.closed) { this.error.textContent = String(error); }
++			} finally {
++				this.browsing = false;
++				browse.disabled = false;
++				if (!this.closed) { this.parent.focus(); }
++			}
++		}));
++		this.error = append(this.form, $('p.studio-create-error', { role: 'status', 'aria-live': 'polite' }));
++		this._register(addDisposableListener(this.form, 'keydown', event => {
++			if (event.key === 'Enter' && !event.isComposing && (event.target === this.name.inputElement || event.target === this.parent.inputElement)) {
++				event.preventDefault(); event.stopPropagation();
++				if (this.createButton?.enabled) { this.createButton.element.click(); }
++			}
++		}));
++	}
++
++	private renderTemplates(container: HTMLElement): void {
++		this.choices.clear(); clearNode(container);
++		const templates = this.request.templates.filter(template => template.projectType === this.projectType);
++		if (!templates.some(template => template.id === this.templateId)) { this.templateId = templates[0]?.id ?? ''; }
++		for (const template of templates) {
++			const label = append(container, $('label.studio-create-template'));
++			const radio = append(label, $<HTMLInputElement>('input', { type: 'radio', name: 'templateId', value: template.id }));
++			radio.checked = template.id === this.templateId;
++			radio.tabIndex = radio.checked ? 0 : -1;
++			const details = append(label, $('span.studio-create-template-details'));
++			append(details, $('span.studio-create-template-name', undefined, template.name));
++			append(details, $('span.studio-create-template-kind', undefined, this.text(template.kind === 'starter' ? 'starter' : 'examples')));
++			append(details, $('span.studio-create-template-description', undefined, template.description));
++			this.choices.add(addDisposableListener(radio, 'change', () => {
++				if (radio.checked) {
++					this.templateId = template.id;
++					for (const input of container.querySelectorAll<HTMLInputElement>('input')) { input.tabIndex = input.checked ? 0 : -1; }
++					this.validate();
++				}
++			}));
++		}
++	}
++
++	private inputValue(): ProjectCreationInput {
++		return { templateId: this.templateId, name: this.name.value.trim(), parentDirectory: this.parent.value.trim() };
++	}
++
++	private validate(): void {
++		clearTimeout(this.timer);
++		const revision = ++this.revision;
++		if (this.createButton) { this.createButton.enabled = false; }
++		const input = this.inputValue();
++		this.error.textContent = !input.name ? this.text('requiredName') : !input.parentDirectory ? this.text('requiredParent') : '';
++		if (!input.name || !input.parentDirectory || !input.templateId) { return; }
++		this.timer = setTimeout(async () => {
++			let error: string | undefined;
++			try { error = (await this.commands.executeCommand<{ error?: string }>('studio.internalValidateProjectCreation', input))?.error; }
++			catch (reason) { error = String(reason); }
++			if (this.closed || revision !== this.revision) { return; }
++			this.error.textContent = error ?? '';
++			if (this.createButton) { this.createButton.enabled = !error; }
++		}, 250);
++	}
++
++	async show(): Promise<ProjectCreationInput | undefined> {
++		const result = this.dialog.show();
++		this.name.focus();
++		const { button } = await result;
++		return button === 0 ? this.inputValue() : undefined;
++	}
++
++	override dispose(): void {
++		this.closed = true; ++this.revision; clearTimeout(this.timer);
++		super.dispose();
++	}
++}
+diff --git a/src/vs/workbench/contrib/studioStart/browser/studioStart.contribution.ts b/src/vs/workbench/contrib/studioStart/browser/studioStart.contribution.ts
+index 4c2acf66..a6b9f02e 100644
+--- a/src/vs/workbench/contrib/studioStart/browser/studioStart.contribution.ts
++++ b/src/vs/workbench/contrib/studioStart/browser/studioStart.contribution.ts
+@@ -19,6 +19,7 @@ import { EditorExtensions, IEditorFactoryRegistry, IUntypedEditorInput } from '.
+ import { EditorInput } from '../../../common/editor/editorInput.js';
+ import { IEditorGroup } from '../../../services/editor/common/editorGroupsService.js';
+ import { IEditorService } from '../../../services/editor/common/editorService.js';
++import { ProjectCreationDialogRequest, StudioProjectCreateDialog } from './studioProjectCreateDialog.js';
+ 
+ class StudioStartInput extends EditorInput {
+ 	static readonly ID = 'studio.start';
+@@ -59,3 +60,8 @@ Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).registerEditorPane
+ 	EditorPaneDescriptor.create(StudioStartEditor, StudioStartEditor.ID, 'Studio'), [new SyncDescriptor(StudioStartInput)]);
+ CommandsRegistry.registerCommand('studio.openStart', accessor => accessor.get(IEditorService).openEditor(
+ 	accessor.get(IInstantiationService).createInstance(StudioStartInput), { pinned: true, revealIfOpened: true }));
++CommandsRegistry.registerCommand('studio.internalShowCreateProject', async (accessor, request: ProjectCreationDialogRequest) => {
++	const dialog = accessor.get(IInstantiationService).createInstance(StudioProjectCreateDialog, request);
++	try { return await dialog.show(); }
++	finally { dialog.dispose(); }
++});

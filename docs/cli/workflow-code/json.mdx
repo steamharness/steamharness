@@ -1,0 +1,111 @@
+---
+title: "workflow-code json"
+description: "本地执行 workflow，并输出完整 JSON 执行报告。"
+---
+
+# workflow-code json
+
+`workflow-code json` 与 `run --json` 使用相同执行路径，但默认输出完整执行报告。它适合调试节点顺序、错误信息、output node 结果和会话 ID。
+
+该命令只支持 Workflow 和 Conversation。Kanban 不产生 run report，调用时会返回“不支持 workflow 执行”的明确错误。
+
+## 命令格式
+
+```bash
+workflow-code json [workflow-dir] [--entrypoint <id>] [--run-id <id>] [--conversation-id <id>] [--file-store-dir <dir>] [--related-project <alias>=<absolute-project-dir>] [--resolved-user-inputs-json <json>] [--tool-permissions-json <json>] [--] [...args]
+```
+
+## 参数
+
+| 参数 | 说明 |
+| --- | --- |
+| `workflow-dir` | workflow 项目目录。不传时使用当前目录。 |
+| `args` | 所选入口（Conversation 则为 executor）的 `createInput({ args })` 可读取的原始参数数组。 |
+
+## 选项
+
+| 选项 | 说明 |
+| --- | --- |
+| `--entrypoint <id>` | 运行指定 Workflow 入口；省略时使用默认入口。Conversation 不接受非空值。 |
+| `--run-id <id>` | 指定本次执行 ID。用于恢复 `waiting_for_input` run 时保持同一个 runId。 |
+| `--conversation-id <id>` | 指定会话 ID。 |
+| `--file-store-dir <dir>` | 指定本地文件 store 目录。未传时读取 `WORKFLOW_FILE_STORE_DIR`。 |
+| `--related-project <alias>=<绝对项目目录>` | 显式提供一个双方已确认的关联项目；可重复指定，不扫描其它目录。 |
+| `--resolved-user-inputs-json <json>` | 注入已提交的用户输入答案数组。每项包含 `requestId`、`nodeName`、`values`、`submittedAt`。 |
+| `--tool-permissions-json <json>` | 宿主专用参数。CLI Web 可用它传入工具权限覆盖值；普通 CLI 不传时完全使用 executor `tools` 注册默认值。 |
+| `--json` | 兼容选项；该命令已经默认输出 JSON。 |
+
+## 报告结构
+
+| 字段 | 说明 |
+| --- | --- |
+| `runId` | 本次本地执行 ID。 |
+| `workflowName` | 实际执行的 workflow 名称。 |
+| `entrypointId` / `entrypointTitle` | Workflow 实际入口及其标题快照；Conversation 中省略。 |
+| `status` | `running`、`waiting_for_input`、`success`、`failed`、`aborted` 或 `timed_out`。 |
+| `definedNodes` | 静态分析到的节点定义。 |
+| `registry` | executor 注册的 debug node 列表。 |
+| `nodes` | 实际执行过的节点报告。 |
+| `outputs` | 名为 `output` 的成功 output node 结果。 |
+| `pendingUserInput` | `waiting_for_input` 时的等待请求，包含表单 `params` 和默认值。 |
+| `resolvedUserInputs` | 本 run 已提交并注入 runtime 的用户输入答案。 |
+| `result` | workflow 最终结果或标准错误。 |
+
+## Runtime event 输出
+
+| 配置 | 行为 |
+| --- | --- |
+| `WORKFLOW_DESKTOP_RUNTIME_EVENTS=1` | 在最终 JSON 前额外输出带前缀的 runtime event 行。 |
+| 未设置 | 只输出最终 JSON 报告。 |
+
+runtime event 前缀是 `__WORKFLOW_CODE_RUNTIME_EVENT__`，用于宿主消费流式运行事件。普通脚本解析最终 JSON 时应关闭该环境变量。
+
+## PersistentValue
+
+`workflow-code json` 按项目 `dataStorage.mode` 配置存储。`context.storage.local.kv` 使用 `WORKFLOW_KV_STORE_DIR`，`context.storage.local.persistentValue` 与本地知识库使用 `WORKFLOW_PERSISTENT_VALUE_STORE_DIR`；两类数据均按项目 UUID 隔离且互不重叠。`context.storage.server` 使用顶层项目 UUID 和 `WORKFLOW_SERVER_URL` / `WORKFLOW_SERVER_ADMIN_KEY` 或 workspace CLI 登录态 `workflow-auth.json`。两端互不回退或同步；禁止或缺少后端的位置会报错。关联项目通过 `--related-project` 显式绑定，并严格跟随当前调用的 local/server 位置。`context.files.createFile(...)` 仍使用服务器连接生成 server-backed 文件。
+
+## 示例
+
+```bash
+workflow-code json .
+workflow-code json . --entrypoint validate -- --message "只校验"
+workflow-code json ./conversation-project --conversation-id demo -- --message "继续"
+workflow-code json . --related-project inventory=/srv/workflows/inventory -- --message "读取库存"
+WORKFLOW_KV_STORE_DIR="$PWD/.workflow-kv" \
+WORKFLOW_PERSISTENT_VALUE_STORE_DIR="$PWD/.workflow-persistent-values" \
+  workflow-code json workspace/workflow/conversation-knowledge --conversation-id demo -- --message "记录今天的结论"
+workflow-code json workspace/workflow/hello -- --message "hello"
+workflow-code json workspace/workflow/runtime-timer -- --title "Fixture Timer" --milliseconds 2000
+```
+
+`runtime-timer` 示例的报告会包含一条 `success` 状态的 `timers` 记录，`durationMs` 会跟传入的 `--milliseconds` 接近一致。
+
+## 恢复用户输入节点
+
+CLI 不会从 stdin 交互式读取用户输入。遇到 `workflow.createUserInputNode(...)` 时，报告会进入 `waiting_for_input` 并包含 `pendingUserInput`：
+
+```bash
+workflow-code json . -- --message "deploy"
+```
+
+## 工具审批
+
+当 workflow 使用 `executor.tools` 和 `workflow.createToolApprovalGate()` 注册工具审批时，CLI 默认只按注册默认值执行。若工具启用但未自动批准，CLI 会像普通 user-input 一样输出 `waiting_for_input` 和 `pendingUserInput`，调用方再用相同 `runId` 与 `--resolved-user-inputs-json` 恢复。CLI Web 使用 `--tool-permissions-json` 传递本次 run 的策略快照，并在恢复 user-input 时继续传入同一份策略，避免审批后恢复丢失用户选择。
+
+提交答案后，用相同 `runId` 和 `requestId` 恢复：
+
+```bash
+workflow-code json . \
+  --run-id 20260604-abcd \
+  --resolved-user-inputs-json '[{"requestId":"demo:20260604-abcd:approval","nodeName":"approval","values":{"approved":true},"submittedAt":"2026-06-04T10:00:00.000Z"}]' \
+  -- --message "deploy"
+```
+
+## 退出码
+
+| 情况 | 退出码 |
+| --- | --- |
+| workflow 成功，且 payload `errCode` 为 `0` | `0` |
+| workflow 暂停为 `waiting_for_input` | `1`；报告 payload 的 `errCode` 为 `202`，可用同一 `runId` 恢复。 |
+| workflow 抛错或执行失败 | `1` |
+| payload `errCode` 非 `0` | `1` |

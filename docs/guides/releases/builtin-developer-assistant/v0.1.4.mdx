@@ -1,0 +1,26 @@
+---
+title: "开发者小助手 v0.1.4"
+description: "开发者小助手 v0.1.4 的更新说明。"
+---
+
+# 开发者小助手 v0.1.4
+
+2026-08-26 · Tag `builtin-developer-assistant/v0.1.4` · 内置项目更新
+
+<span id="builtin-developer-assistant-0-1-4" className="release-version-anchor"></span>
+<span id="builtin-developer-assistant.0.1.4" className="release-version-anchor"></span>
+
+#### 新特性
+
+- **精确 Core/CLI 声明**：Generator 约束项目精确声明组件版本，宿主只比较 Core 的 `major.minor` 兼容线。
+- **显式存储上下文**：项目必须声明 `dataStorage.mode`，知识库 helper 走显式存储上下文。
+
+#### 新增
+
+- 新增 发布索引与兼容清单原子记录项目精确声明的 Core/CLI 版本，供 Desktop 下载前筛选并核对。
+
+#### 变更
+
+- 变更 小助手本体迁移到 Core/CLI `0.2.0`，声明 `dataStorage.mode: "both"` 并透传存储上下文，最低宿主为 Desktop `0.1.22`。
+- 变更 Generator 改用 `context.storage.local.*` / `context.storage.server.*` 访问存储与知识库。
+- 变更 Generator 不再产出 `context.kv` 与 `context.persistentValue` 调用。

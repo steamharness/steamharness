@@ -1,0 +1,99 @@
+import { t } from '../localization';
+import './style.css';
+import './resource-preview.css';
+import { acquireWorkflowHost } from './host';
+import { iconButton, markdownHtml } from './ui';
+import type { ResourcePreviewData } from '../resource-preview';
+import { KANBAN_PREVIEW_READY_MESSAGE, KANBAN_BRIDGE_REQUEST_MESSAGE, KANBAN_BRIDGE_RESPONSE_MESSAGE,
+  KANBAN_BRIDGE_MAX_PENDING_REQUESTS, parseKanbanBridgeCall, createKanbanBridgeError } from '@workflow-code/kanban-project';
+
+type Message = Record<string, any>;
+const app = document.querySelector<HTMLElement>('#app')!;
+app.className = 'resource-preview-app';
+app.innerHTML = '<header class="resource-preview-toolbar"><div><h1></h1><span></span></div></header><main><div class="resource-preview-status" role="status"></div><div class="resource-preview-content"></div></main><aside id="project-menu" hidden></aside>';
+const host = acquireWorkflowHost({ live: false }), status = app.querySelector<HTMLElement>('.resource-preview-status')!, content = app.querySelector<HTMLElement>('.resource-preview-content')!;
+let id = location.pathname.split('/').at(-1)!, connected = false, data: ResourcePreviewData | undefined, frame: HTMLIFrameElement | undefined;
+let readyTimer: ReturnType<typeof setTimeout> | undefined, pendingBridge = 0, epoch = 0, authRevision: number | undefined, resourceRevision: number | undefined;
+const pending = new Map<string, { resolve(message: Message): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
+function request(message: Message): Promise<Message> {
+  if (!connected) { return Promise.reject(new Error(t('Connection interrupted.'))); }
+  const requestId = crypto.randomUUID();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { pending.delete(requestId); reject(new Error(t('The request timed out. Check the current status.'))); }, 30_000);
+    pending.set(requestId, { resolve, reject, timer }); host.postMessage({ ...message, id, requestId });
+  });
+}
+function fail(error: unknown): void { status.hidden = false; status.textContent = error instanceof Error ? error.message : String(error); status.setAttribute('role', 'alert'); }
+function inject(): void {
+  if (!frame || !data?.kanban) { return; }
+  const nonce = data.kanban.nonce;
+  frame.contentWindow?.postMessage({ type: 'workflow-code:kanban-theme', nonce, theme: document.documentElement.dataset.theme }, '*');
+  frame.contentWindow?.postMessage({ type: 'workflow-code:kanban-configuration', nonce, configuration: data.kanban.configuration }, '*');
+  frame.contentWindow?.postMessage({ type: 'workflow-code:kanban-presentation', nonce, presentation: { mode: new URL(location.href).searchParams.get('resourcePresentation') === 'card' ? 'card' : 'fullscreen' } }, '*');
+}
+function render(next: ResourcePreviewData): void {
+  data = next; frame = undefined; clearTimeout(readyTimer); content.replaceChildren(); status.hidden = true;
+  app.querySelector('header a')?.remove();
+  app.dataset.format = next.format;
+  app.querySelector('h1')!.textContent = next.card.title;
+  app.querySelector('.resource-preview-toolbar span')!.textContent = [next.card.target.source === 'server' ? t('Server') : t('Local'), next.project?.name].filter(Boolean).join(' / ');
+  if (next.format === 'kanban' || next.format === 'browser') {
+    frame = document.createElement('iframe'); frame.title = next.card.title; frame.sandbox.add('allow-scripts');
+    frame.src = next.kanban?.url ?? String(next.content); content.append(frame);
+    if (next.format === 'kanban') {
+      status.hidden = false; status.textContent = t('Loading Kanban');
+      readyTimer = setTimeout(() => fail(new Error(t('Unable to load this preview. Retry or open it separately.'))), 20_000);
+    } else {
+      const link = document.createElement('a'); link.href = String(next.content); link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = t('Open in browser'); app.querySelector('header')!.append(link);
+    }
+    return;
+  }
+  const value = next.content as any;
+  const items = Array.isArray(value) ? value : value?.items ?? value?.documents;
+  if (Array.isArray(items) && ['kv', 'knowledge'].includes(next.card.kind)) {
+    const list = document.createElement('div'); list.className = 'resource-preview-list';
+    for (const item of items) {
+      const button = document.createElement('button'); button.type = 'button';
+      button.textContent = item.title ?? item.key ?? item.id; button.onclick = () => void load({ documentId: item.documentId ?? item.id, key: item.key, scope: item.scope, conversationId: item.conversationId }); list.append(button);
+    }
+    if (!items.length) { list.textContent = t('No resources'); } content.append(list);
+  } else if (next.format === 'markdown') { const article = document.createElement('article'); article.className = 'markdown'; article.innerHTML = markdownHtml(typeof value === 'string' ? value : value.markdown); content.append(article); }
+  else { const pre = document.createElement('pre'); pre.textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2); content.append(pre); }
+}
+async function load(selection?: Message): Promise<void> {
+  const generation = ++epoch; status.hidden = false; status.textContent = t('Loading...'); status.setAttribute('role', 'status');
+  try { const reply = await request({ type: selection ? 'resource-select' : data ? 'resource-refresh' : 'resource-data', selection }); if (generation === epoch) { id = reply.id ?? id; render(reply.data); } }
+  catch (error) { if (generation === epoch) { content.replaceChildren(); fail(error); } }
+}
+app.querySelector('header')!.append(iconButton('refresh', t('Refresh'), () => void load()));
+addEventListener('message', event => {
+  const message: Message = event.data;
+  if (event.source === frame?.contentWindow) {
+    if (data?.format !== 'kanban' || !data.kanban || message?.nonce !== data.kanban.nonce) { return; }
+    if (message.type === KANBAN_PREVIEW_READY_MESSAGE) { clearTimeout(readyTimer); status.hidden = true; inject(); return; }
+    if (message.type !== KANBAN_BRIDGE_REQUEST_MESSAGE) { return; }
+    const target = frame.contentWindow, nonce = data.kanban.nonce, current = frame;
+    const respond = (reply: Message) => { if (frame === current) { target?.postMessage({ type: KANBAN_BRIDGE_RESPONSE_MESSAGE, requestId: message.requestId, nonce, ...reply }, '*'); } };
+    if (pendingBridge >= KANBAN_BRIDGE_MAX_PENDING_REQUESTS) { respond({ ok: false, error: { code: 'KANBAN_BRIDGE_BUSY', message: t('A data operation is in progress.') } }); return; }
+    let call;
+    try { call = parseKanbanBridgeCall({ requestId: message.requestId, operation: message.operation, input: message.input }); }
+    catch (error) { respond({ ok: false, error: createKanbanBridgeError(error) }); return; }
+    pendingBridge++;
+    void request({ type: 'resource-bridge', call }).then(reply => respond({ ok: true, value: reply.value }))
+      .catch(error => respond({ ok: false, error: createKanbanBridgeError(error) })).finally(() => pendingBridge--); return;
+  }
+  if (event.source !== null || !message) { return; }
+  const waiting = pending.get(message.requestId);
+  if (waiting) { pending.delete(message.requestId); clearTimeout(waiting.timer); message.type === 'error' ? waiting.reject(new Error(message.message)) : waiting.resolve(message); }
+  if (message.type === 'connection') { connected = message.status === 'connected'; if (connected && !data) { void load(); } }
+  if (message.type === 'state') {
+    if (authRevision !== undefined && authRevision !== message.authenticationRevision
+      || resourceRevision !== undefined && resourceRevision !== message.resourceRevision) {
+      clearTimeout(readyTimer); data = undefined; frame = undefined; content.replaceChildren(); void load();
+    }
+    authRevision = message.authenticationRevision;
+    resourceRevision = message.resourceRevision;
+  }
+});
+new MutationObserver(inject).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+addEventListener('pagehide', () => { epoch++; clearTimeout(readyTimer); for (const waiting of pending.values()) { clearTimeout(waiting.timer); } pending.clear(); });

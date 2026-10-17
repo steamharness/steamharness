@@ -1,0 +1,135 @@
+---
+title: "文件输入"
+description: "file param、上传文件和 WorkflowResolvedFile 的当前用法。"
+---
+
+# 文件输入
+
+workflow-code 支持通过 executor params 声明文件输入。本地客户端会先保存附件，workflow 中再通过 file reference 解析文件内容。
+
+## file param
+
+```ts
+params: [
+  {
+    name: "images",
+    flag: "--images",
+    type: "file",
+    multiple: true,
+    accept: ["image/png", "image/jpeg", "image/webp"],
+    format: "json",
+    required: false,
+    description: "图片附件。",
+  },
+]
+```
+
+文件 param 的 value 会被序列化为 JSON 字符串传给 `createInput`。
+
+图片和视频共用 `type: "file"`，通过 `accept` 指定可选格式。例如混合上传使用
+`accept: ["image/png", "image/jpeg", "video/mp4", "video/quicktime"]`，并在
+`createFileInputNode` 中声明同样的限制。CLI Web 会显示对应的上传操作，
+图片支持缩略图，视频支持原生播放器预览、下载和移除。视频引用保留 `kind: "file"`，
+以 `mimeType` 区分媒体类型；不会调用仅适用于图片的 `toLLMImagePart()`。
+
+Core 和 Server 可按文件名推断 MP4、M4V、MOV、AVI、MKV、WebM、OGV、MPG/MPEG
+的 MIME。明确提供的 `audio/webm` 会保留为音频。项目应按模型支持范围收窄 `accept`；
+MiniMax-M3 支持 MP4、MOV、AVI、MKV，上传支持并不保证浏览器能播放其编码。
+CLI Web 本地单文件限制为 50 MiB，Server 受托管文件大小配置限制。
+
+音频输入使用 `type: "file", control: "audio"`。共享工作区支持录音、试听、重录和选择已有音频，并把录音编码为单声道 16 kHz PCM WAV 后写入同一套 file reference。可通过 `audio: { maxDurationSeconds, maxBytes }` 覆盖限制；MiniMax 语音识别使用不超过 500 秒、50 MiB 的单个音频文件。
+
+浏览器录音需要安全上下文（通常为 HTTPS 或 localhost）。在跨域 iframe 中，宿主页面还必须
+通过 `Permissions-Policy: microphone=(self "<embed-origin>")` 授权并在 iframe 上设置
+`allow="microphone"`；权限拒绝或设备不可用时控件保留错误和重试入口。切换项目或卸载控件时应释放轨道和临时对象。
+
+## FileInputNode
+
+```ts
+const imageInputNode = workflow.createFileInputNode({
+  name: "images",
+  accept: ["image/png", "image/jpeg", "image/webp"],
+  multiple: true,
+});
+
+const images = await workflow.runNode(imageInputNode, input.images, context);
+const imageParts = await Promise.all(images.map((file) => file.toLLMImagePart()));
+```
+
+`createFileInputNode` 会通过 `context.files` 解析引用，返回 `WorkflowResolvedFile[]`。
+
+## WorkflowResolvedFile
+
+解析后的文件支持：
+
+```ts
+file.readBuffer()
+file.readBase64()
+file.readDataUrl()
+file.toLLMImagePart()
+file.toJSON()
+```
+
+`toLLMImagePart()` 只接受图片文件；非图片会抛出输入校验错误。
+
+## Runtime 生成文件
+
+workflow 运行中生成截图、导出物或其它文件时，使用
+`context.files.createFile(...)`：
+
+```ts
+const file = await context.files?.createFile?.({
+  name: "frame.png",
+  mimeType: "image/png",
+  buffer,
+  kind: "image",
+});
+```
+
+显式服务器连接提供 server 文件存储，返回的引用可用
+`/api/workflows/files/{fileId}` 打开。CLI 本地运行在已连接 server
+时会代理到同一个 server 文件 API；未连接 server 时调用会抛错，不会把
+运行生成文件落到本地 store。输入附件的本地解析仍继续通过
+`context.files.resolveFile(...)` 工作。
+
+## 存储建议
+
+上传后可用 `await context.files.resolveFile(reference)` 读取同一服务器的文件，再调用 `readBuffer()`、`readBase64()` 或 `readDataUrl()`。Remote file store 使用当前连接鉴权访问固定 managed endpoint，不信任引用中的 URL 或本地路径。
+
+Kanban 页面通过 `window.workflowCodeKanban.files.createFile/readFile/deleteFile` 使用同一服务器文件存储，详见 [Kanban 图片与文件](/concepts/kanban#图片与文件)。现有本地图片迁移可用 [CLI 业务文件命令](/cli/server-workspace#业务文件)，无需编写临时 executor。
+
+不要把 base64 文件内容保存进 KV 或会话历史。需要跨轮复用时，保存 `file.toJSON()` 返回的引用元数据。
+
+`workspace/workflow/gpt-image` 示例使用同一套 file param 流程接收一张或多张参考图：
+有当前图片或最近会话历史中存在输入图片引用时，workflow 会解析为 `WorkflowResolvedFile[]`
+并调用图片编辑；完全没有图片上下文时才调用图片生成。该示例开启 conversation 模式，跨轮只把
+用户提示、生成摘要和 `file.toJSON()` 引用元数据写入会话历史；后续轮次会尽力解析最近输入图片
+引用并作为上下文参考图传给图片编辑，示例本地最多保留 16 张图片输入。生成结果作为
+Markdown output item 中的 `data:image/...;base64,...` 预览返回，也不把生成图 base64 写入会话 KV，
+因此生成图本身不会自动成为下一轮图片输入。需要跨页面或知识库复用生成文件时，应改用
+`context.files.createFile(...)` 生成 server file reference。
+
+## CLI Web 与 server 行为
+
+- CLI Web 本地运行会把附件上传到本地文件 store，`storage` 字段是 `local`。
+- server 管理接口 `POST /api/workflows/{name}/files` 会保存项目文件，`storage` 字段是 `server`。
+- runtime 生成文件使用同一套 server 文件引用；CLI 已连接 server 时自动上传，未连接时调用报错。
+- `GET /api/workflows/files/{fileId}` 可读取或下载 server 文件。
+
+如果 conversation workflow 启用了 `conversation.attachments`，标准
+composer 里的图片、视频和文件粘贴、拖拽与上传也复用同一套 file reference 协议。宿主会先把
+浏览器/Electron `File` 写入本地或 server managed file store，再把引用写回固定参数
+`--images` / `--videos` / `--files`；workflow 侧继续按普通 file param 或
+[`workflow.parseConversationDefaultInputArgs(args)`](/core-api/parse-conversation-default-input-args) 解析即可。
+
+视频专用入口由 `attachments.videos: true` 启用；旧项目仅设置 `files: true` 时，视频继续
+序列化到 `--files`，已有会话和文件引用保持兼容。
+
+## MCP 文件参数
+
+本地 stdio MCP 的 file 参数直接接收绝对路径，multiple file 接收绝对路径数组。host 会校验普通文件和 50 MB 上限后导入本地 managed-file store；不接受相对路径、URL 或 Base64。
+
+
+## 外部 API 文件
+
+外部 Dify 风格 `/workflows/run` 接收 `files` 字段并保存到 run metadata。具体 workflow 是否使用文件，需要由 `inputs` 或 `args` 与 executor params 对齐。

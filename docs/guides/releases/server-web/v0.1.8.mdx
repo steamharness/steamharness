@@ -1,0 +1,43 @@
+---
+title: "Server Web v0.1.8"
+description: "Server Web v0.1.8 的更新说明。"
+---
+
+# Server Web v0.1.8
+
+2026-08-26 · Tag `server-web/v0.1.8` · 当前设备
+
+<span id="server-web-0-1-8" className="release-version-anchor"></span>
+<span id="server-web.0.1.8" className="release-version-anchor"></span>
+
+#### 新特性
+
+- **只访问服务器数据**：`server` 与 `both` 项目保持可运行，`local` 或未声明项目统一显示阻断状态。
+- **独立 Alpha 入口**：随 Server Alpha 部署，账号与业务数据继续与正式版共用，代码与静态资源隔离。
+- **运行状态可读**：项目列表、详情和版本页展示当前语言名称、手工声明、展示平台与可运行状态。
+
+#### 破坏性变更
+
+- Server Web 只访问服务器数据，`local` 或未声明存储的项目在设置页之外统一阻断。
+  迁移：把项目改为 `server` 或 `both`，并从其它位置清理对服务器数据的访问。
+- 运行、概览和版本来源统一使用 Desktop 身份与 `desktop` 筛选值。
+  迁移：把调用方的来源标识改为 `desktop`。
+
+#### 新增
+
+- 新增 账号邀请链接提供独立的初始密码设置页面，接受后直接建立登录会话。
+- 新增 项目设置页只读展示存储声明、允许位置、服务器访问状态和阻断原因。
+- 新增 被阻断项目不再显示可写运行队列、访问策略或数据入口。
+- 新增 项目列表、详情和版本页展示当前语言名称、手工声明、展示平台与可运行状态。
+- 新增 运行、Embed、Webhook、计划任务和版本选择器只提供 Server 可运行版本。
+- 新增 Server Web 随 Server Alpha 部署到独立 Alpha 入口，代码与静态资源版本隔离。
+
+#### 变更
+
+- 变更 执行回放与详细日志默认展开 stdout、stderr、runner diagnostics 与 `report.json` 并占满宽度。
+- 变更 长日志内容使用独立滚动区，手动折叠后不再残留空白占位。
+- 变更 运行、账号、计划、用量、审计和发布记录统一使用 `YYYY-MM-DD HH:mm:ss` 时间格式。
+
+#### 修复
+
+- 修复 项目类型名称随界面语言展示，中文界面统一使用「工作流」「对话」「看板」。

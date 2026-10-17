@@ -1,0 +1,39 @@
+---
+title: "Server Web 0.1.9"
+description: "Release notes for Server Web 0.1.9."
+---
+
+# Server Web 0.1.9
+
+2026-09-01 · Tag `server-web/v0.1.9` · 当前设备
+
+<span id="server-web-0-1-9" className="release-version-anchor"></span>
+<span id="server-web.0.1.9" className="release-version-anchor"></span>
+
+#### New Features
+
+- **Related Projects workspace**: create, edit, and remove reciprocal relationships with per-project grants and confirmed or pending state.
+- **MCP connection page**: select a draft, latest, or exact target and copy the Streamable HTTP URL and client JSON.
+- **Primary answers stay in the transcript**: finish reasons, token usage, and Provider metadata no longer misclassify them as details.
+
+#### Breaking Changes
+
+- The Global KV navigation and page are removed; the KV inspector shows only the current project's KV domain.
+  Migration: use the `project` and `conversation` scopes instead of global KV.
+
+#### Added
+
+- Added a general Related Projects workspace with per-project read/write rules and confirmed or pending declarations.
+- Added an MCP connection page for Workflow projects to pick a version target and copy the URL, Bearer template, and client JSON.
+
+#### Changed
+
+- Changed registered but never published projects to hide Embed entries, with their Embed URL returning to Project Overview.
+- Changed public Embed composers to combine quick parameters into one summary trigger that prioritizes “Model · Effort”.
+- Changed narrow screens to drill down into quick options, with a one-click reset to defaults.
+- Changed Kanban and project-group dependency views to use confirmed related projects only.
+
+#### Fixed
+
+- Fixed Conversation projects rendering the assistant's primary answer directly in the transcript, with tools and reasoning still in details.
+- Fixed public Embed history rails and diagnostics panels stalling, losing the pointer, or leaving resize state behind.

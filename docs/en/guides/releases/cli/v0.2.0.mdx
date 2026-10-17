@@ -1,0 +1,18 @@
+---
+title: "CLI 0.2.0"
+description: "Release notes for CLI 0.2.0."
+---
+
+# CLI 0.2.0
+
+2026-08-26 · Tag `@workflow-code/cli/v0.2.0` · npm
+
+<span id="@workflow-code/cli-0-2-0" className="release-version-anchor"></span>
+<span id="@workflow-code/cli.0.2.0" className="release-version-anchor"></span>
+
+#### Breaking Changes
+
+- The CLI is now 0.2.0 and pins Core 0.2 exactly, validating both exact declarations before execution.
+  Migration: only the same `major.minor` line is accepted, and every patch on that line runs directly.
+- Local execution passes explicit storage contexts from the project's `dataStorage.mode`.
+  Migration: missing declarations and forbidden cross-location access now fail immediately.

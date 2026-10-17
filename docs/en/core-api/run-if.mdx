@@ -1,0 +1,104 @@
+---
+title: "runIf"
+description: "Execute the if / else-if / else branch node and write the branch selection to the run report and Diagram."
+---
+
+# runIf
+
+`workflow.runIf()` is a built-in branch execution node. It checks multiple branch conditions in order, and executes the corresponding `run` after hitting the first branch, otherwise it executes `else`. The runtime emits start/finish events for `branch-node`, and shared runtime UI Diagram displays it as an expandable branch path.
+
+## Signature
+
+```ts
+workflow.runIf<Input, Output>(
+  input: Input,
+  context: WorkflowContext,
+  options: {
+    name?: string;
+    branches: Array<{
+      label: string;
+      description?: string;
+      condition(input: Input, context: WorkflowContext): boolean | Promise<boolean>;
+      run(input: Input, context: WorkflowContext): Output | Promise<Output>;
+    }>;
+    else?: {
+      label?: string;
+      description?: string;
+      run(input: Input, context: WorkflowContext): Output | Promise<Output>;
+    };
+    metadata?: Partial<WorkflowNodeMetadata>;
+  },
+): Promise<Output>
+```
+
+## Parameter
+
+|Parameter|Type|Description|
+| --- | --- | --- |
+| `input` | `Input` |Input common to branch judgment and branch execution.|
+| `context` | `WorkflowContext` |runtime context for hooks, provider, KV, files, abortSignal.|
+| `options.name` | `string` |Diagram and the branch node title shown in Trace. Default `Run if`.|
+| `options.branches` | `RunIfBranch[]` |If/else-if branches checked in order. The first element is displayed as `if`, and subsequent elements are displayed as `else-if`.|
+| `options.else` | `RunIfElseBranch` |Optional fallback. A miss is thrown when there is no `else`.|
+| `options.metadata` | `Partial<WorkflowNodeMetadata>` |Overrides the branch node meta information. The default type is `run-if`.|
+
+## Branch
+
+|Field|Description|
+| --- | --- |
+| `label` |The branch name. A business language, such as `high intensity assault`, is recommended.|
+| `description` |Optional Description, writes a structure report and a run report.|
+| `condition` |Returns a Boolean value; executes in array order and stops checking after a hit.|
+| `run` |The branch logic executed after a hit. You can continue to call `workflow.runNode`, `workflow.runStreamNode`, or nested `workflow.runIf`.|
+
+## Operation Report
+
+`runIf` uses the standard node name `run-if` and runs type as `branch-node`. The `executionInfo` of the completion event will contain:
+
+```json
+{
+  "branch": "high intensity assault",
+  "branchIndex": 0,
+  "selectedBranch": "high intensity assault",
+  "selectedBranchIndex": 0,
+  "description": "optional text"
+}
+```
+
+`branchIndex` starts at `0`; goes `else` at `-1`.
+
+## Example
+
+```ts
+const loadout = await workflow.runIf(seed, context, {
+  name: "Weapon branch",
+  branches: [
+    {
+      label: "high intensity assault",
+      condition: (mission) => mission.intensity >= 0.66,
+      run: (mission) => ({ ...mission, weapon: "ak47", route: "assault" }),
+    },
+    {
+      label: "stealth close quarter",
+      condition: (mission) => mission.stealth >= 0.58,
+      run: (mission) => ({ ...mission, weapon: "mp7", route: "stealth" }),
+    },
+  ],
+  else: {
+    label: "balanced rifle",
+    run: (mission) => ({ ...mission, weapon: "m4a1", route: "support" }),
+  },
+});
+```
+
+## Diagram
+
+Static structure analysis identifies `branches` and `else` as literals and writes the nodes in `label`, `description`, `condition`, and `run` of each branch to the execution tree. In order to make Diagram readable, branch definitions are kept as object literals and array literals as much as possible; if branch arrays are assembled dynamically, they are still available at runtime, but static Diagram can only show limited information.
+
+## Error
+
+|Situation|Error Type|Description|
+| --- | --- | --- |
+|Misses and no `else`| `node_execution` |Throw out `Run-if node "<name>" did not match any branch.`.|
+|Branch condition/run throw error| `node_execution` |The original error is wrapped as `WorkflowError` and written to the branch-node report.|
+|Interrupted before execution or during branch judgment|`execution_aborted` or `node_execution`|From `context.abortSignal`.|

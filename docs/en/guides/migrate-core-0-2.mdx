@@ -1,0 +1,90 @@
+---
+title: "Migrate from Core 0.1 to 0.2"
+description: "Add the project data-storage declaration, migrate Context and Knowledge APIs, and upgrade exact dependencies."
+---
+
+# Migrate from Core 0.1 to 0.2
+
+Core 0.2 makes the data location a required project declaration and removes Context APIs that selected a backend implicitly. The upgrade does not automatically migrate project source or existing data.
+
+## 1. Declare the data-storage location
+
+Add `dataStorage.mode` under `package.json.workflowCode.projectInfo`:
+
+```json
+{
+  "workflowCode": {
+    "projectInfo": {
+      "dataStorage": { "mode": "local" }
+    }
+  }
+}
+```
+
+Choose `local`, `server`, or `both` according to the project's actual needs and save the declaration in project source. A legacy project without the declaration is blocked before its user module loads. No data is copied between locations.
+
+## 2. Migrate Context
+
+Replace each legacy property with an explicit location:
+
+```ts
+// Core 0.1
+await context.kv.workflow.setValue("state", value);
+await context.persistentValue.workflow.setValue("record", value);
+
+// Core 0.2, local data
+await context.storage.local.kv.setValue("state", value);
+await context.storage.local.persistentValue.setValue("record", value);
+
+// Core 0.2, server data
+await context.storage.server.kv.setValue("state", value);
+await context.storage.server.persistentValue.setValue("record", value);
+```
+
+`context.kv`, `context.persistentValue`, `kv.workflow`, and `persistentValue.workflow` have all been removed. There are no compatibility properties or automatic conversions. Use top-level methods for the current project and `.conversation` for the current conversation. A removed field in a project declaration or Kanban configuration fails validation directly.
+
+The new storage format never reads old global/workflow-scope data. The current Server provides no old-format conversion or migration and never automatically clears database or OSS history. Back up existing data and prepare data in the current format before upgrading.
+
+## 3. Migrate Knowledge helpers
+
+The first argument to every Knowledge helper is now a storage-location context:
+
+```ts
+const storage = context.storage.local;
+
+const document = await workflow.createKnowledgeDocument(storage, {
+  title: "Runbook",
+  markdown: "# Runbook",
+});
+
+const matches = await workflow.searchKnowledgeDocuments(storage, {
+  query: "Runbook",
+});
+```
+
+This signature applies to `listKnowledgeDocuments`, `getKnowledgeDocument`, `createKnowledgeDocument`, `editKnowledgeDocument`, `deleteKnowledgeDocument`, `searchKnowledgeDocuments`, and `readKnowledgeDocumentLines`.
+
+## 4. Upgrade exact dependencies
+
+Set the project Core and CLI development dependencies to exact `0.2.0` versions:
+
+```json
+{
+  "devDependencies": {
+    "workflow-code": "0.2.0",
+    "@workflow-code/cli": "0.2.0"
+  }
+}
+```
+
+The dependency fields must remain exact; do not change them to `0.2.x` or `^0.2.0` to express compatibility. Workflow Code compares only the `major.minor` runtime line. A `0.2.0` project runs directly on Core `0.2.1` or `0.2.99-20260826001`, and Core `0.2.0` can also run a project pinned to `0.2.99`; neither patch nor date ordering participates. A project moved to `0.3.0` or `1.0.0` requires a CLI or Server carrying that same Core compatibility line.
+
+CLI 0.2 constrains its Core peer to `0.2.x` and validates the installed Core, the CLI's own pin, and the project declaration before `run`, `json`, `structure`, and `resolve-params`. Server validates static upload metadata only and never loads user modules.
+
+## 5. Verify all three modes
+
+- `local`: runs while signed out, reads and writes local data, and rejects the server location explicitly.
+- `server`: fails without login or a UUID binding; after login and same-UUID binding, reads and writes server data and rejects the local location explicitly.
+- `both`: the local path works offline; the server path works only after login and binding, and the two datasets never synchronize automatically.
+
+Also verify local and server KV under `runWorkflow(..., { kvMode: "isolated" })` and confirm that every Knowledge call receives the intended storage location. For related-project access, confirm that both packages declare the relationship and pass every local directory explicitly with `--related-project alias=/absolute/project/path`.

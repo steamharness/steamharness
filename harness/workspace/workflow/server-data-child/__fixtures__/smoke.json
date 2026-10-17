@@ -1,0 +1,15 @@
+{
+  "args": ["--content", "server-data-child"],
+  "expected": {
+    "errCode": 0,
+    "output": {
+      "action": "store",
+      "storageLocation": "server",
+      "target": "current"
+    },
+    "contentIncludes": ["\"id\""],
+    "itemCount": 1,
+    "nodes": ["output"],
+    "outputCount": 1
+  }
+}

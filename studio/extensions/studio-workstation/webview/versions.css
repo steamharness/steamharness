@@ -1,0 +1,32 @@
+@import './scrollbars.css';
+@import './project-version.css';
+:root { color-scheme: light dark; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 12px 16px 24px; color: var(--vscode-foreground); background: var(--vscode-sideBar-background); font: var(--vscode-font-size, 13px)/1.5 var(--vscode-font-family); letter-spacing: 0; }
+body, button, label, summary { user-select: text; -webkit-user-select: text; }
+button { font: inherit; color: inherit; }
+button { cursor: pointer; border: 0; border-radius: 3px; padding: 4px 10px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+button:disabled { cursor: default; opacity: .45; }
+button:focus-visible, summary:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+.current-project { margin-bottom: 12px; overflow-wrap: anywhere; }
+.history-heading { margin: 0 0 4px; font-size: 12px; font-weight: 600; color: var(--vscode-descriptionForeground); }
+.icon-button { display: inline-grid; place-items: center; width: 26px; height: 26px; flex: 0 0 26px; padding: 0; color: var(--vscode-foreground); background: transparent; }
+.icon-button:hover:not(:disabled) { background: var(--vscode-toolbar-hoverBackground); }
+label, .local-version, .metadata, .notice { color: var(--vscode-descriptionForeground); font-size: 12px; }
+.local-version { margin: 4px 0 0; }
+.local-version span { color: var(--vscode-foreground); }
+.version { padding: 12px 0; border-top: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); min-width: 0; }
+header { display: flex; gap: 8px; align-items: center; min-height: 26px; }
+strong { font-size: 13px; overflow-wrap: anywhere; }
+.badges { flex: 1; display: flex; gap: 6px; flex-wrap: wrap; min-width: 0; font-size: 11px; color: var(--vscode-descriptionForeground); }
+.metadata { margin: 3px 0; overflow-wrap: anywhere; }
+.release-log { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; }
+summary { color: var(--vscode-descriptionForeground); font-size: 12px; cursor: pointer; }
+dl { margin: 8px 0 0; }
+dt { color: var(--vscode-descriptionForeground); font-size: 11px; }
+dd { margin: 2px 0 8px; overflow-wrap: anywhere; }
+.hash { font: 11px var(--vscode-editor-font-family, monospace); }
+.empty, .notice, .error { margin: 12px 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.empty p { margin-top: 0; }
+.error { color: var(--vscode-errorForeground); }
+@media (max-width: 250px) { body { padding-left: 10px; padding-right: 10px; } header { flex-wrap: wrap; } header .icon-button { margin-left: auto; } }

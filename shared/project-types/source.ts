@@ -1,0 +1,200 @@
+import ts from "typescript";
+import {
+  WORKFLOW_PROJECT_TYPE_MIGRATION_EXAMPLE,
+  assertNeverWorkflowExecutorProjectType,
+  formatWorkflowProjectTypeMigrationMessage,
+  isWorkflowExecutorProjectType,
+  type WorkflowExecutorProjectType,
+} from "./index";
+
+export type WorkflowProjectTypeSourceViolationType =
+  | "invalid_executor_project_type"
+  | "legacy_conversation_enabled"
+  | "project_type_configuration_conflict";
+
+export interface WorkflowProjectTypeSourceViolation {
+  type: WorkflowProjectTypeSourceViolationType;
+  message: string;
+  fileName: string;
+}
+
+export interface WorkflowProjectTypeSourceInspection {
+  projectType?: WorkflowExecutorProjectType;
+  violations: WorkflowProjectTypeSourceViolation[];
+}
+
+export class WorkflowProjectTypeMigrationError extends Error {
+  constructor(violations: WorkflowProjectTypeSourceViolation[]) {
+    super(`${violations.map((violation) => violation.message).join("\n")}\n\nMigration example:\n${WORKFLOW_PROJECT_TYPE_MIGRATION_EXAMPLE}`);
+    this.name = "WorkflowProjectTypeMigrationError";
+  }
+}
+
+export function inspectWorkflowProjectTypeSources(
+  sources: Array<{ fileName: string; sourceText: string }>,
+): WorkflowProjectTypeSourceInspection {
+  const violations: WorkflowProjectTypeSourceViolation[] = [];
+  const projectTypes: WorkflowExecutorProjectType[] = [];
+  let executorCount = 0;
+
+  for (const source of sources) {
+    const sourceFile = ts.createSourceFile(
+      source.fileName,
+      source.sourceText,
+      ts.ScriptTarget.Latest,
+      true,
+      scriptKindForFileName(source.fileName),
+    );
+
+    visit(sourceFile, (node) => {
+      if (!ts.isCallExpression(node) || !isDefineExecutorCall(node)) return;
+      executorCount += 1;
+
+      const objectArgument = node.arguments[0];
+      if (!objectArgument || !ts.isObjectLiteralExpression(objectArgument)) {
+        violations.push(createViolation(
+          "invalid_executor_project_type",
+          formatWorkflowProjectTypeMigrationMessage("workflow.defineExecutor must receive a static object with projectType"),
+          source.fileName,
+        ));
+        return;
+      }
+
+      const projectTypeProperty = findProperty(objectArgument, "projectType");
+      const conversationProperty = findProperty(objectArgument, "conversation");
+      if (!projectTypeProperty || !ts.isStringLiteralLike(projectTypeProperty.initializer)) {
+        violations.push(createViolation(
+          "invalid_executor_project_type",
+          formatWorkflowProjectTypeMigrationMessage("Executor projectType is missing or must be a string literal"),
+          source.fileName,
+        ));
+        return;
+      }
+
+      const projectType = projectTypeProperty.initializer.text;
+      if (!isWorkflowExecutorProjectType(projectType)) {
+        violations.push(createViolation(
+          "invalid_executor_project_type",
+          formatWorkflowProjectTypeMigrationMessage(`Unknown executor projectType "${projectType}"`),
+          source.fileName,
+        ));
+        return;
+      }
+      projectTypes.push(projectType);
+
+      if (!conversationProperty) return;
+      if (!ts.isObjectLiteralExpression(conversationProperty.initializer)) {
+        violations.push(createViolation(
+          "project_type_configuration_conflict",
+          "Executor conversation settings must be a static object literal.",
+          source.fileName,
+        ));
+        return;
+      }
+
+      if (findProperty(conversationProperty.initializer, "enabled")) {
+        violations.push(createViolation(
+          "legacy_conversation_enabled",
+          'conversation.enabled was removed. Declare projectType: "conversation" and remove the outer enabled field.',
+          source.fileName,
+        ));
+      }
+
+      if (findProperty(conversationProperty.initializer, "defaultInput")) {
+        violations.push(createViolation(
+          "project_type_configuration_conflict",
+          "conversation.defaultInput was removed. Conversation always uses the standard message input; declare attachment capabilities in conversation.attachments.",
+          source.fileName,
+        ));
+      }
+
+      switch (projectType) {
+        case "conversation":
+          break;
+        case "workflow":
+          violations.push(createViolation(
+            "project_type_configuration_conflict",
+            'projectType: "workflow" cannot declare conversation settings.',
+            source.fileName,
+          ));
+          break;
+        default:
+          assertNeverWorkflowExecutorProjectType(projectType);
+      }
+    });
+  }
+
+  if (executorCount === 0) {
+    violations.push(createViolation(
+      "invalid_executor_project_type",
+      formatWorkflowProjectTypeMigrationMessage("Workflow must define an executor with projectType"),
+      sources[0]?.fileName ?? "index.ts",
+    ));
+  }
+
+  const distinctProjectTypes = [...new Set(projectTypes)];
+  if (distinctProjectTypes.length > 1) {
+    violations.push(createViolation(
+      "project_type_configuration_conflict",
+      `Workflow sources declare conflicting executor project types: ${distinctProjectTypes.join(", ")}.`,
+      sources[0]?.fileName ?? "index.ts",
+    ));
+  }
+
+  return {
+    projectType: distinctProjectTypes.length === 1 ? distinctProjectTypes[0] : undefined,
+    violations,
+  };
+}
+
+export function readWorkflowProjectTypeFromSources(
+  sources: Array<{ fileName: string; sourceText: string }>,
+): WorkflowExecutorProjectType {
+  const inspection = inspectWorkflowProjectTypeSources(sources);
+  if (inspection.violations.length > 0 || inspection.projectType === undefined) {
+    throw new WorkflowProjectTypeMigrationError(inspection.violations);
+  }
+  return inspection.projectType;
+}
+
+function createViolation(
+  type: WorkflowProjectTypeSourceViolationType,
+  message: string,
+  fileName: string,
+): WorkflowProjectTypeSourceViolation {
+  return { type, message, fileName };
+}
+
+function visit(node: ts.Node, visitor: (node: ts.Node) => void): void {
+  visitor(node);
+  ts.forEachChild(node, (child) => visit(child, visitor));
+}
+
+function isDefineExecutorCall(node: ts.CallExpression): boolean {
+  if (ts.isIdentifier(node.expression)) {
+    return node.expression.text === "defineWorkflowExecutor";
+  }
+  return ts.isPropertyAccessExpression(node.expression) &&
+    ts.isIdentifier(node.expression.expression) &&
+    node.expression.expression.text === "workflow" &&
+    (node.expression.name.text === "defineExecutor" ||
+      node.expression.name.text === "defineWorkflowExecutor");
+}
+
+function findProperty(
+  object: ts.ObjectLiteralExpression,
+  name: string,
+): ts.PropertyAssignment | undefined {
+  return object.properties.find((property): property is ts.PropertyAssignment =>
+    ts.isPropertyAssignment(property) &&
+    (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) &&
+    property.name.text === name
+  );
+}
+
+function scriptKindForFileName(fileName: string): ts.ScriptKind {
+  if (/\.tsx$/i.test(fileName)) return ts.ScriptKind.TSX;
+  if (/\.jsx$/i.test(fileName)) return ts.ScriptKind.JSX;
+  if (/\.[cm]?js$/i.test(fileName)) return ts.ScriptKind.JS;
+  return ts.ScriptKind.TS;
+}

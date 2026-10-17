@@ -1,0 +1,158 @@
+{
+  "workflowName": "game",
+  "projectType": "workflow",
+  "files": [
+    "index.ts",
+    "interface.ts"
+  ],
+  "nodes": [
+    {
+      "id": "inputNode",
+      "factory": "createInputNode",
+      "standardName": "input",
+      "configuredName": "game-input"
+    },
+    {
+      "id": "weaponDescriptionOutputNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "weapon-description-output"
+    },
+    {
+      "id": "attachmentAdviceNode",
+      "factory": "createLLMNode",
+      "standardName": "llm",
+      "configuredName": "attachment-advice-llm"
+    },
+    {
+      "id": "medicineAdviceNode",
+      "factory": "createLLMNode",
+      "standardName": "llm",
+      "configuredName": "medicine-advice-llm"
+    },
+    {
+      "id": "armorAdviceNode",
+      "factory": "createLLMNode",
+      "standardName": "llm",
+      "configuredName": "armor-advice-llm"
+    },
+    {
+      "id": "storyOutputNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "story-output"
+    },
+    {
+      "id": "missionStatusNode",
+      "factory": "createQuestionClassifierNode",
+      "standardName": "question-classifier",
+      "configuredName": "mission-status-classifier"
+    },
+    {
+      "id": "outputNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "game-output"
+    }
+  ],
+  "defaultEntrypoint": "main",
+  "entrypoints": [
+    {
+      "id": "main",
+      "title": "Game",
+      "workflowName": "game",
+      "tokenUsage": {
+        "enabled": true,
+        "display": true
+      },
+      "params": [
+        {
+          "name": "task",
+          "flag": "--task",
+          "type": "positional",
+          "required": false,
+          "defaultValue": "城市攻坚战"
+        }
+      ],
+      "registry": [
+        {
+          "name": "weapon-description",
+          "type": "output",
+          "title": "weapon-description-output",
+          "version": "1.0.0"
+        },
+        {
+          "name": "attachment-advice",
+          "type": "llm",
+          "title": "attachment-advice-llm",
+          "version": "1.0.0"
+        },
+        {
+          "name": "medicine-advice",
+          "type": "llm",
+          "title": "medicine-advice-llm",
+          "version": "1.0.0"
+        },
+        {
+          "name": "armor-advice",
+          "type": "llm",
+          "title": "armor-advice-llm",
+          "version": "1.0.0"
+        },
+        {
+          "name": "story",
+          "type": "output",
+          "title": "story-output",
+          "version": "1.0.0"
+        },
+        {
+          "name": "mission-status",
+          "type": "question-classifier",
+          "title": "mission-status-classifier",
+          "version": "1.0.0"
+        },
+        {
+          "name": "output",
+          "type": "output",
+          "title": "game-output",
+          "version": "1.0.0"
+        }
+      ],
+      "execution": {
+        "kind": "sequence",
+        "counts": {
+          "sequence": 1,
+          "node": 7,
+          "branch": 6,
+          "if": 5,
+          "else-if": 4,
+          "else": 5,
+          "case": 2
+        },
+        "callees": [
+          "runNode",
+          "runStreamNode"
+        ],
+        "branchLabels": [
+          "high intensity assault",
+          "stealth close quarter",
+          "balanced rifle",
+          "long lane optics",
+          "silent breach",
+          "sustained fire",
+          "heavy attrition kit",
+          "frontline heavy plate",
+          "mobile trauma kit",
+          "fast push stimulant",
+          "field dressing",
+          "hold the avenue",
+          "scout movement",
+          "balanced plate",
+          "true",
+          "false"
+        ],
+        "loopLabels": []
+      }
+    }
+  ]
+}

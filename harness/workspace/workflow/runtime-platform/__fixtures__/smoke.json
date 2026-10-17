@@ -1,0 +1,28 @@
+{
+  "args": [],
+  "expected": {
+    "errCode": 0,
+    "output": {
+      "platform": "cli",
+      "isCli": true,
+      "isDesktop": false
+    },
+    "itemCount": 1,
+    "items": [
+      {
+        "title": "Runtime Platform",
+        "content": {
+          "platform": "cli",
+          "isCli": true,
+          "isDesktop": false
+        },
+        "contentType": "json",
+        "collapsed": false
+      }
+    ],
+    "nodes": [
+      "output"
+    ],
+    "outputCount": 1
+  }
+}

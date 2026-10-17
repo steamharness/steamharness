@@ -1,0 +1,50 @@
+---
+title: "CLI v0.2.4"
+description: "CLI v0.2.4 的更新说明。"
+---
+
+# CLI v0.2.4
+
+2026-09-05 · Tag `@workflow-code/cli/v0.2.4` · npm
+
+<span id="@workflow-code/cli-0-2-4" className="release-version-anchor"></span>
+<span id="@workflow-code/cli.0.2.4" className="release-version-anchor"></span>
+
+#### 新特性
+
+- **关联项目的知识库与入口**：`--related-project` 现在可读目标项目知识库并调用其授权入口。
+- **软链接调用修复**：pnpm 等软链安装下 `workflow-code structure .` 不再空跑并以退出码 0 假通过。
+- **状态页显示真实服务器**：`workspace status` 新增 `effective` 字段，说明命令实际会用哪台服务器。
+
+#### 破坏性变更
+
+- CLI 不再有 `--web-runtime` / `--no-web-runtime`，`web` 发行目标随中继与 Web 入口一并删除。
+  迁移：浏览器里的运行由 Desktop 首页的 Web 构建承担；继续传这两个选项会明确报错而非静默忽略。
+- 服务端位置的关联项目目标只交出 KV，知识库与入口调用会以明确错误说明本机无法抵达。
+  迁移：把目标项目改为 `local` 位置，或把需要的能力放到本地可运行的入口。
+- 本地关联项目只在配置了持久值目录时开放知识库，且与目标子运行共用同一个目录。
+  迁移：显式传入 `--persistent-value-store-dir` 或设置 `WORKFLOW_PERSISTENT_VALUE_STORE_DIR`。
+
+#### 新增
+
+- 新增 CLI 识别视频 output item，普通文本输出显示成片链接，JSON 输出保留结构化描述对象。
+- 新增 `--videos` 读取默认对话的视频文件引用，并识别常用视频路径的 MIME。
+- 新增 CLI 运行时支持带音频控件的 file 参数和音频文件引用。
+- 新增 `workspace status` 输出 `effective`，说明实际使用的服务器、凭据来源和取值优先级。
+- 新增 关联项目可读目标项目的知识库，按 `grantToRelatedProject` 的 `knowledge` 声明逐 key 授权。
+- 新增 关联项目可调用目标项目授权的入口，参数即该入口 `createInput` 解析的命令行参数。
+- 新增 `structure` 保留 Workflow entrypoint 的可选 `group` 展示元数据。
+
+#### 变更
+
+- 变更 项目组 `workspace upload` 改为返回 `202` 与 `jobId` 并轮询部署状态，不再同步等待构建。
+- 变更 模型 effort 档位按模型声明的支持范围收敛，上下文用量分母取模型真实窗口。
+- 变更 宿主传来的图片附件引用经工作流文件存储解析后再进入模型，读不出时明确失败。
+- 变更 远程运行使用版本入队时固化的 Runner 制品和镜像 digest，不被后续上传覆盖。
+
+#### 修复
+
+- 修复 经软链接调用时 CLI 不再空跑，比较 `process.argv[1]` 的原始形式与解析后的真实路径。
+- 修复 关联项目的存储根与目标子运行现在指向同一个目录，不再一边写一边看不见。
+- 修复 关联项目入口调用失败时抛出该入口自己的错误信息，不再被当成空结果。
+- 修复 关联项目入口调用不再只对 `local` 目标可用，`server` 位置的入口照常读写服务端。

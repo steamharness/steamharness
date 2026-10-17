@@ -1,0 +1,39 @@
+---
+title: "Server Web v0.1.9"
+description: "Server Web v0.1.9 的更新说明。"
+---
+
+# Server Web v0.1.9
+
+2026-09-01 · Tag `server-web/v0.1.9` · 当前设备
+
+<span id="server-web-0-1-9" className="release-version-anchor"></span>
+<span id="server-web.0.1.9" className="release-version-anchor"></span>
+
+#### 新特性
+
+- **关联项目工作区**：项目详情可创建、编辑和移除双方关系，分别设置读写授权并区分确认状态。
+- **MCP 连接页**：可选择 draft、latest 或精确版本，复制 Streamable HTTP URL 与客户端 JSON。
+- **主回答固定在正文**：finish reason、token usage 与 Provider metadata 不再把正文误判为详情块。
+
+#### 破坏性变更
+
+- 全局 KV 导航与页面已移除，KV 检查器只显示当前项目的 KV 域。
+  迁移：改用 `project` 与 `conversation` 作用域，不再访问全局 KV。
+
+#### 新增
+
+- 新增 项目详情通用「关联项目」工作区，可设置双方读写规则并区分已确认与待确认。
+- 新增 Workflow 项目 MCP 连接页，可选择版本目标并复制 URL、Bearer 模板和客户端 JSON。
+
+#### 变更
+
+- 变更 仅注册、尚未首次发布的项目不再展示 Embed 入口，直接访问管理地址回到项目概览。
+- 变更 公开 Embed 的快捷参数合并为单一摘要入口，优先展示「模型 · Effort」。
+- 变更 窄屏下快捷项改为钻取导航，并支持一键恢复默认值。
+- 变更 Kanban 与项目组依赖界面统一使用已确认关联项目。
+
+#### 修复
+
+- 修复 Conversation 的 assistant 主回答始终显示在对话正文，工具调用与 reasoning 仍走详情块。
+- 修复 公开 Embed 历史栏与诊断面板调整宽度时卡住、脱离鼠标或残留拖拽状态。

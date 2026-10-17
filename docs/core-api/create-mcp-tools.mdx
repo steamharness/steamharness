@@ -1,0 +1,66 @@
+---
+title: "createMcpTools"
+description: "把 MCP 服务暴露的工具变成 agent 可以调用的工具。"
+---
+
+# createMcpTools
+
+`workflow.createMcpTools()` 把一个 MCP 连接暴露的每个工具变成一个 agent 工具，交给 [createAgent](./create-agent.mdx) 的 `extraTools` 或 [createAgentNode](./create-agent-node.mdx) 的 `createTools` 使用。连接的建立见 [connectMcpServer](./connect-mcp-server.mdx)。
+
+## 签名
+
+```ts
+const tools: AgentTool[] = await workflow.createMcpTools({
+  connection: McpServerConnection,
+  approve?: (toolId: string, args: unknown) => Promise<void>,
+  createToolId?: (serverId: string, toolName: string) => string,
+});
+```
+
+## 选项
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| `connection` | `McpServerConnection` | [connectMcpServer](./connect-mcp-server.mdx) 返回的连接。 |
+| `approve` | `(toolId, args) => Promise<void>` | 每次调用前询问；抛错即阻止这次调用，抛 `user_input_required` 则暂停本轮。 |
+| `createToolId` | `(serverId, toolName) => string` | 自定义工具名，默认 `<服务 id>_<工具名>`。 |
+
+## 工具名
+
+工具名默认是 `<服务 id>_<工具名>`，例如 `project-tools_project_state`。这个形状与内置 OpenCode 项目一致，因此宿主已经声明好的工具目录和权限面板不需要改名——面板上授权的是哪个工具，调用时就是哪个工具。
+
+## 参数与失败
+
+- 工具参数取自服务发布的 `inputSchema`，原样交给模型，Core 不做改写；但注册前会检查这个 schema 的形状：必须是对象、嵌套不超过 64 层、序列化后不超过 256 KiB。超限会抛错并**不注册这个工具**——深到能压爆栈的 schema 会在注册阶段把进程带走，而且那时还看不出来是哪个服务干的。
+- 服务把一次调用标成错误（`isError`）时，工具会**抛错**而不是把错误内容当成正常输出返回，模型因此知道这次调用没有成功。
+
+## 工具审批
+
+`createMcpTools` 产出的工具不受 `permissionPolicy` 约束：策略只决定内置工具暴露哪些、能走多远。这些工具由宿主自己的工具目录治理——项目在 `executor.tools` 里声明它们，`enabled` 决定是否暴露，`autoApprove: false` 会在调用前暂停本轮等待用户批准（走 `context.toolPermissions`），且只在 plan 模式的回合停下来问——build 回合直接执行。
+
+## 示例
+
+```ts
+const approval = workflow.createToolApprovalGate();
+
+const node = workflow.createAgentNode({
+  provider: "anthropic",
+  async createTools(context) {
+    const connection = await workflow.connectMcpServer({
+      id: "project-tools",
+      command: ["/usr/local/bin/node", "/opt/project-tools/mcp-server.js"],
+    });
+
+    try {
+      return await workflow.createMcpTools({
+        connection,
+        approve: (toolId, args) => approval.approve({ name: toolId, arguments: args }, context),
+      });
+    } finally {
+      await connection.close();
+    }
+  },
+});
+```
+
+Tools built this way must be declared in the executor's `tools`（见 [createToolApprovalGate](./create-tool-approval-gate.mdx)），否则审批会因为「工具未注册」而失败。

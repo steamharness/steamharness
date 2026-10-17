@@ -1,0 +1,7 @@
+.git/
+node_modules/
+.env*
+.release/
+test-results/
+coverage/
+tests/

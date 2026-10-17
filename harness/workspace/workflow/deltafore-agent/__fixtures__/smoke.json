@@ -1,0 +1,63 @@
+{
+  "args": [
+    "--message",
+    "我需要配置 M7，操控速度高",
+    "--max-rounds",
+    "2"
+  ],
+  "conversationId": "deltafore-fixture-thread",
+  "expected": {
+    "errCode": 0,
+    "output": {
+      "success": true,
+      "toolCallCount": 1,
+      "historyLength": 2
+    },
+    "contentIncludes": [
+      "M7"
+    ],
+    "itemCount": 2,
+    "items": [
+      {
+        "title": "工具调用完成：get_api_guns(q: \"M7\", limit: 3)",
+        "icon": "[ok]",
+        "contentType": "json",
+        "collapsed": true,
+        "metadata": {
+          "kind": "tool-call",
+          "phase": "tool",
+          "round": 1,
+          "toolName": "get_api_guns",
+          "status": "success"
+        },
+        "contentMatches": {
+          "status": "success",
+          "tool": "get_api_guns",
+          "ok": true
+        }
+      },
+      {
+        "index": 1,
+        "title": "Output",
+        "contentType": "markdown",
+        "collapsed": false,
+        "contentIncludes": [
+          "M7"
+        ]
+      }
+    ],
+    "nodes": [
+      "input",
+      "run-while",
+      "llm",
+      "output"
+    ],
+    "outputCount": 3,
+    "conversationMessages": 2,
+    "tokenUsage": {
+      "calls": 2,
+      "cachedInputTokens": 0,
+      "cacheCreationTokens": 0
+    }
+  }
+}

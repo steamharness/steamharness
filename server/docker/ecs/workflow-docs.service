@@ -1,0 +1,18 @@
+[Unit]
+Description=Workflow Code Documentation Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__ROOT__/published/docs/current
+Environment=NODE_ENV=production
+Environment=NODE_OPTIONS=--max-old-space-size=96
+ExecStart=__NODE_BIN__ __ROOT__/published/docs/current/.workflow/serve-docs.mjs --root __ROOT__/published/docs/current --host 127.0.0.1 --port 7132
+Restart=on-failure
+RestartSec=5
+MemoryMax=180M
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

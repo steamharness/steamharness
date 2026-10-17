@@ -1,0 +1,113 @@
+---
+title: "Studio workstation"
+description: "Open and run local Workflow projects in the VS Code OSS based Studio workstation."
+---
+
+# Studio workstation
+
+Studio is based on VS Code OSS and provides Electron and browser workstations. Open folders, edit source, use terminals, and manage extensions through standard editor commands.
+
+## Start workbench
+
+The editor background shows Start when no file is open. Run **Studio: Open Start** to open a separate Start tab at any time. Untitled uses the native blank text editor; typing, pasting, undoing, and clearing stay in the original document. Double-clicking the editor background or empty tab strip no longer creates Untitled; use the New File command or shortcut to open one.
+
+Click **New Project** to open the creation dialog. Choose Workflow, Conversation, or Kanban, then select a minimal project or an example for that type. Examples include Hello Workflow, Conversation Rounds, Task Board, and Parameterized Board. Enter the project name and parent folder in the same dialog. The default location is `Documents/workflow-projects` under your home directory; enter another location or use the folder button to browse. Studio creates the default parent folder when needed. The destination project folder must not exist; invalid names and folder conflicts appear inline.
+
+Click **Create**, then choose **Open in New Window** or **Open in Current Window**. Cancelling this choice generates no files. Studio generates an independent UUID and project source, opens the project in the selected window, and installs dependencies there using pnpm, falling back to npm when pnpm is absent. Dependencies use exact compatible versions.
+
+Select **Import from Link** on the right side of the **New Project** dialog, paste a Server Web version share link, and select **Import** to use the default project directory without choosing a template or entering a project name. Link import remains available when templates are temporarily unavailable.
+
+The first dependency installation requires access to a package registry. Once installed, all four examples run locally without sign-in or a model: Hello streams text, Conversation Rounds persists history and replies with the turn number, Task Board saves tasks, and Parameterized Board uses project parameters for its title and completed column.
+
+Progress, cancellation, and installation logs appear in the target project window after it opens. Failed or cancelled installations keep their source directory; **Current Projects** on that window's Start page offers **Retry Installation**, **Open Project Folder**, and **Show Installation Log**. Reloading does not automatically restart installation. Retrying from another window opens the project window first. Successful setup stays in the target window. Opening a new window preserves the original workspace and unsaved files; reusing the current window follows the editor's unsaved-file protection.
+
+**Current Projects** shows each project's name, type, version, and folder. **Run Project** opens its runtime; the upload button publishes its source and the code button opens its source. **Recent Projects** shows versions, reopens folders or workspaces, and allows removing entries. Quick access includes folders, workspaces, Download Project, Versions, Project Assistant, Workflow Account, and Settings.
+
+Recent Projects, **Open Recent** (Ctrl+R), Studio workspace and imported related-project lists, and project/template pickers use consistent Workflow, Conversation, and Kanban icons. Studio reads project declarations statically, without running the project or requiring its dependencies to be installed. Unrecognized folders and saved workspaces keep their existing icons.
+
+**System Status** shows Studio, VS Code, the Node executable used for runs, Core/CLI availability, account and server connection, and counts of imported local projects, running tasks, and tasks waiting for input. Run counts refresh every five seconds only while Start is visible. Failures retain prior results and display an error; unreadable data is marked unavailable. **Open Studio Analysis** provides full history and statistics. CPU, memory, and remote Runner monitoring are not included.
+
+Start follows English or Simplified Chinese, light and dark themes, and narrow editor splits. Text is selectable and scrollbars appear on hover. The first load shows skeleton placeholders and a loading indicator; later refreshes keep existing content. Reduced motion disables loading animations. Disable `studio.startPage.enabled` to hide the Start panel in the empty editor background.
+
+## Open a Workflow project
+
+1. Install Core and a CLI version supporting the Web host protocol in your project.
+2. Select **File > Open Folder** in Studio and open the project folder.
+3. Select **Run project** in the title bar to open the project view in an editor tab.
+4. Select an entrypoint, enter parameters, and run it; send messages directly in Conversation projects.
+
+Each project uses its own installed `workflow-code` and `@workflow-code/cli`. Closing a tab stops its run; reopening it reads saved history. Resource and trace panels provide KV, knowledge, and execution diagnostics.
+
+Core Agent uses the standard output presentation protocol to pin its context ring to the right of the composer. Hover or keyboard focus opens a light gray tooltip with the percentage and exact token counts. Each conversation retains its own output, including while awaiting confirmation and after reopening history.
+
+The built-in assistant uses an independent working directory and offers coding tools, bundled skills, global memory and resource cards. Studio Control connects to the VS Code extension host to read the workspace and active editor, inspect errors and warnings, open files at a line and column, select installed themes, open terminals and show Explorer, Search, Source Control or Assistant.
+
+The built-in assistant enables durable sessions: crashes resume the original run, closing the host preserves checkpoints, and explicit stop persists cancellation. The bottom Trace panel adds Tasks, Plan, Records and Usage alongside the existing execution timeline. Inspect complete task trees and history, open child conversations or fork sources, update plan steps, compact/reset context and stop scoped work. Selecting Trace history does not switch the transcript; the eye marker follows the conversation actually open in the editor. CLI Web no longer shows a task sidebar; queued input, steering, withdrawal and forks remain in the conversation, and main answers stay inline. The project permits up to 4 read-only subagents with one-time result delivery. Studio Control connects on the first search of authorized tools; Code Mode remains host opt-in. See [Durable Agent in Studio Trace](/en/cli/workflow-code#durable-agent-in-studio-trace) for controls and behavior.
+
+The assistant's **Permission** defaults to **Auto approve**, permitting all local directories accessible to the process, including absolute paths outside the workspace. **Workspace** and **Read only** limit file and search access to registered workspace roots; Read only hides writing, editing and command tools. The prompt and Studio Control follow each turn's policy, and the state tool reports the effective policy and path access.
+
+Editor actions follow tool permissions and Build/Plan approvals; state, diagnostic and related-project reads are automatically approved. Opening a terminal never executes commands. Closing the session, removing a root or revoking trust invalidates control. A Node extension host is required; the browser-only extension cannot provide this service. Legacy Desktop Dock, updates and launch-at-login are not offered.
+
+## Project information and related projects
+
+After opening a Workflow project, **Information** in the activity bar shows its type, version, UUID, language and platform declarations, storage location, and permissions granted to related projects. Copy field values or open the project manifest; workspaces with multiple projects can select which project to inspect.
+
+**Related Projects** in Explorer shows declared relationships and their import status. Imported projects can be opened directly. Projects that have not been imported show that status and are not downloaded or imported automatically.
+
+You can also ask the assistant to inspect a project's related projects. It uses `get_related_projects` to read aliases, UUIDs, names, import status and verified local directories. The project directory follows the current Permission; Auto approve also allows projects outside the workspace. Missing imports or changed UUIDs are marked unavailable. Remote imports return a URI rather than a local directory. The query does not import projects or replace mutual data-access grants.
+
+Runs use the imported project directories, and newly imported relations take effect on the next run in an open project. UUIDs must match in both manifests, and data and entrypoint access follows the target's grants. Import status does not replace mutual confirmation. Server storage uses Studio's current account; local storage uses the target project's own data directories. If the CLI protocol is incompatible, update the current project's `@workflow-code/cli` and reopen it.
+
+Studio project tools and embedded CLI pages support English and Simplified Chinese and follow the current VS Code display language. Projects with localized names use that language; user input, execution results, and logs retain their original text.
+
+## Uploads, downloads, and versions
+
+After signing in to Workflow Server, select the cloud upload button beside **Run Project** in the title bar, or on a current project card, to open the upload dialog. It shows the project, version, server, and project folder. Enter multiline release notes and select **Upload**. Progress, results, errors, and cancellation stay in the dialog. The title bar button follows the current project; a project card uploads that card's project. Studio saves that project's unsaved files, uses the CLI to package its source, waits for static file validation, and publishes an immutable version from `package.json.version`. The server does not install dependencies, build, or execute the project. Existing versions cannot be overwritten; change the package version first. Uploads require workspace trust and project management permission; data write access does not grant project management.
+
+**Versions** in the activity bar shows only the current open project's local version, server history, latest markers, publication dates, uploader, release notes, source hashes, and related project versions, without a server project selector. In a workspace with multiple projects, it follows the active project. An empty window shows an empty state; **Download Project** on Start still lets you choose a server project and version. Project editor tabs, the status bar, recent and related projects, and KV, knowledge, and trace panels also show project versions.
+
+After sign-in, Studio compares local versions with the latest published server versions. **Versions** and **Information** show both at the top. A newer server version highlights **Update Available** and **Upgrade...**, with matching actions on Start project cards and in the status bar. Matching versions show **Up to Date**; a higher local version shows **Local Version Is Newer** without suggesting a downgrade. Studio checks when the window regains focus as needed and every five minutes while active. The page's top-right refresh also checks versions. A failed check does not present cached results as a confirmed current status.
+
+Select **Upgrade...** to review the version change and release notes, then choose:
+
+- **Upgrade Current Folder**: downloads and validates the complete project group first, then saves project files, stops Studio sessions that use the project, and replaces its source. Original source and local source edits remain in a hidden sibling backup folder, available through **Open Source Backup** after completion. Git metadata, editor settings, installed dependencies, environment configuration, and local KV, PersistentValue, and file data are preserved, including nested host data. Cancellation or replacement failure restores the original folder; if recovery also fails, recovery materials remain and their locations are reported. New related project versions are registered while old related folders remain. Reinstall dependencies if package requirements changed.
+- **Download to New Folder**: creates a separate copy named with the server version under the default project directory, preserving existing folders and edits, and offers to open it in a new window.
+
+In-place upgrades require a trusted file workspace and source download permission. A folder that is a locked dependency of another downloaded project group only offers a new-folder download to preserve that group's version relationships. Studio revalidates the server version, account, and local project identity before upgrading. It does not automatically install dependencies, run the project, or downgrade versions. Studio stops sessions it manages; stop processes launched externally, such as from an independent terminal, before upgrading.
+
+Select the cloud download button on a version row, or **Download Project** on Start, to choose a project and version. Source downloads require their own permission. Studio uses `Documents/workflow-projects` under the Node extension host user's home directory and creates a `<project-name>-<version>` folder, such as `demo-1.2.3`. Repeated downloads create `demo-1.2.3-2`, `demo-1.2.3-3`, and so on, preserving existing directories and edits.
+
+Share-link imports use the same directory, project-group validation, and conflict handling, downloading only the pinned version. Sign in to the link's server with source download permission. If signed out, Studio opens the account page and resumes the import after sign-in. A link to another server prompts you to sign in there first; current account credentials are never sent to the link's address. After import, open the project in a new window. Importing does not install dependencies or execute source.
+
+Included related projects download into their own version folders and are registered for that downloaded copy. Other local versions are neither replaced nor reused. Every member resolves related projects within its downloaded group, and manually reimporting a missing directory also checks the pinned version. Missing source or permission causes the download to fail without leaving partial version folders. Cancellation and failure clean up temporary transfer files. After downloading, choose to open the project in a new window. Dependencies are not installed automatically; run `pnpm install` in its terminal before running. File transfers require a Node extension host and are unavailable in a browser-only extension.
+
+## Local analysis
+
+Run **Workflow: Open Studio Analysis**, or select the chart button in the project list toolbar, to open the built-in `build-in-analysis` Kanban. This repository can also run as a normal Kanban project in Studio.
+
+The dashboard includes local Workflow, Conversation, and Kanban projects in the current workspace and Studio's imported project registry, deduplicated by real folder path. Unimported disk folders and projects declaring Server storage are excluded. No server data is read.
+
+The overview shows project counts and types, run status distributions, a 14-day trend, running and waiting tasks, queued inputs, success rate, and average duration. Project and run tables provide time, type, project, and status filters, search, pagination, and CSV export. Optional automatic refresh runs every five seconds. Success rate uses completed records in the selected period, excluding unknown, running, and waiting records.
+
+Histories come from Studio's local CLI storage. CLIs with activity recording also provide live states across Studio windows. Unverified runs from older CLIs display an unknown status. Unreadable projects are marked unavailable, and no sample data is substituted. Standalone browsers and CLIs without a Studio connection do not provide this data interface.
+
+## Accounts and servers
+
+Use the account entry in the lower left to sign in, verify credentials, or sign out. Select a Workflow Server using the application setting `studio.workflow.serverUrl`. VS Code SecretStorage stores credentials outside project source.
+
+Server Web manages cloud projects, versions, knowledge, KV, and other stored data. See [Workspace CLI](/en/cli/server-workspace) for packaging, uploads, and remote management.
+
+## Run from source
+
+Studio requires Node 24.18.0 or later 24.x, npm 11 or 12, and native build tools. Run these commands in the Studio repository:
+
+```sh
+npm ci
+npm run setup
+npm run build
+npm run dev
+```
+
+By default, `setup` skips the NuGet download of the Foundry Local / ONNX native runtime, which is used only for upstream chat's on-device dictation. Studio's editor and Workflow features do not require it, and other native dependencies are still installed normally. To use that dictation feature, set `FOUNDRY_LOCAL_SKIP_INSTALL` to `0` and rerun `npm run setup` with accessible NuGet feeds for the SDK.
+
+Use `npm run dev:web` for the browser workstation. This guide covers source execution; installation packages and release channels are configured separately.

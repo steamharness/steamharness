@@ -1,0 +1,136 @@
+---
+title: "File Input"
+description: "The current usage of file param, upload file, and WorkflowResolvedFile."
+---
+
+# File Input
+
+workflow-code supports file input through executor params. Local clients save attachments first, then workflows read their contents through file references.
+
+## file param
+
+```ts
+params: [
+  {
+    name: "images",
+    flag: "--images",
+    type: "file",
+    multiple: true,
+    accept: ["image/png", "image/jpeg", "image/webp"],
+    format: "json",
+    required: false,
+    description: "Image attachment.",
+  },
+]
+```
+
+The value of the file param is serialized as a JSON string to `createInput`.
+
+Images and videos share `type: "file"`. Set `accept` to the supported formats, for example
+`accept: ["image/png", "image/jpeg", "video/mp4", "video/quicktime"]`, and declare the same
+restrictions in `createFileInputNode`. CLI Web shows the corresponding upload
+action, image thumbnails, and native video previews with download and removal actions. Video
+references keep `kind: "file"` and are identified by `mimeType`; `toLLMImagePart()` remains image-only.
+
+Core and Server infer MIME types for MP4, M4V, MOV, AVI, MKV, WebM, OGV, and MPG/MPEG.
+An explicit `audio/webm` MIME remains audio. Restrict `accept` to formats supported by the model;
+MiniMax-M3 accepts MP4, MOV, AVI, and MKV. A supported upload format may contain codecs that the
+browser cannot play. CLI Web limits local uploads to 50 MiB per file; Server uses its managed file size limit.
+
+Audio input uses `type: "file", control: "audio"`. The shared workspace supports recording, preview, re-recording, and choosing an existing audio file; recordings are encoded as mono 16 kHz PCM WAV and use the same file reference protocol. Set `audio: { maxDurationSeconds, maxBytes }` for limits. MiniMax speech recognition accepts one audio file up to 500 seconds and 50 MiB.
+
+Browser recording requires a secure context, normally HTTPS or localhost. For a cross-origin iframe,
+the host must grant `microphone` with `Permissions-Policy: microphone=(self "<embed-origin>")` and
+set `allow="microphone"` on the iframe. Permission or device failures remain visible with a retry
+action. Release tracks and temporary objects when switching projects or unmounting the control.
+
+## FileInputNode
+
+```ts
+const imageInputNode = workflow.createFileInputNode({
+  name: "images",
+  accept: ["image/png", "image/jpeg", "image/webp"],
+  multiple: true,
+});
+
+const images = await workflow.runNode(imageInputNode, input.images, context);
+const imageParts = await Promise.all(images.map((file) => file.toLLMImagePart()));
+```
+
+`createFileInputNode` will resolve the reference through `context.files` and return `WorkflowResolvedFile[]`.
+
+## WorkflowResolvedFile
+
+Parsed file support:
+
+```ts
+file.readBuffer()
+file.readBase64()
+file.readDataUrl()
+file.toLLMImagePart()
+file.toJSON()
+```
+
+`toLLMImagePart()` only accepts image files; non-images throw an input validation error.
+
+## Runtime build file
+
+workflow When generating screenshots, exports, or other files while running, use
+`context.files.createFile(...)`：
+
+```ts
+const file = await context.files?.createFile?.({
+  name: "frame.png",
+  mimeType: "image/png",
+  buffer,
+  kind: "image",
+});
+```
+
+An explicit Server connection provides managed file storage. Returned references can be opened at
+`/api/workflows/files/{fileId}`. Local CLI runs proxy to the same managed file API when connected.
+Without a connection, creating a file throws instead of saving generated files locally.
+Local resolution of input attachments continues through
+`context.files.resolveFile(...)` work.
+
+## Storage Recommendations
+
+After upload, `await context.files.resolveFile(reference)` resolves a file on the same Server for `readBuffer()`, `readBase64()`, or `readDataUrl()`. The remote store authenticates against the fixed managed endpoint and never trusts a reference's URL or local path for authenticated reads.
+
+Kanban pages use `window.workflowCodeKanban.files.createFile/readFile/deleteFile` with the same Server file storage. See [Kanban images and files](/en/concepts/kanban#images-and-files). Existing local images can be migrated with the [CLI business file commands](/en/cli/server-workspace#business-files) without a temporary executor.
+
+Do not save base64 file contents into KV or session history. Save the reference metadata returned by `file.toJSON()` when cross-round multiplexing is required.
+
+`workspace/workflow/gpt-image` The example uses the same file param process to receive one or more reference images:
+workflow resolves to `WorkflowResolvedFile[]` when there is a current picture or an input picture reference in the recent session history
+And call the picture editing; no picture context at all to call the picture generation. This example turns on conversation mode, and the cross wheel only turns on
+User prompts, generate summaries, and `file.toJSON()` reference metadata to write session history; subsequent rounds try to parse the most recent input image
+Reference and pass it to the picture editor as a context reference diagram. The sample locally retains up to 16 pictures for input. Generate results
+Markdown The preview of `data:image/...;base64,...` in output item is returned, and the generated graph base64 is not written into session KV,
+Therefore, the generated graph itself will not automatically become the next round of picture input. When you need to generate files across pages or repositories, you should use
+`context.files.createFile(...)` Generate server file reference.
+
+## CLI Web and server behavior
+
+- A local CLI Web run uploads the attachment to local file storage, with `storage: "local"`.
+- The server management interface `POST /api/workflows/{name}/files` saves project files with `storage: "server"`.
+- Runtime-generated files use server file references. CLI Web and CLI upload them automatically when connected to Server and report an error when no Server connection is available.
+- `GET /api/workflows/files/{fileId}` can read or download the server file.
+
+If a Conversation declares `conversation.attachments`, its standard composer accepts pasted,
+dropped, or uploaded images, videos, and files using the same file reference protocol. The host
+writes each browser/Electron `File` to the local or server managed file store, then serializes
+the reference under `--images`, `--videos`, or `--files`. The workflow reads these references with
+[`workflow.parseConversationDefaultInputArgs(args)`](/en/core-api/parse-conversation-default-input-args).
+
+Enable the dedicated video action with `attachments.videos: true`. Existing projects that only set
+`files: true` continue to serialize videos under `--files`, preserving their session and file reference contract.
+
+## MCP file parameters
+
+Local stdio MCP file parameters accept absolute paths, with an array of absolute paths for multiple files. The host verifies regular files and the 50 MB limit before importing them into the local managed-file store. Relative paths, URLs, and Base64 are rejected.
+
+
+## External API files
+
+The outer Dify style `/workflows/run` receives the `files` field and saves it to the run metadata. Whether the specific workflow uses a file, it needs to be aligned by `inputs` or `args` and executor params.

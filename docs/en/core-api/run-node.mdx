@@ -1,0 +1,73 @@
+---
+title: "runNode"
+description: "Execute a normal node, pass in the input and context, and trigger the node to execute hooks."
+---
+
+# runNode
+
+`workflow.runNode()` executes a normal node. It is responsible for interrupt checking, node start/end hooks, execution information logging, and error wrapping.
+
+## Signature
+
+```ts
+workflow.runNode<Input, Output>(
+  node: NodeDefinition<Input, Output>,
+  input: Input,
+  context: NodeContext,
+): Promise<Output>
+```
+
+## Parameter
+
+|Parameter|Type|Description|
+| --- | --- | --- |
+| `node` | `NodeDefinition<Input, Output>` |The node object to be executed, usually from a node factory.|
+| `input` | `Input` |Node input.|
+| `context` | `NodeContext` |runtime context for hooks, provider, KV, files, abortSignal.|
+
+## `NodeDefinition`
+
+|Field|Description|
+| --- | --- |
+| `name` |The node name. Required.|
+| `standardName` |Standard node type name, such as `input`, `llm`, `output`.|
+| `metadata` |Structure diagram and UI meta information.|
+| `run` |The node executes the function, receiving `input` and `NodeContext`. Required.|
+
+## Execution process
+
+|Steps|Description|
+| --- | --- |
+|1. Check for interruptions|If `context.abortSignal` is interrupted, throw `execution_aborted`.|
+|2. Send Start Event|The trigger node starts a hook and records the executionId, nodeName, metadata, and startedAt.|
+|3. Execution node|Call `node.run(input, context)`.|
+|4. Send Completion Event|Record the output, duration, and executionInfo, and trigger the completion of the hook.|
+|5. Wrong packaging|Convert to `WorkflowError` on failure and write report.|
+
+## Return value
+
+|Return|Type|Description|
+| --- | --- | --- |
+|Node output| `Promise<Output>` |Returns the result of `node.run` on success.|
+
+## Error
+
+|Situation|Error Type|Description|
+| --- | --- | --- |
+|Break before or during execution| `execution_aborted` |From `context.abortSignal`.|
+|Node throw error| `node_execution` |Unknown errors are wrapped as `WorkflowError`; existing `WorkflowError` is preserved and the context is supplemented.|
+
+## Example
+
+```ts
+const parsed = await workflow.runNode(inputNode, input, context);
+const answer = await workflow.runNode(llmNode, parsed, context);
+const output = await workflow.runNode(outputNode, answer, context);
+```
+
+## The difference from `runStreamNode`
+
+|Method|Node type|Return|
+| --- | --- | --- |
+| `runNode` | `NodeDefinition` |Single `Output`.|
+| `runStreamNode` | `StreamNodeDefinition` | `{ chunks, output }`. |

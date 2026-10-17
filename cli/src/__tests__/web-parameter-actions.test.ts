@@ -1,0 +1,215 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ParameterActions } from '../web/ui/parameter-actions';
+import type { WorkflowParameters, WorkflowParamState, WorkflowParamValue, WorkflowParamValues } from '../web/workflow-types';
+
+afterEach(() => vi.unstubAllGlobals());
+
+function fixture() {
+  class Element extends EventTarget {
+    hidden = false; id = ''; className = ''; textContent = ''; title = ''; ariaLabel = ''; ariaHidden = '';
+    type = ''; tabIndex = 0; disabled = false; clientWidth = 400;
+    style: Record<string, string> = {}; scrollTop = 0;
+    children: Element[] = []; dataset: Record<string, string> = {}; attributes = new Map<string, string>();
+    constructor(readonly tagName = 'div') { super(); }
+    append(...elements: Element[]) { this.children.push(...elements); }
+    replaceChildren(...elements: Element[]) { this.children = elements; }
+    setAttribute(name: string, value: string) { this.attributes.set(name, value); }
+    getAttribute(name: string) {
+      return name.startsWith('data-') ? this.dataset[name.slice(5).replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())]
+        : this.attributes.get(name);
+    }
+    contains(node: unknown): boolean { return node === this || this.children.some(child => child.contains(node)); }
+    querySelectorAll(selector: string): Element[] {
+      const matches = (element: Element, part: string) => {
+        const tag = part.match(/^[a-z]+/)?.[0];
+        return (!tag || element.tagName === tag) && (!part.includes(':not(:disabled)') || !element.disabled)
+          && [...part.matchAll(/\.([\w-]+)/g)].every(([, name]) => element.className.split(' ').includes(name))
+          && [...part.matchAll(/\[([^=\]]+)(?:=([^\]]+))?\]/g)].every(([, name, value]) => value === undefined
+            ? element.getAttribute(name) !== undefined : element.getAttribute(name) === value);
+      };
+      return this.children.flatMap(child => [
+        ...(selector.split(',').some(part => matches(child, part.trim())) ? [child] : []), ...child.querySelectorAll(selector),
+      ]);
+    }
+    querySelector(selector: string): Element | null { return this.querySelectorAll(selector)[0] ?? null; }
+    focus() { documentState.activeElement = this; }
+    getClientRects() { return this.hidden ? [] : [this.getBoundingClientRect()]; }
+    getBoundingClientRect() {
+      const summary = this.children.find(child => child.className === 'param-action-summary');
+      const width = this.tagName === 'main' ? 800 : this.dataset.iconOnly === 'true' ? 32 : Math.min(240, 30 + (summary?.textContent.length ?? 0) * 6);
+      return { width, left: 0, right: width, top: 500, bottom: 532, height: 32 };
+    }
+  }
+  const container = new Element();
+  const documentState = Object.assign(new EventTarget(), { body: new Element(), activeElement: new Element(),
+    createElement: (tag: string) => new Element(tag), createTextNode: (text: string) => Object.assign(new Element('#text'), { textContent: text }),
+    querySelector: () => new Element('main') });
+  const viewport = Object.assign(new EventTarget(), { innerWidth: 1280, innerHeight: 700 });
+  const frames: FrameRequestCallback[] = [];
+  const observers: ResizeObserverCallback[] = [];
+  vi.stubGlobal('document', documentState); vi.stubGlobal('window', viewport);
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => frames.push(callback));
+  vi.stubGlobal('getComputedStyle', () => ({ columnGap: '4px' }));
+  vi.stubGlobal('ResizeObserver', class {
+    constructor(callback: ResizeObserverCallback) { observers.push(callback); }
+    observe() {}
+  });
+  const state = { values: { model: 'long', permission: 'auto' } as WorkflowParamValues,
+    states: {} as Record<string, WorkflowParamState>, disabled: false, loading: false };
+  const parameters: WorkflowParameters = { fields: [
+    { name: 'model', type: 'string', control: 'select', options: [{ value: 'long', label: 'A long selected model' }, { value: 'short', label: 'Short' }] },
+    { name: 'permission', label: 'Permission', type: 'string', control: 'select', defaultValue: 'auto', options: [
+      { value: 'read', label: 'Read only' }, { value: 'workspace', label: 'Workspace' }, { value: 'auto', label: 'Auto approve' },
+    ] },
+  ], paramLayout: { actions: [
+    { kind: 'quick', id: 'models', label: 'AI', icon: 'sparkle', summary: ['model'], params: ['model'] },
+    { kind: 'quick', id: 'access', label: 'Permission', icon: 'shield', summary: ['permission'], params: ['permission'] },
+  ] } };
+  const onChange = vi.fn((name: string, value: WorkflowParamValue) => { state.values[name] = value; actions.update(); });
+  const onReset = vi.fn((names: string[]) => {
+    for (const name of names) {
+      const field = parameters.fields.find(field => field.name === name);
+      const value = field?.defaultValue ?? '';
+      state.values[name] = field?.multiple || field?.control === 'checkboxes' ? value ? [value] : [] : value;
+    }
+    actions.update();
+  });
+  const actions = new ParameterActions(container as unknown as HTMLElement, { current: () => state,
+    fieldRoot: () => new Element() as unknown as HTMLElement, onChange, onReset });
+  const flush = () => { for (const callback of frames.splice(0)) { callback(0); } };
+  const resize = (width: number) => {
+    container.clientWidth = width;
+    for (const callback of observers) { callback([], {} as ResizeObserver); }
+    flush();
+  };
+  actions.render(parameters); flush();
+  return { actions, parameters, container, state, resize, flush, frames, popup: documentState.body.children[0], documentState, onChange, onReset };
+}
+
+describe('Quick parameter triggers', () => {
+  it('shows declared icons and selected values, keeping the group name in accessible tooltips', () => {
+    const f = fixture();
+    const [model, permission] = f.container.children;
+    expect(model.children[0].className).toBe('codicon codicon-sparkle');
+    expect(permission.children[0].className).toBe('codicon codicon-shield');
+    expect(permission.children.find(child => child.className === 'param-action-label')?.hidden).toBe(true);
+    expect(permission.children.find(child => child.className === 'param-action-summary')?.textContent).toBe('Auto approve');
+    expect(permission.title).toBe('Permission: Auto approve');
+    expect(permission.ariaLabel).toBe(permission.title);
+    expect(permission.attributes.get('aria-haspopup')).toBe('menu');
+    expect(f.container.children.every(button => !button.children.some(child => child.className.includes('chevron-up')))).toBe(true);
+    f.parameters.paramLayout!.actions[0] = { kind: 'quick', id: 'custom', label: 'Model', summary: ['model'], params: ['model'] };
+    f.actions.render(f.parameters); f.flush();
+    expect(f.container.children[0].children[0].className).toBe('codicon codicon-settings');
+  });
+
+  it('collapses from right to left and restores text when space returns', () => {
+    const f = fixture();
+    const collapsed = () => f.container.children.map(button => button.dataset.iconOnly);
+    expect(collapsed()).toEqual(['false', 'false']);
+    f.resize(200); expect(collapsed()).toEqual(['false', 'true']);
+    f.resize(100); expect(collapsed()).toEqual(['true', 'true']);
+    expect(f.container.children[1].title).toBe('Permission: Auto approve');
+    f.resize(400); expect(collapsed()).toEqual(['false', 'false']);
+  });
+
+  it('refits after changes to selections and visibility, batching repeated updates in one frame', () => {
+    const f = fixture();
+    f.resize(200); expect(f.container.children[1].dataset.iconOnly).toBe('true');
+    f.state.values.model = 'short';
+    f.actions.update(); f.actions.update(); expect(f.frames).toHaveLength(1); f.flush();
+    expect(f.container.children.map(button => button.dataset.iconOnly)).toEqual(['false', 'false']);
+    f.state.values.model = 'long'; f.state.states.permission = { visible: false };
+    f.actions.update(); f.flush();
+    expect(f.container.children[1].hidden).toBe(true);
+    expect(f.container.children[0].dataset.iconOnly).toBe('false');
+    f.state.disabled = true; f.actions.update(); f.flush();
+    expect(f.container.children[0].disabled).toBe(true);
+  });
+});
+
+describe('Quick parameter menus', () => {
+  it('opens a single field directly and closes after selection, restoring trigger focus', () => {
+    const f = fixture();
+    const trigger = f.container.children[1];
+    trigger.dispatchEvent(new Event('click'));
+    const options = f.popup.querySelectorAll('[role=option]');
+    expect(options.map(option => option.querySelector('.quick-option-copy')?.children[0].textContent))
+      .toEqual(['Read only', 'Workspace', 'Auto approve']);
+    expect(f.popup.querySelectorAll('.quick-param-row, .quick-detail-heading')).toHaveLength(0);
+    expect(f.popup.children).toHaveLength(1);
+    expect(f.popup.style.width).toBe('292px');
+    expect(f.documentState.activeElement).toBe(options[2]);
+    expect(options.map(option => option.getAttribute('aria-selected'))).toEqual(['false', 'false', 'true']);
+    options[1].dispatchEvent(new Event('click'));
+    expect(f.onChange).toHaveBeenCalledWith('permission', 'workspace');
+    expect(f.popup.hidden).toBe(true);
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(f.documentState.activeElement).toBe(trigger);
+    expect(trigger.title).toBe('Permission: Workspace');
+  });
+
+  it('keeps single-field multiselect and reset available without a submenu', () => {
+    const f = fixture();
+    f.parameters.fields[1].control = 'checkboxes';
+    f.state.values.permission = ['read'];
+    f.container.children[1].dispatchEvent(new Event('click'));
+    expect(f.popup.querySelector('[role=listbox]')?.getAttribute('aria-multiselectable')).toBe('true');
+    const workspace = f.popup.querySelectorAll('[role=option]')[1];
+    workspace.focus(); workspace.dispatchEvent(new Event('click'));
+    expect(f.state.values.permission).toEqual(['read', 'workspace']);
+    expect(f.popup.hidden).toBe(false);
+    expect(f.documentState.activeElement?.dataset.focusKey).toBe('option:workspace');
+    f.popup.querySelectorAll('[role=option]')[1].dispatchEvent(new Event('click'));
+    expect(f.state.values.permission).toEqual(['read']);
+    f.popup.querySelector('.quick-reset')!.dispatchEvent(new Event('click'));
+    expect(f.onReset).toHaveBeenCalledWith(['permission']);
+    expect(f.state.values.permission).toEqual(['auto']);
+    expect(f.popup.hidden).toBe(false);
+    expect(f.popup.querySelectorAll('.quick-param-row, .quick-detail-heading')).toHaveLength(0);
+  });
+
+  it('applies resolved option visibility and disabled states to direct menus', () => {
+    const f = fixture();
+    f.state.values.permission = 'blocked';
+    f.state.states.permission = { resolvedOptions: [
+      { value: 'allowed', label: 'Allowed', description: 'Resolved choice' }, { value: 'blocked', label: 'Blocked' }, { value: 'hidden', label: 'Hidden' },
+    ], options: { blocked: { disabled: true }, hidden: { visible: false } } };
+    f.actions.update();
+    f.container.children[1].dispatchEvent(new Event('click'));
+    const options = f.popup.querySelectorAll('[role=option]');
+    expect(options).toHaveLength(2);
+    expect(options.map(option => option.disabled)).toEqual([false, true]);
+    expect(options[0].querySelector('.quick-option-copy')?.children[1].textContent).toBe('Resolved choice');
+    expect(f.documentState.activeElement).toBe(options[0]);
+    f.state.states.permission.disabled = true; f.actions.update();
+    expect(f.popup.querySelectorAll('[role=option]').every(option => option.disabled)).toBe(true);
+    f.state.states.permission.disabled = false; f.state.loading = true; f.actions.update();
+    expect(f.popup.querySelectorAll('[role=option]').every(option => option.disabled)).toBe(true);
+    f.state.disabled = true; f.actions.update();
+    expect(f.popup.hidden).toBe(true);
+  });
+
+  it('keeps multiple visible fields layered and switches to direct options when only one is visible', () => {
+    const f = fixture();
+    f.parameters.paramLayout!.actions = [{ kind: 'quick', id: 'settings', label: 'Settings', params: ['model', 'permission'], summary: ['model'] }];
+    f.actions.render(f.parameters);
+    f.container.children[0].dispatchEvent(new Event('click'));
+    expect(f.popup.querySelectorAll('.quick-param-row')).toHaveLength(2);
+    expect(f.popup.querySelectorAll('[role=option]')).toHaveLength(0);
+    f.popup.querySelector('.quick-param-row')!.dispatchEvent(new Event('click'));
+    expect(f.popup.querySelectorAll('.quick-detail-heading')).toHaveLength(1);
+    expect(f.popup.querySelectorAll('[role=option]')).toHaveLength(2);
+    f.popup.querySelectorAll('[role=option]')[1].dispatchEvent(new Event('click'));
+    expect(f.state.values.model).toBe('short');
+    expect(f.popup.hidden).toBe(false);
+    expect(f.popup.querySelectorAll('[role=option]')).toHaveLength(0);
+    f.state.states.permission = { visible: false }; f.actions.update();
+    expect(f.popup.querySelectorAll('.quick-param-row, .quick-detail-heading')).toHaveLength(0);
+    expect(f.popup.querySelectorAll('[role=option]')).toHaveLength(2);
+    expect(f.popup.style.width).toBe('292px');
+    expect(f.documentState.activeElement?.dataset.focusKey).toBe('option:short');
+    f.state.states.model = { visible: false }; f.actions.update();
+    expect(f.popup.hidden).toBe(true);
+  });
+});

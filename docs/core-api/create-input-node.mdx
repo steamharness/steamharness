@@ -1,0 +1,82 @@
+---
+title: "createInputNode"
+description: "创建输入解析节点，把 workflow input 转换为后续节点需要的数据。"
+---
+
+# createInputNode
+
+`workflow.createInputNode()` 创建普通输入节点。它通常放在 workflow 的第一步，用来 trim、校验、转换或补齐 executor 构造的 input。
+
+## 签名
+
+```ts
+workflow.createInputNode<Input>(
+  options?: InputNodeOptions<Input, Input>,
+): BaseNode<Input, Input>
+
+workflow.createInputNode<Input, Output>(
+  options: InputNodeOptions<Input, Output> & {
+    parse: InputParser<Input, Output>;
+  },
+): BaseNode<Input, Output>
+```
+
+## 参数
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| `options` | `InputNodeOptions<Input, Output>` | 节点名、解析函数、历史和元信息。不传时创建默认 `input` 节点。 |
+
+## `InputNodeOptions`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `name` | `string` | 节点名称，默认 `"input"`。 |
+| `parse` | `(input, context) => Output` | 输入解析函数；不传时原样返回 input。 |
+| `historyLimit` | `number` | 节点执行历史保留条数，默认 `50`。 |
+| `metadata` | `WorkflowNodeMetadataInput` | 节点展示元信息。 |
+
+## `parse` 入参
+
+| 名称 | 说明 |
+| --- | --- |
+| `input` | 要解析的输入，来自 workflow `run` 或上游节点。 |
+| `context` | runtime 注入的 `NodeContext`，可读取 metadata、KV、conversation、provider、abortSignal 等。 |
+
+## 返回值
+
+| 返回 | 类型 | 说明 |
+| --- | --- | --- |
+| 节点对象 | `BaseNode<Input, Output>` | 可通过 `workflow.runNode(inputNode, input, context)` 执行。 |
+| 节点输出 | `Output` | `parse` 返回值，作为下游节点输入。 |
+
+## 解析流程
+
+| 阶段 | 输入 | 结果 |
+| --- | --- | --- |
+| executor | args/API/form | `Input` |
+| `createInputNode` 节点 | `Input`、`NodeContext` | `Output` |
+| 下游节点 | `Output` | 继续处理或进入 LLM/output 节点 |
+
+## 示例
+
+```ts
+const inputNode = workflow.createInputNode<Input, ParsedInput>({
+  name: "parse-input",
+  parse(input) {
+    return {
+      message: input.message.trim(),
+      count: Number(input.count ?? 1),
+    };
+  },
+});
+```
+
+## 常见用法
+
+| 场景 | 做法 |
+| --- | --- |
+| 清理字符串 | 在 `parse` 中 `trim()`。 |
+| 转换类型 | 把 executor 构造的字符串转换成 number/boolean/object。 |
+| 输入校验 | 校验失败时抛出 `workflow.WorkflowError`，类型通常用 `input_validation`。 |
+| 直接透传 | 不传 `parse`，节点输出等于输入。 |

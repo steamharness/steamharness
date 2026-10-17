@@ -1,0 +1,49 @@
+---
+title: "workspace logout"
+description: "清空 workspace CLI 保存的 Workflow Server 连接配置。"
+---
+
+# workspace logout
+
+`workspace logout` 会删除 CLI 登录态文件中的 server URL、API Key 和用户信息。它不请求 server，也不会删除远程 workflow 或本地项目文件。
+
+## 命令格式
+
+```bash
+pnpm exec workflow-code workspace logout
+```
+
+## 参数
+
+| 参数 | 说明 |
+| --- | --- |
+| 无 | 该命令不读取位置参数。 |
+
+## 行为
+
+| 步骤 | 说明 |
+| --- | --- |
+| 定位配置目录 | 使用 `WORKFLOW_CLI_AUTH_DIR` 或系统默认目录。 |
+| 清理配置 | 删除 `workflow-auth.json`。 |
+| 输出状态 | 输出 `{ loggedIn: false }`。 |
+
+## 输出
+
+| 情况 | 输出 |
+| --- | --- |
+| 成功 | `{ errCode: 0, errMessage: "", data: { loggedIn: false } }` |
+| 文件写入失败 | 输出错误信息，退出码为 `1`。 |
+
+## 示例
+
+```bash
+pnpm exec workflow-code workspace logout
+pnpm exec workflow-code workspace status
+```
+
+## 注意事项
+
+| 场景 | 说明 |
+| --- | --- |
+| 已设置 `WORKFLOW_SERVER_ADMIN_KEY` | 环境变量仍会被后续命令读取。 |
+| 需要彻底切换账号 | 同时清理 shell 环境变量和 CLI 登录态。 |

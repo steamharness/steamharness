@@ -1,0 +1,87 @@
+---
+title: "defineWorkflow"
+description: "定义 workflow 本体、输入输出类型和主执行函数。"
+---
+
+# defineWorkflow
+
+`workflow.defineWorkflow<Input, Output>()` 用来定义业务流程本体。它只返回传入的定义对象，真正的执行由本地 executor 或 CLI 完成。
+
+## 签名
+
+```ts
+workflow.defineWorkflow<Input, Output>(
+  workflow: WorkflowDefinition<Input, Output>,
+): WorkflowDefinition<Input, Output>
+```
+
+## 参数
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| `workflow` | `WorkflowDefinition<Input, Output>` | 可执行 workflow 定义，包含名称和主执行函数。 |
+
+## `WorkflowDefinition` 字段
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `name` | `string` | workflow 的稳定名称。本地运行界面、日志和结构分析都会使用。 |
+| `run` | `(input, context) => Output` | 主执行函数。通常在这里调用 `workflow.runNode` 或 `workflow.runStreamNode`。 |
+
+## `run` 入参
+
+| 名称 | 说明 |
+| --- | --- |
+| `input` | 业务输入，Workflow 来自所选入口的 `createInput(context)`，Conversation 来自 `executor.createInput(context)`。 |
+| `context` | runtime 注入的 `WorkflowContext`，包含 providers、KV、conversation、files、metadata、nodeHooks 和 abortSignal。 |
+
+## 返回值
+
+| 返回 | 类型 | 说明 |
+| --- | --- | --- |
+| workflow 定义 | `WorkflowDefinition<Input, Output>` | 原样返回定义对象，供 executor 引用。 |
+| `run` 的结果 | `Output` | 执行时由 runtime 读取。项目约束要求输出 payload 继承 `WorkflowPayload`。 |
+
+## 执行关系
+
+| 阶段 | 输入 | 结果 |
+| --- | --- | --- |
+| executor | CLI args、表单数据 | `Input` |
+| workflow `run` | `Input`、`WorkflowContext` | `Output` |
+| runtime report | `Output` | 标准执行报告和最终 payload |
+
+## 示例
+
+```ts
+import type { WorkflowPayload } from "workflow-code";
+
+interface Input {
+  message: string;
+}
+
+interface Output extends WorkflowPayload {
+  items: Array<{
+    id: string;
+    title: string;
+    content: unknown;
+    contentType?: "markdown" | "text" | "json" | "audio";
+    collapsed?: boolean;
+  }>;
+}
+
+export const exampleWorkflow = workflow.defineWorkflow<Input, Output>({
+  name: "example",
+  async run(input, context) {
+    const parsed = await workflow.runNode(inputNode, input, context);
+    return workflow.runNode(outputNode, parsed, context);
+  },
+});
+```
+
+## 注意事项
+
+| 规则 | 说明 |
+| --- | --- |
+| 不要从 `"workflow-code"` 导入 runtime API | 业务 workflow 由平台注入全局 `workflow`。 |
+| `Output` 需要继承 `WorkflowPayload` | 成功时统一返回 `errCode: 0`、`errMessage: ""`。 |
+| 异常会被 runtime 包装 | `run` 中抛出的未知错误会转换成 `WorkflowError` 并进入执行报告。 |

@@ -1,0 +1,62 @@
+---
+title: "getEnv"
+description: "从当前 workflow runtime 环境读取非空环境变量。"
+---
+
+# getEnv
+
+`workflow.getEnv()` 读取当前 runtime 环境里的环境变量。它会 trim 变量名和变量值；变量名为空、变量不存在或变量值 trim 后为空时，返回 `undefined`。
+
+## 签名
+
+```ts
+workflow.getEnv(name: string): string | undefined
+```
+
+## 参数
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| `name` | `string` | 环境变量名。会先 `trim()`；空字符串直接返回 `undefined`。 |
+
+## 返回值
+
+| 返回 | 类型 | 说明 |
+| --- | --- | --- |
+| 环境变量值 | `string` | 变量存在且 trim 后非空时返回 trim 后的值。 |
+| 未找到 | `undefined` | 变量名为空、变量不存在或变量值为空。 |
+
+## 数据来源
+
+| 运行位置 | 来源 | 说明 |
+| --- | --- | --- |
+| CLI / 本地 runtime | `process.env` 和 workflow `.env` | executor 运行前会加载 workflow 目录下 `.env`。 |
+
+## 读取流程
+
+| 阶段 | 输入 | 结果 |
+| --- | --- | --- |
+| workflow 代码 | 变量名 | `workflow.getEnv(name)` |
+| runtime env | `process.env[name]` | trim 后的字符串或 `undefined` |
+| provider / node | 字符串值 | 用于 API key、base URL、模型名等配置 |
+
+## 示例
+
+```ts
+const apiKey = workflow.getEnv("MY_API_KEY");
+
+if (apiKey === undefined) {
+  throw new workflow.WorkflowError({
+    type: "input_validation",
+    message: "Missing MY_API_KEY.",
+  });
+}
+```
+
+## 注意事项
+
+| 规则 | 说明 |
+| --- | --- |
+| 不返回空字符串 | 值为 `"   "` 时会返回 `undefined`。 |
+| 不负责默认值 | 需要默认值时在业务代码中显式处理。 |
+| LLM provider 也依赖它 | `createLLMProviderFromEnv()` 会通过它读取 `LLM_*` 配置。 |

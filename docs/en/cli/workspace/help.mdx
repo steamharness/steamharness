@@ -1,0 +1,40 @@
+---
+title: "workspace help"
+description: "View Server Workspace CLI help information."
+---
+
+# workspace help
+
+The workspace CLI displays help when no command is provided, or when `help`, `--help`, or `-h` is passed. The help content comes from `printUsage()` in `src/workspace.ts` in the CLI repository.
+
+## Command Format
+
+```bash
+pnpm exec workflow-code workspace help
+pnpm exec workflow-code workspace --help
+pnpm exec workflow-code workspace -h
+pnpm exec workflow-code workspace
+```
+
+## Output content
+
+|Content|Description|
+| --- | --- |
+| Usage |Basic invocation format for workspace CLI.|
+| Commands | `login`, `logout`, `status`, `health`, `pack`, `upload`, `download`, `publish`, `run`, `debug-node`, `versions`. |
+| Options |The default source for `--server` and `--token`.|
+
+## Behavior
+
+|Situation|Result|
+| --- | --- |
+|Command not passed|Output help.|
+|The command is `help` / `--help` / `-h`|Output help.|
+|Unknown command|Output error message with exit code `1`.|
+
+## Next step
+
+|Goal|Document|
+| --- | --- |
+|Save login status| [`login`](/en/cli/workspace/login) |
+| Package and upload | [`pack`](/en/cli/workspace/pack), [`upload`](/en/cli/workspace/upload) |

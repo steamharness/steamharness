@@ -1,0 +1,21 @@
+---
+title: "Core 0.1.4"
+description: "Release notes for Core 0.1.4."
+---
+
+# Core 0.1.4
+
+2026-08-24 · Tag `workflow-code/v0.1.4` · npm
+
+<span id="workflow-code-0-1-4" className="release-version-anchor"></span>
+<span id="workflow-code.0.1.4" className="release-version-anchor"></span>
+
+#### Breaking Changes
+
+- Electron local runs now use the `desktop` platform, and `workflow.isDesktop()` replaces `workflow.isApp()`.
+  Migration: pass `desktop` for local runs; the old `app` value is no longer accepted.
+
+#### Fixed
+
+- Fixed the CLI usage shown when standalone structure inspection is missing a project path.
+- Fixed runnable projects with a missing, dynamic, or legacy `projectType` config being blocked by static migration checks.

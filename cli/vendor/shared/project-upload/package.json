@@ -1,0 +1,22 @@
+{
+  "name": "@workflow-code/project-upload",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "exports": {
+    ".": {
+      "types": "./index.ts",
+      "import": "./index.ts"
+    },
+    "./node": {
+      "types": "./node.ts",
+      "import": "./node.ts"
+    }
+  },
+  "dependencies": {
+    "@workflow-code/kanban-project": "workspace:*",
+    "ignore": "^7.0.5"
+  }
+}

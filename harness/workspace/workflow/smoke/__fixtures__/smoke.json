@@ -1,0 +1,34 @@
+{
+  "args": [
+    "--message",
+    "workspace-four"
+  ],
+  "conversationId": "smoke-fixture-thread",
+  "expected": {
+    "errCode": 0,
+    "output": {
+      "mode": "ok",
+      "conversationMessages": 1,
+      "kvLastMessage": "workspace-four"
+    },
+    "contentIncludes": [
+      "smoke:workspace-four"
+    ],
+    "itemCount": 1,
+    "items": [
+      {
+        "id": "smoke-output",
+        "title": "Output",
+        "content": "smoke:workspace-four",
+        "contentType": "markdown",
+        "collapsed": false
+      }
+    ],
+    "nodes": [
+      "input",
+      "output"
+    ],
+    "outputCount": 1,
+    "conversationMessages": 1
+  }
+}

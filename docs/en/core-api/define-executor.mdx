@@ -1,0 +1,405 @@
+---
+title: "defineExecutor"
+description: "Defines a Workflow project's entrypoints or a Conversation project's single execution configuration."
+---
+
+# defineExecutor
+
+`workflow.defineExecutor<Input, Output>()` declares a project's execution contract. A Workflow executor declares its default entrypoint and independently runnable `entrypoints`; a Conversation executor declares its workflow, parameters, and input construction directly on the executor.
+
+## Signature
+
+```ts
+workflow.defineExecutor<Input, Output>(
+  definition: WorkflowExecutorDefinition<Input, Output>,
+): WorkflowExecutorDefinition<Input, Output>
+```
+
+## Parameter
+
+|Parameter|Type|Description|
+| --- | --- | --- |
+| `definition` | `WorkflowExecutorDefinition<Input, Output>` |Platform discovery and implementation of ingress configuration for workflow.|
+
+## Workflow executor
+
+|Field|Type|Description|
+| --- | --- | --- |
+| `projectType` | `"workflow"` |The project type. Required.|
+| `defaultEntrypoint` | `string` |The entrypoint ID used when no entrypoint is selected. It must be a string literal that names an item in `entrypoints`.|
+| `entrypoints` | `WorkflowEntrypointDefinition[]` |A non-empty array of static entrypoint definitions. Each item must call [`workflow.defineEntrypoint()`](/en/core-api/define-entrypoint) directly.|
+
+`workflow`, `params`, `createInput`, `resolveParams`, `createContext`, `requiredProviders`, `tools`, `tokenUsage`, and `registry` are entrypoint-specific Workflow fields and cannot appear at the top level of an executor. Hosts display entrypoints in declaration order. Selecting one creates a run for that entrypoint directly; the default entrypoint does not run first.
+
+Workflow can declare the proposed schedule in `package.json.workflowCode.schedulePresets`. Each entry statically references a entrypoint and contains a IANA time zone, time window, or 5 field Cron, and default parameter values. The directory goes into the Structure report, but the host must display a confirmation interface and cannot automatically create a schedule for importing or publishing a project. Conversation and Kanban declare this field to be rejected by Structure. See [Workflow Timed Run](/en/concepts/workflow-schedules) for the full format and run boundaries.
+
+## Conversation executor
+
+|Field|Type|Description|
+| --- | --- | --- |
+| `projectType` | `"conversation"` |The type tag for the Conversation item. Required.|
+| `workflow` | `WorkflowDefinition<Input, Output>` |Conversation is unique to workflow. Required.|
+| `createInput` | `(context) => Input` |Converts args, environment, and session IDs into business inputs. Required.|
+| `resolveParams` | `(context) => WorkflowParamResolveResult` |Optional parameter linkage callback.|
+| `createContext` | `(context) => Partial<WorkflowContext>` |Add providers, metadata and hooks.|
+| `requiredProviders` | `ExecutorProviderName[]` |Declares a required provider.|
+| `params` | `WorkflowConversationParamDeclaration[]` | Ordered Conversation Auxiliary, Quick, Mode, and Slash entries. |
+| `tools` | `WorkflowToolPermissionDefinition[]` |Conversation Callable tools and default policies.|
+| `conversation` | `WorkflowConversationDefinition` | Configure attachments, the input queue, and the optional OpenAI gateway. The standard message input needs no configuration. |
+| `tokenUsage` | `WorkflowTokenUsageDefinition` |Enable token usage statistics.|
+| `registry` | `WorkflowNodeRegistryEntry[]` |Register nodes that can be debugged individually.|
+
+Conversation does not declare `defaultEntrypoint` or `entrypoints`. CLI rejects a non-empty entrypoint selection instead of silently ignoring it.
+
+Durable Agent projects can declare inline `conversation.recovery: { enabled: true }` and `conversation.durable: { enabled: true }` alongside Agent `session` options. Recovery enables host crash recovery; durable enables the Harness inbox, bidirectional controls and persistent owner in CLI Web / Studio, with complete task views in Studio Trace. Harness persists steer / followUp / reject submissions and withdrawals. `defineAgentConversationExecutor({ session })` adds durable automatically; static structure projects must still declare inline objects. Explicit `tools` lists must include `update_plan` and, when enabled, `subagent`. See [session control](/en/core-api/create-agent#durable-session-control). Local CLI / Studio hosts execute projects; Server only manages projects and data.
+
+## `WorkflowExecutorContext`
+
+|Field|Type|Description|
+| --- | --- | --- |
+| `workflowName` | `string` |The current workflow name.|
+| `workflowDir` | `string` |The current workflow directory.|
+| `entrypointId` | `string \| undefined` | The selected Workflow entry-point ID; `undefined` for Conversation. |
+| `entrypointTitle` | `string \| undefined` | The selected Workflow entry-point title; `undefined` for Conversation. |
+| `args` | `string[]` |Original CLI style parameter.|
+| `paramValues` | `Record<string, string \| string[]>` |The structured value after parsing by `params`. A single value holds a string, and multiple values are selected as a string array.|
+| `env` | `NodeJS.ProcessEnv` |A collection of environment variables.|
+| `abortSignal` | `AbortSignal` | An interrupt signal; CLI Web cancellation is passed to workflow and SDK/provider calls that support signals. |
+| `conversationId` | `string \| undefined` |The session ID.|
+| `toolPermissionPolicies` | `WorkflowToolPermissionPolicyMap \| undefined` |The tool policy override value passed in by the host. workflow usually does not read this field directly, but uses `context.toolPermissions` or `workflow.createToolApprovalGate()`.|
+
+## `WorkflowParamDeclaration`
+
+`params` is an ordered declaration array: place it on each Workflow `defineEntrypoint` or on the Conversation `defineExecutor`. Workflow can declare main form fields directly. Conversation always uses the standard message input and only accepts `kind: "auxiliary"`, `kind: "quick"`, `kind: "mode"`, or `kind: "slash"` entries. Multiple toolbar entries appear from left to right in declaration order. Each Auxiliary is an independent parameter panel; each Quick is a summary menu. Both can contain multiple fields. Each Mode is an independent cycling switch. Slash parameters appear in the `/` menu above the input without a toolbar button. Names and flags must be unique across all fields, and Auxiliary/Quick IDs must be unique across both group kinds. Conversation reserves `--message`, `--images`, `--videos`, and `--files` for the standard input.
+
+```ts
+params: [
+  {
+    kind: "auxiliary", id: "workspace", label: "Workspace",
+    fields: [
+      { name: "workdir", flag: "--workdir", type: "string" },
+      { name: "trace", flag: "--trace", type: "boolean" },
+    ],
+  },
+  {
+    kind: "quick", id: "ai", label: "AI", summary: ["model", "effort"],
+    fields: [
+      { name: "model", flag: "--model", type: "string", control: "select", options: [{ value: "sol", label: "Sol" }] },
+      { name: "effort", flag: "--effort", type: "string", control: "select", options: [{ value: "high", label: "High" }] },
+    ],
+  },
+  { kind: "mode", name: "agentMode", flag: "--agent-mode", label: "Mode", options: [{ value: "ask", label: "Ask" }, { value: "build", label: "Build" }] },
+  { kind: "auxiliary", id: "output", label: "Output", fields: [{ name: "format", flag: "--format", type: "string" }] },
+],
+```
+
+Main and grouped fields use the properties below. Source declarations no longer set `panel`. The structure report flattens fields into `WorkflowParamDefinition[]` and preserves action labels, membership, and order in `paramLayout.actions`. CLI, schedules, and external APIs continue to parse the same flags and `paramValues[name]`.
+
+|Field|Type|Description|
+| --- | --- | --- |
+| `name` | `string` |The parameter name. Required.|
+| `flag` | `string` |Long parameters, such as `--message`.|
+| `shortFlag` | `string` |Short parameters, such as `-m`.|
+| `type` | `WorkflowParamType` |The parameter type. Required.|
+| `required` | `boolean` |Whether it is required.|
+| `description` | `string` |The parameter description.|
+| `defaultValue` | `string` |Default value.|
+| `multiple` | `boolean` |Whether multiple values are allowed.|
+| `control` | `"text" \| "textarea" \| "radio" \| "select" \| "checkboxes" \| "audio" \| "date" \| "time" \| "datetime" \| "date-range"` | CLI Web form control hints; `audio` must use `type: "file"`, while date-related controls still use `type: "string"`. |
+| `step` | `number` |Which step this field is asked in, starting at `1`. Fields sharing a step are asked together, and a user-input node that declares steps shows one step at a time — a "‹ question N of M ›" control above the field pages between them and flags a required question that is still unanswered. Use it when one request asks several separate questions; do not split the fields of a single question across steps.|
+| `resolveOnInput` | `boolean` |Whether to execute `resolveParams` when the main input content changes. Default `false`; set to `true` only if linkage does depend on input text.|
+| `options` | `{ value, label?, description?, command? }[]` | Enumerates options. A Slash option's `command` omits the leading `/` and defaults to `value`. |
+| `accept` | `string[]` |File type restrictions.|
+| `audio` | `{ maxDurationSeconds?: number, maxBytes?: number }` |Optional duration and byte limits for one audio file; hosts provide defaults when omitted.|
+| `format` | `"json"` |file param uses the JSON reference format.|
+
+Quick `summary` must list distinct field names from that group in display order. Quick fields must be `type: "string"` enumerations with `control: "select" | "radio" | "checkboxes"`. Mode directly declares `name`, `flag`, optional `label` / `defaultValue`, and at least two distinct, non-empty `options`; it is available only to Conversation. Without `defaultValue`, Mode uses the first option. An explicit default must match an option. Auxiliary accepts ordinary form fields. Fields cannot set `panel` or contain nested groups. Static analysis and runtime reject empty groups, duplicate names/flags/IDs, and invalid summaries.
+
+## Slash Menu And Footer Text
+
+Conversation `kind: "slash"` supports single-select `type: "string"` and toggle `type: "boolean"` parameters. Declare `name` and `flag`; omit `control`, `panel`, and `multiple`. A selector requires non-empty `options` and defaults to the first option; an explicit `defaultValue` must match an option. Boolean parameters default to `"false"`, have no `options`, and may set a parameter-level `command` that otherwise defaults to `name`. Commands must be unique within the project and match `/^[a-z][a-z0-9_-]*$/`.
+
+```ts
+params: [
+  { kind: "slash", name: "plan", flag: "--plan", type: "boolean", defaultValue: "false", label: "Plan" },
+  { kind: "slash", name: "webSearch", flag: "--web-search", type: "boolean", command: "search", label: "Web search" },
+],
+conversation: {
+  commands: [
+    { command: "export", label: "Export conversation", localizedLabel: { "zh-CN": "导出对话" }, action: { kind: "export" } },
+    { command: "compact", label: "Summarize context", localizedLabel: { "zh-CN": "上下文总结" }, action: { kind: "prompt", text: "/compact" } },
+  ],
+  footer: [
+    { text: "Plan mode", localizedText: { "zh-CN": "Plan 模式" }, when: { param: "plan", value: "true" } },
+    { param: "webSearch" },
+  ],
+  userInput: {
+    hideComposer: true,
+    effects: [
+      { when: { type: "agent-plan-approval", values: { decision: "approve" } }, params: { plan: "false" } },
+    ],
+  },
+},
+```
+
+In CLI Web, a bare `/` opens all commands above the input; further typing filters commands and labels. The rounded menu has compact rows without a left checkmark. Choosing a selector writes its option value; choosing a boolean toggles `"true"` / `"false"` and resolves parameters without sending a message. The menu observes parameter and option visibility, disabled states, and `resolvedOptions`. Dynamic options may set `command`; otherwise they reuse the static option's command for the same value, then fall back to `value`. Dynamic commands must also satisfy the format and uniqueness rules.
+
+`conversation.commands` declares execution commands as a static `WorkflowConversationCommandDefinition[]`, displayed alongside parameter commands. Each entry contains `command`, a non-empty `label`, optional `description`, `localizedLabel`, `localizedDescription`, and `action`. An `action: { kind: "prompt", text }` runs the declared text as a separate turn through the project's Workflow for any business command. An `action: { kind: "export" }` downloads the complete current session as JSON and persists the command and result in the conversation body. Command names must not collide with parameter commands. Missing translations fall back to the original text. Selection removes only the command at the caret and preserves other text and attachments. Execution commands are unavailable while the session is running, awaiting approval, has queued input, or is editing a queued message.
+
+CLI Web checks accumulated dynamic options against execution commands during parameter refresh and send. Invalid updates return an error and retain the previous valid parameters. Sends retain dynamic options not replaced by the current patch. Omitted `visible` or `disabled` properties in option patches retain their previous values; explicitly replacing or restoring the option list clears old states. The export includes its own command and result; the receipt count matches `messages.length` in the file.
+
+`conversation.footer` is a static array displayed outside and below the standard input. Each item declares exactly one non-empty `text` or existing parameter name `param`. Text is displayed literally, with optional `localizedText` mapping language keys to translations and fallback to `text`. Parameter items display the selected option's label or the current value. Optional `when: { param, value }` shows an item only while the parameter matches; hidden referenced parameters hide the associated text. Content is always plain text, without HTML or Markdown parsing.
+
+`conversation.userInput` is generic user-input interaction configuration declared as a static object. `hideComposer` defaults to `true`: hide the bottom composer while the current session has a pending question or approval, then restore it when the runtime accepts the answer or the request is stopped, preserving drafts and attachments. Set it to `false` to retain the composer. `effects` run in declaration order. `when.type` matches the request's `metadata.type`, `when.nodeName` matches its node name, and `when.values` matches submitted values; all declared conditions must match, and at least one is required. Answer values support strings, finite numbers, booleans, and string arrays; arrays match exactly in order. `params` maps existing parameter names to strings or string arrays and must be non-empty; booleans use `"true"` / `"false"`. Updates persist for subsequent inputs in the current session and refresh Slash, Quick, and footer displays. The current run resumes with its original arguments without replaying completed steps. Effects apply once per accepted request, never for failed submissions, and older parameter refreshes cannot overwrite them. Later matching rules win for the same parameter. For example, an ordinary review node can declare `{ when: { nodeName: "review", values: { accepted: true } }, params: { webSearch: "false" } }` without host-specific business logic.
+
+Project Assistant defaults to Build and uses a single `/plan` toggle. Its `createInput` maps `paramValues.plan === "true"` to `agent: "plan"` and the footer displays "Plan mode"; executing it again restores Build and hides the notice. `/export` exports every message and execution record in the current session. `/compact` immediately runs Core Agent's real context summarization, displays running and completed or failed states, and persists the summary as the context for subsequent turns while retaining the original conversation body.
+
+## `WorkflowParamStatePatch`
+
+|Field|Type|Description|
+| --- | --- | --- |
+| `value` | `string \| string[] \| null` |Replace the current parameter value;`null` indicates an explicit clear.|
+| `visible` | `boolean` |Controls whether the parameter is displayed.|
+| `disabled` | `boolean` |Whether the control parameters are operable.|
+| `resolvedOptions` | `{ value, label?, description?, command? }[] \| null` |Array replaces the current full list of options for the argument;`null` restores static `options`.|
+| `options` | `Record<string, { visible?, disabled? }>` |Modifies the display or disabled state of individual values in the current selection list.|
+
+## `WorkflowNodeRegistryEntry`
+
+|Field|Type|Description|
+| --- | --- | --- |
+| `name` | `string` |The name of the debug node in the registry. Required.|
+| `node` | `NodeDefinition \| StreamNodeDefinition` |The node object actually executed. Required.|
+| `metadata` | `WorkflowNodeMetadataInput` |The overlay node displays meta information.|
+| `stream` | `boolean` |Marks whether the node is executed as a streaming node.|
+| `createInput` | `(context) => Input` |Input constructor for single-node debugging.|
+
+## Execution process
+
+|Phase|Description|
+| --- | --- |
+|Platform Selection Configuration|Workflow selects an entry by explicit ID or `defaultEntrypoint`;Conversation uses executor itself.|
+|Create Context|runtime creates a `WorkflowExecutorContext` based on args, env, workflowName, entry, and conversationId.|
+| `createInput` |Invokes the input construct of the selected entry or Conversation executor.|
+| `createContext` |An optional context extension that invokes the same execution configuration.|
+| workflow `run` |Execute only the workflow of the selected entry, or the only workflow of Conversation.|
+
+## Quick parameters and linkage
+
+Each `kind: "quick"` entry creates one summary trigger. Visibility follows the current `resolveParams` state. With one visible parameter, the trigger opens its options directly, with no parameter list or back button. Single selection closes the menu and restores trigger focus; multiple selection supports consecutive changes. With multiple visible parameters, the first-level menu lists the fields in declaration order; selecting a field opens its single- or multi-select options. Wide layouts place the options beside the menu, while narrow layouts drill into one popover. The menu's **Reset to defaults** action restores only that group's fields and triggers `resolveParams` once. Other Quick, Auxiliary, Mode, Main, unknown Raw arguments, and unsent Conversation text and attachments remain intact. `summary` explicitly selects the fields displayed in the trigger, without special treatment for names such as `model` or `effort`.
+
+Quick accepts an `icon` Codicon name such as `sparkle` or `shield`, defaulting to `settings`. Declare a static string matching `/^[a-z][a-z0-9-]*$/`. CLI Web triggers display the icon and the current `summary` selections without repeating the group label or showing an up arrow. The group label remains in menu titles, tooltips, and accessible names. When toolbar space is limited, Quick text disappears from right to left and returns when space becomes available; collapsed icons still open their menus.
+
+```ts
+params: [
+  {
+    kind: "quick", id: "writing", label: "Writing", icon: "edit", summary: ["tone"],
+    fields: [
+      { name: "tone", flag: "--tone", type: "string", resolveOnInput: true,
+        control: "select", defaultValue: "balanced", options: [
+          { value: "balanced", label: "Balanced" },
+          { value: "precise", label: "Precise" },
+          { value: "creative", label: "Creative" },
+        ] },
+      { name: "sources", flag: "--sources", type: "string", control: "checkboxes", options: [
+        { value: "web", label: "Web" },
+        { value: "docs", label: "Docs" },
+      ] },
+    ],
+  },
+],
+resolveParams({ draftText, paramValues }) {
+  const docsQuestion = draftText.includes("documentation");
+  return {
+    params: {
+      tone: {
+        value: docsQuestion ? "precise" : paramValues.tone,
+        options: { creative: { disabled: docsQuestion } },
+      },
+      sources: { value: docsQuestion ? ["docs"] : paramValues.sources },
+    },
+  };
+},
+createInput({ paramValues }) {
+  return {
+    tone: String(paramValues.tone),
+    sources: Array.isArray(paramValues.sources) ? paramValues.sources : [],
+  };
+},
+```
+
+`resolveParams` is executed during initialization and when the value of any Form parameter in main, Advanced, and Quick changes. The change of the main input content will only be triggered when at least one parameter is set to `resolveOnInput: true`, avoiding irrelevant remote evaluation caused by ordinary message input. It should remain free of write side effects and idempotence, and does not perform writing to files, writing to KV, or modifying external state; read-only dynamic directories should be passed in the `abortSignal` provided by the callback. `visible` / `disabled` in the patch does not implicitly empty existing values; `value: null` is explicitly returned when emptying is required. When initializing the return value patch in Raw mode, the host only updates the corresponding declared parameters, leaving the other Raw parameters and their values.
+
+`resolvedOptions` is used to dynamically replace enumeration: returning an array will completely replace the static `options` of the parameter, returning `null` to restore the static option, and omitting it will keep the current dynamic option. `value` in the array must be a non-empty unique string, and `label` and `description` must be strings. When replacing options, the old option state will be cleared. The host will uniformly apply dynamic options to Quick and Advanced, and distinguish between loading, empty and error. conversation the host is re-evaluated by conversation ID, asynchronous responses that have expired do not overwrite the current session.
+
+## Date Parameters
+
+Date related controls use a fixed local time string without time zone conversion:
+
+| `control` |String Format|Behavior|
+| --- | --- | --- |
+| `date` | `YYYY-MM-DD` |Write back immediately after selecting a single date.|
+| `time` | `HH:mm:ss` |24-hour clock, including seconds.|
+| `datetime` | `YYYY-MM-DDTHH:mm:ss` |Write back with OK after selecting date and time.|
+| `date-range` | `YYYY-MM-DD/YYYY-MM-DD` |Closed interval; written back only when the start and end dates are complete and the end is no earlier than the start.|
+
+These controls require `type: "string"` and can be main fields or Auxiliary fields. They cannot be placed in Quick or Mode or declare `options` or `multiple: true`; TypeScript, static structure analysis, and runtime reject invalid combinations. Date fields also cannot receive `resolvedOptions` or option status patches from `resolveParams`.
+
+Empty values remain `""`; optional parameters can be cleared, and required parameters do not display a clear operation. Non-empty invalid default values, Raw parameters or `resolveParams` return values will enter the form as they are and display field errors, and will not be silently corrected. Before correction, Run, Send or Submit will remain disabled and will not pass known invalid values to `createInput`. Legal values of `args` and `paramValues` are still passed as the original string.
+
+Clicking on the calendar title will open a compact double-column scroll selector for year and month. The scrolling process only updates the draft, switches the calendar after selecting "Finish", and "Cancel" keeps the original month. The year limit is `0001` to `9999`, and the scroll wheel loads only limited options around the current year. In the widescreen interface,`date-range` will display two calendars that can switch years and months independently. When reopening, it will locate the selected start month and end month respectively, and display the next month on the right when starting and ending in the same month. Switching one of the calendars does not change the month the other calendar is currently showing. The narrow screen interface uses a single calendar, and the value format for the date range and the full range submission rules remain unchanged.
+
+```ts
+params: [
+  { name: "publishDate", flag: "--publish-date", type: "string", control: "date" },
+  { kind: "auxiliary", id: "schedule", label: "Schedule", fields: [
+    { name: "startsAt", flag: "--starts-at", type: "string", control: "datetime" },
+  ] },
+  { name: "period", flag: "--period", type: "string", control: "date-range" },
+],
+resolveParams({ paramValues, trigger }) {
+  const publishDate = typeof paramValues.publishDate === "string" ? paramValues.publishDate : "";
+  const period = typeof paramValues.period === "string" ? paramValues.period : "";
+  const preferPeriod = trigger.kind === "param" && trigger.paramName === "period";
+  const usePeriod = period !== "" && (preferPeriod || publishDate === "");
+  const useDate = publishDate !== "" && !usePeriod;
+
+  return {
+    params: {
+      publishDate: usePeriod
+        ? { visible: false, value: null }
+        : { visible: true },
+      period: useDate
+        ? { visible: false, value: null }
+        : { visible: true },
+    },
+  };
+},
+createInput({ paramValues }) {
+  return {
+    publishDate: String(paramValues.publishDate ?? ""),
+    startsAt: String(paramValues.startsAt ?? ""),
+    period: String(paramValues.period ?? ""),
+  };
+},
+```
+
+The mutex example hides and clears the range after selecting a single day, hides and clears a single day after selecting a range; both fields reappear after clearing the current value. If the external args provides both at initialization, the single day is deterministically retained and the range is cleared. Only returning `visible: false` will keep the old value and continue to put it in `args` and `paramValues`, which is not suitable for mutex parameters.
+
+Every executor must declare `projectType` statically. `projectType: "conversation"` enables conversation IDs, context, and session storage; workflow code can call `context.conversation.setTitle(title)` to suggest a readable session title for shared runtime UI or CLI Web. `projectType: "workflow"` prohibits a `conversation` declaration, leaves session context disabled, and requires static `defaultEntrypoint` and `entrypoints`. Missing or unknown types, and the legacy `conversation.enabled`, are rejected as migration errors rather than treated as Workflow projects.
+
+`workflow.defineExecutor(...)` must receive an inline object literal, and the result must be the module's named or default `executor` export. Do not assign the configuration to a variable first or continue using legacy top-level exports such as `workflow`, `createInput`, or `projectType`. Static structure analysis does not execute configuration code, and runtime does not assemble those fields into an executor.
+
+Conversation always uses the standard message input. It needs no enable setting and cannot be disabled or replaced with a custom main form. Declare optional attachment capabilities directly in `conversation.attachments`. The removed `conversation.defaultInput` configuration is rejected:
+
+```ts
+export const executor = workflow.defineExecutor<Input, Output>({
+  projectType: "conversation",
+  workflow: conversationWorkflow,
+  conversation: {
+    recovery: { enabled: true },
+    inputQueue: {
+      enabled: true,
+    },
+    attachments: {
+      images: true,
+      videos: true,
+      files: true,
+    },
+  },
+  createInput({ args }) {
+    return workflow.parseConversationDefaultInputArgs(args);
+  },
+});
+```
+
+The host renders the standard input without automatically modifying `WorkflowContext`. Read its fixed arguments explicitly in `createInput({ args })`:
+
+- Text:`--message`
+- Image Attachment:`--images`
+- Common file attachments:`--files`
+- Video attachments: `--videos` when `attachments.videos: true` is enabled.
+
+Direct use of [`workflow.parseConversationDefaultInputArgs(args)`](/en/core-api/parse-conversation-default-input-args) is recommended:
+
+```ts
+createInput({ args }) {
+  const defaults = workflow.parseConversationDefaultInputArgs(args);
+  return {
+    message: defaults.message,
+    images: defaults.images,
+    videos: defaults.videos,
+    files: defaults.files,
+  };
+}
+```
+
+`--images` / `--videos` / `--files` reuse the existing file reference protocol, accepting managed file JSON references or local paths. The host converts pasted, dropped, or uploaded files into managed references. Existing projects with `files: true` and no `videos` capability continue to upload videos under `--files`.
+
+`conversation.recovery: { enabled: true }` declares that the project can recover across processes with its original `runId`, arguments and resolved answers. Enable it only for recoverable execution such as a durable Agent. The flag alone cannot make ordinary Workflows or earlier non-repeatable side effects recoverable. CLI Web / Studio recover at startup and after worker exit, with three automatic retries followed by the original reply's Retry action. Explicit Stop durably cancels work; host closure preserves checkpoints.
+
+Without a Durable session, `conversation.inputQueue: { enabled: true }` lets CLI Web accept new input while the current session is running. The new input enters the shared input queue:
+
+- CLI Web manages input queues; command-line `run` / `json` do not use them.
+- The host persists pending inputs; queues survive reopening or refreshing CLI Web.
+- The restored queue will not continue to run automatically. You need to manually send a new input before the subsequent queued items continue to run in sequence.
+- After the current run completes, fails, or is canceled, the host clears the active run flag for that session; subsequent new inputs revert to normal send and do not continue to the wait queue.
+- Queue items support bootstrapping, editing, deleting, and dragging sort; bootstrapping interrupts the current run before immediately executing the target queue item.
+
+After `tokenUsage.enabled` is enabled,runtime writes the token usage to KV and the run aggregation to report. Aggregations contain `inputTokens`, `outputTokens`, `totalTokens`, `reasoningTokens`, `cachedInputTokens`, `cacheCreationTokens`, and `calls`. If `display` is omitted, the default value is `enabled`. CLI Web only display badges when `display === true` and data is available. Badges display the total amount by default, and hover/focus displays Input, Output, Reasoning, Cache read, Cache write, and Calls respectively.
+
+## Tool permissions
+
+`tools` Default permission for registering workflow business tools. Each tool contains stable `name`, and optional `label`, `description`, `enabled`, and `autoApprove`. `enabled` default `true`,`autoApprove` default `false`. CLI Web can cache user selections and pass in override values before running;runtime only accepts `enabled/autoApprove` overrides for registered tools, and unknown tools are ignored.
+
+workflow code can use [`workflow.createToolApprovalGate()`](/en/core-api/create-tool-approval-gate) to wrap tool functions. When the tool is not registered, it will fail as `input_validation`; When the tool is disabled, it will be rejected as `tool_permission_denied`; When the tool is enabled but not automatically approved, the waiting/recovery protocol of `workflow.createUserInputNode(...)` will be reused to generate a `tool-approval` request. After approval, the same run will continue and `tool_permission_denied` will be returned after rejection.
+
+## Example
+
+```ts
+export const executor = workflow.defineExecutor<Input, Output>({
+  projectType: "workflow",
+  defaultEntrypoint: "main",
+  entrypoints: [
+    workflow.defineEntrypoint<Input, Output>({
+      id: "main",
+      title: "Full workflow",
+      workflow: exampleWorkflow,
+      tokenUsage: { enabled: true, display: true },
+      tools: [
+        {
+          name: "search",
+          label: "Search",
+          description: "Calls an external search tool.",
+          enabled: true,
+          autoApprove: false,
+        },
+      ],
+      params: [
+        {
+          name: "message",
+          flag: "--message",
+          type: "string",
+          required: true,
+          control: "textarea",
+          description: "Input text.",
+        },
+      ],
+      createInput({ args }) {
+        return { message: readMessage(args) };
+      },
+    }),
+  ],
+});
+```
+
+## Precautions
+
+|Rules|Description|
+| --- | --- |
+|`createInput` is required|Each Workflow entrypoint and Conversation executor must be declared.|
+|`paramValues` is a formal structured value|`createInput` can read parameter values directly;`args` continues to be used in scenarios that require full CLI parameters or unknown parameters.|
+|Workflow The running configuration belongs to entrypoint|The top-level old field gives a migration error and no longer retains the compatible alias.|
+|`tools` must be statically declared|CLI Web can only show the selected entry or Conversation executor statically analyzed tools; the tool name must be stable.|
+|`tokenUsage.enabled` Off by default|If it is not configured, KV will not be written and the usage will not be displayed. When closed `context.tokenUsage.report()` is no-op.|
+|`registry` for single node debugging|Workflow searches only the registry of the selected portal; nodes that are not registered cannot be run individually through debug API.|

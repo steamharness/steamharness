@@ -1,0 +1,27 @@
+---
+title: "workspace publish"
+description: "Save a draft as an immutable source version."
+---
+
+# workspace publish
+
+Publication saves immutable sources, SHA-256, publisher, timestamp, release notes and related-project locks, then updates `latest`. All project types retain complete sources. Downloads have no operating-system restriction.
+
+```bash
+workflow-code workspace publish <project> [--release-log <text>]
+workflow-code workspace publish --deployment <id>
+```
+
+The version comes from the prepared draft's `package.json.version`. Publication is serialized per project. Duplicate versions conflict and never overwrite snapshots. Upload sources with a new package version to publish again. Publication never installs dependencies, builds or executes project code.
+
+## Project Groups
+
+Use `--project-group`, `--path <dir>`, `--dependency <alias>=<path>` and `--create` to publish local groups. Included projects publish first; the root Kanban updates `latest` last and pins exact versions and source hashes.
+
+Retry a prepared group with `--deployment <id>`, without local paths or group-creation options. Completed projects with matching hashes are reused.
+
+## API
+
+Single project: `POST /api/workflows/{workflow}/publish`, with optional `releaseLog`. Groups: `POST /api/deployments/{deploymentId}/publish`.
+
+Inspect [versions](/en/cli/workspace/versions), then [download](/en/cli/workspace/download) any historical snapshot.

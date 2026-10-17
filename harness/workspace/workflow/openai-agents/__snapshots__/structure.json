@@ -1,0 +1,73 @@
+{
+  "workflowName": "openai-agents",
+  "projectType": "conversation",
+  "files": [
+    "__tests__/local-shell.test.ts",
+    "__tests__/reuse.test.ts",
+    "__tests__/test-tool.test.ts",
+    "index.ts",
+    "interface.ts",
+    "knowledge-documents-tool.ts",
+    "local-shell.ts",
+    "test-tool.ts"
+  ],
+  "nodes": [
+    {
+      "id": "inputNode",
+      "factory": "createInputNode",
+      "standardName": "input",
+      "configuredName": "openai-agents-input"
+    },
+    {
+      "id": "outputNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "openai-agents-output"
+    }
+  ],
+  "params": [
+    {
+      "name": "model",
+      "flag": "--model",
+      "type": "string",
+      "required": false,
+      "defaultValue": "gpt-5.4",
+      "panel": "auxiliary"
+    },
+    {
+      "name": "workdir",
+      "flag": "--workdir",
+      "shortFlag": "-C",
+      "type": "string",
+      "required": false,
+      "defaultValue": ".",
+      "panel": "auxiliary"
+    },
+    {
+      "name": "localShell",
+      "flag": "--local-shell",
+      "type": "boolean",
+      "required": false,
+      "defaultValue": "false",
+      "panel": "auxiliary"
+    }
+  ],
+  "tokenUsage": {
+    "enabled": true,
+    "display": true
+  },
+  "registry": [],
+  "execution": {
+    "kind": "sequence",
+    "counts": {
+      "sequence": 1,
+      "node": 2
+    },
+    "callees": [
+      "runNode",
+      "runStreamNode"
+    ],
+    "branchLabels": [],
+    "loopLabels": []
+  }
+}

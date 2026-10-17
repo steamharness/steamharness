@@ -1,0 +1,48 @@
+{
+  "id": "3bb85e1c-6fef-4ebd-a1f1-08cf6dc73171",
+  "name": "@workflow-code/local-data-grandchild-workflow",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "workflow-code run .",
+    "inspect": "workflow-code structure .",
+    "run:json": "workflow-code json .",
+    "workspace:upload": "workflow-code workspace upload .",
+    "workspace:publish": "workflow-code workspace publish ."
+  },
+  "devDependencies": {
+    "@workflow-code/cli": "0.2.3-20260901001",
+    "workflow-code": "0.2.3-20260901001"
+  },
+  "workflowCode": {
+    "projectInfo": {
+      "localizedNames": {
+        "zh-CN": "本地数据测试孙项目",
+        "en": "Local Data Test Grandchild"
+      },
+      "declarations": [],
+      "platformSupport": {
+        "mode": "agnostic"
+      },
+      "dataStorage": {
+        "mode": "local"
+      },
+      "relatedProjects": [
+        {
+          "alias": "parent",
+          "projectId": "c3bc9c19-37d2-45c2-ae56-69fba1ce3496",
+          "grantToRelatedProject": {
+            "read": {
+              "mode": "all"
+            },
+            "write": {
+              "mode": "all"
+            }
+          }
+        }
+      ]
+    },
+    "projectType": "workflow"
+  }
+}

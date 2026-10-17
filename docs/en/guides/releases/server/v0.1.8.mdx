@@ -1,0 +1,52 @@
+---
+title: "Server 0.1.8"
+description: "Release notes for Server 0.1.8."
+---
+
+# Server 0.1.8
+
+2026-08-26 · Tag `server/v0.1.8` · 当前设备
+
+<span id="server-0-1-8" className="release-version-anchor"></span>
+<span id="server.0.1.8" className="release-version-anchor"></span>
+
+#### New Features
+
+- **Standalone Alpha deployment**: shares PostgreSQL and the OSS bucket with stable while isolating code, processes, logs, and caches, running on port `7140`. See [Deployment](/en/guides/server/deployment).
+- **Version resolution by release target**: every version pins Server, macOS, and Windows targets, and runs and schedules only resolve online versions with a compatible runtime.
+- **Project display metadata**: default name, localized name, manual declaration, and display platform. See [Project management](/en/guides/server/project-management).
+
+#### Breaking Changes
+
+- Server only runs projects and serves server data when `dataStorage.mode` is `server` or `both`.
+  Migration: `local` and undeclared projects must become `server` or `both`, otherwise every entry point returns a structured `409`.
+- Core and CLI move to exact `0.2.0` dependencies and PersistentValue APIs must carry `projectId`.
+  Migration: non-global namespaces, entries, and sources must set `workflowName` to the project ID.
+- Server removes Supabase entirely; accounts, sessions, and invitations move to native PostgreSQL.
+  Migration: account data has to be migrated once into Server's own PostgreSQL database.
+- Desktop login and run sources standardize on `desktop`, and the old `app` source is no longer accepted.
+  Migration: change the caller's source identifier to `desktop`.
+
+#### Added
+
+- Added atomic cloud project creation receiving the UUID and full `projectInfo`, letting Desktop bind or restore by the same UUID.
+- Added default name, localized name, manual declaration, and display platform, served through the project list and `PUT /api/workflows/{id}/project-info`.
+- Added Server, macOS, and Windows release targets pinned per version, with local-only versions skipping dependency install and runtime builds.
+- Added source and project group downloads validated per macOS/Windows target and resolving `latest` per platform.
+- Added an Alpha deployment path sharing the database and bucket with stable while isolating code, processes, logs, and local caches.
+
+#### Changed
+
+- Changed Desktop installers, the update feed, and bundled project resources to Aliyun OSS.
+- Changed Alpha Server to disable schedule polling by default; plan management and run-now still work.
+- Changed compatibility checks to require an exact Core declaration and compare only the `major.minor` line.
+- Changed production credentials to come from protected GitLab CI/CD variables, keeping development `.env` files local only.
+
+#### Fixed
+
+- Fixed recovery falling back to `/var/run/docker.sock` when no Docker socket path is configured, so Alpha can start PostgreSQL.
+- Fixed bundled project indexes not forcing client revalidation, with versioned bundles now on long-lived immutable caches.
+
+#### Removed
+
+- Removed the local download service that Server used to start, recover, and configure.

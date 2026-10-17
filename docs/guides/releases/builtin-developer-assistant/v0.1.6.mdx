@@ -1,0 +1,30 @@
+---
+title: "开发者小助手 v0.1.6"
+description: "开发者小助手 v0.1.6 的更新说明。"
+---
+
+# 开发者小助手 v0.1.6
+
+2026-09-13 · Tag `builtin-developer-assistant/v0.1.6` · 内置项目更新
+
+<span id="builtin-developer-assistant-0-1-6" className="release-version-anchor"></span>
+<span id="builtin-developer-assistant.0.1.6" className="release-version-anchor"></span>
+
+#### 新特性
+
+- **Dock 页签管理**：小助手可读取、刷新和关闭 Dock 页签，并运行其中的 Run 与侧边项目。
+
+#### 新增
+
+- 新增 读取与管理已有 Dock 页签，更新内容、关闭页签及运行其中的 Run 与侧边项目。
+- 新增 打开 Dock 时随同一次调用携带已知的 URL、文件、run、conversation、数据源或侧边项目上下文。
+
+#### 变更
+
+- 变更 小助手按全部 Desktop MCP 的 action 合同选择参数，并复用状态查询返回的 ID。
+
+#### 修复
+
+- 修复 首页侧边栏启动时因 `primaryTarget.kind` 无效而中止，现接受 Desktop 的 Home 工作区目标。
+- 修复 克隆被误用 `import_project`，创建、克隆、导入与打开新建对话框现按用户意图严格分流。
+- 修复 本地工具审批恢复未按项目、run 与输入请求去重，重复点击现在接续同一次执行。

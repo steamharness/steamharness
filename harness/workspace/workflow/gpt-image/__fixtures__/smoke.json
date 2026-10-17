@@ -1,0 +1,68 @@
+{
+  "args": [
+    "--message",
+    "Turn the tiny pixel into a glowing workflow badge",
+    "--images",
+    "__GPT_IMAGE_IMAGE_JSON__",
+    "--size",
+    "1024x1024",
+    "--quality",
+    "high",
+    "--output-format",
+    "webp",
+    "--output-compression",
+    "90",
+    "--background",
+    "opaque",
+    "--input-fidelity",
+    "high",
+    "--moderation",
+    "low"
+  ],
+  "conversationId": "gpt-image-fixture-thread",
+  "expected": {
+    "errCode": 0,
+    "output": {
+      "mode": "edit",
+      "model": "gpt-image-2",
+      "prompt": "Turn the tiny pixel into a glowing workflow badge",
+      "modelPrompt": "Turn the tiny pixel into a glowing workflow badge",
+      "contextMessageCount": 0,
+      "historyLength": 2,
+      "conversationMessages": 2,
+      "imageCount": 1,
+      "mimeType": "image/webp",
+      "dataUrl": "data:image/webp;base64,Z3B0LWltYWdlLWZpeHR1cmU=",
+      "size": "1024x1024",
+      "quality": "high",
+      "outputFormat": "webp",
+      "outputCompression": 90,
+      "background": "opaque",
+      "inputFidelity": "high",
+      "moderation": "low"
+    },
+    "itemCount": 1,
+    "items": [
+      {
+        "id": "gpt-image-result",
+        "title": "Generated Image",
+        "contentType": "markdown",
+        "iconPreset": "success",
+        "collapsed": false,
+        "contentIncludes": [
+          "![Generated image](data:image/webp;base64,Z3B0LWltYWdlLWZpeHR1cmU=)",
+          "Mode: `edit`",
+          "Input images: 1",
+          "Output compression: `90`"
+        ]
+      }
+    ],
+    "nodes": [
+      "input",
+      "file-input",
+      "output"
+    ],
+    "outputCount": 1,
+    "conversationMessages": 2
+  }
+}

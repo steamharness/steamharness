@@ -1,0 +1,86 @@
+---
+title: "Release overview"
+description: "Release overview generated from each unit's CHANGELOG.md and release metadata."
+---
+
+# Release overview
+
+Version history comes from each release unit's `CHANGELOG.en.md`. Release metadata adds exact publication times, component versions, targets, and artifacts. The public `/health` endpoint also reports the currently deployed Server and Server Web versions.
+
+> Sources: local package.json and each release unit's CHANGELOG.en.md preview
+>
+> - Generated: 2026-08-10 15:36:54
+> - Workflow Server health snapshot: skipped for this generation
+
+## All release units
+
+Built-in projects keep one index per release channel: the table below lists the stable channel (`builtin-projects/<project>/index.json`); the Alpha channel lives at `alpha/index.json` beside it.
+
+| Release unit | Stable | Latest | Target | Package / endpoint | Release notes |
+| --- | --- | --- | --- | --- | --- |
+| `workflow-code` | v0.1.3<br />2026-08-07 | v0.1.3<br />2026-08-07 | npm | [`workflow-code`](https://www.npmjs.com/package/workflow-code) | [Release notes](/en/guides/releases/core) |
+| `workflow-code-cli` | v0.1.3<br />2026-08-07 | v0.1.3<br />2026-08-07 | npm | [`@workflow-code/cli`](https://www.npmjs.com/package/@workflow-code/cli) | [Release notes](/en/guides/releases/cli) |
+| `server` | v0.1.4<br />2026-08-07 | v0.1.4<br />2026-08-07 | Current device | [wf.yuhe.space](https://wf.yuhe.space) | [Release notes](/en/guides/releases/server) |
+| `server-web` | v0.1.4<br />2026-08-07 | v0.1.4<br />2026-08-07 | Current device | [wf.yuhe.space](https://wf.yuhe.space) | [Release notes](/en/guides/releases/server-web) |
+| `builtin-conversation` | v0.1.4<br />2026-07-22 | v0.1.4<br />2026-07-22 | Built-in project updates | [Release index](https://wfupdates.yuhe.space/builtin-projects/conversation/index.json) | [Release notes](/en/guides/releases/builtin-conversation) |
+| `builtin-codex` | v0.1.2<br />2026-07-22 | v0.1.2<br />2026-07-22 | Built-in project updates | [Release index](https://wfupdates.yuhe.space/builtin-projects/codex/index.json) | [Release notes](/en/guides/releases/builtin-codex) |
+| `builtin-opencode` | v0.1.4<br />2026-07-30 | v0.1.4<br />2026-07-30 | Built-in project updates | [Release index](https://wfupdates.yuhe.space/builtin-projects/opencode/index.json) | [Release notes](/en/guides/releases/builtin-opencode) |
+| `builtin-developer-assistant` | v0.1.1<br />2026-07-30 | v0.1.1<br />2026-07-30 | Built-in project updates | [Release index](https://wfupdates.yuhe.space/builtin-projects/developer-assistant/index.json) | [Release notes](/en/guides/releases/builtin-developer-assistant) |
+
+## NPM packages
+
+| Release unit | Package | Current stable | Published | Release notes |
+| --- | --- | --- | --- | --- |
+| `workflow-code` | [`workflow-code`](https://www.npmjs.com/package/workflow-code) | v0.1.3 | 2026-08-07 | [Release notes](/en/guides/releases/core) |
+| `workflow-code-cli` | [`@workflow-code/cli`](https://www.npmjs.com/package/@workflow-code/cli) | v0.1.3 | 2026-08-07 | [Release notes](/en/guides/releases/cli) |
+
+## Current deployments
+
+| Service | Current stable | Health / details | Endpoint |
+| --- | --- | --- | --- |
+| `server` | Not collected | Not collected | [wf.yuhe.space/health](https://wf.yuhe.space/health) |
+| `server-web` | Not collected | Not collected | [wf.yuhe.space](https://wf.yuhe.space) |
+
+## Public endpoints
+
+Default release domains use `yuhe.space` subdomains. The previous `hookcode.win` domains remain compatibility routes to the same services.
+
+| Purpose | Default endpoint | Compatibility domain |
+| --- | --- | --- |
+| Workflow console | [wf.yuhe.space](https://wf.yuhe.space) | `workflow.hookcode.win` |
+| Workflow API | [wfapi.yuhe.space](https://wfapi.yuhe.space) | `api.hookcode.win` |
+| Docs | [wfdocs.yuhe.space](https://wfdocs.yuhe.space) | `docs.hookcode.win` |
+
+## Latest stable artifacts
+
+### `workflow-code`
+
+No artifacts are available.
+
+### `workflow-code-cli`
+
+No artifacts are available.
+
+### `server`
+
+No artifacts are available.
+
+### `server-web`
+
+No artifacts are available.
+
+### `builtin-conversation`
+
+No artifacts are available.
+
+### `builtin-codex`
+
+No artifacts are available.
+
+### `builtin-opencode`
+
+No artifacts are available.
+
+### `builtin-developer-assistant`
+
+No artifacts are available.

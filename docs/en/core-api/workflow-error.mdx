@@ -1,0 +1,101 @@
+---
+title: "WorkflowError"
+description: "The standard workflow error class for serializable error reporting."
+---
+
+# WorkflowError
+
+`workflow.WorkflowError` is the standard error class used by the business workflow and runtime. It keeps the error type, node name, metadata, and cleaned cause, which eventually goes into the execution report.
+
+## Signature
+
+```ts
+new workflow.WorkflowError(options: WorkflowErrorOptions)
+```
+
+## Parameter
+
+|Parameter|Type|Description|
+| --- | --- | --- |
+| `options` | `WorkflowErrorOptions` |Standard error configuration, including error type, message, node name, cause, and metadata.|
+
+## `WorkflowErrorOptions`
+
+|Field|Description|
+| --- | --- |
+| `type` |Misclassification. Required.|
+| `message` |Error messages visible to users and reports. Required.|
+| `nodeName` |The associated node name. runtime is replenished when node execution fails.|
+| `cause` |Original error. Only safe fields are preserved during serialization.|
+| `metadata` |Debuggable structured information.|
+
+## `WorkflowErrorType`
+
+|Type|Common Sources|Description|
+| --- | --- | --- |
+| `input_validation` |Parameter parsing, input node, file node|Invalid input or missing configuration.|
+| `execution_aborted` |abort signal, timeout, execution restrictions|Execution was interrupted.|
+| `user_input_required` |User input node, tool approval|workflow Pause Wait to resume input.|
+| `tool_permission_denied` |Tool Permission Policy, Approval Deny|The current run does not allow the tool to be called.|
+| `node_execution` |Normal node execution failed|An unknown error thrown by a normal node.|
+| `provider_call` |LLM provider parse or call|Missing provider, binding error, or call failure.|
+| `workflow_execution` |workflow `run` failed|workflow Main process failed.|
+| `stream_interrupted` |streaming node or provider stream|Streaming output is interrupted or failed.|
+
+## Instance field
+
+|Field|Type|Description|
+| --- | --- | --- |
+| `name` | `"WorkflowError"` |The Error name.|
+| `message` | `string` |The error message.|
+| `type` | `WorkflowErrorType` |Misclassification.|
+| `nodeName` | `string \| undefined` |The associated node.|
+| `metadata` | `object \| undefined` |Additional debugging information.|
+| `safeCause` | `WorkflowErrorCause \| undefined` |The sanitized cause, carrying `name`, `message`, `statusCode`, `url`, `isRetryable`, `responseBody`, a nested `cause`, and `validation`. `responseBody` is an excerpt of the upstream HTTP response body: whitespace-collapsed, redacted for credential-shaped values, and truncated to 200 characters. Call errors that carry only a status phrase such as `Unauthorized` gain a `response <excerpt>` detail in the run report so the status phrase cannot hide the real reason.|
+
+## serialization structure
+
+|Field|Type|Description|
+| --- | --- | --- |
+| `type` | `WorkflowErrorType` |Misclassification.|
+| `message` | `string` |The error message.|
+| `nodeName` | `string \| undefined` |The associated node.|
+| `metadata` | `object \| undefined` |Additional information.|
+| `cause` | `WorkflowErrorCause \| undefined` |Keep only the safe cause field.|
+
+## Error Code Mapping
+
+Running the report maps the failure type to payload `errCode`.
+
+|Error Type| `errCode` |
+| --- | --- |
+| `input_validation` | `400` |
+| `user_input_required` | `202` |
+| `tool_permission_denied` | `403` |
+| `execution_aborted` | `499` |
+| `stream_interrupted` | `499` |
+| `provider_call` | `502` |
+| `node_execution` | `500` |
+| `workflow_execution` | `500` |
+
+## Example
+
+```ts
+throw new workflow.WorkflowError({
+  type: "input_validation",
+  message: "message is required.",
+  nodeName: "parse-input",
+  metadata: {
+    field: "message",
+  },
+});
+```
+
+## When to use
+
+|Scene|Recommendation|
+| --- | --- |
+|Illegal user input|Throw `input_validation`.|
+|External service call failed|Throw `provider_call` or let the provider layer wrap.|
+|Want the report to retain structured context|Use `metadata`.|
+|Common Unknown Exception|Can be thrown directly,runtime will be wrapped as `WorkflowError`.|

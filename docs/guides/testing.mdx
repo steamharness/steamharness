@@ -1,0 +1,50 @@
+---
+title: "自动化测试"
+description: "拆分后各 Workflow Code 仓库的离线测试、构建与 workspace workflow 契约。"
+---
+
+# 自动化测试
+
+Workflow Code 的各仓库独立安装依赖并执行自己的质量门禁。默认测试以离线可复现为第一层保障，不连接生产 PostgreSQL、真实 OSS、LLM、GitLab、Electron 或远程服务器；Server 的 PostgreSQL 集成测试使用一次性的隔离 PostgreSQL 15 容器。真实环境验证应由对应仓库显式启用。
+
+以下命令都从对应仓库根目录执行。所有仓库都维护 `dev`、`alpha`、`main` 三条分支，日常开发在 `dev` 上进行；分支差异不改变本地门禁，只有发布态的引用规则不同（见[兼容性](releases/compatibility.mdx)）。
+
+## 测试分层
+
+| 仓库 | 命令 | 用途 |
+| --- | --- | --- |
+| Core | `pnpm typecheck && pnpm test && pnpm test:scripts && pnpm coverage && pnpm build && pnpm test:workspace` | 检查 Core API、脚本、npm 构建和 Core 仓库内的示例 workspace。 |
+| CLI | `pnpm typecheck && pnpm test && pnpm test:scripts && pnpm coverage && pnpm build` | 检查本地 CLI 与 `workflow-code workspace`。发布前再执行 `pnpm pack --pack-destination .release`。 |
+| Studio | `npm run check && npm run build:extension` | 检查工作站扩展、类型和离线测试。 |
+| Server | `pnpm typecheck:all && pnpm test && pnpm coverage && pnpm build:all` | 同时检查 Server API 与仓库内 `web/` 管理端。 |
+| Shared | `pnpm typecheck && pnpm test && pnpm test:scripts && pnpm coverage && pnpm build` | 检查共享源码包和可供宿主同步的源码产物。 |
+| Docs | `pnpm validate && pnpm test && pnpm build` | 检查双语导航、链接、OpenAPI、部署事务和不可变文档产物。 |
+| 每个内置项目 | `pnpm typecheck && pnpm test && pnpm coverage && pnpm build` | 独立检查 Conversation、Codex、OpenCode、Developer Assistant。 |
+
+## 给新代码补测试
+
+- 修改 Core 仓库 `src/**` 时，优先补 Core 单元测试和 npm exports/pack 回归测试。
+- 修改 Server 仓库 `src/**` 时，优先补 routes、storage、权限和错误码测试，并用 stub storage 保持离线。
+- 修改 CLI 仓库 `src/**` 时，把参数解析、路径处理、输出格式和错误码拆成可 import helper，再补 Vitest。
+- 修改 Server 仓库 `web/**` 时，覆盖 API client、路由、loading、empty、error、disabled 和关键组件交互。
+- 修改 Shared 仓库 `run-workspace-input/**` 时，覆盖输入、conversation、附件、Markdown/output item、图片预览、Enter 发送、菜单、标题锁定和响应式状态。
+- 修改或新增 Core 仓库 `workspace/workflow/<name>` 时，更新 fixture、结构快照和必要的离线 runtime smoke。
+- 修改任一内置项目时，在该项目自己的 `__tests__/` 中覆盖入口参数、运行结果、错误路径和结构快照。
+
+## Workspace workflow 契约
+
+每个示例 workflow 建议包含：
+
+| 文件 | 用途 |
+| --- | --- |
+| `__fixtures__/smoke.json` | 离线运行参数、conversation id、期望输出和必要节点。 |
+| `__snapshots__/structure.json` | 精简结构快照，包括源码、节点、参数、conversation、registry、分支和循环。 |
+| `__tests__/` 或本地测试文件 | 示例自己的解析、工具或业务逻辑测试。 |
+
+外部依赖默认 mock：LLM 使用测试 provider，文件输入使用 fixture，Webhook 样例只解析本地 payload，不访问真实平台。需要真实 SDK、远程服务或外部进程的示例，应在 fixture 中说明跳过原因，并提供 opt-in 命令。
+
+## 跨仓改动
+
+Shared 变化需要在 Shared 自身通过门禁后，再在实际消费它的 Server、Core 或 CLI 仓库执行对应门禁。Core API 变化还应验证 CLI、Server 和 Core `workspace/` 中的真实消费者；CLI 变化应验证 Studio 与 Core `workspace/`。每个仓库通过同级目录或提交的 `vendor/shared` 准备共享源码，但 CI 不依赖外层多仓目录存在。
+
+真实 Server、数据库、LLM、Electron 窗口或浏览器验证只在明确启用时执行，不代替上述离线测试。若环境仍无法完成应跑门禁，应记录阻塞原因、影响范围和替代验证。

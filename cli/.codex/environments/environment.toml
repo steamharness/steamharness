@@ -1,0 +1,14 @@
+version = 1
+name = "workflow-cli"
+
+[setup]
+script = '''
+cd "$CODEX_WORKTREE_PATH"
+corepack pnpm bootstrap
+'''
+
+[setup.win32]
+script = '''
+Set-Location $env:CODEX_WORKTREE_PATH
+corepack pnpm bootstrap
+'''

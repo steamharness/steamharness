@@ -1,0 +1,80 @@
+---
+title: "runFor"
+description: "执行可追踪的 for 循环节点，并让共享运行界面 Diagram 用循环容器展示循环体。"
+---
+
+# runFor
+
+`workflow.runFor()` 是内置循环执行节点。它先从当前状态计算可迭代的 `items`，然后按顺序执行循环体 `run`，每次返回新的状态。运行时会发出 `branch-node` 的开始/完成事件，共享运行界面 Diagram 会把循环体节点包在带背景色的循环容器里。
+
+## 签名
+
+```ts
+workflow.runFor<State, Item>(
+  input: State,
+  context: WorkflowContext,
+  options: {
+    name?: string;
+    items(
+      input: State,
+      context: WorkflowContext,
+    ): Iterable<Item> | AsyncIterable<Item> | Promise<Iterable<Item> | AsyncIterable<Item>>;
+    run(input: State, item: Item, index: number, context: WorkflowContext): State | Promise<State>;
+    maxIterations?: number;
+    metadata?: Partial<WorkflowNodeMetadata>;
+  },
+): Promise<State>
+```
+
+## 参数
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| `input` | `State` | 初始循环状态。 |
+| `context` | `WorkflowContext` | runtime 上下文，用于 hooks、provider、KV、files、abortSignal。 |
+| `options.name` | `string` | Diagram 和 Trace 中显示的循环节点标题。默认 `Run for`。 |
+| `options.items` | `Iterable` / `AsyncIterable` | 基于初始状态生成循环项。支持同步、异步 iterable，也支持返回 Promise。 |
+| `options.run` | `function` | 每个 item 的循环体。接收当前状态、item、从 `0` 开始的 index 和 context，返回下一轮状态。 |
+| `options.maxIterations` | `number` | 最大迭代次数。默认 `1000`，防止意外无限循环。 |
+| `options.metadata` | `Partial<WorkflowNodeMetadata>` | 覆盖循环节点元信息，默认 type 为 `run-for`。 |
+
+## 运行报告
+
+`runFor` 使用标准节点名 `run-for`，运行 kind 为 `branch-node`。完成事件的 `executionInfo` 会包含：
+
+```json
+{
+  "loopType": "for",
+  "iterations": 3,
+  "iterationCount": 3,
+  "maxIterations": 1000,
+  "completed": true
+}
+```
+
+失败时 `completed` 为 `false`，并保留已完成的迭代次数。
+
+## 示例
+
+```ts
+const finalState = await workflow.runFor(seed, context, {
+  name: "Round loop",
+  maxIterations: 6,
+  items: (state) => Array.from({ length: state.rounds }, (_, index) => index + 1),
+  async run(state, value, index, loopContext) {
+    return workflow.runNode(addRoundNode, { ...state, value, index }, loopContext);
+  },
+});
+```
+
+## Diagram
+
+静态结构分析会识别对象字面量形式的 `items`、`maxIterations` 和 `run`。`run` 中的 `workflow.runNode`、`workflow.runStreamNode`、`workflow.runIf`、`workflow.runFor` 和 `workflow.runWhile` 会成为循环体节点，并在共享运行界面 Diagram 中被循环容器包裹。为了让 Diagram 可读，循环配置尽量保持为对象字面量；动态拼装 options 仍可运行，但静态图只能展示有限信息。
+
+## 错误
+
+| 情况 | 错误类型 | 说明 |
+| --- | --- | --- |
+| 超过 `maxIterations` | `node_execution` | 抛出 `Run-for node "<name>" exceeded maxIterations (<value>).`。 |
+| `items` 或 `run` 抛错 | `node_execution` | 原错误会被包装成 `WorkflowError` 并写入 loop 节点报告。 |
+| 执行前或循环中中断 | `execution_aborted` 或 `node_execution` | 来自 `context.abortSignal`。 |

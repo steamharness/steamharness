@@ -1,0 +1,40 @@
+---
+title: "workspace download"
+description: "Download exact project and dependency source versions."
+---
+
+# workspace download
+
+```bash
+workflow-code workspace download <project> [--target draft|latest|version] [--path <dir>]
+```
+
+The default is `latest`. Every operating system uses the same source contract without a platform parameter. Historical downloads read immutable snapshots. Download does not reapply ignore rules, install dependencies or execute code.
+
+Workflow, Conversation and Kanban projects all support published version downloads, with no root-project type restriction.
+
+Pending related-project declarations do not prevent root source downloads. Downloads process only the confirmed relationship locks in the published version and do not automatically include unconfirmed projects.
+
+| Target | Behavior |
+| --- | --- |
+| `draft` | Replace the root destination with draft files, without dependency locks. |
+| `latest` | Resolve the current exact latest version, then download its locks. |
+| Exact version | Read that snapshot and its pinned included dependencies and source hashes. |
+
+## Permissions and Files
+
+Source download is authorized independently of data reads. Owners, managers and users with a source grant can download. Writer/viewer data roles alone do not grant sources. Inaccessible dependencies return request links while authorized projects remain downloadable.
+
+New projects are staged before moving. Validation or move failures remove directories added by this operation. Existing projects are reused only when both UUID and version match, preserving local edits. A different version is not reported as already downloaded. Occupied destinations are rejected; use `--path` to select another directory. Text and base64 binary files restore original bytes and verify SHA-256.
+
+Groups exclude KV, PersistentValue, file stores, environment variables, run history and account settings. Install dependencies locally after download and explicitly select server storage when remote data is needed.
+
+## API
+
+- Draft: `GET /api/workflows/{workflow}/files?target=draft&includeBinary=true`.
+- Group: `GET /api/workflows/{workflow}/project-group-download?target=<target>`.
+- Version tar.gz: `GET /api/workflows/{workflow}/source-archive?target=<version>`.
+
+```bash
+workflow-code workspace download hello --target 1.2.0 --path ./hello-copy
+```

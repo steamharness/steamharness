@@ -1,0 +1,63 @@
+:root { color-scheme: light dark; }
+* { box-sizing: border-box; letter-spacing: 0; }
+html, body, #preview-app { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); color: var(--vscode-editor-foreground); background: var(--vscode-editor-background); user-select: text; }
+button, summary { -webkit-user-select: text; user-select: text; }
+#preview-app { display: flex; flex-direction: column; }
+.preview-toolbar { flex: 0 0 auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-height: 36px; padding: 4px 12px; border-bottom: 1px solid var(--vscode-panel-border); }
+.preview-format, .preview-readonly { font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; }
+.preview-tools { flex: 1; min-width: 0; }
+.preview-tools > div, .preview-pager, .preview-zoom { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.preview-tools > div { gap: 12px; }
+.preview-pager input { width: 56px; min-height: 24px; }
+input, select { color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, transparent); padding: 2px 4px; font: inherit; border-radius: 2px; }
+input:focus, select:focus, button:focus-visible, a:focus-visible, summary:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+.icon-button { width: 26px; height: 26px; padding: 4px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 26px; border: 0; border-radius: 3px; color: var(--vscode-icon-foreground); background: transparent; cursor: pointer; }
+.icon-button:hover { background: var(--vscode-toolbar-hoverBackground); }
+.icon-button:disabled { opacity: 0.4; cursor: default; }
+.icon-button.busy .codicon { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.zoom-label { min-width: 42px; font-size: 12px; text-align: center; }
+.preview-status { flex: 0 0 auto; padding: 12px 16px; display: flex; gap: 8px; flex-wrap: wrap; overflow-wrap: anywhere; }
+.preview-status[role="alert"] { color: var(--vscode-errorForeground); border-bottom: 1px solid var(--vscode-panel-border); }
+[hidden] { display: none !important; }
+.preview-content { min-height: 0; flex: 1; overflow: hidden; position: relative; }
+.preview-scroll { height: 100%; width: 100%; overflow: auto; }
+.preview-content, .preview-scroll, .sheet-scroll { scrollbar-color: transparent transparent; }
+.preview-content:hover, .preview-scroll:hover, .sheet-scroll:hover { scrollbar-color: var(--vscode-scrollbarSlider-background) transparent; }
+.preview-frame { width: 100%; height: 100%; border: 0; display: block; }
+.preview-page { background: white; color: black; box-shadow: 0 1px 4px #0003; margin: 16px auto; position: relative; flex: 0 0 auto; }
+.preview-page canvas { display: block; }
+.preview-page .textLayer { position: absolute; inset: 0; user-select: text; }
+/* PDF.js TextLayer positioning, distributed under Apache-2.0. */
+.textLayer { color-scheme: only light; text-align: initial; overflow: clip; line-height: 1; word-spacing: normal; text-size-adjust: none; forced-color-adjust: none; transform-origin: 0 0; caret-color: CanvasText; }
+.textLayer :is(span, br) { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0 0; user-select: text; }
+.textLayer { --min-font-size: 1; --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size)); --min-font-size-inv: calc(1 / var(--min-font-size)); }
+.textLayer > :not(.markedContent), .textLayer .markedContent span:not(.markedContent) { z-index: 1; --font-height: 0; font-size: calc(var(--text-scale-factor) * var(--font-height)); --scale-x: 1; --rotate: 0deg; transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv)); }
+.textLayer .markedContent { display: contents; }
+.textLayer ::selection { background: color-mix(in srgb, AccentColor, transparent 50%); color: transparent; }
+.preview-pdf { padding: 0 16px; }
+.preview-image { display: flex; min-width: 100%; min-height: 100%; align-items: flex-start; justify-content: center; padding: 16px; }
+.preview-image img { display: block; max-width: none; object-fit: contain; background: transparent; }
+.preview-slide { display: flex; align-items: center; justify-content: center; padding: 16px; background: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-editor-background)); }
+.preview-slide canvas { box-sizing: content-box; flex: 0 0 auto; background: white; display: block; border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, #80808080)); box-shadow: 0 2px 8px #0002; }
+.preview-formulas { padding: 16px 24px; }
+.preview-formulas .formula { padding: 16px 0; overflow-x: auto; border-bottom: 1px solid var(--vscode-panel-border); }
+.formula-error { color: var(--vscode-errorForeground); white-space: pre-wrap; overflow-wrap: anywhere; }
+.preview-password { padding: 24px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.preview-password label { display: flex; flex-direction: column; gap: 8px; }
+.preview-password button[type="submit"] { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: 0; padding: 6px 12px; cursor: pointer; }
+.spreadsheet { height: 100%; display: flex; flex-direction: column; }
+.sheet-tabs { display: flex; gap: 0; overflow-x: auto; flex: 0 0 32px; border-top: 1px solid var(--vscode-panel-border); }
+.sheet-tabs button { font: inherit; border: 0; border-right: 1px solid var(--vscode-panel-border); padding: 4px 16px; cursor: pointer; background: var(--vscode-editorGroupHeader-tabsBackground); color: var(--vscode-tab-inactiveForeground); white-space: nowrap; }
+.sheet-tabs button[aria-selected="true"] { background: var(--vscode-tab-activeBackground); color: var(--vscode-tab-activeForeground); border-bottom: 2px solid var(--vscode-focusBorder); }
+.sheet-scroll { overflow: auto; min-height: 0; flex: 1; }
+.sheet-grid { border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: 12px; }
+.sheet-grid th, .sheet-grid td { min-width: 80px; max-width: 800px; height: 28px; padding: 4px 8px; border-right: 1px solid var(--vscode-panel-border); border-bottom: 1px solid var(--vscode-panel-border); white-space: pre-wrap; overflow-wrap: anywhere; vertical-align: top; }
+.sheet-grid th { position: sticky; background: var(--vscode-editorGroupHeader-tabsBackground); color: var(--vscode-descriptionForeground); font-weight: 400; user-select: text; }
+.sheet-grid thead th { top: 0; z-index: 2; }
+.sheet-grid tbody th { left: 0; z-index: 1; min-width: 48px; width: 48px; text-align: right; }
+.sheet-grid thead th:first-child { left: 0; z-index: 3; }
+.sheet-grid td:focus { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+.sheet-grid td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 480px) { .preview-toolbar { padding: 4px 8px; gap: 4px; } .preview-tools > div { gap: 4px; } .preview-readonly { margin-left: auto; } }

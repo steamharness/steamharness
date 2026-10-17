@@ -1,0 +1,82 @@
+---
+title: "Core API 总览"
+description: "workflow 全局运行时 API 的入口、边界和逐方法文档索引。"
+---
+
+# Core API 总览
+
+Core API 分组记录业务 workflow 可直接使用的 `workflow.*` 运行时 API。这里的边界以 Core 仓库 `src/runtime-api.ts` 为准：本地宿主和 CLI 会把这些方法注入到 `globalThis.workflow`，业务 workflow 不需要从 `"workflow-code"` 导入它们。
+
+## 入口边界
+
+| 入口 | 说明 |
+| --- | --- |
+| `workflow.*` | 业务 workflow 使用的全局 API，来源是 Core 仓库 `src/runtime-api.ts`。 |
+| `workflow-code` 包入口 | CLI、server、测试和高级宿主使用的工具入口，来源是 Core 仓库 `src/index.ts`。 |
+
+## Runtime API 索引
+
+| API | 说明 |
+| --- | --- |
+| [`defineWorkflow`](/core-api/define-workflow) | 定义 workflow 本体，描述主执行函数。 |
+| [`defineEntrypoint`](/core-api/define-entrypoint) | 定义 Workflow 项目中可独立运行的扁平入口及其参数、工具和 registry。 |
+| [`defineExecutor`](/core-api/define-executor) | 定义 Workflow 的入口目录，或 Conversation 的单入口执行配置。 |
+| [`parseConversationDefaultInputArgs`](/core-api/parse-conversation-default-input-args) | 解析 conversation 默认输入框序列化出的 `--message`、`--images` 和 `--files`。 |
+| [`createInputNode`](/core-api/create-input-node) | 创建输入解析节点。 |
+| [`createFileInputNode`](/core-api/create-file-input-node) | 创建文件输入节点，把 file param 引用解析成文件对象。 |
+| [`createUserInputNode`](/core-api/create-user-input-node) | 创建可持久恢复的人工输入节点，让 workflow 暂停为 `waiting_for_input`。 |
+| [`createToolApprovalGate`](/core-api/create-tool-approval-gate) | 创建工具审批包装器；结合 executor `tools` 注册项和 `context.toolPermissions` 复用 user-input 等待/恢复协议审批工具调用。 |
+| [`createLLMNode`](/core-api/create-llm-node) | 创建非流式 LLM 调用节点。 |
+| [`createLLMStreamNode`](/core-api/create-llm-stream-node) | 创建流式 LLM 调用节点。 |
+| [`createLLMProviderFromEnv`](/core-api/create-llm-provider-from-env) | 从 workflow runtime 环境变量创建 LLM provider。 |
+| [`createLLMProviderRef`](/core-api/create-llm-provider-ref) | 创建可延迟解析的 provider 引用。 |
+| [`createOutputNode`](/core-api/create-output-node) | 创建同步或流式输出节点；`createOutputItem`、`createOutputPayload`、`addOutputItem` 和 `createOutputItemChunk` 也在该页说明。 |
+| [`createDetailsOutputNode`](/core-api/create-details-output-node) | 创建独立可折叠 output item 的便捷输出节点。 |
+| [`createTimerNode` / `endTimer`](/core-api/create-timer-node) | 创建业务计时节点，并在显式结束或 workflow 收尾时写入计时卡片。 |
+| [`createQuestionClassifierNode`](/core-api/create-question-classifier-node) | 创建基于 LLM 的问题分类节点。 |
+| [`runNode`](/core-api/run-node) | 执行普通节点并触发节点执行 hook。 |
+| [`runStreamNode`](/core-api/run-stream-node) | 执行流式节点，收集 chunks，并产出 finalize 结果。 |
+| [`runIf`](/core-api/run-if) | 执行 if / else-if / else 分支，并把分支选择写入运行报告和 Diagram。 |
+| [`runFor`](/core-api/run-for) | 执行可追踪的 for 循环，并让 Diagram 用循环容器展示循环体。 |
+| [`runWhile`](/core-api/run-while) | 执行可追踪的 while 循环，并让 Diagram 用循环容器展示循环体。 |
+| [`runWorkflow`](/core-api/run-workflow) | 在当前上下文中调用另一个 workflow，复用 KV、会话、provider、token usage 和 trace。 |
+| [`Knowledge Documents`](/core-api/knowledge-documents) | 通过显式的本地或服务器存储上下文管理项目内 markdown 知识库文档。 |
+| [`getEnv`](/core-api/get-env) | 读取当前 runtime 环境中的非空变量。 |
+| [`getRuntimePlatform` / `isCli` / `isDesktop`](/core-api/runtime-platform) | 判断当前 workflow 的执行宿主是 CLI 还是本地桌面宿主。 |
+| [`getRuntimeLocale`](/core-api/runtime-locale) | 读取当前运行宿主选择的简体中文或英文，用于已启用国际化的用户可见输出。 |
+| [`getLLMProvider`](/core-api/get-llm-provider) | 按上下文、节点名和 provider source 解析 LLM provider。 |
+| [`WorkflowError`](/core-api/workflow-error) | 标准 workflow 错误类型。 |
+
+## 核心运行对象
+
+多数 API 会围绕 `input`、`context`、`node` 和 `payload` 运行。
+
+| 对象 | 类型 | 说明 |
+| --- | --- | --- |
+| `input` | `Input` 或节点 `Output` | 当前 workflow 或节点的输入数据。 |
+| `context` | `WorkflowContext` / `NodeContext` | 包含 provider、storage、conversation、files、metadata、hooks、abortSignal。 |
+| `payload` | `WorkflowPayload` 子类型 | 节点 payload 应继承 `WorkflowPayload`，成功时 `errCode: 0`、`errMessage: ""`。 |
+| `provider` | `LLMProviderSource` / `LLMProvider` | LLM 节点通过 provider source 解析实际 provider。 |
+
+## `NodeContext` 核心字段
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `providers` | `ProviderRegistry` | LLM provider 注册表和绑定表。 |
+| `storage` | `WorkflowStorageContext` | `local` 与 `server` 两个显式位置，每个位置都包含三层 `kv` 和 `persistentValue`。项目 `dataStorage.mode` 严格限制可访问位置；Core 0.2 不再提供顶层 `context.kv` / `context.persistentValue`。 |
+| `conversation` | `WorkflowConversationContext` | 会话状态读写入口。`setTitle` 可安全建议 UI 标题；未启用会话时其它读写会抛错。 |
+| `tokenUsage` | `WorkflowTokenUsageContext` | token 用量统计入口。未启用时 `report()` 是 no-op；启用后会写入 KV、运行报告和 runtime event。 |
+| `userInput` | `WorkflowUserInputContext \| undefined` | 用户输入和工具审批的等待/恢复入口。本地宿主 会按宿主能力注入。 |
+| `files` | `WorkflowFileStore \| undefined` | 文件引用解析入口；`createFile` 可生成 server-backed 运行文件。 |
+| `metadata` | `object \| undefined` | 当前执行元信息，例如 workflow、runId、conversationId；Workflow 运行还包含 `entrypointId` 和 `entrypointTitle`。 |
+| `nodeHooks` | `NodeExecutionHooks \| undefined` | 节点开始、chunk、完成等事件回调。 |
+| `timers` | `WorkflowTimerContext \| undefined` | 业务计时节点上下文；`createTimerNode` 启动计时，`endTimer` 结束计时。 |
+| `toolPermissions` | `WorkflowToolPermissionContext \| undefined` | 当前 run 的工具权限上下文。按 executor `tools` 默认值和宿主覆盖值解析，供 `createToolApprovalGate()` 或自定义工具调用逻辑判断启用、自动批准和人工审批。 |
+| `abortSignal` | `AbortSignal \| undefined` | 中断执行和 provider 调用。 |
+
+## Payload 约束
+
+| 字段 | 说明 |
+| --- | --- |
+| `errCode` | 业务错误码。成功值为 `0`。 |
+| `errMessage` | 错误说明。成功时统一为空字符串。 |

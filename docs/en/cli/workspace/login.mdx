@@ -1,0 +1,61 @@
+---
+title: "workspace login"
+description: "Log on to Workflow Server by browser device flow, and save the login status of workspace CLI."
+---
+
+# workspace login
+
+`workspace login` will initiate a device flow login request to Workflow Server, open the browser authorization page, and wait for the user to write the CLI dedicated API Key to the local `workflow-auth.json` after approval on the Web side. The CLI saves its own credentials and does not require manual token entry.
+
+## Command Format
+
+```bash
+pnpm exec workflow-code workspace login --server <url>
+```
+
+## Parameter
+
+|Parameter|Description|
+| --- | --- |
+| `--server <url>` |Required. Workflow Server address.|
+
+## Verification method
+
+|Steps|Description|
+| --- | --- |
+|Create Device Code|CLI calls `POST /api/auth/device/start`.|
+|Open the browser|Automatically open `verificationUriComplete`; output URL and user code without browser.|
+|Polling Results|CLI polls `POST /api/auth/device/token` until successful, denied, expired, or throttled.|
+|Write Configuration|After success, write to `workflow-auth.json`, and save the server, API key, expiration time, and user information.|
+
+## Configuration file
+
+|Configuration|Description|
+| --- | --- |
+|File name| `workflow-auth.json` |
+|macOS Default Directory| `~/Library/Application Support/workflow-code` |
+|Windows Default Directory| `%APPDATA%/workflow-code` |
+|Linux Default Directory|`$XDG_CONFIG_HOME/workflow-code` or `~/.config/workflow-code`|
+|Custom Catalog|Settings `WORKFLOW_CLI_AUTH_DIR`|
+
+## Output
+
+|Situation|Output|
+| --- | --- |
+|Login successful| `{ errCode: 0, errMessage: "", data: { loggedIn: true, serverUrl, user, expiresAt, apiKeyPrefix } }` |
+|Authorization denied or expired|Output the error response returned by the server with the exit code `1`.|
+|Parameter missing|Output error message with exit code `1`.|
+
+## Example
+
+```bash
+pnpm exec workflow-code workspace login --server http://localhost:7125
+```
+
+## Related Commands
+
+|Goal|Command|
+| --- | --- |
+|View login status| [`status`](/en/cli/workspace/status) |
+|Clear Logon Status| [`logout`](/en/cli/workspace/logout) |
+|Check Service Health| [`health`](/en/cli/workspace/health) |

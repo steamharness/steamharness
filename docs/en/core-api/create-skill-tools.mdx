@@ -1,0 +1,57 @@
+---
+title: "createSkillTools"
+description: "Offer skills as a tool the model reads on demand, not as prompt text."
+---
+
+# createSkillTools
+
+`workflow.createSkillTools()` returns one `skill` tool: the model uses it to list what skills exist and read the one it needs.
+
+A skill's body runs to tens of thousands of characters and matters on a minority of turns, so injecting it into the system prompt spends that budget every turn and buys nothing. Reading on demand costs less, and it is also how the model reaches the references a skill points at.
+
+## Signature
+
+```ts
+const tools: AgentTool[] = await workflow.createSkillTools({
+  directories: string[],
+  approve?: (toolId: string, args: unknown) => Promise<void>,
+});
+```
+
+## Options
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `directories` | `string[]` | Roots to look for skills in, in priority order. The first root's copy of a skill wins, so a project's own copy overrides the one shipped with the host. |
+| `approve` | `(toolId, args) => Promise<void>` | Consulted before each call; throwing blocks it, and a `user_input_required` throw pauses the run. |
+
+## What a skill is
+
+A skill is a directory holding a `SKILL.md`, taking its name and description from the file's `name` and `description` frontmatter. Without frontmatter it takes the directory name; without a `SKILL.md` it is not a skill at all. A root that does not exist simply has no skills in it — that is not an error.
+
+## Actions
+
+| Action | Description |
+| --- | --- |
+| `list` | Reports each skill's name, description and file listing (at most 60 paths). |
+| `read` | Returns one file of one skill; `SKILL.md` by default. |
+
+`path` cannot leave the skill directory: `..` traversal, absolute paths and symlinks pointing outside are all refused, and a file that does not exist is named. One file over 200,000 characters is truncated and flagged in the result.
+
+An approval resume runs the same action again through `workflow.runSkillAction(directories, args)`.
+
+## Example
+
+```ts
+const approval = workflow.createToolApprovalGate();
+
+const node = workflow.createAgentNode({
+  provider: "anthropic",
+  async createTools(context) {
+    return workflow.createSkillTools({
+      directories: [path.join(import.meta.dirname, "skills")],
+      approve: (toolId, args) => approval.approve({ name: toolId, arguments: args }, context),
+    });
+  },
+});
+```

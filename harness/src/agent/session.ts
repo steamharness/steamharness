@@ -1,0 +1,652 @@
+import { createHash, randomUUID } from "node:crypto";
+import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
+import type { JsonValue } from "@earendil-works/chord";
+import { Type, type AssistantMessage, type Models, type Usage } from "@earendil-works/pi-ai";
+import {
+  AgentDoc, CompactionTask, InboxDoc, LiveDoc, ProviderDoc, UsageDoc, configure, defineDoc, defineExtension, defineTask,
+  type Conversation, type ConversationId, type ConversationWatch, type EntryId, type EntryRecord,
+  type Harness, type JsonObject, type Registry, type TaskId, type Storage, type SubmissionRecord,
+  type ToolRegistration, type TaskGraphWatch, type Cursor, type Tx, type AgentChange, type TaskRecord, type RegistryReader,
+} from "@earendil-works/pi-durable";
+import type { WorkflowOutputItemInput } from "../node/output/index";
+import type { WorkflowTokenUsageAggregate } from "../token-usage/index";
+import { estimateAgentContextTokens, readAgentContextUsage } from "./compaction";
+import { durableContextMessages } from "./durable-context";
+import type { AgentPlanItem, AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt, AgentSessionResources, AgentSessionSnapshot, AgentSessionTask, AgentSessionTurn } from "./session-types";
+
+const SessionDoc = defineDoc({
+  kind: "workflow.session", version: 1, scope: "conversation", history: "rewindable", fork: "initial",
+  initial: () => ({ configurationVersion: 0, promptHash: "", promptVersion: 0,
+    commands: {} as Record<string, JsonObject>, title: "", background: false as boolean, deleted: false as boolean, hostConfigurationHash: "" }),
+});
+const initialPlan = () => ({ version: 0, items: [] as { id: string; text: string; status: string }[] });
+const PlanAsOf = defineDoc({ kind: "workflow.plan.as-of", version: 1, scope: "conversation", history: "rewindable", fork: "asOf", initial: initialPlan });
+const PlanCurrent = defineDoc({ kind: "workflow.plan.current", version: 1, scope: "conversation", history: "rewindable", fork: "current", initial: initialPlan });
+const PlanInitial = defineDoc({ kind: "workflow.plan.initial", version: 1, scope: "conversation", history: "rewindable", fork: "initial", initial: initialPlan });
+const DelegationDoc = defineDoc({ kind: "workflow.delegation", version: 1, scope: "task", initial: () => ({ taskId: 0 }) });
+
+const plain = <T>(value: T): T => value === undefined ? value : JSON.parse(JSON.stringify(value)) as T;
+const object = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+const textOf = (message: AssistantMessage | undefined): string => message?.content.flatMap(block => block.type === "text" ? [block.text] : []).join("") ?? "";
+
+/** A projection and command adapter over the one executing Harness. No second queue or task scheduler. */
+export class DurableAgentSession {
+  readonly ownerId = randomUUID();
+  private revision = 0;
+  private graph?: TaskGraphWatch;
+  private readonly watches = new Map<number, ConversationWatch>();
+  private snapshots = Promise.resolve();
+  private commands = Promise.resolve();
+  private stopped = false;
+  private pending = false;
+  private timer?: ReturnType<typeof setTimeout>;
+  private notify?: () => void;
+  private readonly planDoc;
+  private readonly delegation;
+  private readonly replays = new Map<string, "safe" | "never">();
+  private readonly submissions = new Map<number, SubmissionRecord>();
+  private readonly tables = new Map<number, { entries: Map<number, EntryRecord>; tasks: Map<number, TaskRecord<JsonValue, JsonValue, JsonValue>> }>();
+  private unsubscribe?: () => void;
+  private unsubscribeRegistry?: () => void;
+  tools: ToolRegistration[] = [];
+
+  constructor(private readonly harness: Harness, private readonly root: Conversation, private readonly options: AgentSessionOptions,
+    private readonly publish: (snapshot: AgentSessionSnapshot) => Promise<void>, private readonly report: (error: unknown) => void,
+    private readonly models: Models, private readonly storage: Storage, private readonly registry: RegistryReader,
+    private readonly resources: (loaded: readonly string[]) => AgentSessionResources,
+    private readonly contextWindow: (provider: string, model: string) => number | undefined = (provider, model) => models.getModel(provider, model)?.contextWindow) {
+    this.planDoc = options.planFork === "initial" ? PlanInitial : options.planFork === "current" ? PlanCurrent : PlanAsOf;
+    this.delegation = this.createDelegationTask();
+  }
+
+  install(registry: Registry): void {
+    if (this.options.subagents && (!Number.isSafeInteger(this.options.subagents.maxAgents ?? 4) || (this.options.subagents.maxAgents ?? 4) < 1)) throw new Error("maxAgents must be a positive integer.");
+    const names = this.options.nativeTools?.map(tool => tool.name) ?? [];
+    if (new Set(names).size !== names.length || names.some(name => name === "subagent" || name === "update_plan")) throw new Error("Native session tool names must be unique and cannot replace session tools.");
+    const tools: ToolRegistration[] = [...(this.options.nativeTools ?? []), {
+      name: "update_plan", description: "Save the current task plan and its progress.", replay: "safe",
+      parameters: Type.Object({ items: Type.Array(Type.Object({ id: Type.String(), text: Type.String(), status: Type.Union([
+        Type.Literal("pending"), Type.Literal("in_progress"), Type.Literal("completed"),
+      ]) }), { maxItems: 100 }) }),
+      execute: async (args, api, ctx) => {
+        const items = validatePlan((args as { items: AgentPlanItem[] }).items);
+        await api.commit(async tx => {
+          const plan = await tx.doc(this.planDoc, api.conversationId);
+          plan.items = items; plan.version++;
+          await tx.appendEntry(api.conversationId, { kind: "workflow.plan", data: { version: plan.version, count: items.length } });
+        }, ctx);
+        return { output: [{ type: "text", text: "Plan saved." }] };
+      },
+    }];
+    if (this.options.subagents) tools.push({
+      name: "subagent", description: "Delegate a focused task with the project's restricted tools. Background results return to this conversation.", replay: "safe",
+      parameters: Type.Object({ task: Type.String({ minLength: 1, maxLength: 100_000 }), background: Type.Optional(Type.Boolean()),
+        model: Type.Optional(Type.Object({ provider: Type.String(), modelId: Type.String() })) }),
+      execute: async (args, api, ctx) => {
+        const parent = await this.harness.commit(tx => tx.conversation(api.conversationId), ctx);
+        if (!parent || parent.owner !== undefined) throw new Error("Subagents cannot delegate again.");
+        const input = args as { task: string; background?: boolean; model?: { provider: string; modelId: string } };
+        if (input.model && !this.allowedChildModel(input.model)) throw new Error("The subagent model is not allowed by the project.");
+        const id = await api.commit(async tx => {
+          const memo = await tx.doc(DelegationDoc, api.taskId);
+          if (memo.taskId) return memo.taskId;
+          const live = await scanAll(cursor => tx.scanTasks({ kind: "workflow.delegation" }, 100, cursor));
+          if (live.filter(task => task.state.status !== "terminal").length >= (this.options.subagents!.maxAgents ?? 4)) throw new Error("The project's subagent limit was reached.");
+          memo.taskId = await tx.createTask(this.delegation, { prompt: input.task, background: input.background === true, model: input.model ?? null, sourceId: api.callId },
+            { conversationId: api.conversationId, ownership: input.background ? { kind: "conversation" } : { kind: "task", taskId: api.taskId }, background: input.background === true });
+          return memo.taskId;
+        }, ctx);
+        await api.details({ taskId: id, background: input.background === true }, ctx);
+        if (input.background) return { output: [{ type: "text", text: `Background task ${id} started. Its result will return here.` }] };
+        const result = await api.waitForTask(id as TaskId<string>, ctx);
+        return { output: [{ type: "text", text: result.state.outcome.status === "completed" ? String(result.state.outcome.result) : `Subagent ${result.state.outcome.status}` }] };
+      },
+    });
+    registry.install(defineExtension({ name: "workflow.session", tools, tasks: [this.delegation] }));
+    this.tools = tools;
+    this.setTools(tools);
+  }
+
+  setTools(tools: readonly ToolRegistration[]): void {
+    for (const tool of tools) this.replays.set(tool.name, tool.replay === "safe" ? "safe" : "never");
+  }
+
+  private allowedChildModel(model: { provider: string; modelId: string }): boolean {
+    return !!this.models.getModel(model.provider, model.modelId) && !!this.options.subagents?.models?.some(allowed => allowed.provider === model.provider && allowed.modelId === model.modelId);
+  }
+
+  private createDelegationTask() {
+    type Input = { prompt: string; background: boolean; model: { provider: string; modelId: string } | null; sourceId: string };
+    type State = { phase: "create" } | { phase: "wait"; childId: number } | { phase: "report"; childId: number; answer: string };
+    return defineTask<Input, State, string>({
+      name: "workflow.delegation", version: 1, initial: () => ({ phase: "create" }),
+      phases: {
+        create: async (task, runtime, ctx) => {
+          const parent = await this.harness.conversation(task.conversationId, ctx);
+          if (!parent || !this.options.subagents) throw new Error("Delegation is not enabled for this conversation.");
+          const parentAgent = await parent.agent(ctx);
+          const allowed = new Set(this.options.subagents.tools);
+          const tools = parentAgent.tools.filter(tool => allowed.has(tool.name) && tool.name !== "subagent");
+          const model = task.input.model;
+          if (model && !this.allowedChildModel(model)) throw new Error("The subagent model is not allowed by the project.");
+          await runtime.commit(async tx => {
+            const existing = (await tx.scanConversations({ ownerTaskId: task.id }, 1)).items[0];
+            const child = existing ?? await tx.createConversation({ ownership: { kind: "task", taskId: task.id } });
+            await configure(tx, child.id, { tools: tools as ToolRegistration[], modelTools: tools as ToolRegistration[],
+              model: model ?? parentAgent.model!, thinkingLevel: parentAgent.thinkingLevel,
+              ...(parentAgent.cwd ? { cwd: parentAgent.cwd } : {}) });
+            const info = await tx.doc(SessionDoc, child.id); info.title = task.input.prompt.slice(0, 120); info.background = task.input.background;
+            return { status: "running", checkpoint: { phase: "wait", childId: child.id } };
+          }, ctx);
+        },
+        wait: async (task, runtime, ctx) => {
+          const child = (await runtime.conversation(task.state.checkpoint.childId as ConversationId, ctx))!;
+          const settled = await (await child.submit({ type: "input", content: task.input.prompt, requestId: `delegate:${task.id}`,
+            entry: { kind: "workflow.input", data: { requestId: `delegate:${task.id}`, mode: "followUp" } } }, ctx)).wait(ctx);
+          const history = await runtime.context(child.id, ctx, settled.status === "done" ? { at: settled.answer } : undefined);
+          const message = [...history.messages].reverse().find(message => message.role === "assistant");
+          const answer = settled.status === "done" ? textOf(message) : `Subagent failed: ${settled.reason}`;
+          await runtime.commit(() => ({ status: "running", checkpoint: { phase: "report", childId: child.id, answer } }), ctx);
+        },
+        report: async (task, runtime, ctx) => {
+          const { childId, answer } = task.state.checkpoint;
+          if (task.input.background) {
+            const parent = (await runtime.conversation(task.conversationId, ctx))!;
+            await parent.submit({ type: "input", content: `Subagent result (${childId}):\n${answer}`, whenBusy: "followUp", requestId: `report:${task.id}`,
+              entry: { kind: "workflow.child-result", data: { requestId: `report:${task.id}`, sourceId: childId, mode: "report" } } }, ctx);
+          }
+          await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: answer } }), ctx);
+        },
+      },
+      abort: async (_task, runtime, ctx) => { await runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), ctx); },
+    });
+  }
+
+  async start(prompt: string): Promise<void> {
+    this.stopped = false;
+    this.unsubscribe?.();
+    this.unsubscribeRegistry?.();
+    this.unsubscribeRegistry = this.registry.subscribe(() => this.schedule());
+    const changes = new Map<number, SubmissionRecord>();
+    this.unsubscribe = this.harness.subscribeCommits(publication => {
+      for (const change of publication.changes) {
+        if (change.type === "submission") {
+          this.submissions.set(change.value.id, change.value); changes.set(change.value.id, change.value);
+        }
+        if (change.type === "entry") this.tables.get(change.value.conversationId)?.entries.set(change.value.id, change.value);
+        if (change.type === "task") this.tables.get(change.value.conversationId)?.tasks.set(change.value.id, change.value);
+      }
+      if (publication.changes.length) this.schedule();
+    });
+    for (const record of await scanAll(cursor => this.storage.scanSubmissions({}, 200, cursor, context))) {
+      this.submissions.set(record.id, changes.get(record.id) ?? record);
+    }
+    await this.root.commit(async tx => {
+      const doc = await tx.doc(SessionDoc, this.root.id);
+      const hash = createHash("sha256").update(prompt).digest("hex");
+      if (doc.promptHash !== hash) {
+        doc.promptHash = hash; doc.promptVersion++;
+        await tx.appendEntry(this.root.id, { kind: "workflow.prompt", data: { hash, version: doc.promptVersion } });
+      }
+      await tx.doc(this.planDoc, this.root.id);
+    }, context);
+    this.graph = await this.harness.watchTaskGraph(context);
+    this.graph.start(async () => { this.notify?.(); this.schedule(); });
+    await this.attach(this.root);
+    await this.emit();
+  }
+
+  async configureRoot(change: AgentChange): Promise<void> {
+    await this.root.commit(async tx => {
+      const info = await tx.doc(SessionDoc, this.root.id);
+      const hash = createHash("sha256").update(canonical({ model: change.model, thinkingLevel: change.thinkingLevel, cwd: change.cwd })).digest("hex");
+      const changed = info.hostConfigurationHash !== hash;
+      await configure(tx, this.root.id, changed ? change : { tools: change.tools, cwd: change.cwd });
+      if (changed && info.hostConfigurationHash) {
+        info.configurationVersion++;
+        await tx.appendEntry(this.root.id, { kind: "workflow.configuration", data: { version: info.configurationVersion } });
+      }
+      info.hostConfigurationHash = hash;
+    }, context);
+  }
+
+  async requestIdFor(id: ConversationId): Promise<string> {
+    const live = await this.harness.snapshot(LiveDoc, id, context);
+    const input = live?.run?.inputs[0];
+    return input === undefined ? `conversation:${id}` : this.submissions.get(input)?.requestId ?? `submission:${input}`;
+  }
+
+  async recordCompactionUsage(sessionId: string | undefined, recordId: string, usage: Usage): Promise<void> {
+    if (!sessionId) return;
+    for (const id of this.watches.keys()) {
+      const provider = await this.harness.snapshot(ProviderDoc, id as ConversationId, context);
+      if (provider?.sessionId !== sessionId) continue;
+      const requestId = await this.requestIdFor(id as ConversationId);
+      await this.harness.commit(tx => tx.appendEntry(id as ConversationId, {
+        kind: "workflow.compaction-usage", data: { requestId, recordId, usage: plain(usage) as unknown as JsonValue },
+      }), context);
+      return;
+    }
+  }
+
+  private async attach(conversation: Conversation): Promise<void> {
+    if (this.watches.has(conversation.id)) return;
+    const watch = await conversation.watch(context);
+    this.watches.set(conversation.id, watch);
+    watch.start(async () => { this.notify?.(); this.schedule(); });
+  }
+
+  private schedule(): void {
+    if (this.stopped || this.pending) return;
+    this.pending = true;
+    this.timer = setTimeout(() => {
+      this.timer = undefined; this.pending = false;
+      this.snapshots = this.snapshots.then(async () => { if (!this.stopped) await this.emit(); }).catch(error => this.report(error));
+    }, 50);
+  }
+
+  async emit(): Promise<void> { await this.publish(await this.snapshot()); }
+
+  async stop(): Promise<void> {
+    this.stopped = true;
+    clearTimeout(this.timer); this.timer = undefined; this.pending = false;
+    this.unsubscribe?.(); this.unsubscribe = undefined;
+    this.unsubscribeRegistry?.(); this.unsubscribeRegistry = undefined;
+    await this.graph?.stop(); this.graph = undefined;
+    for (const watch of this.watches.values()) await watch.stop();
+    this.watches.clear();
+    await this.snapshots;
+  }
+
+  async drain(): Promise<void> {
+    while (true) {
+      const live = await this.harness.inspect(context);
+      if (live.tasks.length === 0) { await this.snapshots; await this.emit(); return; }
+      if (live.tasks.some(task => task.state.kind === "blocked") && live.tasks.every(task => !["running", "ready"].includes(task.state.kind))) throw new Error("Agent tasks are blocked by an unavailable task definition. Inspect or stop the affected tasks.");
+      await Promise.race(live.tasks.map(task => this.harness.waitForTask(task.record.id, context)));
+    }
+  }
+
+  control(command: AgentSessionCommand): Promise<AgentSessionReceipt> {
+    if (this.stopped) return Promise.reject(Object.assign(new Error("The agent session is closed."), { code: "AGENT_NOT_READY" }));
+    const next = this.commands.catch(() => undefined).then(() => this.perform(command));
+    this.commands = next.then(() => undefined, () => undefined);
+    return next;
+  }
+
+  private async target(id?: number): Promise<Conversation> {
+    const target = id ? await this.harness.conversation(id as ConversationId, context) : this.root;
+    if (!target) throw new Error("The target conversation does not exist.");
+    let record = await this.harness.commit(tx => tx.conversation(target.id), context);
+    const seen = new Set<number>();
+    while (record && record.id !== this.root.id && !seen.has(record.id)) {
+      seen.add(record.id);
+      const parent = record.owner?.conversationId ?? record.parent?.conversationId;
+      record = parent ? await this.harness.commit(tx => tx.conversation(parent), context) : undefined;
+    }
+    if (record?.id !== this.root.id) throw new Error("The target belongs to another session.");
+    return target;
+  }
+
+  private async perform(command: AgentSessionCommand): Promise<AgentSessionReceipt> {
+    if (typeof command.requestId !== "string" || !command.requestId || command.requestId.length > 256 || ["__proto__", "constructor", "prototype"].includes(command.requestId)) throw new Error("A bounded stable requestId is required.");
+    const target = await this.target(command.targetId);
+    const previous = (await this.harness.snapshot(SessionDoc, target.id, context))?.commands[command.requestId];
+    const fingerprint = createHash("sha256").update(canonical({ ...command, targetId: target.id })).digest("hex");
+    if (previous) {
+      if (previous.fingerprint !== fingerprint) throw new Error("The requestId was already used for another command.");
+      if (previous.receipt) return plain(previous.receipt) as unknown as AgentSessionReceipt;
+    }
+    if ((await this.harness.snapshot(SessionDoc, target.id, context))?.deleted) throw new Error("The target conversation was deleted.");
+    const receipt: AgentSessionReceipt = { requestId: command.requestId, status: "accepted", conversationId: target.id };
+    if (command.type !== "snapshot" && !previous) await target.commit(async tx => {
+      (await tx.doc(SessionDoc, target.id)).commands[command.requestId] = { fingerprint };
+    }, context);
+    let saved = false;
+    const save = async (tx: Tx) => {
+      (await tx.doc(SessionDoc, target.id)).commands[command.requestId] = plain({ fingerprint, receipt }) as unknown as JsonObject;
+      await tx.appendEntry(target.id, { kind: `workflow.command.${command.type}`, data: { requestId: command.requestId } });
+      saved = true;
+    };
+    switch (command.type) {
+      case "task": {
+        const task = this.options.registry?.snapshot().task(command.name);
+        if (!task || /^(pi|workflow)\./.test(command.name)) throw new Error("The project has not registered this task.");
+        await target.commit(async tx => {
+          receipt.taskId = await tx.createTask(task as import("@earendil-works/pi-durable").Task<JsonValue, { phase: string }, JsonValue, object>, command.input,
+            { conversationId: target.id, ownership: { kind: "conversation" }, background: command.background === true });
+          await save(tx);
+        }, context);
+        this.harness.resume();
+        break;
+      }
+      case "submit": {
+        if (typeof command.prompt !== "string" || command.prompt.length > 100_000 || !["steer", "followUp", "reject"].includes(command.mode)) throw new Error("Invalid agent input.");
+        const content = command.images?.length ? [{ type: "text" as const, text: command.prompt }, ...command.images.map(image => ({ type: "image" as const, ...image }))] : command.prompt;
+        const submission = await target.submit({ type: "input", content, requestId: command.requestId, whenBusy: command.mode,
+          entry: { kind: "workflow.input", data: { requestId: command.requestId, mode: command.mode } } }, context);
+        receipt.submissionId = submission.id;
+        break;
+      }
+      case "withdraw": {
+        const record = await this.harness.commit(tx => tx.submissionByRequest(target.id, command.inputId), context);
+        if (!record) throw new Error("The queued input does not exist.");
+        receipt.status = await this.harness.abortSubmission(record.id, context, target.id) as AgentSessionReceipt["status"];
+        break;
+      }
+      case "promote": {
+        await target.commit(async tx => {
+          const record = await tx.submissionByRequest(target.id, command.inputId);
+          if (!record || record.type !== "input") throw new Error("The queued input does not exist.");
+          receipt.submissionId = record.id;
+          if (record.status !== "queued") {
+            receipt.status = record.status === "placed" ? "already_placed" : "settled";
+          } else {
+            const inbox = await tx.doc(InboxDoc, target.id);
+            const item = inbox.items.find(item => item.id === record.id);
+            if (!item || item.mode === "write") throw new Error("The queued input does not exist.");
+            item.mode = "steer";
+            item.entry ??= { kind: "workflow.input", data: { requestId: command.inputId } };
+            item.entry.data = { ...object(item.entry.data) as JsonObject, mode: "steer" };
+          }
+          await save(tx);
+        }, context);
+        this.harness.resume();
+        break;
+      }
+      case "reset": {
+        const submission = await target.submit({ type: "write", requestId: command.requestId, entry: { kind: "pi.reset", head: "self",
+          ...(command.handoff === undefined ? {} : { model: [{ role: "user" as const, content: command.handoff, timestamp: Date.now() }] }) } }, context);
+        receipt.submissionId = submission.id;
+        break;
+      }
+      case "compact": {
+        await target.commit(async tx => {
+          const id = await tx.createTask(CompactionTask, { reason: "manual" as const, ...(command.instructions ? { instructions: command.instructions } : {}) },
+            { conversationId: target.id, ownership: { kind: "conversation" }, background: true });
+          const live = await tx.doc(LiveDoc, target.id);
+          (live.compactions ??= []).push({ taskId: id, reason: "manual", blocking: false, attempt: 1 });
+          receipt.taskId = id; await save(tx);
+        }, context);
+        this.harness.resume();
+        break;
+      }
+      case "fork": {
+        if (!Number.isSafeInteger(command.entryId) || command.entryId < 1) throw new Error("A committed entry is required for a fork.");
+        await target.commit(async tx => {
+          const fork = await tx.forkConversation(target.id, command.entryId as EntryId, { ownership: { kind: "ownerless" } });
+          const doc = await tx.doc(SessionDoc, fork.id); doc.title = "Fork";
+          receipt.forkId = fork.id; await save(tx);
+        }, context);
+        await this.attach((await this.harness.conversation(receipt.forkId as ConversationId, context))!);
+        break;
+      }
+      case "delete": {
+        if (target.id === this.root.id) throw new Error("The host must delete the root session and its storage.");
+        await target.abort(context, { background: true });
+        await target.commit(async tx => { (await tx.doc(SessionDoc, target.id)).deleted = true; await save(tx); }, context);
+        break;
+      }
+      case "configure": {
+        const current = await this.harness.snapshot(SessionDoc, target.id, context);
+        if (command.expectedVersion !== (current?.configurationVersion ?? 0)) throw new Error("The agent configuration changed. Refresh before editing.");
+        if (command.effort && !["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(command.effort)) throw new Error("Invalid reasoning effort.");
+        if (command.model && !this.models.getModel(command.model.provider, command.model.modelId)) throw new Error("Unknown agent model.");
+        const record = await this.harness.commit(tx => tx.conversation(target.id), context);
+        if (command.model && record?.owner) {
+          const agent = await target.agent(context);
+          if ((agent.model?.provider !== command.model.provider || agent.model.modelId !== command.model.modelId) && !this.allowedChildModel(command.model)) throw new Error("The subagent model is not allowed by the project.");
+        }
+        await target.commit(async tx => {
+          await configure(tx, target.id, { ...(command.model ? { model: command.model } : {}), ...(command.effort ? { thinkingLevel: command.effort as "medium" } : {}) });
+          (await tx.doc(SessionDoc, target.id)).configurationVersion++;
+          await tx.appendEntry(target.id, { kind: "workflow.configuration", data: { version: command.expectedVersion + 1 } });
+          await save(tx);
+        }, context);
+        break;
+      }
+      case "plan": {
+        const items = validatePlan(command.items);
+        await target.commit(async tx => {
+          const doc = await tx.doc(this.planDoc, target.id);
+          if (doc.version !== command.expectedVersion) throw new Error("The plan changed. Refresh before editing.");
+          doc.items = items; doc.version++;
+          await tx.appendEntry(target.id, { kind: "workflow.plan", data: { version: doc.version, count: items.length } });
+          await save(tx);
+        }, context);
+        break;
+      }
+      case "cancel": {
+        const current = (await this.harness.snapshot(SessionDoc, target.id, context))!.commands[command.requestId]!;
+        let ids = current.taskIds as number[] | undefined, inputs = current.inputIds as number[] | undefined;
+        if (!ids) {
+          if (!["all", "foreground", "task"].includes(command.scope)) throw new Error("Unknown cancellation scope.");
+          const frame = await this.snapshot();
+          const owned = new Set([target.id as number]);
+          let size = 0;
+          while (size !== owned.size) {
+            size = owned.size;
+            for (const conversation of frame.conversations) if (conversation.parentId !== undefined && conversation.forkEntryId === undefined && owned.has(conversation.parentId)) owned.add(conversation.id);
+          }
+          const excluded = new Set<number>();
+          if (command.scope === "foreground") {
+            for (const task of frame.tasks) if (task.background) excluded.add(task.id);
+            let count = -1;
+            while (count !== excluded.size) { count = excluded.size; for (const task of frame.tasks) if (task.parentId !== undefined && excluded.has(task.parentId)) excluded.add(task.id); }
+          }
+          if (command.scope === "task") {
+            const task = frame.tasks.find(task => task.id === command.taskId) ?? frame.history.find(task => task.id === command.taskId);
+            if (!task || !owned.has(task.conversationId)) throw new Error("The task does not belong to the target conversation.");
+            ids = [task.id]; inputs = [];
+          } else {
+            ids = frame.tasks.filter(task => owned.has(task.conversationId) && !excluded.has(task.id)).map(task => task.id);
+            const scopes = new Set(frame.conversations.filter(conversation => owned.has(conversation.id) && (command.scope === "all" || !conversation.background)).map(conversation => conversation.id));
+            inputs = [...this.submissions.values()].filter(input => scopes.has(input.conversationId) && input.status === "queued").map(input => input.id);
+          }
+          await target.commit(async tx => { const record = (await tx.doc(SessionDoc, target.id)).commands[command.requestId]!; record.taskIds = ids!; record.inputIds = inputs!; }, context);
+        }
+        for (const id of inputs ?? []) await this.harness.abortSubmission(id as import("@earendil-works/pi-durable").SubmissionId, context);
+        for (const id of ids) await this.harness.abortTask(id as TaskId, context);
+        for (const id of ids) await this.harness.waitForTask(id as TaskId, context);
+        break;
+      }
+      case "snapshot": break;
+      default: throw new Error("Unknown agent session command.");
+    }
+    if (command.type !== "snapshot" && !saved) await target.commit(save, context);
+    await this.emit();
+    return receipt;
+  }
+
+  async snapshot(): Promise<AgentSessionSnapshot> {
+    // All table reads precede document creation and share the Session mutation line.
+    const frame = await this.harness.commit(async tx => {
+      // A final failure snapshot is read after live subscriptions have stopped.
+      if (this.stopped) {
+        this.tables.clear(); this.submissions.clear();
+        for (const record of await scanAll(cursor => this.storage.scanSubmissions({}, 200, cursor, context))) this.submissions.set(record.id, record);
+      }
+      const conversations = await scanAll(cursor => tx.scanConversations({}, 100, cursor));
+      const byId = new Map(conversations.map(record => [record.id, record]));
+      const allowed = conversations.filter(record => {
+        const seen = new Set<number>();
+        let current: typeof record | undefined = record;
+        while (current && !seen.has(current.id)) {
+          if (current.id === this.root.id) return true;
+          seen.add(current.id);
+          const parent: ConversationId | undefined = current.owner?.conversationId ?? current.parent?.conversationId;
+          current = parent === undefined ? undefined : byId.get(parent);
+        }
+        return false;
+      });
+      const tables = [];
+      for (const record of allowed) {
+        let cache = this.tables.get(record.id);
+        if (!cache) {
+          cache = { entries: new Map((await scanAll(cursor => tx.scanEntries({ conversationId: record.id, order: "ascending" }, 200, cursor))).map(entry => [entry.id, entry])),
+            tasks: new Map((await scanAll(cursor => tx.scanTasks({ conversationId: record.id }, 200, cursor))).map(task => [task.id, task])) };
+          this.tables.set(record.id, cache);
+        }
+        tables.push({ record, entries: [...cache.entries.values()].sort((a, b) => a.id - b.id), allTasks: [...cache.tasks.values()].sort((a, b) => a.id - b.id),
+          submitted: [...this.submissions.values()].filter(submission => submission.conversationId === record.id) });
+      }
+      const rows = [];
+      for (const table of tables) rows.push({ ...table,
+        live: plain(await tx.doc(LiveDoc, table.record.id)), inbox: plain(await tx.doc(InboxDoc, table.record.id)),
+        spend: plain(await tx.doc(UsageDoc, table.record.id)), info: plain(await tx.doc(SessionDoc, table.record.id)),
+        agent: plain(await tx.doc(AgentDoc, table.record.id)), plan: plain(await tx.doc(this.planDoc, table.record.id)),
+      });
+      return { rows, agent: plain(await tx.doc(AgentDoc, this.root.id)), plan: plain(await tx.doc(this.planDoc, this.root.id)) };
+    }, context);
+    const inspections = new Map((await this.harness.inspect(context)).tasks.map(task => [task.record.id, task.state]));
+    const tasks: AgentSessionTask[] = [], history: AgentSessionTask[] = [], turns: AgentSessionTurn[] = [], receipts: AgentSessionReceipt[] = [];
+    const records: AgentSessionSnapshot["records"] = [], usage: AgentSessionSnapshot["usage"] = [], infos: AgentSessionSnapshot["conversations"] = [], contexts: AgentSessionSnapshot["contexts"] = [];
+    let rootLive: unknown;
+    let epoch = 0;
+    const deleted = new Set(frame.rows.filter(row => row.info.deleted).map(row => row.record.id));
+    let deletedCount = -1;
+    while (deletedCount !== deleted.size) {
+      deletedCount = deleted.size;
+      for (const { record } of frame.rows) if (record.owner && deleted.has(record.owner.conversationId)) deleted.add(record.id);
+    }
+    for (const { record, live, inbox, spend, info, entries, submitted, allTasks, agent, plan } of frame.rows) {
+      if (deleted.has(record.id)) continue;
+      const conversation = (await this.harness.conversation(record.id, context))!;
+      if (this.graph) await this.attach(conversation);
+      if (record.id === this.root.id) { rootLive = live; epoch = entries.filter(entry => entry.kind === "pi.reset").length; }
+      infos.push({ id: record.id, ...(record.owner ? { parentId: record.owner.conversationId } : record.parent ? { parentId: record.parent.conversationId, forkEntryId: record.parent.at } : {}),
+        title: info?.title || (record.id === this.root.id ? "Main" : "Subagent"), background: info?.background ?? false });
+      usage.push({ conversationId: record.id, ...(record.owner ? { parentId: record.owner.conversationId } : {}), models: plain(spend?.models ?? {}), tools: plain(spend?.tools ?? {}) });
+      const view = await conversation.context(context);
+      const contextUsage = readAgentContextUsage({
+        used: estimateAgentContextTokens(durableContextMessages(view, live.generation?.message as AssistantMessage | undefined)),
+        contextWindow: agent.model && this.contextWindow(agent.model.provider, agent.model.modelId),
+      });
+      contexts.push({ conversationId: record.id, foreground: !!live.run, backgroundCount: 0, epoch: entries.filter(entry => entry.kind === "pi.reset").length,
+        configuration: { version: info.configurationVersion, provider: agent.model?.provider ?? "", model: agent.model?.modelId ?? "", effort: agent.thinkingLevel ?? "off", ...(agent.cwd ? { cwd: agent.cwd } : {}) },
+        prompt: { hash: info.promptHash, version: info.promptVersion }, plan: { version: plan.version, items: plan.items as AgentPlanItem[] },
+        ...(contextUsage ? { contextUsage } : {}) });
+      const byId = new Map(entries.map(entry => [entry.id, entry]));
+      for (const task of allTasks) {
+        const slots = [...(live?.tools ?? []), ...(live?.nestedTools ?? [])];
+        const slot = slots.find(slot => slot.taskId === task.id);
+        const input = object(task.input), call = input.kind === "nested" ? object(input.call)
+          : byId.get(Number(input.assistant) as EntryId)?.model?.flatMap(message => message.role === "assistant" ? message.content.filter(block => block.type === "toolCall") : [])
+            .find(block => block.id === input.callId);
+        const tool = slot?.name ?? (typeof call?.name === "string" ? call.name : undefined);
+        const model = task.state.status === "running" || task.state.status === "waiting" || task.state.status === "pending" ? task.state.checkpoint : undefined;
+        const state = object(model);
+        const inspected = inspections.get(task.id);
+        const descriptor: AgentSessionTask = {
+          id: task.id, conversationId: record.id, ...(task.owner === undefined ? {} : { parentId: task.owner }), kind: task.kind,
+          label: tool ?? (task.kind === "workflow.delegation" ? String(object(task.input).prompt ?? "Subagent").slice(0, 120) : task.kind),
+          status: task.state.status === "terminal" ? task.state.outcome.status : inspected?.kind === "blocked" ? "blocked" : task.state.status,
+          ...(state.phase ? { phase: String(state.phase) } : {}), background: task.background || info?.background === true,
+          definitionVersion: task.version,
+          ...(model === undefined || task.kind.startsWith("pi.") ? {} : { checkpoint: plain(model) }),
+          ...(typeof state.wakeAt === "number" ? { wakeAt: state.wakeAt } : {}),
+          ...(tool === "codemode" && typeof object(call?.arguments).code === "string" ? { script: String(object(call?.arguments).code) } : {}),
+          stopping: task.state.status !== "terminal" && task.abortRequested, blockedOn: task.state.status === "waiting" ? [...task.state.on] : [],
+          ...(inspected?.kind === "blocked" ? { blockedReason: inspected.reason } : {}),
+          ...(tool ? { toolName: tool, callId: slot?.callId ?? String(call?.id ?? input.callId ?? ""),
+            ...(call?.arguments === undefined ? {} : { arguments: plain(call.arguments) }),
+            replay: state.replay === "safe" ? "safe" : this.replays.get(tool) ?? "never" } : {}),
+          ...(slot && "details" in slot ? { details: plain(slot.details) } : task.state.status === "terminal" ? { details: plain(task.state.outcome) } : {}),
+          ...(task.kind === "pi.generation" && typeof state.attempt === "number" ? { attempt: state.attempt } : {}),
+        };
+        (task.state.status === "terminal" ? history : tasks).push(descriptor);
+      }
+      for (const submission of submitted) {
+        if (submission.type !== "input" || !submission.requestId) continue;
+        const entry = submission.entry === undefined ? undefined : byId.get(submission.entry);
+        const queued = inbox?.items.find(item => item.id === submission.id);
+        const data = object(entry?.data ?? queued?.entry?.data);
+        const prompt = entry?.model?.find(message => message.role === "user")?.content ?? (queued && "content" in queued ? queued.content : "");
+        let mode = ["steer", "followUp", "reject", "report"].includes(String(data.mode)) ? String(data.mode) as AgentSessionTurn["mode"] : "followUp";
+        if (mode === "steer" && (submission.status === "done" && !submitted.some(other => other.id < submission.id && other.type === "input" && other.status === "done" && other.answer === submission.answer)
+          || submission.status === "placed" && live.run?.inputs[0] === submission.id)) mode = "followUp";
+        const nextInput = entries.find(candidate => candidate.id > (submission.entry ?? Infinity) && ["workflow.input", "workflow.child-result", "pi.user"].includes(candidate.kind) && object(candidate.data).mode !== "steer");
+        const end = submission.status === "done" ? submission.answer : nextInput?.id;
+        const visible = submission.entry === undefined ? [] : entries.filter(candidate => candidate.id > submission.entry! && (end === undefined || candidate.id <= end));
+        const partial = submission.status === "placed" ? live?.generation?.message as unknown as AssistantMessage | undefined : undefined;
+        turns.push({ requestId: submission.requestId, conversationId: record.id, prompt: typeof prompt === "string" ? prompt : prompt.filter(block => block.type === "text").map(block => block.text).join(""), mode, status: submission.status,
+          epoch: entries.filter(entry => entry.kind === "pi.reset" && entry.id < (submission.entry ?? Infinity)).length,
+          ...(submission.entry === undefined ? {} : { entryId: submission.entry }), ...(submission.status === "done" ? { answerId: submission.answer } : {}),
+          ...(submission.status === "unanswered" ? { reason: submission.reason } : {}), items: mode === "steer" ? [] : projectSessionEntries(visible, partial, submission.requestId),
+          ...(mode === "steer" ? {} : { usage: projectSessionUsage(visible, submission.requestId) }) });
+      }
+      for (const entry of entries) if (entry.kind.startsWith("workflow.") || entry.kind === "pi.reset" || entry.kind === "pi.compaction") {
+        records.push({ id: entry.id, conversationId: record.id, kind: entry.kind, label: entry.kind, ...(entry.data === undefined ? {} : { data: plain(entry.data) }) });
+      }
+      for (const command of Object.values(info.commands).slice(-200)) if (command.receipt) receipts.push(plain(command.receipt) as unknown as AgentSessionReceipt);
+    }
+    for (const scope of contexts) scope.backgroundCount = tasks.filter(task => task.background && task.parentId === undefined && task.conversationId === scope.conversationId).length;
+    const agent = frame.agent, info = frame.rows.find(row => row.record.id === this.root.id)?.info, plan = frame.plan;
+    const live = rootLive as unknown as { run?: unknown; compactionFailure?: { error: string } } | undefined;
+    return { version: 1, ownerId: this.ownerId, revision: ++this.revision, conversationId: this.root.id, foreground: !!live?.run,
+      backgroundCount: tasks.filter(task => task.background && task.parentId === undefined && task.conversationId === this.root.id).length, epoch,
+      configuration: { version: info?.configurationVersion ?? 0, provider: agent.model?.provider ?? "", model: agent.model?.modelId ?? "", effort: agent.thinkingLevel ?? "off", ...(agent.cwd ? { cwd: agent.cwd } : {}) },
+      prompt: { hash: info?.promptHash ?? "", version: info?.promptVersion ?? 0 }, plan: { version: plan?.version ?? 0, items: plain(plan?.items ?? []) as AgentPlanItem[] },
+      tasks, history: history.slice(-200), turns, conversations: infos, contexts, receipts, records: records.sort((a, b) => a.id - b.id).slice(-200), usage,
+      resources: this.resources([...new Set(frame.rows.flatMap(row => (row.agent.modelTools && !Array.isArray(row.agent.modelTools) ? row.agent.modelTools.add : row.agent.modelTools) ?? []))]),
+      ...(live?.compactionFailure ? { compactionFailure: live.compactionFailure.error } : {}) };
+  }
+}
+
+function canonical(value: unknown): string {
+  return JSON.stringify(value, (_key, item: unknown) => item && typeof item === "object" && !Array.isArray(item)
+    ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
+}
+
+async function scanAll<T>(read: (cursor: Cursor | undefined) => Promise<{ items: readonly T[]; next?: Cursor }>): Promise<T[]> {
+  const items: T[] = []; let cursor: Cursor | undefined;
+  do { const page = await read(cursor); items.push(...page.items); cursor = page.next; } while (cursor);
+  return items;
+}
+
+function validatePlan(items: AgentPlanItem[]): AgentPlanItem[] {
+  if (!Array.isArray(items) || items.length > 100 || items.some(item => typeof item?.id !== "string" || !item.id || item.id.length > 128 || typeof item.text !== "string" || item.text.length > 10_000 || !["pending", "in_progress", "completed"].includes(item.status)) || new Set(items.map(item => item.id)).size !== items.length) throw new Error("Invalid task plan.");
+  return plain(items);
+}
+
+export function projectSessionUsage(entries: readonly EntryRecord[], requestId: string): WorkflowTokenUsageAggregate {
+  const usages = entries.flatMap(entry => entry.kind === "pi.assistant"
+    ? (entry.model ?? []).flatMap(message => message.role === "assistant" ? [message.usage] : [])
+    : entry.kind === "workflow.compaction-usage" && object(entry.data).requestId === requestId
+      ? [object(entry.data).usage as unknown as Usage] : []);
+  return usages.reduce<WorkflowTokenUsageAggregate>((total, usage) => ({
+    inputTokens: total.inputTokens + (usage.input ?? 0),
+    outputTokens: total.outputTokens + (usage.output ?? 0),
+    totalTokens: total.totalTokens + (usage.totalTokens || (usage.input ?? 0) + (usage.output ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0)),
+    cachedInputTokens: total.cachedInputTokens + (usage.cacheRead ?? 0),
+    cacheCreationTokens: total.cacheCreationTokens + (usage.cacheWrite ?? 0),
+    reasoningTokens: total.reasoningTokens + (usage.reasoning ?? 0),
+    calls: total.calls + 1,
+  }), { inputTokens: 0, outputTokens: 0, totalTokens: 0, cachedInputTokens: 0, cacheCreationTokens: 0, reasoningTokens: 0, calls: 0 });
+}
+
+/** Reuse the existing output contract: answers stay flat; reasoning and tools stay details. */
+export function projectSessionEntries(entries: readonly EntryRecord[], partial: AssistantMessage | undefined, scope: string): WorkflowOutputItemInput[] {
+  const items: WorkflowOutputItemInput[] = [];
+  const calls = new Map<string, WorkflowOutputItemInput>();
+  const append = (message: AssistantMessage, id: string) => {
+    for (const [index, block] of message.content.entries()) {
+      const itemId = `agent-session-${scope}-${id}-${index}`;
+      if (block.type === "text") items.push({ id: itemId, title: "Output", content: block.text, contentType: "markdown", collapsed: false, metadata: { kind: "agent-part", partType: "text" } });
+      else if (block.type === "thinking") items.push({ id: itemId, title: "Thinking", content: { text: block.thinking }, contentType: "json", collapsed: true, metadata: { kind: "agent-part", partType: "reasoning" } });
+      else if (block.type === "toolCall" && message.stopReason !== "aborted" && message.stopReason !== "pending") {
+        const item: WorkflowOutputItemInput = { id: itemId, title: block.name, content: { tool: block.name, input: block.arguments, status: "running" }, contentType: "json", collapsed: true, metadata: { kind: "agent-part", partType: "tool", status: "running" } };
+        calls.set(block.id, item); items.push(item);
+      }
+    }
+  };
+  for (const entry of entries) for (const message of entry.model ?? []) {
+    if (message.role === "assistant") append(message, String(entry.id));
+    if (message.role === "toolResult") {
+      const item = calls.get(message.toolCallId);
+      if (item) { item.content = { ...object(item.content), output: { content: message.content, details: message.details }, status: message.isError ? "failed" : "success" }; item.metadata!.status = message.isError ? "failed" : "success"; }
+    }
+  }
+  if (partial) append(partial, "partial");
+  return items;
+}

@@ -1,0 +1,10 @@
+{
+  "id": "d3067925-9b4a-4802-a12f-9a50ba3f3238",
+  "name": "Conversation migration fixture",
+  "type": "module",
+  "devDependencies": {
+    "workflow-code": "0.2.4-20260929001",
+    "@workflow-code/cli": "0.2.4-20261013009.codex-studio-integration"
+  },
+  "workflowCode": { "projectInfo": { "dataStorage": { "mode": "both" } } }
+}

@@ -1,0 +1,33 @@
+---
+title: "开发者小助手 v0.1.7"
+description: "开发者小助手 v0.1.7 的更新说明。"
+---
+
+# 开发者小助手 v0.1.7
+
+2026-09-13 · Tag `builtin-developer-assistant/v0.1.7` · 内置项目更新
+
+<span id="builtin-developer-assistant-0-1-7" className="release-version-anchor"></span>
+<span id="builtin-developer-assistant.0.1.7" className="release-version-anchor"></span>
+
+#### 新特性
+
+- **生成器契约对齐**：Generator skill 补齐入口分组、音频与视频、Conversation 网关与八种 `workflow.WorkflowError`。
+- **脚手架发布元数据**：生成的 `package.json` 带上 `workflowCode.projectCard` 与 `workflowCode.release`。
+
+#### 新增
+
+- 新增 Generator skill 覆盖 `entrypoint.group`、音频输入、视频附件与输出、Conversation 的 `context.hostInput`。
+- 新增 Generator skill 覆盖八种 `workflow.WorkflowError` 与 `createLLMNode`。
+- 新增 Generator skill 覆盖 `getLLMProvider` 与 `tokenUsage.getRunUsage()`。
+- 新增 脚手架生成 `workflowCode.projectCard` 与 `workflowCode.release`，取值按项目类型默认。
+
+#### 变更
+
+- 变更 发布门禁新增 `workflow-generator-contract` 守门，Core 契约漂移而 skill 未同步时直接失败。
+- 变更 生成器依赖解析按包名识别仓库布局并支持日期型预发布版本，不再回退到宿主产品版本。
+
+#### 修复
+
+- 修复 Generator skill 把 `workflowCode.release` 说成不写入源码、把已删除的 Kanban `dataSources` 说成可用能力。
+- 修复 制品按文件 basename 过滤导致 `scripts/create_workflow.py` 未随发布出厂，小助手只能手写项目结构。

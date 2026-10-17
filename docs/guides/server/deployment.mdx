@@ -1,0 +1,64 @@
+---
+title: "部署与发布"
+description: "准备 Workflow Server 的本地和生产配置、持久化目录与静态站点。"
+---
+
+# 部署与发布
+
+Workflow Server 可以本地开发，也可以作为自托管服务部署。生产环境应把数据库、运行数据、对象存储和文档静态文件放在明确的持久化目录中。
+
+## 环境划分
+
+| 环境 | 用途 | 建议 |
+| --- | --- | --- |
+| 开发环境 | 本地调试 Server 和项目 | 从 `*.env.example` 复制本机 `.env`；真实 `.env` 由 Git 忽略。 |
+| 生产环境 | 提供管理端、项目与数据 API | 使用受保护的 CI/CD Variables 或只存在于部署主机的 `.env.production`。 |
+
+首次运行 Server：
+
+```sh
+pnpm bootstrap
+pnpm dev
+```
+
+生产构建和启动：
+
+```sh
+pnpm install --frozen-lockfile
+pnpm build:all
+pnpm start
+```
+
+不要提交真实 `.env`、数据库连接串或服务密钥。`*.env.example` 只维护变量结构和占位值。
+
+## 持久化配置
+
+至少为以下内容准备备份和写入权限：
+
+| 变量 | 说明 |
+| --- | --- |
+| `WORKFLOW_SERVER_DATA_DIR` | Server 运行数据、缓存和本地对象存储目录。 |
+| `WORKFLOW_DATABASE_URL` | PostgreSQL 连接串。 |
+| `WORKFLOW_STORAGE_DRIVER` | 对象存储后端，只接受 `local`：制品与头像写入本机磁盘。 |
+| `WORKFLOW_LOCAL_STORAGE_ROOT` | `local` 驱动使用的绝对路径。 |
+| `WORKFLOW_PUBLIC_BASE_URL` | 管理端公开地址。 |
+| `WORKFLOW_API_PUBLIC_BASE_URL` | API 的公开 HTTP(S) origin。 |
+| `WORKFLOW_DOCS_PUBLIC_BASE_URL` | 文档站点地址。 |
+
+Server 不安装依赖、不构建或加载上传的项目代码。源码快照、头像、KV 和知识库数据都应纳入备份策略。
+
+## 健康检查与反向代理
+
+启动后检查：
+
+```sh
+curl -i "$WORKFLOW_PUBLIC_BASE_URL/health"
+```
+
+反向代理应转发 HTTPS、Host 和 WebSocket 相关 header，并只公开需要的端口。健康检查失败时保留现有数据，先查看服务日志和数据库连接状态，再执行回滚或恢复。
+
+## Alpha 与正式版
+
+Alpha 和正式版使用独立的运行目录、进程、日志和端口。两套环境应使用明确的发布制品和迁移策略；数据库变更保持 expand-only，禁止在部署脚本中删除或重命名线上字段。
+
+发布流水线只从受保护 ref 读取生产变量，并校验构建版本和静态资源。恢复操作不删除数据卷、不提交运行时配置，也不把密钥写入 artifact。

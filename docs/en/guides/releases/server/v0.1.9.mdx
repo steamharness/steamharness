@@ -1,0 +1,46 @@
+---
+title: "Server 0.1.9"
+description: "Release notes for Server 0.1.9."
+---
+
+# Server 0.1.9
+
+2026-09-01 · Tag `server/v0.1.9` · 当前设备
+
+<span id="server-0-1-9" className="release-version-anchor"></span>
+<span id="server.0.1.9" className="release-version-anchor"></span>
+
+#### New Features
+
+- **Standard Workflow MCP endpoint**: Streamable HTTP exposes entrypoints as tools and reuses the existing run queue, persistence, and audit stack.
+- **Conversation OpenAI gateway**: a bearer-only `/v1` serving Responses, Conversations, and Models subsets with per-project keys.
+- **Related project KV grants**: mutual or one-sided confirmation with read/write or prefix-scoped grants that take effect as soon as they are revoked.
+
+#### Breaking Changes
+
+- Global KV, the old `workflow` scope, `kv.workflow`, `persistentValue.workflow`, and standalone data grants are removed.
+  Migration: KV and PersistentValue keep only project and conversation scopes, isolated per storage type.
+
+#### Added
+
+- Added a standard Streamable HTTP MCP endpoint for Workflow projects, authenticated with account or admin keys.
+- Added a bearer-only OpenAI Responses gateway and project key management for Conversation, isolating resources per user and project.
+- Added `wfpk_*` full keys shown only once on creation or rotation, with old keys invalidated immediately.
+- Added run records written when an OpenAI Responses call starts and updated in place on completion, failure, cancellation, or restart.
+- Added KV read, write, and compare-and-set APIs for the current and related projects, authorized against both latest declarations.
+- Added dedicated project storage, revision, and related-project dependency tables, leaving legacy tables, functions, and views untouched.
+
+#### Changed
+
+- Changed Kanban bridges, project group locks, downloads, and releases to resolve only confirmed related projects.
+- Changed the OpenAI Responses gateway to report output limits and content filter end states as `incomplete` while keeping partial output.
+- Changed Conversation deletion to keep its Items, with transactional locks around image reuse, deletion, and expiry cleanup.
+- Changed persisted `incomplete` responses to be resumable through `previous_response_id`.
+
+#### Fixed
+
+- Fixed production builds inlining the OpenAI Responses Shared runtime instead of leaving TypeScript-only packages in deploy dependencies.
+- Fixed MCP elicitation returning invalid content or failing transport or recovery no longer leaving `waiting_for_input` runs behind.
+- Fixed OpenAI call metadata trusting only `WORKFLOW_API_PUBLIC_BASE_URL` or forwarded headers from a trusted proxy.
+- Fixed partial image upload failures now returning explicit validation errors and reclaiming the partial files.
+- Fixed the gateway accepting `system` and `developer` messages, `text.verbosity`, and the compatibility `include` parameter.

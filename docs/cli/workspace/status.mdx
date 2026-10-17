@@ -1,0 +1,76 @@
+---
+title: "workspace status"
+description: "查看 workspace CLI 保存的登录状态，以及本次调用实际会使用的服务器。"
+---
+
+# workspace status
+
+`workspace status` 读取 CLI 登录态文件 `workflow-auth.json`，输出当前是否保存了 server URL、API Key、用户和过期时间，并用 `effective` 给出**本次参数解析后命令真正会连的服务器**及其来源。它不请求 Workflow Server，因此不能证明 API Key 仍然有效。
+
+登录态文件和有效目标可能不是同一个服务器。解析顺序是 `--server` / `--token` → 环境变量 `WORKFLOW_SERVER_URL` / `WORKFLOW_SERVER_ADMIN_KEY` → 保存的登录 → 内置默认值：命令行参数覆盖环境变量，环境变量覆盖文件。Studio 启动的运行与内置终端会注入自己的会话，所以那里的 `workflow-code` 连的是 Studio 当前登录的服务器，而不是这份文件里可能很旧的登录。要判断「会不会传错服务器」，看 `effective` 而不是 `serverUrl`。
+
+## 命令格式
+
+```bash
+pnpm exec workflow-code workspace status
+```
+
+## 参数
+
+| 参数 | 说明 |
+| --- | --- |
+| 无 | 该命令不读取位置参数。 |
+
+## 输出字段
+
+| 字段 | 说明 |
+| --- | --- |
+| `loggedIn` | CLI 登录态中同时存在非空 server URL 和 API Key 时为 `true`。 |
+| `serverUrl` | CLI 登录态中保存的 server URL。 |
+| `user` | 最近一次 device flow 登录得到的用户摘要。 |
+| `expiresAt` | API Key 过期时间。 |
+| `expiringSoon` | 距离过期不足 3 天时为 `true`。 |
+| `source` | 登录来源，当前为 `device_flow` 或 `manual`。 |
+| `effective.serverUrl` | 本次调用实际会使用的 server URL。 |
+| `effective.serverSource` | 该 server URL 的来源：`env`、`flag`、`file` 或 `default`。 |
+| `effective.tokenSource` | 本次调用会使用的 token 来源：`env`、`flag`、`file` 或 `none`。 |
+
+## 示例输出
+
+```json
+{
+  "errCode": 0,
+  "errMessage": "",
+  "data": {
+    "loggedIn": true,
+    "serverUrl": "http://localhost:7125",
+    "user": {
+      "userId": "user-1",
+      "email": "user@example.com",
+      "displayName": "Normal User"
+    },
+    "expiresAt": "2026-07-01T00:00:00.000Z",
+    "expiringSoon": false,
+    "source": "device_flow",
+    "effective": {
+      "serverUrl": "https://wfalpha.yuhe.space",
+      "serverSource": "env",
+      "tokenSource": "env"
+    }
+  }
+}
+```
+
+## 示例
+
+```bash
+pnpm exec workflow-code workspace status
+```
+
+## 注意事项
+
+| 场景 | 说明 |
+| --- | --- |
+| 需要验证 server 可用 | 使用 [`health`](/cli/workspace/health)。 |
+| 需要验证 token 可用 | 使用 [`login`](/cli/workspace/login) 重新验证，或执行需要鉴权的命令。 |
+| 需要知道命令会连哪台服务器 | 看 `effective`；`serverUrl` 只是保存的登录，可能已被环境变量或命令行参数覆盖。 |

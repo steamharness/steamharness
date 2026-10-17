@@ -1,0 +1,64 @@
+{
+  "args": [
+    "--dry-run",
+    "--mm-file",
+    "dry-run",
+    "--question",
+    "讲了什么",
+    "--document-title",
+    "Delta Force Bilibili Fixture"
+  ],
+  "expected": {
+    "errCode": 0,
+    "output": {
+      "documentId": "bilibili.dry-run.p1.Delta-Force-Bilibili-Fixture",
+      "documentTitle": "Delta Force Bilibili Fixture",
+      "videoTitle": "Delta Force Bilibili Fixture",
+      "videoUrl": "mm_file://dry-run",
+      "bvid": "MM_FILE",
+      "aid": 0,
+      "cid": 0,
+      "pageIndex": 0,
+      "model": "MiniMax-M3",
+      "fileId": "dry-run",
+      "promptSeconds": 30,
+      "transcriptLength": 181,
+      "knowledgeWritten": false,
+      "dryRun": true
+    },
+    "contentIncludes": [
+      "视频名称：Delta Force Bilibili Fixture",
+      "链接： mm_file://dry-run",
+      "MiniMax 文件：mm_file://dry-run",
+      "dry-run 模式"
+    ],
+    "itemCount": 2,
+    "items": [
+      {
+        "id": "deltaforce-bilibili-collect-progress",
+        "title": "Output",
+        "contentType": "markdown",
+        "collapsed": false,
+        "contentIncludes": [
+          "检测到 MiniMax 文件",
+          "执行结果已生成"
+        ]
+      },
+      {
+        "title": "Output",
+        "contentType": "text",
+        "id": "bilibili.dry-run.p1.Delta-Force-Bilibili-Fixture",
+        "contentIncludes": [
+          "视频名称：Delta Force Bilibili Fixture",
+          "dry-run 模式"
+        ]
+      }
+    ],
+    "nodes": [
+      "input",
+      "input",
+      "output"
+    ],
+    "outputCount": 1
+  }
+}

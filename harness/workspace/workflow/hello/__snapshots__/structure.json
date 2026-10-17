@@ -1,0 +1,49 @@
+{
+  "workflowName": "hello",
+  "projectType": "workflow",
+  "files": [
+    "index.ts",
+    "interface.ts"
+  ],
+  "nodes": [
+    {
+      "id": "llmNode",
+      "factory": "createLLMStreamNode",
+      "standardName": "llm-stream",
+      "configuredName": "hello-llm"
+    },
+    {
+      "id": "outputNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "hello-output"
+    }
+  ],
+  "defaultEntrypoint": "main",
+  "entrypoints": [
+    {
+      "id": "main",
+      "title": "Hello",
+      "workflowName": "hello",
+      "tokenUsage": {
+        "enabled": true,
+        "display": true
+      },
+      "params": [],
+      "registry": [],
+      "execution": {
+        "kind": "sequence",
+        "counts": {
+          "sequence": 1,
+          "node": 2
+        },
+        "callees": [
+          "runStreamNode",
+          "runNode"
+        ],
+        "branchLabels": [],
+        "loopLabels": []
+      }
+    }
+  ]
+}

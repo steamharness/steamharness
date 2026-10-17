@@ -1,0 +1,6 @@
+services:
+  postgres:
+    volumes:
+      - type: bind
+        source: ${WORKFLOW_RELEASE_STORAGE_ROOT:?Set WORKFLOW_RELEASE_STORAGE_ROOT}/postgres-data
+        target: /var/lib/postgresql/data

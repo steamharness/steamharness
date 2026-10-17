@@ -1,0 +1,82 @@
+---
+title: "createInputNode"
+description: "Create an input parsing node and convert workflow input to the data required by subsequent nodes."
+---
+
+# createInputNode
+
+`workflow.createInputNode()` Create a normal input node. It is usually placed in the first step of workflow and is used to trim, verify, convert, or complete the input constructed by executor.
+
+## Signature
+
+```ts
+workflow.createInputNode<Input>(
+  options?: InputNodeOptions<Input, Input>,
+): BaseNode<Input, Input>
+
+workflow.createInputNode<Input, Output>(
+  options: InputNodeOptions<Input, Output> & {
+    parse: InputParser<Input, Output>;
+  },
+): BaseNode<Input, Output>
+```
+
+## Parameter
+
+|Parameter|Type|Description|
+| --- | --- | --- |
+| `options` | `InputNodeOptions<Input, Output>` |node name, parsing function, history, and meta information. Creates a default `input` node when not passed.|
+
+## `InputNodeOptions`
+
+|Field|Type|Description|
+| --- | --- | --- |
+| `name` | `string` |Node name, default `"input"`.|
+| `parse` | `(input, context) => Output` |Input parsing function; return input as it is if it is not passed.|
+| `historyLimit` | `number` |The number of nodes retained in the execution history. The default value is `50`.|
+| `metadata` | `WorkflowNodeMetadataInput` |The node displays meta information.|
+
+## `parse` Input
+
+|Name|Description|
+| --- | --- |
+| `input` |The input to parse, from the workflow `run` or upstream node.|
+| `context` |runtime injected `NodeContext`, can read metadata, KV, conversation, provider, abortSignal, etc.|
+
+## Return value
+
+|Return|Type|Description|
+| --- | --- | --- |
+|Node Object| `BaseNode<Input, Output>` |Execute via `workflow.runNode(inputNode, input, context)`.|
+|Node output| `Output` |`parse` returns the value as input to the downstream node.|
+
+## Analysis process
+
+|Phase|Input|Result|
+| --- | --- | --- |
+| executor | args/API/form | `Input` |
+| `createInputNode` node | `Input`, `NodeContext` | `Output` |
+|Downstream node| `Output` |Continue processing or enter the LLM/output node|
+
+## Example
+
+```ts
+const inputNode = workflow.createInputNode<Input, ParsedInput>({
+  name: "parse-input",
+  parse(input) {
+    return {
+      message: input.message.trim(),
+      count: Number(input.count ?? 1),
+    };
+  },
+});
+```
+
+## Common Usage
+
+|Scene|Method|
+| --- | --- |
+|Cleanup String|In `parse` `trim()`.|
+|Convert type|Convert the string constructed by executor to number/boolean/object.|
+|Input verification|`workflow.WorkflowError` is thrown when the verification fails, and the type is usually `input_validation`.|
+|Direct pass-through|Do not pass `parse`, node output is equal to input.|

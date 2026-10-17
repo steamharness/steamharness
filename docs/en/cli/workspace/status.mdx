@@ -1,0 +1,76 @@
+---
+title: "workspace status"
+description: "View the workspace CLI saved login, and the server this call would actually use."
+---
+
+# workspace status
+
+`workspace status` reads the CLI login state file `workflow-auth.json` and reports whether a server URL, API Key, user, and expiration time are saved, plus an `effective` block naming **the server the command would really talk to** with these arguments, and where that value came from. It does not request Workflow Server, and therefore cannot prove that API Key is still valid.
+
+The saved login and the effective target can be different servers. The order is `--server` / `--token` → the `WORKFLOW_SERVER_URL` / `WORKFLOW_SERVER_ADMIN_KEY` environment variables → the saved login → the built-in default: a command-line flag overrides the environment, and the environment overrides the file. A run or the built-in terminal started by Studio injects its own session, so `workflow-code` there talks to the server the Studio is signed in to, not to whatever login that file holds. To answer "could this upload go to the wrong server", read `effective`, not `serverUrl`.
+
+## Command Format
+
+```bash
+pnpm exec workflow-code workspace status
+```
+
+## Parameter
+
+|Parameter|Description|
+| --- | --- |
+|None|The command does not read positional parameters.|
+
+## Output field
+
+|Field|Description|
+| --- | --- |
+| `loggedIn` |CLI When both a non-empty server URL and API Key are present in the login state, it is `true`.|
+| `serverUrl` |CLI The server URL saved in the login state.|
+| `user` |The user summary obtained from the most recent device flow login.|
+| `expiresAt` |API Key expiration time.|
+| `expiringSoon` |It is `true` when less than 3 days remain until expiration.|
+| `source` |Login source, currently `device_flow` or `manual`.|
+| `effective.serverUrl` |The server URL this call would use.|
+| `effective.serverSource` |Where that server URL came from: `env`, `flag`, `file`, or `default`.|
+| `effective.tokenSource` |Where the token for this call came from: `env`, `flag`, `file`, or `none`.|
+
+## Example output
+
+```json
+{
+  "errCode": 0,
+  "errMessage": "",
+  "data": {
+    "loggedIn": true,
+    "serverUrl": "http://localhost:7125",
+    "user": {
+      "userId": "user-1",
+      "email": "user@example.com",
+      "displayName": "Normal User"
+    },
+    "expiresAt": "2026-07-01T00:00:00.000Z",
+    "expiringSoon": false,
+    "source": "device_flow",
+    "effective": {
+      "serverUrl": "https://wfalpha.yuhe.space",
+      "serverSource": "env",
+      "tokenSource": "env"
+    }
+  }
+}
+```
+
+## Example
+
+```bash
+pnpm exec workflow-code workspace status
+```
+
+## Precautions
+
+|Scene|Description|
+| --- | --- |
+|Server availability needs to be verified.|Use [`health`](/en/cli/workspace/health).|
+|Need to verify that the token is available|Use [`login`](/en/cli/workspace/login) to re-authenticate, or execute a command that requires authentication.|
+|Need to know which server a command would use|Read `effective`; `serverUrl` only describes the saved login, which an environment variable or a command-line flag may already override.|

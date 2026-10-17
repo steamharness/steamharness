@@ -1,0 +1,31 @@
+---
+title: "上手教程"
+description: "使用 Studio 和 CLI 开发、运行 Workflow 项目。"
+slug: /
+---
+
+# 开发和运行 Workflow 项目
+
+Workflow Code 提供 Core 运行时、CLI、Studio 工作站与 Workflow Server。Studio 打开本地项目，Server Web 管理端管理服务器上的项目源码、版本和数据。
+
+## 本地开发
+
+1. 在项目中安装 `workflow-code` 和支持 Web 宿主协议的 `@workflow-code/cli`。
+2. 按 [Workflow 模型](/concepts/workflow-model) 声明项目与执行入口。
+3. 在 Studio 中打开项目文件夹，点击顶部的运行项目按钮；也可以在终端运行 CLI。
+
+```sh
+workflow-code structure .
+workflow-code run .
+workflow-code web .
+```
+
+运行结果展示在本地项目界面中；需要诊断时查看本地执行轨迹和日志。项目环境变量在本地运行环境中配置。
+
+## 选择入口
+
+- [Studio 工作站](/guides/studio/overview)：打开项目、使用工作站与账号入口。
+- [Core API](/core-api/overview)：编写节点、执行器和项目参数。
+- [本地 CLI](/cli/workflow-code)：检查结构、运行项目和打开 Web 工作区。
+- [Workspace CLI](/cli/server-workspace)：管理服务器项目、上传下载源码和发布版本。
+- [Server Web 管理端](/guides/server/overview)：管理项目、成员、关联项目、知识库、KV 和版本。

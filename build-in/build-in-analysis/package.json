@@ -1,0 +1,35 @@
+{
+  "id": "6cbe3c24-2707-4f31-a553-94edbe866eb1",
+  "name": "Studio Analysis",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.15.1",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "test:scripts": "vitest run scripts/__tests__",
+    "test:ui": "node tests/dashboard-ui.mjs"
+  },
+  "devDependencies": {
+    "@workflow-code/cli": "link:../../cli",
+    "workflow-code": "link:../../core",
+    "chart.js": "4.5.1",
+    "esbuild": "0.28.2",
+    "lucide": "0.468.0",
+    "playwright": "1.61.1",
+    "vitest": "4.1.10"
+  },
+  "workflowCode": {
+    "projectType": "kanban",
+    "kanban": { "artifactDir": ".", "entry": "index.html" },
+    "projectInfo": {
+      "localizedNames": { "zh-CN": "Studio 分析", "en": "Studio Analysis" },
+      "declarations": ["multilingual"],
+      "platformSupport": { "mode": "agnostic" },
+      "dataStorage": { "mode": "local" },
+      "relatedProjects": []
+    },
+    "projectCard": { "icon": "chart-column", "iconBackgroundColor": "#0f766e" }
+  }
+}

@@ -1,0 +1,14 @@
+.git/
+node_modules/
+dist/
+build/
+out/
+coverage/
+.cache/
+.turbo/
+*.log
+*.tmp
+*.tsbuildinfo
+.env
+.env.*
+!.env.example

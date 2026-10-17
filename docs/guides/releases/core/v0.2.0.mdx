@@ -1,0 +1,25 @@
+---
+title: "Core v0.2.0"
+description: "Core v0.2.0 的更新说明。"
+---
+
+# Core v0.2.0
+
+2026-08-26 · Tag `workflow-code/v0.2.0` · npm
+
+<span id="workflow-code-0-2-0" className="release-version-anchor"></span>
+<span id="workflow-code.0.2.0" className="release-version-anchor"></span>
+
+#### 破坏性变更
+
+- 项目必须声明 `workflowCode.projectInfo.dataStorage.mode`，它限制 KV、PersistentValue 与知识库可访问位置。
+  迁移：补齐 `dataStorage.mode`；`server` 位置要求登录并绑定同 UUID 项目。
+- 移除 `context.kv` 与 `context.persistentValue`，改用 `context.storage.<位置>.*`。
+  迁移：本地改写为 `context.storage.local.*`，服务器改写为 `context.storage.server.*`；旧属性运行时只抛出迁移错误。
+- 知识库 helper 必须显式接收对应存储位置上下文，不再隐式沿用当前存储域。
+  迁移：调用知识库 helper 时显式传入 `context` 或目标存储位置。
+
+#### 变更
+
+- 变更 项目必须在 `devDependencies.workflow-code` 写入精确 SemVer，宿主只比较 `major.minor` 兼容线。
+- 变更 同线任意 patch 或日期 Alpha 可直接运行，major 或 minor 变化在加载用户模块前要求升级宿主。

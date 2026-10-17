@@ -1,0 +1,36 @@
+{
+  "args": [
+    "uni-app x 的 uvue 页面怎么调用 uts 插件"
+  ],
+  "expected": {
+    "errCode": 0,
+    "output": {
+      "category": "uni-app x",
+      "success": true
+    },
+    "contentIncludes": [
+      "uni-app x"
+    ],
+    "itemCount": 1,
+    "items": [
+      {
+        "id": "classification-result",
+        "title": "Output",
+        "content": "uni-app x",
+        "contentType": "markdown",
+        "collapsed": false
+      }
+    ],
+    "nodes": [
+      "input",
+      "question-classifier",
+      "output"
+    ],
+    "outputCount": 1,
+    "tokenUsage": {
+      "calls": 1,
+      "cachedInputTokens": 0,
+      "cacheCreationTokens": 0
+    }
+  }
+}

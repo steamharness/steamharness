@@ -1,0 +1,53 @@
+{
+  "id": "d3c4f2b6-d40c-4db6-ab58-bd3b86e58d14",
+  "name": "@workflow-code/server-data-parent-workflow",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "workflow-code run .",
+    "inspect": "workflow-code structure .",
+    "run:json": "workflow-code json .",
+    "workspace:upload": "workflow-code workspace upload .",
+    "workspace:publish": "workflow-code workspace publish ."
+  },
+  "devDependencies": {
+    "@workflow-code/cli": "0.2.3-20260901001",
+    "workflow-code": "0.2.3-20260901001"
+  },
+  "workflowCode": {
+    "projectCard": {
+      "icon": "workflow",
+      "iconColor": "#f4fbf7",
+      "iconBackgroundColor": "#761142"
+    },
+    "projectInfo": {
+      "localizedNames": {
+        "zh-CN": "服务器数据测试项目",
+        "en": "Server Data Test Parent"
+      },
+      "declarations": [],
+      "platformSupport": {
+        "mode": "agnostic"
+      },
+      "dataStorage": {
+        "mode": "server"
+      },
+      "relatedProjects": [
+        {
+          "alias": "child",
+          "projectId": "b3f933e0-0ee4-460e-b0e5-f4b3baa319a4",
+          "grantToRelatedProject": {
+            "read": {
+              "mode": "all"
+            },
+            "write": {
+              "mode": "all"
+            }
+          }
+        }
+      ]
+    },
+    "projectType": "workflow"
+  }
+}

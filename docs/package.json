@@ -1,0 +1,38 @@
+{
+  "name": "@workflow-code/docs",
+  "private": true,
+  "packageManager": "pnpm@10.15.1",
+  "scripts": {
+    "validate": "node scripts/validate-docs.mjs",
+    "test": "node --test --test-reporter=spec scripts/__tests__/*.test.mjs",
+    "build": "pnpm site:build && node scripts/build-docs.mjs",
+    "deploy": "node scripts/deploy-docs.mjs",
+    "deploy:ecs": "node scripts/deploy-ecs.mjs",
+    "site:prepare": "node scripts/prepare-openapi.mjs && node scripts/generate-api-docs.mjs",
+    "site:dev": "pnpm site:prepare && docusaurus start --no-open --port 7128",
+    "site:build": "pnpm site:prepare && docusaurus build",
+    "site:serve": "docusaurus serve --no-open",
+    "site:clear": "docusaurus clear",
+    "generate:releases": "node scripts/generate-release-notes.mjs"
+  },
+  "devDependencies": {
+    "@docusaurus/core": "3.10.2",
+    "@docusaurus/plugin-content-docs": "3.10.2",
+    "@docusaurus/preset-classic": "3.10.2",
+    "@docusaurus/theme-common": "3.10.2",
+    "@easyops-cn/docusaurus-search-local": "0.55.3",
+    "docusaurus-plugin-openapi-docs": "5.2.0",
+    "docusaurus-plugin-sass": "0.2.6",
+    "docusaurus-theme-openapi-docs": "5.2.0",
+    "lucide-react": "1.34.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "sass": "1.103.1",
+    "yaml": "^2.9.0"
+  },
+  "pnpm": {
+    "neverBuiltDependencies": [
+      "postman-code-generators"
+    ]
+  }
+}

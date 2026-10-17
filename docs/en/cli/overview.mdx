@@ -1,0 +1,76 @@
+---
+title: "CLI Overview"
+description: "workflow-code unifies the local and server-side workspace commands of CLI."
+---
+
+# CLI Overview
+
+`@workflow-code/cli` Only one `workflow-code` command is exposed, and it is divided into two command groups based on their respective purposes:
+
+|Command Group|Purpose|
+| --- | --- |
+| [`workflow-code`](/en/cli/workflow-code) |Run in a local workflow directory, print JSON reports, inspect structure, or start a stdio MCP Server.|
+| [`workflow-code workspace` / `pnpm exec workflow-code workspace`](/en/cli/server-workspace) |Connect Workflow Server to log in, package, upload, publish, download, and version query.|
+
+## Command Index
+
+| CLI |Command|
+| --- | --- |
+| `workflow-code` | [`run`](/en/cli/workflow-code/run), [`json`](/en/cli/workflow-code/json), [`structure`](/en/cli/workflow-code/structure), [`resolve-params`](/en/cli/workflow-code/resolve-params), [`mcp`](/en/cli/workflow-code/mcp), [`help`](/en/cli/workflow-code/help) |
+| workspace | [`login`](/en/cli/workspace/login), [`logout`](/en/cli/workspace/logout), [`status`](/en/cli/workspace/status), [`health`](/en/cli/workspace/health), [`pack`](/en/cli/workspace/pack), [`upload`](/en/cli/workspace/upload), [`publish`](/en/cli/workspace/publish), [`versions`](/en/cli/workspace/versions), , , [`download`](/en/cli/workspace/download), [`help`](/en/cli/workspace/help) |
+
+## Typical Workflow
+
+For local development, use `workflow-code` to verify the running results and structure in the workflow directory, and then use the workspace CLI to upload to the server.
+
+```bash
+workflow-code run workspace/workflow/hello -- --message "hello"
+workflow-code json workspace/workflow/hello -- --message "hello"
+workflow-code structure workspace/workflow/hello
+workflow-code mcp workspace/workflow/hello
+workflow-code json workspace/workflow/runtime-timer -- --title "Fixture Timer" --milliseconds 2000
+```
+
+When deploying to the server, first check the service status, then log in, upload files, publish a version, and download it.
+
+```bash
+pnpm exec workflow-code workspace health --server http://localhost:7125
+pnpm exec workflow-code workspace login --server http://localhost:7125
+pnpm exec workflow-code workspace upload hello
+pnpm exec workflow-code workspace publish hello --release-log "Initial release"
+pnpm exec workflow-code workspace run hello --target latest --message "hello"
+```
+
+In the development environment, you can use the local server address; in the production environment, it is recommended to explicitly use the official domain name or your production port.
+
+## Configuration Source
+
+|Configuration|Description|
+| --- | --- |
+| `WORKFLOW_SERVER_URL` |Default server address for workspace CLI.|
+| `WORKFLOW_SERVER_ADMIN_KEY` |Explicit administrator override credentials workspace CLI; automation or recovery scenarios can be used directly as a Bearer.|
+| `WORKFLOW_REPO_ROOT` |The project root directory of workspace CLI. When not set, it is derived by traversing upward from the current directory.|
+| `WORKFLOW_CLI_AUTH_DIR` |The workspace CLI is the directory that stores the independent login state `workflow-auth.json`.|
+| `WORKFLOW_KV_STORE_DIR` |`workflow-code` Local runtime KV store directory.|
+| `WORKFLOW_PERSISTENT_VALUE_STORE_DIR` |The `workflow-code` local runtime PersistentValue store directory, which is also the local repository directory.|
+| `WORKFLOW_FILE_STORE_DIR` |`workflow-code` The store directory for local runtime files.|
+
+`workflow-code run/json` requires an explicit `workflowCode.projectInfo.dataStorage.mode`. `WORKFLOW_KV_STORE_DIR` controls only `context.storage.local.kv`, while `WORKFLOW_PERSISTENT_VALUE_STORE_DIR` controls only `context.storage.local.persistentValue` and local Knowledge. They are isolated by project UUID and never fall back to each other. `context.storage.server` uses the top-level project UUID and an authenticated connection from `WORKFLOW_SERVER_URL` / `WORKFLOW_SERVER_ADMIN_KEY` or workspace CLI `workflow-auth.json`. `local` runs offline, `server` requires login and same-UUID binding, and `both` lets source code select explicitly. The two locations never synchronize automatically. Pass each related-project directory explicitly with repeatable `--related-project alias=/absolute/project/path`; CLI never scans parent or sibling directories, and on a local run the relation also covers the target's Knowledge base and entrypoints to the extent the target grants them, while a server location selects remote data storage and related entrypoints still execute locally. `context.files.createFile(...)` still uses the server connection; input attachment resolution remains controlled by `WORKFLOW_FILE_STORE_DIR`.
+
+Workspace CLI reads `.env` from the current working directory. When `WORKFLOW_REPO_ROOT` is set explicitly, it also reads `.env` from that project root. The `.env.example` file at the CLI repository root provides a minimal configuration template.
+
+## Output Convention
+
+|Command family|Output|
+| --- | --- |
+| `workflow-code run` |On success, output the contents of the output node; on failure, output JSON is reported to stderr.|
+| `workflow-code json` |Always generate a complete JSON execution report.|
+| `workflow-code structure` |Output workflow structure JSON.|
+| `workflow-code mcp` |Reserves stdout for stdio JSON-RPC and writes project logs and diagnostics to stderr.|
+| workspace CLI |Output server API response JSON, like `{ errCode, errMessage, data }`.|
+
+## Follow-up Reading
+
+- See [workflow-code CLI](/en/cli/workflow-code) for local running and structure checking.
+- See [workflow-code mcp](/en/cli/workflow-code/mcp) to connect a local Workflow to an AI client.
+- See [Server Workspace CLI](/en/cli/server-workspace) for Server uploads, publication and downloads.

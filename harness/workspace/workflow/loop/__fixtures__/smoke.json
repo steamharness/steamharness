@@ -1,0 +1,43 @@
+{
+  "args": [
+    "--rounds",
+    "4",
+    "--target",
+    "22"
+  ],
+  "expected": {
+    "errCode": 0,
+    "output": {
+      "rounds": 4,
+      "target": 22,
+      "total": 22,
+      "success": true
+    },
+    "contentIncludes": [
+      "Loop result: 22/22",
+      "while #"
+    ],
+    "itemCount": 1,
+    "items": [
+      {
+        "id": "loop-result",
+        "title": "Output",
+        "contentType": "markdown",
+        "collapsed": false,
+        "contentIncludes": [
+          "Loop result: 22/22",
+          "while #1 burst pass #1",
+          "while #3 finish boost"
+        ]
+      }
+    ],
+    "nodes": [
+      "input",
+      "run-for",
+      "run-while",
+      "run-if",
+      "output"
+    ],
+    "outputCount": 1
+  }
+}

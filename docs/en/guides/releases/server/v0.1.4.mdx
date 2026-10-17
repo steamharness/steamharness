@@ -1,0 +1,41 @@
+---
+title: "Server 0.1.4"
+description: "Release notes for Server 0.1.4."
+---
+
+# Server 0.1.4
+
+2026-08-07 · Tag `server/v0.1.4` · 当前设备
+
+<span id="server-0-1-4" className="release-version-anchor"></span>
+<span id="server.0.1.4" className="release-version-anchor"></span>
+
+#### New Features
+
+- **Request-scoped runtime language**: first-party APIs read `X-Workflow-Locale` and inject the run language into the console, Embed, Webhooks, and parameter parsing.
+- **Version-scoped read-only KV sources**: Kanban Studio and Embed refresh over authenticated revision SSE and drop the source as soon as access is revoked.
+- **Workflow schedules**: fixed-version, fixed-entrypoint plans, common time rules, run-now, and fire history.
+
+#### Added
+
+- Added first-party API errors, health summaries, and a standalone Server release log in the requested language.
+- Added entrypoint selection and stored entrypoint snapshots for the console, Embed, External, streaming, parameter, and Webhook APIs.
+- Added rejection of invalid entrypoints before enqueueing or sending streaming response headers.
+- Added read-only Workflow KV sources authorized by exact version and key prefix for Kanban Studio and Embed.
+- Added exact dependency locks, resumable deployment, partial source download, source requests, and prefix-scoped data grants for Kanban project groups.
+- Added refusal to transfer KV, plans, run history, environment variables, or client credentials to project groups.
+
+#### Changed
+
+- Changed the scheduler to prevent duplicate multi-instance runs through unique fires, leases, permission rechecks, and graceful shutdown.
+- Changed plans to reject edits and deletion while a fire is active.
+- Changed the Kanban revision stream to merge bursts, keep PostgreSQL reconnect order, and close cleanly when the source is unavailable.
+- Changed Server to exit normally after the revision stream signals completion.
+
+#### Fixed
+
+- Fixed cloud Kanban subresources returning 401 or 500, which blanked the screen; short-lived capabilities now scope to project and expiry.
+- Fixed remote run streams occasionally corrupting Chinese and other multi-byte characters at segment boundaries.
+- Fixed `source` mode Kanban being reported missing in public Embeds.
+- Fixed default config initialization failing the first time a PostgreSQL user opened an Embed.
+- Fixed Workflow runtimes writing dev tooling and pnpm symlinks into archives, which made published versions unloadable from object storage.

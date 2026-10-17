@@ -1,0 +1,32 @@
+---
+title: "CLI 0.1.3"
+description: "Release notes for CLI 0.1.3."
+---
+
+# CLI 0.1.3
+
+2026-08-07 · Tag `@workflow-code/cli/v0.1.3` · npm
+
+<span id="@workflow-code/cli-0-1-3" className="release-version-anchor"></span>
+<span id="@workflow-code/cli.0.1.3" className="release-version-anchor"></span>
+
+#### New Features
+
+- **Global `--locale` switch**: changes local and Workspace output and propagates to Server and the Workflow runtime.
+- **`--entrypoint` argument**: local and remote commands can pick an entrypoint and fall back to the default. See [CLI](/en/cli/workflow-code).
+
+#### Breaking Changes
+
+- Project-group packaging and downloads exclude PersistentValue data and CLI credentials and verify every package with SHA-256.
+  Migration: self-references, lock mismatches, and modified responses are rejected, so regenerate dependency locks.
+
+#### Added
+
+- Added a global `--locale <zh-CN|en>` switch, with projects reading it through `workflow.getRuntimeLocale()`.
+- Added `--entrypoint <id>` to local `run`, `json`, `resolve-params` and remote `run`, `debug-node`.
+- Added `structure` validating and reporting schedule suggestions by entrypoint, time zone, window, or Cron.
+- Added Workspace commands delivering and restoring Kanban project groups by exact dependency lock, without host data.
+
+#### Changed
+
+- Changed release notes to be maintained in Chinese and English, with Docs showing the matching version per language.

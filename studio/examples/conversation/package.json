@@ -1,0 +1,19 @@
+{
+  "id": "b20a7d1d-b6f5-4b0c-8589-265d56fc879a",
+  "name": "Studio Conversation",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "workflow-code": "0.2.4-20260929001",
+    "@workflow-code/cli": "0.2.4-20261013009.codex-studio-integration"
+  },
+  "workflowCode": {
+    "projectType": "conversation",
+    "projectInfo": {
+      "localizedNames": { "zh-CN": "对话示例", "en": "Local Conversation Demo" },
+      "platformSupport": { "mode": "agnostic" },
+      "dataStorage": { "mode": "local" }
+    }
+  }
+}

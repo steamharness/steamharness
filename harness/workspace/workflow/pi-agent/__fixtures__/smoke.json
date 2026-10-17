@@ -1,0 +1,64 @@
+{
+  "args": [
+    "--message",
+    "Summarize this repository without changing files.",
+    "--workdir",
+    ".",
+    "--provider",
+    "anthropic",
+    "--tools",
+    "read,bash",
+    "--dry-run"
+  ],
+  "conversationId": "pi-agent-fixture-thread",
+  "expected": {
+    "errCode": 0,
+    "output": {
+      "prompt": "Summarize this repository without changing files.",
+      "dryRun": true,
+      "provider": "anthropic",
+      "sessionId": "pi-agent-dry-run",
+      "toolCount": 0,
+      "messageCount": 2,
+      "conversationMessages": 2,
+      "activeTools": [
+        "read",
+        "bash",
+        "knowledge_documents"
+      ]
+    },
+    "contentIncludes": [
+      "Pi dry-run session",
+      "Provider: anthropic",
+      "Summarize this repository without changing files.",
+      "Tools: read, bash, knowledge_documents"
+    ],
+    "itemCount": 1,
+    "items": [
+      {
+        "title": "Output",
+        "contentType": "markdown",
+        "collapsed": false,
+        "contentIncludes": [
+          "Pi dry-run session",
+          "Provider: anthropic",
+          "Tools: read, bash, knowledge_documents"
+        ]
+      }
+    ],
+    "nodes": [
+      "input",
+      "output"
+    ],
+    "outputCount": 1,
+    "conversationMessages": 2,
+    "tokenUsage": {
+      "calls": 1,
+      "inputTokens": 12,
+      "outputTokens": 24,
+      "totalTokens": 46,
+      "cachedInputTokens": 4,
+      "cacheCreationTokens": 6
+    }
+  }
+}

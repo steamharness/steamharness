@@ -1,0 +1,21 @@
+---
+title: "CLI 0.1.4"
+description: "Release notes for CLI 0.1.4."
+---
+
+# CLI 0.1.4
+
+2026-08-24 · Tag `@workflow-code/cli/v0.1.4` · npm
+
+<span id="@workflow-code/cli-0-1-4" className="release-version-anchor"></span>
+<span id="@workflow-code/cli.0.1.4" className="release-version-anchor"></span>
+
+#### New Features
+
+- **Platform-aware downloads**: `workspace download` sends the current platform and resolves `latest` to that system's newest compatible version.
+- **Per-version release targets**: `workspace upload/publish` select a Server runtime and Desktop download target per immutable version.
+
+#### Breaking Changes
+
+- The Desktop local runtime event variable is now `WORKFLOW_DESKTOP_RUNTIME_EVENTS`.
+  Migration: the former `WORKFLOW_APP_RUNTIME_EVENTS` variable is no longer accepted.

@@ -1,0 +1,83 @@
+---
+title: "getLLMProvider"
+description: "从 NodeContext 和 provider source 中解析节点实际使用的 LLM provider。"
+---
+
+# getLLMProvider
+
+`workflow.getLLMProvider()` 是 provider 解析工具。LLM 节点执行时会调用它，业务代码也可以在自定义节点或高级场景中直接使用。
+
+当 executor 配置 `tokenUsage.enabled` 时，通过 `getLLMProvider()` 解析出的 provider 会在 `chat()` 返回或 stream `finish` chunk 携带 usage 时自动上报 token 用量。直接在自定义节点中调用 provider 的 workspace 示例也会走同一条统计链路；没有 usage 的 provider 不会写入统计。上报会读取常见 provider usage 字段，包括 cache read / cache write 或 cache creation token 明细。
+
+## 签名
+
+```ts
+workflow.getLLMProvider(
+  context: NodeContext,
+  nodeName: string,
+  source?: LLMProviderSource,
+): LLMProvider
+```
+
+## 参数
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| `context` | `NodeContext` | 从 `context.providers` 读取 provider、绑定和默认 provider。 |
+| `nodeName` | `string` | 当前节点名；用于节点级 binding 和错误信息。 |
+| `source` | `LLMProviderSource` | 可选 provider 来源：实例、id、ref 或 resolver。 |
+
+## `ProviderRegistry`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `llm` | `LLMProvider \| undefined` | 兼容的默认单 provider。 |
+| `llmProviders` | `object \| undefined` | provider id 到 provider 实例的映射。 |
+| `llmProviderBindings` | `object \| undefined` | 节点名到 provider/model 绑定的映射。 |
+| `defaultLLMProviderBinding` | `LLMProviderBinding \| undefined` | 默认 provider/model 绑定。 |
+| `defaultLLMProviderId` | `string \| undefined` | 默认 provider id。 |
+
+## `LLMProviderSource`
+
+| 形态 | 类型 | 说明 |
+| --- | --- | --- |
+| provider 实例 | `LLMProvider` | 直接返回。 |
+| provider id | `string` | 从 `llmProviders` 查找。 |
+| provider ref | `LLMProviderRef` | 先查 `ref.id`，必要时使用 `ref.fallback`。 |
+| resolver | `(context, nodeName) => LLMProvider \| undefined` | 自定义解析。 |
+
+## 解析顺序
+
+| 顺序 | 来源 | 说明 |
+| --- | --- | --- |
+| 1 | 节点绑定 | 优先使用 `context.providers.llmProviderBindings[nodeName]`。 |
+| 2 | `source` | 使用节点声明的 provider source。 |
+| 3 | 默认绑定 | 使用 `defaultLLMProviderBinding`。 |
+| 4 | 默认 id | 使用 `defaultLLMProviderId` 从 `llmProviders` 查找。 |
+| 5 | 兼容默认 provider | 直接使用 `context.providers.llm`。 |
+| 6 | ref fallback | 只有 source 是 ref 时尝试。 |
+
+## 返回值
+
+| 返回 | 类型 | 说明 |
+| --- | --- | --- |
+| provider | `LLMProvider` | 包含 `name`、`chat(input)`、`stream(input)`。 |
+
+## 错误
+
+| 情况 | 错误类型 | 说明 |
+| --- | --- | --- |
+| 绑定的 provider/model 找不到 | `provider_call` | 报错会包含 providerId、modelId 和 nodeName。 |
+| 所有来源都解析失败 | `provider_call` | 当前节点需要 LLM provider，但上下文中没有可用 provider。 |
+
+## 示例
+
+```ts
+const provider = workflow.getLLMProvider(
+  context,
+  "answer",
+  workflow.createLLMProviderRef("default"),
+);
+
+const output = await provider.chat({ prompt: input.message });
+```

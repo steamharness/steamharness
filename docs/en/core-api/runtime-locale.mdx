@@ -1,0 +1,53 @@
+---
+title: "Runtime locale"
+description: "Read the Simplified Chinese or English language selected by the current workflow host."
+---
+
+# Runtime locale
+
+`workflow.getRuntimeLocale()` returns the language selected for the current run by its CLI or local host. Explicitly localized Workflow and Conversation projects use it consistently for visible output, errors, date formatting, and number formatting.
+
+## Signature
+
+```ts
+workflow.getRuntimeLocale(): "zh-CN" | "en"
+```
+
+## Return value
+
+| Return value | Description |
+| --- | --- |
+| `"zh-CN"` | Simplified Chinese. This is the default when a host does not inject a language, sends an unknown value, or is an older host without this capability. |
+| `"en"` | English. The current CLI or local host injects this selected language. |
+
+## Example
+
+```ts
+const outputNode = workflow.createOutputNode<Input, OutputPayload>({
+  name: "localized-output",
+  format(input) {
+    const locale = workflow.getRuntimeLocale();
+    const message = locale === "en"
+      ? `Imported ${input.count} records.`
+      : `已导入 ${input.count} 条记录。`;
+
+    return workflow.createOutputPayload({
+      items: [workflow.createOutputItem({
+        title: "Output",
+        content: message,
+        contentType: "text",
+      })],
+    });
+  },
+});
+```
+
+## Notes
+
+| Rule | Description |
+| --- | --- |
+| The host language is the only source | Do not infer a language from the browser, operating system, or a project-defined environment variable. |
+| Simplified Chinese is the default | CLI, local processes, and older hosts without an injected locale consistently return `"zh-CN"`. |
+| Treat visible content consistently | A localized project should maintain output, errors, dates, numbers, and accessibility copy together, with a Chinese fallback for unknown or failed cases. |
+| Static manifests do not switch at runtime | `package.json`, entrypoint titles, and parameter definitions are parsed before execution and retain the project default language. |
+| Kanban uses its Bridge | A static Kanban page has no `workflow` global. Call `window.workflowCodeKanban.getRuntimeLocale()` instead. |

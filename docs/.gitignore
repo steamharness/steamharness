@@ -1,0 +1,10 @@
+node_modules
+.pnpm-store
+dist
+.docusaurus
+.docusaurus-openapi
+build
+reference
+en/reference
+.release
+.DS_Store

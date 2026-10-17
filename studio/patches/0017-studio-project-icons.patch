@@ -1,0 +1,224 @@
+diff --git a/src/vs/workbench/browser/actions/windowActions.ts b/src/vs/workbench/browser/actions/windowActions.ts
+index 724c38ff..fb41875f 100644
+--- a/src/vs/workbench/browser/actions/windowActions.ts
++++ b/src/vs/workbench/browser/actions/windowActions.ts
+@@ -30,13 +30,15 @@ import { IHostService } from '../../services/host/browser/host.js';
+ import { ResourceMap } from '../../../base/common/map.js';
+ import { Codicon } from '../../../base/common/codicons.js';
+ import { ThemeIcon } from '../../../base/common/themables.js';
+-import { CommandsRegistry } from '../../../platform/commands/common/commands.js';
++import { CommandsRegistry, ICommandService } from '../../../platform/commands/common/commands.js';
+ import { IConfigurationService } from '../../../platform/configuration/common/configuration.js';
+ import { ServicesAccessor } from '../../../platform/instantiation/common/instantiation.js';
+ import { isFolderBackupInfo, isWorkspaceBackupInfo } from '../../../platform/backup/common/backup.js';
+ import { getActiveElement, getActiveWindow, isHTMLElement } from '../../../base/browser/dom.js';
+ import { IWorkbenchEnvironmentService } from '../../services/environment/common/environmentService.js';
+ import { isEqual } from '../../../base/common/resources.js';
++import { DisposableStore } from '../../../base/common/lifecycle.js';
++import { studioProjectIcon } from '../../common/studioProjectIcons.js';
+ 
+ export const inRecentFilesPickerContextKey = 'inRecentFilesPicker';
+ 
+@@ -99,6 +101,7 @@ abstract class BaseOpenRecentAction extends Action2 {
+ 		const hostService = accessor.get(IHostService);
+ 		const dialogService = accessor.get(IDialogService);
+ 		const environmentService = accessor.get(IWorkbenchEnvironmentService);
++		const commandService = accessor.get(ICommandService);
+ 
+ 		const [mainWindows, recentlyOpened, dirtyWorkspacesAndFolders] = await Promise.all([
+ 			hostService.getWindows({ includeAuxiliaryWindows: false }),
+@@ -177,42 +180,84 @@ abstract class BaseOpenRecentAction extends Action2 {
+ 		const fileSeparator: IQuickPickSeparator = { type: 'separator', label: localize('files', "files") };
+ 		const picks = [workspaceSeparator, ...workspacePicks, fileSeparator, ...filePicks];
+ 
+-		const pick = await quickInputService.pick(picks, {
+-			contextKey: inRecentFilesPickerContextKey,
+-			activeItem: [...workspacePicks, ...filePicks][autoFocusSecondEntry ? 1 : 0],
+-			placeHolder: isMacintosh ? localize('openRecentPlaceholderMac', "Select to open (hold Cmd-key to force new window or Option-key for same window)") : localize('openRecentPlaceholder', "Select to open (hold Ctrl-key to force new window or Alt-key for same window)"),
+-			matchOnDescription: true,
+-			sortByLabel: false,
+-			onKeyMods: mods => keyMods = mods,
+-			quickNavigate: this.isQuickNavigate() ? { keybindings: keybindingService.lookupKeybindings(this.desc.id) } : undefined,
+-			hideInput: this.isQuickNavigate(),
+-			onDidTriggerItemButton: async context => {
+-
+-				// Remove
+-				if (context.button === this.removeFromRecentlyOpened || context.button === this.windowOpenedRecentlyOpenedFolder || context.button === this.windowOpenedRecentlyOpenedWorkspace) {
+-					await workspacesService.removeRecentlyOpened([context.item.resource]);
+-					context.removeItem();
+-				}
++		const disposables = new DisposableStore();
++		const picker = disposables.add(quickInputService.createQuickPick<IRecentlyOpenedPick>({ useSeparators: true }));
++		picker.contextKey = inRecentFilesPickerContextKey;
++		picker.items = picks;
++		const activeItem = [...workspacePicks, ...filePicks][autoFocusSecondEntry ? 1 : 0];
++		picker.activeItems = activeItem ? [activeItem] : [];
++		picker.placeholder = isMacintosh ? localize('openRecentPlaceholderMac', "Select to open (hold Cmd-key to force new window or Option-key for same window)") : localize('openRecentPlaceholder', "Select to open (hold Ctrl-key to force new window or Alt-key for same window)");
++		picker.matchOnDescription = true;
++		picker.sortByLabel = false;
++		picker.quickNavigate = this.isQuickNavigate() ? { keybindings: keybindingService.lookupKeybindings(this.desc.id) } : undefined;
++		picker.hideInput = this.isQuickNavigate();
++		picker.keepScrollPosition = true;
++		disposables.add(picker.onDidTriggerItemButton(async context => {
++
++			// Remove
++			if (context.button === this.removeFromRecentlyOpened || context.button === this.windowOpenedRecentlyOpenedFolder || context.button === this.windowOpenedRecentlyOpenedWorkspace) {
++				await workspacesService.removeRecentlyOpened([context.item.resource]);
++				if (disposables.isDisposed) { return; }
++				const active = picker.activeItems.filter(item => item !== context.item);
++				picker.items = picker.items.filter(item => item !== context.item);
++				picker.activeItems = active;
++			}
+ 
+-				// Dirty Folder/Workspace
+-				else if (context.button === this.dirtyRecentlyOpenedFolder || context.button === this.dirtyRecentlyOpenedWorkspace) {
+-					const isDirtyWorkspace = context.button === this.dirtyRecentlyOpenedWorkspace;
+-					const { confirmed } = await dialogService.confirm({
+-						title: isDirtyWorkspace ? localize('dirtyWorkspace', "Workspace with Unsaved Files") : localize('dirtyFolder', "Folder with Unsaved Files"),
+-						message: isDirtyWorkspace ? localize('dirtyWorkspaceConfirm', "Do you want to open the workspace to review the unsaved files?") : localize('dirtyFolderConfirm', "Do you want to open the folder to review the unsaved files?"),
+-						detail: isDirtyWorkspace ? localize('dirtyWorkspaceConfirmDetail', "Workspaces with unsaved files cannot be removed until all unsaved files have been saved or reverted.") : localize('dirtyFolderConfirmDetail', "Folders with unsaved files cannot be removed until all unsaved files have been saved or reverted.")
+-					});
+-
+-					if (confirmed) {
+-						hostService.openWindow(
+-							[context.item.openable], {
++			// Dirty Folder/Workspace
++			else if (context.button === this.dirtyRecentlyOpenedFolder || context.button === this.dirtyRecentlyOpenedWorkspace) {
++				const isDirtyWorkspace = context.button === this.dirtyRecentlyOpenedWorkspace;
++				const { confirmed } = await dialogService.confirm({
++					title: isDirtyWorkspace ? localize('dirtyWorkspace', "Workspace with Unsaved Files") : localize('dirtyFolder', "Folder with Unsaved Files"),
++					message: isDirtyWorkspace ? localize('dirtyWorkspaceConfirm', "Do you want to open the workspace to review the unsaved files?") : localize('dirtyFolderConfirm', "Do you want to open the folder to review the unsaved files?"),
++					detail: isDirtyWorkspace ? localize('dirtyWorkspaceConfirmDetail', "Workspaces with unsaved files cannot be removed until all unsaved files have been saved or reverted.") : localize('dirtyFolderConfirmDetail', "Folders with unsaved files cannot be removed until all unsaved files have been saved or reverted.")
++				});
++
++				if (confirmed) {
++					hostService.openWindow(
++						[context.item.openable], {
+ 							remoteAuthority: context.item.remoteAuthority || null // local window if remoteAuthority is not set or can not be deducted from the openable
+ 						});
+-						quickInputService.cancel();
+-					}
++					quickInputService.cancel();
+ 				}
+ 			}
+-		});
++		}));
++
++		let pick: IRecentlyOpenedPick | undefined;
++		try {
++			pick = await new Promise<IRecentlyOpenedPick | undefined>(resolve => {
++				const accept = (item: IRecentlyOpenedPick | undefined): void => {
++					if (item) { keyMods = picker.keyMods; resolve(item); picker.hide(); }
++				};
++				disposables.add(picker.onDidAccept(() => accept(picker.activeItems[0])));
++				disposables.add(picker.onDidChangeSelection(items => accept(items[0])));
++				disposables.add(picker.onDidChangeValue(value => {
++					if (!value && activeItem && picker.items.includes(activeItem)) { picker.activeItems = [activeItem]; }
++				}));
++				disposables.add(picker.onDidHide(() => resolve(undefined)));
++				picker.show();
++				const folders = workspacePicks.filter(item => 'folderUri' in item.openable);
++				void commandService.executeCommand<{ uri: string; projectType?: string }[]>('studio.internalDetectProjectTypes', folders.map(item => item.resource.toString())).then(projects => {
++					if (disposables.isDisposed || !Array.isArray(projects)) { return; }
++					const types = new Map(projects.map(project => [project.uri, project.projectType]));
++					let changed = false;
++					for (const item of folders) {
++						const icon = studioProjectIcon(types.get(item.resource.toString()));
++						if (icon) {
++							item.iconClasses = undefined;
++							item.iconClass = ThemeIcon.asClassName({ id: icon });
++							changed = true;
++						}
++					}
++					if (changed) {
++						const active = picker.activeItems;
++						picker.items = [...picker.items];
++						picker.activeItems = active;
++					}
++				}, () => undefined);
++			});
++		} finally {
++			disposables.dispose();
++		}
+ 
+ 		if (pick) {
+ 			return hostService.openWindow([pick.openable], {
+diff --git a/src/vs/workbench/browser/parts/editor/studioStart.ts b/src/vs/workbench/browser/parts/editor/studioStart.ts
+index 9c46b7e2..9d181da5 100644
+--- a/src/vs/workbench/browser/parts/editor/studioStart.ts
++++ b/src/vs/workbench/browser/parts/editor/studioStart.ts
+@@ -10,6 +10,7 @@ import { generateUuid } from '../../../../base/common/uuid.js';
+ import { CommandsRegistry, ICommandService } from '../../../../platform/commands/common/commands.js';
+ import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
+ import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
++import { studioProjectIcon } from '../../../common/studioProjectIcons.js';
+ import './media/studioStart.css';
+ 
+ /** Versioned, credential-free state supplied by the Studio extension host. */
+@@ -18,7 +19,7 @@ export interface StudioStartState {
+ 	labels: Record<string, string>;
+ 	templates: { id: string; projectType: string; kind: string; name: string; description: string }[];
+ 	projects: { uri: string; name: string; projectType: string }[];
+-	recent: { uri: string; label: string; kind: string; lastOpened: number }[];
++	recent: { uri: string; label: string; kind: string; lastOpened: number; projectType?: string }[];
+ 	pending: { id: string; name: string; directory: string; status: string; error?: string }[];
+ 	environment: { studio: string; vscode: string; node?: string; core?: string; cli?: string; account: string; server: string; error?: string };
+ 	summary?: { projects: number; running: number; waiting: number; unavailable: number; generatedAt: number };
+@@ -183,17 +184,16 @@ export class StudioStartView extends Disposable {
+ 			action.button.disabled = action.creation && (!state.canCreate || state.busy);
+ 		}
+ 		const listKey = { labels: state.labels, busy: state.busy, canCreate: state.canCreate };
+-		const icons: Record<string, string> = { workflow: 'run-all', conversation: 'comment-discussion', kanban: 'layout' };
+ 		this.list('create', { ...listKey, templates: state.templates.filter(template => template.kind === 'starter') }, (root, store) => {
+ 			for (const template of state.templates.filter(template => template.kind === 'starter')) {
+-				const button = this.button(root, template.name, icons[template.projectType], 'studio.createProject', template.projectType, true, false, store);
++				const button = this.button(root, template.name, studioProjectIcon(template.projectType) ?? 'folder', 'studio.createProject', template.projectType, true, false, store);
+ 				button.disabled = !state.canCreate || state.busy;
+ 			}
+ 		});
+ 		this.list('examples', { ...listKey, templates: state.templates.filter(template => template.kind === 'example') }, (root, store) => {
+ 			for (const template of state.templates.filter(template => template.kind === 'example')) {
+ 				const row = append(root, $('.studio-start-example'));
+-				const button = this.button(row, template.name, icons[template.projectType], 'studio.createExample', template.id, true, false, store);
++				const button = this.button(row, template.name, studioProjectIcon(template.projectType) ?? 'folder', 'studio.createExample', template.id, true, false, store);
+ 				button.disabled = !state.canCreate || state.busy;
+ 				append(row, $('p', undefined, template.description));
+ 			}
+@@ -202,7 +202,7 @@ export class StudioStartView extends Disposable {
+ 			if (!state.projects.length && !state.pending.length) { append(root, $('p.studio-start-muted', undefined, text('noCurrent'))); }
+ 			for (const project of state.projects) {
+ 				const row = append(root, $('.studio-start-project'));
+-				this.button(row, project.name, icons[project.projectType] ?? 'folder', 'studio.openWorkflow', { uri: project.uri }, false, false, store);
++				this.button(row, project.name, studioProjectIcon(project.projectType) ?? 'folder', 'studio.openWorkflow', { uri: project.uri }, false, false, store);
+ 				this.button(row, text('source'), 'code', 'studio.openWorkflowSource', { uri: project.uri }, false, true, store);
+ 			}
+ 			for (const project of state.pending) {
+@@ -219,7 +219,7 @@ export class StudioStartView extends Disposable {
+ 			if (!state.recent.length) { append(root, $('p.studio-start-muted', undefined, text('noRecent'))); }
+ 			for (const project of state.recent) {
+ 				const row = append(root, $('.studio-start-project'));
+-				const button = this.button(row, project.label, project.kind === 'workspace' ? 'file-submodule' : 'folder', 'studio.openRecentProject', project, false, false, store);
++				const button = this.button(row, project.label, project.kind === 'workspace' ? 'file-submodule' : studioProjectIcon(project.projectType) ?? 'folder', 'studio.openRecentProject', project, false, false, store);
+ 				button.title = project.uri;
+ 				this.button(row, text('removeRecent'), 'close', 'studio.removeRecentProject', project, false, true, store);
+ 			}
+diff --git a/src/vs/workbench/common/studioProjectIcons.ts b/src/vs/workbench/common/studioProjectIcons.ts
+new file mode 100644
+index 00000000..57127f09
+--- /dev/null
++++ b/src/vs/workbench/common/studioProjectIcons.ts
+@@ -0,0 +1,14 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++/** Shared project glyphs for native Studio surfaces. */
++export function studioProjectIcon(projectType: string | undefined): string | undefined {
++	switch (projectType) {
++		case 'workflow': return 'run-all';
++		case 'conversation': return 'comment-discussion';
++		case 'kanban': return 'layout';
++		default: return undefined;
++	}
++}

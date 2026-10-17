@@ -1,0 +1,119 @@
+{
+  "workflowName": "gpt-image",
+  "projectType": "conversation",
+  "files": [
+    "__tests__/gpt-image.test.ts",
+    "index.ts",
+    "interface.ts"
+  ],
+  "nodes": [
+    {
+      "id": "inputNode",
+      "factory": "createInputNode",
+      "standardName": "input",
+      "configuredName": "gpt-image-input"
+    },
+    {
+      "id": "imageInputNode",
+      "factory": "createFileInputNode",
+      "standardName": "file-input",
+      "configuredName": "gpt-image-input-images"
+    },
+    {
+      "id": "generateNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "gpt-image-output"
+    }
+  ],
+  "params": [
+    {
+      "name": "size",
+      "flag": "--size",
+      "type": "string",
+      "required": false,
+      "defaultValue": "1024x1024",
+      "control": "select",
+      "panel": "auxiliary"
+    },
+    {
+      "name": "quality",
+      "flag": "--quality",
+      "type": "string",
+      "required": false,
+      "defaultValue": "auto",
+      "control": "select",
+      "panel": "auxiliary"
+    },
+    {
+      "name": "outputFormat",
+      "flag": "--output-format",
+      "type": "string",
+      "required": false,
+      "defaultValue": "png",
+      "control": "select",
+      "panel": "auxiliary"
+    },
+    {
+      "name": "outputCompression",
+      "flag": "--output-compression",
+      "type": "number",
+      "required": false,
+      "defaultValue": "100",
+      "panel": "auxiliary"
+    },
+    {
+      "name": "background",
+      "flag": "--background",
+      "type": "string",
+      "required": false,
+      "defaultValue": "auto",
+      "control": "radio",
+      "panel": "auxiliary"
+    },
+    {
+      "name": "inputFidelity",
+      "flag": "--input-fidelity",
+      "type": "string",
+      "required": false,
+      "defaultValue": "low",
+      "control": "radio",
+      "panel": "auxiliary"
+    },
+    {
+      "name": "moderation",
+      "flag": "--moderation",
+      "type": "string",
+      "required": false,
+      "defaultValue": "auto",
+      "control": "radio",
+      "panel": "auxiliary"
+    }
+  ],
+  "conversation": {
+    "attachments": {
+      "images": true
+    }
+  },
+  "registry": [
+    {
+      "name": "generate-image",
+      "type": "output",
+      "title": "gpt-image-output",
+      "version": "1.0.0"
+    }
+  ],
+  "execution": {
+    "kind": "sequence",
+    "counts": {
+      "sequence": 1,
+      "node": 3
+    },
+    "callees": [
+      "runNode",
+      "runStreamNode"
+    ],
+    "branchLabels": [],
+    "loopLabels": []
+  }
+}

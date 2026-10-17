@@ -1,0 +1,828 @@
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { lstatSync, readFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import {
+  createLocalWorkflowMcpFileResolver,
+  createWorkflowMcpServer,
+  type WorkflowMcpExecutionReport,
+  type WorkflowMcpRunSnapshot,
+  type WorkflowMcpRunSnapshotMessage,
+  type WorkflowMcpRunner,
+  type WorkflowMcpStructureReport,
+} from "@workflow-code/workflow-mcp";
+import {
+  isWorkflowAuthConfigLoggedIn,
+  normalizeWorkflowAuthConfig,
+  resolveWorkflowDesktopConfigFilePath,
+} from "@workflow-code/auth-config";
+import { i18n } from "@workflow-code/i18n";
+import { readCliAuthConfigSync } from "./auth-config";
+import { parseCliRelatedProjectSpec, type CliRelatedProjectSpec } from "./related-projects";
+import { assertWorkflowUuid } from "@workflow-code/workflow-ids";
+
+export const WORKFLOW_MCP_CLI_ENTRYPOINT_ENV = "WORKFLOW_MCP_CLI_ENTRYPOINT";
+export const WORKFLOW_MCP_DESKTOP_AUDIT_IPC_ENV = "WORKFLOW_MCP_DESKTOP_AUDIT_IPC";
+
+export interface WorkflowMcpCliOptions {
+  workflowDir: string;
+  dataDir: string;
+  fileStoreDir: string;
+  kvStoreDir: string;
+  persistentValueStoreDir: string;
+  fileCreateStoreDir: string;
+  desktopConfigDir?: string;
+  cliAuthDir?: string;
+  relatedProjects: CliRelatedProjectSpec[];
+  /** Absolute entrypoint used when this process spawns a JSON/structure worker. */
+  workerEntrypoint?: string;
+}
+
+interface WorkflowMcpResumeState {
+  entrypointId: string;
+  entrypointTitle: string;
+  input: Record<string, unknown>;
+  args: string[];
+  snapshot: WorkflowMcpRunSnapshot;
+}
+
+export type WorkflowMcpRunSnapshotWriter = (snapshot: WorkflowMcpRunSnapshot) => Promise<void> | void;
+
+const WORKFLOW_MCP_WORKER_TERMINATION_GRACE_MS = 2_000;
+
+export async function main(argv = process.argv.slice(2)): Promise<number> {
+  if (argv.length === 0 || argv[0] === "help" || argv[0] === "--help" || argv[0] === "-h") {
+    process.stdout.write(`${i18n.t("mcpHelp", { ns: "cli" })}\n`);
+    return 0;
+  }
+
+  const options = parseWorkflowMcpCliOptions(argv);
+  const projectId = readWorkflowProjectId(options.workflowDir);
+  const runner = new WorkflowMcpCliRunner({
+    ...options,
+    workerEntrypoint: resolveWorkflowMcpWorkerEntrypoint(),
+  }, createWorkflowMcpDesktopAuditWriter());
+  const structure = await runner.inspectStructure();
+  const server = createWorkflowMcpServer({
+    projectId,
+    structure,
+    runner,
+    fileInputMode: "local",
+    resolveFiles: createLocalWorkflowMcpFileResolver({ fileStoreDir: options.fileStoreDir }),
+    instructions: `Run entrypoints from workflow project ${structure.workflow.name}. Reconnect after project changes.`,
+  });
+  const transport = new StdioServerTransport();
+  let closePromise: Promise<void> | undefined;
+  const close = () => {
+    closePromise ??= runner.close().finally(() => server.close()).catch((error: unknown) => {
+      process.stderr.write(`${formatError(error)}\n`);
+    });
+    return closePromise;
+  };
+  const requestClose = () => { void close(); };
+  process.once("SIGINT", requestClose);
+  process.once("SIGTERM", requestClose);
+  process.stdin.once("end", requestClose);
+  process.stdin.once("close", requestClose);
+  await server.connect(transport);
+  return 0;
+}
+
+export function parseWorkflowMcpCliOptions(argv: string[]): WorkflowMcpCliOptions {
+  const workflowArg = argv[0]?.trim();
+  if (!workflowArg || workflowArg.startsWith("-")) {
+    throw new Error("workflow-code mcp requires a workflow project directory as its first argument.");
+  }
+  const workflowDir = path.resolve(process.cwd(), workflowArg);
+  assertWorkflowDirectory(workflowDir);
+  let dataDir = path.join(os.homedir(), ".workflow-code");
+  let fileStoreDir: string | undefined;
+  let kvStoreDir: string | undefined;
+  let persistentValueStoreDir: string | undefined;
+  let fileCreateStoreDir: string | undefined;
+  let desktopConfigDir: string | undefined;
+  let cliAuthDir: string | undefined;
+  const relatedProjects: CliRelatedProjectSpec[] = [];
+
+  for (let index = 1; index < argv.length; index += 1) {
+    const option = argv[index];
+    const value = argv[index + 1];
+    if (!option || !value || value.startsWith("-")) {
+      throw new Error(`Missing value for ${option ?? "MCP option"}.`);
+    }
+    index += 1;
+    switch (option) {
+      case "--data-dir": dataDir = resolveAbsoluteOption(value, option); break;
+      case "--file-store-dir": fileStoreDir = resolveAbsoluteOption(value, option); break;
+      case "--kv-store-dir": kvStoreDir = resolveAbsoluteOption(value, option); break;
+      case "--persistent-value-store-dir":
+        persistentValueStoreDir = resolveAbsoluteOption(value, option);
+        break;
+      case "--file-create-store-dir": fileCreateStoreDir = resolveAbsoluteOption(value, option); break;
+      case "--desktop-config-dir": desktopConfigDir = resolveAbsoluteOption(value, option); break;
+      case "--auth-dir": cliAuthDir = resolveAbsoluteOption(value, option); break;
+      case "--related-project": relatedProjects.push(parseCliRelatedProjectSpec(value)); break;
+      default: throw new Error(`Unknown workflow-code mcp option: ${option}`);
+    }
+  }
+
+  dataDir = path.resolve(dataDir);
+  return {
+    workflowDir,
+    dataDir,
+    fileStoreDir: fileStoreDir ?? path.join(dataDir, "workflow-files"),
+    kvStoreDir: kvStoreDir ?? path.join(dataDir, "workflow-kv"),
+    persistentValueStoreDir: persistentValueStoreDir ?? path.join(dataDir, "workflow-persistent-values"),
+    fileCreateStoreDir: fileCreateStoreDir ?? path.join(dataDir, "workflow-created-files"),
+    desktopConfigDir,
+    cliAuthDir,
+    relatedProjects,
+  };
+}
+
+export class WorkflowMcpCliRunner implements WorkflowMcpRunner {
+  private readonly resumeStates = new Map<string, WorkflowMcpResumeState>();
+  private readonly activeChildren = new Set<ChildProcessWithoutNullStreams>();
+  private readonly terminationTimers = new Map<ChildProcessWithoutNullStreams, ReturnType<typeof setTimeout>>();
+  private workflowName = "workflow";
+
+  constructor(
+    private readonly options: WorkflowMcpCliOptions,
+    private readonly writeRunSnapshot?: WorkflowMcpRunSnapshotWriter,
+  ) {}
+
+  async inspectStructure(): Promise<WorkflowMcpStructureReport> {
+    const result = await this.runWorker(["structure", this.options.workflowDir]);
+    const extracted = extractTrailingJson(result.stdout, isWorkflowMcpStructureCandidate);
+    if (!extracted || result.exitCode !== 0) {
+      const diagnostics = extracted ?? extractTrailingJson(result.stdout, isRecord);
+      throw new Error(readWorkerFailure(result, diagnostics?.value));
+    }
+    const structure = extracted.value;
+    if (structure.projectType !== "workflow") {
+      throw new Error(`Project type "${String(structure.projectType)}" cannot be exposed through MCP.`);
+    }
+    forwardProjectStdout(result.stdout.slice(0, extracted.startIndex));
+    this.workflowName = structure.workflow.name;
+    return structure;
+  }
+
+  async run(request: Parameters<WorkflowMcpRunner["run"]>[0]): Promise<WorkflowMcpExecutionReport> {
+    const execution = await this.runJsonWorker({
+      projectId: request.projectId,
+      entrypointId: request.entrypointId,
+      entrypointTitle: request.entrypointTitle,
+      input: request.input,
+      args: request.args,
+      resolvedInputs: [],
+      signal: request.signal,
+    });
+    const report = execution.report;
+    if (report.status === "waiting_for_input") {
+      this.resumeStates.set(report.runId, {
+        entrypointId: request.entrypointId,
+        entrypointTitle: request.entrypointTitle,
+        input: { ...request.input },
+        args: [...request.args],
+        snapshot: execution.snapshot,
+      });
+    }
+    return report;
+  }
+
+  async resume(request: Parameters<WorkflowMcpRunner["resume"]>[0]): Promise<WorkflowMcpExecutionReport> {
+    const state = this.resumeStates.get(request.runId);
+    if (!state || state.entrypointId !== request.entrypointId) {
+      throw new Error(`Workflow MCP run "${request.runId}" is no longer available for resume.`);
+    }
+    const resolvedInputs = [...state.snapshot.resolvedUserInputs, {
+      requestId: request.requestId,
+      nodeName: request.nodeName,
+      values: request.values,
+      submittedAt: new Date().toISOString(),
+    }];
+    let execution: Awaited<ReturnType<WorkflowMcpCliRunner["runJsonWorker"]>>;
+    try {
+      execution = await this.runJsonWorker({
+        projectId: request.projectId,
+        entrypointId: state.entrypointId,
+        entrypointTitle: state.entrypointTitle,
+        input: state.input,
+        args: state.args,
+        runId: request.runId,
+        startedAt: state.snapshot.startedAt,
+        previousSnapshot: state.snapshot,
+        resolvedInputs,
+        signal: request.signal,
+      });
+    } catch (error) {
+      this.resumeStates.delete(request.runId);
+      throw error;
+    }
+    const report = execution.report;
+    if (report.status !== "waiting_for_input") this.resumeStates.delete(request.runId);
+    else state.snapshot = execution.snapshot;
+    return report;
+  }
+
+  async cancel(request: Parameters<NonNullable<WorkflowMcpRunner["cancel"]>>[0]): Promise<void> {
+    const state = this.resumeStates.get(request.runId);
+    this.resumeStates.delete(request.runId);
+    if (state === undefined) return;
+    const reason = request.reason === "elicitation_declined"
+      ? "The user declined the requested workflow input."
+      : request.reason === "elicitation_cancelled"
+        ? "The user cancelled the requested workflow input."
+        : request.reason === "elicitation_failed"
+          ? "The MCP elicitation response could not be processed."
+          : "The MCP request was cancelled.";
+    await this.recordAbortedResumeState(request.runId, state, reason);
+  }
+
+  async close(): Promise<void> {
+    const pendingRuns = [...this.resumeStates.entries()];
+    this.resumeStates.clear();
+    for (const [runId, state] of pendingRuns) {
+      await this.recordAbortedResumeState(
+        runId,
+        state,
+        "The MCP connection closed before the requested workflow input was resumed.",
+      );
+    }
+    const children = [...this.activeChildren];
+    for (const child of children) this.terminateChild(child);
+    await Promise.all(children.map((child) => waitForChildClose(child)));
+  }
+
+  private async recordAbortedResumeState(
+    runId: string,
+    state: WorkflowMcpResumeState,
+    reason: string,
+  ): Promise<void> {
+    const endedAt = new Date().toISOString();
+    const report = createSyntheticWorkflowMcpReport({
+      runId,
+      workflowName: this.workflowName,
+      entrypointId: state.entrypointId,
+      entrypointTitle: state.entrypointTitle,
+      status: "aborted",
+      startedAt: state.snapshot.startedAt,
+      endedAt,
+      exitCode: 130,
+      stdout: state.snapshot.stdout,
+      stderr: appendDiagnostic(state.snapshot.stderr, reason),
+      message: reason,
+      previousReport: state.snapshot.report,
+      resolvedUserInputs: state.snapshot.resolvedUserInputs,
+    });
+    await this.recordRunSnapshot({
+      ...state.snapshot,
+      endedAt,
+      exitCode: 130,
+      stderr: appendDiagnostic(state.snapshot.stderr, reason),
+      report,
+    });
+  }
+
+  private async runJsonWorker(options: {
+    projectId: string;
+    entrypointId: string;
+    entrypointTitle: string;
+    input: Record<string, unknown>;
+    args: string[];
+    runId?: string;
+    startedAt?: string;
+    previousSnapshot?: WorkflowMcpRunSnapshot;
+    resolvedInputs: WorkflowMcpRunSnapshot["resolvedUserInputs"];
+    signal: AbortSignal;
+  }): Promise<{ report: WorkflowMcpExecutionReport; snapshot: WorkflowMcpRunSnapshot }> {
+    const runId = options.runId ?? randomUUID();
+    const startedAt = options.startedAt ?? new Date().toISOString();
+    const previousStdout = options.previousSnapshot?.stdout ?? "";
+    const previousStderr = options.previousSnapshot?.stderr ?? "";
+    await this.recordRunSnapshot({
+      projectId: options.projectId,
+      entrypointId: options.entrypointId,
+      entrypointTitle: options.entrypointTitle,
+      input: { ...options.input },
+      args: [...options.args],
+      resolvedUserInputs: [...options.resolvedInputs],
+      startedAt,
+      endedAt: startedAt,
+      exitCode: 0,
+      stdout: previousStdout,
+      stderr: previousStderr,
+      report: createSyntheticWorkflowMcpReport({
+        runId,
+        workflowName: this.workflowName,
+        entrypointId: options.entrypointId,
+        entrypointTitle: options.entrypointTitle,
+        status: "running",
+        startedAt,
+        endedAt: startedAt,
+        exitCode: 0,
+        stdout: previousStdout,
+        stderr: previousStderr,
+        previousReport: options.previousSnapshot?.report,
+        resolvedUserInputs: options.resolvedInputs,
+      }),
+    });
+    const hostArgs = [
+      "json",
+      this.options.workflowDir,
+      "--entrypoint",
+      options.entrypointId,
+      "--run-id",
+      runId,
+      ...(options.resolvedInputs.length > 0
+        ? ["--resolved-user-inputs-json", JSON.stringify(options.resolvedInputs)]
+        : []),
+      "--file-store-dir",
+      this.options.fileStoreDir,
+      ...this.options.relatedProjects.flatMap((project) => [
+        "--related-project",
+        `${project.alias}=${project.projectDir}`,
+      ]),
+      "--",
+      ...options.args,
+    ];
+    let result: WorkflowWorkerResult | undefined;
+    try {
+      result = await this.runWorker(hostArgs, options.signal);
+      const extracted = extractTrailingJson(result.stdout, isWorkflowMcpExecutionCandidate);
+      if (!extracted) {
+        const diagnostics = extractTrailingJson(result.stdout, isRecord);
+        throw new Error(readWorkerFailure(result, diagnostics?.value));
+      }
+      const workerStdout = result.stdout.slice(0, extracted.startIndex);
+      forwardProjectStdout(workerStdout);
+      if (extracted.value.runId !== runId) {
+        throw new Error("Workflow MCP worker changed the host-assigned run ID.");
+      }
+      const endedAt = new Date().toISOString();
+      const stdout = appendCapturedOutput(previousStdout, workerStdout);
+      const stderr = appendCapturedOutput(previousStderr, result.stderr);
+      const snapshot: WorkflowMcpRunSnapshot = {
+        projectId: options.projectId,
+        entrypointId: options.entrypointId,
+        entrypointTitle: options.entrypointTitle,
+        input: { ...options.input },
+        args: [...options.args],
+        resolvedUserInputs: [...options.resolvedInputs],
+        startedAt,
+        endedAt,
+        exitCode: result.exitCode,
+        stdout,
+        stderr,
+        report: extracted.value,
+      };
+      await this.recordRunSnapshot(snapshot);
+      return { report: extracted.value, snapshot };
+    } catch (error) {
+      const workerFailure = error instanceof WorkflowMcpWorkerError ? error.result : undefined;
+      const diagnostics = result ?? workerFailure;
+      const workerStdout = diagnostics?.stdout ?? "";
+      const workerStderr = diagnostics?.stderr ?? "";
+      forwardProjectStdout(workerStdout);
+      const stdout = appendCapturedOutput(previousStdout, workerStdout);
+      const stderr = appendCapturedOutput(previousStderr, workerStderr);
+      const endedAt = new Date().toISOString();
+      const aborted = options.signal.aborted;
+      const message = formatError(aborted ? options.signal.reason ?? error : error);
+      const exitCode = aborted ? 130 : diagnostics?.exitCode ?? 1;
+      const persistedStderr = appendDiagnostic(stderr, message);
+      const report = createSyntheticWorkflowMcpReport({
+        runId,
+        workflowName: this.workflowName,
+        entrypointId: options.entrypointId,
+        entrypointTitle: options.entrypointTitle,
+        status: aborted ? "aborted" : "failed",
+        startedAt,
+        endedAt,
+        exitCode,
+        stdout,
+        stderr: persistedStderr,
+        message,
+        previousReport: options.previousSnapshot?.report,
+        resolvedUserInputs: options.resolvedInputs,
+      });
+      await this.recordRunSnapshot({
+        projectId: options.projectId,
+        entrypointId: options.entrypointId,
+        entrypointTitle: options.entrypointTitle,
+        input: { ...options.input },
+        args: [...options.args],
+        resolvedUserInputs: [...options.resolvedInputs],
+        startedAt,
+        endedAt,
+        exitCode,
+        stdout,
+        stderr: persistedStderr,
+        report,
+      });
+      throw error;
+    }
+  }
+
+  private async recordRunSnapshot(snapshot: WorkflowMcpRunSnapshot): Promise<void> {
+    if (this.writeRunSnapshot === undefined) return;
+    try {
+      await this.writeRunSnapshot(snapshot);
+    } catch (error) {
+      process.stderr.write(`Unable to persist the Desktop MCP run snapshot: ${formatError(error)}\n`);
+    }
+  }
+
+  private runWorker(args: string[], signal?: AbortSignal): Promise<WorkflowWorkerResult> {
+    const mainScript = this.options.workerEntrypoint ?? resolveWorkflowMcpWorkerEntrypoint();
+    const execArgs = process.execArgv.filter((arg) => !arg.startsWith("--inspect"));
+    const child = spawn(process.execPath, [...execArgs, mainScript, ...args], {
+      cwd: this.options.workflowDir,
+      env: {
+        ...process.env,
+        ...readSavedWorkflowMcpAuthEnv(this.options),
+        ELECTRON_RUN_AS_NODE: process.env.ELECTRON_RUN_AS_NODE ?? "1",
+        ...(this.options.desktopConfigDir
+          ? { WORKFLOW_DESKTOP_CONFIG_DIR: this.options.desktopConfigDir }
+          : {}),
+        ...(this.options.cliAuthDir ? { WORKFLOW_CLI_AUTH_DIR: this.options.cliAuthDir } : {}),
+        WORKFLOW_KV_STORE_DIR: this.options.kvStoreDir,
+        WORKFLOW_PERSISTENT_VALUE_STORE_DIR: this.options.persistentValueStoreDir,
+        WORKFLOW_FILE_STORE_DIR: this.options.fileStoreDir,
+        WORKFLOW_FILE_CREATE_STORE_DIR: this.options.fileCreateStoreDir,
+        WORKFLOW_DESKTOP_RUNTIME_EVENTS: "0",
+      },
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    this.activeChildren.add(child);
+    return new Promise((resolve, reject) => {
+      const stdout: Buffer[] = [];
+      const stderr: Buffer[] = [];
+      const abort = () => this.terminateChild(child);
+      let settled = false;
+      const cleanup = () => {
+        this.activeChildren.delete(child);
+        const terminationTimer = this.terminationTimers.get(child);
+        if (terminationTimer) clearTimeout(terminationTimer);
+        this.terminationTimers.delete(child);
+        signal?.removeEventListener("abort", abort);
+      };
+      const settleError = (error: unknown) => {
+        if (settled) return;
+        settled = true;
+        const cause = error instanceof Error ? error : new Error(String(error));
+        reject(new WorkflowMcpWorkerError(cause.message, {
+          exitCode: signal?.aborted ? 130 : 1,
+          stdout: Buffer.concat(stdout).toString("utf8"),
+          stderr: Buffer.concat(stderr).toString("utf8"),
+        }, { cause }));
+      };
+      signal?.addEventListener("abort", abort, { once: true });
+      child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
+      child.stderr.on("data", (chunk: Buffer) => {
+        stderr.push(chunk);
+        process.stderr.write(chunk);
+      });
+      // Workers never consume MCP protocol input; close stdin so a loader or
+      // project cannot wait on an unrelated inherited pipe.
+      child.stdin.end();
+      child.once("error", (error) => {
+        // A spawn error is terminal, but Node may still emit close later. Keep
+        // the child tracked until close so runner.close() can reap it.
+        if (!signal?.aborted && child.exitCode === null && child.signalCode === null) {
+          this.terminateChild(child);
+        }
+        settleError(signal?.aborted ? signal.reason ?? new Error("Workflow MCP call was cancelled.") : error);
+      });
+      child.once("close", (exitCode) => {
+        cleanup();
+        if (settled) return;
+        if (signal?.aborted) {
+          settleError(signal.reason ?? new Error("Workflow MCP call was cancelled."));
+          return;
+        }
+        settled = true;
+        resolve({
+          exitCode: exitCode ?? 1,
+          stdout: Buffer.concat(stdout).toString("utf8"),
+          stderr: Buffer.concat(stderr).toString("utf8"),
+        });
+      });
+      if (signal?.aborted) abort();
+    });
+  }
+
+  private terminateChild(child: ChildProcessWithoutNullStreams): void {
+    if (child.exitCode !== null || child.signalCode !== null || this.terminationTimers.has(child)) return;
+    child.kill("SIGTERM");
+    const timer = setTimeout(() => {
+      this.terminationTimers.delete(child);
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    }, WORKFLOW_MCP_WORKER_TERMINATION_GRACE_MS);
+    timer.unref();
+    this.terminationTimers.set(child, timer);
+  }
+}
+
+type WorkflowMcpIpcSend = (
+  message: WorkflowMcpRunSnapshotMessage,
+  callback: (error: Error | null) => void,
+) => boolean;
+
+export function createWorkflowMcpDesktopAuditWriter(options: {
+  env?: NodeJS.ProcessEnv;
+  send?: WorkflowMcpIpcSend;
+} = {}): WorkflowMcpRunSnapshotWriter | undefined {
+  const env = options.env ?? process.env;
+  if (env[WORKFLOW_MCP_DESKTOP_AUDIT_IPC_ENV] !== "1") return undefined;
+  const send = options.send ?? (typeof process.send === "function"
+    ? process.send.bind(process) as WorkflowMcpIpcSend
+    : undefined);
+  if (send === undefined) return undefined;
+
+  return (snapshot) => new Promise<void>((resolve, reject) => {
+    try {
+      send({ type: "workflow_mcp_run_snapshot", snapshot }, (error) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+function createSyntheticWorkflowMcpReport(options: {
+  runId: string;
+  workflowName: string;
+  entrypointId: string;
+  entrypointTitle: string;
+  status: WorkflowMcpExecutionReport["status"];
+  startedAt: string;
+  endedAt: string;
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  message?: string;
+  previousReport?: unknown;
+  resolvedUserInputs?: WorkflowMcpRunSnapshot["resolvedUserInputs"];
+}): WorkflowMcpExecutionReport & Record<string, unknown> {
+  const previousSource = isRecord(options.previousReport) ? options.previousReport : {};
+  const {
+    pendingUserInput: _pendingUserInput,
+    result: _result,
+    ...previous
+  } = previousSource;
+  const previousRunner = isRecord(previous["runner"]) ? previous["runner"] : {};
+  const startedAtMs = Date.parse(options.startedAt);
+  const endedAtMs = Date.parse(options.endedAt);
+  const durationMs = Number.isFinite(startedAtMs) && Number.isFinite(endedAtMs)
+    ? Math.max(0, endedAtMs - startedAtMs)
+    : 0;
+  const result = options.status === "running"
+    ? undefined
+    : {
+        ok: false,
+        error: {
+          type: options.status === "aborted" ? "workflow_cancelled" : "workflow_execution",
+          message: options.message ?? "Workflow execution did not complete.",
+        },
+      };
+
+  return {
+    ...previous,
+    runId: options.runId,
+    workflowName: options.workflowName,
+    entrypointId: options.entrypointId,
+    entrypointTitle: options.entrypointTitle,
+    status: options.status,
+    startedAt: options.startedAt,
+    endedAt: options.endedAt,
+    durationMs,
+    resolvedUserInputs: [...(options.resolvedUserInputs ?? [])],
+    runner: {
+      ...previousRunner,
+      exitCode: options.exitCode,
+      stdout: options.stdout,
+      stderr: options.stderr,
+    },
+    ...(result === undefined ? {} : { result }),
+  };
+}
+
+function appendCapturedOutput(previous: string, current: string): string {
+  if (previous === "") return current;
+  if (current === "") return previous;
+  return previous.endsWith("\n") || current.startsWith("\n")
+    ? `${previous}${current}`
+    : `${previous}\n${current}`;
+}
+
+function appendDiagnostic(value: string, message: string): string {
+  const current = value.trimEnd();
+  const diagnostic = message.trim();
+  if (diagnostic === "") return current;
+  return current === "" ? diagnostic : `${current}\n${diagnostic}`;
+}
+
+/**
+ * Resolve the exact CLI module that is currently running. Electron and npm
+ * bin launchers do not all populate argv in the same way, so Desktop may set
+ * an explicit absolute path through WORKFLOW_MCP_CLI_ENTRYPOINT.
+ */
+export function resolveWorkflowMcpWorkerEntrypoint(
+  processArgv: readonly string[] = process.argv,
+  processEnv: NodeJS.ProcessEnv = process.env,
+): string {
+  const configuredValue = processEnv[WORKFLOW_MCP_CLI_ENTRYPOINT_ENV];
+  const candidate = configuredValue === undefined
+    ? processArgv[1]?.trim()
+    : configuredValue.trim();
+  if (!candidate) throw new Error("Unable to resolve the workflow-code CLI entrypoint.");
+  if (candidate.startsWith("-")) {
+    throw new Error("Unable to resolve the workflow-code CLI entrypoint.");
+  }
+  return path.isAbsolute(candidate) ? path.normalize(candidate) : path.resolve(process.cwd(), candidate);
+}
+
+interface WorkflowWorkerResult {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+}
+
+class WorkflowMcpWorkerError extends Error {
+  constructor(
+    message: string,
+    readonly result: WorkflowWorkerResult,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "WorkflowMcpWorkerError";
+  }
+}
+
+function waitForChildClose(child: ChildProcessWithoutNullStreams): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
+  return new Promise((resolve) => child.once("close", () => resolve()));
+}
+
+function extractTrailingJson<T>(
+  value: string,
+  predicate: (value: unknown) => value is T,
+): { value: T; startIndex: number } | undefined {
+  for (let index = value.lastIndexOf("{"); index >= 0;) {
+    if (value[index] !== "{") continue;
+    try {
+      const parsed = JSON.parse(value.slice(index).trim()) as unknown;
+      if (predicate(parsed)) {
+        return { value: parsed, startIndex: index };
+      }
+    } catch {
+      // Project logs may contain JSON fragments before the final report.
+    }
+    if (index === 0) break;
+    index = value.lastIndexOf("{", index - 1);
+  }
+  return undefined;
+}
+
+function isWorkflowMcpReportCandidate(value: unknown): boolean {
+  return isWorkflowMcpStructureCandidate(value) || isWorkflowMcpExecutionCandidate(value);
+}
+
+function isWorkflowMcpStructureCandidate(value: unknown): value is WorkflowMcpStructureReport {
+  return isRecord(value) && typeof value.projectType === "string" &&
+    isRecord(value.workflow) && typeof value.workflow.name === "string";
+}
+
+function isWorkflowMcpExecutionCandidate(value: unknown): value is WorkflowMcpExecutionReport {
+  return isRecord(value) && typeof value.runId === "string" && isWorkflowMcpRunStatus(value.status);
+}
+
+function isWorkflowMcpRunStatus(value: unknown): boolean {
+  return value === "running" || value === "waiting_for_input" || value === "success" ||
+    value === "failed" || value === "aborted" || value === "timed_out";
+}
+
+function forwardProjectStdout(value: string): void {
+  const output = value.trim();
+  if (output !== "") process.stderr.write(`${output}\n`);
+}
+
+function readWorkerFailure(result: WorkflowWorkerResult, parsed?: unknown): string {
+  if (isRecord(parsed)) {
+    const diagnostics = isRecord(parsed["diagnostics"]) ? parsed["diagnostics"] : undefined;
+    const error = isRecord(parsed["error"])
+      ? parsed["error"]
+      : diagnostics && isRecord(diagnostics["error"])
+        ? diagnostics["error"]
+        : parsed;
+    if (typeof error["message"] === "string" && error["message"].trim() !== "") {
+      return compactWorkerErrorMessage([
+        error["message"],
+        ...readWorkerViolationMessages(error),
+      ].join(" "));
+    }
+  }
+  return `Workflow worker exited with code ${result.exitCode}. Check MCP host stderr for local diagnostics.`;
+}
+
+function readWorkerViolationMessages(error: Record<string, unknown>): string[] {
+  const metadata = isRecord(error["metadata"]) ? error["metadata"] : undefined;
+  const violations = metadata && Array.isArray(metadata["violations"])
+    ? metadata["violations"]
+    : [];
+  const messages = violations.flatMap((violation) => (
+    isRecord(violation) && typeof violation["message"] === "string"
+      ? [violation["message"].trim()]
+      : []
+  )).filter((message) => message !== "");
+  return [...new Set(messages)];
+}
+
+function compactWorkerErrorMessage(value: string): string {
+  const compact = value.replace(/\s+/g, " ").trim();
+  return compact.length <= 500 ? compact : `${compact.slice(0, 497)}...`;
+}
+
+function readWorkflowProjectId(workflowDir: string): string {
+  const packagePath = path.join(workflowDir, "package.json");
+  const packageJson = JSON.parse(readFileSync(packagePath, "utf8")) as unknown;
+  if (!isRecord(packageJson) || typeof packageJson["id"] !== "string" || packageJson["id"].trim() === "") {
+    throw new Error("Workflow MCP requires package.json to contain an immutable project id.");
+  }
+  return assertWorkflowUuid(packageJson["id"], "Workflow MCP project id");
+}
+
+function assertWorkflowDirectory(workflowDir: string): void {
+  let info;
+  try {
+    info = lstatSync(workflowDir);
+  } catch {
+    throw new Error(`Workflow MCP project directory does not exist: ${workflowDir}`);
+  }
+  if (!info.isDirectory()) {
+    throw new Error(`Workflow MCP project path is not a directory: ${workflowDir}`);
+  }
+}
+
+export function readSavedWorkflowMcpAuthEnv(
+  options: WorkflowMcpCliOptions,
+  processEnv: NodeJS.ProcessEnv = process.env,
+): Record<string, string> {
+  const explicitServerUrl = processEnv.WORKFLOW_SERVER_URL?.trim() ?? "";
+  const explicitAdminKey = processEnv.WORKFLOW_SERVER_ADMIN_KEY?.trim() ?? "";
+  if (explicitServerUrl !== "" || explicitAdminKey !== "") {
+    if (explicitServerUrl === "" || explicitAdminKey === "") {
+      throw new Error(
+        "WORKFLOW_SERVER_URL and WORKFLOW_SERVER_ADMIN_KEY must be provided together for MCP workers.",
+      );
+    }
+    // An explicit pair is authoritative. Never merge one explicit value with
+    // a saved credential from Desktop or the CLI auth directory.
+    return {};
+  }
+  const env = {
+    ...processEnv,
+    ...(options.desktopConfigDir ? { WORKFLOW_DESKTOP_CONFIG_DIR: options.desktopConfigDir } : {}),
+    ...(options.cliAuthDir ? { WORKFLOW_CLI_AUTH_DIR: options.cliAuthDir } : {}),
+  };
+  const desktopAuth = readDesktopAuth(options.desktopConfigDir);
+  const auth = desktopAuth && isWorkflowAuthConfigLoggedIn(desktopAuth)
+    ? desktopAuth
+    : readCliAuthConfigSync(env);
+  if (!isWorkflowAuthConfigLoggedIn(auth)) return {};
+  return {
+    WORKFLOW_SERVER_URL: auth.serverUrl,
+    WORKFLOW_SERVER_ADMIN_KEY: auth.apiKey,
+  };
+}
+
+function readDesktopAuth(configDir: string | undefined) {
+  if (!configDir) return undefined;
+  try {
+    const raw = JSON.parse(readFileSync(resolveWorkflowDesktopConfigFilePath({
+      WORKFLOW_DESKTOP_CONFIG_DIR: configDir,
+    }), "utf8")) as unknown;
+    return normalizeWorkflowAuthConfig(isRecord(raw) && "auth" in raw ? raw["auth"] : raw);
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveAbsoluteOption(value: string, option: string): string {
+  if (!path.isAbsolute(value)) throw new Error(`${option} requires an absolute path.`);
+  return path.normalize(value);
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}

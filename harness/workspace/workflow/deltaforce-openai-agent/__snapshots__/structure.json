@@ -1,0 +1,63 @@
+{
+  "workflowName": "deltaforce-openai-agent",
+  "projectType": "conversation",
+  "files": [
+    "index.ts",
+    "interface.ts"
+  ],
+  "nodes": [
+    {
+      "id": "inputNode",
+      "factory": "createInputNode",
+      "standardName": "input",
+      "configuredName": "deltaforce-openai-agent-input"
+    },
+    {
+      "id": "outputNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "deltaforce-openai-agent-output"
+    }
+  ],
+  "params": [
+    {
+      "name": "maxRounds",
+      "flag": "--max-rounds",
+      "type": "number",
+      "required": false,
+      "defaultValue": "10",
+      "panel": "auxiliary"
+    }
+  ],
+  "tokenUsage": {
+    "enabled": true,
+    "display": true
+  },
+  "registry": [
+    {
+      "name": "deltaforce-openai-input",
+      "type": "input",
+      "title": "deltaforce-openai-agent-input",
+      "version": "1.0.0"
+    },
+    {
+      "name": "answer",
+      "type": "output",
+      "title": "deltaforce-openai-agent-output",
+      "version": "1.0.0"
+    }
+  ],
+  "execution": {
+    "kind": "sequence",
+    "counts": {
+      "sequence": 1,
+      "node": 2
+    },
+    "callees": [
+      "runNode",
+      "runStreamNode"
+    ],
+    "branchLabels": [],
+    "loopLabels": []
+  }
+}

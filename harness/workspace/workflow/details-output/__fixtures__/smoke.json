@@ -1,0 +1,38 @@
+{
+  "args": [
+    "--icon",
+    "warning",
+    "--title",
+    "折叠标题",
+    "--content",
+    "fixture markdown"
+  ],
+  "expected": {
+    "errCode": 0,
+    "item": {
+      "title": "折叠标题",
+      "content": "fixture markdown",
+      "contentType": "markdown",
+      "iconPreset": "warning"
+    },
+    "contentIncludes": [
+      "fixture markdown"
+    ],
+    "itemCount": 1,
+    "items": [
+      {
+        "title": "折叠标题",
+        "content": "fixture markdown",
+        "icon": "[!]",
+        "iconPreset": "warning",
+        "contentType": "markdown",
+        "collapsed": true
+      }
+    ],
+    "nodes": [
+      "input",
+      "output"
+    ],
+    "outputCount": 1
+  }
+}

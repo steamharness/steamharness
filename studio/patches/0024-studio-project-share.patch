@@ -1,0 +1,170 @@
+diff --git a/src/vs/workbench/browser/parts/editor/studioStart.ts b/src/vs/workbench/browser/parts/editor/studioStart.ts
+index bf9ea04f..a2d0465d 100644
+--- a/src/vs/workbench/browser/parts/editor/studioStart.ts
++++ b/src/vs/workbench/browser/parts/editor/studioStart.ts
+@@ -95,6 +95,7 @@ export class StudioStartView extends Disposable {
+ 		append(header, $('span.codicon.codicon-loading.codicon-modifier-spin.studio-start-loading-indicator')).setAttribute('aria-hidden', 'true');
+ 		const top = append(header, $('.studio-start-toolbar'));
+ 		this.button(top, 'create', 'add', 'studio.createProject', undefined, true).classList.add('studio-start-primary');
++		this.button(top, 'importLink', 'link', 'studio.importProjectFromLink');
+ 		this.button(top, 'refresh', 'refresh', 'studio.refreshStart', undefined, false, true);
+ 		this.createLoadingPlaceholder(inner);
+ 		const grid = append(inner, $('.studio-start-grid'));
+diff --git a/src/vs/workbench/contrib/studioStart/browser/media/studioProjectCreateDialog.css b/src/vs/workbench/contrib/studioStart/browser/media/studioProjectCreateDialog.css
+index 77ce2932..5aed3410 100644
+--- a/src/vs/workbench/contrib/studioStart/browser/media/studioProjectCreateDialog.css
++++ b/src/vs/workbench/contrib/studioStart/browser/media/studioProjectCreateDialog.css
+@@ -8,7 +8,9 @@
+ .studio-create-form { display:flex; flex-direction:column; gap:18px; padding-top:12px; min-width:0; letter-spacing:0; }
+ .studio-create-form fieldset { border:0; padding:0; margin:0; min-width:0; }
+ .studio-create-form legend, .studio-create-field > label { display:block; font-size:12px; font-weight:600; padding:0; margin:0 0 8px; }
+-.studio-create-types { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px; }
++.studio-create-types { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:4px; }
++.studio-create-local { display:flex; flex-direction:column; gap:18px; min-width:0; }
++.studio-create-form [hidden] { display:none; }
+ .studio-create-type { display:flex; align-items:center; justify-content:center; gap:6px; padding:8px 4px; border:1px solid var(--vscode-input-border,transparent); background:var(--vscode-input-background); border-radius:4px; cursor:pointer; min-width:0; overflow-wrap:anywhere; }
+ .studio-create-type:has(:checked) { border-color:var(--vscode-focusBorder); background:var(--vscode-list-activeSelectionBackground); color:var(--vscode-list-activeSelectionForeground); }
+ .studio-create-type input { position:absolute; opacity:0; width:1px; height:1px; }
+@@ -28,6 +30,7 @@
+ .studio-create-browse:focus-visible { outline:1px solid var(--vscode-focusBorder); }
+ .studio-create-error { min-height:18px; margin:0; color:var(--vscode-errorForeground); font-size:12px; line-height:18px; white-space:pre-wrap; overflow-wrap:anywhere; }
+ @media (max-width:480px) {
++ .studio-create-types { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .studio-create-type { flex-direction:column; font-size:12px; }
+  .studio-create-template-details { grid-template-columns:minmax(0,1fr); }
+  .studio-create-template-description { grid-column:auto; }
+diff --git a/src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts b/src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts
+index 20440063..d3a8f714 100644
+--- a/src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts
++++ b/src/vs/workbench/contrib/studioStart/browser/studioProjectCreateDialog.ts
+@@ -19,7 +19,7 @@ import { studioProjectIcon } from '../../../common/studioProjectIcons.js';
+ import { IHostService } from '../../../services/host/browser/host.js';
+ import './media/studioProjectCreateDialog.css';
+ 
+-interface ProjectCreationInput { templateId: string; name: string; parentDirectory: string }
++type ProjectCreationInput = { templateId: string; name: string; parentDirectory: string } | { shareUrl: string };
+ export interface ProjectCreationDialogRequest {
+ 	templates: StudioStartState['templates'];
+ 	labels: Record<string, string>;
+@@ -35,6 +35,9 @@ export class StudioProjectCreateDialog extends Disposable {
+ 	private form!: HTMLElement;
+ 	private name!: InputBox;
+ 	private parent!: InputBox;
++	private shareUrl!: InputBox;
++	private localFields!: HTMLElement;
++	private linkFields!: HTMLElement;
+ 	private error!: HTMLElement;
+ 	private createButton: IButton | undefined;
+ 	private templateId: string;
+@@ -55,15 +58,15 @@ export class StudioProjectCreateDialog extends Disposable {
+ 		const initial = request.templates.find(template => template.id === request.templateId)
+ 			?? request.templates.find(template => template.projectType === request.projectType)
+ 			?? request.templates[0];
+-		this.projectType = initial?.projectType ?? 'workflow';
++		this.projectType = request.projectType === 'link' || !initial ? 'link' : initial.projectType;
+ 		this.templateId = initial?.id ?? '';
+ 		this.dialog = this._register(new Dialog(layout.activeContainer, this.text('create'), [this.text('confirmCreate'), this.text('cancel')],
+ 			createWorkbenchDialogOptions({
+ 				type: 'none', cancelId: 1, extraClasses: ['studio-create-dialog'],
+ 				renderBody: container => this.render(container),
+-				focusableElements: () => Array.from(this.form.querySelectorAll<HTMLElement>('input,button')).filter(element => element.tabIndex >= 0 && !element.matches(':disabled')),
++				focusableElements: () => Array.from(this.form.querySelectorAll<HTMLElement>('input,button')).filter(element => element.tabIndex >= 0 && !element.matches(':disabled') && !element.closest('[hidden]')),
+ 				isExternalFocusAllowed: element => this.browsing && !!element.closest('.quick-input-widget'),
+-				buttonOptions: [{ styleButton: button => { this.createButton = button; button.enabled = false; } }],
++				buttonOptions: [{ styleButton: button => { this.createButton = button; button.label = this.text(this.projectType === 'link' ? 'confirmImport' : 'confirmCreate'); button.enabled = false; } }],
+ 			}, keybindings, layout, host)));
+ 	}
+ 
+@@ -85,27 +88,29 @@ export class StudioProjectCreateDialog extends Disposable {
+ 		this.form = append(container, $('.studio-create-form'));
+ 		const types = append(this.form, $('fieldset.studio-create-types'));
+ 		append(types, $('legend', undefined, this.text('projectType')));
+-		const templates = append(this.form, $('fieldset.studio-create-templates'));
++		this.localFields = append(this.form, $('.studio-create-local'));
++		const templates = append(this.localFields, $('fieldset.studio-create-templates'));
+ 		append(templates, $('legend', undefined, this.text('template')));
+ 		const options = append(templates, $('.studio-create-options'));
+-		for (const type of ['workflow', 'conversation', 'kanban']) {
++		for (const type of ['workflow', 'conversation', 'kanban', 'link']) {
+ 			const label = append(types, $('label.studio-create-type'));
+ 			const radio = append(label, $<HTMLInputElement>('input', { type: 'radio', name: 'projectType', value: type }));
+ 			radio.checked = this.projectType === type;
+ 			radio.tabIndex = radio.checked ? 0 : -1;
+-			append(label, $(`span.codicon.codicon-${studioProjectIcon(type)}`)).setAttribute('aria-hidden', 'true');
++			append(label, $(`span.codicon.codicon-${type === 'link' ? 'link' : studioProjectIcon(type)}`)).setAttribute('aria-hidden', 'true');
+ 			append(label, $('span', undefined, this.text(`type.${type}`)));
+ 			this._register(addDisposableListener(radio, 'change', () => {
+ 				if (!radio.checked) { return; }
+ 				this.projectType = type;
+ 				for (const input of types.querySelectorAll<HTMLInputElement>('input')) { input.tabIndex = input.checked ? 0 : -1; }
+ 				this.renderTemplates(options);
++				this.updateMode();
+ 				this.validate();
+ 			}));
+ 		}
+ 		this.renderTemplates(options);
+-		this.name = this.input(this.form, 'projectName');
+-		const directory = append(this.form, $('.studio-create-directory'));
++		this.name = this.input(this.localFields, 'projectName');
++		const directory = append(this.localFields, $('.studio-create-directory'));
+ 		this.parent = this.input(directory, 'parentDirectory', this.request.parentDirectory);
+ 		const browse = append(directory, $<HTMLButtonElement>('button.studio-create-browse', { type: 'button', title: this.text('browse'), 'aria-label': this.text('browse') }));
+ 		append(browse, $('span.codicon.codicon-folder-opened')).setAttribute('aria-hidden', 'true');
+@@ -124,15 +129,27 @@ export class StudioProjectCreateDialog extends Disposable {
+ 				if (!this.closed) { this.parent.focus(); }
+ 			}
+ 		}));
++		this.linkFields = append(this.form, $('.studio-create-link'));
++		this.shareUrl = this.input(this.linkFields, 'shareUrl');
++		this.shareUrl.inputElement.type = 'url';
++		this.shareUrl.inputElement.placeholder = 'https://server.example.com/share/projects/<project-id>/1.0.0';
++		this.updateMode();
+ 		this.error = append(this.form, $('p.studio-create-error', { role: 'status', 'aria-live': 'polite' }));
+ 		this._register(addDisposableListener(this.form, 'keydown', event => {
+-			if (event.key === 'Enter' && !event.isComposing && (event.target === this.name.inputElement || event.target === this.parent.inputElement)) {
++			if (event.key === 'Enter' && !event.isComposing && (event.target === this.name.inputElement || event.target === this.parent.inputElement || event.target === this.shareUrl.inputElement)) {
+ 				event.preventDefault(); event.stopPropagation();
+ 				if (this.createButton?.enabled) { this.createButton.element.click(); }
+ 			}
+ 		}));
+ 	}
+ 
++	private updateMode(): void {
++		const importing = this.projectType === 'link';
++		this.localFields.hidden = importing;
++		this.linkFields.hidden = !importing;
++		if (this.createButton) { this.createButton.label = this.text(importing ? 'confirmImport' : 'confirmCreate'); }
++	}
++
+ 	private renderTemplates(container: HTMLElement): void {
+ 		this.choices.clear(); clearNode(container);
+ 		const templates = this.request.templates.filter(template => template.projectType === this.projectType);
+@@ -157,6 +174,7 @@ export class StudioProjectCreateDialog extends Disposable {
+ 	}
+ 
+ 	private inputValue(): ProjectCreationInput {
++		if (this.projectType === 'link') { return { shareUrl: this.shareUrl.value.trim() }; }
+ 		return { templateId: this.templateId, name: this.name.value.trim(), parentDirectory: this.parent.value.trim() };
+ 	}
+ 
+@@ -165,8 +183,9 @@ export class StudioProjectCreateDialog extends Disposable {
+ 		const revision = ++this.revision;
+ 		if (this.createButton) { this.createButton.enabled = false; }
+ 		const input = this.inputValue();
+-		this.error.textContent = !input.name ? this.text('requiredName') : !input.parentDirectory ? this.text('requiredParent') : '';
+-		if (!input.name || !input.parentDirectory || !input.templateId) { return; }
++		this.error.textContent = 'shareUrl' in input ? (!input.shareUrl ? this.text('requiredShareUrl') : '')
++			: !input.name ? this.text('requiredName') : !input.parentDirectory ? this.text('requiredParent') : '';
++		if ('shareUrl' in input ? !input.shareUrl : !input.name || !input.parentDirectory || !input.templateId) { return; }
+ 		this.timer = setTimeout(async () => {
+ 			let error: string | undefined;
+ 			try { error = (await this.commands.executeCommand<{ error?: string }>('studio.internalValidateProjectCreation', input))?.error; }
+@@ -179,7 +198,7 @@ export class StudioProjectCreateDialog extends Disposable {
+ 
+ 	async show(): Promise<ProjectCreationInput | undefined> {
+ 		const result = this.dialog.show();
+-		this.name.focus();
++		(this.projectType === 'link' ? this.shareUrl : this.name).focus();
+ 		const { button } = await result;
+ 		return button === 0 ? this.inputValue() : undefined;
+ 	}

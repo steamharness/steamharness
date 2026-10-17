@@ -1,0 +1,540 @@
+diff --git a/src/vs/workbench/browser/parts/editor/editorGroupWatermark.ts b/src/vs/workbench/browser/parts/editor/editorGroupWatermark.ts
+index a63f37ce..943a4f1c 100644
+--- a/src/vs/workbench/browser/parts/editor/editorGroupWatermark.ts
++++ b/src/vs/workbench/browser/parts/editor/editorGroupWatermark.ts
+@@ -19,6 +19,7 @@ import { IKeybindingService } from '../../../../platform/keybinding/common/keybi
+ import { IStorageService, StorageScope, StorageTarget, WillSaveStateReason } from '../../../../platform/storage/common/storage.js';
+ import { defaultKeybindingLabelStyles } from '../../../../platform/theme/browser/defaultStyles.js';
+ import { IWorkspaceContextService, WorkbenchState } from '../../../../platform/workspace/common/workspace.js';
++import { StudioStartView } from './studioStart.js';
+ 
+ interface WatermarkEntry {
+ 	readonly id: string;
+@@ -78,6 +79,8 @@ export class EditorGroupWatermark extends Disposable {
+ 
+ 	private readonly shortcuts: HTMLElement;
+ 	private readonly toolbarContainer: HTMLElement;
++	private readonly watermark: HTMLElement;
++	private readonly startContainer: HTMLElement;
+ 	private readonly transientDisposables = this._register(new DisposableStore());
+ 	private readonly keybindingLabels = this._register(new DisposableStore());
+ 
+@@ -109,6 +112,9 @@ export class EditorGroupWatermark extends Disposable {
+ 		]);
+ 
+ 		append(container, elements.root);
++		this.watermark = elements.root;
++		this.startContainer = append(container, $('.studio-start-watermark'));
++		this._register(this.instantiationService.createInstance(StudioStartView, this.startContainer));
+ 		this.shortcuts = elements.shortcuts;
+ 		this.toolbarContainer = elements.toolbarContainer;
+ 
+@@ -125,6 +131,7 @@ export class EditorGroupWatermark extends Disposable {
+ 
+ 	private registerListeners(): void {
+ 		this._register(this.configurationService.onDidChangeConfiguration(e => {
++			if (e.affectsConfiguration('studio.startPage.enabled')) { this.render(); }
+ 			if (
+ 				e.affectsConfiguration(EditorGroupWatermark.SETTINGS_KEY) &&
+ 				this.enabled !== this.configurationService.getValue<boolean>(EditorGroupWatermark.SETTINGS_KEY)
+@@ -156,12 +163,15 @@ export class EditorGroupWatermark extends Disposable {
+ 	}
+ 
+ 	private render(): void {
++		const startEnabled = this.configurationService.getValue<boolean>('studio.startPage.enabled') === true;
++		this.startContainer.hidden = !startEnabled;
++		this.watermark.style.display = startEnabled ? 'none' : '';
+ 		this.enabled = this.configurationService.getValue<boolean>(EditorGroupWatermark.SETTINGS_KEY);
+ 
+ 		clearNode(this.shortcuts);
+ 		this.transientDisposables.clear();
+ 
+-		if (!this.enabled) {
++		if (startEnabled || !this.enabled) {
+ 			return;
+ 		}
+ 
+diff --git a/src/vs/workbench/browser/parts/editor/media/studioStart.css b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+new file mode 100644
+index 00000000..adee7783
+--- /dev/null
++++ b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+@@ -0,0 +1,54 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++.studio-start-watermark { position:absolute; inset:0; z-index:1; }
++.editor-group-container:not(.empty) > .studio-start-watermark, .studio-start-watermark[hidden] { display:none; }
++.studio-start { height:100%; width:100%; box-sizing:border-box; container-type:inline-size; overflow:auto; color:var(--vscode-editor-foreground); background:var(--vscode-editor-background); font:13px var(--vscode-font-family); user-select:text; letter-spacing:0; scrollbar-width:thin; scrollbar-color:transparent transparent; }
++.studio-start:hover, .studio-start:focus-within { scrollbar-color:var(--vscode-scrollbarSlider-background) transparent; }
++.studio-start::-webkit-scrollbar { width:8px; height:8px; }
++.studio-start::-webkit-scrollbar-thumb { background:transparent; }
++.studio-start:hover::-webkit-scrollbar-thumb, .studio-start:focus-within::-webkit-scrollbar-thumb { background:var(--vscode-scrollbarSlider-background); }
++.studio-start-inner { max-width:1040px; padding:32px; margin:0 auto; }
++.studio-start-header { display:flex; align-items:center; gap:12px; margin-bottom:28px; }
++.studio-start .studio-start-logo { font-size:28px; color:var(--vscode-textLink-foreground); }
++.studio-start h1 { font-size:24px; font-weight:500; margin:0; line-height:1.3; overflow-wrap:anywhere; }
++.studio-start-toolbar { margin-left:auto; }
++.studio-start-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr)); gap:28px 40px; }
++.studio-start section { min-width:0; }
++.studio-start h2 { font-size:14px; font-weight:600; line-height:20px; margin:0 0 12px; }
++.studio-start-action { display:grid; grid-template-columns:16px minmax(0,1fr); align-items:start; gap:8px; box-sizing:border-box; width:100%; min-width:0; min-height:32px; padding:6px 8px; border:0; border-radius:var(--vscode-cornerRadius-small,4px); color:var(--vscode-textLink-foreground); background:transparent; font:inherit; line-height:20px; text-align:left; cursor:pointer; max-width:100%; user-select:text; }
++.studio-start-action:hover { background:var(--vscode-list-hoverBackground); color:var(--vscode-textLink-activeForeground); }
++.studio-start-action:focus-visible { outline:1px solid var(--vscode-focusBorder); outline-offset:1px; }
++.studio-start-action:disabled { opacity:.5; cursor:default; }
++.studio-start-action > .codicon { display:flex; align-items:center; justify-content:center; width:16px; height:20px; font-size:16px; line-height:16px; }
++.studio-start-action-label { min-width:0; overflow-wrap:anywhere; }
++.studio-start-action-icon { display:flex; align-items:center; justify-content:center; flex:none; width:32px; height:32px; padding:8px; }
++.studio-start-action-icon > .codicon { height:16px; }
++.studio-start-create .studio-start-list, .studio-start-quick { display:flex; flex-direction:column; align-items:stretch; }
++.studio-start-example { margin-bottom:8px; }
++.studio-start-example p { margin:0 8px 4px 32px; color:var(--vscode-descriptionForeground); font-size:12px; line-height:20px; overflow-wrap:anywhere; }
++.studio-start-project { display:grid; grid-template-columns:minmax(0,1fr) 32px; align-items:start; gap:4px; }
++.studio-start-recent [data-action="studio.removeRecentProject"] { opacity:0; pointer-events:none; }
++.studio-start-recent .studio-start-project:hover > [data-action="studio.removeRecentProject"], .studio-start-recent .studio-start-project:focus-within > [data-action="studio.removeRecentProject"] { opacity:1; pointer-events:auto; }
++.studio-start-stats { display:grid; grid-template-columns:minmax(90px,auto) minmax(0,1fr); gap:0 16px; margin:0 0 12px; line-height:20px; }
++.studio-start-stats dt, .studio-start-stats dd { padding:6px 0; }
++.studio-start-stats dt { color:var(--vscode-descriptionForeground); overflow-wrap:anywhere; }
++.studio-start-stats dd { margin:0; overflow-wrap:anywhere; }
++.studio-start-muted { color:var(--vscode-descriptionForeground); line-height:1.5; margin:0; }
++.studio-start-error { color:var(--vscode-errorForeground); white-space:pre-wrap; overflow-wrap:anywhere; margin:24px 0 0; line-height:1.5; }
++.studio-start-pending { display:flex; flex-wrap:wrap; gap:5px 10px; align-items:center; margin-bottom:10px; overflow-wrap:anywhere; }
++.studio-start-pending > .studio-start-action:not(.studio-start-action-icon) { width:auto; }
++.studio-start-pending small { color:var(--vscode-descriptionForeground); }
++.studio-start-overlay { position:absolute; top:0; left:0; pointer-events:none; }
++.studio-start-overlay .studio-start { pointer-events:none; }
++.studio-start-overlay .studio-start-inner > *, .studio-start-overlay .studio-start-action { pointer-events:auto; }
++.studio-start-overlay .studio-start-grid { pointer-events:none; }
++.studio-start-overlay .studio-start-grid > section { pointer-events:auto; }
++@media (max-width:600px) { .studio-start-inner { padding:20px; } }
++@container (max-width:360px) {
++  .studio-start-inner { padding:20px; }
++  .studio-start-header { display:grid; grid-template-columns:minmax(0,1fr) auto; }
++  .studio-start h1 { grid-column:1 / -1; grid-row:2; font-size:20px; }
++  .studio-start-toolbar { grid-column:2; grid-row:1; margin-left:0; }
++}
+diff --git a/src/vs/workbench/browser/parts/editor/studioStart.ts b/src/vs/workbench/browser/parts/editor/studioStart.ts
+new file mode 100644
+index 00000000..9c46b7e2
+--- /dev/null
++++ b/src/vs/workbench/browser/parts/editor/studioStart.ts
+@@ -0,0 +1,244 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { $, addDisposableListener, append, clearNode, getWindow } from '../../../../base/browser/dom.js';
++import { Emitter, Event } from '../../../../base/common/event.js';
++import { Disposable, DisposableStore } from '../../../../base/common/lifecycle.js';
++import { generateUuid } from '../../../../base/common/uuid.js';
++import { CommandsRegistry, ICommandService } from '../../../../platform/commands/common/commands.js';
++import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
++import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
++import './media/studioStart.css';
++
++/** Versioned, credential-free state supplied by the Studio extension host. */
++export interface StudioStartState {
++	version: 1;
++	labels: Record<string, string>;
++	templates: { id: string; projectType: string; kind: string; name: string; description: string }[];
++	projects: { uri: string; name: string; projectType: string }[];
++	recent: { uri: string; label: string; kind: string; lastOpened: number }[];
++	pending: { id: string; name: string; directory: string; status: string; error?: string }[];
++	environment: { studio: string; vscode: string; node?: string; core?: string; cli?: string; account: string; server: string; error?: string };
++	summary?: { projects: number; running: number; waiting: number; unavailable: number; generatedAt: number };
++	error?: string;
++	busy: boolean;
++	installing?: string;
++	canCreate: boolean;
++}
++
++export const IStudioStartService = createDecorator<IStudioStartService>('studioStartService');
++export interface IStudioStartService {
++	readonly _serviceBrand: undefined;
++	readonly state: StudioStartState | undefined;
++	readonly onDidChange: Event<void>;
++	setVisible(id: string, visible: boolean): void;
++}
++
++class StudioStartService extends Disposable implements IStudioStartService {
++	declare readonly _serviceBrand: undefined;
++	private readonly change = this._register(new Emitter<void>());
++	readonly onDidChange = this.change.event;
++	private readonly visible = new Set<string>();
++	state: StudioStartState | undefined;
++
++	constructor(@ICommandService private readonly commands: ICommandService) {
++		super();
++		this._register(CommandsRegistry.registerCommand('studio.internalUpdateStartState', (_accessor, state: StudioStartState) => {
++			if (state?.version !== 1 || !state.labels || !Array.isArray(state.templates) || !Array.isArray(state.projects)
++				|| !Array.isArray(state.recent) || !Array.isArray(state.pending) || !state.environment) {
++				return;
++			}
++			this.state = state;
++			this.change.fire();
++		}));
++		this._register(CommandsRegistry.registerCommand('studio.internalGetStartVisibility', () => this.visible.size > 0));
++	}
++
++	setVisible(id: string, visible: boolean): void {
++		const previous = this.visible.size > 0;
++		if (visible) { this.visible.add(id); } else { this.visible.delete(id); }
++		if (previous !== (this.visible.size > 0)) {
++			void this.commands.executeCommand('studio.internalStartPageVisibility', this.visible.size > 0).catch(() => undefined);
++		}
++	}
++}
++registerSingleton(IStudioStartService, StudioStartService, InstantiationType.Delayed);
++
++/** Shared native view for empty groups, untitled editors and the Start editor. */
++export class StudioStartView extends Disposable {
++	readonly element: HTMLElement;
++	private readonly id = generateUuid();
++	private readonly lists = new Map<string, { element: HTMLElement; key: string; disposables: DisposableStore }>();
++	private readonly labels = new Map<string, HTMLElement>();
++	private readonly stats = new Map<string, HTMLElement>();
++	private readonly actions: { button: HTMLButtonElement; label: string; creation: boolean; iconOnly: boolean }[] = [];
++	private readonly error: HTMLElement;
++	private intersecting = false;
++	private enabled = true;
++
++	constructor(
++		container: HTMLElement,
++		@IStudioStartService private readonly service: IStudioStartService,
++		@ICommandService private readonly commands: ICommandService
++	) {
++		super();
++		this.element = append(container, $('main.studio-start'));
++		this.element.tabIndex = -1;
++		this.element.setAttribute('aria-label', 'Workflow Studio');
++		const inner = append(this.element, $('.studio-start-inner'));
++		const header = append(inner, $('header.studio-start-header'));
++		append(header, $('span.codicon.codicon-layout.studio-start-logo')).setAttribute('aria-hidden', 'true');
++		append(header, $('h1', undefined, 'Workflow Studio'));
++		const top = append(header, $('.studio-start-toolbar'));
++		this.button(top, 'refresh', 'refresh', 'studio.refreshStart', undefined, false, true);
++		const grid = append(inner, $('.studio-start-grid'));
++		this.section(grid, 'create');
++		this.section(grid, 'current');
++		this.section(grid, 'examples');
++		this.section(grid, 'recent');
++		const system = this.section(grid, 'system');
++		const details = append(system, $('dl.studio-start-stats'));
++		for (const key of ['studio', 'vscode', 'node', 'core', 'cli', 'account', 'server', 'projects', 'running', 'waiting']) {
++			this.labels.set(`stat.${key}`, append(details, $('dt')));
++			this.stats.set(key, append(details, $('dd')));
++		}
++		this.button(system, 'analysis', 'graph', 'studio.openAnalysis');
++		const quick = this.section(grid, 'quick');
++		for (const [label, icon, command] of [
++			['openFolder', 'folder-opened', 'studio.openFolder'], ['openWorkspace', 'file-submodule', 'studio.openWorkspace'],
++			['assistant', 'hubot', 'studio.openAssistant'], ['account', 'account', 'studio.openWorkflowAccount'], ['settings', 'settings-gear', 'studio.openSettings'],
++		]) { this.button(quick, label, icon, command); }
++		this.error = append(inner, $('p.studio-start-error'));
++		this.error.setAttribute('role', 'status');
++		this.error.hidden = true;
++		const observer = new (getWindow(this.element).IntersectionObserver)(entries => {
++			this.intersecting = entries.some(entry => entry.isIntersecting);
++			this.publishVisibility();
++		});
++		observer.observe(this.element);
++		this._register({ dispose: () => observer.disconnect() });
++		this._register(addDisposableListener(this.element.ownerDocument, 'visibilitychange', () => this.publishVisibility()));
++		this._register(service.onDidChange(() => this.render()));
++		this.render();
++	}
++
++	private publishVisibility(): void {
++		this.service.setVisible(this.id, this.enabled && this.intersecting && !this.element.ownerDocument.hidden);
++	}
++
++	setVisible(visible: boolean): void {
++		this.enabled = visible;
++		this.publishVisibility();
++	}
++
++	focus(): void { this.element.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus(); }
++
++	private section(parent: HTMLElement, key: string): HTMLElement {
++		const section = append(parent, $(`section.studio-start-${key}`));
++		this.labels.set(key, append(section, $('h2')));
++		if (['create', 'current', 'examples', 'recent'].includes(key)) {
++			this.lists.set(key, { element: append(section, $('.studio-start-list')), key: '', disposables: this._register(new DisposableStore()) });
++		}
++		return section;
++	}
++
++	private button(parent: HTMLElement, label: string, icon: string, command: string, arg?: object | string, creation = false, iconOnly = false, store?: DisposableStore): HTMLButtonElement {
++		const button = append(parent, $('button.studio-start-action', { type: 'button' })) as HTMLButtonElement;
++		button.classList.toggle('studio-start-action-icon', iconOnly);
++		append(button, $(`span.codicon.codicon-${icon}`)).setAttribute('aria-hidden', 'true');
++		if (!iconOnly) { append(button, $('span.studio-start-action-label')); }
++		button.dataset.action = command;
++		if (arg && typeof arg === 'object' && 'uri' in arg) { button.dataset.uri = String(arg.uri); }
++		const disposable = addDisposableListener(button, 'click', event => {
++			event.stopPropagation();
++			void this.commands.executeCommand(command, arg).catch(() => undefined);
++		});
++		(store ?? this._store).add(disposable);
++		if (!store) { this.actions.push({ button, label, creation, iconOnly }); }
++		else { button.title = label; button.setAttribute('aria-label', label); if (!iconOnly) { button.lastElementChild!.textContent = label; } }
++		return button;
++	}
++
++	private list(key: string, value: object, render: (root: HTMLElement, store: DisposableStore) => void): void {
++		const list = this.lists.get(key)!;
++		const signature = JSON.stringify(value);
++		if (list.key === signature) { return; }
++		list.key = signature;
++		list.disposables.clear();
++		clearNode(list.element);
++		render(list.element, list.disposables);
++	}
++
++	private render(): void {
++		const state = this.service.state;
++		if (!state) { return; }
++		const text = (key: string): string => state.labels[key] ?? key;
++		for (const [key, element] of this.labels) { if (element.textContent !== text(key)) { element.textContent = text(key); } }
++		for (const action of this.actions) {
++			action.button.title = text(action.label);
++			action.button.setAttribute('aria-label', text(action.label));
++			if (!action.iconOnly && action.button.lastElementChild!.textContent !== text(action.label)) { action.button.lastElementChild!.textContent = text(action.label); }
++			action.button.disabled = action.creation && (!state.canCreate || state.busy);
++		}
++		const listKey = { labels: state.labels, busy: state.busy, canCreate: state.canCreate };
++		const icons: Record<string, string> = { workflow: 'run-all', conversation: 'comment-discussion', kanban: 'layout' };
++		this.list('create', { ...listKey, templates: state.templates.filter(template => template.kind === 'starter') }, (root, store) => {
++			for (const template of state.templates.filter(template => template.kind === 'starter')) {
++				const button = this.button(root, template.name, icons[template.projectType], 'studio.createProject', template.projectType, true, false, store);
++				button.disabled = !state.canCreate || state.busy;
++			}
++		});
++		this.list('examples', { ...listKey, templates: state.templates.filter(template => template.kind === 'example') }, (root, store) => {
++			for (const template of state.templates.filter(template => template.kind === 'example')) {
++				const row = append(root, $('.studio-start-example'));
++				const button = this.button(row, template.name, icons[template.projectType], 'studio.createExample', template.id, true, false, store);
++				button.disabled = !state.canCreate || state.busy;
++				append(row, $('p', undefined, template.description));
++			}
++		});
++		this.list('current', { projects: state.projects, pending: state.pending, installing: state.installing, ...listKey }, (root, store) => {
++			if (!state.projects.length && !state.pending.length) { append(root, $('p.studio-start-muted', undefined, text('noCurrent'))); }
++			for (const project of state.projects) {
++				const row = append(root, $('.studio-start-project'));
++				this.button(row, project.name, icons[project.projectType] ?? 'folder', 'studio.openWorkflow', { uri: project.uri }, false, false, store);
++				this.button(row, text('source'), 'code', 'studio.openWorkflowSource', { uri: project.uri }, false, true, store);
++			}
++			for (const project of state.pending) {
++				const row = append(root, $('.studio-start-pending'));
++				append(row, $('span', undefined, project.name));
++				append(row, $('small', undefined, text(state.installing === project.id ? 'installing' : project.status === 'cancelled' ? 'cancelled' : 'installFailed')));
++				const retry = this.button(row, text('retry'), 'refresh', 'studio.retryProjectSetup', project.id, false, false, store);
++				retry.disabled = state.busy;
++				this.button(row, text('openSource'), 'folder-opened', 'studio.openCreatedProject', project.id, false, true, store);
++			}
++			if (state.pending.length) { this.button(root, text('installationLog'), 'output', 'studio.showProjectSetupLog', undefined, false, false, store); }
++		});
++		this.list('recent', { recent: state.recent, labels: state.labels }, (root, store) => {
++			if (!state.recent.length) { append(root, $('p.studio-start-muted', undefined, text('noRecent'))); }
++			for (const project of state.recent) {
++				const row = append(root, $('.studio-start-project'));
++				const button = this.button(row, project.label, project.kind === 'workspace' ? 'file-submodule' : 'folder', 'studio.openRecentProject', project, false, false, store);
++				button.title = project.uri;
++				this.button(row, text('removeRecent'), 'close', 'studio.removeRecentProject', project, false, true, store);
++			}
++		});
++		const environment = state.environment;
++		for (const [key, element] of this.stats) {
++			const value = key === 'studio' ? environment.studio : key === 'vscode' ? environment.vscode
++				: ['projects', 'running', 'waiting'].includes(key) ? state.summary && !state.summary.unavailable ? String(state.summary[key as 'projects']) : text('unavailable')
++					: environment[key as 'node'] || text('unavailable');
++			if (element.textContent !== value) { element.textContent = value; }
++		}
++		const error = [state.error, environment.error].filter(Boolean).join('\n');
++		if (this.error.textContent !== error) { this.error.textContent = error; }
++		this.error.hidden = !error;
++	}
++
++	override dispose(): void {
++		this.service.setVisible(this.id, false);
++		this.element.remove();
++		super.dispose();
++	}
++}
+diff --git a/src/vs/workbench/contrib/codeEditor/browser/emptyTextEditorHint/emptyTextEditorHint.ts b/src/vs/workbench/contrib/codeEditor/browser/emptyTextEditorHint/emptyTextEditorHint.ts
+index 3d1899f8..f31606a3 100644
+--- a/src/vs/workbench/contrib/codeEditor/browser/emptyTextEditorHint/emptyTextEditorHint.ts
++++ b/src/vs/workbench/contrib/codeEditor/browser/emptyTextEditorHint/emptyTextEditorHint.ts
+@@ -11,7 +11,7 @@ import { WorkbenchActionExecutedClassification, WorkbenchActionExecutedEvent } f
+ import { Event } from '../../../../../base/common/event.js';
+ import { Disposable } from '../../../../../base/common/lifecycle.js';
+ import { Schemas } from '../../../../../base/common/network.js';
+-import { ContentWidgetPositionPreference, ICodeEditor, IContentWidget, IContentWidgetPosition } from '../../../../../editor/browser/editorBrowser.js';
++import { ContentWidgetPositionPreference, ICodeEditor, IContentWidget, IContentWidgetPosition, IOverlayWidget } from '../../../../../editor/browser/editorBrowser.js';
+ import { EditorContributionInstantiation, registerEditorContribution } from '../../../../../editor/browser/editorExtensions.js';
+ import { ConfigurationChangedEvent, EditorOption } from '../../../../../editor/common/config/editorOptions.js';
+ import { Position } from '../../../../../editor/common/core/position.js';
+@@ -32,6 +32,8 @@ import { ChatAgentLocation } from '../../../chat/common/constants.js';
+ import { IInlineChatSessionService } from '../../../inlineChat/browser/inlineChatSessionService.js';
+ import { EmptyTextEditorHintContributionId, IEmptyTextEditorHintContribution } from './emptyTextEditorHintTypes.js';
+ import './emptyTextEditorHint.css';
++import { StudioStartView } from '../../../../browser/parts/editor/studioStart.js';
++import { KeyCode } from '../../../../../base/common/keyCodes.js';
+ 
+ export const emptyTextEditorHintSetting = 'workbench.editor.empty.hint';
+ export class EmptyTextEditorHintContribution extends Disposable implements IEmptyTextEditorHintContribution {
+@@ -39,6 +41,7 @@ export class EmptyTextEditorHintContribution extends Disposable implements IEmpt
+ 	static readonly ID = EmptyTextEditorHintContributionId;
+ 
+ 	private textHintContentWidget: EmptyTextEditorHintContentWidget | undefined;
++	private studioStartWidget: StudioStartOverlayWidget | undefined;
+ 
+ 	constructor(
+ 		protected readonly editor: ICodeEditor,
+@@ -60,7 +63,7 @@ export class EmptyTextEditorHintContribution extends Disposable implements IEmpt
+ 			}
+ 		}));
+ 		this._register(this.configurationService.onDidChangeConfiguration(e => {
+-			if (e.affectsConfiguration(emptyTextEditorHintSetting)) {
++			if (e.affectsConfiguration(emptyTextEditorHintSetting) || e.affectsConfiguration('studio.startPage.enabled')) {
+ 				this.update();
+ 			}
+ 		}));
+@@ -114,6 +117,17 @@ export class EmptyTextEditorHintContribution extends Disposable implements IEmpt
+ 	}
+ 
+ 	protected update(): void {
++		const model = this.editor.getModel();
++		const showStart = this.configurationService.getValue<boolean>('studio.startPage.enabled') === true && !this.editor.isSimpleWidget
++			&& !this.editor.getOption(EditorOption.readOnly) && !this.editor.getOption(EditorOption.inDiffEditor)
++			&& model?.uri.scheme === Schemas.untitled && model.getValueLength() === 0;
++		if (showStart) {
++			if (!this.studioStartWidget) { this.studioStartWidget = this.instantiationService.createInstance(StudioStartOverlayWidget, this.editor); }
++			this.disposeHint();
++			return;
++		}
++		this.studioStartWidget?.dispose();
++		this.studioStartWidget = undefined;
+ 		const shouldRenderHint = this.shouldRenderHint();
+ 		if (shouldRenderHint && !this.textHintContentWidget) {
+ 			this.textHintContentWidget = this.instantiationService.createInstance(EmptyTextEditorHintContentWidget, this.editor);
+@@ -129,11 +143,37 @@ export class EmptyTextEditorHintContribution extends Disposable implements IEmpt
+ 
+ 	override dispose(): void {
+ 		super.dispose();
++		this.studioStartWidget?.dispose();
+ 
+ 		this.disposeHint();
+ 	}
+ }
+ 
++class StudioStartOverlayWidget extends Disposable implements IOverlayWidget {
++	private readonly element = $('.studio-start-overlay');
++	constructor(editor: ICodeEditor, @IInstantiationService instantiationService: IInstantiationService) {
++		super();
++		const view = this._register(instantiationService.createInstance(StudioStartView, this.element));
++		const layout = () => {
++			const size = editor.getLayoutInfo();
++			this.element.style.width = `${size.width}px`;
++			this.element.style.height = `${size.height}px`;
++		};
++		this._register(editor.onDidLayoutChange(layout));
++		this._register(editor.onKeyDown(event => {
++			if (editor.hasTextFocus() && event.keyCode === KeyCode.Tab && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
++				event.preventDefault(); event.stopPropagation(); view.focus();
++			}
++		}));
++		editor.addOverlayWidget(this);
++		layout();
++		this._register({ dispose: () => editor.removeOverlayWidget(this) });
++	}
++	getId(): string { return 'studio.startPage'; }
++	getDomNode(): HTMLElement { return this.element; }
++	getPosition() { return null; }
++}
++
+ class EmptyTextEditorHintContentWidget extends Disposable implements IContentWidget {
+ 
+ 	private static readonly ID = 'editor.widget.emptyHint';
+diff --git a/src/vs/workbench/contrib/studioStart/browser/studioStart.contribution.ts b/src/vs/workbench/contrib/studioStart/browser/studioStart.contribution.ts
+new file mode 100644
+index 00000000..4c2acf66
+--- /dev/null
++++ b/src/vs/workbench/contrib/studioStart/browser/studioStart.contribution.ts
+@@ -0,0 +1,61 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { Dimension } from '../../../../base/browser/dom.js';
++import { URI } from '../../../../base/common/uri.js';
++import { CommandsRegistry } from '../../../../platform/commands/common/commands.js';
++import { SyncDescriptor } from '../../../../platform/instantiation/common/descriptors.js';
++import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
++import { Registry } from '../../../../platform/registry/common/platform.js';
++import { IStorageService } from '../../../../platform/storage/common/storage.js';
++import { ITelemetryService } from '../../../../platform/telemetry/common/telemetry.js';
++import { IThemeService } from '../../../../platform/theme/common/themeService.js';
++import { EditorPaneDescriptor, IEditorPaneRegistry } from '../../../browser/editor.js';
++import { EditorPane } from '../../../browser/parts/editor/editorPane.js';
++import { IStudioStartService, StudioStartView } from '../../../browser/parts/editor/studioStart.js';
++import { EditorExtensions, IEditorFactoryRegistry, IUntypedEditorInput } from '../../../common/editor.js';
++import { EditorInput } from '../../../common/editor/editorInput.js';
++import { IEditorGroup } from '../../../services/editor/common/editorGroupsService.js';
++import { IEditorService } from '../../../services/editor/common/editorService.js';
++
++class StudioStartInput extends EditorInput {
++	static readonly ID = 'studio.start';
++	override get typeId(): string { return StudioStartInput.ID; }
++	get resource(): URI { return URI.from({ scheme: 'studio-start', path: '/start' }); }
++	constructor(@IStudioStartService private readonly start: IStudioStartService) {
++		super();
++		this._register(start.onDidChange(() => this._onDidChangeLabel.fire()));
++	}
++	override getName(): string { return this.start.state?.labels.start ?? 'Start'; }
++	override matches(other: EditorInput | IUntypedEditorInput): boolean { return other instanceof StudioStartInput || super.matches(other); }
++}
++
++class StudioStartEditor extends EditorPane {
++	static readonly ID = 'studio.startEditor';
++	private view: StudioStartView | undefined;
++	constructor(group: IEditorGroup,
++		@ITelemetryService telemetry: ITelemetryService,
++		@IThemeService theme: IThemeService,
++		@IStorageService storage: IStorageService,
++		@IInstantiationService private readonly instantiation: IInstantiationService) {
++		super(StudioStartEditor.ID, group, telemetry, theme, storage);
++	}
++	protected createEditor(parent: HTMLElement): void { this.view = this._register(this.instantiation.createInstance(StudioStartView, parent)); }
++	layout(size: Dimension): void {
++		if (this.view) { this.view.element.style.width = `${size.width}px`; this.view.element.style.height = `${size.height}px`; }
++	}
++	override setVisible(visible: boolean): void { super.setVisible(visible); this.view?.setVisible(visible); }
++	override focus(): void { this.view?.focus(); }
++}
++
++Registry.as<IEditorFactoryRegistry>(EditorExtensions.EditorFactory).registerEditorSerializer(StudioStartInput.ID, class {
++	canSerialize(): boolean { return true; }
++	serialize(): string { return '{}'; }
++	deserialize(instantiation: IInstantiationService): EditorInput { return instantiation.createInstance(StudioStartInput); }
++});
++Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).registerEditorPane(
++	EditorPaneDescriptor.create(StudioStartEditor, StudioStartEditor.ID, 'Studio'), [new SyncDescriptor(StudioStartInput)]);
++CommandsRegistry.registerCommand('studio.openStart', accessor => accessor.get(IEditorService).openEditor(
++	accessor.get(IInstantiationService).createInstance(StudioStartInput), { pinned: true, revealIfOpened: true }));
+diff --git a/src/vs/workbench/workbench.common.main.ts b/src/vs/workbench/workbench.common.main.ts
+index 6bf90e92..9ef754eb 100644
+--- a/src/vs/workbench/workbench.common.main.ts
++++ b/src/vs/workbench/workbench.common.main.ts
+@@ -388,6 +388,7 @@ import './contrib/surveys/browser/languageSurveys.contribution.js';
+ 
+ // Welcome
+ import './contrib/welcomeGettingStarted/browser/gettingStarted.contribution.js';
++import './contrib/studioStart/browser/studioStart.contribution.js';
+ import './contrib/welcomeAgentSessions/browser/agentSessionsWelcome.contribution.js';
+ import './contrib/welcomeWalkthrough/browser/walkThrough.contribution.js';
+ import './contrib/welcomeViews/common/viewsWelcome.contribution.js';

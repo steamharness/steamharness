@@ -1,0 +1,40 @@
+---
+title: "workflow-code help"
+description: "查看 workflow-code 本地 CLI 帮助。"
+---
+
+# workflow-code help
+
+`workflow-code help` 输出本地 CLI 的简短帮助。未传命令、传 `help`、`--help` 或 `-h` 时都会进入帮助模式。
+
+## 命令格式
+
+```bash
+workflow-code help
+workflow-code --help
+workflow-code -h
+workflow-code
+```
+
+## 输出内容
+
+| 内容 | 说明 |
+| --- | --- |
+| Usage | `run`、`json`、`structure` 的基础格式。 |
+| Examples | 常见本地运行和结构检查示例。 |
+
+## 行为
+
+| 情况 | 结果 |
+| --- | --- |
+| 未传命令 | 输出帮助，退出码为 `0`。 |
+| 第一参数是 `help` / `--help` / `-h` | 输出帮助，退出码为 `0`。 |
+| 第一参数是未知命令 | 输出错误信息，退出码为 `1`。 |
+
+## 下一步
+
+| 目标 | 文档 |
+| --- | --- |
+| 执行 workflow | [`workflow-code run`](/cli/workflow-code/run) |
+| 输出 JSON 报告 | [`workflow-code json`](/cli/workflow-code/json) |
+| 分析结构 | [`workflow-code structure`](/cli/workflow-code/structure) |

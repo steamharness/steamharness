@@ -1,0 +1,96 @@
+---
+title: "Scheduled Workflow Runs"
+description: "Configure time-window or Cron schedules for Workflow entrypoints and understand how Server, and Kanban integrate with them."
+---
+
+# Scheduled Workflow Runs
+
+A schedule runs a selected Workflow entrypoint according to a fixed rule. Conversation and Kanban projects cannot be scheduled. Each fire creates an independent run for the selected entrypoint; it does not run the default entrypoint first.
+
+## Trigger rules
+
+Schedules use an IANA time zone and support two trigger types:
+
+- `window-interval`: choose weekdays, one or more time windows, and an interval in minutes. A window includes both endpoints, so `09:30-11:30 / every 5 minutes` fires at both `09:30` and `11:30`.
+- `cron`: a five-field Cron expression evaluated in the schedule time zone. Cron seconds are not supported.
+
+```ts
+type WorkflowScheduleTrigger =
+  | {
+      kind: "window-interval";
+      weekdays: number[]; // 1-7, Monday through Sunday
+      windows: Array<{ start: string; end: string }>;
+      intervalMinutes: number;
+    }
+  | {
+      kind: "cron";
+      expression: string;
+    };
+```
+
+When a schedule is saved, its host validates the time zone, windows, Cron expression, target entrypoint, and parameters, then shows the next five fire times. Parameters may only use the entrypoint's existing static values; date placeholder templates are not supported. For dynamic values such as "today", read the current time inside the Workflow using the business time zone.
+
+## Recommended schedules
+
+A Workflow can provide recommendations through `package.json.workflowCode.schedulePresets`:
+
+```json
+{
+  "workflowCode": {
+    "schedulePresets": [
+      {
+        "id": "market-hours",
+        "title": "Market data sync",
+        "description": "Synchronizes market data every five minutes during trading hours on weekdays.",
+        "entrypointId": "sync-minute",
+        "timezone": "Asia/Shanghai",
+        "trigger": {
+          "kind": "window-interval",
+          "weekdays": [1, 2, 3, 4, 5],
+          "windows": [
+            { "start": "09:30", "end": "11:30" },
+            { "start": "13:00", "end": "15:10" }
+          ],
+          "intervalMinutes": 5
+        },
+        "paramValues": {
+          "symbols": "000725.SZ,002594.SZ"
+        }
+      }
+    ]
+  }
+}
+```
+
+A preset ID must match `/^[a-z][a-z0-9_-]{0,63}$/`, be unique within the project, and reference a declared Workflow entrypoint. A preset is only a recommendation: a local scheduling host may display and confirm it. Importing or publishing a project never enables a schedule automatically.
+
+## Scheduling Boundary
+
+Server stores projects and data without scheduling or executing them. Applications may use the pure schedule parsing and preview helpers locally; project uploads never create scheduled execution.
+
+## Overlap, waiting, and history
+
+If the previous run for a schedule has not finished, the new fire is recorded as `skipped_overlap`; it is neither queued nor retried. A run that is waiting for user input is still unfinished, so later fires are skipped as well. The user can continue the original run by providing the requested input.
+
+Every scheduled run records the following information in its run history, summary, and report:
+
+```ts
+{
+  source: "schedule";
+  scheduleId: string;
+  scheduleName: string;
+  fireId: string;
+  scheduledFor: string;
+  triggerKind: "window-interval" | "cron";
+}
+```
+
+The Schedule page shows the enabled state, rule, time zone, version, entrypoint, next fire, recent results, and skip reason. It also lets you trigger the schedule once and inspect its fire history. Manual triggers still follow the same overlap rules.
+
+You cannot edit or delete a schedule while it has a `pending`, `running`, or `waiting_for_input` fire. This prevents a recovered fire from switching to a different version, entrypoint, or parameter set, and preserves the schedule and fire history while its run continues. Wait for the run to finish or for the pending input to be completed before changing the schedule.
+
+## Kanban integration
+
+Project KV updates the project revision after a write transaction commits successfully. A Kanban project with a confirmed direct relationship and read access can subscribe by alias and reread data through the same host backend. Rolled-back transactions produce no revision change, and revoking the relationship or read grant closes the subscription.
+
+Server Web previews receive authorized related-project revisions through SSE after data writes. Local and Server KV never synchronize automatically.

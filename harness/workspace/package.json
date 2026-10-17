@@ -1,0 +1,19 @@
+{
+  "name": "@workflow-code/workspace",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.15.1",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts",
+    "workspace": "pnpm exec workflow-code workspace"
+  },
+  "dependencies": {
+    "workflow-code": "0.2.3-20260901001"
+  },
+  "devDependencies": {
+    "@workflow-code/cli": "0.2.3-20260901001",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7"
+  }
+}

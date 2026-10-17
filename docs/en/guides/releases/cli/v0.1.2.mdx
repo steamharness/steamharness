@@ -1,0 +1,20 @@
+---
+title: "CLI 0.1.2"
+description: "Release notes for CLI 0.1.2."
+---
+
+# CLI 0.1.2
+
+2026-07-30 · Tag `@workflow-code/cli/v0.1.2` · npm
+
+<span id="@workflow-code/cli-0-1-2" className="release-version-anchor"></span>
+<span id="@workflow-code/cli.0.1.2" className="release-version-anchor"></span>
+
+#### Breaking Changes
+
+- Project packaging reads only the root `.workflowignore`; other ignore files no longer apply.
+  Migration: explicitly exclude credentials, dependency directories, and temporary files in `.workflowignore`.
+
+#### Added
+
+- Added static Kanban project support to `workspace pack`, `upload`, `publish`, and `download`, preserving binary assets.

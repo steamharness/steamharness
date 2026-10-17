@@ -1,0 +1,26 @@
+---
+title: "开发者小助手 0.1.4"
+description: "Release notes for 开发者小助手 0.1.4."
+---
+
+# 开发者小助手 0.1.4
+
+2026-08-26 · Tag `builtin-developer-assistant/v0.1.4` · 内置项目更新
+
+<span id="builtin-developer-assistant-0-1-4" className="release-version-anchor"></span>
+<span id="builtin-developer-assistant.0.1.4" className="release-version-anchor"></span>
+
+#### New Features
+
+- **Exact Core/CLI pins**: the generator requires projects to pin component versions exactly, and the host compares only the Core `major.minor` line.
+- **Explicit storage context**: projects must declare `dataStorage.mode`, and knowledge helpers run with an explicit storage context.
+
+#### Added
+
+- Added atomic recording of each project's exact Core/CLI pins in release indexes and compatibility manifests for pre-download filtering and verification.
+
+#### Changed
+
+- Changed the assistant to Core/CLI `0.2.0` with `dataStorage.mode: "both"`, passing storage context into OpenCode; Desktop `0.1.22` is the minimum host.
+- Changed the generator to reach storage and knowledge through `context.storage.local.*` / `context.storage.server.*`.
+- Changed the generator to stop emitting `context.kv` and `context.persistentValue` calls.

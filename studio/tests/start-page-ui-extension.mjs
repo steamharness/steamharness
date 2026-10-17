@@ -1,0 +1,55 @@
+import * as vscode from 'vscode';
+import { createServer } from 'node:http';
+import { writeFile } from 'node:fs/promises';
+
+export async function activate(context) {
+  try {
+    await vscode.extensions.getExtension('studio.studio-workstation').activate();
+    const server = createServer(async (request, response) => {
+      response.setHeader('Content-Type', 'application/json');
+      if (request.headers.authorization !== `Bearer ${process.env.STUDIO_START_TEST_TOKEN}`) { response.writeHead(403).end('{}'); return; }
+      try {
+        let body = ''; for await (const chunk of request) { body += chunk; }
+        const input = body ? JSON.parse(body) : {};
+        let result;
+        if (input.action === 'command') { result = await vscode.commands.executeCommand(input.command, ...(input.args ?? [])); }
+        else if (input.action === 'recent' || input.action === 'nativeRecent') {
+          const folders = input.paths.map(path => ({ uri: vscode.Uri.file(path) }));
+          for (const folder of folders) { await vscode.commands.executeCommand('_workbench.addToRecentlyOpened', { uri: folder.uri, type: 'folder' }); }
+          if (input.workspace) { await vscode.commands.executeCommand('_workbench.addToRecentlyOpened', { uri: vscode.Uri.file(input.workspace), type: 'workspace' }); }
+          if (input.action === 'recent') { vscode.workspace.updateWorkspaceFolders(vscode.workspace.workspaceFolders.length, 0, ...folders); }
+        } else if (input.action === 'removeFolders') {
+          vscode.workspace.updateWorkspaceFolders(1, vscode.workspace.workspaceFolders.length - 1);
+          await vscode.workspace.getConfiguration('editor').update('editContext', false, vscode.ConfigurationTarget.Global);
+        }
+        else if (input.action === 'untitled') {
+          const document = await vscode.workspace.openTextDocument({ content: input.text ?? '' }); await vscode.window.showTextDocument(document);
+          result = document.uri.toString();
+        } else if (input.action === 'file') { await vscode.window.showTextDocument(vscode.Uri.file(input.path)); }
+        else if (input.action === 'diff') {
+          const a = await vscode.workspace.openTextDocument({ content: '' }), b = await vscode.workspace.openTextDocument({ content: '' });
+          await vscode.commands.executeCommand('vscode.diff', a.uri, b.uri, 'Empty diff');
+        } else if (input.action === 'theme') {
+          await vscode.workspace.getConfiguration('window').update('autoDetectColorScheme', false, vscode.ConfigurationTarget.Global);
+          await vscode.workspace.getConfiguration('workbench').update('colorTheme', input.theme, vscode.ConfigurationTarget.Global);
+        } else if (input.action === 'replace') {
+          const editor = vscode.window.activeTextEditor, document = editor.document;
+          await editor.edit(edit => edit.replace(new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length)), input.text));
+        } else if (input.action === 'installationLog') {
+          await vscode.commands.executeCommand('studio.showProjectSetupLog');
+          result = vscode.window.activeTextEditor?.document.getText();
+        } else if (input.action === 'state') {
+          result = { language: vscode.env.language, start: await vscode.commands.executeCommand('studio.internalGetStartState'),
+            folders: vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath),
+            active: vscode.window.activeTextEditor?.document.uri.toString(),
+            documents: vscode.workspace.textDocuments.map(document => ({ uri: document.uri.toString(), text: document.getText(), dirty: document.isDirty })) };
+        }
+        response.end(JSON.stringify({ ok: true, result }));
+      } catch (error) { response.writeHead(500).end(JSON.stringify({ error: error.stack })); }
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    context.subscriptions.push({ dispose: () => server.close() });
+    await writeFile(process.env.STUDIO_START_TEST_READY, JSON.stringify({ port: server.address().port,
+      folders: vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath) }));
+  } catch (error) { await writeFile(process.env.STUDIO_START_TEST_READY, JSON.stringify({ error: error.stack })); }
+}

@@ -1,0 +1,216 @@
+---
+title: "createOutputNode"
+description: "Create synchronous or streaming output nodes and format the final workflow payload."
+---
+
+# createOutputNode
+
+`workflow.createOutputNode()` creates an output node. It can synchronously format its input like a normal node, or emit output incrementally through `stream` before `format` builds the final payload.
+
+The output protocol uses `WorkflowOutputPayload.items` directly. Do not aggregate all visible content into the top-level `content` field. Each visible portion of output should be a separate `WorkflowOutputItem`.
+
+## Signature
+
+```ts
+workflow.createOutputNode<Input, Output>(
+  options: OutputStreamNodeOptions<Input, Output>,
+): BaseStreamNode<Input, OutputStreamChunk, Output>
+
+workflow.createOutputNode<Input, Output>(
+  options: OutputNodeOptions<Input, Output> & {
+    format: OutputFormatter<Input, Output>;
+  },
+): BaseNode<Input, Output>
+
+workflow.createOutputNode<Input>(
+  options?: OutputNodeOptions<Input, Input>,
+): BaseNode<Input, Input>
+```
+
+## Parameters
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `options` | `OutputNodeOptions \| OutputStreamNodeOptions` | Configures formatting, streaming output, and node metadata. When omitted, the input is returned unchanged. |
+
+## Synchronous output options
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `name` | `string` | The output node name. Defaults to `"output"`; the run report collects a successful output with that name. |
+| `format` | `(input, context) => Output` | Converts the input to the final payload. When omitted, returns the input unchanged. |
+| `historyLimit` | `number` | Number of node executions retained in history. Defaults to `50`. |
+| `metadata` | `WorkflowNodeMetadataInput` | Metadata displayed for the node. |
+
+## Streaming output options
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `name` | `string` | The output node name. Defaults to `"output"`. |
+| `stream` | `(input, context) => Iterable<OutputStreamChunk>` | Produces string chunks or structured output-item chunks incrementally. Required. |
+| `format` | `(stream, input, context) => Output` | Converts accumulated `{ text, items, chunks }` to the final payload. Required. |
+| `historyLimit` | `number` | Number of node executions retained in history. Defaults to `50`. |
+| `metadata` | `WorkflowNodeMetadataInput` | Metadata displayed for the node. |
+
+## Return value
+
+| Mode | Return type | Execution method |
+| --- | --- | --- |
+| Synchronous output | `BaseNode<Input, Output>` | `workflow.runNode(outputNode, input, context)` |
+| Streaming output | `BaseStreamNode<Input, OutputStreamChunk, Output>` | `workflow.runStreamNode(outputNode, input, context)` |
+
+## Output flow
+
+| Mode | Description |
+| --- | --- |
+| Synchronous | Receives `Input` and returns `Output` from `format(input, context)`. |
+| Streaming | Receives `Input`, emits string or item chunks, then passes accumulated `{ text, items, chunks }` to `format`. A string chunk is automatically appended to the default Markdown item, so ordinary streaming output does not need to create an item manually. |
+
+In a conversation UI, a response may first be displayed as a stream and then be reconciled by the final report. In that case, use `workflow.createOutputItemChunk()` to send `output_item_start`, `output_item_delta`, and `output_item_end` chunks with a stable `id`. shared runtime UI then replaces the live item with the final item of the same ID instead of rendering both the live default item and the final default item created from string chunks. The built-in Conversation project's primary answer uses the fixed `conversation-answer` ID so it appears only once.
+
+When agent text is interleaved with tool calls, do not patch all text into one stable item. End the current inline `Output` item before a tool call, output the tool detail item, and create a new inline `Output` item for text that follows it. The final `items` array should preserve event order: `text segment -> tool detail -> text segment`.
+
+## Output item protocol
+
+```ts
+interface WorkflowOutputPayload extends WorkflowPayload {
+  items: WorkflowOutputItem[];
+}
+
+interface WorkflowOutputItem {
+  id: string;
+  title: string;
+  content: unknown;
+  icon?: string;
+  iconPreset?: "info" | "success" | "warning" | "error" | "note" | "code" | "list" | "quote" | "none";
+  contentType?: "markdown" | "text" | "json" | "audio" | "video";
+  display?: { type: "ring"; placement?: "inline" | "composer-right" };
+  collapsed?: boolean;
+  metadata?: Record<string, unknown>;
+}
+```
+
+`contentType` only controls rendering: `markdown` uses Markdown rendering, `text` uses plain text, `json` uses formatted JSON, `audio` uses the browser audio player, and `video` uses the browser native `<video>` player. Objects and arrays can be assigned directly to `content`; do not stringify them into Markdown code blocks first.
+
+`display` declares a ring for auxiliary numeric output. With `type: "ring"`, `content` uses `WorkflowRingContent`: `{ value: number, total?: number, unit?: string }`. `value` must be finite and nonnegative; a provided `total` must be positive. Without a total, the ring stays empty and its tooltip reports that the limit is unavailable. The ring shows only the proportion; hover or keyboard focus opens a light gray tooltip with the `title`, percentage and exact amount. Values over the limit fill the ring while retaining the actual percentage in the tooltip.
+
+`placement` defaults to `"inline"`. With `"composer-right"`, Conversation pins the output to the right of its composer without repeating it in the message body. Use an `id` that stays stable across turns to update the same pinned output. Each conversation restores its latest values independently, and a turn that does not update an item retains its previous value. Changing the same `id` back to `"inline"` releases the pin. Ordinary Workflow output and replay show the ring in the output list.
+
+Rings accept object deltas through `output_item_delta`: for example, `delta: { value: 75 }` retains the existing `total` and `unit`. Inline ring updates retain keyboard focus and an open tooltip. When multiple rings coexist, only the currently hovered or focused tooltip is shown.
+
+```ts
+workflow.createOutputItem({
+  id: "storage-quota",
+  title: "Storage quota",
+  content: { value: 57, total: 100, unit: "MB" },
+  contentType: "json",
+  display: { type: "ring", placement: "composer-right" },
+});
+```
+
+Core Agent uses this protocol for context occupancy. Custom projects can use it for quotas or progress without introducing host-specific fields. Default assistant Markdown/text answers continue to render directly in the message body.
+
+An `audio` item's `content` has the shape `{ src, mimeType, name, size, durationMs?, format? }`. `src` can be a safe `data:audio/...;base64,...` value or an `http(s)` audio URL. For local CLI and shared runtime UI examples, prefer a data URL so they do not depend on Server file storage.
+
+A `video` item's `content` has the shape `{ src, mimeType, name, durationMs?, format? }`. `mimeType` only accepts `video/mp4`; `format` only accepts `mp4`. `src` can be a safe `data:video/mp4;base64,...` value or an `http(s)` video URL; remote URLs must be publicly reachable. Signed OSS URLs fall under `http(s)`, but because the UI does not cache them and they are not durable, do not publish generated video assets only through signed OSS URLs without a stable fallback. For local CLI and shared runtime UI examples, still prefer a data URL so they do not depend on Server file storage. If the video item is missing required fields or `src` is unsafe, the UI falls back to a text preview and shows a localized fallback message (for example `videoPlaybackUnsupported`); do not leave `src` empty or point it at `file://` or other local paths.
+
+## Output helpers
+
+| API | Description |
+| --- | --- |
+| `workflow.createOutputItem(input)` | Creates an item with a stable `id`, resolved icon preset, and default `contentType`. |
+| `workflow.createOutputPayload(input)` | Creates an `{ errCode, errMessage, items }` payload while preserving business extension fields. |
+| `workflow.addOutputItem(payload, item)` | Appends an item to an existing output payload. |
+| `workflow.createOutputItemChunk(chunk)` | Creates an `output_item_start`, `output_item_delta`, or `output_item_end` streaming chunk. |
+
+## Streaming item chunks
+
+| Type | Description |
+| --- | --- |
+| `output_item_start` | Creates an item with fields such as `id`, `title`, `icon`, `contentType`, and `collapsed`. |
+| `output_item_delta` | Appends or merges content by `itemId`: strings concatenate, arrays append, and objects are shallow-merged. An optional `item` patch can update presentation fields such as `title`, `icon`, and `metadata.status`. |
+| `output_item_end` | Marks an item as complete. It currently serves protocol completeness and future UI extensions. |
+
+## Example: synchronous output
+
+```ts
+const outputNode = workflow.createOutputNode<Result, OutputPayload>({
+  name: "output",
+  format(result) {
+    return {
+      ...workflow.createOutputPayload({
+        items: [{
+          title: "Result",
+          content: result.text,
+          contentType: "markdown",
+          collapsed: false,
+        }],
+      }),
+      source: result.source,
+    };
+  },
+});
+```
+
+## Example: streaming output
+
+```ts
+const outputNode = workflow.createOutputNode<Result, OutputPayload>({
+  name: "output",
+  async *stream(result) {
+    yield result.prefix;
+    yield result.text;
+  },
+  format(stream) {
+    return workflow.createOutputPayload({
+      items: stream.items,
+      totalChunks: stream.chunks.length,
+    });
+  },
+});
+```
+
+## Example: structured streaming item
+
+```ts
+const outputNode = workflow.createOutputNode<ToolResult, OutputPayload>({
+  name: "output",
+  async *stream(result) {
+    yield workflow.createOutputItemChunk({
+      type: "output_item_start",
+      item: {
+        id: "tool-result",
+        title: "Tool result",
+        content: {},
+        contentType: "json",
+        collapsed: true,
+      },
+    });
+    yield workflow.createOutputItemChunk({
+      type: "output_item_delta",
+      itemId: "tool-result",
+      delta: result.payload,
+      item: {
+        title: "Tool result complete",
+        icon: "success",
+        metadata: { status: "success" },
+      },
+    });
+    yield workflow.createOutputItemChunk({
+      type: "output_item_end",
+      itemId: "tool-result",
+    });
+  },
+  format(stream) {
+    return workflow.createOutputPayload({ items: stream.items });
+  },
+});
+```
+
+## Payload requirements
+
+| Field | Description |
+| --- | --- |
+| `errCode` | Required on the final output payload. Use `0` for success. |
+| `errMessage` | Required on the final output payload. Use an empty string on success. |
+| `items` | Required on the final output payload. Each item is an independently collapsible output block. |

@@ -1,0 +1,32 @@
+---
+title: "Project management"
+description: "Manage members, invitations, source access, related projects, and releases."
+---
+
+# Project management
+
+Project managers use Server Web to manage members, invitations, source access, and related projects. Server stores project metadata, permissions, and version snapshots; it never executes uploaded project code.
+
+## Members and invitations
+
+Member roles are `owner`, `manager`, `writer`, and `viewer`. A role controls settings, membership, versions, and data actions; source-download permission is checked independently from data permission.
+
+Invitation links are single-use and short-lived. An invited user sets a password on the acceptance page. Revoking an invitation invalidates its link immediately. Server does not send email for a project.
+
+## Source and versions
+
+Upload jobs unpack archives and perform static checks. A failure preserves the existing draft and historical versions. Publishing creates an immutable version snapshot and updates `latest`; a duplicate version returns `409` without replacing an existing version.
+
+Source downloads require the project's separate download permission. Version archives exclude KV, PersistentValue, SQLite, environment files, and CLI credentials.
+
+## Related projects
+
+A related project declaration contains an alias, target project UUID, and read/write grants for target data. Both declarations must point to each other; rules support `none`, `all`, and `prefixes`. Revocation takes effect immediately and does not delegate permissions recursively.
+
+A related write checks consumer data-write permission and target write grants. Source downloads and project management remain separate permissions.
+
+## Project groups and audit
+
+Project-group publication statically validates archives and hashes, then locks dependencies to exact versions. Downloads check source permission per project and return skip reasons.
+
+Account, permission, API key, device sign-in, upload, publication, and data administration are audited. Reading audit logs requires `audit.read`, and credential fields are always redacted.

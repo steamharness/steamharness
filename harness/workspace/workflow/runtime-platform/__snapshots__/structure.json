@@ -1,0 +1,38 @@
+{
+  "workflowName": "runtime-platform",
+  "projectType": "workflow",
+  "files": [
+    "index.ts",
+    "interface.ts"
+  ],
+  "nodes": [
+    {
+      "id": "outputNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "runtime-platform-output"
+    }
+  ],
+  "defaultEntrypoint": "main",
+  "entrypoints": [
+    {
+      "id": "main",
+      "title": "Runtime Platform",
+      "workflowName": "runtime-platform",
+      "params": [],
+      "registry": [],
+      "execution": {
+        "kind": "sequence",
+        "counts": {
+          "sequence": 1,
+          "node": 1
+        },
+        "callees": [
+          "runNode"
+        ],
+        "branchLabels": [],
+        "loopLabels": []
+      }
+    }
+  ]
+}

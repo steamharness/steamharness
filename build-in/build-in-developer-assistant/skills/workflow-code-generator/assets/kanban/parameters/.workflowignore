@@ -1,0 +1,15 @@
+.git/
+node_modules/
+coverage/
+.cache/
+.turbo/
+*.log
+*.tmp
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+
+src/
+tests/
+dist/**/*.map

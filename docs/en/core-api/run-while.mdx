@@ -1,0 +1,101 @@
+---
+title: "runWhile"
+description: "Execute the traceable while loop node and have shared runtime UI Diagram present the loop body with the loop container."
+---
+
+# runWhile
+
+`workflow.runWhile()` is the built-in while loop execution node. It executes `condition` before the start of each round, executes the loop body `run` when the condition is true, and returns the value as the state of the next round. The runtime will emit start/finish events for `branch-node`, and shared runtime UI Diagram will wrap the loop body node in a loop container with a background color.
+
+## Signature
+
+```ts
+workflow.runWhile<State>(
+  input: State,
+  context: WorkflowContext,
+  options: {
+    name?: string;
+    condition(input: State, context: WorkflowContext, iteration: number): boolean | Promise<boolean>;
+    run(input: State, context: WorkflowContext, iteration: number): State | Promise<State>;
+    maxIterations?: number;
+    metadata?: Partial<WorkflowNodeMetadata>;
+  },
+): Promise<State>
+```
+
+## Parameter
+
+|Parameter|Type|Description|
+| --- | --- | --- |
+| `input` | `State` |Initial cycle state.|
+| `context` | `WorkflowContext` |runtime context for hooks, provider, KV, files, abortSignal.|
+| `options.name` | `string` |Diagram and the loop node titles displayed in the Trace. Default `Run while`.|
+| `options.condition` | `function` |Execute before start of each round; continue loop when return `true`. The third argument is the iteration starting at `0`.|
+| `options.run` | `function` |The body of the loop executed after the condition is hit, returning to the next round.|
+| `options.maxIterations` | `number` |The maximum number of iterations. Default `100` to prevent accidental infinite loops.|
+| `options.metadata` | `Partial<WorkflowNodeMetadata>` |Overwrites the metadata of loop nodes; by default, the type is `run-while`.|
+
+## Operation Report
+
+`runWhile` Use the standard node name `run-while`, and run with kind `branch-node`. The `executionInfo` that completes the event will include:
+
+```json
+{
+  "loopType": "while",
+  "iterations": 2,
+  "iterationCount": 2,
+  "maxIterations": 100,
+  "completed": true
+}
+```
+
+`completed` is `false` on failure and retains the number of iterations that have completed.
+
+## Example
+
+```ts
+const finalState = await workflow.runWhile(seed, context, {
+  name: "Boost until target",
+  maxIterations: 8,
+  condition: (state) => state.total < state.target,
+  async run(state, loopContext, iteration) {
+    return workflow.runIf(state, loopContext, {
+      name: "Choose boost strategy",
+      branches: [
+        {
+          label: "burst",
+          condition: (current) => current.target - current.total >= 7,
+          async run(current, branchContext) {
+            return workflow.runFor(current, branchContext, {
+              name: "Burst passes",
+              maxIterations: 3,
+              items: () => [4, 3],
+              async run(passState, value, index, passContext) {
+                return workflow.runNode(boostNode, { ...passState, value, index, iteration }, passContext);
+              },
+            });
+          },
+        },
+      ],
+      else: {
+        label: "finish",
+        async run(current, branchContext) {
+          return workflow.runNode(boostNode, { ...current, iteration }, branchContext);
+        },
+      },
+    });
+  },
+});
+```
+
+## Diagram
+
+Static structural analysis identifies object literals in the forms of `condition`, `maxIterations`, and `run`. In `run`, `workflow.runNode`, `workflow.runStreamNode`, `workflow.runIf`, `workflow.runFor`, and `workflow.runWhile` will become loop body nodes and will be enclosed by the loop container in shared runtime UI Diagram. To ensure Diagram remains readable, the loop configuration should preferably be kept as an object literal; dynamically constructing the options is still feasible, but the static diagram can only display limited information.
+
+## Error
+
+|Situation|Error Type|Description|
+| --- | --- | --- |
+|More than `maxIterations`| `node_execution` |Throw out `Run-while node "<name>" exceeded maxIterations (<value>).`.|
+|`condition` or `run` throws an error| `node_execution` |The original error is wrapped as `WorkflowError` and written to the loop node report.|
+|Break before execution or in a loop|`execution_aborted` or `node_execution`|From `context.abortSignal`.|

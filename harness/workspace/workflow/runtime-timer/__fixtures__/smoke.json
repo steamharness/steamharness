@@ -1,0 +1,45 @@
+{
+  "args": [
+    "--title",
+    "Fixture Timer",
+    "--milliseconds",
+    "20"
+  ],
+  "expected": {
+    "errCode": 0,
+    "output": {
+      "title": "Fixture Timer",
+      "milliseconds": 20,
+      "completedTimerId": "runtime-timer-completed"
+    },
+    "itemCount": 1,
+    "items": [
+      {
+        "title": "Runtime Timer",
+        "contentIncludes": [
+          "已完成计时：Fixture Timer",
+          "等待时长：20ms"
+        ],
+        "contentType": "markdown",
+        "collapsed": false
+      }
+    ],
+    "nodes": [
+      "timer",
+      "output"
+    ],
+    "outputCount": 1,
+    "timers": [
+      {
+        "timerId": "runtime-timer-completed",
+        "title": "Fixture Timer",
+        "status": "success",
+        "message": "业务阶段已显式结束",
+        "minDurationMs": 15,
+        "metadata": {
+          "waitedMs": 20
+        }
+      }
+    ]
+  }
+}

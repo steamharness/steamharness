@@ -1,0 +1,117 @@
+diff --git a/src/vs/workbench/contrib/webview/browser/pre/index.html b/src/vs/workbench/contrib/webview/browser/pre/index.html
+index 194e51c8..9cb1b2ff 100644
+--- a/src/vs/workbench/contrib/webview/browser/pre/index.html
++++ b/src/vs/workbench/contrib/webview/browser/pre/index.html
+@@ -5,7 +5,7 @@
+ 	<meta charset="UTF-8">
+ 
+ 	<meta http-equiv="Content-Security-Policy"
+-		content="default-src 'none'; script-src 'sha256-hDasiTuDJCrorIBo/csZ26+mrdEAhYpsIaJLiGuPtVA=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
++		content="default-src 'none'; script-src 'sha256-ZeqMNjSz2deq6uofl/jzH/n9wgLXytk87cOCLOVG7Qo=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
+ 
+ 	<!-- Disable pinch zooming -->
+ 	<meta name="viewport"
+@@ -1278,6 +1278,33 @@
+ 				if (!contentWindow.dispatchEvent(event)) {
+ 					return;
+ 				}
++				if (typeof data !== 'string' && data.command === 'copy') {
++					let copyDocument = assertIsDefined(target.contentDocument);
++					let copyWindow = contentWindow;
++					// Local document previews may keep their selection in a same-origin frame.
++					while (copyDocument.activeElement?.tagName === 'IFRAME') {
++						const frame = /** @type {HTMLIFrameElement} */ (copyDocument.activeElement);
++						try {
++							if (!frame.contentDocument || !frame.contentWindow) {
++								break;
++							}
++							copyDocument = frame.contentDocument;
++							copyWindow = /** @type {Window & typeof globalThis} */ (frame.contentWindow);
++						} catch {
++							break;
++						}
++					}
++					const input = /** @type {HTMLInputElement | HTMLTextAreaElement | null} */ (copyDocument.activeElement);
++					if (input?.tagName === 'INPUT' && input.type === 'password') {
++						return;
++					}
++					const text = input && typeof input.selectionStart === 'number' && typeof input.selectionEnd === 'number'
++						? input.value.slice(input.selectionStart, input.selectionEnd) : copyWindow.getSelection()?.toString();
++					if (text) {
++						hostMessaging.postMessage('did-copy', text);
++					}
++					return;
++				}
+ 				assertIsDefined(target.contentDocument).execCommand(typeof data === 'string' ? data : data.command);
+ 			});
+ 
+diff --git a/src/vs/workbench/contrib/webview/browser/webviewElement.ts b/src/vs/workbench/contrib/webview/browser/webviewElement.ts
+index 5a4948e5..3ff56179 100644
+--- a/src/vs/workbench/contrib/webview/browser/webviewElement.ts
++++ b/src/vs/workbench/contrib/webview/browser/webviewElement.ts
+@@ -597,7 +597,7 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
+ 		return false;
+ 	}
+ 
+-	private on<K extends keyof FromWebviewMessage>(channel: K, handler: (data: FromWebviewMessage[K], e: MessageEvent) => void): IDisposable {
++	protected on<K extends keyof FromWebviewMessage>(channel: K, handler: (data: FromWebviewMessage[K], e: MessageEvent) => void): IDisposable {
+ 		let handlers = this._messageHandlers.get(channel);
+ 		if (!handlers) {
+ 			handlers = new Set();
+diff --git a/src/vs/workbench/contrib/webview/browser/webviewMessages.d.ts b/src/vs/workbench/contrib/webview/browser/webviewMessages.d.ts
+index a09481a1..7193ed10 100644
+--- a/src/vs/workbench/contrib/webview/browser/webviewMessages.d.ts
++++ b/src/vs/workbench/contrib/webview/browser/webviewMessages.d.ts
+@@ -40,6 +40,7 @@ export type FromWebviewMessage = {
+ 	'did-keydown': KeyEvent;
+ 	'did-keyup': KeyEvent;
+ 	'did-paste': void;
++	'did-copy': string;
+ 	'did-context-menu': { clientX: number; clientY: number; context: { [key: string]: unknown } };
+ 	'drag-start': void;
+ 	'drag': WebViewDragEvent;
+@@ -62,7 +63,7 @@ interface UpdateContentEvent {
+ export type ToWebviewMessage = {
+ 	'focus': void;
+ 	'message': { message: any; transfer?: ArrayBuffer[] };
+-	'execCommand': string | { command: 'paste'; clipboard: { text: string; image: Uint8Array } };
++	'execCommand': string | { command: 'copy' } | { command: 'paste'; clipboard: { text: string; image: Uint8Array } };
+ 	'did-load-resource':
+ 	| { id: number; status: 401 | 404; path: string }
+ 	| { id: number; status: 304; path: string; mime: string; mtime: number | undefined }
+diff --git a/src/vs/workbench/contrib/webview/electron-browser/webviewElement.ts b/src/vs/workbench/contrib/webview/electron-browser/webviewElement.ts
+index 56f33657..4fbc0867 100644
+--- a/src/vs/workbench/contrib/webview/electron-browser/webviewElement.ts
++++ b/src/vs/workbench/contrib/webview/electron-browser/webviewElement.ts
+@@ -62,6 +62,16 @@ export class ElectronWebviewElement extends WebviewElement {
+ 		this._webviewKeyboardHandler = new WindowIgnoreMenuShortcutsManager(configurationService, mainProcessService, _nativeHostService);
+ 
+ 		this._webviewMainService = ProxyChannel.toService<IWebviewManagerService>(mainProcessService.getChannel('webview'));
++		this._register(this.on('did-copy', async text => {
++			if (this.extension?.id.value !== 'studio.studio-workstation' || !this.isFocused || typeof text !== 'string' || !text) {
++				return;
++			}
++			try {
++				await this._nativeHostService.writeClipboardText(text);
++			} catch (error) {
++				notificationService.error(error);
++			}
++		}));
+ 
+ 		if (initInfo.options.enableFindWidget) {
+ 			this._register(this.onDidHtmlChange((newContent) => {
+@@ -95,6 +105,14 @@ export class ElectronWebviewElement extends WebviewElement {
+ 			: { windowId: this._nativeHostService.windowId };
+ 	}
+ 
++	public override copy(): void {
++		if (this.extension?.id.value === 'studio.studio-workstation') {
++			this.execCommand({ command: 'copy' });
++		} else {
++			super.copy();
++		}
++	}
++
+ 	public override paste(): void {
+ 		if (this.extension?.id.value !== 'studio.studio-workstation') {
+ 			super.paste();

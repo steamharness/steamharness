@@ -1,0 +1,30 @@
+---
+title: "开发者小助手 0.1.6"
+description: "Release notes for 开发者小助手 0.1.6."
+---
+
+# 开发者小助手 0.1.6
+
+2026-09-13 · Tag `builtin-developer-assistant/v0.1.6` · 内置项目更新
+
+<span id="builtin-developer-assistant-0-1-6" className="release-version-anchor"></span>
+<span id="builtin-developer-assistant.0.1.6" className="release-version-anchor"></span>
+
+#### New Features
+
+- **Dock tab management**: the assistant reads, refreshes, and closes Dock tabs, and runs the Run or side-project inside them.
+
+#### Added
+
+- Added reading and managing existing Dock tabs, updating their content, closing them, and running Runs or side projects.
+- Added known URL, file, run, conversation, data-source, and side-project context to the same Dock open call.
+
+#### Changed
+
+- Changed the assistant to select arguments by every Desktop MCP action contract and reuse IDs returned by state reads.
+
+#### Fixed
+
+- Fixed launching from the Home sidebar aborting on an invalid `primaryTarget.kind`; the Desktop Home workspace target is now accepted.
+- Fixed cloning falling back to `import_project`; create, clone, import, and new-project requests are now routed by intent.
+- Fixed local tool-approval resume not being deduplicated by project, run, and input request, so repeated clicks join the same execution.

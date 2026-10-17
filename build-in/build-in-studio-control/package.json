@@ -1,0 +1,59 @@
+{
+  "id": "09145339-e3dd-4bb2-ac9b-6c180ef51933",
+  "name": "Studio Control",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.15.1",
+  "type": "module",
+  "scripts": {
+    "check:secrets": "node scripts/check-secret-files.mjs",
+    "build": "node scripts/builtin-release.mjs verify",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
+    "release:prepare": "node scripts/prepare-release.mjs",
+    "release:build": "node scripts/builtin-release.mjs build",
+    "release:assemble": "node scripts/builtin-release.mjs assemble",
+    "release:verify": "node scripts/builtin-release.mjs verify-distribution"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@vitest/coverage-v8": "^4.1.7",
+    "@workflow-code/cli": "link:../../cli",
+    "semver": "^7.7.4",
+    "tar": "^7.5.14",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7",
+    "workflow-code": "link:../../core",
+    "yaml": "^2.9.0"
+  },
+  "workflowCode": {
+    "projectInfo": {
+      "localizedNames": {
+        "zh-CN": "Studio 控制",
+        "en": "Studio Control"
+      },
+      "declarations": [
+        "multilingual"
+      ],
+      "platformSupport": {
+        "mode": "agnostic"
+      },
+      "dataStorage": {
+        "mode": "local"
+      },
+      "relatedProjects": []
+    },
+    "builtinRelease": {
+      "projectId": "studio-control",
+      "artifactKind": "universal",
+      "minDesktopVersion": "0.1.24",
+      "dependencies": []
+    },
+    "projectCard": {
+      "icon": "settings",
+      "iconBackgroundColor": "#2563eb"
+    },
+    "projectType": "workflow"
+  }
+}

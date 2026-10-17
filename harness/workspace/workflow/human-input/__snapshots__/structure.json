@@ -1,0 +1,62 @@
+{
+  "workflowName": "human-input",
+  "projectType": "workflow",
+  "files": [
+    "index.ts",
+    "interface.ts"
+  ],
+  "nodes": [
+    {
+      "id": "permissionIntroOutputNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "permission-intro-output"
+    },
+    {
+      "id": "permissionRequestNode",
+      "factory": "createUserInputNode",
+      "standardName": "user-input",
+      "configuredName": "network-permission"
+    },
+    {
+      "id": "permissionGrantedOutputNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "permission-granted-output"
+    },
+    {
+      "id": "permissionDeniedOutputNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "permission-denied-output"
+    }
+  ],
+  "defaultEntrypoint": "main",
+  "entrypoints": [
+    {
+      "id": "main",
+      "title": "Human Input",
+      "workflowName": "human-input",
+      "params": [],
+      "registry": [],
+      "execution": {
+        "kind": "sequence",
+        "counts": {
+          "sequence": 1,
+          "node": 4,
+          "branch": 1,
+          "if": 1,
+          "else": 1
+        },
+        "callees": [
+          "runNode"
+        ],
+        "branchLabels": [
+          "同意",
+          "不同意"
+        ],
+        "loopLabels": []
+      }
+    }
+  ]
+}

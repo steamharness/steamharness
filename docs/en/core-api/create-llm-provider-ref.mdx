@@ -1,0 +1,73 @@
+---
+title: "createLLMProviderRef"
+description: "Creates a deferred-resolved LLM provider reference."
+---
+
+# createLLMProviderRef
+
+`workflow.createLLMProviderRef()` Creates a provider reference object. When the LLM node is executed, the actual provider is resolved by the `getLLMProvider` node name, provider id, binding table, and fallback.
+
+## Signature
+
+```ts
+workflow.createLLMProviderRef(
+  id: string,
+  fallback?: LLMProviderSource,
+): LLMProviderRef
+```
+
+## Parameter
+
+|Parameter|Type|Description|
+| --- | --- | --- |
+| `id` | `string` |provider id, used to find provider from `context.providers.llmProviders`.|
+| `fallback` | `LLMProviderSource` |Optional fallback; continue parsing when `id` is not found.|
+
+## Return value
+
+|Field|Type|Description|
+| --- | --- | --- |
+| `kind` | `"llm-provider-ref"` |Identifies that this is a provider ref.|
+| `id` | `string` | Provider ID. |
+| `fallback` | `LLMProviderSource \| undefined` | Fallback provider source. |
+
+## Provider Parse Order
+
+|Order|Source|Description|
+| --- | --- | --- |
+| 1 | `context.providers.llmProviderBindings[nodeName]` |Node-level binding takes precedence.|
+| 2 |`source` itself|If source is a provider, string, ref, or resolver, it is parsed first.|
+| 3 | `defaultLLMProviderBinding` / `defaultLLMProviderId` |Use the default binding or default provider id.|
+| 4 | `context.providers.llm` |The default provider of compatible orders.|
+| 5 | ref `fallback` |The last attempt to fallback when ref cannot find id.|
+
+## Analysis process
+
+|Phase|Input|Result|
+| --- | --- | --- |
+| Workflow definition | `id`, `fallback` | `LLMProviderRef` |
+| LLM node execution | `LLMProviderRef`, `NodeContext`, `nodeName` | `LLMProvider` |
+| Provider call | `LLMProvider`, `LLMChatInput` | LLM output |
+
+## Example
+
+```ts
+const defaultProvider = workflow.createLLMProviderRef("default", () => {
+  return workflow.createLLMProviderFromEnv();
+});
+
+const llmNode = workflow.createLLMNode({
+  provider: defaultProvider,
+  mapInput(input) {
+    return { prompt: input.message };
+  },
+});
+```
+
+## Common Scenarios
+
+|Scene|Method|
+| --- | --- |
+|Local Default provider| `createLLMProviderRef("default", () => workflow.createLLMProviderFromEnv())` |
+|server per-node binding model|Use the node name to configure in `llmProviderBindings`.|
+|Multi-provider switching|Pass a different provider id, or use resolver.|

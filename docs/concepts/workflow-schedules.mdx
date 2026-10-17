@@ -1,0 +1,96 @@
+---
+title: "Workflow 定时运行"
+description: "为 Workflow entrypoint 配置时间窗口或 Cron 计划，并理解 Server 与 Kanban 联动边界。"
+---
+
+# Workflow 定时运行
+
+定时任务用于按固定规则直接运行某个 Workflow entrypoint。Conversation 和 Kanban 不能作为调度目标；任一 fire 只创建所选入口的独立 run，不会先运行默认入口。
+
+## 触发规则
+
+计划使用 IANA 时区，并支持两种触发方式：
+
+- `window-interval`：选择星期、一个或多个时间窗口，以及每 N 分钟。窗口包含起止时刻，例如 `09:30-11:30 / 5 分钟` 会包含 `09:30` 和 `11:30`。
+- `cron`：五字段 Cron 表达式，按计划时区计算。秒字段不受支持。
+
+```ts
+type WorkflowScheduleTrigger =
+  | {
+      kind: "window-interval";
+      weekdays: number[]; // 1-7，周一到周日
+      windows: Array<{ start: string; end: string }>;
+      intervalMinutes: number;
+    }
+  | {
+      kind: "cron";
+      expression: string;
+    };
+```
+
+保存计划时，宿主会校验时区、窗口、Cron、目标入口和参数，并展示未来 5 次触发时间。参数只接受入口现有的静态参数值，不支持日期占位模板；需要“当天”等动态日期时，应在 Workflow 内按业务时区读取当前时间。
+
+## 声明建议计划
+
+Workflow 可以在 `package.json.workflowCode.schedulePresets` 中提供建议配置：
+
+```json
+{
+  "workflowCode": {
+    "schedulePresets": [
+      {
+        "id": "market-hours",
+        "title": "盘中行情同步",
+        "description": "工作日交易时段每 5 分钟同步一次。",
+        "entrypointId": "sync-minute",
+        "timezone": "Asia/Shanghai",
+        "trigger": {
+          "kind": "window-interval",
+          "weekdays": [1, 2, 3, 4, 5],
+          "windows": [
+            { "start": "09:30", "end": "11:30" },
+            { "start": "13:00", "end": "15:10" }
+          ],
+          "intervalMinutes": 5
+        },
+        "paramValues": {
+          "symbols": "000725.SZ,002594.SZ"
+        }
+      }
+    ]
+  }
+}
+```
+
+预设 ID 必须匹配 `/^[a-z][a-z0-9_-]{0,63}$/`，项目内唯一，并引用当前 Workflow 已声明的 entrypoint。预设只是建议：本地调度宿主可以按其能力展示并确认，导入或发布项目不会静默开启计划。
+
+## 调度边界
+
+Server 保存项目与数据，不调度或执行项目。本地应用可以使用时间规则解析和预览 helper；上传项目不会创建定时执行。
+
+## 重叠、等待与历史
+
+同一计划的上一次 run 尚未结束时，本次触发记录为 `skipped_overlap`，不会排队或重试。等待用户输入的 run 仍属于未结束状态，因此后续触发同样跳过；用户可以从原 run 继续提交输入。
+
+每个定时 run 会在运行记录、摘要和 report 中保存：
+
+```ts
+{
+  source: "schedule";
+  scheduleId: string;
+  scheduleName: string;
+  fireId: string;
+  scheduledFor: string;
+  triggerKind: "window-interval" | "cron";
+}
+```
+
+计划页会显示启用状态、规则、时区、版本、入口、下次触发、最近结果、跳过原因，并可立即触发一次和查看 fire 历史。手动立即触发仍遵循同一计划的重叠规则。
+
+存在 `pending`、`running` 或 `waiting_for_input` fire 时不能编辑或删除计划，避免恢复中的 fire 改用新版本、入口或参数，也避免运行仍在继续但对应的计划和 fire 历史已经消失。先等待 run 结束或完成等待输入，再修改计划。
+
+## 与 Kanban 联动
+
+项目 KV 每次成功提交写事务后都会更新项目 revision。与该项目建立已确认直接关系且具备读权限的 Kanban 可以按 alias 订阅 revision，并在同一宿主后端中重新读取数据；回滚事务不会发出变化，撤销关系或读权限会关闭订阅。
+
+Server Web 预览通过鉴权 SSE 接收数据写入后的关联项目 revision。本地与服务器 KV 不会自动同步。

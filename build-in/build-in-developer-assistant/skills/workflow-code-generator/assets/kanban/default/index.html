@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{name}}</title>
+  <style>
+    :root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, sans-serif; background: #f6f7f9; color: #172033; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; padding: 28px; }
+    button, input, textarea, select { font: inherit; }
+    button { cursor: pointer; }
+    .workspace { max-width: 1180px; margin: 0 auto; }
+    header { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
+    .header-actions { display: flex; align-items: center; gap: 10px; }
+    .storage-status { display: inline-flex; min-height: 28px; align-items: center; gap: 6px; color: #687386; font-size: 12px; }
+    .storage-status[data-state="error"] { color: #b42318; }
+    .storage-status button { border: 0; background: transparent; color: inherit; font-size: inherit; text-decoration: underline; text-underline-offset: 2px; }
+    h1 { margin: 0; font-size: 26px; letter-spacing: 0; }
+    .subtitle { margin: 5px 0 0; color: #687386; font-size: 13px; }
+    .primary-action { min-height: 36px; padding: 0 14px; border: 1px solid #172033; border-radius: 6px; background: #172033; color: #fff; font-size: 13px; font-weight: 650; }
+    .primary-action:hover, .primary-action:focus-visible { background: #30405e; }
+    .primary-action:disabled { cursor: wait; opacity: .58; }
+    .board { display: grid; grid-template-columns: repeat(3, minmax(220px, 1fr)); gap: 14px; }
+    .board-loading { grid-column: 1 / -1; min-height: 260px; display: grid; place-items: center; margin: 0; color: #687386; font-size: 13px; }
+    .column { display: flex; min-width: 0; min-height: 390px; flex-direction: column; padding: 14px; border: 1px solid #dfe3e8; border-radius: 8px; background: #eef1f4; transition: background 120ms ease, border-color 120ms ease; }
+    .column.is-drag-target { border-color: var(--accent, #d97706); background: #fff4e5; }
+    .column-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 12px; font-size: 13px; }
+    .column-heading h2 { margin: 0; font-size: inherit; }
+    .count { color: #687386; font-weight: 500; }
+    .cards { display: grid; flex: 1; align-content: start; gap: 9px; min-height: 48px; }
+    .empty-state { margin: 0; padding: 12px 2px; color: #7b8494; font-size: 12px; }
+    .card { padding: 13px; border: 1px solid #d9dee5; border-left: 3px solid var(--accent, #d97706); border-radius: 6px; background: #fff; box-shadow: 0 1px 2px rgb(23 32 51 / 6%); }
+    .card[draggable="true"] { cursor: grab; }
+    .card.is-dragging { opacity: .45; }
+    .card-main { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 10px; }
+    .card strong { display: block; overflow-wrap: anywhere; font-size: 13px; line-height: 1.35; }
+    .card p { margin: 8px 0 0; overflow-wrap: anywhere; color: #687386; font-size: 12px; line-height: 1.45; white-space: pre-wrap; }
+    .edit-action { border: 0; border-radius: 4px; background: transparent; color: #42526c; font-size: 12px; text-decoration: underline; text-underline-offset: 2px; }
+    .edit-action:hover, .edit-action:focus-visible { color: #172033; background: #edf0f5; }
+    dialog { width: min(460px, calc(100vw - 32px)); padding: 0; border: 1px solid #cfd6df; border-radius: 8px; color: #172033; box-shadow: 0 16px 48px rgb(23 32 51 / 22%); }
+    dialog::backdrop { background: rgb(23 32 51 / 38%); }
+    .task-form { padding: 20px; }
+    .dialog-heading { margin: 0 0 18px; font-size: 18px; }
+    .field { display: grid; gap: 6px; margin-bottom: 15px; }
+    .field label { font-size: 13px; font-weight: 650; }
+    .field input, .field textarea, .field select { width: 100%; border: 1px solid #bdc7d5; border-radius: 5px; background: #fff; color: #172033; }
+    .field input, .field select { min-height: 36px; padding: 0 9px; }
+    .field textarea { min-height: 92px; padding: 9px; resize: vertical; }
+    .field input:focus-visible, .field textarea:focus-visible, .field select:focus-visible, button:focus-visible { outline: 2px solid #2c6ecb; outline-offset: 2px; }
+    .form-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 22px; }
+    .form-actions-right { display: flex; gap: 8px; }
+    .secondary-action, .danger-action { min-height: 34px; padding: 0 12px; border-radius: 5px; background: #fff; font-size: 13px; }
+    .secondary-action { border: 1px solid #bdc7d5; color: #172033; }
+    .danger-action { border: 1px solid #c63d3d; color: #b42318; }
+    .delete-confirmation { display: none; margin-top: 18px; padding-top: 16px; border-top: 1px solid #e2e6eb; }
+    .delete-confirmation.is-visible { display: block; }
+    .delete-confirmation p { margin: 0 0 12px; color: #5f6978; font-size: 13px; }
+    @media (max-width: 760px) {
+      body { padding: 18px; }
+      header { align-items: stretch; flex-direction: column; }
+      .header-actions { align-items: stretch; flex-direction: column; }
+      .board { grid-template-columns: 1fr; }
+      .column { min-height: 190px; }
+      .primary-action { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="workspace">
+    <header>
+      <div><h1 id="title">{{name}}</h1><p class="subtitle">产品交付看板</p></div>
+      <div class="header-actions">
+        <div class="storage-status" id="storage-status" data-state="loading" aria-live="polite">
+          <span id="storage-status-text">正在加载</span>
+          <button id="retry-storage" type="button" hidden>重试</button>
+        </div>
+        <button class="primary-action" id="new-task" type="button">新建任务</button>
+      </div>
+    </header>
+    <main class="board" id="board" aria-label="任务看板"></main>
+  </div>
+
+  <dialog id="task-dialog" aria-labelledby="dialog-title">
+    <div class="task-form" id="task-form">
+      <h2 class="dialog-heading" id="dialog-title">新建任务</h2>
+      <div class="field">
+        <label for="task-title">任务名称</label>
+        <input id="task-title" name="title" maxlength="120" required>
+      </div>
+      <div class="field">
+        <label for="task-description">说明</label>
+        <textarea id="task-description" name="description" maxlength="500"></textarea>
+      </div>
+      <div class="field">
+        <label for="task-status">状态</label>
+        <select id="task-status" name="status"></select>
+      </div>
+      <div class="form-actions">
+        <button class="danger-action" id="show-delete" type="button" hidden>删除</button>
+        <div class="form-actions-right">
+          <button class="secondary-action" id="cancel-task" type="button">取消</button>
+          <button class="primary-action" id="save-task" type="button">保存任务</button>
+        </div>
+      </div>
+      <section class="delete-confirmation" id="delete-confirmation" aria-live="polite">
+        <p>确定删除此任务？</p>
+        <div class="form-actions-right">
+          <button class="secondary-action" id="cancel-delete" type="button">取消</button>
+          <button class="danger-action" id="confirm-delete" type="button">删除任务</button>
+        </div>
+      </section>
+    </div>
+  </dialog>
+
+  <script type="module">
+    import {
+      STATUSES,
+      STATUS_LABELS,
+      addTask,
+      createInitialState,
+      moveTask,
+      removeTask,
+      tasksForStatus,
+      updateTask,
+    } from "./board-state.js";
+    import { createBoardStorageController } from "./board-storage.js";
+
+    const fallback = {
+      title: "{{name}}",
+      accent: "#d97706",
+    };
+    const board = document.getElementById("board");
+    const dialog = document.getElementById("task-dialog");
+    const titleInput = document.getElementById("task-title");
+    const descriptionInput = document.getElementById("task-description");
+    const statusSelect = document.getElementById("task-status");
+    const showDelete = document.getElementById("show-delete");
+    const deleteConfirmation = document.getElementById("delete-confirmation");
+    const storageStatus = document.getElementById("storage-status");
+    const storageStatusText = document.getElementById("storage-status-text");
+    const retryStorage = document.getElementById("retry-storage");
+    const newTaskButton = document.getElementById("new-task");
+    let state;
+    let currentConfiguration;
+    let lastStorageFailure = null;
+    let editingTaskId = null;
+    let draggedTaskId = null;
+    let initializationVersion = 0;
+    let boardLoading = true;
+    const storage = createBoardStorageController({
+      kv: window.workflowCodeKanban?.kv,
+      onStatus(status) {
+        storageStatus.dataset.state = status.state;
+        storageStatusText.textContent = status.message;
+        retryStorage.hidden = status.state !== "error";
+        if (status.state !== "error") lastStorageFailure = null;
+      },
+    });
+
+    function taskId() {
+      return crypto.randomUUID();
+    }
+
+    function taskFromForm() {
+      return {
+        title: titleInput.value,
+        description: descriptionInput.value,
+        status: statusSelect.value,
+      };
+    }
+
+    function resetDeleteConfirmation() {
+      deleteConfirmation.classList.remove("is-visible");
+      showDelete.hidden = !editingTaskId;
+    }
+
+    function openTaskDialog(task) {
+      editingTaskId = task?.id ?? null;
+      document.getElementById("dialog-title").textContent = task ? "编辑任务" : "新建任务";
+      titleInput.value = task?.title ?? "";
+      descriptionInput.value = task?.description ?? "";
+      statusSelect.value = task?.status ?? "todo";
+      resetDeleteConfirmation();
+      dialog.showModal();
+      titleInput.focus();
+    }
+
+    function closeTaskDialog() {
+      dialog.close();
+      editingTaskId = null;
+      resetDeleteConfirmation();
+    }
+
+    function render() {
+      if (boardLoading) {
+        const loading = document.createElement("p");
+        loading.className = "board-loading";
+        loading.textContent = "正在恢复看板数据";
+        board.setAttribute("aria-busy", "true");
+        board.replaceChildren(loading);
+        return;
+      }
+      board.setAttribute("aria-busy", "false");
+      document.getElementById("title").textContent = state.title;
+      document.title = state.title;
+      board.replaceChildren(...STATUSES.map((status) => {
+        const tasks = tasksForStatus(state, status);
+        const column = document.createElement("section");
+        column.className = "column";
+        column.dataset.status = status;
+
+        const heading = document.createElement("div");
+        heading.className = "column-heading";
+        const headingText = document.createElement("h2");
+        headingText.textContent = STATUS_LABELS[status];
+        const count = document.createElement("span");
+        count.className = "count";
+        count.textContent = String(tasks.length);
+        heading.append(headingText, count);
+
+        const cards = document.createElement("div");
+        cards.className = "cards";
+        if (!tasks.length) {
+          const empty = document.createElement("p");
+          empty.className = "empty-state";
+          empty.textContent = "暂无任务";
+          cards.append(empty);
+        }
+
+        tasks.forEach((task) => {
+          const card = document.createElement("article");
+          card.className = "card";
+          card.draggable = true;
+          card.dataset.taskId = task.id;
+
+          const main = document.createElement("div");
+          main.className = "card-main";
+          const title = document.createElement("strong");
+          title.textContent = task.title;
+          const edit = document.createElement("button");
+          edit.className = "edit-action";
+          edit.type = "button";
+          edit.textContent = "编辑";
+          edit.addEventListener("click", () => openTaskDialog(task));
+          main.append(title, edit);
+          card.append(main);
+
+          if (task.description) {
+            const description = document.createElement("p");
+            description.textContent = task.description;
+            card.append(description);
+          }
+
+          card.addEventListener("dragstart", (event) => {
+            draggedTaskId = task.id;
+            card.classList.add("is-dragging");
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("text/plain", task.id);
+          });
+          card.addEventListener("dragend", () => {
+            draggedTaskId = null;
+            document.querySelectorAll(".column").forEach((item) => item.classList.remove("is-drag-target"));
+            card.classList.remove("is-dragging");
+          });
+          cards.append(card);
+        });
+
+        column.addEventListener("dragover", (event) => {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+          column.classList.add("is-drag-target");
+        });
+        column.addEventListener("dragleave", (event) => {
+          if (!column.contains(event.relatedTarget)) {
+            column.classList.remove("is-drag-target");
+          }
+        });
+        column.addEventListener("drop", (event) => {
+          event.preventDefault();
+          column.classList.remove("is-drag-target");
+          const taskIdFromEvent = event.dataTransfer.getData("text/plain");
+          const id = taskIdFromEvent || draggedTaskId;
+          if (!id || state.tasks.find((task) => task.id === id)?.status === status) return;
+          updateBoard(moveTask(state, id, status));
+        });
+
+        column.append(heading, cards);
+        return column;
+      }));
+    }
+
+    function updateBoard(nextState) {
+      state = nextState;
+      render();
+      storage.scheduleSave(state);
+    }
+
+    STATUSES.forEach((status) => {
+      const option = document.createElement("option");
+      option.value = status;
+      option.textContent = STATUS_LABELS[status];
+      statusSelect.append(option);
+    });
+
+    newTaskButton.addEventListener("click", () => openTaskDialog());
+    document.getElementById("cancel-task").addEventListener("click", closeTaskDialog);
+    showDelete.addEventListener("click", () => {
+      showDelete.hidden = true;
+      deleteConfirmation.classList.add("is-visible");
+    });
+    document.getElementById("cancel-delete").addEventListener("click", resetDeleteConfirmation);
+    document.getElementById("confirm-delete").addEventListener("click", () => {
+      updateBoard(removeTask(state, editingTaskId));
+      closeTaskDialog();
+    });
+    document.getElementById("save-task").addEventListener("click", () => {
+      if (!titleInput.reportValidity()) return;
+      updateBoard(editingTaskId
+        ? updateTask(state, editingTaskId, taskFromForm())
+        : addTask(state, taskFromForm(), taskId));
+      closeTaskDialog();
+    });
+    dialog.addEventListener("cancel", () => {
+      editingTaskId = null;
+      resetDeleteConfirmation();
+    });
+
+    async function initialize(configuration) {
+      const version = ++initializationVersion;
+      if (dialog.open) closeTaskDialog();
+      currentConfiguration = configuration;
+      const params = { ...fallback, ...(configuration?.params || {}) };
+      document.documentElement.style.setProperty("--accent", params.accent || fallback.accent);
+      boardLoading = true;
+      newTaskButton.disabled = true;
+      render();
+      const result = await storage.load(configuration?.id, createInitialState(params.title));
+      if (!result.applied || version !== initializationVersion) return;
+      state = { ...result.state, title: String(params.title || fallback.title) };
+      lastStorageFailure = result.loadFailed ? "load" : result.saveFailed ? "save" : null;
+      boardLoading = false;
+      newTaskButton.disabled = false;
+      render();
+    }
+
+    retryStorage.addEventListener("click", () => {
+      retryStorage.disabled = true;
+      const retry = lastStorageFailure === "load"
+        ? initialize(currentConfiguration)
+        : storage.retrySave();
+      void Promise.resolve(retry).finally(() => { retryStorage.disabled = false; });
+    });
+    const flushStorage = () => { void storage.flush(); };
+    window.addEventListener("pagehide", flushStorage);
+    window.addEventListener("beforeunload", flushStorage);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") flushStorage();
+    });
+    void initialize(window.workflowCodeKanban?.getConfiguration());
+    window.addEventListener("workflow-code:kanban-configuration-change", (event) => {
+      void initialize(event.detail);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "args": [
+    "--project-name",
+    "output-showcase",
+    "--tool-delay-ms",
+    "20",
+    "--task-duration-ms",
+    "20",
+    "--stream-delay-ms",
+    "1"
+  ],
+  "run": false,
+  "skipReason": "output-showcase pauses for the run-confirmation user input node. The dedicated resume test in workspace/workflows.test.ts covers both the confirmed (long-task) and skipped branches.",
+  "expected": {
+    "errCode": 0
+  }
+}

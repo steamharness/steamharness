@@ -1,0 +1,73 @@
+---
+title: "createLLMProviderRef"
+description: "创建延迟解析的 LLM provider 引用。"
+---
+
+# createLLMProviderRef
+
+`workflow.createLLMProviderRef()` 创建一个 provider 引用对象。LLM 节点执行时会通过 `getLLMProvider` 按节点名、provider id、绑定表和 fallback 解析出实际 provider。
+
+## 签名
+
+```ts
+workflow.createLLMProviderRef(
+  id: string,
+  fallback?: LLMProviderSource,
+): LLMProviderRef
+```
+
+## 参数
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | `string` | provider id，用于从 `context.providers.llmProviders` 中查找 provider。 |
+| `fallback` | `LLMProviderSource` | 可选 fallback；找不到 `id` 时继续解析。 |
+
+## 返回值
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `kind` | `"llm-provider-ref"` | 标识这是 provider ref。 |
+| `id` | `string` | provider id。 |
+| `fallback` | `LLMProviderSource \| undefined` | fallback provider source。 |
+
+## Provider 解析顺序
+
+| 顺序 | 来源 | 说明 |
+| --- | --- | --- |
+| 1 | `context.providers.llmProviderBindings[nodeName]` | 节点级绑定优先。 |
+| 2 | `source` 本身 | 如果 source 是 provider、字符串、ref 或 resolver，先解析它。 |
+| 3 | `defaultLLMProviderBinding` / `defaultLLMProviderId` | 使用默认绑定或默认 provider id。 |
+| 4 | `context.providers.llm` | 兼容单默认 provider。 |
+| 5 | ref `fallback` | ref 找不到 id 时最后尝试 fallback。 |
+
+## 解析流程
+
+| 阶段 | 输入 | 结果 |
+| --- | --- | --- |
+| workflow 定义 | `id`、`fallback` | `LLMProviderRef` |
+| LLM 节点执行 | `LLMProviderRef`、`NodeContext`、`nodeName` | `LLMProvider` |
+| provider 调用 | `LLMProvider`、`LLMChatInput` | LLM 输出 |
+
+## 示例
+
+```ts
+const defaultProvider = workflow.createLLMProviderRef("default", () => {
+  return workflow.createLLMProviderFromEnv();
+});
+
+const llmNode = workflow.createLLMNode({
+  provider: defaultProvider,
+  mapInput(input) {
+    return { prompt: input.message };
+  },
+});
+```
+
+## 常见场景
+
+| 场景 | 做法 |
+| --- | --- |
+| 本地默认 provider | `createLLMProviderRef("default", () => workflow.createLLMProviderFromEnv())` |
+| server 按节点绑定模型 | 使用节点名在 `llmProviderBindings` 中配置。 |
+| 多 provider 切换 | 传不同 provider id，或者使用 resolver。 |

@@ -1,0 +1,103 @@
+---
+title: "createTimerNode"
+description: "创建业务计时节点，并用 endTimer 结束计时。"
+---
+
+# createTimerNode
+
+`workflow.createTimerNode()` 创建一个普通节点，用于在业务 workflow 中启动一段可见计时。计时开始和结束会进入 runtime events、最终 report，以及 CLI Web 本地回放里的计时卡片。
+
+## 签名
+
+```ts
+workflow.createTimerNode(options?: {
+  name?: string;
+  title?: string;
+  historyLimit?: number;
+  metadata?: WorkflowNodeMetadataInput;
+}): BaseNode<WorkflowTimerNodeInput | undefined, WorkflowTimerPayload>
+
+workflow.endTimer(
+  timer: WorkflowTimerPayload | string,
+  context: WorkflowContext,
+  options?: {
+    status?: "success" | "failed";
+    message?: string;
+    metadata?: Record<string, unknown>;
+  },
+): Promise<WorkflowTimerRecord>
+```
+
+## Payload
+
+```ts
+interface WorkflowTimerPayload extends WorkflowPayload {
+  timerId: string;
+  title: string;
+  startedAt: string;
+  metadata?: Record<string, unknown>;
+}
+
+interface WorkflowTimerRecord extends WorkflowTimerPayload {
+  status: "running" | "success" | "failed" | "cleared";
+  endedAt?: string;
+  durationMs?: number;
+  message?: string;
+}
+```
+
+`createTimerNode` 默认 `name: "timer"`、`standardName: "timer"`。成功启动时返回 `errCode: 0`、`errMessage: ""` 的可序列化 payload。
+
+## 示例
+
+```ts
+const timerNode = workflow.createTimerNode({
+  title: "外部接口调用",
+});
+
+export const demo = workflow.defineWorkflow<Input, OutputPayload>({
+  name: "demo",
+  async run(input, context) {
+    const timer = await workflow.runNode(timerNode, {
+      timerId: `api-${Date.now()}`,
+      metadata: { provider: "example" },
+    }, context);
+
+    try {
+      const result = await callExternalApi(input);
+      await workflow.endTimer(timer, context, { message: "接口调用完成" });
+      return createOutput(result);
+    } catch (error) {
+      await workflow.endTimer(timer, context, {
+        status: "failed",
+        message: error instanceof Error ? error.message : "接口调用失败",
+      });
+      throw error;
+    }
+  },
+});
+```
+
+## 运行行为
+
+| 行为 | 说明 |
+| --- | --- |
+| 启动计时 | 执行 timer node 后发送 `timer_started` runtime event，并在 live report 中写入 `running` timer。 |
+| 结束计时 | `workflow.endTimer(timer, context)` 默认写入 `success`；传 `status: "failed"` 时写入失败计时。 |
+| 自动清理 | workflow 收尾前会把仍处于 `running` 的 timer 标记为 `cleared`，发送 `timer_finished`，最终 report 不保留 running timer。 |
+| 重复结束 | 同一个 timer 已结束后再次调用 `endTimer` 会抛出 workflow execution 错误。 |
+
+`cleared` 表示业务代码没有显式结束计时，但 workflow 已经结束；UI 会展示“已清理”，它不等同于业务失败。
+
+## 展示位置
+
+计时记录保存在最终 `report.timers` 中。共享运行界面普通 Run workspace、conversation 消息、Diagram Result/回放、本地输出和日志回放都会读取同一份记录展示计时卡片。
+
+## 可运行示例
+
+`workspace/workflow/runtime-timer` 是可运行的计时示例。它会启动一个业务计时、按输入的毫秒数等待，并显式调用 `endTimer`。最终报告中只会生成一条业务计时记录；未显式结束 timer 的自动 `cleared` 行为由测试覆盖。
+
+```bash
+workflow-code structure workspace/workflow/runtime-timer
+workflow-code json workspace/workflow/runtime-timer -- --title "Fixture Timer" --milliseconds 2000
+```

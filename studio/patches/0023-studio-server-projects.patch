@@ -1,0 +1,103 @@
+diff --git a/src/vs/workbench/browser/actions/windowActions.ts b/src/vs/workbench/browser/actions/windowActions.ts
+index fb41875f..33e5230b 100644
+--- a/src/vs/workbench/browser/actions/windowActions.ts
++++ b/src/vs/workbench/browser/actions/windowActions.ts
+@@ -236,12 +236,14 @@ abstract class BaseOpenRecentAction extends Action2 {
+ 				disposables.add(picker.onDidHide(() => resolve(undefined)));
+ 				picker.show();
+ 				const folders = workspacePicks.filter(item => 'folderUri' in item.openable);
+-				void commandService.executeCommand<{ uri: string; projectType?: string }[]>('studio.internalDetectProjectTypes', folders.map(item => item.resource.toString())).then(projects => {
++				void commandService.executeCommand<{ uri: string; projectType?: string; version?: string }[]>('studio.internalDetectProjectTypes', folders.map(item => item.resource.toString())).then(projects => {
+ 					if (disposables.isDisposed || !Array.isArray(projects)) { return; }
+-					const types = new Map(projects.map(project => [project.uri, project.projectType]));
++					const metadata = new Map(projects.map(project => [project.uri, project]));
+ 					let changed = false;
+ 					for (const item of folders) {
+-						const icon = studioProjectIcon(types.get(item.resource.toString()));
++						const project = metadata.get(item.resource.toString());
++						const icon = studioProjectIcon(project?.projectType);
++						if (project?.version) { item.description = [item.description, project.version].filter(Boolean).join(' \u00b7 '); changed = true; }
+ 						if (icon) {
+ 							item.iconClasses = undefined;
+ 							item.iconClass = ThemeIcon.asClassName({ id: icon });
+diff --git a/src/vs/workbench/browser/parts/editor/studioStart.ts b/src/vs/workbench/browser/parts/editor/studioStart.ts
+index 474f4acb..bf9ea04f 100644
+--- a/src/vs/workbench/browser/parts/editor/studioStart.ts
++++ b/src/vs/workbench/browser/parts/editor/studioStart.ts
+@@ -18,8 +18,8 @@ export interface StudioStartState {
+ 	version: 1;
+ 	labels: Record<string, string>;
+ 	templates: { id: string; projectType: string; kind: string; name: string; description: string }[];
+-	projects: { uri: string; name: string; projectType: string; folderPath: string }[];
+-	recent: { uri: string; label: string; kind: string; lastOpened: number; projectType?: string }[];
++	projects: { uri: string; name: string; version?: string; projectType: string; folderPath: string }[];
++	recent: { uri: string; label: string; kind: string; lastOpened: number; projectType?: string; version?: string }[];
+ 	pending: { id: string; name: string; directory: string; status: string; error?: string }[];
+ 	environment: { studio: string; vscode: string; node?: string; core?: string; cli?: string; account: string; server: string; error?: string };
+ 	summary?: { projects: number; running: number; waiting: number; unavailable: number; generatedAt: number };
+@@ -110,6 +110,7 @@ export class StudioStartView extends Disposable {
+ 		const quick = this.section(grid, 'quick');
+ 		for (const [label, icon, command] of [
+ 			['openFolder', 'folder-opened', 'studio.openFolder'], ['openWorkspace', 'file-submodule', 'studio.openWorkspace'],
++			['download', 'cloud-download', 'studio.downloadProject'], ['versions', 'versions', 'studio.versions.focus'],
+ 			['assistant', 'hubot', 'studio.openAssistant'], ['account', 'account', 'studio.openWorkflowAccount'], ['settings', 'settings-gear', 'studio.openSettings'],
+ 		]) { this.button(quick, label, icon, command); }
+ 		this.error = append(inner, $('p.studio-start-error'));
+@@ -221,10 +222,11 @@ export class StudioStartView extends Disposable {
+ 				const heading = append(card, $('.studio-start-project-heading'));
+ 				append(heading, $(`span.codicon.codicon-${studioProjectIcon(project.projectType) ?? 'folder'}`)).setAttribute('aria-hidden', 'true');
+ 				append(heading, $('h3', undefined, project.name));
+-				append(card, $('p.studio-start-project-type', undefined, text(`type.${project.projectType}`)));
++				append(card, $('p.studio-start-project-type', undefined, [text(`type.${project.projectType}`), project.version].filter(Boolean).join(' \u00b7 ')));
+ 				append(card, $('p.studio-start-project-path', undefined, project.folderPath));
+ 				const actions = append(card, $('.studio-start-project-actions'));
+ 				this.button(actions, text('run'), 'play', 'studio.openWorkflow', { uri: project.uri }, false, false, store).classList.add('studio-start-primary');
++				this.button(actions, text('upload'), 'cloud-upload', 'studio.uploadProject', { uri: project.uri }, false, true, store);
+ 				this.button(actions, text('source'), 'code', 'studio.openWorkflowSource', { uri: project.uri }, false, true, store);
+ 			}
+ 			for (const project of state.pending) {
+@@ -241,7 +243,8 @@ export class StudioStartView extends Disposable {
+ 			if (!state.recent.length) { append(root, $('p.studio-start-muted', undefined, text('noRecent'))); }
+ 			for (const project of state.recent) {
+ 				const row = append(root, $('.studio-start-project'));
+-				const button = this.button(row, project.label, project.kind === 'workspace' ? 'file-submodule' : studioProjectIcon(project.projectType) ?? 'folder', 'studio.openRecentProject', project, false, false, store);
++				const label = [project.label, project.version].filter(Boolean).join(' \u00b7 ');
++				const button = this.button(row, label, project.kind === 'workspace' ? 'file-submodule' : studioProjectIcon(project.projectType) ?? 'folder', 'studio.openRecentProject', project, false, false, store);
+ 				button.title = project.uri;
+ 				this.button(row, text('removeRecent'), 'close', 'studio.removeRecentProject', project, false, true, store);
+ 			}
+diff --git a/src/vs/workbench/browser/parts/titlebar/titlebarActions.ts b/src/vs/workbench/browser/parts/titlebar/titlebarActions.ts
+index c73bd8d0..04fc0c57 100644
+--- a/src/vs/workbench/browser/parts/titlebar/titlebarActions.ts
++++ b/src/vs/workbench/browser/parts/titlebar/titlebarActions.ts
+@@ -36,6 +36,17 @@ MenuRegistry.appendMenuItem(MenuId.TitleBarAdjacentCenter, {
+ 	order: 0
+ });
+ 
++MenuRegistry.appendMenuItem(MenuId.TitleBarAdjacentCenter, {
++	command: {
++		id: 'studio.uploadProject',
++		get title() { return MenuRegistry.getCommand('studio.uploadProject')?.title ?? localize('studio.uploadProject', "Upload Project"); },
++		icon: Codicon.cloudUpload
++	},
++	when: ContextKeyExpr.equals('studio.workflowUploadAvailable', true),
++	group: '0_studio',
++	order: 1
++});
++
+ // --- Context Menu Actions --- //
+ 
+ export class ToggleTitleBarConfigAction extends Action2 {
+diff --git a/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts b/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
+index 1753b4c1..95b9dc5e 100644
+--- a/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
++++ b/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
+@@ -515,7 +515,7 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
+ 				toolbarOptions: {
+ 					primaryGroup: () => true,
+ 				},
+-				actionViewItemProvider: (action, options) => action instanceof MenuItemAction && action.id === 'studio.openWorkflow'
++				actionViewItemProvider: (action, options) => action instanceof MenuItemAction && ['studio.openWorkflow', 'studio.uploadProject'].includes(action.id)
+ 					? this.instantiationService.createInstance(StudioWorkflowRunActionViewItem, action, options)
+ 					: createActionViewItem(this.instantiationService, action, options),
+ 				hoverDelegate: this.hoverDelegate

@@ -1,0 +1,31 @@
+---
+title: "Server 0.1.1"
+description: "Release notes for Server 0.1.1."
+---
+
+# Server 0.1.1
+
+2026-07-29 · Tag `server/v0.1.1` · 当前设备
+
+<span id="server-0-1-1" className="release-version-anchor"></span>
+<span id="server.0.1.1" className="release-version-anchor"></span>
+
+#### New Features
+
+- **Health check exposes versions**: `/health` returns Server, bundled Core, the current update summary, and a Docs entry.
+- **Runs record the Core version**: hosted versions and run records keep the required, built, and actually executed Core and Server versions.
+
+#### Added
+
+- Added `/health` returning the Server version, bundled Core version, current update summary, and Docs entry.
+- Added Core and Server versions to hosted versions and run records for the required, built, and actually executed runtimes.
+
+#### Changed
+
+- Changed upload, edit, copy, preview, and run to check compatibility against each project's exact Core dependency.
+
+#### Fixed
+
+- Fixed hosted versions with an unknown Core version running on a guessed range; they are now marked unknown and taken down.
+- Fixed `/health` reporting the wrong Server or Core version when release metadata lags or a deployment rolls back.
+- Fixed transient object storage failures permanently taking down versions during legacy Workflow Core metadata migration.

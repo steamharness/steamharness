@@ -1,0 +1,24 @@
+---
+title: "版本兼容性"
+description: "本地 Core 运行兼容规则与 Server 静态元数据校验。"
+---
+
+# 版本兼容性
+
+Workflow 项目的 `devDependencies.workflow-code` 必须是精确 SemVer，例如 `"0.2.7"` 或 `"0.2.7-20260826001"`。精确声明记录项目开发和验证时使用的 Core，运行时只比较 `major.minor` 兼容线。
+
+`0.2.0`、`0.2.99`、`0.2.4-20260826001` 与 `0.2.4-beta.1` 都属于 `0.2.x`，patch 和预发布标识不参与先后判断。major 或 minor 变化会在用户模块执行前阻断，并显示项目版本、宿主版本及所需兼容线。
+
+patch 发布不能引入需要新兼容线的破坏性 Core API；此类变化必须提升 minor。
+
+## 本地运行与服务器存储
+
+- Studio 从项目目录解析并启动项目安装的 CLI。项目识别与运行使用该 CLI 的 Core；先安装项目声明的依赖，并在兼容线不一致时更新到经过验证的组合。
+- CLI 精确绑定 Core，并将 peer 范围限制到同一 minor，例如 `>=0.2.0 <0.3.0`。`run`、`json`、`structure` 和 `resolve-params` 会校验实际安装的 Core、CLI 自身绑定及项目 Core 声明。
+- Server 校验上传的静态项目声明并保存源码快照，不安装依赖或执行项目代码。下载后的项目由本地 CLI 校验运行兼容性。
+
+## 内置项目快照
+
+Studio 内置小助手和 Studio Control 使用仓库锁定的项目快照，开发依赖可从聚合仓库的小助手仓库解析。Studio Control 通过会话认证的扩展宿主接口提供有限的工作区与编辑器控制，以标准 MCP 供小助手调用；旧 Desktop Control 已从当前集成分支移除。
+
+现有内置项目发布索引中的 `components.core`、`components.cli` 和 `minDesktopVersion` 属于既有发行元数据。Studio 的安装包、发布通道和索引接入后续单独配置；源码运行方式见 [Studio 工作站](/guides/studio/overview)。

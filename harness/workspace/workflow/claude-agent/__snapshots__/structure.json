@@ -1,0 +1,97 @@
+{
+  "workflowName": "claude-agent",
+  "projectType": "conversation",
+  "files": [
+    "__tests__/input-node.test.ts",
+    "__tests__/knowledge-documents-tool.test.ts",
+    "__tests__/output-items.test.ts",
+    "__tests__/tool-approval-stream.test.ts",
+    "index.ts",
+    "interface.ts",
+    "knowledge-documents-tool.ts",
+    "output-items.ts"
+  ],
+  "nodes": [
+    {
+      "id": "inputNode",
+      "factory": "createInputNode",
+      "standardName": "input",
+      "configuredName": "claude-agent-input"
+    },
+    {
+      "id": "outputNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "claude-agent-output"
+    }
+  ],
+  "params": [
+    {
+      "name": "systemPrompt",
+      "flag": "--system-prompt",
+      "type": "string",
+      "required": false,
+      "panel": "auxiliary"
+    },
+    {
+      "name": "allowedTools",
+      "flag": "--tools",
+      "type": "string",
+      "required": false,
+      "defaultValue": "Read,Edit,Glob,Grep,Bash",
+      "panel": "auxiliary"
+    },
+    {
+      "name": "permissionMode",
+      "flag": "--permission-mode",
+      "type": "string",
+      "required": false,
+      "defaultValue": "acceptEdits",
+      "control": "radio",
+      "panel": "auxiliary"
+    },
+    {
+      "name": "workdir",
+      "flag": "--workdir",
+      "shortFlag": "-C",
+      "type": "string",
+      "required": false,
+      "defaultValue": "~",
+      "panel": "auxiliary"
+    },
+    {
+      "name": "model",
+      "flag": "--model",
+      "shortFlag": "-m",
+      "type": "string",
+      "required": false,
+      "panel": "auxiliary"
+    },
+    {
+      "name": "knowledgeTools",
+      "flag": "--knowledge-tools",
+      "type": "boolean",
+      "required": false,
+      "defaultValue": "true",
+      "panel": "auxiliary"
+    }
+  ],
+  "tokenUsage": {
+    "enabled": true,
+    "display": true
+  },
+  "registry": [],
+  "execution": {
+    "kind": "sequence",
+    "counts": {
+      "sequence": 1,
+      "node": 2
+    },
+    "callees": [
+      "runNode",
+      "runStreamNode"
+    ],
+    "branchLabels": [],
+    "loopLabels": []
+  }
+}

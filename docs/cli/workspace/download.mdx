@@ -1,0 +1,40 @@
+---
+title: "workspace download"
+description: "下载项目与关联项目的精确源码版本。"
+---
+
+# workspace download
+
+```bash
+workflow-code workspace download <project> [--target draft|latest|version] [--path <dir>]
+```
+
+默认下载 `latest`。所有操作系统使用同一源码契约，不需要平台参数。历史版本读取不可变快照；下载不会重新应用上传忽略规则，也不安装或运行代码。
+
+Workflow、Conversation 和 Kanban 均可下载正式版本；项目类型不会限制根项目下载。
+
+项目声明中的待确认关联不会阻止根项目源码下载。下载只处理发布版本中已确认的关联锁，不会自动包含未获双方确认的项目。
+
+| 目标 | 行为 |
+| --- | --- |
+| `draft` | 下载根项目草稿并替换目标目录，不处理依赖锁。 |
+| `latest` | 解析当前 latest 的精确版本，再按其依赖锁下载。 |
+| 精确版本 | 下载指定历史版本，included 依赖使用锁定版本与源码哈希。 |
+
+## 权限和写入
+
+源码下载与数据读取独立授权。owner、manager 或获得源码下载授权的用户可下载；writer/viewer 的数据权限本身不授予源码。缺权限的依赖返回申请链接，其余项目仍可下载。
+
+新项目先写 staging，再移动到目标路径；校验或移动失败会移除本次新增目录。已有项目仅在 UUID 和版本均匹配时复用，保留其本地修改；不同版本不会被误报为已下载，已占用的目标目录拒绝覆盖，可通过 `--path` 选择其他目录。文本与 base64 二进制文件按原始字节恢复并校验 SHA-256。
+
+项目组不携带 KV、PersistentValue、文件存储、环境变量、运行历史和用户配置。下载后在本地安装项目依赖；需要服务器数据时显式使用服务器存储。
+
+## API
+
+- 草稿：`GET /api/workflows/{workflow}/files?target=draft&includeBinary=true`。
+- 项目组：`GET /api/workflows/{workflow}/project-group-download?target=<target>`。
+- 单版本 tar.gz：`GET /api/workflows/{workflow}/source-archive?target=<version>`。
+
+```bash
+workflow-code workspace download hello --target 1.2.0 --path ./hello-copy
+```

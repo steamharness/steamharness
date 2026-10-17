@@ -1,0 +1,41 @@
+---
+title: "Server v0.1.4"
+description: "Server v0.1.4 的更新说明。"
+---
+
+# Server v0.1.4
+
+2026-08-07 · Tag `server/v0.1.4` · 当前设备
+
+<span id="server-0-1-4" className="release-version-anchor"></span>
+<span id="server.0.1.4" className="release-version-anchor"></span>
+
+#### 新特性
+
+- **运行语言随请求注入**：第一方 API 读取 `X-Workflow-Locale`，为管理端、Embed、Webhook 和参数解析注入运行语言。
+- **按版本授权的只读 KV 数据源**：Kanban Studio 与 Embed 经鉴权 revision SSE 自动刷新，权限撤销后立即失效。
+- **Workflow 定时任务**：支持固定版本和入口的计划、常用时间规则、立即运行及 fire 历史。
+
+#### 新增
+
+- 新增 第一方 API 返回对应语言的错误、健康检查摘要和独立 Server 发布日志地址。
+- 新增 管理、Embed、External、streaming、参数解析和 Webhook API 选择 Workflow 入口并保存入口快照。
+- 新增 上述 API 在入队或发送流式响应头前拒绝无效入口。
+- 新增 Kanban Studio 与 Embed 按精确版本和 key 前缀授权的只读 Workflow KV 数据源。
+- 新增 Kanban 项目组的精确依赖锁、断点续跑部署、部分源码下载、源码申请和前缀级数据授权。
+- 新增 项目组拒绝传输 KV、计划、运行历史、环境变量及客户端凭据。
+
+#### 变更
+
+- 变更 调度器通过唯一 fire、lease、权限复核和优雅停机避免多实例重复执行。
+- 变更 存在活跃 fire 时禁止修改或删除计划。
+- 变更 Kanban revision stream 合并突发更新、保持 PostgreSQL 重连顺序，来源不可用时统一关闭。
+- 变更 Server 收到 revision stream 完成信号后可正常退出。
+
+#### 修复
+
+- 修复 云端 Kanban 子资源被登录鉴权返回 401 或并发物化源码返回 500 导致白屏；短期 capability 限定项目和有效期。
+- 修复 远程运行流式数据在分段边界处偶发损坏中文及其它多字节字符。
+- 修复 `source` 模式 Kanban 在公开 Embed 中被误判为不存在。
+- 修复 PostgreSQL 用户首次打开 Embed 时默认配置初始化失败。
+- 修复 Workflow runtime 把开发工具和 pnpm 符号链接写入归档，导致已发布版本无法从对象存储加载。

@@ -1,0 +1,35 @@
+---
+title: "Core v0.1.3"
+description: "Core v0.1.3 的更新说明。"
+---
+
+# Core v0.1.3
+
+2026-08-07 · Tag `workflow-code/v0.1.3` · npm
+
+<span id="workflow-code-0-1-3" className="release-version-anchor"></span>
+<span id="workflow-code.0.1.3" className="release-version-anchor"></span>
+
+#### 新特性
+
+- **多入口执行**：`defineEntrypoint()` 声明多个独立入口，运行上下文、报告与结构结果携带实际入口 ID 与标题。
+- **双语运行输出**：`workflow.getRuntimeLocale()` 读取运行语言，运行错误按简体中文或英文生成并稳定回退。
+- **计划建议声明**：`schedulePresets` 按入口声明时区、时间窗口或五字段 Cron，结构校验通过但宿主不自动启用。
+
+#### 破坏性变更
+
+- Workflow executor 不再接受顶层 `workflow`、`params`、`createInput` 等执行字段。
+  迁移：执行字段移入非空 `entrypoints` 并设置有效的 `defaultEntrypoint`，Conversation executor 保持单入口结构。
+
+#### 新增
+
+- 新增 `workflow.getRuntimeLocale()` 和双语运行错误，缺少语言或翻译时稳定回退。
+- 新增 `defineEntrypoint()` 声明多个独立入口，运行上下文、报告与结构结果携带实际入口 ID 与标题。
+- 新增 Kanban 限定项目 UUID 与 key 前缀的只读 `workflow-kv` 数据源，来源更新后经 revision 订阅安全重读。
+- 新增 `package.json.workflowCode.schedulePresets` 计划建议，支持入口、IANA 时区、时间窗口与五字段 Cron。
+- 新增 Kanban 版本级依赖锁与 project-group v1 协议，区分随组交付源码与 external 引用且不传输宿主数据。
+
+#### 变更
+
+- 变更 结构分析按真实 import/export 绑定解析跨文件入口，隔离不同入口的同名 registry。
+- 变更 Core 发布日志同步维护中英文内容，发布元数据提供可按语言读取的 Markdown 正文。

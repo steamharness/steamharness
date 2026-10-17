@@ -1,0 +1,58 @@
+---
+title: "运行时环境变量"
+description: "workflow.getEnv 在本地 CLI 和 CLI Web 中的配置来源。"
+---
+
+# 运行时环境变量
+
+workflow 代码统一通过 `workflow.getEnv(name)` 读取配置。不要直接依赖某个平台专属的配置读取方式。
+
+```ts
+const apiKey = workflow.getEnv("EXAMPLE_API_KEY");
+```
+
+## 配置来源
+
+本地 CLI 与 CLI Web 使用项目环境与进程变量；已有进程变量优先于 `.env`。Server 不保存项目执行环境变量，Server 自身部署配置只用于服务本身。
+
+## LLM Provider 环境变量
+
+`workflow.createLLMProviderFromEnv()` 默认读取：
+
+- `LLM_TYPE`
+- `LLM_API_KEY`
+- `LLM_BASE_URL`
+- `LLM_MODEL`
+
+这些变量同样通过 `workflow.getEnv` 进入 provider。
+
+内置项目的模型选择由宿主提供的运行时配置决定；第三方 workflow 不能读取宿主账户凭据或系统服务配置。OpenCode 也不会读取 `OPENCODE_PROVIDER_*`、用户全局 OpenCode 配置或 `opencode auth login` 状态。
+
+## 第三方服务调用
+
+非 LLM 的第三方调用建议在 workflow 中直接使用 `fetch` 或业务 SDK，并通过 `workflow.getEnv` 读取密钥：
+
+```ts
+const response = await fetch("https://api.example.com/run", {
+  method: "POST",
+  headers: {
+    "content-type": "application/json",
+    authorization: `Bearer ${workflow.getEnv("EXAMPLE_API_KEY") ?? ""}`,
+  },
+  body: JSON.stringify({ input }),
+});
+```
+
+## 示例 workflow
+
+示例 workflow 可以把自己的 SDK 声明为项目依赖，并通过环境变量读取凭据：
+
+| 示例 | 常用变量 | 说明 |
+| --- | --- | --- |
+| `openai-agents` | `OPENAI_API_KEY`、`OPENAI_BASE_URL` | 调用 OpenAI Agents SDK，可按示例启用本地工具。 |
+| `claude-agent` | `ANTHROPIC_API_KEY` | 调用 Claude Agent SDK，并可按 conversation 复用 session。 |
+| `pi-agent` | `ANTHROPIC_*`、`OPENAI_*` | 通过 Advanced options 切换 provider，并可使用项目知识库工具。 |
+| `opencode` | 无 provider 环境变量 | 使用宿主为内置项目提供的 Provider 和 Model。 |
+| `gpt-image` | `OPENAI_API_KEY`、`OPENAI_BASE_URL` | 调用图片生成能力，并把结果作为 output item 展示。 |
+
+本地终端与 CLI Web 可以从项目环境读取变量。需要真实外部服务的示例应提供 dry-run 或 opt-in smoke，避免默认测试依赖远程平台。

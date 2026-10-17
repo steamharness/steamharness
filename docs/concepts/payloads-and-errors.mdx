@@ -1,0 +1,135 @@
+---
+title: "Payload 与错误"
+description: "WorkflowPayload、执行结果和错误报告的当前约束。"
+---
+
+# Payload 与错误
+
+所有节点间传递的数据类型，也就是 workflow payload，都必须继承 `WorkflowPayload`。该类型来自核心包：
+
+```ts
+export interface WorkflowPayload {
+  errCode: number;
+  errMessage: string;
+}
+```
+
+成功输出统一使用：
+
+```ts
+{
+  errCode: 0,
+  errMessage: ""
+}
+```
+
+## 输出 payload
+
+Output node 应该显式返回包含 `errCode`、`errMessage` 和 `items` 的对象：
+
+```ts
+interface WorkflowOutputItem {
+  id: string;
+  title: string;
+  content: unknown;
+  contentType?: "markdown" | "text" | "json" | "audio" | "video";
+  collapsed?: boolean;
+}
+
+interface OutputPayload extends WorkflowPayload {
+  items: WorkflowOutputItem[];
+}
+
+const outputNode = workflow.createOutputNode<Parsed, OutputPayload>({
+  name: "output",
+  format(result) {
+    return workflow.createOutputPayload({
+      items: [{
+        title: "Result",
+        content: result,
+        contentType: "json",
+        collapsed: false,
+      }],
+    });
+  },
+});
+```
+
+`items` 是当前唯一用户可见输出载体。CLI Web 与 CLI JSON 都读取该数组；assistant 消息的完整输出也保存在 `items` 中，而不是顶层 `content`。Conversation 类型项目中，标题为 `Output` 的默认 markdown/text assistant 主回答会直接显示在对话正文中，即使它带有 finish reason、token usage 或 Provider metadata；工具调用、reasoning、诊断、结构化辅助结果以及显式自定义或折叠的输出才使用详情块。
+
+如果业务失败但 executor 没有崩溃，可以返回非零 `errCode` 和可读 `errMessage`。外部 Dify 风格 API 会读取最终 report 里的 `errCode`：只有 executor 成功且 `errCode === 0` 才映射为 `succeeded`。
+
+## 视频输出 item
+
+当 `contentType: "video"` 时，UI 会用浏览器原生 `<video controls preload="metadata" playsInline>` 渲染。`content` 必须是如下对象：
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `src` | `string` | 是 | 安全的 `data:video/mp4;base64,...` 或公开 `http(s)` 视频 URL。 |
+| `mimeType` | `"video/mp4"` | 是 | 当前仅支持 `video/mp4`。 |
+| `name` | `string` | 是 | 用于元信息展示的文件名（`title` 上方）。 |
+| `durationMs` | `number` | 否 | 已知时长（毫秒），会按 `formatTimerDuration` 渲染。 |
+| `format` | `"mp4"` | 否 | 容器格式提示；目前仅允许 `mp4`。 |
+
+`src` 必须是 `data:video/<sub>;base64,...` 或 `http(s)` URL；`file://`、`blob:` 等本地或私有 URL 会被视为不安全并降级为文本预览。任何缺失必填字段或 `src` 不安全的情况，都会显示通用降级文本（默认本地化为 `videoPlaybackUnsupported`），并通过 `<pre>` 展示原始 content。
+
+生成的 OSS 签名 URL 视为 `http(s)`，但其有效期和不可重建性会导致 UI 无法缓存、过期即不可播放，因此不要把生成式视频产物仅以 OSS 签名 URL 形式发布到不可重建的位置；如需持久展示，需要在本地或 OSS 公开存储中保存稳定副本，或在元信息中标注外部链接作为 fallback。调用方不要把 `src` 留空，也不要拼接 `file://`、`blob:` 等非 http(s)/data URL。
+
+## WorkflowResult
+
+底层 safe run 会先把 workflow 执行结果归一为：
+
+```ts
+type WorkflowResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: SerializedWorkflowError };
+```
+
+生成执行报告时，runtime 会把 `ok: false` 的失败结果转换为可读 payload：
+
+```ts
+{
+  ok: true,
+  data: {
+    errCode,
+    errMessage,
+    output: null
+  }
+}
+```
+
+这样 CLI Web 与 CLI JSON 都可以统一读取 `result.data.errCode`。普通成功结果会把最终返回值和名为 `output` 的节点输出合成为 `result.data.output`；如果任一 payload 带有非零 `errCode`，报告会保留该业务错误码。
+
+## 用户输入等待
+
+用户输入节点会把 workflow 暂停成持久的 `waiting_for_input` 状态，而不是把它标记为普通失败。报告中会包含：
+
+| 字段 | 说明 |
+| --- | --- |
+| `pendingUserInput` | 当前等待的请求，包含 `requestId`、节点名、标题、描述、表单 `params`、默认值和节点 metadata。 |
+| `resolvedUserInputs` | 本 run 已提交的答案数组，包含 `requestId`、节点名、`values` 和 `submittedAt`。 |
+
+Runtime event 会发出 `user_input_requested` 和 `user_input_resolved`。等待状态的标准错误码映射为 `202`，用于表示 workflow 仍可恢复；成功恢复后的节点 payload 仍必须继承 `WorkflowPayload`，默认包含 `errCode: 0`、`errMessage: ""`、`requestId`、`values` 和 `submittedAt`。
+
+## WorkflowError
+
+可以主动抛出 `workflow.WorkflowError`，附带类型、消息、节点和 metadata。框架也会把普通异常转换成 `WorkflowError`。
+
+常见错误类型包括：
+
+- 输入校验失败。
+- 节点执行失败。
+- workflow 执行失败。
+- 用户输入等待。
+- 工具权限拒绝。
+- 文件解析失败。
+- provider 调用失败。
+- abort 或 timeout。
+
+错误会被序列化，避免直接暴露完整 stack 或第三方 SDK 原始响应。
+
+## UI 中的错误
+
+- 本地运行会把本地 stdout/stderr 和 report 写进本地运行缓存。
+- `waiting_for_input` run 会继续保留 `pendingUserInput`，CLI Web 可以提交答案恢复同一个 `runId`。
+- 外部 blocking API 返回 `data.error`；streaming API 通过 SSE `error` 或最终 `workflow_finished` 表达失败。

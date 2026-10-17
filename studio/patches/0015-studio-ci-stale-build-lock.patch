@@ -1,0 +1,13 @@
+diff --git a/build/next/build-fast.ts b/build/next/build-fast.ts
+--- a/build/next/build-fast.ts
++++ b/build/next/build-fast.ts
+@@ -462,5 +462,9 @@ async function acquireLock(lockPath: string): Promise<Lock> {
+ 	if (owner === undefined && await isFreshLock(lockPath)) {
+ 		throw new Error('Another build-fast process is acquiring the build lock.');
+ 	}
++	if (process.env.CI === 'true' && process.env.STUDIO_CI_SERIAL_BUILD === '1') {
++		await fs.promises.rm(lockPath, { force: true });
++		return acquireLock(lockPath);
++	}
+ 	throw new Error(`A stale build-fast lock exists at ${lockPath}. Remove it after confirming that no build-fast process is running.`);
+ }

@@ -1,0 +1,45 @@
+{
+  "args": [
+    "--payload",
+    "{\"object_kind\":\"issue\",\"object_attributes\":{\"iid\":81,\"action\":\"open\",\"title\":\"Build automated test foundation\",\"description\":\"Need workflow smoke tests.\",\"url\":\"http://gitlab.local/issues/81\"},\"project\":{\"name\":\"workflow-code\",\"web_url\":\"http://gitlab.local/workflow-code\"},\"user\":{\"name\":\"Codex\"},\"labels\":[{\"title\":\"type::feature\"}]}",
+    "--message",
+    "fixture note"
+  ],
+  "conversationId": "gitlab-webhook-fixture-thread",
+  "expected": {
+    "errCode": 0,
+    "output": {
+      "event": "issue",
+      "action": "open",
+      "id": "81",
+      "success": true,
+      "historyLength": 2
+    },
+    "contentIncludes": [
+      "event=issue",
+      "Build automated test foundation"
+    ],
+    "itemCount": 1,
+    "items": [
+      {
+        "id": "gitlab-webhook-summary",
+        "title": "Output",
+        "contentType": "markdown",
+        "collapsed": false,
+        "contentIncludes": [
+          "event=issue",
+          "action=open",
+          "id=81",
+          "Build automated test foundation",
+          "rawEvent=issue"
+        ]
+      }
+    ],
+    "nodes": [
+      "input",
+      "output"
+    ],
+    "outputCount": 1,
+    "conversationMessages": 2
+  }
+}

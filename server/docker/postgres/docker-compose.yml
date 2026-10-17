@@ -1,0 +1,24 @@
+name: workflow-code-postgres
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: workflow-code-postgres
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:7125:5432"
+    environment:
+      POSTGRES_DB: ${WORKFLOW_POSTGRES_DB:-workflow}
+      POSTGRES_USER: ${WORKFLOW_POSTGRES_USER:-workflow}
+      POSTGRES_PASSWORD: ${WORKFLOW_POSTGRES_PASSWORD:?Set WORKFLOW_POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 10s
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+volumes:
+  postgres-data:

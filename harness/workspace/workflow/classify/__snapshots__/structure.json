@@ -1,0 +1,71 @@
+{
+  "workflowName": "classify",
+  "projectType": "workflow",
+  "files": [
+    "index.ts",
+    "interface.ts",
+    "test/a.ts",
+    "test/b.ts",
+    "test2/c.ts"
+  ],
+  "nodes": [
+    {
+      "id": "inputNode",
+      "factory": "createInputNode",
+      "standardName": "input",
+      "configuredName": "classification-input"
+    },
+    {
+      "id": "classifierNode",
+      "factory": "createQuestionClassifierNode",
+      "standardName": "question-classifier",
+      "configuredName": "uni-question-classifier"
+    },
+    {
+      "id": "outputNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "classification-output"
+    }
+  ],
+  "defaultEntrypoint": "main",
+  "entrypoints": [
+    {
+      "id": "main",
+      "title": "Classify",
+      "workflowName": "classify",
+      "tokenUsage": {
+        "enabled": true,
+        "display": true
+      },
+      "params": [
+        {
+          "name": "query",
+          "flag": "--query",
+          "type": "positional",
+          "required": false
+        }
+      ],
+      "registry": [],
+      "execution": {
+        "kind": "sequence",
+        "counts": {
+          "sequence": 1,
+          "node": 2,
+          "branch": 1,
+          "case": 3
+        },
+        "callees": [
+          "runNode",
+          "runStreamNode"
+        ],
+        "branchLabels": [
+          "uniapp",
+          "uni-app x",
+          "unicloud"
+        ],
+        "loopLabels": []
+      }
+    }
+  ]
+}

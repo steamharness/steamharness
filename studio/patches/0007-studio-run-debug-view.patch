@@ -1,0 +1,11 @@
+diff --git a/src/vs/workbench/contrib/debug/browser/debug.contribution.ts b/src/vs/workbench/contrib/debug/browser/debug.contribution.ts
+--- a/src/vs/workbench/contrib/debug/browser/debug.contribution.ts
++++ b/src/vs/workbench/contrib/debug/browser/debug.contribution.ts
+@@ -462,6 +462,7 @@ const viewContainer = Registry.as<IViewContainersRegistry>(ViewExtensions.ViewConta
+ 	ctorDescriptor: new SyncDescriptor(DebugViewPaneContainer),
+ 	icon: icons.runViewIcon,
+ 	alwaysUseContainerInfo: true,
++	hideIfEmpty: true,
+ 	order: 3,
+ }, ViewContainerLocation.Sidebar);
+ 

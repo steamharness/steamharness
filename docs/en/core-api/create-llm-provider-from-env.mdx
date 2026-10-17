@@ -1,0 +1,74 @@
+---
+title: "createLLMProviderFromEnv"
+description: "Creates a default LLM provider from the workflow runtime environment variable."
+---
+
+# createLLMProviderFromEnv
+
+`workflow.createLLMProviderFromEnv()` is the provider factory exposed to business workflows by `src/runtime-api.ts` in the Core repository. It delegates to `createLLMProviderFromWorkflowEnv()` and reads environment variables through `workflow.getEnv`.
+
+## Signature
+
+```ts
+workflow.createLLMProviderFromEnv(): LLMProvider
+```
+
+## Parameter
+
+|Parameter|Description|
+| --- | --- |
+|None|Read configuration directly from the workflow runtime environment.|
+
+## Environment variables read
+
+|Variable|Alias|Description|
+| --- | --- | --- |
+| `LLM_TYPE` | `TYPE` |provider type, required. Supports OpenAI completion, OpenAI responses, and Anthropic.|
+| `LLM_API_KEY` | `API_KEY`, `APIKEY` | Provider API key. Required. |
+| `LLM_BASE_URL` | `BASE_URL` |Custom provider base URL.|
+| `LLM_MODEL` | `MODEL` |The model name. The default model is used when not passed.|
+
+## Provider Type
+
+|Input value|Normalization results|Description|
+| --- | --- | --- |
+| `openai-completion`, `openai-chat`, `chat`, `completion` | `openai-completion` | Use the OpenAI Chat Completions API. |
+| `openai-responses`, `openai-response`, `responses`, `response` | `openai-responses` | Use the OpenAI Responses API. |
+| `anthropic`, `claude` | `anthropic` | Use the Anthropic Messages API. |
+
+## Default Model
+
+|Provider Type|Default Model|
+| --- | --- |
+| `openai-completion` | `gpt-4.1-mini` |
+| `openai-responses` | `gpt-4.1-mini` |
+| `anthropic` | `claude-3-haiku-20240307` |
+
+## Return value
+
+|Return|Type|Description|
+| --- | --- | --- |
+| provider | `LLMProvider` |contains `name`, `chat(input)`, `stream(input)`.|
+
+## Create Process
+
+|Phase|Input|Result|
+| --- | --- | --- |
+| runtime env |`LLM_*` Variable| provider options |
+| `createLLMProviderFromEnv` | provider options | `LLMProvider` |
+| LLM node | `LLMProvider`, `LLMChatInput` | LLM output |
+
+## Example
+
+```ts
+const llmProvider = workflow.createLLMProviderRef("default", () => {
+  return workflow.createLLMProviderFromEnv();
+});
+```
+
+## Error
+
+|Situation|Error Type|Description|
+| --- | --- | --- |
+|Missing `LLM_TYPE` or `LLM_API_KEY`| `input_validation` |provider configuration is incomplete.|
+|Unsupported provider type| `input_validation` |`LLM_TYPE` cannot be normalized to a supported type.|

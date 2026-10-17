@@ -1,0 +1,55 @@
+---
+title: "Project data storage"
+description: "Declare whether a project may use local storage, server storage, or both, and select locations explicitly in Core 0.2."
+---
+
+# Project data storage
+
+Every project must declare where its Knowledge, KV, and PersistentValue data may be stored:
+
+```json
+{
+  "workflowCode": {
+    "projectInfo": {
+      "dataStorage": {
+        "mode": "local"
+      }
+    }
+  }
+}
+```
+
+`mode` accepts only these values:
+
+| Mode | Allowed locations | Runtime requirement |
+| --- | --- | --- |
+| `local` | Local only | CLI can run offline. Server storage access is rejected. |
+| `server` | Server only | Login and a cloud binding with the same `package.json.id` UUID are required. Local runs also use server data. |
+| `both` | Local and server | Source code selects the location explicitly. Login is required only when server storage is actually accessed. |
+
+This declaration is a runtime permission boundary, not display metadata. A forbidden location fails directly and never falls back to, copies, deletes, or merges data from the other location. CLI and Core reject a missing declaration before evaluating user code; Server rejects it through static metadata validation. New projects explicitly default to `both`.
+
+## Core 0.2 Context
+
+Core 0.2 exposes two independent locations through `context.storage`:
+
+```ts
+await context.storage.local.kv.setValue("draft", { saved: true });
+await context.storage.server.persistentValue.setValue("release", "ready");
+```
+
+Each location provides the same `kv` and `persistentValue` APIs. Top-level methods access the current project directly, while `.conversation` accesses the current conversation in that project. KV and PersistentValue use separate storage domains, so an identical key never overlaps across the two kinds. `context.kv`, `context.persistentValue`, `.workflow`, and a global scope do not exist.
+
+A `local` project can use only `context.storage.local`, and a `server` project can use only `context.storage.server`. A `both` project may explicitly access either location during one run, but the two locations remain separate datasets. `runWorkflow(..., { kvMode: "isolated" })` isolates project and conversation KV for both local and server storage.
+
+## Server identity
+
+Server data is isolated by project UUID. To access `context.storage.server`, the top-level `package.json.id` must be the UUID of the bound cloud project and the caller must have access to that project. CLI can obtain the server connection from `WORKFLOW_SERVER_URL`, `WORKFLOW_SERVER_ADMIN_KEY`, or workspace login configuration. The server location is unavailable without a valid login and binding.
+
+Server Web exposes server data only. A `server` or `both` declaration permits data access. A `local` or missing declaration blocks server data access; source upload and download use separate permissions.
+
+:::info
+
+Changing the declaration controls future access only. It does not migrate existing KV, PersistentValue, or Knowledge data.
+
+:::

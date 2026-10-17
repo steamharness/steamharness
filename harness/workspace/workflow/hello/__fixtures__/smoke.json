@@ -1,0 +1,31 @@
+{
+  "args": [],
+  "expected": {
+    "errCode": 0,
+    "output": {
+      "success": true
+    },
+    "contentIncludes": [
+      "离线 mock hello"
+    ],
+    "itemCount": 1,
+    "items": [
+      {
+        "title": "Hello",
+        "content": "离线 mock hello: hello",
+        "contentType": "markdown",
+        "collapsed": false
+      }
+    ],
+    "nodes": [
+      "llm-stream",
+      "output"
+    ],
+    "outputCount": 1,
+    "tokenUsage": {
+      "calls": 1,
+      "cachedInputTokens": 0,
+      "cacheCreationTokens": 0
+    }
+  }
+}

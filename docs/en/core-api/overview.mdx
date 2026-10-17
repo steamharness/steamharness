@@ -1,0 +1,82 @@
+---
+title: "Core API Overview"
+description: "The entry, boundary, and per-method document index of the workflow global runtime API."
+---
+
+# Core API Overview
+
+The Core API section documents the `workflow.*` runtime API available directly to business workflows. Its boundary is `src/runtime-api.ts` in the Core repository: local hosts and CLI inject these methods into `globalThis.workflow`, so a business workflow does not import them from `"workflow-code"`.
+
+## Entry boundary
+
+|Entrance|Description|
+| --- | --- |
+| `workflow.*` | Global API used by business workflows, sourced from `src/runtime-api.ts` in the Core repository. |
+| `workflow-code` package entry | Utility entry used by CLI, Server, tests, and advanced hosts, sourced from `src/index.ts` in the Core repository. |
+
+## Runtime API index
+
+| API |Description|
+| --- | --- |
+| [`defineWorkflow`](/en/core-api/define-workflow) |Defines a workflow and its main execution function.|
+| [`defineEntrypoint`](/en/core-api/define-entrypoint) |Defines an independently runnable Workflow entrypoint, including its parameters, tools, and registry.|
+| [`defineExecutor`](/en/core-api/define-executor) |Defines a Workflow project's entrypoints or a Conversation project's single execution configuration.|
+| [`parseConversationDefaultInputArgs`](/en/core-api/parse-conversation-default-input-args) |Parses the serialized `--message`, `--images`, and `--files` values from the default conversation input.|
+| [`createInputNode`](/en/core-api/create-input-node) |Creates an input-parsing node.|
+| [`createFileInputNode`](/en/core-api/create-file-input-node) |Creates a file-input node and resolves a file parameter reference to a file object.|
+| [`createUserInputNode`](/en/core-api/create-user-input-node) |Create a human input node that can be persisted, pausing workflow to `waiting_for_input`.|
+| [`createToolApprovalGate`](/en/core-api/create-tool-approval-gate) |Create tool approval wrappers; combine executor `tools` registry entries and `context.toolPermissions` reuse user-input to wait for/resume protocol approval tool calls.|
+| [`createLLMNode`](/en/core-api/create-llm-node) |Create a non-streaming LLM call node.|
+| [`createLLMStreamNode`](/en/core-api/create-llm-stream-node) |Create a streaming LLM call node.|
+| [`createLLMProviderFromEnv`](/en/core-api/create-llm-provider-from-env) |Create a LLM provider from the workflow runtime environment variable.|
+| [`createLLMProviderRef`](/en/core-api/create-llm-provider-ref) |Creates a provider reference that can be deferred resolved.|
+| [`createOutputNode`](/en/core-api/create-output-node) |Creating a synchronous or streaming output node;`createOutputItem`, `createOutputPayload`, `addOutputItem`, and `createOutputItemChunk` are also described on this page.|
+| [`createDetailsOutputNode`](/en/core-api/create-details-output-node) |A convenient output node for creating independent, foldable output items.|
+| [`createTimerNode` / `endTimer`](/en/core-api/create-timer-node) |Create a business timing node and write a timing card at the explicit end or workflow end.|
+| [`createQuestionClassifierNode`](/en/core-api/create-question-classifier-node) |Create a problem classification node based on LLM.|
+| [`runNode`](/en/core-api/run-node) |Execute the normal node and trigger the node to execute the hook.|
+| [`runStreamNode`](/en/core-api/run-stream-node) |Execute the streaming node, collect chunks, and produce finalize results.|
+| [`runIf`](/en/core-api/run-if) |Execute the if / else-if / else branch and write the branch selection to the run report and Diagram.|
+| [`runFor`](/en/core-api/run-for) |Execute a traceable for loop and let Diagram display the loop body with the loop container.|
+| [`runWhile`](/en/core-api/run-while) |Execute the traceable while loop and let Diagram display the loop body with the loop container.|
+| [`runWorkflow`](/en/core-api/run-workflow) |Call another workflow in the current context, multiplexing KV, session, provider, token usage, and trace.|
+| [`Knowledge Documents`](/en/core-api/knowledge-documents) | Manage project Markdown Knowledge documents through an explicit local or server storage context. |
+| [`getEnv`](/en/core-api/get-env) |Reads a non-empty variable in the current runtime environment.|
+| [`getRuntimePlatform` / `isCli` / `isDesktop`](/en/core-api/runtime-platform) |Determine whether the execution host for the current workflow is CLI or a local desktop host.|
+| [`getRuntimeLocale`](/en/core-api/runtime-locale) |Reads the Simplified Chinese or English language selected by the current host for localized visible output.|
+| [`getLLMProvider`](/en/core-api/get-llm-provider) |Resolves LLM provider by context, node name, and provider source.|
+| [`WorkflowError`](/en/core-api/workflow-error) |Standard workflow error type.|
+
+## Core Run Object
+
+Most API runs around `input`, `context`, `node`, and `payload`.
+
+|Object|Type|Description|
+| --- | --- | --- |
+| `input` |`Input` or node `Output`|The input data for the current workflow or node.|
+| `context` | `WorkflowContext` / `NodeContext` | Contains provider, storage, conversation, files, metadata, hooks, and abortSignal. |
+| `payload` |`WorkflowPayload` subtype|Node payload should inherit `WorkflowPayload`, `errCode: 0`, `errMessage: ""` on success.|
+| `provider` | `LLMProviderSource` / `LLMProvider` |The LLM node parses the actual provider by provider source.|
+
+## `NodeContext` Core Fields
+
+|Field|Type|Description|
+| --- | --- | --- |
+| `providers` | `ProviderRegistry` |LLM provider the registry and binding tables.|
+| `storage` | `WorkflowStorageContext` | Explicit `local` and `server` locations, each with three-scope `kv` and `persistentValue`. The project `dataStorage.mode` strictly limits accessible locations. Core 0.2 no longer provides top-level `context.kv` or `context.persistentValue`. |
+| `conversation` | `WorkflowConversationContext` |Session state read/write entry. `setTitle` can safely suggest UI title; other reads and writes will throw errors when the session is not enabled.|
+| `tokenUsage` | `WorkflowTokenUsageContext` | Token-usage reporting context. When disabled, `report()` is a no-op; when enabled, it writes KV, run reports, and runtime events. |
+| `userInput` | `WorkflowUserInputContext \| undefined` |Wait/resume entry for user input and tool approval. Local hosts will be injected according to the host capacity.|
+| `files` | `WorkflowFileStore \| undefined` |File reference resolution entry;`createFile` generates a server-backed run file.|
+| `metadata` | `object \| undefined` |Current execution meta information, such as workflow, runId, conversationId;Workflow run also contains `entrypointId` and `entrypointTitle`.|
+| `nodeHooks` | `NodeExecutionHooks \| undefined` |Node start, chunk, complete, and other event callbacks.|
+| `timers` | `WorkflowTimerContext \| undefined` |Business timing node context;`createTimerNode` start timing,`endTimer` end timing.|
+| `toolPermissions` | `WorkflowToolPermissionContext \| undefined` |The tool permission context for the current run. Parses by executor `tools` default and host override values for `createToolApprovalGate()` or custom tool call logic to determine enablement, automatic approval, and manual approval.|
+| `abortSignal` | `AbortSignal \| undefined` |Interrupt execution and provider calls.|
+
+## Payload Constraint
+
+|Field|Description|
+| --- | --- |
+| `errCode` |Business error code. The success value is `0`.|
+| `errMessage` |The error description. Uniform empty string on success.|

@@ -1,0 +1,45 @@
+---
+title: "Server Web 0.1.10"
+description: "Release notes for Server Web 0.1.10."
+---
+
+# Server Web 0.1.10
+
+2026-09-05 · Tag `server-web/v0.1.10` · 当前设备
+
+<span id="server-web-0-1-10" className="release-version-anchor"></span>
+<span id="server-web.0.1.10" className="release-version-anchor"></span>
+
+#### New Features
+
+- **Run records can be renamed and deleted**: project managers or the run's initiator may act, and active runs can still be renamed.
+- **KV entries can be deleted**: the detail dialog confirms and calls `DELETE /api/workflows/:name/kv/entry` for one entry.
+
+#### Breaking Changes
+
+- Server Web no longer hosts the public Embed; its project entries, list status, `/embed/**` pages, and hostname are gone.
+  Migration: browser runs move to the Desktop home Web build, and the console only manages cloud projects.
+- Server Web no longer has a `/web` entry page, and sign-in no longer accepts a `next=web` return trip.
+  Migration: send users straight to sign-in and land them on the project list afterwards.
+
+#### Added
+
+- Added grouped, collapsible Workflow entrypoints in public Embeds, scoped to the site's stable Workflow ID.
+- Added an admin Runner page showing node status, protocol and architecture, capacity, and heartbeat, with drain and resume.
+- Added Runner pool, CPU, memory, and timeout settings, with Core and image digests on the versions page.
+- Added Rename and Delete to execution-log rows, restricted to project managers and the run's initiator.
+- Added a confirmation naming the record before deletion, after which the row leaves the list.
+- Added a Delete entry action in the KV detail dialog that calls the delete endpoint and refreshes the page.
+- Added failed deletes keeping the dialog open with the reason in place, hidden entirely without permission.
+
+#### Changed
+
+- Changed public Embed to preview video attachments while preserving their media types.
+- Changed run-related views to offer only remote Server-runnable versions, reading task state from the Runner control plane.
+- Changed the execution-log, schedule, MCP, and webhook tabs to Server Web's own compact replay and parameter forms.
+- Changed the Knowledge tab document list to pagination, so scrolling to the end no longer loads more.
+
+#### Fixed
+
+- Fixed anonymous `/web` visits going to sign-in first and returning afterwards, with `?next=` accepting route names only.
+- Fixed long table content staying within its own horizontal scroll region on narrow screens.

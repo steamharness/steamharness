@@ -1,0 +1,103 @@
+---
+title: "createTimerNode"
+description: "Create a business timing node and end timing with the endTimer."
+---
+
+# createTimerNode
+
+`workflow.createTimerNode()` creates a normal node to start a visible timer in the business workflow. Timing starts and ends appear in runtime events, the final report, and timing cards in CLI Web local playback.
+
+## Signature
+
+```ts
+workflow.createTimerNode(options?: {
+  name?: string;
+  title?: string;
+  historyLimit?: number;
+  metadata?: WorkflowNodeMetadataInput;
+}): BaseNode<WorkflowTimerNodeInput | undefined, WorkflowTimerPayload>
+
+workflow.endTimer(
+  timer: WorkflowTimerPayload | string,
+  context: WorkflowContext,
+  options?: {
+    status?: "success" | "failed";
+    message?: string;
+    metadata?: Record<string, unknown>;
+  },
+): Promise<WorkflowTimerRecord>
+```
+
+## Payload
+
+```ts
+interface WorkflowTimerPayload extends WorkflowPayload {
+  timerId: string;
+  title: string;
+  startedAt: string;
+  metadata?: Record<string, unknown>;
+}
+
+interface WorkflowTimerRecord extends WorkflowTimerPayload {
+  status: "running" | "success" | "failed" | "cleared";
+  endedAt?: string;
+  durationMs?: number;
+  message?: string;
+}
+```
+
+`createTimerNode` Default `name: "timer"`, `standardName: "timer"`. Returns the serializable payload of `errCode: 0`, `errMessage: ""` on successful startup.
+
+## Example
+
+```ts
+const timerNode = workflow.createTimerNode({
+  title: "External API call",
+});
+
+export const demo = workflow.defineWorkflow<Input, OutputPayload>({
+  name: "demo",
+  async run(input, context) {
+    const timer = await workflow.runNode(timerNode, {
+      timerId: `api-${Date.now()}`,
+      metadata: { provider: "example" },
+    }, context);
+
+    try {
+      const result = await callExternalApi(input);
+      await workflow.endTimer(timer, context, { message: "API call complete" });
+      return createOutput(result);
+    } catch (error) {
+      await workflow.endTimer(timer, context, {
+        status: "failed",
+        message: error instanceof Error ? error.message : "API call failed",
+      });
+      throw error;
+    }
+  },
+});
+```
+
+## Running behavior
+
+|Behavior|Description|
+| --- | --- |
+|Start Timing|After the timer node is executed, the `timer_started` runtime event is sent and the `running` timer is written in live report.|
+|End Timing|`workflow.endTimer(timer, context)` default write `success`; write failure timing when passing `status: "failed"`.|
+|Automatic cleanup|workflow will mark the timer still in `running` as `cleared` before ending, send `timer_finished`, and finally report will not retain running timer.|
+|Repeat End|Calling `endTimer` again after the same timer has ended will throw a workflow execution error.|
+
+`cleared` means that the business code did not explicitly end timing, but workflow has ended; the UI will show "cleaned up", which is not the same as business failure.
+
+## Display position
+
+Timing records are saved in the final `report.timers`. The shared runtime UI normal Run workspace, conversation message, Diagram Result/replay, local output and log replay all read the same record presentation timing card.
+
+## Runable example
+
+`workspace/workflow/runtime-timer` is a runnable timing example. It starts a business timer, waits by the number of milliseconds entered, and explicitly calls `endTimer`. Only one business timing record is generated in the final report; automatic `cleared` behavior that does not explicitly end timer is overridden by the test.
+
+```bash
+workflow-code structure workspace/workflow/runtime-timer
+workflow-code json workspace/workflow/runtime-timer -- --title "Fixture Timer" --milliseconds 2000
+```

@@ -1,0 +1,51 @@
+---
+title: "开发者小助手 v0.1.5"
+description: "开发者小助手 v0.1.5 的更新说明。"
+---
+
+# 开发者小助手 v0.1.5
+
+2026-09-01 · Tag `builtin-developer-assistant/v0.1.5` · 内置项目更新
+
+<span id="builtin-developer-assistant-0-1-5" className="release-version-anchor"></span>
+<span id="builtin-developer-assistant.0.1.5" className="release-version-anchor"></span>
+
+#### 新特性
+
+- **Desktop Control 标准 MCP**：小助手固定挂载该 MCP，直接操作主题、语言、更新、项目与 KV。
+- **OpenAI Responses 适配**：复用 OpenCode 的多轮文本、图片、模型校验与流式输出，结果写入 `opencode-answer`。
+- **OpenCode Permission 快捷参数**：快捷参数可在 `read-only`、`workspace` 与默认 `auto` 之间切换。
+
+#### 破坏性变更
+
+- Generator 停止生成全局 KV、`.workflow` 存储作用域与 Kanban `dataSources`，改用当前项目、会话与关联项目 API。
+  迁移：已有项目的 `context.kv`、`persistentValue` 与 `dataSources` 调用改写为当前项目、会话或 `projectInfo.relatedProjects` API。
+- 小助手工作区清单只接受 schema v2 与通用关联资源类型，不再兼容旧版清单和缺少清单的旧 Desktop。
+  迁移：旧版项目关联清单先转为 schema v2，宿主升级到声明 `minDesktopVersion` 的 Desktop。
+
+#### 新增
+
+- 新增 OpenCode Permission 快捷参数，可在 `read-only`、`workspace` 与 `auto` 间切换并传入每次运行。
+- 新增 OpenAI Responses 协议适配，复用多轮文本、图片、模型校验与流式输出，结果写入 `opencode-answer`。
+- 新增 Desktop Control 标准 MCP 挂载，覆盖主题、语言、开机启动、更新、本地项目、项目信息与 KV 读写。
+- 新增 Dock 打开工具，支持本次运行绑定的首页、本地项目或普通文件夹的右侧与底部面板。
+- 新增 最多 100 项的项目 KV 批量读写与项目知识库查询修改，返回逐项结果。
+- 新增 切换模型时通过 OpenCode resolver 刷新推理档位，`gpt-5.6-*` 额外提供 `max` / `ultra`。
+
+#### 变更
+
+- 变更 固定挂载 Desktop Control MCP 后，最低宿主版本提升为 Desktop `0.1.23`。
+- 变更 OpenAI 推理档位在快捷参数中统一显示为 `Effort`，并与模型值组成宿主 composer 摘要。
+- 变更 项目清单显式采用通用的 `projectInfo.relatedProjects` 关系合同。
+- 变更 OpenCode 只通过父 Workflow 的受控代理访问 Desktop Control，关键写操作默认审批，回环令牌不进入 shell。
+
+#### 修复
+
+- 修复 Skill 或引用文件无法完整读取时仍继续编辑、并用旧版 CLI 结果误报完成，现在立即停止并报告未验证阶段。
+- 修复 旧清单或结构校验失败降级出的普通文件夹无法修复，现在按授权根分阶段迁移并续接跨项目修复。
+- 修复 源码迁移、宿主识别、代码目录授权与 KV 授权被混报为同一个完成状态。
+
+#### 移除
+
+- 移除 Generator 的全局 KV、`.workflow` 存储作用域与 Kanban `dataSources` 输出。
+- 移除 工作区清单对旧版项目关联清单的转换，以及对缺少清单的旧 Desktop 的兼容。

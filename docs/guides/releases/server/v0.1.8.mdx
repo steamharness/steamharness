@@ -1,0 +1,52 @@
+---
+title: "Server v0.1.8"
+description: "Server v0.1.8 的更新说明。"
+---
+
+# Server v0.1.8
+
+2026-08-26 · Tag `server/v0.1.8` · 当前设备
+
+<span id="server-0-1-8" className="release-version-anchor"></span>
+<span id="server.0.1.8" className="release-version-anchor"></span>
+
+#### 新特性
+
+- **Alpha 独立部署链路**：与正式版共用 PostgreSQL 和 OSS bucket，隔离代码、进程、日志与缓存，运行在 `7140` 端口。参见 [部署](/guides/server/deployment)。
+- **按发行目标解析版本**：每个版本固化 Server、macOS 和 Windows 目标，运行与计划任务只解析具备兼容 runtime 的在线版本。
+- **项目展示元数据**：项目可保存默认名称、本地化名称、手工声明和展示平台。参见 [项目管理](/guides/server/project-management)。
+
+#### 破坏性变更
+
+- Server 仅允许 `dataStorage.mode` 为 `server` 或 `both` 的项目运行和访问服务器数据。
+  迁移：`local` 或未声明存储的项目需改为 `server` 或 `both`，否则所有入口统一返回 `409`。
+- Core 与 CLI 精确依赖升级到 `0.2.0`，PersistentValue API 强制携带 `projectId`。
+  迁移：非 global 的 namespace、entry 和 source 必须把 `workflowName` 设为项目 ID。
+- Server 已完整移除 Supabase，账号、会话和邀请改用原生 PostgreSQL。
+  迁移：账号数据需要一次性迁移到 Server 自有的 PostgreSQL 库。
+- Desktop 登录与运行来源统一使用 `desktop`，旧 `app` 来源不再接受。
+  迁移：把调用方的来源标识改为 `desktop`。
+
+#### 新增
+
+- 新增 云端项目创建原子接收 UUID 和完整 `projectInfo`，Desktop 可按同 UUID 创建或恢复绑定。
+- 新增 项目默认名称、本地化名称、手工声明和展示平台，经项目列表与 `PUT /api/workflows/{id}/project-info` 提供。
+- 新增 每个版本固化 Server、macOS 和 Windows 发行目标，仅本地版本跳过依赖安装与 runtime 构建。
+- 新增 源码与项目组下载按 macOS/Windows 发行目标校验并独立解析平台 `latest`。
+- 新增 Alpha 部署链路与正式版共用数据库和 bucket，隔离代码、进程、日志和本地缓存。
+
+#### 变更
+
+- 变更 Desktop 安装包、更新 feed 与内置项目资源迁移到阿里云 OSS。
+- 变更 Alpha Server 默认关闭计划任务自动轮询，计划管理与手动立即运行仍可用。
+- 变更 项目兼容性要求精确声明 Core，只比较 `major.minor` 兼容线，major 或 minor 变化会阻断执行。
+- 变更 生产凭据改由受保护的 GitLab CI/CD Variables 注入，开发 `.env` 仅保留在本机。
+
+#### 修复
+
+- 修复 恢复任务未配置 Docker Socket 路径时改用 `/var/run/docker.sock`，确保 Alpha 能启动 PostgreSQL。
+- 修复 内置项目的可变发布索引强制客户端重新验证，带版本的资源包改用长期不可变缓存。
+
+#### 移除
+
+- 移除 Server 的本机下载服务启动、恢复与配置。

@@ -1,0 +1,349 @@
+---
+title: "createAgent"
+description: "创建一个可直接编程驱动的 Agent 运行时。"
+---
+
+# createAgent
+
+`workflow.createAgent()` 创建一个 Agent 运行时。它把「输入、输出、思考强度、上下文压缩、plan 审批」这一整套能力收进一个对象，调用方只需要喂 prompt 和处理事件，不必自己实现工具循环。
+
+运行时使用 Pi Durable 1.2.0 作为唯一执行后端，要求 Node.js `>=22.19.0`。
+
+## 签名
+
+```ts
+const agent = await workflow.createAgent({
+  databasePath?: string,
+  workdir?: string,
+  systemPrompt?: string,
+  provider?: string,
+  model?: string,
+  baseUrl?: string,
+  apiKey?: string,
+  modelAttributes?: AgentModelAttributes,
+  effort?: AgentEffort,
+  permissionPolicy?: AgentPermissionPolicy,
+  mode?: AgentMode,
+  tools?: string[],
+  toolDefinitions?: WorkflowToolPermissionDefinition[],
+  allowedDirectories?: string[],
+  extraTools?: AgentTool[],
+  sessionId?: string,
+  session?: AgentSessionOptions,
+  models?: MutableModels,
+  resolvedModel?: Model<Api>,
+}): Promise<AgentRuntime>
+```
+
+返回的运行时提供：
+
+| 成员 | 说明 |
+| --- | --- |
+| `run(input, host?)` | 执行一次运行，逐条产出 `AgentStreamEvent`。 |
+| `close()` | 关闭 Harness 并释放拥有者锁；未完成工作保留，供同一存储的下次运行恢复。使用完必须调用。 |
+| `getContextUsage()` | 读取当前上下文占用 `{ used, total }`，包含仍在流式生成的消息；模型窗口不可用时返回 `undefined`。 |
+| `updateContextUsage({ used, total })` | 提交当前上下文的绝对测量值；运行中的 `context_usage` 事件立即发送该更新，不计入计费用量。 |
+| `sessionId` | 本次运行使用的会话 id。 |
+| `reset()` | 清空上下文投影，下一轮提交新的模型上下文；须先结束所有活动任务。 |
+| `restoreTranscript(messages)` | 指定下一轮从哪段记录接着跑；只在运行时还没建起 agent 时生效，见「上下文记录」。 |
+| `readTranscript()` | 读取模型可见上下文的投影，供检查或导出。执行历史以 Harness 存储为准。 |
+
+## 选项
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| `databasePath` | `string` | 当前隔离会话的 SQLite 文件。省略时使用内存，不支持跨进程恢复；同一文件同时只能有一个执行拥有者。 |
+| `storage` | `AgentStorageFactory` | 自定义独占后端工厂，与 databasePath 互斥；需自行实现所有权与备份。 |
+| `session` | `AgentSessionOptions` | 启用持久输入、任务/计划快照和后台执行，见下方。 |
+| `workdir` | `string` | 工具解析相对路径的目录，默认 `process.cwd()`。 |
+| `systemPrompt` | `string` | 覆盖默认系统提示词。 |
+| `provider` / `model` | `string` | 模型提供方与模型 id；自建端点需要同时提供 `baseUrl`。 |
+| `baseUrl` / `apiKey` | `string` | 自建网关或兼容端点的地址与密钥；缺省时从对应环境变量读取。 |
+| `modelAttributes` | `AgentModelAttributes` | 自建端点上该模型的属性声明，见下方「模型属性」。 |
+| `effort` | `AgentEffort` | 默认思考强度。 |
+| `permissionPolicy` | `AgentPermissionPolicy` | 默认权限策略。 |
+| `mode` | `AgentMode` | 默认运行模式。 |
+| `tools` | `string[]` | 收紧可用工具；不能放宽策略已经禁用的工具。 |
+| `allowedDirectories` | `string[]` | 允许读写根目录，默认只有 `workdir`。 |
+| `extraTools` | `AgentTool[]` | 内置工具之外再加的工具，见下方「自带工具」。 |
+| `models` / `resolvedModel` | pi 类型 | 需要复用自建 provider 集合或直接指定模型时使用。 |
+
+## 持久会话控制
+
+`session: {}` 启用 Harness 会话协议；`run()` 期间可调用 `runtime.control(command)`，通过 `session` 事件读取 `AgentSessionSnapshot`。未运行时返回 `AGENT_NOT_READY`。普通编程式调用会等待后台工作结束；需要多轮常驻资源的工作流宿主使用 [createAgentNode](./create-agent-node.mdx) 的 host lease。
+
+| `session` 字段 | 说明 |
+| --- | --- |
+| `subagents` | 显式启用委派：`{ tools: string[], maxAgents?: number, models?: { provider, modelId }[] }`。工具只能取父 Agent 与白名单的交集；默认继承父模型，显式选模型须命中精确 provider/modelId 白名单；子 Agent 禁止再次委派，活动委派默认最多 4 个。 |
+| `nativeTools` | Pi Durable `ToolRegistration[]`；可用 `api.executeTool()` 嵌套调用，仍执行 caller 限制、权限审批及取消传播。 |
+| `compaction` | `{ enabled?, reserveTokens?, keepRecentTokens?, backgroundTokens? }`，使用 Durable 后台、阈值和溢出压缩；不走普通轮前压缩。 |
+| `planFork` | `initial`、`current` 或 `asOf`（默认）：分叉计划为空初始值、当前值或分叉点值。 |
+| `registry` | `AgentRegistryReader`，安装项目自己的任务、工具、提示 sections 和 hooks；支持 install/uninstall 热更新。 |
+| `toolSearch` | `{ catalogs?: AgentToolCatalog[] }`，显式启用 `tool_search`；只发现宿主授权的目录。 |
+| `codeMode` | `{ memoryLimitBytes?, timeoutMs? }`，默认关闭；QuickJS worker 编排已有工具，默认 64 MiB / 300 秒，上限 256 MiB / 300 秒。 |
+| `environment` | `{ id, label, open(target, context) }`，由宿主提供的 `AgentExecutionEnv`；见下方远端环境边界。 |
+
+命令均包含稳定 `requestId`，可带快照内数字 `targetId`（省略为主会话）。接口在等待就绪或排队前复制命令，调用方后续修改原对象不会改变本次操作。同一 requestId 不可换载荷；重发返回原回执。
+
+| `type` | 参数及效果 |
+| --- | --- |
+| `submit` | `prompt`、可选 `images`、`mode: "steer" \| "followUp" \| "reject"`。steer 在工具轮边界补充本轮，followUp 排下一轮，reject 在忙碌时拒绝；空闲 steer 是正常新轮。 |
+| `withdraw` | `inputId` 为待撤回输入的 requestId；已消费返回 `already_placed` / `settled`，不会撤销副作用。 |
+| `promote` | `inputId` 为待立即发送输入的 requestId；在同一事务内将队列项转为 steer 并保存回执，保留原身份和图片，在下一工具边界接入本轮。已消费返回 `already_placed` / `settled`，不会重发。 |
+| `compact` | 可选 `instructions`；创建后台压缩任务，可与活动任务协调。 |
+| `reset` | 可选 `handoff`；在输入边界进入新上下文世代，保留旧正文与任务计划。 |
+| `fork` | 已提交 `entryId`；同一 SQLite 内新建独立 conversation、provider 身份和输入队列，不复制活动任务或审批。回执包含 `forkId`。 |
+| `delete` | 取消并隐藏子会话；主会话及底层存储由宿主删除。 |
+| `configure` | `expectedVersion` 与可选 `model: { provider, modelId }` / `effort`；CAS 更新已注册模型，下一请求生效，子模型仍受白名单约束。 |
+| `plan` | `expectedVersion`、`items: { id, text, status }[]`；状态为 pending / in_progress / completed，CAS 更新事务计划。 |
+| `cancel` | `scope: "foreground" \| "all" \| "task"`，task 需 `taskId`。foreground 保留后台子树，all 包含 owned 子会话但不跨独立 fork；任务范围校验所属关系。 |
+| `snapshot` | 取得并发布最新完整快照。 |
+| `task` | `name`、严格 JSON `input`（最多 256 KiB）、可选 `background`；只能创建项目 registry 注册的任务，回执含 `taskId`，同身份重发不会新建任务。Date、Map、函数、非有限数等在记录 requestId 前拒绝。 |
+
+快照带 `version: 1`、每次打开改变的 `ownerId`、递增 `revision`、`contexts`、`tasks/history`、`turns`、`plan`、`records`、`receipts` 和逐会话 `usage`。快照是辅助状态；assistant 主回答继续平铺。重连读取完整快照，旧 owner 的 revision 不可压制新 owner。提示记录只有摘要/版本，配置记录不保存凭据。后台子结果由持久 reporter 用稳定身份回传一次；费用按父子会话分别归属，不重复累加重放。
+
+`turns[].usage` 是该轮已返回模型响应的累计用量，包含工具循环、失败重试和轮内压缩响应，字段为 `inputTokens`、`outputTokens`、`totalTokens`、`cachedInputTokens`、`cacheCreationTokens`、`reasoningTokens`、`calls`。继承的 fork 历史、其他轮次和其他会话不会重复计入该回答。空闲后台压缩的消耗保留在逐会话 `usage` 中，不回写已完成回答。`contexts[].contextUsage` 则是对应会话当前模型上下文的 `{ used, total }`，包括流式内容，在后续输入、fork、压缩和 reset 后更新，与累计消耗独立。
+
+`tasks` 仅包含活动任务，`history` 包含终态任务。`stopping` 表示已请求取消、但尚未到达终态；历史任务的 `stopping` 始终为 false，`status` 保留真实结果，包括已完成或已停止。重新打开会话后遵循相同规则。
+
+工具任务的 `arguments` 为模型或上层工具提交的参数，活动任务与完成历史均可读取；它不是经过工具修复或 hooks 转换后的参数审计。历史工具按各自已提交的 assistant entry 关联，模型跨轮复用 call ID 不会覆盖旧任务。流式工具事件的 `toolCallId` 为稳定的展示身份，调用方应将其视为不透明值。审批身份同时绑定持久 conversation、task 与 call ID：暂停恢复沿用原批准，后续同 ID、同参数的独立调用仍须按权限重新审批。
+
+session 会向模型提供 `update_plan`，启用委派时再提供 `subagent({ task, background?, model?: { provider, modelId } })`。显式 `toolDefinitions` / executor `tools` 列表须声明这些工具及所需 nativeTools 的权限；便捷 executor 默认补 update_plan/subagent。后台工作结束、前台回答完成和客户端连接状态相互独立。
+
+## 扩展执行与恢复
+
+Core 从 `workflow-code/agent` 导出 `createAgentRegistry`、`defineAgentTask`、`defineAgentExtension`、`defineAgentDoc`、`agentHook`、`AgentToolTask`、`AgentGenerationTask` 及对应类型；注入式项目也可通过 `workflow` 使用这些函数，无需安装 Pi。任务直接使用 Durable 的检查点、依赖等待和取消协议：
+
+```ts
+const registry = workflow.createAgentRegistry();
+const timer = workflow.defineAgentTask<
+  { wakeAt: number }, { phase: "wait"; wakeAt: number }, string
+>({
+  name: "app.timer", version: 1,
+  initial: input => ({ phase: "wait", wakeAt: input.wakeAt }),
+  phases: { wait: async (task, runtime, context) => {
+    await runtime.sleep(task.state.checkpoint.wakeAt, context);
+    await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: "awake" } }), context);
+  } },
+  abort: async (_task, runtime, context) => {
+    // Release project resources here, then commit the cancellation.
+    await runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), context);
+  },
+});
+registry.install(workflow.defineAgentExtension({ name: "app", tasks: [timer] }));
+const agent = await workflow.createAgent({ session: { registry } });
+```
+
+宿主在运行期间提交 `{ type: "task", requestId, name: "app.timer", input: { wakeAt }, background: true }`。多阶段任务在 `runtime.commit()` 中保存下一阶段；依赖通过 `tx.createTask()` 和 `{ status: "waiting", on: [childId], policy: "allSettled", checkpoint }` 绑定。每个 phase 必须提交进度或终态。取消会先处理 owned 子任务，再调用 `abort`；关闭宿主暂停执行，不等同业务取消。`wakeAt` 是检查点中供界面展示的绝对毫秒时间，计时器执行仍由 `runtime.sleep()` 决定。
+
+Registry publication 使用不可变快照，在途工具和 hook 固定实现；下一任务 phase 可切换兼容定义。已经运行的任务在定义被移除时可继续旧实现，等待后重新调度或重启时缺失/不兼容定义会保留为 `blocked`。重新安装正确定义后自动唤醒；`pi.*`、`workflow.*` 任务/扩展及重复工具名称不能覆盖。普通会话命令不能上传扩展代码。
+
+### 工具发现与 MCP
+
+`AgentToolCatalog` 为 `{ id, tools?, allowedTools?, open() }`。预声明 `tools` 是不含 `execute` 的工具描述，打开会话时保存定义，搜索只读取元数据，首次实际调用才连接；没有预声明 schema 时必须给最终工具 id 的 `allowedTools`，首次搜索才连接目录并保存工具定义。实际调用时重新连接并核对名称、描述、schema 和 replay，以及该会话首次保存的定义；同时更新宿主描述和服务定义也不能绕过核对。定义漂移返回错误并关闭连接；使用新定义须创建新会话，暂时连接失败可再次调用重试。工具发现不会连接未声明的服务。`createTools` 可返回 `{ tools, catalogs, close? }`，或编程式配置 `session.toolSearch.catalogs`。
+
+标准 MCP 助手 `workflow.createMcpToolCatalog({ definition, allowedTools, descriptors?, connect?, approve? })` 验证服务器定义但不立即启动进程。这里 `allowedTools` 使用 MCP 原始名称，最终 id 沿用 `<serverId>_<toolName>`；凭据按已有 MCP 环境继承规则传入。所有目录都由会话 owner 管理并在关闭后释放。
+
+### Code Mode 与执行目标
+
+显式设置 `session.codeMode: {}` 后提供 `codemode({ code })`。脚本可使用 `await tools.<name>(args)`、`text()`、`store()` / `load()`；没有 Node、网络或额外 `models.*` 能力。每个嵌套调用仍经过工具 whitelist、caller、审批、replay 和取消。官方执行日志、沙箱指纹、脚本 deadline 与调用顺序共同校验恢复；已提交嵌套结果不会重做。worker JS 和 QuickJS WASM 随 Core 包分发。
+
+`session.environment` 的 `open` 返回宿主实现的 `AgentExecutionEnv`，必须使用声明的稳定 `id` 和目标 `cwd`。同一会话不能在重开时换环境身份；更换执行目标须创建新会话。配置远端环境后，内置 read/write/edit/bash 使用该环境，grep/find/ls 不会回退本机；额外工具仍由项目显式声明。文件范围、shell 权限和远端 MCP 连接必须由环境及目录工厂在目标端实施。Core 不创建云沙箱。Harness 停止后调用环境 `cleanup()` 并关闭目录连接；连接失败显示环境/目录状态，不保存连接凭据。
+
+Studio Trace 在原轨迹页旁提供任务、计划、记录、用量四个 tabs，CLI Web 不再显示任务侧栏。任务详情包括定义版本、检查点、唤醒时间、Code Mode 脚本及嵌套调用；记录页展示扩展、目录、Code Mode、存储及本地/远端目标状态。没有数据库配置表单，assistant 主回答仍在正文平铺。
+
+### 自定义存储与备份
+
+运行时 `storage: AgentStorageFactory` 与 `databasePath` 互斥：`{ label, open(): Promise<{ storage: AgentStorage, release?() }> }`。宿主必须在 open 时获取独占 owner，Harness 关闭 storage 后再调用 release；恢复仍须使用同一份存储。自定义后端负责自身备份与取消调度，JSONL 不是默认长期运行后端。
+
+`workflow-code/agent` 导出 `exportAgentDatabase({ databasePath, destination })` 和 `importAgentDatabase({ source, databasePath })`。先停止并等待执行 worker；两个函数均获取源、目标的独占 owner 锁、检查 Durable SQLite，并通过 SQLite backup 保存含 WAL 的一致快照。目标必须不存在且未被其他 owner 预留，不覆盖任何会话；导入不复制源 owner 锁。数据库和项目工作区须配套保存，快照不包含工作区文件、运行中资源或凭据重建逻辑。
+
+离线取消 `cancelAgentConversation({ agentStoreDir, conversationId, registry? })` 也必须先停止并等待 worker；有自定义任务时传入项目 registry，使注册的 `abort` 清理可以执行。缺少定义的任务只能终结为 `orphaned`，不能执行项目清理代码。活动会话优先通过 `cancel` 控制命令取消，使用 owner 已加载的任务定义。
+
+## 输入（`AgentInput`）
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `prompt` | `string` | 本轮输入。本轮带图片时可以为空字符串：一轮只有附件的运行是合法的一轮，运行时会把图片本身作为消息内容发出去，而不是先报「缺少 prompt」。 |
+| `requestId` | `string` | 逻辑提交身份。同一输入的恢复、重发使用原值；真正的新输入使用新值。同一存储内重复提交返回原提交，不再次调用模型或工具。 |
+| `images` | `AgentImageInput[]` | `{ data, mimeType }` 形式的图片。 |
+| `imageFiles` | `WorkflowFileReference[]` | 宿主文件引用形式的附件，由运行时的输入节点通过工作流文件存储解析。不可读或不是图片的引用会让本轮以命名到具体文件的错误结束，而不是静默丢掉附件。解析后它会变成 `images`，下游看不到引用这一步。 |
+| `modelAttributes` | `AgentModelAttributes` | 覆盖运行时选项里的同名项，见下方「模型属性」。 |
+| `workdir` | `string` | 覆盖运行时的工作目录。 |
+| `allowedDirectories` | `string[]` | 覆盖工具可访问的根目录；相对路径按本轮的 `workdir` 解析，省略时只有 `workdir`。 |
+| `systemPrompt` | `string` | 本轮的系统提示词，逐轮生效并覆盖运行时选项里的同名项。 |
+| `provider` / `model` / `baseUrl` | `string` | 覆盖运行时的模型配置。 |
+| `effort` | `AgentEffort` | 见下方「思考强度」。 |
+| `agent` | `"build" \| "plan"` | `build` 直接执行，`plan` 只调研并给出计划。 |
+| `permissionPolicy` | `"read-only" \| "workspace" \| "auto"` | 见下方「权限策略」。 |
+| `contextWindow` | `number` | 上下文用量分母。缺省时取模型声明的窗口，没有声明时使用运行时兜底窗口。 |
+| `compact` | `boolean` | 为 `true` 时把本轮变成一次上下文压缩。 |
+| `hostInput` | `unknown` | 本轮由宿主输入驱动（OpenAI / Responses 网关）；带它的一轮不写 workflow conversation，也不读不写上下文记录。 |
+| `planResume` / `askResume` | 审批或问答恢复载荷 | 编程式宿主提供计划决定或用户回答；节点宿主通过 `userInput` 提交原请求的答案。 |
+
+## 模型属性
+
+`modelAttributes` 用来描述一个**自建端点**上的模型——运行时自带目录不认识它，只能由调用方告诉它这个模型是什么：
+
+```ts
+const agent = await workflow.createAgent({
+  provider: "my-gateway",
+  model: "vendor/model-1",
+  baseUrl: "https://gateway.example.com/v1",
+  modelAttributes: {
+    name: "Vendor Model 1",
+    reasoning: true,
+    input: ["text", "image"],
+    contextWindow: 1_000_000,
+    maxTokens: 64_000,
+    cost: { input: 0.4, output: 1.6, cacheRead: 0.04, cacheWrite: 0.5 },
+    thinkingLevelMap: { minimal: null, max: "xhigh" },
+  },
+});
+```
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `name` | `string` | 显示名称；不超过 200 个字符，缺省时用模型 id。 |
+| `reasoning` | `boolean` | 模型自身是否具备推理能力。 |
+| `input` | `("text" \| "image")[]` | 该模型接受的输入模态；`image` 决定本轮会不会把图片交给模型。 |
+| `cost` | `{ input, output, cacheRead, cacheWrite }` | 每百万 token 的价格，四项都是非负数字。 |
+| `contextWindow` | `number` | 上下文窗口。 |
+| `maxTokens` | `number` | 最大输出 token。 |
+| `thinkingLevelMap` | `Record<string, string \| null>` | pi 思考等级到上游取值的映射；`null` 表示该档位不受支持，缺省的档位沿用 pi 自己的映射。`ultra` 不是合法档位，写进映射会被拒绝——它在到达模型前就折算成 `max`。 |
+
+不声明任何属性时，运行时只能按自己的兜底描述这个模型——默认当作推理模型、接受图片、零价格，并按模型 id 的名称前缀猜一个窗口。这个兜底对真实模型几乎总是错的，所以自建端点最好把知道的字段都写上。
+
+显式传入的 `contextWindow` / `maxTokens` 选项仍然高于 `modelAttributes`，因为那是调用方为这一轮特意给出的覆盖。一次运行里传的 `modelAttributes` 覆盖运行时选项里的同名项。
+
+属性写成 JSON 文本时（项目参数或 `--model-attributes`）会先经过校验：出现 `name`、`reasoning`、`input`、`cost`、`contextWindow`、`maxTokens`、`thinkingLevelMap` 之外的键，或者类型不符、取值越界，都会以 `input_validation` 失败，而不是被静默丢弃——一个拼错的字段被丢掉，运行看起来就像模型忽略了它。编程式调用直接传对象时，Core 不会再替调用方校验一遍，字段按原样交给运行时。
+
+`modelAttributes` 只用于调用方自建端点的模型声明。系统服务配置不属于公开 workflow 的配置面；公开项目应通过自己的 provider 环境变量提供模型属性。
+
+## 自带工具
+
+内置工具只有 `read`、`write`、`edit`、`bash`、`grep`、`find`、`ls`，以及只在 plan 模式提供的 `ask_user`——模型用它中途向用户提问（一次可问多个问题，每题可选选项、可多选、可再附一个自定义回答输入框），运行暂停等回答，回答后同一份计划继续。要在它们之外再加工具，编程式运行时用 `extraTools`，workflow 节点用 [createAgentNode](./create-agent-node.mdx) 的 `createTools`。
+
+- **自带工具不受 `permissionPolicy` 约束。** 策略只决定内置工具暴露哪些、能走多远；自带工具由宿主自己的工具目录治理——项目在 `executor.tools` 里声明它们，`enabled` 决定是否暴露，`autoApprove: false` 会在调用前暂停本轮等待批准（仅 plan 模式的回合；build 回合直接执行）。
+- 要连接宿主提供的 stdio MCP 服务，先用 [connectMcpServer](./connect-mcp-server.mdx) 建立连接，再用 [createMcpTools](./create-mcp-tools.mdx) 把它暴露的工具转成自带工具。
+
+## 思考强度
+
+`effort` 取 `off`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`，也接受 `ultra`（等同 `max`）。取值超出模型支持范围时会自动收敛到该模型支持的档位，不会因为传了模型不支持的档位而失败。
+
+空字符串表示「交给模型决定」：pi 用「不指定档位」表达它，也就是 `off`——OpenAI 类端点因此收不到 `reasoningEffort`，与内置 OpenCode 项目的 Model default 一致；对 Anthropic 这一类会把 `thinking` 显式关掉，想保留推理就挑一个具体档位。完全不传（`undefined`）才表示「没有选择」，沿用运行时/项目自己的档位。
+
+## 权限策略
+
+| 取值 | 行为 |
+| --- | --- |
+| `read-only` | 禁用 `write`、`edit`、`bash`，模型看不到这些工具。 |
+| `workspace` | 全部工具可用。文件类工具（`read`/`write`/`edit`/`ls`/`grep`/`find`）只能落在 `workdir` 与 `allowedDirectories` 内，且这一判断在 `fs.realpath` 解析之后做出，工作区里的软链接不能把它们带出去；`grep`/`find` 不跟随软链接。默认值。 |
+| `auto` | 与 `workspace` 相同，但文件类工具也可以访问工作区之外的路径。 |
+
+三者都不会为内置工具弹出审批——策略决定的是「暴露哪些工具」和「工具能走多远」，只有宿主自己声明的自带工具才会走审批链。
+
+> **`bash` 不受路径限制。** 命令以宿主进程的身份在 `workdir` 里执行，`cwd` 是工作目录而不是沙箱，命令本身可以读写工作区之外的任何位置；`read-only` 更严是因为它根本不暴露 `bash`。要限制命令的影响范围，只能靠宿主侧的沙箱。
+
+## 上下文记录
+
+提供 `databasePath` 后，Harness 持续提交模型轮次、工具意图、结果和任务检查点；重新打开同一文件并使用原 `requestId` 可以恢复。已提交的工具结果直接复用。结果未知的工具默认 `replay: "never"`，恢复时向模型返回中断错误，不自动重复副作用；只有确认可安全重复的工具声明 `replay: "safe"`。内置读取和检索工具声明 safe，写入、编辑和 shell 默认 never。`requestId` 去重不能替代外部服务的业务幂等。
+
+`readTranscript()` 是模型上下文投影，`restoreTranscript()` 仅用于存储尚无历史时显式提供初始上下文，不覆盖已有 SQLite 历史。它们不是另一个持久化后端，也不用于恢复未完成任务。内存模式在同一运行时内保留审批暂停的检查点，可使用原 `requestId` 继续；关闭运行时或退出进程后须使用 SQLite 才能恢复。会话节点自动选择独立 SQLite 文件，参见 [createAgentNode](./create-agent-node.mdx)。不读取旧 KV transcript，也不在存储失败时降级为无历史执行。
+
+进程在流式回答中断后，恢复会把已提交的正文和推理片段纳入续写上下文，持久保存续写提示；反复中断仍从已提交片段继续。没有提交完整意图的工具调用会被丢弃，不执行也不显示为已开始。
+
+流式消息保留思考、正文及工具块的原始索引，开始事件与后续增量一起投影；主回答保持正文展示。运行时或输出投影抛出异常时，Agent 会取消同一执行 owner 下尚未结束的任务（包括独立 fork）及排队输入，保存失败原因，并从持久记录发布最终任务状态。已报告失败的运行不会在重开时自动继续；正常关闭宿主和进程意外退出仍按检查点恢复，不等同于运行失败。工具返回的业务错误继续作为工具结果交给模型处理。
+
+带 `hostInput` 的节点运行由网关管理历史，默认使用本轮的内存 Harness，不写工作流会话历史。
+
+自带工具沿用 Pi `AgentTool` 契约：`prepareArguments` 在校验前修复参数，`outputSchema` 校验 `structuredContent`，失败应 throw 或设置 `isError: true`。工具用量与主模型上下文用量分开；所有工具都返回 `terminate: true` 时结束当前工具轮。工具恢复时重新检查当前权限。
+
+## 上下文压缩
+
+prompt 恰好是 `/compact` 或 `/summarize`，或显式传 `compact: true` 时，本轮立即把已有上下文替换成模型生成的摘要，即使未达到自动压缩阈值也执行。空上下文只产出结束事件。执行时先输出 `compaction` start，再输出 end；Agent 节点展示执行中与完成状态，失败时保留原始上下文。摘要写入实际 Agent transcript 并随会话保存，后续回合读取摘要，原对话正文仍保留。公开 `compactAgentMessages({ ..., force: true })` 同样可强制总结全部已有消息。
+
+只有模型正常结束且摘要非空时才替换上下文。模型失败、输出截断或未完成时，手动总结报错并保留原始 transcript；取消以 `execution_aborted` 结束，即使模型在取消后返回摘要也不会写入。
+
+总结请求的模型 usage 通过 `host.reportUsage` 上报，包含失败或取消响应已经消耗的 token；这份计费用量不作为总结后的上下文占用。直接调用 `compactAgentMessages` 时，可传 `onUsage(usage)` 接收模型返回的 pi `Usage`，回调在摘要校验前执行。
+
+**记录超出窗口时会自动压缩。** 如果本轮开始的记录已经超过压缩阈值（例如恢复出来的一段很长的历史），运行时会在调用模型之前先压缩一次，再让本轮正常跑，事件与手动压缩同形但 `auto: true`。压缩失败不写这一行、也不会让本轮失败——请求本身会把问题报出来；不会产出一行声称压缩成功、实际没有压缩的记录。
+
+自动压缩的摘要只覆盖较早的部分：切分点从末尾按 token 窗口回退，并对齐到用户轮次；最近的窗口里没有用户轮次时退到最近的 assistant 轮次，最新一条消息永远保留。手动总结覆盖完整已有上下文，在摘要中保留目标、已做决策和未完成工作。
+
+## 取消
+
+`context.abortSignal` 触发时会中止本轮：模型流与正在执行的工具一起停下，本轮以 `execution_aborted` 结束（工作流据此把运行标成 aborted 而不是失败），已经花掉的 token 仍然照常上报。
+
+## plan 模式
+
+`agent: "plan"` 时系统提示词切到 plan 约定，写操作不可用。计划过程中模型可以用 `ask_user` 中途提问（见上方内置工具），运行同样以 `user_input_required` 暂停，回答后同一轮继续，问题和回答分别留在 `pendingUserInput` 与 `resolvedUserInputs` 里。本轮结束后运行进入暂停，通过 `user_input_required` 请求批准；宿主批准后按同一 `requestId` 恢复，恢复载荷里带上计划正文，因此中途发生压缩也不会丢失计划。拒绝不会结束会话：它保持 plan 模式，把这份计划连同补充要求交回计划 agent 修订一版——不会改动任何文件，但会再产生一轮模型调用。
+
+每轮新计划使用独立的审批 `requestId`，修订完成后会再次等待用户确认；即使修订后的正文没有变化，也不会复用上轮答案自动批准或拒绝。恢复已暂停的审批时仍提交该次请求的原 `requestId`。
+
+提问暂停与计划审批是两个独立阶段：`ask_user` 本身不会产出 `plan` 事件或请求计划审批。只有本轮正常结束、最后一次工具调用之后产出了非空的计划正文时，才发送 `plan` 事件并交给 `host.approvePlan`；工具前的说明不属于这份计划。失败、取消或仍在等待用户回答时不会把残留文字提交为计划。
+
+## 事件
+
+`run()` 逐条产出以下事件：
+
+| 事件 | 说明 |
+| --- | --- |
+| `text_delta` | 回答正文增量。 |
+| `thinking_delta` | 推理内容增量。 |
+| `tool` | 工具调用的 start / update / end。 |
+| `plan` | plan 正文的 start / end。 |
+| `compaction` | 压缩的 start / end，结束事件会带上摘要。 |
+| `retry` | 回答中途断流、撞上模型输出上限、或工具调用丢失后继续本轮的尝试，带上 `attempt` / `maxAttempts` / `reason` / `kind`（`dropped` / `length` / `lost-call`）。 |
+| `context_usage` | 运行开始、流式消息、工具结果和压缩后的当前上下文占用。 |
+| `approval` | plan 审批结果。 |
+
+## 宿主钩子（`AgentHost`）
+
+不传 `host` 时不会发生任何暂停。传入后可以接管：
+
+| 钩子 | 说明 |
+| --- | --- |
+| `approveToolCall(input)` | 返回即放行；抛错即拒绝，错误信息会作为工具错误回给模型。抛 `user_input_required` 则暂停运行。 |
+| `approvePlan(input)` | 请求计划批准；抛 `user_input_required` 则暂停运行。 |
+| `reportUsage(usage)` | 提交模型响应后上报用量，含稳定 `recordId`；宿主应按它 upsert，恢复可能重放同一记录。返回 Promise 时等待完成。仅计入实际返回 usage 的尝试，强杀前尚未返回的上游用量无法推算。 |
+| `abortSignal` | 中断运行。 |
+
+### 实时上下文
+
+`run()` 在请求模型前就发送 `context_usage`，因此首次对话开始即可展示圆环。消息的正文、reasoning、工具调用参数和工具结果进入上下文时会更新占用；流式增量最多每 100 毫秒发送一次，消息结束与压缩后的更新立即发送。失败或取消也会保留已经产生的更新。
+
+与 Pi 的上下文估算方式一致，Core 优先使用最近一次有效模型响应的 usage（包含缓存 token），再加上后续消息的估算值；不把多次请求的计费用量相加作为上下文大小。没有有效 usage 时估算实际上下文中的系统提示、命名提示段、工具定义和消息文本，CJK 按字符计，图片使用近似值。压缩后保留的旧响应不再参与校准，恢复记录后也遵循此规则。
+
+程序可以在流式运行期间查询 `agent.getContextUsage()`。外部计量器获得更准确的当前用量时，调用 `agent.updateContextUsage({ used, total })`；`used` 必须是非负有限数，`total` 必须是正有限数。后续估算在这个测量值上增长，直到有效模型 usage 或实际压缩重新校准；`total` 不修改模型配置，下次模型校准使用本轮 `contextWindow` 或模型窗口。`reset()` 同时清除该测量值和恢复记录。
+
+节点自动把这些事件转换成 [标准圆环输出](./create-agent-node.mdx)，宿主无需额外读取 Agent 字段。仅需计算一份 transcript 的上下文大小时，也可以使用 `workflow-code/agent` 导出的 `estimateAgentContextTokens(messages)`。
+
+## 错误
+
+| 情况 | 错误类型 | 说明 |
+| --- | --- | --- |
+| 缺少模型配置 | `input_validation` | 未提供 `model`，且没有可用的 provider 默认模型。 |
+| 模型属性非法 | `input_validation` | JSON 形式的属性含未知键、类型不符或越界取值；不会静默丢弃该字段。 |
+| 等待用户批准 | `user_input_required` | 运行暂停，宿主需要通过用户输入恢复。 |
+| 压缩摘要为空 | 普通 `Error` | 模型没有产出可用的摘要。 |
+
+模型调用遇到可恢复的失败——连接中断、`408` / `409` / `429`、任何 5xx，以及**响应已经开始却中途断开**——会自动重试，最多 10 次，每次退避不超过 8 秒。重试只在本次尝试还没有产出任何内容时发生：一旦已经有输出，重放会在记录里留下两份半截内容，所以这一层不重放它。
+
+**已经写出内容的断流由整轮接管。** 模型说了半句再断开时，这一轮不再以 `terminated` 结束：已经生成的正文留在记录里，运行发一条续写提示让模型接着写，最多 10 次，每次退避不超过 8 秒，并逐次产出 `retry` 事件。续写只对可恢复类的失败发生，而且本轮得先产出过东西——什么都没产出时再来一遍就是同一次请求，那属于上一条预算覆盖的范围。那条被中断的 assistant 消息里，没有结果的工具调用会被丢掉（provider 会直接拒绝这种历史），已经给用户看过的正文保留，续写提示会说明模型能不能看见自己刚写的那句。10 次之后仍然失败时，错误信息会说明「中途断了 10 次」并点名底层原因，而不是只留下传输层的一个单词。鉴权、参数与配额类错误以及取消都不重试，也不续写。
+
+**撞上模型输出上限同样由整轮接管，但用独立的预算。** 回答撞上本次请求的 `max_output_tokens` 时，provider 报的是 `stopReason: "length"`——它不是错误，因此以前这一轮会被当成正常答完：模型刚写完一句预告就没了下文，它宣告的工具调用从未发出，宿主既看不到报错也看不到重试行。现在这种收尾同样触发续写：正文保留，续写提示说明是输出上限，并要求模型直接把正要发起的动作（工具调用本身）发出来、输出尽量短。预算独立且只有 **2** 次，而不是接续上面的 10 次：断流是瞬时的、值得多试，撞上限是确定性的、同样的请求会在同一处再撞，2 次足以区分「差一点写完」和「上限本身就不对」。预算耗尽后错误信息会点名 `maxTokens`，提示去调高模型的输出上限。`retry` 事件的 `kind` 区分这两种续写，`attempt` / `maxAttempts` 只统计各自预算内的次数。
+
+**工具调用丢失（`kind: "lost-call"`）同样会续写。** 每个适配器都把「模型在调工具」归一成同一个 `stopReason`，而它是照 provider 自己的字段设置的，与工具调用块本身有没有活下来无关——于是「说了有工具调用、消息里一个都没有」是消息自相矛盾，唯一能造成它的是调用在传输路上被丢掉（适配器遇到不认识的块类型会跳过它、relay 吃掉块、调用参数被截断）。这种消息以前会以「一次成功的纯文本回答」收尾：界面上看不出任何异常，模型决定要做的事凭空消失。现在它触发续写，`retry` 行的 `kind` 为 `lost-call`，续写提示直说「你的回复说在调工具、但没有调用到达，重发那个调用」。它和断流共用连接预算（丢了内容属于传输问题），而不是输出上限那条；预算耗尽时错误信息会说明丢了 N 次。
+
+## 示例
+
+```ts
+const agent = await workflow.createAgent({ workdir: ".", provider: "anthropic", effort: "high" });
+
+for await (const event of agent.run({ prompt: "总结这个仓库", errCode: 0, errMessage: "" })) {
+  if (event.type === "text_delta") process.stdout.write(event.delta);
+}
+```
+
+在 workflow 里跑完整流程时，用 [createAgentNode](./create-agent-node.mdx) 或 [defineAgentConversationExecutor](./define-agent-conversation-executor.mdx) 会更省事。

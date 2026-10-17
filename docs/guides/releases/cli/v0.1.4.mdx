@@ -1,0 +1,21 @@
+---
+title: "CLI v0.1.4"
+description: "CLI v0.1.4 的更新说明。"
+---
+
+# CLI v0.1.4
+
+2026-08-24 · Tag `@workflow-code/cli/v0.1.4` · npm
+
+<span id="@workflow-code/cli-0-1-4" className="release-version-anchor"></span>
+<span id="@workflow-code/cli.0.1.4" className="release-version-anchor"></span>
+
+#### 新特性
+
+- **按平台下载发行版**：`workspace download` 发送当前平台并把 `latest` 解析为该系统最新兼容版本。
+- **按版本选择发行目标**：`workspace upload/publish` 可为不可变版本选择 Server runtime 与 Desktop 下载目标。
+
+#### 破坏性变更
+
+- Desktop 本地运行事件环境变量改为 `WORKFLOW_DESKTOP_RUNTIME_EVENTS`。
+  迁移：旧 `WORKFLOW_APP_RUNTIME_EVENTS` 不再生效，替换为新变量名。

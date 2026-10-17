@@ -1,0 +1,104 @@
+---
+title: "runIf"
+description: "执行 if / else-if / else 分支节点，并把分支选择写入运行报告和 Diagram。"
+---
+
+# runIf
+
+`workflow.runIf()` 是内置分支执行节点。它按顺序检查多个分支条件，命中第一个分支后执行对应 `run`，否则执行 `else`。运行时会发出 `branch-node` 的开始/完成事件，共享运行界面 Diagram 会把它展示成可展开的分支路径。
+
+## 签名
+
+```ts
+workflow.runIf<Input, Output>(
+  input: Input,
+  context: WorkflowContext,
+  options: {
+    name?: string;
+    branches: Array<{
+      label: string;
+      description?: string;
+      condition(input: Input, context: WorkflowContext): boolean | Promise<boolean>;
+      run(input: Input, context: WorkflowContext): Output | Promise<Output>;
+    }>;
+    else?: {
+      label?: string;
+      description?: string;
+      run(input: Input, context: WorkflowContext): Output | Promise<Output>;
+    };
+    metadata?: Partial<WorkflowNodeMetadata>;
+  },
+): Promise<Output>
+```
+
+## 参数
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| `input` | `Input` | 分支判断和分支执行共用的输入。 |
+| `context` | `WorkflowContext` | runtime 上下文，用于 hooks、provider、KV、files、abortSignal。 |
+| `options.name` | `string` | Diagram 和 Trace 中显示的分支节点标题。默认 `Run if`。 |
+| `options.branches` | `RunIfBranch[]` | 按顺序检查的 if / else-if 分支。第一个元素显示为 `if`，后续元素显示为 `else-if`。 |
+| `options.else` | `RunIfElseBranch` | 可选 fallback。未命中且没有 `else` 时会抛错。 |
+| `options.metadata` | `Partial<WorkflowNodeMetadata>` | 覆盖分支节点元信息，默认 type 为 `run-if`。 |
+
+## 分支
+
+| 字段 | 说明 |
+| --- | --- |
+| `label` | 分支名称。建议用业务语言，例如 `high intensity assault`。 |
+| `description` | 可选说明，会写入结构报告和运行报告。 |
+| `condition` | 返回布尔值；按数组顺序执行，命中后停止检查。 |
+| `run` | 命中后执行的分支逻辑。可以继续调用 `workflow.runNode`、`workflow.runStreamNode` 或嵌套 `workflow.runIf`。 |
+
+## 运行报告
+
+`runIf` 使用标准节点名 `run-if`，运行 kind 为 `branch-node`。完成事件的 `executionInfo` 会包含：
+
+```json
+{
+  "branch": "high intensity assault",
+  "branchIndex": 0,
+  "selectedBranch": "high intensity assault",
+  "selectedBranchIndex": 0,
+  "description": "optional text"
+}
+```
+
+`branchIndex` 从 `0` 开始；走 `else` 时为 `-1`。
+
+## 示例
+
+```ts
+const loadout = await workflow.runIf(seed, context, {
+  name: "Weapon branch",
+  branches: [
+    {
+      label: "high intensity assault",
+      condition: (mission) => mission.intensity >= 0.66,
+      run: (mission) => ({ ...mission, weapon: "ak47", route: "assault" }),
+    },
+    {
+      label: "stealth close quarter",
+      condition: (mission) => mission.stealth >= 0.58,
+      run: (mission) => ({ ...mission, weapon: "mp7", route: "stealth" }),
+    },
+  ],
+  else: {
+    label: "balanced rifle",
+    run: (mission) => ({ ...mission, weapon: "m4a1", route: "support" }),
+  },
+});
+```
+
+## Diagram
+
+静态结构分析会识别字面量形式的 `branches` 和 `else`，并把每个分支的 `label`、`description`、`condition` 和 `run` 中节点写入 execution tree。为了让 Diagram 可读，分支定义尽量保持为对象字面量和数组字面量；如果把分支数组动态拼装，运行时仍然可用，但静态 Diagram 只能展示有限信息。
+
+## 错误
+
+| 情况 | 错误类型 | 说明 |
+| --- | --- | --- |
+| 未命中且没有 `else` | `node_execution` | 抛出 `Run-if node "<name>" did not match any branch.`。 |
+| 分支 condition/run 抛错 | `node_execution` | 原错误会被包装成 `WorkflowError` 并写入 branch-node 报告。 |
+| 执行前或分支判断中中断 | `execution_aborted` 或 `node_execution` | 来自 `context.abortSignal`。 |

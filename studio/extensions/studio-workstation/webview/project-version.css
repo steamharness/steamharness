@@ -1,0 +1,17 @@
+.project-version-status { margin: 0 0 16px; padding: 12px; min-width: 0; border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); border-radius: 4px; }
+.project-version-status[data-status="upgrade"] { border-color: var(--vscode-textLink-foreground); border-left-width: 3px; background: var(--vscode-textBlockQuote-background); }
+.project-version-heading { display: flex; align-items: center; gap: 7px; min-height: 20px; }
+.project-version-heading strong { flex: 1; min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
+.project-version-status[data-status="upgrade"] .project-version-heading > .codicon { color: var(--vscode-textLink-foreground); }
+.project-version-status[data-status="current"] .project-version-heading > .codicon { color: var(--vscode-testing-iconPassed); }
+.project-version-comparison { display: grid; grid-template-columns: minmax(0, 1fr) 16px minmax(0, 1fr); align-items: center; gap: 8px; margin-top: 12px; }
+.project-version-comparison > div { min-width: 0; }
+.project-version-comparison > div > span { display: block; color: var(--vscode-descriptionForeground); font-size: 11px; overflow-wrap: anywhere; }
+.project-version-comparison b { display: block; margin-top: 3px; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.project-version-arrow { color: var(--vscode-descriptionForeground); }
+button.project-upgrade-button { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; min-height: 30px; margin-top: 12px; padding: 5px 8px; border: 1px solid var(--vscode-button-border, transparent); border-radius: 3px; font: inherit; color: var(--vscode-button-foreground); background: var(--vscode-button-background); cursor: pointer; user-select: text; }
+button.project-upgrade-button:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); }
+button.project-upgrade-button:disabled { opacity: .5; cursor: default; }
+button.project-upgrade-button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.project-upgrade-button span { min-width: 0; overflow-wrap: anywhere; }
+.project-version-notice { margin: 8px 0 0; font-size: 12px; line-height: 1.5; color: var(--vscode-descriptionForeground); overflow-wrap: anywhere; }

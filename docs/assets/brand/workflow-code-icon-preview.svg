@@ -1,0 +1,98 @@
+<svg width="1400" height="900" viewBox="0 0 1400 900" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Workflow Code icon preview sheet</title>
+  <desc id="desc">Preview sheet for a friendly consumer-facing Workflow Code icon.</desc>
+  <defs>
+    <linearGradient id="surface" x1="83" y1="58" x2="429" y2="454" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F0FDFA"/>
+      <stop offset="1" stop-color="#CCFBF1"/>
+    </linearGradient>
+    <linearGradient id="flow" x1="147" y1="168" x2="371" y2="355" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#14B8A6"/>
+      <stop offset="0.58" stop-color="#0D9488"/>
+      <stop offset="1" stop-color="#EA580C"/>
+    </linearGradient>
+    <filter id="shadow" x="-14" y="-16" width="540" height="550" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" result="hardAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"/>
+      <feOffset dy="14"/>
+      <feGaussianBlur stdDeviation="14"/>
+      <feComposite in2="hardAlpha" operator="out"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.0745098 0 0 0 0 0.305882 0 0 0 0 0.290196 0 0 0 0.16 0"/>
+      <feBlend in2="BackgroundImageFix" mode="normal" result="effect1_dropShadow"/>
+      <feBlend in="SourceGraphic" in2="effect1_dropShadow" mode="normal" result="shape"/>
+    </filter>
+    <symbol id="icon" viewBox="0 0 512 512">
+      <g filter="url(#shadow)">
+        <rect x="72" y="60" width="368" height="368" rx="92" fill="url(#surface)"/>
+        <rect x="85" y="73" width="342" height="342" rx="79" stroke="#FFFFFF" stroke-opacity="0.84" stroke-width="26"/>
+        <path d="M156 260C156 207.257 198.757 164.5 251.5 164.5H314.5C333.277 164.5 348.5 179.723 348.5 198.5C348.5 217.277 333.277 232.5 314.5 232.5H244C224.118 232.5 208 248.618 208 268.5C208 288.382 224.118 304.5 244 304.5H350" stroke="#FFFFFF" stroke-linecap="round" stroke-linejoin="round" stroke-width="71"/>
+        <path d="M156 260C156 207.257 198.757 164.5 251.5 164.5H314.5C333.277 164.5 348.5 179.723 348.5 198.5C348.5 217.277 333.277 232.5 314.5 232.5H244C224.118 232.5 208 248.618 208 268.5C208 288.382 224.118 304.5 244 304.5H350" stroke="url(#flow)" stroke-linecap="round" stroke-linejoin="round" stroke-width="48"/>
+        <circle cx="171" cy="260" r="17" fill="#F0FDFA" fill-opacity="0.82"/>
+      </g>
+    </symbol>
+    <symbol id="mark" viewBox="0 0 512 512">
+      <path d="M156 260C156 207.257 198.757 164.5 251.5 164.5H314.5C333.277 164.5 348.5 179.723 348.5 198.5C348.5 217.277 333.277 232.5 314.5 232.5H244C224.118 232.5 208 248.618 208 268.5C208 288.382 224.118 304.5 244 304.5H350" stroke="#FFFFFF" stroke-linecap="round" stroke-linejoin="round" stroke-width="71"/>
+      <path d="M156 260C156 207.257 198.757 164.5 251.5 164.5H314.5C333.277 164.5 348.5 179.723 348.5 198.5C348.5 217.277 333.277 232.5 314.5 232.5H244C224.118 232.5 208 248.618 208 268.5C208 288.382 224.118 304.5 244 304.5H350" stroke="url(#flow)" stroke-linecap="round" stroke-linejoin="round" stroke-width="48"/>
+      <circle cx="171" cy="260" r="17" fill="#F0FDFA" fill-opacity="0.82"/>
+    </symbol>
+    <symbol id="template" viewBox="0 0 512 512">
+      <path d="M156 260C156 207.257 198.757 164.5 251.5 164.5H314.5C333.277 164.5 348.5 179.723 348.5 198.5C348.5 217.277 333.277 232.5 314.5 232.5H244C224.118 232.5 208 248.618 208 268.5C208 288.382 224.118 304.5 244 304.5H350" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="48"/>
+    </symbol>
+  </defs>
+  <rect width="1400" height="900" fill="#F8FAFC"/>
+  <text x="80" y="86" fill="#134E4A" font-family="Plus Jakarta Sans, Inter, Arial, sans-serif" font-size="38" font-weight="700">Workflow Code icon draft v5</text>
+  <text x="80" y="125" fill="#475569" font-family="Plus Jakarta Sans, Inter, Arial, sans-serif" font-size="18">Consumer-facing direction: no code brackets or triangle marker, just a soft continuous flow.</text>
+  <g transform="translate(80 180)">
+    <rect x="0" y="0" width="420" height="500" rx="28" fill="#FFFFFF" stroke="#D8F3EF"/>
+    <use href="#icon" x="32" y="24" width="356" height="356"/>
+    <text x="32" y="428" fill="#134E4A" font-family="Plus Jakarta Sans, Inter, Arial, sans-serif" font-size="20" font-weight="700">Full app icon</text>
+    <text x="32" y="459" fill="#475569" font-family="Plus Jakarta Sans, Inter, Arial, sans-serif" font-size="15">Dock, installer, docs hero, web app icon</text>
+  </g>
+  <g transform="translate(540 180)">
+    <rect x="0" y="0" width="360" height="236" rx="24" fill="#FFFFFF" stroke="#D8F3EF"/>
+    <use href="#mark" x="48" y="-16" width="264" height="264"/>
+    <text x="28" y="196" fill="#134E4A" font-family="Plus Jakarta Sans, Inter, Arial, sans-serif" font-size="18" font-weight="700">Transparent mark</text>
+    <text x="28" y="220" fill="#475569" font-family="Plus Jakarta Sans, Inter, Arial, sans-serif" font-size="14">Header lockup / in-product chrome</text>
+  </g>
+  <g transform="translate(540 444)">
+    <rect x="0" y="0" width="360" height="236" rx="24" fill="#134E4A"/>
+    <g color="#FFFFFF">
+      <use href="#template" x="48" y="-16" width="264" height="264"/>
+    </g>
+    <text x="28" y="196" fill="#FFFFFF" font-family="Plus Jakarta Sans, Inter, Arial, sans-serif" font-size="18" font-weight="700">Template mark</text>
+    <text x="28" y="220" fill="#CCFBF1" font-family="Plus Jakarta Sans, Inter, Arial, sans-serif" font-size="14">Menu bar / tray / monochrome UI</text>
+  </g>
+  <g transform="translate(940 180)">
+    <rect x="0" y="0" width="380" height="500" rx="28" fill="#FFFFFF" stroke="#D8F3EF"/>
+    <text x="32" y="52" fill="#134E4A" font-family="Plus Jakarta Sans, Inter, Arial, sans-serif" font-size="20" font-weight="700">Small-size checks</text>
+    <text x="32" y="82" fill="#475569" font-family="Plus Jakarta Sans, Inter, Arial, sans-serif" font-size="15">Readable without developer-only symbols.</text>
+    <g transform="translate(32 122)">
+      <use href="#icon" x="0" y="0" width="64" height="64"/>
+      <text x="86" y="40" fill="#334155" font-family="Plus Jakarta Sans, Inter, Arial, sans-serif" font-size="16">64 px</text>
+    </g>
+    <g transform="translate(32 216)">
+      <use href="#icon" x="0" y="0" width="32" height="32"/>
+      <text x="86" y="22" fill="#334155" font-family="Plus Jakarta Sans, Inter, Arial, sans-serif" font-size="16">32 px</text>
+    </g>
+    <g transform="translate(32 290)">
+      <use href="#icon" x="0" y="0" width="18" height="18"/>
+      <text x="86" y="16" fill="#334155" font-family="Plus Jakarta Sans, Inter, Arial, sans-serif" font-size="16">18 px</text>
+    </g>
+    <g transform="translate(32 356)">
+      <rect x="0" y="0" width="220" height="42" rx="21" fill="#134E4A"/>
+      <g color="#FFFFFF">
+        <use href="#template" x="12" y="7" width="28" height="28"/>
+      </g>
+      <circle cx="62" cy="21" r="5" fill="#14B8A6"/>
+      <circle cx="84" cy="21" r="5" fill="#CCFBF1"/>
+      <circle cx="106" cy="21" r="5" fill="#CCFBF1"/>
+      <text x="132" y="27" fill="#CCFBF1" font-family="Plus Jakarta Sans, Inter, Arial, sans-serif" font-size="14">status bar</text>
+    </g>
+  </g>
+  <text x="80" y="770" fill="#134E4A" font-family="Plus Jakarta Sans, Inter, Arial, sans-serif" font-size="18" font-weight="700">Palette</text>
+  <g transform="translate(80 796)">
+    <rect x="0" y="0" width="90" height="32" rx="16" fill="#0D9488"/>
+    <rect x="104" y="0" width="90" height="32" rx="16" fill="#14B8A6"/>
+    <rect x="208" y="0" width="90" height="32" rx="16" fill="#134E4A"/>
+  </g>
+</svg>

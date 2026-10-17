@@ -1,0 +1,46 @@
+---
+title: "Server v0.1.9"
+description: "Server v0.1.9 的更新说明。"
+---
+
+# Server v0.1.9
+
+2026-09-01 · Tag `server/v0.1.9` · 当前设备
+
+<span id="server-0-1-9" className="release-version-anchor"></span>
+<span id="server.0.1.9" className="release-version-anchor"></span>
+
+#### 新特性
+
+- **Workflow 标准 MCP 入口**：Streamable HTTP 暴露 entrypoint 为 tools，复用运行队列、持久化与审计体系。
+- **Conversation OpenAI 网关**：Bearer-only `/v1` 提供 Responses、Conversations 和 Models 子集，项目 Key 隔离资源。
+- **关联项目 KV 授权**：支持双方确认、单边待确认与读写全量或前缀授权，权限撤销立即生效。
+
+#### 破坏性变更
+
+- 全局 KV、旧 `workflow` scope、`kv.workflow`、`persistentValue.workflow` 和独立数据授权已移除。
+  迁移：KV 与 PersistentValue 只保留项目和会话作用域，并按存储类型强制隔离。
+
+#### 新增
+
+- 新增 Workflow 项目标准 Streamable HTTP MCP 入口，用账户 API Key 或管理员 Key 鉴权。
+- 新增 Conversation 的 Bearer-only OpenAI Responses 网关与项目 Key 管理，按用户和项目隔离资源。
+- 新增 `wfpk_*` 完整 Key 仅在创建或轮换后显示一次，旧 Key 轮换或吊销后立即失效。
+- 新增 OpenAI Responses 调用开始即写入项目运行记录，并在完成、失败、取消或重启后原位更新终态。
+- 新增 当前项目与关联项目的 KV 读取、写入和 compare-and-set API，按双方最新声明逐次授权。
+- 新增 项目存储、revision 和关联项目依赖表，旧表、函数和视图按原样保留不做修改。
+
+#### 变更
+
+- 变更 Kanban Bridge、项目组依赖锁、下载与发布统一从已确认的关联项目生成。
+- 变更 OpenAI Responses 网关把输出上限与内容过滤终态返回为 `incomplete` 并保留部分输出。
+- 变更 删除 Conversation 不再连带删除 Items，图片引用通过事务锁避免误删仍在使用的文件。
+- 变更 持久化的 `incomplete` Response 可通过 `previous_response_id` 继续。
+
+#### 修复
+
+- 修复 生产构建内联 OpenAI Responses Shared 运行时，不再把 TypeScript-only 包留在部署依赖中。
+- 修复 MCP 表单 elicitation 返回非法内容、传输或恢复失败时终止等待中的运行，不再遗留 `waiting_for_input`。
+- 修复 OpenAI 调用信息只接受 `WORKFLOW_API_PUBLIC_BASE_URL` 或受信任代理的转发地址。
+- 修复 图片批量保存失败返回明确校验错误并回收部分文件。
+- 修复 网关可接收 `system` / `developer` 消息、`text.verbosity` 和兼容性 `include` 参数。

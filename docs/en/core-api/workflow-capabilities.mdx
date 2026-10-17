@@ -1,0 +1,128 @@
+---
+title: "Workflow capabilities"
+description: "Built-in tools connecting a project to knowledge, KV, memory, host configuration, and Conversation resource cards."
+---
+
+# Workflow capabilities
+
+Core ships built-in workflow capabilities, the tools that connect a project to its surroundings. Each capability is described once — a JSON Schema and a run function — and rendered twice from that description: as a native tool for [createAgent](./create-agent.mdx), and as an MCP server for a host's own harness. Both present the same names, descriptions and parameter schemas to the model.
+
+| Capability | MCP server id | Tool id |
+| --- | --- | --- |
+| Knowledge documents | `workflow-knowledge` | `workflow-knowledge_knowledge_documents` |
+| KV | `workflow-kv` | `workflow-kv_kv_store` |
+| Cross-session memory | `workflow-memory` | `workflow-memory_global_memory` |
+| Host configuration | `workflow-host` | `workflow-host_host_project_configuration` |
+| Conversation resource card | `workflow-ui` | `workflow-ui_present_card` |
+
+The tool ids are stable: a host grants, approves and resumes by them, so do not rename them.
+
+## Signature
+
+```ts
+const tools: AgentTool[] = await workflow.createWorkflowCapabilityTools({
+  context: NodeContext,
+  approve?: (toolId: string, args: unknown) => Promise<void>,
+  globalMemory?: boolean,
+});
+
+const server: Server = await workflow.createWorkflowCapabilityServer(toolId, {
+  context: NodeContext,
+  approve?: (toolId: string, args: unknown) => Promise<void>,
+});
+
+const result: unknown = await workflow.runWorkflowCapabilityAction(toolId, context, args);
+const toolIds: string[] = workflow.listWorkflowCapabilityToolIds({ globalMemory?: boolean });
+```
+
+| Member | Description |
+| --- | --- |
+| `createWorkflowCapabilityTools(options)` | Returns the native tools to hand an agent, via `extraTools` or [createAgentNode](./create-agent-node.mdx)'s `createTools`. |
+| `createWorkflowCapabilityServer(toolId, options)` | Returns one capability as an MCP server to `connect(transport)` yourself. Throws on an unknown tool id. |
+| `runWorkflowCapabilityAction(toolId, context, args)` | Runs one action by tool id. |
+| `listWorkflowCapabilityToolIds(options)` | Lists the tool ids this run will offer. |
+
+## Tool approval
+
+These tools are **not governed by `permissionPolicy`** — that policy only covers the seven built-in coding tools, as [createAgent](./create-agent.mdx) explains under "Your own tools". The host's own catalogue governs them: a project declares these tool ids in `executor.tools`, `enabled` decides whether one is exposed, and `autoApprove` decides whether it needs approval. Wiring `approve` to `workflow.createToolApprovalGate().approve(...)` puts them on the same approval chain.
+
+Resuming a paused approval goes through `runWorkflowCapabilityAction`: the paused turn is over, and the approved call can only be addressed by the tool id the host approved, not by the closure that built it.
+
+## Argument checks
+
+Every capability publishes a JSON Schema and enforces it in the implementation too: an MCP client is not bound by the schema and the agent SDK treats it as a type assertion, so a bound that lives only in the schema is not a bound. Knowledge `markdown` ≤ 200,000, `title`/`documentId` ≤ 200, `query` ≤ 500, `cursor` ≤ 80; memory `markdown` ≤ 100,000, `title` ≤ 200; KV `key` ≤ 500. Exceeding one fails as `input_validation`.
+
+## Reserved KV keys
+
+`kv_store` shares its namespaces with the runtime, so it refuses to write runtime-owned keys: `tokenUsage.total` and `tokenUsage.entry.*` in both scopes, plus `conversation.state` and `agent.*` in the conversation scope, including waiting decisions such as `agent.pendingPlanApproval`. Agent execution history uses separate Durable SQLite storage; see [createAgentNode](./create-agent-node.mdx). The attempt fails as `input_validation` instead of silently overwriting accounting or run state.
+
+## Cross-session memory
+
+Memory joins only when `globalMemory` is `true`. **Do not turn it on for a host that offers no memory store** — that hands the model a tool whose every call fails.
+
+Memory reuses the knowledge document store under the `assistant-memory-` document id prefix, so it inherits that store's placement, its search and its deletion semantics. `remember` refuses anything that looks like a credential or a secret.
+
+`list` and `search` mean different things by `cursor` — an offset into the memories, and the knowledge store's own paging token — so a returned cursor carries a `list:` or `search:` prefix, and one from the other action is refused rather than read as the wrong kind of offset.
+
+## Host configuration
+
+Host configuration appears only when the host injected a loopback bridge: `WORKFLOW_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL` and `WORKFLOW_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN` must both be present, and the address must be a credential-free `http://127.0.0.1` loopback endpoint. If either is missing the capability is not exposed; when the address does not qualify, `isWorkflowCapabilityAvailable` returns `false` so one configuration error cannot take the other capabilities down with it, and the reason is reported when the tool is actually called rather than dialling with the token attached.
+
+## Conversation resource cards
+
+Successful Core knowledge and KV results can carry resource-card summaries. Hosts display and open resources according to their capabilities. Targets retain the knowledge document ID or KV key, and access is checked again when opened.
+
+Custom tools used by `createAgentNode` / `createAgentConversationWorkflow` can attach a summary in `details.resourceCard` on a successful result. Core preserves it in the existing tool output and shared runtime UI generates the card automatically; tool `content` and the ordinary message API stay the same. `kind` accepts `knowledge`, `kv`, `project`, `kanban`, `browser`, or `file`; `operation` is `read`, `write`, `open`, or `show`; the optional `title` is at most 200 characters. `target` uses the fields described below. Related project tools must name the actual resource's `source` and `projectId`, rather than the Agent's ID. Failed calls keep their tool error and do not generate successful cards. A summary does not execute writes or pin commands; use the explicit card capability for pins and Kanban parameters.
+
+```ts
+return {
+  content: [{ type: "text", text: JSON.stringify(document) }],
+  details: {
+    resourceCard: {
+      kind: "knowledge",
+      operation: "read",
+      title: document.title,
+      target: { source: "server", projectId: databaseProjectId, documentId: document.id },
+    },
+  },
+};
+```
+
+`workflow-ui_present_card` sends a structured command through the existing tool result; the ordinary message API does not change. Enable the tool in `executor.tools`. A stable `cardId` identifies a card: `action: "upsert"` creates or updates it, while `action: "remove"` accepts only `cardId` and removes it. `pinned` controls the current client's per-conversation pin state; an explicit Agent pin command can override the user's previous pin choice. The top-level `preview: boolean` applies to `kanban`, `project`, or `browser` cards and controls whether the upper-right preview opens by default. Recognized Kanban projects and browser cards preview and pin by default; pass `false` to disable the preview. The preview sits beside the transcript and moves above it in narrow windows. Clicking a Kanban `project` card opens its Dock preview. A target uses `source` (`local`, `server`, or `current` for the current host project) and `projectId` where applicable. In Developer Assistant, `current` resolves to the project being worked on, while the assistant's own KV and knowledge calls still target the assistant project. Browser targets use an HTTP(S) `url`; local files use a project-relative `filePath`; KV targets use `scope`, `key`, and where needed `conversationId`; knowledge documents use `documentId`. The host checks access again when a card is opened.
+
+```json
+{
+  "action": "upsert",
+  "cardId": "roadmap-board",
+  "kind": "kanban",
+  "target": { "source": "current", "configurationId": "configuration-id" },
+  "pinned": true,
+  "preview": true,
+  "kanban": { "mode": "preview", "values": { "title": "Roadmap" } }
+}
+```
+
+`kanban.mode: "preview"` temporarily overrides parameters in that card and its Dock preview; it is separate from the top-level `preview` display switch. `save` uses the existing host named-configuration update path and requires `target.source` to be `current` and a local host configuration bridge. History replay restores display state without repeating writes. Cards show resource summaries; KV values and knowledge bodies are read only after opening them. Hosted Web supports server resources and temporary Kanban previews. Local files, the built-in browser, and local configuration writes require Electron.
+
+Kanban cards and `project` cards that point to Kanban accept `target.configurationId` to reference an exact named configuration. Obtain the ID from `host_project_configuration`. Previewing it does not select or modify the host configuration: history cards, pinned previews, and Dock views keep showing Configuration 1 after the workspace switches to Default. A deleted configuration produces an unavailable message instead of falling back to the active configuration. When a current-host Kanban card omits the ID and a host configuration bridge is available, the tool records the configuration active when the command runs. Other cards without an ID remember their configuration on first load. Switching the workspace does not clear temporary preview parameters; only explicit `save` writes the referenced host configuration.
+
+Pinned previews have a border on every side. The bottom handle supports pointer and keyboard height adjustments, capped at `50%` of the conversation content area. Each client remembers the height per conversation, and smaller containers retain the cap. Collapsed previews keep only their title.
+
+## Example
+
+```ts
+const approval = workflow.createToolApprovalGate();
+
+const node = workflow.createAgentNode({
+  provider: "anthropic",
+  async createTools(context) {
+    return workflow.createWorkflowCapabilityTools({
+      context,
+      globalMemory: true,
+      approve: (toolId, args) => approval.approve({ name: toolId, arguments: args }, context),
+    });
+  },
+});
+```
+
+The tools must be declared in the executor's `tools` (see [createToolApprovalGate](./create-tool-approval-gate.mdx)); otherwise the approval fails as an unregistered tool.

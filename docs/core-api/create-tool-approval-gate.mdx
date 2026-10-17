@@ -1,0 +1,152 @@
+---
+title: "createToolApprovalGate"
+description: "创建工具审批 gate，按 executor.tools 与运行策略控制工具调用。"
+---
+
+# createToolApprovalGate
+
+`workflow.createToolApprovalGate()` 创建一个工具审批 gate。Workflow 在具体 entrypoint 的 `tools` 中声明可调用工具，Conversation 继续在 executor 的 `tools` 中声明，再用 gate 在真正调用工具前检查运行策略。
+
+工具有三种结果：未注册会输入校验失败；已禁用会拒绝调用；启用但未自动批准时，会复用用户输入节点的等待/恢复协议生成审批请求——**只有 plan 模式的 agent 回合会停下来询问**。build 回合执行的是用户已经批准的计划，因此其中未自动批准的工具直接执行。
+
+## 签名
+
+```ts
+workflow.createToolApprovalGate(): WorkflowToolApprovalGate
+```
+
+```ts
+interface WorkflowToolApprovalGate {
+  approve(
+    input: WorkflowToolApprovalRequestInput,
+    context: NodeContext,
+  ): Promise<WorkflowToolApprovalDecision>;
+
+  wrap<Args extends unknown[], Result>(
+    name: string,
+    fn: (...args: Args) => Promise<Result> | Result,
+    options?: {
+      label?: string;
+      description?: string;
+      reason?: string;
+      arguments?: (...args: Args) => unknown;
+    },
+  ): (context: NodeContext, ...args: Args) => Promise<Result>;
+}
+```
+
+## tools 注册
+
+所选 Workflow entrypoint 或 Conversation executor 通过 `tools` 声明工具默认策略。运行时只接受该执行配置已声明工具的覆盖策略，未知工具会被忽略。
+
+```ts
+export const executor = workflow.defineExecutor<Input, OutputPayload>({
+  projectType: "workflow",
+  defaultEntrypoint: "main",
+  entrypoints: [
+    workflow.defineEntrypoint<Input, OutputPayload>({
+      id: "main",
+      title: "完整流程",
+      workflow: toolWorkflow,
+      tools: [
+        {
+          name: "search",
+          label: "Search",
+          description: "查询外部资料。",
+          enabled: true,
+          autoApprove: false,
+        },
+      ],
+      createInput({ args }) {
+        return { query: args.join(" ") };
+      },
+    }),
+  ],
+});
+```
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `name` | `string` | 稳定工具名。必填。空字符串会被忽略。 |
+| `label` | `string` | 展示名称。 |
+| `description` | `string` | 工具用途说明。 |
+| `enabled` | `boolean` | 默认是否启用。未传时为 `true`。 |
+| `autoApprove` | `boolean` | 默认是否自动批准。未传时为 `false`。 |
+
+## approve
+
+`approve(input, context)` 只执行审批检查，不调用业务函数。审批通过时返回 `{ approved: true }`；用户拒绝时抛出 `tool_permission_denied`。
+
+| 输入字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `name` | `string` | 工具名，必须匹配当前 entrypoint 或 Conversation executor 的 `tools` 声明。 |
+| `label` | `string` | 本次审批展示名称；未传时使用工具声明。 |
+| `description` | `string` | 本次审批说明；未传时使用工具声明。 |
+| `reason` | `string` | 调用原因。 |
+| `arguments` | `unknown` | 本次调用参数快照，会写入审批请求 metadata。 |
+
+## wrap
+
+`wrap(name, fn, options)` 返回一个新函数。调用新函数时，第一个参数必须是 `NodeContext`，gate 会先完成审批，再把剩余参数传给原始函数。
+
+```ts
+const approval = workflow.createToolApprovalGate();
+
+const searchWithApproval = approval.wrap(
+  "search",
+  async (query: string) => {
+    return fetchSearchResult(query);
+  },
+  {
+    label: "Search",
+    reason: "需要查询资料后再回答。",
+    arguments: (query) => ({ query }),
+  },
+);
+
+const result = await searchWithApproval(context, input.query);
+```
+
+## 运行行为
+
+| 状态 | 行为 |
+| --- | --- |
+| 工具未注册 | 抛出 `WorkflowError`，类型为 `input_validation`。 |
+| 工具被禁用 | 抛出 `WorkflowError`，类型为 `tool_permission_denied`。 |
+| `autoApprove: true` | 直接返回 `{ approved: true }`，不会产生等待请求。 |
+| 需要审批，且本回合是 plan 模式 | 创建 `tool-approval` 请求，运行状态变为 `waiting_for_input`。 |
+| 需要审批，但本回合是 build 模式 | 直接返回 `{ approved: true }`，不会产生等待请求。 |
+| 用户批准 | 恢复同一个 `runId`，返回 `{ approved: true }`，继续调用工具。 |
+| 用户拒绝 | 抛出 `tool_permission_denied`。 |
+
+模式由 agent 运行时按本回合决定，并写在 `context.toolPermissions.requiresUserApproval` 上：plan 回合为 `true`，build 回合为 `false`。没有进入 agent 的多轮运行（普通 Workflow Run、以及没有声明模式的调用）保持默认的 `true`，仍然按 `autoApprove` 询问。这条规则只决定「是否停下来问」，禁用工具在任何模式下都仍然拒绝。
+
+审批请求使用 `workflow.createUserInputNode()` 同一套恢复协议。请求 ID 默认包含 workflow、runId 和工具名，`params` 中会包含一个布尔字段 `approved`。
+
+CLI Web 会把 `tool-approval` 渲染为专用决策界面，直接展示工具标识与 `arguments` 参数快照，并提供“批准并继续”和“拒绝并结束”操作。该界面不会显示通用布尔开关，也不会通过 Enter 隐式批准工具调用。
+
+在 Conversation 模式下，工具的启用与自动批准策略按对话保存。切换回某个对话时，工具权限面板会恢复该对话上次的状态，后续运行和审批恢复也使用该对话的策略快照。新建或没有独立策略的对话直接使用 executor `tools` 默认值，不继承项目级或其它对话的覆盖值。普通 Workflow Run 仍使用项目级工具策略。
+
+## CLI 恢复
+
+本地 CLI 不会弹出交互式审批。首次运行会输出 `waiting_for_input` 报告，随后使用相同 `runId` 和 `--resolved-user-inputs-json` 恢复：
+
+```bash
+workflow-code json . -- --message "run tool"
+workflow-code json . \
+  --run-id <run-id> \
+  --resolved-user-inputs-json '[{"requestId":"<request-id>","nodeName":"tool-approval","values":{"approved":true},"submittedAt":"2026-07-08T00:00:00.000Z"}]' \
+  -- --message "run tool"
+```
+
+CLI Web 和 local host 还会通过 `--tool-permissions-json` 传入本次运行的工具策略快照。普通手动 CLI 调试通常不需要直接传该参数，除非要模拟宿主传入的启用或自动批准策略。
+
+## 错误
+
+| 情况 | 错误类型 | 说明 |
+| --- | --- | --- |
+| 工具名为空 | `input_validation` | `name` 必须是非空字符串。 |
+| 工具未在 `executor.tools` 注册 | `input_validation` | 只有已声明工具可以被审批。 |
+| 工具被策略禁用 | `tool_permission_denied` | 当前运行不允许调用该工具。 |
+| 用户拒绝审批 | `tool_permission_denied` | 恢复时 `values.approved !== true`。 |
+| 无 user input runtime 且需要审批 | `user_input_required` | 宿主没有提供可暂停恢复的输入处理器。 |

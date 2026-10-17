@@ -1,0 +1,105 @@
+{
+  "workflowName": "pi-agent",
+  "projectType": "conversation",
+  "files": [
+    "__tests__/input-node.test.ts",
+    "__tests__/knowledge-documents-tool.test.ts",
+    "__tests__/output-items.test.ts",
+    "__tests__/pi-sdk.test.ts",
+    "__tests__/tool-approval-stream.test.ts",
+    "index.ts",
+    "interface.ts",
+    "knowledge-documents-tool.ts",
+    "output-items.ts",
+    "pi-sdk.ts",
+    "stream-output.ts"
+  ],
+  "nodes": [
+    {
+      "id": "inputNode",
+      "factory": "createInputNode",
+      "standardName": "input",
+      "configuredName": "pi-agent-input"
+    },
+    {
+      "id": "outputNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "pi-agent-output"
+    }
+  ],
+  "params": [
+    {
+      "name": "workdir",
+      "flag": "--workdir",
+      "shortFlag": "-C",
+      "type": "string",
+      "required": false,
+      "panel": "auxiliary"
+    },
+    {
+      "name": "model",
+      "flag": "--model",
+      "shortFlag": "-m",
+      "type": "string",
+      "required": false,
+      "panel": "auxiliary"
+    },
+    {
+      "name": "provider",
+      "flag": "--provider",
+      "type": "string",
+      "required": false,
+      "control": "radio",
+      "panel": "auxiliary"
+    },
+    {
+      "name": "baseUrl",
+      "flag": "--base-url",
+      "type": "string",
+      "required": false,
+      "panel": "auxiliary"
+    },
+    {
+      "name": "tools",
+      "flag": "--tools",
+      "type": "string",
+      "required": false,
+      "panel": "auxiliary"
+    },
+    {
+      "name": "knowledgeTools",
+      "flag": "--knowledge-tools",
+      "type": "boolean",
+      "required": false,
+      "defaultValue": "true",
+      "panel": "auxiliary"
+    },
+    {
+      "name": "dryRun",
+      "flag": "--dry-run",
+      "type": "boolean",
+      "required": false,
+      "defaultValue": "false",
+      "panel": "auxiliary"
+    }
+  ],
+  "tokenUsage": {
+    "enabled": true,
+    "display": true
+  },
+  "registry": [],
+  "execution": {
+    "kind": "sequence",
+    "counts": {
+      "sequence": 1,
+      "node": 2
+    },
+    "callees": [
+      "runNode",
+      "runStreamNode"
+    ],
+    "branchLabels": [],
+    "loopLabels": []
+  }
+}

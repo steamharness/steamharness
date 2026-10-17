@@ -1,0 +1,14 @@
+{
+  "args": [
+    "--message",
+    "Remember project tone as concise",
+    "--workdir",
+    "."
+  ],
+  "conversationId": "openai-agents-fixture-thread",
+  "run": false,
+  "skipReason": "openai-agents is live-only and requires a real OpenAI API key.",
+  "expected": {
+    "errCode": 0
+  }
+}

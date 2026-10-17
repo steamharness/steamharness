@@ -1,0 +1,30 @@
+---
+title: "开发者小助手 v0.1.2"
+description: "开发者小助手 v0.1.2 的更新说明。"
+---
+
+# 开发者小助手 v0.1.2
+
+2026-08-21 · Tag `builtin-developer-assistant/v0.1.2` · 内置项目更新
+
+<span id="builtin-developer-assistant-0-1-2" className="release-version-anchor"></span>
+<span id="builtin-developer-assistant.0.1.2" className="release-version-anchor"></span>
+
+#### 新特性
+
+- **多语言内置项目**：中文显示为「小助手」、英文显示为 `Project Assistant`，README 随界面语言切换。
+- **生成器项目元数据参考**：Generator 参考覆盖默认名称、中英文名称、手工声明与展示平台契约。
+
+#### 破坏性变更
+
+- 内置项目兼容要求改用 `minDesktopVersion`，不再接受 `minAppVersion`，最低要求 Desktop 0.1.20。
+  迁移：把项目清单的 `minAppVersion` 改为 `minDesktopVersion` 并填入 0.1.20 或更高版本。
+
+#### 新增
+
+- 新增 内置项目的多语言声明，中英文显示名与 README 随 Desktop 界面语言切换。
+- 新增 Generator 参考中的默认名称、中英文名称、手工声明与展示平台契约，并明确新项目不自动声明多语言或多平台能力。
+
+#### 移除
+
+- 移除 内置项目清单的 `minAppVersion` 字段，兼容要求只认 `minDesktopVersion`。

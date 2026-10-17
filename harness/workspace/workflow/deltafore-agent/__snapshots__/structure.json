@@ -1,0 +1,110 @@
+{
+  "workflowName": "deltafore-agent",
+  "projectType": "conversation",
+  "files": [
+    "agent/__tests__/prompts.test.ts",
+    "agent/context.ts",
+    "agent/decision.ts",
+    "agent/input.ts",
+    "agent/prompts.ts",
+    "agent/tool-details.ts",
+    "index.ts",
+    "interface.ts",
+    "nodes/nodes.ts",
+    "tools/__tests__/openapi.test.ts",
+    "tools/attribute-labels.ts",
+    "tools/openapi.ts",
+    "tools/runner.ts",
+    "tools/values.ts"
+  ],
+  "nodes": [
+    {
+      "id": "inputNode",
+      "factory": "createInputNode",
+      "standardName": "input",
+      "configuredName": "deltafore-agent-input"
+    },
+    {
+      "id": "agentDecisionNode",
+      "factory": "createLLMNode",
+      "standardName": "llm",
+      "configuredName": "react-thought-llm"
+    },
+    {
+      "id": "thoughtOutputNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "react-thought-output"
+    },
+    {
+      "id": "toolNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "equipment-tool"
+    },
+    {
+      "id": "answerOutputNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "deltafore-agent-output"
+    }
+  ],
+  "params": [
+    {
+      "name": "maxRounds",
+      "flag": "--max-rounds",
+      "type": "number",
+      "required": false,
+      "defaultValue": "10",
+      "panel": "auxiliary"
+    }
+  ],
+  "tokenUsage": {
+    "enabled": true,
+    "display": true
+  },
+  "registry": [
+    {
+      "name": "react-thought",
+      "type": "react-thought",
+      "title": "react-thought",
+      "version": "1.0.0"
+    },
+    {
+      "name": "thought-output",
+      "type": "thought-output",
+      "title": "thought-output",
+      "version": "1.0.0"
+    },
+    {
+      "name": "equipment-tool",
+      "type": "equipment-tool",
+      "title": "equipment-tool",
+      "version": "1.0.0"
+    },
+    {
+      "name": "answer",
+      "type": "answer",
+      "title": "answer",
+      "version": "1.0.0"
+    }
+  ],
+  "execution": {
+    "kind": "sequence",
+    "counts": {
+      "sequence": 1,
+      "node": 5,
+      "loop": 1,
+      "branch": 2,
+      "if": 2
+    },
+    "callees": [
+      "runNode",
+      "runStreamNode"
+    ],
+    "branchLabels": [],
+    "loopLabels": [
+      "ReAct loop"
+    ]
+  }
+}

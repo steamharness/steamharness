@@ -1,0 +1,20 @@
+import { build } from 'esbuild';
+import { mkdir, cp } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import path from 'node:path';
+
+const root = path.resolve(import.meta.dirname, '..');
+const output = path.join(root, 'dist/web');
+await mkdir(output, { recursive: true });
+await build({ absWorkingDir: root, entryPoints: ['src/web/ui/main.ts'], outfile: path.join(output, 'workflow-ui.js'), bundle: true, platform: 'browser', target: 'es2022', logLevel: 'info' });
+await build({ absWorkingDir: root, entryPoints: ['src/web/ui/workflow-main.ts'], outfile: path.join(output, 'workflow-workspace.js'), bundle: true, platform: 'browser', target: 'es2022', logLevel: 'info' });
+await build({ absWorkingDir: root, entryPoints: ['src/web/ui/kanban-main.ts'], outfile: path.join(output, 'kanban-workspace.js'), bundle: true, platform: 'browser', target: 'es2022', logLevel: 'info' });
+await build({ absWorkingDir: root, entryPoints: ['src/web/ui/resource-preview.ts'], outfile: path.join(output, 'resource-preview.js'), bundle: true, platform: 'browser', target: 'es2022', logLevel: 'info' });
+await build({ absWorkingDir: root, entryPoints: ['src/web/kanban-data.ts'], outfile: path.join(output, 'kanban-data.mjs'), bundle: true, format: 'esm', platform: 'node', target: 'es2022', logLevel: 'info' });
+await build({ absWorkingDir: root, entryPoints: ['src/web/local-analysis.ts'], outfile: path.join(output, 'local-analysis.mjs'), bundle: true, format: 'esm', platform: 'node', target: 'es2022', logLevel: 'info' });
+await build({ absWorkingDir: root, entryPoints: ['src/web/related-projects.ts'], outfile: path.join(output, 'related-projects.mjs'), bundle: true, format: 'esm', platform: 'node', target: 'es2022', external: ['workflow-code'], logLevel: 'info' });
+const require = createRequire(import.meta.url);
+const codicons = path.dirname(require.resolve('@vscode/codicons/package.json'));
+await cp(path.join(codicons, 'dist'), path.join(output, 'codicons'), { recursive: true });
+await cp(path.join(root, 'src/web/theme.css'), path.join(output, 'theme.css'));
+await cp(path.join(root, 'src/web/worker.mjs'), path.join(output, 'worker.mjs'));

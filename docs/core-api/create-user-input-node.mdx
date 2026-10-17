@@ -1,0 +1,143 @@
+---
+title: "createUserInputNode"
+description: "创建可持久恢复的用户输入节点，让 workflow 暂停、展示表单并用同一 run 继续执行。"
+---
+
+# createUserInputNode
+
+`workflow.createUserInputNode()` 创建一个人机输入节点。节点执行时会先检查当前 run 是否已经有对应 `requestId` 的提交答案；如果没有，会向 runtime 发布 `user_input_requested` 事件，把 run 保存为 `waiting_for_input`，并在本地运行界面中展示等待表单。
+
+Conversation 等待输入时，共享运行界面会隐藏底部消息输入框，只保留等待表单；提交或取消后才恢复正常输入。
+
+表单字段复用当前 Workflow entrypoint（Conversation 则为 executor）的 `WorkflowParamDefinition`，不要为用户输入节点另建一套 schema。
+
+等待表单同样支持 `date`、`time`、`datetime` 和 `date-range`。提交值分别保持 `YYYY-MM-DD`、`HH:mm:ss`、本地 `YYYY-MM-DDTHH:mm:ss` 和闭区间 `YYYY-MM-DD/YYYY-MM-DD` 字符串，因此 workflow 可以直接从 `payload.values[param.name]` 读取，不会收到 `Date` 对象或经过时区转换的值。日期字段必须使用 `type: "string"`，只能放在 main 或 auxiliary，不能声明枚举选项或 `multiple: true`；必填空值或格式错误会保留在表单中显示错误，并阻止提交直至用户修正。
+
+## 签名
+
+```ts
+workflow.createUserInputNode<Input, Output extends WorkflowPayload>(
+  options: UserInputNodeOptions<Input, Output>,
+): BaseNode<Input, Output>
+```
+
+## options
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `name` | `string` | 节点名，默认 `"user-input"`。会用于 report、requestId 和 Diagram。 |
+| `title` | `string` | 等待表单标题。未传时使用 `name`。 |
+| `description` | `string` | 等待表单说明。 |
+| `params` | `WorkflowParamDefinition[]` | 表单字段，字段定义与所选 Workflow 入口的 `params` 一致；Conversation 使用 `executor.params`。 |
+| `defaultValues` | `Record<string, unknown>` | 表单默认值，按 param `name` 匹配。 |
+| `resolveRequest` | `(input, context) => UserInputRequestDefinition \| Promise<UserInputRequestDefinition>` | 按本次节点输入动态生成 `title`、`description`、`params` 和 `defaultValues`。 |
+| `createRequestId` | `(input, context) => string` | 自定义请求 ID。默认包含 workflow、runId 和 node name。 |
+| `format` | `(payload, input, context) => Output` | 把默认提交 payload 转为业务 payload。 |
+| `historyLimit` | `number` | 节点执行历史保留条数，默认 `50`。 |
+| `metadata` | `WorkflowNodeMetadataInput` | 节点展示元信息。 |
+
+## 默认 payload
+
+```ts
+interface UserInputPayload extends WorkflowPayload {
+  requestId: string;
+  values: Record<string, unknown>;
+  submittedAt: string;
+}
+```
+
+成功恢复时默认返回：
+
+```ts
+{
+  errCode: 0,
+  errMessage: "",
+  requestId,
+  values,
+  submittedAt
+}
+```
+
+如果传入 `format`，返回值仍必须继承 `WorkflowPayload`，成功时使用 `errCode: 0, errMessage: ""`。
+
+## Runtime 行为
+
+| 阶段 | 行为 |
+| --- | --- |
+| 首次执行 | 没有提交值时发布 `user_input_requested`，报告 `pendingUserInput`，run 状态变为 `waiting_for_input`。 |
+| 提交答案 | 本地运行界面提交 `{ requestId, values }`。 |
+| 恢复执行 | runtime 用同一个 `runId` 注入 `resolvedUserInputs`，节点发布 `user_input_resolved` 并返回 payload。 |
+| 非交互 CLI | CLI 不读取 stdin；需要使用 `workflow-code json --run-id ... --resolved-user-inputs-json ...` 恢复。 |
+
+`waiting_for_input` 是可持久保存的非终态。恢复时使用本地保存的 `pendingUserInput`、相同 `runId` 和原 `entrypointId`，不能改用新的默认入口。Conversation 保持单入口，不接受入口参数。Server 不保存或恢复运行记录。
+
+当问题字段由外部 agent、远程审批系统或当前节点输入动态产生时，可以保留静态 `params` 作为结构分析的默认定义，并使用 `resolveRequest` 生成本次等待表单。resolver 可以异步执行，但必须对相同输入保持确定性且不产生副作用；恢复同一个 `requestId` 时，返回的字段名和选项值必须保持稳定。
+
+```ts
+const questionNode = workflow.createUserInputNode<AgentQuestion>({
+  name: "agent-question",
+  params: [],
+  resolveRequest(question) {
+    return {
+      title: question.header,
+      description: question.prompt,
+      params: [{
+        name: "answer",
+        type: "string",
+        control: question.multiple ? "checkboxes" : "radio",
+        multiple: question.multiple,
+        required: true,
+        options: question.options,
+      }],
+    };
+  },
+  createRequestId(question) {
+    return `agent-question:${question.id}`;
+  },
+});
+```
+
+## 示例
+
+```ts
+interface ApprovalPayload extends WorkflowPayload {
+  approved: boolean;
+  note: string;
+  reviewDate: string;
+}
+
+const approvalNode = workflow.createUserInputNode<Plan, ApprovalPayload>({
+  name: "approval",
+  title: "Review deployment",
+  description: "Confirm whether the workflow should continue.",
+  params: [
+    { name: "approved", flag: "--approved", type: "boolean" },
+    { name: "note", flag: "--note", type: "string", control: "textarea" },
+    { name: "reviewDate", flag: "--review-date", type: "string", control: "date", required: true },
+  ],
+  defaultValues: { approved: false, reviewDate: "2026-07-26" },
+  format(payload) {
+    return {
+      errCode: 0,
+      errMessage: "",
+      approved: payload.values.approved === true,
+      note: typeof payload.values.note === "string" ? payload.values.note : "",
+      reviewDate: typeof payload.values.reviewDate === "string" ? payload.values.reviewDate : "",
+    };
+  },
+});
+
+export const deployWorkflow = workflow.defineWorkflow<Input, OutputPayload>({
+  name: "deploy",
+  async run(input, context) {
+    const plan = await workflow.runNode(planNode, input, context);
+    const approval = await workflow.runNode(approvalNode, plan, context);
+    if (!approval.approved) {
+      return workflow.createOutputPayload({
+        items: [{ title: "Stopped", content: approval.note, contentType: "text" }],
+      });
+    }
+    return workflow.runNode(deployNode, plan, context);
+  },
+});
+```

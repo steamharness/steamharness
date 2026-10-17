@@ -1,0 +1,77 @@
+---
+title: "defineAgentConversationExecutor"
+description: "Create a complete Conversation Agent executor for embedding hosts or tests."
+---
+
+# defineAgentConversationExecutor
+
+`workflow.defineAgentConversationExecutor()` produces a complete conversation executor in one call: conversation wiring, token usage, tool declarations, params, input/output node orchestration and OpenAI gateway support all come from the runtime. It is for embedding hosts and tests. A project that must pass `workflow-code structure` needs inline `conversation`, `tokenUsage`, `tools`, and `params` declarations inside `workflow.defineExecutor({...})`, while reusing `workflow.createAgentConversationWorkflow(...)` and `workflow.createAgentProjectInput(...)`. Otherwise static analysis cannot see those declarations.
+
+The helper saves an embedding host from implementing streaming, approvals, compaction, or output-item assembly. Projects can reuse the underlying workflow and input implementation while keeping their declarations visible to the host.
+
+## Signature
+
+```ts
+workflow.defineAgentConversationExecutor(options?: AgentProjectOptions):
+  WorkflowConversationExecutorDefinition<AgentInput, AgentOutputPayload>
+```
+
+Core validates the returned definition for embedding callers. Passing it to a project's `defineExecutor` still does not expose its fields to static structure analysis.
+
+## Options
+
+`session` enables [durable session control](./create-agent.mdx#durable-session-control). The convenience executor adds `conversation.durable: { enabled: true }` and default permissions for `update_plan` and, when enabled, `subagent`. Custom `toolDefinitions` must include these declarations explicitly. Static inline projects declare recovery/durable and pass session, for example `session: { subagents: { tools: ["read", "grep", "find", "ls"], maxAgents: 4 }, planFork: "asOf" }`. Child tools only narrow parent permissions; background results are delivered once. CLI Web / Studio keeps the execution owner alive and displays tasks, plans, records, and usage in four sidebar views.
+
+Every [createAgentNode](./create-agent-node.mdx) option, plus:
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `projectName` | `string` | — | Display name of the project. |
+| `workflowName` | `string` | `agent` | Workflow name, also the node-name prefix (`<name>-input`, `<name>-output`, `<name>-agent`). |
+| `outputItemId` | `string` | `agent-answer` | Item id of the assistant's answer, also written to `conversation.openai.outputItemId`. The answer item carries exactly this value, so an adapter looking it up by id always finds it. |
+| `params` | `WorkflowConversationParamDeclaration[]` | see below | Replaces the default parameter table with Auxiliary, Quick, and Mode entries only. The standard message input is always shown. |
+
+## What it generates
+
+| Part | Content |
+| --- | --- |
+| `projectType` | `"conversation"` |
+| `conversation` | Standard message input always enabled; `inputQueue.enabled`, `recovery.enabled`, `openai.outputItemId` |
+| `tokenUsage` | Enabled and displayed |
+| `tools` | `read`, `write`, `edit`, `bash`, `grep`, `find`, `ls` |
+| `params` | `workdir`, `provider`, `model`, `effort`, `agent`, `contextWindow`, `modelAttributes`, `permissionPolicy` |
+| `workflow` | Input node parses, agent node streams, output node writes the conversation |
+
+Parameter defaults come from the options you pass: `provider: "anthropic"`, for instance, becomes the provider parameter's default.
+
+## Input and output
+
+Input is [createAgent](./create-agent.mdx)'s `AgentInput`. `createInput` reads the host composer's message and the params above (`--workdir` / `-C`, `--provider`, `--model` / `-m`, `--effort`, `--agent`, `--permission-policy`), and joins the remaining positional arguments into the prompt when the composer supplied no message.
+
+Output is an `AgentOutputPayload`, and the turn's user message and assistant answer are appended to the conversation, so the host's history list, titles and export treat it as an ordinary conversation run.
+
+Two exceptions: a turn that only called tools and produced no text appends no empty assistant message, and a turn carrying `hostInput` (the OpenAI/Responses gateway) appends nothing at all, because the gateway keeps that history itself — the same arrangement the built-in Conversation project makes.
+
+**Pi Durable preserves multi-turn context and unfinished tasks.** Core selects SQLite by project, conversation and `sessionKey`, committing messages, tool intents and results, approval waits and usage identities. The same `runId` resumes the same request; completed requests reconstruct only their own output. Old KV transcripts are not read, and storage failures stop execution. Use different session keys for different agent nodes. Gateway runs carrying `hostInput` use memory by default; see [createAgentNode](./create-agent-node.mdx).
+
+The helper enables `conversation.recovery: { enabled: true }`. Projects requiring static structure analysis must declare that field inline in `defineExecutor`. CLI Web / Studio use it to recover interrupted workers.
+
+> **The answer item's id must equal `conversation.openai.outputItemId`.** The OpenAI/Responses adapters look that answer up **by id** in `report.outputs[].output.items` — the local gateway and CLI `__openai-responses-runner` all do — and a mismatch fails the run with "did not produce output item".
+
+That item is produced by a **host-driven run** only, since the text read back by id has to be the whole turn. An ordinary conversation run writes its text as `partType: "text"` rows — one per run of text between two activity rows, where it was spoken — and joins them back into the conversation message.
+
+## Example
+
+For an embedding host or test:
+
+```ts
+const agentExecutor = workflow.defineAgentConversationExecutor({
+  projectName: "Pi",
+  workflowName: "pi",
+  outputItemId: "pi-answer",
+  provider: "anthropic",
+  effort: "high",
+});
+```
+
+A project entrypoint instead uses `workflow.defineExecutor({ projectType: "conversation", workflow: workflow.createAgentConversationWorkflow(...), conversation: {...}, tokenUsage: {...}, tools: [...], params: [...], createInput({ args }) { return workflow.createAgentProjectInput(args); } })`. Keep the object and arrays inline, and use the same `outputItemId` in the workflow and `conversation.openai`. Add `resolveParams: workflow.createAgentProjectParamResolver()` for linked parameter options. For custom nodes around the agent, use [createAgentNode](./create-agent-node.mdx); see [defineExecutor](./define-executor.mdx) for project declaration rules.

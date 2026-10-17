@@ -1,0 +1,63 @@
+{
+  "workflowName": "smoke",
+  "projectType": "conversation",
+  "files": [
+    "index.ts",
+    "interface.ts"
+  ],
+  "nodes": [
+    {
+      "id": "inputNode",
+      "factory": "createInputNode",
+      "standardName": "input",
+      "configuredName": "input"
+    },
+    {
+      "id": "outputNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "smoke-output"
+    }
+  ],
+  "params": [
+    {
+      "name": "mode",
+      "flag": "--mode",
+      "type": "string",
+      "required": false,
+      "defaultValue": "ok",
+      "panel": "auxiliary"
+    },
+    {
+      "name": "waitMs",
+      "flag": "--wait-ms",
+      "type": "number",
+      "required": false,
+      "defaultValue": "0",
+      "panel": "auxiliary"
+    }
+  ],
+  "registry": [
+    {
+      "name": "smoke-output",
+      "type": "smoke-output",
+      "title": "Smoke Output",
+      "version": "1.0.0"
+    }
+  ],
+  "execution": {
+    "kind": "sequence",
+    "counts": {
+      "sequence": 1,
+      "node": 2,
+      "branch": 4,
+      "if": 4
+    },
+    "callees": [
+      "runNode",
+      "runStreamNode"
+    ],
+    "branchLabels": [],
+    "loopLabels": []
+  }
+}

@@ -1,0 +1,27 @@
+---
+title: "Server 0.1.3"
+description: "Release notes for Server 0.1.3."
+---
+
+# Server 0.1.3
+
+2026-07-30 · Tag `server/v0.1.3` · 当前设备
+
+<span id="server-0-1-3" className="release-version-anchor"></span>
+<span id="server.0.1.3" className="release-version-anchor"></span>
+
+#### New Features
+
+- **Kanban hosting and preview**: drafts, versions, static asset hosting, and Studio/Embed previews with user-isolated named configs.
+- **Local deployment releases**: Server and Docs release on the deploy host itself instead of SSH-ing back into it.
+
+#### Added
+
+- Added Kanban drafts, versions, static asset hosting, and Studio/Embed previews with user-isolated named configs.
+- Added scoped KV and knowledge base bridges authorized per project by the host.
+
+#### Changed
+
+- Changed Kanban upload preparation to validate only built static assets, without installing dependencies or starting a Workflow runtime.
+- Changed published versions to keep the complete Kanban static assets.
+- Changed upload, archive copy, and run to validate project compatibility with the host Core version.

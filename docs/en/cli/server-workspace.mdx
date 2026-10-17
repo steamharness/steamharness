@@ -1,0 +1,69 @@
+---
+title: "Server Workspace CLI"
+description: "Manage Server project uploads, immutable source versions and data files."
+---
+
+# Server Workspace CLI
+
+`workflow-code workspace`, provided by `@workflow-code/cli`, manages Server storage for Workflow, Conversation and Kanban projects. Use top-level `workflow-code run/json` for local execution. Server never loads or executes uploaded project code.
+
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| [login](/en/cli/workspace/login), [logout](/en/cli/workspace/logout), [status](/en/cli/workspace/status) | Sign in, sign out and inspect connection status. |
+| [health](/en/cli/workspace/health) | Check Server health. |
+| [pack](/en/cli/workspace/pack) | Package files using `.workflowignore`. |
+| [upload](/en/cli/workspace/upload) | Upload source or a project group; optionally publish. |
+| `preparation` | Read file processing progress and failures. |
+| [publish](/en/cli/workspace/publish) | Save an immutable source version and update latest. |
+| [versions](/en/cli/workspace/versions) | Read history, release notes and source hashes. |
+| [download](/en/cli/workspace/download) | Download a published project or group. |
+| `file-upload`, `file-download`, `file-delete` | Manage independent business files. |
+| [help](/en/cli/workspace/help) | Show help. |
+
+## Options
+
+| Option | Purpose |
+| --- | --- |
+| `--server <url>` | Overrides `WORKFLOW_SERVER_URL`, saved connection and default `http://localhost:7125`. |
+| `--token <token>` | Overrides `WORKFLOW_SERVER_ADMIN_KEY` and saved credentials. |
+| `--target <version>` | Exact download version or `latest`; draft is rejected. |
+| `--release-log <text>` | Release notes; upload publishes automatically when supplied. |
+| `--path <directory>` | Local project or download directory. |
+| `--file <path>` | Existing archive or business file. |
+| `--mime-type <type>` | Explicit business file MIME. |
+| `--output <path>` | Archive or file download path. |
+| `--no-wait` | Return the stored archive's processing job without polling. |
+| `--create` | Create or reuse the project using local `package.json.id`. |
+| `--project-group`, `--dependency <alias=path>` | Package, upload or download a group. |
+| `--deployment <id>`, `--publish-group` | Query or publish a group processing job. |
+
+Unknown options fail. Declare static type in `package.json.workflowCode.projectType`; the uploaded `package.json.version` determines the version. Published versions cannot be overwritten. Server only extracts, validates and stores files, without installing dependencies or building. Prepare Kanban static assets locally.
+
+## Upload and Download
+
+```bash
+workflow-code workspace login --server http://localhost:7125
+workflow-code workspace upload hello --create --release-log "Initial release"
+workflow-code workspace versions hello
+workflow-code workspace download hello --target latest --path ./downloaded-hello
+```
+
+The project argument accepts a UUID, name or local directory. CLI prefers the directory's stable `package.json.id`. Packaging uses each root's `.workflowignore`, ignoring `.gitignore`; required entries and the rules file cannot be excluded. Included dependencies lock exact versions and source hashes. Downloads check each project's source permission and report skip reasons and request links. Downloads have no operating system restriction.
+
+## Business Files
+
+```bash
+workflow-code workspace file-upload <project UUID> --file ./map.png
+workflow-code workspace file-download <file ID> --output ./verified-map.png
+workflow-code workspace file-delete <file ID>
+```
+
+Upload accepts ordinary files up to 50 MiB and returns a FileReference with `storage: "server"`. Writes require project data write access; reads require project access. Downloads require a new path and never overwrite files; HTTP failures create no local file. Store references in KV rather than image base64.
+
+## Credentials and Output
+
+CLI reads `.env` from the current directory and source repository root; existing process variables take priority. Credentials use `workflow-auth.json` in the operating system application configuration directory, overridable with `WORKFLOW_CLI_AUTH_DIR`.
+
+Success returns `{ errCode: 0, errMessage: "", data }`; server and local argument errors produce a nonzero exit code. Processing jobs retain progress and failure details. Failed uploads preserve published snapshots.

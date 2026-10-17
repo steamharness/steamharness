@@ -1,0 +1,164 @@
+.steps {
+  counter-reset: workflow-step;
+  margin: 1.4rem 0 2rem;
+}
+
+.step {
+  counter-increment: workflow-step;
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr);
+  gap: 0.85rem;
+  position: relative;
+  padding-bottom: 1.25rem;
+}
+
+.step:not(:last-child)::after {
+  background: var(--ifm-color-emphasis-300);
+  content: "";
+  height: calc(100% - 1.7rem);
+  left: 0.94rem;
+  position: absolute;
+  top: 1.85rem;
+  width: 1px;
+}
+
+.stepMarker {
+  align-items: center;
+  background: var(--ifm-color-primary);
+  border-radius: 50%;
+  color: #fff;
+  display: flex;
+  font-size: 0.76rem;
+  font-weight: 700;
+  height: 1.9rem;
+  justify-content: center;
+  width: 1.9rem;
+}
+
+.stepMarker::before {
+  content: counter(workflow-step);
+}
+
+.stepBody {
+  min-width: 0;
+  padding-top: 0.15rem;
+}
+
+.stepTitle {
+  font-size: 1rem;
+  line-height: 1.45;
+  margin: 0 0 0.35rem;
+}
+
+.stepContent > :last-child,
+.cardContent > :last-child,
+.calloutBody > :last-child {
+  margin-bottom: 0;
+}
+
+.columns {
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: repeat(var(--column-count), minmax(0, 1fr));
+  margin: 1rem 0 1.75rem;
+}
+
+.card {
+  background: var(--workflow-surface);
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 7px;
+  color: var(--ifm-font-color-base);
+  display: flex;
+  gap: 0.85rem;
+  min-height: 9rem;
+  padding: 1rem;
+  text-decoration: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.card:hover {
+  border-color: var(--ifm-color-primary);
+  box-shadow: 0 8px 22px rgb(9 31 28 / 9%);
+  color: var(--ifm-font-color-base);
+  text-decoration: none;
+  transform: translateY(-1px);
+}
+
+.cardIcon {
+  align-items: center;
+  background: var(--workflow-accent-soft);
+  border-radius: 6px;
+  color: var(--ifm-color-primary-dark);
+  display: flex;
+  flex: 0 0 auto;
+  height: 2rem;
+  justify-content: center;
+  width: 2rem;
+}
+
+.cardBody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cardTitle {
+  display: block;
+  font-size: 0.96rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.cardContent {
+  color: var(--ifm-color-emphasis-700);
+  display: block;
+  font-size: 0.86rem;
+  line-height: 1.65;
+  margin-top: 0.45rem;
+}
+
+.cardCta {
+  color: var(--ifm-color-primary-dark);
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 650;
+  margin-top: auto;
+  padding-top: 0.8rem;
+}
+
+.callout {
+  border: 1px solid;
+  border-radius: 7px;
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: auto minmax(0, 1fr);
+  margin: 1rem 0;
+  padding: 0.9rem 1rem;
+}
+
+.calloutIcon {
+  margin-top: 0.15rem;
+}
+
+.note {
+  background: var(--workflow-note-soft);
+  border-color: var(--workflow-note-border);
+  color: var(--workflow-note-text);
+}
+
+.warning {
+  background: var(--workflow-warning-soft);
+  border-color: var(--workflow-warning-border);
+  color: var(--workflow-warning-text);
+}
+
+@media (max-width: 760px) {
+  .columns {
+    grid-template-columns: 1fr;
+  }
+
+  .card {
+    min-height: 0;
+  }
+}

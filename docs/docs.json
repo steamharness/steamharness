@@ -1,0 +1,565 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "workflow-code",
+  "customCss": [
+    "/brand-overrides.css"
+  ],
+  "logo": {
+    "light": "/images/brand/workflow-code-docs-logo.svg",
+    "dark": "/images/brand/workflow-code-docs-logo-dark.svg"
+  },
+  "favicon": "/images/brand/favicon.png",
+  "colors": {
+    "primary": "#0A5F58",
+    "light": "#14B8A6",
+    "dark": "#008C7A"
+  },
+  "background": {
+    "color": {
+      "light": "#F8FAF9",
+      "dark": "#09090B"
+    }
+  },
+  "appearance": {
+    "default": "system",
+    "strict": false
+  },
+  "fonts": {
+    "family": "Inter"
+  },
+  "icons": {
+    "library": "lucide"
+  },
+  "navigation": {
+    "languages": [
+      {
+        "language": "zh-Hans",
+        "default": true,
+        "tabs": [
+          {
+            "tab": "指南",
+            "groups": [
+              {
+                "group": "上手教程",
+                "pages": [
+                  "index",
+                  "guides/migrate-core-0-2"
+                ]
+              },
+              {
+                "group": "使用 Studio",
+                "pages": [
+                  "guides/studio/overview"
+                ]
+              },
+              {
+                "group": "使用 Server Web",
+                "pages": [
+                  "guides/server/overview",
+                  "guides/server/project-management"
+                ]
+              },
+              {
+                "group": "部署",
+                "pages": [
+                  "guides/server/deployment"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "参考手册",
+            "groups": [
+              {
+                "group": "核心概念",
+                "pages": [
+                  "concepts/workflow-model",
+                  "concepts/workflow-schedules",
+                  "concepts/kanban",
+                  "concepts/payloads-and-errors",
+                  "concepts/runtime-env",
+                  "concepts/data-storage",
+                  "concepts/kv-and-conversation",
+                  "concepts/files",
+                  "concepts/llm-provider"
+                ]
+              },
+              {
+                "group": "Core API",
+                "pages": [
+                  "core-api/overview",
+                  "core-api/define-workflow",
+                  "core-api/define-entrypoint",
+                  "core-api/define-executor",
+                  "core-api/parse-conversation-default-input-args",
+                  "core-api/create-input-node",
+                  "core-api/create-file-input-node",
+                  "core-api/create-user-input-node",
+                  "core-api/create-tool-approval-gate",
+                  "core-api/create-llm-node",
+                  "core-api/create-llm-stream-node",
+                  "core-api/create-llm-provider-from-env",
+                  "core-api/create-llm-provider-ref",
+                  "core-api/create-output-node",
+                  "core-api/create-details-output-node",
+                  "core-api/create-timer-node",
+                  "core-api/create-question-classifier-node",
+                  "core-api/create-agent",
+                  "core-api/create-agent-node",
+                  "core-api/define-agent-conversation-executor",
+                  "core-api/connect-mcp-server",
+                  "core-api/create-mcp-tools",
+                  "core-api/workflow-capabilities",
+                  "core-api/create-skill-tools",
+                  "core-api/run-node",
+                  "core-api/run-stream-node",
+                  "core-api/run-if",
+                  "core-api/run-for",
+                  "core-api/run-while",
+                  "core-api/run-workflow",
+                  "core-api/knowledge-documents",
+                  "core-api/get-env",
+                  "core-api/runtime-platform",
+                  "core-api/runtime-locale",
+                  "core-api/get-llm-provider",
+                  "core-api/workflow-error"
+                ]
+              },
+              {
+                "group": "本地 CLI",
+                "pages": [
+                  "cli/overview",
+                  "cli/workflow-code",
+                  "cli/workflow-code/run",
+                  "cli/workflow-code/json",
+                  "cli/workflow-code/structure",
+                  "cli/workflow-code/resolve-params",
+                  "cli/workflow-code/mcp",
+                  "cli/workflow-code/help"
+                ]
+              },
+              {
+                "group": "Workspace CLI",
+                "pages": [
+                  "cli/server-workspace",
+                  "cli/workspace/login",
+                  "cli/workspace/logout",
+                  "cli/workspace/status",
+                  "cli/workspace/health",
+                  "cli/workspace/pack",
+                  "cli/workspace/upload",
+                  "cli/workspace/publish",
+                  "cli/workspace/versions",
+                  "cli/workspace/download",
+                  "cli/workspace/help"
+                ]
+              },
+              {
+                "group": "测试资料",
+                "pages": [
+                  "guides/testing"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "发布日志",
+            "groups": [
+              {
+                "group": "版本信息",
+                "pages": [
+                  "guides/releases/overview",
+                  "guides/releases/compatibility"
+                ]
+              },
+              {
+                "group": "发布日志",
+                "pages": [
+                  {
+                    "label": "Core",
+                    "path": "guides/releases/core",
+                    "items": [
+                      "guides/releases/core/v0.2.4",
+                      "guides/releases/core/v0.2.3",
+                      "guides/releases/core/v0.2.0",
+                      "guides/releases/core/v0.1.5",
+                      "guides/releases/core/v0.1.4",
+                      "guides/releases/core/v0.1.3",
+                      "guides/releases/core/v0.1.2",
+                      "guides/releases/core/v0.1.1"
+                    ]
+                  },
+                  {
+                    "label": "CLI",
+                    "path": "guides/releases/cli",
+                    "items": [
+                      "guides/releases/cli/v0.2.4",
+                      "guides/releases/cli/v0.2.3",
+                      "guides/releases/cli/v0.2.0",
+                      "guides/releases/cli/v0.1.5",
+                      "guides/releases/cli/v0.1.4",
+                      "guides/releases/cli/v0.1.3",
+                      "guides/releases/cli/v0.1.2",
+                      "guides/releases/cli/v0.1.1"
+                    ]
+                  },
+                  {
+                    "label": "Server",
+                    "path": "guides/releases/server",
+                    "items": [
+                      "guides/releases/server/v0.1.10",
+                      "guides/releases/server/v0.1.9",
+                      "guides/releases/server/v0.1.8",
+                      "guides/releases/server/v0.1.4",
+                      "guides/releases/server/v0.1.3",
+                      "guides/releases/server/v0.1.2",
+                      "guides/releases/server/v0.1.1"
+                    ]
+                  },
+                  {
+                    "label": "Server Web",
+                    "path": "guides/releases/server-web",
+                    "items": [
+                      "guides/releases/server-web/v0.1.10",
+                      "guides/releases/server-web/v0.1.9",
+                      "guides/releases/server-web/v0.1.8",
+                      "guides/releases/server-web/v0.1.4",
+                      "guides/releases/server-web/v0.1.3",
+                      "guides/releases/server-web/v0.1.2",
+                      "guides/releases/server-web/v0.1.1"
+                    ]
+                  },
+                  {
+                    "label": "开发者小助手",
+                    "path": "guides/releases/builtin-developer-assistant",
+                    "items": [
+                      "guides/releases/builtin-developer-assistant/v0.1.9",
+                      "guides/releases/builtin-developer-assistant/v0.1.8",
+                      "guides/releases/builtin-developer-assistant/v0.1.7",
+                      "guides/releases/builtin-developer-assistant/v0.1.6",
+                      "guides/releases/builtin-developer-assistant/v0.1.5",
+                      "guides/releases/builtin-developer-assistant/v0.1.4",
+                      "guides/releases/builtin-developer-assistant/v0.1.3",
+                      "guides/releases/builtin-developer-assistant/v0.1.2",
+                      "guides/releases/builtin-developer-assistant/v0.1.1",
+                      "guides/releases/builtin-developer-assistant/v0.1.0"
+                    ]
+                  },
+                  {
+                    "label": "Codex",
+                    "path": "guides/releases/builtin-codex",
+                    "items": [
+                      "guides/releases/builtin-codex/v0.1.2",
+                      "guides/releases/builtin-codex/v0.1.1",
+                      "guides/releases/builtin-codex/v0.1.0"
+                    ]
+                  },
+                  {
+                    "label": "Conversation",
+                    "path": "guides/releases/builtin-conversation",
+                    "items": [
+                      "guides/releases/builtin-conversation/v0.1.4",
+                      "guides/releases/builtin-conversation/v0.1.3",
+                      "guides/releases/builtin-conversation/v0.1.2",
+                      "guides/releases/builtin-conversation/v0.1.1",
+                      "guides/releases/builtin-conversation/v0.1.0"
+                    ]
+                  },
+                  {
+                    "label": "OpenCode",
+                    "path": "guides/releases/builtin-opencode",
+                    "items": [
+                      "guides/releases/builtin-opencode/v0.1.4",
+                      "guides/releases/builtin-opencode/v0.1.3",
+                      "guides/releases/builtin-opencode/v0.1.2",
+                      "guides/releases/builtin-opencode/v0.1.1",
+                      "guides/releases/builtin-opencode/v0.1.0"
+                    ]
+                  },
+                  {
+                    "label": "Pi",
+                    "path": "guides/releases/builtin-pi",
+                    "items": [
+                      "guides/releases/builtin-pi/v0.1.0"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "服务端 API",
+            "openapi": {
+              "source": "openapi/workflow-code.openapi.yaml",
+              "directory": "reference"
+            }
+          }
+        ]
+      },
+      {
+        "language": "en",
+        "tabs": [
+          {
+            "tab": "Guides",
+            "groups": [
+              {
+                "group": "Getting started",
+                "pages": [
+                  "en/index",
+                  "en/guides/migrate-core-0-2"
+                ]
+              },
+              {
+                "group": "Using Studio",
+                "pages": [
+                  "en/guides/studio/overview"
+                ]
+              },
+              {
+                "group": "Using Server Web",
+                "pages": [
+                  "en/guides/server/overview",
+                  "en/guides/server/project-management"
+                ]
+              },
+              {
+                "group": "Deployment",
+                "pages": [
+                  "en/guides/server/deployment"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "Reference",
+            "groups": [
+              {
+                "group": "Core concepts",
+                "pages": [
+                  "en/concepts/workflow-model",
+                  "en/concepts/workflow-schedules",
+                  "en/concepts/kanban",
+                  "en/concepts/payloads-and-errors",
+                  "en/concepts/runtime-env",
+                  "en/concepts/data-storage",
+                  "en/concepts/kv-and-conversation",
+                  "en/concepts/files",
+                  "en/concepts/llm-provider"
+                ]
+              },
+              {
+                "group": "Core API",
+                "pages": [
+                  "en/core-api/overview",
+                  "en/core-api/define-workflow",
+                  "en/core-api/define-entrypoint",
+                  "en/core-api/define-executor",
+                  "en/core-api/parse-conversation-default-input-args",
+                  "en/core-api/create-input-node",
+                  "en/core-api/create-file-input-node",
+                  "en/core-api/create-user-input-node",
+                  "en/core-api/create-tool-approval-gate",
+                  "en/core-api/create-llm-node",
+                  "en/core-api/create-llm-stream-node",
+                  "en/core-api/create-llm-provider-from-env",
+                  "en/core-api/create-llm-provider-ref",
+                  "en/core-api/create-output-node",
+                  "en/core-api/create-details-output-node",
+                  "en/core-api/create-timer-node",
+                  "en/core-api/create-question-classifier-node",
+                  "en/core-api/create-agent",
+                  "en/core-api/create-agent-node",
+                  "en/core-api/define-agent-conversation-executor",
+                  "en/core-api/connect-mcp-server",
+                  "en/core-api/create-mcp-tools",
+                  "en/core-api/workflow-capabilities",
+                  "en/core-api/create-skill-tools",
+                  "en/core-api/run-node",
+                  "en/core-api/run-stream-node",
+                  "en/core-api/run-if",
+                  "en/core-api/run-for",
+                  "en/core-api/run-while",
+                  "en/core-api/run-workflow",
+                  "en/core-api/knowledge-documents",
+                  "en/core-api/get-env",
+                  "en/core-api/runtime-platform",
+                  "en/core-api/runtime-locale",
+                  "en/core-api/get-llm-provider",
+                  "en/core-api/workflow-error"
+                ]
+              },
+              {
+                "group": "Local CLI",
+                "pages": [
+                  "en/cli/overview",
+                  "en/cli/workflow-code",
+                  "en/cli/workflow-code/run",
+                  "en/cli/workflow-code/json",
+                  "en/cli/workflow-code/structure",
+                  "en/cli/workflow-code/resolve-params",
+                  "en/cli/workflow-code/mcp",
+                  "en/cli/workflow-code/help"
+                ]
+              },
+              {
+                "group": "Workspace CLI",
+                "pages": [
+                  "en/cli/server-workspace",
+                  "en/cli/workspace/login",
+                  "en/cli/workspace/logout",
+                  "en/cli/workspace/status",
+                  "en/cli/workspace/health",
+                  "en/cli/workspace/pack",
+                  "en/cli/workspace/upload",
+                  "en/cli/workspace/publish",
+                  "en/cli/workspace/versions",
+                  "en/cli/workspace/download",
+                  "en/cli/workspace/help"
+                ]
+              },
+              {
+                "group": "Testing",
+                "pages": [
+                  "en/guides/testing"
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "Release notes",
+            "groups": [
+              {
+                "group": "Version information",
+                "pages": [
+                  "en/guides/releases/overview",
+                  "en/guides/releases/compatibility"
+                ]
+              },
+              {
+                "group": "Release notes",
+                "pages": [
+                  {
+                    "label": "Core",
+                    "path": "en/guides/releases/core",
+                    "items": [
+                      "en/guides/releases/core/v0.2.4",
+                      "en/guides/releases/core/v0.2.3",
+                      "en/guides/releases/core/v0.2.0",
+                      "en/guides/releases/core/v0.1.5",
+                      "en/guides/releases/core/v0.1.4",
+                      "en/guides/releases/core/v0.1.3",
+                      "en/guides/releases/core/v0.1.2",
+                      "en/guides/releases/core/v0.1.1"
+                    ]
+                  },
+                  {
+                    "label": "CLI",
+                    "path": "en/guides/releases/cli",
+                    "items": [
+                      "en/guides/releases/cli/v0.2.4",
+                      "en/guides/releases/cli/v0.2.3",
+                      "en/guides/releases/cli/v0.2.0",
+                      "en/guides/releases/cli/v0.1.5",
+                      "en/guides/releases/cli/v0.1.4",
+                      "en/guides/releases/cli/v0.1.3",
+                      "en/guides/releases/cli/v0.1.2",
+                      "en/guides/releases/cli/v0.1.1"
+                    ]
+                  },
+                  {
+                    "label": "Server",
+                    "path": "en/guides/releases/server",
+                    "items": [
+                      "en/guides/releases/server/v0.1.10",
+                      "en/guides/releases/server/v0.1.9",
+                      "en/guides/releases/server/v0.1.8",
+                      "en/guides/releases/server/v0.1.4",
+                      "en/guides/releases/server/v0.1.3",
+                      "en/guides/releases/server/v0.1.2",
+                      "en/guides/releases/server/v0.1.1"
+                    ]
+                  },
+                  {
+                    "label": "Server Web",
+                    "path": "en/guides/releases/server-web",
+                    "items": [
+                      "en/guides/releases/server-web/v0.1.10",
+                      "en/guides/releases/server-web/v0.1.9",
+                      "en/guides/releases/server-web/v0.1.8",
+                      "en/guides/releases/server-web/v0.1.4",
+                      "en/guides/releases/server-web/v0.1.3",
+                      "en/guides/releases/server-web/v0.1.2",
+                      "en/guides/releases/server-web/v0.1.1"
+                    ]
+                  },
+                  {
+                    "label": "Developer Assistant",
+                    "path": "en/guides/releases/builtin-developer-assistant",
+                    "items": [
+                      "en/guides/releases/builtin-developer-assistant/v0.1.9",
+                      "en/guides/releases/builtin-developer-assistant/v0.1.8",
+                      "en/guides/releases/builtin-developer-assistant/v0.1.7",
+                      "en/guides/releases/builtin-developer-assistant/v0.1.6",
+                      "en/guides/releases/builtin-developer-assistant/v0.1.5",
+                      "en/guides/releases/builtin-developer-assistant/v0.1.4",
+                      "en/guides/releases/builtin-developer-assistant/v0.1.3",
+                      "en/guides/releases/builtin-developer-assistant/v0.1.2",
+                      "en/guides/releases/builtin-developer-assistant/v0.1.1",
+                      "en/guides/releases/builtin-developer-assistant/v0.1.0"
+                    ]
+                  },
+                  {
+                    "label": "Codex",
+                    "path": "en/guides/releases/builtin-codex",
+                    "items": [
+                      "en/guides/releases/builtin-codex/v0.1.2",
+                      "en/guides/releases/builtin-codex/v0.1.1",
+                      "en/guides/releases/builtin-codex/v0.1.0"
+                    ]
+                  },
+                  {
+                    "label": "Conversation",
+                    "path": "en/guides/releases/builtin-conversation",
+                    "items": [
+                      "en/guides/releases/builtin-conversation/v0.1.4",
+                      "en/guides/releases/builtin-conversation/v0.1.3",
+                      "en/guides/releases/builtin-conversation/v0.1.2",
+                      "en/guides/releases/builtin-conversation/v0.1.1",
+                      "en/guides/releases/builtin-conversation/v0.1.0"
+                    ]
+                  },
+                  {
+                    "label": "OpenCode",
+                    "path": "en/guides/releases/builtin-opencode",
+                    "items": [
+                      "en/guides/releases/builtin-opencode/v0.1.4",
+                      "en/guides/releases/builtin-opencode/v0.1.3",
+                      "en/guides/releases/builtin-opencode/v0.1.2",
+                      "en/guides/releases/builtin-opencode/v0.1.1",
+                      "en/guides/releases/builtin-opencode/v0.1.0"
+                    ]
+                  },
+                  {
+                    "label": "Pi",
+                    "path": "en/guides/releases/builtin-pi",
+                    "items": [
+                      "en/guides/releases/builtin-pi/v0.1.0"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "tab": "Server API",
+            "openapi": {
+              "source": "en/openapi/workflow-code.openapi.yaml",
+              "directory": "en/reference"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

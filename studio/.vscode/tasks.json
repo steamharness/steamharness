@@ -1,0 +1,17 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Studio: Build Extension",
+      "type": "npm", "script": "build:extension",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "Studio: Check", "type": "npm", "script": "check", "problemMatcher": "$tsc"
+    },
+    {
+      "label": "Studio: Build Workbench", "type": "npm", "script": "build", "problemMatcher": []
+    }
+  ]
+}

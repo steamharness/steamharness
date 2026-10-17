@@ -1,0 +1,51 @@
+@import './scrollbars.css';
+@import './project-version.css';
+
+:root { color-scheme: light dark; }
+* { box-sizing: border-box; }
+body, button, summary { -webkit-user-select: text; user-select: text; }
+body { margin: 0; padding: 8px 16px 24px; font: var(--vscode-font-size, 13px)/1.5 var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-sideBar-background); letter-spacing: 0; }
+button { font: inherit; color: inherit; }
+.info-section { min-width: 0; border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); }
+.info-section:last-child { border-bottom: 0; }
+summary { display: flex; align-items: center; gap: 7px; min-height: 36px; padding: 8px 0; list-style: none; cursor: pointer; }
+summary::-webkit-details-marker { display: none; }
+summary > .codicon { flex: 0 0 16px; color: var(--vscode-descriptionForeground); }
+summary > .codicon-chevron-right { font-size: 12px; transition: transform 100ms; }
+details[open] > summary > .codicon-chevron-right { transform: rotate(90deg); }
+.section-label { flex: 1; min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+.section-meta { flex: 0 1 auto; max-width: 40%; color: var(--vscode-descriptionForeground); font-size: 11px; overflow-wrap: anywhere; }
+.section-content { padding: 0 0 10px 23px; }
+.info-field { display: grid; grid-template-columns: 112px minmax(0, 1fr) 22px; align-items: start; column-gap: 10px; position: relative; margin: 0; padding: 5px 0; }
+dt { margin: 0; min-width: 0; color: var(--vscode-descriptionForeground); font-size: 12px; overflow-wrap: anywhere; }
+dd { margin: 0; min-width: 0; }
+.info-value { white-space: pre-wrap; overflow-wrap: anywhere; }
+.code { font-family: var(--vscode-editor-font-family, monospace); font-size: 12px; }
+.wide { grid-template-columns: minmax(0, 1fr) 22px; row-gap: 3px; padding-top: 8px; padding-bottom: 8px; }
+.wide > dt { grid-column: 1; grid-row: 1; }
+.wide > .info-value { grid-column: 1 / -1; grid-row: 2; }
+.wide > .field-action { grid-column: 2; grid-row: 1; }
+.copy-button { display: grid; place-items: center; width: 22px; height: 22px; border: 0; border-radius: 3px; padding: 0; background: transparent; color: var(--vscode-descriptionForeground); opacity: 0; cursor: pointer; }
+.info-field:hover .copy-button, .info-field:focus-within .copy-button, .copy-button.copied { opacity: 1; }
+.copy-button:hover { background: var(--vscode-toolbar-hoverBackground); color: var(--vscode-foreground); }
+.copy-button.copied { color: var(--vscode-testing-iconPassed, var(--vscode-foreground)); }
+summary:focus-visible, button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+.info-empty { margin: 2px 0 4px; color: var(--vscode-descriptionForeground); font-size: 12px; }
+.nested { border-bottom: 0; border-left: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); padding-left: 8px; margin-top: 4px; }
+.nested > summary { min-height: 30px; padding: 5px 0; }
+.nested .section-content { padding-left: 23px; }
+.info-status { display: flex; gap: 8px; align-items: start; padding: 12px 0; }
+.info-status > .codicon { margin-top: 3px; color: var(--vscode-descriptionForeground); }
+.info-status p { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.info-status .status-detail { margin-top: 8px; color: var(--vscode-descriptionForeground); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (max-width: 379px) {
+  body { padding-left: 12px; padding-right: 12px; }
+  .section-content { padding-left: 0; }
+  .info-field { grid-template-columns: minmax(0, 1fr) 22px; row-gap: 3px; padding-top: 7px; padding-bottom: 7px; }
+  .info-field > dt { grid-column: 1; grid-row: 1; }
+  .info-field > .info-value { grid-column: 1 / -1; grid-row: 2; }
+  .info-field > .field-action { grid-column: 2; grid-row: 1; }
+  .nested .section-content { padding-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) { summary > .codicon-chevron-right { transition: none; } }

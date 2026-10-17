@@ -1,0 +1,101 @@
+---
+title: "runWhile"
+description: "执行可追踪的 while 循环节点，并让共享运行界面 Diagram 用循环容器展示循环体。"
+---
+
+# runWhile
+
+`workflow.runWhile()` 是内置 while 循环执行节点。它会在每轮开始前执行 `condition`，条件为真时执行循环体 `run`，并把返回值作为下一轮状态。运行时会发出 `branch-node` 的开始/完成事件，共享运行界面 Diagram 会把循环体节点包在带背景色的循环容器里。
+
+## 签名
+
+```ts
+workflow.runWhile<State>(
+  input: State,
+  context: WorkflowContext,
+  options: {
+    name?: string;
+    condition(input: State, context: WorkflowContext, iteration: number): boolean | Promise<boolean>;
+    run(input: State, context: WorkflowContext, iteration: number): State | Promise<State>;
+    maxIterations?: number;
+    metadata?: Partial<WorkflowNodeMetadata>;
+  },
+): Promise<State>
+```
+
+## 参数
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| `input` | `State` | 初始循环状态。 |
+| `context` | `WorkflowContext` | runtime 上下文，用于 hooks、provider、KV、files、abortSignal。 |
+| `options.name` | `string` | Diagram 和 Trace 中显示的循环节点标题。默认 `Run while`。 |
+| `options.condition` | `function` | 每轮开始前执行；返回 `true` 时继续循环。第三个参数是从 `0` 开始的 iteration。 |
+| `options.run` | `function` | 条件命中后执行的循环体，返回下一轮状态。 |
+| `options.maxIterations` | `number` | 最大迭代次数。默认 `100`，防止意外无限循环。 |
+| `options.metadata` | `Partial<WorkflowNodeMetadata>` | 覆盖循环节点元信息，默认 type 为 `run-while`。 |
+
+## 运行报告
+
+`runWhile` 使用标准节点名 `run-while`，运行 kind 为 `branch-node`。完成事件的 `executionInfo` 会包含：
+
+```json
+{
+  "loopType": "while",
+  "iterations": 2,
+  "iterationCount": 2,
+  "maxIterations": 100,
+  "completed": true
+}
+```
+
+失败时 `completed` 为 `false`，并保留已完成的迭代次数。
+
+## 示例
+
+```ts
+const finalState = await workflow.runWhile(seed, context, {
+  name: "Boost until target",
+  maxIterations: 8,
+  condition: (state) => state.total < state.target,
+  async run(state, loopContext, iteration) {
+    return workflow.runIf(state, loopContext, {
+      name: "Choose boost strategy",
+      branches: [
+        {
+          label: "burst",
+          condition: (current) => current.target - current.total >= 7,
+          async run(current, branchContext) {
+            return workflow.runFor(current, branchContext, {
+              name: "Burst passes",
+              maxIterations: 3,
+              items: () => [4, 3],
+              async run(passState, value, index, passContext) {
+                return workflow.runNode(boostNode, { ...passState, value, index, iteration }, passContext);
+              },
+            });
+          },
+        },
+      ],
+      else: {
+        label: "finish",
+        async run(current, branchContext) {
+          return workflow.runNode(boostNode, { ...current, iteration }, branchContext);
+        },
+      },
+    });
+  },
+});
+```
+
+## Diagram
+
+静态结构分析会识别对象字面量形式的 `condition`、`maxIterations` 和 `run`。`run` 中的 `workflow.runNode`、`workflow.runStreamNode`、`workflow.runIf`、`workflow.runFor` 和 `workflow.runWhile` 会成为循环体节点，并在共享运行界面 Diagram 中被循环容器包裹。为了让 Diagram 可读，循环配置尽量保持为对象字面量；动态拼装 options 仍可运行，但静态图只能展示有限信息。
+
+## 错误
+
+| 情况 | 错误类型 | 说明 |
+| --- | --- | --- |
+| 超过 `maxIterations` | `node_execution` | 抛出 `Run-while node "<name>" exceeded maxIterations (<value>).`。 |
+| `condition` 或 `run` 抛错 | `node_execution` | 原错误会被包装成 `WorkflowError` 并写入 loop 节点报告。 |
+| 执行前或循环中中断 | `execution_aborted` 或 `node_execution` | 来自 `context.abortSignal`。 |

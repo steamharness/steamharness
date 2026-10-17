@@ -1,0 +1,25 @@
+diff --git a/src/vs/workbench/browser/parts/editor/media/studioStart.css b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+index 75ed85a0..1432c7bf 100644
+--- a/src/vs/workbench/browser/parts/editor/media/studioStart.css
++++ b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+@@ -13,7 +13,7 @@
+ .studio-start-header { display:grid; grid-template-columns:28px minmax(0,1fr) auto; align-items:center; gap:12px; margin-bottom:28px; }
+ .studio-start .studio-start-logo { display:flex; align-items:center; justify-content:center; grid-column:1; grid-row:1; width:28px; height:28px; font-size:28px; color:var(--vscode-textLink-foreground); }
+ .studio-start h1 { grid-column:2; grid-row:1; min-width:0; font-size:24px; font-weight:500; margin:0; line-height:1.3; overflow-wrap:anywhere; }
+-.studio-start-toolbar { display:flex; flex-wrap:wrap; align-items:center; grid-column:3; grid-row:1; justify-self:end; min-width:0; gap:8px; }
++.studio-start-toolbar { display:flex; flex-wrap:nowrap; align-items:center; grid-column:3; grid-row:1; justify-self:end; min-width:0; gap:8px; }
+ .studio-start-grid, .studio-start-loading-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr)); gap:28px 40px; }
+ .studio-start.loading .studio-start-toolbar, .studio-start.loading .studio-start-grid, .studio-start:not(.loading) .studio-start-loading, .studio-start:not(.loading) .studio-start-loading-indicator { display:none; }
+ .studio-start-loading-indicator { grid-column:3; grid-row:1; justify-self:end; color:var(--vscode-descriptionForeground); }
+diff --git a/src/vs/workbench/browser/parts/editor/studioStart.ts b/src/vs/workbench/browser/parts/editor/studioStart.ts
+index 992ee111..dde86d18 100644
+--- a/src/vs/workbench/browser/parts/editor/studioStart.ts
++++ b/src/vs/workbench/browser/parts/editor/studioStart.ts
+@@ -95,7 +95,6 @@ export class StudioStartView extends Disposable {
+ 		append(header, $('span.codicon.codicon-loading.codicon-modifier-spin.studio-start-loading-indicator')).setAttribute('aria-hidden', 'true');
+ 		const top = append(header, $('.studio-start-toolbar'));
+ 		this.button(top, 'create', 'add', 'studio.createProject', undefined, true).classList.add('studio-start-primary');
+-		this.button(top, 'importLink', 'link', 'studio.importProjectFromLink');
+ 		this.button(top, 'refresh', 'refresh', 'studio.refreshStart', undefined, false, true);
+ 		this.createLoadingPlaceholder(inner);
+ 		const grid = append(inner, $('.studio-start-grid'));

@@ -1,0 +1,156 @@
+{
+  "name": "studio-workstation",
+  "displayName": "%displayName%",
+  "description": "%description%",
+  "version": "0.1.0",
+  "publisher": "studio",
+  "license": "UNLICENSED",
+  "engines": { "vscode": "^1.140.0" },
+  "categories": ["Other"],
+  "main": "./dist/extension.js",
+  "browser": "./dist/extension-web.js",
+  "l10n": "./l10n",
+  "activationEvents": ["onStartupFinished", "onWebviewPanel:studio.workflow", "onCommand:studio.internalStartPageVisibility"],
+  "extensionKind": ["workspace"],
+  "capabilities": {
+    "untrustedWorkspaces": { "supported": true },
+    "virtualWorkspaces": { "supported": true }
+  },
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "studio.documentPreview", "displayName": "%editor.documentPreview%", "priority": "default",
+        "selector": [
+          { "filenamePattern": "*.pdf" }, { "filenamePattern": "*.docx" }, { "filenamePattern": "*.pptx" }, { "filenamePattern": "*.xlsx" },
+          { "filenamePattern": "*.heic" }, { "filenamePattern": "*.heif" },
+          { "filenamePattern": "*.png" }, { "filenamePattern": "*.jpg" }, { "filenamePattern": "*.jpeg" }, { "filenamePattern": "*.jfif" },
+          { "filenamePattern": "*.gif" }, { "filenamePattern": "*.webp" }, { "filenamePattern": "*.bmp" }, { "filenamePattern": "*.avif" },
+          { "filenamePattern": "*.ico" }, { "filenamePattern": "*.svg" }
+        ]
+      },
+      {
+        "viewType": "studio.formulaPreview", "displayName": "%editor.formulaPreview%", "priority": "default",
+        "selector": [{ "filenamePattern": "*.tex" }, { "filenamePattern": "*.latex" }]
+      }
+    ],
+    "authentication": [{ "id": "studio-workflow", "label": "Workflow" }],
+    "commands": [
+      { "command": "studio.openStart", "title": "%command.openStart%", "category": "Studio", "icon": "$(home)" },
+      { "command": "studio.createProject", "title": "%command.createProject%", "category": "Studio", "icon": "$(new-file)" },
+      { "command": "studio.createExample", "title": "%command.createExample%", "category": "Studio", "icon": "$(beaker)" },
+      { "command": "studio.refreshStart", "title": "%command.refreshStart%", "category": "Studio", "icon": "$(refresh)" },
+      { "command": "studio.openDocumentPreview", "title": "%command.openDocumentPreview%", "category": "Studio", "icon": "$(open-preview)" },
+      { "command": "studio.refreshDocumentPreview", "title": "%command.refreshDocumentPreview%", "category": "Studio", "icon": "$(refresh)" },
+      { "command": "studio.openFolder", "title": "%command.openFolder%", "category": "Studio", "icon": "$(folder-opened)" },
+      { "command": "studio.openWorkspace", "title": "%command.openWorkspace%", "category": "Studio", "icon": "$(file-submodule)" },
+      { "command": "studio.newFile", "title": "%command.newFile%", "category": "Studio", "icon": "$(new-file)" },
+      { "command": "studio.openTerminal", "title": "%command.openTerminal%", "category": "Studio", "icon": "$(terminal)" },
+      { "command": "studio.runTask", "title": "%command.runTask%", "category": "Studio", "icon": "$(play)" },
+      { "command": "studio.openSettings", "title": "%command.openSettings%", "category": "Studio", "icon": "$(settings-gear)" },
+      { "command": "studio.refreshProjects", "title": "%command.refreshProjects%", "category": "Studio", "icon": "$(refresh)" },
+      { "command": "studio.openRecentProject", "title": "%command.openRecentProject%", "category": "Studio" },
+      { "command": "studio.removeRecentProject", "title": "%command.removeRecentProject%", "category": "Studio", "icon": "$(close)" },
+      { "command": "studio.clearRecentProjects", "title": "%command.clearRecentProjects%", "category": "Studio", "icon": "$(clear-all)" },
+      { "command": "studio.openWorkflow", "title": "%command.openWorkflow%", "category": "Workflow", "icon": "$(play)" },
+      { "command": "studio.uploadProject", "title": "%command.uploadProject%", "category": "Workflow", "icon": "$(cloud-upload)" },
+      { "command": "studio.upgradeProject", "title": "%command.upgradeProject%", "category": "Workflow", "icon": "$(arrow-circle-up)" },
+      { "command": "studio.downloadProject", "title": "%command.downloadProject%", "category": "Workflow", "icon": "$(cloud-download)" },
+      { "command": "studio.importProjectFromLink", "title": "%command.importProjectFromLink%", "category": "Workflow", "icon": "$(link)" },
+      { "command": "studio.refreshVersions", "title": "%command.refreshVersions%", "category": "Workflow", "icon": "$(refresh)" },
+      { "command": "studio.openAnalysis", "title": "%command.openAnalysis%", "category": "Workflow", "icon": "$(graph)" },
+      { "command": "studio.openAssistant", "title": "%command.openAssistant%", "category": "Workflow", "icon": "$(hubot)" },
+      { "command": "studio.newAssistantConversation", "title": "%command.newAssistantConversation%", "category": "Workflow", "icon": "$(edit)" },
+      { "command": "studio.searchAssistantConversations", "title": "%command.searchAssistantConversations%", "category": "Workflow", "icon": "$(search)" },
+      { "command": "studio.refreshWorkflows", "title": "%command.refreshWorkflows%", "category": "Workflow", "icon": "$(refresh)" },
+      { "command": "studio.refreshResources", "title": "%command.refreshResources%", "category": "Workflow", "icon": "$(refresh)" },
+      { "command": "studio.selectInfoProject", "title": "%command.selectInfoProject%", "category": "Workflow", "icon": "$(list-selection)" },
+      { "command": "studio.openInfoProjectSource", "title": "%command.openInfoProjectSource%", "category": "Workflow", "icon": "$(json)" },
+      { "command": "studio.copyProjectInfoValue", "title": "%command.copyProjectInfoValue%", "category": "Workflow", "icon": "$(copy)" },
+      { "command": "studio.openRelatedProject", "title": "%command.openRelatedProject%", "category": "Workflow", "icon": "$(link-external)" },
+      { "command": "studio.refreshRelatedProjects", "title": "%command.refreshRelatedProjects%", "category": "Workflow", "icon": "$(refresh)" },
+      { "command": "studio.openWorkflowSource", "title": "%command.openWorkflowSource%", "category": "Workflow", "icon": "$(code)" },
+      { "command": "studio.openWorkflowDemo", "title": "%command.openWorkflowDemo%", "category": "Workflow", "icon": "$(comment-discussion)" },
+      { "command": "studio.openWorkflowCli", "title": "%command.openWorkflowCli%", "category": "Workflow", "icon": "$(terminal)" },
+      { "command": "studio.openWorkflowAccount", "title": "%command.openWorkflowAccount%", "category": "Workflow", "icon": "$(account)" },
+      { "command": "studio.validateWorkflowLogin", "title": "%command.validateWorkflowLogin%", "category": "Workflow", "icon": "$(verified)" },
+      { "command": "studio.logoutWorkflow", "title": "%command.logoutWorkflow%", "category": "Workflow", "icon": "$(sign-out)" }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "studio-info", "title": "%container.studio-info%", "icon": "$(package)" },
+        { "id": "studio-versions", "title": "%container.studio-versions%", "icon": "$(versions)" }
+      ],
+      "secondarySidebar": [{ "id": "studio-assistant", "title": "%container.studio-assistant%", "icon": "$(hubot)" }],
+      "panel": [
+        { "id": "studio-kv", "title": "KV", "icon": "$(database)" },
+        { "id": "studio-knowledge", "title": "%container.studio-knowledge%", "icon": "$(book)" },
+        { "id": "studio-trace", "title": "%container.studio-trace%", "icon": "$(history)" }
+      ]
+    },
+    "views": {
+      "explorer": [{ "id": "studio.relatedProjects", "name": "%view.studio.relatedProjects%", "icon": "$(references)", "when": "studio.workflowInfoAvailable" }],
+      "studio-info": [{ "id": "studio.projectInfo", "name": "%container.studio-info%", "type": "webview", "when": "studio.workflowInfoAvailable" }],
+      "studio-versions": [{ "id": "studio.versions", "name": "%container.studio-versions%", "type": "webview" }],
+      "studio-assistant": [{ "id": "studio.developerAssistant", "name": "%container.studio-assistant%", "type": "webview" }],
+      "studio-kv": [{ "id": "studio.kv", "name": "KV", "type": "webview", "when": "studio.workflowResourcesAvailable" }],
+      "studio-knowledge": [{ "id": "studio.knowledge", "name": "%container.studio-knowledge%", "type": "webview", "when": "studio.workflowResourcesAvailable" }],
+      "studio-trace": [{ "id": "studio.trace", "name": "%container.studio-trace%", "type": "webview", "when": "studio.workflowTraceAvailable" }]
+    },
+    "menus": {
+      "explorer/context": [
+        { "command": "studio.openDocumentPreview", "when": "!explorerResourceIsFolder && resourceExtname =~ /\\.(pdf|docx|pptx|xlsx|tex|latex|png|jpe?g|jfif|gif|webp|bmp|avif|svg|ico|heic|heif)$/i", "group": "navigation@2" }
+      ],
+      "commandPalette": [
+        { "command": "studio.refreshDocumentPreview", "when": "activeCustomEditorId == studio.documentPreview || activeCustomEditorId == studio.formulaPreview" }
+      ],
+      "view/title": [
+        { "command": "studio.refreshVersions", "when": "view == studio.versions", "group": "navigation@1" },
+        { "command": "studio.downloadProject", "when": "view == studio.versions", "group": "navigation@2" },
+        { "command": "studio.refreshRelatedProjects", "when": "view == studio.relatedProjects", "group": "navigation" },
+        { "command": "studio.selectInfoProject", "when": "view == studio.projectInfo && studio.workflowInfoMultipleProjects", "group": "navigation@1" },
+        { "command": "studio.openInfoProjectSource", "when": "view == studio.projectInfo", "group": "navigation@2" },
+        { "command": "studio.refreshWorkflows", "when": "view == studio.projectInfo", "group": "navigation@3" }
+      ],
+      "view/item/context": [
+        { "command": "studio.openRelatedProject", "when": "view == studio.relatedProjects && viewItem == studio.relatedProjectImported", "group": "inline" }
+      ],
+      "editor/title": [
+        { "command": "studio.refreshDocumentPreview", "when": "activeCustomEditorId == studio.documentPreview || activeCustomEditorId == studio.formulaPreview", "group": "navigation@1" },
+        { "command": "studio.openDocumentPreview", "when": "resourceExtname =~ /\\.(tex|latex)$/i && activeCustomEditorId != studio.formulaPreview", "group": "navigation@1" },
+        { "command": "studio.openWorkflow", "when": "studio.workflowAvailable", "group": "navigation@0" }
+      ]
+    },
+    "configuration": {
+      "title": "Studio",
+      "properties": {
+        "studio.startPage.enabled": {
+          "type": "boolean", "default": true, "description": "%config.startPage.enabled%"
+        },
+        "studio.workflow.serverUrl": {
+          "type": "string", "default": "http://localhost:7126", "scope": "application",
+          "description": "%config.studio.workflow.serverUrl%"
+        },
+        "studio.workflow.nodePath": {
+          "type": "string", "default": "", "scope": "machine", "restricted": true,
+          "description": "%config.studio.workflow.nodePath%"
+        },
+        "studio.recentProjects.limit": {
+          "type": "integer", "default": 12, "minimum": 1, "maximum": 50,
+          "description": "%config.recentProjects.limit%", "scope": "application"
+        },
+        "studio.terminal.name": {
+          "type": "string", "default": "Studio", "minLength": 1,
+          "description": "%config.terminal.name%"
+        }
+      }
+    },
+    "configurationDefaults": {
+      "workbench.iconTheme": "file-icons",
+      "window.autoDetectColorScheme": true,
+      "chat.disableAIFeatures": true,
+      "workbench.startupEditor": "none",
+      "workbench.secondarySideBar.defaultVisibility": "visible",
+      "window.title": "${dirty}${activeEditorShort}${separator}${rootName}${separator}${appName}"
+    }
+  }
+}

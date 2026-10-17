@@ -1,0 +1,18 @@
+[Unit]
+Description=Workflow Code Web App (Alpha)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__ROOT__/published/web/alpha/current
+Environment=NODE_ENV=production
+Environment=NODE_OPTIONS=--max-old-space-size=128
+ExecStart=__NODE_BIN__ __ROOT__/published/web/alpha/current/.workflow/serve-web.mjs --root __ROOT__/published/web/alpha/current --host 127.0.0.1 --port 7152
+Restart=on-failure
+RestartSec=5
+MemoryMax=256M
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

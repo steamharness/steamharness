@@ -1,0 +1,32 @@
+---
+title: "CLI v0.1.3"
+description: "CLI v0.1.3 的更新说明。"
+---
+
+# CLI v0.1.3
+
+2026-08-07 · Tag `@workflow-code/cli/v0.1.3` · npm
+
+<span id="@workflow-code/cli-0-1-3" className="release-version-anchor"></span>
+<span id="@workflow-code/cli.0.1.3" className="release-version-anchor"></span>
+
+#### 新特性
+
+- **全局 `--locale` 开关**：切换本地与 Workspace 输出，并传递给 Server 和 Workflow runtime。
+- **`--entrypoint` 参数**：本地与远程命令均可指定入口，省略时使用默认入口。参见 [CLI](/cli/workflow-code)。
+
+#### 破坏性变更
+
+- 项目组打包与下载排除 PersistentValue 数据和 CLI 登录凭据，并逐包校验 SHA-256。
+  迁移：自引用、锁不一致或内容被修改的响应会被拒绝，需重新生成依赖锁。
+
+#### 新增
+
+- 新增 全局 `--locale <zh-CN|en>` 切换输出语言，项目可用 `workflow.getRuntimeLocale()` 读取。
+- 新增 本地 `run`、`json`、`resolve-params` 与远程 `run`、`debug-node` 支持 `--entrypoint <id>`。
+- 新增 `structure` 校验并输出按入口、时区、时间窗口或 Cron 声明的计划建议。
+- 新增 Workspace 命令按精确依赖锁交付和恢复 Kanban 项目组，不传输宿主数据。
+
+#### 变更
+
+- 变更 发布日志同步维护中英文内容，Docs 按当前文档语言展示对应版本。

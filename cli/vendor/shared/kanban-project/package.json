@@ -1,0 +1,33 @@
+{
+  "name": "@workflow-code/kanban-project",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "exports": {
+    ".": {
+      "types": "./index.ts",
+      "import": "./index.ts"
+    },
+    "./workspace": {
+      "types": "./KanbanWorkspace.tsx",
+      "import": "./KanbanWorkspace.tsx"
+    },
+    "./preview-frame": {
+      "types": "./KanbanPreviewFrame.tsx",
+      "import": "./KanbanPreviewFrame.tsx"
+    }
+  },
+  "dependencies": {
+    "@workflow-code/i18n": "workspace:*",
+    "@workflow-code/project-info": "workspace:*",
+    "lucide-react": "^0.487.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0"
+  }
+}

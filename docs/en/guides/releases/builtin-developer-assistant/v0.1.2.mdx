@@ -1,0 +1,30 @@
+---
+title: "开发者小助手 0.1.2"
+description: "Release notes for 开发者小助手 0.1.2."
+---
+
+# 开发者小助手 0.1.2
+
+2026-08-21 · Tag `builtin-developer-assistant/v0.1.2` · 内置项目更新
+
+<span id="builtin-developer-assistant-0-1-2" className="release-version-anchor"></span>
+<span id="builtin-developer-assistant.0.1.2" className="release-version-anchor"></span>
+
+#### New Features
+
+- **Multilingual built-in project**: shows as 小助手 in Chinese and `Project Assistant` in English, with the README following the interface language.
+- **Generator project metadata reference**: the generator reference covers default names, localized names, manual declarations, and display platforms.
+
+#### Breaking Changes
+
+- Built-in project compatibility now uses `minDesktopVersion`; `minAppVersion` is no longer accepted and Desktop 0.1.20 is the minimum.
+  Migration: rename `minAppVersion` to `minDesktopVersion` in the project manifest and set 0.1.20 or later.
+
+#### Added
+
+- Added multilingual declarations to the built-in project so its names and README follow the Desktop interface language.
+- Added generator guidance for default names, localized names, manual declarations, and display platforms, leaving multilingual and multiplatform declarations unset for new projects.
+
+#### Removed
+
+- Removed the `minAppVersion` field from built-in project manifests; compatibility reads `minDesktopVersion` only.

@@ -1,0 +1,85 @@
+---
+title: "createQuestionClassifierNode"
+description: "Create a problem classification node, using LLM to return a name in the fixed classification."
+---
+
+# createQuestionClassifierNode
+
+`workflow.createQuestionClassifierNode()` Creates a classification node with input `string`. It spelled the question, category list, and description into a LLM prompt, and asked the model to return only the category name; if the return value is not in the allowed categories, the node outputs an empty string.
+
+## Signature
+
+```ts
+workflow.createQuestionClassifierNode<
+  const Categories extends readonly QuestionClassifierCategory[],
+>(
+  options: QuestionClassifierNodeOptions<Categories>,
+): BaseNode<string, QuestionClassifierOutput<Categories>>
+```
+
+## Parameter
+
+|Parameter|Type|Description|
+| --- | --- | --- |
+| `options` | `QuestionClassifierNodeOptions<Categories>` |Define provider, classifications, user descriptions, and LLM settings.|
+
+## Options Field
+
+|Field|Type|Description|
+| --- | --- | --- |
+| `name` | `string` |Node name, default `"question-classifier"`.|
+| `provider` | `LLMProviderSource` |provider used for classification. Required.|
+| `categories` | `QuestionClassifierCategory[]` |Classification allowed to be returned. The name cannot be duplicated. Required.|
+| `userDescription` | `string` |Classification task and user scenario description. Required.|
+| `system` | `string` |system prompt. The default value is `"You are a strict question classifier."`.|
+| `settings` |`LLMCallSettings` subset|LLM call parameters; overrides the default `temperature: 0`, `maxOutputTokens: 50`.|
+| `historyLimit` | `number` |The number of nodes retained in the execution history. The default value is `50`.|
+| `metadata` | `WorkflowNodeMetadataInput` |The node displays meta information.|
+
+## Input and output
+
+|Name|Type|Description|
+| --- | --- | --- |
+|Input| `string` |The problem to be classified. An empty string triggers an input validation error.|
+|Output| `CategoryName \| ""` |If the classification is matched, the classification name is returned. If the model returns a non-allowed classification, an empty string is returned.|
+
+## `QuestionClassifierCategory`
+
+|Field|Description|
+| --- | --- |
+| `name` |Category name, which is also the exact text that the model must return. Required.|
+| `description` |The classification description is written to prompt. Required.|
+
+## LLM Request Content
+
+|Fragment|Source|Description|
+| --- | --- | --- |
+|Classification Rules|Fixed template during node execution|Requires that only the category name be returned, no JSON, Markdown, or explanation be returned.|
+| `userDescription` | options |Business classification description.|
+| `categories` | options |List allowable classifications and descriptions by serial number.|
+| `question` |Node Input|User issues.|
+
+## Example
+
+```ts
+const classifier = workflow.createQuestionClassifierNode({
+  name: "route-question",
+  provider: workflow.createLLMProviderRef("default"),
+  userDescription: "Classify whether the user is asking a technical question or making casual conversation.",
+  categories: [
+    { name: "technical", description: "Code, APIs, deployment, or error troubleshooting." },
+    { name: "chat", description: "General conversation or a non-technical question." },
+  ] as const,
+});
+
+const category = await workflow.runNode(classifier, input.message, context);
+```
+
+## Error
+
+|Situation|Error Type|Description|
+| --- | --- | --- |
+|`categories` is empty| `input_validation` |At least one classification is required.|
+|Duplicate Category Name| `input_validation` |`name` cannot be repeated.|
+|`userDescription` or question is empty| `input_validation` |Required text cannot be empty.|
+|provider call failed| `provider_call` |Thrown by the provider layer.|

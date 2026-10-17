@@ -1,0 +1,348 @@
+---
+title: "createAgent"
+description: "Create an agent runtime you can drive programmatically."
+---
+
+# createAgent
+
+`workflow.createAgent()` creates an agent runtime. It gathers input, output, reasoning effort, context compaction and plan approval behind one object, so a caller only has to send a prompt and handle events instead of building a tool loop.
+
+The runtime uses Pi Durable 1.2.0 as its only execution backend and requires Node.js `>=22.19.0`.
+
+## Signature
+
+```ts
+const agent = await workflow.createAgent({
+  databasePath?: string,
+  workdir?: string,
+  systemPrompt?: string,
+  provider?: string,
+  model?: string,
+  baseUrl?: string,
+  apiKey?: string,
+  modelAttributes?: AgentModelAttributes,
+  effort?: AgentEffort,
+  permissionPolicy?: AgentPermissionPolicy,
+  mode?: AgentMode,
+  tools?: string[],
+  toolDefinitions?: WorkflowToolPermissionDefinition[],
+  allowedDirectories?: string[],
+  extraTools?: AgentTool[],
+  sessionId?: string,
+  session?: AgentSessionOptions,
+  models?: MutableModels,
+  resolvedModel?: Model<Api>,
+}): Promise<AgentRuntime>
+```
+
+The returned runtime exposes:
+
+| Member | Description |
+| --- | --- |
+| `run(input, host?)` | Run once, yielding `AgentStreamEvent` values. |
+| `close()` | Close the Harness and release ownership. Unfinished work remains recoverable when the same store is reopened. Always call it after use. |
+| `getContextUsage()` | Read current context occupancy as `{ used, total }`, including the message still streaming; returns `undefined` when the model window is unavailable. |
+| `updateContextUsage({ used, total })` | Supply an absolute measurement of the current context. An active run immediately emits the update through `context_usage`; it does not count toward billed usage. |
+| `sessionId` | The session id this runtime uses. |
+| `reset()` | Clear the context projection; the next run checkpoints the new context. Active tasks must be settled first. |
+| `restoreTranscript(messages)` | The record the next run continues from; only takes effect before the runtime has built its agent — see "The transcript". |
+| `readTranscript()` | Inspect or export the model-visible context projection. The Harness store owns execution history. |
+
+## Options
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `databasePath` | `string` | SQLite file for one isolated session. Omit for an in-memory agent without process recovery. Only one execution owner may open a file at a time. |
+| `session` | `AgentSessionOptions` | Enable durable inputs, task/plan snapshots, and background execution. See below. |
+| `workdir` | `string` | Directory tools resolve relative paths against. Defaults to `process.cwd()`. |
+| `systemPrompt` | `string` | Overrides the default system prompt. |
+| `provider` / `model` | `string` | Provider and model id. A self-hosted endpoint must also provide `baseUrl`. |
+| `baseUrl` / `apiKey` | `string` | Endpoint and key for a self-hosted gateway. Defaults come from the matching environment variables. |
+| `modelAttributes` | `AgentModelAttributes` | The attribute record for the model a custom endpoint serves. See "Model attributes" below. |
+| `effort` | `AgentEffort` | Default reasoning effort. |
+| `permissionPolicy` | `AgentPermissionPolicy` | Default permission policy. |
+| `mode` | `AgentMode` | Default run mode. |
+| `tools` | `string[]` | Narrow the available tools. Never widens what the policy disabled. |
+| `allowedDirectories` | `string[]` | Roots the tools may touch. Defaults to `workdir` alone. |
+| `extraTools` | `AgentTool[]` | Tools to add alongside the built-ins. See "Your own tools" below. |
+| `models` / `resolvedModel` | pi types | For reusing your own provider collection or pinning a model. |
+
+## Durable session control
+
+`session: {}` enables the Harness session protocol. During `run()`, call `runtime.control(command)` and consume `session` events carrying `AgentSessionSnapshot`. Calls outside a run fail with `AGENT_NOT_READY`. Programmatic runs wait for background work to settle; workflow hosts that keep resources alive between inputs use the host lease described in [createAgentNode](./create-agent-node.mdx).
+
+| `session` field | Meaning |
+| --- | --- |
+| `subagents` | Opt in with `{ tools: string[], maxAgents?: number, models?: { provider, modelId }[] }`. Child tools intersect the parent tools and this allowlist. Children inherit the parent model unless selecting an exact allowed provider/modelId. Children cannot delegate again; the default limit is 4 active delegations. |
+| `nativeTools` | Pi Durable `ToolRegistration[]`. Nested `api.executeTool()` calls retain caller restrictions, approval hooks, and cancellation propagation. |
+| `compaction` | `{ enabled?, reserveTokens?, keepRecentTokens?, backgroundTokens? }`; use Durable background, threshold, and overflow compaction instead of the ordinary pre-turn path. |
+| `planFork` | `initial`, `current`, or `asOf` (default): inherit the empty initial plan, current plan, or plan at the fork point. |
+
+Every command has a stable `requestId` and optional numeric `targetId` from the snapshot (defaults to the main conversation). The API copies commands before waiting for readiness or queuing, so later caller mutations do not change the operation. Reusing an identity with different content fails; retransmission returns the original receipt.
+
+| `type` | Fields and effect |
+| --- | --- |
+| `submit` | `prompt`, optional `images`, and `mode: "steer" \| "followUp" \| "reject"`. Steer applies at a tool boundary; followUp queues another turn; reject refuses busy input. An idle steer becomes an ordinary answered turn. |
+| `withdraw` | `inputId` is the input requestId. Consumed inputs return `already_placed` / `settled`; withdrawal never undoes side effects. |
+| `promote` | `inputId` is a queued input's requestId. Atomically change it to steer and save the receipt, retaining its identity and images for the next tool boundary. Consumed inputs return `already_placed` / `settled` and are never resent. |
+| `compact` | Optional `instructions`; create a background compaction task coordinated with active work. |
+| `reset` | Optional `handoff`; start a new context epoch at an input boundary, retaining visible history and the task plan. |
+| `fork` | A committed `entryId`; create an independent conversation, provider identity, and inbox in the same SQLite store. Active tasks and approvals are not copied. The receipt contains `forkId`. |
+| `delete` | Cancel and hide a child conversation. The host deletes the main session and its store. |
+| `configure` | `expectedVersion`, optional `model: { provider, modelId }` / `effort`; CAS update a registered model for the next request. Child model restrictions still apply. |
+| `plan` | `expectedVersion`, `items: { id, text, status }[]`, where status is pending / in_progress / completed; CAS update the transactional plan. |
+| `cancel` | `scope: "foreground" \| "all" \| "task"`; task requires `taskId`. Foreground preserves background subtrees; all includes owned children but excludes independent forks. Task ownership is checked. |
+| `snapshot` | Publish the latest complete snapshot. |
+| `task` | `name`, strict JSON `input` (at most 256 KiB), optional `background`; create a project-registered task. The receipt contains `taskId`, and retransmission does not create another task. Date, Map, functions and non-finite numbers are rejected before recording the requestId. |
+
+Snapshots include `version: 1`, an `ownerId` that changes on reopen, increasing `revision`, `contexts`, `tasks/history`, `turns`, `plan`, `records`, `receipts`, and per-conversation `usage`. Treat snapshots as auxiliary state; assistant answers remain inline. Reconnect from a full snapshot, allowing a new owner to restart its revision sequence. Prompt records contain only a digest/version, and configuration records contain no credentials. A durable reporter delivers each background child result once using a stable identity. Usage belongs to individual parent/child conversations and replay does not add it again.
+
+`turns[].usage` totals returned model responses for that turn, including tool rounds, failed retries and compaction responses during the turn. It contains `inputTokens`, `outputTokens`, `totalTokens`, `cachedInputTokens`, `cacheCreationTokens`, `reasoningTokens` and `calls`. Inherited fork history, other turns and other conversations are not charged to this answer again. Idle background compaction remains in per-conversation `usage` without changing completed answers. `contexts[].contextUsage` instead describes the current model context as `{ used, total }`, including streamed content. It updates after follow-ups, forks, compaction and resets independently of cumulative consumption.
+
+`tasks` contains only active tasks, while `history` contains terminal tasks. `stopping` means cancellation was requested but the task has not settled. Historical tasks always have `stopping: false` and retain their actual outcome in `status`, including completed or aborted. Reopened sessions follow the same rule.
+
+Tool tasks expose `arguments` in both active and completed history: the arguments submitted by the model or calling tool, rather than an audit of subsequent argument repair or hook transformations. History resolves each tool against its committed assistant entry, so call IDs reused across turns cannot overwrite older tasks. Streaming tool events use a stable presentation `toolCallId`; treat it as opaque. Approval identities bind the durable conversation, task, and call ID: a paused call retains its decision on recovery, while a later independent call with the same ID and arguments requires its own permission check.
+
+Sessions expose `update_plan` and, when enabled, `subagent({ task, background?, model?: { provider, modelId } })`. Explicit `toolDefinitions` / executor `tools` lists must declare their permissions along with any native tools; the convenience executor adds update_plan/subagent by default. Foreground completion, background execution, and client connectivity are independent states.
+
+## Extension Execution And Recovery
+
+`session` also accepts `registry: AgentRegistryReader`, `toolSearch: { catalogs? }`, `codeMode: { memoryLimitBytes?, timeoutMs? }`, and `environment: { id, label, open(target, context) }`. All are opt-in; Code Mode is off by default.
+
+Core exports `createAgentRegistry`, `defineAgentTask`, `defineAgentExtension`, `defineAgentDoc`, `agentHook`, `AgentToolTask`, `AgentGenerationTask` and their types from `workflow-code/agent`. Injected projects can use the same functions through `workflow` without installing Pi.
+
+```ts
+const registry = workflow.createAgentRegistry();
+const timer = workflow.defineAgentTask<
+  { wakeAt: number }, { phase: "wait"; wakeAt: number }, string
+>({
+  name: "app.timer", version: 1,
+  initial: input => ({ phase: "wait", wakeAt: input.wakeAt }),
+  phases: { wait: async (task, runtime, context) => {
+    await runtime.sleep(task.state.checkpoint.wakeAt, context);
+    await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: "awake" } }), context);
+  } },
+  abort: async (_task, runtime, context) => {
+    // Release project resources here, then commit the cancellation.
+    await runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), context);
+  },
+});
+registry.install(workflow.defineAgentExtension({ name: "app", tasks: [timer] }));
+const agent = await workflow.createAgent({ session: { registry } });
+```
+
+While running, the host submits `{ type: "task", requestId, name: "app.timer", input: { wakeAt }, background: true }`. The receipt contains `taskId`; resending the same command does not create another task. Every phase must commit progress or a terminal outcome. Create dependencies with `tx.createTask()` and commit `{ status: "waiting", on: [childId], policy: "allSettled", checkpoint }`. Cancellation drains owned work before `abort`; host shutdown pauses instead of cancelling. A checkpoint's `wakeAt` is an absolute timestamp for display; `runtime.sleep()` controls the actual timer.
+
+Registry publications are immutable. In-flight tools and hooks keep their implementation, and the next task phase may select a compatible replacement. An already running task may keep its old implementation after removal; rescheduling or reopening without a compatible definition leaves it `blocked`. Reinstalling the definition wakes it. Reserved `pi.*` / `workflow.*` tasks and extensions, and duplicate tool names, cannot be replaced. Conversation commands cannot upload extension code.
+
+### Discovery And MCP
+
+`AgentToolCatalog` is `{ id, tools?, allowedTools?, open() }`. Predeclared tools are descriptors without `execute`, persisted when the session opens; search only reads metadata and the first actual call connects. Without schemas, `allowedTools` must list final agent tool ids; the first search connects and persists the discovered definitions. Reconnecting checks names, descriptions, schemas and replay against both the current descriptors and the session's original persisted definitions. Updating host descriptors and server definitions together cannot bypass this check. Definition drift returns an error and closes the connection; use a new session for new definitions. Transient connection failures can be retried by calling again. Only explicitly declared catalogs are discoverable. Return `{ tools, catalogs, close? }` from `createTools`, or supply `session.toolSearch.catalogs`.
+
+`workflow.createMcpToolCatalog({ definition, allowedTools, descriptors?, connect?, approve? })` validates configuration without spawning a process. Its allowlist uses original MCP names; final ids remain `<serverId>_<toolName>`. Existing MCP credential inheritance and approval rules apply. The session owner releases catalog connections after the Harness stops.
+
+### Code Mode And Environments
+
+`session.codeMode: {}` enables `codemode({ code })` in an isolated QuickJS worker. Scripts use `await tools.<name>(args)`, `text()`, `store()` and `load()`; they have no Node, network or extra `models.*` capability. Nested calls keep the conversation's tool allowlist, caller restrictions, approvals, replay and cancellation. The official journal validates sandbox fingerprints, call order and deadlines when recovering; committed nested results are reused. The worker and WASM ship in Core's package. Defaults are 64 MiB and 300 seconds, with maximums of 256 MiB and 300 seconds.
+
+The host supplies `AgentExecutionEnv` with the declared stable id and target cwd. A reopened session cannot change environment identity; use a new session for another target. Remote read/write/edit/bash use that environment; grep/find/ls never fall back to local execution. Additional tools remain explicit project capabilities. File scope, shell permissions and remote MCP must be enforced by the target environment and catalog factory. Core does not provision a cloud sandbox. Shutdown stops the Harness before environment cleanup and catalog disposal; connection credentials are not in resource snapshots.
+
+Studio Trace adds Tasks, Plan, Records and Usage alongside its original timeline; CLI Web no longer shows a task sidebar. Task details show versions, checkpoints, wake times, scripts and nested calls. Records shows extension/catalog status, Code Mode, storage and the local/remote target. There is no database form, and main answers remain inline.
+
+### Storage And Backups
+
+`storage: AgentStorageFactory` is mutually exclusive with `databasePath`: `{ label, open(): Promise<{ storage: AgentStorage, release?() }> }`. The host acquires an exclusive owner in open; release runs after the Harness closes storage. Reopening must use the same data. Custom backends own their backup and cancellation scheduling. JSONL is not the default long-running backend.
+
+`exportAgentDatabase({ databasePath, destination })` and `importAgentDatabase({ source, databasePath })` are exported from `workflow-code/agent`. Stop and join the worker first. Both acquire exclusive owner locks for the source and destination, validate Durable SQLite and create a consistent SQLite backup including WAL. The destination must be new and unreserved by another owner; existing sessions are never overwritten. Import does not copy the source owner lock. Preserve the project workspace alongside the database: file contents and live resources are outside the snapshot.
+
+Offline `cancelAgentConversation({ agentStoreDir, conversationId, registry? })` also requires stopping and joining the worker first. Supply the project registry to run custom task abort cleanup. Tasks whose definitions are missing can only end as `orphaned`; their project cleanup code cannot execute. Prefer the `cancel` command on an active session, whose owner already holds the definitions.
+
+## Input (`AgentInput`)
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `prompt` | `string` | The turn's input. It may be an empty string when the turn carries images: an attachment-only turn is a real turn, and the runtime sends the images as the message content instead of failing with a missing prompt. |
+| `requestId` | `string` | Logical submission identity. Reuse it for recovery or retransmission; use a new value for new input. Repeating a submission in the same store returns its original result without invoking models or tools again. |
+| `images` | `AgentImageInput[]` | Images as `{ data, mimeType }`. |
+| `imageFiles` | `WorkflowFileReference[]` | Attachments as host file references, resolved through the workflow file store by the run's input node. An unreadable reference, or one that is not an image, ends the turn with an error naming the file rather than quietly dropping the attachment. Once resolved it becomes `images`, and nothing downstream sees that a reference was involved. |
+| `modelAttributes` | `AgentModelAttributes` | Overrides the runtime option of the same name. See "Model attributes" below. |
+| `workdir` | `string` | Overrides the runtime's working directory. |
+| `allowedDirectories` | `string[]` | Overrides the roots the tools may reach. Relative entries resolve against this turn's `workdir`; omitting it leaves `workdir` alone. |
+| `systemPrompt` | `string` | This turn's system prompt. Applies per run and overrides the option of the same name. |
+| `provider` / `model` / `baseUrl` | `string` | Override the runtime's model configuration. |
+| `effort` | `AgentEffort` | See "Reasoning effort" below. |
+| `agent` | `"build" \| "plan"` | `build` does the work; `plan` only researches and proposes. |
+| `permissionPolicy` | `"read-only" \| "workspace" \| "auto"` | See "Permission policy" below. |
+| `contextWindow` | `number` | Denominator for context usage. Defaults to the model's declared window, then to the runtime fallback when no declaration exists. |
+| `compact` | `boolean` | When `true`, the turn becomes a context compaction. |
+| `hostInput` | `unknown` | This turn is driven by host input (the OpenAI/Responses gateway); a turn carrying it writes no workflow conversation and neither reads nor writes the transcript. |
+| `planResume` / `askResume` | resume payloads | Programmatic hosts provide a plan decision or answers. Node hosts submit the original request's answer through `userInput`. |
+
+## Model attributes
+
+`modelAttributes` describes a model on a **custom endpoint** — the runtime's own catalogue does not know it, so only the caller can say what it is:
+
+```ts
+const agent = await workflow.createAgent({
+  provider: "my-gateway",
+  model: "vendor/model-1",
+  baseUrl: "https://gateway.example.com/v1",
+  modelAttributes: {
+    name: "Vendor Model 1",
+    reasoning: true,
+    input: ["text", "image"],
+    contextWindow: 1_000_000,
+    maxTokens: 64_000,
+    cost: { input: 0.4, output: 1.6, cacheRead: 0.04, cacheWrite: 0.5 },
+    thinkingLevelMap: { minimal: null, max: "xhigh" },
+  },
+});
+```
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `name` | `string` | Display name, at most 200 characters. Defaults to the model id. |
+| `reasoning` | `boolean` | Whether the model does reasoning at all. |
+| `input` | `("text" \| "image")[]` | Input modalities the model accepts; `image` decides whether a turn hands pictures to the model. |
+| `cost` | `{ input, output, cacheRead, cacheWrite }` | Per-million-token prices; all four are non-negative numbers. |
+| `contextWindow` | `number` | The context window. |
+| `maxTokens` | `number` | The max output tokens. |
+| `thinkingLevelMap` | `Record<string, string \| null>` | Maps a pi thinking level to the value sent upstream; `null` marks a level unsupported, and an omitted level keeps pi's own mapping. `ultra` is not a legal level and is refused — it folds onto `max` before it reaches a model. |
+
+Without a declaration the runtime can only fall back to its own description of the model — reasoning, images accepted, zero cost, and a window guessed from the model id's name prefix. That fallback is wrong for almost every real model, so a custom endpoint should declare whatever it knows.
+
+An explicit `contextWindow` / `maxTokens` option still outranks `modelAttributes`, because it is the per-run override the caller passed on purpose. A `modelAttributes` passed on one run overrides the runtime option of the same name.
+
+Attributes written as JSON text (a project param or `--model-attributes`) are validated first: a key outside `name`, `reasoning`, `input`, `cost`, `contextWindow`, `maxTokens` and `thinkingLevelMap`, a mistyped value, or an out-of-range number fails with `input_validation` instead of being silently dropped — a typo that got dropped would make the run look like the model ignored the setting. A programmatic caller that passes the object directly is not re-validated: its fields reach the runtime as given.
+
+`modelAttributes` is for declaring a model on an endpoint owned by the caller. System service configuration is not part of the public workflow configuration surface; public projects should provide their own provider environment variables and model attributes.
+
+## Your own tools
+
+The built-in tools are `read`, `write`, `edit`, `bash`, `grep`, `find` and `ls`, plus `ask_user` in plan mode only — the model uses it to put a question to the user mid-turn (one or more questions, each with optional choices, optionally multi-select, optionally accepting the user's own words); the run pauses for the answer and carries on with the same plan. To add more, use `extraTools` on a programmatic runtime, or [createAgentNode](./create-agent-node.mdx)'s `createTools` inside a workflow.
+
+- **Your tools are not governed by `permissionPolicy`.** The policy only decides which built-in tools exist and how far they reach. Your tools answer to the host's own catalogue: a project declares them in `executor.tools`, `enabled` decides whether one is exposed, and `autoApprove: false` pauses the run before the call for the user to approve (in a plan-mode turn only; a build turn runs the tool).
+- To reach a stdio MCP server a host provides, open it with [connectMcpServer](./connect-mcp-server.mdx) and turn its tools into yours with [createMcpTools](./create-mcp-tools.mdx).
+
+## Reasoning effort
+
+`effort` accepts `off`, `minimal`, `low`, `medium`, `high`, `xhigh` and `max`, and also `ultra` (meaning `max`). A level the model does not support converges to the nearest one it does, so an unsupported value never fails the run.
+
+An empty string means "let the model decide": pi expresses that by naming no level at all, which is its `off` — an OpenAI-style endpoint receives no `reasoningEffort`, the same thing the built-in OpenCode project's Model default does. On Anthropic-style endpoints it disables `thinking` outright, so pick a concrete level to keep reasoning. Only an absent value (`undefined`) means "no choice was made", and keeps the runtime's or project's own level.
+
+## Permission policy
+
+| Value | Behaviour |
+| --- | --- |
+| `read-only` | `write`, `edit` and `bash` are disabled; the model never sees them. |
+| `workspace` | Every tool is available. The file tools (`read`/`write`/`edit`/`ls`/`grep`/`find`) can only reach inside `workdir` and `allowedDirectories`, and that check is made after `fs.realpath`, so a symlink inside the workspace cannot carry them out; `grep` and `find` do not follow symlinks at all. The default. |
+| `auto` | As `workspace`, but the file tools may also reach paths outside the workspace. |
+
+None of the three prompts for a built-in tool: the policy decides which tools exist and how far they reach, and only the host's own declared tools go through the approval chain.
+
+> **`bash` is not path-confined.** Commands run as the host process with the working directory as their `cwd`, which is not a sandbox: they can read and write anywhere. `read-only` is stricter only because it does not expose `bash` in the first place. Containing a command is a job for a sandbox on the host side.
+
+## The transcript
+
+With `databasePath`, the Harness continuously commits generations, tool intents, results, and task checkpoints. Reopen the same file and reuse `requestId` to recover. Committed tool results are reused. A tool with an unknown outcome defaults to `replay: "never"`: recovery reports an interrupted tool result without repeating its effects. Declare `replay: "safe"` only when repeating the operation is safe. Built-in read/search tools are safe; write, edit, and shell tools default to never. Submission deduplication does not replace business idempotency in external services.
+
+`readTranscript()` is a model-context projection; `restoreTranscript()` seeds an empty store and never overwrites existing SQLite history. They are not another persistence backend or a way to restore unfinished tasks. Memory agents retain approval checkpoints within the same runtime and continue with the original `requestId`; recovery after closing the runtime or exiting the process requires SQLite. Conversation nodes select isolated SQLite files automatically; see [createAgentNode](./create-agent-node.mdx). Old KV transcripts are not loaded, and storage failures never fall back to execution without history.
+
+After a process interruption during streaming, recovery includes committed text and reasoning in the continuation context and durably records its continuation prompt. Further interruptions continue from those committed fragments. Incomplete tool calls without committed intents are discarded and never executed or shown as started.
+
+Streaming preserves the original indices of thinking, text and tool blocks, applying block starts and subsequent deltas together. Main answers stay inline. A runtime or output projection exception cancels unfinished tasks, including independent forks, and queued inputs under the same execution owner, persists the failure, and publishes final task state from durable records. Reopening does not automatically continue a reported failure. Normal host shutdown and unexpected process exit still preserve checkpoint recovery. Tool business errors remain tool results that the model can handle.
+
+A node run carrying `hostInput` uses an in-memory Harness by default because the gateway owns its history; it writes no workflow conversation history.
+
+Custom tools follow Pi's `AgentTool` contract: `prepareArguments` repairs arguments before validation; `outputSchema` validates `structuredContent`. Throw or return `isError: true` on failure. Tool usage is separate from main-model context usage. The tool round ends when every result sets `terminate: true`. Recovery rechecks current permissions.
+
+## Context compaction
+
+When the prompt is exactly `/compact` or `/summarize`, or `compact: true` is passed, the turn immediately replaces the existing context with a model-written summary, even below the automatic compaction threshold. An empty context emits only an end event. A running summary emits `compaction` start followed by end; the Agent node displays running and completed states, retaining the original context on failure. The summary replaces the actual Agent transcript, is saved with the session, and is read by subsequent turns while the original conversation body remains. The public `compactAgentMessages({ ..., force: true })` also forces summarization of all existing messages.
+
+Only a non-empty summary from a normally completed model response replaces the context. Provider failures, truncated output, or incomplete responses fail manual summarization and retain the original transcript. Cancellation ends with `execution_aborted`; a summary returned after cancellation is never saved.
+
+Summary responses report model usage through `host.reportUsage`, including tokens consumed by failed or cancelled responses. Billed usage does not become the compacted context occupancy. Direct callers of `compactAgentMessages` can pass `onUsage(usage)` to receive the model's pi `Usage` before summary validation.
+
+**A transcript that no longer fits is compacted automatically.** When the record a turn starts from is already past the compaction threshold — a long restored history, say — the runtime compacts it before the model is called and lets the turn proceed, emitting the same events with `auto: true`. A failed compaction writes no row and does not fail the turn: the request itself reports the problem, and nothing claims a compaction that did not happen.
+
+Automatic compaction summarizes only the older part: the split point walks back from the end by token window and aligns to a user turn; when the kept window holds no user turn, it falls back to the nearest assistant turn, and the newest message is always kept. Explicit summarization includes the full context and preserves the goal, decisions, and unresolved work in its summary.
+
+## Cancelling
+
+When `context.abortSignal` fires the turn is stopped: the model stream and any tool mid-execution end together, the turn finishes as `execution_aborted` (the workflow reports the run as aborted rather than failed), and the tokens it did spend are still reported.
+
+## Plan mode
+
+With `agent: "plan"` the system prompt switches to the plan contract and the write tools are unavailable. While planning, the model can put a question to the user with `ask_user` (see the built-in tools above): the run pauses through `user_input_required` the same way, carries on in the same turn once answered, and keeps the question and the answer in `pendingUserInput` and `resolvedUserInputs` respectively. The turn then pauses through `user_input_required` for approval; the host resumes it on the same `requestId`, and the resume payload carries the plan text so a compaction in between cannot lose it. Declining does not end the session: it stays in plan mode and hands the plan back to the plan agent to revise with whatever instructions came with the decision, so no file is touched but another model turn does run.
+
+Each new plan uses an independent approval `requestId`. A completed revision waits for another decision, even if its text is unchanged; the previous answer cannot automatically approve or decline it. Resuming an existing paused approval still uses that request's original `requestId`.
+
+Question pauses and plan approval are separate stages: `ask_user` itself neither emits a `plan` event nor requests plan approval. The runtime emits `plan` events and calls `host.approvePlan` only when a turn finishes normally with nonempty plan text after the last tool call. Text before tools is excluded from that plan. Failed, cancelled, or question-paused turns do not submit leftover text as a plan.
+
+## Events
+
+`run()` yields:
+
+| Event | Description |
+| --- | --- |
+| `text_delta` | Answer text delta. |
+| `thinking_delta` | Reasoning delta. |
+| `tool` | Tool call start / update / end. |
+| `plan` | Plan text start / end. |
+| `compaction` | Compaction start / end; the end event carries the summary. |
+| `retry` | An attempt at carrying on a turn whose stream died mid-answer, hit the model's output limit, or lost a tool call, with `attempt` / `maxAttempts` / `reason` / `kind` (`dropped` / `length` / `lost-call`). |
+| `context_usage` | Current context occupancy at run start, during streaming, after tool results, and after compaction. |
+| `approval` | Plan approval outcome. |
+
+## Host hooks (`AgentHost`)
+
+Without a `host` nothing ever pauses. Supplying one takes over:
+
+| Hook | Description |
+| --- | --- |
+| `approveToolCall(input)` | Resolving allows the call; throwing denies it and the message becomes the tool error. Throwing `user_input_required` pauses the run. |
+| `approvePlan(input)` | Requests plan approval; throwing `user_input_required` pauses the run. |
+| `reportUsage(usage)` | Reports billed tokens with a stable `recordId` for each returned model response. Hosts must upsert by that identity when replaying; Core token usage does so atomically. Returned promises are awaited. |
+| `abortSignal` | Aborts the run. |
+
+Durable stores usage returned before a response commits, including failed responses. Tokens consumed upstream before SIGKILL without a returned usage result cannot be inferred locally and require provider reconciliation.
+
+### Live context
+
+`run()` emits `context_usage` before requesting the model, allowing the ring to appear as soon as the first conversation run starts. Text, reasoning, tool arguments, and tool results update occupancy as they enter the context. Streaming updates are limited to one per 100 milliseconds; message endings and updates after compaction are immediate. Failed or cancelled runs retain the updates already emitted.
+
+Following Pi's estimation approach, Core uses the latest valid model response usage, including cache tokens, plus estimates for subsequent messages. It does not sum billed usage across requests to measure context size. Without valid usage, it estimates system instructions, named prompt sections, tool declarations and message text in the actual context, counts CJK characters individually, and approximates image tokens. Retained responses from before compaction cannot calibrate the smaller context, including after transcript restoration.
+
+Call `agent.getContextUsage()` while a response is streaming to query the current value. An external meter can supply a more accurate measurement with `agent.updateContextUsage({ used, total })`; `used` must be finite and nonnegative, and `total` must be finite and positive. Subsequent estimates grow from this measurement until valid model usage or actual compaction recalibrates it. `total` does not configure the model: the next model calibration uses this run's `contextWindow` or the model window. `reset()` clears the measurement and restored transcript.
+
+Agent nodes automatically convert these events to [standard ring outputs](./create-agent-node.mdx), without extra host logic reading Agent fields. For a standalone transcript estimate, use `estimateAgentContextTokens(messages)` from `workflow-code/agent`.
+
+## Errors
+
+| Situation | Error type | Description |
+| --- | --- | --- |
+| No model configured | `input_validation` | No `model` is given and the provider has no default model. |
+| Invalid model attributes | `input_validation` | JSON-form attributes with an unknown key, a mistyped value, or an out-of-range number; the field is never silently dropped. |
+| Waiting for approval | `user_input_required` | The run is paused until the host resumes it. |
+| Empty compaction summary | plain `Error` | The model produced no usable summary. |
+
+A model call that fails recoverably — a dropped connection, `408` / `409` / `429`, any 5xx, or a **response that starts and then dies** — is retried up to 10 times, with backoff capped at 8 seconds per attempt. A retry only happens while the attempt has produced nothing: once output exists, replaying the request would leave two half-finished copies in the record, so this layer never replays it.
+
+**A drop that lands after the model has spoken is taken over by the turn.** When the model gets half an answer out and the stream dies, the turn no longer ends on `terminated`: the text it already produced stays in the record, and the runtime sends a continuation prompt asking the model to carry on from there — up to 10 times, with backoff capped at 8 seconds per attempt, each one yielding a `retry` event. A continuation only happens for a recoverable failure, and only when the turn has produced something already: with nothing produced, another request would be the same one again, which is what the budget above covers. In the interrupted assistant message, tool calls with no result are dropped (a provider refuses that history outright) while the text the user has already seen is kept, and the continuation prompt says whether the model can see its own last sentence. If the budget runs out, the error names how many times the stream was cut off and repeats the underlying reason, instead of leaving a single word from the transport. Auth, validation and quota errors, and cancelled runs, are never retried or continued.
+
+**Hitting the model's output limit is taken over by the turn too, on a budget of its own.** When an answer hits the request's `max_output_tokens`, the provider reports `stopReason: "length"` — not an error — so the turn used to be finalized as a finished answer: the model wrote a sentence announcing what it was about to do and there the answer ended, the tool call it announced was never sent, and the host saw no error and no retry row. That ending now triggers a continuation as well: the text is kept, the prompt says the output limit is why, and it tells the model to send the action it was composing — the tool call on its own — and keep the output short. The budget is separate and only **2** attempts rather than the 10 above: a drop is transient and worth retrying, whereas an output limit is deterministic and the same request cuts off in the same place, so two attempts tell "it nearly finished" from "the limit itself is wrong". Once that budget is spent the error names `maxTokens` as the thing to raise. The `retry` event's `kind` tells the two continuations apart, and `attempt` / `maxAttempts` count only within the budget each belongs to.
+
+**A lost tool call (`kind: "lost-call"`) is continued as well.** Every adapter normalises "the model is calling a tool" to the same `stopReason`, and each sets it from the provider's own field — independently of whether the tool-call block survived. So "says there is a tool call, has none" is the message contradicting itself, and the only thing that produces it is a call dropped on the way here (a block type the adapter skips, a relay that eats the block, truncated arguments). Such a message used to end the turn as a successful text-only answer: nothing in the interface looked wrong, and the action the model had decided on vanished. It now triggers a continuation whose `retry` row carries `kind: "lost-call"`, and the prompt says plainly that the response claimed a tool call, none arrived, and the call has to be made again. It shares the connection budget rather than the output-limit one — losing part of the answer is a transport problem — and when that budget runs out the error says how many calls went missing.
+
+## Example
+
+```ts
+const agent = await workflow.createAgent({ workdir: ".", provider: "anthropic", effort: "high" });
+
+for await (const event of agent.run({ prompt: "Summarize this repository", errCode: 0, errMessage: "" })) {
+  if (event.type === "text_delta") process.stdout.write(event.delta);
+}
+```
+
+Inside a workflow, [createAgentNode](./create-agent-node.mdx) or [defineAgentConversationExecutor](./define-agent-conversation-executor.mdx) do more of the work for you.

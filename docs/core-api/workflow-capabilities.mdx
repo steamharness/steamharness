@@ -1,0 +1,128 @@
+---
+title: "工作流能力工具"
+description: "把项目与知识库、KV、跨会话记忆、宿主配置和 Conversation 资源卡片接起来的内置工具。"
+---
+
+# 工作流能力工具
+
+Core 内置「工作流能力」工具，把项目跟它周围的东西接起来。每个能力只描述一次——一份 JSON Schema 加一个执行函数——再渲染成两种形态：给 [createAgent](./create-agent.mdx) 用的原生工具，和给宿主自带 harness 用的 MCP 服务端。两边对模型呈现的工具名、描述和参数 schema 完全一致。
+
+| 能力 | MCP 服务 id | 工具 id |
+| --- | --- | --- |
+| 知识库文档 | `workflow-knowledge` | `workflow-knowledge_knowledge_documents` |
+| KV | `workflow-kv` | `workflow-kv_kv_store` |
+| 跨会话记忆 | `workflow-memory` | `workflow-memory_global_memory` |
+| 宿主配置 | `workflow-host` | `workflow-host_host_project_configuration` |
+| Conversation 资源卡片 | `workflow-ui` | `workflow-ui_present_card` |
+
+工具 id 是稳定的：宿主按它授权、审批和恢复，所以不要改名。
+
+## 签名
+
+```ts
+const tools: AgentTool[] = await workflow.createWorkflowCapabilityTools({
+  context: NodeContext,
+  approve?: (toolId: string, args: unknown) => Promise<void>,
+  globalMemory?: boolean,
+});
+
+const server: Server = await workflow.createWorkflowCapabilityServer(toolId, {
+  context: NodeContext,
+  approve?: (toolId: string, args: unknown) => Promise<void>,
+});
+
+const result: unknown = await workflow.runWorkflowCapabilityAction(toolId, context, args);
+const toolIds: string[] = workflow.listWorkflowCapabilityToolIds({ globalMemory?: boolean });
+```
+
+| 成员 | 说明 |
+| --- | --- |
+| `createWorkflowCapabilityTools(options)` | 返回可以交给 agent 的原生工具，放进 `extraTools` 或 [createAgentNode](./create-agent-node.mdx) 的 `createTools`。 |
+| `createWorkflowCapabilityServer(toolId, options)` | 取其中一个能力的 MCP 服务端，自己 `connect(transport)`；工具 id 未知时抛错。 |
+| `runWorkflowCapabilityAction(toolId, context, args)` | 按工具 id 直接执行一个动作。 |
+| `listWorkflowCapabilityToolIds(options)` | 列出这一轮会出现的工具 id。 |
+
+## 工具审批
+
+这些工具**不受 `permissionPolicy` 约束**——策略只管内置的 7 个编码工具，见 [createAgent](./create-agent.mdx) 的「自带工具」。它们由宿主自己的工具目录治理：项目在 `executor.tools` 里声明这些工具 id，声明里的 `enabled` 决定是否暴露、`autoApprove` 决定是否自动批准。把 `approve` 接到 `workflow.createToolApprovalGate().approve(...)` 上就是同一条审批链。
+
+审批暂停后要用 `runWorkflowCapabilityAction` 恢复：暂停的那一轮已经结束，调用只能按宿主批准的那个工具 id 重新寻址，不能靠当初建它的闭包。
+
+## 参数校验
+
+每个能力都发布一份 JSON Schema，并同样在实现里校验：MCP 客户端并不受 schema 约束，agent SDK 也把它当类型断言，所以长度上限只写在 schema 里等于没写。知识库 `markdown` ≤ 200000、`title`/`documentId` ≤ 200、`query` ≤ 500、`cursor` ≤ 80，跨会话记忆 `markdown` ≤ 100000、`title` ≤ 200，KV `key` ≤ 500；超出以 `input_validation` 失败。
+
+## KV 保留键
+
+`kv_store` 与运行时共用同一个命名空间，因此它拒绝写入运行时自己的键：`tokenUsage.total` 与 `tokenUsage.entry.*`（项目与 conversation 两个作用域），以及 conversation 作用域下的 `conversation.state` 与 `agent.*`（包含 `agent.pendingPlanApproval` 等待确认状态）。Agent 执行历史由独立 Durable SQLite 保存，见 [createAgentNode](./create-agent-node.mdx)。被拒绝时返回 `input_validation`，不会静默覆盖记账或运行状态。
+
+## 跨会话记忆
+
+`globalMemory` 为 `true` 时才会包含跨会话记忆。**宿主没有记忆存储时不要打开它**——那会给模型一个每次调用都会失败的工具。
+
+记忆复用知识库文档存储，文档 id 统一带 `assistant-memory-` 前缀，因此它继承知识库的存储位置、检索与删除语义。`remember` 会拒绝看起来像凭据或密钥的内容。
+
+`list` 与 `search` 的 `cursor` 含义不同（前者是记忆条数的偏移，后者是知识库自己的分页游标），因此返回的游标带 `list:` / `search:` 前缀；把属于另一个动作的游标传回来会被明确拒绝，而不是当成另一种偏移量解读。
+
+## 宿主配置
+
+宿主配置只在宿主注入回环桥时可用：`WORKFLOW_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL` 与 `WORKFLOW_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN` 必须同时存在，且地址必须是不带凭据的 `http://127.0.0.1` 回环地址。任一条件不满足，这一项不暴露——地址不合规时 `isWorkflowCapabilityAvailable` 返回 `false`，不会因为一个配置错误中断其它能力；真正调用时才抛出地址不合规的原因，而不是带着令牌去连。
+
+## Conversation 资源卡片
+
+Core 知识库和 KV 工具的成功结果可以携带资源卡片摘要，宿主按自身能力展示并打开对应资源。资源目标保留知识库文档 ID 或 KV 键，打开时重新校验权限。
+
+使用 `createAgentNode` / `createAgentConversationWorkflow` 的自定义工具，也可以在成功结果的 `details.resourceCard` 中声明摘要。Core 将它原样传入现有工具输出，共享运行界面自动生成卡片；工具的 `content` 和普通消息接口保持原样。`kind` 支持 `knowledge`、`kv`、`project`、`kanban`、`browser`、`file`，`operation` 为 `read`、`write`、`open` 或 `show`，`title` 可选且最多 200 字符；`target` 使用下文同样的目标字段。关联项目必须填写实际资源的 `source` 和 `projectId`，不能填 Agent 自己的 ID。失败结果保留工具错误，不生成成功卡片。此摘要不执行写入或固定命令；控制固定与 Kanban 参数使用显式卡片能力。
+
+```ts
+return {
+  content: [{ type: "text", text: JSON.stringify(document) }],
+  details: {
+    resourceCard: {
+      kind: "knowledge",
+      operation: "read",
+      title: document.title,
+      target: { source: "server", projectId: databaseProjectId, documentId: document.id },
+    },
+  },
+};
+```
+
+`workflow-ui_present_card` 通过工具结果向支持卡片的宿主发送结构化命令，普通消息接口无需增加字段。项目须在 `executor.tools` 中启用该工具。使用稳定的 `cardId`，`action: "upsert"` 创建或更新卡片，`action: "remove"` 只接受 `cardId` 并移除卡片；`pinned` 控制当前客户端的会话固定状态，显式固定命令可覆盖用户上次的固定选择。顶层 `preview: boolean` 用于 `kanban`、`project` 或 `browser` 卡片，控制对话右上预览是否默认展开；已识别的 Kanban 项目和浏览器卡片默认开启预览并固定，传 `false` 可关闭。预览区与消息正文并排，窄窗口移到消息上方；点击 Kanban 项目卡片进入 Dock 预览。`target` 按资源种类提供 `source`（`local`、`server` 或当前宿主项目的 `current`）和 `projectId`；在小助手中，`current` 指向其当前操作的项目，而小助手自身的 KV/知识库调用仍指向小助手项目。浏览器使用 HTTP(S) `url`，本地文件使用项目内相对 `filePath`，KV 使用 `scope`、`key` 和必要时的 `conversationId`，知识库文档使用 `documentId`。宿主在打开时重新校验目标权限。
+
+```json
+{
+  "action": "upsert",
+  "cardId": "roadmap-board",
+  "kind": "kanban",
+  "target": { "source": "current", "configurationId": "configuration-id" },
+  "pinned": true,
+  "preview": true,
+  "kanban": { "mode": "preview", "values": { "title": "Roadmap" } }
+}
+```
+
+`kanban.mode: "preview"` 只覆盖该卡片及其 Dock 预览中的参数，与顶层 `preview` 展开开关无关；`save` 调用现有宿主命名配置更新链路，要求 `target.source` 为 `current` 且宿主提供本地配置桥。历史回放只恢复卡片展示，不重复执行保存。卡片只显示资源摘要；KV 值和知识库正文需点击后读取。托管 Web 支持服务端资源与临时 Kanban 预览，本地文件、内置浏览器及本地配置写入仅在 Electron 可用。
+
+Kanban 和指向 Kanban 的 `project` 卡片可用 `target.configurationId` 精确引用命名配置；ID 来自 `host_project_configuration` 的读取结果。预览不会选中或修改宿主配置，工作区切换到“默认配置”后，引用“配置 1”的历史卡片、固定预览和 Dock 仍展示“配置 1”。配置被删除时显示不可用提示，不回退到当前活动配置。当前宿主 Kanban 卡片省略 ID 且宿主配置桥可用时，工具会记录调用当时的活动配置 ID；其它未指定 ID 的卡片在首次加载时记住配置。临时预览参数不会因工作区切换而清除，只有显式 `save` 才写入引用的宿主配置。
+
+固定预览区四周有边框，底部手柄支持拖动和键盘调整高度，最高占对话内容区的 `50%`。高度按当前客户端的会话保存，容器缩小时自动遵守上限；收起预览后只保留标题。
+
+## 示例
+
+```ts
+const approval = workflow.createToolApprovalGate();
+
+const node = workflow.createAgentNode({
+  provider: "anthropic",
+  async createTools(context) {
+    return workflow.createWorkflowCapabilityTools({
+      context,
+      globalMemory: true,
+      approve: (toolId, args) => approval.approve({ name: toolId, arguments: args }, context),
+    });
+  },
+});
+```
+
+工具必须在 executor 的 `tools` 里声明（见 [createToolApprovalGate](./create-tool-approval-gate.mdx)），否则审批会因为「工具未注册」而失败。

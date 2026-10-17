@@ -1,0 +1,121 @@
+{
+  "workflowName": "output-showcase",
+  "projectType": "workflow",
+  "files": [
+    "index.ts",
+    "interface.ts"
+  ],
+  "nodes": [
+    {
+      "id": "introOutputNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "intro-output"
+    },
+    {
+      "id": "toolOutputNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "tool-output"
+    },
+    {
+      "id": "postToolOutputNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "post-tool-output"
+    },
+    {
+      "id": "confirmationNode",
+      "factory": "createUserInputNode",
+      "standardName": "user-input",
+      "configuredName": "run-confirmation"
+    },
+    {
+      "id": "timerNode",
+      "factory": "createTimerNode",
+      "standardName": "timer",
+      "configuredName": "long-task-timer"
+    },
+    {
+      "id": "preTaskOutputNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "pre-task-output"
+    },
+    {
+      "id": "finishedOutputNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "finished-output"
+    },
+    {
+      "id": "skippedOutputNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "skipped-output"
+    },
+    {
+      "id": "rawJsonOutputNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "raw-json-output"
+    }
+  ],
+  "defaultEntrypoint": "main",
+  "entrypoints": [
+    {
+      "id": "main",
+      "title": "Output Showcase",
+      "workflowName": "output-showcase",
+      "params": [
+        {
+          "name": "projectName",
+          "flag": "--project-name",
+          "type": "string",
+          "required": false,
+          "defaultValue": "output-showcase"
+        },
+        {
+          "name": "toolDelayMs",
+          "flag": "--tool-delay-ms",
+          "type": "number",
+          "required": false,
+          "defaultValue": "3000"
+        },
+        {
+          "name": "taskDurationMs",
+          "flag": "--task-duration-ms",
+          "type": "number",
+          "required": false,
+          "defaultValue": "10000"
+        },
+        {
+          "name": "streamDelayMs",
+          "flag": "--stream-delay-ms",
+          "type": "number",
+          "required": false
+        }
+      ],
+      "registry": [],
+      "execution": {
+        "kind": "sequence",
+        "counts": {
+          "sequence": 1,
+          "node": 10,
+          "branch": 1,
+          "if": 1,
+          "else": 1
+        },
+        "callees": [
+          "runStreamNode",
+          "runNode"
+        ],
+        "branchLabels": [
+          "执行长任务",
+          "跳过"
+        ],
+        "loopLabels": []
+      }
+    }
+  ]
+}

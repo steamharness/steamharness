@@ -1,0 +1,87 @@
+---
+title: "createLLMStreamNode"
+description: "创建流式 LLM 节点，产出 LLMStreamChunk 并聚合文本输出。"
+---
+
+# createLLMStreamNode
+
+`workflow.createLLMStreamNode()` 创建流式 LLM 调用节点。节点执行时调用 `provider.stream(llmInput)`，产出 `LLMStreamChunk`，`runStreamNode` 会收集 chunks 并返回聚合文本。
+
+## 签名
+
+```ts
+workflow.createLLMStreamNode<Input>(
+  options: Pick<
+    LLMNodeOptions<Input>,
+    "name" | "provider" | "mapInput" | "historyLimit" | "metadata"
+  >,
+): BaseStreamNode<Input, LLMStreamChunk, string>
+```
+
+## 参数
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| `options` | `LLMStreamNodeOptions<Input>` | 定义 provider、输入映射和节点元信息。 |
+
+## Options 字段
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `name` | `string` | 节点名称，默认 `"llm-stream"`。 |
+| `provider` | `LLMProviderSource` | provider 实例、provider id、provider ref 或 resolver。必填。 |
+| `mapInput` | `(input, context) => LLMChatInput` | 把业务输入转换成 LLM 请求。必填。 |
+| `historyLimit` | `number` | 节点执行历史保留条数，默认 `50`。 |
+| `metadata` | `WorkflowNodeMetadataInput` | 节点展示元信息。 |
+
+## `LLMStreamChunk`
+
+| 类型 | 字段 | 说明 |
+| --- | --- | --- |
+| `text-delta` | `text: string` | 一段增量文本。 |
+| `finish` | `finishReason?: FinishReason` | 流结束原因。 |
+| `finish` | `usage?: LanguageModelUsage` | token 用量。 |
+| `finish` | `providerMetadata?: ProviderMetadata` | provider 元信息。 |
+
+## 返回值
+
+| 返回 | 类型 | 说明 |
+| --- | --- | --- |
+| 节点对象 | `BaseStreamNode<Input, LLMStreamChunk, string>` | 可通过 `workflow.runStreamNode` 执行。 |
+| chunks | `LLMStreamChunk[]` | `runStreamNode` 收集到的所有 chunk。 |
+| output | `string` | 节点 `finalize` 会拼接所有 `text-delta.text`。 |
+
+当 executor 配置 `tokenUsage: { enabled: true }` 时，节点执行时通过 `getLLMProvider()` 解析出的 provider 会从 stream finish chunk 的 `usage` 自动上报 token 用量。同一次 stream 只上报一次；如果 provider 没有返回 usage，则不会写入 token 用量。自动上报会保留 input、output、reasoning、cached input 和 cache creation/write token 明细。
+
+## 调用流程
+
+| 阶段 | 输入 | 结果 |
+| --- | --- | --- |
+| 上游节点 | `Input` | 业务输入 |
+| `mapInput` | `Input`、`NodeContext` | `LLMChatInput` |
+| provider `stream` | `LLMChatInput` | `AsyncIterable<LLMStreamChunk>` |
+| `runStreamNode` | chunks | `{ chunks, output: string }` |
+
+## 示例
+
+```ts
+const streamNode = workflow.createLLMStreamNode<ParsedInput>({
+  name: "draft-stream",
+  provider: workflow.createLLMProviderRef("default"),
+  mapInput(input) {
+    return {
+      prompt: input.message,
+      temperature: 0.3,
+    };
+  },
+});
+
+const { chunks, output } = await workflow.runStreamNode(streamNode, parsed, context);
+```
+
+## 与 `createLLMNode` 的区别
+
+| 方法 | 输出方式 | 适合场景 |
+| --- | --- | --- |
+| `createLLMNode` | 一次性返回 `LLMChatOutput` 或 `mapOutput` 结果 | 后台处理、非实时输出。 |
+| `createLLMStreamNode` | 逐 chunk 输出，最终聚合为字符串 | 需要在 CLI Web 中展示流式文本。 |

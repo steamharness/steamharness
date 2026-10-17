@@ -1,0 +1,70 @@
+{
+  "args": [
+    "夜间城市攻坚战，需要稳定推进并最终控制目标楼"
+  ],
+  "expected": {
+    "errCode": 0,
+    "output": {
+      "missionStatus": "true",
+      "success": true
+    },
+    "contentIncludes": [
+      "装备总览",
+      "任务判定：任务结束"
+    ],
+    "itemCount": 3,
+    "items": [
+      {
+        "title": "Output",
+        "contentType": "json",
+        "collapsed": false,
+        "contentMatches": {
+          "weapon": "m4a1",
+          "route": "support",
+          "attachment": "extended-mag",
+          "medicine": "field-bandage",
+          "armor": "light-plate"
+        },
+        "contentIncludes": [
+          "武器描述"
+        ]
+      },
+      {
+        "title": "Output",
+        "contentType": "json",
+        "collapsed": false,
+        "contentMatches": {
+          "medicine": "trauma-kit",
+          "armor": "heavy-plate"
+        },
+        "contentIncludes": [
+          "story"
+        ]
+      },
+      {
+        "id": "game-result",
+        "title": "Game Result",
+        "contentType": "markdown",
+        "collapsed": false,
+        "contentIncludes": [
+          "装备总览",
+          "任务判定：任务结束",
+          "武器：m4a1"
+        ]
+      }
+    ],
+    "nodes": [
+      "input",
+      "run-if",
+      "output",
+      "llm",
+      "question-classifier"
+    ],
+    "outputCount": 3,
+    "tokenUsage": {
+      "calls": 6,
+      "cachedInputTokens": 0,
+      "cacheCreationTokens": 0
+    }
+  }
+}

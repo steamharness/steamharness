@@ -1,0 +1,14 @@
+{
+  "args": [],
+  "expected": {
+    "status": "waiting_for_input",
+    "errCode": 202,
+    "errMessage": "Workflow \"human-input\" is waiting for user input \"human-input:{RUN_ID}:network-permission\".",
+    "outputRequired": false,
+    "nodes": [
+      "output",
+      "user-input"
+    ],
+    "outputCount": 1
+  }
+}

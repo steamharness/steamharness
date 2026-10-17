@@ -1,0 +1,35 @@
+---
+title: "Core 0.1.3"
+description: "Release notes for Core 0.1.3."
+---
+
+# Core 0.1.3
+
+2026-08-07 · Tag `workflow-code/v0.1.3` · npm
+
+<span id="workflow-code-0-1-3" className="release-version-anchor"></span>
+<span id="workflow-code.0.1.3" className="release-version-anchor"></span>
+
+#### New Features
+
+- **Multi-entrypoint execution**: `defineEntrypoint()` declares independent entrypoints, and contexts, reports, and Structure results carry the actual ID and title.
+- **Bilingual runtime output**: `workflow.getRuntimeLocale()` reads the run language, and runtime errors are produced in Simplified Chinese or English with stable fallbacks.
+- **Schedule suggestions**: `schedulePresets` declares a time zone, time window, or five-field Cron per entrypoint; Structure validates them but hosts do not enable them.
+
+#### Breaking Changes
+
+- Workflow executors no longer accept top-level execution fields such as `workflow`, `params`, or `createInput`.
+  Migration: move execution fields into a non-empty `entrypoints` and set a valid `defaultEntrypoint`; Conversation executors stay single-entrypoint.
+
+#### Added
+
+- Added `workflow.getRuntimeLocale()` and bilingual runtime errors, with stable fallbacks for a missing locale or translation.
+- Added `defineEntrypoint()` for independent entrypoints, whose ID and title travel through runtime contexts, reports, and Structure results.
+- Added read-only `workflow-kv` data sources scoped to a project UUID and key prefix, safely re-read through revision subscriptions after the source updates.
+- Added schedule suggestions in `package.json.workflowCode.schedulePresets`, covering entrypoint, IANA time zone, time window, and five-field Cron.
+- Added Kanban version-level dependency locks and the project-group v1 protocol, separating bundled source from external references without transferring host data.
+
+#### Changed
+
+- Changed Structure to resolve cross-file entrypoints from real import and export bindings and to isolate same-named registries per entrypoint.
+- Changed Core release notes to be maintained in Chinese and English, with locale-selectable Markdown bodies in the release metadata.

@@ -1,0 +1,31 @@
+{
+  "name": "@workflow-code/shared-workspace",
+  "version": "0.1.6",
+  "private": true,
+  "packageManager": "pnpm@10.15.1",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:scripts": "node --test --test-reporter=spec scripts/__tests__/*.test.mjs",
+    "check:boundaries": "node scripts/check-repository-boundaries.mjs",
+    "audit:identity": "node scripts/audit-desktop-identity.mjs",
+    "coverage": "vitest run --coverage",
+    "build": "node scripts/build-source.mjs && tsc --noEmit",
+    "sync:downstream": "node scripts/sync-downstream.mjs"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^25.6.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/semver": "^7.7.1",
+    "@vitest/coverage-v8": "^4.1.7",
+    "@workflow-code/i18n": "workspace:*",
+    "jsdom": "^29.1.1",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7"
+  }
+}

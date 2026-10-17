@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "params": [
+    {
+      "name": "title",
+      "type": "string",
+      "label": "看板标题",
+      "defaultValue": "{{name}}"
+    },
+    {
+      "name": "accent",
+      "type": "string",
+      "label": "强调色",
+      "control": "radio",
+      "defaultValue": "#d97706",
+      "options": [
+        {
+          "value": "#d97706",
+          "label": "琥珀"
+        },
+        {
+          "value": "#0f766e",
+          "label": "青绿"
+        },
+        {
+          "value": "#2563eb",
+          "label": "蓝色"
+        }
+      ]
+    }
+  ]
+}

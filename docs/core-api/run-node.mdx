@@ -1,0 +1,73 @@
+---
+title: "runNode"
+description: "执行普通节点，传入输入和上下文，并触发节点执行 hooks。"
+---
+
+# runNode
+
+`workflow.runNode()` 执行普通节点。它负责中断检查、节点开始/结束 hook、执行信息记录和错误包装。
+
+## 签名
+
+```ts
+workflow.runNode<Input, Output>(
+  node: NodeDefinition<Input, Output>,
+  input: Input,
+  context: NodeContext,
+): Promise<Output>
+```
+
+## 参数
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| `node` | `NodeDefinition<Input, Output>` | 要执行的节点对象，通常来自节点工厂。 |
+| `input` | `Input` | 节点输入。 |
+| `context` | `NodeContext` | runtime 上下文，用于 hooks、provider、KV、files、abortSignal。 |
+
+## `NodeDefinition`
+
+| 字段 | 说明 |
+| --- | --- |
+| `name` | 节点名。必填。 |
+| `standardName` | 标准节点类型名，例如 `input`、`llm`、`output`。 |
+| `metadata` | 结构图和 UI 元信息。 |
+| `run` | 节点执行函数，接收 `input` 和 `NodeContext`。必填。 |
+
+## 执行过程
+
+| 步骤 | 说明 |
+| --- | --- |
+| 1. 检查中断 | 如果 `context.abortSignal` 已中断，抛出 `execution_aborted`。 |
+| 2. 发送开始事件 | 触发节点开始 hook，并记录 executionId、nodeName、metadata 和 startedAt。 |
+| 3. 执行节点 | 调用 `node.run(input, context)`。 |
+| 4. 发送完成事件 | 记录 output、duration 和 executionInfo，并触发完成 hook。 |
+| 5. 错误包装 | 失败时转换为 `WorkflowError` 并写入报告。 |
+
+## 返回值
+
+| 返回 | 类型 | 说明 |
+| --- | --- | --- |
+| 节点输出 | `Promise<Output>` | 成功时返回 `node.run` 的结果。 |
+
+## 错误
+
+| 情况 | 错误类型 | 说明 |
+| --- | --- | --- |
+| 执行前或执行中中断 | `execution_aborted` | 来自 `context.abortSignal`。 |
+| 节点抛错 | `node_execution` | 未知错误会包装为 `WorkflowError`；已有 `WorkflowError` 会保留并补充上下文。 |
+
+## 示例
+
+```ts
+const parsed = await workflow.runNode(inputNode, input, context);
+const answer = await workflow.runNode(llmNode, parsed, context);
+const output = await workflow.runNode(outputNode, answer, context);
+```
+
+## 与 `runStreamNode` 的区别
+
+| 方法 | 节点类型 | 返回 |
+| --- | --- | --- |
+| `runNode` | `NodeDefinition` | 单个 `Output`。 |
+| `runStreamNode` | `StreamNodeDefinition` | `{ chunks, output }`。 |

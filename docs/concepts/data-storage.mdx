@@ -1,0 +1,55 @@
+---
+title: "项目数据存储"
+description: "声明项目允许使用本地、服务器或两种数据存储，并在 Core 0.2 中显式选择位置。"
+---
+
+# 项目数据存储
+
+每个项目必须在 `package.json` 中声明知识库、KV 和 PersistentValue 允许使用的位置：
+
+```json
+{
+  "workflowCode": {
+    "projectInfo": {
+      "dataStorage": {
+        "mode": "local"
+      }
+    }
+  }
+}
+```
+
+`mode` 只能是以下值：
+
+| 模式 | 允许的位置 | 运行要求 |
+| --- | --- | --- |
+| `local` | 仅本地 | CLI 可离线运行；服务器存储访问被拒绝。 |
+| `server` | 仅服务器 | 需要登录并绑定同一个 `package.json.id` UUID；本地运行也会使用服务器数据。 |
+| `both` | 本地和服务器 | 源码必须显式选择位置；只有实际访问服务器时才需要登录。 |
+
+该声明是运行时权限边界，不是展示元数据。禁止的位置会直接抛出错误，不会回退、复制、删除或合并另一端的数据。旧项目缺少声明时，CLI 与 Core 会在执行用户模块前阻断，Server 则在静态校验时拒绝。新建项目默认显式写入 `both`。
+
+## Core 0.2 Context
+
+Core 0.2 通过 `context.storage` 暴露两个独立位置：
+
+```ts
+await context.storage.local.kv.setValue("draft", { saved: true });
+await context.storage.server.persistentValue.setValue("release", "ready");
+```
+
+每个位置都包含相同的 `kv` 和 `persistentValue`：顶层方法直接访问当前项目，`.conversation` 访问当前项目的当前会话。两类数据使用强制隔离的存储域，相同 key 不会互相覆盖。`context.kv`、`context.persistentValue`、`.workflow` 和全局作用域均不存在。
+
+`local` 项目只能使用 `context.storage.local`，`server` 项目只能使用 `context.storage.server`。`both` 项目可以在同一次运行中显式访问任一位置，但两端始终是独立数据集。`runWorkflow(..., { kvMode: "isolated" })` 会同时隔离本地和服务器 KV 的 project/conversation scope。
+
+## 服务器身份
+
+服务器数据按项目 UUID 隔离。访问 `context.storage.server` 时，顶层 `package.json.id` 必须是已绑定云端项目的 UUID，且调用方必须具有该项目权限。CLI 可以从 `WORKFLOW_SERVER_URL`、`WORKFLOW_SERVER_ADMIN_KEY` 或 workspace 登录配置取得服务器连接；没有有效登录或绑定时，服务器位置不可用。
+
+Server Web 只提供服务器数据。`server` 或 `both` 声明允许访问数据，`local` 或缺少声明时阻止服务器数据访问；源码上传下载仍按独立权限处理。
+
+:::info
+
+更改声明只改变以后允许访问的位置，不会迁移已有 KV、PersistentValue 或知识库数据。
+
+:::

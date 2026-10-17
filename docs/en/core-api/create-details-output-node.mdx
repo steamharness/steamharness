@@ -1,0 +1,129 @@
+---
+title: "createDetailsOutputNode"
+description: "Create a convenient output node for a standalone collapsible output item."
+---
+
+# createDetailsOutputNode
+
+`workflow.createDetailsOutputNode()` Create a generic output node to convert the title, content, and icon into separate collapsible `WorkflowOutputItem`.
+
+This node will still execute as a `output` standard node, so CLI, CLI Web, and log replay will collect its `items` as user-visible output. Ideal for outputting long logs, debug information, structured JSON, executive summary, or optional instructions as independent folding blocks.
+
+## Signature
+
+```ts
+workflow.createDetailsOutputNode<Input = DetailsOutputInput, Output extends WorkflowPayload = DetailsOutputPayload>(
+  options?: DetailsOutputNodeOptions<Input, Output>,
+): BaseNode<Input, Output>
+```
+
+## Input
+
+When `options.resolve` is not passed, the node reads from input by default:
+
+|Field|Type|Description|
+| --- | --- | --- |
+| `title` | `string` |The title displayed in `<summary>`. Null values use `"Details"`.|
+| `content` | `unknown` |Folding block body. Strings are output as-is Markdown; objects and arrays remain original JSON.|
+| `icon` | `string` |Optional icon. Can be a preset name or custom text.|
+
+## Options
+
+|Field|Type|Description|
+| --- | --- | --- |
+| `name` | `string` |The node name. The default value is `"output"`.|
+| `title` | `string \| (input, context) => unknown` |Fixed or dynamic title. Priority is higher than input.title.|
+| `content` | `string \| (input, context) => unknown` |Fixed or dynamic body. Priority is higher than input.content.|
+| `icon` | `string \| (input, context) => unknown` |Fixed or dynamic icon. takes precedence over input.icon.|
+| `resolve` | `(input, context) => { title, content, icon? }` |Unified conversion of business input into folding block parameters.|
+| `format` | `(payload, details, input, context) => Output` |Business fields are appended to the default payload.|
+| `historyLimit` | `number` |The number of nodes retained in the execution history. The default value is `50`.|
+| `metadata` | `WorkflowNodeMetadataInput` |The node displays the meta information. The default type is `details-output`.|
+
+## Icon Presets
+
+|Preset|Output|
+| --- | --- |
+| `info` | `[i]` |
+| `success` | `[ok]` |
+| `warning` | `[!]` |
+| `error` | `[x]` |
+| `note` | `[note]` |
+| `code` | `[code]` |
+| `list` | `[list]` |
+| `quote` | `[quote]` |
+| `none` |Empty String|
+
+If the passed-in icon is not a preset name, it will be placed on the left side of the title as custom text.
+
+## Return to payload
+
+Default payload inheritance `WorkflowPayload`:
+
+|Field|Description|
+| --- | --- |
+| `errCode` |`0` on success.|
+| `errMessage` |Empty string on success.|
+| `items` |Contains only one collapsible item.|
+
+Default item structure:
+
+```ts
+{
+  id: string;
+  title: string;
+  icon: string;
+  iconPreset?: DetailsOutputIconPreset;
+  content: unknown;
+  contentType: "markdown" | "text" | "json" | "audio" | "video";
+  collapsed: true;
+}
+```
+
+Objects and arrays remain in `content` and are automatically marked as `contentType: "json"`; strings are rendered as `markdown` by default. `video` items render through the native `<video>` player; see [createOutputNode](/en/core-api/create-output-node) for the descriptor and URL safety rules.
+
+## Example: Direct transfer of title/content/icon
+
+```ts
+const detailsNode = workflow.createDetailsOutputNode();
+
+const output = await workflow.runNode(detailsNode, {
+  title: "Click to expand",
+  icon: "info",
+  content: [
+    "This content is collapsed.",
+    "",
+    "- List item",
+    "- **Bold text**",
+    "- `Code`",
+  ].join("\n"),
+}, context);
+
+return output;
+```
+
+To expose a runnable example in CLI Web, executor params should directly correspond to these three fields: `icon` uses `control: "radio"` and preset icon options, and `title` / `content` use normal string inputs. The `workspace/workflow/details-output` example takes this form to keep the details output node's inputs visible.
+
+## Example: Generating a folding block from business input
+
+```ts
+const debugNode = workflow.createDetailsOutputNode<DebugResult>({
+  name: "output",
+  title: "Debug payload",
+  icon: "code",
+  content(input) {
+    return {
+      status: input.status,
+      durationMs: input.durationMs,
+      warnings: input.warnings,
+    };
+  },
+});
+```
+
+The example keeps `details.content` as a JSON object and does not stringify it into a Markdown block of code in advance.
+
+## Attention
+
+- Do not declare multiple output nodes with the same configuration name in a workflow file; If you want to output multiple folding blocks, you can reuse the same `createDetailsOutputNode` instance multiple times `runNode`, and eventually report will collect each output as an independent item.
+- This node is a normal node and is executed using `workflow.runNode(...)`; `createOutputNode({ stream, format })` is still used when streaming output per chunk is required.

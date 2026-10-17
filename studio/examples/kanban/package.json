@@ -1,0 +1,20 @@
+{
+  "id": "2bf9074d-ef0b-43b2-84c4-f379f920db92",
+  "name": "Studio Kanban",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "workflow-code": "0.2.4-20260929001",
+    "@workflow-code/cli": "0.2.4-20261013009.codex-studio-integration"
+  },
+  "workflowCode": {
+    "projectType": "kanban",
+    "kanban": {},
+    "projectInfo": {
+      "localizedNames": { "zh-CN": "\u770b\u677f\u793a\u4f8b", "en": "Local Kanban Demo" },
+      "platformSupport": { "mode": "agnostic" },
+      "dataStorage": { "mode": "local" }
+    }
+  }
+}

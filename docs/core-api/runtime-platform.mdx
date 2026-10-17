@@ -1,0 +1,21 @@
+---
+title: "Runtime platform"
+description: "识别本地执行宿主。"
+---
+
+# Runtime platform
+
+```ts
+workflow.getRuntimePlatform(): "cli" | "desktop"
+workflow.isCli(): boolean
+workflow.isDesktop(): boolean
+```
+
+平台表示代码实际执行的宿主。终端与 CLI Web 使用 `cli`；没有宿主标记时默认 `cli`。非空未知标记会抛错。Server 不执行项目，因此没有服务器执行标记或 `isWeb()`。
+
+```ts
+const platform = workflow.getRuntimePlatform();
+const local = workflow.isCli();
+```
+
+运行平台不决定数据位置。项目在 `projectInfo.dataStorage.mode` 声明存储位置，并通过 `context.storage.local` 或 `context.storage.server` 显式访问。本地执行可以读写获授权的服务器数据。

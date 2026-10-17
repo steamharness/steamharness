@@ -1,0 +1,90 @@
+---
+title: "从 Core 0.1 迁移到 0.2"
+description: "补充项目数据存储声明，迁移 Context 与知识库 API，并升级精确依赖。"
+---
+
+# 从 Core 0.1 迁移到 0.2
+
+Core 0.2 把数据位置变成项目的强制声明，并移除了会隐式选择后端的 Context API。该升级不会自动迁移项目源码或已有数据。
+
+## 1. 声明数据存储位置
+
+在 `package.json.workflowCode.projectInfo` 中加入 `dataStorage.mode`：
+
+```json
+{
+  "workflowCode": {
+    "projectInfo": {
+      "dataStorage": { "mode": "local" }
+    }
+  }
+}
+```
+
+根据项目真实需求选择 `local`、`server` 或 `both`。缺少声明的旧项目会在用户模块加载前被阻断。在项目源码中补充声明；不会自动复制任何一端的数据。
+
+## 2. 迁移 Context
+
+把旧属性替换为明确的位置：
+
+```ts
+// Core 0.1
+await context.kv.workflow.setValue("state", value);
+await context.persistentValue.workflow.setValue("record", value);
+
+// Core 0.2，本地数据
+await context.storage.local.kv.setValue("state", value);
+await context.storage.local.persistentValue.setValue("record", value);
+
+// Core 0.2，服务器数据
+await context.storage.server.kv.setValue("state", value);
+await context.storage.server.persistentValue.setValue("record", value);
+```
+
+`context.kv`、`context.persistentValue`、`kv.workflow` 和 `persistentValue.workflow` 均已删除，不提供兼容属性或自动转换。当前项目直接使用顶层方法，会话使用 `.conversation`。旧字段出现在项目声明或 Kanban 配置中时会直接校验失败。
+
+新存储格式不会读取旧的 global/workflow scope 数据。当前 Server 不提供旧格式转换或迁移，也不会自动清空数据库和 OSS 历史数据。升级前自行备份并准备符合当前格式的数据。
+
+## 3. 迁移知识库 helper
+
+所有知识库 helper 的第一个参数改为存储位置上下文：
+
+```ts
+const storage = context.storage.local;
+
+const document = await workflow.createKnowledgeDocument(storage, {
+  title: "Runbook",
+  markdown: "# Runbook",
+});
+
+const matches = await workflow.searchKnowledgeDocuments(storage, {
+  query: "Runbook",
+});
+```
+
+`listKnowledgeDocuments`、`getKnowledgeDocument`、`createKnowledgeDocument`、`editKnowledgeDocument`、`deleteKnowledgeDocument`、`searchKnowledgeDocuments` 和 `readKnowledgeDocumentLines` 都遵循该签名。
+
+## 4. 升级精确依赖
+
+项目必须把 Core 和 CLI 开发依赖更新为精确的 `0.2.0`：
+
+```json
+{
+  "devDependencies": {
+    "workflow-code": "0.2.0",
+    "@workflow-code/cli": "0.2.0"
+  }
+}
+```
+
+依赖字段仍必须写精确版本，不能为了表达兼容性改成 `0.2.x` 或 `^0.2.0`。Workflow Code 运行时只比较 `major.minor` 兼容线：`0.2.0` 项目可由 Core `0.2.1` 或 `0.2.99-20260826001` 直接运行，Core `0.2.0` 也可运行精确声明 `0.2.99` 的项目；日期和 patch 先后均不参与判断。项目改为 `0.3.0` 或 `1.0.0` 时，必须升级到携带相同兼容线 Core 的 CLI 或 Server。
+
+CLI 0.2 的 Core peer 范围只接受 `0.2.x`，并会在 `run`、`json`、`structure` 和 `resolve-params` 前同时校验实际 Core、CLI 自身绑定和项目声明。Server 只校验上传项目的静态元数据，不加载用户模块。
+
+## 5. 验证三种模式
+
+- `local`：断开登录后仍可运行，本地数据可读写，服务器位置明确失败。
+- `server`：未登录或 UUID 未绑定时失败；登录并绑定同 UUID 后读写服务器数据，本地位置明确失败。
+- `both`：本地路径可离线使用；服务器路径只在登录并绑定后可用，二者数据不自动同步。
+
+同时检查 `runWorkflow(..., { kvMode: "isolated" })` 的本地和服务器 KV，以及所有知识库调用是否传入了正确的存储位置。若项目使用关联项目，还应确认双方 package 都声明关系，并通过 CLI `--related-project alias=/绝对项目目录` 显式提供每个本地目录。

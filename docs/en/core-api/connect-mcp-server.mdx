@@ -1,0 +1,88 @@
+---
+title: "connectMcpServer"
+description: "Start a stdio MCP server, handshake it, and list the tools it exposes."
+---
+
+# connectMcpServer
+
+`workflow.connectMcpServer()` starts an MCP server as a stdio child process, completes the handshake, and lists the tools it exposes. Hand the returned connection to [createMcpTools](./create-mcp-tools.mdx) and those tools become ones an agent can call.
+
+A host uses this to hand an existing controlled capability to a project without exposing its implementation or adding that implementation to the Core API.
+
+## Signature
+
+```ts
+const connection = await workflow.connectMcpServer(
+  {
+    id: string,
+    command: string[],
+    environment?: Record<string, string>,
+    inheritEnvironment?: string[],
+    timeout?: number,
+  },
+  {
+    allowedInheritedEnvKeys?: string[],
+    env?: NodeJS.ProcessEnv,
+  },
+): Promise<McpServerConnection>
+```
+
+The connection it returns:
+
+| Member | Description |
+| --- | --- |
+| `id` | The server id, taken from the definition. |
+| `tools` | The exposed tools as `{ name, description?, inputSchema }`; `inputSchema` is the JSON Schema the server published. |
+| `callTool(name, args, signal?)` | Calls one tool and returns `{ content, isError }`. A name outside the list throws. |
+| `close()` | Closes the connection and ends the child process. |
+
+## Options
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `id` | `string` | Server id, matching `^[a-z][a-z0-9-]{0,63}$` and unique within one call. It is also the prefix of every tool name. |
+| `command` | `string[]` | The launch command. The first element must be an absolute path — it is not resolved against whatever cwd the host happens to have. |
+| `environment` | `Record<string, string>` | Fixed environment for the child. Capability-bearing variables do not go here. |
+| `inheritEnvironment` | `string[]` | Environment keys copied from the parent by name; each must appear in `allowedInheritedEnvKeys`. |
+| `timeout` | `number` | Handshake and call timeout in milliseconds, between 1,000 and 300,000. Defaults to 60,000. |
+| `allowedInheritedEnvKeys` | `string[]` | The keys the host allows to be inherited by name. |
+| `env` | `NodeJS.ProcessEnv` | Where inherited values are read from. Defaults to `process.env`. |
+
+## Inheriting by name
+
+A variable that carries capability — a credential, a token — can only be inherited by name, never written into the configuration:
+
+1. the host declares what it allows with `allowedInheritedEnvKeys`;
+2. the server asks for some of those with `inheritEnvironment`;
+3. writing such a variable into `environment` is refused outright, and asking for one the host did not allow is refused too.
+
+The value therefore never has to appear in a configuration that may be logged or committed.
+
+## Validation and limits
+
+A definition is validated before anything is spawned: the command must be an absolute path, the `id` must be well formed and unique, `timeout` must be in range, and environment keys must be valid identifiers. One connection carries at most 8 servers, and each server at most 256 tools.
+
+To validate separately before starting anything, use `workflow.normalizeMcpServers(servers, options?)`, which returns the normalized definitions and takes the same options.
+
+## Lifetime
+
+A connection lasts one run: it is opened before the run starts and closed when the run ends, errors included. `connectMcpServer` loads the MCP SDK through a dynamic `import()`, so a runtime that never uses MCP neither resolves nor loads it.
+
+## Example
+
+```ts
+const connection = await workflow.connectMcpServer(
+  {
+    id: "project-tools",
+    command: ["/usr/local/bin/node", "/opt/project-tools/mcp-server.js"],
+    inheritEnvironment: ["PROJECT_MCP_BRIDGE_TOKEN"],
+  },
+  { allowedInheritedEnvKeys: ["PROJECT_MCP_BRIDGE_TOKEN"] },
+);
+
+try {
+  return await workflow.createMcpTools({ connection });
+} finally {
+  await connection.close();
+}
+```

@@ -1,0 +1,21 @@
+---
+title: "Core v0.1.4"
+description: "Core v0.1.4 的更新说明。"
+---
+
+# Core v0.1.4
+
+2026-08-24 · Tag `workflow-code/v0.1.4` · npm
+
+<span id="workflow-code-0-1-4" className="release-version-anchor"></span>
+<span id="workflow-code.0.1.4" className="release-version-anchor"></span>
+
+#### 破坏性变更
+
+- Electron 本地运行平台标识改为 `desktop`，`workflow.isDesktop()` 取代 `workflow.isApp()`。
+  迁移：本地运行传入 `desktop`；旧 `app` 值不再被接受。
+
+#### 修复
+
+- 修复 独立仓库结构检查缺少项目路径时显示的 CLI 用法提示。
+- 修复 执行器缺失、动态声明或含旧版 `projectType` 配置时被静态迁移校验误拦截。

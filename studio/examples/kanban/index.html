@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Kanban</title><link rel="stylesheet" href="board.css"></head>
+<body>
+  <header class="board-header"><div><h1 id="board-title"></h1><p id="board-description"></p></div><button id="new-task" type="button">&#43; 新建任务</button></header>
+  <div id="board-error" role="alert" hidden></div>
+  <section id="board" aria-label="项目任务"></section>
+  <footer><span id="board-summary" role="status"></span><button id="export-board" type="button">导出</button></footer>
+  <dialog id="task-dialog"><form id="task-form"><header><h2>新建任务</h2><button id="cancel-task" type="button" aria-label="关闭">&#215;</button></header><label>任务名称<input id="task-title" required maxlength="200"></label><label>说明<textarea id="task-description" rows="3"></textarea></label><label>优先级<select id="task-priority"><option value="normal">普通</option><option value="high">高优先级</option></select></label><label>标签<select id="task-label"><option value="development">开发</option><option value="design">设计</option><option value="test">测试</option></select></label><button id="save-task" type="submit">创建任务</button></form></dialog>
+  <script src="board.js" defer></script>
+</body></html>

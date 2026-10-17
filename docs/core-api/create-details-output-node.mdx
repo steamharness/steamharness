@@ -1,0 +1,129 @@
+---
+title: "createDetailsOutputNode"
+description: "创建独立可折叠 output item 的便捷输出节点。"
+---
+
+# createDetailsOutputNode
+
+`workflow.createDetailsOutputNode()` 创建一个通用输出节点，用来把标题、内容和 icon 转成独立的可折叠 `WorkflowOutputItem`。
+
+该节点执行时仍然是 `output` 标准节点，因此 CLI、CLI Web 和日志 replay 会把它的 `items` 作为用户可见输出收集。适合把长日志、调试信息、结构化 JSON、执行摘要或可选说明输出成独立折叠块。
+
+## 签名
+
+```ts
+workflow.createDetailsOutputNode<Input = DetailsOutputInput, Output extends WorkflowPayload = DetailsOutputPayload>(
+  options?: DetailsOutputNodeOptions<Input, Output>,
+): BaseNode<Input, Output>
+```
+
+## 输入
+
+不传 `options.resolve` 时，节点默认从 input 读取：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `title` | `string` | `<summary>` 中显示的标题。空值会使用 `"Details"`。 |
+| `content` | `unknown` | 折叠块正文。字符串按 Markdown 原样输出；对象和数组保持原始 JSON。 |
+| `icon` | `string` | 可选 icon。可以是预置名，也可以是自定义文本。 |
+
+## Options
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `name` | `string` | 节点名，默认 `"output"`。 |
+| `title` | `string \| (input, context) => unknown` | 固定或动态标题。优先级高于 input.title。 |
+| `content` | `string \| (input, context) => unknown` | 固定或动态正文。优先级高于 input.content。 |
+| `icon` | `string \| (input, context) => unknown` | 固定或动态 icon。优先级高于 input.icon。 |
+| `resolve` | `(input, context) => { title, content, icon? }` | 统一把业务 input 转成折叠块参数。 |
+| `format` | `(payload, details, input, context) => Output` | 在默认 payload 基础上追加业务字段。 |
+| `historyLimit` | `number` | 节点执行历史保留条数，默认 `50`。 |
+| `metadata` | `WorkflowNodeMetadataInput` | 节点展示元信息，默认 type 为 `details-output`。 |
+
+## Icon 预置
+
+| 预置 | 输出 |
+| --- | --- |
+| `info` | `[i]` |
+| `success` | `[ok]` |
+| `warning` | `[!]` |
+| `error` | `[x]` |
+| `note` | `[note]` |
+| `code` | `[code]` |
+| `list` | `[list]` |
+| `quote` | `[quote]` |
+| `none` | 空字符串 |
+
+如果传入的 icon 不是预置名，会作为自定义文本原样放到标题左侧。
+
+## 返回 payload
+
+默认 payload 继承 `WorkflowPayload`：
+
+| 字段 | 说明 |
+| --- | --- |
+| `errCode` | 成功时为 `0`。 |
+| `errMessage` | 成功时为空字符串。 |
+| `items` | 只包含一个可折叠 item。 |
+
+默认 item 结构：
+
+```ts
+{
+  id: string;
+  title: string;
+  icon: string;
+  iconPreset?: DetailsOutputIconPreset;
+  content: unknown;
+  contentType: "markdown" | "text" | "json" | "audio" | "video";
+  collapsed: true;
+}
+```
+
+对象和数组会保留在 `content` 中，并自动标记为 `contentType: "json"`；字符串默认按 `markdown` 渲染。`video` 也会按原生 `<video>` 渲染，详见 [createOutputNode](/core-api/create-output-node)。
+
+## 示例：直接传 title/content/icon
+
+```ts
+const detailsNode = workflow.createDetailsOutputNode();
+
+const output = await workflow.runNode(detailsNode, {
+  title: "点击展开",
+  icon: "info",
+  content: [
+    "这里是被折叠的内容。",
+    "",
+    "- 列表",
+    "- **加粗**",
+    "- `代码`",
+  ].join("\n"),
+}, context);
+
+return output;
+```
+
+如果要在 CLI Web 中暴露一个可运行示例，executor params 应直接对应这三个字段：`icon` 使用 `control: "radio"` 和预置 icon 选项，`title` / `content` 使用普通字符串输入。`workspace/workflow/details-output` 示例即采用这种形态，避免用 `scenario` 之类的演示分支掩盖 details 输出节点本身的输入。
+
+## 示例：从业务 input 生成折叠块
+
+```ts
+const debugNode = workflow.createDetailsOutputNode<DebugResult>({
+  name: "output",
+  title: "Debug payload",
+  icon: "code",
+  content(input) {
+    return {
+      status: input.status,
+      durationMs: input.durationMs,
+      warnings: input.warnings,
+    };
+  },
+});
+```
+
+该示例会把 `details.content` 保持为 JSON 对象，不会提前 stringify 成 Markdown 代码块。
+
+## 注意
+
+- 一个 workflow 文件里不要声明多个配置名相同的 output 节点；如果要输出多个折叠块，可以复用同一个 `createDetailsOutputNode` 实例多次 `runNode`，最终 report 会把每次输出作为独立 item 收集。
+- 该节点是普通节点，使用 `workflow.runNode(...)` 执行；需要逐 chunk 流式输出时仍使用 `createOutputNode({ stream, format })`。

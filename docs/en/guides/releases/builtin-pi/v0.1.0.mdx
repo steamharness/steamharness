@@ -1,0 +1,28 @@
+---
+title: "Pi release notes v0.1.0"
+description: "Pi release notes v0.1.0 的更新说明。"
+---
+
+# Pi release notes v0.1.0
+
+v0.1.0 is the first version and has not been published yet; what follows is what it already does.
+
+#### New Features
+
+- **Built-in Pi project**: a coding agent driven by the pi agent SDK; you assign tasks in the conversation and the process and result stay in the transcript.
+- **`--agent` plan then build**: plan only researches and proposes, and once you approve it the same session switches to build.
+- **`--effort` reasoning effort**: seven levels from off to max, defaulting to high, with unsupported levels converging automatically.
+
+#### Added
+
+- Added the built-in Pi project, a coding agent driven by the pi agent SDK.
+- Added task assignment in the conversation: the agent reads and writes files in the working directory, runs commands, and leaves both process and result in the transcript.
+- Added a reasoning-effort parameter (`--effort`) accepting off / minimal / low / medium / high / xhigh / max, defaulting to high.
+- Added an unsupported `--effort` level converging to the nearest level the model supports, instead of failing.
+- Added a permission-policy parameter (`--permission-policy`) accepting read-only / workspace / auto.
+- Added read-only hiding the write tools, workspace (the default) asking for approval on every write, and auto running without asking.
+- Added an agent-mode parameter (`--agent`) accepting build and plan.
+- Added plan researching and proposing only, then asking you to approve the plan before the same session switches to build or keeps the plan unchanged.
+- Added sending `/compact` or `/summarize` — or clicking the context usage in the conversation — to compact the current turn.
+- Added replacing the older conversation with a model-written summary instead of prompting the model with it, and saying so when there is nothing to compact.
+- Added tool calls, reasoning, context compaction and failures as collapsible detail rows, while the answer itself stays flat in the conversation body.

@@ -1,0 +1,50 @@
+---
+title: "Automated Testing"
+description: "Offline tests, builds, and workspace workflow contracts for each split Workflow Code repository."
+---
+
+# Automated Testing
+
+Each Workflow Code repository installs dependencies and runs its own quality gates. Offline, reproducible tests are the first layer of confidence and do not connect to production PostgreSQL, real OSS, LLM, GitLab, Electron, or a remote server. Server's PostgreSQL integration suite uses a disposable isolated PostgreSQL 15 container. Real-environment checks must be explicitly enabled in the affected repository.
+
+Run every command below from the corresponding repository root. Every repository maintains `dev`, `alpha`, and `main`, and day-to-day work happens on `dev`; the branch model does not change the local gates, only the release-channel reference rules (see [Compatibility](releases/compatibility.mdx)).
+
+## Test Layers
+
+| Repository | Command | Purpose |
+| --- | --- | --- |
+| Core | `pnpm typecheck && pnpm test && pnpm test:scripts && pnpm coverage && pnpm build && pnpm test:workspace` | Checks the Core API, scripts, npm build, and the sample workspace in the Core repository. |
+| CLI | `pnpm typecheck && pnpm test && pnpm test:scripts && pnpm coverage && pnpm build` | Checks local CLI commands and `workflow-code workspace`. Before a release, also run `pnpm pack --pack-destination .release`. |
+| Studio | `npm run check && npm run build:extension` | Checks the workstation extension and its offline tests. |
+| Server | `pnpm typecheck:all && pnpm test && pnpm coverage && pnpm build:all` | Checks both the Server API and the repository's `web/` management UI. |
+| Shared | `pnpm typecheck && pnpm test && pnpm test:scripts && pnpm coverage && pnpm build` | Checks shared source packages and the source bundle consumed by hosts. |
+| Docs | `pnpm validate && pnpm test && pnpm build` | Checks paired navigation, links, OpenAPI, deployment transactions, and the immutable Docs artifact. |
+| Each built-in project | `pnpm typecheck && pnpm test && pnpm coverage && pnpm build` | Independently checks Conversation, Codex, OpenCode, Developer Assistant. |
+
+## Add Tests for New Code
+
+- For `src/**` in the Core repository, add Core unit tests and npm exports or pack regression tests first.
+- For `src/**` in the Server repository, cover routes, storage, permissions, and error codes, using stub storage to stay offline.
+- For `src/**` in the CLI repository, extract argument parsing, path handling, output formatting, and error codes into importable helpers, then cover them with Vitest.
+- For `web/**` in the Server repository, cover API clients, routing, loading, empty, error, disabled, and critical component interaction states.
+- For `run-workspace-input/**` in the Shared repository, cover input, conversation, attachments, Markdown and output items, image preview, Enter-to-send, menus, title locking, and responsive states.
+- When adding or changing `workspace/workflow/<name>` in the Core repository, update its fixture, structure snapshot, and any necessary offline runtime smoke.
+- For a built-in project, cover entry parameters, execution results, failure paths, and structure snapshots in that project's own `__tests__/` directory.
+
+## Workspace Workflow Contract
+
+Each sample workflow should include:
+
+| File | Purpose |
+| --- | --- |
+| `__fixtures__/smoke.json` | Offline run arguments, conversation ID, expected output, and required nodes. |
+| `__snapshots__/structure.json` | A compact structure snapshot with source, nodes, parameters, conversation, registry, branches, and loops. |
+| `__tests__/` or a local test file | Tests for the sample's parsing, tools, or business logic. |
+
+Mock external dependencies by default: use the test provider for LLM, fixtures for file input, and local payload parsing for Webhook samples. A sample that needs a real SDK, remote service, or external process should state its skip reason in the fixture and provide an opt-in command.
+
+## Cross-Repository Changes
+
+After a Shared change passes its own gates, run the corresponding gates in every affected Server, Core, or CLI consumer. A Core API change should also verify CLI, Server, and real consumers in the Core `workspace/`; a CLI change should verify Studio and the Core `workspace/`. Repositories prepare shared source from a sibling checkout when available and otherwise fall back to the committed `vendor/shared`, so CI does not depend on an outer multi-repository directory.
+
+Checks against a real Server, database, LLM, Electron window, or browser run only when explicitly enabled and do not replace the offline gates above. If the required gates still cannot run after repairing the environment, record the blocker, impact, and alternative verification.

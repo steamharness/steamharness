@@ -1,0 +1,85 @@
+---
+title: "createQuestionClassifierNode"
+description: "创建问题分类节点，使用 LLM 在固定分类中返回一个名称。"
+---
+
+# createQuestionClassifierNode
+
+`workflow.createQuestionClassifierNode()` 创建一个输入为 `string` 的分类节点。它会把问题、分类列表和说明拼成 LLM prompt，并要求模型只返回分类名；如果返回值不在允许分类中，节点输出空字符串。
+
+## 签名
+
+```ts
+workflow.createQuestionClassifierNode<
+  const Categories extends readonly QuestionClassifierCategory[],
+>(
+  options: QuestionClassifierNodeOptions<Categories>,
+): BaseNode<string, QuestionClassifierOutput<Categories>>
+```
+
+## 参数
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| `options` | `QuestionClassifierNodeOptions<Categories>` | 定义 provider、分类、用户说明和 LLM 设置。 |
+
+## Options 字段
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `name` | `string` | 节点名，默认 `"question-classifier"`。 |
+| `provider` | `LLMProviderSource` | 分类所用 provider。必填。 |
+| `categories` | `QuestionClassifierCategory[]` | 允许返回的分类。名称不能重复。必填。 |
+| `userDescription` | `string` | 分类任务和用户场景说明。必填。 |
+| `system` | `string` | system prompt，默认 `"You are a strict question classifier."`。 |
+| `settings` | `LLMCallSettings` 子集 | LLM 调用参数；会覆盖默认的 `temperature: 0`、`maxOutputTokens: 50`。 |
+| `historyLimit` | `number` | 节点执行历史保留条数，默认 `50`。 |
+| `metadata` | `WorkflowNodeMetadataInput` | 节点展示元信息。 |
+
+## 输入输出
+
+| 名称 | 类型 | 说明 |
+| --- | --- | --- |
+| 输入 | `string` | 要分类的问题。空字符串会触发输入校验错误。 |
+| 输出 | `CategoryName \| ""` | 匹配到分类时返回分类名；模型返回非允许分类时返回空字符串。 |
+
+## `QuestionClassifierCategory`
+
+| 字段 | 说明 |
+| --- | --- |
+| `name` | 分类名，也是模型必须返回的精确文本。必填。 |
+| `description` | 分类说明，会写入 prompt。必填。 |
+
+## LLM 请求内容
+
+| 片段 | 来源 | 说明 |
+| --- | --- | --- |
+| 分类规则 | 节点执行时固定模板 | 要求只返回分类名，不返回 JSON、Markdown 或解释。 |
+| `userDescription` | options | 业务分类说明。 |
+| `categories` | options | 按序号列出允许分类和说明。 |
+| `question` | 节点输入 | 用户问题。 |
+
+## 示例
+
+```ts
+const classifier = workflow.createQuestionClassifierNode({
+  name: "route-question",
+  provider: workflow.createLLMProviderRef("default"),
+  userDescription: "判断用户是在问技术问题还是闲聊。",
+  categories: [
+    { name: "technical", description: "代码、API、部署或错误排查。" },
+    { name: "chat", description: "普通对话或非技术问题。" },
+  ] as const,
+});
+
+const category = await workflow.runNode(classifier, input.message, context);
+```
+
+## 错误
+
+| 情况 | 错误类型 | 说明 |
+| --- | --- | --- |
+| `categories` 为空 | `input_validation` | 至少需要一个分类。 |
+| 分类名重复 | `input_validation` | `name` 不能重复。 |
+| `userDescription` 或 question 为空 | `input_validation` | 必填文本不能为空。 |
+| provider 调用失败 | `provider_call` | 由 provider 层抛出。 |

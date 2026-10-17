@@ -1,0 +1,12 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Studio Extension (Current Editor)",
+      "type": "extensionHost", "request": "launch",
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}/extensions/studio-workstation"],
+      "outFiles": ["${workspaceFolder}/extensions/studio-workstation/dist/**/*.js"],
+      "preLaunchTask": "Studio: Build Extension"
+    }
+  ]
+}

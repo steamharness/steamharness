@@ -1,0 +1,117 @@
+---
+title: "createLLMNode"
+description: "创建非流式 LLM 调用节点，并把业务输入映射为 LLMChatInput。"
+---
+
+# createLLMNode
+
+`workflow.createLLMNode()` 创建一次性 LLM 调用节点。节点执行时会先解析 provider，再调用 `provider.chat(llmInput)`，最后可通过 `mapOutput` 把 LLM 输出转换为业务 payload。
+
+## 签名
+
+```ts
+workflow.createLLMNode<Input>(
+  options: LLMNodeOptions<Input, LLMChatOutput>,
+): BaseNode<Input, LLMChatOutput>
+
+workflow.createLLMNode<Input, Output>(
+  options: LLMNodeOptions<Input, Output> & {
+    mapOutput: LLMOutputMapper<Input, Output>;
+  },
+): BaseNode<Input, Output>
+```
+
+## 参数
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| `options` | `LLMNodeOptions<Input, Output>` | 定义 provider、输入映射、输出映射和节点元信息。 |
+
+## `LLMNodeOptions`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `name` | `string` | 节点名称，默认 `"llm"`。provider binding 可按该名称覆盖 provider。 |
+| `provider` | `LLMProviderSource` | provider 实例、provider id、provider ref 或 resolver。必填。 |
+| `mapInput` | `(input, context) => LLMChatInput` | 把业务输入转换成 LLM 请求。必填。 |
+| `mapOutput` | `(output, input, context) => Output` | 把 LLM 输出转换成业务输出；不传时返回原始 `LLMChatOutput`。 |
+| `historyLimit` | `number` | 节点执行历史保留条数，默认 `50`。 |
+| `metadata` | `WorkflowNodeMetadataInput` | 节点展示元信息。 |
+
+## `LLMProviderSource`
+
+| 形态 | 类型 | 说明 |
+| --- | --- | --- |
+| provider 实例 | `LLMProvider` | 直接使用可调用 provider。 |
+| provider id | `string` | 从 `context.providers.llmProviders` 查找。 |
+| provider ref | `LLMProviderRef` | 按 `id` 延迟解析，并可配置 fallback。 |
+| resolver | `(context, nodeName) => LLMProvider \| undefined` | 按节点或上下文动态选择 provider。 |
+
+## `LLMChatInput`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `prompt` | `string` | 单条 prompt；与 `messages` 二选一。 |
+| `messages` | `ModelMessage[]` | 多轮消息；与 `prompt` 二选一。 |
+| `system` | `string` | system prompt。 |
+| `temperature` | `number` | 采样温度。 |
+| `maxOutputTokens` | `number` | 最大输出 token 数。 |
+| `topP` / `topK` | `number` | 采样参数。 |
+| `presencePenalty` / `frequencyPenalty` | `number` | 重复惩罚参数。 |
+| `stopSequences` | `string[]` | 停止序列。 |
+| `seed` | `number` | 随机种子。 |
+| `maxRetries` | `number` | 重试次数。 |
+| `timeout` | `number` | 调用超时。 |
+| `headers` | `object` | 额外请求头。 |
+| `providerOptions` | `LLMProviderOptions` | provider 私有扩展参数。 |
+| `abortSignal` | `AbortSignal` | 节点会自动从 `context.abortSignal` 注入。 |
+
+## 输出
+
+| 情况 | 节点输出类型 | 说明 |
+| --- | --- | --- |
+| 未传 `mapOutput` | `LLMChatOutput` | 原样返回 provider `chat` 结果。 |
+| 传入 `mapOutput` | `Output` | 返回 `mapOutput(output, input, context)` 的结果。 |
+
+## `LLMChatOutput`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `text` | `string` | 模型文本输出。 |
+| `finishReason` | `FinishReason \| undefined` | 停止原因。 |
+| `usage` | `LanguageModelUsage \| undefined` | token 用量。 |
+| `providerMetadata` | `ProviderMetadata \| undefined` | provider 元信息。 |
+
+当 executor 配置 `tokenUsage: { enabled: true }` 时，节点执行时通过 `getLLMProvider()` 解析出的 provider 会在 `chat` 返回后读取 `LLMChatOutput.usage` 并上报到 `context.tokenUsage`，因此即使 `mapOutput` 不再返回 `usage` 字段也能统计。本次 run 的聚合会出现在 `report.tokenUsage.run`；累计值写入当前项目 KV，存在会话时还会写入该会话 KV。本地宿主可以聚合各项目总量；支持 input、output、reasoning、cached input 和 cache creation/write token 明细。
+
+## 调用流程
+
+| 阶段 | 输入 | 结果 |
+| --- | --- | --- |
+| 上游节点 | `Input` | 业务输入 |
+| `mapInput` | `Input`、`NodeContext` | `LLMChatInput` |
+| provider `chat` | `LLMChatInput` | `LLMChatOutput` |
+| `mapOutput` | `LLMChatOutput`、`Input`、`NodeContext` | `Output` |
+
+## 示例
+
+```ts
+const llmNode = workflow.createLLMNode<ParsedInput, AnswerPayload>({
+  name: "answer",
+  provider: workflow.createLLMProviderRef("default"),
+  mapInput(input) {
+    return {
+      system: "You answer briefly.",
+      prompt: input.message,
+      temperature: 0.2,
+    };
+  },
+  mapOutput(output) {
+    return {
+      errCode: 0,
+      errMessage: "",
+      content: output.text,
+    };
+  },
+});
+```

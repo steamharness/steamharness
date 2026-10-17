@@ -1,0 +1,20 @@
+---
+title: "CLI v0.1.2"
+description: "CLI v0.1.2 的更新说明。"
+---
+
+# CLI v0.1.2
+
+2026-07-30 · Tag `@workflow-code/cli/v0.1.2` · npm
+
+<span id="@workflow-code/cli-0-1-2" className="release-version-anchor"></span>
+<span id="@workflow-code/cli.0.1.2" className="release-version-anchor"></span>
+
+#### 破坏性变更
+
+- 项目打包只读取根目录 `.workflowignore`，其它忽略文件不再生效。
+  迁移：在 `.workflowignore` 中显式排除凭据、依赖目录和临时文件。
+
+#### 新增
+
+- 新增 `workspace pack`、`upload`、`publish` 和 `download` 支持 Kanban 静态项目，无损传输二进制资源。

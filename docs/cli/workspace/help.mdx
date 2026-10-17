@@ -1,0 +1,40 @@
+---
+title: "workspace help"
+description: "查看 Server Workspace CLI 帮助信息。"
+---
+
+# workspace help
+
+workspace CLI 在未传命令、传 `help`、`--help` 或 `-h` 时输出帮助。帮助内容来自 CLI 仓库 `src/workspace.ts` 的 `printUsage()`。
+
+## 命令格式
+
+```bash
+pnpm exec workflow-code workspace help
+pnpm exec workflow-code workspace --help
+pnpm exec workflow-code workspace -h
+pnpm exec workflow-code workspace
+```
+
+## 输出内容
+
+| 内容 | 说明 |
+| --- | --- |
+| Usage | workspace CLI 基础调用格式。 |
+| Commands | login、logout、status、health、pack、upload、download、publish、run、debug-node、versions。 |
+| Options | `--server` 和 `--token` 的默认来源。 |
+
+## 行为
+
+| 情况 | 结果 |
+| --- | --- |
+| 未传命令 | 输出帮助。 |
+| 命令是 `help` / `--help` / `-h` | 输出帮助。 |
+| 未知命令 | 输出错误信息，退出码为 `1`。 |
+
+## 下一步
+
+| 目标 | 文档 |
+| --- | --- |
+| 保存登录态 | [`login`](/cli/workspace/login) |
+| 打包上传 | [`pack`](/cli/workspace/pack)、[`upload`](/cli/workspace/upload) |

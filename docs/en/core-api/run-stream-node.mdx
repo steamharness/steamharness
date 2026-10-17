@@ -1,0 +1,76 @@
+---
+title: "runStreamNode"
+description: "Execute the streaming node, collect chunks, and return the finalize result."
+---
+
+# runStreamNode
+
+`workflow.runStreamNode()` executes the streaming node. It iterates through the chunks of the `node.stream(input, context)` output, triggers the chunk hooks one by one, and calls the optional `node.finalize(chunks, context, input)` when it's done.
+
+## Signature
+
+```ts
+workflow.runStreamNode<Input, Chunk, Output>(
+  node: StreamNodeDefinition<Input, Chunk, Output>,
+  input: Input,
+  context: NodeContext,
+): Promise<{
+  chunks: Chunk[];
+  output: Output | undefined;
+}>
+```
+
+## Parameter
+
+|Parameter|Type|Description|
+| --- | --- | --- |
+| `node` | `StreamNodeDefinition` |The streaming node to execute, typically from `createLLMStreamNode` or streaming `createOutputNode`.|
+| `input` | `Input` |Node input.|
+| `context` | `NodeContext` |runtime context for hooks, provider, KV, files, abortSignal.|
+
+## `StreamNodeDefinition`
+
+|Field|Description|
+| --- | --- |
+| `name` |The node name. Required.|
+| `standardName` |Standard node type name, such as `llm-stream`, `output`.|
+| `metadata` |Structure diagram and UI meta information.|
+| `stream` |Streaming execution function, receiving `input` and `NodeContext`. Required.|
+| `finalize` |An optional aggregate function that uses chunks to generate the final output.|
+
+## Execution process
+
+|Steps|Description|
+| --- | --- |
+|1. Check for interruptions|If `context.abortSignal` is interrupted, throw `execution_aborted`.|
+|2. Send Start Event|Triggers the streaming node to start a hook and record the executionId, nodeName, metadata, and startedAt.|
+|3. Traversing the stream|Collect each chunk and trigger the chunk hook.|
+| 4. finalize |If the node provides `finalize`, the final output is generated with chunks.|
+|5. Send Completion Event|Record the output, duration, and executionInfo, and trigger the completion of the hook.|
+|6. Wrong packaging|Convert to `stream_interrupted` on failure and write report.|
+
+## Return value
+
+|Field|Type|Description|
+| --- | --- | --- |
+| `chunks` | `Chunk[]` |All chunks collected, in the same order as the stream output.|
+| `output` | `Output \| undefined` |`finalize` Results. `undefined` when the node has no `finalize`.|
+
+## Error
+
+|Situation|Error Type|Description|
+| --- | --- | --- |
+|Pre-execution or in-stream interruption|`execution_aborted` or `stream_interrupted`|Interrupts are checked in the streaming traversal.|
+|stream/finalize throw error| `stream_interrupted` |Errors are written to the node execution report.|
+
+## Example
+
+```ts
+const result = await workflow.runStreamNode(streamNode, parsed, context);
+
+return {
+  errCode: 0,
+  errMessage: "",
+  content: result.output ?? "",
+};
+```

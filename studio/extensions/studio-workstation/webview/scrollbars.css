@@ -1,0 +1,9 @@
+* { scrollbar-color: transparent transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner, ::-webkit-scrollbar-thumb { background-color: transparent; }
+@media (any-hover: hover) {
+  *:hover { scrollbar-color: var(--vscode-scrollbarSlider-background, #79797966) transparent; }
+  :hover::-webkit-scrollbar-thumb { background-color: var(--vscode-scrollbarSlider-background, #79797966); }
+  ::-webkit-scrollbar-thumb:hover { background-color: var(--vscode-scrollbarSlider-hoverBackground, #64646488); }
+  ::-webkit-scrollbar-thumb:active { background-color: var(--vscode-scrollbarSlider-activeBackground, var(--vscode-scrollbarSlider-hoverBackground, #64646488)); }
+}

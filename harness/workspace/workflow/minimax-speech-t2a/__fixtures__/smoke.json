@@ -1,0 +1,53 @@
+{
+  "args": [
+    "--dry-run",
+    "--format",
+    "wav",
+    "--text",
+    "你好，workflow-code 正在合成一段测试语音。"
+  ],
+  "expected": {
+    "errCode": 0,
+    "output": {
+      "text": "你好，workflow-code 正在合成一段测试语音。",
+      "model": "speech-2.8-turbo",
+      "voiceId": "male-qn-qingse",
+      "format": "wav",
+      "mimeType": "audio/wav",
+      "size": 15404,
+      "durationMs": 240,
+      "chunkCount": 1,
+      "dryRun": true
+    },
+    "itemCount": 1,
+    "items": [
+      {
+        "title": "MiniMax speech audio preview",
+        "contentType": "audio",
+        "iconPreset": "success",
+        "collapsed": false,
+        "metadata": {
+          "model": "speech-2.8-turbo",
+          "voiceId": "male-qn-qingse",
+          "dryRun": true,
+          "chunkCount": 1
+        },
+        "contentMatches": {
+          "mimeType": "audio/wav",
+          "name": "minimax-speech.wav",
+          "size": 15404,
+          "durationMs": 240,
+          "format": "wav"
+        },
+        "contentIncludes": [
+          "data:audio/wav;base64,"
+        ]
+      }
+    ],
+    "nodes": [
+      "input",
+      "output"
+    ],
+    "outputCount": 1
+  }
+}

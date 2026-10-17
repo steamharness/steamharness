@@ -1,0 +1,129 @@
+---
+title: "createAgentNode"
+description: "Create a streaming node that runs an agent as a workflow node."
+---
+
+# createAgentNode
+
+`workflow.createAgentNode()` returns a streaming node to be executed with `runStreamNode`. It wires the [createAgent](./create-agent.mdx) runtime into a workflow: tool approval goes through `context.toolPermissions`, plan approval through `context.userInput`, token usage through `context.tokenUsage`, and output items use the same `createOutputItemChunk` protocol as the rest of the runtime.
+
+Reach for it when you need to arrange nodes around the agent. When the whole project is an agent, [defineAgentConversationExecutor](./define-agent-conversation-executor.mdx) does more for you.
+
+## Signature
+
+```ts
+const node = workflow.createAgentNode({
+  name?: string,
+  sessionKey?: string,
+  outputItemId?: string,
+  workdir?: string,
+  systemPrompt?: string,
+  provider?: string,
+  model?: string,
+  baseUrl?: string,
+  apiKey?: string,
+  effort?: AgentEffort,
+  permissionPolicy?: AgentPermissionPolicy,
+  mode?: AgentMode,
+  tools?: string[],
+  toolDefinitions?: WorkflowToolPermissionDefinition[],
+  allowedDirectories?: string[],
+  extraTools?: AgentTool[],
+  createTools?: (context: NodeContext) => AgentTool[] | AgentToolSet | Promise<AgentTool[] | AgentToolSet>,
+  sessionId?: string,
+  historyLimit?: number,
+});
+```
+
+The node is a `BaseStreamNode<AgentInput, OutputItemStreamChunk, AgentOutputPayload>`: it streams `OutputItemStreamChunk` values and `finalize(chunks, context, input)` aggregates them into an `AgentOutputPayload` with `createOutputStreamAccumulator`.
+
+The Agent emits context occupancy as a standard output item with `display: { type: "ring", placement: "composer-right" }` and `content: { value: used, total, unit: "tokens" }`. Its stable id derives from `sessionKey`; distinct keys, including spaces and non-ASCII characters, produce independent outputs. Conversation pins it to the right of the composer, saves and restores it with that conversation, and retains its streamed value while awaiting approval. Hosts consume the [output presentation protocol](./create-output-node.mdx) without reading Agent-specific fields. `contextUsage` remains available for programmatic use.
+
+The first run emits this item before the model responds. Text, reasoning, tool arguments, and tool results update the ring during the conversation, and compaction recalibrates it. Context occupancy uses the latest valid model usage plus subsequent message estimates, independently of billed usage reported incrementally for each model response. [createAgent](./create-agent.mdx) provides `getContextUsage()` and `updateContextUsage()` for live queries and external measurements.
+
+With a Durable session, the node includes the same standard ring output for each conversation in snapshot `contexts[].outputs`. Hosts select the open conversation's outputs and replace historical values with the same ID. Forks, follow-ups, background compaction and resets therefore refresh the ring, including forks without a new answer. Answer headers use `turns[].usage`, not the persistent owner's aggregate workflow consumption across conversations.
+
+## Options
+
+Every [createAgent](./create-agent.mdx) option, plus:
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `name` | `string` | Node name. Defaults to `agent`. |
+| `outputItemId` | `string` | Id of the output item the answer belongs to. The OpenAI/Responses adapters find the answer by id, so it must equal `conversation.openai.outputItemId`; when it is left out the id is derived from the conversation, which no adapter can name in advance. |
+| `createTools` | `(context) => AgentTool[] \| AgentToolSet` | Builds the tools that go alongside the built-ins before each run. A factory rather than a list because those tools close over the run's `NodeContext` — its storage, its approval gate, its user input. To start something with a lifetime — a stdio MCP child, say — return `{ tools, close?() }`; `close` runs when the turn ends, errors included. |
+| `sessionKey` | `string` | SQLite isolation key within a project and conversation. Falls back to `sessionId`, then `agent`. Use a different key for each agent node. |
+| `databasePath` | `string` | Explicit Durable SQLite file. Hosts normally provide `storage.agentStoreDir` and let the node select an isolated path. |
+| `historyLimit` | `number` | Cap on recorded node executions. Defaults to 50. |
+
+## Output (`AgentOutputPayload`)
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `errCode` / `errMessage` | `number` / `string` | `0` and `""` on success. |
+| `items` | `WorkflowOutputItem[]` | The aggregated output items. |
+| `prompt` | `string` | The turn's input. |
+| `workdir` | `string` | The working directory actually used. |
+| `provider` / `model` | `string` | The model configuration used. |
+| `effort` | `AgentEffort` | The reasoning effort used. |
+| `agent` | `AgentMode` | The run mode used. |
+| `sessionId` | `string` | The session id. |
+| `toolCallCount` | `number` | Tool calls made this turn. |
+
+These fields come from the input the turn **actually used** (a turn may carry its own `workdir`, `effort` or connection), so a per-run override is what the payload reports.
+
+## The transcript
+
+The Pi Durable Harness owns execution history. Conversation nodes select SQLite files by project storage directory, conversationId and sessionKey, preserving messages, tool intents and results, approval waits and usage records. Ordinary runs close after each turn; hosts enabling `session` can retain the owner, tools, and AI bridge. Hosts can set `storage.agentStoreDir`; the default is the project's local `.workflow/agents` directory.
+
+- Each SQLite session has one execution owner. Process exit or SIGKILL releases ownership. Both the database and working directory must survive restart.
+- A stable `requestId` is derived from the original `runId`. Recovery reconstructs output without repeating committed results, Conversation messages or billed usage.
+- Calls with unknown results after a crash are repeated only with `replay: "safe"`. The default is `never`; built-in write, edit and bash tools return an interruption error for model inspection. External side effects still require application idempotency.
+- Storage or projection failures stop execution. Old KV transcripts are not read or migrated, and failures never fall back to execution without history.
+- Non-Conversation nodes and gateway runs carrying `hostInput` use MemoryStorage by default. An explicit `databasePath` overrides storage selection. Gateway input does not enter ordinary Conversation history.
+- Ordinary compaction or direct context replacement requires no active Durable tasks. Session compact/reset coordinates through Harness transactions and input boundaries; never overwrite the transcript directly.
+
+## Persistent session hosts
+
+Set the node's `session: { ... }` and declare inline `conversation: { recovery: { enabled: true }, durable: { enabled: true } }` on the executor. Before starting the workflow, the host calls `createAgentSessionHost(conversationId)` from `workflow-code/agent`, then sends commands through `controlAgentSession(conversationId, command)`. The lease keeps tools and the bridge alive after the foreground answer. On shutdown call the returned object's `close()` and await the workflow/background work before disposing resources; process termination preserves checkpoints for recovery. CLI Web / Studio manages this lifecycle automatically. Plan mode and hostInput do not hold a lease and retain their approval/gateway lifecycles.
+
+Use the external workflow conversationId as scopeId and snapshot numeric `targetId` values to address children. Snapshots arrive as auxiliary `metadata.kind: "agent-session"` output, never as answer text. See [createAgent](./create-agent.mdx) for queues, plans, parent/child usage, and configuration controls. Explicit permission lists must declare `update_plan` and, when delegation is enabled, `subagent`. Child agents retain parent tool, model allowlist, and approval restrictions.
+
+Extension execution uses `session.registry` for tasks and hooks. `createTools` may return `{ tools, catalogs, close? }` with `session.toolSearch: {}` for authorized lazy catalogs. Declare `tool_search` in explicit tool permissions; also declare `codemode` when opting into `session.codeMode`. Nested calls retain their existing permissions. `session.environment` selects a stable execution target, and `storage` replaces automatic SQLite selection. See [extension execution and recovery](./create-agent.mdx#extension-execution-and-recovery) for lifecycle and backup constraints.
+
+## Output items
+
+| `metadata.kind` | Meaning |
+| --- | --- |
+| `agent-session` | Versioned session snapshot for task/plan/record/usage views; never render it as assistant answer or detail content. |
+| `agent-answer` | The assistant answer: `contentType: "markdown"`, expanded, laid out flat in the conversation body. Produced by a **host-driven run** only: the adapter reads the response text back by id, and that has to be the whole turn. |
+| `agent-part` | A detail row; `metadata.partType` is `reasoning`, `text`, `tool`, `compaction`, `plan`, `patch` or `file`. |
+| `agent-notice` | A notice or plan text. Plans carry `metadata.plan: true`; ordinary notices such as approval outcomes do not. |
+| `agent-error` | A failed run. |
+
+`partType: "text"` is the text a conversation run writes: each run of text between two activity rows takes its own row, where it was spoken — a sentence the model said before reaching for a tool sits above that tool rather than after everything else. The conversation message's body is those rows joined back in order. A host-driven run uses none of them; its whole text streams into the one `agent-answer` item.
+
+The answer never gets pushed into a detail block by response metadata such as `finishReason` or usage.
+
+Shared runtime UI displays plans marked with `metadata.plan: true` as preview cards. Open a card to read the complete Markdown; closing returns focus to the card. Plans retain their original output position, and run results and history replay use the same presentation. Ordinary answers remain inline in the conversation body.
+
+When confirmation resumes the same run, new plans, text, and activity rows use independent identifiers. Earlier output remains intact, so a revised plan cannot replace the previous one or move resumed text before the answer. The host API's declared `agent-answer` identifier stays fixed so it can read the complete response.
+
+A conversation run creates a plan card only after the runtime emits a final `plan` event. The card contains the plan text after the last tool call. Research introductions, explanations around `ask_user`, and text left without a completed plan when the run pauses, fails, or is cancelled remain ordinary inline text. Pausing for a question does not request plan approval. Conversation messages retain both ordinary text and the final plan in output order. Host-driven runs still stream the whole turn into the declared `agent-answer` item in plan mode so OpenAI / Responses adapters can read it.
+
+## Pause and resume
+
+Tool approval, questions and plan approval pause through `user_input_required` carrying a `request`. Hosts persist resolved answers and resume with the original `runId`, arguments and request identity. Tools continue their original durable intent; questions use `askResume`, and plan decisions use a distinct stable continuation identity. Decisions belong to their original run and cannot approve a new run.
+
+With inline `conversation.recovery: { enabled: true }`, CLI Web and Studio recover after worker interruption or reopening. Explicit stop must persist cancellation intent, stop the worker, then call `cancelAgentConversation({ agentStoreDir, conversationId })` to settle durable tasks. The function is exported from `workflow-code/agent`.
+
+Ordinary failures emit `agent-error` before rethrowing; pauses and cancellations propagate without an error row.
+
+## Example
+
+```ts
+const agentNode = workflow.createAgentNode({ name: "agent", provider: "anthropic", permissionPolicy: "workspace" });
+const result = await workflow.runStreamNode(agentNode, input, context);
+
+return result.output ?? { errCode: 0, errMessage: "", items: [], prompt: "", workdir: "", effort: "medium", agent: "build", toolCallCount: 0 };
+```

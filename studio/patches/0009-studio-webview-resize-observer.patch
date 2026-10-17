@@ -1,0 +1,26 @@
+diff --git a/src/vs/workbench/contrib/webview/browser/pre/index.html b/src/vs/workbench/contrib/webview/browser/pre/index.html
+index 42c7c01ade5..5321d303523 100644
+--- a/src/vs/workbench/contrib/webview/browser/pre/index.html
++++ b/src/vs/workbench/contrib/webview/browser/pre/index.html
+@@ -5,7 +5,7 @@
+ 	<meta charset="UTF-8">
+ 
+ 	<meta http-equiv="Content-Security-Policy"
+-		content="default-src 'none'; script-src 'sha256-FFQoOVVa2tOE3uqUvirwaMNT20TZmrHcL2aaOjJ8BUo=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
++		content="default-src 'none'; script-src 'sha256-g02zAgJlmKhE+bBeFC2NKTVd6HDpr/7rURKERLWuzmo=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
+ 
+ 	<!-- Disable pinch zooming -->
+ 	<meta name="viewport"
+@@ -1135,8 +1135,11 @@
+ 								});
+ 							};
+ 
+-							const resizeObserver = new ResizeObserver(postSize);
++							// Observe from the target document's window to avoid cross-frame resize loops.
++							const contentGlobal = /** @type {Window & typeof globalThis} */ (contentWindow);
++							const resizeObserver = new contentGlobal.ResizeObserver(postSize);
+ 							resizeObserver.observe(docEl);
++							contentWindow.addEventListener('unload', () => resizeObserver.disconnect(), { once: true });
+ 							postSize();
+ 						}
+ 

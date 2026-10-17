@@ -1,0 +1,122 @@
+---
+title: "defineEntrypoint"
+description: "Define a type-safe, independently runnable entrypoint in a Workflow project."
+---
+
+# defineEntrypoint
+
+`workflow.defineEntrypoint<Input, Output>()` defines an independently runnable entrypoint in a Workflow project. Each entrypoint has its own workflow, parameters, input construction, tools, token-usage settings, debug registry, and context extensions. Once the platform selects an entrypoint, it runs only that entrypoint; it does not run the default entrypoint first.
+
+Entrypoints are a flat set of runnable targets in one project, not parent-child calls. To compose several business workflows into one run, explicitly call [`workflow.runWorkflow()`](/en/core-api/run-workflow) from a workflow.
+
+## Signature
+
+```ts
+workflow.defineEntrypoint<Input, Output>(
+  definition: WorkflowEntrypointDefinition<Input, Output>,
+): WorkflowEntrypointDefinition<Input, Output>
+```
+
+Optional group metadata is a static object:
+
+```ts
+interface WorkflowEntrypointGroupDefinition {
+  id: string;
+  title: string;
+  order?: number;
+}
+```
+
+## Fields
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | `string` | A project-unique entrypoint ID matching `/^[a-z][a-z0-9_-]{0,63}$/`. |
+| `title` | `string` | A non-empty display title used by CLI Web, logs, and replay. |
+| `description` | `string` | An optional entrypoint description. |
+| `group` | `WorkflowEntrypointGroupDefinition` | Optional display group. Every entrypoint with the same group `id` must use exactly the same `title` and `order`. |
+| `workflow` | `WorkflowDefinition<Input, Output>` | The workflow executed by this entrypoint. Required. |
+| `params` | `WorkflowParamDeclaration[]` | Ordered fields and action entries for this entrypoint; see [`defineExecutor` parameters](/en/core-api/define-executor#workflowparamdeclaration). |
+| `createInput` | `(context) => Input` | Converts this entrypoint's arguments and `paramValues` into workflow input. Required. |
+| `resolveParams` | `(context) => WorkflowParamResolveResult` | Parameter-resolution callback for this entrypoint. |
+| `requiredProviders` | `ExecutorProviderName[]` | Providers required by this entrypoint. The only built-in name is currently `"llm"`. |
+| `tools` | `WorkflowToolPermissionDefinition[]` | Tools this entrypoint may invoke and their default approval policy. |
+| `tokenUsage` | `WorkflowTokenUsageDefinition` | Token-usage reporting configuration for this entrypoint. |
+| `registry` | `WorkflowNodeRegistryEntry[]` | Nodes that can be debugged separately for this entrypoint. |
+| `createContext` | `(context) => Partial<WorkflowContext>` | Adds providers, metadata, and hooks for this entrypoint. KV, PersistentValue, conversation, and files remain runtime-provided. |
+
+`createInput`, `resolveParams`, each registry entry's `createInput`, and `createContext` receive a `WorkflowExecutorContext`. When a Workflow entrypoint runs, `entrypointId` and `entrypointTitle` identify the selected entrypoint. The runtime also writes those values to `WorkflowContext.metadata`, runtime events, and the final report.
+
+## Executor declaration
+
+A Workflow executor must declare a static default entrypoint and a non-empty entrypoint array:
+
+```ts
+export const executor = workflow.defineExecutor({
+  projectType: "workflow",
+  defaultEntrypoint: "main",
+  entrypoints: [
+    workflow.defineEntrypoint<MainInput, MainOutput>({
+      id: "main",
+      title: "Full workflow",
+      group: { id: "operations", title: "Operations", order: 10 },
+      workflow: mainWorkflow,
+      params: [],
+      createInput() {
+        return { errCode: 0, errMessage: "" };
+      },
+    }),
+    workflow.defineEntrypoint<ValidateInput, ValidateOutput>({
+      id: "validate",
+      title: "Data validation",
+      description: "Runs only the validation stage.",
+      group: { id: "operations", title: "Operations", order: 10 },
+      workflow: validateWorkflow,
+      params: [],
+      createInput() {
+        return { errCode: 0, errMessage: "" };
+      },
+    }),
+  ],
+});
+```
+
+When the caller does not select an entrypoint, the runtime runs `defaultEntrypoint`. Selecting `validate` explicitly runs only `validateWorkflow`; `mainWorkflow` does not run first.
+
+## Static structure rules
+
+`workflow-code structure` does not execute configuration code, so it must be able to read the entrypoint declaration statically:
+
+- `entrypoints` must be a non-empty array literal.
+- Each item must directly call `workflow.defineEntrypoint({ ... })`.
+- `id`, `title`, optional `description`, and `defaultEntrypoint` must be static strings.
+- `group` must be a static inline object. Its `id` and `title` must be non-empty static strings, and `order`, when present, must be a non-negative integer.
+- Every entrypoint with the same `group.id` must declare exactly the same `title` and `order`, including the difference between an omitted and an explicitly set `order`.
+- `workflow` must reference an identifier defined with `workflow.defineWorkflow(...)` in the project source. You can use named, aliased, or default imports through a relative path in the project. Structure resolves the actual import/export binding. An unreferenced same-name definition, a value from an external package, or a dynamically constructed value produces a violation.
+- IDs must be valid and unique, and `defaultEntrypoint` must identify one of them.
+- A Workflow executor no longer accepts top-level `workflow`, `params`, `createInput`, `resolveParams`, `requiredProviders`, `tools`, `tokenUsage`, `registry`, or `createContext`. Move these fields to their specific entrypoint.
+
+The structure report exposes `defaultEntrypoint` and `entrypoints[]` at project level. Every entrypoint contains `id`, `title`, optional `description`, `group`, `workflowName`, `execution`, flattened `params`, ordered `paramLayout`, `paramResolver`, `tools`, `tokenUsage`, and `registry`. Workflow projects no longer expose compatible top-level `params` or `execution` fields, and do not aggregate individual registries into `definitions.registry`. Static analysis reports a precise `diagnostics.violations` item when group metadata cannot be read or conflicts.
+
+## State and isolation
+
+Entrypoints isolate execution configuration and UI drafts, not project data scope:
+
+| Data | Behavior |
+| --- | --- |
+| Run, report, and history | Each run records the actual entrypoint ID and a title snapshot. |
+| Parameter, attachment, and tool-policy drafts | Hosts isolate them by project, resolution target, and entrypoint. |
+| Entrypoint group expansion | shared runtime UI and CLI Web enable grouped UI only when at least one group is declared. They persist expansion by `workflowId + resolved target` under a versioned localStorage key; ungrouped entries use a localized **Ungrouped** group. |
+| Registry and debug node | Only the selected entrypoint's registry is available. |
+| `context.storage.local/server` | Entrypoints in the same project continue to share the workflow namespace at each location. Design your own keys when business isolation is required. |
+| Conversation | Does not use `defineEntrypoint` and does not accept entrypoint selection. |
+
+## Errors
+
+| Situation | Error type | Description |
+| --- | --- | --- |
+| Invalid ID, empty title, or duplicate entrypoint | `input_validation` | The runtime rejects the definition and structure reports the violation. |
+| Group is not a static inline object, has invalid fields, or conflicts for one ID | `input_validation` | The runtime rejects the definition; static analysis and the structure report expose a violation at the relevant locations. |
+| Default entrypoint does not exist | `input_validation` | The executor cannot load. |
+| Unknown entrypoint requested | `input_validation` | Error metadata includes the default entrypoint and allowed entrypoints. |
+| Conversation receives an entrypoint argument | `input_validation` | Conversation remains single-entry; the argument is neither ignored nor silently redirected. |

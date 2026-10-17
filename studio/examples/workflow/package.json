@@ -1,0 +1,19 @@
+{
+  "id": "14ab25f6-5a51-4b9b-9a09-df612356fd01",
+  "name": "Studio Workflow",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "workflow-code": "0.2.4-20260929001",
+    "@workflow-code/cli": "0.2.4-20261013009.codex-studio-integration"
+  },
+  "workflowCode": {
+    "projectType": "workflow",
+    "projectInfo": {
+      "localizedNames": { "zh-CN": "\u5de5\u4f5c\u6d41\u793a\u4f8b", "en": "Local Workflow Demo" },
+      "platformSupport": { "mode": "agnostic" },
+      "dataStorage": { "mode": "local" }
+    }
+  }
+}

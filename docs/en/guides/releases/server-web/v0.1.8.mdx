@@ -1,0 +1,43 @@
+---
+title: "Server Web 0.1.8"
+description: "Release notes for Server Web 0.1.8."
+---
+
+# Server Web 0.1.8
+
+2026-08-26 · Tag `server-web/v0.1.8` · 当前设备
+
+<span id="server-web-0-1-8" className="release-version-anchor"></span>
+<span id="server-web.0.1.8" className="release-version-anchor"></span>
+
+#### New Features
+
+- **Server data only**: `server` and `both` projects stay runnable, while `local` or undeclared projects show one blocked state.
+- **Standalone Alpha endpoint**: deployed with each Server Alpha version, sharing accounts and data while isolating code and assets.
+- **Runnable status is visible**: project lists, details, and versions show the current-locale name, declarations, platforms, and runnable status.
+
+#### Breaking Changes
+
+- Server Web accesses server data only; `local` and undeclared projects are blocked everywhere outside Settings.
+  Migration: declare `server` or `both`, and remove server data access from the other locations.
+- Run, overview, and version sources now use the Desktop identity and the `desktop` filter value.
+  Migration: change the caller's source identifier to `desktop`.
+
+#### Added
+
+- Added a dedicated initial-password page for account invitation links that establishes a signed-in session when accepted.
+- Added read-only storage declaration, allowed locations, server-access state, and block reason to Project Settings.
+- Added blocked projects no longer exposing writable run-queue, access-policy, or data-entry controls.
+- Added current-locale name, manual declarations, display platforms, and runnable status to project lists, details, and versions.
+- Added Run, Embed, Webhooks, schedules, and version selectors offering only Server-runnable versions.
+- Added deployment of Server Web to a standalone Alpha endpoint per Server Alpha version, isolating code and static assets.
+
+#### Changed
+
+- Changed run replays and detailed logs to open stdout, stderr, runner diagnostics, and `report.json` by default at full available width.
+- Changed long log content to scroll in dedicated regions, so manually collapsed reports leave no blank space.
+- Changed run, account, schedule, usage, audit, and release timestamps to use `YYYY-MM-DD HH:mm:ss`.
+
+#### Fixed
+
+- Fixed project type names now following the interface language, so the Chinese interface consistently shows 工作流, 对话, and 看板.

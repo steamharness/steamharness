@@ -1,0 +1,198 @@
+diff --git a/src/vs/base/common/product.ts b/src/vs/base/common/product.ts
+index 0767bb78..f746203e 100644
+--- a/src/vs/base/common/product.ts
++++ b/src/vs/base/common/product.ts
+@@ -132,6 +132,8 @@ export interface IProductConfiguration {
+ 	readonly webviewContentExternalBaseUrlTemplate?: string;
+ 	readonly target?: string;
+ 	readonly nlsCoreBaseUrl?: string;
++	/** Whether the workbench exposes its Accounts activity. */
++	readonly showAccounts?: boolean;
+ 	/** Build-time hash of the commit and core NLS tables used to identify translated-message caches. */
+ 	readonly nlsMetadataHash?: string;
+ 
+diff --git a/src/vs/workbench/browser/parts/globalCompositeBar.ts b/src/vs/workbench/browser/parts/globalCompositeBar.ts
+index d0f5bd1b..4c4affa1 100644
+--- a/src/vs/workbench/browser/parts/globalCompositeBar.ts
++++ b/src/vs/workbench/browser/parts/globalCompositeBar.ts
+@@ -74,6 +74,7 @@ export class GlobalCompositeBar extends Disposable {
+ 		@IInstantiationService private readonly instantiationService: IInstantiationService,
+ 		@IStorageService private readonly storageService: IStorageService,
+ 		@IExtensionService private readonly extensionService: IExtensionService,
++		@IProductService private readonly productService: IProductService,
+ 	) {
+ 		super();
+ 
+@@ -143,6 +144,9 @@ export class GlobalCompositeBar extends Disposable {
+ 	}
+ 
+ 	getContextMenuActions(): IAction[] {
++		if (this.productService.showAccounts === false) {
++			return [];
++		}
+ 		return [toAction({ id: 'toggleAccountsVisibility', label: localize('accounts', "Accounts"), checked: this.accountsVisibilityPreference, run: () => this.accountsVisibilityPreference = !this.accountsVisibilityPreference })];
+ 	}
+ 
+@@ -160,7 +164,7 @@ export class GlobalCompositeBar extends Disposable {
+ 	}
+ 
+ 	private get accountsVisibilityPreference(): boolean {
+-		return isAccountsActionVisible(this.storageService);
++		return isAccountsActionVisible(this.storageService, this.productService);
+ 	}
+ 
+ 	private set accountsVisibilityPreference(value: boolean) {
+@@ -800,7 +804,7 @@ export class SimpleAccountActivityActionViewItem extends AccountsActivityActionV
+ 		@ICodexAccountService codexAccountService: ICodexAccountService,
+ 		@IDefaultAccountService defaultAccountService: IDefaultAccountService,
+ 	) {
+-		super(() => simpleActivityContextMenuActions(storageService, true),
++		super(() => simpleActivityContextMenuActions(storageService, productService, true),
+ 			{
+ 				...options,
+ 				colors: theme => ({
+@@ -829,9 +833,10 @@ export class SimpleGlobalActivityActionViewItem extends GlobalActivityActionView
+ 		@IKeybindingService keybindingService: IKeybindingService,
+ 		@IInstantiationService instantiationService: IInstantiationService,
+ 		@IActivityService activityService: IActivityService,
+-		@IStorageService storageService: IStorageService
++		@IStorageService storageService: IStorageService,
++		@IProductService productService: IProductService
+ 	) {
+-		super(() => simpleActivityContextMenuActions(storageService, false),
++		super(() => simpleActivityContextMenuActions(storageService, productService, false),
+ 			{
+ 				...options,
+ 				colors: theme => ({
+@@ -844,7 +849,7 @@ export class SimpleGlobalActivityActionViewItem extends GlobalActivityActionView
+ 	}
+ }
+ 
+-function simpleActivityContextMenuActions(storageService: IStorageService, isAccount: boolean): IAction[] {
++function simpleActivityContextMenuActions(storageService: IStorageService, productService: IProductService, isAccount: boolean): IAction[] {
+ 	const currentElementContextMenuActions: IAction[] = [];
+ 	if (isAccount) {
+ 		currentElementContextMenuActions.push(
+@@ -854,13 +859,13 @@ function simpleActivityContextMenuActions(storageService: IStorageService, isAcc
+ 	}
+ 	return [
+ 		...currentElementContextMenuActions,
+-		toAction({ id: 'toggle.hideAccounts', label: localize('accounts', "Accounts"), checked: isAccountsActionVisible(storageService), run: () => setAccountsActionVisible(storageService, !isAccountsActionVisible(storageService)) }),
++		...(productService.showAccounts === false ? [] : [toAction({ id: 'toggle.hideAccounts', label: localize('accounts', "Accounts"), checked: isAccountsActionVisible(storageService, productService), run: () => setAccountsActionVisible(storageService, !isAccountsActionVisible(storageService, productService)) })]),
+ 		toAction({ id: 'toggle.hideManage', label: localize('manage', "Manage"), checked: true, enabled: false, run: () => { throw new Error('"Manage" can not be hidden'); } })
+ 	];
+ }
+ 
+-export function isAccountsActionVisible(storageService: IStorageService): boolean {
+-	return storageService.getBoolean(AccountsActivityActionViewItem.ACCOUNTS_VISIBILITY_PREFERENCE_KEY, StorageScope.PROFILE, true);
++export function isAccountsActionVisible(storageService: IStorageService, productService: IProductService): boolean {
++	return productService.showAccounts !== false && storageService.getBoolean(AccountsActivityActionViewItem.ACCOUNTS_VISIBILITY_PREFERENCE_KEY, StorageScope.PROFILE, true);
+ }
+ 
+ function setAccountsActionVisible(storageService: IStorageService, visible: boolean) {
+diff --git a/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts b/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
+index 108ed48b..41154e42 100644
+--- a/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
++++ b/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
+@@ -35,6 +35,7 @@ import { HiddenItemStrategy, MenuWorkbenchToolBar, WorkbenchToolBar } from '../.
+ import { IActionViewItemService } from '../../../../platform/actions/browser/actionViewItemService.js';
+ import { ACCOUNTS_ACTIVITY_ID, GLOBAL_ACTIVITY_ID } from '../../../common/activity.js';
+ import { AccountsActivityActionViewItem, isAccountsActionVisible, SimpleAccountActivityActionViewItem, SimpleGlobalActivityActionViewItem } from '../globalCompositeBar.js';
++import { IProductService } from '../../../../platform/product/common/productService.js';
+ import { HoverPosition } from '../../../../base/browser/ui/hover/hoverWidget.js';
+ import { IEditorGroupsContainer, IEditorGroupsService } from '../../../services/editor/common/editorGroupsService.js';
+ import { ActionRunner, IAction, Separator } from '../../../../base/common/actions.js';
+@@ -321,7 +322,8 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
+ 		@IEditorService editorService: IEditorService,
+ 		@IMenuService private readonly menuService: IMenuService,
+ 		@IKeybindingService private readonly keybindingService: IKeybindingService,
+-		@IActionViewItemService private readonly actionViewItemService: IActionViewItemService
++		@IActionViewItemService private readonly actionViewItemService: IActionViewItemService,
++		@IProductService private readonly productService: IProductService
+ 	) {
+ 		super(id, { hasTitle: false }, themeService, storageService, layoutService);
+ 
+@@ -765,7 +767,7 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
+ 
+ 			// --- Activity Actions (always at the end)
+ 			if (this.activityActionsEnabled) {
+-				if (isAccountsActionVisible(this.storageService)) {
++				if (isAccountsActionVisible(this.storageService, this.productService)) {
+ 					actions.primary.push(ACCOUNTS_ACTIVITY_TILE_ACTION);
+ 				}
+ 
+@@ -1020,8 +1022,9 @@ export class MainBrowserTitlebarPart extends BrowserTitlebarPart {
+ 		@IMenuService menuService: IMenuService,
+ 		@IKeybindingService keybindingService: IKeybindingService,
+ 		@IActionViewItemService actionViewItemService: IActionViewItemService,
++		@IProductService productService: IProductService,
+ 	) {
+-		super(Parts.TITLEBAR_PART, mainWindow, editorGroupService.mainPart, contextMenuService, configurationService, environmentService, instantiationService, themeService, storageService, layoutService, contextKeyService, hostService, editorService, menuService, keybindingService, actionViewItemService);
++		super(Parts.TITLEBAR_PART, mainWindow, editorGroupService.mainPart, contextMenuService, configurationService, environmentService, instantiationService, themeService, storageService, layoutService, contextKeyService, hostService, editorService, menuService, keybindingService, actionViewItemService, productService);
+ 	}
+ }
+ 
+@@ -1056,9 +1059,10 @@ export class AuxiliaryBrowserTitlebarPart extends BrowserTitlebarPart implements
+ 		@IMenuService menuService: IMenuService,
+ 		@IKeybindingService keybindingService: IKeybindingService,
+ 		@IActionViewItemService actionViewItemService: IActionViewItemService,
++		@IProductService productService: IProductService,
+ 	) {
+ 		const id = AuxiliaryBrowserTitlebarPart.COUNTER++;
+-		super(`workbench.parts.auxiliaryTitle.${id}`, getWindow(container), editorGroupsContainer, contextMenuService, configurationService, environmentService, instantiationService, themeService, storageService, layoutService, contextKeyService, hostService, editorService, menuService, keybindingService, actionViewItemService);
++		super(`workbench.parts.auxiliaryTitle.${id}`, getWindow(container), editorGroupsContainer, contextMenuService, configurationService, environmentService, instantiationService, themeService, storageService, layoutService, contextKeyService, hostService, editorService, menuService, keybindingService, actionViewItemService, productService);
+ 	}
+ 
+ 	override get preventZoom(): boolean {
+diff --git a/src/vs/workbench/electron-browser/parts/titlebar/titlebarPart.ts b/src/vs/workbench/electron-browser/parts/titlebar/titlebarPart.ts
+index 9fd23700..87f0035c 100644
+--- a/src/vs/workbench/electron-browser/parts/titlebar/titlebarPart.ts
++++ b/src/vs/workbench/electron-browser/parts/titlebar/titlebarPart.ts
+@@ -9,6 +9,7 @@ import { $, addDisposableListener, append, EventType, getWindow, getWindowId, hi
+ import { IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
+ import { IConfigurationService, IConfigurationChangeEvent } from '../../../../platform/configuration/common/configuration.js';
+ import { IStorageService } from '../../../../platform/storage/common/storage.js';
++import { IProductService } from '../../../../platform/product/common/productService.js';
+ import { INativeWorkbenchEnvironmentService } from '../../../services/environment/electron-browser/environmentService.js';
+ import { IHostService } from '../../../services/host/browser/host.js';
+ import { isMacintosh, isWindows, isLinux, isTahoeOrNewer } from '../../../../base/common/platform.js';
+@@ -78,9 +79,10 @@ export class NativeTitlebarPart extends BrowserTitlebarPart {
+ 		@IEditorService editorService: IEditorService,
+ 		@IMenuService menuService: IMenuService,
+ 		@IKeybindingService keybindingService: IKeybindingService,
+-		@IActionViewItemService actionViewItemService: IActionViewItemService
++		@IActionViewItemService actionViewItemService: IActionViewItemService,
++		@IProductService productService: IProductService
+ 	) {
+-		super(id, targetWindow, editorGroupsContainer, contextMenuService, configurationService, environmentService, instantiationService, themeService, storageService, layoutService, contextKeyService, hostService, editorService, menuService, keybindingService, actionViewItemService);
++		super(id, targetWindow, editorGroupsContainer, contextMenuService, configurationService, environmentService, instantiationService, themeService, storageService, layoutService, contextKeyService, hostService, editorService, menuService, keybindingService, actionViewItemService, productService);
+ 
+ 		this.tahoeOrNewer = isTahoeOrNewer(environmentService.os.release);
+ 
+@@ -303,9 +305,10 @@ export class MainNativeTitlebarPart extends NativeTitlebarPart {
+ 		@IEditorService editorService: IEditorService,
+ 		@IMenuService menuService: IMenuService,
+ 		@IKeybindingService keybindingService: IKeybindingService,
+-		@IActionViewItemService actionViewItemService: IActionViewItemService
++		@IActionViewItemService actionViewItemService: IActionViewItemService,
++		@IProductService productService: IProductService
+ 	) {
+-		super(Parts.TITLEBAR_PART, mainWindow, editorGroupService.mainPart, contextMenuService, configurationService, environmentService, instantiationService, themeService, storageService, layoutService, contextKeyService, hostService, nativeHostService, editorGroupService, editorService, menuService, keybindingService, actionViewItemService);
++		super(Parts.TITLEBAR_PART, mainWindow, editorGroupService.mainPart, contextMenuService, configurationService, environmentService, instantiationService, themeService, storageService, layoutService, contextKeyService, hostService, nativeHostService, editorGroupService, editorService, menuService, keybindingService, actionViewItemService, productService);
+ 	}
+ }
+ 
+@@ -333,10 +336,11 @@ export class AuxiliaryNativeTitlebarPart extends NativeTitlebarPart implements I
+ 		@IEditorService editorService: IEditorService,
+ 		@IMenuService menuService: IMenuService,
+ 		@IKeybindingService keybindingService: IKeybindingService,
+-		@IActionViewItemService actionViewItemService: IActionViewItemService
++		@IActionViewItemService actionViewItemService: IActionViewItemService,
++		@IProductService productService: IProductService
+ 	) {
+ 		const id = AuxiliaryNativeTitlebarPart.COUNTER++;
+-		super(`workbench.parts.auxiliaryTitle.${id}`, getWindow(container), editorGroupsContainer, contextMenuService, configurationService, environmentService, instantiationService, themeService, storageService, layoutService, contextKeyService, hostService, nativeHostService, editorGroupService, editorService, menuService, keybindingService, actionViewItemService);
++		super(`workbench.parts.auxiliaryTitle.${id}`, getWindow(container), editorGroupsContainer, contextMenuService, configurationService, environmentService, instantiationService, themeService, storageService, layoutService, contextKeyService, hostService, nativeHostService, editorGroupService, editorService, menuService, keybindingService, actionViewItemService, productService);
+ 	}
+ 
+ 	override get preventZoom(): boolean {

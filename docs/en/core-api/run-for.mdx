@@ -1,0 +1,80 @@
+---
+title: "runFor"
+description: "Execute the traceable for loop node and let shared runtime UI Diagram display the loop body with the loop container."
+---
+
+# runFor
+
+`workflow.runFor()` is the built-in loop execution node. It first computes an iterable `items` from the current state, then executes the loop body `run` in sequence, returning a new state each time. The runtime will emit start/finish events for `branch-node`, and shared runtime UI Diagram will wrap the loop body node in a loop container with a background color.
+
+## Signature
+
+```ts
+workflow.runFor<State, Item>(
+  input: State,
+  context: WorkflowContext,
+  options: {
+    name?: string;
+    items(
+      input: State,
+      context: WorkflowContext,
+    ): Iterable<Item> | AsyncIterable<Item> | Promise<Iterable<Item> | AsyncIterable<Item>>;
+    run(input: State, item: Item, index: number, context: WorkflowContext): State | Promise<State>;
+    maxIterations?: number;
+    metadata?: Partial<WorkflowNodeMetadata>;
+  },
+): Promise<State>
+```
+
+## Parameter
+
+|Parameter|Type|Description|
+| --- | --- | --- |
+| `input` | `State` |Initial cycle state.|
+| `context` | `WorkflowContext` |runtime context for hooks, provider, KV, files, abortSignal.|
+| `options.name` | `string` |Diagram and the cycle node title displayed in Trace. Default `Run for`.|
+| `options.items` | `Iterable` / `AsyncIterable` |A cycle term is generated based on the initial state. Supports synchronous and asynchronous iterable, and also supports return Promise.|
+| `options.run` | `function` |The loop body of each item. Receives the current state, item, index and context starting from `0`, and returns the next round state.|
+| `options.maxIterations` | `number` |The maximum number of iterations. Default `1000` to prevent accidental infinite loops.|
+| `options.metadata` | `Partial<WorkflowNodeMetadata>` |Overrides the loop node meta information. The default type is `run-for`.|
+
+## Operation Report
+
+`runFor` uses the standard node name `run-for` and runs type as `branch-node`. The `executionInfo` of the completion event will contain:
+
+```json
+{
+  "loopType": "for",
+  "iterations": 3,
+  "iterationCount": 3,
+  "maxIterations": 1000,
+  "completed": true
+}
+```
+
+`completed` is `false` on failure and retains the number of iterations that have completed.
+
+## Example
+
+```ts
+const finalState = await workflow.runFor(seed, context, {
+  name: "Round loop",
+  maxIterations: 6,
+  items: (state) => Array.from({ length: state.rounds }, (_, index) => index + 1),
+  async run(state, value, index, loopContext) {
+    return workflow.runNode(addRoundNode, { ...state, value, index }, loopContext);
+  },
+});
+```
+
+## Diagram
+
+Static structure analysis recognizes `items`, `maxIterations`, and `run` as object literals. `workflow.runNode`, `workflow.runStreamNode`, `workflow.runIf`, `workflow.runFor`, and `workflow.runWhile` in `run` become loop body nodes and are wrapped by the loop container in shared runtime UI Diagram. In order to make Diagram readable, the loop configuration is kept as literal as possible; the dynamic assembly options can still be run, but the static diagram can only show limited information.
+
+## Error
+
+|Situation|Error Type|Description|
+| --- | --- | --- |
+|More than `maxIterations`| `node_execution` |Throw out `Run-for node "<name>" exceeded maxIterations (<value>).`.|
+|`items` or `run` error thrown| `node_execution` |The original error is wrapped as `WorkflowError` and written to the loop node report.|
+|Break before execution or in a loop|`execution_aborted` or `node_execution`|From `context.abortSignal`.|

@@ -1,0 +1,21 @@
+---
+title: "Runtime platform"
+description: "Identify the local execution host."
+---
+
+# Runtime platform
+
+```ts
+workflow.getRuntimePlatform(): "cli" | "desktop"
+workflow.isCli(): boolean
+workflow.isDesktop(): boolean
+```
+
+Platforms describe where code executes. Terminal and CLI Web use `cli`; an absent marker defaults to `cli`. Unknown nonempty markers throw. Server does not execute projects and provides no server execution marker or `isWeb()`.
+
+```ts
+const platform = workflow.getRuntimePlatform();
+const local = workflow.isCli();
+```
+
+Runtime platform does not choose data location. Declare `projectInfo.dataStorage.mode` and explicitly use `context.storage.local` or `context.storage.server`. Locally running projects can read and write authorized remote data.

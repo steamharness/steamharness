@@ -1,0 +1,128 @@
+diff --git a/src/vs/workbench/contrib/remote/browser/remoteExplorer.ts b/src/vs/workbench/contrib/remote/browser/remoteExplorer.ts
+index c7da1285d08..01214218fa8 100644
+--- a/src/vs/workbench/contrib/remote/browser/remoteExplorer.ts
++++ b/src/vs/workbench/contrib/remote/browser/remoteExplorer.ts
+@@ -38,6 +38,7 @@ import { IRemoteAgentEnvironment } from '../../../../platform/remote/common/remo
+ import { toAction } from '../../../../base/common/actions.js';
+ import { IPreferencesService } from '../../../services/preferences/common/preferences.js';
+ import { IStorageService, StorageScope } from '../../../../platform/storage/common/storage.js';
++import product from '../../../../platform/product/common/product.js';
+ 
+ export const VIEWLET_ID = 'workbench.view.remote';
+ export const TOGGLE_VIEW_ACTION_ID = 'remoteExplorer.toggleForwardedPortsView';
+@@ -86,6 +87,9 @@ export class ForwardedPortsView extends Disposable implements IWorkbenchContribu
+ 	}
+ 
+ 	private async getViewContainer(): Promise<ViewContainer | null> {
++		if (product.disabledWorkbenchViews?.includes(TUNNEL_VIEW_ID)) {
++			return null;
++		}
+ 		return Registry.as<IViewContainersRegistry>(Extensions.ViewContainersRegistry).registerViewContainer({
+ 			id: TUNNEL_VIEW_CONTAINER_ID,
+ 			title: nls.localize2('ports', "Ports"),
+@@ -104,15 +108,15 @@ export class ForwardedPortsView extends Disposable implements IWorkbenchContribu
+ 		const viewEnabled: boolean = !!forwardedPortsViewEnabled.getValue(this.contextKeyService);
+ 
+ 		if (featuresEnabled || viewEnabled) {
++			this.remoteExplorerService.enablePortsFeatures(!featuresEnabled);
+ 			// Also enable the view if it isn't already.
+ 			if (!viewEnabled) {
+ 				this.contextKeyService.createKey(forwardedPortsViewEnabled.key, true);
+ 			}
+ 			const viewContainer = await this.getViewContainer();
+-			const tunnelPanelDescriptor = new TunnelPanelDescriptor(new TunnelViewModel(this.remoteExplorerService, this.tunnelService), this.environmentService);
+-			const viewsRegistry = Registry.as<IViewsRegistry>(Extensions.ViewsRegistry);
+ 			if (viewContainer) {
+-				this.remoteExplorerService.enablePortsFeatures(!featuresEnabled);
++				const tunnelPanelDescriptor = new TunnelPanelDescriptor(new TunnelViewModel(this.remoteExplorerService, this.tunnelService), this.environmentService);
++				const viewsRegistry = Registry.as<IViewsRegistry>(Extensions.ViewsRegistry);
+ 				viewsRegistry.registerViews([tunnelPanelDescriptor], viewContainer);
+ 			}
+ 		} else {
+@@ -125,7 +129,7 @@ export class ForwardedPortsView extends Disposable implements IWorkbenchContribu
+ 	}
+ 
+ 	private enableBadgeAndStatusBar() {
+-		const disposable = Registry.as<IViewsRegistry>(Extensions.ViewsRegistry).onViewsRegistered(e => {
++		const disposable = this._register(Registry.as<IViewsRegistry>(Extensions.ViewsRegistry).onViewsRegistered(e => {
+ 			if (e.find(view => view.views.find(viewDescriptor => viewDescriptor.id === TUNNEL_VIEW_ID))) {
+ 				this._register(Event.debounce(this.remoteExplorerService.tunnelModel.onForwardPort, (_last, e) => e, 50)(() => {
+ 					this.updateActivityBadge();
+@@ -140,7 +144,7 @@ export class ForwardedPortsView extends Disposable implements IWorkbenchContribu
+ 				this.updateStatusBar();
+ 				disposable.dispose();
+ 			}
+-		});
++		}));
+ 	}
+ 
+ 	private async updateActivityBadge() {
+diff --git a/src/vs/workbench/contrib/remote/test/browser/remoteExplorer.test.ts b/src/vs/workbench/contrib/remote/test/browser/remoteExplorer.test.ts
+index b0a6a155512..c6aa4bbf4a7 100644
+--- a/src/vs/workbench/contrib/remote/test/browser/remoteExplorer.test.ts
++++ b/src/vs/workbench/contrib/remote/test/browser/remoteExplorer.test.ts
+@@ -4,6 +4,7 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import assert from 'assert';
++import { Event } from '../../../../../base/common/event.js';
+ import { toDisposable } from '../../../../../base/common/lifecycle.js';
+ import { mock } from '../../../../../base/test/common/mock.js';
+ import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
+@@ -11,15 +12,53 @@ import { MockContextKeyService } from '../../../../../platform/keybinding/test/c
+ import { NullLogService } from '../../../../../platform/log/common/log.js';
+ import { INotificationService } from '../../../../../platform/notification/common/notification.js';
+ import { IOpenerService } from '../../../../../platform/opener/common/opener.js';
++import product from '../../../../../platform/product/common/product.js';
++import { Registry } from '../../../../../platform/registry/common/platform.js';
+ import { InMemoryStorageService } from '../../../../../platform/storage/common/storage.js';
+ import { ITunnelService, RemoteTunnel, TunnelPrivacyId } from '../../../../../platform/tunnel/common/tunnel.js';
+ import { IExternalUriOpenerService } from '../../../externalUriOpener/common/externalUriOpenerService.js';
++import { Extensions, IViewContainersRegistry } from '../../../../common/views.js';
++import { IActivityService } from '../../../../services/activity/common/activity.js';
++import { IWorkbenchEnvironmentService } from '../../../../services/environment/common/environmentService.js';
+ import { IHostService } from '../../../../services/host/browser/host.js';
+ import { NotificationService } from '../../../../services/notification/common/notificationService.js';
+-import { IRemoteExplorerService } from '../../../../services/remote/common/remoteExplorerService.js';
+-import { TunnelModel } from '../../../../services/remote/common/tunnelModel.js';
+-import { isCandidateRemappedTunnelLocalEndpoint, OnAutoForwardedAction } from '../../browser/remoteExplorer.js';
++import { IRemoteExplorerService, TUNNEL_VIEW_CONTAINER_ID, TUNNEL_VIEW_ID } from '../../../../services/remote/common/remoteExplorerService.js';
++import { forwardedPortsFeaturesEnabled, TunnelModel } from '../../../../services/remote/common/tunnelModel.js';
++import { IStatusbarService } from '../../../../services/statusbar/browser/statusbar.js';
++import { ForwardedPortsView, isCandidateRemappedTunnelLocalEndpoint, OnAutoForwardedAction } from '../../browser/remoteExplorer.js';
+ import { TunnelPanel } from '../../browser/tunnelView.js';
+ 
++suite('ForwardedPortsView', () => {
++	const store = ensureNoDisposablesAreLeakedInTestSuite();
++
++	test('product-disabled Ports keeps forwarding enabled without creating an empty panel', async () => {
++		const previous = product.disabledWorkbenchViews;
++		const containers = Registry.as<IViewContainersRegistry>(Extensions.ViewContainersRegistry);
++		const container = containers.get(TUNNEL_VIEW_CONTAINER_ID);
++		const enablement: boolean[] = [];
++		const contextKeys = store.add(new MockContextKeyService());
++		contextKeys.createKey(forwardedPortsFeaturesEnabled.key, true);
++		try {
++			Object.assign(product, { disabledWorkbenchViews: [TUNNEL_VIEW_ID] });
++			store.add(new ForwardedPortsView(
++				contextKeys,
++				new class extends mock<IWorkbenchEnvironmentService>() { },
++				new class extends mock<IRemoteExplorerService>() {
++					override enablePortsFeatures(viewOnly: boolean): void { enablement.push(viewOnly); }
++				},
++				new class extends mock<ITunnelService>() {
++					override readonly onTunnelOpened = Event.None;
++				},
++				new class extends mock<IActivityService>() { },
++				new class extends mock<IStatusbarService>() { },
++			));
++			await Promise.resolve();
++			assert.deepStrictEqual({ enablement, container: containers.get(TUNNEL_VIEW_CONTAINER_ID) }, { enablement: [false], container });
++		} finally {
++			Object.assign(product, { disabledWorkbenchViews: previous });
++		}
++	});
++});
++
+ suite('AutomaticPortForwarding', () => {
+ 	const store = ensureNoDisposablesAreLeakedInTestSuite();

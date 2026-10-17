@@ -1,0 +1,51 @@
+---
+title: "开发者小助手 0.1.5"
+description: "Release notes for 开发者小助手 0.1.5."
+---
+
+# 开发者小助手 0.1.5
+
+2026-09-01 · Tag `builtin-developer-assistant/v0.1.5` · 内置项目更新
+
+<span id="builtin-developer-assistant-0-1-5" className="release-version-anchor"></span>
+<span id="builtin-developer-assistant.0.1.5" className="release-version-anchor"></span>
+
+#### New Features
+
+- **Desktop Control standard MCP**: the assistant permanently mounts that MCP to operate themes, language, updates, projects, and KV.
+- **OpenAI Responses support**: reuses OpenCode's multi-turn text, images, model validation, and streaming output, emitted as `opencode-answer`.
+- **OpenCode Permission quick parameter**: quick parameters switch between `read-only`, `workspace`, and the default `auto`.
+
+#### Breaking Changes
+
+- The generator stops emitting global KV, `.workflow` storage scopes, and Kanban `dataSources` in favor of current-project, conversation, and related-project APIs.
+  Migration: rewrite existing `context.kv`, `persistentValue`, and `dataSources` calls to the current-project, conversation, or `projectInfo.relatedProjects` APIs.
+- Assistant workspace manifests accept only schema v2 and general related-resource types; legacy manifests and older Desktops without one are dropped.
+  Migration: convert legacy project manifests to schema v2 and upgrade the host to a Desktop declaring `minDesktopVersion`.
+
+#### Added
+
+- Added an OpenCode Permission quick parameter switching between `read-only`, `workspace`, and `auto`, forwarded to every run.
+- Added OpenAI Responses support reusing multi-turn text, images, model validation, and streaming output into `opencode-answer`.
+- Added a permanent Desktop Control MCP mount covering theme, language, launch at login, updates, local projects, project info, and KV.
+- Added Dock opening tools for the Home, local project, or ordinary folder bound to the run, on the right or bottom.
+- Added batch KV reads and writes of up to 100 project entries plus knowledge queries and mutations, returning per-item results.
+- Added refreshing reasoning levels through the OpenCode resolver on model changes, with extra `max` / `ultra` levels for `gpt-5.6-*`.
+
+#### Changed
+
+- Changed the minimum host to Desktop `0.1.23` now that the Desktop Control MCP is permanently mounted.
+- Changed OpenAI reasoning levels to display as `Effort` in quick parameters and combine with the model in the composer summary.
+- Changed the project manifest to adopt the general `projectInfo.relatedProjects` relationship contract.
+- Changed OpenCode to reach Desktop Control only through the parent Workflow's controlled proxy, with consequential writes approved by default.
+
+#### Fixed
+
+- Fixed continued editing and completion misreported from stale CLI results when a Skill or reference cannot be read completely.
+- Fixed ordinary folders degraded by obsolete manifests or structural validation now being migrated in authorized stages.
+- Fixed source migration, host recognition, code-root authorization, and KV authorization being reported as one completion state.
+
+#### Removed
+
+- Removed global KV, `.workflow` storage scope, and Kanban `dataSources` output from the generator.
+- Removed conversion of legacy project manifests and support for older Desktops without a manifest.

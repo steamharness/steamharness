@@ -1,0 +1,5 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Workflow Code template icon</title>
+  <desc id="desc">A single-color flowing loop mark for status bar and tray use.</desc>
+  <path d="M312 520C312 414.514 397.514 329 503 329H629C666.555 329 697 359.445 697 397C697 434.555 666.555 465 629 465H488C448.235 465 416 497.235 416 537C416 576.765 448.235 609 488 609H700" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="96"/>
+</svg>

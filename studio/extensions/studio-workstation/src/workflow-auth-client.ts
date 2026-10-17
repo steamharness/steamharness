@@ -1,0 +1,422 @@
+import { t } from './localization';
+export const DEFAULT_WORKFLOW_SERVER_URL = 'http://localhost:7126';
+
+export interface WorkflowUser {
+  userId: string;
+  email: string;
+  displayName: string;
+  avatarUrl?: string;
+}
+
+export interface WorkflowConnection {
+  serverUrl: string;
+  accessToken: string;
+  /** Optional private system-AI service connection kept separate from project auth. */
+  aiServerUrl?: string;
+  aiAccessToken?: string;
+}
+export interface WorkflowLoginSession extends WorkflowConnection {
+  user: WorkflowUser;
+  apiKeyId: string;
+  expiresAt?: string;
+  sessionCookie?: string;
+}
+
+export interface WorkflowAccountState {
+  status: 'signed-out' | 'checking' | 'authenticated' | 'expired' | 'error';
+  serverUrl: string;
+  aiServerUrl?: string;
+  aiConfigured?: boolean;
+  user?: WorkflowUser;
+  expiresAt?: string;
+  error?: string;
+  revision: number;
+}
+
+interface ApiEnvelope<T> { errCode: number; errMessage?: string; data?: T }
+interface MeResponse {
+  profile: WorkflowUser | null;
+  principal?: { apiKeyId?: string; expiresAt?: string };
+}
+interface LoginResponse {
+  authenticated: boolean;
+  accessToken?: string;
+  apiKey?: { id?: string };
+  expiresAt?: string;
+}
+
+export interface WorkflowSystemAiUsage {
+  balance: number;
+  groups: { groupId: number; name: string; subscriptionType: string; subscription?: {
+    status: string; dailyLimitUsd: number | null; dailyUsageUsd: number;
+    weeklyLimitUsd: number | null; weeklyUsageUsd: number;
+    monthlyLimitUsd: number | null; monthlyUsageUsd: number;
+  } }[];
+}
+
+export class WorkflowAuthError extends Error {
+  constructor(message: string, readonly status?: number) { super(message); }
+}
+
+export function normalizeWorkflowServerUrl(value: string): string {
+  let url: URL;
+  try { url = new URL(value.trim()); }
+  catch { throw new WorkflowAuthError(t("Enter a valid server address.")); }
+  if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
+    throw new WorkflowAuthError(t("The server address must use HTTP or HTTPS and contain no credentials or query parameters."));
+  }
+  return url.toString().replace(/\/+$/, '');
+}
+
+/**
+ * Remove deployment and credential material before an untrusted project
+ * worker inherits the Studio process environment. Project workers receive
+ * their scoped Workflow connection through the host protocol instead.
+ */
+export function isPrivateEnvironmentKey(key: string): boolean {
+  return key === 'NODE_OPTIONS' ||
+    /^(?:WORKFLOW_(?:AI|LLM|SERVER|PUBLIC_SERVER|STUDIO_INTERNAL)(?:_|$)|SUB2API_)/u.test(key) ||
+    /(?:^|_)(?:API[_-]?KEY|ACCESS[_-]?KEY(?:_ID)?|SECRET|TOKEN|PASSWORD|PRIVATE[_-]?KEY|DATABASE_URL|REDIS_URL|CREDENTIALS?|AUTH(?:ORIZATION)?|CONFIG)(?:$|_)/iu.test(key) ||
+    /^(?:DOCKER_CONFIG|KUBECONFIG|SSH_AUTH_SOCK|GIT_(?:CONFIG|SSH|ASKPASS)|NPM_CONFIG_USERCONFIG|PIP_CONFIG_FILE|CARGO_HOME|AZURE_CONFIG_DIR)$/u.test(key);
+}
+
+export function sanitizeWorkflowEnvironment(base: Record<string, string | undefined>): Record<string, string | undefined> {
+  return Object.fromEntries(Object.entries(base).filter(([key, value]) => value !== undefined && !isPrivateEnvironmentKey(key)));
+}
+
+export class WorkflowServerClient {
+  readonly serverUrl: string;
+  constructor(serverUrl: string, private readonly fetcher: typeof fetch = fetch) {
+    this.serverUrl = normalizeWorkflowServerUrl(serverUrl);
+  }
+
+  private async request<T>(path: string, options: {
+    accessToken?: string; sessionCookie?: string; body?: object; method?: string;
+    headersReceived?: (headers: Headers) => void;
+  } = {}): Promise<T> {
+    const { accessToken, sessionCookie, body, method = body ? 'POST' : 'GET' } = options;
+    let response: Response;
+    try {
+      response = await this.fetcher(`${this.serverUrl}${path}`, {
+        method, redirect: 'error', signal: AbortSignal.timeout(15_000),
+        credentials: 'omit',
+        headers: {
+          Accept: 'application/json', 'Accept-Language': 'zh-CN',
+          ...(body ? { 'Content-Type': 'application/json' } : {}),
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+          ...(sessionCookie ? { Cookie: sessionCookie } : {}),
+        },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+    } catch { throw new WorkflowAuthError(t("Cannot connect to Workflow Server. Check the server address and network.")); }
+    options.headersReceived?.(response.headers);
+    let payload: ApiEnvelope<T>;
+    try { payload = await response.json() as ApiEnvelope<T>; }
+    catch { throw new WorkflowAuthError(t("The server returned an invalid response."), response.status); }
+    if (!response.ok || payload.errCode !== 0 || payload.data === undefined) {
+      const message = response.status === 401
+        ? (path === '/api/auth/login' ? t("Incorrect email or password.") : t("Sign-in expired. Sign in again."))
+        : response.status === 429 ? t("Too many requests. Try again later.")
+          : payload.errMessage || t("Workflow Server request failed ({0}).", response.status);
+      throw new WorkflowAuthError(accessToken ? message.replaceAll(accessToken, '[redacted]') : message, response.status);
+    }
+    return payload.data;
+  }
+
+  async verify(connection: WorkflowConnection): Promise<WorkflowLoginSession> {
+    if (normalizeWorkflowServerUrl(connection.serverUrl) !== this.serverUrl || !connection.accessToken) {
+      throw new WorkflowAuthError(t("Sign-in credentials do not match the server."), 401);
+    }
+    const me = await this.request<MeResponse>('/api/auth/me', { accessToken: connection.accessToken });
+    const profile = me.profile;
+    if (!profile || typeof profile.userId !== 'string' || !profile.userId || typeof profile.email !== 'string' || typeof profile.displayName !== 'string' || !me.principal?.apiKeyId) {
+      throw new WorkflowAuthError(t("The server did not return valid account information."));
+    }
+    let avatarUrl: string | undefined;
+    if (typeof profile.avatarUrl === 'string' && profile.avatarUrl) {
+      try {
+        const url = new URL(profile.avatarUrl, `${this.serverUrl}/`);
+        if (['http:', 'https:'].includes(url.protocol) && !url.username && !url.password) { avatarUrl = url.toString(); }
+      } catch { /* An invalid avatar does not invalidate the account. */ }
+    }
+    return {
+      serverUrl: this.serverUrl, accessToken: connection.accessToken,
+      user: { userId: profile.userId, email: profile.email, displayName: profile.displayName, avatarUrl },
+      apiKeyId: me.principal.apiKeyId, expiresAt: me.principal.expiresAt,
+    };
+  }
+
+  async login(email: string, password: string): Promise<WorkflowLoginSession> {
+    if (!email.trim() || !password) { throw new WorkflowAuthError(t("Enter your email and password.")); }
+    let sessionCookie: string | undefined;
+    const result = await this.request<LoginResponse>('/api/auth/login', {
+      body: { email: email.trim(), password, source: 'desktop', clientName: 'Studio Workstation' },
+      headersReceived: (headers) => {
+        const cookies = headers.getSetCookie?.() ?? [];
+        sessionCookie = cookies.map((cookie) => cookie.split(';', 1)[0]).join('; ') || undefined;
+      },
+    });
+    if (!result.authenticated || !result.accessToken || !result.apiKey?.id) {
+      throw new WorkflowAuthError(t("The server did not return desktop sign-in credentials."));
+    }
+    try { return { ...await this.verify({ serverUrl: this.serverUrl, accessToken: result.accessToken }), sessionCookie }; }
+    catch (error) {
+      if (sessionCookie) {
+        await this.request(`/api/auth/api-keys/${encodeURIComponent(result.apiKey.id)}`, { sessionCookie, method: 'DELETE' }).catch(() => undefined);
+        await this.request('/api/auth/logout', { sessionCookie, method: 'POST' }).catch(() => undefined);
+      }
+      throw error;
+    }
+  }
+
+  systemAiUsage(connection: WorkflowConnection): Promise<WorkflowSystemAiUsage> {
+    if (!connection.aiServerUrl || !connection.aiAccessToken) { throw new WorkflowAuthError(t('System AI is unavailable.')); }
+    const aiClient = new WorkflowServerClient(connection.aiServerUrl, this.fetcher);
+    return aiClient.request('/api/ai/usage', { accessToken: connection.aiAccessToken });
+  }
+
+  async resource(connection: WorkflowConnection, kind: string, target: Record<string, string>): Promise<unknown> {
+    if (normalizeWorkflowServerUrl(connection.serverUrl) !== this.serverUrl || !target.projectId) { throw new WorkflowAuthError('Invalid resource server or project.'); }
+    const prefix = `/api/workflows/${encodeURIComponent(target.projectId)}`;
+    const auth = { accessToken: connection.accessToken };
+    if (kind === 'knowledge') {
+      return this.request(`${prefix}/knowledge-documents${target.documentId ? `/${encodeURIComponent(target.documentId)}` : '?pageSize=100'}`, auth);
+    }
+    if (kind === 'kv') {
+      const query = new URLSearchParams({ scope: target.scope === 'conversation' ? 'conversation' : 'project' });
+      if (target.conversationId) { query.set('conversationId', target.conversationId); }
+      if (target.key) { query.set('key', target.key); }
+      else { query.set('pageSize', '100'); }
+      return this.request(`${prefix}/kv${target.key ? '/entry' : ''}?${query}`, auth);
+    }
+    if (kind === 'file') {
+      const result = await this.request<{ files: { path: string; content: string; encoding?: string }[] }>(`${prefix}/files?target=${encodeURIComponent(target.target || 'latest')}&includeBinary=true`, auth);
+      const file = result.files.find((file) => file.path === target.filePath);
+      if (!file) { throw new WorkflowAuthError(t("File does not exist.")); }
+      return file;
+    }
+    if (kind === 'project' || kind === 'kanban') { return this.request(`${prefix}/structure`, auth); }
+    throw new WorkflowAuthError('Unsupported resource type.');
+  }
+
+  async revoke(session: WorkflowLoginSession): Promise<void> {
+    const auth = session.sessionCookie ? { sessionCookie: session.sessionCookie } : { accessToken: session.accessToken };
+    // API keys cannot manage keys; revoke with the password-login session.
+    if (session.sessionCookie) {
+      await this.request(`/api/auth/api-keys/${encodeURIComponent(session.apiKeyId)}`, { ...auth, method: 'DELETE' });
+    }
+    await this.request('/api/auth/logout', { ...auth, method: 'POST' });
+  }
+}
+
+interface SecretStore {
+  get(): PromiseLike<string | undefined>;
+  store(value: string): PromiseLike<void>;
+  delete(): PromiseLike<void>;
+}
+
+export class WorkflowAccount {
+  private session?: WorkflowLoginSession;
+  private verified = false;
+  private stored?: string;
+  private initialized = false;
+  private epoch = 0;
+  private writes = Promise.resolve();
+  private verification?: { epoch: number; promise: Promise<void> };
+  private state: WorkflowAccountState;
+  private aiConnection?: { serverUrl: string; accessToken: string };
+
+  constructor(
+    serverUrl: string, private readonly secrets: SecretStore,
+    private readonly onChange: (state: WorkflowAccountState) => void,
+    private readonly client = (url: string) => new WorkflowServerClient(url),
+  ) {
+    this.state = { status: 'signed-out', serverUrl: normalizeWorkflowServerUrl(serverUrl), revision: 0 };
+  }
+
+  getState(): WorkflowAccountState { return { ...this.state, user: this.state.user && { ...this.state.user } }; }
+  getSession(): WorkflowLoginSession | undefined { return this.verified ? this.session : undefined; }
+  getConnection(): WorkflowConnection | undefined {
+    const session = this.getSession();
+    return session ? { serverUrl: session.serverUrl, accessToken: session.accessToken,
+      ...(this.aiConnection ? { aiServerUrl: this.aiConnection.serverUrl, aiAccessToken: this.aiConnection.accessToken } : {}) } : undefined;
+  }
+
+  setAiConnection(connection: { serverUrl: string; accessToken: string } | undefined): void {
+    if (connection && (typeof connection.accessToken !== 'string' || !connection.accessToken || connection.accessToken.length > 16_384)) {
+      throw new WorkflowAuthError(t('Invalid AI login.'));
+    }
+    this.aiConnection = connection
+      ? { serverUrl: normalizeWorkflowServerUrl(connection.serverUrl), accessToken: connection.accessToken }
+      : undefined;
+    this.state = { ...this.state, aiServerUrl: this.aiConnection?.serverUrl, aiConfigured: this.aiConnection !== undefined, revision: this.state.revision + 1 };
+    this.onChange(this.getState());
+  }
+
+  private update(status: WorkflowAccountState['status'], error?: string): void {
+    this.state = { status, serverUrl: this.state.serverUrl, aiServerUrl: this.aiConnection?.serverUrl,
+      aiConfigured: this.aiConnection !== undefined, user: this.session?.user, expiresAt: this.session?.expiresAt, error, revision: this.state.revision + 1 };
+    this.onChange(this.getState());
+  }
+
+  private async save(session: WorkflowLoginSession | undefined, epoch: number): Promise<void> {
+    this.writes = this.writes.catch(() => undefined).then(async () => {
+      if (epoch !== this.epoch) { return; }
+      const encoded = session ? JSON.stringify(session) : undefined;
+      const previous = this.stored;
+      if (this.initialized && encoded === previous) { return; }
+      this.initialized = true;
+      this.stored = encoded;
+      try {
+        if (encoded) { await this.secrets.store(encoded); }
+        else { await this.secrets.delete(); }
+      } catch (error) { this.stored = previous; throw error; }
+    });
+    await this.writes;
+  }
+
+  async restore(): Promise<void> {
+    const readingEpoch = this.epoch;
+    await this.writes.catch(() => undefined);
+    const encoded = await this.secrets.get();
+    if (readingEpoch !== this.epoch) { return; }
+    if (this.initialized && encoded === this.stored) { return; }
+    this.initialized = true;
+    this.stored = encoded;
+    const epoch = ++this.epoch;
+    const previous = this.getSession();
+    this.session = undefined;
+    this.verified = false;
+    if (!encoded) { this.aiConnection = undefined; this.update('signed-out'); return; }
+    try {
+      const saved = JSON.parse(encoded) as WorkflowLoginSession;
+      if (typeof saved.accessToken !== 'string' || !saved.accessToken || normalizeWorkflowServerUrl(saved.serverUrl) !== this.state.serverUrl) {
+        this.aiConnection = undefined;
+        await this.save(undefined, epoch); this.update('signed-out'); return;
+      }
+      if (saved.expiresAt && Date.parse(saved.expiresAt) <= Date.now()) {
+        this.aiConnection = undefined;
+        await this.save(undefined, epoch); this.update('expired', t("Sign-in expired. Sign in again.")); return;
+      }
+      if (previous && !sameProjectAccount(previous, saved)) this.aiConnection = undefined;
+      this.session = saved;
+      this.verified = previous?.serverUrl === saved.serverUrl && previous.accessToken === saved.accessToken;
+      // Shared-secret notifications must not start a write/restore loop across windows.
+      await this.verifySession(false);
+    } catch {
+      if (epoch !== this.epoch) { return; }
+      this.session = undefined;
+      this.verified = false;
+      this.aiConnection = undefined;
+      await this.save(undefined, epoch);
+      this.update('signed-out');
+    }
+  }
+
+  async login(serverUrl: string, email: string, password: string): Promise<void> {
+    const url = normalizeWorkflowServerUrl(serverUrl);
+    const epoch = ++this.epoch;
+    this.update('checking');
+    try {
+      const session = await this.client(url).login(email, password);
+      if (epoch !== this.epoch) { await this.client(url).revoke(session).catch(() => undefined); return; }
+      try { await this.save(session, epoch); }
+      catch (error) { await this.client(url).revoke(session).catch(() => undefined); throw error; }
+      if (epoch !== this.epoch) { await this.client(url).revoke(session).catch(() => undefined); return; }
+      const previous = this.session;
+      this.session = session;
+      this.verified = true;
+      this.state.serverUrl = url;
+      if (!previous || !sameProjectAccount(previous, session)) this.aiConnection = undefined;
+      this.update('authenticated');
+      if (previous && previous.accessToken !== session.accessToken) { await this.client(previous.serverUrl).revoke(previous).catch(() => undefined); }
+    } catch (error) {
+      if (epoch === this.epoch) { this.update('error', error instanceof Error ? error.message : t("Sign-in failed.")); }
+      throw error;
+    }
+  }
+
+  async verify(): Promise<void> {
+    await this.verifySession(true);
+  }
+
+  private async verifySession(persist: boolean): Promise<void> {
+    if (this.verification?.epoch === this.epoch) { return this.verification.promise; }
+    const session = this.session;
+    if (!session) { this.update('signed-out'); return; }
+    const epoch = ++this.epoch;
+    this.update('checking');
+    const promise = (async () => {
+      try {
+        const verified = { ...await this.client(session.serverUrl).verify(session), sessionCookie: session.sessionCookie };
+        if (epoch !== this.epoch) { return; }
+        if (persist) { await this.save(verified, epoch); }
+        if (epoch !== this.epoch) { return; }
+        this.session = verified;
+        this.verified = true;
+        this.update('authenticated');
+      } catch (error) {
+        if (epoch !== this.epoch) { return; }
+        if (error instanceof WorkflowAuthError && error.status === 401) {
+          this.session = undefined;
+          this.verified = false;
+          this.aiConnection = undefined;
+          await this.save(undefined, epoch);
+          if (epoch === this.epoch) { this.update('expired', error.message); }
+        } else { this.update('error', error instanceof Error ? error.message : t("Account verification failed.")); }
+      }
+    })();
+    this.verification = { epoch, promise };
+    try { await promise; }
+    finally { if (this.verification?.epoch === epoch) { this.verification = undefined; } }
+  }
+
+  async invalidate(connection: WorkflowConnection): Promise<void> {
+    if (this.session?.accessToken !== connection.accessToken || this.session.serverUrl !== connection.serverUrl) { return; }
+    const epoch = ++this.epoch;
+    this.session = undefined;
+    this.verified = false;
+    this.aiConnection = undefined;
+    await this.save(undefined, epoch);
+    if (epoch === this.epoch) { this.update('expired', t("Sign-in expired. Sign in again.")); }
+  }
+
+  async logout(revoke = true): Promise<void> {
+    const session = this.session;
+    const epoch = ++this.epoch;
+    this.session = undefined;
+    this.verified = false;
+    this.aiConnection = undefined;
+    await this.save(undefined, epoch);
+    if (epoch === this.epoch) { this.update('signed-out'); }
+    if (session && revoke) {
+      try { await this.client(session.serverUrl).revoke(session); }
+      catch { /* Local sign-out must still work when the server is unavailable. */ }
+    }
+  }
+
+  async changeServer(serverUrl: string): Promise<void> {
+    const url = normalizeWorkflowServerUrl(serverUrl);
+    if (url === this.state.serverUrl) { return; }
+    await this.logout(false);
+    this.state.serverUrl = url;
+    this.update('signed-out');
+  }
+}
+
+function sameProjectAccount(left: WorkflowLoginSession, right: WorkflowLoginSession): boolean {
+  return left.serverUrl === right.serverUrl && left.user.userId === right.user.userId;
+}
+
+export function workflowAuthEnvironment(
+  base: Record<string, string | undefined>, connection: WorkflowConnection | undefined, authDirectory: string,
+): Record<string, string | undefined> {
+  const cleanBase = sanitizeWorkflowEnvironment(base);
+  delete cleanBase.WORKFLOW_LLM_SERVER_URL;
+  delete cleanBase.WORKFLOW_LLM_SERVER_TOKEN;
+  return {
+    ...cleanBase, WORKFLOW_CLI_AUTH_DIR: authDirectory,
+    WORKFLOW_SERVER_URL: connection?.serverUrl ?? '', WORKFLOW_SERVER_ADMIN_KEY: connection?.accessToken ?? '', WORKFLOW_SERVER_TOKEN: '',
+    WORKFLOW_AI_SERVER_URL: connection?.aiServerUrl ?? '', WORKFLOW_AI_API_KEY: connection?.aiAccessToken ?? '',
+  };
+}

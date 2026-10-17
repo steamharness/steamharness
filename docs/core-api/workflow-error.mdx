@@ -1,0 +1,101 @@
+---
+title: "WorkflowError"
+description: "标准 workflow 错误类，用于可序列化的错误报告。"
+---
+
+# WorkflowError
+
+`workflow.WorkflowError` 是业务 workflow 和 runtime 使用的标准错误类。它会保留错误类型、节点名、metadata 和经过清洗的 cause，最终进入执行报告。
+
+## 签名
+
+```ts
+new workflow.WorkflowError(options: WorkflowErrorOptions)
+```
+
+## 参数
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| `options` | `WorkflowErrorOptions` | 标准错误配置，包含错误类型、消息、节点名、cause 和 metadata。 |
+
+## `WorkflowErrorOptions`
+
+| 字段 | 说明 |
+| --- | --- |
+| `type` | 错误分类。必填。 |
+| `message` | 对用户和报告可见的错误信息。必填。 |
+| `nodeName` | 关联节点名。节点执行失败时 runtime 会补充。 |
+| `cause` | 原始错误。序列化时只保留安全字段。 |
+| `metadata` | 可调试的结构化信息。 |
+
+## `WorkflowErrorType`
+
+| 类型 | 常见来源 | 说明 |
+| --- | --- | --- |
+| `input_validation` | 参数解析、输入节点、文件节点 | 输入无效或配置缺失。 |
+| `execution_aborted` | abort signal、timeout、执行限制 | 执行被中断。 |
+| `user_input_required` | 用户输入节点、工具审批 | workflow 暂停等待可恢复输入。 |
+| `tool_permission_denied` | 工具权限策略、审批拒绝 | 当前 run 不允许调用该工具。 |
+| `node_execution` | 普通节点执行失败 | 普通节点抛出的未知错误。 |
+| `provider_call` | LLM provider 解析或调用 | provider 缺失、绑定错误或调用失败。 |
+| `workflow_execution` | workflow `run` 失败 | workflow 主流程失败。 |
+| `stream_interrupted` | 流式节点或 provider stream | 流式输出中断或失败。 |
+
+## 实例字段
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `name` | `"WorkflowError"` | Error 名称。 |
+| `message` | `string` | 错误消息。 |
+| `type` | `WorkflowErrorType` | 错误分类。 |
+| `nodeName` | `string \| undefined` | 关联节点。 |
+| `metadata` | `object \| undefined` | 附加调试信息。 |
+| `safeCause` | `WorkflowErrorCause \| undefined` | 清洗后的 cause，包含 `name`、`message`、`statusCode`、`url`、`isRetryable`、`responseBody`、嵌套 `cause` 与 `validation`。`responseBody` 是上游 HTTP 响应体摘要：空白折叠、对疑似凭据脱敏、截断到 200 字符；只携带 `Unauthorized` 这类状态短语的调用错误会在运行报告中附加 `response <摘要>`，避免真实原因被状态短语掩盖。 |
+
+## 序列化结构
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `type` | `WorkflowErrorType` | 错误分类。 |
+| `message` | `string` | 错误信息。 |
+| `nodeName` | `string \| undefined` | 关联节点。 |
+| `metadata` | `object \| undefined` | 附加信息。 |
+| `cause` | `WorkflowErrorCause \| undefined` | 只保留安全 cause 字段。 |
+
+## 错误码映射
+
+运行报告会把失败类型映射成 payload `errCode`。
+
+| 错误类型 | `errCode` |
+| --- | --- |
+| `input_validation` | `400` |
+| `user_input_required` | `202` |
+| `tool_permission_denied` | `403` |
+| `execution_aborted` | `499` |
+| `stream_interrupted` | `499` |
+| `provider_call` | `502` |
+| `node_execution` | `500` |
+| `workflow_execution` | `500` |
+
+## 示例
+
+```ts
+throw new workflow.WorkflowError({
+  type: "input_validation",
+  message: "message is required.",
+  nodeName: "parse-input",
+  metadata: {
+    field: "message",
+  },
+});
+```
+
+## 何时使用
+
+| 场景 | 建议 |
+| --- | --- |
+| 用户输入不合法 | 抛 `input_validation`。 |
+| 外部服务调用失败 | 抛 `provider_call` 或让 provider 层包装。 |
+| 想让报告保留结构化上下文 | 使用 `metadata`。 |
+| 普通未知异常 | 可以直接抛，runtime 会包装为 `WorkflowError`。 |

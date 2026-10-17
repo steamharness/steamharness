@@ -1,0 +1,88 @@
+---
+title: "connectMcpServer"
+description: "启动并连接一个 stdio MCP 服务，拿到它暴露的工具。"
+---
+
+# connectMcpServer
+
+`workflow.connectMcpServer()` 启动一个 stdio 子进程形式的 MCP 服务，完成握手并列出它暴露的工具。返回的连接交给 [createMcpTools](./create-mcp-tools.mdx) 就能变成 agent 可以调用的工具。
+
+宿主一般用它把已有的能力交给项目，例如桌面端的控制接口：项目不必知道这些工具是怎么实现的，宿主也不必把实现暴露成 Core 的 API。
+
+## 签名
+
+```ts
+const connection = await workflow.connectMcpServer(
+  {
+    id: string,
+    command: string[],
+    environment?: Record<string, string>,
+    inheritEnvironment?: string[],
+    timeout?: number,
+  },
+  {
+    allowedInheritedEnvKeys?: string[],
+    env?: NodeJS.ProcessEnv,
+  },
+): Promise<McpServerConnection>
+```
+
+返回的连接：
+
+| 成员 | 说明 |
+| --- | --- |
+| `id` | 服务 id，来自定义。 |
+| `tools` | 服务暴露的工具，形如 `{ name, description?, inputSchema }`；`inputSchema` 是服务发布的 JSON Schema。 |
+| `callTool(name, args, signal?)` | 调用一个工具，返回 `{ content, isError }`。工具名不在列表里时直接抛错。 |
+| `close()` | 关闭连接并结束子进程。 |
+
+## 选项
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | `string` | 服务 id，匹配 `^[a-z][a-z0-9-]{0,63}$`，同一次调用里不能重复。它也是工具名的前缀。 |
+| `command` | `string[]` | 启动命令。第一个元素必须是绝对路径，不允许交给宿主当时的 cwd 去解析。 |
+| `environment` | `Record<string, string>` | 子进程的固定环境变量。能力型变量不能写在这里。 |
+| `inheritEnvironment` | `string[]` | 从父进程按名继承的环境变量，取值必须落在 `allowedInheritedEnvKeys` 里。 |
+| `timeout` | `number` | 握手与调用超时，单位毫秒，取值 1 000–300 000，默认 60 000。 |
+| `allowedInheritedEnvKeys` | `string[]` | 宿主允许按名继承的变量名。 |
+| `env` | `NodeJS.ProcessEnv` | 继承取值的来源，默认 `process.env`。 |
+
+## 按名继承
+
+凭据、令牌这类带能力的变量只能按名继承，不能把值写进配置：
+
+1. 宿主用 `allowedInheritedEnvKeys` 声明它允许哪些变量被继承；
+2. 服务用 `inheritEnvironment` 申请其中一部分；
+3. 把这类变量写进 `environment` 会被直接拒绝，申请一个宿主没允许的变量同样会被拒绝。
+
+这样值不必出现在任何可能被记录或提交的配置里。
+
+## 校验与上限
+
+服务定义在启动任何子进程之前校验：命令必须是绝对路径、`id` 必须合法且不重复、`timeout` 必须落在范围内、环境变量名必须是合法标识符。一次连接最多 8 个服务，每个服务最多 256 个工具。
+
+需要在启动之前单独校验时用 `workflow.normalizeMcpServers(servers, options?)`，它返回规范化后的定义数组，参数与上面的选项一致。
+
+## 生命周期
+
+连接是每轮一次的：运行开始前建立，本轮结束（包括出错）后关闭。`connectMcpServer` 内部用动态 `import()` 加载 MCP SDK，因此不使用 MCP 的运行时不解析也不加载它。
+
+## 示例
+
+```ts
+const connection = await workflow.connectMcpServer(
+  {
+    id: "project-tools",
+    command: ["/usr/local/bin/node", "/opt/project-tools/mcp-server.js"],
+    inheritEnvironment: ["PROJECT_MCP_BRIDGE_TOKEN"],
+  },
+  { allowedInheritedEnvKeys: ["PROJECT_MCP_BRIDGE_TOKEN"] },
+);
+
+try {
+  return await workflow.createMcpTools({ connection });
+} finally {
+  await connection.close();
+}
+```

@@ -1,0 +1,93 @@
+diff --git a/src/vs/workbench/api/browser/mainThreadTreeViews.ts b/src/vs/workbench/api/browser/mainThreadTreeViews.ts
+index 4601f067dc7..aec0a7b09eb 100644
+--- a/src/vs/workbench/api/browser/mainThreadTreeViews.ts
++++ b/src/vs/workbench/api/browser/mainThreadTreeViews.ts
+@@ -23,6 +23,7 @@ import * as typeConvert from '../common/extHostTypeConverters.js';
+ import { IMarkdownString } from '../../../base/common/htmlContent.js';
+ import { IViewsService } from '../../services/views/common/viewsService.js';
+ import { ITelemetryService } from '../../../platform/telemetry/common/telemetry.js';
++import product from '../../../platform/product/common/product.js';
+ 
+ @extHostNamedCustomer(MainContext.MainThreadTreeViews)
+ export class MainThreadTreeViews extends Disposable implements MainThreadTreeViewsShape {
+@@ -45,6 +46,9 @@ export class MainThreadTreeViews extends Disposable implements MainThreadTreeVie
+ 
+ 	async $registerTreeViewDataProvider(treeViewId: string, options: { showCollapseAll: boolean; canSelectMany: boolean; dropMimeTypes: string[]; dragMimeTypes: string[]; hasHandleDrag: boolean; hasHandleDrop: boolean; manuallyManageCheckboxes: boolean }): Promise<void> {
+ 		this.logService.trace('MainThreadTreeViews#$registerTreeViewDataProvider', treeViewId, options);
++		if (product.disabledWorkbenchViews?.includes(treeViewId)) {
++			return;
++		}
+ 
+ 		this.extensionService.whenInstalledExtensionsRegistered().then(() => {
+ 			const dataProvider = new TreeViewDataProvider(treeViewId, this._proxy, this.notificationService);
+diff --git a/src/vs/workbench/api/test/browser/mainThreadTreeViews.test.ts b/src/vs/workbench/api/test/browser/mainThreadTreeViews.test.ts
+index 368654f0694..f063b224004 100644
+--- a/src/vs/workbench/api/test/browser/mainThreadTreeViews.test.ts
++++ b/src/vs/workbench/api/test/browser/mainThreadTreeViews.test.ts
+@@ -25,6 +25,8 @@ import { TestExtensionService } from '../../../test/common/workbenchTestServices
+ import { CancellationToken } from '../../../../base/common/cancellation.js';
+ import { Mimes } from '../../../../base/common/mime.js';
+ import { URI } from '../../../../base/common/uri.js';
++import product from '../../../../platform/product/common/product.js';
++import { INotification, NotificationMessage } from '../../../../platform/notification/common/notification.js';
+ 
+ suite('MainThreadHostTreeView', function () {
+ 	const testTreeViewId = 'testTreeView';
+@@ -51,6 +53,7 @@ suite('MainThreadHostTreeView', function () {
+ 	let mainThreadTreeViews: MainThreadTreeViews;
+ 	let extHostTreeViewsShape: MockExtHostTreeViewsShape;
+ 	let instantiationService: TestInstantiationService;
++	let notifications: NotificationMessage[];
+ 
+ 	teardown(() => {
+ 		ViewsRegistry.deregisterViews(ViewsRegistry.getViews(container), container);
+@@ -73,6 +76,13 @@ suite('MainThreadHostTreeView', function () {
+ 		ViewsRegistry.registerViews([viewDescriptor], container);
+ 
+ 		const testExtensionService = new TestExtensionService();
++		notifications = [];
++		const notificationService = new class extends TestNotificationService {
++			override notify(notification: INotification) {
++				notifications.push(notification.message);
++				return super.notify(notification);
++			}
++		}();
+ 		extHostTreeViewsShape = new MockExtHostTreeViewsShape();
+ 		mainThreadTreeViews = disposables.add(new MainThreadTreeViews(
+ 			new class implements IExtHostContext {
+@@ -85,7 +95,7 @@ suite('MainThreadHostTreeView', function () {
+ 					return extHostTreeViewsShape;
+ 				}
+ 				drain(): any { return null; }
+-			}, new TestViewsService(), new TestNotificationService(), testExtensionService, new NullLogService(), NullTelemetryService));
++			}, new TestViewsService(), notificationService, testExtensionService, new NullLogService(), NullTelemetryService));
+ 		mainThreadTreeViews.$registerTreeViewDataProvider(testTreeViewId, { showCollapseAll: false, canSelectMany: false, dropMimeTypes: [], dragMimeTypes: [], hasHandleDrag: false, hasHandleDrop: false, manuallyManageCheckboxes: false });
+ 		await testExtensionService.whenInstalledExtensionsRegistered();
+ 	});
+@@ -97,6 +107,26 @@ suite('MainThreadHostTreeView', function () {
+ 		assert((<CustomTreeItem>children![0]).customProp === customValue, 'Tree Items should keep custom properties');
+ 	});
+ 
++	test('product-disabled trees do not produce missing-view notifications', async () => {
++		const previous = product.disabledWorkbenchViews;
++		try {
++			Object.assign(product, { disabledWorkbenchViews: ['disabledTree'] });
++			await mainThreadTreeViews.$registerTreeViewDataProvider('disabledTree', { showCollapseAll: false, canSelectMany: false, dropMimeTypes: [], dragMimeTypes: [], hasHandleDrag: false, hasHandleDrop: false, manuallyManageCheckboxes: false });
++			await mainThreadTreeViews.$refresh('disabledTree', {});
++			mainThreadTreeViews.$setMessage('disabledTree', 'Ignored');
++			await mainThreadTreeViews.$disposeTree('disabledTree');
++			assert.deepStrictEqual(notifications, []);
++		} finally {
++			Object.assign(product, { disabledWorkbenchViews: previous });
++		}
++	});
++
++	test('an undeclared enabled tree still produces a missing-view notification', async () => {
++		await mainThreadTreeViews.$registerTreeViewDataProvider('undeclaredTree', { showCollapseAll: false, canSelectMany: false, dropMimeTypes: [], dragMimeTypes: [], hasHandleDrag: false, hasHandleDrop: false, manuallyManageCheckboxes: false });
++		assert.deepStrictEqual(notifications, ['No view is registered with id: undeclaredTree']);
++		await mainThreadTreeViews.$disposeTree('undeclaredTree');
++	});
++
+ 	test('handleDrag reconstructs URI list from uriListData', async () => {
+ 		const testTreeViewIdWithDrag = 'testTreeViewWithDrag';
+ 

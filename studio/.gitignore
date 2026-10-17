@@ -1,0 +1,6 @@
+node_modules/
+.studio/
+extensions/*/dist/
+*.vsix
+.DS_Store
+*.log

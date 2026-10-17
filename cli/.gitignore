@@ -1,0 +1,15 @@
+node_modules
+.shared
+.workflow-local
+.release
+.pnpm-store
+dist
+*.tsbuildinfo
+test-results
+coverage
+.ci-artifacts/
+!.env.example
+!**/.env.example
+.DS_Store
+.packs
+__pycache__

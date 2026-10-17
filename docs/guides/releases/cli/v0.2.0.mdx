@@ -1,0 +1,18 @@
+---
+title: "CLI v0.2.0"
+description: "CLI v0.2.0 的更新说明。"
+---
+
+# CLI v0.2.0
+
+2026-08-26 · Tag `@workflow-code/cli/v0.2.0` · npm
+
+<span id="@workflow-code/cli-0-2-0" className="release-version-anchor"></span>
+<span id="@workflow-code/cli.0.2.0" className="release-version-anchor"></span>
+
+#### 破坏性变更
+
+- CLI 升级到 0.2.0 并精确绑定 Core 0.2，执行前校验 CLI 与项目的精确 Core 声明。
+  迁移：只允许相同 `major.minor` 兼容线，该线上的任意 patch 可直接运行。
+- 本地运行按项目 `dataStorage.mode` 配置明确的本地/服务器存储上下文。
+  迁移：缺少声明或非法跨位置访问会直接失败，需在项目中补齐 `dataStorage.mode`。

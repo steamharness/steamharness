@@ -1,0 +1,53 @@
+---
+title: "运行时语言"
+description: "读取当前 workflow 运行宿主选择的简体中文或英文。"
+---
+
+# 运行时语言
+
+`workflow.getRuntimeLocale()` 返回当前 CLI 或本地宿主为本次运行选择的语言。它用于已经明确支持国际化的 Workflow 或 Conversation 项目统一处理用户可见输出、错误以及日期和数字格式。
+
+## 签名
+
+```ts
+workflow.getRuntimeLocale(): "zh-CN" | "en"
+```
+
+## 返回值
+
+| 返回值 | 说明 |
+| --- | --- |
+| `"zh-CN"` | 简体中文。宿主没有注入语言、传入未知值或旧宿主不支持该能力时使用的默认值。 |
+| `"en"` | 英文。由当前 CLI 或本地宿主所选语言注入。 |
+
+## 示例
+
+```ts
+const outputNode = workflow.createOutputNode<Input, OutputPayload>({
+  name: "localized-output",
+  format(input) {
+    const locale = workflow.getRuntimeLocale();
+    const message = locale === "en"
+      ? `Imported ${input.count} records.`
+      : `已导入 ${input.count} 条记录。`;
+
+    return workflow.createOutputPayload({
+      items: [workflow.createOutputItem({
+        title: "Output",
+        content: message,
+        contentType: "text",
+      })],
+    });
+  },
+});
+```
+
+## 注意事项
+
+| 规则 | 说明 |
+| --- | --- |
+| 宿主语言是唯一来源 | 不要读取浏览器、操作系统或自行定义的环境变量来猜测语言。 |
+| 默认简体中文 | 未注入语言的 CLI、本地进程和旧宿主稳定返回 `"zh-CN"`。 |
+| 统一处理用户可见内容 | 已国际化项目应同时维护输出、错误、日期、数字和无障碍文案，并为未知或失败情况保留中文回退。 |
+| 静态清单不随运行时切换 | `package.json`、entrypoint 标题和参数定义在运行前静态解析，继续使用项目默认语言。 |
+| Kanban 使用 Bridge | 静态 Kanban 页面没有 `workflow` 全局对象，应调用 `window.workflowCodeKanban.getRuntimeLocale()`。 |

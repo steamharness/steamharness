@@ -1,0 +1,129 @@
+diff --git a/src/vs/workbench/contrib/webview/browser/pre/index.html b/src/vs/workbench/contrib/webview/browser/pre/index.html
+index 7d27f32a..194e51c8 100644
+--- a/src/vs/workbench/contrib/webview/browser/pre/index.html
++++ b/src/vs/workbench/contrib/webview/browser/pre/index.html
+@@ -5,7 +5,7 @@
+ 	<meta charset="UTF-8">
+ 
+ 	<meta http-equiv="Content-Security-Policy"
+-		content="default-src 'none'; script-src 'sha256-5x7XOClYMDPPTGQgX0wm32jqgoKPEW/xnWC2/B0lTJg=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
++		content="default-src 'none'; script-src 'sha256-hDasiTuDJCrorIBo/csZ26+mrdEAhYpsIaJLiGuPtVA=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
+ 
+ 	<!-- Disable pinch zooming -->
+ 	<meta name="viewport"
+@@ -848,6 +848,7 @@
+ 			const options = data.options;
+ 			const text = data.contents;
+ 			const newDocument = new DOMParser().parseFromString(text, 'text/html');
++			newDocument.documentElement.dataset.vscodeNativeClipboard = onElectron ? '1' : '0';
+ 
+ 			newDocument.querySelectorAll('a').forEach(a => {
+ 				if (!a.title) {
+@@ -1178,6 +1179,11 @@
+ 					contentWindow.addEventListener('click', handleInnerClick);
+ 					contentWindow.addEventListener('auxclick', handleAuxClick);
+ 					contentWindow.addEventListener('keydown', handleInnerKeydown);
++					contentWindow.addEventListener('vscode-webview-paste', () => {
++						if (onElectron) {
++							hostMessaging.postMessage('did-paste', undefined);
++						}
++					});
+ 					contentWindow.addEventListener('keyup', handleInnerKeyup);
+ 					contentWindow.addEventListener('contextmenu', e => {
+ 						if (e.defaultPrevented) {
+@@ -1272,7 +1278,7 @@
+ 				if (!contentWindow.dispatchEvent(event)) {
+ 					return;
+ 				}
+-				assertIsDefined(target.contentDocument).execCommand(data);
++				assertIsDefined(target.contentDocument).execCommand(typeof data === 'string' ? data : data.command);
+ 			});
+ 
+ 			/** @type {string | undefined} */
+diff --git a/src/vs/workbench/contrib/webview/browser/webviewElement.ts b/src/vs/workbench/contrib/webview/browser/webviewElement.ts
+index dc07538f..5a4948e5 100644
+--- a/src/vs/workbench/contrib/webview/browser/webviewElement.ts
++++ b/src/vs/workbench/contrib/webview/browser/webviewElement.ts
+@@ -254,6 +254,12 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
+ 		this._register(this.on('did-keydown', (data) => {
+ 			this.handleKeyEvent('keydown', data);
+ 		}));
++		this._register(this.on('did-paste', () => {
++			if (this.extension?.id.value === 'studio.studio-workstation' && this.isActiveElement()) {
++				this.handleFocusChange(true);
++				this.paste();
++			}
++		}));
+ 
+ 		this._register(this.on('did-keyup', (data) => {
+ 			this.handleKeyEvent('keyup', data);
+@@ -782,7 +788,7 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
+ 		this.execCommand('redo');
+ 	}
+ 
+-	private execCommand(command: string) {
++	protected execCommand(command: ToWebviewMessage['execCommand']) {
+ 		if (this.element) {
+ 			this._send('execCommand', command);
+ 		}
+diff --git a/src/vs/workbench/contrib/webview/browser/webviewMessages.d.ts b/src/vs/workbench/contrib/webview/browser/webviewMessages.d.ts
+index 5ae67343..a09481a1 100644
+--- a/src/vs/workbench/contrib/webview/browser/webviewMessages.d.ts
++++ b/src/vs/workbench/contrib/webview/browser/webviewMessages.d.ts
+@@ -39,6 +39,7 @@ export type FromWebviewMessage = {
+ 	'no-csp-found': void;
+ 	'did-keydown': KeyEvent;
+ 	'did-keyup': KeyEvent;
++	'did-paste': void;
+ 	'did-context-menu': { clientX: number; clientY: number; context: { [key: string]: unknown } };
+ 	'drag-start': void;
+ 	'drag': WebViewDragEvent;
+@@ -61,7 +62,7 @@ interface UpdateContentEvent {
+ export type ToWebviewMessage = {
+ 	'focus': void;
+ 	'message': { message: any; transfer?: ArrayBuffer[] };
+-	'execCommand': string;
++	'execCommand': string | { command: 'paste'; clipboard: { text: string; image: Uint8Array } };
+ 	'did-load-resource':
+ 	| { id: number; status: 401 | 404; path: string }
+ 	| { id: number; status: 304; path: string; mime: string; mtime: number | undefined }
+diff --git a/src/vs/workbench/contrib/webview/electron-browser/webviewElement.ts b/src/vs/workbench/contrib/webview/electron-browser/webviewElement.ts
+index 52849c04..56f33657 100644
+--- a/src/vs/workbench/contrib/webview/electron-browser/webviewElement.ts
++++ b/src/vs/workbench/contrib/webview/electron-browser/webviewElement.ts
+@@ -95,6 +95,35 @@ export class ElectronWebviewElement extends WebviewElement {
+ 			: { windowId: this._nativeHostService.windowId };
+ 	}
+ 
++	public override paste(): void {
++		if (this.extension?.id.value !== 'studio.studio-workstation') {
++			super.paste();
++			return;
++		}
++		void this.pasteWithHostClipboard();
++	}
++
++	private async pasteWithHostClipboard(): Promise<void> {
++		const element = this.element;
++		if (!element) {
++			return;
++		}
++		try {
++			// Loopback frames cannot use their parent webview's clipboard permission.
++			const [text, image] = await Promise.all([
++				this._nativeHostService.readClipboardText(),
++				this._nativeHostService.readImage()
++			]);
++			if (this.element === element && this.isFocused) {
++				this.execCommand({ command: 'paste', clipboard: { text, image } });
++			}
++		} catch {
++			if (this.element === element && this.isFocused) {
++				super.paste();
++			}
++		}
++	}
++
+ 	/**
+ 	 * Webviews expose a stateful find API.
+ 	 * Successive calls to find will move forward or backward through onFindResults

@@ -1,0 +1,216 @@
+---
+title: "createOutputNode"
+description: "创建同步或流式输出节点，并格式化最终 workflow payload。"
+---
+
+# createOutputNode
+
+`workflow.createOutputNode()` 创建输出节点。它既可以像普通节点一样同步格式化输入，也可以提供 `stream` 逐段输出，最后用 `format` 生成最终 payload。
+
+当前输出协议直接使用 `WorkflowOutputPayload.items`。不要再把完整输出聚合到顶层 `content` 字段；每一段可见输出都应该是独立的 `WorkflowOutputItem`。
+
+## 签名
+
+```ts
+workflow.createOutputNode<Input, Output>(
+  options: OutputStreamNodeOptions<Input, Output>,
+): BaseStreamNode<Input, OutputStreamChunk, Output>
+
+workflow.createOutputNode<Input, Output>(
+  options: OutputNodeOptions<Input, Output> & {
+    format: OutputFormatter<Input, Output>;
+  },
+): BaseNode<Input, Output>
+
+workflow.createOutputNode<Input>(
+  options?: OutputNodeOptions<Input, Input>,
+): BaseNode<Input, Input>
+```
+
+## 参数
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| `options` | `OutputNodeOptions \| OutputStreamNodeOptions` | 配置格式化函数、流式输出函数和节点元信息；不传时原样返回输入。 |
+
+## 同步输出 options
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `name` | `string` | 输出节点名，默认 `"output"`。运行报告会收集名为 `output` 的成功输出。 |
+| `format` | `(input, context) => Output` | 把输入转换成最终 payload；不传时原样返回 input。 |
+| `historyLimit` | `number` | 节点执行历史保留条数，默认 `50`。 |
+| `metadata` | `WorkflowNodeMetadataInput` | 节点展示元信息。 |
+
+## 流式输出 options
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `name` | `string` | 输出节点名，默认 `"output"`。 |
+| `stream` | `(input, context) => Iterable<OutputStreamChunk>` | 逐段产出字符串 chunk 或结构化 output item chunk。必填。 |
+| `format` | `(stream, input, context) => Output` | 把累积后的 `{ text, items, chunks }` 转成最终 payload。必填。 |
+| `historyLimit` | `number` | 节点执行历史保留条数，默认 `50`。 |
+| `metadata` | `WorkflowNodeMetadataInput` | 节点展示元信息。 |
+
+## 返回值
+
+| 模式 | 返回类型 | 执行方式 |
+| --- | --- | --- |
+| 同步输出 | `BaseNode<Input, Output>` | `workflow.runNode(outputNode, input, context)` |
+| 流式输出 | `BaseStreamNode<Input, OutputStreamChunk, Output>` | `workflow.runStreamNode(outputNode, input, context)` |
+
+## 输出流程
+
+| 模式 | 说明 |
+| --- | --- |
+| 同步 | 接收 `Input`，通过 `format(input, context)` 生成 `Output`。 |
+| 流式 | 接收 `Input`，先输出 string 或 item chunks，再把累积后的 `{ text, items, chunks }` 交给 `format`。字符串 chunk 会自动追加到默认 Markdown item，普通流式输出无需手动创建 item。 |
+
+在 conversation UI 里，如果同一段 assistant 回答会先流式展示、再通过最终 report 校准，推荐使用 `workflow.createOutputItemChunk()` 发送带稳定 `id` 的 `output_item_start` / `output_item_delta` / `output_item_end`。这样共享运行界面会按 item id 用最终结果替换 live item，而不是把字符串 chunk 生成的实时默认 item 和最终默认 item 各渲染一份。内置 Conversation 项目的主回答使用固定 `conversation-answer` id 来保持单条回复只展示一次。
+
+如果 agent 文本会和工具调用穿插出现，不要把所有正文都 patch 到同一个稳定 item。工具调用前先结束当前 inline `Output` item，工具 detail item 输出后，再为后续正文创建新的 inline `Output` item；最终 `items` 应保持 `正文段 -> 工具 detail -> 正文段` 的事件顺序。
+
+## 输出 item 协议
+
+```ts
+interface WorkflowOutputPayload extends WorkflowPayload {
+  items: WorkflowOutputItem[];
+}
+
+interface WorkflowOutputItem {
+  id: string;
+  title: string;
+  content: unknown;
+  icon?: string;
+  iconPreset?: "info" | "success" | "warning" | "error" | "note" | "code" | "list" | "quote" | "none";
+  contentType?: "markdown" | "text" | "json" | "audio" | "video";
+  display?: { type: "ring"; placement?: "inline" | "composer-right" };
+  collapsed?: boolean;
+  metadata?: Record<string, unknown>;
+}
+```
+
+`contentType` 只决定 UI 渲染方式：`markdown` 使用 Markdown 渲染，`text` 使用纯文本渲染，`json` 使用格式化 JSON 展示，`audio` 使用浏览器音频播放器，`video` 使用浏览器原生 `<video>` 播放器。对象和数组可以直接放进 `content`，不要提前 stringify 成 Markdown code block。
+
+`display` 可为辅助数值输出声明圆环展示。`type: "ring"` 时，`content` 使用 `WorkflowRingContent`：`{ value: number, total?: number, unit?: string }`。`value` 必须是非负有限数，`total` 若提供必须大于零；未提供时显示空环并在提示框中注明上限未知。圆环本身只展示比例，悬停或键盘聚焦时用浅灰提示框显示 `title`、百分比和精确用量；超限时圆环填满，提示保留实际百分比。
+
+`placement` 默认为 `"inline"`。设为 `"composer-right"` 时，Conversation 将该输出固定在输入栏右侧，不在消息正文重复显示。使用跨轮稳定的 `id` 更新同一个固定输出；每个会话独立恢复最近的值，后续轮次未更新该项时保留原值。同一 `id` 改回 `"inline"` 后解除固定。普通 Workflow 的输出与回放在输出列表中展示圆环。
+
+圆环可通过 `output_item_delta` 的对象增量更新，例如 `delta: { value: 75 }` 会保留已有的 `total` 和 `unit`。正文内的圆环更新时保留键盘焦点及打开的详情；多个圆环共存时只显示当前悬停或聚焦的提示框。
+
+```ts
+workflow.createOutputItem({
+  id: "storage-quota",
+  title: "存储用量",
+  content: { value: 57, total: 100, unit: "MB" },
+  contentType: "json",
+  display: { type: "ring", placement: "composer-right" },
+});
+```
+
+Core Agent 使用同一协议输出上下文用量。自定义项目也可用于配额、进度等数值，无需增加宿主专用字段。默认 assistant 的 Markdown/text 主回答仍直接在正文展示。
+
+`audio` item 的 `content` 使用对象结构：`{ src, mimeType, name, size, durationMs?, format? }`。`src` 可以是安全的 `data:audio/...;base64,...`，也可以是 `http(s)` 音频 URL；本地 CLI 示例推荐用 data URL，避免依赖 server file storage。
+
+`video` item 的 `content` 使用对象结构：`{ src, mimeType, name, durationMs?, format? }`。`mimeType` 仅支持 `video/mp4`，`format` 仅支持 `mp4`。`src` 可以是安全的 `data:video/mp4;base64,...`，也可以是 `http(s)` 视频 URL；远端 URL 必须可公开访问。生成的 OSS 签名 URL 也属于 `http(s)`，但因其本身不持久，UI 端不会缓存，请勿把生成的视频资源仅以 OSS 签名 URL 形式发布到不可重建的位置。CLI 示例仍推荐用 data URL，避免依赖 server file storage。如果 video item 的内容缺失必需字段或 `src` 不安全，UI 会降级为文本预览，并显示 `videoPlaybackUnsupported` 之类的降级文案；不要在调用方把 `src` 留空或指向 `file://` 等本地路径。
+
+## 输出 helper
+
+| API | 说明 |
+| --- | --- |
+| `workflow.createOutputItem(input)` | 创建带稳定 `id`、icon 预置解析和默认 `contentType` 的 item。 |
+| `workflow.createOutputPayload(input)` | 创建 `{ errCode, errMessage, items }` payload，并可保留业务扩展字段。 |
+| `workflow.addOutputItem(payload, item)` | 向现有 output payload 追加一个 item。 |
+| `workflow.createOutputItemChunk(chunk)` | 创建 `output_item_start` / `output_item_delta` / `output_item_end` 流式 chunk。 |
+
+## 流式 item chunk
+
+| 类型 | 说明 |
+| --- | --- |
+| `output_item_start` | 创建一个 item，包含 `id`、`title`、`icon`、`contentType`、`collapsed` 等字段。 |
+| `output_item_delta` | 按 `itemId` 追加或合并内容；字符串拼接，数组追加，对象浅合并。可选 `item` patch 更新 `title`、`icon`、`metadata.status` 等展示字段。 |
+| `output_item_end` | 标记 item 结束；当前主要用于协议完整性和 UI 后续扩展。 |
+
+## 示例：同步输出
+
+```ts
+const outputNode = workflow.createOutputNode<Result, OutputPayload>({
+  name: "output",
+  format(result) {
+    return {
+      ...workflow.createOutputPayload({
+        items: [{
+          title: "Result",
+          content: result.text,
+          contentType: "markdown",
+          collapsed: false,
+        }],
+      }),
+      source: result.source,
+    };
+  },
+});
+```
+
+## 示例：流式输出
+
+```ts
+const outputNode = workflow.createOutputNode<Result, OutputPayload>({
+  name: "output",
+  async *stream(result) {
+    yield result.prefix;
+    yield result.text;
+  },
+  format(stream) {
+    return workflow.createOutputPayload({
+      items: stream.items,
+      totalChunks: stream.chunks.length,
+    });
+  },
+});
+```
+
+## 示例：流式结构化 item
+
+```ts
+const outputNode = workflow.createOutputNode<ToolResult, OutputPayload>({
+  name: "output",
+  async *stream(result) {
+    yield workflow.createOutputItemChunk({
+      type: "output_item_start",
+      item: {
+        id: "tool-result",
+        title: "Tool result",
+        content: {},
+        contentType: "json",
+        collapsed: true,
+      },
+    });
+    yield workflow.createOutputItemChunk({
+      type: "output_item_delta",
+      itemId: "tool-result",
+      delta: result.payload,
+      item: {
+        title: "Tool result complete",
+        icon: "success",
+        metadata: { status: "success" },
+      },
+    });
+    yield workflow.createOutputItemChunk({
+      type: "output_item_end",
+      itemId: "tool-result",
+    });
+  },
+  format(stream) {
+    return workflow.createOutputPayload({ items: stream.items });
+  },
+});
+```
+
+## Payload 约束
+
+| 字段 | 说明 |
+| --- | --- |
+| `errCode` | 最终 output payload 必须包含。成功值为 `0`。 |
+| `errMessage` | 最终 output payload 必须包含。成功时为空字符串。 |
+| `items` | 最终 output payload 必须包含。每个 item 是一个可独立折叠/展开的输出块。 |

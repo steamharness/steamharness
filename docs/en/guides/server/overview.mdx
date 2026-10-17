@@ -1,0 +1,34 @@
+---
+title: "Manage projects and data with Server Web"
+description: "Manage cloud projects, source versions, members, knowledge, and KV data."
+---
+
+# Manage projects and data with Server Web
+
+Server Web is the browser administration client for Workflow Server. After signing in, you can find Workflow, Conversation, and Kanban projects, manage source versions, and manage project data. Local CLI or Studio performs project execution.
+
+## Project workspace
+
+The project list can search by project ID, name, type, publisher, and version. It shows latest, version count, and update time. Project details provide overview, settings, related projects, versions, members, invitations, knowledge, and KV data.
+
+An uploaded package must declare `workflow`, `conversation`, or `kanban` in `package.json.workflowCode.projectType`. The name and display platforms come from `workflowCode.projectInfo`; a display platform does not restrict source downloads.
+
+## Projects and data
+
+- Use [Workspace CLI](/en/cli/server-workspace) to create, upload, publish, and download projects.
+- Configure members, source access, and bilateral related-project grants in [Project management](/en/guides/server/project-management).
+- Knowledge supports document creation, editing, deletion, search, and line reads; KV and PersistentValue store project or conversation data.
+- `dataStorage.mode` can be `server` or `both` for Server data access; `local` projects can still store and download source.
+- Kanban keeps static previews, configuration, and the data Bridge. A preview uses a short-lived capability bound to a project, user, and version; its iframe does not inherit account credentials.
+
+## Accounts and settings
+
+Server Web supports password sign-in, device authorization, member invitations, user roles, API keys, audit logs, and theme settings. Server validates account, project, and data permissions; credentials appear only in redacted form in the console and audit records.
+
+Upload failures show the processing stage and reason without replacing saved drafts or historical versions. Server does not install dependencies, build, or load uploaded project code.
+
+## Display
+
+The console supports mobile layouts, light, dark, and system themes. Times use the browser time zone and full timestamps use `YYYY-MM-DD HH:mm:ss`; APIs retain ISO timestamps.
+
+Each administration page has one top-right refresh action. Mobile navigation opens in a drawer, and tables scroll inside their own region.

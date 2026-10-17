@@ -1,0 +1,66 @@
+---
+title: "createMcpTools"
+description: "Turn the tools an MCP server exposes into tools an agent can call."
+---
+
+# createMcpTools
+
+`workflow.createMcpTools()` turns every tool exposed by an MCP connection into an agent tool, to be handed to [createAgent](./create-agent.mdx)'s `extraTools` or [createAgentNode](./create-agent-node.mdx)'s `createTools`. Establishing the connection is [connectMcpServer](./connect-mcp-server.mdx)'s job.
+
+## Signature
+
+```ts
+const tools: AgentTool[] = await workflow.createMcpTools({
+  connection: McpServerConnection,
+  approve?: (toolId: string, args: unknown) => Promise<void>,
+  createToolId?: (serverId: string, toolName: string) => string,
+});
+```
+
+## Options
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `connection` | `McpServerConnection` | The connection [connectMcpServer](./connect-mcp-server.mdx) returned. |
+| `approve` | `(toolId, args) => Promise<void>` | Consulted before each call; throwing blocks it, and a `user_input_required` throw pauses the run. |
+| `createToolId` | `(serverId, toolName) => string` | Overrides the tool name. Defaults to `<serverId>_<toolName>`. |
+
+## Tool names
+
+A tool is named `<serverId>_<toolName>` by default, as in `project-tools_project_state`. That is the shape the built-in OpenCode project uses, so a host's declared catalogue and its permission panel need no renaming — the tool a panel granted is the tool that gets called.
+
+## Arguments and failures
+
+- A tool's arguments come from the `inputSchema` the server published and travel to the model unchanged — but the schema's shape is checked before the tool is registered: it must be an object, no deeper than 64 levels, and no larger than 256 KiB serialized. Exceeding any of those throws and the tool is **not registered**: a schema deep enough to exhaust the stack takes the process down at registration time, where it is no longer obvious which server sent it.
+- When the server marks a call as failed (`isError`), the tool **throws** rather than returning the error as ordinary output, so the model can see that the call did not succeed.
+
+## Tool approval
+
+The tools `createMcpTools` produces are not governed by `permissionPolicy`, which only decides which built-in tools exist and how far they reach. The host's own tool catalogue governs them: a project declares them in `executor.tools`, `enabled` decides whether one is exposed, and `autoApprove: false` pauses the run before the call for the user to approve (through `context.toolPermissions`), in a plan-mode turn only — a build turn runs the tool.
+
+## Example
+
+```ts
+const approval = workflow.createToolApprovalGate();
+
+const node = workflow.createAgentNode({
+  provider: "anthropic",
+  async createTools(context) {
+    const connection = await workflow.connectMcpServer({
+      id: "project-tools",
+      command: ["/usr/local/bin/node", "/opt/project-tools/mcp-server.js"],
+    });
+
+    try {
+      return await workflow.createMcpTools({
+        connection,
+        approve: (toolId, args) => approval.approve({ name: toolId, arguments: args }, context),
+      });
+    } finally {
+      await connection.close();
+    }
+  },
+});
+```
+
+Tools built this way must be declared in the executor's `tools` (see [createToolApprovalGate](./create-tool-approval-gate.mdx)); otherwise the approval fails as an unregistered tool.

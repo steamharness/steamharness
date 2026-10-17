@@ -1,0 +1,152 @@
+---
+title: "createToolApprovalGate"
+description: "Create tool approval gate, press executor.tools and run policy control tool calls."
+---
+
+# createToolApprovalGate
+
+`workflow.createToolApprovalGate()` Create a tool to approve the gate. Workflow declares the invokable tool in `tools` of specific entrypoint,Conversation continues to declare it in `tools` of executor, and then uses gate to check the running policy before actually calling the tool.
+
+The tool has three results: if it is not registered, the input verification will fail; if it is disabled, the call will be rejected; if it is enabled but not automatically approved, the waiting/recovery protocol of the user input node will be reused to generate an approval request — **only a plan-mode agent turn stops to ask**. A build turn is running a plan the user already approved, so a tool that is not auto-approved runs there.
+
+## Signature
+
+```ts
+workflow.createToolApprovalGate(): WorkflowToolApprovalGate
+```
+
+```ts
+interface WorkflowToolApprovalGate {
+  approve(
+    input: WorkflowToolApprovalRequestInput,
+    context: NodeContext,
+  ): Promise<WorkflowToolApprovalDecision>;
+
+  wrap<Args extends unknown[], Result>(
+    name: string,
+    fn: (...args: Args) => Promise<Result> | Result,
+    options?: {
+      label?: string;
+      description?: string;
+      reason?: string;
+      arguments?: (...args: Args) => unknown;
+    },
+  ): (context: NodeContext, ...args: Args) => Promise<Result>;
+}
+```
+
+## Tools Registration
+
+The selected Workflow entrypoint or Conversation executor declares the tool default policy through `tools`. The runtime only accepts the override policy of the execution configuration declared tool, and the unknown tool is ignored.
+
+```ts
+export const executor = workflow.defineExecutor<Input, OutputPayload>({
+  projectType: "workflow",
+  defaultEntrypoint: "main",
+  entrypoints: [
+    workflow.defineEntrypoint<Input, OutputPayload>({
+      id: "main",
+      title: "Full workflow",
+      workflow: toolWorkflow,
+      tools: [
+        {
+          name: "search",
+          label: "Search",
+          description: "Search external sources.",
+          enabled: true,
+          autoApprove: false,
+        },
+      ],
+      createInput({ args }) {
+        return { query: args.join(" ") };
+      },
+    }),
+  ],
+});
+```
+
+|Field|Type|Description|
+| --- | --- | --- |
+| `name` | `string` |Stable tool name. Required. Empty strings are ignored.|
+| `label` | `string` |Show name.|
+| `description` | `string` |Description of the purpose of the tool.|
+| `enabled` | `boolean` |Whether it is enabled by default. `true` when not passed.|
+| `autoApprove` | `boolean` |Automatically approve by default. `false` when not passed.|
+
+## approve
+
+`approve(input, context)` only performs approval checks and does not call business functions. `{ approved: true }` is returned when approval is passed; `tool_permission_denied` is thrown when user rejects.
+
+|Input field|Type|Description|
+| --- | --- | --- |
+| `name` | `string` |Tool name, must match the `tools` declaration of the current entrypoint or Conversation executor.|
+| `label` | `string` |The name of this approval is displayed; if it is not passed, use the tool declaration.|
+| `description` | `string` |This approval description; use tool declaration if not passed.|
+| `reason` | `string` |Call reason.|
+| `arguments` | `unknown` |The parameter snapshot of this call is written to the approval request metadata.|
+
+## wrap
+
+`wrap(name, fn, options)` returns a new function. When calling a new function, the first argument must be `NodeContext`, and gate will approve it before passing the remaining arguments to the original function.
+
+```ts
+const approval = workflow.createToolApprovalGate();
+
+const searchWithApproval = approval.wrap(
+  "search",
+  async (query: string) => {
+    return fetchSearchResult(query);
+  },
+  {
+    label: "Search",
+    reason: "External research is needed before answering.",
+    arguments: (query) => ({ query }),
+  },
+);
+
+const result = await searchWithApproval(context, input.query);
+```
+
+## Running behavior
+
+|Status|Behavior|
+| --- | --- |
+|Tool not registered|Throws `WorkflowError` of type `input_validation`.|
+|Tool is disabled|Throws `WorkflowError` of type `tool_permission_denied`.|
+| `autoApprove: true` |Directly return `{ approved: true }`, does not generate wait request.|
+|Requires approval, and the turn is in plan mode|The `tool-approval` request is created and the running status becomes `waiting_for_input`.|
+|Requires approval, but the turn is in build mode|Directly return `{ approved: true }`, does not generate wait request.|
+|User Approval|Restore the same `runId`, return `{ approved: true }`, and continue calling the tool.|
+|User Rejected|Throw `tool_permission_denied`.|
+
+The mode is decided per turn by the agent runtime and written to `context.toolPermissions.requiresUserApproval`: `true` for a plan turn, `false` for a build turn. A run that never enters the agent (a plain Workflow Run, or a caller that declares no mode) keeps the default `true` and still asks according to `autoApprove`. This rule only decides whether the run stops to ask — a disabled tool is refused in either mode.
+
+Approval requests use `workflow.createUserInputNode()` the same set of recovery agreements. The request ID contains workflow, runId, and tool name by default, and `params` contains a boolean field `approved`.
+
+CLI Web render `tool-approval` as a dedicated decision interface, directly showing tool ID and `arguments` parameter snapshots, and providing "approve and continue" and "reject and end" actions. The interface does not display generic Boolean switches, nor does it implicitly approve tool invocations through Enter.
+
+In Conversation mode, the enablement of the tool is saved with the auto-approval policy by dialog. When you switch back to a conversation, the Tools Permissions panel restores the last state of the conversation, and subsequent runs and approval restores also use the policy snapshot of the conversation. Conversations that are new or do not have a standalone policy use the executor `tools` default value directly and do not inherit overridden values from project-level or other conversations. Plain Workflow Run still uses project-level tool policies.
+
+## CLI Recovery
+
+Local CLI does not pop up interactive approvals. The first run outputs a `waiting_for_input` report, followed by a recovery using the same `runId` and `--resolved-user-inputs-json`:
+
+```bash
+workflow-code json . -- --message "run tool"
+workflow-code json . \
+  --run-id <run-id> \
+  --resolved-user-inputs-json '[{"requestId":"<request-id>","nodeName":"tool-approval","values":{"approved":true},"submittedAt":"2026-07-08T00:00:00.000Z"}]' \
+  -- --message "run tool"
+```
+
+CLI Web and local host also pass in the tool policy snapshot for this run through `--tool-permissions-json`. Normal manual CLI debugging usually does not require this parameter to be passed directly, unless you want to simulate the enable or automatic approval policies passed in by the host.
+
+## Error
+
+|Situation|Error Type|Description|
+| --- | --- | --- |
+|Tool name is empty| `input_validation` |`name` must be a non-empty string.|
+|Tool not registered at `executor.tools`| `input_validation` |Only declared tools can be approved.|
+|Tool disabled by policy| `tool_permission_denied` |The current run does not allow the tool to be called.|
+|User Rejected Approval| `tool_permission_denied` |On recovery `values.approved !== true`.|
+|No user input runtime and approval required| `user_input_required` |The host does not provide an input handler that pauses resume.|

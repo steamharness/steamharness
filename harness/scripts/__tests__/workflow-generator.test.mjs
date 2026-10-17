@@ -1,0 +1,44 @@
+import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import test from "node:test";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
+const root = path.resolve(import.meta.dirname, "..", "..");
+const generator = path.join(
+  root,
+  ".agents",
+  "skills",
+  "workflow-code-generator",
+  "scripts",
+  "create_workflow.py",
+);
+
+test("workflow generator reads standalone Core and CLI versions", async () => {
+  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "workflow-core-generator-"));
+  const target = path.join(temporaryRoot, "generated");
+
+  try {
+    await execFileAsync("python3", [generator, "standalone-check", "--dir", target]);
+    const generated = JSON.parse(await readFile(path.join(target, "package.json"), "utf8"));
+    const outputTypes = await readFile(path.join(target, "interface.ts"), "utf8");
+    assert.ok(outputTypes.includes('display?: WorkflowOutputDisplay;'));
+    assert.ok(outputTypes.includes('placement?: "inline" | "composer-right";'));
+    assert.ok(outputTypes.includes('export interface WorkflowRingContent'));
+    const core = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
+    const workspace = JSON.parse(await readFile(path.join(root, "workspace", "package.json"), "utf8"));
+
+    assert.equal(generated.devDependencies["workflow-code"], core.version);
+    assert.equal(
+      generated.devDependencies["@workflow-code/cli"],
+      workspace.devDependencies["@workflow-code/cli"],
+    );
+    assert.equal(generated.workflowCode.projectInfo.dataStorage.mode, "both");
+    assert.deepEqual(generated.workflowCode.projectInfo.relatedProjects, []);
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+});

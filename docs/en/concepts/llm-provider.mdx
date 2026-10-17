@@ -1,0 +1,69 @@
+---
+title: "LLM Provider"
+description: "Declare an owned LLM provider, its environment variables, and its workflow nodes."
+---
+
+# LLM Provider
+
+LLM capability is injected into a workflow through one provider interface. Public workflows use their own provider configuration and API key; the Server does not store or proxy third-party model credentials for a workflow.
+
+## Create a provider ref
+
+Create a provider ref so that nodes resolve configuration when they run:
+
+```ts
+const llmProvider = workflow.createLLMProviderRef("default", () => {
+  return workflow.createLLMProviderFromEnv();
+});
+```
+
+The node resolves the provider at runtime instead of reading environment variables while the module is loading.
+
+## LLM nodes
+
+Non-streaming node:
+
+```ts
+const llmNode = workflow.createLLMNode<Input>({
+  name: "answer-llm",
+  provider: llmProvider,
+  mapInput(input) {
+    return {
+      system: "You are a concise assistant.",
+      prompt: input.message,
+      maxOutputTokens: 300,
+    };
+  },
+});
+```
+
+Streaming nodes use the same provider:
+
+```ts
+const llmStreamNode = workflow.createLLMStreamNode<Input>({
+  name: "answer-stream",
+  provider: llmProvider,
+  mapInput(input) {
+    return { messages: [{ role: "user", content: input.message }] };
+  },
+});
+```
+
+## Project environment variables
+
+`workflow.createLLMProviderFromEnv()` reads:
+
+- `LLM_TYPE`
+- `LLM_API_KEY`
+- `LLM_BASE_URL`
+- `LLM_MODEL`
+
+The values come from the project `.env` and the host process environment, with existing process variables taking precedence. `LLM_BASE_URL` must be an HTTP(S) URL without credentials, query parameters, or a fragment.
+
+Third-party services can use their own environment variables with `workflow.getEnv()`, but they cannot read host account credentials or system service configuration.
+
+## Provider types and errors
+
+The provider factory supports the types in `LLM_PROVIDER_TYPES`. When no model is configured, it selects a default by provider type; tests can use a mock provider.
+
+A provider failure becomes a workflow error in the execution report. Unsupported optional settings may produce a compatibility warning; authentication failures, unavailable models, and upstream request failures remain errors.

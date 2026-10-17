@@ -1,0 +1,87 @@
+---
+title: "defineWorkflow"
+description: "Define a workflow body, its input and output types, and its main execution function."
+---
+
+# defineWorkflow
+
+Use `workflow.defineWorkflow<Input, Output>()` to define a business workflow. It returns the definition object unchanged; an executor or local CLI runtime performs the actual execution.
+
+## Signature
+
+```ts
+workflow.defineWorkflow<Input, Output>(
+  workflow: WorkflowDefinition<Input, Output>,
+): WorkflowDefinition<Input, Output>
+```
+
+## Parameters
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| `workflow` | `WorkflowDefinition<Input, Output>` | An executable workflow definition containing its name and main execution function. |
+
+## `WorkflowDefinition` fields
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `name` | `string` | A stable workflow name used by local runtime UI, logs, and structural analysis. |
+| `run` | `(input, context) => Output` | The main execution function. It usually calls `workflow.runNode` or `workflow.runStreamNode`. |
+
+## `run` arguments
+
+| Name | Description |
+| --- | --- |
+| `input` | Business input. In a Workflow project it comes from the selected entrypoint's `createInput(context)`; in a Conversation project it comes from `executor.createInput(context)`. |
+| `context` | The runtime-provided `WorkflowContext`, including providers, KV, conversation, files, metadata, node hooks, and an abort signal. |
+
+## Return values
+
+| Value | Type | Description |
+| --- | --- | --- |
+| Workflow definition | `WorkflowDefinition<Input, Output>` | The original definition object, for an executor to reference. |
+| `run` result | `Output` | Read by the runtime during execution. Project output payloads must extend `WorkflowPayload`. |
+
+## Execution flow
+
+| Phase | Input | Result |
+| --- | --- | --- |
+| Executor | CLI arguments or form values | `Input` |
+| Workflow `run` | `Input` and `WorkflowContext` | `Output` |
+| Runtime report | `Output` | Standard execution report and final payload |
+
+## Example
+
+```ts
+import type { WorkflowPayload } from "workflow-code";
+
+interface Input {
+  message: string;
+}
+
+interface Output extends WorkflowPayload {
+  items: Array<{
+    id: string;
+    title: string;
+    content: unknown;
+    contentType?: "markdown" | "text" | "json" | "audio";
+    collapsed?: boolean;
+  }>;
+}
+
+export const exampleWorkflow = workflow.defineWorkflow<Input, Output>({
+  name: "example",
+  async run(input, context) {
+    const parsed = await workflow.runNode(inputNode, input, context);
+    return workflow.runNode(outputNode, parsed, context);
+  },
+});
+```
+
+## Notes
+
+| Rule | Description |
+| --- | --- |
+| Do not import runtime APIs from `"workflow-code"` | The platform injects the global `workflow` object into business workflows. |
+| `Output` must extend `WorkflowPayload` | On success, return `errCode: 0` and `errMessage: ""`. |
+| The runtime wraps exceptions | Unknown errors thrown from `run` are converted to `WorkflowError` and included in the execution report. |

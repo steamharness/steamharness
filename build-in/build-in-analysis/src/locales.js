@@ -1,0 +1,33 @@
+const en = {
+  title: 'Studio Analysis', scope: 'Workspace and imported local projects', overview: 'Overview', projects: 'Projects', runs: 'Runs',
+  refresh: 'Refresh', export: 'Export CSV', autoRefresh: 'Auto refresh', updated: 'Updated', loading: 'Loading', unavailable: 'Studio connection unavailable',
+  stale: 'Refresh failed. Showing the last available data.', partial: 'Unavailable projects', serverExcluded: 'Server projects excluded',
+  allTypes: 'All project types', allProjects: 'All projects', allStatuses: 'All statuses', search: 'Search projects',
+  allTime: 'All time', days7: 'Last 7 days', days30: 'Last 30 days',
+  totalProjects: 'Local projects', running: 'Running', waiting_for_input: 'Waiting for input', success: 'Succeeded', failed: 'Failed',
+  aborted: 'Cancelled', timed_out: 'Timed out', interrupted: 'Interrupted', unknown: 'Unknown',
+  totalRuns: 'Recorded runs', successRate: 'Success rate', averageDuration: 'Average duration', queued: 'Queued inputs',
+  workflow: 'Workflow', conversation: 'Conversation', kanban: 'Kanban', projectTypes: 'Project types', runResults: 'Run status',
+  trend: 'Runs over 14 days', active: 'Active and waiting runs', noActive: 'No active or waiting runs', noProjects: 'No local projects', noRuns: 'No recorded runs',
+  name: 'Project', type: 'Type', state: 'State', count: 'Runs', lastRun: 'Latest run', path: 'Folder',
+  idle: 'Idle', missing: 'Missing', unreadable: 'Unreadable', inWorkspace: 'Current workspace', imported: 'Imported',
+  runTitle: 'Run', createdAt: 'Started', duration: 'Duration', entrypoint: 'Entrypoint', runId: 'Run ID',
+  previous: 'Previous page', next: 'Next page', page: 'Page', records: 'records',
+};
+const zh = {
+  title: 'Studio 分析', scope: '工作区与已导入的本地项目', overview: '总览', projects: '项目', runs: '运行记录',
+  refresh: '刷新', export: '导出 CSV', autoRefresh: '自动刷新', updated: '更新于', loading: '加载中', unavailable: 'Studio 连接不可用',
+  stale: '刷新失败，正在显示上次可用数据。', partial: '不可用项目', serverExcluded: '已排除服务器项目',
+  allTypes: '所有项目类型', allProjects: '所有项目', allStatuses: '所有状态', search: '搜索项目',
+  allTime: '全部时间', days7: '最近 7 天', days30: '最近 30 天',
+  totalProjects: '本地项目', running: '运行中', waiting_for_input: '等待输入', success: '成功', failed: '失败',
+  aborted: '已取消', timed_out: '已超时', interrupted: '已中断', unknown: '未知',
+  totalRuns: '已记录运行', successRate: '成功率', averageDuration: '平均耗时', queued: '排队输入',
+  workflow: '工作流', conversation: '对话', kanban: '看板', projectTypes: '项目类型', runResults: '运行状态',
+  trend: '近 14 天运行趋势', active: '运行中与等待输入', noActive: '没有运行中或等待输入的任务', noProjects: '没有本地项目', noRuns: '没有运行记录',
+  name: '项目', type: '类型', state: '状态', count: '运行次数', lastRun: '最近运行', path: '文件夹',
+  idle: '空闲', missing: '已移除', unreadable: '无法读取', inWorkspace: '当前工作区', imported: '已导入',
+  runTitle: '运行', createdAt: '开始时间', duration: '耗时', entrypoint: '入口', runId: '运行 ID',
+  previous: '上一页', next: '下一页', page: '页', records: '条记录',
+};
+export function translations(locale) { return String(locale).toLowerCase().startsWith('zh') ? zh : en; }

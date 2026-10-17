@@ -1,0 +1,83 @@
+---
+title: "getLLMProvider"
+description: "The LLM Context actually used by the node is resolved from the Node provider and the provider source."
+---
+
+# getLLMProvider
+
+`workflow.getLLMProvider()` is a provider parsing tool. The LLM node is called when it is executed, and the business code can also be used directly in custom nodes or advanced scenarios.
+
+When executor is configured with `tokenUsage.enabled`, the token usage is automatically reported when the provider parsed by `getLLMProvider()` is returned by `chat()` or when the stream `finish` chunk carries usage. workspace examples that call provider directly in custom nodes will also follow the same statistics link; provider without usage will not write statistics. The report will read the usage field of common provider, including cache read / cache write or cache creation token details.
+
+## Signature
+
+```ts
+workflow.getLLMProvider(
+  context: NodeContext,
+  nodeName: string,
+  source?: LLMProviderSource,
+): LLMProvider
+```
+
+## Parameter
+
+|Parameter|Type|Description|
+| --- | --- | --- |
+| `context` | `NodeContext` |Read provider, binding, and default provider from `context.providers`.|
+| `nodeName` | `string` |Current node name; used for node-level binding and error messages.|
+| `source` | `LLMProviderSource` |Optional provider source: instance, id, ref, or resolver.|
+
+## `ProviderRegistry`
+
+|Field|Type|Description|
+| --- | --- | --- |
+| `llm` | `LLMProvider \| undefined` |A compatible default single provider.|
+| `llmProviders` | `object \| undefined` |provider id to provider instance mapping.|
+| `llmProviderBindings` | `object \| undefined` |Node name to provider/model binding mapping.|
+| `defaultLLMProviderBinding` | `LLMProviderBinding \| undefined` |Default provider/model binding.|
+| `defaultLLMProviderId` | `string \| undefined` |the default provider id.|
+
+## `LLMProviderSource`
+
+|Form|Type|Description|
+| --- | --- | --- |
+|provider examples| `LLMProvider` |Directly back.|
+| provider id | `string` |Search from `llmProviders`.|
+| provider ref | `LLMProviderRef` |Check `ref.id` first and use `ref.fallback` if necessary.|
+| resolver | `(context, nodeName) => LLMProvider \| undefined` |Custom parsing.|
+
+## Parsing order
+
+|Order|Source|Description|
+| --- | --- | --- |
+| 1 |Node Binding|Use `context.providers.llmProviderBindings[nodeName]` first.|
+| 2 | `source` |The provider source declared using the node.|
+| 3 |Default Binding|Use `defaultLLMProviderBinding`.|
+| 4 |default id|Use `defaultLLMProviderId` to find from `llmProviders`.|
+| 5 |Compatible with default provider|Use `context.providers.llm` directly.|
+| 6 | ref fallback |Only try when source is ref.|
+
+## Return value
+
+|Return|Type|Description|
+| --- | --- | --- |
+| provider | `LLMProvider` |contains `name`, `chat(input)`, `stream(input)`.|
+
+## Error
+
+|Situation|Error Type|Description|
+| --- | --- | --- |
+|Bound provider/model not found| `provider_call` |Error reporting will include providerId, modelId and nodeName.|
+|Failed to parse all sources| `provider_call` |The current node requires an LLM provider, but no provider is available in the context.|
+
+## Example
+
+```ts
+const provider = workflow.getLLMProvider(
+  context,
+  "answer",
+  workflow.createLLMProviderRef("default"),
+);
+
+const output = await provider.chat({ prompt: input.message });
+```

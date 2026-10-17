@@ -1,0 +1,103 @@
+{
+  "workflowName": "loop",
+  "projectType": "workflow",
+  "files": [
+    "index.ts",
+    "interface.ts"
+  ],
+  "nodes": [
+    {
+      "id": "seedNode",
+      "factory": "createInputNode",
+      "standardName": "input",
+      "configuredName": "loop-seed"
+    },
+    {
+      "id": "addRoundNode",
+      "factory": "createInputNode",
+      "standardName": "input",
+      "configuredName": "add-round"
+    },
+    {
+      "id": "burstBoostNode",
+      "factory": "createInputNode",
+      "standardName": "input",
+      "configuredName": "burst-boost"
+    },
+    {
+      "id": "steadyBoostNode",
+      "factory": "createInputNode",
+      "standardName": "input",
+      "configuredName": "steady-boost"
+    },
+    {
+      "id": "finishBoostNode",
+      "factory": "createInputNode",
+      "standardName": "input",
+      "configuredName": "finish-boost"
+    },
+    {
+      "id": "auditBoostNode",
+      "factory": "createInputNode",
+      "standardName": "input",
+      "configuredName": "boost-audit"
+    },
+    {
+      "id": "outputNode",
+      "factory": "createOutputNode",
+      "standardName": "output",
+      "configuredName": "loop-output"
+    }
+  ],
+  "defaultEntrypoint": "main",
+  "entrypoints": [
+    {
+      "id": "main",
+      "title": "Loop",
+      "workflowName": "loop",
+      "params": [
+        {
+          "name": "rounds",
+          "flag": "--rounds",
+          "type": "number",
+          "required": false,
+          "defaultValue": "3"
+        },
+        {
+          "name": "target",
+          "flag": "--target",
+          "type": "number",
+          "required": false,
+          "defaultValue": "18"
+        }
+      ],
+      "registry": [],
+      "execution": {
+        "kind": "sequence",
+        "counts": {
+          "sequence": 1,
+          "node": 7,
+          "loop": 3,
+          "branch": 2,
+          "if": 2,
+          "else-if": 1,
+          "else": 1
+        },
+        "callees": [
+          "runNode",
+          "runStreamNode"
+        ],
+        "branchLabels": [
+          "burst",
+          "steady",
+          "finish"
+        ],
+        "loopLabels": [
+          "Round loop",
+          "Boost until target",
+          "Burst passes"
+        ]
+      }
+    }
+  ]
+}

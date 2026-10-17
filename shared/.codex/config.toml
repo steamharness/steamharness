@@ -1,0 +1,2 @@
+[mcp_servers.supabase]
+url = "http://localhost:7121/mcp"
