@@ -1,16 +1,16 @@
 import path from "node:path";
 import { register } from "tsx/esm/api";
-import { prepareSharedPackages } from "./prepare-shared.mjs";
-import { resolveRepositoryMode } from "./repository-mode.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
-const prepared = await prepareSharedPackages({ root });
+const sharedRoot = path.resolve(root, "..", "shared");
 register();
-const { assertRepositoryBoundaries, scanPreparedRepositoryMode, scanRepositoryBoundaries } =
-  await import("../.shared/repository-boundary/index.ts");
+const { assertRepositoryBoundaries, scanRepositoryBoundaries } =
+  await import("../../shared/repository-boundary/index.ts");
+// Shared lives in this repository now, so the boundary scan covers the local
+// packages directly instead of a prepared copy of them.
 const violations = [
   ...await scanRepositoryBoundaries(root),
-  ...await scanPreparedRepositoryMode(root, resolveRepositoryMode({ root })),
+  ...await scanRepositoryBoundaries(sharedRoot),
 ];
 assertRepositoryBoundaries(violations);
-process.stdout.write(`Repository boundary check passed: ${root} (${prepared.mode}/${prepared.strategy})\n`);
+process.stdout.write(`Repository boundary check passed: ${root}\n`);

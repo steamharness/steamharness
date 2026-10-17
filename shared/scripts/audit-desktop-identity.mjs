@@ -3,7 +3,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 export const SPLIT_REPOSITORIES = Object.freeze([
-  "desktop", "core", "cli", "server", "shared", "docs",
+  "desktop", "harness", "cli", "server", "shared", "docs",
   "build-in/build-in-developer-assistant", "build-in/build-in-studio-control",
 ]);
 
@@ -108,7 +108,7 @@ export class DesktopIdentityAuditError extends Error {
 function isExplicitRejection({ repository, relativeFile, lines, lineIndex, kind }) {
   const context = lines.slice(Math.max(0, lineIndex - 1), lineIndex + 3).join("\n");
   if (
-    repository === "core" && normalize(relativeFile) === "src/runtime-platform.ts"
+    repository === "harness" && normalize(relativeFile) === "src/runtime-platform.ts"
     && (kind === "runtime-marker" || kind === "runtime-value")
   ) {
     return /normalized\s*===\s*["']app["'][\s\S]*throw new TypeError\([\s\S]*no longer supported; use ["']desktop["']/u.test(context);

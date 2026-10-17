@@ -83,13 +83,13 @@ npm run dev:web -- --port 3050 --default-folder /absolute/path/to/project
 
 运行按钮右侧的 **上传项目** 使用 Studio 当前账号，将源码上传并发布为 `package.json.version` 对应的服务器版本。左侧 **版本** 页展示历史版本、发布说明与关联版本，并提供下载；开始页也提供下载入口。下载保存到宿主用户主目录下的 `Documents/steamharness-projects/<项目名>-<版本>`，重名自动加序号，保留已有文件。项目标签、最近项目和资源面板展示本地版本；上传与下载均不会在服务器安装依赖、构建或执行源码。下载后可在新窗口打开，再在项目终端安装依赖。
 
-打开 `examples/conversation` 可以试用不需要模型凭据的本地对话演示。聚合仓库中的小助手位于 `../open-soucres/build-in/build-in-developer-assistant`；真实模型对话需要项目的 Workflow Server 和 AI 凭据配置。
+打开 `examples/conversation` 可以试用不需要模型凭据的本地对话演示。聚合仓库中的小助手位于 `../build-in/build-in-developer-assistant`；真实模型对话需要项目的 Workflow Server 和 AI 凭据配置。
 
-小助手还通过 `vendor/studio-control` 固定快照连接 VS Code：读取工作区和诊断、查询项目的关联声明与导入状态、打开文件并定位行列、切换已安装主题、打开终端及常用视图。`get_related_projects` 返回别名、UUID、名称、Studio 导入状态及核验后的目录；每次查询重新校验 UUID，不自动导入或代替数据授权。Permission 默认选择 Auto approve，提示词与控制工具均允许访问进程有权限的任意本地目录；Workspace / Read only 保留工作区目录限制。每个小助手会话拥有独立的认证回环接口，关闭会话、移除工作区或撤销信任后失效。工具沿用现有权限与 Build/Plan 审批，终端工具不执行命令。纯浏览器扩展不提供本地控制服务，需使用 Node 扩展宿主。
+小助手还通过 `build-in/build-in-studio-control` 源码连接 VS Code：读取工作区和诊断、查询项目的关联声明与导入状态、打开文件并定位行列、切换已安装主题、打开终端及常用视图。`get_related_projects` 返回别名、UUID、名称、Studio 导入状态及核验后的目录；每次查询重新校验 UUID，不自动导入或代替数据授权。Permission 默认选择 Auto approve，提示词与控制工具均允许访问进程有权限的任意本地目录；Workspace / Read only 保留工作区目录限制。每个小助手会话拥有独立的认证回环接口，关闭会话、移除工作区或撤销信任后失效。工具沿用现有权限与 Build/Plan 审批，终端工具不执行命令。纯浏览器扩展不提供本地控制服务，需使用 Node 扩展宿主。
 
-Studio Control 也可以作为普通 Workflow 项目打开：安装依赖后，在 Studio 中打开 `../open-soucres/build-in/build-in-studio-control`，点击 **运行项目** 并选择入口即可运行全部控制功能，无需小助手或模型配置。Studio 自动创建控制连接，默认目录为项目目录，文件访问限定在当前工作区；关闭运行页面后连接撤销，工作区子目录同样支持。
+Studio Control 也可以作为普通 Workflow 项目打开：安装依赖后，在 Studio 中打开 `../build-in/build-in-studio-control`，点击 **运行项目** 并选择入口即可运行全部控制功能，无需小助手或模型配置。Studio 自动创建控制连接，默认目录为项目目录，文件访问限定在当前工作区；关闭运行页面后连接撤销，工作区子目录同样支持。
 
-执行 **Workflow: 打开 Studio 分析** 或点击 Workflow 项目列表标题栏的图表入口，可打开 `vendor/analysis` 固定快照提供的内置 Kanban。它汇总当前工作区和已导入本地项目的真实运行历史与活动状态，展示图表、项目表、运行明细、筛选及 CSV 导出，不读取服务器数据。聚合仓库中的 `../open-soucres/build-in/build-in-analysis` 也可以作为普通 Kanban 项目运行；修改页面源码后先执行 `pnpm build`。
+执行 **Workflow: 打开 Studio 分析** 或点击 Workflow 项目列表标题栏的图表入口，可打开 `build-in/build-in-analysis` 源码提供的内置 Kanban。它汇总当前工作区和已导入本地项目的真实运行历史与活动状态，展示图表、项目表、运行明细、筛选及 CSV 导出，不读取服务器数据。聚合仓库中的 `../build-in/build-in-analysis` 也可以作为普通 Kanban 项目运行；修改页面源码后先执行 `pnpm build`。
 
 在完成扩展、同级 Core 和 CLI 构建后，`npm run test:analysis-live` 可使用隔离存储检验内置模板、真实项目 CLI、只读数据连接和项目范围更新；不会启动桌面窗口。
 

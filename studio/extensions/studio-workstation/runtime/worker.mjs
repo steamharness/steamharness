@@ -10,7 +10,7 @@ import {
   createLocalWorkflowFileStore, createServerWorkflowFileStore, createWorkflowFileStore,
   createLocalWorkflowKVStore, createWorkflowKVContext, createWorkflowPersistentValueContext,
   listLocalWorkflowKVEntries, deleteLocalWorkflowKVEntry, getKnowledgeDocument, listKnowledgeDocuments,
-} from './core.mjs';
+} from './harness.mjs';
 
 const write = process.stdout.write.bind(process.stdout);
 const send = (kind, value) => write(`__STUDIO_STEAMHARNESS__${JSON.stringify({ kind, value })}\n`);

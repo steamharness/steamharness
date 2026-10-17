@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { test } from 'node:test';
-import { ROOT, assertUpstream, git, mergeProduct, prepareDistribution, resolveWorkflowSource } from '../scripts/distribution.mjs';
+import { ROOT, assertUpstream, builtinProjectDirectory, git, mergeProduct, prepareDistribution, resolveMonorepoRoot } from '../scripts/distribution.mjs';
 
 const baseProduct = {
   nameShort: 'Code - OSS', nameLong: 'Code - OSS', applicationName: 'code-oss',
@@ -19,24 +19,34 @@ test('all distribution patches have valid Git patch syntax', async () => {
   }
 });
 
-test('Workflow source resolves the aggregate siblings, standalone layout and explicit override', async t => {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'studio-workflow-source-'));
+test('Monorepo source resolves the sibling layout and rejects a checkout without it', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'studio-monorepo-source-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   const root = path.join(directory, 'studio');
-  assert.equal(await resolveWorkflowSource(root, {}), path.join(directory, 'workflow'));
-  const aggregate = path.join(directory, 'open-soucres');
-  for (const name of ['core', 'cli']) {
-    await fs.mkdir(path.join(aggregate, name), { recursive: true });
-    await fs.writeFile(path.join(aggregate, name, 'package.json'), '{}');
-  }
-  assert.equal(await resolveWorkflowSource(root, {}), aggregate);
-  await fs.rm(aggregate, { recursive: true, force: true });
-  for (const name of ['core', 'cli']) {
-    await fs.mkdir(path.join(directory, name));
+  await fs.mkdir(root, { recursive: true });
+  await assert.rejects(() => resolveMonorepoRoot(root, {}), /monorepo source is missing/u);
+  for (const name of ['harness', 'cli']) {
+    await fs.mkdir(path.join(directory, name), { recursive: true });
     await fs.writeFile(path.join(directory, name, 'package.json'), '{}');
   }
-  assert.equal(await resolveWorkflowSource(root, {}), directory);
-  assert.equal(await resolveWorkflowSource(root, { STUDIO_STEAMHARNESS_SOURCE: path.join(directory, 'custom') }), path.join(directory, 'custom'));
+  assert.equal(await resolveMonorepoRoot(root, {}), directory);
+  assert.equal(await resolveMonorepoRoot(root, { STUDIO_STEAMHARNESS_SOURCE: path.join(directory, 'custom') }), path.join(directory, 'custom'));
+});
+
+test('Built-in projects resolve inside the monorepo and fail loudly when absent', async t => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'studio-builtin-source-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const root = path.join(directory, 'studio');
+  await fs.mkdir(root, { recursive: true });
+  for (const name of ['harness', 'cli']) {
+    await fs.mkdir(path.join(directory, name), { recursive: true });
+    await fs.writeFile(path.join(directory, name, 'package.json'), '{}');
+  }
+  await assert.rejects(() => builtinProjectDirectory('analysis', root), /Built-in project analysis is missing/u);
+  const assistant = path.join(directory, 'build-in/build-in-developer-assistant');
+  await fs.mkdir(assistant, { recursive: true });
+  await fs.writeFile(path.join(assistant, 'package.json'), '{}');
+  assert.equal(await builtinProjectDirectory('developer-assistant', root), assistant);
 });
 
 async function fixture(t) {

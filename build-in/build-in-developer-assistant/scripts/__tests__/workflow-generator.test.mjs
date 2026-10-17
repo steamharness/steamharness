@@ -17,7 +17,7 @@ const generator = path.join(
 
 /**
  * The version the generator would stamp for a declared dependency: an exact
- * version is used as-is, a `link:../core` reference resolves to the sibling's
+ * version is used as-is, a `link:../harness` reference resolves to the sibling's
  * own version.
  */
 async function siblingVersion(manifest, packageName) {
@@ -55,7 +55,7 @@ describe("packaged workflow generator", () => {
         icon: "workflow",
         iconBackgroundColor: "#2563eb",
       });
-      // 生成器写出的永远是精确版本。dev 上仓库自己用 `link:../core` 引用同级仓库，
+      // 生成器写出的永远是精确版本。dev 上仓库自己用 `link:../harness` 引用同级仓库，
       // 此时版本由生成器从同级 package.json 解析，所以这里读同一份来源而不是清单
       // 里的字面值；不写死则避免每次 bump 都要改测试。
       expect(generated.devDependencies).toEqual({

@@ -12,8 +12,6 @@
     }
   },
   "scripts": {
-    "bootstrap": "node scripts/bootstrap.mjs",
-    "pnpm:devPreinstall": "node scripts/install-guard.mjs",
     "check:boundaries": "node scripts/check-repository-boundaries.mjs",
     "check:secrets": "node scripts/check-secret-files.mjs",
     "check:production-env": "node scripts/check-production-env.mjs",

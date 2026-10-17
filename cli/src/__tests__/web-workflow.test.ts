@@ -383,9 +383,9 @@ describe('Workflow graph layout', () => {
 it('inspects and executes a real offline workflow with its own Core, streaming, input replay and a managed export', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'workflow-runtime-')); folders.push(directory);
   await mkdir(path.join(directory, 'node_modules'));
-  let coreRoot = path.dirname(fileURLToPath(import.meta.resolve('steamharness')));
-  while (JSON.parse(await readFile(path.join(coreRoot, 'package.json'), 'utf8').catch(() => '{}')).name !== 'steamharness') { coreRoot = path.dirname(coreRoot); }
-  await symlink(coreRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
+  let harnessRoot = path.dirname(fileURLToPath(import.meta.resolve('steamharness')));
+  while (JSON.parse(await readFile(path.join(harnessRoot, 'package.json'), 'utf8').catch(() => '{}')).name !== 'steamharness') { harnessRoot = path.dirname(harnessRoot); }
+  await symlink(harnessRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
   await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: project.id, name: 'Workflow fixture', type: 'module', steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } }));
   await writeFile(path.join(directory, 'index.ts'), `
     const preview = workflow.createOutputNode({ name: 'preview-node', async *stream() {

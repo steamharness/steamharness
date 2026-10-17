@@ -27,7 +27,7 @@ export function startPageLabels(): Record<string, string> {
     requiredParent: t('Choose an existing parent folder.'),
     'type.workflow': t('Workflow'), 'type.conversation': t('Conversation'), 'type.kanban': t('Kanban'),
     'type.link': t('Import from Link'),
-    'stat.studio': 'Studio', 'stat.vscode': 'VS Code', 'stat.node': 'Node.js', 'stat.core': 'Core', 'stat.cli': 'CLI',
+    'stat.studio': 'Studio', 'stat.vscode': 'VS Code', 'stat.node': 'Node.js', 'stat.harness': 'Harness', 'stat.cli': 'CLI',
     'stat.account': t('Account'), 'stat.server': t('Server'), 'stat.projects': t('Local Projects'), 'stat.running': t('Running'), 'stat.waiting': t('Waiting for Input'),
   };
 }

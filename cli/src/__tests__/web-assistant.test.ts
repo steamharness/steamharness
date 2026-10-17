@@ -85,13 +85,13 @@ it('executes dedicated assistant skills using its own runtime and independent wo
   await mkdir(path.join(runtimeProjectDir, 'node_modules'), { recursive: true });
   await mkdir(path.join(assistantProjectDir, 'skills', 'fixture-skill'), { recursive: true });
   const coreEntry = fileURLToPath(import.meta.resolve('steamharness'));
-  let coreRoot = path.dirname(coreEntry);
+  let harnessRoot = path.dirname(coreEntry);
   for (let depth = 0; depth < 8; depth++) {
-    try { if (JSON.parse(await readFile(path.join(coreRoot, 'package.json'), 'utf8')).name === 'steamharness') { break; } } catch {}
-    coreRoot = path.dirname(coreRoot);
+    try { if (JSON.parse(await readFile(path.join(harnessRoot, 'package.json'), 'utf8')).name === 'steamharness') { break; } } catch {}
+    harnessRoot = path.dirname(harnessRoot);
   }
-  const coreVersion = JSON.parse(await readFile(path.join(coreRoot, 'package.json'), 'utf8')).version;
-  await symlink(coreRoot, path.join(runtimeProjectDir, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
+  const coreVersion = JSON.parse(await readFile(path.join(harnessRoot, 'package.json'), 'utf8')).version;
+  await symlink(harnessRoot, path.join(runtimeProjectDir, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
   const manifest = { id: '364764e9-ef0e-4e86-9e56-77d0410e1723', type: 'module', devDependencies: { 'steamharness': coreVersion }, steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } };
   await writeFile(path.join(runtimeProjectDir, 'package.json'), JSON.stringify({ ...manifest, name: 'Assistant runtime' }));
   await writeFile(path.join(assistantProjectDir, 'package.json'), JSON.stringify({ ...manifest, name: 'Dedicated assistant' }));

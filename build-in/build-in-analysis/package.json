@@ -13,7 +13,7 @@
   },
   "devDependencies": {
     "@steamharness/cli": "link:../../cli",
-    "steamharness": "link:../../core",
+    "steamharness": "link:../../harness",
     "chart.js": "4.5.1",
     "esbuild": "0.28.2",
     "lucide": "0.468.0",

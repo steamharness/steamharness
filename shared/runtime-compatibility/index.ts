@@ -1,6 +1,6 @@
 import semver from "semver";
 
-export const STEAMHARNESS_CORE_PACKAGE_NAME = "steamharness";
+export const STEAMHARNESS_HARNESS_PACKAGE_NAME = "steamharness";
 export const STEAMHARNESS_CLI_PACKAGE_NAME = "@steamharness/cli";
 
 export type WorkflowPackageManifest = Record<string, unknown>;
@@ -36,7 +36,7 @@ export function readRequiredCoreVersion(manifest: unknown): string {
     throw new Error('Workflow package.json must declare devDependencies.steamharness as an exact version.');
   }
 
-  const value = devDependencies[STEAMHARNESS_CORE_PACKAGE_NAME];
+  const value = devDependencies[STEAMHARNESS_HARNESS_PACKAGE_NAME];
   if (typeof value !== "string" || value.trim() === "") {
     throw new Error('Workflow package.json must declare devDependencies.steamharness as an exact version.');
   }
@@ -108,7 +108,7 @@ export function resolveReleaseMode(env: Record<string, string | undefined> = pro
 }
 
 /**
- * 把 `../core` 这样的相对引用换算成相对 **workspace 根** 的目录名。
+ * 把 `../harness` 这样的相对引用换算成相对 **workspace 根** 的目录名。
  *
  * 纯字符串运算，不依赖 `node:path`，同时保证引用不会走出 workspace 根：
  * `../..`、`../../etc`、`file:/abs` 都会在这里被拒绝。
@@ -135,7 +135,7 @@ export function resolveSiblingDirectory(relative: string, repositoryDirectory: s
 }
 
 /**
- * 解析清单声明的 Core 版本：发布通道要求精确版本，开发分支允许 `link:../core`
+ * 解析清单声明的 Core 版本：发布通道要求精确版本，开发分支允许 `link:../harness`
  * 并读取同级仓库 `package.json` 的版本。
  *
  * 同级清单的读取由调用方注入 —— 这个模块不能碰文件系统。`resolveSiblingDirectory`
@@ -150,20 +150,20 @@ export function resolveRequiredCoreVersion(
     section?: "devDependencies";
   },
 ): string {
-  const reference = classifyVersionReference(manifest, STEAMHARNESS_CORE_PACKAGE_NAME, {
+  const reference = classifyVersionReference(manifest, STEAMHARNESS_HARNESS_PACKAGE_NAME, {
     section: options.section ?? "devDependencies",
   });
   if (reference.kind === "exact") return normalizeExactVersion(reference.version, "Workflow Core requirement");
   if (options.mode === "main") {
     throw new Error(
-      `devDependencies.${STEAMHARNESS_CORE_PACKAGE_NAME} must declare an exact published version on main and alpha; `
+      `devDependencies.${STEAMHARNESS_HARNESS_PACKAGE_NAME} must declare an exact published version on main and alpha; `
       + `${reference.specifier} is only allowed on dev and feature branches.`,
     );
   }
 
   const siblingDirectory = resolveSiblingDirectory(reference.relative, options.repositoryDirectory);
   const sibling = options.readSiblingManifest(siblingDirectory);
-  if (!isRecord(sibling) || sibling.name !== STEAMHARNESS_CORE_PACKAGE_NAME) {
+  if (!isRecord(sibling) || sibling.name !== STEAMHARNESS_HARNESS_PACKAGE_NAME) {
     throw new Error(`${reference.specifier} must point at the sibling Core repository (${siblingDirectory}).`);
   }
   return normalizeExactVersion(String(sibling.version ?? ""), "Sibling Core version");

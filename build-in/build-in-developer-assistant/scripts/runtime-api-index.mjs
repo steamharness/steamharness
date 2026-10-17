@@ -35,9 +35,9 @@ const INDEX_FILE = path.join(
 );
 const CAPABILITIES_FILE = path.join(root, "runtime-capabilities.generated.ts");
 
-/** Core's source, which everything below is read from. */
+/** The harness source, which everything below is read from. */
 const manifest = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
-const CORE_SOURCE = path.join(resolveSiblingWorkspaceRoot(root, manifest), "core", "src");
+const HARNESS_SOURCE = path.join(resolveSiblingWorkspaceRoot(root, manifest), "harness", "src");
 
 const BEGIN_MARKER = "<!-- runtime-api-index:begin -->";
 const END_MARKER = "<!-- runtime-api-index:end -->";
@@ -58,7 +58,7 @@ export async function readRuntimeApiIndex() {
 }
 
 /** The `workflow.*` members a project may call. */
-export async function readRuntimeNamespaceMembers(coreSource = CORE_SOURCE) {
+export async function readRuntimeNamespaceMembers(coreSource = HARNESS_SOURCE) {
   const file = path.join(coreSource, "runtime-api.ts");
   const source = ts.createSourceFile(file, await readFile(file, "utf8"), ts.ScriptTarget.Latest, true);
 
@@ -87,7 +87,7 @@ export async function readRuntimeNamespaceMembers(coreSource = CORE_SOURCE) {
 }
 
 /** The members a related project exposes, taken from the interfaces that define them. */
-export async function readRelatedProjectMembers(coreSource = CORE_SOURCE) {
+export async function readRelatedProjectMembers(coreSource = HARNESS_SOURCE) {
   const file = path.join(coreSource, "kv", "related-projects.ts");
   const source = ts.createSourceFile(file, await readFile(file, "utf8"), ts.ScriptTarget.Latest, true);
 

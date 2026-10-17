@@ -9,16 +9,14 @@ import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 import { resolve } from 'import-meta-resolve';
 import { chromium } from '../upstream/vscode/node_modules/playwright/index.mjs';
-import { ROOT, assertRuntime, assertUpstream, exists } from '../scripts/distribution.mjs';
+import { ROOT, assertRuntime, assertUpstream, builtinProjectDirectory, exists } from '../scripts/distribution.mjs';
 
 await assertRuntime();
 const upstream = await assertUpstream();
 assert.ok(await exists(path.join(upstream.directory, 'out/server-main.js')), 'Run npm run build first.');
-const aggregateAssistant = path.resolve(ROOT, '../open-soucres/build-in/build-in-developer-assistant');
 const assistant = path.resolve(process.env.STUDIO_CONTROL_TEST_ASSISTANT_DIR ||
-  (await exists(path.join(aggregateAssistant, 'package.json')) ? aggregateAssistant : path.join(ROOT, 'vendor/developer-assistant')));
-const aggregateControl = path.resolve(ROOT, '../open-soucres/build-in/build-in-studio-control');
-const controlProject = await exists(path.join(aggregateControl, 'package.json')) ? aggregateControl : path.join(ROOT, 'vendor/studio-control');
+  await builtinProjectDirectory('developer-assistant'));
+const controlProject = await builtinProjectDirectory('studio-control');
 const require = createRequire(path.join(assistant, 'package.json'));
 const cliManifestPath = require.resolve('@steamharness/cli/package.json');
 const cliManifest = JSON.parse(await readFile(cliManifestPath, 'utf8'));

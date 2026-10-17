@@ -3,7 +3,6 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { prepareDevelopmentSources } from "./development-sources.mjs";
-import { prepareSharedPackages } from "./prepare-shared.mjs";
 import { resolveRepositoryMode } from "./repository-mode.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -34,11 +33,11 @@ export async function createServerRunPlan({
     tsxCliPath = requireFromServer.resolve("tsx/cli");
   } catch (error) {
     if (error?.code === "MODULE_NOT_FOUND") {
-      throw new Error("Server dependencies are missing (tsx/cli). Run pnpm bootstrap in the Server repository, then retry.", { cause: error });
+      throw new Error("Server dependencies are missing (tsx/cli). Run pnpm install at the monorepo root, then retry.", { cause: error });
     }
     throw error;
   }
-  const { tsconfigPath, coreRoot, sharedRoot } = await prepareDevelopment({ root: repositoryRoot });
+  const { tsconfigPath, harnessRoot, sharedRoot } = await prepareDevelopment({ root: repositoryRoot });
   return {
     mode,
     hotReload,
@@ -54,9 +53,9 @@ export async function createServerRunPlan({
       // restart the dev server.
       ...(hotReload
         ? [
-            "--include", path.join(coreRoot, "src"),
+            "--include", path.join(harnessRoot, "src"),
             "--include", sharedRoot,
-            "--exclude", path.join(coreRoot, ".git"),
+            "--exclude", path.join(harnessRoot, ".git"),
             "--exclude", path.join(sharedRoot, ".git"),
           ]
         : []),
@@ -69,7 +68,7 @@ export async function createServerRunPlan({
       STEAMHARNESS_SERVER_DEV: "1",
       STEAMHARNESS_SERVER_HMR: hotReload ? "1" : "0",
       TSX_TSCONFIG_PATH: tsconfigPath,
-      STEAMHARNESS_LOCAL_CORE_ROOT: coreRoot,
+      STEAMHARNESS_LOCAL_HARNESS_ROOT: harnessRoot,
       STEAMHARNESS_LOCAL_SHARED_ROOT: sharedRoot,
       STEAMHARNESS_LOCAL_SOURCE_MODE: "1",
     },
@@ -80,7 +79,7 @@ function withoutLocalSourceEnvironment(env) {
   const result = { ...env };
   for (const key of [
     "TSX_TSCONFIG_PATH",
-    "STEAMHARNESS_LOCAL_CORE_ROOT",
+    "STEAMHARNESS_LOCAL_HARNESS_ROOT",
     "STEAMHARNESS_LOCAL_SHARED_ROOT",
     "STEAMHARNESS_LOCAL_SOURCE_MODE",
     "STEAMHARNESS_SERVER_DEV",
@@ -112,7 +111,6 @@ function withDevelopmentCondition(value) {
 
 async function main() {
   const plan = await createServerRunPlan({ hotReload: !process.argv.includes("--no-hmr") });
-  await prepareSharedPackages({ root, env: plan.env });
   const runtime = plan.mode === "main"
     ? "dist + static web"
     : plan.hotReload ? "source watch + Vite HMR" : "source + manual web reload";

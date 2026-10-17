@@ -70,7 +70,7 @@ export async function listProjectTemplates(): Promise<ProjectTemplateDefinition[
 export async function createProjectFromTemplate(request: CreateProjectFromTemplateRequest): Promise<CreatedTemplateProject> {
   request.signal?.throwIfAborted();
   const name = validateProjectName(request.name);
-  if (!exactVersion.test(request.versions.core) || !exactVersion.test(request.versions.cli)) {
+  if (!exactVersion.test(request.versions.harness) || !exactVersion.test(request.versions.cli)) {
     throw new ProjectTemplateError('invalid-version', 'Project dependencies must use exact published versions.');
   }
   const template = (await listProjectTemplates()).find(entry => entry.id === request.templateId);
@@ -87,7 +87,7 @@ export async function createProjectFromTemplate(request: CreateProjectFromTempla
   const manifest = {
     id, name: packageName, version: '0.1.0', private: true, type: 'module',
     scripts: { dev: 'steamharness web .', inspect: 'steamharness structure .', 'run:json': 'steamharness json .' },
-    devDependencies: { 'steamharness': request.versions.core, '@steamharness/cli': request.versions.cli },
+    devDependencies: { 'steamharness': request.versions.harness, '@steamharness/cli': request.versions.cli },
     steamHarness: {
       projectType: template.projectType,
       ...(template.projectType === 'kanban' ? { kanban: {} } : {}),

@@ -40,7 +40,7 @@
 ## 分支与发版
 
 - `main`、`alpha`、`dev` 分别承接正式、测试和日常集成，Server 与 Server Web 的声明版本遵循 `main <= alpha = dev`。普通 Alpha 发布保持基础版本不变，只生成同一基础版本的 `X.Y.Z-YYYYMMDDNNN` 日期版本；只有明确收到“版本号 +1”指令时，才让两个分支及两个 Server 单元一起递增 patch。提交范围只有版本字段、changelog、CI 或发布元数据时不发布；源码、依赖或实际 vendor 变化才进入 Alpha 级联。版本准备前把 Server 与 Server Web 当前分支各自中英文 `CHANGELOG.next*` 归档到现有历史条目并清空 next。Alpha 转正直接从已验证提交进入 `main`；成功后默认将 `alpha`、`dev` 对齐到 `main` 并跳过 CI，不发布空 Alpha。Alpha 与正式版共用 PostgreSQL 和对象存储目录，但代码、进程、日志和本地缓存隔离；数据库变更必须保持 expand-only。
-- 本仓与所有子仓库一样维护 `dev`、`alpha`、`main` 三条分支。`dev` 和功能分支上内置项目与 `cli` 用 `link:../core` 引用同级仓库，`alpha`/`main` 上必须是精确的已发布版本；`shared/release-tools/release-gate.mjs`（本仓 `vendor/shared/` 内）是这条规则的执行者，聚合仓库的 `pnpm check:release-references` 可一次检查全列车。
+- 本仓与所有子仓库一样维护 `dev`、`alpha`、`main` 三条分支。`dev` 和功能分支上内置项目与 `cli` 用 `link:../harness` 引用同级仓库，`alpha`/`main` 上必须是精确的已发布版本；`shared/release-tools/release-gate.mjs`（本仓 `vendor/shared/` 内）是这条规则的执行者，聚合仓库的 `pnpm check:release-references` 可一次检查全列车。
 - Server 与 Server Web 是同仓库内两个独立发布单元。版本源分别为 `package.json` 和 `web/package.json`，正式 tag 分别为 `server/vX.Y.Z` 与 `server-web/vX.Y.Z`。
 - 两个单元各维护中文/英文的 `CHANGELOG.md`、`CHANGELOG.en.md`、`CHANGELOG.next.md`、`CHANGELOG.next.en.md`。用户可见变化必须同步两份 next；内部拆仓、测试和 CI 整理不写公开日志。
 - 准备版本使用 `pnpm release:prepare -- --unit <server|server-web> --version X.Y.Z`。发布准备只更新目标单元，且中英文历史版本、日期和 next 条目分类必须一致。

@@ -15,8 +15,6 @@
     "access": "public"
   },
   "scripts": {
-    "bootstrap": "node scripts/bootstrap.mjs",
-    "pnpm:devPreinstall": "node scripts/install-guard.mjs",
     "check:boundaries": "node scripts/check-repository-boundaries.mjs",
     "dev": "node scripts/dev.mjs",
     "build": "tsup --config tsup.config.ts && node scripts/build-web.mjs && node scripts/build-project-templates.mjs",

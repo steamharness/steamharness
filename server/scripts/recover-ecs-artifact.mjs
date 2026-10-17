@@ -29,7 +29,6 @@ export async function recoverArtifact() {
     await exec("git", ["clone", "--quiet", "--depth", "1", "--branch", ref, repository, checkout]).catch(() => { throw new Error("Cannot clone the immutable recovery tag."); });
     const sha = String((await exec("git", ["rev-parse", "HEAD"], { cwd: checkout })).stdout).trim();
     const env = { ...process.env, CI_COMMIT_SHA: sha, STEAMHARNESS_REPOSITORY_MODE: "main" };
-    await run(process.execPath, ["scripts/prepare-shared.mjs"], checkout, env);
     await run("corepack", ["pnpm", "install", "--frozen-lockfile"], checkout, env);
     if (channel === "alpha") await run(process.execPath, ["vendor/shared/release-tools/alpha-release.mjs", "write", "--version", version, "--manifest", "package.json", "--manifest", "web/package.json"], checkout, env);
     await run("corepack", ["pnpm", "build:all"], checkout, env);

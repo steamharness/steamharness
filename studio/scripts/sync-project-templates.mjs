@@ -1,8 +1,8 @@
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { ROOT, resolveWorkflowSource } from './distribution.mjs';
+import { ROOT, resolveMonorepoRoot } from './distribution.mjs';
 
-const source = path.join(await resolveWorkflowSource(), 'cli/src');
+const source = path.join(await resolveMonorepoRoot(), 'cli/src');
 const target = path.join(ROOT, 'vendor/project-templates');
 await mkdir(target, { recursive: true });
 await writeFile(path.join(target, 'project-templates.ts'), await readFile(path.join(source, 'project-templates.ts')));

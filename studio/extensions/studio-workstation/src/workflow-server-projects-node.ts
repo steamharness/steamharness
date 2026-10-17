@@ -17,7 +17,7 @@ export function runWorkspaceTransfer(options: TransferOptions, args: string[], p
     const env: NodeJS.ProcessEnv = { ...process.env, ELECTRON_RUN_AS_NODE: '1',
       STEAMHARNESS_SERVER_URL: options.connection.serverUrl, STEAMHARNESS_SERVER_ADMIN_KEY: options.connection.accessToken,
       STEAMHARNESS_WORKSPACE_PACKS_DIR: packsDirectory };
-    for (const key of ['NODE_OPTIONS', 'TSX_TSCONFIG_PATH', 'STEAMHARNESS_LOCAL_CORE_ROOT', 'STEAMHARNESS_LOCAL_SHARED_ROOT', 'STEAMHARNESS_LOCAL_SOURCE_MODE']) { delete env[key]; }
+    for (const key of ['NODE_OPTIONS', 'TSX_TSCONFIG_PATH', 'STEAMHARNESS_LOCAL_HARNESS_ROOT', 'STEAMHARNESS_LOCAL_SHARED_ROOT', 'STEAMHARNESS_LOCAL_SOURCE_MODE']) { delete env[key]; }
     const child = spawn(options.nodePath, [options.cliEntry, '--locale', locale(), 'workspace', ...args], {
       cwd: options.runtimeDirectory, env, shell: false, windowsHide: true, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'],
     });

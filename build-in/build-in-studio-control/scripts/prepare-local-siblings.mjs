@@ -4,14 +4,14 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 /**
- * `dev` 和功能分支上，内置项目用 `link:../../core` / `link:../../cli` 引用源码，
- * 所以在单仓库 CI 里 `pnpm install` 之前必须按清单的相对路径准备检出。
+ * `dev` 和功能分支上，内置项目用 `link:../../harness` / `link:../../cli` 引用源码，
+ * 所以在 monorepo 之外的检出里，`pnpm install` 之前必须按清单的相对路径准备同级目录。
  *
  * Alpha 和 `main` 上的依赖是精确的已发布版本，安装走 npm，不需要同级目录；但生成物
- * （`scripts/runtime-api-index.mjs` 读的是同级 Core 的**源码**）要在 CI 里校验，就必须
+ * （`scripts/runtime-api-index.mjs` 读的是同级 harness 的**源码**）要在 CI 里校验，就必须
  * 把声明的那一版源码取到同样的位置：按版本找到它的发布 tag（`alpha/v…` / `dev/v…` / `v…`）
  * 做一次浅检出，只取源码，不安装也不构建——`typecheck` 与测试用的是安装好的那一份。
- * 本地开发时同级目录通常已经由聚合仓库准备好，跳过。
+ * monorepo 内的同级目录已经就位，这种准备会被跳过。
  */
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -29,7 +29,7 @@ const PINNED_VERSION_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u;
  * `../<name>` 取到源码的只有这几个仓库。
  */
 const SIBLING_PACKAGES = Object.freeze({
-  "steamharness": "core",
+  "steamharness": "harness",
   "@steamharness/cli": "cli",
 });
 
@@ -152,11 +152,11 @@ export function prepareLocalSiblings(options = {}) {
   };
   const branch = resolveSiblingBranch(env);
   // In CI the sibling path is *another project's build directory*: the runner
-  // puts every project under one builds root, so `../core` is whatever Core's
-  // last job left there — possibly a different commit, or one whose `dist` was
-  // cleaned. Reusing it silently typechecks against the wrong Core, so CI
-  // always starts from a fresh clone. Locally the aggregator workspace already
-  // provides the siblings and they are left alone.
+  // puts every project under one builds root, so `../harness` is whatever the
+  // harness build left there — possibly a different commit, or one whose `dist`
+  // was cleaned. Reusing it silently typechecks against the wrong sources, so
+  // CI always starts from a fresh clone. Locally the monorepo already provides
+  // the siblings and they are left alone.
   const refresh = options.refresh ?? isContinuousIntegration(env);
   const prepared = [];
   for (const name of linked.map((value) => ({ name: value, version: undefined })).concat(pinned)) {
@@ -187,13 +187,9 @@ export function prepareLocalSiblings(options = {}) {
     log(`[local-siblings] checking out ${name.name} (${branch}) into ${target}`);
     run("git", ["clone", "--quiet", "--depth", "1", "--branch", branch, `${repositoryPrefix()}/${name.name}.git`, target], { cwd: workspaceRoot, env });
     const siblingManifest = JSON.parse(readFileSync(path.join(target, "package.json"), "utf8"));
-    // 与 Desktop 的 ensureSiblings 同一套判断：vendor 了 Shared 的仓库必须走它自己的
-    // bootstrap 才能在 `.shared` 就位后再安装依赖。
-    const install = typeof siblingManifest?.scripts?.bootstrap === "string"
-      ? ["bootstrap"]
-      : ["install", "--frozen-lockfile"];
-    run("pnpm", install, { cwd: target, env });
-    // 内置项目的 typecheck 走同级 Core 的 `dist/*.d.ts`（测试走 vitest 的
+    // 所有共享包都通过 workspace 解析，检出之后直接安装即可。
+    run("pnpm", ["install", "--frozen-lockfile"], { cwd: target, env });
+    // 内置项目的 typecheck 走同级 harness 的 `dist/*.d.ts`（测试走 vitest 的
     // `development` 导出条件，不需要构建）。过期的 dist 比缺失的 dist 更糟：类型
     // 会静默对不上源码，所以这里一律重建，而不是只在 dist 不存在时构建。
     if (typeof siblingManifest?.scripts?.build === "string") {

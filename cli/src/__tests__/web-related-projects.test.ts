@@ -83,17 +83,17 @@ it('uses the project Core for server KV and knowledge and rechecks grants and id
 async function createFixture(location = 'local') {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'web-related-'))); temporary.push(root);
   const consumerDir = path.join(root, 'workspace', 'consumer'), targetDir = path.join(root, 'imported', 'database');
-  let coreRoot = path.dirname(fileURLToPath(import.meta.resolve('steamharness')));
+  let harnessRoot = path.dirname(fileURLToPath(import.meta.resolve('steamharness')));
   for (let depth = 0; depth < 8; depth++) {
-    try { if (JSON.parse(await readFile(path.join(coreRoot, 'package.json'), 'utf8')).name === 'steamharness') { break; } } catch {}
-    coreRoot = path.dirname(coreRoot);
+    try { if (JSON.parse(await readFile(path.join(harnessRoot, 'package.json'), 'utf8')).name === 'steamharness') { break; } } catch {}
+    harnessRoot = path.dirname(harnessRoot);
   }
   const relation = (alias: string, projectId: string) => ({ alias, projectId, grantToRelatedProject: {
     read: { mode: 'all' }, write: { mode: 'none' }, knowledge: { read: { mode: 'all' }, write: { mode: 'none' } }, entrypoints: { mode: 'all' },
   } });
   for (const [directory, id, relatedProjects] of [[consumerDir, consumerId, [relation('database', targetId)]], [targetDir, targetId, [relation('consumer', consumerId)]]] as const) {
     await mkdir(path.join(directory, 'node_modules'), { recursive: true });
-    await symlink(coreRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
+    await symlink(harnessRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
     await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id, name: path.basename(directory), type: 'module',
       steamHarness: { projectInfo: { dataStorage: { mode: directory === targetDir ? location : 'both' }, relatedProjects } } }));
   }

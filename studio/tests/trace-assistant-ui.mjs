@@ -15,7 +15,7 @@ const { ConversationController } = await import('../../cli/src/web/conversation-
 const { startWebServer } = await import('../../cli/src/web/server.ts');
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const assistant = path.join(root, '../open-soucres/build-in/build-in-developer-assistant');
+const assistant = path.join(root, '../build-in/build-in-developer-assistant');
 const loader = createRequire(path.join(assistant, 'node_modules/@steamharness/cli/package.json')).resolve('tsx');
 const directory = await mkdtemp(path.join(tmpdir(), 'workflow-trace-assistant-'));
 const target = { kind: 'folder', folderId: 'fixture' };

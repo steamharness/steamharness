@@ -726,13 +726,13 @@ describe('steamharness web', () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'steamharness-web-runtime-')); folders.push(directory);
     await mkdir(path.join(directory, 'node_modules'));
     const coreEntry = fileURLToPath(import.meta.resolve('steamharness'));
-    let coreRoot = path.dirname(coreEntry);
+    let harnessRoot = path.dirname(coreEntry);
     for (let depth = 0; depth < 8; depth++) {
-      try { if (JSON.parse(await readFile(path.join(coreRoot, 'package.json'), 'utf8')).name === 'steamharness') { break; } } catch {}
-      coreRoot = path.dirname(coreRoot);
+      try { if (JSON.parse(await readFile(path.join(harnessRoot, 'package.json'), 'utf8')).name === 'steamharness') { break; } } catch {}
+      harnessRoot = path.dirname(harnessRoot);
     }
-    await symlink(coreRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    const coreVersion = JSON.parse(await readFile(path.join(coreRoot, 'package.json'), 'utf8')).version;
+    await symlink(harnessRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
+    const coreVersion = JSON.parse(await readFile(path.join(harnessRoot, 'package.json'), 'utf8')).version;
     await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: '364764e9-ef0e-4e86-9e56-77d0410e1723', name: 'project-runtime', type: 'module', devDependencies: { 'steamharness': coreVersion }, steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } }));
     await writeFile(path.join(directory, 'index.ts'), `
       const flow = workflow.defineWorkflow({ name: 'test', run() { return {
@@ -766,7 +766,7 @@ describe('steamharness web', () => {
       });
     `);
     vi.stubEnv('TSX_TSCONFIG_PATH', path.join(directory, 'missing.json'));
-    vi.stubEnv('STEAMHARNESS_LOCAL_CORE_ROOT', '/missing/core');
+    vi.stubEnv('STEAMHARNESS_LOCAL_HARNESS_ROOT', '/missing/core');
     vi.stubEnv('STEAMHARNESS_AI_SERVER_URL', 'https://old-account.test');
     vi.stubEnv('STEAMHARNESS_AI_API_KEY', 'old-account-token');
     vi.stubEnv('STEAMHARNESS_DEVELOPER_ASSISTANT_HOST', 'vscode');
@@ -819,12 +819,12 @@ describe('steamharness web', () => {
   it('accepts delayed pipe chunks, large uploads and split UTF-8 filenames', async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'steamharness-web-pipe-')); folders.push(directory);
     await mkdir(path.join(directory, 'node_modules'));
-    let coreRoot = path.dirname(fileURLToPath(import.meta.resolve('steamharness')));
+    let harnessRoot = path.dirname(fileURLToPath(import.meta.resolve('steamharness')));
     for (let depth = 0; depth < 8; depth++) {
-      try { if (JSON.parse(await readFile(path.join(coreRoot, 'package.json'), 'utf8')).name === 'steamharness') { break; } } catch {}
-      coreRoot = path.dirname(coreRoot);
+      try { if (JSON.parse(await readFile(path.join(harnessRoot, 'package.json'), 'utf8')).name === 'steamharness') { break; } } catch {}
+      harnessRoot = path.dirname(harnessRoot);
     }
-    await symlink(coreRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
+    await symlink(harnessRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
     await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module' }));
     const filename = '\u6587\u4ef6.txt';
     const content = Buffer.alloc(256 * 1024, 'x');

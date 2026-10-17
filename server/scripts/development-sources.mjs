@@ -5,17 +5,17 @@ import { resolveRepositoryMode } from "./repository-mode.mjs";
 
 export async function prepareDevelopmentSources({
   root = path.resolve(import.meta.dirname, ".."),
-  coreRoot = path.resolve(root, "..", "core"),
+  harnessRoot = path.resolve(root, "..", "harness"),
   sharedRoot = path.resolve(root, "..", "shared"),
   ensureSiblings = ensureSiblingInstalls,
   env = process.env,
 } = {}) {
   await Promise.all([
-    assertPackage(coreRoot, "steamharness"),
+    assertPackage(harnessRoot, "steamharness"),
     assertPackage(sharedRoot, "@steamharness/shared-workspace"),
   ]);
-  if (resolveRepositoryMode({ root: coreRoot, env: {} }) !== "dev") {
-    throw new Error(`Local Core source must be on a development branch: ${coreRoot}`);
+  if (resolveRepositoryMode({ root: harnessRoot, env: {} }) !== "dev") {
+    throw new Error(`Local harness source must be on a development branch: ${harnessRoot}`);
   }
   if (resolveRepositoryMode({ root: sharedRoot, env: {} }) !== "dev") {
     throw new Error(`Local Shared source must be on a development branch: ${sharedRoot}`);
@@ -24,7 +24,7 @@ export async function prepareDevelopmentSources({
   // Server runs Core and Shared straight from source, so both have to be
   // installed before `tsx watch` starts. CLI is not a run-time sibling here;
   // it is only a pinned devDependency version.
-  await ensureSiblings({ roots: [sharedRoot, coreRoot], env });
+  await ensureSiblings({ roots: [sharedRoot, harnessRoot], env });
 
   const outputRoot = path.join(root, ".workflow-local");
   const tsconfigPath = path.join(outputRoot, "tsconfig.json");
@@ -36,13 +36,13 @@ export async function prepareDevelopmentSources({
       baseUrl: root,
       paths: {
         ...sharedPaths,
-        "steamharness": [path.join(coreRoot, "src", "index.ts")],
-        "steamharness/*": [path.join(coreRoot, "src", "*")],
+        "steamharness": [path.join(harnessRoot, "src", "index.ts")],
+        "steamharness/*": [path.join(harnessRoot, "src", "*")],
       },
     },
   }, null, 2)}\n`);
 
-  return { coreRoot, sharedRoot, tsconfigPath };
+  return { harnessRoot, sharedRoot, tsconfigPath };
 }
 
 export async function createSharedCompilerPaths(sharedRoot) {

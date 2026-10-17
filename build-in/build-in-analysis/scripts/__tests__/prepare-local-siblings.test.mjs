@@ -32,12 +32,12 @@ describe("local sibling preparation", () => {
   it("reads only the relative sibling references", () => {
     expect(readLocalSiblingNames({
       devDependencies: {
-        "steamharness": "link:../core",
+        "steamharness": "link:../harness",
         "@steamharness/cli": "file:../cli",
         vitest: "^4.1.7",
       },
       dependencies: { "@opencode-ai/sdk": "1.18.3" },
-    })).toEqual(["cli", "core"]);
+    })).toEqual(["cli", "harness"]);
     expect(readLocalSiblingNames({ devDependencies: { "steamharness": "0.2.4-20260921001" } })).toEqual([]);
   });
 
@@ -54,19 +54,19 @@ describe("local sibling preparation", () => {
   });
 
   it("resolves nested local references and pinned aggregate checkouts", async () => {
-    const manifest = { devDependencies: { "steamharness": "link:../../core", "@steamharness/cli": "file:../../cli" } };
+    const manifest = { devDependencies: { "steamharness": "link:../../harness", "@steamharness/cli": "file:../../cli" } };
     const { workspace, projectRoot } = await createWorkspace(manifest, "build-in/build-in-project");
-    expect(readLocalSiblingNames(manifest)).toEqual(["cli", "core"]);
+    expect(readLocalSiblingNames(manifest)).toEqual(["cli", "harness"]);
     expect(resolveSiblingWorkspaceRoot(projectRoot, manifest)).toBe(workspace);
     expect(resolveSiblingWorkspaceRoot(projectRoot, { devDependencies: { "steamharness": "0.2.4" } })).toBe(workspace);
     expect(() => resolveSiblingWorkspaceRoot(projectRoot, {
-      devDependencies: { "steamharness": "link:../../core", "@steamharness/cli": "link:../cli" },
+      devDependencies: { "steamharness": "link:../../harness", "@steamharness/cli": "link:../cli" },
     })).toThrow(/share one workspace root/);
   });
 
   it("clones nested dependencies at the declared paths in a standalone CI checkout", async () => {
     const { workspace, projectRoot } = await createWorkspace({
-      devDependencies: { "steamharness": "link:../../core", "@steamharness/cli": "link:../../cli" },
+      devDependencies: { "steamharness": "link:../../harness", "@steamharness/cli": "link:../../cli" },
     }, "checkouts/build-in-project");
     const calls = [];
     const { prepared } = prepareLocalSiblings({
@@ -81,7 +81,7 @@ describe("local sibling preparation", () => {
         writeFileSync(path.join(target, "package.json"), JSON.stringify({ scripts: {} }));
       },
     });
-    expect(prepared.map(entry => entry.target)).toEqual([path.join(workspace, "cli"), path.join(workspace, "core")]);
+    expect(prepared.map(entry => entry.target)).toEqual([path.join(workspace, "cli"), path.join(workspace, "harness")]);
     expect(calls.filter(call => call.command === "git").map(call => call.cwd)).toEqual([workspace, workspace]);
   });
 
@@ -123,12 +123,12 @@ describe("local sibling preparation", () => {
     // dependency a project installs is still the published package.
     expect(prepared.map((entry) => `${entry.name}:${entry.tag}`)).toEqual([
       "cli:alpha/v0.2.4-20260922002",
-      "core:alpha/v0.2.4-20260922010",
+      "harness:alpha/v0.2.4-20260922010",
     ]);
     expect(calls.filter((call) => call[0] === "pnpm")).toEqual([]);
     expect(calls.filter((call) => call[0] === "git" && call[1] === "clone").map((call) => call.at(call.indexOf("--branch") + 1)))
       .toEqual(["alpha/v0.2.4-20260922002", "alpha/v0.2.4-20260922010"]);
-    expect(existsSync(path.join(workspace, "core", "package.json"))).toBe(true);
+    expect(existsSync(path.join(workspace, "harness", "package.json"))).toBe(true);
   });
 
   it("reads only exact versions as pinned siblings", () => {
@@ -138,8 +138,8 @@ describe("local sibling preparation", () => {
         "@steamharness/cli": "^0.2.4",
         vitest: "^4.1.7",
       },
-    })).toEqual([{ name: "core", version: "0.2.4-20260922010" }]);
-    expect(readPinnedSiblings({ devDependencies: { "steamharness": "link:../core" } })).toEqual([]);
+    })).toEqual([{ name: "harness", version: "0.2.4-20260922010" }]);
+    expect(readPinnedSiblings({ devDependencies: { "steamharness": "link:../harness" } })).toEqual([]);
   });
 
   it("prefers the channel tag that exists and says so when none does", () => {
@@ -151,14 +151,14 @@ describe("local sibling preparation", () => {
     };
 
     expect(resolveReleaseTag("0.2.4-20260922010", {
-      sibling: "core",
+      sibling: "harness",
       repositoryPrefix: "https://git.example/workflow",
       env: {},
       cwd: "/tmp",
       run: probe(2),
       log: (message) => log.push(message),
     })).toBeUndefined();
-    expect(log.join(" ")).toMatch(/no release tag found for core/);
+    expect(log.join(" ")).toMatch(/no release tag found for harness/);
     // Every candidate was tried before giving up: a hand-published version has
     // no tag, and guessing one would check out a different commit.
     expect(seen).toEqual([
@@ -170,12 +170,12 @@ describe("local sibling preparation", () => {
 
   it("refreshes an existing sibling in CI and leaves it alone locally", async () => {
     const { workspace, projectRoot } = await createWorkspace({
-      devDependencies: { "steamharness": "link:../core" },
+      devDependencies: { "steamharness": "link:../harness" },
     });
-    // On a shell runner `../core` is the Core project's own build directory, so
-    // whatever is there belongs to Core's last job — never assumed usable.
-    await mkdir(path.join(workspace, "core"), { recursive: true });
-    await writeFile(path.join(workspace, "core", "package.json"), JSON.stringify({
+    // On a shell runner `../harness` is the harness project's own build directory, so
+    // whatever is there belongs to the harness project's last job — never assumed usable.
+    await mkdir(path.join(workspace, "harness"), { recursive: true });
+    await writeFile(path.join(workspace, "harness", "package.json"), JSON.stringify({
       name: "steamharness",
       version: "0.0.0-stale",
       scripts: {},
@@ -204,19 +204,19 @@ describe("local sibling preparation", () => {
         writeFileSync(path.join(target, "package.json"), JSON.stringify({
           name: "steamharness",
           version: "0.2.4",
-          scripts: { bootstrap: "node scripts/bootstrap.mjs", build: "node scripts/build.mjs" },
+          scripts: { build: "node scripts/build.mjs" },
         }));
       },
     });
-    expect(ciCalls).toEqual(["git clone", "pnpm bootstrap", "pnpm build"]);
+    expect(ciCalls).toEqual(["git clone", "pnpm install", "pnpm build"]);
     // The stale checkout was replaced, not reused.
-    const refreshed = JSON.parse(await readFile(path.join(workspace, "core", "package.json"), "utf8"));
+    const refreshed = JSON.parse(await readFile(path.join(workspace, "harness", "package.json"), "utf8"));
     expect(refreshed.version).toBe("0.2.4");
   });
 
   it("clones, installs and builds each missing sibling", async () => {
     const { projectRoot } = await createWorkspace({
-      devDependencies: { "steamharness": "link:../core", "@steamharness/cli": "link:../cli" },
+      devDependencies: { "steamharness": "link:../harness", "@steamharness/cli": "link:../cli" },
     });
 
     const calls = [];
@@ -236,21 +236,19 @@ describe("local sibling preparation", () => {
         const target = args.at(-1);
         mkdirSync(path.join(target, "dist"), { recursive: true });
         writeFileSync(path.join(target, "package.json"), JSON.stringify({
-          name: target.endsWith("core") ? "steamharness" : "@steamharness/cli",
-          // Only Core declares a build: its `dist/*.d.ts` is what the built-in
-          // project's typecheck resolves against.
-          scripts: target.endsWith("core")
-            ? { bootstrap: "node scripts/bootstrap.mjs", build: "node scripts/build.mjs" }
-            : { bootstrap: "node scripts/bootstrap.mjs" },
+          name: target.endsWith("harness") ? "steamharness" : "@steamharness/cli",
+          // Only the harness declares a build: its `dist/*.d.ts` is what the
+          // built-in project's typecheck resolves against.
+          scripts: target.endsWith("harness") ? { build: "node scripts/build.mjs" } : {},
         }));
       },
     });
 
     expect(calls.map((call) => `${call.command} ${call.args.slice(0, 2).join(" ")}`)).toEqual([
       "git clone --quiet",
-      "pnpm bootstrap",
+      "pnpm install",
       "git clone --quiet",
-      "pnpm bootstrap",
+      "pnpm install",
       "pnpm build",
     ]);
     const clones = calls.filter((call) => call.command === "git");
@@ -259,11 +257,11 @@ describe("local sibling preparation", () => {
       expect(clone.cwd).toBe(path.dirname(projectRoot));
     }
     // `readLocalSiblingNames` sorts, so the clones follow that order.
-    expect(clones.map((clone) => path.basename(clone.args.at(-1)))).toEqual(["cli", "core"]);
+    expect(clones.map((clone) => path.basename(clone.args.at(-1)))).toEqual(["cli", "harness"]);
     // A sibling that declares a build is always rebuilt: a stale `dist` would
     // typecheck the project against types that no longer match Core's source.
     const builds = calls.filter((call) => call.command === "pnpm" && call.args[0] === "build");
-    expect(builds.map((call) => path.basename(call.cwd))).toEqual(["core"]);
-    expect(prepared.prepared.map((entry) => entry.name)).toEqual(["cli", "core"]);
+    expect(builds.map((call) => path.basename(call.cwd))).toEqual(["harness"]);
+    expect(prepared.prepared.map((entry) => entry.name)).toEqual(["cli", "harness"]);
   });
 });

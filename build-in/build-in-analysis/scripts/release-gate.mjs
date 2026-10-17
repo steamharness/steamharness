@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 /**
  * 发布态引用门禁。
  *
- * `dev` 与功能分支上，内置项目和 `cli` 用 `link:../core` 这类本地相对路径引用同级
+ * `dev` 与功能分支上，内置项目和 `cli` 用 `link:../harness` 这类本地相对路径引用同级
  * 仓库，这样改 Core/CLI 不需要先发版再改 pin。`alpha` 与 `main` 是发布通道，清单里
  * 必须写精确的已发布版本。这个模块把"当前是哪种模式"、"这个引用解析成哪个版本"
  * 以及发布前必须成立的四项检查放在一起，供发布脚本、各仓 CI 与聚合仓库共用。
@@ -116,9 +116,9 @@ export function classifyVersionReference(manifest, packageName, { section = "dev
  * 把一个引用解析成具体版本。发布模式下相对路径直接失败；开发模式下读取同级
  * `package.json` 的 `version`。
  *
- * 同级解析的边界是 `workspaceRoot`（默认取声明仓库的父目录）——`link:../core` 必须
+ * 同级解析的边界是 `workspaceRoot`（默认取声明仓库的父目录）——`link:../harness` 必须
  * 逃出声明它的仓库才能成立，所以边界不能是仓库自身。边界检查在 `realpath` 之后再
- * 做一遍，`link:../core` 指向仓外符号链接的写法同样会被拦下。
+ * 做一遍，`link:../harness` 指向仓外符号链接的写法同样会被拦下。
  */
 export async function resolveVersionReference(manifest, packageName, options) {
   const {
@@ -149,7 +149,7 @@ export async function resolveVersionReference(manifest, packageName, options) {
   if (target === absoluteRepoRoot || isAncestor(target, absoluteRepoRoot)) {
     throw new Error(`${reference.specifier} must point at a sibling repository, not the repository itself.`);
   }
-  // 边界检查要在 realpath 之后再做一遍：`link:../core` 可以是一个指向仓外的符号链接。
+  // 边界检查要在 realpath 之后再做一遍：`link:../harness` 可以是一个指向仓外的符号链接。
   const realWorkspaceRoot = await realpathImpl(absoluteWorkspaceRoot).catch(() => absoluteWorkspaceRoot);
   const realTarget = await realpathImpl(target).catch(() => {
     throw new Error(`${reference.specifier} does not resolve to an existing sibling repository (${target}).`);

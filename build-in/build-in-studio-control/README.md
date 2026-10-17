@@ -24,6 +24,6 @@ Studio 为每个小助手会话创建临时的认证回环接口，注入 `STEAM
 
 本项目不再提供旧 Desktop 的 Dock、登录启动项、更新、云应用发布或 Desktop 数据库控制。普通 CLI 或未连接宿主的 MCP 调用会明确报错。纯浏览器扩展不提供本地控制能力；须有 Studio 的 Node 扩展宿主。
 
-开发依赖在聚合仓库中引用 `link:../../core` 和 `link:../../cli`。安装后执行 `pnpm typecheck`、`pnpm test`、`pnpm coverage` 和 `pnpm build`。现有内置项目打包工具保留以便后续发布，本次只交付源码和宿主集成。
+开发依赖在聚合仓库中引用 `link:../../harness` 和 `link:../../cli`。安装后执行 `pnpm typecheck`、`pnpm test`、`pnpm coverage` 和 `pnpm build`。现有内置项目打包工具保留以便后续发布，本次只交付源码和宿主集成。
 
 在聚合仓库的 `studio` 目录中执行 `npm run test:studio-control-live`，通过真实 stdio MCP 调用隔离的 VS Code Node 扩展宿主，验证 Studio 打包副本的全部 7 项功能、权限切换和会话撤销；同时通过普通项目的启动和运行接口验证导入源码的全部 7 个入口、项目默认目录和连接隔离。该检查使用无头浏览器和临时工作区，不操作本机可见窗口或剪贴板；完成后关闭服务和终端，并恢复测试实例的主题。结果保存在 `studio/.studio/studio-control-live/results.json`。需要已构建的 Studio、已安装的小助手依赖及 Chrome；可用 `STUDIO_CONTROL_TEST_BROWSER` 指定 Playwright 的其他浏览器 channel。

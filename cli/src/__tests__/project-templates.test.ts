@@ -88,7 +88,7 @@ describe('project templates', () => {
 
   it('rejects paths, versions and cancellation before creating any project files', async () => {
     const parentDirectory = await parent(), input = { templateId: 'workflow-starter', name: 'safe', parentDirectory, versions };
-    for (const version of ['latest', '^0.2.4', 'link:../core', 'file:/private/core', '1.0.0;echo']) {
+    for (const version of ['latest', '^0.2.4', 'link:../harness', 'file:/private/core', '1.0.0;echo']) {
       await expect(createProjectFromTemplate({ ...input, versions: { ...versions, core: version } })).rejects.toMatchObject({ code: 'invalid-version' });
     }
     await expect(createProjectFromTemplate({ ...input, parentDirectory: '.' })).rejects.toMatchObject({ code: 'invalid-parent' });

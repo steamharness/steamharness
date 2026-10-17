@@ -1,7 +1,7 @@
 import * as esbuild from 'esbuild';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { ROOT } from './distribution.mjs';
+import { ROOT, builtinProjectDirectory } from './distribution.mjs';
 import * as fs from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { buildDocumentPreviews } from './document-preview.mjs';
@@ -14,7 +14,7 @@ export async function buildExtension({ watch = false } = {}) {
   await fs.rm(path.join(directory, 'dist/project-templates'), { recursive: true, force: true });
   await fs.cp(path.join(templates, 'project-templates'), path.join(directory, 'dist/project-templates'), { recursive: true });
   const versions = JSON.parse(await fs.readFile(path.join(ROOT, 'examples/conversation/package.json'), 'utf8')).devDependencies;
-  await fs.writeFile(path.join(directory, 'dist/project-template-versions.json'), JSON.stringify({ core: versions['steamharness'], cli: versions['@steamharness/cli'] }));
+  await fs.writeFile(path.join(directory, 'dist/project-template-versions.json'), JSON.stringify({ harness: versions['steamharness'], cli: versions['@steamharness/cli'] }));
   const shared = {
     absWorkingDir: directory,
     entryPoints: ['src/extension.ts'],
@@ -52,7 +52,7 @@ export async function buildExtension({ watch = false } = {}) {
   await fs.copyFile(path.join(directory, 'webview/scrollbars.css'), path.join(directory, 'dist/scrollbars.css'));
   const codicons = path.dirname(require.resolve('@vscode/codicons/package.json'));
   await fs.cp(path.join(codicons, 'dist'), path.join(directory, 'dist/codicons'), { recursive: true });
-  const assistantSource = path.join(ROOT, 'vendor/developer-assistant');
+  const assistantSource = await builtinProjectDirectory('developer-assistant');
   const assistantOutput = path.join(directory, 'dist/developer-assistant');
   await fs.rm(assistantOutput, { recursive: true, force: true });
   await fs.mkdir(assistantOutput, { recursive: true });
@@ -62,7 +62,7 @@ export async function buildExtension({ watch = false } = {}) {
     }
   }
   await fs.cp(path.join(assistantSource, 'skills'), path.join(assistantOutput, 'skills'), { recursive: true });
-  const controlSource = path.join(ROOT, 'vendor/studio-control');
+  const controlSource = await builtinProjectDirectory('studio-control');
   const controlOutput = path.join(directory, 'dist/studio-control');
   await fs.rm(controlOutput, { recursive: true, force: true });
   await fs.mkdir(controlOutput, { recursive: true });
@@ -71,11 +71,12 @@ export async function buildExtension({ watch = false } = {}) {
       await fs.copyFile(path.join(controlSource, entry.name), path.join(controlOutput, entry.name));
     }
   }
+  const analysisSource = await builtinProjectDirectory('analysis');
   const analysisOutput = path.join(directory, 'dist/analysis');
   await fs.rm(analysisOutput, { recursive: true, force: true });
   await fs.mkdir(analysisOutput, { recursive: true });
   for (const name of ['package.json', 'kanban.json', 'index.html', 'assets']) {
-    await fs.cp(path.join(ROOT, 'vendor/analysis', name), path.join(analysisOutput, name), { recursive: true });
+    await fs.cp(path.join(analysisSource, name), path.join(analysisOutput, name), { recursive: true });
   }
   for (const name of ['runtime', 'workflow-ui.js', 'workflow-ui.css']) {
     await fs.rm(path.join(directory, 'dist', name), { recursive: true, force: true });

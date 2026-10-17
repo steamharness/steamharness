@@ -19,19 +19,37 @@ export async function exists(file) {
   }
 }
 
-export async function resolveWorkflowSource(root = ROOT, env = process.env) {
+/** 内置项目在 monorepo 中的位置；Studio 不再把它们作为子模块检出。 */
+export const BUILTIN_PROJECTS = Object.freeze({
+  'developer-assistant': 'build-in/build-in-developer-assistant',
+  'studio-control': 'build-in/build-in-studio-control',
+  analysis: 'build-in/build-in-analysis',
+});
+
+export async function resolveMonorepoRoot(root = ROOT, env = process.env) {
   if (env.STUDIO_STEAMHARNESS_SOURCE) return path.resolve(env.STUDIO_STEAMHARNESS_SOURCE);
-  const workspace = path.resolve(root, '..');
-  const aggregate = path.join(workspace, 'open-soucres');
-  if (await exists(path.join(aggregate, 'core/package.json')) &&
-      await exists(path.join(aggregate, 'cli/package.json'))) {
-    return aggregate;
+  const monorepo = path.resolve(root, '..');
+  if (await exists(path.join(monorepo, 'harness/package.json')) &&
+      await exists(path.join(monorepo, 'cli/package.json'))) {
+    return monorepo;
   }
-  if (await exists(path.join(workspace, 'core/package.json')) &&
-      await exists(path.join(workspace, 'cli/package.json'))) {
-    return workspace;
+  throw new Error(
+    'SteamHarness monorepo source is missing. Studio reads harness/ and cli/ from the sibling directories of this '
+    + 'repository, so studio/ has to be checked out inside the monorepo. Set STUDIO_STEAMHARNESS_SOURCE to point at '
+    + 'the monorepo root when the layout differs.',
+  );
+}
+
+export async function builtinProjectDirectory(name, root = ROOT) {
+  const relative = BUILTIN_PROJECTS[name];
+  if (!relative) throw new Error(`Unknown built-in project: ${name}`);
+  const directory = path.join(await resolveMonorepoRoot(root), relative);
+  if (!await exists(path.join(directory, 'package.json'))) {
+    throw new Error(
+      `Built-in project ${name} is missing at ${relative}. Check out the SteamHarness monorepo next to this repository.`,
+    );
   }
-  return path.join(workspace, 'workflow');
+  return directory;
 }
 
 export async function readJSON(file) {

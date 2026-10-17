@@ -1,5 +1,4 @@
 node_modules
-.shared
 .workflow-local
 .release
 .pnpm-store

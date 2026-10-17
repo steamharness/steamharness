@@ -1,13 +1,13 @@
 import path from "node:path";
 import { defineConfig } from "vitest/config";
 
-const localCoreRoot = process.env.STEAMHARNESS_LOCAL_CORE_ROOT?.trim();
+const localHarnessRoot = process.env.STEAMHARNESS_LOCAL_HARNESS_ROOT?.trim();
 
 export default defineConfig({
   resolve: {
     conditions: ["development"],
-    alias: localCoreRoot
-      ? { "steamharness": path.join(path.resolve(localCoreRoot), "src", "index.ts") }
+    alias: localHarnessRoot
+      ? { "steamharness": path.join(path.resolve(localHarnessRoot), "src", "index.ts") }
       : undefined,
   },
   test: {

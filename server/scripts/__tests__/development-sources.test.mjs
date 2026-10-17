@@ -29,7 +29,7 @@ test("development sources repair the Core and Shared checkouts before generating
   const serverRoot = path.join(splitRoot, "server");
   await mkdir(serverRoot, { recursive: true });
   await writeFile(path.join(serverRoot, "tsconfig.json"), "{}\n");
-  const coreRoot = await createSiblingRepository(splitRoot, "core", { name: "steamharness" });
+  const harnessRoot = await createSiblingRepository(splitRoot, "core", { name: "steamharness" });
   const sharedRoot = await createSiblingRepository(splitRoot, "shared", {
     name: "@steamharness/shared-workspace",
   });
@@ -37,7 +37,7 @@ test("development sources repair the Core and Shared checkouts before generating
 
   const sources = await prepareDevelopmentSources({
     root: serverRoot,
-    coreRoot,
+    harnessRoot,
     sharedRoot,
     ensureSiblings: async ({ roots }) => {
       ensured.push(roots);
@@ -45,7 +45,7 @@ test("development sources repair the Core and Shared checkouts before generating
     },
   });
 
-  assert.deepEqual(ensured, [[sharedRoot, coreRoot]]);
+  assert.deepEqual(ensured, [[sharedRoot, harnessRoot]]);
   assert.equal(sources.tsconfigPath, path.join(serverRoot, ".workflow-local", "tsconfig.json"));
 });
 

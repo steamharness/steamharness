@@ -25,7 +25,7 @@
   "win32arm64UserAppId": "{{D0B01DB5-49C9-4FAD-89FE-4CABF8438358}",
   "win32TunnelServiceMutex": "studio-tunnelservice",
   "win32TunnelMutex": "studio-tunnel",
-  "reportIssueUrl": "http://yuhe.space:7201/workflow/studio/-/issues/new",
+  "reportIssueUrl": "https://github.com/GRCmade/steamharness/issues/new",
   "enableTelemetry": false,
   "showAccounts": true,
   "disabledWorkbenchViews": [

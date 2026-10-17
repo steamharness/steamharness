@@ -5,7 +5,7 @@ import { createCliRunPlan } from "../dev.mjs";
 
 test("CLI development plan executes local CLI and Core sources", async () => {
   const root = path.resolve("checkout", "cli");
-  const coreRoot = path.resolve("checkout", "core");
+  const harnessRoot = path.resolve("checkout", "core");
   const sharedRoot = path.resolve("checkout", "shared");
   const tsconfigPath = path.join(root, ".workflow-local", "tsconfig.json");
   const plan = await createCliRunPlan({
@@ -13,14 +13,14 @@ test("CLI development plan executes local CLI and Core sources", async () => {
     env: {},
     branch: "dev",
     argv: ["help"],
-    prepareDevelopment: async () => ({ coreRoot, sharedRoot, tsconfigPath }),
+    prepareDevelopment: async () => ({ harnessRoot, sharedRoot, tsconfigPath }),
   });
 
   assert.equal(plan.mode, "dev");
   assert.equal(plan.build, undefined);
   assert.equal(plan.args.includes(path.join(root, "src", "index.ts")), true);
   assert.equal(plan.args.includes(tsconfigPath), true);
-  assert.equal(plan.env.STEAMHARNESS_LOCAL_CORE_ROOT, coreRoot);
+  assert.equal(plan.env.STEAMHARNESS_LOCAL_HARNESS_ROOT, harnessRoot);
   assert.equal(plan.env.STEAMHARNESS_LOCAL_SHARED_ROOT, sharedRoot);
   assert.equal(plan.env.STEAMHARNESS_LOCAL_SOURCE_MODE, "1");
 });
@@ -40,7 +40,7 @@ test("CLI main and tag plans build and execute dist without local source variabl
         CI_COMMIT_TAG: "steamharness-cli/v1.0.0",
         CI_COMMIT_BRANCH: "dev",
         NODE_OPTIONS: "--conditions development",
-        STEAMHARNESS_LOCAL_CORE_ROOT: "unsafe",
+        STEAMHARNESS_LOCAL_HARNESS_ROOT: "unsafe",
       },
       branch: "dev",
     },
@@ -53,7 +53,7 @@ test("CLI main and tag plans build and execute dist without local source variabl
     assert.equal(plan.env.STEAMHARNESS_REPOSITORY_MODE, "main");
     assert.equal(plan.env.NODE_ENV, "production");
     assert.equal(plan.env.STEAMHARNESS_LOCAL_SOURCE_MODE, undefined);
-    assert.equal(plan.env.STEAMHARNESS_LOCAL_CORE_ROOT, undefined);
+    assert.equal(plan.env.STEAMHARNESS_LOCAL_HARNESS_ROOT, undefined);
     assert.equal(plan.env.STEAMHARNESS_LOCAL_SHARED_ROOT, undefined);
     assert.equal(plan.env.TSX_TSCONFIG_PATH, undefined);
     assert.equal(plan.env.NODE_OPTIONS?.includes("development") ?? false, false);

@@ -27,7 +27,7 @@
     "tar": "^7.5.14",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7",
-    "steamharness": "link:../../core",
+    "steamharness": "link:../../harness",
     "yaml": "^2.9.0"
   },
   "steamHarness": {

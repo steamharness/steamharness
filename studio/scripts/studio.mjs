@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import * as path from 'node:path';
-import { ROOT, assertRuntime, assertUpstream, exists, git, prepareDistribution, readJSON, resolveWorkflowSource, run } from './distribution.mjs';
+import { ROOT, assertRuntime, assertUpstream, builtinProjectDirectory, exists, git, prepareDistribution, readJSON, resolveMonorepoRoot, run } from './distribution.mjs';
 import { buildExtension } from './build-extension.mjs';
 import { electronEnvironment, electronVersion, ensureElectronTypes } from './downloads.mjs';
 import { ensureDefaultExtensions } from './default-extensions.mjs';
@@ -105,10 +105,8 @@ async function main() {
       if (!await exists(path.join(ROOT, lock.path, '.git'))) {
         await run('git', ['submodule', 'update', '--init', '--depth', '1', lock.path], ROOT);
       }
-      for (const builtin of ['vendor/developer-assistant', 'vendor/studio-control', 'vendor/analysis']) {
-        if (!await exists(path.join(ROOT, builtin, 'package.json'))) {
-          await run('git', ['submodule', 'update', '--init', builtin], ROOT);
-        }
+      for (const builtin of ['developer-assistant', 'studio-control', 'analysis']) {
+        await builtinProjectDirectory(builtin);
       }
       const { upstream } = await prepare();
       const electronEnv = await electronEnvironment(upstream);
@@ -186,7 +184,7 @@ async function main() {
         `--extensionDevelopmentPath=${path.join(upstream.directory, 'extensions/vscode-api-tests')}`,
         `--extensionTestsPath=${path.join(ROOT, 'tests/extension-host.cjs')}`,
         ...args, ROOT,
-      ] : args.length ? args : [command === 'workflow' ? await resolveWorkflowSource() : ROOT];
+      ] : args.length ? args : [command === 'workflow' ? await resolveMonorepoRoot() : ROOT];
       const assistantFixture = testing ? await (await import('../tests/assistant-dependency-fixture.mjs')).createAssistantDependencyFixture() : undefined;
       try {
         await launch(upstream, 'code', [
@@ -223,7 +221,7 @@ async function main() {
         defaults.push('--port', '3030-3040');
       }
       if (!hasFlag('--default-folder') && !hasFlag('--default-workspace')) {
-        defaults.push('--default-folder', command === 'workflow:web' ? await resolveWorkflowSource() : ROOT);
+        defaults.push('--default-folder', command === 'workflow:web' ? await resolveMonorepoRoot() : ROOT);
       }
       console.log('Studio Web URL and connection token will be printed by the server.');
       await launch(upstream, 'code-server', [...defaults, ...args]);

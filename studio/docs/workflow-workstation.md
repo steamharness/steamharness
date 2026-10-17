@@ -9,7 +9,7 @@ Studio 通过项目自身的 CLI 在编辑器标签页中打开 Workflow、Conve
 3. 点击窗口顶部的 **运行项目** 按钮。
 4. 在编辑器标签页中选择入口并运行，或向 Conversation 发送消息。
 
-Studio 的 `examples/conversation` 提供不调用模型的本地演示。聚合 checkout 中的小助手位于 `../open-soucres/build-in/build-in-developer-assistant`。
+Studio 的 `examples/conversation` 提供不调用模型的本地演示。聚合 checkout 中的小助手位于 `../build-in/build-in-developer-assistant`。
 
 打开聚合根目录时，活动栏中的 **Workflow 项目** 可用于选择项目。扫描覆盖当前文件夹、直接子目录及 `workspace`、`workflow`、`projects`、`examples` 容器，跳过依赖和生成目录。启动入口默认信任打开和后来加入的工作区文件夹。
 
@@ -45,7 +45,7 @@ Studio 从项目目录解析 `@steamharness/cli` 的 `steamharness` bin。项目
 
 更新项目依赖后，关闭并重新打开项目标签页即可加载当前安装的 CLI，包括 pnpm 更新后的包链接；已经运行的进程不会自动更换版本。卡片功能依赖项目自身的 CLI，跨项目预览与整行资源卡片使用 `0.2.4-20261013002.codex-studio-integration` 或后续兼容版本。
 
-项目运行组件由项目依赖提供，扩展构建不再内置 Core/CLI。修改同级 Core 或 CLI 后，先构建相应仓库，再安装项目依赖；聚合仓库中 `open-soucres/build-in/` 下的开发分支内置项目通过 `link:../../core` 和 `link:../../cli` 使用开源源码根中的构建。
+项目运行组件由项目依赖提供，扩展构建不再内置 Core/CLI。修改同级 Core 或 CLI 后，先构建相应仓库，再安装项目依赖；聚合仓库中 `build-in/` 下的开发分支内置项目通过 `link:../../harness` 和 `link:../../cli` 使用开源源码根中的构建。
 
 数据保存在 Studio 的扩展数据目录，项目源码不承载工作站会话数据。关闭项目标签页会停止对应进程；重开读取保存的记录。未完成运行、等待输入和续跑遵循 CLI 的持久化规则。
 

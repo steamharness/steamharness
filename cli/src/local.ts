@@ -440,7 +440,7 @@ export function assertLocalCliCoreCompatible(
 
   const projectDirectory = path.resolve(workflowDir);
   const projectManifest = readJsonFile(path.join(projectDirectory, "package.json"), "Workflow package.json");
-  // 内置项目位于 open-soucres/build-in/ 下；相对引用仍以开源源码根为边界。
+  // 内置项目位于 monorepo 的 build-in/ 下；相对引用仍以开源源码根为边界。
   const parentDirectory = path.dirname(projectDirectory);
   const reference = classifyVersionReference(projectManifest, "steamharness");
   const workspaceRoot = reference.kind === "local" && path.posix.normalize(reference.relative).startsWith("../../")
@@ -461,7 +461,7 @@ export function assertLocalCliCoreCompatible(
 }
 
 export function readInstalledWorkflowCoreVersion(env: NodeJS.ProcessEnv = process.env): string {
-  const developmentRoot = env.STEAMHARNESS_LOCAL_CORE_ROOT?.trim();
+  const developmentRoot = env.STEAMHARNESS_LOCAL_HARNESS_ROOT?.trim();
   if (developmentRoot) {
     return readCoreVersionFromPackage(path.resolve(developmentRoot, "package.json"));
   }

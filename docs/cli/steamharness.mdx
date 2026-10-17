@@ -17,7 +17,7 @@ pnpm add -D steamharness@0.2.0 @steamharness/cli@0.2.0
 
 发布项目必须在 `devDependencies.steamharness` 写精确 SemVer，不能使用 `^`、`~`、`0.2.x`、`workspace:*` 或本地路径。精确声明用于记录开发基线；项目安装的 Core 要满足 CLI 声明的兼容范围，运行时再校验 Core 的 `major.minor` 兼容线。`@steamharness/cli` 也保持精确版本，但与 Core 独立发版。
 
-内置项目在 `dev` 和功能分支的源码开发中可以使用本地 Core 引用；位于 `open-soucres/build-in/` 下的内置项目使用 `link:../../core`。CLI 按目录层级读取开源源码根中的 Core 清单，并拒绝越出该根目录的引用。`main`、`alpha` 和 tag 的发布模式仍要求精确的已发布版本。
+内置项目在源码开发中可以直接引用本地 harness；位于 `build-in/` 下的内置项目使用 `link:../../harness`。CLI 按目录层级读取开源源码根中的 harness 清单，并拒绝越出该根目录的引用。`main`、`alpha` 和 tag 的发布模式仍要求精确的已发布版本。
 
 CLI 开发构建使用固定的 Core 基线，运行项目时加载该项目安装的 Core。`peerDependencies.steamharness` 声明可接受的版本范围，例如当前 `0.2.4` 系列使用 `>=0.2.4-20260929001 <0.2.5-0`，不要求项目 Core 与 CLI 构建基线完全一致。`run`、`json`、`structure`、`resolve-params` 和 `mcp` 会在加载项目模块前校验实际安装的 Core、CLI 构建基线和项目 Core 声明；`structure` 还会校验完整 `steamHarness.projectInfo` 合同。`help` 不加载项目，因此不执行这些检查。
 

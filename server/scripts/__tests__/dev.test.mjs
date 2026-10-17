@@ -17,7 +17,7 @@ test("a fresh Server checkout reports bootstrap instructions before preparing si
       hotReload,
       prepareDevelopment: async () => { preparedSiblings = true; },
     }), (error) => {
-      assert.match(error.message, /Server dependencies are missing.*Run pnpm bootstrap/);
+      assert.match(error.message, /Server dependencies are missing.*pnpm install at the monorepo root/);
       assert.equal(error.cause?.code, "MODULE_NOT_FOUND");
       return true;
     });
@@ -27,23 +27,23 @@ test("a fresh Server checkout reports bootstrap instructions before preparing si
 
 test("Server development plan watches Server, Core, Shared, and Vite Web sources", async () => {
   const root = path.resolve("checkout", "server");
-  const coreRoot = path.resolve("checkout", "core");
+  const harnessRoot = path.resolve("checkout", "core");
   const sharedRoot = path.resolve("checkout", "shared");
   const tsconfigPath = path.join(root, ".workflow-local", "tsconfig.json");
   const plan = await createServerRunPlan({
     root,
     env: {},
     branch: "dev",
-    prepareDevelopment: async () => ({ coreRoot, sharedRoot, tsconfigPath }),
+    prepareDevelopment: async () => ({ harnessRoot, sharedRoot, tsconfigPath }),
   });
 
   assert.equal(plan.mode, "dev");
   assert.equal(plan.hotReload, true);
   assert.equal(plan.build, undefined);
   assert.equal(plan.args.includes(path.join(root, "src", "index.ts")), true);
-  assert.equal(plan.args.includes(path.join(coreRoot, "src")), true);
+  assert.equal(plan.args.includes(path.join(harnessRoot, "src")), true);
   assert.equal(plan.args.includes(sharedRoot), true);
-  for (const dotGit of [path.join(coreRoot, ".git"), path.join(sharedRoot, ".git")]) {
+  for (const dotGit of [path.join(harnessRoot, ".git"), path.join(sharedRoot, ".git")]) {
     assert.equal(plan.args[plan.args.indexOf(dotGit) - 1], "--exclude");
   }
   assert.equal(plan.env.STEAMHARNESS_SERVER_DEV, "1");
@@ -56,7 +56,7 @@ test("Server development plan watches Server, Core, Shared, and Vite Web sources
 
 test("Server start plan runs source without Server or Web hot reload", async () => {
   const root = path.resolve("checkout", "server");
-  const coreRoot = path.resolve("checkout", "core");
+  const harnessRoot = path.resolve("checkout", "core");
   const sharedRoot = path.resolve("checkout", "shared");
   const tsconfigPath = path.join(root, ".workflow-local", "tsconfig.json");
   const plan = await createServerRunPlan({
@@ -64,7 +64,7 @@ test("Server start plan runs source without Server or Web hot reload", async () 
     env: { STEAMHARNESS_SERVER_HMR: "1" },
     branch: "dev",
     hotReload: false,
-    prepareDevelopment: async () => ({ coreRoot, sharedRoot, tsconfigPath }),
+    prepareDevelopment: async () => ({ harnessRoot, sharedRoot, tsconfigPath }),
   });
 
   assert.equal(plan.hotReload, false);
@@ -94,7 +94,7 @@ test("Server main and tag plans build Server/Web and execute dist", async () => 
         CI_COMMIT_TAG: "server/v1.0.0",
         CI_COMMIT_BRANCH: "dev",
         NODE_OPTIONS: "--conditions development",
-        STEAMHARNESS_LOCAL_CORE_ROOT: "unsafe",
+        STEAMHARNESS_LOCAL_HARNESS_ROOT: "unsafe",
       },
       branch: "dev",
     },
@@ -109,7 +109,7 @@ test("Server main and tag plans build Server/Web and execute dist", async () => 
     assert.equal(plan.env.STEAMHARNESS_SERVER_DEV, undefined);
     assert.equal(plan.env.STEAMHARNESS_SERVER_HMR, undefined);
     assert.equal(plan.env.STEAMHARNESS_LOCAL_SOURCE_MODE, undefined);
-    assert.equal(plan.env.STEAMHARNESS_LOCAL_CORE_ROOT, undefined);
+    assert.equal(plan.env.STEAMHARNESS_LOCAL_HARNESS_ROOT, undefined);
     assert.equal(plan.env.STEAMHARNESS_LOCAL_SHARED_ROOT, undefined);
     assert.equal(plan.env.TSX_TSCONFIG_PATH, undefined);
     assert.equal(plan.env.NODE_OPTIONS?.includes("development") ?? false, false);
@@ -128,14 +128,14 @@ test("Server main plan preserves unrelated Node options", async () => {
 
 test("Server development plan preserves Node options and adds the development condition once", async () => {
   const root = path.resolve("checkout", "server");
-  const coreRoot = path.resolve("checkout", "core");
+  const harnessRoot = path.resolve("checkout", "core");
   const sharedRoot = path.resolve("checkout", "shared");
   const plan = await createServerRunPlan({
     root,
     env: { NODE_OPTIONS: "--trace-warnings --conditions=development" },
     branch: "dev",
     prepareDevelopment: async () => ({
-      coreRoot,
+      harnessRoot,
       sharedRoot,
       tsconfigPath: path.join(root, ".workflow-local", "tsconfig.json"),
     }),

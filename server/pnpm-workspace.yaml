@@ -1,8 +1,0 @@
-packages:
-  - "."
-  - "web"
-  - "live"
-  - ".shared/*"
-
-onlyBuiltDependencies:
-  - esbuild

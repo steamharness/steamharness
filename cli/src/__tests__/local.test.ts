@@ -204,7 +204,7 @@ it.each(["build-in", "ci-namespace"])("nested built-ins resolve Core from the ag
   await mkdir(directory, { recursive: true });
   await mkdir(path.join(root, "core"));
   const packagePath = path.join(directory, "package.json");
-  const manifest = { devDependencies: { "steamharness": "link:../../core" } };
+  const manifest = { devDependencies: { "steamharness": "link:../../harness" } };
   await writeFile(path.join(root, "core/package.json"), JSON.stringify({ name: "steamharness", version: "0.2.99" }));
   await writeFile(packagePath, JSON.stringify(manifest));
   try {

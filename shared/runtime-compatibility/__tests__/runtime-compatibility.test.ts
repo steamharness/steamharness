@@ -65,8 +65,8 @@ describe("workflow Core compatibility", () => {
     const manifest = (value: string) => ({ devDependencies: { "steamharness": value } });
     expect(classifyVersionReference(manifest("0.2.4-20260921001"), "steamharness"))
       .toEqual({ kind: "exact", version: "0.2.4-20260921001", specifier: "0.2.4-20260921001" });
-    expect(classifyVersionReference(manifest("link:../core"), "steamharness"))
-      .toEqual({ kind: "local", specifier: "link:../core", relative: "../core" });
+    expect(classifyVersionReference(manifest("link:../harness"), "steamharness"))
+      .toEqual({ kind: "local", specifier: "link:../harness", relative: "../core" });
     for (const value of ["file:core", "file:/abs/core", "workspace:*"]) {
       expect(() => classifyVersionReference(manifest(value), "steamharness")).toThrow(/relative file:|exact SemVer/);
     }
@@ -92,7 +92,7 @@ describe("workflow Core compatibility", () => {
   });
 
   it("resolves a local Core reference on dev and refuses it on main", () => {
-    const manifest = { devDependencies: { "steamharness": "link:../core" } };
+    const manifest = { devDependencies: { "steamharness": "link:../harness" } };
     const readSiblingManifest = (directory: string) => {
       expect(directory).toBe("core");
       return { name: "steamharness", version: "0.2.4-20260921001" };

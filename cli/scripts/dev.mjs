@@ -3,7 +3,6 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { prepareDevelopmentSources } from "./development-sources.mjs";
-import { prepareSharedPackages } from "./prepare-shared.mjs";
 import { resolveRepositoryMode } from "./repository-mode.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -27,7 +26,7 @@ export async function createCliRunPlan({
     };
   }
 
-  const { tsconfigPath, coreRoot, sharedRoot } = await prepareDevelopment({ root: repositoryRoot });
+  const { tsconfigPath, harnessRoot, sharedRoot } = await prepareDevelopment({ root: repositoryRoot });
   const requireFromCli = createRequire(path.join(repositoryRoot, "package.json"));
   const tsxCliPath = requireFromCli.resolve("tsx/cli");
   return {
@@ -37,7 +36,7 @@ export async function createCliRunPlan({
     env: {
       ...env,
       TSX_TSCONFIG_PATH: tsconfigPath,
-      STEAMHARNESS_LOCAL_CORE_ROOT: coreRoot,
+      STEAMHARNESS_LOCAL_HARNESS_ROOT: harnessRoot,
       STEAMHARNESS_LOCAL_SHARED_ROOT: sharedRoot,
       STEAMHARNESS_LOCAL_SOURCE_MODE: "1",
     },
@@ -48,7 +47,7 @@ function withoutLocalSourceEnvironment(env) {
   const result = { ...env };
   for (const key of [
     "TSX_TSCONFIG_PATH",
-    "STEAMHARNESS_LOCAL_CORE_ROOT",
+    "STEAMHARNESS_LOCAL_HARNESS_ROOT",
     "STEAMHARNESS_LOCAL_SHARED_ROOT",
     "STEAMHARNESS_LOCAL_SOURCE_MODE",
   ]) delete result[key];
@@ -72,7 +71,6 @@ function withoutDevelopmentCondition(value) {
 
 async function main() {
   const plan = await createCliRunPlan({ argv: process.argv.slice(2) });
-  await prepareSharedPackages({ root, env: plan.env });
   process.stdout.write(`[repository:${plan.mode}] CLI ${plan.mode === "dev" ? "source" : "dist"} runtime\n`);
   if (plan.build !== undefined) await run(plan.build[0], plan.build[1], { cwd: root, env: plan.env });
   const result = await run(plan.command, plan.args, { cwd: root, env: plan.env });

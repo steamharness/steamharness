@@ -46,7 +46,7 @@ describe("independent built-in project release", () => {
     // instead of assuming either shape — this test runs in the tag pipeline.
     const mode = resolveReleaseMode({ root });
     const resolved = {};
-    for (const [key, packageName] of [["core", "steamharness"], ["cli", "@steamharness/cli"]]) {
+    for (const [key, packageName] of [["harness", "steamharness"], ["cli", "@steamharness/cli"]]) {
       const reference = await resolveVersionReference(definition.packageJson, packageName, {
         mode, repoRoot: root, workspaceRoot: resolveSiblingWorkspaceRoot(root, definition.packageJson),
       });
@@ -186,11 +186,11 @@ describe("independent built-in project release", () => {
       for (const [name, version] of Object.entries(definition.components)) {
         await mkdir(path.join(workspace, name));
         await writeFile(path.join(workspace, name, "package.json"), JSON.stringify({
-          name: name === "core" ? "steamharness" : "@steamharness/cli", version,
+          name: name === "harness" ? "steamharness" : "@steamharness/cli", version,
         }));
       }
       const manifest = structuredClone(definition.packageJson);
-      manifest.devDependencies["steamharness"] = "link:../../core";
+      manifest.devDependencies["steamharness"] = "link:../../harness";
       manifest.devDependencies["@steamharness/cli"] = "link:../../cli";
       await writeFile(path.join(fixture, "package.json"), JSON.stringify(manifest));
       expect((await readBuiltinDefinition(fixture, { mode: "dev" })).components).toEqual(definition.components);
@@ -204,7 +204,7 @@ describe("independent built-in project release", () => {
     const definition = await readBuiltinDefinition(root);
     const fixture = await mkdtemp(path.join(os.tmpdir(), `builtin-${definition.projectId}-release-reference-`));
     const manifest = structuredClone(definition.packageJson);
-    manifest.devDependencies["steamharness"] = "link:../../core";
+    manifest.devDependencies["steamharness"] = "link:../../harness";
     await writeFile(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 
     await expect(readBuiltinDefinition(fixture, { mode: "main" })).rejects.toThrow(
@@ -336,7 +336,7 @@ async function exists(filePath) {
 
 /**
  * Fixtures simulate a release checkout. The repository itself declares the
- * sibling checkouts through `link:../core` on dev, and a release manifest never
+ * sibling checkouts through `link:../harness` on dev, and a release manifest never
  * carries a relative reference, so pin the resolved component versions.
  */
 function releaseManifest(definition) {

@@ -71,8 +71,6 @@
     }
   },
   "scripts": {
-    "bootstrap": "node scripts/bootstrap.mjs",
-    "pnpm:devPreinstall": "node scripts/install-guard.mjs",
     "check:boundaries": "node scripts/check-repository-boundaries.mjs",
     "check:secrets": "node scripts/check-secret-files.mjs",
     "build": "tsup --config tsup.config.ts && node scripts/bundle-agent-types.mjs",

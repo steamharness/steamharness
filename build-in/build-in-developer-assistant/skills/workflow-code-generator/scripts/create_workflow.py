@@ -213,7 +213,7 @@ def read_declared_version(package: dict, package_name: str, package_path: Path |
         version = package.get(dependency_key, {}).get(package_name)
         if isinstance(version, str) and SEMVER_PATTERN.fullmatch(version):
             return version
-        # `dev` 和功能分支上用 `link:../core` 引用同级仓库，此时版本要从目标仓库
+        # `dev` 和功能分支上用 `link:../harness` 引用同级仓库，此时版本要从目标仓库
         # 自己的 package.json 读取；生成器的发布产物里永远是精确版本。
         if package_path is not None and isinstance(version, str) and LOCAL_SPECIFIER_PATTERN.match(version):
             sibling_version = read_sibling_version(package_path, version, package_name)

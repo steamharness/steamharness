@@ -338,7 +338,7 @@ export function resolveDefaultWorkspaceRoot(env = process.env) {
   if (explicit) {
     return path.resolve(explicit);
   }
-  return path.resolve(resolveServerRoot(), "..", "core", "workspace", "workflow");
+  return path.resolve(resolveServerRoot(), "..", "harness", "workspace", "workflow");
 }
 
 function resolveServerRoot() {

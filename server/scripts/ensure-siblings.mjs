@@ -3,14 +3,13 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
-import { assertIsolatedInstall } from "./install-guard.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const SKIP_ENVIRONMENT_VARIABLE = "STEAMHARNESS_SKIP_SIBLING_BOOTSTRAP";
 
 /**
  * Development run plans execute sibling checkouts directly, so a sibling that
- * was never bootstrapped fails at startup. The failure is silent on Desktop:
+ * was never installed fails at startup. The failure is silent on Desktop:
  * the CLI exits without writing a structure report, the preview parses as
  * empty, and a Conversation project degrades to the Workflow panel with no
  * entrypoints instead of reporting an error. Repairing the siblings before the
@@ -23,21 +22,12 @@ export function shouldSkipSiblingInstalls(env = process.env) {
 }
 
 /**
- * A sibling is bootstrapped when its dependencies are installed and, for the
- * repositories that consume Shared, its `.shared` directory holds copied
- * package directories. `assertIsolatedInstall` already owns the "`.shared`
- * exists and is free of source links" rule, so reuse it instead of restating
- * the layout here.
+ * A sibling is ready when its dependencies are installed. Everything they share
+ * is resolved through the repository workspace, so there is no prepared copy of
+ * Shared left to verify.
  */
-export async function isSiblingPrepared(siblingRoot, manifest) {
-  if (!existsSync(path.join(siblingRoot, "node_modules"))) return false;
-  if (!consumesSharedPackages(manifest)) return true;
-  try {
-    await assertIsolatedInstall({ root: siblingRoot });
-    return true;
-  } catch {
-    return false;
-  }
+export function isSiblingPrepared(siblingRoot) {
+  return existsSync(path.join(siblingRoot, "node_modules"));
 }
 
 export async function readSiblingManifest(siblingRoot) {
@@ -48,15 +38,8 @@ export async function readSiblingManifest(siblingRoot) {
   }
 }
 
-/**
- * `pnpm install` is rejected by the install guard while `.shared` is absent, so
- * siblings that vendor Shared have to be repaired through their own bootstrap
- * entry point. Shared itself has no bootstrap script and no `.shared`.
- */
-export function createSiblingInstallInvocation(manifest) {
-  return consumesSharedPackages(manifest)
-    ? { command: "pnpm", args: ["bootstrap"] }
-    : { command: "pnpm", args: ["install"] };
+export function createSiblingInstallInvocation() {
+  return { command: "pnpm", args: ["install"] };
 }
 
 export async function ensureSiblingInstalls({
@@ -68,21 +51,15 @@ export async function ensureSiblingInstalls({
   const installed = [];
   if (shouldSkipSiblingInstalls(env)) return { installed, skipped: true };
 
-  // Callers pass the roots in dependency order so Shared is repaired before
-  // the repositories that vendor it.
   for (const siblingRoot of siblingRoots) {
-    const manifest = await readSiblingManifest(siblingRoot);
-    if (await isSiblingPrepared(siblingRoot, manifest)) continue;
-    const invocation = createSiblingInstallInvocation(manifest);
+    await readSiblingManifest(siblingRoot);
+    if (isSiblingPrepared(siblingRoot)) continue;
+    const invocation = createSiblingInstallInvocation();
     log(`[siblings] ${path.basename(siblingRoot)} is not bootstrapped; running ${invocation.args.join(" ")}`);
     await run(invocation.command, invocation.args, { cwd: siblingRoot, env });
     installed.push({ root: siblingRoot, ...invocation });
   }
   return { installed, skipped: false };
-}
-
-function consumesSharedPackages(manifest) {
-  return typeof manifest?.scripts?.bootstrap === "string";
 }
 
 function defaultLog(message) {

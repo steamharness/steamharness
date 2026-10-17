@@ -34,16 +34,15 @@ NODE_OPTIONS="$studio_install_options" STUDIO_CI_SERIAL_BUILD=1 GOMAXPROCS=1 GOM
   npm run build 2>&1 | tee .studio/ci-results/build.log
 npm run electron 2>&1 | tee .studio/ci-results/electron.log
 upstream/vscode/node_modules/.bin/playwright install chromium
-node scripts/ci/prepare-ui.mjs
 studio_test_install_options=(--no-frozen-lockfile --prefer-offline --store-dir "$STUDIO_PNPM_STORE_DIR" --child-concurrency=1 --network-concurrency=1)
 if ! NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=768" corepack pnpm \
-  --dir .studio/test-source/open-soucres/build-in/build-in-developer-assistant install "${studio_test_install_options[@]}"; then
+  --dir build-in/build-in-developer-assistant install "${studio_test_install_options[@]}"; then
   echo "Retrying test runtime dependencies against the official npm registry."
-  rm -f .studio/test-source/open-soucres/build-in/build-in-developer-assistant/pnpm-lock.yaml
+  rm -f build-in/build-in-developer-assistant/pnpm-lock.yaml
   NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=768" corepack pnpm \
-    --dir .studio/test-source/open-soucres/build-in/build-in-developer-assistant install "${studio_test_install_options[@]}" --registry=https://registry.npmjs.org/
+    --dir build-in/build-in-developer-assistant install "${studio_test_install_options[@]}" --registry=https://registry.npmjs.org/
 fi
-export STUDIO_STEAMHARNESS_SOURCE="$CI_PROJECT_DIR/.studio/test-source/open-soucres"
+export STUDIO_STEAMHARNESS_SOURCE="$CI_PROJECT_DIR/.."
 export STEAMHARNESS_UI_CLI_ROOT="$CI_PROJECT_DIR/examples/conversation/node_modules/@steamharness/cli"
 export STEAMHARNESS_UI_BROWSER=chromium
 

@@ -26,7 +26,7 @@ async function createWorkspace() {
   const root = await mkdtemp(path.join(os.tmpdir(), "release-gate-"));
   await mkdir(path.join(root, "build-in-codex"));
   await mkdir(path.join(root, "core"));
-  await writeFile(path.join(root, "build-in-codex", "package.json"), JSON.stringify(manifest("link:../core")));
+  await writeFile(path.join(root, "build-in-codex", "package.json"), JSON.stringify(manifest("link:../harness")));
   await writeFile(path.join(root, "core", "package.json"), JSON.stringify({ name: "steamharness", version: "0.2.4-20260921001" }));
   return root;
 }
@@ -61,7 +61,7 @@ test("classifyVersionReference separates exact versions from local sibling refer
     version: "0.2.4-20260921001",
     specifier: "0.2.4-20260921001",
   });
-  for (const specifier of ["link:../core", "file:./core", "link:../../shared"]) {
+  for (const specifier of ["link:../harness", "file:./core", "link:../../shared"]) {
     const reference = classifyVersionReference(manifest(specifier), "steamharness");
     assert.equal(reference.kind, "local", specifier);
   }
@@ -79,7 +79,7 @@ test("dev mode resolves a sibling reference to the sibling's declared version", 
   const root = await createWorkspace();
   try {
     const repoRoot = path.join(root, "build-in-codex");
-    const resolved = await resolveVersionReference(manifest("link:../core"), "steamharness", { mode: "dev", repoRoot });
+    const resolved = await resolveVersionReference(manifest("link:../harness"), "steamharness", { mode: "dev", repoRoot });
     assert.equal(resolved.version, "0.2.4-20260921001");
     assert.equal(resolved.origin, "sibling");
   } finally {
@@ -92,11 +92,11 @@ test("release mode refuses a sibling reference instead of resolving it", async (
   try {
     const repoRoot = path.join(root, "build-in-codex");
     await assert.rejects(
-      resolveVersionReference(manifest("link:../core"), "steamharness", { mode: "main", repoRoot }),
+      resolveVersionReference(manifest("link:../harness"), "steamharness", { mode: "main", repoRoot }),
       /must declare an exact published version on main and alpha/u,
     );
     assert.throws(
-      () => assertNoLocalReference(manifest("link:../core"), "steamharness", { mode: "main" }),
+      () => assertNoLocalReference(manifest("link:../harness"), "steamharness", { mode: "main" }),
       /must declare an exact published version on main and alpha/u,
     );
   } finally {
@@ -236,7 +236,7 @@ test("verifyReleaseGate reads the dependencies a consumer actually declares", as
   await assert.rejects(verifyReleaseGate({
     manifest: {
       dependencies: { "steamharness": "0.2.4" },
-      devDependencies: { "steamharness": "link:../core" },
+      devDependencies: { "steamharness": "link:../harness" },
     },
     packageNames: ["steamharness"],
     mode: "main",
@@ -320,7 +320,7 @@ test("verifyPublisherGate refuses a republish and requires stable versions to ad
 
 test("verifyReleaseGate reports a local reference as unchecked on dev", async () => {
   const report = await verifyReleaseGate({
-    manifest: manifest("link:../core"),
+    manifest: manifest("link:../harness"),
     packageNames: ["steamharness"],
     mode: "dev",
     channel: "dev",

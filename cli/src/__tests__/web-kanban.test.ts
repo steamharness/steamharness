@@ -25,9 +25,9 @@ async function fixture(options: { server?: boolean; artifact?: boolean; noParams
   vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(root, 'auth')); vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
   if (options.real) {
     await mkdir(path.join(directory, 'node_modules'));
-    let coreRoot = path.dirname(fileURLToPath(import.meta.resolve('steamharness')));
-    while (JSON.parse(await readFile(path.join(coreRoot, 'package.json'), 'utf8').catch(() => '{}')).name !== 'steamharness') { coreRoot = path.dirname(coreRoot); }
-    await symlink(coreRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
+    let harnessRoot = path.dirname(fileURLToPath(import.meta.resolve('steamharness')));
+    while (JSON.parse(await readFile(path.join(harnessRoot, 'package.json'), 'utf8').catch(() => '{}')).name !== 'steamharness') { harnessRoot = path.dirname(harnessRoot); }
+    await symlink(harnessRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
   }
   const app = await startWebServer({ projectDir: directory, dataDir, runtime: options.real ? undefined : runtime }); apps.push(app);
   const token = new URL(app.url).hash.slice('#session='.length);
