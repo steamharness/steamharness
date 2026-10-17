@@ -12,8 +12,8 @@
     "workspace:publish": "steamharness workspace publish ."
   },
   "devDependencies": {
-    "@steamharness/cli": "0.2.3-20260901001",
-    "steamharness": "0.2.3-20260901001"
+    "@steamharness/cli": "link:../../../cli",
+    "steamharness": "link:../../.."
   },
   "steamHarness": {
     "projectInfo": {

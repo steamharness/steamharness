@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { projectTypeLabels, projectVersion, projectDisplayName, type WorkflowProject } from './workflow-types';
 import type { WorkflowAccountController } from './workflow-auth';
 import type { WorkflowLauncher, WorkflowWebSession } from './workflow-cli-types';
-import { workflowFrameHtml } from './steamharness-webview';
+import { workflowFrameHtml } from './workflow-webview';
 import { AssistantViewProvider, type AssistantConversation } from './assistant-view';
 import { WorkflowResourceViews } from './workflow-resources-view';
 import { WorkflowTraceView } from './workflow-trace-view';

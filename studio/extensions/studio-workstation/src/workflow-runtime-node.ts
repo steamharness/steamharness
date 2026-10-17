@@ -1,5 +1,5 @@
 import { t } from './localization';
-import { upgradeServerProject } from './steamharness-project-update-node';
+import { upgradeServerProject } from './workflow-project-update-node';
 import * as vscode from 'vscode';
 import * as path from 'node:path';
 import { realpath } from 'node:fs/promises';

@@ -9,8 +9,8 @@
   },
   "devDependencies": {
     "@types/ws": "^8.18.1",
-    "@steamharness/cli": "0.2.3-20260901001",
-    "steamharness": "0.2.3-20260901001"
+    "@steamharness/cli": "link:../../../cli",
+    "steamharness": "link:../../.."
   },
   "scripts": {
     "dev": "steamharness run .",

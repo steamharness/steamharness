@@ -16,8 +16,8 @@
     "workspace:publish": "steamharness workspace publish ."
   },
   "devDependencies": {
-    "@steamharness/cli": "0.2.4-20261011002.codex-cli-web",
-    "steamharness": "0.2.4-20260929001"
+    "@steamharness/cli": "link:../../../cli",
+    "steamharness": "link:../../.."
   },
   "steamHarness": {
     "projectInfo": {

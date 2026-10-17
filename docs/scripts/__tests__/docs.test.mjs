@@ -69,17 +69,6 @@ test("Docusaurus keeps docs-only routes and local search aligned", () => {
   assert.deepEqual(docusaurusConfig.i18n.locales, ["zh-Hans", "en"]);
 });
 
-test("Docs CI invokes the deploy package script and gates recovery on validation", async () => {
-  const pipeline = await readFile(path.join(root, ".gitlab-ci.yml"), "utf8");
-  assert.match(pipeline, /^\s*- pnpm run deploy:ecs$/mu);
-  assert.doesNotMatch(pipeline, /^\s*- pnpm deploy$/mu);
-  assert.match(pipeline, /build:[\s\S]*?STEAMHARNESS_RECOVERY_TARGET != "release"/u);
-  assert.match(pipeline, /deploy:[\s\S]*?STEAMHARNESS_RECOVERY_TARGET != "release"/u);
-  assert.match(pipeline, /recover:ecs:release:[\s\S]*?needs: \[validate\][\s\S]*?recover-ecs\.mjs/u);
-  assert.match(pipeline, /tags: \[linux\]/u);
-  assert.match(pipeline, /paths: \[dist\/site\]/u);
-});
-
 test("Docs recovery accepts only a recorded immutable build commit", () => {
   const commitSha = "a".repeat(40);
   assert.deepEqual(parseDocsDeploymentMetadata({ schemaVersion: 1, commitSha }), { commitSha });

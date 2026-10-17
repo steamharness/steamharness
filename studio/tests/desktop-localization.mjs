@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { copyFile, cp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { resolveWorkflowSource } from '../scripts/distribution.mjs';
+import { resolveMonorepoRoot } from '../scripts/distribution.mjs';
 import { setTimeout as pause } from 'node:timers/promises';
 
 export async function waitForDesktopReady(file, child, timeout = process.env.CI ? 300_000 : 60_000) {
@@ -55,7 +55,7 @@ export async function desktopLocaleLaunch(language, directory, { sourceMode = fa
       '--extensionDevelopmentPath', extension, '--extensionDevelopmentPath', readiness],
     waitUntilReady: child => waitForDesktopReady(readyFile, child),
     env: { STUDIO_TEST_UI_LANGUAGE: sourceMode ? '' : language, STUDIO_TEST_VSCODE_ROOT: root,
-      STUDIO_STEAMHARNESS_SOURCE: await resolveWorkflowSource(fileURLToPath(new URL('../', import.meta.url))),
+      STUDIO_STEAMHARNESS_SOURCE: await resolveMonorepoRoot(fileURLToPath(new URL("../", import.meta.url))),
       NODE_ENV: 'development', VSCODE_DEV: '1', VSCODE_CLI: '1', ELECTRON_ENABLE_LOGGING: '1' },
   };
 }

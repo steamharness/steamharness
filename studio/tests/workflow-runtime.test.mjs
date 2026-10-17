@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { register } from 'tsx/esm/api';
 register();
 const { inspectProjectCli, resolveProjectCli, startProjectCli } = await import('../extensions/studio-workstation/src/workflow-cli-process.ts');
-import { workflowFrameHtml } from '../extensions/studio-workstation/src/steamharness-webview.ts';
+import { workflowFrameHtml } from '../extensions/studio-workstation/src/workflow-webview.ts';
 
 async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startupDelay = 0, assistantProtocol = 1, accountProtocol = 1, relatedProtocol = 1) {
   const directory = await fs.mkdtemp(path.join(tmpdir(), 'studio-project-cli-'));

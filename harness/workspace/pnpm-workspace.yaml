@@ -1,9 +1,6 @@
 packages:
   - "workflow/*"
   - "conversation/*"
-overrides:
-  steamharness: link:..
-  '@steamharness/cli': link:../cli
 allowBuilds:
   '@ffmpeg-installer/darwin-arm64': true
   '@google/genai': true

@@ -9,10 +9,10 @@
     "workspace": "pnpm exec steamharness workspace"
   },
   "dependencies": {
-    "steamharness": "0.2.3-20260901001"
+    "steamharness": "link:.."
   },
   "devDependencies": {
-    "@steamharness/cli": "0.2.3-20260901001",
+    "@steamharness/cli": "link:../cli",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7"
   }

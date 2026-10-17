@@ -12,8 +12,9 @@ import { createAssistantDependencyFixture } from './assistant-dependency-fixture
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-runtime-node.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
 const require = createRequire(import.meta.url);
 
-for (const dependencySource of ['vendor', 'workspace']) {
-test(`an installed extension symlink uses ${dependencySource} dependencies with tools scoped to the opened folder`, async t => {
+// The built-in projects live in the monorepo, so the extension resolves the
+// assistant sources from the repository root rather than a vendored checkout.
+test('an installed extension symlink uses monorepo dependencies with tools scoped to the opened folder', async t => {
   const source = await createAssistantDependencyFixture(); t.after(source.dispose);
   const directory = await mkdtemp(path.join(tmpdir(), 'studio-assistant-runtime-')); t.after(() => rm(directory, { recursive: true, force: true }));
   const studio = path.join(directory, 'studio');
@@ -27,10 +28,6 @@ test(`an installed extension symlink uses ${dependencySource} dependencies with 
   await mkdir(controlTemplate);
   await writeFile(path.join(controlTemplate, 'package.json'), JSON.stringify({ id: '09145339-e3dd-4bb2-ac9b-6c180ef51933', type: 'module' }));
   await writeFile(path.join(controlTemplate, 'index.ts'), 'export const executor = workflow.defineExecutor({});');
-  if (dependencySource === 'vendor') {
-    await mkdir(path.join(studio, 'vendor'));
-    await symlink(source.projectDir, path.join(studio, 'vendor/developer-assistant'), process.platform === 'win32' ? 'junction' : 'dir');
-  }
   const linked = path.join(directory, 'vscode/extensions/studio-workstation');
   await mkdir(path.dirname(linked), { recursive: true });
   await symlink(extension, linked, process.platform === 'win32' ? 'junction' : 'dir');
@@ -47,7 +44,7 @@ test(`an installed extension symlink uses ${dependencySource} dependencies with 
   const module = { exports: {} };
   runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports,
     require: name => name === 'vscode' ? vscode : require(name),
-    process: { ...process, env: { ...process.env, STUDIO_STEAMHARNESS_SOURCE: dependencySource === 'workspace' ? source.root : '' } },
+    process: { ...process, env: { ...process.env, STUDIO_STEAMHARNESS_SOURCE: source.root } },
     AbortController, AbortSignal, URL, Buffer, setTimeout, clearTimeout, queueMicrotask,
   });
   const runtime = module.exports.createWorkflowRuntime({ extensionUri: { fsPath: linked }, globalStorageUri: { fsPath: storage } },
@@ -96,4 +93,3 @@ test(`an installed extension symlink uses ${dependencySource} dependencies with 
   vscode.workspace.isTrusted = false;
   await assert.rejects(runtime.inspectAssistant(target, [target]), /Trust the current workspace/);
 });
-}

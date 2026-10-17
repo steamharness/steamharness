@@ -12,8 +12,8 @@
     "workspace:publish": "steamharness workspace publish ."
   },
   "devDependencies": {
-    "@steamharness/cli": "0.2.3-20260901001",
-    "steamharness": "0.2.3-20260901001"
+    "@steamharness/cli": "link:../../../cli",
+    "steamharness": "link:../../.."
   },
   "steamHarness": {
     "projectCard": {
@@ -23,7 +23,7 @@
     },
     "projectInfo": {
       "localizedNames": {
-        "zh-CN": "服务器数据测试项目",
+        "zh-CN": "\u670d\u52a1\u5668\u6570\u636e\u6d4b\u8bd5\u9879\u76ee",
         "en": "Server Data Test Parent"
       },
       "declarations": [],
