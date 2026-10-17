@@ -1,0 +1,44 @@
+node_modules/
+.pnpm-store/
+__pycache__/
+.DS_Store
+*.log
+
+# 构建产物
+dist/
+build/
+docs/.docusaurus/
+docs/.docusaurus-openapi/
+docs/build/
+docs/reference/
+docs/en/reference/
+studio/.studio/
+studio/extensions/*/dist/
+*.vsix
+*.tsbuildinfo
+.packs
+**/.packs
+harness/workspace/.packs/
+
+# 生成或缓存目录
+.shared/
+.workflow/
+.workflow-local/
+.release/
+.ci-artifacts/
+coverage/
+test-results/
+server/public/
+server/.data/
+build-in/build-in-developer-assistant/.dev-userdata/
+build-in/build-in-developer-assistant/.workflow-dependencies-ready
+
+# 环境变量文件：只提交 *.example
+.env
+**/.env
+.env.*
+**/.env.*
+!.env.example
+!**/.env.example
+!.env.production.example
+!**/.env.production.example

@@ -1,0 +1,10 @@
+packages:
+  - harness
+  - cli
+  - server
+  - server/web
+  - shared/*
+  - build-in/*
+
+onlyBuiltDependencies:
+  - esbuild
