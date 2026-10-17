@@ -202,10 +202,10 @@ it.each(["build-in", "ci-namespace"])("nested built-ins resolve Core from the ag
   const root = await mkdtemp(path.join(os.tmpdir(), "cli-nested-builtin-"));
   const directory = path.join(root, parent, "build-in-studio-control");
   await mkdir(directory, { recursive: true });
-  await mkdir(path.join(root, "core"));
+  await mkdir(path.join(root, "harness"));
   const packagePath = path.join(directory, "package.json");
   const manifest = { devDependencies: { "steamharness": "link:../../harness" } };
-  await writeFile(path.join(root, "core/package.json"), JSON.stringify({ name: "steamharness", version: "0.2.99" }));
+  await writeFile(path.join(root, "harness/package.json"), JSON.stringify({ name: "steamharness", version: "0.2.99" }));
   await writeFile(packagePath, JSON.stringify(manifest));
   try {
     assert.equal(assertLocalCliCoreCompatible(directory, "0.2.4", { mode: "dev" }).projectRequiredCoreVersion, "0.2.99");

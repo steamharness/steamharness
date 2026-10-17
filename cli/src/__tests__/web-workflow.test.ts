@@ -11,6 +11,7 @@ import { t } from '../web/localization';
 import { createWebRuntime } from '../web/runtime';
 import { startWebServer } from '../web/server';
 import type { WorkflowProject, WorkflowRuntime, WorkflowReport, WorkflowInputRequest, ConversationSession, WorkflowParamState } from '../web/workflow-types';
+import { resolveHarnessRoot } from './harness-source';
 
 const services: Awaited<ReturnType<typeof startWebServer>>[] = [], folders: string[] = [];
 afterEach(async () => { for (const service of services.splice(0)) { await service.close(); } for (const directory of folders.splice(0)) { await rm(directory, { force: true, recursive: true }); } vi.unstubAllEnvs(); vi.restoreAllMocks(); });
@@ -383,8 +384,7 @@ describe('Workflow graph layout', () => {
 it('inspects and executes a real offline workflow with its own Core, streaming, input replay and a managed export', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'workflow-runtime-')); folders.push(directory);
   await mkdir(path.join(directory, 'node_modules'));
-  let harnessRoot = path.dirname(fileURLToPath(import.meta.resolve('steamharness')));
-  while (JSON.parse(await readFile(path.join(harnessRoot, 'package.json'), 'utf8').catch(() => '{}')).name !== 'steamharness') { harnessRoot = path.dirname(harnessRoot); }
+  const harnessRoot = await resolveHarnessRoot();
   await symlink(harnessRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
   await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: project.id, name: 'Workflow fixture', type: 'module', steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } }));
   await writeFile(path.join(directory, 'index.ts'), `

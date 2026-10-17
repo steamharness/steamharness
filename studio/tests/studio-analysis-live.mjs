@@ -66,7 +66,7 @@ try {
   runtime.updateAnalysisProjects([]); imports = [];
   assert.deepEqual((await query()).value.projects, []);
   console.log(JSON.stringify({ project: session.ready.project.name, projectType: session.ready.project.projectType,
-    coreVersion: session.ready.runtime.coreVersion, analysisVersion: result.value.version, projects: result.value.projects.length,
+    harnessVersion: session.ready.runtime.harnessVersion, analysisVersion: result.value.version, projects: result.value.projects.length,
     checks: ['built extension template', 'real independent Core and CLI', 'authenticated Studio query', 'scope changes'] }));
 } finally {
   await session?.close(); runtime?.dispose(); await rm(storage, { recursive: true, force: true });

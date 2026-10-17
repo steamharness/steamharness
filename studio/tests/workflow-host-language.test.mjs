@@ -39,7 +39,7 @@ for (const [language, expected] of [['en', 'English project'], ['zh-cn', 'Chines
             server.listen(0, '127.0.0.1', () => console.log(JSON.stringify({ type: 'ready', protocolVersion: 1,
               hostProtocolVersion: 1, accountProtocolVersion: 1, relatedProjectsProtocolVersion: 1,
               url: 'http://127.0.0.1:' + server.address().port + '/#session=' + 'a'.repeat(64), project,
-              runtime: { coreVersion: 'fixture', corePath: process.cwd() } })));
+              runtime: { harnessVersion: 'fixture', harnessPath: process.cwd() } })));
           }
         });
         input.on('close', () => { process.stdin.pause(); server.close(); });

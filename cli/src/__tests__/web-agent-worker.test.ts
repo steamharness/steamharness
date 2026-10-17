@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AgentSessionSnapshot } from 'steamharness/agent';
 import { createWebRuntime } from '../web/runtime';
+import { resolveHarnessRoot } from './harness-source';
 
 it('controls the real worker over IPC and replays pending commands after reopening SQLite', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'workflow-agent-ipc-'));
@@ -24,11 +25,9 @@ it('controls the real worker over IPC and replays pending commands after reopeni
   const runtime = createWebRuntime(directory, path.join(directory, 'data'), () => undefined);
   let run: Promise<unknown> | undefined;
   try {
-    let core = path.dirname(fileURLToPath(import.meta.resolve('steamharness')));
-    while (JSON.parse(await readFile(path.join(core, '..', 'package.json'), 'utf8').catch(() => '{}')).name !== 'steamharness') core = path.dirname(core);
-    core = path.dirname(core);
+    const harnessRoot = await resolveHarnessRoot();
     await mkdir(path.join(directory, 'node_modules'));
-    await symlink(core, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
+    await symlink(harnessRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
     await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: '8912f599-21e5-4ef3-9008-ccf0ac7c242d', name: 'agent-ipc', version: '1.0.0', steamHarness: { projectType: 'conversation', projectInfo: { dataStorage: { mode: 'local' } } } }));
     model.listen(0, '127.0.0.1'); await once(model, 'listening');
     const port = (model.address() as { port: number }).port;

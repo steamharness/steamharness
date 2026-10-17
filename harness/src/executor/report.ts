@@ -14,11 +14,11 @@ import type {
   WorkflowParamLayout,
 } from "./types";
 import type { WorkflowProjectType } from "../project-types";
-import type { KanbanManifest } from "../../../shared/kanban-project/index";
+import type { KanbanManifest } from "@steamharness/kanban-project";
 import type {
   WorkflowSchedulePreset,
   WorkflowScheduleSourceMetadata,
-} from "../../../shared/workflow-schedules/index";
+} from "@steamharness/workflow-schedules";
 import type { WorkflowToolPermissionDefinition } from "../tool-permissions/index";
 import type {
   WorkflowTokenUsageAggregate,

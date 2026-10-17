@@ -14,7 +14,7 @@ export interface WorkflowWebReady {
   relatedProjectsProtocolVersion?: number;
   traceProtocolVersion?: number;
   project: Pick<WorkflowProject, 'id' | 'name' | 'projectType'>;
-  runtime: { coreVersion: string; corePath: string };
+  runtime: { harnessVersion: string; harnessPath: string };
 }
 export interface WorkflowWebSession {
   ready: WorkflowWebReady;

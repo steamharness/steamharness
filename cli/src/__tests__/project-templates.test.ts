@@ -5,19 +5,19 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createProjectFromTemplate, listProjectTemplates, validateProjectName } from '../project-templates';
 import { createWebRuntime } from '../web/runtime';
+import { resolveHarnessRoot } from './harness-source';
 
 const folders: string[] = [];
-const versions = { core: '0.2.4-20260929001', cli: '0.2.4-20261013009.codex-studio-integration' };
+const versions = { harness: '0.2.4-20260929001', cli: '0.2.4-20261013009.codex-studio-integration' };
 afterEach(async () => { for (const folder of folders.splice(0)) { await rm(folder, { recursive: true, force: true }); } });
 async function parent() {
   const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'project-templates-')));
   folders.push(directory); return directory;
 }
 async function linkCore(directory: string) {
-  let root = path.dirname(fileURLToPath(import.meta.resolve('steamharness')));
-  while (JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8').catch(() => '{}')).name !== 'steamharness') { root = path.dirname(root); }
+  const harnessRoot = await resolveHarnessRoot();
   await mkdir(path.join(directory, 'node_modules'));
-  await symlink(root, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
+  await symlink(harnessRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
 }
 
 describe('project templates', () => {
@@ -36,7 +36,7 @@ describe('project templates', () => {
       const created = await createProjectFromTemplate({ templateId: template.id, name: template.id, parentDirectory, versions });
       ids.add(created.id);
       const manifest = JSON.parse(await readFile(path.join(created.directory, 'package.json'), 'utf8'));
-      expect(manifest).toMatchObject({ id: created.id, private: true, devDependencies: { 'steamharness': versions.core, '@steamharness/cli': versions.cli },
+      expect(manifest).toMatchObject({ id: created.id, private: true, devDependencies: { 'steamharness': versions.harness, '@steamharness/cli': versions.cli },
         steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } });
       expect(JSON.stringify(manifest)).not.toMatch(/link:|file:|workspace:|\/Users\//);
       for (const filename of template.files) { expect((await readFile(path.join(created.directory, filename))).length).toBeGreaterThan(0); }
@@ -89,7 +89,7 @@ describe('project templates', () => {
   it('rejects paths, versions and cancellation before creating any project files', async () => {
     const parentDirectory = await parent(), input = { templateId: 'workflow-starter', name: 'safe', parentDirectory, versions };
     for (const version of ['latest', '^0.2.4', 'link:../harness', 'file:/private/core', '1.0.0;echo']) {
-      await expect(createProjectFromTemplate({ ...input, versions: { ...versions, core: version } })).rejects.toMatchObject({ code: 'invalid-version' });
+      await expect(createProjectFromTemplate({ ...input, versions: { ...versions, harness: version } })).rejects.toMatchObject({ code: 'invalid-version' });
     }
     await expect(createProjectFromTemplate({ ...input, parentDirectory: '.' })).rejects.toMatchObject({ code: 'invalid-parent' });
     await expect(createProjectFromTemplate({ ...input, templateId: '../../outside' })).rejects.toMatchObject({ code: 'invalid-template' });

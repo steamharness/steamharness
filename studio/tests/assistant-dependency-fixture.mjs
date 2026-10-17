@@ -17,7 +17,7 @@ export async function createAssistantDependencyFixture() {
     import { createInterface } from 'node:readline';
     import { readFileSync, writeFileSync } from 'node:fs';
     import path from 'node:path';
-    const recordDir=${JSON.stringify(projectDir)},corePath=${JSON.stringify(path.join(core, 'dist/index.js'))};
+    const recordDir=${JSON.stringify(projectDir)},harnessPath=${JSON.stringify(path.join(core, 'dist/index.js'))};
     const input=createInterface({input:process.stdin});let server;
     input.on('line',line=>{
       const message=JSON.parse(line);
@@ -41,8 +41,8 @@ export async function createAssistantDependencyFixture() {
         });
         server.listen(0,'127.0.0.1',()=>{
           writeFileSync(path.join(recordDir,'assistant.pid'),String(process.pid));
-          writeFileSync(path.join(recordDir,'assistant.json'),JSON.stringify({assistant:message.assistant,assistantProjectDir:message.assistantProjectDir,surface:message.surface,corePath,args:process.argv.slice(2),studioControl}));
-          console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:1,accountProtocolVersion:1,assistantProtocolVersion:1,url:'http://127.0.0.1:'+server.address().port+'/#session='+'a'.repeat(64),project,runtime:{coreVersion:'2.3.4',corePath}}));
+          writeFileSync(path.join(recordDir,'assistant.json'),JSON.stringify({assistant:message.assistant,assistantProjectDir:message.assistantProjectDir,surface:message.surface,harnessPath,args:process.argv.slice(2),studioControl}));
+          console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:1,accountProtocolVersion:1,assistantProtocolVersion:1,url:'http://127.0.0.1:'+server.address().port+'/#session='+'a'.repeat(64),project,runtime:{harnessVersion:'2.3.4',harnessPath}}));
         });
       }else if(message.type==='close'){input.close();process.stdin.pause();server?.close();}
     });

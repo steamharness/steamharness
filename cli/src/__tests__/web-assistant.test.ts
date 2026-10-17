@@ -9,6 +9,7 @@ import { parseHostConfiguration } from '../web/host-config';
 import { createWebRuntime } from '../web/runtime';
 import { startWebServer } from '../web/server';
 import type { WorkflowProject, WorkflowRuntime } from '../web/workflow-types';
+import { resolveHarnessRoot } from './harness-source';
 
 const temporary: string[] = [];
 afterEach(async () => {
@@ -84,15 +85,10 @@ it('executes dedicated assistant skills using its own runtime and independent wo
   await mkdir(workdir);
   await mkdir(path.join(runtimeProjectDir, 'node_modules'), { recursive: true });
   await mkdir(path.join(assistantProjectDir, 'skills', 'fixture-skill'), { recursive: true });
-  const coreEntry = fileURLToPath(import.meta.resolve('steamharness'));
-  let harnessRoot = path.dirname(coreEntry);
-  for (let depth = 0; depth < 8; depth++) {
-    try { if (JSON.parse(await readFile(path.join(harnessRoot, 'package.json'), 'utf8')).name === 'steamharness') { break; } } catch {}
-    harnessRoot = path.dirname(harnessRoot);
-  }
-  const coreVersion = JSON.parse(await readFile(path.join(harnessRoot, 'package.json'), 'utf8')).version;
+  const harnessRoot = await resolveHarnessRoot();
+  const harnessVersion = JSON.parse(await readFile(path.join(harnessRoot, 'package.json'), 'utf8')).version;
   await symlink(harnessRoot, path.join(runtimeProjectDir, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-  const manifest = { id: '364764e9-ef0e-4e86-9e56-77d0410e1723', type: 'module', devDependencies: { 'steamharness': coreVersion }, steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } };
+  const manifest = { id: '364764e9-ef0e-4e86-9e56-77d0410e1723', type: 'module', devDependencies: { 'steamharness': harnessVersion }, steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } };
   await writeFile(path.join(runtimeProjectDir, 'package.json'), JSON.stringify({ ...manifest, name: 'Assistant runtime' }));
   await writeFile(path.join(assistantProjectDir, 'package.json'), JSON.stringify({ ...manifest, name: 'Dedicated assistant' }));
   await writeFile(path.join(workdir, 'index.ts'), 'throw new Error("The workspace executor must not run.");');
@@ -119,7 +115,7 @@ it('executes dedicated assistant skills using its own runtime and independent wo
   try {
     const inspection = await runtime.inspect([assistantProjectDir]);
     expect(inspection.errors).toEqual([]);
-    expect((inspection.projects[0] as unknown as { runtime: { corePath: string } }).runtime.corePath).toBe(coreEntry);
+    expect((inspection.projects[0] as unknown as { runtime: { harnessPath: string } }).runtime.harnessPath).toBe(path.join(harnessRoot, 'dist', 'index.js'));
     const project: WorkflowProject = { ...inspection.projects[0], uri: '', assistant: { standalone: true, workdir, roots: [{ uri: 'file:///workspace', folderPath: workdir, name: 'Assistant' }] } };
     const report = await runtime.run({ project, conversationId: 'assistant-test', runId: 'assistant-test', args: [] }, () => {});
     expect(report.status).toBe('success');

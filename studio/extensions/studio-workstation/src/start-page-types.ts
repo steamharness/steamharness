@@ -23,7 +23,7 @@ export interface ProjectCreationDialog {
   projectType?: string;
 }
 export interface StartEnvironment {
-  node?: string; core?: string; cli?: string; error?: string;
+  node?: string; harness?: string; cli?: string; error?: string;
 }
 export interface StartSummary {
   projects: number; running: number; waiting: number; unavailable: number; generatedAt: number;

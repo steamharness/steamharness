@@ -74,7 +74,7 @@ test('the shipped template runtime uses the host locale and exact bundled versio
   await build({ entryPoints: ['vendor/project-templates/project-templates.ts'], bundle: true, platform: 'node', format: 'esm', outfile: path.join(extension, 'dist/project-templates.mjs') });
   await cp('vendor/project-templates/project-templates', path.join(extension, 'dist/project-templates'), { recursive: true });
   const pinned = JSON.parse(await readFile('examples/conversation/package.json', 'utf8')).devDependencies;
-  await writeFile(path.join(extension, 'dist/project-template-versions.json'), JSON.stringify({ core: pinned['steamharness'], cli: pinned['@steamharness/cli'] }));
+  await writeFile(path.join(extension, 'dist/project-template-versions.json'), JSON.stringify({ harness: pinned['steamharness'], cli: pinned['@steamharness/cli'] }));
   const runtime = projectTemplatesRuntime(extension, 'zh-cn');
   const templates = await runtime.templates(); assert.equal(templates.length, 7); assert.equal(templates[0].name, '\u5de5\u4f5c\u6d41');
   const input = { templateId: 'workflow-starter', name: 'Created', parentDirectory: directory };
@@ -89,7 +89,7 @@ test('the shipped template runtime uses the host locale and exact bundled versio
   await assert.rejects(runtime.create(input), { code: 'directory-exists' });
   const manifest = JSON.parse(await readFile(path.join(created.directory, 'package.json'), 'utf8'));
   const versions = JSON.parse(await readFile(path.join(extension, 'dist/project-template-versions.json'), 'utf8'));
-  assert.deepEqual(manifest.devDependencies, { 'steamharness': versions.core, '@steamharness/cli': versions.cli });
+  assert.deepEqual(manifest.devDependencies, { 'steamharness': versions.harness, '@steamharness/cli': versions.cli });
 });
 
 test('the standalone snapshot matches CLI source when checked out together', async () => {

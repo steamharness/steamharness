@@ -55,8 +55,8 @@ try {
   // An assistant's executor is separate from the project that owns its runtime.
   try { coreUrl = resolve('steamharness', pathToFileURL(path.join(runtimeProjectDir, 'package.json')).href); }
   catch { throw new Error('Install steamharness in the project before starting steamharness web.'); }
-  const corePath = fileURLToPath(coreUrl);
-  let manifestDir = path.dirname(corePath);
+  const harnessPath = fileURLToPath(coreUrl);
+  let manifestDir = path.dirname(harnessPath);
   let coreManifest;
   for (let depth = 0; depth < 12; depth++) {
     try {
@@ -90,7 +90,7 @@ try {
         const parameters = (entry) => ({ fields: entry.params ?? [], paramLayout: entry.paramLayout, paramResolver: entry.paramResolver, tools: entry.tools, tokenUsage: entry.tokenUsage });
         projects.push({
           id: pkg.id,
-          runtime: { coreVersion: coreManifest.version, corePath },
+          runtime: { harnessVersion: coreManifest.version, harnessPath },
           folderPath,
           name: resolveWorkflowProjectName(pkg.name ?? path.basename(folderPath), projectInfo, language),
           manifest: Object.fromEntries(['name', 'version', 'description'].filter(key => typeof pkg[key] === 'string').map(key => [key, pkg[key]])),

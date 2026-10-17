@@ -1160,7 +1160,7 @@ describe("server workspace CLI helpers", () => {
   });
 
   it("stores the published workspace help text in the CLI resources", () => {
-    const source = readFileSync(path.resolve(".shared", "i18n", "resources", "en", "cli.ts"), "utf8");
+    const source = readFileSync(path.resolve("..", "shared", "i18n", "resources", "en", "cli.ts"), "utf8");
 
     expect(source).toContain("Usage: steamharness [--locale <zh-CN|en>] workspace <command> [args]");
     expect(source).toContain("http://localhost:7125");

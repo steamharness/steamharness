@@ -437,7 +437,7 @@ export class WorkflowMcpCliRunner implements WorkflowMcpRunner {
 
   private runWorker(args: string[], signal?: AbortSignal): Promise<WorkflowWorkerResult> {
     const mainScript = this.options.workerEntrypoint ?? resolveWorkflowMcpWorkerEntrypoint();
-    const execArgs = process.execArgv.filter((arg) => !arg.startsWith("--inspect"));
+    const execArgs = workerExecArguments(process.execArgv, mainScript);
     const child = spawn(process.execPath, [...execArgs, mainScript, ...args], {
       cwd: this.options.workflowDir,
       env: {
@@ -633,6 +633,24 @@ function appendDiagnostic(value: string, message: string): string {
  * bin launchers do not all populate argv in the same way, so Desktop may set
  * an explicit absolute path through STEAMHARNESS_MCP_CLI_ENTRYPOINT.
  */
+const DEVELOPMENT_CONDITION_ARGUMENTS = /^(?:--conditions[= ]|-C[= ])?development$/u;
+
+/**
+ * The worker is the CLI itself. A TypeScript entrypoint runs under a loader and
+ * wants the same development conditions this process started with; a built
+ * entrypoint must not inherit them, because the harness package resolves to its
+ * TypeScript sources under that condition and a plain Node process cannot load
+ * them.
+ */
+export function workerExecArguments(execArgv: readonly string[], entrypoint: string): string[] {
+  const kept = execArgv.filter((argument) => !argument.startsWith("--inspect"));
+  if (/\.[cm]?tsx?$/u.test(entrypoint)) return kept;
+  return kept.filter((argument, index) => !(
+    DEVELOPMENT_CONDITION_ARGUMENTS.test(argument)
+    || ((argument === "--conditions" || argument === "-C") && kept[index + 1] === "development")
+  ));
+}
+
 export function resolveWorkflowMcpWorkerEntrypoint(
   processArgv: readonly string[] = process.argv,
   processEnv: NodeJS.ProcessEnv = process.env,

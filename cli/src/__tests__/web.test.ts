@@ -15,6 +15,7 @@ import type { WebHostConfiguration } from '../web/host-config';
 import type { WorkflowProject, WorkflowRuntime, WorkflowRun, WorkflowReport } from '../web/workflow-types';
 import { initI18n } from '@steamharness/i18n';
 import { t } from '../web/localization';
+import { resolveHarnessRoot } from './harness-source';
 
 const folders: string[] = [];
 const services: Awaited<ReturnType<typeof startWebServer>>[] = [];
@@ -725,15 +726,10 @@ describe('steamharness web', () => {
   it('uses the Core resolved from the project and isolates development aliases', async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'steamharness-web-runtime-')); folders.push(directory);
     await mkdir(path.join(directory, 'node_modules'));
-    const coreEntry = fileURLToPath(import.meta.resolve('steamharness'));
-    let harnessRoot = path.dirname(coreEntry);
-    for (let depth = 0; depth < 8; depth++) {
-      try { if (JSON.parse(await readFile(path.join(harnessRoot, 'package.json'), 'utf8')).name === 'steamharness') { break; } } catch {}
-      harnessRoot = path.dirname(harnessRoot);
-    }
+    const harnessRoot = await resolveHarnessRoot();
     await symlink(harnessRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    const coreVersion = JSON.parse(await readFile(path.join(harnessRoot, 'package.json'), 'utf8')).version;
-    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: '364764e9-ef0e-4e86-9e56-77d0410e1723', name: 'project-runtime', type: 'module', devDependencies: { 'steamharness': coreVersion }, steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } }));
+    const harnessVersion = JSON.parse(await readFile(path.join(harnessRoot, 'package.json'), 'utf8')).version;
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: '364764e9-ef0e-4e86-9e56-77d0410e1723', name: 'project-runtime', type: 'module', devDependencies: { 'steamharness': harnessVersion }, steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } }));
     await writeFile(path.join(directory, 'index.ts'), `
       const flow = workflow.defineWorkflow({ name: 'test', run() { return {
         errCode: 0, errMessage: '', text: 'project runtime',
@@ -776,7 +772,7 @@ describe('steamharness web', () => {
     const runtime = createWebRuntime(directory, path.join(directory, 'data'), () => activeConnection);
     try {
       const inspected = await runtime.inspect([directory]); expect(inspected.errors).toEqual([]);
-      expect((inspected.projects[0] as unknown as { runtime: { corePath: string } }).runtime.corePath).toBe(coreEntry);
+      expect((inspected.projects[0] as unknown as { runtime: { harnessPath: string } }).runtime.harnessPath).toBe(path.join(harnessRoot, 'dist', 'index.js'));
       const project = { ...inspected.projects[0], uri: '' };
       expect(project.fields.map(field => field.name)).toEqual(['compact', 'audience', 'delivery', 'brief']);
       expect(project.fields).toEqual(expect.arrayContaining([
@@ -819,11 +815,7 @@ describe('steamharness web', () => {
   it('accepts delayed pipe chunks, large uploads and split UTF-8 filenames', async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'steamharness-web-pipe-')); folders.push(directory);
     await mkdir(path.join(directory, 'node_modules'));
-    let harnessRoot = path.dirname(fileURLToPath(import.meta.resolve('steamharness')));
-    for (let depth = 0; depth < 8; depth++) {
-      try { if (JSON.parse(await readFile(path.join(harnessRoot, 'package.json'), 'utf8')).name === 'steamharness') { break; } } catch {}
-      harnessRoot = path.dirname(harnessRoot);
-    }
+    const harnessRoot = await resolveHarnessRoot();
     await symlink(harnessRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
     await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module' }));
     const filename = '\u6587\u4ef6.txt';

@@ -33,7 +33,7 @@ async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startup
           if(${fail}) {console.error(message.connection?.accessToken);process.exit(1);}
           const studioControl={hasUrl:!!process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL,hasToken:!!process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN,mcpServer:process.env.STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER??null,permissionPolicy:process.env.STEAMHARNESS_STUDIO_CONTROL_PERMISSION_POLICY??null};
           server=createServer((request,response)=>{response.setHeader('Content-Type','application/json');response.end(JSON.stringify({configuration,args,pid:process.pid,authMessages,studioControl}));});
-          setTimeout(()=>server.listen(0,'127.0.0.1',()=>console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:${protocol},accountProtocolVersion:${accountProtocol},relatedProjectsProtocolVersion:${relatedProtocol},assistantProtocolVersion:${assistantProtocol},url:'http://127.0.0.1:'+server.address().port+'/#session='+'a'.repeat(64),project:{id:message.assistantProjectDir?assistantId:'user',name:message.assistantProjectDir?'Project Assistant':version,projectType:'conversation'},runtime:{coreVersion:version,corePath:process.cwd()+'/node_modules/steamharness/dist/index.js'}}))),${startupDelay});
+          setTimeout(()=>server.listen(0,'127.0.0.1',()=>console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:${protocol},accountProtocolVersion:${accountProtocol},relatedProjectsProtocolVersion:${relatedProtocol},assistantProtocolVersion:${assistantProtocol},url:'http://127.0.0.1:'+server.address().port+'/#session='+'a'.repeat(64),project:{id:message.assistantProjectDir?assistantId:'user',name:message.assistantProjectDir?'Project Assistant':version,projectType:'conversation'},runtime:{harnessVersion:version,harnessPath:process.cwd()+'/node_modules/steamharness/dist/index.js'}}))),${startupDelay});
         } else if(message.type==='auth') {authMessages++;configuration.connection=message.connection;}
         else if(message.type==='related-projects') {configuration.relatedProjects=message.relatedProjects;}
         else if(message.type==='close') {input.close();process.stdin.pause();server?.close();}
@@ -103,8 +103,8 @@ test('the independent assistant launches its own CLI and Core in its own workspa
   t.after(() => session.close());
   const result = await fetch(new URL(session.ready.url).origin).then(response => response.json());
   assert.equal(session.ready.project.name, 'Project Assistant');
-  assert.equal(path.normalize(session.ready.runtime.corePath), path.join(await fs.realpath(first.directory), 'node_modules/steamharness/dist/index.js'));
-  assert.notEqual(session.ready.runtime.coreVersion, (await inspectProjectCli(second.directory, process.execPath)).projects[0].name);
+  assert.equal(path.normalize(session.ready.runtime.harnessPath), path.join(await fs.realpath(first.directory), 'node_modules/steamharness/dist/index.js'));
+  assert.notEqual(session.ready.runtime.harnessVersion, (await inspectProjectCli(second.directory, process.execPath)).projects[0].name);
   assert.equal(result.args[result.args.indexOf('web') + 1], assistantProjectDir);
   assert.equal(result.configuration.surface, 'assistant');
   assert.equal(result.configuration.assistantProjectDir, assistantProjectDir);

@@ -38,11 +38,6 @@
   },
   "devDependencies": {
     "@dagrejs/dagre": "1.1.8",
-    "@vscode/codicons": "0.0.45",
-    "dompurify": "3.3.1",
-    "marked": "17.0.1",
-    "esbuild": "0.28.2",
-    "@types/node": "^25.6.0",
     "@steamharness/auth-config": "workspace:*",
     "@steamharness/i18n": "workspace:*",
     "@steamharness/kanban-project": "workspace:*",
@@ -50,14 +45,20 @@
     "@steamharness/project-dependencies": "workspace:*",
     "@steamharness/project-info": "workspace:*",
     "@steamharness/project-upload": "workspace:*",
+    "@steamharness/repository-boundary": "workspace:*",
     "@steamharness/runtime-compatibility": "workspace:*",
     "@steamharness/workflow-ids": "workspace:*",
     "@steamharness/workflow-mcp": "workspace:*",
+    "@types/node": "^25.6.0",
     "@vitest/coverage-v8": "^4.1.7",
+    "@vscode/codicons": "0.0.45",
+    "dompurify": "3.3.1",
+    "esbuild": "0.28.2",
+    "marked": "17.0.1",
     "semver": "^7.7.4",
+    "steamharness": "0.2.4-20261016007.codex-studio-integration-durable",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.7",
-    "steamharness": "0.2.4-20261016007.codex-studio-integration-durable"
+    "vitest": "^4.1.7"
   }
 }

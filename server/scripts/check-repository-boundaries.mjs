@@ -5,7 +5,7 @@ const root = path.resolve(import.meta.dirname, "..");
 const sharedRoot = path.resolve(root, "..", "shared");
 register();
 const { assertRepositoryBoundaries, scanRepositoryBoundaries } =
-  await import("../../shared/repository-boundary/index.ts");
+  await import("@steamharness/repository-boundary");
 // Shared lives in this repository now, so the boundary scan covers the local
 // packages directly instead of a prepared copy of them.
 const violations = [

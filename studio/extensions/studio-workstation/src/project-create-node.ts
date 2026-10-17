@@ -8,7 +8,7 @@ import type { CreatedProject, ProjectCreationInput, StartTemplate } from './star
 interface TemplateModule {
   validateProjectName(value: string): string;
   listProjectTemplates(): Promise<Array<Omit<StartTemplate, 'name' | 'description'> & { name: Record<string, string>; description: Record<string, string> }>>;
-  createProjectFromTemplate(input: { templateId: string; name: string; parentDirectory: string; versions: { core: string; cli: string }; signal?: AbortSignal }): Promise<CreatedProject>;
+  createProjectFromTemplate(input: { templateId: string; name: string; parentDirectory: string; versions: { harness: string; cli: string }; signal?: AbortSignal }): Promise<CreatedProject>;
 }
 
 export function defaultProjectParentDirectory(): string { return path.join(homedir(), 'Documents', 'steamharness-projects'); }

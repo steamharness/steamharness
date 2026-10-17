@@ -8,6 +8,7 @@ import { createWebRuntime } from '../web/runtime';
 import { createWebRelatedProjectRuntime } from '../web/related-projects';
 import { webProjectDataDirectory } from '../web/kanban-data';
 import { parseHostRelatedProjects } from '../web/host-config';
+import { resolveHarnessRoot } from './harness-source';
 
 const consumerId = '33333333-3333-4333-8333-333333333333';
 const targetId = '44444444-4444-4444-8444-444444444444';
@@ -83,11 +84,7 @@ it('uses the project Core for server KV and knowledge and rechecks grants and id
 async function createFixture(location = 'local') {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'web-related-'))); temporary.push(root);
   const consumerDir = path.join(root, 'workspace', 'consumer'), targetDir = path.join(root, 'imported', 'database');
-  let harnessRoot = path.dirname(fileURLToPath(import.meta.resolve('steamharness')));
-  for (let depth = 0; depth < 8; depth++) {
-    try { if (JSON.parse(await readFile(path.join(harnessRoot, 'package.json'), 'utf8')).name === 'steamharness') { break; } } catch {}
-    harnessRoot = path.dirname(harnessRoot);
-  }
+  const harnessRoot = await resolveHarnessRoot();
   const relation = (alias: string, projectId: string) => ({ alias, projectId, grantToRelatedProject: {
     read: { mode: 'all' }, write: { mode: 'none' }, knowledge: { read: { mode: 'all' }, write: { mode: 'none' } }, entrypoints: { mode: 'all' },
   } });

@@ -60,7 +60,7 @@ test('the built-in analysis prepares a runnable Kanban and connects its own CLI 
             response.writeHead(reply.status, { 'Content-Type': 'application/json' }); response.end(await reply.text());
           });
           server.listen(0, '127.0.0.1', () => console.log(JSON.stringify({ type: 'ready', protocolVersion: 1, hostProtocolVersion: 1, accountProtocolVersion: 1,
-            url: 'http://127.0.0.1:' + server.address().port + '/#session=' + 'a'.repeat(64), project, runtime: { coreVersion: '2.3.4', corePath: 'fixture' } })));
+            url: 'http://127.0.0.1:' + server.address().port + '/#session=' + 'a'.repeat(64), project, runtime: { harnessVersion: '2.3.4', harnessPath: 'fixture' } })));
         } else if (message.type === 'close') { input.close(); process.stdin.pause(); server?.close(); }
       });
       input.on('close', () => { process.stdin.pause(); server?.close(); });

@@ -59,7 +59,7 @@ test("Desktop identity audit rejects aliases and fallbacks in production files",
 
 test("Desktop identity audit allows only explicit old-value rejection guards", async () => {
   const splitRoot = await mkdtemp(path.join(os.tmpdir(), "workflow-desktop-identity-rejection-"));
-  await writeFiles(path.join(splitRoot, "core"), {
+  await writeFiles(path.join(splitRoot, "harness"), {
     "package.json": '{"name":"steamharness"}\n',
     "src/runtime-platform.ts": [
       'if (normalized === "app") {',
@@ -80,7 +80,7 @@ test("Desktop identity audit allows only explicit old-value rejection guards", a
 
   const result = await auditDesktopIdentity({
     splitRoot,
-    repositories: ["core", "build-in/build-in-studio-control"],
+    repositories: ["harness", "build-in/build-in-studio-control"],
   });
   assert.equal(result.repositories.length, 2);
   assert.equal(result.filesChecked, 4);

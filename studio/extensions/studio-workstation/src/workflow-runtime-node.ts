@@ -133,13 +133,13 @@ export function createWorkflowRuntime(context: vscode.ExtensionContext, account:
         directory: project.folderPath, expectedVersion: project.manifest?.version ?? '', parentDirectory: defaultProjectParentDirectory(), progress, beforeReplace, afterReplace }));
     },
     environmentStatus: async () => {
-      const result: { node?: string; core?: string; cli?: string; error?: string } = {};
+      const result: { node?: string; harness?: string; cli?: string; error?: string } = {};
       try { result.node = (await promisify(execFile)(executable(), ['--version'], { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, timeout: 10_000, windowsHide: true })).stdout.trim(); }
       catch (error) { result.error = String(error); }
       try {
         const directory = await assistantDirectory();
         result.cli = (await resolveProjectCli(directory)).version;
-        result.core = JSON.parse(await readFile(path.join(directory, 'node_modules/steamharness/package.json'), 'utf8')).version;
+        result.harness = JSON.parse(await readFile(path.join(directory, 'node_modules/steamharness/package.json'), 'utf8')).version;
       } catch (error) { result.error = [result.error, String(error)].filter(Boolean).join('\n'); }
       return result;
     },

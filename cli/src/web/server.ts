@@ -52,9 +52,9 @@ export async function startWebServer(options: WebOptions) {
   const runtime = options.runtime ?? createWebRuntime(projectDir, storageDir, () => connection, () => relatedProjects, { allowSystemAi: allowAiConnection });
   let inspected;
   try { inspected = await inspectWebProject(runtime, projectDir, options.host); } catch (error) { runtime.dispose(); throw error; }
-  const descriptor = inspected.projects[0] as WorkflowProject & { runtime?: { coreVersion: string; corePath: string } };
+  const descriptor = inspected.projects[0] as WorkflowProject & { runtime?: { harnessVersion: string; harnessPath: string } };
   if (!descriptor) { runtime.dispose(); throw new Error(inspected.errors.join('\n') || 'No Workflow project found.'); }
-  if (!options.runtime) { assertLocalCliCoreCompatible(projectDir, descriptor.runtime!.coreVersion); }
+  if (!options.runtime) { assertLocalCliCoreCompatible(projectDir, descriptor.runtime!.harnessVersion); }
   if (!['conversation', 'workflow', 'kanban'].includes(descriptor.projectType)) { runtime.dispose(); throw new Error('Unsupported Workflow project type.'); }
   const project: WorkflowProject = descriptor;
   const resources = new ResourcePreviews(project, runtime, storageDir, () => connection, () => relatedProjects, () => resourceProjects);

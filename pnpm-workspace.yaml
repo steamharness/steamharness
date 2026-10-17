@@ -3,8 +3,13 @@ packages:
   - cli
   - server
   - server/web
+  - shared
   - shared/*
   - build-in/*
+
+# The published channels are dormant, so the exact version pins in the manifests
+# cannot resolve yet; the workspace packages are the source of truth here.
+preferWorkspacePackages: true
 
 onlyBuiltDependencies:
   - esbuild

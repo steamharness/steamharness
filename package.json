@@ -15,5 +15,13 @@
     "studio:dev": "pnpm -C studio run dev",
     "studio:web": "pnpm -C studio run dev:web",
     "doc:dev": "pnpm -C docs site:dev"
+  },
+  "pnpm": {
+    "overrides": {
+      "steamharness": "link:harness",
+      "@steamharness/cli": "link:cli",
+      "@steamharness/server": "link:server",
+      "@steamharness/server-web": "link:server/web"
+    }
   }
 }

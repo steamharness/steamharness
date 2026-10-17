@@ -127,12 +127,12 @@ import {
   parseKanbanManifestText,
   readKanbanArtifactConfig,
   readPackageProjectType,
-} from "../../../shared/kanban-project/index";
+} from "@steamharness/kanban-project";
 import {
   parseWorkflowSchedulePresets,
   validateWorkflowScheduleParamValues,
   type WorkflowSchedulePreset,
-} from "../../../shared/workflow-schedules/index";
+} from "@steamharness/workflow-schedules";
 
 export interface RunWorkspaceWorkflowOptions {
   cwd?: string;

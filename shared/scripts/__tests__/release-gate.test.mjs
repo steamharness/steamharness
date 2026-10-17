@@ -25,14 +25,16 @@ function manifest(core, cli = core) {
 async function createWorkspace() {
   const root = await mkdtemp(path.join(os.tmpdir(), "release-gate-"));
   await mkdir(path.join(root, "build-in-codex"));
-  await mkdir(path.join(root, "core"));
+  await mkdir(path.join(root, "harness"));
   await writeFile(path.join(root, "build-in-codex", "package.json"), JSON.stringify(manifest("link:../harness")));
-  await writeFile(path.join(root, "core", "package.json"), JSON.stringify({ name: "steamharness", version: "0.2.4-20260921001" }));
+  await writeFile(path.join(root, "harness", "package.json"), JSON.stringify({ name: "steamharness", version: "0.2.4-20260921001" }));
   return root;
 }
 
 test("release mode treats main, alpha, tags and the fail-closed override as release", () => {
-  assert.equal(resolveReleaseMode({ env: {} }), "dev");
+  // The empty environment falls back to the checked-out branch, which is
+  // not the subject under test here.
+  assert.equal(resolveReleaseMode({ env: {}, branch: "dev" }), "dev");
   assert.equal(resolveReleaseMode({ env: { CI_COMMIT_BRANCH: "dev" } }), "dev");
   assert.equal(resolveReleaseMode({ env: { CI_COMMIT_BRANCH: "codex/pi-agent" } }), "dev");
   // alpha publishes; it must not be classified as a development branch.

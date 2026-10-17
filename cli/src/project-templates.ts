@@ -18,7 +18,7 @@ export interface CreateProjectFromTemplateRequest {
   templateId: string;
   name: string;
   parentDirectory: string;
-  versions: { core: string; cli: string };
+  versions: { harness: string; cli: string };
   signal?: AbortSignal;
 }
 export interface CreatedTemplateProject {

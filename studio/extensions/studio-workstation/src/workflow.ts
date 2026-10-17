@@ -222,7 +222,7 @@ export async function activateWorkflow(context: vscode.ExtensionContext, launche
             output.appendLine(`Workflow Web stopped: ${project.name}`);
           }
         }));
-      output.appendLine(`Workflow Web: ${project.name}; project Core ${session.ready.runtime.coreVersion}; ${session.ready.runtime.corePath}`);
+      output.appendLine(`Workflow Web: ${project.name}; project Core ${session.ready.runtime.harnessVersion}; ${session.ready.runtime.harnessPath}`);
       updateEntry(); return { dispose: close, closed: session.closed };
     } catch (error) { await close(); if ('reveal' in panel) { panel.dispose(); } throw error; }
   };

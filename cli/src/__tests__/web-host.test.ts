@@ -17,7 +17,7 @@ it('processes logout and close while an earlier host authentication is pending',
   const relatedProjects = [{ alias: 'database', projectDir: path.join(os.tmpdir(), 'database') }];
   vi.mocked(startWebServer).mockResolvedValue({
     url: `http://127.0.0.1:3000/#session=${'a'.repeat(64)}`,
-    project: { id: 'host-test', name: 'Host test', projectType: 'conversation', runtime: { coreVersion: 'test', corePath: 'test' } },
+    project: { id: 'host-test', name: 'Host test', projectType: 'conversation', runtime: { harnessVersion: 'test', harnessPath: 'test' } },
     setHostConnection, setHostRelatedProjects, close,
   } as unknown as Awaited<ReturnType<typeof startWebServer>>);
   const input = Readable.from([

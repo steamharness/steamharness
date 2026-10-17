@@ -66,8 +66,8 @@ describe("workflow Core compatibility", () => {
     expect(classifyVersionReference(manifest("0.2.4-20260921001"), "steamharness"))
       .toEqual({ kind: "exact", version: "0.2.4-20260921001", specifier: "0.2.4-20260921001" });
     expect(classifyVersionReference(manifest("link:../harness"), "steamharness"))
-      .toEqual({ kind: "local", specifier: "link:../harness", relative: "../core" });
-    for (const value of ["file:core", "file:/abs/core", "workspace:*"]) {
+      .toEqual({ kind: "local", specifier: "link:../harness", relative: "../harness" });
+    for (const value of ["file:harness", "file:/abs/harness", "workspace:*"]) {
       expect(() => classifyVersionReference(manifest(value), "steamharness")).toThrow(/relative file:|exact SemVer/);
     }
   });
@@ -83,18 +83,18 @@ describe("workflow Core compatibility", () => {
   });
 
   it("normalises sibling references against the workspace root", () => {
-    expect(resolveSiblingDirectory("../core", "build-in-codex")).toBe("core");
-    expect(resolveSiblingDirectory("./core", "cli")).toBe("cli/core");
+    expect(resolveSiblingDirectory("../harness", "build-in-codex")).toBe("harness");
+    expect(resolveSiblingDirectory("./harness", "cli")).toBe("cli/harness");
     expect(resolveSiblingDirectory("../shared/i18n", "cli")).toBe("shared/i18n");
     expect(() => resolveSiblingDirectory("../..", "build-in-codex")).toThrow(/inside the workspace root/);
     expect(() => resolveSiblingDirectory("../../etc", "build-in-codex")).toThrow(/inside the workspace root/);
     expect(() => resolveSiblingDirectory("..", "build-in-codex")).toThrow(/workspace root/);
   });
 
-  it("resolves a local Core reference on dev and refuses it on main", () => {
+  it("resolves a local harness reference on dev and refuses it on main", () => {
     const manifest = { devDependencies: { "steamharness": "link:../harness" } };
     const readSiblingManifest = (directory: string) => {
-      expect(directory).toBe("core");
+      expect(directory).toBe("harness");
       return { name: "steamharness", version: "0.2.4-20260921001" };
     };
 
