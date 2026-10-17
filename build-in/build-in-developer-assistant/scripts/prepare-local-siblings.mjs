@@ -188,7 +188,8 @@ export function prepareLocalSiblings(options = {}) {
     run("git", ["clone", "--quiet", "--depth", "1", "--branch", branch, `${repositoryPrefix()}/${name.name}.git`, target], { cwd: workspaceRoot, env });
     const siblingManifest = JSON.parse(readFileSync(path.join(target, "package.json"), "utf8"));
     // 所有共享包都通过 workspace 解析，检出之后直接安装即可。
-    run("pnpm", ["install", "--frozen-lockfile"], { cwd: target, env });
+    const install = ["install", "--frozen-lockfile"];
+    run("pnpm", install, { cwd: target, env });
     // 内置项目的 typecheck 走同级 harness 的 `dist/*.d.ts`（测试走 vitest 的
     // `development` 导出条件，不需要构建）。过期的 dist 比缺失的 dist 更糟：类型
     // 会静默对不上源码，所以这里一律重建，而不是只在 dist 不存在时构建。

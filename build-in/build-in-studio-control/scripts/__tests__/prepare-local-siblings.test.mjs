@@ -246,9 +246,9 @@ describe("local sibling preparation", () => {
 
     expect(calls.map((call) => `${call.command} ${call.args.slice(0, 2).join(" ")}`)).toEqual([
       "git clone --quiet",
-      "pnpm install",
+      "pnpm install --frozen-lockfile",
       "git clone --quiet",
-      "pnpm install",
+      "pnpm install --frozen-lockfile",
       "pnpm build",
     ]);
     const clones = calls.filter((call) => call.command === "git");

@@ -36,13 +36,13 @@ install_units() {
   mkdir -p /etc/systemd/system "$RUNTIME_DIR" "$ROOT/nginx/logs" "$ROOT/certs" "$ROOT/acme"
   mkdir -p "$ROOT/server-data/stable" "$ROOT/server-data/alpha"
   mkdir -p "$ROOT/published/web/alpha"
-  for unit in workflow-server-stable workflow-server-alpha workflow-docs steamharness-web-alpha; do
+  for unit in steamharness-server-stable steamharness-server-alpha steamharness-docs steamharness-web-alpha; do
     sed -e "s#__ROOT__#$ROOT#g" -e "s#__NODE_BIN__#$node_bin#g" \
       "$COMPOSE_DIR/$unit.service" > "/etc/systemd/system/$unit.service"
   done
   systemctl disable --now nginx.service 2>/dev/null || true
   systemctl daemon-reload
-  systemctl enable workflow-server-stable workflow-server-alpha workflow-docs steamharness-web-alpha
+  systemctl enable steamharness-server-stable steamharness-server-alpha steamharness-docs steamharness-web-alpha
 }
 
 select_nginx_config() {
@@ -108,8 +108,8 @@ ensure_release() {
   ensure_compose
   [[ -L "$ROOT/deployments/server/stable/current" ]] || die "Stable release is not deployed yet"
   [[ -L "$ROOT/published/docs/current" ]] || die "Docs release is not deployed yet"
-  start_unit workflow-server-stable
-  start_unit workflow-docs
+  start_unit steamharness-server-stable
+  start_unit steamharness-docs
   wait_http http://127.0.0.1:7130/health
   wait_http http://127.0.0.1:7132/
   log "Stable runtime ensured"
@@ -119,7 +119,7 @@ ensure_alpha() {
   require_root
   ensure_compose
   [[ -L "$ROOT/deployments/server/alpha/current" ]] || die "Alpha release is not deployed yet"
-  start_unit workflow-server-alpha
+  start_unit steamharness-server-alpha
   wait_http http://127.0.0.1:7140/health
   log "Alpha runtime ensured"
 }
@@ -211,7 +211,7 @@ deploy_server() {
   [[ -L "$current" ]] && previous="$(readlink "$current")"
   ensure_compose
   atomic_link "releases/$release_id" "$current"
-  local unit="workflow-server-$channel.service" port=7130
+  local unit="steamharness-server-$channel.service" port=7130
   [[ "$channel" == alpha ]] && port=7140
   if ! systemctl restart "$unit" || ! wait_http "http://127.0.0.1:$port/health"; then
     if [[ -n "$previous" ]]; then
@@ -242,12 +242,12 @@ deploy_docs() {
   if [[ -e "$release" ]]; then rm -rf "$staging"; else mv "$staging" "$release"; fi
   local previous="$(readlink "$base/current" || true)"
   atomic_link "releases/$commit" "$base/current"
-  if ! systemctl restart workflow-docs.service || ! wait_http http://127.0.0.1:7132/; then
+  if ! systemctl restart steamharness-docs.service || ! wait_http http://127.0.0.1:7132/; then
     if [[ -n "$previous" ]]; then
       atomic_link "$previous" "$base/current"
-      systemctl restart workflow-docs.service || true
+      systemctl restart steamharness-docs.service || true
     else
-      systemctl stop workflow-docs.service
+      systemctl stop steamharness-docs.service
       rm -f "$base/current"
     fi
     die "Docs health check failed; current link was rolled back"
@@ -295,7 +295,7 @@ status() {
   printf '%s\n' '--- docker ---'
   docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' || true
   printf '%s\n' '--- systemd ---'
-  systemctl --no-pager --plain --full status workflow-server-stable workflow-server-alpha workflow-docs steamharness-web-alpha 2>/dev/null || true
+  systemctl --no-pager --plain --full status steamharness-server-stable steamharness-server-alpha steamharness-docs steamharness-web-alpha 2>/dev/null || true
   printf '%s\n' '--- web releases ---'
   [[ -L "$ROOT/published/web/alpha/current" ]] && readlink "$ROOT/published/web/alpha/current" || echo "web/alpha: not deployed"
   printf '%s\n' '--- health ---'

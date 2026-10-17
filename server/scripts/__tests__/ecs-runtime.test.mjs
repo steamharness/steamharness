@@ -24,9 +24,9 @@ test("ECS agent recovery is additive and contains the expected systemd channels"
   const agent = await readFile(path.join(root, "docker", "ecs", "ecs-runtime-agent.sh"), "utf8");
   assert.match(agent, /compose up --detach --no-recreate --pull never --wait/u);
   assert.doesNotMatch(agent, /compose down -v|docker volume rm/u);
-  assert.match(agent, /workflow-server-stable/u);
-  assert.match(agent, /workflow-server-alpha/u);
-  assert.match(agent, /workflow-docs/u);
+  assert.match(agent, /steamharness-server-stable/u);
+  assert.match(agent, /steamharness-server-alpha/u);
+  assert.match(agent, /steamharness-docs/u);
   assert.match(agent, /certbot.*renew|renew.*certbot/u);
   assert.match(agent, /timeout --kill-after=5s.*docker pull/u);
 });

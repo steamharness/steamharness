@@ -33,6 +33,6 @@ test("standalone Server scripts do not import the former monorepo root", () => {
   assert.equal(existsSync(path.join(root, "scripts", "download-server.mjs")), false);
   assert.equal(existsSync(path.join(root, "scripts", "download-launchd.mjs")), false);
   assert.match(migrationSource, /STEAMHARNESS_WORKSPACE_ROOT/);
-  assert.match(migrationSource, /"core", "workspace", "workflow"/);
+  assert.match(migrationSource, /"harness", "workspace", "workflow"/);
   assert.doesNotMatch(migrationSource, /"\.\.\/\.\."/);
 });

@@ -17,7 +17,7 @@ import {
   verifyBuiltinProject,
   verifyDistribution,
 } from "../builtin-release.mjs";
-import { resolveReleaseMode, resolveVersionReference } from "../release-gate.mjs";
+import { resolveVersionReference } from "../release-gate.mjs";
 import { prepareRelease } from "../prepare-release.mjs";
 import { resolveSiblingWorkspaceRoot } from "../prepare-local-siblings.mjs";
 
@@ -40,14 +40,16 @@ const ossConfig = {
 
 describe("independent built-in project release", () => {
   it("derives the release identity and required resources from package.json", async () => {
-    const definition = await verifyBuiltinProject({ root });
+    // The checkout's branch decides the release mode, and this repository is
+    // developed from main as well as dev, so the mode under test is explicit.
+    const definition = await verifyBuiltinProject({ root, mode: 'dev' });
     expect(definition.tag).toBe(`builtin-${definition.projectId}/v${definition.version}`);
     // 组件版本来自 devDependencies 的精确声明，不写死避免每次 Core/CLI bump 都要改测试。
     // On dev the components come from the sibling checkouts; on a release
     // branch the manifest pins published versions and the siblings are not
     // part of the checkout. Resolve them the way the release definition does
     // instead of assuming either shape — this test runs in the tag pipeline.
-    const mode = resolveReleaseMode({ root });
+    const mode = 'dev';
     const resolved = {};
     for (const [key, packageName] of [["harness", "steamharness"], ["cli", "@steamharness/cli"]]) {
       const reference = await resolveVersionReference(definition.packageJson, packageName, {
@@ -107,7 +109,7 @@ describe("independent built-in project release", () => {
 ;
 
   it("assembles a schema v2 Desktop-compatible index with immutable resource hashes", async () => {
-    const definition = await readBuiltinDefinition(root);
+    const definition = await readBuiltinDefinition(root, { mode: 'dev' });
     const temporary = await mkdtemp(path.join(os.tmpdir(), `builtin-${definition.projectId}-release-`));
     const mac = path.join(temporary, "mac");
     const windows = path.join(temporary, "windows");
@@ -116,6 +118,7 @@ describe("independent built-in project release", () => {
     const outputDir = path.join(temporary, "distribution");
     await assembleRelease({
       root,
+      mode: 'dev',
       tag: definition.tag,
       commit,
       publishedAt: "2026-08-12T00:00:00.000Z",
@@ -123,7 +126,7 @@ describe("independent built-in project release", () => {
       windowsArtifactsDir: definition.artifactKind === "native" ? windows : undefined,
       outputDir,
     });
-    const verified = await verifyDistribution({ root, resourcesRoot: outputDir });
+    const verified = await verifyDistribution({ root, resourcesRoot: outputDir, mode: 'dev' });
     expect(verified.index).toMatchObject({
       schemaVersion: 2,
       id: definition.projectId,
@@ -145,15 +148,15 @@ describe("independent built-in project release", () => {
     const legacyIndex = JSON.parse(await readFile(indexPath, "utf8"));
     delete legacyIndex.releases[0].components;
     await writeFile(indexPath, `${JSON.stringify(legacyIndex, null, 2)}\n`, "utf8");
-    await expect(verifyDistribution({ root, resourcesRoot: outputDir })).resolves.toBeDefined();
+    await expect(verifyDistribution({ root, resourcesRoot: outputDir, mode: 'dev' })).resolves.toBeDefined();
     legacyIndex.releases[0].minAppVersion = definition.minDesktopVersion;
     await writeFile(indexPath, `${JSON.stringify(legacyIndex, null, 2)}\n`, "utf8");
-    await expect(verifyDistribution({ root, resourcesRoot: outputDir }))
+    await expect(verifyDistribution({ root, resourcesRoot: outputDir, mode: 'dev' }))
       .rejects.toThrow(/minAppVersion is not supported/);
   });
 
   it("rejects the removed minAppVersion release field", async () => {
-    const definition = await readBuiltinDefinition(root);
+    const definition = await readBuiltinDefinition(root, { mode: 'dev' });
     const fixture = await mkdtemp(path.join(os.tmpdir(), `builtin-${definition.projectId}-legacy-desktop-field-`));
     const manifest = releaseManifest(definition);
     manifest.steamHarness.builtinRelease.minAppVersion = definition.minDesktopVersion;
@@ -163,7 +166,7 @@ describe("independent built-in project release", () => {
   });
 
   it("rejects ranged Core or CLI component dependencies", async () => {
-    const definition = await readBuiltinDefinition(root);
+    const definition = await readBuiltinDefinition(root, { mode: 'dev' });
     const fixture = await mkdtemp(path.join(os.tmpdir(), `builtin-${definition.projectId}-runtime-components-`));
     const manifest = releaseManifest(definition);
     manifest.devDependencies["steamharness"] = "^0.1.0";
@@ -172,7 +175,7 @@ describe("independent built-in project release", () => {
       /devDependencies\.steamharness "\^0\.1\.0" must be an exact SemVer version/,
     );
 
-    manifest.devDependencies["steamharness"] = definition.components.core;
+    manifest.devDependencies["steamharness"] = definition.components.harness;
     manifest.devDependencies["@steamharness/cli"] = "workspace:*";
     await writeFile(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
     await expect(readBuiltinDefinition(fixture)).rejects.toThrow(
@@ -180,8 +183,8 @@ describe("independent built-in project release", () => {
     );
   });
 
-  it("resolves Core and CLI components from the nested aggregate layout", async () => {
-    const definition = await readBuiltinDefinition(root);
+  it("resolves harness and CLI components from the nested monorepo layout", async () => {
+    const definition = await readBuiltinDefinition(root, { mode: 'dev' });
     const workspace = await mkdtemp(path.join(os.tmpdir(), "builtin-nested-components-"));
     try {
       const fixture = path.join(workspace, "build-in", "build-in-project");
@@ -204,7 +207,7 @@ describe("independent built-in project release", () => {
   });
 
   it("refuses a sibling reference once the repository is on a release channel", async () => {
-    const definition = await readBuiltinDefinition(root);
+    const definition = await readBuiltinDefinition(root, { mode: 'dev' });
     const fixture = await mkdtemp(path.join(os.tmpdir(), `builtin-${definition.projectId}-release-reference-`));
     const manifest = structuredClone(definition.packageJson);
     manifest.devDependencies["steamharness"] = "link:../../harness";
@@ -216,7 +219,7 @@ describe("independent built-in project release", () => {
   });
 
   it("requires an explicit storage declaration and the Core 0.2 Desktop floor", async () => {
-    const definition = await readBuiltinDefinition(root);
+    const definition = await readBuiltinDefinition(root, { mode: 'dev' });
     const fixture = await mkdtemp(path.join(os.tmpdir(), `builtin-${definition.projectId}-storage-contract-`));
     const manifest = releaseManifest(definition);
     delete manifest.steamHarness.projectInfo.dataStorage;
@@ -234,8 +237,8 @@ describe("independent built-in project release", () => {
   });
 
   it("keeps the two channels' paths and tags apart", async () => {
-    const stable = await readBuiltinDefinition(root);
-    const alpha = await readBuiltinDefinition(root, { channel: "alpha" });
+    const stable = await readBuiltinDefinition(root, { mode: 'dev' });
+    const alpha = await readBuiltinDefinition(root, { channel: "alpha", mode: "dev" });
 
     expect(stable.tag).toBe(`builtin-${stable.projectId}/v${stable.version}`);
     expect(alpha.tag).toBe(`builtin-${alpha.projectId}/alpha/v${alpha.version}`);
@@ -246,7 +249,7 @@ describe("independent built-in project release", () => {
   });
 
   it("assembles the Alpha channel under its own segment, leaving the stable path empty", async () => {
-    const alpha = await readBuiltinDefinition(root, { channel: "alpha" });
+    const alpha = await readBuiltinDefinition(root, { channel: "alpha", mode: "dev" });
     const temporary = await mkdtemp(path.join(os.tmpdir(), `builtin-${alpha.projectId}-alpha-release-`));
     const mac = path.join(temporary, "mac");
     const windows = path.join(temporary, "windows");
@@ -255,6 +258,7 @@ describe("independent built-in project release", () => {
     const outputDir = path.join(temporary, "distribution");
     await assembleRelease({
       root,
+      mode: 'dev',
       channel: "alpha",
       tag: alpha.tag,
       commit,
@@ -264,7 +268,7 @@ describe("independent built-in project release", () => {
       outputDir,
     });
 
-    const verified = await verifyDistribution({ root, channel: "alpha", resourcesRoot: outputDir });
+    const verified = await verifyDistribution({ root, channel: "alpha", resourcesRoot: outputDir, mode: 'dev' });
     expect(verified.release.tag).toBe(`builtin-${alpha.projectId}/alpha/v${alpha.version}`);
     // Everything, index and archives alike, sits under the channel segment: the
     // index's relative resource URLs resolve there and the two channels cannot
@@ -278,11 +282,11 @@ describe("independent built-in project release", () => {
     }
     // The stable reader must not be able to resolve a distribution built for
     // the Alpha channel.
-    await expect(verifyDistribution({ root, resourcesRoot: outputDir })).rejects.toThrow();
+    await expect(verifyDistribution({ root, resourcesRoot: outputDir, mode: 'dev' })).rejects.toThrow();
   });
 
   it("prepares a higher version transactionally in an isolated fixture", async () => {
-    const definition = await readBuiltinDefinition(root);
+    const definition = await readBuiltinDefinition(root, { mode: 'dev' });
     const fixture = await mkdtemp(path.join(os.tmpdir(), `builtin-${definition.projectId}-prepare-`));
     const manifest = releaseManifest(definition);
     await Promise.all([
@@ -304,7 +308,7 @@ describe("independent built-in project release", () => {
     expect(await readFile(path.join(fixture, "CHANGELOG.next.md"), "utf8")).toBe("# Unreleased\n");
   });
   it("names the Alpha channel's tag when asked for it", async () => {
-    const definition = await readBuiltinDefinition(root);
+    const definition = await readBuiltinDefinition(root, { mode: 'dev' });
     const fixture = await mkdtemp(path.join(os.tmpdir(), `builtin-${definition.projectId}-prepare-alpha-`));
     const manifest = releaseManifest(definition);
     await Promise.all([
@@ -333,7 +337,7 @@ describe("independent built-in project release", () => {
   });
 
   it("keeps the runtime skill payload while dropping repository infrastructure", async () => {
-    const definition = await readBuiltinDefinition(root);
+    const definition = await readBuiltinDefinition(root, { mode: 'dev' });
     const skillRoot = "skills/workflow-code-generator";
 
     // 规则层：仓库根的 scripts/__tests__ 必须排除，skill 自己的 scripts/ 必须保留。
@@ -349,6 +353,7 @@ describe("independent built-in project release", () => {
     try {
       const { runnerManifest } = await buildReleaseArtifacts({
         root,
+        mode: 'dev',
         tag: definition.tag,
         commit,
         targetGroup: "mac",
@@ -390,7 +395,7 @@ async function exists(filePath) {
 function releaseManifest(definition) {
   const manifest = structuredClone(definition.packageJson);
   const versions = {
-    "steamharness": definition.components.core,
+    "steamharness": definition.components.harness,
     "@steamharness/cli": definition.components.cli,
   };
   for (const [name, version] of Object.entries(versions)) {

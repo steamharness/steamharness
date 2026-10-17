@@ -12,6 +12,6 @@ test("workspace migration accepts an explicit cross-platform workspace root", ()
 });
 
 test("workspace migration defaults to the sibling Core repository workspace", () => {
-  const expected = path.resolve(import.meta.dirname, "..", "..", "..", "core", "workspace", "workflow");
+  const expected = path.resolve(import.meta.dirname, "..", "..", "..", "harness", "workspace", "workflow");
   assert.equal(resolveDefaultWorkspaceRoot({}), expected);
 });

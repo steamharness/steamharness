@@ -114,7 +114,7 @@ test("server production env example lets a standalone checkout resolve its own r
 });
 
 test("server allows only required native dependency install scripts with pnpm 10", () => {
-  const workspacePath = path.resolve(import.meta.dirname, "../../pnpm-workspace.yaml");
+  const workspacePath = path.resolve(import.meta.dirname, "../../../pnpm-workspace.yaml");
   const source = readFileSync(workspacePath, "utf8");
 
   assert.match(source, /^onlyBuiltDependencies:\n(?:  - .+\n)+/mu);

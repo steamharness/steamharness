@@ -127,15 +127,15 @@ export async function readBuiltinDefinition(root = repoRoot, options = {}) {
   // outright: a published artifact must name exact published versions.
   const referenceMode = options.mode ?? resolveReleaseMode({ root });
   const components = {
-    core: await readRuntimeComponentVersion(packageJson, "steamharness", root, referenceMode),
+    harness: await readRuntimeComponentVersion(packageJson, "steamharness", root, referenceMode),
     cli: await readRuntimeComponentVersion(packageJson, "@steamharness/cli", root, referenceMode),
   };
   const dataStorageMode = packageJson?.steamHarness?.projectInfo?.dataStorage?.mode;
   if (dataStorageMode !== "local" && dataStorageMode !== "server" && dataStorageMode !== "both") {
     throw new Error("steamHarness.projectInfo.dataStorage.mode must be local, server, or both.");
   }
-  const coreVersion = semver.parse(components.core);
-  if (coreVersion?.major === 0 && coreVersion.minor === 2
+  const harnessVersion = semver.parse(components.harness);
+  if (harnessVersion?.major === 0 && harnessVersion.minor === 2
       && semver.lt(minDesktopVersion, "0.1.22")) {
     throw new Error("Core 0.2 built-in projects require minDesktopVersion 0.1.22 or newer.");
   }
@@ -164,7 +164,7 @@ export function requiredTargets(definition) {
 }
 
 export async function verifyBuiltinProject(options = {}) {
-  const definition = await readBuiltinDefinition(options.root, { channel: options.channel });
+  const definition = await readBuiltinDefinition(options.root, { channel: options.channel, mode: options.mode });
   if (definition.artifactKind === "universal") {
     const productionDependencies = [
       ...Object.keys(definition.packageJson.dependencies ?? {}),
@@ -182,7 +182,7 @@ export async function verifyBuiltinProject(options = {}) {
 }
 
 export async function buildReleaseArtifacts(options = {}) {
-  const definition = await verifyBuiltinProject({ root: options.root, channel: options.channel });
+  const definition = await verifyBuiltinProject({ root: options.root, channel: options.channel, mode: options.mode });
   assertReleaseIdentity(definition, options);
   const targetGroup = normalizeTargetGroup(options.targetGroup);
   if (definition.artifactKind === "universal" && targetGroup !== "mac") {
@@ -219,7 +219,7 @@ export async function buildReleaseArtifacts(options = {}) {
 }
 
 export async function assembleRelease(options = {}) {
-  const definition = await verifyBuiltinProject({ root: options.root, channel: options.channel });
+  const definition = await verifyBuiltinProject({ root: options.root, channel: options.channel, mode: options.mode });
   assertReleaseIdentity(definition, options);
   const commit = normalizeCommit(options.commit);
   const groups = [{ name: "mac", directory: options.macArtifactsDir }];
@@ -296,13 +296,13 @@ export async function assembleRelease(options = {}) {
       resources,
     }),
   ]);
-  await verifyDistribution({ root: definition.root, resourcesRoot: stagingDir, channel: definition.channel });
+  await verifyDistribution({ root: definition.root, resourcesRoot: stagingDir, channel: definition.channel, mode: options.mode });
   await replaceDirectory(stagingDir, outputDir);
   return { definition, release, outputDir };
 }
 
 export async function verifyDistribution(options = {}) {
-  const definition = await readBuiltinDefinition(options.root, { channel: options.channel });
+  const definition = await readBuiltinDefinition(options.root, { channel: options.channel, mode: options.mode });
   const resourcesRoot = path.resolve(options.resourcesRoot);
   const projectRoot = path.join(resourcesRoot, channelProjectPath(definition));
   const index = validateReleaseIndex(JSON.parse(await readFile(path.join(projectRoot, "index.json"), "utf8")), definition);
@@ -321,6 +321,7 @@ export async function publishDistribution(options = {}) {
     root: options.root,
     resourcesRoot: options.resourcesRoot,
     channel: options.channel,
+    mode: options.mode,
   });
   const { definition, release } = verified;
   const publishRoot = path.resolve(options.publishRoot);
@@ -488,9 +489,9 @@ async function readRuntimeComponentVersion(packageJson, name, root, mode) {
 
 function validateRuntimeComponents(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)
-      || normalizeRuntimeComponentVersion(value.core, "components.core") !== value.core
+      || normalizeRuntimeComponentVersion(value.harness, "components.harness") !== value.harness
       || normalizeRuntimeComponentVersion(value.cli, "components.cli") !== value.cli) {
-    throw new Error("Built-in release components must declare exact Core and CLI versions.");
+    throw new Error("Built-in release components must declare exact harness and CLI versions.");
   }
 }
 
