@@ -43,9 +43,9 @@ if ! NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=768" corepack pnpm \
   NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=768" corepack pnpm \
     --dir .studio/test-source/open-soucres/build-in/build-in-developer-assistant install "${studio_test_install_options[@]}" --registry=https://registry.npmjs.org/
 fi
-export STUDIO_WORKFLOW_SOURCE="$CI_PROJECT_DIR/.studio/test-source/open-soucres"
-export WORKFLOW_UI_CLI_ROOT="$CI_PROJECT_DIR/examples/conversation/node_modules/@workflow-code/cli"
-export WORKFLOW_UI_BROWSER=chromium
+export STUDIO_STEAMHARNESS_SOURCE="$CI_PROJECT_DIR/.studio/test-source/open-soucres"
+export STEAMHARNESS_UI_CLI_ROOT="$CI_PROJECT_DIR/examples/conversation/node_modules/@steamharness/cli"
+export STEAMHARNESS_UI_BROWSER=chromium
 
 xvfb-run --auto-servernum --server-args='-screen 0 1920x1080x24 -nolisten tcp' \
   dbus-run-session -- bash -c 'openbox > .studio/ci-results/openbox.log 2>&1 & studio_window_manager=$!; trap "kill $studio_window_manager 2>/dev/null || true" EXIT; node scripts/ci/run-ui-tests.mjs'

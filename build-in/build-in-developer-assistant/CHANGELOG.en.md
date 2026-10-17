@@ -146,14 +146,14 @@ All notable public changes of this release unit are recorded here.
 ### New Features
 
 - **Generator contract alignment**: the generator skill regains entrypoint groups, audio and video, the Conversation gateway, and eight `workflow.WorkflowError` types.
-- **Scaffold release metadata**: generated `package.json` files carry `workflowCode.projectCard` and `workflowCode.release`.
+- **Scaffold release metadata**: generated `package.json` files carry `steamHarness.projectCard` and `steamHarness.release`.
 
 ### Added
 
 - Added generator coverage of `entrypoint.group`, audio input, video attachments and output, and `context.hostInput` for Conversation.
 - Added generator coverage of eight `workflow.WorkflowError` types and `createLLMNode`.
 - Added generator coverage of `getLLMProvider` and `tokenUsage.getRunUsage()`.
-- Added `workflowCode.projectCard` and `workflowCode.release` to generated manifests, defaulting per project type.
+- Added `steamHarness.projectCard` and `steamHarness.release` to generated manifests, defaulting per project type.
 
 ### Changed
 
@@ -162,7 +162,7 @@ All notable public changes of this release unit are recorded here.
 
 ### Fixed
 
-- Fixed the generator skill claiming `workflowCode.release` must stay out of source and describing removed Kanban `dataSources` as usable.
+- Fixed the generator skill claiming `steamHarness.release` must stay out of source and describing removed Kanban `dataSources` as usable.
 - Fixed artifacts filtering by file basename, so the skill's `scripts/create_workflow.py` now ships with the release.
 
 ## 0.1.8 - 2026-09-13

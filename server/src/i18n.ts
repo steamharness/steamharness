@@ -1,11 +1,11 @@
-// Server-side i18n. The shared @workflow-code/i18n core entry is used directly
+// Server-side i18n. The shared @steamharness/i18n core entry is used directly
 // (never the /react entry) so no React runtime is pulled into the server.
 import {
   initI18n,
   i18n,
-  readWorkflowCodeI18nDescriptor,
+  readSteamHarnessI18nDescriptor,
   type SupportedLocale,
-} from "@workflow-code/i18n";
+} from "@steamharness/i18n";
 import type { HttpError } from "./protocol";
 
 // 服务端默认语言保持英文：服务端既有报错文案全部是英文，改成中文默认会让
@@ -36,15 +36,15 @@ const STABLE_ERROR_MESSAGE_KEYS: Readonly<Record<string, string>> = Object.freez
   "Account login is required to accept invitations.": "server:invitationLoginRequired",
   "Account login is required to use Kanban configurations.": "server:kanbanLoginRequired",
   "Login is required to use Kanban configurations.": "server:kanbanLoginRequired",
-  "workflowCode.projectInfo must be an object.": "server:projectInfoObjectRequired",
-  "workflowCode.projectInfo.dataStorage must be an object.": "server:projectInfoDataStorageObjectRequired",
-  'workflowCode.projectInfo.dataStorage.mode must be "local", "server", or "both".': "server:projectInfoDataStorageModeInvalid",
-  "workflowCode.projectInfo.dataStorage.mode must be declared as local, server, or both.": "server:projectInfoDataStorageModeRequired",
+  "steamHarness.projectInfo must be an object.": "server:projectInfoObjectRequired",
+  "steamHarness.projectInfo.dataStorage must be an object.": "server:projectInfoDataStorageObjectRequired",
+  'steamHarness.projectInfo.dataStorage.mode must be "local", "server", or "both".': "server:projectInfoDataStorageModeInvalid",
+  "steamHarness.projectInfo.dataStorage.mode must be declared as local, server, or both.": "server:projectInfoDataStorageModeRequired",
   "User not found.": "server:userNotFound",
   "Invitation not found.": "server:invitationNotFound",
   "Device code not found.": "server:deviceCodeNotFound",
   "API route not found.": "server:apiRouteNotFound",
-  "WORKFLOW_SERVER_ADMIN_KEY is required.": "server:adminKeyRequired",
+  "STEAMHARNESS_SERVER_ADMIN_KEY is required.": "server:adminKeyRequired",
   "Too many requests.": "server:tooManyRequests",
   "Request body is too large.": "server:requestBodyTooLarge",
   "Kanban related project is unavailable.": "server:kanbanRelatedProjectUnavailable",
@@ -140,7 +140,7 @@ export function resolveRequestLocale(req: {
       : undefined;
   if (!raw && req.url) {
     try {
-      raw = new URL(req.url, "http://workflow-code.local").searchParams.get("locale") ?? undefined;
+      raw = new URL(req.url, "http://steamharness.local").searchParams.get("locale") ?? undefined;
     } catch {
       // Malformed url must not break request localization.
     }
@@ -171,7 +171,7 @@ export function localizeHttpErrorMessage(
   httpError: HttpError,
   t: ServerT,
 ): string {
-  const descriptor = readWorkflowCodeI18nDescriptor(httpError.data);
+  const descriptor = readSteamHarnessI18nDescriptor(httpError.data);
   if (descriptor !== undefined) {
     return t(`${descriptor.namespace}:${descriptor.key}`, descriptor.values);
   }

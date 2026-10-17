@@ -1,44 +1,44 @@
 ---
 title: "CLI 总览"
-description: "workflow-code 统一 CLI 的本地与服务端 workspace 命令。"
+description: "steamharness 统一 CLI 的本地与服务端 workspace 命令。"
 ---
 
 # CLI 总览
 
-`@workflow-code/cli` 只暴露一个 `workflow-code` 命令，并按用途分为两个命令组：
+`@steamharness/cli` 只暴露一个 `steamharness` 命令，并按用途分为两个命令组：
 
 | 命令组 | 用途 |
 | --- | --- |
-| [`workflow-code`](/cli/workflow-code) | 在本地 workflow 目录运行、输出 JSON 报告、检查结构，或启动 stdio MCP Server。 |
-| [`workflow-code workspace` / `pnpm exec workflow-code workspace`](/cli/server-workspace) | 连接 Workflow Server，完成登录、打包、上传、发布、下载和版本查询。 |
+| [`steamharness`](/cli/steamharness) | 在本地 workflow 目录运行、输出 JSON 报告、检查结构，或启动 stdio MCP Server。 |
+| [`steamharness workspace` / `pnpm exec steamharness workspace`](/cli/server-workspace) | 连接 Workflow Server，完成登录、打包、上传、发布、下载和版本查询。 |
 
 ## 命令索引
 
 | CLI | 命令 |
 | --- | --- |
-| `workflow-code` | [`run`](/cli/workflow-code/run)、[`json`](/cli/workflow-code/json)、[`structure`](/cli/workflow-code/structure)、[`resolve-params`](/cli/workflow-code/resolve-params)、[`mcp`](/cli/workflow-code/mcp)、[`help`](/cli/workflow-code/help) |
+| `steamharness` | [`run`](/cli/steamharness/run)、[`json`](/cli/steamharness/json)、[`structure`](/cli/steamharness/structure)、[`resolve-params`](/cli/steamharness/resolve-params)、[`mcp`](/cli/steamharness/mcp)、[`help`](/cli/steamharness/help) |
 | workspace | [`login`](/cli/workspace/login)、[`logout`](/cli/workspace/logout)、[`status`](/cli/workspace/status)、[`health`](/cli/workspace/health)、[`pack`](/cli/workspace/pack)、[`upload`](/cli/workspace/upload)、[`publish`](/cli/workspace/publish)、[`versions`](/cli/workspace/versions)、[`download`](/cli/workspace/download)、[`help`](/cli/workspace/help) |
 
 ## 典型工作流
 
-本地开发时，先用 `workflow-code` 在 workflow 目录验证运行结果和结构，再用 workspace CLI 上传到 server。
+本地开发时，先用 `steamharness` 在 workflow 目录验证运行结果和结构，再用 workspace CLI 上传到 server。
 
 ```bash
-workflow-code run workspace/workflow/hello -- --message "hello"
-workflow-code json workspace/workflow/hello -- --message "hello"
-workflow-code structure workspace/workflow/hello
-workflow-code mcp workspace/workflow/hello
-workflow-code json workspace/workflow/runtime-timer -- --title "Fixture Timer" --milliseconds 2000
+steamharness run workspace/workflow/hello -- --message "hello"
+steamharness json workspace/workflow/hello -- --message "hello"
+steamharness structure workspace/workflow/hello
+steamharness mcp workspace/workflow/hello
+steamharness json workspace/workflow/runtime-timer -- --title "Fixture Timer" --milliseconds 2000
 ```
 
 发布到 server 时，先检查服务状态，再登录、上传、发布和下载。
 
 ```bash
-pnpm exec workflow-code workspace health --server http://localhost:7125
-pnpm exec workflow-code workspace login --server http://localhost:7125
-pnpm exec workflow-code workspace upload hello
-pnpm exec workflow-code workspace publish hello --release-log "初始发布"
-pnpm exec workflow-code workspace run hello --target latest --message "hello"
+pnpm exec steamharness workspace health --server http://localhost:7125
+pnpm exec steamharness workspace login --server http://localhost:7125
+pnpm exec steamharness workspace upload hello
+pnpm exec steamharness workspace publish hello --release-log "初始发布"
+pnpm exec steamharness workspace run hello --target latest --message "hello"
 ```
 
 开发环境可以使用本地 server 地址；部署环境建议显式使用正式域名或你的生产端口。
@@ -47,30 +47,30 @@ pnpm exec workflow-code workspace run hello --target latest --message "hello"
 
 | 配置 | 说明 |
 | --- | --- |
-| `WORKFLOW_SERVER_URL` | workspace CLI 默认 server 地址。 |
-| `WORKFLOW_SERVER_ADMIN_KEY` | workspace CLI 的显式管理员覆盖凭证；自动化或恢复场景可直接作为 Bearer 使用。 |
-| `WORKFLOW_REPO_ROOT` | workspace CLI 的项目根目录。未设置时从当前目录向上推导。 |
-| `WORKFLOW_CLI_AUTH_DIR` | workspace CLI 保存独立登录态 `workflow-auth.json` 的目录。 |
-| `WORKFLOW_KV_STORE_DIR` | `workflow-code` 本地运行时 KV store 目录。 |
-| `WORKFLOW_PERSISTENT_VALUE_STORE_DIR` | `workflow-code` 本地运行时 PersistentValue store 目录，也是本地知识库目录。 |
-| `WORKFLOW_FILE_STORE_DIR` | `workflow-code` 本地运行时文件 store 目录。 |
+| `STEAMHARNESS_SERVER_URL` | workspace CLI 默认 server 地址。 |
+| `STEAMHARNESS_SERVER_ADMIN_KEY` | workspace CLI 的显式管理员覆盖凭证；自动化或恢复场景可直接作为 Bearer 使用。 |
+| `STEAMHARNESS_REPO_ROOT` | workspace CLI 的项目根目录。未设置时从当前目录向上推导。 |
+| `STEAMHARNESS_CLI_AUTH_DIR` | workspace CLI 保存独立登录态 `workflow-auth.json` 的目录。 |
+| `STEAMHARNESS_KV_STORE_DIR` | `steamharness` 本地运行时 KV store 目录。 |
+| `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR` | `steamharness` 本地运行时 PersistentValue store 目录，也是本地知识库目录。 |
+| `STEAMHARNESS_FILE_STORE_DIR` | `steamharness` 本地运行时文件 store 目录。 |
 
-`workflow-code run/json` 要求项目显式声明 `workflowCode.projectInfo.dataStorage.mode`。`WORKFLOW_KV_STORE_DIR` 只控制 `context.storage.local.kv`，`WORKFLOW_PERSISTENT_VALUE_STORE_DIR` 只控制 `context.storage.local.persistentValue` 和本地知识库；二者按项目 UUID 隔离且互不回退。`context.storage.server` 使用顶层项目 UUID，并从 `WORKFLOW_SERVER_URL` / `WORKFLOW_SERVER_ADMIN_KEY` 或 workspace CLI 保存的 `workflow-auth.json` 取得登录连接。`local` 可离线运行，`server` 必须登录并绑定同 UUID，`both` 由源码显式选择位置；两端数据不会自动同步。关联项目目录必须用可重复的 `--related-project alias=/绝对项目目录` 显式传入，CLI 不会扫描父目录或兄弟目录；本地运行时该关系还包含目标项目的知识库与入口调用（按目标项目的授权），服务器位置仅用于数据访问，关联入口仍在本地执行。`context.files.createFile(...)` 仍使用服务器连接写入 server 文件 API；输入附件解析仍由 `WORKFLOW_FILE_STORE_DIR` 控制。
+`steamharness run/json` 要求项目显式声明 `steamHarness.projectInfo.dataStorage.mode`。`STEAMHARNESS_KV_STORE_DIR` 只控制 `context.storage.local.kv`，`STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR` 只控制 `context.storage.local.persistentValue` 和本地知识库；二者按项目 UUID 隔离且互不回退。`context.storage.server` 使用顶层项目 UUID，并从 `STEAMHARNESS_SERVER_URL` / `STEAMHARNESS_SERVER_ADMIN_KEY` 或 workspace CLI 保存的 `workflow-auth.json` 取得登录连接。`local` 可离线运行，`server` 必须登录并绑定同 UUID，`both` 由源码显式选择位置；两端数据不会自动同步。关联项目目录必须用可重复的 `--related-project alias=/绝对项目目录` 显式传入，CLI 不会扫描父目录或兄弟目录；本地运行时该关系还包含目标项目的知识库与入口调用（按目标项目的授权），服务器位置仅用于数据访问，关联入口仍在本地执行。`context.files.createFile(...)` 仍使用服务器连接写入 server 文件 API；输入附件解析仍由 `STEAMHARNESS_FILE_STORE_DIR` 控制。
 
-workspace CLI 会读取当前工作目录的 `.env`；显式设置 `WORKFLOW_REPO_ROOT` 时还会读取该项目根目录的 `.env`。CLI 仓库根目录的 `.env.example` 提供了最小配置模板。
+workspace CLI 会读取当前工作目录的 `.env`；显式设置 `STEAMHARNESS_REPO_ROOT` 时还会读取该项目根目录的 `.env`。CLI 仓库根目录的 `.env.example` 提供了最小配置模板。
 
 ## 输出约定
 
 | 命令族 | 输出 |
 | --- | --- |
-| `workflow-code run` | 成功时输出 output node 的内容；失败时输出 JSON 报告到 stderr。 |
-| `workflow-code json` | 始终输出完整 JSON 执行报告。 |
-| `workflow-code structure` | 输出 workflow 结构 JSON。 |
-| `workflow-code mcp` | stdout 专用于 stdio JSON-RPC；项目日志和诊断写入 stderr。 |
+| `steamharness run` | 成功时输出 output node 的内容；失败时输出 JSON 报告到 stderr。 |
+| `steamharness json` | 始终输出完整 JSON 执行报告。 |
+| `steamharness structure` | 输出 workflow 结构 JSON。 |
+| `steamharness mcp` | stdout 专用于 stdio JSON-RPC；项目日志和诊断写入 stderr。 |
 | workspace CLI | 输出 server API response JSON，形如 `{ errCode, errMessage, data }`。 |
 
 ## 后续阅读
 
-- 本地运行和结构检查见 [workflow-code CLI](/cli/workflow-code)。
-- 将本地 Workflow 连接到 AI 客户端见 [workflow-code mcp](/cli/workflow-code/mcp)。
+- 本地运行和结构检查见 [steamharness CLI](/cli/steamharness)。
+- 将本地 Workflow 连接到 AI 客户端见 [steamharness mcp](/cli/steamharness/mcp)。
 - server 上传、发布和下载见 [Server Workspace CLI](/cli/server-workspace)。

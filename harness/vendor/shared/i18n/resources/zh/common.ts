@@ -885,10 +885,10 @@ export const common: typeof Encommon = {
         dependenciesMissing: "Workflow 项目依赖尚未安装。项目：{{projectPath}}。缺少：{{missing}}。请先在此项目目录中手动安装依赖再运行。",
       },
       validation: {
-        onlyWorkflowPresets: "只有 Workflow 项目可以声明 workflowCode.schedulePresets。",
-        presetsArrayMax: "workflowCode.schedulePresets 必须是数组，且最多包含 {{max}} 项。",
+        onlyWorkflowPresets: "只有 Workflow 项目可以声明 steamHarness.schedulePresets。",
+        presetsArrayMax: "steamHarness.schedulePresets 必须是数组，且最多包含 {{max}} 项。",
         invalidPresetId: "{{field}} 无效。",
-        duplicatePresetId: "workflowCode.schedulePresets 包含重复 ID“{{id}}”。",
+        duplicatePresetId: "steamHarness.schedulePresets 包含重复 ID“{{id}}”。",
         invalidTriggerKind: "{{field}} 必须是 \"window-interval\" 或 \"cron\"。",
         weekdaysNonEmpty: "{{field}} 必须是非空数组。",
         weekdayRange: "{{field}} 必须是 1 到 7 之间的整数。",

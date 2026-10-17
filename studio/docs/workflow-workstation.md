@@ -4,7 +4,7 @@ Studio 通过项目自身的 CLI 在编辑器标签页中打开 Workflow、Conve
 
 ## 打开项目
 
-1. 在项目目录安装 `workflow-code` 和支持 Web 宿主协议的 `@workflow-code/cli`。
+1. 在项目目录安装 `steamharness` 和支持 Web 宿主协议的 `@steamharness/cli`。
 2. 在 Studio 中选择 **File > Open Folder**，打开项目文件夹。
 3. 点击窗口顶部的 **运行项目** 按钮。
 4. 在编辑器标签页中选择入口并运行，或向 Conversation 发送消息。
@@ -17,7 +17,7 @@ Studio 的 `examples/conversation` 提供不调用模型的本地演示。聚合
 
 ## 显示语言
 
-项目树、标签页、窗口标题、状态栏和资源面板中的项目名称按 VS Code 实际显示语言选择 `workflowCode.projectInfo.localizedNames.en` 或 `zh-CN`；缺少对应名称时使用 `package.json` 的 `name`。Information 仍完整列出项目声明的各语言名称。用户输入、会话标题、回答和日志保留原文。
+项目树、标签页、窗口标题、状态栏和资源面板中的项目名称按 VS Code 实际显示语言选择 `steamHarness.projectInfo.localizedNames.en` 或 `zh-CN`；缺少对应名称时使用 `package.json` 的 `name`。Information 仍完整列出项目声明的各语言名称。用户输入、会话标题、回答和日志保留原文。
 
 Studio 将同一显示语言传入项目检查、CLI 启动和嵌入页面。开发源码模式可能在中文系统上回退到英文工作台，此时项目也使用英文。项目依赖需要包含 CLI Web 国际化支持，当前示例使用的最低已验证版本为 `0.2.4-20261012003.codex-cli-web`。升级依赖后，已经运行的 CLI 进程需要关闭标签页后重开，或执行 **Developer: Reload Window**；切换 VS Code 显示语言也需要重载窗口。
 
@@ -41,7 +41,7 @@ VS Code 宿主提供源码工具、项目技能、全局记忆和资源卡能力
 
 ## 运行与数据
 
-Studio 从项目目录解析 `@workflow-code/cli` 的 `workflow-code` bin。项目识别使用 `web --inspect`；打开标签页时启动 `web --host-stdio`，通过受控 stdio 传入主题、账号和宿主配置。启动失败会显示项目依赖、CLI 构建或协议不兼容的错误。
+Studio 从项目目录解析 `@steamharness/cli` 的 `steamharness` bin。项目识别使用 `web --inspect`；打开标签页时启动 `web --host-stdio`，通过受控 stdio 传入主题、账号和宿主配置。启动失败会显示项目依赖、CLI 构建或协议不兼容的错误。
 
 更新项目依赖后，关闭并重新打开项目标签页即可加载当前安装的 CLI，包括 pnpm 更新后的包链接；已经运行的进程不会自动更换版本。卡片功能依赖项目自身的 CLI，跨项目预览与整行资源卡片使用 `0.2.4-20261013002.codex-studio-integration` 或后续兼容版本。
 
@@ -61,11 +61,11 @@ Studio 从项目目录解析 `@workflow-code/cli` 的 `workflow-code` bin。项�
 
 密码只用于当前请求。API Key 和登录会话 Cookie 使用 VS Code SecretStorage 保存，Webview 只接收公开账号资料；项目进程和 CLI 使用当前连接的 API Key。退出时停止相关运行并撤销本次凭据；临时连接失败时可在账号页重试验证。
 
-Studio 打开的 Workflow、Conversation、Kanban 和小助手统一使用工作站账号。Studio 未登录或退出登录后，项目忽略独立 CLI 保存的账号和环境变量凭据；项目内的账号入口打开 Studio 账号页。独立运行 `workflow-code web` 仍使用 CLI 的登录配置。项目 CLI 必须支持 `accountProtocolVersion: 1`；旧版本需要更新后再打开。
+Studio 打开的 Workflow、Conversation、Kanban 和小助手统一使用工作站账号。Studio 未登录或退出登录后，项目忽略独立 CLI 保存的账号和环境变量凭据；项目内的账号入口打开 Studio 账号页。独立运行 `steamharness web` 仍使用 CLI 的登录配置。项目 CLI 必须支持 `accountProtocolVersion: 1`；旧版本需要更新后再打开。
 
 ## 聚合与独立 checkout
 
-聚合目录中的开发入口优先识别 Studio 同级的 Core 和 CLI。独立 checkout 保留同级 `../workflow` 布局。设置 `STUDIO_WORKFLOW_SOURCE` 可显式指定 Workflow 源码根目录。
+聚合目录中的开发入口优先识别 Studio 同级的 Core 和 CLI。独立 checkout 保留同级 `../workflow` 布局。设置 `STUDIO_STEAMHARNESS_SOURCE` 可显式指定 Workflow 源码根目录。
 
 首次准备工作站执行 `npm ci`、`npm run setup`、`npm run build`，然后使用 `npm run dev` 或 `npm run dev:web`。聚合根提供 `pnpm studio:dev` 和 `pnpm studio:web`。
 

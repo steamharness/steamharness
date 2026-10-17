@@ -41,6 +41,6 @@ description: "Server v0.1.9 的更新说明。"
 
 - 修复 生产构建内联 OpenAI Responses Shared 运行时，不再把 TypeScript-only 包留在部署依赖中。
 - 修复 MCP 表单 elicitation 返回非法内容、传输或恢复失败时终止等待中的运行，不再遗留 `waiting_for_input`。
-- 修复 OpenAI 调用信息只接受 `WORKFLOW_API_PUBLIC_BASE_URL` 或受信任代理的转发地址。
+- 修复 OpenAI 调用信息只接受 `STEAMHARNESS_API_PUBLIC_BASE_URL` 或受信任代理的转发地址。
 - 修复 图片批量保存失败返回明确校验错误并回收部分文件。
 - 修复 网关可接收 `system` / `developer` 消息、`text.verbosity` 和兼容性 `include` 参数。

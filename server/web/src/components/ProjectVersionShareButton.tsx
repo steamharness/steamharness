@@ -1,7 +1,7 @@
 import { useId, useState } from "react";
 import { Check, Copy, Download, Share2 } from "lucide-react";
 import { toast } from "sonner";
-import { useTranslation } from "@workflow-code/i18n/react";
+import { useTranslation } from "@steamharness/i18n/react";
 import { Button } from "@/components/ui/button";
 import { IconActionButton } from "@/components/ui/composites";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";

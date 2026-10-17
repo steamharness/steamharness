@@ -46,8 +46,8 @@ it('loads the dedicated assistant declaration instead of the workspace executor'
   expect(() => parseHostConfiguration({ type: 'configure', surface: 'assistant', assistant, assistantProjectDir: 'relative' })).toThrow();
   expect(() => parseHostConfiguration({ type: 'configure', surface: 'assistant', assistant: { ...assistant, standalone: 'true' }, assistantProjectDir })).toThrow('Invalid assistant workspace');
 
-  vi.stubEnv('WORKFLOW_CLI_AUTH_DIR', path.join(directory, 'auth'));
-  vi.stubEnv('WORKFLOW_SERVER_URL', ''); vi.stubEnv('WORKFLOW_SERVER_ADMIN_KEY', '');
+  vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(directory, 'auth'));
+  vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
   const dataDir = path.join(directory, 'data');
   const previousKey = createHash('sha256').update(`assistant:${workdir}`).digest('hex').slice(0, 24);
   await mkdir(path.join(dataDir, previousKey), { recursive: true });
@@ -84,15 +84,15 @@ it('executes dedicated assistant skills using its own runtime and independent wo
   await mkdir(workdir);
   await mkdir(path.join(runtimeProjectDir, 'node_modules'), { recursive: true });
   await mkdir(path.join(assistantProjectDir, 'skills', 'fixture-skill'), { recursive: true });
-  const coreEntry = fileURLToPath(import.meta.resolve('workflow-code'));
+  const coreEntry = fileURLToPath(import.meta.resolve('steamharness'));
   let coreRoot = path.dirname(coreEntry);
   for (let depth = 0; depth < 8; depth++) {
-    try { if (JSON.parse(await readFile(path.join(coreRoot, 'package.json'), 'utf8')).name === 'workflow-code') { break; } } catch {}
+    try { if (JSON.parse(await readFile(path.join(coreRoot, 'package.json'), 'utf8')).name === 'steamharness') { break; } } catch {}
     coreRoot = path.dirname(coreRoot);
   }
   const coreVersion = JSON.parse(await readFile(path.join(coreRoot, 'package.json'), 'utf8')).version;
-  await symlink(coreRoot, path.join(runtimeProjectDir, 'node_modules/workflow-code'), process.platform === 'win32' ? 'junction' : 'dir');
-  const manifest = { id: '364764e9-ef0e-4e86-9e56-77d0410e1723', type: 'module', devDependencies: { 'workflow-code': coreVersion }, workflowCode: { projectInfo: { dataStorage: { mode: 'local' } } } };
+  await symlink(coreRoot, path.join(runtimeProjectDir, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
+  const manifest = { id: '364764e9-ef0e-4e86-9e56-77d0410e1723', type: 'module', devDependencies: { 'steamharness': coreVersion }, steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } };
   await writeFile(path.join(runtimeProjectDir, 'package.json'), JSON.stringify({ ...manifest, name: 'Assistant runtime' }));
   await writeFile(path.join(assistantProjectDir, 'package.json'), JSON.stringify({ ...manifest, name: 'Dedicated assistant' }));
   await writeFile(path.join(workdir, 'index.ts'), 'throw new Error("The workspace executor must not run.");');
@@ -106,9 +106,9 @@ it('executes dedicated assistant skills using its own runtime and independent wo
       const skill = tools.find(tool => tool.name === 'skill');
       const listed = await skill.execute('list', { action: 'list' });
       const read = await skill.execute('read', { action: 'read', skill: 'fixture-skill' });
-      const workdir = process.env.WORKFLOW_DEVELOPER_ASSISTANT_WORKDIR;
-      const workspace = JSON.parse(await readFile(process.env.WORKFLOW_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST, 'utf8'));
-      return { errCode: 0, errMessage: '', host: process.env.WORKFLOW_DEVELOPER_ASSISTANT_HOST,
+      const workdir = process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR;
+      const workspace = JSON.parse(await readFile(process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST, 'utf8'));
+      return { errCode: 0, errMessage: '', host: process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_HOST,
         listed: JSON.parse(listed.content[0].text), read: JSON.parse(read.content[0].text),
         text: await readFile(path.join(workdir, 'user.txt'), 'utf8'), workspace };
     } });

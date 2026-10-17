@@ -6,18 +6,18 @@ slug: /
 
 # Develop and run Workflow projects
 
-Workflow Code provides the Core runtime, CLI, Studio workstation, and Workflow Server. Studio opens local projects; Server Web manages project source, versions, and data on the server.
+SteamHarness provides the Core runtime, CLI, Studio workstation, and Workflow Server. Studio opens local projects; Server Web manages project source, versions, and data on the server.
 
 ## Local development
 
-1. Install `workflow-code` and a version of `@workflow-code/cli` supporting the Web host protocol in your project.
+1. Install `steamharness` and a version of `@steamharness/cli` supporting the Web host protocol in your project.
 2. Declare the project and its executor using the [Workflow model](/en/concepts/workflow-model).
 3. Open the project folder in Studio and select Run project in the title bar, or run the CLI in a terminal.
 
 ```sh
-workflow-code structure .
-workflow-code run .
-workflow-code web .
+steamharness structure .
+steamharness run .
+steamharness web .
 ```
 
 Results appear in the local project view. Open local execution traces and logs for diagnostics. Configure project environment variables in the local runtime.
@@ -26,6 +26,6 @@ Results appear in the local project view. Open local execution traces and logs f
 
 - [Studio workstation](/en/guides/studio/overview): open projects and use workstation and account commands.
 - [Core API](/en/core-api/overview): implement nodes, executors, and project parameters.
-- [Local CLI](/en/cli/workflow-code): inspect structure, run projects, and open Web workspaces.
+- [Local CLI](/en/cli/steamharness): inspect structure, run projects, and open Web workspaces.
 - [Workspace CLI](/en/cli/server-workspace): manage server projects, upload and download source, and publish versions.
 - [Server Web](/en/guides/server/overview): manage projects, members, relationships, Knowledge, KV, and versions.

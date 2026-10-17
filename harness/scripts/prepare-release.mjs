@@ -54,7 +54,7 @@ export async function prepareRelease(options) {
   try {
     for (const packageFile of workspacePackages) {
       const packageJson = JSON.parse(snapshots.get(packageFile).toString("utf8"));
-      if (synchronizeDependency(packageJson, "workflow-code", version)) {
+      if (synchronizeDependency(packageJson, "steamharness", version)) {
         await writeJson(packageFile, packageJson);
         synchronizedPackages.push(path.relative(root, packageFile));
       }
@@ -80,9 +80,9 @@ export async function prepareRelease(options) {
   }
 
   return {
-    unit: "workflow-code",
+    unit: "steamharness",
     version,
-    tag: `workflow-code/v${version}`,
+    tag: `steamharness/v${version}`,
     synchronizedPackages: synchronizedPackages.sort(),
   };
 }

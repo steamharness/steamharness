@@ -32,21 +32,21 @@ export async function exportSharedSource(options = {}) {
 
 export async function syncRemoteTargets(options = {}) {
   if (options.enabled !== true) {
-    throw new Error("Remote Shared synchronization requires WORKFLOW_SHARED_REMOTE_SYNC=true or --remote.");
+    throw new Error("Remote Shared synchronization requires STEAMHARNESS_SHARED_REMOTE_SYNC=true or --remote.");
   }
   const root = path.resolve(options.root ?? path.resolve(import.meta.dirname, ".."));
   const sourceRoot = path.resolve(options.sourceRoot ?? path.join(root, "dist", "source"));
   await assertSharedSource(sourceRoot);
-  const token = String(options.token ?? process.env.WORKFLOW_SHARED_SYNC_TOKEN ?? "").trim();
-  const targets = parseTargets(options.targets ?? process.env.WORKFLOW_SHARED_SYNC_TARGETS);
-  if (!token) throw new Error("WORKFLOW_SHARED_SYNC_TOKEN is required for remote synchronization.");
-  if (targets.length === 0) throw new Error("WORKFLOW_SHARED_SYNC_TARGETS must contain at least one GitLab project path.");
+  const token = String(options.token ?? process.env.STEAMHARNESS_SHARED_SYNC_TOKEN ?? "").trim();
+  const targets = parseTargets(options.targets ?? process.env.STEAMHARNESS_SHARED_SYNC_TARGETS);
+  if (!token) throw new Error("STEAMHARNESS_SHARED_SYNC_TOKEN is required for remote synchronization.");
+  if (targets.length === 0) throw new Error("STEAMHARNESS_SHARED_SYNC_TARGETS must contain at least one GitLab project path.");
 
   const serverUrl = resolveGitLabServerUrl(options);
   const gitEnv = createGitAuthenticationEnv(token, options.env ?? process.env);
   const branch = String(
     options.branch
-      ?? process.env.WORKFLOW_SHARED_SYNC_BRANCH
+      ?? process.env.STEAMHARNESS_SHARED_SYNC_BRANCH
       ?? (process.env.CI_COMMIT_BRANCH === "alpha" ? "alpha" : "dev"),
   ).trim();
   if (!/^[a-z0-9][a-z0-9._/-]*$/iu.test(branch)) throw new Error(`Invalid synchronization branch: ${branch}`);
@@ -142,7 +142,7 @@ export function parseTargets(value) {
 }
 
 function resolveLocalTargets(root, value) {
-  const configured = parseLocalTargets(value ?? process.env.WORKFLOW_SHARED_LOCAL_TARGETS);
+  const configured = parseLocalTargets(value ?? process.env.STEAMHARNESS_SHARED_LOCAL_TARGETS);
   const rawTargets = configured.length > 0
     ? configured.map((entry) => path.isAbsolute(entry) ? entry : path.resolve(root, entry))
     : DEFAULT_TARGET_NAMES.map((name) => path.resolve(root, "..", name));
@@ -163,7 +163,7 @@ function parseLocalTargets(value) {
 async function assertSharedSource(directory) {
   try {
     const manifest = JSON.parse(await readFile(path.join(directory, "i18n", "package.json"), "utf8"));
-    if (manifest.name === "@workflow-code/i18n") return;
+    if (manifest.name === "@steamharness/i18n") return;
   } catch {
     // Fall through to the stable error below.
   }
@@ -236,7 +236,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
       targets: args.targets,
     });
   }
-  const remoteEnabled = args.remote || process.env.WORKFLOW_SHARED_REMOTE_SYNC === "true";
+  const remoteEnabled = args.remote || process.env.STEAMHARNESS_SHARED_REMOTE_SYNC === "true";
   if (remoteEnabled) {
     result.remote = await syncRemoteTargets({ root, enabled: true, branch: args.branch, skipCi: args.skipCi });
   }

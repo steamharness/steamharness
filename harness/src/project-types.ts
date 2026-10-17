@@ -1,1 +1,1 @@
-export * from "@workflow-code/project-types";
+export * from "@steamharness/project-types";

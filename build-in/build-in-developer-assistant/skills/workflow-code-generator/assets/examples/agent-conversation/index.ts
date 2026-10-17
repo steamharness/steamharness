@@ -1,5 +1,5 @@
-import type { AgentInput, AgentOutputPayload } from "workflow-code";
-import type { WorkflowRuntimeApi } from "workflow-code/runtime-api";
+import type { AgentInput, AgentOutputPayload } from "steamharness";
+import type { WorkflowRuntimeApi } from "steamharness/runtime-api";
 
 // Start from a Conversation scaffold. The host installs this global at runtime.
 const workflow = globalThis.workflow as WorkflowRuntimeApi | undefined;

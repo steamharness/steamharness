@@ -6,9 +6,9 @@ Minimal workflow that verifies the runtime platform helpers exposed by the globa
 ## Run
 
 ```bash
-workflow-code structure .
-workflow-code run .
-workflow-code json .
+steamharness structure .
+steamharness run .
+steamharness json .
 ```
 
 The output includes `workflow.getRuntimePlatform()`, `workflow.isCli()`,

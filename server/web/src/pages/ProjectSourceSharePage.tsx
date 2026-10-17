@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, CircleAlert, Download, Package, RefreshCw } from "lucide-react";
-import { formatDateTime } from "@workflow-code/i18n";
-import { useTranslation } from "@workflow-code/i18n/react";
+import { formatDateTime } from "@steamharness/i18n";
+import { useTranslation } from "@steamharness/i18n/react";
 import { apiClient } from "@/api";
 import { isApiSuccess, type WorkflowSourceShare } from "@/types";
 import { Alert, AlertDescription } from "@/components/ui/alert";

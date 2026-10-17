@@ -6,7 +6,7 @@ import {
   ScrollText,
   UserRound,
 } from "lucide-react";
-import { useTranslation } from "@workflow-code/i18n/react";
+import { useTranslation } from "@steamharness/i18n/react";
 import type { AuditFilters } from "../state";
 import type { WorkflowAuditEventPage, WorkflowAuditEventRecord } from "../types";
 import { formatDate, formatJson } from "../utils/format";

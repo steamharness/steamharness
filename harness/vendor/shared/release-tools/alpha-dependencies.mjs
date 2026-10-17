@@ -120,7 +120,7 @@ export async function prepareTargetWorkspace({ root, runCommand = run }) {
     }
     await runCommand(process.execPath, [scriptPath], {
       cwd: root,
-      env: { ...process.env, CI: "true", WORKFLOW_REPOSITORY_MODE: "main" },
+      env: { ...process.env, CI: "true", STEAMHARNESS_REPOSITORY_MODE: "main" },
     });
     return scriptPath;
   }

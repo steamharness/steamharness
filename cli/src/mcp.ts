@@ -12,19 +12,19 @@ import {
   type WorkflowMcpRunSnapshotMessage,
   type WorkflowMcpRunner,
   type WorkflowMcpStructureReport,
-} from "@workflow-code/workflow-mcp";
+} from "@steamharness/workflow-mcp";
 import {
   isWorkflowAuthConfigLoggedIn,
   normalizeWorkflowAuthConfig,
   resolveWorkflowDesktopConfigFilePath,
-} from "@workflow-code/auth-config";
-import { i18n } from "@workflow-code/i18n";
+} from "@steamharness/auth-config";
+import { i18n } from "@steamharness/i18n";
 import { readCliAuthConfigSync } from "./auth-config";
 import { parseCliRelatedProjectSpec, type CliRelatedProjectSpec } from "./related-projects";
-import { assertWorkflowUuid } from "@workflow-code/workflow-ids";
+import { assertWorkflowUuid } from "@steamharness/workflow-ids";
 
-export const WORKFLOW_MCP_CLI_ENTRYPOINT_ENV = "WORKFLOW_MCP_CLI_ENTRYPOINT";
-export const WORKFLOW_MCP_DESKTOP_AUDIT_IPC_ENV = "WORKFLOW_MCP_DESKTOP_AUDIT_IPC";
+export const STEAMHARNESS_MCP_CLI_ENTRYPOINT_ENV = "STEAMHARNESS_MCP_CLI_ENTRYPOINT";
+export const STEAMHARNESS_MCP_DESKTOP_AUDIT_IPC_ENV = "STEAMHARNESS_MCP_DESKTOP_AUDIT_IPC";
 
 export interface WorkflowMcpCliOptions {
   workflowDir: string;
@@ -50,7 +50,7 @@ interface WorkflowMcpResumeState {
 
 export type WorkflowMcpRunSnapshotWriter = (snapshot: WorkflowMcpRunSnapshot) => Promise<void> | void;
 
-const WORKFLOW_MCP_WORKER_TERMINATION_GRACE_MS = 2_000;
+const STEAMHARNESS_MCP_WORKER_TERMINATION_GRACE_MS = 2_000;
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
   if (argv.length === 0 || argv[0] === "help" || argv[0] === "--help" || argv[0] === "-h") {
@@ -93,11 +93,11 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
 export function parseWorkflowMcpCliOptions(argv: string[]): WorkflowMcpCliOptions {
   const workflowArg = argv[0]?.trim();
   if (!workflowArg || workflowArg.startsWith("-")) {
-    throw new Error("workflow-code mcp requires a workflow project directory as its first argument.");
+    throw new Error("steamharness mcp requires a workflow project directory as its first argument.");
   }
   const workflowDir = path.resolve(process.cwd(), workflowArg);
   assertWorkflowDirectory(workflowDir);
-  let dataDir = path.join(os.homedir(), ".workflow-code");
+  let dataDir = path.join(os.homedir(), ".steamharness");
   let fileStoreDir: string | undefined;
   let kvStoreDir: string | undefined;
   let persistentValueStoreDir: string | undefined;
@@ -124,7 +124,7 @@ export function parseWorkflowMcpCliOptions(argv: string[]): WorkflowMcpCliOption
       case "--desktop-config-dir": desktopConfigDir = resolveAbsoluteOption(value, option); break;
       case "--auth-dir": cliAuthDir = resolveAbsoluteOption(value, option); break;
       case "--related-project": relatedProjects.push(parseCliRelatedProjectSpec(value)); break;
-      default: throw new Error(`Unknown workflow-code mcp option: ${option}`);
+      default: throw new Error(`Unknown steamharness mcp option: ${option}`);
     }
   }
 
@@ -445,14 +445,14 @@ export class WorkflowMcpCliRunner implements WorkflowMcpRunner {
         ...readSavedWorkflowMcpAuthEnv(this.options),
         ELECTRON_RUN_AS_NODE: process.env.ELECTRON_RUN_AS_NODE ?? "1",
         ...(this.options.desktopConfigDir
-          ? { WORKFLOW_DESKTOP_CONFIG_DIR: this.options.desktopConfigDir }
+          ? { STEAMHARNESS_DESKTOP_CONFIG_DIR: this.options.desktopConfigDir }
           : {}),
-        ...(this.options.cliAuthDir ? { WORKFLOW_CLI_AUTH_DIR: this.options.cliAuthDir } : {}),
-        WORKFLOW_KV_STORE_DIR: this.options.kvStoreDir,
-        WORKFLOW_PERSISTENT_VALUE_STORE_DIR: this.options.persistentValueStoreDir,
-        WORKFLOW_FILE_STORE_DIR: this.options.fileStoreDir,
-        WORKFLOW_FILE_CREATE_STORE_DIR: this.options.fileCreateStoreDir,
-        WORKFLOW_DESKTOP_RUNTIME_EVENTS: "0",
+        ...(this.options.cliAuthDir ? { STEAMHARNESS_CLI_AUTH_DIR: this.options.cliAuthDir } : {}),
+        STEAMHARNESS_KV_STORE_DIR: this.options.kvStoreDir,
+        STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR: this.options.persistentValueStoreDir,
+        STEAMHARNESS_FILE_STORE_DIR: this.options.fileStoreDir,
+        STEAMHARNESS_FILE_CREATE_STORE_DIR: this.options.fileCreateStoreDir,
+        STEAMHARNESS_DESKTOP_RUNTIME_EVENTS: "0",
       },
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
@@ -521,7 +521,7 @@ export class WorkflowMcpCliRunner implements WorkflowMcpRunner {
     const timer = setTimeout(() => {
       this.terminationTimers.delete(child);
       if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
-    }, WORKFLOW_MCP_WORKER_TERMINATION_GRACE_MS);
+    }, STEAMHARNESS_MCP_WORKER_TERMINATION_GRACE_MS);
     timer.unref();
     this.terminationTimers.set(child, timer);
   }
@@ -537,7 +537,7 @@ export function createWorkflowMcpDesktopAuditWriter(options: {
   send?: WorkflowMcpIpcSend;
 } = {}): WorkflowMcpRunSnapshotWriter | undefined {
   const env = options.env ?? process.env;
-  if (env[WORKFLOW_MCP_DESKTOP_AUDIT_IPC_ENV] !== "1") return undefined;
+  if (env[STEAMHARNESS_MCP_DESKTOP_AUDIT_IPC_ENV] !== "1") return undefined;
   const send = options.send ?? (typeof process.send === "function"
     ? process.send.bind(process) as WorkflowMcpIpcSend
     : undefined);
@@ -631,19 +631,19 @@ function appendDiagnostic(value: string, message: string): string {
 /**
  * Resolve the exact CLI module that is currently running. Electron and npm
  * bin launchers do not all populate argv in the same way, so Desktop may set
- * an explicit absolute path through WORKFLOW_MCP_CLI_ENTRYPOINT.
+ * an explicit absolute path through STEAMHARNESS_MCP_CLI_ENTRYPOINT.
  */
 export function resolveWorkflowMcpWorkerEntrypoint(
   processArgv: readonly string[] = process.argv,
   processEnv: NodeJS.ProcessEnv = process.env,
 ): string {
-  const configuredValue = processEnv[WORKFLOW_MCP_CLI_ENTRYPOINT_ENV];
+  const configuredValue = processEnv[STEAMHARNESS_MCP_CLI_ENTRYPOINT_ENV];
   const candidate = configuredValue === undefined
     ? processArgv[1]?.trim()
     : configuredValue.trim();
-  if (!candidate) throw new Error("Unable to resolve the workflow-code CLI entrypoint.");
+  if (!candidate) throw new Error("Unable to resolve the steamharness CLI entrypoint.");
   if (candidate.startsWith("-")) {
-    throw new Error("Unable to resolve the workflow-code CLI entrypoint.");
+    throw new Error("Unable to resolve the steamharness CLI entrypoint.");
   }
   return path.isAbsolute(candidate) ? path.normalize(candidate) : path.resolve(process.cwd(), candidate);
 }
@@ -774,12 +774,12 @@ export function readSavedWorkflowMcpAuthEnv(
   options: WorkflowMcpCliOptions,
   processEnv: NodeJS.ProcessEnv = process.env,
 ): Record<string, string> {
-  const explicitServerUrl = processEnv.WORKFLOW_SERVER_URL?.trim() ?? "";
-  const explicitAdminKey = processEnv.WORKFLOW_SERVER_ADMIN_KEY?.trim() ?? "";
+  const explicitServerUrl = processEnv.STEAMHARNESS_SERVER_URL?.trim() ?? "";
+  const explicitAdminKey = processEnv.STEAMHARNESS_SERVER_ADMIN_KEY?.trim() ?? "";
   if (explicitServerUrl !== "" || explicitAdminKey !== "") {
     if (explicitServerUrl === "" || explicitAdminKey === "") {
       throw new Error(
-        "WORKFLOW_SERVER_URL and WORKFLOW_SERVER_ADMIN_KEY must be provided together for MCP workers.",
+        "STEAMHARNESS_SERVER_URL and STEAMHARNESS_SERVER_ADMIN_KEY must be provided together for MCP workers.",
       );
     }
     // An explicit pair is authoritative. Never merge one explicit value with
@@ -788,8 +788,8 @@ export function readSavedWorkflowMcpAuthEnv(
   }
   const env = {
     ...processEnv,
-    ...(options.desktopConfigDir ? { WORKFLOW_DESKTOP_CONFIG_DIR: options.desktopConfigDir } : {}),
-    ...(options.cliAuthDir ? { WORKFLOW_CLI_AUTH_DIR: options.cliAuthDir } : {}),
+    ...(options.desktopConfigDir ? { STEAMHARNESS_DESKTOP_CONFIG_DIR: options.desktopConfigDir } : {}),
+    ...(options.cliAuthDir ? { STEAMHARNESS_CLI_AUTH_DIR: options.cliAuthDir } : {}),
   };
   const desktopAuth = readDesktopAuth(options.desktopConfigDir);
   const auth = desktopAuth && isWorkflowAuthConfigLoggedIn(desktopAuth)
@@ -797,8 +797,8 @@ export function readSavedWorkflowMcpAuthEnv(
     : readCliAuthConfigSync(env);
   if (!isWorkflowAuthConfigLoggedIn(auth)) return {};
   return {
-    WORKFLOW_SERVER_URL: auth.serverUrl,
-    WORKFLOW_SERVER_ADMIN_KEY: auth.apiKey,
+    STEAMHARNESS_SERVER_URL: auth.serverUrl,
+    STEAMHARNESS_SERVER_ADMIN_KEY: auth.apiKey,
   };
 }
 
@@ -806,7 +806,7 @@ function readDesktopAuth(configDir: string | undefined) {
   if (!configDir) return undefined;
   try {
     const raw = JSON.parse(readFileSync(resolveWorkflowDesktopConfigFilePath({
-      WORKFLOW_DESKTOP_CONFIG_DIR: configDir,
+      STEAMHARNESS_DESKTOP_CONFIG_DIR: configDir,
     }), "utf8")) as unknown;
     return normalizeWorkflowAuthConfig(isRecord(raw) && "auth" in raw ? raw["auth"] : raw);
   } catch {

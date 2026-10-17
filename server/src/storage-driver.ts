@@ -20,9 +20,9 @@ const LOOPBACK_HOST = "127.0.0.1";
  * so an operator's API origin is the better hint.
  */
 const LOCAL_PUBLIC_BASE_URL_KEYS = [
-  "WORKFLOW_API_PUBLIC_BASE_URL",
-  "WORKFLOW_PUBLIC_BASE_URL",
-  "WORKFLOW_STORAGE_PUBLIC_BASE_URL",
+  "STEAMHARNESS_API_PUBLIC_BASE_URL",
+  "STEAMHARNESS_PUBLIC_BASE_URL",
+  "STEAMHARNESS_STORAGE_PUBLIC_BASE_URL",
 ] as const;
 
 /**
@@ -34,11 +34,11 @@ const LOCAL_PUBLIC_BASE_URL_KEYS = [
 export function resolveWorkflowStorageDriver(
   env: NodeJS.ProcessEnv = process.env,
 ): WorkflowStorageDriver {
-  const raw = env.WORKFLOW_STORAGE_DRIVER?.trim().toLowerCase();
+  const raw = env.STEAMHARNESS_STORAGE_DRIVER?.trim().toLowerCase();
   if (!raw || raw === "local") {
     return "local";
   }
-  throw new Error('WORKFLOW_STORAGE_DRIVER must be "local".');
+  throw new Error('STEAMHARNESS_STORAGE_DRIVER must be "local".');
 }
 
 /**
@@ -72,12 +72,12 @@ export function resolveLocalStorageRootFromEnv(options: {
   dataRoot: string;
 }): string {
   const env = options.env ?? process.env;
-  const explicit = env.WORKFLOW_LOCAL_STORAGE_ROOT?.trim();
+  const explicit = env.STEAMHARNESS_LOCAL_STORAGE_ROOT?.trim();
   if (!explicit) {
     return path.join(options.dataRoot, "object-storage");
   }
   if (!path.isAbsolute(explicit)) {
-    throw new Error("WORKFLOW_LOCAL_STORAGE_ROOT must be an absolute path.");
+    throw new Error("STEAMHARNESS_LOCAL_STORAGE_ROOT must be an absolute path.");
   }
   return path.resolve(explicit);
 }
@@ -100,14 +100,14 @@ export function resolveLocalStoragePublicBaseUrl(env: NodeJS.ProcessEnv = proces
 
   if (inferServerEnvMode(env) !== "development") {
     throw new Error(
-      "WORKFLOW_API_PUBLIC_BASE_URL is required: "
+      "STEAMHARNESS_API_PUBLIC_BASE_URL is required: "
       + "avatar URLs are minted from the Server's public origin.",
     );
   }
 
-  const port = env.WORKFLOW_SERVER_PORT?.trim() || env.PORT?.trim() || String(DEFAULT_DEV_SERVER_PORT);
+  const port = env.STEAMHARNESS_SERVER_PORT?.trim() || env.PORT?.trim() || String(DEFAULT_DEV_SERVER_PORT);
   console.warn(
-    `[workflow-server] WORKFLOW_API_PUBLIC_BASE_URL is not set; local object storage will mint `
+    `[workflow-server] STEAMHARNESS_API_PUBLIC_BASE_URL is not set; local object storage will mint `
     + `http://${LOOPBACK_HOST}:${port} URLs. Browsers and the Desktop App on other machines `
     + "will not be able to load these assets.",
   );

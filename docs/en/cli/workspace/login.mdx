@@ -10,7 +10,7 @@ description: "Log on to Workflow Server by browser device flow, and save the log
 ## Command Format
 
 ```bash
-pnpm exec workflow-code workspace login --server <url>
+pnpm exec steamharness workspace login --server <url>
 ```
 
 ## Parameter
@@ -33,10 +33,10 @@ pnpm exec workflow-code workspace login --server <url>
 |Configuration|Description|
 | --- | --- |
 |File name| `workflow-auth.json` |
-|macOS Default Directory| `~/Library/Application Support/workflow-code` |
-|Windows Default Directory| `%APPDATA%/workflow-code` |
-|Linux Default Directory|`$XDG_CONFIG_HOME/workflow-code` or `~/.config/workflow-code`|
-|Custom Catalog|Settings `WORKFLOW_CLI_AUTH_DIR`|
+|macOS Default Directory| `~/Library/Application Support/steamharness` |
+|Windows Default Directory| `%APPDATA%/steamharness` |
+|Linux Default Directory|`$XDG_CONFIG_HOME/steamharness` or `~/.config/steamharness`|
+|Custom Catalog|Settings `STEAMHARNESS_CLI_AUTH_DIR`|
 
 ## Output
 
@@ -49,7 +49,7 @@ pnpm exec workflow-code workspace login --server <url>
 ## Example
 
 ```bash
-pnpm exec workflow-code workspace login --server http://localhost:7125
+pnpm exec steamharness workspace login --server http://localhost:7125
 ```
 
 ## Related Commands

@@ -19,7 +19,7 @@ PersistentValue knowledge pipeline.
 Dry-run (no B 站, no MiniMax, no knowledge write — just a fixture transcript):
 
 ```bash
-workflow-code json workspace/workflow/deltaforce-bilibili-collect -- \
+steamharness json workspace/workflow/deltaforce-bilibili-collect -- \
   --dry-run \
   --video-url https://www.bilibili.com/video/BV1uv411q7Mv \
   --question "讲了什么"
@@ -28,7 +28,7 @@ workflow-code json workspace/workflow/deltaforce-bilibili-collect -- \
 Real run (needs `MINIMAX_API_KEY`, optionally B 站 cookies for 1080P+):
 
 ```bash
-workflow-code json workspace/workflow/deltaforce-bilibili-collect -- \
+steamharness json workspace/workflow/deltaforce-bilibili-collect -- \
   --video-url https://www.bilibili.com/video/BVxxxxxxxxxx \
   --question "讲了什么" \
   --quality 32 \
@@ -39,7 +39,7 @@ workflow-code json workspace/workflow/deltaforce-bilibili-collect -- \
 Reuse an existing MiniMax file id and skip B 站 download/upload:
 
 ```bash
-workflow-code json workspace/workflow/deltaforce-bilibili-collect -- \
+steamharness json workspace/workflow/deltaforce-bilibili-collect -- \
   --mm-file file-123456 \
   --question "讲了什么"
 ```
@@ -135,7 +135,7 @@ During execution the output stream emits plain text status lines between each
 slow step. The final payload keeps that progress item and appends the generated
 transcript as a separate plain text output item, so the final result does not
 replace earlier stream output and does not render as a detail card.
-`workflow-code json` returns the same transcript text and a structured
+`steamharness json` returns the same transcript text and a structured
 `DeltaforceBilibiliCollectOutputPayload` (`documentId`, `fileId`, `model`,
 `transcriptLength`, …).
 

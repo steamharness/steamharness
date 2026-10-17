@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import * as core from 'workflow-code';
+import * as core from 'steamharness';
 import { createWebRuntime } from '../web/runtime';
 import { createWebRelatedProjectRuntime } from '../web/related-projects';
 import { webProjectDataDirectory } from '../web/kanban-data';
@@ -51,7 +51,7 @@ it('executes imported related KV, knowledge and entrypoints using the target Web
     expect((await run()).status).toBe('failed');
     bindings = [{ alias: 'database', projectDir: fixture.targetDir }];
     const manifest = JSON.parse(await readFile(path.join(fixture.targetDir, 'package.json'), 'utf8'));
-    manifest.workflowCode.projectInfo.relatedProjects = [];
+    manifest.steamHarness.projectInfo.relatedProjects = [];
     await writeFile(path.join(fixture.targetDir, 'package.json'), JSON.stringify(manifest));
     await expect(run()).rejects.toThrow('not confirmed by both project manifests');
     manifest.id = consumerId;
@@ -75,7 +75,7 @@ it('uses the project Core for server KV and knowledge and rechecks grants and id
     consumerProjectId: consumerId, targetProjectId: targetId, alias: 'database', env: process.env }));
   expect(api.createWorkflowPersistentValueContext).toHaveBeenCalledWith(expect.objectContaining({ store: remoteStore, projectId: targetId }));
   const manifest = JSON.parse(await readFile(path.join(fixture.targetDir, 'package.json'), 'utf8'));
-  manifest.workflowCode.projectInfo.relatedProjects = [];
+  manifest.steamHarness.projectInfo.relatedProjects = [];
   await writeFile(path.join(fixture.targetDir, 'package.json'), JSON.stringify(manifest));
   expect(related.serverResolver?.resolve('database')).toBeUndefined();
 });
@@ -83,9 +83,9 @@ it('uses the project Core for server KV and knowledge and rechecks grants and id
 async function createFixture(location = 'local') {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'web-related-'))); temporary.push(root);
   const consumerDir = path.join(root, 'workspace', 'consumer'), targetDir = path.join(root, 'imported', 'database');
-  let coreRoot = path.dirname(fileURLToPath(import.meta.resolve('workflow-code')));
+  let coreRoot = path.dirname(fileURLToPath(import.meta.resolve('steamharness')));
   for (let depth = 0; depth < 8; depth++) {
-    try { if (JSON.parse(await readFile(path.join(coreRoot, 'package.json'), 'utf8')).name === 'workflow-code') { break; } } catch {}
+    try { if (JSON.parse(await readFile(path.join(coreRoot, 'package.json'), 'utf8')).name === 'steamharness') { break; } } catch {}
     coreRoot = path.dirname(coreRoot);
   }
   const relation = (alias: string, projectId: string) => ({ alias, projectId, grantToRelatedProject: {
@@ -93,9 +93,9 @@ async function createFixture(location = 'local') {
   } });
   for (const [directory, id, relatedProjects] of [[consumerDir, consumerId, [relation('database', targetId)]], [targetDir, targetId, [relation('consumer', consumerId)]]] as const) {
     await mkdir(path.join(directory, 'node_modules'), { recursive: true });
-    await symlink(coreRoot, path.join(directory, 'node_modules/workflow-code'), process.platform === 'win32' ? 'junction' : 'dir');
+    await symlink(coreRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
     await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id, name: path.basename(directory), type: 'module',
-      workflowCode: { projectInfo: { dataStorage: { mode: directory === targetDir ? location : 'both' }, relatedProjects } } }));
+      steamHarness: { projectInfo: { dataStorage: { mode: directory === targetDir ? location : 'both' }, relatedProjects } } }));
   }
   await writeFile(path.join(consumerDir, 'index.ts'), `
     const flow = workflow.defineWorkflow({ name: 'related-consumer', async run(input, context) {

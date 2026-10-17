@@ -36,10 +36,10 @@ export function selectArtifactJobsToErase(jobs, { jobName, retain = 3 }) {
 export async function pruneAlphaReleaseHistory(options = {}) {
   const root = path.resolve(options.root ?? process.cwd());
   const retain = normalizeRetain(options.retain ?? 3);
-  const privateToken = String(options.token ?? process.env.WORKFLOW_ALPHA_SYNC_TOKEN ?? "").trim();
+  const privateToken = String(options.token ?? process.env.STEAMHARNESS_ALPHA_SYNC_TOKEN ?? "").trim();
   const jobToken = String(process.env.CI_JOB_TOKEN ?? "").trim();
   const token = privateToken || jobToken;
-  if (!token) throw new Error("WORKFLOW_ALPHA_SYNC_TOKEN or CI_JOB_TOKEN is required for alpha retention.");
+  if (!token) throw new Error("STEAMHARNESS_ALPHA_SYNC_TOKEN or CI_JOB_TOKEN is required for alpha retention.");
   const headers = privateToken ? { "PRIVATE-TOKEN": token } : { "JOB-TOKEN": token };
 
   const versions = await listRemoteAlphaVersions({ root, runCommand: options.runCommand ?? run });

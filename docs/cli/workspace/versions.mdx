@@ -6,7 +6,7 @@ description: "查看不可变源码版本及 latest。"
 # workspace versions
 
 ```bash
-workflow-code workspace versions <project>
+steamharness workspace versions <project>
 ```
 
 请求 `GET /api/workflows/{workflow}/versions`，返回 `latest`、`nextVersion` 及历史版本。每个版本包含版本号、发布者、发布时间、发布说明、源码 SHA-256、依赖锁、`latest` 标记和累计下载量 `downloadCount`。下载量按 Server 成功发送的源码响应累计，同一用户重复下载会重复计数，`latest` 下载归入实际版本。

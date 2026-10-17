@@ -21,6 +21,6 @@ test("production PostgreSQL data is bound under the release storage root", async
     "utf8",
   );
 
-  assert.match(compose, /WORKFLOW_RELEASE_STORAGE_ROOT[^\n]*\/postgres-data/u);
+  assert.match(compose, /STEAMHARNESS_RELEASE_STORAGE_ROOT[^\n]*\/postgres-data/u);
   assert.match(compose, /target: \/var\/lib\/postgresql\/data/u);
 });

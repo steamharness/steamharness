@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { compareStrings, translateDynamicKey, useTranslation } from "@workflow-code/i18n/react";
+import { compareStrings, translateDynamicKey, useTranslation } from "@steamharness/i18n/react";
 import type {
   WorkflowProjectKVAccessRule,
   WorkflowRelatedProjectKVGrant,
-} from "@workflow-code/project-info";
-import { getWorkflowProjectTypeLabelKey } from "@workflow-code/project-types";
+} from "@steamharness/project-info";
+import { getWorkflowProjectTypeLabelKey } from "@steamharness/project-types";
 import {
   Check,
   ChevronsUpDown,

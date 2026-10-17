@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
-import { installWorkflowRuntimeGlobal } from "workflow-code/runtime-api";
+import { installWorkflowRuntimeGlobal } from "steamharness/runtime-api";
 
 it.each(["workspace", "read-only", "auto"])("exposes the Workflow through real stdio MCP with the %s policy and authenticated host", async permissionPolicy => {
   const calls: unknown[] = [];
@@ -22,17 +22,17 @@ it.each(["workspace", "read-only", "auto"])("exposes the Workflow through real s
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("No test address");
   const runtime = installWorkflowRuntimeGlobal();
-  const cliManifest = createRequire(import.meta.url).resolve("@workflow-code/cli/package.json");
+  const cliManifest = createRequire(import.meta.url).resolve("@steamharness/cli/package.json");
   const cli = JSON.parse(await readFile(cliManifest, "utf8"));
-  const keys = ["WORKFLOW_STUDIO_CONTROL_BRIDGE_URL", "WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN"];
+  const keys = ["STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL", "STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN"];
   let connection;
   try {
     connection = await runtime.connectMcpServer({
-      id: "workflow-studio", command: [process.execPath, path.resolve(path.dirname(cliManifest), cli.bin["workflow-code"]), "mcp", path.resolve(import.meta.dirname, ".."), "--data-dir", dataDir],
+      id: "workflow-studio", command: [process.execPath, path.resolve(path.dirname(cliManifest), cli.bin["steamharness"]), "mcp", path.resolve(import.meta.dirname, ".."), "--data-dir", dataDir],
       inheritEnvironment: keys,
-      environment: { WORKFLOW_STUDIO_CONTROL_PERMISSION_POLICY: permissionPolicy },
+      environment: { STEAMHARNESS_STUDIO_CONTROL_PERMISSION_POLICY: permissionPolicy },
     }, { allowedInheritedEnvKeys: keys, env: {
-      WORKFLOW_STUDIO_CONTROL_BRIDGE_URL: `http://127.0.0.1:${address.port}/studio-control`, WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN: token,
+      STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL: `http://127.0.0.1:${address.port}/studio-control`, STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN: token,
     } });
     expect(connection.tools.map(tool => tool.name)).toEqual(expect.arrayContaining([
       "studio_state", "get_related_projects", "open_file", "get_diagnostics", "set_theme", "open_terminal", "show_view",

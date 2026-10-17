@@ -9,11 +9,11 @@ Core 0.2 makes the data location a required project declaration and removes Cont
 
 ## 1. Declare the data-storage location
 
-Add `dataStorage.mode` under `package.json.workflowCode.projectInfo`:
+Add `dataStorage.mode` under `package.json.steamHarness.projectInfo`:
 
 ```json
 {
-  "workflowCode": {
+  "steamHarness": {
     "projectInfo": {
       "dataStorage": { "mode": "local" }
     }
@@ -71,13 +71,13 @@ Set the project Core and CLI development dependencies to exact `0.2.0` versions:
 ```json
 {
   "devDependencies": {
-    "workflow-code": "0.2.0",
-    "@workflow-code/cli": "0.2.0"
+    "steamharness": "0.2.0",
+    "@steamharness/cli": "0.2.0"
   }
 }
 ```
 
-The dependency fields must remain exact; do not change them to `0.2.x` or `^0.2.0` to express compatibility. Workflow Code compares only the `major.minor` runtime line. A `0.2.0` project runs directly on Core `0.2.1` or `0.2.99-20260826001`, and Core `0.2.0` can also run a project pinned to `0.2.99`; neither patch nor date ordering participates. A project moved to `0.3.0` or `1.0.0` requires a CLI or Server carrying that same Core compatibility line.
+The dependency fields must remain exact; do not change them to `0.2.x` or `^0.2.0` to express compatibility. SteamHarness compares only the `major.minor` runtime line. A `0.2.0` project runs directly on Core `0.2.1` or `0.2.99-20260826001`, and Core `0.2.0` can also run a project pinned to `0.2.99`; neither patch nor date ordering participates. A project moved to `0.3.0` or `1.0.0` requires a CLI or Server carrying that same Core compatibility line.
 
 CLI 0.2 constrains its Core peer to `0.2.x` and validates the installed Core, the CLI's own pin, and the project declaration before `run`, `json`, `structure`, and `resolve-params`. Server validates static upload metadata only and never loads user modules.
 

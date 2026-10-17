@@ -20,7 +20,7 @@ test("workspace structure CLI errors use the standalone CLI command", () => {
     () => inspectWorkspaceWorkflowStructureFromCli([]),
     (error: unknown) =>
       error instanceof WorkflowError &&
-      error.message === "Missing workflow directory. Usage: workflow-code structure <workflow-dir>",
+      error.message === "Missing workflow directory. Usage: steamharness structure <workflow-dir>",
   );
 });
 
@@ -195,7 +195,7 @@ test("workflow entrypoints expose group metadata in a flat structure and run ind
 });
 
 test("workflow entrypoint structure resolves imported workflows and keeps registries scoped", async () => {
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-imported-entrypoints-"));
+  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-imported-entrypoints-"));
   try {
     await writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
       name: "imported-entrypoint-test",
@@ -279,7 +279,7 @@ test("workflow entrypoint structure resolves imported workflows and keeps regist
 });
 
 test("workflow entrypoint structure resolves wrapped definitions and inline default exports", async () => {
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-wrapped-entrypoints-"));
+  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-wrapped-entrypoints-"));
   try {
     await writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
       name: "wrapped-entrypoint-test",
@@ -347,7 +347,7 @@ test("workflow entrypoint structure resolves wrapped definitions and inline defa
 });
 
 test("workflow entrypoint structure does not accept an unrelated same-name workflow", async () => {
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-colliding-entrypoint-"));
+  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-colliding-entrypoint-"));
   try {
     await writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
       name: "colliding-entrypoint-test",
@@ -458,7 +458,7 @@ test("conversation executors reject entrypoint selection without changing their 
 });
 
 test("workspace runtime layers prepare before inspection and started events include the selected entrypoint", async () => {
-  const cwd = await mkdtemp(path.join(os.tmpdir(), "workflow-code-entrypoint-runtime-"));
+  const cwd = await mkdtemp(path.join(os.tmpdir(), "steamharness-entrypoint-runtime-"));
   const workflowName = "runtime-order";
   const workflowDir = path.join(cwd, "workspace", "workflow", workflowName);
   let layerPrepared = false;
@@ -471,7 +471,7 @@ test("workspace runtime layers prepare before inspection and started events incl
       name: workflowName,
       version: "0.1.0",
       type: "module",
-      workflowCode: { projectInfo: { dataStorage: { mode: "local" } } },
+      steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
     }));
     await writeFile(path.join(workflowDir, "index.ts"), `
       const mainWorkflow = workflow.defineWorkflow({
@@ -684,9 +684,9 @@ test("workflow entrypoint structure rules reject legacy and dynamic declarations
   )), true);
 
   const constantWorkflowName = validateWorkflowScriptSource(`
-    const WORKFLOW_NAME = "main-flow";
+    const STEAMHARNESS_NAME = "main-flow";
     const mainWorkflow = workflow.defineWorkflow({
-      name: WORKFLOW_NAME,
+      name: STEAMHARNESS_NAME,
       async run(input) { return input; },
     });
     export const executor = workflow.defineExecutor({
@@ -706,13 +706,13 @@ test("workflow entrypoint structure rules reject legacy and dynamic declarations
 });
 
 async function createEntrypointWorkflow(): Promise<string> {
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-entrypoints-"));
+  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-entrypoints-"));
   await writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
     id: "11111111-1111-4111-8111-111111111111",
     name: "entrypoint-test",
     version: "0.1.0",
     type: "module",
-    workflowCode: { projectInfo: { dataStorage: { mode: "local" } } },
+    steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
   }));
   await writeFile(path.join(workflowDir, "index.ts"), `
     const mainWorkflow = workflow.defineWorkflow({
@@ -800,13 +800,13 @@ function pickEntrypointOutput(
 }
 
 async function createConversationWorkflow(): Promise<string> {
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-entrypoint-conversation-"));
+  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-entrypoint-conversation-"));
   await writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
     id: "22222222-2222-4222-8222-222222222222",
     name: "entrypoint-conversation-test",
     version: "0.1.0",
     type: "module",
-    workflowCode: { projectInfo: { dataStorage: { mode: "local" } } },
+    steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
   }));
   await writeFile(path.join(workflowDir, "index.ts"), `
     const conversationWorkflow = workflow.defineWorkflow({

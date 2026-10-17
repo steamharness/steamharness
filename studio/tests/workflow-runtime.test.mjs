@@ -6,15 +6,15 @@ import { tmpdir } from 'node:os';
 import { register } from 'tsx/esm/api';
 register();
 const { inspectProjectCli, resolveProjectCli, startProjectCli } = await import('../extensions/studio-workstation/src/workflow-cli-process.ts');
-import { workflowFrameHtml } from '../extensions/studio-workstation/src/workflow-webview.ts';
+import { workflowFrameHtml } from '../extensions/studio-workstation/src/steamharness-webview.ts';
 
 async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startupDelay = 0, assistantProtocol = 1, accountProtocol = 1, relatedProtocol = 1) {
   const directory = await fs.mkdtemp(path.join(tmpdir(), 'studio-project-cli-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   await fs.writeFile(path.join(directory, 'package.json'), '{"name":"user-project"}');
-  const cli = path.join(directory, 'node_modules/@workflow-code/cli');
+  const cli = path.join(directory, 'node_modules/@steamharness/cli');
   await fs.mkdir(path.join(cli, 'dist'), { recursive: true });
-  await fs.writeFile(path.join(cli, 'package.json'), JSON.stringify({ name: '@workflow-code/cli', version, type: 'module', bin: { 'workflow-code': 'dist/index.js' } }));
+  await fs.writeFile(path.join(cli, 'package.json'), JSON.stringify({ name: '@steamharness/cli', version, type: 'module', bin: { 'steamharness': 'dist/index.js' } }));
   await fs.writeFile(path.join(cli, 'dist/index.js'), `
     import { createServer } from 'node:http';
     import { createInterface } from 'node:readline';
@@ -31,9 +31,9 @@ async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startup
           configuration=message;
           if(args.includes('--inspect')) { console.log(JSON.stringify({assistantProtocolVersion:${assistantProtocol},projects:[{id:assistantId,name:'Project Assistant',folderPath:message.assistantProjectDir,projectType:'conversation',fields:[],entrypoints:[],tools:[{name:'skill'}]}],errors:[]}));input.close();process.stdin.pause();return; }
           if(${fail}) {console.error(message.connection?.accessToken);process.exit(1);}
-          const studioControl={hasUrl:!!process.env.WORKFLOW_STUDIO_CONTROL_BRIDGE_URL,hasToken:!!process.env.WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN,mcpServer:process.env.WORKFLOW_STUDIO_CONTROL_MCP_SERVER??null,permissionPolicy:process.env.WORKFLOW_STUDIO_CONTROL_PERMISSION_POLICY??null};
+          const studioControl={hasUrl:!!process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL,hasToken:!!process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN,mcpServer:process.env.STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER??null,permissionPolicy:process.env.STEAMHARNESS_STUDIO_CONTROL_PERMISSION_POLICY??null};
           server=createServer((request,response)=>{response.setHeader('Content-Type','application/json');response.end(JSON.stringify({configuration,args,pid:process.pid,authMessages,studioControl}));});
-          setTimeout(()=>server.listen(0,'127.0.0.1',()=>console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:${protocol},accountProtocolVersion:${accountProtocol},relatedProjectsProtocolVersion:${relatedProtocol},assistantProtocolVersion:${assistantProtocol},url:'http://127.0.0.1:'+server.address().port+'/#session='+'a'.repeat(64),project:{id:message.assistantProjectDir?assistantId:'user',name:message.assistantProjectDir?'Project Assistant':version,projectType:'conversation'},runtime:{coreVersion:version,corePath:process.cwd()+'/node_modules/workflow-code/dist/index.js'}}))),${startupDelay});
+          setTimeout(()=>server.listen(0,'127.0.0.1',()=>console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:${protocol},accountProtocolVersion:${accountProtocol},relatedProjectsProtocolVersion:${relatedProtocol},assistantProtocolVersion:${assistantProtocol},url:'http://127.0.0.1:'+server.address().port+'/#session='+'a'.repeat(64),project:{id:message.assistantProjectDir?assistantId:'user',name:message.assistantProjectDir?'Project Assistant':version,projectType:'conversation'},runtime:{coreVersion:version,corePath:process.cwd()+'/node_modules/steamharness/dist/index.js'}}))),${startupDelay});
         } else if(message.type==='auth') {authMessages++;configuration.connection=message.connection;}
         else if(message.type==='related-projects') {configuration.relatedProjects=message.relatedProjects;}
         else if(message.type==='close') {input.close();process.stdin.pause();server?.close();}
@@ -59,7 +59,7 @@ test('each project resolves its own CLI and runs its own inspection', async t =>
 test('a missing project CLI fails without falling back to a workstation runtime', async t => {
   const { directory } = await fixture(t);
   await fs.rm(path.join(directory, 'node_modules'), { recursive: true });
-  await assert.rejects(resolveProjectCli(directory), /@workflow-code\/cli/);
+  await assert.rejects(resolveProjectCli(directory), /@steamharness\/cli/);
 });
 
 test('reinstalling a project CLI uses the new package in the same host process', async t => {
@@ -76,7 +76,7 @@ test('reinstalling a project CLI uses the new package in the same host process',
   assert.equal(current.entry, path.join(await fs.realpath(second.cli), 'dist/index.js'));
   assert.equal((await inspectProjectCli(first.directory, process.execPath)).projects[0].name, '2.3.4');
   await fs.unlink(first.cli);
-  await assert.rejects(resolveProjectCli(first.directory), /@workflow-code\/cli/);
+  await assert.rejects(resolveProjectCli(first.directory), /@steamharness\/cli/);
 });
 
 test('nested projects resolve CLI packages hoisted to a parent node_modules', async t => {
@@ -103,7 +103,7 @@ test('the independent assistant launches its own CLI and Core in its own workspa
   t.after(() => session.close());
   const result = await fetch(new URL(session.ready.url).origin).then(response => response.json());
   assert.equal(session.ready.project.name, 'Project Assistant');
-  assert.equal(path.normalize(session.ready.runtime.corePath), path.join(await fs.realpath(first.directory), 'node_modules/workflow-code/dist/index.js'));
+  assert.equal(path.normalize(session.ready.runtime.corePath), path.join(await fs.realpath(first.directory), 'node_modules/steamharness/dist/index.js'));
   assert.notEqual(session.ready.runtime.coreVersion, (await inspectProjectCli(second.directory, process.execPath)).projects[0].name);
   assert.equal(result.args[result.args.indexOf('web') + 1], assistantProjectDir);
   assert.equal(result.configuration.surface, 'assistant');
@@ -114,8 +114,8 @@ test('the independent assistant launches its own CLI and Core in its own workspa
 test('a CLI without dedicated assistant support cannot silently run the workspace executor', async t => {
   const { options, directory } = await fixture(t, 'old-assistant', 1, false, 0, 0);
   const assistantProjectDir = path.join(directory, 'dedicated-assistant');
-  await assert.rejects(inspectProjectCli(directory, process.execPath, undefined, assistantProjectDir), /@workflow-code\/cli/);
-  await assert.rejects(startProjectCli({ ...options, surface: 'assistant', assistantProjectDir, assistant: { workdir: directory, roots: [{ uri: `file://${directory}`, folderPath: directory, name: 'Current' }] } }), /@workflow-code\/cli/);
+  await assert.rejects(inspectProjectCli(directory, process.execPath, undefined, assistantProjectDir), /@steamharness\/cli/);
+  await assert.rejects(startProjectCli({ ...options, surface: 'assistant', assistantProjectDir, assistant: { workdir: directory, roots: [{ uri: `file://${directory}`, folderPath: directory, name: 'Current' }] } }), /@steamharness\/cli/);
 });
 
 test('host credentials use stdin and can change without restarting the CLI', async t => {
@@ -158,12 +158,12 @@ test('closing a tab closes its service and is repeatable', async t => {
 
 test('unsupported project CLIs fail and are cleaned up', async t => {
   const { options } = await fixture(t, 'old', 0);
-  await assert.rejects(startProjectCli(options), /@workflow-code\/cli/);
+  await assert.rejects(startProjectCli(options), /@steamharness\/cli/);
 });
 
 test('a CLI without authoritative host accounts cannot restore a separate project login', async t => {
   const { options } = await fixture(t, 'old-account', 1, false, 0, 1, 0);
-  await assert.rejects(startProjectCli(options), /@workflow-code\/cli/);
+  await assert.rejects(startProjectCli(options), /@steamharness\/cli/);
 });
 
 test('signed-out Studio explicitly configures the project with no account', async t => {
@@ -188,7 +188,7 @@ test('a normal project can receive an explicit control connection without assist
 
 test('ordinary projects cannot inherit a control connection or permission from the host environment', async t => {
   const { options } = await fixture(t);
-  const keys = ['WORKFLOW_STUDIO_CONTROL_BRIDGE_URL', 'WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN', 'WORKFLOW_STUDIO_CONTROL_MCP_SERVER', 'WORKFLOW_STUDIO_CONTROL_PERMISSION_POLICY'];
+  const keys = ['STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL', 'STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN', 'STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER', 'STEAMHARNESS_STUDIO_CONTROL_PERMISSION_POLICY'];
   const original = keys.map(key => process.env[key]);
   t.after(() => keys.forEach((key, index) => { if (original[index] === undefined) delete process.env[key]; else process.env[key] = original[index]; }));
   for (const key of keys) process.env[key] = 'inherited-test-value';
@@ -219,10 +219,10 @@ test('imported related bindings are configured and updated without restarting th
 test('an old project CLI cannot silently ignore imported related bindings', async t => {
   const { options, directory } = await fixture(t, 'old-related', 1, false, 0, 1, 1, 0);
   const relatedProjects = [{ alias: 'database', projectDir: path.join(directory, 'database') }];
-  await assert.rejects(startProjectCli({ ...options, relatedProjects }), /@workflow-code\/cli/);
+  await assert.rejects(startProjectCli({ ...options, relatedProjects }), /@steamharness\/cli/);
   const session = await startProjectCli(options);
   t.after(() => session.close());
-  assert.throws(() => session.updateRelatedProjects(relatedProjects), /@workflow-code\/cli/);
+  assert.throws(() => session.updateRelatedProjects(relatedProjects), /@steamharness\/cli/);
 });
 
 test('closing a workspace aborts an unfinished CLI startup', async t => {

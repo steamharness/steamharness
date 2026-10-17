@@ -1,0 +1,40 @@
+---
+title: "steamharness help"
+description: "查看 steamharness 本地 CLI 帮助。"
+---
+
+# steamharness help
+
+`steamharness help` 输出本地 CLI 的简短帮助。未传命令、传 `help`、`--help` 或 `-h` 时都会进入帮助模式。
+
+## 命令格式
+
+```bash
+steamharness help
+steamharness --help
+steamharness -h
+steamharness
+```
+
+## 输出内容
+
+| 内容 | 说明 |
+| --- | --- |
+| Usage | `run`、`json`、`structure` 的基础格式。 |
+| Examples | 常见本地运行和结构检查示例。 |
+
+## 行为
+
+| 情况 | 结果 |
+| --- | --- |
+| 未传命令 | 输出帮助，退出码为 `0`。 |
+| 第一参数是 `help` / `--help` / `-h` | 输出帮助，退出码为 `0`。 |
+| 第一参数是未知命令 | 输出错误信息，退出码为 `1`。 |
+
+## 下一步
+
+| 目标 | 文档 |
+| --- | --- |
+| 执行 workflow | [`steamharness run`](/cli/steamharness/run) |
+| 输出 JSON 报告 | [`steamharness json`](/cli/steamharness/json) |
+| 分析结构 | [`steamharness structure`](/cli/steamharness/structure) |

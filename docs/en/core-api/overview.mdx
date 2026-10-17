@@ -5,14 +5,14 @@ description: "The entry, boundary, and per-method document index of the workflow
 
 # Core API Overview
 
-The Core API section documents the `workflow.*` runtime API available directly to business workflows. Its boundary is `src/runtime-api.ts` in the Core repository: local hosts and CLI inject these methods into `globalThis.workflow`, so a business workflow does not import them from `"workflow-code"`.
+The Core API section documents the `workflow.*` runtime API available directly to business workflows. Its boundary is `src/runtime-api.ts` in the Core repository: local hosts and CLI inject these methods into `globalThis.workflow`, so a business workflow does not import them from `"steamharness"`.
 
 ## Entry boundary
 
 |Entrance|Description|
 | --- | --- |
 | `workflow.*` | Global API used by business workflows, sourced from `src/runtime-api.ts` in the Core repository. |
-| `workflow-code` package entry | Utility entry used by CLI, Server, tests, and advanced hosts, sourced from `src/index.ts` in the Core repository. |
+| `steamharness` package entry | Utility entry used by CLI, Server, tests, and advanced hosts, sourced from `src/index.ts` in the Core repository. |
 
 ## Runtime API index
 

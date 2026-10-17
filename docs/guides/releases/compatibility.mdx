@@ -5,7 +5,7 @@ description: "本地 Core 运行兼容规则与 Server 静态元数据校验。"
 
 # 版本兼容性
 
-Workflow 项目的 `devDependencies.workflow-code` 必须是精确 SemVer，例如 `"0.2.7"` 或 `"0.2.7-20260826001"`。精确声明记录项目开发和验证时使用的 Core，运行时只比较 `major.minor` 兼容线。
+Workflow 项目的 `devDependencies.steamharness` 必须是精确 SemVer，例如 `"0.2.7"` 或 `"0.2.7-20260826001"`。精确声明记录项目开发和验证时使用的 Core，运行时只比较 `major.minor` 兼容线。
 
 `0.2.0`、`0.2.99`、`0.2.4-20260826001` 与 `0.2.4-beta.1` 都属于 `0.2.x`，patch 和预发布标识不参与先后判断。major 或 minor 变化会在用户模块执行前阻断，并显示项目版本、宿主版本及所需兼容线。
 

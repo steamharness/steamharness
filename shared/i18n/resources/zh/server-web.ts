@@ -504,7 +504,7 @@ export const serverWeb: typeof EnServerWeb = {
   projectPlatformWindows: "Windows",
   projectStorageAccessBlockedTitle: "服务器数据访问已阻断",
   projectStorageAccessLocalOnlyDescription: "该项目仅声明本地存储，不能访问 Server KV、知识库或 PersistentValue。",
-  projectStorageAccessUndeclaredDescription: "该项目尚未声明数据存储位置。请在 package.json 中声明 workflowCode.projectInfo.dataStorage.mode 后重新上传源码。",
+  projectStorageAccessUndeclaredDescription: "该项目尚未声明数据存储位置。请在 package.json 中声明 steamHarness.projectInfo.dataStorage.mode 后重新上传源码。",
   projectStorageAllowedBoth: "本地和服务器",
   projectStorageAllowedLocal: "仅本地",
   projectStorageAllowedNone: "无可用位置",

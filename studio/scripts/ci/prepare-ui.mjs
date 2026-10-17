@@ -12,11 +12,11 @@ await writeFile(path.join(directory, 'package.json'), JSON.stringify({
   ...assistant,
   devDependencies: {
     ...assistant.devDependencies,
-    'workflow-code': example.devDependencies['workflow-code'],
-    '@workflow-code/cli': example.devDependencies['@workflow-code/cli'],
+    'steamharness': example.devDependencies['steamharness'],
+    '@steamharness/cli': example.devDependencies['@steamharness/cli'],
   },
 }, null, 2) + '\n');
 await writeFile(path.join(directory, '.npmrc'), [
   `registry=${process.env.STUDIO_TEST_REGISTRY ?? downloads.ciNpmMirror}`,
-  '@workflow-code:registry=https://registry.npmjs.org/',
+  '@steamharness:registry=https://registry.npmjs.org/',
 ].join('\n') + '\n');

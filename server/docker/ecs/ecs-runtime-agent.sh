@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-ROOT="${WORKFLOW_REMOTE_ROOT:-/srv/workflow-release}"
+ROOT="${STEAMHARNESS_REMOTE_ROOT:-/srv/workflow-release}"
 COMPOSE_DIR="$ROOT/compose"
 COMPOSE_FILE="$COMPOSE_DIR/docker-compose.yml"
 ENV_FILE="$ROOT/.env"
@@ -31,18 +31,18 @@ ensure_docker() {
 }
 
 install_units() {
-  local node_bin="${WORKFLOW_NODE_BIN:-$(command -v node || true)}"
-  [[ -x "$node_bin" ]] || die "Node.js is required on ECS; set WORKFLOW_NODE_BIN to an absolute path"
+  local node_bin="${STEAMHARNESS_NODE_BIN:-$(command -v node || true)}"
+  [[ -x "$node_bin" ]] || die "Node.js is required on ECS; set STEAMHARNESS_NODE_BIN to an absolute path"
   mkdir -p /etc/systemd/system "$RUNTIME_DIR" "$ROOT/nginx/logs" "$ROOT/certs" "$ROOT/acme"
   mkdir -p "$ROOT/server-data/stable" "$ROOT/server-data/alpha"
   mkdir -p "$ROOT/published/web/alpha"
-  for unit in workflow-server-stable workflow-server-alpha workflow-docs workflow-web-alpha; do
+  for unit in workflow-server-stable workflow-server-alpha workflow-docs steamharness-web-alpha; do
     sed -e "s#__ROOT__#$ROOT#g" -e "s#__NODE_BIN__#$node_bin#g" \
       "$COMPOSE_DIR/$unit.service" > "/etc/systemd/system/$unit.service"
   done
   systemctl disable --now nginx.service 2>/dev/null || true
   systemctl daemon-reload
-  systemctl enable workflow-server-stable workflow-server-alpha workflow-docs workflow-web-alpha
+  systemctl enable workflow-server-stable workflow-server-alpha workflow-docs steamharness-web-alpha
 }
 
 select_nginx_config() {
@@ -150,13 +150,13 @@ certificate_covers_domains() {
 }
 
 certificate() {
-  local email="${1:-${WORKFLOW_ACME_EMAIL:-}}"
-  [[ -n "$email" ]] || die "WORKFLOW_ACME_EMAIL is required"
+  local email="${1:-${STEAMHARNESS_ACME_EMAIL:-}}"
+  [[ -n "$email" ]] || die "STEAMHARNESS_ACME_EMAIL is required"
   require_root
   ensure_docker
   mkdir -p "$ROOT/certs" "$ROOT/acme"
   compose up --detach --no-recreate --pull never nginx
-  local certbot_image="${WORKFLOW_CERTBOT_IMAGE:-certbot/certbot:v2.11.0}"
+  local certbot_image="${STEAMHARNESS_CERTBOT_IMAGE:-certbot/certbot:v2.11.0}"
   local -a certbot=(docker run --rm --network host
     --volume "$ROOT/certs:/etc/letsencrypt"
     --volume "$ROOT/acme:/var/www/acme")
@@ -271,12 +271,12 @@ deploy_web() {
   if [[ -e "$release" ]]; then rm -rf "$staging"; else mv "$staging" "$release"; fi
   local previous="$(readlink "$base/current" || true)"
   atomic_link "releases/$commit" "$base/current"
-  if ! systemctl restart workflow-web-alpha.service || ! wait_http http://127.0.0.1:7152/; then
+  if ! systemctl restart steamharness-web-alpha.service || ! wait_http http://127.0.0.1:7152/; then
     if [[ -n "$previous" ]]; then
       atomic_link "$previous" "$base/current"
-      systemctl restart workflow-web-alpha.service || true
+      systemctl restart steamharness-web-alpha.service || true
     else
-      systemctl stop workflow-web-alpha.service
+      systemctl stop steamharness-web-alpha.service
       rm -f "$base/current"
     fi
     die "Web health check failed; current link was rolled back"
@@ -295,7 +295,7 @@ status() {
   printf '%s\n' '--- docker ---'
   docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' || true
   printf '%s\n' '--- systemd ---'
-  systemctl --no-pager --plain --full status workflow-server-stable workflow-server-alpha workflow-docs workflow-web-alpha 2>/dev/null || true
+  systemctl --no-pager --plain --full status workflow-server-stable workflow-server-alpha workflow-docs steamharness-web-alpha 2>/dev/null || true
   printf '%s\n' '--- web releases ---'
   [[ -L "$ROOT/published/web/alpha/current" ]] && readlink "$ROOT/published/web/alpha/current" || echo "web/alpha: not deployed"
   printf '%s\n' '--- health ---'
@@ -313,8 +313,8 @@ image_check() {
 image_pull() {
   [[ $# -eq 1 ]] || die "Usage: image-pull <image>"
   ensure_docker
-  local timeout_seconds="${WORKFLOW_IMAGE_PULL_TIMEOUT_SECONDS:-120}"
-  [[ "$timeout_seconds" =~ ^[1-9][0-9]*$ ]] || die "WORKFLOW_IMAGE_PULL_TIMEOUT_SECONDS must be a positive integer"
+  local timeout_seconds="${STEAMHARNESS_IMAGE_PULL_TIMEOUT_SECONDS:-120}"
+  [[ "$timeout_seconds" =~ ^[1-9][0-9]*$ ]] || die "STEAMHARNESS_IMAGE_PULL_TIMEOUT_SECONDS must be a positive integer"
   timeout --kill-after=5s "${timeout_seconds}s" docker pull --platform linux/amd64 "$1"
 }
 

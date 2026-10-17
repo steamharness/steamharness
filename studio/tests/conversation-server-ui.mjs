@@ -9,12 +9,12 @@ import { chromium } from '../upstream/vscode/node_modules/playwright/index.mjs';
 import { desktopLocaleLaunch } from './desktop-localization.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const workflowRoot = process.env.STUDIO_WORKFLOW_SOURCE || path.resolve(root, '..');
+const workflowRoot = process.env.STUDIO_STEAMHARNESS_SOURCE || path.resolve(root, '..');
 const conversationProject = process.env.STUDIO_CONVERSATION_PROJECT_DIR;
 assert.ok(conversationProject && path.isAbsolute(conversationProject), 'STUDIO_CONVERSATION_PROJECT_DIR must point to a conversation project configured for the dev server.');
 const env = parseEnv(await fs.readFile(path.join(workflowRoot, 'server/.env'), 'utf8'));
-assert.ok(env.WORKFLOW_BOOTSTRAP_ADMIN_EMAIL && env.WORKFLOW_BOOTSTRAP_ADMIN_PASSWORD, 'Dev server test credentials are required.');
-const serverUrl = `http://localhost:${env.WORKFLOW_SERVER_PORT || '7126'}`;
+assert.ok(env.STEAMHARNESS_BOOTSTRAP_ADMIN_EMAIL && env.STEAMHARNESS_BOOTSTRAP_ADMIN_PASSWORD, 'Dev server test credentials are required.');
+const serverUrl = `http://localhost:${env.STEAMHARNESS_SERVER_PORT || '7126'}`;
 assert.ok((await fetch(`${serverUrl}/health`)).ok, 'Dev server must be online.');
 const proofDir = path.join(root, '.studio/conversation-server-migration');
 await fs.mkdir(proofDir, { recursive: true });
@@ -56,7 +56,7 @@ async function account() { await command('Workflow: \u767b\u5f55\u4e0e\u7ba1\u74
 async function credentials(frame, password) {
   await frame.locator('#server-url').fill(serverUrl);
   // Evaluate avoids including credential values in Playwright locator error logs.
-  await frame.locator('#login-email').evaluate((element, value) => { element.value = value; element.dispatchEvent(new Event('input', { bubbles: true })); }, env.WORKFLOW_BOOTSTRAP_ADMIN_EMAIL);
+  await frame.locator('#login-email').evaluate((element, value) => { element.value = value; element.dispatchEvent(new Event('input', { bubbles: true })); }, env.STEAMHARNESS_BOOTSTRAP_ADMIN_EMAIL);
   await frame.locator('#login-password').evaluate((element, value) => { element.value = value; element.dispatchEvent(new Event('input', { bubbles: true })); }, password);
   await frame.locator('#login-submit').click();
 }
@@ -85,7 +85,7 @@ try {
   await credentials(profile, 'studio-test-incorrect-password'); await profile.locator('#account-error').waitFor();
   assert.equal(await profile.locator('#profile').isVisible(), false); assert.equal(await profile.locator('#login-password').inputValue(), '');
   proof.checks.invalidPasswordRejected = true;
-  await credentials(profile, env.WORKFLOW_BOOTSTRAP_ADMIN_PASSWORD); await profile.locator('#account-status.connected').waitFor({ timeout: 45000 }); loggedIn = true;
+  await credentials(profile, env.STEAMHARNESS_BOOTSTRAP_ADMIN_PASSWORD); await profile.locator('#account-status.connected').waitFor({ timeout: 45000 }); loggedIn = true;
   assert.equal(await profile.locator('#login-password').inputValue(), '');
   await page.locator('.part.activitybar .accounts-avatar').waitFor();
   await page.waitForFunction(() => document.querySelector('.part.activitybar .accounts-avatar')?.naturalWidth > 0);

@@ -5,7 +5,7 @@ description: "Create a complete Conversation Agent executor for embedding hosts 
 
 # defineAgentConversationExecutor
 
-`workflow.defineAgentConversationExecutor()` produces a complete conversation executor in one call: conversation wiring, token usage, tool declarations, params, input/output node orchestration and OpenAI gateway support all come from the runtime. It is for embedding hosts and tests. A project that must pass `workflow-code structure` needs inline `conversation`, `tokenUsage`, `tools`, and `params` declarations inside `workflow.defineExecutor({...})`, while reusing `workflow.createAgentConversationWorkflow(...)` and `workflow.createAgentProjectInput(...)`. Otherwise static analysis cannot see those declarations.
+`workflow.defineAgentConversationExecutor()` produces a complete conversation executor in one call: conversation wiring, token usage, tool declarations, params, input/output node orchestration and OpenAI gateway support all come from the runtime. It is for embedding hosts and tests. A project that must pass `steamharness structure` needs inline `conversation`, `tokenUsage`, `tools`, and `params` declarations inside `workflow.defineExecutor({...})`, while reusing `workflow.createAgentConversationWorkflow(...)` and `workflow.createAgentProjectInput(...)`. Otherwise static analysis cannot see those declarations.
 
 The helper saves an embedding host from implementing streaming, approvals, compaction, or output-item assembly. Projects can reuse the underlying workflow and input implementation while keeping their declarations visible to the host.
 

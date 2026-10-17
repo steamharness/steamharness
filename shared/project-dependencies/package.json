@@ -1,5 +1,5 @@
 {
-  "name": "@workflow-code/project-dependencies",
+  "name": "@steamharness/project-dependencies",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,7 +12,7 @@
     }
   },
   "dependencies": {
-    "@workflow-code/kanban-project": "workspace:*",
-    "@workflow-code/workflow-ids": "workspace:*"
+    "@steamharness/kanban-project": "workspace:*",
+    "@steamharness/workflow-ids": "workspace:*"
   }
 }

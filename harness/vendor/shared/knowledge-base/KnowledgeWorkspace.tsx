@@ -1,5 +1,5 @@
-import { i18n } from "@workflow-code/i18n";
-import { useTranslation } from "@workflow-code/i18n/react";
+import { i18n } from "@steamharness/i18n";
+import { useTranslation } from "@steamharness/i18n/react";
 import { MarkdownContent } from "./run-workspace/markdown/markdown-content";
 import { useModalFocus } from "./run-workspace/hooks/useOverlayFocus";
 import {

@@ -9,12 +9,12 @@ import { chromium } from '../upstream/vscode/node_modules/playwright/index.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const projectDir = path.join(root, 'examples/workflow');
-const cliEntry = process.env.WORKFLOW_UI_CLI_ENTRY ?? path.join(projectDir, 'node_modules/@workflow-code/cli/dist/index.js');
+const cliEntry = process.env.STEAMHARNESS_UI_CLI_ENTRY ?? path.join(projectDir, 'node_modules/@steamharness/cli/dist/index.js');
 const data = await mkdtemp(path.join(os.tmpdir(), 'studio-workflow-ui-'));
 const proofDir = path.join(root, '.studio/workflow-migration'); await mkdir(proofDir, { recursive: true });
 const cliVersion = JSON.parse(await readFile(path.join(path.dirname(cliEntry), '../package.json'), 'utf8')).version;
-if (!process.env.WORKFLOW_UI_CLI_ENTRY) {
-  assert.equal(cliVersion, JSON.parse(await readFile(path.join(projectDir, 'package.json'), 'utf8')).devDependencies['@workflow-code/cli']);
+if (!process.env.STEAMHARNESS_UI_CLI_ENTRY) {
+  assert.equal(cliVersion, JSON.parse(await readFile(path.join(projectDir, 'package.json'), 'utf8')).devDependencies['@steamharness/cli']);
 }
 const proof = { cliVersion, checks: [], screenshots: [], errors: [] };
 const server = createServer((request, response) => {
@@ -29,7 +29,7 @@ let child, browser, context, page, hostStdio;
 async function start(embedded = true) {
   hostStdio = embedded;
   child = spawn(process.execPath, [cliEntry, '--locale', 'zh-CN', 'web', projectDir, '--no-open', '--json', ...(embedded ? ['--host-stdio'] : []), '--data-dir', data], {
-    env: { ...process.env, WORKFLOW_CLI_AUTH_DIR: path.join(data, 'auth'), WORKFLOW_SERVER_URL: '', WORKFLOW_SERVER_ADMIN_KEY: '' }, stdio: ['pipe', 'pipe', 'pipe'],
+    env: { ...process.env, STEAMHARNESS_CLI_AUTH_DIR: path.join(data, 'auth'), STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' }, stdio: ['pipe', 'pipe', 'pipe'],
   });
   if (embedded) { child.stdin.write(`${JSON.stringify({ type: 'configure', surface: 'editor', connection })}\n`); }
   let output = '', error = '';
@@ -63,7 +63,7 @@ async function assertLayout() {
 }
 try {
   let launch = await start(); assert.equal(launch.project.projectType, 'workflow'); assert.equal(launch.hostProtocolVersion, 1);
-  browser = await chromium.launch({ channel: process.env.WORKFLOW_UI_BROWSER ?? 'chrome', headless: true });
+  browser = await chromium.launch({ channel: process.env.STEAMHARNESS_UI_BROWSER ?? 'chrome', headless: true });
   context = await browser.newContext({ viewport: { width: 1280, height: 900 }, colorScheme: 'light' }); page = await context.newPage(); page.setDefaultTimeout(20_000);
   page.on('pageerror', error => proof.errors.push(error.message));
   await page.goto(launch.url); await ready(); await formReady();

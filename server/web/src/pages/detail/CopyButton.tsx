@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { useTranslation } from "@workflow-code/i18n/react";
+import { useTranslation } from "@steamharness/i18n/react";
 import { IconActionButton } from "@/components/ui/composites";
 import { cn } from "@/lib/utils";
 

@@ -13,17 +13,17 @@
 ## 独立仓库边界
 
 - 仓库根就是 Server 根；不要再假设外层 monorepo、`server/` 子目录或 `packages/**` 存在。
-- Core 使用 `package.json` 中精确的 `workflow-code` npm 版本。不得通过 TypeScript path alias 回连同级 Core 源码。
-- Server 始终通过由 `vendor/shared` 刷新的 `.shared/*` 普通目录安装 Shared workspace 依赖；`dev` 和功能分支仅由运行时生成的 `.workflow-local/tsconfig.json` 与 Server Web Vite alias 指向同级 `../shared` 源码，`main`、tag、detached checkout 和 CI 不得启用该 alias。业务源码统一导入 `@workflow-code/*`。
-- `pnpm dev` 在 `dev` 和功能分支直接 watch Server、同级 Core/Shared 源码，并由 Server 同源挂载 Server Web Vite HMR；`pnpm start:local` 保持同样的源码模式和开发端口，但关闭 Server watch 与 Server Web HMR。仓库已有的 `pnpm start` 仍用于运行已构建的 `dist/index.js`。在 `main`、tag 和 detached checkout 必须先执行 `build:all`，再只运行 `dist/index.js` 与 `public` 静态 Web。`WORKFLOW_REPOSITORY_MODE=main` 只能强制收紧到发布模式。
-- 跨仓 Core alias 只能写入运行时生成且被忽略的 `.workflow-local/tsconfig.json`，不得进入提交。提交前和 CI 必须同时执行普通 `pnpm check:boundaries` 与 `WORKFLOW_REPOSITORY_MODE=main pnpm check:boundaries`。
+- Core 使用 `package.json` 中精确的 `steamharness` npm 版本。不得通过 TypeScript path alias 回连同级 Core 源码。
+- Server 始终通过由 `vendor/shared` 刷新的 `.shared/*` 普通目录安装 Shared workspace 依赖；`dev` 和功能分支仅由运行时生成的 `.workflow-local/tsconfig.json` 与 Server Web Vite alias 指向同级 `../shared` 源码，`main`、tag、detached checkout 和 CI 不得启用该 alias。业务源码统一导入 `@steamharness/*`。
+- `pnpm dev` 在 `dev` 和功能分支直接 watch Server、同级 Core/Shared 源码，并由 Server 同源挂载 Server Web Vite HMR；`pnpm start:local` 保持同样的源码模式和开发端口，但关闭 Server watch 与 Server Web HMR。仓库已有的 `pnpm start` 仍用于运行已构建的 `dist/index.js`。在 `main`、tag 和 detached checkout 必须先执行 `build:all`，再只运行 `dist/index.js` 与 `public` 静态 Web。`STEAMHARNESS_REPOSITORY_MODE=main` 只能强制收紧到发布模式。
+- 跨仓 Core alias 只能写入运行时生成且被忽略的 `.workflow-local/tsconfig.json`，不得进入提交。提交前和 CI 必须同时执行普通 `pnpm check:boundaries` 与 `STEAMHARNESS_REPOSITORY_MODE=main pnpm check:boundaries`。
 - Node.js 脚本必须兼容 Windows、macOS 和 Linux 路径；文件路径使用 `node:path`，ESM 入口使用 `pathToFileURL(path.resolve(process.argv[1]))` 或 `fileURLToPath(import.meta.url)` 比较。
 - 只允许提交不含凭据的 `*.env.example`。真实开发 `.env` 保留在本机并由 Git 忽略；正式发布配置必须使用作用域为 `production` 的受保护 GitLab CI/CD Variables 注入。任何输出和测试日志都不得泄露 token、密码、密钥或完整连接串。
 
 ## 功能与文档
 
 - web 平台只连接服务器；Server 不承接 App 的本地 SQLite、本地文件或 Electron 能力。
-- 修改 HTTP API、鉴权、错误码、静态预览或数据访问行为时，同步同级 Docs 仓库的 `../docs/openapi/workflow-code.openapi.yaml` 和相关说明。
+- 修改 HTTP API、鉴权、错误码、静态预览或数据访问行为时，同步同级 Docs 仓库的 `../docs/openapi/steamharness.openapi.yaml` 和相关说明。
 - 修改项目管理、版本、文件、知识库、KV 或部署行为时，同步 `../docs/guides/server/**`；影响 CLI 调用结果时同步 `../docs/cli/workspace/**`。
 - 上传与发布只处理静态元数据和文件，不安装依赖、不构建、不加载项目代码。版本快照不可变，数据权限与源码下载权限独立；成员使用 `owner / manager / writer / viewer`。
 - 节点 payload 必须继承 `WorkflowPayload`，成功结果统一包含 `errCode: 0, errMessage: ""`。

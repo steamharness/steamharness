@@ -1,5 +1,5 @@
 {
-  "name": "@workflow-code/utf8-stream",
+  "name": "@steamharness/utf8-stream",
   "version": "0.1.0",
   "private": true,
   "type": "module",

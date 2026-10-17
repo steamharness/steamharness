@@ -20,10 +20,10 @@ export class BrowserConnection {
   private attempts = 0;
   private closed = false;
   private manual = false;
-  private token = new URLSearchParams(location.hash.slice(1)).get('session') ?? new URLSearchParams(location.search).get('session') ?? sessionStorage.getItem('workflow-web-session');
+  private token = new URLSearchParams(location.hash.slice(1)).get('session') ?? new URLSearchParams(location.search).get('session') ?? sessionStorage.getItem('steamharness-web-session');
 
   constructor(private readonly emit: (message: Message) => void, private readonly live = true, showBanner = true) {
-    if (this.token) { const query = new URLSearchParams(location.search); query.delete('session'); sessionStorage.setItem('workflow-web-session', this.token); history.replaceState(null, '', `${location.pathname}${query.size ? `?${query}` : ''}`); }
+    if (this.token) { const query = new URLSearchParams(location.search); query.delete('session'); sessionStorage.setItem('steamharness-web-session', this.token); history.replaceState(null, '', `${location.pathname}${query.size ? `?${query}` : ''}`); }
     queueMicrotask(() => {
       if (showBanner) {
         this.banner = document.createElement('div');

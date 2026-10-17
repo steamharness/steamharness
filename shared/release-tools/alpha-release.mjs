@@ -151,7 +151,7 @@ function stableJson(value) {
   return JSON.stringify(value);
 }
 
-export function formatReleaseChangeDotenv(changed, variable = "WORKFLOW_ALPHA_CHANGED") {
+export function formatReleaseChangeDotenv(changed, variable = "STEAMHARNESS_ALPHA_CHANGED") {
   const normalizedVariable = String(variable).trim();
   if (!/^[A-Z][A-Z0-9_]*$/u.test(normalizedVariable)) {
     throw new Error(`Release environment variable is invalid: ${variable}`);
@@ -383,8 +383,8 @@ function compareAlphaVersions(left, right) {
 }
 
 export function createGitAuthenticationEnv(
-  token = process.env.WORKFLOW_ALPHA_SYNC_TOKEN || process.env.CI_JOB_TOKEN,
-  username = process.env.WORKFLOW_ALPHA_SYNC_USERNAME || (process.env.WORKFLOW_ALPHA_SYNC_TOKEN ? "oauth2" : "gitlab-ci-token"),
+  token = process.env.STEAMHARNESS_ALPHA_SYNC_TOKEN || process.env.CI_JOB_TOKEN,
+  username = process.env.STEAMHARNESS_ALPHA_SYNC_USERNAME || (process.env.STEAMHARNESS_ALPHA_SYNC_TOKEN ? "oauth2" : "gitlab-ci-token"),
 ) {
   if (!token) return { ...process.env, GIT_TERMINAL_PROMPT: "0" };
   const authorization = Buffer.from(`${username}:${token}`, "utf8").toString("base64");

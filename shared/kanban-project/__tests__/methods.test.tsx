@@ -22,7 +22,7 @@ function connectPage(configurationId = "one", timeoutMs?: number) {
     getPresentation: () => ({ mode: "card" }), timeoutMs, postMessage: (data) => dispatch(data) });
   const page = { parent, setTimeout, clearTimeout, dispatchEvent: vi.fn(),
     addEventListener(type: string, listener: (event: MessageEvent) => void) { if (type === "message") listeners.push(listener); },
-  } as unknown as Window & { workflowCodeKanban: KanbanBrowserApi };
+  } as unknown as Window & { steamHarnessKanban: KanbanBrowserApi };
   const script = createKanbanBridgeScript(configuration, "nonce").replace(/^<script[^>]*>/, "").replace(/<\/script>$/, "");
   new Function("window", "document", script)(page, { readyState: "complete" });
   const invoke = (method = definition.name, args: Record<string, any> = {}, signal?: AbortSignal) => session.invoke({
@@ -35,7 +35,7 @@ describe("Kanban registered methods", () => {
   it("discovers and calls a page handler with JSON and invocation context", async () => {
     const link = connectPage();
     const handler = vi.fn((input, context) => ({ region: input.name, configurationId: context.configuration.id }));
-    const unregister = link.page.workflowCodeKanban.methods.register(definition, handler);
+    const unregister = link.page.steamHarnessKanban.methods.register(definition, handler);
     expect(link.session.getState()).toMatchObject({ ready: true, configurationId: "one", methods: [definition] });
     const metadata = link.session.getState();
     metadata.methods[0]!.name = "tampered";
@@ -49,7 +49,7 @@ describe("Kanban registered methods", () => {
   it("only accepts the authenticated parent and refuses duplicate or stale calls", async () => {
     const link = connectPage();
     const handler = vi.fn(() => "ok");
-    link.page.workflowCodeKanban.methods.register(definition, handler);
+    link.page.steamHarnessKanban.methods.register(definition, handler);
     const call = { type: KANBAN_METHOD_INVOKE_MESSAGE, nonce: "nonce", requestId: "manual", revision: 2,
       configurationId: "one", method: "map.focus", input: {} };
     link.dispatch({ ...call, nonce: "wrong" });
@@ -71,7 +71,7 @@ describe("Kanban registered methods", () => {
     const link = connectPage("one", 20);
     let finish: (value: string) => void = () => {};
     let signal: AbortSignal | undefined;
-    link.page.workflowCodeKanban.methods.register(definition, (_input, context) => {
+    link.page.steamHarnessKanban.methods.register(definition, (_input, context) => {
       signal = context.signal;
       return new Promise<string>((resolve) => { finish = resolve; });
     });
@@ -99,7 +99,7 @@ describe("Kanban registered methods", () => {
     const registry = createKanbanMethodRegistry();
     const first = connectPage("default");
     const second = connectPage("profile-1");
-    for (const link of [first, second]) link.page.workflowCodeKanban.methods.register(definition, (_input, context) => context.configuration.id);
+    for (const link of [first, second]) link.page.steamHarnessKanban.methods.register(definition, (_input, context) => context.configuration.id);
     const unregisterFirst = registry.register({ projectId: "map", source: "local", location: "workspace" }, first.session);
     const unregisterSecond = registry.register({ projectId: "map", source: "local", location: "card", cardId: "card-1" }, second.session);
     expect(registry.list("map", "local").map((item) => item.configurationId)).toEqual(["default", "profile-1"]);
@@ -121,7 +121,7 @@ describe("Kanban registered methods", () => {
     expect(() => parseKanbanMethodDefinitions([{ ...definition, inputSchema: { type: "string" } }])).toThrow();
     expect(() => parseKanbanMethodInvocation({ instanceId: "i", method: "eval", args: {}, projectId: "other" })).toThrow();
     const link = connectPage();
-    link.page.workflowCodeKanban.methods.register(definition, () => undefined as never);
+    link.page.steamHarnessKanban.methods.register(definition, () => undefined as never);
     await expect(link.invoke()).rejects.toMatchObject({ code: "KANBAN_METHOD_FAILED" });
     link.session.close();
   });
@@ -130,11 +130,11 @@ describe("Kanban registered methods", () => {
     const postMessage = vi.fn();
     const session = createKanbanMethodSession({ nonce: "nonce", getConfiguration: () => ({ id: "one", name: "One", params: {} }),
       getPresentation: () => ({ mode: "fullscreen" }), postMessage });
-    session.receive({ type: "workflow-code:kanban-ready", nonce: "nonce", documentId: "old" });
+    session.receive({ type: "steamharness:kanban-ready", nonce: "nonce", documentId: "old" });
     session.receive({ type: KANBAN_METHOD_CATALOG_MESSAGE, nonce: "nonce", documentId: "old", configurationId: "one", revision: 10, methods: [definition] });
     const pending = session.invoke({ instanceId: session.instanceId, configurationId: "one", method: "map.focus", args: {} });
     const rejected = expect(pending).rejects.toMatchObject({ code: "KANBAN_METHOD_INSTANCE_UNAVAILABLE" });
-    session.receive({ type: "workflow-code:kanban-ready", nonce: "nonce", documentId: "new" });
+    session.receive({ type: "steamharness:kanban-ready", nonce: "nonce", documentId: "new" });
     await rejected;
     session.receive({ type: KANBAN_METHOD_CATALOG_MESSAGE, nonce: "nonce", documentId: "old", configurationId: "one", revision: 11, methods: [definition] });
     expect(session.getState().methods).toEqual([]);
@@ -156,7 +156,7 @@ describe("Kanban registered methods", () => {
     });
     send({ type: KANBAN_METHOD_CATALOG_MESSAGE, configurationId: "one", revision: 1, methods: [definition] }, window);
     expect(registry.list("map", "local")[0]!.methods).toEqual([]);
-    send({ type: "workflow-code:kanban-ready" });
+    send({ type: "steamharness:kanban-ready" });
     send({ type: KANBAN_METHOD_CATALOG_MESSAGE, configurationId: "one", revision: 1, methods: [definition] });
     const instanceId = registry.list("map", "local")[0]!.instanceId;
     const pending = registry.invoke("map", "local", { instanceId, configurationId: "one", method: "map.focus", args: {} });

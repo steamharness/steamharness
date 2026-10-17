@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import { assertIsolatedInstall } from "./install-guard.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
-const SKIP_ENVIRONMENT_VARIABLE = "WORKFLOW_SKIP_SIBLING_BOOTSTRAP";
+const SKIP_ENVIRONMENT_VARIABLE = "STEAMHARNESS_SKIP_SIBLING_BOOTSTRAP";
 
 /**
  * Development run plans execute sibling checkouts directly, so a sibling that

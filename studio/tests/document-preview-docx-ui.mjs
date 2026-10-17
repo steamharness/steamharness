@@ -50,7 +50,7 @@ const server = createServer((request, response) => {
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 let browser;
 try {
-  browser = await chromium.launch({ channel: process.env.WORKFLOW_UI_BROWSER ?? 'chrome', headless: true });
+  browser = await chromium.launch({ channel: process.env.STEAMHARNESS_UI_BROWSER ?? 'chrome', headless: true });
   const page = await browser.newPage({ viewport: { width: 960, height: 950 } }); page.setDefaultTimeout(30_000);
   page.on('pageerror', error => proof.errors.push(error.message));
   await page.goto(`http://127.0.0.1:${server.address().port}`); await page.waitForFunction(() => typeof window.previewDocx === 'function');

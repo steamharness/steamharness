@@ -1,6 +1,6 @@
 ---
 version: beta
-name: Workflow Code Shared Quiet Technical Workbench
+name: SteamHarness Shared Quiet Technical Workbench
 description: Shared design contract for a calm and compact workflow, conversation, output, diagram, logs, diagnostics, and markdown workbench.
 colors:
   background: "#F7F8F7"
@@ -136,7 +136,7 @@ Server Web 的主题 token 位于 `server/web/src/theme/tokens.css`，本地 CLI
 - `WorkflowEntrypointsWorkspace` 在当前工作区一次只聚焦一条 live run。任一入口处于 starting、running 或 waiting 时，所有入口的 Run 都必须禁用；只有活动入口显示 loading、Cancel 和结果。此约束只管理当前本地工作区的活动运行。
 - Workflow 入口默认使用 Swagger 式一层扁平折叠列表：全部入口都没有 `group` 时必须保留原 DOM 与视觉，按声明顺序显示标题、ID、默认标记和可选描述。只要存在一个显式分组，就在入口层外增加一层可折叠分区；有 `order` 的分区按升序、同值按首次出现顺序排列，无 `order` 的分区随后按首次出现顺序排列，未声明 `group` 的入口进入参与无序排序的本地化“未分组”分区，分区内入口保持声明顺序。分区使用带 Chevron 的原生按钮及关联 region，不渲染嵌套卡片或多级入口树。
 - 入口标题栏保持 44px 紧凑高度，描述在最右侧单行右对齐，空间不足时省略并通过 `title` 保留完整内容。标题栏不显示 Run，默认入口初始展开，入口必须展开后从内容区运行；分区首次进入作用域时只展开默认入口所在分区，运行入口或接收新的活动/结果入口时自动重新展开对应分区。禁止让一个入口隐式先运行默认入口。
-- Workflow 的 Form/Raw 模式、参数、附件和工具权限草稿按 `workflowId + resolvedTarget + entrypointId` 隔离。入口折叠只保留当前挂载会话语义；分区展开状态使用 `workflow-code:entrypoint-groups:v1:<encoded workflowId>:<encoded target>` 持久化，并以 `group:<id>` / `ungrouped` 区分显式组和未分组。存储不可用或数据损坏时静默回退，恢复时过滤已删除分区，新分区默认折叠。折叠、展开或切换入口不能清空草稿；参数输入、日期选择、resolver 结果和等价入口目录重建也不能改变用户手动选择的折叠状态。运行结果只渲染在实际入口下方，历史和只读回放使用 run 的入口标题/ID 快照。
+- Workflow 的 Form/Raw 模式、参数、附件和工具权限草稿按 `workflowId + resolvedTarget + entrypointId` 隔离。入口折叠只保留当前挂载会话语义；分区展开状态使用 `steamharness:entrypoint-groups:v1:<encoded workflowId>:<encoded target>` 持久化，并以 `group:<id>` / `ungrouped` 区分显式组和未分组。存储不可用或数据损坏时静默回退，恢复时过滤已删除分区，新分区默认折叠。折叠、展开或切换入口不能清空草稿；参数输入、日期选择、resolver 结果和等价入口目录重建也不能改变用户手动选择的折叠状态。运行结果只渲染在实际入口下方，历史和只读回放使用 run 的入口标题/ID 快照。
 - shared 运行界面区分“可触达尺寸”和“视觉层级”：运行主操作、工具权限入口、附件删除/预览、抽屉关闭/恢复、Diagram 控制等高频或触摸风险操作使用 `--hit-target-min: 44px`；assistant 消息结束后的 Trace / Logs / Copy 属于低风险、消息级辅助动作，桌面 fine pointer 可使用 `--hit-target-compact` / `--control-visual-sm` 呈现为小按钮，触摸或窄屏再提升到 44px。
 - hit area 不等于所有控件可见高度。shared 还提供字段、筛选 chip、状态 badge 和列表行 density token：参数输入和工具栏 select 使用 `--field-height-compact`，可交互筛选/切换使用 `--interactive-chip-height-*`，只读状态 badge 使用 `--status-badge-height`，history/session list 使用 `--list-row-height-*`。先判断主操作、可交互辅助、只读状态和列表行层级，再选 token。
 - `1440 / 960 / 720 / 640 / 375px` 是 shared 必验宽度。三栏 workspace 必须按自身实际可用宽度而不是浏览器窗口宽度响应：在 `720-1079px` 把 diagnostics 堆叠到主区下方并占满整行，不能继续压缩主输出；更窄时 rail、主区和 diagnostics 按内容优先级单列化，内部代码块与表格自行滚动而非撑宽页面。
@@ -171,7 +171,7 @@ Server Web 的主题 token 位于 `server/web/src/theme/tokens.css`，本地 CLI
 - **Workflow entrypoints**: `WorkflowEntrypointsWorkspace` 是 Workflow 多入口运行区及可选入口分区的唯一共享组合入口，`WorkflowEntrypointsWorkspaceProps.workflowId` 必须使用跨挂载稳定的项目标识，不能用显示名代替。Conversation 必须继续直接使用 `ConversationWorkspaceInput`，不能为了视觉一致套入入口列表；入口为空时显示独立空状态，异步加载入口目录时由宿主显示 loading，不得把二者合并。
 - **Kanban workspace**: `shared/kanban-project` 统一拥有清单校验、产物目录与 HTML 入口契约、参数值转换、命名配置 CRUD、300ms 自动保存、iframe bridge 和响应式布局。`artifactDir` 默认 `.`，`entry` 默认 `index.html`；宿主只从产物根加载资源，不处理源码构建、dev server 或 HMR。没有参数时不渲染配置 chrome，画布占满容器；存在参数时桌面使用紧凑配置选择器、参数设置侧栏和画布，低于 `760px` 容器宽度时使用顶部配置入口与参数抽屉。配置切换使用有界 listbox，新建保留独立图标入口，重命名、复制和删除进入当前配置菜单；参数表单使用 `ParamsForm variant="settings"` 的纵向标签与全宽控件，短单选项使用紧凑等宽分段布局，换行后的最后一项不得拉满整行，合法十六进制颜色选项同时显示色块和文字。保存状态固定在侧栏标题栏；新建、复制、重命名、删除、切换、保存与预览加载分别维护 loading/error/retry，最后一个配置不可删除，关闭菜单或弹层后恢复触发器焦点。
 - **Kanban iframe**: `KanbanPreviewFrame` 是完整工作区与 Conversation 卡片共用的 iframe/bridge 入口；卡片展开后才创建预览，卸载时由宿主释放本地预览会话。iframe 尺寸必须稳定并使用 `sandbox="allow-scripts"`；宿主只允许带 nonce 的配置、展示模式消息和 KV/知识库白名单 RPC，不得开放项目选择、scope、存储路径、Node、preload、父页面 DOM、弹窗、下载或顶层导航。静态资源使用绑定项目、用户和版本的短期 capability，并返回 CORS 与浏览器可识别 MIME；CSP 的 `connect-src` 只允许该 capability 下的同源产物以及 `data:` / `blob:`，使 ES module、动态 import、WASM 和项目内 `fetch()` 可用但不开放公网请求。宿主在 capability 到期前自动续期并只替换预览 URL/nonce，不覆盖当前配置；临时失败按固定间隔重试，旧 capability 到期后显示可重试错误。RPC 必须校验当前 iframe source、nonce、request id、operation 和 JSON 输入，限制 16 个并发请求并在 15 秒后超时；刷新 iframe 后丢弃旧代次响应，错误只返回安全 code 和文案。配置切换和值更新派发页面事件而不刷新 iframe；只有已保存的 HTML/CSS/JS、外部文件落盘或 capability 续期才触发页面刷新。loading、empty 和 error 状态互斥，错误必须保留重试入口且不能覆盖仍可用的旧配置。
-- **Kanban presentation**: 页面通过 `getPresentation()` 和 `workflow-code:kanban-presentation-change` 获取独立于业务配置的 `{ mode: "fullscreen" | "phone" | "tablet" | "card" }`。完整工作区默认全屏，`compact` 的 Conversation 卡片默认为 card；宿主改变模式时、iframe 加载和就绪时均发送当前值。只接受父窗口和当前 nonce 下的合法模式，不重建 iframe 或重置 RPC 代次。页面依据该模式决定只读布局，并根据自身实际宽高测量内容；调整卡片尺寸不改变 card 语义。
+- **Kanban presentation**: 页面通过 `getPresentation()` 和 `steamharness:kanban-presentation-change` 获取独立于业务配置的 `{ mode: "fullscreen" | "phone" | "tablet" | "card" }`。完整工作区默认全屏，`compact` 的 Conversation 卡片默认为 card；宿主改变模式时、iframe 加载和就绪时均发送当前值。只接受父窗口和当前 nonce 下的合法模式，不重建 iframe 或重置 RPC 代次。页面依据该模式决定只读布局，并根据自身实际宽高测量内容；调整卡片尺寸不改变 card 语义。
 - **Run workspace**: 参数输入保持紧凑；同一表单中的 textarea、日期和普通输入必须共用一条控件起始线，不能因控件类型改变标签列宽。`description` 优先作为 placeholder，不在输入框下重复说明；file 参数不展示 `format: json` 或 managed file JSON。
 - **Active workflow cancellation**: 运行中的 workflow 在结果标题栏最右侧保留 Cancel 操作；流式输出、工具调用和等待输入期间都必须可终止，等待输入复用对应的结束运行路径。
 - **Pending tool approval**: `tool-approval` 等待节点使用专用决策界面，不渲染通用 boolean switch，也不响应 Enter 隐式提交。界面常驻展示工具标识与调用参数，并提供语义完整的“批准并继续”与“拒绝并结束”操作；异步时只在被触发的操作上显示对应 loading 文案。

@@ -34,7 +34,7 @@ description: "Server v0.1.10 的更新说明。"
 - 新增 Runtime 的 KV、PersistentValue、关联项目和文件 API，令牌按项目、用户、任务与截止时间绑定。
 - 新增 运行记录支持重命名与删除，仅项目管理员或运行发起者可操作。
 - 新增 运行记录提供展示名与稳定 `cardId`，嵌入卡片不再随滚动反复创建 DOM。
-- 新增 本机对象存储驱动，`WORKFLOW_STORAGE_DRIVER=local` 后制品与头像写入本机磁盘。
+- 新增 本机对象存储驱动，`STEAMHARNESS_STORAGE_DRIVER=local` 后制品与头像写入本机磁盘。
 - 新增 未配置任何 OSS 凭据也能启动，头像改由只读的 `/storage/avatars` 提供。
 - 新增 ECS 部署的 wflive 中继，Stable 与 Alpha 各自监听 7150 与 7151。
 - 新增 `POST /api/project-storage` 的 `delete` 操作，条目不存在时返回 `{ removed: false }`。
@@ -46,7 +46,7 @@ description: "Server v0.1.10 的更新说明。"
 - 变更 `server:start` 保留源码模式和开发端口但关闭后端监听与 Web 热刷新，`server:dev` 继续热刷新。
 - 变更 关联项目的知识库与入口调用要求目标项目显式授权，访问逐 key 判定。
 - 变更 调用目标入口以发起者身份真实执行一次运行，被调项目自身不再获得关联访问。
-- 变更 `WORKFLOW_OSS_ENDPOINT` 可指向同地域内网端点，但签名 URL 始终按公网端点签发。
+- 变更 `STEAMHARNESS_OSS_ENDPOINT` 可指向同地域内网端点，但签名 URL 始终按公网端点签发。
 
 #### 修复
 
@@ -61,6 +61,6 @@ description: "Server v0.1.10 的更新说明。"
 #### 移除
 
 - 移除 `GET/PUT /api/workflows/{workflowName}/embed` 与全部 `/embed/**` 路由。
-- 移除 `wfembed` 域名与 `WORKFLOW_EMBED_PUBLIC_BASE_URL`；`workflow_embed_configs` 表按 expand-only 保留。
+- 移除 `wfembed` 域名与 `STEAMHARNESS_EMBED_PUBLIC_BASE_URL`；`workflow_embed_configs` 表按 expand-only 保留。
 - 移除 Server Web 的 `/web` 入口页及其可运行版本列表与 `next=web` 回跳。
 - 移除 `server-live` 发布单元、`/api/desktop/v1/*` 与 `/api/web-runs/*` 路由和 `web` 发行目标。

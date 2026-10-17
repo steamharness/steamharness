@@ -37,13 +37,13 @@ pnpm start
 
 | 变量 | 说明 |
 | --- | --- |
-| `WORKFLOW_SERVER_DATA_DIR` | Server 运行数据、缓存和本地对象存储目录。 |
-| `WORKFLOW_DATABASE_URL` | PostgreSQL 连接串。 |
-| `WORKFLOW_STORAGE_DRIVER` | 对象存储后端，只接受 `local`：制品与头像写入本机磁盘。 |
-| `WORKFLOW_LOCAL_STORAGE_ROOT` | `local` 驱动使用的绝对路径。 |
-| `WORKFLOW_PUBLIC_BASE_URL` | 管理端公开地址。 |
-| `WORKFLOW_API_PUBLIC_BASE_URL` | API 的公开 HTTP(S) origin。 |
-| `WORKFLOW_DOCS_PUBLIC_BASE_URL` | 文档站点地址。 |
+| `STEAMHARNESS_SERVER_DATA_DIR` | Server 运行数据、缓存和本地对象存储目录。 |
+| `STEAMHARNESS_DATABASE_URL` | PostgreSQL 连接串。 |
+| `STEAMHARNESS_STORAGE_DRIVER` | 对象存储后端，只接受 `local`：制品与头像写入本机磁盘。 |
+| `STEAMHARNESS_LOCAL_STORAGE_ROOT` | `local` 驱动使用的绝对路径。 |
+| `STEAMHARNESS_PUBLIC_BASE_URL` | 管理端公开地址。 |
+| `STEAMHARNESS_API_PUBLIC_BASE_URL` | API 的公开 HTTP(S) origin。 |
+| `STEAMHARNESS_DOCS_PUBLIC_BASE_URL` | 文档站点地址。 |
 
 Server 不安装依赖、不构建或加载上传的项目代码。源码快照、头像、KV 和知识库数据都应纳入备份策略。
 
@@ -52,7 +52,7 @@ Server 不安装依赖、不构建或加载上传的项目代码。源码快照�
 启动后检查：
 
 ```sh
-curl -i "$WORKFLOW_PUBLIC_BASE_URL/health"
+curl -i "$STEAMHARNESS_PUBLIC_BASE_URL/health"
 ```
 
 反向代理应转发 HTTPS、Host 和 WebSocket 相关 header，并只公开需要的端口。健康检查失败时保留现有数据，先查看服务日志和数据库连接状态，再执行回滚或恢复。

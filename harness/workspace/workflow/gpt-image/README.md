@@ -22,13 +22,13 @@ the saved project environment values through `workflow.getEnv`.
 Inspect structure:
 
 ```bash
-workflow-code structure .
+steamharness structure .
 ```
 
 Generate from text in a conversation:
 
 ```bash
-workflow-code json . --conversation-id image-demo -- \
+steamharness json . --conversation-id image-demo -- \
   --message "A clean product mockup of a workflow node generating an image" \
   --size 1024x1024 \
   --quality auto \
@@ -41,7 +41,7 @@ references like "make it warmer" can use the prior request and its uploaded
 reference images as context:
 
 ```bash
-workflow-code json . --conversation-id image-demo -- \
+steamharness json . --conversation-id image-demo -- \
   --message "Make it warmer and add a small status badge"
 ```
 
@@ -50,7 +50,7 @@ storage; Web uploads them into the server managed file store/database path and
 passes JSON references to the workflow:
 
 ```bash
-workflow-code json . --conversation-id image-demo -- \
+steamharness json . --conversation-id image-demo -- \
   --message "Keep the composition but turn it into a blueprint illustration" \
   --images ./__fixtures__/pixel.png \
   --quality high \

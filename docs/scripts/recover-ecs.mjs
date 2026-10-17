@@ -13,13 +13,13 @@ const FINGERPRINT = "SHA256:ErClJwyZdPzwEU05QWHex4Od9ytRxbn5iAw4Mt+GVcU";
 const REMOTE_ROOT = "/srv/workflow-release";
 
 export async function ensureEcsRelease(options = {}) {
-  const remoteRoot = process.env.WORKFLOW_REMOTE_ROOT ?? "/srv/workflow-release";
+  const remoteRoot = process.env.STEAMHARNESS_REMOTE_ROOT ?? "/srv/workflow-release";
   if (path.resolve(remoteRoot) !== REMOTE_ROOT) throw new Error(`ECS deployment root is fixed at ${REMOTE_ROOT}.`);
   const temp = await mkdtemp(path.join(os.tmpdir(), "workflow-docs-recovery-"));
   const key = path.join(temp, "id_ed25519");
   const knownHosts = path.join(temp, "known_hosts");
   try {
-    await writeSecret(key, process.env.WORKFLOW_REMOTE_SSH_KEY);
+    await writeSecret(key, process.env.STEAMHARNESS_REMOTE_SSH_KEY);
     await pinHost(knownHosts);
     const ssh = ["-i", key, "-p", "22", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", `UserKnownHostsFile=${knownHosts}`, `root@${HOST}`];
     await run("ssh", [...ssh, `'${remoteRoot}/bin/ecs-runtime-agent.sh' ensure release`]);
@@ -31,7 +31,7 @@ export async function ensureEcsRelease(options = {}) {
 
 async function writeSecret(file, value) {
   const raw = String(value ?? "").trim();
-  if (!raw) throw new Error("WORKFLOW_REMOTE_SSH_KEY is required.");
+  if (!raw) throw new Error("STEAMHARNESS_REMOTE_SSH_KEY is required.");
   await writeFile(file, decodeEcsKey(existsSync(raw) ? await readFile(raw, "utf8") : raw), { mode: 0o600 });
   await chmod(file, 0o600);
 }

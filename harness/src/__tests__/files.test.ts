@@ -18,7 +18,7 @@ import {
 } from "../index";
 
 test("video paths and managed references retain MIME type and bytes through file storage", async () => {
-  const rootDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-video-files-"));
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-video-files-"));
   try {
     const store = createWorkflowFileStore({});
     const kv = createWorkflowKVContext({ store: createLocalWorkflowKVStore({ rootDir }), projectId: "media-test" });
@@ -58,7 +58,7 @@ test("video paths and managed references retain MIME type and bytes through file
 });
 
 test("server workflow file store writes generated files into the server file namespace", async () => {
-  const rootDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-created-files-"));
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-created-files-"));
   try {
     const store = createServerWorkflowFileStore({
       rootDir,
@@ -152,7 +152,7 @@ test("remote workflow file store uploads generated files through the server file
 });
 
 test("remote workflow file store from env falls back to saved CLI auth file", async () => {
-  const authDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-files-auth-"));
+  const authDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-files-auth-"));
   try {
     await writeFile(
       path.join(authDir, "workflow-auth.json"),
@@ -166,7 +166,7 @@ test("remote workflow file store from env falls back to saved CLI auth file", as
 
     const store = createRemoteWorkflowFileStoreFromEnv({
       env: {
-        WORKFLOW_CLI_AUTH_DIR: authDir,
+        STEAMHARNESS_CLI_AUTH_DIR: authDir,
       } as NodeJS.ProcessEnv,
       workflowName: "demo",
       conversationId: "thread-1",

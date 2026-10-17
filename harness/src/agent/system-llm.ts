@@ -21,7 +21,7 @@ export const DEFAULT_AGENT_ANTHROPIC_MODEL = "claude-sonnet-5";
 export const DEFAULT_AGENT_OPENAI_MODEL = "gpt-5.6-terra";
 
 const SYSTEM_AI_UNSUPPORTED_MESSAGE =
-  "当前 Workflow Code 运行时版本不支持系统 AI 配置，请更新 Desktop 后重试。";
+  "当前 SteamHarness 运行时版本不支持系统 AI 配置，请更新 Desktop 后重试。";
 
 /**
  * A host without a configured private AI service may still run an agent with

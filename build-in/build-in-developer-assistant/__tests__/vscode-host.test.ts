@@ -2,9 +2,9 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AgentInput, AgentProjectOptions, AgentToolSet, McpServerConnection, NodeContext, WorkflowExecutorContext } from "workflow-code";
-import { installWorkflowRuntimeGlobal } from "workflow-code/runtime-api";
-import { createAgentRuntime } from "workflow-code";
+import type { AgentInput, AgentProjectOptions, AgentToolSet, McpServerConnection, NodeContext, WorkflowExecutorContext } from "steamharness";
+import { installWorkflowRuntimeGlobal } from "steamharness/runtime-api";
+import { createAgentRuntime } from "steamharness";
 import { createDeveloperAssistantSystemPrompt } from "../assistant-prompt";
 
 const temporary: string[] = [];
@@ -40,7 +40,7 @@ async function loadHost(environment: Record<string, string> = {}, connection?: M
 describe("VS Code assistant host", () => {
   const definition = {
     id: "workflow-studio", command: [process.execPath, "/apps/cli/index.js", "mcp", "/apps/studio-control"],
-    inheritEnvironment: ["WORKFLOW_STUDIO_CONTROL_BRIDGE_URL", "WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN"],
+    inheritEnvironment: ["STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL", "STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN"],
   };
 
   it("offers Studio MCP tools with approvals, disabled-tool filtering and run-scoped cleanup", async () => {
@@ -52,8 +52,8 @@ describe("VS Code assistant host", () => {
       { name: "get_related_projects", inputSchema: { type: "object", properties: { projectDir: { type: "string" } } } },
       { name: "legacy_desktop_tool", inputSchema: { type: "object" } },
     ], callTool, close };
-    const host = await loadHost({ WORKFLOW_STUDIO_CONTROL_MCP_SERVER: JSON.stringify(definition),
-      WORKFLOW_STUDIO_CONTROL_BRIDGE_URL: "http://127.0.0.1:1/studio-control", WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN: "test-capability" }, connection);
+    const host = await loadHost({ STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER: JSON.stringify(definition),
+      STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL: "http://127.0.0.1:1/studio-control", STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN: "test-capability" }, connection);
     const context = { toolPermissions: { getTool: (name: string) => ({ enabled: name !== "workflow-studio_studio_state" }) } } as unknown as NodeContext;
     const deferred = await host.options.createTools!(context) as AgentToolSet;
     expect(host.connect).not.toHaveBeenCalled();
@@ -70,25 +70,25 @@ describe("VS Code assistant host", () => {
     await related.execute("related", { projectDir: "projects/notes" });
     expect(host.approve).toHaveBeenCalledWith({ name: "workflow-studio_get_related_projects", arguments: { projectDir: "projects/notes" } }, context);
     expect(callTool).toHaveBeenCalledWith("get_related_projects", { projectDir: "projects/notes" }, undefined);
-    expect(host.connect).toHaveBeenCalledWith({ ...definition, environment: { WORKFLOW_STUDIO_CONTROL_PERMISSION_POLICY: "auto" } },
-      expect.objectContaining({ env: expect.objectContaining({ WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN: "test-capability" }) }));
+    expect(host.connect).toHaveBeenCalledWith({ ...definition, environment: { STEAMHARNESS_STUDIO_CONTROL_PERMISSION_POLICY: "auto" } },
+      expect.objectContaining({ env: expect.objectContaining({ STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN: "test-capability" }) }));
     await set.close!(); expect(close).toHaveBeenCalledOnce();
   });
 
   it("removes injected capability credentials from coding-tool shell environments", async () => {
-    vi.stubEnv("WORKFLOW_STUDIO_CONTROL_MCP_SERVER", JSON.stringify(definition));
-    vi.stubEnv("WORKFLOW_STUDIO_CONTROL_BRIDGE_URL", "http://127.0.0.1:1/studio-control");
-    vi.stubEnv("WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN", "test-capability");
+    vi.stubEnv("STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER", JSON.stringify(definition));
+    vi.stubEnv("STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL", "http://127.0.0.1:1/studio-control");
+    vi.stubEnv("STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN", "test-capability");
     const host = await loadHost(Object.fromEntries(definition.inheritEnvironment.map(key => [key, process.env[key]!])));
-    expect(process.env.WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN).toBeUndefined();
-    expect(process.env.WORKFLOW_STUDIO_CONTROL_BRIDGE_URL).toBeUndefined();
-    expect(process.env.WORKFLOW_STUDIO_CONTROL_MCP_SERVER).toBeUndefined();
+    expect(process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN).toBeUndefined();
+    expect(process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL).toBeUndefined();
+    expect(process.env.STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER).toBeUndefined();
     expect(host.connect).not.toHaveBeenCalled();
   });
 
   it("rejects legacy server identities and inline capability secrets before connecting", async () => {
-    for (const invalid of [{ ...definition, id: "workflow-desktop" }, { ...definition, environment: { WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN: "secret" } }]) {
-      const host = await loadHost({ WORKFLOW_STUDIO_CONTROL_MCP_SERVER: JSON.stringify(invalid) });
+    for (const invalid of [{ ...definition, id: "workflow-desktop" }, { ...definition, environment: { STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN: "secret" } }]) {
+      const host = await loadHost({ STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER: JSON.stringify(invalid) });
       await expect(host.options.createTools!({} as NodeContext)).rejects.toThrow();
       expect(host.connect).not.toHaveBeenCalled();
     }
@@ -96,7 +96,7 @@ describe("VS Code assistant host", () => {
 
   it("closes the connection if the server publishes an unusable tool schema", async () => {
     const close = vi.fn(async () => {});
-    const host = await loadHost({ WORKFLOW_STUDIO_CONTROL_MCP_SERVER: JSON.stringify(definition) }, {
+    const host = await loadHost({ STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER: JSON.stringify(definition) }, {
       id: "workflow-studio", tools: [{ name: "studio_state", inputSchema: null }], close,
       callTool: async () => ({ content: [], isError: false }),
     });
@@ -108,17 +108,17 @@ describe("VS Code assistant host", () => {
 
   it.each([undefined, "vscode"])("offers skills without a Desktop MCP process for host %s", async (value) => {
     const host = await loadHost({
-      ...(value === undefined ? {} : { WORKFLOW_DEVELOPER_ASSISTANT_HOST: value }),
-      WORKFLOW_DESKTOP_CONTROL_MCP_SERVER: "invalid legacy control configuration",
-      WORKFLOW_DESKTOP_CONTROL_PROXY_URL: "http://127.0.0.1:1",
-      WORKFLOW_DESKTOP_CONTROL_PROXY_TOKEN: "legacy-test-token",
+      ...(value === undefined ? {} : { STEAMHARNESS_DEVELOPER_ASSISTANT_HOST: value }),
+      STEAMHARNESS_DESKTOP_CONTROL_MCP_SERVER: "invalid legacy control configuration",
+      STEAMHARNESS_DESKTOP_CONTROL_PROXY_URL: "http://127.0.0.1:1",
+      STEAMHARNESS_DESKTOP_CONTROL_PROXY_TOKEN: "legacy-test-token",
     });
     const tools = await host.options.createTools!({} as NodeContext) as AgentToolSet;
     expect(tools.tools.map((tool) => tool.name)).toEqual([
       "workflow-memory_global_memory", "workflow-ui_present_card", "skill",
     ]);
     expect(host.connect).not.toHaveBeenCalled();
-    expect(host.getEnv.mock.calls.every(([name]) => !name.startsWith("WORKFLOW_DESKTOP_CONTROL"))).toBe(true);
+    expect(host.getEnv.mock.calls.every(([name]) => !name.startsWith("STEAMHARNESS_DESKTOP_CONTROL"))).toBe(true);
     expect(tools.close).toBeUndefined();
     const skill = tools.tools.find((tool) => tool.name === "skill")!;
     const result = await skill.execute("list", { action: "list" });
@@ -140,9 +140,9 @@ describe("VS Code assistant host", () => {
     ] };
     const manifestPath = path.join(root, "manifest.json");
     await writeFile(manifestPath, JSON.stringify(manifest));
-    const host = await loadHost({ WORKFLOW_DEVELOPER_ASSISTANT_HOST: "vscode",
-      WORKFLOW_DEVELOPER_ASSISTANT_WORKDIR: root,
-      WORKFLOW_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST: manifestPath,
+    const host = await loadHost({ STEAMHARNESS_DEVELOPER_ASSISTANT_HOST: "vscode",
+      STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR: root,
+      STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST: manifestPath,
     });
     const executor = host.module.executor as unknown as { createInput(context: WorkflowExecutorContext): Promise<AgentInput> };
     const input = await executor.createInput({ args: ["--message", "Read my project"],
@@ -172,7 +172,7 @@ describe("VS Code assistant host", () => {
     await writeFile(manifestPath, JSON.stringify({ schemaVersion: 2, primaryTarget: target, warnings: [],
       roots: [{ target, name: "Primary", rootPath: root, role: "primary", depth: 0 }],
     }));
-    const host = await loadHost({ WORKFLOW_DEVELOPER_ASSISTANT_WORKDIR: root, WORKFLOW_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST: manifestPath });
+    const host = await loadHost({ STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR: root, STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST: manifestPath });
     const executor = host.module.executor as unknown as {
       createInput(context: WorkflowExecutorContext): Promise<AgentInput>;
       createContext(context: WorkflowExecutorContext): Partial<NodeContext>;
@@ -199,13 +199,13 @@ describe("VS Code assistant host", () => {
 
   it.each(["read-only", "workspace", "auto"])("passes the run's %s policy to MCP without accepting a configured override", async permissionPolicy => {
     const connection = { id: "workflow-studio", tools: [], close: async () => {}, callTool: async () => ({ content: [], isError: false }) };
-    const host = await loadHost({ WORKFLOW_STUDIO_CONTROL_MCP_SERVER: JSON.stringify({ ...definition,
-      environment: { WORKFLOW_STUDIO_CONTROL_PERMISSION_POLICY: "auto" },
+    const host = await loadHost({ STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER: JSON.stringify({ ...definition,
+      environment: { STEAMHARNESS_STUDIO_CONTROL_PERMISSION_POLICY: "auto" },
     }) }, connection);
     const deferred = await host.options.createTools!({ metadata: { studioControlPermissionPolicy: permissionPolicy } } as unknown as NodeContext) as AgentToolSet;
     expect(host.connect).not.toHaveBeenCalled();
     const tools = await deferred.catalogs![0]!.open();
-    expect(host.connect).toHaveBeenCalledWith(expect.objectContaining({ environment: { WORKFLOW_STUDIO_CONTROL_PERMISSION_POLICY: permissionPolicy } }), expect.anything());
+    expect(host.connect).toHaveBeenCalledWith(expect.objectContaining({ environment: { STEAMHARNESS_STUDIO_CONTROL_PERMISSION_POLICY: permissionPolicy } }), expect.anything());
     await tools.close!();
   });
 
@@ -219,7 +219,7 @@ describe("VS Code assistant host", () => {
     await writeFile(manifestPath, JSON.stringify({ schemaVersion: 2, primaryTarget: target, warnings: [],
       roots: [{ target, name: "Primary", rootPath: root, role: "primary", depth: 0 }],
     }));
-    const host = await loadHost({ WORKFLOW_DEVELOPER_ASSISTANT_WORKDIR: root, WORKFLOW_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST: manifestPath });
+    const host = await loadHost({ STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR: root, STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST: manifestPath });
     const executor = host.module.executor as unknown as { createInput(context: WorkflowExecutorContext): Promise<AgentInput> };
     const input = await executor.createInput({ args: ["--message", "Use the external fixture files"],
       paramValues: permissionPolicy === "auto" ? {} : { permissionPolicy },
@@ -248,7 +248,7 @@ describe("VS Code assistant host", () => {
   });
 
   it.each(["desktop", "unknown"])("rejects unsupported host %s", async (value) => {
-    const unknown = await loadHost({ WORKFLOW_DEVELOPER_ASSISTANT_HOST: value });
+    const unknown = await loadHost({ STEAMHARNESS_DEVELOPER_ASSISTANT_HOST: value });
     await expect(unknown.options.createTools!({} as NodeContext)).rejects.toThrow("Unsupported assistant host");
   });
 });

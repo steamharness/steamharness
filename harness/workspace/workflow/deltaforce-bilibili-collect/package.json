@@ -1,6 +1,6 @@
 {
   "id": "e48aae56-7e59-45f5-adc3-f30e9c65d23c",
-  "name": "@workflow-code/deltaforce-bilibili-collect-workflow",
+  "name": "@steamharness/deltaforce-bilibili-collect-workflow",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,17 +10,17 @@
     "ffmpeg-static": "^5.3.0"
   },
   "scripts": {
-    "dev": "workflow-code run .",
-    "inspect": "workflow-code structure .",
-    "run:json": "workflow-code json .",
-    "workspace:upload": "workflow-code workspace upload .",
-    "workspace:publish": "workflow-code workspace publish ."
+    "dev": "steamharness run .",
+    "inspect": "steamharness structure .",
+    "run:json": "steamharness json .",
+    "workspace:upload": "steamharness workspace upload .",
+    "workspace:publish": "steamharness workspace publish ."
   },
   "devDependencies": {
-    "@workflow-code/cli": "0.2.3-20260901001",
-    "workflow-code": "0.2.3-20260901001"
+    "@steamharness/cli": "0.2.3-20260901001",
+    "steamharness": "0.2.3-20260901001"
   },
-  "workflowCode": {
+  "steamHarness": {
     "projectInfo": {
       "dataStorage": {
         "mode": "local"

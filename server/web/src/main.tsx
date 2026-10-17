@@ -2,7 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 import { App } from "./App";
-import { initI18n } from "@workflow-code/i18n/react";
+import { initI18n } from "@steamharness/i18n/react";
 
 initI18n({ storageKey: "workflow-server-admin:locale" });
 

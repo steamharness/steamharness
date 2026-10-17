@@ -22,8 +22,8 @@ async function fixture(t, configuration = {}) {
   await fs.writeFile(cliEntry, `
     import * as fs from 'node:fs/promises'; import path from 'node:path';
     const args = process.argv.slice(2), config = JSON.parse(await fs.readFile('config.json', 'utf8'));
-    await fs.writeFile('request.json', JSON.stringify({ args, server: process.env.WORKFLOW_SERVER_URL, token: process.env.WORKFLOW_SERVER_ADMIN_KEY, nodeOptions: process.env.NODE_OPTIONS, packs: process.env.WORKFLOW_WORKSPACE_PACKS_DIR }));
-    if (config.failure) { console.error(process.env.WORKFLOW_SERVER_ADMIN_KEY + ' denied'); process.exit(1); }
+    await fs.writeFile('request.json', JSON.stringify({ args, server: process.env.STEAMHARNESS_SERVER_URL, token: process.env.STEAMHARNESS_SERVER_ADMIN_KEY, nodeOptions: process.env.NODE_OPTIONS, packs: process.env.STEAMHARNESS_WORKSPACE_PACKS_DIR }));
+    if (config.failure) { console.error(process.env.STEAMHARNESS_SERVER_ADMIN_KEY + ' denied'); process.exit(1); }
     if (args.includes('upload')) { console.log(JSON.stringify({errCode: 0, data: { jobId: 'job-1' }})); }
     else {
       const root = args[args.indexOf('--path') + 1], projects = [];

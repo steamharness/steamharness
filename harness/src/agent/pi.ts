@@ -55,7 +55,7 @@ export type PiStreamFn = (model: Model<Api>, context: Context, options?: SimpleS
   AssistantMessageEventStream | Promise<AssistantMessageEventStream>;
 
 /**
- * The SDK is a hard dependency but is imported on demand: `workflow-code` is
+ * The SDK is a hard dependency but is imported on demand: `steamharness` is
  * loaded by the CLI, Desktop and Server at startup, and none of them should
  * pay for the provider catalog until a run actually creates an agent.
  */
@@ -102,7 +102,7 @@ async function loadBuiltinModels(): Promise<MutableModels> {
 }
 
 /** `api` id for models this package registers against a caller-supplied endpoint. */
-const CUSTOM_API_ID = "workflow-code-custom";
+const CUSTOM_API_ID = "steamharness-custom";
 
 export const DEFAULT_AGENT_PROVIDER = "anthropic";
 export const DEFAULT_AGENT_MAX_TOKENS = 8_192;

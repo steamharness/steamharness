@@ -74,7 +74,7 @@ function isMissingPathError(error) {
 async function valid(directory) {
   try {
     return JSON.parse(await readFile(path.join(directory, "i18n", "package.json"), "utf8")).name
-      === "@workflow-code/i18n";
+      === "@steamharness/i18n";
   } catch {
     return false;
   }
@@ -87,7 +87,7 @@ async function listSharedPackages(directory) {
     if (!entry.isDirectory()) continue;
     try {
       const manifest = JSON.parse(await readFile(path.join(directory, entry.name, "package.json"), "utf8"));
-      if (typeof manifest.name === "string" && manifest.name.startsWith("@workflow-code/")) {
+      if (typeof manifest.name === "string" && manifest.name.startsWith("@steamharness/")) {
         packages.push(entry.name);
       }
     } catch {

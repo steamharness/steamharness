@@ -17,7 +17,7 @@ export async function activateInternalLayer(
 ): Promise<void> {
   const processValue = Reflect.get(globalThis, 'process') as { env?: Record<string, string | undefined> } | undefined;
   const env = processValue?.env;
-  if (env?.WORKFLOW_STUDIO_INTERNAL !== '1' || !env.WORKFLOW_STUDIO_INTERNAL_MODULE) return;
+  if (env?.STEAMHARNESS_STUDIO_INTERNAL !== '1' || !env.STEAMHARNESS_STUDIO_INTERNAL_MODULE) return;
   try {
     const loader = Function('specifier', 'return import(specifier);') as (specifier: string) => Promise<{
       activate?: (options: {
@@ -31,7 +31,7 @@ export async function activateInternalLayer(
         };
       }) => Promise<void> | void;
     }>;
-    const layer = await loader(env.WORKFLOW_STUDIO_INTERNAL_MODULE);
+    const layer = await loader(env.STEAMHARNESS_STUDIO_INTERNAL_MODULE);
     await layer.activate?.({ context, vscode, output, account });
   } catch (error) {
     output.appendLine(`[internal-layer] ${String(error)}`);

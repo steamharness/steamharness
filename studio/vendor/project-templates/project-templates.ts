@@ -86,9 +86,9 @@ export async function createProjectFromTemplate(request: CreateProjectFromTempla
   const packageName = name.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || `project-${id.slice(0, 8)}`;
   const manifest = {
     id, name: packageName, version: '0.1.0', private: true, type: 'module',
-    scripts: { dev: 'workflow-code web .', inspect: 'workflow-code structure .', 'run:json': 'workflow-code json .' },
-    devDependencies: { 'workflow-code': request.versions.core, '@workflow-code/cli': request.versions.cli },
-    workflowCode: {
+    scripts: { dev: 'steamharness web .', inspect: 'steamharness structure .', 'run:json': 'steamharness json .' },
+    devDependencies: { 'steamharness': request.versions.core, '@steamharness/cli': request.versions.cli },
+    steamHarness: {
       projectType: template.projectType,
       ...(template.projectType === 'kanban' ? { kanban: {} } : {}),
       projectInfo: { localizedNames: { en: name, 'zh-CN': name }, platformSupport: { mode: 'agnostic' }, dataStorage: { mode: 'local' } },

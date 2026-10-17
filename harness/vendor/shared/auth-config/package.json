@@ -1,5 +1,5 @@
 {
-  "name": "@workflow-code/auth-config",
+  "name": "@steamharness/auth-config",
   "version": "0.1.0",
   "private": true,
   "type": "module",

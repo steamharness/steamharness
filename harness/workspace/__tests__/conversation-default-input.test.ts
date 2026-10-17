@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { installWorkflowRuntimeGlobal } from "workflow-code/runtime-api";
+import { installWorkflowRuntimeGlobal } from "steamharness/runtime-api";
 
 installWorkflowRuntimeGlobal();
 

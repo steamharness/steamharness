@@ -61,7 +61,7 @@ describe("the SDK the contract describes", () => {
   // On the release channels there is no sibling Core checkout to read the SDK
   // from, so this project's own copy is what gets read — and only its version
   // says whether it is the one Core builds against.
-  it("is the version workflow-code declares", async () => {
+  it("is the version steamharness declares", async () => {
     for (const packageName of ["@earendil-works/pi-ai", "@earendil-works/pi-agent-core"]) {
       const { declared, installed } = await assertSdkMatchesCore(packageName);
 
@@ -70,7 +70,7 @@ describe("the SDK the contract describes", () => {
     }
   });
 
-  it("cannot describe an SDK workflow-code does not declare", async () => {
+  it("cannot describe an SDK steamharness does not declare", async () => {
     await expect(assertSdkMatchesCore("@earendil-works/pi-unknown")).rejects
       .toThrow(/no longer declares @earendil-works\/pi-unknown/u);
   });

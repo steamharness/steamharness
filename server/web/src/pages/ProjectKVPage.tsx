@@ -1,7 +1,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Copy, Database, Eye, Loader2, Search, Trash2 } from "lucide-react";
-import { useTranslation } from "@workflow-code/i18n/react";
+import { useTranslation } from "@steamharness/i18n/react";
 import type { ApiResponse, WorkflowKVEntryDetail, WorkflowKVEntryPage, WorkflowKVEntrySummary, WorkflowKVEntryValueType } from "../types";
 import { isApiSuccess } from "../types";
 import { formatBytes, formatDate } from "../utils/format";

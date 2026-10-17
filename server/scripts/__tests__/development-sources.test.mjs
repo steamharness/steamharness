@@ -9,18 +9,18 @@ import { createSharedCompilerPaths, prepareDevelopmentSources } from "../develop
 test("development sources map Shared package entrypoints and subpaths to the sibling repository", async () => {
   const sharedRoot = await mkdtemp(path.join(os.tmpdir(), "workflow-server-compiler-paths-"));
   await Promise.all([
-    createPackage(sharedRoot, "i18n", { name: "@workflow-code/i18n", types: "./index.ts" }),
-    createPackage(sharedRoot, "project-types", { name: "@workflow-code/project-types", main: "./index.ts" }),
-    createPackage(sharedRoot, "release-tools", { name: "@workflow-code/release-tools" }),
+    createPackage(sharedRoot, "i18n", { name: "@steamharness/i18n", types: "./index.ts" }),
+    createPackage(sharedRoot, "project-types", { name: "@steamharness/project-types", main: "./index.ts" }),
+    createPackage(sharedRoot, "release-tools", { name: "@steamharness/release-tools" }),
     createPackage(sharedRoot, "unrelated", { name: "unrelated", types: "./index.ts" }),
   ]);
 
   const paths = await createSharedCompilerPaths(sharedRoot);
 
-  assert.deepEqual(paths["@workflow-code/i18n"], [path.join(sharedRoot, "i18n", "index.ts")]);
-  assert.deepEqual(paths["@workflow-code/i18n/*"], [path.join(sharedRoot, "i18n", "*")]);
-  assert.deepEqual(paths["@workflow-code/project-types"], [path.join(sharedRoot, "project-types", "index.ts")]);
-  assert.equal("@workflow-code/release-tools" in paths, false);
+  assert.deepEqual(paths["@steamharness/i18n"], [path.join(sharedRoot, "i18n", "index.ts")]);
+  assert.deepEqual(paths["@steamharness/i18n/*"], [path.join(sharedRoot, "i18n", "*")]);
+  assert.deepEqual(paths["@steamharness/project-types"], [path.join(sharedRoot, "project-types", "index.ts")]);
+  assert.equal("@steamharness/release-tools" in paths, false);
   assert.equal("unrelated" in paths, false);
 });
 
@@ -29,9 +29,9 @@ test("development sources repair the Core and Shared checkouts before generating
   const serverRoot = path.join(splitRoot, "server");
   await mkdir(serverRoot, { recursive: true });
   await writeFile(path.join(serverRoot, "tsconfig.json"), "{}\n");
-  const coreRoot = await createSiblingRepository(splitRoot, "core", { name: "workflow-code" });
+  const coreRoot = await createSiblingRepository(splitRoot, "core", { name: "steamharness" });
   const sharedRoot = await createSiblingRepository(splitRoot, "shared", {
-    name: "@workflow-code/shared-workspace",
+    name: "@steamharness/shared-workspace",
   });
   const ensured = [];
 

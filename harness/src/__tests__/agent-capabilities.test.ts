@@ -12,7 +12,7 @@ import {
   KV_CAPABILITY,
   KV_MCP_TOOL_ID,
   PRESENTATION_CARD_MCP_TOOL_ID,
-  WORKFLOW_CAPABILITIES,
+  STEAMHARNESS_CAPABILITIES,
   createWorkflowCapabilityServer,
   createWorkflowCapabilityTools,
   findWorkflowCapability,
@@ -32,8 +32,8 @@ import {
 } from "../index";
 import type { NodeContext } from "../types/context";
 
-const BRIDGE_URL_ENV = "WORKFLOW_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL";
-const BRIDGE_TOKEN_ENV = "WORKFLOW_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN";
+const BRIDGE_URL_ENV = "STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL";
+const BRIDGE_TOKEN_ENV = "STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN";
 
 test("capabilities use local storage by default and permit explicit server storage", () => {
   const base = createContext();
@@ -453,7 +453,7 @@ test("memory is left out of a run the host did not offer it", () => {
 
     // The catalogue still describes it — it is the environment, not the
     // declaration, that decided.
-    assert.equal(WORKFLOW_CAPABILITIES.length, 6);
+    assert.equal(STEAMHARNESS_CAPABILITIES.length, 6);
     assert.equal(isWorkflowCapabilityAvailable(HOST_CONFIGURATION_MCP_TOOL_ID), false);
     assert.equal(isWorkflowCapabilityAvailable(KNOWLEDGE_MCP_TOOL_ID), true);
     assert.equal(isWorkflowCapabilityAvailable(GLOBAL_MEMORY_MCP_TOOL_ID), true);

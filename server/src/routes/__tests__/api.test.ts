@@ -11,8 +11,8 @@ import { createApiRouter } from "../api";
 import type { WorkflowAuditEventPage, WorkflowUserProfileRecord } from "../../account-db";
 import { PROJECT_CARD_IMAGE_MAX_BYTES, WorkflowStorage } from "../../storage";
 import type { WorkflowKVEntryDetail, WorkflowKVEntryPage, WorkflowKnowledgeDocumentLinesRecord, WorkflowKnowledgeDocumentListItem, WorkflowKnowledgeDocumentPage, WorkflowKnowledgeDocumentRecord, WorkflowKnowledgeDocumentSearchResult, WorkflowTokenUsageDetail, WorkflowTokenUsagePage } from "../../storage";
-import { WORKFLOW_PROJECT_TYPES } from "@workflow-code/project-types";
-import type { WorkflowRelatedProject, WorkflowRelatedProjectKVGrant } from "@workflow-code/project-info";
+import { STEAMHARNESS_PROJECT_TYPES } from "@steamharness/project-types";
+import type { WorkflowRelatedProject, WorkflowRelatedProjectKVGrant } from "@steamharness/project-info";
 
 test("source download permission is exposed and granted to the developer role", () => {
   assert.equal(
@@ -1196,7 +1196,7 @@ test("workflows endpoint hides legacy non-UUID ids from admins after cleanup", a
     listWorkflows: async () => ([
       {
         id: "claude-agent",
-        name: "@workflow-code/claude-agent-workflow",
+        name: "@steamharness/claude-agent-workflow",
         projectType: "workflow",
         projectCard: { icon: "bot", iconBackgroundColor: "#2563eb" },
         visibility: "private",
@@ -1381,7 +1381,7 @@ test("create workflow endpoint rejects missing and unknown project types", async
       const errorMessage = (response as { errMessage?: string }).errMessage ?? "";
       assert.match(errorMessage, /projectType is required/i);
       assert.equal(
-        WORKFLOW_PROJECT_TYPES.every((projectType) => errorMessage.includes(JSON.stringify(projectType))),
+        STEAMHARNESS_PROJECT_TYPES.every((projectType) => errorMessage.includes(JSON.stringify(projectType))),
         true,
       );
     }

@@ -1,6 +1,6 @@
 {
   "id": "1e43f54c-f4eb-431f-8033-dc2bf0c19903",
-  "name": "@workflow-code/openai-agents-workflow",
+  "name": "@steamharness/openai-agents-workflow",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -14,17 +14,17 @@
     "zod": "^4.1.13"
   },
   "scripts": {
-    "dev": "workflow-code run .",
-    "inspect": "workflow-code structure .",
-    "run:json": "workflow-code json .",
-    "workspace:upload": "workflow-code workspace upload .",
-    "workspace:publish": "workflow-code workspace publish ."
+    "dev": "steamharness run .",
+    "inspect": "steamharness structure .",
+    "run:json": "steamharness json .",
+    "workspace:upload": "steamharness workspace upload .",
+    "workspace:publish": "steamharness workspace publish ."
   },
   "devDependencies": {
-    "@workflow-code/cli": "0.2.3-20260901001",
-    "workflow-code": "0.2.3-20260901001"
+    "@steamharness/cli": "0.2.3-20260901001",
+    "steamharness": "0.2.3-20260901001"
   },
-  "workflowCode": {
+  "steamHarness": {
     "projectInfo": {
       "dataStorage": {
         "mode": "local"

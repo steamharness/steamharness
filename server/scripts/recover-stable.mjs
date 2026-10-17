@@ -63,7 +63,7 @@ export async function recoverStableServer(options = {}) {
     try {
       const execute = options.runCommand ?? runCommand;
       await execute("corepack", ["pnpm", "build:all"], { cwd: sourceRoot, env });
-      await execute("corepack", ["pnpm", "--filter", "@workflow-code/server", "deploy", "--prod", "--legacy", stagingDir], {
+      await execute("corepack", ["pnpm", "--filter", "@steamharness/server", "deploy", "--prod", "--legacy", stagingDir], {
         cwd: sourceRoot,
         env,
       });
@@ -88,8 +88,8 @@ export async function recoverStableServer(options = {}) {
       cwd: releaseDir,
       env: {
         ...env,
-        WORKFLOW_REPO_ROOT: releaseDir,
-        WORKFLOW_SERVER_DATA_DIR: path.join(paths.releaseRoot, "server-data"),
+        STEAMHARNESS_REPO_ROOT: releaseDir,
+        STEAMHARNESS_SERVER_DATA_DIR: path.join(paths.releaseRoot, "server-data"),
       },
     });
   } catch (error) {

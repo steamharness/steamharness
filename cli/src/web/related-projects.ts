@@ -3,7 +3,7 @@ import { createCliRelatedProjectRuntime, type CliRelatedProjectSpec } from '../r
 import { webProjectDataDirectory } from './kanban-data';
 
 // Web projects keep separate roots; a relation must use the target's own roots.
-export function createWebRelatedProjectRuntime(core: typeof import('workflow-code'), options: {
+export function createWebRelatedProjectRuntime(core: typeof import('steamharness'), options: {
   projectDir: string;
   storageDir: string;
   relatedProjects: readonly CliRelatedProjectSpec[];

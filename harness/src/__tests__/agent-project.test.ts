@@ -1800,8 +1800,8 @@ test("an image-only turn runs and says how many images it carried", async () => 
   const { ai, faux, models, model } = await createFauxModel();
   faux.setResponses([ai.fauxAssistantMessage([ai.fauxText("a picture of a cat")])] as never[]);
 
-  const previousLocale = process.env["WORKFLOW_RUNTIME_LOCALE"];
-  process.env["WORKFLOW_RUNTIME_LOCALE"] = "en";
+  const previousLocale = process.env["STEAMHARNESS_RUNTIME_LOCALE"];
+  process.env["STEAMHARNESS_RUNTIME_LOCALE"] = "en";
   try {
     await withTempDir(async (workdir) => {
       const files = await createFileStore(path.join(workdir, "files"), ["wf-image"]);
@@ -1837,9 +1837,9 @@ test("an image-only turn runs and says how many images it carried", async () => 
     });
   } finally {
     if (previousLocale === undefined) {
-      delete process.env["WORKFLOW_RUNTIME_LOCALE"];
+      delete process.env["STEAMHARNESS_RUNTIME_LOCALE"];
     } else {
-      process.env["WORKFLOW_RUNTIME_LOCALE"] = previousLocale;
+      process.env["STEAMHARNESS_RUNTIME_LOCALE"] = previousLocale;
     }
   }
 });

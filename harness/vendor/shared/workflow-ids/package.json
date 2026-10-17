@@ -1,5 +1,5 @@
 {
-  "name": "@workflow-code/workflow-ids",
+  "name": "@steamharness/workflow-ids",
   "version": "0.1.0",
   "private": true,
   "type": "module",

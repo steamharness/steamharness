@@ -28,7 +28,7 @@ import {
   readWorkflowProjectInfo,
   type WorkflowProjectDataStorageLocation,
   type WorkflowProjectInfo,
-} from "@workflow-code/project-info";
+} from "@steamharness/project-info";
 import { loadWorkflowEnv } from "./env";
 import {
   combineNodeExecutionHooks,
@@ -49,7 +49,7 @@ import {
   type WorkflowDefinedNode,
 } from "./rules";
 import { parseWorkflowParamValues, validateWorkflowParamResolveResult } from "./params";
-import { WORKFLOW_ENTRYPOINT_ID_PATTERN } from "./definition";
+import { STEAMHARNESS_ENTRYPOINT_ID_PATTERN } from "./definition";
 import { assertWorkflowParamDeclarations, normalizeWorkflowParamDeclarations } from "./param-definition";
 import { assertConversationFooter } from "./conversation-footer";
 import { assertConversationUserInput } from "./conversation-input";
@@ -114,7 +114,7 @@ import {
   type WorkflowToolPermissionPolicyMap,
 } from "../tool-permissions/index";
 import {
-  WORKFLOW_PROJECT_TYPE_MIGRATION_EXAMPLE,
+  STEAMHARNESS_PROJECT_TYPE_MIGRATION_EXAMPLE,
   assertNeverWorkflowExecutorProjectType,
   isWorkflowExecutorProjectType,
   type WorkflowExecutorProjectType,
@@ -207,7 +207,7 @@ interface ExecutorStorageContexts {
   host: WorkflowStorageLocationContext;
 }
 
-const WORKFLOW_PROJECT_UUID_PATTERN =
+const STEAMHARNESS_PROJECT_UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const RESUME_RUNTIME_EVENT_AFTER_REQUEST_ID = "__workflowResumeRuntimeEventAfterRequestId";
@@ -953,7 +953,7 @@ export async function runLocalWorkflowWithReport(
         runId,
         conversationId: conversation.conversationId,
         agentStoreDir: options.storage?.[options.storage.host]?.agentStoreDir
-          ?? env.WORKFLOW_AGENT_STORE_DIR ?? path.join(workflowDir, ".workflow", "agents"),
+          ?? env.STEAMHARNESS_AGENT_STORE_DIR ?? path.join(workflowDir, ".workflow", "agents"),
         ...extraContext.metadata,
         ...(selected.entrypointId === undefined
           ? {}
@@ -1514,7 +1514,7 @@ function createExecutorStorageLocationContext(options: {
       };
     }
     const kvStore = options.backend.kvStore ?? createLocalWorkflowKVStore({
-      rootDir: options.backend.kvStoreDir ?? path.join(os.tmpdir(), "workflow-code-kv"),
+      rootDir: options.backend.kvStoreDir ?? path.join(os.tmpdir(), "steamharness-kv"),
       storageKind: "kv",
     });
     const persistentValueStoreDir = options.backend.persistentValueStoreDir?.trim();
@@ -1643,8 +1643,8 @@ function resolveWorkflowExecutionStorageOptions(
   return {
     host: "local",
     local: {
-      kvStoreDir: env?.WORKFLOW_KV_STORE_DIR,
-      persistentValueStoreDir: env?.WORKFLOW_PERSISTENT_VALUE_STORE_DIR,
+      kvStoreDir: env?.STEAMHARNESS_KV_STORE_DIR,
+      persistentValueStoreDir: env?.STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR,
     },
   };
 }
@@ -1657,7 +1657,7 @@ function resolveWorkflowExecutionHostLocation(
   if (mode === undefined) {
     throw new WorkflowError({
       type: "input_validation",
-      message: "workflowCode.projectInfo.dataStorage.mode must be declared before this project can run.",
+      message: "steamHarness.projectInfo.dataStorage.mode must be declared before this project can run.",
     });
   }
   return mode === "both" ? preferredHost : mode;
@@ -1700,20 +1700,20 @@ function readWorkflowProjectStorageDeclaration(
   } catch (error) {
     throw new WorkflowError({
       type: "input_validation",
-      message: error instanceof Error ? error.message : "workflowCode.projectInfo is invalid.",
+      message: error instanceof Error ? error.message : "steamHarness.projectInfo is invalid.",
     });
   }
   if (projectInfo.dataStorage === null) {
     throw new WorkflowError({
       type: "input_validation",
-      message: "workflowCode.projectInfo.dataStorage.mode must be declared before this project can run or access data.",
+      message: "steamHarness.projectInfo.dataStorage.mode must be declared before this project can run or access data.",
       metadata: { packagePath },
     });
   }
   const projectId = isRecord(packageJson) && typeof packageJson["id"] === "string"
     ? packageJson["id"].trim() || undefined
     : undefined;
-  if (projectId === undefined || !WORKFLOW_PROJECT_UUID_PATTERN.test(projectId)) {
+  if (projectId === undefined || !STEAMHARNESS_PROJECT_UUID_PATTERN.test(projectId)) {
     throw new WorkflowError({
       type: "input_validation",
       message: "package.json.id must be a UUID before this project can run or access data.",
@@ -1865,8 +1865,8 @@ export async function runWorkspaceWorkflowFromCli(
     storage: {
       host: "local",
       local: {
-        kvStoreDir: process.env.WORKFLOW_KV_STORE_DIR,
-        persistentValueStoreDir: process.env.WORKFLOW_PERSISTENT_VALUE_STORE_DIR,
+        kvStoreDir: process.env.STEAMHARNESS_KV_STORE_DIR,
+        persistentValueStoreDir: process.env.STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR,
       },
     },
   });
@@ -1909,8 +1909,8 @@ export async function runWorkspaceWorkflowReportFromCli(
     storage: {
       host: "local",
       local: {
-        kvStoreDir: process.env.WORKFLOW_KV_STORE_DIR,
-        persistentValueStoreDir: process.env.WORKFLOW_PERSISTENT_VALUE_STORE_DIR,
+        kvStoreDir: process.env.STEAMHARNESS_KV_STORE_DIR,
+        persistentValueStoreDir: process.env.STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR,
       },
     },
     nodeHooks: options.nodeHooks,
@@ -1956,7 +1956,7 @@ export function inspectWorkspaceWorkflowStructureFromCli(
   if (workflowName === undefined || workflowName.trim() === "") {
     throw new WorkflowError({
       type: "input_validation",
-      message: "Missing workflow directory. Usage: workflow-code structure <workflow-dir>",
+      message: "Missing workflow directory. Usage: steamharness structure <workflow-dir>",
     });
   }
 
@@ -2204,7 +2204,7 @@ function isWorkflowEntrypointDefinition(
   const entrypoint = value as Record<string, unknown>;
   return (
     typeof entrypoint["id"] === "string" &&
-    WORKFLOW_ENTRYPOINT_ID_PATTERN.test(entrypoint["id"]) &&
+    STEAMHARNESS_ENTRYPOINT_ID_PATTERN.test(entrypoint["id"]) &&
     typeof entrypoint["title"] === "string" &&
     entrypoint["title"].trim() !== "" &&
     isWorkflowEntrypointGroupDefinition(entrypoint["group"]) &&
@@ -2281,7 +2281,7 @@ function resolveExecutorExecution(
 }
 
 function createProjectTypeValidationMessage(reason: string): string {
-  return `${reason}\n\nMigration example:\n${WORKFLOW_PROJECT_TYPE_MIGRATION_EXAMPLE}`;
+  return `${reason}\n\nMigration example:\n${STEAMHARNESS_PROJECT_TYPE_MIGRATION_EXAMPLE}`;
 }
 
 function isConversationProjectType(projectType: WorkflowExecutorProjectType): boolean {
@@ -2555,8 +2555,8 @@ function readSchedulePresetValue(
   projectType: WorkflowProjectType,
   entrypoints: NonNullable<WorkflowStructureReport["entrypoints"]>,
 ): WorkflowSchedulePreset[] {
-  const workflowCode = readOptionalRecordField(packageJson, "workflowCode");
-  const value = workflowCode?.["schedulePresets"];
+  const steamHarness = readOptionalRecordField(packageJson, "steamHarness");
+  const value = steamHarness?.["schedulePresets"];
   if (value === undefined) return [];
   try {
     const presets = parseWorkflowSchedulePresets(value, projectType);
@@ -2565,13 +2565,13 @@ function readSchedulePresetValue(
       const entrypoint = entrypointsById.get(preset.entrypointId);
       if (entrypoint === undefined) {
         throw new Error(
-          `workflowCode.schedulePresets entry "${preset.id}" references unknown entrypoint "${preset.entrypointId}".`,
+          `steamHarness.schedulePresets entry "${preset.id}" references unknown entrypoint "${preset.entrypointId}".`,
         );
       }
       validateWorkflowScheduleParamValues(
         preset.paramValues,
         entrypoint.params ?? [],
-        `workflowCode.schedulePresets entry "${preset.id}".paramValues`,
+        `steamHarness.schedulePresets entry "${preset.id}".paramValues`,
       );
     }
     return presets;

@@ -1,4 +1,4 @@
-import type { OpenAIAgentsRunner } from "@workflow-code/openai-agents-workflow/interface";
+import type { OpenAIAgentsRunner } from "@steamharness/openai-agents-workflow/interface";
 import type {
   AgentToolResult,
   ConversationChatMessage,
@@ -8,7 +8,7 @@ import type {
   ParsedAgentInput,
   WorkflowPayload,
   WorkflowNodeContext,
-} from "@workflow-code/deltafore-agent-workflow/interface";
+} from "@steamharness/deltafore-agent-workflow/interface";
 
 export type DeltaforceOpenAIAgentInput = DeltaforeAgentInput & {
   agentRunner?: OpenAIAgentsRunner;

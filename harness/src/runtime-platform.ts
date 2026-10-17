@@ -1,6 +1,6 @@
 export type WorkflowRuntimePlatform = "cli" | "desktop";
 
-export const WORKFLOW_RUNTIME_PLATFORM_ENV = "WORKFLOW_RUNTIME_PLATFORM";
+export const STEAMHARNESS_RUNTIME_PLATFORM_ENV = "STEAMHARNESS_RUNTIME_PLATFORM";
 
 export function getRuntimePlatform(): WorkflowRuntimePlatform {
   return normalizeRuntimePlatform(readRuntimePlatformMarker());
@@ -21,7 +21,7 @@ function readRuntimePlatformMarker(): string | undefined {
     };
   };
 
-  return globalWithProcess.process?.env?.[WORKFLOW_RUNTIME_PLATFORM_ENV];
+  return globalWithProcess.process?.env?.[STEAMHARNESS_RUNTIME_PLATFORM_ENV];
 }
 
 function normalizeRuntimePlatform(value: string | undefined): WorkflowRuntimePlatform {
@@ -32,10 +32,10 @@ function normalizeRuntimePlatform(value: string | undefined): WorkflowRuntimePla
   }
 
   if (normalized === "app") {
-    throw new TypeError('WORKFLOW_RUNTIME_PLATFORM="app" is no longer supported; use "desktop".');
+    throw new TypeError('STEAMHARNESS_RUNTIME_PLATFORM="app" is no longer supported; use "desktop".');
   }
 
-  if (normalized) throw new TypeError(`Unsupported WORKFLOW_RUNTIME_PLATFORM: ${normalized}`);
+  if (normalized) throw new TypeError(`Unsupported STEAMHARNESS_RUNTIME_PLATFORM: ${normalized}`);
 
   return "cli";
 }

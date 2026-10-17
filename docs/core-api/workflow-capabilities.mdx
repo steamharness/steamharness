@@ -66,7 +66,7 @@ const toolIds: string[] = workflow.listWorkflowCapabilityToolIds({ globalMemory?
 
 ## 宿主配置
 
-宿主配置只在宿主注入回环桥时可用：`WORKFLOW_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL` 与 `WORKFLOW_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN` 必须同时存在，且地址必须是不带凭据的 `http://127.0.0.1` 回环地址。任一条件不满足，这一项不暴露——地址不合规时 `isWorkflowCapabilityAvailable` 返回 `false`，不会因为一个配置错误中断其它能力；真正调用时才抛出地址不合规的原因，而不是带着令牌去连。
+宿主配置只在宿主注入回环桥时可用：`STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL` 与 `STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN` 必须同时存在，且地址必须是不带凭据的 `http://127.0.0.1` 回环地址。任一条件不满足，这一项不暴露——地址不合规时 `isWorkflowCapabilityAvailable` 返回 `false`，不会因为一个配置错误中断其它能力；真正调用时才抛出地址不合规的原因，而不是带着令牌去连。
 
 ## Conversation 资源卡片
 

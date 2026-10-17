@@ -31,7 +31,7 @@ for (const projectType of ['workflow', 'conversation', 'kanban']) {
     const relation = (alias, id) => ({ alias, projectId: id, grantToRelatedProject: { read: { mode: 'all' }, write: { mode: 'none' } } });
     const manifest = { id: projectId, name: `${projectType}-sample`, version: '1.2.3',
       scripts: { postinstall: 'node -e "throw new Error(\'Must not install\')"' },
-      workflowCode: { projectType, projectInfo: { dataStorage: { mode: 'both' },
+      steamHarness: { projectType, projectInfo: { dataStorage: { mode: 'both' },
         relatedProjects: [relation('data', dependencyId)] } } };
     const files = [{ path: 'package.json', content: JSON.stringify(manifest) },
       { path: 'index.ts', content: "throw new Error('Source must not execute');\n" },
@@ -43,7 +43,7 @@ for (const projectType of ['workflow', 'conversation', 'kanban']) {
     const dependencies = [];
     if (projectType === 'kanban') {
       const dependencyFiles = [{ path: 'package.json', content: JSON.stringify({ id: dependencyId, name: 'data', version: '2.0.0',
-        workflowCode: { projectType: 'workflow', projectInfo: { dataStorage: { mode: 'both' }, relatedProjects: [relation('board', projectId)] } } }) }];
+        steamHarness: { projectType: 'workflow', projectInfo: { dataStorage: { mode: 'both' }, relatedProjects: [relation('board', projectId)] } } }) }];
       const hash = sourceHash(dependencyFiles);
       dependencies.push({ alias: 'data', projectId: dependencyId, delivery: 'included', version: '2.0.0', sourceHash: hash });
       projects.push({ alias: 'data', projectId: dependencyId, projectName: 'data', role: 'dependency', version: '2.0.0', sourceHash: hash, files: dependencyFiles });

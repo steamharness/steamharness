@@ -272,10 +272,10 @@ export async function syncWorkspaceProjects(options) {
 
 function parseArgs(argv) {
   const options = {
-    serverUrl: process.env.WORKFLOW_SERVER_URL ?? "",
-    adminToken: process.env.WORKFLOW_SERVER_ADMIN_KEY ?? "",
-    databaseUrl: process.env.WORKFLOW_DATABASE_URL ?? "",
-    dataRoot: process.env.WORKFLOW_SERVER_DATA_DIR ?? "",
+    serverUrl: process.env.STEAMHARNESS_SERVER_URL ?? "",
+    adminToken: process.env.STEAMHARNESS_SERVER_ADMIN_KEY ?? "",
+    databaseUrl: process.env.STEAMHARNESS_DATABASE_URL ?? "",
+    dataRoot: process.env.STEAMHARNESS_SERVER_DATA_DIR ?? "",
     workspaceRoot: resolveDefaultWorkspaceRoot(),
   };
 
@@ -303,16 +303,16 @@ function parseArgs(argv) {
   }
 
   if (options.serverUrl.trim() === "") {
-    throw new Error("Missing --server-url or WORKFLOW_SERVER_URL.");
+    throw new Error("Missing --server-url or STEAMHARNESS_SERVER_URL.");
   }
   if (options.adminToken.trim() === "") {
-    throw new Error("Missing --admin-token or WORKFLOW_SERVER_ADMIN_KEY.");
+    throw new Error("Missing --admin-token or STEAMHARNESS_SERVER_ADMIN_KEY.");
   }
   if (options.databaseUrl.trim() === "") {
-    throw new Error("Missing --database-url or WORKFLOW_DATABASE_URL.");
+    throw new Error("Missing --database-url or STEAMHARNESS_DATABASE_URL.");
   }
   if (options.dataRoot.trim() === "") {
-    throw new Error("Missing --data-root or WORKFLOW_SERVER_DATA_DIR.");
+    throw new Error("Missing --data-root or STEAMHARNESS_SERVER_DATA_DIR.");
   }
 
   return options;
@@ -334,7 +334,7 @@ async function main() {
 }
 
 export function resolveDefaultWorkspaceRoot(env = process.env) {
-  const explicit = env.WORKFLOW_WORKSPACE_ROOT?.trim();
+  const explicit = env.STEAMHARNESS_WORKSPACE_ROOT?.trim();
   if (explicit) {
     return path.resolve(explicit);
   }

@@ -67,7 +67,7 @@ interface UserInputPayload extends WorkflowPayload {
 | 首次执行 | 没有提交值时发布 `user_input_requested`，报告 `pendingUserInput`，run 状态变为 `waiting_for_input`。 |
 | 提交答案 | 本地运行界面提交 `{ requestId, values }`。 |
 | 恢复执行 | runtime 用同一个 `runId` 注入 `resolvedUserInputs`，节点发布 `user_input_resolved` 并返回 payload。 |
-| 非交互 CLI | CLI 不读取 stdin；需要使用 `workflow-code json --run-id ... --resolved-user-inputs-json ...` 恢复。 |
+| 非交互 CLI | CLI 不读取 stdin；需要使用 `steamharness json --run-id ... --resolved-user-inputs-json ...` 恢复。 |
 
 `waiting_for_input` 是可持久保存的非终态。恢复时使用本地保存的 `pendingUserInput`、相同 `runId` 和原 `entrypointId`，不能改用新的默认入口。Conversation 保持单入口，不接受入口参数。Server 不保存或恢复运行记录。
 

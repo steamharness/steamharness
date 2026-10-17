@@ -13,7 +13,7 @@ import {
 } from './core.mjs';
 
 const write = process.stdout.write.bind(process.stdout);
-const send = (kind, value) => write(`__STUDIO_WORKFLOW__${JSON.stringify({ kind, value })}\n`);
+const send = (kind, value) => write(`__STUDIO_STEAMHARNESS__${JSON.stringify({ kind, value })}\n`);
 console.log = console.error;
 const controller = new AbortController();
 process.on('SIGTERM', () => controller.abort(new Error('Stopped.')));
@@ -59,7 +59,7 @@ try {
         projects.push({
           id: pkg.id,
           folderPath,
-          name: pkg.workflowCode?.projectInfo?.localizedNames?.['zh-CN'] ?? pkg.name ?? path.basename(folderPath),
+          name: pkg.steamHarness?.projectInfo?.localizedNames?.['zh-CN'] ?? pkg.name ?? path.basename(folderPath),
           projectType: structure.projectType,
           ...parameters(structure),
           entrypoints: (structure.entrypoints ?? []).map((entry) => ({ id: entry.id, title: entry.title, ...parameters(entry) })),
@@ -80,9 +80,9 @@ try {
       assistantScopeDirectory = await mkdtemp(path.join(dataDir, 'scope-'));
       const manifestPath = path.join(assistantScopeDirectory, 'workspace.json');
       await writeFile(manifestPath, JSON.stringify(manifest));
-      process.env.WORKFLOW_DEVELOPER_ASSISTANT_HOST = 'vscode';
-      process.env.WORKFLOW_DEVELOPER_ASSISTANT_WORKDIR = request.project.assistant.workdir;
-      process.env.WORKFLOW_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST = manifestPath;
+      process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_HOST = 'vscode';
+      process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR = request.project.assistant.workdir;
+      process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST = manifestPath;
     }
     const storage = { host: 'local', local: { kvStoreDir: path.join(dataDir, 'kv'), persistentValueStoreDir: path.join(dataDir, 'values') } };
     const filesDir = path.join(dataDir, 'files');
@@ -192,7 +192,7 @@ try {
     } else { throw new Error('Unknown runtime method.'); }
   } else { throw new Error('Unknown runtime method.'); }
 } catch (error) {
-  write(`__STUDIO_WORKFLOW__${JSON.stringify({ kind: 'error', error: error.message, status: error.metadata?.status })}\n`);
+  write(`__STUDIO_STEAMHARNESS__${JSON.stringify({ kind: 'error', error: error.message, status: error.metadata?.status })}\n`);
   process.exitCode = 1;
 } finally {
   if (assistantScopeDirectory) { await rm(assistantScopeDirectory, { recursive: true, force: true }); }

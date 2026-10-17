@@ -6,12 +6,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, expect, it } from "vitest";
-import type { AgentOutputPayload, WorkflowConversationState, WorkflowTokenUsageAggregate, WorkflowUserInputRequest } from "workflow-code";
-import type { AgentSessionSnapshot } from "workflow-code/agent";
+import type { AgentOutputPayload, WorkflowConversationState, WorkflowTokenUsageAggregate, WorkflowUserInputRequest } from "steamharness";
+import type { AgentSessionSnapshot } from "steamharness/agent";
 
 const directories: string[] = [], children: ChildProcess[] = [];
 const root = path.resolve(import.meta.dirname, "..");
-const loader = createRequire(path.join(root, "node_modules/@workflow-code/cli/package.json")).resolve("tsx");
+const loader = createRequire(path.join(root, "node_modules/@steamharness/cli/package.json")).resolve("tsx");
 afterEach(async () => {
   for (const child of children.splice(0)) if (child.exitCode === null && child.signalCode === null) {
     const exited = once(child, "exit"); child.kill("SIGKILL"); await exited;
@@ -21,9 +21,9 @@ afterEach(async () => {
 function worker(directory: string, scenario: string, phase: string) {
   const child = spawn(process.execPath, ["--import", pathToFileURL(loader).href, "--conditions=development",
     path.join(import.meta.dirname, "fixtures/durable-assistant-worker.ts"), directory, scenario, phase], {
-    cwd: root, env: { ...process.env, WORKFLOW_DEVELOPER_ASSISTANT_HOST: "vscode", WORKFLOW_DEVELOPER_ASSISTANT_WORKDIR: directory,
-      WORKFLOW_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST: path.join(directory, "workspace.json"), WORKFLOW_STUDIO_CONTROL_MCP_SERVER: "",
-      WORKFLOW_DEVELOPER_ASSISTANT_CODE_MODE: scenario === "extensions" ? "true" : "false" },
+    cwd: root, env: { ...process.env, STEAMHARNESS_DEVELOPER_ASSISTANT_HOST: "vscode", STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR: directory,
+      STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST: path.join(directory, "workspace.json"), STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER: "",
+      STEAMHARNESS_DEVELOPER_ASSISTANT_CODE_MODE: scenario === "extensions" ? "true" : "false" },
     stdio: ["ignore", "pipe", "pipe", "ipc"],
   });
   children.push(child); return child;

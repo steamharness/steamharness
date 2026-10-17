@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   inspectWorkflowProjectTypeSources,
   readWorkflowProjectTypeFromSources,
-} from "@workflow-code/project-types/source";
+} from "@steamharness/project-types/source";
 
 describe("project type source inspection", () => {
   it("extracts both supported project types", () => {

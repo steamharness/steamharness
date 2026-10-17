@@ -15,7 +15,7 @@ test("default exports include the retained consumers without the removed host", 
   try {
     const sourceRoot = path.join(root, "dist", "source");
     await mkdir(path.join(sourceRoot, "i18n"), { recursive: true });
-    await writeFile(path.join(sourceRoot, "i18n", "package.json"), '{"name":"@workflow-code/i18n"}\n', "utf8");
+    await writeFile(path.join(sourceRoot, "i18n", "package.json"), '{"name":"@steamharness/i18n"}\n', "utf8");
     const exported = await exportSharedSource({ root, sourceRoot, outputRoot: path.join(root, "consumers") });
     assert.deepEqual(exported.map((entry) => entry.name), ["core", "cli", "server"]);
   } finally {
@@ -33,10 +33,10 @@ test("Shared source exports to each explicit local downstream vendor directory",
     await mkdir(desktopRoot, { recursive: true });
     await mkdir(serverRoot, { recursive: true });
     await Promise.all([
-      writeFile(path.join(sourceRoot, "i18n", "package.json"), '{"name":"@workflow-code/i18n"}\n', "utf8"),
+      writeFile(path.join(sourceRoot, "i18n", "package.json"), '{"name":"@steamharness/i18n"}\n', "utf8"),
       writeFile(path.join(sourceRoot, "i18n", "index.ts"), "export const locale = 'en';\n", "utf8"),
-      writeFile(path.join(desktopRoot, "package.json"), '{"name":"@workflow-code/desktop"}\n', "utf8"),
-      writeFile(path.join(serverRoot, "package.json"), '{"name":"@workflow-code/server"}\n', "utf8"),
+      writeFile(path.join(desktopRoot, "package.json"), '{"name":"@steamharness/desktop"}\n', "utf8"),
+      writeFile(path.join(serverRoot, "package.json"), '{"name":"@steamharness/server"}\n', "utf8"),
     ]);
     const exported = await exportSharedSource({
       root,
@@ -55,14 +55,14 @@ test("Shared source exports to each explicit local downstream vendor directory",
 
 test("remote synchronization is opt-in and target parsing is stable", async () => {
   assert.deepEqual(parseTargets(" ai/desktop,ai/server\nai/desktop/ "), ["ai/desktop", "ai/server"]);
-  await assert.rejects(syncRemoteTargets({ enabled: false }), /requires WORKFLOW_SHARED_REMOTE_SYNC=true/);
+  await assert.rejects(syncRemoteTargets({ enabled: false }), /requires STEAMHARNESS_SHARED_REMOTE_SYNC=true/);
 });
 
 test("remote synchronization reads its protected token from the internal-sync environment", async () => {
   const source = await readFile(path.resolve(import.meta.dirname, "../../.gitlab-ci.yml"), "utf8");
   assert.match(source, /sync:remote:[\s\S]*?environment:\s*\n\s+name: internal-sync\s*\n\s+action: prepare/u);
   assert.match(source, /sync:remote:[\s\S]*?CI_COMMIT_BEFORE_SHA != "0{40}"/u);
-  assert.match(source, /WORKFLOW_SHARED_REMOTE_SYNC:-/u);
+  assert.match(source, /STEAMHARNESS_SHARED_REMOTE_SYNC:-/u);
   assert.match(source, /Remote synchronization is not enabled for this protected ref\./u);
 });
 
@@ -72,8 +72,8 @@ test("alpha CI skips push pipelines and advances through one mirrored Core casca
   assert.match(source, /alpha-release\.mjs reserve --if-changed/u);
   assert.match(source, /sync:alpha:[\s\S]*?No release-worthy Shared changes[\s\S]*?sync:downstream -- --skip-local --skip-ci --remote --branch alpha/u);
   assert.match(source, /snapshot:alpha:[\s\S]*?workspace-snapshot\.mjs --skip-ci --submodule shared/u);
-  assert.match(source, /trigger:core:alpha:[\s\S]*?needs:[\s\S]*?job: alpha:prepare[\s\S]*?artifacts: true[\s\S]*?job: retention:alpha[\s\S]*?WORKFLOW_ALPHA_CASCADE: "true"[\s\S]*?project: "\$CI_PROJECT_NAMESPACE\/core"[\s\S]*?strategy: mirror/u);
-  assert.doesNotMatch(source, /trigger:core:alpha:[\s\S]*?WORKFLOW_ALPHA_CHANGED:/u);
+  assert.match(source, /trigger:core:alpha:[\s\S]*?needs:[\s\S]*?job: alpha:prepare[\s\S]*?artifacts: true[\s\S]*?job: retention:alpha[\s\S]*?STEAMHARNESS_ALPHA_CASCADE: "true"[\s\S]*?project: "\$CI_PROJECT_NAMESPACE\/core"[\s\S]*?strategy: mirror/u);
+  assert.doesNotMatch(source, /trigger:core:alpha:[\s\S]*?STEAMHARNESS_ALPHA_CHANGED:/u);
 });
 
 test("remote synchronization keeps the GitLab port and credentials out of command arguments", async () => {
@@ -81,7 +81,7 @@ test("remote synchronization keeps the GitLab port and credentials out of comman
   try {
     const sourceRoot = path.join(root, "dist", "source");
     await mkdir(path.join(sourceRoot, "i18n"), { recursive: true });
-    await writeFile(path.join(sourceRoot, "i18n", "package.json"), '{"name":"@workflow-code/i18n"}\n', "utf8");
+    await writeFile(path.join(sourceRoot, "i18n", "package.json"), '{"name":"@steamharness/i18n"}\n', "utf8");
     const calls = [];
     await syncRemoteTargets({
       root,
@@ -112,7 +112,7 @@ test("remote synchronization captures push failures and retries a non-fast-forwa
   try {
     const sourceRoot = path.join(root, "dist", "source");
     await mkdir(path.join(sourceRoot, "i18n"), { recursive: true });
-    await writeFile(path.join(sourceRoot, "i18n", "package.json"), '{"name":"@workflow-code/i18n"}\n', "utf8");
+    await writeFile(path.join(sourceRoot, "i18n", "package.json"), '{"name":"@steamharness/i18n"}\n', "utf8");
     let pushAttempts = 0;
     await syncRemoteTargets({
       root,

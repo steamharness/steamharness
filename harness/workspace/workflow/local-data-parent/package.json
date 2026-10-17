@@ -1,21 +1,21 @@
 {
   "id": "479aaaaa-a337-449b-a74b-1ba59631cf1c",
-  "name": "@workflow-code/local-data-parent-workflow",
+  "name": "@steamharness/local-data-parent-workflow",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "workflow-code run .",
-    "inspect": "workflow-code structure .",
-    "run:json": "workflow-code json .",
-    "workspace:upload": "workflow-code workspace upload .",
-    "workspace:publish": "workflow-code workspace publish ."
+    "dev": "steamharness run .",
+    "inspect": "steamharness structure .",
+    "run:json": "steamharness json .",
+    "workspace:upload": "steamharness workspace upload .",
+    "workspace:publish": "steamharness workspace publish ."
   },
   "devDependencies": {
-    "@workflow-code/cli": "0.2.3-20260901001",
-    "workflow-code": "0.2.3-20260901001"
+    "@steamharness/cli": "0.2.3-20260901001",
+    "steamharness": "0.2.3-20260901001"
   },
-  "workflowCode": {
+  "steamHarness": {
     "projectInfo": {
       "localizedNames": {
         "zh-CN": "本地数据测试项目",

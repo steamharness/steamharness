@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { CircleAlert, Download, Package } from "lucide-react";
-import { useTranslation } from "@workflow-code/i18n/react";
-import { formatDateTime } from "@workflow-code/i18n";
+import { useTranslation } from "@steamharness/i18n/react";
+import { formatDateTime } from "@steamharness/i18n";
 import { Badge, IconActionButton, PaginationFooter, TablePanel, TableActionCell, TableBody, TableCell, TableEmptyRow, TableHead, TableHeader, TableRow } from "@/components/ui";
 import { TableLoadingRows } from "@/components/ui/table-loading-rows";
 import { PageStats } from "@/components/ui/page-stats";

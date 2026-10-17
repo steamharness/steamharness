@@ -1,4 +1,4 @@
-// @workflow-code/i18n 核心入口。React 宿主请从 @workflow-code/i18n/react 导入，
+// @steamharness/i18n 核心入口。React 宿主请从 @steamharness/i18n/react 导入，
 // 以便注册 react-i18next 插件；server / CLI 直接从这里导入（不引入 React）。
 import { resources } from "./resources";
 import { enResources } from "./resources/en";
@@ -38,18 +38,18 @@ export type ServerWebResourceKey = keyof (typeof enResources)["serverWeb"];
 export type ServerResourceKey = keyof (typeof enResources)["server"];
 export type CliResourceKey = keyof (typeof enResources)["cli"];
 export type PermissionsResourceKey = keyof (typeof enResources)["permissions"];
-export type WorkflowCodeI18nNamespace = keyof typeof enResources;
+export type SteamHarnessI18nNamespace = keyof typeof enResources;
 
 /** A serializable translation reference that can cross CLI, IPC and HTTP boundaries. */
-export interface WorkflowCodeI18nDescriptor {
-  namespace: WorkflowCodeI18nNamespace;
+export interface SteamHarnessI18nDescriptor {
+  namespace: SteamHarnessI18nNamespace;
   key: string;
   values?: Record<string, unknown>;
 }
 
-export interface WorkflowCodeI18nTextDescriptors {
-  title?: WorkflowCodeI18nDescriptor;
-  content?: WorkflowCodeI18nDescriptor;
+export interface SteamHarnessI18nTextDescriptors {
+  title?: SteamHarnessI18nDescriptor;
+  content?: SteamHarnessI18nDescriptor;
 }
 export {
   DEFAULT_LOCALE,
@@ -157,17 +157,17 @@ export function translateDynamicKeyWithFallback(
 }
 
 /** Read a single descriptor from an error, serialized WorkflowError, or API failure payload. */
-export function readWorkflowCodeI18nDescriptor(value: unknown): WorkflowCodeI18nDescriptor | undefined {
+export function readSteamHarnessI18nDescriptor(value: unknown): SteamHarnessI18nDescriptor | undefined {
   const visited = new Set<object>();
 
-  const visit = (candidate: unknown): WorkflowCodeI18nDescriptor | undefined => {
+  const visit = (candidate: unknown): SteamHarnessI18nDescriptor | undefined => {
     if (!isRecord(candidate) || visited.has(candidate)) return undefined;
     visited.add(candidate);
 
-    if (isWorkflowCodeI18nDescriptor(candidate)) return candidate;
+    if (isSteamHarnessI18nDescriptor(candidate)) return candidate;
 
-    const direct = candidate["workflowCodeI18n"];
-    if (isWorkflowCodeI18nDescriptor(direct)) return direct;
+    const direct = candidate["steamHarnessI18n"];
+    if (isSteamHarnessI18nDescriptor(direct)) return direct;
 
     return visit(candidate["metadata"]) ??
       visit(candidate["workflowError"]) ??
@@ -180,28 +180,28 @@ export function readWorkflowCodeI18nDescriptor(value: unknown): WorkflowCodeI18n
 }
 
 /** Read title/content descriptors stored on WorkflowOutputItem metadata. */
-export function readWorkflowCodeI18nTextDescriptors(
+export function readSteamHarnessI18nTextDescriptors(
   value: unknown,
-): WorkflowCodeI18nTextDescriptors | undefined {
+): SteamHarnessI18nTextDescriptors | undefined {
   if (!isRecord(value)) return undefined;
-  const container = isRecord(value["workflowCodeI18n"])
-    ? value["workflowCodeI18n"]
-    : isRecord(value["metadata"]) && isRecord(value["metadata"]["workflowCodeI18n"])
-      ? value["metadata"]["workflowCodeI18n"]
+  const container = isRecord(value["steamHarnessI18n"])
+    ? value["steamHarnessI18n"]
+    : isRecord(value["metadata"]) && isRecord(value["metadata"]["steamHarnessI18n"])
+      ? value["metadata"]["steamHarnessI18n"]
       : undefined;
   if (!container) return undefined;
 
-  const title = isWorkflowCodeI18nDescriptor(container["title"])
+  const title = isSteamHarnessI18nDescriptor(container["title"])
     ? container["title"]
     : undefined;
-  const content = isWorkflowCodeI18nDescriptor(container["content"])
+  const content = isSteamHarnessI18nDescriptor(container["content"])
     ? container["content"]
     : undefined;
   return title || content ? { title, content } : undefined;
 }
 
-export function translateWorkflowCodeI18nDescriptor(
-  descriptor: WorkflowCodeI18nDescriptor | undefined,
+export function translateSteamHarnessI18nDescriptor(
+  descriptor: SteamHarnessI18nDescriptor | undefined,
   fallback: string,
 ): string {
   return descriptor === undefined
@@ -215,28 +215,28 @@ export function translateWorkflowCodeI18nDescriptor(
 }
 
 /** Translate an error at render time so a live language change updates its message. */
-export function translateWorkflowCodeError(value: unknown, fallback = "Unexpected workflow error."): string {
-  return translateWorkflowCodeI18nDescriptor(
-    readWorkflowCodeI18nDescriptor(value),
+export function translateSteamHarnessError(value: unknown, fallback = "Unexpected workflow error."): string {
+  return translateSteamHarnessI18nDescriptor(
+    readSteamHarnessI18nDescriptor(value),
     readErrorMessage(value) ?? fallback,
   );
 }
 
-export class WorkflowCodeLocalizedError extends Error {
-  readonly workflowCodeI18n?: WorkflowCodeI18nDescriptor;
+export class SteamHarnessLocalizedError extends Error {
+  readonly steamHarnessI18n?: SteamHarnessI18nDescriptor;
 
-  constructor(message: string, descriptor?: WorkflowCodeI18nDescriptor) {
+  constructor(message: string, descriptor?: SteamHarnessI18nDescriptor) {
     super(message);
-    this.name = "WorkflowCodeLocalizedError";
-    this.workflowCodeI18n = descriptor;
+    this.name = "SteamHarnessLocalizedError";
+    this.steamHarnessI18n = descriptor;
   }
 }
 
-export function createWorkflowCodeLocalizedError(message: string, data?: unknown): WorkflowCodeLocalizedError {
-  return new WorkflowCodeLocalizedError(message, readWorkflowCodeI18nDescriptor(data));
+export function createSteamHarnessLocalizedError(message: string, data?: unknown): SteamHarnessLocalizedError {
+  return new SteamHarnessLocalizedError(message, readSteamHarnessI18nDescriptor(data));
 }
 
-function isWorkflowCodeI18nDescriptor(value: unknown): value is WorkflowCodeI18nDescriptor {
+function isSteamHarnessI18nDescriptor(value: unknown): value is SteamHarnessI18nDescriptor {
   return isRecord(value) &&
     typeof value["namespace"] === "string" &&
     Object.hasOwn(enResources, value["namespace"]) &&

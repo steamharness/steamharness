@@ -37,13 +37,13 @@ Prepare backups and write access for at least:
 
 | Variable | Purpose |
 | --- | --- |
-| `WORKFLOW_SERVER_DATA_DIR` | Server runtime data, caches, and local object storage. |
-| `WORKFLOW_DATABASE_URL` | PostgreSQL connection string. |
-| `WORKFLOW_STORAGE_DRIVER` | Object storage backend; only `local` is accepted, writing artifacts and avatars to this machine's disk. |
-| `WORKFLOW_LOCAL_STORAGE_ROOT` | Absolute path used by the `local` driver. |
-| `WORKFLOW_PUBLIC_BASE_URL` | Public administration URL. |
-| `WORKFLOW_API_PUBLIC_BASE_URL` | Public HTTP(S) origin for the API. |
-| `WORKFLOW_DOCS_PUBLIC_BASE_URL` | Documentation site URL. |
+| `STEAMHARNESS_SERVER_DATA_DIR` | Server runtime data, caches, and local object storage. |
+| `STEAMHARNESS_DATABASE_URL` | PostgreSQL connection string. |
+| `STEAMHARNESS_STORAGE_DRIVER` | Object storage backend; only `local` is accepted, writing artifacts and avatars to this machine's disk. |
+| `STEAMHARNESS_LOCAL_STORAGE_ROOT` | Absolute path used by the `local` driver. |
+| `STEAMHARNESS_PUBLIC_BASE_URL` | Public administration URL. |
+| `STEAMHARNESS_API_PUBLIC_BASE_URL` | Public HTTP(S) origin for the API. |
+| `STEAMHARNESS_DOCS_PUBLIC_BASE_URL` | Documentation site URL. |
 
 Server never installs dependencies, builds, or loads uploaded project code. Back up source snapshots, avatars, KV data, and knowledge data according to the deployment policy.
 
@@ -52,7 +52,7 @@ Server never installs dependencies, builds, or loads uploaded project code. Back
 Check a running service with:
 
 ```sh
-curl -i "$WORKFLOW_PUBLIC_BASE_URL/health"
+curl -i "$STEAMHARNESS_PUBLIC_BASE_URL/health"
 ```
 
 The reverse proxy should forward HTTPS, Host, and WebSocket headers and expose only required ports. If a health check fails, preserve data and inspect service logs and database connectivity before rollback or recovery.

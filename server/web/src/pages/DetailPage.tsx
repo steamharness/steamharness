@@ -1,8 +1,8 @@
 
 import { BookOpenText, CircleAlert, Database, LayoutDashboard, Link2, Mail, Package, Settings2, Users, type LucideIcon } from "lucide-react";
 import type { DetailTab } from "../state";
-import type { ServerWebResourceKey } from "@workflow-code/i18n";
-import { useTranslation } from "@workflow-code/i18n/react";
+import type { ServerWebResourceKey } from "@steamharness/i18n";
+import { useTranslation } from "@steamharness/i18n/react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { KVInspectorPage } from "./ProjectKVPage";

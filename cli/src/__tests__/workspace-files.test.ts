@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm, stat, truncate, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { initI18n } from "@workflow-code/i18n";
+import { initI18n } from "@steamharness/i18n";
 import { main } from "../workspace";
 
 const projectId = "11111111-1111-4111-8111-111111111111";

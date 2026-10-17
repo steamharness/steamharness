@@ -1,8 +1,8 @@
 import type { WorkflowParamDefinition } from "./run-workspace/types";
 import { createKanbanMethodsBridgeScript, type KanbanBrowserMethodsApi } from "./methods";
 import {
-  WORKFLOW_RELATED_PROJECT_ALIAS_PATTERN,
-  WORKFLOW_RELATED_PROJECT_KEY_LIMIT,
+  STEAMHARNESS_RELATED_PROJECT_ALIAS_PATTERN,
+  STEAMHARNESS_RELATED_PROJECT_KEY_LIMIT,
   type WorkflowRelatedProject,
 } from "../project-info/index";
 
@@ -14,13 +14,13 @@ export const KANBAN_MANIFEST_FILE = "kanban.json";
 export const KANBAN_ENTRY_FILE = "index.html";
 export const KANBAN_ARTIFACT_DIR = ".";
 export const KANBAN_MANIFEST_VERSION = 1;
-export const KANBAN_CONFIGURATION_CHANGE_EVENT = "workflow-code:kanban-configuration-change";
-export const KANBAN_PRESENTATION_CHANGE_EVENT = "workflow-code:kanban-presentation-change";
-export const KANBAN_PRESENTATION_MESSAGE = "workflow-code:kanban-presentation";
-export const KANBAN_PREVIEW_READY_MESSAGE = "workflow-code:kanban-ready";
-export const KANBAN_BRIDGE_REQUEST_MESSAGE = "workflow-code:kanban-bridge-request";
-export const KANBAN_BRIDGE_RESPONSE_MESSAGE = "workflow-code:kanban-bridge-response";
-export const KANBAN_RELATED_PROJECT_REVISION_MESSAGE = "workflow-code:kanban-related-project-revision";
+export const KANBAN_CONFIGURATION_CHANGE_EVENT = "steamharness:kanban-configuration-change";
+export const KANBAN_PRESENTATION_CHANGE_EVENT = "steamharness:kanban-presentation-change";
+export const KANBAN_PRESENTATION_MESSAGE = "steamharness:kanban-presentation";
+export const KANBAN_PREVIEW_READY_MESSAGE = "steamharness:kanban-ready";
+export const KANBAN_BRIDGE_REQUEST_MESSAGE = "steamharness:kanban-bridge-request";
+export const KANBAN_BRIDGE_RESPONSE_MESSAGE = "steamharness:kanban-bridge-response";
+export const KANBAN_RELATED_PROJECT_REVISION_MESSAGE = "steamharness:kanban-related-project-revision";
 export const KANBAN_BRIDGE_REQUEST_TIMEOUT_MS = 15_000;
 export const KANBAN_FILE_BRIDGE_REQUEST_TIMEOUT_MS = 120_000;
 export const KANBAN_FILE_MAX_BYTES = 50 * 1024 * 1024;
@@ -266,9 +266,9 @@ export function scheduleKanbanPreviewCapabilityRefresh(
 
 export function readPackageProjectType(value: unknown): "kanban" | undefined {
   if (!isRecord(value)) return undefined;
-  const workflowCode = value["workflowCode"];
-  if (!isRecord(workflowCode)) return undefined;
-  return workflowCode["projectType"] === "kanban" ? "kanban" : undefined;
+  const steamHarness = value["steamHarness"];
+  if (!isRecord(steamHarness)) return undefined;
+  return steamHarness["projectType"] === "kanban" ? "kanban" : undefined;
 }
 
 export function isKanbanPackage(value: unknown): boolean {
@@ -279,29 +279,29 @@ export function readKanbanArtifactConfig(value: unknown): KanbanArtifactConfig {
   if (!isRecord(value)) {
     throw new Error("package.json root must be an object.");
   }
-  const workflowCode = value["workflowCode"];
-  if (!isRecord(workflowCode)) {
-    throw new Error("package.json workflowCode must be an object for a Kanban project.");
+  const steamHarness = value["steamHarness"];
+  if (!isRecord(steamHarness)) {
+    throw new Error("package.json steamHarness must be an object for a Kanban project.");
   }
-  const rawConfig = workflowCode["kanban"];
+  const rawConfig = steamHarness["kanban"];
   if (rawConfig !== undefined && !isRecord(rawConfig)) {
-    throw new Error("package.json workflowCode.kanban must be an object.");
+    throw new Error("package.json steamHarness.kanban must be an object.");
   }
   if (rawConfig?.["dataSources"] !== undefined) {
     throw new Error(
-      "package.json workflowCode.kanban.dataSources was removed; declare workflowCode.projectInfo.relatedProjects instead.",
+      "package.json steamHarness.kanban.dataSources was removed; declare steamHarness.projectInfo.relatedProjects instead.",
     );
   }
   return {
     artifactDir: readKanbanRelativePath(
       rawConfig?.["artifactDir"],
-      "workflowCode.kanban.artifactDir",
+      "steamHarness.kanban.artifactDir",
       KANBAN_ARTIFACT_DIR,
       true,
     ),
     entry: readKanbanRelativePath(
       rawConfig?.["entry"],
-      "workflowCode.kanban.entry",
+      "steamHarness.kanban.entry",
       KANBAN_ENTRY_FILE,
       false,
     ),
@@ -506,7 +506,7 @@ const subscribeToRelatedProject=(alias,listener)=>{
 const relatedProjectContexts=new Map();
 const relatedProjects=Object.freeze({
   get:(alias)=>{
-    if(typeof alias!=="string"||!${WORKFLOW_RELATED_PROJECT_ALIAS_PATTERN.toString()}.test(alias))throw invalidRequest();
+    if(typeof alias!=="string"||!${STEAMHARNESS_RELATED_PROJECT_ALIAS_PATTERN.toString()}.test(alias))throw invalidRequest();
     if(relatedProjectContexts.has(alias))return relatedProjectContexts.get(alias);
     const context=Object.freeze({kv:Object.freeze({
       getValue:(key)=>request("relatedProject.kv.getValue",{alias,key}),
@@ -527,7 +527,7 @@ const knowledge=Object.freeze({
   readDocumentLines:(documentId,options)=>request("knowledge.readDocumentLines",{...options,documentId})
 });
 ${createKanbanMethodsBridgeScript(nonce)}
-Object.defineProperty(window,"workflowCodeKanban",{configurable:false,enumerable:true,value:Object.freeze({getConfiguration:clone,getPresentation:()=>({...presentation}),getRuntimeLocale:()=>request("runtime.getLocale",{}),studio:Object.freeze({getLocalAnalysis:()=>request("studio.getLocalAnalysis",{})}),kv,files,relatedProjects,knowledge,methods})});
+Object.defineProperty(window,"steamHarnessKanban",{configurable:false,enumerable:true,value:Object.freeze({getConfiguration:clone,getPresentation:()=>({...presentation}),getRuntimeLocale:()=>request("runtime.getLocale",{}),studio:Object.freeze({getLocalAnalysis:()=>request("studio.getLocalAnalysis",{})}),kv,files,relatedProjects,knowledge,methods})});
 window.addEventListener("message",function(event){
   if(event.source!==window.parent||!event.data||event.data.nonce!==${safeNonce})return;
   if(handleKanbanMethodMessage(event.data))return;
@@ -538,7 +538,7 @@ window.addEventListener("message",function(event){
     window.dispatchEvent(new CustomEvent(${presentationEvent},{detail:{...presentation}}));
     return;
   }
-  if(event.data.type==="workflow-code:kanban-configuration"){
+  if(event.data.type==="steamharness:kanban-configuration"){
     if(event.data.configuration?.id!==current.id)resetKanbanMethods();
     current=event.data.configuration;
     window.dispatchEvent(new CustomEvent(${eventName},{detail:clone()}));
@@ -548,7 +548,7 @@ window.addEventListener("message",function(event){
   if(event.data.type===${revisionMessage}){
     const alias=event.data.alias;
     const revision=event.data.revision;
-    if(typeof alias!=="string"||!${WORKFLOW_RELATED_PROJECT_ALIAS_PATTERN.toString()}.test(alias)||typeof revision!=="string"||revision.length===0||revision.length>512)return;
+    if(typeof alias!=="string"||!${STEAMHARNESS_RELATED_PROJECT_ALIAS_PATTERN.toString()}.test(alias)||typeof revision!=="string"||revision.length===0||revision.length>512)return;
     if(relatedProjectRevisions.get(alias)===revision)return;
     relatedProjectRevisions.set(alias,revision);
     const listeners=relatedProjectRevisionListeners.get(alias);
@@ -611,7 +611,7 @@ export function resolveKanbanRelatedProject(
   if (
     relatedProject === undefined ||
     key.trim() === "" ||
-    key.length > WORKFLOW_RELATED_PROJECT_KEY_LIMIT
+    key.length > STEAMHARNESS_RELATED_PROJECT_KEY_LIMIT
   ) {
     throw Object.assign(new Error("Kanban related project is unavailable."), {
       code: "KANBAN_RELATED_PROJECT_UNAVAILABLE",
@@ -829,11 +829,11 @@ function validateKanbanBridgeInput(
     case "relatedProject.kv.getValue":
     case "relatedProject.kv.setValue": {
       const alias = readNonEmptyString(input["alias"], "bridge.input.alias");
-      if (!WORKFLOW_RELATED_PROJECT_ALIAS_PATTERN.test(alias)) {
+      if (!STEAMHARNESS_RELATED_PROJECT_ALIAS_PATTERN.test(alias)) {
         throw new Error("Kanban bridge related-project alias is invalid.");
       }
       const key = readNonEmptyString(input["key"], "bridge.input.key");
-      if (key.length > WORKFLOW_RELATED_PROJECT_KEY_LIMIT) {
+      if (key.length > STEAMHARNESS_RELATED_PROJECT_KEY_LIMIT) {
         throw new Error("Kanban bridge related-project key is too long.");
       }
       if (

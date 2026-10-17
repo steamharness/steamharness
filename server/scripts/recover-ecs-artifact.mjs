@@ -17,7 +17,7 @@ export function parseImmutableRef(ref) {
 }
 
 export async function recoverArtifact() {
-  const ref = process.env.WORKFLOW_RUNTIME_REF;
+  const ref = process.env.STEAMHARNESS_RUNTIME_REF;
   const { channel, version } = parseImmutableRef(ref);
   if ((channel === "alpha" ? "alpha" : "production") !== process.env.CI_ENVIRONMENT_NAME) throw new Error("Artifact channel does not match the protected CI environment.");
   if (process.platform !== "linux" || process.arch !== "x64") throw new Error("Build ECS artifacts on the Linux x64 Runner.");
@@ -28,7 +28,7 @@ export async function recoverArtifact() {
     // Do not print the repository URL: CI embeds its job credential in it.
     await exec("git", ["clone", "--quiet", "--depth", "1", "--branch", ref, repository, checkout]).catch(() => { throw new Error("Cannot clone the immutable recovery tag."); });
     const sha = String((await exec("git", ["rev-parse", "HEAD"], { cwd: checkout })).stdout).trim();
-    const env = { ...process.env, CI_COMMIT_SHA: sha, WORKFLOW_REPOSITORY_MODE: "main" };
+    const env = { ...process.env, CI_COMMIT_SHA: sha, STEAMHARNESS_REPOSITORY_MODE: "main" };
     await run(process.execPath, ["scripts/prepare-shared.mjs"], checkout, env);
     await run("corepack", ["pnpm", "install", "--frozen-lockfile"], checkout, env);
     if (channel === "alpha") await run(process.execPath, ["vendor/shared/release-tools/alpha-release.mjs", "write", "--version", version, "--manifest", "package.json", "--manifest", "web/package.json"], checkout, env);
@@ -39,7 +39,7 @@ export async function recoverArtifact() {
     const artifact = await buildRuntime({ repoRoot: checkout, channel, version, commitSha: sha, output, env });
     const envFile = path.join(temp, "runtime.env");
     await writeFile(envFile, buildEcsEnv({ kind: channel }), { mode: 0o600 });
-    process.env[channel === "alpha" ? "WORKFLOW_ALPHA_RUNTIME_ENV_FILE" : "WORKFLOW_STABLE_RUNTIME_ENV_FILE"] = envFile;
+    process.env[channel === "alpha" ? "STEAMHARNESS_ALPHA_RUNTIME_ENV_FILE" : "STEAMHARNESS_STABLE_RUNTIME_ENV_FILE"] = envFile;
     await deployEcs({ command: "prepare-images" });
     await deployEcs({ command: "deploy-server", channel, archive: output, releaseId: artifact.releaseId });
     return artifact;

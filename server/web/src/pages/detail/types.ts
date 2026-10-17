@@ -1,7 +1,7 @@
 
-import { translateDynamicKey } from "@workflow-code/i18n";
+import { translateDynamicKey } from "@steamharness/i18n";
 import type { AsyncState, DetailState, DetailTab } from "../../state";
-import type { KnowledgeRepository, KnowledgeWorkspaceProps } from "@workflow-code/knowledge-base";
+import type { KnowledgeRepository, KnowledgeWorkspaceProps } from "@steamharness/knowledge-base";
 import type { WorkflowInvitationRole, WorkflowKVEntryDetail, WorkflowKVEntrySummary, WorkflowProjectInvitation, WorkflowSummary, ApiResponse } from "../../types";
 import type { KVFilters } from "../ProjectKVPage";
 

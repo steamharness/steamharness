@@ -1,11 +1,11 @@
 import { readFile, readdir, realpath } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
-import { parseKanbanBridgeCall, resolveKanbanRelatedProject, type KanbanBridgeCall } from '@workflow-code/kanban-project';
-import { readWorkflowProjectInfo, resolveWorkflowRelatedProjectAccess, isWorkflowProjectAccessAllowed, isWorkflowProjectDataStorageLocationAllowed } from '@workflow-code/project-info';
+import { parseKanbanBridgeCall, resolveKanbanRelatedProject, type KanbanBridgeCall } from '@steamharness/kanban-project';
+import { readWorkflowProjectInfo, resolveWorkflowRelatedProjectAccess, isWorkflowProjectAccessAllowed, isWorkflowProjectDataStorageLocationAllowed } from '@steamharness/project-info';
 import type { WorkflowProject } from './workflow-types';
 
-export { readWorkflowProjectInfo, resolveWorkflowProjectName } from '@workflow-code/project-info';
+export { readWorkflowProjectInfo, resolveWorkflowProjectName } from '@steamharness/project-info';
 export const webProjectDataDirectory = (storageDir: string, projectDir: string) => path.join(storageDir, createHash('sha256').update(projectDir).digest('hex').slice(0, 24));
 
 export async function localKanbanRelatedProjects(project: WorkflowProject) {
@@ -33,7 +33,7 @@ export async function localKanbanRelatedProjects(project: WorkflowProject) {
 }
 
 // Core is supplied by the worker after resolving it from the user's project.
-export async function runKanbanDataCall(core: typeof import('workflow-code'), project: WorkflowProject, storageDir: string, value: KanbanBridgeCall): Promise<unknown> {
+export async function runKanbanDataCall(core: typeof import('steamharness'), project: WorkflowProject, storageDir: string, value: KanbanBridgeCall): Promise<unknown> {
   const call = parseKanbanBridgeCall(value), { operation, input } = call;
   const { info, projects } = await localKanbanRelatedProjects(project);
   if (info.dataStorage?.mode === 'server' || !isWorkflowProjectDataStorageLocationAllowed(info, 'local')) { throw new Error('Kanban data must use its declared storage location.'); }

@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, it } from "vitest";
-import * as workflowCode from "workflow-code";
+import * as steamHarness from "steamharness";
 import {
   createCliRelatedProjectRuntime,
   parseCliRelatedProjectSpec,
@@ -13,7 +13,7 @@ import {
 const CONSUMER_ID = "33333333-3333-4333-8333-333333333333";
 const TARGET_ID = "44444444-4444-4444-8444-444444444444";
 const roots: string[] = [];
-const hasRelatedProjectCore = typeof (workflowCode as unknown as {
+const hasRelatedProjectCore = typeof (steamHarness as unknown as {
   createWorkflowRelatedProjectsContext?: unknown;
 }).createWorkflowRelatedProjectsContext === "function";
 
@@ -194,8 +194,8 @@ it.runIf(hasRelatedProjectCore)("gives a server-located target a runner, so its 
     // saved: without these the resolver has no store to build and returns
     // undefined, so the test would silently assert the machine's credentials.
     env: {
-      WORKFLOW_SERVER_URL: "http://127.0.0.1:1",
-      WORKFLOW_SERVER_ADMIN_KEY: "related-projects-test-key",
+      STEAMHARNESS_SERVER_URL: "http://127.0.0.1:1",
+      STEAMHARNESS_SERVER_ADMIN_KEY: "related-projects-test-key",
     },
   });
 
@@ -218,7 +218,7 @@ it.runIf(hasRelatedProjectCore)("gives a server-located target a runner, so its 
  * installed Core through — enough to prove which namespace was handed over.
  */
 function createRelatedKnowledge(persistentValue: unknown) {
-  const api = workflowCode as unknown as {
+  const api = steamHarness as unknown as {
     createKnowledgeDocument(
       context: { persistentValue: unknown },
       input: { title: string; markdown: string },
@@ -237,7 +237,7 @@ function createRelatedKnowledge(persistentValue: unknown) {
 }
 
 function createTargetPersistentValue(rootDir: string, projectId: string): unknown {
-  const api = workflowCode as unknown as {
+  const api = steamHarness as unknown as {
     createLocalWorkflowKVStore(options: { rootDir: string; storageKind: "persistent_value" }): unknown;
     createWorkflowPersistentValueContext(options: { store: unknown; projectId: string }): unknown;
   };
@@ -296,7 +296,7 @@ async function writeProjectPackage(projectDir: string, options: {
   await writeFile(path.join(projectDir, "package.json"), `${JSON.stringify({
     id: options.id,
     name: path.basename(projectDir),
-    workflowCode: {
+    steamHarness: {
       projectInfo: {
         dataStorage: { mode: options.dataStorageMode ?? "local" },
         relatedProjects: options.relatedProjects,
@@ -333,13 +333,13 @@ interface RelatedProjectsTestContext {
 function createRelatedProjectsContext(
   resolver: CliWorkflowRelatedProjectKVResolver | undefined,
 ): RelatedProjectsTestContext {
-  const create = (workflowCode as unknown as {
+  const create = (steamHarness as unknown as {
     createWorkflowRelatedProjectsContext?: (
       resolver: CliWorkflowRelatedProjectKVResolver | undefined,
     ) => RelatedProjectsTestContext;
   }).createWorkflowRelatedProjectsContext;
   if (typeof create !== "function") {
-    throw new Error("Installed workflow-code does not support related project storage.");
+    throw new Error("Installed steamharness does not support related project storage.");
   }
   return create(resolver);
 }

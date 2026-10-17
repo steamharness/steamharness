@@ -28,7 +28,7 @@ for (const type of ['workflow', 'conversation', 'kanban']) {
   manifest.name = `Info ${type} fixture`;
   manifest.description = 'A lightweight, extensible agent with a project description that remains readable in a narrow sidebar.'
     + (type === 'conversation' ? ' <img src=x onerror="window.injected=true">' : '');
-  manifest.workflowCode.projectInfo = {
+  manifest.steamHarness.projectInfo = {
     declarations: ['multilingual', 'multiplatform', 'custom-declaration'], localizedNames: { 'zh-CN': `Info ${type}`, en: manifest.name },
     platformSupport: { mode: 'specific', platforms: ['macos', 'windows', 'web'] }, dataStorage: { mode: 'local' },
   };
@@ -36,11 +36,11 @@ for (const type of ['workflow', 'conversation', 'kanban']) {
   projects.push({ type, directory, manifest });
 }
 const grantToRelatedProject = { read: { mode: 'none' }, write: { mode: 'none' } };
-projects[0].manifest.workflowCode.projectInfo.relatedProjects = [
+projects[0].manifest.steamHarness.projectInfo.relatedProjects = [
   { alias: 'linked-conversation', projectId: projects[1].manifest.id, grantToRelatedProject },
   { alias: 'linked-missing', projectId: crypto.randomUUID(), grantToRelatedProject },
 ];
-projects[1].manifest.workflowCode.projectInfo.relatedProjects = [{ alias: 'linked-workflow', projectId: projects[0].manifest.id, grantToRelatedProject }];
+projects[1].manifest.steamHarness.projectInfo.relatedProjects = [{ alias: 'linked-workflow', projectId: projects[0].manifest.id, grantToRelatedProject }];
 for (const project of projects.slice(0, 2)) {
   await fs.writeFile(path.join(project.directory, 'package.json'), JSON.stringify(project.manifest, null, 2));
 }
@@ -60,7 +60,7 @@ const child = spawn(desktop.executable, [...desktop.args,
   '--user-data-dir', dataDir, '--extensions-dir', path.join(root, '.studio/desktop-extensions'),
   `--locale=${language}`, '--disable-workspace-trust', '--disable-telemetry', '--skip-welcome', '--skip-release-notes',
   `--remote-debugging-port=${port}`, workspace,
-], { cwd: path.join(root, 'upstream/vscode'), env: { ...process.env, ...desktop.env, WORKFLOW_SERVER_URL: '', WORKFLOW_SERVER_ADMIN_KEY: '' }, stdio: ['ignore', log.fd, log.fd] });
+], { cwd: path.join(root, 'upstream/vscode'), env: { ...process.env, ...desktop.env, STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' }, stdio: ['ignore', log.fd, log.fd] });
 const exited = new Promise(resolve => { child.once('exit', resolve); child.once('error', resolve); });
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const proof = { language, checks: [], screenshots: [], errors: [] };
@@ -224,7 +224,7 @@ try {
   if (await relatedHeader.getAttribute('aria-expanded') === 'false') { await relatedHeader.click(); }
   const headers = await page.locator('.part.sidebar .pane-header').allTextContents();
   assert.ok(headers.every(title => !/Outline|Timeline|NPM Scripts|\u5927\u7eb2|\u65f6\u95f4\u7ebf/i.test(title)), JSON.stringify(headers));
-  await field('linked-conversation').locator('.label-description').filter({ hasText: projects[1].manifest.workflowCode.projectInfo.localizedNames[language === 'en' ? 'en' : 'zh-CN'] }).waitFor();
+  await field('linked-conversation').locator('.label-description').filter({ hasText: projects[1].manifest.steamHarness.projectInfo.localizedNames[language === 'en' ? 'en' : 'zh-CN'] }).waitFor();
   assert.equal(await field('linked-missing').locator('.label-description').innerText(), t('Not imported'));
   await layout(); await screenshot('related-projects.png');
   proof.checks.push('Explorer replaces Outline, Timeline and NPM Scripts with related projects and retains imported projects after removing their workspace roots');

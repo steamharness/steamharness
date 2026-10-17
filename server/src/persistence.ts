@@ -2,24 +2,24 @@
 import { createHash } from "node:crypto";
 import type pg from "pg";
 import type { WorkflowProjectDataSummary } from "./storage";
-import { KNOWLEDGE_DOCUMENT_KEY_PREFIX } from "workflow-code";
+import { KNOWLEDGE_DOCUMENT_KEY_PREFIX } from "steamharness";
 import type { WorkflowFile, WorkflowKVEntryPage, WorkflowKVEntryDetail, WorkflowKVEntrySummary, WorkflowKVEntryValueType, WorkflowTokenUsageDetail, WorkflowTokenUsagePage } from "./storage";
-import { normalizeWorkflowKVStoreInput, TOKEN_USAGE_ENTRY_KEY_PREFIX, TOKEN_USAGE_TOTAL_KEY, createEmptyTokenUsageAggregate, readStoredTokenUsageEntry, readStoredTokenUsageAggregate, type WorkflowKVStore, type WorkflowKVStoreGetInput, type WorkflowKVNamespaceLockInput, type WorkflowKVStoreSetInput, type WorkflowKVWriteSource, type WorkflowTokenUsageAggregate, type WorkflowTokenUsageEntry } from "workflow-code";
+import { normalizeWorkflowKVStoreInput, TOKEN_USAGE_ENTRY_KEY_PREFIX, TOKEN_USAGE_TOTAL_KEY, createEmptyTokenUsageAggregate, readStoredTokenUsageEntry, readStoredTokenUsageAggregate, type WorkflowKVStore, type WorkflowKVStoreGetInput, type WorkflowKVNamespaceLockInput, type WorkflowKVStoreSetInput, type WorkflowKVWriteSource, type WorkflowTokenUsageAggregate, type WorkflowTokenUsageEntry } from "steamharness";
 import { createPostgresPool } from "./postgres";
-import { createWorkflowKVNamespaceLockKey, withPostgresWorkflowKVNamespaceLock, WORKFLOW_KV_NAMESPACE_LOCK_FAMILY } from "./kv-namespace-lock";
-import { normalizeProjectCardMetadata, type ProjectCardMetadata } from "@workflow-code/project-card-metadata";
-import { normalizeWorkflowProjectInfo, writeWorkflowProjectInfo, type DeclaredWorkflowProjectInfo, type WorkflowProjectInfo } from "@workflow-code/project-info";
-import { isWorkflowProjectType, WORKFLOW_PROJECT_TYPES, type WorkflowProjectType } from "@workflow-code/project-types";
+import { createWorkflowKVNamespaceLockKey, withPostgresWorkflowKVNamespaceLock, STEAMHARNESS_KV_NAMESPACE_LOCK_FAMILY } from "./kv-namespace-lock";
+import { normalizeProjectCardMetadata, type ProjectCardMetadata } from "@steamharness/project-card-metadata";
+import { normalizeWorkflowProjectInfo, writeWorkflowProjectInfo, type DeclaredWorkflowProjectInfo, type WorkflowProjectInfo } from "@steamharness/project-info";
+import { isWorkflowProjectType, STEAMHARNESS_PROJECT_TYPES, type WorkflowProjectType } from "@steamharness/project-types";
 import type { WorkflowObjectStorage } from "./object-storage";
-import { parseWorkflowProjectGroupManifest, type WorkflowProjectAccessRequest, type WorkflowProjectAccessRequestStatus, type WorkflowProjectCapabilityGrant, type WorkflowProjectDependencyLock, type WorkflowProjectGroupManifestV1 } from "@workflow-code/project-dependencies";
-const WORKFLOW_PROJECT_TYPES_SQL = createPostgresTextList(WORKFLOW_PROJECT_TYPES);
+import { parseWorkflowProjectGroupManifest, type WorkflowProjectAccessRequest, type WorkflowProjectAccessRequestStatus, type WorkflowProjectCapabilityGrant, type WorkflowProjectDependencyLock, type WorkflowProjectGroupManifestV1 } from "@steamharness/project-dependencies";
+const STEAMHARNESS_PROJECT_TYPES_SQL = createPostgresTextList(STEAMHARNESS_PROJECT_TYPES);
 // PostgreSQL assigns a new xmin to each externally visible row version. It is
 // a stronger compare-and-set token than updated_at, whose transaction-start
 // timestamp can be shared by multiple writes.
-const WORKFLOW_KV_REVISION_SQL = "xmin::text";
-const WORKFLOW_KV_REVISION_CHANNEL = "workflow_project_storage_revision";
-const WORKFLOW_KV_REVISION_RECONNECT_DELAY_MS = 1_000;
-const WORKFLOW_KV_REVISION_RECONNECT_MAX_DELAY_MS = 30_000;
+const STEAMHARNESS_KV_REVISION_SQL = "xmin::text";
+const STEAMHARNESS_KV_REVISION_CHANNEL = "workflow_project_storage_revision";
+const STEAMHARNESS_KV_REVISION_RECONNECT_DELAY_MS = 1_000;
+const STEAMHARNESS_KV_REVISION_RECONNECT_MAX_DELAY_MS = 30_000;
 
 export interface WorkflowProjectStorageRevisionEvent {
   projectId: string;
@@ -177,7 +177,7 @@ export interface WorkflowProjectInvitationRecord {
 export class DatabaseRepository implements WorkflowKVStore {
   private readonly pool: pg.Pool;
   private readonly publishLockPool: pg.Pool;
-  private readonly workflowKVRevisionReconnectDelayMs = WORKFLOW_KV_REVISION_RECONNECT_DELAY_MS;
+  private readonly workflowKVRevisionReconnectDelayMs = STEAMHARNESS_KV_REVISION_RECONNECT_DELAY_MS;
 
   constructor(connectionString: string) {
     this.pool = createPostgresPool({
@@ -197,7 +197,7 @@ export class DatabaseRepository implements WorkflowKVStore {
       create table if not exists workflows (
         id text primary key,
         name text not null,
-        project_type text not null check (project_type in (${WORKFLOW_PROJECT_TYPES_SQL})),
+        project_type text not null check (project_type in (${STEAMHARNESS_PROJECT_TYPES_SQL})),
         project_card jsonb,
         project_info jsonb not null default '{}'::jsonb,
         package_version text not null default '0.0.0',
@@ -463,7 +463,7 @@ export class DatabaseRepository implements WorkflowKVStore {
           returning revision into next_revision;
 
           perform pg_notify(
-            '${WORKFLOW_KV_REVISION_CHANNEL}',
+            '${STEAMHARNESS_KV_REVISION_CHANNEL}',
             json_build_object(
               'projectId', changed_project_id,
               'revision', next_revision::text
@@ -1902,7 +1902,7 @@ export class DatabaseRepository implements WorkflowKVStore {
       }
     };
     const handleNotification = function(this: pg.PoolClient, notification: pg.Notification) {
-      if (notification.channel !== WORKFLOW_KV_REVISION_CHANNEL || !notification.payload) return;
+      if (notification.channel !== STEAMHARNESS_KV_REVISION_CHANNEL || !notification.payload) return;
       try {
         const value = JSON.parse(notification.payload) as unknown;
         if (!isRecord(value)) return;
@@ -1937,7 +1937,7 @@ export class DatabaseRepository implements WorkflowKVStore {
       if (closed || reconnectTimer !== undefined || reconnectPromise !== undefined) return;
       const delay = Math.min(
         this.workflowKVRevisionReconnectDelayMs * (2 ** reconnectAttempt),
-        WORKFLOW_KV_REVISION_RECONNECT_MAX_DELAY_MS,
+        STEAMHARNESS_KV_REVISION_RECONNECT_MAX_DELAY_MS,
       );
       reconnectTimer = setTimeout(() => {
         reconnectTimer = undefined;
@@ -1970,7 +1970,7 @@ export class DatabaseRepository implements WorkflowKVStore {
       client.on("end", handleDisconnect);
       if (replaySnapshot) replayBuffers.set(client, new Map());
       try {
-        await client.query(`listen ${WORKFLOW_KV_REVISION_CHANNEL}`);
+        await client.query(`listen ${STEAMHARNESS_KV_REVISION_CHANNEL}`);
         if (closed) {
           releaseClient(client, false);
           return;
@@ -2008,7 +2008,7 @@ export class DatabaseRepository implements WorkflowKVStore {
       reconnectTimer = undefined;
       const client = activeClient;
       if (client !== undefined) {
-        await client.query(`unlisten ${WORKFLOW_KV_REVISION_CHANNEL}`).catch(() => undefined);
+        await client.query(`unlisten ${STEAMHARNESS_KV_REVISION_CHANNEL}`).catch(() => undefined);
         releaseClient(client, false);
       }
       await reconnectPromise?.catch(() => undefined);
@@ -2022,7 +2022,7 @@ export class DatabaseRepository implements WorkflowKVStore {
     const normalized = normalizeWorkflowKVStoreInput(input);
     const conversationId = readNormalizedKVConversationId(normalized);
     const result = await this.pool.query<{ value: unknown; revision: string }>(
-      `select value, ${WORKFLOW_KV_REVISION_SQL} as revision
+      `select value, ${STEAMHARNESS_KV_REVISION_SQL} as revision
        from project_storage
        where storage_kind = $1
          and scope = $2
@@ -2124,7 +2124,7 @@ export class DatabaseRepository implements WorkflowKVStore {
          )
          values ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, now())
          on conflict (storage_kind, scope, project_id, conversation_id, key) do nothing
-         returning ${WORKFLOW_KV_REVISION_SQL} as revision`,
+         returning ${STEAMHARNESS_KV_REVISION_SQL} as revision`,
         writeParams,
       );
       const revision = result.rows[0]?.revision;
@@ -2144,7 +2144,7 @@ export class DatabaseRepository implements WorkflowKVStore {
          and conversation_id = $4
          and key = $5
          and xmin = $10::xid
-       returning ${WORKFLOW_KV_REVISION_SQL} as revision`,
+       returning ${STEAMHARNESS_KV_REVISION_SQL} as revision`,
       [
         normalized.storageKind,
         normalized.scope,
@@ -2247,7 +2247,7 @@ export class DatabaseRepository implements WorkflowKVStore {
       transactionStarted = true;
       await client.query(
         "select pg_advisory_xact_lock(hashtext($1), hashtext($2))",
-        [WORKFLOW_KV_NAMESPACE_LOCK_FAMILY, lockKey],
+        [STEAMHARNESS_KV_NAMESPACE_LOCK_FAMILY, lockKey],
       );
       const result = await operation(createTransactionalWorkflowKVStore(client, input));
       await client.query("commit");
@@ -3114,7 +3114,7 @@ function createTransactionalWorkflowKVStore(
       if (lockKey !== transactionNamespaceLockKey) {
         await client.query(
           "select pg_advisory_xact_lock(hashtext($1), hashtext($2))",
-          [WORKFLOW_KV_NAMESPACE_LOCK_FAMILY, lockKey],
+          [STEAMHARNESS_KV_NAMESPACE_LOCK_FAMILY, lockKey],
         );
       }
       return operation();

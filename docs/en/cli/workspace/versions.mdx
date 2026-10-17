@@ -6,7 +6,7 @@ description: "Inspect immutable source versions and latest."
 # workspace versions
 
 ```bash
-workflow-code workspace versions <project>
+steamharness workspace versions <project>
 ```
 
 Calls `GET /api/workflows/{workflow}/versions` and returns `latest`, `nextVersion` and history. Versions include publisher, timestamp, release notes, source SHA-256, dependency locks, a `latest` flag and cumulative `downloadCount`. Downloads count source responses successfully sent by Server, including repeat downloads by the same user. A `latest` download counts toward its resolved version.

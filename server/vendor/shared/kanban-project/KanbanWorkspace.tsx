@@ -1,5 +1,5 @@
-import { useTranslation } from "@workflow-code/i18n/react";
-import { translateWorkflowCodeError } from "@workflow-code/i18n";
+import { useTranslation } from "@steamharness/i18n/react";
+import { translateSteamHarnessError } from "@steamharness/i18n";
 import { ParamsForm } from "./run-workspace/form/params-form";
 import { useMenuFocus, useModalFocus } from "./run-workspace/hooks/useOverlayFocus";
 import type { WorkflowManagedFileReference, WorkflowParamDefinition } from "./run-workspace/types";
@@ -285,7 +285,7 @@ export function KanbanWorkspace(props: KanbanWorkspaceProps) {
       const files = await props.onFileUpload(param);
       return scope === uploadScopeRef.current ? files : [];
     } catch (reason) {
-      if (scope === uploadScopeRef.current) setActionError(translateWorkflowCodeError(reason));
+      if (scope === uploadScopeRef.current) setActionError(translateSteamHarnessError(reason));
       return [];
     } finally {
       uploadPendingRef.current = false;

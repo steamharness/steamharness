@@ -29,7 +29,7 @@ async function createMonorepo() {
   const root = await mkdtemp(path.join(os.tmpdir(), "skill-copies-"));
   const shared = {
     "SKILL.md": "shared skill\n",
-    "references/harness-api.md": "shared api reference\n",
+    "references/steamharness-api.md": "shared api reference\n",
     "scripts/create_workflow.py": "print('shared')\n",
     "assets/kanban/default/index.html": "<html></html>\n",
   };
@@ -79,7 +79,7 @@ test("sync mirrors the shared payload and leaves repository-specific files alone
 
     assert.equal(await readFile(path.join(copyDirectoryPath, "SKILL.md"), "utf8"), "shared skill\n");
     assert.equal(
-      await readFile(path.join(copyDirectoryPath, "references", "harness-api.md"), "utf8"),
+      await readFile(path.join(copyDirectoryPath, "references", "steamharness-api.md"), "utf8"),
       "shared api reference\n",
     );
     // 仓库特有文件不属于共享载荷，必须原样保留。

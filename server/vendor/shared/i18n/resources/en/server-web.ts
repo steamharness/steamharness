@@ -502,7 +502,7 @@ export const serverWeb = {
   projectPlatformWindows: "Windows",
   projectStorageAccessBlockedTitle: "Server data access is blocked",
   projectStorageAccessLocalOnlyDescription: "This project declares local storage only and cannot access Server KV, Knowledge or PersistentValue.",
-  projectStorageAccessUndeclaredDescription: "This project has no data storage declaration. Declare workflowCode.projectInfo.dataStorage.mode in package.json and upload the updated source.",
+  projectStorageAccessUndeclaredDescription: "This project has no data storage declaration. Declare steamHarness.projectInfo.dataStorage.mode in package.json and upload the updated source.",
   projectStorageAllowedBoth: "Local and server",
   projectStorageAllowedLocal: "Local only",
   projectStorageAllowedNone: "No locations",

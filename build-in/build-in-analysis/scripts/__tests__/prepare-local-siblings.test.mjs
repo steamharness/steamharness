@@ -32,13 +32,13 @@ describe("local sibling preparation", () => {
   it("reads only the relative sibling references", () => {
     expect(readLocalSiblingNames({
       devDependencies: {
-        "workflow-code": "link:../core",
-        "@workflow-code/cli": "file:../cli",
+        "steamharness": "link:../core",
+        "@steamharness/cli": "file:../cli",
         vitest: "^4.1.7",
       },
       dependencies: { "@opencode-ai/sdk": "1.18.3" },
     })).toEqual(["cli", "core"]);
-    expect(readLocalSiblingNames({ devDependencies: { "workflow-code": "0.2.4-20260921001" } })).toEqual([]);
+    expect(readLocalSiblingNames({ devDependencies: { "steamharness": "0.2.4-20260921001" } })).toEqual([]);
   });
 
   it("derives the clone prefix from CI_REPOSITORY_URL", () => {
@@ -54,19 +54,19 @@ describe("local sibling preparation", () => {
   });
 
   it("resolves nested local references and pinned aggregate checkouts", async () => {
-    const manifest = { devDependencies: { "workflow-code": "link:../../core", "@workflow-code/cli": "file:../../cli" } };
+    const manifest = { devDependencies: { "steamharness": "link:../../core", "@steamharness/cli": "file:../../cli" } };
     const { workspace, projectRoot } = await createWorkspace(manifest, "build-in/build-in-project");
     expect(readLocalSiblingNames(manifest)).toEqual(["cli", "core"]);
     expect(resolveSiblingWorkspaceRoot(projectRoot, manifest)).toBe(workspace);
-    expect(resolveSiblingWorkspaceRoot(projectRoot, { devDependencies: { "workflow-code": "0.2.4" } })).toBe(workspace);
+    expect(resolveSiblingWorkspaceRoot(projectRoot, { devDependencies: { "steamharness": "0.2.4" } })).toBe(workspace);
     expect(() => resolveSiblingWorkspaceRoot(projectRoot, {
-      devDependencies: { "workflow-code": "link:../../core", "@workflow-code/cli": "link:../cli" },
+      devDependencies: { "steamharness": "link:../../core", "@steamharness/cli": "link:../cli" },
     })).toThrow(/share one workspace root/);
   });
 
   it("clones nested dependencies at the declared paths in a standalone CI checkout", async () => {
     const { workspace, projectRoot } = await createWorkspace({
-      devDependencies: { "workflow-code": "link:../../core", "@workflow-code/cli": "link:../../cli" },
+      devDependencies: { "steamharness": "link:../../core", "@steamharness/cli": "link:../../cli" },
     }, "checkouts/build-in-project");
     const calls = [];
     const { prepared } = prepareLocalSiblings({
@@ -89,12 +89,12 @@ describe("local sibling preparation", () => {
     expect(resolveSiblingBranch({})).toBe("dev");
     expect(resolveSiblingBranch({ CI_COMMIT_BRANCH: "codex/pi-agent" })).toBe("codex/pi-agent");
     expect(resolveSiblingBranch({ CI_MERGE_REQUEST_SOURCE_BRANCH_NAME: "dev" })).toBe("dev");
-    expect(resolveSiblingBranch({ WORKFLOW_SIBLING_BRANCH: "alpha", CI_COMMIT_BRANCH: "dev" })).toBe("alpha");
+    expect(resolveSiblingBranch({ STEAMHARNESS_SIBLING_BRANCH: "alpha", CI_COMMIT_BRANCH: "dev" })).toBe("alpha");
   });
 
   it("checks a pinned sibling out at its release tag, without installing or building it", async () => {
     const { workspace, projectRoot } = await createWorkspace({
-      devDependencies: { "workflow-code": "0.2.4-20260922010", "@workflow-code/cli": "0.2.4-20260922002" },
+      devDependencies: { "steamharness": "0.2.4-20260922010", "@steamharness/cli": "0.2.4-20260922002" },
     });
     const calls = [];
     const run = (command, args, options) => {
@@ -134,12 +134,12 @@ describe("local sibling preparation", () => {
   it("reads only exact versions as pinned siblings", () => {
     expect(readPinnedSiblings({
       devDependencies: {
-        "workflow-code": "0.2.4-20260922010",
-        "@workflow-code/cli": "^0.2.4",
+        "steamharness": "0.2.4-20260922010",
+        "@steamharness/cli": "^0.2.4",
         vitest: "^4.1.7",
       },
     })).toEqual([{ name: "core", version: "0.2.4-20260922010" }]);
-    expect(readPinnedSiblings({ devDependencies: { "workflow-code": "link:../core" } })).toEqual([]);
+    expect(readPinnedSiblings({ devDependencies: { "steamharness": "link:../core" } })).toEqual([]);
   });
 
   it("prefers the channel tag that exists and says so when none does", () => {
@@ -170,13 +170,13 @@ describe("local sibling preparation", () => {
 
   it("refreshes an existing sibling in CI and leaves it alone locally", async () => {
     const { workspace, projectRoot } = await createWorkspace({
-      devDependencies: { "workflow-code": "link:../core" },
+      devDependencies: { "steamharness": "link:../core" },
     });
     // On a shell runner `../core` is the Core project's own build directory, so
     // whatever is there belongs to Core's last job — never assumed usable.
     await mkdir(path.join(workspace, "core"), { recursive: true });
     await writeFile(path.join(workspace, "core", "package.json"), JSON.stringify({
-      name: "workflow-code",
+      name: "steamharness",
       version: "0.0.0-stale",
       scripts: {},
     }), "utf8");
@@ -202,7 +202,7 @@ describe("local sibling preparation", () => {
         const target = args.at(-1);
         mkdirSync(path.join(target, "dist"), { recursive: true });
         writeFileSync(path.join(target, "package.json"), JSON.stringify({
-          name: "workflow-code",
+          name: "steamharness",
           version: "0.2.4",
           scripts: { bootstrap: "node scripts/bootstrap.mjs", build: "node scripts/build.mjs" },
         }));
@@ -216,7 +216,7 @@ describe("local sibling preparation", () => {
 
   it("clones, installs and builds each missing sibling", async () => {
     const { projectRoot } = await createWorkspace({
-      devDependencies: { "workflow-code": "link:../core", "@workflow-code/cli": "link:../cli" },
+      devDependencies: { "steamharness": "link:../core", "@steamharness/cli": "link:../cli" },
     });
 
     const calls = [];
@@ -236,7 +236,7 @@ describe("local sibling preparation", () => {
         const target = args.at(-1);
         mkdirSync(path.join(target, "dist"), { recursive: true });
         writeFileSync(path.join(target, "package.json"), JSON.stringify({
-          name: target.endsWith("core") ? "workflow-code" : "@workflow-code/cli",
+          name: target.endsWith("core") ? "steamharness" : "@steamharness/cli",
           // Only Core declares a build: its `dist/*.d.ts` is what the built-in
           // project's typecheck resolves against.
           scripts: target.endsWith("core")

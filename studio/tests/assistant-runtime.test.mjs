@@ -47,7 +47,7 @@ test(`an installed extension symlink uses ${dependencySource} dependencies with 
   const module = { exports: {} };
   runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports,
     require: name => name === 'vscode' ? vscode : require(name),
-    process: { ...process, env: { ...process.env, STUDIO_WORKFLOW_SOURCE: dependencySource === 'workspace' ? source.root : '' } },
+    process: { ...process, env: { ...process.env, STUDIO_STEAMHARNESS_SOURCE: dependencySource === 'workspace' ? source.root : '' } },
     AbortController, AbortSignal, URL, Buffer, setTimeout, clearTimeout, queueMicrotask,
   });
   const runtime = module.exports.createWorkflowRuntime({ extensionUri: { fsPath: linked }, globalStorageUri: { fsPath: storage } },
@@ -79,7 +79,7 @@ test(`an installed extension symlink uses ${dependencySource} dependencies with 
   assert.equal(configuration.studioControl.hasToken, true);
   assert.equal(configuration.studioControl.mcpServer.id, 'workflow-studio');
   assert.deepEqual(configuration.studioControl.mcpServer.inheritEnvironment,
-    ['WORKFLOW_STUDIO_CONTROL_BRIDGE_URL', 'WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN']);
+    ['STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL', 'STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN']);
   const command = configuration.studioControl.mcpServer.command;
   assert.equal(command[2], 'mcp');
   assert.ok(command[3].startsWith(path.join(storage, 'workflow', 'studio-control', 'apps')));

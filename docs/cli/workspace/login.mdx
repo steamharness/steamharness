@@ -10,7 +10,7 @@ description: "通过 browser device flow 登录 Workflow Server，并保存 work
 ## 命令格式
 
 ```bash
-pnpm exec workflow-code workspace login --server <url>
+pnpm exec steamharness workspace login --server <url>
 ```
 
 ## 参数
@@ -33,10 +33,10 @@ pnpm exec workflow-code workspace login --server <url>
 | 配置 | 说明 |
 | --- | --- |
 | 文件名 | `workflow-auth.json` |
-| macOS 默认目录 | `~/Library/Application Support/workflow-code` |
-| Windows 默认目录 | `%APPDATA%/workflow-code` |
-| Linux 默认目录 | `$XDG_CONFIG_HOME/workflow-code` 或 `~/.config/workflow-code` |
-| 自定义目录 | 设置 `WORKFLOW_CLI_AUTH_DIR` |
+| macOS 默认目录 | `~/Library/Application Support/steamharness` |
+| Windows 默认目录 | `%APPDATA%/steamharness` |
+| Linux 默认目录 | `$XDG_CONFIG_HOME/steamharness` 或 `~/.config/steamharness` |
+| 自定义目录 | 设置 `STEAMHARNESS_CLI_AUTH_DIR` |
 
 ## 输出
 
@@ -49,7 +49,7 @@ pnpm exec workflow-code workspace login --server <url>
 ## 示例
 
 ```bash
-pnpm exec workflow-code workspace login --server http://localhost:7125
+pnpm exec steamharness workspace login --server http://localhost:7125
 ```
 
 ## 相关命令

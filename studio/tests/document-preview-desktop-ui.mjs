@@ -35,7 +35,7 @@ const port = server.address().port; await new Promise(resolve => server.close(re
 const log = await fs.open(path.join(proofDir, 'desktop.log'), 'w'), desktop = await desktopLocaleLaunch(language, data);
 const child = spawn(desktop.executable, [...desktop.args, '--user-data-dir', data, '--extensions-dir', path.join(root, '.studio/desktop-extensions'),
   `--locale=${language}`, '--disable-workspace-trust', '--disable-telemetry', '--skip-welcome', '--skip-release-notes', `--remote-debugging-port=${port}`, folder],
-{ cwd: path.join(root, 'upstream/vscode'), env: { ...process.env, ...desktop.env, WORKFLOW_SERVER_URL: '', WORKFLOW_SERVER_ADMIN_KEY: '' }, stdio: ['ignore', log.fd, log.fd] });
+{ cwd: path.join(root, 'upstream/vscode'), env: { ...process.env, ...desktop.env, STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' }, stdio: ['ignore', log.fd, log.fd] });
 const exited = new Promise(resolve => { child.once('exit', resolve); child.once('error', resolve); });
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const proof = { language, checks: [], screenshots: [], errors: [] }; let browser, page;

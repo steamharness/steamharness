@@ -6,16 +6,16 @@ import path from "node:path";
 import test from "node:test";
 import pg from "pg";
 import { create as createTar } from "tar";
-import type { DeclaredWorkflowProjectInfo } from "@workflow-code/project-info";
-import type { WorkflowProjectGroupManifestV1 } from "@workflow-code/project-dependencies";
+import type { DeclaredWorkflowProjectInfo } from "@steamharness/project-info";
+import type { WorkflowProjectGroupManifestV1 } from "@steamharness/project-dependencies";
 import { WorkflowLocalStorage } from "../local-storage";
 import { ArtifactStorage, DatabaseRepository } from "../persistence";
 import { WorkflowStorage } from "../storage";
 
-const databaseUrl = process.env.WORKFLOW_TEST_DATABASE_URL?.trim();
+const databaseUrl = process.env.STEAMHARNESS_TEST_DATABASE_URL?.trim();
 
 test("PostgreSQL stores static project groups, immutable versions and independent project data", {
-  skip: databaseUrl ? false : "WORKFLOW_TEST_DATABASE_URL is not configured",
+  skip: databaseUrl ? false : "STEAMHARNESS_TEST_DATABASE_URL is not configured",
 }, async () => {
   assert.ok(databaseUrl);
   const schema = `storage_test_${randomUUID().replaceAll("-", "")}`;
@@ -32,7 +32,7 @@ test("PostgreSQL stores static project groups, immutable versions and independen
   const boardId = randomUUID();
   const workerId = randomUUID();
   const packageVersion = JSON.parse(await readFile(new URL("../../package.json", import.meta.url), "utf8"))
-    .dependencies["workflow-code"] as string;
+    .dependencies["steamharness"] as string;
   const projectInfo = (alias: string, projectId: string): DeclaredWorkflowProjectInfo => ({
     localizedNames: {}, declarations: [], platformSupport: { mode: "agnostic" }, dataStorage: { mode: "server" },
     relatedProjects: [{ alias, projectId, grantToRelatedProject: { read: { mode: "all" }, write: { mode: "all" } } }],
@@ -54,9 +54,9 @@ test("PostgreSQL stores static project groups, immutable versions and independen
         assert.equal((await storage.getProjectAccessSummary(id, role)).member?.role, role);
       }
       const manifest = { id, name: type, version: "1.0.0",
-        devDependencies: { "workflow-code": packageVersion },
+        devDependencies: { "steamharness": packageVersion },
         scripts: { build: "node must-not-run.cjs", postinstall: "node must-not-run.cjs" },
-        workflowCode: { projectType: type, projectInfo: info, ...(type === "kanban" ? { kanban: {} } : {}) } };
+        steamHarness: { projectType: type, projectInfo: info, ...(type === "kanban" ? { kanban: {} } : {}) } };
       const files = [
         { path: "package.json", content: JSON.stringify(manifest) },
         { path: type === "kanban" ? "index.html" : "index.ts", content: type === "kanban"

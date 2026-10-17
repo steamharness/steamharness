@@ -5,9 +5,9 @@ Workflow sample for `workflow.createDetailsOutputNode`.
 ## Run
 
 ```bash
-workflow-code structure .
-workflow-code run . -- --icon info --title "点击展开" --content "这里是被折叠的内容。"
-workflow-code json . -- --icon code --title "Debug payload" --content '{"status":"ok","durationMs":128}'
+steamharness structure .
+steamharness run . -- --icon info --title "点击展开" --content "这里是被折叠的内容。"
+steamharness json . -- --icon code --title "Debug payload" --content '{"status":"ok","durationMs":128}'
 ```
 
 The sample emits a default-collapsed `WorkflowOutputItem` through a reusable

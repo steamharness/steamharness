@@ -6,7 +6,7 @@ description: "Download exact project and dependency source versions."
 # workspace download
 
 ```bash
-workflow-code workspace download <project> [--target draft|latest|version] [--path <dir>]
+steamharness workspace download <project> [--target draft|latest|version] [--path <dir>]
 ```
 
 The default is `latest`. Every operating system uses the same source contract without a platform parameter. Historical downloads read immutable snapshots. Download does not reapply ignore rules, install dependencies or execute code.
@@ -36,5 +36,5 @@ Groups exclude KV, PersistentValue, file stores, environment variables, run hist
 - Version tar.gz: `GET /api/workflows/{workflow}/source-archive?target=<version>`.
 
 ```bash
-workflow-code workspace download hello --target 1.2.0 --path ./hello-copy
+steamharness workspace download hello --target 1.2.0 --path ./hello-copy
 ```

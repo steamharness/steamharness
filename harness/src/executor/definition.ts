@@ -9,7 +9,7 @@ import { assertConversationFooter } from "./conversation-footer";
 import { assertConversationCommands } from "./conversation-commands";
 import { assertConversationUserInput } from "./conversation-input";
 
-export const WORKFLOW_ENTRYPOINT_ID_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/;
+export const STEAMHARNESS_ENTRYPOINT_ID_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/;
 
 export function defineWorkflowEntrypoint<Input, Output>(
   definition: WorkflowEntrypointDefinition<Input, Output>,
@@ -84,11 +84,11 @@ function assertWorkflowEntrypointDefinition(
     typeof definition !== "object" ||
     definition === null ||
     typeof definition.id !== "string" ||
-    !WORKFLOW_ENTRYPOINT_ID_PATTERN.test(definition.id)
+    !STEAMHARNESS_ENTRYPOINT_ID_PATTERN.test(definition.id)
   ) {
     throw new WorkflowError({
       type: "input_validation",
-      message: `Workflow entrypoint id "${String(definition?.id)}" must match ${WORKFLOW_ENTRYPOINT_ID_PATTERN}.`,
+      message: `Workflow entrypoint id "${String(definition?.id)}" must match ${STEAMHARNESS_ENTRYPOINT_ID_PATTERN}.`,
     });
   }
   if (typeof definition.title !== "string" || definition.title.trim() === "") {

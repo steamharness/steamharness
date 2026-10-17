@@ -156,15 +156,15 @@ test("local workflow reports preserve aborted status and terminal events", async
 });
 
 async function createToolApprovalWorkflow(): Promise<string> {
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-tool-approval-"));
+  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-tool-approval-"));
 
   await writeFile(
     path.join(workflowDir, "package.json"),
     JSON.stringify({
       id: "11111111-1111-4111-8111-111111111111",
-      name: "@workflow-code/tool-approval-test",
+      name: "@steamharness/tool-approval-test",
       type: "module",
-      workflowCode: { projectInfo: { dataStorage: { mode: "local" } } },
+      steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
     }),
   );
   await writeFile(

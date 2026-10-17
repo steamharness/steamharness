@@ -5,7 +5,7 @@ import { acquireWorkflowHost } from './host';
 import { iconButton, markdownHtml } from './ui';
 import type { ResourcePreviewData } from '../resource-preview';
 import { KANBAN_PREVIEW_READY_MESSAGE, KANBAN_BRIDGE_REQUEST_MESSAGE, KANBAN_BRIDGE_RESPONSE_MESSAGE,
-  KANBAN_BRIDGE_MAX_PENDING_REQUESTS, parseKanbanBridgeCall, createKanbanBridgeError } from '@workflow-code/kanban-project';
+  KANBAN_BRIDGE_MAX_PENDING_REQUESTS, parseKanbanBridgeCall, createKanbanBridgeError } from '@steamharness/kanban-project';
 
 type Message = Record<string, any>;
 const app = document.querySelector<HTMLElement>('#app')!;
@@ -27,9 +27,9 @@ function fail(error: unknown): void { status.hidden = false; status.textContent 
 function inject(): void {
   if (!frame || !data?.kanban) { return; }
   const nonce = data.kanban.nonce;
-  frame.contentWindow?.postMessage({ type: 'workflow-code:kanban-theme', nonce, theme: document.documentElement.dataset.theme }, '*');
-  frame.contentWindow?.postMessage({ type: 'workflow-code:kanban-configuration', nonce, configuration: data.kanban.configuration }, '*');
-  frame.contentWindow?.postMessage({ type: 'workflow-code:kanban-presentation', nonce, presentation: { mode: new URL(location.href).searchParams.get('resourcePresentation') === 'card' ? 'card' : 'fullscreen' } }, '*');
+  frame.contentWindow?.postMessage({ type: 'steamharness:kanban-theme', nonce, theme: document.documentElement.dataset.theme }, '*');
+  frame.contentWindow?.postMessage({ type: 'steamharness:kanban-configuration', nonce, configuration: data.kanban.configuration }, '*');
+  frame.contentWindow?.postMessage({ type: 'steamharness:kanban-presentation', nonce, presentation: { mode: new URL(location.href).searchParams.get('resourcePresentation') === 'card' ? 'card' : 'fullscreen' } }, '*');
 }
 function render(next: ResourcePreviewData): void {
   data = next; frame = undefined; clearTimeout(readyTimer); content.replaceChildren(); status.hidden = true;

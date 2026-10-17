@@ -1,0 +1,40 @@
+---
+title: "steamharness help"
+description: "See steamharness Local CLI help."
+---
+
+# steamharness help
+
+`steamharness help` Output a short help for local CLI. Help mode is entered when no command is passed, `help`, `--help`, or `-h` is passed.
+
+## Command Format
+
+```bash
+steamharness help
+steamharness --help
+steamharness -h
+steamharness
+```
+
+## Output content
+
+|Content|Description|
+| --- | --- |
+| Usage |Base format of `run`, `json`, `structure`.|
+| Examples |Examples of common local runs and structural checks.|
+
+## Behavior
+
+|Situation|Result|
+| --- | --- |
+|Command not passed|Output help, exit code is `0`.|
+|The first parameter is `help` / `--help` / `-h`|Output help, exit code is `0`.|
+|The first parameter is an unknown command|Output error message with exit code `1`.|
+
+## Next step
+
+|Goal|Document|
+| --- | --- |
+|Execute workflow| [`steamharness run`](/en/cli/steamharness/run) |
+|Output JSON Report| [`steamharness json`](/en/cli/steamharness/json) |
+|analysis structure| [`steamharness structure`](/en/cli/steamharness/structure) |

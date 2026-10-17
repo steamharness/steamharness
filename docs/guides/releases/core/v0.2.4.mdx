@@ -5,10 +5,10 @@ description: "Core v0.2.4 的更新说明。"
 
 # Core v0.2.4
 
-2026-09-05 · Tag `workflow-code/v0.2.4` · npm
+2026-09-05 · Tag `steamharness/v0.2.4` · npm
 
-<span id="workflow-code-0-2-4" className="release-version-anchor"></span>
-<span id="workflow-code.0.2.4" className="release-version-anchor"></span>
+<span id="steamharness-0-2-4" className="release-version-anchor"></span>
+<span id="steamharness.0.2.4" className="release-version-anchor"></span>
 
 #### 新特性
 
@@ -35,7 +35,7 @@ description: "Core v0.2.4 的更新说明。"
 - 新增 `--context-window` 覆盖上下文用量分母。
 - 新增 工具审批复用 `context.toolPermissions`，plan 审批复用 `context.userInput`。
 - 新增 token 用量经 `context.tokenUsage.report(...)` 上报一次，项目侧无需实现。
-- 新增 依赖 `@earendil-works/pi-agent-core` 与 `@earendil-works/pi-ai`，宿主安装 `workflow-code` 即自带。
+- 新增 依赖 `@earendil-works/pi-agent-core` 与 `@earendil-works/pi-ai`，宿主安装 `steamharness` 即自带。
 - 新增 `AgentNodeOptions.createTools` 可返回 `{ tools, close?() }`，`close` 在本轮结束时调用。
 - 新增 `AgentNodeOptions.createTools(context)` 组装内置 7 个工具之外的工具，编程式运行时用 `AgentRuntimeOptions.extraTools`。
 - 新增 `AgentInput.systemPrompt` 逐轮给出本轮系统提示词，`AgentInput.images` 随 prompt 发给模型。

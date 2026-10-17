@@ -8,7 +8,7 @@ import type {
 } from "./types";
 import { WorkflowMcpInvalidParamsError } from "./schema";
 
-export const WORKFLOW_MCP_MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
+export const STEAMHARNESS_MCP_MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
 
 export function createLocalWorkflowMcpFileResolver(options: {
   fileStoreDir: string;
@@ -17,7 +17,7 @@ export function createLocalWorkflowMcpFileResolver(options: {
   maxFileSizeBytes?: number;
 }): WorkflowMcpFileResolver {
   const root = path.resolve(options.fileStoreDir);
-  const maxFileSizeBytes = options.maxFileSizeBytes ?? WORKFLOW_MCP_MAX_FILE_SIZE_BYTES;
+  const maxFileSizeBytes = options.maxFileSizeBytes ?? STEAMHARNESS_MCP_MAX_FILE_SIZE_BYTES;
 
   return async (values, context) => {
     const sources: Array<{ path: string; handle: Awaited<ReturnType<typeof open>>; size: number }> = [];

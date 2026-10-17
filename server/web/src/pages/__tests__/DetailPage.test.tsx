@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { i18n } from "@workflow-code/i18n/react";
+import { i18n } from "@steamharness/i18n/react";
 import { apiClient } from "../../api";
 import type {
   KnowledgeDocument,
@@ -9,7 +9,7 @@ import type {
   KnowledgeRepository,
   KnowledgeResult,
   KnowledgeSearchResult,
-} from "@workflow-code/knowledge-base";
+} from "@steamharness/knowledge-base";
 import { DetailPage, getDetailNavItems } from "../DetailPage";
 import type { DetailState, DetailTab } from "../../state";
 import type { WorkflowRelatedProjectStatus, WorkflowSummary, WorkflowVersionSummary } from "../../types";

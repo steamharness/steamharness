@@ -16,15 +16,15 @@ const dataDir = await mkdtemp(path.join(os.tmpdir(), 'studio-workflow-desktop-')
 await mkdir(path.join(dataDir, 'User'));
 await writeFile(path.join(dataDir, 'User/settings.json'), JSON.stringify({ 'workbench.colorTheme': 'Light Modern', 'git.openRepositoryInParentFolders': 'never' }));
 let projectDir = example;
-if (process.env.WORKFLOW_UI_CLI_ENTRY) {
+if (process.env.STEAMHARNESS_UI_CLI_ENTRY) {
   projectDir = path.join(dataDir, 'workflow'); await mkdir(projectDir);
   for (const filename of ['package.json', 'index.ts']) { await cp(path.join(example, filename), path.join(projectDir, filename)); }
-  await mkdir(path.join(projectDir, 'node_modules/@workflow-code'), { recursive: true });
-  await symlink(await realpath(path.join(example, 'node_modules/workflow-code')), path.join(projectDir, 'node_modules/workflow-code'), process.platform === 'win32' ? 'junction' : 'dir');
-  await symlink(path.resolve(path.dirname(process.env.WORKFLOW_UI_CLI_ENTRY), '..'), path.join(projectDir, 'node_modules/@workflow-code/cli'), process.platform === 'win32' ? 'junction' : 'dir');
+  await mkdir(path.join(projectDir, 'node_modules/@steamharness'), { recursive: true });
+  await symlink(await realpath(path.join(example, 'node_modules/steamharness')), path.join(projectDir, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
+  await symlink(path.resolve(path.dirname(process.env.STEAMHARNESS_UI_CLI_ENTRY), '..'), path.join(projectDir, 'node_modules/@steamharness/cli'), process.platform === 'win32' ? 'junction' : 'dir');
 }
-const cliVersion = JSON.parse(await readFile(path.join(projectDir, 'node_modules/@workflow-code/cli/package.json'), 'utf8')).version;
-if (!process.env.WORKFLOW_UI_CLI_ENTRY) { assert.equal(cliVersion, JSON.parse(await readFile(path.join(projectDir, 'package.json'), 'utf8')).devDependencies['@workflow-code/cli']); }
+const cliVersion = JSON.parse(await readFile(path.join(projectDir, 'node_modules/@steamharness/cli/package.json'), 'utf8')).version;
+if (!process.env.STEAMHARNESS_UI_CLI_ENTRY) { assert.equal(cliVersion, JSON.parse(await readFile(path.join(projectDir, 'package.json'), 'utf8')).devDependencies['@steamharness/cli']); }
 const proof = { cliVersion, checks: [], screenshots: [], errors: [], authenticatedRequests: 0 };
 const server = createServer((request, response) => {
   response.setHeader('Content-Type', 'application/json');
@@ -47,7 +47,7 @@ const child = spawn(desktop.executable, [...desktop.args,
   '--user-data-dir', dataDir, '--extensions-dir', path.join(root, '.studio/desktop-extensions'),
   '--locale=zh-cn', '--disable-workspace-trust', '--disable-telemetry', '--skip-welcome', '--skip-release-notes',
   `--remote-debugging-port=${port}`, projectDir,
-], { cwd: path.join(root, 'upstream/vscode'), env: { ...process.env, ...desktop.env, WORKFLOW_SERVER_URL: '', WORKFLOW_SERVER_ADMIN_KEY: '' }, stdio: ['ignore', log.fd, log.fd] });
+], { cwd: path.join(root, 'upstream/vscode'), env: { ...process.env, ...desktop.env, STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' }, stdio: ['ignore', log.fd, log.fd] });
 const exited = new Promise(resolve => { child.once('exit', resolve); child.once('error', resolve); });
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 let browser, page;

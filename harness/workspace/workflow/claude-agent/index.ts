@@ -688,7 +688,7 @@ function resolveClaudePermissionMode(
 
   // Claude SDK modes such as acceptEdits/dontAsk/bypassPermissions
   // can short-circuit canUseTool. Force default mode when the host requested
-  // per-call workflow-code approval so the shared gate receives the callback.
+  // per-call steamharness approval so the shared gate receives the callback.
   return "default";
 }
 
@@ -707,7 +707,7 @@ function createCanUseTool(context: {
       arguments: toolInput,
     };
     try {
-      // maps Claude Agent SDK permission checks onto workflow-code's
+      // maps Claude Agent SDK permission checks onto steamharness's
       // shared user-input-backed tool approval gate.
       const decision = await toolApproval.approve(approvalInput, context as never);
       if (decision.requestId !== undefined) {

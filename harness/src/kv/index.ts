@@ -922,7 +922,7 @@ function createUnavailableWorkflowPersistentValueNamespace(): WorkflowKVNamespac
 function createUnavailableWorkflowPersistentValueError(): WorkflowError {
   return new WorkflowError({
     type: "input_validation",
-    message: "Workflow PersistentValue requires a configured local store, server database storage, or an injected persistent value store. Set WORKFLOW_PERSISTENT_VALUE_STORE_DIR for local CLI/App runs, or configure WORKFLOW_SERVER_URL and WORKFLOW_SERVER_ADMIN_KEY.",
+    message: "Workflow PersistentValue requires a configured local store, server database storage, or an injected persistent value store. Set STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR for local CLI/App runs, or configure STEAMHARNESS_SERVER_URL and STEAMHARNESS_SERVER_ADMIN_KEY.",
   });
 }
 
@@ -1035,9 +1035,9 @@ const LOCAL_KV_LOCK_TIMEOUT_MS = 30_000;
 const LOCAL_KV_LOCK_STALE_MS = 120_000;
 const LOCAL_KV_INSPECTION_INDEX_VERSION = 1;
 const LOCAL_KV_TRANSACTION_JOURNAL_VERSION = 1;
-const LOCAL_WORKFLOW_STORAGE_FORMAT_VERSION = 2;
-const LOCAL_WORKFLOW_STORAGE_FORMAT_FILE = ".workflow-storage-format.json";
-const LOCAL_WORKFLOW_STORAGE_DATA_ENTRIES = [
+const LOCAL_STEAMHARNESS_STORAGE_FORMAT_VERSION = 2;
+const LOCAL_STEAMHARNESS_STORAGE_FORMAT_FILE = ".workflow-storage-format.json";
+const LOCAL_STEAMHARNESS_STORAGE_DATA_ENTRIES = [
   ".inspection",
   ".locks",
   ".transactions",
@@ -1068,15 +1068,15 @@ async function ensureLocalWorkflowStorageFormat(
   // the lock outside the legacy data directories because those directories
   // are removed while upgrading an unmarked root.
   const initializationLockPath = resolveLocalKVPath(rootDir, [
-    `${LOCAL_WORKFLOW_STORAGE_FORMAT_FILE}.lock`,
+    `${LOCAL_STEAMHARNESS_STORAGE_FORMAT_FILE}.lock`,
   ]);
   await withLocalKVPathLock(initializationLockPath, async () => {
-    const markerPath = resolveLocalKVPath(rootDir, [LOCAL_WORKFLOW_STORAGE_FORMAT_FILE]);
+    const markerPath = resolveLocalKVPath(rootDir, [LOCAL_STEAMHARNESS_STORAGE_FORMAT_FILE]);
     const marker = await readLocalKVJsonFile(markerPath);
     if (
       marker !== undefined &&
       isRecord(marker.value) &&
-      marker.value["version"] === LOCAL_WORKFLOW_STORAGE_FORMAT_VERSION &&
+      marker.value["version"] === LOCAL_STEAMHARNESS_STORAGE_FORMAT_VERSION &&
       marker.value["storageKind"] === storageKind
     ) {
       return;
@@ -1084,7 +1084,7 @@ async function ensureLocalWorkflowStorageFormat(
     if (
       marker !== undefined &&
       isRecord(marker.value) &&
-      marker.value["version"] === LOCAL_WORKFLOW_STORAGE_FORMAT_VERSION &&
+      marker.value["version"] === LOCAL_STEAMHARNESS_STORAGE_FORMAT_VERSION &&
       isWorkflowStorageKind(marker.value["storageKind"])
     ) {
       throw new WorkflowError({
@@ -1094,11 +1094,11 @@ async function ensureLocalWorkflowStorageFormat(
       });
     }
 
-    for (const entry of LOCAL_WORKFLOW_STORAGE_DATA_ENTRIES) {
+    for (const entry of LOCAL_STEAMHARNESS_STORAGE_DATA_ENTRIES) {
       await rm(resolveLocalKVPath(rootDir, [entry]), { recursive: true, force: true });
     }
     await writeLocalKVFileAtomically(markerPath, `${JSON.stringify({
-      version: LOCAL_WORKFLOW_STORAGE_FORMAT_VERSION,
+      version: LOCAL_STEAMHARNESS_STORAGE_FORMAT_VERSION,
       storageKind,
     })}\n`);
   });

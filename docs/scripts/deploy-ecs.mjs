@@ -18,7 +18,7 @@ export async function deployDocsToEcs(options = {}) {
   const sourceDir = path.resolve(options.sourceDir ?? path.join(root, "dist", "site"));
   const commitSha = String(options.commitSha ?? process.env.CI_COMMIT_SHA ?? "").trim().toLowerCase();
   if (!/^[0-9a-f]{40}$/u.test(commitSha)) throw new Error("Docs deployment requires an exact commit SHA.");
-  const remoteRoot = process.env.WORKFLOW_REMOTE_ROOT ?? REMOTE_ROOT;
+  const remoteRoot = process.env.STEAMHARNESS_REMOTE_ROOT ?? REMOTE_ROOT;
   if (path.resolve(remoteRoot) !== REMOTE_ROOT) throw new Error(`ECS deployment root is fixed at ${REMOTE_ROOT}.`);
   const temp = await mkdtemp(path.join(os.tmpdir(), "workflow-docs-ecs-"));
   const key = path.join(temp, "id_ed25519");
@@ -26,7 +26,7 @@ export async function deployDocsToEcs(options = {}) {
   const archive = path.join(temp, `docs-${commitSha}.tgz`);
   try {
     await execFileAsync("tar", ["-czf", archive, "-C", sourceDir, "."]);
-    await writeSecret(key, process.env.WORKFLOW_REMOTE_SSH_KEY);
+    await writeSecret(key, process.env.STEAMHARNESS_REMOTE_SSH_KEY);
     await pinHost(knownHosts);
     const ssh = ["-i", key, "-p", PORT, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", `UserKnownHostsFile=${knownHosts}`, `root@${HOST}`];
     await run("ssh", [...ssh, `mkdir -p '${remoteRoot}/incoming'`]);
@@ -41,7 +41,7 @@ export async function deployDocsToEcs(options = {}) {
 
 async function writeSecret(file, value) {
   const raw = String(value ?? "").trim();
-  if (!raw) throw new Error("WORKFLOW_REMOTE_SSH_KEY is required.");
+  if (!raw) throw new Error("STEAMHARNESS_REMOTE_SSH_KEY is required.");
   await writeFile(file, decodeEcsKey(existsSync(raw) ? await readFile(raw, "utf8") : raw), { mode: 0o600 });
   await chmod(file, 0o600);
 }

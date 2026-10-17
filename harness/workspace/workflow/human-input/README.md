@@ -16,20 +16,20 @@ workflow outputs `成功获取权限`; otherwise it outputs `获取权限失败`
 Inspect the structure:
 
 ```bash
-workflow-code structure .
+steamharness structure .
 ```
 
 Start a run. The first JSON report pauses with `status: "waiting_for_input"`,
 already containing the intro text output and `pendingUserInput`:
 
 ```bash
-workflow-code json .
+steamharness json .
 ```
 
 Resume the same run by passing the original `runId` and a resolved answer:
 
 ```bash
-workflow-code json . \
+steamharness json . \
   --run-id <runId> \
   --resolved-user-inputs-json '[{"requestId":"human-input:<runId>:network-permission","nodeName":"network-permission","values":{"allowed":true},"submittedAt":"2026-06-04T10:30:00.000Z"}]'
 ```

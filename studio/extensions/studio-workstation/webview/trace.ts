@@ -175,7 +175,7 @@ function render(): void {
   timeline(filtered);
   element('trace-empty').hidden = filtered.length > 0;
   element('trace-empty').textContent = !state.projects.length ? t("No Workflow or Conversation projects") : query ? t("No matching records") : state.loading ? t("Loading trace...") : state.status === 'idle' ? t("No trace loaded") : !state.snapshot ? t("Connecting to project...") : t("No execution records");
-  const notice = state.error ?? (state.status === 'unsupported' ? t("The project CLI does not support the trace panel. Update @workflow-code/cli.") : ['offline', 'closed', 'expired', 'reconnecting'].includes(state.status) ? statuses[state.status] : '');
+  const notice = state.error ?? (state.status === 'unsupported' ? t("The project CLI does not support the trace panel. Update @steamharness/cli.") : ['offline', 'closed', 'expired', 'reconnecting'].includes(state.status) ? statuses[state.status] : '');
   element('trace-notice').hidden = !notice; element('trace-notice').textContent = notice;
   const sessionAgent = agentSession(state).agent;
   element('trace-count').textContent = activeTab === 'trace' ? t("{0} / {1} records \u00B7 {2} tool calls", filtered.length, rows.length, rows.filter(row => row.lane === 'tool').length)

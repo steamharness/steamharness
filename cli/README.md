@@ -1,10 +1,10 @@
-# @workflow-code/cli
+# @steamharness/cli
 
-Unified local and server workspace CLI for Workflow Code projects.
+Unified local and server workspace CLI for SteamHarness projects.
 
 ```bash
-pnpm add -D workflow-code @workflow-code/cli
-workflow-code --help
+pnpm add -D steamharness @steamharness/cli
+steamharness --help
 ```
 
 ## Project templates

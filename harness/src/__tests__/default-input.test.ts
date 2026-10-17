@@ -72,7 +72,7 @@ test("parseConversationDefaultInputArgs accepts local path values for files and 
 });
 
 test("conversation inputQueue is exposed through structure reports", async () => {
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-conversation-input-"));
+  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-conversation-input-"));
   try {
     await Promise.all([
       writeFile(path.join(workflowDir, "package.json"), JSON.stringify({

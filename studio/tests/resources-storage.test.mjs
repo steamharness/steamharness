@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'import-meta-resolve';
 import { runResourceRequest } from '../extensions/studio-workstation/runtime/resources-worker.mjs';
 
-const core = await Promise.resolve().then(() => import(resolve('workflow-code', new URL('../examples/conversation/package.json', import.meta.url).href))).catch(() => undefined);
+const core = await Promise.resolve().then(() => import(resolve('steamharness', new URL('../examples/conversation/package.json', import.meta.url).href))).catch(() => undefined);
 const localOptions = { skip: core ? false : 'Install examples/conversation dependencies for Core storage integration checks.' };
 
 async function fixture(t, mode = 'local') {
@@ -18,7 +18,7 @@ async function fixture(t, mode = 'local') {
   t.after(() => rm(root, { recursive: true, force: true }));
   const folderPath = path.join(root, 'project'); await mkdir(folderPath);
   const project = { id: 'resource-test-project', folderPath };
-  const manifest = { id: project.id, workflowCode: { projectInfo: { dataStorage: { mode } } } };
+  const manifest = { id: project.id, steamHarness: { projectInfo: { dataStorage: { mode } } } };
   await writeFile(path.join(folderPath, 'package.json'), JSON.stringify(manifest));
   const storageDir = path.join(root, 'storage');
   const dataDir = path.join(storageDir, createHash('sha256').update(folderPath).digest('hex').slice(0, 24));
@@ -81,7 +81,7 @@ test('a bundled resource worker executes when launched through the managed exten
     outfile: worker, bundle: true, platform: 'node', format: 'esm', target: 'node22', logLevel: 'silent' });
   const managed = path.join(root, 'managed-extension'); await symlink(extension, managed, 'dir');
   await mkdir(path.join(project.folderPath, 'node_modules'));
-  await symlink(await realpath(new URL('../examples/conversation/node_modules/workflow-code', import.meta.url)), path.join(project.folderPath, 'node_modules/workflow-code'), 'dir');
+  await symlink(await realpath(new URL('../examples/conversation/node_modules/steamharness', import.meta.url)), path.join(project.folderPath, 'node_modules/steamharness'), 'dir');
   const child = spawn(process.execPath, [path.join(managed, 'resources-worker.mjs')], { cwd: project.folderPath, stdio: ['pipe', 'pipe', 'pipe'] });
   let stdout = '', stderr = '';
   child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');

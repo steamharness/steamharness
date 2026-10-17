@@ -1,0 +1,14 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">SteamHarness icon mark</title>
+  <desc id="desc">A soft flowing loop that represents tasks moving smoothly.</desc>
+  <defs>
+    <linearGradient id="flow" x1="294" y1="336" x2="742" y2="710" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#14B8A6"/>
+      <stop offset="0.58" stop-color="#0D9488"/>
+      <stop offset="1" stop-color="#EA580C"/>
+    </linearGradient>
+  </defs>
+  <path d="M312 520C312 414.514 397.514 329 503 329H629C666.555 329 697 359.445 697 397C697 434.555 666.555 465 629 465H488C448.235 465 416 497.235 416 537C416 576.765 448.235 609 488 609H700" stroke="#FFFFFF" stroke-linecap="round" stroke-linejoin="round" stroke-width="142"/>
+  <path d="M312 520C312 414.514 397.514 329 503 329H629C666.555 329 697 359.445 697 397C697 434.555 666.555 465 629 465H488C448.235 465 416 497.235 416 537C416 576.765 448.235 609 488 609H700" stroke="url(#flow)" stroke-linecap="round" stroke-linejoin="round" stroke-width="96"/>
+  <circle cx="342" cy="520" r="34" fill="#F0FDFA" fill-opacity="0.82"/>
+</svg>

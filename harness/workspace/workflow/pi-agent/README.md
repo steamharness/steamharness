@@ -1,7 +1,7 @@
 # pi-agent workflow
 
 Pi Coding Agent SDK workflow sample. It embeds `@earendil-works/pi-coding-agent`
-inside a workflow-code sample, streams assistant text through
+inside a steamharness sample, streams assistant text through
 `WorkflowOutputPayload.items`, records the turn in workflow conversation state,
 and keeps the smoke fixture offline through an explicit `--dry-run`.
 
@@ -29,14 +29,14 @@ OpenAI aliases for environments that already use that spelling.
 Inspect structure:
 
 ```bash
-workflow-code structure .
+steamharness structure .
 ```
 
 Run a live Pi turn:
 
 ```bash
 PI_API_KEY="sk-..." \
-workflow-code json . --conversation-id pi-agent-live -- \
+steamharness json . --conversation-id pi-agent-live -- \
   --message "List the files in the current directory without changing files." \
   --workdir . \
   --provider anthropic \
@@ -51,7 +51,7 @@ workflow appends `knowledge_documents` to that allowlist unless you also pass
 
 ## Tool permissions
 
-This workflow registers all Pi tools with workflow-code tool permissions:
+This workflow registers all Pi tools with steamharness tool permissions:
 `read`, `write`, `edit`, `bash`, `grep`, `find`, `ls`, and
 `knowledge_documents`. They are enabled and auto-approved by default so CLI runs
 keep the same behavior unless a host supplies an override. App and server embed
@@ -61,7 +61,7 @@ disable a tool or require per-call approval before execution.
 Run the offline path used by tests:
 
 ```bash
-workflow-code json . --conversation-id pi-agent-dry-run -- \
+steamharness json . --conversation-id pi-agent-dry-run -- \
   --message "Summarize this repository without changing files." \
   --workdir . \
   --provider anthropic \

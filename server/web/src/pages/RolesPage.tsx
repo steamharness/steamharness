@@ -1,6 +1,6 @@
 import { PlusCircle, RefreshCw, ShieldCheck, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { translateDynamicKeyWithFallback, useTranslation } from "@workflow-code/i18n/react";
+import { translateDynamicKeyWithFallback, useTranslation } from "@steamharness/i18n/react";
 
 function permissionLabelKey(key: string): string {
   return `permission_${key.replace(/\./g, "_")}_label`;

@@ -10,7 +10,7 @@ description: "Check Workflow Server health status."
 ## Command Format
 
 ```bash
-pnpm exec workflow-code workspace health [--server <url>]
+pnpm exec steamharness workspace health [--server <url>]
 ```
 
 ## Parameter
@@ -24,7 +24,7 @@ pnpm exec workflow-code workspace health [--server <url>]
 |Order|Source|
 | --- | --- |
 | 1 | `--server <url>` |
-| 2 | `WORKFLOW_SERVER_URL` |
+| 2 | `STEAMHARNESS_SERVER_URL` |
 | 3 |CLI Login state file|
 | 4 | `http://localhost:7125` |
 
@@ -39,8 +39,8 @@ pnpm exec workflow-code workspace health [--server <url>]
 ## Example
 
 ```bash
-pnpm exec workflow-code workspace health
-pnpm exec workflow-code workspace health --server http://localhost:7125
+pnpm exec steamharness workspace health
+pnpm exec steamharness workspace health --server http://localhost:7125
 ```
 
 ## Common uses

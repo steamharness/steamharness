@@ -12,7 +12,7 @@ export async function bootstrapRepository({
   prepare = prepareSharedPackages,
   install = runInstall,
 } = {}) {
-  await prepare({ root: repositoryRoot, env: { ...env, WORKFLOW_REPOSITORY_MODE: "main" } });
+  await prepare({ root: repositoryRoot, env: { ...env, STEAMHARNESS_REPOSITORY_MODE: "main" } });
   return install({ root: repositoryRoot, env, argv });
 }
 

@@ -59,7 +59,7 @@ async function fixture(t) {
 }
 
 const ids = ['294b1eec-23fa-42cf-9fd3-2417f71c0570', '615e6cf6-b40a-456a-8d19-b71c63454c7a', '4d8d3580-6356-42b1-a8f0-2a14b0a7b955'];
-const manifest = (id, relatedProjects = []) => ({ id, name: 'Notes', workflowCode: { projectInfo: { relatedProjects, localizedNames: { en: 'English notes', 'zh-cn': 'Chinese notes' } } } });
+const manifest = (id, relatedProjects = []) => ({ id, name: 'Notes', steamHarness: { projectInfo: { relatedProjects, localizedNames: { en: 'English notes', 'zh-cn': 'Chinese notes' } } } });
 const saveManifest = (directory, value) => writeFile(path.join(directory, 'package.json'), JSON.stringify(value));
 
 for (const [language, name] of [['en', 'English notes'], ['zh-cn', 'Chinese notes'], ['fr', 'English notes']]) {

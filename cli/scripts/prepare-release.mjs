@@ -31,13 +31,13 @@ export async function prepareRelease(options) {
   if (!semver.valid(manifest.version) || semver.lt(version, manifest.version)) {
     throw new Error(`${version} must not be lower than ${manifest.version}.`);
   }
-  if (!semver.validRange(manifest.peerDependencies?.["workflow-code"])) {
-    throw new Error("peerDependencies.workflow-code must be a valid SemVer range.");
+  if (!semver.validRange(manifest.peerDependencies?.["steamharness"])) {
+    throw new Error("peerDependencies.steamharness must be a valid SemVer range.");
   }
-  const coreVersion = manifest.devDependencies?.["workflow-code"];
+  const coreVersion = manifest.devDependencies?.["steamharness"];
   const parsedCoreVersion = semver.parse(coreVersion);
   if (parsedCoreVersion === null || parsedCoreVersion.prerelease.length > 0) {
-    throw new Error("devDependencies.workflow-code must be an exact stable SemVer version.");
+    throw new Error("devDependencies.steamharness must be an exact stable SemVer version.");
   }
   const corePeerRange = `>=${parsedCoreVersion.major}.${parsedCoreVersion.minor}.0 `
     + `<${parsedCoreVersion.major}.${parsedCoreVersion.minor + 1}.0`;
@@ -58,7 +58,7 @@ export async function prepareRelease(options) {
       version,
       peerDependencies: {
         ...manifest.peerDependencies,
-        "workflow-code": corePeerRange,
+        "steamharness": corePeerRange,
       },
     }, null, 2)}\n`],
     [zhHistoryPath, appendHistory(zhHistory, version, date, zhNext.body)],
@@ -74,7 +74,7 @@ export async function prepareRelease(options) {
     throw error;
   }
 
-  return { unit: "workflow-code-cli", version, tag: `workflow-code-cli/v${version}` };
+  return { unit: "steamharness-cli", version, tag: `steamharness-cli/v${version}` };
 }
 
 function parseArgs(argv) {

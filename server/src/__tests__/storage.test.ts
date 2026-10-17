@@ -6,14 +6,14 @@ import path from "node:path";
 import { gzipSync } from "node:zlib";
 import test from "node:test";
 import { Header } from "tar";
-import type { WorkflowKVNamespaceLockInput, WorkflowKVStore, WorkflowKVStoreGetInput, WorkflowKVStoreSetInput } from "workflow-code";
+import type { WorkflowKVNamespaceLockInput, WorkflowKVStore, WorkflowKVStoreGetInput, WorkflowKVStoreSetInput } from "steamharness";
 import { AccountRepository } from "../account-db";
 import {
   ArtifactStorage,
   DatabaseRepository,
   type WorkflowDeploymentRecord,
 } from "../persistence";
-import type { WorkflowRelatedProjectKVGrant } from "@workflow-code/project-info";
+import type { WorkflowRelatedProjectKVGrant } from "@steamharness/project-info";
 import { isKnowledgeMutationGranted, validateArchiveEntries, validateTarArchiveEntries, WorkflowStorage, type WorkflowPreparationJob, type WorkflowKVEntryDetail, type WorkflowKnowledgeDocumentListItem, type WorkflowTokenUsagePage } from "../storage";
 
 // assertWorkflowId now requires UUID format; use fixed UUID fixtures
@@ -34,14 +34,14 @@ const serverPackage = JSON.parse(
   devDependencies?: Record<string, string>;
 };
 const exactReleaseVersionPattern = /^\d+\.\d+\.\d+(?:-\d{11})?$/;
-const configuredCoreVersion = serverPackage.dependencies?.["workflow-code"];
+const configuredCoreVersion = serverPackage.dependencies?.["steamharness"];
 if (typeof configuredCoreVersion !== "string" || !exactReleaseVersionPattern.test(configuredCoreVersion)) {
-  throw new Error("Server tests require an exact workflow-code dependency version.");
+  throw new Error("Server tests require an exact steamharness dependency version.");
 }
 const coreVersion: string = configuredCoreVersion;
-const cliVersion = serverPackage.devDependencies?.["@workflow-code/cli"];
+const cliVersion = serverPackage.devDependencies?.["@steamharness/cli"];
 if (typeof cliVersion !== "string" || !exactReleaseVersionPattern.test(cliVersion)) {
-  throw new Error("Server tests require an exact @workflow-code/cli development dependency version.");
+  throw new Error("Server tests require an exact @steamharness/cli development dependency version.");
 }
 const testBuildInfo = {
   productVersion: serverPackage.version,
@@ -50,8 +50,8 @@ const testBuildInfo = {
   nodeVersion: process.versions.node,
 };
 const testToolchainDependencies = {
-  "workflow-code": coreVersion,
-  "@workflow-code/cli": cliVersion,
+  "steamharness": coreVersion,
+  "@steamharness/cli": cliVersion,
 };
 
 test("archive entry validation rejects traversal aliases and duplicate normalized paths", () => {
@@ -180,7 +180,7 @@ test("WorkflowStorage init keeps server online when artifact storage init fails"
 test("ArtifactStorage delegates immutable archives to the object storage backend", async () => {
   const calls: Array<{ operation: string; objectPath: string; filePath: string; contentType?: string }> = [];
   const storage = new ArtifactStorage({
-    bucket: "workflow-code",
+    bucket: "steamharness",
     async uploadPrivateFile(objectPath: string, filePath: string, contentType: string) {
       calls.push({ operation: "upload", objectPath, filePath, contentType });
     },
@@ -284,11 +284,11 @@ test("WorkflowStorage.saveManagedFiles leaves no partial batch when a later file
     repoRoot: process.cwd(),
     dataRoot,
   });
-  const previousLimit = process.env.WORKFLOW_MANAGED_FILE_SIZE_LIMIT_BYTES;
+  const previousLimit = process.env.STEAMHARNESS_MANAGED_FILE_SIZE_LIMIT_BYTES;
 
   try {
     await storage.init();
-    process.env.WORKFLOW_MANAGED_FILE_SIZE_LIMIT_BYTES = "1";
+    process.env.STEAMHARNESS_MANAGED_FILE_SIZE_LIMIT_BYTES = "1";
     await assert.rejects(storage.saveManagedFiles({
       workflowName: DEMO_WF_ID,
       files: [
@@ -302,8 +302,8 @@ test("WorkflowStorage.saveManagedFiles leaves no partial batch when a later file
     });
     assert.deepEqual(storedFiles, []);
   } finally {
-    if (previousLimit === undefined) delete process.env.WORKFLOW_MANAGED_FILE_SIZE_LIMIT_BYTES;
-    else process.env.WORKFLOW_MANAGED_FILE_SIZE_LIMIT_BYTES = previousLimit;
+    if (previousLimit === undefined) delete process.env.STEAMHARNESS_MANAGED_FILE_SIZE_LIMIT_BYTES;
+    else process.env.STEAMHARNESS_MANAGED_FILE_SIZE_LIMIT_BYTES = previousLimit;
     await rm(dataRoot, { recursive: true, force: true });
   }
 });
@@ -1723,7 +1723,7 @@ test("WorkflowStorage.listWorkflows returns uploaded package project card metada
   try {
     await storage.init();
     await writeFileVersion(dataRoot, DEMO_CONV_WF_ID, "1.0.0", "2026-05-21T00:00:00.000Z", {
-      workflowCode: { projectType: "conversation",
+      steamHarness: { projectType: "conversation",
         projectInfo: DECLARED_SERVER_PROJECT_INFO,
         projectCard: {
           icon: "bot",
@@ -1837,7 +1837,7 @@ test("WorkflowStorage serializes Kanban saves and later configuration selection"
         name: "Kanban Lock Demo",
         version: "0.1.0",
         devDependencies: testToolchainDependencies,
-        workflowCode: { projectType: "kanban", projectInfo: DECLARED_SERVER_PROJECT_INFO },
+        steamHarness: { projectType: "kanban", projectInfo: DECLARED_SERVER_PROJECT_INFO },
       }), "utf8"),
       writeFile(path.join(sourceRoot, "index.html"), "<!doctype html><html><body></body></html>", "utf8"),
       writeFile(path.join(sourceRoot, "kanban.json"), JSON.stringify({
@@ -2636,7 +2636,7 @@ test("WorkflowStorage rejects project-group publishing while a relationship is p
     id: DEMO_WF_ID,
     name: "Stock Board",
     version: "1.0.0",
-    workflowCode: {
+    steamHarness: {
       projectInfo: {
         ...DECLARED_SERVER_PROJECT_INFO,
         relatedProjects: [{
@@ -2860,7 +2860,7 @@ async function writePublishableDraft(dataRoot: string, workflowName: string): Pr
       name: workflowName,
       version: "0.1.0",
       devDependencies: testToolchainDependencies,
-      workflowCode: { projectType: "workflow", projectInfo: DECLARED_SERVER_PROJECT_INFO },
+      steamHarness: { projectType: "workflow", projectInfo: DECLARED_SERVER_PROJECT_INFO },
     }),
     "utf8",
   );
@@ -2889,7 +2889,7 @@ async function writeFileVersion(
       name: workflowName,
       version: "0.1.0",
       devDependencies: testToolchainDependencies,
-      workflowCode: { projectType: "workflow", projectInfo: DECLARED_SERVER_PROJECT_INFO },
+      steamHarness: { projectType: "workflow", projectInfo: DECLARED_SERVER_PROJECT_INFO },
       ...packageJsonOverrides,
     }),
     "utf8",

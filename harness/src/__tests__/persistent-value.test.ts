@@ -72,7 +72,7 @@ test("persistentValue without a server store fails on get set and update calls",
 });
 
 test("local kv fallback remains usable when persistentValue is unavailable", async () => {
-  const rootDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-persistent-value-test-"));
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-persistent-value-test-"));
   const kv = createWorkflowKVContext({
     store: createLocalWorkflowKVStore({ rootDir }),
     projectId: "demo",
@@ -88,7 +88,7 @@ test("local kv fallback remains usable when persistentValue is unavailable", asy
 });
 
 test("local KV immediately recovers a fresh lock left by a dead process", async () => {
-  const rootDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-kv-dead-owner-"));
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-kv-dead-owner-"));
   const exited = spawnSync(process.execPath, ["-e", "process.exit(0)"]);
   assert.equal(exited.status, 0);
   assert.ok(exited.pid > 0);
@@ -105,7 +105,7 @@ test("local KV immediately recovers a fresh lock left by a dead process", async 
 });
 
 test("concurrent stale-lock recovery cannot remove another recovery's newly acquired lock", async t => {
-  const rootDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-kv-concurrent-recovery-"));
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-kv-concurrent-recovery-"));
   const lockPath = path.join(rootDir, ".workflow-storage-format.json.lock");
   const exited = spawnSync(process.execPath, ["-e", "process.exit(0)"]);
   assert.equal(exited.status, 0);
@@ -142,7 +142,7 @@ test("concurrent stale-lock recovery cannot remove another recovery's newly acqu
 });
 
 test("local KV reuses same-namespace locks and rejects cross-namespace access", async () => {
-  const rootDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-persistent-value-nested-lock-"));
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-persistent-value-nested-lock-"));
   const store = createLocalWorkflowKVStore({ rootDir });
 
   try {
@@ -392,8 +392,8 @@ test("remote related-project KV addresses the consumer alias without sending the
     targetProjectId: PERSISTENT_TEST_PROJECT_ID,
     alias: "inventory",
     env: {
-      WORKFLOW_SERVER_URL: server.url,
-      WORKFLOW_SERVER_ADMIN_KEY: "server-token",
+      STEAMHARNESS_SERVER_URL: server.url,
+      STEAMHARNESS_SERVER_ADMIN_KEY: "server-token",
     } as NodeJS.ProcessEnv,
   });
   assert.ok(store);
@@ -638,15 +638,15 @@ test("remote persistentValue sends each knowledge mutation as one atomic server 
 
 test("remote persistentValue store from env reads server connection", () => {
   const store = createRemoteWorkflowStorageStoreFromEnv(PERSISTENT_TEST_PROJECT_ID, "persistent_value", {
-    WORKFLOW_SERVER_URL: " http://127.0.0.1:8787/ ",
-    WORKFLOW_SERVER_ADMIN_KEY: " token ",
+    STEAMHARNESS_SERVER_URL: " http://127.0.0.1:8787/ ",
+    STEAMHARNESS_SERVER_ADMIN_KEY: " token ",
   } as NodeJS.ProcessEnv);
 
   assert.ok(store instanceof RemoteWorkflowStorageStore);
 });
 
 test("remote persistentValue store from env falls back to saved CLI auth file", async () => {
-  const authDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-persistent-auth-"));
+  const authDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-persistent-auth-"));
   await writeFile(
     path.join(authDir, "workflow-auth.json"),
     JSON.stringify({
@@ -658,7 +658,7 @@ test("remote persistentValue store from env falls back to saved CLI auth file", 
   );
 
   const store = createRemoteWorkflowStorageStoreFromEnv(PERSISTENT_TEST_PROJECT_ID, "persistent_value", {
-    WORKFLOW_CLI_AUTH_DIR: authDir,
+    STEAMHARNESS_CLI_AUTH_DIR: authDir,
   } as NodeJS.ProcessEnv);
 
   assert.ok(store instanceof RemoteWorkflowStorageStore);
@@ -685,8 +685,8 @@ test("local workflow uses configured server PersistentValue store", async () => 
     const report = await runLocalWorkflowWithReport({
       workflowDir,
       env: {
-        WORKFLOW_SERVER_URL: server.url,
-        WORKFLOW_SERVER_ADMIN_KEY: "server-token",
+        STEAMHARNESS_SERVER_URL: server.url,
+        STEAMHARNESS_SERVER_ADMIN_KEY: "server-token",
       } as NodeJS.ProcessEnv,
     });
 
@@ -700,7 +700,7 @@ test("local workflow uses configured server PersistentValue store", async () => 
 
 test("local workflow uses an explicit local PersistentValue directory before remote env", async () => {
   const workflowDir = await createPersistentValueWorkflow();
-  const persistentValueStoreDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-local-persistent-value-"));
+  const persistentValueStoreDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-local-persistent-value-"));
 
   try {
     const report = await runLocalWorkflowWithReport({
@@ -710,8 +710,8 @@ test("local workflow uses an explicit local PersistentValue directory before rem
         local: { persistentValueStoreDir },
       },
       env: {
-        WORKFLOW_SERVER_URL: "http://127.0.0.1:1",
-        WORKFLOW_SERVER_ADMIN_KEY: "remote-token",
+        STEAMHARNESS_SERVER_URL: "http://127.0.0.1:1",
+        STEAMHARNESS_SERVER_ADMIN_KEY: "remote-token",
       } as NodeJS.ProcessEnv,
     });
 
@@ -731,7 +731,7 @@ test("local workflow uses an explicit local PersistentValue directory before rem
 
 test("injected PersistentValue store takes priority over an explicit local directory", async () => {
   const workflowDir = await createPersistentValueWorkflow();
-  const persistentValueStoreDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-local-persistent-value-"));
+  const persistentValueStoreDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-local-persistent-value-"));
   const persistentValueStore = createMemoryKVStore();
 
   try {
@@ -742,8 +742,8 @@ test("injected PersistentValue store takes priority over an explicit local direc
         local: { persistentValueStore, persistentValueStoreDir },
       },
       env: {
-        WORKFLOW_SERVER_URL: "http://127.0.0.1:1",
-        WORKFLOW_SERVER_ADMIN_KEY: "remote-token",
+        STEAMHARNESS_SERVER_URL: "http://127.0.0.1:1",
+        STEAMHARNESS_SERVER_ADMIN_KEY: "remote-token",
       } as NodeJS.ProcessEnv,
     });
 
@@ -824,13 +824,13 @@ function createMemoryKVStore(): WorkflowKVStore & {
 async function createPersistentValueWorkflow(
   storageLocation: "local" | "server" = "local",
 ): Promise<string> {
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-persistent-local-"));
+  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-persistent-local-"));
   await writeFile(
     path.join(workflowDir, "package.json"),
     JSON.stringify({
       id: PERSISTENT_TEST_PROJECT_ID,
       type: "module",
-      workflowCode: {
+      steamHarness: {
         projectInfo: {
           dataStorage: { mode: storageLocation },
         },

@@ -6,9 +6,9 @@ import test from "node:test";
 import { resolveAgentSystemAIInput } from "../agent/node";
 
 const ENV_NAMES = [
-  "WORKFLOW_AI_SERVER_URL",
-  "WORKFLOW_AI_API_KEY",
-  "WORKFLOW_CLI_AUTH_DIR",
+  "STEAMHARNESS_AI_SERVER_URL",
+  "STEAMHARNESS_AI_API_KEY",
+  "STEAMHARNESS_CLI_AUTH_DIR",
 ] as const;
 
 test("an unconfigured host keeps ordinary self-configured agent credentials", async () => {
@@ -25,7 +25,7 @@ test("an unconfigured host keeps ordinary self-configured agent credentials", as
   };
   try {
     clearEnv();
-    process.env.WORKFLOW_CLI_AUTH_DIR = authDir;
+    process.env.STEAMHARNESS_CLI_AUTH_DIR = authDir;
     globalThis.fetch = (async () => {
       throw new Error("the unconfigured path must not fetch");
     }) as typeof fetch;
@@ -45,8 +45,8 @@ test("a public Server leaves a caller-supplied agent provider alone", async () =
   const previousFetch = globalThis.fetch;
   try {
     clearEnv();
-    process.env.WORKFLOW_AI_SERVER_URL = "https://public.example.test";
-    process.env.WORKFLOW_AI_API_KEY = "project-token";
+    process.env.STEAMHARNESS_AI_SERVER_URL = "https://public.example.test";
+    process.env.STEAMHARNESS_AI_API_KEY = "project-token";
     globalThis.fetch = (async () => Response.json(
       { errCode: 404, errMessage: "API route not found." },
       { status: 404 },
@@ -82,8 +82,8 @@ test("a caller-supplied API key bypasses configured system AI", async () => {
   };
   try {
     clearEnv();
-    process.env.WORKFLOW_AI_SERVER_URL = "https://private-ai.example.test";
-    process.env.WORKFLOW_AI_API_KEY = "ai-session-token";
+    process.env.STEAMHARNESS_AI_SERVER_URL = "https://private-ai.example.test";
+    process.env.STEAMHARNESS_AI_API_KEY = "ai-session-token";
     globalThis.fetch = (async () => {
       throw new Error("the system AI catalog must not be fetched for a caller-supplied API key");
     }) as typeof fetch;
@@ -102,8 +102,8 @@ test("an agent option API key bypasses configured system AI", async () => {
   const previousFetch = globalThis.fetch;
   try {
     clearEnv();
-    process.env.WORKFLOW_AI_SERVER_URL = "https://private-ai.example.test";
-    process.env.WORKFLOW_AI_API_KEY = "ai-session-token";
+    process.env.STEAMHARNESS_AI_SERVER_URL = "https://private-ai.example.test";
+    process.env.STEAMHARNESS_AI_API_KEY = "ai-session-token";
     globalThis.fetch = (async () => {
       throw new Error("the system AI catalog must not be fetched for an option-supplied API key");
     }) as typeof fetch;
@@ -131,8 +131,8 @@ test("an unavailable configured AI service is surfaced instead of using project 
   const previousFetch = globalThis.fetch;
   try {
     clearEnv();
-    process.env.WORKFLOW_AI_SERVER_URL = "https://private-ai.example.test";
-    process.env.WORKFLOW_AI_API_KEY = "project-token";
+    process.env.STEAMHARNESS_AI_SERVER_URL = "https://private-ai.example.test";
+    process.env.STEAMHARNESS_AI_API_KEY = "project-token";
     globalThis.fetch = (async () => {
       throw new Error("connection refused");
     }) as typeof fetch;

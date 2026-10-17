@@ -20,7 +20,7 @@ Studio Control 是连接 Studio VS Code 扩展宿主的内置 Workflow 项目，
 
 `set_theme` 显式选择主题时切换为手动模式，关闭自动跟随系统颜色和高对比度设置；已有工作区主题覆盖时更新该覆盖，否则更新用户设置。成功结果包含 `theme` 和 `mode: "manual"`。需要重新跟随系统时，可在 VS Code 设置中恢复自动检测。
 
-Studio 为每个小助手会话创建临时的认证回环接口，注入 `WORKFLOW_STUDIO_CONTROL_BRIDGE_URL` 和 `WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN`。小助手将本轮 Permission 通过 MCP 子进程环境 `WORKFLOW_STUDIO_CONTROL_PERMISSION_POLICY` 传给宿主，不作为模型工具参数。`auto` 允许访问当前进程可访问的任意本地目录；`workspace` 与 `read-only` 限定在登记的工作区内，符号链接按真实路径检查。`studio_state` 返回 `permissionPolicy` 与 `pathAccess`（`all` 或 `workspace`）。工作区移除、信任撤销或会话关闭后，控制能力失效。编辑器操作沿用工具权限与 Build/Plan 审批规则，状态、诊断和关联项目查询默认自动批准。
+Studio 为每个小助手会话创建临时的认证回环接口，注入 `STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL` 和 `STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN`。小助手将本轮 Permission 通过 MCP 子进程环境 `STEAMHARNESS_STUDIO_CONTROL_PERMISSION_POLICY` 传给宿主，不作为模型工具参数。`auto` 允许访问当前进程可访问的任意本地目录；`workspace` 与 `read-only` 限定在登记的工作区内，符号链接按真实路径检查。`studio_state` 返回 `permissionPolicy` 与 `pathAccess`（`all` 或 `workspace`）。工作区移除、信任撤销或会话关闭后，控制能力失效。编辑器操作沿用工具权限与 Build/Plan 审批规则，状态、诊断和关联项目查询默认自动批准。
 
 本项目不再提供旧 Desktop 的 Dock、登录启动项、更新、云应用发布或 Desktop 数据库控制。普通 CLI 或未连接宿主的 MCP 调用会明确报错。纯浏览器扩展不提供本地控制能力；须有 Studio 的 Node 扩展宿主。
 

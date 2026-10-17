@@ -29,7 +29,7 @@ export interface MultipartBody {
 const CRLF = "\r\n";
 
 export function buildMultipartBody(fields: MultipartField[], files: MultipartFile[]): MultipartBody {
-  const boundary = `----workflow-code-${randomUUID()}`;
+  const boundary = `----steamharness-${randomUUID()}`;
   const parts: Buffer[] = [];
 
   for (const field of fields) {

@@ -1,4 +1,4 @@
-const api = window.workflowCodeKanban;
+const api = window.steamHarnessKanban;
 const key = 'studio-kanban:tasks';
 const columns = [['todo', '\u5f85\u529e'], ['doing', '\u8fdb\u884c\u4e2d'], ['done', '\u5df2\u5b8c\u6210']];
 const labels = { design: '\u8bbe\u8ba1', development: '\u5f00\u53d1', test: '\u6d4b\u8bd5' };
@@ -44,7 +44,7 @@ document.querySelector('#task-form').onsubmit = async event => { event.preventDe
   try { await mutate(() => tasks.unshift({ id: crypto.randomUUID(), title, description: document.querySelector('#task-description').value, status: 'todo', priority: document.querySelector('#task-priority').value, label: document.querySelector('#task-label').value })); document.querySelector('#task-dialog').close(); document.querySelector('#task-form').reset(); } catch (reason) { error(reason); }
 };
 document.querySelector('#export-board').onclick = () => { const url = URL.createObjectURL(new Blob([JSON.stringify(tasks, null, 2)], { type: 'application/json' })); const link = document.createElement('a'); link.href = url; link.download = 'kanban.json'; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1_000); };
-window.addEventListener('workflow-code:kanban-configuration-change', render); window.addEventListener('workflow-code:kanban-presentation-change', render);
+window.addEventListener('steamharness:kanban-configuration-change', render); window.addEventListener('steamharness:kanban-presentation-change', render);
 const loaded = load();
 api.methods.register({ name: 'tasks.list', description: '\u8bfb\u53d6\u5f53\u524d\u770b\u677f\u4efb\u52a1', inputSchema: { type: 'object', properties: {} }, readOnly: true }, async () => { await loaded; return { configuration: api.getConfiguration(), tasks: structuredClone(tasks) }; });
 api.methods.register({ name: 'tasks.create', description: '\u521b\u5efa\u4e00\u4e2a\u5f85\u529e\u4efb\u52a1', inputSchema: { type: 'object', properties: { title: { type: 'string' } }, required: ['title'] } }, async input => { await loaded; if (typeof input.title !== 'string' || !input.title.trim()) throw new Error('title is required.'); await mutate(() => tasks.unshift({ id: crypto.randomUUID(), title: input.title.trim(), description: '', status: 'todo', priority: 'normal', label: 'development' })); return { count: tasks.length }; });

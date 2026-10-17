@@ -42,7 +42,7 @@ test("rejects run and parameter resolver commands for Kanban", async () => {
 });
 
 test("inspects a Kanban project from a configured artifact directory", async () => {
-  const projectDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-kanban-artifact-"));
+  const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-kanban-artifact-"));
   try {
     await mkdir(path.join(projectDir, "dist", "pages"), { recursive: true });
     await Promise.all([
@@ -50,7 +50,7 @@ test("inspects a Kanban project from a configured artifact directory", async () 
         id: "kanban-artifact-test",
         name: "Kanban Artifact Test",
         version: "0.1.0",
-        workflowCode: {
+        steamHarness: {
           projectType: "kanban",
           kanban: {
             artifactDir: "dist",
@@ -74,14 +74,14 @@ test("inspects a Kanban project from a configured artifact directory", async () 
 });
 
 test("rejects removed Kanban dataSources declarations", async () => {
-  const projectDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-kanban-data-sources-"));
+  const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-kanban-data-sources-"));
   try {
     await Promise.all([
       writeFile(path.join(projectDir, "package.json"), JSON.stringify({
         id: "11111111-1111-4111-8111-111111111111",
         name: "Legacy Kanban",
         version: "0.1.0",
-        workflowCode: {
+        steamHarness: {
           projectType: "kanban",
           kanban: {
             dataSources: [{
@@ -106,8 +106,8 @@ test("rejects removed Kanban dataSources declarations", async () => {
 });
 
 test("rejects a configured Kanban artifact entry through a symbolic-link directory", async () => {
-  const projectDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-kanban-symlink-"));
-  const outsideDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-kanban-outside-"));
+  const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-kanban-symlink-"));
+  const outsideDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-kanban-outside-"));
   try {
     await writeFile(path.join(outsideDir, "index.html"), "<!doctype html>");
     try {
@@ -120,7 +120,7 @@ test("rejects a configured Kanban artifact entry through a symbolic-link directo
       id: "kanban-symlink-test",
       name: "Kanban Symlink Test",
       version: "0.1.0",
-      workflowCode: {
+      steamHarness: {
         projectType: "kanban",
         kanban: { artifactDir: "dist", entry: "index.html" },
       },
@@ -139,13 +139,13 @@ test("rejects a configured Kanban artifact entry through a symbolic-link directo
 });
 
 async function createKanbanFixture(): Promise<string> {
-  const projectDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-kanban-"));
+  const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-kanban-"));
   await Promise.all([
     writeFile(path.join(projectDir, "package.json"), JSON.stringify({
       id: "kanban-test",
       name: "Kanban Test",
       version: "0.1.0",
-        workflowCode: {
+        steamHarness: {
           projectType: "kanban",
           kanban: {},
         },

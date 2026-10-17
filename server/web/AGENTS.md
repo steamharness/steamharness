@@ -6,7 +6,7 @@
 - 管理端只管理项目、版本和持久化数据，不展示执行入口、运行日志、运行统计、服务器项目环境变量、Webhook 或 Runner。需要调整 Shared 共享源码时同时读取同级拆分仓库的 [Shared 规则](../../shared/AGENTS.md) 与 [Shared 设计规则](../../shared/DESIGN.md)，管理端的私有样式与控件仍归本仓库所有。
 - 管理端使用 [shadcn 官方 Blocks](https://ui.shadcn.com/blocks)、New York source components 与 Tailwind CSS v4。调整组件前读取 [shadcn skill](../.agents/skills/shadcn/SKILL.md)。颜色、尺寸、圆角、阴影及状态样式使用官方组件默认值，不维护额外的私有设计系统。
 - 项目与数据表格使用服务端分页和筛选，不向浏览器传完整数据集用于前端聚合。
-- 修改登录、项目、版本、知识库、KV、静态预览或移动端体验时，同步 `../../docs/guides/server/**`；展示新的 API 字段时同时检查 `../../docs/openapi/workflow-code.openapi.yaml`。
+- 修改登录、项目、版本、知识库、KV、静态预览或移动端体验时，同步 `../../docs/guides/server/**`；展示新的 API 字段时同时检查 `../../docs/openapi/steamharness.openapi.yaml`。
 - 用户可见文案遵循现有国际化边界，维护全部已支持语言、回退路径和测试。
 - 异步操作必须区分 loading、empty、error，禁用重复触发入口，并在失败后提供明确反馈和恢复入口。
 - 交付前执行 `pnpm -C .. typecheck:web`、`pnpm -C .. test:web`、`pnpm -C .. build:web`。仅在用户明确要求时启动浏览器或视觉调试。

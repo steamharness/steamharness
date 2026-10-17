@@ -27,17 +27,17 @@ function withSilencedWarnings<T>(run: () => T): T {
 
 test("storage driver defaults to local and rejects unknown values", () => {
   assert.equal(resolveWorkflowStorageDriver({}), "local");
-  assert.equal(resolveWorkflowStorageDriver({ WORKFLOW_STORAGE_DRIVER: "" }), "local");
+  assert.equal(resolveWorkflowStorageDriver({ STEAMHARNESS_STORAGE_DRIVER: "" }), "local");
   // Case and surrounding whitespace are tolerated.
-  assert.equal(resolveWorkflowStorageDriver({ WORKFLOW_STORAGE_DRIVER: "local" }), "local");
-  assert.equal(resolveWorkflowStorageDriver({ WORKFLOW_STORAGE_DRIVER: " LOCAL " }), "local");
-  assert.equal(resolveWorkflowStorageDriver({ WORKFLOW_STORAGE_DRIVER: "Local" }), "local");
+  assert.equal(resolveWorkflowStorageDriver({ STEAMHARNESS_STORAGE_DRIVER: "local" }), "local");
+  assert.equal(resolveWorkflowStorageDriver({ STEAMHARNESS_STORAGE_DRIVER: " LOCAL " }), "local");
+  assert.equal(resolveWorkflowStorageDriver({ STEAMHARNESS_STORAGE_DRIVER: "Local" }), "local");
 
   // A backend this build does not implement must fail closed rather than
   // silently storing objects somewhere the environment did not name.
-  assert.throws(() => resolveWorkflowStorageDriver({ WORKFLOW_STORAGE_DRIVER: "oss" }), /must be "local"/u);
-  assert.throws(() => resolveWorkflowStorageDriver({ WORKFLOW_STORAGE_DRIVER: "s3" }), /must be "local"/u);
-  assert.throws(() => resolveWorkflowStorageDriver({ WORKFLOW_STORAGE_DRIVER: "false" }), /must be "local"/u);
+  assert.throws(() => resolveWorkflowStorageDriver({ STEAMHARNESS_STORAGE_DRIVER: "oss" }), /must be "local"/u);
+  assert.throws(() => resolveWorkflowStorageDriver({ STEAMHARNESS_STORAGE_DRIVER: "s3" }), /must be "local"/u);
+  assert.throws(() => resolveWorkflowStorageDriver({ STEAMHARNESS_STORAGE_DRIVER: "false" }), /must be "local"/u);
 });
 
 test("object storage selection always wires the local driver", async () => {
@@ -46,13 +46,13 @@ test("object storage selection always wires the local driver", async () => {
   // A checkout with no storage configuration at all still gets a usable backend.
   const defaulted = withSilencedWarnings(() => createWorkflowObjectStorageFromEnv({
     dataRoot: root,
-    env: { WORKFLOW_SERVER_DEV: "1" },
+    env: { STEAMHARNESS_SERVER_DEV: "1" },
   }));
   assert.ok(defaulted instanceof WorkflowLocalStorage);
 
   const local = withSilencedWarnings(() => createWorkflowObjectStorageFromEnv({
     dataRoot: root,
-    env: { WORKFLOW_STORAGE_DRIVER: "local", WORKFLOW_SERVER_DEV: "1" },
+    env: { STEAMHARNESS_STORAGE_DRIVER: "local", STEAMHARNESS_SERVER_DEV: "1" },
   }));
   assert.ok(local instanceof WorkflowLocalStorage);
   assert.equal(local.driver, "local");
@@ -70,14 +70,14 @@ test("local storage root defaults under the data root and rejects relative overr
   );
   assert.equal(
     resolveLocalStorageRootFromEnv({
-      env: { WORKFLOW_LOCAL_STORAGE_ROOT: path.join(DATA_ROOT, "custom") },
+      env: { STEAMHARNESS_LOCAL_STORAGE_ROOT: path.join(DATA_ROOT, "custom") },
       dataRoot: DATA_ROOT,
     }),
     path.join(DATA_ROOT, "custom"),
   );
   assert.throws(
     () => resolveLocalStorageRootFromEnv({
-      env: { WORKFLOW_LOCAL_STORAGE_ROOT: "relative/objects" },
+      env: { STEAMHARNESS_LOCAL_STORAGE_ROOT: "relative/objects" },
       dataRoot: DATA_ROOT,
     }),
     /must be an absolute path/u,
@@ -86,59 +86,59 @@ test("local storage root defaults under the data root and rejects relative overr
 
 test("local public base URL prefers the API origin and falls back only in development", () => {
   assert.equal(
-    resolveLocalStoragePublicBaseUrl({ WORKFLOW_API_PUBLIC_BASE_URL: "https://api.example.com" }),
+    resolveLocalStoragePublicBaseUrl({ STEAMHARNESS_API_PUBLIC_BASE_URL: "https://api.example.com" }),
     "https://api.example.com/",
   );
   assert.equal(
-    resolveLocalStoragePublicBaseUrl({ WORKFLOW_PUBLIC_BASE_URL: "http://localhost:8080" }),
+    resolveLocalStoragePublicBaseUrl({ STEAMHARNESS_PUBLIC_BASE_URL: "http://localhost:8080" }),
     "http://localhost:8080/",
   );
   // Precedence: the API origin wins over the storage-specific one.
   assert.equal(
     resolveLocalStoragePublicBaseUrl({
-      WORKFLOW_API_PUBLIC_BASE_URL: "https://api.example.com",
-      WORKFLOW_STORAGE_PUBLIC_BASE_URL: "https://cdn.example.com",
+      STEAMHARNESS_API_PUBLIC_BASE_URL: "https://api.example.com",
+      STEAMHARNESS_STORAGE_PUBLIC_BASE_URL: "https://cdn.example.com",
     }),
     "https://api.example.com/",
   );
   assert.throws(
-    () => resolveLocalStoragePublicBaseUrl({ WORKFLOW_API_PUBLIC_BASE_URL: "https://api.example.com/sub" }),
+    () => resolveLocalStoragePublicBaseUrl({ STEAMHARNESS_API_PUBLIC_BASE_URL: "https://api.example.com/sub" }),
     /HTTP\(S\) root URL/u,
   );
 
   // Development falls back to loopback so a dev server is usable out of the box.
   assert.equal(
-    withSilencedWarnings(() => resolveLocalStoragePublicBaseUrl({ WORKFLOW_SERVER_DEV: "1" })),
+    withSilencedWarnings(() => resolveLocalStoragePublicBaseUrl({ STEAMHARNESS_SERVER_DEV: "1" })),
     "http://127.0.0.1:7126/",
   );
   assert.equal(
     withSilencedWarnings(() => resolveLocalStoragePublicBaseUrl({
-      WORKFLOW_SERVER_DEV: "1",
-      WORKFLOW_SERVER_PORT: "7200",
+      STEAMHARNESS_SERVER_DEV: "1",
+      STEAMHARNESS_SERVER_PORT: "7200",
     })),
     "http://127.0.0.1:7200/",
   );
 
   // Production must not hand users an unreachable URL.
-  assert.throws(() => resolveLocalStoragePublicBaseUrl({}), /WORKFLOW_API_PUBLIC_BASE_URL is required/u);
+  assert.throws(() => resolveLocalStoragePublicBaseUrl({}), /STEAMHARNESS_API_PUBLIC_BASE_URL is required/u);
 });
 
 test("avatar origin follows the configured public base URL", () => {
   assert.equal(
-    resolveStorageAvatarBaseUrlOrigin({ WORKFLOW_STORAGE_PUBLIC_BASE_URL: "https://cdn.example.com" }),
+    resolveStorageAvatarBaseUrlOrigin({ STEAMHARNESS_STORAGE_PUBLIC_BASE_URL: "https://cdn.example.com" }),
     "https://cdn.example.com",
   );
   assert.equal(
     withSilencedWarnings(() => resolveStorageAvatarBaseUrlOrigin({
-      WORKFLOW_STORAGE_DRIVER: "local",
-      WORKFLOW_SERVER_DEV: "1",
+      STEAMHARNESS_STORAGE_DRIVER: "local",
+      STEAMHARNESS_SERVER_DEV: "1",
     })),
     "http://127.0.0.1:7126",
   );
   assert.equal(
     resolveStorageAvatarBaseUrlOrigin({
-      WORKFLOW_STORAGE_DRIVER: "local",
-      WORKFLOW_API_PUBLIC_BASE_URL: "https://api.example.com",
+      STEAMHARNESS_STORAGE_DRIVER: "local",
+      STEAMHARNESS_API_PUBLIC_BASE_URL: "https://api.example.com",
     }),
     "https://api.example.com",
   );

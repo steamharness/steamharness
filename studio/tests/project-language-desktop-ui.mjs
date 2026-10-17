@@ -26,7 +26,7 @@ async function verify(language) {
   await fs.symlink(path.join(source, 'node_modules'), path.join(folder, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
   const manifest = JSON.parse(await fs.readFile(path.join(folder, 'package.json'), 'utf8'));
   manifest.id = crypto.randomUUID(); manifest.name = 'deltaforce-agent';
-  manifest.workflowCode.projectInfo = { localizedNames: names, dataStorage: { mode: 'local' } };
+  manifest.steamHarness.projectInfo = { localizedNames: names, dataStorage: { mode: 'local' } };
   await fs.writeFile(path.join(folder, 'package.json'), JSON.stringify(manifest, null, 2));
   const profile = path.join(directory, 'u'); await fs.mkdir(path.join(profile, 'User'), { recursive: true });
   await fs.writeFile(path.join(profile, 'User/settings.json'), JSON.stringify({ 'workbench.colorTheme': 'Light Modern',
@@ -47,7 +47,7 @@ async function verify(language) {
     '--extensions-dir', path.join(root, '.studio/desktop-extensions'), '--locale=zh-cn', '--disable-workspace-trust',
     '--disable-telemetry', '--skip-welcome', '--skip-release-notes', `--remote-debugging-port=${port}`, folder],
   { cwd: path.join(root, 'upstream/vscode'), env: { ...process.env, ...desktop.env, LANG: 'zh_CN.UTF-8', LC_ALL: 'zh_CN.UTF-8',
-    WORKFLOW_CODE_LOCALE: 'zh-CN', WORKFLOW_RUNTIME_LOCALE: 'zh-CN', WORKFLOW_SERVER_URL: '', WORKFLOW_SERVER_ADMIN_KEY: '' },
+    STEAMHARNESS_LOCALE: 'zh-CN', STEAMHARNESS_RUNTIME_LOCALE: 'zh-CN', STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' },
     stdio: ['ignore', log.fd, log.fd] });
   const exited = new Promise(resolve => { child.once('exit', resolve); child.once('error', resolve); });
   const proof = { language, name: expected, checks: [], screenshots: [], errors: [] };

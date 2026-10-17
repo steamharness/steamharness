@@ -5,7 +5,7 @@ import {
   createInvalidWorkflowUuidMessage,
   isWorkflowUuid,
   resolveWorkflowRoot,
-} from "@workflow-code/workflow-ids";
+} from "@steamharness/workflow-ids";
 
 describe("workflow-ids package", () => {
   it("accepts safe workflow ids and resolves roots under the workflow directory", () => {

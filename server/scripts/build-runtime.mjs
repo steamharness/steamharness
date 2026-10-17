@@ -23,7 +23,7 @@ export async function buildRuntime(options = {}) {
   const workRoot = await fsTempDirectory("workflow-runtime-");
   const staging = path.join(workRoot, "runtime");
   try {
-    await execFileAsync("corepack", ["pnpm", "--filter", "@workflow-code/server", "deploy", "--prod", "--legacy", staging], {
+    await execFileAsync("corepack", ["pnpm", "--filter", "@steamharness/server", "deploy", "--prod", "--legacy", staging], {
       cwd: repoRoot,
       env: options.env ?? process.env,
       maxBuffer: 10 * 1024 * 1024,
@@ -33,7 +33,7 @@ export async function buildRuntime(options = {}) {
       if (!keep.has(name)) await rm(path.join(staging, name), { recursive: true, force: true });
     }
     for (const directory of ["dist", "public"]) await cp(path.join(repoRoot, directory), path.join(staging, directory), { recursive: true });
-    await execFileAsync(process.execPath, ["--input-type=module", "-e", "await import('pg'); await import('workflow-code');"], { cwd: staging, maxBuffer: 1024 * 1024 });
+    await execFileAsync(process.execPath, ["--input-type=module", "-e", "await import('pg'); await import('steamharness');"], { cwd: staging, maxBuffer: 1024 * 1024 });
     await mkdir(path.join(staging, "web"), { recursive: true });
     await cp(path.join(repoRoot, "web", "package.json"), path.join(staging, "web", "package.json"));
     await mkdir(path.join(staging, ".node", "bin"), { recursive: true });

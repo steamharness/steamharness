@@ -1,6 +1,6 @@
 import ts from "typescript";
 import {
-  WORKFLOW_PROJECT_TYPE_MIGRATION_EXAMPLE,
+  STEAMHARNESS_PROJECT_TYPE_MIGRATION_EXAMPLE,
   assertNeverWorkflowExecutorProjectType,
   formatWorkflowProjectTypeMigrationMessage,
   isWorkflowExecutorProjectType,
@@ -25,7 +25,7 @@ export interface WorkflowProjectTypeSourceInspection {
 
 export class WorkflowProjectTypeMigrationError extends Error {
   constructor(violations: WorkflowProjectTypeSourceViolation[]) {
-    super(`${violations.map((violation) => violation.message).join("\n")}\n\nMigration example:\n${WORKFLOW_PROJECT_TYPE_MIGRATION_EXAMPLE}`);
+    super(`${violations.map((violation) => violation.message).join("\n")}\n\nMigration example:\n${STEAMHARNESS_PROJECT_TYPE_MIGRATION_EXAMPLE}`);
     this.name = "WorkflowProjectTypeMigrationError";
   }
 }

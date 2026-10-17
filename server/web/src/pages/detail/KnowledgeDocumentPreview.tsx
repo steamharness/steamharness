@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ImageIcon } from "lucide-react";
-import { useTranslation } from "@workflow-code/i18n/react";
-import { countMarkdownImages, getKnowledgeMarkdownByteLength, INLINE_IMAGE_MANUAL_LOAD_LIMIT, LARGE_MARKDOWN_PREVIEW_LIMIT, type KnowledgeImageSrcResolver } from "@workflow-code/knowledge-base";
+import { useTranslation } from "@steamharness/i18n/react";
+import { countMarkdownImages, getKnowledgeMarkdownByteLength, INLINE_IMAGE_MANUAL_LOAD_LIMIT, LARGE_MARKDOWN_PREVIEW_LIMIT, type KnowledgeImageSrcResolver } from "@steamharness/knowledge-base";
 import { Alert, AlertDescription, Button, Separator, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui";
 
 export function KnowledgeDocumentPreview({ markdown, resolveImageSrc }: { markdown: string; resolveImageSrc?: KnowledgeImageSrcResolver }) {

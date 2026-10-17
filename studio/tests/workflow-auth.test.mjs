@@ -16,18 +16,18 @@ const token = 'test-studio-session';
 test('worker environment filtering removes internal extension and cloud credential paths', () => {
   const environment = sanitizeWorkflowEnvironment({
     PATH: '/bin',
-    WORKFLOW_STUDIO_INTERNAL: '1',
-    WORKFLOW_STUDIO_INTERNAL_MODULE: '/private/extension-layer.mjs',
-    WORKFLOW_STUDIO_INTERNAL_SERVER_URL: 'http://127.0.0.1:7127',
+    STEAMHARNESS_STUDIO_INTERNAL: '1',
+    STEAMHARNESS_STUDIO_INTERNAL_MODULE: '/private/extension-layer.mjs',
+    STEAMHARNESS_STUDIO_INTERNAL_SERVER_URL: 'http://127.0.0.1:7127',
     GOOGLE_APPLICATION_CREDENTIALS: '/private/gcp.json',
     AWS_SHARED_CREDENTIALS_FILE: '/private/aws-credentials',
     AWS_CONFIG_FILE: '/private/aws-config',
     DOCKER_CONFIG: '/private/docker',
     KUBECONFIG: '/private/kubeconfig',
     SSH_AUTH_SOCK: '/private/ssh-agent.sock',
-    WORKFLOW_RUNTIME_LOCALE: 'zh-CN',
+    STEAMHARNESS_RUNTIME_LOCALE: 'zh-CN',
   });
-  assert.deepEqual(environment, { PATH: '/bin', WORKFLOW_RUNTIME_LOCALE: 'zh-CN' });
+  assert.deepEqual(environment, { PATH: '/bin', STEAMHARNESS_RUNTIME_LOCALE: 'zh-CN' });
   for (const key of ['GOOGLE_APPLICATION_CREDENTIALS', 'AWS_SHARED_CREDENTIALS_FILE', 'AWS_CONFIG_FILE', 'DOCKER_CONFIG', 'KUBECONFIG', 'SSH_AUTH_SOCK']) {
     assert.equal(isPrivateEnvironmentKey(key), true, key);
   }
@@ -295,21 +295,21 @@ test('an old worker failure cannot invalidate a newer login', async () => {
 });
 
 test('worker and CLI environments isolate Studio credentials from inherited and saved logins', () => {
-  const inherited = { WORKFLOW_LLM_SERVER_URL: 'https://old.workflow.test', WORKFLOW_LLM_SERVER_TOKEN: 'old-token', WORKFLOW_SERVER_TOKEN: 'legacy-token', PATH: '/usr/bin' };
+  const inherited = { STEAMHARNESS_LLM_SERVER_URL: 'https://old.workflow.test', STEAMHARNESS_LLM_SERVER_TOKEN: 'old-token', STEAMHARNESS_SERVER_TOKEN: 'legacy-token', PATH: '/usr/bin' };
   const loggedOut = workflowAuthEnvironment(inherited, undefined, '/studio/auth');
   assert.deepEqual(loggedOut, {
-    WORKFLOW_AI_SERVER_URL: '', WORKFLOW_AI_API_KEY: '', WORKFLOW_SERVER_TOKEN: '', PATH: '/usr/bin',
-    WORKFLOW_SERVER_URL: '', WORKFLOW_SERVER_ADMIN_KEY: '', WORKFLOW_CLI_AUTH_DIR: '/studio/auth',
+    STEAMHARNESS_AI_SERVER_URL: '', STEAMHARNESS_AI_API_KEY: '', STEAMHARNESS_SERVER_TOKEN: '', PATH: '/usr/bin',
+    STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '', STEAMHARNESS_CLI_AUTH_DIR: '/studio/auth',
   });
   const loggedIn = workflowAuthEnvironment(inherited, { serverUrl, accessToken: token }, '/studio/auth');
-  assert.equal(loggedIn.WORKFLOW_SERVER_ADMIN_KEY, token);
-  assert.equal(loggedIn.WORKFLOW_AI_SERVER_URL, '');
-  assert.equal(loggedIn.WORKFLOW_AI_API_KEY, '');
+  assert.equal(loggedIn.STEAMHARNESS_SERVER_ADMIN_KEY, token);
+  assert.equal(loggedIn.STEAMHARNESS_AI_SERVER_URL, '');
+  assert.equal(loggedIn.STEAMHARNESS_AI_API_KEY, '');
   const withAi = workflowAuthEnvironment(inherited, { serverUrl, accessToken: token, aiServerUrl: 'https://ai.workflow.test', aiAccessToken: 'ai-token' }, '/studio/auth');
-  assert.equal(withAi.WORKFLOW_AI_SERVER_URL, 'https://ai.workflow.test');
-  assert.equal(withAi.WORKFLOW_AI_API_KEY, 'ai-token');
-  assert.equal(withAi.WORKFLOW_LLM_SERVER_URL, undefined);
-  assert.equal(withAi.WORKFLOW_LLM_SERVER_TOKEN, undefined);
+  assert.equal(withAi.STEAMHARNESS_AI_SERVER_URL, 'https://ai.workflow.test');
+  assert.equal(withAi.STEAMHARNESS_AI_API_KEY, 'ai-token');
+  assert.equal(withAi.STEAMHARNESS_LLM_SERVER_URL, undefined);
+  assert.equal(withAi.STEAMHARNESS_LLM_SERVER_TOKEN, undefined);
 });
 
 test('server URLs reject embedded credentials and authenticated redirects never forward the token', async (t) => {

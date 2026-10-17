@@ -1,5 +1,5 @@
 /**
- * Local-directory object storage backend (`WORKFLOW_STORAGE_DRIVER=local`).
+ * Local-directory object storage backend (`STEAMHARNESS_STORAGE_DRIVER=local`).
  *
  * The `storage/` key prefix, the write-once handling of content-addressed keys,
  * the `NoSuchKey` not-found shape and a `privateDownloadUrl` of `undefined` are the

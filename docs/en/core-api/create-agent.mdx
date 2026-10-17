@@ -109,7 +109,7 @@ Sessions expose `update_plan` and, when enabled, `subagent({ task, background?, 
 
 `session` also accepts `registry: AgentRegistryReader`, `toolSearch: { catalogs? }`, `codeMode: { memoryLimitBytes?, timeoutMs? }`, and `environment: { id, label, open(target, context) }`. All are opt-in; Code Mode is off by default.
 
-Core exports `createAgentRegistry`, `defineAgentTask`, `defineAgentExtension`, `defineAgentDoc`, `agentHook`, `AgentToolTask`, `AgentGenerationTask` and their types from `workflow-code/agent`. Injected projects can use the same functions through `workflow` without installing Pi.
+Core exports `createAgentRegistry`, `defineAgentTask`, `defineAgentExtension`, `defineAgentDoc`, `agentHook`, `AgentToolTask`, `AgentGenerationTask` and their types from `steamharness/agent`. Injected projects can use the same functions through `workflow` without installing Pi.
 
 ```ts
 const registry = workflow.createAgentRegistry();
@@ -153,7 +153,7 @@ Studio Trace adds Tasks, Plan, Records and Usage alongside its original timeline
 
 `storage: AgentStorageFactory` is mutually exclusive with `databasePath`: `{ label, open(): Promise<{ storage: AgentStorage, release?() }> }`. The host acquires an exclusive owner in open; release runs after the Harness closes storage. Reopening must use the same data. Custom backends own their backup and cancellation scheduling. JSONL is not the default long-running backend.
 
-`exportAgentDatabase({ databasePath, destination })` and `importAgentDatabase({ source, databasePath })` are exported from `workflow-code/agent`. Stop and join the worker first. Both acquire exclusive owner locks for the source and destination, validate Durable SQLite and create a consistent SQLite backup including WAL. The destination must be new and unreserved by another owner; existing sessions are never overwritten. Import does not copy the source owner lock. Preserve the project workspace alongside the database: file contents and live resources are outside the snapshot.
+`exportAgentDatabase({ databasePath, destination })` and `importAgentDatabase({ source, databasePath })` are exported from `steamharness/agent`. Stop and join the worker first. Both acquire exclusive owner locks for the source and destination, validate Durable SQLite and create a consistent SQLite backup including WAL. The destination must be new and unreserved by another owner; existing sessions are never overwritten. Import does not copy the source owner lock. Preserve the project workspace alongside the database: file contents and live resources are outside the snapshot.
 
 Offline `cancelAgentConversation({ agentStoreDir, conversationId, registry? })` also requires stopping and joining the worker first. Supply the project registry to run custom task abort cleanup. Tasks whose definitions are missing can only end as `orphaned`; their project cleanup code cannot execute. Prefer the `cancel` command on an active session, whose owner already holds the definitions.
 
@@ -316,7 +316,7 @@ Following Pi's estimation approach, Core uses the latest valid model response us
 
 Call `agent.getContextUsage()` while a response is streaming to query the current value. An external meter can supply a more accurate measurement with `agent.updateContextUsage({ used, total })`; `used` must be finite and nonnegative, and `total` must be finite and positive. Subsequent estimates grow from this measurement until valid model usage or actual compaction recalibrates it. `total` does not configure the model: the next model calibration uses this run's `contextWindow` or the model window. `reset()` clears the measurement and restored transcript.
 
-Agent nodes automatically convert these events to [standard ring outputs](./create-agent-node.mdx), without extra host logic reading Agent fields. For a standalone transcript estimate, use `estimateAgentContextTokens(messages)` from `workflow-code/agent`.
+Agent nodes automatically convert these events to [standard ring outputs](./create-agent-node.mdx), without extra host logic reading Agent fields. For a standalone transcript estimate, use `estimateAgentContextTokens(messages)` from `steamharness/agent`.
 
 ## Errors
 

@@ -12,10 +12,10 @@ const allowedHosts = [
 ];
 // server/web dev proxy should keep following the 712x dev server by
 // default; 7130+ is reserved for deployed release instances.
-const serverProxyTarget = process.env.WORKFLOW_SERVER_WEB_PROXY ?? "http://127.0.0.1:7125";
-const localSourceMode = process.env.WORKFLOW_LOCAL_SOURCE_MODE === "1";
-const localSharedRoot = process.env.WORKFLOW_LOCAL_SHARED_ROOT?.trim()
-  ? resolve(process.env.WORKFLOW_LOCAL_SHARED_ROOT)
+const serverProxyTarget = process.env.STEAMHARNESS_SERVER_WEB_PROXY ?? "http://127.0.0.1:7125";
+const localSourceMode = process.env.STEAMHARNESS_LOCAL_SOURCE_MODE === "1";
+const localSharedRoot = process.env.STEAMHARNESS_LOCAL_SHARED_ROOT?.trim()
+  ? resolve(process.env.STEAMHARNESS_LOCAL_SHARED_ROOT)
   : resolve(__dirname, "..", "..", "shared");
 const localSharedAliases = localSourceMode ? readLocalSharedAliases(localSharedRoot) : [];
 
@@ -78,7 +78,7 @@ export function readLocalSharedAliases(root: string): Array<{ find: RegExp; repl
     } catch {
       continue;
     }
-    if (typeof manifest.name !== "string" || !manifest.name.startsWith("@workflow-code/")) continue;
+    if (typeof manifest.name !== "string" || !manifest.name.startsWith("@steamharness/")) continue;
     const entrypoint = typeof manifest.types === "string" ? manifest.types : manifest.main;
     if (typeof entrypoint !== "string") continue;
     const packageRoot = resolve(root, entry.name);

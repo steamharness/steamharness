@@ -112,7 +112,7 @@ session 会向模型提供 `update_plan`，启用委派时再提供 `subagent({ 
 
 ## 扩展执行与恢复
 
-Core 从 `workflow-code/agent` 导出 `createAgentRegistry`、`defineAgentTask`、`defineAgentExtension`、`defineAgentDoc`、`agentHook`、`AgentToolTask`、`AgentGenerationTask` 及对应类型；注入式项目也可通过 `workflow` 使用这些函数，无需安装 Pi。任务直接使用 Durable 的检查点、依赖等待和取消协议：
+Core 从 `steamharness/agent` 导出 `createAgentRegistry`、`defineAgentTask`、`defineAgentExtension`、`defineAgentDoc`、`agentHook`、`AgentToolTask`、`AgentGenerationTask` 及对应类型；注入式项目也可通过 `workflow` 使用这些函数，无需安装 Pi。任务直接使用 Durable 的检查点、依赖等待和取消协议：
 
 ```ts
 const registry = workflow.createAgentRegistry();
@@ -156,7 +156,7 @@ Studio Trace 在原轨迹页旁提供任务、计划、记录、用量四个 tab
 
 运行时 `storage: AgentStorageFactory` 与 `databasePath` 互斥：`{ label, open(): Promise<{ storage: AgentStorage, release?() }> }`。宿主必须在 open 时获取独占 owner，Harness 关闭 storage 后再调用 release；恢复仍须使用同一份存储。自定义后端负责自身备份与取消调度，JSONL 不是默认长期运行后端。
 
-`workflow-code/agent` 导出 `exportAgentDatabase({ databasePath, destination })` 和 `importAgentDatabase({ source, databasePath })`。先停止并等待执行 worker；两个函数均获取源、目标的独占 owner 锁、检查 Durable SQLite，并通过 SQLite backup 保存含 WAL 的一致快照。目标必须不存在且未被其他 owner 预留，不覆盖任何会话；导入不复制源 owner 锁。数据库和项目工作区须配套保存，快照不包含工作区文件、运行中资源或凭据重建逻辑。
+`steamharness/agent` 导出 `exportAgentDatabase({ databasePath, destination })` 和 `importAgentDatabase({ source, databasePath })`。先停止并等待执行 worker；两个函数均获取源、目标的独占 owner 锁、检查 Durable SQLite，并通过 SQLite backup 保存含 WAL 的一致快照。目标必须不存在且未被其他 owner 预留，不覆盖任何会话；导入不复制源 owner 锁。数据库和项目工作区须配套保存，快照不包含工作区文件、运行中资源或凭据重建逻辑。
 
 离线取消 `cancelAgentConversation({ agentStoreDir, conversationId, registry? })` 也必须先停止并等待 worker；有自定义任务时传入项目 registry，使注册的 `abort` 清理可以执行。缺少定义的任务只能终结为 `orphaned`，不能执行项目清理代码。活动会话优先通过 `cancel` 控制命令取消，使用 owner 已加载的任务定义。
 
@@ -317,7 +317,7 @@ prompt 恰好是 `/compact` 或 `/summarize`，或显式传 `compact: true` 时�
 
 程序可以在流式运行期间查询 `agent.getContextUsage()`。外部计量器获得更准确的当前用量时，调用 `agent.updateContextUsage({ used, total })`；`used` 必须是非负有限数，`total` 必须是正有限数。后续估算在这个测量值上增长，直到有效模型 usage 或实际压缩重新校准；`total` 不修改模型配置，下次模型校准使用本轮 `contextWindow` 或模型窗口。`reset()` 同时清除该测量值和恢复记录。
 
-节点自动把这些事件转换成 [标准圆环输出](./create-agent-node.mdx)，宿主无需额外读取 Agent 字段。仅需计算一份 transcript 的上下文大小时，也可以使用 `workflow-code/agent` 导出的 `estimateAgentContextTokens(messages)`。
+节点自动把这些事件转换成 [标准圆环输出](./create-agent-node.mdx)，宿主无需额外读取 Agent 字段。仅需计算一份 transcript 的上下文大小时，也可以使用 `steamharness/agent` 导出的 `estimateAgentContextTokens(messages)`。
 
 ## 错误
 

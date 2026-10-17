@@ -1,0 +1,74 @@
+---
+title: "steamharness structure"
+description: "静态分析 Workflow、Conversation 或 Kanban 项目结构。"
+---
+
+# steamharness structure
+
+`steamharness structure` 不执行项目。命令会先校验完整的 `package.json.steamHarness.projectInfo` 合同；Workflow/Conversation 再读取脚本并报告节点、执行顺序、参数、conversation 配置和 debug registry，Kanban 则读取 `package.json` 中的产物配置、对应 HTML 入口和可选 `kanban.json`。
+
+## 命令格式
+
+```bash
+steamharness structure [workflow-dir]
+```
+
+## 参数
+
+| 参数 | 说明 |
+| --- | --- |
+| `workflow-dir` | workflow 项目目录。不传时使用当前目录。 |
+
+## 输出结构
+
+| 字段 | 说明 |
+| --- | --- |
+| `projectType` | 项目类型：`workflow`、`conversation` 或 `kanban`。前两者来自 executor；Kanban 来自 `package.json.steamHarness.projectType`。 |
+| `artifactDir` | Kanban 静态产物目录，默认 `.`。 |
+| `entry` | 相对 `artifactDir` 的 Kanban HTML 入口，默认 `index.html`。 |
+| `manifest` | Kanban 的可选 v1 参数清单。 |
+| `schedulePresets` | Workflow 在 `package.json.steamHarness.schedulePresets` 中声明并通过校验的建议计划；Conversation 和 Kanban 不接受该字段。 |
+| `defaultEntrypoint` | Workflow 的默认入口 ID。 |
+| `entrypoints` | Workflow 入口目录；每项包含 `id`、`title`、可选 `description`、`group`、`workflowName`、`execution`、参数、工具和 registry。`group` 为 `{ id, title, order? }` 时，字段均来自静态内联声明。 |
+| `workflow` | workflow 名称和基础信息。 |
+| `definitions.nodes` | 静态识别到的节点定义。 |
+| `definitions.variables` | 静态识别到的关键变量。 |
+| `execution` | 推导出的执行结构，包含 `runNode`、`runStreamNode`、`runIf`、`runFor`、`runWhile`、`runWorkflow` 和 question-classifier 分支；`return workflow.runNode(...)`、`return workflow.runIf(...)`、`return workflow.runFor(...)` 等返回表达式同样会纳入所属 branch/loop。 |
+| `diagnostics` | warnings、violations 和结构分析错误。 |
+| `params` | executor `params` 声明。 |
+| `conversation` | executor conversation 配置。 |
+| `registry` | executor registry 声明。 |
+
+## 失败行为
+
+| 情况 | 行为 |
+| --- | --- |
+| 结构分析成功 | 输出结构 JSON，退出码为 `0`。 |
+| `projectInfo` 含不支持字段或无效关联声明 | 输出包含具体 package 校验错误的结构 JSON，退出码为 `1`。 |
+| 发现脚本规则 violations | 输出包含 `diagnostics.error` 的结构 JSON，退出码为 `1`。分组不是静态内联对象、分组字段无效，或同一 `group.id` 的 `title`/`order` 不一致时，会报告明确 violation。 |
+| workflow 文件无法加载 | 输出错误结构 JSON，退出码为 `1`。 |
+
+Workflow/Conversation 结构分析要求源码中存在可静态读取的 `workflow.defineExecutor({ ... })`。完全缺少 executor、把动态变量传给 `defineExecutor(config)`、缺少或声明未知 `projectType`、Workflow 携带 Conversation 配置，以及遗留 `conversation.enabled` 都会产生带迁移示例的 violation。Kanban 不需要 executor，但必须在 package 中声明类型并提供配置后的普通 HTML 入口；绝对路径、目录逃逸、符号链接、保留目录和无效 `kanban.json` 会直接报错。
+
+## 示例
+
+```bash
+steamharness structure .
+steamharness structure workspace/workflow/hello
+steamharness structure workspace/workflow/runtime-timer
+steamharness structure ./roadmap-kanban
+```
+
+## 适合场景
+
+| 场景 | 说明 |
+| --- | --- |
+| 调试 CLI Web / Studio 表单参数 | 检查 `params` 是否被静态识别。 |
+| 调试单节点运行 | 检查 `registry` 中是否存在目标节点。 |
+| 检查节点顺序 | 查看 `execution` 和 `definitions.nodes`。 |
+| 检查条件分支 | 查看 `execution` 中 `source: "run-if"` 的 if / else-if / else 路径。 |
+| 检查循环结构 | 查看 `execution` 中 `source: "run-for"` / `source: "run-while"` 的循环体 children、条件、items 和 `maxIterations`。 |
+| 检查 workflow 复用 | 查看 `execution` 中 `standardName: "run-workflow"` 的子 workflow 调用节点。 |
+| 检查定时预设 | 确认 `schedulePresets` 引用现有 entrypoint，且时区、时间窗口或五字段 Cron 与参数 JSON 有效。CLI 只报告预设，不在后台创建或执行计划。 |
+| 检查入口分区 | 查看 `entrypoints[].group`；CLI 的结构/JSON 输出保留分组元数据，但运行命令仍按 `entrypoint.id` 选择入口。 |
+| 检查 Kanban | 确认 `projectType`、`artifactDir`、`entry` 和可选 `manifest.params`。旧 `steamHarness.kanban.dataSources` 会直接校验失败；关联项目改由 `steamHarness.projectInfo.relatedProjects` 声明，不再作为 Kanban 结构字段返回。 |

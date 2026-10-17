@@ -82,14 +82,14 @@ describe("createWorkflowUploadPlan", () => {
   });
 });
 
-async function createProject(workflowCode?: Record<string, unknown>): Promise<string> {
+async function createProject(steamHarness?: Record<string, unknown>): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), "workflow-upload-"));
   tempDirectories.push(root);
   await writeFile(path.join(root, "package.json"), JSON.stringify({
     id: "00000000-0000-4000-8000-000000000001",
     name: "upload-test",
     version: "0.1.0",
-    ...(workflowCode === undefined ? {} : { workflowCode }),
+    ...(steamHarness === undefined ? {} : { steamHarness }),
   }));
   return root;
 }

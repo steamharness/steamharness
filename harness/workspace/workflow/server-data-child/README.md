@@ -7,13 +7,13 @@
 ```bash
 PARENT_DIR="$(cd ../server-data-parent && pwd)"
 GRANDCHILD_DIR="$(cd ../server-data-grandchild && pwd)"
-pnpm exec workflow-code json . --entrypoint store -- --content "child content"
+pnpm exec steamharness json . --entrypoint store -- --content "child content"
 CURRENT_ID="<store 返回的 id>"
-pnpm exec workflow-code json . --entrypoint get -- --id "$CURRENT_ID"
+pnpm exec steamharness json . --entrypoint get -- --id "$CURRENT_ID"
 
 PARENT_ID="<父项目 store 返回的 id>"
-pnpm exec workflow-code json . --entrypoint get --related-project "parent=$PARENT_DIR" -- --id "$PARENT_ID" --alias parent
-pnpm exec workflow-code json . --entrypoint store --related-project "grandchild=$GRANDCHILD_DIR" -- --content "hello grandchild" --alias grandchild
+pnpm exec steamharness json . --entrypoint get --related-project "parent=$PARENT_DIR" -- --id "$PARENT_ID" --alias parent
+pnpm exec steamharness json . --entrypoint store --related-project "grandchild=$GRANDCHILD_DIR" -- --content "hello grandchild" --alias grandchild
 ```
 
 运行服务器组前需要登录 Server，并确保三个 UUID 已绑定对应云端项目。本项目是父项目与孙项目之间唯一的关系节点，但关联 KV 权限不会递归传递。

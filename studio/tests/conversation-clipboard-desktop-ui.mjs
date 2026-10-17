@@ -21,13 +21,13 @@ const sourceMode = process.env.STUDIO_CLIPBOARD_SOURCE_MODE === 'true';
 for (const language of sourceMode ? ['en'] : ['en', 'zh-cn']) {
   const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'studio-clipboard-')));
   const projectDir = actualProject ? fixture : path.join(directory, 'project');
-  const cliDir = !actualProject && process.env.WORKFLOW_UI_CLI_ENTRY ? path.resolve(path.dirname(process.env.WORKFLOW_UI_CLI_ENTRY), '..') : await realpath(path.join(fixture, 'node_modules/@workflow-code/cli'));
+  const cliDir = !actualProject && process.env.STEAMHARNESS_UI_CLI_ENTRY ? path.resolve(path.dirname(process.env.STEAMHARNESS_UI_CLI_ENTRY), '..') : await realpath(path.join(fixture, 'node_modules/@steamharness/cli'));
   proof.cliVersion = JSON.parse(await readFile(path.join(cliDir, 'package.json'), 'utf8')).version;
   if (!actualProject) {
-    await mkdir(path.join(projectDir, 'node_modules/@workflow-code'), { recursive: true });
+    await mkdir(path.join(projectDir, 'node_modules/@steamharness'), { recursive: true });
     for (const name of ['package.json', 'index.ts']) { await cp(path.join(fixture, name), path.join(projectDir, name)); }
-    await symlink(await realpath(path.join(fixture, 'node_modules/workflow-code')), path.join(projectDir, 'node_modules/workflow-code'), process.platform === 'win32' ? 'junction' : 'dir');
-    await symlink(cliDir, path.join(projectDir, 'node_modules/@workflow-code/cli'), process.platform === 'win32' ? 'junction' : 'dir');
+    await symlink(await realpath(path.join(fixture, 'node_modules/steamharness')), path.join(projectDir, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
+    await symlink(cliDir, path.join(projectDir, 'node_modules/@steamharness/cli'), process.platform === 'win32' ? 'junction' : 'dir');
   }
   const dataDir = path.join(directory, 'user'); await mkdir(path.join(dataDir, 'User'), { recursive: true });
   await writeFile(path.join(dataDir, 'User/settings.json'), JSON.stringify({ 'workbench.colorTheme': 'Light Modern', 'window.autoDetectColorScheme': false, 'git.openRepositoryInParentFolders': 'never' }));
@@ -143,7 +143,7 @@ for (const language of sourceMode ? ['en'] : ['en', 'zh-cn']) {
     app = await _electron.launch({ executablePath: desktop.executable, args: [...desktop.args, '--user-data-dir', dataDir,
       '--extensions-dir', path.join(root, '.studio/desktop-extensions'), `--locale=${language}`, '--disable-workspace-trust',
       '--disable-telemetry', '--skip-welcome', '--skip-release-notes', projectDir], cwd: path.join(root, 'upstream/vscode'),
-      env: { ...process.env, ...desktop.env, STUDIO_WORKFLOW_SOURCE: process.env.STUDIO_WORKFLOW_SOURCE || path.resolve(root, '..'), WORKFLOW_SERVER_URL: '', WORKFLOW_SERVER_ADMIN_KEY: '' }, timeout: 60_000 });
+      env: { ...process.env, ...desktop.env, STUDIO_STEAMHARNESS_SOURCE: process.env.STUDIO_STEAMHARNESS_SOURCE || path.resolve(root, '..'), STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' }, timeout: 60_000 });
     savedClipboard = await app.evaluate(({ clipboard }) => clipboard.availableFormats().map(format => ({ format, data: clipboard.readBuffer(format).toString('base64') })));
     png = await app.evaluate(({ nativeImage }) => {
       const pixels = Buffer.alloc(96 * 48 * 4);

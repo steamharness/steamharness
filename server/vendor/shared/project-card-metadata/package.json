@@ -1,5 +1,5 @@
 {
-  "name": "@workflow-code/project-card-metadata",
+  "name": "@steamharness/project-card-metadata",
   "version": "0.1.0",
   "private": true,
   "type": "module",

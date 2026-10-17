@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { i18n, useTranslation } from "@workflow-code/i18n/react";
+import { i18n, useTranslation } from "@steamharness/i18n/react";
 import { cn } from "@/lib/utils";
-import { getAvatarFallbackText } from "@workflow-code/avatar-fallback";
+import { getAvatarFallbackText } from "@steamharness/avatar-fallback";
 
 export interface UserIdentityValue {
   userId?: string | null;

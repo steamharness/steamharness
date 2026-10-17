@@ -7,8 +7,8 @@ export interface ServerPathRoots {
 }
 
 export function resolveServerPathRoots(): ServerPathRoots {
-  const repoRoot = process.env.WORKFLOW_REPO_ROOT
-    ? path.resolve(process.env.WORKFLOW_REPO_ROOT)
+  const repoRoot = process.env.STEAMHARNESS_REPO_ROOT
+    ? path.resolve(process.env.STEAMHARNESS_REPO_ROOT)
     : findRepoRoot(process.cwd());
   const serverRoot = repoRoot;
 

@@ -10,7 +10,7 @@ import { desktopLocaleLaunch } from './desktop-localization.mjs';
 import { createAssistantTestServer } from './assistant-test-server.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const sourceRoot = process.env.STUDIO_WORKFLOW_SOURCE || path.resolve(root, '..');
+const sourceRoot = process.env.STUDIO_STEAMHARNESS_SOURCE || path.resolve(root, '..');
 const proofDir = path.join(root, '.studio/assistant-workspace'); await mkdir(proofDir, { recursive: true });
 const proof = { checks: [], screenshots: [], errors: [] };
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -33,7 +33,7 @@ for (const language of ['en', 'zh-cn']) {
   const template = path.join(directory, 'extensions/studio-workstation/dist/developer-assistant');
   await rm(template, { recursive: true, force: true }); await mkdir(template);
   await writeFile(path.join(template, 'package.json'), JSON.stringify({ id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', name: 'Assistant test', type: 'module',
-    workflowCode: { projectInfo: { dataStorage: { mode: 'local' } } } }));
+    steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } }));
   await cp(path.join(root, 'tests/fixtures/assistant-workspace/index.ts'), path.join(template, 'index.ts'));
   const helper = path.join(directory, 'test-extension'); await mkdir(helper);
   await cp(path.join(root, 'tests/assistant-workspace-desktop-extension.cjs'), path.join(helper, 'extension.cjs'));
@@ -52,8 +52,8 @@ for (const language of ['en', 'zh-cn']) {
   const child = spawn(desktop.executable, [...desktop.args, '--extensionDevelopmentPath', helper, '--user-data-dir', dataDir,
     '--extensions-dir', path.join(root, '.studio/desktop-extensions'), `--locale=${language}`, '--disable-workspace-trust',
     '--disable-telemetry', '--skip-welcome', '--skip-release-notes', `--remote-debugging-port=${port}`, workspacePath],
-  { cwd: path.join(root, 'upstream/vscode'), env: { ...process.env, ...desktop.env, STUDIO_WORKFLOW_SOURCE: path.resolve(runtimeSource, '../..'),
-    STUDIO_TEST_SCOPE_ROOT: directory, WORKFLOW_SERVER_URL: '', WORKFLOW_SERVER_ADMIN_KEY: '' }, stdio: ['ignore', log.fd, log.fd] });
+  { cwd: path.join(root, 'upstream/vscode'), env: { ...process.env, ...desktop.env, STUDIO_STEAMHARNESS_SOURCE: path.resolve(runtimeSource, '../..'),
+    STUDIO_TEST_SCOPE_ROOT: directory, STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' }, stdio: ['ignore', log.fd, log.fd] });
   const exited = new Promise(resolve => { child.once('exit', resolve); child.once('error', resolve); });
   let browser, page, clipboardSaved = false;
 
@@ -153,7 +153,7 @@ for (const language of ['en', 'zh-cn']) {
         if (!await current.locator('body[data-surface=assistant]').count().catch(() => 0)) { continue; }
         const diagnostic = await current.evaluate(async () => {
           const response = await fetch('/api/message', { method: 'POST', headers: { 'Content-Type': 'application/json',
-            Authorization: `Bearer ${sessionStorage.getItem('workflow-web-session')}` }, body: JSON.stringify({ type: 'ready' }) });
+            Authorization: `Bearer ${sessionStorage.getItem('steamharness-web-session')}` }, body: JSON.stringify({ type: 'ready' }) });
           const result = await response.json(); const project = result.messages?.find(message => message.type === 'state')?.project;
           return { project: project && { folderPath: project.folderPath, assistant: project.assistant, fields: project.fields },
             error: document.querySelector('#error')?.textContent, parameters: document.querySelector('#parameters')?.textContent };

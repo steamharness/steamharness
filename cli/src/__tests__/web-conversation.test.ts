@@ -63,7 +63,7 @@ describe('Conversation execution lifecycle', () => {
   it('automatically retries an interrupted worker with the same input identity', async () => {
     const { controller, runtime } = fixture();
     controller.project.conversation = { recovery: { enabled: true } };
-    vi.mocked(runtime.run).mockRejectedValueOnce(Object.assign(new Error('Killed'), { code: 'WORKFLOW_WORKER_INTERRUPTED' }))
+    vi.mocked(runtime.run).mockRejectedValueOnce(Object.assign(new Error('Killed'), { code: 'STEAMHARNESS_WORKER_INTERRUPTED' }))
       .mockResolvedValueOnce({ status: 'success' });
     await controller.send({ text: 'Hello', params: {}, attachments: [] }); await controller.idle();
     expect(runtime.run).toHaveBeenCalledTimes(2);
@@ -83,7 +83,7 @@ describe('Conversation execution lifecycle', () => {
     vi.mocked(runtime.run).mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject; }));
     await controller.resume(answer.id!, request.requestId, { approved: true });
     await vi.waitFor(() => expect(runtime.run).toHaveBeenCalledTimes(2));
-    controller.dispose(); fail(Object.assign(new Error('Closed'), { code: 'WORKFLOW_WORKER_INTERRUPTED' }));
+    controller.dispose(); fail(Object.assign(new Error('Closed'), { code: 'STEAMHARNESS_WORKER_INTERRUPTED' }));
     await controller.idle();
     const saved = save.mock.calls.at(-1)![0];
     expect(saved[0].messages.at(-1)).toMatchObject({ status: 'running', submittingInput: { requestId: 'approval', values: { approved: true } } });
@@ -114,7 +114,7 @@ describe('Conversation execution lifecycle', () => {
   it('bounds worker recovery and retries the same unfinished run on the existing retry action', async () => {
     const { controller, runtime } = fixture();
     controller.project.conversation = { recovery: { enabled: true } };
-    vi.mocked(runtime.run).mockRejectedValue(Object.assign(new Error('Killed'), { code: 'WORKFLOW_WORKER_INTERRUPTED' }));
+    vi.mocked(runtime.run).mockRejectedValue(Object.assign(new Error('Killed'), { code: 'STEAMHARNESS_WORKER_INTERRUPTED' }));
     await controller.send({ text: 'Hello', params: {}, attachments: [] }); await controller.idle();
     const answer = controller.current.messages.at(-1)!;
     expect(runtime.run).toHaveBeenCalledTimes(4); expect(answer.status).toBe('failed');

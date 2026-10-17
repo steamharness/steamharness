@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { initI18n } from '@workflow-code/i18n';
+import { initI18n } from '@steamharness/i18n';
 import { composerOutputItems, isComposerOutputItem, ringOutputContent, ringOutputText } from '../web/ui/output-display';
 import { applyOutputChunk, outputText, type ConversationMessage, type WorkflowOutputItem } from '../web/workflow-types';
 

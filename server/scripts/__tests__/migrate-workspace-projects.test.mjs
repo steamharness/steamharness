@@ -6,7 +6,7 @@ import { resolveDefaultWorkspaceRoot } from "../migrate-workspace-projects.mjs";
 test("workspace migration accepts an explicit cross-platform workspace root", () => {
   const explicit = path.join(path.parse(process.cwd()).root, "workflow-fixtures", "workspace");
   assert.equal(
-    resolveDefaultWorkspaceRoot({ WORKFLOW_WORKSPACE_ROOT: explicit }),
+    resolveDefaultWorkspaceRoot({ STEAMHARNESS_WORKSPACE_ROOT: explicit }),
     path.resolve(explicit),
   );
 });

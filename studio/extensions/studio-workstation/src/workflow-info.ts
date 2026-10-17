@@ -45,7 +45,7 @@ function access(value: unknown): string {
 
 export function workflowInfoItems(project: WorkflowProject, manifest: unknown): WorkflowInfoItem[] {
   const pkg = record(manifest);
-  const info = record(record(pkg.workflowCode).projectInfo);
+  const info = record(record(pkg.steamHarness).projectInfo);
   const declarations = strings(info.declarations);
   const localizedNames = record(info.localizedNames);
   const platform = record(info.platformSupport);

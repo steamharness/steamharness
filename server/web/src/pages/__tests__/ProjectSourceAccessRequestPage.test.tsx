@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { i18n } from "@workflow-code/i18n/react";
+import { i18n } from "@steamharness/i18n/react";
 import { apiClient } from "../../api";
 import { ProjectSourceAccessRequestPage } from "../ProjectSourceAccessRequestPage";
 

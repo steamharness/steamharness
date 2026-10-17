@@ -1,5 +1,5 @@
 {
-  "name": "@workflow-code/workflow-schedules",
+  "name": "@steamharness/workflow-schedules",
   "version": "0.1.0",
   "private": true,
   "type": "module",

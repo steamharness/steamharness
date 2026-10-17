@@ -6,7 +6,7 @@
 // for hosts whose harness speaks MCP.
 
 export {
-  WORKFLOW_CAPABILITIES,
+  STEAMHARNESS_CAPABILITIES,
   createWorkflowCapabilityServer,
   createWorkflowCapabilityTools,
   findWorkflowCapability,

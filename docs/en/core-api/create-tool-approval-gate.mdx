@@ -132,8 +132,8 @@ In Conversation mode, the enablement of the tool is saved with the auto-approval
 Local CLI does not pop up interactive approvals. The first run outputs a `waiting_for_input` report, followed by a recovery using the same `runId` and `--resolved-user-inputs-json`:
 
 ```bash
-workflow-code json . -- --message "run tool"
-workflow-code json . \
+steamharness json . -- --message "run tool"
+steamharness json . \
   --run-id <run-id> \
   --resolved-user-inputs-json '[{"requestId":"<request-id>","nodeName":"tool-approval","values":{"approved":true},"submittedAt":"2026-07-08T00:00:00.000Z"}]' \
   -- --message "run tool"

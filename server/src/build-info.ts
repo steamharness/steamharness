@@ -22,10 +22,10 @@ export async function readServerBuildInfo(options: {
     serverPackageRoot === options.serverRoot
       ? Promise.resolve(directServerManifest)
       : readJson(path.join(serverPackageRoot, "package.json")),
-    readJson(path.join(options.repoRoot, "node_modules", "workflow-code", "package.json")),
+    readJson(path.join(options.repoRoot, "node_modules", "steamharness", "package.json")),
   ]);
   const expectedProductVersion = readVersion(serverManifest, "server/package.json");
-  const expectedCoreVersion = readVersion(coreManifest, "node_modules/workflow-code/package.json");
+  const expectedCoreVersion = readVersion(coreManifest, "node_modules/steamharness/package.json");
 
   if (!options.strict) {
     return {

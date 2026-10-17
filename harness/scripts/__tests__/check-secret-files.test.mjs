@@ -32,9 +32,9 @@ test("secret file audit scans deleted example values in reachable history", asyn
 test("secret file audit accepts placeholders and reports only variable names", () => {
   assert.deepEqual(findUnsafeExampleAssignments([
     "OPENAI_API_KEY=",
-    "WORKFLOW_DATABASE_URL=postgresql://user:replace-with-password@localhost/db",
+    "STEAMHARNESS_DATABASE_URL=postgresql://user:replace-with-password@localhost/db",
     "JWT_SECRET=change_me_with_openssl_rand_hex_32",
-    "WORKFLOW_SERVER_PORT=7130",
+    "STEAMHARNESS_SERVER_PORT=7130",
   ].join("\n")), []);
   assert.deepEqual(findUnsafeExampleAssignments("OPENAI_API_KEY=sk-live-value\n"), [
     { line: 1, name: "OPENAI_API_KEY" },

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, Loader2, LogIn } from "lucide-react";
-import { formatDateTime, useTranslation } from "@workflow-code/i18n/react";
+import { formatDateTime, useTranslation } from "@steamharness/i18n/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiClient } from "../api";

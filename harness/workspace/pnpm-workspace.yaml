@@ -2,7 +2,7 @@ packages:
   - "workflow/*"
   - "conversation/*"
 overrides:
-  workflow-code: link:..
+  steamharness: link:..
 allowBuilds:
   '@ffmpeg-installer/darwin-arm64': true
   '@google/genai': true

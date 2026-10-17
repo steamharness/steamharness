@@ -1,5 +1,5 @@
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
-import { useTranslation } from "@workflow-code/i18n/react";
+import { useTranslation } from "@steamharness/i18n/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";

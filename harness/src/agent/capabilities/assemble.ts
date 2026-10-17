@@ -18,7 +18,7 @@ import type { WorkflowCapability } from "./types";
  * still described here, and `isWorkflowCapabilityAvailable` is what a caller
  * asks before putting one in front of a model.
  */
-export const WORKFLOW_CAPABILITIES: readonly WorkflowCapability[] = [
+export const STEAMHARNESS_CAPABILITIES: readonly WorkflowCapability[] = [
   KNOWLEDGE_CAPABILITY,
   KV_CAPABILITY,
   GLOBAL_MEMORY_CAPABILITY,
@@ -48,7 +48,7 @@ export function listWorkflowCapabilityToolIds(options: { globalMemory?: boolean 
 }
 
 export function findWorkflowCapability(toolId: string): WorkflowCapability | undefined {
-  return WORKFLOW_CAPABILITIES.find((capability) => capability.toolId === toolId);
+  return STEAMHARNESS_CAPABILITIES.find((capability) => capability.toolId === toolId);
 }
 
 /**
@@ -149,7 +149,7 @@ export async function runWorkflowCapabilityAction(
 }
 
 function selectCapabilities(options: { globalMemory?: boolean }): WorkflowCapability[] {
-  return WORKFLOW_CAPABILITIES.filter(
+  return STEAMHARNESS_CAPABILITIES.filter(
     (capability) => capability !== GLOBAL_MEMORY_CAPABILITY || options.globalMemory === true,
   ).filter((capability) => capability.isAvailable?.() !== false);
 }

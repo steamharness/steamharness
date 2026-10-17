@@ -12,7 +12,7 @@ import { desktopLocaleLaunch } from './desktop-localization.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const catalog = JSON.parse(await readFile(path.join(root, 'extensions/studio-workstation/package.nls.zh-cn.json'), 'utf8'));
-const core = await import(resolve('workflow-code', new URL('../examples/conversation/package.json', import.meta.url).href));
+const core = await import(resolve('steamharness', new URL('../examples/conversation/package.json', import.meta.url).href));
 const proofDir = path.join(root, '.studio/resources-panel'); await mkdir(proofDir, { recursive: true });
 const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'studio-resource-ui-')));
 const dataDir = path.join(directory, 'user'); await mkdir(path.join(dataDir, 'User'), { recursive: true });
@@ -27,9 +27,9 @@ const storageDir = path.join(dataDir, 'User/globalStorage/studio.studio-workstat
 for (const type of ['conversation', 'workflow', 'kanban']) {
   const original = path.join(root, 'examples', type), folder = path.join(directory, type);
   await cp(original, folder, { recursive: true, filter: entry => !entry.split(path.sep).includes('node_modules') });
-  await mkdir(path.join(folder, 'node_modules/@workflow-code'), { recursive: true });
-  await symlink(await realpath(path.join(original, 'node_modules/workflow-code')), path.join(folder, 'node_modules/workflow-code'), 'dir');
-  await symlink(await realpath(path.join(original, 'node_modules/@workflow-code/cli')), path.join(folder, 'node_modules/@workflow-code/cli'), 'dir');
+  await mkdir(path.join(folder, 'node_modules/@steamharness'), { recursive: true });
+  await symlink(await realpath(path.join(original, 'node_modules/steamharness')), path.join(folder, 'node_modules/steamharness'), 'dir');
+  await symlink(await realpath(path.join(original, 'node_modules/@steamharness/cli')), path.join(folder, 'node_modules/@steamharness/cli'), 'dir');
   const manifest = JSON.parse(await readFile(path.join(folder, 'package.json'), 'utf8'));
   const data = path.join(storageDir, createHash('sha256').update(folder).digest('hex').slice(0, 24));
   const kv = core.createWorkflowKVContext({ projectId: manifest.id, store: core.createLocalWorkflowKVStore({ rootDir: path.join(data, 'kv') }) });
@@ -44,7 +44,7 @@ const log = await open(path.join(proofDir, 'desktop.log'), 'w');
 const desktop = await desktopLocaleLaunch('zh-cn', directory);
 const child = spawn(desktop.executable, [...desktop.args, '--user-data-dir', dataDir,
   '--extensions-dir', path.join(root, '.studio/desktop-extensions'), '--locale=zh-cn', '--disable-workspace-trust', '--disable-telemetry', '--skip-welcome', '--skip-release-notes', `--remote-debugging-port=${port}`, workspace],
-  { cwd: path.join(root, 'upstream/vscode'), env: { ...process.env, ...desktop.env, WORKFLOW_SERVER_URL: '', WORKFLOW_SERVER_ADMIN_KEY: '' }, stdio: ['ignore', log.fd, log.fd] });
+  { cwd: path.join(root, 'upstream/vscode'), env: { ...process.env, ...desktop.env, STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' }, stdio: ['ignore', log.fd, log.fd] });
 const exited = new Promise(resolve => { child.once('exit', resolve); child.once('error', resolve); });
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const proof = { checks: [], screenshots: [], errors: [] };
@@ -101,7 +101,7 @@ try {
   const kvTab = panel.locator('.composite-bar .action-label').filter({ hasText: /^KV$/ }); await kvTab.waitFor({ timeout: 45_000 }); await kvTab.click();
   let kv = await frameFor('kv'); await kv.locator('.resource-row').first().waitFor(); await stable(kv);
   assert.equal(await kv.locator('#resource-project option').count(), 3);
-  await kv.locator('#resource-project').selectOption({ label: projects[0].manifest.workflowCode.projectInfo.localizedNames['zh-CN'] });
+  await kv.locator('#resource-project').selectOption({ label: projects[0].manifest.steamHarness.projectInfo.localizedNames['zh-CN'] });
   await stable(kv); await kv.locator('#resource-search').fill('conversation.state'); await kv.locator('.resource-row').filter({ hasText: 'conversation.state' }).click();
   await kv.locator('.detail-content').filter({ hasText: '"count": 7' }).waitFor();
   await snapshot('kv-light.png'); await layout(kv);
@@ -125,7 +125,7 @@ try {
   await writeFile(settingsPath, JSON.stringify({ 'workbench.colorTheme': 'Dark Modern', 'git.openRepositoryInParentFolders': 'never' }));
   await knowledge.locator('body.vscode-dark').waitFor();
   await page.setViewportSize({ width: 650, height: 850 }); await layout(knowledge); await snapshot('knowledge-narrow.png');
-  await knowledge.locator('#detail-back').click(); await knowledge.locator('#resource-project').selectOption({ label: projects[2].manifest.workflowCode.projectInfo.localizedNames['zh-CN'] });
+  await knowledge.locator('#detail-back').click(); await knowledge.locator('#resource-project').selectOption({ label: projects[2].manifest.steamHarness.projectInfo.localizedNames['zh-CN'] });
   await knowledge.locator('.resource-row').filter({ hasText: 'kanban notes' }).waitFor(); await stable(knowledge);
   assert.equal(await knowledge.locator('.resource-row').filter({ hasText: 'conversation notes' }).count(), 0);
   await kvTab.click(); kv = await frameFor('kv'); await kv.locator('#resource-search').fill('kanban.state'); await kv.locator('.resource-row').filter({ hasText: 'kanban.state' }).waitFor();

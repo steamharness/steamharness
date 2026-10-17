@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { FilePlus, Loader2, Pencil, Save, Trash2 } from "lucide-react";
-import { useTranslation } from "@workflow-code/i18n/react";
-import { isKnowledgeSuccess, toKnowledgeDocument, type KnowledgeDocument, type KnowledgeWorkspaceProps } from "@workflow-code/knowledge-base";
+import { useTranslation } from "@steamharness/i18n/react";
+import { isKnowledgeSuccess, toKnowledgeDocument, type KnowledgeDocument, type KnowledgeWorkspaceProps } from "@steamharness/knowledge-base";
 import { Alert, AlertDescription, AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, Button, Field, FieldGroup, FieldLabel, Input, Separator, Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle, Skeleton, Textarea } from "@/components/ui";
 import { formatDate } from "@/utils/format";
 import { KnowledgeDocumentPreview } from "./KnowledgeDocumentPreview";

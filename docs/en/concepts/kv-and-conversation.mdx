@@ -34,7 +34,7 @@ Kanban exposes only current-project `kv.getValue(key)` and `kv.setValue(key, val
 
 ## Related-Project KV
 
-Generic relationships are declared in `package.json.workflowCode.projectInfo.relatedProjects` on both projects:
+Generic relationships are declared in `package.json.steamHarness.projectInfo.relatedProjects` on both projects:
 
 ```json
 {
@@ -77,7 +77,7 @@ The same `get(alias)` also opens the target's **Knowledge base** and its **entry
 - `entrypoints` decides what the consumer may call: `listEntrypoints()` lists only the entrypoints the grant covers, and `runEntrypoint(id, args)` runs one, taking the argument list that entrypoint's own `createInput` parses and resolving with the payload it produced.
 - A relationship is one hop: the project that was called has **no** related access of its own, so nothing reaches a third project through it.
 
-Related entrypoints always execute locally from explicitly supplied target directories. KV uses `WORKFLOW_KV_STORE_DIR` and Knowledge uses `WORKFLOW_PERSISTENT_VALUE_STORE_DIR`, isolated by the target project UUID. A missing Knowledge directory fails directly. The server location provides remote data access only; Server never starts the target project. Related calls stay one hop, and the called project receives no access to a third project.
+Related entrypoints always execute locally from explicitly supplied target directories. KV uses `STEAMHARNESS_KV_STORE_DIR` and Knowledge uses `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR`, isolated by the target project UUID. A missing Knowledge directory fails directly. The server location provides remote data access only; Server never starts the target project. Related calls stay one hop, and the called project receives no access to a third project.
 
 ```ts
 const inventory = context.storage.local.relatedProjects.get("inventory");
@@ -99,7 +99,7 @@ On Server, a user who can read consumer project A may read B through A; writing 
 Kanban uses the same relationship and grant:
 
 ```js
-const inventory = window.workflowCodeKanban.relatedProjects.get("inventory");
+const inventory = window.steamHarnessKanban.relatedProjects.get("inventory");
 const value = await inventory.kv.getValue("stock:item-1");
 await inventory.kv.setValue("stock:item-1", { count: 8 });
 const unsubscribe = inventory.kv.subscribe(({ alias, revision }) => {
@@ -111,8 +111,8 @@ Bridge requests carry only alias and key. The iframe cannot supply a target UUID
 
 |Data|Local CLI directory|Description|
 | --- | --- | --- |
-| `context.storage.local.kv` | `WORKFLOW_KV_STORE_DIR` | Normal KV, conversation state, and other local data. |
-| `context.storage.local.persistentValue` | `WORKFLOW_PERSISTENT_VALUE_STORE_DIR` | Persistent values and the project Knowledge base. |
+| `context.storage.local.kv` | `STEAMHARNESS_KV_STORE_DIR` | Normal KV, conversation state, and other local data. |
+| `context.storage.local.persistentValue` | `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR` | Persistent values and the project Knowledge base. |
 
 Local CLI runs inject these directories into `context.storage.local`. `context.storage.server` uses the project UUID and an authenticated Server connection. A local run of a `server` project uses the server location as its host location; `both` defaults to the local host and lets source code access server storage explicitly. An unavailable location throws, and local and server data never synchronize automatically.
 
@@ -151,7 +151,7 @@ const result = await workflow.searchKnowledgeDocuments(storage, {
 });
 ```
 
-The available methods are `listKnowledgeDocuments`, `getKnowledgeDocument`, `createKnowledgeDocument`, `editKnowledgeDocument`, `deleteKnowledgeDocument`, `searchKnowledgeDocuments`, and `readKnowledgeDocumentLines`. The cursor of `listKnowledgeDocumentPage()` is an opaque token that can only be passed back as is. The first read only accesses the metadata and the required page block, and does not read the body or scan the old page. Indexes are fixed to v2 page block format, old single array indexes are not read or migrated. These methods do not write the knowledge base to a normal CLI local KV; the local knowledge base is written when the `WORKFLOW_PERSISTENT_VALUE_STORE_DIR` is set, and the server database is written through an explicit Server storage connection. Local and server knowledge bases use their respective backends; reading data does not copy it to the other store. Create, edit, and delete are performed serially in the same PersistentValue namespace; a local run using a server connection completes such changes as a server-side request and commits or rolls back the document index, body, and tombstone within the same PostgreSQL transaction, avoiding concurrent writes or inconsistent data left by a single failure. The markdownPreview used for list and write summary responses only scan up to 16K characters at the beginning of the body to avoid additional copying or blocking saving of multi-MB documents. Reading the complete body still uses the get interface.
+The available methods are `listKnowledgeDocuments`, `getKnowledgeDocument`, `createKnowledgeDocument`, `editKnowledgeDocument`, `deleteKnowledgeDocument`, `searchKnowledgeDocuments`, and `readKnowledgeDocumentLines`. The cursor of `listKnowledgeDocumentPage()` is an opaque token that can only be passed back as is. The first read only accesses the metadata and the required page block, and does not read the body or scan the old page. Indexes are fixed to v2 page block format, old single array indexes are not read or migrated. These methods do not write the knowledge base to a normal CLI local KV; the local knowledge base is written when the `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR` is set, and the server database is written through an explicit Server storage connection. Local and server knowledge bases use their respective backends; reading data does not copy it to the other store. Create, edit, and delete are performed serially in the same PersistentValue namespace; a local run using a server connection completes such changes as a server-side request and commits or rolls back the document index, body, and tombstone within the same PostgreSQL transaction, avoiding concurrent writes or inconsistent data left by a single failure. The markdownPreview used for list and write summary responses only scan up to 16K characters at the beginning of the body to avoid additional copying or blocking saving of multi-MB documents. Reading the complete body still uses the get interface.
 
 Kanban `knowledge.listDocuments/getDocument/createDocument/editDocument/deleteDocument/searchDocuments/readDocumentLines` reuses these document formats and storage semantics. Local resource panels show local data, while Server Web static previews show server data. Named configurations are isolated by user. Project KV and Knowledge are shared within the project: writers and managers can write, while viewers have read-only access.
 
@@ -279,7 +279,7 @@ Both the `codex` and `opencode` examples have picture attachments enabled. Codex
 
 ## Input Queue
 
-With `conversation.durable: { enabled: true }` and Agent `session`, Harness owns queued inputs, consumption, withdrawal, and steer receipts. Hosts retain stable requestIds for unconfirmed commands and resend them after recovery; snapshot receipts repair lost acknowledgements. Background tasks, transactional plans, and parent/child usage commit with execution history; KV / Conversation documents are display projections. Reset retains visible history while starting a new context epoch. Forks share SQLite but own separate conversations, provider identities, and inboxes, inheriting plans through initial/current/asOf. Clients have independent selections and share snapshots without starting another database owner. See [Studio Trace](/en/cli/workflow-code#durable-agent-in-studio-trace).
+With `conversation.durable: { enabled: true }` and Agent `session`, Harness owns queued inputs, consumption, withdrawal, and steer receipts. Hosts retain stable requestIds for unconfirmed commands and resend them after recovery; snapshot receipts repair lost acknowledgements. Background tasks, transactional plans, and parent/child usage commit with execution history; KV / Conversation documents are display projections. Reset retains visible history while starting a new context epoch. Forks share SQLite but own separate conversations, provider identities, and inboxes, inheriting plans through initial/current/asOf. Clients have independent selections and share snapshots without starting another database owner. See [Studio Trace](/en/cli/steamharness#durable-agent-in-studio-trace).
 
 For workflows without Durable session, declaring `conversation.inputQueue: { enabled: true }` lets CLI Web accept new inputs while the current session is running and put them into the host persistence queue. After the current run completes, queue items continue in order; both `codex` and `opencode` workflows enable this mode.
 

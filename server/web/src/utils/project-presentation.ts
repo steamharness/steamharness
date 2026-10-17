@@ -1,5 +1,5 @@
 
-import { WORKFLOW_PROJECT_DECLARATION_DEFINITIONS, WORKFLOW_PROJECT_PLATFORM_DEFINITIONS, isWorkflowProjectDataStorageLocationAllowed, resolveWorkflowProjectName } from "@workflow-code/project-info";
+import { STEAMHARNESS_PROJECT_DECLARATION_DEFINITIONS, STEAMHARNESS_PROJECT_PLATFORM_DEFINITIONS, isWorkflowProjectDataStorageLocationAllowed, resolveWorkflowProjectName } from "@steamharness/project-info";
 import type { WorkflowSummary } from "../types";
 
 
@@ -14,11 +14,11 @@ export type WorkflowProjectServerStorageAccess =
   | { allowed: false; mode: "local" | null };
 
 const DECLARATION_LABEL_KEYS = new Map<string, string>(
-  WORKFLOW_PROJECT_DECLARATION_DEFINITIONS.map((definition) => [definition.id, definition.labelKey]),
+  STEAMHARNESS_PROJECT_DECLARATION_DEFINITIONS.map((definition) => [definition.id, definition.labelKey]),
 );
 
 const PLATFORM_LABEL_KEYS = new Map<string, string>(
-  WORKFLOW_PROJECT_PLATFORM_DEFINITIONS.map((definition) => [definition.id, definition.labelKey]),
+  STEAMHARNESS_PROJECT_PLATFORM_DEFINITIONS.map((definition) => [definition.id, definition.labelKey]),
 );
 
 export function getWorkflowProjectDisplayName(

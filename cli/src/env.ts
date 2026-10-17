@@ -5,8 +5,8 @@ import { parse } from "dotenv";
 export function loadCliEnv(): void {
   const cliRoot = process.cwd();
   const defaultRepoRoot = findWorkspaceRepositoryRoot(cliRoot) ?? cliRoot;
-  const initialRepoRoot = process.env.WORKFLOW_REPO_ROOT
-    ? path.resolve(process.env.WORKFLOW_REPO_ROOT)
+  const initialRepoRoot = process.env.STEAMHARNESS_REPO_ROOT
+    ? path.resolve(process.env.STEAMHARNESS_REPO_ROOT)
     : defaultRepoRoot;
 
   loadEnvFiles([
@@ -14,8 +14,8 @@ export function loadCliEnv(): void {
     path.join(initialRepoRoot, ".env"),
   ]);
 
-  const resolvedRepoRoot = process.env.WORKFLOW_REPO_ROOT
-    ? path.resolve(process.env.WORKFLOW_REPO_ROOT)
+  const resolvedRepoRoot = process.env.STEAMHARNESS_REPO_ROOT
+    ? path.resolve(process.env.STEAMHARNESS_REPO_ROOT)
     : initialRepoRoot;
 
   if (resolvedRepoRoot !== initialRepoRoot) {

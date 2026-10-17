@@ -1,4 +1,4 @@
-import type { WorkflowProjectAccessRule } from '@workflow-code/project-info';
+import type { WorkflowProjectAccessRule } from '@steamharness/project-info';
 import { t } from '../localization';
 import { projectTypeLabels, type WorkflowProject } from '../workflow-types';
 

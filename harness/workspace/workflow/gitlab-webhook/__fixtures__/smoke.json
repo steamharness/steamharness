@@ -1,7 +1,7 @@
 {
   "args": [
     "--payload",
-    "{\"object_kind\":\"issue\",\"object_attributes\":{\"iid\":81,\"action\":\"open\",\"title\":\"Build automated test foundation\",\"description\":\"Need workflow smoke tests.\",\"url\":\"http://gitlab.local/issues/81\"},\"project\":{\"name\":\"workflow-code\",\"web_url\":\"http://gitlab.local/workflow-code\"},\"user\":{\"name\":\"Codex\"},\"labels\":[{\"title\":\"type::feature\"}]}",
+    "{\"object_kind\":\"issue\",\"object_attributes\":{\"iid\":81,\"action\":\"open\",\"title\":\"Build automated test foundation\",\"description\":\"Need workflow smoke tests.\",\"url\":\"http://gitlab.local/issues/81\"},\"project\":{\"name\":\"steamharness\",\"web_url\":\"http://gitlab.local/steamharness\"},\"user\":{\"name\":\"Codex\"},\"labels\":[{\"title\":\"type::feature\"}]}",
     "--message",
     "fixture note"
   ],

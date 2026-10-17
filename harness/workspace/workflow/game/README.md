@@ -7,9 +7,9 @@ It is intentionally branch-rich so the App Diagram can show nested execution pat
 
 ```bash
 cp .env.example .env
-workflow-code structure .
-workflow-code run . -- "secure the city relay"
-workflow-code json . -- "secure the city relay"
+steamharness structure .
+steamharness run . -- "secure the city relay"
+steamharness json . -- "secure the city relay"
 ```
 
 The LLM provider reads `LLM_TYPE`, `LLM_API_KEY`, `LLM_BASE_URL`, and `LLM_MODEL`

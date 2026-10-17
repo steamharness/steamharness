@@ -5,8 +5,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
-import { workflowRuntimeApi } from "workflow-code/runtime-api";
-import { inspectWorkflowStructure } from "workflow-code/executor/rules";
+import { workflowRuntimeApi } from "steamharness/runtime-api";
+import { inspectWorkflowStructure } from "steamharness/executor/rules";
 
 // 这组断言守住 project assistant 生成器 skill 的契约：Core 新增运行时 API 或
 // executor/entrypoint 定义字段后，只要依赖版本 bump 到包含该变化的 Core，
@@ -46,16 +46,16 @@ function mentionsIdentifier(corpus: string, identifier: string): boolean {
   return new RegExp(`(?<![\\w.$-])${identifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w-])`).test(corpus);
 }
 
-function resolveWorkflowCodeTypeDefinitionFile(): string {
-  // workflow-code 的 exports 只声明了 types/import 条件，没有 require 条件，
+function resolveSteamHarnessTypeDefinitionFile(): string {
+  // steamharness 的 exports 只声明了 types/import 条件，没有 require 条件，
   // 也没暴露 ./package.json；因此直接按 Node 解析规则从仓库根查找包目录。
   const manifestPath = [process.cwd(), root]
-    .map((base) => path.join(base, "node_modules", "workflow-code", "package.json"))
+    .map((base) => path.join(base, "node_modules", "steamharness", "package.json"))
     .find((candidate) => existsSync(candidate));
-  if (manifestPath === undefined) throw new Error("workflow-code is not installed.");
+  if (manifestPath === undefined) throw new Error("steamharness is not installed.");
   const packageRoot = path.dirname(manifestPath);
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { types?: string };
-  if (typeof manifest.types !== "string") throw new Error("workflow-code does not declare a types entry.");
+  if (typeof manifest.types !== "string") throw new Error("steamharness does not declare a types entry.");
   return path.join(packageRoot, manifest.types);
 }
 
@@ -73,13 +73,13 @@ let cachedDefinitionChecker: DefinitionChecker | undefined;
 
 function createDefinitionChecker(): DefinitionChecker {
   if (cachedDefinitionChecker !== undefined) return cachedDefinitionChecker;
-  const definitionFile = resolveWorkflowCodeTypeDefinitionFile();
+  const definitionFile = resolveSteamHarnessTypeDefinitionFile();
   const program = ts.createProgram([definitionFile], {});
   const sourceFile = program.getSourceFile(definitionFile);
-  if (sourceFile === undefined) throw new Error("workflow-code type definitions are unavailable.");
+  if (sourceFile === undefined) throw new Error("steamharness type definitions are unavailable.");
   const checker = program.getTypeChecker();
   const moduleSymbol = checker.getSymbolAtLocation(sourceFile);
-  if (moduleSymbol === undefined) throw new Error("workflow-code type definitions export nothing.");
+  if (moduleSymbol === undefined) throw new Error("steamharness type definitions export nothing.");
 
   cachedDefinitionChecker = {
     hasExport(typeName: string): boolean {
@@ -87,7 +87,7 @@ function createDefinitionChecker(): DefinitionChecker {
     },
     check(typeName: string): string[] {
       const exported = checker.getExportsOfModule(moduleSymbol).find((symbol) => symbol.getName() === typeName);
-      if (exported === undefined) throw new Error(`${typeName} is not exported by workflow-code.`);
+      if (exported === undefined) throw new Error(`${typeName} is not exported by steamharness.`);
       const type = checker.getDeclaredTypeOfSymbol(exported);
       return checker.getPropertiesOfType(type).map((property) => property.getName()).sort();
     },
@@ -101,7 +101,7 @@ describe("workflow-code-generator contract", () => {
     const prompt = await readFile(path.join(root, "assistant-prompt.ts"), "utf8");
     expect(rules).toContain("context.files");
     expect(rules).toContain("不属于全局成员清单");
-    expect(rules).toContain("window.workflowCodeKanban.files.createFile");
+    expect(rules).toContain("window.steamHarnessKanban.files.createFile");
     expect(rules).toContain("file-upload");
     expect(rules).toContain("file-download");
     expect(prompt).toContain("Binary uploads are distinct from project source publication");
@@ -116,7 +116,7 @@ describe("workflow-code-generator contract", () => {
     for (const relative of [
       "references/runtime-api-index.md",
       "references/param-panels.md",
-      "references/workflow-code-api.md",
+      "references/steamharness-api.md",
       "assets/examples/agent-conversation/index.ts",
       "scripts/create_workflow.py",
     ]) {
@@ -133,7 +133,7 @@ describe("workflow-code-generator contract", () => {
       "AgentOutputPayload", "AgentNodeOptions", "AgentProjectOptions", "WorkflowRuntimeApi",
     ]) {
       expect(taskMap).toContain(name);
-      expect(hasExport(name), `${name} must be exported by workflow-code`).toBe(true);
+      expect(hasExport(name), `${name} must be exported by steamharness`).toBe(true);
     }
   });
 
@@ -182,19 +182,19 @@ describe("workflow-code-generator contract", () => {
     expect(missing, `skills/workflow-code-generator 未覆盖这些定义字段：${missing.join(", ")}`).toEqual([]);
   });
 
-  // 这组断言来自一次真实排查：宿主（Desktop）把自己的 WORKFLOW_*_STORE_DIR 注入到
+  // 这组断言来自一次真实排查：宿主（Desktop）把自己的 STEAMHARNESS_*_STORE_DIR 注入到
   // 小助手的 shell，项目里的 CLI 因此读写宿主自己的本地存储；把项目钉到旧版本后，
   // 旧 CLI 在共享根目录里读到当前版本写下的条目，直接以存储格式错误失败，而文档
   // 既没说清本地检查要隔离存储，也没说清精确版本要从哪条通道取，排查被带偏了很久。
   it("documents local-run storage isolation and exact-version resolution", async () => {
     const corpus = await readSkillCorpus();
     for (const token of [
-      "WORKFLOW_KV_STORE_DIR",
-      "WORKFLOW_PERSISTENT_VALUE_STORE_DIR",
-      "WORKFLOW_FILE_STORE_DIR",
+      "STEAMHARNESS_KV_STORE_DIR",
+      "STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR",
+      "STEAMHARNESS_FILE_STORE_DIR",
       "Local workflow KV entry is invalid and cannot be read safely.",
       "dist-tags",
-      "os.tmpdir()/workflow-code-kv",
+      "os.tmpdir()/steamharness-kv",
     ]) {
       expect(corpus, `skills/workflow-code-generator 未覆盖本地运行必需的事实：${token}`).toContain(token);
     }
@@ -204,7 +204,7 @@ describe("workflow-code-generator contract", () => {
   it("keeps the generator scaffold able to produce publishable package metadata", async () => {
     const script = await readFile(path.join(skillRoot, "scripts", "create_workflow.py"), "utf8");
     for (const required of ["projectCard", "release", "projectType"]) {
-      expect(script, `create_workflow.py 未生成 workflowCode.${required}`).toContain(required);
+      expect(script, `create_workflow.py 未生成 steamHarness.${required}`).toContain(required);
     }
   });
 
@@ -218,7 +218,7 @@ describe("workflow-code-generator contract", () => {
       expect(structure.conversation).toBeUndefined();
       const source = await readFile(path.join(directory, "index.ts"), "utf8");
       expect(source).toContain("workflow.parseConversationDefaultInputArgs(args).message");
-      expect(await readFile(path.join(directory, "README.md"), "utf8")).toContain('workflow-code run . -- --message "input text"');
+      expect(await readFile(path.join(directory, "README.md"), "utf8")).toContain('steamharness run . -- --message "input text"');
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -235,11 +235,11 @@ describe("workflow-code-generator contract", () => {
       path.join(skillRoot, "scripts", "create_workflow.py"),
     ];
     const forbidden: Array<[string, RegExp]> = [
-      ["package", /@workflow-code\/app\b/u],
-      ["environment", /\b(?:WORKFLOW_APP_[A-Z0-9_]*|APP_LOCAL_[A-Z0-9_]*)\b/u],
+      ["package", /@steamharness\/app\b/u],
+      ["environment", /\b(?:STEAMHARNESS_APP_[A-Z0-9_]*|APP_LOCAL_[A-Z0-9_]*)\b/u],
       ["config-file", /\bworkflow-app\.json\b/u],
       ["runtime-helper", /\b(?:workflow\.)?isApp\s*(?:\(|:)/u],
-      ["runtime-marker", /WORKFLOW_RUNTIME_PLATFORM\s*=\s*["'`]?app\b/u],
+      ["runtime-marker", /STEAMHARNESS_RUNTIME_PLATFORM\s*=\s*["'`]?app\b/u],
       ["runtime-value", /\b(?:runtime|platform)\s*[:=]\s*["'`]app["'`]/u],
       ["compatibility", /\b(?:minAppVersion|appVersion)\b/u],
     ];

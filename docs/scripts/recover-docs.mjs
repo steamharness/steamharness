@@ -16,13 +16,13 @@ export function parseDocsDeploymentMetadata(value) {
 
 export async function recoverDocs(options = {}) {
   const repoRoot = path.resolve(options.repoRoot ?? path.resolve(import.meta.dirname, ".."));
-  const deployRootRaw = String(options.deployRoot ?? process.env.WORKFLOW_DOCS_DEPLOY_ROOT ?? "").trim();
+  const deployRootRaw = String(options.deployRoot ?? process.env.STEAMHARNESS_DOCS_DEPLOY_ROOT ?? "").trim();
   if (!deployRootRaw || !path.isAbsolute(deployRootRaw)) {
-    throw new Error("WORKFLOW_DOCS_DEPLOY_ROOT must be a non-root absolute path.");
+    throw new Error("STEAMHARNESS_DOCS_DEPLOY_ROOT must be a non-root absolute path.");
   }
   const deployRoot = path.resolve(deployRootRaw);
   if (deployRoot === path.parse(deployRoot).root) {
-    throw new Error("WORKFLOW_DOCS_DEPLOY_ROOT must be a non-root absolute path.");
+    throw new Error("STEAMHARNESS_DOCS_DEPLOY_ROOT must be a non-root absolute path.");
   }
   const deployment = parseDocsDeploymentMetadata(JSON.parse(await readFile(path.join(deployRoot, "deployment.json"), "utf8")));
   const execute = options.runCommand ?? runCommand;

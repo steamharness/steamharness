@@ -18,7 +18,7 @@ afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 describe("Studio Control workflow", () => {
   it("passes the runtime's static validation and exposes only supported entrypoints", async () => {
-    const { inspectLocalWorkflowStructure } = await import("workflow-code");
+    const { inspectLocalWorkflowStructure } = await import("steamharness");
     expect(() => inspectLocalWorkflowStructure({ workflowDir: path.resolve(import.meta.dirname, "..") })).not.toThrow();
     const { executor } = await import("../index");
     expect(executor.entrypoints?.map(entry => entry.id)).toEqual([
@@ -67,8 +67,8 @@ describe("Studio Control workflow", () => {
   });
 
   it("forwards cancellation and returns the host result as Workflow output", async () => {
-    vi.stubEnv("WORKFLOW_STUDIO_CONTROL_BRIDGE_URL", "http://127.0.0.1:1234/studio-control");
-    vi.stubEnv("WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN", "test-token");
+    vi.stubEnv("STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL", "http://127.0.0.1:1234/studio-control");
+    vi.stubEnv("STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN", "test-token");
     const fetcher = vi.fn(async () => Response.json({ ok: true, value: { theme: "Dark" } }));
     vi.stubGlobal("fetch", fetcher);
     const { studioControlWorkflow } = await import("../index");
@@ -80,8 +80,8 @@ describe("Studio Control workflow", () => {
   });
 
   it.each([["STUDIO_CONTROL_INVALID_REQUEST", "input_validation"], ["HOST_STOPPED", "workflow_execution"]])("classifies host failure %s", async (code, type) => {
-    vi.stubEnv("WORKFLOW_STUDIO_CONTROL_BRIDGE_URL", "http://127.0.0.1:1234/studio-control");
-    vi.stubEnv("WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN", "test-token");
+    vi.stubEnv("STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL", "http://127.0.0.1:1234/studio-control");
+    vi.stubEnv("STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN", "test-token");
     vi.stubGlobal("fetch", async () => Response.json({ ok: false, error: { code, message: "Host failure" } }, { status: 400 }));
     const { studioControlWorkflow } = await import("../index");
     await expect(studioControlWorkflow.run!({ operation: "studio.state.get", input: {} } as never, {} as never))
@@ -89,8 +89,8 @@ describe("Studio Control workflow", () => {
   });
 
   it("handles non-Error transport failures", async () => {
-    vi.stubEnv("WORKFLOW_STUDIO_CONTROL_BRIDGE_URL", "http://127.0.0.1:1234/studio-control");
-    vi.stubEnv("WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN", "test-token");
+    vi.stubEnv("STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL", "http://127.0.0.1:1234/studio-control");
+    vi.stubEnv("STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN", "test-token");
     vi.stubGlobal("fetch", async () => { throw "offline"; });
     const { studioControlWorkflow } = await import("../index");
     await expect(studioControlWorkflow.run!({ operation: "studio.state.get", input: {} } as never, {} as never)).rejects.toThrow("offline");

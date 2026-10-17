@@ -46,13 +46,13 @@ const serverUrl = `http://127.0.0.1:${server.address().port}`;
 const project = path.join(directory, 'conversation');
 const original = path.join(root, 'examples/conversation');
 await cp(original, project, { recursive: true, filter: entry => !entry.split(path.sep).includes('node_modules') });
-await mkdir(path.join(project, 'node_modules/@workflow-code'), { recursive: true });
-for (const dependency of ['workflow-code', '@workflow-code/cli']) {
+await mkdir(path.join(project, 'node_modules/@steamharness'), { recursive: true });
+for (const dependency of ['steamharness', '@steamharness/cli']) {
   await symlink(await realpath(path.join(original, 'node_modules', dependency)), path.join(project, 'node_modules', dependency), 'dir');
 }
 const manifestPath = path.join(project, 'package.json');
 const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
-manifest.workflowCode.projectInfo.dataStorage = { mode: 'server' };
+manifest.steamHarness.projectInfo.dataStorage = { mode: 'server' };
 const manifestText = JSON.stringify(manifest);
 await writeFile(manifestPath, manifestText);
 const userData = path.join(directory, 'user');

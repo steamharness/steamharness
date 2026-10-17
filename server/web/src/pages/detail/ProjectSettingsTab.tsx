@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { ArrowUpRight, BookOpenText, Check, Copy, Database, Link2, Users } from "lucide-react";
-import { formatDateTime } from "@workflow-code/i18n";
-import { translateDynamicKey, useTranslation } from "@workflow-code/i18n/react";
-import { getWorkflowProjectTypeLabelKey } from "@workflow-code/project-types";
+import { formatDateTime } from "@steamharness/i18n";
+import { translateDynamicKey, useTranslation } from "@steamharness/i18n/react";
+import { getWorkflowProjectTypeLabelKey } from "@steamharness/project-types";
 import {
   Badge, Card, CardAction, CardContent, CardHeader, CardTitle,
   Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, IconActionButton, PageStats, Switch,

@@ -2,7 +2,7 @@ import path from "node:path";
 import { inferServerEnvMode } from "./env";
 
 export function resolveReleaseStorageRootFromEnv(): string | undefined {
-  const raw = process.env.WORKFLOW_RELEASE_STORAGE_ROOT?.trim();
+  const raw = process.env.STEAMHARNESS_RELEASE_STORAGE_ROOT?.trim();
   return raw ? path.resolve(raw) : undefined;
 }
 
@@ -12,7 +12,7 @@ export function resolvePublishedRoot(): string | undefined {
 }
 
 export function resolveReleaseMetadataRootFromEnv(): string | undefined {
-  const explicit = firstNonEmpty(process.env.WORKFLOW_RELEASE_METADATA_DIR);
+  const explicit = firstNonEmpty(process.env.STEAMHARNESS_RELEASE_METADATA_DIR);
   if (explicit) {
     return path.resolve(explicit);
   }
@@ -26,8 +26,8 @@ export function resolveServerDataRootFromEnv(options: {
   mode?: "development" | "production";
 }): string {
   const explicit = firstNonEmpty(
-    process.env.WORKFLOW_SERVER_DATA_DIR,
-    process.env.WORKFLOW_SERVER_DEPLOY_DIR,
+    process.env.STEAMHARNESS_SERVER_DATA_DIR,
+    process.env.STEAMHARNESS_SERVER_DEPLOY_DIR,
   );
 
   if (explicit) {
@@ -47,7 +47,7 @@ export function resolveServerDataRootFromEnv(options: {
 }
 
 export function resolveDocsRoot(): string | undefined {
-  const explicit = firstNonEmpty(process.env.WORKFLOW_DOCS_ROOT);
+  const explicit = firstNonEmpty(process.env.STEAMHARNESS_DOCS_ROOT);
 
   if (explicit) {
     return path.resolve(explicit);

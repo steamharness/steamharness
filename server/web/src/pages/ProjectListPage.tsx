@@ -1,11 +1,11 @@
 
 import { useMemo, useState } from "react";
 import { Bot, Boxes, Brain, Code2, Cpu, Database, FileText, FolderKanban, GitBranch, MessageCircle, Search, Workflow, Zap } from "lucide-react";
-import { translateDynamicKey, useTranslation } from "@workflow-code/i18n/react";
-import { i18n } from "@workflow-code/i18n";
-import { matchesWorkflowProjectSearch } from "@workflow-code/project-info";
+import { translateDynamicKey, useTranslation } from "@steamharness/i18n/react";
+import { i18n } from "@steamharness/i18n";
+import { matchesWorkflowProjectSearch } from "@steamharness/project-info";
 import type { ProjectCardIconName, ProjectCardMetadata, WorkflowProjectType, WorkflowSummary } from "../types";
-import { getWorkflowProjectTypeDefinition, getWorkflowProjectTypeLabelKey } from "@workflow-code/project-types";
+import { getWorkflowProjectTypeDefinition, getWorkflowProjectTypeLabelKey } from "@steamharness/project-types";
 import { formatDate } from "../utils/format";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";

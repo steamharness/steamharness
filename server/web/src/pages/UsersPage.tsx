@@ -1,7 +1,7 @@
 import { Link, MailPlus, Pencil, RefreshCw, ShieldCheck, UserCheck, UserCog, UserRound, UserX } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useTranslation } from "@workflow-code/i18n/react";
-import { formatDateTime, i18n } from "@workflow-code/i18n";
+import { useTranslation } from "@steamharness/i18n/react";
+import { formatDateTime, i18n } from "@steamharness/i18n";
 import type { WorkflowAdminUserSummary, WorkflowRoleRecord, WorkflowUserInvitationResult } from "../types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConfirmActionDialog, type ConfirmAction } from "@/components/ConfirmActionDialog";
 import { UserIdentity } from "@/components/UserIdentity";
 import { cn } from "@/lib/utils";
-import { getAvatarFallbackText } from "@workflow-code/avatar-fallback";
+import { getAvatarFallbackText } from "@steamharness/avatar-fallback";
 
 interface UsersPageProps {
   users: WorkflowAdminUserSummary[] | null;

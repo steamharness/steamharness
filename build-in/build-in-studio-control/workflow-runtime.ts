@@ -1,4 +1,4 @@
-import type { WorkflowRuntimeApi } from "workflow-code/runtime-api";
+import type { WorkflowRuntimeApi } from "steamharness/runtime-api";
 
 export const workflow = new Proxy({} as WorkflowRuntimeApi, {
   get(_target, property) {

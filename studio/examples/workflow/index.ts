@@ -1,5 +1,5 @@
-import type { WorkflowRuntimeApi } from 'workflow-code/runtime-api';
-import type { WorkflowOutputPayload } from 'workflow-code';
+import type { WorkflowRuntimeApi } from 'steamharness/runtime-api';
+import type { WorkflowOutputPayload } from 'steamharness';
 
 const workflow = (globalThis as unknown as { workflow: WorkflowRuntimeApi }).workflow;
 interface Input {

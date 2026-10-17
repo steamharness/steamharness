@@ -1,20 +1,20 @@
 ---
 title: "Workflow 模型"
-description: "当前 workflow-code 的 Workflow、Node、Provider、Executor 和 Registry 模型。"
+description: "当前 steamharness 的 Workflow、Node、Provider、Executor 和 Registry 模型。"
 ---
 
 # Workflow 模型
 
-workflow-code 支持 `workflow`、`conversation` 和 `kanban` 三种项目类型。Workflow 与 Conversation 是自包含的 TypeScript workflow；本地宿主和 CLI 会注入全局命名空间 `workflow`，业务 workflow 不应该从 `"workflow-code"` 导入 runtime API。项目仍需在 `devDependencies` 中精确记录 Core 与 CLI 版本；Core 版本用于宿主兼容判断，CLI 独立发版。Kanban 是以 `index.html` 为入口的静态项目，不使用 runtime API 或 executor，详见 [Kanban HTML 项目](/concepts/kanban)。
+steamharness 支持 `workflow`、`conversation` 和 `kanban` 三种项目类型。Workflow 与 Conversation 是自包含的 TypeScript workflow；本地宿主和 CLI 会注入全局命名空间 `workflow`，业务 workflow 不应该从 `"steamharness"` 导入 runtime API。项目仍需在 `devDependencies` 中精确记录 Core 与 CLI 版本；Core 版本用于宿主兼容判断，CLI 独立发版。Kanban 是以 `index.html` 为入口的静态项目，不使用 runtime API 或 executor，详见 [Kanban HTML 项目](/concepts/kanban)。
 
 ## 项目信息与展示声明
 
-项目源码以根 `package.json` 为项目信息的唯一权威来源。必填 `name` 是默认名称和旧客户端回退；`workflowCode.projectInfo` 还保存本地化名称、手工展示声明、展示平台、数据存储位置和关联项目：
+项目源码以根 `package.json` 为项目信息的唯一权威来源。必填 `name` 是默认名称和旧客户端回退；`steamHarness.projectInfo` 还保存本地化名称、手工展示声明、展示平台、数据存储位置和关联项目：
 
 ```json
 {
   "name": "Default Name",
-  "workflowCode": {
+  "steamHarness": {
     "projectInfo": {
       "localizedNames": {
         "zh-CN": "中文名称",
@@ -36,7 +36,7 @@ workflow-code 支持 `workflow`、`conversation` 和 `kanban` 三种项目类型
 
 `platformSupport` 同样只描述项目展示平台，不决定版本在哪里运行。平台无关使用 `{ "mode": "agnostic" }`；指定平台使用 `specific`，并至少包含一个 `macos`、`windows` 或 `web`。Server 的源码与数据存储不受展示平台限制。未知的未来语言、声明和平台 ID 会在读取和写回时保留。旧项目缺少 `projectInfo` 时按无声明、平台无关并只使用根 `name` 处理。
 
-`relatedProjects` 是 Workflow、Conversation 和 Kanban 共用的项目关系声明，不是小助手或 Kanban 私有配置。每项包含 alias、目标项目 UUID，以及 `grantToRelatedProject` 读写规则；该授权方向表示“允许目标项目访问当前项目”。关系写入双方 package 后才确认，单边声明显示为待确认且不授予 KV 权限。完整格式、校验限制和访问语义见 [KV 与会话](/concepts/kv-and-conversation#关联项目-kv)。旧 `workflowCode.kanban.dataSources` 不会转换，会直接校验失败。
+`relatedProjects` 是 Workflow、Conversation 和 Kanban 共用的项目关系声明，不是小助手或 Kanban 私有配置。每项包含 alias、目标项目 UUID，以及 `grantToRelatedProject` 读写规则；该授权方向表示“允许目标项目访问当前项目”。关系写入双方 package 后才确认，单边声明显示为待确认且不授予 KV 权限。完整格式、校验限制和访问语义见 [KV 与会话](/concepts/kv-and-conversation#关联项目-kv)。旧 `steamHarness.kanban.dataSources` 不会转换，会直接校验失败。
 
 ## Runtime API
 
@@ -136,7 +136,7 @@ const outputNode = workflow.createOutputNode<Parsed, OutputPayload>({
 
 `workflow.createDetailsOutputNode` 是创建独立可折叠 output item 的便捷节点，会把 `{ title, content, icon }` 转成 `items: [{ title, content, icon, contentType, collapsed: true }]`，并仍按 `output` 标准节点被本地 CLI 收集。`workflow.createTimerNode` 会创建标准名为 `timer` 的普通节点，用于启动业务计时；`workflow.endTimer(timer, context, { status, message })` 显式结束计时并写入 `report.timers`，未结束的 running timer 会在 workflow 收尾前自动标记为 `cleared`，避免 UI 残留运行态。`workflow.runNode` 返回节点输出；`workflow.runStreamNode` 返回 `{ chunks, output }`，其中 `chunks` 是原始流式 chunk 数组，`output` 是 `finalize` 或 `format` 生成的最终 payload。流式 `createOutputNode({ stream, format })` 的 `format` 接收累积后的 `{ text, items, chunks }`；字符串 chunk 会自动写入一个默认 Markdown item，结构化输出可使用 `workflow.createOutputItemChunk(...)` 发送 `output_item_start`、`output_item_delta`、`output_item_end`。`output_item_delta` 除了合并 `content`，还可以携带 `item` patch 更新 `title`、`icon`、`collapsed`、`contentType` 或 `metadata.status`，用于展示工具调用从 running 到 success / failed 的状态变化。`workflow.runIf` 会按顺序检查 if / else-if / else 分支，命中后执行对应 `run`，并用 `branch-node` 运行事件记录所选分支。`workflow.runFor` 和 `workflow.runWhile` 会把循环本身记录为可追踪节点，让循环体在本地宿主 Diagram 中保持可见。
 
-`workflow.createUserInputNode` 会在 workflow 中插入一个可持久恢复的人工输入点。节点的 `params` 使用与当前 Workflow entrypoint（Conversation 则为 executor）相同的字段定义，CLI Web 会用同一套 Run workspace 表单展示；外部 agent 动态产生问题时，可以通过无副作用的 `resolveRequest(input, context)` 为本次请求生成标题、说明、字段和默认值。首次执行时如果没有提交值，runtime 发出 `user_input_requested` 事件，report 写入 `pendingUserInput`，run 状态变为 `waiting_for_input`；提交答案后，同一个 `runId` 会带着 `resolvedUserInputs` 恢复执行，并发出 `user_input_resolved`。Workflow 恢复固定使用 run 快照中的精确目标和原入口，不能切换入口。CLI 不读取 stdin，遇到该节点时会输出等待报告，需要通过 `workflow-code json --run-id <id> --resolved-user-inputs-json '<json>'` 注入答案继续。
+`workflow.createUserInputNode` 会在 workflow 中插入一个可持久恢复的人工输入点。节点的 `params` 使用与当前 Workflow entrypoint（Conversation 则为 executor）相同的字段定义，CLI Web 会用同一套 Run workspace 表单展示；外部 agent 动态产生问题时，可以通过无副作用的 `resolveRequest(input, context)` 为本次请求生成标题、说明、字段和默认值。首次执行时如果没有提交值，runtime 发出 `user_input_requested` 事件，report 写入 `pendingUserInput`，run 状态变为 `waiting_for_input`；提交答案后，同一个 `runId` 会带着 `resolvedUserInputs` 恢复执行，并发出 `user_input_resolved`。Workflow 恢复固定使用 run 快照中的精确目标和原入口，不能切换入口。CLI 不读取 stdin，遇到该节点时会输出等待报告，需要通过 `steamharness json --run-id <id> --resolved-user-inputs-json '<json>'` 注入答案继续。
 
 `workflow.createToolApprovalGate` 使用同一套等待/恢复协议审批工具调用。Workflow 先在当前 entrypoint 的 `tools` 中声明工具，Conversation 则使用 executor `tools`，再在业务代码中调用 gate；工具未注册会返回 `input_validation`，被禁用会返回 `tool_permission_denied`，需要人工确认时会生成 `tool-approval` 请求并把 run 暂停为 `waiting_for_input`。
 
@@ -282,9 +282,9 @@ export const executor = workflow.defineExecutor<Input, OutputPayload>({
 
 只要存在一个显式分组，本地宿主 Run 工作区就按分区展示入口：显式 `order` 升序排列，同值按首次出现顺序；未设置 `order` 的分区随后按首次出现顺序，未声明分组的入口进入本地化“未分组”分区。分区可独立折叠，首次进入只展开默认入口所在分区，运行或出现活动/结果入口时会重新展开对应分区；展开状态仅按稳定 `workflowId + resolved target` 持久化。没有任何分组时保留原有平铺界面。CLI 和本地定时任务仍只使用入口 ID。
 
-项目可以通过 `package.json.workflowCode.schedulePresets` 为某个入口声明建议定时计划。Structure 会校验预设 ID、入口、时区、触发规则和 JSON 参数，并把目录交给本地宿主；预设不会自动启用。参见 [Workflow 定时运行](/concepts/workflow-schedules)。
+项目可以通过 `package.json.steamHarness.schedulePresets` 为某个入口声明建议定时计划。Structure 会校验预设 ID、入口、时区、触发规则和 JSON 参数，并把目录交给本地宿主；预设不会自动启用。参见 [Workflow 定时运行](/concepts/workflow-schedules)。
 
-Conversation executor 保持单入口，把 `workflow`、`params`、`createInput` 等字段直接放在 executor 上，不声明或接受 entrypoint。Executor 的 `projectType` 只允许 `"workflow"` 或 `"conversation"`。Kanban 在 `package.json.workflowCode.projectType` 中声明 `"kanban"`，不能伪造 executor。
+Conversation executor 保持单入口，把 `workflow`、`params`、`createInput` 等字段直接放在 executor 上，不声明或接受 entrypoint。Executor 的 `projectType` 只允许 `"workflow"` 或 `"conversation"`。Kanban 在 `package.json.steamHarness.projectType` 中声明 `"kanban"`，不能伪造 executor。
 
 `createInput` 会接收 `workflowName`、`workflowDir`、`args`、`paramValues`、`env`、`abortSignal` 和可选 `conversationId`。Workflow 还会收到所选 `entrypointId`、`entrypointTitle`；相同字段会写入 `WorkflowContext.metadata`、report 和本地运行记录。本地宿主通过所选执行配置把参数转换为 workflow input；取消运行时，`abortSignal` 会传播到 workflow context，便于长耗时 provider/SDK 调用及时停止。
 
@@ -331,15 +331,15 @@ workflow package 精确声明 Core 与 CLI 的 dev dependency，同时按需声�
 ```json
 {
   "id": "1f221460-4fc7-48e2-bd23-651dee826692",
-  "name": "@workflow-code/hello-workflow",
+  "name": "@steamharness/hello-workflow",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "devDependencies": {
-    "@workflow-code/cli": "0.2.0",
-    "workflow-code": "0.2.0"
+    "@steamharness/cli": "0.2.0",
+    "steamharness": "0.2.0"
   },
-  "workflowCode": {
+  "steamHarness": {
     "projectType": "workflow",
     "projectInfo": {
       "dataStorage": {
@@ -351,6 +351,6 @@ workflow package 精确声明 Core 与 CLI 的 dev dependency，同时按需声�
 }
 ```
 
-`workflow-code` 必须是精确 SemVer，不能写 `^`、`0.2.x`、`workspace:*` 或其它 range。本地宿主与 CLI 在运行前用项目要求的 Core 版本计算兼容性，但只比较 `major.minor`：同线任意 patch 或精确预发布版本可直接运行，major 或 minor 变化需要升级宿主。`@workflow-code/cli` 同样固定精确版本但独立发版，不替代 Core 运行兼容判断。Core 0.2 项目还必须显式声明 `workflowCode.projectInfo.dataStorage.mode`。
+`steamharness` 必须是精确 SemVer，不能写 `^`、`0.2.x`、`workspace:*` 或其它 range。本地宿主与 CLI 在运行前用项目要求的 Core 版本计算兼容性，但只比较 `major.minor`：同线任意 patch 或精确预发布版本可直接运行，major 或 minor 变化需要升级宿主。`@steamharness/cli` 同样固定精确版本但独立发版，不替代 Core 运行兼容判断。Core 0.2 项目还必须显式声明 `steamHarness.projectInfo.dataStorage.mode`。
 
-Kanban 的最小 package 使用 `workflowCode.projectType: "kanban"`，目录只要求 `package.json + index.html`；参数化项目再增加可选 `kanban.json`。Kanban package 同样精确记录 Core 与 CLI 版本，以便项目管理工具保持统一依赖模型；Kanban 本身不执行 Core runtime。
+Kanban 的最小 package 使用 `steamHarness.projectType: "kanban"`，目录只要求 `package.json + index.html`；参数化项目再增加可选 `kanban.json`。Kanban package 同样精确记录 Core 与 CLI 版本，以便项目管理工具保持统一依赖模型；Kanban 本身不执行 Core runtime。

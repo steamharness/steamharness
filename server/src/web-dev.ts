@@ -16,7 +16,7 @@ export function createWebDevServerOptions({
     appType: "custom" as const,
     server: {
       middlewareMode: true as const,
-      hmr: env.WORKFLOW_SERVER_HMR === "0" ? false as const : { server },
+      hmr: env.STEAMHARNESS_SERVER_HMR === "0" ? false as const : { server },
     },
   };
 }

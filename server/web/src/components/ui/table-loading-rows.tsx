@@ -1,6 +1,6 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { TableCell, TableRow } from "@/components/ui/table";
-import { useTranslation } from "@workflow-code/i18n/react";
+import { useTranslation } from "@steamharness/i18n/react";
 import { cn } from "@/lib/utils";
 
 interface TableLoadingRowsProps {

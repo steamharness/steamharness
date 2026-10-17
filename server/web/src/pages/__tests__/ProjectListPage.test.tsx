@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { i18n } from "@workflow-code/i18n";
+import { i18n } from "@steamharness/i18n";
 import { ProjectListPage } from "../ProjectListPage";
 import type { WorkflowSummary } from "../../types";
 
@@ -173,8 +173,8 @@ describe("ProjectListPage management table", () => {
 
     expect(screen.getByTestId("project-card-icon-alpha").querySelector("svg")).toBeTruthy();
     expect(screen.getByTestId("project-card-icon-legacy").querySelector("svg")).toBeTruthy();
-    expect(screen.getByTestId("project-card-icon-alpha").querySelector('img[src="/brand/workflow-code-icon-mark.svg"]')).toBeNull();
-    expect(screen.getByTestId("project-card-icon-legacy").querySelector('img[src="/brand/workflow-code-icon-mark.svg"]')).toBeNull();
+    expect(screen.getByTestId("project-card-icon-alpha").querySelector('img[src="/brand/steamharness-icon-mark.svg"]')).toBeNull();
+    expect(screen.getByTestId("project-card-icon-legacy").querySelector('img[src="/brand/steamharness-icon-mark.svg"]')).toBeNull();
   });
 
   it("searches across project card kind labels", () => {

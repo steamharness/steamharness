@@ -12,18 +12,18 @@ test("npm release reads protected variables from the production environment", as
 test("alpha CI publishes one immutable package and retains three successful releases", async () => {
   const source = await readFile(path.resolve(import.meta.dirname, "../../.gitlab-ci.yml"), "utf8");
   assert.match(source, /workflow:\s*\n\s+auto_cancel:\s*\n\s+on_job_failure: all/u);
-  assert.match(source, /release:npm:alpha:[\s\S]*?npm-alpha-publish\.mjs @workflow-code\/cli "\$ALPHA_VERSION" \.release\/alpha/u);
+  assert.match(source, /release:npm:alpha:[\s\S]*?npm-alpha-publish\.mjs @steamharness\/cli "\$ALPHA_VERSION" \.release\/alpha/u);
   assert.match(source, /alpha-dependencies\.mjs --skip-ci[\s\S]*?server\|package\.json\|devDependencies[\s\S]*?desktop\|package\.json\|dependencies/u);
   assert.match(source, /snapshot:alpha:[\s\S]*?workspace-snapshot\.mjs --skip-ci --submodule cli/u);
   assert.match(source, /retention:alpha:[\s\S]*?alpha-retention\.mjs --job-name release:npm:alpha --retain 3/u);
-  assert.match(source, /trigger:server:alpha:[\s\S]*?needs:[\s\S]*?job: alpha:prepare[\s\S]*?artifacts: true[\s\S]*?job: retention:alpha[\s\S]*?WORKFLOW_ALPHA_CASCADE: "true"[\s\S]*?project: "\$CI_PROJECT_NAMESPACE\/server"[\s\S]*?strategy: mirror/u);
-  assert.doesNotMatch(source, /trigger:server:alpha:[\s\S]*?WORKFLOW_ALPHA_CHANGED:/u);
+  assert.match(source, /trigger:server:alpha:[\s\S]*?needs:[\s\S]*?job: alpha:prepare[\s\S]*?artifacts: true[\s\S]*?job: retention:alpha[\s\S]*?STEAMHARNESS_ALPHA_CASCADE: "true"[\s\S]*?project: "\$CI_PROJECT_NAMESPACE\/server"[\s\S]*?strategy: mirror/u);
+  assert.doesNotMatch(source, /trigger:server:alpha:[\s\S]*?STEAMHARNESS_ALPHA_CHANGED:/u);
 });
 
 test("dev npm publication requires an explicit pipeline variable and does not use alpha", async () => {
   const source = await readFile(path.resolve(import.meta.dirname, "../../.gitlab-ci.yml"), "utf8");
-  assert.match(source, /dev:prepare:[\s\S]*?WORKFLOW_NPM_DEV_RELEASE == "true"[\s\S]*?--tag-prefix dev\/v --branch dev --env-prefix DEV --output \.dev\.env/u);
-  assert.match(source, /release:npm:dev:[\s\S]*?name: dev[\s\S]*?WORKFLOW_NPM_DEV_RELEASE == "true"[\s\S]*?npm-alpha-publish\.mjs @workflow-code\/cli "\$DEV_VERSION" \.release\/dev dev/u);
+  assert.match(source, /dev:prepare:[\s\S]*?STEAMHARNESS_NPM_DEV_RELEASE == "true"[\s\S]*?--tag-prefix dev\/v --branch dev --env-prefix DEV --output \.dev\.env/u);
+  assert.match(source, /release:npm:dev:[\s\S]*?name: dev[\s\S]*?STEAMHARNESS_NPM_DEV_RELEASE == "true"[\s\S]*?npm-alpha-publish\.mjs @steamharness\/cli "\$DEV_VERSION" \.release\/dev dev/u);
 });
 
 test("every npm publish is gated by the release gate before it can pack", async () => {
@@ -33,7 +33,7 @@ test("every npm publish is gated by the release gate before it can pack", async 
     const body = section.slice(0, section.indexOf("\n\n"));
     assert.match(
       body,
-      /release-gate\.mjs publisher --manifest package\.json --package @workflow-code\/cli/u,
+      /release-gate\.mjs publisher --manifest package\.json --package @steamharness\/cli/u,
       `${job} must run the publisher gate`,
     );
     // The gate must reject a bad version before anything is packed or pushed.
@@ -64,7 +64,7 @@ test("a feature branch publishes from its own tag, without touching a channel", 
   );
   assert.match(source, /feature:prepare:[\s\S]*?feature-release\.mjs env --output \.feature\.env/u);
   assert.match(source, /release:npm:feature:[\s\S]*?needs:[\s\S]*?job: feature:prepare[\s\S]*?feature-release\.mjs version --version "\$FEATURE_VERSION"/u);
-  assert.match(source, /release:npm:feature:[\s\S]*?feature-release\.mjs publish --package @workflow-code\/cli --version "\$FEATURE_VERSION" --dist-tag "\$FEATURE_DIST_TAG"/u);
+  assert.match(source, /release:npm:feature:[\s\S]*?feature-release\.mjs publish --package @steamharness\/cli --version "\$FEATURE_VERSION" --dist-tag "\$FEATURE_DIST_TAG"/u);
 
   // No channel job may pick the tag up, and no downstream project is synced:
   // the feature branch bumps the pins it needs itself.

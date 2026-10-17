@@ -8,8 +8,8 @@ description: "Save a draft as an immutable source version."
 Publication saves immutable sources, SHA-256, publisher, timestamp, release notes and related-project locks, then updates `latest`. All project types retain complete sources. Downloads have no operating-system restriction.
 
 ```bash
-workflow-code workspace publish <project> [--release-log <text>]
-workflow-code workspace publish --deployment <id>
+steamharness workspace publish <project> [--release-log <text>]
+steamharness workspace publish --deployment <id>
 ```
 
 The version comes from the prepared draft's `package.json.version`. Publication is serialized per project. Duplicate versions conflict and never overwrite snapshots. Upload sources with a new package version to publish again. Publication never installs dependencies, builds or executes project code.

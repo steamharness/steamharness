@@ -1,9 +1,9 @@
 import type { KanbanInjectedConfiguration, KanbanJsonValue, KanbanPresentation } from "./index";
 
-export const KANBAN_METHOD_CATALOG_MESSAGE = "workflow-code:kanban-method-catalog";
-export const KANBAN_METHOD_INVOKE_MESSAGE = "workflow-code:kanban-method-invoke";
-export const KANBAN_METHOD_RESULT_MESSAGE = "workflow-code:kanban-method-result";
-export const KANBAN_METHOD_CANCEL_MESSAGE = "workflow-code:kanban-method-cancel";
+export const KANBAN_METHOD_CATALOG_MESSAGE = "steamharness:kanban-method-catalog";
+export const KANBAN_METHOD_INVOKE_MESSAGE = "steamharness:kanban-method-invoke";
+export const KANBAN_METHOD_RESULT_MESSAGE = "steamharness:kanban-method-result";
+export const KANBAN_METHOD_CANCEL_MESSAGE = "steamharness:kanban-method-cancel";
 export const KANBAN_METHOD_MAX_JSON_CHARS = 65_536;
 export const KANBAN_METHOD_TIMEOUT_MS = 15_000;
 const MAX_METHODS = 32;
@@ -188,7 +188,7 @@ export function createKanbanMethodSession(options: {
     },
     receive(message) {
       if (closed || message.nonce !== options.nonce) return;
-      if (message.type === "workflow-code:kanban-ready") {
+      if (message.type === "steamharness:kanban-ready") {
         if (typeof message.documentId === "string" && documentId !== message.documentId) {
           for (const request of pending.values()) request.finish(methodError("KANBAN_METHOD_INSTANCE_UNAVAILABLE", "The Kanban document refreshed."));
           documentId = message.documentId;

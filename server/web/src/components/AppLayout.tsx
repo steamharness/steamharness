@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { ChevronRight, ChevronsUpDown, FolderKanban, LogOut, ScrollText, Settings, ShieldCheck, Users, type LucideIcon } from "lucide-react";
-import { useTranslation } from "@workflow-code/i18n/react";
-import type { ServerWebResourceKey } from "@workflow-code/i18n";
+import { useTranslation } from "@steamharness/i18n/react";
+import type { ServerWebResourceKey } from "@steamharness/i18n";
 import { cn } from "@/lib/utils";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -65,8 +65,8 @@ function BrandMenuButton({ onClick }: { onClick: () => void }) {
   const { setOpenMobile } = useSidebar();
   return (
     <SidebarMenuButton onClick={() => { onClick(); setOpenMobile(false); }}>
-      <img src="/brand/workflow-code-icon.svg" alt="" className="size-5" />
-      <span className="text-base font-semibold">Workflow Code</span>
+      <img src="/brand/steamharness-icon.svg" alt="" className="size-5" />
+      <span className="text-base font-semibold">SteamHarness</span>
     </SidebarMenuButton>
   );
 }

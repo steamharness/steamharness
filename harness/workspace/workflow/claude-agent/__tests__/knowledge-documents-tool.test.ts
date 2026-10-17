@@ -1,12 +1,12 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { installWorkflowRuntimeGlobal } from "workflow-code/runtime-api";
+import { installWorkflowRuntimeGlobal } from "steamharness/runtime-api";
 import {
   createDisabledWorkflowConversationContext,
   createDisabledWorkflowTokenUsageContext,
   createWorkflowRelatedProjectsContext,
   type WorkflowKVContext,
-} from "workflow-code";
-import type { WorkflowContext } from "workflow-code/types/context";
+} from "steamharness";
+import type { WorkflowContext } from "steamharness/types/context";
 import {
   KNOWLEDGE_DOCUMENTS_MCP_SERVER_NAME,
   KNOWLEDGE_DOCUMENTS_TOOL_NAME,

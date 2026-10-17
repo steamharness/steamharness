@@ -1,13 +1,13 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { installWorkflowRuntimeGlobal } from "workflow-code/runtime-api";
+import { installWorkflowRuntimeGlobal } from "steamharness/runtime-api";
 import {
   createDisabledWorkflowConversationContext,
   createDisabledWorkflowTokenUsageContext,
   createWorkflowRelatedProjectsContext,
   createWorkflowToolPermissionContext,
   type WorkflowKVContext,
-} from "workflow-code";
-import type { NodeContext } from "workflow-code/types/context";
+} from "steamharness";
+import type { NodeContext } from "steamharness/types/context";
 import type { ClaudeAgentInput, ClaudeAgentParsedInput } from "../interface";
 
 installWorkflowRuntimeGlobal();

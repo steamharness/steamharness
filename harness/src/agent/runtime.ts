@@ -837,7 +837,7 @@ function clampThinkingLevel(pi: PiRuntime, effort: AgentParsedInput["effort"]): 
 
 function defaultAgentSystemPrompt(): string {
   return [
-    "You are a coding agent running inside a Workflow Code project.",
+    "You are a coding agent running inside a SteamHarness project.",
     "Use the provided tools to inspect and modify the working directory.",
     "Answer concisely, in the user's language.",
   ].join(" ");

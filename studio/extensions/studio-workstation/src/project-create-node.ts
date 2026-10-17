@@ -11,7 +11,7 @@ interface TemplateModule {
   createProjectFromTemplate(input: { templateId: string; name: string; parentDirectory: string; versions: { core: string; cli: string }; signal?: AbortSignal }): Promise<CreatedProject>;
 }
 
-export function defaultProjectParentDirectory(): string { return path.join(homedir(), 'Documents', 'workflow-projects'); }
+export function defaultProjectParentDirectory(): string { return path.join(homedir(), 'Documents', 'steamharness-projects'); }
 
 export function projectTemplatesRuntime(extensionDirectory: string, locale: string) {
   const directory = path.join(extensionDirectory, 'dist');

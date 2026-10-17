@@ -5,8 +5,8 @@ import { pathToFileURL } from 'node:url';
 import {
   createDefaultKanbanValues, createInjectedKanbanParams, parseKanbanManifestText, sanitizeKanbanValues,
   parseKanbanBridgeCall, type KanbanInjectedConfiguration, type KanbanParamDefinition,
-} from '@workflow-code/kanban-project';
-import { readWorkflowProjectInfo, isWorkflowProjectDataStorageLocationAllowed } from '@workflow-code/project-info';
+} from '@steamharness/kanban-project';
+import { readWorkflowProjectInfo, isWorkflowProjectDataStorageLocationAllowed } from '@steamharness/project-info';
 import type { CliRelatedProjectSpec } from '../related-projects';
 import type { ResourceCard } from './resource-cards';
 import type { WorkflowProject, WorkflowRuntime } from './workflow-types';

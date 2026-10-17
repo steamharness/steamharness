@@ -14,7 +14,7 @@ import { TransformComponent, TransformWrapper, type ReactZoomPanPinchRef } from 
 import { useModalFocus } from "../hooks/useOverlayFocus";
 import { formatImagePreviewError } from "../utils/labels";
 import { rwiClass } from "../styles";
-import { useTranslation } from "@workflow-code/i18n/react";
+import { useTranslation } from "@steamharness/i18n/react";
 
 const imagePreviewMinScale = 0.5;
 const imagePreviewMaxScale = 4;

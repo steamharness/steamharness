@@ -6,9 +6,9 @@ Minimal LLM workflow sample using the platformized global `workflow.*` API.
 
 ```bash
 cp .env.example .env
-workflow-code structure .
-workflow-code run .
-workflow-code json .
+steamharness structure .
+steamharness run .
+steamharness json .
 ```
 
 The LLM provider reads `LLM_TYPE`, `LLM_API_KEY`, `LLM_BASE_URL`, and `LLM_MODEL`

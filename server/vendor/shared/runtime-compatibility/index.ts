@@ -1,7 +1,7 @@
 import semver from "semver";
 
-export const WORKFLOW_CORE_PACKAGE_NAME = "workflow-code";
-export const WORKFLOW_CLI_PACKAGE_NAME = "@workflow-code/cli";
+export const STEAMHARNESS_CORE_PACKAGE_NAME = "steamharness";
+export const STEAMHARNESS_CLI_PACKAGE_NAME = "@steamharness/cli";
 
 export type WorkflowPackageManifest = Record<string, unknown>;
 
@@ -33,12 +33,12 @@ export function readRequiredCoreVersion(manifest: unknown): string {
 
   const devDependencies = manifest.devDependencies;
   if (!isRecord(devDependencies)) {
-    throw new Error('Workflow package.json must declare devDependencies.workflow-code as an exact version.');
+    throw new Error('Workflow package.json must declare devDependencies.steamharness as an exact version.');
   }
 
-  const value = devDependencies[WORKFLOW_CORE_PACKAGE_NAME];
+  const value = devDependencies[STEAMHARNESS_CORE_PACKAGE_NAME];
   if (typeof value !== "string" || value.trim() === "") {
-    throw new Error('Workflow package.json must declare devDependencies.workflow-code as an exact version.');
+    throw new Error('Workflow package.json must declare devDependencies.steamharness as an exact version.');
   }
 
   return normalizeExactVersion(value, "Workflow Core requirement");
@@ -97,9 +97,9 @@ export function classifyVersionReference(
  * `alpha` 是发布通道。只读环境变量，不读 git，因此不引入 node:child_process。
  */
 export function resolveReleaseMode(env: Record<string, string | undefined> = process.env): RepositoryMode {
-  const override = String(env.WORKFLOW_REPOSITORY_MODE ?? "").trim();
+  const override = String(env.STEAMHARNESS_REPOSITORY_MODE ?? "").trim();
   if (override !== "" && override !== "main") {
-    throw new Error("WORKFLOW_REPOSITORY_MODE only accepts main as a fail-closed override.");
+    throw new Error("STEAMHARNESS_REPOSITORY_MODE only accepts main as a fail-closed override.");
   }
   if (override === "main") return "main";
   if (String(env.CI_COMMIT_TAG ?? "").trim() !== "") return "main";
@@ -150,20 +150,20 @@ export function resolveRequiredCoreVersion(
     section?: "devDependencies";
   },
 ): string {
-  const reference = classifyVersionReference(manifest, WORKFLOW_CORE_PACKAGE_NAME, {
+  const reference = classifyVersionReference(manifest, STEAMHARNESS_CORE_PACKAGE_NAME, {
     section: options.section ?? "devDependencies",
   });
   if (reference.kind === "exact") return normalizeExactVersion(reference.version, "Workflow Core requirement");
   if (options.mode === "main") {
     throw new Error(
-      `devDependencies.${WORKFLOW_CORE_PACKAGE_NAME} must declare an exact published version on main and alpha; `
+      `devDependencies.${STEAMHARNESS_CORE_PACKAGE_NAME} must declare an exact published version on main and alpha; `
       + `${reference.specifier} is only allowed on dev and feature branches.`,
     );
   }
 
   const siblingDirectory = resolveSiblingDirectory(reference.relative, options.repositoryDirectory);
   const sibling = options.readSiblingManifest(siblingDirectory);
-  if (!isRecord(sibling) || sibling.name !== WORKFLOW_CORE_PACKAGE_NAME) {
+  if (!isRecord(sibling) || sibling.name !== STEAMHARNESS_CORE_PACKAGE_NAME) {
     throw new Error(`${reference.specifier} must point at the sibling Core repository (${siblingDirectory}).`);
   }
   return normalizeExactVersion(String(sibling.version ?? ""), "Sibling Core version");

@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import process from "node:process";
 import pg from "pg";
 
-const containerName = `workflow-code-postgres-test-${process.pid}`;
+const containerName = `steamharness-postgres-test-${process.pid}`;
 const password = "workflow-test-password";
 let started = false;
 
@@ -34,7 +34,7 @@ try {
     "src/__tests__/storage-postgres.test.ts",
     "src/__tests__/account-auth-postgres.test.ts",
   ], {
-    env: { ...process.env, WORKFLOW_TEST_DATABASE_URL: databaseUrl },
+    env: { ...process.env, STEAMHARNESS_TEST_DATABASE_URL: databaseUrl },
   });
 } finally {
   if (started) {

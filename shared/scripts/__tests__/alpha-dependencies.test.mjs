@@ -39,19 +39,19 @@ test("dependency synchronization writes an exact alpha version and is idempotent
   const root = await mkdtemp(path.join(os.tmpdir(), "workflow-alpha-dependency-test-"));
   try {
     await writeFile(path.join(root, "package.json"), JSON.stringify({
-      dependencies: { "workflow-code": "0.1.3" },
+      dependencies: { "steamharness": "0.1.3" },
     }));
     assert.equal(await updateExactDependency({
       root,
       section: "dependencies",
-      dependency: "workflow-code",
+      dependency: "steamharness",
       version: "0.1.4-20260814001",
     }), true);
-    assert.equal(JSON.parse(await readFile(path.join(root, "package.json"), "utf8")).dependencies["workflow-code"], "0.1.4-20260814001");
+    assert.equal(JSON.parse(await readFile(path.join(root, "package.json"), "utf8")).dependencies["steamharness"], "0.1.4-20260814001");
     assert.equal(await updateExactDependency({
       root,
       section: "dependencies",
-      dependency: "workflow-code",
+      dependency: "steamharness",
       version: "0.1.4-20260814001",
     }), false);
   } finally {
@@ -77,7 +77,7 @@ test("dependency workspace preparation prefers the repository sibling bootstrap"
     assert.equal(commands[0].command, process.execPath);
     assert.deepEqual(commands[0].args, ["scripts/prepare-siblings.mjs"]);
     assert.equal(commands[0].options.cwd, root);
-    assert.equal(commands[0].options.env.WORKFLOW_REPOSITORY_MODE, "main");
+    assert.equal(commands[0].options.env.STEAMHARNESS_REPOSITORY_MODE, "main");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -87,7 +87,7 @@ test("dependency synchronization captures push failures and retries a non-fast-f
   let pushAttempts = 0;
   const commands = [];
   const result = await synchronizeAlphaDependencies({
-    dependency: "workflow-code",
+    dependency: "steamharness",
     version: "0.1.4-20260814001",
     targets: ["workflow/server|package.json|dependencies"],
     message: "chore: update Core alpha dependency",
@@ -101,7 +101,7 @@ test("dependency synchronization captures push failures and retries a non-fast-f
         const checkout = args.at(-1);
         await mkdir(path.join(checkout, "scripts"), { recursive: true });
         await writeFile(path.join(checkout, "package.json"), JSON.stringify({
-          dependencies: { "workflow-code": "0.1.3" },
+          dependencies: { "steamharness": "0.1.3" },
         }));
         await writeFile(path.join(checkout, "scripts", "prepare-shared.mjs"), "");
       }

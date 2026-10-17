@@ -33,7 +33,7 @@ interface RemoteWorkflowStorageDeleteResult {
   removed: boolean;
 }
 
-const REMOTE_WORKFLOW_STORAGE_UPDATE_MAX_ATTEMPTS = 8;
+const REMOTE_STEAMHARNESS_STORAGE_UPDATE_MAX_ATTEMPTS = 8;
 
 export interface RemoteWorkflowStorageStoreOptions {
   serverUrl: string;
@@ -105,7 +105,7 @@ export class RemoteWorkflowStorageStore implements WorkflowKVStore {
     updater: (current: unknown | undefined) => unknown,
   ): Promise<unknown> {
     const entry = this.createStorageEntry(input);
-    for (let attempt = 0; attempt < REMOTE_WORKFLOW_STORAGE_UPDATE_MAX_ATTEMPTS; attempt += 1) {
+    for (let attempt = 0; attempt < REMOTE_STEAMHARNESS_STORAGE_UPDATE_MAX_ATTEMPTS; attempt += 1) {
       const current = await this.getStorageEntry(input);
       if (current.exists && typeof current.revision !== "string") {
         throw createRemoteWorkflowStorageProtocolError(
@@ -140,7 +140,7 @@ export class RemoteWorkflowStorageStore implements WorkflowKVStore {
       message: "Workflow storage update could not complete because the value kept changing concurrently.",
       metadata: {
         serverUrl: this.serverUrl,
-        maxAttempts: REMOTE_WORKFLOW_STORAGE_UPDATE_MAX_ATTEMPTS,
+        maxAttempts: REMOTE_STEAMHARNESS_STORAGE_UPDATE_MAX_ATTEMPTS,
       },
     });
   }
@@ -192,7 +192,7 @@ export class RemoteWorkflowStorageStore implements WorkflowKVStore {
     } catch (error) {
       throw new WorkflowError({
         type: "workflow_execution",
-        message: `Workflow project storage could not connect to server database storage at ${this.serverUrl}. Check WORKFLOW_SERVER_URL/WORKFLOW_SERVER_ADMIN_KEY or Desktop server connection settings.`,
+        message: `Workflow project storage could not connect to server database storage at ${this.serverUrl}. Check STEAMHARNESS_SERVER_URL/STEAMHARNESS_SERVER_ADMIN_KEY or Desktop server connection settings.`,
         metadata: {
           serverUrl: this.serverUrl,
           cause: error instanceof Error ? error.message : String(error),
@@ -298,8 +298,8 @@ function createRemoteWorkflowStorageStoreFromConnection(
   options: Omit<RemoteWorkflowStorageStoreOptions, "serverUrl" | "token">,
   env: NodeJS.ProcessEnv,
 ): WorkflowKVStore | undefined {
-  const explicitServerUrl = env.WORKFLOW_SERVER_URL;
-  const explicitToken = env.WORKFLOW_SERVER_ADMIN_KEY;
+  const explicitServerUrl = env.STEAMHARNESS_SERVER_URL;
+  const explicitToken = env.STEAMHARNESS_SERVER_ADMIN_KEY;
   const serverUrl = explicitServerUrl?.trim();
   const token = explicitToken?.trim();
 

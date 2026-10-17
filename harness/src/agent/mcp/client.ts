@@ -234,7 +234,7 @@ export async function connectMcpServer(
   // A child that fills its stderr pipe would otherwise block forever.
   (transport.stderr as { resume?(): void } | null)?.resume?.();
 
-  const client = new Client({ name: "workflow-code-agent", version: "1.0.0" }, { capabilities: {} });
+  const client = new Client({ name: "steamharness-agent", version: "1.0.0" }, { capabilities: {} });
 
   try {
     await client.connect(transport);

@@ -117,8 +117,8 @@ async function createFixture() {
   await Promise.all([
     writeFile(path.join(root, "package.json"), `${JSON.stringify({
       version: "0.1.5",
-      dependencies: { "workflow-code": "0.1.4" },
-      devDependencies: { "@workflow-code/cli": "0.1.4" },
+      dependencies: { "steamharness": "0.1.4" },
+      devDependencies: { "@steamharness/cli": "0.1.4" },
     })}\n`, "utf8"),
     writeFile(path.join(root, "web", "package.json"), '{"version":"0.1.5"}\n', "utf8"),
     writeFile(path.join(root, "CHANGELOG.md"), "# Changelog\n\n## 0.1.5 - 2026-08-24\n\n- 【修复】Server 修复。\n", "utf8"),

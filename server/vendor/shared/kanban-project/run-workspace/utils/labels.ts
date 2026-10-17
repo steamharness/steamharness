@@ -1,4 +1,4 @@
-import { i18n } from "@workflow-code/i18n";
+import { i18n } from "@steamharness/i18n";
 
 export function formatImagePreviewError(error: string | undefined): string {
   const trimmed = error?.trim();

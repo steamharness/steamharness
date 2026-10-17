@@ -1,4 +1,4 @@
-import { formatDate as formatFixedDate, formatDateTime, i18n } from "@workflow-code/i18n";
+import { formatDate as formatFixedDate, formatDateTime, i18n } from "@steamharness/i18n";
 
 export function formatDate(value?: string): string {
   if (!value) return i18n.t("formatTimeUnknown", { ns: "serverWeb" });

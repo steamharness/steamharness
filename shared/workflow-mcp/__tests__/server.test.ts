@@ -574,7 +574,7 @@ describe("workflow MCP server", () => {
         ok: true,
         data: {
           errCode: 500,
-          errMessage: "Authorization: Bearer top-secret-token\nWORKFLOW_SERVER_ADMIN_KEY=secret-value",
+          errMessage: "Authorization: Bearer top-secret-token\nSTEAMHARNESS_SERVER_ADMIN_KEY=secret-value",
           output: null,
         },
       },

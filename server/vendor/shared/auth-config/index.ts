@@ -17,16 +17,16 @@ export interface WorkflowAuthConfig {
 }
 
 export interface WorkflowAuthEnvLike {
-  WORKFLOW_CLI_AUTH_DIR?: string;
-  WORKFLOW_DESKTOP_CONFIG_DIR?: string;
+  STEAMHARNESS_CLI_AUTH_DIR?: string;
+  STEAMHARNESS_DESKTOP_CONFIG_DIR?: string;
   XDG_CONFIG_HOME?: string;
   APPDATA?: string;
   HOME?: string;
   platform?: string;
 }
 
-export const WORKFLOW_AUTH_FILE_NAME = "workflow-auth.json";
-export const WORKFLOW_DESKTOP_CONFIG_FILE_NAME = "workflow-desktop.json";
+export const STEAMHARNESS_AUTH_FILE_NAME = "workflow-auth.json";
+export const STEAMHARNESS_DESKTOP_CONFIG_FILE_NAME = "workflow-desktop.json";
 
 const DEFAULT_MAC_PLATFORM = "darwin";
 const DEFAULT_WINDOWS_PLATFORM = "win32";
@@ -99,61 +99,61 @@ export function isWorkflowAuthExpiringSoon(
 export function resolveWorkflowCliAuthDir(
   env: WorkflowAuthEnvLike = readProcessEnv(),
 ): string {
-  if (readString(env.WORKFLOW_CLI_AUTH_DIR)) {
-    return normalizePath(env.WORKFLOW_CLI_AUTH_DIR!);
+  if (readString(env.STEAMHARNESS_CLI_AUTH_DIR)) {
+    return normalizePath(env.STEAMHARNESS_CLI_AUTH_DIR!);
   }
 
   if (readPlatform(env) === DEFAULT_WINDOWS_PLATFORM) {
     return joinPath(
       env.APPDATA ?? joinPath(resolveHomeDir(env), "AppData", "Roaming"),
-      "workflow-code",
+      "steamharness",
     );
   }
 
   if (readPlatform(env) === DEFAULT_MAC_PLATFORM) {
-    return joinPath(resolveHomeDir(env), "Library", "Application Support", "workflow-code");
+    return joinPath(resolveHomeDir(env), "Library", "Application Support", "steamharness");
   }
 
   return joinPath(
     env.XDG_CONFIG_HOME ?? joinPath(resolveHomeDir(env), ".config"),
-    "workflow-code",
+    "steamharness",
   );
 }
 
 export function resolveWorkflowCliAuthFilePath(
   env: WorkflowAuthEnvLike = readProcessEnv(),
 ): string {
-  return joinPath(resolveWorkflowCliAuthDir(env), WORKFLOW_AUTH_FILE_NAME);
+  return joinPath(resolveWorkflowCliAuthDir(env), STEAMHARNESS_AUTH_FILE_NAME);
 }
 
 export function resolveWorkflowDesktopConfigDir(
   env: WorkflowAuthEnvLike = readProcessEnv(),
 ): string {
-  if (readString(env.WORKFLOW_DESKTOP_CONFIG_DIR)) {
-    return normalizePath(env.WORKFLOW_DESKTOP_CONFIG_DIR!);
+  if (readString(env.STEAMHARNESS_DESKTOP_CONFIG_DIR)) {
+    return normalizePath(env.STEAMHARNESS_DESKTOP_CONFIG_DIR!);
   }
 
   if (readPlatform(env) === DEFAULT_WINDOWS_PLATFORM) {
     return joinPath(
       env.APPDATA ?? joinPath(resolveHomeDir(env), "AppData", "Roaming"),
-      "workflow-code",
+      "steamharness",
     );
   }
 
   if (readPlatform(env) === DEFAULT_MAC_PLATFORM) {
-    return joinPath(resolveHomeDir(env), "Library", "Application Support", "workflow-code");
+    return joinPath(resolveHomeDir(env), "Library", "Application Support", "steamharness");
   }
 
   return joinPath(
     env.XDG_CONFIG_HOME ?? joinPath(resolveHomeDir(env), ".config"),
-    "workflow-code",
+    "steamharness",
   );
 }
 
 export function resolveWorkflowDesktopConfigFilePath(
   env: WorkflowAuthEnvLike = readProcessEnv(),
 ): string {
-  return joinPath(resolveWorkflowDesktopConfigDir(env), WORKFLOW_DESKTOP_CONFIG_FILE_NAME);
+  return joinPath(resolveWorkflowDesktopConfigDir(env), STEAMHARNESS_DESKTOP_CONFIG_FILE_NAME);
 }
 
 function resolveHomeDir(env: WorkflowAuthEnvLike): string {

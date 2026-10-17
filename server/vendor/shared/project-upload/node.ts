@@ -1,7 +1,7 @@
 import { copyFile, lstat, mkdir, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import {
-  WORKFLOW_IGNORE_FILE,
+  STEAMHARNESS_IGNORE_FILE,
   createWorkflowUploadPortablePathKey,
   createWorkflowUploadMatcher,
   hasWorkflowIgnoreRules,
@@ -26,17 +26,17 @@ export interface WorkflowUploadPlan {
 
 export async function createWorkflowUploadPlan(rootDir: string): Promise<WorkflowUploadPlan> {
   const projectRoot = path.resolve(rootDir);
-  const workflowIgnorePath = path.join(projectRoot, WORKFLOW_IGNORE_FILE);
+  const workflowIgnorePath = path.join(projectRoot, STEAMHARNESS_IGNORE_FILE);
   const workflowIgnoreStat = await lstat(workflowIgnorePath).catch(() => undefined);
   if (workflowIgnoreStat?.isSymbolicLink()) {
-    throw new Error(`${WORKFLOW_IGNORE_FILE} must be a regular file.`);
+    throw new Error(`${STEAMHARNESS_IGNORE_FILE} must be a regular file.`);
   }
   const workflowIgnorePresent = workflowIgnoreStat?.isFile() === true;
   if (workflowIgnoreStat !== undefined && !workflowIgnorePresent) {
-    throw new Error(`${WORKFLOW_IGNORE_FILE} must be a regular file.`);
+    throw new Error(`${STEAMHARNESS_IGNORE_FILE} must be a regular file.`);
   }
   const workflowIgnoreContent = workflowIgnorePresent
-    ? await readWorkflowUploadUtf8File(workflowIgnorePath, WORKFLOW_IGNORE_FILE)
+    ? await readWorkflowUploadUtf8File(workflowIgnorePath, STEAMHARNESS_IGNORE_FILE)
     : undefined;
   const matcher = createWorkflowUploadMatcher(
     workflowIgnoreContent,

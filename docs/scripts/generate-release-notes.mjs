@@ -25,15 +25,15 @@ const SECTION_ORDER_EN = ["New Features", "Breaking Changes", "Added", "Changed"
 export const RELEASE_UNITS = Object.freeze([
   {
     slug: "core", label: "Core", labelEn: "Core", title: "Core 发布日志",
-    description: "workflow-code Core 的完整版本记录与更新说明。",
-    source: "core", packageLabel: "workflow-code", target: "npm",
-    endpoint: "https://www.npmjs.com/package/workflow-code",
+    description: "steamharness Core 的完整版本记录与更新说明。",
+    source: "core", packageLabel: "steamharness", target: "npm",
+    endpoint: "https://www.npmjs.com/package/steamharness",
   },
   {
     slug: "cli", label: "CLI", labelEn: "CLI", title: "CLI 发布日志",
-    description: "@workflow-code/cli 的完整版本记录与更新说明。",
-    source: "cli", packageLabel: "@workflow-code/cli", target: "npm",
-    endpoint: "https://www.npmjs.com/package/@workflow-code/cli",
+    description: "@steamharness/cli 的完整版本记录与更新说明。",
+    source: "cli", packageLabel: "@steamharness/cli", target: "npm",
+    endpoint: "https://www.npmjs.com/package/@steamharness/cli",
   },
   {
     slug: "server", label: "Server", labelEn: "Server", title: "Server 发布日志",
@@ -94,7 +94,7 @@ function frontmatter(title, description) {
 }
 
 /**
- * 各仓 CHANGELOG 里的 Docs 链接是仓库相对路径（`../docs/cli/workflow-code.mdx`，
+ * 各仓 CHANGELOG 里的 Docs 链接是仓库相对路径（`../docs/cli/steamharness.mdx`，
  * 相对于 cli/ 仓库根），在文档站里解析不了，改写成站点绝对路径。
  * 目标页面不存在时保持原样，交给 validate 报错，而不是悄悄丢一条引用。
  */

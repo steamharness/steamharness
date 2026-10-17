@@ -13,14 +13,14 @@ description: "开发者小助手 v0.1.7 的更新说明。"
 #### 新特性
 
 - **生成器契约对齐**：Generator skill 补齐入口分组、音频与视频、Conversation 网关与八种 `workflow.WorkflowError`。
-- **脚手架发布元数据**：生成的 `package.json` 带上 `workflowCode.projectCard` 与 `workflowCode.release`。
+- **脚手架发布元数据**：生成的 `package.json` 带上 `steamHarness.projectCard` 与 `steamHarness.release`。
 
 #### 新增
 
 - 新增 Generator skill 覆盖 `entrypoint.group`、音频输入、视频附件与输出、Conversation 的 `context.hostInput`。
 - 新增 Generator skill 覆盖八种 `workflow.WorkflowError` 与 `createLLMNode`。
 - 新增 Generator skill 覆盖 `getLLMProvider` 与 `tokenUsage.getRunUsage()`。
-- 新增 脚手架生成 `workflowCode.projectCard` 与 `workflowCode.release`，取值按项目类型默认。
+- 新增 脚手架生成 `steamHarness.projectCard` 与 `steamHarness.release`，取值按项目类型默认。
 
 #### 变更
 
@@ -29,5 +29,5 @@ description: "开发者小助手 v0.1.7 的更新说明。"
 
 #### 修复
 
-- 修复 Generator skill 把 `workflowCode.release` 说成不写入源码、把已删除的 Kanban `dataSources` 说成可用能力。
+- 修复 Generator skill 把 `steamHarness.release` 说成不写入源码、把已删除的 Kanban `dataSources` 说成可用能力。
 - 修复 制品按文件 basename 过滤导致 `scripts/create_workflow.py` 未随发布出厂，小助手只能手写项目结构。

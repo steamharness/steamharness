@@ -31,7 +31,7 @@ PROJECT_CARD_DEFAULTS = {
     "kanban": ("boxes", "#b45309"),
 }
 
-WORKFLOW_IGNORE = """.git/
+STEAMHARNESS_IGNORE = """.git/
 node_modules/
 dist/
 build/
@@ -50,7 +50,7 @@ coverage/
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="在目标目录创建 workflow-code workflow 脚手架。",
+        description="在目标目录创建 steamharness workflow 脚手架。",
     )
     parser.add_argument("name", help="workflow 名称，例如 hello 或 issue-summary。")
     parser.add_argument(
@@ -114,20 +114,20 @@ def main() -> None:
                 render_kanban_template(relative_path, workflow_name, args.with_kanban_params),
             )
         print(f"已创建 Kanban：{workflow_dir}")
-        print(f"可检查：workflow-code structure {workflow_dir}")
+        print(f"可检查：steamharness structure {workflow_dir}")
         return
 
     type_name = to_pascal_case(workflow_name)
-    write_file(workflow_dir / ".workflowignore", WORKFLOW_IGNORE)
+    write_file(workflow_dir / ".workflowignore", STEAMHARNESS_IGNORE)
     write_file(workflow_dir / ".env.example", env_example())
     write_file(workflow_dir / "interface.ts", interface_ts(type_name))
     write_file(workflow_dir / "index.ts", index_ts(workflow_name, type_name, args.prompt, args.project_type))
     write_file(workflow_dir / "README.md", readme_md(workflow_name, args.description, args.project_type))
 
     print(f"已创建 workflow：{workflow_dir}")
-    print(f"可运行：workflow-code structure {workflow_dir}")
+    print(f"可运行：steamharness structure {workflow_dir}")
     input_args = '--message "input text"' if args.project_type == "conversation" else '"input text"'
-    print(f"可运行：workflow-code run {workflow_dir} -- {input_args}")
+    print(f"可运行：steamharness run {workflow_dir} -- {input_args}")
 
 
 def normalize_name(value: str) -> str:
@@ -168,7 +168,7 @@ def package_json(name: str, project_type: str) -> str:
     project_type_metadata = f'\n    "projectType": "{project_type}",'
     release_metadata = '{"dependencies": {}}'
     workflow_metadata = f''',
-  "workflowCode": {{{project_type_metadata}
+  "steamHarness": {{{project_type_metadata}
     "projectCard": {{
       "icon": "{icon}",
       "iconBackgroundColor": "{icon_background}"
@@ -183,13 +183,13 @@ def package_json(name: str, project_type: str) -> str:
   }}'''
     return f'''{{
   "id": "{workflow_id}",
-  "name": "@workflow-code/{name}-{package_suffix}",
+  "name": "@steamharness/{name}-{package_suffix}",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "devDependencies": {{
-    "@workflow-code/cli": "{cli_version}",
-    "workflow-code": "{core_version}"
+    "@steamharness/cli": "{cli_version}",
+    "steamharness": "{core_version}"
   }}{workflow_metadata}
 }}
 '''
@@ -246,28 +246,28 @@ def resolve_dependency_versions() -> tuple[str, str]:
         if not package_path.is_file():
             continue
         package = read_package_json(package_path)
-        if package.get("name") == "workflow-code":
+        if package.get("name") == "steamharness":
             workspace_path = directory / "workspace" / "package.json"
             core_version = package.get("version")
             cli_version = (
-                read_declared_version(read_package_json(workspace_path), "@workflow-code/cli", workspace_path)
+                read_declared_version(read_package_json(workspace_path), "@steamharness/cli", workspace_path)
                 if workspace_path.is_file()
                 else None
             )
             if not isinstance(core_version, str) or not SEMVER_PATTERN.fullmatch(core_version):
                 raise SystemExit(f"{package_path} 的版本不是精确 SemVer。")
             if cli_version is None:
-                raise SystemExit(f"{workspace_path} 未声明精确的 @workflow-code/cli 版本。")
+                raise SystemExit(f"{workspace_path} 未声明精确的 @steamharness/cli 版本。")
             return core_version, cli_version
-        core_version = read_declared_version(package, "workflow-code", package_path)
+        core_version = read_declared_version(package, "steamharness", package_path)
         if core_version is None:
             continue
-        cli_version = read_declared_version(package, "@workflow-code/cli", package_path)
+        cli_version = read_declared_version(package, "@steamharness/cli", package_path)
         if cli_version is None:
-            raise SystemExit(f"{package_path} 未声明精确的 @workflow-code/cli 版本。")
+            raise SystemExit(f"{package_path} 未声明精确的 @steamharness/cli 版本。")
         return core_version, cli_version
     raise SystemExit(
-        "找不到 workflow-code 与 @workflow-code/cli 的精确依赖版本；"
+        "找不到 steamharness 与 @steamharness/cli 的精确依赖版本；"
         "请在仓库根的 package.json（或 Core 布局的 workspace/package.json）中声明它们。"
     )
 
@@ -460,19 +460,19 @@ def readme_md(name: str, description: str, project_type: str) -> str:
 检查结构：
 
 ```bash
-workflow-code structure .
+steamharness structure .
 ```
 
 执行：
 
 ```bash
-workflow-code run . -- {input_args}
+steamharness run . -- {input_args}
 ```
 
 生成 JSON report：
 
 ```bash
-workflow-code json . -- {input_args}
+steamharness json . -- {input_args}
 ```
 '''
 

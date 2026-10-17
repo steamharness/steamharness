@@ -32,7 +32,7 @@ export function loadServerEnv(options: LoadServerEnvOptions = {}): void {
  * private provider or database settings into that process.
  */
 export function shouldSkipServerEnvFiles(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.WORKFLOW_SKIP_ENV_FILES === "1";
+  return env.STEAMHARNESS_SKIP_ENV_FILES === "1";
 }
 
 export function resolveServerEnvFiles(
@@ -59,7 +59,7 @@ export function resolveServerEnvFiles(
 export function inferServerEnvMode(
   env: NodeJS.ProcessEnv = process.env,
 ): "development" | "production" {
-  if (env.WORKFLOW_SERVER_DEV === "1" || env.NODE_ENV === "development") {
+  if (env.STEAMHARNESS_SERVER_DEV === "1" || env.NODE_ENV === "development") {
     return "development";
   }
   return "production";

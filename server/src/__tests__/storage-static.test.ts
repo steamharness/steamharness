@@ -13,9 +13,9 @@ const serverPackage = JSON.parse(await readFile(new URL("../../package.json", im
 function packageJson(version: string) {
   return {
     id: projectId, name: "Static upload", version,
-    devDependencies: { "workflow-code": serverPackage.dependencies["workflow-code"] },
+    devDependencies: { "steamharness": serverPackage.dependencies["steamharness"] },
     scripts: { preinstall: "node side-effect.cjs", postinstall: "node side-effect.cjs", build: "node side-effect.cjs" },
-    workflowCode: {
+    steamHarness: {
       projectType: "workflow",
       projectInfo: {
         localizedNames: {}, declarations: [], platformSupport: { mode: "agnostic" },

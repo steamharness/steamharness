@@ -14,7 +14,7 @@ test.afterEach(() => {
 });
 
 test("admin key login creates a workflow auth cookie visible to /api/auth/session", async () => {
-  process.env.WORKFLOW_SERVER_ADMIN_KEY = "admin-key-1";
+  process.env.STEAMHARNESS_SERVER_ADMIN_KEY = "admin-key-1";
   const server = await listen();
 
   try {
@@ -30,7 +30,7 @@ test("admin key login creates a workflow auth cookie visible to /api/auth/sessio
     assert.equal(loginBody.errCode, 0);
     assert.equal(loginBody.data?.authenticated, true);
     assert.equal(loginBody.data?.principal?.kind, "admin_key");
-    assert.match(cookie, /workflow_auth_session=/);
+    assert.match(cookie, /steamharness_auth_session=/);
 
     const session = await fetchJson(server.url("/api/auth/session"), {
       headers: { Cookie: cookie },
@@ -40,12 +40,12 @@ test("admin key login creates a workflow auth cookie visible to /api/auth/sessio
     assert.equal(session.data?.principal?.kind, "admin_key");
   } finally {
     await server.close();
-    delete process.env.WORKFLOW_SERVER_ADMIN_KEY;
+    delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
   }
 });
 
 test("admin key cookie can access protected management routes", async () => {
-  process.env.WORKFLOW_SERVER_ADMIN_KEY = "admin-key-2";
+  process.env.STEAMHARNESS_SERVER_ADMIN_KEY = "admin-key-2";
   const server = await listen();
 
   try {
@@ -63,16 +63,16 @@ test("admin key cookie can access protected management routes", async () => {
     assert.equal(protectedResponse.data?.principal?.kind, "admin_key");
   } finally {
     await server.close();
-    delete process.env.WORKFLOW_SERVER_ADMIN_KEY;
+    delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
   }
 });
 
 test("forged unsigned admin key cookie is rejected", async () => {
-  process.env.WORKFLOW_SERVER_ADMIN_KEY = "admin-key-forged-cookie";
+  process.env.STEAMHARNESS_SERVER_ADMIN_KEY = "admin-key-forged-cookie";
   const server = await listen();
 
   try {
-    const forgedCookie = "workflow_auth_session=%7B%22kind%22%3A%22admin_key%22%7D";
+    const forgedCookie = "steamharness_auth_session=%7B%22kind%22%3A%22admin_key%22%7D";
     const protectedResponse = await fetch(server.url("/api/protected"), {
       headers: { Cookie: forgedCookie },
     });
@@ -82,12 +82,12 @@ test("forged unsigned admin key cookie is rejected", async () => {
     assert.equal(payload.errCode, 401);
   } finally {
     await server.close();
-    delete process.env.WORKFLOW_SERVER_ADMIN_KEY;
+    delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
   }
 });
 
 test("signed admin key cookie stops working after cookie secret rotation", async () => {
-  process.env.WORKFLOW_SERVER_ADMIN_KEY = "admin-key-signed-cookie";
+  process.env.STEAMHARNESS_SERVER_ADMIN_KEY = "admin-key-signed-cookie";
   const server = await listen();
 
   try {
@@ -97,7 +97,7 @@ test("signed admin key cookie stops working after cookie secret rotation", async
       body: JSON.stringify({ adminKey: "admin-key-signed-cookie" }),
     });
     const cookie = login.headers.get("set-cookie") ?? "";
-    process.env.WORKFLOW_SERVER_ADMIN_KEY = "admin-key-rotated-cookie";
+    process.env.STEAMHARNESS_SERVER_ADMIN_KEY = "admin-key-rotated-cookie";
 
     const protectedResponse = await fetch(server.url("/api/protected"), {
       headers: { Cookie: cookie },
@@ -108,13 +108,13 @@ test("signed admin key cookie stops working after cookie secret rotation", async
     assert.equal(payload.errCode, 401);
   } finally {
     await server.close();
-    delete process.env.WORKFLOW_SERVER_ADMIN_KEY;
+    delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
   }
 });
 
 test("explicit cookie secret keeps admin key cookie valid across admin key rotation", async () => {
-  process.env.WORKFLOW_SERVER_ADMIN_KEY = "admin-key-explicit-secret";
-  process.env.WORKFLOW_AUTH_COOKIE_SECRET = "stable-cookie-secret";
+  process.env.STEAMHARNESS_SERVER_ADMIN_KEY = "admin-key-explicit-secret";
+  process.env.STEAMHARNESS_AUTH_COOKIE_SECRET = "stable-cookie-secret";
   const server = await listen();
 
   try {
@@ -124,7 +124,7 @@ test("explicit cookie secret keeps admin key cookie valid across admin key rotat
       body: JSON.stringify({ adminKey: "admin-key-explicit-secret" }),
     });
     const cookie = login.headers.get("set-cookie") ?? "";
-    process.env.WORKFLOW_SERVER_ADMIN_KEY = "admin-key-rotated-with-stable-cookie-secret";
+    process.env.STEAMHARNESS_SERVER_ADMIN_KEY = "admin-key-rotated-with-stable-cookie-secret";
 
     const protectedResponse = await fetchJson(server.url("/api/protected"), {
       headers: { Cookie: cookie },
@@ -133,13 +133,13 @@ test("explicit cookie secret keeps admin key cookie valid across admin key rotat
     assert.equal(protectedResponse.data?.principal?.kind, "admin_key");
   } finally {
     await server.close();
-    delete process.env.WORKFLOW_SERVER_ADMIN_KEY;
-    delete process.env.WORKFLOW_AUTH_COOKIE_SECRET;
+    delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
+    delete process.env.STEAMHARNESS_AUTH_COOKIE_SECRET;
   }
 });
 
 test("logout clears the auth cookie and protected routes reject the stale cookie", async () => {
-  process.env.WORKFLOW_SERVER_ADMIN_KEY = "admin-key-3";
+  process.env.STEAMHARNESS_SERVER_ADMIN_KEY = "admin-key-3";
   const server = await listen();
 
   try {
@@ -166,12 +166,12 @@ test("logout clears the auth cookie and protected routes reject the stale cookie
     assert.equal(payload.errCode, 401);
   } finally {
     await server.close();
-    delete process.env.WORKFLOW_SERVER_ADMIN_KEY;
+    delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
   }
 });
 
 test("admin alias routes forward to the auth admin handlers", async () => {
-  process.env.WORKFLOW_SERVER_ADMIN_KEY = "admin-key-4";
+  process.env.STEAMHARNESS_SERVER_ADMIN_KEY = "admin-key-4";
   const server = await listen();
 
   try {
@@ -189,12 +189,12 @@ test("admin alias routes forward to the auth admin handlers", async () => {
     assert.ok(Array.isArray(response.data?.groups));
   } finally {
     await server.close();
-    delete process.env.WORKFLOW_SERVER_ADMIN_KEY;
+    delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
   }
 });
 
 test("admin key login upgrades to admin_session when auth service is configured", async () => {
-  process.env.WORKFLOW_SERVER_ADMIN_KEY = "admin-key-auth-service";
+  process.env.STEAMHARNESS_SERVER_ADMIN_KEY = "admin-key-auth-service";
   const authService = {
     async signInBootstrapAdmin() {
       return {
@@ -202,13 +202,13 @@ test("admin key login upgrades to admin_session when auth service is configured"
         refreshToken: "refresh-token-auth-service",
         user: {
           userId: "admin-user-auth-service",
-          email: "admin@workflow-code.local",
+          email: "admin@steamharness.local",
           displayName: "Workflow Admin",
         },
       };
     },
     async resolvePrincipal(req: { headers: { cookie?: string } }) {
-      if (!String(req.headers.cookie ?? "").includes("workflow_auth_session=")) {
+      if (!String(req.headers.cookie ?? "").includes("steamharness_auth_session=")) {
         return undefined;
       }
       return {
@@ -217,7 +217,7 @@ test("admin key login upgrades to admin_session when auth service is configured"
         userId: "admin-user-auth-service",
         profile: {
           userId: "admin-user-auth-service",
-          email: "admin@workflow-code.local",
+          email: "admin@steamharness.local",
           displayName: "Workflow Admin",
           status: "active" as const,
           createdAt: "2026-06-18T00:00:00.000Z",
@@ -235,7 +235,7 @@ test("admin key login upgrades to admin_session when auth service is configured"
     setAuthCookie(res: { append(name: string, value: string): void }) {
       res.append(
         "Set-Cookie",
-        "workflow_auth_session=signed-refresh-cookie; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000",
+        "steamharness_auth_session=signed-refresh-cookie; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000",
       );
     },
     clearAuthCookie() {},
@@ -244,7 +244,7 @@ test("admin key login upgrades to admin_session when auth service is configured"
     async getUserProfileOrThrow() {
       return {
         userId: "admin-user-auth-service",
-        email: "admin@workflow-code.local",
+        email: "admin@steamharness.local",
         displayName: "Workflow Admin",
         status: "active" as const,
         createdAt: "2026-06-18T00:00:00.000Z",
@@ -287,12 +287,12 @@ test("admin key login upgrades to admin_session when auth service is configured"
   } finally {
     configureWorkflowAuthContext({});
     await server.close();
-    delete process.env.WORKFLOW_SERVER_ADMIN_KEY;
+    delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
   }
 });
 
 test("valid admin key keeps its signed cookie when bootstrap account login is rejected", async () => {
-  process.env.WORKFLOW_SERVER_ADMIN_KEY = "admin-key-native-auth-rejected";
+  process.env.STEAMHARNESS_SERVER_ADMIN_KEY = "admin-key-native-auth-rejected";
   const authService = {
     async signInBootstrapAdmin() {
       throw new HttpError(401, 401, "Email or password is invalid.");
@@ -300,7 +300,7 @@ test("valid admin key keeps its signed cookie when bootstrap account login is re
     setAdminKeyCookie(res: { append(name: string, value: string): void }) {
       res.append(
         "Set-Cookie",
-        "workflow_auth_session=signed-admin-key-cookie; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000",
+        "steamharness_auth_session=signed-admin-key-cookie; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000",
       );
     },
     async resolvePrincipal(req: { headers: { cookie?: string } }) {
@@ -328,7 +328,7 @@ test("valid admin key keeps its signed cookie when bootstrap account login is re
     assert.equal(login.status, 200);
     assert.equal(loginBody.errCode, 0);
     assert.equal(loginBody.data?.principal?.kind, "admin_key");
-    assert.match(cookie, /workflow_auth_session=/u);
+    assert.match(cookie, /steamharness_auth_session=/u);
 
     const protectedResponse = await fetchJson(server.url("/api/protected"), {
       headers: { Cookie: cookie },
@@ -338,13 +338,13 @@ test("valid admin key keeps its signed cookie when bootstrap account login is re
   } finally {
     configureWorkflowAuthContext({});
     await server.close();
-    delete process.env.WORKFLOW_SERVER_ADMIN_KEY;
+    delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
   }
 });
 
 test("password login can bootstrap the env-configured admin account into an admin_session", async () => {
-  process.env.WORKFLOW_BOOTSTRAP_ADMIN_EMAIL = "admin@example.com";
-  process.env.WORKFLOW_BOOTSTRAP_ADMIN_PASSWORD = "bootstrap-secret";
+  process.env.STEAMHARNESS_BOOTSTRAP_ADMIN_EMAIL = "admin@example.com";
+  process.env.STEAMHARNESS_BOOTSTRAP_ADMIN_PASSWORD = "bootstrap-secret";
   const authService = {
     async signInBootstrapAdmin(payload: { email: string; password: string; displayName?: string }) {
       assert.equal(payload.email, "admin@example.com");
@@ -363,7 +363,7 @@ test("password login can bootstrap the env-configured admin account into an admi
       throw new Error("signInWithPassword should not be called for bootstrap admin env login");
     },
     async resolvePrincipal(req: { headers: { cookie?: string } }) {
-      if (!String(req.headers.cookie ?? "").includes("workflow_auth_session=")) {
+      if (!String(req.headers.cookie ?? "").includes("steamharness_auth_session=")) {
         return undefined;
       }
       return {
@@ -390,7 +390,7 @@ test("password login can bootstrap the env-configured admin account into an admi
     setAuthCookie(res: { append(name: string, value: string): void }) {
       res.append(
         "Set-Cookie",
-        "workflow_auth_session=signed-bootstrap-admin-cookie; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000",
+        "steamharness_auth_session=signed-bootstrap-admin-cookie; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000",
       );
     },
     clearAuthCookie() {},
@@ -425,7 +425,7 @@ test("password login can bootstrap the env-configured admin account into an admi
     assert.equal(login.status, 200);
     assert.equal(loginBody.errCode, 0);
     assert.equal(loginBody.data?.principal?.kind, "admin_session");
-    assert.match(cookie, /workflow_auth_session=/);
+    assert.match(cookie, /steamharness_auth_session=/);
 
     const session = await fetchJson(server.url("/api/auth/session"), {
       headers: { Cookie: cookie },
@@ -436,15 +436,15 @@ test("password login can bootstrap the env-configured admin account into an admi
   } finally {
     configureWorkflowAuthContext({});
     await server.close();
-    delete process.env.WORKFLOW_BOOTSTRAP_ADMIN_EMAIL;
-    delete process.env.WORKFLOW_BOOTSTRAP_ADMIN_PASSWORD;
+    delete process.env.STEAMHARNESS_BOOTSTRAP_ADMIN_EMAIL;
+    delete process.env.STEAMHARNESS_BOOTSTRAP_ADMIN_PASSWORD;
   }
 });
 
 test("bootstrap password login falls back to admin key session when auth service is unavailable", async () => {
-  process.env.WORKFLOW_SERVER_ADMIN_KEY = "admin-key-bootstrap-fallback";
-  process.env.WORKFLOW_BOOTSTRAP_ADMIN_EMAIL = "admin@example.com";
-  process.env.WORKFLOW_BOOTSTRAP_ADMIN_PASSWORD = "bootstrap-secret";
+  process.env.STEAMHARNESS_SERVER_ADMIN_KEY = "admin-key-bootstrap-fallback";
+  process.env.STEAMHARNESS_BOOTSTRAP_ADMIN_EMAIL = "admin@example.com";
+  process.env.STEAMHARNESS_BOOTSTRAP_ADMIN_PASSWORD = "bootstrap-secret";
   const createdAuditEvents: Array<{ eventType: string; outcome: string; context?: Record<string, unknown> }> = [];
   const authService = {
     async signInBootstrapAdmin() {
@@ -454,7 +454,7 @@ test("bootstrap password login falls back to admin key session when auth service
       throw new Error("signInWithPassword should not be called for bootstrap admin env login");
     },
     async resolvePrincipal(req: { headers: { cookie?: string } }) {
-      if (!String(req.headers.cookie ?? "").includes("workflow_auth_session=")) {
+      if (!String(req.headers.cookie ?? "").includes("steamharness_auth_session=")) {
         return undefined;
       }
       return {
@@ -467,7 +467,7 @@ test("bootstrap password login falls back to admin key session when auth service
     setAdminKeyCookie(res: { append(name: string, value: string): void }) {
       res.append(
         "Set-Cookie",
-        "workflow_auth_session=signed-admin-key-fallback-cookie; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000",
+        "steamharness_auth_session=signed-admin-key-fallback-cookie; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000",
       );
     },
     clearAuthCookie() {},
@@ -491,7 +491,7 @@ test("bootstrap password login falls back to admin key session when auth service
     assert.equal(login.status, 200);
     assert.equal(loginBody.errCode, 0);
     assert.equal(loginBody.data?.principal?.kind, "admin_key");
-    assert.match(cookie, /workflow_auth_session=/);
+    assert.match(cookie, /steamharness_auth_session=/);
     assert.equal(createdAuditEvents.at(-1)?.context?.via, "bootstrap_admin_fallback");
 
     const protectedResponse = await fetchJson(server.url("/api/protected"), {
@@ -502,16 +502,16 @@ test("bootstrap password login falls back to admin key session when auth service
   } finally {
     configureWorkflowAuthContext({});
     await server.close();
-    delete process.env.WORKFLOW_SERVER_ADMIN_KEY;
-    delete process.env.WORKFLOW_BOOTSTRAP_ADMIN_EMAIL;
-    delete process.env.WORKFLOW_BOOTSTRAP_ADMIN_PASSWORD;
+    delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
+    delete process.env.STEAMHARNESS_BOOTSTRAP_ADMIN_EMAIL;
+    delete process.env.STEAMHARNESS_BOOTSTRAP_ADMIN_PASSWORD;
   }
 });
 
 test("bootstrap password login does not bypass a rejected native account", async () => {
-  process.env.WORKFLOW_SERVER_ADMIN_KEY = "admin-key-bootstrap-rejected";
-  process.env.WORKFLOW_BOOTSTRAP_ADMIN_EMAIL = "admin@example.com";
-  process.env.WORKFLOW_BOOTSTRAP_ADMIN_PASSWORD = "bootstrap-secret";
+  process.env.STEAMHARNESS_SERVER_ADMIN_KEY = "admin-key-bootstrap-rejected";
+  process.env.STEAMHARNESS_BOOTSTRAP_ADMIN_EMAIL = "admin@example.com";
+  process.env.STEAMHARNESS_BOOTSTRAP_ADMIN_PASSWORD = "bootstrap-secret";
   const authService = {
     async signInBootstrapAdmin() {
       throw new HttpError(401, 401, "Email or password is invalid.");
@@ -533,16 +533,16 @@ test("bootstrap password login does not bypass a rejected native account", async
   } finally {
     configureWorkflowAuthContext({});
     await server.close();
-    delete process.env.WORKFLOW_SERVER_ADMIN_KEY;
-    delete process.env.WORKFLOW_BOOTSTRAP_ADMIN_EMAIL;
-    delete process.env.WORKFLOW_BOOTSTRAP_ADMIN_PASSWORD;
+    delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
+    delete process.env.STEAMHARNESS_BOOTSTRAP_ADMIN_EMAIL;
+    delete process.env.STEAMHARNESS_BOOTSTRAP_ADMIN_PASSWORD;
   }
 });
 
 test("bootstrap password login falls back to admin key session when auth service is not configured", async () => {
-  process.env.WORKFLOW_SERVER_ADMIN_KEY = "admin-key-bootstrap-no-auth";
-  process.env.WORKFLOW_BOOTSTRAP_ADMIN_EMAIL = "admin@example.com";
-  process.env.WORKFLOW_BOOTSTRAP_ADMIN_PASSWORD = "bootstrap-secret";
+  process.env.STEAMHARNESS_SERVER_ADMIN_KEY = "admin-key-bootstrap-no-auth";
+  process.env.STEAMHARNESS_BOOTSTRAP_ADMIN_EMAIL = "admin@example.com";
+  process.env.STEAMHARNESS_BOOTSTRAP_ADMIN_PASSWORD = "bootstrap-secret";
   const server = await listen();
 
   try {
@@ -556,7 +556,7 @@ test("bootstrap password login falls back to admin key session when auth service
     assert.equal(login.status, 200);
     assert.equal(loginBody.errCode, 0);
     assert.equal(loginBody.data?.principal?.kind, "admin_key");
-    assert.match(cookie, /workflow_auth_session=/);
+    assert.match(cookie, /steamharness_auth_session=/);
 
     const protectedResponse = await fetchJson(server.url("/api/protected"), {
       headers: { Cookie: cookie },
@@ -565,9 +565,9 @@ test("bootstrap password login falls back to admin key session when auth service
     assert.equal(protectedResponse.data?.principal?.kind, "admin_key");
   } finally {
     await server.close();
-    delete process.env.WORKFLOW_SERVER_ADMIN_KEY;
-    delete process.env.WORKFLOW_BOOTSTRAP_ADMIN_EMAIL;
-    delete process.env.WORKFLOW_BOOTSTRAP_ADMIN_PASSWORD;
+    delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
+    delete process.env.STEAMHARNESS_BOOTSTRAP_ADMIN_EMAIL;
+    delete process.env.STEAMHARNESS_BOOTSTRAP_ADMIN_PASSWORD;
   }
 });
 
@@ -641,7 +641,7 @@ test("admin users list merges compatible auth user summaries with workflow profi
 
   try {
     const response = await fetchJson(server.url("/api/admin/users?search=admin&pageSize=1"), {
-      headers: { Cookie: "workflow_auth_session=signed-admin-cookie" },
+      headers: { Cookie: "steamharness_auth_session=signed-admin-cookie" },
     });
 
     assert.equal(response.errCode, 0);
@@ -877,7 +877,7 @@ test("me patch updates display name and avatar url for authenticated sessions", 
   let updatedPatch: { displayName?: string; avatarUrl?: string | null } | undefined;
   const authService = {
     async resolvePrincipal(req: { headers: { cookie?: string } }) {
-      if (!String(req.headers.cookie ?? "").includes("workflow_auth_session=")) {
+      if (!String(req.headers.cookie ?? "").includes("steamharness_auth_session=")) {
         return undefined;
       }
       return {
@@ -905,7 +905,7 @@ test("me patch updates display name and avatar url for authenticated sessions", 
     setAuthCookie(res: { append(name: string, value: string): void }) {
       res.append(
         "Set-Cookie",
-        "workflow_auth_session=signed-profile-cookie; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000",
+        "steamharness_auth_session=signed-profile-cookie; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000",
       );
     },
     clearAuthCookie() {},
@@ -936,7 +936,7 @@ test("me patch updates display name and avatar url for authenticated sessions", 
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        Cookie: "workflow_auth_session=signed-profile-cookie",
+        Cookie: "steamharness_auth_session=signed-profile-cookie",
       },
       body: JSON.stringify({
         displayName: "New Name",
@@ -963,7 +963,7 @@ test("me patch updates display name and avatar url for authenticated sessions", 
 });
 
 test("me alias routes forward to the auth me handlers", async () => {
-  process.env.WORKFLOW_SERVER_ADMIN_KEY = "admin-key-5";
+  process.env.STEAMHARNESS_SERVER_ADMIN_KEY = "admin-key-5";
   const server = await listen();
 
   try {
@@ -981,7 +981,7 @@ test("me alias routes forward to the auth me handlers", async () => {
     assert.equal(response.data?.principal?.kind, "admin_key");
   } finally {
     await server.close();
-    delete process.env.WORKFLOW_SERVER_ADMIN_KEY;
+    delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
   }
 });
 
@@ -1198,7 +1198,7 @@ test("account invitation routes expose metadata and establish a session after pa
       };
     },
     setAuthCookie(res: { append(name: string, value: string): void }) {
-      res.append("Set-Cookie", "workflow_auth_session=signed-invited-cookie; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000");
+      res.append("Set-Cookie", "steamharness_auth_session=signed-invited-cookie; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000");
     },
   };
   const accountDb = { async createAuditEvent() {} };
@@ -1219,7 +1219,7 @@ test("account invitation routes expose metadata and establish a session after pa
     assert.equal(accept.status, 200);
     assert.equal(payload.errCode, 0);
     assert.equal(payload.data?.authenticated, true);
-    assert.match(accept.headers.get("set-cookie") ?? "", /workflow_auth_session=/u);
+    assert.match(accept.headers.get("set-cookie") ?? "", /steamharness_auth_session=/u);
   } finally {
     configureWorkflowAuthContext({});
     await server.close();
@@ -1256,7 +1256,7 @@ test("logout revokes a PostgreSQL refresh session before clearing its cookie", a
       revokedRefreshToken = refreshToken;
     },
     clearAuthCookie(res: { append(name: string, value: string): void }) {
-      res.append("Set-Cookie", "workflow_auth_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
+      res.append("Set-Cookie", "steamharness_auth_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0");
     },
   };
   const accountDb = { async createAuditEvent() {} };
@@ -1266,7 +1266,7 @@ test("logout revokes a PostgreSQL refresh session before clearing its cookie", a
   try {
     const response = await fetch(server.url("/api/auth/logout"), {
       method: "POST",
-      headers: { Cookie: "workflow_auth_session=signed-refresh-cookie" },
+      headers: { Cookie: "steamharness_auth_session=signed-refresh-cookie" },
     });
     assert.equal(response.status, 200);
     assert.equal(revokedRefreshToken, "wf_refresh_logout");

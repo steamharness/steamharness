@@ -4,33 +4,33 @@ import { existsSync } from "node:fs";
 import { copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { isWorkflowAuthExpiringSoon } from "@workflow-code/auth-config";
-import { isWorkflowUuid } from "@workflow-code/workflow-ids";
+import { isWorkflowAuthExpiringSoon } from "@steamharness/auth-config";
+import { isWorkflowUuid } from "@steamharness/workflow-ids";
 import {
   copyWorkflowUploadFiles,
   createWorkflowUploadPlan,
   type WorkflowUploadPlan,
-} from "@workflow-code/project-upload/node";
+} from "@steamharness/project-upload/node";
 import {
   createWorkflowProjectDependencyLocks,
   isProjectGroupHostDataPath,
   parseWorkflowProjectDependencyLocks,
   type WorkflowProjectDependencyLock,
   type WorkflowProjectGroupManifestV1,
-} from "@workflow-code/project-dependencies";
+} from "@steamharness/project-dependencies";
 import {
   readWorkflowProjectInfo,
   resolveWorkflowRelatedProjectAccess,
   type WorkflowProjectInfo,
-} from "@workflow-code/project-info";
-import { isWorkflowProjectType, parseWorkflowFileReferences, RemoteWorkflowFileStore, type WorkflowProjectType } from "workflow-code";
+} from "@steamharness/project-info";
+import { isWorkflowProjectType, parseWorkflowFileReferences, RemoteWorkflowFileStore, type WorkflowProjectType } from "steamharness";
 import { clearCliAuthConfig, readCliAuthConfig, readCliAuthConfigSync, writeCliAuthConfig } from "./auth-config";
 import { findWorkspaceRepositoryRoot, loadCliEnv } from "./env";
 import {
   getCurrentLocale,
   i18n,
-  translateWorkflowCodeError,
-} from "@workflow-code/i18n";
+  translateSteamHarnessError,
+} from "@steamharness/i18n";
 import { prepareCliInvocation } from "./locale";
 
 interface CliOptions {
@@ -1081,8 +1081,8 @@ async function packWorkflow(
   // Packaged App uploads run the workspace CLI from app.asar, so
   // temporary packs must be writable and sibling workflow imports should be
   // resolved relative to the explicit --path source directory.
-  const packsDir = process.env.WORKFLOW_WORKSPACE_PACKS_DIR
-    ? path.resolve(process.env.WORKFLOW_WORKSPACE_PACKS_DIR)
+  const packsDir = process.env.STEAMHARNESS_WORKSPACE_PACKS_DIR
+    ? path.resolve(process.env.STEAMHARNESS_WORKSPACE_PACKS_DIR)
     : path.join(repoRoot, "workspace", ".packs");
   const stagingDir = path.join(packsDir, "tmp", randomUUID(), workflowName);
   const archivePath = outputPath
@@ -1204,8 +1204,8 @@ async function packProjectGroup(options: {
 }): Promise<ProjectGroupPackResult> {
   const contexts = options.contexts ?? await readProjectGroupContexts(options);
   const repoRoot = resolveRepoRoot();
-  const packsDir = process.env.WORKFLOW_WORKSPACE_PACKS_DIR
-    ? path.resolve(process.env.WORKFLOW_WORKSPACE_PACKS_DIR)
+  const packsDir = process.env.STEAMHARNESS_WORKSPACE_PACKS_DIR
+    ? path.resolve(process.env.STEAMHARNESS_WORKSPACE_PACKS_DIR)
     : path.join(repoRoot, "workspace", ".packs");
   const groupRoot = path.join(packsDir, "tmp", `project-group-${randomUUID()}`);
   const projectsDir = path.join(groupRoot, "projects");
@@ -1433,7 +1433,7 @@ async function readPackageJsonFile(packageJsonPath: string): Promise<Record<stri
 }
 
 function readStaticProjectType(packageJson: Record<string, unknown>): WorkflowProjectType {
-  const config = packageJson["workflowCode"];
+  const config = packageJson["steamHarness"];
   const value = config && typeof config === "object" && !Array.isArray(config)
     ? (config as Record<string, unknown>)["projectType"] : undefined;
   if (!isWorkflowProjectType(value)) {
@@ -1737,10 +1737,10 @@ export function parseArgs(argv: string[]): ParsedArgs {
   const [command = "", ...rest] = argv;
   const positional: string[] = [];
   const authConfig = readCliAuthConfigSync();
-  const envServer = process.env.WORKFLOW_SERVER_URL;
-  const envToken = process.env.WORKFLOW_SERVER_ADMIN_KEY;
+  const envServer = process.env.STEAMHARNESS_SERVER_URL;
+  const envToken = process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
   // The saved CLI login is only the fallback: a host that spawns this CLI
-  // (Workflow Code Desktop) passes its own session through the environment,
+  // (SteamHarness Desktop) passes its own session through the environment,
   // and that is the server the command really talks to.
   const options: CliOptions = {
     server: envServer ?? authConfig.serverUrl ?? DEFAULT_SERVER_URL,
@@ -1972,8 +1972,8 @@ function printUsage(): void {
 }
 
 export function resolveRepoRoot(startDir = process.cwd()): string {
-  if (process.env.WORKFLOW_REPO_ROOT !== undefined) {
-    return path.resolve(process.env.WORKFLOW_REPO_ROOT);
+  if (process.env.STEAMHARNESS_REPO_ROOT !== undefined) {
+    return path.resolve(process.env.STEAMHARNESS_REPO_ROOT);
   }
 
   // Source commands may start inside the Core repository workspace.
@@ -2083,7 +2083,7 @@ if (
   import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
 ) {
   main().catch((error) => {
-    console.error(translateWorkflowCodeError(error));
+    console.error(translateSteamHarnessError(error));
     process.exitCode = 1;
   });
 }

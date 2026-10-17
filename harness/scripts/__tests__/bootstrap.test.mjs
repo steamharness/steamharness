@@ -10,9 +10,9 @@ test("bootstrap prepares copied Shared packages once before install", async () =
   const calls = [];
   const result = await bootstrapRepository({
     root: path.resolve("checkout", "core"),
-    env: { WORKFLOW_BOOTSTRAP_TEST: "1" },
+    env: { STEAMHARNESS_BOOTSTRAP_TEST: "1" },
     argv: ["--frozen-lockfile"],
-    prepare: async ({ env }) => calls.push(`prepare:${env.WORKFLOW_REPOSITORY_MODE ?? "current"}`),
+    prepare: async ({ env }) => calls.push(`prepare:${env.STEAMHARNESS_REPOSITORY_MODE ?? "current"}`),
     install: async ({ argv }) => {
       calls.push(`install:${argv.join(" ")}`);
       return 0;
@@ -27,7 +27,7 @@ test("bootstrap does not refresh Shared packages after an install failure", asyn
   await assert.rejects(bootstrapRepository({
     root: path.resolve("checkout", "core"),
     env: {},
-    prepare: async ({ env }) => calls.push(`prepare:${env.WORKFLOW_REPOSITORY_MODE ?? "current"}`),
+    prepare: async ({ env }) => calls.push(`prepare:${env.STEAMHARNESS_REPOSITORY_MODE ?? "current"}`),
     install: async () => {
       calls.push("install:failed");
       throw new Error("install failed");

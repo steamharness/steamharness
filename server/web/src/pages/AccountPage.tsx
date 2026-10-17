@@ -1,6 +1,6 @@
 import { AlertCircle, CheckCircle2, Copy, ImagePlus, KeyRound, Languages, MonitorCog, Moon, RefreshCw, ShieldCheck, Sun, Upload, UserRound } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
-import { formatDateTime, i18n, useTranslation, type LocalePreference } from "@workflow-code/i18n/react";
+import { formatDateTime, i18n, useTranslation, type LocalePreference } from "@steamharness/i18n/react";
 import type { SettingsTab, ThemeMode } from "../state";
 import type { WorkflowApiKeyRecord, WorkflowMeResult } from "../types";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +17,7 @@ import { TableLoadingRows } from "@/components/ui/table-loading-rows";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ConfirmActionDialog, type ConfirmAction } from "@/components/ConfirmActionDialog";
 import { cn } from "@/lib/utils";
-import { getAvatarFallbackText } from "@workflow-code/avatar-fallback";
+import { getAvatarFallbackText } from "@steamharness/avatar-fallback";
 
 interface AccountPageProps {
   tab: SettingsTab;

@@ -1,5 +1,5 @@
 {
-  "name": "@workflow-code/shared-workspace",
+  "name": "@steamharness/shared-workspace",
   "version": "0.1.6",
   "private": true,
   "packageManager": "pnpm@10.15.1",
@@ -22,7 +22,7 @@
     "@types/react-dom": "^19.0.0",
     "@types/semver": "^7.7.1",
     "@vitest/coverage-v8": "^4.1.7",
-    "@workflow-code/i18n": "workspace:*",
+    "@steamharness/i18n": "workspace:*",
     "jsdom": "^29.1.1",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",

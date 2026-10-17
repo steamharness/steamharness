@@ -11,11 +11,11 @@ describe("repository boundary scanner", () => {
     await mkdir(path.join(root, "src"), { recursive: true });
     await Promise.all([
       writeFile(path.join(root, "src", "index.ts"), 'import "../../core/src/index";\n'),
-      writeFile(path.join(root, "package.json"), JSON.stringify({ dependencies: { "workflow-code": "link:../core" } })),
+      writeFile(path.join(root, "package.json"), JSON.stringify({ dependencies: { "steamharness": "link:../core" } })),
       writeFile(path.join(root, "tsconfig.json"), JSON.stringify({
         extends: "../core/tsconfig.json",
         references: [{ path: "../shared" }],
-        compilerOptions: { paths: { "workflow-code": ["../core/src/index.ts"] } },
+        compilerOptions: { paths: { "steamharness": ["../core/src/index.ts"] } },
       })),
     ]);
 

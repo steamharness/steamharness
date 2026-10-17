@@ -115,10 +115,10 @@ interface WorkflowKnowledgeDocumentLinesResult {
 
 ## Loading behavior
 
-`workflow.listKnowledgeDocuments()` returns only the title, summary, and time, not the full markdown; reads the specified document when you need to display, edit, or read a line range. The host integration can import `listKnowledgeDocumentPage()` from the `workflow-code` package to read the summary page per cursor:
+`workflow.listKnowledgeDocuments()` returns only the title, summary, and time, not the full markdown; reads the specified document when you need to display, edit, or read a line range. The host integration can import `listKnowledgeDocumentPage()` from the `steamharness` package to read the summary page per cursor:
 
 ```ts
-import { listKnowledgeDocumentPage } from "workflow-code";
+import { listKnowledgeDocumentPage } from "steamharness";
 
 const page = await listKnowledgeDocumentPage(
   context.storage.local,
@@ -139,7 +139,7 @@ All backends use the same PersistentValue key structure:
 | project | `knowledge.documents.locator.<id>` |The page and sequence in which the document is located; the tombstone is retained after deletion.|
 | project | `knowledge.document.<id>` |The body of a single document, which contains the `markdown` field; the tombstone is retained after deletion.|
 
-The Server backend stores these keys in the `storage_kind = persistent_value` domain of PostgreSQL `project_storage`; the local backend stores them in the dedicated directory pointed to by `WORKFLOW_PERSISTENT_VALUE_STORE_DIR`. Ordinary KV uses a separate domain and cannot overlap with Knowledge or PersistentValue even when the project, scope, and key match. On Windows, the local backend retries a brief `EPERM` or `EACCES` while creating an exclusive lock file within the lock wait limit, and returns a timeout if it still cannot acquire the lock. The first list reads only metadata and required page blocks, not Markdown bodies or old pages. Deleting a document removes it from the page-block index and writes tombstones for locator and body keys. KV/PersistentValue has no delete primitive, so tombstones remain in the selected backend. The index format is fixed to v2; old single-array indexes are not read or migrated.
+The Server backend stores these keys in the `storage_kind = persistent_value` domain of PostgreSQL `project_storage`; the local backend stores them in the dedicated directory pointed to by `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR`. Ordinary KV uses a separate domain and cannot overlap with Knowledge or PersistentValue even when the project, scope, and key match. On Windows, the local backend retries a brief `EPERM` or `EACCES` while creating an exclusive lock file within the lock wait limit, and returns a timeout if it still cannot acquire the lock. The first list reads only metadata and required page blocks, not Markdown bodies or old pages. Deleting a document removes it from the page-block index and writes tombstones for locator and body keys. KV/PersistentValue has no delete primitive, so tombstones remain in the selected backend. The index format is fixed to v2; old single-array indexes are not read or migrated.
 
 A local run using a server PersistentValue connection performs create, edit, and delete as one restricted server-side Knowledge mutation. The server serializes it within the project namespace and commits or rolls back the document index, body, and tombstones in one PostgreSQL transaction, so concurrent writes or one failure cannot leave inconsistent data. Business code should use these helpers instead of writing reserved keys in parallel. A custom PersistentValue backend must provide project-namespace `withLock` or `executeMutation` atomic capability for create, edit, or delete; otherwise the helper refuses the write to prevent concurrent multi-key index overwrites.
 
@@ -224,9 +224,9 @@ export const workflowWithKnowledge = workflow.defineWorkflow<Input, OutputPayloa
 On local write, specify the directory for normal KV and the repository separately:
 
 ```bash
-WORKFLOW_KV_STORE_DIR="$PWD/.workflow-kv" \
-WORKFLOW_PERSISTENT_VALUE_STORE_DIR="$PWD/.workflow-persistent-values" \
-workflow-code json workspace/workflow/conversation-knowledge \
+STEAMHARNESS_KV_STORE_DIR="$PWD/.workflow-kv" \
+STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR="$PWD/.workflow-persistent-values" \
+steamharness json workspace/workflow/conversation-knowledge \
   --conversation-id demo-thread \
   -- --message "Record today's conclusion" --title "Demo conversation"
 ```
@@ -234,8 +234,8 @@ workflow-code json workspace/workflow/conversation-knowledge \
 Append `--dry-run` to preview Markdown without writing PersistentValue. To write server Knowledge, change the project's storage selection to `context.storage.server`, bind its top-level `package.json.id` to an authorized server project UUID, and configure an authenticated Server connection for a local run:
 
 ```bash
-workflow-code workspace login --server "$WORKFLOW_SERVER_URL"
-workflow-code json workspace/workflow/conversation-knowledge \
+steamharness workspace login --server "$STEAMHARNESS_SERVER_URL"
+steamharness json workspace/workflow/conversation-knowledge \
   --conversation-id demo-thread \
   -- --message "Record today's conclusion" --title "Demo conversation"
 ```

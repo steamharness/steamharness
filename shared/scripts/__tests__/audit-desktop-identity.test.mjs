@@ -35,10 +35,10 @@ test("Desktop identity audit scans the relocated built-in production files by de
 test("Desktop identity audit rejects aliases and fallbacks in production files", async () => {
   const splitRoot = await mkdtemp(path.join(os.tmpdir(), "workflow-desktop-identity-audit-"));
   await writeFiles(path.join(splitRoot, "desktop"), {
-    "package.json": '{"name":"@workflow-code/app"}\n',
+    "package.json": '{"name":"@steamharness/app"}\n',
     "src/runtime.ts": [
       'const platform = value === "app" ? "desktop" : value;',
-      'const legacyEnvironment = "WORKFLOW_APP_RUNTIME_EVENTS";',
+      'const legacyEnvironment = "STEAMHARNESS_APP_RUNTIME_EVENTS";',
       'const legacyChannel = "local-app-state:get";',
       "workflow.isApp();",
     ].join("\n"),
@@ -60,17 +60,17 @@ test("Desktop identity audit rejects aliases and fallbacks in production files",
 test("Desktop identity audit allows only explicit old-value rejection guards", async () => {
   const splitRoot = await mkdtemp(path.join(os.tmpdir(), "workflow-desktop-identity-rejection-"));
   await writeFiles(path.join(splitRoot, "core"), {
-    "package.json": '{"name":"workflow-code"}\n',
+    "package.json": '{"name":"steamharness"}\n',
     "src/runtime-platform.ts": [
       'if (normalized === "app") {',
-      '  throw new TypeError(\'WORKFLOW_RUNTIME_PLATFORM="app" is no longer supported; use "desktop".\');',
+      '  throw new TypeError(\'STEAMHARNESS_RUNTIME_PLATFORM="app" is no longer supported; use "desktop".\');',
       "}",
     ].join("\n"),
     "src/__tests__/runtime-platform.test.ts": 'expect(normalize("app")).toThrow();\n',
     "CHANGELOG.next.md": "旧 app 值不再兼容。\n",
   });
   await writeFiles(path.join(splitRoot, "build-in/build-in-studio-control"), {
-    "package.json": '{"name":"@workflow-code/builtin-studio-control"}\n',
+    "package.json": '{"name":"@steamharness/builtin-studio-control"}\n',
     "scripts/builtin-release.mjs": [
       'if (Object.hasOwn(release, "minAppVersion")) {',
       '  throw new Error("minAppVersion is not supported; use minDesktopVersion.");',
@@ -89,12 +89,12 @@ test("Desktop identity audit allows only explicit old-value rejection guards", a
 test("Desktop identity audit does not treat Electron app APIs as product aliases", async () => {
   const splitRoot = await mkdtemp(path.join(os.tmpdir(), "workflow-desktop-electron-app-"));
   await writeFiles(path.join(splitRoot, "desktop"), {
-    "package.json": '{"name":"@workflow-code/desktop"}\n',
+    "package.json": '{"name":"@steamharness/desktop"}\n',
     "src/main.ts": [
       'import { app, type App } from "electron";',
       'const appPath = app.getAppPath();',
       'const archive = "app.asar";',
-      'const bundle = "Workflow Code.app";',
+      'const bundle = "SteamHarness.app";',
       "export { appPath, archive, bundle };",
     ].join("\n"),
   });
@@ -105,7 +105,7 @@ test("Desktop identity audit does not treat Electron app APIs as product aliases
 test("Desktop identity audit can scope an independent CI checkout to Shared", async () => {
   const splitRoot = await mkdtemp(path.join(os.tmpdir(), "workflow-desktop-identity-shared-ci-"));
   await writeFiles(path.join(splitRoot, "shared"), {
-    "package.json": '{"name":"@workflow-code/shared-workspace"}\n',
+    "package.json": '{"name":"@steamharness/shared-workspace"}\n',
     "i18n/index.ts": 'export const namespace = "desktop";\n',
   });
 

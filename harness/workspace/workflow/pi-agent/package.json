@@ -1,6 +1,6 @@
 {
   "id": "7afb5837-251e-4938-bae4-83f8569d9d6b",
-  "name": "@workflow-code/pi-agent-workflow",
+  "name": "@steamharness/pi-agent-workflow",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -8,18 +8,18 @@
     "@earendil-works/pi-coding-agent": "^0.79.1"
   },
   "scripts": {
-    "web": "workflow-code web .",
-    "dev": "workflow-code run .",
-    "inspect": "workflow-code structure .",
-    "run:json": "workflow-code json .",
-    "workspace:upload": "workflow-code workspace upload .",
-    "workspace:publish": "workflow-code workspace publish ."
+    "web": "steamharness web .",
+    "dev": "steamharness run .",
+    "inspect": "steamharness structure .",
+    "run:json": "steamharness json .",
+    "workspace:upload": "steamharness workspace upload .",
+    "workspace:publish": "steamharness workspace publish ."
   },
   "devDependencies": {
-    "@workflow-code/cli": "0.2.4-20261011002.codex-cli-web",
-    "workflow-code": "0.2.4-20260929001"
+    "@steamharness/cli": "0.2.4-20261011002.codex-cli-web",
+    "steamharness": "0.2.4-20260929001"
   },
-  "workflowCode": {
+  "steamHarness": {
     "projectInfo": {
       "dataStorage": {
         "mode": "local"

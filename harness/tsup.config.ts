@@ -42,7 +42,7 @@ export default defineConfig({
   splitting: true,
   clean: true,
   dts: {
-    resolve: ["@workflow-code/openai-responses", "@workflow-code/project-types"],
+    resolve: ["@steamharness/openai-responses", "@steamharness/project-types"],
     entry: { index: "src/index.ts", agent: "src/agent/index.ts", "runtime-api": "src/runtime-api.ts", "node/output": "src/node/output/index.ts",
       "types/context": "src/types/context.ts", "executor/rules": "src/executor/rules.ts" },
   },
@@ -52,7 +52,7 @@ export default defineConfig({
   tsconfig: "tsconfig.json",
   esbuildOptions(options) {
     options.alias = {
-      "workflow-code": path.resolve("src/index.ts"),
+      "steamharness": path.resolve("src/index.ts"),
     };
   },
 });

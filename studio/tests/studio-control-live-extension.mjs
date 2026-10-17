@@ -22,7 +22,7 @@ async function run(context) {
   const outside = path.join(path.dirname(workdir), 'outside');
   const ids = ['294b1eec-23fa-42cf-9fd3-2417f71c0570', '615e6cf6-b40a-456a-8d19-b71c63454c7a'];
   await mkdir(outside, { recursive: true });
-  const manifest = (id, relatedProjects = []) => ({ id, name: 'Control test', workflowCode: { projectInfo: { relatedProjects } } });
+  const manifest = (id, relatedProjects = []) => ({ id, name: 'Control test', steamHarness: { projectInfo: { relatedProjects } } });
   await writeFile(path.join(workdir, 'package.json'), JSON.stringify(manifest(ids[0], [{ alias: 'notes', projectId: ids[1] }])));
   await writeFile(path.join(outside, 'package.json'), JSON.stringify(manifest(ids[1])));
   await writeFile(path.join(workdir, 'control.txt'), 'first\nsecond line\n');
@@ -52,10 +52,10 @@ async function run(context) {
   const connect = async policy => runtime.connectMcpServer({
     id: 'workflow-studio', command: [process.env.STUDIO_CONTROL_TEST_NODE, process.env.STUDIO_CONTROL_TEST_CLI, 'mcp',
       application, '--data-dir', path.join(path.dirname(workdir), 'mcp', policy)],
-    inheritEnvironment: ['WORKFLOW_STUDIO_CONTROL_BRIDGE_URL', 'WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN'],
-    environment: { WORKFLOW_STUDIO_CONTROL_PERMISSION_POLICY: policy, WORKFLOW_CLI_AUTH_DIR: path.join(path.dirname(workdir), 'auth') },
-  }, { allowedInheritedEnvKeys: ['WORKFLOW_STUDIO_CONTROL_BRIDGE_URL', 'WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN'],
-    env: { WORKFLOW_STUDIO_CONTROL_BRIDGE_URL: bridge.url, WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN: bridge.token } });
+    inheritEnvironment: ['STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL', 'STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN'],
+    environment: { STEAMHARNESS_STUDIO_CONTROL_PERMISSION_POLICY: policy, STEAMHARNESS_CLI_AUTH_DIR: path.join(path.dirname(workdir), 'auth') },
+  }, { allowedInheritedEnvKeys: ['STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL', 'STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN'],
+    env: { STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL: bridge.url, STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN: bridge.token } });
   const call = async (name, input = {}) => {
     const result = await connection.callTool(name, input);
     assert.notEqual(result.isError, true, `${name}: ${JSON.stringify(result.content)}`);
@@ -139,7 +139,7 @@ async function run(context) {
     }
     await symlink(path.join(process.env.STUDIO_CONTROL_TEST_ASSISTANT, 'node_modules'), path.join(projectDirectory, 'node_modules'),
       process.platform === 'win32' ? 'junction' : 'dir');
-    for (const [directory, dependency] of [['core', 'workflow-code'], ['cli', '@workflow-code/cli']]) {
+    for (const [directory, dependency] of [['core', 'steamharness'], ['cli', '@steamharness/cli']]) {
       await symlink(await realpath(path.join(process.env.STUDIO_CONTROL_TEST_ASSISTANT, 'node_modules', dependency)), path.join(workdir, directory),
         process.platform === 'win32' ? 'junction' : 'dir');
     }

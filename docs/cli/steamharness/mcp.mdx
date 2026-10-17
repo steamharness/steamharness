@@ -1,0 +1,98 @@
+---
+title: "steamharness mcp"
+description: "将本地 Workflow entrypoint 作为标准 stdio MCP tools 提供给 AI 客户端。"
+---
+
+# steamharness mcp
+
+`steamharness mcp` 会把一个 `projectType: "workflow"` 项目启动为标准 MCP Server。项目中的每个 entrypoint 对应一个 tool；Conversation、Kanban 和普通文件夹不会暴露 MCP。
+
+Server 名称固定为 `workflow-<package.json.id>`，tool 名称直接使用 entrypoint ID，标题、描述和参数来自启动时的 structure report。连接建立后工具目录不会动态变化；修改项目、entrypoint、静态参数或 draft 后需要重新连接。
+
+## 命令格式
+
+```bash
+steamharness mcp <workflow-dir> [options]
+```
+
+`workflow-dir` 是必填的 Workflow 项目目录。项目必须在 `package.json.id` 中声明不可变 UUID。
+
+## MCP 客户端配置
+
+安装了 `steamharness` bin 后，可以使用通用 stdio 配置：
+
+```json
+{
+  "mcpServers": {
+    "workflow-11111111-1111-4111-8111-111111111111": {
+      "command": "steamharness",
+      "args": [
+        "mcp",
+        "/absolute/path/to/workflow"
+      ]
+    }
+  }
+}
+```
+
+## 选项
+
+| 选项 | 说明 |
+| --- | --- |
+| `--data-dir <绝对目录>` | 本地 workflow 数据根目录；默认是 `~/.steamharness`。 |
+| `--file-store-dir <绝对目录>` | MCP 文件参数导入后的 managed-file store。 |
+| `--kv-store-dir <绝对目录>` | 当前项目的本地 KV store。 |
+| `--persistent-value-store-dir <绝对目录>` | PersistentValue 与本地知识库存储。 |
+| `--file-create-store-dir <绝对目录>` | 本地 runtime 生成文件目录。 |
+| `--auth-dir <绝对目录>` | CLI 保存 `workflow-auth.json` 的目录。 |
+| `--related-project <alias>=<绝对项目目录>` | 绑定一个双方已确认的关联项目；可重复指定。 |
+
+除 `workflow-dir` 外，上述目录参数都要求绝对路径。项目自己的 `.env` 仍由 Core 加载；显式的 `STEAMHARNESS_SERVER_URL` / `STEAMHARNESS_SERVER_ADMIN_KEY` 优先于已保存认证。
+
+## Tool 参数
+
+MCP input schema 按 entrypoint 的静态 `params` 生成，并设置 `additionalProperties: false`：
+
+| Workflow 参数 | MCP 输入 |
+| --- | --- |
+| `string` / `positional` | `string` |
+| `number` | `number` |
+| `boolean` | `boolean` |
+| `multiple: true` / `checkboxes` | 对应类型的数组 |
+| `file` | 绝对文件路径；multiple file 使用路径数组 |
+
+`required`、默认值、描述、静态 options 和日期格式会进入 schema。`resolveParams` 不会动态重写 MCP schema；动态选项项目仍以静态 params 为公开合同。
+
+本地 file 参数不接受相对路径、URL 或 Base64。host 会确认路径指向普通文件、检查 50 MB 上限，再把文件导入当前 managed-file store。
+
+```json
+{
+  "prompt": "分析附件",
+  "documents": [
+    "/absolute/path/to/spec.pdf",
+    "/absolute/path/to/notes.md"
+  ]
+}
+```
+
+## 运行、交互与结果
+
+MCP host 通过隔离的 worker 执行现有 `structure` / `json` 链路。stdio 的 stdout 只承载 JSON-RPC；项目日志和 worker 诊断写到 stderr。取消 tool call 会终止对应 worker。
+
+当 workflow 进入 `waiting_for_input` 或等待工具审批时，支持 form elicitation 的客户端会在同一个 runId 上连续恢复。客户端不支持 elicitation、待输入表单包含 file 字段，或包含未配置静态 `options` 的任意数组字段时，tool 返回 `interaction_required` 错误以及 runId 和待输入字段摘要，不会自动批准。交互式多选字段需要配置静态 `options`，才能通过标准 MCP form 恢复。
+
+成功结果同时写入 MCP 文本 `content` 和 `structuredContent`：
+
+```json
+{
+  "runId": "20260828-abcd",
+  "status": "success",
+  "entrypointId": "main",
+  "entrypointTitle": "Main",
+  "output": {}
+}
+```
+
+`output` 只来自 `report.result.data.output`。失败、非零业务 `errCode`、取消或超时会增加精简 `error` 并设置 `isError: true`；不会返回完整 report、节点明细、stdout、stderr 或内部凭据。参数格式错误使用 MCP `InvalidParams`。
+
+KV、PersistentValue、知识库和 managed files 使用命令传入或默认的数据目录。

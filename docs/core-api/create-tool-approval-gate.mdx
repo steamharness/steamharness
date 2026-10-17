@@ -132,8 +132,8 @@ CLI Web 会把 `tool-approval` 渲染为专用决策界面，直接展示工具�
 本地 CLI 不会弹出交互式审批。首次运行会输出 `waiting_for_input` 报告，随后使用相同 `runId` 和 `--resolved-user-inputs-json` 恢复：
 
 ```bash
-workflow-code json . -- --message "run tool"
-workflow-code json . \
+steamharness json . -- --message "run tool"
+steamharness json . \
   --run-id <run-id> \
   --resolved-user-inputs-json '[{"requestId":"<request-id>","nodeName":"tool-approval","values":{"approved":true},"submittedAt":"2026-07-08T00:00:00.000Z"}]' \
   -- --message "run tool"

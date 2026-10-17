@@ -5,27 +5,27 @@ description: "CLI v0.2.3 的更新说明。"
 
 # CLI v0.2.3
 
-2026-09-01 · Tag `@workflow-code/cli/v0.2.3` · npm
+2026-09-01 · Tag `@steamharness/cli/v0.2.3` · npm
 
-<span id="@workflow-code/cli-0-2-3" className="release-version-anchor"></span>
-<span id="@workflow-code/cli.0.2.3" className="release-version-anchor"></span>
+<span id="@steamharness/cli-0-2-3" className="release-version-anchor"></span>
+<span id="@steamharness/cli.0.2.3" className="release-version-anchor"></span>
 
 #### 新特性
 
-- **本地 MCP 入口**：`workflow-code mcp <workflow-dir>` 把每个 entrypoint 暴露为标准 stdio MCP tool。
+- **本地 MCP 入口**：`steamharness mcp <workflow-dir>` 把每个 entrypoint 暴露为标准 stdio MCP tool。
 - **关联项目访问**：`--related-project` 显式启用双方已确认的关联项目 KV 访问。
-- **MCP 生命周期上报**：由 Desktop 无窗口启动器托管时，CLI 经独立 IPC 上报完整快照。参见 [CLI](/cli/workflow-code)。
+- **MCP 生命周期上报**：由 Desktop 无窗口启动器托管时，CLI 经独立 IPC 上报完整快照。参见 [CLI](/cli/steamharness)。
 
 #### 破坏性变更
 
 - 移除 `--grant-data-access` 与 Kanban `dataSources` 授权流程。
-  迁移：项目组依赖改由双方确认的 `workflowCode.projectInfo.relatedProjects` 生成。
+  迁移：项目组依赖改由双方确认的 `steamHarness.projectInfo.relatedProjects` 生成。
 - `workspace upload --create` 要求 package 预先声明顶层 UUID 与 `dataStorage.mode`。
   迁移：不再由 Server 分配或回写项目 ID。
 
 #### 新增
 
-- 新增 `workflow-code mcp <workflow-dir>`，把每个 entrypoint 暴露为标准 stdio MCP tool。
+- 新增 `steamharness mcp <workflow-dir>`，把每个 entrypoint 暴露为标准 stdio MCP tool。
 - 新增 本地运行支持可重复的 `--related-project <alias>=<绝对项目目录>`。
 
 #### 变更
@@ -38,4 +38,4 @@ description: "CLI v0.2.3 的更新说明。"
 
 - 修复 MCP 表单 elicitation 返回非法内容或传输、恢复失败时终止等待中的运行并记录诊断。
 - 修复 OpenAI Responses 内部 runner 不再把 AI SDK 可选参数兼容性 warning 写入 `stderr`。
-- 修复 `workflow-code structure` 在静态分析前校验完整 `projectInfo` 合同，不支持字段返回退出码 `1`。
+- 修复 `steamharness structure` 在静态分析前校验完整 `projectInfo` 合同，不支持字段返回退出码 `1`。

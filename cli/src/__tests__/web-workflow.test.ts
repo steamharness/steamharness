@@ -35,7 +35,7 @@ function controller(saved: Partial<WorkflowWorkspace> = {}, legacy?: Conversatio
 }
 async function service(legacy?: ConversationSession[]) {
   const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'workflow-workspace-'))); folders.push(directory);
-  vi.stubEnv('WORKFLOW_CLI_AUTH_DIR', path.join(directory, 'auth')); vi.stubEnv('WORKFLOW_SERVER_URL', ''); vi.stubEnv('WORKFLOW_SERVER_ADMIN_KEY', '');
+  vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(directory, 'auth')); vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
   const executor = runtime(), descriptor = { ...project, folderPath: directory };
   vi.mocked(executor.inspect).mockResolvedValue({ projects: [descriptor], errors: [] });
   const key = createHash('sha256').update(directory).digest('hex').slice(0, 24), dataDir = path.join(directory, 'data');
@@ -383,10 +383,10 @@ describe('Workflow graph layout', () => {
 it('inspects and executes a real offline workflow with its own Core, streaming, input replay and a managed export', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'workflow-runtime-')); folders.push(directory);
   await mkdir(path.join(directory, 'node_modules'));
-  let coreRoot = path.dirname(fileURLToPath(import.meta.resolve('workflow-code')));
-  while (JSON.parse(await readFile(path.join(coreRoot, 'package.json'), 'utf8').catch(() => '{}')).name !== 'workflow-code') { coreRoot = path.dirname(coreRoot); }
-  await symlink(coreRoot, path.join(directory, 'node_modules/workflow-code'), process.platform === 'win32' ? 'junction' : 'dir');
-  await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: project.id, name: 'Workflow fixture', type: 'module', workflowCode: { projectInfo: { dataStorage: { mode: 'local' } } } }));
+  let coreRoot = path.dirname(fileURLToPath(import.meta.resolve('steamharness')));
+  while (JSON.parse(await readFile(path.join(coreRoot, 'package.json'), 'utf8').catch(() => '{}')).name !== 'steamharness') { coreRoot = path.dirname(coreRoot); }
+  await symlink(coreRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
+  await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: project.id, name: 'Workflow fixture', type: 'module', steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } }));
   await writeFile(path.join(directory, 'index.ts'), `
     const preview = workflow.createOutputNode({ name: 'preview-node', async *stream() {
       yield workflow.createOutputItemChunk({ type:'output_item_start', item:{id:'preview',title:'Preview',content:'Before input',contentType:'text'} });

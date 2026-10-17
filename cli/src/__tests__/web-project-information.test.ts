@@ -1,6 +1,6 @@
 import { afterEach, expect, it } from 'vitest';
-import { initI18n } from '@workflow-code/i18n';
-import { createDefaultWorkflowProjectInfo } from '@workflow-code/project-info';
+import { initI18n } from '@steamharness/i18n';
+import { createDefaultWorkflowProjectInfo } from '@steamharness/project-info';
 import { projectInformation } from '../web/ui/project-information';
 import type { WorkflowProject } from '../web/workflow-types';
 

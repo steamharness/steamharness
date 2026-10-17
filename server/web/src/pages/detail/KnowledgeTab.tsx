@@ -1,4 +1,4 @@
-import { disposeKnowledgeImageCache, resolveKnowledgeImageSrc } from "@workflow-code/knowledge-base";
+import { disposeKnowledgeImageCache, resolveKnowledgeImageSrc } from "@steamharness/knowledge-base";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { apiClient } from "../../api";
 import { createServerKnowledgeRepository } from "./knowledge-repository";

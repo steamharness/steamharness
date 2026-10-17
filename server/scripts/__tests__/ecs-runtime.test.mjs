@@ -180,10 +180,10 @@ test("the web release's port agrees between its unit file and the proxy in front
   // mistake a runtime health check per unit will never catch.
   const conf = await readEcsFile("nginx-https.conf");
   const upstreams = upstreamPorts(conf);
-  const unit = await readEcsFile("workflow-web-alpha.service");
+  const unit = await readEcsFile("steamharness-web-alpha.service");
   const port = Number(/--port\s+(\d+)/u.exec(unit)?.[1]);
 
-  assert.ok(Number.isInteger(port), "workflow-web-alpha.service must declare a port");
+  assert.ok(Number.isInteger(port), "steamharness-web-alpha.service must declare a port");
   assert.equal(
     upstreams.get(WEB_UPSTREAM),
     port,

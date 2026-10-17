@@ -6,13 +6,13 @@
 
 ```bash
 CHILD_DIR="$(cd ../server-data-child && pwd)"
-pnpm exec workflow-code json . --entrypoint store -- --content "parent content"
+pnpm exec steamharness json . --entrypoint store -- --content "parent content"
 CURRENT_ID="<store 返回的 id>"
-pnpm exec workflow-code json . --entrypoint get -- --id "$CURRENT_ID"
+pnpm exec steamharness json . --entrypoint get -- --id "$CURRENT_ID"
 
-pnpm exec workflow-code json . --entrypoint store --related-project "child=$CHILD_DIR" -- --content "hello child" --alias child
+pnpm exec steamharness json . --entrypoint store --related-project "child=$CHILD_DIR" -- --content "hello child" --alias child
 CHILD_ID="<store 返回的 id>"
-pnpm exec workflow-code json . --entrypoint get --related-project "child=$CHILD_DIR" -- --id "$CHILD_ID" --alias child
+pnpm exec steamharness json . --entrypoint get --related-project "child=$CHILD_DIR" -- --id "$CHILD_ID" --alias child
 ```
 
 运行服务器组前需要登录 Server，并确保三个 UUID 已绑定对应云端项目。父项目没有声明孙项目，因此不能通过关联项目 API 越过子项目访问孙项目。完整的父子孙访问合同由 `workspace/__tests__/storage-hierarchy.test.ts` 离线维护。

@@ -14,10 +14,10 @@ async function parent() {
   folders.push(directory); return directory;
 }
 async function linkCore(directory: string) {
-  let root = path.dirname(fileURLToPath(import.meta.resolve('workflow-code')));
-  while (JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8').catch(() => '{}')).name !== 'workflow-code') { root = path.dirname(root); }
+  let root = path.dirname(fileURLToPath(import.meta.resolve('steamharness')));
+  while (JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8').catch(() => '{}')).name !== 'steamharness') { root = path.dirname(root); }
   await mkdir(path.join(directory, 'node_modules'));
-  await symlink(root, path.join(directory, 'node_modules/workflow-code'), process.platform === 'win32' ? 'junction' : 'dir');
+  await symlink(root, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
 }
 
 describe('project templates', () => {
@@ -36,8 +36,8 @@ describe('project templates', () => {
       const created = await createProjectFromTemplate({ templateId: template.id, name: template.id, parentDirectory, versions });
       ids.add(created.id);
       const manifest = JSON.parse(await readFile(path.join(created.directory, 'package.json'), 'utf8'));
-      expect(manifest).toMatchObject({ id: created.id, private: true, devDependencies: { 'workflow-code': versions.core, '@workflow-code/cli': versions.cli },
-        workflowCode: { projectInfo: { dataStorage: { mode: 'local' } } } });
+      expect(manifest).toMatchObject({ id: created.id, private: true, devDependencies: { 'steamharness': versions.core, '@steamharness/cli': versions.cli },
+        steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } });
       expect(JSON.stringify(manifest)).not.toMatch(/link:|file:|workspace:|\/Users\//);
       for (const filename of template.files) { expect((await readFile(path.join(created.directory, filename))).length).toBeGreaterThan(0); }
       await linkCore(created.directory);
@@ -73,7 +73,7 @@ describe('project templates', () => {
     expect(created.directory).toBe(path.join(parentDirectory, name));
     const html = await readFile(path.join(created.directory, 'index.html'), 'utf8');
     expect(html).toContain('&#39;'); expect(html).toContain('&amp;');
-    expect(JSON.parse(await readFile(path.join(created.directory, 'package.json'), 'utf8')).workflowCode.projectInfo.localizedNames.en).toBe(name);
+    expect(JSON.parse(await readFile(path.join(created.directory, 'package.json'), 'utf8')).steamHarness.projectInfo.localizedNames.en).toBe(name);
   });
 
   it('reserves the destination once and never overwrites an existing directory', async () => {

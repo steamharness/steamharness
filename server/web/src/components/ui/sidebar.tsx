@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useTranslation } from "@workflow-code/i18n/react"
+import { useTranslation } from "@steamharness/i18n/react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "cn"
 import { PanelLeftIcon } from "lucide-react"

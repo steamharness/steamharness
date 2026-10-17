@@ -94,7 +94,7 @@ export class ProjectIcons implements vscode.Disposable {
     }
     if (!projectId(pkg?.id)) { return undefined; }
     setVersion(typeof pkg.version === 'string' ? pkg.version : undefined);
-    if (pkg.workflowCode?.projectType === 'kanban') { return 'kanban'; }
+    if (pkg.steamHarness?.projectType === 'kanban') { return 'kanban'; }
     if (!this.launcher.analyzeProjectType) { return undefined; }
     const sources: Array<{ name: string; text: string }> = [];
     let bytes = 0, entries = 0;

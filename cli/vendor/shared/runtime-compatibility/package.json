@@ -1,5 +1,5 @@
 {
-  "name": "@workflow-code/runtime-compatibility",
+  "name": "@steamharness/runtime-compatibility",
   "version": "0.1.0",
   "private": true,
   "type": "module",

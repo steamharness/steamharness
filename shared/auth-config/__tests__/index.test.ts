@@ -4,7 +4,7 @@ import {
   normalizeWorkflowAuthConfig,
   resolveWorkflowCliAuthFilePath,
   resolveWorkflowDesktopConfigFilePath,
-} from "@workflow-code/auth-config";
+} from "@steamharness/auth-config";
 
 describe("auth-config package", () => {
   it("normalizes legacy auth fields", () => {
@@ -38,27 +38,27 @@ describe("auth-config package", () => {
   it("resolves the CLI auth file path from the configured auth dir", () => {
     expect(
       resolveWorkflowCliAuthFilePath({
-        WORKFLOW_CLI_AUTH_DIR: "/tmp/workflow-auth",
+        STEAMHARNESS_CLI_AUTH_DIR: "/tmp/workflow-auth",
       }),
     ).toBe("/tmp/workflow-auth/workflow-auth.json");
   });
 
   it("resolves the Desktop config file without an App compatibility path", () => {
     expect(resolveWorkflowDesktopConfigFilePath({
-      WORKFLOW_DESKTOP_CONFIG_DIR: "C:\\workflow\\desktop",
+      STEAMHARNESS_DESKTOP_CONFIG_DIR: "C:\\workflow\\desktop",
       platform: "win32",
     })).toBe("C:/workflow/desktop/workflow-desktop.json");
   });
 
   it("ignores the former App config variable", () => {
     const legacyOnlyEnv = {
-      WORKFLOW_APP_CONFIG_DIR: "C:\\workflow\\legacy-app",
+      STEAMHARNESS_APP_CONFIG_DIR: "C:\\workflow\\legacy-app",
       APPDATA: "C:\\Users\\workflow\\AppData\\Roaming",
       platform: "win32",
     };
 
     expect(resolveWorkflowDesktopConfigFilePath(legacyOnlyEnv)).toBe(
-      "C:/Users/workflow/AppData/Roaming/workflow-code/workflow-desktop.json",
+      "C:/Users/workflow/AppData/Roaming/steamharness/workflow-desktop.json",
     );
   });
 

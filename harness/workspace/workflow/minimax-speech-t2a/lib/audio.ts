@@ -34,7 +34,7 @@ export function createDryRunAudio(format: MinimaxSpeechFormat, sampleRate: numbe
   const durationMs = 240;
   if (format !== "wav") {
     return {
-      bytes: new TextEncoder().encode(`workflow-code minimax dry-run ${format}`),
+      bytes: new TextEncoder().encode(`steamharness minimax dry-run ${format}`),
       durationMs,
     };
   }

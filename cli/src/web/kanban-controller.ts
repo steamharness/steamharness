@@ -7,10 +7,10 @@ import {
   createDefaultKanbanValues, sanitizeKanbanValues, createInjectedKanbanParams, createKanbanBridgeError, parseKanbanBridgeCall,
   readKanbanArtifactConfig, parseKanbanManifestText, consumeKanbanRelatedProjectRevisionStream,
   type KanbanConfiguration, type KanbanInjectedConfiguration, type KanbanParamDefinition, type KanbanRelatedProjectRevision,
-} from '@workflow-code/kanban-project';
+} from '@steamharness/kanban-project';
 import { KanbanPreview } from './kanban-preview';
 import { KanbanMethodHub } from './kanban-methods';
-import { getCurrentLocale } from '@workflow-code/i18n';
+import { getCurrentLocale } from '@steamharness/i18n';
 import { localKanbanRelatedProjects, readWorkflowProjectInfo, webProjectDataDirectory } from './kanban-data';
 import type { WebConnection } from './runtime';
 import type { WorkflowProject, WorkflowRuntime } from './workflow-types';

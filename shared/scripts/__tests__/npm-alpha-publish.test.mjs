@@ -19,18 +19,18 @@ test("npm alpha publishing reuses only an identical immutable tarball", async ()
   const root = await mkdtemp(path.join(os.tmpdir(), "workflow-npm-alpha-publish-"));
   try {
     const releaseDir = path.join(root, ".release");
-    const tarball = path.join(releaseDir, "workflow-code-0.1.4-20260814001.tgz");
+    const tarball = path.join(releaseDir, "steamharness-0.1.4-20260814001.tgz");
     await mkdir(releaseDir, { recursive: true });
     await writeFile(tarball, "immutable-alpha-package");
     const integrity = await calculateTarballIntegrity(tarball);
     const calls = [];
     const result = await publishNpmAlpha({
       root,
-      packageName: "workflow-code",
+      packageName: "steamharness",
       version: "0.1.4-20260814001",
       runCommand: async (command, args) => {
         calls.push([command, ...args]);
-        if (args[0] === "view" && args[1] === "workflow-code@alpha") {
+        if (args[0] === "view" && args[1] === "steamharness@alpha") {
           return JSON.stringify("0.1.4-20260814001");
         }
         return args[0] === "view" ? JSON.stringify(integrity) : "";
@@ -38,7 +38,7 @@ test("npm alpha publishing reuses only an identical immutable tarball", async ()
     });
     assert.equal(result.reused, true);
     assert.equal(calls.some((call) => call.includes("publish")), false);
-    assert.deepEqual(calls.at(-1), ["npm", "dist-tag", "add", "workflow-code@0.1.4-20260814001", "alpha"]);
+    assert.deepEqual(calls.at(-1), ["npm", "dist-tag", "add", "steamharness@0.1.4-20260814001", "alpha"]);
 
     // Rebuilds are not byte-reproducible, so a re-run of a pipeline that already
     // uploaded this version packs a different tarball. The registry copy is the
@@ -47,11 +47,11 @@ test("npm alpha publishing reuses only an identical immutable tarball", async ()
     const warnings = [];
     const reused = await publishNpmAlpha({
       root,
-      packageName: "workflow-code",
+      packageName: "steamharness",
       version: "0.1.4-20260814001",
       log: (message) => warnings.push(message),
       runCommand: async (_command, args) => {
-        if (args[0] === "view" && args[1] === "workflow-code@alpha") {
+        if (args[0] === "view" && args[1] === "steamharness@alpha") {
           return JSON.stringify("0.1.4-20260814001");
         }
         return args[0] === "view" ? JSON.stringify(`sha512-${"x".repeat(20)}`) : "";
@@ -68,18 +68,18 @@ test("npm alpha publishing uploads a missing tarball and verifies registry integ
   const root = await mkdtemp(path.join(os.tmpdir(), "workflow-npm-alpha-upload-"));
   try {
     const releaseDir = path.join(root, ".release");
-    const tarball = path.join(releaseDir, "workflow-code-0.1.4-20260814002.tgz");
+    const tarball = path.join(releaseDir, "steamharness-0.1.4-20260814002.tgz");
     await mkdir(releaseDir, { recursive: true });
     await writeFile(tarball, "new-alpha-package");
     const integrity = await calculateTarballIntegrity(tarball);
     let published = false;
     const result = await publishNpmAlpha({
       root,
-      packageName: "workflow-code",
+      packageName: "steamharness",
       version: "0.1.4-20260814002",
       retryDelayMs: 0,
       runCommand: async (_command, args) => {
-        if (args[0] === "view" && args[1] === "workflow-code@alpha") {
+        if (args[0] === "view" && args[1] === "steamharness@alpha") {
           throw new Error("npm view exited 1: E404 Not Found");
         }
         if (args[0] === "view") {
@@ -101,7 +101,7 @@ test("npm alpha publishing waits out npm's asynchronous processing", async () =>
   const root = await mkdtemp(path.join(os.tmpdir(), "workflow-npm-alpha-processing-"));
   try {
     const releaseDir = path.join(root, ".release");
-    const tarball = path.join(releaseDir, "workflow-code-0.1.4-20260814002.tgz");
+    const tarball = path.join(releaseDir, "steamharness-0.1.4-20260814002.tgz");
     await mkdir(releaseDir, { recursive: true });
     await writeFile(tarball, "processing-alpha-package");
     const integrity = await calculateTarballIntegrity(tarball);
@@ -109,12 +109,12 @@ test("npm alpha publishing waits out npm's asynchronous processing", async () =>
     let readbacks = 0;
     const result = await publishNpmAlpha({
       root,
-      packageName: "workflow-code",
+      packageName: "steamharness",
       version: "0.1.4-20260814002",
       retryDelayMs: 0,
       log: () => {},
       runCommand: async (_command, args) => {
-        if (args[0] === "view" && args[1] === "workflow-code@alpha") {
+        if (args[0] === "view" && args[1] === "steamharness@alpha") {
           throw new Error("npm view exited 1: E404 Not Found");
         }
         if (args[0] === "view") {
@@ -139,18 +139,18 @@ test("npm alpha publishing rejects a tarball it uploaded itself under a differen
   const root = await mkdtemp(path.join(os.tmpdir(), "workflow-npm-alpha-digest-"));
   try {
     const releaseDir = path.join(root, ".release");
-    const tarball = path.join(releaseDir, "workflow-code-0.1.4-20260814002.tgz");
+    const tarball = path.join(releaseDir, "steamharness-0.1.4-20260814002.tgz");
     await mkdir(releaseDir, { recursive: true });
     await writeFile(tarball, "tampered-alpha-package");
     let published = false;
     await assert.rejects(publishNpmAlpha({
       root,
-      packageName: "workflow-code",
+      packageName: "steamharness",
       version: "0.1.4-20260814002",
       retryDelayMs: 0,
       log: () => {},
       runCommand: async (_command, args) => {
-        if (args[0] === "view" && args[1] === "workflow-code@alpha") {
+        if (args[0] === "view" && args[1] === "steamharness@alpha") {
           throw new Error("npm view exited 1: E404 Not Found");
         }
         if (args[0] === "view") {
@@ -170,7 +170,7 @@ test("npm channel publishing isolates development packages from the alpha dist-t
   const root = await mkdtemp(path.join(os.tmpdir(), "workflow-npm-dev-publish-"));
   try {
     const releaseDir = path.join(root, ".release");
-    const tarball = path.join(releaseDir, "workflow-code-0.2.3-20260901001.tgz");
+    const tarball = path.join(releaseDir, "steamharness-0.2.3-20260901001.tgz");
     await mkdir(releaseDir, { recursive: true });
     await writeFile(tarball, "new-development-package");
     const integrity = await calculateTarballIntegrity(tarball);
@@ -178,13 +178,13 @@ test("npm channel publishing isolates development packages from the alpha dist-t
     const calls = [];
     const result = await publishNpmAlpha({
       root,
-      packageName: "workflow-code",
+      packageName: "steamharness",
       version: "0.2.3-20260901001",
       distTag: "dev",
       retryDelayMs: 0,
       runCommand: async (command, args) => {
         calls.push([command, ...args]);
-        if (args[0] === "view" && args[1] === "workflow-code@dev") {
+        if (args[0] === "view" && args[1] === "steamharness@dev") {
           throw new Error("npm view exited 1: E404 Not Found");
         }
         if (args[0] === "view") {
@@ -197,7 +197,7 @@ test("npm channel publishing isolates development packages from the alpha dist-t
     });
     assert.equal(result.distTag, "dev");
     assert.equal(calls.some((call) => call.at(-1) === "alpha"), false);
-    assert.deepEqual(calls.at(-1), ["npm", "dist-tag", "add", "workflow-code@0.2.3-20260901001", "dev"]);
+    assert.deepEqual(calls.at(-1), ["npm", "dist-tag", "add", "steamharness@0.2.3-20260901001", "dev"]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -207,17 +207,17 @@ test("npm alpha publishing refuses to move the alpha dist-tag backwards", async 
   const root = await mkdtemp(path.join(os.tmpdir(), "workflow-npm-alpha-order-"));
   try {
     const releaseDir = path.join(root, ".release");
-    const tarball = path.join(releaseDir, "workflow-code-0.1.4-20260814002.tgz");
+    const tarball = path.join(releaseDir, "steamharness-0.1.4-20260814002.tgz");
     await mkdir(releaseDir, { recursive: true });
     await writeFile(tarball, "superseded-alpha-package");
     const calls = [];
     await assert.rejects(publishNpmAlpha({
       root,
-      packageName: "workflow-code",
+      packageName: "steamharness",
       version: "0.1.4-20260814002",
       runCommand: async (command, args) => {
         calls.push([command, ...args]);
-        if (args[0] === "view" && args[1] === "workflow-code@alpha") {
+        if (args[0] === "view" && args[1] === "steamharness@alpha") {
           return JSON.stringify("0.1.4-20260814003");
         }
         throw new Error(`Unexpected command: ${command} ${args.join(" ")}`);

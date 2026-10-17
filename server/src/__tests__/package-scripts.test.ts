@@ -20,7 +20,7 @@ test("server dev script delegates branch-aware source and dist selection", () =>
   assert.equal(packageJson.scripts?.["start:local"], "node scripts/dev.mjs --no-hmr");
   const runner = readFileSync(path.resolve(import.meta.dirname, "../../scripts/dev.mjs"), "utf8");
   assert.match(runner, /NODE_ENV:\s*"development"/);
-  assert.match(runner, /WORKFLOW_SERVER_DEV:\s*"1"/);
+  assert.match(runner, /STEAMHARNESS_SERVER_DEV:\s*"1"/);
   assert.match(runner, /--conditions=development/);
   assert.match(runner, /"watch"/);
   assert.match(runner, /"build:all"/);
@@ -91,7 +91,7 @@ test("server source keeps dev and deploy default ports split for issue #97", () 
   // the entry point keeps the dev-versus-production selection between them.
   assert.match(portSource, /export const DEFAULT_DEV_SERVER_PORT = 7126;/);
   assert.match(portSource, /export const DEFAULT_PRODUCTION_SERVER_PORT = 7130;/);
-  assert.match(entrySource, /WORKFLOW_SERVER_DEV === "1"\s*\n\s*\?\s*DEFAULT_DEV_SERVER_PORT\s*\n\s*:\s*DEFAULT_PRODUCTION_SERVER_PORT;/);
+  assert.match(entrySource, /STEAMHARNESS_SERVER_DEV === "1"\s*\n\s*\?\s*DEFAULT_DEV_SERVER_PORT\s*\n\s*:\s*DEFAULT_PRODUCTION_SERVER_PORT;/);
 });
 
 test("server env loader keeps production startup on .env.production before dev defaults", () => {
@@ -100,7 +100,7 @@ test("server env loader keeps production startup on .env.production before dev d
 
   assert.match(source, /\.env\.production/);
   assert.match(source, /inferServerEnvMode/);
-  assert.match(source, /WORKFLOW_SERVER_DEV === "1"/);
+  assert.match(source, /STEAMHARNESS_SERVER_DEV === "1"/);
 });
 
 test("server production env example lets a standalone checkout resolve its own repository root", () => {
@@ -109,8 +109,8 @@ test("server production env example lets a standalone checkout resolve its own r
   const envPath = path.resolve(import.meta.dirname, "../../.env.production.example");
   const lines = readFileSync(envPath, "utf8").split(/\r?\n/u);
 
-  assert.equal(lines.some((line) => /^WORKFLOW_REPO_ROOT=\s*$/u.test(line)), true);
-  assert.equal(lines.some((line) => /^WORKFLOW_REPO_ROOT=.*workflow-code(?:[\\/]|$)/u.test(line)), false);
+  assert.equal(lines.some((line) => /^STEAMHARNESS_REPO_ROOT=\s*$/u.test(line)), true);
+  assert.equal(lines.some((line) => /^STEAMHARNESS_REPO_ROOT=.*steamharness(?:[\\/]|$)/u.test(line)), false);
 });
 
 test("server allows only required native dependency install scripts with pnpm 10", () => {
@@ -123,7 +123,7 @@ test("server allows only required native dependency install scripts with pnpm 10
   assert.doesNotMatch(source, /^allowBuilds:/mu);
 });
 
-test("server tsconfig resolves workflow-code from its exact npm dependency", () => {
+test("server tsconfig resolves steamharness from its exact npm dependency", () => {
   const packageJsonPath = path.resolve(import.meta.dirname, "../../package.json");
   const tsconfigPath = path.resolve(import.meta.dirname, "../../tsconfig.json");
   const tsconfig = JSON.parse(readFileSync(tsconfigPath, "utf8")) as {
@@ -131,12 +131,12 @@ test("server tsconfig resolves workflow-code from its exact npm dependency", () 
     include?: string[];
   };
 
-  assert.equal(tsconfig.compilerOptions?.paths?.["workflow-code"], undefined);
+  assert.equal(tsconfig.compilerOptions?.paths?.["steamharness"], undefined);
   assert.deepEqual(tsconfig.include, ["src/**/*.ts"]);
   const manifest = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
     dependencies?: Record<string, string>;
   };
-  assert.match(manifest.dependencies?.["workflow-code"] ?? "", /^\d+\.\d+\.\d+(?:-\d{11})?$/);
+  assert.match(manifest.dependencies?.["steamharness"] ?? "", /^\d+\.\d+\.\d+(?:-\d{11})?$/);
 });
 
 test("server production bundle inlines TypeScript-only workspace packages", () => {

@@ -31,7 +31,7 @@ workflow.defineExecutor<Input, Output>(
 
 `workflow`, `params`, `createInput`, `resolveParams`, `createContext`, `requiredProviders`, `tools`, `tokenUsage`, and `registry` are entrypoint-specific Workflow fields and cannot appear at the top level of an executor. Hosts display entrypoints in declaration order. Selecting one creates a run for that entrypoint directly; the default entrypoint does not run first.
 
-Workflow can declare the proposed schedule in `package.json.workflowCode.schedulePresets`. Each entry statically references a entrypoint and contains a IANA time zone, time window, or 5 field Cron, and default parameter values. The directory goes into the Structure report, but the host must display a confirmation interface and cannot automatically create a schedule for importing or publishing a project. Conversation and Kanban declare this field to be rejected by Structure. See [Workflow Timed Run](/en/concepts/workflow-schedules) for the full format and run boundaries.
+Workflow can declare the proposed schedule in `package.json.steamHarness.schedulePresets`. Each entry statically references a entrypoint and contains a IANA time zone, time window, or 5 field Cron, and default parameter values. The directory goes into the Structure report, but the host must display a confirmation interface and cannot automatically create a schedule for importing or publishing a project. Conversation and Kanban declare this field to be rejected by Structure. See [Workflow Timed Run](/en/concepts/workflow-schedules) for the full format and run boundaries.
 
 ## Conversation executor
 

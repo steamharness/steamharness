@@ -67,7 +67,7 @@ If `format` is passed in, the return value must still inherit `WorkflowPayload`,
 |First execution|When no value is submitted, `user_input_requested` is published, `pendingUserInput` is reported, and the run status changes to `waiting_for_input`.|
 |Submit answer|The local runtime UI submits `{ requestId, values }`.|
 |Resume Execution|runtime injects `resolvedUserInputs` with the same `runId`, the node publishes `user_input_resolved` and returns the payload.|
-|Non-interactive CLI|CLI does not read stdin; `workflow-code json --run-id ... --resolved-user-inputs-json ...` recovery is required.|
+|Non-interactive CLI|CLI does not read stdin; `steamharness json --run-id ... --resolved-user-inputs-json ...` recovery is required.|
 
 `waiting_for_input` is a persistent, non-final state. Resume with the locally saved `pendingUserInput`, the same `runId`, and the original `entrypointId`; do not switch to a new default entrypoint. Conversation retains a single entry and rejects entrypoint parameters. Server does not save or resume runs.
 

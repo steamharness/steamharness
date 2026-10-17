@@ -1,7 +1,7 @@
 import type {
   WorkflowOutputPayload,
   WorkflowPayload as CoreWorkflowPayload,
-} from "workflow-code";
+} from "steamharness";
 
 export interface WorkflowPayload extends CoreWorkflowPayload {}
 

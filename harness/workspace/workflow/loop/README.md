@@ -5,9 +5,9 @@ Workflow sample for `workflow.runFor` and `workflow.runWhile`.
 ## Run
 
 ```bash
-workflow-code structure .
-workflow-code run . -- --rounds 3 --target 18
-workflow-code json . -- --rounds 3 --target 18
+steamharness structure .
+steamharness run . -- --rounds 3 --target 18
+steamharness json . -- --rounds 3 --target 18
 ```
 
 `runFor` processes a fixed list of round values. `runWhile` keeps boosting the

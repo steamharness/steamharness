@@ -115,10 +115,10 @@ interface WorkflowKnowledgeDocumentLinesResult {
 
 ## 加载行为
 
-`workflow.listKnowledgeDocuments()` 只返回标题、摘要和时间，不包含完整 markdown；在需要显示、编辑或读取行范围时再读取指定文档。宿主集成可以从 `workflow-code` 包导入 `listKnowledgeDocumentPage()`，按游标读取摘要页：
+`workflow.listKnowledgeDocuments()` 只返回标题、摘要和时间，不包含完整 markdown；在需要显示、编辑或读取行范围时再读取指定文档。宿主集成可以从 `steamharness` 包导入 `listKnowledgeDocumentPage()`，按游标读取摘要页：
 
 ```ts
-import { listKnowledgeDocumentPage } from "workflow-code";
+import { listKnowledgeDocumentPage } from "steamharness";
 
 const page = await listKnowledgeDocumentPage(
   context.storage.local,
@@ -139,7 +139,7 @@ const page = await listKnowledgeDocumentPage(
 | project | `knowledge.documents.locator.<id>` | 文档所在 page 和序列；删除后保留 tombstone。 |
 | project | `knowledge.document.<id>` | 单篇文档正文，固定包含 `markdown` 字段；删除后保留 tombstone。 |
 
-Server 后端把这些 key 存入 PostgreSQL `project_storage` 的 `storage_kind = persistent_value` 域；本地后端把它们存入 `WORKFLOW_PERSISTENT_VALUE_STORE_DIR` 指向的专用目录。普通 KV 使用独立域，即使项目、scope 和 key 相同也不会与知识库或 PersistentValue 重叠。Windows 本地后端会在锁等待时限内重试创建独占锁文件时短暂出现的 `EPERM` 或 `EACCES`，持续无法获取锁时仍会返回超时错误。列表首次只读取元数据和所需页块，不读取 markdown 正文或扫描旧页。删除文档会从页块索引中移除，并把 locator 与正文 key 写成 tombstone 标记。当前 KV/PersistentValue 还没有 delete primitive，因此 tombstone 会保留在所选后端中。索引格式固定为 v2；旧的单数组索引不会被读取或迁移。
+Server 后端把这些 key 存入 PostgreSQL `project_storage` 的 `storage_kind = persistent_value` 域；本地后端把它们存入 `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR` 指向的专用目录。普通 KV 使用独立域，即使项目、scope 和 key 相同也不会与知识库或 PersistentValue 重叠。Windows 本地后端会在锁等待时限内重试创建独占锁文件时短暂出现的 `EPERM` 或 `EACCES`，持续无法获取锁时仍会返回超时错误。列表首次只读取元数据和所需页块，不读取 markdown 正文或扫描旧页。删除文档会从页块索引中移除，并把 locator 与正文 key 写成 tombstone 标记。当前 KV/PersistentValue 还没有 delete primitive，因此 tombstone 会保留在所选后端中。索引格式固定为 v2；旧的单数组索引不会被读取或迁移。
 
 使用 server PersistentValue 连接的本地运行，会将创建、编辑和删除作为一次受限的服务端知识库变更执行。服务端会在项目 namespace 内串行化该变更，并在同一 PostgreSQL 事务内提交或回滚文档索引、正文和 tombstone，因此并发写入或单次失败不会留下不一致状态。业务代码应使用上述 helper，而不是自行并行写入保留 key。自定义 PersistentValue 后端若要支持创建、编辑或删除，还必须提供项目 namespace 的 `withLock` 或 `executeMutation` 原子能力；缺少这两项能力时 helper 会拒绝写入，避免多 key 索引被并发覆盖。
 
@@ -224,9 +224,9 @@ export const workflowWithKnowledge = workflow.defineWorkflow<Input, OutputPayloa
 本地写入时，为普通 KV 和知识库分别指定目录：
 
 ```bash
-WORKFLOW_KV_STORE_DIR="$PWD/.workflow-kv" \
-WORKFLOW_PERSISTENT_VALUE_STORE_DIR="$PWD/.workflow-persistent-values" \
-workflow-code json workspace/workflow/conversation-knowledge \
+STEAMHARNESS_KV_STORE_DIR="$PWD/.workflow-kv" \
+STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR="$PWD/.workflow-persistent-values" \
+steamharness json workspace/workflow/conversation-knowledge \
   --conversation-id demo-thread \
   -- --message "记录今天的结论" --title "Demo conversation"
 ```
@@ -234,8 +234,8 @@ workflow-code json workspace/workflow/conversation-knowledge \
 如需只预览该示例生成的 markdown，可以追加 `--dry-run`；它不会写入任何 PersistentValue 后端。要写入服务器项目知识库，应先把项目代码的存储位置改为 `context.storage.server`，并将顶层 `package.json.id` 绑定到已授权的服务器项目 UUID，再配置服务器连接在本地运行：
 
 ```bash
-workflow-code workspace login --server "$WORKFLOW_SERVER_URL"
-workflow-code json workspace/workflow/conversation-knowledge \
+steamharness workspace login --server "$STEAMHARNESS_SERVER_URL"
+steamharness json workspace/workflow/conversation-knowledge \
   --conversation-id demo-thread \
   -- --message "记录今天的结论" --title "Demo conversation"
 ```

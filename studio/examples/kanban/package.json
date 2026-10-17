@@ -5,10 +5,10 @@
   "private": true,
   "type": "module",
   "devDependencies": {
-    "workflow-code": "0.2.4-20260929001",
-    "@workflow-code/cli": "0.2.4-20261013009.codex-studio-integration"
+    "steamharness": "0.2.4-20260929001",
+    "@steamharness/cli": "0.2.4-20261013009.codex-studio-integration"
   },
-  "workflowCode": {
+  "steamHarness": {
     "projectType": "kanban",
     "kanban": {},
     "projectInfo": {

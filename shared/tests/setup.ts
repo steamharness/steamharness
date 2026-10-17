@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterEach } from "vitest";
-import { initI18n } from "@workflow-code/i18n/react";
+import { initI18n } from "@steamharness/i18n/react";
 
 initI18n({ preference: "zh-CN" });
 

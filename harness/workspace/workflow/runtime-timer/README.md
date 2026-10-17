@@ -5,19 +5,19 @@ Workflow timer sample for issue #88. It starts one business timer, waits for the
 Inspect structure:
 
 ```bash
-workflow-code structure .
+steamharness structure .
 ```
 
 Run locally:
 
 ```bash
-workflow-code run . -- --title "Fixture Timer" --milliseconds 2000
+steamharness run . -- --title "Fixture Timer" --milliseconds 2000
 ```
 
 Inspect the JSON report and timer records:
 
 ```bash
-workflow-code json . -- --title "Fixture Timer" --milliseconds 2000
+steamharness json . -- --title "Fixture Timer" --milliseconds 2000
 ```
 
 The final report contains `report.timers` with one `success` timer. App Run workspace, public Embed, and server/web run replay render that record as a timer card; while it is running, the same card shows the live elapsed duration.

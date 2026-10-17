@@ -15,8 +15,8 @@ import {
   type WorkflowRuntimeEvent,
   type WorkflowStructureReport,
   type WorkflowUserInputContext,
-} from "workflow-code";
-import type { WorkflowOutputItem } from "workflow-code/node/output";
+} from "steamharness";
+import type { WorkflowOutputItem } from "steamharness/node/output";
 import type {
   WorkflowStructureExecution,
   WorkflowStructureExecutionBranch,
@@ -24,7 +24,7 @@ import type {
   WorkflowStructureExecutionItem,
   WorkflowStructureExecutionLoop,
   WorkflowStructureExecutionNode,
-} from "workflow-code/executor/rules";
+} from "steamharness/executor/rules";
 
 const workflowNames = [
   "classify",
@@ -55,7 +55,7 @@ const workflowNames = [
   "smoke",
 ] as const;
 
-const WORKFLOW_ROOT = path.resolve(process.cwd(), "workflow");
+const STEAMHARNESS_ROOT = path.resolve(process.cwd(), "workflow");
 
 type WorkflowName = (typeof workflowNames)[number];
 
@@ -148,7 +148,7 @@ describe("workspace workflow structure snapshots", () => {
     });
 
     const structure = summarizeStructure(report);
-    if (process.env.UPDATE_WORKFLOW_STRUCTURE_SNAPSHOTS === "1") {
+    if (process.env.UPDATE_STEAMHARNESS_STRUCTURE_SNAPSHOTS === "1") {
       await writeStructureSnapshot(workflowName, structure);
     }
 
@@ -1062,9 +1062,9 @@ async function createFixtureStorage(
   workflowName: WorkflowName,
 ): Promise<WorkflowExecutionStorageOptions> {
   const packageJson = JSON.parse(await readWorkflowFile(workflowName, "package.json")) as {
-    workflowCode?: { projectInfo?: { dataStorage?: { mode?: unknown } } };
+    steamHarness?: { projectInfo?: { dataStorage?: { mode?: unknown } } };
   };
-  const mode = packageJson.workflowCode?.projectInfo?.dataStorage?.mode;
+  const mode = packageJson.steamHarness?.projectInfo?.dataStorage?.mode;
   if (mode === "server") {
     return {
       host: "server",
@@ -1094,7 +1094,7 @@ async function readWorkflowFile(workflowName: WorkflowName, relativePath: string
 }
 
 function workflowDirectory(workflowName: string): string {
-  return path.join(WORKFLOW_ROOT, workflowName);
+  return path.join(STEAMHARNESS_ROOT, workflowName);
 }
 
 function resolveExpectedRunText(value: string, report: WorkflowExecutionReport): string {
@@ -1902,7 +1902,7 @@ function isOutputItemStartChunk(value: unknown): value is {
 }
 
 async function createTempDir(prefix: string): Promise<string> {
-  const resolved = await mkdtemp(path.join(os.tmpdir(), `workflow-code-${prefix}`));
+  const resolved = await mkdtemp(path.join(os.tmpdir(), `steamharness-${prefix}`));
   tempDirs.push(resolved);
   return resolved;
 }

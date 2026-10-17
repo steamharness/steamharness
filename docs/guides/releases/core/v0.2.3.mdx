@@ -5,10 +5,10 @@ description: "Core v0.2.3 的更新说明。"
 
 # Core v0.2.3
 
-2026-09-01 · Tag `workflow-code/v0.2.3` · npm
+2026-09-01 · Tag `steamharness/v0.2.3` · npm
 
-<span id="workflow-code-0-2-3" className="release-version-anchor"></span>
-<span id="workflow-code.0.2.3" className="release-version-anchor"></span>
+<span id="steamharness-0-2-3" className="release-version-anchor"></span>
+<span id="steamharness.0.2.3" className="release-version-anchor"></span>
 
 #### 新特性
 
@@ -33,7 +33,7 @@ description: "Core v0.2.3 的更新说明。"
 
 - 变更 AI SDK 流保留完整的结束原因、用量、错误和 provider metadata。
 - 变更 AI SDK Provider 不把 SDK 的 `unsupported` / `compatibility` 警告升级为运行错误。
-- 变更 降级信息保留在 `providerMetadata["workflow-code"].warnings`，真实调用异常仍会失败。
+- 变更 降级信息保留在 `providerMetadata["steamharness"].warnings`，真实调用异常仍会失败。
 - 变更 KV 与 PersistentValue 使用独立存储域，知识库改用项目级 PersistentValue，Token 统计只维护项目和会话总量。
 - 变更 生成脚手架显式输出空的 `projectInfo.relatedProjects`，API 参考同步项目与会话 Token 统计合同。
 - 变更 本地与服务器数据层级示例改为 `store` / `get` 双入口，`store` 返回随机 UUID，`get` 只需该 id。

@@ -3,7 +3,7 @@ import test from "node:test";
 import type {
   WorkflowProjectInfo,
   WorkflowProjectKVAccessRule,
-} from "@workflow-code/project-info";
+} from "@steamharness/project-info";
 import {
   createDeclaredWorkflowRelatedProjectKVResolver,
   createKnowledgeDocument,

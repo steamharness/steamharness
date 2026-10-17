@@ -1,35 +1,35 @@
-export const WORKFLOW_PROJECT_DECLARATION_DEFINITIONS = [
+export const STEAMHARNESS_PROJECT_DECLARATION_DEFINITIONS = [
   { id: "multilingual", labelKey: "projectDeclarationMultilingual" },
   { id: "multiplatform", labelKey: "projectDeclarationMultiplatform" },
 ] as const;
 
-export const WORKFLOW_PROJECT_PLATFORM_DEFINITIONS = [
+export const STEAMHARNESS_PROJECT_PLATFORM_DEFINITIONS = [
   { id: "macos", labelKey: "projectPlatformMacos" },
   { id: "windows", labelKey: "projectPlatformWindows" },
   { id: "web", labelKey: "projectPlatformWeb" },
 ] as const;
 
 export type KnownWorkflowProjectDeclaration =
-  (typeof WORKFLOW_PROJECT_DECLARATION_DEFINITIONS)[number]["id"];
+  (typeof STEAMHARNESS_PROJECT_DECLARATION_DEFINITIONS)[number]["id"];
 export type KnownWorkflowProjectPlatform =
-  (typeof WORKFLOW_PROJECT_PLATFORM_DEFINITIONS)[number]["id"];
+  (typeof STEAMHARNESS_PROJECT_PLATFORM_DEFINITIONS)[number]["id"];
 
-export const WORKFLOW_PROJECT_DATA_STORAGE_MODES = ["local", "server", "both"] as const;
+export const STEAMHARNESS_PROJECT_DATA_STORAGE_MODES = ["local", "server", "both"] as const;
 
 export type WorkflowProjectDataStorageMode =
-  (typeof WORKFLOW_PROJECT_DATA_STORAGE_MODES)[number];
+  (typeof STEAMHARNESS_PROJECT_DATA_STORAGE_MODES)[number];
 export type WorkflowProjectDataStorageLocation = Exclude<WorkflowProjectDataStorageMode, "both">;
 
 export interface WorkflowProjectDataStorage {
   mode: WorkflowProjectDataStorageMode;
 }
 
-export const WORKFLOW_RELATED_PROJECT_ALIAS_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/;
-export const WORKFLOW_RELATED_PROJECT_LIMIT = 32;
-export const WORKFLOW_RELATED_PROJECT_PREFIX_LIMIT = 32;
-export const WORKFLOW_RELATED_PROJECT_KEY_LIMIT = 1_024;
+export const STEAMHARNESS_RELATED_PROJECT_ALIAS_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/;
+export const STEAMHARNESS_RELATED_PROJECT_LIMIT = 32;
+export const STEAMHARNESS_RELATED_PROJECT_PREFIX_LIMIT = 32;
+export const STEAMHARNESS_RELATED_PROJECT_KEY_LIMIT = 1_024;
 
-const WORKFLOW_PROJECT_UUID_PATTERN =
+const STEAMHARNESS_PROJECT_UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
@@ -125,11 +125,11 @@ export function createUndeclaredWorkflowProjectInfo(): WorkflowProjectInfo {
 
 export function normalizeWorkflowProjectInfo(value: unknown): WorkflowProjectInfo {
   if (!isRecord(value)) {
-    throw new Error("workflowCode.projectInfo must be an object.");
+    throw new Error("steamHarness.projectInfo must be an object.");
   }
 
   const localizedNames = normalizeLocalizedNames(value["localizedNames"]);
-  const declarations = normalizeIds(value["declarations"], "workflowCode.projectInfo.declarations");
+  const declarations = normalizeIds(value["declarations"], "steamHarness.projectInfo.declarations");
   const platformSupport = normalizePlatformSupport(value["platformSupport"]);
   const dataStorage = normalizeDataStorage(value["dataStorage"]);
   const relatedProjects = normalizeRelatedProjects(value["relatedProjects"]);
@@ -141,7 +141,7 @@ export function normalizeDeclaredWorkflowProjectInfo(value: unknown): DeclaredWo
   const normalized = normalizeWorkflowProjectInfo(value);
   if (normalized.dataStorage === null) {
     throw new Error(
-      "workflowCode.projectInfo.dataStorage.mode must be declared as local, server, or both.",
+      "steamHarness.projectInfo.dataStorage.mode must be declared as local, server, or both.",
     );
   }
   return normalized as DeclaredWorkflowProjectInfo;
@@ -149,11 +149,11 @@ export function normalizeDeclaredWorkflowProjectInfo(value: unknown): DeclaredWo
 
 export function readWorkflowProjectInfo(packageJson: unknown): WorkflowProjectInfo {
   if (!isRecord(packageJson)) return createUndeclaredWorkflowProjectInfo();
-  const workflowCode = packageJson["workflowCode"];
-  if (!isRecord(workflowCode) || workflowCode["projectInfo"] === undefined) {
+  const steamHarness = packageJson["steamHarness"];
+  if (!isRecord(steamHarness) || steamHarness["projectInfo"] === undefined) {
     return createUndeclaredWorkflowProjectInfo();
   }
-  const projectInfo = normalizeWorkflowProjectInfo(workflowCode["projectInfo"]);
+  const projectInfo = normalizeWorkflowProjectInfo(steamHarness["projectInfo"]);
   const projectId = typeof packageJson["id"] === "string" ? packageJson["id"].trim() : undefined;
   if (projectId !== undefined && projectId !== "") {
     assertWorkflowRelatedProjects(projectInfo, projectId);
@@ -170,14 +170,14 @@ export function writeWorkflowProjectInfo(
   if (projectId !== undefined && projectId !== "") {
     assertWorkflowRelatedProjects(normalized, projectId);
   }
-  const workflowCode = isRecord(packageJson["workflowCode"])
-    ? packageJson["workflowCode"]
+  const steamHarness = isRecord(packageJson["steamHarness"])
+    ? packageJson["steamHarness"]
     : {};
 
   return {
     ...packageJson,
-    workflowCode: {
-      ...workflowCode,
+    steamHarness: {
+      ...steamHarness,
       projectInfo: serializeWorkflowProjectInfo(normalized),
     },
   };
@@ -211,13 +211,13 @@ export function assertWorkflowRelatedProjects(
 ): void {
   if (projectInfo.relatedProjects.length === 0) return;
   const normalizedProjectId = currentProjectId.trim();
-  if (!WORKFLOW_PROJECT_UUID_PATTERN.test(normalizedProjectId)) {
+  if (!STEAMHARNESS_PROJECT_UUID_PATTERN.test(normalizedProjectId)) {
     throw new Error("package.json.id must be a UUID before related projects can be declared.");
   }
   if (projectInfo.relatedProjects.some(
     (relation) => relation.projectId.toLowerCase() === normalizedProjectId.toLowerCase(),
   )) {
-    throw new Error("workflowCode.projectInfo.relatedProjects cannot reference the current project.");
+    throw new Error("steamHarness.projectInfo.relatedProjects cannot reference the current project.");
   }
 }
 
@@ -285,7 +285,7 @@ export function assertWorkflowProjectDataStorageLocationAllowed(
   const mode = projectInfo.dataStorage?.mode;
   if (mode === undefined) {
     throw new Error(
-      "workflowCode.projectInfo.dataStorage.mode must be declared before this project can run or access data.",
+      "steamHarness.projectInfo.dataStorage.mode must be declared before this project can run or access data.",
     );
   }
   if (mode !== "both" && mode !== location) {
@@ -340,16 +340,16 @@ export function matchesWorkflowProjectSearch(
 function normalizeLocalizedNames(value: unknown): Record<string, string> {
   if (value === undefined) return {};
   if (!isRecord(value)) {
-    throw new Error("workflowCode.projectInfo.localizedNames must be an object.");
+    throw new Error("steamHarness.projectInfo.localizedNames must be an object.");
   }
   const entries: Array<[string, string]> = [];
   for (const [rawLocale, rawName] of Object.entries(value)) {
     const locale = rawLocale.trim();
     if (locale === "") {
-      throw new Error("workflowCode.projectInfo.localizedNames contains an empty locale.");
+      throw new Error("steamHarness.projectInfo.localizedNames contains an empty locale.");
     }
     if (typeof rawName !== "string") {
-      throw new Error(`workflowCode.projectInfo.localizedNames.${locale} must be a string.`);
+      throw new Error(`steamHarness.projectInfo.localizedNames.${locale} must be a string.`);
     }
     const name = rawName.trim();
     if (name !== "") entries.push([locale, name]);
@@ -360,23 +360,23 @@ function normalizeLocalizedNames(value: unknown): Record<string, string> {
 function normalizePlatformSupport(value: unknown): WorkflowProjectPlatformSupport {
   if (value === undefined) return { mode: "agnostic" };
   if (!isRecord(value)) {
-    throw new Error("workflowCode.projectInfo.platformSupport must be an object.");
+    throw new Error("steamHarness.projectInfo.platformSupport must be an object.");
   }
   if (value["mode"] === "agnostic") {
     if (value["platforms"] !== undefined) {
-      throw new Error("workflowCode.projectInfo.platformSupport.platforms is not allowed in agnostic mode.");
+      throw new Error("steamHarness.projectInfo.platformSupport.platforms is not allowed in agnostic mode.");
     }
     return { mode: "agnostic" };
   }
   if (value["mode"] !== "specific") {
-    throw new Error('workflowCode.projectInfo.platformSupport.mode must be "agnostic" or "specific".');
+    throw new Error('steamHarness.projectInfo.platformSupport.mode must be "agnostic" or "specific".');
   }
   const platforms = normalizeIds(
     value["platforms"],
-    "workflowCode.projectInfo.platformSupport.platforms",
+    "steamHarness.projectInfo.platformSupport.platforms",
   );
   if (platforms.length === 0) {
-    throw new Error("workflowCode.projectInfo.platformSupport.platforms must contain at least one platform.");
+    throw new Error("steamHarness.projectInfo.platformSupport.platforms must contain at least one platform.");
   }
   return { mode: "specific", platforms };
 }
@@ -384,14 +384,14 @@ function normalizePlatformSupport(value: unknown): WorkflowProjectPlatformSuppor
 function normalizeDataStorage(value: unknown): WorkflowProjectDataStorage | null {
   if (value === undefined || value === null) return null;
   if (!isRecord(value)) {
-    throw new Error("workflowCode.projectInfo.dataStorage must be an object.");
+    throw new Error("steamHarness.projectInfo.dataStorage must be an object.");
   }
   const mode = value["mode"];
-  if (typeof mode !== "string" || !WORKFLOW_PROJECT_DATA_STORAGE_MODES.includes(
+  if (typeof mode !== "string" || !STEAMHARNESS_PROJECT_DATA_STORAGE_MODES.includes(
     mode as WorkflowProjectDataStorageMode,
   )) {
     throw new Error(
-      'workflowCode.projectInfo.dataStorage.mode must be "local", "server", or "both".',
+      'steamHarness.projectInfo.dataStorage.mode must be "local", "server", or "both".',
     );
   }
   return { mode: mode as WorkflowProjectDataStorageMode };
@@ -400,37 +400,37 @@ function normalizeDataStorage(value: unknown): WorkflowProjectDataStorage | null
 function normalizeRelatedProjects(value: unknown): WorkflowRelatedProject[] {
   if (value === undefined) return [];
   if (!Array.isArray(value)) {
-    throw new Error("workflowCode.projectInfo.relatedProjects must be an array.");
+    throw new Error("steamHarness.projectInfo.relatedProjects must be an array.");
   }
-  if (value.length > WORKFLOW_RELATED_PROJECT_LIMIT) {
+  if (value.length > STEAMHARNESS_RELATED_PROJECT_LIMIT) {
     throw new Error(
-      `workflowCode.projectInfo.relatedProjects supports at most ${WORKFLOW_RELATED_PROJECT_LIMIT} items.`,
+      `steamHarness.projectInfo.relatedProjects supports at most ${STEAMHARNESS_RELATED_PROJECT_LIMIT} items.`,
     );
   }
   const aliases = new Set<string>();
   const projectIds = new Set<string>();
   return value.map((item, index) => {
-    const field = `workflowCode.projectInfo.relatedProjects[${index}]`;
+    const field = `steamHarness.projectInfo.relatedProjects[${index}]`;
     if (!isRecord(item)) throw new Error(`${field} must be an object.`);
     const supportedFields = new Set(["alias", "projectId", "grantToRelatedProject"]);
     if (Object.keys(item).some((key) => !supportedFields.has(key))) {
       throw new Error(`${field} contains unsupported fields.`);
     }
     const alias = readRelatedProjectString(item["alias"], `${field}.alias`);
-    if (!WORKFLOW_RELATED_PROJECT_ALIAS_PATTERN.test(alias)) {
+    if (!STEAMHARNESS_RELATED_PROJECT_ALIAS_PATTERN.test(alias)) {
       throw new Error(`${field}.alias is invalid.`);
     }
     if (aliases.has(alias)) {
-      throw new Error(`workflowCode.projectInfo.relatedProjects contains duplicate alias "${alias}".`);
+      throw new Error(`steamHarness.projectInfo.relatedProjects contains duplicate alias "${alias}".`);
     }
     aliases.add(alias);
     const projectId = readRelatedProjectString(item["projectId"], `${field}.projectId`);
-    if (!WORKFLOW_PROJECT_UUID_PATTERN.test(projectId)) {
+    if (!STEAMHARNESS_PROJECT_UUID_PATTERN.test(projectId)) {
       throw new Error(`${field}.projectId must be a UUID.`);
     }
     const normalizedProjectId = projectId.toLowerCase();
     if (projectIds.has(normalizedProjectId)) {
-      throw new Error(`workflowCode.projectInfo.relatedProjects contains duplicate projectId "${projectId}".`);
+      throw new Error(`steamHarness.projectInfo.relatedProjects contains duplicate projectId "${projectId}".`);
     }
     projectIds.add(normalizedProjectId);
     return {
@@ -498,15 +498,15 @@ function normalizeProjectAccessRule(value: unknown, field: string): WorkflowProj
   if (
     !Array.isArray(rawPrefixes) ||
     rawPrefixes.length === 0 ||
-    rawPrefixes.length > WORKFLOW_RELATED_PROJECT_PREFIX_LIMIT
+    rawPrefixes.length > STEAMHARNESS_RELATED_PROJECT_PREFIX_LIMIT
   ) {
     throw new Error(
-      `${field}.prefixes must contain 1 to ${WORKFLOW_RELATED_PROJECT_PREFIX_LIMIT} items.`,
+      `${field}.prefixes must contain 1 to ${STEAMHARNESS_RELATED_PROJECT_PREFIX_LIMIT} items.`,
     );
   }
   const prefixes = rawPrefixes.map((prefix, index) => {
     const normalized = readRelatedProjectString(prefix, `${field}.prefixes[${index}]`);
-    if (normalized.length > WORKFLOW_RELATED_PROJECT_KEY_LIMIT || normalized.includes("\0")) {
+    if (normalized.length > STEAMHARNESS_RELATED_PROJECT_KEY_LIMIT || normalized.includes("\0")) {
       throw new Error(`${field}.prefixes[${index}] is invalid.`);
     }
     return normalized;

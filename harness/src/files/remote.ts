@@ -93,7 +93,7 @@ export class RemoteWorkflowFileStore implements WorkflowFileStore {
     } catch (error) {
       throw new WorkflowError({
         type: "workflow_execution",
-        message: `Workflow file creation could not connect to server storage at ${this.serverUrl}. Check the App server connection or WORKFLOW_SERVER_URL/WORKFLOW_SERVER_ADMIN_KEY.`,
+        message: `Workflow file creation could not connect to server storage at ${this.serverUrl}. Check the App server connection or STEAMHARNESS_SERVER_URL/STEAMHARNESS_SERVER_ADMIN_KEY.`,
         metadata: {
           serverUrl: this.serverUrl,
           cause: error instanceof Error ? error.message : String(error),
@@ -138,10 +138,10 @@ export function createRemoteWorkflowFileStoreFromEnv(options: {
   conversationId?: string;
 }): WorkflowFileStore | undefined {
   const env = options.env ?? process.env;
-  const explicitServerUrl = env.WORKFLOW_FILE_SERVER_URL ?? env.WORKFLOW_SERVER_URL;
+  const explicitServerUrl = env.STEAMHARNESS_FILE_SERVER_URL ?? env.STEAMHARNESS_SERVER_URL;
   const explicitToken =
-    env.WORKFLOW_FILE_SERVER_TOKEN ??
-    env.WORKFLOW_SERVER_ADMIN_KEY;
+    env.STEAMHARNESS_FILE_SERVER_TOKEN ??
+    env.STEAMHARNESS_SERVER_ADMIN_KEY;
   const serverUrl = explicitServerUrl?.trim();
   const token = explicitToken?.trim();
 

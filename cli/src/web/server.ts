@@ -8,7 +8,7 @@ import os from 'node:os';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { assertLocalCliCoreCompatible } from '../local';
 import { readCliAuthConfig, clearCliAuthConfig } from '../auth-config';
-import { createEmptyWorkflowAuthConfig } from '@workflow-code/auth-config';
+import { createEmptyWorkflowAuthConfig } from '@steamharness/auth-config';
 import { ConversationController, sessionRunning } from './conversation-controller';
 import { WorkflowController } from './workflow-controller';
 import { KanbanController } from './kanban-controller';
@@ -29,7 +29,7 @@ export interface WebOptions { projectDir: string; port?: number; dataDir?: strin
 
 export async function startWebServer(options: WebOptions) {
   const projectDir = await realpath(path.resolve(options.projectDir));
-  const storageDir = path.resolve(options.dataDir ?? path.join(os.homedir(), '.workflow-code', 'web'));
+  const storageDir = path.resolve(options.dataDir ?? path.join(os.homedir(), '.steamharness', 'web'));
   const clients = new Set<ServerResponse>();
   let connection: WebConnection | undefined;
   let account: WorkflowAccountState = { status: 'signed-out', serverUrl: 'http://localhost:7126', revision: 0 };
@@ -161,13 +161,13 @@ export async function startWebServer(options: WebOptions) {
     const readingEpoch = authEpoch;
     const config = hostManaged ? createEmptyWorkflowAuthConfig() : await readCliAuthConfig();
     if (readingEpoch !== authEpoch) { return; }
-    const serverUrl = hostManaged ? hostConnection?.serverUrl : process.env.WORKFLOW_SERVER_URL ?? config.serverUrl;
-    const token = hostManaged ? hostConnection?.accessToken : process.env.WORKFLOW_SERVER_ADMIN_KEY ?? config.apiKey;
+    const serverUrl = hostManaged ? hostConnection?.serverUrl : process.env.STEAMHARNESS_SERVER_URL ?? config.serverUrl;
+    const token = hostManaged ? hostConnection?.accessToken : process.env.STEAMHARNESS_SERVER_ADMIN_KEY ?? config.apiKey;
     const aiServerUrl = allowAiConnection
-      ? hostManaged ? hostConnection?.aiServerUrl : process.env.WORKFLOW_AI_SERVER_URL ?? config.aiServerUrl
+      ? hostManaged ? hostConnection?.aiServerUrl : process.env.STEAMHARNESS_AI_SERVER_URL ?? config.aiServerUrl
       : undefined;
     const aiToken = allowAiConnection
-      ? hostManaged ? hostConnection?.aiAccessToken : process.env.WORKFLOW_AI_API_KEY ?? config.aiApiKey
+      ? hostManaged ? hostConnection?.aiAccessToken : process.env.STEAMHARNESS_AI_API_KEY ?? config.aiApiKey
       : undefined;
     if (token) { sensitiveTokens.add(token); }
     if (aiToken) { sensitiveTokens.add(aiToken); }
@@ -438,7 +438,7 @@ export async function startWebServer(options: WebOptions) {
       }
       case 'login': {
         if (hostManaged) { throw new Error(t("Manage this account through Studio.")); }
-        if (!options.host && process.env.WORKFLOW_SERVER_ADMIN_KEY !== undefined) { throw new Error('This session is supplied by the host. Sign in through the host.'); }
+        if (!options.host && process.env.STEAMHARNESS_SERVER_ADMIN_KEY !== undefined) { throw new Error('This session is supplied by the host. Sign in through the host.'); }
         if (login || passwordLogin) { break; }
         const url = new URL(String(message.serverUrl)); if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) { throw new Error('Invalid Workflow Server URL.'); }
         signedOut = false; account = { ...account, status: 'checking' }; broadcast();
@@ -463,7 +463,7 @@ export async function startWebServer(options: WebOptions) {
       case 'verify': await refreshAuth(true); break;
       case 'logout': {
         if (hostManaged) { throw new Error(t("Manage this account through Studio.")); }
-        signedOut = true; login?.kill(); if (process.env.WORKFLOW_SERVER_ADMIN_KEY === undefined) { await clearCliAuthConfig(); } authIdentity = 'signed-out'; await refreshAuth(); break;
+        signedOut = true; login?.kill(); if (process.env.STEAMHARNESS_SERVER_ADMIN_KEY === undefined) { await clearCliAuthConfig(); } authIdentity = 'signed-out'; await refreshAuth(); break;
       }
       default: throw new Error(`Unsupported action: ${message.type}`);
     }
@@ -494,7 +494,7 @@ export async function startWebServer(options: WebOptions) {
         const value = String(request.headers.cookie ?? '').split(';').map(value => value.trim()).find(value => value.startsWith(`${cookie}=`))?.slice(cookie.length + 1) ?? '';
         const bearer = String(request.headers.authorization ?? '').replace(/^Bearer /, '');
         const readSession = request.method === 'GET' && (url.pathname === '/api/events' || url.pathname.startsWith('/api/file/')) ? url.searchParams.get('session') ?? '' : '';
-        if (!authMatches(value) && !authMatches(bearer) && !authMatches(readSession)) { json(response, 401, { message: 'Open the URL printed by workflow-code web.' }); return; }
+        if (!authMatches(value) && !authMatches(bearer) && !authMatches(readSession)) { json(response, 401, { message: 'Open the URL printed by steamharness web.' }); return; }
         if (url.pathname === '/api/session' && request.method === 'GET') { json(response, 200, { connected: true }); return; }
         if (url.pathname === '/api/resource-state' && request.method === 'GET') { json(response, 200, { type: 'state', authenticationRevision: authRevision, resourceRevision: resources.revision }); return; }
         if (url.pathname === '/api/events' && request.method === 'GET') {
@@ -527,7 +527,7 @@ export async function startWebServer(options: WebOptions) {
         const ancestors = options.host ? "'self' vscode-webview: vscode-file: https://*.vscode-cdn.net https://*.vscode-webview.net http://127.0.0.1:* http://localhost:*" : "'self' vscode-webview:";
         response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; font-src 'self'; connect-src 'self'; media-src 'self' blob:; frame-src 'self' https: http:; object-src 'none'; base-uri 'none'; frame-ancestors ${ancestors}; form-action 'self'` });
         const ui = url.pathname !== '/' ? 'resource-preview' : isKanban ? 'kanban-workspace' : isWorkflow ? 'workflow-workspace' : 'workflow-ui';
-        response.end(`<!doctype html><html lang="${locale()}" data-theme="${options.theme ?? 'auto'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="workflow-project" content="${key}"><title>Workflow</title><link rel="stylesheet" href="/assets/codicons/codicon.css"><link rel="stylesheet" href="/assets/${ui}.css"><link rel="stylesheet" href="/assets/theme.css"></head><body data-surface="${options.host?.surface ?? 'editor'}" data-account-host="${hostManaged}"><div id="app"></div><script src="/assets/${ui}.js" defer></script></body></html>`); return;
+        response.end(`<!doctype html><html lang="${locale()}" data-theme="${options.theme ?? 'auto'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="steamharness-project" content="${key}"><title>Workflow</title><link rel="stylesheet" href="/assets/codicons/codicon.css"><link rel="stylesheet" href="/assets/${ui}.css"><link rel="stylesheet" href="/assets/theme.css"></head><body data-surface="${options.host?.surface ?? 'editor'}" data-account-host="${hostManaged}"><div id="app"></div><script src="/assets/${ui}.js" defer></script></body></html>`); return;
       }
       const assets: Record<string, string> = { '/assets/workflow-ui.js': 'application/javascript', '/assets/workflow-ui.css': 'text/css', '/assets/theme.css': 'text/css', '/assets/codicons/codicon.css': 'text/css', '/assets/codicons/codicon.ttf': 'font/ttf' };
       assets['/assets/workflow-workspace.js'] = 'application/javascript'; assets['/assets/workflow-workspace.css'] = 'text/css';

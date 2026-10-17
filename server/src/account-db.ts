@@ -297,7 +297,7 @@ export class AccountRepository {
       create index if not exists workflow_api_keys_prefix_idx
         on workflow_api_keys(prefix);
 
-      create table if not exists workflow_auth_device_codes (
+      create table if not exists steamharness_auth_device_codes (
         id text primary key,
         device_code_hash text not null unique,
         user_code text not null unique,
@@ -318,8 +318,8 @@ export class AccountRepository {
         updated_at timestamptz not null default now()
       );
 
-      create index if not exists workflow_auth_device_codes_state_idx
-        on workflow_auth_device_codes(state, expires_at desc);
+      create index if not exists steamharness_auth_device_codes_state_idx
+        on steamharness_auth_device_codes(state, expires_at desc);
 
       create table if not exists workflow_audit_events (
         id text primary key,
@@ -818,7 +818,7 @@ export class AccountRepository {
     const deviceCode = `wfdev_${randomBytes(24).toString("hex")}`;
     const userCode = createWorkflowUserCode();
     await this.pool.query(
-      `insert into workflow_auth_device_codes (
+      `insert into steamharness_auth_device_codes (
          id, device_code_hash, user_code, client_name, source, requested_scopes, state,
          requested_by_ip, user_agent, expires_at, interval_seconds, created_at, updated_at
        )
@@ -848,7 +848,7 @@ export class AccountRepository {
          id, device_code_hash, user_code, client_name, source, requested_scopes, state,
          requested_by_ip, user_agent, expires_at, interval_seconds, approved_at,
          approved_by_user_id, denied_at, consumed_at, result, created_at, updated_at
-       from workflow_auth_device_codes
+       from steamharness_auth_device_codes
        where id = $1`,
       [deviceCodeId],
     );
@@ -862,7 +862,7 @@ export class AccountRepository {
          id, device_code_hash, user_code, client_name, source, requested_scopes, state,
          requested_by_ip, user_agent, expires_at, interval_seconds, approved_at,
          approved_by_user_id, denied_at, consumed_at, result, created_at, updated_at
-       from workflow_auth_device_codes
+       from steamharness_auth_device_codes
        where user_code = $1`,
       [userCode.trim().toUpperCase()],
     );
@@ -876,7 +876,7 @@ export class AccountRepository {
          id, device_code_hash, user_code, client_name, source, requested_scopes, state,
          requested_by_ip, user_agent, expires_at, interval_seconds, approved_at,
          approved_by_user_id, denied_at, consumed_at, result, created_at, updated_at
-       from workflow_auth_device_codes
+       from steamharness_auth_device_codes
        where device_code_hash = $1`,
       [sha256Text(deviceCode)],
     );
@@ -896,7 +896,7 @@ export class AccountRepository {
     },
   ): Promise<WorkflowDeviceCodeRecord> {
     await this.pool.query(
-      `update workflow_auth_device_codes
+      `update steamharness_auth_device_codes
        set state = $2,
          approved_at = coalesce($3, approved_at),
          approved_by_user_id = coalesce($4, approved_by_user_id),
@@ -936,7 +936,7 @@ export class AccountRepository {
       // exchanges approved device codes exactly once and creates the
       // API key in the same transaction so concurrent polls cannot mint extras.
       const consumed = await client.query<WorkflowDeviceCodeRow>(
-        `update workflow_auth_device_codes
+        `update steamharness_auth_device_codes
          set state = 'consumed',
            consumed_at = $2,
            result = $3::jsonb,
@@ -983,7 +983,7 @@ export class AccountRepository {
       );
 
       const updatedDeviceCode = await client.query<WorkflowDeviceCodeRow>(
-        `update workflow_auth_device_codes
+        `update steamharness_auth_device_codes
          set result = $2::jsonb,
            updated_at = now()
          where id = $1
@@ -1130,7 +1130,7 @@ export class AccountRepository {
     }
     const result = await this.pool.query<WorkflowAuthUserRow>(
       `select id, email, display_name, created_at, last_sign_in_at
-       from workflow_auth_users
+       from steamharness_auth_users
        where lower(email) = $1
        order by created_at desc, id asc
        limit 1`,
@@ -1142,7 +1142,7 @@ export class AccountRepository {
   async listAuthUsers(): Promise<WorkflowAuthUserRecord[]> {
     const result = await this.pool.query<WorkflowAuthUserRow>(
       `select id, email, display_name, created_at, last_sign_in_at
-       from workflow_auth_users
+       from steamharness_auth_users
        order by created_at desc, id asc`,
     );
     return result.rows.map(toAuthUserRecord);

@@ -11,7 +11,7 @@ import { formatFileSize } from "../utils/files";
 import { formatImagePreviewError } from "../utils/labels";
 import type { WorkflowManagedFileReference } from "../types";
 import { attachmentActionButtonClassName, rwiClass } from "../styles";
-import { useTranslation } from "@workflow-code/i18n/react";
+import { useTranslation } from "@steamharness/i18n/react";
 
 export function isImageFileReference(file: WorkflowManagedFileReference): boolean {
   return file.kind === "image" || file.mimeType.startsWith("image/");

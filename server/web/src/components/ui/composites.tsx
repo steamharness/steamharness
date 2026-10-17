@@ -1,6 +1,6 @@
 import { useRef, type ChangeEvent, type ComponentProps, type ReactNode } from "react";
 import { Inbox } from "lucide-react";
-import { useTranslation } from "@workflow-code/i18n/react";
+import { useTranslation } from "@steamharness/i18n/react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";

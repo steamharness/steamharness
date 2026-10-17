@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   initI18n,
   i18n,
-  readWorkflowCodeI18nDescriptor,
-  translateWorkflowCodeError,
+  readSteamHarnessI18nDescriptor,
+  translateSteamHarnessError,
 } from "../index";
 
 describe("translation resolution", () => {
@@ -14,7 +14,7 @@ describe("translation resolution", () => {
     expect(workspaceCommands).toContain("download, publish, versions");
     expect(workspaceCommands).toContain("file-upload, file-download, file-delete");
     expect(workspaceCommands).not.toMatch(/\brun\b|debug-node/);
-    expect(i18n.t("localHelp", { ns: "cli" })).toContain("workflow-code run");
+    expect(i18n.t("localHelp", { ns: "cli" })).toContain("steamharness run");
   });
 
   it("translates pinned preview resizing and missing configurations with Chinese fallback", () => {
@@ -93,7 +93,7 @@ describe("translation resolution", () => {
       cause: {
         errMessage: "Nested fallback",
         data: {
-          workflowCodeI18n: {
+          steamHarnessI18n: {
             namespace: "common",
             key: "workflowServerLoginRequired",
           },
@@ -101,33 +101,33 @@ describe("translation resolution", () => {
       },
     });
 
-    expect(readWorkflowCodeI18nDescriptor(error)).toEqual({
+    expect(readSteamHarnessI18nDescriptor(error)).toEqual({
       namespace: "common",
       key: "workflowServerLoginRequired",
     });
-    expect(translateWorkflowCodeError(error)).toBe(
+    expect(translateSteamHarnessError(error)).toBe(
       "Workflow Server login is not configured. Sign in to the server in Desktop or workspace CLI first.",
     );
   });
 
   it("translates Kanban upload errors in both Desktop locales with Chinese fallback", () => {
-    const error = { message: "Readback mismatch", workflowCodeI18n: { namespace: "desktop", key: "kanbanUploadReadbackMismatch" } };
+    const error = { message: "Readback mismatch", steamHarnessI18n: { namespace: "desktop", key: "kanbanUploadReadbackMismatch" } };
     initI18n({ preference: "en" });
-    expect(translateWorkflowCodeError(error)).toBe("Server file readback does not match the selected file. The reference was not saved.");
+    expect(translateSteamHarnessError(error)).toBe("Server file readback does not match the selected file. The reference was not saved.");
     expect(i18n.t("desktop:kanbanUploadFileReadFailed")).toBe("The selected file could not be read. Select it again.");
     initI18n({ preference: "zh-CN" });
-    expect(translateWorkflowCodeError(error)).toBe("服务器文件读回与所选文件不一致，未保存文件引用。");
+    expect(translateSteamHarnessError(error)).toBe("服务器文件读回与所选文件不一致，未保存文件引用。");
     expect(i18n.t("desktop:kanbanUploadFileReadFailed")).toBe("无法读取所选文件，请重新选择。");
     i18n.changeLanguage("fr");
     expect(i18n.t("desktop:kanbanUploadFileInvalid")).toBe("请选择不超过 50 MiB 的普通文件。");
   });
 
   it("rejects the former App namespace instead of translating it as Desktop", () => {
-    expect(readWorkflowCodeI18nDescriptor({
+    expect(readSteamHarnessI18nDescriptor({
       namespace: "app",
       key: "settings",
     })).toBeUndefined();
-    expect(readWorkflowCodeI18nDescriptor({
+    expect(readSteamHarnessI18nDescriptor({
       namespace: "desktop",
       key: "settings",
     })).toEqual({ namespace: "desktop", key: "settings" });
@@ -160,7 +160,7 @@ describe("translation resolution", () => {
     const failure: Record<string, unknown> = { errMessage: "Server fallback" };
     failure.cause = failure;
 
-    expect(readWorkflowCodeI18nDescriptor(failure)).toBeUndefined();
-    expect(translateWorkflowCodeError(failure)).toBe("Server fallback");
+    expect(readSteamHarnessI18nDescriptor(failure)).toBeUndefined();
+    expect(translateSteamHarnessError(failure)).toBe("Server fallback");
   });
 });

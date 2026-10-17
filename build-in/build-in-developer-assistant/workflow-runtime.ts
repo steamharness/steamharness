@@ -1,4 +1,4 @@
-import type { WorkflowRuntimeApi } from "workflow-code/runtime-api";
+import type { WorkflowRuntimeApi } from "steamharness/runtime-api";
 import type { OpenAIConversationHostInput } from "./interface";
 
 type OpenAIWorkflowRuntimeApi = WorkflowRuntimeApi & {

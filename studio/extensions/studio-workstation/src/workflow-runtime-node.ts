@@ -1,5 +1,5 @@
 import { t } from './localization';
-import { upgradeServerProject } from './workflow-project-update-node';
+import { upgradeServerProject } from './steamharness-project-update-node';
 import * as vscode from 'vscode';
 import * as path from 'node:path';
 import { realpath } from 'node:fs/promises';
@@ -34,8 +34,8 @@ export function createWorkflowRuntime(context: vscode.ExtensionContext, account:
         templateDir: path.join(extensionDirectory, 'dist', 'developer-assistant'),
         storageDir: path.join(context.globalStorageUri.fsPath, 'workflow', 'assistant'),
         dependencySources: [path.join(context.globalStorageUri.fsPath, 'workflow', 'assistant', 'runtime'),
-          path.join(process.env.STUDIO_WORKFLOW_SOURCE || path.resolve(studioRoot, '..'), 'build-in', 'build-in-developer-assistant'),
-          path.join(process.env.STUDIO_WORKFLOW_SOURCE || path.join(studioRoot, '..', 'workflow'), 'build-in', 'build-in-developer-assistant'),
+          path.join(process.env.STUDIO_STEAMHARNESS_SOURCE || path.resolve(studioRoot, '..'), 'build-in', 'build-in-developer-assistant'),
+          path.join(process.env.STUDIO_STEAMHARNESS_SOURCE || path.join(studioRoot, '..', 'workflow'), 'build-in', 'build-in-developer-assistant'),
           path.join(studioRoot, 'vendor', 'developer-assistant')],
       });
     }).catch(error => { assistantApplication = undefined; throw error; });
@@ -108,7 +108,7 @@ export function createWorkflowRuntime(context: vscode.ExtensionContext, account:
     analyzeProjectType: async sources => {
       const directory = await assistantDirectory();
       const { resolve } = await import('import-meta-resolve');
-      const rules = await import(resolve('workflow-code/executor/rules', pathToFileURL(path.join(directory, 'package.json')).href));
+      const rules = await import(resolve('steamharness/executor/rules', pathToFileURL(path.join(directory, 'package.json')).href));
       const types = new Set<ProjectType>();
       for (const source of sources) {
         const type = rules.analyzeWorkflowScriptSource(source.text, source.name).executorProjectType;
@@ -139,7 +139,7 @@ export function createWorkflowRuntime(context: vscode.ExtensionContext, account:
       try {
         const directory = await assistantDirectory();
         result.cli = (await resolveProjectCli(directory)).version;
-        result.core = JSON.parse(await readFile(path.join(directory, 'node_modules/workflow-code/package.json'), 'utf8')).version;
+        result.core = JSON.parse(await readFile(path.join(directory, 'node_modules/steamharness/package.json'), 'utf8')).version;
       } catch (error) { result.error = [result.error, String(error)].filter(Boolean).join('\n'); }
       return result;
     },
@@ -207,7 +207,7 @@ export function createWorkflowRuntime(context: vscode.ExtensionContext, account:
             id: 'workflow-studio', command: [executable(), (await resolveProjectCli(directory)).entry, 'mcp', directory,
               '--data-dir', path.join(context.globalStorageUri.fsPath, 'workflow', 'studio-control', 'data')],
             environment: { ELECTRON_RUN_AS_NODE: '1' },
-            inheritEnvironment: ['WORKFLOW_STUDIO_CONTROL_BRIDGE_URL', 'WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN'], timeout: 30_000,
+            inheritEnvironment: ['STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL', 'STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN'], timeout: 30_000,
           }) };
         } else if (project.id === ANALYSIS_PROJECT_ID && project.projectType === 'kanban') {
           bridge = await startStudioControlBridge(createStudioAnalysisHandler(readAnalysis, runSignal), runSignal);

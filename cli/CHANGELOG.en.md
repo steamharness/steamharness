@@ -24,7 +24,7 @@ All notable public changes of this release unit are recorded here.
 ### New Features
 
 - **Global `--locale` switch**: changes local and Workspace output and propagates to Server and the Workflow runtime.
-- **`--entrypoint` argument**: local and remote commands can pick an entrypoint and fall back to the default. See [CLI](../docs/cli/workflow-code.mdx).
+- **`--entrypoint` argument**: local and remote commands can pick an entrypoint and fall back to the default. See [CLI](../docs/cli/steamharness.mdx).
 
 ### Breaking Changes
 
@@ -51,8 +51,8 @@ All notable public changes of this release unit are recorded here.
 
 ### Breaking Changes
 
-- The Desktop local runtime event variable is now `WORKFLOW_DESKTOP_RUNTIME_EVENTS`.
-  Migration: the former `WORKFLOW_APP_RUNTIME_EVENTS` variable is no longer accepted.
+- The Desktop local runtime event variable is now `STEAMHARNESS_DESKTOP_RUNTIME_EVENTS`.
+  Migration: the former `STEAMHARNESS_APP_RUNTIME_EVENTS` variable is no longer accepted.
 
 ## 0.1.5 - 2026-08-26
 
@@ -73,20 +73,20 @@ All notable public changes of this release unit are recorded here.
 
 ### New Features
 
-- **Local MCP endpoint**: `workflow-code mcp <workflow-dir>` exposes every entrypoint as a standard stdio MCP tool.
+- **Local MCP endpoint**: `steamharness mcp <workflow-dir>` exposes every entrypoint as a standard stdio MCP tool.
 - **Related project access**: `--related-project` explicitly enables mutually confirmed related-project KV access.
-- **MCP lifecycle reporting**: hosted by the headless Desktop launcher, the CLI reports complete snapshots over dedicated IPC. See [CLI](../docs/cli/workflow-code.mdx).
+- **MCP lifecycle reporting**: hosted by the headless Desktop launcher, the CLI reports complete snapshots over dedicated IPC. See [CLI](../docs/cli/steamharness.mdx).
 
 ### Breaking Changes
 
 - The `--grant-data-access` and Kanban `dataSources` grant flows are removed.
-  Migration: project-group dependencies now come from mutually confirmed `workflowCode.projectInfo.relatedProjects`.
+  Migration: project-group dependencies now come from mutually confirmed `steamHarness.projectInfo.relatedProjects`.
 - `workspace upload --create` requires a predeclared top-level UUID and `dataStorage.mode`.
   Migration: Server no longer assigns or writes back project IDs.
 
 ### Added
 
-- Added `workflow-code mcp <workflow-dir>`, exposing every entrypoint as a standard stdio MCP tool.
+- Added `steamharness mcp <workflow-dir>`, exposing every entrypoint as a standard stdio MCP tool.
 - Added a repeatable `--related-project <alias>=<absolute-project-dir>` option for local runs.
 
 ### Changed
@@ -99,14 +99,14 @@ All notable public changes of this release unit are recorded here.
 
 - Fixed MCP form elicitation terminating the waiting run and recording a diagnostic on invalid or failed responses.
 - Fixed the OpenAI Responses internal runner no longer writing AI SDK compatibility warnings to `stderr`.
-- Fixed `workflow-code structure` validating the complete `projectInfo` contract before analysis, exiting `1` on unsupported fields.
+- Fixed `steamharness structure` validating the complete `projectInfo` contract before analysis, exiting `1` on unsupported fields.
 
 ## 0.2.4 - 2026-09-05
 
 ### New Features
 
 - **Related project knowledge and entrypoints**: `--related-project` now reads a target's knowledge base and calls its granted entrypoints.
-- **Symlinked invocation fixed**: `workflow-code structure .` no longer prints nothing and exits 0 as a false pass under pnpm-style installs.
+- **Symlinked invocation fixed**: `steamharness structure .` no longer prints nothing and exits 0 as a false pass under pnpm-style installs.
 - **Status shows the real server**: `workspace status` gains an `effective` field naming the server a command will actually use.
 
 ### Breaking Changes
@@ -116,7 +116,7 @@ All notable public changes of this release unit are recorded here.
 - A server-located related project target hands over KV only; knowledge and entrypoint calls fail with a clear error.
   Migration: move the target to a `local` location, or put the needed capability in a locally runnable entrypoint.
 - A local related project opens its knowledge base only with a persistent-value directory, shared with the child run.
-  Migration: pass `--persistent-value-store-dir` or set `WORKFLOW_PERSISTENT_VALUE_STORE_DIR`.
+  Migration: pass `--persistent-value-store-dir` or set `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR`.
 
 ### Added
 
@@ -131,7 +131,7 @@ All notable public changes of this release unit are recorded here.
 ### Changed
 
 - Changed project-group `workspace upload` to return `202` with a `jobId` and poll deployment status instead of waiting.
-- Changed the pinned `workflow-code` to the dev channel, with system-AI model attributes coming from the Server catalog.
+- Changed the pinned `steamharness` to the dev channel, with system-AI model attributes coming from the Server catalog.
 - Changed model effort levels to converge on what the model declares, with the usage denominator taken from its real window.
 - Changed host image references to be resolved through the workflow file store before reaching the model, failing loudly.
 - Changed remote runs to use the Runner artifact and image digests captured at enqueue time, unaffected by later uploads.

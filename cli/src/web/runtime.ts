@@ -2,11 +2,11 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { WORKFLOW_RUNTIME_LOCALE_ENV } from 'workflow-code';
+import { STEAMHARNESS_RUNTIME_LOCALE_ENV } from 'steamharness';
 import { locale } from './localization';
 import { redactWorkflowData, type WorkflowRuntime, type WorkflowReport, type WorkflowProject } from './workflow-types';
 import type { CliRelatedProjectSpec } from '../related-projects';
-import type { AgentSessionCommand, AgentSessionReceipt } from 'workflow-code/agent';
+import type { AgentSessionCommand, AgentSessionReceipt } from 'steamharness/agent';
 
 export interface WebConnection {
   serverUrl: string;
@@ -19,7 +19,7 @@ export interface WebConnection {
 export function cliRoot(): string {
   let directory = path.dirname(fileURLToPath(import.meta.url));
   for (let depth = 0; depth < 8; depth++) {
-    try { if (JSON.parse(readFileSync(path.join(directory, 'package.json'), 'utf8')).name === '@workflow-code/cli') { return directory; } } catch {}
+    try { if (JSON.parse(readFileSync(path.join(directory, 'package.json'), 'utf8')).name === '@steamharness/cli') { return directory; } } catch {}
     directory = path.dirname(directory);
   }
   throw new Error('Cannot locate the CLI installation.');
@@ -43,16 +43,16 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     if ((request.method === 'run' || request.method === 'resolve') && (request.project as WorkflowProject)?.requiresLogin && !auth) { reject(new Error('Workflow Server login is not configured.')); return; }
     // Workers use the verified page identity, including after logout.
     const env: NodeJS.ProcessEnv = sanitizeWebWorkerEnvironment(process.env);
-    Object.assign(env, { WORKFLOW_RUNTIME_PLATFORM: 'cli',
-      [WORKFLOW_RUNTIME_LOCALE_ENV]: locale(), WORKFLOW_CODE_LOCALE: locale(),
-      WORKFLOW_SERVER_URL: runtimeAuth?.serverUrl ?? '', WORKFLOW_SERVER_ADMIN_KEY: runtimeAuth?.accessToken ?? '', WORKFLOW_SERVER_TOKEN: '',
-      WORKFLOW_AI_SERVER_URL: runtimeAuth?.aiServerUrl ?? '', WORKFLOW_AI_API_KEY: runtimeAuth?.aiAccessToken ?? '',
-      WORKFLOW_CLI_AUTH_DIR: path.join(storageDir, 'runtime-auth'),
+    Object.assign(env, { STEAMHARNESS_RUNTIME_PLATFORM: 'cli',
+      [STEAMHARNESS_RUNTIME_LOCALE_ENV]: locale(), STEAMHARNESS_LOCALE: locale(),
+      STEAMHARNESS_SERVER_URL: runtimeAuth?.serverUrl ?? '', STEAMHARNESS_SERVER_ADMIN_KEY: runtimeAuth?.accessToken ?? '', STEAMHARNESS_SERVER_TOKEN: '',
+      STEAMHARNESS_AI_SERVER_URL: runtimeAuth?.aiServerUrl ?? '', STEAMHARNESS_AI_API_KEY: runtimeAuth?.aiAccessToken ?? '',
+      STEAMHARNESS_CLI_AUTH_DIR: path.join(storageDir, 'runtime-auth'),
     });
-    delete env.WORKFLOW_LLM_SERVER_URL;
-    delete env.WORKFLOW_LLM_SERVER_TOKEN;
-    for (const key of ['TSX_TSCONFIG_PATH', 'WORKFLOW_LOCAL_CORE_ROOT', 'WORKFLOW_LOCAL_SHARED_ROOT', 'WORKFLOW_LOCAL_SOURCE_MODE',
-      'WORKFLOW_DEVELOPER_ASSISTANT_HOST', 'WORKFLOW_DEVELOPER_ASSISTANT_WORKDIR', 'WORKFLOW_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST']) { delete env[key]; }
+    delete env.STEAMHARNESS_LLM_SERVER_URL;
+    delete env.STEAMHARNESS_LLM_SERVER_TOKEN;
+    for (const key of ['TSX_TSCONFIG_PATH', 'STEAMHARNESS_LOCAL_CORE_ROOT', 'STEAMHARNESS_LOCAL_SHARED_ROOT', 'STEAMHARNESS_LOCAL_SOURCE_MODE',
+      'STEAMHARNESS_DEVELOPER_ASSISTANT_HOST', 'STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR', 'STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST']) { delete env[key]; }
     if (env.NODE_OPTIONS) { env.NODE_OPTIONS = env.NODE_OPTIONS.replace(/(?:--conditions=development|--conditions\s+development|-C=development|-C\s+development)/g, ''); }
     const child = spawn(process.execPath, [worker], { cwd: projectDir, env, shell: false, stdio: ['pipe', 'pipe', 'pipe', 'ipc'] });
     children.add(child);
@@ -61,7 +61,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     if (request.method === 'run') controls.set(String(request.runId), (command, scopeId, attachments) => new Promise((resolve, reject) => {
       const id = globalThis.crypto.randomUUID(); pending.set(id, { resolve, reject });
       child.send({ type: 'agent-control', id, command, scopeId, attachments }, error => {
-        if (error) { pending.delete(id); reject(Object.assign(error, { code: 'WORKFLOW_WORKER_INTERRUPTED' })); }
+        if (error) { pending.delete(id); reject(Object.assign(error, { code: 'STEAMHARNESS_WORKER_INTERRUPTED' })); }
       });
     }));
     child.on('message', (message: any) => {
@@ -85,9 +85,9 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
       let newline: number;
       while ((newline = buffer.indexOf('\n')) >= 0) {
         const line = buffer.slice(0, newline); buffer = buffer.slice(newline + 1);
-        if (!line.startsWith('__WORKFLOW_WEB__')) { continue; }
+        if (!line.startsWith('__STEAMHARNESS_WEB__')) { continue; }
         try {
-          const message = redactWorkflowData(JSON.parse(line.slice('__WORKFLOW_WEB__'.length)), [runtimeAuth?.accessToken ?? '', runtimeAuth?.aiAccessToken ?? ''], false) as { kind: string; value: T & Record<string, unknown>; error?: string };
+          const message = redactWorkflowData(JSON.parse(line.slice('__STEAMHARNESS_WEB__'.length)), [runtimeAuth?.accessToken ?? '', runtimeAuth?.aiAccessToken ?? ''], false) as { kind: string; value: T & Record<string, unknown>; error?: string };
           if (message.kind === 'event') { onEvent?.(message.value); }
           if (message.kind === 'result') { result = message.value; }
           if (message.kind === 'error') { failure = message.error; }
@@ -97,7 +97,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     const cleanup = () => {
       clearTimeout(timeout); clearTimeout(forcedExit); children.delete(child);
       if (active.get(String(request.runId)) === child) { active.delete(String(request.runId)); controls.delete(String(request.runId)); }
-      for (const waiter of pending.values()) waiter.reject(Object.assign(new Error('The agent owner disconnected.'), { code: 'WORKFLOW_WORKER_INTERRUPTED' }));
+      for (const waiter of pending.values()) waiter.reject(Object.assign(new Error('The agent owner disconnected.'), { code: 'STEAMHARNESS_WORKER_INTERRUPTED' }));
       pending.clear();
     };
     child.once('error', (error) => { cleanup(); reject(error); });
@@ -106,7 +106,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
       if (failure) { reject(new Error(failure)); }
       else if (result !== undefined) { if (request.method === 'run') { (result as WorkflowReport).logs = String(redactWorkflowData(stderr, [runtimeAuth?.accessToken ?? '', runtimeAuth?.aiAccessToken ?? ''])); } resolve(result); }
       else { reject(Object.assign(new Error(String(redactWorkflowData(stderr.trim(), [runtimeAuth?.accessToken ?? '', runtimeAuth?.aiAccessToken ?? ''])) || `Workflow runtime exited (${signal ?? code}).`),
-        { code: 'WORKFLOW_WORKER_INTERRUPTED' })); }
+        { code: 'STEAMHARNESS_WORKER_INTERRUPTED' })); }
     });
     child.stdin!.on('error', () => undefined);
     child.stdin!.end(JSON.stringify({ ...request, storageDir, runtimeProjectDir: projectDir, relatedProjects: relatedProjects() }));
@@ -147,7 +147,7 @@ export function sanitizeWebWorkerEnvironment(base: NodeJS.ProcessEnv = process.e
 
 function isPrivateEnvironmentKey(key: string): boolean {
   return key === 'NODE_OPTIONS' ||
-    /^(?:WORKFLOW_(?:AI|LLM|SERVER|PUBLIC_SERVER|STUDIO_INTERNAL)(?:_|$)|SUB2API_)/u.test(key) ||
+    /^(?:STEAMHARNESS_(?:AI|LLM|SERVER|PUBLIC_SERVER|STUDIO_INTERNAL)(?:_|$)|SUB2API_)/u.test(key) ||
     /(?:^|_)(?:API[_-]?KEY|ACCESS[_-]?KEY(?:_ID)?|SECRET|TOKEN|PASSWORD|PRIVATE[_-]?KEY|DATABASE_URL|REDIS_URL|CREDENTIALS?|AUTH(?:ORIZATION)?|CONFIG)(?:$|_)/iu.test(key) ||
     /^(?:DOCKER_CONFIG|KUBECONFIG|SSH_AUTH_SOCK|GIT_(?:CONFIG|SSH|ASKPASS)|NPM_CONFIG_USERCONFIG|PIP_CONFIG_FILE|CARGO_HOME|AZURE_CONFIG_DIR)$/u.test(key);
 }

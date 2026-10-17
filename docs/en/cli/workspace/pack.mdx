@@ -7,14 +7,14 @@ description: "Package the local workflow directory as an uploadable. tgz archive
 
 `workspace pack` Copy the local workflow source code to the packaging staging directory and use `tar` to generate the `.tgz` package. The command only processes local files and does not request Workflow Server.
 
-Workflow/Conversation verification`package.json`and`index.ts`;Kanban uses`package.json.workflowCode.projectType: "kanban"`to identify and verify the HTML `entry`_configured in`workflowCode.kanban.artifactDir`. Continue to use the project root directory`index.html`if not configured__. The README can serve as the project’s description, but it is not a required file for upload. Images, fonts, and other binary resources are included in the archive and source code repository as-is.
+Workflow/Conversation verification`package.json`and`index.ts`;Kanban uses`package.json.steamHarness.projectType: "kanban"`to identify and verify the HTML `entry`_configured in`steamHarness.kanban.artifactDir`. Continue to use the project root directory`index.html`if not configured__. The README can serve as the project’s description, but it is not a required file for upload. Images, fonts, and other binary resources are included in the archive and source code repository as-is.
 
 The command does not install or check local project dependencies. Even if the project declares a third-party dependency and does not have a local `node_modules`, the source code can still be packaged; install dependencies locally before execution. Server stores source and prebuilt static assets without installing dependencies, building, or loading project code.
 
 ## Command Format
 
 ```bash
-pnpm exec workflow-code workspace pack <workflow> [--path <workflow-dir>] [--output <file.tgz>] [--project-group] [--dependency <alias>=<path>]
+pnpm exec steamharness workspace pack <workflow> [--path <workflow-dir>] [--output <file.tgz>] [--project-group] [--dependency <alias>=<path>]
 ```
 
 ## Parameter
@@ -31,7 +31,7 @@ pnpm exec workflow-code workspace pack <workflow> [--path <workflow-dir>] [--out
 
 |item|Default value|
 | --- | --- |
-| repo root |`WORKFLOW_REPO_ROOT`, if not set, from the current directory or CLI file location up to find the root directory of the repository containing `pnpm-workspace.yaml`.|
+| repo root |`STEAMHARNESS_REPO_ROOT`, if not set, from the current directory or CLI file location up to find the root directory of the repository containing `pnpm-workspace.yaml`.|
 |Source Directory| `<repo-root>/workspace/workflow/<workflow>` |
 |Output Directory| `<repo-root>/workspace/.packs` |
 |Output file name| `<workflow>-<UTC timestamp>.tgz` |
@@ -51,7 +51,7 @@ Kanban does not automatically preserve `dist` or other product directories; they
 
 ## Project Team Archiving
 
-The project-group root must be a Kanban with `workflowCode.projectInfo.relatedProjects`. Every `--dependency` alias must match a mutually confirmed direct relation, and the local dependency UUID must match its declaration; pending relations cannot become included dependencies. Each related UUID is packaged only once. The archive contains `project-group.json`, the root project package, and the selected dependency packages; each project still selects source through its own `.workflowignore`.
+The project-group root must be a Kanban with `steamHarness.projectInfo.relatedProjects`. Every `--dependency` alias must match a mutually confirmed direct relation, and the local dependency UUID must match its declaration; pending relations cannot become included dependencies. Each related UUID is packaged only once. The archive contains `project-group.json`, the root project package, and the selected dependency packages; each project still selects source through its own `.workflowignore`.
 
 Packaging will reject symbolic links, special tar entries, as well as `.env*`, KV, PersistentValue, scheduled tasks, execution history, SQLite, `workflow-auth.json`, and other host‑specific user configurations; the root user Kanban is also prohibited from declaring their own UUID as a source project. The project team does not carry any locally executed data, nor does it modify any Server states; developers initialize data by running Workflow locally and explicitly choosing local or server storage.
 
@@ -65,10 +65,10 @@ Packaging will reject symbolic links, special tar entries, as well as `.env*`, K
 ## Example
 
 ```bash
-pnpm exec workflow-code workspace pack hello
-pnpm exec workflow-code workspace pack hello --path ./workspace/workflow/hello
-pnpm exec workflow-code workspace pack hello --output ./workspace/.packs/hello.tgz
-pnpm exec workflow-code workspace pack stock-kanban --project-group \
+pnpm exec steamharness workspace pack hello
+pnpm exec steamharness workspace pack hello --path ./workspace/workflow/hello
+pnpm exec steamharness workspace pack hello --output ./workspace/.packs/hello.tgz
+pnpm exec steamharness workspace pack stock-kanban --project-group \
   --path ./stock-kanban \
   --dependency stocks=./stock-workflow
 ```

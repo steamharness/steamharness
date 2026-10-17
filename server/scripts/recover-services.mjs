@@ -16,7 +16,7 @@ export function createDockerRecoveryServices(serverRoot) {
   return [
     {
       name: "PostgreSQL",
-      projectName: "workflow-code-postgres",
+      projectName: "steamharness-postgres",
       projectDirectory: path.join(dockerRoot, "postgres"),
       files: ["docker-compose.yml", "docker-compose.release.yml"],
     },
@@ -29,11 +29,11 @@ export function validateRecoveryEnvironment(env = process.env) {
     throw new Error(`Missing protected production CI/CD variables: ${missing.join(", ")}`);
   }
 
-  const releaseRoot = String(env.WORKFLOW_RELEASE_STORAGE_ROOT ?? "").trim();
+  const releaseRoot = String(env.STEAMHARNESS_RELEASE_STORAGE_ROOT ?? "").trim();
   if (!path.isAbsolute(releaseRoot)) {
-    throw new Error("WORKFLOW_RELEASE_STORAGE_ROOT must be an absolute path.");
+    throw new Error("STEAMHARNESS_RELEASE_STORAGE_ROOT must be an absolute path.");
   }
-  return { ...env, WORKFLOW_RELEASE_STORAGE_ROOT: path.resolve(releaseRoot) };
+  return { ...env, STEAMHARNESS_RELEASE_STORAGE_ROOT: path.resolve(releaseRoot) };
 }
 
 export function resolveDockerSocketLocation(env = process.env) {

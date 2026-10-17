@@ -36,7 +36,7 @@ test('Workflow source resolves the aggregate siblings, standalone layout and exp
     await fs.writeFile(path.join(directory, name, 'package.json'), '{}');
   }
   assert.equal(await resolveWorkflowSource(root, {}), directory);
-  assert.equal(await resolveWorkflowSource(root, { STUDIO_WORKFLOW_SOURCE: path.join(directory, 'custom') }), path.join(directory, 'custom'));
+  assert.equal(await resolveWorkflowSource(root, { STUDIO_STEAMHARNESS_SOURCE: path.join(directory, 'custom') }), path.join(directory, 'custom'));
 });
 
 async function fixture(t) {

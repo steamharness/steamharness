@@ -9,11 +9,11 @@ Core 0.2 把数据位置变成项目的强制声明，并移除了会隐式选�
 
 ## 1. 声明数据存储位置
 
-在 `package.json.workflowCode.projectInfo` 中加入 `dataStorage.mode`：
+在 `package.json.steamHarness.projectInfo` 中加入 `dataStorage.mode`：
 
 ```json
 {
-  "workflowCode": {
+  "steamHarness": {
     "projectInfo": {
       "dataStorage": { "mode": "local" }
     }
@@ -71,13 +71,13 @@ const matches = await workflow.searchKnowledgeDocuments(storage, {
 ```json
 {
   "devDependencies": {
-    "workflow-code": "0.2.0",
-    "@workflow-code/cli": "0.2.0"
+    "steamharness": "0.2.0",
+    "@steamharness/cli": "0.2.0"
   }
 }
 ```
 
-依赖字段仍必须写精确版本，不能为了表达兼容性改成 `0.2.x` 或 `^0.2.0`。Workflow Code 运行时只比较 `major.minor` 兼容线：`0.2.0` 项目可由 Core `0.2.1` 或 `0.2.99-20260826001` 直接运行，Core `0.2.0` 也可运行精确声明 `0.2.99` 的项目；日期和 patch 先后均不参与判断。项目改为 `0.3.0` 或 `1.0.0` 时，必须升级到携带相同兼容线 Core 的 CLI 或 Server。
+依赖字段仍必须写精确版本，不能为了表达兼容性改成 `0.2.x` 或 `^0.2.0`。SteamHarness 运行时只比较 `major.minor` 兼容线：`0.2.0` 项目可由 Core `0.2.1` 或 `0.2.99-20260826001` 直接运行，Core `0.2.0` 也可运行精确声明 `0.2.99` 的项目；日期和 patch 先后均不参与判断。项目改为 `0.3.0` 或 `1.0.0` 时，必须升级到携带相同兼容线 Core 的 CLI 或 Server。
 
 CLI 0.2 的 Core peer 范围只接受 `0.2.x`，并会在 `run`、`json`、`structure` 和 `resolve-params` 前同时校验实际 Core、CLI 自身绑定和项目声明。Server 只校验上传项目的静态元数据，不加载用户模块。
 

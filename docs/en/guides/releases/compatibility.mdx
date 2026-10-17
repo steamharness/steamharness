@@ -5,7 +5,7 @@ description: "Local Core runtime compatibility and Server static metadata valida
 
 # Version compatibility
 
-A Workflow project's `devDependencies.workflow-code` must declare an exact SemVer such as `"0.2.7"` or `"0.2.7-20260826001"`. This records the development baseline; runtime compatibility compares only `major.minor`.
+A Workflow project's `devDependencies.steamharness` must declare an exact SemVer such as `"0.2.7"` or `"0.2.7-20260826001"`. This records the development baseline; runtime compatibility compares only `major.minor`.
 
 `0.2.0`, `0.2.99`, `0.2.4-20260826001` and `0.2.4-beta.1` all belong to `0.2.x`. Patch and prerelease ordering do not affect compatibility. A major or minor mismatch stops execution before loading user code and reports the project version, host version and required line.
 

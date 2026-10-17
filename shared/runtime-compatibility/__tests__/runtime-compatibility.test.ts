@@ -13,11 +13,11 @@ import {
 
 describe("workflow Core compatibility", () => {
   it("reads only an exact Core version from devDependencies", () => {
-    expect(readRequiredCoreVersion({ devDependencies: { "workflow-code": "0.1.2" } })).toBe("0.1.2");
+    expect(readRequiredCoreVersion({ devDependencies: { "steamharness": "0.1.2" } })).toBe("0.1.2");
     for (const version of ["^0.1.2", ">=0.1.0 <0.2.0", "workspace:*", "file:../core", "v0.1.2"]) {
-      expect(() => readRequiredCoreVersion({ devDependencies: { "workflow-code": version } })).toThrow(/exact SemVer/);
+      expect(() => readRequiredCoreVersion({ devDependencies: { "steamharness": version } })).toThrow(/exact SemVer/);
     }
-    expect(() => readRequiredCoreVersion({})).toThrow(/devDependencies\.workflow-code/);
+    expect(() => readRequiredCoreVersion({})).toThrow(/devDependencies\.steamharness/);
   });
 
   it("accepts every patch in the same major.minor compatibility line", () => {
@@ -57,18 +57,18 @@ describe("workflow Core compatibility", () => {
   });
 
   it("reads any package's exact devDependency", () => {
-    expect(readExactDevDependency({ devDependencies: { "@workflow-code/cli": "0.1.2" } }, "@workflow-code/cli")).toBe("0.1.2");
-    expect(() => readExactDevDependency({}, "@workflow-code/cli")).toThrow(/devDependencies\.@workflow-code\/cli/);
+    expect(readExactDevDependency({ devDependencies: { "@steamharness/cli": "0.1.2" } }, "@steamharness/cli")).toBe("0.1.2");
+    expect(() => readExactDevDependency({}, "@steamharness/cli")).toThrow(/devDependencies\.@steamharness\/cli/);
   });
 
   it("classifies local sibling references apart from exact versions", () => {
-    const manifest = (value: string) => ({ devDependencies: { "workflow-code": value } });
-    expect(classifyVersionReference(manifest("0.2.4-20260921001"), "workflow-code"))
+    const manifest = (value: string) => ({ devDependencies: { "steamharness": value } });
+    expect(classifyVersionReference(manifest("0.2.4-20260921001"), "steamharness"))
       .toEqual({ kind: "exact", version: "0.2.4-20260921001", specifier: "0.2.4-20260921001" });
-    expect(classifyVersionReference(manifest("link:../core"), "workflow-code"))
+    expect(classifyVersionReference(manifest("link:../core"), "steamharness"))
       .toEqual({ kind: "local", specifier: "link:../core", relative: "../core" });
     for (const value of ["file:core", "file:/abs/core", "workspace:*"]) {
-      expect(() => classifyVersionReference(manifest(value), "workflow-code")).toThrow(/relative file:|exact SemVer/);
+      expect(() => classifyVersionReference(manifest(value), "steamharness")).toThrow(/relative file:|exact SemVer/);
     }
   });
 
@@ -78,8 +78,8 @@ describe("workflow Core compatibility", () => {
     // alpha publishes, so it must not be classified as a development branch.
     expect(resolveReleaseMode({ CI_COMMIT_BRANCH: "alpha" })).toBe("main");
     expect(resolveReleaseMode({ CI_COMMIT_BRANCH: "main" })).toBe("main");
-    expect(resolveReleaseMode({ CI_COMMIT_TAG: "workflow-code/v0.2.4" })).toBe("main");
-    expect(() => resolveReleaseMode({ WORKFLOW_REPOSITORY_MODE: "dev" })).toThrow(/fail-closed override/);
+    expect(resolveReleaseMode({ CI_COMMIT_TAG: "steamharness/v0.2.4" })).toBe("main");
+    expect(() => resolveReleaseMode({ STEAMHARNESS_REPOSITORY_MODE: "dev" })).toThrow(/fail-closed override/);
   });
 
   it("normalises sibling references against the workspace root", () => {
@@ -92,10 +92,10 @@ describe("workflow Core compatibility", () => {
   });
 
   it("resolves a local Core reference on dev and refuses it on main", () => {
-    const manifest = { devDependencies: { "workflow-code": "link:../core" } };
+    const manifest = { devDependencies: { "steamharness": "link:../core" } };
     const readSiblingManifest = (directory: string) => {
       expect(directory).toBe("core");
-      return { name: "workflow-code", version: "0.2.4-20260921001" };
+      return { name: "steamharness", version: "0.2.4-20260921001" };
     };
 
     expect(resolveRequiredCoreVersion(manifest, {
@@ -111,7 +111,7 @@ describe("workflow Core compatibility", () => {
     })).toThrow(/must declare an exact published version on main and alpha/);
 
     // An exact declaration never consults the sibling.
-    expect(resolveRequiredCoreVersion({ devDependencies: { "workflow-code": "0.2.4" } }, {
+    expect(resolveRequiredCoreVersion({ devDependencies: { "steamharness": "0.2.4" } }, {
       mode: "dev",
       repositoryDirectory: "build-in-codex",
       readSiblingManifest: () => {

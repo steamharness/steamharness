@@ -1,10 +1,10 @@
 import { tool, type FunctionTool } from "@openai/agents";
 import { z } from "zod";
-import { openaiAgentsWorkflow } from "@workflow-code/openai-agents-workflow";
-import type { AgentToolCallSummary, OpenAIAgentsInput, OpenAIAgentsOutputPayload } from "@workflow-code/openai-agents-workflow/interface";
-import { createFinalAnswerInput, parseReactThought } from "@workflow-code/deltafore-agent-workflow/agent/decision";
-import { clampRoundCount, DEFAULT_QUERY, parseInputArgs } from "@workflow-code/deltafore-agent-workflow/agent/input";
-import { createAttributePromptGuide } from "@workflow-code/deltafore-agent-workflow/tools/attribute-labels";
+import { openaiAgentsWorkflow } from "@steamharness/openai-agents-workflow";
+import type { AgentToolCallSummary, OpenAIAgentsInput, OpenAIAgentsOutputPayload } from "@steamharness/openai-agents-workflow/interface";
+import { createFinalAnswerInput, parseReactThought } from "@steamharness/deltafore-agent-workflow/agent/decision";
+import { clampRoundCount, DEFAULT_QUERY, parseInputArgs } from "@steamharness/deltafore-agent-workflow/agent/input";
+import { createAttributePromptGuide } from "@steamharness/deltafore-agent-workflow/tools/attribute-labels";
 import type {
   AgentToolResult,
   ConversationChatMessage,
@@ -22,9 +22,9 @@ import {
   createDeltaforeApiConfig,
   createToolCatalog,
   DEFAULT_OPENAPI_URL,
-} from "@workflow-code/deltafore-agent-workflow/tools/openapi";
-import { runTool } from "@workflow-code/deltafore-agent-workflow/tools/runner";
-import { isRecord } from "@workflow-code/deltafore-agent-workflow/tools/values";
+} from "@steamharness/deltafore-agent-workflow/tools/openapi";
+import { runTool } from "@steamharness/deltafore-agent-workflow/tools/runner";
+import { isRecord } from "@steamharness/deltafore-agent-workflow/tools/values";
 
 const DEFAULT_MODEL = "gpt-5.4";
 

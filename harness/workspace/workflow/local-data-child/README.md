@@ -7,13 +7,13 @@
 ```bash
 PARENT_DIR="$(cd ../local-data-parent && pwd)"
 GRANDCHILD_DIR="$(cd ../local-data-grandchild && pwd)"
-pnpm exec workflow-code json . --entrypoint store -- --content "child content"
+pnpm exec steamharness json . --entrypoint store -- --content "child content"
 CURRENT_ID="<store 返回的 id>"
-pnpm exec workflow-code json . --entrypoint get -- --id "$CURRENT_ID"
+pnpm exec steamharness json . --entrypoint get -- --id "$CURRENT_ID"
 
 PARENT_ID="<父项目 store 返回的 id>"
-pnpm exec workflow-code json . --entrypoint get --related-project "parent=$PARENT_DIR" -- --id "$PARENT_ID" --alias parent
-pnpm exec workflow-code json . --entrypoint store --related-project "grandchild=$GRANDCHILD_DIR" -- --content "hello grandchild" --alias grandchild
+pnpm exec steamharness json . --entrypoint get --related-project "parent=$PARENT_DIR" -- --id "$PARENT_ID" --alias parent
+pnpm exec steamharness json . --entrypoint store --related-project "grandchild=$GRANDCHILD_DIR" -- --content "hello grandchild" --alias grandchild
 ```
 
 两条关系都只在本地 KV 域生效，不会回退到服务器存储。

@@ -23,8 +23,8 @@ describe("workspace package scripts", () => {
     );
     const readme = readFileSync(readmePath, "utf8");
 
-    expect(readme).toContain("pnpm exec workflow-code run . -- --message ok");
-    expect(readme).toContain("pnpm exec workflow-code json . -- --message nope --mode fail");
+    expect(readme).toContain("pnpm exec steamharness run . -- --message ok");
+    expect(readme).toContain("pnpm exec steamharness json . -- --message nope --mode fail");
     expect(readme).not.toMatch(/pnpm\s+-C\s+workspace\s+(?:executor|structure)/);
   });
 });

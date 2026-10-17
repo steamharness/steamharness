@@ -18,7 +18,7 @@ test("Server Web dev options disable HMR for the start mode", () => {
   const options = createWebDevServerOptions({
     webRoot: "/repo/server/web",
     server: createServer(),
-    env: { WORKFLOW_SERVER_HMR: "0" },
+    env: { STEAMHARNESS_SERVER_HMR: "0" },
   });
 
   assert.equal(options.server.hmr, false);

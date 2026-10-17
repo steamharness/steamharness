@@ -7,10 +7,10 @@ For a real local write, give the conversation state and knowledge base separate
 local roots:
 
 ```bash
-workflow-code structure .
-WORKFLOW_KV_STORE_DIR="$PWD/.workflow-kv" \
-WORKFLOW_PERSISTENT_VALUE_STORE_DIR="$PWD/.workflow-persistent-values" \
-  workflow-code json . --conversation-id demo-thread -- --message "记录今天的结论"
+steamharness structure .
+STEAMHARNESS_KV_STORE_DIR="$PWD/.workflow-kv" \
+STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR="$PWD/.workflow-persistent-values" \
+  steamharness json . --conversation-id demo-thread -- --message "记录今天的结论"
 ```
 
 `--dry-run` is still available when only a markdown preview is needed; it does
@@ -18,12 +18,12 @@ not write a knowledge document to either local or server storage.
 
 On the server, publish the workflow and run it through the server API so a
 document is created or updated in PostgreSQL with a stable conversation id.
-`$WORKFLOW_ID` is the UUID bound to the server project, not the workflow
+`$STEAMHARNESS_ID` is the UUID bound to the server project, not the workflow
 display name:
 
 ```bash
-curl -X POST "$WORKFLOW_SERVER_URL/api/workflows/$WORKFLOW_ID/run" \
-  -H "Authorization: Bearer $WORKFLOW_SERVER_ADMIN_KEY" \
+curl -X POST "$STEAMHARNESS_SERVER_URL/api/workflows/$STEAMHARNESS_ID/run" \
+  -H "Authorization: Bearer $STEAMHARNESS_SERVER_ADMIN_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "target": "draft",

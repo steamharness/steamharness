@@ -9,9 +9,9 @@ services:
     ports:
       - "127.0.0.1:7125:5432"
     environment:
-      POSTGRES_DB: ${WORKFLOW_POSTGRES_DB:-workflow}
-      POSTGRES_USER: ${WORKFLOW_POSTGRES_USER:-workflow}
-      POSTGRES_PASSWORD: ${WORKFLOW_POSTGRES_PASSWORD:?Set WORKFLOW_POSTGRES_PASSWORD}
+      POSTGRES_DB: ${STEAMHARNESS_POSTGRES_DB:-workflow}
+      POSTGRES_USER: ${STEAMHARNESS_POSTGRES_USER:-workflow}
+      POSTGRES_PASSWORD: ${STEAMHARNESS_POSTGRES_PASSWORD:?Set STEAMHARNESS_POSTGRES_PASSWORD}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -19,7 +19,7 @@ services:
       retries: 24
       start_period: 10s
     volumes:
-      - ${WORKFLOW_RELEASE_STORAGE_ROOT:?Set WORKFLOW_RELEASE_STORAGE_ROOT}/postgres-data:/var/lib/postgresql/data
+      - ${STEAMHARNESS_RELEASE_STORAGE_ROOT:?Set STEAMHARNESS_RELEASE_STORAGE_ROOT}/postgres-data:/var/lib/postgresql/data
 
   nginx:
     image: nginx:1.27-alpine
@@ -32,8 +32,8 @@ services:
       timeout: 5s
       retries: 3
     volumes:
-      - ${WORKFLOW_RELEASE_STORAGE_ROOT:?Set WORKFLOW_RELEASE_STORAGE_ROOT}/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ${WORKFLOW_RELEASE_STORAGE_ROOT:?Set WORKFLOW_RELEASE_STORAGE_ROOT}/nginx/proxy_params:/etc/nginx/proxy_params:ro
-      - ${WORKFLOW_RELEASE_STORAGE_ROOT:?Set WORKFLOW_RELEASE_STORAGE_ROOT}/certs:/etc/nginx/certs:ro
-      - ${WORKFLOW_RELEASE_STORAGE_ROOT:?Set WORKFLOW_RELEASE_STORAGE_ROOT}/acme:/var/www/acme:ro
-      - ${WORKFLOW_RELEASE_STORAGE_ROOT:?Set WORKFLOW_RELEASE_STORAGE_ROOT}/nginx/logs:/var/log/nginx
+      - ${STEAMHARNESS_RELEASE_STORAGE_ROOT:?Set STEAMHARNESS_RELEASE_STORAGE_ROOT}/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ${STEAMHARNESS_RELEASE_STORAGE_ROOT:?Set STEAMHARNESS_RELEASE_STORAGE_ROOT}/nginx/proxy_params:/etc/nginx/proxy_params:ro
+      - ${STEAMHARNESS_RELEASE_STORAGE_ROOT:?Set STEAMHARNESS_RELEASE_STORAGE_ROOT}/certs:/etc/nginx/certs:ro
+      - ${STEAMHARNESS_RELEASE_STORAGE_ROOT:?Set STEAMHARNESS_RELEASE_STORAGE_ROOT}/acme:/var/www/acme:ro
+      - ${STEAMHARNESS_RELEASE_STORAGE_ROOT:?Set STEAMHARNESS_RELEASE_STORAGE_ROOT}/nginx/logs:/var/log/nginx

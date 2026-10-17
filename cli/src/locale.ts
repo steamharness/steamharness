@@ -5,8 +5,8 @@ import {
   normalizeLocale,
   type LocalePreference,
   type SupportedLocale,
-} from "@workflow-code/i18n";
-import { WORKFLOW_RUNTIME_LOCALE_ENV } from "workflow-code";
+} from "@steamharness/i18n";
+import { STEAMHARNESS_RUNTIME_LOCALE_ENV } from "steamharness";
 
 export interface PreparedCliInvocation {
   argv: string[];
@@ -30,7 +30,7 @@ export function prepareCliInvocation(argv: string[]): PreparedCliInvocation {
   }
 
   const locale = normalizeLocale(i18n.language);
-  process.env[WORKFLOW_RUNTIME_LOCALE_ENV] = locale;
+  process.env[STEAMHARNESS_RUNTIME_LOCALE_ENV] = locale;
 
   return {
     argv: extracted.argv,
@@ -71,7 +71,7 @@ export function extractLocaleOption(argv: string[]): {
 }
 
 function readEnvironmentLocale(): string | undefined {
-  const value = process.env.WORKFLOW_CODE_LOCALE?.trim();
+  const value = process.env.STEAMHARNESS_LOCALE?.trim();
   return value === "" ? undefined : value;
 }
 

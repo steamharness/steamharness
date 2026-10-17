@@ -124,10 +124,10 @@ interface ApiResponse<T> {
   errCode: number;
   errMessage: string;
   data?: T;
-  workflowCodeI18n?: WorkflowCodeI18nDescriptor;
+  steamHarnessI18n?: SteamHarnessI18nDescriptor;
 }
 
-interface WorkflowCodeI18nDescriptor {
+interface SteamHarnessI18nDescriptor {
   namespace: "common";
   key: string;
   values?: Record<string, unknown>;
@@ -163,7 +163,7 @@ class ServerLLMCredentialManager {
         message: "This account has no available server AI credentials. Configure the private AI service before using system AI.",
         metadata: {
           warnings: catalog.warnings?.map((warning) => warning.code) ?? [],
-          workflowCodeI18n: createI18nDescriptor("serverAiCredentialsUnavailable"),
+          steamHarnessI18n: createI18nDescriptor("serverAiCredentialsUnavailable"),
         },
       });
     }
@@ -206,7 +206,7 @@ class ServerLLMCredentialManager {
             metadata: {
               credentialId: record.id,
               model: options.model,
-              workflowCodeI18n: createI18nDescriptor("serverAiModelNotInConfiguration", {
+              steamHarnessI18n: createI18nDescriptor("serverAiModelNotInConfiguration", {
                 model: options.model,
                 configuration: record.name,
               }),
@@ -220,7 +220,7 @@ class ServerLLMCredentialManager {
             metadata: {
               credentialId: record.id,
               model,
-              workflowCodeI18n: createI18nDescriptor("serverAiModelWebSearchUnsupported", { model }),
+              steamHarnessI18n: createI18nDescriptor("serverAiModelWebSearchUnsupported", { model }),
             },
           });
         }
@@ -243,7 +243,7 @@ class ServerLLMCredentialManager {
             metadata: {
               credentialId: record.id,
               providerType: record.providerType,
-              workflowCodeI18n: createI18nDescriptor("serverAiResponsesProxyUnsupported", {
+              steamHarnessI18n: createI18nDescriptor("serverAiResponsesProxyUnsupported", {
                 configuration: record.name,
               }),
             },
@@ -317,7 +317,7 @@ class ServerLLMCredentialManager {
         message: "The selected server AI credential is no longer valid. Select a Provider again.",
         metadata: {
           credentialId,
-          workflowCodeI18n: createI18nDescriptor("serverAiCredentialInvalid"),
+          steamHarnessI18n: createI18nDescriptor("serverAiCredentialInvalid"),
         },
       });
     }
@@ -327,7 +327,7 @@ class ServerLLMCredentialManager {
         message: "The server AI credential expired and could not be refreshed.",
         metadata: {
           credentialId,
-          workflowCodeI18n: createI18nDescriptor("serverAiCredentialExpired"),
+          steamHarnessI18n: createI18nDescriptor("serverAiCredentialExpired"),
         },
       });
     }
@@ -366,7 +366,7 @@ class ServerLLMCredentialManager {
         message: `Could not connect to the private AI service to load credentials: ${this.connection.serverUrl}`,
         metadata: {
           cause: redactConnectionSecret(error instanceof Error ? error.message : String(error), this.connection.token),
-          workflowCodeI18n: createI18nDescriptor("serverAiCredentialsConnectionFailed", {
+          steamHarnessI18n: createI18nDescriptor("serverAiCredentialsConnectionFailed", {
             url: this.connection.serverUrl,
           }),
         },
@@ -380,7 +380,7 @@ class ServerLLMCredentialManager {
         message: "System AI is unavailable on this public Server. Configure the private AI service URL and API key.",
         metadata: {
           systemAiConfigured: false,
-          workflowCodeI18n: createI18nDescriptor("systemAiUnavailable"),
+          steamHarnessI18n: createI18nDescriptor("systemAiUnavailable"),
         },
       });
     }
@@ -391,12 +391,12 @@ class ServerLLMCredentialManager {
         metadata: {
           status: response.status,
           errCode: payload.errCode,
-          ...(payload.workflowCodeI18n
-            ? { workflowCodeI18n: payload.workflowCodeI18n }
+          ...(payload.steamHarnessI18n
+            ? { steamHarnessI18n: payload.steamHarnessI18n }
             : payload.errMessage
               ? {}
               : {
-                  workflowCodeI18n: createI18nDescriptor("serverAiCredentialsRequestFailed", {
+                  steamHarnessI18n: createI18nDescriptor("serverAiCredentialsRequestFailed", {
                     status: response.status,
                   }),
                 }),
@@ -411,9 +411,9 @@ class ServerLLMCredentialManager {
 
 function resolveServerLLMConnection(env: NodeJS.ProcessEnv): ServerLLMConnection {
   const specific = readConnectionPair(
-    env.WORKFLOW_AI_SERVER_URL,
-    env.WORKFLOW_AI_API_KEY,
-    "WORKFLOW_AI_SERVER_URL/WORKFLOW_AI_API_KEY",
+    env.STEAMHARNESS_AI_SERVER_URL,
+    env.STEAMHARNESS_AI_API_KEY,
+    "STEAMHARNESS_AI_SERVER_URL/STEAMHARNESS_AI_API_KEY",
   );
   if (specific) return specific;
 
@@ -427,7 +427,7 @@ function resolveServerLLMConnection(env: NodeJS.ProcessEnv): ServerLLMConnection
     message: "System AI is unavailable. Configure the private AI service URL and API key.",
     metadata: {
       systemAiConfigured: false,
-      workflowCodeI18n: createI18nDescriptor("systemAiUnavailable"),
+      steamHarnessI18n: createI18nDescriptor("systemAiUnavailable"),
     },
   });
 }
@@ -445,7 +445,7 @@ function readConnectionPair(
       type: "input_validation",
       message: `${names} must be configured together.`,
       metadata: {
-        workflowCodeI18n: createI18nDescriptor("workflowServerConnectionPairRequired", { names }),
+        steamHarnessI18n: createI18nDescriptor("workflowServerConnectionPairRequired", { names }),
       },
     });
   }
@@ -460,21 +460,21 @@ function normalizeConnection(serverUrl: string, token: string): ServerLLMConnect
     throw new WorkflowError({
       type: "input_validation",
       message: "The Workflow Server URL is invalid.",
-      metadata: { workflowCodeI18n: createI18nDescriptor("workflowServerUrlInvalid") },
+      metadata: { steamHarnessI18n: createI18nDescriptor("workflowServerUrlInvalid") },
     });
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new WorkflowError({
       type: "input_validation",
       message: "The Workflow Server URL must use HTTP or HTTPS.",
-      metadata: { workflowCodeI18n: createI18nDescriptor("workflowServerUrlProtocolInvalid") },
+      metadata: { steamHarnessI18n: createI18nDescriptor("workflowServerUrlProtocolInvalid") },
     });
   }
   if (parsed.username || parsed.password || parsed.search || parsed.hash) {
     throw new WorkflowError({
       type: "input_validation",
       message: "The Workflow Server URL must not contain credentials, query parameters, or fragments.",
-      metadata: { workflowCodeI18n: createI18nDescriptor("workflowServerUrlInvalid") },
+      metadata: { steamHarnessI18n: createI18nDescriptor("workflowServerUrlInvalid") },
     });
   }
   return { serverUrl: parsed.toString().replace(/\/$/, ""), token: token.trim() };
@@ -659,7 +659,7 @@ async function readApiResponse<T>(response: Response): Promise<ApiResponse<T>> {
   return {
     errCode: response.status,
     errMessage: `Workflow Server returned an invalid response (HTTP ${response.status}).`,
-    workflowCodeI18n: createI18nDescriptor("workflowServerInvalidResponse", { status: response.status }),
+    steamHarnessI18n: createI18nDescriptor("workflowServerInvalidResponse", { status: response.status }),
   };
 }
 
@@ -692,7 +692,7 @@ function protocolError(): WorkflowError {
     type: "provider_call",
     message: "The private AI service returned an invalid AI credential catalog.",
     metadata: {
-      workflowCodeI18n: createI18nDescriptor("workflowServerInvalidAiCatalog"),
+      steamHarnessI18n: createI18nDescriptor("workflowServerInvalidAiCatalog"),
     },
   });
 }
@@ -700,7 +700,7 @@ function protocolError(): WorkflowError {
 function createI18nDescriptor(
   key: string,
   values?: Record<string, unknown>,
-): WorkflowCodeI18nDescriptor {
+): SteamHarnessI18nDescriptor {
   return {
     namespace: "common",
     key,

@@ -107,6 +107,6 @@
 - `workflow.searchKnowledgeDocuments(...)`
 - `workflow.WorkflowError(...)`
 
-每个成员的契约（参数、返回值、错误码）在 `references/workflow-code-api.md` 里按小节说明。
+每个成员的契约（参数、返回值、错误码）在 `references/steamharness-api.md` 里按小节说明。
 
 <!-- runtime-api-index:end -->

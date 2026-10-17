@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  WORKFLOW_IGNORE_FILE,
+  STEAMHARNESS_IGNORE_FILE,
   createWorkflowUploadPortablePathKey,
   createWorkflowUploadMatcher,
   hasWorkflowIgnoreRules,
@@ -43,7 +43,7 @@ describe("workflow upload ignore", () => {
   it("normalizes Windows separators and always retains .workflowignore", () => {
     const matcher = createWorkflowUploadMatcher("assets/**\n.workflowignore\n");
     expect(matcher.ignores("assets\\app.js")).toBe(true);
-    expect(matcher.ignores(WORKFLOW_IGNORE_FILE)).toBe(false);
+    expect(matcher.ignores(STEAMHARNESS_IGNORE_FILE)).toBe(false);
     expect(normalizeWorkflowUploadPath("dist\\index.html")).toBe("dist/index.html");
   });
 

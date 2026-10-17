@@ -4,7 +4,7 @@ import { inferServerEnvMode } from "./env";
 import { resolveServerPathRoots } from "./paths";
 import { resolveReleaseMetadataRootFromEnv } from "./release-paths";
 import type { ServerBuildInfo } from "./build-info";
-import type { SupportedLocale } from "@workflow-code/i18n";
+import type { SupportedLocale } from "@steamharness/i18n";
 
 export interface WorkflowServerHealthRelease {
   unit: "server" | "server-web";
@@ -51,7 +51,7 @@ export async function createWorkflowServerHealthData(options: {
 } = {}): Promise<WorkflowServerHealthData> {
   const { serverRoot } = resolveServerPathRoots();
   const locale = options.locale ?? "en";
-  const channel = options.channel ?? (process.env.WORKFLOW_RELEASE_CHANNEL === "alpha" ? "alpha" : "stable");
+  const channel = options.channel ?? (process.env.STEAMHARNESS_RELEASE_CHANNEL === "alpha" ? "alpha" : "stable");
   const resolvedServerRoot = options.serverRoot?.trim()
     ? path.resolve(options.serverRoot.trim())
     : serverRoot;
@@ -78,8 +78,8 @@ export async function createWorkflowServerHealthData(options: {
   ]);
   const serverVersion = options.buildInfo?.productVersion ?? serverRelease?.version ?? null;
   const coreVersion = options.buildInfo?.coreVersion ?? serverRelease?.components.core
-    ?? readOptionalString((await readJsonIfExists(path.join(resolvedServerRoot, "node_modules", "workflow-code", "package.json")))?.version);
-  const docsBaseUrl = (options.docsBaseUrl ?? process.env.WORKFLOW_DOCS_PUBLIC_BASE_URL ?? "https://wfdocs.yuhe.space")
+    ?? readOptionalString((await readJsonIfExists(path.join(resolvedServerRoot, "node_modules", "steamharness", "package.json")))?.version);
+  const docsBaseUrl = (options.docsBaseUrl ?? process.env.STEAMHARNESS_DOCS_PUBLIC_BASE_URL ?? "https://wfdocs.yuhe.space")
     .replace(/\/$/, "");
   const serverReleaseBody = serverRelease !== null && serverRelease.version === serverVersion
     ? serverRelease.releaseNotes?.body.trim() ?? ""

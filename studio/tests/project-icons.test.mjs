@@ -7,7 +7,7 @@ import { studioProjectIcon } from '../upstream/vscode/src/vs/workbench/common/st
 
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/project-icons.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
 const id = '294b1eec-23fa-42cf-9fd3-2417f71c0570';
-const manifest = (type, identity = id) => JSON.stringify({ id: identity, workflowCode: { projectType: type } });
+const manifest = (type, identity = id) => JSON.stringify({ id: identity, steamHarness: { projectType: type } });
 const executor = type => `throw new Error('Must never execute'); export const executor = workflow.defineExecutor({ projectType: '${type}' });`;
 class Emitter {
   listeners = new Set();
@@ -77,10 +77,10 @@ test('icons pass nested source declarations to the analyzer without running proj
 
 test('static manifest versions appear in recent-project metadata and refresh independently of type', async t => {
   const f = fixture(t);
-  f.files.set('file:///board/package.json', JSON.stringify({ id, version: '1.0.0', workflowCode: { projectType: 'kanban' } }));
+  f.files.set('file:///board/package.json', JSON.stringify({ id, version: '1.0.0', steamHarness: { projectType: 'kanban' } }));
   assert.equal((await f.icons.resolveMany(['file:///board']))[0].version, '1.0.0');
   assert.equal(f.icons.getVersion('file:///board'), '1.0.0');
-  f.files.set('file:///board/package.json', JSON.stringify({ id, version: '1.1.0', workflowCode: { projectType: 'kanban' } }));
+  f.files.set('file:///board/package.json', JSON.stringify({ id, version: '1.1.0', steamHarness: { projectType: 'kanban' } }));
   f.icons.refresh();
   assert.equal((await f.icons.resolveMany(['file:///board']))[0].version, '1.1.0');
 });

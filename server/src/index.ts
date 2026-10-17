@@ -28,7 +28,7 @@ loadServerEnv();
 // i18n must be initialized before any request-localized error is serialized.
 ensureServerI18n();
 
-const databaseUrl = process.env.WORKFLOW_DATABASE_URL?.trim();
+const databaseUrl = process.env.STEAMHARNESS_DATABASE_URL?.trim();
 const accountDb = databaseUrl
   ? new AccountRepository(databaseUrl)
   : undefined;
@@ -87,7 +87,7 @@ app.get("/health", (req, res) => {
       data: {
         status: "ok",
         runtime: {
-          mode: process.env.WORKFLOW_SERVER_DEV === "1" ? "development" : "production",
+          mode: process.env.STEAMHARNESS_SERVER_DEV === "1" ? "development" : "production",
           startedAt: serverStartedAt,
         },
         versions: {
@@ -143,17 +143,17 @@ app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
 });
 
 // ── Start ────────────────────────────────────────────────────────────────────
-const defaultPort = process.env.WORKFLOW_SERVER_DEV === "1"
+const defaultPort = process.env.STEAMHARNESS_SERVER_DEV === "1"
   ? DEFAULT_DEV_SERVER_PORT
   : DEFAULT_PRODUCTION_SERVER_PORT;
 // PostgreSQL owns 7125; development uses the next loopback port while
 // 7130+ remains the release/deploy port band.
-const port = readNumberEnv("WORKFLOW_SERVER_PORT", Number(process.env.PORT) || defaultPort);
+const port = readNumberEnv("STEAMHARNESS_SERVER_PORT", Number(process.env.PORT) || defaultPort);
 
 const actualPort = await listenServerWithDevPortFallback(server, {
   port,
-  isDev: process.env.WORKFLOW_SERVER_DEV === "1",
-  strictPort: process.env.WORKFLOW_SERVER_STRICT_PORT === "1",
+  isDev: process.env.STEAMHARNESS_SERVER_DEV === "1",
+  strictPort: process.env.STEAMHARNESS_SERVER_STRICT_PORT === "1",
   logger: console,
 });
 let shutdownPromise: Promise<void> | undefined;
@@ -183,8 +183,8 @@ console.log(`[workflow-server] listening on http://localhost:${actualPort}`);
 console.log(`[workflow-server] data root: ${storage.dataRoot}`);
 
 // 管理端支持 env 管理员账号密码登录后，缺少 admin key 不再等于整套管理登录不可用。
-if (!process.env.WORKFLOW_SERVER_ADMIN_KEY && !process.env.WORKFLOW_BOOTSTRAP_ADMIN_EMAIL?.trim()) {
-  console.warn("[workflow-server] Neither WORKFLOW_SERVER_ADMIN_KEY nor WORKFLOW_BOOTSTRAP_ADMIN_EMAIL is set; admin bootstrap login may be unavailable.");
+if (!process.env.STEAMHARNESS_SERVER_ADMIN_KEY && !process.env.STEAMHARNESS_BOOTSTRAP_ADMIN_EMAIL?.trim()) {
+  console.warn("[workflow-server] Neither STEAMHARNESS_SERVER_ADMIN_KEY nor STEAMHARNESS_BOOTSTRAP_ADMIN_EMAIL is set; admin bootstrap login may be unavailable.");
 }
 
 function readNumberEnv(name: string, fallback: number): number {
@@ -261,7 +261,7 @@ async function mountWebApp(options: {
 }
 
 function shouldUseViteWebDevServer(): boolean {
-  return process.env.WORKFLOW_SERVER_DEV === "1" && process.env.WORKFLOW_SERVER_WEB_DEV !== "0";
+  return process.env.STEAMHARNESS_SERVER_DEV === "1" && process.env.STEAMHARNESS_SERVER_WEB_DEV !== "0";
 }
 
 async function importViteFromWebRoot(webRoot: string): Promise<ViteModule> {

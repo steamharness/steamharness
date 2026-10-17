@@ -5,10 +5,10 @@ description: "Release notes for Core 0.2.4."
 
 # Core 0.2.4
 
-2026-09-05 · Tag `workflow-code/v0.2.4` · npm
+2026-09-05 · Tag `steamharness/v0.2.4` · npm
 
-<span id="workflow-code-0-2-4" className="release-version-anchor"></span>
-<span id="workflow-code.0.2.4" className="release-version-anchor"></span>
+<span id="steamharness-0-2-4" className="release-version-anchor"></span>
+<span id="steamharness.0.2.4" className="release-version-anchor"></span>
 
 #### New Features
 
@@ -35,7 +35,7 @@ description: "Release notes for Core 0.2.4."
 - Added `--context-window` to override the context-usage denominator.
 - Added tool approval through `context.toolPermissions` and plan approval through `context.userInput`.
 - Added token usage reported once through `context.tokenUsage.report(...)`, with nothing left for the project to implement.
-- Added the `@earendil-works/pi-agent-core` and `@earendil-works/pi-ai` dependencies, shipped with the host's `workflow-code` install.
+- Added the `@earendil-works/pi-agent-core` and `@earendil-works/pi-ai` dependencies, shipped with the host's `steamharness` install.
 - Added `AgentNodeOptions.createTools` returning `{ tools, close?() }`, where `close` runs when the turn ends.
 - Added `AgentNodeOptions.createTools(context)` assembling tools beyond the seven built-ins, with programmatic runtimes using `AgentRuntimeOptions.extraTools`.
 - Added `AgentInput.systemPrompt` supplying the system prompt per run and `AgentInput.images` traveling to the model with the prompt.

@@ -4,23 +4,23 @@ import {
   createAgentStreamResumePrompt,
   createAgentStreamRetryText,
 } from "../agent/plan";
-import { WORKFLOW_RUNTIME_LOCALE_ENV } from "../runtime-locale";
+import { STEAMHARNESS_RUNTIME_LOCALE_ENV } from "../runtime-locale";
 
 function withRuntimeLocale(value: string | undefined, run: () => void): void {
-  const previous = process.env[WORKFLOW_RUNTIME_LOCALE_ENV];
+  const previous = process.env[STEAMHARNESS_RUNTIME_LOCALE_ENV];
 
   try {
     if (value === undefined) {
-      delete process.env[WORKFLOW_RUNTIME_LOCALE_ENV];
+      delete process.env[STEAMHARNESS_RUNTIME_LOCALE_ENV];
     } else {
-      process.env[WORKFLOW_RUNTIME_LOCALE_ENV] = value;
+      process.env[STEAMHARNESS_RUNTIME_LOCALE_ENV] = value;
     }
     run();
   } finally {
     if (previous === undefined) {
-      delete process.env[WORKFLOW_RUNTIME_LOCALE_ENV];
+      delete process.env[STEAMHARNESS_RUNTIME_LOCALE_ENV];
     } else {
-      process.env[WORKFLOW_RUNTIME_LOCALE_ENV] = previous;
+      process.env[STEAMHARNESS_RUNTIME_LOCALE_ENV] = previous;
     }
   }
 }

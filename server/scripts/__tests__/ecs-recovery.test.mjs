@@ -34,6 +34,6 @@ test("ensure starts a missing service without restarting an active service or re
 test("ECS legacy runtime binds its listener to loopback", async () => {
   const preload = path.resolve(import.meta.dirname, "../../docker/ecs/loopback.mjs");
   const code = 'const s = require("node:net").createServer(); s.listen(0, () => { console.log(s.address().address); s.close(); });';
-  const { stdout } = await exec(process.execPath, ["--import", preload, "-e", code], { env: { ...process.env, WORKFLOW_SERVER_PORT: "0" } });
+  const { stdout } = await exec(process.execPath, ["--import", preload, "-e", code], { env: { ...process.env, STEAMHARNESS_SERVER_PORT: "0" } });
   assert.equal(stdout.trim(), "127.0.0.1");
 });

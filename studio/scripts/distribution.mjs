@@ -20,7 +20,7 @@ export async function exists(file) {
 }
 
 export async function resolveWorkflowSource(root = ROOT, env = process.env) {
-  if (env.STUDIO_WORKFLOW_SOURCE) return path.resolve(env.STUDIO_WORKFLOW_SOURCE);
+  if (env.STUDIO_STEAMHARNESS_SOURCE) return path.resolve(env.STUDIO_STEAMHARNESS_SOURCE);
   const workspace = path.resolve(root, '..');
   const aggregate = path.join(workspace, 'open-soucres');
   if (await exists(path.join(aggregate, 'core/package.json')) &&

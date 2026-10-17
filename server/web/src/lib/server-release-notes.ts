@@ -1,8 +1,8 @@
 import type { WorkflowServerHealthData } from "../types";
-import { i18n } from "@workflow-code/i18n";
+import { i18n } from "@steamharness/i18n";
 
 export const LAST_SEEN_SERVER_RELEASE_VERSION_KEY =
-  "workflow-code:server-web:last-seen-server-version";
+  "steamharness:server-web:last-seen-server-version";
 
 export interface ServerReleaseAnnouncement {
   version: string;

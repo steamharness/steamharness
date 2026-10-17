@@ -98,6 +98,6 @@ export const demo = workflow.defineWorkflow<Input, OutputPayload>({
 `workspace/workflow/runtime-timer` 是可运行的计时示例。它会启动一个业务计时、按输入的毫秒数等待，并显式调用 `endTimer`。最终报告中只会生成一条业务计时记录；未显式结束 timer 的自动 `cleared` 行为由测试覆盖。
 
 ```bash
-workflow-code structure workspace/workflow/runtime-timer
-workflow-code json workspace/workflow/runtime-timer -- --title "Fixture Timer" --milliseconds 2000
+steamharness structure workspace/workflow/runtime-timer
+steamharness json workspace/workflow/runtime-timer -- --title "Fixture Timer" --milliseconds 2000
 ```

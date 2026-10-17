@@ -24,9 +24,9 @@ Studio 底部默认保留 Terminal，隐藏 Problems、Output、Debug Console �
 
 ## 数据来源
 
-项目清单中的 `workflowCode.projectInfo.dataStorage.mode` 决定可用来源：`local` 仅显示本地，`server` 仅显示服务器，其他模式允许切换本地和服务器。服务器请求使用 Studio 当前登录凭据，退出或切换账号时取消未完成的请求并刷新面板。
+项目清单中的 `steamHarness.projectInfo.dataStorage.mode` 决定可用来源：`local` 仅显示本地，`server` 仅显示服务器，其他模式允许切换本地和服务器。服务器请求使用 Studio 当前登录凭据，退出或切换账号时取消未完成的请求并刷新面板。
 
-本地面板调用项目已安装的 `workflow-code` 公共存储 API，与项目 CLI 使用同一目录：
+本地面板调用项目已安装的 `steamharness` 公共存储 API，与项目 CLI 使用同一目录：
 
 ```text
 <Studio globalStorage>/workflow/web/<projectKey>/kv/

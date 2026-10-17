@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { inspectLocalWorkflowStructure } from "workflow-code";
+import { inspectLocalWorkflowStructure } from "steamharness";
 
 const workflowDir = path.resolve(process.cwd());
 // Run-scoped Knowledge and KV must not expose the assistant's store as project data.
@@ -94,7 +94,7 @@ describe("developer assistant workflow", () => {
 
     expect(structure.tools?.some((tool) => tool.name.startsWith("workflow-desktop_"))).toBe(false);
     expect(structure.tools?.some((tool) => tool.name === "workflow-host_host_project_configuration")).toBe(false);
-    expect(structure.tools?.some((tool) => tool.name === "workflow-kanban_kanban_methods")).toBe(false);
+    expect(structure.tools?.some((tool) => tool.name === "steamharness-kanban_kanban_methods")).toBe(false);
   });
 
   it("assembles its tools from Core without Desktop Control", async () => {
@@ -112,7 +112,7 @@ describe("developer assistant workflow", () => {
     expect(source).toContain("context.toolPermissions?.getTool(tool.name)?.enabled !== false");
     expect(source).toContain("workflow.createAgentProjectParamResolver()");
     expect(source).not.toContain("openCodeDependency");
-    expect(source).not.toContain("WORKFLOW_BUILTIN_OPENCODE_ENTRY");
+    expect(source).not.toContain("STEAMHARNESS_BUILTIN_OPENCODE_ENTRY");
   });
 
   it("takes the workspace, the persona and the attachments from the run", async () => {
@@ -145,14 +145,14 @@ describe("developer assistant workflow", () => {
     expect(source).toContain("return toDataUrlImages(");
 
     const manifest = JSON.parse(packageJson) as {
-      workflowCode: { builtinRelease: { dependencies: Array<{ id: string }> } };
+      steamHarness: { builtinRelease: { dependencies: Array<{ id: string }> } };
       devDependencies: Record<string, string>;
     };
     // The assistant no longer delegates to another built-in project, so it
     // must not claim to depend on one.
-    expect(manifest.workflowCode.builtinRelease.dependencies.map((entry) => entry.id))
+    expect(manifest.steamHarness.builtinRelease.dependencies.map((entry) => entry.id))
       .toEqual([]);
-    expect(manifest.workflowCode.builtinRelease.dependencies.map((entry) => entry.id))
+    expect(manifest.steamHarness.builtinRelease.dependencies.map((entry) => entry.id))
       .not.toContain("opencode");
 
     expect(prompt).toContain("Workspace roots define default working directories, not file-access boundaries");
@@ -172,13 +172,13 @@ describe("developer assistant workflow", () => {
     expect(prompt).not.toContain("create_cloud_app");
     expect(prompt).not.toContain("open_dock_tool");
     expect(prompt).toContain("inherit this run's storage environment");
-    expect(prompt).toContain("WORKFLOW_KV_STORE_DIR, WORKFLOW_PERSISTENT_VALUE_STORE_DIR and WORKFLOW_FILE_STORE_DIR");
+    expect(prompt).toContain("STEAMHARNESS_KV_STORE_DIR, STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR and STEAMHARNESS_FILE_STORE_DIR");
     expect(prompt).toContain("project-local scratch directories");
     expect(prompt).toContain("never delete or repair a store directory");
   });
 
   it("loads as a project against the injected runtime", async () => {
-    const { installWorkflowRuntimeGlobal } = await import("workflow-code/runtime-api");
+    const { installWorkflowRuntimeGlobal } = await import("steamharness/runtime-api");
     const runtime = installWorkflowRuntimeGlobal();
 
     // Loading the module is itself the assertion: `createToolApprovalGate()`

@@ -1,7 +1,7 @@
 import type {
   KnowledgeRepository,
   KnowledgeResult,
-} from "@workflow-code/knowledge-base";
+} from "@steamharness/knowledge-base";
 import { ServerApiClient } from "../../api";
 import { isApiSuccess, type ApiResponse } from "../../types";
 

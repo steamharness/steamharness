@@ -49,8 +49,8 @@
 - 新增 `getContextUsage()` / `updateContextUsage()` 查询和更新上下文占用，避免压缩恢复后使用旧计数。
 - 新增 输出项支持通用 `display` 圆环展示和输入栏右侧固定。
 - 新增 Core Agent 通过标准流式输出项展示上下文用量，随会话保存和恢复，主回答保持正文展示。
-- 新增 Agent 与 MCP 共用 `workflow-kanban_kanban_methods`，可发现并调用预览实例注册的方法。
-- 新增 `workflow-kanban_kanban_methods` 支持结构化返回和取消，避免误控其它配置或重复重试视角操作。
+- 新增 Agent 与 MCP 共用 `steamharness-kanban_kanban_methods`，可发现并调用预览实例注册的方法。
+- 新增 `steamharness-kanban_kanban_methods` 支持结构化返回和取消，避免误控其它配置或重复重试视角操作。
 - 新增 浏览器资源卡片可通过 `preview` 参数控制 Desktop 右上预览。
 - 新增 Agent 可调用 `workflow-ui_present_card` 按稳定 `cardId` 创建、更新、固定或移除资源卡片。
 

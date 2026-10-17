@@ -13,7 +13,7 @@ import {
   type WorkflowExecutionStorageOptions,
   type WorkflowKVStore,
   type WorkflowRelatedProjectResolverProject,
-} from "workflow-code";
+} from "steamharness";
 
 type StorageLocation = "local" | "server";
 type ProjectInfo = WorkflowRelatedProjectResolverProject["projectInfo"];
@@ -34,7 +34,7 @@ interface StorageAccessOutput {
   content?: unknown;
 }
 
-const WORKFLOW_ROOT = path.resolve(import.meta.dirname, "..", "workflow");
+const STEAMHARNESS_ROOT = path.resolve(import.meta.dirname, "..", "workflow");
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 describe.each(["local", "server"] as const)("%s data hierarchy", (location) => {
@@ -65,7 +65,7 @@ describe.each(["local", "server"] as const)("%s data hierarchy", (location) => {
 
     for (const project of Object.values(hierarchy.byRole)) {
       const structure = inspectLocalWorkflowStructure({
-        workflowDir: path.join(WORKFLOW_ROOT, project.slug),
+        workflowDir: path.join(STEAMHARNESS_ROOT, project.slug),
         workflowName: project.slug,
       });
       expect(structure.diagnostics.violations).toEqual([]);
@@ -213,7 +213,7 @@ async function createHierarchyRunner(location: StorageLocation) {
     return {
       async listEntrypoints() {
         const structure = inspectLocalWorkflowStructure({
-          workflowDir: path.join(WORKFLOW_ROOT, target.slug),
+          workflowDir: path.join(STEAMHARNESS_ROOT, target.slug),
           workflowName: target.slug,
         });
         return (structure.entrypoints ?? []).map((entrypoint) => ({
@@ -224,7 +224,7 @@ async function createHierarchyRunner(location: StorageLocation) {
       },
       async run(entrypointId: string, args: readonly string[]): Promise<unknown> {
         const report = await runLocalWorkflowWithReport({
-          workflowDir: path.join(WORKFLOW_ROOT, target.slug),
+          workflowDir: path.join(STEAMHARNESS_ROOT, target.slug),
           workflowName: target.slug,
           entrypointId,
           args: [...args],
@@ -293,7 +293,7 @@ async function createHierarchyRunner(location: StorageLocation) {
     if (input.content !== undefined) args.push("--content", input.content);
 
     return runLocalWorkflowWithReport({
-      workflowDir: path.join(WORKFLOW_ROOT, project.slug),
+      workflowDir: path.join(STEAMHARNESS_ROOT, project.slug),
       workflowName: project.slug,
       entrypointId: entrypoint,
       args,
@@ -316,15 +316,15 @@ async function loadHierarchy(location: StorageLocation) {
     (["parent", "child", "grandchild"] as const).map(async (role) => {
       const slug = `${location}-data-${role}`;
       const packageJson = JSON.parse(
-        await readFile(path.join(WORKFLOW_ROOT, slug, "package.json"), "utf8"),
+        await readFile(path.join(STEAMHARNESS_ROOT, slug, "package.json"), "utf8"),
       ) as {
         id: string;
-        workflowCode: { projectInfo: ProjectInfo };
+        steamHarness: { projectInfo: ProjectInfo };
       };
       return [role, {
         slug,
         projectId: packageJson.id,
-        projectInfo: packageJson.workflowCode.projectInfo,
+        projectInfo: packageJson.steamHarness.projectInfo,
         location,
       } satisfies HierarchyProject] as const;
     }),

@@ -8,14 +8,14 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from '../upstream/vscode/node_modules/playwright/index.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const cliEntry = process.env.WORKFLOW_UI_CLI_ENTRY ?? path.join(root, 'examples/conversation/node_modules/@workflow-code/cli/dist/index.js');
+const cliEntry = process.env.STEAMHARNESS_UI_CLI_ENTRY ?? path.join(root, 'examples/conversation/node_modules/@steamharness/cli/dist/index.js');
 const data = await fs.mkdtemp(path.join(os.tmpdir(), 'studio-cli-toolbar-'));
 const projectDir = path.join(data, 'project'); await fs.mkdir(projectDir);
 const proofDir = path.join(root, '.studio/cli-toolbar'); await fs.mkdir(proofDir, { recursive: true });
 const exampleManifest = JSON.parse(await fs.readFile(path.join(root, 'examples/conversation/package.json'), 'utf8'));
 const manifest = { id: '94b414b7-cdb4-491d-bc73-7282ebd74692', name: 'Default project name', version: '1.2.3', type: 'module',
   devDependencies: exampleManifest.devDependencies,
-  description: 'Project description <img id="unsafe" src="invalid">', workflowCode: { projectInfo: {
+  description: 'Project description <img id="unsafe" src="invalid">', steamHarness: { projectInfo: {
     localizedNames: { en: 'Project information with a long display name', 'zh-CN': '\u9879\u76ee\u4fe1\u606f\u4e0e\u8f83\u957f\u7684\u5c55\u793a\u540d\u79f0' },
     declarations: ['multilingual'], platformSupport: { mode: 'specific', platforms: ['macos', 'web'] }, dataStorage: { mode: 'local' },
   } } };
@@ -61,7 +61,7 @@ async function stop() {
 }
 async function start(language) {
   child = spawn(process.execPath, [cliEntry, '--locale', language, 'web', projectDir, '--no-open', '--json', '--host-stdio', '--data-dir', path.join(data, language)], {
-    env: { ...process.env, WORKFLOW_CLI_AUTH_DIR: path.join(data, 'auth'), WORKFLOW_SERVER_URL: '', WORKFLOW_SERVER_ADMIN_KEY: '' }, stdio: ['pipe', 'pipe', 'pipe'],
+    env: { ...process.env, STEAMHARNESS_CLI_AUTH_DIR: path.join(data, 'auth'), STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' }, stdio: ['pipe', 'pipe', 'pipe'],
   });
   child.stdin.write(`${JSON.stringify({ type: 'configure', surface: 'editor', connection })}\n`);
   let output = '', error = '';
@@ -188,7 +188,7 @@ async function selectionCopies(url, language) {
   copyHostHtml = undefined;
 }
 try {
-  browser = await chromium.launch({ channel: process.env.WORKFLOW_UI_BROWSER ?? 'chrome', headless: true });
+  browser = await chromium.launch({ channel: process.env.STEAMHARNESS_UI_BROWSER ?? 'chrome', headless: true });
   for (const language of ['en', 'zh-CN']) {
     const launch = await start(language);
     const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, colorScheme: 'light' });
@@ -204,7 +204,7 @@ try {
     assert.match(await page.locator('.param-action-summary').innerText(), /Alternate model/);
     assert.equal(await page.locator('[data-action-id=ai] > .codicon-sparkle').count(), 1);
     await page.locator('#project-info').click();
-    assert.equal(await page.locator('.project-information-name').innerText(), manifest.workflowCode.projectInfo.localizedNames[language]);
+    assert.equal(await page.locator('.project-information-name').innerText(), manifest.steamHarness.projectInfo.localizedNames[language]);
     assert.equal(await page.locator('.project-information-description').innerText(), manifest.description);
     assert.equal(await page.locator('#unsafe').count(), 0);
     const values = await page.locator('.project-information-section[open] dd').allTextContents();

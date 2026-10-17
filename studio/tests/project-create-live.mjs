@@ -18,7 +18,7 @@ try {
   for (const template of await templates.templates()) {
     const project = await templates.create({ templateId: template.id, name: template.id, parentDirectory: directory });
     await installProjectDependencies({ directory: project.directory, signal: controller.signal, log: chunk => { log += chunk; } });
-    const cli = path.join(project.directory, 'node_modules/@workflow-code/cli/dist/index.js');
+    const cli = path.join(project.directory, 'node_modules/@steamharness/cli/dist/index.js');
     const { stdout } = await promisify(execFile)(process.execPath, [cli, 'web', project.directory, '--inspect'], { timeout: 30_000, maxBuffer: 2 * 1024 * 1024 });
     const inspected = JSON.parse(stdout.trim());
     assert.deepEqual(inspected.errors, []); assert.equal(inspected.projects[0].id, project.id); assert.equal(inspected.projects[0].projectType, template.projectType);

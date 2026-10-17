@@ -6,18 +6,18 @@ import test from "node:test";
 test("alpha CI publishes immutable npm packages and propagates exact Core versions", async () => {
   const source = await readFile(path.resolve(import.meta.dirname, "../../.gitlab-ci.yml"), "utf8");
   assert.match(source, /workflow:\s*\n\s+auto_cancel:\s*\n\s+on_job_failure: all/u);
-  assert.match(source, /release:npm:alpha:[\s\S]*?npm-alpha-publish\.mjs workflow-code "\$ALPHA_VERSION" \.release\/alpha/u);
+  assert.match(source, /release:npm:alpha:[\s\S]*?npm-alpha-publish\.mjs steamharness "\$ALPHA_VERSION" \.release\/alpha/u);
   assert.match(source, /alpha-dependencies\.mjs --skip-ci[\s\S]*?cli\|package\.json\|devDependencies[\s\S]*?cli\|package\.json\|peerDependencies/u);
   assert.match(source, /snapshot:alpha:[\s\S]*?workspace-snapshot\.mjs --skip-ci --submodule core/u);
   assert.match(source, /retention:alpha:[\s\S]*?alpha-retention\.mjs --job-name release:npm:alpha --retain 3/u);
-  assert.match(source, /trigger:cli:alpha:[\s\S]*?needs:[\s\S]*?job: alpha:prepare[\s\S]*?artifacts: true[\s\S]*?job: retention:alpha[\s\S]*?WORKFLOW_ALPHA_CASCADE: "true"[\s\S]*?project: "\$CI_PROJECT_NAMESPACE\/cli"[\s\S]*?strategy: mirror/u);
-  assert.doesNotMatch(source, /trigger:cli:alpha:[\s\S]*?WORKFLOW_ALPHA_CHANGED:/u);
+  assert.match(source, /trigger:cli:alpha:[\s\S]*?needs:[\s\S]*?job: alpha:prepare[\s\S]*?artifacts: true[\s\S]*?job: retention:alpha[\s\S]*?STEAMHARNESS_ALPHA_CASCADE: "true"[\s\S]*?project: "\$CI_PROJECT_NAMESPACE\/cli"[\s\S]*?strategy: mirror/u);
+  assert.doesNotMatch(source, /trigger:cli:alpha:[\s\S]*?STEAMHARNESS_ALPHA_CHANGED:/u);
 });
 
 test("dev npm publication is explicit, immutable, and isolated from the alpha cascade", async () => {
   const source = await readFile(path.resolve(import.meta.dirname, "../../.gitlab-ci.yml"), "utf8");
-  assert.match(source, /dev:prepare:[\s\S]*?WORKFLOW_NPM_DEV_RELEASE == "true"[\s\S]*?--tag-prefix dev\/v --branch dev --env-prefix DEV --output \.dev\.env/u);
-  assert.match(source, /release:npm:dev:[\s\S]*?name: dev[\s\S]*?WORKFLOW_NPM_DEV_RELEASE == "true"[\s\S]*?npm-alpha-publish\.mjs workflow-code "\$DEV_VERSION" \.release\/dev dev/u);
+  assert.match(source, /dev:prepare:[\s\S]*?STEAMHARNESS_NPM_DEV_RELEASE == "true"[\s\S]*?--tag-prefix dev\/v --branch dev --env-prefix DEV --output \.dev\.env/u);
+  assert.match(source, /release:npm:dev:[\s\S]*?name: dev[\s\S]*?STEAMHARNESS_NPM_DEV_RELEASE == "true"[\s\S]*?npm-alpha-publish\.mjs steamharness "\$DEV_VERSION" \.release\/dev dev/u);
 });
 
 test("every npm publish is gated by the release gate before it can pack", async () => {
@@ -27,7 +27,7 @@ test("every npm publish is gated by the release gate before it can pack", async 
     const body = section.slice(0, section.indexOf("\n\n"));
     assert.match(
       body,
-      /release-gate\.mjs publisher --manifest package\.json --package workflow-code/u,
+      /release-gate\.mjs publisher --manifest package\.json --package steamharness/u,
       `${job} must run the publisher gate`,
     );
     // The gate must reject a bad version before anything is packed or pushed.

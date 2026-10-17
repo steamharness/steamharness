@@ -44,7 +44,7 @@ test("OpenAI host input is typed, rejects malformed OpenAI payloads, and ignores
 });
 
 test("local and workspace execution plus param resolution receive hostInput", async () => {
-  const cwd = await mkdtemp(path.join(os.tmpdir(), "workflow-code-openai-host-input-"));
+  const cwd = await mkdtemp(path.join(os.tmpdir(), "steamharness-openai-host-input-"));
   const workflowName = "openai-host-input";
   const workflowDir = path.join(cwd, "workspace", "workflow", workflowName);
   try {
@@ -54,7 +54,7 @@ test("local and workspace execution plus param resolution receive hostInput", as
       name: workflowName,
       version: "0.1.0",
       type: "module",
-      workflowCode: { projectInfo: { dataStorage: { mode: "local" } } },
+      steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
     }), "utf8");
     await writeFile(path.join(workflowDir, "index.ts"), `
       const openaiWorkflow = workflow.defineWorkflow({

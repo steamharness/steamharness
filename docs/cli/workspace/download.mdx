@@ -6,7 +6,7 @@ description: "下载项目与关联项目的精确源码版本。"
 # workspace download
 
 ```bash
-workflow-code workspace download <project> [--target draft|latest|version] [--path <dir>]
+steamharness workspace download <project> [--target draft|latest|version] [--path <dir>]
 ```
 
 默认下载 `latest`。所有操作系统使用同一源码契约，不需要平台参数。历史版本读取不可变快照；下载不会重新应用上传忽略规则，也不安装或运行代码。
@@ -36,5 +36,5 @@ Workflow、Conversation 和 Kanban 均可下载正式版本；项目类型不会
 - 单版本 tar.gz：`GET /api/workflows/{workflow}/source-archive?target=<version>`。
 
 ```bash
-workflow-code workspace download hello --target 1.2.0 --path ./hello-copy
+steamharness workspace download hello --target 1.2.0 --path ./hello-copy
 ```

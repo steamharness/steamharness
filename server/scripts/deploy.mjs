@@ -51,7 +51,7 @@ async function start() {
     env: {
       ...process.env,
       NODE_ENV: process.env.NODE_ENV ?? "production",
-      WORKFLOW_SERVER_DATA_DIR: process.env.WORKFLOW_SERVER_DATA_DIR ?? dataRoot,
+      STEAMHARNESS_SERVER_DATA_DIR: process.env.STEAMHARNESS_SERVER_DATA_DIR ?? dataRoot,
     },
     stdio: ["ignore", logFd, logFd],
   });
@@ -211,7 +211,7 @@ async function waitForHealth(pid, timeoutMs) {
 function readPort() {
   // Deploy/start scripts target the release port band even though
   // local dev keeps using the existing 712x defaults.
-  const raw = process.env.WORKFLOW_SERVER_PORT || process.env.PORT || "7130";
+  const raw = process.env.STEAMHARNESS_SERVER_PORT || process.env.PORT || "7130";
   const parsed = Number(raw);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 7130;
 }

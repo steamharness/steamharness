@@ -12,9 +12,9 @@ import {
   createWorkflowRelatedProjectsContext,
   createWorkflowToolPermissionContext,
   type WorkflowKVContext,
-} from "workflow-code";
-import { installWorkflowRuntimeGlobal } from "workflow-code/runtime-api";
-import type { WorkflowContext } from "workflow-code/types/context";
+} from "steamharness";
+import { installWorkflowRuntimeGlobal } from "steamharness/runtime-api";
+import type { WorkflowContext } from "steamharness/types/context";
 
 installWorkflowRuntimeGlobal();
 

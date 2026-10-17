@@ -13,12 +13,12 @@ import { desktopLocaleLaunch } from './desktop-localization.mjs';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const conversationSource = process.env.STUDIO_CARD_PROJECT_DIR
   ? await realpath(process.env.STUDIO_CARD_PROJECT_DIR) : path.join(root, 'examples/conversation');
-const core = await import(resolve('workflow-code', pathToFileURL(path.join(conversationSource, 'package.json')).href));
+const core = await import(resolve('steamharness', pathToFileURL(path.join(conversationSource, 'package.json')).href));
 const languages = process.env.STUDIO_CARD_LOCALE ? [process.env.STUDIO_CARD_LOCALE] : ['en', 'zh-cn'];
-const cli = process.env.STUDIO_CARD_CLI_DIR || await realpath(path.join(conversationSource, 'node_modules/@workflow-code/cli'));
+const cli = process.env.STUDIO_CARD_CLI_DIR || await realpath(path.join(conversationSource, 'node_modules/@steamharness/cli'));
 const cliVersion = JSON.parse(await readFile(path.join(cli, 'package.json'), 'utf8')).version;
 if (!process.env.STUDIO_CARD_CLI_DIR) {
-  assert.equal(cliVersion, JSON.parse(await readFile(path.join(conversationSource, 'package.json'), 'utf8')).devDependencies['@workflow-code/cli']);
+  assert.equal(cliVersion, JSON.parse(await readFile(path.join(conversationSource, 'package.json'), 'utf8')).devDependencies['@steamharness/cli']);
 }
 const proofDir = path.join(root, '.studio/resource-cards', process.env.STUDIO_CARD_PROJECT_DIR ? 'project' : 'examples');
 await mkdir(proofDir, { recursive: true });
@@ -39,9 +39,9 @@ for (const language of languages) {
     const original = type === 'conversation' ? conversationSource : path.join(root, 'examples', type), folder = path.join(directory, type);
     await cp(original, folder, { recursive: true, filter: entry => !path.relative(original, entry).split(path.sep).some(part =>
       ['node_modules', '.git', 'dist', 'tmp'].includes(part) || part === '.env' || part.startsWith('.env.')) });
-    await mkdir(path.join(folder, 'node_modules/@workflow-code'), { recursive: true });
-    await symlink(await realpath(path.join(original, 'node_modules/workflow-code')), path.join(folder, 'node_modules/workflow-code'), 'dir');
-    await symlink(cli, path.join(folder, 'node_modules/@workflow-code/cli'), 'dir');
+    await mkdir(path.join(folder, 'node_modules/@steamharness'), { recursive: true });
+    await symlink(await realpath(path.join(original, 'node_modules/steamharness')), path.join(folder, 'node_modules/steamharness'), 'dir');
+    await symlink(cli, path.join(folder, 'node_modules/@steamharness/cli'), 'dir');
     const manifest = JSON.parse(await readFile(path.join(folder, 'package.json'), 'utf8'));
     const data = path.join(storageDir, createHash('sha256').update(folder).digest('hex').slice(0, 24));
     const kv = core.createWorkflowKVContext({ projectId: manifest.id, store: core.createLocalWorkflowKVStore({ rootDir: path.join(data, 'kv') }) });
@@ -51,7 +51,7 @@ for (const language of languages) {
     projects.push({ folder, manifest, data, kv, document });
   }
   const [conversation, board] = projects;
-  const serverProjectId = conversation.manifest.workflowCode.projectInfo.relatedProjects?.find(project => project.alias === 'database')?.projectId ?? 'foreign-server-project';
+  const serverProjectId = conversation.manifest.steamHarness.projectInfo.relatedProjects?.find(project => project.alias === 'database')?.projectId ?? 'foreign-server-project';
   const serverDocumentId = 'delta-force-harmonica-speedrun-1';
   await conversation.kv.setValue('card.value', { enabled: true, count: 7 });
   await board.kv.setValue('studio-kanban:tasks', [{ id: 'preview-task', title: 'Saved map marker', description: 'Card preview evidence',
@@ -109,7 +109,7 @@ for (const language of languages) {
   const desktop = await desktopLocaleLaunch(language, directory);
   const child = spawn(desktop.executable, [...desktop.args, '--user-data-dir', dataDir, '--extensions-dir', path.join(root, '.studio/desktop-extensions'),
     `--locale=${language}`, '--disable-workspace-trust', '--disable-telemetry', '--skip-welcome', '--skip-release-notes', `--remote-debugging-port=${port}`, workspace],
-  { cwd: path.join(root, 'upstream/vscode'), env: { ...process.env, ...desktop.env, WORKFLOW_SERVER_URL: '', WORKFLOW_SERVER_ADMIN_KEY: '' }, stdio: ['ignore', log.fd, log.fd] });
+  { cwd: path.join(root, 'upstream/vscode'), env: { ...process.env, ...desktop.env, STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' }, stdio: ['ignore', log.fd, log.fd] });
   const exited = new Promise(resolve => { child.once('exit', resolve); child.once('error', resolve); });
   let browser, page;
   const proof = { language, cliVersion, projectId: conversation.manifest.id, serverProjectId, checks: [], screenshots: [], errors: [] };
@@ -186,7 +186,7 @@ for (const language of languages) {
     const account = await frameFor('#account-app'); await account.locator('#server-url').fill(serverUrl);
     await account.locator('#login-email').fill('cards@example.com'); await account.locator('#login-password').fill('offline-password'); await account.locator('#login-submit').click();
     await account.locator('#display-name').filter({ hasText: 'Card Test' }).waitFor();
-    await page.getByRole('tab', { name: conversation.manifest.workflowCode.projectInfo.localizedNames[language === 'en' ? 'en' : 'zh-CN'], exact: true }).click();
+    await page.getByRole('tab', { name: conversation.manifest.steamHarness.projectInfo.localizedNames[language === 'en' ? 'en' : 'zh-CN'], exact: true }).click();
     conversationFrame = await frameFor('body[data-surface=editor] #message');
     await card('server-doc').locator('[data-action=inline]').click();
     await card('server-doc').frameLocator('iframe').locator('.markdown h1').filter({ hasText: 'Shared server guide' }).waitFor();
@@ -237,7 +237,7 @@ for (const language of languages) {
     await boardFrame.frameLocator('#kanban-preview').locator('.task h3').filter({ hasText: 'Saved map marker' }).waitFor();
     assert.equal(await boardFrame.locator('#workflow-param-title').inputValue(), 'Saved map');
     proof.checks.push('wide and narrow themes preserve card layout; separate preview uses a real VS Code window; Open Project navigates to the target board with its saved configuration');
-    await page.getByRole('tab', { name: conversation.manifest.workflowCode.projectInfo.localizedNames[language === 'en' ? 'en' : 'zh-CN'], exact: true }).click();
+    await page.getByRole('tab', { name: conversation.manifest.steamHarness.projectInfo.localizedNames[language === 'en' ? 'en' : 'zh-CN'], exact: true }).click();
     conversationFrame = await frameFor('body[data-surface=editor] #message');
     const serverPreview = card('server-doc').frameLocator('.resource-inline > iframe');
     await serverPreview.locator('.markdown h1').filter({ hasText: 'Shared server guide' }).waitFor();

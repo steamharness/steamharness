@@ -29,7 +29,7 @@ export async function buildDocs(options = {}) {
     cp(path.join(root, "scripts", "serve-docs.mjs"), path.join(runtimeDir, "serve-docs.mjs")),
   ]);
 
-  const apiBaseUrl = normalizeApiBaseUrl(options.apiBaseUrl ?? process.env.WORKFLOW_DOCS_API_PUBLIC_BASE_URL);
+  const apiBaseUrl = normalizeApiBaseUrl(options.apiBaseUrl ?? process.env.STEAMHARNESS_DOCS_API_PUBLIC_BASE_URL);
   const commitSha = String(options.commitSha ?? process.env.CI_COMMIT_SHA ?? "").trim() || null;
   await writeFile(path.join(outputDir, "deployment.json"), `${JSON.stringify({
     schemaVersion: 1,

@@ -13,7 +13,7 @@ import { readCliAuthConfig, writeCliAuthConfig } from '../auth-config';
 import { parseHostConfiguration, parseHostConnection } from '../web/host-config';
 import type { WebHostConfiguration } from '../web/host-config';
 import type { WorkflowProject, WorkflowRuntime, WorkflowRun, WorkflowReport } from '../web/workflow-types';
-import { initI18n } from '@workflow-code/i18n';
+import { initI18n } from '@steamharness/i18n';
 import { t } from '../web/localization';
 
 const folders: string[] = [];
@@ -29,11 +29,11 @@ async function accountState(app: Awaited<ReturnType<typeof startWebServer>>, coo
 }
 
 async function fixture(host?: WebHostConfiguration, beforeStart?: () => Promise<void>, projectType: WorkflowProject['projectType'] = 'conversation') {
-  const directory = await mkdtemp(path.join(os.tmpdir(), 'workflow-web-')); folders.push(directory);
-  vi.stubEnv('WORKFLOW_CLI_AUTH_DIR', path.join(directory, 'auth')); vi.stubEnv('WORKFLOW_SERVER_URL', ''); vi.stubEnv('WORKFLOW_SERVER_ADMIN_KEY', '');
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'steamharness-web-')); folders.push(directory);
+  vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(directory, 'auth')); vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
   const project: WorkflowProject = { id: '364764e9-ef0e-4e86-9e56-77d0410e1723', uri: '', folderPath: directory, name: 'Test conversation', projectType, fields: [{ name: 'model', flag: '--model', type: 'string', panel: 'auxiliary' }], paramLayout: { actions: [{ kind: 'auxiliary', id: 'ai', label: 'AI', params: ['model'] }] }, paramResolver: { enabled: true }, entrypoints: [], tools: [{ name: 'read', enabled: true, autoApprove: false }] };
   if (projectType === 'kanban') {
-    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: project.id, workflowCode: { projectType } }));
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: project.id, steamHarness: { projectType } }));
   }
   let count = 0;
   const runtime: WorkflowRuntime = {
@@ -57,17 +57,17 @@ async function fixture(host?: WebHostConfiguration, beforeStart?: () => Promise<
   return { directory, project, runtime, app, cookie, post };
 }
 
-describe('workflow-code web', () => {
+describe('steamharness web', () => {
   it('removes deployment and credential environment values from project workers', () => {
     const environment = sanitizeWebWorkerEnvironment({
       PATH: '/bin',
       NODE_OPTIONS: '--require ./private-hook.mjs',
-      WORKFLOW_SERVER_ADMIN_KEY: 'project-admin',
-      WORKFLOW_AI_SERVER_ADMIN_KEY: 'ai-admin',
-      WORKFLOW_AI_UPSTREAM_API_KEY: 'provider-key',
-      WORKFLOW_STUDIO_INTERNAL: '1',
-      WORKFLOW_STUDIO_INTERNAL_MODULE: '/private/studio-internal/src/extension-layer.mjs',
-      WORKFLOW_STUDIO_INTERNAL_SERVER_URL: 'http://127.0.0.1:7127',
+      STEAMHARNESS_SERVER_ADMIN_KEY: 'project-admin',
+      STEAMHARNESS_AI_SERVER_ADMIN_KEY: 'ai-admin',
+      STEAMHARNESS_AI_UPSTREAM_API_KEY: 'provider-key',
+      STEAMHARNESS_STUDIO_INTERNAL: '1',
+      STEAMHARNESS_STUDIO_INTERNAL_MODULE: '/private/studio-internal/src/extension-layer.mjs',
+      STEAMHARNESS_STUDIO_INTERNAL_SERVER_URL: 'http://127.0.0.1:7127',
       SUB2API_JWT_SECRET: 'sub2api-secret',
       DATABASE_URL: 'postgres://private',
       GOOGLE_APPLICATION_CREDENTIALS: '/private/gcp.json',
@@ -77,9 +77,9 @@ describe('workflow-code web', () => {
       DOCKER_CONFIG: '/private/docker',
       KUBECONFIG: '/private/kubeconfig',
       SSH_AUTH_SOCK: '/private/ssh-agent.sock',
-      WORKFLOW_RUNTIME_LOCALE: 'zh-CN',
+      STEAMHARNESS_RUNTIME_LOCALE: 'zh-CN',
     });
-    expect(environment).toEqual({ PATH: '/bin', WORKFLOW_RUNTIME_LOCALE: 'zh-CN' });
+    expect(environment).toEqual({ PATH: '/bin', STEAMHARNESS_RUNTIME_LOCALE: 'zh-CN' });
   });
 
   it('routes Trace controls to an explicitly selected historical session and rejects a replaced owner', async () => {
@@ -269,8 +269,8 @@ describe('workflow-code web', () => {
     const saved = { serverUrl: 'https://workflow.test', apiKey: 'cached-cli-token', user: { userId: 'cached', email: 'cached@example.com', displayName: 'Cached user' } };
     const { app, cookie, post } = await fixture({ surface: 'editor' }, async () => {
       await writeCliAuthConfig(saved);
-      vi.stubEnv('WORKFLOW_SERVER_URL', source === 'environment' ? saved.serverUrl : undefined);
-      vi.stubEnv('WORKFLOW_SERVER_ADMIN_KEY', source === 'environment' ? 'environment-token' : undefined);
+      vi.stubEnv('STEAMHARNESS_SERVER_URL', source === 'environment' ? saved.serverUrl : undefined);
+      vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', source === 'environment' ? 'environment-token' : undefined);
     });
     expect(await accountState(app, cookie)).toMatchObject({ status: 'signed-out' });
     expect(await accountState(app, cookie)).not.toHaveProperty('user');
@@ -298,7 +298,7 @@ describe('workflow-code web', () => {
       return new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'cached', email: 'cached@example.com', displayName: 'Cached user' } } }));
     });
     const { app, cookie } = await fixture(undefined, async () => {
-      vi.stubEnv('WORKFLOW_SERVER_URL', undefined); vi.stubEnv('WORKFLOW_SERVER_ADMIN_KEY', undefined);
+      vi.stubEnv('STEAMHARNESS_SERVER_URL', undefined); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', undefined);
       await writeCliAuthConfig({ serverUrl: 'https://workflow.test', apiKey: 'cached-cli-token' });
     });
     expect(await accountState(app, cookie)).toMatchObject({ status: 'authenticated', user: { displayName: 'Cached user' } });
@@ -346,7 +346,7 @@ describe('workflow-code web', () => {
     });
     if (source === 'host') { await app.setHostConnection({ serverUrl: 'https://workflow.test', accessToken: 'current-token' }); }
     else {
-      vi.stubEnv('WORKFLOW_SERVER_URL', 'https://workflow.test'); vi.stubEnv('WORKFLOW_SERVER_ADMIN_KEY', 'current-token');
+      vi.stubEnv('STEAMHARNESS_SERVER_URL', 'https://workflow.test'); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', 'current-token');
       expect((await post({ type: 'verify' })).status).toBe(200);
     }
     const account = await accountState(app, cookie);
@@ -428,7 +428,7 @@ describe('workflow-code web', () => {
 
   it('keeps a newer injected identity when an earlier password login finishes', async () => {
     const { app, cookie, post } = await fixture();
-    vi.stubEnv('WORKFLOW_SERVER_URL', undefined); vi.stubEnv('WORKFLOW_SERVER_ADMIN_KEY', undefined);
+    vi.stubEnv('STEAMHARNESS_SERVER_URL', undefined); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', undefined);
     const realFetch = globalThis.fetch;
     let finishLogin!: (response: Response) => void;
     const profile = (userId: string) => ({ userId, email: `${userId}@example.com`, displayName: userId });
@@ -500,7 +500,7 @@ describe('workflow-code web', () => {
 
   it('shares web password login with the CLI, verifies it again and only publishes public account data', async () => {
     const { app, cookie, post } = await fixture();
-    vi.stubEnv('WORKFLOW_SERVER_URL', undefined); vi.stubEnv('WORKFLOW_SERVER_ADMIN_KEY', undefined);
+    vi.stubEnv('STEAMHARNESS_SERVER_URL', undefined); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', undefined);
     const realFetch = globalThis.fetch;
     const profile = { userId: 'test-user', email: 'test@example.com', displayName: 'Test User' };
     let checks = 0;
@@ -723,24 +723,24 @@ describe('workflow-code web', () => {
   });
 
   it('uses the Core resolved from the project and isolates development aliases', async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), 'workflow-web-runtime-')); folders.push(directory);
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'steamharness-web-runtime-')); folders.push(directory);
     await mkdir(path.join(directory, 'node_modules'));
-    const coreEntry = fileURLToPath(import.meta.resolve('workflow-code'));
+    const coreEntry = fileURLToPath(import.meta.resolve('steamharness'));
     let coreRoot = path.dirname(coreEntry);
     for (let depth = 0; depth < 8; depth++) {
-      try { if (JSON.parse(await readFile(path.join(coreRoot, 'package.json'), 'utf8')).name === 'workflow-code') { break; } } catch {}
+      try { if (JSON.parse(await readFile(path.join(coreRoot, 'package.json'), 'utf8')).name === 'steamharness') { break; } } catch {}
       coreRoot = path.dirname(coreRoot);
     }
-    await symlink(coreRoot, path.join(directory, 'node_modules/workflow-code'), process.platform === 'win32' ? 'junction' : 'dir');
+    await symlink(coreRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
     const coreVersion = JSON.parse(await readFile(path.join(coreRoot, 'package.json'), 'utf8')).version;
-    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: '364764e9-ef0e-4e86-9e56-77d0410e1723', name: 'project-runtime', type: 'module', devDependencies: { 'workflow-code': coreVersion }, workflowCode: { projectInfo: { dataStorage: { mode: 'local' } } } }));
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: '364764e9-ef0e-4e86-9e56-77d0410e1723', name: 'project-runtime', type: 'module', devDependencies: { 'steamharness': coreVersion }, steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } }));
     await writeFile(path.join(directory, 'index.ts'), `
       const flow = workflow.defineWorkflow({ name: 'test', run() { return {
         errCode: 0, errMessage: '', text: 'project runtime',
-        llmServer: process.env.WORKFLOW_AI_SERVER_URL,
-        llmToken: process.env.WORKFLOW_AI_API_KEY,
-        llmLoginIsCurrent: process.env.WORKFLOW_AI_API_KEY === process.env.WORKFLOW_SERVER_ADMIN_KEY,
-        assistantEnvironmentEmpty: !process.env.WORKFLOW_DEVELOPER_ASSISTANT_HOST && !process.env.WORKFLOW_DEVELOPER_ASSISTANT_WORKDIR && !process.env.WORKFLOW_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST
+        llmServer: process.env.STEAMHARNESS_AI_SERVER_URL,
+        llmToken: process.env.STEAMHARNESS_AI_API_KEY,
+        llmLoginIsCurrent: process.env.STEAMHARNESS_AI_API_KEY === process.env.STEAMHARNESS_SERVER_ADMIN_KEY,
+        assistantEnvironmentEmpty: !process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_HOST && !process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR && !process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST
       }; } });
       export const executor = workflow.defineExecutor({
         projectType: 'conversation', workflow: flow,
@@ -766,12 +766,12 @@ describe('workflow-code web', () => {
       });
     `);
     vi.stubEnv('TSX_TSCONFIG_PATH', path.join(directory, 'missing.json'));
-    vi.stubEnv('WORKFLOW_LOCAL_CORE_ROOT', '/missing/core');
-    vi.stubEnv('WORKFLOW_AI_SERVER_URL', 'https://old-account.test');
-    vi.stubEnv('WORKFLOW_AI_API_KEY', 'old-account-token');
-    vi.stubEnv('WORKFLOW_DEVELOPER_ASSISTANT_HOST', 'vscode');
-    vi.stubEnv('WORKFLOW_DEVELOPER_ASSISTANT_WORKDIR', '/old-workspace');
-    vi.stubEnv('WORKFLOW_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST', '/old-workspace/workspace.json');
+    vi.stubEnv('STEAMHARNESS_LOCAL_CORE_ROOT', '/missing/core');
+    vi.stubEnv('STEAMHARNESS_AI_SERVER_URL', 'https://old-account.test');
+    vi.stubEnv('STEAMHARNESS_AI_API_KEY', 'old-account-token');
+    vi.stubEnv('STEAMHARNESS_DEVELOPER_ASSISTANT_HOST', 'vscode');
+    vi.stubEnv('STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR', '/old-workspace');
+    vi.stubEnv('STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST', '/old-workspace/workspace.json');
     let activeConnection: { serverUrl: string; accessToken: string; aiServerUrl?: string; aiAccessToken?: string } | undefined;
     const runtime = createWebRuntime(directory, path.join(directory, 'data'), () => activeConnection);
     try {
@@ -817,14 +817,14 @@ describe('workflow-code web', () => {
   }, 30_000);
 
   it('accepts delayed pipe chunks, large uploads and split UTF-8 filenames', async () => {
-    const directory = await mkdtemp(path.join(os.tmpdir(), 'workflow-web-pipe-')); folders.push(directory);
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'steamharness-web-pipe-')); folders.push(directory);
     await mkdir(path.join(directory, 'node_modules'));
-    let coreRoot = path.dirname(fileURLToPath(import.meta.resolve('workflow-code')));
+    let coreRoot = path.dirname(fileURLToPath(import.meta.resolve('steamharness')));
     for (let depth = 0; depth < 8; depth++) {
-      try { if (JSON.parse(await readFile(path.join(coreRoot, 'package.json'), 'utf8')).name === 'workflow-code') { break; } } catch {}
+      try { if (JSON.parse(await readFile(path.join(coreRoot, 'package.json'), 'utf8')).name === 'steamharness') { break; } } catch {}
       coreRoot = path.dirname(coreRoot);
     }
-    await symlink(coreRoot, path.join(directory, 'node_modules/workflow-code'), process.platform === 'win32' ? 'junction' : 'dir');
+    await symlink(coreRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
     await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module' }));
     const filename = '\u6587\u4ef6.txt';
     const content = Buffer.alloc(256 * 1024, 'x');
@@ -842,7 +842,7 @@ describe('workflow-code web', () => {
     try {
       child.stdin.write(request.subarray(0, split));
       expect(await closed, stderr || stdout).toBe(0);
-      const response = JSON.parse(stdout.split('\n').find(line => line.startsWith('__WORKFLOW_WEB__'))!.slice('__WORKFLOW_WEB__'.length));
+      const response = JSON.parse(stdout.split('\n').find(line => line.startsWith('__STEAMHARNESS_WEB__'))!.slice('__STEAMHARNESS_WEB__'.length));
       expect(response.kind).toBe('result'); expect(response.value[0].name).toBe(filename);
       expect(await readFile(response.value[0].path)).toEqual(content);
     } finally { clearTimeout(remainder); if (child.exitCode === null) { child.kill('SIGKILL'); await closed; } }

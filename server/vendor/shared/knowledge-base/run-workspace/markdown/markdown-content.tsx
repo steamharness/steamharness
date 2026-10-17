@@ -32,7 +32,7 @@ import { ImagePreviewDialog } from "../ui/attachment";
 import { joinClassNames, resolveRwiClassName, rwiClass, rwiOutputItemStatusClass } from "../styles";
 import { formatRunStatusLabel } from "../utils/labels";
 import { chainWheelAtVerticalBoundary } from "../utils/scroll-chain";
-import { useTranslation } from "@workflow-code/i18n/react";
+import { useTranslation } from "@steamharness/i18n/react";
 
 type MarkdownSegment =
   | { type: "markdown"; content: string }

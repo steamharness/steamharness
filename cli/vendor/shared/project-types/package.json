@@ -1,5 +1,5 @@
 {
-  "name": "@workflow-code/project-types",
+  "name": "@steamharness/project-types",
   "version": "0.1.0",
   "private": true,
   "type": "module",

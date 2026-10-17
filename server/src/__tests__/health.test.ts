@@ -233,10 +233,10 @@ test("health payload falls back to local manifests when release metadata is abse
   try {
     const serverRoot = path.join(tempRoot, "server");
     await mkdir(path.join(serverRoot, "web"), { recursive: true });
-    await mkdir(path.join(serverRoot, "node_modules", "workflow-code"), { recursive: true });
+    await mkdir(path.join(serverRoot, "node_modules", "steamharness"), { recursive: true });
     await writeFile(path.join(serverRoot, "package.json"), JSON.stringify({ version: "0.3.0" }), "utf8");
     await writeFile(path.join(serverRoot, "web", "package.json"), JSON.stringify({ version: "0.3.1" }), "utf8");
-    await writeFile(path.join(serverRoot, "node_modules", "workflow-code", "package.json"), JSON.stringify({ version: "0.2.4" }), "utf8");
+    await writeFile(path.join(serverRoot, "node_modules", "steamharness", "package.json"), JSON.stringify({ version: "0.2.4" }), "utf8");
 
     const health = await createWorkflowServerHealthData({
       mode: "development",

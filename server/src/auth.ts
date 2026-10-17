@@ -7,7 +7,7 @@ import { fail, HttpError } from "./protocol";
 import { getRequestT, localizeHttpErrorMessage, localizeServerMessage } from "./i18n";
 import type { WorkflowObjectStorage } from "./object-storage";
 
-export const WORKFLOW_AUTH_COOKIE = "workflow_auth_session";
+export const STEAMHARNESS_AUTH_COOKIE = "steamharness_auth_session";
 export type { AuthenticatedPrincipal } from "./account-auth";
 
 export interface WorkflowAuthContext {
@@ -104,7 +104,7 @@ export async function readRequestPrincipal(req: Request): Promise<AuthenticatedP
   }
   const authService = authContext.authService;
   if (!authService) {
-    const cookieValue = parseCookieHeader(req.headers.cookie)[WORKFLOW_AUTH_COOKIE];
+    const cookieValue = parseCookieHeader(req.headers.cookie)[STEAMHARNESS_AUTH_COOKIE];
     if (cookieValue) {
       const parsed = readCookieSession(cookieValue);
       if (parsed?.kind === "admin_key") {
@@ -174,13 +174,13 @@ export function writeAdminKeySessionCookie(res: Response): void {
     return;
   }
   const encoded = encodeCookieSession({ kind: "admin_key" });
-  res.append("Set-Cookie", `${WORKFLOW_AUTH_COOKIE}=${encoded}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 30}`);
+  res.append("Set-Cookie", `${STEAMHARNESS_AUTH_COOKIE}=${encoded}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 30}`);
 }
 
 export function clearAuthSessionCookie(res: Response): void {
   authContext.authService?.clearAuthCookie(res);
   if (!authContext.authService) {
-    res.append("Set-Cookie", `${WORKFLOW_AUTH_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+    res.append("Set-Cookie", `${STEAMHARNESS_AUTH_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
   }
 }
 

@@ -1,6 +1,6 @@
 import { t } from './localization';
 import { isDeepStrictEqual } from 'node:util';
-import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot } from 'workflow-code/agent';
+import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot } from 'steamharness/agent';
 import {
   applyOutputChunk, outputText, validateWorkflowValues, workflowParameters, workflowParamArgs, resolvedWorkflowValues, workflowFormValue, sessionRunning,
   type ConversationSession, type ConversationMessage, type ConversationQueuedInput, type ConversationDraftUpdate, type WorkflowAttachment,
@@ -282,7 +282,7 @@ export class ConversationController {
         if (event.type === 'agent_command_failed') {
           const id = String(event.requestId);
           const target = event.targetId ?? entry.agent?.conversationId;
-          if (!['AGENT_NOT_READY', 'WORKFLOW_WORKER_INTERRUPTED'].includes(String(event.code))) {
+          if (!['AGENT_NOT_READY', 'STEAMHARNESS_WORKER_INTERRUPTED'].includes(String(event.code))) {
             for (const session of this.sessions.filter(session => (session.agentOwnerId ?? session.id) === entry.id)) session.agentCommands = session.agentCommands?.filter(item => item.command.requestId !== id || (item.command.targetId ?? entry.agent?.conversationId) !== target);
           }
           for (const [key, waiter] of this.agentWaiters) if (waiter.ownerId === entry.id && waiter.requestId === id && (waiter.targetId ?? entry.agent?.conversationId) === target) {
@@ -335,7 +335,7 @@ export class ConversationController {
       if (!answer.content && !answer.items?.length && report.status === 'success') { answer.content = report.result?.data === undefined ? t("Completed") : JSON.stringify(report.result.data, null, 2); }
     } catch (error) {
       const interrupted = this.project.conversation?.recovery?.enabled && !task.cancelled
-        && (this.disposed || (error as { code?: string }).code === 'WORKFLOW_WORKER_INTERRUPTED');
+        && (this.disposed || (error as { code?: string }).code === 'STEAMHARNESS_WORKER_INTERRUPTED');
       if (interrupted) {
         answer.recoveryAttempts = (answer.recoveryAttempts ?? 0) + (this.disposed ? 0 : 1);
         restart = !this.disposed && answer.recoveryAttempts <= 3;
@@ -367,7 +367,7 @@ export class ConversationController {
         } catch (error) { answer.error = String(error); this.options.log(`Workflow cancellation: ${String(error)}`); }
       }
       if (entry.activeRunId === answer.runId) { delete entry.activeRunId; }
-      if (!restart) this.rejectAgentWaiters(entry.id, Object.assign(new Error('The agent owner disconnected.'), { code: 'WORKFLOW_WORKER_INTERRUPTED' }));
+      if (!restart) this.rejectAgentWaiters(entry.id, Object.assign(new Error('The agent owner disconnected.'), { code: 'STEAMHARNESS_WORKER_INTERRUPTED' }));
       this.changed();
       try { await this.persist(); }
       finally { if (this.tasks.get(answer.runId!) === task) this.tasks.delete(answer.runId!); }
@@ -512,7 +512,7 @@ export class ConversationController {
       }
       this.changed(); await this.persist(); return receipt;
     } catch (error) {
-      if (!['WORKFLOW_WORKER_INTERRUPTED', 'AGENT_NOT_READY', 'AGENT_COMMAND_TIMEOUT'].includes((error as { code?: string }).code ?? '')) {
+      if (!['STEAMHARNESS_WORKER_INTERRUPTED', 'AGENT_NOT_READY', 'AGENT_COMMAND_TIMEOUT'].includes((error as { code?: string }).code ?? '')) {
         entry.agentCommands = entry.agentCommands?.filter(item => item.command.requestId !== command.requestId);
         await this.persist();
       }
@@ -672,7 +672,7 @@ export class ConversationController {
     for (const timer of this.agentSaves.values()) clearTimeout(timer);
     this.agentSaves.clear();
     void this.persist().catch(error => this.options.log(String(error)));
-    for (const owner of this.sessions.filter(session => !session.agentOwnerId)) this.rejectAgentWaiters(owner.id, Object.assign(new Error('The agent host closed.'), { code: 'WORKFLOW_WORKER_INTERRUPTED' }));
+    for (const owner of this.sessions.filter(session => !session.agentOwnerId)) this.rejectAgentWaiters(owner.id, Object.assign(new Error('The agent host closed.'), { code: 'STEAMHARNESS_WORKER_INTERRUPTED' }));
     if (!this.project.conversation?.recovery?.enabled) for (const entry of this.sessions) void this.stop(entry).catch(error => this.options.log(String(error)));
   }
 }

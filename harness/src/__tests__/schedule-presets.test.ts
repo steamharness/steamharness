@@ -102,7 +102,7 @@ test("Conversation and Kanban projects reject schedule presets", async () => {
       id: "schedule-kanban",
       name: "Schedule Kanban",
       version: "0.1.0",
-      workflowCode: {
+      steamHarness: {
         projectType: "kanban",
         schedulePresets: [],
         kanban: { artifactDir: "dist", entry: "index.html" },
@@ -124,7 +124,7 @@ test("Conversation and Kanban projects reject schedule presets", async () => {
 
 async function createScriptProject(
   projectType: "workflow" | "conversation",
-  workflowCode: Record<string, unknown>,
+  steamHarness: Record<string, unknown>,
 ): Promise<string> {
   const workflowDir = await mkdtemp(path.join(os.tmpdir(), "workflow-schedule-project-"));
   await Promise.all([
@@ -132,7 +132,7 @@ async function createScriptProject(
       name: "schedule-project",
       version: "0.1.0",
       type: "module",
-      workflowCode,
+      steamHarness,
     })),
     writeFile(path.join(workflowDir, "index.ts"), projectType === "workflow" ? `
       const main = workflow.defineWorkflow({

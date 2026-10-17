@@ -6,8 +6,8 @@ export const HOST_CONFIGURATION_MCP_TOOL_NAME = "host_project_configuration";
 export const HOST_CONFIGURATION_MCP_TOOL_ID =
   `${HOST_CONFIGURATION_MCP_SERVER_ID}_${HOST_CONFIGURATION_MCP_TOOL_NAME}`;
 
-const HOST_BRIDGE_URL_ENV = "WORKFLOW_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL";
-const HOST_BRIDGE_TOKEN_ENV = "WORKFLOW_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN";
+const HOST_BRIDGE_URL_ENV = "STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL";
+const HOST_BRIDGE_TOKEN_ENV = "STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN";
 const HOST_BRIDGE_TIMEOUT_MS = 15_000;
 const MAX_IDENTIFIER_CHARS = 200;
 
@@ -161,7 +161,7 @@ export const HOST_CONFIGURATION_CAPABILITY: WorkflowCapability = {
   toolId: HOST_CONFIGURATION_MCP_TOOL_ID,
   title: "Host project configuration",
   description: [
-    "Create, read, update, or delete Workflow Code host-managed named configurations for the current Kanban project.",
+    "Create, read, update, or delete SteamHarness host-managed named configurations for the current Kanban project.",
     "Use get before mutations. Update selects by id, exact name, or the active configuration; delete requires an explicit id or exact name.",
     "Create accepts an optional name and partial initial values. Update accepts a new name and/or partial values.",
     "Values use native strings, finite numbers, booleans, or string arrays. File parameters cannot be changed. This does not edit kanban.json.",

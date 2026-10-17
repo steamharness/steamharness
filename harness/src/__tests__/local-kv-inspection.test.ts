@@ -17,7 +17,7 @@ import {
 } from "../index";
 
 test("local KV inspection returns paged summaries without embedding values", async () => {
-  const rootDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-local-kv-inspection-"));
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-local-kv-inspection-"));
   const store = createLocalWorkflowKVStore({ rootDir });
   const largeValue = "x".repeat(2_048);
 
@@ -143,7 +143,7 @@ test("local KV inspection returns paged summaries without embedding values", asy
 });
 
 test("local PersistentValue contexts and inspection keep encoded path segments inside their root", async () => {
-  const rootDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-local-persistent-context-"));
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-local-persistent-context-"));
 
   try {
     const persistentValue = createLocalWorkflowPersistentValueContext({
@@ -185,7 +185,7 @@ test("local PersistentValue contexts and inspection keep encoded path segments i
 });
 
 test("local KV initializes the new format by clearing only known legacy data", async () => {
-  const rootDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-local-kv-index-"));
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-local-kv-index-"));
   const legacyEntries = ["global", "workflow", "project", "conversation", ".inspection", ".transactions", ".locks"];
   const retainedPath = path.join(rootDir, "keep.txt");
 
@@ -218,7 +218,7 @@ test("local KV initializes the new format by clearing only known legacy data", a
 });
 
 test("local KV serializes updates from concurrent processes and leaves matching summary metadata", async () => {
-  const rootDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-local-kv-lock-"));
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-local-kv-lock-"));
   const store = createLocalWorkflowKVStore({ rootDir });
 
   try {
@@ -253,7 +253,7 @@ test("local KV serializes updates from concurrent processes and leaves matching 
 });
 
 test("local KV summary index retains distinct concurrent process writes", async () => {
-  const rootDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-local-kv-index-lock-"));
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-local-kv-index-lock-"));
   const keys = Array.from({ length: 8 }, (_, index) => `entry-${index}`);
 
   try {
@@ -272,7 +272,7 @@ test("local KV summary index retains distinct concurrent process writes", async 
 });
 
 test("local KV getValue replays its matching namespace journal before reading", async () => {
-  const rootDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-local-kv-read-recovery-"));
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-local-kv-read-recovery-"));
   const store = createLocalWorkflowKVStore({ rootDir });
   const input = { storageKind: "kv" as const, scope: "project" as const, projectId: "demo", key: "recovered" };
   const journalPath = path.join(rootDir, ".transactions", "crashed-read.json");
@@ -294,7 +294,7 @@ test("local KV getValue replays its matching namespace journal before reading", 
 });
 
 test("local PersistentValue replays a complete namespace transaction journal before a first knowledge mutation", async () => {
-  const rootDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-local-kv-transaction-recovery-"));
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-local-kv-transaction-recovery-"));
   const store = createLocalWorkflowKVStore({ rootDir, storageKind: "persistent_value" });
   const projectId = "demo";
   const source = { projectId, runId: "recovered-run" };
@@ -492,7 +492,7 @@ test("local PersistentValue replays a complete namespace transaction journal bef
 });
 
 test("local PersistentValue namespace mutations recover their journal before writing", async () => {
-  const rootDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-local-kv-nested-recovery-"));
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-local-kv-nested-recovery-"));
   const store = createLocalWorkflowKVStore({ rootDir, storageKind: "persistent_value" });
   const targetProjectId = "target";
   const recoveredDocument = {
@@ -583,8 +583,8 @@ test("local PersistentValue namespace mutations recover their journal before wri
 function runConcurrentKVUpdateWorker(rootDir: string): Promise<void> {
   const coreEntryUrl = pathToFileURL(path.resolve(import.meta.dirname, "../index.ts")).href;
   const script = [
-    "const { createLocalWorkflowKVStore } = await import(process.env.WORKFLOW_CODE_CORE_ENTRY_URL);",
-    "const store = createLocalWorkflowKVStore({ rootDir: process.env.WORKFLOW_CODE_KV_ROOT });",
+    "const { createLocalWorkflowKVStore } = await import(process.env.STEAMHARNESS_CORE_ENTRY_URL);",
+    "const store = createLocalWorkflowKVStore({ rootDir: process.env.STEAMHARNESS_KV_ROOT });",
     "await store.updateValue({ storageKind: 'kv', scope: 'project', projectId: 'demo', key: 'counter' }, (current) => {",
     "  const until = Date.now() + 25;",
     "  while (Date.now() < until) {}",
@@ -604,8 +604,8 @@ function runConcurrentKVUpdateWorker(rootDir: string): Promise<void> {
       cwd: process.cwd(),
       env: {
         ...process.env,
-        WORKFLOW_CODE_CORE_ENTRY_URL: coreEntryUrl,
-        WORKFLOW_CODE_KV_ROOT: rootDir,
+        STEAMHARNESS_CORE_ENTRY_URL: coreEntryUrl,
+        STEAMHARNESS_KV_ROOT: rootDir,
       },
       stdio: ["ignore", "ignore", "pipe"],
     });
@@ -625,13 +625,13 @@ function runConcurrentKVUpdateWorker(rootDir: string): Promise<void> {
 function runConcurrentKVSetWorker(rootDir: string, key: string): Promise<void> {
   const coreEntryUrl = pathToFileURL(path.resolve(import.meta.dirname, "../index.ts")).href;
   const script = [
-    "const { createLocalWorkflowKVStore } = await import(process.env.WORKFLOW_CODE_CORE_ENTRY_URL);",
-    "const store = createLocalWorkflowKVStore({ rootDir: process.env.WORKFLOW_CODE_KV_ROOT });",
+    "const { createLocalWorkflowKVStore } = await import(process.env.STEAMHARNESS_CORE_ENTRY_URL);",
+    "const store = createLocalWorkflowKVStore({ rootDir: process.env.STEAMHARNESS_KV_ROOT });",
     "await store.setValue({",
     "  storageKind: 'kv', scope: 'project',",
     "  projectId: 'demo',",
-    "  key: process.env.WORKFLOW_CODE_KV_KEY,",
-    "  value: { key: process.env.WORKFLOW_CODE_KV_KEY },",
+    "  key: process.env.STEAMHARNESS_KV_KEY,",
+    "  value: { key: process.env.STEAMHARNESS_KV_KEY },",
     "});",
   ].join("\n");
 
@@ -647,9 +647,9 @@ function runConcurrentKVSetWorker(rootDir: string, key: string): Promise<void> {
       cwd: process.cwd(),
       env: {
         ...process.env,
-        WORKFLOW_CODE_CORE_ENTRY_URL: coreEntryUrl,
-        WORKFLOW_CODE_KV_ROOT: rootDir,
-        WORKFLOW_CODE_KV_KEY: key,
+        STEAMHARNESS_CORE_ENTRY_URL: coreEntryUrl,
+        STEAMHARNESS_KV_ROOT: rootDir,
+        STEAMHARNESS_KV_KEY: key,
       },
       stdio: ["ignore", "ignore", "pipe"],
     });

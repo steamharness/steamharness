@@ -31,13 +31,13 @@ test("workflow generator reads standalone Core and CLI versions", async () => {
     const core = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
     const workspace = JSON.parse(await readFile(path.join(root, "workspace", "package.json"), "utf8"));
 
-    assert.equal(generated.devDependencies["workflow-code"], core.version);
+    assert.equal(generated.devDependencies["steamharness"], core.version);
     assert.equal(
-      generated.devDependencies["@workflow-code/cli"],
-      workspace.devDependencies["@workflow-code/cli"],
+      generated.devDependencies["@steamharness/cli"],
+      workspace.devDependencies["@steamharness/cli"],
     );
-    assert.equal(generated.workflowCode.projectInfo.dataStorage.mode, "both");
-    assert.deepEqual(generated.workflowCode.projectInfo.relatedProjects, []);
+    assert.equal(generated.steamHarness.projectInfo.dataStorage.mode, "both");
+    assert.deepEqual(generated.steamHarness.projectInfo.relatedProjects, []);
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }

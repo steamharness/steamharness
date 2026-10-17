@@ -86,11 +86,11 @@ body {
 }
 
 html[lang="en"] .navbar__logo img {
-  content: url("/brand/workflow-code-docs-logo-en.svg");
+  content: url("/brand/steamharness-docs-logo-en.svg");
 }
 
 html[lang="en"][data-theme="dark"] .navbar__logo img {
-  content: url("/brand/workflow-code-docs-logo-en-dark.svg");
+  content: url("/brand/steamharness-docs-logo-en-dark.svg");
 }
 
 .navbar__item {

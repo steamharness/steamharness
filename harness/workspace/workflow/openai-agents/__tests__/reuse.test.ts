@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { installWorkflowRuntimeGlobal } from "workflow-code/runtime-api";
+import { installWorkflowRuntimeGlobal } from "steamharness/runtime-api";
 import {
   createDisabledWorkflowTokenUsageContext,
   createWorkflowRelatedProjectsContext,
@@ -7,14 +7,14 @@ import {
   createWorkflowTokenUsageContext,
   createWorkflowConversationContext,
   type WorkflowKVContext,
-} from "workflow-code";
+} from "steamharness";
 import type {
   AgentFact,
   AgentToolCallSummary,
   ConversationSnapshot,
   OpenAIAgentsRunInput,
 } from "../interface";
-import type { NodeExecutionHookChunkEvent, WorkflowContext } from "workflow-code/types/context";
+import type { NodeExecutionHookChunkEvent, WorkflowContext } from "steamharness/types/context";
 import { tool } from "@openai/agents";
 import { z } from "zod";
 
@@ -1040,7 +1040,7 @@ function createRunInput(overrides: Partial<OpenAIAgentsRunInput> = {}): OpenAIAg
     model: "gpt-5.4",
     workdir: ".",
     localShell: false,
-    agentName: "workflow-code-openai-agents",
+    agentName: "steamharness-openai-agents",
     instructions: [],
     defaultTools: true,
     memoryTools: true,

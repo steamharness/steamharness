@@ -1,5 +1,5 @@
 {
   "id": "0fe11efe-0087-4a50-bde2-da3995a65f5e",
   "name": "Studio Parameter Fixture",
-  "workflowCode": { "projectInfo": { "dataStorage": { "mode": "both" } } }
+  "steamHarness": { "projectInfo": { "dataStorage": { "mode": "both" } } }
 }

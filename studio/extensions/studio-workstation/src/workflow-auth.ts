@@ -3,7 +3,7 @@ import { localizationHtml } from './localization-host';
 import * as vscode from 'vscode';
 import { registerWorkflowConnectionStatus } from './workflow-connection-status';
 import {
-  DEFAULT_WORKFLOW_SERVER_URL, WorkflowAccount,
+  DEFAULT_STEAMHARNESS_SERVER_URL, WorkflowAccount,
   type WorkflowAccountState, type WorkflowConnection,
 } from './workflow-auth-client';
 
@@ -81,7 +81,7 @@ export class WorkflowAccountController implements vscode.Disposable {
   }
 
   private configuredServer(): string {
-    return vscode.workspace.getConfiguration('studio').get<string>('workflow.serverUrl') || DEFAULT_WORKFLOW_SERVER_URL;
+    return vscode.workspace.getConfiguration('studio').get<string>('workflow.serverUrl') || DEFAULT_STEAMHARNESS_SERVER_URL;
   }
 
   private authenticationSession(): vscode.AuthenticationSession | undefined {

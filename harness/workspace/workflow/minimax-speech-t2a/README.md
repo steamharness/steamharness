@@ -33,22 +33,22 @@ fixture.
 Inspect structure:
 
 ```bash
-workflow-code structure .
+steamharness structure .
 ```
 
 Offline dry-run:
 
 ```bash
-workflow-code json . -- \
+steamharness json . -- \
   --dry-run \
   --format wav \
-  --text "你好，workflow-code 正在合成一段测试语音。"
+  --text "你好，steamharness 正在合成一段测试语音。"
 ```
 
 Live MiniMax call:
 
 ```bash
-workflow-code json . -- \
+steamharness json . -- \
   --text "你好，MiniMax 正在通过 WebSocket 合成语音。" \
   --model speech-2.8-turbo \
   --voice-id male-qn-qingse \

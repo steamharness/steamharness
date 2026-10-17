@@ -10,8 +10,8 @@ const require = createRequire(import.meta.url);
 export async function buildWorkflowRuntime(directory) {
   const source = await resolveWorkflowSource();
   const useSource = await exists(path.join(source, 'core/dist/index.js')) && await exists(path.join(source, 'cli/dist/index.js'));
-  const coreEntry = useSource ? path.join(source, 'core/dist/index.js') : fileURLToPath(import.meta.resolve('workflow-code'));
-  const cliDirectory = useSource ? path.join(source, 'cli') : path.dirname(require.resolve('@workflow-code/cli/package.json'));
+  const coreEntry = useSource ? path.join(source, 'core/dist/index.js') : fileURLToPath(import.meta.resolve('steamharness'));
+  const cliDirectory = useSource ? path.join(source, 'cli') : path.dirname(require.resolve('@steamharness/cli/package.json'));
   const coreManifest = JSON.parse(await fs.readFile(path.resolve(coreEntry, '../../package.json'), 'utf8'));
   const cliManifest = JSON.parse(await fs.readFile(path.join(cliDirectory, 'package.json'), 'utf8'));
   const runtime = path.join(directory, 'dist/runtime');
@@ -26,10 +26,10 @@ export async function buildWorkflowRuntime(directory) {
   // Preserve CLI module boundaries: several modules have their own entry guards.
   await fs.cp(path.join(cliDirectory, 'dist'), path.join(runtime, 'cli/dist'), { recursive: true });
   await fs.copyFile(path.join(cliDirectory, 'dist/index.js'), path.join(runtime, 'cli/dist/index.mjs'));
-  const cliCore = path.join(runtime, 'cli/node_modules/workflow-code');
+  const cliCore = path.join(runtime, 'cli/node_modules/steamharness');
   await fs.mkdir(cliCore, { recursive: true });
   await fs.writeFile(path.join(cliCore, 'package.json'), JSON.stringify({
-    name: 'workflow-code', version: coreManifest.version, type: 'module',
+    name: 'steamharness', version: coreManifest.version, type: 'module',
     exports: { '.': './index.mjs', './runtime-api': './index.mjs' },
   }, null, 2) + '\n');
   await fs.writeFile(path.join(cliCore, 'index.mjs'), 'export * from "../../../core.mjs";\n');
@@ -50,7 +50,7 @@ export async function buildWorkflowRuntime(directory) {
   await fs.cp(path.join(assistantSource, 'skills'), path.join(assistant, 'skills'), { recursive: true });
   await fs.writeFile(path.join(runtime, 'cli/package.json'), JSON.stringify(cliManifest, null, 2) + '\n');
   await fs.writeFile(path.join(runtime, 'tsconfig.json'), JSON.stringify({
-    compilerOptions: { baseUrl: '.', paths: { 'workflow-code': ['./core.mjs'] } },
+    compilerOptions: { baseUrl: '.', paths: { 'steamharness': ['./core.mjs'] } },
   }, null, 2) + '\n');
   await fs.writeFile(path.join(runtime, 'versions.json'), JSON.stringify({
     core: coreManifest.version, cli: cliManifest.version, source: useSource ? source : 'npm', assistant: 'vendor/developer-assistant',

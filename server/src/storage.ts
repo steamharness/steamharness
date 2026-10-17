@@ -4,9 +4,9 @@ import { cp, lstat, mkdir, open, readFile, readdir, realpath, rename, rm, stat, 
 import path from "node:path";
 import { create as createTar, extract as extractTar, list as listTar, type ReadEntry } from "tar";
 import { Open as openZip } from "unzipper";
-import { copyWorkflowUploadFiles } from "@workflow-code/project-upload/node";
-import { createWorkflowUploadPortablePathKey } from "@workflow-code/project-upload";
-import { createKnowledgeDocument, createWorkflowKVContext, createWorkflowPersistentValueContext, createWorkflowRelatedProjectsContext, deleteKnowledgeDocument, editKnowledgeDocument, getKnowledgeDocument, isWorkflowProjectType, listKnowledgeDocumentPage, searchKnowledgeDocuments, readKnowledgeDocumentLines, WorkflowError, type WorkflowKVScope, type WorkflowKVStore, type WorkflowKVStoreGetInput, type WorkflowKVWriteSource, type WorkflowStorageKind, type WorkflowProjectType, type WorkflowStorageLocationContext, type WorkflowKnowledgeDocument, type WorkflowKnowledgeDocumentSummary, type WorkflowKnowledgeSearchResult, type WorkflowKnowledgeDocumentLinesResult, type WorkflowTokenUsageAggregate, type WorkflowTokenUsageEntry, describeKnowledgeMutationKeys, isKnowledgeDocumentStorageKey } from "workflow-code";
+import { copyWorkflowUploadFiles } from "@steamharness/project-upload/node";
+import { createWorkflowUploadPortablePathKey } from "@steamharness/project-upload";
+import { createKnowledgeDocument, createWorkflowKVContext, createWorkflowPersistentValueContext, createWorkflowRelatedProjectsContext, deleteKnowledgeDocument, editKnowledgeDocument, getKnowledgeDocument, isWorkflowProjectType, listKnowledgeDocumentPage, searchKnowledgeDocuments, readKnowledgeDocumentLines, WorkflowError, type WorkflowKVScope, type WorkflowKVStore, type WorkflowKVStoreGetInput, type WorkflowKVWriteSource, type WorkflowStorageKind, type WorkflowProjectType, type WorkflowStorageLocationContext, type WorkflowKnowledgeDocument, type WorkflowKnowledgeDocumentSummary, type WorkflowKnowledgeSearchResult, type WorkflowKnowledgeDocumentLinesResult, type WorkflowTokenUsageAggregate, type WorkflowTokenUsageEntry, describeKnowledgeMutationKeys, isKnowledgeDocumentStorageKey } from "steamharness";
 import { getAuthCookieSecret } from "./account-auth";
 import { resolveServerPathRoots } from "./paths";
 import { ArtifactStorage, createObjectPath, DatabaseRepository, type WorkflowProjectMemberRecord, type WorkflowProjectInvitationRecord, type WorkflowProjectRole, type WorkflowVisibility, type WorkflowDbRecord, type WorkflowDbVersionRecord, type WorkflowKanbanConfigurationStateRecord, type WorkflowProjectStorageRevisionEvent, type WorkflowDeploymentRecord } from "./persistence";
@@ -16,12 +16,12 @@ import { isWorkflowStorageNotFoundError, type WorkflowObjectStorage } from "./ob
 import { resolveWorkflowStorageDriver } from "./storage-driver";
 import { resolveServerDataRootFromEnv } from "./release-paths";
 import { createInvalidWorkflowUuidMessage, createUnsafeWorkflowIdMessage, isSafeWorkflowId, isWorkflowUuid, resolveWorkflowRoot } from "./workflow-ids";
-import { readProjectCardMetadataFromPackageJson, type ProjectCardMetadata } from "@workflow-code/project-card-metadata";
-import { assertWorkflowProjectDataStorageLocationAllowed, createDefaultWorkflowRelatedProjectGrant, isWorkflowProjectAccessAllowed, isWorkflowProjectKVAccessAllowed, normalizeDeclaredWorkflowProjectInfo, normalizeWorkflowProjectInfo, readWorkflowProjectInfo, resolveWorkflowRelatedProjectAccess, writeWorkflowProjectInfo, type DeclaredWorkflowProjectInfo, type WorkflowProjectInfo, type WorkflowRelatedProject, type WorkflowRelatedProjectKVGrant } from "@workflow-code/project-info";
-import { KANBAN_MANIFEST_FILE, areKanbanValuesEqual, createInjectedKanbanParams, createKanbanContentSecurityPolicy, createKanbanArtifactEntryPath, createDefaultKanbanValues, injectKanbanBridge, isSafeKanbanPublicAssetPath, parseKanbanManifestText, readKanbanArtifactConfig, readKanbanAssetMimeType, readPackageProjectType, sanitizeKanbanValues, type KanbanConfiguration, type KanbanArtifactConfig, type KanbanManifest } from "@workflow-code/kanban-project";
-import { readRequiredCoreVersion } from "@workflow-code/runtime-compatibility";
+import { readProjectCardMetadataFromPackageJson, type ProjectCardMetadata } from "@steamharness/project-card-metadata";
+import { assertWorkflowProjectDataStorageLocationAllowed, createDefaultWorkflowRelatedProjectGrant, isWorkflowProjectAccessAllowed, isWorkflowProjectKVAccessAllowed, normalizeDeclaredWorkflowProjectInfo, normalizeWorkflowProjectInfo, readWorkflowProjectInfo, resolveWorkflowRelatedProjectAccess, writeWorkflowProjectInfo, type DeclaredWorkflowProjectInfo, type WorkflowProjectInfo, type WorkflowRelatedProject, type WorkflowRelatedProjectKVGrant } from "@steamharness/project-info";
+import { KANBAN_MANIFEST_FILE, areKanbanValuesEqual, createInjectedKanbanParams, createKanbanContentSecurityPolicy, createKanbanArtifactEntryPath, createDefaultKanbanValues, injectKanbanBridge, isSafeKanbanPublicAssetPath, parseKanbanManifestText, readKanbanArtifactConfig, readKanbanAssetMimeType, readPackageProjectType, sanitizeKanbanValues, type KanbanConfiguration, type KanbanArtifactConfig, type KanbanManifest } from "@steamharness/kanban-project";
+import { readRequiredCoreVersion } from "@steamharness/runtime-compatibility";
 import { readServerBuildInfo, type ServerBuildInfo } from "./build-info";
-import { WORKFLOW_PROJECT_GROUP_MANIFEST_FILE, createExternalWorkflowProjectDependencyLocks, finalizeWorkflowProjectDependencyLock, isProjectGroupHostDataPath, parseWorkflowProjectDependencyLocks, parseWorkflowProjectGroupManifest, type WorkflowProjectAccessRequest, type WorkflowProjectCapabilityGrant, type WorkflowProjectDependencyLock, type WorkflowProjectDependencyStatusResult, type WorkflowProjectDownloadPlan, type WorkflowProjectGroupManifestV1 } from "@workflow-code/project-dependencies";
+import { STEAMHARNESS_PROJECT_GROUP_MANIFEST_FILE, createExternalWorkflowProjectDependencyLocks, finalizeWorkflowProjectDependencyLock, isProjectGroupHostDataPath, parseWorkflowProjectDependencyLocks, parseWorkflowProjectGroupManifest, type WorkflowProjectAccessRequest, type WorkflowProjectCapabilityGrant, type WorkflowProjectDependencyLock, type WorkflowProjectDependencyStatusResult, type WorkflowProjectDownloadPlan, type WorkflowProjectGroupManifestV1 } from "@steamharness/project-dependencies";
 export const PROJECT_CARD_IMAGE_MAX_BYTES = 1024 * 1024;
 const PROJECT_CARD_IMAGE_HASH_PATTERN = /^[a-f0-9]{64}$/;
 const MAX_KANBAN_ASSET_SIZE_BYTES = 20 * 1024 * 1024;
@@ -529,7 +529,7 @@ export class WorkflowStorage {
   async init(): Promise<void> {
     await mkdir(this.dataRoot, { recursive: true });
     this.buildInfo ??= await readServerBuildInfo({ repoRoot: this.repoRoot, serverRoot: this.serverRoot,
-      strict: process.env.NODE_ENV === "production" && process.env.WORKFLOW_SERVER_DEV !== "1" });
+      strict: process.env.NODE_ENV === "production" && process.env.STEAMHARNESS_SERVER_DEV !== "1" });
     await this.db?.init();
     await this.resumePendingPreparationJobs();
     await this.resumePendingProjectGroupPreparations();
@@ -1832,21 +1832,21 @@ export class WorkflowStorage {
         options.archiveName,
         extractDir,
       );
-      const manifestPath = path.join(extractDir, WORKFLOW_PROJECT_GROUP_MANIFEST_FILE);
+      const manifestPath = path.join(extractDir, STEAMHARNESS_PROJECT_GROUP_MANIFEST_FILE);
       let uploadedManifest: WorkflowProjectGroupManifestV1;
       try {
         uploadedManifest = parseWorkflowProjectGroupManifest(
           JSON.parse(await readFile(manifestPath, "utf8")) as unknown,
         );
       } catch (error) {
-        throw new HttpError(400, 400, `Invalid ${WORKFLOW_PROJECT_GROUP_MANIFEST_FILE}: ${readErrorMessage(error)}`);
+        throw new HttpError(400, 400, `Invalid ${STEAMHARNESS_PROJECT_GROUP_MANIFEST_FILE}: ${readErrorMessage(error)}`);
       }
       if (JSON.stringify(uploadedManifest) !== JSON.stringify(deployment.manifest)) {
         throw new HttpError(409, 409, "Uploaded project-group manifest does not match the deployment plan.");
       }
 
       const allowedFiles = new Set([
-        WORKFLOW_PROJECT_GROUP_MANIFEST_FILE,
+        STEAMHARNESS_PROJECT_GROUP_MANIFEST_FILE,
         ...uploadedManifest.projects.map((project) => project.archivePath),
       ]);
       await walkFiles(extractDir, async (filePath) => {
@@ -3851,7 +3851,7 @@ export class WorkflowStorage {
         throw new HttpError(
           409,
           409,
-          `Project "${workflowId}" cannot ${action} because workflowCode.projectInfo.dataStorage.mode is not declared. Open the project in Desktop and save Project Info before retrying.`,
+          `Project "${workflowId}" cannot ${action} because steamHarness.projectInfo.dataStorage.mode is not declared. Open the project in Desktop and save Project Info before retrying.`,
           data,
           {
             messageKey: "server:projectDataStorageDeclarationRequired",
@@ -4357,7 +4357,7 @@ export class WorkflowStorage {
     throw new HttpError(
       409,
       409,
-      `Workflow "${workflowId}" was created as projectType "${existing.projectType}", but package.json declares "${sourceProjectType}". Create a project with the matching type or update workflowCode.projectType before uploading.`,
+      `Workflow "${workflowId}" was created as projectType "${existing.projectType}", but package.json declares "${sourceProjectType}". Create a project with the matching type or update steamHarness.projectType before uploading.`,
     );
   }
 
@@ -5061,8 +5061,8 @@ export function createWorkflowObjectStorageFromEnv(options: {
 export async function createStorageFromEnv(): Promise<WorkflowStorage> {
   const { repoRoot, serverRoot } = resolveServerPathRoots();
   const dataRoot = resolveServerDataRootFromEnv({ serverRoot });
-  const connectionString = process.env.WORKFLOW_DATABASE_URL?.trim();
-  if (!connectionString) throw new Error("WORKFLOW_DATABASE_URL is required for project storage.");
+  const connectionString = process.env.STEAMHARNESS_DATABASE_URL?.trim();
+  if (!connectionString) throw new Error("STEAMHARNESS_DATABASE_URL is required for project storage.");
   const objectStorage = createWorkflowObjectStorageFromEnv({ dataRoot });
   const storage = new WorkflowStorage({ repoRoot, serverRoot, dataRoot, db: new DatabaseRepository(connectionString),
     objectStorage, artifacts: new ArtifactStorage(objectStorage) });
@@ -5167,10 +5167,10 @@ async function readWorkflowPackageMetadata(
     );
   }
 
-  const workflowCode = packageJson["workflowCode"];
-  const projectType = isRecord(workflowCode) ? workflowCode["projectType"] : undefined;
+  const steamHarness = packageJson["steamHarness"];
+  const projectType = isRecord(steamHarness) ? steamHarness["projectType"] : undefined;
   if (!isWorkflowProjectType(projectType)) {
-    throw new HttpError(400, 400, "package.json.workflowCode.projectType must be workflow, conversation or kanban.");
+    throw new HttpError(400, 400, "package.json.steamHarness.projectType must be workflow, conversation or kanban.");
   }
   if (persistedProjectType !== undefined && persistedProjectType !== projectType) {
     throw new HttpError(409, 409, "Uploaded project type does not match the stored project.");
@@ -5845,7 +5845,7 @@ function assertManagedFileId(value: string): void {
 
 function assertManagedFileSize(size: number): void {
   const limit = readNumberEnv(
-    "WORKFLOW_MANAGED_FILE_SIZE_LIMIT_BYTES",
+    "STEAMHARNESS_MANAGED_FILE_SIZE_LIMIT_BYTES",
     DEFAULT_MANAGED_FILE_SIZE_LIMIT_BYTES,
   );
 

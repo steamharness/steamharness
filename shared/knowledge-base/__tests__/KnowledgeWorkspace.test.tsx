@@ -11,9 +11,9 @@ import {
   type KnowledgeRepository,
   type KnowledgeResult,
   type KnowledgeSearchResult,
-} from "@workflow-code/knowledge-base";
+} from "@steamharness/knowledge-base";
 import * as knowledgeUtils from "../utils";
-import { i18n, initI18n } from "@workflow-code/i18n";
+import { i18n, initI18n } from "@steamharness/i18n";
 
 describe("KnowledgeWorkspace", () => {
   it("loads summaries first and fetches markdown only after a document is selected", async () => {

@@ -20,10 +20,10 @@ export async function readWorkflowProjectManifest(uri: vscode.Uri): Promise<unkn
 
 async function readImportedWorkflowProject(uri: vscode.Uri): Promise<ImportedProject | undefined> {
   try {
-    const pkg = await readWorkflowProjectManifest(uri) as { id?: unknown; name?: unknown; version?: unknown; workflowCode?: { projectInfo?: { localizedNames?: unknown } } } | null;
+    const pkg = await readWorkflowProjectManifest(uri) as { id?: unknown; name?: unknown; version?: unknown; steamHarness?: { projectInfo?: { localizedNames?: unknown } } } | null;
     const id = projectId(pkg?.id);
     if (id) {
-      const names = pkg?.workflowCode?.projectInfo?.localizedNames;
+      const names = pkg?.steamHarness?.projectInfo?.localizedNames;
       const language = vscode.env.language.toLowerCase().startsWith('zh') ? 'zh-cn' : 'en';
       const localized = names && typeof names === 'object' && !Array.isArray(names)
         ? Object.entries(names).find(([locale]) => locale.trim().toLowerCase() === language)?.[1] : undefined;

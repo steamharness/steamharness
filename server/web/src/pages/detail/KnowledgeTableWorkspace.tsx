@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { BookOpenText, Eye, Plus, Search, X } from "lucide-react";
-import { useTranslation } from "@workflow-code/i18n/react";
-import { isKnowledgeSuccess, type KnowledgeRepository, type KnowledgeWorkspaceProps } from "@workflow-code/knowledge-base";
+import { useTranslation } from "@steamharness/i18n/react";
+import { isKnowledgeSuccess, type KnowledgeRepository, type KnowledgeWorkspaceProps } from "@steamharness/knowledge-base";
 import { Alert, AlertDescription, AlertTitle, Button, IconActionButton, PaginationFooter, SearchField, TablePanel, TableActionCell, TableBody, TableCell, TableEmptyRow, TableHead, TableHeader, TableRow } from "@/components/ui";
 import { PageStats } from "@/components/ui/page-stats";
 import { TableLoadingRows } from "@/components/ui/table-loading-rows";

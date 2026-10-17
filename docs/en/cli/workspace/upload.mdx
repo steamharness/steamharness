@@ -8,7 +8,7 @@ description: "Upload project sources and optionally publish an immutable version
 Server safely extracts archives, validates static metadata and files, hashes sources and saves them. It never installs dependencies, builds projects or loads uploaded code. Without `--file`, CLI packages according to the project-root `.workflowignore`; `.gitignore` is unrelated.
 
 ```bash
-workflow-code workspace upload <project> [--path <dir>] [--file <archive>] [--create] [--release-log <text>] [--no-wait]
+steamharness workspace upload <project> [--path <dir>] [--file <archive>] [--create] [--release-log <text>] [--no-wait]
 ```
 
 | Option | Purpose |
@@ -19,7 +19,7 @@ workflow-code workspace upload <project> [--path <dir>] [--file <archive>] [--cr
 | `--release-log` | Publish after successful upload and save release notes. |
 | `--no-wait` | Return the file-processing job ID; incompatible with auto-publish or project groups. |
 
-Every package declares `package.json.workflowCode.projectType`. Workflow/Conversation require `index.ts`; Kanban requires a built HTML artifact. Install dependencies and build frontend assets locally before upload.
+Every package declares `package.json.steamHarness.projectType`. Workflow/Conversation require `index.ts`; Kanban requires a built HTML artifact. Install dependencies and build frontend assets locally before upload.
 
 ## File Processing
 
@@ -34,6 +34,6 @@ Extraction rejects traversal, links, special members and conflicting paths. Fail
 Groups do not transfer local KV, PersistentValue, file stores, run history, environment variables or account settings. Authorized local clients write remote data through the data APIs.
 
 ```bash
-workflow-code workspace upload hello --path ./hello --create --release-log "First release"
-workflow-code workspace upload dashboard --path ./dashboard --dependency data=./data-project --publish-group
+steamharness workspace upload hello --path ./hello --create --release-log "First release"
+steamharness workspace upload dashboard --path ./dashboard --dependency data=./data-project --publish-group
 ```

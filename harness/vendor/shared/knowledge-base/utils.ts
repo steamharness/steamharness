@@ -1,4 +1,4 @@
-import { formatDateTime, i18n } from "@workflow-code/i18n";
+import { formatDateTime, i18n } from "@steamharness/i18n";
 import type { KnowledgeDocument, KnowledgeDocumentSummary, KnowledgeResult } from "./types";
 
 export const LARGE_MARKDOWN_PREVIEW_LIMIT = 200_000;

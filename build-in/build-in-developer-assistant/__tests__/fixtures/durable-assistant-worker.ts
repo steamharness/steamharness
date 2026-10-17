@@ -7,9 +7,9 @@ import {
   createWorkflowToolPermissionContext, createWorkflowTokenUsageContext, TOKEN_USAGE_TOTAL_KEY,
   type WorkflowContext, type WorkflowConversationExecutorDefinition, type AgentInput, type AgentOutputPayload, type AgentProjectOptions,
   type WorkflowUserInputResolved,
-} from "workflow-code";
-import { installWorkflowRuntimeGlobal } from "workflow-code/runtime-api";
-import { createAgentSessionHost, controlAgentSession, type AgentSessionSnapshot } from "workflow-code/agent";
+} from "steamharness";
+import { installWorkflowRuntimeGlobal } from "steamharness/runtime-api";
+import { createAgentSessionHost, controlAgentSession, type AgentSessionSnapshot } from "steamharness/agent";
 
 const [directory, scenario, phase] = process.argv.slice(2) as [string, string, string];
 const faux = ai.fauxProvider({ models: [{ id: "fixture", contextWindow: 100_000, maxTokens: 1_000 }],

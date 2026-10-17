@@ -11,7 +11,7 @@ import {
   createKanbanMethodSession, parseKanbanBridgeCall, createKanbanBridgeError,
   KANBAN_BRIDGE_MAX_PENDING_REQUESTS, KANBAN_PREVIEW_READY_MESSAGE, KANBAN_BRIDGE_REQUEST_MESSAGE, KANBAN_BRIDGE_RESPONSE_MESSAGE,
   type KanbanConfiguration, type KanbanInjectedConfiguration, type KanbanPresentationMode,
-} from '@workflow-code/kanban-project';
+} from '@steamharness/kanban-project';
 import { workflowParamValue, type WorkflowProject, type WorkflowParamValues } from '../workflow-types';
 
 type Message = Record<string, any>;
@@ -104,10 +104,10 @@ function inject(): void {
   if (!state) { return; }
   frame.style.colorScheme = document.documentElement.dataset.theme ?? 'normal';
   for (const message of [
-    { type: 'workflow-code:kanban-configuration', configuration: state.configuration },
-    { type: 'workflow-code:kanban-theme', theme: document.documentElement.dataset.theme },
-    { type: 'workflow-code:kanban-presentation', presentation: { mode } },
-    ...state.relatedProjectRevisions.map(item => ({ type: 'workflow-code:kanban-related-project-revision', ...item })),
+    { type: 'steamharness:kanban-configuration', configuration: state.configuration },
+    { type: 'steamharness:kanban-theme', theme: document.documentElement.dataset.theme },
+    { type: 'steamharness:kanban-presentation', presentation: { mode } },
+    ...state.relatedProjectRevisions.map(item => ({ type: 'steamharness:kanban-related-project-revision', ...item })),
   ]) { frame.contentWindow?.postMessage({ ...message, nonce: state.preview.nonce }, '*'); }
 }
 function publishMethods(): void { if (connected && state && methodSession) { host.postMessage({ type: 'kanban-method-state', nonce: state.preview.nonce, instanceId: methodSession.instanceId, ...methodSession.getState() }); } }
@@ -200,10 +200,10 @@ window.addEventListener('message', event => {
   if (event.source === frame.contentWindow) {
     if (!state || message?.nonce !== state.preview.nonce) { return; }
     methodSession?.receive(message); controls();
-    if (message.type === KANBAN_PREVIEW_READY_MESSAGE || message.type === 'workflow-code:kanban-method-catalog') { publishMethods(); }
+    if (message.type === KANBAN_PREVIEW_READY_MESSAGE || message.type === 'steamharness:kanban-method-catalog') { publishMethods(); }
     if (message.type === KANBAN_PREVIEW_READY_MESSAGE) { clearTimeout(readyTimer); element('preview-status').hidden = true;
-      frame.contentWindow?.postMessage({ type: 'workflow-code:kanban-theme', nonce: state.preview.nonce, theme: document.documentElement.dataset.theme }, '*');
-      frame.contentWindow?.postMessage({ type: 'workflow-code:kanban-presentation', nonce: state.preview.nonce, presentation: { mode } }, '*'); return;
+      frame.contentWindow?.postMessage({ type: 'steamharness:kanban-theme', nonce: state.preview.nonce, theme: document.documentElement.dataset.theme }, '*');
+      frame.contentWindow?.postMessage({ type: 'steamharness:kanban-presentation', nonce: state.preview.nonce, presentation: { mode } }, '*'); return;
     }
     if (message.type !== KANBAN_BRIDGE_REQUEST_MESSAGE) { return; }
     const nonce = state.preview.nonce, target = frame.contentWindow, generation = methodSession;

@@ -32,10 +32,10 @@ afterEach(async () => {
   )));
 });
 
-describe("workflow-code mcp", () => {
+describe("steamharness mcp", () => {
   it("falls back to saved CLI authentication when Desktop is not logged in", async () => {
-    const desktopConfigDir = await createTemporaryDirectory("workflow-code-mcp-desktop-auth-");
-    const cliAuthDir = await createTemporaryDirectory("workflow-code-mcp-cli-auth-");
+    const desktopConfigDir = await createTemporaryDirectory("steamharness-mcp-desktop-auth-");
+    const cliAuthDir = await createTemporaryDirectory("steamharness-mcp-cli-auth-");
     await writeFile(path.join(desktopConfigDir, "workflow-desktop.json"), JSON.stringify({
       auth: { serverUrl: "", apiKey: "" },
     }), "utf8");
@@ -50,8 +50,8 @@ describe("workflow-code mcp", () => {
     ]);
 
     assert.deepEqual(readSavedWorkflowMcpAuthEnv(options, {}), {
-      WORKFLOW_SERVER_URL: "https://workflow.example.com",
-      WORKFLOW_SERVER_ADMIN_KEY: "cli-saved-key",
+      STEAMHARNESS_SERVER_URL: "https://workflow.example.com",
+      STEAMHARNESS_SERVER_ADMIN_KEY: "cli-saved-key",
     });
   });
 
@@ -60,20 +60,20 @@ describe("workflow-code mcp", () => {
 
     assert.throws(
       () => readSavedWorkflowMcpAuthEnv(options, {
-        WORKFLOW_SERVER_URL: "https://explicit.example.com",
+        STEAMHARNESS_SERVER_URL: "https://explicit.example.com",
       }),
       /must be provided together/i,
     );
     assert.throws(
       () => readSavedWorkflowMcpAuthEnv(options, {
-        WORKFLOW_SERVER_ADMIN_KEY: "explicit-key",
+        STEAMHARNESS_SERVER_ADMIN_KEY: "explicit-key",
       }),
       /must be provided together/i,
     );
     assert.deepEqual(
       readSavedWorkflowMcpAuthEnv(options, {
-        WORKFLOW_SERVER_URL: "https://explicit.example.com",
-        WORKFLOW_SERVER_ADMIN_KEY: "explicit-key",
+        STEAMHARNESS_SERVER_URL: "https://explicit.example.com",
+        STEAMHARNESS_SERVER_ADMIN_KEY: "explicit-key",
       }),
       {},
     );
@@ -83,7 +83,7 @@ describe("workflow-code mcp", () => {
     const write = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     try {
       await expect(cliMain(["mcp", "--help"])).resolves.toBe(0);
-      expect(write).toHaveBeenCalledWith(expect.stringContaining("workflow-code mcp <workflow-dir>"));
+      expect(write).toHaveBeenCalledWith(expect.stringContaining("steamharness mcp <workflow-dir>"));
     } finally {
       write.mockRestore();
     }
@@ -95,7 +95,7 @@ describe("workflow-code mcp", () => {
       return true;
     });
     const writer = createWorkflowMcpDesktopAuditWriter({
-      env: { WORKFLOW_MCP_DESKTOP_AUDIT_IPC: "1" },
+      env: { STEAMHARNESS_MCP_DESKTOP_AUDIT_IPC: "1" },
       send,
     });
     const snapshot: Parameters<NonNullable<ReturnType<typeof createWorkflowMcpDesktopAuditWriter>>>[0] = {
@@ -123,7 +123,7 @@ describe("workflow-code mcp", () => {
 
   it("captures complete running and final snapshots outside MCP stdout", async () => {
     const workflowDir = await createMcpWorkflow();
-    const dataDir = await createTemporaryDirectory("workflow-code-mcp-audit-");
+    const dataDir = await createTemporaryDirectory("steamharness-mcp-audit-");
     const snapshots: Array<Parameters<NonNullable<ReturnType<typeof createWorkflowMcpDesktopAuditWriter>>>[0]> = [];
     const runner = new WorkflowMcpCliRunner({
       ...parseWorkflowMcpCliOptions([workflowDir, "--data-dir", dataDir]),
@@ -156,7 +156,7 @@ describe("workflow-code mcp", () => {
 
   it("keeps one complete snapshot lineage across consecutive input resumes", async () => {
     const workflowDir = await createMcpWorkflow();
-    const dataDir = await createTemporaryDirectory("workflow-code-mcp-resume-audit-");
+    const dataDir = await createTemporaryDirectory("steamharness-mcp-resume-audit-");
     const snapshots: Array<Parameters<NonNullable<ReturnType<typeof createWorkflowMcpDesktopAuditWriter>>>[0]> = [];
     const runner = new WorkflowMcpCliRunner({
       ...parseWorkflowMcpCliOptions([workflowDir, "--data-dir", dataDir]),
@@ -216,7 +216,7 @@ describe("workflow-code mcp", () => {
 
   it("finalizes a pending input run when the MCP connection closes", async () => {
     const workflowDir = await createMcpWorkflow();
-    const dataDir = await createTemporaryDirectory("workflow-code-mcp-close-audit-");
+    const dataDir = await createTemporaryDirectory("steamharness-mcp-close-audit-");
     const snapshots: Array<Parameters<NonNullable<ReturnType<typeof createWorkflowMcpDesktopAuditWriter>>>[0]> = [];
     const runner = new WorkflowMcpCliRunner({
       ...parseWorkflowMcpCliOptions([workflowDir, "--data-dir", dataDir]),
@@ -253,7 +253,7 @@ describe("workflow-code mcp", () => {
 
   it("records a distinct terminal diagnostic when MCP elicitation fails", async () => {
     const workflowDir = await createMcpWorkflow();
-    const dataDir = await createTemporaryDirectory("workflow-code-mcp-elicitation-failure-");
+    const dataDir = await createTemporaryDirectory("steamharness-mcp-elicitation-failure-");
     const snapshots: Array<Parameters<NonNullable<ReturnType<typeof createWorkflowMcpDesktopAuditWriter>>>[0]> = [];
     const runner = new WorkflowMcpCliRunner({
       ...parseWorkflowMcpCliOptions([workflowDir, "--data-dir", dataDir]),
@@ -427,7 +427,7 @@ describe("workflow-code mcp", () => {
 
   it("rejects Conversation projects before opening the MCP protocol", async () => {
     const projectDir = await createConversationProject();
-    const dataDir = await createTemporaryDirectory("workflow-code-mcp-data-");
+    const dataDir = await createTemporaryDirectory("steamharness-mcp-data-");
     const transport = new StdioClientTransport({
       command: process.execPath,
       args: [cliPath, "mcp", projectDir, "--data-dir", dataDir],
@@ -451,7 +451,7 @@ describe("workflow-code mcp", () => {
       source.replace('name: "message", flag: "--message"', 'name: "message"'),
       "utf8",
     );
-    const dataDir = await createTemporaryDirectory("workflow-code-mcp-data-");
+    const dataDir = await createTemporaryDirectory("steamharness-mcp-data-");
     const transport = new StdioClientTransport({
       command: process.execPath,
       args: [cliPath, "mcp", projectDir, "--data-dir", dataDir],
@@ -506,7 +506,7 @@ describe("workflow-code mcp", () => {
   it("resolves an explicit worker entrypoint before argv and normalizes relative paths", () => {
     const configured = resolveWorkflowMcpWorkerEntrypoint(
       ["/usr/bin/node", "ignored-entrypoint.mjs"],
-      { WORKFLOW_MCP_CLI_ENTRYPOINT: "./configured-entrypoint.mjs" },
+      { STEAMHARNESS_MCP_CLI_ENTRYPOINT: "./configured-entrypoint.mjs" },
     );
     assert.equal(configured, path.resolve("configured-entrypoint.mjs"));
     assert.equal(
@@ -526,7 +526,7 @@ describe("workflow-code mcp", () => {
     );
     assert.throws(
       () => resolveWorkflowMcpWorkerEntrypoint(["/usr/bin/node"], {
-        WORKFLOW_MCP_CLI_ENTRYPOINT: "   ",
+        STEAMHARNESS_MCP_CLI_ENTRYPOINT: "   ",
       }),
       /Unable to resolve/i,
     );
@@ -543,7 +543,7 @@ async function connectWorkflowMcp(
   dataDir: string;
   readStderr(): string;
 }> {
-  const dataDir = await createTemporaryDirectory("workflow-code-mcp-data-");
+  const dataDir = await createTemporaryDirectory("steamharness-mcp-data-");
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: [
@@ -581,13 +581,13 @@ async function connectWorkflowMcp(
 }
 
 async function createMcpWorkflow(relatedProjectId?: string): Promise<string> {
-  const workflowDir = await createTemporaryDirectory("workflow-code-mcp-project-");
+  const workflowDir = await createTemporaryDirectory("steamharness-mcp-project-");
   await writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
     id: "11111111-1111-4111-8111-111111111111",
-    name: "@workflow-code/mcp-test-workflow",
+    name: "@steamharness/mcp-test-workflow",
     type: "module",
-    devDependencies: { "workflow-code": "0.2.0" },
-    workflowCode: {
+    devDependencies: { "steamharness": "0.2.0" },
+    steamHarness: {
       projectInfo: {
         dataStorage: { mode: "local" },
         relatedProjects: relatedProjectId ? [{
@@ -681,13 +681,13 @@ async function createMcpWorkflow(relatedProjectId?: string): Promise<string> {
 }
 
 async function createConversationProject(): Promise<string> {
-  const projectDir = await createTemporaryDirectory("workflow-code-mcp-conversation-");
+  const projectDir = await createTemporaryDirectory("steamharness-mcp-conversation-");
   await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
     id: "22222222-2222-4222-8222-222222222222",
-    name: "@workflow-code/mcp-test-conversation",
+    name: "@steamharness/mcp-test-conversation",
     type: "module",
-    devDependencies: { "workflow-code": "0.2.0" },
-    workflowCode: { projectInfo: { dataStorage: { mode: "local" } } },
+    devDependencies: { "steamharness": "0.2.0" },
+    steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
   }), "utf8");
   await writeFile(path.join(projectDir, "index.ts"), [
     'const conversationWorkflow = workflow.defineWorkflow({ name: "conversation", run(input) { return input; } });',
@@ -702,12 +702,12 @@ async function createConversationProject(): Promise<string> {
 }
 
 async function createRelatedProject(): Promise<string> {
-  const projectDir = await createTemporaryDirectory("workflow-code-mcp-related-");
+  const projectDir = await createTemporaryDirectory("steamharness-mcp-related-");
   await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
     id: "33333333-3333-4333-8333-333333333333",
-    name: "@workflow-code/mcp-test-related",
+    name: "@steamharness/mcp-test-related",
     type: "module",
-    workflowCode: {
+    steamHarness: {
       projectInfo: {
         dataStorage: { mode: "local" },
         relatedProjects: [{

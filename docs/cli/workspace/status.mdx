@@ -7,12 +7,12 @@ description: "查看 workspace CLI 保存的登录状态，以及本次调用实
 
 `workspace status` 读取 CLI 登录态文件 `workflow-auth.json`，输出当前是否保存了 server URL、API Key、用户和过期时间，并用 `effective` 给出**本次参数解析后命令真正会连的服务器**及其来源。它不请求 Workflow Server，因此不能证明 API Key 仍然有效。
 
-登录态文件和有效目标可能不是同一个服务器。解析顺序是 `--server` / `--token` → 环境变量 `WORKFLOW_SERVER_URL` / `WORKFLOW_SERVER_ADMIN_KEY` → 保存的登录 → 内置默认值：命令行参数覆盖环境变量，环境变量覆盖文件。Studio 启动的运行与内置终端会注入自己的会话，所以那里的 `workflow-code` 连的是 Studio 当前登录的服务器，而不是这份文件里可能很旧的登录。要判断「会不会传错服务器」，看 `effective` 而不是 `serverUrl`。
+登录态文件和有效目标可能不是同一个服务器。解析顺序是 `--server` / `--token` → 环境变量 `STEAMHARNESS_SERVER_URL` / `STEAMHARNESS_SERVER_ADMIN_KEY` → 保存的登录 → 内置默认值：命令行参数覆盖环境变量，环境变量覆盖文件。Studio 启动的运行与内置终端会注入自己的会话，所以那里的 `steamharness` 连的是 Studio 当前登录的服务器，而不是这份文件里可能很旧的登录。要判断「会不会传错服务器」，看 `effective` 而不是 `serverUrl`。
 
 ## 命令格式
 
 ```bash
-pnpm exec workflow-code workspace status
+pnpm exec steamharness workspace status
 ```
 
 ## 参数
@@ -64,7 +64,7 @@ pnpm exec workflow-code workspace status
 ## 示例
 
 ```bash
-pnpm exec workflow-code workspace status
+pnpm exec steamharness workspace status
 ```
 
 ## 注意事项

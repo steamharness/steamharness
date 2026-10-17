@@ -53,7 +53,7 @@ function fixture(t, options = {}) {
       } },
   };
   const launcher = {
-    projectCreationDirectory: path.join(homedir(), 'Documents', 'workflow-projects'),
+    projectCreationDirectory: path.join(homedir(), 'Documents', 'steamharness-projects'),
     templates: async () => [ { id: 'workflow-starter', projectType: 'workflow', kind: 'starter', name: 'Workflow', description: 'Minimal' },
       { id: 'workflow-hello', projectType: 'workflow', kind: 'example', name: 'Hello', description: 'Offline' } ],
     createProject: async input => { f.created = (f.created ?? 0) + 1; await f.create?.(); return { id, name: input.name, directory: path.join(input.parentDirectory, input.name), projectType: 'workflow', entryFile: 'index.ts' }; },
@@ -142,7 +142,7 @@ test('form and window-choice cancellation create nothing, while install cancella
   const f = fixture(t); f.name = undefined;
   await f.execute('studio.createProject'); assert.equal(f.created, undefined);
   assert.equal(f.dialog.templates.length, 2);
-  assert.equal(f.dialog.parentDirectory, path.join((await import('node:os')).homedir(), 'Documents', 'workflow-projects'));
+  assert.equal(f.dialog.parentDirectory, path.join((await import('node:os')).homedir(), 'Documents', 'steamharness-projects'));
   f.name = 'Cancelled opening'; f.newWindow = undefined;
   await f.execute('studio.createProject'); assert.equal(f.created, undefined);
   assert.equal(f.calls.some(([name]) => name === 'vscode.openFolder'), false);

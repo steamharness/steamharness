@@ -1,9 +1,9 @@
-# workflow-code
+# steamharness
 
-Core SDK and runtime APIs for Workflow Code projects.
+Core SDK and runtime APIs for SteamHarness projects.
 
 ```bash
-pnpm add -D workflow-code
+pnpm add -D steamharness
 ```
 
-Install `@workflow-code/cli` alongside this package to run and publish workflows.
+Install `@steamharness/cli` alongside this package to run and publish workflows.

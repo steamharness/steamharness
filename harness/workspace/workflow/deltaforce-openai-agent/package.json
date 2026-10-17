@@ -1,28 +1,28 @@
 {
   "id": "3c0292f9-9731-4862-9019-19544eeca705",
-  "name": "@workflow-code/deltaforce-openai-agent-workflow",
+  "name": "@steamharness/deltaforce-openai-agent-workflow",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "dependencies": {
-    "@workflow-code/deltafore-agent-workflow": "workspace:*",
-    "@workflow-code/openai-agents-workflow": "workspace:*",
+    "@steamharness/deltafore-agent-workflow": "workspace:*",
+    "@steamharness/openai-agents-workflow": "workspace:*",
     "@openai/agents": "^0.11.5",
     "openai": "^6.39.0",
     "zod": "^4.1.13"
   },
   "scripts": {
-    "dev": "workflow-code run .",
-    "inspect": "workflow-code structure .",
-    "run:json": "workflow-code json .",
-    "workspace:upload": "workflow-code workspace upload .",
-    "workspace:publish": "workflow-code workspace publish ."
+    "dev": "steamharness run .",
+    "inspect": "steamharness structure .",
+    "run:json": "steamharness json .",
+    "workspace:upload": "steamharness workspace upload .",
+    "workspace:publish": "steamharness workspace publish ."
   },
   "devDependencies": {
-    "@workflow-code/cli": "0.2.3-20260901001",
-    "workflow-code": "0.2.3-20260901001"
+    "@steamharness/cli": "0.2.3-20260901001",
+    "steamharness": "0.2.3-20260901001"
   },
-  "workflowCode": {
+  "steamHarness": {
     "projectInfo": {
       "dataStorage": {
         "mode": "local"

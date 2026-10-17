@@ -1,11 +1,11 @@
 import {
-  WORKFLOW_RELATED_PROJECT_ALIAS_PATTERN,
+  STEAMHARNESS_RELATED_PROJECT_ALIAS_PATTERN,
   isWorkflowProjectAccessAllowed,
   resolveWorkflowRelatedProjectAccess,
   type WorkflowProjectAccessRule,
   type WorkflowProjectInfo,
   type WorkflowRelatedProjectGrant,
-} from "@workflow-code/project-info";
+} from "@steamharness/project-info";
 import {
   createKnowledgeDocument,
   deleteKnowledgeDocument,
@@ -464,7 +464,7 @@ function assertRelatedProjectAccess(
 
 function normalizeRelatedProjectAlias(value: string): string {
   const alias = value.trim();
-  if (!WORKFLOW_RELATED_PROJECT_ALIAS_PATTERN.test(alias)) {
+  if (!STEAMHARNESS_RELATED_PROJECT_ALIAS_PATTERN.test(alias)) {
     throw new WorkflowError({
       type: "input_validation",
       message: "Related project alias is invalid.",

@@ -11,7 +11,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runLocalWorkflowWithReport, type WorkflowKVStore, type WorkflowRuntimeEvent } from "workflow-code";
+import { runLocalWorkflowWithReport, type WorkflowKVStore, type WorkflowRuntimeEvent } from "steamharness";
 import {
   createBilibiliPlayUrl,
   fetchBilibiliDownloadUrl,
@@ -59,7 +59,7 @@ describe("deltaforce-bilibili-collect helpers", () => {
       }],
     );
     const header = multipart.body.toString("utf8").split("\r\n").slice(0, 8).join("\r\n");
-    expect(multipart.contentType).toMatch(/^multipart\/form-data; boundary=----workflow-code-/);
+    expect(multipart.contentType).toMatch(/^multipart\/form-data; boundary=----steamharness-/);
     expect(header).toContain("Content-Disposition: form-data; name=\"purpose\"");
     expect(header).toContain("Content-Disposition: form-data; name=\"file\"; filename=\"video.mp4\"");
     expect(header).toContain("Content-Type: application/octet-stream");
@@ -82,7 +82,7 @@ describe("deltaforce-bilibili-collect helpers", () => {
   });
 
   it("sets MiniMax upload Content-Length to the full multipart body size", async () => {
-    const tempDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-minimax-upload-"));
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-minimax-upload-"));
     const filePath = path.join(tempDir, "video.mp4");
     const rawVideo = Buffer.from("video-bytes");
     await writeFile(filePath, rawVideo);
@@ -578,7 +578,7 @@ async function runWithMockEnv(options: {
   env?: Record<string, string>;
   onRuntimeEvent?(event: WorkflowRuntimeEvent): Promise<void> | void;
 }) {
-  const kvStoreDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-bilibili-test-"));
+  const kvStoreDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-bilibili-test-"));
   try {
     return await runLocalWorkflowWithReport({
       workflowDir: path.resolve(process.cwd(), "workflow/deltaforce-bilibili-collect"),

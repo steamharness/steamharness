@@ -28,13 +28,13 @@ Optional environment values (also settable per-run via flags):
 Inspect structure:
 
 ```bash
-workflow-code structure .
+steamharness structure .
 ```
 
 Run a live Claude Agent turn:
 
 ```bash
-workflow-code json . --conversation-id claude-agent-demo -- \
+steamharness json . --conversation-id claude-agent-demo -- \
   --message "List the files in this directory without making changes." \
   --workdir .
 ```
@@ -42,7 +42,7 @@ workflow-code json . --conversation-id claude-agent-demo -- \
 Limit available tools:
 
 ```bash
-workflow-code json . --conversation-id claude-agent-readonly -- \
+steamharness json . --conversation-id claude-agent-readonly -- \
   --message "Summarize the README." \
   --workdir . \
   --tools Read,Glob,Grep \
@@ -51,7 +51,7 @@ workflow-code json . --conversation-id claude-agent-readonly -- \
 
 ## Tool permissions
 
-This workflow registers Claude Agent tools with workflow-code tool permissions:
+This workflow registers Claude Agent tools with steamharness tool permissions:
 `Read`, `Write`, `Edit`, `MultiEdit`, `Glob`, `Grep`, `LS`, `Bash`,
 `BashOutput`, `KillBash`, `WebFetch`, `WebSearch`, `Task`, `ExitPlanMode`,
 `ListMcpResources`, `ReadMcpResource`, `NotebookRead`, `NotebookEdit`,
@@ -71,7 +71,7 @@ Pin a specific model and base URL for the run:
 ```bash
 ANTHROPIC_BASE_URL="https://api.example.com" \
 ANTHROPIC_MODEL="claude-sonnet-4-6" \
-workflow-code json . --conversation-id claude-agent-pinned -- \
+steamharness json . --conversation-id claude-agent-pinned -- \
   --message "Summarize the README." \
   --workdir . \
   --model claude-sonnet-4-6
@@ -93,7 +93,7 @@ Conversation 模式下，默认 composer 会固定映射到 `--message`；旧的
   env var and finally the SDK default.
 - A custom in-process SDK MCP tool `knowledge_documents` registered through
   `createSdkMcpServer` and passed via `query()`'s `mcpServers` option, wrapping
-  the workflow-code knowledge helpers (`list` / `get` / `create` / `edit` /
+  the steamharness knowledge helpers (`list` / `get` / `create` / `edit` /
   `delete` / `search` / `read_lines`) so the agent reads and writes
   PersistentValue-backed knowledge documents in the same way the rest of the
   repo does. Toggle with `--knowledge-tools` / `--no-knowledge-tools`

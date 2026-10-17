@@ -32,7 +32,7 @@ All notable public changes to this release unit are recorded here.
 - Added `workflow.getRuntimeLocale()` and bilingual runtime errors, with stable fallbacks for a missing locale or translation.
 - Added `defineEntrypoint()` for independent entrypoints, whose ID and title travel through runtime contexts, reports, and Structure results.
 - Added read-only `workflow-kv` data sources scoped to a project UUID and key prefix, safely re-read through revision subscriptions after the source updates.
-- Added schedule suggestions in `package.json.workflowCode.schedulePresets`, covering entrypoint, IANA time zone, time window, and five-field Cron.
+- Added schedule suggestions in `package.json.steamHarness.schedulePresets`, covering entrypoint, IANA time zone, time window, and five-field Cron.
 - Added Kanban version-level dependency locks and the project-group v1 protocol, separating bundled source from external references without transferring host data.
 
 ### Changed
@@ -62,7 +62,7 @@ All notable public changes to this release unit are recorded here.
 
 ### Breaking Changes
 
-- Projects must declare `workflowCode.projectInfo.dataStorage.mode`, which constrains where KV, PersistentValue, and knowledge may live.
+- Projects must declare `steamHarness.projectInfo.dataStorage.mode`, which constrains where KV, PersistentValue, and knowledge may live.
   Migration: add `dataStorage.mode`; the `server` location requires sign-in and a same-UUID project binding.
 - Removed `context.kv` and `context.persistentValue` in favor of `context.storage.<location>.*`.
   Migration: rewrite local access as `context.storage.local.*` and server access as `context.storage.server.*`; the old properties only throw a migration error at runtime.
@@ -71,7 +71,7 @@ All notable public changes to this release unit are recorded here.
 
 ### Changed
 
-- Changed projects to require an exact SemVer in `devDependencies.workflow-code`, with hosts comparing only the `major.minor` line.
+- Changed projects to require an exact SemVer in `devDependencies.steamharness`, with hosts comparing only the `major.minor` line.
 - Changed any patch or dated Alpha on that line to run directly, while a major or minor change requires a host upgrade before user modules load.
 
 ## 0.2.3 - 2026-09-01
@@ -99,7 +99,7 @@ All notable public changes to this release unit are recorded here.
 
 - Changed AI SDK streams to preserve the complete finish reason, usage, errors, and provider metadata.
 - Changed AI SDK providers to stop promoting SDK `unsupported` / `compatibility` warnings into run failures.
-- Changed downgrade details to remain in `providerMetadata["workflow-code"].warnings`, while real call errors still fail.
+- Changed downgrade details to remain in `providerMetadata["steamharness"].warnings`, while real call errors still fail.
 - Changed KV and PersistentValue to use separate storage domains, with knowledge on project PersistentValue and token totals kept per project and conversation only.
 - Changed the generator scaffold to emit an empty `projectInfo.relatedProjects` explicitly, with the API reference following the project and conversation token-accounting contract.
 - Changed the local and server data-hierarchy examples to expose separate `store` and `get` entrypoints, where `store` returns a random UUID and `get` needs only that id.
@@ -137,7 +137,7 @@ All notable public changes to this release unit are recorded here.
 - Added `--context-window` to override the context-usage denominator.
 - Added tool approval through `context.toolPermissions` and plan approval through `context.userInput`.
 - Added token usage reported once through `context.tokenUsage.report(...)`, with nothing left for the project to implement.
-- Added the `@earendil-works/pi-agent-core` and `@earendil-works/pi-ai` dependencies, shipped with the host's `workflow-code` install.
+- Added the `@earendil-works/pi-agent-core` and `@earendil-works/pi-ai` dependencies, shipped with the host's `steamharness` install.
 - Added `AgentNodeOptions.createTools` returning `{ tools, close?() }`, where `close` runs when the turn ends.
 - Added `AgentNodeOptions.createTools(context)` assembling tools beyond the seven built-ins, with programmatic runtimes using `AgentRuntimeOptions.extraTools`.
 - Added `AgentInput.systemPrompt` supplying the system prompt per run and `AgentInput.images` traveling to the model with the prompt.

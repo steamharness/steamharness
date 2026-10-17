@@ -8,8 +8,8 @@ import { resolveSiblingWorkspaceRoot } from "./prepare-local-siblings.mjs";
  * Generates what the runtime can do, from the runtime itself.
  *
  * The assistant's worst habit — and the one that costs the most turns — is
- * answering "does Workflow Code support X?" by opening an installed
- * `workflow-code` and grepping its build output. It does that because nothing
+ * answering "does SteamHarness support X?" by opening an installed
+ * `steamharness` and grepping its build output. It does that because nothing
  * it reads first states the surface: the skill describes each feature, and a
  * feature that is *missing* has no page saying so.
  *
@@ -165,7 +165,7 @@ export async function renderRuntimeApiIndex() {
     "",
     ...runtimeMembers.map((name) => `- \`workflow.${name}(...)\``),
     "",
-    "每个成员的契约（参数、返回值、错误码）在 `references/workflow-code-api.md` 里按小节说明。",
+    "每个成员的契约（参数、返回值、错误码）在 `references/steamharness-api.md` 里按小节说明。",
     "",
     END_MARKER,
   );

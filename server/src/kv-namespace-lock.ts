@@ -2,9 +2,9 @@ import type pg from "pg";
 import {
   normalizeWorkflowKVStoreInput,
   type WorkflowKVNamespaceLockInput,
-} from "workflow-code";
+} from "steamharness";
 
-export const WORKFLOW_KV_NAMESPACE_LOCK_FAMILY = "workflow_project_storage_namespace";
+export const STEAMHARNESS_KV_NAMESPACE_LOCK_FAMILY = "workflow_project_storage_namespace";
 
 export function createWorkflowKVNamespaceLockKey(
   input: WorkflowKVNamespaceLockInput,
@@ -39,14 +39,14 @@ export async function withPostgresWorkflowKVNamespaceLock<T>(
   try {
     await client.query(
       "select pg_advisory_lock(hashtext($1), hashtext($2))",
-      [WORKFLOW_KV_NAMESPACE_LOCK_FAMILY, lockKey],
+      [STEAMHARNESS_KV_NAMESPACE_LOCK_FAMILY, lockKey],
     );
     return await operation();
   } finally {
     try {
       await client.query(
         "select pg_advisory_unlock(hashtext($1), hashtext($2))",
-        [WORKFLOW_KV_NAMESPACE_LOCK_FAMILY, lockKey],
+        [STEAMHARNESS_KV_NAMESPACE_LOCK_FAMILY, lockKey],
       );
     } finally {
       client.release();

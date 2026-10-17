@@ -1,7 +1,7 @@
 import path from "node:path";
 
-export const WORKFLOW_ID_PATTERN = /^[a-zA-Z0-9._-]+$/;
-export const WORKFLOW_UUID_PATTERN =
+export const STEAMHARNESS_ID_PATTERN = /^[a-zA-Z0-9._-]+$/;
+export const STEAMHARNESS_UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function isSafeWorkflowId(value: string): boolean {
@@ -10,13 +10,13 @@ export function isSafeWorkflowId(value: string): boolean {
   return (
     value === normalized &&
     normalized !== "" &&
-    WORKFLOW_ID_PATTERN.test(normalized) &&
+    STEAMHARNESS_ID_PATTERN.test(normalized) &&
     !/^\.+$/.test(normalized)
   );
 }
 
 export function isWorkflowUuid(value: string): boolean {
-  return WORKFLOW_UUID_PATTERN.test(value.trim());
+  return STEAMHARNESS_UUID_PATTERN.test(value.trim());
 }
 
 export function assertSafeWorkflowId(value: string, label = "workflow id"): string {

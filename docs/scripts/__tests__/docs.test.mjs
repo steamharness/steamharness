@@ -27,8 +27,8 @@ test("standalone Docs validates paired navigation, pages, links, and OpenAPI", a
 
 test("OpenAPI exposes storage APIs without project execution contracts", async () => {
   for (const relativePath of [
-    "openapi/workflow-code.openapi.yaml",
-    "en/openapi/workflow-code.openapi.yaml",
+    "openapi/steamharness.openapi.yaml",
+    "en/openapi/steamharness.openapi.yaml",
   ]) {
     const specification = YAML.parse(await readFile(path.join(root, relativePath), "utf8"));
     const sourceAccessReason = specification.paths["/api/project-source-access/{token}/requests"]
@@ -64,8 +64,8 @@ test("Docusaurus keeps docs-only routes and local search aligned", () => {
 
   assert.equal(docsOptions.routeBasePath, "/");
   assert.equal(searchOptions.docsRouteBasePath, docsOptions.routeBasePath);
-  assert.equal(docusaurusConfig.plugins[1][1].config.workflowZh.specPath, ".docusaurus-openapi/workflow-code.zh.yaml");
-  assert.equal(docusaurusConfig.plugins[1][1].config.workflowEn.specPath, ".docusaurus-openapi/workflow-code.en.yaml");
+  assert.equal(docusaurusConfig.plugins[1][1].config.workflowZh.specPath, ".docusaurus-openapi/steamharness.zh.yaml");
+  assert.equal(docusaurusConfig.plugins[1][1].config.workflowEn.specPath, ".docusaurus-openapi/steamharness.en.yaml");
   assert.deepEqual(docusaurusConfig.i18n.locales, ["zh-Hans", "en"]);
 });
 
@@ -73,8 +73,8 @@ test("Docs CI invokes the deploy package script and gates recovery on validation
   const pipeline = await readFile(path.join(root, ".gitlab-ci.yml"), "utf8");
   assert.match(pipeline, /^\s*- pnpm run deploy:ecs$/mu);
   assert.doesNotMatch(pipeline, /^\s*- pnpm deploy$/mu);
-  assert.match(pipeline, /build:[\s\S]*?WORKFLOW_RECOVERY_TARGET != "release"/u);
-  assert.match(pipeline, /deploy:[\s\S]*?WORKFLOW_RECOVERY_TARGET != "release"/u);
+  assert.match(pipeline, /build:[\s\S]*?STEAMHARNESS_RECOVERY_TARGET != "release"/u);
+  assert.match(pipeline, /deploy:[\s\S]*?STEAMHARNESS_RECOVERY_TARGET != "release"/u);
   assert.match(pipeline, /recover:ecs:release:[\s\S]*?needs: \[validate\][\s\S]*?recover-ecs\.mjs/u);
   assert.match(pipeline, /tags: \[linux\]/u);
   assert.match(pipeline, /paths: \[dist\/site\]/u);
@@ -92,7 +92,7 @@ test("Studio documentation replaces Desktop navigation in both languages", async
   for (const prefix of ["", "en/"]) {
     assert.ok(navigation.includes(`${prefix}guides/studio/overview`));
     const source = await readFile(path.join(root, prefix, "guides/studio/overview.mdx"), "utf8");
-    assert.match(source, /@workflow-code\/cli/u);
+    assert.match(source, /@steamharness\/cli/u);
     assert.match(source, /npm run dev:web/u);
     await assert.rejects(lstat(path.join(root, prefix, "guides/desktop/overview.mdx")), { code: "ENOENT" });
   }
@@ -100,7 +100,7 @@ test("Studio documentation replaces Desktop navigation in both languages", async
 
 test("standalone Docs rejects removed Desktop Web and legacy monorepo references", () => {
   for (const legacySource of [
-    "`packages/workflow-code/src/index.ts`",
+    "`packages/steamharness/src/index.ts`",
     "`packages/cli/dist/index.js`",
     "`app/builtin-projects/conversation`",
     "`pnpm -C app build`",
@@ -151,9 +151,9 @@ test("standalone Docs rejects the removed Desktop app identity", () => {
   for (const legacySource of [
     "/guides/app/overview",
     "/guides/releases/app",
-    "WORKFLOW_APP_CONFIG_DIR",
+    "STEAMHARNESS_APP_CONFIG_DIR",
     "workflow-app.json",
-    "@workflow-code/app",
+    "@steamharness/app",
     "minAppVersion",
     "appVersion",
     "workflow.isApp()",
@@ -161,7 +161,7 @@ test("standalone Docs rejects the removed Desktop app identity", () => {
     "app/v1.2.3",
     "source=app",
     'source = "app"',
-    "WORKFLOW_RUNTIME_PLATFORM=app",
+    "STEAMHARNESS_RUNTIME_PLATFORM=app",
   ]) {
     assert.throws(
       () => validateStandaloneDocsSource("example.mdx", legacySource),
@@ -171,7 +171,7 @@ test("standalone Docs rejects the removed Desktop app identity", () => {
 
   assert.doesNotThrow(() => validateStandaloneDocsSource(
     "example.mdx",
-    "Desktop uses workflow.isDesktop(), source=desktop, desktop/v1.2.3, and Workflow Code.app.",
+    "Desktop uses workflow.isDesktop(), source=desktop, desktop/v1.2.3, and SteamHarness.app.",
   ));
 });
 
@@ -284,7 +284,7 @@ test("Docs deploy atomically switches current and rolls it back when the hook fa
         hook: path.join(tempRoot, "hook"),
         hookArgs: [],
         execFile: async (_executable, _args, options) => {
-          hookReleaseRoots.push(options.env.WORKFLOW_DOCS_RELEASE_ROOT);
+          hookReleaseRoots.push(options.env.STEAMHARNESS_DOCS_RELEASE_ROOT);
           if (hookReleaseRoots.length === 1) throw new Error("restart failed");
         },
       }),
@@ -360,7 +360,7 @@ test("OpenAPI release rewriting removes local servers and prepares both Docusaur
   const outputDir = await mkdtemp(path.join(root, ".docs-openapi-test-"));
   try {
     await prepareOpenApiSpecs({ root, outputDir, apiBaseUrl: "https://example.com/api" });
-    for (const file of ["workflow-code.zh.yaml", "workflow-code.en.yaml"]) {
+    for (const file of ["steamharness.zh.yaml", "steamharness.en.yaml"]) {
       const prepared = await readFile(path.join(outputDir, file), "utf8");
       assert.match(prepared, /^  - url: https:\/\/example\.com$/m);
       assert.doesNotMatch(prepared, /localhost:7125/u);

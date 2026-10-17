@@ -1,7 +1,7 @@
 {
-  "link.title.Workflow Code": {
-    "message": "Workflow Code",
-    "description": "The title of the footer links column with title=Workflow Code in the footer"
+  "link.title.SteamHarness": {
+    "message": "SteamHarness",
+    "description": "The title of the footer links column with title=SteamHarness in the footer"
   },
   "link.title.资源": {
     "message": "Resources",
@@ -25,10 +25,10 @@
   },
   "link.item.label.服务端 API": {
     "message": "Server API",
-    "description": "The label of footer link with label=服务端 API linking to /reference/workflow-code-api/"
+    "description": "The label of footer link with label=服务端 API linking to /reference/steamharness-api/"
   },
   "copyright": {
-    "message": "Copyright 2026 Workflow Code",
+    "message": "Copyright 2026 SteamHarness",
     "description": "The footer copyright"
   }
 }

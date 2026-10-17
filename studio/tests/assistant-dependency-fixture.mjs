@@ -5,13 +5,13 @@ import { tmpdir } from 'node:os';
 export async function createAssistantDependencyFixture() {
   const root = await mkdtemp(path.join(tmpdir(), 'studio-assistant-runtime-'));
   const projectDir = path.join(root, 'build-in', 'build-in-developer-assistant');
-  const cli = path.join(projectDir, 'node_modules/@workflow-code/cli');
-  const core = path.join(projectDir, 'node_modules/workflow-code');
+  const cli = path.join(projectDir, 'node_modules/@steamharness/cli');
+  const core = path.join(projectDir, 'node_modules/steamharness');
   await mkdir(path.join(cli, 'dist'), { recursive: true });
   await mkdir(path.join(core, 'dist'), { recursive: true });
   await writeFile(path.join(projectDir, 'package.json'), JSON.stringify({ id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', name: 'Independent assistant' }));
-  await writeFile(path.join(cli, 'package.json'), JSON.stringify({ name: '@workflow-code/cli', version: '1.2.3', type: 'module', bin: { 'workflow-code': 'dist/index.js' } }));
-  await writeFile(path.join(core, 'package.json'), JSON.stringify({ name: 'workflow-code', version: '2.3.4' }));
+  await writeFile(path.join(cli, 'package.json'), JSON.stringify({ name: '@steamharness/cli', version: '1.2.3', type: 'module', bin: { 'steamharness': 'dist/index.js' } }));
+  await writeFile(path.join(core, 'package.json'), JSON.stringify({ name: 'steamharness', version: '2.3.4' }));
   await writeFile(path.join(cli, 'dist/index.js'), `
     import { createServer } from 'node:http';
     import { createInterface } from 'node:readline';
@@ -29,9 +29,9 @@ export async function createAssistantDependencyFixture() {
           const errors=manifest.testInspectionError?[manifest.testInspectionError]:[];
           console.log(JSON.stringify({assistantProtocolVersion:1,projects:errors.length?[]:[project],errors}));input.close();process.stdin.pause();return;
         }
-        const controlUrl=process.env.WORKFLOW_STUDIO_CONTROL_BRIDGE_URL;
-        const controlToken=process.env.WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN;
-        const controlDefinition=process.env.WORKFLOW_STUDIO_CONTROL_MCP_SERVER;
+        const controlUrl=process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL;
+        const controlToken=process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN;
+        const controlDefinition=process.env.STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER;
         const studioControl=controlDefinition?{mcpServer:JSON.parse(controlDefinition),bridgeUrl:controlUrl,hasToken:!!controlToken}:undefined;
         server=createServer(async (request,response)=>{
           if(request.url==='/studio-control-state'&&controlUrl&&controlToken){

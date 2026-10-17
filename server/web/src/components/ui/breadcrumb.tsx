@@ -1,5 +1,5 @@
 import * as React from "react"
-import { useTranslation } from "@workflow-code/i18n/react"
+import { useTranslation } from "@steamharness/i18n/react"
 import { cn } from "cn"
 import { ChevronRight, MoreHorizontal } from "lucide-react"
 import { Slot } from "radix-ui"

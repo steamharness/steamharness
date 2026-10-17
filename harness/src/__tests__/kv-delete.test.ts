@@ -17,7 +17,7 @@ function projectInput(key: string) {
 }
 
 async function createRootDir(label: string): Promise<string> {
-  return mkdtemp(path.join(os.tmpdir(), `workflow-code-kv-delete-${label}-`));
+  return mkdtemp(path.join(os.tmpdir(), `steamharness-kv-delete-${label}-`));
 }
 
 test("local KV delete removes the entry, its metadata and its inspection index row", async () => {

@@ -5,7 +5,7 @@ description: "管理 Server 项目上传、不可变源码版本和数据文件�
 
 # Server Workspace CLI
 
-`workflow-code workspace` 由 `@workflow-code/cli` 提供，管理 Workflow、Conversation 和 Kanban 项目的服务器存储。本地执行使用顶层 `workflow-code run/json`。Server 不加载或执行上传的项目代码。
+`steamharness workspace` 由 `@steamharness/cli` 提供，管理 Workflow、Conversation 和 Kanban 项目的服务器存储。本地执行使用顶层 `steamharness run/json`。Server 不加载或执行上传的项目代码。
 
 ## 命令列表
 
@@ -26,8 +26,8 @@ description: "管理 Server 项目上传、不可变源码版本和数据文件�
 
 | 选项 | 说明 |
 | --- | --- |
-| `--server <url>` | 优先于 `WORKFLOW_SERVER_URL`、登录态和默认 `http://localhost:7125`。 |
-| `--token <token>` | 优先于 `WORKFLOW_SERVER_ADMIN_KEY` 和保存的凭据。 |
+| `--server <url>` | 优先于 `STEAMHARNESS_SERVER_URL`、登录态和默认 `http://localhost:7125`。 |
+| `--token <token>` | 优先于 `STEAMHARNESS_SERVER_ADMIN_KEY` 和保存的凭据。 |
 | `--target <version>` | 下载的精确版本或 `latest`，不接受 draft。 |
 | `--release-log <text>` | 发布说明；upload 指定后会自动发布。 |
 | `--path <directory>` | 本地项目或下载目录。 |
@@ -39,15 +39,15 @@ description: "管理 Server 项目上传、不可变源码版本和数据文件�
 | `--project-group`、`--dependency <alias=path>` | 打包、上传或下载项目组。 |
 | `--deployment <id>`、`--publish-group` | 查询或发布项目组文件处理任务。 |
 
-未知选项会报错。静态类型由 `package.json.workflowCode.projectType` 声明，版本由上传的 `package.json.version` 决定；同版本不可覆盖。Server 只解包、校验和保存，不安装依赖或构建。Kanban 静态产物需要先在本地准备完成。
+未知选项会报错。静态类型由 `package.json.steamHarness.projectType` 声明，版本由上传的 `package.json.version` 决定；同版本不可覆盖。Server 只解包、校验和保存，不安装依赖或构建。Kanban 静态产物需要先在本地准备完成。
 
 ## 上传与下载
 
 ```bash
-workflow-code workspace login --server http://localhost:7125
-workflow-code workspace upload hello --create --release-log "初始发布"
-workflow-code workspace versions hello
-workflow-code workspace download hello --target latest --path ./downloaded-hello
+steamharness workspace login --server http://localhost:7125
+steamharness workspace upload hello --create --release-log "初始发布"
+steamharness workspace versions hello
+steamharness workspace download hello --target latest --path ./downloaded-hello
 ```
 
 项目参数支持 UUID、名称和本地目录，CLI 优先读取目录中的稳定 `package.json.id`。打包只按每个项目根目录的 `.workflowignore` 选择文件，不读取 `.gitignore`；规则文件自身和必需入口不能被排除。项目组 included 依赖锁定精确版本与源码哈希，下载逐项目检查源码权限，并报告跳过原因和申请入口。下载不受操作系统限制。
@@ -55,15 +55,15 @@ workflow-code workspace download hello --target latest --path ./downloaded-hello
 ## 业务文件
 
 ```bash
-workflow-code workspace file-upload <项目 UUID> --file ./map.png
-workflow-code workspace file-download <文件 ID> --output ./verified-map.png
-workflow-code workspace file-delete <文件 ID>
+steamharness workspace file-upload <项目 UUID> --file ./map.png
+steamharness workspace file-download <文件 ID> --output ./verified-map.png
+steamharness workspace file-delete <文件 ID>
 ```
 
 上传接受不超过 50 MiB 的普通文件，返回 `storage: "server"` 的 FileReference。写入要求项目数据写权限，读取要求项目访问权限。下载要求新路径，不覆盖已有文件；HTTP 失败不会生成本地文件。KV 保存文件引用，不保存图片 base64。
 
 ## 登录态与输出
 
-CLI 读取当前目录及源码仓库根目录的 `.env`，已有进程环境优先。登录态使用 `workflow-auth.json`，默认保存到操作系统应用配置目录，可用 `WORKFLOW_CLI_AUTH_DIR` 指定位置。
+CLI 读取当前目录及源码仓库根目录的 `.env`，已有进程环境优先。登录态使用 `workflow-auth.json`，默认保存到操作系统应用配置目录，可用 `STEAMHARNESS_CLI_AUTH_DIR` 指定位置。
 
 成功输出 `{ errCode: 0, errMessage: "", data }`；服务端错误和本地参数错误返回非零退出码。准备任务保留进度和失败反馈；失败上传不会替换已有发布快照。

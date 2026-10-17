@@ -5,9 +5,9 @@ import {
   createWorkflowRelatedProjectsContext,
   createWorkflowToolPermissionContext,
   type WorkflowKVContext,
-} from "workflow-code";
-import { installWorkflowRuntimeGlobal } from "workflow-code/runtime-api";
-import type { NodeContext } from "workflow-code/types/context";
+} from "steamharness";
+import { installWorkflowRuntimeGlobal } from "steamharness/runtime-api";
+import type { NodeContext } from "steamharness/types/context";
 import type { PiAgentInput, PiAgentParsedInput } from "../interface";
 import { KNOWLEDGE_DOCUMENTS_TOOL_NAME } from "../knowledge-documents-tool";
 

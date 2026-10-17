@@ -228,7 +228,7 @@ test("knowledge document mutations unlink empty non-head index pages", async () 
 });
 
 test("knowledge helpers accept a narrow local PersistentValue context", async () => {
-  const rootDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-local-knowledge-"));
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-local-knowledge-"));
   const context = {
     persistentValue: createLocalWorkflowPersistentValueContext({
       rootDir,
@@ -253,7 +253,7 @@ test("knowledge helpers accept a narrow local PersistentValue context", async ()
 
 test("local knowledge mutations serialize one PersistentValue project namespace", async () => {
   const mutationCount = 32;
-  const rootDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-local-knowledge-lock-"));
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-local-knowledge-lock-"));
   const firstContext = {
     persistentValue: createLocalWorkflowPersistentValueContext({
       rootDir,

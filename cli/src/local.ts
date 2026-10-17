@@ -14,9 +14,9 @@ import {
   type WorkflowRuntimeEvent,
   type WorkflowToolPermissionPolicyMap,
   type WorkflowUserInputResolved,
-} from "workflow-code";
-import { readWorkflowProjectInfo } from "@workflow-code/project-info";
-import { i18n, translateWorkflowCodeError } from "@workflow-code/i18n";
+} from "steamharness";
+import { readWorkflowProjectInfo } from "@steamharness/project-info";
+import { i18n, translateSteamHarnessError } from "@steamharness/i18n";
 import {
   assertCoreCompatibility,
   classifyVersionReference,
@@ -25,7 +25,7 @@ import {
   resolveReleaseMode,
   resolveRequiredCoreVersion,
   type RepositoryMode,
-} from "@workflow-code/runtime-compatibility";
+} from "@steamharness/runtime-compatibility";
 import { prepareCliInvocation } from "./locale";
 import {
   createCliRelatedProjectRuntime,
@@ -33,11 +33,11 @@ import {
   type CliRelatedProjectSpec,
 } from "./related-projects";
 
-type WorkflowCodeCommand = "run" | "json" | "structure" | "resolve-params" | "help";
+type SteamHarnessCommand = "run" | "json" | "structure" | "resolve-params" | "help";
 
-export const WORKFLOW_DESKTOP_RUNTIME_EVENTS_ENV = "WORKFLOW_DESKTOP_RUNTIME_EVENTS";
-export const WORKFLOW_DESKTOP_RUNTIME_EVENT_PREFIX = "__WORKFLOW_CODE_RUNTIME_EVENT__";
-export const WORKFLOW_PARAM_ERROR_MARKER = "__WORKFLOW_CODE_PARAM_ERROR__";
+export const STEAMHARNESS_DESKTOP_RUNTIME_EVENTS_ENV = "STEAMHARNESS_DESKTOP_RUNTIME_EVENTS";
+export const STEAMHARNESS_DESKTOP_RUNTIME_EVENT_PREFIX = "__STEAMHARNESS_RUNTIME_EVENT__";
+export const STEAMHARNESS_PARAM_ERROR_MARKER = "__STEAMHARNESS_PARAM_ERROR__";
 const RESUME_RUNTIME_EVENT_AFTER_REQUEST_ID = "__workflowResumeRuntimeEventAfterRequestId";
 
 export async function main(
@@ -72,8 +72,8 @@ export async function main(
   const relatedProjectRuntime = createCliRelatedProjectRuntime({
     consumerProjectDir: parsed.workflowDir,
     relatedProjects: parsed.relatedProjects,
-    localKvStoreDir: process.env.WORKFLOW_KV_STORE_DIR,
-    localPersistentValueStoreDir: process.env.WORKFLOW_PERSISTENT_VALUE_STORE_DIR,
+    localKvStoreDir: process.env.STEAMHARNESS_KV_STORE_DIR,
+    localPersistentValueStoreDir: process.env.STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR,
     runId: parsed.runId,
     conversationId: parsed.conversationId,
     env: process.env,
@@ -82,8 +82,8 @@ export async function main(
     host: "local" as const,
     local: {
       kvStore: relatedProjectRuntime.localKvStore,
-      kvStoreDir: process.env.WORKFLOW_KV_STORE_DIR,
-      persistentValueStoreDir: process.env.WORKFLOW_PERSISTENT_VALUE_STORE_DIR,
+      kvStoreDir: process.env.STEAMHARNESS_KV_STORE_DIR,
+      persistentValueStoreDir: process.env.STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR,
       relatedProjectResolver: relatedProjectRuntime.localResolver,
     },
     server: {
@@ -97,10 +97,10 @@ export async function main(
     runId: parsed.runId,
     conversationId: parsed.conversationId,
     storage,
-    fileStoreDir: parsed.fileStoreDir ?? process.env.WORKFLOW_FILE_STORE_DIR,
+    fileStoreDir: parsed.fileStoreDir ?? process.env.STEAMHARNESS_FILE_STORE_DIR,
     userInput: createCliUserInputContext(parsed.resolvedUserInputs),
     toolPermissionPolicies: parsed.toolPermissionPolicies,
-    fileCreateStoreDir: process.env.WORKFLOW_FILE_CREATE_STORE_DIR,
+    fileCreateStoreDir: process.env.STEAMHARNESS_FILE_CREATE_STORE_DIR,
     nodeHooks: parsed.json ? undefined : createCliOutputStreamHooks(),
     onRuntimeEvent: parsed.json ? createDesktopRuntimeEventEmitter() : undefined,
     abortSignal: abortController.signal,
@@ -136,7 +136,7 @@ function createProcessAbortController(): AbortController {
   return controller;
 }
 
-function parseCommand(value: string | undefined): WorkflowCodeCommand {
+function parseCommand(value: string | undefined): SteamHarnessCommand {
   if (value === undefined || value === "--help" || value === "-h" || value === "help") {
     return "help";
   }
@@ -168,7 +168,7 @@ async function runResolveParamsCommand(argv: string[], abortSignal: AbortSignal)
 }
 
 export function formatParamResolverFailure(error: unknown): string {
-  return `${WORKFLOW_PARAM_ERROR_MARKER}${JSON.stringify(createWorkflowFailure(error).error)}`;
+  return `${STEAMHARNESS_PARAM_ERROR_MARKER}${JSON.stringify(createWorkflowFailure(error).error)}`;
 }
 
 function parseParamResolveRequest(value: string): WorkflowParamResolveRequest {
@@ -215,7 +215,7 @@ export function parseWorkflowArgs(
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--") {
-      // Stop parsing workflow-code options at the explicit separator
+      // Stop parsing steamharness options at the explicit separator
       // so workflow args such as "--json" pass through unchanged.
       filteredArgv.push(...argv.slice(index));
       break;
@@ -353,7 +353,7 @@ function parseResolvedUserInputs(value: string): WorkflowUserInputResolved[] {
 }
 
 export function createDesktopRuntimeEventEmitter(): ((event: WorkflowRuntimeEvent) => void) | undefined {
-  if (process.env[WORKFLOW_DESKTOP_RUNTIME_EVENTS_ENV] !== "1") {
+  if (process.env[STEAMHARNESS_DESKTOP_RUNTIME_EVENTS_ENV] !== "1") {
     return undefined;
   }
 
@@ -361,7 +361,7 @@ export function createDesktopRuntimeEventEmitter(): ((event: WorkflowRuntimeEven
     // Keep local Desktop streaming events hidden behind a prefixed line so
     // the final JSON report remains parseable by existing CLI consumers.
     process.stdout.write(
-      `${WORKFLOW_DESKTOP_RUNTIME_EVENT_PREFIX}${JSON.stringify(event, createRuntimeEventJsonReplacer())}\n`,
+      `${STEAMHARNESS_DESKTOP_RUNTIME_EVENT_PREFIX}${JSON.stringify(event, createRuntimeEventJsonReplacer())}\n`,
     );
   };
 }
@@ -442,7 +442,7 @@ export function assertLocalCliCoreCompatible(
   const projectManifest = readJsonFile(path.join(projectDirectory, "package.json"), "Workflow package.json");
   // 内置项目位于 open-soucres/build-in/ 下；相对引用仍以开源源码根为边界。
   const parentDirectory = path.dirname(projectDirectory);
-  const reference = classifyVersionReference(projectManifest, "workflow-code");
+  const reference = classifyVersionReference(projectManifest, "steamharness");
   const workspaceRoot = reference.kind === "local" && path.posix.normalize(reference.relative).startsWith("../../")
     && path.basename(projectDirectory).startsWith("build-in-")
     ? path.dirname(parentDirectory) : parentDirectory;
@@ -461,18 +461,18 @@ export function assertLocalCliCoreCompatible(
 }
 
 export function readInstalledWorkflowCoreVersion(env: NodeJS.ProcessEnv = process.env): string {
-  const developmentRoot = env.WORKFLOW_LOCAL_CORE_ROOT?.trim();
+  const developmentRoot = env.STEAMHARNESS_LOCAL_CORE_ROOT?.trim();
   if (developmentRoot) {
     return readCoreVersionFromPackage(path.resolve(developmentRoot, "package.json"));
   }
 
-  const coreEntry = fileURLToPath(import.meta.resolve("workflow-code"));
+  const coreEntry = fileURLToPath(import.meta.resolve("steamharness"));
   let current = path.dirname(coreEntry);
   for (let depth = 0; depth < 8; depth += 1) {
     const packagePath = path.join(current, "package.json");
     try {
       const manifest = readJsonFile(packagePath, "Installed Core package.json");
-      if (isRecord(manifest) && manifest["name"] === "workflow-code") {
+      if (isRecord(manifest) && manifest["name"] === "steamharness") {
         return readCoreVersion(manifest);
       }
     } catch {
@@ -482,13 +482,13 @@ export function readInstalledWorkflowCoreVersion(env: NodeJS.ProcessEnv = proces
     if (parent === current) break;
     current = parent;
   }
-  throw new Error(`Unable to locate workflow-code package.json from ${coreEntry}.`);
+  throw new Error(`Unable to locate steamharness package.json from ${coreEntry}.`);
 }
 
 function readCoreVersionFromPackage(packagePath: string): string {
   const manifest = readJsonFile(packagePath, "Core package.json");
-  if (!isRecord(manifest) || manifest["name"] !== "workflow-code") {
-    throw new Error(`Core package.json must declare name "workflow-code".`);
+  if (!isRecord(manifest) || manifest["name"] !== "steamharness") {
+    throw new Error(`Core package.json must declare name "steamharness".`);
   }
   return readCoreVersion(manifest);
 }
@@ -584,7 +584,7 @@ if (isCliEntrypoint()) {
   main().then((exitCode) => {
     process.exitCode = exitCode;
   }).catch((error: unknown) => {
-    console.error(translateWorkflowCodeError(error));
+    console.error(translateSteamHarnessError(error));
     process.exitCode = 1;
   });
 }

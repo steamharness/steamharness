@@ -15,7 +15,7 @@ import {
   localizeServerMessage,
 } from "../../i18n";
 import { HttpError, toHttpError, toHttpErrorWithStatus } from "../../protocol";
-import { createWorkflowProjectDependencyLocks } from "@workflow-code/project-dependencies";
+import { createWorkflowProjectDependencyLocks } from "@steamharness/project-dependencies";
 import { createApiRouter } from "../api";
 import type { WorkflowStorage } from "../../storage";
 
@@ -57,7 +57,7 @@ test("localizeHttpErrorMessage prefers a structured descriptor over messageKey",
     404,
     "fallback",
     {
-      workflowCodeI18n: {
+      steamHarnessI18n: {
         namespace: "common",
         key: "projectDependencies.validation.lockArray",
       },
@@ -136,7 +136,7 @@ test("storage declaration and PersistentValue binding errors are localized", () 
       ),
       zh,
     ),
-    "项目“project-1”未声明 workflowCode.projectInfo.dataStorage.mode，不能访问服务器数据。请先在 package.json 中声明存储模式。",
+    "项目“project-1”未声明 steamHarness.projectInfo.dataStorage.mode，不能访问服务器数据。请先在 package.json 中声明存储模式。",
   );
   assert.equal(
     localizeHttpErrorMessage(
@@ -156,10 +156,10 @@ test("storage declaration and PersistentValue binding errors are localized", () 
   );
   assert.equal(
     localizeServerMessage(
-      'workflowCode.projectInfo.dataStorage.mode must be "local", "server", or "both".',
+      'steamHarness.projectInfo.dataStorage.mode must be "local", "server", or "both".',
       zh,
     ),
-    'workflowCode.projectInfo.dataStorage.mode 必须是 "local"、"server" 或 "both"。',
+    'steamHarness.projectInfo.dataStorage.mode 必须是 "local"、"server" 或 "both"。',
   );
 });
 

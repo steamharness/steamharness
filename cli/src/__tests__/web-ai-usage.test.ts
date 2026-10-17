@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from 'vitest';
-import { initI18n } from '@workflow-code/i18n';
+import { initI18n } from '@steamharness/i18n';
 import { usageAmount, usagePeriods } from '../web/ui/ai-usage';
 import type { WorkflowSystemAiUsage } from '../web/workflow-auth-client';
 

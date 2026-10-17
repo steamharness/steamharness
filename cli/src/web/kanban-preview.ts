@@ -1,17 +1,17 @@
 import { randomBytes } from 'node:crypto';
 import { lstat, realpath, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { createKanbanContentSecurityPolicy, encodeKanbanAssetUrlPath, injectKanbanBridge, isSafeKanbanPublicAssetPath, readKanbanAssetMimeType, type KanbanArtifactConfig, type KanbanInjectedConfiguration } from '@workflow-code/kanban-project';
+import { createKanbanContentSecurityPolicy, encodeKanbanAssetUrlPath, injectKanbanBridge, isSafeKanbanPublicAssetPath, readKanbanAssetMimeType, type KanbanArtifactConfig, type KanbanInjectedConfiguration } from '@steamharness/kanban-project';
 
 function injectTheme(html: string, nonce: string): string {
   // Editor themes can differ from the OS preference of nested Electron frames.
   const script = `<script nonce=${JSON.stringify(nonce)}>(() => {
     addEventListener('message', event => {
       const message = event.data;
-      if (event.source !== parent || message?.nonce !== ${JSON.stringify(nonce)} || message.type !== 'workflow-code:kanban-theme' || !['light', 'dark'].includes(message.theme)) return;
+      if (event.source !== parent || message?.nonce !== ${JSON.stringify(nonce)} || message.type !== 'steamharness:kanban-theme' || !['light', 'dark'].includes(message.theme)) return;
       document.documentElement.dataset.theme = message.theme;
       document.documentElement.style.colorScheme = message.theme;
-      dispatchEvent(new CustomEvent('workflow-code:kanban-theme-change', { detail: { theme: message.theme } }));
+      dispatchEvent(new CustomEvent('steamharness:kanban-theme-change', { detail: { theme: message.theme } }));
     });
   })();</script>`;
   const head = /<head(?:\s[^>]*)?>/i.exec(html);

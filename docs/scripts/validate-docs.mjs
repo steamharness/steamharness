@@ -9,8 +9,8 @@ const LOCALIZED_FIELDS = new Set(["description", "summary", "title", "example", 
 // web app lives on `wflive-alpha.yuhe.space`, which is why the stable name is
 // pinned literally rather than the `wflive` prefix.
 const REMOVED_DESKTOP_WEB_TERMS = /\bWeb Studio\b|Web工作室|studio-web|localhost:7133|127\.0\.0\.1:7133|运行到 Web|Web 入口|Web entry|wflive\.yuhe\.space/iu;
-const REMOVED_DESKTOP_IDENTITY_TERMS = /guides\/(?:releases\/)?app(?:\/|\b)|WORKFLOW_APP_|workflow-app\.json|@workflow-code\/app\b|\bminAppVersion\b|\bappVersion\b|\bisApp\b|\/app\/(?:stable|v)|\bapp\/v\d|source\s*=\s*["'`]?app\b|source=app\b|WORKFLOW_RUNTIME_PLATFORM=app\b/iu;
-const LEGACY_MONOREPO_REFERENCES = /packages\/(?:workflow-code|cli)|app\/builtin-projects|pnpm\s+-C\s+(?:app|server\/web|workspace)\b|pnpm\s+(?:run\s+)?app:[\w:-]+/u;
+const REMOVED_DESKTOP_IDENTITY_TERMS = /guides\/(?:releases\/)?app(?:\/|\b)|STEAMHARNESS_APP_|workflow-app\.json|@steamharness\/app\b|\bminAppVersion\b|\bappVersion\b|\bisApp\b|\/app\/(?:stable|v)|\bapp\/v\d|source\s*=\s*["'`]?app\b|source=app\b|STEAMHARNESS_RUNTIME_PLATFORM=app\b/iu;
+const LEGACY_MONOREPO_REFERENCES = /packages\/(?:steamharness|cli)|app\/builtin-projects|pnpm\s+-C\s+(?:app|server\/web|workspace)\b|pnpm\s+(?:run\s+)?app:[\w:-]+/u;
 const RELEASE_PAGE_PATH = /^(?:en\/)?guides\/releases\/[^/]+\.mdx$/u;
 const ISO_DISPLAY_TIMESTAMP = /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\b/u;
 const GENERATED_MDX_DIRECTORIES = new Set(["reference", "en/reference"]);
@@ -102,10 +102,10 @@ export async function validateDocs(options = {}) {
     }
   }
 
-  const chineseOpenapiSource = await readFile(path.join(root, "openapi", "workflow-code.openapi.yaml"), "utf8");
-  const englishOpenapiSource = await readFile(path.join(root, "en", "openapi", "workflow-code.openapi.yaml"), "utf8");
-  validateStandaloneDocsSource("openapi/workflow-code.openapi.yaml", chineseOpenapiSource);
-  validateStandaloneDocsSource("en/openapi/workflow-code.openapi.yaml", englishOpenapiSource);
+  const chineseOpenapiSource = await readFile(path.join(root, "openapi", "steamharness.openapi.yaml"), "utf8");
+  const englishOpenapiSource = await readFile(path.join(root, "en", "openapi", "steamharness.openapi.yaml"), "utf8");
+  validateStandaloneDocsSource("openapi/steamharness.openapi.yaml", chineseOpenapiSource);
+  validateStandaloneDocsSource("en/openapi/steamharness.openapi.yaml", englishOpenapiSource);
   const chineseOpenapi = parseYaml(chineseOpenapiSource);
   const englishOpenapi = parseYaml(englishOpenapiSource);
   if (JSON.stringify(stripLocalizedCopy(chineseOpenapi)) !== JSON.stringify(stripLocalizedCopy(englishOpenapi))) {

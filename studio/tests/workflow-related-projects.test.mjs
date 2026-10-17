@@ -9,7 +9,7 @@ import { IMPORTED_PROJECTS_KEY } from '../extensions/studio-workstation/src/proj
 const ids = ['294b1eec-23fa-42cf-9fd3-2417f71c0570', '615e6cf6-b40a-456a-8d19-b71c63454c7a', '4d8d3580-6356-42b1-a8f0-2a14b0a7b955'];
 const project = (name, id = ids[0], projectType = 'workflow') => ({ id, name, projectType, uri: `file:///${name}`, folderPath: `/${name}`, fields: [], entrypoints: [] });
 const imported = (name, id = ids[1]) => ({ id, name, uri: `file:///${name}` });
-const manifest = (name, id = ids[0], relatedProjects = []) => ({ id, name, workflowCode: { projectInfo: { relatedProjects } } });
+const manifest = (name, id = ids[0], relatedProjects = []) => ({ id, name, steamHarness: { projectInfo: { relatedProjects } } });
 const relation = (alias = 'notes', projectId = ids[1]) => ({ alias, projectId });
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-related-projects-view.ts'], bundle: true,
   platform: 'node', format: 'cjs', external: ['vscode'], write: false });
@@ -145,7 +145,7 @@ test('imported relations use the detected project type while missing imports kee
 for (const [language, expected] of [['en', 'English notes'], ['zh-cn', 'Chinese notes'], ['fr', 'English notes']]) {
   test(`related project labels resolve ${language} localized names from the current manifest`, async t => {
     const state = new Map([[IMPORTED_PROJECTS_KEY, [imported('Notes')]]]);
-    const notes = { ...manifest('Default notes', ids[1]), workflowCode: { projectInfo: { localizedNames: { EN: 'English notes', 'zh-cn': 'Chinese notes' } } } };
+    const notes = { ...manifest('Default notes', ids[1]), steamHarness: { projectInfo: { localizedNames: { EN: 'English notes', 'zh-cn': 'Chinese notes' } } } };
     const files = new Map([['file:///Owner/package.json', manifest('Owner', ids[0], [relation()])], ['file:///Notes/package.json', notes]]);
     const { provider } = fixture(t, { files, state, language });
     await provider.update([project('Owner')]);

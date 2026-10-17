@@ -4,7 +4,7 @@ export type WorkflowRuntimeLocale = "zh-CN" | "en";
  * The host injects this marker for a workflow execution. Projects should use
  * getRuntimeLocale() instead of reading process.env directly.
  */
-export const WORKFLOW_RUNTIME_LOCALE_ENV = "WORKFLOW_RUNTIME_LOCALE";
+export const STEAMHARNESS_RUNTIME_LOCALE_ENV = "STEAMHARNESS_RUNTIME_LOCALE";
 
 export function getRuntimeLocale(): WorkflowRuntimeLocale {
   return normalizeRuntimeLocale(readRuntimeLocaleMarker());
@@ -27,5 +27,5 @@ function readRuntimeLocaleMarker(): string | undefined {
     };
   };
 
-  return globalWithProcess.process?.env?.[WORKFLOW_RUNTIME_LOCALE_ENV];
+  return globalWithProcess.process?.env?.[STEAMHARNESS_RUNTIME_LOCALE_ENV];
 }

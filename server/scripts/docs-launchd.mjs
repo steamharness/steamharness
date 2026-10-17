@@ -14,8 +14,8 @@ const { serverRoot, repoRoot } = resolveReleasePaths();
 const serviceRoot = path.join(resolveServerDataRoot({ requiredForRelease: true, serverRoot }), "docs-service");
 const logsRoot = path.join(serviceRoot, "logs");
 const command = process.argv[2] ?? "print";
-const label = process.env.WORKFLOW_DOCS_LAUNCHD_LABEL?.trim() || "win.hookcode.workflow-code.docs";
-const plistDir = process.env.WORKFLOW_DOCS_LAUNCHD_DIR?.trim()
+const label = process.env.STEAMHARNESS_DOCS_LAUNCHD_LABEL?.trim() || "win.hookcode.steamharness.docs";
+const plistDir = process.env.STEAMHARNESS_DOCS_LAUNCHD_DIR?.trim()
   || path.join(os.homedir(), "Library", "LaunchAgents");
 const plistPath = path.join(plistDir, `${label}.plist`);
 
@@ -74,11 +74,11 @@ function renderLaunchdPlist() {
   <dict>
     <key>NODE_ENV</key>
     <string>production</string>
-    <key>WORKFLOW_REPO_ROOT</key>
+    <key>STEAMHARNESS_REPO_ROOT</key>
     <string>${escapeXml(repoRoot)}</string>
-    <key>WORKFLOW_SERVER_DATA_DIR</key>
+    <key>STEAMHARNESS_SERVER_DATA_DIR</key>
     <string>${escapeXml(path.dirname(serviceRoot))}</string>
-    <key>WORKFLOW_DOCS_ROOT</key>
+    <key>STEAMHARNESS_DOCS_ROOT</key>
     <string>${escapeXml(resolveDocsRoot())}</string>
   </dict>
   <key>StandardOutPath</key>

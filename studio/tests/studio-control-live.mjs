@@ -20,9 +20,9 @@ const assistant = path.resolve(process.env.STUDIO_CONTROL_TEST_ASSISTANT_DIR ||
 const aggregateControl = path.resolve(ROOT, '../open-soucres/build-in/build-in-studio-control');
 const controlProject = await exists(path.join(aggregateControl, 'package.json')) ? aggregateControl : path.join(ROOT, 'vendor/studio-control');
 const require = createRequire(path.join(assistant, 'package.json'));
-const cliManifestPath = require.resolve('@workflow-code/cli/package.json');
+const cliManifestPath = require.resolve('@steamharness/cli/package.json');
 const cliManifest = JSON.parse(await readFile(cliManifestPath, 'utf8'));
-const runtimeApi = resolve('workflow-code/runtime-api', pathToFileURL(path.join(assistant, 'index.ts')).href);
+const runtimeApi = resolve('steamharness/runtime-api', pathToFileURL(path.join(assistant, 'index.ts')).href);
 const directory = await mkdtemp(path.join(tmpdir(), 'studio-control-live-'));
 const extension = path.join(directory, 'extensions/control-test');
 const workdir = path.join(directory, 'workspace');
@@ -41,12 +41,12 @@ try {
     '--connection-token', token, '--server-data-dir', path.join(directory, 'server'), '--extensions-dir', path.join(directory, 'extensions'),
     '--builtin-extensions-dir', path.join(upstream.directory, 'extensions'), '--disable-workspace-trust', '--telemetry-level', 'off',
     '--default-folder', workdir], { cwd: upstream.directory, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, NODE_ENV: 'development', VSCODE_DEV: '1', WORKFLOW_CLI_AUTH_DIR: path.join(directory, 'auth'),
-      WORKFLOW_SERVER_URL: '', WORKFLOW_SERVER_ADMIN_KEY: '', VSCODE_SKIP_BUILTIN_EXTENSIONS: 'vscode.vscode-api-tests,GitHub.copilot,GitHub.copilot-chat',
+    env: { ...process.env, NODE_ENV: 'development', VSCODE_DEV: '1', STEAMHARNESS_CLI_AUTH_DIR: path.join(directory, 'auth'),
+      STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '', VSCODE_SKIP_BUILTIN_EXTENSIONS: 'vscode.vscode-api-tests,GitHub.copilot,GitHub.copilot-chat',
       STUDIO_CONTROL_TEST_REPORT: reportFile, STUDIO_CONTROL_TEST_ASSISTANT: assistant, STUDIO_CONTROL_TEST_NODE: process.execPath,
       STUDIO_CONTROL_TEST_PROJECT: controlProject,
       STUDIO_CONTROL_TEST_TEMPLATE: path.join(ROOT, 'extensions/studio-workstation/dist/studio-control'),
-      STUDIO_CONTROL_TEST_CLI: path.resolve(path.dirname(cliManifestPath), cliManifest.bin['workflow-code']), STUDIO_CONTROL_TEST_RUNTIME_API: runtimeApi } });
+      STUDIO_CONTROL_TEST_CLI: path.resolve(path.dirname(cliManifestPath), cliManifest.bin['steamharness']), STUDIO_CONTROL_TEST_RUNTIME_API: runtimeApi } });
   child.stdout.on('data', chunk => { log = (log + chunk.toString()).replaceAll(token, '[redacted]'); });
   child.stderr.on('data', chunk => { log = (log + chunk.toString()).replaceAll(token, '[redacted]'); });
   let port;

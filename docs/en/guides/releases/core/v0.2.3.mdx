@@ -5,10 +5,10 @@ description: "Release notes for Core 0.2.3."
 
 # Core 0.2.3
 
-2026-09-01 · Tag `workflow-code/v0.2.3` · npm
+2026-09-01 · Tag `steamharness/v0.2.3` · npm
 
-<span id="workflow-code-0-2-3" className="release-version-anchor"></span>
-<span id="workflow-code.0.2.3" className="release-version-anchor"></span>
+<span id="steamharness-0-2-3" className="release-version-anchor"></span>
+<span id="steamharness.0.2.3" className="release-version-anchor"></span>
 
 #### New Features
 
@@ -33,7 +33,7 @@ description: "Release notes for Core 0.2.3."
 
 - Changed AI SDK streams to preserve the complete finish reason, usage, errors, and provider metadata.
 - Changed AI SDK providers to stop promoting SDK `unsupported` / `compatibility` warnings into run failures.
-- Changed downgrade details to remain in `providerMetadata["workflow-code"].warnings`, while real call errors still fail.
+- Changed downgrade details to remain in `providerMetadata["steamharness"].warnings`, while real call errors still fail.
 - Changed KV and PersistentValue to use separate storage domains, with knowledge on project PersistentValue and token totals kept per project and conversation only.
 - Changed the generator scaffold to emit an empty `projectInfo.relatedProjects` explicitly, with the API reference following the project and conversation token-accounting contract.
 - Changed the local and server data-hierarchy examples to expose separate `store` and `get` entrypoints, where `store` returns a random UUID and `get` needs only that id.

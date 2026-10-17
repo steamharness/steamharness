@@ -5,10 +5,10 @@ import { mkdtemp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { initI18n } from "@workflow-code/i18n";
+import { initI18n } from "@steamharness/i18n";
 import { ensureWorkflowProjectCreated, decodeWorkflowFileContent, findLocalWorkflowDependencies, formatForbiddenMessage, materializeProjectGroupDownload, normalizeWorkflowFilePath, packWorkflow, packProjectGroup, readProjectGroupContexts, getPreparation, main, parseArgs, readWorkflowPackageContext, resolveRepoRoot, stageWorkflowWithLocalDependencies, waitForDeviceToken, waitForProjectGroupPreparation, waitForPreparation } from "../workspace";
 
-const VALID_WORKFLOW_SOURCE = [
+const VALID_STEAMHARNESS_SOURCE = [
   "export const mainWorkflow = workflow.defineWorkflow({",
   "  name: \"main\",",
   "  async run(input) { return input; },",
@@ -83,7 +83,7 @@ describe("server workspace CLI helpers", () => {
       id: rootId,
       name: "Board",
       version: "0.1.2",
-      workflowCode: {
+      steamHarness: {
         projectType: "kanban",
         projectInfo: {
           relatedProjects: [{ alias: "worker", projectId: dependencyId }],
@@ -97,9 +97,9 @@ describe("server workspace CLI helpers", () => {
       id: dependencyId,
       name: "Worker",
       version: "0.3.0",
-      workflowCode: { projectType: "workflow" },
+      steamHarness: { projectType: "workflow" },
     }));
-    await writeFile(path.join(dependencyDir, "index.ts"), VALID_WORKFLOW_SOURCE);
+    await writeFile(path.join(dependencyDir, "index.ts"), VALID_STEAMHARNESS_SOURCE);
 
     const packed = await packProjectGroup({
       workflowArg: "root",
@@ -190,7 +190,7 @@ describe("server workspace CLI helpers", () => {
       id: "7bd4fef2-e083-4201-a89f-6f7d0676df53",
       name: "Stock Board",
       version: "1.0.0",
-      workflowCode: {
+      steamHarness: {
         projectType: "kanban",
         projectInfo: createProjectInfo("stocks", dependencyProjectId),
         kanban: {},
@@ -201,12 +201,12 @@ describe("server workspace CLI helpers", () => {
       id: dependencyProjectId,
       name: "Stock Database",
       version: "1.0.0",
-      workflowCode: {
+      steamHarness: {
         projectType: "workflow",
         projectInfo: createProjectInfo("board", "7bd4fef2-e083-4201-a89f-6f7d0676df53"),
       },
     }));
-    await writeFile(path.join(workflowDir, "index.ts"), VALID_WORKFLOW_SOURCE);
+    await writeFile(path.join(workflowDir, "index.ts"), VALID_STEAMHARNESS_SOURCE);
     await writeFile(path.join(workflowDir, "README.md"), "# Stock Database\n");
 
     try {
@@ -223,7 +223,7 @@ describe("server workspace CLI helpers", () => {
         id: dependencyProjectId,
         name: "Stock Database",
         version: "1.0.0",
-        workflowCode: {
+        steamHarness: {
           projectType: "workflow",
           projectInfo: createProjectInfo(),
         },
@@ -245,7 +245,7 @@ describe("server workspace CLI helpers", () => {
       id: projectId,
       name: "Invalid Board",
       version: "1.0.0",
-      workflowCode: {
+      steamHarness: {
         projectType: "kanban",
         projectInfo: createProjectInfo("self", projectId),
         kanban: {},
@@ -276,11 +276,11 @@ describe("server workspace CLI helpers", () => {
       name: "Workflow",
       version: "1.0.0",
     }));
-    await writeFile(path.join(sourceDir, "index.ts"), VALID_WORKFLOW_SOURCE);
+    await writeFile(path.join(sourceDir, "index.ts"), VALID_STEAMHARNESS_SOURCE);
     await writeFile(path.join(sourceDir, ".env"), "SECRET=value\n");
     await writeFile(path.join(sourceDir, ".envrc"), "export SECRET=value\n");
     await writeFile(path.join(sourceDir, ".env.example"), "SECRET=\n");
-    await writeFile(path.join(sourceDir, "workflow-code.sqlite-wal"), "local sqlite state\n");
+    await writeFile(path.join(sourceDir, "steamharness.sqlite-wal"), "local sqlite state\n");
     await writeFile(path.join(sourceDir, ".workflow-kv", "value.json"), "{}\n");
     await writeFile(path.join(sourceDir, ".workflow-persistent-values", "value.json"), "{}\n");
     await writeFile(path.join(sourceDir, ".workflow-schedules", "schedules.json"), "[]\n");
@@ -299,7 +299,7 @@ describe("server workspace CLI helpers", () => {
       expect(existsSync(path.join(staged, ".env.example"))).toBe(true);
       expect(existsSync(path.join(staged, ".env"))).toBe(false);
       expect(existsSync(path.join(staged, ".envrc"))).toBe(false);
-      expect(existsSync(path.join(staged, "workflow-code.sqlite-wal"))).toBe(false);
+      expect(existsSync(path.join(staged, "steamharness.sqlite-wal"))).toBe(false);
       expect(existsSync(path.join(staged, ".workflow-kv"))).toBe(false);
       expect(existsSync(path.join(staged, ".workflow-persistent-values"))).toBe(false);
       expect(existsSync(path.join(staged, ".workflow-schedules"))).toBe(false);
@@ -330,7 +330,7 @@ describe("server workspace CLI helpers", () => {
           role: "root",
           files: [{
             path: "package.json",
-            content: JSON.stringify({ id: projectId, name: "Project", version: "1.2.3", workflowCode: { projectType } }),
+            content: JSON.stringify({ id: projectId, name: "Project", version: "1.2.3", steamHarness: { projectType } }),
           }, { path: "index.ts", content: source }],
         }],
       }), targetDir);
@@ -347,7 +347,7 @@ describe("server workspace CLI helpers", () => {
     const pendingProjectId = "8bd4fef2-e083-4201-a89f-6f7d0676df53";
     const targetDir = path.join(root, "project");
     const packageJson = { ...createKanbanPackage(projectId, "Project"), version: "1.0.0",
-      workflowCode: { projectType, projectInfo: createProjectInfo("pending", pendingProjectId) } };
+      steamHarness: { projectType, projectInfo: createProjectInfo("pending", pendingProjectId) } };
     const download = finalizeProjectGroupDownloadFixture({
       rootProjectId: projectId, rootVersion: "1.0.0", dependencies: [], complete: true, copyAllowed: true,
       skippedDependencies: [], projects: [{ projectId, projectName: "Project", version: "1.0.0", sourceHash: "", role: "root",
@@ -517,12 +517,12 @@ describe("server workspace CLI helpers", () => {
       id: dependencyProjectId,
       name: "Stock Database",
       version: "0.5.0",
-      workflowCode: {
+      steamHarness: {
         projectType: "workflow",
         projectInfo: createProjectInfo("board", rootProjectId),
       },
     }));
-    await writeFile(path.join(dependencyDir, "index.ts"), VALID_WORKFLOW_SOURCE);
+    await writeFile(path.join(dependencyDir, "index.ts"), VALID_STEAMHARNESS_SOURCE);
 
     try {
       const materialized = await materializeProjectGroupDownload(finalizeProjectGroupDownloadFixture({
@@ -561,7 +561,7 @@ describe("server workspace CLI helpers", () => {
           alreadyAvailable: true,
         }),
       ]));
-      expect(readFileSync(path.join(dependencyDir, "index.ts"), "utf8")).toBe(VALID_WORKFLOW_SOURCE);
+      expect(readFileSync(path.join(dependencyDir, "index.ts"), "utf8")).toBe(VALID_STEAMHARNESS_SOURCE);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -733,7 +733,7 @@ describe("server workspace CLI helpers", () => {
         ".workflow-persistent-values/value.json",
         ".workflow-schedules/schedules.json",
         ".workflow-runs/history.json",
-        "workflow-code.sqlite",
+        "steamharness.sqlite",
         "workflow-auth.json",
       ]) {
         await expect(materializeProjectGroupDownload(finalizeProjectGroupDownloadFixture({
@@ -886,7 +886,7 @@ describe("server workspace CLI helpers", () => {
     await mkdir(sourceWorkflowDir, { recursive: true });
     await writeFile(path.join(sourceWorkflowDir, "package.json"), JSON.stringify({
       id: "a7e15f8a-e179-4986-8b0d-1e69a0e65b51",
-      name: "@workflow-code/optional-readme",
+      name: "@steamharness/optional-readme",
       version: "0.1.0",
     }));
     await writeFile(path.join(sourceWorkflowDir, "index.ts"), "export default {};\n");
@@ -904,7 +904,7 @@ describe("server workspace CLI helpers", () => {
       id: "a7e15f8a-e179-4986-8b0d-1e69a0e65b51",
       name: "Kanban",
       version: "0.1.0",
-      workflowCode: {
+      steamHarness: {
         projectType: "kanban",
         kanban: { artifactDir: "dist", entry: "pages/board.htm" },
       },
@@ -945,7 +945,7 @@ describe("server workspace CLI helpers", () => {
   });
 
   it("reads saved CLI auth config when no explicit token override is provided", async () => {
-    const authDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-cli-auth-"));
+    const authDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-cli-auth-"));
     await writeFile(
       path.join(authDir, "workflow-auth.json"),
       JSON.stringify({
@@ -962,12 +962,12 @@ describe("server workspace CLI helpers", () => {
       "utf8",
     );
 
-    const previousAuthDir = process.env.WORKFLOW_CLI_AUTH_DIR;
-    const previousServer = process.env.WORKFLOW_SERVER_URL;
-    const previousAdminKey = process.env.WORKFLOW_SERVER_ADMIN_KEY;
-    process.env.WORKFLOW_CLI_AUTH_DIR = authDir;
-    delete process.env.WORKFLOW_SERVER_URL;
-    delete process.env.WORKFLOW_SERVER_ADMIN_KEY;
+    const previousAuthDir = process.env.STEAMHARNESS_CLI_AUTH_DIR;
+    const previousServer = process.env.STEAMHARNESS_SERVER_URL;
+    const previousAdminKey = process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
+    process.env.STEAMHARNESS_CLI_AUTH_DIR = authDir;
+    delete process.env.STEAMHARNESS_SERVER_URL;
+    delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
 
     try {
       expect(parseArgs([
@@ -986,25 +986,25 @@ describe("server workspace CLI helpers", () => {
       });
     } finally {
       if (previousAuthDir === undefined) {
-        delete process.env.WORKFLOW_CLI_AUTH_DIR;
+        delete process.env.STEAMHARNESS_CLI_AUTH_DIR;
       } else {
-        process.env.WORKFLOW_CLI_AUTH_DIR = previousAuthDir;
+        process.env.STEAMHARNESS_CLI_AUTH_DIR = previousAuthDir;
       }
       if (previousServer === undefined) {
-        delete process.env.WORKFLOW_SERVER_URL;
+        delete process.env.STEAMHARNESS_SERVER_URL;
       } else {
-        process.env.WORKFLOW_SERVER_URL = previousServer;
+        process.env.STEAMHARNESS_SERVER_URL = previousServer;
       }
       if (previousAdminKey === undefined) {
-        delete process.env.WORKFLOW_SERVER_ADMIN_KEY;
+        delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
       } else {
-        process.env.WORKFLOW_SERVER_ADMIN_KEY = previousAdminKey;
+        process.env.STEAMHARNESS_SERVER_ADMIN_KEY = previousAdminKey;
       }
     }
   });
 
   it("reports the effective server and where it came from", async () => {
-    const authDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-cli-auth-"));
+    const authDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-cli-auth-"));
     await writeFile(
       path.join(authDir, "workflow-auth.json"),
       JSON.stringify({
@@ -1015,18 +1015,18 @@ describe("server workspace CLI helpers", () => {
       "utf8",
     );
 
-    const previousAuthDir = process.env.WORKFLOW_CLI_AUTH_DIR;
-    const previousServer = process.env.WORKFLOW_SERVER_URL;
-    const previousAdminKey = process.env.WORKFLOW_SERVER_ADMIN_KEY;
-    process.env.WORKFLOW_CLI_AUTH_DIR = authDir;
-    delete process.env.WORKFLOW_SERVER_URL;
-    delete process.env.WORKFLOW_SERVER_ADMIN_KEY;
+    const previousAuthDir = process.env.STEAMHARNESS_CLI_AUTH_DIR;
+    const previousServer = process.env.STEAMHARNESS_SERVER_URL;
+    const previousAdminKey = process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
+    process.env.STEAMHARNESS_CLI_AUTH_DIR = authDir;
+    delete process.env.STEAMHARNESS_SERVER_URL;
+    delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
 
     try {
       // A host that spawns this CLI passes its own session through the
       // environment; status has to say so instead of echoing the login file.
-      process.env.WORKFLOW_SERVER_URL = "https://wfalpha.yuhe.space";
-      process.env.WORKFLOW_SERVER_ADMIN_KEY = "desktop-session-key";
+      process.env.STEAMHARNESS_SERVER_URL = "https://wfalpha.yuhe.space";
+      process.env.STEAMHARNESS_SERVER_ADMIN_KEY = "desktop-session-key";
       const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
       try {
         await main(["status"]);
@@ -1044,8 +1044,8 @@ describe("server workspace CLI helpers", () => {
       }
 
       // Without a host session the saved login is what a command would use.
-      delete process.env.WORKFLOW_SERVER_URL;
-      delete process.env.WORKFLOW_SERVER_ADMIN_KEY;
+      delete process.env.STEAMHARNESS_SERVER_URL;
+      delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
       expect(parseArgs(["status"]).effective).toEqual({
         serverUrl: "http://localhost:7126",
         serverSource: "file",
@@ -1066,8 +1066,8 @@ describe("server workspace CLI helpers", () => {
       });
 
       // And over the environment, not the other way round.
-      process.env.WORKFLOW_SERVER_URL = "https://from-env.test";
-      process.env.WORKFLOW_SERVER_ADMIN_KEY = "env-token";
+      process.env.STEAMHARNESS_SERVER_URL = "https://from-env.test";
+      process.env.STEAMHARNESS_SERVER_ADMIN_KEY = "env-token";
       expect(parseArgs([
         "status",
         "--server",
@@ -1081,19 +1081,19 @@ describe("server workspace CLI helpers", () => {
       });
     } finally {
       if (previousAuthDir === undefined) {
-        delete process.env.WORKFLOW_CLI_AUTH_DIR;
+        delete process.env.STEAMHARNESS_CLI_AUTH_DIR;
       } else {
-        process.env.WORKFLOW_CLI_AUTH_DIR = previousAuthDir;
+        process.env.STEAMHARNESS_CLI_AUTH_DIR = previousAuthDir;
       }
       if (previousServer === undefined) {
-        delete process.env.WORKFLOW_SERVER_URL;
+        delete process.env.STEAMHARNESS_SERVER_URL;
       } else {
-        process.env.WORKFLOW_SERVER_URL = previousServer;
+        process.env.STEAMHARNESS_SERVER_URL = previousServer;
       }
       if (previousAdminKey === undefined) {
-        delete process.env.WORKFLOW_SERVER_ADMIN_KEY;
+        delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
       } else {
-        process.env.WORKFLOW_SERVER_ADMIN_KEY = previousAdminKey;
+        process.env.STEAMHARNESS_SERVER_ADMIN_KEY = previousAdminKey;
       }
       await rm(authDir, { recursive: true, force: true });
     }
@@ -1107,17 +1107,17 @@ describe("server workspace CLI helpers", () => {
   });
 
   it("resolves the standalone Core repository root from its workspace", async () => {
-    const previousRepoRoot = process.env.WORKFLOW_REPO_ROOT;
+    const previousRepoRoot = process.env.STEAMHARNESS_REPO_ROOT;
     const root = await mkdtemp(path.join(os.tmpdir(), "workflow-core-root-"));
     const workflowDir = path.join(root, "workspace", "workflow", "hello");
-    delete process.env.WORKFLOW_REPO_ROOT;
+    delete process.env.STEAMHARNESS_REPO_ROOT;
 
     try {
       await mkdir(workflowDir, { recursive: true });
       await Promise.all([
         writeFile(path.join(root, "pnpm-workspace.yaml"), 'packages:\n  - "."\n', "utf8"),
-        writeFile(path.join(root, "package.json"), '{"name":"workflow-code"}\n', "utf8"),
-        writeFile(path.join(root, "workspace", "package.json"), '{"name":"@workflow-code/workspace"}\n', "utf8"),
+        writeFile(path.join(root, "package.json"), '{"name":"steamharness"}\n', "utf8"),
+        writeFile(path.join(root, "workspace", "package.json"), '{"name":"@steamharness/workspace"}\n', "utf8"),
       ]);
 
       // keeps default pack paths rooted in the Core repository.
@@ -1125,9 +1125,9 @@ describe("server workspace CLI helpers", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
       if (previousRepoRoot === undefined) {
-        delete process.env.WORKFLOW_REPO_ROOT;
+        delete process.env.STEAMHARNESS_REPO_ROOT;
       } else {
-        process.env.WORKFLOW_REPO_ROOT = previousRepoRoot;
+        process.env.STEAMHARNESS_REPO_ROOT = previousRepoRoot;
       }
     }
   });
@@ -1143,26 +1143,26 @@ describe("server workspace CLI helpers", () => {
     // covers the built server workspace CLI shape while keeping the
     // default test suite offline and independent of Workflow Server.
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toMatch(/(?:Usage|用法).*workflow-code/);
-    expect(result.stdout).toContain("pnpm exec workflow-code workspace <command> [args]");
+    expect(result.stdout).toMatch(/(?:Usage|用法).*steamharness/);
+    expect(result.stdout).toContain("pnpm exec steamharness workspace <command> [args]");
     expect(result.stdout).toContain("versions <workflow>");
     expect(result.stderr.trim()).toBe("");
   });
 
-  it("ships the unified workflow-code bin as a node executable", () => {
+  it("ships the unified steamharness bin as a node executable", () => {
     const packageJson = JSON.parse(readFileSync(path.resolve("package.json"), "utf8")) as {
       bin?: Record<string, string>;
     };
     const tsupConfig = readFileSync(path.resolve("tsup.config.ts"), "utf8");
 
-    expect(packageJson.bin?.["workflow-code"]).toBe("./dist/index.js");
+    expect(packageJson.bin?.["steamharness"]).toBe("./dist/index.js");
     expect(tsupConfig).toContain('js: "#!/usr/bin/env node"');
   });
 
   it("stores the published workspace help text in the CLI resources", () => {
     const source = readFileSync(path.resolve(".shared", "i18n", "resources", "en", "cli.ts"), "utf8");
 
-    expect(source).toContain("Usage: workflow-code [--locale <zh-CN|en>] workspace <command> [args]");
+    expect(source).toContain("Usage: steamharness [--locale <zh-CN|en>] workspace <command> [args]");
     expect(source).toContain("http://localhost:7125");
   });
 
@@ -1228,12 +1228,12 @@ describe("server workspace CLI helpers", () => {
       id: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
       name: "Hello Workflow",
       version: "0.0.1",
-      workflowCode: { projectType: "workflow" },
+      steamHarness: { projectType: "workflow" },
     }, null, 2));
-    await writeFile(path.join(workflowDir, "index.ts"), VALID_WORKFLOW_SOURCE);
+    await writeFile(path.join(workflowDir, "index.ts"), VALID_STEAMHARNESS_SOURCE);
 
-    const previousRepoRoot = process.env.WORKFLOW_REPO_ROOT;
-    process.env.WORKFLOW_REPO_ROOT = root;
+    const previousRepoRoot = process.env.STEAMHARNESS_REPO_ROOT;
+    process.env.STEAMHARNESS_REPO_ROOT = root;
     try {
       const context = await readWorkflowPackageContext("hello", undefined);
       expect(context.workflowId).toBe("8bd4fef2-e083-4201-a89f-6f7d0676df53");
@@ -1241,9 +1241,9 @@ describe("server workspace CLI helpers", () => {
       expect(context.workflowDir).toBe(workflowDir);
     } finally {
       if (previousRepoRoot === undefined) {
-        delete process.env.WORKFLOW_REPO_ROOT;
+        delete process.env.STEAMHARNESS_REPO_ROOT;
       } else {
-        process.env.WORKFLOW_REPO_ROOT = previousRepoRoot;
+        process.env.STEAMHARNESS_REPO_ROOT = previousRepoRoot;
       }
     }
   });
@@ -1256,12 +1256,12 @@ describe("server workspace CLI helpers", () => {
       id: "hello",
       name: "Hello Workflow",
       version: "0.0.1",
-      workflowCode: { projectType: "workflow", projectInfo: createProjectInfo() },
+      steamHarness: { projectType: "workflow", projectInfo: createProjectInfo() },
     }, null, 2));
-    await writeFile(path.join(workflowDir, "index.ts"), VALID_WORKFLOW_SOURCE);
+    await writeFile(path.join(workflowDir, "index.ts"), VALID_STEAMHARNESS_SOURCE);
 
-    const previousRepoRoot = process.env.WORKFLOW_REPO_ROOT;
-    process.env.WORKFLOW_REPO_ROOT = root;
+    const previousRepoRoot = process.env.STEAMHARNESS_REPO_ROOT;
+    process.env.STEAMHARNESS_REPO_ROOT = root;
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
@@ -1275,9 +1275,9 @@ describe("server workspace CLI helpers", () => {
       expect(fetchMock).not.toHaveBeenCalled();
     } finally {
       if (previousRepoRoot === undefined) {
-        delete process.env.WORKFLOW_REPO_ROOT;
+        delete process.env.STEAMHARNESS_REPO_ROOT;
       } else {
-        process.env.WORKFLOW_REPO_ROOT = previousRepoRoot;
+        process.env.STEAMHARNESS_REPO_ROOT = previousRepoRoot;
       }
     }
   });
@@ -1290,12 +1290,12 @@ describe("server workspace CLI helpers", () => {
       id: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
       name: "Hello Workflow",
       version: "0.0.1",
-      workflowCode: { projectType: "workflow", projectInfo: createProjectInfo() },
+      steamHarness: { projectType: "workflow", projectInfo: createProjectInfo() },
     }, null, 2));
-    await writeFile(path.join(workflowDir, "index.ts"), VALID_WORKFLOW_SOURCE);
+    await writeFile(path.join(workflowDir, "index.ts"), VALID_STEAMHARNESS_SOURCE);
 
-    const previousRepoRoot = process.env.WORKFLOW_REPO_ROOT;
-    process.env.WORKFLOW_REPO_ROOT = root;
+    const previousRepoRoot = process.env.STEAMHARNESS_REPO_ROOT;
+    process.env.STEAMHARNESS_REPO_ROOT = root;
     const fetchMock = vi.fn().mockResolvedValue(createJsonResponse({
       errCode: 0,
       errMessage: "",
@@ -1340,9 +1340,9 @@ describe("server workspace CLI helpers", () => {
       });
     } finally {
       if (previousRepoRoot === undefined) {
-        delete process.env.WORKFLOW_REPO_ROOT;
+        delete process.env.STEAMHARNESS_REPO_ROOT;
       } else {
-        process.env.WORKFLOW_REPO_ROOT = previousRepoRoot;
+        process.env.STEAMHARNESS_REPO_ROOT = previousRepoRoot;
       }
     }
   });
@@ -1355,12 +1355,12 @@ describe("server workspace CLI helpers", () => {
       id: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
       name: "Hello Workflow",
       version: "0.0.1",
-      workflowCode: { projectType: "workflow" },
+      steamHarness: { projectType: "workflow" },
     }, null, 2));
-    await writeFile(path.join(workflowDir, "index.ts"), VALID_WORKFLOW_SOURCE);
+    await writeFile(path.join(workflowDir, "index.ts"), VALID_STEAMHARNESS_SOURCE);
 
-    const previousRepoRoot = process.env.WORKFLOW_REPO_ROOT;
-    process.env.WORKFLOW_REPO_ROOT = root;
+    const previousRepoRoot = process.env.STEAMHARNESS_REPO_ROOT;
+    process.env.STEAMHARNESS_REPO_ROOT = root;
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
@@ -1374,9 +1374,9 @@ describe("server workspace CLI helpers", () => {
       expect(fetchMock).not.toHaveBeenCalled();
     } finally {
       if (previousRepoRoot === undefined) {
-        delete process.env.WORKFLOW_REPO_ROOT;
+        delete process.env.STEAMHARNESS_REPO_ROOT;
       } else {
-        process.env.WORKFLOW_REPO_ROOT = previousRepoRoot;
+        process.env.STEAMHARNESS_REPO_ROOT = previousRepoRoot;
       }
     }
   });
@@ -1417,7 +1417,7 @@ describe("server workspace CLI helpers", () => {
       path.join(sourceWorkflowDir, "package.json"),
       JSON.stringify({
         id: "3c0292f9-9731-4862-9019-19544eeca705",
-        name: "@workflow-code/deltaforce-openai-agent-workflow",
+        name: "@steamharness/deltaforce-openai-agent-workflow",
         version: "0.1.0",
       }),
       "utf8",
@@ -1473,7 +1473,7 @@ describe("server workspace CLI helpers", () => {
       path.join(sourceWorkflowDir, "package.json"),
       JSON.stringify({
         id: "3c0292f9-9731-4862-9019-19544eeca705",
-        name: "@workflow-code/deltaforce-openai-agent-workflow",
+        name: "@steamharness/deltaforce-openai-agent-workflow",
         version: "0.1.0",
       }),
       "utf8",
@@ -1502,8 +1502,8 @@ describe("server workspace CLI helpers", () => {
       "utf8",
     );
 
-    const previousRepoRoot = process.env.WORKFLOW_REPO_ROOT;
-    process.env.WORKFLOW_REPO_ROOT = root;
+    const previousRepoRoot = process.env.STEAMHARNESS_REPO_ROOT;
+    process.env.STEAMHARNESS_REPO_ROOT = root;
     try {
       const packedPath = await packWorkflow("deltaforce-openai-agent", archivePath, sourceWorkflowDir);
       expect(packedPath).toBe(archivePath);
@@ -1514,9 +1514,9 @@ describe("server workspace CLI helpers", () => {
       expect(result).toContain("workspace/workflow/deltafore-agent/agent/decision.ts");
     } finally {
       if (previousRepoRoot === undefined) {
-        delete process.env.WORKFLOW_REPO_ROOT;
+        delete process.env.STEAMHARNESS_REPO_ROOT;
       } else {
-        process.env.WORKFLOW_REPO_ROOT = previousRepoRoot;
+        process.env.STEAMHARNESS_REPO_ROOT = previousRepoRoot;
       }
     }
   });
@@ -1530,7 +1530,7 @@ describe("server workspace CLI helpers", () => {
       path.join(sourceWorkflowDir, "package.json"),
       JSON.stringify({
         id: "a7e15f8a-e179-4986-8b0d-1e69a0e65b51",
-        name: "@workflow-code/manual-dependencies",
+        name: "@steamharness/manual-dependencies",
         version: "0.1.0",
         dependencies: { "not-installed": "1.0.0" },
       }),
@@ -1577,7 +1577,7 @@ describe("server workspace CLI helpers", () => {
       path.join(sourceWorkflowDir, "package.json"),
       JSON.stringify({
         id: "2dc44605-66d9-4a07-8090-72eb83d708a7",
-        name: "@workflow-code/conversation-workflow",
+        name: "@steamharness/conversation-workflow",
         version: "0.1.0",
       }),
       "utf8",
@@ -1592,10 +1592,10 @@ describe("server workspace CLI helpers", () => {
     await writeFile(path.join(siblingWorkflowDir, "index.ts"), "export const openaiAgentsWorkflow = {};\n", "utf8");
     await writeFile(path.join(siblingWorkflowDir, "README.md"), "# OpenAI agents\n", "utf8");
 
-    const previousRepoRoot = process.env.WORKFLOW_REPO_ROOT;
-    const previousPacksDir = process.env.WORKFLOW_WORKSPACE_PACKS_DIR;
-    process.env.WORKFLOW_REPO_ROOT = appRuntimeRoot;
-    process.env.WORKFLOW_WORKSPACE_PACKS_DIR = packsDir;
+    const previousRepoRoot = process.env.STEAMHARNESS_REPO_ROOT;
+    const previousPacksDir = process.env.STEAMHARNESS_WORKSPACE_PACKS_DIR;
+    process.env.STEAMHARNESS_REPO_ROOT = appRuntimeRoot;
+    process.env.STEAMHARNESS_WORKSPACE_PACKS_DIR = packsDir;
     try {
       // App-packaged uploads pass --path for the local project and
       // need temporary archives outside app.asar while still copying sibling
@@ -1608,14 +1608,14 @@ describe("server workspace CLI helpers", () => {
       expect(result).toContain("workspace/workflow/openai-agents/index.ts");
     } finally {
       if (previousRepoRoot === undefined) {
-        delete process.env.WORKFLOW_REPO_ROOT;
+        delete process.env.STEAMHARNESS_REPO_ROOT;
       } else {
-        process.env.WORKFLOW_REPO_ROOT = previousRepoRoot;
+        process.env.STEAMHARNESS_REPO_ROOT = previousRepoRoot;
       }
       if (previousPacksDir === undefined) {
-        delete process.env.WORKFLOW_WORKSPACE_PACKS_DIR;
+        delete process.env.STEAMHARNESS_WORKSPACE_PACKS_DIR;
       } else {
-        process.env.WORKFLOW_WORKSPACE_PACKS_DIR = previousPacksDir;
+        process.env.STEAMHARNESS_WORKSPACE_PACKS_DIR = previousPacksDir;
       }
     }
   });
@@ -1662,7 +1662,7 @@ function createKanbanPackage(
     id: projectId,
     name,
     version: "1.0.0",
-    workflowCode: {
+    steamHarness: {
       projectType: "kanban",
       projectInfo: relatedProjectId === undefined
         ? createProjectInfo()

@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useTranslation } from "@workflow-code/i18n/react"
+import { useTranslation } from "@steamharness/i18n/react"
 import { cn } from "cn"
 import { XIcon } from "lucide-react"
 import { Dialog as SheetPrimitive } from "radix-ui"

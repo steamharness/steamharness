@@ -13,11 +13,11 @@ test("prepare-shared copies vendored Shared package directories on development b
   const vendor = path.join(root, "vendor", "shared");
   await mkdir(path.join(root, "scripts"), { recursive: true });
   await Promise.all([
-    createPackage(shared, "i18n", "@workflow-code/i18n"),
-    createPackage(shared, "project-types", "@workflow-code/project-types"),
+    createPackage(shared, "i18n", "@steamharness/i18n"),
+    createPackage(shared, "project-types", "@steamharness/project-types"),
     createPackage(shared, "unrelated", "unrelated"),
-    createPackage(vendor, "i18n", "@workflow-code/i18n", "vendor"),
-    createPackage(vendor, "project-types", "@workflow-code/project-types", "vendor"),
+    createPackage(vendor, "i18n", "@steamharness/i18n", "vendor"),
+    createPackage(vendor, "project-types", "@steamharness/project-types", "vendor"),
     mkdir(path.join(shared, "coverage"), { recursive: true }),
   ]);
 
@@ -26,7 +26,7 @@ test("prepare-shared copies vendored Shared package directories on development b
   assert.equal(result.source, vendor);
   assert.equal(result.strategy, "copied");
   assert.equal((await lstat(path.join(root, ".shared", "i18n"))).isSymbolicLink(), false);
-  assert.equal(JSON.parse(await readFile(path.join(root, ".shared", "i18n", "package.json"), "utf8")).name, "@workflow-code/i18n");
+  assert.equal(JSON.parse(await readFile(path.join(root, ".shared", "i18n", "package.json"), "utf8")).name, "@steamharness/i18n");
   assert.equal(await exists(path.join(root, ".shared", "i18n", "__tests__")), false);
   assert.equal(await exists(path.join(root, ".shared", "i18n", "node_modules")), false);
   assert.equal(await readFile(path.join(root, ".shared", "i18n", "source.txt"), "utf8"), "vendor");
@@ -39,8 +39,8 @@ test("prepare-shared copies vendor packages on main", async () => {
   const sibling = path.join(parent, "shared");
   const vendor = path.join(root, "vendor", "shared");
   await Promise.all([
-    createPackage(sibling, "i18n", "@workflow-code/i18n", "sibling"),
-    createPackage(vendor, "i18n", "@workflow-code/i18n", "vendor"),
+    createPackage(sibling, "i18n", "@steamharness/i18n", "sibling"),
+    createPackage(vendor, "i18n", "@steamharness/i18n", "vendor"),
   ]);
   const result = await prepareSharedPackages({ root, env: {}, branch: "main" });
   assert.equal(result.source, vendor);
@@ -55,8 +55,8 @@ test("prepare-shared copies vendor packages in CI on a development branch", asyn
   const sibling = path.join(parent, "shared");
   const vendor = path.join(root, "vendor", "shared");
   await Promise.all([
-    createPackage(sibling, "i18n", "@workflow-code/i18n", "sibling"),
-    createPackage(vendor, "i18n", "@workflow-code/i18n", "vendor"),
+    createPackage(sibling, "i18n", "@steamharness/i18n", "sibling"),
+    createPackage(vendor, "i18n", "@steamharness/i18n", "vendor"),
   ]);
   const result = await prepareSharedPackages({ root, env: { CI: "true" }, branch: "dev" });
   assert.equal(result.mode, "dev");
@@ -73,8 +73,8 @@ test("prepare-shared preserves installed dependencies while refreshing package s
   const prepared = path.join(root, ".shared");
   const legacySource = path.join(parent, "legacy-project-types");
   await Promise.all([
-    createPackage(vendor, "i18n", "@workflow-code/i18n", "refreshed"),
-    createPackage(vendor, "project-types", "@workflow-code/project-types", "refreshed"),
+    createPackage(vendor, "i18n", "@steamharness/i18n", "refreshed"),
+    createPackage(vendor, "project-types", "@steamharness/project-types", "refreshed"),
     mkdir(path.join(prepared, "i18n", "node_modules"), { recursive: true }),
     mkdir(path.join(prepared, "removed", "node_modules"), { recursive: true }),
     mkdir(path.join(legacySource, "node_modules"), { recursive: true }),
@@ -98,9 +98,9 @@ test("prepare-shared preserves installed dependencies while refreshing package s
 test("repository mode fails closed for tags and detached checkouts", () => {
   assert.equal(resolveRepositoryMode({ env: {}, branch: "dev" }), "dev");
   assert.equal(resolveRepositoryMode({ env: {}, branch: "main" }), "main");
-  assert.equal(resolveRepositoryMode({ env: { CI_COMMIT_TAG: "workflow-code-cli/v1.0.0", CI_COMMIT_BRANCH: "dev" } }), "main");
+  assert.equal(resolveRepositoryMode({ env: { CI_COMMIT_TAG: "steamharness-cli/v1.0.0", CI_COMMIT_BRANCH: "dev" } }), "main");
   assert.equal(resolveRepositoryMode({ env: {}, branch: "" }), "main");
-  assert.throws(() => resolveRepositoryMode({ env: { WORKFLOW_REPOSITORY_MODE: "dev" }, branch: "main" }), /only accepts main/);
+  assert.throws(() => resolveRepositoryMode({ env: { STEAMHARNESS_REPOSITORY_MODE: "dev" }, branch: "main" }), /only accepts main/);
 });
 
 async function createPackage(root, directory, name, source = "source") {

@@ -15,7 +15,7 @@ export { workflowMcpInputToArgs } from "./args";
 export {
   createLocalWorkflowMcpFileResolver,
   createServerWorkflowMcpFileResolver,
-  WORKFLOW_MCP_MAX_FILE_SIZE_BYTES,
+  STEAMHARNESS_MCP_MAX_FILE_SIZE_BYTES,
 } from "./files";
 export {
   createWorkflowMcpThrownErrorResult,

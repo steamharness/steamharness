@@ -10,7 +10,7 @@ description: "Empty the Workflow Server connection configuration saved by worksp
 ## Command Format
 
 ```bash
-pnpm exec workflow-code workspace logout
+pnpm exec steamharness workspace logout
 ```
 
 ## Parameter
@@ -23,7 +23,7 @@ pnpm exec workflow-code workspace logout
 
 |Steps|Description|
 | --- | --- |
-|Locate Configuration Directory|Use `WORKFLOW_CLI_AUTH_DIR` or the system default directory.|
+|Locate Configuration Directory|Use `STEAMHARNESS_CLI_AUTH_DIR` or the system default directory.|
 |Clean Configuration|Delete `workflow-auth.json`.|
 |Output status|Output `{ loggedIn: false }`.|
 
@@ -37,13 +37,13 @@ pnpm exec workflow-code workspace logout
 ## Example
 
 ```bash
-pnpm exec workflow-code workspace logout
-pnpm exec workflow-code workspace status
+pnpm exec steamharness workspace logout
+pnpm exec steamharness workspace status
 ```
 
 ## Precautions
 
 |Scene|Description|
 | --- | --- |
-|`WORKFLOW_SERVER_ADMIN_KEY` set|The environment variables are still read by subsequent commands.|
+|`STEAMHARNESS_SERVER_ADMIN_KEY` set|The environment variables are still read by subsequent commands.|
 |Need to switch accounts completely|Clean up the shell environment variables and the CLI login state at the same time.|

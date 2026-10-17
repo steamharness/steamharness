@@ -7,14 +7,14 @@ description: "将本地 workflow 目录打包为可上传的 .tgz 归档。"
 
 `workspace pack` 将本地 workflow 源码复制到打包暂存目录，再使用 `tar` 生成 `.tgz` 包。该命令只处理本地文件，不请求 Workflow Server。
 
-Workflow/Conversation 校验 `package.json` 和 `index.ts`；Kanban 使用 `package.json.workflowCode.projectType: "kanban"` 识别，并校验 `workflowCode.kanban.artifactDir` 中配置的 HTML `entry`。未配置时继续使用项目根目录 `index.html`。README 可以保留为项目说明，但不是上传必需文件。图片、字体等二进制资源会原样进入归档和源码版本。
+Workflow/Conversation 校验 `package.json` 和 `index.ts`；Kanban 使用 `package.json.steamHarness.projectType: "kanban"` 识别，并校验 `steamHarness.kanban.artifactDir` 中配置的 HTML `entry`。未配置时继续使用项目根目录 `index.html`。README 可以保留为项目说明，但不是上传必需文件。图片、字体等二进制资源会原样进入归档和源码版本。
 
 该命令不会安装或检查本地项目依赖。即使项目声明了第三方依赖且本地没有 `node_modules`，仍可打包源码；依赖由用户在本地运行前手动安装。Server 只保存源码和预先生成的静态资源，不安装依赖、不构建或加载项目代码。
 
 ## 命令格式
 
 ```bash
-pnpm exec workflow-code workspace pack <workflow> [--path <workflow-dir>] [--output <file.tgz>] [--project-group] [--dependency <alias>=<path>]
+pnpm exec steamharness workspace pack <workflow> [--path <workflow-dir>] [--output <file.tgz>] [--project-group] [--dependency <alias>=<path>]
 ```
 
 ## 参数
@@ -31,7 +31,7 @@ pnpm exec workflow-code workspace pack <workflow> [--path <workflow-dir>] [--out
 
 | 项 | 默认值 |
 | --- | --- |
-| repo root | `WORKFLOW_REPO_ROOT`，未设置时从当前目录或 CLI 文件位置向上查找包含 `pnpm-workspace.yaml` 的仓库根目录。 |
+| repo root | `STEAMHARNESS_REPO_ROOT`，未设置时从当前目录或 CLI 文件位置向上查找包含 `pnpm-workspace.yaml` 的仓库根目录。 |
 | 源目录 | `<repo-root>/workspace/workflow/<workflow>` |
 | 输出目录 | `<repo-root>/workspace/.packs` |
 | 输出文件名 | `<workflow>-<UTC timestamp>.tgz` |
@@ -51,7 +51,7 @@ Kanban 不会自动保留 `dist` 或其它产物目录；它们也不会被宿�
 
 ## 项目组归档
 
-项目组根必须是带 `workflowCode.projectInfo.relatedProjects` 的 Kanban。每个 `--dependency` alias 必须命中双方已确认的直接关系，且本地依赖的 UUID 必须与声明一致；待确认关系不能作为 included 依赖。同一个关联 UUID 只打包一次。归档包含 `project-group.json`、根项目包和选中的依赖项目包；每个项目仍按自己的 `.workflowignore` 选择源码。
+项目组根必须是带 `steamHarness.projectInfo.relatedProjects` 的 Kanban。每个 `--dependency` alias 必须命中双方已确认的直接关系，且本地依赖的 UUID 必须与声明一致；待确认关系不能作为 included 依赖。同一个关联 UUID 只打包一次。归档包含 `project-group.json`、根项目包和选中的依赖项目包；每个项目仍按自己的 `.workflowignore` 选择源码。
 
 打包会拒绝符号链接、特殊 tar 成员，以及 `.env*`、KV、PersistentValue、定时计划、运行历史、SQLite、`workflow-auth.json` 和其它宿主用户配置；根 Kanban 也不能把自己的 UUID 声明为来源项目。项目组不携带本地运行数据，也不会修改任何 Server 状态；数据初始化由开发者在本地运行 Workflow，并显式选择本地或服务器存储完成。
 
@@ -65,10 +65,10 @@ Kanban 不会自动保留 `dist` 或其它产物目录；它们也不会被宿�
 ## 示例
 
 ```bash
-pnpm exec workflow-code workspace pack hello
-pnpm exec workflow-code workspace pack hello --path ./workspace/workflow/hello
-pnpm exec workflow-code workspace pack hello --output ./workspace/.packs/hello.tgz
-pnpm exec workflow-code workspace pack stock-kanban --project-group \
+pnpm exec steamharness workspace pack hello
+pnpm exec steamharness workspace pack hello --path ./workspace/workflow/hello
+pnpm exec steamharness workspace pack hello --output ./workspace/.packs/hello.tgz
+pnpm exec steamharness workspace pack stock-kanban --project-group \
   --path ./stock-kanban \
   --dependency stocks=./stock-workflow
 ```

@@ -46,9 +46,9 @@ export async function prepareRelease(options) {
     await readFile(filePath, "utf8"),
   ])));
   const manifest = JSON.parse(originals.get(manifestPath));
-  const projectId = String(manifest?.workflowCode?.builtinRelease?.projectId ?? "").trim();
+  const projectId = String(manifest?.steamHarness?.builtinRelease?.projectId ?? "").trim();
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(projectId)) {
-    throw new Error("workflowCode.builtinRelease.projectId is invalid.");
+    throw new Error("steamHarness.builtinRelease.projectId is invalid.");
   }
   if (!semver.valid(manifest.version) || !semver.gt(version, manifest.version)) {
     throw new Error(`${version} must be greater than ${manifest.version}.`);

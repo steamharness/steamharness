@@ -32,8 +32,8 @@ async function prepareBuiltinApplication(options: BuiltinApplicationOptions, pro
       if (pkg.id !== assistantId) { continue; }
       const cli = await resolveProjectCli(source);
       const directory = await realpath(path.join(source, 'node_modules'));
-      const core = JSON.parse(await readFile(path.join(directory, 'workflow-code', 'package.json'), 'utf8'));
-      if (core.name === 'workflow-code' && typeof core.version === 'string') {
+      const core = JSON.parse(await readFile(path.join(directory, 'steamharness', 'package.json'), 'utf8'));
+      if (core.name === 'steamharness' && typeof core.version === 'string') {
         dependencies = { directory, coreVersion: core.version, cliVersion: cli.version }; break;
       }
     } catch { /* Only the independent assistant's installations are eligible. */ }
@@ -58,7 +58,7 @@ async function prepareBuiltinApplication(options: BuiltinApplicationOptions, pro
     // The app owns its runtime. No dependency is resolved from an opened folder.
     await symlink(dependencies.directory, path.join(staging, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
     const installed = { ...manifest, scripts: undefined, dependencies: undefined,
-      devDependencies: { 'workflow-code': dependencies.coreVersion, '@workflow-code/cli': dependencies.cliVersion } };
+      devDependencies: { 'steamharness': dependencies.coreVersion, '@steamharness/cli': dependencies.cliVersion } };
     await writeFile(path.join(staging, 'package.json'), `${JSON.stringify(installed, null, 2)}\n`);
     try { await rename(staging, directory); }
     catch (error) {

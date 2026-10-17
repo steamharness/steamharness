@@ -1,17 +1,17 @@
 import os from "node:os";
 import path from "node:path";
 import { readFileSync, realpathSync, statSync } from "node:fs";
-import * as workflowCode from "workflow-code";
+import * as steamHarness from "steamharness";
 import {
-  WORKFLOW_RELATED_PROJECT_ALIAS_PATTERN,
+  STEAMHARNESS_RELATED_PROJECT_ALIAS_PATTERN,
   isWorkflowProjectDataStorageLocationAllowed,
   readWorkflowProjectInfo,
   resolveWorkflowRelatedProjectAccess,
   type WorkflowProjectDataStorageLocation,
   type WorkflowProjectInfo,
   type WorkflowRelatedProjectKVGrant,
-} from "@workflow-code/project-info";
-import { assertWorkflowUuid } from "@workflow-code/workflow-ids";
+} from "@steamharness/project-info";
+import { assertWorkflowUuid } from "@steamharness/workflow-ids";
 
 export interface CliRelatedProjectSpec {
   alias: string;
@@ -68,7 +68,7 @@ export interface CliWorkflowRelatedProjectKVResolver {
   resolve(alias: string): CliWorkflowResolvedRelatedProjectKV | undefined;
 }
 
-interface TargetWorkflowCodeStorageApi {
+interface TargetSteamHarnessStorageApi {
   createLocalWorkflowKVStore(options: {
     rootDir: string;
     storageKind: "kv" | "persistent_value";
@@ -106,7 +106,7 @@ interface TargetWorkflowCodeStorageApi {
   }>;
 }
 
-const defaultStorageApi = workflowCode as unknown as TargetWorkflowCodeStorageApi;
+const defaultStorageApi = steamHarness as unknown as TargetSteamHarnessStorageApi;
 
 interface ProjectSnapshot {
   projectDir: string;
@@ -121,7 +121,7 @@ export function parseCliRelatedProjectSpec(value: string): CliRelatedProjectSpec
   }
   const alias = value.slice(0, separatorIndex).trim();
   const projectDir = value.slice(separatorIndex + 1).trim();
-  if (!WORKFLOW_RELATED_PROJECT_ALIAS_PATTERN.test(alias)) {
+  if (!STEAMHARNESS_RELATED_PROJECT_ALIAS_PATTERN.test(alias)) {
     throw new Error(`Invalid related project alias "${alias}".`);
   }
   if (!path.isAbsolute(projectDir)) {
@@ -138,7 +138,7 @@ export function createCliRelatedProjectRuntime(options: {
   runId?: string;
   conversationId?: string;
   env?: NodeJS.ProcessEnv;
-  storageApi?: TargetWorkflowCodeStorageApi;
+  storageApi?: TargetSteamHarnessStorageApi;
   localStorageForProject?: (projectDir: string) => { kvStoreDir: string; persistentValueStoreDir?: string };
 }): CliRelatedProjectRuntime {
   if (options.relatedProjects.length === 0) return {};
@@ -174,7 +174,7 @@ export function createCliRelatedProjectRuntime(options: {
   // persistent values have no such default — that is where a project's
   // knowledge lives — so without a configured root this run simply has none,
   // and the relation reports Knowledge as unavailable rather than inventing one.
-  const localKvStoreDir = options.localKvStoreDir ?? path.join(os.tmpdir(), "workflow-code-kv");
+  const localKvStoreDir = options.localKvStoreDir ?? path.join(os.tmpdir(), "steamharness-kv");
   const localPersistentValueStoreDir = options.localPersistentValueStoreDir;
   const localKvStore = targetStorageApi.createLocalWorkflowKVStore({
     rootDir: localKvStoreDir,
@@ -230,7 +230,7 @@ export function createCliRelatedProjectRuntime(options: {
 
         const createRemoteStore = targetStorageApi.createRemoteWorkflowRelatedProjectKVStoreFromEnv;
         if (fixedStore === undefined && typeof createRemoteStore !== "function") {
-          throw new Error("Installed workflow-code does not support related project storage.");
+          throw new Error("Installed steamharness does not support related project storage.");
         }
         const roots = options.localStorageForProject?.(currentTarget.projectDir)
           ?? { kvStoreDir: localKvStoreDir, persistentValueStoreDir: localPersistentValueStoreDir };
@@ -292,7 +292,7 @@ export function createCliRelatedProjectRuntime(options: {
  * Runs the target project from its own directory, as itself.
  *
  * Both halves are the installed Core's own entry points — the same ones a
- * `workflow-code run` in that directory would use — so an entrypoint called
+ * `steamharness run` in that directory would use — so an entrypoint called
  * this way sees exactly what it sees when its author runs it, and its data
  * lands in the same place. The child run carries no related-project resolver,
  * which is what keeps a relation direct.
@@ -303,7 +303,7 @@ function createLocalProjectRunner(options: {
   location: WorkflowProjectDataStorageLocation;
   kvStoreDir?: string;
   persistentValueStoreDir?: string;
-  storageApi: TargetWorkflowCodeStorageApi;
+  storageApi: TargetSteamHarnessStorageApi;
 }): CliWorkflowRelatedProjectRunner | undefined {
   const projectDir = options.projectDir;
   const targetStorageApi = options.storageApi;
@@ -407,7 +407,7 @@ function readProjectSnapshot(projectDir: string, label: string): ProjectSnapshot
   const projectId = assertWorkflowUuid(packageJson["id"], `${label} package.json.id`);
   const projectInfo = readWorkflowProjectInfo(packageJson);
   if (projectInfo.dataStorage === null) {
-    throw new Error(`${label} must declare workflowCode.projectInfo.dataStorage.mode.`);
+    throw new Error(`${label} must declare steamHarness.projectInfo.dataStorage.mode.`);
   }
   return { projectDir: canonicalDir, projectId, projectInfo };
 }

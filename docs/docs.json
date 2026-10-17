@@ -1,13 +1,13 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "workflow-code",
+  "name": "steamharness",
   "customCss": [
     "/brand-overrides.css"
   ],
   "logo": {
-    "light": "/images/brand/workflow-code-docs-logo.svg",
-    "dark": "/images/brand/workflow-code-docs-logo-dark.svg"
+    "light": "/images/brand/steamharness-docs-logo.svg",
+    "dark": "/images/brand/steamharness-docs-logo-dark.svg"
   },
   "favicon": "/images/brand/favicon.png",
   "colors": {
@@ -130,13 +130,13 @@
                 "group": "本地 CLI",
                 "pages": [
                   "cli/overview",
-                  "cli/workflow-code",
-                  "cli/workflow-code/run",
-                  "cli/workflow-code/json",
-                  "cli/workflow-code/structure",
-                  "cli/workflow-code/resolve-params",
-                  "cli/workflow-code/mcp",
-                  "cli/workflow-code/help"
+                  "cli/steamharness",
+                  "cli/steamharness/run",
+                  "cli/steamharness/json",
+                  "cli/steamharness/structure",
+                  "cli/steamharness/resolve-params",
+                  "cli/steamharness/mcp",
+                  "cli/steamharness/help"
                 ]
               },
               {
@@ -291,7 +291,7 @@
           {
             "tab": "服务端 API",
             "openapi": {
-              "source": "openapi/workflow-code.openapi.yaml",
+              "source": "openapi/steamharness.openapi.yaml",
               "directory": "reference"
             }
           }
@@ -393,13 +393,13 @@
                 "group": "Local CLI",
                 "pages": [
                   "en/cli/overview",
-                  "en/cli/workflow-code",
-                  "en/cli/workflow-code/run",
-                  "en/cli/workflow-code/json",
-                  "en/cli/workflow-code/structure",
-                  "en/cli/workflow-code/resolve-params",
-                  "en/cli/workflow-code/mcp",
-                  "en/cli/workflow-code/help"
+                  "en/cli/steamharness",
+                  "en/cli/steamharness/run",
+                  "en/cli/steamharness/json",
+                  "en/cli/steamharness/structure",
+                  "en/cli/steamharness/resolve-params",
+                  "en/cli/steamharness/mcp",
+                  "en/cli/steamharness/help"
                 ]
               },
               {
@@ -554,7 +554,7 @@
           {
             "tab": "Server API",
             "openapi": {
-              "source": "en/openapi/workflow-code.openapi.yaml",
+              "source": "en/openapi/steamharness.openapi.yaml",
               "directory": "en/reference"
             }
           }

@@ -10,7 +10,7 @@ description: "检查 Workflow Server 健康状态。"
 ## 命令格式
 
 ```bash
-pnpm exec workflow-code workspace health [--server <url>]
+pnpm exec steamharness workspace health [--server <url>]
 ```
 
 ## 参数
@@ -24,7 +24,7 @@ pnpm exec workflow-code workspace health [--server <url>]
 | 顺序 | 来源 |
 | --- | --- |
 | 1 | `--server <url>` |
-| 2 | `WORKFLOW_SERVER_URL` |
+| 2 | `STEAMHARNESS_SERVER_URL` |
 | 3 | CLI 登录态文件 |
 | 4 | `http://localhost:7125` |
 
@@ -39,8 +39,8 @@ pnpm exec workflow-code workspace health [--server <url>]
 ## 示例
 
 ```bash
-pnpm exec workflow-code workspace health
-pnpm exec workflow-code workspace health --server http://localhost:7125
+pnpm exec steamharness workspace health
+pnpm exec steamharness workspace health --server http://localhost:7125
 ```
 
 ## 常见用途

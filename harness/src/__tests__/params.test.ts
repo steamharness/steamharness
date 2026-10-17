@@ -80,7 +80,7 @@ test("multiple parameter actions retain declaration order and flatten into one v
 });
 
 test("conversation structure reports every declared parameter action", async () => {
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-param-actions-"));
+  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-param-actions-"));
   try {
     await Promise.all([
       writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
@@ -350,25 +350,25 @@ test("static structure and runtime resolver share quick param metadata", async (
 });
 
 test("server-only parameter resolution loads project server credentials before importing user code", async () => {
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-server-param-resolver-"));
+  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-server-param-resolver-"));
   const projectId = "917a6ac8-c01a-43db-b892-71c1d922bb92";
   const importMarker = "__workflowServerParamResolverImported";
   const envNames = [
-    "WORKFLOW_CLI_AUTH_DIR",
-    "WORKFLOW_PERSISTENT_VALUE_SERVER_URL",
-    "WORKFLOW_PERSISTENT_VALUE_SERVER_TOKEN",
-    "WORKFLOW_SERVER_URL",
-    "WORKFLOW_SERVER_ADMIN_KEY",
+    "STEAMHARNESS_CLI_AUTH_DIR",
+    "STEAMHARNESS_PERSISTENT_VALUE_SERVER_URL",
+    "STEAMHARNESS_PERSISTENT_VALUE_SERVER_TOKEN",
+    "STEAMHARNESS_SERVER_URL",
+    "STEAMHARNESS_SERVER_ADMIN_KEY",
   ] as const;
   const previousEnv = new Map(envNames.map((name) => [name, process.env[name]]));
   delete (globalThis as Record<string, unknown>)[importMarker];
-  process.env.WORKFLOW_CLI_AUTH_DIR = path.join(workflowDir, "empty-auth");
+  process.env.STEAMHARNESS_CLI_AUTH_DIR = path.join(workflowDir, "empty-auth");
   for (const name of envNames.slice(1)) delete process.env[name];
   await writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
     id: projectId,
     name: "server-param-resolver",
     type: "module",
-    workflowCode: { projectInfo: { dataStorage: { mode: "server" } } },
+    steamHarness: { projectInfo: { dataStorage: { mode: "server" } } },
   }));
   await writeFile(path.join(workflowDir, "index.ts"), [
     `(globalThis as Record<string, unknown>)[${JSON.stringify(importMarker)}] = true;`,
@@ -406,8 +406,8 @@ test("server-only parameter resolution loads project server credentials before i
     assert.equal((globalThis as Record<string, unknown>)[importMarker], undefined);
 
     await writeFile(path.join(workflowDir, ".env"), [
-      "WORKFLOW_SERVER_URL=https://server.example.test",
-      "WORKFLOW_SERVER_ADMIN_KEY=project-env-key",
+      "STEAMHARNESS_SERVER_URL=https://server.example.test",
+      "STEAMHARNESS_SERVER_ADMIN_KEY=project-env-key",
       "",
     ].join("\n"));
     assert.deepEqual(await resolveLocalWorkflowParams({
@@ -469,12 +469,12 @@ test("date-related params pass their exact strings to args and createInput param
 });
 
 async function createResolverWorkflow(): Promise<string> {
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-param-resolver-"));
+  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-param-resolver-"));
   await writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
     id: "11111111-1111-4111-8111-111111111111",
-    name: "@workflow-code/param-resolver-test",
+    name: "@steamharness/param-resolver-test",
     type: "module",
-    workflowCode: { projectInfo: { dataStorage: { mode: "local" } } },
+    steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
   }));
   await writeFile(path.join(workflowDir, "index.ts"), [
     "const testWorkflow = workflow.defineWorkflow({ name: 'param-resolver-test', run: async () => ({ errCode: 0, errMessage: '' }) });",
@@ -506,12 +506,12 @@ async function createResolverWorkflow(): Promise<string> {
 }
 
 async function createDateParamWorkflow(): Promise<string> {
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-date-param-"));
+  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-date-param-"));
   await writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
     id: "22222222-2222-4222-8222-222222222222",
-    name: "@workflow-code/date-param-test",
+    name: "@steamharness/date-param-test",
     type: "module",
-    workflowCode: { projectInfo: { dataStorage: { mode: "local" } } },
+    steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
   }));
   await writeFile(path.join(workflowDir, "index.ts"), [
     "const outputNode = workflow.createOutputNode({ name: 'output', format(input) { return input; } });",

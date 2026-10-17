@@ -18,7 +18,7 @@ export async function withRemote(options, action) {
   const key = path.join(tempRoot, "id_ed25519");
   const knownHosts = path.join(tempRoot, "known_hosts");
   try {
-    await writeSecretFile(key, options.sshKey ?? process.env.WORKFLOW_REMOTE_SSH_KEY);
+    await writeSecretFile(key, options.sshKey ?? process.env.STEAMHARNESS_REMOTE_SSH_KEY);
     await verifyFingerprint(knownHosts);
     return await action(createRemoteClient({ ...options, key, knownHosts }));
   } finally {
@@ -43,7 +43,7 @@ export function getEcsComposeSource(repoRoot) {
 
 export async function deployEcs(options = {}) {
   const repoRoot = path.resolve(options.repoRoot ?? path.resolve(import.meta.dirname, ".."));
-  const root = options.remoteRoot ?? process.env.WORKFLOW_REMOTE_ROOT ?? REMOTE_ROOT;
+  const root = options.remoteRoot ?? process.env.STEAMHARNESS_REMOTE_ROOT ?? REMOTE_ROOT;
   return withRemote({ ...options, root }, async (client) => {
     const command = options.command ?? "";
     if (command === "bootstrap") {
@@ -51,14 +51,14 @@ export async function deployEcs(options = {}) {
       await client.upload(getEcsComposeSource(repoRoot), `${root}/compose/`);
       await client.upload(path.join(repoRoot, "docker", "ecs", "ecs-runtime-agent.sh"), `${root}/bin/ecs-runtime-agent.sh`);
       await client.execute(`chmod 700 ${shellQuote(root)}/bin/ecs-runtime-agent.sh`);
-      await uploadOptionalEnv(client, root, "WORKFLOW_ECS_ENV_FILE", ".env");
+      await uploadOptionalEnv(client, root, "STEAMHARNESS_ECS_ENV_FILE", ".env");
       await client.remote("bootstrap");
       return { command };
     }
     if (command === "prepare-images") return prepareImages(client);
     if (command === "ensure") return client.remote("ensure", [options.target ?? "release"]);
     if (command === "status" || command === "migrate") return client.remote(command);
-    if (command === "certificate") return client.remote("certificate", [options.email ?? process.env.WORKFLOW_ACME_EMAIL ?? ""]);
+    if (command === "certificate") return client.remote("certificate", [options.email ?? process.env.STEAMHARNESS_ACME_EMAIL ?? ""]);
     if (command === "deploy-server") {
       const archive = path.resolve(options.archive);
       const remoteArchive = `${root}/incoming/${path.basename(archive)}`;
@@ -72,7 +72,7 @@ export async function deployEcs(options = {}) {
 }
 
 async function uploadRuntimeEnv(client, root, channel) {
-  const variable = channel === "alpha" ? "WORKFLOW_ALPHA_RUNTIME_ENV_FILE" : "WORKFLOW_STABLE_RUNTIME_ENV_FILE";
+  const variable = channel === "alpha" ? "STEAMHARNESS_ALPHA_RUNTIME_ENV_FILE" : "STEAMHARNESS_STABLE_RUNTIME_ENV_FILE";
   await uploadOptionalEnv(client, root, variable, `runtime/${channel}.env`);
 }
 
@@ -158,10 +158,10 @@ export function getImageSaveCommand(local, sshArgs, image) {
 
 export function getImageFallbackConfig(env = process.env) {
   return {
-    host: env.WORKFLOW_IMAGE_FALLBACK_HOST ?? "win-linux",
-    port: env.WORKFLOW_IMAGE_FALLBACK_PORT,
-    user: env.WORKFLOW_IMAGE_FALLBACK_USER,
-    key: env.WORKFLOW_IMAGE_FALLBACK_SSH_KEY,
+    host: env.STEAMHARNESS_IMAGE_FALLBACK_HOST ?? "win-linux",
+    port: env.STEAMHARNESS_IMAGE_FALLBACK_PORT,
+    user: env.STEAMHARNESS_IMAGE_FALLBACK_USER,
+    key: env.STEAMHARNESS_IMAGE_FALLBACK_SSH_KEY,
   };
 }
 
@@ -197,17 +197,17 @@ async function verifyFingerprint(knownHosts) {
 
 export function decodePrivateKey(value) {
   let contents = String(value ?? "").trim();
-  if (!contents) throw new Error("WORKFLOW_REMOTE_SSH_KEY is required.");
+  if (!contents) throw new Error("STEAMHARNESS_REMOTE_SSH_KEY is required.");
   if (!contents.includes("-----BEGIN")) {
     const compact = contents.replace(/\s+/gu, "");
-    if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(compact)) throw new Error("WORKFLOW_REMOTE_SSH_KEY must be a PEM key or Base64-encoded PEM key.");
+    if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(compact)) throw new Error("STEAMHARNESS_REMOTE_SSH_KEY must be a PEM key or Base64-encoded PEM key.");
     try {
       contents = Buffer.from(compact, "base64").toString("utf8");
     } catch {
-      throw new Error("WORKFLOW_REMOTE_SSH_KEY Base64 value is invalid.");
+      throw new Error("STEAMHARNESS_REMOTE_SSH_KEY Base64 value is invalid.");
     }
   }
-  if (!contents.includes("-----BEGIN")) throw new Error("WORKFLOW_REMOTE_SSH_KEY does not contain a private key.");
+  if (!contents.includes("-----BEGIN")) throw new Error("STEAMHARNESS_REMOTE_SSH_KEY does not contain a private key.");
   return `${contents}\n`;
 }
 

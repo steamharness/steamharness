@@ -16,7 +16,7 @@ async function fixture() {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'local-analysis-'))); cleanup.push(() => rm(root, { recursive: true, force: true }));
   const folderPath = path.join(root, 'project'); await mkdir(folderPath);
   const reference = { id: '8f6a6240-4860-4efc-bd07-932868be2b98', name: 'Imported', uri: pathToFileURL(folderPath).href, folderPath };
-  const manifest = { id: reference.id, name: 'Default', workflowCode: { projectInfo: { localizedNames: { en: 'English', 'zh-CN': 'Chinese' }, dataStorage: { mode: 'local' } } } };
+  const manifest = { id: reference.id, name: 'Default', steamHarness: { projectInfo: { localizedNames: { en: 'English', 'zh-CN': 'Chinese' }, dataStorage: { mode: 'local' } } } };
   await writeFile(path.join(folderPath, 'package.json'), JSON.stringify(manifest));
   const storageDir = path.join(root, 'data'), directory = webProjectDataDirectory(storageDir, folderPath); await mkdir(directory, { recursive: true });
   const snapshot = (now?: number) => readLocalStudioAnalysis({ storageDir, projects: [reference], locale: 'zh-cn', now });
@@ -130,7 +130,7 @@ describe('local Studio analysis', () => {
     const f = await fixture(), link = path.join(f.root, 'link'); await symlink(f.folderPath, link, process.platform === 'win32' ? 'junction' : 'dir');
     const projects = [f.reference, { ...f.reference, folderPath: link }, { ...f.reference, folderPath: path.join(f.root, 'missing'), uri: 'file:///missing' }];
     const value = await readLocalStudioAnalysis({ storageDir: f.storageDir, projects }); expect(value.projects).toHaveLength(2); expect(value.projects[1].availability).toBe('missing');
-    f.manifest.workflowCode.projectInfo.dataStorage.mode = 'server'; await writeFile(path.join(f.folderPath, 'package.json'), JSON.stringify(f.manifest));
+    f.manifest.steamHarness.projectInfo.dataStorage.mode = 'server'; await writeFile(path.join(f.folderPath, 'package.json'), JSON.stringify(f.manifest));
     expect(await f.snapshot()).toMatchObject({ serverExcluded: 1, projects: [] });
   });
   it('reports corrupt histories and changed UUIDs as unavailable instead of empty successes', async () => {
@@ -163,8 +163,8 @@ describe('local Studio analysis', () => {
   });
   it('uses only the authenticated read-only loopback operation and never falls back to Server', async () => {
     await expect(requestStudioAnalysis({})).rejects.toHaveProperty('code', 'KANBAN_BRIDGE_UNAVAILABLE');
-    await expect(requestStudioAnalysis({ WORKFLOW_STUDIO_CONTROL_BRIDGE_URL: 'invalid url', WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN: 'token' })).rejects.toHaveProperty('code', 'KANBAN_BRIDGE_UNAVAILABLE');
-    await expect(requestStudioAnalysis({ WORKFLOW_STUDIO_CONTROL_BRIDGE_URL: 'https://example.test/studio-control', WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN: 'token' })).rejects.toHaveProperty('code', 'KANBAN_BRIDGE_UNAVAILABLE');
+    await expect(requestStudioAnalysis({ STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL: 'invalid url', STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN: 'token' })).rejects.toHaveProperty('code', 'KANBAN_BRIDGE_UNAVAILABLE');
+    await expect(requestStudioAnalysis({ STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL: 'https://example.test/studio-control', STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN: 'token' })).rejects.toHaveProperty('code', 'KANBAN_BRIDGE_UNAVAILABLE');
     const calls: unknown[] = [];
     const server = createServer(async (request, response) => {
       expect(request.headers.authorization).toBe('Bearer test-token'); let body = ''; for await (const chunk of request) body += chunk;
@@ -172,7 +172,7 @@ describe('local Studio analysis', () => {
     });
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve)); cleanup.push(() => new Promise<void>(resolve => server.close(() => resolve())));
     const port = (server.address() as { port: number }).port;
-    expect(await requestStudioAnalysis({ WORKFLOW_STUDIO_CONTROL_BRIDGE_URL: `http://127.0.0.1:${port}/studio-control`, WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN: 'test-token' })).toEqual({ version: 1, projects: [] });
+    expect(await requestStudioAnalysis({ STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL: `http://127.0.0.1:${port}/studio-control`, STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN: 'test-token' })).toEqual({ version: 1, projects: [] });
     expect(calls).toEqual([{ operation: 'studio.analysis.get', input: {}, permissionPolicy: 'read-only' }]);
   });
   it('aborts an in-flight Studio query when its preview closes', async () => {
@@ -182,7 +182,7 @@ describe('local Studio analysis', () => {
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
     cleanup.push(() => new Promise<void>(resolve => { server.closeAllConnections(); server.close(() => resolve()); }));
     const abort = new AbortController();
-    const query = requestStudioAnalysis({ WORKFLOW_STUDIO_CONTROL_BRIDGE_URL: `http://127.0.0.1:${(server.address() as { port: number }).port}/studio-control`, WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN: 'token' }, abort.signal);
+    const query = requestStudioAnalysis({ STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL: `http://127.0.0.1:${(server.address() as { port: number }).port}/studio-control`, STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN: 'token' }, abort.signal);
     await started; abort.abort();
     await expect(query).rejects.toMatchObject({ name: 'AbortError' });
   }, 20_000);

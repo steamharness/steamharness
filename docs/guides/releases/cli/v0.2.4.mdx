@@ -5,15 +5,15 @@ description: "CLI v0.2.4 的更新说明。"
 
 # CLI v0.2.4
 
-2026-09-05 · Tag `@workflow-code/cli/v0.2.4` · npm
+2026-09-05 · Tag `@steamharness/cli/v0.2.4` · npm
 
-<span id="@workflow-code/cli-0-2-4" className="release-version-anchor"></span>
-<span id="@workflow-code/cli.0.2.4" className="release-version-anchor"></span>
+<span id="@steamharness/cli-0-2-4" className="release-version-anchor"></span>
+<span id="@steamharness/cli.0.2.4" className="release-version-anchor"></span>
 
 #### 新特性
 
 - **关联项目的知识库与入口**：`--related-project` 现在可读目标项目知识库并调用其授权入口。
-- **软链接调用修复**：pnpm 等软链安装下 `workflow-code structure .` 不再空跑并以退出码 0 假通过。
+- **软链接调用修复**：pnpm 等软链安装下 `steamharness structure .` 不再空跑并以退出码 0 假通过。
 - **状态页显示真实服务器**：`workspace status` 新增 `effective` 字段，说明命令实际会用哪台服务器。
 
 #### 破坏性变更
@@ -23,7 +23,7 @@ description: "CLI v0.2.4 的更新说明。"
 - 服务端位置的关联项目目标只交出 KV，知识库与入口调用会以明确错误说明本机无法抵达。
   迁移：把目标项目改为 `local` 位置，或把需要的能力放到本地可运行的入口。
 - 本地关联项目只在配置了持久值目录时开放知识库，且与目标子运行共用同一个目录。
-  迁移：显式传入 `--persistent-value-store-dir` 或设置 `WORKFLOW_PERSISTENT_VALUE_STORE_DIR`。
+  迁移：显式传入 `--persistent-value-store-dir` 或设置 `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR`。
 
 #### 新增
 

@@ -6,7 +6,7 @@ import {
   resolveWorkflowCliAuthDir,
   resolveWorkflowCliAuthFilePath,
   type WorkflowAuthConfig,
-} from "@workflow-code/auth-config";
+} from "@steamharness/auth-config";
 
 export async function readCliAuthConfig(
   env: NodeJS.ProcessEnv = process.env,

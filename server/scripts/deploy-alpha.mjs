@@ -61,7 +61,7 @@ export async function deployAlphaRelease(options) {
   }
 
   const releaseRoot = options.releaseRoot ?? resolveReleaseStorageRoot({ required: true });
-  await assertDirectory(releaseRoot, { label: "WORKFLOW_RELEASE_STORAGE_ROOT", writable: true });
+  await assertDirectory(releaseRoot, { label: "STEAMHARNESS_RELEASE_STORAGE_ROOT", writable: true });
   const paths = resolveAlphaDeploymentPaths(releaseRoot);
   await Promise.all([
     mkdir(paths.releasesRoot, { recursive: true }),
@@ -87,7 +87,7 @@ export async function deployAlphaRelease(options) {
       await executeCommand("corepack", [
         "pnpm",
         "--filter",
-        "@workflow-code/server",
+        "@steamharness/server",
         "deploy",
         "--prod",
         "--legacy",
@@ -134,7 +134,7 @@ export async function deployAlphaRelease(options) {
 
 export async function recoverAlphaRelease(options = {}) {
   const releaseRoot = options.releaseRoot ?? resolveReleaseStorageRoot({ required: true });
-  await assertDirectory(releaseRoot, { label: "WORKFLOW_RELEASE_STORAGE_ROOT", writable: true });
+  await assertDirectory(releaseRoot, { label: "STEAMHARNESS_RELEASE_STORAGE_ROOT", writable: true });
   const paths = resolveAlphaDeploymentPaths(releaseRoot);
   const target = await readCurrentTarget(paths.currentLink);
   if (!target) throw new Error(`No deployed Server alpha release: ${paths.currentLink}`);
@@ -167,11 +167,11 @@ export async function startAlphaProcess(paths, options = {}) {
     env: {
       ...process.env,
       NODE_ENV: "production",
-      WORKFLOW_RELEASE_CHANNEL: "alpha",
-      WORKFLOW_REPO_ROOT: paths.currentLink,
-      WORKFLOW_RELEASE_METADATA_DIR: paths.metadataRoot,
-      WORKFLOW_SERVER_DATA_DIR: paths.dataRoot,
-      WORKFLOW_SERVER_PORT: String(port),
+      STEAMHARNESS_RELEASE_CHANNEL: "alpha",
+      STEAMHARNESS_REPO_ROOT: paths.currentLink,
+      STEAMHARNESS_RELEASE_METADATA_DIR: paths.metadataRoot,
+      STEAMHARNESS_SERVER_DATA_DIR: paths.dataRoot,
+      STEAMHARNESS_SERVER_PORT: String(port),
       PORT: String(port),
     },
     stdio: ["ignore", logFd, logFd],

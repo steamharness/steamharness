@@ -89,10 +89,10 @@ describe("workflow project info", () => {
     expect(matchesWorkflowProjectSearch("Default Name", info, "中文")).toBe(true);
   });
 
-  it("writes project info without changing other workflowCode fields", () => {
+  it("writes project info without changing other steamHarness fields", () => {
     expect(writeWorkflowProjectInfo({
       name: "Default",
-      workflowCode: { projectType: "workflow", future: true },
+      steamHarness: { projectType: "workflow", future: true },
     }, {
       localizedNames: { en: "English" },
       declarations: ["multilingual"],
@@ -101,7 +101,7 @@ describe("workflow project info", () => {
       relatedProjects: [],
     })).toEqual({
       name: "Default",
-      workflowCode: {
+      steamHarness: {
         projectType: "workflow",
         future: true,
         projectInfo: {

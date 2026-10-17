@@ -98,7 +98,7 @@ test("AI SDK provider keeps non-streaming results when optional settings are uns
   assert.equal(output.text, "completed");
   assert.deepEqual(output.providerMetadata, {
     mock: { requestId: "provider-request" },
-    "workflow-code": {
+    "steamharness": {
       warnings: ["temperature (temperature is not supported for reasoning models)"],
     },
   });
@@ -139,7 +139,7 @@ test("AI SDK provider streams output when optional settings are unsupported", as
     type: "finish",
     providerMetadata: {
       mock: { requestId: "provider-request" },
-      "workflow-code": { warnings: ["topP (not available)"] },
+      "steamharness": { warnings: ["topP (not available)"] },
     },
   });
 });
@@ -174,7 +174,7 @@ test("OpenAI Responses drops unsupported reasoning-model temperature and complet
 
   assert.equal(output.text, "completed");
   assert.equal(requestBody?.temperature, undefined);
-  assert.deepEqual(output.providerMetadata?.["workflow-code"], {
+  assert.deepEqual(output.providerMetadata?.["steamharness"], {
     warnings: ["temperature (temperature is not supported for reasoning models)"],
   });
 });

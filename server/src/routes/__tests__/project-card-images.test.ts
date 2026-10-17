@@ -11,7 +11,7 @@ import type { WorkflowStorage } from "../../storage";
 import { createProjectCardImageRouter } from "../project-card-images";
 
 test("public project card image route serves immutable WebP assets", async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "workflow-project-card-route-"));
+  const root = await mkdtemp(path.join(tmpdir(), "steamharness-project-card-route-"));
   const filePath = path.join(root, "image.webp");
   const body = Buffer.from("RIFF0000WEBPproject-card", "ascii");
   const hash = "a".repeat(64);

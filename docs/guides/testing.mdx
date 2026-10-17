@@ -1,11 +1,11 @@
 ---
 title: "自动化测试"
-description: "拆分后各 Workflow Code 仓库的离线测试、构建与 workspace workflow 契约。"
+description: "拆分后各 SteamHarness 仓库的离线测试、构建与 workspace workflow 契约。"
 ---
 
 # 自动化测试
 
-Workflow Code 的各仓库独立安装依赖并执行自己的质量门禁。默认测试以离线可复现为第一层保障，不连接生产 PostgreSQL、真实 OSS、LLM、GitLab、Electron 或远程服务器；Server 的 PostgreSQL 集成测试使用一次性的隔离 PostgreSQL 15 容器。真实环境验证应由对应仓库显式启用。
+SteamHarness 的各仓库独立安装依赖并执行自己的质量门禁。默认测试以离线可复现为第一层保障，不连接生产 PostgreSQL、真实 OSS、LLM、GitLab、Electron 或远程服务器；Server 的 PostgreSQL 集成测试使用一次性的隔离 PostgreSQL 15 容器。真实环境验证应由对应仓库显式启用。
 
 以下命令都从对应仓库根目录执行。所有仓库都维护 `dev`、`alpha`、`main` 三条分支，日常开发在 `dev` 上进行；分支差异不改变本地门禁，只有发布态的引用规则不同（见[兼容性](releases/compatibility.mdx)）。
 
@@ -14,7 +14,7 @@ Workflow Code 的各仓库独立安装依赖并执行自己的质量门禁。默
 | 仓库 | 命令 | 用途 |
 | --- | --- | --- |
 | Core | `pnpm typecheck && pnpm test && pnpm test:scripts && pnpm coverage && pnpm build && pnpm test:workspace` | 检查 Core API、脚本、npm 构建和 Core 仓库内的示例 workspace。 |
-| CLI | `pnpm typecheck && pnpm test && pnpm test:scripts && pnpm coverage && pnpm build` | 检查本地 CLI 与 `workflow-code workspace`。发布前再执行 `pnpm pack --pack-destination .release`。 |
+| CLI | `pnpm typecheck && pnpm test && pnpm test:scripts && pnpm coverage && pnpm build` | 检查本地 CLI 与 `steamharness workspace`。发布前再执行 `pnpm pack --pack-destination .release`。 |
 | Studio | `npm run check && npm run build:extension` | 检查工作站扩展、类型和离线测试。 |
 | Server | `pnpm typecheck:all && pnpm test && pnpm coverage && pnpm build:all` | 同时检查 Server API 与仓库内 `web/` 管理端。 |
 | Shared | `pnpm typecheck && pnpm test && pnpm test:scripts && pnpm coverage && pnpm build` | 检查共享源码包和可供宿主同步的源码产物。 |

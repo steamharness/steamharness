@@ -26,7 +26,7 @@ export async function runResourceRequest(request, core, fetcher = fetch) {
   const folderPath = await realpath(request.project.folderPath);
   const manifest = JSON.parse(await readFile(path.join(folderPath, 'package.json'), 'utf8'));
   if (manifest.id !== request.project.id) { throw new Error('The project identity has changed. Refresh the project list.'); }
-  const mode = manifest.workflowCode?.projectInfo?.dataStorage?.mode;
+  const mode = manifest.steamHarness?.projectInfo?.dataStorage?.mode;
   const sources = mode === 'server' ? ['server'] : mode === 'local' ? ['local'] : ['local', 'server'];
   const input = request.input;
   const source = input.source ?? sources[0];
@@ -127,7 +127,7 @@ async function main() {
   const write = process.stdout.write.bind(process.stdout);
   console.log = console.error;
   try {
-    const core = request.input.source === 'server' ? undefined : await import(resolve('workflow-code', pathToFileURL(path.join(request.project.folderPath, 'package.json')).href));
+    const core = request.input.source === 'server' ? undefined : await import(resolve('steamharness', pathToFileURL(path.join(request.project.folderPath, 'package.json')).href));
     const value = await runResourceRequest(request, core);
     write(`${JSON.stringify({ value })}\n`);
   } catch (error) {

@@ -1,10 +1,10 @@
-# Workflow Code Icon
+# SteamHarness Icon
 
-This folder contains the canonical application icon for Workflow Code.
+This folder contains the canonical application icon for SteamHarness.
 
-- `workflow-code-icon.svg` is the canonical full-color app icon source.
-- `workflow-code-icon-mark.svg` is the transparent full-color mark for surfaces that already provide a container.
-- `workflow-code-icon-template.svg` is the single-color template mark for macOS menu bar, Windows tray, compact controls, and monochrome contexts.
+- `steamharness-icon.svg` is the canonical full-color app icon source.
+- `steamharness-icon-mark.svg` is the transparent full-color mark for surfaces that already provide a container.
+- `steamharness-icon-template.svg` is the single-color template mark for macOS menu bar, Windows tray, compact controls, and monochrome contexts.
 
 Design intent for v5:
 

@@ -10,32 +10,32 @@ import { decodePrivateKey, withRemote } from "./deploy-ecs.mjs";
 
 const exec = promisify(execFile);
 const ROOT = "/srv/workflow-release";
-const SOURCE_ROOT = "/Volumes/store/workflow-code-prod";
+const SOURCE_ROOT = "/Volumes/store/steamharness-prod";
 const quote = (value) => `'${String(value).replaceAll("'", "'\\''")}'`;
 
 export function validateMigrationId(value) {
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{3,60}$/u.test(value ?? "")) throw new Error("WORKFLOW_MIGRATION_ID is required and must be a safe identifier.");
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{3,60}$/u.test(value ?? "")) throw new Error("STEAMHARNESS_MIGRATION_ID is required and must be a safe identifier.");
   return value;
 }
 
 export async function migrateEcs() {
-  const id = validateMigrationId(process.env.WORKFLOW_MIGRATION_ID);
+  const id = validateMigrationId(process.env.STEAMHARNESS_MIGRATION_ID);
   const temp = await mkdtemp(path.join(os.tmpdir(), "workflow-migration-"));
   try {
     return await withRemote({ root: ROOT }, async (target) => {
       const completed = await target.output(`test -f ${ROOT}/migration-audit/data-restored.json`).then(() => true, () => false);
       if (completed) return { status: "already-restored", target: "60.205.8.151:22" };
-      const raw = process.env.WORKFLOW_MIGRATION_SSH_KEY;
-      if (!raw) throw new Error("WORKFLOW_MIGRATION_SSH_KEY is required.");
+      const raw = process.env.STEAMHARNESS_MIGRATION_SSH_KEY;
+      if (!raw) throw new Error("STEAMHARNESS_MIGRATION_SSH_KEY is required.");
       const contents = raw.includes("-----BEGIN") ? raw : await readFile(raw, "utf8").catch(() => raw);
       const key = path.join(temp, "source-key");
       await writeFile(key, decodePrivateKey(contents), { mode: 0o600 });
       await chmod(key, 0o600);
       const hosts = path.join(temp, "known_hosts");
-      const sourceHost = process.env.WORKFLOW_MIGRATION_SOURCE_HOST ?? "yuhe.space";
-      const sourcePort = process.env.WORKFLOW_MIGRATION_SOURCE_PORT ?? "7101";
-      const fingerprint = process.env.WORKFLOW_MIGRATION_SOURCE_FINGERPRINT;
-      if (!fingerprint?.startsWith("SHA256:")) throw new Error("Pin WORKFLOW_MIGRATION_SOURCE_FINGERPRINT before migration.");
+      const sourceHost = process.env.STEAMHARNESS_MIGRATION_SOURCE_HOST ?? "yuhe.space";
+      const sourcePort = process.env.STEAMHARNESS_MIGRATION_SOURCE_PORT ?? "7101";
+      const fingerprint = process.env.STEAMHARNESS_MIGRATION_SOURCE_FINGERPRINT;
+      if (!fingerprint?.startsWith("SHA256:")) throw new Error("Pin STEAMHARNESS_MIGRATION_SOURCE_FINGERPRINT before migration.");
       const scanned = await exec("ssh-keyscan", ["-p", sourcePort, "-t", "ed25519", sourceHost]);
       await writeFile(hosts, scanned.stdout);
       const checked = await exec("ssh-keygen", ["-lf", hosts, "-E", "sha256"]);

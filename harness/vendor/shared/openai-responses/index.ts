@@ -697,7 +697,7 @@ export function createOpenAIDeletedResource(
   };
 }
 
-export function createOpenAIModelResource(id: string, ownedBy = "workflow-code"): OpenAIModelResource {
+export function createOpenAIModelResource(id: string, ownedBy = "steamharness"): OpenAIModelResource {
   return {
     id: requireNonEmptyString(id, "model"),
     object: "model",

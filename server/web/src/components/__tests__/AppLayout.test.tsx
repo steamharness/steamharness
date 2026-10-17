@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { LayoutDashboard, Settings } from "lucide-react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { i18n } from "@workflow-code/i18n/react";
+import { i18n } from "@steamharness/i18n/react";
 import { AppLayout } from "../AppLayout";
 import { Dialog, DialogContent, DialogTitle } from "../ui/dialog";
 
@@ -31,7 +31,7 @@ describe("AppLayout", () => {
     expect(overview).toHaveAttribute("data-active", "true");
     fireEvent.click(overview);
     expect(props.navItems[0]!.onClick).toHaveBeenCalledOnce();
-    fireEvent.click(screen.getByRole("button", { name: "Workflow Code" }));
+    fireEvent.click(screen.getByRole("button", { name: "SteamHarness" }));
     expect(props.onBrandClick).toHaveBeenCalledOnce();
     expect(screen.getByRole("main")).toHaveTextContent("Project content");
   });
@@ -65,7 +65,7 @@ describe("AppLayout", () => {
     fireEvent.click(screen.getByRole("button", { name: "切换侧边栏" }));
     const sheet = await screen.findByRole("dialog", { name: "侧边栏" });
     if (destination === "brand") {
-      fireEvent.click(within(sheet).getByRole("button", { name: "Workflow Code" }));
+      fireEvent.click(within(sheet).getByRole("button", { name: "SteamHarness" }));
       expect(props.onBrandClick).toHaveBeenCalledOnce();
     } else {
       fireEvent.pointerDown(within(sheet).getByRole("button", { name: /Workflow Admin/ }), { button: 0, ctrlKey: false });

@@ -35,7 +35,7 @@ test("the day's sequence counts every release prefix, so nothing can collide", (
     "refs/tags/alpha/v0.2.4-20260919004",
     "refs/tags/feat/v0.2.4-20260920002.codex-other",
     "refs/tags/0.2.4-20260920003.feat-elsewhere",
-    "refs/tags/workflow-code/v0.2.0",
+    "refs/tags/steamharness/v0.2.0",
   ];
 
   assert.deepEqual(
@@ -69,7 +69,7 @@ test("the tag a pipeline reads back names the version and its channel", () => {
   });
   // A channel tag is not a feature release, and neither is a malformed one.
   assert.throws(() => readFeatureTag("dev/v0.2.4-20260920001"), /invalid/u);
-  assert.throws(() => readFeatureTag("workflow-code/v0.2.0"), /invalid/u);
+  assert.throws(() => readFeatureTag("steamharness/v0.2.0"), /invalid/u);
   assert.throws(() => readFeatureTag("feat/v0.2.4-20260920001"), /invalid/u);
 });
 
@@ -83,14 +83,14 @@ test("a version that is not the declared base is refused", () => {
 test("the manifest carries the feature version and nothing else changes", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "workflow-feature-release-"));
   try {
-    const manifest = { name: "workflow-code", version: "0.2.4", private: false, scripts: { build: "tsup" } };
+    const manifest = { name: "steamharness", version: "0.2.4", private: false, scripts: { build: "tsup" } };
     await writeFile(path.join(dir, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 
     const written = await writeFeatureVersion({
       root: dir,
       version: "0.2.4-20260920001.codex-pi-agent",
     });
-    assert.deepEqual(written, { packageName: "workflow-code", version: "0.2.4-20260920001.codex-pi-agent" });
+    assert.deepEqual(written, { packageName: "steamharness", version: "0.2.4-20260920001.codex-pi-agent" });
 
     const after = JSON.parse(await readFile(path.join(dir, "package.json"), "utf8"));
     assert.equal(after.version, "0.2.4-20260920001.codex-pi-agent");

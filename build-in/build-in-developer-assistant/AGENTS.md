@@ -6,7 +6,7 @@
 - 本仓库只维护 `developer-assistant` 内置项目，仓库根就是 Workflow 项目根；不得再引用旧 monorepo 内置项目目录或其它仓库内部路径。
 - `skills/workflow-code-generator/AGENTS.md` 是 generator 专项规则入口；修改该目录前必须同时读取它。
 - 节点 payload 必须继承 `WorkflowPayload`，成功时使用 `errCode: 0, errMessage: ""`。
-- Studio 开发态可以从聚合仓库的 `open-soucres/build-in/build-in-developer-assistant` 获取本项目依赖；VS Code 宿主通过 `WORKFLOW_DEVELOPER_ASSISTANT_HOST=vscode` 使用已有适配。宿主注入 `WORKFLOW_STUDIO_CONTROL_MCP_SERVER` 时连接 Studio Control，使用现有工具权限和审批；不读取旧 Desktop Control 配置。原始控制凭据只传给 MCP 子进程，不进入编码工具 shell。
+- Studio 开发态可以从聚合仓库的 `open-soucres/build-in/build-in-developer-assistant` 获取本项目依赖；VS Code 宿主通过 `STEAMHARNESS_DEVELOPER_ASSISTANT_HOST=vscode` 使用已有适配。宿主注入 `STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER` 时连接 Studio Control，使用现有工具权限和审批；不读取旧 Desktop Control 配置。原始控制凭据只传给 MCP 子进程，不进入编码工具 shell。
 - 用户可见行为变化必须同步中文/英文 `CHANGELOG.next*.md`，并按实际影响更新 `../../docs` 文档。
 - 代码变更必须补邻近 `__tests__/` 或 `scripts/__tests__/` 测试。提交前执行 `pnpm typecheck`、`pnpm test`、`pnpm coverage`、`pnpm build` 和 `git diff --check`。
 - 发布分两条通道：正式通道的 tag 是 `builtin-developer-assistant/vX.Y.Z`、索引与资源在 `builtin-projects/developer-assistant/…`；Alpha 通道的 tag 是 `builtin-developer-assistant/alpha/vX.Y.Z`、索引与资源在 `builtin-projects/developer-assistant/alpha/…`。通道是 OSS 路径的一段，因此同一个项目版本可以两条通道各发一次。tag 流水线里没有分支可读，通道由 CI 从 tag 形状判定并显式传 `--channel`，不得靠分支推断。转正时在 `main` 上重新构建并发布正式通道——`components` 是烘进制品内 `package.json` 的，必须重建——版本号与 changelog 条目随转正一起到达，因此不再跑一次 `release:prepare`。

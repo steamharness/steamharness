@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   i18n,
   initI18n,
-  readWorkflowCodeI18nDescriptor,
-  translateWorkflowCodeError,
-} from "@workflow-code/i18n";
+  readSteamHarnessI18nDescriptor,
+  translateSteamHarnessError,
+} from "@steamharness/i18n";
 import {
   createExternalWorkflowProjectDependencyLocks,
   createWorkflowProjectDependencyLocks,
@@ -35,16 +35,16 @@ describe("workflow project dependencies", () => {
     }
 
     expect((failure as Error).message).toBe("Project group manifest version must be 1.");
-    expect(readWorkflowCodeI18nDescriptor(failure)).toEqual({
+    expect(readSteamHarnessI18nDescriptor(failure)).toEqual({
       namespace: "common",
       key: "projectDependencies.validation.manifestVersion",
       values: { version: 1 },
     });
     initI18n({ preference: "zh-CN" });
-    expect(translateWorkflowCodeError(failure)).toBe("项目组清单版本必须是 1。");
+    expect(translateSteamHarnessError(failure)).toBe("项目组清单版本必须是 1。");
     try {
       await i18n.changeLanguage("en");
-      expect(translateWorkflowCodeError(failure)).toBe("Project group manifest version must be 1.");
+      expect(translateSteamHarnessError(failure)).toBe("Project group manifest version must be 1.");
     } finally {
       await i18n.changeLanguage("zh-CN");
     }
@@ -172,9 +172,9 @@ describe("workflow project dependencies", () => {
       ".workflow-schedules/schedules.json",
       ".workflow-runs/history.json",
       ".data/server.json",
-      "workflow-code.sqlite",
-      "workflow-code.sqlite-wal",
-      "workflow-code.sqlite-shm",
+      "steamharness.sqlite",
+      "steamharness.sqlite-wal",
+      "steamharness.sqlite-shm",
       "workflow-auth.json",
       "local-project-registries/dev.json",
       "workflow-files/file-1/content",

@@ -24,7 +24,7 @@ export async function createServerRunPlan({
       build: ["pnpm", ["build:all"]],
       command: process.execPath,
       args: [path.join(repositoryRoot, "dist", "index.js")],
-      env: { ...mainEnv, NODE_ENV: "production", WORKFLOW_REPOSITORY_MODE: "main" },
+      env: { ...mainEnv, NODE_ENV: "production", STEAMHARNESS_REPOSITORY_MODE: "main" },
     };
   }
 
@@ -66,12 +66,12 @@ export async function createServerRunPlan({
       ...env,
       NODE_ENV: "development",
       NODE_OPTIONS: withDevelopmentCondition(env.NODE_OPTIONS),
-      WORKFLOW_SERVER_DEV: "1",
-      WORKFLOW_SERVER_HMR: hotReload ? "1" : "0",
+      STEAMHARNESS_SERVER_DEV: "1",
+      STEAMHARNESS_SERVER_HMR: hotReload ? "1" : "0",
       TSX_TSCONFIG_PATH: tsconfigPath,
-      WORKFLOW_LOCAL_CORE_ROOT: coreRoot,
-      WORKFLOW_LOCAL_SHARED_ROOT: sharedRoot,
-      WORKFLOW_LOCAL_SOURCE_MODE: "1",
+      STEAMHARNESS_LOCAL_CORE_ROOT: coreRoot,
+      STEAMHARNESS_LOCAL_SHARED_ROOT: sharedRoot,
+      STEAMHARNESS_LOCAL_SOURCE_MODE: "1",
     },
   };
 }
@@ -80,11 +80,11 @@ function withoutLocalSourceEnvironment(env) {
   const result = { ...env };
   for (const key of [
     "TSX_TSCONFIG_PATH",
-    "WORKFLOW_LOCAL_CORE_ROOT",
-    "WORKFLOW_LOCAL_SHARED_ROOT",
-    "WORKFLOW_LOCAL_SOURCE_MODE",
-    "WORKFLOW_SERVER_DEV",
-    "WORKFLOW_SERVER_HMR",
+    "STEAMHARNESS_LOCAL_CORE_ROOT",
+    "STEAMHARNESS_LOCAL_SHARED_ROOT",
+    "STEAMHARNESS_LOCAL_SOURCE_MODE",
+    "STEAMHARNESS_SERVER_DEV",
+    "STEAMHARNESS_SERVER_HMR",
   ]) delete result[key];
   const nodeOptions = withoutDevelopmentCondition(result.NODE_OPTIONS);
   if (nodeOptions === undefined) delete result.NODE_OPTIONS;

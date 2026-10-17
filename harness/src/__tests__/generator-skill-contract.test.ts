@@ -11,7 +11,7 @@ import { workflowRuntimeApi } from "../runtime-api";
 // 明确指到下面这个文件。
 
 const skillRoot = path.resolve(import.meta.dirname, "../../.agents/skills/workflow-code-generator");
-const apiReferencePath = path.join(skillRoot, "references", "workflow-code-api.md");
+const apiReferencePath = path.join(skillRoot, "references", "steamharness-api.md");
 const skillPath = path.join(skillRoot, "SKILL.md");
 
 function mentionsWorkflowMember(corpus: string, member: string): boolean {

@@ -5,7 +5,7 @@ description: "为宿主嵌入或测试一步构造完整的 Conversation Agent e
 
 # defineAgentConversationExecutor
 
-`workflow.defineAgentConversationExecutor()` 用一次调用生成完整的 conversation executor：conversation 配置、token usage、工具声明、参数、输入/输出节点编排和 OpenAI 网关对接全部由 runtime 提供。它适合宿主嵌入或测试。需要通过 `workflow-code structure` 的项目必须在 `workflow.defineExecutor({...})` 内联声明 `conversation`、`tokenUsage`、`tools` 和 `params`，并复用 `workflow.createAgentConversationWorkflow(...)` 与 `workflow.createAgentProjectInput(...)`；否则静态结构报告无法读到这些声明。
+`workflow.defineAgentConversationExecutor()` 用一次调用生成完整的 conversation executor：conversation 配置、token usage、工具声明、参数、输入/输出节点编排和 OpenAI 网关对接全部由 runtime 提供。它适合宿主嵌入或测试。需要通过 `steamharness structure` 的项目必须在 `workflow.defineExecutor({...})` 内联声明 `conversation`、`tokenUsage`、`tools` 和 `params`，并复用 `workflow.createAgentConversationWorkflow(...)` 与 `workflow.createAgentProjectInput(...)`；否则静态结构报告无法读到这些声明。
 
 这层封装让嵌入方无需实现流式循环、审批、压缩或输出项拼装。项目也可复用其中的工作流与输入实现，同时保留可被宿主读取的内联声明。
 

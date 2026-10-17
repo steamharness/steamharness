@@ -47,14 +47,14 @@ export const PROJECT_CARD_COLOR_PRESETS = [
 const DEFAULT_PROJECT_CARD_ICON_COLOR = "#ffffff";
 const MIN_PROJECT_CARD_ICON_CONTRAST = 4.5;
 
-const PROJECT_CARD_PACKAGE_ROOT = "workflowCode";
+const PROJECT_CARD_PACKAGE_ROOT = "steamHarness";
 const PROJECT_CARD_PACKAGE_KEY = "projectCard";
 const LEGACY_PROJECT_CARD_PACKAGE_KEY = "appCard";
 
 export class ProjectCardMetadataMigrationError extends Error {
   constructor() {
     super(
-      'workflowCode.projectCard.kind was removed. Declare executor.projectType for executable projects or workflowCode.projectType: "kanban" for Kanban projects instead.',
+      'steamHarness.projectCard.kind was removed. Declare executor.projectType for executable projects or steamHarness.projectType: "kanban" for Kanban projects instead.',
     );
     this.name = "ProjectCardMetadataMigrationError";
   }
@@ -221,10 +221,10 @@ export function readProjectCardMetadataFromPackageJson(
   packageJson: Record<string, unknown>,
   projectType: WorkflowProjectType,
 ): ProjectCardMetadata {
-  const workflowCode = isRecord(packageJson[PROJECT_CARD_PACKAGE_ROOT])
+  const steamHarness = isRecord(packageJson[PROJECT_CARD_PACKAGE_ROOT])
     ? packageJson[PROJECT_CARD_PACKAGE_ROOT]
     : undefined;
-  const metadata = workflowCode?.[PROJECT_CARD_PACKAGE_KEY] ?? workflowCode?.[LEGACY_PROJECT_CARD_PACKAGE_KEY];
+  const metadata = steamHarness?.[PROJECT_CARD_PACKAGE_KEY] ?? steamHarness?.[LEGACY_PROJECT_CARD_PACKAGE_KEY];
   if (isRecord(metadata) && Object.hasOwn(metadata, "kind")) {
     throw new ProjectCardMetadataMigrationError();
   }
@@ -236,7 +236,7 @@ export function writeProjectCardMetadataToPackageJson(
   metadataInput: ProjectCardMetadata,
 ): Record<string, unknown> {
   const metadata = validateProjectCardMetadata(metadataInput);
-  const workflowCode = isRecord(packageJson[PROJECT_CARD_PACKAGE_ROOT])
+  const steamHarness = isRecord(packageJson[PROJECT_CARD_PACKAGE_ROOT])
     ? { ...packageJson[PROJECT_CARD_PACKAGE_ROOT] }
     : {};
   const projectCard: Record<string, unknown> = {
@@ -252,7 +252,7 @@ export function writeProjectCardMetadataToPackageJson(
   return {
     ...packageJson,
     [PROJECT_CARD_PACKAGE_ROOT]: {
-      ...workflowCode,
+      ...steamHarness,
       [PROJECT_CARD_PACKAGE_KEY]: projectCard,
     },
   };

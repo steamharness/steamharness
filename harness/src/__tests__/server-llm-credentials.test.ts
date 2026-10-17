@@ -8,10 +8,10 @@ import { getServerLLMCredentials } from "../provider/llm/server";
 
 test("server LLM credentials hide proxy tokens and refresh before provider calls", async () => {
   const previousFetch = globalThis.fetch;
-  const previousUrl = process.env.WORKFLOW_AI_SERVER_URL;
-  const previousToken = process.env.WORKFLOW_AI_API_KEY;
-  process.env.WORKFLOW_AI_SERVER_URL = "https://workflow.example.test";
-  process.env.WORKFLOW_AI_API_KEY = "account-token";
+  const previousUrl = process.env.STEAMHARNESS_AI_SERVER_URL;
+  const previousToken = process.env.STEAMHARNESS_AI_API_KEY;
+  process.env.STEAMHARNESS_AI_SERVER_URL = "https://workflow.example.test";
+  process.env.STEAMHARNESS_AI_API_KEY = "account-token";
   let catalogReads = 0;
   const proxyAuthorizations: string[] = [];
   const proxyBodies: Array<Record<string, unknown>> = [];
@@ -101,16 +101,16 @@ test("server LLM credentials hide proxy tokens and refresh before provider calls
     )), true);
   } finally {
     globalThis.fetch = previousFetch;
-    restoreEnv("WORKFLOW_AI_SERVER_URL", previousUrl);
-    restoreEnv("WORKFLOW_AI_API_KEY", previousToken);
+    restoreEnv("STEAMHARNESS_AI_SERVER_URL", previousUrl);
+    restoreEnv("STEAMHARNESS_AI_API_KEY", previousToken);
   }
 });
 
 test("server LLM credentials preserve the provider preference order returned by Server", async () => {
   const previousFetch = globalThis.fetch;
-  const previous = snapshotEnv(["WORKFLOW_AI_SERVER_URL", "WORKFLOW_AI_API_KEY"]);
-  process.env.WORKFLOW_AI_SERVER_URL = "https://workflow.example.test";
-  process.env.WORKFLOW_AI_API_KEY = "account-token";
+  const previous = snapshotEnv(["STEAMHARNESS_AI_SERVER_URL", "STEAMHARNESS_AI_API_KEY"]);
+  process.env.STEAMHARNESS_AI_SERVER_URL = "https://workflow.example.test";
+  process.env.STEAMHARNESS_AI_API_KEY = "account-token";
   globalThis.fetch = (async () => Response.json({
     errCode: 0,
     errMessage: "",
@@ -135,9 +135,9 @@ test("server LLM credentials preserve the provider preference order returned by 
 
 test("server LLM credentials canonicalize the configured default model case-insensitively", async () => {
   const previousFetch = globalThis.fetch;
-  const previous = snapshotEnv(["WORKFLOW_AI_SERVER_URL", "WORKFLOW_AI_API_KEY"]);
-  process.env.WORKFLOW_AI_SERVER_URL = "https://workflow.example.test";
-  process.env.WORKFLOW_AI_API_KEY = "account-token";
+  const previous = snapshotEnv(["STEAMHARNESS_AI_SERVER_URL", "STEAMHARNESS_AI_API_KEY"]);
+  process.env.STEAMHARNESS_AI_SERVER_URL = "https://workflow.example.test";
+  process.env.STEAMHARNESS_AI_API_KEY = "account-token";
   const defaults = ["GPT-Test", "gpt-missing", undefined];
   let reads = 0;
   globalThis.fetch = (async () => {
@@ -173,15 +173,15 @@ test("server LLM credentials canonicalize the configured default model case-inse
 test("server LLM OpenAI bridge proxies only loopback Responses requests without exposing credentials", async () => {
   const previousFetch = globalThis.fetch;
   const previous = snapshotEnv([
-    "WORKFLOW_AI_SERVER_URL",
-    "WORKFLOW_AI_API_KEY",
-    "WORKFLOW_SERVER_URL",
-    "WORKFLOW_SERVER_ADMIN_KEY",
+    "STEAMHARNESS_AI_SERVER_URL",
+    "STEAMHARNESS_AI_API_KEY",
+    "STEAMHARNESS_SERVER_URL",
+    "STEAMHARNESS_SERVER_ADMIN_KEY",
   ]);
-  process.env.WORKFLOW_AI_SERVER_URL = "https://workflow.example.test";
-  process.env.WORKFLOW_AI_API_KEY = "account-token";
-  delete process.env.WORKFLOW_SERVER_URL;
-  delete process.env.WORKFLOW_SERVER_ADMIN_KEY;
+  process.env.STEAMHARNESS_AI_SERVER_URL = "https://workflow.example.test";
+  process.env.STEAMHARNESS_AI_API_KEY = "account-token";
+  delete process.env.STEAMHARNESS_SERVER_URL;
+  delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
   let upstreamUrl = "";
   let upstreamAuthorization = "";
   let upstreamCookie = "";
@@ -257,9 +257,9 @@ test("server LLM OpenAI bridge proxies only loopback Responses requests without 
 
 test("server LLM credentials keep undeclared model web search disabled", async () => {
   const previousFetch = globalThis.fetch;
-  const previous = snapshotEnv(["WORKFLOW_AI_SERVER_URL", "WORKFLOW_AI_API_KEY"]);
-  process.env.WORKFLOW_AI_SERVER_URL = "https://workflow.example.test";
-  process.env.WORKFLOW_AI_API_KEY = "account-token";
+  const previous = snapshotEnv(["STEAMHARNESS_AI_SERVER_URL", "STEAMHARNESS_AI_API_KEY"]);
+  process.env.STEAMHARNESS_AI_SERVER_URL = "https://workflow.example.test";
+  process.env.STEAMHARNESS_AI_API_KEY = "account-token";
   globalThis.fetch = (async () => createCatalogResponse()) as typeof fetch;
   try {
     const [credential] = await getServerLLMCredentials();
@@ -270,7 +270,7 @@ test("server LLM credentials keep undeclared model web search disabled", async (
         assert.ok(error instanceof Error);
         assert.match(error.message, /does not support web search/);
         assert.deepEqual(
-          (error as Error & { metadata?: Record<string, unknown> }).metadata?.workflowCodeI18n,
+          (error as Error & { metadata?: Record<string, unknown> }).metadata?.steamHarnessI18n,
           {
             namespace: "common",
             key: "serverAiModelWebSearchUnsupported",
@@ -288,9 +288,9 @@ test("server LLM credentials keep undeclared model web search disabled", async (
 
 test("server LLM OpenAI bridge rejects Anthropic credentials", async () => {
   const previousFetch = globalThis.fetch;
-  const previous = snapshotEnv(["WORKFLOW_AI_SERVER_URL", "WORKFLOW_AI_API_KEY"]);
-  process.env.WORKFLOW_AI_SERVER_URL = "https://workflow.example.test";
-  process.env.WORKFLOW_AI_API_KEY = "account-token";
+  const previous = snapshotEnv(["STEAMHARNESS_AI_SERVER_URL", "STEAMHARNESS_AI_API_KEY"]);
+  process.env.STEAMHARNESS_AI_SERVER_URL = "https://workflow.example.test";
+  process.env.STEAMHARNESS_AI_API_KEY = "account-token";
   globalThis.fetch = (async () => Response.json({
     errCode: 0,
     errMessage: "",
@@ -315,7 +315,7 @@ test("server LLM OpenAI bridge rejects Anthropic credentials", async () => {
       () => credential!.startOpenAIProxyBridge(),
       (error: unknown) => {
         assert.match((error as Error).message, /does not support the OpenAI Responses proxy bridge/);
-        assert.deepEqual((error as { metadata?: Record<string, unknown> }).metadata?.workflowCodeI18n, {
+        assert.deepEqual((error as { metadata?: Record<string, unknown> }).metadata?.steamHarnessI18n, {
           namespace: "common",
           key: "serverAiResponsesProxyUnsupported",
           values: { configuration: "Anthropic configuration" },
@@ -331,9 +331,9 @@ test("server LLM OpenAI bridge rejects Anthropic credentials", async () => {
 
 test("server LLM generic bridge proxies Anthropic Messages with server credentials", async () => {
   const previousFetch = globalThis.fetch;
-  const previous = snapshotEnv(["WORKFLOW_AI_SERVER_URL", "WORKFLOW_AI_API_KEY"]);
-  process.env.WORKFLOW_AI_SERVER_URL = "https://workflow.example.test";
-  process.env.WORKFLOW_AI_API_KEY = "account-token";
+  const previous = snapshotEnv(["STEAMHARNESS_AI_SERVER_URL", "STEAMHARNESS_AI_API_KEY"]);
+  process.env.STEAMHARNESS_AI_SERVER_URL = "https://workflow.example.test";
+  process.env.STEAMHARNESS_AI_API_KEY = "account-token";
   let upstreamUrl = "";
   let upstreamApiKey = "";
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -389,9 +389,9 @@ test("server LLM generic bridge proxies Anthropic Messages with server credentia
 
 test("server LLM OpenAI bridge cancels active upstream requests when closed", async () => {
   const previousFetch = globalThis.fetch;
-  const previous = snapshotEnv(["WORKFLOW_AI_SERVER_URL", "WORKFLOW_AI_API_KEY"]);
-  process.env.WORKFLOW_AI_SERVER_URL = "https://workflow.example.test";
-  process.env.WORKFLOW_AI_API_KEY = "account-token";
+  const previous = snapshotEnv(["STEAMHARNESS_AI_SERVER_URL", "STEAMHARNESS_AI_API_KEY"]);
+  process.env.STEAMHARNESS_AI_SERVER_URL = "https://workflow.example.test";
+  process.env.STEAMHARNESS_AI_API_KEY = "account-token";
   let markStarted: (() => void) | undefined;
   const started = new Promise<void>((resolve) => {
     markStarted = resolve;
@@ -433,15 +433,15 @@ test("server LLM OpenAI bridge cancels active upstream requests when closed", as
 test("server LLM provider keeps a still-valid token when refresh fails", async () => {
   const previousFetch = globalThis.fetch;
   const previous = snapshotEnv([
-    "WORKFLOW_AI_SERVER_URL",
-    "WORKFLOW_AI_API_KEY",
-    "WORKFLOW_SERVER_URL",
-    "WORKFLOW_SERVER_ADMIN_KEY",
+    "STEAMHARNESS_AI_SERVER_URL",
+    "STEAMHARNESS_AI_API_KEY",
+    "STEAMHARNESS_SERVER_URL",
+    "STEAMHARNESS_SERVER_ADMIN_KEY",
   ]);
-  process.env.WORKFLOW_AI_SERVER_URL = "https://workflow.example.test";
-  process.env.WORKFLOW_AI_API_KEY = "account-token";
-  delete process.env.WORKFLOW_SERVER_URL;
-  delete process.env.WORKFLOW_SERVER_ADMIN_KEY;
+  process.env.STEAMHARNESS_AI_SERVER_URL = "https://workflow.example.test";
+  process.env.STEAMHARNESS_AI_API_KEY = "account-token";
+  delete process.env.STEAMHARNESS_SERVER_URL;
+  delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
   let catalogReads = 0;
   let proxyAuthorization = "";
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -470,7 +470,7 @@ test("server LLM provider keeps a still-valid token when refresh fails", async (
 });
 
 test("server LLM connection sources keep URL and token pairs together in priority order", async (context) => {
-  const authDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-llm-auth-"));
+  const authDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-llm-auth-"));
   await writeFile(path.join(authDir, "workflow-auth.json"), JSON.stringify({
     serverUrl: "https://saved.example.test",
     apiKey: "saved-token",
@@ -478,11 +478,11 @@ test("server LLM connection sources keep URL and token pairs together in priorit
     aiApiKey: "saved-ai-token",
   }), "utf8");
   const names = [
-    "WORKFLOW_AI_SERVER_URL",
-    "WORKFLOW_AI_API_KEY",
-    "WORKFLOW_SERVER_URL",
-    "WORKFLOW_SERVER_ADMIN_KEY",
-    "WORKFLOW_CLI_AUTH_DIR",
+    "STEAMHARNESS_AI_SERVER_URL",
+    "STEAMHARNESS_AI_API_KEY",
+    "STEAMHARNESS_SERVER_URL",
+    "STEAMHARNESS_SERVER_ADMIN_KEY",
+    "STEAMHARNESS_CLI_AUTH_DIR",
   ];
   const previousEnv = snapshotEnv(names);
   const previousFetch = globalThis.fetch;
@@ -491,10 +491,10 @@ test("server LLM connection sources keep URL and token pairs together in priorit
       {
         name: "explicit AI connection takes precedence over project connection",
         env: {
-          WORKFLOW_AI_SERVER_URL: "https://specific.example.test",
-          WORKFLOW_AI_API_KEY: "specific-token",
-          WORKFLOW_SERVER_URL: "https://general.example.test",
-          WORKFLOW_SERVER_ADMIN_KEY: "general-token",
+          STEAMHARNESS_AI_SERVER_URL: "https://specific.example.test",
+          STEAMHARNESS_AI_API_KEY: "specific-token",
+          STEAMHARNESS_SERVER_URL: "https://general.example.test",
+          STEAMHARNESS_SERVER_ADMIN_KEY: "general-token",
         },
         expectedUrl: "https://specific.example.test/api/ai/catalog",
         expectedToken: "specific-token",
@@ -510,7 +510,7 @@ test("server LLM connection sources keep URL and token pairs together in priorit
     for (const item of cases) {
       await context.test(item.name, async () => {
         names.forEach((name) => delete process.env[name]);
-        process.env.WORKFLOW_CLI_AUTH_DIR = authDir;
+        process.env.STEAMHARNESS_CLI_AUTH_DIR = authDir;
         Object.assign(process.env, item.env);
         let requestUrl = "";
         let requestToken = "";
@@ -534,44 +534,44 @@ test("server LLM connection sources keep URL and token pairs together in priorit
 });
 
 test("server LLM connection variables must be configured as a pair", async () => {
-  const previousUrl = process.env.WORKFLOW_AI_SERVER_URL;
-  const previousToken = process.env.WORKFLOW_AI_API_KEY;
-  process.env.WORKFLOW_AI_SERVER_URL = "https://workflow.example.test";
-  delete process.env.WORKFLOW_AI_API_KEY;
+  const previousUrl = process.env.STEAMHARNESS_AI_SERVER_URL;
+  const previousToken = process.env.STEAMHARNESS_AI_API_KEY;
+  process.env.STEAMHARNESS_AI_SERVER_URL = "https://workflow.example.test";
+  delete process.env.STEAMHARNESS_AI_API_KEY;
   try {
     await assert.rejects(() => getServerLLMCredentials(), (error: unknown) => {
       assert.match((error as Error).message, /must be configured together/);
-      assert.deepEqual((error as { metadata?: Record<string, unknown> }).metadata?.workflowCodeI18n, {
+      assert.deepEqual((error as { metadata?: Record<string, unknown> }).metadata?.steamHarnessI18n, {
         namespace: "common",
         key: "workflowServerConnectionPairRequired",
-        values: { names: "WORKFLOW_AI_SERVER_URL/WORKFLOW_AI_API_KEY" },
+        values: { names: "STEAMHARNESS_AI_SERVER_URL/STEAMHARNESS_AI_API_KEY" },
       });
       return true;
     });
   } finally {
-    restoreEnv("WORKFLOW_AI_SERVER_URL", previousUrl);
-    restoreEnv("WORKFLOW_AI_API_KEY", previousToken);
+    restoreEnv("STEAMHARNESS_AI_SERVER_URL", previousUrl);
+    restoreEnv("STEAMHARNESS_AI_API_KEY", previousToken);
   }
 });
 
 test("legacy LLM connection variables never become a system AI connection", async () => {
   const names = [
-    "WORKFLOW_AI_SERVER_URL",
-    "WORKFLOW_AI_API_KEY",
-    "WORKFLOW_LLM_SERVER_URL",
-    "WORKFLOW_LLM_SERVER_TOKEN",
-    "WORKFLOW_SERVER_URL",
-    "WORKFLOW_SERVER_ADMIN_KEY",
-    "WORKFLOW_CLI_AUTH_DIR",
+    "STEAMHARNESS_AI_SERVER_URL",
+    "STEAMHARNESS_AI_API_KEY",
+    "STEAMHARNESS_LLM_SERVER_URL",
+    "STEAMHARNESS_LLM_SERVER_TOKEN",
+    "STEAMHARNESS_SERVER_URL",
+    "STEAMHARNESS_SERVER_ADMIN_KEY",
+    "STEAMHARNESS_CLI_AUTH_DIR",
   ];
   const previous = snapshotEnv(names);
   names.forEach((name) => delete process.env[name]);
-  process.env.WORKFLOW_LLM_SERVER_URL = "https://legacy.example.test";
-  process.env.WORKFLOW_LLM_SERVER_TOKEN = "legacy-token";
+  process.env.STEAMHARNESS_LLM_SERVER_URL = "https://legacy.example.test";
+  process.env.STEAMHARNESS_LLM_SERVER_TOKEN = "legacy-token";
   try {
     await assert.rejects(() => getServerLLMCredentials(), (error: unknown) => {
       assert.equal((error as Error).message, "System AI is unavailable. Configure the private AI service URL and API key.");
-      assert.deepEqual((error as { metadata?: Record<string, unknown> }).metadata?.workflowCodeI18n, {
+      assert.deepEqual((error as { metadata?: Record<string, unknown> }).metadata?.steamHarnessI18n, {
         namespace: "common",
         key: "systemAiUnavailable",
       });
@@ -584,23 +584,23 @@ test("legacy LLM connection variables never become a system AI connection", asyn
 
 test("server LLM missing login keeps a localizable error descriptor", async () => {
   const names = [
-    "WORKFLOW_AI_SERVER_URL",
-    "WORKFLOW_AI_API_KEY",
-    "WORKFLOW_SERVER_URL",
-    "WORKFLOW_SERVER_ADMIN_KEY",
-    "WORKFLOW_CLI_AUTH_DIR",
+    "STEAMHARNESS_AI_SERVER_URL",
+    "STEAMHARNESS_AI_API_KEY",
+    "STEAMHARNESS_SERVER_URL",
+    "STEAMHARNESS_SERVER_ADMIN_KEY",
+    "STEAMHARNESS_CLI_AUTH_DIR",
   ];
   const previous = snapshotEnv(names);
-  const authDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-server-auth-empty-"));
+  const authDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-server-auth-empty-"));
   names.forEach((name) => delete process.env[name]);
-  process.env.WORKFLOW_CLI_AUTH_DIR = authDir;
+  process.env.STEAMHARNESS_CLI_AUTH_DIR = authDir;
   try {
     await assert.rejects(() => getServerLLMCredentials(), (error: unknown) => {
       assert.equal(
         (error as Error).message,
         "System AI is unavailable. Configure the private AI service URL and API key.",
       );
-      assert.deepEqual((error as { metadata?: Record<string, unknown> }).metadata?.workflowCodeI18n, {
+      assert.deepEqual((error as { metadata?: Record<string, unknown> }).metadata?.steamHarnessI18n, {
         namespace: "common",
         key: "systemAiUnavailable",
       });
@@ -613,17 +613,17 @@ test("server LLM missing login keeps a localizable error descriptor", async () =
 });
 
 test("public Server 404s are reported as unavailable system AI", async () => {
-  const names = ["WORKFLOW_AI_SERVER_URL", "WORKFLOW_AI_API_KEY", "WORKFLOW_AI_SERVER_URL", "WORKFLOW_AI_API_KEY", "WORKFLOW_SERVER_URL", "WORKFLOW_SERVER_ADMIN_KEY", "WORKFLOW_CLI_AUTH_DIR"];
+  const names = ["STEAMHARNESS_AI_SERVER_URL", "STEAMHARNESS_AI_API_KEY", "STEAMHARNESS_AI_SERVER_URL", "STEAMHARNESS_AI_API_KEY", "STEAMHARNESS_SERVER_URL", "STEAMHARNESS_SERVER_ADMIN_KEY", "STEAMHARNESS_CLI_AUTH_DIR"];
   const previous = snapshotEnv(names);
   const previousFetch = globalThis.fetch;
   names.forEach((name) => delete process.env[name]);
-  process.env.WORKFLOW_AI_SERVER_URL = "https://public.example.test";
-  process.env.WORKFLOW_AI_API_KEY = "ai-token";
+  process.env.STEAMHARNESS_AI_SERVER_URL = "https://public.example.test";
+  process.env.STEAMHARNESS_AI_API_KEY = "ai-token";
   globalThis.fetch = (async () => Response.json({ errCode: 404, errMessage: "API route not found." }, { status: 404 })) as typeof fetch;
   try {
     await assert.rejects(() => getServerLLMCredentials(), (error: unknown) => {
       assert.equal((error as Error).message, "System AI is unavailable on this public Server. Configure the private AI service URL and API key.");
-      assert.deepEqual((error as { metadata?: Record<string, unknown> }).metadata?.workflowCodeI18n, {
+      assert.deepEqual((error as { metadata?: Record<string, unknown> }).metadata?.steamHarnessI18n, {
         namespace: "common",
         key: "systemAiUnavailable",
       });
@@ -637,12 +637,12 @@ test("public Server 404s are reported as unavailable system AI", async () => {
 });
 
 test("model attributes ride along, and a broken one is dropped rather than fatal", async () => {
-  const names = ["WORKFLOW_AI_SERVER_URL", "WORKFLOW_AI_API_KEY", "WORKFLOW_SERVER_URL", "WORKFLOW_SERVER_ADMIN_KEY", "WORKFLOW_CLI_AUTH_DIR"];
+  const names = ["STEAMHARNESS_AI_SERVER_URL", "STEAMHARNESS_AI_API_KEY", "STEAMHARNESS_SERVER_URL", "STEAMHARNESS_SERVER_ADMIN_KEY", "STEAMHARNESS_CLI_AUTH_DIR"];
   const previousEnv = snapshotEnv(names);
   const previousFetch = globalThis.fetch;
   names.forEach((name) => delete process.env[name]);
-  process.env.WORKFLOW_AI_SERVER_URL = "https://workflow.example.test";
-  process.env.WORKFLOW_AI_API_KEY = "account-token";
+  process.env.STEAMHARNESS_AI_SERVER_URL = "https://workflow.example.test";
+  process.env.STEAMHARNESS_AI_API_KEY = "account-token";
 
   const modelDetails = [
     {

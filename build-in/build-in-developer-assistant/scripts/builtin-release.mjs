@@ -91,22 +91,22 @@ export function channelProjectPath(definition) {
 export async function readBuiltinDefinition(root = repoRoot, options = {}) {
   const channel = normalizeChannel(options.channel);
   const packageJson = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
-  const release = packageJson?.workflowCode?.builtinRelease;
+  const release = packageJson?.steamHarness?.builtinRelease;
   const projectId = String(release?.projectId ?? "").trim();
   const artifactKind = release?.artifactKind;
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(projectId)) {
-    throw new Error("workflowCode.builtinRelease.projectId is invalid.");
+    throw new Error("steamHarness.builtinRelease.projectId is invalid.");
   }
   if (artifactKind !== "universal" && artifactKind !== "native") {
-    throw new Error("workflowCode.builtinRelease.artifactKind must be universal or native.");
+    throw new Error("steamHarness.builtinRelease.artifactKind must be universal or native.");
   }
   const version = normalizeVersion(packageJson.version);
   if (Object.hasOwn(release, "minAppVersion")) {
-    throw new Error("workflowCode.builtinRelease.minAppVersion is not supported; use minDesktopVersion.");
+    throw new Error("steamHarness.builtinRelease.minAppVersion is not supported; use minDesktopVersion.");
   }
   const minDesktopVersion = normalizeVersion(release.minDesktopVersion);
   if (!Array.isArray(release.dependencies)) {
-    throw new Error("workflowCode.builtinRelease.dependencies must be an array.");
+    throw new Error("steamHarness.builtinRelease.dependencies must be an array.");
   }
   const dependencyIds = new Set();
   const dependencies = release.dependencies.map((dependency) => {
@@ -127,12 +127,12 @@ export async function readBuiltinDefinition(root = repoRoot, options = {}) {
   // outright: a published artifact must name exact published versions.
   const referenceMode = options.mode ?? resolveReleaseMode({ root });
   const components = {
-    core: await readRuntimeComponentVersion(packageJson, "workflow-code", root, referenceMode),
-    cli: await readRuntimeComponentVersion(packageJson, "@workflow-code/cli", root, referenceMode),
+    core: await readRuntimeComponentVersion(packageJson, "steamharness", root, referenceMode),
+    cli: await readRuntimeComponentVersion(packageJson, "@steamharness/cli", root, referenceMode),
   };
-  const dataStorageMode = packageJson?.workflowCode?.projectInfo?.dataStorage?.mode;
+  const dataStorageMode = packageJson?.steamHarness?.projectInfo?.dataStorage?.mode;
   if (dataStorageMode !== "local" && dataStorageMode !== "server" && dataStorageMode !== "both") {
-    throw new Error("workflowCode.projectInfo.dataStorage.mode must be local, server, or both.");
+    throw new Error("steamHarness.projectInfo.dataStorage.mode must be local, server, or both.");
   }
   const coreVersion = semver.parse(components.core);
   if (coreVersion?.major === 0 && coreVersion.minor === 2
@@ -562,7 +562,7 @@ async function assertChangelogParity(root, currentVersion) {
 
 async function assertLocalizedProjectPresentation(root, packageJson) {
   const defaultName = typeof packageJson.name === "string" ? packageJson.name.trim() : "";
-  const projectInfo = packageJson?.workflowCode?.projectInfo;
+  const projectInfo = packageJson?.steamHarness?.projectInfo;
   const localizedNames = projectInfo?.localizedNames;
   const chineseName = typeof localizedNames?.["zh-CN"] === "string"
     ? localizedNames["zh-CN"].trim()

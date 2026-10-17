@@ -83,8 +83,8 @@ export async function createStableReleaseDefinition(options) {
     );
   }
 
-  const coreVersion = readExactStableDependency(serverManifest.dependencies?.["workflow-code"], "workflow-code");
-  const cliVersion = readExactStableDependency(serverManifest.devDependencies?.["@workflow-code/cli"], "@workflow-code/cli");
+  const coreVersion = readExactStableDependency(serverManifest.dependencies?.["steamharness"], "steamharness");
+  const cliVersion = readExactStableDependency(serverManifest.devDependencies?.["@steamharness/cli"], "@steamharness/cli");
   const publishedAt = normalizeTimestamp(options.publishedAt);
   const commitSha = normalizeCommit(options.commitSha);
   const deploymentId = createStableDeploymentId({ serverVersion, serverWebVersion, commitSha });
@@ -149,7 +149,7 @@ export async function deployStableRelease(options) {
   }
 
   const releaseRoot = options.releaseRoot ?? resolveReleaseStorageRoot({ required: true });
-  await assertDirectory(releaseRoot, { label: "WORKFLOW_RELEASE_STORAGE_ROOT", writable: true });
+  await assertDirectory(releaseRoot, { label: "STEAMHARNESS_RELEASE_STORAGE_ROOT", writable: true });
   const paths = resolveStableDeploymentPaths(releaseRoot);
   await Promise.all([
     mkdir(paths.releasesRoot, { recursive: true }),
@@ -182,7 +182,7 @@ export async function deployStableRelease(options) {
       await execute("corepack", [
         "pnpm",
         "--filter",
-        "@workflow-code/server",
+        "@steamharness/server",
         "deploy",
         "--prod",
         "--legacy",
@@ -387,12 +387,12 @@ function createRuntimeEnv(env, paths, releaseDir, port) {
   return {
     ...env,
     NODE_ENV: "production",
-    WORKFLOW_RELEASE_CHANNEL: "stable",
-    WORKFLOW_REPO_ROOT: releaseDir,
-    WORKFLOW_RELEASE_STORAGE_ROOT: paths.releaseRoot,
-    WORKFLOW_RELEASE_METADATA_DIR: paths.metadataRoot,
-    WORKFLOW_SERVER_DATA_DIR: paths.dataRoot,
-    WORKFLOW_SERVER_PORT: String(readPort(port)),
+    STEAMHARNESS_RELEASE_CHANNEL: "stable",
+    STEAMHARNESS_REPO_ROOT: releaseDir,
+    STEAMHARNESS_RELEASE_STORAGE_ROOT: paths.releaseRoot,
+    STEAMHARNESS_RELEASE_METADATA_DIR: paths.metadataRoot,
+    STEAMHARNESS_SERVER_DATA_DIR: paths.dataRoot,
+    STEAMHARNESS_SERVER_PORT: String(readPort(port)),
     PORT: String(readPort(port)),
   };
 }
@@ -457,7 +457,7 @@ function normalizeTimestamp(value) {
 }
 
 function readPort(value) {
-  const port = Number(value ?? process.env.WORKFLOW_SERVER_PORT ?? 7130);
+  const port = Number(value ?? process.env.STEAMHARNESS_SERVER_PORT ?? 7130);
   return Number.isInteger(port) && port > 0 ? port : 7130;
 }
 
@@ -509,9 +509,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
   const version = args.version ?? String(process.env.CI_COMMIT_TAG ?? "").replace(/^server-web\/v/u, "");
   const commitSha = args.commitSha ?? process.env.CI_COMMIT_SHA;
   const publishedAt = args.publishedAt ?? process.env.CI_COMMIT_TIMESTAMP ?? new Date().toISOString();
-  const publicUrl = args.publicUrl ?? process.env.WORKFLOW_API_PUBLIC_BASE_URL;
+  const publicUrl = args.publicUrl ?? process.env.STEAMHARNESS_API_PUBLIC_BASE_URL;
   if (!STABLE_VERSION_PATTERN.test(version)) throw new Error("Usage: pnpm deploy:stable -- --version X.Y.Z");
-  if (!publicUrl) throw new Error("WORKFLOW_API_PUBLIC_BASE_URL or --public-url is required for stable deployment verification.");
+  if (!publicUrl) throw new Error("STEAMHARNESS_API_PUBLIC_BASE_URL or --public-url is required for stable deployment verification.");
   const result = await deployStableRelease({
     repoRoot: path.resolve(import.meta.dirname, ".."),
     releaseRoot: resolveReleaseStorageRoot({ required: true }),

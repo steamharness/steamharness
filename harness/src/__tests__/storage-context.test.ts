@@ -131,14 +131,14 @@ async function createStorageWorkflow(
   mode: "local" | "server" | "both" | undefined,
   useLegacyGetter = false,
 ): Promise<string> {
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-storage-context-"));
+  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-storage-context-"));
   await writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
     id: PROJECT_ID,
-    name: "@workflow-code/storage-context-test",
+    name: "@steamharness/storage-context-test",
     type: "module",
     ...(mode === undefined
       ? {}
-      : { workflowCode: { projectInfo: { dataStorage: { mode } } } }),
+      : { steamHarness: { projectInfo: { dataStorage: { mode } } } }),
   }));
   await writeFile(path.join(workflowDir, "index.ts"), `
     const storageWorkflow = workflow.defineWorkflow({

@@ -7,7 +7,7 @@ import ts from "typescript";
 /**
  * Keeps the tool-authoring contract in the generator skill honest.
  *
- * `references/workflow-code-api.md` has to describe what a custom tool looks
+ * `references/steamharness-api.md` has to describe what a custom tool looks
  * like, because that is what the assistant writes when a project needs one —
  * and the shape belongs to the SDK, not to us. A hand-copied version of it goes
  * wrong the first time pi renames a member, and goes wrong quietly: the
@@ -28,7 +28,7 @@ const root = path.resolve(import.meta.dirname, "..");
 /** The document the contract lives in, and the fence it lives between. */
 export const CONTRACT_FILE = path.join(
   root,
-  "skills/workflow-code-generator/references/workflow-code-api.md",
+  "skills/workflow-code-generator/references/steamharness-api.md",
 );
 const BEGIN_MARKER = "<!-- agent-tool-contract:begin -->";
 const END_MARKER = "<!-- agent-tool-contract:end -->";
@@ -37,7 +37,7 @@ const END_MARKER = "<!-- agent-tool-contract:end -->";
  * Which package declares which interface.
  *
  * `AgentTool` extends `Tool`, and the two live in different packages, so both
- * are read. They are looked up beside the `workflow-code` this project builds
+ * are read. They are looked up beside the `steamharness` this project builds
  * against rather than by name from here: that is the version the host runs a
  * project on, and it is the one the document has to describe.
  */
@@ -285,26 +285,26 @@ async function readPackageVersion(packageName) {
 }
 
 /**
- * The SDK a contract describes is the one `workflow-code` builds against, so a
+ * The SDK a contract describes is the one `steamharness` builds against, so a
  * copy that only *looks* like it is worse than none: on the release channels
  * there is no sibling checkout to read it from, and this project's own
  * `node_modules` is then the only copy — which may resolve a different version
- * than the Core the host runs. The version `workflow-code` declares is what
+ * than the Core the host runs. The version `steamharness` declares is what
  * pins the two together, so a Core that moves to a new one fails here instead
  * of silently describing the wrong SDK.
  */
 export async function assertSdkMatchesCore(packageName) {
-  const coreManifest = JSON.parse(await readFile(await findPackageFile("workflow-code", "package.json"), "utf8"));
+  const coreManifest = JSON.parse(await readFile(await findPackageFile("steamharness", "package.json"), "utf8"));
   const declared = [coreManifest.dependencies, coreManifest.devDependencies, coreManifest.peerDependencies]
     .map((section) => section?.[packageName])
     .find((value) => typeof value === "string");
   if (declared === undefined) {
-    throw new Error(`workflow-code no longer declares ${packageName}; the tool contract cannot say which SDK to describe.`);
+    throw new Error(`steamharness no longer declares ${packageName}; the tool contract cannot say which SDK to describe.`);
   }
   const installed = await readPackageVersion(packageName);
   if (!semver.satisfies(installed, declared)) {
     throw new Error(
-      `${packageName} ${installed} is installed, but workflow-code declares ${declared}; `
+      `${packageName} ${installed} is installed, but steamharness declares ${declared}; `
       + "update this project's devDependency to match before regenerating the tool contract.",
     );
   }
@@ -313,12 +313,12 @@ export async function assertSdkMatchesCore(packageName) {
 
 /**
  * Locates a file inside a package, in the layouts this repo can be installed
- * in: beside `workflow-code` (which is what resolves at runtime), hoisted to
+ * in: beside `steamharness` (which is what resolves at runtime), hoisted to
  * the top level, or only in pnpm's virtual store.
  */
 async function findPackageFile(packageName, relativeFile) {
   const candidates = [
-    path.join(root, "node_modules/workflow-code/node_modules", packageName, relativeFile),
+    path.join(root, "node_modules/steamharness/node_modules", packageName, relativeFile),
     path.join(root, "node_modules", packageName, relativeFile),
   ];
   for (const candidate of candidates) {

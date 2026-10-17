@@ -15,8 +15,8 @@ test("Kanban cards accept an independent named configuration target", async () =
 });
 
 test("a current-host preview captures the configuration without changing the host selection", async () => {
-  const urlKey = "WORKFLOW_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL";
-  const tokenKey = "WORKFLOW_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN";
+  const urlKey = "STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL";
+  const tokenKey = "STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN";
   const priorUrl = process.env[urlKey];
   const priorToken = process.env[tokenKey];
   const priorFetch = globalThis.fetch;
@@ -111,8 +111,8 @@ test("presentation card rejects unsafe targets and malformed preview parameters"
 });
 
 test("Kanban save mode uses the host named-configuration update", async () => {
-  const urlKey = "WORKFLOW_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL";
-  const tokenKey = "WORKFLOW_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN";
+  const urlKey = "STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL";
+  const tokenKey = "STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN";
   const priorUrl = process.env[urlKey];
   const priorToken = process.env[tokenKey];
   const priorFetch = globalThis.fetch;

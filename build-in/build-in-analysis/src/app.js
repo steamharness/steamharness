@@ -154,8 +154,8 @@ async function refresh() {
   const notice = document.querySelector('#notice');
   pending = (async () => {
     try {
-      if (!window.workflowCodeKanban?.studio) throw new Error('unavailable');
-      const next = await window.workflowCodeKanban.studio.getLocalAnalysis();
+      if (!window.steamHarnessKanban?.studio) throw new Error('unavailable');
+      const next = await window.steamHarnessKanban.studio.getLocalAnalysis();
       if (next?.version !== 1 || !Array.isArray(next.projects)) throw new Error('invalid snapshot');
       const first = !snapshot;
       const since = filters.days ? next.generatedAt - filters.days * 86_400_000 : 0;
@@ -192,9 +192,9 @@ function exportData() {
   const link = el('a', undefined, { href: url, download: `studio-${view}-${new Date().toISOString().slice(0, 10)}.csv` }); link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 buildShell(); render();
-try { locale = await window.workflowCodeKanban.getRuntimeLocale(); } catch { locale = navigator.language; }
+try { locale = await window.steamHarnessKanban.getRuntimeLocale(); } catch { locale = navigator.language; }
 t = translations(locale); document.documentElement.lang = locale; document.title = t.title; buildShell(); render();
 await refresh(); initializing = false;
 setInterval(() => { if (automatic && !document.hidden) void refresh(); }, 5_000);
 document.addEventListener('visibilitychange', () => { if (automatic && !document.hidden) void refresh(); });
-window.addEventListener('workflow-code:kanban-theme-change', () => renderContent());
+window.addEventListener('steamharness:kanban-theme-change', () => renderContent());

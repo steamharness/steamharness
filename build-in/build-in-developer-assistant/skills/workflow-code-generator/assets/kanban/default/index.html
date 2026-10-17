@@ -149,7 +149,7 @@
     let initializationVersion = 0;
     let boardLoading = true;
     const storage = createBoardStorageController({
-      kv: window.workflowCodeKanban?.kv,
+      kv: window.steamHarnessKanban?.kv,
       onStatus(status) {
         storageStatus.dataset.state = status.state;
         storageStatusText.textContent = status.message;
@@ -357,8 +357,8 @@
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "hidden") flushStorage();
     });
-    void initialize(window.workflowCodeKanban?.getConfiguration());
-    window.addEventListener("workflow-code:kanban-configuration-change", (event) => {
+    void initialize(window.steamHarnessKanban?.getConfiguration());
+    window.addEventListener("steamharness:kanban-configuration-change", (event) => {
       void initialize(event.detail);
     });
   </script>

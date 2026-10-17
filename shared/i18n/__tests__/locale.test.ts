@@ -12,7 +12,7 @@ import {
   resolveSystemLocale,
 } from "../utils/locale";
 
-const STORAGE_KEY = "workflow-code:test:locale";
+const STORAGE_KEY = "steamharness:test:locale";
 
 describe("normalizeLocale", () => {
   it("maps zh variants to zh-CN", () => {

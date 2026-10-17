@@ -101,10 +101,10 @@ interface NativeInvitationRow {
   revoked_at: Date | null;
 }
 
-const WORKFLOW_AUTH_COOKIE = "workflow_auth_session";
-const WORKFLOW_AUTH_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
+const STEAMHARNESS_AUTH_COOKIE = "steamharness_auth_session";
+const STEAMHARNESS_AUTH_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 const ACCESS_TOKEN_TTL_MS = 60 * 60 * 1000;
-const SESSION_TTL_MS = WORKFLOW_AUTH_COOKIE_MAX_AGE_SECONDS * 1000;
+const SESSION_TTL_MS = STEAMHARNESS_AUTH_COOKIE_MAX_AGE_SECONDS * 1000;
 const INVITATION_TTL_MS = 24 * 60 * 60 * 1000;
 const PASSWORD_SCRYPT_N = 16_384;
 const PASSWORD_SCRYPT_R = 8;
@@ -129,7 +129,7 @@ export class WorkflowAuthService {
 
   private async init(): Promise<void> {
     await this.pool.query(`
-      create table if not exists workflow_auth_users (
+      create table if not exists steamharness_auth_users (
         id text primary key,
         email text not null,
         password_hash text,
@@ -140,12 +140,12 @@ export class WorkflowAuthService {
         last_sign_in_at timestamptz
       );
 
-      create unique index if not exists workflow_auth_users_email_idx
-        on workflow_auth_users (lower(email));
+      create unique index if not exists steamharness_auth_users_email_idx
+        on steamharness_auth_users (lower(email));
 
-      create table if not exists workflow_auth_sessions (
+      create table if not exists steamharness_auth_sessions (
         id text primary key,
-        user_id text not null references workflow_auth_users(id) on delete cascade,
+        user_id text not null references steamharness_auth_users(id) on delete cascade,
         access_token_hash text not null unique,
         refresh_token_hash text not null unique,
         access_expires_at timestamptz not null,
@@ -155,12 +155,12 @@ export class WorkflowAuthService {
         revoked_at timestamptz
       );
 
-      create index if not exists workflow_auth_sessions_user_idx
-        on workflow_auth_sessions (user_id, created_at desc);
+      create index if not exists steamharness_auth_sessions_user_idx
+        on steamharness_auth_sessions (user_id, created_at desc);
 
-      create table if not exists workflow_auth_invitations (
+      create table if not exists steamharness_auth_invitations (
         id text primary key,
-        user_id text not null references workflow_auth_users(id) on delete cascade,
+        user_id text not null references steamharness_auth_users(id) on delete cascade,
         token_hash text not null unique,
         created_by_user_id text,
         expires_at timestamptz not null,
@@ -169,7 +169,7 @@ export class WorkflowAuthService {
         created_at timestamptz not null default now()
       );
 
-      alter table workflow_auth_invitations
+      alter table steamharness_auth_invitations
         add column if not exists revoked_at timestamptz;
     `);
   }
@@ -183,7 +183,7 @@ export class WorkflowAuthService {
     const existingProfile = await this.accountDb.getUserProfile(user.id);
     if (existingProfile?.status === "disabled") throw new HttpError(403, 403, "Account is disabled.");
     await this.pool.query(
-      "update workflow_auth_users set last_sign_in_at = now(), updated_at = now() where id = $1",
+      "update steamharness_auth_users set last_sign_in_at = now(), updated_at = now() where id = $1",
       [user.id],
     );
     const profile = await this.accountDb.upsertUserProfile({
@@ -214,7 +214,7 @@ export class WorkflowAuthService {
       await client.query("select pg_advisory_xact_lock(86081702512026::bigint)");
       const existing = (await client.query<NativeAuthUserRow>(
         `select id, email, password_hash, display_name, disabled, created_at, last_sign_in_at
-         from workflow_auth_users where lower(email) = $1 limit 1 for update`,
+         from steamharness_auth_users where lower(email) = $1 limit 1 for update`,
         [email],
       )).rows[0];
       if (existing) {
@@ -222,25 +222,25 @@ export class WorkflowAuthService {
           throw new HttpError(401, 401, "Email or password is invalid.");
         }
         await client.query(
-          "update workflow_auth_users set last_sign_in_at = now(), updated_at = now() where id = $1",
+          "update steamharness_auth_users set last_sign_in_at = now(), updated_at = now() where id = $1",
           [existing.id],
         );
         user = { ...existing, last_sign_in_at: new Date() };
       } else {
         const hasUsers = (await client.query<{ has_users: boolean }>(
-          "select exists(select 1 from workflow_auth_users) as has_users",
+          "select exists(select 1 from steamharness_auth_users) as has_users",
         )).rows[0]?.has_users;
         if (hasUsers) throw new HttpError(401, 401, "Email or password is invalid.");
         const id = randomUUID();
         await client.query(
-          `insert into workflow_auth_users (
+          `insert into steamharness_auth_users (
              id, email, password_hash, display_name, disabled, created_at, updated_at, last_sign_in_at
            ) values ($1, $2, $3, $4, false, now(), now(), now())`,
           [id, email, await hashPassword(input.password), displayName],
         );
         user = (await client.query<NativeAuthUserRow>(
           `select id, email, password_hash, display_name, disabled, created_at, last_sign_in_at
-           from workflow_auth_users where id = $1`,
+           from steamharness_auth_users where id = $1`,
           [id],
         )).rows[0]!;
       }
@@ -261,8 +261,8 @@ export class WorkflowAuthService {
       `select
          u.id, u.email, u.password_hash, u.display_name, u.disabled, u.created_at, u.last_sign_in_at,
          s.id as session_id, s.expires_at, s.access_expires_at
-       from workflow_auth_sessions s
-       join workflow_auth_users u on u.id = s.user_id
+       from steamharness_auth_sessions s
+       join steamharness_auth_users u on u.id = s.user_id
        where s.refresh_token_hash = $1 and s.revoked_at is null and s.expires_at > now()
        limit 1`,
       [sha256Text(refreshToken)],
@@ -274,7 +274,7 @@ export class WorkflowAuthService {
     const accessToken = createOpaqueToken("wf_access");
     const accessExpiresAt = new Date(Date.now() + ACCESS_TOKEN_TTL_MS);
     await this.pool.query(
-      `update workflow_auth_sessions
+      `update steamharness_auth_sessions
        set access_token_hash = $2, access_expires_at = $3, last_used_at = now()
        where id = $1`,
       [row.session_id, sha256Text(accessToken), accessExpiresAt.toISOString()],
@@ -288,8 +288,8 @@ export class WorkflowAuthService {
       `select
          u.id, u.email, u.password_hash, u.display_name, u.disabled, u.created_at, u.last_sign_in_at,
          s.id as session_id, s.expires_at, s.access_expires_at
-       from workflow_auth_sessions s
-       join workflow_auth_users u on u.id = s.user_id
+       from steamharness_auth_sessions s
+       join steamharness_auth_users u on u.id = s.user_id
        where s.access_token_hash = $1 and s.revoked_at is null
          and s.expires_at > now() and s.access_expires_at > now()
        limit 1`,
@@ -320,7 +320,7 @@ export class WorkflowAuthService {
     const userId = randomUUID();
     const password = input.password?.trim() ? input.password : undefined;
     await this.pool.query(
-      `insert into workflow_auth_users (id, email, password_hash, display_name, disabled, created_at, updated_at)
+      `insert into steamharness_auth_users (id, email, password_hash, display_name, disabled, created_at, updated_at)
        values ($1, $2, $3, $4, false, now(), now())`,
       [userId, email, password ? await hashPassword(password) : null, displayName],
     );
@@ -373,18 +373,18 @@ export class WorkflowAuthService {
       if (invitation.disabled) throw new HttpError(403, 403, "Account is disabled.");
       displayName = input.displayName?.trim() || invitation.display_name;
       await client.query(
-        `update workflow_auth_users
+        `update steamharness_auth_users
          set password_hash = $2, display_name = $3, updated_at = now()
          where id = $1`,
         [invitation.user_id, passwordHash, displayName],
       );
       await client.query(
-        "update workflow_auth_invitations set accepted_at = now() where id = $1 and accepted_at is null",
+        "update steamharness_auth_invitations set accepted_at = now() where id = $1 and accepted_at is null",
         [invitation.id],
       );
       await this.revokeUserSessions(invitation.user_id, client);
       await client.query(
-        `update workflow_auth_invitations
+        `update steamharness_auth_invitations
          set revoked_at = now()
          where user_id = $1 and id <> $2 and accepted_at is null and revoked_at is null`,
         [invitation.user_id, invitation.id],
@@ -413,7 +413,7 @@ export class WorkflowAuthService {
     await this.ready;
     const result = await this.pool.query<NativeAuthUserRow>(
       `select id, email, password_hash, display_name, disabled, created_at, last_sign_in_at
-       from workflow_auth_users order by created_at desc, id asc`,
+       from steamharness_auth_users order by created_at desc, id asc`,
     );
     const profiles = await this.accountDb.listUserProfiles();
     const profileById = new Map(profiles.map((profile) => [profile.userId, profile]));
@@ -424,7 +424,7 @@ export class WorkflowAuthService {
     await this.ready;
     const result = await this.pool.query<NativeAuthUserRow>(
       `select id, email, password_hash, display_name, disabled, created_at, last_sign_in_at
-       from workflow_auth_users where id = $1`,
+       from steamharness_auth_users where id = $1`,
       [userId],
     );
     const user = result.rows[0];
@@ -450,7 +450,7 @@ export class WorkflowAuthService {
     try {
       await client.query("begin");
       await client.query(
-        `update workflow_auth_users
+        `update steamharness_auth_users
          set email = $2, password_hash = $3, display_name = $4, disabled = $5, updated_at = now()
          where id = $1`,
         [input.userId, email, passwordHash, displayName, disabled],
@@ -475,7 +475,7 @@ export class WorkflowAuthService {
 
   async deleteUser(userId: string): Promise<void> {
     await this.ready;
-    await this.pool.query("delete from workflow_auth_users where id = $1", [userId]);
+    await this.pool.query("delete from steamharness_auth_users where id = $1", [userId]);
   }
 
   async close(): Promise<void> {
@@ -511,7 +511,7 @@ export class WorkflowAuthService {
       }
       throw new HttpError(401, 401, "Unauthorized.");
     }
-    const cookieValue = parseCookieHeader(req.headers.cookie)[WORKFLOW_AUTH_COOKIE];
+    const cookieValue = parseCookieHeader(req.headers.cookie)[STEAMHARNESS_AUTH_COOKIE];
     if (!cookieValue) return undefined;
     const cookie = readCookieSession(cookieValue);
     if (!cookie) throw new HttpError(401, 401, "Unauthorized.");
@@ -560,7 +560,7 @@ export class WorkflowAuthService {
   async revokeSession(refreshToken: string): Promise<void> {
     await this.ready;
     await this.pool.query(
-      "update workflow_auth_sessions set revoked_at = coalesce(revoked_at, now()) where refresh_token_hash = $1",
+      "update steamharness_auth_sessions set revoked_at = coalesce(revoked_at, now()) where refresh_token_hash = $1",
       [sha256Text(refreshToken)],
     );
   }
@@ -569,7 +569,7 @@ export class WorkflowAuthService {
     const encoded = encodeCookieSession({ kind: "refresh", refreshToken: session.refreshToken });
     res.append(
       "Set-Cookie",
-      `${WORKFLOW_AUTH_COOKIE}=${encoded}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${WORKFLOW_AUTH_COOKIE_MAX_AGE_SECONDS}`,
+      `${STEAMHARNESS_AUTH_COOKIE}=${encoded}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${STEAMHARNESS_AUTH_COOKIE_MAX_AGE_SECONDS}`,
     );
   }
 
@@ -577,12 +577,12 @@ export class WorkflowAuthService {
     const encoded = encodeCookieSession({ kind: "admin_key" });
     res.append(
       "Set-Cookie",
-      `${WORKFLOW_AUTH_COOKIE}=${encoded}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${WORKFLOW_AUTH_COOKIE_MAX_AGE_SECONDS}`,
+      `${STEAMHARNESS_AUTH_COOKIE}=${encoded}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${STEAMHARNESS_AUTH_COOKIE_MAX_AGE_SECONDS}`,
     );
   }
 
   clearAuthCookie(res: { append(name: string, value: string): void }): void {
-    res.append("Set-Cookie", `${WORKFLOW_AUTH_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+    res.append("Set-Cookie", `${STEAMHARNESS_AUTH_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
   }
 
   private async createSession(user: NativeAuthUserRow): Promise<WorkflowAuthSession> {
@@ -591,7 +591,7 @@ export class WorkflowAuthService {
     const accessExpiresAt = new Date(Date.now() + ACCESS_TOKEN_TTL_MS);
     const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
     await this.pool.query(
-      `insert into workflow_auth_sessions (
+      `insert into steamharness_auth_sessions (
          id, user_id, access_token_hash, refresh_token_hash, access_expires_at, expires_at,
          created_at, last_used_at
        ) values ($1, $2, $3, $4, $5, $6, now(), now())`,
@@ -616,15 +616,15 @@ export class WorkflowAuthService {
     const client = await this.pool.connect();
     try {
       await client.query("begin");
-      await client.query("select id from workflow_auth_users where id = $1 for update", [userId]);
+      await client.query("select id from steamharness_auth_users where id = $1 for update", [userId]);
       await client.query(
-        `update workflow_auth_invitations
+        `update steamharness_auth_invitations
          set revoked_at = now()
          where user_id = $1 and accepted_at is null and revoked_at is null`,
         [userId],
       );
       await client.query(
-        `insert into workflow_auth_invitations (
+        `insert into steamharness_auth_invitations (
            id, user_id, token_hash, created_by_user_id, expires_at, created_at
          ) values ($1, $2, $3, $4, $5, now())`,
         [randomUUID(), userId, sha256Text(token), createdByUserId ?? null, new Date(Date.now() + INVITATION_TTL_MS)],
@@ -648,8 +648,8 @@ export class WorkflowAuthService {
     const result = await queryable.query<NativeInvitationRow>(
       `select i.id, i.user_id, u.email, u.display_name, u.disabled,
               i.expires_at, i.accepted_at, i.revoked_at
-       from workflow_auth_invitations i
-       join workflow_auth_users u on u.id = i.user_id
+       from steamharness_auth_invitations i
+       join steamharness_auth_users u on u.id = i.user_id
        where i.token_hash = $1 and i.revoked_at is null
        limit 1${forUpdate ? " for update of i" : ""}`,
       [sha256Text(token)],
@@ -662,7 +662,7 @@ export class WorkflowAuthService {
   private async findUserByEmail(email: string): Promise<NativeAuthUserRow | undefined> {
     const result = await this.pool.query<NativeAuthUserRow>(
       `select id, email, password_hash, display_name, disabled, created_at, last_sign_in_at
-       from workflow_auth_users where lower(email) = $1 limit 1`,
+       from steamharness_auth_users where lower(email) = $1 limit 1`,
       [normalizeEmail(email)],
     );
     return result.rows[0];
@@ -673,7 +673,7 @@ export class WorkflowAuthService {
     queryable: Pick<pg.Pool, "query"> | Pick<pg.PoolClient, "query"> = this.pool,
   ): Promise<void> {
     await queryable.query(
-      "update workflow_auth_sessions set revoked_at = coalesce(revoked_at, now()) where user_id = $1",
+      "update steamharness_auth_sessions set revoked_at = coalesce(revoked_at, now()) where user_id = $1",
       [userId],
     );
   }
@@ -699,11 +699,11 @@ export function hasConfiguredAdminKey(): boolean {
 }
 
 export function getConfiguredAdminKey(): string {
-  return process.env.WORKFLOW_SERVER_ADMIN_KEY?.trim() ?? "";
+  return process.env.STEAMHARNESS_SERVER_ADMIN_KEY?.trim() ?? "";
 }
 
 export function createWorkflowAuthServiceFromEnv(accountDb: AccountRepository): WorkflowAuthService | undefined {
-  const databaseUrl = process.env.WORKFLOW_DATABASE_URL?.trim();
+  const databaseUrl = process.env.STEAMHARNESS_DATABASE_URL?.trim();
   return databaseUrl ? new WorkflowAuthService({ databaseUrl, accountDb }) : undefined;
 }
 
@@ -721,7 +721,7 @@ export function hasPermission(
 export function encodeCookieSession(session: WorkflowAuthCookieSession): string {
   const secret = getAuthCookieSecret();
   if (!secret) {
-    throw new Error("WORKFLOW_AUTH_COOKIE_SECRET or WORKFLOW_SERVER_ADMIN_KEY is required to issue auth cookies.");
+    throw new Error("STEAMHARNESS_AUTH_COOKIE_SECRET or STEAMHARNESS_SERVER_ADMIN_KEY is required to issue auth cookies.");
   }
   const payload = Buffer.from(JSON.stringify(session), "utf8").toString("base64url");
   const envelope: WorkflowAuthCookieEnvelope = { v: 1, payload: session, sig: signCookiePayload(payload, secret) };
@@ -746,7 +746,7 @@ export function readCookieSession(value: string): WorkflowAuthCookieSession | un
 }
 
 export function getAuthCookieSecret(): string {
-  return process.env.WORKFLOW_AUTH_COOKIE_SECRET?.trim() || getConfiguredAdminKey();
+  return process.env.STEAMHARNESS_AUTH_COOKIE_SECRET?.trim() || getConfiguredAdminKey();
 }
 
 export function parseCookieHeader(value: string | undefined): Record<string, string> {
@@ -832,8 +832,8 @@ function toAuthUserRecord(user: NativeAuthUserRow): WorkflowAuthUserRecord {
 }
 
 function readAuthPublicBaseUrl(redirectTo?: string): string {
-  const configuredBase = process.env.WORKFLOW_AUTH_PUBLIC_BASE_URL?.trim()
-    || process.env.WORKFLOW_API_PUBLIC_BASE_URL?.trim();
+  const configuredBase = process.env.STEAMHARNESS_AUTH_PUBLIC_BASE_URL?.trim()
+    || process.env.STEAMHARNESS_API_PUBLIC_BASE_URL?.trim();
   for (const value of [configuredBase, configuredBase ? undefined : redirectTo]) {
     if (!value?.trim()) continue;
     try {
@@ -843,7 +843,7 @@ function readAuthPublicBaseUrl(redirectTo?: string): string {
       // Continue to the local fallback.
     }
   }
-  return `http://127.0.0.1:${process.env.WORKFLOW_SERVER_PORT?.trim() || "7130"}`;
+  return `http://127.0.0.1:${process.env.STEAMHARNESS_SERVER_PORT?.trim() || "7130"}`;
 }
 
 function isWorkflowAuthCookieSession(value: unknown): value is WorkflowAuthCookieSession {

@@ -6,9 +6,9 @@ export function resolveRepositoryMode({
   env = process.env,
   branch,
 } = {}) {
-  const override = env.WORKFLOW_REPOSITORY_MODE?.trim();
+  const override = env.STEAMHARNESS_REPOSITORY_MODE?.trim();
   if (override !== undefined && override !== "" && override !== "main") {
-    throw new Error("WORKFLOW_REPOSITORY_MODE only accepts main as a fail-closed override.");
+    throw new Error("STEAMHARNESS_REPOSITORY_MODE only accepts main as a fail-closed override.");
   }
   if (override === "main" || hasText(env.CI_COMMIT_TAG)) return "main";
 

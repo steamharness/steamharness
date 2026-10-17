@@ -51,4 +51,4 @@ Conversation 的 `commands` 是 `conversation.commands` 中的静态执行命令
 
 本地宿主读取 `paramLayout` 展示入口；终端 CLI 与本地定时任务只读取 flag 和参数值，不展示分组。Server Web 不展示执行参数表单。等待输入节点的 `params` 是独立的暂停表单，继续使用自身的字段契约，不写 executor 的组声明。
 
-用户要求“收进高级选项”时创建 Auxiliary 并把相关字段放入同一个 `fields`；要求多个收缩面板时创建多个 Auxiliary。要求“模型和 Effort 在一个入口，权限另一个入口”时创建两个 Quick，各自设置 `summary`。要求“点一下切换模式”时创建 Mode，不靠把参数命名为 `agent` 来触发。完成后检查 `workflow-code structure` 的 `params` 和 `paramLayout.actions`，再检查 `createInput({ paramValues })` 是否按同一字段名读取。
+用户要求“收进高级选项”时创建 Auxiliary 并把相关字段放入同一个 `fields`；要求多个收缩面板时创建多个 Auxiliary。要求“模型和 Effort 在一个入口，权限另一个入口”时创建两个 Quick，各自设置 `summary`。要求“点一下切换模式”时创建 Mode，不靠把参数命名为 `agent` 来触发。完成后检查 `steamharness structure` 的 `params` 和 `paramLayout.actions`，再检查 `createInput({ paramValues })` 是否按同一字段名读取。

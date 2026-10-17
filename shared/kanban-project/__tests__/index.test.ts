@@ -29,13 +29,13 @@ describe("kanban project contract", () => {
     expect(() => parseKanbanBridgeCall({ requestId: 'stats', operation: 'studio.getLocalAnalysis', input: { path: '/other' } })).toThrow();
     const listeners: Array<(event: MessageEvent) => void> = [];
     const parent = { postMessage: vi.fn() };
-    const pageWindow = { parent, setTimeout: () => 1, clearTimeout: () => {}, addEventListener: (_type: string, listener: (event: MessageEvent) => void) => listeners.push(listener) } as unknown as Window & { workflowCodeKanban: KanbanBrowserApi };
+    const pageWindow = { parent, setTimeout: () => 1, clearTimeout: () => {}, addEventListener: (_type: string, listener: (event: MessageEvent) => void) => listeners.push(listener) } as unknown as Window & { steamHarnessKanban: KanbanBrowserApi };
     const script = createKanbanBridgeScript({ id: '', name: '', params: {} }, 'nonce').replace(/^<script[^>]*>/, '').replace(/<\/script>$/, '');
     new Function('window', 'document', script)(pageWindow, { readyState: 'complete' });
-    const result = pageWindow.workflowCodeKanban.studio.getLocalAnalysis();
+    const result = pageWindow.steamHarnessKanban.studio.getLocalAnalysis();
     const call = parent.postMessage.mock.calls.at(-1)![0];
     expect(call).toMatchObject({ operation: 'studio.getLocalAnalysis', input: {}, nonce: 'nonce' });
-    for (const listener of listeners) listener({ source: parent, data: { type: 'workflow-code:kanban-bridge-response', nonce: 'nonce', requestId: call.requestId, ok: true, value: { version: 1, projects: [] } } } as unknown as MessageEvent);
+    for (const listener of listeners) listener({ source: parent, data: { type: 'steamharness:kanban-bridge-response', nonce: 'nonce', requestId: call.requestId, ok: true, value: { version: 1, projects: [] } } } as unknown as MessageEvent);
     await expect(result).resolves.toEqual({ version: 1, projects: [] });
   });
   it("exposes cloned presentation state and accepts only authenticated host mode changes", () => {
@@ -44,30 +44,30 @@ describe("kanban project contract", () => {
     const pageWindow = {
       parent, setTimeout: () => 1, clearTimeout: () => {}, dispatchEvent: vi.fn(),
       addEventListener: (type: string, listener: (event: MessageEvent) => void) => { if (type === "message") listeners.push(listener); },
-    } as unknown as Window & { workflowCodeKanban: KanbanBrowserApi };
+    } as unknown as Window & { steamHarnessKanban: KanbanBrowserApi };
     const script = createKanbanBridgeScript({ id: "profile", name: "Map", params: {} }, "nonce")
       .replace(/^<script[^>]*>/, "").replace(/<\/script>$/, "");
     new Function("window", "document", script)(pageWindow, { readyState: "complete" });
     const send = (mode: unknown, nonce = "nonce", source: unknown = parent) => {
       for (const listener of listeners) listener({ source, data: { type: KANBAN_PRESENTATION_MESSAGE, nonce, presentation: { mode } } } as MessageEvent);
     };
-    expect(pageWindow.workflowCodeKanban.getPresentation()).toEqual({ mode: "fullscreen" });
+    expect(pageWindow.steamHarnessKanban.getPresentation()).toEqual({ mode: "fullscreen" });
     send("card", "wrong");
     send("card", "nonce", {});
     send("unknown");
     expect(pageWindow.dispatchEvent).not.toHaveBeenCalled();
     send("card");
     expect(pageWindow.dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({ type: KANBAN_PRESENTATION_CHANGE_EVENT, detail: { mode: "card" } }));
-    const presentation = pageWindow.workflowCodeKanban.getPresentation();
+    const presentation = pageWindow.steamHarnessKanban.getPresentation();
     presentation.mode = "phone";
-    expect(pageWindow.workflowCodeKanban.getPresentation()).toEqual({ mode: "card" });
+    expect(pageWindow.steamHarnessKanban.getPresentation()).toEqual({ mode: "card" });
     send("card");
     expect(pageWindow.dispatchEvent).toHaveBeenCalledTimes(1);
     for (const mode of ["phone", "tablet", "fullscreen"] as const) {
       send(mode);
-      expect(pageWindow.workflowCodeKanban.getPresentation()).toEqual({ mode });
+      expect(pageWindow.steamHarnessKanban.getPresentation()).toEqual({ mode });
     }
-    expect(pageWindow.workflowCodeKanban.getConfiguration()).toEqual({ id: "profile", name: "Map", params: {} });
+    expect(pageWindow.steamHarnessKanban.getConfiguration()).toEqual({ id: "profile", name: "Map", params: {} });
   });
   it("restricts file calls to bytes and managed ids without caller-selected project or paths", () => {
     expect(parseKanbanBridgeCall({ requestId: "upload", operation: "files.createFile", input: { name: "map.png", mimeType: "image/png", base64: "AP8=" } })).toMatchObject({ operation: "files.createFile" });
@@ -94,38 +94,38 @@ describe("kanban project contract", () => {
     const pageWindow = {
       parent, setTimeout: () => 1, clearTimeout: () => {},
       addEventListener: (type: string, listener: (event: MessageEvent) => void) => { if (type === "message") listeners.push(listener); },
-    } as unknown as Window & { workflowCodeKanban: KanbanBrowserApi };
+    } as unknown as Window & { steamHarnessKanban: KanbanBrowserApi };
     const script = createKanbanBridgeScript({ id: "profile", name: "Map", params: {} }, "nonce")
       .replace(/^<script[^>]*>/, "").replace(/<\/script>$/, "");
     new Function("window", "document", script)(pageWindow, { readyState: "complete" });
     const reply = (value: unknown) => {
       const request = messages.at(-1)!;
       for (const listener of listeners) listener({ source: parent, data: {
-        type: "workflow-code:kanban-bridge-response", nonce: "nonce", requestId: request["requestId"], ok: true, value,
+        type: "steamharness:kanban-bridge-response", nonce: "nonce", requestId: request["requestId"], ok: true, value,
       } } as unknown as MessageEvent);
     };
     const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 255]);
     const reference = { id: "wf_abc123", name: "map.png", mimeType: "image/png", size: 6, kind: "image", storage: "server", createdAt: "2026-10-08T00:00:00Z" };
-    const uploaded = pageWindow.workflowCodeKanban.files.createFile({ name: "map.png", mimeType: "image/png", buffer: bytes });
+    const uploaded = pageWindow.steamHarnessKanban.files.createFile({ name: "map.png", mimeType: "image/png", buffer: bytes });
     const base64 = Buffer.from(bytes).toString("base64");
     expect(messages.at(-1)).toMatchObject({ operation: "files.createFile", input: { name: "map.png", mimeType: "image/png", base64 } });
     reply(reference);
     await expect(uploaded).resolves.toEqual(reference);
-    const downloaded = pageWindow.workflowCodeKanban.files.readFile(reference.id);
+    const downloaded = pageWindow.steamHarnessKanban.files.readFile(reference.id);
     reply({ file: reference, base64 });
     const result = await downloaded;
     expect(new Uint8Array(result.buffer)).toEqual(bytes);
-    const deleted = pageWindow.workflowCodeKanban.files.deleteFile(reference.id);
+    const deleted = pageWindow.steamHarnessKanban.files.deleteFile(reference.id);
     reply(true);
     await expect(deleted).resolves.toBe(true);
   });
   it("reads default and custom artifact entry settings", () => {
-    expect(readKanbanArtifactConfig({ workflowCode: { projectType: "kanban" } })).toEqual({
+    expect(readKanbanArtifactConfig({ steamHarness: { projectType: "kanban" } })).toEqual({
       artifactDir: ".",
       entry: "index.html",
     });
     const custom = readKanbanArtifactConfig({
-      workflowCode: {
+      steamHarness: {
         projectType: "kanban",
         kanban: { artifactDir: "dist\\client", entry: "pages\\board.htm" },
       },
@@ -144,11 +144,11 @@ describe("kanban project contract", () => {
       { entry: ".svn/index.html" },
       { entry: "app.js" },
     ]) {
-      expect(() => readKanbanArtifactConfig({ workflowCode: { projectType: "kanban", kanban } }))
+      expect(() => readKanbanArtifactConfig({ steamHarness: { projectType: "kanban", kanban } }))
         .toThrow();
     }
     expect(readKanbanArtifactConfig({
-      workflowCode: {
+      steamHarness: {
         projectType: "kanban",
         kanban: { artifactDir: ".output/public", entry: "index.html" },
       },
@@ -157,7 +157,7 @@ describe("kanban project contract", () => {
 
   it("rejects the removed Kanban dataSources declaration", () => {
     expect(() => readKanbanArtifactConfig({
-      workflowCode: { projectType: "kanban", kanban: { dataSources: [] } },
+      steamHarness: { projectType: "kanban", kanban: { dataSources: [] } },
     })).toThrow(/removed/);
   });
 
@@ -182,7 +182,7 @@ describe("kanban project contract", () => {
   });
 
   it("reads the package type and validates manifest params", () => {
-    expect(readPackageProjectType({ workflowCode: { projectType: "kanban" } })).toBe("kanban");
+    expect(readPackageProjectType({ steamHarness: { projectType: "kanban" } })).toBe("kanban");
     expect(parseKanbanManifest({
       version: 1,
       params: [{ name: "columns", type: "number", defaultValue: "3" }],
@@ -224,11 +224,11 @@ describe("kanban project contract", () => {
       name: "默认配置",
       params: { ...params, title: "<Roadmap>" },
     }, "nonce");
-    expect(html.indexOf("workflowCodeKanban")).toBeLessThan(html.indexOf("render()"));
+    expect(html.indexOf("steamHarnessKanban")).toBeLessThan(html.indexOf("render()"));
     expect(html).toContain('<script nonce="nonce">render()</script>');
     expect(html).not.toContain('nonce="stale"');
-    expect(html).toContain("workflow-code:kanban-ready");
-    expect(html).toContain("workflowCodeKanban\",{configurable:false");
+    expect(html).toContain("steamharness:kanban-ready");
+    expect(html).toContain("steamHarnessKanban\",{configurable:false");
     expect(html).toContain('getValue:(key)=>request("kv.getValue",{key})');
     expect(html).toContain('getValue:(key)=>request("relatedProject.kv.getValue",{alias,key})');
     expect(html).toContain('setValue:(key,value)=>isJsonValue(value)?request("relatedProject.kv.setValue",{alias,key,value})');
@@ -382,7 +382,7 @@ describe("kanban project contract", () => {
     new Function("window", "document", script)(pageWindow, { readyState: "complete" });
 
     const api = (pageWindow as unknown as {
-      workflowCodeKanban: {
+      steamHarnessKanban: {
         kv: {
           getValue(key: string): Promise<unknown>;
           setValue(key: string, value: unknown): Promise<void>;
@@ -400,13 +400,13 @@ describe("kanban project contract", () => {
           };
         };
       };
-    }).workflowCodeKanban;
+    }).steamHarnessKanban;
     const getPromise = api.kv.getValue("board");
     const getRequest = postedMessages.at(-1)!;
     const dispatchResponse = (source: unknown, nonce: string, response: Record<string, unknown>) => {
       for (const listener of messageListeners) {
         listener({ source, data: {
-          type: "workflow-code:kanban-bridge-response",
+          type: "steamharness:kanban-bridge-response",
           nonce,
           requestId: getRequest["requestId"],
           ...response,
@@ -427,7 +427,7 @@ describe("kanban project contract", () => {
     });
     for (const listener of messageListeners) {
       listener({ source: parent, data: {
-        type: "workflow-code:kanban-bridge-response",
+        type: "steamharness:kanban-bridge-response",
         nonce: "nonce",
         requestId: relatedGetRequest["requestId"],
         ok: true,
@@ -448,7 +448,7 @@ describe("kanban project contract", () => {
     });
     for (const listener of messageListeners) {
       listener({ source: parent, data: {
-        type: "workflow-code:kanban-bridge-response",
+        type: "steamharness:kanban-bridge-response",
         nonce: "nonce",
         requestId: relatedSetRequest["requestId"],
         ok: true,
@@ -461,7 +461,7 @@ describe("kanban project contract", () => {
     const dispatchRevision = (source: unknown, nonce: string, alias: string, revision: string) => {
       for (const listener of messageListeners) {
         listener({ source, data: {
-          type: "workflow-code:kanban-related-project-revision",
+          type: "steamharness:kanban-related-project-revision",
           nonce,
           alias,
           revision,
@@ -492,7 +492,7 @@ describe("kanban project contract", () => {
     const setRequest = postedMessages.at(-1)!;
     for (const listener of messageListeners) {
       listener({ source: parent, data: {
-        type: "workflow-code:kanban-bridge-response",
+        type: "steamharness:kanban-bridge-response",
         nonce: "nonce",
         requestId: setRequest["requestId"],
         ok: false,
@@ -508,7 +508,7 @@ describe("kanban project contract", () => {
     const inheritedErrorRequest = postedMessages.at(-1)!;
     for (const listener of messageListeners) {
       listener({ source: parent, data: {
-        type: "workflow-code:kanban-bridge-response",
+        type: "steamharness:kanban-bridge-response",
         nonce: "nonce",
         requestId: inheritedErrorRequest["requestId"],
         ok: false,

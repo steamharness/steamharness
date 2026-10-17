@@ -3,25 +3,25 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 const COMPOSE_KEYS = Object.freeze([
-  "WORKFLOW_RELEASE_STORAGE_ROOT", "WORKFLOW_POSTGRES_DB", "WORKFLOW_POSTGRES_USER", "WORKFLOW_POSTGRES_PASSWORD",
+  "STEAMHARNESS_RELEASE_STORAGE_ROOT", "STEAMHARNESS_POSTGRES_DB", "STEAMHARNESS_POSTGRES_USER", "STEAMHARNESS_POSTGRES_PASSWORD",
   "TZ",
 ]);
 
 const RUNTIME_KEYS = Object.freeze([
-  "WORKFLOW_SERVER_ADMIN_KEY", "WORKFLOW_AUTH_COOKIE_SECRET", "WORKFLOW_BOOTSTRAP_ADMIN_EMAIL", "WORKFLOW_BOOTSTRAP_ADMIN_PASSWORD",
-  "WORKFLOW_DATABASE_URL", "WORKFLOW_POSTGRES_DB", "WORKFLOW_POSTGRES_USER", "WORKFLOW_POSTGRES_PASSWORD",
-  // Objects live on the host under WORKFLOW_LOCAL_STORAGE_ROOT; empty values are
+  "STEAMHARNESS_SERVER_ADMIN_KEY", "STEAMHARNESS_AUTH_COOKIE_SECRET", "STEAMHARNESS_BOOTSTRAP_ADMIN_EMAIL", "STEAMHARNESS_BOOTSTRAP_ADMIN_PASSWORD",
+  "STEAMHARNESS_DATABASE_URL", "STEAMHARNESS_POSTGRES_DB", "STEAMHARNESS_POSTGRES_USER", "STEAMHARNESS_POSTGRES_PASSWORD",
+  // Objects live on the host under STEAMHARNESS_LOCAL_STORAGE_ROOT; empty values are
   // dropped when the file is written.
-  "WORKFLOW_STORAGE_DRIVER", "WORKFLOW_LOCAL_STORAGE_ROOT",
-  "WORKFLOW_PUBLIC_BASE_URL", "WORKFLOW_API_PUBLIC_BASE_URL",
-  "WORKFLOW_STORAGE_BUCKET", "WORKFLOW_STORAGE_FILE_SIZE_LIMIT_BYTES", "WORKFLOW_DOWNLOAD_PUBLIC_BASE_URL", "WORKFLOW_UPDATES_PUBLIC_BASE_URL",
-  "WORKFLOW_DOCS_PUBLIC_BASE_URL", "WORKFLOW_DOCS_API_PUBLIC_BASE_URL",
+  "STEAMHARNESS_STORAGE_DRIVER", "STEAMHARNESS_LOCAL_STORAGE_ROOT",
+  "STEAMHARNESS_PUBLIC_BASE_URL", "STEAMHARNESS_API_PUBLIC_BASE_URL",
+  "STEAMHARNESS_STORAGE_BUCKET", "STEAMHARNESS_STORAGE_FILE_SIZE_LIMIT_BYTES", "STEAMHARNESS_DOWNLOAD_PUBLIC_BASE_URL", "STEAMHARNESS_UPDATES_PUBLIC_BASE_URL",
+  "STEAMHARNESS_DOCS_PUBLIC_BASE_URL", "STEAMHARNESS_DOCS_API_PUBLIC_BASE_URL",
 ]);
 
 const REQUIRED = Object.freeze({
-  compose: ["WORKFLOW_RELEASE_STORAGE_ROOT", "WORKFLOW_POSTGRES_PASSWORD"],
-  stable: ["WORKFLOW_SERVER_ADMIN_KEY", "WORKFLOW_DATABASE_URL", "WORKFLOW_POSTGRES_PASSWORD"],
-  alpha: ["WORKFLOW_SERVER_ADMIN_KEY", "WORKFLOW_DATABASE_URL", "WORKFLOW_POSTGRES_PASSWORD"],
+  compose: ["STEAMHARNESS_RELEASE_STORAGE_ROOT", "STEAMHARNESS_POSTGRES_PASSWORD"],
+  stable: ["STEAMHARNESS_SERVER_ADMIN_KEY", "STEAMHARNESS_DATABASE_URL", "STEAMHARNESS_POSTGRES_PASSWORD"],
+  alpha: ["STEAMHARNESS_SERVER_ADMIN_KEY", "STEAMHARNESS_DATABASE_URL", "STEAMHARNESS_POSTGRES_PASSWORD"],
 });
 
 export function buildEcsEnv({ kind, env = process.env } = {}) {
@@ -29,12 +29,12 @@ export function buildEcsEnv({ kind, env = process.env } = {}) {
   const keys = kind === "compose" ? COMPOSE_KEYS : RUNTIME_KEYS;
   const values = Object.fromEntries(keys.map((key) => [key, String(env[key] ?? "").trim()]));
   for (const key of REQUIRED[kind]) if (!values[key]) throw new Error(`Missing ${key} for ECS ${kind} environment.`);
-  values.WORKFLOW_RELEASE_STORAGE_ROOT = "/srv/workflow-release";
+  values.STEAMHARNESS_RELEASE_STORAGE_ROOT = "/srv/workflow-release";
   if (kind !== "compose") {
-    values.WORKFLOW_DATABASE_URL = buildLocalDatabaseUrl(values, env);
-    values.WORKFLOW_RELEASE_CHANNEL = kind;
-    values.WORKFLOW_SERVER_PORT = kind === "alpha" ? "7140" : "7130";
-    values.WORKFLOW_SERVER_DATA_DIR = `/srv/workflow-release/server-data/${kind}`;
+    values.STEAMHARNESS_DATABASE_URL = buildLocalDatabaseUrl(values, env);
+    values.STEAMHARNESS_RELEASE_CHANNEL = kind;
+    values.STEAMHARNESS_SERVER_PORT = kind === "alpha" ? "7140" : "7130";
+    values.STEAMHARNESS_SERVER_DATA_DIR = `/srv/workflow-release/server-data/${kind}`;
   }
   return serializeEnvValues(kind, values);
 }
@@ -46,10 +46,10 @@ function serializeEnvValues(kind, values) {
 }
 
 function buildLocalDatabaseUrl(values, env) {
-  const user = values.WORKFLOW_POSTGRES_USER || "workflow";
-  const password = String(env.WORKFLOW_POSTGRES_PASSWORD ?? "");
-  const database = values.WORKFLOW_POSTGRES_DB || "workflow";
-  if (!password) throw new Error("Missing WORKFLOW_POSTGRES_PASSWORD for ECS runtime environment.");
+  const user = values.STEAMHARNESS_POSTGRES_USER || "workflow";
+  const password = String(env.STEAMHARNESS_POSTGRES_PASSWORD ?? "");
+  const database = values.STEAMHARNESS_POSTGRES_DB || "workflow";
+  if (!password) throw new Error("Missing STEAMHARNESS_POSTGRES_PASSWORD for ECS runtime environment.");
   return `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@127.0.0.1:7125/${encodeURIComponent(database)}`;
 }
 

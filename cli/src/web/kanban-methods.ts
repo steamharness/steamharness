@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { assertKanbanMethodJson, parseKanbanMethodDefinitions, parseKanbanMethodInvocation, type KanbanInjectedConfiguration, type KanbanMethodState, type KanbanJsonValue } from '@workflow-code/kanban-project';
+import { assertKanbanMethodJson, parseKanbanMethodDefinitions, parseKanbanMethodInvocation, type KanbanInjectedConfiguration, type KanbanMethodState, type KanbanJsonValue } from '@steamharness/kanban-project';
 
 export class KanbanMethodHub {
   private readonly clients = new Map<string, object>();

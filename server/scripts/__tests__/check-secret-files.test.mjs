@@ -34,22 +34,22 @@ test("secret file audit scans deleted examples in reachable history", async () =
 
 test("secret examples accept placeholders and reject live-looking values", () => {
   assert.deepEqual(findUnsafeExampleAssignments([
-    "WORKFLOW_DATABASE_URL=postgresql://user:replace-with-password@localhost/db",
+    "STEAMHARNESS_DATABASE_URL=postgresql://user:replace-with-password@localhost/db",
     "JWT_SECRET=change_me_with_openssl_rand_hex_32",
-    "WORKFLOW_SERVER_PORT=7130",
+    "STEAMHARNESS_SERVER_PORT=7130",
   ].join("\n")), []);
-  assert.deepEqual(findUnsafeExampleAssignments("WORKFLOW_AUTH_COOKIE_SECRET=live-cookie-secret\n"), [
-    { line: 1, name: "WORKFLOW_AUTH_COOKIE_SECRET" },
+  assert.deepEqual(findUnsafeExampleAssignments("STEAMHARNESS_AUTH_COOKIE_SECRET=live-cookie-secret\n"), [
+    { line: 1, name: "STEAMHARNESS_AUTH_COOKIE_SECRET" },
   ]);
 });
 
 test("production env validation reports names without exposing values", () => {
   const env = Object.fromEntries(REQUIRED_PRODUCTION_ENV.map((name) => [name, `${name}-value`]));
-  delete env.WORKFLOW_DATABASE_URL;
-  env.WORKFLOW_AUTH_COOKIE_SECRET = " ";
+  delete env.STEAMHARNESS_DATABASE_URL;
+  env.STEAMHARNESS_AUTH_COOKIE_SECRET = " ";
   assert.deepEqual(findMissingProductionEnv(env), [
-    "WORKFLOW_AUTH_COOKIE_SECRET",
-    "WORKFLOW_DATABASE_URL",
+    "STEAMHARNESS_AUTH_COOKIE_SECRET",
+    "STEAMHARNESS_DATABASE_URL",
   ]);
 });
 
@@ -59,7 +59,7 @@ test("production env validation requires credentials and nothing else", () => {
 
   // A missing value is reported by name, and object-storage provider settings
   // are not part of the required set at all.
-  assert.deepEqual(findMissingProductionEnv({ ...env, WORKFLOW_DATABASE_URL: "  " }), ["WORKFLOW_DATABASE_URL"]);
+  assert.deepEqual(findMissingProductionEnv({ ...env, STEAMHARNESS_DATABASE_URL: "  " }), ["STEAMHARNESS_DATABASE_URL"]);
   assert.deepEqual(findMissingProductionEnv(env), []);
-  assert.ok(!REQUIRED_PRODUCTION_ENV.some((name) => name.startsWith("WORKFLOW_OSS_")));
+  assert.ok(!REQUIRED_PRODUCTION_ENV.some((name) => name.startsWith("STEAMHARNESS_OSS_")));
 });

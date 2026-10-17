@@ -15,11 +15,11 @@ import { assertWorkflowParamDeclarations, normalizeWorkflowParamDeclarations, re
 import { assertConversationFooter } from "./conversation-footer";
 import { assertConversationUserInput } from "./conversation-input";
 import { assertConversationCommands } from "./conversation-commands";
-import { WORKFLOW_ENTRYPOINT_ID_PATTERN } from "./definition";
+import { STEAMHARNESS_ENTRYPOINT_ID_PATTERN } from "./definition";
 import type { WorkflowTokenUsageDefinition } from "../token-usage/index";
 import type { WorkflowToolPermissionDefinition } from "../tool-permissions/index";
 import {
-  WORKFLOW_PROJECT_TYPE_MIGRATION_EXAMPLE,
+  STEAMHARNESS_PROJECT_TYPE_MIGRATION_EXAMPLE,
   assertNeverWorkflowExecutorProjectType,
   isWorkflowExecutorProjectType,
   type WorkflowExecutorProjectType,
@@ -476,7 +476,7 @@ const NODE_FACTORY_DEFAULT_NAMES = {
 } satisfies Record<string, string>;
 
 const NODE_FACTORY_NAMES = new Set(Object.keys(NODE_FACTORY_DEFAULT_NAMES));
-const WORKFLOW_RUNTIME_API_NAMES = new Set([
+const STEAMHARNESS_RUNTIME_API_NAMES = new Set([
   ...Object.keys(workflowRuntimeApi),
   "defineWorkflowExecutor",
 ]);
@@ -596,7 +596,7 @@ export function validateWorkflowScriptSource(
 }
 
 function createProjectTypeRuleMessage(reason: string): string {
-  return `${reason}\n\nMigration example:\n${WORKFLOW_PROJECT_TYPE_MIGRATION_EXAMPLE}`;
+  return `${reason}\n\nMigration example:\n${STEAMHARNESS_PROJECT_TYPE_MIGRATION_EXAMPLE}`;
 }
 
 function createMissingExecutorViolation(): WorkflowScriptRuleViolation {
@@ -2023,11 +2023,11 @@ function analyzeSourceFile(
         hasPropertyName(property) && readStructurePropertyName(property.name) === "group"
       );
       const workflowRef = readIdentifierProperty(entrypointObject, "workflow");
-      if (id === undefined || !WORKFLOW_ENTRYPOINT_ID_PATTERN.test(id)) {
+      if (id === undefined || !STEAMHARNESS_ENTRYPOINT_ID_PATTERN.test(id)) {
         analysis.executorConfigurationViolations.push({
           type: "invalid_workflow_entrypoints",
           name: id ?? "id",
-          message: `Workflow entrypoint id must match ${WORKFLOW_ENTRYPOINT_ID_PATTERN}.`,
+          message: `Workflow entrypoint id must match ${STEAMHARNESS_ENTRYPOINT_ID_PATTERN}.`,
           locations: [createLocation(cwd, filePath, sourceFile, entrypointObject)],
         });
         continue;
@@ -4245,7 +4245,7 @@ function readKnownWorkflowApiCallName(
 ): string | undefined {
   const name = readWorkflowApiCallName(expression);
 
-  if (name === undefined || !WORKFLOW_RUNTIME_API_NAMES.has(name)) {
+  if (name === undefined || !STEAMHARNESS_RUNTIME_API_NAMES.has(name)) {
     return undefined;
   }
 

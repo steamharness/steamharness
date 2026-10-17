@@ -6,13 +6,13 @@
 
 ```bash
 CHILD_DIR="$(cd ../local-data-child && pwd)"
-pnpm exec workflow-code json . --entrypoint store -- --content "parent content"
+pnpm exec steamharness json . --entrypoint store -- --content "parent content"
 CURRENT_ID="<store 返回的 id>"
-pnpm exec workflow-code json . --entrypoint get -- --id "$CURRENT_ID"
+pnpm exec steamharness json . --entrypoint get -- --id "$CURRENT_ID"
 
-pnpm exec workflow-code json . --entrypoint store --related-project "child=$CHILD_DIR" -- --content "hello child" --alias child
+pnpm exec steamharness json . --entrypoint store --related-project "child=$CHILD_DIR" -- --content "hello child" --alias child
 CHILD_ID="<store 返回的 id>"
-pnpm exec workflow-code json . --entrypoint get --related-project "child=$CHILD_DIR" -- --id "$CHILD_ID" --alias child
+pnpm exec steamharness json . --entrypoint get --related-project "child=$CHILD_DIR" -- --id "$CHILD_ID" --alias child
 ```
 
 父项目没有声明孙项目，关联 KV 权限不会通过子项目递归传递。

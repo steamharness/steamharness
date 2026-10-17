@@ -11,19 +11,19 @@ line so the server UI can show the received event directly.
 Inspect structure:
 
 ```bash
-workflow-code structure .
+steamharness structure .
 ```
 
 Execute:
 
 ```bash
-workflow-code run . -- --payload '{"object_kind":"issue","object_attributes":{"iid":1,"action":"open","title":"Demo","url":"http://example/issues/1"},"project":{"path_with_namespace":"ai/workflow-code"},"user":{"username":"root"}}' --message "fixture note"
+steamharness run . -- --payload '{"object_kind":"issue","object_attributes":{"iid":1,"action":"open","title":"Demo","url":"http://example/issues/1"},"project":{"path_with_namespace":"ai/steamharness"},"user":{"username":"root"}}' --message "fixture note"
 ```
 
 Generate JSON report:
 
 ```bash
-workflow-code json . --conversation-id gitlab-demo -- --payload '{"object_kind":"push","checkout_sha":"abc","commits":[{"id":"abc","message":"demo","url":"http://example/commit/abc"}],"project":{"path_with_namespace":"ai/workflow-code"}}' --message "webhook replay"
+steamharness json . --conversation-id gitlab-demo -- --payload '{"object_kind":"push","checkout_sha":"abc","commits":[{"id":"abc","message":"demo","url":"http://example/commit/abc"}],"project":{"path_with_namespace":"ai/steamharness"}}' --message "webhook replay"
 ```
 
 这个示例的默认 composer 也会映射到 `--message`，但主输入仍然是
@@ -38,7 +38,7 @@ action=open
 id=1
 url=http://example/issues/1
 content=Demo
-project=ai/workflow-code
+project=ai/steamharness
 author=root
 rawEvent=issue
 ```

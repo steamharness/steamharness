@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { i18n, initI18n, translateDynamicKey } from "@workflow-code/i18n";
+import { i18n, initI18n, translateDynamicKey } from "@steamharness/i18n";
 import {
   listBuiltinWorkflowRoles,
   listWorkflowPermissionGroups,

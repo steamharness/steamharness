@@ -29,19 +29,19 @@ test("server env resolves production files before dev defaults", () => {
   ]);
 });
 
-test("server env mode keeps release startup out of WORKFLOW_SERVER_DEV defaults", () => {
+test("server env mode keeps release startup out of STEAMHARNESS_SERVER_DEV defaults", () => {
   const previousNodeEnv = process.env.NODE_ENV;
-  const previousServerDev = process.env.WORKFLOW_SERVER_DEV;
+  const previousServerDev = process.env.STEAMHARNESS_SERVER_DEV;
 
   delete process.env.NODE_ENV;
-  delete process.env.WORKFLOW_SERVER_DEV;
+  delete process.env.STEAMHARNESS_SERVER_DEV;
   assert.equal(inferServerEnvMode(), "production");
 
   process.env.NODE_ENV = "development";
   assert.equal(inferServerEnvMode(), "development");
 
   delete process.env.NODE_ENV;
-  process.env.WORKFLOW_SERVER_DEV = "1";
+  process.env.STEAMHARNESS_SERVER_DEV = "1";
   assert.equal(inferServerEnvMode(), "development");
 
   if (previousNodeEnv === undefined) {
@@ -50,14 +50,14 @@ test("server env mode keeps release startup out of WORKFLOW_SERVER_DEV defaults"
     process.env.NODE_ENV = previousNodeEnv;
   }
   if (previousServerDev === undefined) {
-    delete process.env.WORKFLOW_SERVER_DEV;
+    delete process.env.STEAMHARNESS_SERVER_DEV;
   } else {
-    process.env.WORKFLOW_SERVER_DEV = previousServerDev;
+    process.env.STEAMHARNESS_SERVER_DEV = previousServerDev;
   }
 });
 
 test("internal aggregate runtimes can disable checkout env files", () => {
-  assert.equal(shouldSkipServerEnvFiles({ WORKFLOW_SKIP_ENV_FILES: "1" }), true);
-  assert.equal(shouldSkipServerEnvFiles({ WORKFLOW_SKIP_ENV_FILES: "0" }), false);
+  assert.equal(shouldSkipServerEnvFiles({ STEAMHARNESS_SKIP_ENV_FILES: "1" }), true);
+  assert.equal(shouldSkipServerEnvFiles({ STEAMHARNESS_SKIP_ENV_FILES: "0" }), false);
   assert.equal(shouldSkipServerEnvFiles({}), false);
 });

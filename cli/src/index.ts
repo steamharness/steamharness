@@ -1,7 +1,7 @@
 import { realpathSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { i18n, translateWorkflowCodeError } from "@workflow-code/i18n";
+import { i18n, translateSteamHarnessError } from "@steamharness/i18n";
 import { prepareCliInvocation } from "./locale";
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
@@ -50,7 +50,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
 }
 
 function formatHelp(): string {
-  return `${i18n.t("rootHelp", { ns: "cli" })}\n\n  workflow-code web [project-directory]  ${i18n.language.startsWith('zh') ? '\u5728\u6d4f\u89c8\u5668\u6253\u5f00\u672c\u5730\u9879\u76ee' : 'Open a local project in a browser'}`;
+  return `${i18n.t("rootHelp", { ns: "cli" })}\n\n  steamharness web [project-directory]  ${i18n.language.startsWith('zh') ? '\u5728\u6d4f\u89c8\u5668\u6253\u5f00\u672c\u5730\u9879\u76ee' : 'Open a local project in a browser'}`;
 }
 
 /**
@@ -81,7 +81,7 @@ if (isCliEntryPoint()) {
   main().then((exitCode) => {
     process.exitCode = exitCode;
   }).catch((error: unknown) => {
-    console.error(translateWorkflowCodeError(error));
+    console.error(translateSteamHarnessError(error));
     process.exitCode = 1;
   });
 }

@@ -16,7 +16,7 @@ import { pathToFileURL } from "node:url";
  * `scripts/`。任何 import 都会在某一侧缺失。
  */
 
-export const SUPPORTED_PACKAGES = Object.freeze(["workflow-code", "@workflow-code/cli"]);
+export const SUPPORTED_PACKAGES = Object.freeze(["steamharness", "@steamharness/cli"]);
 
 /**
  * 消费方可能把 Core / CLI 写在哪个依赖段里。
@@ -44,9 +44,9 @@ const LOCAL_SPECIFIER_PATTERN = /^(?:file|link):(.*)$/u;
  * "非 main"，而这里是发布通道，必须按发布模式处理。两者回答的是不同的问题。
  */
 export function resolveReleaseMode({ env = process.env, branch, tag, runGit = runGitCommand, root } = {}) {
-  const override = String(env.WORKFLOW_REPOSITORY_MODE ?? "").trim();
+  const override = String(env.STEAMHARNESS_REPOSITORY_MODE ?? "").trim();
   if (override !== "" && override !== "main") {
-    throw new Error("WORKFLOW_REPOSITORY_MODE only accepts main as a fail-closed override.");
+    throw new Error("STEAMHARNESS_REPOSITORY_MODE only accepts main as a fail-closed override.");
   }
   if (override === "main") return "main";
   if (firstText(tag, env.CI_COMMIT_TAG) !== undefined) return "main";
@@ -304,9 +304,9 @@ export async function verifyReleaseGate(options) {
  * 每个包可能出现在多个依赖段里，键里带上段名，两个位置不会互相覆盖。
  */
 export function formatReleaseGateDotenv(report) {
-  const lines = ["WORKFLOW_RELEASE_GATE_OK=true", `WORKFLOW_RELEASE_GATE_CHANNEL=${report.channel}`];
+  const lines = ["STEAMHARNESS_RELEASE_GATE_OK=true", `STEAMHARNESS_RELEASE_GATE_CHANNEL=${report.channel}`];
   for (const entry of report.packages) {
-    const prefix = `WORKFLOW_RELEASE_GATE_${entry.packageName.replace(/^@/u, "").replace(/[^A-Za-z0-9]+/gu, "_").toUpperCase()}`;
+    const prefix = `STEAMHARNESS_RELEASE_GATE_${entry.packageName.replace(/^@/u, "").replace(/[^A-Za-z0-9]+/gu, "_").toUpperCase()}`;
     const section = String(entry.section ?? "").replace(/[^A-Za-z0-9]+/gu, "_").toUpperCase();
     lines.push(`${prefix}${section === "" ? "" : `_${section}`}_VERSION=${entry.version ?? ""}`);
   }

@@ -1,12 +1,12 @@
 import type { WorkflowRelatedProject } from "../project-info/index";
 import { isWorkflowUuid } from "../workflow-ids/index";
 
-export const WORKFLOW_PROJECT_GROUP_VERSION = 1;
-export const WORKFLOW_PROJECT_GROUP_MANIFEST_FILE = "project-group.json";
-export const WORKFLOW_PROJECT_DEPENDENCY_CAPABILITY = "download_source" as const;
+export const STEAMHARNESS_PROJECT_GROUP_VERSION = 1;
+export const STEAMHARNESS_PROJECT_GROUP_MANIFEST_FILE = "project-group.json";
+export const STEAMHARNESS_PROJECT_DEPENDENCY_CAPABILITY = "download_source" as const;
 
 export interface WorkflowProjectDependencyLocalizedError extends Error {
-  workflowCodeI18n: {
+  steamHarnessI18n: {
     namespace: "common";
     key: string;
     values?: Record<string, unknown>;
@@ -101,7 +101,7 @@ export interface WorkflowProjectAccessRequest {
   id: string;
   projectId: string;
   requesterUserId: string;
-  capability: typeof WORKFLOW_PROJECT_DEPENDENCY_CAPABILITY;
+  capability: typeof STEAMHARNESS_PROJECT_DEPENDENCY_CAPABILITY;
   reason: string;
   status: WorkflowProjectAccessRequestStatus;
   createdAt: string;
@@ -113,7 +113,7 @@ export interface WorkflowProjectAccessRequest {
 export interface WorkflowProjectCapabilityGrant {
   projectId: string;
   userId: string;
-  capability: typeof WORKFLOW_PROJECT_DEPENDENCY_CAPABILITY;
+  capability: typeof STEAMHARNESS_PROJECT_DEPENDENCY_CAPABILITY;
   createdByUserId?: string;
   createdAt: string;
   revokedByUserId?: string;
@@ -198,11 +198,11 @@ export function parseWorkflowProjectDependencyLocks(
 export function parseWorkflowProjectGroupManifest(
   value: unknown,
 ): WorkflowProjectGroupManifestV1 {
-  if (!isRecord(value) || value["version"] !== WORKFLOW_PROJECT_GROUP_VERSION) {
+  if (!isRecord(value) || value["version"] !== STEAMHARNESS_PROJECT_GROUP_VERSION) {
     throw dependencyError(
       "manifestVersion",
-      `Project group manifest version must be ${WORKFLOW_PROJECT_GROUP_VERSION}.`,
-      { version: WORKFLOW_PROJECT_GROUP_VERSION },
+      `Project group manifest version must be ${STEAMHARNESS_PROJECT_GROUP_VERSION}.`,
+      { version: STEAMHARNESS_PROJECT_GROUP_VERSION },
     );
   }
   const rootProjectId = readUuid(value["rootProjectId"], "rootProjectId");
@@ -324,7 +324,7 @@ export function parseWorkflowProjectGroupManifest(
   }
 
   return {
-    version: WORKFLOW_PROJECT_GROUP_VERSION,
+    version: STEAMHARNESS_PROJECT_GROUP_VERSION,
     rootProjectId,
     projects,
     dependencies,
@@ -364,7 +364,7 @@ export function isProjectGroupHostDataPath(filePath: string): boolean {
     ".workflow-persistent-values",
     ".workflow-runs",
     ".workflow-schedules",
-    ".workflow-code",
+    ".steamharness",
     ".workflow-files",
     ".data",
     "local-project-registries",
@@ -374,8 +374,8 @@ export function isProjectGroupHostDataPath(filePath: string): boolean {
   }
   const baseName = parts.at(-1) ?? "";
   if (
-    baseName === "workflow-code.sqlite" ||
-    baseName.startsWith("workflow-code.sqlite-") ||
+    baseName === "steamharness.sqlite" ||
+    baseName.startsWith("steamharness.sqlite-") ||
     baseName === "workflow-auth.json" ||
     baseName === "local-projects.json"
   ) {
@@ -525,7 +525,7 @@ function dependencyError(
 ): WorkflowProjectDependencyLocalizedError {
   return Object.assign(new Error(message), {
     name: "WorkflowProjectDependencyLocalizedError",
-    workflowCodeI18n: {
+    steamHarnessI18n: {
       namespace: "common" as const,
       key: `projectDependencies.validation.${key}`,
       ...(values === undefined ? {} : { values }),

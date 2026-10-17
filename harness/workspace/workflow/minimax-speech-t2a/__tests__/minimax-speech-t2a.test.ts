@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
-import { runLocalWorkflowWithReport } from "workflow-code";
+import { runLocalWorkflowWithReport } from "steamharness";
 import { decodeHexAudio } from "../lib/audio";
 import { synthesizeMinimaxSpeech, type WebSocketLike } from "../lib/minimax-websocket";
 import {
@@ -53,7 +53,7 @@ describe("minimax dry-run synthesis", () => {
         "--format",
         "wav",
         "--text",
-        "Hello from workflow-code.",
+        "Hello from steamharness.",
       ],
       env: {},
     });
@@ -83,7 +83,7 @@ describe("minimax dry-run synthesis", () => {
         "--format",
         "wav",
         "--text",
-        "Hello from workflow-code.",
+        "Hello from steamharness.",
       ],
       env: { MINIMAX_API_KEY: "test-secret-key" },
     });
@@ -209,7 +209,7 @@ function createInput(overrides: Partial<MinimaxSpeechInput> = {}): MinimaxSpeech
   return {
     errCode: 0,
     errMessage: "",
-    text: "Hello from workflow-code.",
+    text: "Hello from steamharness.",
     model: DEFAULT_MINIMAX_T2A_MODEL,
     voiceId: DEFAULT_MINIMAX_VOICE_ID,
     format: "mp3",

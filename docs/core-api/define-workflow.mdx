@@ -53,7 +53,7 @@ workflow.defineWorkflow<Input, Output>(
 ## 示例
 
 ```ts
-import type { WorkflowPayload } from "workflow-code";
+import type { WorkflowPayload } from "steamharness";
 
 interface Input {
   message: string;
@@ -82,6 +82,6 @@ export const exampleWorkflow = workflow.defineWorkflow<Input, Output>({
 
 | 规则 | 说明 |
 | --- | --- |
-| 不要从 `"workflow-code"` 导入 runtime API | 业务 workflow 由平台注入全局 `workflow`。 |
+| 不要从 `"steamharness"` 导入 runtime API | 业务 workflow 由平台注入全局 `workflow`。 |
 | `Output` 需要继承 `WorkflowPayload` | 成功时统一返回 `errCode: 0`、`errMessage: ""`。 |
 | 异常会被 runtime 包装 | `run` 中抛出的未知错误会转换成 `WorkflowError` 并进入执行报告。 |

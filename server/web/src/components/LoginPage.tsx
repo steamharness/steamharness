@@ -1,6 +1,6 @@
 import type { FormEvent } from "react";
 import { Loader2 } from "lucide-react";
-import { useTranslation } from "@workflow-code/i18n/react";
+import { useTranslation } from "@steamharness/i18n/react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -24,8 +24,8 @@ export function LoginPage({
   return (
     <main className="flex min-h-svh flex-col items-center justify-center gap-8 p-6 md:p-10">
       <div className="flex items-center gap-2 font-medium">
-        <img src="/brand/workflow-code-icon.svg" alt="" className="size-6" />
-        Workflow Code
+        <img src="/brand/steamharness-icon.svg" alt="" className="size-6" />
+        SteamHarness
       </div>
       <div className="w-full max-w-xs">
         <form onSubmit={onPasswordSubmit} className="flex flex-col gap-6">

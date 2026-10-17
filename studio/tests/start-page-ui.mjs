@@ -54,8 +54,8 @@ for (const language of ['en', 'zh-cn']) {
     { cwd: upstream.directory, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env,
       PATH: `${bin}${path.delimiter}${process.env.PATH ?? ''}`, STUDIO_START_TEST_NODE_MODULES: path.join(ROOT, 'examples/conversation/node_modules'),
       STUDIO_START_TEST_PROJECT_DIRECTORIES: JSON.stringify([path.join(workdir, `new-window-${language}`), path.join(workdir, `same-window-${language}`)]),
-      NODE_ENV: 'development', VSCODE_DEV: '1', STUDIO_WORKFLOW_SOURCE: path.resolve(ROOT, '..'), WORKFLOW_CLI_AUTH_DIR: path.join(directory, 'auth'),
-      WORKFLOW_SERVER_URL: '', WORKFLOW_SERVER_ADMIN_KEY: '', STUDIO_START_TEST_READY: readyFile, STUDIO_START_TEST_TOKEN: token,
+      NODE_ENV: 'development', VSCODE_DEV: '1', STUDIO_STEAMHARNESS_SOURCE: path.resolve(ROOT, '..'), STEAMHARNESS_CLI_AUTH_DIR: path.join(directory, 'auth'),
+      STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '', STUDIO_START_TEST_READY: readyFile, STUDIO_START_TEST_TOKEN: token,
       VSCODE_SKIP_BUILTIN_EXTENSIONS: 'vscode.vscode-api-tests,GitHub.copilot,GitHub.copilot-chat' } });
     for (const stream of [child.stdout, child.stderr]) { stream.on('data', chunk => { log += chunk.toString().replaceAll(token, '[redacted]'); }); }
     const port = await until(() => log, text => /Web UI available at http:\/\/[^:/\s]+:(\d+)/.test(text) || /Extension host agent listening on (\d+)/.test(text), 'Studio server startup timed out')
@@ -218,7 +218,7 @@ for (const language of ['en', 'zh-cn']) {
     const submit = () => modal().locator('.dialog-buttons .monaco-button').filter({ hasText: language === 'en' ? /^Create$/ : /^创建$/ });
     const openCreation = async () => { await start().locator('[data-action="studio.createProject"]').click(); await modal().waitFor(); };
     await openCreation();
-    assert.match(await modal().locator('[data-field="parentDirectory"]').inputValue(), /Documents[\\/]workflow-projects$/);
+    assert.match(await modal().locator('[data-field="parentDirectory"]').inputValue(), /Documents[\\/]steamharness-projects$/);
     assert.equal(await submit().getAttribute('aria-disabled'), 'true');
     await modal().locator('[data-field="parentDirectory"]').focus(); await page.keyboard.press('Tab'); await page.keyboard.press('Tab');
     assert.equal(await modal().locator('.dialog-buttons .monaco-button.secondary').evaluate(button => button === document.activeElement), true);

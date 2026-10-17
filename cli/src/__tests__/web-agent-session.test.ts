@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot, AgentSessionTurn } from 'workflow-code/agent';
+import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot, AgentSessionTurn } from 'steamharness/agent';
 import { ConversationController } from '../web/conversation-controller';
 import type { WorkflowProject, WorkflowReport, WorkflowRuntime } from '../web/workflow-types';
 
@@ -381,10 +381,10 @@ it('retains interrupted commands and does not reject another target with the sam
   vi.mocked(f.runtime.agentControl!).mockImplementation(() => new Promise(() => {}));
   const command = { type: 'plan' as const, requestId: 'same-id', expectedVersion: 0, items: [] };
   const one = f.controller.agentCommand(owner.id, command);
-  const rejected = expect(one).rejects.toMatchObject({ code: 'WORKFLOW_WORKER_INTERRUPTED' });
+  const rejected = expect(one).rejects.toMatchObject({ code: 'STEAMHARNESS_WORKER_INTERRUPTED' });
   const two = f.controller.agentCommand(forkId, command);
   await vi.waitFor(() => expect(f.runtime.agentControl).toHaveBeenCalledTimes(2));
-  f.runs[0].emit({ type: 'agent_command_failed', requestId: 'same-id', targetId: 1, message: 'Interrupted', code: 'WORKFLOW_WORKER_INTERRUPTED' });
+  f.runs[0].emit({ type: 'agent_command_failed', requestId: 'same-id', targetId: 1, message: 'Interrupted', code: 'STEAMHARNESS_WORKER_INTERRUPTED' });
   await rejected;
   expect(owner.agentCommands).toHaveLength(1);
   const receipt = { requestId: 'same-id', conversationId: 2, status: 'accepted' as const };

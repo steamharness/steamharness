@@ -1,5 +1,5 @@
 {
-  "name": "@workflow-code/project-upload",
+  "name": "@steamharness/project-upload",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -16,7 +16,7 @@
     }
   },
   "dependencies": {
-    "@workflow-code/kanban-project": "workspace:*",
+    "@steamharness/kanban-project": "workspace:*",
     "ignore": "^7.0.5"
   }
 }

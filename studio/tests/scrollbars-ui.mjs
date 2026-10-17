@@ -6,7 +6,7 @@ import { build } from 'esbuild';
 import { chromium } from '../upstream/vscode/node_modules/playwright/index.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const cliRoot = process.env.WORKFLOW_UI_CLI_ROOT ?? path.join(root, '../cli');
+const cliRoot = process.env.STEAMHARNESS_UI_CLI_ROOT ?? path.join(root, '../cli');
 const proofDir = path.join(root, '.studio/scrollbars');
 await fs.mkdir(proofDir, { recursive: true });
 const legacy = await build({ entryPoints: [path.join(root, 'extensions/studio-workstation/webview/style.css')], bundle: true, write: false });
@@ -20,7 +20,7 @@ const theme = await fs.readFile(path.join(cliRoot, 'dist/web/theme.css'), 'utf8'
 for (const name of ['workflow-ui', 'workflow-workspace', 'kanban-workspace', 'resource-preview']) {
   surfaces.push({ name: `cli-${name}`, css: `${await fs.readFile(path.join(cliRoot, `dist/web/${name}.css`), 'utf8')}\n${theme}` });
 }
-const browser = await chromium.launch({ channel: process.env.WORKFLOW_UI_BROWSER ?? 'chrome', headless: true,
+const browser = await chromium.launch({ channel: process.env.STEAMHARNESS_UI_BROWSER ?? 'chrome', headless: true,
   ignoreDefaultArgs: ['--hide-scrollbars'], args: ['--disable-features=OverlayScrollbar'] });
 const page = await browser.newPage();
 await page.bringToFront();

@@ -31,7 +31,7 @@ workflow.defineExecutor<Input, Output>(
 
 Workflow 的 `workflow`、`params`、`createInput`、`resolveParams`、`createContext`、`requiredProviders`、`tools`、`tokenUsage` 和 `registry` 全部属于具体 entrypoint，不能放在 executor 顶层。入口按声明顺序展示；选择任一入口会直接创建该入口的 run，不会先执行默认入口。
 
-Workflow 可以在 `package.json.workflowCode.schedulePresets` 中声明建议计划。每项静态引用一个 entrypoint，并包含 IANA 时区、时间窗口或五字段 Cron，以及默认参数值。该目录会进入 Structure 报告，但宿主必须显示确认界面，不能因导入或发布项目自动创建计划。Conversation 和 Kanban 声明此字段会被 Structure 拒绝。完整格式与运行边界参见 [Workflow 定时运行](/concepts/workflow-schedules)。
+Workflow 可以在 `package.json.steamHarness.schedulePresets` 中声明建议计划。每项静态引用一个 entrypoint，并包含 IANA 时区、时间窗口或五字段 Cron，以及默认参数值。该目录会进入 Structure 报告，但宿主必须显示确认界面，不能因导入或发布项目自动创建计划。Conversation 和 Kanban 声明此字段会被 Structure 拒绝。完整格式与运行边界参见 [Workflow 定时运行](/concepts/workflow-schedules)。
 
 ## Conversation executor
 

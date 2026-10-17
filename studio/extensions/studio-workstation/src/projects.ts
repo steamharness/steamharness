@@ -53,8 +53,8 @@ export function rememberImportedProjects(previous: ImportedProject[], imported: 
 }
 
 export function readRelatedProjects(manifest: unknown): RelatedProject[] {
-  const pkg = manifest as { workflowCode?: { projectInfo?: { relatedProjects?: unknown } } } | null;
-  const relations = pkg?.workflowCode?.projectInfo?.relatedProjects;
+  const pkg = manifest as { steamHarness?: { projectInfo?: { relatedProjects?: unknown } } } | null;
+  const relations = pkg?.steamHarness?.projectInfo?.relatedProjects;
   if (!Array.isArray(relations)) { return []; }
   return relations.flatMap(relation => {
     const id = projectId(relation?.projectId);

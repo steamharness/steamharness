@@ -20,15 +20,15 @@ roadmap-kanban/
 ```json package.json
 {
   "id": "8bd4fef2-e083-4201-a89f-6f7d0676df53",
-  "name": "@workflow-code/roadmap-kanban",
+  "name": "@steamharness/roadmap-kanban",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "devDependencies": {
-    "@workflow-code/cli": "0.2.0",
-    "workflow-code": "0.2.0"
+    "@steamharness/cli": "0.2.0",
+    "steamharness": "0.2.0"
   },
-  "workflowCode": {
+  "steamHarness": {
     "projectType": "kanban",
     "projectInfo": {
       "dataStorage": {
@@ -40,7 +40,7 @@ roadmap-kanban/
 }
 ```
 
-示例中的 Core 与 CLI `0.2.0` 是当前精确兼容基线。新模板会写入当前 Core 与 CLI 版本；已有 Kanban 项目缺少这些依赖或 `dataStorage` 声明时，必须补齐并同步 lockfile，不能使用 `^`、`~`、`workspace:*` 或其它 range。Kanban 页面不导入或执行 Core runtime，Server 将 `devDependencies.workflow-code` 作为静态包元数据校验，不加载运行时。
+示例中的 Core 与 CLI `0.2.0` 是当前精确兼容基线。新模板会写入当前 Core 与 CLI 版本；已有 Kanban 项目缺少这些依赖或 `dataStorage` 声明时，必须补齐并同步 lockfile，不能使用 `^`、`~`、`workspace:*` 或其它 range。Kanban 页面不导入或执行 Core runtime，Server 将 `devDependencies.steamharness` 作为静态包元数据校验，不加载运行时。
 
 未配置入口时，产物目录默认为项目根目录 `.`，HTML 入口默认为 `index.html`，因此已有项目不需要迁移入口配置。Kanban 不应包含为运行而创建的 `index.ts`、`interface.ts` 或 `workflow.defineExecutor(...)`。没有 `kanban.json` 时，宿主隐藏全部配置控件，让 HTML 画布占满工作区。
 
@@ -48,7 +48,7 @@ roadmap-kanban/
 
 Kanban 页面需要同时适配这些尺寸。“小卡片”表示 Conversation 对话资源卡片中的 Kanban 预览，实际宽高随卡片容器变化，并非固定设备。页面应声明 viewport meta，并根据自身容器的宽高重排布局；在约 `340–500px` 宽、`180–200px` 高的小预览中优先显示主要内容和必要操作，收敛页头与次要面板，避免重叠或控件越界。图像、地图和 canvas 随容器重新测量，尺寸变化不应清空业务数据或重复保存、上传。生成器 skill 也遵循这些适配要求。
 
-页面通过 `window.workflowCodeKanban.getPresentation()` 读取 `{ mode: "fullscreen" | "phone" | "tablet" | "card" }`，并监听 `workflow-code:kanban-presentation-change` 的 `CustomEvent.detail` 响应模式切换。实际 Conversation 卡片使用 `card`，调大卡片后仍保持该模式；该信息独立于业务参数，不会保存到命名配置或 KV。地图、图片展示或明确要求只读的小卡片应隐藏页头、工具栏、侧栏、详情和编辑浮层，关闭绘制、实体拖动及修改快捷键，让内容占满预览区并自动适应取景；切回其它模式恢复原编辑状态。依据展示模式决定是否只读，依据页面自身实际宽高计算布局。
+页面通过 `window.steamHarnessKanban.getPresentation()` 读取 `{ mode: "fullscreen" | "phone" | "tablet" | "card" }`，并监听 `steamharness:kanban-presentation-change` 的 `CustomEvent.detail` 响应模式切换。实际 Conversation 卡片使用 `card`，调大卡片后仍保持该模式；该信息独立于业务参数，不会保存到命名配置或 KV。地图、图片展示或明确要求只读的小卡片应隐藏页头、工具栏、侧栏、详情和编辑浮层，关闭绘制、实体拖动及修改快捷键，让内容占满预览区并自动适应取景；切回其它模式恢复原编辑状态。依据展示模式决定是否只读，依据页面自身实际宽高计算布局。
 
 ## 构建产物与入口
 
@@ -56,7 +56,7 @@ Vue、React、Vite 或其它前端工程可以把浏览器静态产物放在独�
 
 ```json
 {
-  "workflowCode": {
+  "steamHarness": {
     "projectType": "kanban",
     "projectInfo": {
       "dataStorage": { "mode": "both" },
@@ -177,9 +177,9 @@ function render(configuration) {
   document.documentElement.style.setProperty("--accent", params.accent || "#2563eb");
 }
 
-render(window.workflowCodeKanban.getConfiguration());
+render(window.steamHarnessKanban.getConfiguration());
 
-window.addEventListener("workflow-code:kanban-configuration-change", (event) => {
+window.addEventListener("steamharness:kanban-configuration-change", (event) => {
   render(event.detail);
 });
 ```
@@ -194,14 +194,14 @@ window.addEventListener("workflow-code:kanban-configuration-change", (event) => 
 }
 ```
 
-配置切换或参数变化不会重新加载 iframe。页面必须监听 `workflow-code:kanban-configuration-change` 并自行更新 DOM、canvas 或其它内部状态。持久参数只能在宿主配置区修改；页面内部业务数据应使用下述 KV 或知识库接口保存。
+配置切换或参数变化不会重新加载 iframe。页面必须监听 `steamharness:kanban-configuration-change` 并自行更新 DOM、canvas 或其它内部状态。持久参数只能在宿主配置区修改；页面内部业务数据应使用下述 KV 或知识库接口保存。
 
 ## 页面方法与 Agent 通信
 
-页面用 `window.workflowCodeKanban.methods.register(definition, handler)` 将已有业务方法提供给 Core Agent。定义包含唯一 `name`、`description`、对象类型的 JSON `inputSchema` 和可选 `readOnly` 标记，返回注销函数。schema 用于发现与参数说明，处理函数仍须校验业务参数。
+页面用 `window.steamHarnessKanban.methods.register(definition, handler)` 将已有业务方法提供给 Core Agent。定义包含唯一 `name`、`description`、对象类型的 JSON `inputSchema` 和可选 `readOnly` 标记，返回注销函数。schema 用于发现与参数说明，处理函数仍须校验业务参数。
 
 ```js
-const unregister = window.workflowCodeKanban.methods.register({
+const unregister = window.steamHarnessKanban.methods.register({
   name: "map.focusRegion",
   description: "按精确名称定位地图区域，只改变视角",
   inputSchema: {
@@ -224,14 +224,14 @@ const unregister = window.workflowCodeKanban.methods.register({
 
 处理函数接受 JSON 对象和 `{ signal, configuration, presentation }`，可同步或异步返回 JSON。不得返回 DOM、函数、二进制、非有限数字或循环引用。输入、结果及整个方法目录最多 `65,536` 个 JSON 字符、深度最多 32 层；每页最多 32 个方法。名称匹配 `^[a-zA-Z][a-zA-Z0-9_.-]{0,79}$`，描述最多 2,000 字符，单个 schema 最多 8,192 字符。同名注册被拒绝；配置 ID 变化会清空注册，页面应在新配置加载后重新注册。
 
-页面注册 API 本身不会建立 Agent 连接。`workflow-kanban_kanban_methods` 只有在宿主显式提供调用通道时可用；CLI Web、Studio 和 Server 运行不因页面注册而自动获得此能力。
+页面注册 API 本身不会建立 Agent 连接。`steamharness-kanban_kanban_methods` 只有在宿主显式提供调用通道时可用；CLI Web、Studio 和 Server 运行不因页面注册而自动获得此能力。
 
 ## KV 与知识库 Bridge
 
-`window.workflowCodeKanban` 同时提供当前项目固定作用域的异步数据接口：
+`window.steamHarnessKanban` 同时提供当前项目固定作用域的异步数据接口：
 
 ```ts
-window.workflowCodeKanban = {
+window.steamHarnessKanban = {
   getConfiguration(): { id: string; name: string; params: Record<string, unknown> },
   getRuntimeLocale(): Promise<"zh-CN" | "en">,
   files: {
@@ -286,7 +286,7 @@ KV key 由页面定义，宿主始终把当前项目 Bridge 限制在项目 scop
 `relatedProjects.get(alias).kv.subscribe(listener)` 用于感知目标项目 KV 的提交变化。订阅建立后，如果宿主已经取得当前 revision，会异步回调一次当前快照；后续每次回调只包含静态 alias 和不透明 revision，不说明具体 key。Server 不会把初始快照内同一 revision 再作为变化重复发送，并会把同一目标的连续写入合并到最新 revision。页面仍应把临近回调防抖合并为一次 `getValue()` 重读，并保留最后一次成功内容；自动刷新失败时显示非阻塞警告，不要清空正在展示的数据。返回函数用于取消订阅，页面卸载或配置切换时必须调用。
 
 ```js
-const unsubscribe = window.workflowCodeKanban.relatedProjects.get("stocks").kv.subscribe(
+const unsubscribe = window.steamHarnessKanban.relatedProjects.get("stocks").kv.subscribe(
   ({ revision }) => {
     scheduleRefresh(revision);
   },
@@ -302,9 +302,9 @@ Server Web 静态预览要求访问者能够读取当前 Kanban，不要求成�
 下面的写法按命名配置隔离看板状态，并在没有 Bridge 的直接离线打开场景下降级为内存数据：
 
 ```js
-const configuration = window.workflowCodeKanban?.getConfiguration();
+const configuration = window.steamHarnessKanban?.getConfiguration();
 const storageKey = `kanban.board-state.v1:${configuration?.id || "default"}`;
-const kv = window.workflowCodeKanban?.kv;
+const kv = window.steamHarnessKanban?.kv;
 
 let board = { version: 1, tasks: [] };
 if (kv) {
@@ -333,7 +333,7 @@ async function saveBoard() {
 页面可以把用户选择的图片或文件直接写入服务器文件存储。文件始终保存在当前连接的 Server，独立于 KV 的 local/server 位置选择；调用方必须已登录，并在当前服务器创建同 UUID 的云端应用。缺少连接、项目权限或服务器接口时调用失败，不回退本地，也不把图片分块存入 KV。
 
 ```js
-const api = window.workflowCodeKanban;
+const api = window.steamHarnessKanban;
 const reference = await api.files.createFile({
   name: selectedFile.name,
   mimeType: selectedFile.type || undefined,
@@ -420,11 +420,11 @@ dist/**/*.map
 
 CLI 可以按 `.workflowignore` 选择本地 Kanban 的文本和二进制静态资源并上传到 Server。服务器不会为 Kanban 执行 tsup、安装依赖或生成 Node runtime，而是校验配置的 HTML 入口后保留静态产物；Server Web 只查看和管理已经上传的服务器版本。
 
-Server Web 静态预览固定当前项目与所选 target。读取需要项目读取权限，当前项目 KV 和知识库写入需要数据写权限，viewer 只读；关联访问还校验双方声明和目标授予的 key 权限。站点接口签发绑定项目、用户和固定版本的短期签名 capability，资源 URL 带有 CSP nonce，不能读取其它项目或版本。签名使用 `WORKFLOW_AUTH_COOKIE_SECRET`，未配置时回退到 `WORKFLOW_SERVER_ADMIN_KEY`；多实例应使用同一稳定密钥。预览会在 capability 到期前换发，保留命名配置并重载 iframe；失败时重试，到期后仍失败则显示错误。Bridge 与配置操作始终携带首次加载得到的 `resolvedTarget`。命名配置按用户隔离，项目 KV 和知识库按项目共享。
+Server Web 静态预览固定当前项目与所选 target。读取需要项目读取权限，当前项目 KV 和知识库写入需要数据写权限，viewer 只读；关联访问还校验双方声明和目标授予的 key 权限。站点接口签发绑定项目、用户和固定版本的短期签名 capability，资源 URL 带有 CSP nonce，不能读取其它项目或版本。签名使用 `STEAMHARNESS_AUTH_COOKIE_SECRET`，未配置时回退到 `STEAMHARNESS_SERVER_ADMIN_KEY`；多实例应使用同一稳定密钥。预览会在 capability 到期前换发，保留命名配置并重载 iframe；失败时重试，到期后仍失败则显示错误。Bridge 与配置操作始终携带首次加载得到的 `resolvedTarget`。命名配置按用户隔离，项目 KV 和知识库按项目共享。
 
 ## Studio 本地分析接口
 
-Studio 的内置 `build-in-analysis` 项目可通过 `await window.workflowCodeKanban.studio.getLocalAnalysis()` 读取只读快照。快照包含 `version: 1`、`generatedAt`、`serverExcluded` 和 `projects`；每个项目提供 UUID、名称、实际目录、类型、可用性、实时连接、排队输入数量及 `runs` 摘要。运行摘要包含 ID、标题、状态、开始时间、耗时和入口，不包含参数、消息正文、日志或凭据。
+Studio 的内置 `build-in-analysis` 项目可通过 `await window.steamHarnessKanban.studio.getLocalAnalysis()` 读取只读快照。快照包含 `version: 1`、`generatedAt`、`serverExcluded` 和 `projects`；每个项目提供 UUID、名称、实际目录、类型、可用性、实时连接、排队输入数量及 `runs` 摘要。运行摘要包含 ID、标题、状态、开始时间、耗时和入口，不包含参数、消息正文、日志或凭据。
 
 该连接仅由 Studio 为本地分析项目提供，并随项目会话关闭而失效。不接受文件路径或筛选参数，不提供写入与编辑器控制。CLI、Server 或独立浏览器没有此连接时返回 `KANBAN_BRIDGE_UNAVAILABLE`。项目数以当前工作区和已导入的本地项目为范围，服务器存储项目被排除；该接口不向服务器请求数据。
 
@@ -432,7 +432,7 @@ Studio 的内置 `build-in-analysis` 项目可通过 `await window.workflowCodeK
 
 ## 项目关系与交付
 
-`workflowCode.projectInfo.relatedProjects` 是所有项目类型共用的关系声明。Kanban 项目组只会从其中双方已确认的关系生成依赖锁；待确认关系可以随项目保存和发布，但不授予 KV 权限，也不会进入 included/external 依赖组。平台让发布者为每个已确认关系选择交付方式，并把结果固化到 Kanban 的精确已发布版本：
+`steamHarness.projectInfo.relatedProjects` 是所有项目类型共用的关系声明。Kanban 项目组只会从其中双方已确认的关系生成依赖锁；待确认关系可以随项目保存和发布，但不授予 KV 权限，也不会进入 included/external 依赖组。平台让发布者为每个已确认关系选择交付方式，并把结果固化到 Kanban 的精确已发布版本：
 
 | 交付方式 | 版本依赖锁 | 下载行为 |
 | --- | --- | --- |
@@ -450,21 +450,21 @@ KV 权限完全来自双方 `projectInfo`，Server 不维护独立数据授权�
 Kanban 发布保存不可变静态文件快照。图片、字体等二进制文件在文件 API 中以 `encoding: "base64"` 传输，CLI 下载时会恢复原始字节。
 
 ```bash
-workflow-code structure ./roadmap-kanban
-pnpm exec workflow-code workspace pack roadmap-kanban --path ./roadmap-kanban
-pnpm exec workflow-code workspace upload roadmap-kanban --path ./roadmap-kanban --create
-pnpm exec workflow-code workspace publish roadmap-kanban
-pnpm exec workflow-code workspace download roadmap-kanban --target latest --path ./roadmap-kanban-copy
+steamharness structure ./roadmap-kanban
+pnpm exec steamharness workspace pack roadmap-kanban --path ./roadmap-kanban
+pnpm exec steamharness workspace upload roadmap-kanban --path ./roadmap-kanban --create
+pnpm exec steamharness workspace publish roadmap-kanban
+pnpm exec steamharness workspace download roadmap-kanban --target latest --path ./roadmap-kanban-copy
 
 # 将 stocks 关联项目一起打包并发布；双方关系已写入各自 package.json
-pnpm exec workflow-code workspace upload roadmap-kanban \
+pnpm exec steamharness workspace upload roadmap-kanban \
   --path ./roadmap-kanban \
   --dependency stocks=./stock-workflow \
   --publish-group \
   --release-log "发布行情看板及关联 Workflow"
 ```
 
-`workflow-code structure` 会读取 `projectType: "kanban"`、`artifactDir`、`entry` 和可选参数清单。Kanban 是静态项目，`workflow-code run` 和 `workflow-code json` 会返回明确的不支持执行错误。
+`steamharness structure` 会读取 `projectType: "kanban"`、`artifactDir`、`entry` 和可选参数清单。Kanban 是静态项目，`steamharness run` 和 `steamharness json` 会返回明确的不支持执行错误。
 
 ## 使用生成器
 

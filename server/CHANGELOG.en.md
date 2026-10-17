@@ -156,7 +156,7 @@ All notable public changes of this release unit are recorded here.
 
 - Fixed production builds inlining the OpenAI Responses Shared runtime instead of leaving TypeScript-only packages in deploy dependencies.
 - Fixed MCP elicitation returning invalid content or failing transport or recovery no longer leaving `waiting_for_input` runs behind.
-- Fixed OpenAI call metadata trusting only `WORKFLOW_API_PUBLIC_BASE_URL` or forwarded headers from a trusted proxy.
+- Fixed OpenAI call metadata trusting only `STEAMHARNESS_API_PUBLIC_BASE_URL` or forwarded headers from a trusted proxy.
 - Fixed partial image upload failures now returning explicit validation errors and reclaiming the partial files.
 - Fixed the gateway accepting `system` and `developer` messages, `text.verbosity`, and the compatibility `include` parameter.
 
@@ -186,7 +186,7 @@ All notable public changes of this release unit are recorded here.
 - Added runtime KV, PersistentValue, related project, and file APIs whose tokens bind to project, user, task, and expiry.
 - Added renaming and deletion for run records, restricted to project admins and the run's initiator.
 - Added display names and stable `cardId` values for run records so embedded cards stop being recreated on scroll.
-- Added an optional local object storage driver writing artifacts and avatars to disk via `WORKFLOW_STORAGE_DRIVER=local`.
+- Added an optional local object storage driver writing artifacts and avatars to disk via `STEAMHARNESS_STORAGE_DRIVER=local`.
 - Added startup without any OSS credentials, with avatars served read-only from `/storage/avatars`.
 - Added the wflive relay on ECS, with Stable and Alpha listening on 7150 and 7151 respectively.
 - Added a `delete` operation to `POST /api/project-storage` returning `{ removed: false }` for missing entries.
@@ -198,7 +198,7 @@ All notable public changes of this release unit are recorded here.
 - Changed `server:start` to keep source mode and dev ports while disabling backend listening and Web hot reload.
 - Changed related project knowledge base and entrypoint calls to require explicit grants from the target project, checked per key.
 - Changed entrypoint calls to run once as the initiating user, with the called project gaining no related access itself.
-- Changed `WORKFLOW_OSS_ENDPOINT` to accept a same-region internal endpoint while signing URLs with the public endpoint.
+- Changed `STEAMHARNESS_OSS_ENDPOINT` to accept a same-region internal endpoint while signing URLs with the public endpoint.
 
 ### Fixed
 
@@ -213,6 +213,6 @@ All notable public changes of this release unit are recorded here.
 ### Removed
 
 - Removed `GET/PUT /api/workflows/{workflowName}/embed` and every `/embed/**` route.
-- Removed the `wfembed` host and `WORKFLOW_EMBED_PUBLIC_BASE_URL`; `workflow_embed_configs` stays expand-only.
+- Removed the `wfembed` host and `STEAMHARNESS_EMBED_PUBLIC_BASE_URL`; `workflow_embed_configs` stays expand-only.
 - Removed the Server Web `/web` entry page with its runnable version list and `next=web` redirect.
 - Removed the `server-live` release unit, the `/api/desktop/v1/*` and `/api/web-runs/*` routes, and the `web` release target.

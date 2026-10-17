@@ -24,14 +24,14 @@ const TEXT_EXTENSIONS = new Set([
 ]);
 
 const REMOVED_CONTRACTS = Object.freeze([
-  ["package", /@workflow-code\/app\b/u],
-  ["environment", /\b(?:WORKFLOW_APP_[A-Z0-9_]*|APP_LOCAL_[A-Z0-9_]*)\b/u],
+  ["package", /@steamharness\/app\b/u],
+  ["environment", /\b(?:STEAMHARNESS_APP_[A-Z0-9_]*|APP_LOCAL_[A-Z0-9_]*)\b/u],
   ["config-file", /\bworkflow-app\.json\b/u],
   ["runtime-helper", /\b(?:workflow\.)?isApp\s*(?:\(|:)/u],
-  ["runtime-marker", /WORKFLOW_RUNTIME_PLATFORM\s*=\s*["'`]?app\b/u],
+  ["runtime-marker", /STEAMHARNESS_RUNTIME_PLATFORM\s*=\s*["'`]?app\b/u],
   ["runtime-value", /\b(?:normalized|runtime|platform|source|value)\s*(?:===?|:|=)\s*["'`]app["'`]/u],
   ["ipc", /["'`](?:app:(?:get-version|login|update)|local-app-state:)/u],
-  ["storage", /workflow-code\.app(?:[.:/-]|$)/u],
+  ["storage", /steamharness\.app(?:[.:/-]|$)/u],
   ["i18n", /(?:(?:namespace|ns)\s*[:=]\s*["'`]app["'`]|useTranslation\(\s*["'`]app["'`]\s*\))/u],
   ["compatibility", /\b(?:minAppVersion|appVersion)\b/u],
   ["release", /(?:\brelease:app\b|\/app\/stable\b|guides\/(?:releases\/)?app(?:\/|\b)|\bapp\/v\d)/u],

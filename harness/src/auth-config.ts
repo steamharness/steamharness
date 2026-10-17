@@ -4,7 +4,7 @@ import {
   normalizeWorkflowAuthConfig,
   resolveWorkflowCliAuthFilePath,
   type WorkflowAuthConfig,
-} from "@workflow-code/auth-config";
+} from "@steamharness/auth-config";
 
 export function readWorkflowCliAuthConfigSync(
   env: NodeJS.ProcessEnv = process.env,

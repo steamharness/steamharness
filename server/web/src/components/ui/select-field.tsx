@@ -1,5 +1,5 @@
 import type { ComponentProps } from "react";
-import { useTranslation } from "@workflow-code/i18n/react";
+import { useTranslation } from "@steamharness/i18n/react";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "./select";
 import { cn } from "@/lib/utils";
 

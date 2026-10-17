@@ -6,8 +6,8 @@ import { Agent } from '@earendil-works/pi-agent-core';
 const task = workflow.defineWorkflow({
   name: 'assistant-workspace-proof',
   async run(input, context) {
-    const workdir = process.env.WORKFLOW_DEVELOPER_ASSISTANT_WORKDIR;
-    const workspace = JSON.parse(await readFile(process.env.WORKFLOW_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST, 'utf8'));
+    const workdir = process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR;
+    const workspace = JSON.parse(await readFile(process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST, 'utf8'));
     const faux = ai.fauxProvider({ models: [{ id: 'offline', name: 'Offline', contextWindow: 4096, maxTokens: 100 }] });
     const models = ai.createModels(); models.setProvider(faux.provider);
     faux.setResponses([

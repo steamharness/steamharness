@@ -194,7 +194,7 @@ async function main() {
           '--disable-telemetry',
           '--disable-workspace-trust',
           ...desktopArgs,
-        ], assistantFixture ? { STUDIO_WORKFLOW_SOURCE: assistantFixture.root } : {});
+        ], assistantFixture ? { STUDIO_STEAMHARNESS_SOURCE: assistantFixture.root } : {});
       } finally { await assistantFixture?.dispose(); }
       break;
     }

@@ -1,13 +1,13 @@
-import type { AgentToolSet, McpServerDefinition } from "workflow-code";
+import type { AgentToolSet, McpServerDefinition } from "steamharness";
 import type { DeveloperAssistantPermissionPolicy } from "./interface";
 import { workflow } from "./workflow-runtime";
 
-const environmentKeys = ["WORKFLOW_STUDIO_CONTROL_BRIDGE_URL", "WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN"];
-const rawDefinition = workflow.getEnv("WORKFLOW_STUDIO_CONTROL_MCP_SERVER");
+const environmentKeys = ["STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL", "STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN"];
+const rawDefinition = workflow.getEnv("STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER");
 const environment: NodeJS.ProcessEnv = Object.fromEntries(environmentKeys.map(key => [key, workflow.getEnv(key)]));
 
 // Capability credentials belong only to the control child, never to coding-tool shells.
-for (const key of ["WORKFLOW_STUDIO_CONTROL_MCP_SERVER", ...environmentKeys]) delete process.env[key];
+for (const key of ["STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER", ...environmentKeys]) delete process.env[key];
 
 const toolNames = new Set(["studio_state", "get_related_projects", "open_file", "get_diagnostics", "set_theme", "open_terminal", "show_view"]);
 
@@ -25,7 +25,7 @@ export async function createStudioControlTools(approve: (toolId: string, args: u
   if (!allowed.size) return { tools: [] };
   return { tools: [], catalogs: [{ id: "workflow-studio", allowedTools: [...allowed].map(name => `workflow-studio_${name}`), open: async () => {
     const connection = await workflow.connectMcpServer({ ...definition,
-      environment: { ...definition.environment, WORKFLOW_STUDIO_CONTROL_PERMISSION_POLICY: permissionPolicy },
+      environment: { ...definition.environment, STEAMHARNESS_STUDIO_CONTROL_PERMISSION_POLICY: permissionPolicy },
     }, { allowedInheritedEnvKeys: environmentKeys, env: environment });
     try {
       const tools = await workflow.createMcpTools({ connection: { ...connection, tools: connection.tools.filter(tool => allowed.has(tool.name)) }, approve });

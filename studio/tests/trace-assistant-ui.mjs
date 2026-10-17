@@ -16,15 +16,15 @@ const { startWebServer } = await import('../../cli/src/web/server.ts');
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const assistant = path.join(root, '../open-soucres/build-in/build-in-developer-assistant');
-const loader = createRequire(path.join(assistant, 'node_modules/@workflow-code/cli/package.json')).resolve('tsx');
+const loader = createRequire(path.join(assistant, 'node_modules/@steamharness/cli/package.json')).resolve('tsx');
 const directory = await mkdtemp(path.join(tmpdir(), 'workflow-trace-assistant-'));
 const target = { kind: 'folder', folderId: 'fixture' };
 await writeFile(path.join(directory, 'workspace.json'), JSON.stringify({ schemaVersion: 2, primaryTarget: target, warnings: [], roots: [{ target, name: 'Fixture', rootPath: directory, role: 'primary', depth: 0 }] }));
 async function worker(phase) {
   const child = spawn(process.execPath, ['--import', pathToFileURL(loader).href, '--conditions=development',
     path.join(assistant, '__tests__/fixtures/durable-assistant-worker.ts'), directory, 'approval-session', phase], {
-    cwd: assistant, env: { ...process.env, WORKFLOW_DEVELOPER_ASSISTANT_HOST: 'vscode', WORKFLOW_DEVELOPER_ASSISTANT_WORKDIR: directory,
-      WORKFLOW_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST: path.join(directory, 'workspace.json'), WORKFLOW_STUDIO_CONTROL_MCP_SERVER: '', WORKFLOW_DEVELOPER_ASSISTANT_CODE_MODE: 'false' },
+    cwd: assistant, env: { ...process.env, STEAMHARNESS_DEVELOPER_ASSISTANT_HOST: 'vscode', STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR: directory,
+      STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST: path.join(directory, 'workspace.json'), STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER: '', STEAMHARNESS_DEVELOPER_ASSISTANT_CODE_MODE: 'false' },
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   });
   const result = new Promise((resolve, reject) => {
@@ -76,7 +76,7 @@ try {
     } catch (error) { response.writeHead(500).end(String(error)); }
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  browser = await chromium.launch({ channel: process.env.WORKFLOW_UI_BROWSER ?? 'chrome', headless: true }); page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  browser = await chromium.launch({ channel: process.env.STEAMHARNESS_UI_BROWSER ?? 'chrome', headless: true }); page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   page.on('pageerror', error => errors.push(error.message));
   binding = store.bind(project, 1, message => void page.evaluate(({ message, origin }) => document.getElementById('cli').contentWindow.postMessage(message, origin), { message, origin: app.origin }).catch(error => errors.push(error.message)));
   await page.exposeFunction('cliTrace', async message => { binding.receive(message); await publish(); });

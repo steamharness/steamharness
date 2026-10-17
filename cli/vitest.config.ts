@@ -1,13 +1,13 @@
 import path from "node:path";
 import { defineConfig } from "vitest/config";
 
-const localCoreRoot = process.env.WORKFLOW_LOCAL_CORE_ROOT?.trim();
+const localCoreRoot = process.env.STEAMHARNESS_LOCAL_CORE_ROOT?.trim();
 
 export default defineConfig({
   resolve: {
     conditions: ["development"],
     alias: localCoreRoot
-      ? { "workflow-code": path.join(path.resolve(localCoreRoot), "src", "index.ts") }
+      ? { "steamharness": path.join(path.resolve(localCoreRoot), "src", "index.ts") }
       : undefined,
   },
   test: {

@@ -42,7 +42,7 @@
 - Changed Recent Projects, Open Recent, workspace, and related-project lists to show unified Workflow, Conversation, and Kanban icons.
 - Changed project and template pickers to reuse the same type icons while folders and workspaces keep their existing icons.
 - Changed new projects and examples to share one creation dialog for type, template, name, and location.
-- Changed the default location to `Documents/workflow-projects` under the home directory.
+- Changed the default location to `Documents/steamharness-projects` under the home directory.
 - Changed creation to offer a new or current window before opening; cancelling generates no files.
 - Changed dependencies to install in the target project window after it opens, keeping progress out of the dialog.
 - Changed current projects to cards showing name, type, path, and Run.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getAvatarFallbackText, resolvePrincipalAvatarUrl } from "@workflow-code/avatar-fallback";
+import { getAvatarFallbackText, resolvePrincipalAvatarUrl } from "@steamharness/avatar-fallback";
 
 describe("avatar-fallback package", () => {
   it("prefers display name initials", () => {

@@ -6,7 +6,7 @@ import {
   readPackageProjectType,
 } from "../kanban-project/index";
 
-export const WORKFLOW_IGNORE_FILE = ".workflowignore";
+export const STEAMHARNESS_IGNORE_FILE = ".workflowignore";
 
 export interface WorkflowUploadPathOptions {
   directory?: boolean;
@@ -51,11 +51,11 @@ export function createWorkflowUploadMatcher(content?: string): WorkflowUploadMat
   return {
     ignores(relativePath, options) {
       const normalized = normalizeWorkflowUploadPath(relativePath, options);
-      return normalized === WORKFLOW_IGNORE_FILE ? false : matcher.ignores(normalized);
+      return normalized === STEAMHARNESS_IGNORE_FILE ? false : matcher.ignores(normalized);
     },
     explain(relativePath, options) {
       const normalized = normalizeWorkflowUploadPath(relativePath, options);
-      if (normalized === WORKFLOW_IGNORE_FILE) return undefined;
+      if (normalized === STEAMHARNESS_IGNORE_FILE) return undefined;
       return findEffectiveWorkflowIgnoreRule(normalized, ruleLines);
     },
     assertRequiredPaths(relativePaths) {
@@ -65,7 +65,7 @@ export function createWorkflowUploadMatcher(content?: string): WorkflowUploadMat
         const rule = findEffectiveWorkflowIgnoreRule(normalized, ruleLines);
         const suffix = rule === undefined ? "" : ` by rule ${JSON.stringify(rule)}`;
         throw new Error(
-          `Required upload path ${JSON.stringify(normalized)} is excluded by ${WORKFLOW_IGNORE_FILE}${suffix}.`,
+          `Required upload path ${JSON.stringify(normalized)} is excluded by ${STEAMHARNESS_IGNORE_FILE}${suffix}.`,
         );
       }
     },

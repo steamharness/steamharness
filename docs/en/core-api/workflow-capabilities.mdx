@@ -66,7 +66,7 @@ Memory reuses the knowledge document store under the `assistant-memory-` documen
 
 ## Host configuration
 
-Host configuration appears only when the host injected a loopback bridge: `WORKFLOW_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL` and `WORKFLOW_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN` must both be present, and the address must be a credential-free `http://127.0.0.1` loopback endpoint. If either is missing the capability is not exposed; when the address does not qualify, `isWorkflowCapabilityAvailable` returns `false` so one configuration error cannot take the other capabilities down with it, and the reason is reported when the tool is actually called rather than dialling with the token attached.
+Host configuration appears only when the host injected a loopback bridge: `STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL` and `STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN` must both be present, and the address must be a credential-free `http://127.0.0.1` loopback endpoint. If either is missing the capability is not exposed; when the address does not qualify, `isWorkflowCapabilityAvailable` returns `false` so one configuration error cannot take the other capabilities down with it, and the reason is reported when the tool is actually called rather than dialling with the token attached.
 
 ## Conversation resource cards
 

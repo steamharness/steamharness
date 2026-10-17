@@ -5,9 +5,9 @@ import { promisify } from "node:util";
 
 const root = path.resolve(import.meta.dirname, "..");
 const manifest = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
-const coreVersion = manifest.dependencies?.["workflow-code"];
+const coreVersion = manifest.dependencies?.["steamharness"];
 if (typeof coreVersion !== "string" || !/^\d+\.\d+\.\d+(?:-\d{11})?$/.test(coreVersion)) {
-  throw new Error("workflow-code must use an exact stable or dated alpha version.");
+  throw new Error("steamharness must use an exact stable or dated alpha version.");
 }
 
 const commitSha = process.env.CI_COMMIT_SHA?.trim()

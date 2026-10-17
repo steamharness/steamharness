@@ -65,13 +65,13 @@ mock fetch data, so normal tests do not call real `hookcode.win` or OpenAI.
 Inspect structure:
 
 ```bash
-workflow-code structure .
+steamharness structure .
 ```
 
 Run:
 
 ```bash
-workflow-code json . --conversation-id deltaforce-openai-demo -- \
+steamharness json . --conversation-id deltaforce-openai-demo -- \
   --message "我需要配置 M7，操控速度高" \
   --max-rounds 2
 ```

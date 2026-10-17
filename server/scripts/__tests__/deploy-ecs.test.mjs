@@ -44,10 +44,10 @@ test("ECS image fallback compares image config and layers independent of JSON ke
 
 test("ECS image fallback reads an explicit source host and credentials", () => {
   assert.deepEqual(getImageFallbackConfig({
-    WORKFLOW_IMAGE_FALLBACK_HOST: "yuhe.space",
-    WORKFLOW_IMAGE_FALLBACK_PORT: "22",
-    WORKFLOW_IMAGE_FALLBACK_USER: "root",
-    WORKFLOW_IMAGE_FALLBACK_SSH_KEY: "encoded-key",
+    STEAMHARNESS_IMAGE_FALLBACK_HOST: "yuhe.space",
+    STEAMHARNESS_IMAGE_FALLBACK_PORT: "22",
+    STEAMHARNESS_IMAGE_FALLBACK_USER: "root",
+    STEAMHARNESS_IMAGE_FALLBACK_SSH_KEY: "encoded-key",
   }), {
     host: "yuhe.space",
     port: "22",

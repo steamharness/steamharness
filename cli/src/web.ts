@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { startWebServer } from './web/server';
-import { i18n } from '@workflow-code/i18n';
+import { i18n } from '@steamharness/i18n';
 import { createInterface } from 'node:readline';
 import { createWebRuntime } from './web/runtime';
 import { parseHostConfiguration, parseHostConnection, parseHostRelatedProjects, parseHostResourceProjects } from './web/host-config';
@@ -32,8 +32,8 @@ export async function main(argv: string[]): Promise<number> {
   const options = parseWebArgs(argv);
   if (options.help) {
     console.log(i18n.language.startsWith('zh')
-      ? 'workflow-code web [项目目录]\n  --port <0-65535>   监听端口，0 自动分配\n  --no-open          不自动打开浏览器\n  --theme <auto|light|dark>\n  --data-dir <目录>   对话和文件存储位置\n  --json             输出结构化启动信息'
-      : 'workflow-code web [project-directory]\n  --port <0-65535>   Listen port; 0 selects an available port\n  --no-open          Do not open a browser\n  --theme <auto|light|dark>\n  --data-dir <path>   Conversation and file storage directory\n  --json             Print structured startup information');
+      ? 'steamharness web [项目目录]\n  --port <0-65535>   监听端口，0 自动分配\n  --no-open          不自动打开浏览器\n  --theme <auto|light|dark>\n  --data-dir <目录>   对话和文件存储位置\n  --json             输出结构化启动信息'
+      : 'steamharness web [project-directory]\n  --port <0-65535>   Listen port; 0 selects an available port\n  --no-open          Do not open a browser\n  --theme <auto|light|dark>\n  --data-dir <path>   Conversation and file storage directory\n  --json             Print structured startup information');
     return 0;
   }
   const input = options.hostStdio ? createInterface({ input: process.stdin, crlfDelay: Infinity }) : undefined;

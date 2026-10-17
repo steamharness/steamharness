@@ -11,7 +11,7 @@ test("Server build info validates product and embedded Core versions", async () 
   try {
     await Promise.all([
       writeJson(path.join(serverRoot, "package.json"), { version: "0.3.0" }),
-      writeJson(path.join(repoRoot, "node_modules/workflow-code/package.json"), { version: "0.2.0" }),
+      writeJson(path.join(repoRoot, "node_modules/steamharness/package.json"), { version: "0.2.0" }),
       writeJson(path.join(serverRoot, "dist/build-info.json"), {
         productVersion: "0.3.0",
         coreVersion: "0.2.0",
@@ -43,7 +43,7 @@ test("Server development build info ignores stale build output", async () => {
   try {
     await Promise.all([
       writeJson(path.join(serverRoot, "package.json"), { version: "0.3.0" }),
-      writeJson(path.join(repoRoot, "node_modules/workflow-code/package.json"), { version: "0.2.0" }),
+      writeJson(path.join(repoRoot, "node_modules/steamharness/package.json"), { version: "0.2.0" }),
       writeJson(path.join(serverRoot, "dist/build-info.json"), {
         productVersion: "0.2.9",
         coreVersion: "0.1.9",

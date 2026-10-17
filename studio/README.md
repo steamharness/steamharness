@@ -81,7 +81,7 @@ npm run dev:web -- --port 3050 --default-folder /absolute/path/to/project
 
 桌面版已接入 Workflow 的最小工作站流程：通过 **File > Open Folder** 打开项目文件夹，识别完成后，窗口顶部会显示带播放图标的 **运行项目** 按钮。点击按钮才在编辑器标签页中打开对应界面，不会执行 `package.json` 中的脚本。
 
-运行按钮右侧的 **上传项目** 使用 Studio 当前账号，将源码上传并发布为 `package.json.version` 对应的服务器版本。左侧 **版本** 页展示历史版本、发布说明与关联版本，并提供下载；开始页也提供下载入口。下载保存到宿主用户主目录下的 `Documents/workflow-projects/<项目名>-<版本>`，重名自动加序号，保留已有文件。项目标签、最近项目和资源面板展示本地版本；上传与下载均不会在服务器安装依赖、构建或执行源码。下载后可在新窗口打开，再在项目终端安装依赖。
+运行按钮右侧的 **上传项目** 使用 Studio 当前账号，将源码上传并发布为 `package.json.version` 对应的服务器版本。左侧 **版本** 页展示历史版本、发布说明与关联版本，并提供下载；开始页也提供下载入口。下载保存到宿主用户主目录下的 `Documents/steamharness-projects/<项目名>-<版本>`，重名自动加序号，保留已有文件。项目标签、最近项目和资源面板展示本地版本；上传与下载均不会在服务器安装依赖、构建或执行源码。下载后可在新窗口打开，再在项目终端安装依赖。
 
 打开 `examples/conversation` 可以试用不需要模型凭据的本地对话演示。聚合仓库中的小助手位于 `../open-soucres/build-in/build-in-developer-assistant`；真实模型对话需要项目的 Workflow Server 和 AI 凭据配置。
 
@@ -99,7 +99,7 @@ Studio 活动栏中的 **Workflow 项目** 列出当前文件夹及常见项目�
 
 Workflow 和 Conversation 还提供底部 **轨迹** 面板。对话回复下方的执行图与日志入口合并为一个轨迹入口，点击定位对应执行记录；面板支持时间线、轮次、调用、搜索及参数/结果/日志详情，详见 [执行轨迹](docs/trace-panel.md)。
 
-工作站使用每个项目自己安装的 Core 和 CLI；项目需安装支持 Web 宿主协议的 `@workflow-code/cli`。聚合 checkout 的开发入口优先识别同级 Core/CLI，独立 checkout 保留 `../workflow` 布局；也可用 `STUDIO_WORKFLOW_SOURCE` 指定源码根目录。详细范围见 [Workflow 工作站](docs/workflow-workstation.md)。
+工作站使用每个项目自己安装的 Core 和 CLI；项目需安装支持 Web 宿主协议的 `@steamharness/cli`。聚合 checkout 的开发入口优先识别同级 Core/CLI，独立 checkout 保留 `../workflow` 布局；也可用 `STUDIO_STEAMHARNESS_SOURCE` 指定源码根目录。详细范围见 [Workflow 工作站](docs/workflow-workstation.md)。
 
 ## 语言与账号入口
 
@@ -153,7 +153,7 @@ Electron 下载地址固定在 `config/downloads.json`，默认使用 `https://n
 
 二进制缓存默认位于 `.studio/cache/electron/<版本>/`，CI 使用 runner 的持久缓存；可通过 `STUDIO_ELECTRON_CACHE_DIR` 指定缓存目录。设置 `electronMirror` 为空字符串可以使用官方源，也可以通过 `ELECTRON_MIRROR`（空字符串表示官方源）和 `ELECTRON_CUSTOM_DIR` 环境变量覆盖。无需为普通开发单独设置下载环境变量；直接调用上游目录的 `npm run electron` 会绕过 Studio 的下载策略，请使用 Studio 根目录入口。
 
-完整 CI 的小助手测试依赖使用同一文件中的 `ciNpmMirror`，可通过 `STUDIO_TEST_REGISTRY` 覆盖。安装使用持久 pnpm store，安装及网络并发均为 1，并限制 Node 堆内存；镜像安装失败时回退官方 npm 源。`@workflow-code` 新发布版本始终从官方源获取，避免镜像同步延迟影响验证。
+完整 CI 的小助手测试依赖使用同一文件中的 `ciNpmMirror`，可通过 `STUDIO_TEST_REGISTRY` 覆盖。安装使用持久 pnpm store，安装及网络并发均为 1，并限制 Node 堆内存；镜像安装失败时回退官方 npm 源。`@steamharness` 新发布版本始终从官方源获取，避免镜像同步延迟影响验证。
 
 升级时必须同步更新子模块提交、`config/upstream.json`、`.nvmrc` 与 CI Node 版本，并逐个检查补丁及两端运行结果。不要在有本地改动的上游目录直接强制切换版本。
 

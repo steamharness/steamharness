@@ -85,7 +85,7 @@ When the caller does not select an entrypoint, the runtime runs `defaultEntrypoi
 
 ## Static structure rules
 
-`workflow-code structure` does not execute configuration code, so it must be able to read the entrypoint declaration statically:
+`steamharness structure` does not execute configuration code, so it must be able to read the entrypoint declaration statically:
 
 - `entrypoints` must be a non-empty array literal.
 - Each item must directly call `workflow.defineEntrypoint({ ... })`.

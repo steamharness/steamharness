@@ -5,14 +5,14 @@ description: "workflow 全局运行时 API 的入口、边界和逐方法文档�
 
 # Core API 总览
 
-Core API 分组记录业务 workflow 可直接使用的 `workflow.*` 运行时 API。这里的边界以 Core 仓库 `src/runtime-api.ts` 为准：本地宿主和 CLI 会把这些方法注入到 `globalThis.workflow`，业务 workflow 不需要从 `"workflow-code"` 导入它们。
+Core API 分组记录业务 workflow 可直接使用的 `workflow.*` 运行时 API。这里的边界以 Core 仓库 `src/runtime-api.ts` 为准：本地宿主和 CLI 会把这些方法注入到 `globalThis.workflow`，业务 workflow 不需要从 `"steamharness"` 导入它们。
 
 ## 入口边界
 
 | 入口 | 说明 |
 | --- | --- |
 | `workflow.*` | 业务 workflow 使用的全局 API，来源是 Core 仓库 `src/runtime-api.ts`。 |
-| `workflow-code` 包入口 | CLI、server、测试和高级宿主使用的工具入口，来源是 Core 仓库 `src/index.ts`。 |
+| `steamharness` 包入口 | CLI、server、测试和高级宿主使用的工具入口，来源是 Core 仓库 `src/index.ts`。 |
 
 ## Runtime API 索引
 

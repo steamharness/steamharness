@@ -107,13 +107,13 @@ export function createAuthRouter(): Router {
     if (!hasConfiguredAdminKey()) {
       res.status(500).json(fail(
         500,
-        localizeServerMessage("WORKFLOW_SERVER_ADMIN_KEY is required.", getRequestT(req)),
+        localizeServerMessage("STEAMHARNESS_SERVER_ADMIN_KEY is required.", getRequestT(req)),
       ));
       return;
     }
 
     const adminKey = typeof req.body?.adminKey === "string" ? req.body.adminKey.trim() : "";
-    if (adminKey === "" || adminKey !== process.env.WORKFLOW_SERVER_ADMIN_KEY?.trim()) {
+    if (adminKey === "" || adminKey !== process.env.STEAMHARNESS_SERVER_ADMIN_KEY?.trim()) {
       void recordAuthAudit(req, {
         principalKind: "admin_key",
         eventType: "auth.admin_key.login",
@@ -140,8 +140,8 @@ export function createAuthRouter(): Router {
       return;
     }
 
-    const bootstrapEmail = process.env.WORKFLOW_BOOTSTRAP_ADMIN_EMAIL?.trim() || "admin@workflow-code.local";
-    const bootstrapPassword = process.env.WORKFLOW_BOOTSTRAP_ADMIN_PASSWORD?.trim() || process.env.WORKFLOW_SERVER_ADMIN_KEY?.trim() || "";
+    const bootstrapEmail = process.env.STEAMHARNESS_BOOTSTRAP_ADMIN_EMAIL?.trim() || "admin@steamharness.local";
+    const bootstrapPassword = process.env.STEAMHARNESS_BOOTSTRAP_ADMIN_PASSWORD?.trim() || process.env.STEAMHARNESS_SERVER_ADMIN_KEY?.trim() || "";
     const session = await authService.signInBootstrapAdmin({
       email: bootstrapEmail,
       password: bootstrapPassword,
@@ -205,8 +205,8 @@ export function createAuthRouter(): Router {
       if (!email || !password) {
         throw new HttpError(400, 400, "email and password are required.");
       }
-      const bootstrapEmail = process.env.WORKFLOW_BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase();
-      const bootstrapPassword = process.env.WORKFLOW_BOOTSTRAP_ADMIN_PASSWORD?.trim();
+      const bootstrapEmail = process.env.STEAMHARNESS_BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase();
+      const bootstrapPassword = process.env.STEAMHARNESS_BOOTSTRAP_ADMIN_PASSWORD?.trim();
       // 登录页只保留账号密码入口后，env 管理员也必须通过统一密码登录路径自举。
       const shouldBootstrapAdmin =
         !!bootstrapEmail &&

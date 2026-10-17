@@ -8,8 +8,8 @@ export async function prepareDevelopmentSources({
   sharedRoot = path.resolve(root, "..", "shared"),
 } = {}) {
   await Promise.all([
-    assertPackage(coreRoot, "workflow-code"),
-    assertPackage(sharedRoot, "@workflow-code/shared-workspace"),
+    assertPackage(coreRoot, "steamharness"),
+    assertPackage(sharedRoot, "@steamharness/shared-workspace"),
   ]);
   if (resolveRepositoryMode({ root: coreRoot, env: {} }) !== "dev") {
     throw new Error(`Local Core source must be on a development branch: ${coreRoot}`);
@@ -28,8 +28,8 @@ export async function prepareDevelopmentSources({
       baseUrl: root,
       paths: {
         ...sharedPaths,
-        "workflow-code": [path.join(coreRoot, "src", "index.ts")],
-        "workflow-code/*": [path.join(coreRoot, "src", "*")],
+        "steamharness": [path.join(coreRoot, "src", "index.ts")],
+        "steamharness/*": [path.join(coreRoot, "src", "*")],
       },
     },
   }, null, 2)}\n`);
@@ -47,7 +47,7 @@ export async function createSharedCompilerPaths(sharedRoot) {
     } catch {
       continue;
     }
-    if (typeof manifest.name !== "string" || !manifest.name.startsWith("@workflow-code/")) continue;
+    if (typeof manifest.name !== "string" || !manifest.name.startsWith("@steamharness/")) continue;
     const packageRoot = path.join(sharedRoot, entry.name);
     const entrypoint = typeof manifest.types === "string" ? manifest.types : manifest.main;
     if (typeof entrypoint !== "string") continue;

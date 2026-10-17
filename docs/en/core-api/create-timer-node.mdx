@@ -98,6 +98,6 @@ Timing records are saved in the final `report.timers`. The shared runtime UI nor
 `workspace/workflow/runtime-timer` is a runnable timing example. It starts a business timer, waits by the number of milliseconds entered, and explicitly calls `endTimer`. Only one business timing record is generated in the final report; automatic `cleared` behavior that does not explicitly end timer is overridden by the test.
 
 ```bash
-workflow-code structure workspace/workflow/runtime-timer
-workflow-code json workspace/workflow/runtime-timer -- --title "Fixture Timer" --milliseconds 2000
+steamharness structure workspace/workflow/runtime-timer
+steamharness json workspace/workflow/runtime-timer -- --title "Fixture Timer" --milliseconds 2000
 ```

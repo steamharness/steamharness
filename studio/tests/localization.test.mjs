@@ -50,7 +50,7 @@ for (const language of ['en', 'zh-cn']) {
   test(`${language} localizes information and traces while preserving project values and execution content`, () => {
     configureLocalization(language === 'en' ? {} : chinese, language);
     const project = { id: 'project-id', name: '\u6211\u7684\u9879\u76ee', projectType: 'workflow', folderPath: '/project', entrypoints: [] };
-    const items = workflowInfoItems(project, { description: '\u539f\u59cb\u63cf\u8ff0', workflowCode: { projectInfo: {
+    const items = workflowInfoItems(project, { description: '\u539f\u59cb\u63cf\u8ff0', steamHarness: { projectInfo: {
       declarations: ['multilingual'], localizedNames: { en: 'My project', 'zh-CN': '\u6211\u7684\u9879\u76ee' }, dataStorage: { mode: 'both' },
     } } });
     assert.equal(items[0].label, language === 'en' ? 'Basic Information' : '\u57fa\u672c\u4fe1\u606f');

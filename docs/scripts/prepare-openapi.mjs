@@ -9,10 +9,10 @@ export async function prepareOpenApiSpecs(options = {}) {
   if (outputDir === root || !outputDir.startsWith(`${root}${path.sep}`)) {
     throw new Error("Docusaurus OpenAPI output must be a child directory of the repository root.");
   }
-  const apiBaseUrl = normalizeApiBaseUrl(options.apiBaseUrl ?? process.env.WORKFLOW_DOCS_API_PUBLIC_BASE_URL);
+  const apiBaseUrl = normalizeApiBaseUrl(options.apiBaseUrl ?? process.env.STEAMHARNESS_DOCS_API_PUBLIC_BASE_URL);
   const specs = [
-    [path.join(root, "openapi", "workflow-code.openapi.yaml"), path.join(outputDir, "workflow-code.zh.yaml")],
-    [path.join(root, "en", "openapi", "workflow-code.openapi.yaml"), path.join(outputDir, "workflow-code.en.yaml")],
+    [path.join(root, "openapi", "steamharness.openapi.yaml"), path.join(outputDir, "steamharness.zh.yaml")],
+    [path.join(root, "en", "openapi", "steamharness.openapi.yaml"), path.join(outputDir, "steamharness.en.yaml")],
   ];
 
   await rm(outputDir, { recursive: true, force: true });

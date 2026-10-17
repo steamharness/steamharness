@@ -3,7 +3,7 @@ import type {
   AgentInput,
   AgentOutputPayload,
   AgentToolSet,
-} from "workflow-code";
+} from "steamharness";
 import { createDeveloperAssistantSystemPrompt, type DeveloperAssistantHost } from "./assistant-prompt";
 import { workflow } from "./workflow-runtime";
 import { loadDeveloperAssistantWorkspaceManifest } from "./workspace-manifest";
@@ -13,10 +13,10 @@ import type {
   OpenAIConversationHostInput,
 } from "./interface";
 
-const ASSISTANT_WORKDIR_ENV = "WORKFLOW_DEVELOPER_ASSISTANT_WORKDIR";
-const ASSISTANT_WORKSPACE_MANIFEST_ENV = "WORKFLOW_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST";
+const ASSISTANT_WORKDIR_ENV = "STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR";
+const ASSISTANT_WORKSPACE_MANIFEST_ENV = "STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST";
 const DEFAULT_DEVELOPER_ASSISTANT_PERMISSION_POLICY: DeveloperAssistantPermissionPolicy = "auto";
-const WORKFLOW_NAME = "developer-assistant";
+const STEAMHARNESS_NAME = "developer-assistant";
 const OUTPUT_ITEM_ID = "developer-assistant-answer";
 const SKILLS_DIRECTORY = path.join(import.meta.dirname, "skills");
 
@@ -32,10 +32,10 @@ const toolApproval = workflow.createToolApprovalGate();
  * at, the persona that workspace implies, and the capabilities Studio offers.
  */
 const assistantWorkflow = workflow.createAgentConversationWorkflow({
-  workflowName: WORKFLOW_NAME,
+  workflowName: STEAMHARNESS_NAME,
   outputItemId: OUTPUT_ITEM_ID,
   session: { subagents: { tools: ["read", "grep", "find", "ls"], maxAgents: 4 }, planFork: "asOf", toolSearch: {},
-    codeMode: workflow.getEnv("WORKFLOW_DEVELOPER_ASSISTANT_CODE_MODE") === "true" ? {} : undefined },
+    codeMode: workflow.getEnv("STEAMHARNESS_DEVELOPER_ASSISTANT_CODE_MODE") === "true" ? {} : undefined },
   async createTools(context): Promise<AgentToolSet> {
     readAssistantHost();
     const approve = async (toolId: string, args: unknown): Promise<void> => {
@@ -344,7 +344,7 @@ function readAssistantWorkdir(): string {
 }
 
 function readAssistantHost(): DeveloperAssistantHost {
-  const host = (workflow.getEnv("WORKFLOW_DEVELOPER_ASSISTANT_HOST") ?? "vscode").trim();
+  const host = (workflow.getEnv("STEAMHARNESS_DEVELOPER_ASSISTANT_HOST") ?? "vscode").trim();
   if (host === "vscode") return host;
   throw new workflow.WorkflowError({ type: "input_validation", message: `Unsupported assistant host: ${host}` });
 }

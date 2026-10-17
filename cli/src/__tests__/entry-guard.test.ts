@@ -22,8 +22,8 @@ async function runEntry(entryPath: string, args: string[] = ["--help"]): Promise
 // the unresolved path left the CLI printing nothing at exit code 0 — a silent
 // no-op that reads as a passing check.
 it("runs when the entry is reached through a symlink", async () => {
-  const directory = await mkdtemp(path.join(os.tmpdir(), "workflow-code-cli-entry-"));
-  const linkedEntry = path.join(directory, "workflow-code.js");
+  const directory = await mkdtemp(path.join(os.tmpdir(), "steamharness-cli-entry-"));
+  const linkedEntry = path.join(directory, "steamharness.js");
   try {
     await symlink(builtEntry, linkedEntry);
     assert.match(await runEntry(linkedEntry), /structure/);

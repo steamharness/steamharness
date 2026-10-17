@@ -9,8 +9,8 @@ const directories: string[] = [];
 afterEach(async () => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); for (const directory of directories.splice(0)) { await rm(directory, { recursive: true, force: true }); } });
 
 async function authDirectory(): Promise<void> {
-  const directory = await mkdtemp(path.join(os.tmpdir(), 'workflow-web-auth-'));
-  directories.push(directory); vi.stubEnv('WORKFLOW_CLI_AUTH_DIR', directory);
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'steamharness-web-auth-'));
+  directories.push(directory); vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', directory);
 }
 
 const envelope = (data: object, headers?: HeadersInit) => new Response(JSON.stringify({ errCode: 0, data }), { headers });

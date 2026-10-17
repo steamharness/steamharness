@@ -5,18 +5,18 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { it } from "vitest";
-import * as workflowCode from "workflow-code";
-import { createLocalWorkflowKVStore, WorkflowError } from "workflow-code";
-import { WORKFLOW_RUNTIME_LOCALE_ENV } from "workflow-code";
+import * as steamHarness from "steamharness";
+import { createLocalWorkflowKVStore, WorkflowError } from "steamharness";
+import { STEAMHARNESS_RUNTIME_LOCALE_ENV } from "steamharness";
 import {
   formatParamResolverFailure,
   assertLocalCliCoreCompatible,
   main,
   parseWorkflowArgs,
   createDesktopRuntimeEventEmitter,
-  WORKFLOW_DESKTOP_RUNTIME_EVENTS_ENV,
-  WORKFLOW_DESKTOP_RUNTIME_EVENT_PREFIX,
-  WORKFLOW_PARAM_ERROR_MARKER,
+  STEAMHARNESS_DESKTOP_RUNTIME_EVENTS_ENV,
+  STEAMHARNESS_DESKTOP_RUNTIME_EVENT_PREFIX,
+  STEAMHARNESS_PARAM_ERROR_MARKER,
 } from "../local";
 import type { CliWorkflowKVStore } from "../related-projects";
 import { prepareCliInvocation } from "../locale";
@@ -173,24 +173,24 @@ it("local commands require an exact project Core version and allow patch changes
   const cliManifest = JSON.parse(
     await readFile(new URL("../../package.json", import.meta.url), "utf8"),
   ) as { devDependencies: Record<string, string> };
-  const cliRequiredCoreVersion = cliManifest.devDependencies["workflow-code"];
+  const cliRequiredCoreVersion = cliManifest.devDependencies["steamharness"];
 
   try {
-    manifest.devDependencies["workflow-code"] = "0.2.99";
+    manifest.devDependencies["steamharness"] = "0.2.99";
     await writeFile(packagePath, JSON.stringify(manifest), "utf8");
     assert.deepEqual(assertLocalCliCoreCompatible(workflowDir, "0.2.0"), {
       cliRequiredCoreVersion,
       projectRequiredCoreVersion: "0.2.99",
     });
 
-    manifest.devDependencies["workflow-code"] = "0.3.0";
+    manifest.devDependencies["steamharness"] = "0.3.0";
     await writeFile(packagePath, JSON.stringify(manifest), "utf8");
     assert.throws(
       () => assertLocalCliCoreCompatible(workflowDir, "0.2.9"),
       /requires exact Core 0\.3\.0 \(0\.3\.x compatibility line\).*provides Core 0\.2\.9/,
     );
 
-    manifest.devDependencies["workflow-code"] = "^0.2.0";
+    manifest.devDependencies["steamharness"] = "^0.2.0";
     await writeFile(packagePath, JSON.stringify(manifest), "utf8");
     assert.throws(() => assertLocalCliCoreCompatible(workflowDir, "0.2.0"), /exact SemVer/);
   } finally {
@@ -204,13 +204,13 @@ it.each(["build-in", "ci-namespace"])("nested built-ins resolve Core from the ag
   await mkdir(directory, { recursive: true });
   await mkdir(path.join(root, "core"));
   const packagePath = path.join(directory, "package.json");
-  const manifest = { devDependencies: { "workflow-code": "link:../../core" } };
-  await writeFile(path.join(root, "core/package.json"), JSON.stringify({ name: "workflow-code", version: "0.2.99" }));
+  const manifest = { devDependencies: { "steamharness": "link:../../core" } };
+  await writeFile(path.join(root, "core/package.json"), JSON.stringify({ name: "steamharness", version: "0.2.99" }));
   await writeFile(packagePath, JSON.stringify(manifest));
   try {
     assert.equal(assertLocalCliCoreCompatible(directory, "0.2.4", { mode: "dev" }).projectRequiredCoreVersion, "0.2.99");
     assert.throws(() => assertLocalCliCoreCompatible(directory, "0.2.4", { mode: "main" }), /exact published version/);
-    manifest.devDependencies["workflow-code"] = "link:../../../core";
+    manifest.devDependencies["steamharness"] = "link:../../../core";
     await writeFile(packagePath, JSON.stringify(manifest));
     assert.throws(() => assertLocalCliCoreCompatible(directory, "0.2.4", { mode: "dev" }), /inside the workspace root/);
   } finally { await rm(root, { recursive: true, force: true }); }
@@ -220,9 +220,9 @@ it("structure rejects obsolete related-project fields before reporting success",
   const workflowDir = await createArgsEchoWorkflow();
   const packagePath = path.join(workflowDir, "package.json");
   const manifest = JSON.parse(await readFile(packagePath, "utf8")) as {
-    workflowCode: { projectInfo: Record<string, unknown> };
+    steamHarness: { projectInfo: Record<string, unknown> };
   };
-  manifest.workflowCode.projectInfo.relatedProjects = [{
+  manifest.steamHarness.projectInfo.relatedProjects = [{
     alias: "stocks",
     projectId: "22222222-2222-4222-8222-222222222222",
     access: { read: "all", write: "none" },
@@ -239,7 +239,7 @@ it("structure rejects obsolete related-project fields before reporting success",
     };
     assert.match(
       report.diagnostics.error?.message ?? "",
-      /workflowCode\.projectInfo\.relatedProjects\[0] contains unsupported fields/,
+      /steamHarness\.projectInfo\.relatedProjects\[0] contains unsupported fields/,
     );
   } finally {
     console.log = originalLog;
@@ -306,7 +306,7 @@ it("global locale parsing removes CLI options but preserves workflow-owned args"
     const parsed = parseWorkflowArgs(prepared.argv.slice(1), { json: true });
 
     assert.equal(prepared.locale, "en");
-    assert.equal(process.env[WORKFLOW_RUNTIME_LOCALE_ENV], "en");
+    assert.equal(process.env[STEAMHARNESS_RUNTIME_LOCALE_ENV], "en");
     assert.deepEqual(parsed.args, ["--locale", "workflow-owned"]);
   });
 });
@@ -331,8 +331,8 @@ it("global locale parsing accepts either command position and rejects unsupporte
 });
 
 it("emits runtime events only for the Desktop variable", () => {
-  const originalDesktopValue = process.env[WORKFLOW_DESKTOP_RUNTIME_EVENTS_ENV];
-  const originalLegacyValue = process.env.WORKFLOW_APP_RUNTIME_EVENTS;
+  const originalDesktopValue = process.env[STEAMHARNESS_DESKTOP_RUNTIME_EVENTS_ENV];
+  const originalLegacyValue = process.env.STEAMHARNESS_APP_RUNTIME_EVENTS;
   const originalWrite = process.stdout.write;
   const chunks: string[] = [];
 
@@ -342,37 +342,37 @@ it("emits runtime events only for the Desktop variable", () => {
   }) as typeof process.stdout.write;
 
   try {
-    delete process.env[WORKFLOW_DESKTOP_RUNTIME_EVENTS_ENV];
-    process.env.WORKFLOW_APP_RUNTIME_EVENTS = "1";
+    delete process.env[STEAMHARNESS_DESKTOP_RUNTIME_EVENTS_ENV];
+    process.env.STEAMHARNESS_APP_RUNTIME_EVENTS = "1";
     assert.equal(createDesktopRuntimeEventEmitter(), undefined);
 
-    process.env[WORKFLOW_DESKTOP_RUNTIME_EVENTS_ENV] = "1";
+    process.env[STEAMHARNESS_DESKTOP_RUNTIME_EVENTS_ENV] = "1";
     const emit = createDesktopRuntimeEventEmitter();
     assert.equal(typeof emit, "function");
     emit?.({ type: "run_started", timestamp: new Date("2026-08-13T00:00:00.000Z") } as never);
     assert.equal(chunks.length, 1);
-    assert.equal(chunks[0]?.startsWith(WORKFLOW_DESKTOP_RUNTIME_EVENT_PREFIX), true);
+    assert.equal(chunks[0]?.startsWith(STEAMHARNESS_DESKTOP_RUNTIME_EVENT_PREFIX), true);
   } finally {
     process.stdout.write = originalWrite;
-    restoreEnv(WORKFLOW_DESKTOP_RUNTIME_EVENTS_ENV, originalDesktopValue);
-    restoreEnv("WORKFLOW_APP_RUNTIME_EVENTS", originalLegacyValue);
+    restoreEnv(STEAMHARNESS_DESKTOP_RUNTIME_EVENTS_ENV, originalDesktopValue);
+    restoreEnv("STEAMHARNESS_APP_RUNTIME_EVENTS", originalLegacyValue);
   }
 });
 
 function withRuntimeLocale(value: string | undefined, run: () => void): void {
-  const previous = process.env[WORKFLOW_RUNTIME_LOCALE_ENV];
+  const previous = process.env[STEAMHARNESS_RUNTIME_LOCALE_ENV];
   try {
     if (value === undefined) {
-      delete process.env[WORKFLOW_RUNTIME_LOCALE_ENV];
+      delete process.env[STEAMHARNESS_RUNTIME_LOCALE_ENV];
     } else {
-      process.env[WORKFLOW_RUNTIME_LOCALE_ENV] = value;
+      process.env[STEAMHARNESS_RUNTIME_LOCALE_ENV] = value;
     }
     run();
   } finally {
     if (previous === undefined) {
-      delete process.env[WORKFLOW_RUNTIME_LOCALE_ENV];
+      delete process.env[STEAMHARNESS_RUNTIME_LOCALE_ENV];
     } else {
-      process.env[WORKFLOW_RUNTIME_LOCALE_ENV] = previous;
+      process.env[STEAMHARNESS_RUNTIME_LOCALE_ENV] = previous;
     }
   }
 }
@@ -390,19 +390,19 @@ it("param resolver failures retain localizable metadata after the CLI marker", (
     type: "input_validation",
     message: "Workflow Server login is not configured.",
     metadata: {
-      workflowCodeI18n: {
+      steamHarnessI18n: {
         namespace: "common",
         key: "workflowServerLoginRequired",
       },
     },
   }));
 
-  assert.equal(output.startsWith(WORKFLOW_PARAM_ERROR_MARKER), true);
-  assert.deepEqual(JSON.parse(output.slice(WORKFLOW_PARAM_ERROR_MARKER.length)), {
+  assert.equal(output.startsWith(STEAMHARNESS_PARAM_ERROR_MARKER), true);
+  assert.deepEqual(JSON.parse(output.slice(STEAMHARNESS_PARAM_ERROR_MARKER.length)), {
     type: "input_validation",
     message: "Workflow Server login is not configured.",
     metadata: {
-      workflowCodeI18n: {
+      steamHarnessI18n: {
         namespace: "common",
         key: "workflowServerLoginRequired",
       },
@@ -410,16 +410,16 @@ it("param resolver failures retain localizable metadata after the CLI marker", (
   });
 });
 
-const hasProjectStorageCore = typeof (workflowCode as unknown as {
+const hasProjectStorageCore = typeof (steamHarness as unknown as {
   createRemoteWorkflowRelatedProjectKVStoreFromEnv?: unknown;
 }).createRemoteWorkflowRelatedProjectKVStoreFromEnv === "function";
 
 it.runIf(hasProjectStorageCore)("CLI forwards the local PersistentValue store directory", async () => {
   const workflowDir = await createPersistentValueCliWorkflow();
-  const persistentValueStoreDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-cli-persistent-value-"));
-  const originalStoreDir = process.env.WORKFLOW_PERSISTENT_VALUE_STORE_DIR;
+  const persistentValueStoreDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-cli-persistent-value-"));
+  const originalStoreDir = process.env.STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR;
   const originalLog = console.log;
-  process.env.WORKFLOW_PERSISTENT_VALUE_STORE_DIR = persistentValueStoreDir;
+  process.env.STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR = persistentValueStoreDir;
   console.log = (() => undefined) as typeof console.log;
 
   try {
@@ -440,9 +440,9 @@ it.runIf(hasProjectStorageCore)("CLI forwards the local PersistentValue store di
   } finally {
     console.log = originalLog;
     if (originalStoreDir === undefined) {
-      delete process.env.WORKFLOW_PERSISTENT_VALUE_STORE_DIR;
+      delete process.env.STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR;
     } else {
-      process.env.WORKFLOW_PERSISTENT_VALUE_STORE_DIR = originalStoreDir;
+      process.env.STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR = originalStoreDir;
     }
     await rm(workflowDir, { recursive: true, force: true });
     await rm(persistentValueStoreDir, { recursive: true, force: true });
@@ -461,8 +461,8 @@ it("built unified CLI help executes from the CLI package", async (context) => {
   // keeps the packaged root CLI executable in the second-round test
   // layer without invoking any workflow or external service.
   assert.equal(result.exitCode, 0);
-  assert.match(result.stdout, /workflow-code \[--locale <zh-CN\|en>] <run\|json\|structure\|resolve-params\|mcp>/);
-  assert.match(result.stdout, /workflow-code \[--locale <zh-CN\|en>] workspace <command>/);
+  assert.match(result.stdout, /steamharness \[--locale <zh-CN\|en>] <run\|json\|structure\|resolve-params\|mcp>/);
+  assert.match(result.stdout, /steamharness \[--locale <zh-CN\|en>] workspace <command>/);
   assert.equal(result.stderr.trim(), "");
 });
 
@@ -475,12 +475,12 @@ it("built unified CLI localizes help and accepts locale before workspace dispatc
 
   const english = await runNode(cliPath, ["--locale", "en", "workspace", "--help"]);
   assert.equal(english.exitCode, 0);
-  assert.match(english.stdout, /Usage: workflow-code/);
+  assert.match(english.stdout, /Usage: steamharness/);
   assert.match(english.stdout, /Global options:/);
 
   const chinese = await runNode(cliPath, ["workspace", "--locale", "zh-CN", "--help"]);
   assert.equal(chinese.exitCode, 0);
-  assert.match(chinese.stdout, /用法：workflow-code/);
+  assert.match(chinese.stdout, /用法：steamharness/);
   assert.match(chinese.stdout, /全局选项：/);
 
   const unsupported = await runNode(cliPath, ["--locale", "fr", "--help"]);
@@ -489,7 +489,7 @@ it("built unified CLI localizes help and accepts locale before workspace dispatc
 });
 
 it("core package manifest publishes built dist entrypoints", async () => {
-  const packageJson = JSON.parse(await readFile(path.resolve("node_modules", "workflow-code", "package.json"), "utf8")) as {
+  const packageJson = JSON.parse(await readFile(path.resolve("node_modules", "steamharness", "package.json"), "utf8")) as {
     private?: boolean;
     files?: string[];
     publishConfig?: { access?: string };
@@ -506,17 +506,17 @@ it("core package manifest publishes built dist entrypoints", async () => {
 });
 
 async function createArgsEchoWorkflow(declareStorage = true): Promise<string> {
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-cli-"));
+  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-cli-"));
 
   await writeFile(
     path.join(workflowDir, "package.json"),
     JSON.stringify({
       id: "11111111-1111-4111-8111-111111111111",
-      name: "@workflow-code/cli-test-workflow",
+      name: "@steamharness/cli-test-workflow",
       type: "module",
-      devDependencies: { "workflow-code": "0.2.0" },
+      devDependencies: { "steamharness": "0.2.0" },
       ...(declareStorage
-        ? { workflowCode: { projectInfo: { dataStorage: { mode: "local" } } } }
+        ? { steamHarness: { projectInfo: { dataStorage: { mode: "local" } } } }
         : {}),
     }),
   );
@@ -604,14 +604,14 @@ async function createArgsEchoWorkflow(declareStorage = true): Promise<string> {
 }
 
 async function createPersistentValueCliWorkflow(): Promise<string> {
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-cli-persistent-value-workflow-"));
+  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-cli-persistent-value-workflow-"));
   await writeFile(
     path.join(workflowDir, "package.json"),
     JSON.stringify({
       id: "22222222-2222-4222-8222-222222222222",
       type: "module",
-      devDependencies: { "workflow-code": "0.2.0" },
-      workflowCode: { projectInfo: { dataStorage: { mode: "local" } } },
+      devDependencies: { "steamharness": "0.2.0" },
+      steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
     }),
   );
   await writeFile(

@@ -85,7 +85,7 @@ export const executor = workflow.defineExecutor({
 
 ## 静态结构规则
 
-`workflow-code structure` 不执行配置代码，因此入口目录必须可以静态读取：
+`steamharness structure` 不执行配置代码，因此入口目录必须可以静态读取：
 
 - `entrypoints` 必须是非空数组字面量。
 - 每一项必须直接调用 `workflow.defineEntrypoint({ ... })`。

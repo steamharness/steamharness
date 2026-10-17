@@ -3,7 +3,7 @@
 // the active language; components that render them must subscribe with
 // useTranslation() so they re-render on language change. Never store a label
 // string in a module-scope constant — resolve via t() inside render instead.
-import { i18n } from "@workflow-code/i18n";
+import { i18n } from "@steamharness/i18n";
 
 const RUN_STATUS_KEYS = {
   success: "runStatus.success",

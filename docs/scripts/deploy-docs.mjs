@@ -12,7 +12,7 @@ const COMMIT_PATTERN = /^[0-9a-f]{40}$/u;
 
 export async function deployDocs(options = {}) {
   const sourceDir = path.resolve(options.sourceDir ?? path.resolve(import.meta.dirname, "..", "dist", "site"));
-  const deployRoot = resolveDeployRoot(options.deployRoot ?? process.env.WORKFLOW_DOCS_DEPLOY_ROOT);
+  const deployRoot = resolveDeployRoot(options.deployRoot ?? process.env.STEAMHARNESS_DOCS_DEPLOY_ROOT);
   const commitSha = String(options.commitSha ?? process.env.CI_COMMIT_SHA ?? "").trim().toLowerCase();
   if (!COMMIT_PATTERN.test(commitSha)) throw new Error("Docs deployment requires an exact 40-character commit SHA.");
   await assertBuildSource(sourceDir, commitSha);
@@ -76,7 +76,7 @@ export async function deployDocs(options = {}) {
 
 function resolveDeployRoot(value) {
   const raw = String(value ?? "").trim();
-  if (!raw || !path.isAbsolute(raw)) throw new Error("WORKFLOW_DOCS_DEPLOY_ROOT must be an absolute path.");
+  if (!raw || !path.isAbsolute(raw)) throw new Error("STEAMHARNESS_DOCS_DEPLOY_ROOT must be an absolute path.");
   const resolved = path.resolve(raw);
   const filesystemRoot = path.parse(resolved).root;
   if (resolved === filesystemRoot || resolved === os.homedir()) {
@@ -107,21 +107,21 @@ async function readReleaseCommit(releaseRoot) {
 }
 
 async function runDeployHook(options, context) {
-  const executable = String(options.hook ?? process.env.WORKFLOW_DOCS_DEPLOY_HOOK ?? "").trim();
+  const executable = String(options.hook ?? process.env.STEAMHARNESS_DOCS_DEPLOY_HOOK ?? "").trim();
   if (!executable) return;
-  if (!path.isAbsolute(executable)) throw new Error("WORKFLOW_DOCS_DEPLOY_HOOK must be an absolute executable path.");
-  const rawArgs = options.hookArgs ?? process.env.WORKFLOW_DOCS_DEPLOY_HOOK_ARGS ?? "[]";
+  if (!path.isAbsolute(executable)) throw new Error("STEAMHARNESS_DOCS_DEPLOY_HOOK must be an absolute executable path.");
+  const rawArgs = options.hookArgs ?? process.env.STEAMHARNESS_DOCS_DEPLOY_HOOK_ARGS ?? "[]";
   const args = typeof rawArgs === "string" ? JSON.parse(rawArgs) : rawArgs;
   if (!Array.isArray(args) || args.some((value) => typeof value !== "string")) {
-    throw new Error("WORKFLOW_DOCS_DEPLOY_HOOK_ARGS must be a JSON string array.");
+    throw new Error("STEAMHARNESS_DOCS_DEPLOY_HOOK_ARGS must be a JSON string array.");
   }
   await (options.execFile ?? execFileAsync)(executable, args, {
     env: {
       ...process.env,
-      WORKFLOW_DOCS_CURRENT_ROOT: context.currentLink,
-      WORKFLOW_DOCS_RELEASE_ROOT: context.releaseRoot,
-      WORKFLOW_DOCS_DEPLOY_COMMIT: context.commitSha,
-      WORKFLOW_DOCS_FRAMEWORK: "docusaurus",
+      STEAMHARNESS_DOCS_CURRENT_ROOT: context.currentLink,
+      STEAMHARNESS_DOCS_RELEASE_ROOT: context.releaseRoot,
+      STEAMHARNESS_DOCS_DEPLOY_COMMIT: context.commitSha,
+      STEAMHARNESS_DOCS_FRAMEWORK: "docusaurus",
     },
   });
 }

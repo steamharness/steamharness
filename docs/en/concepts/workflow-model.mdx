@@ -1,20 +1,20 @@
 ---
 title: "Workflow model"
-description: "How workflow-code models workflows, nodes, providers, executors, and registries."
+description: "How steamharness models workflows, nodes, providers, executors, and registries."
 ---
 
 # Workflow Model
 
-workflow-code supports three project types: `workflow`, `conversation`, and `kanban`. Workflow and Conversation projects are self-contained TypeScript workflows. Their hosts (CLI and local hosts) provide the global `workflow` namespace, so project code must not import runtime APIs from `"workflow-code"`. Each project records exact Core and CLI versions in `devDependencies`: the Core version determines host compatibility, while the CLI is released independently. Kanban is a static project with `index.html` as its entry file and does not use a runtime API or executor. See [Kanban HTML Project](/en/concepts/kanban).
+steamharness supports three project types: `workflow`, `conversation`, and `kanban`. Workflow and Conversation projects are self-contained TypeScript workflows. Their hosts (CLI and local hosts) provide the global `workflow` namespace, so project code must not import runtime APIs from `"steamharness"`. Each project records exact Core and CLI versions in `devDependencies`: the Core version determines host compatibility, while the CLI is released independently. Kanban is a static project with `index.html` as its entry file and does not use a runtime API or executor. See [Kanban HTML Project](/en/concepts/kanban).
 
 ## Project Information and Display Declarations
 
-The root `package.json` is the sole source of truth for project information. Its required `name` is the default name and legacy-client fallback. `workflowCode.projectInfo` also stores localized names, manual display declarations, display platforms, data location, and related projects:
+The root `package.json` is the sole source of truth for project information. Its required `name` is the default name and legacy-client fallback. `steamHarness.projectInfo` also stores localized names, manual display declarations, display platforms, data location, and related projects:
 
 ```json
 {
   "name": "Default Name",
-  "workflowCode": {
+  "steamHarness": {
     "projectInfo": {
       "localizedNames": {
         "zh-CN": "中文名称",
@@ -36,7 +36,7 @@ The root `package.json` is the sole source of truth for project information. Its
 
 `platformSupport` also describes display compatibility only; it does not decide where a version can run. Use `{ "mode": "agnostic" }` for a platform-agnostic project, or `specific` with at least one of `macos`, `windows`, or `web`. Server stores source and data independently of display platforms. Readers and writers preserve unknown future locale, declaration, and platform IDs. A legacy project without `projectInfo` has no declarations, is platform agnostic, and uses only the root `name`.
 
-`relatedProjects` is shared by Workflow, Conversation, and Kanban. It is not private to the assistant or Kanban. Each item contains an alias, target-project UUID, and `grantToRelatedProject` read/write rules; the grant means "allow the target project to access this project." A relationship is confirmed only after both packages point to each other. A one-sided declaration is pending and grants no KV access. See [KV and session](/en/concepts/kv-and-conversation#related-project-kv) for the full format, validation limits, and access semantics. Removed `workflowCode.kanban.dataSources` is not converted and fails validation directly.
+`relatedProjects` is shared by Workflow, Conversation, and Kanban. It is not private to the assistant or Kanban. Each item contains an alias, target-project UUID, and `grantToRelatedProject` read/write rules; the grant means "allow the target project to access this project." A relationship is confirmed only after both packages point to each other. A one-sided declaration is pending and grants no KV access. See [KV and session](/en/concepts/kv-and-conversation#related-project-kv) for the full format, validation limits, and access semantics. Removed `steamHarness.kanban.dataSources` is not converted and fails validation directly.
 
 ## Runtime API
 
@@ -136,7 +136,7 @@ The current protocol of the output payload is `WorkflowOutputPayload.items: Work
 
 `workflow.createDetailsOutputNode` is a convenient node to create independent collapsible output item. It will convert `{ title, content, icon }` to `items: [{ title, content, icon, contentType, collapsed: true }]` and still be collected by local CLI according to `output` standard node. `workflow.createTimerNode` will create a standard common node named `timer` to start business timing. `workflow.endTimer(timer, context, { status, message })` explicitly ends timing and writes to `report.timers`. unfinished running timer will be automatically marked as `cleared` before workflow ends to avoid UI remaining running state. `workflow.runNode` returns the output of the node;`workflow.runStreamNode` returns `{ chunks, output }`, where `chunks` is the raw streaming chunk array and `output` is the final payload generated by `finalize` or `format`. The `format` of the streaming `createOutputNode({ stream, format })` receives the accumulated `{ text, items, chunks }`; string chunk is automatically written to a default Markdown item, and the structured output can be sent using `workflow.createOutputItemChunk(...)` `output_item_start`, `output_item_delta`, `output_item_end`. In addition to merging `content`, `output_item_delta` can also carry `item` patch updates `title`, `icon`, `collapsed`, `contentType`, or `metadata.status` to show the state change of the tool call from running to success/failed. `workflow.runIf` checks the if / else-if / else branch in order, executes the corresponding `run` when hit, and logs the selected branch with the `branch-node` run event. `workflow.runFor` and `workflow.runWhile` record the loop itself as a traceable node, keeping the loop body visible in local host Diagram.
 
-`workflow.createUserInputNode` inserts a manually entered point in workflow that can be permanently restored. The `params` of the node uses the same field definition as the current Workflow entrypoint(Conversation is executor). CLI Web renders these fields in its local run form. When the external agent dynamically generates problems, the title, description, fields and default values can be generated for this request through `resolveRequest(input, context)` without side effects. If the value is not committed during the first execution,runtime issues a `user_input_requested` event,report writes `pendingUserInput`, and the run status becomes `waiting_for_input`; after submitting the answer, the same `runId` will resume execution with `resolvedUserInputs` and issue `user_input_resolved`. Workflow The exact target and the original entry in the run snapshot are used for restoration. The entry cannot be switched. CLI does not read stdin, and will output a waiting report when encountering this node. You need to continue by `workflow-code json --run-id <id> --resolved-user-inputs-json '<json>'` injecting the answer.
+`workflow.createUserInputNode` inserts a manually entered point in workflow that can be permanently restored. The `params` of the node uses the same field definition as the current Workflow entrypoint(Conversation is executor). CLI Web renders these fields in its local run form. When the external agent dynamically generates problems, the title, description, fields and default values can be generated for this request through `resolveRequest(input, context)` without side effects. If the value is not committed during the first execution,runtime issues a `user_input_requested` event,report writes `pendingUserInput`, and the run status becomes `waiting_for_input`; after submitting the answer, the same `runId` will resume execution with `resolvedUserInputs` and issue `user_input_resolved`. Workflow The exact target and the original entry in the run snapshot are used for restoration. The entry cannot be switched. CLI does not read stdin, and will output a waiting report when encountering this node. You need to continue by `steamharness json --run-id <id> --resolved-user-inputs-json '<json>'` injecting the answer.
 
 `workflow.createToolApprovalGate` uses the same set of wait/resume agreement approval tool calls. Workflow first declares the tool in `tools` of the current entrypoint,Conversation uses executor `tools`, and then calls gate in the business code; If the tool is not registered, it will return `input_validation`, and if it is disabled, it will return `tool_permission_denied`. when manual confirmation is required, a `tool-approval` request will be generated and run will be suspended to `waiting_for_input`.
 
@@ -282,9 +282,9 @@ Selecting or requesting an entrypoint creates a run only for that entrypoint; it
 
 When any explicit group exists, the local Run workspace renders entrypoints in collapsible groups. Explicit orders sort ascending with first-seen order as the tie breaker; groups without an order follow in first-seen order, and entries without a group use a localized **Ungrouped** group. The default group is open on first entry, and starting a run or receiving a new active/result entry reopens its group. Only group expansion is persisted by stable `workflowId + resolved target`. Projects without groups retain the existing flat layout. CLI and local schedules continue to use entrypoint IDs.
 
-Projects can use `package.json.workflowCode.schedulePresets` to propose schedules for an entrypoint. Structure validation checks the preset ID, entrypoint, time zone, trigger rule, and JSON parameters, then exposes the presets to the local host. Presets are not enabled automatically. See [Workflow scheduled runs](/en/concepts/workflow-schedules).
+Projects can use `package.json.steamHarness.schedulePresets` to propose schedules for an entrypoint. Structure validation checks the preset ID, entrypoint, time zone, trigger rule, and JSON parameters, then exposes the presets to the local host. Presets are not enabled automatically. See [Workflow scheduled runs](/en/concepts/workflow-schedules).
 
-Conversation executor keeps a single entry, places fields such as `workflow`, `params`, and `createInput` directly on executor, and does not declare or accept entrypoint. `projectType` of Executor only allows `"workflow"` or `"conversation"`. Kanban declares `"kanban"` in `package.json.workflowCode.projectType` and cannot forge executor.
+Conversation executor keeps a single entry, places fields such as `workflow`, `params`, and `createInput` directly on executor, and does not declare or accept entrypoint. `projectType` of Executor only allows `"workflow"` or `"conversation"`. Kanban declares `"kanban"` in `package.json.steamHarness.projectType` and cannot forge executor.
 
 `createInput` receives `workflowName`, `workflowDir`, `args`, `paramValues`, `env`, `abortSignal`, and optional `conversationId`. Workflow also receives the selected `entrypointId` and `entrypointTitle`; the same fields are written to `WorkflowContext.metadata`, reports, and local run records. The local host converts parameters to workflow input through the selected execution configuration. Cancellation propagates `abortSignal` to the workflow context so long-running provider and SDK calls can stop promptly.
 
@@ -331,15 +331,15 @@ The workflow package declares exact Core and CLI dev dependencies, plus any requ
 ```json
 {
   "id": "1f221460-4fc7-48e2-bd23-651dee826692",
-  "name": "@workflow-code/hello-workflow",
+  "name": "@steamharness/hello-workflow",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "devDependencies": {
-    "@workflow-code/cli": "0.2.0",
-    "workflow-code": "0.2.0"
+    "@steamharness/cli": "0.2.0",
+    "steamharness": "0.2.0"
   },
-  "workflowCode": {
+  "steamHarness": {
     "projectType": "workflow",
     "projectInfo": {
       "dataStorage": {
@@ -351,6 +351,6 @@ The workflow package declares exact Core and CLI dev dependencies, plus any requ
 }
 ```
 
-`workflow-code` must be an exact SemVer; `^`, `0.2.x`, `workspace:*`, and other ranges are rejected. Local hosts and CLI evaluate the project's required Core before execution but compare only `major.minor`: any patch or exact prerelease on that line runs directly, while a major or minor change requires a host upgrade. `@workflow-code/cli` is also pinned exactly but versioned independently and does not replace Core runtime compatibility. Core 0.2 projects must also declare `workflowCode.projectInfo.dataStorage.mode` explicitly.
+`steamharness` must be an exact SemVer; `^`, `0.2.x`, `workspace:*`, and other ranges are rejected. Local hosts and CLI evaluate the project's required Core before execution but compare only `major.minor`: any patch or exact prerelease on that line runs directly, while a major or minor change requires a host upgrade. `@steamharness/cli` is also pinned exactly but versioned independently and does not replace Core runtime compatibility. Core 0.2 projects must also declare `steamHarness.projectInfo.dataStorage.mode` explicitly.
 
-The minimum package of Kanban uses `workflowCode.projectType: "kanban"`, and the directory only requires `package.json + index.html`; parameterized items are added with optional `kanban.json`. The Kanban package records the Core and CLI versions equally precisely, so that project management tools maintain a uniform dependency model;Kanban itself does not implement Core runtime.
+The minimum package of Kanban uses `steamHarness.projectType: "kanban"`, and the directory only requires `package.json + index.html`; parameterized items are added with optional `kanban.json`. The Kanban package records the Core and CLI versions equally precisely, so that project management tools maintain a uniform dependency model;Kanban itself does not implement Core runtime.

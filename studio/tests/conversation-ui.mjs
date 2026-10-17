@@ -15,19 +15,19 @@ const parallelDir = path.join(dataDir, 'parallel-conversation');
 await fs.mkdir(parallelDir);
 const fixture = path.join(root, 'tests/fixtures/conversation-features');
 let fixtureDir = fixture;
-if (process.env.WORKFLOW_UI_CLI_ENTRY) {
+if (process.env.STEAMHARNESS_UI_CLI_ENTRY) {
   fixtureDir = path.join(dataDir, 'conversation-features'); await fs.mkdir(fixtureDir);
   for (const filename of ['package.json', 'index.ts']) { await fs.cp(path.join(fixture, filename), path.join(fixtureDir, filename)); }
-  await fs.mkdir(path.join(fixtureDir, 'node_modules/@workflow-code'), { recursive: true });
-  await fs.symlink(await fs.realpath(path.join(fixture, 'node_modules/workflow-code')), path.join(fixtureDir, 'node_modules/workflow-code'), process.platform === 'win32' ? 'junction' : 'dir');
-  await fs.symlink(path.resolve(path.dirname(process.env.WORKFLOW_UI_CLI_ENTRY), '..'), path.join(fixtureDir, 'node_modules/@workflow-code/cli'), process.platform === 'win32' ? 'junction' : 'dir');
+  await fs.mkdir(path.join(fixtureDir, 'node_modules/@steamharness'), { recursive: true });
+  await fs.symlink(await fs.realpath(path.join(fixture, 'node_modules/steamharness')), path.join(fixtureDir, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
+  await fs.symlink(path.resolve(path.dirname(process.env.STEAMHARNESS_UI_CLI_ENTRY), '..'), path.join(fixtureDir, 'node_modules/@steamharness/cli'), process.platform === 'win32' ? 'junction' : 'dir');
 }
 const parallelManifest = JSON.parse(await fs.readFile(path.join(fixtureDir, 'package.json'), 'utf8'));
-const cliVersion = JSON.parse(await fs.readFile(path.join(fixtureDir, 'node_modules/@workflow-code/cli/package.json'), 'utf8')).version;
-if (!process.env.WORKFLOW_UI_CLI_ENTRY) { assert.equal(cliVersion, parallelManifest.devDependencies['@workflow-code/cli']); }
+const cliVersion = JSON.parse(await fs.readFile(path.join(fixtureDir, 'node_modules/@steamharness/cli/package.json'), 'utf8')).version;
+if (!process.env.STEAMHARNESS_UI_CLI_ENTRY) { assert.equal(cliVersion, parallelManifest.devDependencies['@steamharness/cli']); }
 parallelManifest.id = 'b20a7d1d-b6f5-4b0c-8589-265d56fc879a';
 parallelManifest.name = 'Offline parallel conversation';
-parallelManifest.workflowCode.projectInfo = { localizedNames: { 'zh-CN': '\u5bf9\u8bdd\u793a\u4f8b' }, dataStorage: { mode: 'local' } };
+parallelManifest.steamHarness.projectInfo = { localizedNames: { 'zh-CN': '\u5bf9\u8bdd\u793a\u4f8b' }, dataStorage: { mode: 'local' } };
 await fs.writeFile(path.join(parallelDir, 'package.json'), JSON.stringify(parallelManifest));
 await fs.writeFile(path.join(parallelDir, 'index.ts'), await fs.readFile(path.join(fixtureDir, 'index.ts'), 'utf8'));
 await fs.symlink(path.join(fixtureDir, 'node_modules'), path.join(parallelDir, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');

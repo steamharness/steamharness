@@ -1,11 +1,11 @@
 ---
 title: "Automated Testing"
-description: "Offline tests, builds, and workspace workflow contracts for each split Workflow Code repository."
+description: "Offline tests, builds, and workspace workflow contracts for each split SteamHarness repository."
 ---
 
 # Automated Testing
 
-Each Workflow Code repository installs dependencies and runs its own quality gates. Offline, reproducible tests are the first layer of confidence and do not connect to production PostgreSQL, real OSS, LLM, GitLab, Electron, or a remote server. Server's PostgreSQL integration suite uses a disposable isolated PostgreSQL 15 container. Real-environment checks must be explicitly enabled in the affected repository.
+Each SteamHarness repository installs dependencies and runs its own quality gates. Offline, reproducible tests are the first layer of confidence and do not connect to production PostgreSQL, real OSS, LLM, GitLab, Electron, or a remote server. Server's PostgreSQL integration suite uses a disposable isolated PostgreSQL 15 container. Real-environment checks must be explicitly enabled in the affected repository.
 
 Run every command below from the corresponding repository root. Every repository maintains `dev`, `alpha`, and `main`, and day-to-day work happens on `dev`; the branch model does not change the local gates, only the release-channel reference rules (see [Compatibility](releases/compatibility.mdx)).
 
@@ -14,7 +14,7 @@ Run every command below from the corresponding repository root. Every repository
 | Repository | Command | Purpose |
 | --- | --- | --- |
 | Core | `pnpm typecheck && pnpm test && pnpm test:scripts && pnpm coverage && pnpm build && pnpm test:workspace` | Checks the Core API, scripts, npm build, and the sample workspace in the Core repository. |
-| CLI | `pnpm typecheck && pnpm test && pnpm test:scripts && pnpm coverage && pnpm build` | Checks local CLI commands and `workflow-code workspace`. Before a release, also run `pnpm pack --pack-destination .release`. |
+| CLI | `pnpm typecheck && pnpm test && pnpm test:scripts && pnpm coverage && pnpm build` | Checks local CLI commands and `steamharness workspace`. Before a release, also run `pnpm pack --pack-destination .release`. |
 | Studio | `npm run check && npm run build:extension` | Checks the workstation extension and its offline tests. |
 | Server | `pnpm typecheck:all && pnpm test && pnpm coverage && pnpm build:all` | Checks both the Server API and the repository's `web/` management UI. |
 | Shared | `pnpm typecheck && pnpm test && pnpm test:scripts && pnpm coverage && pnpm build` | Checks shared source packages and the source bundle consumed by hosts. |

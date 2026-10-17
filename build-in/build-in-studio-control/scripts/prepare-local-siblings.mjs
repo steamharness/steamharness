@@ -29,8 +29,8 @@ const PINNED_VERSION_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u;
  * `../<name>` 取到源码的只有这几个仓库。
  */
 const SIBLING_PACKAGES = Object.freeze({
-  "workflow-code": "core",
-  "@workflow-code/cli": "cli",
+  "steamharness": "core",
+  "@steamharness/cli": "cli",
 });
 
 /** 一个版本可能挂在哪个 tag 下，按通道从新到旧。 */
@@ -122,7 +122,7 @@ export function resolveReleaseTag(version, options = {}) {
 }
 
 export function resolveSiblingBranch(env = process.env) {
-  const explicit = String(env.WORKFLOW_SIBLING_BRANCH ?? "").trim();
+  const explicit = String(env.STEAMHARNESS_SIBLING_BRANCH ?? "").trim();
   if (explicit !== "") return explicit;
   return String(env.CI_COMMIT_BRANCH ?? env.CI_MERGE_REQUEST_SOURCE_BRANCH_NAME ?? DEFAULT_BRANCH).trim();
 }

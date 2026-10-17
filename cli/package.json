@@ -1,10 +1,10 @@
 {
-  "name": "@workflow-code/cli",
+  "name": "@steamharness/cli",
   "version": "0.2.4",
   "packageManager": "pnpm@10.15.1",
   "type": "module",
   "bin": {
-    "workflow-code": "./dist/index.js"
+    "steamharness": "./dist/index.js"
   },
   "files": [
     ".env.example",
@@ -36,7 +36,7 @@
     "zod": "4.4.3"
   },
   "peerDependencies": {
-    "workflow-code": "0.2.4-20261016007.codex-studio-integration-durable"
+    "steamharness": "0.2.4-20261016007.codex-studio-integration-durable"
   },
   "devDependencies": {
     "@dagrejs/dagre": "1.1.8",
@@ -45,21 +45,21 @@
     "marked": "17.0.1",
     "esbuild": "0.28.2",
     "@types/node": "^25.6.0",
-    "@workflow-code/auth-config": "workspace:*",
-    "@workflow-code/i18n": "workspace:*",
-    "@workflow-code/kanban-project": "workspace:*",
-    "@workflow-code/openai-responses": "workspace:*",
-    "@workflow-code/project-dependencies": "workspace:*",
-    "@workflow-code/project-info": "workspace:*",
-    "@workflow-code/project-upload": "workspace:*",
-    "@workflow-code/runtime-compatibility": "workspace:*",
-    "@workflow-code/workflow-ids": "workspace:*",
-    "@workflow-code/workflow-mcp": "workspace:*",
+    "@steamharness/auth-config": "workspace:*",
+    "@steamharness/i18n": "workspace:*",
+    "@steamharness/kanban-project": "workspace:*",
+    "@steamharness/openai-responses": "workspace:*",
+    "@steamharness/project-dependencies": "workspace:*",
+    "@steamharness/project-info": "workspace:*",
+    "@steamharness/project-upload": "workspace:*",
+    "@steamharness/runtime-compatibility": "workspace:*",
+    "@steamharness/workflow-ids": "workspace:*",
+    "@steamharness/workflow-mcp": "workspace:*",
     "@vitest/coverage-v8": "^4.1.7",
     "semver": "^7.7.4",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7",
-    "workflow-code": "0.2.4-20261016007.codex-studio-integration-durable"
+    "steamharness": "0.2.4-20261016007.codex-studio-integration-durable"
   }
 }

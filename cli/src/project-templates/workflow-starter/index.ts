@@ -1,4 +1,4 @@
-import type { WorkflowRuntimeApi } from 'workflow-code/runtime-api';
+import type { WorkflowRuntimeApi } from 'steamharness/runtime-api';
 
 const workflow = (globalThis as unknown as { workflow: WorkflowRuntimeApi }).workflow;
 const main = workflow.defineWorkflow({

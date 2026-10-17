@@ -27,7 +27,7 @@ export function acquireWorkflowHost(options: { live?: boolean; connectionBanner?
     const applyTheme = () => { document.documentElement.dataset.theme = dark.matches ? 'dark' : 'light'; };
     applyTheme(); dark.addEventListener('change', applyTheme);
   }
-  const storageKey = `workflow-web:${document.querySelector<HTMLMetaElement>('meta[name=workflow-project]')?.content ?? location.pathname}`;
+  const storageKey = `steamharness-web:${document.querySelector<HTMLMetaElement>('meta[name=steamharness-project]')?.content ?? location.pathname}`;
   const emit = (message: Message) => window.dispatchEvent(new MessageEvent('message', { data: message }));
   const trace = new TraceBridge(message => { if (window.parent !== window) { window.parent.postMessage(message, '*'); } });
   let resourceHost = false, editHost = false, nativePasteHost = false;

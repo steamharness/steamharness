@@ -102,15 +102,15 @@ async function createUpstreamErrorWorkflow(
 ): Promise<string> {
   const responseBody = options.responseBody
     ?? "{\"code\":\"API_KEY_REQUIRED\",\"message\":\"API key is required in Authorization header\"}";
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-upstream-error-"));
+  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-upstream-error-"));
 
   await writeFile(
     path.join(workflowDir, "package.json"),
     JSON.stringify({
       id: "22222222-2222-4222-8222-222222222222",
-      name: "@workflow-code/upstream-error-test",
+      name: "@steamharness/upstream-error-test",
       type: "module",
-      workflowCode: { projectInfo: { dataStorage: { mode: "local" } } },
+      steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
     }),
   );
   await writeFile(

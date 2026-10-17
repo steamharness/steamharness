@@ -9,7 +9,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { constants, runInNewContext } from 'node:vm';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const workspace = process.env.STUDIO_WORKFLOW_SOURCE ?? path.resolve(root, '..');
+const workspace = process.env.STUDIO_STEAMHARNESS_SOURCE ?? path.resolve(root, '..');
 const storage = await mkdtemp(path.join(os.tmpdir(), 'studio-analysis-live-'));
 const require = createRequire(path.join(root, 'package.json'));
 const failures = [];
@@ -40,8 +40,8 @@ try {
   const module = { exports: {} };
   runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports,
     require: name => name === 'vscode' ? vscode : name === 'node:http' ? tracedHttp : require(name),
-    process: { ...process, env: { ...process.env, STUDIO_WORKFLOW_SOURCE: workspace, WORKFLOW_CLI_AUTH_DIR: path.join(storage, 'auth'),
-      WORKFLOW_SERVER_URL: '', WORKFLOW_SERVER_ADMIN_KEY: '' } },
+    process: { ...process, env: { ...process.env, STUDIO_STEAMHARNESS_SOURCE: workspace, STEAMHARNESS_CLI_AUTH_DIR: path.join(storage, 'auth'),
+      STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' } },
     AbortController, AbortSignal, URL, Buffer, setTimeout, clearTimeout, queueMicrotask,
   }, { importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER });
   let imports = [reference];

@@ -1,5 +1,5 @@
 import { t } from './localization';
-export const DEFAULT_WORKFLOW_SERVER_URL = 'http://localhost:7126';
+export const DEFAULT_STEAMHARNESS_SERVER_URL = 'http://localhost:7126';
 
 export interface WorkflowUser {
   userId: string;
@@ -75,7 +75,7 @@ export function normalizeWorkflowServerUrl(value: string): string {
  */
 export function isPrivateEnvironmentKey(key: string): boolean {
   return key === 'NODE_OPTIONS' ||
-    /^(?:WORKFLOW_(?:AI|LLM|SERVER|PUBLIC_SERVER|STUDIO_INTERNAL)(?:_|$)|SUB2API_)/u.test(key) ||
+    /^(?:STEAMHARNESS_(?:AI|LLM|SERVER|PUBLIC_SERVER|STUDIO_INTERNAL)(?:_|$)|SUB2API_)/u.test(key) ||
     /(?:^|_)(?:API[_-]?KEY|ACCESS[_-]?KEY(?:_ID)?|SECRET|TOKEN|PASSWORD|PRIVATE[_-]?KEY|DATABASE_URL|REDIS_URL|CREDENTIALS?|AUTH(?:ORIZATION)?|CONFIG)(?:$|_)/iu.test(key) ||
     /^(?:DOCKER_CONFIG|KUBECONFIG|SSH_AUTH_SOCK|GIT_(?:CONFIG|SSH|ASKPASS)|NPM_CONFIG_USERCONFIG|PIP_CONFIG_FILE|CARGO_HOME|AZURE_CONFIG_DIR)$/u.test(key);
 }
@@ -412,11 +412,11 @@ export function workflowAuthEnvironment(
   base: Record<string, string | undefined>, connection: WorkflowConnection | undefined, authDirectory: string,
 ): Record<string, string | undefined> {
   const cleanBase = sanitizeWorkflowEnvironment(base);
-  delete cleanBase.WORKFLOW_LLM_SERVER_URL;
-  delete cleanBase.WORKFLOW_LLM_SERVER_TOKEN;
+  delete cleanBase.STEAMHARNESS_LLM_SERVER_URL;
+  delete cleanBase.STEAMHARNESS_LLM_SERVER_TOKEN;
   return {
-    ...cleanBase, WORKFLOW_CLI_AUTH_DIR: authDirectory,
-    WORKFLOW_SERVER_URL: connection?.serverUrl ?? '', WORKFLOW_SERVER_ADMIN_KEY: connection?.accessToken ?? '', WORKFLOW_SERVER_TOKEN: '',
-    WORKFLOW_AI_SERVER_URL: connection?.aiServerUrl ?? '', WORKFLOW_AI_API_KEY: connection?.aiAccessToken ?? '',
+    ...cleanBase, STEAMHARNESS_CLI_AUTH_DIR: authDirectory,
+    STEAMHARNESS_SERVER_URL: connection?.serverUrl ?? '', STEAMHARNESS_SERVER_ADMIN_KEY: connection?.accessToken ?? '', STEAMHARNESS_SERVER_TOKEN: '',
+    STEAMHARNESS_AI_SERVER_URL: connection?.aiServerUrl ?? '', STEAMHARNESS_AI_API_KEY: connection?.aiAccessToken ?? '',
   };
 }

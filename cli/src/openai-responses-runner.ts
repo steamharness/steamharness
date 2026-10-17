@@ -5,13 +5,13 @@ import {
   runLocalWorkflowWithReport,
   type NodeExecutionHooks,
   type WorkflowExecutionReport,
-} from "workflow-code";
+} from "steamharness";
 import {
   isOpenAIConversationHostInput,
   type OpenAIInternalRunnerFrame,
   type OpenAIInternalRunnerRequest,
   type OpenAIResponseUsage,
-} from "@workflow-code/openai-responses";
+} from "@steamharness/openai-responses";
 import {
   isolateOpenAIRunnerStdout,
   type OpenAIProtocolLineWriter,

@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import type { OpenAIMessageItem } from "@workflow-code/openai-responses";
+import type { OpenAIMessageItem } from "@steamharness/openai-responses";
 import {
   materializeOpenAIMessageImages,
   type OpenAIImageFileStorage,
-} from "@workflow-code/openai-responses/node-images";
+} from "@steamharness/openai-responses/node-images";
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const PNG_DATA_URL = `data:image/png;base64,${PNG.toString("base64")}`;

@@ -5,15 +5,15 @@ description: "Release notes for CLI 0.2.4."
 
 # CLI 0.2.4
 
-2026-09-05 · Tag `@workflow-code/cli/v0.2.4` · npm
+2026-09-05 · Tag `@steamharness/cli/v0.2.4` · npm
 
-<span id="@workflow-code/cli-0-2-4" className="release-version-anchor"></span>
-<span id="@workflow-code/cli.0.2.4" className="release-version-anchor"></span>
+<span id="@steamharness/cli-0-2-4" className="release-version-anchor"></span>
+<span id="@steamharness/cli.0.2.4" className="release-version-anchor"></span>
 
 #### New Features
 
 - **Related project knowledge and entrypoints**: `--related-project` now reads a target's knowledge base and calls its granted entrypoints.
-- **Symlinked invocation fixed**: `workflow-code structure .` no longer prints nothing and exits 0 as a false pass under pnpm-style installs.
+- **Symlinked invocation fixed**: `steamharness structure .` no longer prints nothing and exits 0 as a false pass under pnpm-style installs.
 - **Status shows the real server**: `workspace status` gains an `effective` field naming the server a command will actually use.
 
 #### Breaking Changes
@@ -23,7 +23,7 @@ description: "Release notes for CLI 0.2.4."
 - A server-located related project target hands over KV only; knowledge and entrypoint calls fail with a clear error.
   Migration: move the target to a `local` location, or put the needed capability in a locally runnable entrypoint.
 - A local related project opens its knowledge base only with a persistent-value directory, shared with the child run.
-  Migration: pass `--persistent-value-store-dir` or set `WORKFLOW_PERSISTENT_VALUE_STORE_DIR`.
+  Migration: pass `--persistent-value-store-dir` or set `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR`.
 
 #### Added
 

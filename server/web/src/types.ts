@@ -1,7 +1,7 @@
 
-import type { WorkflowProjectType as SharedWorkflowProjectType } from "@workflow-code/project-types";
-import type { WorkflowProjectInfo, WorkflowRelatedProject, WorkflowRelatedProjectKVGrant } from "@workflow-code/project-info";
-import type { WorkflowProjectAccessRequest, WorkflowProjectCapabilityGrant, WorkflowProjectDependencyLock, WorkflowProjectDependencyStatusResult } from "@workflow-code/project-dependencies";
+import type { WorkflowProjectType as SharedWorkflowProjectType } from "@steamharness/project-types";
+import type { WorkflowProjectInfo, WorkflowRelatedProject, WorkflowRelatedProjectKVGrant } from "@steamharness/project-info";
+import type { WorkflowProjectAccessRequest, WorkflowProjectCapabilityGrant, WorkflowProjectDependencyLock, WorkflowProjectDependencyStatusResult } from "@steamharness/project-dependencies";
 
 export type {
   WorkflowProjectAccessRequest,

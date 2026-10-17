@@ -20,7 +20,7 @@ import { AttachmentStrip, isImageFileReference, isVideoFileReference } from "../
 import { SecondaryButton } from "../ui/buttons";
 import { resolveRwiClassName, rwiClass } from "../styles";
 import { useModalFocus } from "../hooks/useOverlayFocus";
-import { useTranslation } from "@workflow-code/i18n/react";
+import { useTranslation } from "@steamharness/i18n/react";
 
 export function ParamsForm({
   className,

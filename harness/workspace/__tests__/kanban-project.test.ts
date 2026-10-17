@@ -5,7 +5,7 @@ import {
   createInjectedKanbanParams,
   inspectLocalWorkflowStructure,
   runLocalWorkflowWithReport,
-} from "workflow-code";
+} from "steamharness";
 import { afterEach, describe, expect, it } from "vitest";
 
 const tempDirectories: string[] = [];
@@ -16,7 +16,7 @@ afterEach(async () => {
   )));
 });
 
-describe("workspace workflow-code Kanban contract", () => {
+describe("workspace steamharness Kanban contract", () => {
   it("inspects package metadata, the HTML entry, and manifest params without an executor", async () => {
     const projectDir = await createKanbanProject();
 
@@ -79,14 +79,14 @@ describe("workspace workflow-code Kanban contract", () => {
 });
 
 async function createKanbanProject(): Promise<string> {
-  const projectDir = await mkdtemp(path.join(os.tmpdir(), "workflow-code-workspace-kanban-"));
+  const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-workspace-kanban-"));
   tempDirectories.push(projectDir);
   await Promise.all([
     writeFile(path.join(projectDir, "package.json"), JSON.stringify({
       id: "019fa4f0-5bc9-7d04-b552-112d2f4b66ea",
       name: "Workspace Kanban",
       version: "0.1.0",
-      workflowCode: { projectType: "kanban" },
+      steamHarness: { projectType: "kanban" },
     }), "utf8"),
     writeFile(path.join(projectDir, "index.html"), "<!doctype html><title>Kanban</title>", "utf8"),
     writeFile(path.join(projectDir, "kanban.json"), JSON.stringify({

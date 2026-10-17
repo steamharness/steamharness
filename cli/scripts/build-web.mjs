@@ -12,7 +12,7 @@ await build({ absWorkingDir: root, entryPoints: ['src/web/ui/kanban-main.ts'], o
 await build({ absWorkingDir: root, entryPoints: ['src/web/ui/resource-preview.ts'], outfile: path.join(output, 'resource-preview.js'), bundle: true, platform: 'browser', target: 'es2022', logLevel: 'info' });
 await build({ absWorkingDir: root, entryPoints: ['src/web/kanban-data.ts'], outfile: path.join(output, 'kanban-data.mjs'), bundle: true, format: 'esm', platform: 'node', target: 'es2022', logLevel: 'info' });
 await build({ absWorkingDir: root, entryPoints: ['src/web/local-analysis.ts'], outfile: path.join(output, 'local-analysis.mjs'), bundle: true, format: 'esm', platform: 'node', target: 'es2022', logLevel: 'info' });
-await build({ absWorkingDir: root, entryPoints: ['src/web/related-projects.ts'], outfile: path.join(output, 'related-projects.mjs'), bundle: true, format: 'esm', platform: 'node', target: 'es2022', external: ['workflow-code'], logLevel: 'info' });
+await build({ absWorkingDir: root, entryPoints: ['src/web/related-projects.ts'], outfile: path.join(output, 'related-projects.mjs'), bundle: true, format: 'esm', platform: 'node', target: 'es2022', external: ['steamharness'], logLevel: 'info' });
 const require = createRequire(import.meta.url);
 const codicons = path.dirname(require.resolve('@vscode/codicons/package.json'));
 await cp(path.join(codicons, 'dist'), path.join(output, 'codicons'), { recursive: true });

@@ -100,14 +100,14 @@ export async function readLocalStudioAnalysis(options: { storageDir: string; pro
       project.folderPath = directory;
       const manifest = await readJson(path.join(directory, 'package.json'));
       if (!sameProjectId(manifest?.id, reference.id)) { throw new Error('Project identity changed.'); }
-      if (manifest.workflowCode?.projectInfo?.dataStorage?.mode === 'server') { serverExcluded++; continue; }
-      const names = manifest.workflowCode?.projectInfo?.localizedNames;
+      if (manifest.steamHarness?.projectInfo?.dataStorage?.mode === 'server') { serverExcluded++; continue; }
+      const names = manifest.steamHarness?.projectInfo?.localizedNames;
       const language = options.locale?.toLowerCase().startsWith('zh') ? 'zh-cn' : 'en';
       const name = record(names) ? Object.entries(names).find(([key]) => key.toLowerCase() === language)?.[1] : undefined;
       project.name = typeof name === 'string' && name.trim() ? name : typeof manifest.name === 'string' && manifest.name.trim() ? manifest.name : reference.name;
       const root = webProjectDataDirectory(options.storageDir, directory);
       const metadata = await readJson(path.join(root, 'project.json'));
-      const type = manifest.workflowCode?.kanban ? 'kanban' : projectType(reference.projectType) ?? projectType(manifest.workflowCode?.projectType)
+      const type = manifest.steamHarness?.kanban ? 'kanban' : projectType(reference.projectType) ?? projectType(manifest.steamHarness?.projectType)
         ?? (metadata?.version === 1 && sameProjectId(metadata.projectId, reference.id) ? projectType(metadata.projectType) : undefined);
       const workspace = type === 'conversation' || type === 'kanban' ? undefined : await readJson(path.join(root, 'runs.json'));
       const conversations = type !== 'kanban' && !workspace ? await readJson(path.join(root, 'conversations.json')) : undefined;
@@ -161,11 +161,11 @@ export async function readLocalStudioAnalysis(options: { storageDir: string; pro
 
 export async function requestStudioAnalysis(env: NodeJS.ProcessEnv = process.env, signal?: AbortSignal): Promise<unknown> {
   const unavailable = () => Object.assign(new Error('Local Studio analysis is unavailable in this host.'), { code: 'KANBAN_BRIDGE_UNAVAILABLE' });
-  if (!env.WORKFLOW_STUDIO_CONTROL_BRIDGE_URL || !env.WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN) { throw unavailable(); }
+  if (!env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL || !env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN) { throw unavailable(); }
   let url: URL;
-  try { url = new URL(env.WORKFLOW_STUDIO_CONTROL_BRIDGE_URL); } catch { throw unavailable(); }
+  try { url = new URL(env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL); } catch { throw unavailable(); }
   if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || url.pathname !== '/studio-control' || url.username || url.password || url.search || url.hash) { throw unavailable(); }
-  const response = await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${env.WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN}`, 'Content-Type': 'application/json' },
+  const response = await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ operation: 'studio.analysis.get', input: {}, permissionPolicy: 'read-only' }),
     signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15_000)]) : AbortSignal.timeout(15_000), redirect: 'error' });
   const result = await response.json();

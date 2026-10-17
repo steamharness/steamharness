@@ -1,11 +1,11 @@
 import { TZDate } from "@date-fns/tz";
 import { CronExpressionParser } from "cron-parser";
 
-export const WORKFLOW_SCHEDULE_PRESET_ID_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/;
-export const WORKFLOW_SCHEDULE_NAME_MAX_LENGTH = 100;
-export const WORKFLOW_SCHEDULE_MAX_PRESETS = 20;
-export const WORKFLOW_SCHEDULE_MAX_WINDOWS = 12;
-export const WORKFLOW_SCHEDULE_MAX_INTERVAL_MINUTES = 1_440;
+export const STEAMHARNESS_SCHEDULE_PRESET_ID_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/;
+export const STEAMHARNESS_SCHEDULE_NAME_MAX_LENGTH = 100;
+export const STEAMHARNESS_SCHEDULE_MAX_PRESETS = 20;
+export const STEAMHARNESS_SCHEDULE_MAX_WINDOWS = 12;
+export const STEAMHARNESS_SCHEDULE_MAX_INTERVAL_MINUTES = 1_440;
 
 export interface WorkflowScheduleI18nDescriptor {
   namespace: "common";
@@ -14,7 +14,7 @@ export interface WorkflowScheduleI18nDescriptor {
 }
 
 export interface WorkflowScheduleLocalizedError extends Error {
-  workflowCodeI18n: WorkflowScheduleI18nDescriptor;
+  steamHarnessI18n: WorkflowScheduleI18nDescriptor;
 }
 
 export interface WorkflowScheduleWindow {
@@ -124,7 +124,7 @@ export function createWorkflowScheduleLocalizedError(
 ): WorkflowScheduleLocalizedError {
   return Object.assign(new Error(message), {
     name: "WorkflowScheduleLocalizedError",
-    workflowCodeI18n: {
+    steamHarnessI18n: {
       namespace: "common" as const,
       key: `schedule.${key}`,
       ...(values === undefined ? {} : { values }),
@@ -161,20 +161,20 @@ export function parseWorkflowSchedulePresets(
   if (projectType !== "workflow") {
     throw scheduleError(
       "onlyWorkflowPresets",
-      "Only Workflow projects can declare workflowCode.schedulePresets.",
+      "Only Workflow projects can declare steamHarness.schedulePresets.",
     );
   }
-  if (!Array.isArray(value) || value.length > WORKFLOW_SCHEDULE_MAX_PRESETS) {
+  if (!Array.isArray(value) || value.length > STEAMHARNESS_SCHEDULE_MAX_PRESETS) {
     throw scheduleError(
       "presetsArrayMax",
-      `workflowCode.schedulePresets must be an array with at most ${WORKFLOW_SCHEDULE_MAX_PRESETS} items.`,
-      { max: WORKFLOW_SCHEDULE_MAX_PRESETS },
+      `steamHarness.schedulePresets must be an array with at most ${STEAMHARNESS_SCHEDULE_MAX_PRESETS} items.`,
+      { max: STEAMHARNESS_SCHEDULE_MAX_PRESETS },
     );
   }
 
   const ids = new Set<string>();
   return value.map((item, index) => {
-    const field = `workflowCode.schedulePresets[${index}]`;
+    const field = `steamHarness.schedulePresets[${index}]`;
     const record = readRecord(item, field);
     assertOnlyFields(record, field, [
       "id",
@@ -186,19 +186,19 @@ export function parseWorkflowSchedulePresets(
       "paramValues",
     ]);
     const id = readString(record.id, `${field}.id`);
-    if (!WORKFLOW_SCHEDULE_PRESET_ID_PATTERN.test(id)) {
+    if (!STEAMHARNESS_SCHEDULE_PRESET_ID_PATTERN.test(id)) {
       throw scheduleError("invalidPresetId", `${field}.id is invalid.`, { field: `${field}.id` });
     }
     if (ids.has(id)) {
       throw scheduleError(
         "duplicatePresetId",
-        `workflowCode.schedulePresets contains duplicate id "${id}".`,
+        `steamHarness.schedulePresets contains duplicate id "${id}".`,
         { id },
       );
     }
     ids.add(id);
 
-    const title = readBoundedString(record.title, `${field}.title`, WORKFLOW_SCHEDULE_NAME_MAX_LENGTH);
+    const title = readBoundedString(record.title, `${field}.title`, STEAMHARNESS_SCHEDULE_NAME_MAX_LENGTH);
     const description = readOptionalBoundedString(record.description, `${field}.description`, 500);
     const entrypointId = readString(record.entrypointId, `${field}.entrypointId`);
     const timezone = validateWorkflowScheduleTimezone(readString(record.timezone, `${field}.timezone`));
@@ -262,12 +262,12 @@ export function parseWorkflowScheduleTrigger(
   if (
     !Array.isArray(record.windows) ||
     record.windows.length === 0 ||
-    record.windows.length > WORKFLOW_SCHEDULE_MAX_WINDOWS
+    record.windows.length > STEAMHARNESS_SCHEDULE_MAX_WINDOWS
   ) {
     throw scheduleError(
       "windowsCount",
-      `${field}.windows must contain 1 to ${WORKFLOW_SCHEDULE_MAX_WINDOWS} items.`,
-      { field: `${field}.windows`, max: WORKFLOW_SCHEDULE_MAX_WINDOWS },
+      `${field}.windows must contain 1 to ${STEAMHARNESS_SCHEDULE_MAX_WINDOWS} items.`,
+      { field: `${field}.windows`, max: STEAMHARNESS_SCHEDULE_MAX_WINDOWS },
     );
   }
   const windows = record.windows.map((window, index) => {
@@ -299,12 +299,12 @@ export function parseWorkflowScheduleTrigger(
   if (
     !Number.isInteger(intervalMinutes) ||
     Number(intervalMinutes) < 1 ||
-    Number(intervalMinutes) > WORKFLOW_SCHEDULE_MAX_INTERVAL_MINUTES
+    Number(intervalMinutes) > STEAMHARNESS_SCHEDULE_MAX_INTERVAL_MINUTES
   ) {
     throw scheduleError(
       "intervalRange",
-      `${field}.intervalMinutes must be an integer from 1 to ${WORKFLOW_SCHEDULE_MAX_INTERVAL_MINUTES}.`,
-      { field: `${field}.intervalMinutes`, max: WORKFLOW_SCHEDULE_MAX_INTERVAL_MINUTES },
+      `${field}.intervalMinutes must be an integer from 1 to ${STEAMHARNESS_SCHEDULE_MAX_INTERVAL_MINUTES}.`,
+      { field: `${field}.intervalMinutes`, max: STEAMHARNESS_SCHEDULE_MAX_INTERVAL_MINUTES },
     );
   }
   return { kind, weekdays, windows, intervalMinutes: Number(intervalMinutes) };
@@ -321,13 +321,13 @@ export function parseWorkflowScheduleInput(value: unknown): WorkflowScheduleInpu
     "trigger",
     "paramValues",
   ]);
-  const name = readBoundedString(record.name, "schedule.name", WORKFLOW_SCHEDULE_NAME_MAX_LENGTH);
+  const name = readBoundedString(record.name, "schedule.name", STEAMHARNESS_SCHEDULE_NAME_MAX_LENGTH);
   if (typeof record.enabled !== "boolean") {
     throw scheduleError("fieldBoolean", "schedule.enabled must be a boolean.", { field: "schedule.enabled" });
   }
   const resolvedTarget = readString(record.resolvedTarget, "schedule.resolvedTarget");
   const entrypointId = readString(record.entrypointId, "schedule.entrypointId");
-  if (!WORKFLOW_SCHEDULE_PRESET_ID_PATTERN.test(entrypointId)) {
+  if (!STEAMHARNESS_SCHEDULE_PRESET_ID_PATTERN.test(entrypointId)) {
     throw scheduleError("entrypointInvalid", "schedule.entrypointId is invalid.");
   }
   const timezone = validateWorkflowScheduleTimezone(readString(record.timezone, "schedule.timezone"));
@@ -808,7 +808,7 @@ const DYNAMIC_FIRE_REASON_RULES: ReadonlyArray<{
   },
   {
     key: "dependenciesMissing",
-    pattern: /^Workflow project dependencies are not installed\.\nProject: (?<projectPath>[^\n]+)\nMissing: (?<missing>[^\n]+)\nInstall dependencies manually in this project directory before running it\. Workflow Code will not install or modify dependencies\.$/,
+    pattern: /^Workflow project dependencies are not installed\.\nProject: (?<projectPath>[^\n]+)\nMissing: (?<missing>[^\n]+)\nInstall dependencies manually in this project directory before running it\. SteamHarness will not install or modify dependencies\.$/,
   },
 ];
 

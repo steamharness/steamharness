@@ -43,15 +43,15 @@ describe("packaged workflow generator", () => {
       expect(outputTypes).toContain('placement?: "inline" | "composer-right";');
       expect(outputTypes).toContain('export interface WorkflowRingContent');
 
-      expect(generated.workflowCode.projectInfo).toEqual({
+      expect(generated.steamHarness.projectInfo).toEqual({
         dataStorage: { mode: "both" },
         relatedProjects: [],
       });
-      // Desktop 发布校验要求 workflowCode.release 存在且与 projectInfo 的 alias 集合一致。
-      expect(generated.workflowCode.release).toEqual({
+      // Desktop 发布校验要求 steamHarness.release 存在且与 projectInfo 的 alias 集合一致。
+      expect(generated.steamHarness.release).toEqual({
         dependencies: {},
       });
-      expect(generated.workflowCode.projectCard).toEqual({
+      expect(generated.steamHarness.projectCard).toEqual({
         icon: "workflow",
         iconBackgroundColor: "#2563eb",
       });
@@ -59,8 +59,8 @@ describe("packaged workflow generator", () => {
       // 此时版本由生成器从同级 package.json 解析，所以这里读同一份来源而不是清单
       // 里的字面值；不写死则避免每次 bump 都要改测试。
       expect(generated.devDependencies).toEqual({
-        "@workflow-code/cli": await siblingVersion(manifest, "@workflow-code/cli"),
-        "workflow-code": await siblingVersion(manifest, "workflow-code"),
+        "@steamharness/cli": await siblingVersion(manifest, "@steamharness/cli"),
+        "steamharness": await siblingVersion(manifest, "steamharness"),
       });
     } finally {
       await rm(temporaryRoot, { recursive: true, force: true });

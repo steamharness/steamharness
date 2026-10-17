@@ -5,14 +5,14 @@ description: "Release notes for Core 0.2.0."
 
 # Core 0.2.0
 
-2026-08-26 · Tag `workflow-code/v0.2.0` · npm
+2026-08-26 · Tag `steamharness/v0.2.0` · npm
 
-<span id="workflow-code-0-2-0" className="release-version-anchor"></span>
-<span id="workflow-code.0.2.0" className="release-version-anchor"></span>
+<span id="steamharness-0-2-0" className="release-version-anchor"></span>
+<span id="steamharness.0.2.0" className="release-version-anchor"></span>
 
 #### Breaking Changes
 
-- Projects must declare `workflowCode.projectInfo.dataStorage.mode`, which constrains where KV, PersistentValue, and knowledge may live.
+- Projects must declare `steamHarness.projectInfo.dataStorage.mode`, which constrains where KV, PersistentValue, and knowledge may live.
   Migration: add `dataStorage.mode`; the `server` location requires sign-in and a same-UUID project binding.
 - Removed `context.kv` and `context.persistentValue` in favor of `context.storage.<location>.*`.
   Migration: rewrite local access as `context.storage.local.*` and server access as `context.storage.server.*`; the old properties only throw a migration error at runtime.
@@ -21,5 +21,5 @@ description: "Release notes for Core 0.2.0."
 
 #### Changed
 
-- Changed projects to require an exact SemVer in `devDependencies.workflow-code`, with hosts comparing only the `major.minor` line.
+- Changed projects to require an exact SemVer in `devDependencies.steamharness`, with hosts comparing only the `major.minor` line.
 - Changed any patch or dated Alpha on that line to run directly, while a major or minor change requires a host upgrade before user modules load.

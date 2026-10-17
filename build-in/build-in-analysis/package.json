@@ -12,15 +12,15 @@
     "test:ui": "node tests/dashboard-ui.mjs"
   },
   "devDependencies": {
-    "@workflow-code/cli": "link:../../cli",
-    "workflow-code": "link:../../core",
+    "@steamharness/cli": "link:../../cli",
+    "steamharness": "link:../../core",
     "chart.js": "4.5.1",
     "esbuild": "0.28.2",
     "lucide": "0.468.0",
     "playwright": "1.61.1",
     "vitest": "4.1.10"
   },
-  "workflowCode": {
+  "steamHarness": {
     "projectType": "kanban",
     "kanban": { "artifactDir": ".", "entry": "index.html" },
     "projectInfo": {

@@ -39,7 +39,7 @@ import {
 } from "./nodes/collect";
 import { createOutputPayloadFromDocument } from "./nodes/output";
 
-const WORKFLOW_NAME = "deltaforce-bilibili-collect";
+const STEAMHARNESS_NAME = "deltaforce-bilibili-collect";
 const DEFAULT_VIDEO_URL = "https://www.bilibili.com/video/BV1uv411q7Mv";
 const DEFAULT_QUESTION = "请详细描述这个视频里发生了什么";
 const DEFAULT_MODEL = "MiniMax-M3";
@@ -188,7 +188,7 @@ const outputNode = workflow.createOutputNode<DeltaforceBilibiliCollectParsedInpu
 });
 
 export const deltaforceBilibiliCollectWorkflow = workflow.defineWorkflow<DeltaforceBilibiliCollectInput, DeltaforceBilibiliCollectOutputPayload>({
-  name: WORKFLOW_NAME,
+  name: STEAMHARNESS_NAME,
   async run(input, context) {
     const parsed = await workflow.runNode(inputNode, input, context);
     const output = await workflow.runStreamNode(outputNode, parsed, context);

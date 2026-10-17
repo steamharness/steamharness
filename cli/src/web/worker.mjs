@@ -11,7 +11,7 @@ let agentHost;
 
 
 const write = process.stdout.write.bind(process.stdout);
-const send = (kind, value) => write(`__WORKFLOW_WEB__${JSON.stringify({ kind, value })}\n`);
+const send = (kind, value) => write(`__STEAMHARNESS_WEB__${JSON.stringify({ kind, value })}\n`);
 console.log = console.error;
 const controller = new AbortController();
 process.on('SIGTERM', () => { agentHost?.close(); controller.abort(new Error('Stopped.')); });
@@ -53,21 +53,21 @@ try {
   const runtimeProjectDir = path.resolve(request.runtimeProjectDir ?? projectDir);
   let coreUrl;
   // An assistant's executor is separate from the project that owns its runtime.
-  try { coreUrl = resolve('workflow-code', pathToFileURL(path.join(runtimeProjectDir, 'package.json')).href); }
-  catch { throw new Error('Install workflow-code in the project before starting workflow-code web.'); }
+  try { coreUrl = resolve('steamharness', pathToFileURL(path.join(runtimeProjectDir, 'package.json')).href); }
+  catch { throw new Error('Install steamharness in the project before starting steamharness web.'); }
   const corePath = fileURLToPath(coreUrl);
   let manifestDir = path.dirname(corePath);
   let coreManifest;
   for (let depth = 0; depth < 12; depth++) {
     try {
       const manifest = JSON.parse(readFileSync(path.join(manifestDir, 'package.json'), 'utf8'));
-      if (manifest.name === 'workflow-code') { coreManifest = manifest; break; }
+      if (manifest.name === 'steamharness') { coreManifest = manifest; break; }
     } catch {}
     const parent = path.dirname(manifestDir);
     if (parent === manifestDir) break;
     manifestDir = parent;
   }
-  if (!coreManifest) { throw new Error('Cannot identify the project workflow-code version.'); }
+  if (!coreManifest) { throw new Error('Cannot identify the project steamharness version.'); }
   ts = (await import(resolve('typescript', coreUrl))).default;
   const tsconfig = path.join(projectDir, 'tsconfig.json');
   register({ tsconfig: await stat(tsconfig).then(() => tsconfig, () => false) });
@@ -77,7 +77,7 @@ try {
   listLocalWorkflowKVEntries, deleteLocalWorkflowKVEntry, getKnowledgeDocument, listKnowledgeDocuments,
 } = await import(coreUrl);
   const core = await import(coreUrl);
-  const language = /^zh/i.test(process.env[core.WORKFLOW_RUNTIME_LOCALE_ENV] ?? process.env.WORKFLOW_CODE_LOCALE ?? 'en') ? 'zh-CN' : 'en';
+  const language = /^zh/i.test(process.env[core.STEAMHARNESS_RUNTIME_LOCALE_ENV] ?? process.env.STEAMHARNESS_LOCALE ?? 'en') ? 'zh-CN' : 'en';
   const { readWorkflowProjectInfo, resolveWorkflowProjectName, runKanbanDataCall } = await import(new URL(import.meta.url.includes('/src/web/') ? './kanban-data.ts' : './kanban-data.mjs', import.meta.url));
   if (request.method === 'inspect') {
     const projects = [];
@@ -122,9 +122,9 @@ try {
       const manifestPath = path.join(assistantScopeDirectory, 'workspace.json');
       await writeFile(manifestPath, JSON.stringify({ schemaVersion: 2, primaryTarget: { kind: 'folder', folderId: primary.uri }, warnings: [],
         roots: assistant.roots.map(root => ({ target: { kind: 'folder', folderId: root.uri }, name: root.name, rootPath: root.folderPath, role: root === primary ? 'primary' : 'linked', depth: root === primary ? 0 : 1 })) }));
-      process.env.WORKFLOW_DEVELOPER_ASSISTANT_HOST = 'vscode';
-      process.env.WORKFLOW_DEVELOPER_ASSISTANT_WORKDIR = assistant.workdir;
-      process.env.WORKFLOW_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST = manifestPath;
+      process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_HOST = 'vscode';
+      process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR = assistant.workdir;
+      process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST = manifestPath;
     }
     const storage = { host: 'local', local: { kvStoreDir: path.join(dataDir, 'kv'), persistentValueStoreDir: path.join(dataDir, 'values'), agentStoreDir: path.join(dataDir, 'agents') } };
     if (request.method === 'run' || request.method === 'resolve') {
@@ -168,7 +168,7 @@ try {
       let agentControl;
       let runFinished = false;
       if (request.project.conversation?.durable?.enabled) {
-        const agent = await import(resolve('workflow-code/agent', pathToFileURL(path.join(runtimeProjectDir, 'package.json')).href));
+        const agent = await import(resolve('steamharness/agent', pathToFileURL(path.join(runtimeProjectDir, 'package.json')).href));
         agentHost = agent.createAgentSessionHost(request.conversationId);
         agentControl = async ({ command, scopeId, attachments }) => {
           if (typeof scopeId !== 'string' || !command || typeof command.requestId !== 'string') throw new Error('Invalid agent command.');
@@ -187,7 +187,7 @@ try {
             try { return await agent.controlAgentSession(request.conversationId, prepared); }
             catch (error) {
               if (error.code !== 'AGENT_NOT_READY') throw error;
-              if (controller.signal.aborted) throw Object.assign(new Error('The agent owner disconnected.'), { code: 'WORKFLOW_WORKER_INTERRUPTED' });
+              if (controller.signal.aborted) throw Object.assign(new Error('The agent owner disconnected.'), { code: 'STEAMHARNESS_WORKER_INTERRUPTED' });
               if (runFinished) throw new Error('The workflow ended without an active agent session.');
               await new Promise(resolve => setTimeout(resolve, 25));
             }
@@ -271,7 +271,7 @@ try {
         send('result', await listLocalWorkflowKVEntries({ rootDir, storageKind: 'kv', projectId: request.project.id, scope: target.scope === 'conversation' ? 'conversation' : 'project', conversationId: target.scope === 'conversation' ? target.conversationId ?? request.conversationId : undefined, pageSize: 100 }));
       }
     } else if (request.method === 'cancel-conversation' || request.method === 'delete-conversation') {
-      const { cancelAgentConversation } = await import(resolve('workflow-code/agent', coreUrl));
+      const { cancelAgentConversation } = await import(resolve('steamharness/agent', coreUrl));
       await cancelAgentConversation({ agentStoreDir: path.join(dataDir, 'agents'), conversationId: request.conversationId });
       if (request.method === 'cancel-conversation') { send('result', { cancelled: true }); }
       else {
@@ -296,7 +296,7 @@ try {
     } else { throw new Error('Unknown runtime method.'); }
   } else { throw new Error('Unknown runtime method.'); }
 } catch (error) {
-  write(`__WORKFLOW_WEB__${JSON.stringify({ kind: 'error', error: error.message, status: error.metadata?.status })}\n`);
+  write(`__STEAMHARNESS_WEB__${JSON.stringify({ kind: 'error', error: error.message, status: error.metadata?.status })}\n`);
   process.exitCode = 1;
 } finally {
   agentHost?.close();

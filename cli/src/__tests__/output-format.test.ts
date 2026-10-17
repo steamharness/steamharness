@@ -5,7 +5,7 @@ import {
   formatCliOutputContent,
   formatWorkflowExecutionJson,
   type WorkflowExecutionReport,
-} from "workflow-code";
+} from "steamharness";
 
 const videoUrl = "https://cdn.example.test/minimax-video.mp4?signature=redacted";
 const videoDescriptor = {

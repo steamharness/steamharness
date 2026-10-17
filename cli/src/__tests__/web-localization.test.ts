@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from 'vitest';
-import { initI18n } from '@workflow-code/i18n';
+import { initI18n } from '@steamharness/i18n';
 import { t } from '../web/localization';
 import { agentActivity } from '../web/ui/agent-activity';
 import chinese from '../web/messages.zh-cn.json';
@@ -54,9 +54,9 @@ it.each([['en', 'workflow'], ['zh-CN', 'workflow'], ['en', 'conversation'], ['zh
   const runtime = createWebRuntime(directory, path.join(directory, 'data'), () => undefined);
   try {
     await mkdir(path.join(directory, 'node_modules'));
-    await symlink(await realpath(new URL('../../node_modules/workflow-code', import.meta.url)), path.join(directory, 'node_modules/workflow-code'), process.platform === 'win32' ? 'junction' : 'dir');
+    await symlink(await realpath(new URL('../../node_modules/steamharness', import.meta.url)), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
     await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: '294b1eec-23fa-42cf-9fd3-2417f71c0570', name: 'Default name', version: '1.2.3', description: 'Original description', privateToken: 'not-public', type: 'module',
-      workflowCode: { projectInfo: { localizedNames: { EN: 'English name', 'zh-cn': '\u4e2d\u6587\u540d\u79f0' }, dataStorage: { mode: 'server' } } } }));
+      steamHarness: { projectInfo: { localizedNames: { EN: 'English name', 'zh-cn': '\u4e2d\u6587\u540d\u79f0' }, dataStorage: { mode: 'server' } } } }));
     await writeFile(path.join(directory, 'index.ts'), `
       const graph = workflow.defineWorkflow({ name: 'locale-fixture', async run() { return workflow.createOutputPayload({ items: [] }); } });
       export const executor = workflow.defineExecutor(${projectType === 'workflow' ? `

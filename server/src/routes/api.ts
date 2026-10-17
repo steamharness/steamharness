@@ -2,7 +2,7 @@
 import { randomBytes } from "node:crypto";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import express from "express";
-import { createKnowledgeMarkdownPreview } from "workflow-code";
+import { createKnowledgeMarkdownPreview } from "steamharness";
 import { getRequestPrincipal, hasPermission, requireAuthenticatedPrincipal, type AuthenticatedPrincipal } from "../auth";
 import { getWorkflowAuthContext } from "../auth";
 import { createAuditActor, listAuditEvents, recordPermissionDeniedForRequest, recordAuditEventForRequest } from "../audit";
@@ -13,13 +13,13 @@ import type { WorkflowKnowledgeDocumentListItem, WorkflowKnowledgeDocumentRecord
 import type { WorkflowAuditEventPage, WorkflowAuditEventRecord, WorkflowUserProfileRecord } from "../account-db";
 import type { WorkflowPermissionKey } from "../permissions";
 import { isWorkflowUuid } from "../workflow-ids";
-import { validateProjectCardMetadata, type ProjectCardMetadata } from "@workflow-code/project-card-metadata";
-import { isWorkflowProjectType, WORKFLOW_PROJECT_TYPES, type WorkflowProjectType } from "@workflow-code/project-types";
-import { encodeKanbanAssetUrlPath } from "@workflow-code/kanban-project";
+import { validateProjectCardMetadata, type ProjectCardMetadata } from "@steamharness/project-card-metadata";
+import { isWorkflowProjectType, STEAMHARNESS_PROJECT_TYPES, type WorkflowProjectType } from "@steamharness/project-types";
+import { encodeKanbanAssetUrlPath } from "@steamharness/kanban-project";
 import { invokeServerKanbanBridge, readKanbanBridgeCall } from "../kanban-bridge";
 import { createKanbanRevisionBatcher } from "../kanban-revision-batcher";
-import { parseWorkflowProjectGroupManifest, type WorkflowProjectGroupManifestV1 } from "@workflow-code/project-dependencies";
-import { normalizeDeclaredWorkflowProjectInfo, type DeclaredWorkflowProjectInfo, type WorkflowRelatedProject } from "@workflow-code/project-info";
+import { parseWorkflowProjectGroupManifest, type WorkflowProjectGroupManifestV1 } from "@steamharness/project-dependencies";
+import { normalizeDeclaredWorkflowProjectInfo, type DeclaredWorkflowProjectInfo, type WorkflowRelatedProject } from "@steamharness/project-info";
 
 const DEFAULT_UPLOAD_LIMIT_BYTES = 50 * 1024 * 1024;
 const PERSISTENT_VALUE_REVISION_PATTERN = /^\d+$/;
@@ -131,7 +131,7 @@ function requireWorkflowProjectType(value: unknown): WorkflowProjectType {
     throw new HttpError(
       400,
       400,
-      `projectType is required and must be one of: ${WORKFLOW_PROJECT_TYPES.map((projectType) => JSON.stringify(projectType)).join(", ")}.`,
+      `projectType is required and must be one of: ${STEAMHARNESS_PROJECT_TYPES.map((projectType) => JSON.stringify(projectType)).join(", ")}.`,
     );
   }
   return value;

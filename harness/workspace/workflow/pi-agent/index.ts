@@ -11,7 +11,7 @@ import { KNOWLEDGE_DOCUMENTS_TOOL_NAME } from "./knowledge-documents-tool";
 import { createPiAgentSessionFactory, createPiAgentTokenUsageReport } from "./pi-sdk";
 import { runPiAgentStream } from "./stream-output";
 
-const DEFAULT_PROMPT = "Summarize this workflow-code repository without changing files.";
+const DEFAULT_PROMPT = "Summarize this steamharness repository without changing files.";
 const DEFAULT_WORKDIR = ".";
 const DEFAULT_PROVIDER: PiAgentProvider = "anthropic";
 const DEFAULT_PI_TOOLS = ["read", "write", "edit", "bash", "grep", "find", "ls"];

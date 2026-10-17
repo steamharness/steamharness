@@ -1,7 +1,7 @@
 import { t } from './localization';
-import type { KanbanArtifactConfig, KanbanBridgeCall } from '@workflow-code/kanban-project';
-import type { WorkflowProjectInfo } from '@workflow-code/project-info';
-import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot } from 'workflow-code/agent';
+import type { KanbanArtifactConfig, KanbanBridgeCall } from '@steamharness/kanban-project';
+import type { WorkflowProjectInfo } from '@steamharness/project-info';
+import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot } from 'steamharness/agent';
 
 export type WorkflowProjectType = 'conversation' | 'workflow' | 'kanban';
 

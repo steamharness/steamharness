@@ -1,11 +1,11 @@
 import {
   isOpenAIConversationHostInput,
   type OpenAIConversationHostInput,
-} from "@workflow-code/openai-responses";
+} from "@steamharness/openai-responses";
 import { WorkflowError } from "../workflow/errors";
 import type { WorkflowExecutorContext } from "./types";
 
-export type { OpenAIConversationHostInput } from "@workflow-code/openai-responses";
+export type { OpenAIConversationHostInput } from "@steamharness/openai-responses";
 
 export function readOpenAIConversationHostInput(
   context: Pick<WorkflowExecutorContext, "hostInput">,

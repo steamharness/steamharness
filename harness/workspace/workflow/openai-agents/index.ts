@@ -32,7 +32,7 @@ import type {
 
 const DEFAULT_MODEL = "gpt-5.4";
 const DEFAULT_WORKDIR = ".";
-const DEFAULT_AGENT_NAME = "workflow-code-openai-agents";
+const DEFAULT_AGENT_NAME = "steamharness-openai-agents";
 const RUN_COUNT_KEY = "openaiAgents.runCount";
 const FACTS_KEY = "openaiAgents.facts";
 const HISTORY_KEY = "openaiAgents.history";
@@ -542,7 +542,7 @@ async function runLiveAgent(
     model: input.model,
     instructions(runContext) {
       const baseInstructions = [
-        "You are a concise workflow-code sample agent.",
+        "You are a concise steamharness sample agent.",
         ...input.instructions,
         input.memoryTools
           ? "Use read_context before answering when the user asks about prior state."
@@ -1199,7 +1199,7 @@ async function runAgent(
       ? toolValue.name
       : undefined;
     void events.onStreamEvent?.({
-      type: "workflow_code_agent_tool_start",
+      type: "steamharness_agent_tool_start",
       toolCall: details.toolCall,
       fallbackName,
     });
@@ -1378,7 +1378,7 @@ function readSdkToolCallFromStreamEvent(event: unknown): unknown | undefined {
     return undefined;
   }
 
-  if (event.type === "workflow_code_agent_tool_start") {
+  if (event.type === "steamharness_agent_tool_start") {
     return isRecord(event.toolCall)
       ? event.toolCall
       : undefined;
@@ -1779,7 +1779,7 @@ async function approveOpenAIAgentsHostedToolForRun(
   }
   // Hosted OpenAI tools do not expose a local pre-call approval hook.
   // Ask once before the SDK run starts so manual approval still uses the shared
-  // workflow-code user-input node instead of silently hiding the tool.
+  // steamharness user-input node instead of silently hiding the tool.
   const decision = await toolApproval.approve({
     name,
     label: tool.label,
@@ -1814,7 +1814,7 @@ async function approveOpenAIAgentsTool(
     return;
   }
   // keeps OpenAI Agents function and shell calls behind the shared
-  // workflow-code approval gate while preserving the existing SDK output cards.
+  // steamharness approval gate while preserving the existing SDK output cards.
   const decision = await toolApproval.approve({
     name,
     label: tool?.label,

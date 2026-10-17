@@ -16,7 +16,7 @@ function withSilencedWarnings<T>(run: () => T): T {
 }
 
 test("avatar URLs accept data URLs and the configured storage origin", () => {
-  const env = { WORKFLOW_API_PUBLIC_BASE_URL: "https://api.example.com" };
+  const env = { STEAMHARNESS_API_PUBLIC_BASE_URL: "https://api.example.com" };
 
   assert.equal(normalizeAvatarUrl(undefined, env), null);
   assert.equal(normalizeAvatarUrl("", env), null);
@@ -27,14 +27,14 @@ test("avatar URLs accept data URLs and the configured storage origin", () => {
   assert.equal(
     normalizeAvatarUrl(
       `https://cdn.example.com/storage/avatars/${USER_ID}/${HASH}.webp`,
-      { WORKFLOW_STORAGE_PUBLIC_BASE_URL: "https://cdn.example.com" },
+      { STEAMHARNESS_STORAGE_PUBLIC_BASE_URL: "https://cdn.example.com" },
     ),
     `https://cdn.example.com/storage/avatars/${USER_ID}/${HASH}.webp`,
   );
 });
 
 test("avatar URLs reject foreign origins and unexpected paths", () => {
-  const env = { WORKFLOW_API_PUBLIC_BASE_URL: "https://api.example.com" };
+  const env = { STEAMHARNESS_API_PUBLIC_BASE_URL: "https://api.example.com" };
 
   for (const rejected of [
     `https://evil.example.com/storage/avatars/${USER_ID}/${HASH}.png`,
@@ -50,7 +50,7 @@ test("avatar URLs reject foreign origins and unexpected paths", () => {
 
 test("local object storage accepts the Server's own avatar origin", () => {
   // Without a public base URL, development mints loopback URLs.
-  const localDevEnv = { WORKFLOW_STORAGE_DRIVER: "local", WORKFLOW_SERVER_DEV: "1" };
+  const localDevEnv = { STEAMHARNESS_STORAGE_DRIVER: "local", STEAMHARNESS_SERVER_DEV: "1" };
   assert.equal(
     withSilencedWarnings(() => normalizeAvatarUrl(
       `http://127.0.0.1:7126/storage/avatars/${USER_ID}/${HASH}.webp`,
@@ -61,8 +61,8 @@ test("local object storage accepts the Server's own avatar origin", () => {
 
   // A configured API origin replaces the loopback fallback.
   const localConfiguredEnv = {
-    WORKFLOW_STORAGE_DRIVER: "local",
-    WORKFLOW_API_PUBLIC_BASE_URL: "https://api.example.com",
+    STEAMHARNESS_STORAGE_DRIVER: "local",
+    STEAMHARNESS_API_PUBLIC_BASE_URL: "https://api.example.com",
   };
   assert.equal(
     normalizeAvatarUrl(

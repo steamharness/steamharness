@@ -20,7 +20,7 @@ import {
   parseOpenAIConversationUpdateRequest,
   parseOpenAIPageQuery,
   parseOpenAIResponseCreateRequest,
-} from "@workflow-code/openai-responses";
+} from "@steamharness/openai-responses";
 
 describe("openai-responses package", () => {
   it("parses the supported Responses request subset", () => {

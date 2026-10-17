@@ -27,8 +27,8 @@ const serviceDataRoot = path.join(runtimeDataRoot, "docs-service");
 const logsRoot = path.join(serviceDataRoot, "logs");
 const pidFile = path.join(serviceDataRoot, "docs-server.pid");
 const logFile = path.join(logsRoot, "docs-server.log");
-const host = readHostEnv("WORKFLOW_DOCS_HOST", "127.0.0.1");
-const port = readPositiveIntegerEnv("WORKFLOW_DOCS_PORT", 7132);
+const host = readHostEnv("STEAMHARNESS_DOCS_HOST", "127.0.0.1");
+const port = readPositiveIntegerEnv("STEAMHARNESS_DOCS_PORT", 7132);
 
 switch (command) {
   case "serve":
@@ -105,7 +105,7 @@ async function start() {
     env: {
       ...process.env,
       NODE_ENV: process.env.NODE_ENV ?? "production",
-      WORKFLOW_REPO_ROOT: process.env.WORKFLOW_REPO_ROOT ?? repoRoot,
+      STEAMHARNESS_REPO_ROOT: process.env.STEAMHARNESS_REPO_ROOT ?? repoRoot,
     },
     stdio: ["ignore", logFd, logFd],
   });
@@ -198,7 +198,7 @@ async function prepareDocsRoot() {
   await assertReleaseStorageRootWritable();
   const docsRoot = resolveDocsRoot();
   await assertDirectory(docsRoot, {
-    label: "WORKFLOW_DOCS_ROOT",
+    label: "STEAMHARNESS_DOCS_ROOT",
   });
   return docsRoot;
 }

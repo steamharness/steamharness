@@ -4,7 +4,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { WorkflowError } from "../workflow/errors";
 
-const DEFAULT_WORKFLOW_CREATED_FILE_LIMIT_BYTES = 50 * 1024 * 1024;
+const DEFAULT_STEAMHARNESS_CREATED_FILE_LIMIT_BYTES = 50 * 1024 * 1024;
 
 export type WorkflowFileStorage = "local" | "server" | "path" | "url";
 
@@ -133,7 +133,7 @@ export function createServerWorkflowFileStore(
     // This explicit store writes generated files to the server-managed namespace.
     async createFile(input) {
       const buffer = normalizeCreateFileBuffer(input.buffer);
-      const maxBytes = options.maxBytes ?? DEFAULT_WORKFLOW_CREATED_FILE_LIMIT_BYTES;
+      const maxBytes = options.maxBytes ?? DEFAULT_STEAMHARNESS_CREATED_FILE_LIMIT_BYTES;
       if (buffer.byteLength > maxBytes) {
         throw new WorkflowError({
           type: "input_validation",

@@ -19,7 +19,7 @@ import {
 } from "../../release-tools/release-gate.mjs";
 
 function manifest(core, cli = core) {
-  return { devDependencies: { "workflow-code": core, "@workflow-code/cli": cli } };
+  return { devDependencies: { "steamharness": core, "@steamharness/cli": cli } };
 }
 
 async function createWorkspace() {
@@ -27,7 +27,7 @@ async function createWorkspace() {
   await mkdir(path.join(root, "build-in-codex"));
   await mkdir(path.join(root, "core"));
   await writeFile(path.join(root, "build-in-codex", "package.json"), JSON.stringify(manifest("link:../core")));
-  await writeFile(path.join(root, "core", "package.json"), JSON.stringify({ name: "workflow-code", version: "0.2.4-20260921001" }));
+  await writeFile(path.join(root, "core", "package.json"), JSON.stringify({ name: "steamharness", version: "0.2.4-20260921001" }));
   return root;
 }
 
@@ -38,9 +38,9 @@ test("release mode treats main, alpha, tags and the fail-closed override as rele
   // alpha publishes; it must not be classified as a development branch.
   assert.equal(resolveReleaseMode({ env: { CI_COMMIT_BRANCH: "alpha" } }), "main");
   assert.equal(resolveReleaseMode({ env: { CI_COMMIT_BRANCH: "main" } }), "main");
-  assert.equal(resolveReleaseMode({ env: { CI_COMMIT_TAG: "workflow-code/v0.2.4" } }), "main");
-  assert.equal(resolveReleaseMode({ env: { WORKFLOW_REPOSITORY_MODE: "main" }, branch: "dev" }), "main");
-  assert.throws(() => resolveReleaseMode({ env: { WORKFLOW_REPOSITORY_MODE: "dev" } }), /fail-closed override/u);
+  assert.equal(resolveReleaseMode({ env: { CI_COMMIT_TAG: "steamharness/v0.2.4" } }), "main");
+  assert.equal(resolveReleaseMode({ env: { STEAMHARNESS_REPOSITORY_MODE: "main" }, branch: "dev" }), "main");
+  assert.throws(() => resolveReleaseMode({ env: { STEAMHARNESS_REPOSITORY_MODE: "dev" } }), /fail-closed override/u);
 });
 
 test("release channel follows the branch and the feature tag", () => {
@@ -52,34 +52,34 @@ test("release channel follows the branch and the feature tag", () => {
     resolveReleaseChannel({ env: { CI_COMMIT_TAG: "feat/v0.2.4-20260920004.codex-pi-agent" } }),
     "feat-codex-pi-agent",
   );
-  assert.equal(resolveReleaseChannel({ env: { CI_COMMIT_TAG: "workflow-code/v0.2.4" } }), "latest");
+  assert.equal(resolveReleaseChannel({ env: { CI_COMMIT_TAG: "steamharness/v0.2.4" } }), "latest");
 });
 
 test("classifyVersionReference separates exact versions from local sibling references", () => {
-  assert.deepEqual(classifyVersionReference(manifest("0.2.4-20260921001"), "workflow-code"), {
+  assert.deepEqual(classifyVersionReference(manifest("0.2.4-20260921001"), "steamharness"), {
     kind: "exact",
     version: "0.2.4-20260921001",
     specifier: "0.2.4-20260921001",
   });
   for (const specifier of ["link:../core", "file:./core", "link:../../shared"]) {
-    const reference = classifyVersionReference(manifest(specifier), "workflow-code");
+    const reference = classifyVersionReference(manifest(specifier), "steamharness");
     assert.equal(reference.kind, "local", specifier);
   }
   for (const specifier of ["^0.1.0", ">=0.1.0 <0.2.0", "workspace:*", "v0.1.2", "file:core", "file:/abs/core", ""]) {
     assert.throws(
-      () => classifyVersionReference(manifest(specifier), "workflow-code"),
+      () => classifyVersionReference(manifest(specifier), "steamharness"),
       /exact SemVer|relative file|as an exact version/u,
       specifier,
     );
   }
-  assert.throws(() => classifyVersionReference({}, "workflow-code"), /devDependencies\.workflow-code/u);
+  assert.throws(() => classifyVersionReference({}, "steamharness"), /devDependencies\.steamharness/u);
 });
 
 test("dev mode resolves a sibling reference to the sibling's declared version", async () => {
   const root = await createWorkspace();
   try {
     const repoRoot = path.join(root, "build-in-codex");
-    const resolved = await resolveVersionReference(manifest("link:../core"), "workflow-code", { mode: "dev", repoRoot });
+    const resolved = await resolveVersionReference(manifest("link:../core"), "steamharness", { mode: "dev", repoRoot });
     assert.equal(resolved.version, "0.2.4-20260921001");
     assert.equal(resolved.origin, "sibling");
   } finally {
@@ -92,11 +92,11 @@ test("release mode refuses a sibling reference instead of resolving it", async (
   try {
     const repoRoot = path.join(root, "build-in-codex");
     await assert.rejects(
-      resolveVersionReference(manifest("link:../core"), "workflow-code", { mode: "main", repoRoot }),
+      resolveVersionReference(manifest("link:../core"), "steamharness", { mode: "main", repoRoot }),
       /must declare an exact published version on main and alpha/u,
     );
     assert.throws(
-      () => assertNoLocalReference(manifest("link:../core"), "workflow-code", { mode: "main" }),
+      () => assertNoLocalReference(manifest("link:../core"), "steamharness", { mode: "main" }),
       /must declare an exact published version on main and alpha/u,
     );
   } finally {
@@ -110,7 +110,7 @@ test("sibling resolution refuses to escape the workspace root", async () => {
     const repoRoot = path.join(root, "build-in-codex");
     for (const relative of ["link:../../etc", "link:../.."]) {
       await assert.rejects(
-        resolveVersionReference(manifest(relative), "workflow-code", { mode: "dev", repoRoot }),
+        resolveVersionReference(manifest(relative), "steamharness", { mode: "dev", repoRoot }),
         /must stay inside the workspace root/u,
         relative,
       );
@@ -118,16 +118,16 @@ test("sibling resolution refuses to escape the workspace root", async () => {
     // A sibling that is itself a symlink out of the workspace is refused too.
     await symlink(os.tmpdir(), path.join(root, "escaping"));
     await assert.rejects(
-      resolveVersionReference(manifest("link:../escaping"), "workflow-code", { mode: "dev", repoRoot }),
+      resolveVersionReference(manifest("link:../escaping"), "steamharness", { mode: "dev", repoRoot }),
       /must stay inside the workspace root/u,
     );
     // A sibling whose package.json declares another package is refused.
     await assert.rejects(
-      resolveVersionReference(manifest("link:../build-in-codex"), "workflow-code", { mode: "dev", repoRoot }),
+      resolveVersionReference(manifest("link:../build-in-codex"), "steamharness", { mode: "dev", repoRoot }),
       /must point at a sibling repository/u,
     );
     await assert.rejects(
-      resolveVersionReference(manifest("link:../missing"), "workflow-code", { mode: "dev", repoRoot }),
+      resolveVersionReference(manifest("link:../missing"), "steamharness", { mode: "dev", repoRoot }),
       /does not resolve to an existing sibling repository/u,
     );
   } finally {
@@ -136,9 +136,9 @@ test("sibling resolution refuses to escape the workspace root", async () => {
 });
 
 test("feature-branch versions cannot be pinned on a release channel", () => {
-  assert.doesNotThrow(() => assertChannelVersion("workflow-code", "0.2.4-20260921001", { channel: "alpha" }));
+  assert.doesNotThrow(() => assertChannelVersion("steamharness", "0.2.4-20260921001", { channel: "alpha" }));
   assert.throws(
-    () => assertChannelVersion("workflow-code", "0.2.4-20260920004.codex-pi-agent", { channel: "main" }),
+    () => assertChannelVersion("steamharness", "0.2.4-20260920004.codex-pi-agent", { channel: "main" }),
     /feature-branch version/u,
   );
 });
@@ -150,26 +150,26 @@ test("published-version and version-advance checks read the registry", async () 
     return outputs[key];
   };
 
-  await assert.doesNotReject(() => assertPublishedVersion("workflow-code", "0.2.4-20260921001", {
-    runCommand: published({ "view workflow-code@0.2.4-20260921001 version": "0.2.4-20260921001\n" }),
+  await assert.doesNotReject(() => assertPublishedVersion("steamharness", "0.2.4-20260921001", {
+    runCommand: published({ "view steamharness@0.2.4-20260921001 version": "0.2.4-20260921001\n" }),
     attempts: 1,
   }));
-  await assert.rejects(() => assertPublishedVersion("workflow-code", "0.2.4-20260921001", {
+  await assert.rejects(() => assertPublishedVersion("steamharness", "0.2.4-20260921001", {
     runCommand: published({}),
     attempts: 2,
     retryDelayMs: 1,
   }), /is not published/u);
 
-  await assert.rejects(() => assertVersionAdvance("workflow-code", "0.2.4-20260920001", {
-    runCommand: published({ "view workflow-code dist-tags.alpha": "0.2.4-20260921001\n" }),
+  await assert.rejects(() => assertVersionAdvance("steamharness", "0.2.4-20260920001", {
+    runCommand: published({ "view steamharness dist-tags.alpha": "0.2.4-20260921001\n" }),
     distTag: "alpha",
   }), /must be higher than the alpha channel/u);
-  await assert.doesNotReject(() => assertVersionAdvance("workflow-code", "0.2.5-20260922001", {
-    runCommand: published({ "view workflow-code dist-tags.alpha": "0.2.4-20260921001\n" }),
+  await assert.doesNotReject(() => assertVersionAdvance("steamharness", "0.2.5-20260922001", {
+    runCommand: published({ "view steamharness dist-tags.alpha": "0.2.4-20260921001\n" }),
     distTag: "alpha",
   }));
   // A channel with nothing published yet cannot be behind.
-  await assert.doesNotReject(() => assertVersionAdvance("workflow-code", "0.1.0", { runCommand: published({}) }));
+  await assert.doesNotReject(() => assertVersionAdvance("steamharness", "0.1.0", { runCommand: published({}) }));
 });
 
 test("verifyReleaseGate runs every check on a release manifest", async () => {
@@ -177,12 +177,12 @@ test("verifyReleaseGate runs every check on a release manifest", async () => {
   // pins exactly what it just published, so no version advance is expected of a
   // consumer. Demanding one is what the publisher gate is for.
   const registry = {
-    "view workflow-code@0.2.5-20260922001 version": "0.2.5-20260922001\n",
-    "view workflow-code dist-tags.alpha": "0.2.5-20260922001\n",
+    "view steamharness@0.2.5-20260922001 version": "0.2.5-20260922001\n",
+    "view steamharness dist-tags.alpha": "0.2.5-20260922001\n",
   };
   const report = await verifyReleaseGate({
     manifest: manifest("0.2.5-20260922001"),
-    packageNames: ["workflow-code"],
+    packageNames: ["steamharness"],
     mode: "main",
     channel: "alpha",
     runCommand: (args) => {
@@ -192,21 +192,21 @@ test("verifyReleaseGate runs every check on a release manifest", async () => {
     },
   });
   assert.deepEqual(report.packages, [{
-    packageName: "workflow-code",
+    packageName: "steamharness",
     section: "devDependencies",
     version: "0.2.5-20260922001",
     checked: true,
   }]);
   assert.equal(
     formatReleaseGateDotenv(report),
-    "WORKFLOW_RELEASE_GATE_OK=true\nWORKFLOW_RELEASE_GATE_CHANNEL=alpha\nWORKFLOW_RELEASE_GATE_WORKFLOW_CODE_DEVDEPENDENCIES_VERSION=0.2.5-20260922001\n",
+    "STEAMHARNESS_RELEASE_GATE_OK=true\nSTEAMHARNESS_RELEASE_GATE_CHANNEL=alpha\nSTEAMHARNESS_RELEASE_GATE_STEAMHARNESS_DEVDEPENDENCIES_VERSION=0.2.5-20260922001\n",
   );
 });
 
 test("verifyReleaseGate reads the dependencies a consumer actually declares", async () => {
   const registry = {
-    "view workflow-code@0.2.4 version": "0.2.4\n",
-    "view @workflow-code/cli@0.2.4 version": "0.2.4\n",
+    "view steamharness@0.2.4 version": "0.2.4\n",
+    "view @steamharness/cli@0.2.4 version": "0.2.4\n",
   };
   const runCommand = (args) => {
     const key = args.filter((arg) => !arg.startsWith("-")).join(" ");
@@ -218,10 +218,10 @@ test("verifyReleaseGate reads the dependencies a consumer actually declares", as
   // a dev dependency; both positions have to be checked, not just the default.
   const report = await verifyReleaseGate({
     manifest: {
-      dependencies: { "workflow-code": "0.2.4" },
-      devDependencies: { "@workflow-code/cli": "0.2.4" },
+      dependencies: { "steamharness": "0.2.4" },
+      devDependencies: { "@steamharness/cli": "0.2.4" },
     },
-    packageNames: ["workflow-code", "@workflow-code/cli"],
+    packageNames: ["steamharness", "@steamharness/cli"],
     mode: "main",
     channel: "latest",
     runCommand,
@@ -235,23 +235,23 @@ test("verifyReleaseGate reads the dependencies a consumer actually declares", as
   // refuses the one that carries a sibling reference.
   await assert.rejects(verifyReleaseGate({
     manifest: {
-      dependencies: { "workflow-code": "0.2.4" },
-      devDependencies: { "workflow-code": "link:../core" },
+      dependencies: { "steamharness": "0.2.4" },
+      devDependencies: { "steamharness": "link:../core" },
     },
-    packageNames: ["workflow-code"],
+    packageNames: ["steamharness"],
     mode: "main",
     channel: "latest",
     runCommand,
-  }), /devDependencies\.workflow-code must declare an exact published version/u);
+  }), /devDependencies\.steamharness must declare an exact published version/u);
   assert.deepEqual(
-    findVersionReferences({ dependencies: { "workflow-code": "0.2.4" } }, "workflow-code").map((entry) => entry.section),
+    findVersionReferences({ dependencies: { "steamharness": "0.2.4" } }, "steamharness").map((entry) => entry.section),
     ["dependencies"],
   );
 
   // Declaring it nowhere is a failure, not a pass.
   await assert.rejects(verifyReleaseGate({
     manifest: { dependencies: {} },
-    packageNames: ["workflow-code"],
+    packageNames: ["steamharness"],
     mode: "main",
     channel: "latest",
     runCommand,
@@ -283,27 +283,27 @@ test("verifyPublisherGate refuses a republish and requires stable versions to ad
   // A fresh version is what a release looks like.
   await assert.doesNotReject(() => verifyPublisherGate({
     manifest: { version: "0.2.5" },
-    packageName: "workflow-code",
+    packageName: "steamharness",
     channel: "latest",
     runCommand: empty,
   }));
   await assert.rejects(() => verifyPublisherGate({
     manifest: { version: "0.2.4" },
-    packageName: "workflow-code",
+    packageName: "steamharness",
     channel: "latest",
-    runCommand: registry({ "view workflow-code@0.2.4 version": "0.2.4\n" }),
+    runCommand: registry({ "view steamharness@0.2.4 version": "0.2.4\n" }),
   }), /is already published/u);
   // A stable release must still move `latest` forward.
   await assert.rejects(() => verifyPublisherGate({
     manifest: { version: "0.2.4" },
-    packageName: "workflow-code",
+    packageName: "steamharness",
     channel: "latest",
-    runCommand: registry({ "view workflow-code dist-tags.latest": "0.2.4\n" }),
+    runCommand: registry({ "view steamharness dist-tags.latest": "0.2.4\n" }),
   }), /must be higher than the latest channel/u);
   // Dated Alpha and Dev versions are monotonic by construction.
   await assert.doesNotReject(() => verifyPublisherGate({
     manifest: { version: "0.2.4-20260921001" },
-    packageName: "workflow-code",
+    packageName: "steamharness",
     channel: "alpha",
     runCommand: empty,
   }));
@@ -312,16 +312,16 @@ test("verifyPublisherGate refuses a republish and requires stable versions to ad
   // tarball integrity before reusing it. A stable version stays strict.
   await assert.doesNotReject(() => verifyPublisherGate({
     manifest: { version: "0.2.4-20260921001" },
-    packageName: "workflow-code",
+    packageName: "steamharness",
     channel: "alpha",
-    runCommand: registry({ "view workflow-code@0.2.4-20260921001 version": "0.2.4-20260921001\n" }),
+    runCommand: registry({ "view steamharness@0.2.4-20260921001 version": "0.2.4-20260921001\n" }),
   }));
 });
 
 test("verifyReleaseGate reports a local reference as unchecked on dev", async () => {
   const report = await verifyReleaseGate({
     manifest: manifest("link:../core"),
-    packageNames: ["workflow-code"],
+    packageNames: ["steamharness"],
     mode: "dev",
     channel: "dev",
     runCommand: () => {
@@ -329,7 +329,7 @@ test("verifyReleaseGate reports a local reference as unchecked on dev", async ()
     },
   });
   assert.deepEqual(report.packages, [{
-    packageName: "workflow-code",
+    packageName: "steamharness",
     section: "devDependencies",
     version: undefined,
     checked: false,

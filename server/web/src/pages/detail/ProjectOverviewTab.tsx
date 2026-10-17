@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 import { ArrowUpRight, BookOpenText, CircleAlert, Database, Download, Link2, Package, RefreshCw, Settings2, Users, type LucideIcon } from "lucide-react";
-import { translateDynamicKey, useTranslation } from "@workflow-code/i18n/react";
-import { formatDateTime } from "@workflow-code/i18n";
-import { getWorkflowProjectTypeLabelKey } from "@workflow-code/project-types";
+import { translateDynamicKey, useTranslation } from "@steamharness/i18n/react";
+import { formatDateTime } from "@steamharness/i18n";
+import { getWorkflowProjectTypeLabelKey } from "@steamharness/project-types";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

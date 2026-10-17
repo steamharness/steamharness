@@ -7,17 +7,17 @@ export default defineConfig({
   platform: "node",
   target: "es2022",
   bundle: true,
-  external: ["workflow-code"],
-  // @workflow-code/i18n is a TypeScript-only build dependency. Inline it and
+  external: ["steamharness"],
+  // @steamharness/i18n is a TypeScript-only build dependency. Inline it and
   // i18next so the published CLI has no workspace-only runtime dependency.
   noExternal: [
-    "@workflow-code/auth-config",
-    "@workflow-code/i18n",
-    "@workflow-code/kanban-project",
-    "@workflow-code/openai-responses",
-    "@workflow-code/project-upload",
-    "@workflow-code/workflow-mcp",
-    "@workflow-code/workflow-ids",
+    "@steamharness/auth-config",
+    "@steamharness/i18n",
+    "@steamharness/kanban-project",
+    "@steamharness/openai-responses",
+    "@steamharness/project-upload",
+    "@steamharness/workflow-mcp",
+    "@steamharness/workflow-ids",
     "@modelcontextprotocol/sdk",
     "i18next",
     "ignore",

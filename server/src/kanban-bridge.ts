@@ -6,8 +6,8 @@ import { HttpError } from "./protocol";
 import {
   parseKanbanBridgeCall,
   type KanbanBridgeCall,
-} from "@workflow-code/kanban-project";
-import type { WorkflowRuntimeLocale } from "workflow-code";
+} from "@steamharness/kanban-project";
+import type { WorkflowRuntimeLocale } from "steamharness";
 import { readFile } from "node:fs/promises";
 
 export function readKanbanBridgeCall(value: unknown): KanbanBridgeCall {

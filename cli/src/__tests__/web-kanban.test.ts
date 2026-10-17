@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readFile, writeFile, symlink, rm, realpath } from 'node
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import * as core from 'workflow-code';
+import * as core from 'steamharness';
 import { startWebServer } from '../web/server';
 import { runKanbanDataCall, webProjectDataDirectory } from '../web/kanban-data';
 import type { WorkflowProject, WorkflowRuntime } from '../web/workflow-types';
@@ -12,22 +12,22 @@ const folders: string[] = [], apps: Awaited<ReturnType<typeof startWebServer>>[]
 afterEach(async () => { for (const app of apps.splice(0)) { await app.close(); } for (const folder of folders.splice(0)) { await rm(folder, { recursive: true, force: true }); } vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 const id = '2bf9074d-ef0b-43b2-84c4-f379f920db92';
 async function fixture(options: { server?: boolean; artifact?: boolean; noParams?: boolean; real?: boolean } = {}) {
-  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'workflow-kanban-'))); folders.push(root);
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'steamharness-kanban-'))); folders.push(root);
   const directory = path.join(root, 'board'); await mkdir(directory);
   const descriptor: WorkflowProject = { id, name: 'Board', uri: '', folderPath: directory, projectType: 'kanban', fields: [], entrypoints: [] };
-  const pkg = { id, name: 'Board', type: 'module', devDependencies: { 'workflow-code': '0.2.4-20260929001' }, workflowCode: { projectType: 'kanban', kanban: options.artifact ? { artifactDir: 'dist', entry: 'pages/index.html' } : {}, projectInfo: { dataStorage: { mode: options.server ? 'server' : 'local' } } } };
+  const pkg = { id, name: 'Board', type: 'module', devDependencies: { 'steamharness': '0.2.4-20260929001' }, steamHarness: { projectType: 'kanban', kanban: options.artifact ? { artifactDir: 'dist', entry: 'pages/index.html' } : {}, projectInfo: { dataStorage: { mode: options.server ? 'server' : 'local' } } } };
   await writeFile(path.join(directory, 'package.json'), JSON.stringify(pkg));
   const artifactRoot = options.artifact ? path.join(directory, 'dist/pages') : directory;
   await mkdir(artifactRoot, { recursive: true }); await writeFile(path.join(artifactRoot, 'index.html'), '<!doctype html><script>window.boardLoaded = true;</script><h1>Board</h1>'); await writeFile(path.join(artifactRoot, 'board.js'), 'window.assetLoaded = true;');
   if (!options.noParams) { await writeFile(path.join(directory, 'kanban.json'), JSON.stringify({ version: 1, params: [{ name: 'title', type: 'string', defaultValue: 'Roadmap' }, { name: 'limit', type: 'number', defaultValue: '5' }, { name: 'visible', type: 'boolean', defaultValue: 'true' }, { name: 'tags', type: 'string', multiple: true, defaultValue: '["a"]' }] })); }
   const runtime: WorkflowRuntime = { available: true, inspect: vi.fn(async () => ({ projects: [descriptor], errors: [] })), resolveParams: vi.fn(async () => ({})), run: vi.fn(async () => ({ status: 'success' })), uploadFiles: vi.fn(async () => []), readFile: vi.fn(), deleteFiles: vi.fn(), cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(), readResource: vi.fn(), cancel: vi.fn(), dispose: vi.fn(), kanbanBridge: vi.fn(async (_project, call) => ({ operation: call.operation })) };
   const dataDir = path.join(root, 'data');
-  vi.stubEnv('WORKFLOW_CLI_AUTH_DIR', path.join(root, 'auth')); vi.stubEnv('WORKFLOW_SERVER_URL', ''); vi.stubEnv('WORKFLOW_SERVER_ADMIN_KEY', '');
+  vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(root, 'auth')); vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
   if (options.real) {
     await mkdir(path.join(directory, 'node_modules'));
-    let coreRoot = path.dirname(fileURLToPath(import.meta.resolve('workflow-code')));
-    while (JSON.parse(await readFile(path.join(coreRoot, 'package.json'), 'utf8').catch(() => '{}')).name !== 'workflow-code') { coreRoot = path.dirname(coreRoot); }
-    await symlink(coreRoot, path.join(directory, 'node_modules/workflow-code'), process.platform === 'win32' ? 'junction' : 'dir');
+    let coreRoot = path.dirname(fileURLToPath(import.meta.resolve('steamharness')));
+    while (JSON.parse(await readFile(path.join(coreRoot, 'package.json'), 'utf8').catch(() => '{}')).name !== 'steamharness') { coreRoot = path.dirname(coreRoot); }
+    await symlink(coreRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
   }
   const app = await startWebServer({ projectDir: directory, dataDir, runtime: options.real ? undefined : runtime }); apps.push(app);
   const token = new URL(app.url).hash.slice('#session='.length);
@@ -41,9 +41,9 @@ async function fixture(options: { server?: boolean; artifact?: boolean; noParams
 describe('Kanban CLI Web workspace', () => {
   it('routes local Studio analysis through its read-only host capability without Server login', async () => {
     const { bridge, runtime } = await fixture();
-    vi.stubEnv('WORKFLOW_STUDIO_CONTROL_BRIDGE_URL', ''); vi.stubEnv('WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN', '');
+    vi.stubEnv('STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL', ''); vi.stubEnv('STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN', '');
     expect(await bridge('studio.getLocalAnalysis')).toMatchObject({ ok: false, error: { code: 'KANBAN_BRIDGE_UNAVAILABLE' } });
-    vi.stubEnv('WORKFLOW_STUDIO_CONTROL_BRIDGE_URL', 'http://127.0.0.1:12345/studio-control'); vi.stubEnv('WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN', 'test-capability');
+    vi.stubEnv('STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL', 'http://127.0.0.1:12345/studio-control'); vi.stubEnv('STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN', 'test-capability');
     const fetchImpl = globalThis.fetch;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => {
       if (String(input).endsWith('/studio-control')) {
@@ -57,7 +57,7 @@ describe('Kanban CLI Web workspace', () => {
   });
   it('cancels the Studio query when the Kanban controller closes', async () => {
     const { app } = await fixture();
-    vi.stubEnv('WORKFLOW_STUDIO_CONTROL_BRIDGE_URL', 'http://127.0.0.1:12345/studio-control'); vi.stubEnv('WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN', 'test-capability');
+    vi.stubEnv('STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL', 'http://127.0.0.1:12345/studio-control'); vi.stubEnv('STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN', 'test-capability');
     let signal: AbortSignal | undefined;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, options) => {
       signal = options?.signal as AbortSignal;
@@ -139,7 +139,7 @@ describe('Kanban CLI Web workspace', () => {
   it('retains the previous preview and project declaration after an invalid manifest refresh', async () => {
     const { app, state, post, directory, pkg } = await fixture();
     const before = (await state()).kanban, artifact = { ...app.project.kanban! };
-    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ ...pkg, workflowCode: { ...pkg.workflowCode, kanban: { artifactDir: 'other', entry: 'index.html' } } }));
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ ...pkg, steamHarness: { ...pkg.steamHarness, kanban: { artifactDir: 'other', entry: 'index.html' } } }));
     await writeFile(path.join(directory, 'kanban.json'), '{');
     expect((await post({ type: 'kanban-refresh' })).status).toBe(400);
     expect(app.project.kanban).toEqual(artifact);
@@ -148,7 +148,7 @@ describe('Kanban CLI Web workspace', () => {
   it('serves nonced HTML and relative assets from the declared artifact with sandbox CORS', async () => {
     const { app, state, directory } = await fixture({ artifact: true }); const preview = (await state()).kanban.preview;
     const response = await fetch(`${app.origin}${preview.url}`); expect(response.status).toBe(200);
-    expect(await response.text()).toContain('"workflowCodeKanban"'); expect(response.headers.get('Content-Security-Policy')).toContain(`nonce-${preview.nonce}`);
+    expect(await response.text()).toContain('"steamHarnessKanban"'); expect(response.headers.get('Content-Security-Policy')).toContain(`nonce-${preview.nonce}`);
     const script = await fetch(`${app.origin}/kanban/${preview.nonce}/pages/board.js`, { headers: { Origin: 'null' } }); expect(script.status).toBe(200); expect(script.headers.get('Access-Control-Allow-Origin')).toBe('*');
     for (const name of ['package.json', 'kanban.json', '%2e%2e%2fpackage.json', '%5cpackage.json', '.env']) { expect((await fetch(`${app.origin}/kanban/${preview.nonce}/${name}`)).status).toBe(404); }
     await writeFile(path.join(directory, 'outside.js'), 'secret');
@@ -193,8 +193,8 @@ describe('Kanban CLI Web workspace', () => {
     const { app, directory, root, dataDir, pkg, post, bridge, state } = await fixture({ real: true });
     const targetId = '44dfc728-27f4-4d80-a19e-a3f39f70950a', target = path.join(root, 'target'); await mkdir(target);
     const relation = (alias: string, projectId: string, read = ['visible:'], write: string[] = []) => ({ alias, projectId, grantToRelatedProject: { read: { mode: 'prefixes', prefixes: read }, write: write.length ? { mode: 'prefixes', prefixes: write } : { mode: 'none' } } });
-    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ ...pkg, workflowCode: { ...pkg.workflowCode, projectInfo: { dataStorage: { mode: 'local' }, relatedProjects: [relation('target', targetId)] } } }));
-    await writeFile(path.join(target, 'package.json'), JSON.stringify({ id: targetId, name: 'Target', workflowCode: { projectInfo: { dataStorage: { mode: 'local' }, relatedProjects: [relation('board', id)] } } }));
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ ...pkg, steamHarness: { ...pkg.steamHarness, projectInfo: { dataStorage: { mode: 'local' }, relatedProjects: [relation('target', targetId)] } } }));
+    await writeFile(path.join(target, 'package.json'), JSON.stringify({ id: targetId, name: 'Target', steamHarness: { projectInfo: { dataStorage: { mode: 'local' }, relatedProjects: [relation('board', id)] } } }));
     const kv = core.createWorkflowKVContext({ projectId: targetId, store: core.createLocalWorkflowKVStore({ rootDir: path.join(webProjectDataDirectory(dataDir, await realpath(target)), 'kv'), storageKind: 'kv' }) });
     await kv.setValue('visible:tasks', [1]); await post({ type: 'kanban-refresh' });
     expect((await state()).kanban.missingRelatedProjectAliases).toEqual([]);
@@ -204,7 +204,7 @@ describe('Kanban CLI Web workspace', () => {
     expect((await bridge('relatedProject.kv.getValue', { alias: 'target', key: 'secret' })).ok).toBe(false);
     const revision = (await state()).kanban.relatedProjectRevisions[0].revision; await kv.setValue('visible:tasks', [3]);
     await vi.waitFor(async () => expect((await state()).kanban.relatedProjectRevisions[0].revision).not.toBe(revision), { timeout: 5000 });
-    await writeFile(path.join(target, 'package.json'), JSON.stringify({ id: targetId, workflowCode: { projectInfo: { dataStorage: { mode: 'local' } } } }));
+    await writeFile(path.join(target, 'package.json'), JSON.stringify({ id: targetId, steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } }));
     expect((await bridge('relatedProject.kv.getValue', { alias: 'target', key: 'visible:tasks' })).ok).toBe(false);
   });
   it('proxies server storage and server-only files with verified CLI login, never falling back locally', async () => {

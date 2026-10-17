@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   i18n,
   initI18n,
-  readWorkflowCodeI18nDescriptor,
-  translateWorkflowCodeI18nDescriptor,
-  translateWorkflowCodeError,
-} from "@workflow-code/i18n";
+  readSteamHarnessI18nDescriptor,
+  translateSteamHarnessI18nDescriptor,
+  translateSteamHarnessError,
+} from "@steamharness/i18n";
 import {
   getNextWorkflowScheduleOccurrence,
   advanceWorkflowSchedulePastMissed,
@@ -84,17 +84,17 @@ describe("workflow schedules", () => {
 
     expect(failure).toBeInstanceOf(Error);
     expect((failure as Error).message).toBe('Schedule timezone "Not/A_Timezone" is invalid.');
-    expect(readWorkflowCodeI18nDescriptor(failure)).toEqual({
+    expect(readSteamHarnessI18nDescriptor(failure)).toEqual({
       namespace: "common",
       key: "schedule.validation.timezoneInvalid",
       values: { timezone: "Not/A_Timezone" },
     });
 
     initI18n({ preference: "zh-CN" });
-    expect(translateWorkflowCodeError(failure)).toBe("定时任务时区“Not/A_Timezone”无效。");
+    expect(translateSteamHarnessError(failure)).toBe("定时任务时区“Not/A_Timezone”无效。");
     try {
       await i18n.changeLanguage("en");
-      expect(translateWorkflowCodeError(failure)).toBe('Schedule timezone "Not/A_Timezone" is invalid.');
+      expect(translateSteamHarnessError(failure)).toBe('Schedule timezone "Not/A_Timezone" is invalid.');
     } finally {
       await i18n.changeLanguage("zh-CN");
     }
@@ -111,11 +111,11 @@ describe("workflow schedules", () => {
     });
 
     initI18n({ preference: "zh-CN" });
-    expect(translateWorkflowCodeI18nDescriptor(descriptor, "fallback"))
+    expect(translateSteamHarnessI18nDescriptor(descriptor, "fallback"))
       .toBe("上一次触发“fire-1”仍处于 running 状态。");
     try {
       await i18n.changeLanguage("en");
-      expect(translateWorkflowCodeI18nDescriptor(descriptor, "fallback"))
+      expect(translateSteamHarnessI18nDescriptor(descriptor, "fallback"))
         .toBe('Previous trigger "fire-1" is still running.');
     } finally {
       await i18n.changeLanguage("zh-CN");
@@ -127,7 +127,7 @@ describe("workflow schedules", () => {
       "Workflow project dependencies are not installed.",
       "Project: /workspace/prices",
       "Missing: package-a, package-b",
-      "Install dependencies manually in this project directory before running it. Workflow Code will not install or modify dependencies.",
+      "Install dependencies manually in this project directory before running it. SteamHarness will not install or modify dependencies.",
     ].join("\n"))).toEqual({
       namespace: "common",
       key: "schedule.fireReason.dependenciesMissing",

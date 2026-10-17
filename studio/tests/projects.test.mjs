@@ -51,7 +51,7 @@ test('remembering an opened download preserves its version and group association
 
 test('related projects resolve declared UUIDs rather than labels or paths', () => {
   const id = '615e6cf6-b40a-456a-8d19-b71c63454c7a';
-  assert.deepEqual(readRelatedProjects({ workflowCode: { projectInfo: { relatedProjects: [
+  assert.deepEqual(readRelatedProjects({ steamHarness: { projectInfo: { relatedProjects: [
     { alias: 'notes', projectId: id.toUpperCase(), path: '/arbitrary' }, null, {}, { alias: 'invalid', projectId: '/notes' }, { alias: '', projectId: id },
   ] } } }), [{ alias: 'notes', projectId: id }]);
   assert.deepEqual(readRelatedProjects(null), []);

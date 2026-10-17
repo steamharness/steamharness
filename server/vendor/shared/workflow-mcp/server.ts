@@ -452,12 +452,12 @@ function clonePendingUserInput(
   };
 }
 
-const WORKFLOW_MCP_PARAM_NAME_PATTERN = /^[\p{L}_][\p{L}\p{N}_.-]{0,127}$/u;
-const WORKFLOW_MCP_PARAM_CONTROLS = new Set([
+const STEAMHARNESS_MCP_PARAM_NAME_PATTERN = /^[\p{L}_][\p{L}\p{N}_.-]{0,127}$/u;
+const STEAMHARNESS_MCP_PARAM_CONTROLS = new Set([
   "text", "textarea", "radio", "select", "checkboxes",
   "date", "time", "datetime", "date-range",
 ]);
-const WORKFLOW_MCP_RESERVED_PARAM_NAMES = new Set(["__proto__", "constructor", "prototype"]);
+const STEAMHARNESS_MCP_RESERVED_PARAM_NAMES = new Set(["__proto__", "constructor", "prototype"]);
 
 function cloneParam(
   value: unknown,
@@ -471,8 +471,8 @@ function cloneParam(
   if (
     typeof name !== "string" ||
     name.trim() !== name ||
-    !WORKFLOW_MCP_PARAM_NAME_PATTERN.test(name) ||
-    WORKFLOW_MCP_RESERVED_PARAM_NAMES.has(name)
+    !STEAMHARNESS_MCP_PARAM_NAME_PATTERN.test(name) ||
+    STEAMHARNESS_MCP_RESERVED_PARAM_NAMES.has(name)
   ) {
     throw new Error(`Workflow MCP entrypoint "${entrypointId}" has an invalid parameter name.`);
   }
@@ -492,7 +492,7 @@ function cloneParam(
     }
   }
   if (value.control !== undefined && (
-    typeof value.control !== "string" || !WORKFLOW_MCP_PARAM_CONTROLS.has(value.control)
+    typeof value.control !== "string" || !STEAMHARNESS_MCP_PARAM_CONTROLS.has(value.control)
   )) {
     throw new Error(`Workflow MCP parameter "${name}" has an invalid control.`);
   }

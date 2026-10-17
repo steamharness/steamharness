@@ -19,7 +19,7 @@ async function createSibling(parent, name, options = {}) {
   const siblingRoot = path.join(parent, name);
   await mkdir(siblingRoot, { recursive: true });
   await writeFile(path.join(siblingRoot, "package.json"), `${JSON.stringify({
-    name: `@workflow-code/${name}-sibling`,
+    name: `@steamharness/${name}-sibling`,
     ...(options.consumesShared === false ? {} : { scripts: { bootstrap: "node scripts/bootstrap.mjs" } }),
   })}\n`);
   if (options.installed !== false) await mkdir(path.join(siblingRoot, "node_modules"), { recursive: true });
@@ -116,7 +116,7 @@ test("the skip switch bypasses every check", async () => {
 
   const result = await ensureSiblingInstalls({
     roots: [coreRoot],
-    env: { WORKFLOW_SKIP_SIBLING_BOOTSTRAP: "1" },
+    env: { STEAMHARNESS_SKIP_SIBLING_BOOTSTRAP: "1" },
     run: recorder.run,
     log: () => {},
   });

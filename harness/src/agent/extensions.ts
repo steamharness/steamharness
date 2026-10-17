@@ -113,8 +113,8 @@ export class AgentExtensionResources {
       }
     }
     if (this.options.codeMode) {
-      const { createWorkflowCodemode } = await import("./codemode");
-      const { extension, sandbox } = createWorkflowCodemode(this.options.codeMode);
+      const { createSteamHarnessmode } = await import("./codemode");
+      const { extension, sandbox } = createSteamHarnessmode(this.options.codeMode);
       this.sandbox = sandbox;
       registry.install(extension);
     }

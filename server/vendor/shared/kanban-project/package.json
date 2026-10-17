@@ -1,5 +1,5 @@
 {
-  "name": "@workflow-code/kanban-project",
+  "name": "@steamharness/kanban-project",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -20,8 +20,8 @@
     }
   },
   "dependencies": {
-    "@workflow-code/i18n": "workspace:*",
-    "@workflow-code/project-info": "workspace:*",
+    "@steamharness/i18n": "workspace:*",
+    "@steamharness/project-info": "workspace:*",
     "lucide-react": "^0.487.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

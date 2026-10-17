@@ -11,8 +11,8 @@ test("server launchd helper keeps production keepalive configuration in repo", (
   assert.match(contents, /KeepAlive/);
   assert.match(contents, /RunAtLoad/);
   assert.match(contents, /dist", "index\.js"/);
-  assert.match(contents, /WORKFLOW_REPO_ROOT/);
-  assert.match(contents, /WORKFLOW_SERVER_DATA_DIR/);
+  assert.match(contents, /STEAMHARNESS_REPO_ROOT/);
+  assert.match(contents, /STEAMHARNESS_SERVER_DATA_DIR/);
   assert.match(contents, /mkdir\(path\.join\(dataRoot, "logs"\)/);
 });
 
@@ -22,6 +22,6 @@ test("docs launchd helper keeps published docs on the release root", () => {
 
   assert.match(contents, /<print\|install\|uninstall\|status>/);
   assert.match(contents, /scripts", "docs-server\.mjs"/);
-  assert.match(contents, /WORKFLOW_DOCS_ROOT/);
-  assert.match(contents, /WORKFLOW_SERVER_DATA_DIR/);
+  assert.match(contents, /STEAMHARNESS_DOCS_ROOT/);
+  assert.match(contents, /STEAMHARNESS_SERVER_DATA_DIR/);
 });

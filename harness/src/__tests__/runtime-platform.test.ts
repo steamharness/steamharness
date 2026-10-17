@@ -7,8 +7,8 @@ import {
   isCli,
   isDesktop,
   workflowRuntimeApi,
-  WORKFLOW_RUNTIME_LOCALE_ENV,
-  WORKFLOW_RUNTIME_PLATFORM_ENV,
+  STEAMHARNESS_RUNTIME_LOCALE_ENV,
+  STEAMHARNESS_RUNTIME_PLATFORM_ENV,
 } from "../index";
 
 test("runtime platform defaults to CLI when no host marker is present", () => {
@@ -33,7 +33,7 @@ test("runtime platform preserves local hosts and rejects removed server hosts", 
   withRuntimePlatform("CLI", () => assert.equal(isCli(), true));
   for (const marker of ["web", "server", "unknown"]) {
     withRuntimePlatform(marker, () => {
-      assert.throws(() => getRuntimePlatform(), /Unsupported WORKFLOW_RUNTIME_PLATFORM/);
+      assert.throws(() => getRuntimePlatform(), /Unsupported STEAMHARNESS_RUNTIME_PLATFORM/);
     });
   }
 });
@@ -94,39 +94,39 @@ test("workflow structure records platform helper calls as runtime API calls", ()
 });
 
 function withRuntimePlatform(value: string | undefined, run: () => void): void {
-  const previous = process.env[WORKFLOW_RUNTIME_PLATFORM_ENV];
+  const previous = process.env[STEAMHARNESS_RUNTIME_PLATFORM_ENV];
 
   try {
     if (value === undefined) {
-      delete process.env[WORKFLOW_RUNTIME_PLATFORM_ENV];
+      delete process.env[STEAMHARNESS_RUNTIME_PLATFORM_ENV];
     } else {
-      process.env[WORKFLOW_RUNTIME_PLATFORM_ENV] = value;
+      process.env[STEAMHARNESS_RUNTIME_PLATFORM_ENV] = value;
     }
     run();
   } finally {
     if (previous === undefined) {
-      delete process.env[WORKFLOW_RUNTIME_PLATFORM_ENV];
+      delete process.env[STEAMHARNESS_RUNTIME_PLATFORM_ENV];
     } else {
-      process.env[WORKFLOW_RUNTIME_PLATFORM_ENV] = previous;
+      process.env[STEAMHARNESS_RUNTIME_PLATFORM_ENV] = previous;
     }
   }
 }
 
 function withRuntimeLocale(value: string | undefined, run: () => void): void {
-  const previous = process.env[WORKFLOW_RUNTIME_LOCALE_ENV];
+  const previous = process.env[STEAMHARNESS_RUNTIME_LOCALE_ENV];
 
   try {
     if (value === undefined) {
-      delete process.env[WORKFLOW_RUNTIME_LOCALE_ENV];
+      delete process.env[STEAMHARNESS_RUNTIME_LOCALE_ENV];
     } else {
-      process.env[WORKFLOW_RUNTIME_LOCALE_ENV] = value;
+      process.env[STEAMHARNESS_RUNTIME_LOCALE_ENV] = value;
     }
     run();
   } finally {
     if (previous === undefined) {
-      delete process.env[WORKFLOW_RUNTIME_LOCALE_ENV];
+      delete process.env[STEAMHARNESS_RUNTIME_LOCALE_ENV];
     } else {
-      process.env[WORKFLOW_RUNTIME_LOCALE_ENV] = previous;
+      process.env[STEAMHARNESS_RUNTIME_LOCALE_ENV] = previous;
     }
   }
 }

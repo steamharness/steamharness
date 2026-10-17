@@ -25,11 +25,11 @@ test("npm alpha retention skips versions that are already deprecated", async () 
     "0.1.4-20260814003",
   ];
   const result = await deprecateSupersededAlphaVersions({
-    packageName: "workflow-code",
+    packageName: "steamharness",
     currentVersion: "0.1.4-20260814003",
     runCommand: async (command, args, options) => {
       calls.push({ command, args, options });
-      if (args[1] === "workflow-code") return JSON.stringify(versions);
+      if (args[1] === "steamharness") return JSON.stringify(versions);
       if (args[0] === "view" && args[1].endsWith("20260813001")) {
         return JSON.stringify("Already superseded.");
       }
@@ -45,18 +45,18 @@ test("npm alpha retention skips versions that are already deprecated", async () 
     alreadyDeprecated: ["0.1.4-20260813001"],
   });
   assert.deepEqual(calls.filter((call) => call.args[0] === "deprecate").map((call) => call.args[1]), [
-    "workflow-code@0.1.4-20260813002",
+    "steamharness@0.1.4-20260813002",
   ]);
 });
 
 test("npm alpha retention accepts a concurrent idempotent deprecation", async () => {
   let deprecationReads = 0;
   const result = await deprecateSupersededAlphaVersions({
-    packageName: "workflow-code",
+    packageName: "steamharness",
     currentVersion: "0.1.4-20260814003",
     retain: 1,
     runCommand: async (_command, args) => {
-      if (args[1] === "workflow-code") {
+      if (args[1] === "steamharness") {
         return JSON.stringify(["0.1.4-20260814002", "0.1.4-20260814003"]);
       }
       if (args[0] === "view") {

@@ -13,15 +13,15 @@ const COMMIT_PATTERN = /^[0-9a-f]{40}$/u;
 
 export async function activateDocsService(options = {}) {
   const releaseRoot = resolveSafeDirectory(
-    options.releaseRoot ?? process.env.WORKFLOW_DOCS_RELEASE_ROOT,
-    "WORKFLOW_DOCS_RELEASE_ROOT",
+    options.releaseRoot ?? process.env.STEAMHARNESS_DOCS_RELEASE_ROOT,
+    "STEAMHARNESS_DOCS_RELEASE_ROOT",
   );
   const runtimeRoot = resolveSafeDirectory(
-    options.runtimeRoot ?? process.env.WORKFLOW_DOCS_RUNTIME_ROOT,
-    "WORKFLOW_DOCS_RUNTIME_ROOT",
+    options.runtimeRoot ?? process.env.STEAMHARNESS_DOCS_RUNTIME_ROOT,
+    "STEAMHARNESS_DOCS_RUNTIME_ROOT",
   );
   const commitSha = String(
-    options.commitSha ?? process.env.WORKFLOW_DOCS_DEPLOY_COMMIT ?? "",
+    options.commitSha ?? process.env.STEAMHARNESS_DOCS_DEPLOY_COMMIT ?? "",
   ).trim().toLowerCase();
   if (!COMMIT_PATTERN.test(commitSha)) {
     throw new Error("Docs activation requires an exact 40-character commit SHA.");
@@ -41,16 +41,16 @@ export async function activateDocsService(options = {}) {
     assertDeployment(path.join(releaseRoot, "deployment.json"), commitSha),
   ]);
 
-  const host = String(options.host ?? process.env.WORKFLOW_DOCS_HOST ?? "0.0.0.0").trim();
-  if (!host) throw new Error("WORKFLOW_DOCS_HOST must not be empty.");
-  const port = normalizePort(options.port ?? process.env.WORKFLOW_DOCS_PORT ?? 7132, "WORKFLOW_DOCS_PORT");
+  const host = String(options.host ?? process.env.STEAMHARNESS_DOCS_HOST ?? "0.0.0.0").trim();
+  if (!host) throw new Error("STEAMHARNESS_DOCS_HOST must not be empty.");
+  const port = normalizePort(options.port ?? process.env.STEAMHARNESS_DOCS_PORT ?? 7132, "STEAMHARNESS_DOCS_PORT");
   const preflightPort = normalizePort(
-    options.preflightPort ?? process.env.WORKFLOW_DOCS_PREFLIGHT_PORT ?? 17132,
-    "WORKFLOW_DOCS_PREFLIGHT_PORT",
+    options.preflightPort ?? process.env.STEAMHARNESS_DOCS_PREFLIGHT_PORT ?? 17132,
+    "STEAMHARNESS_DOCS_PREFLIGHT_PORT",
   );
   if (port === preflightPort) throw new Error("Docs production and preflight ports must differ.");
   const startupTimeoutMs = normalizeTimeout(
-    options.startupTimeoutMs ?? process.env.WORKFLOW_DOCS_STARTUP_TIMEOUT_MS ?? 30_000,
+    options.startupTimeoutMs ?? process.env.STEAMHARNESS_DOCS_STARTUP_TIMEOUT_MS ?? 30_000,
   );
   const command = options.command ?? nodeBin;
   const prefixArgs = options.prefixArgs ?? [serverScript];
@@ -308,7 +308,7 @@ function normalizePort(value, label) {
 function normalizeTimeout(value) {
   const timeout = Number(value);
   if (!Number.isInteger(timeout) || timeout < 1_000 || timeout > 120_000) {
-    throw new Error("WORKFLOW_DOCS_STARTUP_TIMEOUT_MS must be between 1000 and 120000.");
+    throw new Error("STEAMHARNESS_DOCS_STARTUP_TIMEOUT_MS must be between 1000 and 120000.");
   }
   return timeout;
 }

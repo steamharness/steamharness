@@ -72,26 +72,26 @@ cp ../hello/.env.example .env
 Inspect structure:
 
 ```bash
-workflow-code structure .
+steamharness structure .
 ```
 
 Execute:
 
 ```bash
-workflow-code run . -- --message "我需要配置 M7，操控速度高"
+steamharness run . -- --message "我需要配置 M7，操控速度高"
 ```
 
 Generate JSON report:
 
 ```bash
-workflow-code json . -- --message "我需要配置 M7，操控速度高" --max-rounds 10
+steamharness json . -- --message "我需要配置 M7，操控速度高" --max-rounds 10
 ```
 
 Run with conversation history:
 
 ```bash
-workflow-code json . --conversation-id deltafore-agent-demo -- --message "我需要配置 M7，操控速度高" --max-rounds 10
-workflow-code json . --conversation-id deltafore-agent-demo -- --message "继续找能提升操控速度的 M7 配件" --max-rounds 10
+steamharness json . --conversation-id deltafore-agent-demo -- --message "我需要配置 M7，操控速度高" --max-rounds 10
+steamharness json . --conversation-id deltafore-agent-demo -- --message "继续找能提升操控速度的 M7 配件" --max-rounds 10
 ```
 
 Conversation 模式下，默认 composer 固定映射到 `--message`；旧的 positional

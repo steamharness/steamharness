@@ -87,7 +87,7 @@ test("static validation only rejects a missing executor and defers dynamic confi
 });
 
 test("workflow script inspection rejects a project without an executor", async () => {
-  const workflowDir = await mkdtemp(path.join(tmpdir(), "workflow-project-type-no-executor-"));
+  const workflowDir = await mkdtemp(path.join(tmpdir(), "steamharness-project-type-no-executor-"));
   try {
     await writeFile(path.join(workflowDir, "index.ts"), `
       export const demoWorkflow = workflow.defineWorkflow({
@@ -136,7 +136,7 @@ test("legacy conversation settings produce warnings instead of blocking executio
 });
 
 test("structure inspection warns about conflicting executor project types across files", async () => {
-  const workflowDir = await mkdtemp(path.join(tmpdir(), "workflow-project-type-conflict-"));
+  const workflowDir = await mkdtemp(path.join(tmpdir(), "steamharness-project-type-conflict-"));
   try {
     await Promise.all([
       writeFile(path.join(workflowDir, "index.ts"), createExecutorSource('projectType: "workflow",'), "utf8"),
@@ -164,7 +164,7 @@ test("structure inspection warns about conflicting executor project types across
 });
 
 test("runtime infers a legacy conversation executor without projectType", async () => {
-  const workflowDir = await mkdtemp(path.join(tmpdir(), "workflow-project-type-legacy-runtime-"));
+  const workflowDir = await mkdtemp(path.join(tmpdir(), "steamharness-project-type-legacy-runtime-"));
   try {
     await Promise.all([
       writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
@@ -172,7 +172,7 @@ test("runtime infers a legacy conversation executor without projectType", async 
         name: "legacy-conversation-runtime",
         version: "0.1.0",
         type: "module",
-        workflowCode: { projectInfo: { dataStorage: { mode: "local" } } },
+        steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
       }), "utf8"),
       writeFile(path.join(workflowDir, "index.ts"), `
         const legacyWorkflow = workflow.defineWorkflow({
@@ -211,7 +211,7 @@ test("runtime infers a legacy conversation executor without projectType", async 
 });
 
 test("runtime infers a Workflow executor with entrypoints but no projectType", async () => {
-  const workflowDir = await mkdtemp(path.join(tmpdir(), "workflow-project-type-entrypoint-runtime-"));
+  const workflowDir = await mkdtemp(path.join(tmpdir(), "steamharness-project-type-entrypoint-runtime-"));
   try {
     await Promise.all([
       writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
@@ -219,7 +219,7 @@ test("runtime infers a Workflow executor with entrypoints but no projectType", a
         name: "inferred-workflow-runtime",
         version: "0.1.0",
         type: "module",
-        workflowCode: { projectInfo: { dataStorage: { mode: "local" } } },
+        steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
       }), "utf8"),
       writeFile(path.join(workflowDir, "index.ts"), `
         const inferredWorkflow = workflow.defineWorkflow({
@@ -252,7 +252,7 @@ test("runtime infers a Workflow executor with entrypoints but no projectType", a
 });
 
 test("projectType alone controls runtime conversation context", async () => {
-  const rootDir = await mkdtemp(path.join(tmpdir(), "workflow-project-type-runtime-"));
+  const rootDir = await mkdtemp(path.join(tmpdir(), "steamharness-project-type-runtime-"));
   const workflowDir = path.join(rootDir, "workflow");
   const conversationDir = path.join(rootDir, "conversation");
 
@@ -299,7 +299,7 @@ test("projectType alone controls runtime conversation context", async () => {
 });
 
 test("runtime reports static violations before server storage connection checks", async () => {
-  const workflowDir = await mkdtemp(path.join(tmpdir(), "workflow-project-type-legacy-"));
+  const workflowDir = await mkdtemp(path.join(tmpdir(), "steamharness-project-type-legacy-"));
   try {
     await Promise.all([
       writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
@@ -307,7 +307,7 @@ test("runtime reports static violations before server storage connection checks"
         name: "legacy-runtime",
         version: "0.1.0",
         type: "module",
-        workflowCode: { projectInfo: { dataStorage: { mode: "server" } } },
+        steamHarness: { projectInfo: { dataStorage: { mode: "server" } } },
       }), "utf8"),
       writeFile(path.join(workflowDir, "index.ts"), `
         export const projectType = "workflow";
@@ -378,7 +378,7 @@ async function writeRuntimeProject(
       name: `${projectType}-mode`,
       version: "0.1.0",
       type: "module",
-      workflowCode: { projectInfo: { dataStorage: { mode: "local" } } },
+      steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
     }), "utf8"),
     writeFile(path.join(workflowDir, "index.ts"), `
       const runtimeWorkflow = workflow.defineWorkflow({

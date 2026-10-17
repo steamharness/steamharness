@@ -1,11 +1,11 @@
-import { parseKanbanMethodInvocation, type KanbanMethodInvocation } from "@workflow-code/kanban-project";
+import { parseKanbanMethodInvocation, type KanbanMethodInvocation } from "@steamharness/kanban-project";
 import { readHostConfigurationBridgeConfig, requestHostBridge, type HostBridgeConfig } from "./host-configuration";
 import type { WorkflowCapability } from "./types";
 
-export const KANBAN_METHODS_MCP_SERVER_ID = "workflow-kanban";
+export const KANBAN_METHODS_MCP_SERVER_ID = "steamharness-kanban";
 export const KANBAN_METHODS_MCP_TOOL_NAME = "kanban_methods";
 export const KANBAN_METHODS_MCP_TOOL_ID = `${KANBAN_METHODS_MCP_SERVER_ID}_${KANBAN_METHODS_MCP_TOOL_NAME}`;
-export const KANBAN_METHODS_ENABLED_ENV = "WORKFLOW_DEVELOPER_ASSISTANT_KANBAN_METHODS_ENABLED";
+export const KANBAN_METHODS_ENABLED_ENV = "STEAMHARNESS_DEVELOPER_ASSISTANT_KANBAN_METHODS_ENABLED";
 export type KanbanMethodsToolArgs = { action: "list" } | ({ action: "invoke" } & KanbanMethodInvocation);
 
 export function readKanbanMethodsBridgeConfig(env: NodeJS.ProcessEnv = process.env): HostBridgeConfig | undefined {

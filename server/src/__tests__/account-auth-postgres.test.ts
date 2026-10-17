@@ -5,10 +5,10 @@ import pg from "pg";
 import { AccountRepository } from "../account-db";
 import { WorkflowAuthService } from "../account-auth";
 
-const databaseUrl = process.env.WORKFLOW_TEST_DATABASE_URL?.trim();
+const databaseUrl = process.env.STEAMHARNESS_TEST_DATABASE_URL?.trim();
 
 test("native PostgreSQL auth preserves sessions, invitations, API keys, locks, transactions, and notifications", {
-  skip: databaseUrl ? false : "WORKFLOW_TEST_DATABASE_URL is not configured",
+  skip: databaseUrl ? false : "STEAMHARNESS_TEST_DATABASE_URL is not configured",
 }, async () => {
   assert.ok(databaseUrl);
   const accountDb = new AccountRepository(databaseUrl);
@@ -37,7 +37,7 @@ test("native PostgreSQL auth preserves sessions, invitations, API keys, locks, t
       refresh_token_hash: string;
     }>(
       `select access_expires_at, expires_at, access_token_hash, refresh_token_hash
-       from workflow_auth_sessions where refresh_token_hash = $1`,
+       from steamharness_auth_sessions where refresh_token_hash = $1`,
       [sha256Text(signedInAdmin.refreshToken)],
     )).rows[0];
     assert.ok(adminSessionRow);
@@ -49,7 +49,7 @@ test("native PostgreSQL auth preserves sessions, invitations, API keys, locks, t
     assertTtlNear(adminSessionRow.expires_at, 30 * 24 * 60 * 60 * 1000);
 
     await pool.query(
-      "update workflow_auth_sessions set access_expires_at = now() - interval '1 second' where refresh_token_hash = $1",
+      "update steamharness_auth_sessions set access_expires_at = now() - interval '1 second' where refresh_token_hash = $1",
       [sha256Text(signedInAdmin.refreshToken)],
     );
     await assert.rejects(auth.getUserByAccessToken(signedInAdmin.accessToken), /invalid/u);
@@ -80,8 +80,8 @@ test("native PostgreSQL auth preserves sessions, invitations, API keys, locks, t
     assert.equal(invitation.email, "invited@example.com");
     assertTtlNear(new Date(invitation.expiresAt), 24 * 60 * 60 * 1000);
     const invitationRow = (await pool.query<{ token_hash: string }>(
-      `select token_hash from workflow_auth_invitations
-       where user_id = (select id from workflow_auth_users where email = $1)`,
+      `select token_hash from steamharness_auth_invitations
+       where user_id = (select id from steamharness_auth_users where email = $1)`,
       ["invited@example.com"],
     )).rows[0];
     assert.match(invitationRow?.token_hash ?? "", /^[a-f0-9]{64}$/u);
@@ -154,7 +154,7 @@ test("native PostgreSQL auth preserves sessions, invitations, API keys, locks, t
     const expiredInviteToken = new URL(expiredInvite.invitationLink!).pathname.split("/").at(-1);
     if (!expiredInviteToken) throw new Error("Expired invitation token is missing.");
     await pool.query(
-      "update workflow_auth_invitations set expires_at = now() - interval '1 second' where token_hash = $1",
+      "update steamharness_auth_invitations set expires_at = now() - interval '1 second' where token_hash = $1",
       [sha256Text(expiredInviteToken)],
     );
     await assert.rejects(
@@ -166,14 +166,14 @@ test("native PostgreSQL auth preserves sessions, invitations, API keys, locks, t
     try {
       await transactionClient.query("begin");
       await transactionClient.query(
-        "insert into workflow_auth_users (id, email, display_name) values ($1, $2, $3)",
+        "insert into steamharness_auth_users (id, email, display_name) values ($1, $2, $3)",
         ["rollback-user", "rollback@example.com", "Rollback User"],
       );
       await transactionClient.query("rollback");
     } finally {
       transactionClient.release();
     }
-    assert.equal((await pool.query("select 1 from workflow_auth_users where id = $1", ["rollback-user"])).rowCount, 0);
+    assert.equal((await pool.query("select 1 from steamharness_auth_users where id = $1", ["rollback-user"])).rowCount, 0);
 
     const lockOwner = await pool.connect();
     const lockContender = await pool.connect();
@@ -192,7 +192,7 @@ test("native PostgreSQL auth preserves sessions, invitations, API keys, locks, t
 
     const listener = await pool.connect();
     try {
-      await listener.query("listen workflow_auth_test");
+      await listener.query("listen steamharness_auth_test");
       const notification = new Promise<string>((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error("LISTEN/NOTIFY timed out")), 5_000);
         listener.once("notification", (message) => {
@@ -200,10 +200,10 @@ test("native PostgreSQL auth preserves sessions, invitations, API keys, locks, t
           resolve(message.payload ?? "");
         });
       });
-      await pool.query("select pg_notify('workflow_auth_test', 'ready')");
+      await pool.query("select pg_notify('steamharness_auth_test', 'ready')");
       assert.equal(await notification, "ready");
     } finally {
-      await listener.query("unlisten workflow_auth_test");
+      await listener.query("unlisten steamharness_auth_test");
       listener.release();
     }
   } finally {

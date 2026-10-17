@@ -41,6 +41,6 @@ description: "Release notes for Server 0.1.9."
 
 - Fixed production builds inlining the OpenAI Responses Shared runtime instead of leaving TypeScript-only packages in deploy dependencies.
 - Fixed MCP elicitation returning invalid content or failing transport or recovery no longer leaving `waiting_for_input` runs behind.
-- Fixed OpenAI call metadata trusting only `WORKFLOW_API_PUBLIC_BASE_URL` or forwarded headers from a trusted proxy.
+- Fixed OpenAI call metadata trusting only `STEAMHARNESS_API_PUBLIC_BASE_URL` or forwarded headers from a trusted proxy.
 - Fixed partial image upload failures now returning explicit validation errors and reclaiming the partial files.
 - Fixed the gateway accepting `system` and `developer` messages, `text.verbosity`, and the compatibility `include` parameter.

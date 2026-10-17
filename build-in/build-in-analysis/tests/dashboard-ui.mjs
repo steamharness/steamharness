@@ -7,17 +7,17 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
-import { validateWorkflowScriptSource } from 'workflow-code';
+import { validateWorkflowScriptSource } from 'steamharness';
 import { translations } from '../src/locales.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const cli = path.join(root, 'node_modules/@workflow-code/cli/dist/index.js');
-const { readLocalStudioAnalysis } = await import(new URL('../node_modules/@workflow-code/cli/dist/web/local-analysis.mjs', import.meta.url));
+const cli = path.join(root, 'node_modules/@steamharness/cli/dist/index.js');
+const { readLocalStudioAnalysis } = await import(new URL('../node_modules/@steamharness/cli/dist/web/local-analysis.mjs', import.meta.url));
 const data = await realpath(await mkdtemp(path.join(os.tmpdir(), 'studio-analysis-ui-')));
 const storageDir = path.join(data, 'web'), proofDir = path.join(root, 'test-results'); await mkdir(proofDir, { recursive: true });
 const children = new Set(), services = [];
-const environment = { ...process.env, WORKFLOW_CLI_AUTH_DIR: path.join(data, 'auth'), WORKFLOW_SERVER_URL: '', WORKFLOW_SERVER_ADMIN_KEY: '',
-  WORKFLOW_STUDIO_CONTROL_BRIDGE_URL: '', WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN: '' };
+const environment = { ...process.env, STEAMHARNESS_CLI_AUTH_DIR: path.join(data, 'auth'), STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '',
+  STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL: '', STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN: '' };
 const dependencies = await realpath(path.join(root, 'node_modules'));
 const source = `
 const output = workflow.createOutputNode({ name: 'result', format() { return workflow.createOutputPayload({ items: [{ content: 'Local result', contentType: 'text' }] }); } });
@@ -37,8 +37,8 @@ export const executor = workflow.defineExecutor({ projectType: 'workflow', defau
 `;
 async function project(name) {
   const directory = path.join(data, name); await mkdir(directory);
-  const manifest = { id: randomUUID(), name, type: 'module', devDependencies: { 'workflow-code': '0.2.4', '@workflow-code/cli': '0.2.4' },
-    workflowCode: { projectInfo: { dataStorage: { mode: 'local' } } } };
+  const manifest = { id: randomUUID(), name, type: 'module', devDependencies: { 'steamharness': '0.2.4', '@steamharness/cli': '0.2.4' },
+    steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } };
   await writeFile(path.join(directory, 'package.json'), JSON.stringify(manifest)); await writeFile(path.join(directory, 'index.ts'), source);
   await symlink(dependencies, path.join(directory, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
   return { id: manifest.id, name, uri: pathToFileURL(directory).href, folderPath: directory, projectType: 'workflow', inWorkspace: true };
@@ -93,10 +93,10 @@ try {
   for (const name of ['package.json', 'kanban.json', 'index.html', 'assets']) await cp(path.join(root, name), path.join(dashboard, name), { recursive: true });
   await symlink(dependencies, path.join(dashboard, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
   const manifest = JSON.parse(await readFile(path.join(dashboard, 'package.json'), 'utf8'));
-  const coreVersion = JSON.parse(await readFile(path.join(dependencies, 'workflow-code/package.json'), 'utf8')).version;
-  const cliVersion = JSON.parse(await readFile(path.join(dependencies, '@workflow-code/cli/package.json'), 'utf8')).version;
+  const coreVersion = JSON.parse(await readFile(path.join(dependencies, 'steamharness/package.json'), 'utf8')).version;
+  const cliVersion = JSON.parse(await readFile(path.join(dependencies, '@steamharness/cli/package.json'), 'utf8')).version;
   await writeFile(path.join(dashboard, 'package.json'), JSON.stringify({ ...manifest,
-    devDependencies: { 'workflow-code': coreVersion, '@workflow-code/cli': cliVersion } }));
+    devDependencies: { 'steamharness': coreVersion, '@steamharness/cli': cliVersion } }));
   const projects = [tasks, prompts, { id: manifest.id, name: manifest.name, uri: pathToFileURL(dashboard).href, folderPath: dashboard, projectType: 'kanban' }];
   const token = randomBytes(32).toString('hex');
   bridge = createServer(async (request, response) => {
@@ -109,10 +109,10 @@ try {
     response.writeHead(200, { 'Content-Type': 'application/json' }); response.end(JSON.stringify({ ok: true, value }));
   });
   await new Promise(resolve => bridge.listen(0, '127.0.0.1', resolve));
-  const capability = { WORKFLOW_STUDIO_CONTROL_BRIDGE_URL: `http://127.0.0.1:${bridge.address().port}/studio-control`, WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN: token };
+  const capability = { STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL: `http://127.0.0.1:${bridge.address().port}/studio-control`, STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN: token };
   await waitFor(async () => { const value = await readLocalStudioAnalysis({ storageDir, projects }); return value.projects.flatMap(project => project.runs).filter(run => run.status === 'running').length === 1; }, 'live CLI activity');
   proof.checks.push('real Core success, failure, active execution and resumable input persisted by CLI');
-  browser = await chromium.launch({ channel: process.env.WORKFLOW_UI_BROWSER ?? 'chrome', headless: true });
+  browser = await chromium.launch({ channel: process.env.STEAMHARNESS_UI_BROWSER ?? 'chrome', headless: true });
   for (const locale of ['en', 'zh-CN']) {
     const t = translations(locale), analysis = await start(dashboard, locale, capability);
     const context = await browser.newContext({ viewport: { width: 1440, height: 980 } }), page = await context.newPage();
@@ -124,7 +124,7 @@ try {
     for (const width of [1440, 800, 390]) {
       await page.setViewportSize({ width, height: 980 });
       for (const mode of ['light', 'dark']) {
-        await frame.locator('html').evaluate((node, theme) => { node.dataset.theme = theme; window.dispatchEvent(new CustomEvent('workflow-code:kanban-theme-change')); }, mode);
+        await frame.locator('html').evaluate((node, theme) => { node.dataset.theme = theme; window.dispatchEvent(new CustomEvent('steamharness:kanban-theme-change')); }, mode);
         const contrast = await frame.locator('body').evaluate(() => {
           const rgb = value => value.match(/[\d.]+/g).map(Number);
           const surface = rgb(getComputedStyle(document.documentElement).backgroundColor);

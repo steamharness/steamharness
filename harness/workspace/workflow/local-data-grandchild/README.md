@@ -6,12 +6,12 @@
 
 ```bash
 PARENT_DIR="$(cd ../local-data-child && pwd)"
-pnpm exec workflow-code json . --entrypoint store -- --content "grandchild content"
+pnpm exec steamharness json . --entrypoint store -- --content "grandchild content"
 CURRENT_ID="<store 返回的 id>"
-pnpm exec workflow-code json . --entrypoint get -- --id "$CURRENT_ID"
+pnpm exec steamharness json . --entrypoint get -- --id "$CURRENT_ID"
 
 PARENT_ID="<子项目 store 返回的 id>"
-pnpm exec workflow-code json . --entrypoint get --related-project "parent=$PARENT_DIR" -- --id "$PARENT_ID" --alias parent
+pnpm exec steamharness json . --entrypoint get --related-project "parent=$PARENT_DIR" -- --id "$PARENT_ID" --alias parent
 ```
 
 对父项目的越级访问必须失败，这一行为由 workspace 层级访问测试维护。

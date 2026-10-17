@@ -26,7 +26,7 @@ const commit = "7316652cf77bcbf766084839971208f3399aecc9";
 const ossConfig = {
   accessKeyId: "test-id",
   accessKeySecret: "test-secret",
-  bucket: "workflow-code",
+  bucket: "steamharness",
   region: "oss-cn-beijing",
   prefix: "",
   downloadBaseUrl: "https://wfdownload.example.com",
@@ -49,7 +49,7 @@ describe("independent built-in project release", () => {
     // instead of assuming either shape — this test runs in the tag pipeline.
     const mode = resolveReleaseMode({ root });
     const resolved = {};
-    for (const [key, packageName] of [["core", "workflow-code"], ["cli", "@workflow-code/cli"]]) {
+    for (const [key, packageName] of [["core", "steamharness"], ["cli", "@steamharness/cli"]]) {
       const reference = await resolveVersionReference(definition.packageJson, packageName, {
         mode, repoRoot: root, workspaceRoot: resolveSiblingWorkspaceRoot(root, definition.packageJson),
       });
@@ -58,7 +58,7 @@ describe("independent built-in project release", () => {
     expect(definition.components).toEqual(resolved);
     expect(definition.minDesktopVersion).toBe("0.1.24");
     expect(definition.dataStorageMode).toBe("both");
-    expect(definition.packageJson.workflowCode.projectInfo).toMatchObject({
+    expect(definition.packageJson.steamHarness.projectInfo).toMatchObject({
       localizedNames: {
         "zh-CN": expect.any(String),
         en: definition.packageJson.name,
@@ -156,7 +156,7 @@ describe("independent built-in project release", () => {
     const definition = await readBuiltinDefinition(root);
     const fixture = await mkdtemp(path.join(os.tmpdir(), `builtin-${definition.projectId}-legacy-desktop-field-`));
     const manifest = releaseManifest(definition);
-    manifest.workflowCode.builtinRelease.minAppVersion = definition.minDesktopVersion;
+    manifest.steamHarness.builtinRelease.minAppVersion = definition.minDesktopVersion;
     await writeFile(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 
     await expect(readBuiltinDefinition(fixture)).rejects.toThrow(/minAppVersion is not supported/);
@@ -166,17 +166,17 @@ describe("independent built-in project release", () => {
     const definition = await readBuiltinDefinition(root);
     const fixture = await mkdtemp(path.join(os.tmpdir(), `builtin-${definition.projectId}-runtime-components-`));
     const manifest = releaseManifest(definition);
-    manifest.devDependencies["workflow-code"] = "^0.1.0";
+    manifest.devDependencies["steamharness"] = "^0.1.0";
     await writeFile(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
     await expect(readBuiltinDefinition(fixture)).rejects.toThrow(
-      /devDependencies\.workflow-code "\^0\.1\.0" must be an exact SemVer version/,
+      /devDependencies\.steamharness "\^0\.1\.0" must be an exact SemVer version/,
     );
 
-    manifest.devDependencies["workflow-code"] = definition.components.core;
-    manifest.devDependencies["@workflow-code/cli"] = "workspace:*";
+    manifest.devDependencies["steamharness"] = definition.components.core;
+    manifest.devDependencies["@steamharness/cli"] = "workspace:*";
     await writeFile(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
     await expect(readBuiltinDefinition(fixture)).rejects.toThrow(
-      /devDependencies\.@workflow-code\/cli "workspace:\*" must be an exact SemVer version/,
+      /devDependencies\.@steamharness\/cli "workspace:\*" must be an exact SemVer version/,
     );
   });
 
@@ -189,12 +189,12 @@ describe("independent built-in project release", () => {
       for (const [name, version] of Object.entries(definition.components)) {
         await mkdir(path.join(workspace, name));
         await writeFile(path.join(workspace, name, "package.json"), JSON.stringify({
-          name: name === "core" ? "workflow-code" : "@workflow-code/cli", version,
+          name: name === "core" ? "steamharness" : "@steamharness/cli", version,
         }));
       }
       const manifest = structuredClone(definition.packageJson);
-      manifest.devDependencies["workflow-code"] = "link:../../core";
-      manifest.devDependencies["@workflow-code/cli"] = "link:../../cli";
+      manifest.devDependencies["steamharness"] = "link:../../core";
+      manifest.devDependencies["@steamharness/cli"] = "link:../../cli";
       await writeFile(path.join(fixture, "package.json"), JSON.stringify(manifest));
       expect((await readBuiltinDefinition(fixture, { mode: "dev" })).components).toEqual(definition.components);
       await expect(readBuiltinDefinition(fixture, { mode: "main" })).rejects.toThrow(/must declare an exact published version/);
@@ -207,7 +207,7 @@ describe("independent built-in project release", () => {
     const definition = await readBuiltinDefinition(root);
     const fixture = await mkdtemp(path.join(os.tmpdir(), `builtin-${definition.projectId}-release-reference-`));
     const manifest = structuredClone(definition.packageJson);
-    manifest.devDependencies["workflow-code"] = "link:../../core";
+    manifest.devDependencies["steamharness"] = "link:../../core";
     await writeFile(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 
     await expect(readBuiltinDefinition(fixture, { mode: "main" })).rejects.toThrow(
@@ -219,16 +219,16 @@ describe("independent built-in project release", () => {
     const definition = await readBuiltinDefinition(root);
     const fixture = await mkdtemp(path.join(os.tmpdir(), `builtin-${definition.projectId}-storage-contract-`));
     const manifest = releaseManifest(definition);
-    delete manifest.workflowCode.projectInfo.dataStorage;
+    delete manifest.steamHarness.projectInfo.dataStorage;
     await writeFile(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
     await expect(readBuiltinDefinition(fixture)).rejects.toThrow(/dataStorage\.mode/);
 
-    manifest.workflowCode.projectInfo.dataStorage = { mode: "both" };
-    manifest.workflowCode.builtinRelease.minDesktopVersion = "0.1.21";
+    manifest.steamHarness.projectInfo.dataStorage = { mode: "both" };
+    manifest.steamHarness.builtinRelease.minDesktopVersion = "0.1.21";
     await writeFile(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
     await expect(readBuiltinDefinition(fixture)).rejects.toThrow(/require minDesktopVersion 0\.1\.22/);
 
-    manifest.devDependencies["workflow-code"] = "0.2.1-20260826001";
+    manifest.devDependencies["steamharness"] = "0.2.1-20260826001";
     await writeFile(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
     await expect(readBuiltinDefinition(fixture)).rejects.toThrow(/require minDesktopVersion 0\.1\.22/);
   });
@@ -363,7 +363,7 @@ describe("independent built-in project release", () => {
       }
       for (const required of [
         `${skillRoot}/SKILL.md`,
-        `${skillRoot}/references/workflow-code-api.md`,
+        `${skillRoot}/references/steamharness-api.md`,
         `${skillRoot}/references/project-repair.md`,
         `${skillRoot}/scripts/create_workflow.py`,
         `${skillRoot}/agents/openai.yaml`,
@@ -390,8 +390,8 @@ async function exists(filePath) {
 function releaseManifest(definition) {
   const manifest = structuredClone(definition.packageJson);
   const versions = {
-    "workflow-code": definition.components.core,
-    "@workflow-code/cli": definition.components.cli,
+    "steamharness": definition.components.core,
+    "@steamharness/cli": definition.components.cli,
   };
   for (const [name, version] of Object.entries(versions)) {
     if (/^(?:file|link):/.test(String(manifest.devDependencies?.[name] ?? ""))) {

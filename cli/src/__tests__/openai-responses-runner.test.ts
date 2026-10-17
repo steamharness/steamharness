@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import type { OpenAIInternalRunnerFrame } from "@workflow-code/openai-responses";
+import type { OpenAIInternalRunnerFrame } from "@steamharness/openai-responses";
 import {
   parseOpenAIInternalRunnerRequest,
   runOpenAIResponsesRunner,

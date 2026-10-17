@@ -49,8 +49,8 @@
 - Added `getContextUsage()` / `updateContextUsage()` to query and update context occupancy, discarding obsolete counts after compaction and restoration.
 - Added generic ring presentation through `display` on output items, plus pinning to the right of the composer.
 - Added Core Agent context occupancy emitted through standard streaming output items, saved and restored per conversation while answers stay inline.
-- Added `workflow-kanban_kanban_methods` shared by agents and MCP, discovering and invoking methods on explicit Desktop Kanban preview instances.
-- Added structured JSON results and cancellation to `workflow-kanban_kanban_methods`, keeping configurations isolated and avoiding repeated view changes after timeouts.
+- Added `steamharness-kanban_kanban_methods` shared by agents and MCP, discovering and invoking methods on explicit Desktop Kanban preview instances.
+- Added structured JSON results and cancellation to `steamharness-kanban_kanban_methods`, keeping configurations isolated and avoiding repeated view changes after timeouts.
 - Added a `preview` parameter on browser resource cards controlling the Desktop preview area.
 - Added `workflow-ui_present_card` for agents to upsert, pin, or remove Conversation resource cards by stable `cardId`.
 

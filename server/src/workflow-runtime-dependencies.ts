@@ -1,5 +1,5 @@
-export const WORKFLOW_PROJECT_CORE_VERSION = "0.2.0";
-export const WORKFLOW_PROJECT_CLI_VERSION = "0.2.0";
+export const STEAMHARNESS_PROJECT_CORE_VERSION = "0.2.0";
+export const STEAMHARNESS_PROJECT_CLI_VERSION = "0.2.0";
 
 export function upgradeWorkflowRuntimeDependencies(
   packageJson: Record<string, unknown>,
@@ -13,8 +13,8 @@ export function upgradeWorkflowRuntimeDependencies(
     : {};
 
   for (const [dependencyName, version] of [
-    ["workflow-code", WORKFLOW_PROJECT_CORE_VERSION],
-    ["@workflow-code/cli", WORKFLOW_PROJECT_CLI_VERSION],
+    ["steamharness", STEAMHARNESS_PROJECT_CORE_VERSION],
+    ["@steamharness/cli", STEAMHARNESS_PROJECT_CLI_VERSION],
   ] as const) {
     if (dependencies !== undefined) delete dependencies[dependencyName];
     devDependencies[dependencyName] = version;

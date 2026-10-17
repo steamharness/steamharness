@@ -46,12 +46,12 @@ test("Server development plan watches Server, Core, Shared, and Vite Web sources
   for (const dotGit of [path.join(coreRoot, ".git"), path.join(sharedRoot, ".git")]) {
     assert.equal(plan.args[plan.args.indexOf(dotGit) - 1], "--exclude");
   }
-  assert.equal(plan.env.WORKFLOW_SERVER_DEV, "1");
-  assert.equal(plan.env.WORKFLOW_SERVER_HMR, "1");
+  assert.equal(plan.env.STEAMHARNESS_SERVER_DEV, "1");
+  assert.equal(plan.env.STEAMHARNESS_SERVER_HMR, "1");
   assert.equal(plan.env.NODE_OPTIONS, "--conditions=development");
   assert.equal(plan.env.TSX_TSCONFIG_PATH, tsconfigPath);
-  assert.equal(plan.env.WORKFLOW_LOCAL_SHARED_ROOT, sharedRoot);
-  assert.equal(plan.env.WORKFLOW_LOCAL_SOURCE_MODE, "1");
+  assert.equal(plan.env.STEAMHARNESS_LOCAL_SHARED_ROOT, sharedRoot);
+  assert.equal(plan.env.STEAMHARNESS_LOCAL_SOURCE_MODE, "1");
 });
 
 test("Server start plan runs source without Server or Web hot reload", async () => {
@@ -61,7 +61,7 @@ test("Server start plan runs source without Server or Web hot reload", async () 
   const tsconfigPath = path.join(root, ".workflow-local", "tsconfig.json");
   const plan = await createServerRunPlan({
     root,
-    env: { WORKFLOW_SERVER_HMR: "1" },
+    env: { STEAMHARNESS_SERVER_HMR: "1" },
     branch: "dev",
     hotReload: false,
     prepareDevelopment: async () => ({ coreRoot, sharedRoot, tsconfigPath }),
@@ -73,8 +73,8 @@ test("Server start plan runs source without Server or Web hot reload", async () 
   assert.equal(plan.args.includes("--include"), false);
   assert.equal(plan.args.includes("--tsconfig"), true);
   assert.equal(plan.args.at(-1), path.join(root, "src", "index.ts"));
-  assert.equal(plan.env.WORKFLOW_SERVER_HMR, "0");
-  assert.equal(plan.env.WORKFLOW_SERVER_DEV, "1");
+  assert.equal(plan.env.STEAMHARNESS_SERVER_HMR, "0");
+  assert.equal(plan.env.STEAMHARNESS_SERVER_DEV, "1");
 });
 
 test("Server main and tag plans build Server/Web and execute dist", async () => {
@@ -83,9 +83,9 @@ test("Server main and tag plans build Server/Web and execute dist", async () => 
       env: {
         NODE_OPTIONS: "--trace-warnings --conditions=development --enable-source-maps",
         TSX_TSCONFIG_PATH: "unsafe",
-        WORKFLOW_LOCAL_SOURCE_MODE: "1",
-        WORKFLOW_SERVER_DEV: "1",
-        WORKFLOW_SERVER_HMR: "1",
+        STEAMHARNESS_LOCAL_SOURCE_MODE: "1",
+        STEAMHARNESS_SERVER_DEV: "1",
+        STEAMHARNESS_SERVER_HMR: "1",
       },
       branch: "main",
     },
@@ -94,7 +94,7 @@ test("Server main and tag plans build Server/Web and execute dist", async () => 
         CI_COMMIT_TAG: "server/v1.0.0",
         CI_COMMIT_BRANCH: "dev",
         NODE_OPTIONS: "--conditions development",
-        WORKFLOW_LOCAL_CORE_ROOT: "unsafe",
+        STEAMHARNESS_LOCAL_CORE_ROOT: "unsafe",
       },
       branch: "dev",
     },
@@ -105,12 +105,12 @@ test("Server main and tag plans build Server/Web and execute dist", async () => 
     assert.equal(plan.hotReload, false);
     assert.deepEqual(plan.build, ["pnpm", ["build:all"]]);
     assert.deepEqual(plan.args, [path.join(root, "dist", "index.js")]);
-    assert.equal(plan.env.WORKFLOW_REPOSITORY_MODE, "main");
-    assert.equal(plan.env.WORKFLOW_SERVER_DEV, undefined);
-    assert.equal(plan.env.WORKFLOW_SERVER_HMR, undefined);
-    assert.equal(plan.env.WORKFLOW_LOCAL_SOURCE_MODE, undefined);
-    assert.equal(plan.env.WORKFLOW_LOCAL_CORE_ROOT, undefined);
-    assert.equal(plan.env.WORKFLOW_LOCAL_SHARED_ROOT, undefined);
+    assert.equal(plan.env.STEAMHARNESS_REPOSITORY_MODE, "main");
+    assert.equal(plan.env.STEAMHARNESS_SERVER_DEV, undefined);
+    assert.equal(plan.env.STEAMHARNESS_SERVER_HMR, undefined);
+    assert.equal(plan.env.STEAMHARNESS_LOCAL_SOURCE_MODE, undefined);
+    assert.equal(plan.env.STEAMHARNESS_LOCAL_CORE_ROOT, undefined);
+    assert.equal(plan.env.STEAMHARNESS_LOCAL_SHARED_ROOT, undefined);
     assert.equal(plan.env.TSX_TSCONFIG_PATH, undefined);
     assert.equal(plan.env.NODE_OPTIONS?.includes("development") ?? false, false);
   }

@@ -22,13 +22,13 @@ workflow environment values through `workflow.getEnv`.
 Inspect structure:
 
 ```bash
-workflow-code structure .
+steamharness structure .
 ```
 
 Run a live Agents SDK turn:
 
 ```bash
-workflow-code json . --conversation-id openai-agents-demo -- \
+steamharness json . --conversation-id openai-agents-demo -- \
   --message "Remember project tone as concise" \
   --workdir .
 ```
@@ -37,7 +37,7 @@ Run with the local shell tool enabled when your OpenAI endpoint supports
 Responses API shell tools:
 
 ```bash
-workflow-code json . --conversation-id openai-agents-shell-demo -- \
+steamharness json . --conversation-id openai-agents-shell-demo -- \
   --message "Use local_shell to run pwd and summarize the result" \
   --workdir . \
   --local-shell
@@ -46,7 +46,7 @@ workflow-code json . --conversation-id openai-agents-shell-demo -- \
 Ask the agent to call the custom HTTP test tool:
 
 ```bash
-workflow-code json . --conversation-id openai-agents-test-tool-demo -- \
+steamharness json . --conversation-id openai-agents-test-tool-demo -- \
   --message "Use test_tool to GET https://example.com and summarize the status" \
   --workdir .
 ```
@@ -55,8 +55,8 @@ Ask the agent to search or update local project knowledge documents by assigning
 PersistentValue its own local root:
 
 ```bash
-WORKFLOW_PERSISTENT_VALUE_STORE_DIR="$PWD/.workflow-persistent-values" \
-workflow-code json . --conversation-id openai-agents-knowledge-demo -- \
+STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR="$PWD/.workflow-persistent-values" \
+steamharness json . --conversation-id openai-agents-knowledge-demo -- \
   --message "Use knowledge_documents to list project documents, then search for PersistentValue" \
   --workdir .
 ```
@@ -70,7 +70,7 @@ CLI 输入仍保留兼容，但推荐统一走 `--message`。
 
 ## Tool permissions
 
-This workflow registers its Agents SDK tools with workflow-code tool
+This workflow registers its Agents SDK tools with steamharness tool
 permissions: `web_search`, `image_generation`, `local_shell`, `test_tool`,
 `knowledge_documents`, `remember_fact`, `read_context`, and `custom_tools`.
 They are enabled and auto-approved by default so CLI runs keep the sample's
@@ -193,7 +193,7 @@ The sample defines these tools:
   reads line ranges from project markdown knowledge documents. It reuses the
   core `workflow.*KnowledgeDocument*` helpers and therefore writes only through
   `context.storage.local.persistentValue`. Local runs can use
-  `WORKFLOW_PERSISTENT_VALUE_STORE_DIR`; otherwise they use a configured server
+  `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR`; otherwise they use a configured server
   backend. Calls fail only when neither backend nor an injected store is
   available, and they never fall back to ordinary local KV.
 - `local_shell`: when `--local-shell` is set, executes small, safe local shell

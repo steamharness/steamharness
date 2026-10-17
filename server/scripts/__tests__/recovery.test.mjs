@@ -12,7 +12,7 @@ import { parseStableReleaseMetadata, resolveStableRecoveryPaths } from "../recov
 test("Docker recovery preserves the established Compose project names", () => {
   const services = createDockerRecoveryServices("/srv/server");
   assert.deepEqual(services.map((service) => service.projectName), [
-    "workflow-code-postgres",
+    "steamharness-postgres",
   ]);
   assert.deepEqual(composeArgs(services[0], "up", "--detach").slice(-2), ["up", "--detach"]);
 });
@@ -31,18 +31,18 @@ test("Docker recovery uses the daemon socket unless explicitly configured", () =
 
 test("Docker recovery validates the persistent release root without a local download service", () => {
   const env = validateRecoveryEnvironment({
-    WORKFLOW_SERVER_ADMIN_KEY: "x",
-    WORKFLOW_AUTH_COOKIE_SECRET: "x",
-    WORKFLOW_BOOTSTRAP_ADMIN_EMAIL: "admin@example.com",
-    WORKFLOW_BOOTSTRAP_ADMIN_PASSWORD: "x",
-    WORKFLOW_DATABASE_URL: "postgres://example",
-    WORKFLOW_POSTGRES_PASSWORD: "x",
-    WORKFLOW_LOCAL_STORAGE_ROOT: "/srv/workflow-release/object-storage",
-    WORKFLOW_API_PUBLIC_BASE_URL: "https://wfapi.example.com",
-    WORKFLOW_RELEASE_STORAGE_ROOT: "/srv/workflow-release",
+    STEAMHARNESS_SERVER_ADMIN_KEY: "x",
+    STEAMHARNESS_AUTH_COOKIE_SECRET: "x",
+    STEAMHARNESS_BOOTSTRAP_ADMIN_EMAIL: "admin@example.com",
+    STEAMHARNESS_BOOTSTRAP_ADMIN_PASSWORD: "x",
+    STEAMHARNESS_DATABASE_URL: "postgres://example",
+    STEAMHARNESS_POSTGRES_PASSWORD: "x",
+    STEAMHARNESS_LOCAL_STORAGE_ROOT: "/srv/workflow-release/object-storage",
+    STEAMHARNESS_API_PUBLIC_BASE_URL: "https://wfapi.example.com",
+    STEAMHARNESS_RELEASE_STORAGE_ROOT: "/srv/workflow-release",
   });
-  assert.equal(env.WORKFLOW_RELEASE_STORAGE_ROOT, "/srv/workflow-release");
-  assert.equal(env.WORKFLOW_DOWNLOAD_ROOT, undefined);
+  assert.equal(env.STEAMHARNESS_RELEASE_STORAGE_ROOT, "/srv/workflow-release");
+  assert.equal(env.STEAMHARNESS_DOWNLOAD_ROOT, undefined);
 });
 
 test("stable recovery accepts only recorded stable Server releases", () => {

@@ -1,6 +1,6 @@
 
 import type { AuthSessionState, ApiResponse, WorkflowAdminUserSummary, WorkflowAccountInvitationLookupResult, WorkflowApiKeyCreateResult, WorkflowApiKeyRecord, WorkflowAuditEventPage, WorkflowAuditOutcome, WorkflowDeviceCodeResult, WorkflowKVEntryDetail, WorkflowKVEntryPage, WorkflowKVEntryScope, WorkflowKVEntryValueType, WorkflowKnowledgeDocument, WorkflowKnowledgeDocumentPage, WorkflowKnowledgeDocumentLinesResult, WorkflowKnowledgeDocumentSummary, WorkflowKnowledgeSearchResult, WorkflowMeResult, WorkflowPermissionGroup, WorkflowProjectInvitation, WorkflowRelatedProjectListResult, WorkflowProjectAccessLinkInfo, WorkflowProjectAccessRequest, WorkflowProjectDependencyStatusResult, WorkflowProjectSourceAccessSummary, WorkflowInvitationAcceptResult, WorkflowInvitationLookupResult, WorkflowInvitationRole, WorkflowProjectMember, WorkflowRoleRecord, WorkflowUserInvitationResult, WorkflowServerHealthData, WorkflowSummary, WorkflowVersionSummary } from "./types";
-import { getCurrentLocale, translateDynamicKey, translateWorkflowCodeError, type CommonResourceKey } from "@workflow-code/i18n";
+import { getCurrentLocale, translateDynamicKey, translateSteamHarnessError, type CommonResourceKey } from "@steamharness/i18n";
 
 import type { WorkflowProjectDataSummary, WorkflowSourceShare } from "./types";
 
@@ -81,7 +81,7 @@ export class ServerApiClient {
         const text = await res.text();
         const payload = parseApiResponse(text);
         const message = payload && payload.errCode !== 0
-          ? translateWorkflowCodeError(payload.data, payload.errMessage || tCommon("workflowFileReadFailed"))
+          ? translateSteamHarnessError(payload.data, payload.errMessage || tCommon("workflowFileReadFailed"))
           : text.trim() !== ""
             ? tCommon("serverNonJsonErrorResponse", { body: trim(text.trim()) })
             : tCommon("workflowFileReadFailed");
@@ -380,8 +380,8 @@ export class ServerApiClient {
     input: {
       targetProjectId: string;
       targetAlias: string;
-      grantToRelatedProject: import("@workflow-code/project-info").WorkflowRelatedProjectKVGrant;
-      targetGrantToRelatedProject: import("@workflow-code/project-info").WorkflowRelatedProjectKVGrant;
+      grantToRelatedProject: import("@steamharness/project-info").WorkflowRelatedProjectKVGrant;
+      targetGrantToRelatedProject: import("@steamharness/project-info").WorkflowRelatedProjectKVGrant;
     },
   ): Promise<ApiResponse<WorkflowRelatedProjectListResult>> {
     return this.request<WorkflowRelatedProjectListResult>(

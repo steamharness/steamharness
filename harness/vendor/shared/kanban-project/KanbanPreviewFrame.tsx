@@ -1,5 +1,5 @@
-import { i18n } from "@workflow-code/i18n";
-import { useTranslation } from "@workflow-code/i18n/react";
+import { i18n } from "@steamharness/i18n";
+import { useTranslation } from "@steamharness/i18n/react";
 import { AlertCircle, Loader2, RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -55,7 +55,7 @@ export function KanbanPreviewFrame(props: KanbanPreviewFrameProps) {
   const postConfiguration = () => {
     if (!props.configuration) return;
     iframeRef.current?.contentWindow?.postMessage({
-      type: "workflow-code:kanban-configuration",
+      type: "steamharness:kanban-configuration",
       nonce: props.previewNonce,
       configuration: props.configuration,
     }, "*");

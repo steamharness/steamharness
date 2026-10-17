@@ -1,5 +1,5 @@
 [Unit]
-Description=Workflow Code Alpha Server
+Description=SteamHarness Alpha Server
 After=network-online.target docker.service
 Wants=network-online.target
 
@@ -9,12 +9,12 @@ WorkingDirectory=__ROOT__/deployments/server/alpha/current
 EnvironmentFile=-__ROOT__/runtime/alpha.env
 Environment=NODE_ENV=production
 Environment=NODE_OPTIONS=--max-old-space-size=192
-Environment=WORKFLOW_RELEASE_CHANNEL=alpha
-Environment=WORKFLOW_RELEASE_STORAGE_ROOT=__ROOT__
-Environment=WORKFLOW_RELEASE_METADATA_DIR=__ROOT__/deployments/server/alpha/current/.release-metadata
-Environment=WORKFLOW_SERVER_PORT=7140
+Environment=STEAMHARNESS_RELEASE_CHANNEL=alpha
+Environment=STEAMHARNESS_RELEASE_STORAGE_ROOT=__ROOT__
+Environment=STEAMHARNESS_RELEASE_METADATA_DIR=__ROOT__/deployments/server/alpha/current/.release-metadata
+Environment=STEAMHARNESS_SERVER_PORT=7140
 Environment=PORT=7140
-Environment=WORKFLOW_SERVER_DATA_DIR=__ROOT__/server-data/alpha
+Environment=STEAMHARNESS_SERVER_DATA_DIR=__ROOT__/server-data/alpha
 ExecStart=__ROOT__/deployments/server/alpha/current/.node/bin/node --import __ROOT__/compose/loopback.mjs __ROOT__/deployments/server/alpha/current/dist/index.js
 StandardOutput=append:__ROOT__/server-data/alpha/stdout.log
 StandardError=append:__ROOT__/server-data/alpha/stderr.log

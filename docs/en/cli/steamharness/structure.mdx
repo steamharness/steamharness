@@ -1,0 +1,74 @@
+---
+title: "steamharness structure"
+description: "Perform static analysis on the project structure of Workflow, Conversation, or Kanban."
+---
+
+# steamharness structure
+
+`steamharness structure` does not execute the project. It first validates the complete `package.json.steamHarness.projectInfo` contract. Workflow and Conversation then read the script and report nodes, execution order, parameters, conversation configuration, and the debug registry; Kanban reads the artifact configuration in `package.json`, its HTML entry, and optional `kanban.json`.
+
+## Command Format
+
+```bash
+steamharness structure [workflow-dir]
+```
+
+## Parameter
+
+|Parameter|Description|
+| --- | --- |
+| `workflow-dir` |workflow project directory. Use the current directory when not passing.|
+
+## output structure
+
+|Field|Description|
+| --- | --- |
+| `projectType` |Item type:`workflow`, `conversation`, or `kanban`. The first two are from executor; Kanban is from `package.json.steamHarness.projectType`.|
+| `artifactDir` |Kanban Static product directory, default `.`.|
+| `entry` |Kanban HTML entry relative to `artifactDir`, default `index.html`.|
+| `manifest` |List of optional v1 parameters for Kanban.|
+| `schedulePresets` |Workflow Proposed plan declared in `package.json.steamHarness.schedulePresets` and validated;Conversation and Kanban do not accept this field.|
+| `defaultEntrypoint` |The default Workflow entrypoint ID.|
+| `entrypoints` |The Workflow entrypoint catalog. Each item contains `id`, `title`, optional `description`, `group`, `workflowName`, `execution`, parameters, tools, and registry. A `group` has the static inline shape `{ id, title, order? }`.|
+| `workflow` |workflow name and underlying information.|
+| `definitions.nodes` |The statically recognized node definition.|
+| `definitions.variables` |Statically identified key variables.|
+| `execution` |The derived execution structure comprises the `runNode`, `runStreamNode`, `runIf`, `runFor`, `runWhile`, `runWorkflow`, and question-classifier branches; return expressions such as `return workflow.runNode(...)`, `return workflow.runIf(...)`, and `return workflow.runFor(...)` are likewise incorporated into their respective branches or loops.|
+| `diagnostics` |warnings, violations, and structural analysis errors.|
+| `params` |executor `params` declaration.|
+| `conversation` |executor conversation configuration.|
+| `registry` |executor registry declaration.|
+
+## Failure behavior
+
+|Situation|Behavior|
+| --- | --- |
+|Structural analysis successful|Output structure JSON with exit code `0`.|
+|`projectInfo` contains unsupported fields or an invalid relationship declaration|Output structure JSON with the precise package-validation error and exit code `1`.|
+|Discovery Script Rule violations|Output structure JSON containing `diagnostics.error` with exit code `1`. A non-inline group, invalid group field, or inconsistent `title`/`order` for one `group.id` produces a precise violation.|
+|workflow File cannot be loaded|Output error structure JSON, exit code is `1`.|
+
+Workflow/Conversation structural analysis requires that the source code contain a `workflow.defineExecutor({ ... })` that can be read statically. Completely missing executor, passing dynamic variables to `defineExecutor(config)`, missing or declaring unknown `projectType`, Workflow carrying Conversation configuration, and legacy `conversation.enabled` all produce violation with migration examples. Kanban is not required executor, but the type must be declared in the package and a configured, standard HTML entry point must be provided; absolute paths, directory traversal, symbolic links, reserved directories, and invalid `kanban.json` will result in an immediate error.
+
+## Example
+
+```bash
+steamharness structure .
+steamharness structure workspace/workflow/hello
+steamharness structure workspace/workflow/runtime-timer
+steamharness structure ./roadmap-kanban
+```
+
+## Suitable scenarios
+
+|Scene|Description|
+| --- | --- |
+|Debugging CLI Web / Studio form parameters|Check if `params` is statically recognized.|
+|Debugging single-node operation|Check if the target node exists in `registry`.|
+|Check node order|Look at `execution` and `definitions.nodes`.|
+|Check conditional branch|Look at the if / else-if / else path for `source: "run-if"` in `execution`.|
+|Check loop structure|View the loop body’s children, condition, items, and `maxIterations` for `source: "run-for"` / `source: "run-while"` in `execution`.|
+|Check workflow multiplexing|View the child workflow invocation nodes of `standardName: "run-workflow"` in `execution`.|
+|Check timing presets|Confirm that `schedulePresets` references an existing entrypoint, and that the time zone, time window, or 5-field Cron is valid for parameter JSON. CLI reports only on presets and does not create or execute schedules in the background.|
+|Check entrypoint groups|Inspect `entrypoints[].group`. CLI structure/JSON output preserves group metadata, while run commands continue to select entries by `entrypoint.id`.|
+|Check Kanban|Confirm `projectType`, `artifactDir`, `entry`, and optional `manifest.params`. Removed `steamHarness.kanban.dataSources` fails validation directly. Related projects now live in `steamHarness.projectInfo.relatedProjects` and are no longer returned as a Kanban structure field.|

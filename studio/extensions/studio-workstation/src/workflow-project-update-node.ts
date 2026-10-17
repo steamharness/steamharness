@@ -6,12 +6,12 @@ import { compareProjectVersions, type DownloadedServerProject, type UpdatedServe
 
 // Source archives exclude host data. Preserve it, dependency installations and editor/SCM state at every depth.
 const preservedDirectories = new Set(['.git', '.hg', '.svn', 'node_modules', '.vscode', '.idea', '.workflow-kv',
-  '.workflow-persistent-values', '.workflow-runs', '.workflow-schedules', '.workflow-code', '.workflow-files', '.data',
+  '.workflow-persistent-values', '.workflow-runs', '.workflow-schedules', '.steamharness', '.workflow-files', '.data',
   'local-project-registries', 'workflow-files']);
 function preserve(name: string): boolean {
   const lower = name.toLowerCase();
   return preservedDirectories.has(lower) || lower === '.env' || lower === '.envrc' || lower.startsWith('.env.') && lower !== '.env.example'
-    || lower === 'workflow-auth.json' || lower === 'local-projects.json' || lower === 'workflow-code.sqlite' || lower.startsWith('workflow-code.sqlite-');
+    || lower === 'workflow-auth.json' || lower === 'local-projects.json' || lower === 'steamharness.sqlite' || lower.startsWith('steamharness.sqlite-');
 }
 async function preservedPaths(directory: string, signal: AbortSignal, relative = ''): Promise<string[]> {
   const found: string[] = [];

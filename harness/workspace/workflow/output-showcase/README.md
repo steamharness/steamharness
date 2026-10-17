@@ -26,7 +26,7 @@
 Inspect structure:
 
 ```bash
-workflow-code structure .
+steamharness structure .
 ```
 
 Direct CLI run（不会暂停，因为直接 CLI 模式下 user input 走
@@ -34,13 +34,13 @@ Direct CLI run（不会暂停，因为直接 CLI 模式下 user input 走
 恢复）：
 
 ```bash
-workflow-code json . -- --project-name "output-showcase" --tool-delay-ms 3000 --task-duration-ms 10000 --stream-delay-ms 120
+steamharness json . -- --project-name "output-showcase" --tool-delay-ms 3000 --task-duration-ms 10000 --stream-delay-ms 120
 ```
 
 Resume with confirmation = true（确认执行长任务）：
 
 ```bash
-workflow-code json . \
+steamharness json . \
   --run-id <runId> \
   --resolved-user-inputs-json '[{"requestId":"output-showcase:<runId>:run-confirmation","nodeName":"run-confirmation","values":{"decision":"enter"},"submittedAt":"2026-06-10T12:00:00.000Z"}]'
 ```
@@ -48,7 +48,7 @@ workflow-code json . \
 Resume with confirmation = false（跳过）：
 
 ```bash
-workflow-code json . \
+steamharness json . \
   --run-id <runId> \
   --resolved-user-inputs-json '[{"requestId":"output-showcase:<runId>:run-confirmation","nodeName":"run-confirmation","values":{"decision":"skip"},"submittedAt":"2026-06-10T12:00:00.000Z"}]'
 ```

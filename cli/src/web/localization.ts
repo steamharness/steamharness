@@ -1,4 +1,4 @@
-import { getCurrentLocale, i18n, initI18n, normalizeLocale } from '@workflow-code/i18n';
+import { getCurrentLocale, i18n, initI18n, normalizeLocale } from '@steamharness/i18n';
 import chinese from './messages.zh-cn.json';
 
 if (typeof document !== 'undefined' && document.documentElement) {

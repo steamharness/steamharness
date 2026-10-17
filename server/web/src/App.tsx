@@ -1,12 +1,12 @@
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Database, Loader2, RefreshCw, Settings2 } from "lucide-react";
-import { resolvePrincipalAvatarUrl } from "@workflow-code/avatar-fallback";
+import { resolvePrincipalAvatarUrl } from "@steamharness/avatar-fallback";
 import { toast } from "sonner";
 import { ThemeProvider, useTheme } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { i18n, persistLocale, readStoredLocale, resolveLocalePreference, translateDynamicKey, useTranslation, type LocalePreference } from "@workflow-code/i18n/react";
+import { i18n, persistLocale, readStoredLocale, resolveLocalePreference, translateDynamicKey, useTranslation, type LocalePreference } from "@steamharness/i18n/react";
 import { apiClient } from "./api";
 import { ADMIN_TAB_META, AppLayout, CONSOLE_NAV_ICONS } from "./components/AppLayout";
 import { LoginPage } from "./components/LoginPage";

@@ -134,7 +134,7 @@ test('disposing the view during inspection never opens an orphan assistant', asy
 
 test('missing assistant dependencies show retry without asking to select another project', async t => {
   let installed = false;
-  const { provider, view, events, projects } = fixture(t, { inspect: () => installed ? { projects: [descriptor()], errors: [] } : { projects: [], errors: ['Install @workflow-code/cli for <assistant>.'] } });
+  const { provider, view, events, projects } = fixture(t, { inspect: () => installed ? { projects: [descriptor()], errors: [] } : { projects: [], errors: ['Install @steamharness/cli for <assistant>.'] } });
   await provider.resolveWebviewView(view);
   assert.equal(projects.length, 0);
   assert.match(view.webview.html, /&lt;assistant&gt;/);

@@ -243,7 +243,7 @@ export const KNOWLEDGE_CAPABILITY: WorkflowCapability = {
   toolId: KNOWLEDGE_MCP_TOOL_ID,
   title: "Knowledge documents",
   description: [
-    "Manage project Markdown knowledge documents stored by workflow-code.",
+    "Manage project Markdown knowledge documents stored by steamharness.",
     "Use list/get/search/read_lines to inspect documents and create/edit/delete to change them.",
     "Large Markdown bodies are truncated; use read_lines for precise ranges.",
   ].join(" "),

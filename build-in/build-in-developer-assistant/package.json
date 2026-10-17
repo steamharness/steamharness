@@ -22,15 +22,15 @@
     "@earendil-works/pi-ai": "1.2.0",
     "@types/node": "^25.6.0",
     "@vitest/coverage-v8": "^4.1.7",
-    "@workflow-code/cli": "link:../../cli",
+    "@steamharness/cli": "link:../../cli",
     "semver": "^7.7.4",
     "tar": "^7.5.14",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7",
-    "workflow-code": "link:../../core",
+    "steamharness": "link:../../core",
     "yaml": "^2.9.0"
   },
-  "workflowCode": {
+  "steamHarness": {
     "projectInfo": {
       "localizedNames": {
         "zh-CN": "小助手",

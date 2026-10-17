@@ -12,10 +12,10 @@ describe("Server Web public assets", () => {
     expect(indexHtml).toContain('href="/apple-touch-icon.png"');
 
     for (const [publicPath, brandPath] of [
-      ["favicon.png", "workflow-code-icon-32.png"],
-      ["apple-touch-icon.png", "workflow-code-icon-256.png"],
-      ["brand/workflow-code-icon-mark.svg", "workflow-code-icon-mark.svg"],
-      ["brand/workflow-code-icon.svg", "workflow-code-icon.svg"],
+      ["favicon.png", "steamharness-icon-32.png"],
+      ["apple-touch-icon.png", "steamharness-icon-256.png"],
+      ["brand/steamharness-icon-mark.svg", "steamharness-icon-mark.svg"],
+      ["brand/steamharness-icon.svg", "steamharness-icon.svg"],
     ]) {
       expect(readFileSync(path.join(webRoot, "public", publicPath))).toEqual(
         readFileSync(path.join(repositoryRoot, "assets", "brand", brandPath)),

@@ -23,7 +23,7 @@ test('the built-in analysis prepares a runnable Kanban and connects its own CLI 
   for (const name of ['package.json', 'kanban.json', 'index.html', 'assets']) {
     await cp(new URL(`../vendor/analysis/${name}`, import.meta.url), path.join(template, name), { recursive: true });
   }
-  const cli = path.join(source.projectDir, 'node_modules/@workflow-code/cli/dist'); await mkdir(path.join(cli, 'web'));
+  const cli = path.join(source.projectDir, 'node_modules/@steamharness/cli/dist'); await mkdir(path.join(cli, 'web'));
   await writeFile(path.join(cli, 'web/local-analysis.mjs'), `
     let deferred;
     export function holdNextRead() {
@@ -53,9 +53,9 @@ test('the built-in analysis prepares a runnable Kanban and connects its own CLI 
         const message = JSON.parse(line);
         if (message.type === 'configure') {
           server = createServer(async (request, response) => {
-            if (request.url === '/connection') { response.end(JSON.stringify({ url: process.env.WORKFLOW_STUDIO_CONTROL_BRIDGE_URL, assistant: message.assistant, mcp: process.env.WORKFLOW_STUDIO_CONTROL_MCP_SERVER })); return; }
-            const reply = await fetch(process.env.WORKFLOW_STUDIO_CONTROL_BRIDGE_URL, { method: 'POST',
-              headers: { Authorization: 'Bearer ' + process.env.WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN, 'Content-Type': 'application/json' },
+            if (request.url === '/connection') { response.end(JSON.stringify({ url: process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL, assistant: message.assistant, mcp: process.env.STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER })); return; }
+            const reply = await fetch(process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL, { method: 'POST',
+              headers: { Authorization: 'Bearer ' + process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN, 'Content-Type': 'application/json' },
               body: JSON.stringify({ operation: request.url === '/mutate' ? 'studio.theme.set' : 'studio.analysis.get', input: {}, permissionPolicy: 'read-only' }) });
             response.writeHead(reply.status, { 'Content-Type': 'application/json' }); response.end(await reply.text());
           });
@@ -76,7 +76,7 @@ test('the built-in analysis prepares a runnable Kanban and connects its own CLI 
   };
   const module = { exports: {} };
   runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name),
-    process: { ...process, env: { ...process.env, STUDIO_WORKFLOW_SOURCE: source.root } }, AbortController, AbortSignal, URL, Buffer, setTimeout, clearTimeout, queueMicrotask,
+    process: { ...process, env: { ...process.env, STUDIO_STEAMHARNESS_SOURCE: source.root } }, AbortController, AbortSignal, URL, Buffer, setTimeout, clearTimeout, queueMicrotask,
   }, { importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER });
   const runtime = module.exports.createWorkflowRuntime({ extensionUri: { fsPath: extension }, globalStorageUri: { fsPath: storage },
     globalState: { get: () => imports } }, { getConnection: () => undefined, onDidChange: () => ({ dispose() {} }) });

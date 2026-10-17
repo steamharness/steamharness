@@ -5,7 +5,7 @@ import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { AgentSessionSnapshot } from 'workflow-code/agent';
+import type { AgentSessionSnapshot } from 'steamharness/agent';
 import { createWebRuntime } from '../web/runtime';
 
 it('controls the real worker over IPC and replays pending commands after reopening SQLite', async () => {
@@ -24,12 +24,12 @@ it('controls the real worker over IPC and replays pending commands after reopeni
   const runtime = createWebRuntime(directory, path.join(directory, 'data'), () => undefined);
   let run: Promise<unknown> | undefined;
   try {
-    let core = path.dirname(fileURLToPath(import.meta.resolve('workflow-code')));
-    while (JSON.parse(await readFile(path.join(core, '..', 'package.json'), 'utf8').catch(() => '{}')).name !== 'workflow-code') core = path.dirname(core);
+    let core = path.dirname(fileURLToPath(import.meta.resolve('steamharness')));
+    while (JSON.parse(await readFile(path.join(core, '..', 'package.json'), 'utf8').catch(() => '{}')).name !== 'steamharness') core = path.dirname(core);
     core = path.dirname(core);
     await mkdir(path.join(directory, 'node_modules'));
-    await symlink(core, path.join(directory, 'node_modules/workflow-code'), process.platform === 'win32' ? 'junction' : 'dir');
-    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: '8912f599-21e5-4ef3-9008-ccf0ac7c242d', name: 'agent-ipc', version: '1.0.0', workflowCode: { projectType: 'conversation', projectInfo: { dataStorage: { mode: 'local' } } } }));
+    await symlink(core, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: '8912f599-21e5-4ef3-9008-ccf0ac7c242d', name: 'agent-ipc', version: '1.0.0', steamHarness: { projectType: 'conversation', projectInfo: { dataStorage: { mode: 'local' } } } }));
     model.listen(0, '127.0.0.1'); await once(model, 'listening');
     const port = (model.address() as { port: number }).port;
     await writeFile(path.join(directory, 'index.ts'), `

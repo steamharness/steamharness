@@ -9,13 +9,13 @@ import {
   validateProjectAppCardMetadata,
   writeProjectAppCardMetadataToPackageJson,
   writeProjectCardMetadataToPackageJson,
-} from "@workflow-code/project-card-metadata";
+} from "@steamharness/project-card-metadata";
 
 describe("project-card-metadata package", () => {
   it("reads namespaced projectCard metadata from package.json", () => {
     const metadata = readProjectCardMetadataFromPackageJson(
       {
-        workflowCode: {
+        steamHarness: {
           projectCard: {
             icon: "bot",
             iconUrl: "https://example.com/icon.png",
@@ -38,7 +38,7 @@ describe("project-card-metadata package", () => {
   it("keeps reading legacy appCard metadata from package.json", () => {
     const metadata = readProjectAppCardMetadataFromPackageJson(
       {
-        workflowCode: {
+        steamHarness: {
           appCard: {
             icon: "bot",
             iconUrl: "https://example.com/icon.png",
@@ -60,7 +60,7 @@ describe("project-card-metadata package", () => {
   it("prefers projectCard over legacy appCard metadata", () => {
     const metadata = readProjectCardMetadataFromPackageJson(
       {
-        workflowCode: {
+        steamHarness: {
           appCard: {
             icon: "workflow",
             iconBackgroundColor: "#2563eb",
@@ -150,7 +150,7 @@ describe("project-card-metadata package", () => {
 
   it("rejects the removed projectCard kind field", () => {
     expect(() => readProjectCardMetadataFromPackageJson({
-      workflowCode: {
+      steamHarness: {
         projectCard: {
           kind: "conversation",
           icon: "message-circle",
@@ -166,12 +166,12 @@ describe("project-card-metadata package", () => {
     })).toThrow(/projectCard\.kind was removed/);
   });
 
-  it("writes workflowCode.projectCard without removing existing workflowCode fields", () => {
+  it("writes steamHarness.projectCard without removing existing steamHarness fields", () => {
     expect(
       writeProjectCardMetadataToPackageJson(
         {
           id: "demo",
-          workflowCode: {
+          steamHarness: {
             existing: true,
           },
         },
@@ -183,7 +183,7 @@ describe("project-card-metadata package", () => {
       ),
     ).toEqual({
       id: "demo",
-      workflowCode: {
+      steamHarness: {
         existing: true,
         projectCard: {
           icon: "database",
@@ -206,7 +206,7 @@ describe("project-card-metadata package", () => {
 
     expect(nextPackageJson).toEqual({
       id: "demo",
-      workflowCode: {
+      steamHarness: {
         projectCard: {
           icon: "database",
           iconColor: "#111827",

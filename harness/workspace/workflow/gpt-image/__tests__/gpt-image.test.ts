@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { runLocalWorkflowWithReport } from "workflow-code";
+import { runLocalWorkflowWithReport } from "steamharness";
 
 const fixtureB64 = "Z3B0LWltYWdlLWZpeHR1cmU=";
 
@@ -31,7 +31,7 @@ describe("gpt-image workflow", () => {
   });
 
   it("uses prior conversation turns as context for follow-up image prompts", async () => {
-    const kvStoreDir = await mkdtemp(`${os.tmpdir()}/workflow-code-gpt-image-conversation-test-`);
+    const kvStoreDir = await mkdtemp(`${os.tmpdir()}/steamharness-gpt-image-conversation-test-`);
     const conversationId = "gpt-image-follow-up-thread";
 
     try {
@@ -75,7 +75,7 @@ describe("gpt-image workflow", () => {
   });
 
   it("reuses prior conversation images as context for follow-up image edits", async () => {
-    const kvStoreDir = await mkdtemp(`${os.tmpdir()}/workflow-code-gpt-image-context-image-test-`);
+    const kvStoreDir = await mkdtemp(`${os.tmpdir()}/steamharness-gpt-image-context-image-test-`);
     const conversationId = "gpt-image-context-image-thread";
     const traceFile = path.join(kvStoreDir, "mock-image-runner.ndjson");
     const imageReference = createFixtureImageReference();
@@ -167,7 +167,7 @@ async function runWithMockEnv(options: {
   traceFile?: string;
 }) {
   const ownsKvStoreDir = options.kvStoreDir === undefined;
-  const kvStoreDir = options.kvStoreDir ?? await mkdtemp(`${os.tmpdir()}/workflow-code-gpt-image-test-`);
+  const kvStoreDir = options.kvStoreDir ?? await mkdtemp(`${os.tmpdir()}/steamharness-gpt-image-test-`);
   try {
     return await runLocalWorkflowWithReport({
       workflowDir: path.resolve(process.cwd(), "workflow/gpt-image"),

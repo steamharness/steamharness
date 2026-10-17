@@ -1,5 +1,5 @@
 {
-  "name": "@workflow-code/knowledge-base",
+  "name": "@steamharness/knowledge-base",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -16,7 +16,7 @@
     }
   },
   "dependencies": {
-    "@workflow-code/i18n": "workspace:*",
+    "@steamharness/i18n": "workspace:*",
     "highlight.js": "^11.11.1",
     "lucide-react": "^0.487.0",
     "react": "^19.0.0",

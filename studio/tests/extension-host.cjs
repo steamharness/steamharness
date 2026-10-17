@@ -49,9 +49,9 @@ exports.run = async () => {
   const projectId = '7e203f8c-ce8e-40bc-8cda-4cb26bf0f859';
   const demoName = 'Project CLI smoke';
   fs.writeFileSync(path.join(projectDir, 'package.json'), JSON.stringify({ id: projectId, name: demoName }));
-  const cliDir = path.join(projectDir, 'node_modules/@workflow-code/cli');
+  const cliDir = path.join(projectDir, 'node_modules/@steamharness/cli');
   fs.mkdirSync(path.join(cliDir, 'dist'), { recursive: true });
-  fs.writeFileSync(path.join(cliDir, 'package.json'), JSON.stringify({ name: '@workflow-code/cli', version: '0.0.0', type: 'module', bin: { 'workflow-code': 'dist/index.js' } }));
+  fs.writeFileSync(path.join(cliDir, 'package.json'), JSON.stringify({ name: '@steamharness/cli', version: '0.0.0', type: 'module', bin: { 'steamharness': 'dist/index.js' } }));
   fs.writeFileSync(path.join(cliDir, 'dist/index.js'), `
     import {createServer} from 'node:http';import {createInterface} from 'node:readline';import {writeFileSync,existsSync,readFileSync} from 'node:fs';import path from 'node:path';
     const project={id:${JSON.stringify(projectId)},name:${JSON.stringify(demoName)},folderPath:process.cwd(),projectType:'conversation',fields:[],entrypoints:[]};
@@ -63,7 +63,7 @@ exports.run = async () => {
         if(existsSync(path.join(process.cwd(),'startup.fail'))){console.error('Fixture startup failed.');process.exit(1);}
         server=createServer((request,response)=>response.end('<html><body>Project CLI</body></html>'));server.listen(0,'127.0.0.1',()=>{
           writeFileSync(path.join(process.cwd(),message.surface+'.pid'),String(process.pid));writeFileSync(path.join(process.cwd(),message.surface+'.json'),JSON.stringify(message));
-          console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:1,accountProtocolVersion:1,assistantProtocolVersion:1,url:'http://127.0.0.1:'+server.address().port+'/#session='+'a'.repeat(64),project:loaded,runtime:{coreVersion:'project-version',corePath:process.cwd()+'/node_modules/workflow-code'}}));
+          console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:1,accountProtocolVersion:1,assistantProtocolVersion:1,url:'http://127.0.0.1:'+server.address().port+'/#session='+'a'.repeat(64),project:loaded,runtime:{coreVersion:'project-version',corePath:process.cwd()+'/node_modules/steamharness'}}));
         });
       }else if(message.type==='close'){input.close();process.stdin.pause();server?.close();}
     });input.on('close',()=>{process.stdin.pause();server?.close();});}
@@ -88,7 +88,7 @@ exports.run = async () => {
   }
   await vscode.window.showTextDocument(vscode.Uri.file(path.join(projectDir, 'package.json')));
   await vscode.commands.executeCommand('studio.openAssistant');
-  const assistantRecordDir = path.join(process.env.STUDIO_WORKFLOW_SOURCE, 'build-in', 'build-in-developer-assistant');
+  const assistantRecordDir = path.join(process.env.STUDIO_STEAMHARNESS_SOURCE, 'build-in', 'build-in-developer-assistant');
   for (let attempt = 0; attempt < 100 && !fs.existsSync(path.join(assistantRecordDir, 'assistant.json')); attempt++) {
     await new Promise(resolve => setTimeout(resolve, 50));
   }
@@ -98,7 +98,7 @@ exports.run = async () => {
   assert.equal(assistantConfiguration.assistant.standalone, true);
   assert.equal(assistantConfiguration.assistant.workdir, projectDir, 'Assistant tools must use the currently opened folder.');
   assert.equal(assistantConfiguration.assistant.roots[0].folderPath, projectDir);
-  assert.equal(assistantConfiguration.corePath, path.join(assistantRecordDir, 'node_modules/workflow-code/dist/index.js'), 'The assistant must use its own Core.');
+  assert.equal(assistantConfiguration.corePath, path.join(assistantRecordDir, 'node_modules/steamharness/dist/index.js'), 'The assistant must use its own Core.');
   assert.equal(fs.existsSync(path.join(projectDir, 'assistant.json')), false, 'The opened project CLI must never host the assistant.');
   const assistantPid = Number(fs.readFileSync(path.join(assistantRecordDir, 'assistant.pid'), 'utf8'));
   const firstPid = Number(fs.readFileSync(path.join(projectDir, 'editor.pid'), 'utf8'));

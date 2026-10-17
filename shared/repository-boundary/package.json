@@ -1,5 +1,5 @@
 {
-  "name": "@workflow-code/repository-boundary",
+  "name": "@steamharness/repository-boundary",
   "version": "0.1.0",
   "private": true,
   "type": "module",

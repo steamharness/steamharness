@@ -24,7 +24,7 @@
 ### 新特性
 
 - **全局 `--locale` 开关**：切换本地与 Workspace 输出，并传递给 Server 和 Workflow runtime。
-- **`--entrypoint` 参数**：本地与远程命令均可指定入口，省略时使用默认入口。参见 [CLI](../docs/cli/workflow-code.mdx)。
+- **`--entrypoint` 参数**：本地与远程命令均可指定入口，省略时使用默认入口。参见 [CLI](../docs/cli/steamharness.mdx)。
 
 ### 破坏性变更
 
@@ -51,8 +51,8 @@
 
 ### 破坏性变更
 
-- Desktop 本地运行事件环境变量改为 `WORKFLOW_DESKTOP_RUNTIME_EVENTS`。
-  迁移：旧 `WORKFLOW_APP_RUNTIME_EVENTS` 不再生效，替换为新变量名。
+- Desktop 本地运行事件环境变量改为 `STEAMHARNESS_DESKTOP_RUNTIME_EVENTS`。
+  迁移：旧 `STEAMHARNESS_APP_RUNTIME_EVENTS` 不再生效，替换为新变量名。
 
 ## 0.1.5 - 2026-08-26
 
@@ -73,20 +73,20 @@
 
 ### 新特性
 
-- **本地 MCP 入口**：`workflow-code mcp <workflow-dir>` 把每个 entrypoint 暴露为标准 stdio MCP tool。
+- **本地 MCP 入口**：`steamharness mcp <workflow-dir>` 把每个 entrypoint 暴露为标准 stdio MCP tool。
 - **关联项目访问**：`--related-project` 显式启用双方已确认的关联项目 KV 访问。
-- **MCP 生命周期上报**：由 Desktop 无窗口启动器托管时，CLI 经独立 IPC 上报完整快照。参见 [CLI](../docs/cli/workflow-code.mdx)。
+- **MCP 生命周期上报**：由 Desktop 无窗口启动器托管时，CLI 经独立 IPC 上报完整快照。参见 [CLI](../docs/cli/steamharness.mdx)。
 
 ### 破坏性变更
 
 - 移除 `--grant-data-access` 与 Kanban `dataSources` 授权流程。
-  迁移：项目组依赖改由双方确认的 `workflowCode.projectInfo.relatedProjects` 生成。
+  迁移：项目组依赖改由双方确认的 `steamHarness.projectInfo.relatedProjects` 生成。
 - `workspace upload --create` 要求 package 预先声明顶层 UUID 与 `dataStorage.mode`。
   迁移：不再由 Server 分配或回写项目 ID。
 
 ### 新增
 
-- 新增 `workflow-code mcp <workflow-dir>`，把每个 entrypoint 暴露为标准 stdio MCP tool。
+- 新增 `steamharness mcp <workflow-dir>`，把每个 entrypoint 暴露为标准 stdio MCP tool。
 - 新增 本地运行支持可重复的 `--related-project <alias>=<绝对项目目录>`。
 
 ### 变更
@@ -99,14 +99,14 @@
 
 - 修复 MCP 表单 elicitation 返回非法内容或传输、恢复失败时终止等待中的运行并记录诊断。
 - 修复 OpenAI Responses 内部 runner 不再把 AI SDK 可选参数兼容性 warning 写入 `stderr`。
-- 修复 `workflow-code structure` 在静态分析前校验完整 `projectInfo` 合同，不支持字段返回退出码 `1`。
+- 修复 `steamharness structure` 在静态分析前校验完整 `projectInfo` 合同，不支持字段返回退出码 `1`。
 
 ## 0.2.4 - 2026-09-05
 
 ### 新特性
 
 - **关联项目的知识库与入口**：`--related-project` 现在可读目标项目知识库并调用其授权入口。
-- **软链接调用修复**：pnpm 等软链安装下 `workflow-code structure .` 不再空跑并以退出码 0 假通过。
+- **软链接调用修复**：pnpm 等软链安装下 `steamharness structure .` 不再空跑并以退出码 0 假通过。
 - **状态页显示真实服务器**：`workspace status` 新增 `effective` 字段，说明命令实际会用哪台服务器。
 
 ### 破坏性变更
@@ -116,7 +116,7 @@
 - 服务端位置的关联项目目标只交出 KV，知识库与入口调用会以明确错误说明本机无法抵达。
   迁移：把目标项目改为 `local` 位置，或把需要的能力放到本地可运行的入口。
 - 本地关联项目只在配置了持久值目录时开放知识库，且与目标子运行共用同一个目录。
-  迁移：显式传入 `--persistent-value-store-dir` 或设置 `WORKFLOW_PERSISTENT_VALUE_STORE_DIR`。
+  迁移：显式传入 `--persistent-value-store-dir` 或设置 `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR`。
 
 ### 新增
 
@@ -131,7 +131,7 @@
 ### 变更
 
 - 变更 项目组 `workspace upload` 改为返回 `202` 与 `jobId` 并轮询部署状态，不再同步等待构建。
-- 变更 依赖的 `workflow-code` 升到 dev 通道版本，系统 AI 的模型属性改由 Server 的模型目录提供。
+- 变更 依赖的 `steamharness` 升到 dev 通道版本，系统 AI 的模型属性改由 Server 的模型目录提供。
 - 变更 模型 effort 档位按模型声明的支持范围收敛，上下文用量分母取模型真实窗口。
 - 变更 宿主传来的图片附件引用经工作流文件存储解析后再进入模型，读不出时明确失败。
 - 变更 远程运行使用版本入队时固化的 Runner 制品和镜像 digest，不被后续上传覆盖。

@@ -80,7 +80,7 @@ describe("KanbanWorkspace", () => {
     fireEvent.load(iframe);
 
     expect(postMessage).toHaveBeenCalledWith({
-      type: "workflow-code:kanban-configuration",
+      type: "steamharness:kanban-configuration",
       nonce: "preview-nonce",
       configuration: {
         id: "default",
@@ -100,7 +100,7 @@ describe("KanbanWorkspace", () => {
     })} />);
 
     expect(postMessage).toHaveBeenCalledWith({
-      type: "workflow-code:kanban-related-project-revision",
+      type: "steamharness:kanban-related-project-revision",
       nonce: "preview-nonce",
       alias: "stocks",
       revision: "opaque-2",
@@ -109,7 +109,7 @@ describe("KanbanWorkspace", () => {
     postMessage.mockClear();
     fireEvent.load(iframe);
     expect(postMessage).toHaveBeenCalledWith({
-      type: "workflow-code:kanban-related-project-revision",
+      type: "steamharness:kanban-related-project-revision",
       nonce: "preview-nonce",
       alias: "stocks",
       revision: "opaque-2",
@@ -145,7 +145,7 @@ describe("KanbanWorkspace", () => {
       input: { key: "board" },
     }));
     await waitFor(() => expect(postMessage).toHaveBeenCalledWith({
-      type: "workflow-code:kanban-bridge-response",
+      type: "steamharness:kanban-bridge-response",
       nonce: "preview-nonce",
       requestId: "request-1",
       ok: true,
@@ -737,7 +737,7 @@ function createProps(overrides: Partial<KanbanWorkspaceProps> = {}): KanbanWorks
 
 function dispatchPreviewReady(iframe: HTMLIFrameElement, nonce: string): void {
   const event = new MessageEvent("message", {
-    data: { type: "workflow-code:kanban-ready", nonce },
+    data: { type: "steamharness:kanban-ready", nonce },
   });
   Object.defineProperty(event, "source", { value: iframe.contentWindow });
   fireEvent(window, event);
@@ -750,7 +750,7 @@ function dispatchBridgeRequest(
 ): void {
   const event = new MessageEvent("message", {
     data: {
-      type: "workflow-code:kanban-bridge-request",
+      type: "steamharness:kanban-bridge-request",
       nonce: overrides.nonce ?? "preview-nonce",
       ...call,
     },

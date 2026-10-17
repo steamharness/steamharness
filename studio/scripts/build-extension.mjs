@@ -14,7 +14,7 @@ export async function buildExtension({ watch = false } = {}) {
   await fs.rm(path.join(directory, 'dist/project-templates'), { recursive: true, force: true });
   await fs.cp(path.join(templates, 'project-templates'), path.join(directory, 'dist/project-templates'), { recursive: true });
   const versions = JSON.parse(await fs.readFile(path.join(ROOT, 'examples/conversation/package.json'), 'utf8')).devDependencies;
-  await fs.writeFile(path.join(directory, 'dist/project-template-versions.json'), JSON.stringify({ core: versions['workflow-code'], cli: versions['@workflow-code/cli'] }));
+  await fs.writeFile(path.join(directory, 'dist/project-template-versions.json'), JSON.stringify({ core: versions['steamharness'], cli: versions['@steamharness/cli'] }));
   const shared = {
     absWorkingDir: directory,
     entryPoints: ['src/extension.ts'],

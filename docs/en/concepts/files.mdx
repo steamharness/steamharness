@@ -5,7 +5,7 @@ description: "The current usage of file param, upload file, and WorkflowResolved
 
 # File Input
 
-workflow-code supports file input through executor params. Local clients save attachments first, then workflows read their contents through file references.
+steamharness supports file input through executor params. Local clients save attachments first, then workflows read their contents through file references.
 
 ## file param
 
@@ -97,7 +97,7 @@ Local resolution of input attachments continues through
 
 After upload, `await context.files.resolveFile(reference)` resolves a file on the same Server for `readBuffer()`, `readBase64()`, or `readDataUrl()`. The remote store authenticates against the fixed managed endpoint and never trusts a reference's URL or local path for authenticated reads.
 
-Kanban pages use `window.workflowCodeKanban.files.createFile/readFile/deleteFile` with the same Server file storage. See [Kanban images and files](/en/concepts/kanban#images-and-files). Existing local images can be migrated with the [CLI business file commands](/en/cli/server-workspace#business-files) without a temporary executor.
+Kanban pages use `window.steamHarnessKanban.files.createFile/readFile/deleteFile` with the same Server file storage. See [Kanban images and files](/en/concepts/kanban#images-and-files). Existing local images can be migrated with the [CLI business file commands](/en/cli/server-workspace#business-files) without a temporary executor.
 
 Do not save base64 file contents into KV or session history. Save the reference metadata returned by `file.toJSON()` when cross-round multiplexing is required.
 

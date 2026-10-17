@@ -5,14 +5,14 @@ import { createWorkflowCapabilityTools, listWorkflowCapabilityToolIds } from "..
 import type { NodeContext } from "../types/context";
 
 const config = { url: "http://127.0.0.1:12345/host", token: "test-token" };
-const env = { WORKFLOW_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL: config.url, WORKFLOW_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN: config.token };
+const env = { STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL: config.url, STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN: config.token };
 
 test("Kanban capability requires an explicitly enabled authenticated loopback host", () => {
   assert.equal(readKanbanMethodsBridgeConfig(env), undefined);
-  assert.deepEqual(readKanbanMethodsBridgeConfig({ ...env, WORKFLOW_DEVELOPER_ASSISTANT_KANBAN_METHODS_ENABLED: "1" }), config);
+  assert.deepEqual(readKanbanMethodsBridgeConfig({ ...env, STEAMHARNESS_DEVELOPER_ASSISTANT_KANBAN_METHODS_ENABLED: "1" }), config);
   assert.throws(() => readKanbanMethodsBridgeConfig({ ...env,
-    WORKFLOW_DEVELOPER_ASSISTANT_KANBAN_METHODS_ENABLED: "1", WORKFLOW_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL: "https://example.com/host" }), /loopback/);
-  assert.equal(KANBAN_METHODS_CAPABILITY.toolId, "workflow-kanban_kanban_methods");
+    STEAMHARNESS_DEVELOPER_ASSISTANT_KANBAN_METHODS_ENABLED: "1", STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL: "https://example.com/host" }), /loopback/);
+  assert.equal(KANBAN_METHODS_CAPABILITY.toolId, "steamharness-kanban_kanban_methods");
 });
 
 test("Kanban methods discovery and invocation preserve explicit instance and native JSON", async () => {
@@ -49,7 +49,7 @@ test("malformed calls never reach the host and host method errors are returned",
 });
 
 test("the Agent offers the enabled Kanban capability and asks approval before sending a call", async () => {
-  const enabled = { ...env, WORKFLOW_DEVELOPER_ASSISTANT_KANBAN_METHODS_ENABLED: "1" };
+  const enabled = { ...env, STEAMHARNESS_DEVELOPER_ASSISTANT_KANBAN_METHODS_ENABLED: "1" };
   const previous = Object.fromEntries(Object.keys(enabled).map((key) => [key, process.env[key]]));
   const previousFetch = globalThis.fetch;
   let requests = 0;

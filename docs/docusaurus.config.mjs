@@ -5,7 +5,7 @@ const siteDir = path.dirname(fileURLToPath(import.meta.url));
 
 /** @type {import('@docusaurus/types').Config} */
 const config = {
-  title: "Workflow Code",
+  title: "SteamHarness",
   tagline: "Build, run, and publish typed workflows",
   favicon: "brand/favicon.png",
   url: "https://wfdocs.yuhe.space",
@@ -75,7 +75,7 @@ const config = {
         docsPluginId: "default",
         config: {
           workflowZh: {
-            specPath: ".docusaurus-openapi/workflow-code.zh.yaml",
+            specPath: ".docusaurus-openapi/steamharness.zh.yaml",
             outputDir: "./reference",
             showSchemas: true,
             sidebarOptions: {
@@ -85,7 +85,7 @@ const config = {
             },
           },
           workflowEn: {
-            specPath: ".docusaurus-openapi/workflow-code.en.yaml",
+            specPath: ".docusaurus-openapi/steamharness.en.yaml",
             outputDir: "en/reference",
             showSchemas: true,
             sidebarOptions: {
@@ -114,7 +114,7 @@ const config = {
   ],
   themes: ["docusaurus-theme-openapi-docs"],
   themeConfig: {
-    image: "brand/workflow-code-icon.svg",
+    image: "brand/steamharness-icon.svg",
     colorMode: {
       defaultMode: "light",
       respectPrefersColorScheme: true,
@@ -123,9 +123,9 @@ const config = {
       title: "",
       hideOnScroll: false,
       logo: {
-        alt: "Workflow Code",
-        src: "brand/workflow-code-docs-logo.svg",
-        srcDark: "brand/workflow-code-docs-logo-dark.svg",
+        alt: "SteamHarness",
+        src: "brand/steamharness-docs-logo.svg",
+        srcDark: "brand/steamharness-docs-logo-dark.svg",
       },
       items: [
         { type: "docSidebar", sidebarId: "guidesSidebar", label: "指南", position: "left" },
@@ -140,7 +140,7 @@ const config = {
       style: "light",
       links: [
         {
-          title: "Workflow Code",
+          title: "SteamHarness",
           items: [
             { label: "Studio", to: "/guides/studio/overview" },
             { label: "Server Web", to: "/guides/server/overview" },
@@ -151,11 +151,11 @@ const config = {
           title: "资源",
           items: [
             { label: "发布日志", to: "/guides/releases/overview" },
-            { label: "服务端 API", to: "/reference/workflow-code-api/" },
+            { label: "服务端 API", to: "/reference/steamharness-api/" },
           ],
         },
       ],
-      copyright: `Copyright ${new Date().getFullYear()} Workflow Code`,
+      copyright: `Copyright ${new Date().getFullYear()} SteamHarness`,
     },
     prism: {
       additionalLanguages: ["bash", "json", "yaml", "typescript"],

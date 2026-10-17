@@ -57,7 +57,7 @@ let browser;
 const errors = [];
 const proof = [];
 try {
-  browser = await chromium.launch({ channel: process.env.WORKFLOW_UI_BROWSER ?? 'chrome', headless: true });
+  browser = await chromium.launch({ channel: process.env.STEAMHARNESS_UI_BROWSER ?? 'chrome', headless: true });
   const page = await browser.newPage({ viewport: { width: 1280, height: 700 } });
   page.on('pageerror', error => errors.push(error.message));
   const assertPermissionMenu = async () => {

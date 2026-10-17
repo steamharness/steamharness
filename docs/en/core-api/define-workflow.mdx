@@ -53,7 +53,7 @@ workflow.defineWorkflow<Input, Output>(
 ## Example
 
 ```ts
-import type { WorkflowPayload } from "workflow-code";
+import type { WorkflowPayload } from "steamharness";
 
 interface Input {
   message: string;
@@ -82,6 +82,6 @@ export const exampleWorkflow = workflow.defineWorkflow<Input, Output>({
 
 | Rule | Description |
 | --- | --- |
-| Do not import runtime APIs from `"workflow-code"` | The platform injects the global `workflow` object into business workflows. |
+| Do not import runtime APIs from `"steamharness"` | The platform injects the global `workflow` object into business workflows. |
 | `Output` must extend `WorkflowPayload` | On success, return `errCode: 0` and `errMessage: ""`. |
 | The runtime wraps exceptions | Unknown errors thrown from `run` are converted to `WorkflowError` and included in the execution report. |

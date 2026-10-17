@@ -1,5 +1,5 @@
 [Unit]
-Description=Workflow Code Web App (Alpha)
+Description=SteamHarness Web App (Alpha)
 After=network-online.target
 Wants=network-online.target
 

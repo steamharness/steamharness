@@ -21,12 +21,12 @@ const projects = [];
 for (const [type, relative] of [['conversation', 'tests/fixtures/conversation-features'], ['workflow', 'examples/workflow'], ['kanban', 'examples/kanban']]) {
   const original = path.join(root, relative), folder = path.join(directory, type);
   await cp(original, folder, { recursive: true, filter: entry => !entry.split(path.sep).includes('node_modules') });
-  await mkdir(path.join(folder, 'node_modules/@workflow-code'), { recursive: true });
-  await symlink(await realpath(path.join(original, 'node_modules/workflow-code')), path.join(folder, 'node_modules/workflow-code'), 'dir');
-  const cli = process.env.STUDIO_TRACE_CLI_DIR ?? await realpath(path.join(original, 'node_modules/@workflow-code/cli'));
-  await symlink(cli, path.join(folder, 'node_modules/@workflow-code/cli'), 'dir');
+  await mkdir(path.join(folder, 'node_modules/@steamharness'), { recursive: true });
+  await symlink(await realpath(path.join(original, 'node_modules/steamharness')), path.join(folder, 'node_modules/steamharness'), 'dir');
+  const cli = process.env.STUDIO_TRACE_CLI_DIR ?? await realpath(path.join(original, 'node_modules/@steamharness/cli'));
+  await symlink(cli, path.join(folder, 'node_modules/@steamharness/cli'), 'dir');
   const manifest = JSON.parse(await readFile(path.join(folder, 'package.json'), 'utf8'));
-  if (!process.env.STUDIO_TRACE_CLI_DIR) { assert.equal(JSON.parse(await readFile(path.join(cli, 'package.json'), 'utf8')).version, manifest.devDependencies['@workflow-code/cli']); }
+  if (!process.env.STUDIO_TRACE_CLI_DIR) { assert.equal(JSON.parse(await readFile(path.join(cli, 'package.json'), 'utf8')).version, manifest.devDependencies['@steamharness/cli']); }
   projects.push({ type, folder, manifest });
 }
 const debug = createServer(); await new Promise(resolve => debug.listen(0, '127.0.0.1', resolve)); const port = debug.address().port; await new Promise(resolve => debug.close(resolve));
@@ -34,7 +34,7 @@ const log = await open(path.join(proofDir, 'desktop.log'), 'w');
 const desktop = await desktopLocaleLaunch('zh-cn', directory);
 const child = spawn(desktop.executable, [...desktop.args, '--user-data-dir', dataDir,
   '--extensions-dir', path.join(root, '.studio/desktop-extensions'), '--locale=zh-cn', '--disable-workspace-trust', '--disable-telemetry', '--skip-welcome', '--skip-release-notes', `--remote-debugging-port=${port}`, workspace],
-  { cwd: path.join(root, 'upstream/vscode'), env: { ...process.env, ...desktop.env, WORKFLOW_SERVER_URL: '', WORKFLOW_SERVER_ADMIN_KEY: '' }, stdio: ['ignore', log.fd, log.fd] });
+  { cwd: path.join(root, 'upstream/vscode'), env: { ...process.env, ...desktop.env, STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' }, stdio: ['ignore', log.fd, log.fd] });
 const exited = new Promise(resolve => { child.once('exit', resolve); child.once('error', resolve); });
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const proof = { checks: [], screenshots: [], errors: [] }; let browser, page;
@@ -119,7 +119,7 @@ try {
   await trace.locator('.trace-row[data-lane=tool][data-status=success]').first().waitFor();
   assert.equal(await trace.locator('.trace-row[data-lane=tool][data-status=stopped]').count(), 0);
   proof.checks.push('tool details preserve arguments and results; modes, search, cancellation and historical reply targeting use the saved execution records');
-  await trace.locator('#trace-project').selectOption({ label: projects[1].manifest.workflowCode.projectInfo.localizedNames['zh-CN'] });
+  await trace.locator('#trace-project').selectOption({ label: projects[1].manifest.steamHarness.projectInfo.localizedNames['zh-CN'] });
   let workflow = await frameFor('#workflow-title'); await workflow.locator('#workflow-form[aria-busy=false]').waitFor();
   await workflow.locator('#input-mode [data-mode=raw]').click(); await workflow.locator('#raw-args').fill('["--subject","Trace first","--rounds","3","--delay","10","--review","false"]');
   await workflow.locator('#workflow-form[aria-busy=false]').waitFor(); await workflow.locator('#run:not([disabled])').click();
@@ -146,7 +146,7 @@ try {
   proof.checks.push('VS Code light, dark and high contrast colors, rounded controls and narrow panel layout render without overflow or overlap');
   await page.setViewportSize({ width: 1440, height: 1000 });
   await command('View: Close Editor');
-  await trace.locator('#trace-project').selectOption({ label: projects[1].manifest.workflowCode.projectInfo.localizedNames['zh-CN'] });
+  await trace.locator('#trace-project').selectOption({ label: projects[1].manifest.steamHarness.projectInfo.localizedNames['zh-CN'] });
   workflow = await frameFor('#workflow-title'); await workflow.locator('#run-meta').filter({ hasText: '\u5df2\u5b8c\u6210' }).waitFor();
   await trace.locator('#trace-run').selectOption(first); await trace.locator('.trace-row-title').filter({ hasText: /^iteration/ }).nth(2).waitFor();
   proof.checks.push('closing and reopening a project restores persisted traces through a fresh CLI connection');

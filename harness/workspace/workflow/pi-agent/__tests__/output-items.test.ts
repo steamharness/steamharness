@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createOutputStreamAccumulator } from "workflow-code/node/output";
+import { createOutputStreamAccumulator } from "steamharness/node/output";
 import {
   createAnswerItemStartChunk,
   createToolApprovalDecisionChunks,

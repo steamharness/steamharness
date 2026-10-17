@@ -8,8 +8,8 @@ description: "将草稿保存为不可变源码版本。"
 发布校验草稿并保存不可变源码快照、SHA-256、发布者、发布时间、发布说明和关联项目版本锁，成功后更新 `latest`。所有类型都保留完整源码；下载不受操作系统限制。
 
 ```bash
-workflow-code workspace publish <project> [--release-log <text>]
-workflow-code workspace publish --deployment <id>
+steamharness workspace publish <project> [--release-log <text>]
+steamharness workspace publish --deployment <id>
 ```
 
 发布版本取自已准备草稿的 `package.json.version`。Server 按项目串行发布；重复版本返回冲突，已有版本不会被覆盖。需要新版本时重新上传带新版本号的源码。发布不安装依赖、不构建或执行代码。

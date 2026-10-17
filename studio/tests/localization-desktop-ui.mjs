@@ -34,13 +34,13 @@ async function verify(language) {
   for (const [type, relative] of [['workflow', 'examples/workflow'], ['conversation', 'tests/fixtures/conversation-features'], ['kanban', 'examples/kanban']]) {
     const source = path.join(root, relative), folder = path.join(directory, type);
     await fs.cp(source, folder, { recursive: true, filter: file => !file.split(path.sep).includes('node_modules') });
-    await fs.mkdir(path.join(folder, 'node_modules/@workflow-code'), { recursive: true });
-    await fs.symlink(await fs.realpath(path.join(source, 'node_modules/workflow-code')), path.join(folder, 'node_modules/workflow-code'), 'dir');
-    const cli = process.env.STUDIO_TEST_CLI_DIR ?? await fs.realpath(path.join(source, 'node_modules/@workflow-code/cli'));
-    await fs.symlink(cli, path.join(folder, 'node_modules/@workflow-code/cli'), 'dir');
+    await fs.mkdir(path.join(folder, 'node_modules/@steamharness'), { recursive: true });
+    await fs.symlink(await fs.realpath(path.join(source, 'node_modules/steamharness')), path.join(folder, 'node_modules/steamharness'), 'dir');
+    const cli = process.env.STUDIO_TEST_CLI_DIR ?? await fs.realpath(path.join(source, 'node_modules/@steamharness/cli'));
+    await fs.symlink(cli, path.join(folder, 'node_modules/@steamharness/cli'), 'dir');
     const manifest = JSON.parse(await fs.readFile(path.join(folder, 'package.json'), 'utf8'));
     manifest.description = '\u539f\u59cb\u9879\u76ee\u63cf\u8ff0';
-    manifest.workflowCode.projectInfo = { ...manifest.workflowCode.projectInfo, declarations: ['multilingual', 'multiplatform'],
+    manifest.steamHarness.projectInfo = { ...manifest.steamHarness.projectInfo, declarations: ['multilingual', 'multiplatform'],
       dataStorage: { mode: 'local' }, relatedProjects: type === 'workflow' ? [{ alias: 'linked-missing', projectId: crypto.randomUUID() }] : [] };
     await fs.writeFile(path.join(folder, 'package.json'), JSON.stringify(manifest, null, 2)); projects.push({ type, folder, manifest });
   }
@@ -53,7 +53,7 @@ async function verify(language) {
   const child = spawn(desktop.executable, [...desktop.args, '--user-data-dir', profile,
     '--extensions-dir', path.join(root, '.studio/desktop-extensions'), `--locale=${language}`, '--disable-workspace-trust',
     '--disable-telemetry', '--skip-welcome', '--skip-release-notes', `--remote-debugging-port=${port}`, workspace],
-  { cwd: path.join(root, 'upstream/vscode'), env: { ...process.env, ...desktop.env, WORKFLOW_SERVER_URL: '', WORKFLOW_SERVER_ADMIN_KEY: '' }, stdio: ['ignore', log.fd, log.fd] });
+  { cwd: path.join(root, 'upstream/vscode'), env: { ...process.env, ...desktop.env, STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' }, stdio: ['ignore', log.fd, log.fd] });
   const exited = new Promise(resolve => { child.once('exit', resolve); child.once('error', resolve); });
   const proof = { language, checks: [], screenshots: [], errors: [] }; let browser, page;
   const exact = value => new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s|$)`);
@@ -112,7 +112,7 @@ async function verify(language) {
     await page.getByRole('button', { name: t('Import Project'), exact: true }).waitFor();
     await screenshot('related-projects.png'); await command('Notifications: Clear All Notifications');
     proof.checks.push('Related project state, import notification and action are translated');
-    projects[0].manifest.workflowCode.projectInfo.relatedProjects = [];
+    projects[0].manifest.steamHarness.projectInfo.relatedProjects = [];
     await fs.writeFile(path.join(projects[0].folder, 'package.json'), JSON.stringify(projects[0].manifest, null, 2));
     const runButton = page.locator('.part.titlebar .studio-workflow-run .action-label');
     assert.ok((await runButton.getAttribute('aria-label'))?.includes(t('Run Project')));
@@ -148,7 +148,7 @@ async function verify(language) {
     await page.locator('.part.activitybar').getByRole('tab', { name: exact('Studio') }).click();
     for (const label of ['New File', 'New Terminal', 'Run Task', 'Source Control', 'Extensions', 'Settings']) { await field(t(label)).waitFor(); }
     proof.checks.push('Studio tools use the host language even without a source-mode language pack');
-    const projectName = project => project.manifest.workflowCode.projectInfo.localizedNames?.[language === 'en' ? 'en' : 'zh-CN'] ?? project.manifest.name;
+    const projectName = project => project.manifest.steamHarness.projectInfo.localizedNames?.[language === 'en' ? 'en' : 'zh-CN'] ?? project.manifest.name;
     await field(projectName(projects[1])).locator('.label-name').click();
     const conversation = await frameFor('body[data-surface=editor] #message');
     await conversation.locator('#message:not([disabled])').waitFor();

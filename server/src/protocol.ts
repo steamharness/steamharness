@@ -1,5 +1,5 @@
 import type { Response } from "express";
-import { readWorkflowCodeI18nDescriptor } from "@workflow-code/i18n";
+import { readSteamHarnessI18nDescriptor } from "@steamharness/i18n";
 
 export interface ApiSuccess<T> {
   errCode: 0;
@@ -77,7 +77,7 @@ export function toHttpErrorWithStatus(
   fallback: string,
 ): HttpError {
   if (error instanceof HttpError) return error;
-  const descriptor = readWorkflowCodeI18nDescriptor(error);
+  const descriptor = readSteamHarnessI18nDescriptor(error);
   const message = error instanceof Error && error.message.trim() !== ""
     ? error.message
     : fallback;
@@ -85,7 +85,7 @@ export function toHttpErrorWithStatus(
     statusCode,
     errCode,
     message,
-    descriptor === undefined ? undefined : { workflowCodeI18n: descriptor },
+    descriptor === undefined ? undefined : { steamHarnessI18n: descriptor },
     descriptor === undefined
       ? undefined
       : {

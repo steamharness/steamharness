@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useTranslation } from "@workflow-code/i18n/react";
+import { useTranslation } from "@steamharness/i18n/react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

@@ -1,6 +1,6 @@
 import { Loader2, TriangleAlert } from "lucide-react";
 import type { ReactNode } from "react";
-import { useTranslation } from "@workflow-code/i18n/react";
+import { useTranslation } from "@steamharness/i18n/react";
 
 import {
   AlertDialog,

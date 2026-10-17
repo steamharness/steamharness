@@ -106,9 +106,9 @@ export interface RunWorkflowOptions<Output = unknown> {
 
 const DEFAULT_RUN_FOR_MAX_ITERATIONS = 1000;
 const DEFAULT_RUN_WHILE_MAX_ITERATIONS = 100;
-const DEFAULT_RUN_WORKFLOW_MAX_DEPTH = 16;
-const RUN_WORKFLOW_DEPTH_METADATA_KEY = "__workflowCodeRunWorkflowDepth";
-const RUN_WORKFLOW_OUTPUT_BRIDGE_ERROR = Symbol("runWorkflowOutputBridgeError");
+const DEFAULT_RUN_STEAMHARNESS_MAX_DEPTH = 16;
+const RUN_STEAMHARNESS_DEPTH_METADATA_KEY = "__steamHarnessRunWorkflowDepth";
+const RUN_STEAMHARNESS_OUTPUT_BRIDGE_ERROR = Symbol("runWorkflowOutputBridgeError");
 
 // Make workflow branches first-class runtime nodes so App Trace and Diagram
 // can show selected if / else-if / else paths instead of hiding them in plain TS control flow.
@@ -346,7 +346,7 @@ export async function runWorkflow<Input, Output>(
   const kvMode = resolveRunWorkflowKVMode(options);
   const outputVisibility = resolveRunWorkflowOutputVisibility(options);
   const outputBridge = createRunWorkflowOutputBridge(options);
-  const maxDepth = normalizeMaxIterations(options?.maxDepth, DEFAULT_RUN_WORKFLOW_MAX_DEPTH);
+  const maxDepth = normalizeMaxIterations(options?.maxDepth, DEFAULT_RUN_STEAMHARNESS_MAX_DEPTH);
   const depth = readRunWorkflowDepth(context);
   if (depth >= maxDepth) {
     throw new WorkflowError({
@@ -775,7 +775,7 @@ function createRunWorkflowContext<Input, Output>(
       : context.conversation,
     metadata: {
       ...context.metadata,
-      [RUN_WORKFLOW_DEPTH_METADATA_KEY]: options.depth,
+      [RUN_STEAMHARNESS_DEPTH_METADATA_KEY]: options.depth,
     },
     nodeHooks: createRunWorkflowNodeHooks(context.nodeHooks, {
       outputVisibility: options.outputVisibility,
@@ -859,7 +859,7 @@ function createPrefixedKVNamespace(
 }
 
 function readRunWorkflowDepth(context: WorkflowContext): number {
-  const value = context.metadata?.[RUN_WORKFLOW_DEPTH_METADATA_KEY];
+  const value = context.metadata?.[RUN_STEAMHARNESS_DEPTH_METADATA_KEY];
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? Math.floor(value)
     : 0;
@@ -1052,7 +1052,7 @@ function createRunWorkflowOutputBridgeHookError(error: unknown): Error {
   const bridgeError = new Error(readErrorMessage(error));
   bridgeError.name = "RunWorkflowOutputBridgeHandlerError";
   (bridgeError as { cause?: unknown }).cause = error;
-  (bridgeError as { [RUN_WORKFLOW_OUTPUT_BRIDGE_ERROR]?: true })[RUN_WORKFLOW_OUTPUT_BRIDGE_ERROR] = true;
+  (bridgeError as { [RUN_STEAMHARNESS_OUTPUT_BRIDGE_ERROR]?: true })[RUN_STEAMHARNESS_OUTPUT_BRIDGE_ERROR] = true;
   return bridgeError;
 }
 
@@ -1060,7 +1060,7 @@ function isRunWorkflowOutputBridgeHookError(error: unknown): boolean {
   return Boolean(
     typeof error === "object" &&
     error !== null &&
-    (error as { [RUN_WORKFLOW_OUTPUT_BRIDGE_ERROR]?: true })[RUN_WORKFLOW_OUTPUT_BRIDGE_ERROR],
+    (error as { [RUN_STEAMHARNESS_OUTPUT_BRIDGE_ERROR]?: true })[RUN_STEAMHARNESS_OUTPUT_BRIDGE_ERROR],
   );
 }
 

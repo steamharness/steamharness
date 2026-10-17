@@ -16,7 +16,7 @@ const values = items => Object.fromEntries(Object.values(fields(items)).filter(i
 
 test('project declarations use the Desktop manifest fields and preserve extended identifiers', () => {
   const items = workflowInfoItems(project(), { name: '@example/project', version: '1.2.3', description: 'Description',
-    workflowCode: { projectInfo: {
+    steamHarness: { projectInfo: {
       declarations: ['multilingual', 'multiplatform', 'custom-declaration', 'constructor'],
       localizedNames: { 'zh-CN': '\u793a\u4f8b', en: 'Example', ja: '\u4f8b' },
       platformSupport: { mode: 'specific', platforms: ['macos', 'web', 'linux', 'constructor'] }, dataStorage: { mode: 'both' },
@@ -45,7 +45,7 @@ test('undeclared storage stays undeclared and all three project types are displa
 });
 
 test('related resource permissions keep their declared direction and optional scopes', () => {
-  const items = workflowInfoItems(project(), { workflowCode: { projectInfo: { relatedProjects: [{
+  const items = workflowInfoItems(project(), { steamHarness: { projectInfo: { relatedProjects: [{
     alias: 'notes', projectId: '615e6cf6-b40a-456a-8d19-b71c63454c7a', grantToRelatedProject: {
       read: { mode: 'all' }, write: { mode: 'none' }, knowledge: { read: { mode: 'prefixes', prefixes: ['public/', 'notes/'] }, write: { mode: 'none' } },
       entrypoints: { mode: 'prefixes', prefixes: ['report'] },

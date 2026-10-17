@@ -6,7 +6,7 @@ import {
   TriangleAlertIcon,
 } from "lucide-react"
 import { useTheme } from "next-themes"
-import { useTranslation } from "@workflow-code/i18n/react"
+import { useTranslation } from "@steamharness/i18n/react"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 
 const Toaster = ({ ...props }: ToasterProps) => {

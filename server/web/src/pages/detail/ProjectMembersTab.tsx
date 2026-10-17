@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { CircleAlert, Plus, Trash2, Users } from "lucide-react";
-import { useTranslation } from "@workflow-code/i18n/react";
-import { formatDateTime } from "@workflow-code/i18n";
+import { useTranslation } from "@steamharness/i18n/react";
+import { formatDateTime } from "@steamharness/i18n";
 import { Badge, Button, Field, FieldGroup, FieldLabel, IconActionButton, Input, PageStats, SelectField, TablePanel, TableActionCell, TableBody, TableCell, TableEmptyRow, TableHead, TableHeader, TableRow } from "@/components/ui";
 import { TableLoadingRows } from "@/components/ui/table-loading-rows";
 import { UserIdentity } from "@/components/UserIdentity";

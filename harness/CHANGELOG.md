@@ -32,7 +32,7 @@
 - 新增 `workflow.getRuntimeLocale()` 和双语运行错误，缺少语言或翻译时稳定回退。
 - 新增 `defineEntrypoint()` 声明多个独立入口，运行上下文、报告与结构结果携带实际入口 ID 与标题。
 - 新增 Kanban 限定项目 UUID 与 key 前缀的只读 `workflow-kv` 数据源，来源更新后经 revision 订阅安全重读。
-- 新增 `package.json.workflowCode.schedulePresets` 计划建议，支持入口、IANA 时区、时间窗口与五字段 Cron。
+- 新增 `package.json.steamHarness.schedulePresets` 计划建议，支持入口、IANA 时区、时间窗口与五字段 Cron。
 - 新增 Kanban 版本级依赖锁与 project-group v1 协议，区分随组交付源码与 external 引用且不传输宿主数据。
 
 ### 变更
@@ -62,7 +62,7 @@
 
 ### 破坏性变更
 
-- 项目必须声明 `workflowCode.projectInfo.dataStorage.mode`，它限制 KV、PersistentValue 与知识库可访问位置。
+- 项目必须声明 `steamHarness.projectInfo.dataStorage.mode`，它限制 KV、PersistentValue 与知识库可访问位置。
   迁移：补齐 `dataStorage.mode`；`server` 位置要求登录并绑定同 UUID 项目。
 - 移除 `context.kv` 与 `context.persistentValue`，改用 `context.storage.<位置>.*`。
   迁移：本地改写为 `context.storage.local.*`，服务器改写为 `context.storage.server.*`；旧属性运行时只抛出迁移错误。
@@ -71,7 +71,7 @@
 
 ### 变更
 
-- 变更 项目必须在 `devDependencies.workflow-code` 写入精确 SemVer，宿主只比较 `major.minor` 兼容线。
+- 变更 项目必须在 `devDependencies.steamharness` 写入精确 SemVer，宿主只比较 `major.minor` 兼容线。
 - 变更 同线任意 patch 或日期 Alpha 可直接运行，major 或 minor 变化在加载用户模块前要求升级宿主。
 
 ## 0.2.3 - 2026-09-01
@@ -99,7 +99,7 @@
 
 - 变更 AI SDK 流保留完整的结束原因、用量、错误和 provider metadata。
 - 变更 AI SDK Provider 不把 SDK 的 `unsupported` / `compatibility` 警告升级为运行错误。
-- 变更 降级信息保留在 `providerMetadata["workflow-code"].warnings`，真实调用异常仍会失败。
+- 变更 降级信息保留在 `providerMetadata["steamharness"].warnings`，真实调用异常仍会失败。
 - 变更 KV 与 PersistentValue 使用独立存储域，知识库改用项目级 PersistentValue，Token 统计只维护项目和会话总量。
 - 变更 生成脚手架显式输出空的 `projectInfo.relatedProjects`，API 参考同步项目与会话 Token 统计合同。
 - 变更 本地与服务器数据层级示例改为 `store` / `get` 双入口，`store` 返回随机 UUID，`get` 只需该 id。
@@ -137,7 +137,7 @@
 - 新增 `--context-window` 覆盖上下文用量分母。
 - 新增 工具审批复用 `context.toolPermissions`，plan 审批复用 `context.userInput`。
 - 新增 token 用量经 `context.tokenUsage.report(...)` 上报一次，项目侧无需实现。
-- 新增 依赖 `@earendil-works/pi-agent-core` 与 `@earendil-works/pi-ai`，宿主安装 `workflow-code` 即自带。
+- 新增 依赖 `@earendil-works/pi-agent-core` 与 `@earendil-works/pi-ai`，宿主安装 `steamharness` 即自带。
 - 新增 `AgentNodeOptions.createTools` 可返回 `{ tools, close?() }`，`close` 在本轮结束时调用。
 - 新增 `AgentNodeOptions.createTools(context)` 组装内置 7 个工具之外的工具，编程式运行时用 `AgentRuntimeOptions.extraTools`。
 - 新增 `AgentInput.systemPrompt` 逐轮给出本轮系统提示词，`AgentInput.images` 随 prompt 发给模型。

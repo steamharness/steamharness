@@ -26,14 +26,14 @@ export async function resolveProjectCli(projectDir: string): Promise<{ entry: st
   const directory = await realpath(projectDir);
   let manifestPath: string | undefined;
   // Node caches resolved package symlinks across pnpm reinstalls in a long-lived host.
-  for (const modules of createRequire(path.join(directory, 'package.json')).resolve.paths('@workflow-code/cli') ?? []) {
-    try { manifestPath = await realpath(path.join(modules, '@workflow-code/cli/package.json')); break; }
+  for (const modules of createRequire(path.join(directory, 'package.json')).resolve.paths('@steamharness/cli') ?? []) {
+    try { manifestPath = await realpath(path.join(modules, '@steamharness/cli/package.json')); break; }
     catch (error) { if (!['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) { throw error; } }
   }
-  if (!manifestPath) { throw new Error(t("The project has no @workflow-code/cli installed. Install project dependencies first: {0}", directory)); }
+  if (!manifestPath) { throw new Error(t("The project has no @steamharness/cli installed. Install project dependencies first: {0}", directory)); }
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
-  const bin = typeof manifest.bin === 'string' ? manifest.bin : manifest.bin?.['workflow-code'];
-  if (manifest.name !== '@workflow-code/cli' || typeof bin !== 'string') { throw new Error('The project CLI has no workflow-code executable.'); }
+  const bin = typeof manifest.bin === 'string' ? manifest.bin : manifest.bin?.['steamharness'];
+  if (manifest.name !== '@steamharness/cli' || typeof bin !== 'string') { throw new Error('The project CLI has no steamharness executable.'); }
   const entry = await realpath(path.resolve(path.dirname(manifestPath), bin)).catch(() => { throw new Error(t("Project CLI is not built: {0}", manifestPath)); });
   return { entry, version: manifest.version };
 }
@@ -41,18 +41,18 @@ export async function resolveProjectCli(projectDir: string): Promise<{ entry: st
 export function createProjectCliEnvironment(base: NodeJS.ProcessEnv = process.env, studioControl?: StudioControlConfiguration): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = sanitizeWorkflowEnvironment(base);
   env.ELECTRON_RUN_AS_NODE = '1';
-  for (const key of ['TSX_TSCONFIG_PATH', 'WORKFLOW_LOCAL_CORE_ROOT', 'WORKFLOW_LOCAL_SHARED_ROOT', 'WORKFLOW_LOCAL_SOURCE_MODE',
-    'WORKFLOW_DEVELOPER_ASSISTANT_HOST', 'WORKFLOW_DEVELOPER_ASSISTANT_WORKDIR', 'WORKFLOW_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST',
-    'WORKFLOW_AI_SERVER_URL', 'WORKFLOW_AI_API_KEY', 'WORKFLOW_LLM_SERVER_URL', 'WORKFLOW_LLM_SERVER_TOKEN',
-    'WORKFLOW_STUDIO_INTERNAL', 'WORKFLOW_STUDIO_INTERNAL_MODULE', 'WORKFLOW_STUDIO_INTERNAL_SERVER_URL',
-    'WORKFLOW_STUDIO_CONTROL_MCP_SERVER', 'WORKFLOW_STUDIO_CONTROL_BRIDGE_URL', 'WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN',
-    'WORKFLOW_STUDIO_CONTROL_PERMISSION_POLICY',
-    'WORKFLOW_DESKTOP_CONTROL_MCP_SERVER', 'WORKFLOW_DESKTOP_CONTROL_PROXY_URL', 'WORKFLOW_DESKTOP_CONTROL_PROXY_TOKEN',
-    'WORKFLOW_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL', 'WORKFLOW_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN']) { delete env[key]; }
+  for (const key of ['TSX_TSCONFIG_PATH', 'STEAMHARNESS_LOCAL_CORE_ROOT', 'STEAMHARNESS_LOCAL_SHARED_ROOT', 'STEAMHARNESS_LOCAL_SOURCE_MODE',
+    'STEAMHARNESS_DEVELOPER_ASSISTANT_HOST', 'STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR', 'STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST',
+    'STEAMHARNESS_AI_SERVER_URL', 'STEAMHARNESS_AI_API_KEY', 'STEAMHARNESS_LLM_SERVER_URL', 'STEAMHARNESS_LLM_SERVER_TOKEN',
+    'STEAMHARNESS_STUDIO_INTERNAL', 'STEAMHARNESS_STUDIO_INTERNAL_MODULE', 'STEAMHARNESS_STUDIO_INTERNAL_SERVER_URL',
+    'STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER', 'STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL', 'STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN',
+    'STEAMHARNESS_STUDIO_CONTROL_PERMISSION_POLICY',
+    'STEAMHARNESS_DESKTOP_CONTROL_MCP_SERVER', 'STEAMHARNESS_DESKTOP_CONTROL_PROXY_URL', 'STEAMHARNESS_DESKTOP_CONTROL_PROXY_TOKEN',
+    'STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL', 'STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN']) { delete env[key]; }
   if (studioControl) {
-    if (studioControl.mcpServer) { env.WORKFLOW_STUDIO_CONTROL_MCP_SERVER = studioControl.mcpServer; }
-    env.WORKFLOW_STUDIO_CONTROL_BRIDGE_URL = studioControl.url;
-    env.WORKFLOW_STUDIO_CONTROL_BRIDGE_TOKEN = studioControl.token;
+    if (studioControl.mcpServer) { env.STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER = studioControl.mcpServer; }
+    env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL = studioControl.url;
+    env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN = studioControl.token;
   }
   return env;
 }
@@ -81,7 +81,7 @@ export async function inspectProjectCli(projectDir: string, nodePath: string, si
         const result = JSON.parse(stdout);
         if (!Array.isArray(result.projects) || !Array.isArray(result.errors)) { throw new Error('Invalid project CLI inspection response.'); }
         if (assistantProjectDir && result.assistantProtocolVersion !== 1) {
-          throw new Error(t("The standalone Assistant CLI is incompatible. Update its @workflow-code/cli."));
+          throw new Error(t("The standalone Assistant CLI is incompatible. Update its @steamharness/cli."));
         }
         resolve({ ...result, projects: result.projects.map((project: Omit<WorkflowProject, 'uri'>) => ({ ...project, folderPath: path.resolve(assistantProjectDir ?? projectDir) })) });
       } catch (error) { reject(error); }
@@ -146,7 +146,7 @@ export async function startProjectCli(options: {
             if (message.type !== 'ready') { continue; }
             const url = new URL(message.url);
             if (message.protocolVersion !== 1 || message.hostProtocolVersion !== 1 || message.accountProtocolVersion !== 1 || (options.relatedProjects?.length && message.relatedProjectsProtocolVersion !== 1) || (options.assistant && message.assistantProtocolVersion !== 1) || (options.expectedProjectId && message.project?.id !== options.expectedProjectId) || url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port || url.pathname !== '/' || !/^#session=[a-f0-9]{64}$/.test(url.hash)) {
-              throw new Error(t("The project CLI does not support the current VS Code Web protocol. Update the project's @workflow-code/cli."));
+              throw new Error(t("The project CLI does not support the current VS Code Web protocol. Update the project's @steamharness/cli."));
             }
             settle(undefined, message); return;
           } catch (error) { failed(error instanceof Error ? error : new Error(String(error))); return; }
@@ -169,7 +169,7 @@ export async function startProjectCli(options: {
       updateRelatedProjects: (relatedProjects, resourceProjects = []) => {
         if (closing || finished) { return; }
         if (relatedProjects.length && ready.relatedProjectsProtocolVersion !== 1) {
-          throw new Error(t("The project CLI does not support the current VS Code Web protocol. Update the project's @workflow-code/cli."));
+          throw new Error(t("The project CLI does not support the current VS Code Web protocol. Update the project's @steamharness/cli."));
         }
         const key = JSON.stringify([relatedProjects, resourceProjects]);
         if (key === relatedProjectsKey) { return; }
