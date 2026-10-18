@@ -74,7 +74,7 @@ test("local object storage accepts the Server's own avatar origin", () => {
   // A foreign CDN origin is not the Server's own, so it must be rejected.
   assert.throws(
     () => normalizeAvatarUrl(
-      `https://wfstorage.yuhe.space/storage/avatars/${USER_ID}/${HASH}.png`,
+      `https://storage.steamharness.yuhe.space/storage/avatars/${USER_ID}/${HASH}.png`,
       localConfiguredEnv,
     ),
     /Workflow storage avatar URL/u,

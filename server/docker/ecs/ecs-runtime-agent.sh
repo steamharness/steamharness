@@ -48,7 +48,7 @@ install_units() {
 select_nginx_config() {
   mkdir -p "$ROOT/nginx"
   cp "$COMPOSE_DIR/proxy_params" "$ROOT/nginx/proxy_params"
-  if [[ -s "$ROOT/certs/live/wildcard.yuhe.space/fullchain.pem" && -s "$ROOT/certs/live/wildcard.yuhe.space/privkey.pem" ]]; then
+  if [[ -s "$ROOT/certs/live/steamharness.yuhe.space/fullchain.pem" && -s "$ROOT/certs/live/steamharness.yuhe.space/privkey.pem" ]]; then
     cp "$COMPOSE_DIR/nginx-https.conf" "$ROOT/nginx/nginx.conf"
     log "HTTPS Nginx configuration selected"
   else
@@ -129,12 +129,12 @@ ensure_alpha() {
 # port-80 ACME blocks, otherwise the HTTP-01 challenge for a new name cannot be
 # served and issuance fails.
 CERTIFICATE_DOMAINS=(
-  wf.yuhe.space
-  wfapi.yuhe.space
-  wfhooks.yuhe.space
-  wfalpha.yuhe.space
-  wfdocs.yuhe.space
-  wflive-alpha.yuhe.space
+  steamharness.yuhe.space
+  api.steamharness.yuhe.space
+  hooks.steamharness.yuhe.space
+  alpha.steamharness.yuhe.space
+  docs.steamharness.yuhe.space
+  alpha-web.steamharness.yuhe.space
 )
 
 # True when the stored certificate already covers every domain above.
@@ -171,7 +171,7 @@ certificate() {
     for domain in "${CERTIFICATE_DOMAINS[@]}"; do domain_args+=(-d "$domain"); done
     log "Issuing/expanding certificate for ${#CERTIFICATE_DOMAINS[@]} domains"
     "${certbot[@]}" "$certbot_image" certonly --webroot -w /var/www/acme \
-      --cert-name wildcard.yuhe.space \
+      --cert-name steamharness.yuhe.space \
       "${domain_args[@]}" --expand \
       --email "$email" --agree-tos --no-eff-email --non-interactive
   else

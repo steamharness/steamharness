@@ -79,7 +79,7 @@ export async function createWorkflowServerHealthData(options: {
   const serverVersion = options.buildInfo?.productVersion ?? serverRelease?.version ?? null;
   const coreVersion = options.buildInfo?.coreVersion ?? serverRelease?.components.core
     ?? readOptionalString((await readJsonIfExists(path.join(resolvedServerRoot, "node_modules", "steamharness", "package.json")))?.version);
-  const docsBaseUrl = (options.docsBaseUrl ?? process.env.STEAMHARNESS_DOCS_PUBLIC_BASE_URL ?? "https://wfdocs.yuhe.space")
+  const docsBaseUrl = (options.docsBaseUrl ?? process.env.STEAMHARNESS_DOCS_PUBLIC_BASE_URL ?? "https://docs.steamharness.yuhe.space")
     .replace(/\/$/, "");
   const serverReleaseBody = serverRelease !== null && serverRelease.version === serverVersion
     ? serverRelease.releaseNotes?.body.trim() ?? ""

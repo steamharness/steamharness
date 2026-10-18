@@ -4,11 +4,10 @@ import { pathToFileURL } from "node:url";
 import { parse as parseYaml } from "yaml";
 
 const LOCALIZED_FIELDS = new Set(["description", "summary", "title", "example", "examples"]);
-// The Desktop Web Studio hosting surface, plus the relay and the Web entry that
-// briefly replaced it. `wflive.yuhe.space` is the retired relay hostname: the
-// web app lives on `wflive-alpha.yuhe.space`, which is why the stable name is
-// pinned literally rather than the `wflive` prefix.
-const REMOVED_DESKTOP_WEB_TERMS = /\bWeb Studio\b|Web工作室|studio-web|localhost:7133|127\.0\.0\.1:7133|运行到 Web|Web 入口|Web entry|wflive\.yuhe\.space/iu;
+// The Desktop Web Studio hosting surface, plus the Web entry that briefly
+// replaced it. The web app now lives on `alpha-web.steamharness.yuhe.space`,
+// which the surrounding rules already require.
+const REMOVED_DESKTOP_WEB_TERMS = /\bWeb Studio\b|Web工作室|studio-web|localhost:7133|127\.0\.0\.1:7133|运行到 Web|Web 入口|Web entry/iu;
 const REMOVED_DESKTOP_IDENTITY_TERMS = /guides\/(?:releases\/)?app(?:\/|\b)|STEAMHARNESS_APP_|workflow-app\.json|@steamharness\/app\b|\bminAppVersion\b|\bappVersion\b|\bisApp\b|\/app\/(?:stable|v)|\bapp\/v\d|source\s*=\s*["'`]?app\b|source=app\b|STEAMHARNESS_RUNTIME_PLATFORM=app\b/iu;
 const LEGACY_MONOREPO_REFERENCES = /packages\/(?:steamharness|cli)|app\/builtin-projects|pnpm\s+-C\s+(?:app|server\/web|workspace)\b|pnpm\s+(?:run\s+)?app:[\w:-]+/u;
 const RELEASE_PAGE_PATH = /^(?:en\/)?guides\/releases\/[^/]+\.mdx$/u;

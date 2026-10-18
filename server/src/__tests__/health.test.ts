@@ -76,7 +76,7 @@ test("health payload prefers deployed release metadata for server and server-web
       currentRelease: {
         summary: "新增 Core 兼容检查。",
         body: "## Added\n\n- 新增 Core 兼容检查。",
-        docsUrl: "https://wfdocs.yuhe.space/guides/releases/server/v0.2.0",
+        docsUrl: "https://docs.steamharness.yuhe.space/guides/releases/server/v0.2.0",
       },
       deployment: {
         server: {
@@ -123,7 +123,7 @@ test("health payload prefers deployed release metadata for server and server-web
     assert.deepEqual(englishHealth.currentRelease, {
       summary: "Add Core compatibility checks.",
       body: "## Added\n\n- Add Core compatibility checks.",
-      docsUrl: "https://wfdocs.yuhe.space/en/guides/releases/server/v0.2.0",
+      docsUrl: "https://docs.steamharness.yuhe.space/en/guides/releases/server/v0.2.0",
     });
     assert.equal(
       englishHealth.deployment.server?.releaseNotes?.body,

@@ -32,7 +32,7 @@ test("ECS agent recovery is additive and contains the expected systemd channels"
 });
 
 // The certificate is issued as one multi-SAN cert (despite the
-// "wildcard.yuhe.space" name). For the HTTP-01 challenge to be served, every
+// "steamharness.yuhe.space" name). For the HTTP-01 challenge to be served, every
 // SAN must appear in a `listen 80` server_name in whichever nginx config is
 // active — the HTTP-only bootstrap config before the cert exists, and the
 // HTTPS config afterwards. A name present in one but not the other fails
@@ -74,17 +74,18 @@ test("every certificate domain is servable for the ACME challenge on port 80", a
   }
 });
 
-test("the certificate domain list drops retired hostnames and keeps the web app's", async () => {
+test("the certificate covers exactly the deployed hostnames", async () => {
   const agent = await readFile(path.join(root, "docker", "ecs", "ecs-runtime-agent.sh"), "utf8");
-  const domains = certificateDomains(agent);
-  // The public Embed and the relay are both gone, so neither hostname may keep
-  // a SAN: certbot would keep re-issuing a certificate for a site nobody serves.
-  assert.ok(!domains.includes("wfembed.yuhe.space"));
-  assert.ok(!domains.includes("wflive.yuhe.space"), "the retired relay hostname must not keep a SAN");
-  assert.ok(
-    domains.includes("wflive-alpha.yuhe.space"),
-    "the hosted web app's hostname must be in the certificate SAN list",
-  );
+  // 精确集合而不是逐个包含：certbot 会为名单里的每个名字续签，
+  // 多一个域名就意味着为无人服务的站点维持一张证书。
+  assert.deepEqual([...certificateDomains(agent)].sort(), [
+    "alpha-web.steamharness.yuhe.space",
+    "alpha.steamharness.yuhe.space",
+    "api.steamharness.yuhe.space",
+    "docs.steamharness.yuhe.space",
+    "hooks.steamharness.yuhe.space",
+    "steamharness.yuhe.space",
+  ]);
 });
 
 test("the certificate path can add a domain to an existing certificate", async () => {
@@ -164,7 +165,7 @@ function resolveLocation(vhost, requestPath) {
 }
 
 /** The upstream serving the hosted web app, and the unit behind it. */
-const WEB_UPSTREAM = "workflow_web_alpha";
+const WEB_UPSTREAM = "steamharness_web_alpha";
 
 function upstreamPorts(conf) {
   const ports = new Map();
@@ -206,13 +207,13 @@ test("the web app's host serves the app at its root and the API from the Server"
   // a page, so a misrouted API path would look like a working site.
   const conf = await readEcsFile("nginx-https.conf");
   const vhosts = httpsVhosts(conf);
-  const vhost = vhosts.get("wflive-alpha.yuhe.space");
-  assert.ok(vhost, "wflive-alpha.yuhe.space must have an HTTPS vhost");
+  const vhost = vhosts.get("alpha-web.steamharness.yuhe.space");
+  assert.ok(vhost, "alpha-web.steamharness.yuhe.space must have an HTTPS vhost");
 
   for (const requestPath of ["/api/auth/session", "/api/workflows", "/api/workflows/abc/runs"]) {
     assert.equal(
       resolveLocation(vhost, requestPath).upstream,
-      "workflow_alpha",
+      "steamharness_alpha",
       `${requestPath} must be served by the Alpha Server`,
     );
   }
@@ -224,12 +225,15 @@ test("the web app's host serves the app at its root and the API from the Server"
     );
   }
 
-  // The stable relay hostname is retired rather than silently repointed.
-  assert.equal(
-    vhosts.get("wflive.yuhe.space"),
-    undefined,
-    "wflive.yuhe.space must have no vhost once the relay is gone",
-  );
+  // 只服务已登记的域名：多出来的 vhost 会把流量悄悄转给另一个服务。
+  assert.deepEqual([...vhosts.keys()].sort(), [
+    "alpha-web.steamharness.yuhe.space",
+    "alpha.steamharness.yuhe.space",
+    "api.steamharness.yuhe.space",
+    "docs.steamharness.yuhe.space",
+    "hooks.steamharness.yuhe.space",
+    "steamharness.yuhe.space",
+  ]);
 });
 
 test("every certificate domain has an HTTPS vhost to be served by", async () => {
@@ -263,7 +267,7 @@ test("a config change actually reaches the running nginx", async () => {
 test("a live hostname is never proxied to another service on port 80", async () => {
   // The bootstrap nginx config is active until the certificate exists. A live
   // hostname sharing a port-80 block with a `location /` proxy would serve
-  // that other service on wflive.yuhe.space during that window — the ACME
+  // another service on its hostname during that window — the ACME
   // challenge only needs the challenge location, so such a block must refuse
   // traffic rather than forward it.
   const conf = await readFile(path.join(root, "docker", "ecs", "nginx-http.conf"), "utf8");

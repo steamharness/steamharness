@@ -71,7 +71,7 @@ test("native PostgreSQL auth preserves sessions, invitations, API keys, locks, t
       email: "invited@example.com",
       displayName: "Invited User",
       createdByUserId: admin.user.userId,
-      redirectTo: "https://wfapi.example.com",
+      redirectTo: "https://api.steamharness.example.com",
     });
     assert.ok(invited.invitationLink);
     const firstInvitationToken = new URL(invited.invitationLink).pathname.split("/").at(-1);
@@ -87,7 +87,7 @@ test("native PostgreSQL auth preserves sessions, invitations, API keys, locks, t
     assert.match(invitationRow?.token_hash ?? "", /^[a-f0-9]{64}$/u);
     assert.notEqual(invitationRow?.token_hash, firstInvitationToken);
 
-    const replacementInvitation = await auth.generateInviteLink("invited@example.com", "https://wfapi.example.com");
+    const replacementInvitation = await auth.generateInviteLink("invited@example.com", "https://api.steamharness.example.com");
     const invitationToken = new URL(replacementInvitation.invitationLink).pathname.split("/").at(-1);
     if (!invitationToken?.startsWith("wf_invite_")) throw new Error("Replacement invitation token is missing.");
     await assert.rejects(auth.getInvitation(firstInvitationToken), /not found/u);
@@ -124,7 +124,7 @@ test("native PostgreSQL auth preserves sessions, invitations, API keys, locks, t
     await accountDb.revokeApiKey(apiKey.record.id);
     await assert.rejects(auth.resolvePrincipal(createBearerRequest(apiKey.token)), /Unauthorized/u);
 
-    const resetInvitation = await auth.generateInviteLink("invited@example.com", "https://wfapi.example.com");
+    const resetInvitation = await auth.generateInviteLink("invited@example.com", "https://api.steamharness.example.com");
     const resetInvitationToken = new URL(resetInvitation.invitationLink).pathname.split("/").at(-1);
     if (!resetInvitationToken) throw new Error("Reset invitation token is missing.");
     await auth.acceptInvitation({ token: resetInvitationToken, password: "reset-password" });

@@ -76,7 +76,7 @@ test("stable deployment packages, activates, writes metadata, and verifies healt
       version: "0.1.5",
       commitSha,
       publishedAt: "2026-08-24T12:00:00.000Z",
-      publicUrl: "https://wfapi.example.com",
+      publicUrl: "https://api.steamharness.example.com",
       verifyTags: false,
       healthTimeoutMs: 10,
       runCommand: async (command, args) => {

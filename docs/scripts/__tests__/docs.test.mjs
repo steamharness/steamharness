@@ -115,14 +115,11 @@ test("standalone Docs rejects the relay and Web entry that replaced the Web Stud
   // The Chinese term is the reason this list is literals rather than
   // word-bounded: `\b` is ASCII-only in a JS regex, so `\bWeb 入口\b` matches
   // neither "Web 入口页面" nor a bare "Web 入口" — it would have guarded
-  // nothing. The retired relay hostname is pinned exactly, because the Web
-  // version's own address shares the prefix.
   for (const legacySource of [
     "运行到 Web",
     "运行到 Web 的链接",
     "项目的 Web 入口页面",
     "Web entry point",
-    "wflive.yuhe.space",
   ]) {
     assert.throws(
       () => validateStandaloneDocsSource("example.mdx", legacySource),
@@ -132,7 +129,7 @@ test("standalone Docs rejects the relay and Web entry that replaced the Web Stud
 
   assert.doesNotThrow(() => validateStandaloneDocsSource(
     "example.mdx",
-    "The Web version is served at the root of `wflive-alpha.yuhe.space`.",
+    "The Web version is served at the root of `alpha-web.steamharness.yuhe.space`.",
   ));
 });
 
@@ -199,7 +196,7 @@ test("Docs build packages the generated Docusaurus site and runtime with the exa
     const deployment = JSON.parse(await readFile(path.join(outputDir, "deployment.json"), "utf8"));
     assert.equal(deployment.commitSha, commit);
     assert.equal(deployment.framework, "docusaurus");
-    assert.equal(deployment.apiBaseUrl, "https://wfapi.yuhe.space");
+    assert.equal(deployment.apiBaseUrl, "https://api.steamharness.yuhe.space");
     assert.match(await readFile(path.join(outputDir, "index.html"), "utf8"), /Built docs/u);
     assert.ok((await lstat(path.join(outputDir, ".workflow", "activate-docs.mjs"))).isFile());
     assert.ok((await lstat(path.join(outputDir, ".workflow", "serve-docs.mjs"))).isFile());

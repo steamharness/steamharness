@@ -118,7 +118,7 @@ paths:
                                 format: uri
                                 description: URL for the current Server version on the standalone release-notes
                                   page in the requested language.
-                                example: https://wfdocs.yuhe.space/en/guides/releases/server#server-v0-1-3
+                                example: https://docs.steamharness.yuhe.space/en/guides/releases/server#server-v0-1-3
                             required:
                               - summary
                               - body

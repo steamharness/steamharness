@@ -8,7 +8,7 @@ const config = {
   title: "SteamHarness",
   tagline: "Build, run, and publish typed workflows",
   favicon: "brand/favicon.png",
-  url: "https://wfdocs.yuhe.space",
+  url: "https://docs.steamharness.yuhe.space",
   baseUrl: "/",
   trailingSlash: true,
   onBrokenLinks: "throw",

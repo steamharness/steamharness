@@ -3,7 +3,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { validateDocs } from "./validate-docs.mjs";
 
-const DEFAULT_API_BASE_URL = "https://wfapi.yuhe.space";
+const DEFAULT_API_BASE_URL = "https://api.steamharness.yuhe.space";
 
 export async function buildDocs(options = {}) {
   const root = path.resolve(options.root ?? path.resolve(import.meta.dirname, ".."));

@@ -113,7 +113,7 @@ paths:
                                 type: string
                                 format: uri
                                 description: 当前 Server 版本在同语言独立 Server 发布日志页面中的完整记录地址。
-                                example: https://wfdocs.yuhe.space/en/guides/releases/server#server-v0-1-3
+                                example: https://docs.steamharness.yuhe.space/en/guides/releases/server#server-v0-1-3
                             required:
                               - summary
                               - body

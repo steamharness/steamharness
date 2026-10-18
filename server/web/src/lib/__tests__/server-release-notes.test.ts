@@ -14,7 +14,7 @@ const health: WorkflowServerHealthData = {
   currentRelease: {
     summary: "新增项目 Core 版本兼容检查。",
     body: "### Added\n\n- 新增项目 Core 版本兼容检查。",
-    docsUrl: "https://wfdocs.yuhe.space/guides/releases/server#server-v0-2-0",
+    docsUrl: "https://docs.steamharness.yuhe.space/guides/releases/server#server-v0-2-0",
   },
   deployment: {
     server: null,
@@ -32,7 +32,7 @@ describe("server release notes", () => {
       version: "0.2.0",
       title: "Server 已更新至 v0.2.0",
       summary: "新增项目 Core 版本兼容检查。",
-      docsUrl: "https://wfdocs.yuhe.space/guides/releases/server#server-v0-2-0",
+      docsUrl: "https://docs.steamharness.yuhe.space/guides/releases/server#server-v0-2-0",
     });
     expect(window.localStorage.getItem(LAST_SEEN_SERVER_RELEASE_VERSION_KEY)).toBe("0.2.0");
     expect(consumeUnseenServerRelease(health)).toBeNull();

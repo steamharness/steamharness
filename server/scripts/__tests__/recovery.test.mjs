@@ -38,7 +38,7 @@ test("Docker recovery validates the persistent release root without a local down
     STEAMHARNESS_DATABASE_URL: "postgres://example",
     STEAMHARNESS_POSTGRES_PASSWORD: "x",
     STEAMHARNESS_LOCAL_STORAGE_ROOT: "/srv/workflow-release/object-storage",
-    STEAMHARNESS_API_PUBLIC_BASE_URL: "https://wfapi.example.com",
+    STEAMHARNESS_API_PUBLIC_BASE_URL: "https://api.steamharness.example.com",
     STEAMHARNESS_RELEASE_STORAGE_ROOT: "/srv/workflow-release",
   });
   assert.equal(env.STEAMHARNESS_RELEASE_STORAGE_ROOT, "/srv/workflow-release");
