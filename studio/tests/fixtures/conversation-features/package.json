@@ -3,8 +3,14 @@
   "name": "Conversation migration fixture",
   "type": "module",
   "devDependencies": {
-    "steamharness": "0.2.4-20260929001",
-    "@steamharness/cli": "0.2.4-20261013009.codex-studio-integration"
+    "steamharness": "^0.1.0",
+    "@steamharness/cli": "^0.1.0"
   },
-  "steamHarness": { "projectInfo": { "dataStorage": { "mode": "both" } } }
+  "steamHarness": {
+    "projectInfo": {
+      "dataStorage": {
+        "mode": "both"
+      }
+    }
+  }
 }

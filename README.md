@@ -55,9 +55,19 @@ pnpm -C harness/workspace install
 | `pnpm studio:dev` / `pnpm studio:web` | 启动工作站 Electron / 浏览器端 |
 | `pnpm doc:dev` | 启动文档站开发服务 |
 
-## 发布状态
+## 发布
 
-发布流程（npm `alpha` / `dev` / `latest` 通道、`release:feature` 特性分支版本）在 monorepo 合并后暂未重建；`shared/release-tools/` 中的门禁脚本保持可用但处于休眠状态，旧包 `workflow-code`、`@workflow-code/*` 的 `deprecate` 与新包首发另行安排。
+公开包只有两个：运行时 SDK `steamharness` 与命令行 `@steamharness/cli`；其余包都是 `private: true`，发布流程不会带上它们。
+
+发布走 **GitHub Release + npm Trusted Publishing**：
+
+1. 在普通提交里把 `harness/package.json` 与 `cli/package.json` 的版本号一起抬高（两个包同一条版本线）
+2. 打一个 Release，tag 以 `steamharness/v` 开头，例如 `steamharness/v0.1.0`
+3. `.github/workflows/release.yml` 被触发：用 OIDC 向 npm 换取短期发布凭证，带 provenance 依次发布 SDK 与 CLI（顺序不能反，CLI 的类型解析依赖 SDK 的 `dist`）
+
+仓库里不存放任何 npm token。前提是在 npm 后台把 `steamharness/steamharness` 与该 workflow 文件登记为 Trusted Publisher。
+
+`shared/release-tools/` 里保留着旧的多仓库发布门禁脚本（alpha/dev 通道、特性分支版本、跨仓 pin 同步），它们服务于拆分仓库时期的流程，在 monorepo 下不再被调用；改动它们时不要顺手接线。
 
 ## 许可证与内部边界
 

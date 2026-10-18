@@ -1,0 +1,72 @@
+# 发布 npm 包。
+#
+# 触发：在 GitHub 上创建 Release，tag 以 steamharness/v 开头（例如
+# steamharness/v0.1.0）。版本号取自各 package.json —— 先在普通提交里改版本号，
+# 再打 Release，workflow 只负责把清单里已有的版本发出去。
+#
+# 凭证：npm Trusted Publishing（OIDC）。workflow 里的 id-token 权限让 npm CLI 用
+# 这一次运行的 OIDC 令牌换出短期发布凭证，GitHub 里不存放任何 npm token。
+# 前置条件：在 npm 组织里把 steamharness/steamharness 与本文件登记为 Trusted
+# Publisher，否则 npm 会拒绝发布。
+#
+# 只发两个公开包：harness（SDK）与 cli。其余包都是 private: true，递归发布不会
+# 带上它们。
+name: release
+
+on:
+  release:
+    types: [published]
+
+# 发布不可并发：两个发布同时改 dist-tag 会互相覆盖。
+concurrency:
+  group: npm-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    # 只有 steamharness/v* 的发布才发包，避免无关 tag 触发的发布失败。
+    if: startsWith(github.event.release.tag_name, 'steamharness/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # harness 的 engines 下限是 22.19.0
+          node-version: 22
+          cache: pnpm
+
+      # trusted publishing 需要较新的 npm CLI 才能走 OIDC 换证
+      - run: npm install --global npm@latest
+
+      - run: pnpm install --frozen-lockfile
+
+      # 先构建再发布：CLI 的类型解析依赖 harness 的 dist，顺序不能反。
+      - run: pnpm --filter steamharness build
+      - run: pnpm --filter @steamharness/cli build
+
+      - name: 确认要发布的版本
+        run: |
+          node -e '
+            const { createRequire } = require("node:module");
+            for (const dir of ["harness", "cli"]) {
+              const pkg = createRequire(`${process.cwd()}/${dir}/package.json`)("./package.json");
+              console.log(`  ${pkg.name}@${pkg.version}`);
+            }
+          '
+
+      - name: 发布 steamharness（SDK）
+        working-directory: harness
+        run: npm publish --provenance --access public
+
+      - name: 发布 @steamharness/cli
+        working-directory: cli
+        run: npm publish --provenance --access public

@@ -5,16 +5,23 @@
   "private": true,
   "type": "module",
   "devDependencies": {
-    "steamharness": "0.2.4-20260929001",
-    "@steamharness/cli": "0.2.4-20261013009.codex-studio-integration"
+    "steamharness": "^0.1.0",
+    "@steamharness/cli": "^0.1.0"
   },
   "steamHarness": {
     "projectType": "kanban",
     "kanban": {},
     "projectInfo": {
-      "localizedNames": { "zh-CN": "\u770b\u677f\u793a\u4f8b", "en": "Local Kanban Demo" },
-      "platformSupport": { "mode": "agnostic" },
-      "dataStorage": { "mode": "local" }
+      "localizedNames": {
+        "zh-CN": "看板示例",
+        "en": "Local Kanban Demo"
+      },
+      "platformSupport": {
+        "mode": "agnostic"
+      },
+      "dataStorage": {
+        "mode": "local"
+      }
     }
   }
 }

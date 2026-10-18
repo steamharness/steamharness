@@ -12,7 +12,7 @@ description: "Local execution of workflow, along with references to commands for
 The project should have both the Core SDK and CLI installed. The two packages are independently versioned, and it is recommended to pin to the exact verified version:
 
 ```bash
-pnpm add -D steamharness@0.2.0 @steamharness/cli@0.2.0
+pnpm add -D steamharness @steamharness/cli
 ```
 
 A released project must use an exact SemVer in `devDependencies.steamharness`; `^`, `~`, `0.2.x`, `workspace:*`, and local paths are rejected. The exact pin records the development baseline. The installed Core must satisfy the CLI's declared compatibility range, and runtime checks also verify the Core `major.minor` line. Keep `@steamharness/cli` exact as well, but version it independently from Core.

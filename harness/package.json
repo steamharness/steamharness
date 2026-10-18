@@ -1,6 +1,6 @@
 {
   "name": "steamharness",
-  "version": "0.2.4",
+  "version": "0.1.0",
   "packageManager": "pnpm@10.15.1",
   "type": "module",
   "main": "./dist/index.js",
@@ -117,5 +117,14 @@
   },
   "engines": {
     "node": ">=22.19.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/steamharness/steamharness.git",
+    "directory": "harness"
+  },
+  "homepage": "https://github.com/steamharness/steamharness#readme",
+  "bugs": {
+    "url": "https://github.com/steamharness/steamharness/issues"
   }
 }

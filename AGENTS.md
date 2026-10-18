@@ -32,7 +32,10 @@ node --test scripts/__tests__/*.test.mjs
 
 ## 发布
 
-发布通道（npm `alpha`/`dev`/`latest`、`release:feature`、`release-gate` 门禁）当前处于休眠状态，尚未为 monorepo 重建。`shared/release-tools/` 下的脚本保留且可运行，但 CI 不会触发发布；恢复发布流程需要单独的任务，不要在无关改动里顺手接线。
+- 公开包只有 `steamharness`（SDK）与 `@steamharness/cli`（CLI），两者同一条版本线，一起抬高版本号。其余包保持 `private: true`。
+- 发布由 GitHub Release 触发（tag 形如 `steamharness/v0.1.0`），凭证走 npm Trusted Publishing（OIDC），仓库里不存 npm token。修改 `.github/workflows/release.yml` 或 npm 的 Trusted Publisher 配置前先确认发布顺序：SDK 必须先于 CLI。
+- `shared/release-tools/` 下的发布门禁脚本属于拆分仓库时期的产物，当前不被调用。改动它们时不要顺手接线；要恢复 alpha/dev 通道或特性分支版本，另开任务。
+- 旧包 `workflow-code` 与 `@workflow-code/cli` 已停止更新，迁移提示以 npm deprecate 指向新包为准。
 
 ## 测试
 

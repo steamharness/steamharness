@@ -19,7 +19,7 @@ Studio 的 `examples/conversation` 提供不调用模型的本地演示。聚合
 
 项目树、标签页、窗口标题、状态栏和资源面板中的项目名称按 VS Code 实际显示语言选择 `steamHarness.projectInfo.localizedNames.en` 或 `zh-CN`；缺少对应名称时使用 `package.json` 的 `name`。Information 仍完整列出项目声明的各语言名称。用户输入、会话标题、回答和日志保留原文。
 
-Studio 将同一显示语言传入项目检查、CLI 启动和嵌入页面。开发源码模式可能在中文系统上回退到英文工作台，此时项目也使用英文。项目依赖需要包含 CLI Web 国际化支持，当前示例使用的最低已验证版本为 `0.2.4-20261012003.codex-cli-web`。升级依赖后，已经运行的 CLI 进程需要关闭标签页后重开，或执行 **Developer: Reload Window**；切换 VS Code 显示语言也需要重载窗口。
+Studio 将同一显示语言传入项目检查、CLI 启动和嵌入页面。开发源码模式可能在中文系统上回退到英文工作台，此时项目也使用英文。项目依赖需要包含 CLI Web 国际化支持，示例使用 `@steamharness/cli` 的当前稳定版。升级依赖后，已经运行的 CLI 进程需要关闭标签页后重开，或执行 **Developer: Reload Window**；切换 VS Code 显示语言也需要重载窗口。
 
 ## 项目界面
 
@@ -43,7 +43,7 @@ VS Code 宿主提供源码工具、项目技能、全局记忆和资源卡能力
 
 Studio 从项目目录解析 `@steamharness/cli` 的 `steamharness` bin。项目识别使用 `web --inspect`；打开标签页时启动 `web --host-stdio`，通过受控 stdio 传入主题、账号和宿主配置。启动失败会显示项目依赖、CLI 构建或协议不兼容的错误。
 
-更新项目依赖后，关闭并重新打开项目标签页即可加载当前安装的 CLI，包括 pnpm 更新后的包链接；已经运行的进程不会自动更换版本。卡片功能依赖项目自身的 CLI，跨项目预览与整行资源卡片使用 `0.2.4-20261013002.codex-studio-integration` 或后续兼容版本。
+更新项目依赖后，关闭并重新打开项目标签页即可加载当前安装的 CLI，包括 pnpm 更新后的包链接；已经运行的进程不会自动更换版本。卡片功能依赖项目自身的 CLI，跨项目预览与整行资源卡片需要 `@steamharness/cli` 0.1.0 或更高版本。
 
 项目运行组件由项目依赖提供，扩展构建不再内置 Core/CLI。修改同级 Core 或 CLI 后，先构建相应仓库，再安装项目依赖；聚合仓库中 `build-in/` 下的开发分支内置项目通过 `link:../../harness` 和 `link:../../cli` 使用开源源码根中的构建。
 

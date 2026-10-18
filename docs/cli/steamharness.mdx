@@ -12,7 +12,7 @@ description: "本地运行 workflow、输出执行报告和检查结构的命令
 项目应同时安装 Core SDK 和 CLI。两个包独立版本化，建议固定到经过验证的精确版本：
 
 ```bash
-pnpm add -D steamharness@0.2.0 @steamharness/cli@0.2.0
+pnpm add -D steamharness @steamharness/cli
 ```
 
 发布项目必须在 `devDependencies.steamharness` 写精确 SemVer，不能使用 `^`、`~`、`0.2.x`、`workspace:*` 或本地路径。精确声明用于记录开发基线；项目安装的 Core 要满足 CLI 声明的兼容范围，运行时再校验 Core 的 `major.minor` 兼容线。`@steamharness/cli` 也保持精确版本，但与 Core 独立发版。
