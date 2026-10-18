@@ -31,7 +31,7 @@ const root = path.resolve(import.meta.dirname, "..");
 /** Where the generated artifacts live. */
 const INDEX_FILE = path.join(
   root,
-  "skills/workflow-code-generator/references/runtime-api-index.md",
+  "skills/workflow-generator/references/runtime-api-index.md",
 );
 const CAPABILITIES_FILE = path.join(root, "runtime-capabilities.generated.ts");
 

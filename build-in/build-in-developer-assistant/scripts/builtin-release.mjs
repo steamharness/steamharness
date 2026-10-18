@@ -29,7 +29,7 @@ const COMMIT_PATTERN = /^[0-9a-f]{40}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 // 制品按仓库根复制，所以排除规则必须区分"仓库根的 scripts/__tests__"与
 // "skill 自己的 scripts/__tests__"：只按 basename 过滤会把
-// skills/workflow-code-generator/scripts/create_workflow.py 一起丢掉，
+// skills/workflow-generator/scripts/create_workflow.py 一起丢掉，
 // 而 SKILL.md 要求运行时能调用它。
 const INFRASTRUCTURE_DIRECTORIES = new Set([
   ".git",

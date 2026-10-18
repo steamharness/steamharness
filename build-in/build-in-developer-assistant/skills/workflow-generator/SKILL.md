@@ -1,5 +1,5 @@
 ---
-name: workflow-code-generator
+name: workflow-generator
 description: 生成、修改或迁移 steamharness Workflow、Conversation 或 Kanban 项目；适用于 executor、HTML 看板、参数配置、标准化 package 元数据、运行时约定，以及因旧清单或结构校验失败被 Desktop 降级为普通文件夹、需要关联项目授权的修复。
 ---
 

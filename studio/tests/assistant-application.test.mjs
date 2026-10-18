@@ -14,10 +14,10 @@ test('the assistant owns its app and dependencies and never borrows the opened p
   const source = await createAssistantDependencyFixture(); t.after(source.dispose);
   const directory = await mkdtemp(path.join(tmpdir(), 'studio-assistant-app-')); t.after(() => rm(directory, { recursive: true, force: true }));
   const templateDir = path.join(directory, 'template');
-  await mkdir(path.join(templateDir, 'skills/workflow-code-generator'), { recursive: true });
+  await mkdir(path.join(templateDir, 'skills/workflow-generator'), { recursive: true });
   await writeFile(path.join(templateDir, 'package.json'), JSON.stringify({ id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', name: 'Project Assistant', type: 'module', devDependencies: { 'steamharness': 'link:../harness' } }));
   await writeFile(path.join(templateDir, 'index.ts'), 'export const executor = workflow.defineExecutor({});');
-  await writeFile(path.join(templateDir, 'skills/workflow-code-generator/SKILL.md'), 'Assistant skill');
+  await writeFile(path.join(templateDir, 'skills/workflow-generator/SKILL.md'), 'Assistant skill');
   const userProject = path.join(directory, 'opened-project');
   await mkdir(userProject);
   await writeFile(path.join(userProject, 'package.json'), JSON.stringify({ id: 'a-different-project', name: 'User project' }));
@@ -29,7 +29,7 @@ test('the assistant owns its app and dependencies and never borrows the opened p
   const manifest = JSON.parse(await readFile(path.join(application, 'package.json'), 'utf8'));
   assert.deepEqual(manifest.devDependencies, { 'steamharness': '2.3.4', '@steamharness/cli': '1.2.3' });
   assert.equal(manifest.dependencies, undefined);
-  assert.equal(await readFile(path.join(application, 'skills/workflow-code-generator/SKILL.md'), 'utf8'), 'Assistant skill');
+  assert.equal(await readFile(path.join(application, 'skills/workflow-generator/SKILL.md'), 'utf8'), 'Assistant skill');
   assert.equal(await prepareAssistantApplication(options), application);
   await assert.rejects(prepareAssistantApplication({ ...options, dependencySources: [userProject] }));
   await writeFile(path.join(templateDir, 'index.ts'), 'export const executor = workflow.defineExecutor({ params: [] });');

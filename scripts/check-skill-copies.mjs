@@ -3,12 +3,12 @@ import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises"
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-// workflow-code-generator skill 的发布资源与 harness 开发副本在同一仓库的两个目录：
+// workflow-generator skill 的发布资源与 harness 开发副本在同一仓库的两个目录：
 //   build-in/build-in-developer-assistant/skills/  —— 发布资源，运行时小助手真正加载的副本（唯一真相源）
 //   harness/.agents/skills/                       —— harness 仓库开发时使用
 // 两份必须各自提交，所以用这个脚本保证共享载荷不漂移。仓库特有文件不参与同步。
 
-export const SKILL_RELATIVE_PATH = "skills/workflow-code-generator";
+export const SKILL_RELATIVE_PATH = "skills/workflow-generator";
 
 export const SKILL_COPY_ROOTS = Object.freeze({
   source: "build-in/build-in-developer-assistant",

@@ -9,5 +9,5 @@
 
 - Core 仓库中的 generator 不是独立发布单元，不维护自己的 package 版本或 CHANGELOG。
 - 生成结果、模板依赖或 Core API 用法发生用户可感知变化时，必须更新本仓 `CHANGELOG.next*.md`；若改变 CLI 创建、检查或发布工作流的方式，还要更新同级 CLI 仓库 `../cli/CHANGELOG.next*.md`；若改变 Desktop 或 Developer Assistant 的体验，则分别更新 `../desktop` 或 `../build-in/build-in-developer-assistant` 仓库。
-- 内置 Developer Assistant 的发布副本由 `../build-in/build-in-developer-assistant/skills/workflow-code-generator` 独立维护；跨仓同步必须显式比较并分别提交。
+- 内置 Developer Assistant 的发布副本由 `../build-in/build-in-developer-assistant/skills/workflow-generator` 独立维护；跨仓同步必须显式比较并分别提交。
 - Core 或 CLI release prepare 才能分别更新模板中的精确依赖版本；generator 日常修改不得自行把 Core 与 CLI 版本绑在一起，也不得改成非精确 range。

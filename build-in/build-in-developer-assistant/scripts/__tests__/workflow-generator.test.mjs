@@ -10,7 +10,7 @@ const root = path.resolve(import.meta.dirname, "../..");
 const generator = path.join(
   root,
   "skills",
-  "workflow-code-generator",
+  "workflow-generator",
   "scripts",
   "create_workflow.py",
 );

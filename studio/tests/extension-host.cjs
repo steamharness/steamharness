@@ -11,7 +11,7 @@ exports.run = async () => {
   await extension.activate();
   assert.ok(extension.isActive, 'Studio extension must activate.');
   assert.equal(fs.existsSync(path.join(extension.extensionPath, 'dist/runtime')), false, 'The workstation must not bundle Core or the CLI.');
-  assert.ok(fs.existsSync(path.join(extension.extensionPath, 'dist/developer-assistant/skills/workflow-code-generator/SKILL.md')), 'The dedicated assistant skill must be packaged.');
+  assert.ok(fs.existsSync(path.join(extension.extensionPath, 'dist/developer-assistant/skills/workflow-generator/SKILL.md')), 'The dedicated assistant skill must be packaged.');
   assert.equal(vscode.extensions.getExtension('GitHub.copilot-chat'), undefined, 'Built-in Copilot must be excluded.');
   assert.equal(vscode.workspace.getConfiguration('chat').get('disableAIFeatures'), true, 'Default AI features must be hidden.');
   assert.equal(vscode.workspace.getConfiguration('workbench').get('iconTheme'), 'file-icons', 'Studio must default to File Icons.');

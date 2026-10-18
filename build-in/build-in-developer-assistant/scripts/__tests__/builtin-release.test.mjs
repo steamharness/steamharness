@@ -218,7 +218,7 @@ describe("independent built-in project release", () => {
     );
   });
 
-  it("requires an explicit storage declaration and the Core 0.2 Desktop floor", async () => {
+  it("requires an explicit storage declaration and the 0.2 Desktop floor", async () => {
     const definition = await readBuiltinDefinition(root, { mode: 'dev' });
     const fixture = await mkdtemp(path.join(os.tmpdir(), `builtin-${definition.projectId}-storage-contract-`));
     const manifest = releaseManifest(definition);
@@ -228,12 +228,15 @@ describe("independent built-in project release", () => {
 
     manifest.steamHarness.projectInfo.dataStorage = { mode: "both" };
     manifest.steamHarness.builtinRelease.minDesktopVersion = "0.1.21";
+    // Desktop 地板只对 0.2.x 的 harness 生效，所以显式声明一个 0.2 版本的依赖。
+    manifest.devDependencies["steamharness"] = "0.2.0";
     await writeFile(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
     await expect(readBuiltinDefinition(fixture)).rejects.toThrow(/require minDesktopVersion 0\.1\.22/);
 
-    manifest.devDependencies["steamharness"] = "0.2.1-20260826001";
+    // 0.1.x 的 harness 不受该地板约束，同样的 minDesktopVersion 会被放行。
+    manifest.devDependencies["steamharness"] = "0.1.0";
     await writeFile(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
-    await expect(readBuiltinDefinition(fixture)).rejects.toThrow(/require minDesktopVersion 0\.1\.22/);
+    await expect(readBuiltinDefinition(fixture)).resolves.toMatchObject({ minDesktopVersion: "0.1.21" });
   });
 
   it("keeps the two channels' paths and tags apart", async () => {
@@ -338,7 +341,7 @@ describe("independent built-in project release", () => {
 
   it("keeps the runtime skill payload while dropping repository infrastructure", async () => {
     const definition = await readBuiltinDefinition(root, { mode: 'dev' });
-    const skillRoot = "skills/workflow-code-generator";
+    const skillRoot = "skills/workflow-generator";
 
     // 规则层：仓库根的 scripts/__tests__ 必须排除，skill 自己的 scripts/ 必须保留。
     expect(shouldPackEntry(root, path.join(root, "scripts"))).toBe(false);

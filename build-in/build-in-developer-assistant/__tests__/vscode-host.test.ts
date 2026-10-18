@@ -122,7 +122,7 @@ describe("VS Code assistant host", () => {
     expect(tools.close).toBeUndefined();
     const skill = tools.tools.find((tool) => tool.name === "skill")!;
     const result = await skill.execute("list", { action: "list" });
-    expect(JSON.stringify(result)).toContain("workflow-code-generator");
+    expect(JSON.stringify(result)).toContain("workflow-generator");
     expect(host.approve).toHaveBeenCalledWith({ name: "skill", arguments: { action: "list" } }, expect.anything());
     const disabled = await host.options.createTools!({
       toolPermissions: { getTool: (name: string) => ({ enabled: name !== "skill" }) },

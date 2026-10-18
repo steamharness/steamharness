@@ -12,7 +12,7 @@ const generator = path.join(
   root,
   ".agents",
   "skills",
-  "workflow-code-generator",
+  "workflow-generator",
   "scripts",
   "create_workflow.py",
 );
