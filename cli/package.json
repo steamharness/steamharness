@@ -1,6 +1,6 @@
 {
   "name": "@steamharness/cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "packageManager": "pnpm@10.15.1",
   "type": "module",
@@ -57,7 +57,7 @@
     "esbuild": "0.28.2",
     "marked": "17.0.1",
     "semver": "^7.7.4",
-    "steamharness": "0.1.0",
+    "steamharness": "0.1.1",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7"
