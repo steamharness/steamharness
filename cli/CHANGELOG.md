@@ -2,7 +2,7 @@
 
 本发布单元的所有重要公开变更均记录于此。
 
-> 0.1.0 起为 SteamHarness 发布线（包名 `steamharness` / `@steamharness/cli`，MIT）；此前条目属于改名前的 `workflow-code` 发布线，仅作历史参考。
+> 0.1.0 起为 SteamHarness 发布线（包名 `steamharness` / `@steamharness/cli`，MIT）；此前条目属于更早的发布线，仅作历史参考。
 
 ## 0.1.1 - 2026-07-29
 
@@ -148,7 +148,7 @@
 
 ### 变更
 
-- 改名为 SteamHarness 后以新包名重新发布：`steamharness` 从 0.1.0 起独立版本线，
-  不再与旧的 `workflow-code` 发布保持兼容。
+- 以 SteamHarness 包名重新发布：`steamharness` 从 0.1.0 起独立版本线，
+  不与更早的发布线保持兼容。
 - 发布改由 GitHub Release 触发，使用 npm Trusted Publishing（OIDC）完成，不再需要长期令牌。
 - 运行时依赖改为 peer 声明 `^0.1.0`，安装时给出明确的兼容范围。

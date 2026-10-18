@@ -5,7 +5,7 @@
 ## 命名
 
 - 品牌统一为 **SteamHarness**。npm scope 为 `@steamharness`，运行时 SDK 是裸包 `steamharness`，CLI 命令是 `steamharness`。
-- `workflow` 出现在两处含义，必须区分：**领域词**（workflow 运行、调度、输出、`WorkflowRunner`/`WorkflowContext`、`*-workflow` 示例包后缀、`workflow-ids`/`workflow-mcp`/`workflow-schedules` 子包名、`studio.openWorkflow*` 命令）保持不变；**产品词**必须使用新形式——manifest 键 `steamHarness`（原 `workflowCode`）、事件前缀 `steamharness:`（原 `workflow-code:`）、环境变量 `STEAMHARNESS_*`（原 `WORKFLOW_*`）、配置目录 `~/.steamharness`（原 `~/.workflow-code`）、cookie、docker/数据库名同理。
+- `workflow` 出现在两处含义，必须区分：**领域词**（workflow 运行、调度、输出、`WorkflowRunner`/`WorkflowContext`、`*-workflow` 示例包后缀、`workflow-ids`/`workflow-mcp`/`workflow-schedules` 子包名、`studio.openWorkflow*` 命令）保持不变；**产品词**一律用 SteamHarness 形式——manifest 键 `steamHarness`、事件前缀 `steamharness:`、环境变量 `STEAMHARNESS_*` 前缀、配置目录 `~/.steamharness`，cookie、docker/数据库名同理。
 - 仓库旧名 `core` 已随目录改名为 `harness`；旧聚合目录名 `open-soucres`（拼写错误）已不存在，内部仓库通过 `open-sources/` 子模块引用本仓库。
 
 ## 逐字节副本
@@ -35,7 +35,6 @@ node --test scripts/__tests__/*.test.mjs
 - 公开包只有 `steamharness`（SDK）与 `@steamharness/cli`（CLI），两者同一条版本线，一起抬高版本号。其余包保持 `private: true`。
 - 发布由 GitHub Release 触发（tag 形如 `steamharness/v0.1.0`），凭证走 npm Trusted Publishing（OIDC），仓库里不存 npm token。修改 `.github/workflows/release.yml` 或 npm 的 Trusted Publisher 配置前先确认发布顺序：SDK 必须先于 CLI。
 - `shared/release-tools/` 下的发布门禁脚本属于拆分仓库时期的产物，当前不被调用。改动它们时不要顺手接线；要恢复 alpha/dev 通道或特性分支版本，另开任务。
-- 旧包 `workflow-code` 与 `@workflow-code/cli` 已停止更新，迁移提示以 npm deprecate 指向新包为准。
 
 ## 测试
 
