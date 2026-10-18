@@ -5,7 +5,7 @@ description: "workflow.getEnv configuration in local CLI and CLI Web."
 
 # Runtime environment variables
 
-workflow code uniformly reads the configuration via `workflow.getEnv(name)`. Do not rely directly on a platform-specific configuration reading method.
+Configuration is read uniformly through `workflow.getEnv(name)`. Do not rely directly on a platform-specific configuration reading method.
 
 ```ts
 const apiKey = workflow.getEnv("EXAMPLE_API_KEY");

@@ -20,12 +20,19 @@ async function createFixture() {
   await writeFile(path.join(shared, "release-gate.mjs"), "export const gate = 1;\n");
   await writeFile(path.join(shared, "release-notes.mjs"), "export const notes = 1;\n");
   await writeFile(path.join(shared, "npm-alpha-publish.mjs"), "export const publish = 1;\n");
+  // 嵌套文件：曾经的枚举只返回文件名，导致 resources/ 这类路径从未被比较过。
+  await mkdir(path.join(shared, "resources"), { recursive: true });
+  await writeFile(path.join(shared, "resources", "labels.ts"), "export const labels = 1;\n");
+  await mkdir(path.join(shared, "__tests__"), { recursive: true });
+  await writeFile(path.join(shared, "__tests__", "gate.test.mjs"), "// not vendored\n");
   for (const consumer of VENDOR_CONSUMERS) {
     const directory = path.join(root, consumer, "vendor/shared/release-tools");
     await mkdir(directory, { recursive: true });
     for (const file of ["release-gate.mjs", "release-notes.mjs", "npm-alpha-publish.mjs"]) {
       await writeFile(path.join(directory, file), await readFile(path.join(shared, file), "utf8"), "utf8");
     }
+    await mkdir(path.join(directory, "resources"), { recursive: true });
+    await writeFile(path.join(directory, "resources", "labels.ts"), await readFile(path.join(shared, "resources", "labels.ts"), "utf8"), "utf8");
   }
   for (const project of BUILTIN_PROJECTS) {
     const directory = path.join(root, project, "scripts/__tests__");
@@ -72,6 +79,38 @@ test("drift is reported per copy and file", async () => {
     const message = formatVendorCopyDrift(drift, copies);
     assert.match(message, /build-in-studio-control\/scripts\/release-gate\.mjs is different/u);
     assert.match(message, /check-vendor-copies\.mjs --fix/u);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("nested source files are compared, and tests stay out of the mirror", async () => {
+  const root = await createFixture();
+  try {
+    const { drift, copies } = await checkVendorCopies(root);
+    assert.deepEqual(drift, []);
+    assert.ok(copies.some((copy) => copy.copy === "harness/vendor/shared/release-tools/resources/labels.ts"));
+    assert.ok(!copies.some((copy) => copy.copy.startsWith("harness/vendor/") && copy.copy.includes("__tests__")));
+
+    await writeFile(path.join(root, "harness/vendor/shared/release-tools/resources/labels.ts"), "stale\n", "utf8");
+    const afterEdit = await checkVendorCopies(root);
+    assert.deepEqual(afterEdit.drift.map((entry) => entry.copy),
+      ["harness/vendor/shared/release-tools/resources/labels.ts"]);
+    assert.equal(afterEdit.drift[0].kind, "different");
+
+    await syncVendorCopies(root);
+    assert.deepEqual((await checkVendorCopies(root)).drift, []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a shared source that disappears is reported instead of skipped", async () => {
+  const root = await createFixture();
+  try {
+    await rm(path.join(root, "shared/release-tools/release-gate.mjs"));
+    const { drift } = await checkVendorCopies(root);
+    assert.ok(drift.some((entry) => entry.kind === "source-missing"));
   } finally {
     await rm(root, { recursive: true, force: true });
   }

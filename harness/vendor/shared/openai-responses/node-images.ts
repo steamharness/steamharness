@@ -321,7 +321,7 @@ function requestImage(url: URL, address: { address: string; family: 4 | 6 }): Pr
       headers: {
         accept: "image/jpeg,image/png,image/webp,image/gif",
         "accept-encoding": "identity",
-        "user-agent": "Workflow-Code-OpenAI-Gateway/1.0",
+        "user-agent": "SteamHarness-OpenAI-Gateway/1.0",
       },
       lookup: (_hostname, _options, callback) => callback(null, address.address, address.family),
     }, resolve);

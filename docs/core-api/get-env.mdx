@@ -36,7 +36,7 @@ workflow.getEnv(name: string): string | undefined
 
 | 阶段 | 输入 | 结果 |
 | --- | --- | --- |
-| workflow 代码 | 变量名 | `workflow.getEnv(name)` |
+| 工作流运行时 | 变量名 | `workflow.getEnv(name)` |
 | runtime env | `process.env[name]` | trim 后的字符串或 `undefined` |
 | provider / node | 字符串值 | 用于 API key、base URL、模型名等配置 |
 

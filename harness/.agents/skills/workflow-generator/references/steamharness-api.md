@@ -348,7 +348,7 @@ const wrappedSearch = toolApproval.wrap(
   },
 );
 
-const results = await wrappedSearch(context, "workflow code");
+const results = await wrappedSearch(context, "workflow project");
 
 // 需要自己判断审批结果时用 approve()：
 const decision = await toolApproval.approve(

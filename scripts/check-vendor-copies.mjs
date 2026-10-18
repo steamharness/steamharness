@@ -16,6 +16,10 @@ import { pathToFileURL } from "node:url";
  * 内置项目之间还有一处有意的不一致：`builtin-release.mjs` 在 developer-assistant 里
  * 多一段打包过滤（它要把 skill 的 `scripts/create_workflow.py` 一起打进制品），因此它
  * 不在守卫范围内。
+ *
+ * vendor 侧不只镜像 release-tools：harness/cli/server 的 `vendor/shared/` 是整个 shared
+ * 树的逐字节副本，任何一个包改了都要同步过去，否则消费方会跑在旧代码上。共享包里不放
+ * `__tests__`、`node_modules` 与 `.agents`/`.codex` 这类仓库自有内容。
  */
 
 export const VENDOR_CONSUMERS = Object.freeze(["harness", "cli", "server"]);
@@ -26,9 +30,9 @@ export const BUILTIN_PROJECTS = Object.freeze([
   "build-in/build-in-analysis",
 ]);
 
-/** `shared` 真相源同步到 harness/cli/server 的 vendor 目录（整个目录）。 */
-export const VENDORED_DIRECTORIES = Object.freeze([
-  Object.freeze({ source: "shared/release-tools", targets: Object.freeze(VENDOR_CONSUMERS.map((consumer) => `${consumer}/vendor/shared/release-tools`)) }),
+/** `shared` 下的这些目录不是包，不参与 vendor 镜像。 */
+export const SHARED_EXCLUDED_ENTRIES = Object.freeze([
+  "node_modules", "scripts", "tests", "__tests__", ".agents", ".codex", ".claude",
 ]);
 
 /** `shared` 真相源里被内置项目以单文件方式复制的脚本。 */
@@ -68,16 +72,20 @@ async function exists(absolutePath) {
   }
 }
 
-async function collectFiles(directory) {
+/** 测试与依赖目录不参与 vendor 镜像，在任意层级都排除。 */
+const VENDOR_EXCLUDED_SEGMENTS = new Set(["__tests__", "node_modules"]);
+
+async function collectFiles(directory, prefix = "") {
   const entries = await readdir(directory, { withFileTypes: true });
   const files = [];
   for (const entry of entries) {
-    const absolute = path.join(directory, entry.name);
+    const relative = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+    if (VENDOR_EXCLUDED_SEGMENTS.has(entry.name)) { continue; }
     if (entry.isDirectory()) {
-      files.push(...await collectFiles(absolute));
+      files.push(...await collectFiles(path.join(directory, entry.name), relative));
       continue;
     }
-    files.push(entry.name);
+    files.push(relative);
   }
   return files.sort();
 }
@@ -87,11 +95,20 @@ export async function expectedCopies(root, options = {}) {
   const consumers = options.consumers ?? VENDOR_CONSUMERS;
   const projects = options.projects ?? BUILTIN_PROJECTS;
   const copies = [];
+  const sharedRoot = path.join(root, "shared");
+  const packages = (await readdir(sharedRoot, { withFileTypes: true }))
+    .filter((entry) => entry.isDirectory() && !SHARED_EXCLUDED_ENTRIES.includes(entry.name))
+    .map((entry) => entry.name)
+    .sort();
   for (const consumer of consumers) {
-    const sourceDirectory = path.join(root, "shared/release-tools");
-    const targetDirectory = `${consumer}/vendor/shared/release-tools`;
-    for (const file of await collectFiles(sourceDirectory)) {
-      copies.push({ copy: `${targetDirectory}/${file}`, source: `shared/release-tools/${file}` });
+    for (const packageName of packages) {
+      const sourceDirectory = path.join(sharedRoot, packageName);
+      for (const file of await collectFiles(sourceDirectory)) {
+        copies.push({
+          copy: `${consumer}/vendor/shared/${packageName}/${file}`,
+          source: `shared/${packageName}/${file}`,
+        });
+      }
     }
   }
   for (const shared of BUILTIN_SHARED_FILES) {
@@ -111,7 +128,10 @@ export async function checkVendorCopies(root, options = {}) {
   const copies = await expectedCopies(absoluteRoot, options);
   for (const copy of copies) {
     const sourceHash = await readHash(path.join(absoluteRoot, copy.source));
-    if (sourceHash === undefined) continue;
+    if (sourceHash === undefined) {
+      drift.push({ copy: copy.copy, source: copy.source, kind: "source-missing" });
+      continue;
+    }
     const targetHash = await readHash(path.join(absoluteRoot, copy.copy));
     if (targetHash === sourceHash) continue;
     drift.push({ copy: copy.copy, source: copy.source, kind: targetHash === undefined ? "missing" : "different" });
