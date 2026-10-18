@@ -1,6 +1,7 @@
 {
   "name": "@steamharness/cli",
   "version": "0.1.0",
+  "license": "MIT",
   "packageManager": "pnpm@10.15.1",
   "type": "module",
   "bin": {
