@@ -1,4 +1,4 @@
-# Workflow 工作站
+# SteamHarness 工作站
 
 Studio 通过项目自身的 CLI 在编辑器标签页中打开 Workflow、Conversation 和 Kanban。Electron 与浏览器工作站共用扩展；运行项目需要能够启动 Node 进程的扩展宿主。
 
@@ -31,7 +31,7 @@ Studio 将同一显示语言传入项目检查、CLI 启动和嵌入页面。开
 
 项目界面由 CLI 提供，Studio 负责标签页、主题、登录状态和进程生命周期。Conversation 的 assistant 主回答直接展示在正文中；工具调用、reasoning、诊断和显式折叠输出单独展示，响应元数据不会折叠主回答。
 
-参数读取项目声明的 `params`、`paramLayout` 和 `paramResolver`，动态选项由项目的 `resolveParams` 返回。使用系统 AI 的项目需要有效的 Workflow Server 登录，或项目自身所需的服务配置。
+参数读取项目声明的 `params`、`paramLayout` 和 `paramResolver`，动态选项由项目的 `resolveParams` 返回。使用系统 AI 的项目需要有效的 SteamHarness Server 登录，或项目自身所需的服务配置。
 
 底部 **KV**、**知识库** 面板读取项目 CLI 使用的存储。对话中的资源卡片可定位到这些面板，也支持对话内和独立窗口预览有权限的跨项目资源，见 [项目资源面板](resource-panel.md)。Workflow 和 Conversation 的 **轨迹** 面板提供运行记录、时间线、节点参数、结果和日志，见 [执行轨迹](trace-panel.md)。
 
@@ -55,7 +55,7 @@ Studio 从项目目录解析 `@steamharness/cli` 的 `steamharness` bin。项目
 
 ## 服务器与登录
 
-应用级设置 `studio.workflow.serverUrl` 选择 Workflow Server，项目配置不能覆盖该地址；变更服务器后需要重新登录。开发默认地址是 `http://localhost:7126`。
+应用级设置 `studio.workflow.serverUrl` 选择 SteamHarness Server，项目配置不能覆盖该地址；变更服务器后需要重新登录。开发默认地址是 `http://localhost:7126`。
 
 左下角账号入口提供 **登录与管理账号**。工作站向 `/api/auth/login` 提交邮箱、密码及现有协议字段 `source: desktop`，然后通过 `/api/auth/me` 验证身份。这一认证来源字段不代表项目执行平台；CLI Web 的实际 runtime platform 是 `cli`。
 

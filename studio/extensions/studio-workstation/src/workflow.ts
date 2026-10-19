@@ -154,7 +154,7 @@ export async function activateWorkflow(context: vscode.ExtensionContext, launche
       sources = [project.folderPath, ...bindings.map(binding => binding.projectDir), ...resourceProjects];
       assertNotUpgrading(sources);
       startingSources.set(controller, sources);
-      session = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: t("Starting Workflow Web") }, async () =>
+      session = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: t("Starting SteamHarness Web") }, async () =>
         launcher.start(project, sidebar ? 'assistant' : 'editor', controller.signal, bindings, resourceProjects));
       if (controller.signal.aborted || !projectAvailable(project)) { await session.close(); throw new Error('Workflow workspace has closed.'); }
     } catch (error) {
@@ -219,10 +219,10 @@ export async function activateWorkflow(context: vscode.ExtensionContext, launche
           if (!closed) {
             const entry = workspaces.get(project.uri);
             if (entry?.close === close) { entry.running = false; }
-            output.appendLine(`Workflow Web stopped: ${project.name}`);
+            output.appendLine(`SteamHarness Web stopped: ${project.name}`);
           }
         }));
-      output.appendLine(`Workflow Web: ${project.name}; project Core ${session.ready.runtime.harnessVersion}; ${session.ready.runtime.harnessPath}`);
+      output.appendLine(`SteamHarness Web: ${project.name}; project Core ${session.ready.runtime.harnessVersion}; ${session.ready.runtime.harnessPath}`);
       updateEntry(); return { dispose: close, closed: session.closed };
     } catch (error) { await close(); if ('reveal' in panel) { panel.dispose(); } throw error; }
   };
@@ -403,7 +403,7 @@ export async function activateWorkflow(context: vscode.ExtensionContext, launche
       if (!project || !vscode.workspace.isTrusted || !launcher.available) { return; }
       const entry = await launcher.cliEntry(project.folderPath);
       assertNotUpgrading([project.folderPath]);
-      const terminal = vscode.window.createTerminal({ name: 'Workflow CLI', cwd: project.folderPath, env: { ELECTRON_RUN_AS_NODE: '1' } });
+      const terminal = vscode.window.createTerminal({ name: 'SteamHarness CLI', cwd: project.folderPath, env: { ELECTRON_RUN_AS_NODE: '1' } });
       terminals.set(terminal, project.uri);
       const quote = (value: string): string => process.platform === 'win32' ? `"${value.replace(/"/g, '""')}"` : `'${value.replace(/'/g, "'\\''")}'`;
       terminal.sendText(`${quote(vscode.workspace.getConfiguration('studio').get<string>('workflow.nodePath') || process.execPath)} ${quote(entry)} --help`); terminal.show();

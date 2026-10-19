@@ -186,7 +186,7 @@ async function run(context) {
     const other = (await launcher.inspect([projectDirectory])).projects[0];
     projectSession = await launcher.start({ ...other, uri: project.uri }, 'editor');
     const unconnected = await runWorkflow(projectSession, 'studio_state');
-    assert.equal(unconnected.status, 'failed'); assert.match(unconnected.error, /available only inside Workflow Studio/);
+    assert.equal(unconnected.status, 'failed'); assert.match(unconnected.error, /available only inside SteamHarness Studio/);
     checks.push('normal Workflow isolation: another project receives no control connection');
 
     controller.abort(); await bridge.close();

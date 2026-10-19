@@ -55,11 +55,11 @@ index 8a6a8764..474f4acb 100644
 -		this.element = append(container, $('main.studio-start'));
 +		this.element = append(container, $('main.studio-start.loading'));
  		this.element.tabIndex = -1;
- 		this.element.setAttribute('aria-label', 'Workflow Studio');
+ 		this.element.setAttribute('aria-label', 'SteamHarness Studio');
  		const inner = append(this.element, $('.studio-start-inner'));
  		const header = append(inner, $('header.studio-start-header'));
  		append(header, $('span.codicon.codicon-layout.studio-start-logo')).setAttribute('aria-hidden', 'true');
- 		append(header, $('h1', undefined, 'Workflow Studio'));
+ 		append(header, $('h1', undefined, 'SteamHarness Studio'));
 +		append(header, $('span.codicon.codicon-loading.codicon-modifier-spin.studio-start-loading-indicator')).setAttribute('aria-hidden', 'true');
  		const top = append(header, $('.studio-start-toolbar'));
  		this.button(top, 'create', 'add', 'studio.createProject', undefined, true).classList.add('studio-start-primary');
@@ -76,7 +76,7 @@ index 8a6a8764..474f4acb 100644
 +	focus(): void { (this.element.querySelector<HTMLButtonElement>('button:not(:disabled)') ?? this.element).focus(); }
 +
 +	private createLoadingPlaceholder(parent: HTMLElement): void {
-+		const loading = append(parent, $('.studio-start-loading', { role: 'progressbar', 'aria-label': 'Workflow Studio' }));
++		const loading = append(parent, $('.studio-start-loading', { role: 'progressbar', 'aria-label': 'SteamHarness Studio' }));
 +		const content = append(loading, $('div', { 'aria-hidden': 'true' }));
 +		append(content, $('.studio-start-skeleton.studio-start-skeleton-heading'));
 +		const projects = append(content, $('.studio-start-loading-projects'));

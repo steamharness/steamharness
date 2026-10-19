@@ -40,7 +40,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     const runtimeAuth: WebConnection | undefined = options.allowSystemAi === false && auth
       ? { serverUrl: auth.serverUrl, accessToken: auth.accessToken }
       : auth;
-    if ((request.method === 'run' || request.method === 'resolve') && (request.project as WorkflowProject)?.requiresLogin && !auth) { reject(new Error('Workflow Server login is not configured.')); return; }
+    if ((request.method === 'run' || request.method === 'resolve') && (request.project as WorkflowProject)?.requiresLogin && !auth) { reject(new Error('SteamHarness Server login is not configured.')); return; }
     // Workers use the verified page identity, including after logout.
     const env: NodeJS.ProcessEnv = sanitizeWebWorkerEnvironment(process.env);
     Object.assign(env, { STEAMHARNESS_RUNTIME_PLATFORM: 'cli',

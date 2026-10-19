@@ -108,7 +108,7 @@ export class WorkflowServerClient {
         },
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
-    } catch { throw new WorkflowAuthError(t("Cannot connect to Workflow Server. Check the server address and network.")); }
+    } catch { throw new WorkflowAuthError(t("Cannot connect to SteamHarness Server. Check the server address and network.")); }
     options.headersReceived?.(response.headers);
     let payload: ApiEnvelope<T>;
     try { payload = await response.json() as ApiEnvelope<T>; }
@@ -117,7 +117,7 @@ export class WorkflowServerClient {
       const message = response.status === 401
         ? (path === '/api/auth/login' ? t("Incorrect email or password.") : t("Sign-in expired. Sign in again."))
         : response.status === 429 ? t("Too many requests. Try again later.")
-          : payload.errMessage || t("Workflow Server request failed ({0}).", response.status);
+          : payload.errMessage || t("SteamHarness Server request failed ({0}).", response.status);
       throw new WorkflowAuthError(accessToken ? message.replaceAll(accessToken, '[redacted]') : message, response.status);
     }
     return payload.data;

@@ -34,7 +34,7 @@ export async function callStudioControlHost(
   fetchImpl: typeof fetch = fetch,
   signal?: AbortSignal,
 ): Promise<unknown> {
-  if (!config) throw new Error("Studio Control is available only inside Workflow Studio.");
+  if (!config) throw new Error("Studio Control is available only inside SteamHarness Studio.");
   const timeoutSignal = AbortSignal.timeout(HOST_BRIDGE_TIMEOUT_MS);
   const requestSignal = signal === undefined
     ? timeoutSignal

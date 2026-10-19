@@ -36,7 +36,7 @@ exports.run = async () => {
   assert.ok(Array.isArray(await vscode.authentication.getAccounts('studio-workflow')), 'Workflow authentication provider must be registered.');
   await vscode.commands.executeCommand('studio.openWorkflowAccount');
   const findAccountTab = () => vscode.window.tabGroups.all.flatMap((group) => group.tabs)
-    .find((tab) => tab.input instanceof vscode.TabInputWebview && tab.label === (vscode.env.language.startsWith('zh') ? 'Workflow \u8d26\u53f7' : 'Workflow Account'));
+    .find((tab) => tab.input instanceof vscode.TabInputWebview && tab.label === (vscode.env.language.startsWith('zh') ? 'Workflow \u8d26\u53f7' : 'SteamHarness Account'));
   await new Promise((resolve, reject) => {
     if (findAccountTab()) { resolve(); return; }
     const changed = vscode.window.tabGroups.onDidChangeTabs(() => {
@@ -127,11 +127,11 @@ exports.run = async () => {
   await vscode.commands.executeCommand('studio.openWorkflowSource');
   assert.ok(vscode.window.activeTextEditor.document.getText().includes(projectId), 'Workflow source action must open the selected project.');
   await vscode.commands.executeCommand('studio.openWorkflowCli');
-  const cli = vscode.window.terminals.find((terminal) => terminal.name === 'Workflow CLI');
-  assert.ok(cli, 'Workflow CLI must open a native terminal.');
+  const cli = vscode.window.terminals.find((terminal) => terminal.name === 'SteamHarness CLI');
+  assert.ok(cli, 'SteamHarness CLI must open a native terminal.');
   const closed = new Promise((resolve, reject) => {
     const listener = vscode.window.onDidCloseTerminal((terminal) => { if (terminal === cli) { clearTimeout(timeout); listener.dispose(); resolve(); } });
-    const timeout = setTimeout(() => { listener.dispose(); reject(new Error('Logout must close the Workflow CLI terminal.')); }, 5000);
+    const timeout = setTimeout(() => { listener.dispose(); reject(new Error('Logout must close the SteamHarness CLI terminal.')); }, 5000);
   });
   await vscode.commands.executeCommand('studio.logoutWorkflow'); await closed;
   await vscode.window.tabGroups.close(findWorkflowTab());

@@ -208,11 +208,11 @@ index 00000000..9c46b7e2
 +		super();
 +		this.element = append(container, $('main.studio-start'));
 +		this.element.tabIndex = -1;
-+		this.element.setAttribute('aria-label', 'Workflow Studio');
++		this.element.setAttribute('aria-label', 'SteamHarness Studio');
 +		const inner = append(this.element, $('.studio-start-inner'));
 +		const header = append(inner, $('header.studio-start-header'));
 +		append(header, $('span.codicon.codicon-layout.studio-start-logo')).setAttribute('aria-hidden', 'true');
-+		append(header, $('h1', undefined, 'Workflow Studio'));
++		append(header, $('h1', undefined, 'SteamHarness Studio'));
 +		const top = append(header, $('.studio-start-toolbar'));
 +		this.button(top, 'refresh', 'refresh', 'studio.refreshStart', undefined, false, true);
 +		const grid = append(inner, $('.studio-start-grid'));

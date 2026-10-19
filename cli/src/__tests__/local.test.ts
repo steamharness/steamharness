@@ -388,7 +388,7 @@ function restoreEnv(name: string, value: string | undefined): void {
 it("param resolver failures retain localizable metadata after the CLI marker", () => {
   const output = formatParamResolverFailure(new WorkflowError({
     type: "input_validation",
-    message: "Workflow Server login is not configured.",
+    message: "SteamHarness Server login is not configured.",
     metadata: {
       steamHarnessI18n: {
         namespace: "common",
@@ -400,7 +400,7 @@ it("param resolver failures retain localizable metadata after the CLI marker", (
   assert.equal(output.startsWith(STEAMHARNESS_PARAM_ERROR_MARKER), true);
   assert.deepEqual(JSON.parse(output.slice(STEAMHARNESS_PARAM_ERROR_MARKER.length)), {
     type: "input_validation",
-    message: "Workflow Server login is not configured.",
+    message: "SteamHarness Server login is not configured.",
     metadata: {
       steamHarnessI18n: {
         namespace: "common",

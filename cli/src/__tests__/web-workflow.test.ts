@@ -225,7 +225,7 @@ describe('Workflow workspace controller', () => {
   });
 });
 
-describe('Workflow Web routing and history', () => {
+describe('SteamHarness Web routing and history', () => {
   it('correlates usage replies, permits draft writes and rejects results after account changes', async () => {
     const { app, post } = await service(), realFetch = globalThis.fetch;
     const usage = { balance: 12.34, groups: [] };

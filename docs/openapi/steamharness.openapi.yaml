@@ -2,12 +2,12 @@ openapi: 3.1.0
 info:
   title: steamharness API
   version: 0.1.0
-  description: Workflow Server 提供项目、不可变源码版本和项目数据存储。本地客户端负责执行项目。
+  description: SteamHarness Server 提供项目、不可变源码版本和项目数据存储。本地客户端负责执行项目。
 servers:
   - url: http://localhost:7125
-    description: Local Workflow Server (dev default)
+    description: Local SteamHarness Server (dev default)
   - url: http://localhost:7130
-    description: Deployed Workflow Server (release default)
+    description: Deployed SteamHarness Server (release default)
 security:
   - BearerAuth: []
 tags:
@@ -674,7 +674,7 @@ paths:
               - active
               - disabled
               - invited
-          description: 按 Workflow 账号状态筛选。
+          description: 按 SteamHarness 账号状态筛选。
         - name: page
           in: query
           schema:

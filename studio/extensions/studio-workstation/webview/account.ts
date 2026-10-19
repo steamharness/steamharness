@@ -8,7 +8,7 @@ const app = document.querySelector<HTMLElement>('#account-app')!;
 const vscode = acquireVsCodeApi();
 const icon = (name: string): string => `<span class="codicon codicon-${name}" aria-hidden="true"></span>`;
 app.innerHTML = `
-  <header><span class="brand-icon">${icon('account')}</span><h1>${t("Workflow Account")}</h1></header>
+  <header><span class="brand-icon">${icon('account')}</span><h1>${t("SteamHarness Account")}</h1></header>
   <div id="account-status" role="status"></div>
   <form id="login-form"><label for="server-url">${t("Server")}</label><input id="server-url" type="url" required spellcheck="false" autocomplete="url">
     <label for="login-email">${t("Email")}</label><input id="login-email" type="email" required autocomplete="username">

@@ -362,7 +362,7 @@ test("a 502 from the provider endpoint is retried, not fatal", async () => {
   const server = createServer((_request, response) => {
     requests += 1;
     response.writeHead(502, { "content-type": "application/json" });
-    response.end(JSON.stringify({ error: { message: "Workflow Server AI 代理请求失败。" } }));
+    response.end(JSON.stringify({ error: { message: "SteamHarness Server AI 代理请求失败。" } }));
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
   const address = server.address();

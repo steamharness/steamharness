@@ -32,7 +32,7 @@ const server = createServer((request, response) => {
     request.resume(); response.end(JSON.stringify({ errCode: 0, data: { authenticated: true, accessToken: 'offline-desktop-identity', apiKey: { id: 'desktop-key' } } }));
   } else if (request.url === '/api/auth/me') {
     assert.equal(request.headers.authorization, 'Bearer offline-desktop-identity'); proof.authenticatedRequests++;
-    response.end(JSON.stringify({ errCode: 0, data: { profile: { userId: 'desktop-user', email: 'desktop@example.com', displayName: 'Workflow Desktop' }, principal: { apiKeyId: 'desktop-key', expiresAt: '2030-01-01T00:00:00Z' } } }));
+    response.end(JSON.stringify({ errCode: 0, data: { profile: { userId: 'desktop-user', email: 'desktop@example.com', displayName: 'SteamHarness Desktop' }, principal: { apiKeyId: 'desktop-key', expiresAt: '2030-01-01T00:00:00Z' } } }));
   } else if (request.url === '/api/ai/usage') { response.end(JSON.stringify({ errCode: 0, data: { balance: 10, groups: [] } })); }
   else if (request.url === '/api/auth/logout') { request.resume(); response.end(JSON.stringify({ errCode: 0, data: {} })); }
   else { response.writeHead(404); response.end('{}'); }
@@ -98,10 +98,10 @@ try {
   await command('Workflow: \u767b\u5f55\u4e0e\u7ba1\u7406\u8d26\u53f7');
   const account = await frameFor('#account-app'); await account.locator('#server-url').fill(serverUrl);
   await account.locator('#login-email').fill('desktop@example.com'); await account.locator('#login-password').fill('offline-password');
-  await account.locator('#login-submit').click(); await account.locator('#display-name').filter({ hasText: 'Workflow Desktop' }).waitFor();
+  await account.locator('#login-submit').click(); await account.locator('#display-name').filter({ hasText: 'SteamHarness Desktop' }).waitFor();
   await page.getByRole('tab', { name: '\u5de5\u4f5c\u6d41\u793a\u4f8b', exact: true }).click();
   frame = await frameFor('#workflow-title'); await ready(frame); await formReady(frame);
-  await frame.locator('#web-account').filter({ hasText: 'Workflow Desktop' }).waitFor();
+  await frame.locator('#web-account').filter({ hasText: 'SteamHarness Desktop' }).waitFor();
   assert.ok(proof.authenticatedRequests >= 2); proof.checks.push('VS Code login is injected and verified by the project CLI');
   await frame.locator('#input-mode [data-mode=raw]').click();
   await frame.locator('#raw-args').fill('["--subject","Desktop report","--review","true","--delay","5","--rounds","3"]');
@@ -110,7 +110,7 @@ try {
   await frame.locator('#show-active').click(); await frame.locator('.input-prompt').waitFor();
   await command('View: Close Editor'); await runProject.click();
   frame = await frameFor('#workflow-title'); await ready(frame); await frame.locator('.input-prompt').waitFor();
-  await frame.locator('#web-account').filter({ hasText: 'Workflow Desktop' }).waitFor();
+  await frame.locator('#web-account').filter({ hasText: 'SteamHarness Desktop' }).waitFor();
   assert.match(await frame.locator('#run-meta').innerText(), /\u5df2\u4e2d\u65ad/);
   await frame.getByRole('button', { name: '\u7ee7\u7eed\u8fd0\u884c', exact: true }).click();
   await frame.locator('#app[data-run-state=idle]').waitFor(); assert.equal(await frame.locator('#run-list .session').count(), 1);
@@ -122,7 +122,7 @@ try {
   const settings = JSON.parse(await readFile(path.join(dataDir, 'User/settings.json'), 'utf8'));
   await writeFile(path.join(dataDir, 'User/settings.json'), JSON.stringify({ ...settings, 'workbench.colorTheme': 'Dark Modern' }));
   await frame.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
-  assert.equal(await frame.locator('#web-account').innerText(), 'Workflow Desktop');
+  assert.equal(await frame.locator('#web-account').innerText(), 'SteamHarness Desktop');
   await screenshot('workflow-desktop-result-dark.png');
   for (const width of [1440, 950, 650]) {
     await page.setViewportSize({ width, height: 1000 }); await pause(200); await assertLayout(frame);

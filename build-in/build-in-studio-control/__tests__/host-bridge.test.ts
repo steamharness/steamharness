@@ -7,7 +7,7 @@ describe("Studio Control host bridge", () => {
   it("is unavailable outside Studio and rejects partial credentials", async () => {
     expect(readStudioControlHostBridgeConfig({})).toBeUndefined();
     expect(() => readStudioControlHostBridgeConfig({ STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN: "test" })).toThrow("Incomplete");
-    await expect(callStudioControlHost("studio.state.get", {}, undefined)).rejects.toThrow("only inside Workflow Studio");
+    await expect(callStudioControlHost("studio.state.get", {}, undefined)).rejects.toThrow("only inside SteamHarness Studio");
   });
   it.each(["https://127.0.0.1:1/studio-control", "http://localhost:1/studio-control", "http://example.com:1/studio-control",
     "http://user:pass@127.0.0.1:1/studio-control", "http://127.0.0.1/studio-control", "http://127.0.0.1:1/other",

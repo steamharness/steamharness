@@ -61,7 +61,7 @@ npm run dev:web
 npm run dev:web -- --port 3050 --default-folder /absolute/path/to/project
 ```
 
-两端使用不同的 `.studio/` 数据目录，不影响已有 VS Code 设置和扩展。Web 入口目前用于本地开发；桌面工作站已接入 Workflow Server 账号，公网部署和安装包发布尚未配置。
+两端使用不同的 `.studio/` 数据目录，不影响已有 VS Code 设置和扩展。Web 入口目前用于本地开发；桌面工作站已接入 SteamHarness Server 账号，公网部署和安装包发布尚未配置。
 
 默认打开当前源码仓库。首次运行时，需要信任该目录，才能加载位于仓库内的内置扩展并使用终端；Web 如显示 Restricted Mode，可点击横幅中的 Manage，再选择 Trust。打开其他项目时仍保留上游工作区信任检查。
 
@@ -83,7 +83,7 @@ npm run dev:web -- --port 3050 --default-folder /absolute/path/to/project
 
 运行按钮右侧的 **上传项目** 使用 Studio 当前账号，将源码上传并发布为 `package.json.version` 对应的服务器版本。左侧 **版本** 页展示历史版本、发布说明与关联版本，并提供下载；开始页也提供下载入口。下载保存到宿主用户主目录下的 `Documents/steamharness-projects/<项目名>-<版本>`，重名自动加序号，保留已有文件。项目标签、最近项目和资源面板展示本地版本；上传与下载均不会在服务器安装依赖、构建或执行源码。下载后可在新窗口打开，再在项目终端安装依赖。
 
-打开 `examples/conversation` 可以试用不需要模型凭据的本地对话演示。聚合仓库中的小助手位于 `../build-in/build-in-developer-assistant`；真实模型对话需要项目的 Workflow Server 和 AI 凭据配置。
+打开 `examples/conversation` 可以试用不需要模型凭据的本地对话演示。聚合仓库中的小助手位于 `../build-in/build-in-developer-assistant`；真实模型对话需要项目的 SteamHarness Server 和 AI 凭据配置。
 
 小助手还通过 `build-in/build-in-studio-control` 源码连接 VS Code：读取工作区和诊断、查询项目的关联声明与导入状态、打开文件并定位行列、切换已安装主题、打开终端及常用视图。`get_related_projects` 返回别名、UUID、名称、Studio 导入状态及核验后的目录；每次查询重新校验 UUID，不自动导入或代替数据授权。Permission 默认选择 Auto approve，提示词与控制工具均允许访问进程有权限的任意本地目录；Workspace / Read only 保留工作区目录限制。每个小助手会话拥有独立的认证回环接口，关闭会话、移除工作区或撤销信任后失效。工具沿用现有权限与 Build/Plan 审批，终端工具不执行命令。纯浏览器扩展不提供本地控制服务，需使用 Node 扩展宿主。
 
@@ -93,19 +93,19 @@ Studio Control 也可以作为普通 Workflow 项目打开：安装依赖后，�
 
 在完成扩展、同级 Core 和 CLI 构建后，`npm run test:analysis-live` 可使用隔离存储检验内置模板、真实项目 CLI、只读数据连接和项目范围更新；不会启动桌面窗口。
 
-Studio 活动栏中的 **Workflow 项目** 列出当前文件夹及常见项目容器下的项目。Conversation 支持自定义参数、附件、工具确认与续跑、计划、输入队列、独立并发会话、历史与标签页恢复、输出和运行诊断；Workflow 支持入口选择和本地运行；Kanban 通过项目 CLI 打开静态产物、参数配置和数据 Bridge。能力范围见 [Workflow 工作站](docs/workflow-workstation.md)。
+Studio 活动栏中的 **Workflow 项目** 列出当前文件夹及常见项目容器下的项目。Conversation 支持自定义参数、附件、工具确认与续跑、计划、输入队列、独立并发会话、历史与标签页恢复、输出和运行诊断；Workflow 支持入口选择和本地运行；Kanban 通过项目 CLI 打开静态产物、参数配置和数据 Bridge。能力范围见 [SteamHarness 工作站](docs/workflow-workstation.md)。
 
 底部面板默认保留 Terminal。识别到 Workflow、Conversation 或 Kanban 项目后，显示 **KV** 和 **知识库** 标签，提供项目切换、搜索、分页和数据管理，样式跟随 VS Code 主题。数据与项目 CLI 共用存储，详见 [项目资源面板](docs/resource-panel.md)。
 
 Workflow 和 Conversation 还提供底部 **轨迹** 面板。对话回复下方的执行图与日志入口合并为一个轨迹入口，点击定位对应执行记录；面板支持时间线、轮次、调用、搜索及参数/结果/日志详情，详见 [执行轨迹](docs/trace-panel.md)。
 
-工作站使用每个项目自己安装的 Core 和 CLI；项目需安装支持 Web 宿主协议的 `@steamharness/cli`。聚合 checkout 的开发入口优先识别同级 Core/CLI，独立 checkout 保留 `../workflow` 布局；也可用 `STUDIO_STEAMHARNESS_SOURCE` 指定源码根目录。详细范围见 [Workflow 工作站](docs/workflow-workstation.md)。
+工作站使用每个项目自己安装的 Core 和 CLI；项目需安装支持 Web 宿主协议的 `@steamharness/cli`。聚合 checkout 的开发入口优先识别同级 Core/CLI，独立 checkout 保留 `../workflow` 布局；也可用 `STUDIO_STEAMHARNESS_SOURCE` 指定源码根目录。详细范围见 [SteamHarness 工作站](docs/workflow-workstation.md)。
 
 ## 语言与账号入口
 
 简体中文使用官方扩展 `MS-CEINTL.vscode-language-pack-zh-hans`，在扩展市场中搜索并安装即可。桌面和 Web 的扩展目录相互独立，需要分别安装。显示语言沿用上游机制；源码开发模式的核心界面仍使用英文，正式构建按上游语言包流程加载翻译。Studio 自有扩展支持中英文；首版 Workflow 项目界面使用中文文案。
 
-左下角设置按钮上方显示账号入口，提供 Workflow 登录、登录验证和退出操作。登录页在编辑器标签页打开，登录成功后显示服务器返回的账号头像。默认连接本机 dev 服务 `http://localhost:7126`，可通过 `studio.workflow.serverUrl` 更改。登录凭据保存在 VS Code SecretStorage 中，已打开的 Conversation 会随登录和退出自动刷新参数；Core 和内置 CLI 使用同一份工作站凭据。详见 [Workflow 工作站](docs/workflow-workstation.md)。
+左下角设置按钮上方显示账号入口，提供 Workflow 登录、登录验证和退出操作。登录页在编辑器标签页打开，登录成功后显示服务器返回的账号头像。默认连接本机 dev 服务 `http://localhost:7126`，可通过 `studio.workflow.serverUrl` 更改。登录凭据保存在 VS Code SecretStorage 中，已打开的 Conversation 会随登录和退出自动刷新参数；Core 和内置 CLI 使用同一份工作站凭据。详见 [SteamHarness 工作站](docs/workflow-workstation.md)。
 
 Studio 启动时排除上游内置的 GitHub Copilot，并通过 `chat.disableAIFeatures` 默认隐藏 AI 入口。桌面和 Web 首次启动自动安装 [File & Folder Icons](https://marketplace.visualstudio.com/items?itemName=nextbook.file-and-folder-icons)，默认图标主题为 `file-icons`；已安装的扩展和用户自行选择的主题会保留。该扩展未发布到 Open VSX，安装包从原 Marketplace 下载，版本与 SHA-256 固定在 `config/default-extensions.json`，缓存位于 `.studio/`。
 

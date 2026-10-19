@@ -428,7 +428,7 @@ export async function startWebServer(options: WebOptions) {
         break;
       }
       case 'usage': {
-        if (!connection) { throw new Error('Workflow Server login is not configured.'); }
+        if (!connection) { throw new Error('SteamHarness Server login is not configured.'); }
         const revision = authRevision;
         if (!connection.aiServerUrl || !connection.aiAccessToken) { throw new Error(t('System AI is unavailable.')); }
         const response = await fetch(`${connection.aiServerUrl}/api/ai/usage`, { headers: { Authorization: `Bearer ${connection.aiAccessToken}` }, signal: AbortSignal.timeout(15_000), redirect: 'error' }); const result = await response.json();
@@ -440,7 +440,7 @@ export async function startWebServer(options: WebOptions) {
         if (hostManaged) { throw new Error(t("Manage this account through Studio.")); }
         if (!options.host && process.env.STEAMHARNESS_SERVER_ADMIN_KEY !== undefined) { throw new Error('This session is supplied by the host. Sign in through the host.'); }
         if (login || passwordLogin) { break; }
-        const url = new URL(String(message.serverUrl)); if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) { throw new Error('Invalid Workflow Server URL.'); }
+        const url = new URL(String(message.serverUrl)); if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) { throw new Error('Invalid SteamHarness Server URL.'); }
         signedOut = false; account = { ...account, status: 'checking' }; broadcast();
         if (message.email !== undefined || message.password !== undefined) {
           const epoch = ++authEpoch;

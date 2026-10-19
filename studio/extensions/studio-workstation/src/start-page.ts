@@ -14,7 +14,7 @@ export function startPageLabels(): Record<string, string> {
     start: t('Start'), create: t('New Project'), current: t('Current Projects'), examples: t('Examples'), recent: t('Recent Projects'), upload: t('Upload Project'), download: t('Download Project'), versions: t('Versions'),
     importLink: t('Import from Link'), shareUrl: t('Project Share Link'), confirmImport: t('Import'), requiredShareUrl: t('Enter a project share link.'),
     system: t('System Status'), quick: t('Quick Access'), refresh: t('Refresh Status'), analysis: t('Open Studio Analysis'),
-    openFolder: t('Open Folder'), openWorkspace: t('Open Workspace'), assistant: t('Open Project Assistant'), account: t('Workflow Account'), settings: t('Settings'),
+    openFolder: t('Open Folder'), openWorkspace: t('Open Workspace'), assistant: t('Open Project Assistant'), account: t('SteamHarness Account'), settings: t('Settings'),
     source: t('Open Project Source'), noCurrent: t('No Workflow projects in this workspace.'), noRecent: t('No recent projects.'),
     localVersion: t('Local Version'), serverVersion: t('Server Version'), upgrade: t('Upgrade...'), updateAvailable: t('Update Available'),
     upToDate: t('Up to Date'), localNewer: t('Local Version Is Newer'), downloadUnavailable: t('Source download is unavailable.'),

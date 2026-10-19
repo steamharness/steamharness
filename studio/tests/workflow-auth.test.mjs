@@ -325,6 +325,6 @@ test('server URLs reject embedded credentials and authenticated redirects never 
   await new Promise((resolve) => source.listen(0, '127.0.0.1', resolve));
   t.after(() => Promise.all([source, destination].map((server) => new Promise((resolve) => server.close(resolve)))));
   const localUrl = `http://127.0.0.1:${source.address().port}`;
-  await assert.rejects(new WorkflowServerClient(localUrl).verify({ serverUrl: localUrl, accessToken: token }), /Workflow Server/);
+  await assert.rejects(new WorkflowServerClient(localUrl).verify({ serverUrl: localUrl, accessToken: token }), /SteamHarness Server/);
   assert.equal(redirectedRequests, 0);
 });

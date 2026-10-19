@@ -2,13 +2,13 @@ openapi: 3.1.0
 info:
   title: steamharness API
   version: 0.1.0
-  description: Workflow Server stores projects, immutable source versions and
+  description: SteamHarness Server stores projects, immutable source versions and
     project data. Project execution is local.
 servers:
   - url: http://localhost:7125
-    description: Local Workflow Server (dev default)
+    description: Local SteamHarness Server (dev default)
   - url: http://localhost:7130
-    description: Deployed Workflow Server (release default)
+    description: Deployed SteamHarness Server (release default)
 security:
   - BearerAuth: []
 tags:

@@ -1,11 +1,11 @@
 ---
 title: "workspace login"
-description: "Log on to Workflow Server by browser device flow, and save the login status of workspace CLI."
+description: "Log on to SteamHarness Server by browser device flow, and save the login status of workspace CLI."
 ---
 
 # workspace login
 
-`workspace login` will initiate a device flow login request to Workflow Server, open the browser authorization page, and wait for the user to write the CLI dedicated API Key to the local `workflow-auth.json` after approval on the Web side. The CLI saves its own credentials and does not require manual token entry.
+`workspace login` will initiate a device flow login request to SteamHarness Server, open the browser authorization page, and wait for the user to write the CLI dedicated API Key to the local `workflow-auth.json` after approval on the Web side. The CLI saves its own credentials and does not require manual token entry.
 
 ## Command Format
 
@@ -17,7 +17,7 @@ pnpm exec steamharness workspace login --server <url>
 
 |Parameter|Description|
 | --- | --- |
-| `--server <url>` |Required. Workflow Server address.|
+| `--server <url>` |Required. SteamHarness Server address.|
 
 ## Verification method
 

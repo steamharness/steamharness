@@ -30,7 +30,7 @@ function render(next: WorkflowVersionsState): void {
   if (!next.project) {
     app.innerHTML = `<p class="empty">${text(t('Open a project to view its versions.'))}</p>`;
   } else if (!next.signedIn) {
-    app.innerHTML = `<div class="empty"><p>${text(t('Sign in to Workflow Server first.'))}</p><button type="button" data-action="sign-in">${text(t('Sign In'))}</button></div>`;
+    app.innerHTML = `<div class="empty"><p>${text(t('Sign in to SteamHarness Server first.'))}</p><button type="button" data-action="sign-in">${text(t('Sign In'))}</button></div>`;
   } else {
     app.innerHTML = `<div class="current-project"><strong>${text(next.project.name)}</strong></div>
       ${next.update ? projectVersionHtml(next.update, next.busy) : ''}

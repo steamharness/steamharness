@@ -112,7 +112,7 @@ export class WorkflowAccountController implements vscode.Disposable {
 
   open(): void {
     if (this.panel) { this.panel.reveal(); return; }
-    const panel = vscode.window.createWebviewPanel('studio.workflowAccount', t("Workflow Account"), vscode.ViewColumn.Active, {
+    const panel = vscode.window.createWebviewPanel('studio.workflowAccount', t("SteamHarness Account"), vscode.ViewColumn.Active, {
       enableScripts: true, retainContextWhenHidden: false,
       localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')],
     });

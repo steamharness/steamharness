@@ -171,7 +171,7 @@ export class KanbanController {
       finally { this.requests.delete(abort); }
     } else if (this.project.projectInfo?.dataStorage?.mode === 'server' || call.operation.startsWith('files.')) {
       const connection = this.hooks.connection();
-      if (!connection) { throw Object.assign(new Error('Workflow Server login is required.'), { code: call.operation.startsWith('files.') ? 'KANBAN_FILE_UNAVAILABLE' : 'KANBAN_BRIDGE_UNAVAILABLE' }); }
+      if (!connection) { throw Object.assign(new Error('SteamHarness Server login is required.'), { code: call.operation.startsWith('files.') ? 'KANBAN_FILE_UNAVAILABLE' : 'KANBAN_BRIDGE_UNAVAILABLE' }); }
       const abort = new AbortController(); this.requests.add(abort);
       try {
         const response = await fetch(`${connection.serverUrl}/api/workflows/${encodeURIComponent(this.project.id)}/kanban/bridge`, { method: 'POST', headers: { Authorization: `Bearer ${connection.accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ call }), redirect: 'error', signal: AbortSignal.any([abort.signal, AbortSignal.timeout(call.operation.startsWith('files.') ? 120_000 : 15_000)]) });
@@ -195,7 +195,7 @@ export class KanbanController {
     if (this.project.projectInfo?.dataStorage?.mode !== 'server' || this.disposed) { return; }
     this.missingRelatedProjectAliases = [];
     const connection = this.hooks.connection();
-    if (!connection) { this.relatedProjectWarning = t("Sign in to Workflow Server to connect Kanban data."); return; }
+    if (!connection) { this.relatedProjectWarning = t("Sign in to SteamHarness Server to connect Kanban data."); return; }
     const abort = this.feed = new AbortController();
     void (async () => {
       try {

@@ -5,7 +5,7 @@ description: "Package the local workflow directory as an uploadable. tgz archive
 
 # workspace pack
 
-`workspace pack` Copy the local workflow source code to the packaging staging directory and use `tar` to generate the `.tgz` package. The command only processes local files and does not request Workflow Server.
+`workspace pack` Copy the local workflow source code to the packaging staging directory and use `tar` to generate the `.tgz` package. The command only processes local files and does not request SteamHarness Server.
 
 Workflow/Conversation verification`package.json`and`index.ts`;Kanban uses`package.json.steamHarness.projectType: "kanban"`to identify and verify the HTML `entry`_configured in`steamHarness.kanban.artifactDir`. Continue to use the project root directory`index.html`if not configured__. The README can serve as the project’s description, but it is not a required file for upload. Images, fonts, and other binary resources are included in the archive and source code repository as-is.
 

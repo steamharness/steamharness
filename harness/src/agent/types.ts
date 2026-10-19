@@ -87,7 +87,7 @@ export interface AgentModelCost {
  *
  * A custom provider is absent from pi's own catalogue, so without this the
  * runtime has to guess: it would advertise a window off a name-prefix table,
- * claim every model accepts images, and report zero cost. The Workflow Server
+ * claim every model accepts images, and report zero cost. The SteamHarness Server
  * resolves these from its model catalogue and hands them to a system-AI run;
  * a caller pointing the agent at its own endpoint supplies them directly.
  *

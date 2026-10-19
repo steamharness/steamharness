@@ -91,7 +91,7 @@ export function createWorkflowRuntime(context: vscode.ExtensionContext, account:
   }) => Promise<T>): Promise<T> => {
     assertAvailable(false);
     const connection = account.getConnection();
-    if (!connection) { throw new Error(t('Sign in to Workflow Server first.')); }
+    if (!connection) { throw new Error(t('Sign in to SteamHarness Server first.')); }
     const changed = new AbortController();
     const subscription = account.onDidChange(state => {
       if (state.status !== 'checking' && JSON.stringify(account.getConnection()) !== JSON.stringify(connection)) { changed.abort(); }

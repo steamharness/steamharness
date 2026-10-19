@@ -26,7 +26,7 @@ export class AccountPanel {
     this.dialog.className = 'conversation-dialog account-dialog';
     this.dialog.setAttribute('aria-labelledby', 'account-title');
     this.dialog.innerHTML = `
-      <header><span class="codicon codicon-account" aria-hidden="true"></span><h2 id="account-title">${t("Workflow Account")}</h2><button id="close-account" type="button" class="icon-button" title="${t("Close account")}" aria-label="${t("Close account")}">${iconHtml('close')}</button></header>
+      <header><span class="codicon codicon-account" aria-hidden="true"></span><h2 id="account-title">${t("SteamHarness Account")}</h2><button id="close-account" type="button" class="icon-button" title="${t("Close account")}" aria-label="${t("Close account")}">${iconHtml('close')}</button></header>
       <div class="dialog-body account-body">
         <div id="account-status" role="status"></div>
         <form id="login-form">

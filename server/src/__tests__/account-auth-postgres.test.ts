@@ -20,7 +20,7 @@ test("native PostgreSQL auth preserves sessions, invitations, API keys, locks, t
     const admin = await auth.signInBootstrapAdmin({
       email: "admin@example.com",
       password: "bootstrap-password",
-      displayName: "Workflow Admin",
+      displayName: "SteamHarness Admin",
     });
     const adminProfile = await accountDb.getUserProfileOrThrow(admin.user.userId);
     assert.ok(adminProfile.permissions.includes("system.admin"));

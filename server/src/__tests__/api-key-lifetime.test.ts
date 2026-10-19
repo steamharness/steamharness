@@ -37,11 +37,11 @@ test("AccountRepository extends only active API keys and keeps a later expiratio
 
   const touched = await repository.touchApiKey("api-key-1", {
     ip: "127.0.0.1",
-    userAgent: "Workflow Desktop",
+    userAgent: "SteamHarness Desktop",
     expiresAt: renewedExpiresAt,
   });
 
-  assert.deepEqual(query?.params, ["api-key-1", "127.0.0.1", "Workflow Desktop", renewedExpiresAt]);
+  assert.deepEqual(query?.params, ["api-key-1", "127.0.0.1", "SteamHarness Desktop", renewedExpiresAt]);
   assert.match(query?.sql ?? "", /greatest\(expires_at, \$4::timestamptz\)/);
   assert.match(query?.sql ?? "", /revoked_at is null/);
   assert.match(query?.sql ?? "", /expires_at is null or expires_at > now\(\)/);

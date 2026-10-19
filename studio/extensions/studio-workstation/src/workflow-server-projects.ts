@@ -79,7 +79,7 @@ export class WorkflowProjectServerClient {
       });
     } catch {
       signal.throwIfAborted();
-      throw new WorkflowAuthError(t('Cannot connect to Workflow Server. Check the server address and network.'));
+      throw new WorkflowAuthError(t('Cannot connect to SteamHarness Server. Check the server address and network.'));
     }
     let payload: { errCode: number; errMessage?: string; data?: T };
     try { payload = await response.json() as typeof payload; }
@@ -90,7 +90,7 @@ export class WorkflowProjectServerClient {
     }
     if (!response.ok || payload.errCode !== 0 || payload.data === undefined) {
       const message = response.status === 401 ? t('Sign-in expired. Sign in again.')
-        : payload.errMessage || t('Workflow Server request failed ({0}).', response.status);
+        : payload.errMessage || t('SteamHarness Server request failed ({0}).', response.status);
       throw new WorkflowAuthError(message.replaceAll(this.connection.accessToken, '[redacted]'), response.status);
     }
     return payload.data;

@@ -1230,9 +1230,9 @@ function initialize(): void {
     } else if (message.type === 'params' && state && message.projectUri === state.project.uri && message.sessionId === state.activeId && message.requestId === requestId) {
       resolving = false;
       if (message.error) {
-        authenticationRequired = /Workflow Server login is not configured|Unauthorized/.test(String(message.error));
-        paramError.textContent = String(message.error).includes('Workflow Server login is not configured') ? t("Sign in to Workflow Server, then refresh parameters.")
-          : String(message.error).includes('Unauthorized') ? t("Sign-in expired. Sign in to Workflow Server again.") : message.error;
+        authenticationRequired = /SteamHarness Server login is not configured|Unauthorized/.test(String(message.error));
+        paramError.textContent = String(message.error).includes('SteamHarness Server login is not configured') ? t("Sign in to SteamHarness Server, then refresh parameters.")
+          : String(message.error).includes('Unauthorized') ? t("Sign-in expired. Sign in to SteamHarness Server again.") : message.error;
         paramError.hidden = false;
       } else {
         authenticationRequired = false;

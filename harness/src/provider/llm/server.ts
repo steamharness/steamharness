@@ -459,21 +459,21 @@ function normalizeConnection(serverUrl: string, token: string): ServerLLMConnect
   } catch {
     throw new WorkflowError({
       type: "input_validation",
-      message: "The Workflow Server URL is invalid.",
+      message: "The SteamHarness Server URL is invalid.",
       metadata: { steamHarnessI18n: createI18nDescriptor("workflowServerUrlInvalid") },
     });
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new WorkflowError({
       type: "input_validation",
-      message: "The Workflow Server URL must use HTTP or HTTPS.",
+      message: "The SteamHarness Server URL must use HTTP or HTTPS.",
       metadata: { steamHarnessI18n: createI18nDescriptor("workflowServerUrlProtocolInvalid") },
     });
   }
   if (parsed.username || parsed.password || parsed.search || parsed.hash) {
     throw new WorkflowError({
       type: "input_validation",
-      message: "The Workflow Server URL must not contain credentials, query parameters, or fragments.",
+      message: "The SteamHarness Server URL must not contain credentials, query parameters, or fragments.",
       metadata: { steamHarnessI18n: createI18nDescriptor("workflowServerUrlInvalid") },
     });
   }
@@ -658,7 +658,7 @@ async function readApiResponse<T>(response: Response): Promise<ApiResponse<T>> {
   }
   return {
     errCode: response.status,
-    errMessage: `Workflow Server returned an invalid response (HTTP ${response.status}).`,
+    errMessage: `SteamHarness Server returned an invalid response (HTTP ${response.status}).`,
     steamHarnessI18n: createI18nDescriptor("workflowServerInvalidResponse", { status: response.status }),
   };
 }

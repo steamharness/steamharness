@@ -21,7 +21,7 @@ The first dependency installation requires access to a package registry. Once in
 
 Progress, cancellation, and installation logs appear in the target project window after it opens. Failed or cancelled installations keep their source directory; **Current Projects** on that window's Start page offers **Retry Installation**, **Open Project Folder**, and **Show Installation Log**. Reloading does not automatically restart installation. Retrying from another window opens the project window first. Successful setup stays in the target window. Opening a new window preserves the original workspace and unsaved files; reusing the current window follows the editor's unsaved-file protection.
 
-**Current Projects** shows each project's name, type, version, and folder. **Run Project** opens its runtime; the upload button publishes its source and the code button opens its source. **Recent Projects** shows versions, reopens folders or workspaces, and allows removing entries. Quick access includes folders, workspaces, Download Project, Versions, Project Assistant, Workflow Account, and Settings.
+**Current Projects** shows each project's name, type, version, and folder. **Run Project** opens its runtime; the upload button publishes its source and the code button opens its source. **Recent Projects** shows versions, reopens folders or workspaces, and allows removing entries. Quick access includes folders, workspaces, Download Project, Versions, Project Assistant, SteamHarness Account, and Settings.
 
 Recent Projects, **Open Recent** (Ctrl+R), Studio workspace and imported related-project lists, and project/template pickers use consistent Workflow, Conversation, and Kanban icons. Studio reads project declarations statically, without running the project or requiring its dependencies to be installed. Unrecognized folders and saved workspaces keep their existing icons.
 
@@ -62,7 +62,7 @@ Studio project tools and embedded CLI pages support English and Simplified Chine
 
 ## Uploads, downloads, and versions
 
-After signing in to Workflow Server, select the cloud upload button beside **Run Project** in the title bar, or on a current project card, to open the upload dialog. It shows the project, version, server, and project folder. Enter multiline release notes and select **Upload**. Progress, results, errors, and cancellation stay in the dialog. The title bar button follows the current project; a project card uploads that card's project. Studio saves that project's unsaved files, uses the CLI to package its source, waits for static file validation, and publishes an immutable version from `package.json.version`. The server does not install dependencies, build, or execute the project. Existing versions cannot be overwritten; change the package version first. Uploads require workspace trust and project management permission; data write access does not grant project management.
+After signing in to SteamHarness Server, select the cloud upload button beside **Run Project** in the title bar, or on a current project card, to open the upload dialog. It shows the project, version, server, and project folder. Enter multiline release notes and select **Upload**. Progress, results, errors, and cancellation stay in the dialog. The title bar button follows the current project; a project card uploads that card's project. Studio saves that project's unsaved files, uses the CLI to package its source, waits for static file validation, and publishes an immutable version from `package.json.version`. The server does not install dependencies, build, or execute the project. Existing versions cannot be overwritten; change the package version first. Uploads require workspace trust and project management permission; data write access does not grant project management.
 
 **Versions** in the activity bar shows only the current open project's local version, server history, latest markers, publication dates, uploader, release notes, source hashes, and related project versions, without a server project selector. In a workspace with multiple projects, it follows the active project. An empty window shows an empty state; **Download Project** on Start still lets you choose a server project and version. Project editor tabs, the status bar, recent and related projects, and KV, knowledge, and trace panels also show project versions.
 
@@ -93,7 +93,7 @@ Histories come from Studio's local CLI storage. CLIs with activity recording als
 
 ## Accounts and servers
 
-Use the account entry in the lower left to sign in, verify credentials, or sign out. Select a Workflow Server using the application setting `studio.workflow.serverUrl`. VS Code SecretStorage stores credentials outside project source.
+Use the account entry in the lower left to sign in, verify credentials, or sign out. Select a SteamHarness Server using the application setting `studio.workflow.serverUrl`. VS Code SecretStorage stores credentials outside project source.
 
 Server Web manages cloud projects, versions, knowledge, KV, and other stored data. See [Workspace CLI](/en/cli/server-workspace) for packaging, uploads, and remote management.
 

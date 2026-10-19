@@ -1141,7 +1141,7 @@ describe("server workspace CLI helpers", () => {
     const result = await runNode(cliPath, ["workspace", "--help"]);
 
     // covers the built server workspace CLI shape while keeping the
-    // default test suite offline and independent of Workflow Server.
+    // default test suite offline and independent of SteamHarness Server.
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toMatch(/(?:Usage|用法).*steamharness/);
     expect(result.stdout).toContain("pnpm exec steamharness workspace <command> [args]");

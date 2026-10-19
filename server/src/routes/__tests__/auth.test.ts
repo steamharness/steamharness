@@ -203,7 +203,7 @@ test("admin key login upgrades to admin_session when auth service is configured"
         user: {
           userId: "admin-user-auth-service",
           email: "admin@steamharness.local",
-          displayName: "Workflow Admin",
+          displayName: "SteamHarness Admin",
         },
       };
     },
@@ -218,7 +218,7 @@ test("admin key login upgrades to admin_session when auth service is configured"
         profile: {
           userId: "admin-user-auth-service",
           email: "admin@steamharness.local",
-          displayName: "Workflow Admin",
+          displayName: "SteamHarness Admin",
           status: "active" as const,
           createdAt: "2026-06-18T00:00:00.000Z",
           updatedAt: "2026-06-18T00:00:00.000Z",
@@ -245,7 +245,7 @@ test("admin key login upgrades to admin_session when auth service is configured"
       return {
         userId: "admin-user-auth-service",
         email: "admin@steamharness.local",
-        displayName: "Workflow Admin",
+        displayName: "SteamHarness Admin",
         status: "active" as const,
         createdAt: "2026-06-18T00:00:00.000Z",
         updatedAt: "2026-06-18T00:00:00.000Z",
@@ -355,7 +355,7 @@ test("password login can bootstrap the env-configured admin account into an admi
         user: {
           userId: "bootstrap-admin-user",
           email: "admin@example.com",
-          displayName: "Workflow Admin",
+          displayName: "SteamHarness Admin",
         },
       };
     },
@@ -373,7 +373,7 @@ test("password login can bootstrap the env-configured admin account into an admi
         profile: {
           userId: "bootstrap-admin-user",
           email: "admin@example.com",
-          displayName: "Workflow Admin",
+          displayName: "SteamHarness Admin",
           status: "active" as const,
           createdAt: "2026-06-20T00:00:00.000Z",
           updatedAt: "2026-06-20T00:00:00.000Z",
@@ -400,7 +400,7 @@ test("password login can bootstrap the env-configured admin account into an admi
       return {
         userId: "bootstrap-admin-user",
         email: "admin@example.com",
-        displayName: "Workflow Admin",
+        displayName: "SteamHarness Admin",
         status: "active" as const,
         createdAt: "2026-06-20T00:00:00.000Z",
         updatedAt: "2026-06-20T00:00:00.000Z",
@@ -767,7 +767,7 @@ test("password login mints an API key when called with source=desktop for non-we
         email: "user@example.com",
         password: "super-secret",
         source: "desktop",
-        clientName: "Workflow Desktop login",
+        clientName: "SteamHarness Desktop login",
       }),
     });
     assert.equal(response.errCode, 0);
@@ -778,7 +778,7 @@ test("password login mints an API key when called with source=desktop for non-we
     assert.ok(typeof response.data?.expiresAt === "string");
     assert.equal(createdKeys.length, 1);
     assert.equal(createdKeys[0]?.source, "desktop");
-    assert.equal(createdKeys[0]?.name, "Workflow Desktop login");
+    assert.equal(createdKeys[0]?.name, "SteamHarness Desktop login");
     const desktopKeyTtlMs = Date.parse(createdKeys[0]!.expiresAt) - Date.now();
     assert.ok(desktopKeyTtlMs >= 89 * 24 * 60 * 60 * 1000);
     assert.ok(desktopKeyTtlMs <= 91 * 24 * 60 * 60 * 1000);
@@ -843,7 +843,7 @@ test("me exposes the refreshed expiration for a Desktop API key principal", asyn
         apiKey: {
           id: "api-key-desktop",
           userId: profile.userId,
-          name: "Workflow Desktop login",
+          name: "SteamHarness Desktop login",
           prefix: "wf_api",
           source: "desktop",
           scopes: [],
@@ -1474,7 +1474,7 @@ function createDeviceCodeRecord(overrides: Partial<{
     id: overrides.id ?? "device-1",
     deviceCodeHash: overrides.deviceCodeHash ?? "device-code-hash",
     userCode: overrides.userCode ?? "ABCD-EFGH",
-    clientName: overrides.clientName ?? "Workflow CLI",
+    clientName: overrides.clientName ?? "SteamHarness CLI",
     source: overrides.source ?? "cli",
     requestedScopes: overrides.requestedScopes ?? [],
     state: overrides.state ?? "pending",

@@ -61,7 +61,7 @@ describe("translation resolution", () => {
     expect(i18n.t("accountInviteDescription", {
       ns: "serverWeb",
       email: "owner@example.com",
-    })).toBe("为 owner@example.com 设置初始密码并激活 Workflow 账号。");
+    })).toBe("为 owner@example.com 设置初始密码并激活 SteamHarness 账号。");
 
     initI18n({ preference: "en" });
     expect(i18n.t("accountInviteExpiresAt", {
@@ -106,7 +106,7 @@ describe("translation resolution", () => {
       key: "workflowServerLoginRequired",
     });
     expect(translateSteamHarnessError(error)).toBe(
-      "Workflow Server login is not configured. Sign in to the server in Desktop or workspace CLI first.",
+      "SteamHarness Server login is not configured. Sign in to the server in Desktop or workspace CLI first.",
     );
   });
 

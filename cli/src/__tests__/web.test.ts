@@ -807,8 +807,8 @@ describe('steamharness web', () => {
       const signedOut = await runtime.run({ project, conversationId: 'offline-test', runId: 'signed-out-run', args: [] }, () => {});
       expect(signedOut.output?.items?.[0].content).toMatchObject({ llmServer: '', llmLoginIsCurrent: true });
       project.requiresLogin = true;
-      await expect(runtime.run({ project, conversationId: 'offline-test', runId: 'blocked-run', args: [] }, () => {})).rejects.toThrow('Workflow Server login is not configured');
-      await expect(runtime.resolveParams(project, { args: [], draftText: '', inputMode: 'form', trigger: { kind: 'init' } })).rejects.toThrow('Workflow Server login is not configured');
+      await expect(runtime.run({ project, conversationId: 'offline-test', runId: 'blocked-run', args: [] }, () => {})).rejects.toThrow('SteamHarness Server login is not configured');
+      await expect(runtime.resolveParams(project, { args: [], draftText: '', inputMode: 'form', trigger: { kind: 'init' } })).rejects.toThrow('SteamHarness Server login is not configured');
     } finally { runtime.dispose(); }
   }, 30_000);
 

@@ -122,7 +122,7 @@ function createProcessAbortController(): AbortController {
     if (!controller.signal.aborted) {
       // Electron run cancellation reaches local workflow context so
       // long-running SDK calls can receive an AbortSignal before process exit.
-      controller.abort(new Error("Workflow CLI process was interrupted."));
+      controller.abort(new Error("SteamHarness CLI process was interrupted."));
       forcedExit = setTimeout(() => {
         process.exit(130);
       }, 5_000);

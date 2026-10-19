@@ -252,7 +252,7 @@ export function createAgentProjectParams(options: AgentProjectOptions = {}): Wor
           required: true,
           control: "select",
           label: "AI 配置",
-          description: "Workflow Server 的系统 AI 配置。",
+          description: "SteamHarness Server 的系统 AI 配置。",
           options: [],
         },
         {

@@ -1,6 +1,6 @@
 export function workflowFrameHtml(url: string, title: string, projectUri: string, theme: 'light' | 'dark', nonce: string, language = 'en'): string {
   const address = new URL(url);
-  if (address.protocol !== 'http:' && address.protocol !== 'https:') { throw new Error('Invalid Workflow Web URL.'); }
+  if (address.protocol !== 'http:' && address.protocol !== 'https:') { throw new Error('Invalid SteamHarness Web URL.'); }
   const locale = language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en';
   address.searchParams.set('workflowLocale', locale);
   const escape = (value: string): string => value.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]!));

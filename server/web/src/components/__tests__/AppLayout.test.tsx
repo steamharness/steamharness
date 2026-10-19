@@ -60,7 +60,7 @@ describe("AppLayout", () => {
     vi.spyOn(window, "innerWidth", "get").mockReturnValue(390);
     const props = layoutProps();
     const onSettings = vi.fn();
-    render(<AppLayout {...props} principalLabel="Workflow Admin"
+    render(<AppLayout {...props} principalLabel="SteamHarness Admin"
       principalMenuActions={[{ label: "设置", icon: Settings, onSelect: onSettings }]}>Content</AppLayout>);
     fireEvent.click(screen.getByRole("button", { name: "切换侧边栏" }));
     const sheet = await screen.findByRole("dialog", { name: "侧边栏" });
@@ -68,7 +68,7 @@ describe("AppLayout", () => {
       fireEvent.click(within(sheet).getByRole("button", { name: "SteamHarness" }));
       expect(props.onBrandClick).toHaveBeenCalledOnce();
     } else {
-      fireEvent.pointerDown(within(sheet).getByRole("button", { name: /Workflow Admin/ }), { button: 0, ctrlKey: false });
+      fireEvent.pointerDown(within(sheet).getByRole("button", { name: /SteamHarness Admin/ }), { button: 0, ctrlKey: false });
       fireEvent.click(await screen.findByRole("menuitem", { name: "设置" }));
       expect(onSettings).toHaveBeenCalledOnce();
     }
@@ -78,12 +78,12 @@ describe("AppLayout", () => {
   it("exposes account actions and logout from the account menu", async () => {
     const props = layoutProps();
     const onSettings = vi.fn();
-    render(<AppLayout {...props} principalLabel="Workflow Admin" principalEmail="admin@example.com"
+    render(<AppLayout {...props} principalLabel="SteamHarness Admin" principalEmail="admin@example.com"
       principalMenuActions={[{ label: "设置", icon: Settings, onSelect: onSettings }]}>Content</AppLayout>);
-    fireEvent.pointerDown(screen.getByRole("button", { name: /Workflow Admin/ }), { button: 0, ctrlKey: false });
+    fireEvent.pointerDown(screen.getByRole("button", { name: /SteamHarness Admin/ }), { button: 0, ctrlKey: false });
     fireEvent.click(await screen.findByRole("menuitem", { name: "设置" }));
     expect(onSettings).toHaveBeenCalledOnce();
-    fireEvent.pointerDown(screen.getByRole("button", { name: /Workflow Admin/ }), { button: 0, ctrlKey: false });
+    fireEvent.pointerDown(screen.getByRole("button", { name: /SteamHarness Admin/ }), { button: 0, ctrlKey: false });
     fireEvent.click(await screen.findByRole("menuitem", { name: "退出系统" }));
     expect(props.onLogout).toHaveBeenCalledOnce();
   });

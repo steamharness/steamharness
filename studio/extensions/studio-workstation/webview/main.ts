@@ -830,9 +830,9 @@ function initialize(): void {
     } else if (message.type === 'params' && state && message.projectUri === state.project.uri && message.sessionId === state.activeId && message.requestId === requestId) {
       resolving = false;
       if (message.error) {
-        authenticationRequired = /Workflow Server login is not configured|Unauthorized/.test(String(message.error));
-        paramError.textContent = String(message.error).includes('Workflow Server login is not configured') ? '\u8bf7\u5148\u767b\u5f55 Workflow Server\uff0c\u7136\u540e\u5237\u65b0\u53c2\u6570\u3002'
-          : String(message.error).includes('Unauthorized') ? '\u767b\u5f55\u5df2\u5931\u6548\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55 Workflow Server\u3002' : message.error;
+        authenticationRequired = /SteamHarness Server login is not configured|Unauthorized/.test(String(message.error));
+        paramError.textContent = String(message.error).includes('SteamHarness Server login is not configured') ? '\u8bf7\u5148\u767b\u5f55 SteamHarness Server\uff0c\u7136\u540e\u5237\u65b0\u53c2\u6570\u3002'
+          : String(message.error).includes('Unauthorized') ? '\u767b\u5f55\u5df2\u5931\u6548\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55 SteamHarness Server\u3002' : message.error;
         paramError.hidden = false;
       } else {
         authenticationRequired = false;

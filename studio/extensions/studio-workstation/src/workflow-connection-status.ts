@@ -6,7 +6,7 @@ import type { WorkflowAccountState } from './workflow-auth-client';
 
 export function registerWorkflowConnectionStatus(account: WorkflowAccountController): vscode.Disposable {
   const status = vscode.window.createStatusBarItem('workflowConnection', vscode.StatusBarAlignment.Left, 120);
-  status.name = t('Workflow Server');
+  status.name = t('SteamHarness Server');
   status.command = 'studio.openWorkflowAccount';
 
   const update = (state: WorkflowAccountState): void => {
@@ -16,7 +16,7 @@ export function registerWorkflowConnectionStatus(account: WorkflowAccountControl
     else if (state.status === 'expired') { icon = 'warning'; label = t('Server Sign-in Expired'); }
     else if (state.status === 'error') { icon = 'warning'; label = t('Server Connection Error'); }
     status.text = `$(${icon}) ${label}`;
-    status.tooltip = `${t('Workflow Server: {0}', state.serverUrl)}${state.error ? `\n\n${state.error}` : ''}`;
+    status.tooltip = `${t('SteamHarness Server: {0}', state.serverUrl)}${state.error ? `\n\n${state.error}` : ''}`;
     status.accessibilityInformation = { label: `${label}, ${state.serverUrl}` };
     status.show();
   };

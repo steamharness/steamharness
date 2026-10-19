@@ -1250,7 +1250,7 @@ const llmNode = workflow.createLLMStreamNode<Input>({
 
 `workflow.createLLMProviderFromEnv()` 通过 `workflow.getEnv(name)` 读取 `LLM_TYPE`、`LLM_API_KEY`、`LLM_BASE_URL` 和 `LLM_MODEL`。
 
-需要使用当前登录账户在 Workflow Server 上开通的 AI 配置时，调用：
+需要使用当前登录账户在 SteamHarness Server 上开通的 AI 配置时，调用：
 
 ```ts
 const credentials = await workflow.getServerLLMCredentials({ signal: abortSignal });
@@ -1588,7 +1588,7 @@ Server 提供项目创建、上传、不可变源码发布、历史版本下载�
 
 常用 flag：`--conversation-id <id>` 指定或续接会话；`--entrypoint <id>` 选择入口；`--related-project <alias>=<绝对目录>` 为 `relatedProjects` 提供本地目标（本地验证跨项目 KV 的唯一方式，双方声明必须已存在且目标项目 `.id` 合法）；`--run-id <id>`、`--resolved-user-inputs-json <json>`、`--tool-permissions-json <json>` 用于恢复等待中的 user-input 与工具策略；`--file-store-dir <dir>` 指定本地文件存储目录。旧的 `--version` 已移除，发布版本由宿主管理。
 
-**workspace 子命令**（连接 Workflow Server 时）：
+**workspace 子命令**（连接 SteamHarness Server 时）：
 
 `login`、`logout`、`status`、`health`、`pack`、`upload`、`preparation`、`download`、`publish`、`versions`、`file-upload`、`file-download`、`file-delete`。常用 flag：`--path <dir>`、`--create`、`--no-wait`、`--project-group`、`--publish-group`、`--deployment <id>`、`--dependency <alias>=<路径>`。项目端点：`/api/workflows/<id>/package|publish|versions|source-files|source-archive`。
 

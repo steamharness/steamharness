@@ -5,7 +5,7 @@ description: "View the workspace CLI saved login, and the server this call would
 
 # workspace status
 
-`workspace status` reads the CLI login state file `workflow-auth.json` and reports whether a server URL, API Key, user, and expiration time are saved, plus an `effective` block naming **the server the command would really talk to** with these arguments, and where that value came from. It does not request Workflow Server, and therefore cannot prove that API Key is still valid.
+`workspace status` reads the CLI login state file `workflow-auth.json` and reports whether a server URL, API Key, user, and expiration time are saved, plus an `effective` block naming **the server the command would really talk to** with these arguments, and where that value came from. It does not request SteamHarness Server, and therefore cannot prove that API Key is still valid.
 
 The saved login and the effective target can be different servers. The order is `--server` / `--token` → the `STEAMHARNESS_SERVER_URL` / `STEAMHARNESS_SERVER_ADMIN_KEY` environment variables → the saved login → the built-in default: a command-line flag overrides the environment, and the environment overrides the file. A run or the built-in terminal started by Studio injects its own session, so `steamharness` there talks to the server the Studio is signed in to, not to whatever login that file holds. To answer "could this upload go to the wrong server", read `effective`, not `serverUrl`.
 

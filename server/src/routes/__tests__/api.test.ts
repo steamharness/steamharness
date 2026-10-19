@@ -2930,7 +2930,7 @@ function createApiKeyPrincipal(source: "desktop" | "cli"): AuthenticatedPrincipa
     apiKey: {
       id: `api-key-${source}`,
       userId: sessionPrincipal.userId,
-      name: source === "desktop" ? "Workflow Desktop login" : "Workflow CLI login",
+      name: source === "desktop" ? "SteamHarness Desktop login" : "SteamHarness CLI login",
       prefix: `wfk_${source}`,
       source,
       scopes: [],

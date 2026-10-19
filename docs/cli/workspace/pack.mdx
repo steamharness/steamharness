@@ -5,7 +5,7 @@ description: "将本地 workflow 目录打包为可上传的 .tgz 归档。"
 
 # workspace pack
 
-`workspace pack` 将本地 workflow 源码复制到打包暂存目录，再使用 `tar` 生成 `.tgz` 包。该命令只处理本地文件，不请求 Workflow Server。
+`workspace pack` 将本地 workflow 源码复制到打包暂存目录，再使用 `tar` 生成 `.tgz` 包。该命令只处理本地文件，不请求 SteamHarness Server。
 
 Workflow/Conversation 校验 `package.json` 和 `index.ts`；Kanban 使用 `package.json.steamHarness.projectType: "kanban"` 识别，并校验 `steamHarness.kanban.artifactDir` 中配置的 HTML `entry`。未配置时继续使用项目根目录 `index.html`。README 可以保留为项目说明，但不是上传必需文件。图片、字体等二进制资源会原样进入归档和源码版本。
 

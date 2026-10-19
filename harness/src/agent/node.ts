@@ -654,7 +654,7 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
 /**
  * Points a run at the host's system AI when there is one.
  *
- * The Workflow Server hands out a loopback bridge rather than the upstream key,
+ * The SteamHarness Server hands out a loopback bridge rather than the upstream key,
  * and that bridge only lives for one run, so it is started here and closed by
  * the caller's `finally`.
  *

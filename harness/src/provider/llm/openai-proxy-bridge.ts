@@ -75,7 +75,7 @@ export async function startLLMProxyBridge(
         response.destroy(error instanceof Error ? error : new Error(String(error)));
         return;
       }
-      sendJson(response, 502, "Workflow Server AI 代理请求失败。");
+      sendJson(response, 502, "SteamHarness Server AI 代理请求失败。");
     });
   });
 

@@ -194,7 +194,7 @@ export const executor = workflow.defineExecutor<AgentInput, AgentOutputPayload>(
           type: "string",
           required: true,
           label: "Provider",
-          description: "Workflow Server system AI configuration.",
+          description: "SteamHarness Server system AI configuration.",
           control: "select",
           options: [],
         },

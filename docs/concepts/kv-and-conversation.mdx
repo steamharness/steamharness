@@ -169,7 +169,7 @@ Kanban 的 `knowledge.listDocuments/getDocument/createDocument/editDocument/dele
 
 知识库工具支持 `list/get/create/edit/delete/search/read_lines`；KV 工具只开放底层 KV 已支持的 `get/set`，且 value 必须可 JSON 序列化。这些工具都注册在对应 executor 的 `tools` 中，默认启用并自动批准。CLI Web Tool 管理可以逐项禁用或改为人工批准；人工批准仍由 `workflow.createToolApprovalGate()` 和现有 waiting-input 恢复协议处理。Codex 使用 SDK `approve` 模式跳过内部第二层审批；OpenCode 将 workflow MCP 工具设为可调用，但实际操作仍先经过同一个 workflow approval gate。
 
-小助手的 `global_memory` 只记录稳定、可复用的用户偏好、变更和项目决策。`remember` 使用稳定 `memoryId` 对 `assistant-memory-*` 文档执行 upsert；`forget` 删除对应文档。工具会拒绝常见密钥、Token、密码和私钥内容，也不应保存一次性进度或临时错误。该 namespace 在本机小助手范围内跨目标项目共享，但不自动同步到 Workflow Server、其它设备或普通项目 Knowledge。
+小助手的 `global_memory` 只记录稳定、可复用的用户偏好、变更和项目决策。`remember` 使用稳定 `memoryId` 对 `assistant-memory-*` 文档执行 upsert；`forget` 删除对应文档。工具会拒绝常见密钥、Token、密码和私钥内容，也不应保存一次性进度或临时错误。该 namespace 在本机小助手范围内跨目标项目共享，但不自动同步到 SteamHarness Server、其它设备或普通项目 Knowledge。
 
 ## Conversation 文档镜像
 

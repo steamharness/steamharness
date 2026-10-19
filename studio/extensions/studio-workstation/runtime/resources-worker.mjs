@@ -86,7 +86,7 @@ async function localRequest(request, core, folderPath) {
 
 async function serverRequest(request, fetcher) {
   const { connection, project, input } = request;
-  if (!connection?.accessToken) { throw Object.assign(new Error('Please sign in to Workflow Server.'), { status: 401 }); }
+  if (!connection?.accessToken) { throw Object.assign(new Error('Please sign in to SteamHarness Server.'), { status: 401 }); }
   const prefix = `${connection.serverUrl.replace(/\/+$/, '')}/api/workflows/${encodeURIComponent(project.id)}`;
   const query = new URLSearchParams();
   let suffix, method = 'GET', body;
@@ -116,7 +116,7 @@ async function serverRequest(request, fetcher) {
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
   const payload = await response.json();
-  if (!response.ok || payload.errCode !== 0) { throw Object.assign(new Error(payload.errMessage || `Workflow Server request failed (${response.status}).`), { status: response.status }); }
+  if (!response.ok || payload.errCode !== 0) { throw Object.assign(new Error(payload.errMessage || `SteamHarness Server request failed (${response.status}).`), { status: response.status }); }
   return payload.data ?? null;
 }
 

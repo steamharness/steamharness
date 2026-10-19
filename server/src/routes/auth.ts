@@ -145,7 +145,7 @@ export function createAuthRouter(): Router {
     const session = await authService.signInBootstrapAdmin({
       email: bootstrapEmail,
       password: bootstrapPassword,
-      displayName: "Workflow Admin",
+      displayName: "SteamHarness Admin",
     }).catch(() => undefined);
 
     if (session) {
@@ -244,7 +244,7 @@ export function createAuthRouter(): Router {
           ? await authService.signInBootstrapAdmin({
               email,
               password,
-              displayName: "Workflow Admin",
+              displayName: "SteamHarness Admin",
             })
           : await authService.signInWithPassword({ email, password });
       } catch (authError) {
@@ -317,8 +317,8 @@ export function createAuthRouter(): Router {
           typeof req.body?.clientName === "string" && req.body.clientName.trim() !== ""
             ? req.body.clientName.trim()
             : source === "desktop"
-              ? "Workflow Desktop login"
-              : "Workflow CLI login";
+              ? "SteamHarness Desktop login"
+              : "SteamHarness CLI login";
         // Rate-limit the implicit API-key mint against its own
         // bucket keyed by user+IP so a legitimate user can re-login across
         // sessions without burning their quota for manually creating keys
@@ -477,7 +477,7 @@ export function createAuthRouter(): Router {
       if (!authService) {
         throw new HttpError(503, 503, "Account auth is not configured.");
       }
-      const clientName = typeof req.body?.clientName === "string" ? req.body.clientName.trim() : "Workflow CLI";
+      const clientName = typeof req.body?.clientName === "string" ? req.body.clientName.trim() : "SteamHarness CLI";
       const source = readNonWebClientSource(req.body?.source, "cli");
       const started = await authService.createDeviceCode({
         clientName,

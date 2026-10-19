@@ -1,6 +1,6 @@
 # Project Assistant
 
-Studio 内置的独立小助手，基于 Core Agent 能力运行，使用宿主提供的 Workflow Server 系统 AI 配置。小助手的工作目录和授权根目录由宿主通过 `STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR` 与 `STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST` 提供，不从编辑器当前项目或 conversation 参数推断。
+Studio 内置的独立小助手，基于 Core Agent 能力运行，使用宿主提供的 SteamHarness Server 系统 AI 配置。小助手的工作目录和授权根目录由宿主通过 `STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR` 与 `STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST` 提供，不从编辑器当前项目或 conversation 参数推断。
 
 宿主默认为 `vscode`，也可显式设置 `STEAMHARNESS_DEVELOPER_ASSISTANT_HOST=vscode`。小助手使用 Core 编码工具、项目内的 `skill` 工具、`global_memory` 和文件/浏览器资源卡。Studio 注入控制连接时，还可通过 Studio Control 标准 MCP 读取工作区和诊断、查询关联项目、打开文件并定位行列、切换已安装主题、打开终端及常用视图。编辑器操作沿用工具权限与 Build/Plan 审批规则，状态、诊断和关联项目查询默认自动批准。`get_related_projects` 返回项目声明的别名、UUID、名称、Studio 导入状态和核验后的目录；导入状态不代替双向数据授权。控制连接缺失时保留编码能力，不连接旧 Desktop Control，也不提供 Kanban 宿主配置或实时页面方法。
 

@@ -37,7 +37,7 @@ export const RELEASE_UNITS = Object.freeze([
   },
   {
     slug: "server", label: "Server", labelEn: "Server", title: "Server 发布日志",
-    description: "Workflow Server 的完整版本记录与更新说明。",
+    description: "SteamHarness Server 的完整版本记录与更新说明。",
     source: "server", packageLabel: "server", target: "当前设备",
     endpoint: "https://steamharness.yuhe.space",
   },

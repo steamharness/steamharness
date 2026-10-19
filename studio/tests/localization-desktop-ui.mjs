@@ -172,7 +172,7 @@ async function verify(language) {
     proof.checks.push('Kanban host controls and dialogs follow VS Code; project-owned board content is preserved');
     await command(`Workflow: ${t('Sign In and Manage Account')}`);
     const account = await frameFor('#account-app');
-    assert.equal(await account.locator('h1').innerText(), t('Workflow Account'));
+    assert.equal(await account.locator('h1').innerText(), t('SteamHarness Account'));
     assert.equal(await account.locator('#show-password').getAttribute('title'), t('Show password'));
     assert.equal(await account.locator('#login-submit span:last-child').textContent(), t('Sign in'));
     await screenshot('account.png'); proof.checks.push('Account page headings, labels and password controls follow VS Code');

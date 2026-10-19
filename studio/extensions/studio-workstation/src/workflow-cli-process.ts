@@ -127,16 +127,16 @@ export async function startProjectCli(options: {
   child.once('close', () => { finished = true; clearTimeout(force); events.emit('exit'); finishClose(); });
   try {
     const ready = await new Promise<WorkflowWebReady>((resolve, reject) => {
-      const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('Workflow Web startup timed out.')); }, 45_000);
+      const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('SteamHarness Web startup timed out.')); }, 45_000);
       const settle = (error?: Error, message?: WorkflowWebReady) => {
         clearTimeout(timer); child.off('error', failed); child.off('close', exited); child.stdout?.off('data', received);
         if (error) { reject(error); } else { resolve(message!); }
       };
       const failed = (error: Error) => settle(new Error(cleanError(error.message)));
-      const exited = (code: number | null) => failed(new Error(stderr.trim() || `Workflow Web exited (${code}).`));
+      const exited = (code: number | null) => failed(new Error(stderr.trim() || `SteamHarness Web exited (${code}).`));
       const received = (chunk: string) => {
         buffer += chunk;
-        if (buffer.length > 2_000_000) { child.kill('SIGKILL'); failed(new Error('Workflow Web startup output is too large.')); return; }
+        if (buffer.length > 2_000_000) { child.kill('SIGKILL'); failed(new Error('SteamHarness Web startup output is too large.')); return; }
         let newline: number;
         while ((newline = buffer.indexOf('\n')) >= 0) {
           const line = buffer.slice(0, newline); buffer = buffer.slice(newline + 1);

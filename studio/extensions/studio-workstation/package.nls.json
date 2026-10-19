@@ -58,7 +58,7 @@
   "view.studio.trace": "Trace",
   "view.studio.workflowProjects": "Workflow Projects",
   "welcome.studio.workflowProjects": "Trust the workspace to load Workflow projects.",
-  "config.studio.workflow.serverUrl": "Workflow Server URL. Connects to the local development service by default. Sign in again after changing it.",
+  "config.studio.workflow.serverUrl": "SteamHarness Server URL. Connects to the local development service by default. Sign in again after changing it.",
   "config.studio.workflow.nodePath": "Node.js path for launching the project CLI. Leave empty to use the extension host's Node.js.",
   "command.openDocumentPreview": "Open Preview",
   "command.refreshDocumentPreview": "Refresh Preview",

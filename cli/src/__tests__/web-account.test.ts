@@ -24,7 +24,7 @@ describe('web account authentication', () => {
       .mockResolvedValueOnce(envelope({ loggedOut: true }));
     vi.stubGlobal('fetch', fetcher);
     await loginWebAccount('https://workflow.test', ' test@example.com ', 'test-password');
-    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ email: 'test@example.com', password: 'test-password', source: 'cli', clientName: 'Workflow CLI Web' });
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ email: 'test@example.com', password: 'test-password', source: 'cli', clientName: 'SteamHarness CLI Web' });
     expect(fetcher.mock.calls[1][1].headers).toEqual({ Authorization: 'Bearer test-api-key' });
     expect(fetcher.mock.calls[2]).toEqual(['https://workflow.test/api/auth/logout', expect.objectContaining({ method: 'POST', headers: { Cookie: 'workflow-session=test-session' } })]);
     expect(await readCliAuthConfig()).toEqual({ serverUrl: 'https://workflow.test', apiKey: 'test-api-key', user: profile, source: 'password', expiresAt: '2027-01-01T00:00:00Z' });
