@@ -559,5 +559,22 @@
   "Source": "Source",
   "Tokens": "Tokens",
   "Cost": "Cost",
-  "Usage details": "Usage details"
+  "Usage details": "Usage details",
+  "Refresh account": "Refresh account",
+  "Copy email": "Copy email",
+  "User ID": "User ID",
+  "Copy user ID": "Copy user ID",
+  "Edit profile": "Edit profile",
+  "Connection": "Connection",
+  "Copy server address": "Copy server address",
+  "Transport": "Transport",
+  "Manage sessions": "Manage sessions",
+  "Encrypted (HTTPS)": "Encrypted (HTTPS)",
+  "Local connection (HTTP)": "Local connection (HTTP)",
+  "Unencrypted (HTTP)": "Unencrypted (HTTP)",
+  "Expires within 24 hours": "Expires within 24 hours",
+  "Expires in {0} days": "Expires in {0} days",
+  "Updated {0}": "Updated {0}",
+  "Unable to refresh this section. Try again.": "Unable to refresh this section. Try again.",
+  "Unable to complete account action.": "Unable to complete account action."
 }

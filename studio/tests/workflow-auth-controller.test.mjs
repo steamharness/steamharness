@@ -16,24 +16,34 @@ class Emitter {
 async function fixture(t) {
   const focus = new Emitter(), secretsChanged = new Emitter(), configuration = new Emitter(), intervals = new Set(), sessions = [];
   const serverUrl = 'http://127.0.0.1:7126';
-  const f = { profile: { userId: 'user', email: 'user@example.test', displayName: 'User', avatarUrl: 'data:image/png;base64,b2xk' }, requests: 0 };
+  const f = { profile: { userId: 'user', email: 'user@example.test', displayName: 'User', avatarUrl: 'data:image/png;base64,b2xk' }, requests: 0, messages: [], opened: [], copied: [] };
   let stored = JSON.stringify({ serverUrl, accessToken: 'test-token', apiKeyId: 'test-key', user: f.profile });
   const disposable = { dispose() {} };
   const vscode = {
     EventEmitter: Emitter, StatusBarAlignment: { Left: 1 },
     Disposable: { from: (...items) => ({ dispose: () => items.forEach(item => item.dispose()) }) },
-    Uri: { parse: value => ({ toString: () => value, toJSON: () => value }) },
+    Uri: { parse: value => ({ toString: () => value, toJSON: () => value }), joinPath: (_base, ...parts) => ({ toString: () => `file:///extension/${parts.join('/')}` }) },
+    ThemeIcon: class { constructor(id) { this.id = id; } }, ViewColumn: { Active: 1 },
+    env: { language: 'en', openExternal: async uri => { f.opened.push(uri.toString()); }, clipboard: { writeText: async text => { f.copied.push(text); } } },
     commands: { registerCommand: () => disposable, executeCommand: async () => {} },
     authentication: { registerAuthenticationProvider: (_id, _label, provider) => {
       f.provider = provider; provider.onDidChangeSessions(event => sessions.push(event)); return disposable;
     } },
     workspace: { getConfiguration: () => ({ get: () => serverUrl }), onDidChangeConfiguration: configuration.event },
     window: { state: { focused: true }, onDidChangeWindowState: focus.event,
-      createStatusBarItem: () => ({ show() {}, dispose() {} }) },
+      createStatusBarItem: () => ({ show() {}, dispose() {} }),
+      createWebviewPanel: (_type, _title, _column, options) => {
+        const disposed = new Emitter(), received = new Emitter(), changed = new Emitter();
+        f.panel = { visible: true, options, reveal() {}, onDidDispose: disposed.event, onDidChangeViewState: changed.event,
+          dispose: () => disposed.fire(),
+          webview: { cspSource: 'test-source', asWebviewUri: value => value, postMessage: async message => { f.messages.push(message); },
+            onDidReceiveMessage: callback => { f.message = callback; return received.event(callback); } } };
+        return f.panel;
+      } },
   };
   const module = { exports: {} };
   runInNewContext(compiled.outputFiles[0].text, {
-    module, exports: module.exports, require: id => id === 'vscode' ? vscode : require(id), URL, AbortSignal,
+    module, exports: module.exports, require: id => id === 'vscode' ? vscode : require(id), URL, AbortSignal, AbortController, crypto: globalThis.crypto,
     fetch: async () => { f.requests++; return Response.json({ errCode: 0, data: { profile: f.profile, principal: { apiKeyId: 'test-key' } } }); },
     setInterval: (callback, ms) => { const timer = { callback, ms, unref() {} }; intervals.add(timer); return timer; },
     clearInterval: timer => intervals.delete(timer),
@@ -87,4 +97,43 @@ test('Studio polls profiles while focused and disposes the timer and focus subsc
   assert.equal(f.intervals.size, 0);
   f.focus(true); f.poll();
   assert.equal(f.requests, requests);
+});
+
+test('account actions use fixed Server routes and copy account fields selected by the host', async t => {
+  const f = await fixture(t);
+  f.controller.open();
+  await f.message({ type: 'ready' });
+  assert.equal(f.messages.find(message => message.type === 'account-sections').states.length, 0);
+  assert.ok(f.panel.webview.html.includes("default-src 'none'"));
+  assert.ok(!f.panel.webview.html.includes('unsafe-inline'));
+  await f.message({ type: 'open-profile', url: 'https://untrusted.example' });
+  await f.message({ type: 'open-sessions' });
+  await f.message({ type: 'copy', field: 'userId', value: 'test-token' });
+  await f.message({ type: 'copy', field: 'accessToken' });
+  assert.deepEqual(f.opened, ['http://127.0.0.1:7126/settings/profile', 'http://127.0.0.1:7126/settings/api-keys']);
+  assert.deepEqual(f.copied, ['user']);
+  f.controller.dispose();
+  await f.message({ type: 'copy', field: 'email' });
+  await f.message({ type: 'open-profile' });
+  assert.equal(f.copied.length, 1);
+  assert.equal(f.opened.length, 2);
+});
+
+test('sign out immediately clears contributed content even when a section refresh is pending', async t => {
+  const f = await fixture(t);
+  let release, signal;
+  f.controller.registerSectionProvider({ id: 'example', title: 'Example', load: (_connection, abort) => {
+    signal = abort;
+    return new Promise(resolve => { release = resolve; });
+  } });
+  f.controller.open(); await f.message({ type: 'ready' });
+  await until(() => release);
+  const refreshing = f.message({ type: 'refresh-sections' });
+  await f.message({ type: 'logout' });
+  assert.equal(f.controller.getState().status, 'signed-out');
+  assert.equal(signal.aborted, true);
+  release([{ id: 'old', title: 'Old account data' }]);
+  await refreshing;
+  assert.equal(f.messages.filter(message => message.type === 'account-sections').at(-1).states.length, 0);
+  assert.ok(!JSON.stringify(f.messages).includes('test-token'));
 });

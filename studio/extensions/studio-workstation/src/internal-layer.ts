@@ -1,19 +1,23 @@
 import * as vscode from 'vscode';
+import type { AccountSectionProvider } from './account-section-types';
+
+interface LayerAccount {
+  setAiConnection?: (connection: { serverUrl: string; accessToken: string } | undefined) => void;
+  getConnection?: () => { serverUrl: string; accessToken: string } | undefined;
+  onDidChange?: (listener: () => unknown) => vscode.Disposable;
+  registerSectionProvider?: (provider: AccountSectionProvider) => vscode.Disposable;
+}
 
 /**
  * The public Studio has no internal AI implementation. A private launcher may
  * inject an extension layer through an absolute module path at runtime.
  * Keeping this hook inert by default makes the public build independent of the
- * private checkout and keeps its account surface unchanged.
+ * private checkout. Account sections use the host's generic display contract.
  */
 export async function activateInternalLayer(
   context: vscode.ExtensionContext,
   output: vscode.OutputChannel,
-  account?: {
-    setAiConnection?: (connection: { serverUrl: string; accessToken: string } | undefined) => void;
-    getConnection?: () => { serverUrl: string; accessToken: string } | undefined;
-    onDidChange?: (listener: () => unknown) => vscode.Disposable;
-  },
+  account?: LayerAccount,
 ): Promise<void> {
   const processValue = Reflect.get(globalThis, 'process') as { env?: Record<string, string | undefined> } | undefined;
   const env = processValue?.env;
@@ -24,11 +28,7 @@ export async function activateInternalLayer(
         context: vscode.ExtensionContext;
         vscode: typeof import('vscode');
         output: vscode.OutputChannel;
-        account?: {
-          setAiConnection?: (connection: { serverUrl: string; accessToken: string } | undefined) => void;
-          getConnection?: () => { serverUrl: string; accessToken: string } | undefined;
-          onDidChange?: (listener: () => unknown) => vscode.Disposable;
-        };
+        account?: LayerAccount;
       }) => Promise<void> | void;
     }>;
     const layer = await loader(env.STEAMHARNESS_STUDIO_INTERNAL_MODULE);

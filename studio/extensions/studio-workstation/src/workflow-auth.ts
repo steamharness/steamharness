@@ -2,6 +2,8 @@ import { t } from './localization';
 import { localizationHtml } from './localization-host';
 import * as vscode from 'vscode';
 import { registerProjectConnectionStatus } from './workflow-connection-status';
+import { AccountSections } from './account-sections';
+import type { AccountSectionProvider } from './account-section-types';
 import {
   DEFAULT_STEAMHARNESS_SERVER_URL, Account,
   type AccountState, type Connection,
@@ -18,6 +20,9 @@ export class AccountController implements vscode.Disposable {
   private panel?: vscode.WebviewPanel;
   private readonly account: Account;
   private readonly disposables: vscode.Disposable[] = [];
+  private readonly sections = new AccountSections(states => {
+    void this.panel?.webview.postMessage({ type: 'account-sections', states });
+  });
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.account = new Account(this.configuredServer(), {
@@ -25,6 +30,8 @@ export class AccountController implements vscode.Disposable {
       store: (value) => context.secrets.store(SECRET_KEY, value),
       delete: () => context.secrets.delete(SECRET_KEY),
     }, (state) => {
+      this.sections.setConnection(this.account.getConnection());
+      if (this.panel?.visible) { void this.sections.refresh(); }
       this.change.fire(state);
       void vscode.commands.executeCommand('setContext', 'studio.authenticated', !!this.account.getSession());
       void this.panel?.webview.postMessage({ type: 'account', state });
@@ -99,7 +106,10 @@ export class AccountController implements vscode.Disposable {
     await vscode.commands.executeCommand('setContext', 'studio.accountAvailable', true);
     await this.account.restore();
     const refresh = (): void => {
-      if (vscode.window.state.focused) { void this.account.refresh().catch(() => undefined); }
+      if (vscode.window.state.focused) {
+        void this.account.refresh().catch(() => undefined);
+        if (this.panel?.visible) { void this.sections.refresh(); }
+      }
     };
     const timer = setInterval(refresh, 30_000);
     timer.unref?.();
@@ -110,6 +120,11 @@ export class AccountController implements vscode.Disposable {
   }
   getState(): AccountState { return this.account.getState(); }
   getConnection(): Connection | undefined { return this.account.getConnection(); }
+  registerSectionProvider(provider: AccountSectionProvider): vscode.Disposable {
+    const disposable = this.sections.register(provider);
+    if (this.panel?.visible) { void this.sections.refresh(); }
+    return disposable;
+  }
   setAiConnection(connection: { serverUrl: string; accessToken: string } | undefined): void {
     this.account.setAiConnection(connection);
   }
@@ -133,24 +148,49 @@ export class AccountController implements vscode.Disposable {
     listeners.push(panel.onDidDispose(() => {
       this.panel = undefined;
       for (const listener of listeners) { listener.dispose(); }
+    }), panel.onDidChangeViewState(({ webviewPanel }) => {
+      if (webviewPanel.visible) { void this.sections.refresh(); }
     }), panel.webview.onDidReceiveMessage(async (message) => {
-      if (!message || typeof message !== 'object') { return; }
-      if (message.type === 'ready') { await panel.webview.postMessage({ type: 'account', state: this.getState() }); return; }
-      if (busy) { return; }
-      busy = true;
+      if (this.panel !== panel || !message || typeof message !== 'object') { return; }
+      if (message.type === 'ready') {
+        await panel.webview.postMessage({ type: 'account', state: this.getState() });
+        await panel.webview.postMessage({ type: 'account-sections', states: this.sections.getStates() });
+        void this.sections.refresh();
+        return;
+      }
+      const exclusive = ['login', 'verify', 'logout'].includes(message.type);
+      if (exclusive && busy) { return; }
+      if (exclusive) { busy = true; }
       try {
         if (message.type === 'login' && typeof message.serverUrl === 'string' && typeof message.email === 'string' && typeof message.password === 'string' && message.email.length < 320 && message.password.length <= 4096) {
           await this.account.login(message.serverUrl, message.email, message.password);
           if (this.getState().status === 'authenticated') {
             await vscode.workspace.getConfiguration('studio').update('project.serverUrl', this.getState().serverUrl, vscode.ConfigurationTarget.Global);
           }
-        } else if (message.type === 'verify') { await this.account.verify(); }
+        } else if (message.type === 'verify') { await this.account.verify(); void this.sections.refresh(true); }
         else if (message.type === 'logout') { await this.account.logout(); }
+        else if (message.type === 'refresh-sections') { await this.sections.refresh(true); }
+        else if (message.type === 'section-action' && typeof message.providerId === 'string' && typeof message.action === 'string') {
+          try { await this.sections.runAction(message.providerId, message.action); }
+          catch { throw new Error(t("Unable to complete account action.")); }
+        } else if (message.type === 'open-profile' || message.type === 'open-sessions') {
+          const route = message.type === 'open-profile' ? '/settings/profile' : '/settings/api-keys';
+          await vscode.env.openExternal(vscode.Uri.parse(`${this.getState().serverUrl}${route}`));
+        } else if (message.type === 'copy' && ['userId', 'email', 'serverUrl'].includes(message.field)) {
+          const state = this.getState();
+          const value = message.field === 'serverUrl' ? state.serverUrl : message.field === 'userId' ? state.user?.userId : state.user?.email;
+          if (value) {
+            await vscode.env.clipboard.writeText(value);
+            await panel.webview.postMessage({ type: 'copied', field: message.field });
+          }
+        }
       } catch (error) {
         await panel.webview.postMessage({ type: 'error', message: error instanceof Error ? error.message : t("Sign-in failed.") });
       } finally {
-        busy = false;
-        await panel.webview.postMessage({ type: 'account', state: this.getState() });
+        if (exclusive) {
+          busy = false;
+          await panel.webview.postMessage({ type: 'account', state: this.getState() });
+        }
       }
     }));
   }
@@ -167,6 +207,7 @@ export class AccountController implements vscode.Disposable {
   dispose(): void {
     void vscode.commands.executeCommand('setContext', 'studio.accountAvailable', false);
     this.panel?.dispose();
+    this.sections.dispose();
     for (const disposable of this.disposables) { disposable.dispose(); }
   }
 }

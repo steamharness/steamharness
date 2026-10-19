@@ -559,5 +559,22 @@
   "Source": "来源",
   "Tokens": "Token 数",
   "Cost": "费用",
-  "Usage details": "用量详情"
+  "Usage details": "用量详情",
+  "Refresh account": "刷新账号信息",
+  "Copy email": "复制邮箱",
+  "User ID": "用户 ID",
+  "Copy user ID": "复制用户 ID",
+  "Edit profile": "编辑资料",
+  "Connection": "连接信息",
+  "Copy server address": "复制服务器地址",
+  "Transport": "传输方式",
+  "Manage sessions": "管理登录会话",
+  "Encrypted (HTTPS)": "加密连接（HTTPS）",
+  "Local connection (HTTP)": "本地连接（HTTP）",
+  "Unencrypted (HTTP)": "未加密连接（HTTP）",
+  "Expires within 24 hours": "将在 24 小时内到期",
+  "Expires in {0} days": "将在 {0} 天后到期",
+  "Updated {0}": "更新于 {0}",
+  "Unable to refresh this section. Try again.": "此区域刷新失败，请重试。",
+  "Unable to complete account action.": "无法完成账号操作。"
 }
