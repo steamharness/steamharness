@@ -414,7 +414,10 @@ function initialize(): void {
     const waiting = currentSession()?.messages.some((message) => message.pendingInput);
     app.dataset.runState = state.running ? 'running' : waiting ? 'waiting' : submitting || pendingSend() ? 'submitting' : 'idle';
     document.querySelector<HTMLElement>('#tools')!.hidden = !conversation && !currentParameters().tools?.length;
-    document.querySelector<HTMLElement>('#usage')!.hidden = !state.project.requiresLogin || state.account?.status !== 'authenticated';
+    // AI usage is a private deployment surface: it only appears when the host
+    // injected a system-AI connection (internal Studio), never in the plain
+    // open-source CLI web.
+    document.querySelector<HTMLElement>('#usage')!.hidden = !state.account?.aiConfigured || !state.project.requiresLogin || state.account?.status !== 'authenticated';
     const attach = document.querySelector<HTMLButtonElement>('#attach')!;
     attach.hidden = !conversation || !Object.values(state.project.conversation?.attachments ?? {}).some(Boolean);
     attach.disabled = busy() || uploading > 0 || !navigationReady();

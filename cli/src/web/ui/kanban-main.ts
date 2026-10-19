@@ -229,7 +229,7 @@ window.addEventListener('message', event => {
   if (message.type === 'connection') { connected = message.status === 'connected'; controls(); if (connected) { publishMethods(); if (dirty) { clearTimeout(saveTimer); saveTimer = setTimeout(() => void save().catch(showError), 250); } } else { dialogs.closeUsage(); for (const waiting of pending.values()) { clearTimeout(waiting.timer); waiting.reject(new Error(t("Connection interrupted."))); } pending.clear(); for (const call of methodCalls.values()) { call.abort(); } } }
   if (message.type === 'state') { project = message.project; element('kanban-title').textContent = project!.name;
     if (authRevision !== message.authenticationRevision) { authRevision = message.authenticationRevision; previewKey = ''; dialogs.closeUsage(); }
-    element('usage').hidden = message.account.status !== 'authenticated'; update(message.kanban);
+    element('usage').hidden = message.account.status !== 'authenticated' || !message.account.aiConfigured; update(message.kanban);
   }
   if (message.type === 'usage') { dialogs.usageResult(message.requestId, message.usage); }
   if (message.type === 'error' && message.requestType === 'usage') { dialogs.usageResult(message.requestId, undefined, message.message); return; }
