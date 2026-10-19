@@ -1,0 +1,407 @@
+diff --git a/src/vs/workbench/browser/parts/globalCompositeBar.ts b/src/vs/workbench/browser/parts/globalCompositeBar.ts
+index 10e225c78f7..639586bbd91 100644
+--- a/src/vs/workbench/browser/parts/globalCompositeBar.ts
++++ b/src/vs/workbench/browser/parts/globalCompositeBar.ts
+@@ -19,7 +19,7 @@ import { ThemeIcon } from '../../../base/common/themables.js';
+ import { registerIcon } from '../../../platform/theme/common/iconRegistry.js';
+ import { Action, IAction, Separator, SubmenuAction, toAction } from '../../../base/common/actions.js';
+ import { Emitter } from '../../../base/common/event.js';
+-import { IMenu, IMenuService, MenuId, MenuRegistry } from '../../../platform/actions/common/actions.js';
++import { IMenu, IMenuService, MenuId } from '../../../platform/actions/common/actions.js';
+ import { addDisposableListener, EventType, append, clearNode, hide, show, EventHelper, $, runWhenWindowIdle, getWindow } from '../../../base/browser/dom.js';
+ import { StandardKeyboardEvent } from '../../../base/browser/keyboardEvent.js';
+ import { StandardMouseEvent } from '../../../base/browser/mouseEvent.js';
+@@ -28,7 +28,7 @@ import { AnchorAlignment, AnchorAxisAlignment } from '../../../base/browser/ui/c
+ import { Lazy } from '../../../base/common/lazy.js';
+ import { getActionBarActions } from '../../../platform/actions/browser/menuEntryActionViewItem.js';
+ import { IConfigurationService } from '../../../platform/configuration/common/configuration.js';
+-import { ContextKeyExpr, IContextKeyService } from '../../../platform/contextkey/common/contextkey.js';
++import { IContextKeyService } from '../../../platform/contextkey/common/contextkey.js';
+ import { IContextMenuService } from '../../../platform/contextview/browser/contextView.js';
+ import { IKeybindingService } from '../../../platform/keybinding/common/keybinding.js';
+ import { ILogService } from '../../../platform/log/common/log.js';
+@@ -51,21 +51,7 @@ import { ICommandService } from '../../../platform/commands/common/commands.js';
+ import { IDefaultAccountService } from '../../../platform/defaultAccount/common/defaultAccount.js';
+ import { WORKBENCH_MENU_MOTION_CLASS, workbenchMenuCloseAnimation } from '../actions/menuMotion.js';
+ import { createCodexAccountMenuActions, ICodexAccountService, shouldShowCodexAccount } from '../../services/agentHost/browser/codexAccountService.js';
+-
+-for (const [id, title, authenticated] of [
+-	['studio.openAccount', localize('studio.account', "\u767b\u5f55\u4e0e\u7ba1\u7406\u8d26\u53f7"), false],
+-	['studio.validateLogin', localize('studio.validateLogin', "\u9a8c\u8bc1\u767b\u5f55"), true],
+-	['studio.logout', localize('studio.logout', "\u9000\u51fa\u767b\u5f55"), true],
+-] as const) {
+-	MenuRegistry.appendMenuItem(MenuId.AccountsContext, {
+-		command: { id, title },
+-		when: ContextKeyExpr.and(
+-			ContextKeyExpr.equals('studio.accountAvailable', true),
+-			authenticated ? ContextKeyExpr.equals('studio.authenticated', true) : undefined
+-		),
+-		group: '0_project'
+-	});
+-}
++import { StudioAccountMenu } from './studioAccountMenu.js';
+ 
+ export class GlobalCompositeBar extends Disposable {
+ 
+@@ -194,7 +180,7 @@ abstract class AbstractGlobalActivityActionViewItem extends CompositeBarActionVi
+ 		action: CompositeBarAction,
+ 		options: ICompositeBarActionViewItemOptions,
+ 		private readonly contextMenuActionsProvider: () => IAction[],
+-		private readonly contextMenuAlignmentOptions: () => Readonly<{ anchorAlignment: AnchorAlignment; anchorAxisAlignment: AnchorAxisAlignment }> | undefined,
++		protected readonly contextMenuAlignmentOptions: () => Readonly<{ anchorAlignment: AnchorAlignment; anchorAxisAlignment: AnchorAxisAlignment }> | undefined,
+ 		@IThemeService themeService: IThemeService,
+ 		@IHoverService hoverService: IHoverService,
+ 		@IMenuService private readonly menuService: IMenuService,
+@@ -267,7 +253,7 @@ abstract class AbstractGlobalActivityActionViewItem extends CompositeBarActionVi
+ 		return this.contextMenuActionsProvider();
+ 	}
+ 
+-	private async run(): Promise<void> {
++	protected async run(): Promise<void> {
+ 		const disposables = new DisposableStore();
+ 		const menu = disposables.add(this.menuService.createMenu(this.menuId, this.contextKeyService));
+ 		const actions = await this.resolveMainMenuActions(menu, disposables);
+@@ -301,6 +287,7 @@ export class AccountsActivityActionViewItem extends AbstractGlobalActivityAction
+ 	private initialized = false;
+ 	private sessionFromEmbedder = new Lazy<Promise<AuthenticationSessionInfo | undefined>>(() => getCurrentAuthenticationSessionInfo(this.secretStorageService, this.productService));
+ 	private avatarImg: HTMLImageElement | undefined;
++	private readonly studioAccountMenu: StudioAccountMenu;
+ 
+ 	constructor(
+ 		contextMenuActionsProvider: () => IAction[],
+@@ -333,6 +320,7 @@ export class AccountsActivityActionViewItem extends AbstractGlobalActivityAction
+ 		});
+ 		super(MenuId.AccountsContext, action, options, contextMenuActionsProvider, contextMenuAlignmentOptions, themeService, hoverService, menuService, contextMenuService, contextKeyService, configurationService, keybindingService, activityService);
+ 		this._register(action);
++		this.studioAccountMenu = this._register(instantiationService.createInstance(StudioAccountMenu));
+ 		this.registerListeners();
+ 		this.initialize();
+ 	}
+@@ -475,6 +463,14 @@ export class AccountsActivityActionViewItem extends AbstractGlobalActivityAction
+ 
+ 	//#region overrides
+ 
++	protected override async run(): Promise<void> {
++		if (this.studioAccountMenu.isAvailable) {
++			await this.studioAccountMenu.toggle(this.label, this.contextMenuAlignmentOptions());
++			return;
++		}
++		await super.run();
++	}
++
+ 	protected override async resolveMainMenuActions(accountsMenu: IMenu, disposables: DisposableStore): Promise<IAction[]> {
+ 		await super.resolveMainMenuActions(accountsMenu, disposables);
+ 
+diff --git a/src/vs/workbench/browser/parts/studioAccountMenu.ts b/src/vs/workbench/browser/parts/studioAccountMenu.ts
+new file mode 100644
+index 00000000000..efa8ca3277f
+--- /dev/null
++++ b/src/vs/workbench/browser/parts/studioAccountMenu.ts
+@@ -0,0 +1,220 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import './media/studioAccountMenu.css';
++import { $, addDisposableListener, append, getWindow, isAncestor } from '../../../base/browser/dom.js';
++import { AnchorAlignment, AnchorAxisAlignment } from '../../../base/browser/ui/contextview/contextview.js';
++import { Codicon } from '../../../base/common/codicons.js';
++import { Emitter } from '../../../base/common/event.js';
++import { AnchorPosition } from '../../../base/common/layout.js';
++import { Disposable, DisposableStore } from '../../../base/common/lifecycle.js';
++import { FileAccess } from '../../../base/common/network.js';
++import { ThemeIcon } from '../../../base/common/themables.js';
++import { URI } from '../../../base/common/uri.js';
++import { CommandsRegistry, ICommandService } from '../../../platform/commands/common/commands.js';
++import { IContextKeyService } from '../../../platform/contextkey/common/contextkey.js';
++import { IContextViewService, IOpenContextView } from '../../../platform/contextview/browser/contextView.js';
++import { INotificationService } from '../../../platform/notification/common/notification.js';
++
++interface AccountMenuState {
++	status: 'signed-out' | 'checking' | 'authenticated' | 'expired' | 'error';
++	statusLabel: string;
++	serverUrl: string;
++	name: string;
++	email?: string;
++	avatarUrl?: string;
++	hasAccount: boolean;
++	error?: string;
++	labels: Record<string, string>;
++}
++
++const accountMenuChange = new Emitter<AccountMenuState>();
++CommandsRegistry.registerCommand('studio.internalUpdateAccountMenuState', (_accessor, state: AccountMenuState) => accountMenuChange.fire(state));
++
++export class StudioAccountMenu extends Disposable {
++	private view: IOpenContextView | undefined;
++	private state: AccountMenuState | undefined;
++	private updateView: (() => void) | undefined;
++	private generation = 0;
++	private updates = 0;
++	private opening = false;
++
++	constructor(
++		@ICommandService private readonly commands: ICommandService,
++		@IContextKeyService private readonly contextKeys: IContextKeyService,
++		@IContextViewService private readonly contextViews: IContextViewService,
++		@INotificationService private readonly notifications: INotificationService,
++	) {
++		super();
++		this._register(accountMenuChange.event(state => {
++			this.updates++;
++			this.state = state;
++			this.updateView?.();
++		}));
++	}
++
++	get isAvailable(): boolean { return this.contextKeys.getContextKeyValue('studio.accountAvailable') === true; }
++
++	async toggle(anchor: HTMLElement, alignment?: { anchorAlignment: AnchorAlignment; anchorAxisAlignment: AnchorAxisAlignment }): Promise<void> {
++		if (this.view || this.opening) {
++			this.generation++;
++			this.opening = false;
++			this.view?.close();
++			return;
++		}
++		const generation = ++this.generation;
++		const updates = this.updates;
++		this.opening = true;
++		try {
++			const state = await this.commands.executeCommand<AccountMenuState>('studio.internalGetAccountMenuState');
++			if (generation !== this.generation || this._store.isDisposed || !anchor.isConnected) { return; }
++			if (updates === this.updates || !this.state) { this.state = state; }
++			let focus: (() => void) | undefined;
++			anchor.setAttribute('aria-expanded', 'true');
++			anchor.setAttribute('aria-haspopup', 'dialog');
++			this.view = this.contextViews.showContextView({
++				getAnchor: () => anchor,
++				anchorPosition: AnchorPosition.ABOVE,
++				...alignment,
++				render: container => this.render(container, anchor, callback => { focus = callback; }),
++				focus: () => focus?.(),
++				onHide: () => {
++					this.view = undefined;
++					this.opening = false;
++					this.updateView = undefined;
++					anchor.setAttribute('aria-expanded', 'false');
++					this.generation++;
++				},
++			});
++		} catch (error) {
++			if (generation === this.generation) { this.notifications.error(error); }
++		} finally {
++			if (generation === this.generation) { this.opening = false; }
++		}
++	}
++
++	private render(container: HTMLElement, anchor: HTMLElement, setFocus: (callback: () => void) => void): DisposableStore {
++		const disposables = new DisposableStore();
++		const root = append(container, $('.studio-account-menu', { role: 'dialog', 'aria-label': this.state!.labels.title }));
++		const heading = append(root, $('.studio-account-heading'));
++		append(heading, $('span', undefined, 'SteamHarness'));
++		const close = append(heading, $<HTMLButtonElement>('button.studio-account-close', { type: 'button', 'aria-label': this.state!.labels.close, title: this.state!.labels.close }));
++		append(close, $('span', { class: ThemeIcon.asClassName(Codicon.close), 'aria-hidden': 'true' }));
++		const identity = append(root, $('.studio-account-identity'));
++		const avatar = append(identity, $('.studio-account-avatar'));
++		const fallback = append(avatar, $('span', { class: ThemeIcon.asClassName(Codicon.account), 'aria-hidden': 'true' }));
++		const image = append(avatar, $<HTMLImageElement>('img', { alt: '', 'aria-hidden': 'true', referrerpolicy: 'no-referrer', draggable: 'false' }));
++		image.hidden = true;
++		disposables.add(addDisposableListener(image, 'error', () => { image.hidden = true; fallback.hidden = false; }));
++		const details = append(identity, $('.studio-account-details'));
++		const name = append(details, $('.studio-account-name'));
++		const email = append(details, $('.studio-account-email'));
++		const status = append(details, $('.studio-account-status', { role: 'status', 'aria-live': 'polite' }));
++		const server = append(root, $('.studio-account-server'));
++		append(server, $('span', { class: ThemeIcon.asClassName(Codicon.server), 'aria-hidden': 'true' }));
++		const serverText = append(server, $('span'));
++		const error = append(root, $('.studio-account-error', { role: 'status' }));
++		const actions = append(root, $('.studio-account-actions'));
++		let refreshing = false;
++		const hide = (restoreFocus: boolean) => {
++			this.view?.close();
++			if (restoreFocus && anchor.isConnected) { anchor.focus(); }
++		};
++		const button = (command: string, icon: ThemeIcon, footer = false): HTMLButtonElement => {
++			const element = append(footer ? root : actions, $<HTMLButtonElement>('button.studio-account-action', { type: 'button', 'data-command': command }));
++			if (footer) { element.classList.add('studio-account-signout'); }
++			append(element, $('span', { class: ThemeIcon.asClassName(icon), 'aria-hidden': 'true' }));
++			append(element, $('span.studio-account-action-label'));
++			disposables.add(addDisposableListener(element, 'click', async () => {
++				if (command === 'studio.refreshAccount') {
++					if (refreshing || this.state?.status === 'checking') { return; }
++					refreshing = true;
++					update();
++					try { await this.commands.executeCommand(command); }
++					catch (error) { this.notifications.error(error); }
++					finally {
++						refreshing = false;
++						if (!disposables.isDisposed) { update(); }
++					}
++				} else {
++					hide(false);
++					try { await this.commands.executeCommand(command); }
++					catch (error) { this.notifications.error(error); }
++				}
++			}));
++			return element;
++		};
++		const profile = button('studio.openAccount', Codicon.person);
++		append(profile, $('span.studio-account-chevron', { class: `studio-account-chevron ${ThemeIcon.asClassName(Codicon.chevronRight)}`, 'aria-hidden': 'true' }));
++		const refresh = button('studio.refreshAccount', Codicon.refresh);
++		const signOut = button('studio.logout', Codicon.signOut, true);
++		const text = (element: Element, value: string) => { if (element.textContent !== value) { element.textContent = value; } };
++		let avatarUrl: string | undefined;
++		const update = () => {
++			const state = this.state!;
++			const focused = root.contains(getWindow(root).document.activeElement);
++			text(name, state.name);
++			text(email, state.email ?? '');
++			email.hidden = !state.email;
++			text(status, state.statusLabel);
++			status.dataset.status = state.status;
++			text(serverText, state.serverUrl);
++			server.setAttribute('aria-label', `${state.labels.server}: ${state.serverUrl}`);
++			text(error, state.error ?? '');
++			error.hidden = !state.error;
++			text(profile.querySelector('.studio-account-action-label')!, state.hasAccount ? state.labels.profile : state.labels.signIn);
++			text(refresh.querySelector('.studio-account-action-label')!, refreshing ? state.labels.refreshing : state.labels.refresh);
++			text(signOut.querySelector('.studio-account-action-label')!, state.labels.signOut);
++			refresh.hidden = signOut.hidden = !state.hasAccount;
++			refresh.setAttribute('aria-disabled', String(refreshing || state.status === 'checking'));
++			refresh.setAttribute('aria-busy', String(refreshing));
++			refresh.firstElementChild?.classList.toggle('codicon-modifier-spin', refreshing);
++			if (avatarUrl !== state.avatarUrl) {
++				avatarUrl = state.avatarUrl;
++				image.hidden = !avatarUrl;
++				fallback.hidden = !!avatarUrl;
++				if (avatarUrl) { image.src = FileAccess.uriToBrowserUri(URI.parse(avatarUrl)).toString(true); }
++				else { image.removeAttribute('src'); }
++			}
++			if (refresh.hidden && focused) { profile.focus(); }
++			this.contextViews.layout();
++		};
++		this.updateView = update;
++		update();
++		setFocus(() => profile.focus());
++		disposables.add(addDisposableListener(close, 'click', () => hide(true)));
++		disposables.add(addDisposableListener(root, 'mousedown', (event: MouseEvent) => {
++			const target = (event.target as HTMLElement).closest<HTMLButtonElement>('button');
++			if (target && !target.disabled) { event.preventDefault(); target.focus(); }
++		}));
++		disposables.add(addDisposableListener(getWindow(root).document, 'mousedown', (event: MouseEvent) => {
++			if (!isAncestor(event.target as Node, root) && !isAncestor(event.target as Node, anchor)) { hide(false); }
++		}, true));
++		disposables.add(addDisposableListener(root, 'focusout', () => {
++			queueMicrotask(() => {
++				if (!disposables.isDisposed && !root.contains(getWindow(root).document.activeElement)) { hide(false); }
++			});
++		}));
++		disposables.add(addDisposableListener(root, 'keydown', (event: KeyboardEvent) => {
++			if (event.key === 'Escape') {
++				event.preventDefault(); event.stopPropagation(); hide(true);
++			} else if (['Tab', 'ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
++				const buttons = [...root.querySelectorAll<HTMLButtonElement>('button')].filter(item => !item.hidden && !item.disabled);
++				const current = buttons.indexOf(getWindow(root).document.activeElement as HTMLButtonElement);
++				const backwards = event.key === 'ArrowUp' || (event.key === 'Tab' && event.shiftKey);
++				const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (current + (backwards ? -1 : 1) + buttons.length) % buttons.length;
++				event.preventDefault(); event.stopPropagation(); buttons[next]?.focus();
++			}
++		}));
++		return disposables;
++	}
++
++	override dispose(): void {
++		this.generation++;
++		this.opening = false;
++		this.view?.close();
++		super.dispose();
++	}
++}
+diff --git a/src/vs/workbench/browser/parts/media/studioAccountMenu.css b/src/vs/workbench/browser/parts/media/studioAccountMenu.css
+new file mode 100644
+index 00000000000..93f661009c1
+--- /dev/null
++++ b/src/vs/workbench/browser/parts/media/studioAccountMenu.css
+@@ -0,0 +1,81 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++.studio-account-menu {
++	box-sizing: border-box;
++	width: 312px;
++	max-width: calc(100vw - 16px);
++	max-height: calc(100vh - 24px);
++	overflow: auto;
++	border: 1px solid var(--vscode-widget-border, var(--vscode-menu-border, transparent));
++	border-radius: 8px;
++	background: var(--vscode-menu-background);
++	color: var(--vscode-menu-foreground);
++	box-shadow: 0 4px 18px var(--vscode-widget-shadow);
++	font-size: 12px;
++	letter-spacing: 0;
++	user-select: text;
++	scrollbar-width: thin;
++	scrollbar-color: transparent transparent;
++}
++
++.studio-account-menu:hover {
++	scrollbar-color: var(--vscode-scrollbarSlider-background) transparent;
++}
++
++.studio-account-menu [hidden] { display: none !important; }
++.studio-account-menu button { font: inherit; color: inherit; cursor: pointer; }
++.studio-account-menu button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -2px; }
++
++.studio-account-heading {
++	display: flex;
++	align-items: center;
++	justify-content: space-between;
++	gap: 12px;
++	padding: 10px 12px 0 16px;
++	color: var(--vscode-descriptionForeground);
++	font-size: 11px;
++	font-weight: 600;
++}
++
++.studio-account-close {
++	display: grid;
++	place-items: center;
++	width: 24px;
++	height: 24px;
++	padding: 0;
++	border: 0;
++	border-radius: 4px;
++	background: transparent;
++}
++
++.studio-account-close:hover { background: var(--vscode-toolbar-hoverBackground); }
++.studio-account-identity { display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; }
++.studio-account-avatar { display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px; overflow: hidden; border-radius: 50%; background: var(--vscode-toolbar-hoverBackground); }
++.studio-account-avatar img { width: 100%; height: 100%; object-fit: cover; }
++.studio-account-avatar > .codicon { font-size: 26px; color: var(--vscode-descriptionForeground); }
++.studio-account-details { min-width: 0; flex: 1; }
++.studio-account-name { font-size: 14px; font-weight: 600; line-height: 20px; overflow-wrap: anywhere; }
++.studio-account-email { margin-top: 2px; color: var(--vscode-descriptionForeground); line-height: 18px; overflow-wrap: anywhere; }
++.studio-account-status { display: flex; align-items: baseline; gap: 6px; margin-top: 7px; line-height: 17px; overflow-wrap: anywhere; }
++.studio-account-status::before { content: ''; flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%; background: var(--vscode-descriptionForeground); }
++.studio-account-status[data-status='authenticated']::before { background: var(--vscode-testing-iconPassed); }
++.studio-account-status[data-status='checking']::before { background: var(--vscode-progressBar-background); }
++.studio-account-status[data-status='expired']::before, .studio-account-status[data-status='error']::before { background: var(--vscode-editorWarning-foreground); }
++.studio-account-server { display: flex; align-items: flex-start; gap: 8px; margin: 0 16px 12px; color: var(--vscode-descriptionForeground); line-height: 18px; }
++.studio-account-server > .codicon { flex: 0 0 16px; margin-top: 1px; }
++.studio-account-server > span:last-child { min-width: 0; overflow-wrap: anywhere; }
++.studio-account-error { margin: 0 16px 12px; color: var(--vscode-errorForeground); line-height: 18px; overflow-wrap: anywhere; }
++.studio-account-actions { padding: 6px; border-top: 1px solid var(--vscode-menu-separatorBackground); }
++.studio-account-action { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; padding: 8px 10px; border: 0; border-radius: 4px; background: transparent; text-align: left; }
++.studio-account-action > .codicon { flex: 0 0 16px; }
++.studio-account-action-label { min-width: 0; flex: 1; overflow-wrap: anywhere; line-height: 18px; }
++.studio-account-action:hover { background: var(--vscode-list-hoverBackground); }
++.studio-account-action:disabled, .studio-account-action[aria-disabled='true'] { opacity: 0.6; cursor: default; }
++.studio-account-action.studio-account-signout { width: calc(100% - 12px); margin: 0 6px 6px; border-top: 1px solid var(--vscode-menu-separatorBackground); border-radius: 0 0 4px 4px; color: var(--vscode-errorForeground); }
++
++@media (prefers-reduced-motion: reduce) {
++	.studio-account-menu .codicon-modifier-spin { animation: none; }
++}

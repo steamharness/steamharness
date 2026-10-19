@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { registerProjectConnectionStatus } from './workflow-connection-status';
 import { AccountSections } from './account-sections';
 import type { AccountSectionProvider } from './account-section-types';
+import { accountMenuState } from './account-menu-state';
 import {
   DEFAULT_STEAMHARNESS_SERVER_URL, Account,
   type AccountState, type Connection,
@@ -34,6 +35,7 @@ export class AccountController implements vscode.Disposable {
       if (this.panel?.visible) { void this.sections.refresh(); }
       this.change.fire(state);
       void vscode.commands.executeCommand('setContext', 'studio.authenticated', !!this.account.getSession());
+      void vscode.commands.executeCommand('studio.internalUpdateAccountMenuState', accountMenuState(state)).then(undefined, () => undefined);
       void this.panel?.webview.postMessage({ type: 'account', state });
       const session = this.authenticationSession();
       if (JSON.stringify(session) !== JSON.stringify(this.previousSession)) {
@@ -74,6 +76,8 @@ export class AccountController implements vscode.Disposable {
         },
       }, { supportsMultipleAccounts: false }),
       vscode.commands.registerCommand('studio.openAccount', () => this.open()),
+      vscode.commands.registerCommand('studio.internalGetAccountMenuState', () => accountMenuState(this.getState())),
+      vscode.commands.registerCommand('studio.refreshAccount', () => this.account.verify()),
       vscode.commands.registerCommand('studio.validateLogin', () => this.account.verify()),
       vscode.commands.registerCommand('studio.logout', () => this.account.logout()),
       context.secrets.onDidChange((event) => {

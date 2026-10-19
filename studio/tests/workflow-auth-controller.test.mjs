@@ -16,7 +16,7 @@ class Emitter {
 async function fixture(t) {
   const focus = new Emitter(), secretsChanged = new Emitter(), configuration = new Emitter(), intervals = new Set(), sessions = [];
   const serverUrl = 'http://127.0.0.1:7126';
-  const f = { profile: { userId: 'user', email: 'user@example.test', displayName: 'User', avatarUrl: 'data:image/png;base64,b2xk' }, requests: 0, messages: [], opened: [], copied: [] };
+  const f = { profile: { userId: 'user', email: 'user@example.test', displayName: 'User', avatarUrl: 'data:image/png;base64,b2xk' }, requests: 0, messages: [], opened: [], copied: [], commands: new Map(), executed: [] };
   let stored = JSON.stringify({ serverUrl, accessToken: 'test-token', apiKeyId: 'test-key', user: f.profile });
   const disposable = { dispose() {} };
   const vscode = {
@@ -25,7 +25,10 @@ async function fixture(t) {
     Uri: { parse: value => ({ toString: () => value, toJSON: () => value }), joinPath: (_base, ...parts) => ({ toString: () => `file:///extension/${parts.join('/')}` }) },
     ThemeIcon: class { constructor(id) { this.id = id; } }, ViewColumn: { Active: 1 },
     env: { language: 'en', openExternal: async uri => { f.opened.push(uri.toString()); }, clipboard: { writeText: async text => { f.copied.push(text); } } },
-    commands: { registerCommand: () => disposable, executeCommand: async () => {} },
+    commands: {
+      registerCommand: (id, callback) => { f.commands.set(id, callback); return disposable; },
+      executeCommand: async (id, ...args) => { f.executed.push({ id, args }); },
+    },
     authentication: { registerAuthenticationProvider: (_id, _label, provider) => {
       f.provider = provider; provider.onDidChangeSessions(event => sessions.push(event)); return disposable;
     } },
@@ -136,4 +139,26 @@ test('sign out immediately clears contributed content even when a section refres
   await refreshing;
   assert.equal(f.messages.filter(message => message.type === 'account-sections').at(-1).states.length, 0);
   assert.ok(!JSON.stringify(f.messages).includes('test-token'));
+});
+
+test('the avatar menu exposes only public profile data and refreshes both the menu and authentication avatar', async t => {
+  const f = await fixture(t);
+  f.controller.setAiConnection({ serverUrl: 'https://private.example.test', accessToken: 'private-token' });
+  let sectionLoads = 0;
+  f.controller.registerSectionProvider({ id: 'optional', title: 'Optional', load: async () => { sectionLoads++; return []; } });
+  const read = f.commands.get('studio.internalGetAccountMenuState');
+  const initial = read();
+  assert.equal(initial.name, 'User');
+  assert.equal(initial.labels.profile, 'Personal Information');
+  assert.doesNotMatch(JSON.stringify(initial), /test-token|test-key|private-token|private\.example|aiConfigured|aiServerUrl/);
+  f.profile = { ...f.profile, displayName: 'Updated User', avatarUrl: 'data:image/webp;base64,bmV3' };
+  await f.commands.get('studio.refreshAccount')();
+  assert.equal(sectionLoads, 0, 'Refreshing the avatar menu must not load optional account sections');
+  assert.equal(read().name, 'Updated User');
+  assert.equal((await f.provider.getSessions([], {}))[0].account.icon.toString(), f.profile.avatarUrl);
+  assert.deepEqual(f.executed.filter(command => command.id === 'studio.internalUpdateAccountMenuState').at(-1).args[0], read());
+  await f.commands.get('studio.logout')();
+  assert.equal(read().hasAccount, false);
+  assert.equal(read().email, undefined);
+  assert.equal(read().avatarUrl, undefined);
 });

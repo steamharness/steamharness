@@ -57,7 +57,7 @@ Studio 从项目目录解析 `@steamharness/cli` 的 `steamharness` bin。项目
 
 应用级设置 `studio.project.serverUrl` 选择 SteamHarness Server，项目配置不能覆盖该地址；变更服务器后需要重新登录。开发默认地址是 `http://localhost:7126`。
 
-左下角账号入口提供 **登录与管理账号**。工作站向 `/api/auth/login` 提交邮箱、密码及现有协议字段 `source: desktop`，然后通过 `/api/auth/me` 验证身份。这一认证来源字段不代表项目执行平台；CLI Web 的实际 runtime platform 是 `cli`。
+左下角头像打开 SteamHarness 账号弹层，展示头像、昵称、邮箱与服务器连接状态，提供个人信息、刷新账号资料和退出入口；未登录时提供登录入口。扩展账号授权仍可通过命令面板管理。工作站向 `/api/auth/login` 提交邮箱、密码及现有协议字段 `source: desktop`，然后通过 `/api/auth/me` 验证身份。这一认证来源字段不代表项目执行平台；CLI Web 的实际 runtime platform 是 `cli`。
 
 密码只用于当前请求。API Key 和登录会话 Cookie 使用 VS Code SecretStorage 保存，Webview 只接收公开账号资料；项目进程和 CLI 使用当前连接的 API Key。退出时停止相关运行并撤销本次凭据；临时连接失败时可在账号页重试验证。
 

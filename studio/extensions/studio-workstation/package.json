@@ -71,7 +71,8 @@
       { "command": "studio.openProjectSource", "title": "%command.openProjectSource%", "category": "Project", "icon": "$(code)" },
       { "command": "studio.openProjectDemo", "title": "%command.openProjectDemo%", "category": "Project", "icon": "$(comment-discussion)" },
       { "command": "studio.openProjectCli", "title": "%command.openProjectCli%", "category": "Project", "icon": "$(terminal)" },
-      { "command": "studio.openAccount", "title": "%command.openProjectAccount%", "category": "Project", "icon": "$(account)" },
+      { "command": "studio.openAccount", "title": "%command.openProjectAccount%", "category": "SteamHarness", "icon": "$(account)" },
+      { "command": "studio.refreshAccount", "title": "%command.refreshAccount%", "category": "SteamHarness", "icon": "$(refresh)" },
       { "command": "studio.validateLogin", "title": "%command.validateProjectLogin%", "category": "Project", "icon": "$(verified)" },
       { "command": "studio.logout", "title": "%command.logoutProject%", "category": "Project", "icon": "$(sign-out)" }
     ],
