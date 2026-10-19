@@ -65,6 +65,12 @@ export function normalizeProjectServerUrl(value: string): string {
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
     throw new AuthError(t("The server address must use HTTP or HTTPS and contain no credentials or query parameters."));
   }
+  // `localhost` and `127.0.0.1` are the same dev server. Stored sessions match
+  // on the normalized URL, so the two spellings must not invalidate each other
+  // across restarts.
+  if (url.hostname === 'localhost' || url.hostname === '::1' || url.hostname === '[::1]') {
+    url.hostname = '127.0.0.1';
+  }
   return url.toString().replace(/\/+$/, '');
 }
 

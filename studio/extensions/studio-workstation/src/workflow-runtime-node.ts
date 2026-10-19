@@ -24,7 +24,7 @@ import { uploadServerProject, downloadServerProject } from './steamharness-serve
 export function createProjectRuntime(context: vscode.ExtensionContext, account: AccountController): Launcher {
   const sessions = new Set<WebSession>();
   const controller = new AbortController();
-  const executable = (): string => vscode.workspace.getConfiguration('studio').get<string>('workflow.nodePath') || process.execPath;
+  const executable = (): string => vscode.workspace.getConfiguration('studio').get<string>('project.nodePath') || process.execPath;
   const templates = projectTemplatesRuntime(context.extensionUri.fsPath, vscode.env.language);
   let assistantApplication: Promise<string> | undefined;
   const assistantDirectory = (): Promise<string> => {

@@ -316,6 +316,11 @@ test('server URLs reject embedded credentials and authenticated redirects never 
   for (const url of ['file:///tmp/server', 'https://user:password@example.test', 'https://example.test?token=secret']) {
     assert.throws(() => normalizeProjectServerUrl(url));
   }
+  // Loopback spellings are the same server; a stored session must survive a
+  // restart that switches between `localhost`, `127.0.0.1` and `[::1]`.
+  for (const url of ['http://localhost:7126', 'http://127.0.0.1:7126/', 'http://[::1]:7126']) {
+    assert.equal(normalizeProjectServerUrl(url), 'http://127.0.0.1:7126');
+  }
   let redirectedRequests = 0;
   const destination = createServer((_req, res) => { redirectedRequests++; res.end('{}'); });
   await new Promise((resolve) => destination.listen(0, '127.0.0.1', resolve));

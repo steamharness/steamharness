@@ -406,7 +406,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       const terminal = vscode.window.createTerminal({ name: 'SteamHarness CLI', cwd: project.folderPath, env: { ELECTRON_RUN_AS_NODE: '1' } });
       terminals.set(terminal, project.uri);
       const quote = (value: string): string => process.platform === 'win32' ? `"${value.replace(/"/g, '""')}"` : `'${value.replace(/'/g, "'\\''")}'`;
-      terminal.sendText(`${quote(vscode.workspace.getConfiguration('studio').get<string>('workflow.nodePath') || process.execPath)} ${quote(entry)} --help`); terminal.show();
+      terminal.sendText(`${quote(vscode.workspace.getConfiguration('studio').get<string>('project.nodePath') || process.execPath)} ${quote(entry)} --help`); terminal.show();
     }),
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       for (const [controller, project] of starting) { if (!projectAvailable(project)) { controller.abort(); } }

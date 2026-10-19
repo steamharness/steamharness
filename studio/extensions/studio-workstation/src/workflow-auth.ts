@@ -41,7 +41,7 @@ export class AccountController implements vscode.Disposable {
     this.disposables.push(
       this.change, this.sessionChange,
       registerProjectConnectionStatus(this),
-      vscode.authentication.registerAuthenticationProvider(PROVIDER_ID, 'Workflow', {
+      vscode.authentication.registerAuthenticationProvider(PROVIDER_ID, 'SteamHarness', {
         onDidChangeSessions: this.sessionChange.event,
         getSessions: async (scopes, options) => {
           const session = this.authenticationSession();
@@ -81,7 +81,7 @@ export class AccountController implements vscode.Disposable {
   }
 
   private configuredServer(): string {
-    return vscode.workspace.getConfiguration('studio').get<string>('workflow.serverUrl') || DEFAULT_STEAMHARNESS_SERVER_URL;
+    return vscode.workspace.getConfiguration('studio').get<string>('project.serverUrl') || DEFAULT_STEAMHARNESS_SERVER_URL;
   }
 
   private authenticationSession(): vscode.AuthenticationSession | undefined {
@@ -133,7 +133,7 @@ export class AccountController implements vscode.Disposable {
         if (message.type === 'login' && typeof message.serverUrl === 'string' && typeof message.email === 'string' && typeof message.password === 'string' && message.email.length < 320 && message.password.length <= 4096) {
           await this.account.login(message.serverUrl, message.email, message.password);
           if (this.getState().status === 'authenticated') {
-            await vscode.workspace.getConfiguration('studio').update('workflow.serverUrl', this.getState().serverUrl, vscode.ConfigurationTarget.Global);
+            await vscode.workspace.getConfiguration('studio').update('project.serverUrl', this.getState().serverUrl, vscode.ConfigurationTarget.Global);
           }
         } else if (message.type === 'verify') { await this.account.verify(); }
         else if (message.type === 'logout') { await this.account.logout(); }
