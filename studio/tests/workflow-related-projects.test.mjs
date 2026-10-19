@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
+import path from 'node:path';
 import { build } from 'esbuild';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
@@ -19,22 +20,35 @@ function fixture(t, { files = new Map(), state = new Map([[IMPORTED_PROJECTS_KEY
   const commands = new Map(), opened = [], warnings = [], errors = [], output = [], view = { dispose() {} };
   const disposable = { dispose() {} };
   let warningChoice, folderChoice, focused;
-  const uri = value => ({ toString: () => value, path: new URL(value).pathname, fsPath: new URL(value).pathname });
+  const uri = value => { const parsed = new URL(value); return { toString: () => value, path: parsed.pathname, fsPath: parsed.pathname, scheme: parsed.protocol.slice(0, -1) }; };
+  const FileType = { File: 1, Directory: 2 };
   const vscode = {
-    env: { language },
+    env: { language }, FileType,
     EventEmitter: class { event() {} fire() {} dispose() {} },
     TreeItem: class { constructor(label) { this.label = label; } }, ThemeIcon: class { constructor(id) { this.id = id; } },
-    Uri: { parse: uri, joinPath: (root, ...parts) => uri(`${root.toString()}/${parts.join('/')}`) },
+    Uri: { parse: uri, joinPath: (root, ...parts) => { const parsed = new URL(root.toString()); parsed.pathname = path.posix.join(parsed.pathname, ...parts); return uri(parsed.toString()); } },
     window: { createTreeView: () => view, onDidChangeWindowState: callback => { focused = callback; return disposable; },
       showWarningMessage: async (...args) => { warnings.push(args); return warningChoice; },
       showOpenDialog: async () => folderChoice ? [uri(folderChoice)] : undefined,
       showErrorMessage: async message => { errors.push(message); },
     },
-    workspace: { fs: { readFile: async target => {
-      const content = read ? await read(target.toString()) : files.get(target.toString());
-      if (content === undefined) { throw new Error('Not found'); }
-      return new TextEncoder().encode(JSON.stringify(content));
-    } } },
+    workspace: { fs: {
+      readFile: async target => {
+        const content = read ? await read(target.toString()) : files.get(target.toString());
+        if (content === undefined) { throw new Error('Not found'); }
+        return new TextEncoder().encode(JSON.stringify(content));
+      },
+      readDirectory: async directory => {
+        const prefix = `${directory.toString().replace(/\/$/, '')}/`;
+        const entries = new Map();
+        for (const key of files.keys()) {
+          if (!key.startsWith(prefix)) { continue; }
+          const rest = key.slice(prefix.length), slash = rest.indexOf('/');
+          if (slash > 0) { entries.set(rest.slice(0, slash), FileType.Directory); }
+        }
+        return [...entries];
+      },
+    } },
     commands: { registerCommand: (id, callback) => { commands.set(id, callback); return disposable; },
       executeCommand: async (id, target, options) => opened.push({ id, uri: target.toString(), options }),
     },
@@ -178,13 +192,13 @@ test('missing imports show the import prompt and cancellation leaves the current
 });
 
 test('importing a matching directory records it and opens it in a new window', async t => {
-  const files = new Map([['file:///Owner/package.json', manifest('Owner', ids[0], [relation()])], ['file:///Notes/package.json', manifest('Notes', ids[1])]]);
+  const files = new Map([['file:///Owner/package.json', manifest('Owner', ids[0], [relation()])], ['file:///Elsewhere/Notes/package.json', manifest('Notes', ids[1])]]);
   const { provider, commands, state, opened, selectImport } = fixture(t, { files });
-  await provider.update([project('Owner')]); selectImport('file:///Notes');
+  await provider.update([project('Owner')]); selectImport('file:///Elsewhere/Notes');
   await commands.get('studio.openRelatedProject')(provider.getChildren()[0]);
   await commands.get('studio.refreshRelatedProjects')();
   assert.deepEqual([opened[0].uri, opened[0].options.forceNewWindow, state.get(IMPORTED_PROJECTS_KEY).some(entry => entry.id === ids[1]),
-    provider.getChildren()[0].imported.uri], ['file:///Notes', true, true, 'file:///Notes']);
+    provider.getChildren()[0].imported.uri], ['file:///Elsewhere/Notes', true, true, 'file:///Elsewhere/Notes']);
 });
 
 test('a mismatched import and a stale recorded UUID cannot open a different project', async t => {
@@ -223,9 +237,10 @@ test('project switches and disposal prevent late manifest reads from replacing t
 });
 
 test('returning from another window refreshes new imports and all supported types are registered', async t => {
-  const files = new Map([['file:///Owner/package.json', manifest('Owner', ids[0], [relation()])], ['file:///Notes/package.json', manifest('Notes', ids[1])]]);
+  const owner = { ...project('Owner'), uri: 'file:///group/Owner', folderPath: '/group/Owner' };
+  const files = new Map([['file:///group/Owner/package.json', manifest('Owner', ids[0], [relation()])], ['file:///Notes/package.json', manifest('Notes', ids[1])]]);
   const { provider, state, focus, commands } = fixture(t, { files, mockTimers: true });
-  const projects = [project('Owner'), project('Notes', ids[1], 'conversation'), project('Board', ids[2], 'kanban')];
+  const projects = [owner, project('Notes', ids[1], 'conversation'), project('Board', ids[2], 'kanban')];
   await provider.update(projects, projects[0]);
   assert.equal(state.get(IMPORTED_PROJECTS_KEY).length, 3);
   await provider.update([projects[0]], projects[0]);
@@ -239,9 +254,9 @@ test('returning from another window refreshes new imports and all supported type
 });
 
 test('runtime bindings use only imported folders with matching current UUIDs and refresh after import', async t => {
-  const owner = project('Owner');
+  const owner = { ...project('Owner'), uri: 'file:///group/Owner', folderPath: '/group/Owner' };
   const files = new Map([
-    ['file:///Owner/package.json', manifest('Owner', ids[0], [relation('notes'), relation('missing', ids[2])])],
+    ['file:///group/Owner/package.json', manifest('Owner', ids[0], [relation('notes'), relation('missing', ids[2])])],
     ['file:///Moved/package.json', manifest('Moved', ids[2])],
     ['file:///Notes/package.json', manifest('Notes', ids[1])],
   ]);
@@ -253,4 +268,44 @@ test('runtime bindings use only imported folders with matching current UUIDs and
   assert.equal(JSON.stringify(await provider.bindings(owner)), JSON.stringify([{ alias: 'notes', projectDir: '/Notes' }]));
   files.set('file:///Notes/package.json', manifest('Changed', ids[2]));
   assert.deepEqual(Array.from(await provider.bindings(owner)), []);
+});
+
+test('a sibling folder with the matching UUID binds without an explicit import', async t => {
+  const owner = { ...project('Owner'), uri: 'file:///deltaforce/deltaforce-agent', folderPath: '/deltaforce/deltaforce-agent' };
+  const files = new Map([
+    ['file:///deltaforce/deltaforce-agent/package.json', manifest('Owner', ids[0], [relation()])],
+    ['file:///deltaforce/deltaforce-database/package.json', manifest('Database', ids[1])],
+    ['file:///deltaforce/unrelated/package.json', manifest('Unrelated', ids[2])],
+  ]);
+  const { provider } = fixture(t, { files });
+  await provider.update([owner], owner);
+  assert.equal(provider.getChildren()[0].imported.uri, 'file:///deltaforce/deltaforce-database');
+  assert.deepEqual(JSON.parse(JSON.stringify(await provider.bindings(owner))),
+    [{ alias: 'notes', projectDir: '/deltaforce/deltaforce-database' }]);
+});
+
+test('two sibling copies of the same UUID stay unbound until one is imported', async t => {
+  const owner = { ...project('Owner'), uri: 'file:///group/Owner', folderPath: '/group/Owner' };
+  const files = new Map([
+    ['file:///group/Owner/package.json', manifest('Owner', ids[0], [relation()])],
+    ['file:///group/Notes-a/package.json', manifest('Notes A', ids[1])],
+    ['file:///group/Notes-b/package.json', manifest('Notes B', ids[1])],
+  ]);
+  const { provider } = fixture(t, { files });
+  await provider.update([owner], owner);
+  assert.equal(provider.getChildren()[0].imported, undefined);
+  assert.deepEqual(Array.from(await provider.bindings(owner)), []);
+});
+
+test('a downloaded project group never substitutes a sibling for its pinned member', async t => {
+  const owner = { ...imported('Board', ids[0]), uri: 'file:///Downloads/Board', version: '1.0.0', downloadRootUri: 'file:///Downloads/Board' };
+  const state = new Map([[IMPORTED_PROJECTS_KEY, [owner]]]);
+  const files = new Map([
+    ['file:///Downloads/Board/package.json', manifest('Board', ids[0], [relation()])],
+    ['file:///Downloads/Notes/package.json', manifest('Notes', ids[1])],
+  ]);
+  const { provider } = fixture(t, { files, state });
+  const board = { ...project('Board'), uri: owner.uri, folderPath: '/Downloads/Board' };
+  await provider.update([board], board);
+  assert.deepEqual(Array.from(await provider.bindings(board)), []);
 });

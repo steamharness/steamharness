@@ -45,7 +45,32 @@ export async function resolveImportedRelatedProject(context: Pick<vscode.Extensi
     const imported = await readImportedProject(vscode.Uri.parse(project.uri));
     if (imported?.id === relation.projectId && (!downloadRootUri || imported.version === project.version)) { return imported; }
   }
+  // Locally cloned project groups keep every project as a sibling folder and
+  // the user often opens just one of them. That project never passes through
+  // the import flow, so the registry knows nothing about its neighbours and
+  // the runtime would report the relation as unavailable. A sibling whose UUID
+  // matches is the same project the relation names; use it without requiring a
+  // manual import. Downloaded groups keep the version pin above and never take
+  // this path.
+  if (!downloadRootUri) { return findSiblingRelatedProject(ownerUri, relation.projectId); }
   return undefined;
+}
+
+async function findSiblingRelatedProject(ownerUri: string | undefined, projectId: string): Promise<ImportedProject | undefined> {
+  if (!ownerUri) { return undefined; }
+  const owner = vscode.Uri.parse(ownerUri);
+  if (owner.scheme !== 'file') { return undefined; }
+  let entries: [string, vscode.FileType][];
+  try { entries = await vscode.workspace.fs.readDirectory(vscode.Uri.joinPath(owner, '..')); } catch { return undefined; }
+  const matches: ImportedProject[] = [];
+  for (const [name, type] of entries.slice(0, 256)) {
+    if (type !== vscode.FileType.Directory || name.startsWith('.')) { continue; }
+    const project = await readImportedProject(vscode.Uri.joinPath(vscode.Uri.joinPath(owner, '..'), name));
+    if (project?.id === projectId) { matches.push(project); }
+  }
+  // Two copies of the same UUID next to the owner are ambiguous; an explicit
+  // import is then the only way to say which one the relation should use.
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
 export class RelatedProjectsView implements vscode.TreeDataProvider<RelatedProjectItem>, vscode.Disposable {
