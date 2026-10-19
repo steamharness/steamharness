@@ -228,7 +228,7 @@ class ProjectAgentRuntime implements AgentRuntime {
 
     if (parsed.compact) {
       if (!await agent.canCompact()) {
-        throw new HarnessError({ type: "workflow_execution", message: "Cannot compact agent context while durable tasks are active." });
+        throw new HarnessError({ type: "execution", message: "Cannot compact agent context while durable tasks are active." });
       }
       yield* this.runCompaction(agent, host, false);
       const usage = this.getContextUsage();
@@ -621,7 +621,7 @@ class ProjectAgentRuntime implements AgentRuntime {
     const agentFailure = readAgentFailure(agent);
     if (agentFailure !== undefined) {
       throw new HarnessError({
-        type: "workflow_execution",
+        type: "execution",
         message: agentFailure,
       });
     }

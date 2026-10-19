@@ -73,7 +73,7 @@ const context = {
   },
 } as unknown as RunContext;
 const executorContext = {
-  projectName, workflowDir: path.resolve(import.meta.dirname, "../.."), env: process.env, abortSignal: new AbortController().signal,
+  projectName, projectDir: path.resolve(import.meta.dirname, "../.."), env: process.env, abortSignal: new AbortController().signal,
   args: ["--message", scenario === "session" ? "Delegate background inspection" : "Create recovered.txt after checking the plan"],
   paramValues: { provider: "faux", model: "fixture", plan: scenario.startsWith("approval") ? "true" : "false" },
 } as Parameters<typeof executor.createInput>[0];

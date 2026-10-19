@@ -5,7 +5,7 @@ interface RuntimeContextShape {
 
 interface ExecutorContextShape {
   projectName: string;
-  workflowDir: string;
+  projectDir: string;
   args: string[];
   env: NodeJS.ProcessEnv;
   abortSignal: AbortSignal;

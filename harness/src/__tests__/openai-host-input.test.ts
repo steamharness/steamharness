@@ -46,17 +46,17 @@ test("OpenAI host input is typed, rejects malformed OpenAI payloads, and ignores
 test("local and workspace execution plus param resolution receive hostInput", async () => {
   const cwd = await mkdtemp(path.join(os.tmpdir(), "steamharness-openai-host-input-"));
   const projectName = "openai-host-input";
-  const workflowDir = path.join(cwd, "workspace", "workflow", projectName);
+  const projectDir = path.join(cwd, "workspace", "workflow", projectName);
   try {
-    await mkdir(workflowDir, { recursive: true });
-    await writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
+    await mkdir(projectDir, { recursive: true });
+    await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
       id: hostInput.projectId,
       name: projectName,
       version: "0.1.0",
       type: "module",
       steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
     }), "utf8");
-    await writeFile(path.join(workflowDir, "index.ts"), `
+    await writeFile(path.join(projectDir, "index.ts"), `
       const openaiWorkflow = workflow.defineWorkflow({
         name: "openai-host-input",
         run(input, context) {
@@ -93,7 +93,7 @@ test("local and workspace execution plus param resolution receive hostInput", as
       export default openaiWorkflow;
     `, "utf8");
 
-    const local = await runLocalWorkflowWithReport({ workflowDir, hostInput });
+    const local = await runLocalWorkflowWithReport({ projectDir, hostInput });
     const workspace = await runWorkspaceWorkflowWithReport({ cwd, projectName, hostInput });
     for (const report of [local, workspace]) {
       assert.equal(report.status, "success");
@@ -108,7 +108,7 @@ test("local and workspace execution plus param resolution receive hostInput", as
       inputMode: "form" as const,
       trigger: { kind: "init" as const },
     };
-    assert.deepEqual(await resolveLocalWorkflowParams({ workflowDir, hostInput, request }), {
+    assert.deepEqual(await resolveLocalWorkflowParams({ projectDir, hostInput, request }), {
       params: { modelEcho: { value: "provider/model" } },
     });
     assert.deepEqual(await resolveWorkspaceWorkflowParams({ cwd, projectName, hostInput, request }), {

@@ -160,7 +160,7 @@ export interface RunWorkspaceWorkflowOptions {
 }
 
 export interface RunLocalWorkflowOptions {
-  workflowDir?: string;
+  projectDir?: string;
   projectName?: string;
   args?: string[];
   env?: NodeJS.ProcessEnv;
@@ -248,7 +248,7 @@ export async function runWorkspaceWorkflowWithReport(
   });
   let definedNodes: DefinedNode[] = [];
   let registry: NodeRegistryItem[] = [];
-  let workflowDir = "";
+  let projectDir = "";
   let activeEntrypointId: string | undefined;
   let activeEntrypointTitle: string | undefined;
   let activeConversationId: string | undefined;
@@ -259,20 +259,20 @@ export async function runWorkspaceWorkflowWithReport(
     await runtime.prepare();
     runtime.throwIfAborted();
     const location = resolveWorkflowLocation(cwd, options.projectName);
-    workflowDir = location.workflowDir;
+    projectDir = location.projectDir;
     const { modulePath } = location;
-    const projectStorageDeclaration = readWorkflowProjectStorageDeclaration(workflowDir);
+    const projectStorageDeclaration = readWorkflowProjectStorageDeclaration(projectDir);
 
     const scriptInspection = inspectWorkflowScripts({
       cwd,
       projectName: options.projectName,
-      workflowDir,
+      projectDir,
     });
     definedNodes = scriptInspection.definedNodes;
 
     await options.onDefinedNodes?.({
       projectName: options.projectName,
-      workflowDir,
+      projectDir,
       nodes: definedNodes,
     });
 
@@ -288,7 +288,7 @@ export async function runWorkspaceWorkflowWithReport(
     }
 
     runtime.throwIfAborted();
-    loadWorkflowEnv(path.join(workflowDir, ".env"));
+    loadWorkflowEnv(path.join(projectDir, ".env"));
     assertWorkflowProjectStorageHostAvailable({
       declaration: projectStorageDeclaration,
       env,
@@ -313,7 +313,7 @@ export async function runWorkspaceWorkflowWithReport(
     await runtime.start({ id: selected.entrypointId, title: selected.entrypointTitle });
     const executorContext: ExecutorContext = {
       projectName: options.projectName,
-      workflowDir,
+      projectDir,
       entrypointId: selected.entrypointId,
       entrypointTitle: selected.entrypointTitle,
       args,
@@ -421,7 +421,7 @@ export async function runWorkspaceWorkflowWithReport(
     result = await safeRunWorkflow(execution.workflow, input, context);
   } catch (error) {
     await runtime.start({ id: activeEntrypointId, title: activeEntrypointTitle });
-    const diagnosedError = diagnoseModuleImportError(error, workflowDir, options.projectName) ?? error;
+    const diagnosedError = diagnoseModuleImportError(error, projectDir, options.projectName) ?? error;
     result = runtime.abortSignal.aborted
       ? createAbortedWorkflowResult(runtime.abortSignal, options.projectName)
       : createWorkflowFailure(diagnosedError);
@@ -461,7 +461,7 @@ export async function debugWorkspaceWorkflowNodeWithReport(
   });
   let definedNodes: DefinedNode[] = [];
   let registry: NodeRegistryItem[] = [];
-  let workflowDir = "";
+  let projectDir = "";
   let activeEntrypointId: string | undefined;
   let activeEntrypointTitle: string | undefined;
   let activeConversationId: string | undefined;
@@ -472,14 +472,14 @@ export async function debugWorkspaceWorkflowNodeWithReport(
     await runtime.prepare();
     runtime.throwIfAborted();
     const location = resolveWorkflowLocation(cwd, options.projectName);
-    workflowDir = location.workflowDir;
+    projectDir = location.projectDir;
     const { modulePath } = location;
-    const projectStorageDeclaration = readWorkflowProjectStorageDeclaration(workflowDir);
+    const projectStorageDeclaration = readWorkflowProjectStorageDeclaration(projectDir);
 
     const scriptInspection = inspectWorkflowScripts({
       cwd,
       projectName: options.projectName,
-      workflowDir,
+      projectDir,
     });
     definedNodes = scriptInspection.definedNodes;
 
@@ -495,7 +495,7 @@ export async function debugWorkspaceWorkflowNodeWithReport(
     }
 
     runtime.throwIfAborted();
-    loadWorkflowEnv(path.join(workflowDir, ".env"));
+    loadWorkflowEnv(path.join(projectDir, ".env"));
     assertWorkflowProjectStorageHostAvailable({
       declaration: projectStorageDeclaration,
       env,
@@ -520,7 +520,7 @@ export async function debugWorkspaceWorkflowNodeWithReport(
     await runtime.start({ id: selected.entrypointId, title: selected.entrypointTitle });
     const executorContext: ExecutorContext = {
       projectName: options.projectName,
-      workflowDir,
+      projectDir,
       entrypointId: selected.entrypointId,
       entrypointTitle: selected.entrypointTitle,
       args,
@@ -637,7 +637,7 @@ export async function debugWorkspaceWorkflowNodeWithReport(
     };
   } catch (error) {
     await runtime.start({ id: activeEntrypointId, title: activeEntrypointTitle });
-    const diagnosedError = diagnoseModuleImportError(error, workflowDir, options.projectName) ?? error;
+    const diagnosedError = diagnoseModuleImportError(error, projectDir, options.projectName) ?? error;
     result = runtime.abortSignal.aborted
       ? createAbortedWorkflowResult(runtime.abortSignal, options.projectName)
       : createWorkflowFailure(diagnosedError);
@@ -755,10 +755,10 @@ export async function runLocalWorkflow(
 export async function runLocalWorkflowWithReport(
   options: RunLocalWorkflowOptions = {},
 ): Promise<ExecutionReport<unknown>> {
-  const workflowDir = resolveLocalWorkflowDir(options.workflowDir);
-  let projectName = options.projectName ?? readLocalProjectName(workflowDir);
-  assertLocalProjectIsExecutable(workflowDir, projectName);
-  const projectStorageDeclaration = readWorkflowProjectStorageDeclaration(workflowDir);
+  const projectDir = resolveLocalWorkflowDir(options.projectDir);
+  let projectName = options.projectName ?? readLocalProjectName(projectDir);
+  assertLocalProjectIsExecutable(projectDir, projectName);
+  const projectStorageDeclaration = readWorkflowProjectStorageDeclaration(projectDir);
   const args = options.args ?? [];
   const env = options.env ?? process.env;
   const startedAt = new Date();
@@ -797,17 +797,17 @@ export async function runLocalWorkflowWithReport(
   let result: RunResult<unknown>;
 
   try {
-    const modulePath = resolveLocalWorkflowModulePath(workflowDir, projectName);
+    const modulePath = resolveLocalWorkflowModulePath(projectDir, projectName);
     const scriptInspection = inspectWorkflowScripts({
-      cwd: workflowDir,
+      cwd: projectDir,
       projectName,
-      workflowDir,
+      projectDir,
     });
     definedNodes = scriptInspection.definedNodes;
 
     await options.onDefinedNodes?.({
       projectName,
-      workflowDir,
+      projectDir,
       nodes: definedNodes,
     });
 
@@ -822,7 +822,7 @@ export async function runLocalWorkflowWithReport(
       });
     }
 
-    loadWorkflowEnv(path.join(workflowDir, ".env"));
+    loadWorkflowEnv(path.join(projectDir, ".env"));
     assertWorkflowProjectStorageHostAvailable({
       declaration: projectStorageDeclaration,
       env,
@@ -858,7 +858,7 @@ export async function runLocalWorkflowWithReport(
 
     const executorContext: ExecutorContext = {
       projectName,
-      workflowDir,
+      projectDir,
       entrypointId: selected.entrypointId,
       entrypointTitle: selected.entrypointTitle,
       args,
@@ -953,7 +953,7 @@ export async function runLocalWorkflowWithReport(
         runId,
         conversationId: conversation.conversationId,
         agentStoreDir: options.storage?.[options.storage.host]?.agentStoreDir
-          ?? env.STEAMHARNESS_AGENT_STORE_DIR ?? path.join(workflowDir, ".workflow", "agents"),
+          ?? env.STEAMHARNESS_AGENT_STORE_DIR ?? path.join(projectDir, ".workflow", "agents"),
         ...extraContext.metadata,
         ...(selected.entrypointId === undefined
           ? {}
@@ -988,7 +988,7 @@ export async function runLocalWorkflowWithReport(
     result = abortController.signal.aborted
       ? createAbortedWorkflowResult(abortController.signal, projectName)
       : createWorkflowFailure(
-          diagnoseModuleImportError(error, workflowDir, projectName) ?? error,
+          diagnoseModuleImportError(error, projectDir, projectName) ?? error,
         );
   }
 
@@ -1081,7 +1081,7 @@ function createResumeAwareRuntimeEventHandler(
 
     if (
       event.type === "workflow_succeeded" ||
-      event.type === "workflow_failed" ||
+      event.type === "project_failed" ||
       event.type === "workflow_aborted" ||
       event.type === "workflow_timed_out"
     ) {
@@ -1096,12 +1096,12 @@ export function inspectWorkspaceWorkflowStructure(options: {
   projectName: string;
 }): StructureReport {
   const cwd = options.cwd ?? process.cwd();
-  const { workflowDir } = resolveWorkflowLocation(cwd, options.projectName);
+  const { projectDir } = resolveWorkflowLocation(cwd, options.projectName);
 
   const scriptInspection = inspectWorkflowStructure({
     cwd,
     projectName: options.projectName,
-    workflowDir,
+    projectDir,
   });
 
   if (scriptInspection.diagnostics.violations.length > 0) {
@@ -1117,7 +1117,7 @@ export function inspectWorkspaceWorkflowStructure(options: {
 
   const projectType = resolveInspectedProjectType(scriptInspection);
   const schedulePresets = readWorkflowSchedulePresets(
-    workflowDir,
+    projectDir,
     projectType,
     scriptInspection.entrypoints,
   );
@@ -1146,26 +1146,26 @@ export function inspectWorkspaceWorkflowStructure(options: {
 }
 
 export function inspectLocalWorkflowStructure(options: {
-  workflowDir?: string;
+  projectDir?: string;
   projectName?: string;
 } = {}): StructureReport {
-  const workflowDir = resolveLocalWorkflowDir(options.workflowDir);
-  const projectName = options.projectName ?? readLocalProjectName(workflowDir);
+  const projectDir = resolveLocalWorkflowDir(options.projectDir);
+  const projectName = options.projectName ?? readLocalProjectName(projectDir);
 
-  if (readLocalPackageProjectType(workflowDir) === "kanban") {
-    const packageJson = readLocalPackageJson(workflowDir);
+  if (readLocalPackageProjectType(projectDir) === "kanban") {
+    const packageJson = readLocalPackageJson(projectDir);
     readSchedulePresetValue(packageJson, "kanban", []);
     const artifact = readKanbanArtifactConfig(packageJson);
     const artifactEntryPath = createKanbanArtifactEntryPath(artifact);
-    const entryPath = path.join(workflowDir, ...artifactEntryPath.split("/"));
-    if (!existsSync(entryPath) || !isRegularKanbanArtifactEntry(workflowDir, artifactEntryPath)) {
+    const entryPath = path.join(projectDir, ...artifactEntryPath.split("/"));
+    if (!existsSync(entryPath) || !isRegularKanbanArtifactEntry(projectDir, artifactEntryPath)) {
       throw new HarnessError({
         type: "input_validation",
         message: `Kanban project "${projectName}" must contain regular artifact entry ${artifactEntryPath}.`,
-        metadata: { workflow: projectName, workflowDir, artifact },
+        metadata: { workflow: projectName, projectDir, artifact },
       });
     }
-    const manifestPath = path.join(workflowDir, KANBAN_MANIFEST_FILE);
+    const manifestPath = path.join(projectDir, KANBAN_MANIFEST_FILE);
     const manifest = existsSync(manifestPath)
       ? parseKanbanManifestText(readFileSync(manifestPath, "utf8"))
       : undefined;
@@ -1173,8 +1173,8 @@ export function inspectLocalWorkflowStructure(options: {
       projectType: "kanban",
       workflow: {
         name: projectName,
-        dir: workflowDir,
-        files: readKanbanStructureFiles(workflowDir),
+        dir: projectDir,
+        files: readKanbanStructureFiles(projectDir),
       },
       definitions: { nodes: {}, apiCalls: [], variables: {}, registry: {} },
       execution: { kind: "sequence", children: [] },
@@ -1185,9 +1185,9 @@ export function inspectLocalWorkflowStructure(options: {
   }
 
   const scriptInspection = inspectWorkflowStructure({
-    cwd: workflowDir,
+    cwd: projectDir,
     projectName,
-    workflowDir,
+    projectDir,
   });
 
   if (scriptInspection.diagnostics.violations.length > 0) {
@@ -1203,7 +1203,7 @@ export function inspectLocalWorkflowStructure(options: {
 
   const projectType = resolveInspectedProjectType(scriptInspection);
   const schedulePresets = readWorkflowSchedulePresets(
-    workflowDir,
+    projectDir,
     projectType,
     scriptInspection.entrypoints,
   );
@@ -1256,10 +1256,10 @@ export async function resolveWorkspaceWorkflowParams(options: {
 }): Promise<ParamResolveResult> {
   const cwd = options.cwd ?? process.cwd();
   const location = resolveWorkflowLocation(cwd, options.projectName);
-  const declaration = readWorkflowProjectStorageDeclaration(location.workflowDir);
+  const declaration = readWorkflowProjectStorageDeclaration(location.projectDir);
   return resolveWorkflowParamsFromModule({
     projectName: options.projectName,
-    workflowDir: location.workflowDir,
+    projectDir: location.projectDir,
     modulePath: location.modulePath,
     declaration,
     storage: options.storage,
@@ -1272,7 +1272,7 @@ export async function resolveWorkspaceWorkflowParams(options: {
 }
 
 export async function resolveLocalWorkflowParams(options: {
-  workflowDir?: string;
+  projectDir?: string;
   projectName?: string;
   entrypointId?: string;
   request: ParamResolveRequest;
@@ -1281,14 +1281,14 @@ export async function resolveLocalWorkflowParams(options: {
   hostInput?: unknown;
   storage?: ExecutionStorageOptions;
 }): Promise<ParamResolveResult> {
-  const workflowDir = resolveLocalWorkflowDir(options.workflowDir);
-  const projectName = options.projectName ?? readLocalProjectName(workflowDir);
-  assertLocalProjectIsExecutable(workflowDir, projectName);
-  const declaration = readWorkflowProjectStorageDeclaration(workflowDir);
+  const projectDir = resolveLocalWorkflowDir(options.projectDir);
+  const projectName = options.projectName ?? readLocalProjectName(projectDir);
+  assertLocalProjectIsExecutable(projectDir, projectName);
+  const declaration = readWorkflowProjectStorageDeclaration(projectDir);
   return resolveWorkflowParamsFromModule({
     projectName,
-    workflowDir,
-    modulePath: resolveLocalWorkflowModulePath(workflowDir, projectName),
+    projectDir,
+    modulePath: resolveLocalWorkflowModulePath(projectDir, projectName),
     declaration,
     storage: options.storage,
     entrypointId: options.entrypointId,
@@ -1301,7 +1301,7 @@ export async function resolveLocalWorkflowParams(options: {
 
 async function resolveWorkflowParamsFromModule(options: {
   projectName: string;
-  workflowDir: string;
+  projectDir: string;
   modulePath: string;
   declaration: ProjectStorageDeclaration;
   storage?: ExecutionStorageOptions;
@@ -1313,7 +1313,7 @@ async function resolveWorkflowParamsFromModule(options: {
 }): Promise<ParamResolveResult> {
   const abortSignal = options.abortSignal ?? new AbortController().signal;
   if (abortSignal.aborted) throw abortSignal.reason;
-  loadWorkflowEnv(path.join(options.workflowDir, ".env"));
+  loadWorkflowEnv(path.join(options.projectDir, ".env"));
   assertWorkflowProjectStorageHostAvailable({
     declaration: options.declaration,
     env: options.env,
@@ -1333,7 +1333,7 @@ async function resolveWorkflowParamsFromModule(options: {
   const args = options.request.args.map(String);
   const result = await execution.resolveParams({
     projectName: options.projectName,
-    workflowDir: options.workflowDir,
+    projectDir: options.projectDir,
     entrypointId: selected.entrypointId,
     entrypointTitle: selected.entrypointTitle,
     args,
@@ -1678,9 +1678,9 @@ function assertWorkflowProjectStorageHostAvailable(options: {
 }
 
 function readWorkflowProjectStorageDeclaration(
-  workflowDir: string,
+  projectDir: string,
 ): ProjectStorageDeclaration {
-  const packagePath = path.join(workflowDir, "package.json");
+  const packagePath = path.join(projectDir, "package.json");
   let packageJson: unknown;
   try {
     packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
@@ -2319,7 +2319,7 @@ function isModuleNotFoundError(error: unknown): error is ModuleNotFoundError {
 
 function diagnoseModuleImportError(
   error: unknown,
-  workflowDir: string,
+  projectDir: string,
   projectName: string,
 ): HarnessError | null {
   if (!isModuleNotFoundError(error)) {
@@ -2331,11 +2331,11 @@ function diagnoseModuleImportError(
     return null;
   }
 
-  const declaredDeps = readWorkflowDeclaredDependencies(workflowDir);
+  const declaredDeps = readWorkflowDeclaredDependencies(projectDir);
 
   if (declaredDeps.size > 0 && declaredDeps.has(missingModule)) {
     return new HarnessError({
-      type: "workflow_execution",
+      type: "execution",
       message: `Workflow "${projectName}" depends on "${missingModule}" which is not installed. Run "pnpm install" in the workflow directory to install dependencies.`,
       metadata: { workflow: projectName, missingModule },
     });
@@ -2343,7 +2343,7 @@ function diagnoseModuleImportError(
 
   if (declaredDeps.size > 0) {
     return new HarnessError({
-      type: "workflow_execution",
+      type: "execution",
       message: `Module "${missingModule}" is required by workflow "${projectName}" but was not found. Dependencies may not be installed. Run "pnpm install" in the workflow directory to install dependencies.`,
       metadata: { workflow: projectName, missingModule },
     });
@@ -2368,13 +2368,13 @@ function parseMissingModuleName(message: string): string | undefined {
   return raw;
 }
 
-function readWorkflowDeclaredDependencies(workflowDir: string): Set<string> {
+function readWorkflowDeclaredDependencies(projectDir: string): Set<string> {
   const result = new Set<string>();
   let packageJson: unknown;
 
   try {
     packageJson = JSON.parse(
-      readFileSync(path.join(workflowDir, "package.json"), "utf8"),
+      readFileSync(path.join(projectDir, "package.json"), "utf8"),
     );
   } catch {
     return result;
@@ -2408,9 +2408,9 @@ function readWorkflowDeclaredDependencies(workflowDir: string): Set<string> {
 function resolveWorkflowLocation(
   cwd: string,
   projectName: string,
-): { workflowDir: string; modulePath: string } {
-  const workflowDir = path.resolve(cwd, "workspace", "workflow", projectName);
-  const modulePath = resolveWorkflowModulePath(cwd, workflowDir, projectName);
+): { projectDir: string; modulePath: string } {
+  const projectDir = path.resolve(cwd, "workspace", "workflow", projectName);
+  const modulePath = resolveWorkflowModulePath(cwd, projectDir, projectName);
 
   if (!existsSync(modulePath)) {
     throw new HarnessError({
@@ -2423,16 +2423,16 @@ function resolveWorkflowLocation(
     });
   }
 
-  return { workflowDir, modulePath };
+  return { projectDir, modulePath };
 }
 
 function resolveWorkflowModulePath(
   cwd: string,
-  workflowDir: string,
+  projectDir: string,
   projectName: string,
 ): string {
-  const sourceModulePath = path.join(workflowDir, "index.ts");
-  const workflowCompiledModulePath = path.join(workflowDir, "dist", "index.js");
+  const sourceModulePath = path.join(projectDir, "index.ts");
+  const workflowCompiledModulePath = path.join(projectDir, "dist", "index.js");
   const compiledModulePath = path.resolve(
     cwd,
     "dist",
@@ -2461,17 +2461,17 @@ function resolveWorkflowModulePath(
   return sourceModulePath;
 }
 
-function resolveLocalWorkflowDir(workflowDir = "."): string {
-  return path.resolve(process.cwd(), workflowDir);
+function resolveLocalWorkflowDir(projectDir = "."): string {
+  return path.resolve(process.cwd(), projectDir);
 }
 
 function resolveLocalWorkflowModulePath(
-  workflowDir: string,
+  projectDir: string,
   projectName: string,
 ): string {
-  const sourceModulePath = path.join(workflowDir, "index.ts");
-  const modulePath = path.join(workflowDir, "index.js");
-  const compiledModulePath = path.join(workflowDir, "dist", "index.js");
+  const sourceModulePath = path.join(projectDir, "index.ts");
+  const modulePath = path.join(projectDir, "index.js");
+  const compiledModulePath = path.join(projectDir, "dist", "index.js");
 
   for (const candidate of [sourceModulePath, modulePath, compiledModulePath]) {
     if (existsSync(candidate)) {
@@ -2484,13 +2484,13 @@ function resolveLocalWorkflowModulePath(
     message: `Workflow "${projectName}" does not have an index.ts or index.js entry.`,
     metadata: {
       workflow: projectName,
-      workflowDir,
+      projectDir,
     },
   });
 }
 
-function readLocalProjectName(workflowDir: string): string {
-  const packageJsonPath = path.join(workflowDir, "package.json");
+function readLocalProjectName(projectDir: string): string {
+  const packageJsonPath = path.join(projectDir, "package.json");
 
   if (existsSync(packageJsonPath)) {
     try {
@@ -2502,15 +2502,15 @@ function readLocalProjectName(workflowDir: string): string {
         return packageJson.name.split("/").pop()?.replace(/-workflow$/, "") ?? packageJson.name;
       }
     } catch {
-      return path.basename(workflowDir);
+      return path.basename(projectDir);
     }
   }
 
-  return path.basename(workflowDir);
+  return path.basename(projectDir);
 }
 
-function readLocalPackageProjectType(workflowDir: string): "kanban" | undefined {
-  const packageJsonPath = path.join(workflowDir, "package.json");
+function readLocalPackageProjectType(projectDir: string): "kanban" | undefined {
+  const packageJsonPath = path.join(projectDir, "package.json");
   if (!existsSync(packageJsonPath)) return undefined;
   try {
     return readPackageProjectType(JSON.parse(readFileSync(packageJsonPath, "utf8")) as unknown);
@@ -2519,8 +2519,8 @@ function readLocalPackageProjectType(workflowDir: string): "kanban" | undefined 
   }
 }
 
-function isRegularKanbanArtifactEntry(workflowDir: string, artifactEntryPath: string): boolean {
-  let currentPath = workflowDir;
+function isRegularKanbanArtifactEntry(projectDir: string, artifactEntryPath: string): boolean {
+  let currentPath = projectDir;
   for (const segment of artifactEntryPath.split("/")) {
     currentPath = path.join(currentPath, segment);
     const entryStat = lstatSync(currentPath);
@@ -2529,25 +2529,25 @@ function isRegularKanbanArtifactEntry(workflowDir: string, artifactEntryPath: st
   return lstatSync(currentPath).isFile();
 }
 
-function readLocalPackageJson(workflowDir: string): unknown {
-  const packageJsonPath = path.join(workflowDir, "package.json");
+function readLocalPackageJson(projectDir: string): unknown {
+  const packageJsonPath = path.join(projectDir, "package.json");
   try {
     return JSON.parse(readFileSync(packageJsonPath, "utf8")) as unknown;
   } catch {
     throw new HarnessError({
       type: "input_validation",
       message: `Project package.json is invalid JSON.`,
-      metadata: { workflowDir },
+      metadata: { projectDir },
     });
   }
 }
 
 function readWorkflowSchedulePresets(
-  workflowDir: string,
+  projectDir: string,
   projectType: ExecutorProjectType,
   entrypoints: StructureReport["entrypoints"],
 ): SchedulePreset[] {
-  return readSchedulePresetValue(readLocalPackageJson(workflowDir), projectType, entrypoints ?? []);
+  return readSchedulePresetValue(readLocalPackageJson(projectDir), projectType, entrypoints ?? []);
 }
 
 function readSchedulePresetValue(
@@ -2601,20 +2601,20 @@ function readErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function readKanbanStructureFiles(workflowDir: string, currentDir = workflowDir): string[] {
+function readKanbanStructureFiles(projectDir: string, currentDir = projectDir): string[] {
   return readdirSync(currentDir, { withFileTypes: true }).flatMap((entry) => {
     const absolutePath = path.join(currentDir, entry.name);
     if (entry.isDirectory()) {
       if (entry.name === "node_modules" || entry.name.startsWith(".")) return [];
-      return readKanbanStructureFiles(workflowDir, absolutePath);
+      return readKanbanStructureFiles(projectDir, absolutePath);
     }
     if (!entry.isFile()) return [];
-    return [path.relative(workflowDir, absolutePath).split(path.sep).join("/")];
+    return [path.relative(projectDir, absolutePath).split(path.sep).join("/")];
   }).sort((left, right) => left.localeCompare(right));
 }
 
-function assertLocalProjectIsExecutable(workflowDir: string, projectName: string): void {
-  if (readLocalPackageProjectType(workflowDir) !== "kanban") return;
+function assertLocalProjectIsExecutable(projectDir: string, projectName: string): void {
+  if (readLocalPackageProjectType(projectDir) !== "kanban") return;
   throw new HarnessError({
     type: "input_validation",
     message: createKanbanExecutionUnsupportedMessage(projectName),

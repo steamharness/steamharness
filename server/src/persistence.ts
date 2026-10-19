@@ -17,7 +17,7 @@ const STEAMHARNESS_PROJECT_TYPES_SQL = createPostgresTextList(STEAMHARNESS_PROJE
 // a stronger compare-and-set token than updated_at, whose transaction-start
 // timestamp can be shared by multiple writes.
 const STEAMHARNESS_KV_REVISION_SQL = "xmin::text";
-const STEAMHARNESS_KV_REVISION_CHANNEL = "workflow_project_storage_revision";
+const STEAMHARNESS_KV_REVISION_CHANNEL = "project_storage_revision";
 const STEAMHARNESS_KV_REVISION_RECONNECT_DELAY_MS = 1_000;
 const STEAMHARNESS_KV_REVISION_RECONNECT_MAX_DELAY_MS = 30_000;
 
@@ -182,11 +182,11 @@ export class DatabaseRepository implements KVStore {
   constructor(connectionString: string) {
     this.pool = createPostgresPool({
       connectionString,
-      label: "workflow storage",
+      label: "project storage",
     });
     this.publishLockPool = createPostgresPool({
       connectionString,
-      label: "workflow publish lock",
+      label: "project publish lock",
     });
   }
 
@@ -194,7 +194,7 @@ export class DatabaseRepository implements KVStore {
 
   async init(): Promise<void> {
     await this.pool.query(`
-      create table if not exists workflows (
+      create table if not exists projects (
         id text primary key,
         name text not null,
         project_type text not null check (project_type in (${STEAMHARNESS_PROJECT_TYPES_SQL})),
@@ -210,8 +210,8 @@ export class DatabaseRepository implements KVStore {
         updated_at timestamptz not null default now()
       );
 
-      create table if not exists workflow_draft_files (
-        project_id text not null references workflows(id) on delete cascade,
+      create table if not exists project_draft_files (
+        project_id text not null references projects(id) on delete cascade,
         path text not null,
         content text not null,
         size integer not null,
@@ -220,8 +220,8 @@ export class DatabaseRepository implements KVStore {
         primary key (project_id, path)
       );
 
-      create table if not exists workflow_versions (
-        project_id text not null references workflows(id) on delete cascade,
+      create table if not exists project_versions (
+        project_id text not null references projects(id) on delete cascade,
         version text not null,
         project_name text not null,
         created_at timestamptz not null,
@@ -232,19 +232,19 @@ export class DatabaseRepository implements KVStore {
         primary key (project_id, version)
       );
 
-      create table if not exists workflow_version_downloads (
+      create table if not exists project_version_downloads (
         project_id text not null,
         version text not null,
         download_count bigint not null default 0 check (download_count >= 0),
         primary key (project_id, version),
         foreign key (project_id, version)
-          references workflow_versions(project_id, version)
+          references project_versions(project_id, version)
           on delete cascade
       );
 
 
-      create table if not exists workflow_project_members (
-        project_id text not null references workflows(id) on delete cascade,
+      create table if not exists project_members (
+        project_id text not null references projects(id) on delete cascade,
         user_id text not null,
         role text not null,
         created_by text,
@@ -252,9 +252,9 @@ export class DatabaseRepository implements KVStore {
         primary key (project_id, user_id)
       );
 
-      create table if not exists workflow_project_invitations (
+      create table if not exists project_invitations (
         id text primary key,
-        project_id text not null references workflows(id) on delete cascade,
+        project_id text not null references projects(id) on delete cascade,
         token text not null unique,
         role text not null,
         created_by text,
@@ -269,7 +269,7 @@ export class DatabaseRepository implements KVStore {
       create table if not exists project_storage (
         storage_kind text not null check (storage_kind in ('kv', 'persistent_value')),
         scope text not null check (scope in ('project', 'conversation')),
-        project_id text not null references workflows(id) on delete cascade,
+        project_id text not null references projects(id) on delete cascade,
         conversation_id text not null default '',
         key text not null,
         value jsonb not null,
@@ -286,7 +286,7 @@ export class DatabaseRepository implements KVStore {
 
       create table if not exists project_storage_revisions (
         storage_kind text not null check (storage_kind in ('kv', 'persistent_value')),
-        project_id text not null references workflows(id) on delete cascade,
+        project_id text not null references projects(id) on delete cascade,
         revision bigint not null default 0,
         updated_at timestamptz not null default now(),
         primary key (storage_kind, project_id)
@@ -299,8 +299,8 @@ export class DatabaseRepository implements KVStore {
 
 
 
-      create table if not exists workflow_kanban_configurations (
-        project_id text not null references workflows(id) on delete cascade,
+      create table if not exists project_kanban_configurations (
+        project_id text not null references projects(id) on delete cascade,
         user_id text not null,
         configuration_id text not null,
         name text not null,
@@ -310,19 +310,19 @@ export class DatabaseRepository implements KVStore {
         primary key (project_id, user_id, configuration_id)
       );
 
-      create table if not exists workflow_kanban_active_configurations (
+      create table if not exists project_kanban_active_configurations (
         project_id text not null,
         user_id text not null,
         configuration_id text not null,
         primary key (project_id, user_id),
         foreign key (project_id, user_id, configuration_id)
-          references workflow_kanban_configurations(project_id, user_id, configuration_id)
+          references project_kanban_configurations(project_id, user_id, configuration_id)
           on delete cascade
       );
 
-      create table if not exists workflow_deployments (
+      create table if not exists project_deployments (
         id text primary key,
-        root_project_id text not null references workflows(id) on delete cascade,
+        root_project_id text not null references projects(id) on delete cascade,
         status text not null,
         manifest jsonb not null,
         release_log text not null default '',
@@ -333,9 +333,9 @@ export class DatabaseRepository implements KVStore {
         published_at timestamptz
       );
 
-      create table if not exists workflow_deployment_items (
-        deployment_id text not null references workflow_deployments(id) on delete cascade,
-        project_id text not null references workflows(id) on delete cascade,
+      create table if not exists project_deployment_items (
+        deployment_id text not null references project_deployments(id) on delete cascade,
+        project_id text not null references projects(id) on delete cascade,
         alias text,
         role text not null,
         delivery text not null default 'included',
@@ -350,24 +350,24 @@ export class DatabaseRepository implements KVStore {
         primary key (deployment_id, project_id)
       );
 
-      create table if not exists workflow_related_project_dependencies (
+      create table if not exists related_project_dependencies (
         project_id text not null,
         version text not null,
         alias text not null,
-        project_id text not null,
+        dependency_project_id text not null,
         delivery text not null,
         dependency_version text,
         source_hash text,
         created_at timestamptz not null default now(),
         primary key (project_id, version, alias),
         foreign key (project_id, version)
-          references workflow_versions(project_id, version)
+          references project_versions(project_id, version)
           on delete cascade
       );
 
-      create table if not exists workflow_project_access_requests (
+      create table if not exists project_access_requests (
         id text primary key,
-        project_id text not null references workflows(id) on delete cascade,
+        project_id text not null references projects(id) on delete cascade,
         requester_user_id text not null,
         capability text not null,
         reason text not null,
@@ -378,8 +378,8 @@ export class DatabaseRepository implements KVStore {
         updated_at timestamptz not null
       );
 
-      create table if not exists workflow_project_capability_grants (
-        project_id text not null references workflows(id) on delete cascade,
+      create table if not exists project_capability_grants (
+        project_id text not null references projects(id) on delete cascade,
         user_id text not null,
         capability text not null,
         created_by_user_id text,
@@ -389,43 +389,43 @@ export class DatabaseRepository implements KVStore {
         primary key (project_id, user_id, capability)
       );
 
-      create index if not exists workflow_versions_created_at_idx
-        on workflow_versions(project_id, created_at desc);
-      create index if not exists workflow_project_members_user_idx
-        on workflow_project_members(user_id, project_id);
-      create index if not exists workflow_project_invitations_project_idx
-        on workflow_project_invitations(project_id);
-      create index if not exists workflow_project_invitations_token_idx
-        on workflow_project_invitations(token);
-      create index if not exists workflow_kanban_configurations_user_updated_idx
-        on workflow_kanban_configurations(project_id, user_id, updated_at desc);
-      create index if not exists workflow_deployments_root_idx
-        on workflow_deployments(root_project_id, created_at desc);
-      create index if not exists workflow_deployment_items_project_idx
-        on workflow_deployment_items(project_id, updated_at desc);
-      create unique index if not exists workflow_deployment_items_active_version_idx
-        on workflow_deployment_items(project_id, planned_version)
+      create index if not exists project_versions_created_at_idx
+        on project_versions(project_id, created_at desc);
+      create index if not exists project_members_user_idx
+        on project_members(user_id, project_id);
+      create index if not exists project_invitations_project_idx
+        on project_invitations(project_id);
+      create index if not exists project_invitations_token_idx
+        on project_invitations(token);
+      create index if not exists project_kanban_configurations_user_updated_idx
+        on project_kanban_configurations(project_id, user_id, updated_at desc);
+      create index if not exists project_deployments_root_idx
+        on project_deployments(root_project_id, created_at desc);
+      create index if not exists project_deployment_items_project_idx
+        on project_deployment_items(project_id, updated_at desc);
+      create unique index if not exists project_deployment_items_active_version_idx
+        on project_deployment_items(project_id, planned_version)
         where planned_version is not null
           and published_version is null
           and status in ('planned', 'preparing', 'prepared', 'publishing');
-      create index if not exists workflow_related_project_dependencies_project_idx
-        on workflow_related_project_dependencies(project_id, dependency_version);
+      create index if not exists related_project_dependencies_project_idx
+        on related_project_dependencies(project_id, dependency_version);
       create index if not exists project_storage_project_updated_idx
         on project_storage(storage_kind, project_id, scope, updated_at desc);
       create index if not exists project_storage_last_run_idx
         on project_storage(last_project_id, last_run_id);
-      create index if not exists workflow_project_access_requests_project_idx
-        on workflow_project_access_requests(project_id, created_at desc);
-      create unique index if not exists workflow_project_access_requests_pending_idx
-        on workflow_project_access_requests(project_id, requester_user_id, capability)
+      create index if not exists project_access_requests_project_idx
+        on project_access_requests(project_id, created_at desc);
+      create unique index if not exists project_access_requests_pending_idx
+        on project_access_requests(project_id, requester_user_id, capability)
         where status = 'pending';
-      create index if not exists workflow_project_capability_grants_user_idx
-        on workflow_project_capability_grants(user_id, project_id)
+      create index if not exists project_capability_grants_user_idx
+        on project_capability_grants(user_id, project_id)
         where revoked_at is null;
 
     `);
     await this.pool.query(`
-      create or replace view workflow_project_storage_kv_view as
+      create or replace view project_storage_kv_view as
       select
         storage_kind,
         scope,
@@ -443,7 +443,7 @@ export class DatabaseRepository implements KVStore {
       where storage_kind = 'kv'
     `);
     await this.pool.query(`
-      create or replace function workflow_notify_project_storage_revision()
+      create or replace function notify_project_storage_revision()
       returns trigger
       language plpgsql
       as $$
@@ -475,10 +475,10 @@ export class DatabaseRepository implements KVStore {
       end;
       $$;
 
-      drop trigger if exists workflow_project_storage_revision_trigger on project_storage;
-      create trigger workflow_project_storage_revision_trigger
+      drop trigger if exists project_storage_revision_trigger on project_storage;
+      create trigger project_storage_revision_trigger
       after insert or update or delete on project_storage
-      for each row execute function workflow_notify_project_storage_revision();
+      for each row execute function notify_project_storage_revision();
     `);
   }
 
@@ -487,7 +487,7 @@ export class DatabaseRepository implements KVStore {
       select id, name, project_type, project_card, project_info, package_version, has_draft, latest_version,
         owner_user_id, visibility, created_by_user_id,
         created_at, updated_at
-      from workflows
+      from projects
       order by name asc, id asc
     `);
 
@@ -499,7 +499,7 @@ export class DatabaseRepository implements KVStore {
       `select id, name, project_type, project_card, project_info, package_version, has_draft, latest_version,
         owner_user_id, visibility, created_by_user_id,
         created_at, updated_at
-       from workflows
+       from projects
        where id = $1`,
       [projectId],
     );
@@ -512,7 +512,7 @@ export class DatabaseRepository implements KVStore {
     projectCard: ProjectCardMetadata,
   ): Promise<DbRecord | undefined> {
     const result = await this.pool.query<Row>(
-      `update workflows
+      `update projects
        set project_card = $2::jsonb, updated_at = now()
        where id = $1
        returning id, name, project_type, project_card, project_info, package_version, has_draft, latest_version,
@@ -546,7 +546,7 @@ export class DatabaseRepository implements KVStore {
       await client.query("begin");
       for (const update of updates) {
         const result = await client.query<Row>(
-          `update workflows
+          `update projects
            set name = $2, project_info = $3::jsonb, updated_at = now()
            where id = $1
            returning id, name, project_type, project_card, project_info, package_version, has_draft, latest_version,
@@ -560,7 +560,7 @@ export class DatabaseRepository implements KVStore {
         if (row.has_draft === true) {
           const packageResult = await client.query<Pick<FileRow, "content">>(
             `select content
-             from workflow_draft_files
+             from project_draft_files
              where project_id = $1 and path = 'package.json'
              for update`,
             [update.projectId],
@@ -577,7 +577,7 @@ export class DatabaseRepository implements KVStore {
               update.projectInfo,
             ), null, 2)}\n`;
             await client.query(
-              `update workflow_draft_files
+              `update project_draft_files
                set content = $3, size = $4, updated_at = now()
                where project_id = $1 and path = $2`,
               [update.projectId, "package.json", content, Buffer.byteLength(content)],
@@ -598,7 +598,7 @@ export class DatabaseRepository implements KVStore {
 
   async createWorkflowProject(input: CreateWorkflowProjectInput): Promise<DbRecord> {
     const result = await this.pool.query<Row>(
-      `insert into workflows (
+      `insert into projects (
          id,
          name,
          project_type,
@@ -641,7 +641,7 @@ export class DatabaseRepository implements KVStore {
   async listWorkflowMembers(projectId: string): Promise<ProjectMemberRecord[]> {
     const result = await this.pool.query<ProjectMemberRow>(
       `select project_id, user_id, role, created_by, created_at
-       from workflow_project_members
+       from project_members
        where project_id = $1
        order by
          case role
@@ -665,7 +665,7 @@ export class DatabaseRepository implements KVStore {
   ): Promise<ProjectMemberRecord | undefined> {
     const result = await this.pool.query<ProjectMemberRow>(
       `select project_id, user_id, role, created_by, created_at
-       from workflow_project_members
+       from project_members
        where project_id = $1 and user_id = $2`,
       [projectId, userId],
     );
@@ -682,7 +682,7 @@ export class DatabaseRepository implements KVStore {
     createdBy?: string;
   }): Promise<ProjectMemberRecord> {
     const result = await this.pool.query<ProjectMemberRow>(
-      `insert into workflow_project_members (
+      `insert into project_members (
          project_id,
          user_id,
          role,
@@ -707,7 +707,7 @@ export class DatabaseRepository implements KVStore {
 
   async deleteWorkflowMember(projectId: string, userId: string): Promise<boolean> {
     const result = await this.pool.query(
-      `delete from workflow_project_members
+      `delete from project_members
        where project_id = $1 and user_id = $2`,
       [projectId, userId],
     );
@@ -726,7 +726,7 @@ export class DatabaseRepository implements KVStore {
     try {
       await client.query("begin");
       await client.query(
-        `insert into workflow_deployments (
+        `insert into project_deployments (
            id, root_project_id, status, manifest, release_log,
            created_by_user_id, created_at, updated_at
          ) values ($1, $2, 'planned', $3::jsonb, $4, $5, $6, $6)`,
@@ -741,7 +741,7 @@ export class DatabaseRepository implements KVStore {
       );
       for (const project of input.manifest.projects) {
         await client.query(
-          `insert into workflow_deployment_items (
+          `insert into project_deployment_items (
              deployment_id, project_id, alias, role, delivery,
              status, updated_at
            ) values ($1, $2, $3, $4, 'included', 'planned', $5)`,
@@ -762,7 +762,7 @@ export class DatabaseRepository implements KVStore {
     const result = await this.pool.query<DeploymentRow>(
       `select id, root_project_id, status, manifest, release_log,
         created_by_user_id, error, created_at, updated_at, published_at
-       from workflow_deployments where id = $1`,
+       from project_deployments where id = $1`,
       [id],
     );
     const row = result.rows[0];
@@ -772,7 +772,7 @@ export class DatabaseRepository implements KVStore {
         role, delivery, status,
         stage, planned_version, prepared_source_hash, published_version,
         published_source_hash, error, updated_at
-       from workflow_deployment_items
+       from project_deployment_items
        where deployment_id = $1
        order by case role when 'dependency' then 0 else 1 end,
          alias asc nulls last`,
@@ -788,7 +788,7 @@ export class DatabaseRepository implements KVStore {
     publishedAt?: string;
   }): Promise<DeploymentRecord | undefined> {
     const result = await this.pool.query(
-      `update workflow_deployments
+      `update project_deployments
        set status = $2,
          error = $3,
          published_at = coalesce($4, published_at),
@@ -806,7 +806,7 @@ export class DatabaseRepository implements KVStore {
     status: DeploymentStatus;
   }): Promise<boolean> {
     const result = await this.pool.query(
-      `update workflow_deployments
+      `update project_deployments
        set status = $3, error = null, updated_at = now()
        where id = $1 and status = any($2::text[])`,
       [input.id, input.from, input.status],
@@ -827,7 +827,7 @@ export class DatabaseRepository implements KVStore {
     error?: string;
   }): Promise<void> {
     await this.pool.query(
-      `update workflow_deployment_items
+      `update project_deployment_items
        set status = $3,
          stage = $4,
          planned_version = coalesce($5, planned_version),
@@ -858,7 +858,7 @@ export class DatabaseRepository implements KVStore {
   ): Promise<string[]> {
     const result = await this.pool.query<{ planned_version: string }>(
       `select planned_version
-       from workflow_deployment_items
+       from project_deployment_items
        where project_id = $1
          and planned_version is not null
          and published_version is null
@@ -877,7 +877,7 @@ export class DatabaseRepository implements KVStore {
   }): Promise<boolean> {
     const result = await this.pool.query(
       `select 1
-       from workflow_deployment_items
+       from project_deployment_items
        where deployment_id = $1
          and project_id = $2
          and planned_version = $3
@@ -890,7 +890,7 @@ export class DatabaseRepository implements KVStore {
 
   async resetWorkflowDeploymentItemsForPreparation(deploymentId: string): Promise<void> {
     await this.pool.query(
-      `update workflow_deployment_items
+      `update project_deployment_items
        set status = 'planned',
          stage = 'version_reserved',
          planned_version = null,
@@ -906,7 +906,7 @@ export class DatabaseRepository implements KVStore {
 
   async releaseWorkflowDeploymentVersionReservations(deploymentId: string): Promise<void> {
     await this.pool.query(
-      `update workflow_deployment_items
+      `update project_deployment_items
        set status = 'failed',
          stage = 'reservation_failed',
          planned_version = null,
@@ -923,7 +923,7 @@ export class DatabaseRepository implements KVStore {
     capability: "download_source";
   }): Promise<boolean> {
     const result = await this.pool.query(
-      `select 1 from workflow_project_capability_grants
+      `select 1 from project_capability_grants
        where project_id = $1 and user_id = $2 and capability = $3
          and revoked_at is null`,
       [input.projectId, input.userId, input.capability],
@@ -937,7 +937,7 @@ export class DatabaseRepository implements KVStore {
     const result = await this.pool.query<ProjectCapabilityGrantRow>(
       `select project_id, user_id, capability, created_by_user_id,
         created_at, revoked_by_user_id, revoked_at
-       from workflow_project_capability_grants
+       from project_capability_grants
        where project_id = $1
        order by created_at desc`,
       [projectId],
@@ -952,7 +952,7 @@ export class DatabaseRepository implements KVStore {
     createdByUserId?: string;
   }): Promise<ProjectCapabilityGrant> {
     const result = await this.pool.query<ProjectCapabilityGrantRow>(
-      `insert into workflow_project_capability_grants (
+      `insert into project_capability_grants (
          project_id, user_id, capability, created_by_user_id, created_at
        ) values ($1, $2, $3, $4, now())
        on conflict (project_id, user_id, capability) do update set
@@ -977,7 +977,7 @@ export class DatabaseRepository implements KVStore {
     try {
       await client.query("begin");
       const result = await client.query(
-        `update workflow_project_capability_grants
+        `update project_capability_grants
          set revoked_by_user_id = $4, revoked_at = now()
          where project_id = $1 and user_id = $2 and capability = $3
            and revoked_at is null`,
@@ -985,7 +985,7 @@ export class DatabaseRepository implements KVStore {
       );
       if ((result.rowCount ?? 0) > 0) {
         await client.query(
-          `update workflow_project_access_requests
+          `update project_access_requests
            set status = 'revoked', resolved_by_user_id = $4,
              resolved_at = now(), updated_at = now()
            where project_id = $1 and requester_user_id = $2
@@ -1011,7 +1011,7 @@ export class DatabaseRepository implements KVStore {
     const result = await this.pool.query<ProjectAccessRequestRow>(
       `select id, project_id, requester_user_id, capability, reason, status,
         resolved_by_user_id, resolved_at, created_at, updated_at
-       from workflow_project_access_requests
+       from project_access_requests
        where project_id = $1 and requester_user_id = $2 and capability = $3
          and status = 'pending'`,
       [input.projectId, input.requesterUserId, input.capability],
@@ -1027,13 +1027,13 @@ export class DatabaseRepository implements KVStore {
     reason: string;
   }): Promise<ProjectAccessRequest> {
     const result = await this.pool.query<ProjectAccessRequestRow>(
-      `insert into workflow_project_access_requests (
+      `insert into project_access_requests (
          id, project_id, requester_user_id, capability, reason, status,
          created_at, updated_at
        ) values ($1, $2, $3, $4, $5, 'pending', now(), now())
        on conflict (project_id, requester_user_id, capability)
          where status = 'pending'
-       do update set updated_at = workflow_project_access_requests.updated_at
+       do update set updated_at = project_access_requests.updated_at
        returning id, project_id, requester_user_id, capability, reason, status,
          resolved_by_user_id, resolved_at, created_at, updated_at`,
       [input.id, input.projectId, input.requesterUserId, input.capability, input.reason],
@@ -1047,7 +1047,7 @@ export class DatabaseRepository implements KVStore {
     const result = await this.pool.query<ProjectAccessRequestRow>(
       `select id, project_id, requester_user_id, capability, reason, status,
         resolved_by_user_id, resolved_at, created_at, updated_at
-       from workflow_project_access_requests
+       from project_access_requests
        where project_id = $1
        order by case status when 'pending' then 0 else 1 end, created_at desc`,
       [projectId],
@@ -1062,7 +1062,7 @@ export class DatabaseRepository implements KVStore {
     const result = await this.pool.query<ProjectAccessRequestRow>(
       `select id, project_id, requester_user_id, capability, reason, status,
         resolved_by_user_id, resolved_at, created_at, updated_at
-       from workflow_project_access_requests
+       from project_access_requests
        where project_id = $1 and id = $2`,
       [projectId, requestId],
     );
@@ -1079,7 +1079,7 @@ export class DatabaseRepository implements KVStore {
     try {
       await client.query("begin");
       const result = await client.query<ProjectAccessRequestRow>(
-        `update workflow_project_access_requests
+        `update project_access_requests
          set status = $3, resolved_by_user_id = $4, resolved_at = now(), updated_at = now()
          where project_id = $1 and id = $2 and status = 'pending'
          returning id, project_id, requester_user_id, capability, reason, status,
@@ -1089,7 +1089,7 @@ export class DatabaseRepository implements KVStore {
       const row = result.rows[0];
       if (row !== undefined && input.status === "approved") {
         await client.query(
-          `insert into workflow_project_capability_grants (
+          `insert into project_capability_grants (
              project_id, user_id, capability, created_by_user_id, created_at
            ) values ($1, $2, $3, $4, now())
            on conflict (project_id, user_id, capability) do update set
@@ -1117,7 +1117,7 @@ export class DatabaseRepository implements KVStore {
     expiresAt: string;
   }): Promise<ProjectInvitationRecord> {
     const result = await this.pool.query<ProjectInvitationRow>(
-      `insert into workflow_project_invitations (
+      `insert into project_invitations (
          id, project_id, token, role, created_by, created_at, expires_at
        )
        values ($1, $2, $3, $4, $5, now(), $6)
@@ -1141,7 +1141,7 @@ export class DatabaseRepository implements KVStore {
     const result = await this.pool.query<ProjectInvitationRow>(
       `select id, project_id, token, role, created_by, created_at,
               expires_at, accepted_by, accepted_at, revoked_at
-       from workflow_project_invitations
+       from project_invitations
        where project_id = $1
        order by created_at desc`,
       [projectId],
@@ -1155,7 +1155,7 @@ export class DatabaseRepository implements KVStore {
     const result = await this.pool.query<ProjectInvitationRow>(
       `select id, project_id, token, role, created_by, created_at,
               expires_at, accepted_by, accepted_at, revoked_at
-       from workflow_project_invitations
+       from project_invitations
        where token = $1`,
       [token],
     );
@@ -1170,7 +1170,7 @@ export class DatabaseRepository implements KVStore {
     const result = await this.pool.query<ProjectInvitationRow>(
       `select id, project_id, token, role, created_by, created_at,
               expires_at, accepted_by, accepted_at, revoked_at
-       from workflow_project_invitations
+       from project_invitations
        where id = $1`,
       [id],
     );
@@ -1184,7 +1184,7 @@ export class DatabaseRepository implements KVStore {
     id: string,
   ): Promise<boolean> {
     const result = await this.pool.query(
-      `update workflow_project_invitations
+      `update project_invitations
        set revoked_at = now()
        where id = $1
          and project_id = $2
@@ -1200,7 +1200,7 @@ export class DatabaseRepository implements KVStore {
     acceptedBy: string;
   }): Promise<ProjectInvitationRecord | undefined> {
     const result = await this.pool.query<ProjectInvitationRow>(
-      `update workflow_project_invitations
+      `update project_invitations
        set accepted_by = $2, accepted_at = now()
        where id = $1
          and accepted_at is null
@@ -1221,7 +1221,7 @@ export class DatabaseRepository implements KVStore {
     createdByUserId?: string;
   }): Promise<DbRecord | undefined> {
     const result = await this.pool.query<Row>(
-      `update workflows
+      `update projects
        set
          owner_user_id = coalesce($2, owner_user_id),
          visibility = coalesce($3, visibility),
@@ -1246,7 +1246,7 @@ export class DatabaseRepository implements KVStore {
     try {
       await client.query("begin");
       await client.query(
-        `insert into workflows (
+        `insert into projects (
            id,
            name,
            project_type,
@@ -1267,9 +1267,9 @@ export class DatabaseRepository implements KVStore {
            project_info = excluded.project_info,
            package_version = excluded.package_version,
            has_draft = true,
-           owner_user_id = coalesce(workflows.owner_user_id, excluded.owner_user_id),
-           visibility = workflows.visibility,
-           created_by_user_id = coalesce(workflows.created_by_user_id, excluded.created_by_user_id),
+           owner_user_id = coalesce(projects.owner_user_id, excluded.owner_user_id),
+           visibility = projects.visibility,
+           created_by_user_id = coalesce(projects.created_by_user_id, excluded.created_by_user_id),
            updated_at = now()`,
         [
           input.projectId,
@@ -1283,13 +1283,13 @@ export class DatabaseRepository implements KVStore {
           input.createdByUserId ?? null,
         ],
       );
-      await client.query("delete from workflow_draft_files where project_id = $1", [
+      await client.query("delete from project_draft_files where project_id = $1", [
         input.projectId,
       ]);
 
       for (const file of input.files) {
         await client.query(
-          `insert into workflow_draft_files (project_id, path, content, size, encoding, updated_at)
+          `insert into project_draft_files (project_id, path, content, size, encoding, updated_at)
            values ($1, $2, $3, $4, $5, now())`,
           [input.projectId, file.path, file.content, file.size, file.encoding ?? null],
         );
@@ -1315,14 +1315,14 @@ export class DatabaseRepository implements KVStore {
       // connections cannot exhaust the storage query pool.
       await client.query(
         "select pg_advisory_lock(hashtext($1), hashtext($2))",
-        ["workflow_publish", projectId],
+        ["project_publish", projectId],
       );
       return await operation();
     } finally {
       try {
         await client.query(
           "select pg_advisory_unlock(hashtext($1), hashtext($2))",
-          ["workflow_publish", projectId],
+          ["project_publish", projectId],
         );
       } finally {
         client.release();
@@ -1338,14 +1338,14 @@ export class DatabaseRepository implements KVStore {
     try {
       await client.query(
         "select pg_advisory_lock(hashtext($1), hashtext($2))",
-        ["workflow_deployment", deploymentId],
+        ["project_deployment", deploymentId],
       );
       return await operation();
     } finally {
       try {
         await client.query(
           "select pg_advisory_unlock(hashtext($1), hashtext($2))",
-          ["workflow_deployment", deploymentId],
+          ["project_deployment", deploymentId],
         );
       } finally {
         client.release();
@@ -1356,7 +1356,7 @@ export class DatabaseRepository implements KVStore {
   async readDraftFiles(projectId: string): Promise<File[]> {
     const result = await this.pool.query<FileRow>(
       `select path, content, size, encoding
-       from workflow_draft_files
+       from project_draft_files
        where project_id = $1
        order by path asc`,
       [projectId],
@@ -1376,7 +1376,7 @@ export class DatabaseRepository implements KVStore {
     try {
       await client.query("begin");
       await client.query(
-        `insert into workflow_versions (
+        `insert into project_versions (
            project_id, version, project_name, created_at, source_hash,
            source_object_path, release_log, created_by_user_id
          )
@@ -1394,8 +1394,8 @@ export class DatabaseRepository implements KVStore {
       );
       for (const dependency of input.dependencies ?? []) {
         await client.query(
-          `insert into workflow_related_project_dependencies (
-             project_id, version, alias, project_id,
+          `insert into related_project_dependencies (
+             project_id, version, alias, dependency_project_id,
              delivery, dependency_version, source_hash, created_at
            ) values ($1, $2, $3, $4, $5, $6, $7, now())`,
           [
@@ -1410,7 +1410,7 @@ export class DatabaseRepository implements KVStore {
         );
       }
       await client.query(
-        `update workflows
+        `update projects
          set name = $2,
            latest_version = case when $4 then $3 else latest_version end,
            updated_at = now()
@@ -1427,14 +1427,14 @@ export class DatabaseRepository implements KVStore {
   }
 
   async markVersionLatest(input: { projectId: string; projectName: string; version: string }): Promise<void> {
-    await this.pool.query(`update workflows set name = $2, latest_version = $3, updated_at = now()
-      where id = $1 and exists (select 1 from workflow_versions where project_id = $1 and version = $3)`,
+    await this.pool.query(`update projects set name = $2, latest_version = $3, updated_at = now()
+      where id = $1 and exists (select 1 from project_versions where project_id = $1 and version = $3)`,
       [input.projectId, input.projectName, input.version]);
   }
 
   async deleteVersion(projectId: string, version: string): Promise<void> {
     await this.pool.query(
-      `delete from workflow_versions
+      `delete from project_versions
        where project_id = $1 and version = $2`,
       [projectId, version],
     );
@@ -1445,13 +1445,13 @@ export class DatabaseRepository implements KVStore {
     try {
       await client.query("begin");
       await client.query(
-        `update workflows
+        `update projects
          set name = $2, updated_at = now()
          where id = $1`,
         [projectId, projectName],
       );
       await client.query(
-        `update workflow_versions
+        `update project_versions
          set project_name = $2
          where project_id = $1`,
         [projectId, projectName],
@@ -1472,7 +1472,7 @@ export class DatabaseRepository implements KVStore {
     const result = await this.pool.query<VersionRow>(
       `select project_id, project_name, version, created_at, source_hash,
         source_object_path, release_log, created_by_user_id
-       from workflow_versions
+       from project_versions
        where project_id = $1 and version = $2`,
       [projectId, version],
     );
@@ -1488,7 +1488,7 @@ export class DatabaseRepository implements KVStore {
     const result = await this.pool.query<VersionRow>(
       `select project_id, project_name, version, created_at, source_hash,
         source_object_path, release_log, created_by_user_id
-       from workflow_versions
+       from project_versions
        where project_id = $1
        order by version asc`,
       [projectId],
@@ -1509,7 +1509,7 @@ export class DatabaseRepository implements KVStore {
 
   async listVersionDownloadCounts(projectId: string): Promise<Map<string, number>> {
     const result = await this.pool.query<{ version: string; download_count: string }>(
-      `select version, download_count from workflow_version_downloads where project_id = $1`,
+      `select version, download_count from project_version_downloads where project_id = $1`,
       [projectId],
     );
     return new Map(result.rows.map(row => [row.version, Number(row.download_count)]));
@@ -1518,16 +1518,16 @@ export class DatabaseRepository implements KVStore {
   async recordSourceDownloads(downloads: readonly { projectId: string; version: string }[]): Promise<void> {
     if (downloads.length === 0) return;
     await this.pool.query(
-      `insert into workflow_version_downloads (project_id, version, download_count)
+      `insert into project_version_downloads (project_id, version, download_count)
        select project_id, version, 1
        from (
          select distinct project_id, version
          from unnest($1::text[], $2::text[]) as downloads(project_id, version)
        ) as downloads
-       inner join workflow_versions using (project_id, version)
+       inner join project_versions using (project_id, version)
        order by project_id, version
        on conflict (project_id, version) do update
-       set download_count = workflow_version_downloads.download_count + 1`,
+       set download_count = project_version_downloads.download_count + 1`,
       [downloads.map(item => item.projectId), downloads.map(item => item.version)],
     );
   }
@@ -1540,9 +1540,9 @@ export class DatabaseRepository implements KVStore {
     const versionFilter = version === undefined ? "" : " and version = $2";
     if (version !== undefined) values.push(version);
     const result = await this.pool.query<VersionDependencyRow>(
-      `select version, alias, project_id, delivery,
+      `select version, alias, dependency_project_id, delivery,
         dependency_version, source_hash
-       from workflow_related_project_dependencies
+       from related_project_dependencies
        where project_id = $1${versionFilter}
        order by version asc, alias asc`,
       values,
@@ -1562,7 +1562,7 @@ export class DatabaseRepository implements KVStore {
 
     const result = await this.pool.query<VersionSummaryRow>(
       `select project_id, project_name, version
-       from workflow_versions
+       from project_versions
        where project_id = any($1::text[])
        order by project_id asc, version asc`,
       [projectIds],
@@ -1588,14 +1588,14 @@ export class DatabaseRepository implements KVStore {
     const [configurationsResult, activeResult] = await Promise.all([
       this.pool.query<KanbanConfigurationRow>(
         `select configuration_id, name, values, created_at, updated_at
-         from workflow_kanban_configurations
+         from project_kanban_configurations
          where project_id = $1 and user_id = $2
          order by created_at asc, configuration_id asc`,
         [projectId, userId],
       ),
       this.pool.query<{ configuration_id: string }>(
         `select configuration_id
-         from workflow_kanban_active_configurations
+         from project_kanban_active_configurations
          where project_id = $1 and user_id = $2`,
         [projectId, userId],
       ),
@@ -1625,12 +1625,12 @@ export class DatabaseRepository implements KVStore {
         [projectId, userId],
       );
       await client.query(
-        `insert into workflow_kanban_configurations (
+        `insert into project_kanban_configurations (
            project_id, user_id, configuration_id, name, values, created_at, updated_at
          )
          select $1, $2, $3, $4, $5::jsonb, $6, $7
          where not exists (
-           select 1 from workflow_kanban_configurations where project_id = $1 and user_id = $2
+           select 1 from project_kanban_configurations where project_id = $1 and user_id = $2
          )`,
         [
           projectId,
@@ -1643,9 +1643,9 @@ export class DatabaseRepository implements KVStore {
         ],
       );
       await client.query(
-        `insert into workflow_kanban_active_configurations (project_id, user_id, configuration_id)
+        `insert into project_kanban_active_configurations (project_id, user_id, configuration_id)
          select project_id, user_id, configuration_id
-         from workflow_kanban_configurations
+         from project_kanban_configurations
          where project_id = $1 and user_id = $2
          order by created_at asc, configuration_id asc
          limit 1
@@ -1667,7 +1667,7 @@ export class DatabaseRepository implements KVStore {
     configuration: KanbanConfigurationRecord,
   ): Promise<void> {
     await this.pool.query(
-      `insert into workflow_kanban_configurations (
+      `insert into project_kanban_configurations (
          project_id, user_id, configuration_id, name, values, created_at, updated_at
        ) values ($1, $2, $3, $4, $5::jsonb, $6, $7)
        on conflict (project_id, user_id, configuration_id) do update set
@@ -1692,7 +1692,7 @@ export class DatabaseRepository implements KVStore {
     configurationId: string,
   ): Promise<void> {
     await this.pool.query(
-      `insert into workflow_kanban_active_configurations (project_id, user_id, configuration_id)
+      `insert into project_kanban_active_configurations (project_id, user_id, configuration_id)
        values ($1, $2, $3)
        on conflict (project_id, user_id) do update set configuration_id = excluded.configuration_id`,
       [projectId, userId, configurationId],
@@ -1705,7 +1705,7 @@ export class DatabaseRepository implements KVStore {
     configurationId: string,
   ): Promise<void> {
     await this.pool.query(
-      `delete from workflow_kanban_configurations
+      `delete from project_kanban_configurations
        where project_id = $1 and user_id = $2 and configuration_id = $3`,
       [projectId, userId, configurationId],
     );
@@ -2592,7 +2592,7 @@ export class DatabaseRepository implements KVStore {
   }
 
   async deleteWorkflow(projectId: string): Promise<void> {
-    await this.pool.query("delete from workflows where id = $1", [projectId]);
+    await this.pool.query("delete from projects where id = $1", [projectId]);
   }
 }
 
@@ -2610,7 +2610,7 @@ export function createObjectPath(options: {
   fileName: "source.tar.gz";
 }): string {
   return [
-    "workflows",
+    "projects",
     options.projectId,
     options.version,
     options.hash,
@@ -2658,7 +2658,7 @@ interface VersionSummaryRow {
 interface VersionDependencyRow {
   version: string;
   alias: string;
-  project_id: string;
+  dependency_project_id: string;
   delivery: string;
   dependency_version: string | null;
   source_hash: string | null;
@@ -2805,7 +2805,7 @@ function toWorkflowProjectDependencyLock(
   const delivery = row.delivery === "included" ? "included" as const : "external" as const;
   return {
     alias: row.alias,
-    projectId: row.project_id,
+    projectId: row.dependency_project_id,
     delivery,
     ...(delivery === "included" && row.dependency_version
       ? { version: row.dependency_version }

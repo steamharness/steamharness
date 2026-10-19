@@ -16,7 +16,7 @@ tags:
     description: Health check.
   - name: Auth & Accounts
     description: Login, session, device flow, user, role, and API Key.
-  - name: Admin Workflows
+  - name: Admin Projects
     description: Project source, version and metadata management.
   - name: Admin Files
     description: Project file upload, read, download and deletion.
@@ -694,7 +694,7 @@ paths:
               - active
               - disabled
               - invited
-          description: Filter by Workflow account status.
+          description: Filter by project account status.
         - name: page
           in: query
           schema:
@@ -836,19 +836,19 @@ paths:
   /api/projects:
     get:
       tags:
-        - Admin Workflows
-      summary: List workflow
-      operationId: listWorkflows
+        - Admin Projects
+      summary: List projects
+      operationId: listProjects
       responses:
         "200":
-          description: workflow Summary list.
+          description: Project summary list.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/SummaryListResponse"
     post:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Atomically create a server project with a specified UUID
       description: |
         An authenticated user or administrator creates or recovers a same-UUID server project from the UUID in local
@@ -858,13 +858,13 @@ paths:
         perform a second metadata synchronization, or accept project source. If the same account already manages
         the project, an identical UUID, name, and type recovers the binding and refreshes the declaration; other
         conflicts return `409`.
-      operationId: createWorkflowProject
+      operationId: createProject
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateWorkflowProjectRequest"
+              $ref: "#/components/schemas/CreateProjectRequest"
             example:
               projectId: 8bd4fef2-e083-4201-a89f-6f7d0676df53
               name: "@steamharness/hello-workflow"
@@ -900,7 +900,7 @@ paths:
   /api/project-storage:
     post:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Access current-project or related-project storage
       description: |
         `context.storage.server.kv` and `context.storage.server.persistentValue` share this HTTP endpoint, while
@@ -1011,7 +1011,7 @@ paths:
   /api/token-usage:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Read system token usage
       operationId: getSystemTokenUsage
       parameters:
@@ -1039,7 +1039,7 @@ paths:
   /api/audit-events:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Read Global Audit Log
       operationId: listAuditEvents
       parameters:
@@ -1103,9 +1103,9 @@ paths:
   /api/projects/{projectId}/init:
     post:
       tags:
-        - Admin Workflows
-      summary: Initialize from file workflow
-      operationId: initWorkflow
+        - Admin Projects
+      summary: Initialize a project from files
+      operationId: initProject
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       requestBody:
@@ -1137,9 +1137,9 @@ paths:
   /api/projects/{projectId}/preparations/latest:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Querying the Latest Server Preparation Tasks
-      operationId: getLatestWorkflowPreparation
+      operationId: getLatestProjectPreparation
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       responses:
@@ -1154,9 +1154,9 @@ paths:
   /api/projects/{projectId}/preparations/{jobId}:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Query Server Preparation Tasks
-      operationId: getWorkflowPreparation
+      operationId: getProjectPreparation
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: jobId
@@ -1177,9 +1177,9 @@ paths:
   /api/projects/{projectId}/package:
     post:
       tags:
-        - Admin Workflows
-      summary: Upload workflow package
-      operationId: uploadWorkflowPackage
+        - Admin Projects
+      summary: Upload a project package
+      operationId: uploadProjectPackage
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: fileName
@@ -1213,9 +1213,9 @@ paths:
   /api/projects/{projectId}/files:
     get:
       tags:
-        - Admin Workflows
-      summary: Read workflow source file
-      operationId: getWorkflowFiles
+        - Admin Projects
+      summary: Read a project source file
+      operationId: getProjectFiles
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - $ref: "#/components/parameters/TargetQuery"
@@ -1238,7 +1238,7 @@ paths:
       tags:
         - Admin Files
       summary: Upload project file
-      operationId: uploadWorkflowFile
+      operationId: uploadProjectFile
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: fileName
@@ -1282,12 +1282,12 @@ paths:
   /api/projects/{projectId}/project-card-image:
     post:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Upload project card image
       description: |
         Upload the WebP generated after the client completes 1:1 clipping. The caller must have project management privileges.
         Server After checking the format and size, it is saved by content hash and returns a public, immutable image URL.
-      operationId: uploadWorkflowProjectCardImage
+      operationId: uploadProjectCardImage
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       requestBody:
@@ -1319,14 +1319,14 @@ paths:
   /api/projects/{projectId}/project-card:
     put:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Update project card metadata
       description: |
         Save full pure visual `projectCard`, accept only icon, image URL, icon color and background color.
         After uploading the custom image, the client writes the URL returned by the image interface into `iconUrl` and then calls this interface;
         Omitting `iconUrl` restores the built-in icon presentation. Project type comes from the static `package.json.steamHarness.projectType` declaration;
         It cannot be modified through this interface.
-      operationId: updateWorkflowProjectCard
+      operationId: updateProjectCard
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       requestBody:
@@ -1360,13 +1360,13 @@ paths:
   /api/projects/{projectId}/source-files:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Download a localizable snapshot of the published source code
       description: Download a published immutable source snapshot with separate source
         download permission. No platform restriction. A successfully sent GET
         response adds one download to the exact returned version. HEAD, failed
         and interrupted responses are not counted.
-      operationId: getWorkflowDownloadableSourceFiles
+      operationId: getDownloadableSourceFiles
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: target
@@ -1390,12 +1390,12 @@ paths:
   /api/deployments:
     post:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Create a project group deployment plan
       description: |
         Reserved exact versions for one Kanban root item and the selected Workflow data source. The project team contains only source packages,
         does not contain KV, scheduled schedules, run history, environment variables, or host user configuration.
-      operationId: createWorkflowProjectGroupDeployment
+      operationId: createProjectGroupDeployment
       requestBody:
         required: true
         content:
@@ -1422,9 +1422,9 @@ paths:
   /api/deployments/{deploymentId}:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Query project group deployment progress
-      operationId: getWorkflowProjectGroupDeployment
+      operationId: getProjectGroupDeployment
       parameters:
         - $ref: "#/components/parameters/DeploymentId"
       responses:
@@ -1439,12 +1439,12 @@ paths:
   /api/deployments/{deploymentId}/package:
     post:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Upload project group source code package
       description: |
         Upload `project-group` v1 tar.gz. Server Checklist, Common File Members, Expand Size, Per Item Type
         and source hash; interrupted `preparing` deployments can be resubmitted using the full package.
-      operationId: uploadWorkflowProjectGroupPackage
+      operationId: uploadProjectGroupPackage
       parameters:
         - $ref: "#/components/parameters/DeploymentId"
         - name: fileName
@@ -1474,13 +1474,13 @@ paths:
   /api/deployments/{deploymentId}/publish:
     post:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Release Project Team
       description: |
         Included related projects publish first, and the Kanban root version publishes and activates last. An
         interrupted publication can resume idempotently. The root snapshot is published only after every dependency succeeds,
         reciprocal relations remain confirmed, and the dependency lock is finalized.
-      operationId: publishWorkflowProjectGroup
+      operationId: publishProjectGroup
       parameters:
         - $ref: "#/components/parameters/DeploymentId"
       responses:
@@ -1495,9 +1495,9 @@ paths:
   /api/projects/{projectId}/dependencies:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Query the project dependency status of the exact version.
-      operationId: getWorkflowProjectDependencies
+      operationId: getProjectDependencies
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: target
@@ -1517,7 +1517,7 @@ paths:
   /api/projects/{projectId}/project-group-download:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Download the exact project group source code
       description: |
         The root project and included dependencies with permissions are returned by the exact version in the dependency lock. No permission dependency will be included.
@@ -1526,7 +1526,7 @@ paths:
         `sourceHash` from file paths and original bytes before writing to disk.
         A successfully sent GET response adds one download to each exact project version actually returned,
         deduplicated within the response. Skipped dependencies are not counted. HEAD, failed and interrupted responses are not counted.
-      operationId: downloadWorkflowProjectGroup
+      operationId: downloadProjectGroup
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: target
@@ -1550,11 +1550,11 @@ paths:
   /api/projects/{projectId}/related-projects:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: List a project's general related projects
       description: Returns the current declaration, target name, reciprocal alias and
         grant, and confirmation state. A pending relation grants no KV access.
-      operationId: listWorkflowRelatedProjects
+      operationId: listRelatedProjects
       parameters:
         - $ref: "#/components/parameters/ProjectId"
       responses:
@@ -1567,14 +1567,14 @@ paths:
   /api/projects/{projectId}/related-projects/{alias}:
     put:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Create or update a general project relation
       description: |
         The current project must be manageable. If the caller can also manage the target, `targetAlias` is required
         and Server updates both projects in one transaction. Otherwise only the current declaration is saved and
         remains pending. Each grant means "allow the other project to access the current project" and defaults to
         `read: all`, `write: none` when omitted.
-      operationId: setWorkflowRelatedProject
+      operationId: setRelatedProject
       parameters:
         - $ref: "#/components/parameters/ProjectId"
         - $ref: "#/components/parameters/RelatedProjectAlias"
@@ -1599,12 +1599,12 @@ paths:
           $ref: "#/components/responses/HarnessError"
     delete:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Delete a general project relation
       description: Deletes both declarations transactionally when the target is
         manageable; otherwise deletes only the current side. Relation access
         becomes invalid immediately.
-      operationId: deleteWorkflowRelatedProject
+      operationId: deleteRelatedProject
       parameters:
         - $ref: "#/components/parameters/ProjectId"
         - $ref: "#/components/parameters/RelatedProjectAlias"
@@ -1618,9 +1618,9 @@ paths:
   /api/projects/{projectId}/source-access-requests:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: List source access requests and authorizations
-      operationId: listWorkflowSourceAccessRequests
+      operationId: listSourceAccessRequests
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       responses:
@@ -1634,9 +1634,9 @@ paths:
   /api/projects/{projectId}/source-access-requests/{requestId}:
     patch:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Approve source code access request
-      operationId: resolveWorkflowSourceAccessRequest
+      operationId: resolveSourceAccessRequest
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: requestId
@@ -1672,9 +1672,9 @@ paths:
   /api/projects/{projectId}/source-capabilities/{userId}:
     delete:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Revoke the user's ability to download the project source code.
-      operationId: revokeWorkflowSourceCapability
+      operationId: revokeSourceCapability
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: userId
@@ -1692,9 +1692,9 @@ paths:
   /api/project-source-access/{token}:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Analyze the short-term source code application link.
-      operationId: getWorkflowSourceAccessLink
+      operationId: getSourceAccessLink
       parameters:
         - name: token
           in: path
@@ -1713,9 +1713,9 @@ paths:
   /api/project-source-access/{token}/requests:
     post:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Submit source code download permission application
-      operationId: createWorkflowSourceAccessRequest
+      operationId: createSourceAccessRequest
       parameters:
         - name: token
           in: path
@@ -1747,12 +1747,12 @@ paths:
   /project-card-images/{projectId}/{fileName}:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Read public project card picture
       description: Reads immutable WebP saved by content hash for project lists and
         Desktop surfaces.
       security: []
-      operationId: getWorkflowProjectCardImage
+      operationId: getProjectCardImage
       parameters:
         - name: projectId
           in: path
@@ -1832,7 +1832,7 @@ paths:
       tags:
         - Admin Files
       summary: Read or download project files
-      operationId: getWorkflowFile
+      operationId: getFile
       parameters:
         - name: fileId
           in: path
@@ -1857,7 +1857,7 @@ paths:
       tags:
         - Admin Files
       summary: Delete project file
-      operationId: deleteWorkflowFile
+      operationId: deleteFile
       parameters:
         - name: fileId
           in: path
@@ -1882,7 +1882,7 @@ paths:
   /api/projects/{projectId}/kanban:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Read Kanban Workspace
       description: |
         Read fixed target static product directories, HTML entries, manifests, named configurations for current user isolation, and short-term preview capability.
@@ -1903,7 +1903,7 @@ paths:
   /api/projects/{projectId}/kanban/bridge:
     post:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Call Kanban project data Bridge
       description: |
         Project readers may perform read operations; writes require project management access. Server first verifies that target
@@ -1945,7 +1945,7 @@ paths:
   /api/projects/{projectId}/kanban/related-project-revisions:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Subscribe to Server Web Kanban related-project revisions
       description: |
         Server-Sent Events returns a full snapshot and subsequent changes for direct related projects. Server resolves
@@ -1982,7 +1982,7 @@ paths:
   /api/projects/{projectId}/kanban/previews/{capability}/{nonce}/{target}/{assetPath}:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Read capability-protected Kanban static resources
       description: |
         Uses the short-lived capability issued by the workspace endpoint to read resources from a fixed version. `assetPath` may be
@@ -2041,7 +2041,7 @@ paths:
   /api/projects/{projectId}/kanban/configurations:
     post:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: New or Copy Kanban Configuration
       operationId: createKanbanConfiguration
       parameters:
@@ -2065,7 +2065,7 @@ paths:
   /api/projects/{projectId}/kanban/configurations/{configurationId}:
     patch:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Rename Kanban configuration or save parameter values
       operationId: updateKanbanConfiguration
       parameters:
@@ -2090,7 +2090,7 @@ paths:
           $ref: "#/components/responses/HarnessError"
     delete:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Delete Kanban Configuration
       description: The last configuration cannot be deleted; deleting the active
         configuration selects the first remaining configuration.
@@ -2111,7 +2111,7 @@ paths:
   /api/projects/{projectId}/kanban/active-configuration:
     put:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Toggle Active Kanban Configuration
       operationId: selectKanbanConfiguration
       parameters:
@@ -2134,9 +2134,9 @@ paths:
   /api/projects/{projectId}/draft/files:
     put:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Save server draft file
-      operationId: saveWorkflowDraftFiles
+      operationId: saveDraftFiles
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       requestBody:
@@ -2166,9 +2166,9 @@ paths:
   /api/projects/{projectId}/clone:
     post:
       tags:
-        - Admin Workflows
-      summary: Clone workflow
-      operationId: cloneWorkflow
+        - Admin Projects
+      summary: Clone a project
+      operationId: cloneProject
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       requestBody:
@@ -2195,16 +2195,16 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CloneWorkflowResultResponse"
+                $ref: "#/components/schemas/CloneProjectResultResponse"
   /api/projects/{projectId}/project-info:
     put:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Synchronize the default project name and presentation declarations
       description: |
         Synchronizes the local root `package.json` `name` and `steamHarness.projectInfo` to an already bound
         project. Presentation declarations and platforms are display metadata and do not restrict source upload or download.
-      operationId: updateWorkflowProjectInfo
+      operationId: updateProjectInfo
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       requestBody:
@@ -2218,7 +2218,7 @@ paths:
                   type: string
                   minLength: 1
                 projectInfo:
-                  $ref: "#/components/schemas/DeclaredWorkflowProjectInfo"
+                  $ref: "#/components/schemas/DeclaredProjectInfo"
               required:
                 - name
                 - projectInfo
@@ -2238,9 +2238,9 @@ paths:
   /api/projects/{projectId}/info:
     patch:
       tags:
-        - Admin Workflows
-      summary: Update workflow display information
-      operationId: updateWorkflowInfo
+        - Admin Projects
+      summary: Update project display information
+      operationId: updateProjectDisplayInfo
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       requestBody:
@@ -2255,7 +2255,7 @@ paths:
                   example: latest
                 displayName:
                   type: string
-                  example: Smoke Workflow
+                  example: Smoke Project
               required:
                 - displayName
       responses:
@@ -2264,13 +2264,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/UpdateWorkflowInfoResultResponse"
+                $ref: "#/components/schemas/UpdateProjectDisplayInfoResultResponse"
   /api/projects/{projectId}:
     delete:
       tags:
-        - Admin Workflows
-      summary: Delete workflow
-      operationId: deleteWorkflow
+        - Admin Projects
+      summary: Delete a project
+      operationId: deleteProject
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       responses:
@@ -2279,16 +2279,16 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DeleteWorkflowResultResponse"
+                $ref: "#/components/schemas/DeleteProjectResultResponse"
   /api/projects/{projectId}/publish:
     post:
       tags:
-        - Admin Workflows
-      summary: Publish workflow version
+        - Admin Projects
+      summary: Publish a project version
       description: Publish the draft package version as an immutable source snapshot
         and update latest. Duplicate versions return 409. Project code is never
         installed, built or loaded.
-      operationId: publishWorkflow
+      operationId: publishProject
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       requestBody:
@@ -2323,9 +2323,9 @@ paths:
   /api/projects/{projectId}/members:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: List Project Members
-      operationId: listWorkflowProjectMembers
+      operationId: listProjectMembers
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       responses:
@@ -2340,12 +2340,12 @@ paths:
   /api/projects/{projectId}/members/{userId}:
     put:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Set up project member roles
       description: |
         owner and manager can grant manager/writer/viewer; this interface does not support transferring owners.
         manager also cannot promote other members to owner.
-      operationId: setWorkflowProjectMember
+      operationId: setProjectMember
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - $ref: "#/components/parameters/UserId"
@@ -2377,9 +2377,9 @@ paths:
           $ref: "#/components/responses/HarnessError"
     delete:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Delete Project Members
-      operationId: deleteWorkflowProjectMember
+      operationId: deleteProjectMember
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - $ref: "#/components/parameters/UserId"
@@ -2397,9 +2397,9 @@ paths:
   /api/projects/{projectId}/invitations:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: List project invitations
-      operationId: listWorkflowProjectInvitations
+      operationId: listProjectInvitations
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       responses:
@@ -2414,12 +2414,12 @@ paths:
           $ref: "#/components/responses/HarnessError"
     post:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Generate Project Invitation Link
       description: |
         The owner / manager can generate a single valid invitation token that expires in 7 days. The owner role cannot be granted by invitation.
         API returns token only; the inviter needs to splice `${origin}/invite/${token}` and send the link to a colleague.
-      operationId: createWorkflowProjectInvitation
+      operationId: createProjectInvitation
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       requestBody:
@@ -2450,9 +2450,9 @@ paths:
   /api/projects/{projectId}/invitations/{invitationId}:
     delete:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Withdrawal of unaccepted invitations
-      operationId: revokeWorkflowProjectInvitation
+      operationId: revokeProjectInvitation
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: invitationId
@@ -2479,12 +2479,12 @@ paths:
   /api/invitations/{token}:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: View Invitation Details
       description: |
         before accepting the invitation, you must call this operation to check whether the token is still valid. The token itself is the bear credential, and the interface can be accessed without logging in;
         Users who are not logged in can see the joining information through the returned `project.name` and `invitation.role`, and then be directed to the login.
-      operationId: lookupWorkflowProjectInvitation
+      operationId: lookupProjectInvitation
       parameters:
         - name: token
           in: path
@@ -2503,12 +2503,12 @@ paths:
   /api/invitations/{token}/accept:
     post:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Accept project invitation
       description: |
         The caller must be a logged in user. After successful acceptance, the user is added to the project member table, and the corresponding role is determined by the invitation.
         Each token can only be accepted once; a second request after acceptance returns a 409.
-      operationId: acceptWorkflowProjectInvitation
+      operationId: acceptProjectInvitation
       parameters:
         - name: token
           in: path
@@ -2538,9 +2538,9 @@ paths:
   /api/projects/{projectId}/visibility:
     patch:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Update project visibility
-      operationId: updateWorkflowProjectVisibility
+      operationId: updateProjectVisibility
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       requestBody:
@@ -2558,7 +2558,7 @@ paths:
               visibility: public
       responses:
         "200":
-          description: The updated workflow summary.
+          description: The updated project summary.
           content:
             application/json:
               schema:
@@ -2570,9 +2570,9 @@ paths:
   /api/projects/{projectId}/versions:
     get:
       tags:
-        - Admin Workflows
-      summary: List workflow versions
-      operationId: listWorkflowVersions
+        - Admin Projects
+      summary: List projects versions
+      operationId: listProjectVersions
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       responses:
@@ -2585,13 +2585,13 @@ paths:
   /api/projects/{projectId}/data-summary:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Summarize project KV and knowledge data
       description: Requires authentication, project read access, and a storage
         declaration that permits server data access. Aggregates the complete
         project data without returning entry values, document content, or
         previews.
-      operationId: getWorkflowProjectDataSummary
+      operationId: getProjectDataSummary
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       responses:
@@ -2604,9 +2604,9 @@ paths:
   /api/projects/{projectId}/kv:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: List Items KV
-      operationId: listWorkflowKVEntries
+      operationId: listProjectKVEntries
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: pageSize
@@ -2660,9 +2660,9 @@ paths:
   /api/projects/{projectId}/kv/entry:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Read single item KV
-      operationId: getWorkflowKVEntry
+      operationId: getProjectKVEntry
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: scope
@@ -2694,7 +2694,7 @@ paths:
           description: KV does not exist.
     delete:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Delete single item KV
       description: |
         Deletes one existing KV entry, addressed exactly by `scope` + `key` (conversation scope
@@ -2702,7 +2702,7 @@ paths:
         recycle bin for this step. It advances the project storage revision, which is how
         subscribers such as Desktop drop their mirrored entry. Requires project manage access and
         `kv.manage`; a missing entry returns 404.
-      operationId: deleteWorkflowKVEntry
+      operationId: deleteProjectKVEntry
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: scope
@@ -2753,7 +2753,7 @@ paths:
   /api/projects/{projectId}/knowledge-documents:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: List project knowledge base documents
       operationId: listKnowledgeDocuments
       parameters:
@@ -2776,7 +2776,7 @@ paths:
       responses:
         "200":
           description: A paginated summary list of knowledge base documents markdown
-            within the current workflow project, with no body markdown.
+            within the current project, with no body markdown.
           content:
             application/json:
               schema:
@@ -2786,7 +2786,7 @@ paths:
             repository is not available.
     post:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: New Project Knowledge Base Document
       operationId: createKnowledgeDocument
       parameters:
@@ -2825,7 +2825,7 @@ paths:
   /api/projects/{projectId}/knowledge-documents/search:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Find project knowledge base documentation
       operationId: searchKnowledgeDocuments
       parameters:
@@ -2902,7 +2902,7 @@ paths:
   /api/projects/{projectId}/knowledge-documents/{documentId}/lines:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Read the specified line range of the project knowledge base document
       operationId: readKnowledgeDocumentLines
       parameters:
@@ -2944,7 +2944,7 @@ paths:
   /api/projects/{projectId}/knowledge-documents/{documentId}:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Read project knowledge base documentation
       operationId: getKnowledgeDocument
       parameters:
@@ -2968,7 +2968,7 @@ paths:
             repository is not available.
     put:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Edit Project Knowledge Base Document
       operationId: editKnowledgeDocument
       parameters:
@@ -3011,7 +3011,7 @@ paths:
             repository is not available.
     delete:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Delete project knowledge base document
       operationId: deleteKnowledgeDocument
       parameters:
@@ -3034,9 +3034,9 @@ paths:
   /api/projects/{projectId}/token-usage:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Read project token usage
-      operationId: getWorkflowTokenUsage
+      operationId: getProjectTokenUsage
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: conversationId
@@ -3061,7 +3061,7 @@ paths:
   /api/projects/{projectId}/source-share:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Read static metadata for a shared version
       description: Requires sign-in and separate source download permission, including
         project-level source grants. Reads an exact published version without
@@ -3096,7 +3096,7 @@ paths:
   /api/projects/{projectId}/source-archive:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: Download an immutable source archive
       description: A successfully sent GET response adds one download to the exact
         returned version. latest counts toward the resolved version. HEAD,
@@ -5053,7 +5053,7 @@ components:
               $ref: "#/components/schemas/PreparationJob"
           required:
             - data
-    CreateWorkflowProjectRequest:
+    CreateProjectRequest:
       type: object
       properties:
         projectId:
@@ -5066,7 +5066,7 @@ components:
         projectType:
           $ref: "#/components/schemas/ProjectKind"
         projectInfo:
-          $ref: "#/components/schemas/DeclaredWorkflowProjectInfo"
+          $ref: "#/components/schemas/DeclaredProjectInfo"
         visibility:
           $ref: "#/components/schemas/Visibility"
         projectCard:
@@ -5248,7 +5248,7 @@ components:
       type: object
       description: |
         Authoritative project metadata model. Legacy read responses may carry null `dataStorage`; create
-        and save requests use `DeclaredWorkflowProjectInfo` with an explicit valid mode. Current clients
+        and save requests use `DeclaredProjectInfo` with an explicit valid mode. Current clients
         recognize `zh-CN`, `en`, `multilingual`, `multiplatform`, `macos`, `windows`, and `web`; future
         locale and identifier values that match the contract are preserved unchanged.
       properties:
@@ -5296,7 +5296,7 @@ components:
       required:
         - mode
       additionalProperties: false
-    DeclaredWorkflowProjectInfo:
+    DeclaredProjectInfo:
       allOf:
         - $ref: "#/components/schemas/ProjectInfoContract"
         - type: object
@@ -5311,7 +5311,7 @@ components:
         name:
           type: string
         projectInfo:
-          $ref: "#/components/schemas/DeclaredWorkflowProjectInfo"
+          $ref: "#/components/schemas/DeclaredProjectInfo"
       required:
         - name
         - projectInfo
@@ -5568,7 +5568,7 @@ components:
         projectType:
           $ref: "#/components/schemas/ProjectKind"
         projectInfo:
-          $ref: "#/components/schemas/DeclaredWorkflowProjectInfo"
+          $ref: "#/components/schemas/DeclaredProjectInfo"
         visibility:
           $ref: "#/components/schemas/Visibility"
       required:
@@ -5672,7 +5672,7 @@ components:
               $ref: "#/components/schemas/PublishResult"
           required:
             - data
-    CloneWorkflowResult:
+    CloneProjectResult:
       type: object
       properties:
         projectId:
@@ -5691,16 +5691,16 @@ components:
         - sourceTarget
         - resolvedSourceTarget
         - nextVersion
-    CloneWorkflowResultResponse:
+    CloneProjectResultResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/CloneWorkflowResult"
+              $ref: "#/components/schemas/CloneProjectResult"
           required:
             - data
-    UpdateWorkflowInfoResult:
+    UpdateProjectDisplayInfoResult:
       type: object
       properties:
         projectId:
@@ -5716,16 +5716,16 @@ components:
         - projectName
         - target
         - resolvedTarget
-    UpdateWorkflowInfoResultResponse:
+    UpdateProjectDisplayInfoResultResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/UpdateWorkflowInfoResult"
+              $ref: "#/components/schemas/UpdateProjectDisplayInfoResult"
           required:
             - data
-    DeleteWorkflowResultResponse:
+    DeleteProjectResultResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object

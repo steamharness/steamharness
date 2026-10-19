@@ -1074,10 +1074,10 @@ async function packWorkflow(
   options: { projectGroupSafe?: boolean } = {},
 ): Promise<string> {
   const repoRoot = resolveRepoRoot();
-  const workflowDir = sourcePath === undefined
+  const projectDir = sourcePath === undefined
     ? path.join(repoRoot, "workspace", "workflow", projectName)
     : path.resolve(sourcePath);
-  await readPackageJsonFile(path.join(workflowDir, "package.json"));
+  await readPackageJsonFile(path.join(projectDir, "package.json"));
   // Packaged App uploads run the workspace CLI from app.asar, so
   // temporary packs must be writable and sibling workflow imports should be
   // resolved relative to the explicit --path source directory.
@@ -1090,7 +1090,7 @@ async function packWorkflow(
     : path.join(packsDir, `${projectName}-${createTimestamp()}.tgz`);
   const workspaceRoot = sourcePath === undefined
     ? path.join(repoRoot, "workspace", "workflow")
-    : path.dirname(workflowDir);
+    : path.dirname(projectDir);
 
   await rm(path.dirname(stagingDir), { recursive: true, force: true });
   await mkdir(path.join(stagingDir, "workspace", "workflow"), { recursive: true });
@@ -1099,7 +1099,7 @@ async function packWorkflow(
   // source imports so the downloaded project can resolve workspace-local modules.
   await stageWorkflowWithLocalDependencies({
     workspaceRoot,
-    workflowDir,
+    projectDir,
     projectName,
     stagingRoot: path.join(stagingDir, "workspace", "workflow"),
     projectGroupSafe: options.projectGroupSafe === true,
@@ -1183,7 +1183,7 @@ async function readProjectGroupContexts(options: {
       alias,
     });
     const existing = dependenciesByProject.get(relation.projectId);
-    if (existing !== undefined && existing.packageContext.workflowDir !== context.workflowDir) {
+    if (existing !== undefined && existing.packageContext.projectDir !== context.projectDir) {
       throw new Error(i18n.t("dependencyProjectPathConflict", {
         ns: "cli",
         projectId: JSON.stringify(relation.projectId),
@@ -1227,7 +1227,7 @@ async function packProjectGroup(options: {
     await packWorkflow(
       contexts.root.workflowArg,
       path.join(groupRoot, ...rootArchivePath.split("/")),
-      contexts.root.workflowDir,
+      contexts.root.projectDir,
       { projectGroupSafe: true },
     );
     for (const dependency of contexts.dependencies) {
@@ -1242,7 +1242,7 @@ async function packProjectGroup(options: {
       await packWorkflow(
         dependency.packageContext.workflowArg,
         path.join(groupRoot, ...dependencyArchivePath.split("/")),
-        dependency.packageContext.workflowDir,
+        dependency.packageContext.projectDir,
         { projectGroupSafe: true },
       );
     }
@@ -1358,10 +1358,10 @@ async function readWorkflowPackageContext(
   sourcePath: string | undefined,
 ): Promise<PackageContext> {
   const repoRoot = resolveRepoRoot();
-  const workflowDir = sourcePath === undefined
+  const projectDir = sourcePath === undefined
     ? path.join(repoRoot, "workspace", "workflow", workflowArg)
     : path.resolve(sourcePath);
-  const packageJsonPath = path.join(workflowDir, "package.json");
+  const packageJsonPath = path.join(projectDir, "package.json");
   const packageJson = await readPackageJsonFile(packageJsonPath);
   const projectId = typeof packageJson.id === "string" && isWorkflowUuid(packageJson.id)
     ? packageJson.id.trim()
@@ -1371,7 +1371,7 @@ async function readWorkflowPackageContext(
 
   return {
     workflowArg,
-    workflowDir,
+    projectDir,
     packageJsonPath,
     projectId,
     projectName,
@@ -1606,7 +1606,7 @@ async function copyWorkflowSource(
 
 async function stageWorkflowWithLocalDependencies(options: {
   workspaceRoot: string;
-  workflowDir: string;
+  projectDir: string;
   projectName: string;
   stagingRoot: string;
   projectGroupSafe?: boolean;
@@ -1622,7 +1622,7 @@ async function stageWorkflowWithLocalDependencies(options: {
     visited.add(currentProjectName);
 
     const sourceDir = currentProjectName === options.projectName
-      ? options.workflowDir
+      ? options.projectDir
       : path.join(options.workspaceRoot, currentProjectName);
     if (!existsSync(path.join(sourceDir, "package.json"))) {
       throw new Error(i18n.t("localDependencyMissingPackage", {
@@ -1878,7 +1878,7 @@ interface ProjectCreateResult {
 
 interface PackageContext {
   workflowArg: string;
-  workflowDir: string;
+  projectDir: string;
   packageJsonPath: string;
   projectId?: string;
   projectName: string;

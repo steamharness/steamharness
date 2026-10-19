@@ -90,12 +90,12 @@ interface TargetSteamHarnessStorageApi {
     source?: { projectId?: string; runId?: string; conversationId?: string };
   }): CliWorkflowKVNamespace;
   inspectLocalWorkflowStructure?(options: {
-    workflowDir?: string;
+    projectDir?: string;
     projectName?: string;
   }): { entrypoints?: Array<{ id: string; title?: string; description?: string }> };
   readEntrypointOutput?(data: unknown): unknown;
   runLocalWorkflowWithReport?(options: {
-    workflowDir?: string;
+    projectDir?: string;
     projectName?: string;
     entrypointId?: string;
     args?: string[];
@@ -319,7 +319,7 @@ function createLocalProjectRunner(options: {
 
   return {
     async listEntrypoints() {
-      const structure = inspect({ workflowDir: projectDir });
+      const structure = inspect({ projectDir: projectDir });
       return (structure.entrypoints ?? []).map((entrypoint) => ({
         id: entrypoint.id,
         ...(entrypoint.title === undefined ? {} : { title: entrypoint.title }),
@@ -331,7 +331,7 @@ function createLocalProjectRunner(options: {
       // `server` storage keeps reading and writing the server, which is what
       // makes calling its entrypoints the same thing as running it itself.
       const report = await run({
-        workflowDir: projectDir,
+        projectDir: projectDir,
         entrypointId,
         args: [...args],
         storage: options.location === "server"

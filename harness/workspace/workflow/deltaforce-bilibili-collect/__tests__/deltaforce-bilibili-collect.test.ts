@@ -581,7 +581,7 @@ async function runWithMockEnv(options: {
   const kvStoreDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-bilibili-test-"));
   try {
     return await runLocalWorkflowWithReport({
-      workflowDir: path.resolve(process.cwd(), "workflow/deltaforce-bilibili-collect"),
+      projectDir: path.resolve(process.cwd(), "workflow/deltaforce-bilibili-collect"),
       projectName: "deltaforce-bilibili-collect",
       args: options.args,
       env: {

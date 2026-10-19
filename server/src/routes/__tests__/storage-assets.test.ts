@@ -87,7 +87,7 @@ test("storage asset route cannot serve private objects", async () => {
     // Objects that live in the same tree but must stay behind their own gates:
     // version artifacts and runner artifacts are capability-checked elsewhere.
     const privatePaths = [
-      path.join(root, "storage", "workflows", "demo", "1.0.0", "hash", "source.tar.gz"),
+      path.join(root, "storage", "projects", "demo", "1.0.0", "hash", "source.tar.gz"),
       path.join(root, "storage", "runner-artifacts", "sha256", "c".repeat(64)),
     ];
     for (const privatePath of privatePaths) {
@@ -96,7 +96,7 @@ test("storage asset route cannot serve private objects", async () => {
     }
 
     for (const pathname of [
-      `/storage/workflows/demo/1.0.0/hash/source.tar.gz`,
+      `/storage/projects/demo/1.0.0/hash/source.tar.gz`,
       `/storage/runner-artifacts/sha256/${"c".repeat(64)}`,
       `/storage/avatars/workflows/1.0.0/source.tar.gz`,
     ]) {

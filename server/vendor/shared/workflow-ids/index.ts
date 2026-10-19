@@ -47,9 +47,9 @@ export function createInvalidWorkflowUuidMessage(value: string, label = "workflo
   return `Invalid ${label} "${value}". Expected a UUID.`;
 }
 
-export function resolveWorkflowRoot(workflowsRoot: string, projectId: string): string {
+export function resolveWorkflowRoot(projectsRoot: string, projectId: string): string {
   const safeProjectId = assertSafeProjectId(projectId);
-  const root = path.resolve(workflowsRoot);
+  const root = path.resolve(projectsRoot);
   const resolved = path.resolve(root, safeProjectId);
   const rootPrefix = `${root}${path.sep}`;
 

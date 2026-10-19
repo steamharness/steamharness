@@ -278,7 +278,7 @@ describe("workflow MCP server", () => {
         runId: "run-1",
         status: "failed",
         error: {
-          code: "workflow_failed",
+          code: "project_failed",
           message: "Workflow returned an invalid pending input request.",
         },
       },
@@ -550,7 +550,7 @@ describe("workflow MCP server", () => {
       isError: true,
       structuredContent: {
         runId: "run-2",
-        error: { code: "workflow_failed", message: "Not available" },
+        error: { code: "project_failed", message: "Not available" },
       },
     });
 
@@ -563,7 +563,7 @@ describe("workflow MCP server", () => {
       isError: true,
       structuredContent: {
         runId: "run-rejected",
-        error: { code: "workflow_failed", message: "Execution was rejected" },
+        error: { code: "project_failed", message: "Execution was rejected" },
       },
     });
 

@@ -44,30 +44,30 @@ export async function listWorkspaceWorkflowProjects(workspaceRoot) {
     if (!entry.isDirectory()) {
       continue;
     }
-    const workflowDir = path.join(workspaceRoot, entry.name);
-    const packageJsonPath = path.join(workflowDir, "package.json");
+    const projectDir = path.join(workspaceRoot, entry.name);
+    const packageJsonPath = path.join(projectDir, "package.json");
     if (!existsSync(packageJsonPath)) {
       continue;
     }
 
     const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8"));
     if (!packageJson || typeof packageJson !== "object" || Array.isArray(packageJson)) {
-      throw new Error(`Workflow "${entry.name}" package.json must contain a JSON object.`);
+      throw new Error(`Project "${entry.name}" package.json must contain a JSON object.`);
     }
 
     const projectId = typeof packageJson.id === "string" ? packageJson.id.trim() : "";
     if (!isWorkflowUuid(projectId)) {
-      throw new Error(`Workflow "${entry.name}" package.json must include a UUID id.`);
+      throw new Error(`Project "${entry.name}" package.json must include a UUID id.`);
     }
 
     const projectName = typeof packageJson.name === "string" ? packageJson.name.trim() : "";
     if (projectName === "") {
-      throw new Error(`Workflow "${entry.name}" package.json must include string "name".`);
+      throw new Error(`Project "${entry.name}" package.json must include string "name".`);
     }
 
     projects.push({
       dirName: entry.name,
-      workflowDir,
+      projectDir,
       projectId,
       projectName,
     });
@@ -77,10 +77,10 @@ export async function listWorkspaceWorkflowProjects(workspaceRoot) {
 }
 
 export async function listLegacyLocalProjectIds(dataRoot) {
-  const workflowsRoot = path.join(dataRoot, "workflows");
+  const projectsRoot = path.join(dataRoot, "projects");
   let entries = [];
   try {
-    entries = await readdir(workflowsRoot, { withFileTypes: true });
+    entries = await readdir(projectsRoot, { withFileTypes: true });
   } catch (error) {
     if (isMissingPathError(error)) {
       return [];
@@ -149,7 +149,7 @@ export async function syncWorkspaceProjects(options) {
 
   try {
     const existingRows = (await pool.query(
-      "select id, name from workflows order by name asc, id asc",
+      "select id, name from projects order by name asc, id asc",
     )).rows;
     const existingProjectIdSet = new Set(
       existingRows
@@ -167,7 +167,7 @@ export async function syncWorkspaceProjects(options) {
         `select project_id as "projectId",
                 source_object_path as "sourceObjectPath",
                 runtime_object_path as "runtimeObjectPath"
-           from workflow_versions
+           from project_versions
           where project_id = any($1::text[])`,
         [legacyProjectIds],
       )).rows;
@@ -185,7 +185,7 @@ export async function syncWorkspaceProjects(options) {
           [legacyProjectIds],
         );
         await client.query(
-          "delete from workflows where id = any($1::text[])",
+          "delete from projects where id = any($1::text[])",
           [legacyProjectIds],
         );
         await client.query("commit");
@@ -367,7 +367,7 @@ async function packWorkflowProject(project, tempRoot, workspaceRoot) {
 
   await stageWorkflowWithLocalDependencies({
     workspaceRoot,
-    workflowDir: project.workflowDir,
+    projectDir: project.projectDir,
     projectName: project.dirName,
     stagingRoot: path.join(stagingDir, "workspace", "workflow"),
   });
@@ -390,7 +390,7 @@ async function stageWorkflowWithLocalDependencies(options) {
     visited.add(currentProjectName);
 
     const sourceDir = currentProjectName === options.projectName
-      ? options.workflowDir
+      ? options.projectDir
       : path.join(options.workspaceRoot, currentProjectName);
     if (!existsSync(path.join(sourceDir, "package.json"))) {
       throw new Error(
@@ -552,7 +552,7 @@ function assertApiOk(response, fallbackMessage) {
 
 async function cleanupLegacyFilesystem({ dataRoot, legacyProjectIds }) {
   for (const projectId of legacyProjectIds) {
-    await rm(path.join(dataRoot, "workflows", projectId), {
+    await rm(path.join(dataRoot, "projects", projectId), {
       recursive: true,
       force: true,
     });

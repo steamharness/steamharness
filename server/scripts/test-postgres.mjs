@@ -12,8 +12,8 @@ try {
     "--detach",
     "--rm",
     "--name", containerName,
-    "--env", "POSTGRES_DB=workflow_test",
-    "--env", "POSTGRES_USER=workflow_test",
+    "--env", "POSTGRES_DB=steamharness_test",
+    "--env", "POSTGRES_USER=steamharness_test",
     "--env", `POSTGRES_PASSWORD=${password}`,
     "--publish", "127.0.0.1::5432",
     "postgres:15-alpine",
@@ -22,7 +22,7 @@ try {
   const portOutput = await run("docker", ["port", containerName, "5432/tcp"], { capture: true });
   const port = /:(\d+)\s*$/u.exec(portOutput)?.[1];
   if (!port) throw new Error("Unable to resolve the isolated PostgreSQL port.");
-  const databaseUrl = `postgresql://workflow_test:${password}@127.0.0.1:${port}/workflow_test`;
+  const databaseUrl = `postgresql://steamharness_test:${password}@127.0.0.1:${port}/steamharness_test`;
   await waitForPostgres(databaseUrl);
   await run("pnpm", [
     "exec",

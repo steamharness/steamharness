@@ -705,7 +705,7 @@ async function withKnowledgeDocumentMutationLock<T>(
   const namespace = context.persistentValue;
   if (namespace.withLock === undefined) {
     throw new HarnessError({
-      type: "workflow_execution",
+      type: "execution",
       message: "Knowledge document mutations require an atomic PersistentValue namespace lock or mutation executor.",
     });
   }
@@ -756,7 +756,7 @@ async function readKnowledgeDocumentIndexPage(
   const page = normalizeKnowledgeDocumentIndexPage(raw);
   if (page === undefined) {
     throw new HarnessError({
-      type: "workflow_execution",
+      type: "execution",
       message: `Knowledge document index page "${normalizedPageId}" is missing or invalid.`,
       metadata: { pageId: normalizedPageId },
     });
@@ -1039,7 +1039,7 @@ function createKnowledgeDocumentTombstone(id: string): { deleted: true; id: stri
 
 function createKnowledgeDocumentIndexError(documentId: string, reason: string): HarnessError {
   return new HarnessError({
-    type: "workflow_execution",
+    type: "execution",
     message: `Knowledge document "${documentId}" ${reason}.`,
     metadata: { documentId },
   });
@@ -1047,7 +1047,7 @@ function createKnowledgeDocumentIndexError(documentId: string, reason: string): 
 
 function createKnowledgeDocumentIndexCycleError(pageId: string): HarnessError {
   return new HarnessError({
-    type: "workflow_execution",
+    type: "execution",
     message: "Knowledge document index contains a page cycle.",
     metadata: { pageId },
   });
@@ -1093,7 +1093,7 @@ function normalizeKnowledgeDocumentIndexMeta(value: unknown): KnowledgeDocumentI
     !isNonNegativeSafeInteger(value["nextSequence"])
   ) {
     throw new HarnessError({
-      type: "workflow_execution",
+      type: "execution",
       message: "Knowledge document index is invalid and cannot be overwritten safely.",
     });
   }
@@ -1106,7 +1106,7 @@ function normalizeKnowledgeDocumentIndexMeta(value: unknown): KnowledgeDocumentI
     value["nextSequence"] < value["total"]
   ) {
     throw new HarnessError({
-      type: "workflow_execution",
+      type: "execution",
       message: "Knowledge document index metadata is inconsistent and cannot be overwritten safely.",
     });
   }
@@ -1178,7 +1178,7 @@ function normalizeKnowledgeDocumentId(value: string): string {
 function normalizeKnowledgeDocumentIndexPageId(value: string): string {
   if (!isKnowledgeDocumentIndexPageId(value)) {
     throw new HarnessError({
-      type: "workflow_execution",
+      type: "execution",
       message: "Knowledge document index page id is invalid.",
       metadata: { pageId: value },
     });

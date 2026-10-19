@@ -544,7 +544,7 @@ export default exampleWorkflow;
 - Workflow entrypoint 上的 `tokenUsage: { enabled: true, display?: boolean }` 会为该入口启用 token usage 收集；Conversation 仍在 executor 上配置。
 - Workflow entrypoint 上的 `tools: ToolPermissionDefinition[]` 会启用该入口的工具策略元数据；Conversation 仍在 executor 上配置。每项包含 `name`、可选 `label/description`、`enabled` 默认值和 `autoApprove` 默认值。
 - `params` 描述结构化 Desktop、server、external input。
-- `createInput({ args, paramValues, env, projectName, workflowDir, entrypointId, entrypointTitle, abortSignal, hostInput, conversationId, toolPermissionPolicies })` 把 argv 或宿主结构化输入转成 workflow input。`paramValues` 是宿主按入口静态参数解析出的结构化值；`hostInput` 是宿主注入的请求级输入（普通运行缺省 `undefined`），不进入通用 run metadata；`conversationId`、`toolPermissionPolicies` 只在宿主提供时出现。
+- `createInput({ args, paramValues, env, projectName, projectDir, entrypointId, entrypointTitle, abortSignal, hostInput, conversationId, toolPermissionPolicies })` 把 argv 或宿主结构化输入转成 workflow input。`paramValues` 是宿主按入口静态参数解析出的结构化值；`hostInput` 是宿主注入的请求级输入（普通运行缺省 `undefined`），不进入通用 run metadata；`conversationId`、`toolPermissionPolicies` 只在宿主提供时出现。
 - 把 `workflow` 作为别名导出，既保持现有平台发现稳定，又避免定义遮蔽全局命名空间的本地常量。
 - 入口的可选 `requiredProviders: ExecutorProviderName[]` 声明该入口运行需要的 provider，当前内置名称只有 `"llm"`；Conversation executor 同样支持。它是 Workflow 顶层被移除的 legacy key，只能写在入口上。
 - 入口的可选 `createContext({ ...ExecutorContext })` 返回 `Partial<RunContext>`，用于为该入口增补 `providers`、`metadata` 和 hooks。`storage`、`conversation`、`files` 的注入与作用域由 runtime 负责，返回对象里不要试图替换它们。

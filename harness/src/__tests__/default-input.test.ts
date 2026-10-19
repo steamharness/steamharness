@@ -72,15 +72,15 @@ test("parseConversationDefaultInputArgs accepts local path values for files and 
 });
 
 test("conversation inputQueue is exposed through structure reports", async () => {
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-conversation-input-"));
+  const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-conversation-input-"));
   try {
     await Promise.all([
-      writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
+      writeFile(path.join(projectDir, "package.json"), JSON.stringify({
         name: "conversation-structure-test",
         version: "0.1.0",
         type: "module",
       }), "utf8"),
-      writeFile(path.join(workflowDir, "index.ts"), `
+      writeFile(path.join(projectDir, "index.ts"), `
         const conversationWorkflow = workflow.defineWorkflow({
           name: "conversation",
           run(input) { return input; },
@@ -100,7 +100,7 @@ test("conversation inputQueue is exposed through structure reports", async () =>
       `, "utf8"),
     ]);
 
-    const report = inspectLocalWorkflowStructure({ workflowDir, projectName: "conversation" });
+    const report = inspectLocalWorkflowStructure({ projectDir, projectName: "conversation" });
     assert.equal(report.projectType, "conversation");
     assert.equal("defaultInput" in (report.conversation ?? {}), false);
     assert.equal(report.conversation?.attachments?.videos, true);
@@ -110,7 +110,7 @@ test("conversation inputQueue is exposed through structure reports", async () =>
       outputItemId: "assistant-response",
     });
   } finally {
-    await rm(workflowDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
   }
 });
 

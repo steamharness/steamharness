@@ -27,7 +27,7 @@ export const STEAMHARNESS_MCP_CLI_ENTRYPOINT_ENV = "STEAMHARNESS_MCP_CLI_ENTRYPO
 export const STEAMHARNESS_MCP_DESKTOP_AUDIT_IPC_ENV = "STEAMHARNESS_MCP_DESKTOP_AUDIT_IPC";
 
 export interface McpCliOptions {
-  workflowDir: string;
+  projectDir: string;
   dataDir: string;
   fileStoreDir: string;
   kvStoreDir: string;
@@ -59,7 +59,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   }
 
   const options = parseWorkflowMcpCliOptions(argv);
-  const projectId = readWorkflowProjectId(options.workflowDir);
+  const projectId = readWorkflowProjectId(options.projectDir);
   const runner = new McpCliRunner({
     ...options,
     workerEntrypoint: resolveWorkflowMcpWorkerEntrypoint(),
@@ -95,8 +95,8 @@ export function parseWorkflowMcpCliOptions(argv: string[]): McpCliOptions {
   if (!workflowArg || workflowArg.startsWith("-")) {
     throw new Error("steamharness mcp requires a workflow project directory as its first argument.");
   }
-  const workflowDir = path.resolve(process.cwd(), workflowArg);
-  assertWorkflowDirectory(workflowDir);
+  const projectDir = path.resolve(process.cwd(), workflowArg);
+  assertWorkflowDirectory(projectDir);
   let dataDir = path.join(os.homedir(), ".steamharness");
   let fileStoreDir: string | undefined;
   let kvStoreDir: string | undefined;
@@ -130,7 +130,7 @@ export function parseWorkflowMcpCliOptions(argv: string[]): McpCliOptions {
 
   dataDir = path.resolve(dataDir);
   return {
-    workflowDir,
+    projectDir,
     dataDir,
     fileStoreDir: fileStoreDir ?? path.join(dataDir, "workflow-files"),
     kvStoreDir: kvStoreDir ?? path.join(dataDir, "workflow-kv"),
@@ -154,7 +154,7 @@ export class McpCliRunner implements McpRunner {
   ) {}
 
   async inspectStructure(): Promise<McpStructureReport> {
-    const result = await this.runWorker(["structure", this.options.workflowDir]);
+    const result = await this.runWorker(["structure", this.options.projectDir]);
     const extracted = extractTrailingJson(result.stdout, isWorkflowMcpStructureCandidate);
     if (!extracted || result.exitCode !== 0) {
       const diagnostics = extracted ?? extractTrailingJson(result.stdout, isRecord);
@@ -331,7 +331,7 @@ export class McpCliRunner implements McpRunner {
     });
     const hostArgs = [
       "json",
-      this.options.workflowDir,
+      this.options.projectDir,
       "--entrypoint",
       options.entrypointId,
       "--run-id",
@@ -439,7 +439,7 @@ export class McpCliRunner implements McpRunner {
     const mainScript = this.options.workerEntrypoint ?? resolveWorkflowMcpWorkerEntrypoint();
     const execArgs = workerExecArguments(process.execArgv, mainScript);
     const child = spawn(process.execPath, [...execArgs, mainScript, ...args], {
-      cwd: this.options.workflowDir,
+      cwd: this.options.projectDir,
       env: {
         ...process.env,
         ...readSavedWorkflowMcpAuthEnv(this.options),
@@ -587,7 +587,7 @@ function createSyntheticWorkflowMcpReport(options: {
     : {
         ok: false,
         error: {
-          type: options.status === "aborted" ? "workflow_cancelled" : "workflow_execution",
+          type: options.status === "aborted" ? "workflow_cancelled" : "execution",
           message: options.message ?? "Workflow execution did not complete.",
         },
       };
@@ -767,8 +767,8 @@ function compactWorkerErrorMessage(value: string): string {
   return compact.length <= 500 ? compact : `${compact.slice(0, 497)}...`;
 }
 
-function readWorkflowProjectId(workflowDir: string): string {
-  const packagePath = path.join(workflowDir, "package.json");
+function readWorkflowProjectId(projectDir: string): string {
+  const packagePath = path.join(projectDir, "package.json");
   const packageJson = JSON.parse(readFileSync(packagePath, "utf8")) as unknown;
   if (!isRecord(packageJson) || typeof packageJson["id"] !== "string" || packageJson["id"].trim() === "") {
     throw new Error("Workflow MCP requires package.json to contain an immutable project id.");
@@ -776,15 +776,15 @@ function readWorkflowProjectId(workflowDir: string): string {
   return assertWorkflowUuid(packageJson["id"], "Workflow MCP project id");
 }
 
-function assertWorkflowDirectory(workflowDir: string): void {
+function assertWorkflowDirectory(projectDir: string): void {
   let info;
   try {
-    info = lstatSync(workflowDir);
+    info = lstatSync(projectDir);
   } catch {
-    throw new Error(`Workflow MCP project directory does not exist: ${workflowDir}`);
+    throw new Error(`Workflow MCP project directory does not exist: ${projectDir}`);
   }
   if (!info.isDirectory()) {
-    throw new Error(`Workflow MCP project path is not a directory: ${workflowDir}`);
+    throw new Error(`Workflow MCP project path is not a directory: ${projectDir}`);
   }
 }
 

@@ -95,17 +95,17 @@ test("resolved Slash options preserve aliases and reject conflicting or invalid 
 });
 
 test("static inspection carries Slash commands and conditional plain-text footers to hosts", async t => {
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "workflow-composer-contract-"));
-  t.after(() => rm(workflowDir, { recursive: true, force: true }));
-  await writeFile(path.join(workflowDir, "package.json"), JSON.stringify({ name: "composer", type: "module" }));
+  const projectDir = await mkdtemp(path.join(os.tmpdir(), "workflow-composer-contract-"));
+  t.after(() => rm(projectDir, { recursive: true, force: true }));
+  await writeFile(path.join(projectDir, "package.json"), JSON.stringify({ name: "composer", type: "module" }));
   const footer = [{ text: "Plan mode", localizedText: { "zh-CN": "Plan 模式" }, when: { param: "agent", value: "plan" } }, { param: "webSearch" }];
   const userInput = { hideComposer: true, effects: [{ when: { type: "review", values: { accepted: true } }, params: { webSearch: "false" } }] };
   const source = (footerSource: string, inputSource = JSON.stringify(userInput)) => `
     const task = workflow.defineWorkflow({ name: "composer", run(input) { return input; } });
     export const executor = workflow.defineExecutor({ projectType: "conversation", workflow: task,
       params: ${JSON.stringify(params)}, conversation: { commands: ${JSON.stringify(commands)}, footer: ${footerSource}, userInput: ${inputSource} }, createInput: context => context.paramValues });`;
-  await writeFile(path.join(workflowDir, "index.ts"), source(JSON.stringify(footer)));
-  const report = inspectLocalWorkflowStructure({ workflowDir });
+  await writeFile(path.join(projectDir, "index.ts"), source(JSON.stringify(footer)));
+  const report = inspectLocalWorkflowStructure({ projectDir });
   assert.deepEqual(report.diagnostics.violations, []);
   assert.deepEqual(report.conversation?.footer, footer);
   assert.deepEqual(report.conversation?.commands, commands);
@@ -113,15 +113,15 @@ test("static inspection carries Slash commands and conditional plain-text footer
   assert.equal(report.params?.find(param => param.name === "webSearch")?.command, "search");
   assert.deepEqual(report.paramLayout?.actions, [{ kind: "slash", name: "agent" }, { kind: "slash", name: "webSearch" }]);
   for (const invalid of ['[{ param: "missing" }]', '[{ text: getFooterText() }]', '[{ text: "Plan", when: { param: "agent", value: true } }]']) {
-    await writeFile(path.join(workflowDir, "index.ts"), source(invalid));
-    assert.throws(() => inspectLocalWorkflowStructure({ workflowDir }), error => {
+    await writeFile(path.join(projectDir, "index.ts"), source(invalid));
+    assert.throws(() => inspectLocalWorkflowStructure({ projectDir }), error => {
       const violations = (error as { metadata?: { violations?: { message: string }[] } }).metadata?.violations;
       return violations?.some(violation => /footer/.test(violation.message)) === true;
     });
   }
   for (const invalid of ['{ hideComposer: getVisibility() }', '{ effects: [{ when: { type: "review" }, params: { missing: "false" } }] }']) {
-    await writeFile(path.join(workflowDir, "index.ts"), source(JSON.stringify(footer), invalid));
-    assert.throws(() => inspectLocalWorkflowStructure({ workflowDir }), error =>
+    await writeFile(path.join(projectDir, "index.ts"), source(JSON.stringify(footer), invalid));
+    assert.throws(() => inspectLocalWorkflowStructure({ projectDir }), error =>
       (error as { metadata?: { violations?: { message: string }[] } }).metadata?.violations?.some(violation => /userInput/.test(violation.message)) === true);
   }
 });

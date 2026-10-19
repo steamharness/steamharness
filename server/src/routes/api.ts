@@ -995,9 +995,9 @@ export function createApiRouter(
       });
       await recordRouteAudit(req, {
         principal,
-        eventType: "workflow.project_card.image.upload",
+        eventType: "project.project_card.image.upload",
         outcome: "success",
-        resourceType: "workflow",
+        resourceType: "project",
         resourceId: req.params.name,
         context: { hash: result.hash, size: result.size, mimeType: result.mimeType },
       });
@@ -1023,9 +1023,9 @@ export function createApiRouter(
       });
       await recordRouteAudit(req, {
         principal,
-        eventType: "workflow.project_card.update",
+        eventType: "project.project_card.update",
         outcome: "success",
-        resourceType: "workflow",
+        resourceType: "project",
         resourceId: req.params.name,
         context: { icon: updated.icon, hasImage: updated.iconUrl !== undefined },
       });
@@ -1050,9 +1050,9 @@ export function createApiRouter(
       });
       await recordRouteAudit(req, {
         principal,
-        eventType: "workflow.project_info.update",
+        eventType: "project.project_info.update",
         outcome: "success",
-        resourceType: "workflow",
+        resourceType: "project",
         resourceId: req.params.name,
         context: {
           name: updated.name,
@@ -1425,9 +1425,9 @@ export function createApiRouter(
       });
       await recordRouteAudit(req, {
         principal,
-        eventType: "workflow.project.create",
+        eventType: "project.project.create",
         outcome: "success",
-        resourceType: "workflow",
+        resourceType: "project",
         resourceId: created.projectId,
         context: {
           projectId: created.projectId,
@@ -1587,9 +1587,9 @@ export function createApiRouter(
       });
       await recordRouteAudit(req, {
         principal,
-        eventType: "workflow.deployment.create",
+        eventType: "project.deployment.create",
         outcome: "success",
-        resourceType: "workflow_deployment",
+        resourceType: "project_deployment",
         resourceId: deployment.id,
         context: { rootProjectId: deployment.rootProjectId },
       });
@@ -1631,9 +1631,9 @@ export function createApiRouter(
       });
       await recordRouteAudit(req, {
         principal: principal!,
-        eventType: "workflow.deployment.upload",
+        eventType: "project.deployment.upload",
         outcome: "success",
-        resourceType: "workflow_deployment",
+        resourceType: "project_deployment",
         resourceId: deployment.id,
         context: { archiveName, status: result.status },
       });
@@ -1653,9 +1653,9 @@ export function createApiRouter(
       const result = await storage.publishProjectGroupDeployment(deployment.id);
       await recordRouteAudit(req, {
         principal: principal!,
-        eventType: "workflow.deployment.publish",
+        eventType: "project.deployment.publish",
         outcome: "success",
-        resourceType: "workflow_deployment",
+        resourceType: "project_deployment",
         resourceId: deployment.id,
         context: { rootProjectId: deployment.rootProjectId, status: result.status },
       });
@@ -1702,9 +1702,9 @@ export function createApiRouter(
       });
       await recordRouteAudit(req, {
         principal,
-        eventType: "workflow.package.upload",
+        eventType: "project.package.upload",
         outcome: "success",
-        resourceType: "workflow",
+        resourceType: "project",
         resourceId: name,
         context: {
           archiveName,
@@ -2054,9 +2054,9 @@ export function createApiRouter(
       });
       await recordRouteAudit(req, {
         principal,
-        eventType: "workflow.member.upsert",
+        eventType: "project.member.upsert",
         outcome: "success",
-        resourceType: "workflow_member",
+        resourceType: "project_member",
         resourceId: `${req.params["name"]}:${req.params["userId"]}`,
         context: {
           projectId: req.params["name"],
@@ -2081,9 +2081,9 @@ export function createApiRouter(
       const result = await storage.removeProjectMember(req.params["name"], req.params["userId"]);
       await recordRouteAudit(req, {
         principal,
-        eventType: "workflow.member.remove",
+        eventType: "project.member.remove",
         outcome: "success",
-        resourceType: "workflow_member",
+        resourceType: "project_member",
         resourceId: `${req.params["name"]}:${req.params["userId"]}`,
         context: {
           projectId: req.params["name"],
@@ -2116,9 +2116,9 @@ export function createApiRouter(
       });
       await recordRouteAudit(req, {
         principal,
-        eventType: "workflow.invitation.create",
+        eventType: "project.invitation.create",
         outcome: "success",
-        resourceType: "workflow_invitation",
+        resourceType: "project_invitation",
         resourceId: invitation.id,
         context: {
           projectId: invitation.projectId,
@@ -2154,9 +2154,9 @@ export function createApiRouter(
       }
       await recordRouteAudit(req, {
         principal,
-        eventType: "workflow.invitation.revoke",
+        eventType: "project.invitation.revoke",
         outcome: "success",
-        resourceType: "workflow_invitation",
+        resourceType: "project_invitation",
         resourceId: req.params["invitationId"],
         context: {
           projectId: req.params["name"],
@@ -2213,9 +2213,9 @@ export function createApiRouter(
       });
       await recordRouteAudit(req, {
         principal,
-        eventType: "workflow.invitation.accept",
+        eventType: "project.invitation.accept",
         outcome: "success",
-        resourceType: "workflow_invitation",
+        resourceType: "project_invitation",
         resourceId: result.invitation.id,
         context: {
           projectId: result.invitation.projectId,
@@ -2249,9 +2249,9 @@ export function createApiRouter(
       });
       await recordRouteAudit(req, {
         principal,
-        eventType: "workflow.visibility.update",
+        eventType: "project.visibility.update",
         outcome: "success",
-        resourceType: "workflow",
+        resourceType: "project",
         resourceId: req.params["name"],
         context: {
           visibility: result.visibility,
@@ -2279,9 +2279,9 @@ export function createApiRouter(
       const result = await storage.saveDraftFiles({ projectName: name, files, removePaths });
       await recordRouteAudit(req, {
         principal,
-        eventType: "workflow.draft.save_files",
+        eventType: "project.draft.save_files",
         outcome: "success",
-        resourceType: "workflow",
+        resourceType: "project",
         resourceId: name,
         context: {
           updatedFiles: result.updatedFiles,
@@ -2319,9 +2319,9 @@ export function createApiRouter(
       });
       await recordRouteAudit(req, {
         principal,
-        eventType: "workflow.clone",
+        eventType: "project.clone",
         outcome: "success",
-        resourceType: "workflow",
+        resourceType: "project",
         resourceId: result.projectId,
         context: {
           sourceProjectName: name,
@@ -2354,9 +2354,9 @@ export function createApiRouter(
       });
       await recordRouteAudit(req, {
         principal,
-        eventType: "workflow.info.update",
+        eventType: "project.info.update",
         outcome: "success",
-        resourceType: "workflow",
+        resourceType: "project",
         resourceId: name,
         context: {
           displayName: result.projectName,
@@ -2378,9 +2378,9 @@ export function createApiRouter(
       const result = await storage.deleteWorkflow(name);
       await recordRouteAudit(req, {
         principal,
-        eventType: "workflow.delete",
+        eventType: "project.delete",
         outcome: "success",
-        resourceType: "workflow",
+        resourceType: "project",
         resourceId: name,
       });
       res.json(ok(result));
@@ -2405,9 +2405,9 @@ export function createApiRouter(
       });
       await recordRouteAudit(req, {
         principal,
-        eventType: "workflow.publish",
+        eventType: "project.publish",
         outcome: "success",
-        resourceType: "workflow_version",
+        resourceType: "project_version",
         resourceId: `${name}:${result.version}`,
         context: {
           version: result.version,

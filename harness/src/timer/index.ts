@@ -76,7 +76,7 @@ export function endTimer(
 ): Promise<TimerRecord> {
   if (context.timers === undefined) {
     throw new HarnessError({
-      type: "workflow_execution",
+      type: "execution",
       message: "Workflow timer context is not configured.",
     });
   }
@@ -112,7 +112,7 @@ class TimerNode extends BaseNode<TimerNodeInput | undefined, TimerPayload> {
   ): Promise<TimerPayload> {
     if (context.timers === undefined) {
       throw new HarnessError({
-        type: "workflow_execution",
+        type: "execution",
         message: `Timer node "${this.name}" is used, but no workflow timer context was configured.`,
         nodeName: this.name,
       });
@@ -152,7 +152,7 @@ export function createWorkflowTimerContext(options: {
 
     if (existing === undefined) {
       throw new HarnessError({
-        type: "workflow_execution",
+        type: "execution",
         message: `Workflow timer "${timerId}" was not started.`,
         metadata: {
           timerId,
@@ -162,7 +162,7 @@ export function createWorkflowTimerContext(options: {
 
     if (existing.status !== "running") {
       throw new HarnessError({
-        type: "workflow_execution",
+        type: "execution",
         message: `Workflow timer "${timerId}" already finished with status "${existing.status}".`,
         metadata: {
           timerId,
@@ -196,7 +196,7 @@ export function createWorkflowTimerContext(options: {
       const timerId = normalizeTimerId(input.timerId) ?? createWorkflowTimerId();
       if (timers.has(timerId)) {
         throw new HarnessError({
-          type: "workflow_execution",
+          type: "execution",
           message: `Workflow timer "${timerId}" already exists.`,
           metadata: {
             timerId,

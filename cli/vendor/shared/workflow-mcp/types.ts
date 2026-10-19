@@ -200,7 +200,7 @@ export interface McpPendingInputSummary {
 }
 
 export interface McpErrorDetail {
-  code: "workflow_failed" | "cancelled" | "timed_out" | "interaction_required";
+  code: "project_failed" | "cancelled" | "timed_out" | "interaction_required";
   message: string;
   pendingInput?: McpPendingInputSummary;
 }

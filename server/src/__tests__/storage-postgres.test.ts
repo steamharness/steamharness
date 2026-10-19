@@ -124,9 +124,9 @@ test("PostgreSQL stores static project groups, immutable versions and independen
     await storage.deleteKnowledgeDocument({ projectName: workerId, documentId: document.id });
     assert.equal((await storage.listKnowledgeDocuments(workerId)).total, 0);
 
-    await pool.query("create table workflow_runs (record text); insert into workflow_runs values ('historical data')");
+    await pool.query("create table project_runs (record text); insert into project_runs values ('historical data')");
     await db.init();
-    assert.equal((await pool.query("select record from workflow_runs")).rows[0]?.record, "historical data");
+    assert.equal((await pool.query("select record from project_runs")).rows[0]?.record, "historical data");
     assert.equal((await storage.listVersions(boardId)).latest, "1.0.0");
     await assert.rejects(readFile(path.join(root, "executed")), { code: "ENOENT" });
   } finally {

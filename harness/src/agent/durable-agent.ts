@@ -390,7 +390,7 @@ export class DurableAgent {
               }
               return run.failure;
             }, context);
-            if (failure) throw new HarnessError({ type: "workflow_execution", message: failure });
+            if (failure) throw new HarnessError({ type: "execution", message: failure });
           }
           const last = [...history.entries].reverse().find(entry => entry.model?.[0]?.role === "assistant");
           const message = last?.model?.[0];
@@ -590,7 +590,7 @@ export class DurableAgent {
 
   private async replaceContext(): Promise<void> {
     if ((await this.harness!.inspect(context)).tasks.length > 0) {
-      throw new HarnessError({ type: "workflow_execution", message: "Cannot replace agent context while durable tasks are active." });
+      throw new HarnessError({ type: "execution", message: "Cannot replace agent context while durable tasks are active." });
     }
     const messages = this.state.messages;
     await this.root!.commit(tx => tx.appendEntry(this.root!.id, {

@@ -9,24 +9,24 @@ import {
 } from "../index";
 
 test("tool approval honors executor defaults, host overrides, waiting approval and resume", async () => {
-  const workflowDir = await createToolApprovalWorkflow();
+  const projectDir = await createToolApprovalWorkflow();
 
   const autoApproved = await runLocalWorkflowWithReport({
-    workflowDir,
+    projectDir,
     args: ["--tool", "search"],
   });
   assert.equal(autoApproved.status, "success");
   assertSuccessfulToolResult(autoApproved.result, "search", "search:ran");
 
   const disabledByDefault = await runLocalWorkflowWithReport({
-    workflowDir,
+    projectDir,
     args: ["--tool", "write"],
   });
   assert.equal(disabledByDefault.status, "failed");
   assertReportedToolDenial(disabledByDefault.result, "Tool \"write\" is disabled");
 
   const enabledByHost = await runLocalWorkflowWithReport({
-    workflowDir,
+    projectDir,
     args: ["--tool", "write"],
     toolPermissionPolicies: {
       write: { enabled: true, autoApprove: true },
@@ -37,7 +37,7 @@ test("tool approval honors executor defaults, host overrides, waiting approval a
   assertSuccessfulToolResult(enabledByHost.result, "write", "write:ran");
 
   const waiting = await runLocalWorkflowWithReport({
-    workflowDir,
+    projectDir,
     runId: "run-approval",
     args: ["--tool", "review"],
     toolPermissionPolicies: {
@@ -59,7 +59,7 @@ test("tool approval honors executor defaults, host overrides, waiting approval a
   assert.equal(waiting.pendingUserInput?.params[0]?.name, "approved");
 
   const approved = await runLocalWorkflowWithReport({
-    workflowDir,
+    projectDir,
     runId: "run-approval",
     args: ["--tool", "review"],
     toolPermissionPolicies: {
@@ -84,7 +84,7 @@ test("tool approval honors executor defaults, host overrides, waiting approval a
   assertSuccessfulToolResult(approved.result, "review", "review:ran");
 
   const rejected = await runLocalWorkflowWithReport({
-    workflowDir,
+    projectDir,
     args: ["--tool", "review"],
     toolPermissionPolicies: {
       review: { enabled: true, autoApprove: false },
@@ -135,12 +135,12 @@ test("workflow structure extracts executor tool registrations", () => {
 });
 
 test("local workflow reports preserve aborted status and terminal events", async () => {
-  const workflowDir = await createToolApprovalWorkflow();
+  const projectDir = await createToolApprovalWorkflow();
   const controller = new AbortController();
   const eventTypes: string[] = [];
 
   const report = await runLocalWorkflowWithReport({
-    workflowDir,
+    projectDir,
     abortSignal: controller.signal,
     onRuntimeEvent(event) {
       eventTypes.push(event.type);
@@ -156,10 +156,10 @@ test("local workflow reports preserve aborted status and terminal events", async
 });
 
 async function createToolApprovalWorkflow(): Promise<string> {
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-tool-approval-"));
+  const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-tool-approval-"));
 
   await writeFile(
-    path.join(workflowDir, "package.json"),
+    path.join(projectDir, "package.json"),
     JSON.stringify({
       id: "11111111-1111-4111-8111-111111111111",
       name: "@steamharness/tool-approval-test",
@@ -168,7 +168,7 @@ async function createToolApprovalWorkflow(): Promise<string> {
     }),
   );
   await writeFile(
-    path.join(workflowDir, "interface.ts"),
+    path.join(projectDir, "interface.ts"),
     [
       "export interface RunPayload { errCode: number; errMessage: string; }",
       "export interface ToolApprovalPayload extends RunPayload { tool: string; value: string; }",
@@ -176,7 +176,7 @@ async function createToolApprovalWorkflow(): Promise<string> {
     ].join("\n"),
   );
   await writeFile(
-    path.join(workflowDir, "index.ts"),
+    path.join(projectDir, "index.ts"),
     [
       "import type { ToolApprovalPayload } from \"./interface\";",
       "",
@@ -220,7 +220,7 @@ async function createToolApprovalWorkflow(): Promise<string> {
     ].join("\n"),
   );
 
-  return workflowDir;
+  return projectDir;
 }
 
 function assertReportedToolDenial(

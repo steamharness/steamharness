@@ -68,9 +68,9 @@ export async function main(
   const parsed = parseWorkflowArgs(args, {
     json: command === "json",
   });
-  assertLocalCliCoreCompatible(parsed.workflowDir);
+  assertLocalCliCoreCompatible(parsed.projectDir);
   const relatedProjectRuntime = createCliRelatedProjectRuntime({
-    consumerProjectDir: parsed.workflowDir,
+    consumerProjectDir: parsed.projectDir,
     relatedProjects: parsed.relatedProjects,
     localKvStoreDir: process.env.STEAMHARNESS_KV_STORE_DIR,
     localPersistentValueStoreDir: process.env.STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR,
@@ -91,7 +91,7 @@ export async function main(
     },
   } as unknown as NonNullable<Parameters<typeof runLocalWorkflowWithReport>[0]>["storage"];
   const report = await runLocalWorkflowWithReport({
-    workflowDir: parsed.workflowDir,
+    projectDir: parsed.projectDir,
     entrypointId: parsed.entrypointId,
     args: parsed.args,
     runId: parsed.runId,
@@ -151,10 +151,10 @@ function parseCommand(value: string | undefined): SteamHarnessCommand {
 async function runResolveParamsCommand(argv: string[], abortSignal: AbortSignal): Promise<number> {
   try {
     const parsed = parseWorkflowArgs(argv, { json: true });
-    assertLocalCliCoreCompatible(parsed.workflowDir);
+    assertLocalCliCoreCompatible(parsed.projectDir);
     const request = parseParamResolveRequest(readFileSync(0, "utf8"));
     const result = await resolveLocalWorkflowParams({
-      workflowDir: parsed.workflowDir,
+      projectDir: parsed.projectDir,
       entrypointId: parsed.entrypointId,
       request,
       abortSignal,
@@ -191,7 +191,7 @@ export function parseWorkflowArgs(
   argv: string[],
   options: { json: boolean },
 ): {
-  workflowDir: string;
+  projectDir: string;
   args: string[];
   json: boolean;
   runId?: string;
@@ -272,15 +272,15 @@ export function parseWorkflowArgs(
     filteredArgv.push(arg);
   }
 
-  const [workflowDirArg, ...rest] = filteredArgv;
+  const [projectDirArg, ...rest] = filteredArgv;
 
   if (
-    workflowDirArg !== undefined &&
-    workflowDirArg !== "--" &&
-    !workflowDirArg.startsWith("-")
+    projectDirArg !== undefined &&
+    projectDirArg !== "--" &&
+    !projectDirArg.startsWith("-")
   ) {
     return {
-      workflowDir: path.resolve(process.cwd(), workflowDirArg),
+      projectDir: path.resolve(process.cwd(), projectDirArg),
       args: removePnpmRunSeparator(rest),
       json,
       runId,
@@ -294,7 +294,7 @@ export function parseWorkflowArgs(
   }
 
   return {
-    workflowDir: process.cwd(),
+    projectDir: process.cwd(),
     args: removePnpmRunSeparator(filteredArgv),
     json,
     runId,
@@ -410,14 +410,14 @@ function runStructureCommand(argv: string[]): number {
   const parsed = parseWorkflowArgs(argv, { json: true });
 
   try {
-    assertLocalCliCoreCompatible(parsed.workflowDir);
+    assertLocalCliCoreCompatible(parsed.projectDir);
     const projectManifest = readJsonFile(
-      path.join(parsed.workflowDir, "package.json"),
+      path.join(parsed.projectDir, "package.json"),
       "Workflow package.json",
     );
     readWorkflowProjectInfo(projectManifest);
     const report = inspectLocalWorkflowStructure({
-      workflowDir: parsed.workflowDir,
+      projectDir: parsed.projectDir,
     });
 
     console.log(JSON.stringify(report, null, 2));
@@ -429,7 +429,7 @@ function runStructureCommand(argv: string[]): number {
 }
 
 export function assertLocalCliCoreCompatible(
-  workflowDir: string,
+  projectDir: string,
   hostCoreVersion = readInstalledWorkflowCoreVersion(),
   options: { mode?: RepositoryMode } = {},
 ): { cliRequiredCoreVersion: string; projectRequiredCoreVersion: string } {
@@ -438,7 +438,7 @@ export function assertLocalCliCoreCompatible(
   const cliRequiredCoreVersion = readRequiredCoreVersion(cliManifest);
   assertCoreCompatibility(hostCoreVersion, cliRequiredCoreVersion);
 
-  const projectDirectory = path.resolve(workflowDir);
+  const projectDirectory = path.resolve(projectDir);
   const projectManifest = readJsonFile(path.join(projectDirectory, "package.json"), "Workflow package.json");
   // 内置项目位于 monorepo 的 build-in/ 下；相对引用仍以开源源码根为边界。
   const parentDirectory = path.dirname(projectDirectory);

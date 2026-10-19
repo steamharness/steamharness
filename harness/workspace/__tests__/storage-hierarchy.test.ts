@@ -65,7 +65,7 @@ describe.each(["local", "server"] as const)("%s data hierarchy", (location) => {
 
     for (const project of Object.values(hierarchy.byRole)) {
       const structure = inspectLocalWorkflowStructure({
-        workflowDir: path.join(STEAMHARNESS_ROOT, project.slug),
+        projectDir: path.join(STEAMHARNESS_ROOT, project.slug),
         projectName: project.slug,
       });
       expect(structure.diagnostics.violations).toEqual([]);
@@ -213,7 +213,7 @@ async function createHierarchyRunner(location: StorageLocation) {
     return {
       async listEntrypoints() {
         const structure = inspectLocalWorkflowStructure({
-          workflowDir: path.join(STEAMHARNESS_ROOT, target.slug),
+          projectDir: path.join(STEAMHARNESS_ROOT, target.slug),
           projectName: target.slug,
         });
         return (structure.entrypoints ?? []).map((entrypoint) => ({
@@ -224,7 +224,7 @@ async function createHierarchyRunner(location: StorageLocation) {
       },
       async run(entrypointId: string, args: readonly string[]): Promise<unknown> {
         const report = await runLocalWorkflowWithReport({
-          workflowDir: path.join(STEAMHARNESS_ROOT, target.slug),
+          projectDir: path.join(STEAMHARNESS_ROOT, target.slug),
           projectName: target.slug,
           entrypointId,
           args: [...args],
@@ -293,7 +293,7 @@ async function createHierarchyRunner(location: StorageLocation) {
     if (input.content !== undefined) args.push("--content", input.content);
 
     return runLocalWorkflowWithReport({
-      workflowDir: path.join(STEAMHARNESS_ROOT, project.slug),
+      projectDir: path.join(STEAMHARNESS_ROOT, project.slug),
       projectName: project.slug,
       entrypointId: entrypoint,
       args,

@@ -54,7 +54,7 @@ export class RemoteWorkflowFileStore implements FileStore {
       if (!response.ok) {
         const payload = await readApiResponse(response);
         throw new HarnessError({
-          type: "workflow_execution",
+          type: "execution",
           message: payload.errMessage || `Workflow file read failed with HTTP ${response.status}.`,
           metadata: { fileId: normalized.id, status: response.status },
         });
@@ -92,7 +92,7 @@ export class RemoteWorkflowFileStore implements FileStore {
       );
     } catch (error) {
       throw new HarnessError({
-        type: "workflow_execution",
+        type: "execution",
         message: `Workflow file creation could not connect to server storage at ${this.serverUrl}. Check the App server connection or STEAMHARNESS_SERVER_URL/STEAMHARNESS_SERVER_ADMIN_KEY.`,
         metadata: {
           serverUrl: this.serverUrl,
@@ -104,7 +104,7 @@ export class RemoteWorkflowFileStore implements FileStore {
     const payload = await readApiResponse<FileReference[]>(response);
     if (!response.ok || payload.errCode !== 0) {
       throw new HarnessError({
-        type: "workflow_execution",
+        type: "execution",
         message: payload.errMessage || `Workflow file creation failed with HTTP ${response.status}.`,
         metadata: {
           serverUrl: this.serverUrl,
@@ -117,7 +117,7 @@ export class RemoteWorkflowFileStore implements FileStore {
     const reference = payload.data?.[0];
     if (reference === undefined) {
       throw new HarnessError({
-        type: "workflow_execution",
+        type: "execution",
         message: "Workflow file creation server did not return a file reference.",
         metadata: {
           serverUrl: this.serverUrl,

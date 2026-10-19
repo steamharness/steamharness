@@ -41,10 +41,10 @@ test("avatar URLs reject foreign origins and unexpected paths", () => {
     `https://api.example.com/avatars/${USER_ID}/${HASH}.png`,
     `https://api.example.com/storage/avatars/${USER_ID}/${HASH}.svg`,
     `https://api.example.com/storage/avatars/${USER_ID}/${"a".repeat(63)}.png`,
-    `https://api.example.com/storage/workflows/${USER_ID}/${HASH}.png`,
+    `https://api.example.com/storage/projects/${USER_ID}/${HASH}.png`,
     "not a url",
   ]) {
-    assert.throws(() => normalizeAvatarUrl(rejected, env), /Workflow storage avatar URL/u, rejected);
+    assert.throws(() => normalizeAvatarUrl(rejected, env), /SteamHarness storage avatar URL/u, rejected);
   }
 });
 
@@ -77,6 +77,6 @@ test("local object storage accepts the Server's own avatar origin", () => {
       `https://storage.steamharness.yuhe.space/storage/avatars/${USER_ID}/${HASH}.png`,
       localConfiguredEnv,
     ),
-    /Workflow storage avatar URL/u,
+    /SteamHarness storage avatar URL/u,
   );
 });

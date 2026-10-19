@@ -1198,8 +1198,8 @@ export class Storage {
       const versions = await this.db.listVersionsForWorkflows(workflows.map(item => item.id));
       return Promise.all(workflows.map(item => this.summarizeDbWorkflow(item, versions.get(item.id))));
     }
-    await mkdir(this.workflowsRoot(), { recursive: true });
-    const entries = await readdir(this.workflowsRoot(), { withFileTypes: true });
+    await mkdir(this.projectsRoot(), { recursive: true });
+    const entries = await readdir(this.projectsRoot(), { withFileTypes: true });
     const summaries = await Promise.all(entries.filter(entry => entry.isDirectory() && isWorkflowUuid(entry.name)).map(async entry => {
       const record = await this.readWorkflowRecordForAccess(entry.name);
       return this.summarizeDbWorkflow(record, await Promise.all((await this.listVersionNames(entry.name)).map(async version => ({ version }))));
@@ -4778,8 +4778,8 @@ export class Storage {
     };
   }
 
-  private workflowsRoot(): string {
-    return path.join(this.dataRoot, "workflows");
+  private projectsRoot(): string {
+    return path.join(this.dataRoot, "projects");
   }
 
   private preparationsRoot(): string {
@@ -4822,7 +4822,7 @@ export class Storage {
 
   private workflowRoot(projectName: string): string {
     try {
-      return resolveWorkflowRoot(this.workflowsRoot(), projectName);
+      return resolveWorkflowRoot(this.projectsRoot(), projectName);
     } catch (error) {
       throw new HttpError(400, 400, error instanceof Error ? error.message : String(error));
     }

@@ -55,7 +55,7 @@ function acquireOwner(file: string): DatabaseSync {
     return owner;
   } catch (cause) {
     owner.close();
-    throw new HarnessError({ type: "workflow_execution", message: "This agent session already has an execution owner.", metadata: { agentFailure: "owner_conflict" }, cause });
+    throw new HarnessError({ type: "execution", message: "This agent session already has an execution owner.", metadata: { agentFailure: "owner_conflict" }, cause });
   }
 }
 

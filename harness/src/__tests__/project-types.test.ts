@@ -87,9 +87,9 @@ test("static validation only rejects a missing executor and defers dynamic confi
 });
 
 test("workflow script inspection rejects a project without an executor", async () => {
-  const workflowDir = await mkdtemp(path.join(tmpdir(), "steamharness-project-type-no-executor-"));
+  const projectDir = await mkdtemp(path.join(tmpdir(), "steamharness-project-type-no-executor-"));
   try {
-    await writeFile(path.join(workflowDir, "index.ts"), `
+    await writeFile(path.join(projectDir, "index.ts"), `
       export const demoWorkflow = workflow.defineWorkflow({
         name: "demo",
         run() { return { errCode: 0, errMessage: "" }; },
@@ -97,8 +97,8 @@ test("workflow script inspection rejects a project without an executor", async (
     `, "utf8");
 
     const inspection = inspectWorkflowScripts({
-      cwd: workflowDir,
-      workflowDir,
+      cwd: projectDir,
+      projectDir,
       projectName: "no-executor",
     });
 
@@ -109,7 +109,7 @@ test("workflow script inspection rejects a project without an executor", async (
       true,
     );
   } finally {
-    await rm(workflowDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
   }
 });
 
@@ -136,16 +136,16 @@ test("legacy conversation settings produce warnings instead of blocking executio
 });
 
 test("structure inspection warns about conflicting executor project types across files", async () => {
-  const workflowDir = await mkdtemp(path.join(tmpdir(), "steamharness-project-type-conflict-"));
+  const projectDir = await mkdtemp(path.join(tmpdir(), "steamharness-project-type-conflict-"));
   try {
     await Promise.all([
-      writeFile(path.join(workflowDir, "index.ts"), createExecutorSource('projectType: "workflow",'), "utf8"),
-      writeFile(path.join(workflowDir, "secondary.ts"), createExecutorSource('projectType: "conversation",'), "utf8"),
+      writeFile(path.join(projectDir, "index.ts"), createExecutorSource('projectType: "workflow",'), "utf8"),
+      writeFile(path.join(projectDir, "secondary.ts"), createExecutorSource('projectType: "conversation",'), "utf8"),
     ]);
 
     const inspection = inspectWorkflowStructure({
-      cwd: workflowDir,
-      workflowDir,
+      cwd: projectDir,
+      projectDir,
       projectName: "conflicting-project-types",
     });
     assert.equal(
@@ -159,22 +159,22 @@ test("structure inspection warns about conflicting executor project types across
       true,
     );
   } finally {
-    await rm(workflowDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
   }
 });
 
 test("runtime infers a legacy conversation executor without projectType", async () => {
-  const workflowDir = await mkdtemp(path.join(tmpdir(), "steamharness-project-type-legacy-runtime-"));
+  const projectDir = await mkdtemp(path.join(tmpdir(), "steamharness-project-type-legacy-runtime-"));
   try {
     await Promise.all([
-      writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
+      writeFile(path.join(projectDir, "package.json"), JSON.stringify({
         id: "11111111-1111-4111-8111-111111111111",
         name: "legacy-conversation-runtime",
         version: "0.1.0",
         type: "module",
         steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
       }), "utf8"),
-      writeFile(path.join(workflowDir, "index.ts"), `
+      writeFile(path.join(projectDir, "index.ts"), `
         const legacyWorkflow = workflow.defineWorkflow({
           name: "legacy-conversation-runtime",
           async run(_input, context) {
@@ -195,7 +195,7 @@ test("runtime infers a legacy conversation executor without projectType", async 
     ]);
 
     const report = await runLocalWorkflowWithReport({
-      workflowDir,
+      projectDir,
       projectName: "legacy-conversation-runtime",
       conversationId: "legacy-thread",
     });
@@ -206,22 +206,22 @@ test("runtime infers a legacy conversation executor without projectType", async 
     assert.equal((report.result.data as { output?: { conversationEnabled?: boolean } })
       .output?.conversationEnabled, true);
   } finally {
-    await rm(workflowDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
   }
 });
 
 test("runtime infers a Workflow executor with entrypoints but no projectType", async () => {
-  const workflowDir = await mkdtemp(path.join(tmpdir(), "steamharness-project-type-entrypoint-runtime-"));
+  const projectDir = await mkdtemp(path.join(tmpdir(), "steamharness-project-type-entrypoint-runtime-"));
   try {
     await Promise.all([
-      writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
+      writeFile(path.join(projectDir, "package.json"), JSON.stringify({
         id: "22222222-2222-4222-8222-222222222222",
         name: "inferred-workflow-runtime",
         version: "0.1.0",
         type: "module",
         steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
       }), "utf8"),
-      writeFile(path.join(workflowDir, "index.ts"), `
+      writeFile(path.join(projectDir, "index.ts"), `
         const inferredWorkflow = workflow.defineWorkflow({
           name: "inferred-workflow-runtime",
           async run() { return { errCode: 0, errMessage: "", inferred: true }; },
@@ -240,36 +240,36 @@ test("runtime infers a Workflow executor with entrypoints but no projectType", a
     ]);
 
     const report = await runLocalWorkflowWithReport({
-      workflowDir,
+      projectDir,
       projectName: "inferred-workflow-runtime",
     });
 
     assert.equal(report.status, "success");
     assert.equal(report.result.ok, true);
   } finally {
-    await rm(workflowDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
   }
 });
 
 test("projectType alone controls runtime conversation context", async () => {
   const rootDir = await mkdtemp(path.join(tmpdir(), "steamharness-project-type-runtime-"));
-  const workflowDir = path.join(rootDir, "workflow");
+  const projectDir = path.join(rootDir, "workflow");
   const conversationDir = path.join(rootDir, "conversation");
 
   try {
     await Promise.all([
-      writeRuntimeProject(workflowDir, "workflow"),
+      writeRuntimeProject(projectDir, "workflow"),
       writeRuntimeProject(conversationDir, "conversation"),
     ]);
 
     const [workflowReport, conversationReport] = await Promise.all([
       runLocalWorkflowWithReport({
-        workflowDir,
+        projectDir,
         projectName: "workflow-mode",
         conversationId: "ignored-thread",
       }),
       runLocalWorkflowWithReport({
-        workflowDir: conversationDir,
+        projectDir: conversationDir,
         projectName: "conversation-mode",
         conversationId: "active-thread",
       }),
@@ -299,17 +299,17 @@ test("projectType alone controls runtime conversation context", async () => {
 });
 
 test("runtime reports static violations before server storage connection checks", async () => {
-  const workflowDir = await mkdtemp(path.join(tmpdir(), "steamharness-project-type-legacy-"));
+  const projectDir = await mkdtemp(path.join(tmpdir(), "steamharness-project-type-legacy-"));
   try {
     await Promise.all([
-      writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
+      writeFile(path.join(projectDir, "package.json"), JSON.stringify({
         id: "33333333-3333-4333-8333-333333333333",
         name: "legacy-runtime",
         version: "0.1.0",
         type: "module",
         steamHarness: { projectInfo: { dataStorage: { mode: "server" } } },
       }), "utf8"),
-      writeFile(path.join(workflowDir, "index.ts"), `
+      writeFile(path.join(projectDir, "index.ts"), `
         export const projectType = "workflow";
         export const workflow = globalThis.workflow.defineWorkflow({
           name: "legacy-runtime",
@@ -323,7 +323,7 @@ test("runtime reports static violations before server storage connection checks"
     ]);
 
     const report = await runLocalWorkflowWithReport({
-      workflowDir,
+      projectDir,
       projectName: "legacy-runtime",
       env: {} as NodeJS.ProcessEnv,
     });
@@ -336,7 +336,7 @@ test("runtime reports static violations before server storage connection checks"
       /script validation failed/,
     );
   } finally {
-    await rm(workflowDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
   }
 });
 
@@ -366,12 +366,12 @@ function createExecutorSource(configuration: string): string {
 }
 
 async function writeRuntimeProject(
-  workflowDir: string,
+  projectDir: string,
   projectType: "workflow" | "conversation",
 ): Promise<void> {
-  await mkdir(workflowDir, { recursive: true });
+  await mkdir(projectDir, { recursive: true });
   await Promise.all([
-    writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
+    writeFile(path.join(projectDir, "package.json"), JSON.stringify({
       id: projectType === "workflow"
         ? "44444444-4444-4444-8444-444444444444"
         : "55555555-5555-4555-8555-555555555555",
@@ -380,7 +380,7 @@ async function writeRuntimeProject(
       type: "module",
       steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
     }), "utf8"),
-    writeFile(path.join(workflowDir, "index.ts"), `
+    writeFile(path.join(projectDir, "index.ts"), `
       const runtimeWorkflow = workflow.defineWorkflow({
         name: "${projectType}-mode",
         async run(_input, context) {

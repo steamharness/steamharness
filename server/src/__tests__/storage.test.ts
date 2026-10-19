@@ -190,19 +190,19 @@ test("ArtifactStorage delegates immutable archives to the object storage backend
   } as never);
 
   await storage.init();
-  await storage.uploadFile("workflows/demo/1.0.0/hash/source.tar.gz", "/tmp/source.tar.gz");
-  await storage.downloadFile("workflows/demo/1.0.0/hash/runtime.tar.gz", "/tmp/runtime.tar.gz");
+  await storage.uploadFile("projects/demo/1.0.0/hash/source.tar.gz", "/tmp/source.tar.gz");
+  await storage.downloadFile("projects/demo/1.0.0/hash/runtime.tar.gz", "/tmp/runtime.tar.gz");
 
   assert.deepEqual(calls, [
     {
       operation: "upload",
-      objectPath: "workflows/demo/1.0.0/hash/source.tar.gz",
+      objectPath: "projects/demo/1.0.0/hash/source.tar.gz",
       filePath: "/tmp/source.tar.gz",
       contentType: "application/gzip",
     },
     {
       operation: "download",
-      objectPath: "workflows/demo/1.0.0/hash/runtime.tar.gz",
+      objectPath: "projects/demo/1.0.0/hash/runtime.tar.gz",
       filePath: "/tmp/runtime.tar.gz",
     },
   ]);
@@ -238,7 +238,7 @@ test("Storage.saveManagedFiles stores opaque image references outside workflow s
     const stored = await storage.getManagedFile(reference.id);
     assert.deepEqual(stored.metadata, reference);
     assert.equal(await readFile(stored.filePath, "utf8"), "image-bytes");
-    assert.equal(stored.filePath.includes(path.join("workflows", DEMO_WF_ID)), false);
+    assert.equal(stored.filePath.includes(path.join("projects", DEMO_WF_ID)), false);
 
     // protects the file-param attachment contract used by App,
     // server/web replay, and workflow runtime file stores.
@@ -349,7 +349,7 @@ test("DatabaseRepository scopes Kanban configuration reads by workflow and user"
 
   pool.query = async (sql: string, params?: unknown[]) => {
     queries.push({ sql, params });
-    if (/from workflow_kanban_configurations/.test(sql)) {
+    if (/from project_kanban_configurations/.test(sql)) {
       return {
         rows: [{
           configuration_id: "configuration-a",
@@ -451,19 +451,19 @@ test("DatabaseRepository.init creates project deployment locks and access-contro
     await repository.init();
 
     const schema = queries.join("\n");
-    assert.match(schema, /create table if not exists workflow_deployments/);
-    assert.match(schema, /create table if not exists workflow_deployment_items/);
-    assert.match(schema, /create table if not exists workflow_related_project_dependencies/);
-    assert.doesNotMatch(schema, /create table if not exists workflow_data_source_grants/);
-    assert.match(schema, /create table if not exists workflow_project_access_requests/);
-    assert.match(schema, /create table if not exists workflow_project_capability_grants/);
+    assert.match(schema, /create table if not exists project_deployments/);
+    assert.match(schema, /create table if not exists project_deployment_items/);
+    assert.match(schema, /create table if not exists related_project_dependencies/);
+    assert.doesNotMatch(schema, /create table if not exists data_source_grants/);
+    assert.match(schema, /create table if not exists project_access_requests/);
+    assert.match(schema, /create table if not exists project_capability_grants/);
     assert.match(
       schema,
-      /create unique index if not exists workflow_deployment_items_active_version_idx[\s\S]*project_id, planned_version[\s\S]*published_version is null[\s\S]*status in \('planned', 'preparing', 'prepared', 'publishing'\)/,
+      /create unique index if not exists project_deployment_items_active_version_idx[\s\S]*project_id, planned_version[\s\S]*published_version is null[\s\S]*status in \('planned', 'preparing', 'prepared', 'publishing'\)/,
     );
     assert.match(
       schema,
-      /create unique index if not exists workflow_project_access_requests_pending_idx[\s\S]*where status = 'pending'/,
+      /create unique index if not exists project_access_requests_pending_idx[\s\S]*where status = 'pending'/,
     );
   } finally {
     pool.query = originalQuery;
@@ -488,7 +488,7 @@ test("DatabaseRepository reserves active deployment versions and claims deployme
     if (/select planned_version/.test(sql)) {
       return { rows: [{ planned_version: "0.0.2" }, { planned_version: "0.0.3" }] };
     }
-    if (/update workflow_deployments/.test(sql)) {
+    if (/update project_deployments/.test(sql)) {
       const rowCount = claimed ? 0 : 1;
       claimed = true;
       return { rows: [], rowCount };
@@ -519,7 +519,7 @@ test("DatabaseRepository reserves active deployment versions and claims deployme
     assert.match(reservationQuery.sql, /published_version is null/);
     assert.match(reservationQuery.sql, /status in \('planned', 'preparing', 'prepared', 'publishing'\)/);
     assert.deepEqual(reservationQuery.params, [DEMO_WF_ID, "deployment-a"]);
-    const transitionQueries = queries.filter((query) => /update workflow_deployments/.test(query.sql));
+    const transitionQueries = queries.filter((query) => /update project_deployments/.test(query.sql));
     assert.equal(transitionQueries.length, 2);
     assert.ok(transitionQueries.every((query) => /status = any\(\$2::text\[\]\)/.test(query.sql)));
   } finally {
@@ -564,7 +564,7 @@ test("DatabaseRepository keeps one pending source request and grants capability 
   pool.connect = async () => ({
     query: async (sql: string, params: unknown[] = []) => {
       transactionQueries.push({ sql, params });
-      if (/update workflow_project_access_requests/.test(sql)) return { rows: [requestRow] };
+      if (/update project_access_requests/.test(sql)) return { rows: [requestRow] };
       return { rows: [] };
     },
     release: () => {},
@@ -601,10 +601,10 @@ test("DatabaseRepository keeps one pending source request and grants capability 
     assert.equal(approved?.id, requestRow.id);
     assert.match(transactionQueries[0]?.sql ?? "", /^begin$/);
     assert.ok(transactionQueries.some((query) => (
-      /update workflow_project_access_requests[\s\S]*status = 'pending'/.test(query.sql)
+      /update project_access_requests[\s\S]*status = 'pending'/.test(query.sql)
     )));
     assert.ok(transactionQueries.some((query) => (
-      /insert into workflow_project_capability_grants[\s\S]*revoked_at = null/.test(query.sql)
+      /insert into project_capability_grants[\s\S]*revoked_at = null/.test(query.sql)
     )));
     assert.match(transactionQueries.at(-1)?.sql ?? "", /^commit$/);
   } finally {
@@ -1003,14 +1003,14 @@ test("DatabaseRepository reconnects the KV revision listener and replays a revis
   try {
     unsubscribe = await repository.listenProjectStorageRevisions((event) => events.push(event));
     first.emit("notification", {
-      channel: "workflow_project_storage_revision",
+      channel: "project_storage_revision",
       payload: JSON.stringify({ projectId: DEMO_WF_ID, revision: "8" }),
     });
     first.emit("error", new Error("connection lost"));
 
     await waitFor(() => connectionCount === 2 && events.some((event) => event.revision === "9"));
     second.emit("notification", {
-      channel: "workflow_project_storage_revision",
+      channel: "project_storage_revision",
       payload: JSON.stringify({ projectId: DEMO_WF_ID, revision: "10" }),
     });
 
@@ -1046,7 +1046,7 @@ test("DatabaseRepository orders reconnect snapshots before buffered revision not
   second.query = async (sql) => {
     if (/from project_storage_revisions/.test(sql)) {
       second.emit("notification", {
-        channel: "workflow_project_storage_revision",
+        channel: "project_storage_revision",
         payload: JSON.stringify({ projectId: DEMO_WF_ID, revision: "10" }),
       });
       return { rows: [{ project_id: DEMO_WF_ID, revision: "9" }] };
@@ -1073,7 +1073,7 @@ test("DatabaseRepository orders reconnect snapshots before buffered revision not
   try {
     unsubscribe = await repository.listenProjectStorageRevisions((event) => events.push(event));
     first.emit("notification", {
-      channel: "workflow_project_storage_revision",
+      channel: "project_storage_revision",
       payload: JSON.stringify({ projectId: DEMO_WF_ID, revision: "8" }),
     });
     first.emit("error", new Error("connection lost"));
@@ -1660,7 +1660,7 @@ test("AccountRepository.getUserProfilesByIds returns a keyed profile map", async
   const originalEnd = pool.end;
 
   pool.query = async (sql: string, params?: unknown[]) => {
-    if (String(sql).includes("from workflow_user_profiles")) {
+    if (String(sql).includes("from user_profiles")) {
       assert.deepEqual(params, [["user-1", "user-2"]]);
       return {
         rows: [
@@ -1689,10 +1689,10 @@ test("AccountRepository.getUserProfilesByIds returns a keyed profile map", async
         ],
       };
     }
-    if (String(sql).includes("from workflow_user_roles")) {
+    if (String(sql).includes("from user_roles")) {
       return { rows: [] };
     }
-    if (String(sql).includes("from workflow_role_permissions")) {
+    if (String(sql).includes("from role_permissions")) {
       return { rows: [] };
     }
     throw new Error(`Unexpected query: ${sql}`);
@@ -1734,7 +1734,7 @@ test("Storage.listWorkflows returns uploaded package project card metadata", asy
       },
     }, "conversation");
     await writeFile(
-      path.join(dataRoot, "workflows", DEMO_CONV_WF_ID, "latest.json"),
+      path.join(dataRoot, "projects", DEMO_CONV_WF_ID, "latest.json"),
       JSON.stringify({ version: "1.0.0" }),
       "utf8",
     );
@@ -1821,7 +1821,7 @@ test("Storage rejects the first upload when executor type differs from the empty
 
 test("Storage serializes Kanban saves and later configuration selection", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-kanban-lock-"));
-  const sourceRoot = path.join(dataRoot, "workflows", DEMO_WF_ID, "draft", "source");
+  const sourceRoot = path.join(dataRoot, "projects", DEMO_WF_ID, "draft", "source");
   const storage = new Storage({
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
@@ -2035,7 +2035,7 @@ test("Storage shares concurrent database draft materialization and reuses its re
     await Promise.all([first, ...concurrent]);
     const sourceFile = path.join(
       dataRoot,
-      "workflows",
+      "projects",
       DEMO_WF_ID,
       "draft",
       "source",
@@ -2149,7 +2149,7 @@ test("Storage retries database source materialization after a failed task", asyn
     assert.equal(
       await readFile(path.join(
         dataRoot,
-        "workflows",
+        "projects",
         DEMO_WF_ID,
         "draft",
         "source",
@@ -2234,13 +2234,13 @@ test("DatabaseRepository publish and deployment operations use separate postgres
     assert.equal(result, "published");
     assert.equal(deploymentResult, "deployed");
     assert.match(queries[0]?.sql ?? "", /pg_advisory_lock/);
-    assert.deepEqual(queries[0]?.params, ["workflow_publish", DEMO_WF_ID]);
+    assert.deepEqual(queries[0]?.params, ["project_publish", DEMO_WF_ID]);
     assert.match(queries[1]?.sql ?? "", /pg_advisory_unlock/);
-    assert.deepEqual(queries[1]?.params, ["workflow_publish", DEMO_WF_ID]);
+    assert.deepEqual(queries[1]?.params, ["project_publish", DEMO_WF_ID]);
     assert.match(queries[2]?.sql ?? "", /pg_advisory_lock/);
-    assert.deepEqual(queries[2]?.params, ["workflow_deployment", deploymentId]);
+    assert.deepEqual(queries[2]?.params, ["project_deployment", deploymentId]);
     assert.match(queries[3]?.sql ?? "", /pg_advisory_unlock/);
-    assert.deepEqual(queries[3]?.params, ["workflow_deployment", deploymentId]);
+    assert.deepEqual(queries[3]?.params, ["project_deployment", deploymentId]);
     assert.equal(released, true);
   } finally {
     publishLockPool.connect = originalConnect;
@@ -2384,7 +2384,7 @@ test("DatabaseRepository namespace transactions commit all knowledge KV writes o
     assert.match(queries[0]?.sql ?? "", /^begin$/);
     assert.match(queries[1]?.sql ?? "", /pg_advisory_xact_lock/);
     assert.deepEqual(queries[1]?.params, [
-      "workflow_project_storage_namespace",
+      "project_storage_namespace",
       `{"storageKind":"persistent_value","scope":"project","projectId":"${DEMO_WF_ID}"}`,
     ]);
     assert.equal(queries.filter((query) => query.sql.includes("insert into project_storage")).length, 2);
@@ -2630,7 +2630,7 @@ test("Storage rejects project-group publishing while a relationship is pending",
     getWorkflow: async () => createDbWorkflowRecord(DEMO_CONV_WF_ID, null),
   } as unknown as DatabaseRepository;
   const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot, db });
-  const sourceRoot = path.join(dataRoot, "workflows", DEMO_WF_ID, "draft", "source");
+  const sourceRoot = path.join(dataRoot, "projects", DEMO_WF_ID, "draft", "source");
   await mkdir(sourceRoot, { recursive: true });
   await writeFile(path.join(sourceRoot, "package.json"), JSON.stringify({
     id: DEMO_WF_ID,
@@ -2849,7 +2849,7 @@ async function waitForPreparationTerminal(
 }
 
 async function writePublishableDraft(dataRoot: string, projectName: string): Promise<void> {
-  const draftRoot = path.join(dataRoot, "workflows", projectName, "draft");
+  const draftRoot = path.join(dataRoot, "projects", projectName, "draft");
   const sourceRoot = path.join(draftRoot, "source");
 
   await mkdir(sourceRoot, { recursive: true });
@@ -2880,7 +2880,7 @@ async function writeFileVersion(
   packageJsonOverrides: Record<string, unknown> = {},
   projectType: "workflow" | "conversation" = "workflow",
 ): Promise<void> {
-  const versionRoot = path.join(dataRoot, "workflows", projectName, "versions", version);
+  const versionRoot = path.join(dataRoot, "projects", projectName, "versions", version);
   await mkdir(path.join(versionRoot, "source"), { recursive: true });
   await writeFile(
     path.join(versionRoot, "source", "package.json"),
@@ -2932,7 +2932,7 @@ async function writeFileBackedProject(
     "2026-08-25T00:00:00.000Z",
   );
   await writeFile(
-    path.join(dataRoot, "workflows", projectId, "latest.json"),
+    path.join(dataRoot, "projects", projectId, "latest.json"),
     JSON.stringify({ version: "1.0.0" }),
     "utf8",
   );
@@ -2971,7 +2971,7 @@ function createDbVersionRecord(projectId: string, version: string) {
     createdAt: "2026-05-21T00:00:00.000Z",
     releaseLog: "",
     sourceHash: version,
-    sourceObjectPath: `workflows/${projectId}/versions/${version}/source.tar.gz`,
+    sourceObjectPath: `projects/${projectId}/versions/${version}/source.tar.gz`,
   } as const;
 }
 

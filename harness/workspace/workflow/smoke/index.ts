@@ -88,7 +88,7 @@ export const smokeWorkflow = workflow.defineWorkflow<SmokeInput, SmokeOutputPayl
 
     if (parsed.mode === "fail") {
       throw new workflow.HarnessError({
-        type: "workflow_execution",
+        type: "execution",
         message: "Smoke fixture failure.",
         metadata: { mode: parsed.mode },
       });
@@ -105,7 +105,7 @@ export const smokeWorkflow = workflow.defineWorkflow<SmokeInput, SmokeOutputPayl
     const result = await workflow.runStreamNode(outputNode, parsed, context);
     if (result.output === undefined) {
       throw new workflow.HarnessError({
-        type: "workflow_execution",
+        type: "execution",
         message: "Smoke output was not created.",
       });
     }

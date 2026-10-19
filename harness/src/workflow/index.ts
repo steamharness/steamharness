@@ -350,7 +350,7 @@ export async function runWorkflow<Input, Output>(
   const depth = readRunWorkflowDepth(context);
   if (depth >= maxDepth) {
     throw new HarnessError({
-      type: "workflow_execution",
+      type: "execution",
       message: `runWorkflow exceeded maxDepth (${maxDepth}) while calling "${workflow.name}".`,
       metadata: {
         workflow: workflow.name,
@@ -396,7 +396,7 @@ export async function runWorkflow<Input, Output>(
     const bridgeError = outputBridge?.readError();
     const cause = bridgeError === undefined ? error : createRunWorkflowCombinedError(error, bridgeError);
     const workflowError = toWorkflowError(error, {
-      type: "workflow_execution",
+      type: "execution",
       message: `Workflow "${workflow.name}" failed.`,
       cause,
       metadata: {
@@ -464,7 +464,7 @@ export function readEntrypointOutput(data: unknown): unknown {
     const envelope = data as { errCode: number; errMessage?: unknown; output: unknown };
     if (envelope.errCode !== 0) {
       throw new HarnessError({
-        type: "workflow_execution",
+        type: "execution",
         message: typeof envelope.errMessage === "string" && envelope.errMessage.trim() !== ""
           ? envelope.errMessage
           : `The entrypoint failed with errCode ${envelope.errCode}.`,

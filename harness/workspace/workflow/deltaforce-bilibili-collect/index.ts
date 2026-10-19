@@ -534,7 +534,7 @@ function parseIntMaxDuration(value: unknown): number {
 function requireOutput(output: DeltaforceBilibiliCollectOutputPayload | undefined): DeltaforceBilibiliCollectOutputPayload {
   if (output === undefined) {
     throw new workflow.HarnessError({
-      type: "workflow_execution",
+      type: "execution",
       message: "deltaforce-bilibili-collect output was not created.",
     });
   }
@@ -544,7 +544,7 @@ function requireOutput(output: DeltaforceBilibiliCollectOutputPayload | undefine
 function requireDocument(document: DeltaforceBilibiliCollectDocument | undefined): DeltaforceBilibiliCollectDocument {
   if (document === undefined) {
     throw new workflow.HarnessError({
-      type: "workflow_execution",
+      type: "execution",
       message: "deltaforce-bilibili-collect document was not created.",
       nodeName: "deltaforce-bilibili-collect-output",
     });

@@ -247,7 +247,7 @@ export class AccountRepository {
   constructor(connectionString: string) {
     this.pool = createPostgresPool({
       connectionString,
-      label: "workflow account",
+      label: "SteamHarness account",
     });
   }
 
@@ -257,7 +257,7 @@ export class AccountRepository {
 
   async init(): Promise<void> {
     await this.pool.query(`
-      create table if not exists workflow_user_profiles (
+      create table if not exists user_profiles (
         user_id text primary key,
         email text not null,
         display_name text not null default '',
@@ -269,15 +269,15 @@ export class AccountRepository {
         last_login_at timestamptz
       );
 
-      alter table workflow_user_profiles
+      alter table user_profiles
         add column if not exists avatar_url text;
 
-      create unique index if not exists workflow_user_profiles_email_idx
-        on workflow_user_profiles (lower(email));
+      create unique index if not exists user_profiles_email_idx
+        on user_profiles (lower(email));
 
-      create table if not exists workflow_api_keys (
+      create table if not exists api_keys (
         id text primary key,
-        user_id text not null references workflow_user_profiles(user_id) on delete cascade,
+        user_id text not null references user_profiles(user_id) on delete cascade,
         name text not null,
         prefix text not null,
         secret_hash text not null,
@@ -292,10 +292,10 @@ export class AccountRepository {
         user_agent text
       );
 
-      create index if not exists workflow_api_keys_user_idx
-        on workflow_api_keys(user_id, created_at desc);
-      create index if not exists workflow_api_keys_prefix_idx
-        on workflow_api_keys(prefix);
+      create index if not exists api_keys_user_idx
+        on api_keys(user_id, created_at desc);
+      create index if not exists api_keys_prefix_idx
+        on api_keys(prefix);
 
       create table if not exists steamharness_auth_device_codes (
         id text primary key,
@@ -321,7 +321,7 @@ export class AccountRepository {
       create index if not exists steamharness_auth_device_codes_state_idx
         on steamharness_auth_device_codes(state, expires_at desc);
 
-      create table if not exists workflow_audit_events (
+      create table if not exists audit_events (
         id text primary key,
         actor_user_id text,
         actor_profile_id text,
@@ -337,10 +337,10 @@ export class AccountRepository {
         created_at timestamptz not null default now()
       );
 
-      create index if not exists workflow_audit_events_created_at_idx
-        on workflow_audit_events(created_at desc);
+      create index if not exists audit_events_created_at_idx
+        on audit_events(created_at desc);
 
-      create table if not exists workflow_roles (
+      create table if not exists roles (
         id text primary key,
         name text not null unique,
         description text not null default '',
@@ -351,15 +351,15 @@ export class AccountRepository {
         updated_at timestamptz not null default now()
       );
 
-      create table if not exists workflow_role_permissions (
-        role_id text not null references workflow_roles(id) on delete cascade,
+      create table if not exists role_permissions (
+        role_id text not null references roles(id) on delete cascade,
         permission_key text not null,
         primary key (role_id, permission_key)
       );
 
-      create table if not exists workflow_user_roles (
-        user_id text not null references workflow_user_profiles(user_id) on delete cascade,
-        role_id text not null references workflow_roles(id) on delete cascade,
+      create table if not exists user_roles (
+        user_id text not null references user_profiles(user_id) on delete cascade,
+        role_id text not null references roles(id) on delete cascade,
         primary key (user_id, role_id)
       );
 
@@ -378,7 +378,7 @@ export class AccountRepository {
   }): Promise<UserProfileRecord> {
     const displayName = normalizeDisplayName(input.displayName, input.email);
     await this.pool.query(
-      `insert into workflow_user_profiles (
+      `insert into user_profiles (
          user_id, email, display_name, status, created_by_user_id, created_at, updated_at, last_login_at
        )
        values ($1, $2, $3, $4, $5, now(), now(), $6)
@@ -387,7 +387,7 @@ export class AccountRepository {
          display_name = excluded.display_name,
          status = excluded.status,
          updated_at = now(),
-         last_login_at = coalesce(excluded.last_login_at, workflow_user_profiles.last_login_at)`,
+         last_login_at = coalesce(excluded.last_login_at, user_profiles.last_login_at)`,
       [
         input.userId,
         input.email.trim().toLowerCase(),
@@ -417,7 +417,7 @@ export class AccountRepository {
     const result = await this.pool.query<UserProfileRow>(
       `select user_id, email, display_name, status, created_by_user_id, created_at, updated_at, last_login_at
       , avatar_url
-       from workflow_user_profiles
+       from user_profiles
        where user_id = any($1::text[])
        order by user_id asc`,
       [normalizedUserIds],
@@ -453,7 +453,7 @@ export class AccountRepository {
     const result = await this.pool.query<UserProfileRow>(
       `select user_id, email, display_name, status, created_by_user_id, created_at, updated_at, last_login_at
       , avatar_url
-       from workflow_user_profiles
+       from user_profiles
        ${where.length > 0 ? `where ${where.join(" and ")}` : ""}
        order by created_at desc, user_id asc`,
       params,
@@ -492,7 +492,7 @@ export class AccountRepository {
 
     if (updates.length > 0) {
       await this.pool.query(
-        `update workflow_user_profiles
+        `update user_profiles
          set ${updates.join(", ")}, updated_at = now()
          where user_id = $1`,
         params,
@@ -511,7 +511,7 @@ export class AccountRepository {
   async getRole(roleId: string): Promise<RoleRecord | undefined> {
     const result = await this.pool.query<RoleRow>(
       `select id, name, description, builtin, protected, created_by_user_id, created_at, updated_at
-       from workflow_roles
+       from roles
        where id = $1`,
       [roleId],
     );
@@ -535,7 +535,7 @@ export class AccountRepository {
     try {
       await client.query("begin");
       await client.query(
-        `insert into workflow_roles (
+        `insert into roles (
            id, name, description, builtin, protected, created_by_user_id, created_at, updated_at
          )
          values ($1, $2, $3, false, false, $4, now(), now())`,
@@ -548,7 +548,7 @@ export class AccountRepository {
       );
       for (const permission of permissions) {
         await client.query(
-          `insert into workflow_role_permissions (role_id, permission_key)
+          `insert into role_permissions (role_id, permission_key)
            values ($1, $2)`,
           [roleId, permission],
         );
@@ -584,7 +584,7 @@ export class AccountRepository {
       await client.query("begin");
       if (input.name !== undefined || input.description !== undefined) {
         await client.query(
-          `update workflow_roles
+          `update roles
            set name = coalesce($2, name),
              description = coalesce($3, description),
              updated_at = now()
@@ -598,10 +598,10 @@ export class AccountRepository {
       }
       if (input.permissions !== undefined) {
         const permissions = normalizeWorkflowPermissionKeys(input.permissions);
-        await client.query(`delete from workflow_role_permissions where role_id = $1`, [roleId]);
+        await client.query(`delete from role_permissions where role_id = $1`, [roleId]);
         for (const permission of permissions) {
           await client.query(
-            `insert into workflow_role_permissions (role_id, permission_key)
+            `insert into role_permissions (role_id, permission_key)
              values ($1, $2)`,
             [roleId, permission],
           );
@@ -625,7 +625,7 @@ export class AccountRepository {
     if (existing.builtin || existing.protected) {
       throw new Error(`Built-in role "${existing.name}" cannot be deleted.`);
     }
-    await this.pool.query(`delete from workflow_roles where id = $1`, [roleId]);
+    await this.pool.query(`delete from roles where id = $1`, [roleId]);
   }
 
   async setUserRoles(userId: string, roleIds: string[]): Promise<UserProfileRecord> {
@@ -633,10 +633,10 @@ export class AccountRepository {
     const client = await this.pool.connect();
     try {
       await client.query("begin");
-      await client.query(`delete from workflow_user_roles where user_id = $1`, [userId]);
+      await client.query(`delete from user_roles where user_id = $1`, [userId]);
       for (const roleId of normalizedRoleIds) {
         await client.query(
-          `insert into workflow_user_roles (user_id, role_id)
+          `insert into user_roles (user_id, role_id)
            values ($1, $2)
            on conflict (user_id, role_id) do nothing`,
           [userId, roleId],
@@ -664,7 +664,7 @@ export class AccountRepository {
     const { token, prefix } = createWorkflowApiKeyToken();
     const id = randomUUID();
     await this.pool.query(
-      `insert into workflow_api_keys (
+      `insert into api_keys (
          id, user_id, name, prefix, secret_hash, source, scopes, created_by_user_id, created_at, expires_at
        )
        values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, now(), $9)`,
@@ -703,7 +703,7 @@ export class AccountRepository {
       `select
          id, user_id, name, prefix, secret_hash, source, scopes, created_by_user_id,
          created_at, expires_at, revoked_at, last_used_at, last_used_ip, user_agent
-       from workflow_api_keys
+       from api_keys
        ${where.length > 0 ? `where ${where.join(" and ")}` : ""}
        order by created_at desc, id desc`,
       params,
@@ -716,7 +716,7 @@ export class AccountRepository {
       `select
          id, user_id, name, prefix, secret_hash, source, scopes, created_by_user_id,
          created_at, expires_at, revoked_at, last_used_at, last_used_ip, user_agent
-       from workflow_api_keys
+       from api_keys
        where id = $1`,
       [apiKeyId],
     );
@@ -742,7 +742,7 @@ export class AccountRepository {
       `select
          id, user_id, name, prefix, secret_hash, source, scopes, created_by_user_id,
          created_at, expires_at, revoked_at, last_used_at, last_used_ip, user_agent
-       from workflow_api_keys
+       from api_keys
        where prefix = $1
        order by created_at desc`,
       [prefix],
@@ -774,7 +774,7 @@ export class AccountRepository {
 
   async revokeApiKey(apiKeyId: string): Promise<void> {
     await this.pool.query(
-      `update workflow_api_keys
+      `update api_keys
        set revoked_at = coalesce(revoked_at, now())
        where id = $1`,
       [apiKeyId],
@@ -786,7 +786,7 @@ export class AccountRepository {
     input?: { ip?: string; userAgent?: string; expiresAt?: string },
   ): Promise<{ expiresAt?: string } | undefined> {
     const result = await this.pool.query<{ expires_at: Date | null }>(
-      `update workflow_api_keys
+      `update api_keys
        set last_used_at = now(),
          last_used_ip = coalesce($2, last_used_ip),
          user_agent = coalesce($3, user_agent),
@@ -962,7 +962,7 @@ export class AccountRepository {
       const { token, prefix } = createWorkflowApiKeyToken();
       const apiKeyId = randomUUID();
       const apiKey = await client.query<ApiKeyRow>(
-        `insert into workflow_api_keys (
+        `insert into api_keys (
            id, user_id, name, prefix, secret_hash, source, scopes, created_by_user_id, created_at, expires_at
          )
          values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, now(), $9)
@@ -1018,7 +1018,7 @@ export class AccountRepository {
 
   async createAuditEvent(event: AuditEventInput): Promise<void> {
     await this.pool.query(
-      `insert into workflow_audit_events (
+      `insert into audit_events (
          id, actor_user_id, actor_profile_id, actor_display_name, principal_kind, event_type,
          resource_type, resource_id, outcome, request_ip, user_agent, context, created_at
        )
@@ -1102,14 +1102,14 @@ export class AccountRepository {
          user_agent,
          context,
          created_at
-       from workflow_audit_events
+       from audit_events
        ${pageWhereClause}
        order by created_at desc, id desc
        limit ${pageSize + 1}`,
       pageParams,
     );
     const totalResult = await this.pool.query<{ count: string }>(
-      `select count(*)::text as count from workflow_audit_events ${totalWhereClause}`,
+      `select count(*)::text as count from audit_events ${totalWhereClause}`,
       params,
     );
     const hasMore = rows.rows.length > pageSize;
@@ -1154,7 +1154,7 @@ export class AccountRepository {
       await client.query("begin");
       for (const role of listBuiltinWorkflowRoles()) {
         await client.query(
-          `insert into workflow_roles (
+          `insert into roles (
              id, name, description, builtin, protected, created_at, updated_at
            )
            values ($1, $2, $3, true, $4, now(), now())
@@ -1166,10 +1166,10 @@ export class AccountRepository {
              updated_at = now()`,
           [role.id, role.name, role.description, role.protected],
         );
-        await client.query(`delete from workflow_role_permissions where role_id = $1`, [role.id]);
+        await client.query(`delete from role_permissions where role_id = $1`, [role.id]);
         for (const permission of role.permissions) {
           await client.query(
-            `insert into workflow_role_permissions (role_id, permission_key)
+            `insert into role_permissions (role_id, permission_key)
              values ($1, $2)
              on conflict (role_id, permission_key) do nothing`,
             [role.id, permission],
@@ -1189,7 +1189,7 @@ export class AccountRepository {
     const result = await this.pool.query<UserProfileRow>(
       `select user_id, email, display_name, status, created_by_user_id, created_at, updated_at, last_login_at
       , avatar_url
-       from workflow_user_profiles
+       from user_profiles
        where user_id = $1`,
       [userId],
     );
@@ -1227,7 +1227,7 @@ export class AccountRepository {
   private async readRoleRows(): Promise<RoleRow[]> {
     const result = await this.pool.query<RoleRow>(
       `select id, name, description, builtin, protected, created_by_user_id, created_at, updated_at
-       from workflow_roles
+       from roles
        order by builtin desc, name asc, id asc`,
     );
     return result.rows;
@@ -1236,7 +1236,7 @@ export class AccountRepository {
   private async readRolePermissions(roleIds?: string[]): Promise<Map<string, PermissionKey[]>> {
     const result = await this.pool.query<RolePermissionRow>(
       `select role_id, permission_key
-       from workflow_role_permissions
+       from role_permissions
        ${roleIds && roleIds.length > 0 ? `where role_id = any($1::text[])` : ""}
        order by role_id asc, permission_key asc`,
       roleIds && roleIds.length > 0 ? [roleIds] : [],
@@ -1253,8 +1253,8 @@ export class AccountRepository {
   private async readUserRoles(userIds: string[]): Promise<Map<string, Array<{ roleId: string; name: string }>>> {
     const result = await this.pool.query<UserRoleRow>(
       `select ur.user_id, ur.role_id, r.name as role_name
-       from workflow_user_roles ur
-       join workflow_roles r on r.id = ur.role_id
+       from user_roles ur
+       join roles r on r.id = ur.role_id
        where ur.user_id = any($1::text[])
        order by r.builtin desc, r.name asc, ur.role_id asc`,
       [userIds],
@@ -1271,9 +1271,9 @@ export class AccountRepository {
   private async readUserPermissions(userIds: string[]): Promise<Map<string, PermissionKey[]>> {
     const result = await this.pool.query<UserRoleRow & { permission_key: string }>(
       `select ur.user_id, ur.role_id, r.name as role_name, rp.permission_key
-       from workflow_user_roles ur
-       join workflow_roles r on r.id = ur.role_id
-       join workflow_role_permissions rp on rp.role_id = ur.role_id
+       from user_roles ur
+       join roles r on r.id = ur.role_id
+       join role_permissions rp on rp.role_id = ur.role_id
        where ur.user_id = any($1::text[])`,
       [userIds],
     );
@@ -1432,7 +1432,7 @@ export function normalizeAvatarUrl(
   } catch {
     // Report the common validation error below.
   }
-  throw new Error("avatarUrl must be a supported image data URL or Workflow storage avatar URL.");
+  throw new Error("avatarUrl must be a supported image data URL or SteamHarness storage avatar URL.");
 }
 
 function clampAuditPageSize(value: number | undefined): number {

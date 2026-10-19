@@ -50,10 +50,10 @@ test("local, server, and both declarations enforce their storage boundaries", as
 });
 
 test("both mode stays usable offline until server storage is accessed", async () => {
-  const workflowDir = await createStorageWorkflow("both");
+  const projectDir = await createStorageWorkflow("both");
   try {
     const local = await runLocalWorkflowWithReport({
-      workflowDir,
+      projectDir,
       args: ["--target", "local"],
       storage: {
         host: "local",
@@ -67,7 +67,7 @@ test("both mode stays usable offline until server storage is accessed", async ()
     assert.equal(local.status, "success");
 
     const server = await runLocalWorkflowWithReport({
-      workflowDir,
+      projectDir,
       args: ["--target", "server"],
       storage: {
         host: "local",
@@ -81,7 +81,7 @@ test("both mode stays usable offline until server storage is accessed", async ()
     assert.equal(server.status, "failed");
     assert.match(readReportError(server), /authenticated server connection/);
   } finally {
-    await rm(workflowDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
   }
 });
 
@@ -90,12 +90,12 @@ test("legacy storage declarations are rejected and removed context getters are a
   const migratedDir = await createStorageWorkflow("local", true);
   try {
     await assert.rejects(
-      () => runLocalWorkflowWithReport({ workflowDir: legacyDir }),
+      () => runLocalWorkflowWithReport({ projectDir: legacyDir }),
       /dataStorage\.mode must be declared before this project can run or access data/,
     );
 
     const report = await runLocalWorkflowWithReport({
-      workflowDir: migratedDir,
+      projectDir: migratedDir,
       storage: { host: "local", local: { kvStore: createMemoryKVStore() } },
     });
     assert.equal(report.status, "success");
@@ -108,13 +108,13 @@ test("legacy storage declarations are rejected and removed context getters are a
 });
 
 async function runStorageWorkflow(
-  workflowDir: string,
+  projectDir: string,
   target: "local" | "server",
   localStore: KVStore,
   serverStore: KVStore,
 ) {
   return runLocalWorkflowWithReport({
-    workflowDir,
+    projectDir,
     args: ["--target", target],
     storage: {
       host: "local",
@@ -131,8 +131,8 @@ async function createStorageWorkflow(
   mode: "local" | "server" | "both" | undefined,
   useLegacyGetter = false,
 ): Promise<string> {
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-storage-context-"));
-  await writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
+  const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-storage-context-"));
+  await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
     id: PROJECT_ID,
     name: "@steamharness/storage-context-test",
     type: "module",
@@ -140,7 +140,7 @@ async function createStorageWorkflow(
       ? {}
       : { steamHarness: { projectInfo: { dataStorage: { mode } } } }),
   }));
-  await writeFile(path.join(workflowDir, "index.ts"), `
+  await writeFile(path.join(projectDir, "index.ts"), `
     const storageWorkflow = workflow.defineWorkflow({
       name: "storage-context-test",
       async run(input, context) {
@@ -175,7 +175,7 @@ async function createStorageWorkflow(
     export { storageWorkflow as workflow };
     export default storageWorkflow;
   `);
-  return workflowDir;
+  return projectDir;
 }
 
 function createMemoryKVStore(): KVStore & {

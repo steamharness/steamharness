@@ -88,8 +88,8 @@ test("creation, upload, publication and historical downloads never load or build
     assert.equal(archive.version, "1.0.0");
     assert.equal(uploaded.sourceHash, (await storage.listVersions(projectId)).versions.find(item => item.version === "1.0.0")?.sourceHash);
     await assert.rejects(readFile(marker), { code: "ENOENT" });
-    assert.equal((await readdir(path.join(dataRoot, "workflows", projectId, "draft"))).includes("build"), false);
-    assert.equal((await readdir(path.join(dataRoot, "workflows", projectId, "draft", "source"))).includes("node_modules"), false);
+    assert.equal((await readdir(path.join(dataRoot, "projects", projectId, "draft"))).includes("build"), false);
+    assert.equal((await readdir(path.join(dataRoot, "projects", projectId, "draft", "source"))).includes("node_modules"), false);
   } finally {
     await storage.close();
     await rm(root, { recursive: true, force: true });

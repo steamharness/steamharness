@@ -15,7 +15,7 @@ tags:
     description: 健康检查。
   - name: Auth & Accounts
     description: 登录、会话、device flow、用户、角色与 API Key。
-  - name: Admin Workflows
+  - name: Admin Projects
     description: 项目源码、版本与静态元数据管理。
   - name: Admin Files
     description: 项目文件上传、读取、下载与删除。
@@ -813,19 +813,19 @@ paths:
   /api/projects:
     get:
       tags:
-        - Admin Workflows
-      summary: 列出 workflow
-      operationId: listWorkflows
+        - Admin Projects
+      summary: 列出项目
+      operationId: listProjects
       responses:
         "200":
-          description: workflow 摘要列表。
+          description: 项目摘要列表。
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/SummaryListResponse"
     post:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 使用指定 UUID 原子创建 server 项目
       description: |
         登录用户或管理员使用本地 `package.json.id` 中的 UUID 创建或恢复同 UUID server 项目。
@@ -838,13 +838,13 @@ paths:
         UUID in local `package.json.id`. `projectId`, `name`, `projectType`, and complete `projectInfo`
         containing `dataStorage.mode` are required. Server stores the complete declaration atomically;
         it does not create a default record first or accept project source.
-      operationId: createWorkflowProject
+      operationId: createProject
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateWorkflowProjectRequest"
+              $ref: "#/components/schemas/CreateProjectRequest"
             example:
               projectId: 8bd4fef2-e083-4201-a89f-6f7d0676df53
               name: "@steamharness/hello-workflow"
@@ -879,7 +879,7 @@ paths:
   /api/project-storage:
     post:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 访问当前项目或关联项目存储
       description: |
         `context.storage.server.kv` 与 `context.storage.server.persistentValue` 共用此 HTTP 入口，
@@ -985,7 +985,7 @@ paths:
   /api/token-usage:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 读取系统 token 用量
       operationId: getSystemTokenUsage
       parameters:
@@ -1012,7 +1012,7 @@ paths:
   /api/audit-events:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 读取全局审计日志
       operationId: listAuditEvents
       parameters:
@@ -1076,9 +1076,9 @@ paths:
   /api/projects/{projectId}/init:
     post:
       tags:
-        - Admin Workflows
-      summary: 从文件初始化 workflow
-      operationId: initWorkflow
+        - Admin Projects
+      summary: 从文件初始化项目
+      operationId: initProject
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       requestBody:
@@ -1110,9 +1110,9 @@ paths:
   /api/projects/{projectId}/preparations/latest:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 查询最新服务器准备任务
-      operationId: getLatestWorkflowPreparation
+      operationId: getLatestProjectPreparation
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       responses:
@@ -1127,9 +1127,9 @@ paths:
   /api/projects/{projectId}/preparations/{jobId}:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 查询服务器准备任务
-      operationId: getWorkflowPreparation
+      operationId: getProjectPreparation
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: jobId
@@ -1150,9 +1150,9 @@ paths:
   /api/projects/{projectId}/package:
     post:
       tags:
-        - Admin Workflows
-      summary: 上传 workflow 压缩包
-      operationId: uploadWorkflowPackage
+        - Admin Projects
+      summary: 上传项目压缩包
+      operationId: uploadProjectPackage
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: fileName
@@ -1184,9 +1184,9 @@ paths:
   /api/projects/{projectId}/files:
     get:
       tags:
-        - Admin Workflows
-      summary: 读取 workflow 源文件
-      operationId: getWorkflowFiles
+        - Admin Projects
+      summary: 读取项目源文件
+      operationId: getProjectFiles
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - $ref: "#/components/parameters/TargetQuery"
@@ -1209,7 +1209,7 @@ paths:
       tags:
         - Admin Files
       summary: 上传项目文件
-      operationId: uploadWorkflowFile
+      operationId: uploadProjectFile
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: fileName
@@ -1253,12 +1253,12 @@ paths:
   /api/projects/{projectId}/project-card-image:
     post:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 上传项目卡片图片
       description: |
         上传客户端完成 1:1 裁剪后生成的 WebP。调用方必须具备项目管理权限。
         Server 校验格式与大小后按内容哈希保存，并返回公开、不可变的图片 URL。
-      operationId: uploadWorkflowProjectCardImage
+      operationId: uploadProjectCardImage
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       requestBody:
@@ -1290,14 +1290,14 @@ paths:
   /api/projects/{projectId}/project-card:
     put:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 更新项目卡片元数据
       description: |
         保存完整的纯视觉 `projectCard`，仅接受图标、图片 URL、图标颜色和背景颜色。
         上传自定义图片后，客户端把图片接口返回的 URL 写入 `iconUrl` 再调用本接口；
         省略 `iconUrl` 会恢复内置图标展示。项目类型由静态 `package.json.steamHarness.projectType` 声明，
         不能通过本接口修改。
-      operationId: updateWorkflowProjectCard
+      operationId: updateProjectCard
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       requestBody:
@@ -1331,11 +1331,11 @@ paths:
   /api/projects/{projectId}/source-files:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 下载可本地化的已发布源码快照
       description: 下载已发布不可变源码快照，独立校验源码下载权限，无平台限制。成功发送 GET
         响应后为实际返回的精确版本累加一次下载量；HEAD、失败和中断响应不计数。
-      operationId: getWorkflowDownloadableSourceFiles
+      operationId: getDownloadableSourceFiles
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: target
@@ -1358,12 +1358,12 @@ paths:
   /api/deployments:
     post:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 创建项目组部署计划
       description: |
         为一个 Kanban 根项目及选中的 Workflow 数据源预留精确版本。项目组只包含源码包，
         不包含 KV、定时计划、运行历史、环境变量或宿主用户配置。
-      operationId: createWorkflowProjectGroupDeployment
+      operationId: createProjectGroupDeployment
       requestBody:
         required: true
         content:
@@ -1389,9 +1389,9 @@ paths:
   /api/deployments/{deploymentId}:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 查询项目组部署进度
-      operationId: getWorkflowProjectGroupDeployment
+      operationId: getProjectGroupDeployment
       parameters:
         - $ref: "#/components/parameters/DeploymentId"
       responses:
@@ -1406,12 +1406,12 @@ paths:
   /api/deployments/{deploymentId}/package:
     post:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 上传项目组源码包
       description: |
         上传 `project-group` v1 tar.gz。Server 校验清单、普通文件成员、展开大小、每个项目类型
         和源码哈希；中断后的 `preparing` 部署可使用完整压缩包重新提交。
-      operationId: uploadWorkflowProjectGroupPackage
+      operationId: uploadProjectGroupPackage
       parameters:
         - $ref: "#/components/parameters/DeploymentId"
         - name: fileName
@@ -1440,12 +1440,12 @@ paths:
   /api/deployments/{deploymentId}/publish:
     post:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 发布项目组
       description: |
         先发布 included 关联项目，最后发布并激活 Kanban 根版本。发布中断后可以幂等续跑；
         所有依赖成功、双方关系仍确认且 dependency lock 固化后，才发布根项目快照。
-      operationId: publishWorkflowProjectGroup
+      operationId: publishProjectGroup
       parameters:
         - $ref: "#/components/parameters/DeploymentId"
       responses:
@@ -1460,9 +1460,9 @@ paths:
   /api/projects/{projectId}/dependencies:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 查询精确版本的项目依赖状态
-      operationId: getWorkflowProjectDependencies
+      operationId: getProjectDependencies
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: target
@@ -1481,7 +1481,7 @@ paths:
   /api/projects/{projectId}/project-group-download:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 下载精确项目组源码
       description: |
         根项目和有权限的 included 依赖按 dependency lock 中的精确版本返回。无权限依赖会被列入
@@ -1490,7 +1490,7 @@ paths:
         客户端应按文件路径与原始字节重算 `sourceHash` 后再写盘。
         成功发送 GET 响应后，实际返回的每个项目精确版本各累加一次下载量；
         同一响应内去重，跳过的依赖不计数。HEAD、失败和中断响应不计数。
-      operationId: downloadWorkflowProjectGroup
+      operationId: downloadProjectGroup
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: target
@@ -1513,10 +1513,10 @@ paths:
   /api/projects/{projectId}/related-projects:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 列出项目的通用关联项目
       description: 返回当前声明、目标项目名称、对方 alias、对方授予当前项目的规则和双方确认状态。待确认关系不授予 KV 权限。
-      operationId: listWorkflowRelatedProjects
+      operationId: listRelatedProjects
       parameters:
         - $ref: "#/components/parameters/ProjectId"
       responses:
@@ -1529,13 +1529,13 @@ paths:
   /api/projects/{projectId}/related-projects/{alias}:
     put:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 创建或更新通用项目关系
       description: |
         当前项目必须可管理。若调用方也能管理目标项目，`targetAlias` 必填，Server 在一个事务中更新双方；
         否则只保存当前项目声明并返回待确认。两个授权都表示“允许对方访问当前项目”，省略时使用
         `read: all`、`write: none`。
-      operationId: setWorkflowRelatedProject
+      operationId: setRelatedProject
       parameters:
         - $ref: "#/components/parameters/ProjectId"
         - $ref: "#/components/parameters/RelatedProjectAlias"
@@ -1560,10 +1560,10 @@ paths:
           $ref: "#/components/responses/HarnessError"
     delete:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 删除通用项目关系
       description: 能管理目标项目时事务式删除双方声明；否则只删除当前项目一侧。关系权限随当前声明立即失效。
-      operationId: deleteWorkflowRelatedProject
+      operationId: deleteRelatedProject
       parameters:
         - $ref: "#/components/parameters/ProjectId"
         - $ref: "#/components/parameters/RelatedProjectAlias"
@@ -1577,9 +1577,9 @@ paths:
   /api/projects/{projectId}/source-access-requests:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 列出源码访问申请与授权
-      operationId: listWorkflowSourceAccessRequests
+      operationId: listSourceAccessRequests
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       responses:
@@ -1592,9 +1592,9 @@ paths:
   /api/projects/{projectId}/source-access-requests/{requestId}:
     patch:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 审批源码访问申请
-      operationId: resolveWorkflowSourceAccessRequest
+      operationId: resolveSourceAccessRequest
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: requestId
@@ -1629,9 +1629,9 @@ paths:
   /api/projects/{projectId}/source-capabilities/{userId}:
     delete:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 撤销用户的项目源码下载能力
-      operationId: revokeWorkflowSourceCapability
+      operationId: revokeSourceCapability
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: userId
@@ -1649,9 +1649,9 @@ paths:
   /api/project-source-access/{token}:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 解析短期源码申请链接
-      operationId: getWorkflowSourceAccessLink
+      operationId: getSourceAccessLink
       parameters:
         - name: token
           in: path
@@ -1670,9 +1670,9 @@ paths:
   /api/project-source-access/{token}/requests:
     post:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 提交源码下载权限申请
-      operationId: createWorkflowSourceAccessRequest
+      operationId: createSourceAccessRequest
       parameters:
         - name: token
           in: path
@@ -1704,11 +1704,11 @@ paths:
   /project-card-images/{projectId}/{fileName}:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 读取公开项目卡片图片
       description: 读取按内容哈希保存的不可变 WebP；用于项目列表和 Desktop 展示。
       security: []
-      operationId: getWorkflowProjectCardImage
+      operationId: getProjectCardImage
       parameters:
         - name: projectId
           in: path
@@ -1785,7 +1785,7 @@ paths:
       tags:
         - Admin Files
       summary: 读取或下载项目文件
-      operationId: getWorkflowFile
+      operationId: getFile
       parameters:
         - name: fileId
           in: path
@@ -1810,7 +1810,7 @@ paths:
       tags:
         - Admin Files
       summary: 删除项目文件
-      operationId: deleteWorkflowFile
+      operationId: deleteFile
       parameters:
         - name: fileId
           in: path
@@ -1835,7 +1835,7 @@ paths:
   /api/projects/{projectId}/kanban:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 读取 Kanban 工作区
       description: |
         读取固定 target 的静态产物目录、HTML 入口、清单、当前用户隔离的命名配置和短期预览 capability。
@@ -1856,7 +1856,7 @@ paths:
   /api/projects/{projectId}/kanban/bridge:
     post:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 调用 Kanban 项目数据 Bridge
       description: |
         当前项目可读用户可以执行读取操作，写入需要项目数据写权限。服务端先校验 target 对应 Kanban
@@ -1895,7 +1895,7 @@ paths:
   /api/projects/{projectId}/kanban/related-project-revisions:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 订阅 Server Web Kanban 关联项目 revision
       description: |
         以 Server-Sent Events 返回当前直接关联项目的完整 revision 快照和后续变化。Server 按
@@ -1931,7 +1931,7 @@ paths:
   /api/projects/{projectId}/kanban/previews/{capability}/{nonce}/{target}/{assetPath}:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 读取 capability 保护的 Kanban 静态资源
       description: |
         使用工作区接口签发的短期 capability 读取固定版本资源。`assetPath` 可以表示
@@ -1988,7 +1988,7 @@ paths:
   /api/projects/{projectId}/kanban/configurations:
     post:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 新建或复制 Kanban 配置
       operationId: createKanbanConfiguration
       parameters:
@@ -2011,7 +2011,7 @@ paths:
   /api/projects/{projectId}/kanban/configurations/{configurationId}:
     patch:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 重命名 Kanban 配置或保存参数值
       operationId: updateKanbanConfiguration
       parameters:
@@ -2036,7 +2036,7 @@ paths:
           $ref: "#/components/responses/HarnessError"
     delete:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 删除 Kanban 配置
       description: 最后一个配置不可删除；删除活动配置后会选择剩余的第一个配置。
       operationId: deleteKanbanConfiguration
@@ -2056,7 +2056,7 @@ paths:
   /api/projects/{projectId}/kanban/active-configuration:
     put:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 切换活动 Kanban 配置
       operationId: selectKanbanConfiguration
       parameters:
@@ -2079,9 +2079,9 @@ paths:
   /api/projects/{projectId}/draft/files:
     put:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 保存 server draft 文件
-      operationId: saveWorkflowDraftFiles
+      operationId: saveDraftFiles
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       requestBody:
@@ -2111,9 +2111,9 @@ paths:
   /api/projects/{projectId}/clone:
     post:
       tags:
-        - Admin Workflows
-      summary: 克隆 workflow
-      operationId: cloneWorkflow
+        - Admin Projects
+      summary: 克隆项目
+      operationId: cloneProject
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       requestBody:
@@ -2140,16 +2140,16 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/CloneWorkflowResultResponse"
+                $ref: "#/components/schemas/CloneProjectResultResponse"
   /api/projects/{projectId}/project-info:
     put:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 同步项目默认名称和展示声明
       description: |
         把本地 `package.json` 根 `name` 与 `steamHarness.projectInfo` 同步到已绑定项目。
         展示声明和平台只用于展示，不限制源码上传或下载。
-      operationId: updateWorkflowProjectInfo
+      operationId: updateProjectInfo
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       requestBody:
@@ -2163,7 +2163,7 @@ paths:
                   type: string
                   minLength: 1
                 projectInfo:
-                  $ref: "#/components/schemas/DeclaredWorkflowProjectInfo"
+                  $ref: "#/components/schemas/DeclaredProjectInfo"
               required:
                 - name
                 - projectInfo
@@ -2183,9 +2183,9 @@ paths:
   /api/projects/{projectId}/info:
     patch:
       tags:
-        - Admin Workflows
-      summary: 更新 workflow 显示信息
-      operationId: updateWorkflowInfo
+        - Admin Projects
+      summary: 更新项目显示信息
+      operationId: updateProjectDisplayInfo
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       requestBody:
@@ -2200,7 +2200,7 @@ paths:
                   example: latest
                 displayName:
                   type: string
-                  example: Smoke Workflow
+                  example: Smoke Project
               required:
                 - displayName
       responses:
@@ -2209,13 +2209,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/UpdateWorkflowInfoResultResponse"
+                $ref: "#/components/schemas/UpdateProjectDisplayInfoResultResponse"
   /api/projects/{projectId}:
     delete:
       tags:
-        - Admin Workflows
-      summary: 删除 workflow
-      operationId: deleteWorkflow
+        - Admin Projects
+      summary: 删除项目
+      operationId: deleteProject
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       responses:
@@ -2224,14 +2224,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/DeleteWorkflowResultResponse"
+                $ref: "#/components/schemas/DeleteProjectResultResponse"
   /api/projects/{projectId}/publish:
     post:
       tags:
-        - Admin Workflows
-      summary: 发布 workflow 版本
+        - Admin Projects
+      summary: 发布项目版本
       description: 以 draft 的 package 版本发布不可变源码快照并更新 latest。重复版本返回 409，不安装、构建或加载项目代码。
-      operationId: publishWorkflow
+      operationId: publishProject
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       requestBody:
@@ -2264,9 +2264,9 @@ paths:
   /api/projects/{projectId}/members:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 列出项目成员
-      operationId: listWorkflowProjectMembers
+      operationId: listProjectMembers
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       responses:
@@ -2281,12 +2281,12 @@ paths:
   /api/projects/{projectId}/members/{userId}:
     put:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 设置项目成员角色
       description: |
         owner 和 manager 可以授予 manager/writer/viewer；该接口不支持转移 owner。
         manager 也不能把其它成员提升为 owner。
-      operationId: setWorkflowProjectMember
+      operationId: setProjectMember
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - $ref: "#/components/parameters/UserId"
@@ -2318,9 +2318,9 @@ paths:
           $ref: "#/components/responses/HarnessError"
     delete:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 删除项目成员
-      operationId: deleteWorkflowProjectMember
+      operationId: deleteProjectMember
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - $ref: "#/components/parameters/UserId"
@@ -2338,9 +2338,9 @@ paths:
   /api/projects/{projectId}/invitations:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 列出项目邀请
-      operationId: listWorkflowProjectInvitations
+      operationId: listProjectInvitations
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       responses:
@@ -2354,12 +2354,12 @@ paths:
           $ref: "#/components/responses/HarnessError"
     post:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 生成项目邀请链接
       description: |
         owner / manager 可生成单次有效、7 天过期的邀请 token。owner 角色不可通过邀请授予。
         API 仅返回 token；邀请人需要自行拼接 `${origin}/invite/${token}` 并把链接发给同事。
-      operationId: createWorkflowProjectInvitation
+      operationId: createProjectInvitation
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       requestBody:
@@ -2389,9 +2389,9 @@ paths:
   /api/projects/{projectId}/invitations/{invitationId}:
     delete:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 撤销未接受的邀请
-      operationId: revokeWorkflowProjectInvitation
+      operationId: revokeProjectInvitation
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: invitationId
@@ -2417,12 +2417,12 @@ paths:
   /api/invitations/{token}:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 查看邀请详情
       description: |
         接受邀请前必须先调用本接口查询 token 是否仍然有效。token 本身就是 bearer 凭据，接口不需要登录即可访问；
         未登录用户可以通过返回的 `project.name` 与 `invitation.role` 看到加入信息，再被引导到登录。
-      operationId: lookupWorkflowProjectInvitation
+      operationId: lookupProjectInvitation
       parameters:
         - name: token
           in: path
@@ -2441,12 +2441,12 @@ paths:
   /api/invitations/{token}/accept:
     post:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 接受项目邀请
       description: |
         调用方必须是已登录用户。接受成功后该用户被加入到项目成员表中，对应角色由邀请决定。
         每个 token 只能被接受一次；接受后再次请求会返回 409。
-      operationId: acceptWorkflowProjectInvitation
+      operationId: acceptProjectInvitation
       parameters:
         - name: token
           in: path
@@ -2475,9 +2475,9 @@ paths:
   /api/projects/{projectId}/visibility:
     patch:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 更新项目可见性
-      operationId: updateWorkflowProjectVisibility
+      operationId: updateProjectVisibility
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       requestBody:
@@ -2507,9 +2507,9 @@ paths:
   /api/projects/{projectId}/versions:
     get:
       tags:
-        - Admin Workflows
-      summary: 列出 workflow 版本
-      operationId: listWorkflowVersions
+        - Admin Projects
+      summary: 列出项目 版本
+      operationId: listProjectVersions
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       responses:
@@ -2522,10 +2522,10 @@ paths:
   /api/projects/{projectId}/data-summary:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 汇总项目 KV 与知识库数据
       description: 要求登录、项目读取权限及允许访问服务器数据的存储声明。汇总完整项目数据，不返回条目值、文档正文或预览。
-      operationId: getWorkflowProjectDataSummary
+      operationId: getProjectDataSummary
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       responses:
@@ -2538,9 +2538,9 @@ paths:
   /api/projects/{projectId}/kv:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 列出项目 KV
-      operationId: listWorkflowKVEntries
+      operationId: listProjectKVEntries
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: pageSize
@@ -2592,9 +2592,9 @@ paths:
   /api/projects/{projectId}/kv/entry:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 读取单条项目 KV
-      operationId: getWorkflowKVEntry
+      operationId: getProjectKVEntry
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: scope
@@ -2626,14 +2626,14 @@ paths:
           description: KV 不存在。
     delete:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 删除单条项目 KV
       description: |
         删除一条已存在的 KV 条目，按 `scope` + `key`（conversation scope 还需要 `conversationId`）
         精确定位。删除是永久的，不能恢复；数据本身不可恢复，这一步不提供回收站。
         删除会触发项目存储修订号，桌面端等订阅方据此丢弃已镜像的条目。
         需要项目可管理权限与 `kv.manage`；条目不存在时返回 404。
-      operationId: deleteWorkflowKVEntry
+      operationId: deleteProjectKVEntry
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: scope
@@ -2684,7 +2684,7 @@ paths:
   /api/projects/{projectId}/knowledge-documents:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 列出项目知识库文档
       operationId: listKnowledgeDocuments
       parameters:
@@ -2704,7 +2704,7 @@ paths:
             type: string
       responses:
         "200":
-          description: 当前 workflow 项目内 markdown 知识库文档分页摘要列表，不包含正文 markdown。
+          description: 当前项目内 markdown 知识库文档分页摘要列表，不包含正文 markdown。
           content:
             application/json:
               schema:
@@ -2713,7 +2713,7 @@ paths:
           description: 当前 storage 未启用 PostgreSQL，项目知识库不可用。
     post:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 新建项目知识库文档
       operationId: createKnowledgeDocument
       parameters:
@@ -2749,7 +2749,7 @@ paths:
   /api/projects/{projectId}/knowledge-documents/search:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 查找项目知识库文档
       operationId: searchKnowledgeDocuments
       parameters:
@@ -2818,7 +2818,7 @@ paths:
   /api/projects/{projectId}/knowledge-documents/{documentId}/lines:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 读取项目知识库文档的指定行范围
       operationId: readKnowledgeDocumentLines
       parameters:
@@ -2858,7 +2858,7 @@ paths:
   /api/projects/{projectId}/knowledge-documents/{documentId}:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 读取项目知识库文档
       operationId: getKnowledgeDocument
       parameters:
@@ -2881,7 +2881,7 @@ paths:
           description: 当前 storage 未启用 PostgreSQL，项目知识库不可用。
     put:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 编辑项目知识库文档
       operationId: editKnowledgeDocument
       parameters:
@@ -2921,7 +2921,7 @@ paths:
           description: 当前 storage 未启用 PostgreSQL，项目知识库不可用。
     delete:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 删除项目知识库文档
       operationId: deleteKnowledgeDocument
       parameters:
@@ -2943,9 +2943,9 @@ paths:
   /api/projects/{projectId}/token-usage:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 读取项目 token 用量
-      operationId: getWorkflowTokenUsage
+      operationId: getProjectTokenUsage
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: conversationId
@@ -2970,7 +2970,7 @@ paths:
   /api/projects/{projectId}/source-share:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 读取分享版本的静态元数据
       description: 需要登录和独立源码下载权限，包含项目级源码授权。只读取精确已发布版本，不加载项目代码、不计下载量。Web 分享地址为
         /share/projects/{projectId}/{version}，不携带凭据或授予权限。
@@ -3002,7 +3002,7 @@ paths:
   /api/projects/{projectId}/source-archive:
     get:
       tags:
-        - Admin Workflows
+        - Admin Projects
       summary: 下载不可变源码归档
       description: 成功发送 GET 响应后为实际返回的精确版本累加一次下载量；latest 归入解析后的版本。HEAD、失败和中断响应不计数。
       operationId: downloadProjectSourceArchive
@@ -4942,7 +4942,7 @@ components:
               $ref: "#/components/schemas/PreparationJob"
           required:
             - data
-    CreateWorkflowProjectRequest:
+    CreateProjectRequest:
       type: object
       properties:
         projectId:
@@ -4955,7 +4955,7 @@ components:
         projectType:
           $ref: "#/components/schemas/ProjectKind"
         projectInfo:
-          $ref: "#/components/schemas/DeclaredWorkflowProjectInfo"
+          $ref: "#/components/schemas/DeclaredProjectInfo"
         visibility:
           $ref: "#/components/schemas/Visibility"
         projectCard:
@@ -5136,11 +5136,11 @@ components:
       type: object
       description: |
         项目元数据权威模型。读取旧项目时 `dataStorage` 可能为 null，其它创建或保存请求必须使用
-        `DeclaredWorkflowProjectInfo` 并提供有效 mode。当前界面识别 `zh-CN`、`en`、
+        `DeclaredProjectInfo` 并提供有效 mode。当前界面识别 `zh-CN`、`en`、
         `multilingual`、`multiplatform`、`macos`、`windows` 和 `web`；符合格式的未来 locale 或 ID 原样保留。
 
         Authoritative project metadata model. Legacy read responses may carry null `dataStorage`;
-        create and save requests use `DeclaredWorkflowProjectInfo` with an explicit valid mode.
+        create and save requests use `DeclaredProjectInfo` with an explicit valid mode.
       properties:
         localizedNames:
           type: object
@@ -5187,7 +5187,7 @@ components:
       required:
         - mode
       additionalProperties: false
-    DeclaredWorkflowProjectInfo:
+    DeclaredProjectInfo:
       allOf:
         - $ref: "#/components/schemas/ProjectInfoContract"
         - type: object
@@ -5202,7 +5202,7 @@ components:
         name:
           type: string
         projectInfo:
-          $ref: "#/components/schemas/DeclaredWorkflowProjectInfo"
+          $ref: "#/components/schemas/DeclaredProjectInfo"
       required:
         - name
         - projectInfo
@@ -5458,7 +5458,7 @@ components:
         projectType:
           $ref: "#/components/schemas/ProjectKind"
         projectInfo:
-          $ref: "#/components/schemas/DeclaredWorkflowProjectInfo"
+          $ref: "#/components/schemas/DeclaredProjectInfo"
         visibility:
           $ref: "#/components/schemas/Visibility"
       required:
@@ -5562,7 +5562,7 @@ components:
               $ref: "#/components/schemas/PublishResult"
           required:
             - data
-    CloneWorkflowResult:
+    CloneProjectResult:
       type: object
       properties:
         projectId:
@@ -5581,16 +5581,16 @@ components:
         - sourceTarget
         - resolvedSourceTarget
         - nextVersion
-    CloneWorkflowResultResponse:
+    CloneProjectResultResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/CloneWorkflowResult"
+              $ref: "#/components/schemas/CloneProjectResult"
           required:
             - data
-    UpdateWorkflowInfoResult:
+    UpdateProjectDisplayInfoResult:
       type: object
       properties:
         projectId:
@@ -5606,16 +5606,16 @@ components:
         - projectName
         - target
         - resolvedTarget
-    UpdateWorkflowInfoResultResponse:
+    UpdateProjectDisplayInfoResultResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/UpdateWorkflowInfoResult"
+              $ref: "#/components/schemas/UpdateProjectDisplayInfoResult"
           required:
             - data
-    DeleteWorkflowResultResponse:
+    DeleteProjectResultResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object

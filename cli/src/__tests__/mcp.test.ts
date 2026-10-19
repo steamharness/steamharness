@@ -122,11 +122,11 @@ describe("steamharness mcp", () => {
   });
 
   it("captures complete running and final snapshots outside MCP stdout", async () => {
-    const workflowDir = await createMcpWorkflow();
+    const projectDir = await createMcpWorkflow();
     const dataDir = await createTemporaryDirectory("steamharness-mcp-audit-");
     const snapshots: Array<Parameters<NonNullable<ReturnType<typeof createWorkflowMcpDesktopAuditWriter>>>[0]> = [];
     const runner = new McpCliRunner({
-      ...parseWorkflowMcpCliOptions([workflowDir, "--data-dir", dataDir]),
+      ...parseWorkflowMcpCliOptions([projectDir, "--data-dir", dataDir]),
       workerEntrypoint: cliPath,
     }, (snapshot) => { snapshots.push(snapshot); });
     await runner.inspectStructure();
@@ -155,11 +155,11 @@ describe("steamharness mcp", () => {
   });
 
   it("keeps one complete snapshot lineage across consecutive input resumes", async () => {
-    const workflowDir = await createMcpWorkflow();
+    const projectDir = await createMcpWorkflow();
     const dataDir = await createTemporaryDirectory("steamharness-mcp-resume-audit-");
     const snapshots: Array<Parameters<NonNullable<ReturnType<typeof createWorkflowMcpDesktopAuditWriter>>>[0]> = [];
     const runner = new McpCliRunner({
-      ...parseWorkflowMcpCliOptions([workflowDir, "--data-dir", dataDir]),
+      ...parseWorkflowMcpCliOptions([projectDir, "--data-dir", dataDir]),
       workerEntrypoint: cliPath,
     }, (snapshot) => { snapshots.push(snapshot); });
     await runner.inspectStructure();
@@ -215,11 +215,11 @@ describe("steamharness mcp", () => {
   });
 
   it("finalizes a pending input run when the MCP connection closes", async () => {
-    const workflowDir = await createMcpWorkflow();
+    const projectDir = await createMcpWorkflow();
     const dataDir = await createTemporaryDirectory("steamharness-mcp-close-audit-");
     const snapshots: Array<Parameters<NonNullable<ReturnType<typeof createWorkflowMcpDesktopAuditWriter>>>[0]> = [];
     const runner = new McpCliRunner({
-      ...parseWorkflowMcpCliOptions([workflowDir, "--data-dir", dataDir]),
+      ...parseWorkflowMcpCliOptions([projectDir, "--data-dir", dataDir]),
       workerEntrypoint: cliPath,
     }, (snapshot) => { snapshots.push(snapshot); });
     await runner.inspectStructure();
@@ -252,11 +252,11 @@ describe("steamharness mcp", () => {
   });
 
   it("records a distinct terminal diagnostic when MCP elicitation fails", async () => {
-    const workflowDir = await createMcpWorkflow();
+    const projectDir = await createMcpWorkflow();
     const dataDir = await createTemporaryDirectory("steamharness-mcp-elicitation-failure-");
     const snapshots: Array<Parameters<NonNullable<ReturnType<typeof createWorkflowMcpDesktopAuditWriter>>>[0]> = [];
     const runner = new McpCliRunner({
-      ...parseWorkflowMcpCliOptions([workflowDir, "--data-dir", dataDir]),
+      ...parseWorkflowMcpCliOptions([projectDir, "--data-dir", dataDir]),
       workerEntrypoint: cliPath,
     }, (snapshot) => { snapshots.push(snapshot); });
     await runner.inspectStructure();
@@ -289,8 +289,8 @@ describe("steamharness mcp", () => {
   });
 
   it("initializes, lists fixed tools, calls a workflow, and keeps project logs off stdout", async () => {
-    const workflowDir = await createMcpWorkflow();
-    const connection = await connectWorkflowMcp(workflowDir);
+    const projectDir = await createMcpWorkflow();
+    const connection = await connectWorkflowMcp(projectDir);
 
     assert.deepEqual(connection.client.getServerVersion(), {
       name: "workflow-11111111-1111-4111-8111-111111111111",
@@ -332,10 +332,10 @@ describe("steamharness mcp", () => {
   });
 
   it("imports absolute file paths into the configured managed-file store", async () => {
-    const workflowDir = await createMcpWorkflow();
-    const sourceFile = path.join(workflowDir, "source.txt");
+    const projectDir = await createMcpWorkflow();
+    const sourceFile = path.join(projectDir, "source.txt");
     await writeFile(sourceFile, "managed content", "utf8");
-    const connection = await connectWorkflowMcp(workflowDir);
+    const connection = await connectWorkflowMcp(projectDir);
 
     const result = await connection.client.callTool({
       name: "main",
@@ -362,12 +362,12 @@ describe("steamharness mcp", () => {
   });
 
   it("resumes one run through consecutive form elicitations", async () => {
-    const workflowDir = await createMcpWorkflow();
+    const projectDir = await createMcpWorkflow();
     const responses: ElicitResult[] = [
       { action: "accept", content: { name: "Ada" } },
       { action: "accept", content: { approved: true } },
     ];
-    const connection = await connectWorkflowMcp(workflowDir, responses);
+    const connection = await connectWorkflowMcp(projectDir, responses);
 
     const result = await connection.client.callTool({
       name: "main",
@@ -389,8 +389,8 @@ describe("steamharness mcp", () => {
 
   it("passes confirmed related projects into the real workflow worker", async () => {
     const dependencyDir = await createRelatedProject();
-    const workflowDir = await createMcpWorkflow("33333333-3333-4333-8333-333333333333");
-    const connection = await connectWorkflowMcp(workflowDir, undefined, [
+    const projectDir = await createMcpWorkflow("33333333-3333-4333-8333-333333333333");
+    const connection = await connectWorkflowMcp(projectDir, undefined, [
       { alias: "dependency", projectDir: dependencyDir },
     ]);
 
@@ -406,8 +406,8 @@ describe("steamharness mcp", () => {
   });
 
   it("cancels the active workflow worker when the MCP request is aborted", async () => {
-    const workflowDir = await createMcpWorkflow();
-    const connection = await connectWorkflowMcp(workflowDir);
+    const projectDir = await createMcpWorkflow();
+    const connection = await connectWorkflowMcp(projectDir);
     const controller = new AbortController();
     const call = connection.client.callTool(
       { name: "main", arguments: { message: "slow", delayMs: 30_000 } },
@@ -467,8 +467,8 @@ describe("steamharness mcp", () => {
   });
 
   it("ignores a complete JSON object printed by project logs before the report", async () => {
-    const workflowDir = await createMcpWorkflow();
-    const sourcePath = path.join(workflowDir, "index.ts");
+    const projectDir = await createMcpWorkflow();
+    const sourcePath = path.join(projectDir, "index.ts");
     const source = await readFile(sourcePath, "utf8");
     await writeFile(
       sourcePath,
@@ -478,7 +478,7 @@ describe("steamharness mcp", () => {
       ),
       "utf8",
     );
-    const connection = await connectWorkflowMcp(workflowDir);
+    const connection = await connectWorkflowMcp(projectDir);
     assert.deepEqual((await connection.client.listTools()).tools.map((tool) => tool.name), ["main"]);
   });
 
@@ -491,12 +491,12 @@ describe("steamharness mcp", () => {
       () => parseWorkflowMcpCliOptions(["--data-dir"]),
       /requires a workflow project directory/i,
     );
-    const workflowDir = await createMcpWorkflow();
+    const projectDir = await createMcpWorkflow();
     assert.throws(
-      () => parseWorkflowMcpCliOptions([workflowDir, "--data-dir"]),
+      () => parseWorkflowMcpCliOptions([projectDir, "--data-dir"]),
       /Missing value for --data-dir/i,
     );
-    const filePath = path.join(workflowDir, "package.json");
+    const filePath = path.join(projectDir, "package.json");
     assert.throws(
       () => parseWorkflowMcpCliOptions([filePath]),
       /not a directory/i,
@@ -534,7 +534,7 @@ describe("steamharness mcp", () => {
 });
 
 async function connectWorkflowMcp(
-  workflowDir: string,
+  projectDir: string,
   elicitationResponses?: ElicitResult[],
   relatedProjects: Array<{ alias: string; projectDir: string }> = [],
 ): Promise<{
@@ -549,7 +549,7 @@ async function connectWorkflowMcp(
     args: [
       cliPath,
       "mcp",
-      workflowDir,
+      projectDir,
       "--data-dir",
       dataDir,
       ...relatedProjects.flatMap((project) => [
@@ -557,7 +557,7 @@ async function connectWorkflowMcp(
         `${project.alias}=${project.projectDir}`,
       ]),
     ],
-    cwd: workflowDir,
+    cwd: projectDir,
     stderr: "pipe",
   });
   let stderr = "";
@@ -581,8 +581,8 @@ async function connectWorkflowMcp(
 }
 
 async function createMcpWorkflow(relatedProjectId?: string): Promise<string> {
-  const workflowDir = await createTemporaryDirectory("steamharness-mcp-project-");
-  await writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
+  const projectDir = await createTemporaryDirectory("steamharness-mcp-project-");
+  await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
     id: "11111111-1111-4111-8111-111111111111",
     name: "@steamharness/mcp-test-workflow",
     type: "module",
@@ -601,7 +601,7 @@ async function createMcpWorkflow(relatedProjectId?: string): Promise<string> {
       },
     },
   }), "utf8");
-  await writeFile(path.join(workflowDir, "index.ts"), [
+  await writeFile(path.join(projectDir, "index.ts"), [
     'console.log("fixture-project-log");',
     "",
     "const firstInputNode = workflow.createUserInputNode({",
@@ -677,7 +677,7 @@ async function createMcpWorkflow(relatedProjectId?: string): Promise<string> {
     "export default fixtureWorkflow;",
     "",
   ].join("\n"), "utf8");
-  return workflowDir;
+  return projectDir;
 }
 
 async function createConversationProject(): Promise<string> {

@@ -7,7 +7,7 @@ import { isWorkflowStorageNotFoundError } from "../object-storage";
 import { LocalStorage } from "../local-storage";
 
 const PUBLIC_BASE_URL = "https://storage.example.com/";
-const SAMPLE_KEY = "workflows/demo/1.0.0/hash/source.tar.gz";
+const SAMPLE_KEY = "projects/demo/1.0.0/hash/source.tar.gz";
 
 function createStorage(root: string): LocalStorage {
   return new LocalStorage({ root, publicBaseUrl: PUBLIC_BASE_URL });
@@ -33,7 +33,7 @@ test("local object paths use the documented key contract", () => {
     "https://storage.example.com/storage/avatars/user%20id/hash.png",
   );
   assert.throws(() => storage.objectKey("../release.json"), /invalid/u);
-  assert.throws(() => storage.objectKey("workflows//release.json"), /invalid/u);
+  assert.throws(() => storage.objectKey("projects//release.json"), /invalid/u);
   assert.throws(() => storage.objectKey("workflows\\release.json"), /invalid/u);
   assert.throws(() => storage.objectKey(""), /invalid/u);
 });
@@ -55,7 +55,7 @@ test("local private buffers round-trip under the storage prefix", async () => {
 test("local misses produce the shared not-found shape", async () => {
   await withTempRoot(async (root) => {
     const storage = createStorage(root);
-    const missingKey = "workflows/demo/missing/source.tar.gz";
+    const missingKey = "projects/demo/missing/source.tar.gz";
 
     // This predicate gates the 404-vs-500 distinction for artifact reads, so a
     // regression here turns every missing artifact into a server error.
@@ -117,7 +117,7 @@ test("local private files stream both directions with exclusive destinations", a
     await assert.rejects(storage.downloadPrivateFile(SAMPLE_KEY, targetPath));
 
     await assert.rejects(
-      storage.downloadPrivateFile("workflows/demo/missing/source.tar.gz", path.join(root, "missing.tar.gz")),
+      storage.downloadPrivateFile("projects/demo/missing/source.tar.gz", path.join(root, "missing.tar.gz")),
       (error: unknown) => isWorkflowStorageNotFoundError(error),
     );
   });
@@ -149,7 +149,7 @@ test("local storage rejects paths that escape the root", async () => {
     const storage = createStorage(root);
 
     await assert.rejects(storage.downloadPrivateBuffer("../../etc/passwd"), /invalid/u);
-    await assert.rejects(storage.uploadPrivateBuffer("workflows/../../escape", Buffer.from("x")), /invalid/u);
+    await assert.rejects(storage.uploadPrivateBuffer("projects/../../escape", Buffer.from("x")), /invalid/u);
     await assert.rejects(storage.resolvePublicAvatar("../../x", `${"a".repeat(64)}.png`), /does not exist/u);
   });
 });

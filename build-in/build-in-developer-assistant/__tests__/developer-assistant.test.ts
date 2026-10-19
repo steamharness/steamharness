@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { inspectLocalWorkflowStructure } from "steamharness";
 
-const workflowDir = path.resolve(process.cwd());
+const projectDir = path.resolve(process.cwd());
 // Run-scoped Knowledge and KV must not expose the assistant's store as project data.
 const CORE_TOOL_NAMES = [
   "workflow-memory_global_memory",
@@ -22,8 +22,8 @@ const EXPECTED_TOOL_NAMES = [...SESSION_TOOL_NAMES, ...CONTROL_TOOL_NAMES, ...CO
 
 describe("developer assistant workflow", () => {
   it("runs on Core's agent with system AI quick params and declared tools", async () => {
-    const structure = inspectLocalWorkflowStructure({ workflowDir });
-    const source = await readFile(path.join(workflowDir, "index.ts"), "utf8");
+    const structure = inspectLocalWorkflowStructure({ projectDir });
+    const source = await readFile(path.join(projectDir, "index.ts"), "utf8");
 
     expect(structure.diagnostics).toEqual({ warnings: [], violations: [] });
     expect(structure.definitions.apiCalls.map((call) => call.method))
@@ -98,7 +98,7 @@ describe("developer assistant workflow", () => {
   });
 
   it("assembles its tools from Core without Desktop Control", async () => {
-    const source = await readFile(path.join(workflowDir, "index.ts"), "utf8");
+    const source = await readFile(path.join(projectDir, "index.ts"), "utf8");
 
     // The four workflow capabilities come from Core, described once and
     // rendered both as MCP servers and as agent tools.
@@ -116,11 +116,11 @@ describe("developer assistant workflow", () => {
   });
 
   it("takes the workspace, the persona and the attachments from the run", async () => {
-    const source = await readFile(path.join(workflowDir, "index.ts"), "utf8");
+    const source = await readFile(path.join(projectDir, "index.ts"), "utf8");
     const [, prompt, packageJson] = await Promise.all([
-      readFile(path.join(workflowDir, "index.ts"), "utf8"),
-      readFile(path.join(workflowDir, "assistant-prompt.ts"), "utf8"),
-      readFile(path.join(workflowDir, "package.json"), "utf8"),
+      readFile(path.join(projectDir, "index.ts"), "utf8"),
+      readFile(path.join(projectDir, "assistant-prompt.ts"), "utf8"),
+      readFile(path.join(projectDir, "package.json"), "utf8"),
     ]);
 
     // The workspace decides what the tools may touch, so it travels on the
@@ -204,9 +204,9 @@ describe("developer assistant workflow", () => {
 
   it("keeps the skill it ships as the one its own tool reads", async () => {
     const [generatorSkill, repairReference] = await Promise.all([
-      readFile(path.join(workflowDir, "skills", "workflow-generator", "SKILL.md"), "utf8"),
+      readFile(path.join(projectDir, "skills", "workflow-generator", "SKILL.md"), "utf8"),
       readFile(path.join(
-        workflowDir,
+        projectDir,
         "skills",
         "workflow-generator",
         "references",
@@ -228,9 +228,9 @@ describe("developer assistant workflow", () => {
 
   it("documents how each parameter action renders", async () => {
     const [generatorSkill, panelReference] = await Promise.all([
-      readFile(path.join(workflowDir, "skills", "workflow-generator", "SKILL.md"), "utf8"),
+      readFile(path.join(projectDir, "skills", "workflow-generator", "SKILL.md"), "utf8"),
       readFile(path.join(
-        workflowDir,
+        projectDir,
         "skills",
         "workflow-generator",
         "references",

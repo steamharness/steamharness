@@ -10,8 +10,8 @@ import {
 describe("workflow-ids package", () => {
   it("accepts safe workflow ids and resolves roots under the workflow directory", () => {
     expect(assertSafeProjectId("demo-flow")).toBe("demo-flow");
-    const workflowsRoot = path.resolve("workflow-id-test-root");
-    expect(resolveWorkflowRoot(workflowsRoot, "demo-flow")).toBe(path.join(workflowsRoot, "demo-flow"));
+    const projectsRoot = path.resolve("workflow-id-test-root");
+    expect(resolveWorkflowRoot(projectsRoot, "demo-flow")).toBe(path.join(projectsRoot, "demo-flow"));
   });
 
   it("rejects invalid workflow ids and reports invalid UUID messages", () => {

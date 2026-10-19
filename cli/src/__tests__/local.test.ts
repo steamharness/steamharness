@@ -22,7 +22,7 @@ import type { CliWorkflowKVStore } from "../related-projects";
 import { prepareCliInvocation } from "../locale";
 
 it("run command preserves workflow args after explicit separator", async () => {
-  const workflowDir = await createArgsEchoWorkflow();
+  const projectDir = await createArgsEchoWorkflow();
   const originalStdoutWrite = process.stdout.write;
   const chunks: string[] = [];
 
@@ -34,7 +34,7 @@ it("run command preserves workflow args after explicit separator", async () => {
   try {
     const exitCode = await main([
       "run",
-      workflowDir,
+      projectDir,
       "--conversation-id",
       "cli-conversation",
       "--file-store-dir",
@@ -77,13 +77,13 @@ it("run command preserves workflow args after explicit separator", async () => {
 });
 
 it("structure preserves workflow entrypoint group metadata", async () => {
-  const workflowDir = await createArgsEchoWorkflow();
+  const projectDir = await createArgsEchoWorkflow();
   const output: string[] = [];
   const originalLog = console.log;
   console.log = ((value?: unknown) => output.push(String(value ?? ""))) as typeof console.log;
 
   try {
-    assert.equal(await main(["structure", workflowDir]), 0);
+    assert.equal(await main(["structure", projectDir]), 0);
     const structure = JSON.parse(output.join("\n")) as {
       entrypoints?: Array<{ id: string; group?: { id: string; title: string; order?: number } }>;
     };
@@ -96,16 +96,16 @@ it("structure preserves workflow entrypoint group metadata", async () => {
     }]);
   } finally {
     console.log = originalLog;
-    await rm(workflowDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
   }
 });
 
 it("runs image, video, and audio paths through the published Core file input", async () => {
-  const workflowDir = await createArgsEchoWorkflow();
+  const projectDir = await createArgsEchoWorkflow();
   const originalStdoutWrite = process.stdout.write;
   const chunks: string[] = [];
   try {
-    await writeFile(path.join(workflowDir, "index.ts"), `
+    await writeFile(path.join(projectDir, "index.ts"), `
       import type { CliTestOutputPayload } from "./interface";
       const filesNode = workflow.createFileInputNode({ accept: ["image/*", "video/*", "audio/*"] });
       const outputNode = workflow.createOutputNode({
@@ -133,11 +133,11 @@ it("runs image, video, and audio paths through the published Core file input", a
       export { mediaWorkflow as workflow };
       export default mediaWorkflow;
     `);
-    for (const name of ["frame.png", "clip.mp4", "recording.wav"]) await writeFile(path.join(workflowDir, name), "media");
+    for (const name of ["frame.png", "clip.mp4", "recording.wav"]) await writeFile(path.join(projectDir, name), "media");
     process.stdout.write = ((chunk: string | Uint8Array) => { chunks.push(String(chunk)); return true; }) as typeof process.stdout.write;
     const exitCode = await main([
-      "run", workflowDir, "--", "--images", path.join(workflowDir, "frame.png"),
-      "--videos", path.join(workflowDir, "clip.mp4"), "--files", path.join(workflowDir, "recording.wav"),
+      "run", projectDir, "--", "--images", path.join(projectDir, "frame.png"),
+      "--videos", path.join(projectDir, "clip.mp4"), "--files", path.join(projectDir, "recording.wav"),
     ]);
     assert.equal(exitCode, 0, chunks.join(""));
     const output = chunks.join("").trim();
@@ -148,25 +148,25 @@ it("runs image, video, and audio paths through the published Core file input", a
     ]);
   } finally {
     process.stdout.write = originalStdoutWrite;
-    await rm(workflowDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
   }
 });
 
 it("local commands reject projects without an explicit data storage declaration", async () => {
-  const workflowDir = await createArgsEchoWorkflow(false);
+  const projectDir = await createArgsEchoWorkflow(false);
   try {
     await assert.rejects(
-      () => main(["json", workflowDir]),
+      () => main(["json", projectDir]),
       /dataStorage\.mode must be declared before this project can run or access data/,
     );
   } finally {
-    await rm(workflowDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
   }
 });
 
 it("local commands require an exact project Core version and allow patch changes", async () => {
-  const workflowDir = await createArgsEchoWorkflow();
-  const packagePath = path.join(workflowDir, "package.json");
+  const projectDir = await createArgsEchoWorkflow();
+  const packagePath = path.join(projectDir, "package.json");
   const manifest = JSON.parse(await readFile(packagePath, "utf8")) as {
     devDependencies: Record<string, string>;
   };
@@ -178,7 +178,7 @@ it("local commands require an exact project Core version and allow patch changes
   try {
     manifest.devDependencies["steamharness"] = "0.2.99";
     await writeFile(packagePath, JSON.stringify(manifest), "utf8");
-    assert.deepEqual(assertLocalCliCoreCompatible(workflowDir, "0.2.0"), {
+    assert.deepEqual(assertLocalCliCoreCompatible(projectDir, "0.2.0"), {
       cliRequiredCoreVersion,
       projectRequiredCoreVersion: "0.2.99",
     });
@@ -186,15 +186,15 @@ it("local commands require an exact project Core version and allow patch changes
     manifest.devDependencies["steamharness"] = "0.3.0";
     await writeFile(packagePath, JSON.stringify(manifest), "utf8");
     assert.throws(
-      () => assertLocalCliCoreCompatible(workflowDir, "0.2.9"),
+      () => assertLocalCliCoreCompatible(projectDir, "0.2.9"),
       /requires exact Core 0\.3\.0 \(0\.3\.x compatibility line\).*provides Core 0\.2\.9/,
     );
 
     manifest.devDependencies["steamharness"] = "^0.2.0";
     await writeFile(packagePath, JSON.stringify(manifest), "utf8");
-    assert.throws(() => assertLocalCliCoreCompatible(workflowDir, "0.2.0"), /exact SemVer/);
+    assert.throws(() => assertLocalCliCoreCompatible(projectDir, "0.2.0"), /exact SemVer/);
   } finally {
-    await rm(workflowDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
   }
 });
 
@@ -217,8 +217,8 @@ it.each(["build-in", "ci-namespace"])("nested built-ins resolve Core from the ag
 });
 
 it("structure rejects obsolete related-project fields before reporting success", async () => {
-  const workflowDir = await createArgsEchoWorkflow();
-  const packagePath = path.join(workflowDir, "package.json");
+  const projectDir = await createArgsEchoWorkflow();
+  const packagePath = path.join(projectDir, "package.json");
   const manifest = JSON.parse(await readFile(packagePath, "utf8")) as {
     steamHarness: { projectInfo: Record<string, unknown> };
   };
@@ -233,7 +233,7 @@ it("structure rejects obsolete related-project fields before reporting success",
   console.log = ((value?: unknown) => output.push(String(value ?? ""))) as typeof console.log;
 
   try {
-    assert.equal(await main(["structure", workflowDir]), 1);
+    assert.equal(await main(["structure", projectDir]), 1);
     const report = JSON.parse(output.join("\n")) as {
       diagnostics: { error?: { message?: string } };
     };
@@ -243,7 +243,7 @@ it("structure rejects obsolete related-project fields before reporting success",
     );
   } finally {
     console.log = originalLog;
-    await rm(workflowDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
   }
 });
 
@@ -415,7 +415,7 @@ const hasProjectStorageCore = typeof (steamHarness as unknown as {
 }).createRemoteWorkflowRelatedProjectKVStoreFromEnv === "function";
 
 it.runIf(hasProjectStorageCore)("CLI forwards the local PersistentValue store directory", async () => {
-  const workflowDir = await createPersistentValueCliWorkflow();
+  const projectDir = await createPersistentValueCliWorkflow();
   const persistentValueStoreDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-cli-persistent-value-"));
   const originalStoreDir = process.env.STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR;
   const originalLog = console.log;
@@ -423,7 +423,7 @@ it.runIf(hasProjectStorageCore)("CLI forwards the local PersistentValue store di
   console.log = (() => undefined) as typeof console.log;
 
   try {
-    assert.equal(await main(["json", workflowDir]), 0);
+    assert.equal(await main(["json", projectDir]), 0);
     const store = (createLocalWorkflowKVStore as unknown as (options: {
       rootDir: string;
       storageKind: "persistent_value";
@@ -444,7 +444,7 @@ it.runIf(hasProjectStorageCore)("CLI forwards the local PersistentValue store di
     } else {
       process.env.STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR = originalStoreDir;
     }
-    await rm(workflowDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
     await rm(persistentValueStoreDir, { recursive: true, force: true });
   }
 });
@@ -506,10 +506,10 @@ it("core package manifest publishes built dist entrypoints", async () => {
 });
 
 async function createArgsEchoWorkflow(declareStorage = true): Promise<string> {
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-cli-"));
+  const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-cli-"));
 
   await writeFile(
-    path.join(workflowDir, "package.json"),
+    path.join(projectDir, "package.json"),
     JSON.stringify({
       id: "11111111-1111-4111-8111-111111111111",
       name: "@steamharness/cli-test-workflow",
@@ -521,7 +521,7 @@ async function createArgsEchoWorkflow(declareStorage = true): Promise<string> {
     }),
   );
   await writeFile(
-    path.join(workflowDir, "interface.ts"),
+    path.join(projectDir, "interface.ts"),
     [
       "export interface RunPayload {",
       "  errCode: number;",
@@ -543,7 +543,7 @@ async function createArgsEchoWorkflow(declareStorage = true): Promise<string> {
     ].join("\n"),
   );
   await writeFile(
-    path.join(workflowDir, "index.ts"),
+    path.join(projectDir, "index.ts"),
     [
       "import type { CliTestOutputPayload } from \"./interface\";",
       "",
@@ -588,7 +588,7 @@ async function createArgsEchoWorkflow(declareStorage = true): Promise<string> {
       "      return {",
       "        args: context.args,",
       "        conversationId: context.conversationId,",
-      "        fileStoreReady: context.workflowDir !== \"\",",
+      "        fileStoreReady: context.projectDir !== \"\",",
       "      };",
       "    },",
       "  })],",
@@ -600,13 +600,13 @@ async function createArgsEchoWorkflow(declareStorage = true): Promise<string> {
     ].join("\n"),
   );
 
-  return workflowDir;
+  return projectDir;
 }
 
 async function createPersistentValueCliWorkflow(): Promise<string> {
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-cli-persistent-value-workflow-"));
+  const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-cli-persistent-value-workflow-"));
   await writeFile(
-    path.join(workflowDir, "package.json"),
+    path.join(projectDir, "package.json"),
     JSON.stringify({
       id: "22222222-2222-4222-8222-222222222222",
       type: "module",
@@ -615,7 +615,7 @@ async function createPersistentValueCliWorkflow(): Promise<string> {
     }),
   );
   await writeFile(
-    path.join(workflowDir, "index.ts"),
+    path.join(projectDir, "index.ts"),
     [
       "const outputNode = workflow.createOutputNode({",
       "  name: \"output\",",
@@ -646,7 +646,7 @@ async function createPersistentValueCliWorkflow(): Promise<string> {
       "",
     ].join("\n"),
   );
-  return workflowDir;
+  return projectDir;
 }
 
 function runNode(

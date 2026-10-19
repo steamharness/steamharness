@@ -730,7 +730,7 @@ for (const outcome of ["failed", "aborted"] as const) {
       await assert.rejects(async () => {
         for await (const chunk of node.stream(input, context)) chunks.push(chunk);
       }, (error: unknown) => error instanceof HarnessError && error.type ===
-        (outcome === "failed" ? "workflow_execution" : "execution_aborted"));
+        (outcome === "failed" ? "execution" : "execution_aborted"));
 
       assert.ok(node.finalize);
       const result = await node.finalize(chunks, context, input);

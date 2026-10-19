@@ -143,7 +143,7 @@ describe("workspace workflow structure snapshots", () => {
     // The nested workspace resolves its projects explicitly and
     // does not depend on the repository's former workspace/workflow lookup.
     const report = inspectLocalWorkflowStructure({
-      workflowDir: workflowDirectory(projectName),
+      projectDir: projectDirectory(projectName),
       projectName,
     });
 
@@ -170,7 +170,7 @@ describe("workspace workflow offline runtime smoke", () => {
     const events: RuntimeEvent[] = [];
     const runtimeEventRecorder = createFixtureRuntimeEventRecorder(projectName);
     const runFixture = async () => runLocalWorkflowWithReport({
-      workflowDir: workflowDirectory(projectName),
+      projectDir: projectDirectory(projectName),
       projectName,
       args: await resolveFixtureArgs(projectName, fixture.args),
       env: createFixtureEnv(projectName),
@@ -308,7 +308,7 @@ describe("conversation knowledge persistence", () => {
   it("writes a conversation transcript into PersistentValue-backed knowledge documents", async () => {
     const persistentValueStore = createMemoryKVStore();
     const report = await runLocalWorkflowWithReport({
-      workflowDir: workflowDirectory("conversation-knowledge"),
+      projectDir: projectDirectory("conversation-knowledge"),
       projectName: "conversation-knowledge",
       args: ["--message", "记录真实写入", "--title", "Persistent Conversation"],
       conversationId: "persistent-conversation-thread",
@@ -377,7 +377,7 @@ describe("workspace workflow human input resume", () => {
     const events: RuntimeEvent[] = [];
 
     const waitingReport = await runLocalWorkflowWithReport({
-      workflowDir: workflowDirectory("human-input"),
+      projectDir: projectDirectory("human-input"),
       projectName: "human-input",
       args,
       runId: "human-input-fixture-run",
@@ -492,7 +492,7 @@ describe("workspace workflow output-showcase resume", () => {
     ];
     const waitingEvents: RuntimeEvent[] = [];
     const waitingReport = await runLocalWorkflowWithReport({
-      workflowDir: workflowDirectory("output-showcase"),
+      projectDir: projectDirectory("output-showcase"),
       projectName: "output-showcase",
       args,
       runId: "output-showcase-fixture-run",
@@ -642,7 +642,7 @@ describe("workspace workflow output-showcase resume", () => {
     const events: RuntimeEvent[] = [];
     let abortedDuringTool = false;
     const reportPromise = runLocalWorkflowWithReport({
-      workflowDir: workflowDirectory("output-showcase"),
+      projectDir: projectDirectory("output-showcase"),
       projectName: "output-showcase",
       args: [
         "--tool-delay-ms",
@@ -692,7 +692,7 @@ function resumeHumanInputWorkflow(options: {
 }) {
   const requestId = options.requestId;
   return runLocalWorkflowWithReport({
-    workflowDir: workflowDirectory("human-input"),
+    projectDir: projectDirectory("human-input"),
     projectName: "human-input",
     args: options.args,
     runId: options.runId,
@@ -729,7 +729,7 @@ function resumeOutputShowcaseWorkflow(options: {
 }) {
   const requestId = options.requestId;
   return runLocalWorkflowWithReport({
-    workflowDir: workflowDirectory("output-showcase"),
+    projectDir: projectDirectory("output-showcase"),
     projectName: "output-showcase",
     args: options.args,
     runId: options.runId,
@@ -1083,17 +1083,17 @@ async function readStructureSnapshot(projectName: ProjectName) {
 
 async function writeStructureSnapshot(projectName: ProjectName, structure: unknown): Promise<void> {
   await writeFile(
-    path.join(workflowDirectory(projectName), "__snapshots__/structure.json"),
+    path.join(projectDirectory(projectName), "__snapshots__/structure.json"),
     `${JSON.stringify(structure, null, 2)}\n`,
     "utf8",
   );
 }
 
 async function readWorkflowFile(projectName: ProjectName, relativePath: string): Promise<string> {
-  return readFile(path.join(workflowDirectory(projectName), relativePath), "utf8");
+  return readFile(path.join(projectDirectory(projectName), relativePath), "utf8");
 }
 
-function workflowDirectory(projectName: string): string {
+function projectDirectory(projectName: string): string {
   return path.join(STEAMHARNESS_ROOT, projectName);
 }
 
@@ -1127,7 +1127,7 @@ function isUserInputFixtureWorkflow(projectName: ProjectName): projectName is "h
 
 async function resolveFixtureArgs(projectName: ProjectName, args: string[]): Promise<string[]> {
   if (projectName === "gpt-image") {
-    const imagePath = path.join(workflowDirectory("gpt-image"), "__fixtures__", "pixel.png");
+    const imagePath = path.join(projectDirectory("gpt-image"), "__fixtures__", "pixel.png");
     const imageReference: FileReference = {
       id: "gpt-image-pixel",
       name: "pixel.png",
@@ -1146,7 +1146,7 @@ async function resolveFixtureArgs(projectName: ProjectName, args: string[]): Pro
     return args;
   }
 
-  const imagePath = path.join(workflowDirectory("conversation"), "__fixtures__", "pixel.svg");
+  const imagePath = path.join(projectDirectory("conversation"), "__fixtures__", "pixel.svg");
   const imageReference: FileReference = {
     id: "conversation-pixel",
     name: "pixel.svg",

@@ -83,7 +83,7 @@ test("runtime finish clears running timers before terminal report", async () => 
   await runtime.start();
   await runtime.timers.start({ timerId: "unclosed", title: "Unclosed timer" });
   const report = await runtime.finish({
-    result: { ok: false, error: { type: "workflow_execution", message: "boom" } },
+    result: { ok: false, error: { type: "execution", message: "boom" } },
   });
 
   assert.equal(report.status, "failed");

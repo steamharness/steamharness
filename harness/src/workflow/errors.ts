@@ -5,7 +5,7 @@ export type ErrorType =
   | "tool_permission_denied"
   | "node_execution"
   | "provider_call"
-  | "workflow_execution"
+  | "execution"
   | "stream_interrupted";
 
 export interface ErrorCause {
@@ -89,7 +89,7 @@ export function serializeWorkflowError(error: unknown): SerializedWorkflowError 
     error instanceof HarnessError
       ? error
       : new HarnessError({
-          type: "workflow_execution",
+          type: "execution",
           message: readPublicErrorMessage(error) ?? "Unexpected workflow error.",
           cause: error,
         });

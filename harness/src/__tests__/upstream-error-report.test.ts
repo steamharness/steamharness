@@ -47,9 +47,9 @@ test("redaction leaves ordinary diagnostic prose intact", () => {
 });
 
 test("run report surfaces the upstream response body instead of only the HTTP status text", async () => {
-  const workflowDir = await createUpstreamErrorWorkflow();
+  const projectDir = await createUpstreamErrorWorkflow();
 
-  const report = await runLocalWorkflowWithReport({ workflowDir, args: [] });
+  const report = await runLocalWorkflowWithReport({ projectDir, args: [] });
 
   assert.equal(report.status, "failed");
   assert.equal(report.result.ok, true);
@@ -66,11 +66,11 @@ test("run report surfaces the upstream response body instead of only the HTTP st
 });
 
 test("run report redacts credential shaped values and truncates long upstream bodies", async () => {
-  const workflowDir = await createUpstreamErrorWorkflow({
+  const projectDir = await createUpstreamErrorWorkflow({
     responseBody: `{"message":"rejected ${dashedProviderKey}","padding":"${"x".repeat(400)}"}`,
   });
 
-  const report = await runLocalWorkflowWithReport({ workflowDir, args: [] });
+  const report = await runLocalWorkflowWithReport({ projectDir, args: [] });
 
   assert.equal(report.result.ok, true);
   if (!report.result.ok) return;
@@ -102,10 +102,10 @@ async function createUpstreamErrorWorkflow(
 ): Promise<string> {
   const responseBody = options.responseBody
     ?? "{\"code\":\"API_KEY_REQUIRED\",\"message\":\"API key is required in Authorization header\"}";
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-upstream-error-"));
+  const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-upstream-error-"));
 
   await writeFile(
-    path.join(workflowDir, "package.json"),
+    path.join(projectDir, "package.json"),
     JSON.stringify({
       id: "22222222-2222-4222-8222-222222222222",
       name: "@steamharness/upstream-error-test",
@@ -114,7 +114,7 @@ async function createUpstreamErrorWorkflow(
     }),
   );
   await writeFile(
-    path.join(workflowDir, "interface.ts"),
+    path.join(projectDir, "interface.ts"),
     [
       "export interface RunPayload { errCode: number; errMessage: string; }",
       "export interface UpstreamErrorPayload extends RunPayload { value: string; }",
@@ -122,7 +122,7 @@ async function createUpstreamErrorWorkflow(
     ].join("\n"),
   );
   await writeFile(
-    path.join(workflowDir, "index.ts"),
+    path.join(projectDir, "index.ts"),
     [
       "import type { UpstreamErrorPayload } from \"./interface\";",
       "",
@@ -161,5 +161,5 @@ async function createUpstreamErrorWorkflow(
     ].join("\n"),
   );
 
-  return workflowDir;
+  return projectDir;
 }

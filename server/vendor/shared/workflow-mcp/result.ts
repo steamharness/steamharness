@@ -86,7 +86,7 @@ function createReportError(
   }
   if (report.status === "aborted") return { code: "cancelled", message };
   if (report.status === "timed_out") return { code: "timed_out", message };
-  return { code: "workflow_failed", message };
+  return { code: "project_failed", message };
 }
 
 function defaultStatusMessage(status: McpExecutionReport["status"], errCode: number | undefined): string {

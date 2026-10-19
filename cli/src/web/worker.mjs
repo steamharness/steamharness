@@ -85,7 +85,7 @@ try {
     for (const folderPath of request.paths) {
       try {
         const pkg = JSON.parse(readFileSync(path.join(folderPath, 'package.json'), 'utf8'));
-        const structure = inspectLocalWorkflowStructure({ workflowDir: folderPath });
+        const structure = inspectLocalWorkflowStructure({ projectDir: folderPath });
         const projectInfo = readWorkflowProjectInfo(pkg);
         const parameters = (entry) => ({ fields: entry.params ?? [], paramLayout: entry.paramLayout, paramResolver: entry.paramResolver, tools: entry.tools, tokenUsage: entry.tokenUsage });
         projects.push({
@@ -158,7 +158,7 @@ try {
       send('result', await runKanbanDataCall(core, request.project, request.storageDir, request.call));
     } else if (request.method === 'resolve') {
       send('result', await resolveLocalWorkflowParams({
-        workflowDir: request.project.folderPath,
+        projectDir: request.project.folderPath,
         entrypointId: request.entrypointId,
         request: request.request,
         storage,
@@ -202,7 +202,7 @@ try {
         });
       }
       const running = runLocalWorkflowWithReport({
-        workflowDir: request.project.folderPath,
+        projectDir: request.project.folderPath,
         args: request.args,
         entrypointId: request.entrypointId,
         conversationId: request.conversationId,

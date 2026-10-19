@@ -97,11 +97,11 @@ test("workflow entrypoint groups validate metadata and reject conflicting defini
 });
 
 test("workflow entrypoints expose group metadata in a flat structure and run independently", async () => {
-  const workflowDir = await createEntrypointWorkflow();
-  const kvStoreDir = path.join(workflowDir, ".kv-test");
+  const projectDir = await createEntrypointWorkflow();
+  const kvStoreDir = path.join(projectDir, ".kv-test");
 
   try {
-    const structure = inspectLocalWorkflowStructure({ workflowDir });
+    const structure = inspectLocalWorkflowStructure({ projectDir });
     assert.equal(structure.projectType, "workflow");
     assert.equal(structure.defaultEntrypoint, "main");
     assert.equal(Object.hasOwn(structure, "execution"), false);
@@ -137,7 +137,7 @@ test("workflow entrypoints expose group metadata in a flat structure and run ind
     assert.equal(structure.entrypoints?.[0]?.execution.children.length, 0);
 
     const validation = await runLocalWorkflowWithReport({
-      workflowDir,
+      projectDir,
       entrypointId: "validate",
       args: ["--rule", "strict"],
       storage: { host: "local", local: { kvStoreDir } },
@@ -159,7 +159,7 @@ test("workflow entrypoints expose group metadata in a flat structure and run ind
     });
 
     const main = await runLocalWorkflowWithReport({
-      workflowDir,
+      projectDir,
       args: ["--message", "hello"],
       storage: { host: "local", local: { kvStoreDir } },
     });
@@ -178,7 +178,7 @@ test("workflow entrypoints expose group metadata in a flat structure and run ind
     });
 
     assert.deepEqual(await resolveLocalWorkflowParams({
-      workflowDir,
+      projectDir,
       entrypointId: "validate",
       request: {
         args: ["--rule", "strict"],
@@ -190,19 +190,19 @@ test("workflow entrypoints expose group metadata in a flat structure and run ind
       params: { rule: { value: "resolved-strict" } },
     });
   } finally {
-    await rm(workflowDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
   }
 });
 
 test("workflow entrypoint structure resolves imported workflows and keeps registries scoped", async () => {
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-imported-entrypoints-"));
+  const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-imported-entrypoints-"));
   try {
-    await writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
+    await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
       name: "imported-entrypoint-test",
       version: "0.1.0",
       type: "module",
     }));
-    await writeFile(path.join(workflowDir, "workflows.ts"), `
+    await writeFile(path.join(projectDir, "workflows.ts"), `
       export const mainNode = workflow.createInputNode({ name: "entry-main-input" });
       export const validateNode = workflow.createInputNode({ name: "entry-validate-input" });
       export const mainWorkflow = workflow.defineWorkflow({
@@ -219,7 +219,7 @@ test("workflow entrypoint structure resolves imported workflows and keeps regist
       });
       export default mainWorkflow;
     `);
-    await writeFile(path.join(workflowDir, "index.ts"), `
+    await writeFile(path.join(projectDir, "index.ts"), `
       import importedMainWorkflow, {
         mainNode,
         validateNode,
@@ -248,7 +248,7 @@ test("workflow entrypoint structure resolves imported workflows and keeps regist
       });
     `);
 
-    const structure = inspectLocalWorkflowStructure({ workflowDir });
+    const structure = inspectLocalWorkflowStructure({ projectDir });
     assert.deepEqual(structure.diagnostics.violations, []);
     assert.deepEqual(structure.entrypoints?.map((entrypoint) => ({
       id: entrypoint.id,
@@ -274,19 +274,19 @@ test("workflow entrypoint structure resolves imported workflows and keeps regist
     ]);
     assert.deepEqual(structure.definitions.registry, {});
   } finally {
-    await rm(workflowDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
   }
 });
 
 test("workflow entrypoint structure resolves wrapped definitions and inline default exports", async () => {
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-wrapped-entrypoints-"));
+  const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-wrapped-entrypoints-"));
   try {
-    await writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
+    await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
       name: "wrapped-entrypoint-test",
       version: "0.1.0",
       type: "module",
     }));
-    await writeFile(path.join(workflowDir, "workflows.ts"), `
+    await writeFile(path.join(projectDir, "workflows.ts"), `
       const wrappedNode = workflow.createInputNode({ name: "wrapped-input" });
       const defaultNode = workflow.createInputNode({ name: "default-input" });
 
@@ -308,7 +308,7 @@ test("workflow entrypoint structure resolves wrapped definitions and inline defa
         } as const)) satisfies unknown
       );
     `);
-    await writeFile(path.join(workflowDir, "index.ts"), `
+    await writeFile(path.join(projectDir, "index.ts"), `
       import inlineDefaultWorkflow, { wrappedWorkflow } from "./workflows.js";
 
       export const executor = workflow.defineExecutor({
@@ -331,7 +331,7 @@ test("workflow entrypoint structure resolves wrapped definitions and inline defa
       });
     `);
 
-    const structure = inspectLocalWorkflowStructure({ workflowDir });
+    const structure = inspectLocalWorkflowStructure({ projectDir });
     assert.deepEqual(structure.diagnostics.violations, []);
     assert.deepEqual(structure.entrypoints?.map((entrypoint) => ({
       id: entrypoint.id,
@@ -342,25 +342,25 @@ test("workflow entrypoint structure resolves wrapped definitions and inline defa
       { id: "inline-default", projectName: "inline-default-flow", executionNodes: 1 },
     ]);
   } finally {
-    await rm(workflowDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
   }
 });
 
 test("workflow entrypoint structure does not accept an unrelated same-name workflow", async () => {
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-colliding-entrypoint-"));
+  const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-colliding-entrypoint-"));
   try {
-    await writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
+    await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
       name: "colliding-entrypoint-test",
       version: "0.1.0",
       type: "module",
     }));
-    await writeFile(path.join(workflowDir, "other.ts"), `
+    await writeFile(path.join(projectDir, "other.ts"), `
       export const notAWorkflow = workflow.defineWorkflow({
         name: "unrelated-flow",
         async run(input) { return input; },
       });
     `);
-    await writeFile(path.join(workflowDir, "index.ts"), `
+    await writeFile(path.join(projectDir, "index.ts"), `
       const notAWorkflow = { name: "plain-object", async run(input) { return input; } };
       export const executor = workflow.defineExecutor({
         projectType: "workflow",
@@ -375,7 +375,7 @@ test("workflow entrypoint structure does not accept an unrelated same-name workf
     `);
 
     assert.throws(
-      () => inspectLocalWorkflowStructure({ workflowDir }),
+      () => inspectLocalWorkflowStructure({ projectDir }),
       (error: unknown) => error instanceof HarnessError && (
         (error.metadata?.violations as Array<{ type?: string; message?: string }> | undefined)?.some(
           (violation) => violation.type === "invalid_workflow_entrypoints" &&
@@ -384,15 +384,15 @@ test("workflow entrypoint structure does not accept an unrelated same-name workf
       ),
     );
   } finally {
-    await rm(workflowDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
   }
 });
 
 test("unknown workflow entrypoints fail with the allowed catalog", async () => {
-  const workflowDir = await createEntrypointWorkflow();
+  const projectDir = await createEntrypointWorkflow();
   try {
     const report = await runLocalWorkflowWithReport({
-      workflowDir,
+      projectDir,
       entrypointId: "missing",
     });
     assert.equal(report.status, "failed");
@@ -403,7 +403,7 @@ test("unknown workflow entrypoints fail with the allowed catalog", async () => {
     );
     await assert.rejects(
       resolveLocalWorkflowParams({
-        workflowDir,
+        projectDir,
         entrypointId: "missing",
         request: {
           args: [],
@@ -423,26 +423,26 @@ test("unknown workflow entrypoints fail with the allowed catalog", async () => {
       },
     );
   } finally {
-    await rm(workflowDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
   }
 });
 
 test("conversation executors reject entrypoint selection without changing their shape", async () => {
-  const workflowDir = await createConversationWorkflow();
+  const projectDir = await createConversationWorkflow();
   try {
-    const structure = inspectLocalWorkflowStructure({ workflowDir });
+    const structure = inspectLocalWorkflowStructure({ projectDir });
     assert.equal(structure.projectType, "conversation");
     assert.equal(structure.entrypoints, undefined);
     assert.equal(structure.execution?.kind, "sequence");
 
-    const conversation = await runLocalWorkflowWithReport({ workflowDir });
+    const conversation = await runLocalWorkflowWithReport({ projectDir });
     assert.equal(conversation.status, "success");
     assert.equal(conversation.projectName, "conversation-flow");
     assert.equal(conversation.entrypointId, undefined);
     assert.equal(conversation.entrypointTitle, undefined);
 
     const report = await runLocalWorkflowWithReport({
-      workflowDir,
+      projectDir,
       entrypointId: "main",
       conversationId: "conversation-1",
     });
@@ -453,27 +453,27 @@ test("conversation executors reject entrypoint selection without changing their 
       /does not accept an entrypoint/,
     );
   } finally {
-    await rm(workflowDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
   }
 });
 
 test("workspace runtime layers prepare before inspection and started events include the selected entrypoint", async () => {
   const cwd = await mkdtemp(path.join(os.tmpdir(), "steamharness-entrypoint-runtime-"));
   const projectName = "runtime-order";
-  const workflowDir = path.join(cwd, "workspace", "workflow", projectName);
+  const projectDir = path.join(cwd, "workspace", "workflow", projectName);
   let layerPrepared = false;
   const events: Array<{ type: string; entrypointId?: string; entrypointTitle?: string }> = [];
 
   try {
-    await mkdir(workflowDir, { recursive: true });
-    await writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
+    await mkdir(projectDir, { recursive: true });
+    await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
       id: "11111111-1111-4111-8111-111111111111",
       name: projectName,
       version: "0.1.0",
       type: "module",
       steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
     }));
-    await writeFile(path.join(workflowDir, "index.ts"), `
+    await writeFile(path.join(projectDir, "index.ts"), `
       const mainWorkflow = workflow.defineWorkflow({
         name: "runtime-order-main",
         run(input) { return input; },
@@ -706,15 +706,15 @@ test("workflow entrypoint structure rules reject legacy and dynamic declarations
 });
 
 async function createEntrypointWorkflow(): Promise<string> {
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-entrypoints-"));
-  await writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
+  const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-entrypoints-"));
+  await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
     id: "11111111-1111-4111-8111-111111111111",
     name: "entrypoint-test",
     version: "0.1.0",
     type: "module",
     steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
   }));
-  await writeFile(path.join(workflowDir, "index.ts"), `
+  await writeFile(path.join(projectDir, "index.ts"), `
     const mainWorkflow = workflow.defineWorkflow({
       name: "main-flow",
       async run(input, context) {
@@ -787,7 +787,7 @@ async function createEntrypointWorkflow(): Promise<string> {
       ],
     });
   `);
-  return workflowDir;
+  return projectDir;
 }
 
 function pickEntrypointOutput(
@@ -800,15 +800,15 @@ function pickEntrypointOutput(
 }
 
 async function createConversationWorkflow(): Promise<string> {
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-entrypoint-conversation-"));
-  await writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
+  const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-entrypoint-conversation-"));
+  await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
     id: "22222222-2222-4222-8222-222222222222",
     name: "entrypoint-conversation-test",
     version: "0.1.0",
     type: "module",
     steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
   }));
-  await writeFile(path.join(workflowDir, "index.ts"), `
+  await writeFile(path.join(projectDir, "index.ts"), `
     const conversationWorkflow = workflow.defineWorkflow({
       name: "conversation-flow",
       run(input) { return input; },
@@ -819,5 +819,5 @@ async function createConversationWorkflow(): Promise<string> {
       createInput() { return { errCode: 0, errMessage: "" }; },
     });
   `);
-  return workflowDir;
+  return projectDir;
 }

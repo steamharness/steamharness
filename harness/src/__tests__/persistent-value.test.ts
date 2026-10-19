@@ -665,7 +665,7 @@ test("remote persistentValue store from env falls back to saved CLI auth file", 
 });
 
 test("local workflow uses configured server PersistentValue store", async () => {
-  const workflowDir = await createPersistentValueWorkflow("server");
+  const projectDir = await createPersistentValueWorkflow("server");
   const requests: Array<Record<string, unknown>> = [];
   const values = new Map<string, unknown>();
   const server = await listenPersistentValueServer(async (body) => {
@@ -683,7 +683,7 @@ test("local workflow uses configured server PersistentValue store", async () => 
 
   try {
     const report = await runLocalWorkflowWithReport({
-      workflowDir,
+      projectDir,
       env: {
         STEAMHARNESS_SERVER_URL: server.url,
         STEAMHARNESS_SERVER_ADMIN_KEY: "server-token",
@@ -699,12 +699,12 @@ test("local workflow uses configured server PersistentValue store", async () => 
 });
 
 test("local workflow uses an explicit local PersistentValue directory before remote env", async () => {
-  const workflowDir = await createPersistentValueWorkflow();
+  const projectDir = await createPersistentValueWorkflow();
   const persistentValueStoreDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-local-persistent-value-"));
 
   try {
     const report = await runLocalWorkflowWithReport({
-      workflowDir,
+      projectDir,
       storage: {
         host: "local",
         local: { persistentValueStoreDir },
@@ -724,19 +724,19 @@ test("local workflow uses an explicit local PersistentValue directory before rem
       key: "local-key",
     }), "from-local-run");
   } finally {
-    await rm(workflowDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
     await rm(persistentValueStoreDir, { recursive: true, force: true });
   }
 });
 
 test("injected PersistentValue store takes priority over an explicit local directory", async () => {
-  const workflowDir = await createPersistentValueWorkflow();
+  const projectDir = await createPersistentValueWorkflow();
   const persistentValueStoreDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-local-persistent-value-"));
   const persistentValueStore = createMemoryKVStore();
 
   try {
     const report = await runLocalWorkflowWithReport({
-      workflowDir,
+      projectDir,
       storage: {
         host: "local",
         local: { persistentValueStore, persistentValueStoreDir },
@@ -760,7 +760,7 @@ test("injected PersistentValue store takes priority over an explicit local direc
       key: "local-key",
     }), undefined);
   } finally {
-    await rm(workflowDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
     await rm(persistentValueStoreDir, { recursive: true, force: true });
   }
 });
@@ -824,9 +824,9 @@ function createMemoryKVStore(): KVStore & {
 async function createPersistentValueWorkflow(
   storageLocation: "local" | "server" = "local",
 ): Promise<string> {
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-persistent-local-"));
+  const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-persistent-local-"));
   await writeFile(
-    path.join(workflowDir, "package.json"),
+    path.join(projectDir, "package.json"),
     JSON.stringify({
       id: PERSISTENT_TEST_PROJECT_ID,
       type: "module",
@@ -838,7 +838,7 @@ async function createPersistentValueWorkflow(
     }),
   );
   await writeFile(
-    path.join(workflowDir, "index.ts"),
+    path.join(projectDir, "index.ts"),
     [
       "const outputNode = workflow.createOutputNode({",
       "  name: \"output\",",
@@ -870,7 +870,7 @@ async function createPersistentValueWorkflow(
     ].join("\n"),
   );
 
-  return workflowDir;
+  return projectDir;
 }
 
 async function listenPersistentValueServer(

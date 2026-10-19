@@ -307,7 +307,7 @@ function escapeMarkdownInline(value: string): string {
 function requireOutput(output: ConversationKnowledgeOutputPayload | undefined): ConversationKnowledgeOutputPayload {
   if (output === undefined) {
     throw new workflow.HarnessError({
-      type: "workflow_execution",
+      type: "execution",
       message: "Conversation knowledge output was not created.",
     });
   }

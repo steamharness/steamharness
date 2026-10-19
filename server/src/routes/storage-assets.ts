@@ -11,7 +11,7 @@ import { HttpError } from "../protocol";
  *
  * Only mounted when the local storage driver is active, and deliberately scoped to
  * avatars: the route declares two anchored params and no wildcard, so private
- * objects (`storage/workflows/**`) are unreachable through this public route.
+ * objects (`storage/projects/**`) are unreachable through this public route.
  *
  * The shape here must match the avatar URL validator exactly — a URL this route
  * cannot serve would be rejected at upload time, and vice versa.

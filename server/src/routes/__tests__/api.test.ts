@@ -1559,8 +1559,8 @@ test("audit events endpoint forwards filters and returns paged audit data", asyn
         actorUserId: "user-1",
         actorProfileId: "user-1",
         actorDisplayName: "User One",
-        eventType: "workflow.publish",
-        resourceType: "workflow_version",
+        eventType: "project.publish",
+        resourceType: "project_version",
         resourceId: "demo:1.0.0",
         outcome: "success",
         requestIp: "127.0.0.1",
@@ -1586,7 +1586,7 @@ test("audit events endpoint forwards filters and returns paged audit data", asyn
   const server = await listen(createStorageStub({}), createPrincipal(["audit.read"]));
 
   try {
-    const response = await fetchJson(server.url("/api/audit-events?pageSize=10&cursor=cursor-1&from=2026-06-01T00:00:00.000Z&to=2026-06-18T00:00:00.000Z&userId=user-1&principalKind=user_session&eventType=workflow.publish&resourceType=workflow_version&resourceId=demo%3A1.0.0&outcome=success"));
+    const response = await fetchJson(server.url("/api/audit-events?pageSize=10&cursor=cursor-1&from=2026-06-01T00:00:00.000Z&to=2026-06-18T00:00:00.000Z&userId=user-1&principalKind=user_session&eventType=project.publish&resourceType=project_version&resourceId=demo%3A1.0.0&outcome=success"));
 
     assert.equal(response.errCode, 0);
     assert.deepEqual(capturedOptions, {
@@ -1596,8 +1596,8 @@ test("audit events endpoint forwards filters and returns paged audit data", asyn
       to: "2026-06-18T00:00:00.000Z",
       actorUserId: "user-1",
       principalKind: "user_session",
-      eventType: "workflow.publish",
-      resourceType: "workflow_version",
+      eventType: "project.publish",
+      resourceType: "project_version",
       resourceId: "demo:1.0.0",
       outcome: "success",
     });
@@ -1615,7 +1615,7 @@ test("audit events endpoint forwards filters and returns paged audit data", asyn
     });
     const recordedEvent = accountDb.createdAuditEvents.at(-1);
     assert.equal(recordedEvent?.eventType, "audit.events.list");
-    assert.equal(recordedEvent?.context?.eventType, "workflow.publish");
+    assert.equal(recordedEvent?.context?.eventType, "project.publish");
   } finally {
     configureWorkflowAuthContext({});
     await server.close();

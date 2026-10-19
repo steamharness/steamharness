@@ -6,7 +6,7 @@ import test from "node:test";
 import { inspectLocalWorkflowStructure, HarnessError } from "../index";
 
 test("Workflow structure exposes validated schedule presets", async () => {
-  const workflowDir = await createScriptProject("workflow", {
+  const projectDir = await createScriptProject("workflow", {
     schedulePresets: [{
       id: "market-sync",
       title: "Market sync",
@@ -22,7 +22,7 @@ test("Workflow structure exposes validated schedule presets", async () => {
     }],
   });
   try {
-    const report = inspectLocalWorkflowStructure({ workflowDir });
+    const report = inspectLocalWorkflowStructure({ projectDir });
     assert.deepEqual(report.schedulePresets, [{
       id: "market-sync",
       title: "Market sync",
@@ -37,12 +37,12 @@ test("Workflow structure exposes validated schedule presets", async () => {
       paramValues: { symbols: "000725.SZ" },
     }]);
   } finally {
-    await rm(workflowDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
   }
 });
 
 test("schedule presets must reference an existing Workflow entrypoint", async () => {
-  const workflowDir = await createScriptProject("workflow", {
+  const projectDir = await createScriptProject("workflow", {
     schedulePresets: [{
       id: "invalid",
       title: "Invalid",
@@ -54,11 +54,11 @@ test("schedule presets must reference an existing Workflow entrypoint", async ()
   });
   try {
     assert.throws(
-      () => inspectLocalWorkflowStructure({ workflowDir }),
+      () => inspectLocalWorkflowStructure({ projectDir }),
       (error: unknown) => error instanceof HarnessError && /unknown entrypoint/.test(error.message),
     );
   } finally {
-    await rm(workflowDir, { recursive: true, force: true });
+    await rm(projectDir, { recursive: true, force: true });
   }
 });
 
@@ -71,7 +71,7 @@ test("schedule presets must satisfy the selected entrypoint static params", asyn
     [{ symbols: "000725.SZ", date: "2026-02-30" }, /date must use YYYY-MM-DD/],
   ];
   for (const [paramValues, expected] of cases) {
-    const workflowDir = await createScriptProject("workflow", {
+    const projectDir = await createScriptProject("workflow", {
       schedulePresets: [{
         id: "invalid-params",
         title: "Invalid params",
@@ -83,11 +83,11 @@ test("schedule presets must satisfy the selected entrypoint static params", asyn
     });
     try {
       assert.throws(
-        () => inspectLocalWorkflowStructure({ workflowDir }),
+        () => inspectLocalWorkflowStructure({ projectDir }),
         (error: unknown) => error instanceof HarnessError && expected.test(error.message),
       );
     } finally {
-      await rm(workflowDir, { recursive: true, force: true });
+      await rm(projectDir, { recursive: true, force: true });
     }
   }
 });
@@ -112,8 +112,8 @@ test("Conversation and Kanban projects reject schedule presets", async () => {
       writeFile(path.join(kanbanDir, "dist", "index.html"), "<!doctype html>")),
   ]);
   try {
-    assert.throws(() => inspectLocalWorkflowStructure({ workflowDir: conversationDir }), /Only Workflow/);
-    assert.throws(() => inspectLocalWorkflowStructure({ workflowDir: kanbanDir }), /Only Workflow/);
+    assert.throws(() => inspectLocalWorkflowStructure({ projectDir: conversationDir }), /Only Workflow/);
+    assert.throws(() => inspectLocalWorkflowStructure({ projectDir: kanbanDir }), /Only Workflow/);
   } finally {
     await Promise.all([
       rm(conversationDir, { recursive: true, force: true }),
@@ -126,15 +126,15 @@ async function createScriptProject(
   projectType: "workflow" | "conversation",
   steamHarness: Record<string, unknown>,
 ): Promise<string> {
-  const workflowDir = await mkdtemp(path.join(os.tmpdir(), "workflow-schedule-project-"));
+  const projectDir = await mkdtemp(path.join(os.tmpdir(), "workflow-schedule-project-"));
   await Promise.all([
-    writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
+    writeFile(path.join(projectDir, "package.json"), JSON.stringify({
       name: "schedule-project",
       version: "0.1.0",
       type: "module",
       steamHarness,
     })),
-    writeFile(path.join(workflowDir, "index.ts"), projectType === "workflow" ? `
+    writeFile(path.join(projectDir, "index.ts"), projectType === "workflow" ? `
       const main = workflow.defineWorkflow({
         name: "main",
         run(input) { return input; },
@@ -172,5 +172,5 @@ async function createScriptProject(
       });
     `),
   ]);
-  return workflowDir;
+  return projectDir;
 }

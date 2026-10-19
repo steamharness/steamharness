@@ -55,7 +55,7 @@ export async function runOpenAIResponsesRunner(
       (dependencies.readInput ?? (() => readFileSync(0, "utf8")))(),
     );
     const inspectProject = dependencies.inspectProject ?? inspectLocalWorkflowStructure;
-    const structure = inspectProject({ workflowDir: request.projectPath });
+    const structure = inspectProject({ projectDir: request.projectPath });
     const conversation = structure.conversation as typeof structure.conversation & {
       openai?: { enabled?: boolean; outputItemId?: string };
     };
@@ -72,13 +72,13 @@ export async function runOpenAIResponsesRunner(
 
     const runWorkflow = dependencies.runWorkflow ?? runLocalWorkflowWithReport;
     executionReport = await (runWorkflow as unknown as (options: {
-      workflowDir: string;
+      projectDir: string;
       runId: string;
       hostInput: unknown;
       abortSignal?: AbortSignal;
       nodeHooks: NodeExecutionHooks;
     }) => Promise<ExecutionReport>)({
-      workflowDir: request.projectPath,
+      projectDir: request.projectPath,
       runId: request.executionId,
       hostInput: request.hostInput,
       abortSignal: dependencies.abortSignal,

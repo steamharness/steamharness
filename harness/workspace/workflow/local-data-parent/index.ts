@@ -312,7 +312,7 @@ function readCreatedDocumentId(value: unknown): string {
   const documentId = (value as { documentId?: unknown } | null | undefined)?.documentId;
   if (typeof documentId === "string" && documentId !== "") return documentId;
   throw new workflow.HarnessError({
-    type: "workflow_execution",
+    type: "execution",
     message: `关联项目的 note 入口没有返回文档 id：${JSON.stringify(value)}`,
   });
 }

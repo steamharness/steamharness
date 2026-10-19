@@ -19,7 +19,7 @@ afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 describe("Studio Control workflow", () => {
   it("passes the runtime's static validation and exposes only supported entrypoints", async () => {
     const { inspectLocalWorkflowStructure } = await import("steamharness");
-    expect(() => inspectLocalWorkflowStructure({ workflowDir: path.resolve(import.meta.dirname, "..") })).not.toThrow();
+    expect(() => inspectLocalWorkflowStructure({ projectDir: path.resolve(import.meta.dirname, "..") })).not.toThrow();
     const { executor } = await import("../index");
     expect(executor.entrypoints?.map(entry => entry.id)).toEqual([
       "studio_state", "get_related_projects", "open_file", "get_diagnostics", "set_theme", "open_terminal", "show_view",
@@ -79,7 +79,7 @@ describe("Studio Control workflow", () => {
     expect(fetcher.mock.calls[0]).toBeDefined();
   });
 
-  it.each([["STUDIO_CONTROL_INVALID_REQUEST", "input_validation"], ["HOST_STOPPED", "workflow_execution"]])("classifies host failure %s", async (code, type) => {
+  it.each([["STUDIO_CONTROL_INVALID_REQUEST", "input_validation"], ["HOST_STOPPED", "execution"]])("classifies host failure %s", async (code, type) => {
     vi.stubEnv("STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL", "http://127.0.0.1:1234/studio-control");
     vi.stubEnv("STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN", "test-token");
     vi.stubGlobal("fetch", async () => Response.json({ ok: false, error: { code, message: "Host failure" } }, { status: 400 }));

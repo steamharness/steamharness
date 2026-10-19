@@ -4,7 +4,7 @@ import {
   type KVNamespaceLockInput,
 } from "steamharness";
 
-export const STEAMHARNESS_KV_NAMESPACE_LOCK_FAMILY = "workflow_project_storage_namespace";
+export const STEAMHARNESS_KV_NAMESPACE_LOCK_FAMILY = "project_storage_namespace";
 
 export function createWorkflowKVNamespaceLockKey(
   input: KVNamespaceLockInput,

@@ -376,7 +376,7 @@ function createInvalidFileReferenceError(): HarnessError {
 
 export function createWorkflowFileCreateUnavailableError(): HarnessError {
   return new HarnessError({
-    type: "workflow_execution",
+    type: "execution",
     message: "Workflow file creation requires a configured file store. Connect the local host to server file storage or inject a workflow file creator.",
   });
 }

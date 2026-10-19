@@ -72,7 +72,7 @@ export type RuntimeEvent =
       durationMs: number;
     }
   | {
-      type: "workflow_failed";
+      type: "project_failed";
       runId: string;
       projectName: string;
       entrypointId?: string;
@@ -250,7 +250,7 @@ export interface ExecutionReportTokenUsage {
 
 export interface DefinitionEvent {
   projectName: string;
-  workflowDir: string;
+  projectDir: string;
   nodes: DefinedNode[];
 }
 
@@ -417,7 +417,7 @@ export function createNodeExecutionReporter(options: {
       }
 
       return emit({
-        type: "workflow_failed",
+        type: "project_failed",
         runId: event.runId,
         projectName: event.projectName,
         entrypointId: event.entrypointId,
@@ -748,7 +748,7 @@ function mapErrorTypeToCode(type: ErrorType): number {
     case "stream_interrupted":
       return 499;
     case "node_execution":
-    case "workflow_execution":
+    case "execution":
     default:
       return 500;
   }
@@ -795,7 +795,7 @@ function readWorkflowResultError(
   }
 
   return {
-    type: "workflow_execution",
+    type: "execution",
     message: readWorkflowResultMessage(result, outputs) ?? `Workflow returned errCode ${errCode}.`,
     metadata: { errCode },
   };

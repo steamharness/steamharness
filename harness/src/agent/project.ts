@@ -135,7 +135,7 @@ export function createAgentConversationWorkflow(
 
       if (result.output === undefined) {
         throw new HarnessError({
-          type: "workflow_execution",
+          type: "execution",
           message: `Workflow "${executorName}" did not produce output.`,
         });
       }

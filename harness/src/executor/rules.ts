@@ -413,7 +413,7 @@ export interface ScriptInspection {
 export interface ValidateWorkflowScriptsOptions {
   cwd: string;
   projectName: string;
-  workflowDir: string;
+  projectDir: string;
 }
 
 export interface ScriptNameOccurrence {
@@ -503,7 +503,7 @@ export function validateWorkflowScripts(
 export function inspectWorkflowScripts(
   options: ValidateWorkflowScriptsOptions,
 ): ScriptInspection {
-  const scriptPaths = findWorkflowScriptPaths(options.workflowDir);
+  const scriptPaths = findWorkflowScriptPaths(options.projectDir);
 
   if (scriptPaths.length === 0) {
     return {
@@ -525,13 +525,13 @@ export function inspectWorkflowScripts(
 export function inspectWorkflowStructure(
   options: ValidateWorkflowScriptsOptions,
 ): StructureInspection {
-  const scriptPaths = findWorkflowScriptPaths(options.workflowDir);
+  const scriptPaths = findWorkflowScriptPaths(options.projectDir);
 
   if (scriptPaths.length === 0) {
     return {
       workflow: {
         name: options.projectName,
-        dir: options.workflowDir,
+        dir: options.projectDir,
         files: [],
       },
       definitions: {
@@ -565,7 +565,7 @@ export function inspectWorkflowStructure(
 
   return createWorkflowStructureInspection({
     projectName: options.projectName,
-    workflowDir: options.workflowDir,
+    projectDir: options.projectDir,
     files: scriptPaths.map((scriptPath) => path.relative(options.cwd, scriptPath)),
     analysis,
   });
@@ -650,7 +650,7 @@ function findUnknownWorkflowEntrypointReferences(
 
 function createWorkflowStructureInspection(options: {
   projectName: string;
-  workflowDir: string;
+  projectDir: string;
   files: string[];
   analysis: ScriptAnalysis;
 }): StructureInspection {
@@ -691,7 +691,7 @@ function createWorkflowStructureInspection(options: {
     projectType: options.analysis.executorProjectType,
     workflow: {
       name: options.projectName,
-      dir: options.workflowDir,
+      dir: options.projectDir,
       files: options.files,
     },
     definitions: {
@@ -3976,12 +3976,12 @@ function analyzeSourceFile(
   }
 }
 
-function findWorkflowScriptPaths(workflowDir: string): string[] {
-  if (!existsSync(workflowDir)) {
+function findWorkflowScriptPaths(projectDir: string): string[] {
+  if (!existsSync(projectDir)) {
     return [];
   }
 
-  return collectWorkflowScriptPaths(workflowDir).sort((left, right) => {
+  return collectWorkflowScriptPaths(projectDir).sort((left, right) => {
     return left.localeCompare(right);
   });
 }

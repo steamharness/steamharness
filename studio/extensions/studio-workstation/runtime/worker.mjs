@@ -54,7 +54,7 @@ try {
     for (const folderPath of request.paths) {
       try {
         const pkg = JSON.parse(readFileSync(path.join(folderPath, 'package.json'), 'utf8'));
-        const structure = inspectLocalWorkflowStructure({ workflowDir: folderPath });
+        const structure = inspectLocalWorkflowStructure({ projectDir: folderPath });
         const parameters = (entry) => ({ fields: entry.params ?? [], paramLayout: entry.paramLayout, paramResolver: entry.paramResolver, tools: entry.tools });
         projects.push({
           id: pkg.id,
@@ -107,7 +107,7 @@ try {
     };
     if (request.method === 'resolve') {
       send('result', await resolveLocalWorkflowParams({
-        workflowDir: request.project.folderPath,
+        projectDir: request.project.folderPath,
         entrypointId: request.entrypointId,
         request: request.request,
         storage,
@@ -115,7 +115,7 @@ try {
       }));
     } else if (request.method === 'run') {
       const report = await runLocalWorkflowWithReport({
-        workflowDir: request.project.folderPath,
+        projectDir: request.project.folderPath,
         args: request.args,
         entrypointId: request.entrypointId,
         conversationId: request.conversationId,

@@ -136,7 +136,7 @@ export class RemoteWorkflowStorageStore implements KVStore {
     }
 
     throw new HarnessError({
-      type: "workflow_execution",
+      type: "execution",
       message: "Workflow storage update could not complete because the value kept changing concurrently.",
       metadata: {
         serverUrl: this.serverUrl,
@@ -191,7 +191,7 @@ export class RemoteWorkflowStorageStore implements KVStore {
       });
     } catch (error) {
       throw new HarnessError({
-        type: "workflow_execution",
+        type: "execution",
         message: `Workflow project storage could not connect to server database storage at ${this.serverUrl}. Check STEAMHARNESS_SERVER_URL/STEAMHARNESS_SERVER_ADMIN_KEY or Desktop server connection settings.`,
         metadata: {
           serverUrl: this.serverUrl,
@@ -206,7 +206,7 @@ export class RemoteWorkflowStorageStore implements KVStore {
     }
 
     throw new HarnessError({
-      type: "workflow_execution",
+      type: "execution",
       message: payload.errMessage || `Workflow project storage failed with HTTP ${response.status}.`,
       metadata: {
         serverUrl: this.serverUrl,
@@ -434,7 +434,7 @@ function createRemoteWorkflowStorageConfigError(): HarnessError {
 
 function createRemoteWorkflowStorageProtocolError(message: string): HarnessError {
   return new HarnessError({
-    type: "workflow_execution",
+    type: "execution",
     message,
   });
 }

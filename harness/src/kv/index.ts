@@ -446,7 +446,7 @@ function createLocalKVNestedNamespaceError(
   requested: NormalizedWorkflowKVNamespaceLockInput,
 ): HarnessError {
   return new HarnessError({
-    type: "workflow_execution",
+    type: "execution",
     message: "Local workflow KV namespace transactions cannot access a different namespace while holding a lock.",
     metadata: { currentNamespace: current, requestedNamespace: requested },
   });
@@ -571,7 +571,7 @@ async function recoverLocalKVTransactions(rootDir: string): Promise<void> {
       const journal = await readLocalKVTransactionJournal(journalPath);
       if (journal === undefined) {
         throw new HarnessError({
-          type: "workflow_execution",
+          type: "execution",
           message: "Local workflow KV transaction journal is invalid and cannot be recovered.",
         });
       }
@@ -610,7 +610,7 @@ async function recoverLocalKVTransactionsForLockedNamespace(
     const journal = parseLocalKVTransactionJournal(file.value);
     if (journal === undefined) {
       throw new HarnessError({
-        type: "workflow_execution",
+        type: "execution",
         message: "Local workflow KV transaction journal is invalid and cannot be recovered.",
       });
     }
@@ -809,7 +809,7 @@ export function normalizeWorkflowStorageKind(value: unknown): StorageKind {
   if (value !== "kv" && value !== "persistent_value") {
     throw new HarnessError({
       type: "input_validation",
-      message: `Unsupported workflow storage kind: ${String(value)}.`,
+      message: `Unsupported project storage kind: ${String(value)}.`,
     });
   }
   return value;
@@ -1089,7 +1089,7 @@ async function ensureLocalWorkflowStorageFormat(
     ) {
       throw new HarnessError({
         type: "input_validation",
-        message: `Local workflow storage root is already assigned to ${marker.value["storageKind"]}.`,
+        message: `Local project storage root is already assigned to ${marker.value["storageKind"]}.`,
         metadata: { rootDir, storageKind, existingStorageKind: marker.value["storageKind"] },
       });
     }
@@ -1312,7 +1312,7 @@ async function writeLocalKVEntryFiles(
   const entryStat = await readLocalKVEntryStat(entryPath);
   if (entryStat === undefined) {
     throw new HarnessError({
-      type: "workflow_execution",
+      type: "execution",
       message: "Local workflow KV entry disappeared before metadata could be written.",
     });
   }
@@ -1512,7 +1512,7 @@ async function acquireLocalKVPathLock(lockPath: string): Promise<() => Promise<v
         }
         if (Date.now() - startedAt >= LOCAL_KV_LOCK_TIMEOUT_MS) {
           throw new HarnessError({
-            type: "workflow_execution",
+            type: "execution",
             message: "Timed out waiting for a local workflow KV operation.",
           });
         }
@@ -1942,7 +1942,7 @@ async function readLocalKVEntry(
   if (entry === undefined) return undefined;
   if (!isLocalKVEntry(entry.value, expected)) {
     throw new HarnessError({
-      type: "workflow_execution",
+      type: "execution",
       message: "Local workflow KV entry is invalid and cannot be read safely.",
     });
   }
@@ -1975,7 +1975,7 @@ async function readLocalKVJsonFile(
     if (isMissingLocalKVPath(error)) return undefined;
     if (options.strict) {
       throw new HarnessError({
-        type: "workflow_execution",
+        type: "execution",
         message: "Local workflow KV entry is unreadable and cannot be overwritten safely.",
       });
     }
@@ -2133,13 +2133,13 @@ function normalizeLocalKVInspectionOptions(
   if (conversationId !== undefined && projectId === undefined) {
     throw new HarnessError({
       type: "input_validation",
-      message: "Local workflow storage conversation filters require a project id.",
+      message: "Local project storage conversation filters require a project id.",
     });
   }
   if (scope === "project" && conversationId !== undefined) {
     throw new HarnessError({
       type: "input_validation",
-      message: "Local workflow storage project scope cannot filter by conversation.",
+      message: "Local project storage project scope cannot filter by conversation.",
     });
   }
   if (options.valueType !== undefined && !isWorkflowKVValueType(options.valueType)) {

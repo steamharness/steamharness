@@ -170,7 +170,7 @@ async function runWithMockEnv(options: {
   const kvStoreDir = options.kvStoreDir ?? await mkdtemp(`${os.tmpdir()}/steamharness-gpt-image-test-`);
   try {
     return await runLocalWorkflowWithReport({
-      workflowDir: path.resolve(process.cwd(), "workflow/gpt-image"),
+      projectDir: path.resolve(process.cwd(), "workflow/gpt-image"),
       projectName: "gpt-image",
       args: options.args,
       conversationId: options.conversationId,
