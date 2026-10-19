@@ -1,9 +1,9 @@
 import { locale, t } from '../localization';
-import type { ConversationMessage, WorkflowOutputItem } from '../workflow-types';
+import type { ConversationMessage, OutputItem } from '../workflow-types';
 
 interface RingContent { value: number; total?: number; unit?: string }
 
-export function ringOutputContent(item: WorkflowOutputItem): RingContent | undefined {
+export function ringOutputContent(item: OutputItem): RingContent | undefined {
   if (item.display?.type !== 'ring' || !item.content || typeof item.content !== 'object') { return; }
   const value = item.content as RingContent;
   if (typeof value.value !== 'number' || !Number.isFinite(value.value) || value.value < 0
@@ -12,12 +12,12 @@ export function ringOutputContent(item: WorkflowOutputItem): RingContent | undef
   return value;
 }
 
-export function isComposerOutputItem(item: WorkflowOutputItem): boolean {
+export function isComposerOutputItem(item: OutputItem): boolean {
   return !!item.id && item.display?.placement === 'composer-right' && ringOutputContent(item) !== undefined;
 }
 
-export function composerOutputItems(messages: ConversationMessage[], outputs: WorkflowOutputItem[] = []): WorkflowOutputItem[] {
-  const latest = new Map<string, WorkflowOutputItem>();
+export function composerOutputItems(messages: ConversationMessage[], outputs: OutputItem[] = []): OutputItem[] {
+  const latest = new Map<string, OutputItem>();
   for (const message of messages) {
     if (message.role !== 'assistant') { continue; }
     for (const item of message.items ?? message.report?.output?.items ?? []) {
@@ -32,7 +32,7 @@ export function composerOutputItems(messages: ConversationMessage[], outputs: Wo
   return [...latest.values()];
 }
 
-export function ringOutputText(item: WorkflowOutputItem) {
+export function ringOutputText(item: OutputItem) {
   const content = ringOutputContent(item);
   if (!content) { return; }
   const used = content.value.toLocaleString(locale());
@@ -62,7 +62,7 @@ export class RingOutput {
   private readonly reposition = () => this.schedulePosition();
   private readonly escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { this.hide(); } };
 
-  constructor(item: WorkflowOutputItem) {
+  constructor(item: OutputItem) {
     this.root.className = 'output-ring'; this.root.tabIndex = 0;
     this.root.setAttribute('role', 'img');
     this.tooltip.id = `output-ring-tooltip-${++tooltipId}`;
@@ -81,7 +81,7 @@ export class RingOutput {
     this.update(item);
   }
 
-  update(item: WorkflowOutputItem): void {
+  update(item: OutputItem): void {
     const signature = JSON.stringify([item, locale()]);
     if (signature === this.signature) { return; }
     this.signature = signature;
@@ -144,7 +144,7 @@ export class ComposerOutput {
 
   constructor() { this.root.className = 'composer-output'; this.root.hidden = true; }
 
-  update(items: WorkflowOutputItem[], scope: string): void {
+  update(items: OutputItem[], scope: string): void {
     if (scope !== this.scope) { this.clear(); this.scope = scope; }
     const active = new Set<string>();
     for (const item of items) {

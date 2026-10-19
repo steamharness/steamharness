@@ -5,11 +5,11 @@ import * as path from 'node:path';
 import { realpath } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { inspectProjectCli, resolveProjectCli, startProjectCli, type StudioControlConfiguration } from './workflow-cli-process';
-import type { WorkflowLauncher, WorkflowWebSession } from './workflow-cli-types';
-import type { WorkflowAccountController } from './workflow-auth';
+import type { Launcher, WebSession } from './workflow-cli-types';
+import type { AccountController } from './workflow-auth';
 import { prepareAssistantApplication, prepareStudioControlApplication, prepareAnalysisApplication, ANALYSIS_PROJECT_ID } from './assistant-application';
 import { assistantWorkspaceAvailable, createAssistantProject, DEVELOPER_ASSISTANT_PROJECT_ID } from './assistant-workspace';
-import type { WorkflowProject } from './workflow-types';
+import type { Project } from './workflow-types';
 import { requestProjectResource } from './workflow-resources-node';
 import { createStudioControlHandler, STUDIO_CONTROL_PROJECT_ID, studioControlWorkspaceAvailable } from './studio-control';
 import { startStudioControlBridge, type StudioControlBridge } from './studio-control-bridge';
@@ -21,8 +21,8 @@ import { readFile } from 'node:fs/promises';
 import type { ProjectType } from './projects';
 import { uploadServerProject, downloadServerProject } from './workflow-server-projects-node';
 
-export function createWorkflowRuntime(context: vscode.ExtensionContext, account: WorkflowAccountController): WorkflowLauncher {
-  const sessions = new Set<WorkflowWebSession>();
+export function createWorkflowRuntime(context: vscode.ExtensionContext, account: AccountController): Launcher {
+  const sessions = new Set<WebSession>();
   const controller = new AbortController();
   const executable = (): string => vscode.workspace.getConfiguration('studio').get<string>('workflow.nodePath') || process.execPath;
   const templates = projectTemplatesRuntime(context.extensionUri.fsPath, vscode.env.language);
@@ -53,7 +53,7 @@ export function createWorkflowRuntime(context: vscode.ExtensionContext, account:
       templateDir: path.join(extensionDirectory, 'dist', 'analysis'),
       storageDir: path.join(context.globalStorageUri.fsPath, 'workflow', 'analysis'), dependencySources: [await assistantDirectory()],
     })).catch(error => { analysisApplication = undefined; throw error; });
-  let analysisProjects: WorkflowProject[] = [];
+  let analysisProjects: Project[] = [];
   let readingAnalysis: Promise<unknown> | undefined;
   const readAnalysis = (): Promise<unknown> => readingAnalysis ??= (async () => {
     const cli = await resolveProjectCli(await assistantDirectory());
@@ -72,7 +72,7 @@ export function createWorkflowRuntime(context: vscode.ExtensionContext, account:
     if (requiresWorkspaceTrust && !vscode.workspace.isTrusted) { throw new Error(t("Trust the current workspace first.")); }
     if (controller.signal.aborted) { throw new Error('Workflow host has stopped.'); }
   };
-  const assertAssistantWorkspace = (assistant: NonNullable<WorkflowProject['assistant']>): void => {
+  const assertAssistantWorkspace = (assistant: NonNullable<Project['assistant']>): void => {
     const folders = (vscode.workspace.workspaceFolders ?? []).filter(folder => folder.uri.scheme === 'file')
       .map(folder => ({ uri: folder.uri.toString(), folderPath: folder.uri.fsPath, name: folder.name }));
     if (!assistantWorkspaceAvailable(assistant, folders)) { throw new Error(t("Assistant workspace is no longer available.")); }
@@ -87,7 +87,7 @@ export function createWorkflowRuntime(context: vscode.ExtensionContext, account:
     for (const session of sessions) { session.updateAuth(connection); }
   });
   const transfer = async <T>(signal: AbortSignal, action: (options: {
-    cliEntry: string; runtimeDirectory: string; nodePath: string; connection: NonNullable<ReturnType<WorkflowAccountController['getConnection']>>; signal: AbortSignal;
+    cliEntry: string; runtimeDirectory: string; nodePath: string; connection: NonNullable<ReturnType<AccountController['getConnection']>>; signal: AbortSignal;
   }) => Promise<T>): Promise<T> => {
     assertAvailable(false);
     const connection = account.getConnection();

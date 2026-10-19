@@ -1,5 +1,5 @@
 import type { NodeContext } from "../../types/context";
-import type { WorkflowCapability } from "./types";
+import type { Capability } from "./types";
 
 export const HOST_CONFIGURATION_MCP_SERVER_ID = "workflow-host";
 export const HOST_CONFIGURATION_MCP_TOOL_NAME = "host_project_configuration";
@@ -155,7 +155,7 @@ function readConfigurationValues(value: unknown): Record<string, unknown> {
   return values;
 }
 
-export const HOST_CONFIGURATION_CAPABILITY: WorkflowCapability = {
+export const HOST_CONFIGURATION_CAPABILITY: Capability = {
   serverId: HOST_CONFIGURATION_MCP_SERVER_ID,
   toolName: HOST_CONFIGURATION_MCP_TOOL_NAME,
   toolId: HOST_CONFIGURATION_MCP_TOOL_ID,

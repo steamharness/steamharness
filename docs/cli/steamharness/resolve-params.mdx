@@ -12,7 +12,7 @@ printf '%s' '{"draftText":"查询文档","args":["--tone","balanced"],"inputMode
   | steamharness resolve-params ./workspace/workflow/example --entrypoint search
 ```
 
-成功时 stdout 返回 `WorkflowParamResolveResult`：
+成功时 stdout 返回 `ParamResolveResult`：
 
 ```json
 {"params":{"tone":{"value":"precise","resolvedOptions":[{"value":"precise","label":"精确"},{"value":"creative","label":"创意"}],"options":{"creative":{"disabled":true}}}}}

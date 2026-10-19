@@ -1,6 +1,6 @@
 ---
 title: "文件输入"
-description: "file param、上传文件和 WorkflowResolvedFile 的当前用法。"
+description: "file param、上传文件和 ResolvedFile 的当前用法。"
 ---
 
 # 文件输入
@@ -56,9 +56,9 @@ const images = await workflow.runNode(imageInputNode, input.images, context);
 const imageParts = await Promise.all(images.map((file) => file.toLLMImagePart()));
 ```
 
-`createFileInputNode` 会通过 `context.files` 解析引用，返回 `WorkflowResolvedFile[]`。
+`createFileInputNode` 会通过 `context.files` 解析引用，返回 `ResolvedFile[]`。
 
-## WorkflowResolvedFile
+## ResolvedFile
 
 解析后的文件支持：
 
@@ -101,7 +101,7 @@ Kanban 页面通过 `window.steamHarnessKanban.files.createFile/readFile/deleteF
 不要把 base64 文件内容保存进 KV 或会话历史。需要跨轮复用时，保存 `file.toJSON()` 返回的引用元数据。
 
 `workspace/workflow/gpt-image` 示例使用同一套 file param 流程接收一张或多张参考图：
-有当前图片或最近会话历史中存在输入图片引用时，workflow 会解析为 `WorkflowResolvedFile[]`
+有当前图片或最近会话历史中存在输入图片引用时，workflow 会解析为 `ResolvedFile[]`
 并调用图片编辑；完全没有图片上下文时才调用图片生成。该示例开启 conversation 模式，跨轮只把
 用户提示、生成摘要和 `file.toJSON()` 引用元数据写入会话历史；后续轮次会尽力解析最近输入图片
 引用并作为上下文参考图传给图片编辑，示例本地最多保留 16 张图片输入。生成结果作为

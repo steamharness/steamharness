@@ -20,8 +20,8 @@ import {
   readKnowledgeDocumentLines,
   searchKnowledgeDocuments,
   MAX_KNOWLEDGE_MARKDOWN_PREVIEW_SCAN_CODE_UNITS,
-  type WorkflowKVStore,
-  type WorkflowStorageLocationContext,
+  type KVStore,
+  type StorageLocationContext,
 } from "../index";
 
 test("knowledge markdown previews preserve compact output without scanning an entire large body", () => {
@@ -679,7 +679,7 @@ test("knowledge document line range validates range size", async () => {
   );
 });
 
-function createTestContext(store: WorkflowKVStore): WorkflowStorageLocationContext {
+function createTestContext(store: KVStore): StorageLocationContext {
   const kv = createWorkflowKVContext({ store: createMemoryKVStore(), projectId: "demo" });
   const persistentValue = createWorkflowPersistentValueContext({ store, projectId: "demo" });
   return { kv, persistentValue, relatedProjects: createWorkflowRelatedProjectsContext() };
@@ -688,7 +688,7 @@ function createTestContext(store: WorkflowKVStore): WorkflowStorageLocationConte
 function createMemoryKVStore(options: {
   failSetKeys?: Set<string>;
   failUpdateKeys?: Set<string>;
-} = {}): WorkflowKVStore & {
+} = {}): KVStore & {
   values: Map<string, unknown>;
   failSetKeys: Set<string>;
   failUpdateKeys: Set<string>;

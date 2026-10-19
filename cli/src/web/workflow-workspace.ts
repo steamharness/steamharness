@@ -1,54 +1,54 @@
 import type {
-  ConversationSession, WorkflowAttachment, WorkflowInputRequest, WorkflowOutputItem, WorkflowParamState,
-  WorkflowParamValues, WorkflowReport, WorkflowResolvedInput, WorkflowTimerRecord, WorkflowToolPolicies,
+  ConversationSession, Attachment, InputRequest, OutputItem, ParamState,
+  ParamValues, Report, ResolvedInput, TimerRecord, ToolPolicies,
 } from './workflow-types';
 
-export type WorkflowRunStatus = 'running' | 'waiting_for_input' | 'success' | 'failed' | 'aborted' | 'timed_out' | 'interrupted';
-export interface WorkflowDraft {
+export type RunStatus = 'running' | 'waiting_for_input' | 'success' | 'failed' | 'aborted' | 'timed_out' | 'interrupted';
+export interface Draft {
   scopeId: string;
-  values: WorkflowParamValues;
+  values: ParamValues;
   rawArgs: string;
   inputMode: 'form' | 'raw';
-  policies: WorkflowToolPolicies;
+  policies: ToolPolicies;
 }
-export interface WorkflowRunRecord {
+export interface RunRecord {
   id: string;
   scopeId: string;
   entrypointId?: string;
   title: string;
   createdAt: number;
   updatedAt: number;
-  status: WorkflowRunStatus;
+  status: RunStatus;
   args: string[];
-  params: WorkflowParamValues;
-  policies: WorkflowToolPolicies;
-  items: WorkflowOutputItem[];
+  params: ParamValues;
+  policies: ToolPolicies;
+  items: OutputItem[];
   events: Record<string, unknown>[];
-  files: WorkflowAttachment[];
+  files: Attachment[];
   nodes: Record<string, unknown>[];
   logs: string;
-  pendingInput?: WorkflowInputRequest;
-  resolvedInputs: WorkflowResolvedInput[];
-  submittingInput?: WorkflowResolvedInput;
-  report?: WorkflowReport;
+  pendingInput?: InputRequest;
+  resolvedInputs: ResolvedInput[];
+  submittingInput?: ResolvedInput;
+  report?: Report;
   error?: string;
   durationMs?: number;
-  tokenUsage?: WorkflowReport['tokenUsage'];
-  timers?: WorkflowTimerRecord[];
+  tokenUsage?: Report['tokenUsage'];
+  timers?: TimerRecord[];
   migratedFrom?: { sessionId: string; messageId?: string };
 }
-export interface WorkflowWorkspace {
+export interface WorkspaceContract {
   version: 1;
-  runs: WorkflowRunRecord[];
-  drafts: Record<string, WorkflowDraft>;
+  runs: RunRecord[];
+  drafts: Record<string, Draft>;
   selectedId?: string;
   occupiedId?: string;
   migratedConversations?: boolean;
 }
-export interface WorkflowStartInput {
+export interface StartInput {
   entrypointId?: string;
-  params: WorkflowParamValues;
-  states?: Record<string, WorkflowParamState>;
+  params: ParamValues;
+  states?: Record<string, ParamState>;
   rawArgs?: string;
   inputMode?: 'form' | 'raw';
 }
@@ -59,8 +59,8 @@ export function parseWorkflowArgs(text: string): string[] {
   return value;
 }
 
-export function migrateWorkflowHistory(sessions: ConversationSession[], activeId?: string): WorkflowWorkspace {
-  const workspace: WorkflowWorkspace = { version: 1, runs: [], drafts: {}, migratedConversations: true };
+export function migrateWorkflowHistory(sessions: ConversationSession[], activeId?: string): WorkspaceContract {
+  const workspace: WorkspaceContract = { version: 1, runs: [], drafts: {}, migratedConversations: true };
   for (const session of sessions) {
     let user: ConversationSession['messages'][number] | undefined;
     for (const [index, message] of session.messages.entries()) {
@@ -71,7 +71,7 @@ export function migrateWorkflowHistory(sessions: ConversationSession[], activeId
         id: message.id ?? `legacy-${session.id}-${index}`, scopeId: session.id,
         title: session.title, entrypointId: message.entrypointId ?? user?.entrypointId,
         createdAt, updatedAt: session.updatedAt ?? createdAt,
-        status: (message.status ?? report?.status ?? 'success') as WorkflowRunStatus,
+        status: (message.status ?? report?.status ?? 'success') as RunStatus,
         args: message.args ?? user?.args ?? [], params: user?.input?.params ?? {}, policies: session.toolPermissionPolicies ?? {},
         items: report?.output?.items ?? message.items ?? (message.content ? [{ content: message.content, contentType: 'markdown' }] : []),
         events: message.events ?? [], nodes: report?.nodes ?? [], logs: report?.logs ?? '',

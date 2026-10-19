@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Copy, Database, Eye, Loader2, Search, Trash2 } from "lucide-react";
 import { useTranslation } from "@steamharness/i18n/react";
-import type { ApiResponse, WorkflowKVEntryDetail, WorkflowKVEntryPage, WorkflowKVEntrySummary, WorkflowKVEntryValueType } from "../types";
+import type { ApiResponse, KVEntryDetail, KVEntryPage, KVEntrySummary, KVEntryValueType } from "../types";
 import { isApiSuccess } from "../types";
 import { formatBytes, formatDate } from "../utils/format";
 import { ConfirmActionDialog, type ConfirmAction } from "@/components/ConfirmActionDialog";
@@ -24,7 +24,7 @@ import { PaginationFooter } from "@/components/ui/pagination-footer";
 export type KVFilters = {
   query: string;
   scope: "all" | "project" | "conversation";
-  valueType: "all" | WorkflowKVEntryValueType;
+  valueType: "all" | KVEntryValueType;
   conversationId: string;
   runId: string;
 };
@@ -45,32 +45,32 @@ function scopeBadge(scope: string): "secondary" | "outline" {
   return "outline";
 }
 
-function kvEntryKey(entry: WorkflowKVEntrySummary): string {
+function kvEntryKey(entry: KVEntrySummary): string {
   return `${entry.scope}:${entry.key}:${entry.projectId}:${entry.conversationId ?? ""}`;
 }
 
 interface KVTableProps {
-  entries: WorkflowKVEntrySummary[];
+  entries: KVEntrySummary[];
   loading?: string;
   selectedRowKey: string | null;
-  onOpenDetail: (entry: WorkflowKVEntrySummary) => void;
+  onOpenDetail: (entry: KVEntrySummary) => void;
   footer: ReactNode;
 }
 
-type KVEntryLoader = (entry: WorkflowKVEntrySummary) => Promise<ApiResponse<WorkflowKVEntryDetail>>;
+type KVEntryLoader = (entry: KVEntrySummary) => Promise<ApiResponse<KVEntryDetail>>;
 
-type KVEntryDeleter = (entry: WorkflowKVEntrySummary) => Promise<ApiResponse<unknown>>;
+type KVEntryDeleter = (entry: KVEntrySummary) => Promise<ApiResponse<unknown>>;
 
 type KVExpandedPanelState = {
   rowKey: string;
-  entry: WorkflowKVEntrySummary;
-  detail?: WorkflowKVEntryDetail;
+  entry: KVEntrySummary;
+  detail?: KVEntryDetail;
   loading: boolean;
   error?: string;
 };
 
 interface KVInspectorPageProps {
-  kvPage: WorkflowKVEntryPage | null;
+  kvPage: KVEntryPage | null;
   filters: KVFilters;
   loading?: string;
   pageIndex: number;
@@ -93,12 +93,12 @@ export function KVInspectorPage({
   const [deleting, setDeleting] = useState(false);
   const deletingRef = useRef(false);
 
-  const handleOpenDetail = useCallback((entry: WorkflowKVEntrySummary) => {
+  const handleOpenDetail = useCallback((entry: KVEntrySummary) => {
     setDeleteError(null);
     openDetail(entry);
   }, [openDetail]);
 
-  const runDelete = useCallback(async (entry: WorkflowKVEntrySummary) => {
+  const runDelete = useCallback(async (entry: KVEntrySummary) => {
     if (onDeleteEntry === undefined || deletingRef.current) return;
     deletingRef.current = true;
     setDeleting(true);
@@ -121,7 +121,7 @@ export function KVInspectorPage({
     }
   }, [closeDetail, onDeleteEntry, onRefresh, t]);
 
-  const requestDelete = useCallback((entry: WorkflowKVEntrySummary) => {
+  const requestDelete = useCallback((entry: KVEntrySummary) => {
     if (onDeleteEntry === undefined) return;
     setConfirmAction({
       title: t("projectKvDeleteConfirmTitle"),
@@ -184,7 +184,7 @@ export function KVInspectorPage({
   );
 }
 
-function useKVExpansion(entries: WorkflowKVEntrySummary[], onLoadEntry: KVEntryLoader | undefined) {
+function useKVExpansion(entries: KVEntrySummary[], onLoadEntry: KVEntryLoader | undefined) {
   const [panel, setPanel] = useState<KVExpandedPanelState | null>(null);
   const requestRef = useRef(0);
 
@@ -207,7 +207,7 @@ function useKVExpansion(entries: WorkflowKVEntrySummary[], onLoadEntry: KVEntryL
     });
   }, [entries]);
 
-  function openDetail(entry: WorkflowKVEntrySummary) {
+  function openDetail(entry: KVEntrySummary) {
     requestRef.current++;
     const rowKey = kvEntryKey(entry);
     setPanel({
@@ -271,7 +271,7 @@ function KVDetailSheet({
   deleting?: boolean;
   onClose: () => void;
   onLoadDetail?: () => void;
-  onDelete?: (entry: WorkflowKVEntrySummary) => void;
+  onDelete?: (entry: KVEntrySummary) => void;
 }) {
   const { t } = useTranslation("serverWeb");
   const [copied, setCopied] = useState<"key" | "json" | null>(null);
@@ -380,11 +380,11 @@ function KVDetailSheet({
   );
 }
 
-function hasFullKVValue(entry: WorkflowKVEntrySummary): entry is WorkflowKVEntryDetail {
+function hasFullKVValue(entry: KVEntrySummary): entry is KVEntryDetail {
   return "value" in entry;
 }
 
-function isSameKVPanelEntry(left: WorkflowKVEntrySummary, right: WorkflowKVEntrySummary): boolean {
+function isSameKVPanelEntry(left: KVEntrySummary, right: KVEntrySummary): boolean {
   return left.scope === right.scope &&
     left.key === right.key &&
     left.projectId === right.projectId &&

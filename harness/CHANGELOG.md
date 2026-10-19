@@ -164,7 +164,7 @@
 - 新增 系统 AI 模型属性随 `getServerLLMCredentials()` 返回，用于上下文窗口、effort 档位与模态。
 - 新增 `modelAttributes` 让自定义 provider 声明 `contextWindow`、`maxTokens`、`cost` 与 `thinkingLevelMap`。
 - 新增 Workflow entrypoint 静态 `group: { id, title, order? }` 展示元数据并透传到结构报告。
-- 新增 `WorkflowServerLLMCredential.defaultModelId` 暴露 Server 合并后的系统/用户默认模型。
+- 新增 `ServerLLMCredential.defaultModelId` 暴露 Server 合并后的系统/用户默认模型。
 - 新增 参数契约支持 `type: "file", control: "audio"` 及音频时长与大小限制。
 - 新增 Conversation 默认输入契约的视频附件与常用视频 MIME 推断。
 

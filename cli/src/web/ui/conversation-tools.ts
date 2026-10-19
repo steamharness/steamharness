@@ -1,6 +1,6 @@
 import { t } from '../localization';
-import type { WorkflowParameters, WorkflowToolPolicies, WorkflowProject } from '../workflow-types';
-import type { WorkflowSystemAiUsage } from '../workflow-auth-client';
+import type { Parameters, ToolPolicies, Project } from '../workflow-types';
+import type { SystemAiUsage } from '../workflow-auth-client';
 import { iconButton, markdownHtml, iconHtml, escapeHtml } from './ui';
 import { projectInformation } from './project-information';
 import { usageAmount, usagePeriods } from './ai-usage';
@@ -37,7 +37,7 @@ export class ConversationTools {
     this.body.querySelector<HTMLElement>('.image-preview-viewport')!.focus({ preventScroll: true });
   }
 
-  projectInfo(project: WorkflowProject): void {
+  projectInfo(project: Project): void {
     this.show(t("Project information"));
     const heading = document.createElement('h3'); heading.className = 'project-information-name'; heading.textContent = project.name;
     this.body.append(heading);
@@ -55,13 +55,13 @@ export class ConversationTools {
     }
   }
 
-  permissions(parameters: WorkflowParameters, policies: WorkflowToolPolicies, changed: (policies: WorkflowToolPolicies) => void): void {
+  permissions(parameters: Parameters, policies: ToolPolicies, changed: (policies: ToolPolicies) => void): void {
     this.show(t("Tool permissions"));
     const tools = parameters.tools ?? [];
     const count = document.createElement('p'); count.className = 'tool-count'; count.textContent = t("{0} tools", tools.length); this.body.append(count);
     const table = document.createElement('table'); table.className = 'permissions-table';
     table.innerHTML = `<thead><tr><th>${t("Tool")}</th><th>${t("Enable")}</th><th>${t("Auto-approve")}</th></tr></thead>`;
-    const body = document.createElement('tbody'); const draft: WorkflowToolPolicies = {};
+    const body = document.createElement('tbody'); const draft: ToolPolicies = {};
     for (const tool of tools) {
       draft[tool.name] = { enabled: policies[tool.name]?.enabled ?? tool.enabled ?? true, autoApprove: policies[tool.name]?.autoApprove ?? tool.autoApprove ?? false };
       const row = document.createElement('tr'); const label = document.createElement('td'); label.textContent = tool.label || tool.name;
@@ -89,7 +89,7 @@ export class ConversationTools {
     this.body.setAttribute('aria-busy', 'true'); if (this.refresh) { this.refresh.disabled = true; }
     this.usageRequestId = crypto.randomUUID(); load(this.usageRequestId);
   }
-  usageResult(requestId: string | undefined, data?: WorkflowSystemAiUsage, error?: string): void {
+  usageResult(requestId: string | undefined, data?: SystemAiUsage, error?: string): void {
     if (!this.usageOpen || requestId !== this.usageRequestId) { return; }
     this.body.replaceChildren();
     this.body.setAttribute('aria-busy', 'false'); if (this.refresh) { this.refresh.disabled = false; }

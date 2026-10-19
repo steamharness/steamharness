@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { projectId, type ProjectType } from './projects';
-import type { WorkflowLauncher } from './workflow-cli-types';
+import type { Launcher } from './workflow-cli-types';
 
 interface Detection { type?: ProjectType; version?: string; checked: number; pending?: Promise<ProjectType | undefined> }
 const ignored = new Set(['node_modules', 'dist', 'out', 'build', 'vendor', 'upstream']);
@@ -16,7 +16,7 @@ export class ProjectIcons implements vscode.Disposable {
   private generation = 0;
   private disposed = false;
 
-  constructor(private readonly launcher: WorkflowLauncher, private readonly log: (message: string) => void = () => undefined) {
+  constructor(private readonly launcher: Launcher, private readonly log: (message: string) => void = () => undefined) {
     const watcher = vscode.workspace.createFileSystemWatcher('**/{package.json,*.ts}');
     this.subscriptions.push(watcher, watcher.onDidChange(uri => this.invalidate(uri)), watcher.onDidCreate(uri => this.invalidate(uri)),
       watcher.onDidDelete(uri => this.invalidate(uri)), vscode.window.onDidChangeWindowState(state => { if (state.focused) { this.refresh(); } }));

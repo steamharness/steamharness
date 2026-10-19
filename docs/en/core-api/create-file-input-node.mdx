@@ -1,18 +1,18 @@
 ---
 title: "createFileInputNode"
-description: "Create a file input node and resolve the file param reference to WorkflowResolvedFile."
+description: "Create a file input node and resolve the file param reference to ResolvedFile."
 ---
 
 # createFileInputNode
 
-`workflow.createFileInputNode()` is used to process the executor param of `type: "file"`. It takes a file reference, JSON string, array, or path string and parses it to `WorkflowResolvedFile[]` via `context.files`.
+`workflow.createFileInputNode()` is used to process the executor param of `type: "file"`. It takes a file reference, JSON string, array, or path string and parses it to `ResolvedFile[]` via `context.files`.
 
 ## Signature
 
 ```ts
 workflow.createFileInputNode(
   options?: FileInputNodeOptions,
-): BaseNode<unknown, WorkflowResolvedFile[]>
+): BaseNode<unknown, ResolvedFile[]>
 ```
 
 ## Parameter
@@ -29,19 +29,19 @@ workflow.createFileInputNode(
 | `accept` | `string[]` |Allowed MIME or extensions, such as `image/*`, `image/png`, `.pdf`; an empty array means unlimited.|
 | `multiple` | `boolean` |Whether to allow multiple files, default `true`.|
 | `historyLimit` | `number` |The number of nodes retained in the execution history. The default value is `50`.|
-| `metadata` | `WorkflowNodeMetadataInput` |The node displays meta information.|
+| `metadata` | `NodeMetadataInput` |The node displays meta information.|
 
 ## Input Format
 
 |Input|Example|Analysis results|
 | --- | --- | --- |
 | Null value | `undefined`, `null`, `""` | `[]` |
-|Path String| `"./input.png"` |A `storage: "path"` of `WorkflowFileReference`|
+|Path String| `"./input.png"` |A `storage: "path"` of `FileReference`|
 |JSON String| `"{\"id\":\"file1\",...}"` |JSON parse before normalizing references|
 |Object| `{ id, name, storage, ... }` |a file reference|
 |Array| `[{ id, ... }, { id, ... }]` |Multiple file references|
 
-## `WorkflowFileReference`
+## `FileReference`
 
 |Field|Description|
 | --- | --- |
@@ -61,18 +61,18 @@ workflow.createFileInputNode(
 
 |Methods/Fields|Type|Description|
 | --- | --- | --- |
-|Referenced field|`WorkflowFileReference` Field|The output object retains the normalized reference fields.|
+|Referenced field|`FileReference` Field|The output object retains the normalized reference fields.|
 | `readBuffer()` | `Promise<Buffer>` |Read the contents of the file.|
 | `readBase64()` | `Promise<string>` |Read base64 content.|
 | `readDataUrl()` | `Promise<string>` |Read the data URL.|
 | `toLLMImagePart()` | `Promise<LLMImagePart>` |Convert to LLM image input fragment. Non-pictures will be thrown wrong.|
-| `toJSON()` | `WorkflowFileReference` |Returns a reference to a file that can be saved, without the contents of the file.|
+| `toJSON()` | `FileReference` |Returns a reference to a file that can be saved, without the contents of the file.|
 
 ## Dependent context
 
 |Field|Description|
 | --- | --- |
-| `context.files` |`WorkflowFileStore` must be provided. `input_validation` is thrown when there is no file store.|
+| `context.files` |`FileStore` must be provided. `input_validation` is thrown when there is no file store.|
 | `context.abortSignal` |Optional. Node execution is checked by `runNode`.|
 
 ## Example

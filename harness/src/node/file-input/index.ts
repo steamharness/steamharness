@@ -1,30 +1,30 @@
 import { BaseNode } from "../base";
 import type {
   NodeContext,
-  WorkflowNodeMetadataInput,
+  NodeMetadataInput,
 } from "../../types/index";
 import {
   parseWorkflowFileReferences,
-  type WorkflowFileReference,
-  type WorkflowResolvedFile,
+  type FileReference,
+  type ResolvedFile,
 } from "../../files/index";
-import { WorkflowError } from "../../workflow/errors";
+import { HarnessError } from "../../workflow/errors";
 
 export interface FileInputNodeOptions {
   name?: string;
   accept?: string[];
   multiple?: boolean;
   historyLimit?: number;
-  metadata?: WorkflowNodeMetadataInput;
+  metadata?: NodeMetadataInput;
 }
 
 export function createFileInputNode(
   options: FileInputNodeOptions = {},
-): BaseNode<unknown, WorkflowResolvedFile[]> {
+): BaseNode<unknown, ResolvedFile[]> {
   return new FileInputNode(options);
 }
 
-class FileInputNode extends BaseNode<unknown, WorkflowResolvedFile[]> {
+class FileInputNode extends BaseNode<unknown, ResolvedFile[]> {
   private readonly accept: string[];
   private readonly multiple: boolean;
 
@@ -42,9 +42,9 @@ class FileInputNode extends BaseNode<unknown, WorkflowResolvedFile[]> {
   protected async execute(
     input: unknown,
     context: NodeContext,
-  ): Promise<WorkflowResolvedFile[]> {
+  ): Promise<ResolvedFile[]> {
     if (context.files === undefined) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "input_validation",
         message: "Workflow file input is used, but no workflow file store was configured.",
       });
@@ -52,7 +52,7 @@ class FileInputNode extends BaseNode<unknown, WorkflowResolvedFile[]> {
 
     const references = parseWorkflowFileReferences(input);
     if (!this.multiple && references.length > 1) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "input_validation",
         message: `File input node "${this.name}" accepts only one file.`,
         metadata: {
@@ -68,7 +68,7 @@ class FileInputNode extends BaseNode<unknown, WorkflowResolvedFile[]> {
     return Promise.all(references.map((reference) => context.files!.resolveFile(reference)));
   }
 
-  private assertAccepted(reference: WorkflowFileReference): void {
+  private assertAccepted(reference: FileReference): void {
     if (this.accept.length === 0) {
       return;
     }
@@ -78,7 +78,7 @@ class FileInputNode extends BaseNode<unknown, WorkflowResolvedFile[]> {
     );
 
     if (!accepted) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "input_validation",
         message: `Workflow file "${reference.name}" type "${reference.mimeType}" is not accepted by "${this.name}".`,
         metadata: {
@@ -92,7 +92,7 @@ class FileInputNode extends BaseNode<unknown, WorkflowResolvedFile[]> {
 }
 
 function matchesAcceptPattern(
-  reference: WorkflowFileReference,
+  reference: FileReference,
   pattern: string,
 ): boolean {
   const normalized = pattern.trim().toLowerCase();

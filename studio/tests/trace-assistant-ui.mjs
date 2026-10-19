@@ -10,7 +10,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { register } from 'tsx/esm/api';
 import { chromium } from '../upstream/vscode/node_modules/playwright/index.mjs';
 register();
-const { WorkflowTraceStore } = await import('../extensions/studio-workstation/src/workflow-trace-store.ts');
+const { TraceStore } = await import('../extensions/studio-workstation/src/workflow-trace-store.ts');
 const { ConversationController } = await import('../../cli/src/web/conversation-controller.ts');
 const { startWebServer } = await import('../../cli/src/web/server.ts');
 
@@ -48,7 +48,7 @@ function projectStage(result) {
       status: result.type === 'waiting' ? 'waiting_for_input' : 'success', items: [], pendingInput: result.request, resolvedInputs: structuredClone(decisions) }] }] }, { save: async () => {}, changed() {}, log() {} });
   return controller.current;
 }
-const store = new WorkflowTraceStore(); store.update([project]);
+const store = new TraceStore(); store.update([project]);
 let app, server, browser, page, binding;
 const errors = [];
 async function publish() { await page?.evaluate(value => document.getElementById('trace').contentWindow.postMessage(value, '*'), store.state()); }

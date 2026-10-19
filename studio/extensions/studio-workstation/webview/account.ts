@@ -1,6 +1,6 @@
 import { t, locale } from './localization';
 import './account.css';
-import type { WorkflowAccountState } from '../src/workflow-auth-client';
+import type { AccountState } from '../src/workflow-auth-client';
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 
@@ -28,10 +28,10 @@ const password = document.querySelector<HTMLInputElement>('#login-password')!;
 const error = document.querySelector<HTMLDivElement>('#account-error')!;
 const status = document.querySelector<HTMLDivElement>('#account-status')!;
 const image = document.querySelector<HTMLImageElement>('#avatar-image')!;
-let state: WorkflowAccountState | undefined;
+let state: AccountState | undefined;
 let pending = false;
 
-function render(next: WorkflowAccountState): void {
+function render(next: AccountState): void {
   state = next;
   pending = next.status === 'checking';
   const signedIn = !!next.user && ['authenticated', 'checking', 'error'].includes(next.status);

@@ -1,4 +1,4 @@
-import type { WorkflowToolPermissionDefinition, WorkflowToolPermissionPolicyMap } from "../tool-permissions/index";
+import type { ToolPermissionDefinition, ToolPermissionPolicyMap } from "../tool-permissions/index";
 import type { AgentPermissionPolicy } from "./types";
 import { AGENT_PERMISSION_POLICIES, DEFAULT_AGENT_PERMISSION_POLICY } from "./types";
 import {
@@ -34,7 +34,7 @@ export function isAgentPermissionPolicy(value: unknown): value is AgentPermissio
  */
 export function readAgentToolDefinitions(
   requested?: readonly string[],
-): WorkflowToolPermissionDefinition[] {
+): ToolPermissionDefinition[] {
   const known = new Set(BUILTIN_AGENT_TOOL_CATALOG.map((tool) => tool.name));
   const wanted = requested === undefined
     ? undefined
@@ -69,9 +69,9 @@ export function readAgentToolDefinitions(
  */
 export function resolveAgentPermissionPolicy(
   policy: AgentPermissionPolicy,
-  definitions: readonly WorkflowToolPermissionDefinition[],
-): WorkflowToolPermissionPolicyMap {
-  const resolved: WorkflowToolPermissionPolicyMap = {};
+  definitions: readonly ToolPermissionDefinition[],
+): ToolPermissionPolicyMap {
+  const resolved: ToolPermissionPolicyMap = {};
 
   for (const definition of definitions) {
     const mutating = MUTATING_TOOLS.has(definition.name);
@@ -101,7 +101,7 @@ export function resolveAgentToolScope(
 /** Tools the model may call at all under a policy; disabled tools are not offered. */
 export function listEnabledAgentToolNames(
   policy: AgentPermissionPolicy,
-  definitions: readonly WorkflowToolPermissionDefinition[],
+  definitions: readonly ToolPermissionDefinition[],
 ): string[] {
   const resolved = resolveAgentPermissionPolicy(policy, definitions);
   return definitions

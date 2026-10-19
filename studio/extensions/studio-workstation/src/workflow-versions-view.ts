@@ -1,30 +1,30 @@
 import * as vscode from 'vscode';
 import { t } from './localization';
 import { localizationHtml } from './localization-host';
-import { projectVersion, projectDisplayName, type WorkflowProject } from './workflow-types';
-import type { WorkflowLauncher } from './workflow-cli-types';
-import type { WorkflowAccountController } from './workflow-auth';
-import { WorkflowAuthError, normalizeWorkflowServerUrl, type WorkflowConnection } from './workflow-auth-client';
-import { WorkflowProjectServerClient, compareProjectVersions, parseServerProjectShareLink, type DownloadedServerProject, type ProjectVersionStatus, type ServerProject, type ServerProjectVersion, type UpdatedServerProject, type WorkflowVersionsState } from './workflow-server-projects';
+import { projectVersion, projectDisplayName, type Project } from './workflow-types';
+import type { Launcher } from './workflow-cli-types';
+import type { AccountController } from './workflow-auth';
+import { AuthError, normalizeWorkflowServerUrl, type Connection } from './workflow-auth-client';
+import { ProjectServerClient, compareProjectVersions, parseServerProjectShareLink, type DownloadedServerProject, type ProjectVersionStatus, type ServerProject, type ServerProjectVersion, type UpdatedServerProject, type VersionsState } from './workflow-server-projects';
 import { IMPORTED_PROJECTS_KEY, readImportedProjects } from './projects';
 
 interface ProjectUploadSession {
   id: string;
-  project: WorkflowProject;
+  project: Project;
   version: string;
-  connection: WorkflowConnection;
+  connection: Connection;
   controller?: AbortController;
   task?: Promise<{ success?: boolean; error?: string }>;
   uploaded?: boolean;
 }
 
-export class WorkflowVersionsView implements vscode.WebviewViewProvider, vscode.Disposable {
+export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposable {
   private readonly changes = new vscode.EventEmitter<void>();
   readonly onDidChangeVersions = this.changes.event;
   private view?: vscode.WebviewView;
   private readonly listeners: vscode.Disposable[] = [];
-  private localProjects: WorkflowProject[] = [];
-  private preferred?: WorkflowProject;
+  private localProjects: Project[] = [];
+  private preferred?: Project;
   private serverProject?: ServerProject;
   private serverProjects = new Map<string, ServerProject>();
   private checked = false;
@@ -46,9 +46,9 @@ export class WorkflowVersionsView implements vscode.WebviewViewProvider, vscode.
   private uploadSession?: ProjectUploadSession;
   private readonly interval: ReturnType<typeof setInterval>;
 
-  constructor(private readonly context: vscode.ExtensionContext, private readonly launcher: WorkflowLauncher,
-    private readonly account: WorkflowAccountController, private readonly output: vscode.OutputChannel,
-    private readonly prepareUpgrade: (project: WorkflowProject, signal: AbortSignal) => Promise<vscode.Disposable>,
+  constructor(private readonly context: vscode.ExtensionContext, private readonly launcher: Launcher,
+    private readonly account: AccountController, private readonly output: vscode.OutputChannel,
+    private readonly prepareUpgrade: (project: Project, signal: AbortSignal) => Promise<vscode.Disposable>,
     private readonly rememberDownload: (projects: DownloadedServerProject[], replacedRoot?: string) => Promise<void>) {
     this.connectionKey = JSON.stringify(account.getConnection());
     const command = <Args extends unknown[]>(name: string, action: (...args: Args) => unknown): void => {
@@ -84,7 +84,7 @@ export class WorkflowVersionsView implements vscode.WebviewViewProvider, vscode.
     this.interval = setInterval(() => { if (vscode.window.state.focused && !this.busy) { this.schedule(); } }, 5 * 60_000);
   }
 
-  update(projects: WorkflowProject[], preferred?: WorkflowProject): void {
+  update(projects: Project[], preferred?: Project): void {
     this.localProjects = projects.filter(project => !project.assistant && !project.builtin);
     const signature = JSON.stringify(this.localProjects.map(project => [project.uri, project.id, projectVersion(project)]));
     const projectsChanged = signature !== this.projectSignature;
@@ -114,7 +114,7 @@ export class WorkflowVersionsView implements vscode.WebviewViewProvider, vscode.
     this.lastChecked = Date.now();
     this.loading = true; this.error = undefined; this.publish();
     try {
-      const client = new WorkflowProjectServerClient(connection);
+      const client = new ProjectServerClient(connection);
       const projects = await client.projects(controller.signal);
       if (generation !== this.generation || this.disposed) { return; }
       const remote = projects.find(entry => entry.id === project?.id);
@@ -140,7 +140,7 @@ export class WorkflowVersionsView implements vscode.WebviewViewProvider, vscode.
     }
   }
 
-  getVersionStatus(project: WorkflowProject): ProjectVersionStatus {
+  getVersionStatus(project: Project): ProjectVersionStatus {
     const localVersion = projectVersion(project), remote = this.serverProjects.get(project.id);
     const comparison = compareProjectVersions(localVersion, remote?.latest ?? undefined);
     const status: ProjectVersionStatus['status'] = !this.account.getConnection() ? 'signed-out' : this.error ? 'unavailable'
@@ -157,7 +157,7 @@ export class WorkflowVersionsView implements vscode.WebviewViewProvider, vscode.
     if (!this.view) { return; }
     const local = this.preferred;
     const remote = this.serverProject;
-    const state: WorkflowVersionsState = { type: 'versions-state', generation: this.generation, signedIn: !!this.account.getConnection(),
+    const state: VersionsState = { type: 'versions-state', generation: this.generation, signedIn: !!this.account.getConnection(),
       loading: this.loading, busy: this.busy || this.choosing, project: local && { id: local.id, name: local.name, uri: local.uri },
       localVersion: local && projectVersion(local), update: local && this.getVersionStatus(local), versions: this.versions,
       canDownload: !this.error && !!remote?.sourceDownload?.allowed && !!this.launcher.downloadProject,
@@ -182,7 +182,7 @@ export class WorkflowVersionsView implements vscode.WebviewViewProvider, vscode.
         if (!this.localProjects.some(entry => entry.uri === project.uri && entry.id === project.id)) { throw new Error(t('The project is no longer open.')); }
       };
       const remote = await this.progress(t('Check Project Updates'), async signal => {
-        const client = new WorkflowProjectServerClient(connection);
+        const client = new ProjectServerClient(connection);
         const projects = await client.projects(signal);
         const entry = projects.find(entry => entry.id === project.id);
         if (!entry?.latest) { throw new Error(t('No published version is available for this project.')); }
@@ -329,10 +329,10 @@ export class WorkflowVersionsView implements vscode.WebviewViewProvider, vscode.
     };
     await readManifest();
     try {
-      if ((await new WorkflowProjectServerClient(session.connection).versions(project.id, signal)).versions.some(entry => entry.version === session.version)) {
+      if ((await new ProjectServerClient(session.connection).versions(project.id, signal)).versions.some(entry => entry.version === session.version)) {
         throw new Error(t('Version {0} already exists. Change package.json version before uploading.', session.version));
       }
-    } catch (error) { if (!(error instanceof WorkflowAuthError && error.status === 404)) { throw error; } }
+    } catch (error) { if (!(error instanceof AuthError && error.status === 404)) { throw error; } }
     assertAvailable();
     await readManifest();
     await this.launcher.uploadProject!({ ...project, manifest: { ...project.manifest, version: session.version } }, releaseLog, signal, progress => {
@@ -356,7 +356,7 @@ export class WorkflowVersionsView implements vscode.WebviewViewProvider, vscode.
     const assertAccount = (): void => {
       if (JSON.stringify(this.account.getConnection()) !== connection) { throw new Error(t('Account changed. Try again.')); }
     };
-    const client = new WorkflowProjectServerClient(credentials);
+    const client = new ProjectServerClient(credentials);
     const projects = await this.progress(t('Download Project'), signal => client.projects(signal));
     assertAccount();
     const picked = await vscode.window.showQuickPick(projects.map(project => ({ label: project.name, description: project.latest ?? '', project })), { title: t('Download Project') });
@@ -405,7 +405,7 @@ export class WorkflowVersionsView implements vscode.WebviewViewProvider, vscode.
       }
       const key = JSON.stringify(connection);
       this.busy = true; this.publish();
-      const project = await this.progress(t('Import from Link'), signal => new WorkflowProjectServerClient(connection).sourceShare(share.id, share.version, signal));
+      const project = await this.progress(t('Import from Link'), signal => new ProjectServerClient(connection).sourceShare(share.id, share.version, signal));
       this.lifetime.signal.throwIfAborted();
       if (JSON.stringify(this.account.getConnection()) !== key) { throw new Error(t('Account changed. Try again.')); }
       if (project.id !== share.id || project.version !== share.version || typeof project.name !== 'string') { throw new Error(t('The server returned an invalid response.')); }

@@ -34,7 +34,7 @@ workflow.createInputNode<Input, Output>(
 | `name` | `string` | 节点名称，默认 `"input"`。 |
 | `parse` | `(input, context) => Output` | 输入解析函数；不传时原样返回 input。 |
 | `historyLimit` | `number` | 节点执行历史保留条数，默认 `50`。 |
-| `metadata` | `WorkflowNodeMetadataInput` | 节点展示元信息。 |
+| `metadata` | `NodeMetadataInput` | 节点展示元信息。 |
 
 ## `parse` 入参
 
@@ -78,5 +78,5 @@ const inputNode = workflow.createInputNode<Input, ParsedInput>({
 | --- | --- |
 | 清理字符串 | 在 `parse` 中 `trim()`。 |
 | 转换类型 | 把 executor 构造的字符串转换成 number/boolean/object。 |
-| 输入校验 | 校验失败时抛出 `workflow.WorkflowError`，类型通常用 `input_validation`。 |
+| 输入校验 | 校验失败时抛出 `workflow.HarnessError`，类型通常用 `input_validation`。 |
 | 直接透传 | 不传 `parse`，节点输出等于输入。 |

@@ -86,7 +86,7 @@ const inputNode = workflow.createInputNode<DeltaforceBilibiliCollectInput, Delta
         fetchImpl: input.fetchImpl,
       };
     } catch (error) {
-      throw new workflow.WorkflowError({
+      throw new workflow.HarnessError({
         type: "input_validation",
         message: error instanceof Error ? error.message : String(error),
         nodeName: "deltaforce-bilibili-collect-input",
@@ -533,7 +533,7 @@ function parseIntMaxDuration(value: unknown): number {
 
 function requireOutput(output: DeltaforceBilibiliCollectOutputPayload | undefined): DeltaforceBilibiliCollectOutputPayload {
   if (output === undefined) {
-    throw new workflow.WorkflowError({
+    throw new workflow.HarnessError({
       type: "workflow_execution",
       message: "deltaforce-bilibili-collect output was not created.",
     });
@@ -543,7 +543,7 @@ function requireOutput(output: DeltaforceBilibiliCollectOutputPayload | undefine
 
 function requireDocument(document: DeltaforceBilibiliCollectDocument | undefined): DeltaforceBilibiliCollectDocument {
   if (document === undefined) {
-    throw new workflow.WorkflowError({
+    throw new workflow.HarnessError({
       type: "workflow_execution",
       message: "deltaforce-bilibili-collect document was not created.",
       nodeName: "deltaforce-bilibili-collect-output",

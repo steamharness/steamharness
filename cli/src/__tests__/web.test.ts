@@ -12,7 +12,7 @@ import { createWebRuntime, sanitizeWebWorkerEnvironment } from '../web/runtime';
 import { readCliAuthConfig, writeCliAuthConfig } from '../auth-config';
 import { parseHostConfiguration, parseHostConnection } from '../web/host-config';
 import type { WebHostConfiguration } from '../web/host-config';
-import type { WorkflowProject, WorkflowRuntime, WorkflowRun, WorkflowReport } from '../web/workflow-types';
+import type { Project, Runtime, Run, Report } from '../web/workflow-types';
 import { initI18n } from '@steamharness/i18n';
 import { t } from '../web/localization';
 import { resolveHarnessRoot } from './harness-source';
@@ -29,22 +29,22 @@ async function accountState(app: Awaited<ReturnType<typeof startWebServer>>, coo
   return state.account;
 }
 
-async function fixture(host?: WebHostConfiguration, beforeStart?: () => Promise<void>, projectType: WorkflowProject['projectType'] = 'conversation') {
+async function fixture(host?: WebHostConfiguration, beforeStart?: () => Promise<void>, projectType: Project['projectType'] = 'conversation') {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'steamharness-web-')); folders.push(directory);
   vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(directory, 'auth')); vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
-  const project: WorkflowProject = { id: '364764e9-ef0e-4e86-9e56-77d0410e1723', uri: '', folderPath: directory, name: 'Test conversation', projectType, fields: [{ name: 'model', flag: '--model', type: 'string', panel: 'auxiliary' }], paramLayout: { actions: [{ kind: 'auxiliary', id: 'ai', label: 'AI', params: ['model'] }] }, paramResolver: { enabled: true }, entrypoints: [], tools: [{ name: 'read', enabled: true, autoApprove: false }] };
+  const project: Project = { id: '364764e9-ef0e-4e86-9e56-77d0410e1723', uri: '', folderPath: directory, name: 'Test conversation', projectType, fields: [{ name: 'model', flag: '--model', type: 'string', panel: 'auxiliary' }], paramLayout: { actions: [{ kind: 'auxiliary', id: 'ai', label: 'AI', params: ['model'] }] }, paramResolver: { enabled: true }, entrypoints: [], tools: [{ name: 'read', enabled: true, autoApprove: false }] };
   if (projectType === 'kanban') {
     await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: project.id, steamHarness: { projectType } }));
   }
   let count = 0;
-  const runtime: WorkflowRuntime = {
+  const runtime: Runtime = {
     available: true, inspect: vi.fn(async () => ({ projects: [project], errors: [] })),
     resolveParams: vi.fn(async () => ({ params: {} })),
-    run: vi.fn(async (request: WorkflowRun, emit) => {
+    run: vi.fn(async (request: Run, emit) => {
       count++;
       emit({ type: 'node_chunk', chunk: { type: 'output_item_start', item: { id: 'answer', title: 'Output', content: '', contentType: 'markdown' } } });
       emit({ type: 'node_chunk', chunk: { type: 'output_item_delta', itemId: 'answer', delta: `Turn ${count}` } });
-      return { status: 'success', output: { items: [{ id: 'answer', title: 'Output', content: `Turn ${count}`, contentType: 'markdown' }] }, runId: request.runId } as WorkflowReport;
+      return { status: 'success', output: { items: [{ id: 'answer', title: 'Output', content: `Turn ${count}`, contentType: 'markdown' }] }, runId: request.runId } as Report;
     }),
     cancel: vi.fn(), dispose: vi.fn(), uploadFiles: vi.fn(async () => []), readFile: vi.fn(async () => { throw new Error('Unknown file.'); }),
     deleteFiles: vi.fn(async () => {}), readResource: vi.fn(async () => null), cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(async () => {}),
@@ -680,7 +680,7 @@ describe('steamharness web', () => {
   it('does not queue or start a context command while another turn is running or awaiting approval', async () => {
     const { app, runtime, post } = await fixture();
     app.project.conversation = { inputQueue: { enabled: true }, commands: [{ command: 'compact', label: 'Summarize', action: { kind: 'prompt', text: '/compact' } }] };
-    let finish!: (report: WorkflowReport) => void;
+    let finish!: (report: Report) => void;
     vi.mocked(runtime.run).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
     await post({ type: 'send', text: 'Working', params: {} });
     await vi.waitFor(() => expect(runtime.run).toHaveBeenCalledOnce());
@@ -698,7 +698,7 @@ describe('steamharness web', () => {
       { command: 'export', label: 'Export', action: { kind: 'export' } },
       { command: 'compact', label: 'Summarize', action: { kind: 'prompt', text: '/compact' } },
     ] };
-    let finish!: (report: WorkflowReport) => void;
+    let finish!: (report: Report) => void;
     vi.mocked(runtime.run).mockImplementationOnce((request, emit) => new Promise(resolve => {
       finish = resolve;
       emit({ type: 'node_chunk', chunk: { type: 'output_item_start', item: { id: 'agent-session', metadata: { kind: 'agent-session' }, content: {

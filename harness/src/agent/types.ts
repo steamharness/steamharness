@@ -2,12 +2,12 @@ import type { AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
 export type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { Api, Model, MutableModels } from "@earendil-works/pi-ai";
 import type { NodeContext } from "../types/context";
-import type { WorkflowFileReference } from "../files/index";
+import type { FileReference } from "../files/index";
 import type { AgentApiKind } from "./pi";
-import type { WorkflowOutputItem } from "../node/output/index";
-import type { WorkflowPayload } from "../types/payload";
-import type { WorkflowConversationParamDeclaration } from "../executor/types";
-import type { WorkflowToolPermissionDefinition } from "../tool-permissions/index";
+import type { OutputItem } from "../node/output/index";
+import type { RunPayload } from "../types/payload";
+import type { ConversationParamDeclaration } from "../executor/types";
+import type { ToolPermissionDefinition } from "../tool-permissions/index";
 import type { AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt, AgentSessionSnapshot } from "./session-types";
 
 /**
@@ -148,7 +148,7 @@ export interface AgentAskResume {
  * The shape deliberately mirrors the built-in OpenCode project's input so a
  * host can move a run between the two implementations without re-mapping.
  */
-export interface AgentInput extends WorkflowPayload {
+export interface AgentInput extends RunPayload {
   prompt: string;
   /** Stable logical input identity. Retrying the same input reuses its submission. */
   requestId?: string;
@@ -172,7 +172,7 @@ export interface AgentInput extends WorkflowPayload {
    * turns these into `images` and drops the key, so nothing downstream has to
    * know a reference was ever involved.
    */
-  imageFiles?: WorkflowFileReference[];
+  imageFiles?: FileReference[];
   provider?: string;
   model?: string;
   baseUrl?: string;
@@ -256,8 +256,8 @@ export interface AgentUsage {
   reasoningTokens: number;
 }
 
-export interface AgentOutputPayload extends WorkflowPayload {
-  items: WorkflowOutputItem[];
+export interface AgentOutputPayload extends RunPayload {
+  items: OutputItem[];
   prompt: string;
   workdir: string;
   provider?: string;
@@ -400,7 +400,7 @@ export interface AgentRuntimeOptions {
   permissionPolicy?: AgentPermissionPolicy;
   mode?: AgentMode;
   tools?: string[];
-  toolDefinitions?: WorkflowToolPermissionDefinition[];
+  toolDefinitions?: ToolPermissionDefinition[];
   /** Extra directories tools may read from and write to. Defaults to `[workdir]`. */
   allowedDirectories?: string[];
   /**
@@ -470,7 +470,7 @@ export interface AgentProjectOptions extends AgentNodeOptions {
   workflowName?: string;
   /** Assistant output item id; must match `conversation.openai.outputItemId`. */
   outputItemId?: string;
-  params?: WorkflowConversationParamDeclaration[];
+  params?: ConversationParamDeclaration[];
 }
 
 export interface AgentRuntime {

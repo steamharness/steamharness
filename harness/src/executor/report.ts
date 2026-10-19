@@ -2,58 +2,58 @@ import type {
   NodeExecutionHookFinishEvent,
   NodeExecutionHooks,
   NodeExecutionKind,
-  WorkflowNodeMetadata,
-  WorkflowPayload,
-  WorkflowUserInputRequest,
-  WorkflowUserInputResolved,
+  NodeMetadata,
+  RunPayload,
+  UserInputRequest,
+  UserInputResolved,
 } from "../types/index";
 import type {
-  WorkflowConversationDefinition,
-  WorkflowNodeRegistryItem,
-  WorkflowParamDefinition,
-  WorkflowParamLayout,
+  ConversationDefinition,
+  NodeRegistryItem,
+  ParamDefinition,
+  ParamLayout,
 } from "./types";
-import type { WorkflowProjectType } from "../project-types";
+import type { ProjectKind } from "../project-types";
 import type { KanbanManifest } from "@steamharness/kanban-project";
 import type {
-  WorkflowSchedulePreset,
-  WorkflowScheduleSourceMetadata,
+  SchedulePreset,
+  ScheduleSourceMetadata,
 } from "@steamharness/workflow-schedules";
-import type { WorkflowToolPermissionDefinition } from "../tool-permissions/index";
+import type { ToolPermissionDefinition } from "../tool-permissions/index";
 import type {
-  WorkflowTokenUsageAggregate,
-  WorkflowTokenUsageDefinition,
+  TokenUsageAggregate,
+  TokenUsageDefinition,
 } from "../token-usage/index";
 import type {
-  WorkflowTimerRecord,
+  TimerRecord,
 } from "../timer/index";
 import type {
-  WorkflowDefinedNode,
-  WorkflowStructureDefinitions,
-  WorkflowStructureDiagnostics,
-  WorkflowStructureEntrypoint,
-  WorkflowStructureExecution,
-  WorkflowStructureWorkflow,
+  DefinedNode,
+  StructureDefinitions,
+  StructureDiagnostics,
+  StructureEntrypoint,
+  StructureExecution,
+  StructureWorkflow,
 } from "./rules";
 import {
   serializeWorkflowError,
   type SerializedWorkflowError,
-  type WorkflowErrorType,
-  type WorkflowResult,
+  type ErrorType,
+  type RunResult,
 } from "../workflow/index";
 import {
   createOutputItem,
   createOutputPayload,
   isOutputContentType,
   isWorkflowOutputPayload,
-  type WorkflowOutputItem,
-  type WorkflowOutputPayload,
+  type OutputItem,
+  type RunOutputPayload,
 } from "../node/output/index";
 
 export type ExecutorNodeExecutionStatus = "running" | "success" | "failed";
-export type WorkflowRunStatus = "running" | "waiting_for_input" | "success" | "failed" | "aborted" | "timed_out";
+export type RunStatus = "running" | "waiting_for_input" | "success" | "failed" | "aborted" | "timed_out";
 
-export type WorkflowRuntimeEvent =
+export type RuntimeEvent =
   | {
       type: "workflow_started";
       runId: string;
@@ -114,30 +114,30 @@ export type WorkflowRuntimeEvent =
       runId: string;
       workflowName: string;
       conversationId?: string;
-      usage: WorkflowTokenUsageAggregate;
+      usage: TokenUsageAggregate;
       updatedAt: Date;
     }
   | ({
       type: "user_input_requested";
       runId: string;
       workflowName: string;
-    } & WorkflowUserInputRequest)
+    } & UserInputRequest)
   | ({
       type: "user_input_resolved";
       runId: string;
       workflowName: string;
-    } & WorkflowUserInputResolved)
+    } & UserInputResolved)
   | {
       type: "timer_started";
       runId: string;
       workflowName: string;
-      timer: WorkflowTimerRecord;
+      timer: TimerRecord;
     }
   | {
       type: "timer_finished";
       runId: string;
       workflowName: string;
-      timer: WorkflowTimerRecord;
+      timer: TimerRecord;
     }
   | {
       type: "node_started";
@@ -146,7 +146,7 @@ export type WorkflowRuntimeEvent =
       executionId: string;
       nodeName: string;
       kind: NodeExecutionKind;
-      metadata?: WorkflowNodeMetadata;
+      metadata?: NodeMetadata;
       startedAt: Date;
     }
   | {
@@ -156,7 +156,7 @@ export type WorkflowRuntimeEvent =
       executionId: string;
       nodeName: string;
       kind: NodeExecutionKind;
-      metadata?: WorkflowNodeMetadata;
+      metadata?: NodeMetadata;
       chunk: unknown;
       chunkOrder: number;
       timestamp: Date;
@@ -168,7 +168,7 @@ export type WorkflowRuntimeEvent =
       executionId: string;
       nodeName: string;
       kind: NodeExecutionKind;
-      metadata?: WorkflowNodeMetadata;
+      metadata?: NodeMetadata;
       status: ExecutorNodeExecutionStatus;
       startedAt: Date;
       endedAt: Date;
@@ -184,7 +184,7 @@ export interface ExecutorNodeExecutionReport {
   executionId: string;
   name: string;
   kind: NodeExecutionKind;
-  metadata?: WorkflowNodeMetadata;
+  metadata?: NodeMetadata;
   status: ExecutorNodeExecutionStatus;
   startedAt: Date;
   endedAt?: Date;
@@ -195,81 +195,81 @@ export interface ExecutorNodeExecutionReport {
   executionInfo?: unknown;
 }
 
-export interface WorkflowOutputReport {
+export interface OutputReport {
   order: number;
   nodeOrder: number;
   nodeName: string;
-  output: WorkflowOutputPayload;
+  output: RunOutputPayload;
 }
 
-export interface WorkflowExecutorOutput extends WorkflowOutputPayload {
+export interface ExecutorOutput extends RunOutputPayload {
   [key: string]: unknown;
 }
 
-export interface WorkflowExecutorResult<
-  Output extends WorkflowPayload = WorkflowExecutorOutput,
+export interface ExecutorResult<
+  Output extends RunPayload = ExecutorOutput,
 > {
   errCode: number;
   errMessage: string;
   output: Output | null;
 }
 
-export interface WorkflowExecutionReport<Output = unknown> {
+export interface ExecutionReport<Output = unknown> {
   runId: string;
   workflowName: string;
   entrypointId?: string;
   entrypointTitle?: string;
-  source?: WorkflowScheduleSourceMetadata["source"];
+  source?: ScheduleSourceMetadata["source"];
   scheduleId?: string;
   scheduleName?: string;
   fireId?: string;
   scheduledFor?: string;
-  triggerKind?: WorkflowScheduleSourceMetadata["triggerKind"];
+  triggerKind?: ScheduleSourceMetadata["triggerKind"];
   conversationId?: string;
   conversationTitle?: string;
-  status: WorkflowRunStatus;
+  status: RunStatus;
   startedAt: Date;
   endedAt: Date;
   durationMs: number;
-  definedNodes: WorkflowDefinedNode[];
-  registry: WorkflowNodeRegistryItem[];
-  result: WorkflowResult<Output>;
+  definedNodes: DefinedNode[];
+  registry: NodeRegistryItem[];
+  result: RunResult<Output>;
   nodes: ExecutorNodeExecutionReport[];
-  outputs: WorkflowOutputReport[];
-  pendingUserInput?: WorkflowUserInputRequest;
-  resolvedUserInputs?: WorkflowUserInputResolved[];
-  timers?: WorkflowTimerRecord[];
-  tokenUsage?: WorkflowExecutionReportTokenUsage;
+  outputs: OutputReport[];
+  pendingUserInput?: UserInputRequest;
+  resolvedUserInputs?: UserInputResolved[];
+  timers?: TimerRecord[];
+  tokenUsage?: ExecutionReportTokenUsage;
 }
 
-export interface WorkflowExecutionReportTokenUsage {
+export interface ExecutionReportTokenUsage {
   enabled: true;
   display: boolean;
-  run: WorkflowTokenUsageAggregate;
+  run: TokenUsageAggregate;
 }
 
-export interface WorkflowDefinitionEvent {
+export interface DefinitionEvent {
   workflowName: string;
   workflowDir: string;
-  nodes: WorkflowDefinedNode[];
+  nodes: DefinedNode[];
 }
 
-export interface WorkflowStructureReport {
-  projectType: WorkflowProjectType;
-  workflow: WorkflowStructureWorkflow;
-  definitions: WorkflowStructureDefinitions;
+export interface StructureReport {
+  projectType: ProjectKind;
+  workflow: StructureWorkflow;
+  definitions: StructureDefinitions;
   defaultEntrypoint?: string;
-  entrypoints?: WorkflowStructureEntrypoint[];
-  schedulePresets?: WorkflowSchedulePreset[];
-  execution?: WorkflowStructureExecution;
-  diagnostics: WorkflowStructureDiagnostics;
-  params?: WorkflowParamDefinition[];
-  paramLayout?: WorkflowParamLayout;
+  entrypoints?: StructureEntrypoint[];
+  schedulePresets?: SchedulePreset[];
+  execution?: StructureExecution;
+  diagnostics: StructureDiagnostics;
+  params?: ParamDefinition[];
+  paramLayout?: ParamLayout;
   paramResolver?: { enabled: true };
-  tools?: WorkflowToolPermissionDefinition[];
-  conversation?: WorkflowConversationDefinition;
-  tokenUsage?: WorkflowTokenUsageDefinition;
-  registry?: WorkflowNodeRegistryItem[];
+  tools?: ToolPermissionDefinition[];
+  conversation?: ConversationDefinition;
+  tokenUsage?: TokenUsageDefinition;
+  registry?: NodeRegistryItem[];
   kanban?: {
     artifactDir: string;
     entry: string;
@@ -280,10 +280,10 @@ export interface WorkflowStructureReport {
 export interface NodeExecutionReporter {
   hooks: NodeExecutionHooks;
   getReports(): ExecutorNodeExecutionReport[];
-  getOutputs(): WorkflowOutputReport[];
+  getOutputs(): OutputReport[];
 }
 
-export interface WorkflowExecutionReporter extends NodeExecutionReporter {
+export interface ExecutionReporter extends NodeExecutionReporter {
   emitWorkflowStarted(event: {
     runId: string;
     workflowName: string;
@@ -298,11 +298,11 @@ export interface WorkflowExecutionReporter extends NodeExecutionReporter {
     entrypointId?: string;
     entrypointTitle?: string;
     conversationId?: string;
-    status: WorkflowRunStatus;
+    status: RunStatus;
     startedAt: Date;
     endedAt: Date;
-    result: WorkflowResult<unknown>;
-    outputs?: WorkflowOutputReport[];
+    result: RunResult<unknown>;
+    outputs?: OutputReport[];
     timeoutMs?: number;
   }): Promise<void>;
   emitConversationTitleUpdated(event: {
@@ -316,22 +316,22 @@ export interface WorkflowExecutionReporter extends NodeExecutionReporter {
     runId: string;
     workflowName: string;
     conversationId?: string;
-    usage: WorkflowTokenUsageAggregate;
+    usage: TokenUsageAggregate;
     updatedAt: Date;
   }): Promise<void>;
-  emitUserInputRequested(event: WorkflowUserInputRequest): Promise<void>;
-  emitUserInputResolved(event: WorkflowUserInputResolved): Promise<void>;
-  getPendingUserInput(): WorkflowUserInputRequest | undefined;
-  getResolvedUserInputs(): WorkflowUserInputResolved[];
+  emitUserInputRequested(event: UserInputRequest): Promise<void>;
+  emitUserInputResolved(event: UserInputResolved): Promise<void>;
+  getPendingUserInput(): UserInputRequest | undefined;
+  getResolvedUserInputs(): UserInputResolved[];
   emitTimerStarted(event: {
     runId: string;
     workflowName: string;
-    timer: WorkflowTimerRecord;
+    timer: TimerRecord;
   }): Promise<void>;
   emitTimerFinished(event: {
     runId: string;
     workflowName: string;
-    timer: WorkflowTimerRecord;
+    timer: TimerRecord;
   }): Promise<void>;
   getConversationTitle(): string | undefined;
 }
@@ -339,19 +339,19 @@ export interface WorkflowExecutionReporter extends NodeExecutionReporter {
 export function createNodeExecutionReporter(options: {
   runId?: string;
   workflowName?: string;
-  onRuntimeEvent?(event: WorkflowRuntimeEvent): Promise<void> | void;
-} = {}): WorkflowExecutionReporter {
+  onRuntimeEvent?(event: RuntimeEvent): Promise<void> | void;
+} = {}): ExecutionReporter {
   const reports: ExecutorNodeExecutionReport[] = [];
   const reportsById = new Map<string, ExecutorNodeExecutionReport>();
-  const outputs: WorkflowOutputReport[] = [];
+  const outputs: OutputReport[] = [];
   const runId = options.runId ?? "";
   const workflowName = options.workflowName ?? "";
   const onRuntimeEvent = options.onRuntimeEvent;
   let conversationTitle: string | undefined;
-  let pendingUserInput: WorkflowUserInputRequest | undefined;
-  const resolvedUserInputs: WorkflowUserInputResolved[] = [];
+  let pendingUserInput: UserInputRequest | undefined;
+  const resolvedUserInputs: UserInputResolved[] = [];
 
-  async function emit(event: WorkflowRuntimeEvent): Promise<void> {
+  async function emit(event: RuntimeEvent): Promise<void> {
     if (onRuntimeEvent === undefined) {
       return;
     }
@@ -626,20 +626,20 @@ export function createWorkflowExecutionReport<Output>(
     entrypointTitle?: string;
     startedAt: Date;
     endedAt: Date;
-    status?: WorkflowRunStatus;
-    definedNodes?: WorkflowDefinedNode[];
-    registry?: WorkflowNodeRegistryItem[];
+    status?: RunStatus;
+    definedNodes?: DefinedNode[];
+    registry?: NodeRegistryItem[];
     conversationId?: string;
     conversationTitle?: string;
-    result: WorkflowResult<Output>;
+    result: RunResult<Output>;
     nodes: ExecutorNodeExecutionReport[];
-    outputs?: WorkflowOutputReport[];
-    pendingUserInput?: WorkflowUserInputRequest;
-    resolvedUserInputs?: WorkflowUserInputResolved[];
-    timers?: WorkflowTimerRecord[];
-    tokenUsage?: WorkflowExecutionReportTokenUsage;
+    outputs?: OutputReport[];
+    pendingUserInput?: UserInputRequest;
+    resolvedUserInputs?: UserInputResolved[];
+    timers?: TimerRecord[];
+    tokenUsage?: ExecutionReportTokenUsage;
   },
-): WorkflowExecutionReport<Output> {
+): ExecutionReport<Output> {
   const outputs = options.outputs ?? [];
 
   return {
@@ -666,9 +666,9 @@ export function createWorkflowExecutionReport<Output>(
 }
 
 function createReportedWorkflowResult<Output>(
-  result: WorkflowResult<Output>,
-  outputs: WorkflowOutputReport[],
-): WorkflowResult<Output> {
+  result: RunResult<Output>,
+  outputs: OutputReport[],
+): RunResult<Output> {
   if (!result.ok) {
     return {
       ok: true,
@@ -707,15 +707,15 @@ function createReportedWorkflowResult<Output>(
 }
 
 export function resolveWorkflowResultStatus(
-  result: WorkflowResult<unknown>,
-  outputs: WorkflowOutputReport[] = [],
-): WorkflowRunStatus {
+  result: RunResult<unknown>,
+  outputs: OutputReport[] = [],
+): RunStatus {
   return readWorkflowResultErrCode(result, outputs) === 0 ? "success" : "failed";
 }
 
 export function readWorkflowResultErrCode(
-  result: WorkflowResult<unknown>,
-  outputs: WorkflowOutputReport[] = [],
+  result: RunResult<unknown>,
+  outputs: OutputReport[] = [],
 ): number {
   if (!result.ok) {
     return mapErrorTypeToCode(result.error.type);
@@ -733,7 +733,7 @@ export function readWorkflowResultErrCode(
   return readPayloadErrCode(result.data) ?? 0;
 }
 
-function mapErrorTypeToCode(type: WorkflowErrorType): number {
+function mapErrorTypeToCode(type: ErrorType): number {
   switch (type) {
     case "input_validation":
       return 400;
@@ -754,7 +754,7 @@ function mapErrorTypeToCode(type: WorkflowErrorType): number {
   }
 }
 
-function cloneUserInputRequest(event: WorkflowUserInputRequest): WorkflowUserInputRequest {
+function cloneUserInputRequest(event: UserInputRequest): UserInputRequest {
   return {
     ...event,
     params: event.params.map((param) => ({ ...param })),
@@ -764,7 +764,7 @@ function cloneUserInputRequest(event: WorkflowUserInputRequest): WorkflowUserInp
   };
 }
 
-function cloneUserInputResolved(event: WorkflowUserInputResolved): WorkflowUserInputResolved {
+function cloneUserInputResolved(event: UserInputResolved): UserInputResolved {
   return {
     ...event,
     values: cloneRecord(event.values) ?? {},
@@ -782,8 +782,8 @@ function cloneDate(value: Date | undefined): Date | undefined {
 }
 
 function readWorkflowResultError(
-  result: WorkflowResult<unknown>,
-  outputs: WorkflowOutputReport[] = [],
+  result: RunResult<unknown>,
+  outputs: OutputReport[] = [],
 ): SerializedWorkflowError | undefined {
   if (!result.ok) {
     return result.error;
@@ -802,8 +802,8 @@ function readWorkflowResultError(
 }
 
 function readWorkflowResultMessage(
-  result: WorkflowResult<unknown>,
-  outputs: WorkflowOutputReport[] = [],
+  result: RunResult<unknown>,
+  outputs: OutputReport[] = [],
 ): string | undefined {
   if (!result.ok) {
     return readWorkflowErrorMessage(result.error);
@@ -889,9 +889,9 @@ function readResponseBodyDetail(
   return `response ${responseBody}`;
 }
 
-function createWorkflowExecutorOutput(values: unknown[]): WorkflowExecutorOutput {
+function createWorkflowExecutorOutput(values: unknown[]): ExecutorOutput {
   const output = createOutputPayload();
-  const items: WorkflowOutputItem[] = [];
+  const items: OutputItem[] = [];
 
   for (const value of values) {
     if (isOutputObject(value)) {
@@ -937,7 +937,7 @@ function createWorkflowExecutorOutput(values: unknown[]): WorkflowExecutorOutput
   return output;
 }
 
-function normalizeWorkflowOutputPayload(value: unknown): WorkflowOutputPayload {
+function normalizeWorkflowOutputPayload(value: unknown): RunOutputPayload {
   if (isWorkflowOutputPayload(value)) {
     return createOutputPayload({
       ...value,
@@ -962,7 +962,7 @@ function normalizeWorkflowOutputPayload(value: unknown): WorkflowOutputPayload {
   });
 }
 
-function normalizeWorkflowOutputItem(value: unknown): WorkflowOutputItem {
+function normalizeWorkflowOutputItem(value: unknown): OutputItem {
   if (isOutputObject(value)) {
     return createOutputItem({
       id: typeof value.id === "string" ? value.id : undefined,
@@ -1090,8 +1090,8 @@ function cloneNodeExecutionReport(
 }
 
 function cloneNodeMetadata(
-  metadata: WorkflowNodeMetadata | undefined,
-): WorkflowNodeMetadata | undefined {
+  metadata: NodeMetadata | undefined,
+): NodeMetadata | undefined {
   return metadata === undefined ? undefined : { ...metadata };
 }
 
@@ -1103,13 +1103,13 @@ function cloneError(error: SerializedWorkflowError): SerializedWorkflowError {
   };
 }
 
-function cloneOutputReport(output: WorkflowOutputReport): WorkflowOutputReport {
+function cloneOutputReport(output: OutputReport): OutputReport {
   return {
     ...output,
   };
 }
 
-function cloneTimerRecord(timer: WorkflowTimerRecord): WorkflowTimerRecord {
+function cloneTimerRecord(timer: TimerRecord): TimerRecord {
   return {
     ...timer,
     metadata: timer.metadata === undefined ? undefined : { ...timer.metadata },

@@ -1,5 +1,5 @@
-import type { WorkflowUserInputRequest, WorkflowUserInputResolved } from "../types/context";
-import type { WorkflowNodeMetadata } from "../types/index";
+import type { UserInputRequest, UserInputResolved } from "../types/context";
+import type { NodeMetadata } from "../types/index";
 import type { AgentMode, AgentPlanApprovalResume, AgentTurnContinuationKind } from "./types";
 import { AGENT_MODES, DEFAULT_AGENT_MODE } from "./types";
 import { getRuntimeLocale } from "../runtime-locale";
@@ -70,9 +70,9 @@ interface AgentPlanApprovalText {
 export function createAgentPlanApprovalRequest(options: {
   requestId: string;
   plan: string;
-}): WorkflowUserInputRequest {
+}): UserInputRequest {
   const text = readAgentPlanApprovalText();
-  const metadata: WorkflowNodeMetadata = {
+  const metadata: NodeMetadata = {
     type: "agent-plan-approval",
     title: text.title,
     version: "1.0.0",
@@ -120,7 +120,7 @@ export function createAgentPlanApprovalRequest(options: {
 }
 
 export function readAgentPlanDecision(
-  resolved: WorkflowUserInputResolved,
+  resolved: UserInputResolved,
 ): AgentPlanApprovalResume {
   const instructions = readOptionalText(resolved.values[INSTRUCTIONS_PARAM_NAME]);
   return {

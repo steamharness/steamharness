@@ -335,7 +335,7 @@ export default assistantWorkflow;
 function readAssistantWorkdir(): string {
   const workdir = (workflow.getEnv(ASSISTANT_WORKDIR_ENV) ?? "").trim();
   if (workdir === "") {
-    throw new workflow.WorkflowError({
+    throw new workflow.HarnessError({
       type: "input_validation",
       message: "小助手缺少经过宿主校验的目标工作区目录。",
     });
@@ -346,7 +346,7 @@ function readAssistantWorkdir(): string {
 function readAssistantHost(): DeveloperAssistantHost {
   const host = (workflow.getEnv("STEAMHARNESS_DEVELOPER_ASSISTANT_HOST") ?? "vscode").trim();
   if (host === "vscode") return host;
-  throw new workflow.WorkflowError({ type: "input_validation", message: `Unsupported assistant host: ${host}` });
+  throw new workflow.HarnessError({ type: "input_validation", message: `Unsupported assistant host: ${host}` });
 }
 
 /** The last user message, which is the turn this run answers. */

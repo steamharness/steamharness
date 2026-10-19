@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { register } from 'tsx/esm/api';
 import { runInNewContext } from 'node:vm';
 register();
-const { WorkflowTraceStore } = await import('../extensions/studio-workstation/src/workflow-trace-store.ts');
+const { TraceStore } = await import('../extensions/studio-workstation/src/workflow-trace-store.ts');
 const { traceRows, filterTraceRows } = await import('../extensions/studio-workstation/webview/trace-model.ts');
 const { workflowFrameHtml } = await import('../extensions/studio-workstation/src/workflow-webview.ts');
 const project = (id, projectType = 'conversation') => ({ id, name: id, uri: `file:///${id}`, projectType });
@@ -11,7 +11,7 @@ const snapshot = (project, extra = {}) => ({ project, ...extra });
 const send = (binding, snapshot) => binding.receive({ type: 'workflow-trace', version: 1, kind: 'state', snapshot });
 
 test('trace connections reject late data, mismatched project identities and stale disposal', () => {
-  const store = new WorkflowTraceStore(), a = project('a'), b = project('b'); store.update([a, b], a);
+  const store = new TraceStore(), a = project('a'), b = project('b'); store.update([a, b], a);
   const old = store.bind(a, 1, () => {}), next = store.bind(a, 1, () => {});
   send(old, snapshot(a, { activeId: 'stale' })); assert.equal(store.state().snapshot, undefined);
   send(next, snapshot(b)); assert.equal(store.state().snapshot, undefined);
@@ -21,7 +21,7 @@ test('trace connections reject late data, mismatched project identities and stal
   store.update([b]); send(next, snapshot(a)); assert.equal(store.availableProjects().length, 1);
 });
 test('Kanban and a background assistant do not add a trace tab to an ordinary workspace', () => {
-  const store = new WorkflowTraceStore(), assistant = { ...project('assistant'), assistant: { standalone: true } };
+  const store = new TraceStore(), assistant = { ...project('assistant'), assistant: { standalone: true } };
   store.update([project('board', 'kanban')]); const binding = store.bind(assistant, 1, () => {});
   send(binding, snapshot(assistant)); assert.equal(store.availableProjects().length, 0);
   assert.equal(binding.receive({ type: 'workflow-trace', version: 1, kind: 'open', target: { messageId: 'reply' } }), true);
@@ -29,7 +29,7 @@ test('Kanban and a background assistant do not add a trace tab to an ordinary wo
   binding.dispose(); assert.equal(store.availableProjects().length, 0);
 });
 test('Workflow history stays independent of editor selection and survives partial history pages', () => {
-  const store = new WorkflowTraceStore(), a = project('a', 'workflow'), sent = []; store.update([a]);
+  const store = new TraceStore(), a = project('a', 'workflow'), sent = []; store.update([a]);
   const binding = store.bind(a, 1, message => sent.push(message));
   send(binding, snapshot(a, { runs: [{ id: 'old' }], run: { id: 'latest' }, history: { query: '', hasMore: true } }));
   store.select(a.uri, { runId: 'old' }); store.request('run', 'old');
@@ -74,7 +74,7 @@ test('selecting one conversation reply does not leak other rounds or sessions', 
 });
 
 test('reopening the CLI reloads a selected historical trace and failed lookups stop retrying', () => {
-  const store = new WorkflowTraceStore(), a = project('a', 'workflow'), requests = []; store.update([a]); store.select(a.uri, { runId: 'old' });
+  const store = new TraceStore(), a = project('a', 'workflow'), requests = []; store.update([a]); store.select(a.uri, { runId: 'old' });
   let binding = store.bind(a, 1, message => requests.push(message));
   const data = snapshot(a, { runs: [{ id: 'old' }], run: { id: 'latest', status: 'running' }, running: true });
   send(binding, data); assert.equal(requests.length, 1); assert.equal(store.state().loading, true);

@@ -1,13 +1,13 @@
 import type pg from "pg";
 import {
   normalizeWorkflowKVStoreInput,
-  type WorkflowKVNamespaceLockInput,
+  type KVNamespaceLockInput,
 } from "steamharness";
 
 export const STEAMHARNESS_KV_NAMESPACE_LOCK_FAMILY = "workflow_project_storage_namespace";
 
 export function createWorkflowKVNamespaceLockKey(
-  input: WorkflowKVNamespaceLockInput,
+  input: KVNamespaceLockInput,
 ): string {
   const normalized = normalizeWorkflowKVStoreInput({
     ...input,
@@ -30,7 +30,7 @@ export function createWorkflowKVNamespaceLockKey(
 
 export async function withPostgresWorkflowKVNamespaceLock<T>(
   pool: Pick<pg.Pool, "connect">,
-  input: WorkflowKVNamespaceLockInput,
+  input: KVNamespaceLockInput,
   operation: () => Promise<T> | T,
 ): Promise<T> {
   const client = await pool.connect();

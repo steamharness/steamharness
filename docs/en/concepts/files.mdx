@@ -1,6 +1,6 @@
 ---
 title: "File Input"
-description: "The current usage of file param, upload file, and WorkflowResolvedFile."
+description: "The current usage of file param, upload file, and ResolvedFile."
 ---
 
 # File Input
@@ -57,9 +57,9 @@ const images = await workflow.runNode(imageInputNode, input.images, context);
 const imageParts = await Promise.all(images.map((file) => file.toLLMImagePart()));
 ```
 
-`createFileInputNode` will resolve the reference through `context.files` and return `WorkflowResolvedFile[]`.
+`createFileInputNode` will resolve the reference through `context.files` and return `ResolvedFile[]`.
 
-## WorkflowResolvedFile
+## ResolvedFile
 
 Parsed file support:
 
@@ -102,7 +102,7 @@ Kanban pages use `window.steamHarnessKanban.files.createFile/readFile/deleteFile
 Do not save base64 file contents into KV or session history. Save the reference metadata returned by `file.toJSON()` when cross-round multiplexing is required.
 
 `workspace/workflow/gpt-image` The example uses the same file param process to receive one or more reference images:
-workflow resolves to `WorkflowResolvedFile[]` when there is a current picture or an input picture reference in the recent session history
+workflow resolves to `ResolvedFile[]` when there is a current picture or an input picture reference in the recent session history
 And call the picture editing; no picture context at all to call the picture generation. This example turns on conversation mode, and the cross wheel only turns on
 User prompts, generate summaries, and `file.toJSON()` reference metadata to write session history; subsequent rounds try to parse the most recent input image
 Reference and pass it to the picture editor as a context reference diagram. The sample locally retains up to 16 pictures for input. Generate results

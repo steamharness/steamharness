@@ -295,12 +295,12 @@ Local sessions can pass in or generate a conversation id.
 ## Session State Structure
 
 ```ts
-interface WorkflowConversationState {
+interface ConversationState {
   conversationId: string;
   workflowName: string;
   title?: string;
   values: Record<string, unknown>;
-  messages: WorkflowConversationMessage[];
+  messages: ConversationMessageContract[];
 }
 ```
 

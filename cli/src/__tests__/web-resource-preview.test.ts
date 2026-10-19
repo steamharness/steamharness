@@ -7,7 +7,7 @@ import { ResourcePreviews } from '../web/resource-preview';
 import { startWebServer } from '../web/server';
 import { webProjectDataDirectory } from '../web/kanban-data';
 import type { ResourceCard } from '../web/resource-cards';
-import type { WorkflowProject, WorkflowRuntime } from '../web/workflow-types';
+import type { Project, Runtime } from '../web/workflow-types';
 
 const folders: string[] = [];
 beforeEach(() => initI18n({ preference: 'en' }));
@@ -16,7 +16,7 @@ afterEach(async () => { vi.restoreAllMocks(); for (const directory of folders.sp
 async function fixture() {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'workflow-resource-'))); folders.push(root);
   const storageDir = path.join(root, 'data');
-  const owner: WorkflowProject = { id: 'owner', uri: '', name: 'Owner', folderPath: root, projectType: 'conversation', fields: [], entrypoints: [] };
+  const owner: Project = { id: 'owner', uri: '', name: 'Owner', folderPath: root, projectType: 'conversation', fields: [], entrypoints: [] };
   await writeFile(path.join(root, 'package.json'), JSON.stringify({ id: owner.id, steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } }));
   const related = { ...owner, id: 'related', name: 'Related', folderPath: path.join(root, 'related'), projectType: 'kanban' as const,
     kanban: { artifactDir: 'dist', entry: 'index.html' }, fields: [{ name: 'title', type: 'string', defaultValue: 'Default' }] };
@@ -24,7 +24,7 @@ async function fixture() {
   await writeFile(path.join(related.folderPath, 'package.json'), JSON.stringify({ id: related.id, steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } }));
   await writeFile(path.join(related.folderPath, 'dist/index.html'), '<html><head></head><body>Map preview</body></html>');
   const runtime = { inspect: vi.fn(async () => ({ projects: [related], errors: [] })), readResource: vi.fn(async () => ({ id: 'doc', markdown: '# Document' })),
-    kanbanBridge: vi.fn(async () => ({ key: 'map' })) } as unknown as WorkflowRuntime;
+    kanbanBridge: vi.fn(async () => ({ key: 'map' })) } as unknown as Runtime;
   let connection: { serverUrl: string; accessToken: string } | undefined = { serverUrl: 'https://workflow.test', accessToken: 'test-only-token' };
   const previews = new ResourcePreviews(owner, runtime, storageDir, () => connection, () => [{ alias: 'map', projectDir: related.folderPath }]);
   const card = (kind: ResourceCard['kind'], target: Record<string, string>, extra: Partial<ResourceCard> = {}): ResourceCard => ({ id: 'card', kind, title: 'Resource', target, ...extra });

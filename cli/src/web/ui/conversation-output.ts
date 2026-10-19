@@ -1,5 +1,5 @@
 import { t, locale } from '../localization';
-import type { ConversationMessage, WorkflowAttachment, WorkflowOutputItem, WorkflowResolvedInput, WorkflowTimerRecord } from '../workflow-types';
+import type { ConversationMessage, Attachment, OutputItem, ResolvedInput, TimerRecord } from '../workflow-types';
 import { conversationResourceCards, type ResourceCard } from '../resource-cards';
 import { escapeHtml, iconHtml, iconButton, markdownHtml, mediaUrl, updateIcon } from './ui';
 import { agentActivity, activeAgentActivity, activityGroupSummary, activityValueText, type AgentActivity } from './agent-activity';
@@ -14,7 +14,7 @@ interface OutputOptions {
   resource(card: ResourceCard, action?: 'open' | 'inline' | 'window' | 'project', requestId?: string): void;
 }
 interface OutputView { root: HTMLElement; signature: string }
-interface OutputEntry { key: string; item?: WorkflowOutputItem; answer?: WorkflowResolvedInput; card?: ResourceCard; text?: string; timer?: WorkflowTimerRecord; activity?: AgentActivity }
+interface OutputEntry { key: string; item?: OutputItem; answer?: ResolvedInput; card?: ResourceCard; text?: string; timer?: TimerRecord; activity?: AgentActivity }
 interface ActivityGroup { root: HTMLDetailsElement; list: HTMLDivElement }
 
 export class ConversationOutput {
@@ -55,7 +55,7 @@ export class ConversationOutput {
 
   private release(root: HTMLElement): void { this.displays.get(root)?.dispose(); this.displays.delete(root); }
 
-  update(message: ConversationMessage, projectId: string, conversationId: string, files: WorkflowAttachment[], storageSource: 'local' | 'server' = 'local'): void {
+  update(message: ConversationMessage, projectId: string, conversationId: string, files: Attachment[], storageSource: 'local' | 'server' = 'local'): void {
     const items = (message.items ?? []).filter(item => item.metadata?.kind !== 'agent-session' && (!this.options.composer || !isComposerOutputItem(item)));
     const cards = conversationResourceCards(items, projectId, conversationId, storageSource);
     const cardByItem = new Map(cards.map((card) => [card.itemId, card]));
@@ -219,7 +219,7 @@ export class ConversationOutput {
     body.scrollTop = scroll;
   }
 
-  private timer(timer: WorkflowTimerRecord): HTMLElement {
+  private timer(timer: TimerRecord): HTMLElement {
     const root = document.createElement('details'); root.className = 'output-detail timer-record';
     const summary = document.createElement('summary'); const title = document.createElement('span'); title.textContent = timer.title;
     const duration = document.createElement('span'); duration.className = 'timer-duration'; duration.textContent = `${((timer.durationMs ?? 0) / 1000).toFixed(1)}s`;
@@ -230,7 +230,7 @@ export class ConversationOutput {
     root.append(details); return root;
   }
 
-  private markdown(text: string, files: WorkflowAttachment[]): HTMLDivElement {
+  private markdown(text: string, files: Attachment[]): HTMLDivElement {
     const root = document.createElement('div'); root.className = 'message-content'; root.innerHTML = markdownHtml(text, files);
     for (const link of Array.from(root.querySelectorAll('a'))) {
       if (link.dataset.workflowFile) { link.addEventListener('click', (event) => { event.preventDefault(); this.options.file(link.dataset.workflowFile!); }); }
@@ -251,7 +251,7 @@ export class ConversationOutput {
     return root;
   }
 
-  private item(item: WorkflowOutputItem, files: WorkflowAttachment[]): HTMLElement {
+  private item(item: OutputItem, files: Attachment[]): HTMLElement {
     if (ringOutputContent(item)) {
       const display = new RingOutput(item); this.displays.set(display.root, display); return display.root;
     }
@@ -282,7 +282,7 @@ export class ConversationOutput {
     return root;
   }
 
-  private answer(answer: WorkflowResolvedInput, submitting: boolean): HTMLElement {
+  private answer(answer: ResolvedInput, submitting: boolean): HTMLElement {
     const root = document.createElement('div'); root.className = 'resolved-inputs'; root.dataset.requestId = answer.requestId;
     const entry = document.createElement('div'); entry.className = 'resolved-input';
     for (const field of answer.request?.params ?? []) {
@@ -299,7 +299,7 @@ export class ConversationOutput {
     root.append(entry); return root;
   }
 
-  private card(card: ResourceCard, item?: WorkflowOutputItem): HTMLElement {
+  private card(card: ResourceCard, item?: OutputItem): HTMLElement {
     const root = document.createElement('section'); root.className = 'resource-card'; root.dataset.cardId = card.id;
     const row = document.createElement('div'); row.className = 'resource-card-row';
     const button = document.createElement('button'); button.className = 'resource-target'; button.title = t('Open resource');

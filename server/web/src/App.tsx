@@ -25,7 +25,7 @@ import { ProjectListPage } from "./pages/ProjectListPage";
 import { RolesPage } from "./pages/RolesPage";
 import { UsersPage } from "./pages/UsersPage";
 import { type AccountViewState, type AuditFilters, type AuditViewState, type AdminRolesState, type AdminUsersState, DEFAULT_AUDIT_FILTERS, DEFAULT_DETAIL, LOCALE_STORAGE_KEY, THEME_STORAGE_KEY, type AppRoute, type AsyncState, type DetailTab, type DetailState, type SettingsTab, type SessionState, type ThemeMode } from "./state";
-import { isApiSuccess, type WorkflowAdminUserSummary, type WorkflowKVEntrySummary, type WorkflowPermissionKey, type WorkflowRoleRecord, type WorkflowSummary, type WorkflowUserInvitationResult } from "./types";
+import { isApiSuccess, type AdminUserSummary, type KVEntrySummary, type PermissionKey, type RoleRecord, type Summary, type UserInvitationResult } from "./types";
 import { parseRoute, readRouteProjectId, replaceCurrentRouteIfNeeded, routeToPath } from "./utils/routes";
 import { normalizeDateTimeFilter } from "./utils/date-filters";
 import { consumeUnseenServerRelease } from "./lib/server-release-notes";
@@ -60,7 +60,7 @@ function pushToast(tone: "success" | "error", message: string) {
   toast[tone](message);
 }
 
-function isUploadedVersionProject(project: WorkflowSummary): boolean {
+function isUploadedVersionProject(project: Summary): boolean {
   return Array.isArray(project.versions);
 }
 
@@ -85,7 +85,7 @@ function AppContent() {
   const [passwordInput, setPasswordInput] = useState("");
   const [deviceUserCode, setDeviceUserCode] = useState(() => route.page === "device" ? route.userCode ?? "" : "");
   const [deviceStatusMessage, setDeviceStatusMessage] = useState<string | null>(null);
-  const [projects, setProjects] = useState<WorkflowSummary[]>([]);
+  const [projects, setProjects] = useState<Summary[]>([]);
   const [accountView, setAccountView] = useState<AccountViewState>({ me: null, apiKeys: null });
   const [auditView, setAuditView] = useState<AuditViewState>({ page: null, selectedEventId: null });
   const [adminUsers, setAdminUsers] = useState<AdminUsersState>({
@@ -99,7 +99,7 @@ function AppContent() {
   });
   const [adminRoles, setAdminRoles] = useState<AdminRolesState>({ items: null, groups: null });
   const [createdApiKeyToken, setCreatedApiKeyToken] = useState<string | null>(null);
-  const [latestInvitation, setLatestInvitation] = useState<WorkflowUserInvitationResult | null>(null);
+  const [latestInvitation, setLatestInvitation] = useState<UserInvitationResult | null>(null);
   const [selectedId, setSelectedId] = useState(() => readRouteProjectId(parseRoute(window.location.pathname)));
   const [kvFilters, setKVFilters] = useState<KVFilters>(DEFAULT_KV_FILTERS);
   const [knowledgeRefreshToken, setKnowledgeRefreshToken] = useState(0);
@@ -141,7 +141,7 @@ function AppContent() {
     ? getWorkflowProjectServerStorageAccess(selectedProject).allowed
     : false;
   const principalPermissions = useMemo(
-    () => new Set<WorkflowPermissionKey>((session.status === "ready" ? (session.principal.permissions ?? []) : []) as WorkflowPermissionKey[]),
+    () => new Set<PermissionKey>((session.status === "ready" ? (session.principal.permissions ?? []) : []) as PermissionKey[]),
     [session],
   );
   const isSystemAdmin =
@@ -532,7 +532,7 @@ function AppContent() {
   }
 
   async function createProjectInvitation(role: "manager" | "writer" | "viewer"): Promise<{
-    invitation: import("./types").WorkflowProjectInvitation;
+    invitation: import("./types").ProjectInvitation;
     token: string;
     shareUrl: string;
   } | null> {
@@ -650,7 +650,7 @@ function AppContent() {
     await loadAuditEvents({ cursor: nextCursor, pageIndex: nextIndex });
   }
 
-  async function loadProjectKVEntry(workflowName: string, entry: WorkflowKVEntrySummary) {
+  async function loadProjectKVEntry(workflowName: string, entry: KVEntrySummary) {
     if (entry.scope !== "project" && entry.scope !== "conversation") {
       return {
         errCode: 400,
@@ -664,7 +664,7 @@ function AppContent() {
     });
   }
 
-  async function deleteProjectKVEntry(workflowName: string, entry: WorkflowKVEntrySummary) {
+  async function deleteProjectKVEntry(workflowName: string, entry: KVEntrySummary) {
     if (entry.scope !== "project" && entry.scope !== "conversation") {
       return {
         errCode: 400,
@@ -800,7 +800,7 @@ function AppContent() {
   }
 
   async function updateUser(
-    user: WorkflowAdminUserSummary,
+    user: AdminUserSummary,
     patch: { email?: string; displayName?: string; disabled?: boolean; avatarUrl?: string | null },
   ) {
     setBusy((state) => ({ ...state, updateBusyUserId: user.userId }));
@@ -830,7 +830,7 @@ function AppContent() {
     return result.data.invitationLink;
   }
 
-  async function updateUserRoles(user: WorkflowAdminUserSummary, roleIds: string[]) {
+  async function updateUserRoles(user: AdminUserSummary, roleIds: string[]) {
     setBusy((state) => ({ ...state, updateBusyUserId: user.userId }));
     const result = await apiClient.updateAdminUserRoles(user.userId, roleIds);
     setBusy((state) => ({ ...state, updateBusyUserId: undefined }));
@@ -842,7 +842,7 @@ function AppContent() {
     await loadAdminUsers();
   }
 
-  async function updateUserAvatar(user: WorkflowAdminUserSummary, file: File) {
+  async function updateUserAvatar(user: AdminUserSummary, file: File) {
     setBusy((state) => ({ ...state, updateBusyUserId: user.userId }));
     const result = await apiClient.uploadAdminAvatar(user.userId, file);
     setBusy((state) => ({ ...state, updateBusyUserId: undefined }));
@@ -866,7 +866,7 @@ function AppContent() {
     await loadAdminRoles();
   }
 
-  async function updateRole(role: WorkflowRoleRecord, payload: { name?: string; description?: string; permissions?: string[] }) {
+  async function updateRole(role: RoleRecord, payload: { name?: string; description?: string; permissions?: string[] }) {
     setBusy((state) => ({ ...state, saveRole: t("busySaveRole") }));
     const result = await apiClient.updateAdminRole(role.id, payload);
     setBusy((state) => ({ ...state, saveRole: undefined }));
@@ -878,7 +878,7 @@ function AppContent() {
     await loadAdminRoles();
   }
 
-  async function deleteRole(role: WorkflowRoleRecord) {
+  async function deleteRole(role: RoleRecord) {
     setBusy((state) => ({ ...state, deleteRoleId: role.id }));
     const result = await apiClient.deleteAdminRole(role.id);
     setBusy((state) => ({ ...state, deleteRoleId: undefined }));
@@ -953,7 +953,7 @@ function AppContent() {
     }
   }
 
-  function openProject(project: WorkflowSummary, tab: DetailTab = "project") {
+  function openProject(project: Summary, tab: DetailTab = "project") {
     navigateTo({ page: "detail", id: project.id, tab });
   }
 

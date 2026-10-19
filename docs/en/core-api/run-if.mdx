@@ -12,21 +12,21 @@ description: "Execute the if / else-if / else branch node and write the branch s
 ```ts
 workflow.runIf<Input, Output>(
   input: Input,
-  context: WorkflowContext,
+  context: RunContext,
   options: {
     name?: string;
     branches: Array<{
       label: string;
       description?: string;
-      condition(input: Input, context: WorkflowContext): boolean | Promise<boolean>;
-      run(input: Input, context: WorkflowContext): Output | Promise<Output>;
+      condition(input: Input, context: RunContext): boolean | Promise<boolean>;
+      run(input: Input, context: RunContext): Output | Promise<Output>;
     }>;
     else?: {
       label?: string;
       description?: string;
-      run(input: Input, context: WorkflowContext): Output | Promise<Output>;
+      run(input: Input, context: RunContext): Output | Promise<Output>;
     };
-    metadata?: Partial<WorkflowNodeMetadata>;
+    metadata?: Partial<NodeMetadata>;
   },
 ): Promise<Output>
 ```
@@ -36,11 +36,11 @@ workflow.runIf<Input, Output>(
 |Parameter|Type|Description|
 | --- | --- | --- |
 | `input` | `Input` |Input common to branch judgment and branch execution.|
-| `context` | `WorkflowContext` |runtime context for hooks, provider, KV, files, abortSignal.|
+| `context` | `RunContext` |runtime context for hooks, provider, KV, files, abortSignal.|
 | `options.name` | `string` |Diagram and the branch node title shown in Trace. Default `Run if`.|
 | `options.branches` | `RunIfBranch[]` |If/else-if branches checked in order. The first element is displayed as `if`, and subsequent elements are displayed as `else-if`.|
 | `options.else` | `RunIfElseBranch` |Optional fallback. A miss is thrown when there is no `else`.|
-| `options.metadata` | `Partial<WorkflowNodeMetadata>` |Overrides the branch node meta information. The default type is `run-if`.|
+| `options.metadata` | `Partial<NodeMetadata>` |Overrides the branch node meta information. The default type is `run-if`.|
 
 ## Branch
 
@@ -100,5 +100,5 @@ Static structure analysis identifies `branches` and `else` as literals and write
 |Situation|Error Type|Description|
 | --- | --- | --- |
 |Misses and no `else`| `node_execution` |Throw out `Run-if node "<name>" did not match any branch.`.|
-|Branch condition/run throw error| `node_execution` |The original error is wrapped as `WorkflowError` and written to the branch-node report.|
+|Branch condition/run throw error| `node_execution` |The original error is wrapped as `HarnessError` and written to the branch-node report.|
 |Interrupted before execution or during branch judgment|`execution_aborted` or `node_execution`|From `context.abortSignal`.|

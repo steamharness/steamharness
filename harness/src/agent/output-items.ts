@@ -1,4 +1,4 @@
-import type { OutputItemStreamChunk, WorkflowOutputItemInput } from "../node/output/index";
+import type { OutputItemStreamChunk, RunOutputItemInput } from "../node/output/index";
 
 /**
  * Output-item metadata this package emits.
@@ -49,8 +49,8 @@ const COMPACTED_KIND_PREFIX = "agent";
 
 export interface AgentOutputItemPatch {
   title: string;
-  iconPreset: NonNullable<WorkflowOutputItemInput["iconPreset"]>;
-  contentType: NonNullable<WorkflowOutputItemInput["contentType"]>;
+  iconPreset: NonNullable<RunOutputItemInput["iconPreset"]>;
+  contentType: NonNullable<RunOutputItemInput["contentType"]>;
   collapsed: boolean;
   metadata: Record<string, unknown>;
 }
@@ -58,7 +58,7 @@ export interface AgentOutputItemPatch {
 /** Collapsed JSON row used by every detail item this package emits. */
 export function createAgentDetailPatch(
   title: string,
-  iconPreset: NonNullable<WorkflowOutputItemInput["iconPreset"]>,
+  iconPreset: NonNullable<RunOutputItemInput["iconPreset"]>,
   status: AgentOutputStatus,
   metadata: Record<string, unknown> = {},
 ): AgentOutputItemPatch {
@@ -111,15 +111,15 @@ export function createAgentItemOrderTracker(): {
 
 /** The same order, applied to the items a stream accumulated. */
 export function applyAgentItemOrder(
-  items: readonly WorkflowOutputItemInput[],
+  items: readonly RunOutputItemInput[],
   order: readonly string[] | undefined,
-): WorkflowOutputItemInput[] {
+): RunOutputItemInput[] {
   if (order === undefined || order.length === 0) {
     return [...items];
   }
 
   const rank = new Map(order.map((id, index) => [id, index]));
-  const rankOf = (item: WorkflowOutputItemInput) =>
+  const rankOf = (item: RunOutputItemInput) =>
     item.id === undefined ? order.length : rank.get(item.id) ?? order.length;
 
   // Items the order does not name (none today) keep their relative place after
@@ -128,9 +128,9 @@ export function applyAgentItemOrder(
 }
 
 export function orderAgentOutputItems(
-  items: readonly WorkflowOutputItemInput[],
+  items: readonly RunOutputItemInput[],
   chunks: readonly OutputItemStreamChunk[],
-): WorkflowOutputItemInput[] {
+): RunOutputItemInput[] {
   const tracker = createAgentItemOrderTracker();
   for (const chunk of chunks) {
     tracker.observe(chunk);
@@ -414,10 +414,10 @@ function createAgentPartChunks(options: {
   partType: AgentOutputPartType;
   status: AgentOutputStatus;
   content: Record<string, unknown>;
-  patch: { title: string; iconPreset: NonNullable<WorkflowOutputItemInput["iconPreset"]> };
+  patch: { title: string; iconPreset: NonNullable<RunOutputItemInput["iconPreset"]> };
   started?: boolean;
 }): OutputItemStreamChunk[] {
-  const item: WorkflowOutputItemInput = {
+  const item: RunOutputItemInput = {
     id: options.itemId,
     title: options.patch.title,
     content: options.content,

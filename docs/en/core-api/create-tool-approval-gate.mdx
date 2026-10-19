@@ -12,15 +12,15 @@ The tool has three results: if it is not registered, the input verification will
 ## Signature
 
 ```ts
-workflow.createToolApprovalGate(): WorkflowToolApprovalGate
+workflow.createToolApprovalGate(): ToolApprovalGate
 ```
 
 ```ts
-interface WorkflowToolApprovalGate {
+interface ToolApprovalGate {
   approve(
-    input: WorkflowToolApprovalRequestInput,
+    input: ToolApprovalRequestInput,
     context: NodeContext,
-  ): Promise<WorkflowToolApprovalDecision>;
+  ): Promise<ToolApprovalDecision>;
 
   wrap<Args extends unknown[], Result>(
     name: string,
@@ -111,8 +111,8 @@ const result = await searchWithApproval(context, input.query);
 
 |Status|Behavior|
 | --- | --- |
-|Tool not registered|Throws `WorkflowError` of type `input_validation`.|
-|Tool is disabled|Throws `WorkflowError` of type `tool_permission_denied`.|
+|Tool not registered|Throws `HarnessError` of type `input_validation`.|
+|Tool is disabled|Throws `HarnessError` of type `tool_permission_denied`.|
 | `autoApprove: true` |Directly return `{ approved: true }`, does not generate wait request.|
 |Requires approval, and the turn is in plan mode|The `tool-approval` request is created and the running status becomes `waiting_for_input`.|
 |Requires approval, but the turn is in build mode|Directly return `{ approved: true }`, does not generate wait request.|

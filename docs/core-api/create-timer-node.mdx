@@ -14,31 +14,31 @@ workflow.createTimerNode(options?: {
   name?: string;
   title?: string;
   historyLimit?: number;
-  metadata?: WorkflowNodeMetadataInput;
-}): BaseNode<WorkflowTimerNodeInput | undefined, WorkflowTimerPayload>
+  metadata?: NodeMetadataInput;
+}): BaseNode<TimerNodeInput | undefined, TimerPayload>
 
 workflow.endTimer(
-  timer: WorkflowTimerPayload | string,
-  context: WorkflowContext,
+  timer: TimerPayload | string,
+  context: RunContext,
   options?: {
     status?: "success" | "failed";
     message?: string;
     metadata?: Record<string, unknown>;
   },
-): Promise<WorkflowTimerRecord>
+): Promise<TimerRecord>
 ```
 
 ## Payload
 
 ```ts
-interface WorkflowTimerPayload extends WorkflowPayload {
+interface TimerPayload extends RunPayload {
   timerId: string;
   title: string;
   startedAt: string;
   metadata?: Record<string, unknown>;
 }
 
-interface WorkflowTimerRecord extends WorkflowTimerPayload {
+interface TimerRecord extends TimerPayload {
   status: "running" | "success" | "failed" | "cleared";
   endedAt?: string;
   durationMs?: number;

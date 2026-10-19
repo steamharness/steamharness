@@ -4,9 +4,9 @@ import {
   createDisabledWorkflowConversationContext,
   createDisabledWorkflowTokenUsageContext,
   createWorkflowRelatedProjectsContext,
-  type WorkflowKVContext,
+  type KVContext,
 } from "steamharness";
-import type { WorkflowContext } from "steamharness/types/context";
+import type { RunContext } from "steamharness/types/context";
 import {
   KNOWLEDGE_DOCUMENTS_MCP_SERVER_NAME,
   KNOWLEDGE_DOCUMENTS_TOOL_NAME,
@@ -35,7 +35,7 @@ function parseToolResult<T>(result: Awaited<ReturnType<ToolHandler>>): T {
   return JSON.parse(first.text) as T;
 }
 
-let context: WorkflowContext;
+let context: RunContext;
 
 beforeAll(() => {
   context = createToolContext();
@@ -147,7 +147,7 @@ describe("claude-agent knowledge_documents tool", () => {
   });
 });
 
-function createToolContext(): WorkflowContext {
+function createToolContext(): RunContext {
   return {
     providers: {},
     storage: {
@@ -167,7 +167,7 @@ function createToolContext(): WorkflowContext {
   };
 }
 
-function createMemoryKVContext(): WorkflowKVContext {
+function createMemoryKVContext(): KVContext {
   const values = new Map<string, unknown>();
 
   function createNamespace(prefix: string) {

@@ -1,13 +1,13 @@
 import { t } from './localization';
 import { escapeHtml, iconHtml } from './ui';
-import type { WorkflowVersionsState } from '../src/workflow-server-projects';
+import type { VersionsState } from '../src/workflow-server-projects';
 import { projectVersionHtml } from './project-version';
 import './versions.css';
 
 declare function acquireVsCodeApi(): { postMessage(message: object): void };
 const host = acquireVsCodeApi();
 const app = document.querySelector<HTMLElement>('#versions-app')!;
-let state: WorkflowVersionsState | undefined, signature = '';
+let state: VersionsState | undefined, signature = '';
 const text = escapeHtml;
 const iconButton = (action: string, icon: string, label: string, disabled = false, version = ''): string =>
   `<button type="button" class="icon-button" data-action="${action}" data-version="${text(version)}" title="${text(label)}" aria-label="${text(label)}"${disabled ? ' disabled' : ''}>${iconHtml(icon)}</button>`;
@@ -15,7 +15,7 @@ function date(value?: string): string {
   if (!value || !Number.isFinite(Date.parse(value))) { return ''; }
   return new Intl.DateTimeFormat(document.documentElement.lang, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
 }
-function render(next: WorkflowVersionsState): void {
+function render(next: VersionsState): void {
   if (state && next.generation < state.generation) { return; }
   const changed = state?.project?.uri !== next.project?.uri;
   state = next;

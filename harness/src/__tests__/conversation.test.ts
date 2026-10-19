@@ -4,7 +4,7 @@ import {
   createDisabledWorkflowConversationContext,
   createWorkflowConversationContext,
   createWorkflowKVContext,
-  type WorkflowKVStore,
+  type KVStore,
 } from "../index";
 
 test("conversation setTitle persists a normalized title and emits updates", async () => {
@@ -77,7 +77,7 @@ test("disabled conversation setTitle is a safe no-op", async () => {
   assert.equal(await conversation.setTitle("ignored"), undefined);
 });
 
-function createMemoryKVStore(): WorkflowKVStore {
+function createMemoryKVStore(): KVStore {
   const values = new Map<string, unknown>();
 
   function createKey(input: {

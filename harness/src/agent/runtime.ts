@@ -2,8 +2,8 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { WorkflowError } from "../workflow/errors";
-import { WorkflowDurableAgent } from "./durable-agent";
+import { HarnessError } from "../workflow/errors";
+import { DurableAgent } from "./durable-agent";
 import { withStreamingMessage } from "./durable-context";
 import type { AgentSessionCommand, AgentSessionReceipt } from "./session-types";
 import {
@@ -67,7 +67,7 @@ import {
 /** Prompts that replace the turn with a compaction instead of calling the model. */
 const COMPACT_COMMANDS = new Set(["/compact", "/summarize"]);
 
-type PiAgent = WorkflowDurableAgent;
+type PiAgent = DurableAgent;
 type PiAgentTool = PiAgent["state"]["tools"][number];
 
 export interface AgentRuntimeInternalOptions extends AgentRuntimeOptions {
@@ -111,10 +111,10 @@ export async function createAgentRuntime(
     resolvedModel: options.resolvedModel,
   });
 
-  return new WorkflowAgentRuntime(pi, options);
+  return new ProjectAgentRuntime(pi, options);
 }
 
-class WorkflowAgentRuntime implements AgentRuntime {
+class ProjectAgentRuntime implements AgentRuntime {
   async control(command: AgentSessionCommand): Promise<AgentSessionReceipt> {
     if (!this.options.session || !this.agent) throw Object.assign(new Error("The agent session is not running."), { code: "AGENT_NOT_READY" });
     return this.agent.control(command);
@@ -197,7 +197,7 @@ class WorkflowAgentRuntime implements AgentRuntime {
 
   updateContextUsage(usage: AgentContextUsage): void {
     if (!Number.isFinite(usage.used) || usage.used < 0 || !Number.isFinite(usage.total) || usage.total <= 0) {
-      throw new WorkflowError({ type: "input_validation", message: "Context usage requires finite used >= 0 and total > 0." });
+      throw new HarnessError({ type: "input_validation", message: "Context usage requires finite used >= 0 and total > 0." });
     }
     this.contextMeasurement = { usage: { used: Math.round(usage.used), total: usage.total }, estimated: this.readContextTokens() };
     this.publishContextUsage?.();
@@ -228,7 +228,7 @@ class WorkflowAgentRuntime implements AgentRuntime {
 
     if (parsed.compact) {
       if (!await agent.canCompact()) {
-        throw new WorkflowError({ type: "workflow_execution", message: "Cannot compact agent context while durable tasks are active." });
+        throw new HarnessError({ type: "workflow_execution", message: "Cannot compact agent context while durable tasks are active." });
       }
       yield* this.runCompaction(agent, host, false);
       const usage = this.getContextUsage();
@@ -305,7 +305,7 @@ class WorkflowAgentRuntime implements AgentRuntime {
 
   private ensureAgent(): PiAgent {
     if (this.agent === undefined) {
-      this.agent = new WorkflowDurableAgent({
+      this.agent = new DurableAgent({
         initialState: {
           systemPrompt: defaultAgentSystemPrompt(),
           model: this.pi.model,
@@ -335,7 +335,7 @@ class WorkflowAgentRuntime implements AgentRuntime {
   private attachApproval(
     agent: PiAgent,
     host: AgentHost | undefined,
-    onPause: (error: WorkflowError) => void,
+    onPause: (error: HarnessError) => void,
     askResume?: AgentInput["askResume"],
   ): void {
     const approveToolCall = host?.approveToolCall;
@@ -365,7 +365,7 @@ class WorkflowAgentRuntime implements AgentRuntime {
         }
         return undefined;
       } catch (error) {
-        if (error instanceof WorkflowError && error.type === "user_input_required") {
+        if (error instanceof HarnessError && error.type === "user_input_required") {
           onPause(error);
           return { block: true, reason: error.message, pause: error };
         }
@@ -490,7 +490,7 @@ class WorkflowAgentRuntime implements AgentRuntime {
       this.externalTools,
       this.options,
     );
-    let parkedApproval: WorkflowError | undefined;
+    let parkedApproval: HarnessError | undefined;
     agent.askResume = input.askResume;
     this.attachApproval(agent, host, (error) => {
       parkedApproval = error;
@@ -620,7 +620,7 @@ class WorkflowAgentRuntime implements AgentRuntime {
     // the model was never reached.
     const agentFailure = readAgentFailure(agent);
     if (agentFailure !== undefined) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "workflow_execution",
         message: agentFailure,
       });
@@ -1015,7 +1015,7 @@ function throwIfRunAborted(signal: AbortSignal | undefined): void {
     return;
   }
 
-  throw new WorkflowError({
+  throw new HarnessError({
     type: "execution_aborted",
     message: signal.reason instanceof Error
       ? signal.reason.message

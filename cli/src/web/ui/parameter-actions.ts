@@ -1,13 +1,13 @@
 import { t } from '../localization';
-import type { WorkflowField, WorkflowParamLayout, WorkflowParameters, WorkflowParamState, WorkflowParamValues, WorkflowParamValue } from '../workflow-types';
+import type { Field, ParamLayout, Parameters, ParamState, ParamValues, ParamValue } from '../workflow-types';
 
-type Action = WorkflowParamLayout['actions'][number];
+type Action = ParamLayout['actions'][number];
 type GroupAction = Extract<Action, { kind: 'quick' | 'auxiliary' }>;
 interface ActionView { action: Action; button: HTMLButtonElement; label: HTMLSpanElement; summary?: HTMLSpanElement; count?: HTMLElement }
 interface ParameterActionOptions {
-  current(): { values: WorkflowParamValues; states: Record<string, WorkflowParamState>; disabled: boolean; loading: boolean };
+  current(): { values: ParamValues; states: Record<string, ParamState>; disabled: boolean; loading: boolean };
   fieldRoot(name: string): HTMLElement;
-  onChange(name: string, value: WorkflowParamValue): void;
+  onChange(name: string, value: ParamValue): void;
   onReset(names: string[]): void;
 }
 
@@ -18,7 +18,7 @@ const icon = (name: string): HTMLSpanElement => {
   return element;
 };
 
-export function parameterSelectionLabel(field: WorkflowField, value: WorkflowParamValue | undefined, state?: WorkflowParamState): string {
+export function parameterSelectionLabel(field: Field, value: ParamValue | undefined, state?: ParamState): string {
   const options = state?.resolvedOptions ?? field.options ?? [];
   if (!options.length) { return t("No options"); }
   if (Array.isArray(value)) {
@@ -29,7 +29,7 @@ export function parameterSelectionLabel(field: WorkflowField, value: WorkflowPar
 }
 
 export class ParameterActions {
-  private parameters: WorkflowParameters = { fields: [] };
+  private parameters: Parameters = { fields: [] };
   private readonly views: ActionView[] = [];
   private readonly popup: HTMLDivElement;
   private active?: ActionView & { action: GroupAction };
@@ -70,7 +70,7 @@ export class ParameterActions {
     document.fonts?.addEventListener('loadingdone', () => this.scheduleLayout());
   }
 
-  render(parameters: WorkflowParameters): void {
+  render(parameters: Parameters): void {
     this.close();
     this.parameters = parameters;
     this.views.length = 0;
@@ -117,13 +117,13 @@ export class ParameterActions {
     this.update();
   }
 
-  private field(name: string): WorkflowField | undefined { return this.parameters.fields.find((field) => field.name === name); }
-  private visibleOptions(field: WorkflowField) {
+  private field(name: string): Field | undefined { return this.parameters.fields.find((field) => field.name === name); }
+  private visibleOptions(field: Field) {
     const state = this.options.current().states[field.name];
     return (state?.resolvedOptions ?? field.options ?? []).filter((option) => state?.options?.[option.value]?.visible !== false);
   }
-  private groupFields(action: GroupAction): WorkflowField[] {
-    return action.params.map((name) => this.field(name)).filter((field): field is WorkflowField =>
+  private groupFields(action: GroupAction): Field[] {
+    return action.params.map((name) => this.field(name)).filter((field): field is Field =>
       !!field && this.options.current().states[field.name]?.visible !== false);
   }
 
@@ -143,7 +143,7 @@ export class ParameterActions {
         view.button.disabled = disabled || (action.kind === 'auxiliary' ? loading : fields.every((field) =>
           states[field.name]?.disabled === true || this.visibleOptions(field).length === 0));
         const summaries = action.summary?.map((name) => fields.find((field) => field.name === name))
-          .filter((field): field is WorkflowField => !!field && !!values[field.name]?.length)
+          .filter((field): field is Field => !!field && !!values[field.name]?.length)
           .map((field) => parameterSelectionLabel(field, values[field.name], states[field.name])) ?? [];
         view.label.textContent = action.label;
         view.label.hidden = action.kind === 'quick';

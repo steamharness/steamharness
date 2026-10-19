@@ -1,6 +1,6 @@
-import type { WorkflowProjectAccessRule } from '@steamharness/project-info';
+import type { ProjectAccessRule } from '@steamharness/project-info';
 import { t } from '../localization';
-import { projectTypeLabels, type WorkflowProject } from '../workflow-types';
+import { projectTypeLabels, type Project } from '../workflow-types';
 
 export interface ProjectInformationSection {
   title: string;
@@ -8,14 +8,14 @@ export interface ProjectInformationSection {
   rows: { label: string; value: string }[];
 }
 
-function access(rule?: WorkflowProjectAccessRule): string {
+function access(rule?: ProjectAccessRule): string {
   if (rule?.mode === 'all') { return t("All"); }
   if (rule?.mode === 'none') { return t("Not allowed"); }
   if (rule?.mode === 'prefixes') { return `${t("Prefixes")}: ${rule.prefixes.join(', ')}`; }
   return t("Not declared");
 }
 
-export function projectInformation(project: WorkflowProject): ProjectInformationSection[] {
+export function projectInformation(project: Project): ProjectInformationSection[] {
   const info = project.projectInfo;
   const storage = { local: t("Local"), server: t("Server"), both: t("Local and server") };
   const declarations: Record<string, string> = { multilingual: t("Multiple languages"), multiplatform: t("Multiple platforms") };

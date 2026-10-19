@@ -1,8 +1,8 @@
 import { expect, it } from 'vitest';
 import { mediaUrl } from '../web/ui/ui';
-import type { WorkflowAttachment } from '../web/workflow-types';
+import type { Attachment } from '../web/workflow-types';
 
-const file: WorkflowAttachment = {
+const file: Attachment = {
   id: `wf_${'a'.repeat(32)}`, name: 'generated.wav', mimeType: 'audio/wav', kind: 'file', storage: 'local',
   size: 1644, createdAt: '', path: '/storage/generated.wav', previewUrl: `/api/file/wf_${'a'.repeat(32)}?session=capability`,
 };

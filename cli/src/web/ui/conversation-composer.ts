@@ -1,5 +1,5 @@
 import { locale, t } from '../localization';
-import type { ConversationCommandDefinition, ConversationFooterItem, WorkflowParameters, WorkflowParamState, WorkflowParamValues } from '../workflow-types';
+import type { ConversationCommandDefinition, ConversationFooterItem, Parameters, ParamState, ParamValues } from '../workflow-types';
 
 export interface SlashToken { start: number; end: number; query: string }
 export type SlashCommand = { command: string; label: string; description?: string; disabled: boolean } & (
@@ -9,9 +9,9 @@ export type SlashCommand = { command: string; label: string; description?: strin
 interface ComposerState {
   scope: string;
   enabled: boolean;
-  parameters: WorkflowParameters;
-  values: WorkflowParamValues;
-  states: Record<string, WorkflowParamState>;
+  parameters: Parameters;
+  values: ParamValues;
+  states: Record<string, ParamState>;
   footer?: ConversationFooterItem[];
   commands?: ConversationCommandDefinition[];
   commandDisabled?: boolean;
@@ -33,7 +33,7 @@ export function composerSlashToken(text: string, start: number, end = start): Sl
   return { start: start - match[1].length - 1, end: start + (/^[a-z0-9_-]*/i.exec(text.slice(start))?.[0].length ?? 0), query: match[1].toLowerCase() };
 }
 
-export function conversationSlashCommands(parameters: WorkflowParameters, values: WorkflowParamValues, states: Record<string, WorkflowParamState>,
+export function conversationSlashCommands(parameters: Parameters, values: ParamValues, states: Record<string, ParamState>,
   definitions: ConversationCommandDefinition[] = [], commandDisabled = false): SlashCommand[] {
   const commands: SlashCommand[] = [];
   for (const action of parameters.paramLayout?.actions ?? []) {
@@ -61,8 +61,8 @@ export function conversationSlashCommands(parameters: WorkflowParameters, values
   return commands.filter(entry => /^[a-z][a-z0-9_-]*$/.test(entry.command) && commands.filter(other => other.command === entry.command).length === 1);
 }
 
-export function conversationFooterTexts(items: ConversationFooterItem[] | undefined, parameters: WorkflowParameters,
-  values: WorkflowParamValues, states: Record<string, WorkflowParamState>, language: string = locale()): string[] {
+export function conversationFooterTexts(items: ConversationFooterItem[] | undefined, parameters: Parameters,
+  values: ParamValues, states: Record<string, ParamState>, language: string = locale()): string[] {
   const fieldValue = (name: string) => values[name] ?? parameters.fields.find(field => field.name === name)?.defaultValue ?? '';
   const texts: string[] = [];
   for (const item of items ?? []) {

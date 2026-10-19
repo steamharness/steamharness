@@ -1,33 +1,33 @@
 import { readWorkflowCliAuthConfigSync } from "../../auth-config";
-import { WorkflowError } from "../../workflow/errors";
+import { HarnessError } from "../../workflow/errors";
 import { createLLMProvider } from "./factory";
 import {
   startLLMProxyBridge,
   startOpenAIProxyBridge,
-  type WorkflowServerLLMProxyBridge,
-  type WorkflowServerOpenAIProxyBridge,
+  type ServerLLMProxyBridge,
+  type ServerOpenAIProxyBridge,
 } from "./openai-proxy-bridge";
 import type { LLMCallSettings, LLMProvider } from "./types";
 import type { LLMProviderType } from "./factory";
 
 export type {
-  WorkflowServerLLMProxyBridge,
-  WorkflowServerOpenAIProxyBridge,
+  ServerLLMProxyBridge,
+  ServerOpenAIProxyBridge,
 } from "./openai-proxy-bridge";
 
 const CREDENTIAL_REFRESH_WINDOW_MS = 60_000;
-type WorkflowServerLLMSupportedProviderType = Extract<
+type ServerLLMSupportedProviderType = Extract<
   LLMProviderType,
   "openai-responses" | "anthropic"
 >;
 
-export interface WorkflowServerLLMCredential {
+export interface ServerLLMCredential {
   readonly id: string;
   readonly name: string;
   readonly platform: string;
   readonly providerType: LLMProviderType;
   readonly models: readonly string[];
-  readonly modelDetails: readonly WorkflowServerLLMModelDetails[];
+  readonly modelDetails: readonly ServerLLMModelDetails[];
   readonly defaultModelId: string | null;
   createProvider(options: {
     model: string;
@@ -37,13 +37,13 @@ export interface WorkflowServerLLMCredential {
   }): LLMProvider;
   startOpenAIProxyBridge(options?: {
     signal?: AbortSignal;
-  }): Promise<WorkflowServerOpenAIProxyBridge>;
+  }): Promise<ServerOpenAIProxyBridge>;
   startLLMProxyBridge(options?: {
     signal?: AbortSignal;
-  }): Promise<WorkflowServerLLMProxyBridge>;
+  }): Promise<ServerLLMProxyBridge>;
 }
 
-export interface WorkflowServerLLMModelCapabilities {
+export interface ServerLLMModelCapabilities {
   readonly vision: boolean;
   readonly webSearch: boolean;
   readonly reasoning: boolean;
@@ -56,7 +56,7 @@ export interface WorkflowServerLLMModelCapabilities {
  * Only ever a hint: a run that never prices a call keeps working with the
  * fields absent.
  */
-export interface WorkflowServerLLMModelCost {
+export interface ServerLLMModelCost {
   readonly input: number;
   readonly output: number;
   readonly cacheRead: number;
@@ -72,10 +72,10 @@ export interface WorkflowServerLLMModelCost {
  * that predates the catalogue omits all of it and the runtime falls back to
  * its own defaults.
  */
-export interface WorkflowServerLLMModelDetails {
+export interface ServerLLMModelDetails {
   readonly id: string;
   readonly name: string;
-  readonly capabilities: WorkflowServerLLMModelCapabilities;
+  readonly capabilities: ServerLLMModelCapabilities;
   /**
    * The catalogue's own answer, present only when it matched this model.
    *
@@ -88,7 +88,7 @@ export interface WorkflowServerLLMModelDetails {
   readonly input?: readonly string[];
   readonly contextWindow?: number;
   readonly maxTokens?: number;
-  readonly cost?: WorkflowServerLLMModelCost;
+  readonly cost?: ServerLLMModelCost;
   /** pi thinking level → the value sent upstream, `null` when unsupported. */
   readonly thinkingLevelMap?: Readonly<Record<string, string | null>>;
 }
@@ -101,9 +101,9 @@ interface ServerLLMCredentialRecord {
   id: string;
   name: string;
   platform: string;
-  providerType: WorkflowServerLLMSupportedProviderType;
+  providerType: ServerLLMSupportedProviderType;
   models: string[];
-  modelDetails: WorkflowServerLLMModelDetails[];
+  modelDetails: ServerLLMModelDetails[];
   defaultModelId?: string | null;
   proxyPath: string;
   credentialToken: string;
@@ -140,7 +140,7 @@ interface ServerLLMConnection {
 
 export async function getServerLLMCredentials(
   options: GetServerLLMCredentialsOptions = {},
-): Promise<WorkflowServerLLMCredential[]> {
+): Promise<ServerLLMCredential[]> {
   const manager = new ServerLLMCredentialManager(resolveServerLLMConnection(process.env));
   return manager.list(options.signal);
 }
@@ -155,10 +155,10 @@ class ServerLLMCredentialManager {
     private readonly now: () => number = Date.now,
   ) {}
 
-  async list(signal?: AbortSignal): Promise<WorkflowServerLLMCredential[]> {
+  async list(signal?: AbortSignal): Promise<ServerLLMCredential[]> {
     const catalog = await this.refresh(signal);
     if (catalog.credentials.length === 0) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "input_validation",
         message: "This account has no available server AI credentials. Configure the private AI service before using system AI.",
         metadata: {
@@ -170,7 +170,7 @@ class ServerLLMCredentialManager {
     return catalog.credentials.map((record) => this.createCredential(record));
   }
 
-  private createCredential(record: ServerLLMCredentialRecord): WorkflowServerLLMCredential {
+  private createCredential(record: ServerLLMCredentialRecord): ServerLLMCredential {
     const models = Object.freeze([...record.models]);
     const modelDetails = Object.freeze(record.modelDetails.map((detail) => Object.freeze({
       ...detail,
@@ -200,7 +200,7 @@ class ServerLLMCredentialManager {
       }) => {
         const model = options.model.trim();
         if (!models.includes(model)) {
-          throw new WorkflowError({
+          throw new HarnessError({
             type: "input_validation",
             message: `Model "${options.model}" does not belong to AI configuration "${record.name}".`,
             metadata: {
@@ -214,7 +214,7 @@ class ServerLLMCredentialManager {
           });
         }
         if (options.webSearch && !modelDetailsById.get(model)?.capabilities.webSearch) {
-          throw new WorkflowError({
+          throw new HarnessError({
             type: "input_validation",
             message: `Model "${model}" does not support web search.`,
             metadata: {
@@ -237,7 +237,7 @@ class ServerLLMCredentialManager {
       },
       startOpenAIProxyBridge: async (options: { signal?: AbortSignal } = {}) => {
         if (record.providerType !== "openai-responses") {
-          throw new WorkflowError({
+          throw new HarnessError({
             type: "input_validation",
             message: `AI configuration "${record.name}" does not support the OpenAI Responses proxy bridge.`,
             metadata: {
@@ -275,7 +275,7 @@ class ServerLLMCredentialManager {
 
   private createCredentialFetch(
     credentialId: string,
-    providerType: WorkflowServerLLMSupportedProviderType,
+    providerType: ServerLLMSupportedProviderType,
   ): typeof fetch {
     return async (input, init) => {
       const token = await this.readCredentialToken(credentialId, init?.signal ?? undefined);
@@ -312,7 +312,7 @@ class ServerLLMCredentialManager {
 
     const refreshed = this.findCredential(credentialId);
     if (!refreshed) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "provider_call",
         message: "The selected server AI credential is no longer valid. Select a Provider again.",
         metadata: {
@@ -322,7 +322,7 @@ class ServerLLMCredentialManager {
       });
     }
     if (readExpiry(refreshed.expiresAt) <= this.now()) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "provider_call",
         message: "The server AI credential expired and could not be refreshed.",
         metadata: {
@@ -361,7 +361,7 @@ class ServerLLMCredentialManager {
         },
       );
     } catch (error) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "provider_call",
         message: `Could not connect to the private AI service to load credentials: ${this.connection.serverUrl}`,
         metadata: {
@@ -375,7 +375,7 @@ class ServerLLMCredentialManager {
 
     const payload = await readApiResponse<ServerLLMCredentialCatalog>(response);
     if (response.status === 404) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "input_validation",
         message: "System AI is unavailable on this public Server. Configure the private AI service URL and API key.",
         metadata: {
@@ -385,7 +385,7 @@ class ServerLLMCredentialManager {
       });
     }
     if (!response.ok || payload.errCode !== 0 || !payload.data) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "provider_call",
         message: payload.errMessage || `The private AI service credential request failed (HTTP ${response.status}).`,
         metadata: {
@@ -422,7 +422,7 @@ function resolveServerLLMConnection(env: NodeJS.ProcessEnv): ServerLLMConnection
     return normalizeConnection(saved.aiServerUrl, saved.aiApiKey);
   }
 
-  throw new WorkflowError({
+  throw new HarnessError({
     type: "input_validation",
     message: "System AI is unavailable. Configure the private AI service URL and API key.",
     metadata: {
@@ -441,7 +441,7 @@ function readConnectionPair(
   const token = rawToken?.trim() ?? "";
   if (!serverUrl && !token) return undefined;
   if (!serverUrl || !token) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `${names} must be configured together.`,
       metadata: {
@@ -457,21 +457,21 @@ function normalizeConnection(serverUrl: string, token: string): ServerLLMConnect
   try {
     parsed = new URL(serverUrl);
   } catch {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "The SteamHarness Server URL is invalid.",
       metadata: { steamHarnessI18n: createI18nDescriptor("workflowServerUrlInvalid") },
     });
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "The SteamHarness Server URL must use HTTP or HTTPS.",
       metadata: { steamHarnessI18n: createI18nDescriptor("workflowServerUrlProtocolInvalid") },
     });
   }
   if (parsed.username || parsed.password || parsed.search || parsed.hash) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "The SteamHarness Server URL must not contain credentials, query parameters, or fragments.",
       metadata: { steamHarnessI18n: createI18nDescriptor("workflowServerUrlInvalid") },
@@ -537,11 +537,11 @@ function validateCredentialRecord(value: unknown): ServerLLMCredentialRecord {
 function validateModelDetails(
   value: unknown,
   models: string[],
-): WorkflowServerLLMModelDetails[] {
+): ServerLLMModelDetails[] {
   const details = value === undefined ? [] : value;
   if (!Array.isArray(details)) throw protocolError();
   const availableModels = new Set(models);
-  const byId = new Map<string, WorkflowServerLLMModelDetails>();
+  const byId = new Map<string, ServerLLMModelDetails>();
   for (const detail of details) {
     if (!isRecord(detail) || typeof detail.id !== "string" || !availableModels.has(detail.id) ||
       typeof detail.name !== "string" || detail.name.trim() === "" || byId.has(detail.id) ||
@@ -619,7 +619,7 @@ function readOptionalPositiveInteger(value: unknown): number | undefined {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : undefined;
 }
 
-function readOptionalModelCost(value: unknown): WorkflowServerLLMModelCost | undefined {
+function readOptionalModelCost(value: unknown): ServerLLMModelCost | undefined {
   if (!isRecord(value)) return undefined;
   const fields = [value.input, value.output, value.cacheRead, value.cacheWrite];
   if (!fields.every((field) => typeof field === "number" && Number.isFinite(field) && field >= 0)) {
@@ -687,8 +687,8 @@ function readDefaultModelId(
   return models.find((model) => model.toLowerCase() === normalized) ?? null;
 }
 
-function protocolError(): WorkflowError {
-  return new WorkflowError({
+function protocolError(): HarnessError {
+  return new HarnessError({
     type: "provider_call",
     message: "The private AI service returned an invalid AI credential catalog.",
     metadata: {

@@ -1,6 +1,6 @@
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
-import type { WorkflowAttachment } from '../workflow-types';
+import type { Attachment } from '../workflow-types';
 
 export const iconHtml = (name: string): string => `<span class="codicon codicon-${name}" aria-hidden="true"></span>`;
 export function updateIcon(root: HTMLElement, name?: string): void {
@@ -13,14 +13,14 @@ export function updateIcon(root: HTMLElement, name?: string): void {
   } else { root.innerHTML = iconHtml(name); }
 }
 export const escapeHtml = (text: string): string => text.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
-export function managedFileForUrl(url: string, files: WorkflowAttachment[]): WorkflowAttachment | undefined {
+export function managedFileForUrl(url: string, files: Attachment[]): Attachment | undefined {
   let value = url;
   try { value = decodeURIComponent(url); } catch { /* Invalid escaping is left to the Markdown sanitizer. */ }
   const id = value.match(/(?:^|[/?#])(wf_[a-f0-9]{32})(?:$|[/?#])/i)?.[1];
   return files.find((file) => file.id === id || value === file.path || value === file.url || value === `file://${file.path}`);
 }
 
-export function mediaUrl(source: string, kind: 'audio' | 'video', files: WorkflowAttachment[], baseUrl: string): string | undefined {
+export function mediaUrl(source: string, kind: 'audio' | 'video', files: Attachment[], baseUrl: string): string | undefined {
   const file = managedFileForUrl(source, files);
   const preview = file?.previewUrl ?? source;
   if (new RegExp(`^data:${kind}/[a-z0-9.+-]+;base64,`, 'i').test(preview)) { return preview; }
@@ -31,7 +31,7 @@ export function mediaUrl(source: string, kind: 'audio' | 'video', files: Workflo
   return undefined;
 }
 
-export function markdownHtml(text: string, files: WorkflowAttachment[] = []): string {
+export function markdownHtml(text: string, files: Attachment[] = []): string {
   const renderer = new marked.Renderer();
   renderer.image = (token) => {
     const file = managedFileForUrl(token.href, files);

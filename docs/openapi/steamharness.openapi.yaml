@@ -190,7 +190,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/AuthSessionStateResponse"
         "401":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/auth/login:
     post:
       tags:
@@ -218,11 +218,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/AuthSessionStateResponse"
         "400":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "401":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "503":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/auth/logout:
     post:
       tags:
@@ -257,9 +257,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowAccountInvitationResponse"
+                $ref: "#/components/schemas/AccountInvitationResponse"
         "404":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/auth/invitations/{token}/accept:
     post:
       tags:
@@ -288,13 +288,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/AuthSessionStateResponse"
         "400":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "404":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "409":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "410":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/auth/device/start:
     post:
       tags:
@@ -319,9 +319,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/DeviceFlowStartResponse"
         "429":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "503":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/auth/device/token:
     post:
       tags:
@@ -347,17 +347,17 @@ paths:
               schema:
                 $ref: "#/components/schemas/DeviceFlowTokenResponse"
         "401":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "409":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "428":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "429":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "503":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/auth/device/approve:
     post:
       tags:
@@ -365,7 +365,7 @@ paths:
       summary: 在浏览器中批准一次 device 登录
       operationId: approveDeviceFlow
       security:
-        - WorkflowSessionCookie: []
+        - SessionCookie: []
       requestBody:
         required: true
         content:
@@ -380,15 +380,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/DeviceApprovalResponse"
         "400":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "401":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "404":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "409":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "429":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/auth/device/deny:
     post:
       tags:
@@ -396,7 +396,7 @@ paths:
       summary: 在浏览器中拒绝一次 device 登录
       operationId: denyDeviceFlow
       security:
-        - WorkflowSessionCookie: []
+        - SessionCookie: []
       requestBody:
         required: true
         content:
@@ -411,13 +411,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/DeviceApprovalResponse"
         "400":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "401":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "404":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "429":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/auth/me:
     get:
       tags:
@@ -425,7 +425,7 @@ paths:
       summary: 读取当前账号资料
       operationId: getCurrentAccount
       security:
-        - WorkflowSessionCookie: []
+        - SessionCookie: []
         - BearerAuth: []
       responses:
         "200":
@@ -434,16 +434,16 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowMeResponse"
+                $ref: "#/components/schemas/MeResponse"
         "401":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
     patch:
       tags:
         - Auth & Accounts
       summary: 更新当前账号资料
       operationId: updateCurrentAccount
       security:
-        - WorkflowSessionCookie: []
+        - SessionCookie: []
         - BearerAuth: []
       requestBody:
         required: true
@@ -457,9 +457,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowUserProfileResponse"
+                $ref: "#/components/schemas/UserProfileResponse"
         "401":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/auth/api-keys:
     get:
       tags:
@@ -467,7 +467,7 @@ paths:
       summary: 列出当前可管理的 API Key
       operationId: listAccountApiKeys
       security:
-        - WorkflowSessionCookie: []
+        - SessionCookie: []
         - BearerAuth: []
       responses:
         "200":
@@ -475,18 +475,18 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowApiKeyListResponse"
+                $ref: "#/components/schemas/ApiKeyListResponse"
         "401":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
     post:
       tags:
         - Auth & Accounts
       summary: 创建新的 API Key
       operationId: createAccountApiKey
       security:
-        - WorkflowSessionCookie: []
+        - SessionCookie: []
         - BearerAuth: []
       requestBody:
         required: true
@@ -500,15 +500,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowApiKeyCreateResponse"
+                $ref: "#/components/schemas/ApiKeyCreateResponse"
         "400":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "401":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "429":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/auth/api-keys/{apiKeyId}:
     delete:
       tags:
@@ -516,7 +516,7 @@ paths:
       summary: 撤销一个 API Key
       operationId: revokeAccountApiKey
       security:
-        - WorkflowSessionCookie: []
+        - SessionCookie: []
         - BearerAuth: []
       parameters:
         - $ref: "#/components/parameters/ApiKeyId"
@@ -526,11 +526,11 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowApiKeyRevokeResponse"
+                $ref: "#/components/schemas/ApiKeyRevokeResponse"
         "401":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/auth/admin/permissions:
     get:
       tags:
@@ -538,7 +538,7 @@ paths:
       summary: 列出权限分组与定义
       operationId: listAccountPermissionGroups
       security:
-        - WorkflowSessionCookie: []
+        - SessionCookie: []
         - BearerAuth: []
       responses:
         "200":
@@ -546,11 +546,11 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowPermissionGroupListResponse"
+                $ref: "#/components/schemas/PermissionGroupListResponse"
         "401":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/auth/admin/roles:
     get:
       tags:
@@ -558,7 +558,7 @@ paths:
       summary: 列出所有全局角色
       operationId: listAccountRoles
       security:
-        - WorkflowSessionCookie: []
+        - SessionCookie: []
         - BearerAuth: []
       responses:
         "200":
@@ -566,18 +566,18 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowRoleListResponse"
+                $ref: "#/components/schemas/RoleListResponse"
         "401":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
     post:
       tags:
         - Auth & Accounts
       summary: 创建自定义角色
       operationId: createAccountRole
       security:
-        - WorkflowSessionCookie: []
+        - SessionCookie: []
         - BearerAuth: []
       requestBody:
         required: true
@@ -591,13 +591,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowRoleResponse"
+                $ref: "#/components/schemas/RoleResponse"
         "400":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "401":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/auth/admin/roles/{roleId}:
     patch:
       tags:
@@ -605,7 +605,7 @@ paths:
       summary: 更新角色名称、说明或权限
       operationId: updateAccountRole
       security:
-        - WorkflowSessionCookie: []
+        - SessionCookie: []
         - BearerAuth: []
       parameters:
         - $ref: "#/components/parameters/RoleId"
@@ -621,20 +621,20 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowRoleResponse"
+                $ref: "#/components/schemas/RoleResponse"
         "400":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "401":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
     delete:
       tags:
         - Auth & Accounts
       summary: 删除一个自定义角色
       operationId: deleteAccountRole
       security:
-        - WorkflowSessionCookie: []
+        - SessionCookie: []
         - BearerAuth: []
       parameters:
         - $ref: "#/components/parameters/RoleId"
@@ -646,11 +646,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/DeletedResponse"
         "400":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "401":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/auth/admin/users:
     get:
       tags:
@@ -658,7 +658,7 @@ paths:
       summary: 列出账号和聚合权限摘要
       operationId: listAccountUsers
       security:
-        - WorkflowSessionCookie: []
+        - SessionCookie: []
         - BearerAuth: []
       parameters:
         - name: search
@@ -693,11 +693,11 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowUserListResponse"
+                $ref: "#/components/schemas/UserListResponse"
         "401":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/auth/admin/users/invitations:
     post:
       tags:
@@ -705,7 +705,7 @@ paths:
       summary: 邀请一个新用户
       operationId: inviteAccountUser
       security:
-        - WorkflowSessionCookie: []
+        - SessionCookie: []
         - BearerAuth: []
       requestBody:
         required: true
@@ -719,13 +719,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowUserInvitationResponse"
+                $ref: "#/components/schemas/UserInvitationResponse"
         "400":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "401":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/auth/admin/users/invitation-link/{userId}:
     get:
       tags:
@@ -733,7 +733,7 @@ paths:
       summary: 为已有受邀用户重新生成邀请链接
       operationId: regenerateAccountInvitationLink
       security:
-        - WorkflowSessionCookie: []
+        - SessionCookie: []
         - BearerAuth: []
       parameters:
         - $ref: "#/components/parameters/UserId"
@@ -743,13 +743,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowAccountInvitationLinkResponse"
+                $ref: "#/components/schemas/AccountInvitationLinkResponse"
         "401":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "404":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/auth/admin/users/{userId}:
     patch:
       tags:
@@ -757,7 +757,7 @@ paths:
       summary: 更新用户邮箱、显示名称、临时密码或启停状态
       operationId: updateAccountUser
       security:
-        - WorkflowSessionCookie: []
+        - SessionCookie: []
         - BearerAuth: []
       parameters:
         - $ref: "#/components/parameters/UserId"
@@ -773,13 +773,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowUserProfileResponse"
+                $ref: "#/components/schemas/UserProfileResponse"
         "400":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "401":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/auth/admin/users/{userId}/roles:
     put:
       tags:
@@ -787,7 +787,7 @@ paths:
       summary: 覆盖指定用户的角色集合
       operationId: replaceAccountUserRoles
       security:
-        - WorkflowSessionCookie: []
+        - SessionCookie: []
         - BearerAuth: []
       parameters:
         - $ref: "#/components/parameters/UserId"
@@ -803,13 +803,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowUserProfileResponse"
+                $ref: "#/components/schemas/UserProfileResponse"
         "400":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "401":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/workflows:
     get:
       tags:
@@ -822,7 +822,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowSummaryListResponse"
+                $ref: "#/components/schemas/SummaryListResponse"
     post:
       tags:
         - Admin Workflows
@@ -867,15 +867,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowProjectCreateResultResponse"
+                $ref: "#/components/schemas/ProjectCreateResultResponse"
         "400":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "401":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "409":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/project-storage:
     post:
       tags:
@@ -969,7 +969,7 @@ paths:
             绑定、conversationId、key、value、expectedRevision 或 knowledge-mutation
             输入无效。
         "401":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "403":
           description: 调用者无权读取消费项目或写入其数据、关联授权不足，或项目声明不允许服务器存储。
           content:
@@ -1006,7 +1006,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowTokenUsagePageResponse"
+                $ref: "#/components/schemas/TokenUsagePageResponse"
         "501":
           description: 当前 storage 不支持 PostgreSQL KV inspection。
   /api/audit-events:
@@ -1063,14 +1063,14 @@ paths:
         - name: outcome
           in: query
           schema:
-            $ref: "#/components/schemas/WorkflowAuditOutcome"
+            $ref: "#/components/schemas/AuditOutcome"
       responses:
         "200":
           description: 审计事件分页，结构化上下文已脱敏。
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowAuditEventPageResponse"
+                $ref: "#/components/schemas/AuditEventPageResponse"
         "403":
           description: 当前 principal 缺少 `audit.read`。
   /api/workflows/{workflowName}/init:
@@ -1080,7 +1080,7 @@ paths:
       summary: 从文件初始化 workflow
       operationId: initWorkflow
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
       requestBody:
         required: true
         content:
@@ -1091,7 +1091,7 @@ paths:
                 files:
                   type: array
                   items:
-                    $ref: "#/components/schemas/WorkflowSourceFileInput"
+                    $ref: "#/components/schemas/SourceFileInput"
               required:
                 - files
             example:
@@ -1114,16 +1114,16 @@ paths:
       summary: 查询最新服务器准备任务
       operationId: getLatestWorkflowPreparation
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
       responses:
         "200":
           description: 最新准备任务。
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowPreparationJobResponse"
+                $ref: "#/components/schemas/PreparationJobResponse"
         "404":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/workflows/{workflowName}/preparations/{jobId}:
     get:
       tags:
@@ -1131,7 +1131,7 @@ paths:
       summary: 查询服务器准备任务
       operationId: getWorkflowPreparation
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - name: jobId
           in: path
           required: true
@@ -1144,9 +1144,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowPreparationJobResponse"
+                $ref: "#/components/schemas/PreparationJobResponse"
         "404":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/workflows/{workflowName}/package:
     post:
       tags:
@@ -1154,7 +1154,7 @@ paths:
       summary: 上传 workflow 压缩包
       operationId: uploadWorkflowPackage
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - name: fileName
           in: query
           schema:
@@ -1180,7 +1180,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowPreparationJobResponse"
+                $ref: "#/components/schemas/PreparationJobResponse"
   /api/workflows/{workflowName}/files:
     get:
       tags:
@@ -1188,7 +1188,7 @@ paths:
       summary: 读取 workflow 源文件
       operationId: getWorkflowFiles
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - $ref: "#/components/parameters/TargetQuery"
         - name: includeBinary
           in: query
@@ -1211,7 +1211,7 @@ paths:
       summary: 上传项目文件
       operationId: uploadWorkflowFile
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - name: fileName
           in: query
           schema:
@@ -1247,7 +1247,7 @@ paths:
                       data:
                         type: array
                         items:
-                          $ref: "#/components/schemas/WorkflowManagedFileReference"
+                          $ref: "#/components/schemas/ManagedFileReference"
                     required:
                       - data
   /api/workflows/{workflowName}/project-card-image:
@@ -1260,7 +1260,7 @@ paths:
         Server 校验格式与大小后按内容哈希保存，并返回公开、不可变的图片 URL。
       operationId: uploadWorkflowProjectCardImage
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
       requestBody:
         required: true
         content:
@@ -1274,19 +1274,19 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowProjectCardImageResponse"
+                $ref: "#/components/schemas/ProjectCardImageResponse"
         "400":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "401":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "404":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "413":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "415":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/workflows/{workflowName}/project-card:
     put:
       tags:
@@ -1299,7 +1299,7 @@ paths:
         不能通过本接口修改。
       operationId: updateWorkflowProjectCard
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
       requestBody:
         required: true
         content:
@@ -1319,15 +1319,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProjectCardMetadataResponse"
         "400":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "401":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "404":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "501":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/workflows/{workflowName}/source-files:
     get:
       tags:
@@ -1337,7 +1337,7 @@ paths:
         响应后为实际返回的精确版本累加一次下载量；HEAD、失败和中断响应不计数。
       operationId: getWorkflowDownloadableSourceFiles
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - name: target
           in: query
           description: 精确已发布版本或 latest，不接受 draft。
@@ -1372,7 +1372,7 @@ paths:
               type: object
               properties:
                 manifest:
-                  $ref: "#/components/schemas/WorkflowProjectGroupManifestV1"
+                  $ref: "#/components/schemas/ProjectGroupManifestV1"
                 releaseLog:
                   type: string
               required:
@@ -1383,9 +1383,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowDeploymentResponse"
+                $ref: "#/components/schemas/DeploymentResponse"
         "409":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/deployments/{deploymentId}:
     get:
       tags:
@@ -1393,16 +1393,16 @@ paths:
       summary: 查询项目组部署进度
       operationId: getWorkflowProjectGroupDeployment
       parameters:
-        - $ref: "#/components/parameters/WorkflowDeploymentId"
+        - $ref: "#/components/parameters/DeploymentId"
       responses:
         "200":
           description: 部署计划、项目级阶段和已发布版本。
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowDeploymentResponse"
+                $ref: "#/components/schemas/DeploymentResponse"
         "404":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/deployments/{deploymentId}/package:
     post:
       tags:
@@ -1413,7 +1413,7 @@ paths:
         和源码哈希；中断后的 `preparing` 部署可使用完整压缩包重新提交。
       operationId: uploadWorkflowProjectGroupPackage
       parameters:
-        - $ref: "#/components/parameters/WorkflowDeploymentId"
+        - $ref: "#/components/parameters/DeploymentId"
         - name: fileName
           in: query
           schema:
@@ -1432,11 +1432,11 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowDeploymentResponse"
+                $ref: "#/components/schemas/DeploymentResponse"
         "400":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "409":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/deployments/{deploymentId}/publish:
     post:
       tags:
@@ -1447,16 +1447,16 @@ paths:
         所有依赖成功、双方关系仍确认且 dependency lock 固化后，才发布根项目快照。
       operationId: publishWorkflowProjectGroup
       parameters:
-        - $ref: "#/components/parameters/WorkflowDeploymentId"
+        - $ref: "#/components/parameters/DeploymentId"
       responses:
         "200":
           description: 项目组发布状态。
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowDeploymentResponse"
+                $ref: "#/components/schemas/DeploymentResponse"
         "409":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/workflows/{workflowName}/dependencies:
     get:
       tags:
@@ -1464,7 +1464,7 @@ paths:
       summary: 查询精确版本的项目依赖状态
       operationId: getWorkflowProjectDependencies
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - name: target
           in: query
           description: 精确版本、`latest` 或 `draft`；省略时读取 `latest`。
@@ -1477,7 +1477,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowProjectDependencyStatusResponse"
+                $ref: "#/components/schemas/ProjectDependencyStatusResponse"
   /api/workflows/{workflowName}/project-group-download:
     get:
       tags:
@@ -1492,7 +1492,7 @@ paths:
         同一响应内去重，跳过的依赖不计数。HEAD、失败和中断响应不计数。
       operationId: downloadWorkflowProjectGroup
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - name: target
           in: query
           description: 已发布精确版本或 `latest`；不接受 `draft`。
@@ -1505,11 +1505,11 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowProjectGroupDownloadResponse"
+                $ref: "#/components/schemas/ProjectGroupDownloadResponse"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "409":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/workflows/{projectId}/related-projects:
     get:
       tags:
@@ -1525,7 +1525,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowRelatedProjectListResponse"
+                $ref: "#/components/schemas/RelatedProjectListResponse"
   /api/workflows/{projectId}/related-projects/{alias}:
     put:
       tags:
@@ -1544,20 +1544,20 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/WorkflowRelatedProjectUpdateRequest"
+              $ref: "#/components/schemas/RelatedProjectUpdateRequest"
       responses:
         "200":
           description: 更新后的关联项目状态；包含双方确认结果。
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowRelatedProjectListResponse"
+                $ref: "#/components/schemas/RelatedProjectListResponse"
         "400":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "409":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
     delete:
       tags:
         - Admin Workflows
@@ -1573,7 +1573,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowRelatedProjectRemoveResponse"
+                $ref: "#/components/schemas/RelatedProjectRemoveResponse"
   /api/workflows/{workflowName}/source-access-requests:
     get:
       tags:
@@ -1581,14 +1581,14 @@ paths:
       summary: 列出源码访问申请与授权
       operationId: listWorkflowSourceAccessRequests
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
       responses:
         "200":
           description: 项目的申请记录和有效或已撤销能力授权。
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowSourceAccessStateResponse"
+                $ref: "#/components/schemas/SourceAccessStateResponse"
   /api/workflows/{workflowName}/source-access-requests/{requestId}:
     patch:
       tags:
@@ -1596,7 +1596,7 @@ paths:
       summary: 审批源码访问申请
       operationId: resolveWorkflowSourceAccessRequest
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - name: requestId
           in: path
           required: true
@@ -1623,9 +1623,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowProjectAccessRequestResponse"
+                $ref: "#/components/schemas/ProjectAccessRequestResponse"
         "404":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/workflows/{workflowName}/source-capabilities/{userId}:
     delete:
       tags:
@@ -1633,7 +1633,7 @@ paths:
       summary: 撤销用户的项目源码下载能力
       operationId: revokeWorkflowSourceCapability
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - name: userId
           in: path
           required: true
@@ -1645,7 +1645,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowRevokedResultResponse"
+                $ref: "#/components/schemas/RevokedResultResponse"
   /api/project-source-access/{token}:
     get:
       tags:
@@ -1664,9 +1664,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowSourceAccessLinkResponse"
+                $ref: "#/components/schemas/SourceAccessLinkResponse"
         "410":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/project-source-access/{token}/requests:
     post:
       tags:
@@ -1698,9 +1698,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowProjectAccessRequestResponse"
+                $ref: "#/components/schemas/ProjectAccessRequestResponse"
         "410":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /project-card-images/{workflowId}/{fileName}:
     get:
       tags:
@@ -1842,7 +1842,7 @@ paths:
         参数化项目第一次读取时会原子创建“默认配置”；无参数项目返回空配置列表。
       operationId: getKanbanWorkspace
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - $ref: "#/components/parameters/TargetQuery"
       responses:
         "200":
@@ -1852,7 +1852,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/KanbanWorkspaceResultResponse"
         "409":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/workflows/{workflowName}/kanban/bridge:
     post:
       tags:
@@ -1868,7 +1868,7 @@ paths:
         只接受 fileId，拒绝其它项目或带 conversation 作用域的文件。readFile 返回 file 与 base64。
       operationId: invokeKanbanBridge
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
       requestBody:
         required: true
         content:
@@ -1883,15 +1883,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/KanbanBridgeResultResponse"
         "400":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "404":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "409":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "500":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/workflows/{workflowName}/kanban/related-project-revisions:
     get:
       tags:
@@ -1904,7 +1904,7 @@ paths:
         KV key、scope 或数据库路径。
       operationId: streamKanbanRelatedProjectRevisions
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - $ref: "#/components/parameters/TargetQuery"
       responses:
         "200":
@@ -1923,11 +1923,11 @@ paths:
                 event: heartbeat
                 data: {"timestamp":"2026-08-04T02:00:00.000Z"}
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "404":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "409":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/workflows/{workflowName}/kanban/previews/{capability}/{nonce}/{target}/{assetPath}:
     get:
       tags:
@@ -1942,7 +1942,7 @@ paths:
       security: []
       operationId: getKanbanPreviewAsset
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - name: capability
           in: path
           required: true
@@ -1984,7 +1984,7 @@ paths:
             application/javascript: {}
             application/octet-stream: {}
         "404":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/workflows/{workflowName}/kanban/configurations:
     post:
       tags:
@@ -1992,7 +1992,7 @@ paths:
       summary: 新建或复制 Kanban 配置
       operationId: createKanbanConfiguration
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
       requestBody:
         required: false
         content:
@@ -2007,7 +2007,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/KanbanWorkspaceStateResponse"
         "409":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/workflows/{workflowName}/kanban/configurations/{configurationId}:
     patch:
       tags:
@@ -2015,7 +2015,7 @@ paths:
       summary: 重命名 Kanban 配置或保存参数值
       operationId: updateKanbanConfiguration
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - $ref: "#/components/parameters/KanbanConfigurationId"
       requestBody:
         required: true
@@ -2031,9 +2031,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/KanbanWorkspaceStateResponse"
         "400":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "404":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
     delete:
       tags:
         - Admin Workflows
@@ -2041,7 +2041,7 @@ paths:
       description: 最后一个配置不可删除；删除活动配置后会选择剩余的第一个配置。
       operationId: deleteKanbanConfiguration
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - $ref: "#/components/parameters/KanbanConfigurationId"
         - $ref: "#/components/parameters/TargetQuery"
       responses:
@@ -2052,7 +2052,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/KanbanWorkspaceStateResponse"
         "409":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/workflows/{workflowName}/kanban/active-configuration:
     put:
       tags:
@@ -2060,7 +2060,7 @@ paths:
       summary: 切换活动 Kanban 配置
       operationId: selectKanbanConfiguration
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
       requestBody:
         required: true
         content:
@@ -2075,7 +2075,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/KanbanWorkspaceStateResponse"
         "404":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/workflows/{workflowName}/draft/files:
     put:
       tags:
@@ -2083,7 +2083,7 @@ paths:
       summary: 保存 server draft 文件
       operationId: saveWorkflowDraftFiles
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
       requestBody:
         required: true
         content:
@@ -2094,7 +2094,7 @@ paths:
                 files:
                   type: array
                   items:
-                    $ref: "#/components/schemas/WorkflowSourceFileInput"
+                    $ref: "#/components/schemas/SourceFileInput"
                 removePaths:
                   type: array
                   items:
@@ -2115,7 +2115,7 @@ paths:
       summary: 克隆 workflow
       operationId: cloneWorkflow
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
       requestBody:
         required: true
         content:
@@ -2151,7 +2151,7 @@ paths:
         展示声明和平台只用于展示，不限制源码上传或下载。
       operationId: updateWorkflowProjectInfo
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
       requestBody:
         required: true
         content:
@@ -2173,13 +2173,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowProjectInfoUpdateResultResponse"
+                $ref: "#/components/schemas/ProjectInfoUpdateResultResponse"
         "400":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "404":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/workflows/{workflowName}/info:
     patch:
       tags:
@@ -2187,7 +2187,7 @@ paths:
       summary: 更新 workflow 显示信息
       operationId: updateWorkflowInfo
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
       requestBody:
         required: true
         content:
@@ -2217,7 +2217,7 @@ paths:
       summary: 删除 workflow
       operationId: deleteWorkflow
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
       responses:
         "200":
           description: 删除结果。
@@ -2233,7 +2233,7 @@ paths:
       description: 以 draft 的 package 版本发布不可变源码快照并更新 latest。重复版本返回 409，不安装、构建或加载项目代码。
       operationId: publishWorkflow
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
       requestBody:
         required: false
         content:
@@ -2260,7 +2260,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/PublishResultResponse"
         "409":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/workflows/{workflowName}/members:
     get:
       tags:
@@ -2268,16 +2268,16 @@ paths:
       summary: 列出项目成员
       operationId: listWorkflowProjectMembers
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
       responses:
         "200":
           description: 当前项目的 owner/manager/writer/viewer 成员列表。
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowProjectMemberListResponse"
+                $ref: "#/components/schemas/ProjectMemberListResponse"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/workflows/{workflowName}/members/{userId}:
     put:
       tags:
@@ -2288,7 +2288,7 @@ paths:
         manager 也不能把其它成员提升为 owner。
       operationId: setWorkflowProjectMember
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - $ref: "#/components/parameters/UserId"
       requestBody:
         required: true
@@ -2298,7 +2298,7 @@ paths:
               type: object
               properties:
                 role:
-                  $ref: "#/components/schemas/WorkflowProjectRole"
+                  $ref: "#/components/schemas/ProjectRole"
               required:
                 - role
             example:
@@ -2309,20 +2309,20 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowProjectMemberResponse"
+                $ref: "#/components/schemas/ProjectMemberResponse"
         "400":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "409":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
     delete:
       tags:
         - Admin Workflows
       summary: 删除项目成员
       operationId: deleteWorkflowProjectMember
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - $ref: "#/components/parameters/UserId"
       responses:
         "200":
@@ -2330,11 +2330,11 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowRemovedResponse"
+                $ref: "#/components/schemas/RemovedResponse"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "409":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/workflows/{workflowName}/invitations:
     get:
       tags:
@@ -2342,16 +2342,16 @@ paths:
       summary: 列出项目邀请
       operationId: listWorkflowProjectInvitations
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
       responses:
         "200":
           description: 项目下全部邀请记录，包含 pending / accepted / revoked / expired。
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowProjectInvitationListResponse"
+                $ref: "#/components/schemas/ProjectInvitationListResponse"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
     post:
       tags:
         - Admin Workflows
@@ -2361,7 +2361,7 @@ paths:
         API 仅返回 token；邀请人需要自行拼接 `${origin}/invite/${token}` 并把链接发给同事。
       operationId: createWorkflowProjectInvitation
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
       requestBody:
         required: true
         content:
@@ -2370,7 +2370,7 @@ paths:
               type: object
               properties:
                 role:
-                  $ref: "#/components/schemas/WorkflowInvitationRole"
+                  $ref: "#/components/schemas/InvitationRole"
               required:
                 - role
             example:
@@ -2381,11 +2381,11 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowProjectInvitationCreateResponse"
+                $ref: "#/components/schemas/ProjectInvitationCreateResponse"
         "400":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/workflows/{workflowName}/invitations/{invitationId}:
     delete:
       tags:
@@ -2393,7 +2393,7 @@ paths:
       summary: 撤销未接受的邀请
       operationId: revokeWorkflowProjectInvitation
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - name: invitationId
           in: path
           required: true
@@ -2405,9 +2405,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowRemovedResponse"
+                $ref: "#/components/schemas/RemovedResponse"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "409":
           description: 邀请已接受或已撤销，无法再撤销。
           content:
@@ -2435,9 +2435,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowProjectInvitationLookupResponse"
+                $ref: "#/components/schemas/ProjectInvitationLookupResponse"
         "404":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/invitations/{token}/accept:
     post:
       tags:
@@ -2459,13 +2459,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowProjectInvitationAcceptResponse"
+                $ref: "#/components/schemas/ProjectInvitationAcceptResponse"
         "401":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "404":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "409":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "410":
           description: 邀请已过期或被撤销。
           content:
@@ -2479,7 +2479,7 @@ paths:
       summary: 更新项目可见性
       operationId: updateWorkflowProjectVisibility
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
       requestBody:
         required: true
         content:
@@ -2488,7 +2488,7 @@ paths:
               type: object
               properties:
                 visibility:
-                  $ref: "#/components/schemas/WorkflowVisibility"
+                  $ref: "#/components/schemas/Visibility"
               required:
                 - visibility
             example:
@@ -2499,11 +2499,11 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowSummaryResponse"
+                $ref: "#/components/schemas/SummaryResponse"
         "400":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/workflows/{workflowName}/versions:
     get:
       tags:
@@ -2511,14 +2511,14 @@ paths:
       summary: 列出 workflow 版本
       operationId: listWorkflowVersions
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
       responses:
         "200":
           description: 版本列表。
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowVersionSummaryResponse"
+                $ref: "#/components/schemas/VersionSummaryResponse"
   /api/workflows/{workflowName}/data-summary:
     get:
       tags:
@@ -2527,14 +2527,14 @@ paths:
       description: 要求登录、项目读取权限及允许访问服务器数据的存储声明。汇总完整项目数据，不返回条目值、文档正文或预览。
       operationId: getWorkflowProjectDataSummary
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
       responses:
         "200":
           description: 项目 KV 和知识库的完整统计。
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowProjectDataSummaryResponse"
+                $ref: "#/components/schemas/ProjectDataSummaryResponse"
   /api/workflows/{workflowName}/kv:
     get:
       tags:
@@ -2542,7 +2542,7 @@ paths:
       summary: 列出项目 KV
       operationId: listWorkflowKVEntries
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - name: pageSize
           in: query
           schema:
@@ -2572,7 +2572,7 @@ paths:
         - name: valueType
           in: query
           schema:
-            $ref: "#/components/schemas/WorkflowKVEntryValueType"
+            $ref: "#/components/schemas/KVEntryValueType"
         - name: conversationId
           in: query
           schema:
@@ -2588,7 +2588,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowKVEntryPageResponse"
+                $ref: "#/components/schemas/KVEntryPageResponse"
   /api/workflows/{workflowName}/kv/entry:
     get:
       tags:
@@ -2596,7 +2596,7 @@ paths:
       summary: 读取单条项目 KV
       operationId: getWorkflowKVEntry
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - name: scope
           in: query
           required: true
@@ -2621,7 +2621,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowKVEntryDetailResponse"
+                $ref: "#/components/schemas/KVEntryDetailResponse"
         "404":
           description: KV 不存在。
     delete:
@@ -2635,7 +2635,7 @@ paths:
         需要项目可管理权限与 `kv.manage`；条目不存在时返回 404。
       operationId: deleteWorkflowKVEntry
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - name: scope
           in: query
           required: true
@@ -2688,7 +2688,7 @@ paths:
       summary: 列出项目知识库文档
       operationId: listKnowledgeDocuments
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - name: pageSize
           in: query
           description: 每页文档摘要数量，默认 20，最大 100。
@@ -2708,7 +2708,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowKnowledgeDocumentPageResponse"
+                $ref: "#/components/schemas/KnowledgeDocumentPageResponse"
         "501":
           description: 当前 storage 未启用 PostgreSQL，项目知识库不可用。
     post:
@@ -2717,7 +2717,7 @@ paths:
       summary: 新建项目知识库文档
       operationId: createKnowledgeDocument
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - name: response
           in: query
           description: 返回完整文档或轻量摘要；管理端大文档写入建议使用 summary，避免保存后回传完整 markdown。
@@ -2739,7 +2739,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowKnowledgeDocumentWriteResponse"
+                $ref: "#/components/schemas/KnowledgeDocumentWriteResponse"
         "400":
           description: 文档 id、title 或 markdown 输入无效。
         "409":
@@ -2753,7 +2753,7 @@ paths:
       summary: 查找项目知识库文档
       operationId: searchKnowledgeDocuments
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - name: q
           in: query
           required: true
@@ -2808,7 +2808,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowKnowledgeSearchResultResponse"
+                $ref: "#/components/schemas/KnowledgeSearchResultResponse"
         "400":
           description: 搜索关键词或上下文行数无效。
         "404":
@@ -2822,7 +2822,7 @@ paths:
       summary: 读取项目知识库文档的指定行范围
       operationId: readKnowledgeDocumentLines
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - name: documentId
           in: path
           required: true
@@ -2848,7 +2848,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowKnowledgeDocumentLinesResponse"
+                $ref: "#/components/schemas/KnowledgeDocumentLinesResponse"
         "400":
           description: 行号参数无效或超过单次范围限制。
         "404":
@@ -2862,7 +2862,7 @@ paths:
       summary: 读取项目知识库文档
       operationId: getKnowledgeDocument
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - name: documentId
           in: path
           required: true
@@ -2874,7 +2874,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowKnowledgeDocumentResponse"
+                $ref: "#/components/schemas/KnowledgeDocumentResponse"
         "404":
           description: 文档不存在。
         "501":
@@ -2885,7 +2885,7 @@ paths:
       summary: 编辑项目知识库文档
       operationId: editKnowledgeDocument
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - name: documentId
           in: path
           required: true
@@ -2912,7 +2912,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowKnowledgeDocumentWriteResponse"
+                $ref: "#/components/schemas/KnowledgeDocumentWriteResponse"
         "400":
           description: title 或 markdown 输入无效，或没有传入可编辑字段。
         "404":
@@ -2925,7 +2925,7 @@ paths:
       summary: 删除项目知识库文档
       operationId: deleteKnowledgeDocument
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - name: documentId
           in: path
           required: true
@@ -2947,7 +2947,7 @@ paths:
       summary: 读取项目 token 用量
       operationId: getWorkflowTokenUsage
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - name: conversationId
           in: query
           schema:
@@ -2964,7 +2964,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowTokenUsageDetailResponse"
+                $ref: "#/components/schemas/TokenUsageDetailResponse"
         "501":
           description: 当前 storage 不支持 PostgreSQL KV inspection。
   /api/workflows/{workflowName}/source-share:
@@ -2976,7 +2976,7 @@ paths:
         /share/projects/{projectId}/{version}，不携带凭据或授予权限。
       operationId: getProjectSourceShare
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - name: target
           in: query
           required: true
@@ -2990,15 +2990,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WorkflowSourceShareResponse"
+                $ref: "#/components/schemas/SourceShareResponse"
         "400":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "401":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "404":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
   /api/workflows/{workflowName}/source-archive:
     get:
       tags:
@@ -3007,7 +3007,7 @@ paths:
       description: 成功发送 GET 响应后为实际返回的精确版本累加一次下载量；latest 归入解析后的版本。HEAD、失败和中断响应不计数。
       operationId: downloadProjectSourceArchive
       parameters:
-        - $ref: "#/components/parameters/WorkflowName"
+        - $ref: "#/components/parameters/ProjectName"
         - name: target
           in: query
           description: 精确已发布版本或 latest，不接受 draft。
@@ -3027,22 +3027,22 @@ paths:
                 type: string
                 format: binary
         "403":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
         "404":
-          $ref: "#/components/responses/WorkflowError"
+          $ref: "#/components/responses/HarnessError"
 components:
   securitySchemes:
     BearerAuth:
       type: http
       scheme: bearer
       description: 使用 `STEAMHARNESS_SERVER_ADMIN_KEY` 或已创建的账号 API Key。
-    WorkflowSessionCookie:
+    SessionCookie:
       type: apiKey
       in: cookie
       name: steamharness_auth_session
       description: 通过密码登录或管理员密钥登录建立的 httpOnly 浏览器会话。
   parameters:
-    WorkflowName:
+    ProjectName:
       name: workflowName
       in: path
       required: true
@@ -3064,7 +3064,7 @@ components:
       schema:
         type: string
         format: uuid
-    WorkflowDeploymentId:
+    DeploymentId:
       name: deploymentId
       in: path
       required: true
@@ -3107,7 +3107,7 @@ components:
         type: string
       example: user-001
   responses:
-    WorkflowError:
+    HarnessError:
       description: steamharness 标准错误响应。
       content:
         application/json:
@@ -3137,7 +3137,7 @@ components:
       required:
         - errCode
         - errMessage
-    WorkflowPermissionKey:
+    PermissionKey:
       type: string
       enum:
         - system.admin
@@ -3162,24 +3162,24 @@ components:
         - knowledge.manage
         - audit.read
         - audit.export
-    WorkflowAuthPrincipalKind:
+    AuthPrincipalKind:
       type: string
       enum:
         - admin_key
         - admin_session
         - user_session
         - api_key
-    WorkflowUserProfileStatus:
+    UserProfileStatus:
       type: string
       enum:
         - invited
         - active
         - disabled
-    WorkflowAuthPrincipal:
+    AuthPrincipal:
       type: object
       properties:
         kind:
-          $ref: "#/components/schemas/WorkflowAuthPrincipalKind"
+          $ref: "#/components/schemas/AuthPrincipalKind"
         userId:
           type: string
         displayName:
@@ -3190,7 +3190,7 @@ components:
         permissions:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowPermissionKey"
+            $ref: "#/components/schemas/PermissionKey"
         apiKeyId:
           type: string
         expiresAt:
@@ -3203,7 +3203,7 @@ components:
             type: string
       required:
         - kind
-    WorkflowUserProfile:
+    UserProfile:
       type: object
       properties:
         userId:
@@ -3216,7 +3216,7 @@ components:
         avatarUrl:
           type: string
         status:
-          $ref: "#/components/schemas/WorkflowUserProfileStatus"
+          $ref: "#/components/schemas/UserProfileStatus"
         createdByUserId:
           type: string
         createdAt:
@@ -3239,7 +3239,7 @@ components:
         permissions:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowPermissionKey"
+            $ref: "#/components/schemas/PermissionKey"
       required:
         - userId
         - email
@@ -3250,7 +3250,7 @@ components:
         - roleIds
         - roleNames
         - permissions
-    WorkflowApiKeyRecord:
+    ApiKeyRecord:
       type: object
       properties:
         id:
@@ -3293,7 +3293,7 @@ components:
         - source
         - scopes
         - createdAt
-    WorkflowDeviceCodeResult:
+    DeviceCodeResult:
       type: object
       properties:
         id:
@@ -3342,7 +3342,7 @@ components:
             apiKeyId:
               type: string
             user:
-              $ref: "#/components/schemas/WorkflowAuthUserInfo"
+              $ref: "#/components/schemas/AuthUserInfo"
             expiresAt:
               type: string
               format: date-time
@@ -3363,11 +3363,11 @@ components:
         - intervalSeconds
         - createdAt
         - updatedAt
-    WorkflowPermissionDefinition:
+    PermissionDefinition:
       type: object
       properties:
         key:
-          $ref: "#/components/schemas/WorkflowPermissionKey"
+          $ref: "#/components/schemas/PermissionKey"
         label:
           type: string
         description:
@@ -3379,7 +3379,7 @@ components:
         - label
         - description
         - group
-    WorkflowPermissionGroup:
+    PermissionGroup:
       type: object
       properties:
         id:
@@ -3389,12 +3389,12 @@ components:
         permissions:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowPermissionDefinition"
+            $ref: "#/components/schemas/PermissionDefinition"
       required:
         - id
         - label
         - permissions
-    WorkflowRoleRecord:
+    RoleRecord:
       type: object
       properties:
         id:
@@ -3410,7 +3410,7 @@ components:
         permissions:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowPermissionKey"
+            $ref: "#/components/schemas/PermissionKey"
         createdByUserId:
           type: string
         createdAt:
@@ -3428,7 +3428,7 @@ components:
         - permissions
         - createdAt
         - updatedAt
-    WorkflowAdminUserSummary:
+    AdminUserSummary:
       type: object
       properties:
         userId:
@@ -3439,7 +3439,7 @@ components:
         displayName:
           type: string
         status:
-          $ref: "#/components/schemas/WorkflowUserProfileStatus"
+          $ref: "#/components/schemas/UserProfileStatus"
         lastSignInAt:
           type: string
           format: date-time
@@ -3453,7 +3453,7 @@ components:
         permissions:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowPermissionKey"
+            $ref: "#/components/schemas/PermissionKey"
       required:
         - userId
         - email
@@ -3461,7 +3461,7 @@ components:
         - status
         - roles
         - permissions
-    WorkflowAuthUserInfo:
+    AuthUserInfo:
       type: object
       properties:
         userId:
@@ -3481,14 +3481,14 @@ components:
         authenticated:
           type: boolean
         principal:
-          $ref: "#/components/schemas/WorkflowAuthPrincipal"
+          $ref: "#/components/schemas/AuthPrincipal"
         accessToken:
           type: string
           description: 非 Web 客户端请求 `source=desktop` 或 `source=cli` 时返回的 API Key 明文，仅返回一次。
         apiKey:
-          $ref: "#/components/schemas/WorkflowApiKeyRecord"
+          $ref: "#/components/schemas/ApiKeyRecord"
         user:
-          $ref: "#/components/schemas/WorkflowAuthUserInfo"
+          $ref: "#/components/schemas/AuthUserInfo"
         expiresAt:
           type: string
           format: date-time
@@ -3531,27 +3531,27 @@ components:
                 - loggedOut
           required:
             - data
-    WorkflowMeResult:
+    MeResult:
       type: object
       properties:
         principal:
-          $ref: "#/components/schemas/WorkflowAuthPrincipal"
+          $ref: "#/components/schemas/AuthPrincipal"
         profile:
           anyOf:
-            - $ref: "#/components/schemas/WorkflowUserProfile"
+            - $ref: "#/components/schemas/UserProfile"
             - type: "null"
       required:
         - profile
-    WorkflowMeResponse:
+    MeResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/WorkflowMeResult"
+              $ref: "#/components/schemas/MeResult"
           required:
             - data
-    WorkflowUserProfileResponse:
+    UserProfileResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
@@ -3560,12 +3560,12 @@ components:
               type: object
               properties:
                 profile:
-                  $ref: "#/components/schemas/WorkflowUserProfile"
+                  $ref: "#/components/schemas/UserProfile"
               required:
                 - profile
           required:
             - data
-    WorkflowApiKeyListResponse:
+    ApiKeyListResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
@@ -3576,12 +3576,12 @@ components:
                 items:
                   type: array
                   items:
-                    $ref: "#/components/schemas/WorkflowApiKeyRecord"
+                    $ref: "#/components/schemas/ApiKeyRecord"
               required:
                 - items
           required:
             - data
-    WorkflowApiKeyCreateResponse:
+    ApiKeyCreateResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
@@ -3590,7 +3590,7 @@ components:
               type: object
               properties:
                 apiKey:
-                  $ref: "#/components/schemas/WorkflowApiKeyRecord"
+                  $ref: "#/components/schemas/ApiKeyRecord"
                 token:
                   type: string
               required:
@@ -3598,7 +3598,7 @@ components:
                 - token
           required:
             - data
-    WorkflowApiKeyRevokeResponse:
+    ApiKeyRevokeResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
@@ -3615,7 +3615,7 @@ components:
                 - id
           required:
             - data
-    WorkflowPermissionGroupListResponse:
+    PermissionGroupListResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
@@ -3626,12 +3626,12 @@ components:
                 groups:
                   type: array
                   items:
-                    $ref: "#/components/schemas/WorkflowPermissionGroup"
+                    $ref: "#/components/schemas/PermissionGroup"
               required:
                 - groups
           required:
             - data
-    WorkflowRoleListResponse:
+    RoleListResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
@@ -3642,12 +3642,12 @@ components:
                 items:
                   type: array
                   items:
-                    $ref: "#/components/schemas/WorkflowRoleRecord"
+                    $ref: "#/components/schemas/RoleRecord"
               required:
                 - items
           required:
             - data
-    WorkflowRoleResponse:
+    RoleResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
@@ -3656,12 +3656,12 @@ components:
               type: object
               properties:
                 role:
-                  $ref: "#/components/schemas/WorkflowRoleRecord"
+                  $ref: "#/components/schemas/RoleRecord"
               required:
                 - role
           required:
             - data
-    WorkflowUserListResponse:
+    UserListResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
@@ -3672,12 +3672,12 @@ components:
                 items:
                   type: array
                   items:
-                    $ref: "#/components/schemas/WorkflowAdminUserSummary"
+                    $ref: "#/components/schemas/AdminUserSummary"
               required:
                 - items
           required:
             - data
-    WorkflowUserInvitationResponse:
+    UserInvitationResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
@@ -3686,7 +3686,7 @@ components:
               type: object
               properties:
                 profile:
-                  $ref: "#/components/schemas/WorkflowUserProfile"
+                  $ref: "#/components/schemas/UserProfile"
                 invitationLink:
                   type: string
                   format: uri
@@ -3696,7 +3696,7 @@ components:
                 - profile
           required:
             - data
-    WorkflowAccountInvitation:
+    AccountInvitation:
       type: object
       properties:
         email:
@@ -3714,7 +3714,7 @@ components:
         - email
         - displayName
         - expiresAt
-    WorkflowAccountInvitationResponse:
+    AccountInvitationResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
@@ -3723,12 +3723,12 @@ components:
               type: object
               properties:
                 invitation:
-                  $ref: "#/components/schemas/WorkflowAccountInvitation"
+                  $ref: "#/components/schemas/AccountInvitation"
               required:
                 - invitation
           required:
             - data
-    WorkflowAccountInvitationLinkResponse:
+    AccountInvitationLinkResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
@@ -3786,9 +3786,9 @@ components:
                 accessToken:
                   type: string
                 apiKey:
-                  $ref: "#/components/schemas/WorkflowApiKeyRecord"
+                  $ref: "#/components/schemas/ApiKeyRecord"
                 user:
-                  $ref: "#/components/schemas/WorkflowAuthUserInfo"
+                  $ref: "#/components/schemas/AuthUserInfo"
                 expiresAt:
                   type: string
                   format: date-time
@@ -3807,7 +3807,7 @@ components:
               type: object
               properties:
                 deviceCode:
-                  $ref: "#/components/schemas/WorkflowDeviceCodeResult"
+                  $ref: "#/components/schemas/DeviceCodeResult"
               required:
                 - deviceCode
           required:
@@ -3920,7 +3920,7 @@ components:
         permissions:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowPermissionKey"
+            $ref: "#/components/schemas/PermissionKey"
       required:
         - name
         - permissions
@@ -3934,7 +3934,7 @@ components:
         permissions:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowPermissionKey"
+            $ref: "#/components/schemas/PermissionKey"
       minProperties: 1
     InviteUserRequest:
       type: object
@@ -3983,7 +3983,7 @@ components:
             type: string
       required:
         - roleIds
-    WorkflowSourceFileInput:
+    SourceFileInput:
       type: object
       properties:
         path:
@@ -4000,7 +4000,7 @@ components:
       required:
         - path
         - content
-    WorkflowFile:
+    File:
       type: object
       properties:
         path:
@@ -4018,7 +4018,7 @@ components:
         - path
         - content
         - size
-    WorkflowProjectType:
+    ProjectKind:
       type: string
       enum:
         - workflow
@@ -4072,7 +4072,7 @@ components:
               $ref: "#/components/schemas/ProjectCardMetadata"
           required:
             - data
-    WorkflowProjectCardImage:
+    ProjectCardImage:
       type: object
       properties:
         workflowId:
@@ -4096,16 +4096,16 @@ components:
         - mimeType
         - size
         - hash
-    WorkflowProjectCardImageResponse:
+    ProjectCardImageResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/WorkflowProjectCardImage"
+              $ref: "#/components/schemas/ProjectCardImage"
           required:
             - data
-    WorkflowSummary:
+    Summary:
       type: object
       properties:
         id:
@@ -4114,19 +4114,19 @@ components:
         name:
           type: string
         projectType:
-          $ref: "#/components/schemas/WorkflowProjectType"
+          $ref: "#/components/schemas/ProjectKind"
         projectCard:
           $ref: "#/components/schemas/ProjectCardMetadata"
         projectInfo:
-          $ref: "#/components/schemas/WorkflowProjectInfo"
+          $ref: "#/components/schemas/ProjectInfoContract"
         ownerUserId:
           type: string
         visibility:
-          $ref: "#/components/schemas/WorkflowVisibility"
+          $ref: "#/components/schemas/Visibility"
         createdByUserId:
           type: string
         createdByProfile:
-          $ref: "#/components/schemas/WorkflowUserProfileSummary"
+          $ref: "#/components/schemas/UserProfileSummary"
         createdAt:
           type: string
           format: date-time
@@ -4147,7 +4147,7 @@ components:
         nextVersion:
           type: string
         sourceDownload:
-          $ref: "#/components/schemas/WorkflowSourceDownloadAvailability"
+          $ref: "#/components/schemas/SourceDownloadAvailability"
         canManage:
           type: boolean
           description: 当前账号是否可管理项目。
@@ -4165,16 +4165,16 @@ components:
         - latest
         - versions
         - nextVersion
-    WorkflowSummaryResponse:
+    SummaryResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/WorkflowSummary"
+              $ref: "#/components/schemas/Summary"
           required:
             - data
-    WorkflowSummaryListResponse:
+    SummaryListResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
@@ -4182,10 +4182,10 @@ components:
             data:
               type: array
               items:
-                $ref: "#/components/schemas/WorkflowSummary"
+                $ref: "#/components/schemas/Summary"
           required:
             - data
-    WorkflowUserProfileSummary:
+    UserProfileSummary:
       type: object
       properties:
         userId:
@@ -4217,7 +4217,7 @@ components:
         createdByUserId:
           type: string
         createdByProfile:
-          $ref: "#/components/schemas/WorkflowUserProfileSummary"
+          $ref: "#/components/schemas/UserProfileSummary"
         releaseLog:
           type: string
         sourceHash:
@@ -4228,14 +4228,14 @@ components:
           type: array
           description: 该精确版本固化的 Kanban 数据源依赖锁；旧版本可能省略。
           items:
-            $ref: "#/components/schemas/WorkflowProjectDependencyLock"
+            $ref: "#/components/schemas/ProjectDependencyLock"
         latest:
           type: boolean
       required:
         - version
         - downloadCount
         - latest
-    WorkflowSourceShare:
+    SourceShare:
       type: object
       properties:
         id:
@@ -4258,16 +4258,16 @@ components:
         - version
         - createdAt
         - sourceHash
-    WorkflowSourceShareResponse:
+    SourceShareResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/WorkflowSourceShare"
+              $ref: "#/components/schemas/SourceShare"
           required:
             - data
-    WorkflowVersionSummary:
+    VersionSummary:
       type: object
       properties:
         id:
@@ -4296,13 +4296,13 @@ components:
         - nextVersion
         - totalDownloadCount
         - versions
-    WorkflowVersionSummaryResponse:
+    VersionSummaryResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/WorkflowVersionSummary"
+              $ref: "#/components/schemas/VersionSummary"
           required:
             - data
     GetFilesResult:
@@ -4319,7 +4319,7 @@ components:
         files:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowFile"
+            $ref: "#/components/schemas/File"
       required:
         - workflowId
         - workflowName
@@ -4335,7 +4335,7 @@ components:
               $ref: "#/components/schemas/GetFilesResult"
           required:
             - data
-    WorkflowSourceDownloadAvailability:
+    SourceDownloadAvailability:
       type: object
       properties:
         allowed:
@@ -4366,7 +4366,7 @@ components:
         files:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowFile"
+            $ref: "#/components/schemas/File"
       required:
         - workflowId
         - workflowName
@@ -4382,7 +4382,7 @@ components:
               $ref: "#/components/schemas/DownloadableSourceFilesResult"
           required:
             - data
-    WorkflowProjectDependencyLock:
+    ProjectDependencyLock:
       type: object
       description: 由已确认关联项目生成的 Kanban 精确版本交付锁。
       properties:
@@ -4409,7 +4409,7 @@ components:
         - alias
         - projectId
         - delivery
-    WorkflowProjectGroupProject:
+    ProjectGroupProject:
       type: object
       properties:
         projectId:
@@ -4430,7 +4430,7 @@ components:
         - projectId
         - role
         - archivePath
-    WorkflowProjectGroupManifestV1:
+    ProjectGroupManifestV1:
       type: object
       properties:
         version:
@@ -4443,17 +4443,17 @@ components:
           type: array
           minItems: 1
           items:
-            $ref: "#/components/schemas/WorkflowProjectGroupProject"
+            $ref: "#/components/schemas/ProjectGroupProject"
         dependencies:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowProjectDependencyLock"
+            $ref: "#/components/schemas/ProjectDependencyLock"
       required:
         - version
         - rootProjectId
         - projects
         - dependencies
-    WorkflowDeploymentStatus:
+    DeploymentStatus:
       type: string
       enum:
         - planned
@@ -4462,7 +4462,7 @@ components:
         - publishing
         - published
         - failed
-    WorkflowDeploymentItem:
+    DeploymentItem:
       type: object
       properties:
         deploymentId:
@@ -4482,7 +4482,7 @@ components:
           type: string
           const: included
         status:
-          $ref: "#/components/schemas/WorkflowDeploymentStatus"
+          $ref: "#/components/schemas/DeploymentStatus"
         stage:
           type: string
         plannedVersion:
@@ -4507,7 +4507,7 @@ components:
         - delivery
         - status
         - updatedAt
-    WorkflowDeployment:
+    Deployment:
       type: object
       properties:
         id:
@@ -4517,9 +4517,9 @@ components:
           type: string
           format: uuid
         status:
-          $ref: "#/components/schemas/WorkflowDeploymentStatus"
+          $ref: "#/components/schemas/DeploymentStatus"
         manifest:
-          $ref: "#/components/schemas/WorkflowProjectGroupManifestV1"
+          $ref: "#/components/schemas/ProjectGroupManifestV1"
         releaseLog:
           type: string
         createdByUserId:
@@ -4538,7 +4538,7 @@ components:
         items:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowDeploymentItem"
+            $ref: "#/components/schemas/DeploymentItem"
       required:
         - id
         - rootProjectId
@@ -4549,20 +4549,20 @@ components:
         - createdAt
         - updatedAt
         - items
-    WorkflowDeploymentResponse:
+    DeploymentResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/WorkflowDeployment"
+              $ref: "#/components/schemas/Deployment"
           required:
             - data
-    WorkflowProjectDependencyStatus:
+    ProjectDependencyStatus:
       type: object
       properties:
         dependency:
-          $ref: "#/components/schemas/WorkflowProjectDependencyLock"
+          $ref: "#/components/schemas/ProjectDependencyLock"
         projectName:
           type: string
         projectAvailable:
@@ -4585,7 +4585,7 @@ components:
         - sourceDownloadAllowed
         - relationshipConfirmed
         - dataInitialized
-    WorkflowProjectDependencyStatusResult:
+    ProjectDependencyStatusResult:
       type: object
       properties:
         rootProjectId:
@@ -4596,7 +4596,7 @@ components:
         dependencies:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowProjectDependencyStatus"
+            $ref: "#/components/schemas/ProjectDependencyStatus"
         publishable:
           type: boolean
       required:
@@ -4604,16 +4604,16 @@ components:
         - rootVersion
         - dependencies
         - publishable
-    WorkflowProjectDependencyStatusResponse:
+    ProjectDependencyStatusResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/WorkflowProjectDependencyStatusResult"
+              $ref: "#/components/schemas/ProjectDependencyStatusResult"
           required:
             - data
-    WorkflowProjectDownloadItem:
+    ProjectDownloadItem:
       type: object
       properties:
         alias:
@@ -4640,11 +4640,11 @@ components:
         - version
         - sourceHash
         - role
-    WorkflowProjectSkippedDependency:
+    ProjectSkippedDependency:
       type: object
       properties:
         dependency:
-          $ref: "#/components/schemas/WorkflowProjectDependencyLock"
+          $ref: "#/components/schemas/ProjectDependencyLock"
         reason:
           type: string
           enum:
@@ -4657,7 +4657,7 @@ components:
       required:
         - dependency
         - reason
-    WorkflowProjectGroupDownloadProject:
+    ProjectGroupDownloadProject:
       type: object
       properties:
         alias:
@@ -4680,7 +4680,7 @@ components:
         files:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowFile"
+            $ref: "#/components/schemas/File"
       required:
         - projectId
         - projectName
@@ -4688,7 +4688,7 @@ components:
         - sourceHash
         - role
         - files
-    WorkflowProjectGroupDownloadResult:
+    ProjectGroupDownloadResult:
       type: object
       properties:
         rootProjectId:
@@ -4699,15 +4699,15 @@ components:
         dependencies:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowProjectDependencyLock"
+            $ref: "#/components/schemas/ProjectDependencyLock"
         downloads:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowProjectDownloadItem"
+            $ref: "#/components/schemas/ProjectDownloadItem"
         skippedDependencies:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowProjectSkippedDependency"
+            $ref: "#/components/schemas/ProjectSkippedDependency"
         complete:
           type: boolean
         copyAllowed:
@@ -4715,7 +4715,7 @@ components:
         projects:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowProjectGroupDownloadProject"
+            $ref: "#/components/schemas/ProjectGroupDownloadProject"
       required:
         - rootProjectId
         - rootVersion
@@ -4725,23 +4725,23 @@ components:
         - complete
         - copyAllowed
         - projects
-    WorkflowProjectGroupDownloadResponse:
+    ProjectGroupDownloadResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/WorkflowProjectGroupDownloadResult"
+              $ref: "#/components/schemas/ProjectGroupDownloadResult"
           required:
             - data
-    WorkflowProjectAccessRequestStatus:
+    ProjectAccessRequestStatus:
       type: string
       enum:
         - pending
         - approved
         - rejected
         - revoked
-    WorkflowProjectAccessRequest:
+    ProjectAccessRequest:
       type: object
       properties:
         id:
@@ -4758,7 +4758,7 @@ components:
         reason:
           type: string
         status:
-          $ref: "#/components/schemas/WorkflowProjectAccessRequestStatus"
+          $ref: "#/components/schemas/ProjectAccessRequestStatus"
         createdAt:
           type: string
           format: date-time
@@ -4779,16 +4779,16 @@ components:
         - status
         - createdAt
         - updatedAt
-    WorkflowProjectAccessRequestResponse:
+    ProjectAccessRequestResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/WorkflowProjectAccessRequest"
+              $ref: "#/components/schemas/ProjectAccessRequest"
           required:
             - data
-    WorkflowProjectCapabilityGrant:
+    ProjectCapabilityGrant:
       type: object
       properties:
         projectId:
@@ -4814,7 +4814,7 @@ components:
         - userId
         - capability
         - createdAt
-    WorkflowSourceAccessStateResponse:
+    SourceAccessStateResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
@@ -4825,17 +4825,17 @@ components:
                 requests:
                   type: array
                   items:
-                    $ref: "#/components/schemas/WorkflowProjectAccessRequest"
+                    $ref: "#/components/schemas/ProjectAccessRequest"
                 grants:
                   type: array
                   items:
-                    $ref: "#/components/schemas/WorkflowProjectCapabilityGrant"
+                    $ref: "#/components/schemas/ProjectCapabilityGrant"
               required:
                 - requests
                 - grants
           required:
             - data
-    WorkflowRevokedResultResponse:
+    RevokedResultResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
@@ -4849,7 +4849,7 @@ components:
                 - revoked
           required:
             - data
-    WorkflowSourceAccessLinkResponse:
+    SourceAccessLinkResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
@@ -4886,7 +4886,7 @@ components:
         - archiveName
         - sourceHash
         - nextVersion
-    WorkflowPreparationJob:
+    PreparationJob:
       type: object
       properties:
         jobId:
@@ -4933,13 +4933,13 @@ components:
         - status
         - stage
         - createdAt
-    WorkflowPreparationJobResponse:
+    PreparationJobResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/WorkflowPreparationJob"
+              $ref: "#/components/schemas/PreparationJob"
           required:
             - data
     CreateWorkflowProjectRequest:
@@ -4953,11 +4953,11 @@ components:
         name:
           type: string
         projectType:
-          $ref: "#/components/schemas/WorkflowProjectType"
+          $ref: "#/components/schemas/ProjectKind"
         projectInfo:
           $ref: "#/components/schemas/DeclaredWorkflowProjectInfo"
         visibility:
-          $ref: "#/components/schemas/WorkflowVisibility"
+          $ref: "#/components/schemas/Visibility"
         projectCard:
           $ref: "#/components/schemas/ProjectCardMetadata"
       required:
@@ -4965,7 +4965,7 @@ components:
         - name
         - projectType
         - projectInfo
-    WorkflowProjectPlatformSupport:
+    ProjectPlatformSupport:
       oneOf:
         - type: object
           properties:
@@ -4991,7 +4991,7 @@ components:
             - mode
             - platforms
           additionalProperties: false
-    WorkflowProjectKVAccessRule:
+    ProjectKVAccessRule:
       oneOf:
         - type: object
           properties:
@@ -5027,19 +5027,19 @@ components:
             - mode
             - prefixes
           additionalProperties: false
-    WorkflowRelatedProjectKVGrant:
+    RelatedProjectKVGrant:
       type: object
       description: 允许关联项目访问当前项目 KV 的规则；不是当前项目访问对方的权限。
       properties:
         read:
-          $ref: "#/components/schemas/WorkflowProjectKVAccessRule"
+          $ref: "#/components/schemas/ProjectKVAccessRule"
         write:
-          $ref: "#/components/schemas/WorkflowProjectKVAccessRule"
+          $ref: "#/components/schemas/ProjectKVAccessRule"
       required:
         - read
         - write
       additionalProperties: false
-    WorkflowRelatedProject:
+    RelatedProject:
       type: object
       properties:
         alias:
@@ -5049,30 +5049,30 @@ components:
           type: string
           format: uuid
         grantToRelatedProject:
-          $ref: "#/components/schemas/WorkflowRelatedProjectKVGrant"
+          $ref: "#/components/schemas/RelatedProjectKVGrant"
       required:
         - alias
         - projectId
         - grantToRelatedProject
       additionalProperties: false
-    WorkflowRelatedProjectStatus:
+    RelatedProjectStatus:
       type: object
       properties:
         relation:
-          $ref: "#/components/schemas/WorkflowRelatedProject"
+          $ref: "#/components/schemas/RelatedProject"
         projectName:
           type: string
         reciprocalAlias:
           type: string
           pattern: ^[a-z][a-z0-9_-]{0,63}$
         grantFromRelatedProject:
-          $ref: "#/components/schemas/WorkflowRelatedProjectKVGrant"
+          $ref: "#/components/schemas/RelatedProjectKVGrant"
         confirmed:
           type: boolean
       required:
         - relation
         - confirmed
-    WorkflowRelatedProjectListResult:
+    RelatedProjectListResult:
       type: object
       properties:
         projectId:
@@ -5082,20 +5082,20 @@ components:
           type: array
           maxItems: 32
           items:
-            $ref: "#/components/schemas/WorkflowRelatedProjectStatus"
+            $ref: "#/components/schemas/RelatedProjectStatus"
       required:
         - projectId
         - relatedProjects
-    WorkflowRelatedProjectListResponse:
+    RelatedProjectListResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/WorkflowRelatedProjectListResult"
+              $ref: "#/components/schemas/RelatedProjectListResult"
           required:
             - data
-    WorkflowRelatedProjectUpdateRequest:
+    RelatedProjectUpdateRequest:
       type: object
       properties:
         targetProjectId:
@@ -5105,13 +5105,13 @@ components:
           type: string
           pattern: ^[a-z][a-z0-9_-]{0,63}$
         grantToRelatedProject:
-          $ref: "#/components/schemas/WorkflowRelatedProjectKVGrant"
+          $ref: "#/components/schemas/RelatedProjectKVGrant"
         targetGrantToRelatedProject:
-          $ref: "#/components/schemas/WorkflowRelatedProjectKVGrant"
+          $ref: "#/components/schemas/RelatedProjectKVGrant"
       required:
         - targetProjectId
       additionalProperties: false
-    WorkflowRelatedProjectRemoveResult:
+    RelatedProjectRemoveResult:
       type: object
       properties:
         removed:
@@ -5119,20 +5119,20 @@ components:
         relatedProjects:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowRelatedProjectStatus"
+            $ref: "#/components/schemas/RelatedProjectStatus"
       required:
         - removed
         - relatedProjects
-    WorkflowRelatedProjectRemoveResponse:
+    RelatedProjectRemoveResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/WorkflowRelatedProjectRemoveResult"
+              $ref: "#/components/schemas/RelatedProjectRemoveResult"
           required:
             - data
-    WorkflowProjectInfo:
+    ProjectInfoContract:
       type: object
       description: |
         项目元数据权威模型。读取旧项目时 `dataStorage` 可能为 null，其它创建或保存请求必须使用
@@ -5153,26 +5153,26 @@ components:
             type: string
             pattern: ^[a-z][a-z0-9-]*$
         platformSupport:
-          $ref: "#/components/schemas/WorkflowProjectPlatformSupport"
+          $ref: "#/components/schemas/ProjectPlatformSupport"
         dataStorage:
           description: 严格限定项目可访问的数据位置；null 只表示尚未迁移的旧项目。 / Strictly limits accessible data
             locations; null represents an undeclared legacy project only.
           oneOf:
-            - $ref: "#/components/schemas/WorkflowProjectDataStorage"
+            - $ref: "#/components/schemas/ProjectDataStorage"
             - type: "null"
         relatedProjects:
           type: array
           maxItems: 32
           uniqueItems: true
           items:
-            $ref: "#/components/schemas/WorkflowRelatedProject"
+            $ref: "#/components/schemas/RelatedProject"
       required:
         - localizedNames
         - declarations
         - platformSupport
         - dataStorage
         - relatedProjects
-    WorkflowProjectDataStorage:
+    ProjectDataStorage:
       type: object
       properties:
         mode:
@@ -5189,14 +5189,14 @@ components:
       additionalProperties: false
     DeclaredWorkflowProjectInfo:
       allOf:
-        - $ref: "#/components/schemas/WorkflowProjectInfo"
+        - $ref: "#/components/schemas/ProjectInfoContract"
         - type: object
           properties:
             dataStorage:
-              $ref: "#/components/schemas/WorkflowProjectDataStorage"
+              $ref: "#/components/schemas/ProjectDataStorage"
           required:
             - dataStorage
-    WorkflowProjectInfoUpdateResult:
+    ProjectInfoUpdateResult:
       type: object
       properties:
         name:
@@ -5206,34 +5206,34 @@ components:
       required:
         - name
         - projectInfo
-    WorkflowProjectInfoUpdateResultResponse:
+    ProjectInfoUpdateResultResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/WorkflowProjectInfoUpdateResult"
+              $ref: "#/components/schemas/ProjectInfoUpdateResult"
           required:
             - data
-    WorkflowVisibility:
+    Visibility:
       type: string
       enum:
         - private
         - public
-    WorkflowProjectRole:
+    ProjectRole:
       type: string
       enum:
         - owner
         - manager
         - writer
         - viewer
-    WorkflowInvitationRole:
+    InvitationRole:
       type: string
       enum:
         - manager
         - writer
         - viewer
-    WorkflowProjectInvitation:
+    ProjectInvitation:
       type: object
       properties:
         id:
@@ -5244,11 +5244,11 @@ components:
           type: string
           description: 服务端签发的邀请 token，前端使用 `${origin}/invite/${token}` 拼接完整链接。
         role:
-          $ref: "#/components/schemas/WorkflowInvitationRole"
+          $ref: "#/components/schemas/InvitationRole"
         createdBy:
           type: string
         createdByProfile:
-          $ref: "#/components/schemas/WorkflowUserProfileSummary"
+          $ref: "#/components/schemas/UserProfileSummary"
         createdAt:
           type: string
           format: date-time
@@ -5258,7 +5258,7 @@ components:
         acceptedBy:
           type: string
         acceptedByProfile:
-          $ref: "#/components/schemas/WorkflowUserProfileSummary"
+          $ref: "#/components/schemas/UserProfileSummary"
         acceptedAt:
           type: string
           format: date-time
@@ -5272,7 +5272,7 @@ components:
         - role
         - createdAt
         - expiresAt
-    WorkflowProjectInvitationListResponse:
+    ProjectInvitationListResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
@@ -5280,10 +5280,10 @@ components:
             data:
               type: array
               items:
-                $ref: "#/components/schemas/WorkflowProjectInvitation"
+                $ref: "#/components/schemas/ProjectInvitation"
           required:
             - data
-    WorkflowProjectInvitationCreateResponse:
+    ProjectInvitationCreateResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
@@ -5292,7 +5292,7 @@ components:
               type: object
               properties:
                 invitation:
-                  $ref: "#/components/schemas/WorkflowProjectInvitation"
+                  $ref: "#/components/schemas/ProjectInvitation"
                 token:
                   type: string
               required:
@@ -5300,7 +5300,7 @@ components:
                 - token
           required:
             - data
-    WorkflowProjectInvitationLookupResponse:
+    ProjectInvitationLookupResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
@@ -5309,7 +5309,7 @@ components:
               type: object
               properties:
                 invitation:
-                  $ref: "#/components/schemas/WorkflowProjectInvitation"
+                  $ref: "#/components/schemas/ProjectInvitation"
                 project:
                   type: object
                   properties:
@@ -5325,7 +5325,7 @@ components:
                 - project
           required:
             - data
-    WorkflowProjectInvitationAcceptResponse:
+    ProjectInvitationAcceptResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
@@ -5334,15 +5334,15 @@ components:
               type: object
               properties:
                 invitation:
-                  $ref: "#/components/schemas/WorkflowProjectInvitation"
+                  $ref: "#/components/schemas/ProjectInvitation"
                 member:
-                  $ref: "#/components/schemas/WorkflowProjectMember"
+                  $ref: "#/components/schemas/ProjectMember"
               required:
                 - invitation
                 - member
           required:
             - data
-    WorkflowProjectMember:
+    ProjectMember:
       type: object
       properties:
         workflowId:
@@ -5350,13 +5350,13 @@ components:
         userId:
           type: string
         profile:
-          $ref: "#/components/schemas/WorkflowUserProfileSummary"
+          $ref: "#/components/schemas/UserProfileSummary"
         role:
-          $ref: "#/components/schemas/WorkflowProjectRole"
+          $ref: "#/components/schemas/ProjectRole"
         createdBy:
           type: string
         createdByProfile:
-          $ref: "#/components/schemas/WorkflowUserProfileSummary"
+          $ref: "#/components/schemas/UserProfileSummary"
         createdAt:
           type: string
           format: date-time
@@ -5365,16 +5365,16 @@ components:
         - userId
         - role
         - createdAt
-    WorkflowProjectMemberResponse:
+    ProjectMemberResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/WorkflowProjectMember"
+              $ref: "#/components/schemas/ProjectMember"
           required:
             - data
-    WorkflowProjectMemberListResponse:
+    ProjectMemberListResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
@@ -5382,16 +5382,16 @@ components:
             data:
               type: array
               items:
-                $ref: "#/components/schemas/WorkflowProjectMember"
+                $ref: "#/components/schemas/ProjectMember"
           required:
             - data
-    WorkflowAuditOutcome:
+    AuditOutcome:
       type: string
       enum:
         - success
         - failed
         - denied
-    WorkflowAuditEventRecord:
+    AuditEventRecord:
       type: object
       properties:
         id:
@@ -5403,7 +5403,7 @@ components:
         actorDisplayName:
           type: string
         actorProfile:
-          $ref: "#/components/schemas/WorkflowUserProfileSummary"
+          $ref: "#/components/schemas/UserProfileSummary"
         principalKind:
           type: string
         eventType:
@@ -5413,7 +5413,7 @@ components:
         resourceId:
           type: string
         outcome:
-          $ref: "#/components/schemas/WorkflowAuditOutcome"
+          $ref: "#/components/schemas/AuditOutcome"
         requestIp:
           type: string
         userAgent:
@@ -5431,13 +5431,13 @@ components:
         - outcome
         - context
         - createdAt
-    WorkflowAuditEventPage:
+    AuditEventPage:
       type: object
       properties:
         items:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowAuditEventRecord"
+            $ref: "#/components/schemas/AuditEventRecord"
         nextCursor:
           type: string
         hasMore:
@@ -5448,7 +5448,7 @@ components:
         - items
         - hasMore
         - total
-    WorkflowProjectCreateResult:
+    ProjectCreateResult:
       type: object
       properties:
         workflowId:
@@ -5456,27 +5456,27 @@ components:
         workflowName:
           type: string
         projectType:
-          $ref: "#/components/schemas/WorkflowProjectType"
+          $ref: "#/components/schemas/ProjectKind"
         projectInfo:
           $ref: "#/components/schemas/DeclaredWorkflowProjectInfo"
         visibility:
-          $ref: "#/components/schemas/WorkflowVisibility"
+          $ref: "#/components/schemas/Visibility"
       required:
         - workflowId
         - workflowName
         - projectType
         - projectInfo
         - visibility
-    WorkflowProjectCreateResultResponse:
+    ProjectCreateResultResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/WorkflowProjectCreateResult"
+              $ref: "#/components/schemas/ProjectCreateResult"
           required:
             - data
-    WorkflowRemovedResponse:
+    RemovedResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
@@ -5629,7 +5629,7 @@ components:
                 - workflowId
           required:
             - data
-    WorkflowParamDefinition:
+    ParamDefinition:
       type: object
       properties:
         name:
@@ -5741,7 +5741,7 @@ components:
         params:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowParamDefinition"
+            $ref: "#/components/schemas/ParamDefinition"
       required:
         - version
         - params
@@ -5853,7 +5853,7 @@ components:
         relatedProjects:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowRelatedProject"
+            $ref: "#/components/schemas/RelatedProject"
         manifest:
           $ref: "#/components/schemas/KanbanManifest"
         configurations:
@@ -5934,16 +5934,16 @@ components:
           format: uuid
       required:
         - configurationId
-    WorkflowAuditEventPageResponse:
+    AuditEventPageResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/WorkflowAuditEventPage"
+              $ref: "#/components/schemas/AuditEventPage"
           required:
             - data
-    WorkflowKVEntryValueType:
+    KVEntryValueType:
       type: string
       enum:
         - "null"
@@ -5952,7 +5952,7 @@ components:
         - string
         - number
         - boolean
-    WorkflowKVEntrySummary:
+    KVEntrySummary:
       type: object
       properties:
         storageKind:
@@ -5966,7 +5966,7 @@ components:
         key:
           type: string
         valueType:
-          $ref: "#/components/schemas/WorkflowKVEntryValueType"
+          $ref: "#/components/schemas/KVEntryValueType"
         valueSizeBytes:
           type: integer
         valuePreview:
@@ -5995,16 +5995,16 @@ components:
         - valuePreview
         - projectId
         - updatedAt
-    WorkflowKVEntryDetail:
+    KVEntryDetail:
       allOf:
-        - $ref: "#/components/schemas/WorkflowKVEntrySummary"
+        - $ref: "#/components/schemas/KVEntrySummary"
         - type: object
           properties:
             value:
               description: 完整 KV value。仅单条详情接口返回，列表接口不返回该字段。
           required:
             - value
-    WorkflowProjectDataSummary:
+    ProjectDataSummary:
       type: object
       properties:
         kv:
@@ -6072,22 +6072,22 @@ components:
       required:
         - kv
         - knowledge
-    WorkflowProjectDataSummaryResponse:
+    ProjectDataSummaryResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/WorkflowProjectDataSummary"
+              $ref: "#/components/schemas/ProjectDataSummary"
           required:
             - data
-    WorkflowKVEntryPage:
+    KVEntryPage:
       type: object
       properties:
         items:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowKVEntrySummary"
+            $ref: "#/components/schemas/KVEntrySummary"
         nextCursor:
           type: string
         hasMore:
@@ -6098,22 +6098,22 @@ components:
         - items
         - hasMore
         - total
-    WorkflowKVEntryPageResponse:
+    KVEntryPageResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/WorkflowKVEntryPage"
+              $ref: "#/components/schemas/KVEntryPage"
           required:
             - data
-    WorkflowKVEntryDetailResponse:
+    KVEntryDetailResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/WorkflowKVEntryDetail"
+              $ref: "#/components/schemas/KVEntryDetail"
           required:
             - data
     ProjectStorageScope:
@@ -6295,7 +6295,7 @@ components:
         - applied
     ProjectStorageKnowledgeMutationResult:
       oneOf:
-        - $ref: "#/components/schemas/WorkflowKnowledgeDocument"
+        - $ref: "#/components/schemas/KnowledgeDocument"
         - $ref: "#/components/schemas/DeleteKnowledgeDocumentResult"
     ProjectStorageResponse:
       allOf:
@@ -6310,7 +6310,7 @@ components:
                 - $ref: "#/components/schemas/ProjectStorageKnowledgeMutationResult"
           required:
             - data
-    WorkflowKnowledgeDocumentSummary:
+    KnowledgeDocumentSummaryRecord:
       type: object
       properties:
         id:
@@ -6331,13 +6331,13 @@ components:
         - markdownPreview
         - createdAt
         - updatedAt
-    WorkflowKnowledgeDocumentPage:
+    KnowledgeDocumentPageRecord:
       type: object
       properties:
         items:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowKnowledgeDocumentSummary"
+            $ref: "#/components/schemas/KnowledgeDocumentSummaryRecord"
         nextCursor:
           type: string
         hasMore:
@@ -6348,7 +6348,7 @@ components:
         - items
         - hasMore
         - total
-    WorkflowKnowledgeDocument:
+    KnowledgeDocument:
       type: object
       properties:
         id:
@@ -6390,7 +6390,7 @@ components:
         markdown:
           type: string
       minProperties: 1
-    WorkflowKnowledgeSearchLine:
+    KnowledgeSearchLine:
       type: object
       properties:
         lineNumber:
@@ -6400,7 +6400,7 @@ components:
       required:
         - lineNumber
         - content
-    WorkflowKnowledgeSearchMatch:
+    KnowledgeSearchMatch:
       type: object
       properties:
         documentId:
@@ -6414,11 +6414,11 @@ components:
         before:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowKnowledgeSearchLine"
+            $ref: "#/components/schemas/KnowledgeSearchLine"
         after:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowKnowledgeSearchLine"
+            $ref: "#/components/schemas/KnowledgeSearchLine"
       required:
         - documentId
         - title
@@ -6426,7 +6426,7 @@ components:
         - line
         - before
         - after
-    WorkflowKnowledgeSearchResult:
+    KnowledgeSearchResultRecord:
       type: object
       properties:
         query:
@@ -6450,7 +6450,7 @@ components:
         matches:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowKnowledgeSearchMatch"
+            $ref: "#/components/schemas/KnowledgeSearchMatch"
       required:
         - query
         - documentsSearched
@@ -6460,7 +6460,7 @@ components:
         - pageSize
         - hasMore
         - matches
-    WorkflowKnowledgeDocumentLines:
+    KnowledgeDocumentLines:
       type: object
       properties:
         documentId:
@@ -6476,7 +6476,7 @@ components:
         lines:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowKnowledgeSearchLine"
+            $ref: "#/components/schemas/KnowledgeSearchLine"
       required:
         - documentId
         - title
@@ -6494,51 +6494,51 @@ components:
       required:
         - id
         - deleted
-    WorkflowKnowledgeDocumentPageResponse:
+    KnowledgeDocumentPageResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/WorkflowKnowledgeDocumentPage"
+              $ref: "#/components/schemas/KnowledgeDocumentPageRecord"
           required:
             - data
-    WorkflowKnowledgeDocumentResponse:
+    KnowledgeDocumentResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/WorkflowKnowledgeDocument"
+              $ref: "#/components/schemas/KnowledgeDocument"
           required:
             - data
-    WorkflowKnowledgeDocumentWriteResponse:
+    KnowledgeDocumentWriteResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
               oneOf:
-                - $ref: "#/components/schemas/WorkflowKnowledgeDocument"
-                - $ref: "#/components/schemas/WorkflowKnowledgeDocumentSummary"
+                - $ref: "#/components/schemas/KnowledgeDocument"
+                - $ref: "#/components/schemas/KnowledgeDocumentSummaryRecord"
           required:
             - data
-    WorkflowKnowledgeSearchResultResponse:
+    KnowledgeSearchResultResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/WorkflowKnowledgeSearchResult"
+              $ref: "#/components/schemas/KnowledgeSearchResultRecord"
           required:
             - data
-    WorkflowKnowledgeDocumentLinesResponse:
+    KnowledgeDocumentLinesResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/WorkflowKnowledgeDocumentLines"
+              $ref: "#/components/schemas/KnowledgeDocumentLines"
           required:
             - data
     DeleteKnowledgeDocumentResultResponse:
@@ -6550,7 +6550,7 @@ components:
               $ref: "#/components/schemas/DeleteKnowledgeDocumentResult"
           required:
             - data
-    WorkflowTokenUsageAggregate:
+    TokenUsageAggregate:
       type: object
       properties:
         inputTokens:
@@ -6578,9 +6578,9 @@ components:
         - cachedInputTokens
         - cacheCreationTokens
         - calls
-    WorkflowTokenUsageEntry:
+    TokenUsageEntry:
       allOf:
-        - $ref: "#/components/schemas/WorkflowTokenUsageAggregate"
+        - $ref: "#/components/schemas/TokenUsageAggregate"
         - type: object
           properties:
             id:
@@ -6610,29 +6610,29 @@ components:
             - runId
             - sequence
             - createdAt
-    WorkflowTokenUsageProjectSummary:
+    TokenUsageProjectSummary:
       type: object
       properties:
         projectId:
           type: string
           format: uuid
         total:
-          $ref: "#/components/schemas/WorkflowTokenUsageAggregate"
+          $ref: "#/components/schemas/TokenUsageAggregate"
         updatedAt:
           type: string
           format: date-time
       required:
         - projectId
         - total
-    WorkflowTokenUsagePage:
+    TokenUsagePage:
       type: object
       properties:
         systemTotal:
-          $ref: "#/components/schemas/WorkflowTokenUsageAggregate"
+          $ref: "#/components/schemas/TokenUsageAggregate"
         projects:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowTokenUsageProjectSummary"
+            $ref: "#/components/schemas/TokenUsageProjectSummary"
         nextCursor:
           type: string
         hasMore:
@@ -6644,44 +6644,44 @@ components:
         - projects
         - hasMore
         - total
-    WorkflowTokenUsagePageResponse:
+    TokenUsagePageResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/WorkflowTokenUsagePage"
+              $ref: "#/components/schemas/TokenUsagePage"
           required:
             - data
-    WorkflowTokenUsageDetail:
+    TokenUsageDetail:
       type: object
       properties:
         projectId:
           type: string
           format: uuid
         projectTotal:
-          $ref: "#/components/schemas/WorkflowTokenUsageAggregate"
+          $ref: "#/components/schemas/TokenUsageAggregate"
         conversationId:
           type: string
         conversationTotal:
-          $ref: "#/components/schemas/WorkflowTokenUsageAggregate"
+          $ref: "#/components/schemas/TokenUsageAggregate"
         entries:
           type: array
           items:
-            $ref: "#/components/schemas/WorkflowTokenUsageEntry"
+            $ref: "#/components/schemas/TokenUsageEntry"
       required:
         - projectId
         - projectTotal
-    WorkflowTokenUsageDetailResponse:
+    TokenUsageDetailResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
         - type: object
           properties:
             data:
-              $ref: "#/components/schemas/WorkflowTokenUsageDetail"
+              $ref: "#/components/schemas/TokenUsageDetail"
           required:
             - data
-    WorkflowManagedFileReference:
+    ManagedFileReference:
       type: object
       properties:
         id:

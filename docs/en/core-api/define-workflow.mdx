@@ -11,17 +11,17 @@ Use `workflow.defineWorkflow<Input, Output>()` to define a business workflow. It
 
 ```ts
 workflow.defineWorkflow<Input, Output>(
-  workflow: WorkflowDefinition<Input, Output>,
-): WorkflowDefinition<Input, Output>
+  workflow: Definition<Input, Output>,
+): Definition<Input, Output>
 ```
 
 ## Parameters
 
 | Parameter | Type | Description |
 | --- | --- | --- |
-| `workflow` | `WorkflowDefinition<Input, Output>` | An executable workflow definition containing its name and main execution function. |
+| `workflow` | `Definition<Input, Output>` | An executable workflow definition containing its name and main execution function. |
 
-## `WorkflowDefinition` fields
+## `Definition` fields
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -33,33 +33,33 @@ workflow.defineWorkflow<Input, Output>(
 | Name | Description |
 | --- | --- |
 | `input` | Business input. In a Workflow project it comes from the selected entrypoint's `createInput(context)`; in a Conversation project it comes from `executor.createInput(context)`. |
-| `context` | The runtime-provided `WorkflowContext`, including providers, KV, conversation, files, metadata, node hooks, and an abort signal. |
+| `context` | The runtime-provided `RunContext`, including providers, KV, conversation, files, metadata, node hooks, and an abort signal. |
 
 ## Return values
 
 | Value | Type | Description |
 | --- | --- | --- |
-| Workflow definition | `WorkflowDefinition<Input, Output>` | The original definition object, for an executor to reference. |
-| `run` result | `Output` | Read by the runtime during execution. Project output payloads must extend `WorkflowPayload`. |
+| Workflow definition | `Definition<Input, Output>` | The original definition object, for an executor to reference. |
+| `run` result | `Output` | Read by the runtime during execution. Project output payloads must extend `RunPayload`. |
 
 ## Execution flow
 
 | Phase | Input | Result |
 | --- | --- | --- |
 | Executor | CLI arguments or form values | `Input` |
-| Workflow `run` | `Input` and `WorkflowContext` | `Output` |
+| Workflow `run` | `Input` and `RunContext` | `Output` |
 | Runtime report | `Output` | Standard execution report and final payload |
 
 ## Example
 
 ```ts
-import type { WorkflowPayload } from "steamharness";
+import type { RunPayload } from "steamharness";
 
 interface Input {
   message: string;
 }
 
-interface Output extends WorkflowPayload {
+interface Output extends RunPayload {
   items: Array<{
     id: string;
     title: string;
@@ -83,5 +83,5 @@ export const exampleWorkflow = workflow.defineWorkflow<Input, Output>({
 | Rule | Description |
 | --- | --- |
 | Do not import runtime APIs from `"steamharness"` | The platform injects the global `workflow` object into business workflows. |
-| `Output` must extend `WorkflowPayload` | On success, return `errCode: 0` and `errMessage: ""`. |
-| The runtime wraps exceptions | Unknown errors thrown from `run` are converted to `WorkflowError` and included in the execution report. |
+| `Output` must extend `RunPayload` | On success, return `errCode: 0` and `errMessage: ""`. |
+| The runtime wraps exceptions | Unknown errors thrown from `run` are converted to `HarnessError` and included in the execution report. |

@@ -16,15 +16,15 @@ import { createAgentNode } from "../agent/node";
 import type { OutputItemStreamChunk } from "../node/output/index";
 import { createAgentPlanApprovalRequest, readAgentPlanDecision } from "../agent/plan";
 import { createWorkflowConversationContext } from "../conversation/index";
-import type { WorkflowUserInputRequest } from "../types/index";
-import { createLocalWorkflowFileStore, type WorkflowFileReference, type WorkflowFileStore } from "../files/index";
-import { WorkflowError } from "../workflow/errors";
+import type { UserInputRequest } from "../types/index";
+import { createLocalWorkflowFileStore, type FileReference, type FileStore } from "../files/index";
+import { HarnessError } from "../workflow/errors";
 import { createWorkflowRelatedProjectsContext } from "../kv/related-projects";
 import { createWorkflowToolPermissionContext } from "../tool-permissions/index";
 import { readAgentToolDefinitions } from "../agent/permission";
 import { createDisabledWorkflowTokenUsageContext } from "../token-usage/index";
-import type { WorkflowContext } from "../types/index";
-import type { WorkflowKVContext } from "../kv/index";
+import type { RunContext } from "../types/index";
+import type { KVContext } from "../kv/index";
 
 /**
  * A project built from one factory call is what every builtin will ship, so the
@@ -44,7 +44,7 @@ async function createFauxModel() {
   return { ai, faux, models, model };
 }
 
-function createMemoryKV(): WorkflowKVContext {
+function createMemoryKV(): KVContext {
   const values = new Map<string, unknown>();
 
   function createNamespace(prefix: string) {
@@ -74,7 +74,7 @@ function createMemoryKV(): WorkflowKVContext {
     deleteValue: project.deleteValue,
     updateValue: project.updateValue,
     conversation: createNamespace("conversation"),
-  } as unknown as WorkflowKVContext;
+  } as unknown as KVContext;
 }
 
 for (const outcome of ["success", "failed", "error", "length"] as const) {
@@ -148,7 +148,7 @@ test("cancelled context compaction preserves the stored transcript even if the p
     const chunks: OutputItemStreamChunk[] = [];
     await assert.rejects(async () => {
       for await (const chunk of node.stream({ prompt: "/compact", workdir, errCode: 0, errMessage: "" }, context)) chunks.push(chunk);
-    }, error => error instanceof WorkflowError && error.type === "execution_aborted");
+    }, error => error instanceof HarnessError && error.type === "execution_aborted");
     assert.deepEqual(await readStoredTranscript(context), before);
     assert.equal(chunks.some(chunk => chunk.type === "output_item_delta" && chunk.item?.metadata?.partType === "compaction" && chunk.item.metadata.status === "success"), false);
     assert.equal(chunks.some(chunk => chunk.type === "output_item_start" && chunk.item.metadata?.kind === "agent-error"), false);
@@ -158,7 +158,7 @@ test("cancelled context compaction preserves the stored transcript even if the p
 const agentStores = new Set<string>();
 after(async () => { for (const directory of agentStores) await rm(directory, { recursive: true, force: true }); });
 
-function createContext(conversationId: string, files?: WorkflowFileStore): WorkflowContext {
+function createContext(conversationId: string, files?: FileStore): RunContext {
   const kv = createMemoryKV();
   const agentStoreDir = mkdtempSync(path.join(tmpdir(), "workflow-agent-store-"));
   agentStores.add(agentStoreDir);
@@ -182,7 +182,7 @@ function createContext(conversationId: string, files?: WorkflowFileStore): Workf
       workflowName: "pi",
       runId: "run-1",
     }),
-  } as unknown as WorkflowContext;
+  } as unknown as RunContext;
 }
 
 /** The message shape the model is asked with, as the faux provider sees it. */
@@ -219,7 +219,7 @@ function readRequestText(content: unknown): string {
 
 /** The transcript this node keeps, under the session key a bare project uses. */
 async function readStoredTranscript(
-  context: WorkflowContext,
+  context: RunContext,
 ): Promise<Array<{ role: string; content: unknown }>> {
   const directory = agentConversationDirectory(context.metadata!["agentStoreDir"] as string, context.conversation.conversationId!);
   const files = (await readdir(directory)).filter(file => file.endsWith(".sqlite"));
@@ -324,8 +324,8 @@ test("tool approval identity separates calls, arguments and permission definitio
     });
     try { await permissions.requireToolApproval({ name: "external", callId, arguments: args }); }
     catch (error) {
-      assert.ok(error instanceof WorkflowError && error.type === "user_input_required");
-      return (error.metadata?.["request"] as WorkflowUserInputRequest).requestId;
+      assert.ok(error instanceof HarnessError && error.type === "user_input_required");
+      return (error.metadata?.["request"] as UserInputRequest).requestId;
     }
     assert.fail("Approval must wait for a decision");
   }
@@ -729,7 +729,7 @@ for (const outcome of ["failed", "aborted"] as const) {
       const chunks: OutputItemStreamChunk[] = [];
       await assert.rejects(async () => {
         for await (const chunk of node.stream(input, context)) chunks.push(chunk);
-      }, (error: unknown) => error instanceof WorkflowError && error.type ===
+      }, (error: unknown) => error instanceof HarnessError && error.type ===
         (outcome === "failed" ? "workflow_execution" : "execution_aborted"));
 
       assert.ok(node.finalize);
@@ -938,7 +938,7 @@ test("thinking reaches the host while it happens, not once it is over", async ()
           chunks.push(event.chunk);
         },
       },
-    } as unknown as WorkflowContext;
+    } as unknown as RunContext;
 
     await executor.workflow.run(
       { prompt: "list the directory", errCode: 0, errMessage: "", workdir },
@@ -1395,10 +1395,10 @@ test("a plan turn can ask the user, and the answers carry on into the resumed tu
     });
 
     const context = createContext("conv-ask");
-    let asked: WorkflowUserInputRequest | undefined;
+    let asked: UserInputRequest | undefined;
     context.userInput = {
       getResolvedInput: async () => undefined,
-      requestInput: async (request: WorkflowUserInputRequest) => {
+      requestInput: async (request: UserInputRequest) => {
         asked = request;
       },
     };
@@ -1434,7 +1434,7 @@ test("a plan turn can ask the user, and the answers carry on into the resumed tu
     // Answering it resumes the plan with the answers in the prompt.
     const requestId = asked?.requestId ?? "";
     context.userInput = {
-      getResolvedInput: async (id: string, request?: WorkflowUserInputRequest) => (id === requestId
+      getResolvedInput: async (id: string, request?: UserInputRequest) => (id === requestId
         ? {
             requestId: id,
             nodeName: "ask-user",
@@ -1490,7 +1490,7 @@ test("a build turn is never offered the asking tool", async () => {
     let asked: string | undefined;
     context.userInput = {
       getResolvedInput: async () => undefined,
-      requestInput: async (request: WorkflowUserInputRequest) => {
+      requestInput: async (request: UserInputRequest) => {
         asked = request.requestId;
       },
     };
@@ -1545,7 +1545,7 @@ test("a plan pause is remembered by the turn that resumes it", async () => {
     assert.ok(requested, "the plan must have been put to the user");
 
     context.userInput = {
-      getResolvedInput: async (id: string, request?: WorkflowUserInputRequest) => {
+      getResolvedInput: async (id: string, request?: UserInputRequest) => {
         if (id !== requested) return undefined;
         answeredLabel = request?.params[0]?.label;
         return { requestId: id, nodeName: "plan-approval", values: { decision: "approve" }, submittedAt: new Date(), request };
@@ -1584,16 +1584,16 @@ test("each revised plan waits for a fresh decision before executing", async () =
 
   await withTempDir(async (workdir) => {
     const context = createContext("conv-plan-revisions");
-    const requests: WorkflowUserInputRequest[] = [];
+    const requests: UserInputRequest[] = [];
     const answers = new Map<string, Record<string, unknown>>();
     context.userInput = {
-      getResolvedInput: async (requestId: string, request?: WorkflowUserInputRequest) => {
+      getResolvedInput: async (requestId: string, request?: UserInputRequest) => {
         const values = answers.get(requestId);
         return values === undefined ? undefined : {
           requestId, nodeName: "plan-approval", values, submittedAt: new Date(), request,
         };
       },
-      requestInput: async (request: WorkflowUserInputRequest) => { requests.push(request); },
+      requestInput: async (request: UserInputRequest) => { requests.push(request); },
     };
     const input = { prompt: "plan it", agent: "plan" as const, errCode: 0, errMessage: "", workdir };
     const turn = () => createAgentNode({ outputItemId: "pi-answer", models, resolvedModel: model });
@@ -1761,7 +1761,7 @@ test("an unknown flag is not typed into the prompt", () => {
 });
 
 /** The `wf_…` reference a composer stores, pointing at bytes on disk. */
-function createImageReference(id: string): WorkflowFileReference {
+function createImageReference(id: string): FileReference {
   return {
     id,
     name: "image.png",
@@ -1774,7 +1774,7 @@ function createImageReference(id: string): WorkflowFileReference {
 }
 
 /** Writes the file a local reference resolves to, and returns its store. */
-async function createFileStore(rootDir: string, ids: readonly string[]): Promise<WorkflowFileStore> {
+async function createFileStore(rootDir: string, ids: readonly string[]): Promise<FileStore> {
   for (const id of ids) {
     await mkdir(path.join(rootDir, id), { recursive: true });
     await writeFile(path.join(rootDir, id, "content"), "hi!", "utf8");
@@ -1871,7 +1871,7 @@ test("an attachment nothing can read fails the turn instead of vanishing", async
           createContext("conv-missing-image", files),
         );
       },
-      (error: unknown) => error instanceof WorkflowError && error.type === "input_validation",
+      (error: unknown) => error instanceof HarnessError && error.type === "input_validation",
     );
   });
 });
@@ -1894,7 +1894,7 @@ test("a turn with neither text nor attachments is still refused", async () => {
           createContext("conv-empty"),
         );
       },
-      (error: unknown) => error instanceof WorkflowError && error.message === "Prompt is required.",
+      (error: unknown) => error instanceof HarnessError && error.message === "Prompt is required.",
     );
   });
 });

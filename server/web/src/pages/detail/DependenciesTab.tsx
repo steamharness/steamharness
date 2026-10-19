@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { compareStrings, translateDynamicKey, useTranslation } from "@steamharness/i18n/react";
 import type {
-  WorkflowProjectKVAccessRule,
-  WorkflowRelatedProjectKVGrant,
+  ProjectKVAccessRule,
+  RelatedProjectKVGrant,
 } from "@steamharness/project-info";
 import { getWorkflowProjectTypeLabelKey } from "@steamharness/project-types";
 import {
@@ -22,11 +22,11 @@ import {
 import { apiClient } from "../../api";
 import {
   isApiSuccess,
-  type WorkflowProjectDependencyStatusResult,
-  type WorkflowProjectSourceAccessSummary,
-  type WorkflowRelatedProjectListResult,
-  type WorkflowRelatedProjectStatus,
-  type WorkflowSummary,
+  type ProjectDependencyStatusResult,
+  type ProjectSourceAccessSummary,
+  type RelatedProjectListResult,
+  type RelatedProjectStatus,
+  type Summary,
 } from "../../types";
 import { ConfirmActionDialog, type ConfirmAction } from "@/components/ConfirmActionDialog";
 import { UserIdentity } from "@/components/UserIdentity";
@@ -57,7 +57,7 @@ import { formatDate } from "../../utils/format";
 import type { DetailPageProps } from "./types";
 
 type Props = Pick<DetailPageProps, "project" | "detail" | "onNavigateProjectTab" | "refreshToken" | "onContentBusyChange">;
-type AccessMode = WorkflowProjectKVAccessRule["mode"];
+type AccessMode = ProjectKVAccessRule["mode"];
 
 interface GrantDraft {
   readMode: AccessMode;
@@ -225,7 +225,7 @@ function AccessRuleEditor({
   );
 }
 
-function GrantSummary({ grant }: { grant: WorkflowRelatedProjectKVGrant | undefined }) {
+function GrantSummary({ grant }: { grant: RelatedProjectKVGrant | undefined }) {
   const { t } = useTranslation("serverWeb");
   if (grant === undefined) {
     return <span className="text-xs text-muted-foreground">{t("relatedProjectsAwaitingConfirmation")}</span>;
@@ -246,10 +246,10 @@ function GrantSummary({ grant }: { grant: WorkflowRelatedProjectKVGrant | undefi
 export function DependenciesTab({ project, detail, onNavigateProjectTab, refreshToken, onContentBusyChange }: Props) {
   const { t } = useTranslation("serverWeb");
   const [target, setTarget] = useState(project.latest ? "latest" : "draft");
-  const [relations, setRelations] = useState<WorkflowRelatedProjectListResult | null>(null);
-  const [dependencyStatus, setDependencyStatus] = useState<WorkflowProjectDependencyStatusResult | null>(null);
-  const [projectCatalog, setProjectCatalog] = useState<WorkflowSummary[] | null>(null);
-  const [sourceAccess, setSourceAccess] = useState<WorkflowProjectSourceAccessSummary | null>(null);
+  const [relations, setRelations] = useState<RelatedProjectListResult | null>(null);
+  const [dependencyStatus, setDependencyStatus] = useState<ProjectDependencyStatusResult | null>(null);
+  const [projectCatalog, setProjectCatalog] = useState<Summary[] | null>(null);
+  const [sourceAccess, setSourceAccess] = useState<ProjectSourceAccessSummary | null>(null);
   const [loadError, setLoadError] = useState("");
   const [dependencyError, setDependencyError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -353,7 +353,7 @@ export function DependenciesTab({ project, detail, onNavigateProjectTab, refresh
     setEditorOpen(true);
   }
 
-  function openEditEditor(status: WorkflowRelatedProjectStatus) {
+  function openEditEditor(status: RelatedProjectStatus) {
     setEditingAlias(status.relation.alias);
     setDraft({
       alias: status.relation.alias,
@@ -385,8 +385,8 @@ export function DependenciesTab({ project, detail, onNavigateProjectTab, refresh
       setFormError(t("relatedProjectsTargetRequired"));
       return;
     }
-    let grantToRelatedProject: WorkflowRelatedProjectKVGrant;
-    let targetGrantToRelatedProject: WorkflowRelatedProjectKVGrant;
+    let grantToRelatedProject: RelatedProjectKVGrant;
+    let targetGrantToRelatedProject: RelatedProjectKVGrant;
     try {
       grantToRelatedProject = draftToGrant(draft.grantToRelatedProject);
       targetGrantToRelatedProject = draftToGrant(draft.targetGrantToRelatedProject);
@@ -541,19 +541,19 @@ function createEmptyRelationDraft(): RelationDraft {
   return { alias: "", targetProjectId: "", targetAlias: "", grantToRelatedProject: { ...DEFAULT_GRANT_DRAFT }, targetGrantToRelatedProject: { ...DEFAULT_GRANT_DRAFT } };
 }
 
-function defaultGrant(): WorkflowRelatedProjectKVGrant {
+function defaultGrant(): RelatedProjectKVGrant {
   return { read: { mode: "all" }, write: { mode: "none" } };
 }
 
-function grantToDraft(grant: WorkflowRelatedProjectKVGrant): GrantDraft {
+function grantToDraft(grant: RelatedProjectKVGrant): GrantDraft {
   return { readMode: grant.read.mode, readPrefixes: grant.read.mode === "prefixes" ? grant.read.prefixes.join("\n") : "", writeMode: grant.write.mode, writePrefixes: grant.write.mode === "prefixes" ? grant.write.prefixes.join("\n") : "" };
 }
 
-function draftToGrant(draft: GrantDraft): WorkflowRelatedProjectKVGrant {
+function draftToGrant(draft: GrantDraft): RelatedProjectKVGrant {
   return { read: draftToRule(draft.readMode, draft.readPrefixes), write: draftToRule(draft.writeMode, draft.writePrefixes) };
 }
 
-function draftToRule(mode: AccessMode, rawPrefixes: string): WorkflowProjectKVAccessRule {
+function draftToRule(mode: AccessMode, rawPrefixes: string): ProjectKVAccessRule {
   if (mode !== "prefixes") return { mode };
   const prefixes = [...new Set(rawPrefixes.split(/\r?\n/).map((value) => value.trim()).filter(Boolean))];
   if (prefixes.length === 0) throw new Error("prefixes are required");
@@ -561,7 +561,7 @@ function draftToRule(mode: AccessMode, rawPrefixes: string): WorkflowProjectKVAc
 }
 
 function formatRule(
-  rule: WorkflowProjectKVAccessRule,
+  rule: ProjectKVAccessRule,
   labels: { none: string; all: string; prefixes: (count: number) => string },
 ): string {
   if (rule.mode === "none") return labels.none;

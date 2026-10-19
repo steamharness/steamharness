@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { AgentInput, AgentProjectOptions, AgentToolSet, McpServerConnection, NodeContext, WorkflowExecutorContext } from "steamharness";
+import type { AgentInput, AgentProjectOptions, AgentToolSet, McpServerConnection, NodeContext, ExecutorContext } from "steamharness";
 import { installWorkflowRuntimeGlobal } from "steamharness/runtime-api";
 import { createAgentRuntime } from "steamharness";
 import { createDeveloperAssistantSystemPrompt } from "../assistant-prompt";
@@ -144,10 +144,10 @@ describe("VS Code assistant host", () => {
       STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR: root,
       STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST: manifestPath,
     });
-    const executor = host.module.executor as unknown as { createInput(context: WorkflowExecutorContext): Promise<AgentInput> };
+    const executor = host.module.executor as unknown as { createInput(context: ExecutorContext): Promise<AgentInput> };
     const input = await executor.createInput({ args: ["--message", "Read my project"],
       paramValues: { provider: "system", model: "model", plan: "true", permissionPolicy: "workspace" },
-    } as unknown as WorkflowExecutorContext);
+    } as unknown as ExecutorContext);
     expect(input).toMatchObject({ errCode: 0, errMessage: "", prompt: "Read my project", workdir: root,
       allowedDirectories: [root, path.join(root, "linked")], agent: "plan", permissionPolicy: "workspace" });
     expect(input.systemPrompt).toContain("Studio VS Code");
@@ -174,8 +174,8 @@ describe("VS Code assistant host", () => {
     }));
     const host = await loadHost({ STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR: root, STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST: manifestPath });
     const executor = host.module.executor as unknown as {
-      createInput(context: WorkflowExecutorContext): Promise<AgentInput>;
-      createContext(context: WorkflowExecutorContext): Partial<NodeContext>;
+      createInput(context: ExecutorContext): Promise<AgentInput>;
+      createContext(context: ExecutorContext): Partial<NodeContext>;
     };
     const hostInput = kind === "openai" ? {
       kind: "openai.responses", requestId: "req_test", responseId: "resp_test",
@@ -186,7 +186,7 @@ describe("VS Code assistant host", () => {
     for (const permissionPolicy of [undefined, "read-only", "workspace", "auto"]) {
       const context = { args: ["--message", "Read my project"],
         paramValues: permissionPolicy === undefined ? {} : { permissionPolicy }, hostInput,
-      } as unknown as WorkflowExecutorContext;
+      } as unknown as ExecutorContext;
       const input = await executor.createInput(context);
       expect(input.permissionPolicy).toBe(permissionPolicy ?? "auto");
       expect(executor.createContext(context).metadata?.studioControlPermissionPolicy).toBe(permissionPolicy ?? "auto");
@@ -220,10 +220,10 @@ describe("VS Code assistant host", () => {
       roots: [{ target, name: "Primary", rootPath: root, role: "primary", depth: 0 }],
     }));
     const host = await loadHost({ STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR: root, STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST: manifestPath });
-    const executor = host.module.executor as unknown as { createInput(context: WorkflowExecutorContext): Promise<AgentInput> };
+    const executor = host.module.executor as unknown as { createInput(context: ExecutorContext): Promise<AgentInput> };
     const input = await executor.createInput({ args: ["--message", "Use the external fixture files"],
       paramValues: permissionPolicy === "auto" ? {} : { permissionPolicy },
-    } as unknown as WorkflowExecutorContext);
+    } as unknown as ExecutorContext);
     const ai = await import("@earendil-works/pi-ai");
     const faux = ai.fauxProvider({ models: [{ id: "fixture", name: "Fixture", reasoning: false, contextWindow: 32_000, maxTokens: 1_000 }] });
     const models = ai.createModels(); models.setProvider(faux.provider);

@@ -3,7 +3,7 @@ import test from "node:test";
 import { rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { WorkflowLocalStorage } from "../local-storage";
+import { LocalStorage } from "../local-storage";
 import {
   normalizeStorageBaseUrl,
   resolveLocalStoragePublicBaseUrl,
@@ -48,13 +48,13 @@ test("object storage selection always wires the local driver", async () => {
     dataRoot: root,
     env: { STEAMHARNESS_SERVER_DEV: "1" },
   }));
-  assert.ok(defaulted instanceof WorkflowLocalStorage);
+  assert.ok(defaulted instanceof LocalStorage);
 
   const local = withSilencedWarnings(() => createWorkflowObjectStorageFromEnv({
     dataRoot: root,
     env: { STEAMHARNESS_STORAGE_DRIVER: "local", STEAMHARNESS_SERVER_DEV: "1" },
   }));
-  assert.ok(local instanceof WorkflowLocalStorage);
+  assert.ok(local instanceof LocalStorage);
   assert.equal(local.driver, "local");
   assert.equal(local.publicBaseUrl, "http://127.0.0.1:7126/");
   // The factory creates the root eagerly so an unusable path fails at startup.

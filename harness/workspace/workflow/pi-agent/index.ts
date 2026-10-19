@@ -22,7 +22,7 @@ const inputNode = workflow.createInputNode<PiAgentInput, PiAgentParsedInput>({
   parse(input, context) {
     const prompt = (input.prompt || DEFAULT_PROMPT).trim();
     if (prompt === "") {
-      throw new workflow.WorkflowError({
+      throw new workflow.HarnessError({
         type: "input_validation",
         message: "Prompt is required.",
         nodeName: "pi-agent-input",
@@ -55,7 +55,7 @@ const inputNode = workflow.createInputNode<PiAgentInput, PiAgentParsedInput>({
 const outputNode = workflow.createOutputNode<PiAgentRunInput, PiAgentOutputPayload>({
   name: "pi-agent-output",
   async *stream(input, context) {
-    let pendingToolApprovalError: workflow.WorkflowError | undefined;
+    let pendingToolApprovalError: workflow.HarnessError | undefined;
     const sessionFactory = input.sessionFactory ?? createPiAgentSessionFactory({
       getEnv(name) {
         return workflow.getEnv(name);
@@ -117,7 +117,7 @@ const outputNode = workflow.createOutputNode<PiAgentRunInput, PiAgentOutputPaylo
   },
 });
 
-function throwPendingToolApprovalError(error: workflow.WorkflowError | undefined): void {
+function throwPendingToolApprovalError(error: workflow.HarnessError | undefined): void {
   if (error !== undefined) {
     // Pi SDK custom tools can surface thrown approval waits as tool
     // errors. Re-throw from the workflow stream so the shared user-input resume

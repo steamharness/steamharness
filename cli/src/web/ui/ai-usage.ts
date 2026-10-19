@@ -1,7 +1,7 @@
 import { t } from '../localization';
-import type { WorkflowSystemAiUsage } from '../workflow-auth-client';
+import type { SystemAiUsage } from '../workflow-auth-client';
 
-type Subscription = NonNullable<WorkflowSystemAiUsage['groups'][number]['subscription']>;
+type Subscription = NonNullable<SystemAiUsage['groups'][number]['subscription']>;
 export function usageAmount(value: number): string {
   return value != null && Number.isFinite(Number(value)) ? `$${Math.max(0, Number(value)).toFixed(2)}` : t("Not available");
 }

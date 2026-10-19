@@ -1,5 +1,5 @@
 import { config as loadEnvFile } from "dotenv";
-import { WorkflowError } from "../workflow/errors";
+import { HarnessError } from "../workflow/errors";
 
 export function loadWorkflowEnv(envPath: string): void {
   loadEnvFile({
@@ -16,7 +16,7 @@ export function readRequiredEnv(
   const value = readOptionalEnv(env, name, aliases);
 
   if (value === undefined) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `Missing required environment variable: ${name}.`,
       metadata: {

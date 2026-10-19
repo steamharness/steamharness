@@ -12,8 +12,8 @@ import type {
   DeltaforceOpenAIAgentOutputPayload,
   DeltaforceOpenAIParsedInput,
   FinalAnswerInput,
-  WorkflowNodeContext,
-  WorkflowPayload,
+  NodeRunContext,
+  RunPayload,
 } from "./interface";
 import {
   type DeltaforeApiConfig,
@@ -28,7 +28,7 @@ import { isRecord } from "@steamharness/deltafore-agent-workflow/tools/values";
 
 const DEFAULT_MODEL = "gpt-5.4";
 
-interface DeltaforceOpenAIAgentRunInput extends WorkflowPayload {
+interface DeltaforceOpenAIAgentRunInput extends RunPayload {
   parsed: DeltaforceOpenAIParsedInput;
   config: DeltaforeApiConfig;
   configModel?: string;
@@ -44,14 +44,14 @@ interface DeltaforceOpenAIAgentRunResult {
   finalInput: FinalAnswerInput;
 }
 
-interface DeltaforceOpenAIAgentContext extends WorkflowNodeContext {
-  metadata?: WorkflowNodeContext["metadata"] & {
+interface DeltaforceOpenAIAgentContext extends NodeRunContext {
+  metadata?: NodeRunContext["metadata"] & {
     openaiModel?: string;
     mockAgentRunner?: boolean;
   };
 }
 
-type DeltaforceOutputChunk = WorkflowOutputStreamChunk;
+type DeltaforceOutputChunk = RunOutputStreamChunk;
 
 const inputNode = workflow.createInputNode<DeltaforceOpenAIAgentInput, DeltaforceOpenAIParsedInput>({
   name: "deltaforce-openai-agent-input",
@@ -98,7 +98,7 @@ const outputNode = workflow.createOutputNode<DeltaforceOpenAIAgentRunInput, Delt
     yield* queue;
     await runPromise;
   },
-  async format(stream, input, context: WorkflowNodeContext) {
+  async format(stream, input, context: NodeRunContext) {
     const finalInput = requireFinalInput(input);
     const agentOutput = requireAgentOutput(input);
     const answer = finalInput.content.trim();
@@ -632,7 +632,7 @@ function createOutputChunksFromPayload(output: OpenAIAgentsOutputPayload): Delta
   });
 }
 
-function isOutputItemChunk(value: unknown): value is WorkflowOutputItemChunk {
+function isOutputItemChunk(value: unknown): value is OutputItemChunk {
   return isRecord(value) &&
     (
       value.type === "output_item_start" ||
@@ -803,7 +803,7 @@ function createHistoryMessages(
     }));
 }
 
-function readDeltaforeApiConfig(context: WorkflowNodeContext): DeltaforeApiConfig {
+function readDeltaforeApiConfig(context: NodeRunContext): DeltaforeApiConfig {
   const config = context.metadata?.deltaforeApi;
 
   if (isDeltaforeApiConfig(config)) {

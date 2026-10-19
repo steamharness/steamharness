@@ -1,4 +1,4 @@
-export type WorkflowRuntimeLocale = "zh-CN" | "en";
+export type RuntimeLocale = "zh-CN" | "en";
 
 /**
  * The host injects this marker for a workflow execution. Projects should use
@@ -6,11 +6,11 @@ export type WorkflowRuntimeLocale = "zh-CN" | "en";
  */
 export const STEAMHARNESS_RUNTIME_LOCALE_ENV = "STEAMHARNESS_RUNTIME_LOCALE";
 
-export function getRuntimeLocale(): WorkflowRuntimeLocale {
+export function getRuntimeLocale(): RuntimeLocale {
   return normalizeRuntimeLocale(readRuntimeLocaleMarker());
 }
 
-export function normalizeRuntimeLocale(value: string | undefined): WorkflowRuntimeLocale {
+export function normalizeRuntimeLocale(value: string | undefined): RuntimeLocale {
   const normalized = value?.trim().toLowerCase().replaceAll("_", "-");
 
   if (normalized?.startsWith("en")) return "en";

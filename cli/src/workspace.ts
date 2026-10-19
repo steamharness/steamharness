@@ -9,21 +9,21 @@ import { isWorkflowUuid } from "@steamharness/workflow-ids";
 import {
   copyWorkflowUploadFiles,
   createWorkflowUploadPlan,
-  type WorkflowUploadPlan,
+  type UploadPlan,
 } from "@steamharness/project-upload/node";
 import {
   createWorkflowProjectDependencyLocks,
   isProjectGroupHostDataPath,
   parseWorkflowProjectDependencyLocks,
-  type WorkflowProjectDependencyLock,
-  type WorkflowProjectGroupManifestV1,
+  type ProjectDependencyLock,
+  type ProjectGroupManifestV1,
 } from "@steamharness/project-dependencies";
 import {
   readWorkflowProjectInfo,
   resolveWorkflowRelatedProjectAccess,
-  type WorkflowProjectInfo,
+  type ProjectInfoContract,
 } from "@steamharness/project-info";
-import { isWorkflowProjectType, parseWorkflowFileReferences, RemoteWorkflowFileStore, type WorkflowProjectType } from "steamharness";
+import { isWorkflowProjectType, parseWorkflowFileReferences, RemoteWorkflowFileStore, type ProjectKind } from "steamharness";
 import { clearCliAuthConfig, readCliAuthConfig, readCliAuthConfigSync, writeCliAuthConfig } from "./auth-config";
 import { findWorkspaceRepositoryRoot, loadCliEnv } from "./env";
 import {
@@ -50,7 +50,7 @@ interface CliOptions {
   publishGroup?: boolean;
 }
 
-interface WorkflowPreparationJob {
+interface PreparationJob {
   jobId: string;
   workflowId: string;
   archiveName: string;
@@ -64,14 +64,14 @@ interface WorkflowPreparationJob {
   result?: unknown;
 }
 
-interface WorkflowProjectGroupDownloadResult {
+interface ProjectGroupDownloadResult {
   rootProjectId: string;
   rootVersion: string;
-  dependencies: WorkflowProjectDependencyLock[];
+  dependencies: ProjectDependencyLock[];
   complete: boolean;
   copyAllowed: boolean;
   skippedDependencies: Array<{
-    dependency: WorkflowProjectDependencyLock;
+    dependency: ProjectDependencyLock;
     reason: "external" | "source_unavailable" | "permission_required";
     requestUrl?: string;
   }>;
@@ -86,11 +86,11 @@ interface WorkflowProjectGroupDownloadResult {
   }>;
 }
 
-interface WorkflowDeploymentResult {
+interface DeploymentResult {
   id: string;
   rootProjectId: string;
   status: string;
-  manifest: WorkflowProjectGroupManifestV1;
+  manifest: ProjectGroupManifestV1;
   error?: string;
   items?: Array<{
     projectId: string;
@@ -102,29 +102,29 @@ interface WorkflowDeploymentResult {
 
 interface ProjectGroupPackResult {
   archivePath: string;
-  manifest: WorkflowProjectGroupManifestV1;
-  root: WorkflowPackageContext;
-  dependencies: WorkflowPackageContext[];
+  manifest: ProjectGroupManifestV1;
+  root: PackageContext;
+  dependencies: PackageContext[];
 }
 
 interface ProjectGroupDependencyContext {
   alias: string;
-  packageContext: WorkflowPackageContext;
+  packageContext: PackageContext;
 }
 
 interface ParsedArgs {
   command: string;
   positional: string[];
   options: CliOptions;
-  effective: WorkflowCliEffectiveTarget;
+  effective: CliEffectiveTarget;
 }
 
 /** Where a command's server and token actually come from. */
-export type WorkflowCliValueSource = "env" | "flag" | "file" | "default";
+export type CliValueSource = "env" | "flag" | "file" | "default";
 
-export interface WorkflowCliEffectiveTarget {
+export interface CliEffectiveTarget {
   serverUrl: string;
-  serverSource: WorkflowCliValueSource;
+  serverSource: CliValueSource;
   tokenSource: "env" | "flag" | "file" | "none";
 }
 
@@ -468,7 +468,7 @@ async function commandProjectGroupUpload(
     contexts,
   });
 
-  const planned = await fetchApi<WorkflowDeploymentResult>({
+  const planned = await fetchApi<DeploymentResult>({
     server: parsed.options.server,
     token: parsed.options.token,
     path: "/api/deployments",
@@ -515,7 +515,7 @@ async function commandProjectGroupUpload(
     printApiResponse(prepared);
     return;
   }
-  const published = await fetchApi<WorkflowDeploymentResult>({
+  const published = await fetchApi<DeploymentResult>({
     server: parsed.options.server,
     token: parsed.options.token,
     path: `/api/deployments/${encodeURIComponent(planned.data.id)}/publish`,
@@ -614,7 +614,7 @@ async function commandDownload(parsed: ParsedArgs): Promise<void> {
   const workflowId = await resolveRemoteWorkflowId(parsed);
   const target = parsed.options.target ?? "latest";
   if (target !== "draft") {
-    const result = await fetchApi<WorkflowProjectGroupDownloadResult>({
+    const result = await fetchApi<ProjectGroupDownloadResult>({
       server: parsed.options.server,
       token: parsed.options.token,
       path: `/api/workflows/${encodeURIComponent(workflowId)}/project-group-download?target=${encodeURIComponent(target)}`,
@@ -708,7 +708,7 @@ async function commandPublish(parsed: ParsedArgs): Promise<void> {
 }
 
 async function materializeProjectGroupDownload(
-  download: WorkflowProjectGroupDownloadResult,
+  download: ProjectGroupDownloadResult,
   rootTargetDir: string,
 ): Promise<Array<{
   alias?: string;
@@ -846,7 +846,7 @@ async function materializeProjectGroupDownload(
     alreadyAvailable: boolean;
   }> = [];
   const pending: Array<{
-    project: WorkflowProjectGroupDownloadResult["projects"][number];
+    project: ProjectGroupDownloadResult["projects"][number];
     targetDir: string;
   }> = [];
   const targetKeys = new Set<string>();
@@ -934,7 +934,7 @@ async function materializeProjectGroupDownload(
   await mkdir(parentDir, { recursive: true });
   const stagingRoot = path.join(parentDir, `.workflow-download-group-${randomUUID()}`);
   const staged: Array<{
-    project: WorkflowProjectGroupDownloadResult["projects"][number];
+    project: ProjectGroupDownloadResult["projects"][number];
     targetDir: string;
     stagingDir: string;
   }> = [];
@@ -1005,7 +1005,7 @@ async function assertDownloadedProjectMetadata(
 
 function assertConfirmedRelatedProject(options: {
   rootProjectId: string;
-  rootProjectInfo: WorkflowProjectInfo;
+  rootProjectInfo: ProjectInfoContract;
   targetProjectId: string;
   targetPackageJson: Record<string, unknown>;
   alias: string;
@@ -1126,9 +1126,9 @@ async function readProjectGroupContexts(options: {
   sourcePath?: string;
   dependencyOptions: readonly string[];
 }): Promise<{
-  root: WorkflowPackageContext;
+  root: PackageContext;
   dependencies: ProjectGroupDependencyContext[];
-  locks: WorkflowProjectDependencyLock[];
+  locks: ProjectDependencyLock[];
 }> {
   const root = await readWorkflowPackageContext(options.workflowArg, options.sourcePath);
   if (root.projectType !== "kanban") {
@@ -1216,7 +1216,7 @@ async function packProjectGroup(options: {
   await mkdir(path.dirname(archivePath), { recursive: true });
 
   const rootArchivePath = `projects/${contexts.root.workflowId}.tgz`;
-  const projects: WorkflowProjectGroupManifestV1["projects"] = [{
+  const projects: ProjectGroupManifestV1["projects"] = [{
     projectId: contexts.root.workflowId!,
     role: "root",
     archivePath: rootArchivePath,
@@ -1247,7 +1247,7 @@ async function packProjectGroup(options: {
       );
     }
 
-    const manifest: WorkflowProjectGroupManifestV1 = {
+    const manifest: ProjectGroupManifestV1 = {
       version: 1,
       rootProjectId: contexts.root.workflowId!,
       projects,
@@ -1277,7 +1277,7 @@ async function uploadProjectGroupPackage(options: {
   archivePath: string;
   server: string;
   token: string;
-}): Promise<ApiResponse<WorkflowDeploymentResult>> {
+}): Promise<ApiResponse<DeploymentResult>> {
   const archiveBuffer = await readFile(options.archivePath);
   const archiveName = path.basename(options.archivePath);
   const query = new URLSearchParams({ fileName: archiveName });
@@ -1293,7 +1293,7 @@ async function uploadProjectGroupPackage(options: {
       body: new Blob([archiveBuffer]),
     },
   );
-  return response.json() as Promise<ApiResponse<WorkflowDeploymentResult>>;
+  return response.json() as Promise<ApiResponse<DeploymentResult>>;
 }
 
 async function waitForProjectGroupPreparation(options: {
@@ -1301,10 +1301,10 @@ async function waitForProjectGroupPreparation(options: {
   server: string;
   token: string;
   pollIntervalMs?: number;
-}): Promise<ApiResponse<WorkflowDeploymentResult>> {
+}): Promise<ApiResponse<DeploymentResult>> {
   let previousProgress = "";
   while (true) {
-    const response = await fetchApi<WorkflowDeploymentResult>({
+    const response = await fetchApi<DeploymentResult>({
       server: options.server,
       token: options.token,
       path: `/api/deployments/${encodeURIComponent(options.deploymentId)}`,
@@ -1356,7 +1356,7 @@ async function resolveRemoteWorkflowId(parsed: ParsedArgs): Promise<string> {
 async function readWorkflowPackageContext(
   workflowArg: string,
   sourcePath: string | undefined,
-): Promise<WorkflowPackageContext> {
+): Promise<PackageContext> {
   const repoRoot = resolveRepoRoot();
   const workflowDir = sourcePath === undefined
     ? path.join(repoRoot, "workspace", "workflow", workflowArg)
@@ -1381,10 +1381,10 @@ async function readWorkflowPackageContext(
 }
 
 async function ensureWorkflowProjectCreated(options: {
-  packageContext: WorkflowPackageContext;
+  packageContext: PackageContext;
   server: string;
   token: string;
-}): Promise<WorkflowProjectCreateResult> {
+}): Promise<ProjectCreateResult> {
   const workflowId = options.packageContext.workflowId;
   if (workflowId === undefined) {
     throw new Error(i18n.t("workflowIdRequired", { ns: "cli" }));
@@ -1393,7 +1393,7 @@ async function ensureWorkflowProjectCreated(options: {
   if (projectInfo.dataStorage === null) {
     throw new Error(i18n.t("projectInfoDataStorageRequired", { ns: "cli" }));
   }
-  const created = await fetchApi<WorkflowProjectCreateResult>({
+  const created = await fetchApi<ProjectCreateResult>({
     server: options.server,
     token: options.token,
     path: "/api/workflows",
@@ -1432,7 +1432,7 @@ async function readPackageJsonFile(packageJsonPath: string): Promise<Record<stri
   }
 }
 
-function readStaticProjectType(packageJson: Record<string, unknown>): WorkflowProjectType {
+function readStaticProjectType(packageJson: Record<string, unknown>): ProjectKind {
   const config = packageJson["steamHarness"];
   const value = config && typeof config === "object" && !Array.isArray(config)
     ? (config as Record<string, unknown>)["projectType"] : undefined;
@@ -1463,7 +1463,7 @@ async function uploadPackage(options: {
   archivePath: string;
   server: string;
   token: string;
-}): Promise<ApiResponse<WorkflowPreparationJob>> {
+}): Promise<ApiResponse<PreparationJob>> {
   const archiveBuffer = await readFile(options.archivePath);
   const archiveName = path.basename(options.archivePath);
   const query = new URLSearchParams({ fileName: archiveName });
@@ -1481,7 +1481,7 @@ async function uploadPackage(options: {
     },
   );
 
-  return response.json() as Promise<ApiResponse<WorkflowPreparationJob>>;
+  return response.json() as Promise<ApiResponse<PreparationJob>>;
 }
 
 async function waitForPreparation(options: {
@@ -1495,7 +1495,7 @@ async function waitForPreparation(options: {
   // remains queryable and continues independently.
   let previousStage = "";
   while (true) {
-    const response = await fetchApi<WorkflowPreparationJob>({
+    const response = await fetchApi<PreparationJob>({
       server: options.server,
       token: options.token,
       path: `/api/workflows/${encodeURIComponent(options.workflowId)}/preparations/${encodeURIComponent(options.jobId)}`,
@@ -1534,8 +1534,8 @@ async function getPreparation(options: {
   jobId: string;
   server: string;
   token: string;
-}): Promise<ApiResponse<WorkflowPreparationJob>> {
-  return fetchApi<WorkflowPreparationJob>({
+}): Promise<ApiResponse<PreparationJob>> {
+  return fetchApi<PreparationJob>({
     server: options.server,
     token: options.token,
     path: `/api/workflows/${encodeURIComponent(options.workflowId)}/preparations/${encodeURIComponent(options.jobId)}`,
@@ -1575,7 +1575,7 @@ async function copyWorkflowSource(
   sourceDir: string,
   targetDir: string,
   options: { projectGroupSafe?: boolean } = {},
-): Promise<WorkflowUploadPlan> {
+): Promise<UploadPlan> {
   if (options.projectGroupSafe !== true) return copyWorkflowUploadFiles(sourceDir, targetDir);
 
   const plan = await createWorkflowUploadPlan(sourceDir);
@@ -1747,7 +1747,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     token: envToken ?? authConfig.apiKey ?? "",
     dependencies: [],
   };
-  const effective: WorkflowCliEffectiveTarget = {
+  const effective: CliEffectiveTarget = {
     serverUrl: options.server,
     serverSource: envServer !== undefined
       ? "env"
@@ -1869,20 +1869,20 @@ export function parseArgs(argv: string[]): ParsedArgs {
   };
 }
 
-interface WorkflowProjectCreateResult {
+interface ProjectCreateResult {
   workflowId: string;
   workflowName: string;
   visibility: "private" | "public";
-  projectType?: WorkflowProjectType;
+  projectType?: ProjectKind;
 }
 
-interface WorkflowPackageContext {
+interface PackageContext {
   workflowArg: string;
   workflowDir: string;
   packageJsonPath: string;
   workflowId?: string;
   workflowName: string;
-  projectType: WorkflowProjectType;
+  projectType: ProjectKind;
   packageJson: Record<string, unknown>;
 }
 

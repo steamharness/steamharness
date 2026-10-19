@@ -1,5 +1,5 @@
 import { BaseNode, BaseStreamNode, getLLMProvider } from "../base";
-import type { NodeContext, WorkflowNodeMetadataInput } from "../../types/index";
+import type { NodeContext, NodeMetadataInput } from "../../types/index";
 import type {
   LLMChatInput,
   LLMChatOutput,
@@ -24,7 +24,7 @@ export interface LLMNodeOptions<Input, Output = LLMChatOutput> {
   mapInput: LLMInputMapper<Input>;
   mapOutput?: LLMOutputMapper<Input, Output>;
   historyLimit?: number;
-  metadata?: WorkflowNodeMetadataInput;
+  metadata?: NodeMetadataInput;
 }
 
 export function createLLMNode<Input>(

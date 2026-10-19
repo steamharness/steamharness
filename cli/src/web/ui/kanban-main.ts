@@ -2,7 +2,7 @@ import { t } from '../localization';
 import './style.css';
 import './kanban-style.css';
 import { acquireWorkflowHost } from './host';
-import { WorkflowFields } from './workflow-fields';
+import { Fields } from './workflow-fields';
 import { requestAction } from './action-dialog';
 import { ConversationTools } from './conversation-tools';
 import { iconHtml, iconButton } from './ui';
@@ -12,10 +12,10 @@ import {
   KANBAN_BRIDGE_MAX_PENDING_REQUESTS, KANBAN_PREVIEW_READY_MESSAGE, KANBAN_BRIDGE_REQUEST_MESSAGE, KANBAN_BRIDGE_RESPONSE_MESSAGE,
   type KanbanConfiguration, type KanbanInjectedConfiguration, type KanbanPresentationMode,
 } from '@steamharness/kanban-project';
-import { workflowParamValue, type WorkflowProject, type WorkflowParamValues } from '../workflow-types';
+import { workflowParamValue, type Project, type ParamValues } from '../workflow-types';
 
 type Message = Record<string, any>;
-interface KanbanState { revision: number; configurations: KanbanConfiguration[]; activeConfigurationId?: string; configuration: KanbanInjectedConfiguration; params: WorkflowProject['fields']; preview: { url: string; nonce: string }; relatedProjectRevisions: { alias: string; revision: string }[]; missingRelatedProjectAliases: string[]; relatedProjectWarning: string }
+interface KanbanState { revision: number; configurations: KanbanConfiguration[]; activeConfigurationId?: string; configuration: KanbanInjectedConfiguration; params: Project['fields']; preview: { url: string; nonce: string }; relatedProjectRevisions: { alias: string; revision: string }[]; missingRelatedProjectAliases: string[]; relatedProjectWarning: string }
 const app = document.querySelector<HTMLElement>('#app')!, host = acquireWorkflowHost();
 app.classList.add('kanban-app');
 app.innerHTML = `
@@ -33,12 +33,12 @@ const saved = host.getState() as { menuOpen?: boolean; mode?: KanbanPresentation
 const defaults = { phone: { width: 390, height: 844 }, tablet: { width: 768, height: 1024 }, card: { width: 360, height: 200 } };
 let sizes = { ...defaults, ...saved?.sizes }, mode: KanbanPresentationMode = saved?.mode ?? 'fullscreen';
 if (!['fullscreen', 'phone', 'tablet', 'card'].includes(mode)) { mode = 'fullscreen'; }
-let menuOpen = saved?.menuOpen ?? !narrow.matches, state: KanbanState | undefined, project: WorkflowProject | undefined;
+let menuOpen = saved?.menuOpen ?? !narrow.matches, state: KanbanState | undefined, project: Project | undefined;
 let connected = false, working = false, methodWorking = false, transitioning = false, dirty = false, editing = 0, signature = '', previewKey = '', authRevision = -1;
-let values: WorkflowParamValues = {}, saveTimer: ReturnType<typeof setTimeout> | undefined, readyTimer: ReturnType<typeof setTimeout> | undefined, pendingBridge = 0;
+let values: ParamValues = {}, saveTimer: ReturnType<typeof setTimeout> | undefined, readyTimer: ReturnType<typeof setTimeout> | undefined, pendingBridge = 0;
 let methodSession: ReturnType<typeof createKanbanMethodSession> | undefined;
 const methodCalls = new Map<string, AbortController>();
-const fields = new WorkflowFields(element('kanban-fields'), element('parameter-actions'), {
+const fields = new Fields(element('kanban-fields'), element('parameter-actions'), {
   values: () => values, states: () => ({}), disabled: () => !connected || transitioning, loading: () => working,
   change: (name, value) => { values[name] = value; dirty = true; editing++; controls(); clearTimeout(saveTimer); saveTimer = setTimeout(() => void save().catch(showError), 250); },
   file: name => void chooseFile(name).catch(showError),
@@ -55,7 +55,7 @@ function request(message: Message): Promise<Message> {
   });
 }
 function showError(error: unknown): void { element('error').textContent = (error as Error).message ?? String(error); element('error').hidden = false; }
-function configurationValues(current: KanbanState): WorkflowParamValues {
+function configurationValues(current: KanbanState): ParamValues {
   const stored = current.configurations.find(item => item.id === current.activeConfigurationId)?.values ?? {};
   return Object.fromEntries(current.params.map(field => [field.name, workflowParamValue(field, stored[field.name] ?? field.defaultValue ?? '')]));
 }

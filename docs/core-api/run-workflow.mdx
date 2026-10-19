@@ -1,11 +1,11 @@
 ---
 title: "runWorkflow"
-description: "在当前 WorkflowContext 中调用另一个 workflow，并复用父级上下文。"
+description: "在当前 RunContext 中调用另一个 workflow，并复用父级上下文。"
 ---
 
 # runWorkflow
 
-`workflow.runWorkflow()` 用于在一个 workflow 内调用另一个已 import 的 `WorkflowDefinition<Input, Output>`。它复用父级 `WorkflowContext`，适合把通用 workflow 当作另一个 workflow 的方法来组合。
+`workflow.runWorkflow()` 用于在一个 workflow 内调用另一个已 import 的 `Definition<Input, Output>`。它复用父级 `RunContext`，适合把通用 workflow 当作另一个 workflow 的方法来组合。
 
 它与项目 entrypoint 是两层不同概念：entrypoint 是本地 CLI 可直接启动的一层扁平目录；`runWorkflow()` 是一次 run 内部的业务组合。运行某个 entrypoint 不会自动运行默认入口或其它入口。需要“主流程调用子流程”时，由所选入口的 workflow 显式调用 `runWorkflow(childWorkflow, ...)`。
 
@@ -13,12 +13,12 @@ description: "在当前 WorkflowContext 中调用另一个 workflow，并复用�
 
 ```ts
 workflow.runWorkflow<Input, Output>(
-  workflow: WorkflowDefinition<Input, Output>,
+  workflow: Definition<Input, Output>,
   input: Input,
-  context: WorkflowContext,
+  context: RunContext,
   options?: {
     name?: string;
-    metadata?: Partial<WorkflowNodeMetadata>;
+    metadata?: Partial<NodeMetadata>;
     conversationMode?: "shared" | "shared-readonly";
     kvMode?: "shared" | "isolated";
     outputVisibility?: "visible" | "hidden";
@@ -34,11 +34,11 @@ workflow.runWorkflow<Input, Output>(
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| `workflow` | `WorkflowDefinition<Input, Output>` | 要复用的子 workflow。 |
+| `workflow` | `Definition<Input, Output>` | 要复用的子 workflow。 |
 | `input` | `Input` | 传给子 workflow 的输入。 |
-| `context` | `WorkflowContext` | 父 workflow 当前上下文。 |
+| `context` | `RunContext` | 父 workflow 当前上下文。 |
 | `options.name` | `string` | 父 trace 中显示的子 workflow 调用标题。 |
-| `options.metadata` | `Partial<WorkflowNodeMetadata>` | 覆盖 trace 节点元信息，默认 type 为 `workflow`。 |
+| `options.metadata` | `Partial<NodeMetadata>` | 覆盖 trace 节点元信息，默认 type 为 `workflow`。 |
 | `options.conversationMode` | `"shared" \| "shared-readonly"` | 子 workflow 如何使用父会话。默认 `shared`。 |
 | `options.kvMode` | `"shared" \| "isolated"` | 子 workflow 如何使用父 KV。默认 `shared`；`isolated` 会给 project/conversation KV key 加子 workflow 前缀。 |
 | `options.outputVisibility` | `"visible" \| "hidden"` | 子 workflow output 是否进入父级可见 outputs。默认 `visible`。 |

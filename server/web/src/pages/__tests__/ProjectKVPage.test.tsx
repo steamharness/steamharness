@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { KVInspectorPage } from "../ProjectKVPage";
-import type { WorkflowKVEntryDetail, WorkflowKVEntryPage } from "../../types";
+import type { KVEntryDetail, KVEntryPage } from "../../types";
 
 describe("KVInspectorPage table", () => {
   it("uses Chinese pagination footer labels and keeps server-side page callbacks", () => {
@@ -34,7 +34,7 @@ describe("KVInspectorPage table", () => {
   it("deletes the opened KV entry after confirming and refreshes the page", async () => {
     const onDeleteEntry = vi.fn(async () => ({ errCode: 0, errMessage: "", data: { removed: true } } as const));
     const onRefresh = vi.fn();
-    const onLoadEntry = vi.fn(async (entry: WorkflowKVEntryPage["items"][number]) => ({
+    const onLoadEntry = vi.fn(async (entry: KVEntryPage["items"][number]) => ({
       errCode: 0,
       errMessage: "",
       data: createKVDetail(entry),
@@ -69,7 +69,7 @@ describe("KVInspectorPage table", () => {
   it("keeps the KV detail open and reports a failed delete", async () => {
     const onDeleteEntry = vi.fn(async () => ({ errCode: 404, errMessage: 'KV entry "project.feature.flag" does not exist.' } as const));
     const onRefresh = vi.fn();
-    const onLoadEntry = vi.fn(async (entry: WorkflowKVEntryPage["items"][number]) => ({
+    const onLoadEntry = vi.fn(async (entry: KVEntryPage["items"][number]) => ({
       errCode: 0,
       errMessage: "",
       data: createKVDetail(entry),
@@ -100,7 +100,7 @@ describe("KVInspectorPage table", () => {
       filters: { query: "", scope: "project", valueType: "all", conversationId: "", runId: "" },
       onFiltersChange: vi.fn(),
       onRefresh: vi.fn(),
-      onLoadEntry: vi.fn(async (entry: WorkflowKVEntryPage["items"][number]) => ({
+      onLoadEntry: vi.fn(async (entry: KVEntryPage["items"][number]) => ({
         errCode: 0,
         errMessage: "",
         data: createKVDetail(entry),
@@ -113,7 +113,7 @@ describe("KVInspectorPage table", () => {
   });
 
   it("refreshes the expanded KV panel summary when the current row changes", async () => {
-    const onLoadEntry = vi.fn(async (entry: WorkflowKVEntryPage["items"][number]) => ({
+    const onLoadEntry = vi.fn(async (entry: KVEntryPage["items"][number]) => ({
       errCode: 0,
       errMessage: "",
       data: createKVDetail(entry),
@@ -173,7 +173,7 @@ function createProjectKVPageElement({
   onLoadEntry,
   onDeleteEntry,
 }: {
-  kvPage: WorkflowKVEntryPage;
+  kvPage: KVEntryPage;
   filters: { query: string; scope: "project"; valueType: "all" | "object"; conversationId: string; runId: string };
   loading?: string;
   onFiltersChange: ComponentProps<typeof KVInspectorPage>["onFiltersChange"];
@@ -197,7 +197,7 @@ function createProjectKVPageElement({
   );
 }
 
-function createKVPage(overrides: Partial<WorkflowKVEntryPage> = {}): WorkflowKVEntryPage {
+function createKVPage(overrides: Partial<KVEntryPage> = {}): KVEntryPage {
   return {
     total: 2,
     hasMore: false,
@@ -229,7 +229,7 @@ function createKVPage(overrides: Partial<WorkflowKVEntryPage> = {}): WorkflowKVE
   };
 }
 
-function createKVDetail(entry: WorkflowKVEntryPage["items"][number]): WorkflowKVEntryDetail {
+function createKVDetail(entry: KVEntryPage["items"][number]): KVEntryDetail {
   return {
     ...entry,
     value: entry.key === "project.cache.ttl" ? 600 : { enabled: !entry.valuePreview.includes("false") },

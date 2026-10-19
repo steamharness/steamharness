@@ -1,22 +1,22 @@
-import type { NodeContext, WorkflowContext } from "./context";
+import type { NodeContext, RunContext } from "./context";
 
-export interface WorkflowNodeMetadata {
+export interface NodeMetadata {
   type: string;
   title: string;
   version: string;
   [key: string]: unknown;
 }
 
-export type WorkflowNodeMetadataInput = Partial<WorkflowNodeMetadata>;
+export type NodeMetadataInput = Partial<NodeMetadata>;
 
 export function createWorkflowNodeMetadata(
-  metadata: WorkflowNodeMetadataInput | undefined,
+  metadata: NodeMetadataInput | undefined,
   fallback: {
     type: string;
     title: string;
     version?: string;
   },
-): WorkflowNodeMetadata {
+): NodeMetadata {
   return {
     type: normalizeMetadataText(metadata?.type) ?? fallback.type,
     title: normalizeMetadataText(metadata?.title) ?? fallback.title,
@@ -27,14 +27,14 @@ export function createWorkflowNodeMetadata(
 export interface NodeDefinition<Input, Output> {
   name: string;
   standardName?: string;
-  metadata?: WorkflowNodeMetadata;
+  metadata?: NodeMetadata;
   run(input: Input, context: NodeContext): Promise<Output> | Output;
 }
 
 export interface StreamNodeDefinition<Input, Chunk, Output = void> {
   name: string;
   standardName?: string;
-  metadata?: WorkflowNodeMetadata;
+  metadata?: NodeMetadata;
   stream(input: Input, context: NodeContext): AsyncIterable<Chunk>;
   finalize?: (
     chunks: Chunk[],
@@ -43,9 +43,9 @@ export interface StreamNodeDefinition<Input, Chunk, Output = void> {
   ) => Promise<Output> | Output;
 }
 
-export interface WorkflowDefinition<Input, Output> {
+export interface Definition<Input, Output> {
   name: string;
-  run(input: Input, context: WorkflowContext): Promise<Output> | Output;
+  run(input: Input, context: RunContext): Promise<Output> | Output;
 }
 
 function normalizeMetadataText(value: unknown): string | undefined {

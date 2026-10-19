@@ -13,7 +13,7 @@ export {
   isWorkflowCapabilityAvailable,
   listWorkflowCapabilityToolIds,
   runWorkflowCapabilityAction,
-  type WorkflowCapabilityContext,
+  type CapabilityContext,
 } from "./assemble";
 
 export { selectWorkflowStorage } from "./storage";
@@ -22,7 +22,7 @@ export {
   KANBAN_METHODS_CAPABILITY, readKanbanMethodsBridgeConfig, runKanbanMethodsAction,
   type KanbanMethodsToolArgs,
 } from "./kanban-methods";
-export type { WorkflowCapability } from "./types";
+export type { Capability } from "./types";
 
 export {
   KNOWLEDGE_MCP_SERVER_ID,

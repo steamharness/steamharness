@@ -1,17 +1,17 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot, AgentSessionTurn } from 'steamharness/agent';
 import { ConversationController } from '../web/conversation-controller';
-import type { WorkflowProject, WorkflowReport, WorkflowRuntime } from '../web/workflow-types';
+import type { Project, Report, Runtime } from '../web/workflow-types';
 
 const controllers: ConversationController[] = [];
 afterEach(() => { for (const controller of controllers.splice(0)) controller.dispose(); });
 function fixture() {
-  const project: WorkflowProject = { id: 'durable', uri: '', folderPath: '/fixture', name: 'Agent', projectType: 'conversation', entrypoints: [],
+  const project: Project = { id: 'durable', uri: '', folderPath: '/fixture', name: 'Agent', projectType: 'conversation', entrypoints: [],
     fields: [{ name: 'model', flag: '--model', type: 'string' }], conversation: { durable: { enabled: true }, recovery: { enabled: true }, inputQueue: { enabled: true } } };
-  const runs: { emit(event: Record<string, unknown>): void; finish(report: WorkflowReport): void }[] = [];
-  const runtime: WorkflowRuntime = { available: true, inspect: vi.fn(), resolveParams: vi.fn(), uploadFiles: vi.fn(), readFile: vi.fn(), readResource: vi.fn(), deleteFiles: vi.fn(),
+  const runs: { emit(event: Record<string, unknown>): void; finish(report: Report): void }[] = [];
+  const runtime: Runtime = { available: true, inspect: vi.fn(), resolveParams: vi.fn(), uploadFiles: vi.fn(), readFile: vi.fn(), readResource: vi.fn(), deleteFiles: vi.fn(),
     cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(async () => {}), dispose: vi.fn(), agentControl: vi.fn(),
-    run: vi.fn((_request, emit) => new Promise<WorkflowReport>(resolve => runs.push({ emit, finish: resolve }))),
+    run: vi.fn((_request, emit) => new Promise<Report>(resolve => runs.push({ emit, finish: resolve }))),
     cancel: vi.fn(() => runs.at(-1)?.finish({ status: 'aborted' })),
   };
   const save = vi.fn(async () => {});

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { invokeServerKanbanBridge } from "../kanban-bridge";
 import { HttpError } from "../protocol";
-import type { WorkflowStorage } from "../storage";
+import type { Storage } from "../storage";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,7 +22,7 @@ test("Kanban files preserve binary bytes and reject other projects and conversat
     },
     async getManagedFile() { return { metadata: { ...metadata, workflowId: owner, conversationId }, filePath: join(root, "content") }; },
     async deleteManagedFile() { deleted = true; },
-  } as unknown as WorkflowStorage;
+  } as unknown as Storage;
   const invoke = (operation: "files.createFile" | "files.readFile" | "files.deleteFile", input: Record<string, unknown>) => (
     invokeServerKanbanBridge(storage, "demo", { requestId: "file", operation, input })
   );
@@ -84,7 +84,7 @@ test("server Kanban bridge dispatches the complete project data API", async () =
       calls.push({ operation: "knowledge.lines", input });
       return { documentId: "guide", startLine: 1, endLine: 1, totalLines: 1, lines: [] };
     },
-  } as unknown as WorkflowStorage;
+  } as unknown as Storage;
   const invoke = (operation: Parameters<typeof invokeServerKanbanBridge>[2]["operation"], input: Record<string, unknown>) => (
     invokeServerKanbanBridge(storage, "demo", { requestId: operation, operation, input })
   );
@@ -113,7 +113,7 @@ test("server Kanban bridge dispatches the complete project data API", async () =
 });
 
 test("server Kanban bridge returns the fixed host locale without reading project data", async () => {
-  const storage = {} as WorkflowStorage;
+  const storage = {} as Storage;
 
   assert.equal(await invokeServerKanbanBridge(storage, "demo", {
     requestId: "runtime-locale",
@@ -132,7 +132,7 @@ test("server Kanban bridge turns unavailable storage failures into a safe error"
     getProjectStorageValue: async () => {
       throw new Error("connect ECONNREFUSED postgres://private-host/workflow");
     },
-  } as unknown as WorkflowStorage;
+  } as unknown as Storage;
 
   await assert.rejects(
     invokeServerKanbanBridge(storage, "demo", {
@@ -164,7 +164,7 @@ test("server Kanban bridge reads a confirmed fixed-target related project", asyn
       calls.push({ get: input });
       return { exists: true, value: { schemaVersion: 3 }, revision: "3" };
     },
-  } as unknown as WorkflowStorage;
+  } as unknown as Storage;
   assert.deepEqual(await invokeServerKanbanBridge(storage, "kanban-project", {
     requestId: "source-read",
     operation: "relatedProject.kv.getValue",
@@ -205,7 +205,7 @@ test("server Kanban bridge hides unavailable related-project failures", async ()
       dataRead = true;
       return { exists: false };
     },
-  } as unknown as WorkflowStorage;
+  } as unknown as Storage;
 
   await assert.rejects(
     invokeServerKanbanBridge(storage, "demo", {
@@ -225,7 +225,7 @@ test("server Kanban bridge returns null for missing knowledge documents", async 
     getKnowledgeDocument: async () => {
       throw new HttpError(404, 404, "Document does not exist.");
     },
-  } as unknown as WorkflowStorage;
+  } as unknown as Storage;
 
   await assert.doesNotReject(async () => {
     assert.equal(await invokeServerKanbanBridge(storage, "demo", {

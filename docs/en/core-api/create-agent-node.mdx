@@ -26,7 +26,7 @@ const node = workflow.createAgentNode({
   permissionPolicy?: AgentPermissionPolicy,
   mode?: AgentMode,
   tools?: string[],
-  toolDefinitions?: WorkflowToolPermissionDefinition[],
+  toolDefinitions?: ToolPermissionDefinition[],
   allowedDirectories?: string[],
   extraTools?: AgentTool[],
   createTools?: (context: NodeContext) => AgentTool[] | AgentToolSet | Promise<AgentTool[] | AgentToolSet>,
@@ -61,7 +61,7 @@ Every [createAgent](./create-agent.mdx) option, plus:
 | Field | Type | Description |
 | --- | --- | --- |
 | `errCode` / `errMessage` | `number` / `string` | `0` and `""` on success. |
-| `items` | `WorkflowOutputItem[]` | The aggregated output items. |
+| `items` | `OutputItem[]` | The aggregated output items. |
 | `prompt` | `string` | The turn's input. |
 | `workdir` | `string` | The working directory actually used. |
 | `provider` / `model` | `string` | The model configuration used. |

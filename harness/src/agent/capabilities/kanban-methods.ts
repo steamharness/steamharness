@@ -1,6 +1,6 @@
 import { parseKanbanMethodInvocation, type KanbanMethodInvocation } from "@steamharness/kanban-project";
 import { readHostConfigurationBridgeConfig, requestHostBridge, type HostBridgeConfig } from "./host-configuration";
-import type { WorkflowCapability } from "./types";
+import type { Capability } from "./types";
 
 export const KANBAN_METHODS_MCP_SERVER_ID = "steamharness-kanban";
 export const KANBAN_METHODS_MCP_TOOL_NAME = "kanban_methods";
@@ -28,7 +28,7 @@ export async function runKanbanMethodsAction(
   return requestHostBridge(`kanban.methods.${action}`, input, config, fetchImpl, 25_000, signal);
 }
 
-export const KANBAN_METHODS_CAPABILITY: WorkflowCapability = {
+export const KANBAN_METHODS_CAPABILITY: Capability = {
   serverId: KANBAN_METHODS_MCP_SERVER_ID,
   toolName: KANBAN_METHODS_MCP_TOOL_NAME,
   toolId: KANBAN_METHODS_MCP_TOOL_ID,

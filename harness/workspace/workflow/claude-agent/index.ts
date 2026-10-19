@@ -94,7 +94,7 @@ const outputNode = workflow.createOutputNode<ClaudeAgentSessionInput, ClaudeAgen
   async *stream(input, context) {
     const baseUrlEnv = readOptionalString(workflow.getEnv("ANTHROPIC_BASE_URL"));
     const apiKeyEnv = readOptionalString(workflow.getEnv("ANTHROPIC_API_KEY"));
-    let pendingToolApprovalError: workflow.WorkflowError | undefined;
+    let pendingToolApprovalError: workflow.HarnessError | undefined;
     const pendingToolApprovalItems: ToolApprovalOutputItemInput[] = [];
     let toolCallCount = 0;
     let toolApprovalCount = 0;
@@ -536,7 +536,7 @@ function requireOutput(output: ClaudeAgentOutputPayload | undefined): ClaudeAgen
   return output;
 }
 
-function throwPendingToolApprovalError(error: workflow.WorkflowError | undefined): void {
+function throwPendingToolApprovalError(error: workflow.HarnessError | undefined): void {
   if (error !== undefined) {
     // Claude Agent SDK turns canUseTool rejections into a model-visible
     // denial result. Re-throw from the workflow stream so shared user-input owns
@@ -696,7 +696,7 @@ function createCanUseTool(context: {
   toolPermissions?: {
     getTool(name: string): { label?: string; description?: string } | undefined;
   };
-}, onPendingApproval?: (error: workflow.WorkflowError) => void, onApprovalDecision?: (item: ToolApprovalOutputItemInput) => void): CanUseTool {
+}, onPendingApproval?: (error: workflow.HarnessError) => void, onApprovalDecision?: (item: ToolApprovalOutputItemInput) => void): CanUseTool {
   return async (toolName, toolInput, options): Promise<PermissionResult> => {
     const tool = context.toolPermissions?.getTool(toolName);
     const approvalInput = {
@@ -723,7 +723,7 @@ function createCanUseTool(context: {
       }
       return { behavior: "allow", updatedInput: toolInput };
     } catch (error) {
-      if (error instanceof workflow.WorkflowError && error.type === "tool_permission_denied") {
+      if (error instanceof workflow.HarnessError && error.type === "tool_permission_denied") {
         onApprovalDecision?.({
           rawToolName: toolName,
           label: approvalInput.label,
@@ -739,7 +739,7 @@ function createCanUseTool(context: {
           message: error.message,
         };
       }
-      if (error instanceof workflow.WorkflowError && error.type === "user_input_required") {
+      if (error instanceof workflow.HarnessError && error.type === "user_input_required") {
         onPendingApproval?.(error);
       }
       throw error;
@@ -758,12 +758,12 @@ interface ToolApprovalOutputItemInput {
   values?: Record<string, unknown>;
 }
 
-function readApprovalRequestId(error: workflow.WorkflowError): string | undefined {
+function readApprovalRequestId(error: workflow.HarnessError): string | undefined {
   const requestId = error.metadata?.["requestId"];
   return typeof requestId === "string" ? requestId : undefined;
 }
 
-function readApprovalValues(error: workflow.WorkflowError): Record<string, unknown> | undefined {
+function readApprovalValues(error: workflow.HarnessError): Record<string, unknown> | undefined {
   const values = error.metadata?.["values"];
   return isRecord(values) ? values : undefined;
 }

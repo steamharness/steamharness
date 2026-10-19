@@ -6,7 +6,7 @@ import {
   createWorkflowConversationContext,
   createWorkflowRelatedProjectsContext,
   createWorkflowTokenUsageContext,
-  type WorkflowKVContext,
+  type KVContext,
 } from "../index";
 import { analyzeWorkflowScriptSource } from "../executor/rules";
 import {
@@ -15,14 +15,14 @@ import {
   runStreamNode,
   runWorkflow,
   safeRunWorkflow,
-  WorkflowError,
+  HarnessError,
 } from "../workflow/index";
 import type {
   NodeExecutionHookChunkEvent,
   NodeExecutionHookFinishEvent,
   NodeExecutionHookStartEvent,
-  WorkflowContext,
-  WorkflowDefinition,
+  RunContext,
+  Definition,
 } from "../types/index";
 
 test("readEntrypointOutput unwraps a payload and refuses to unwrap a failure", () => {
@@ -33,7 +33,7 @@ test("readEntrypointOutput unwraps a payload and refuses to unwrap a failure", (
   // would hand the caller a null it cannot tell from an empty answer.
   assert.throws(
     () => readEntrypointOutput({ errCode: 4001, errMessage: "title must not be empty", output: null }),
-    (error: Error) => error instanceof WorkflowError && error.message === "title must not be empty",
+    (error: Error) => error instanceof HarnessError && error.message === "title must not be empty",
   );
   // Anything that is not this package's envelope is left alone.
   assert.deepEqual(readEntrypointOutput({ id: "note-2" }), { id: "note-2" });
@@ -44,7 +44,7 @@ test("runWorkflow calls a child workflow inside the parent context", async () =>
   const context = createTestWorkflowContext();
   await context.storage.local.kv.setValue("shared-key", "from-parent");
 
-  const child: WorkflowDefinition<{ value: number }, { value: number; shared: unknown }> = {
+  const child: Definition<{ value: number }, { value: number; shared: unknown }> = {
     name: "child-workflow",
     async run(input, childContext) {
       return {
@@ -66,7 +66,7 @@ test("runWorkflow shares persistentValue with child workflows", async () => {
   const context = createTestWorkflowContext();
   await context.storage.local.persistentValue.setValue("shared-key", "from-persistent-parent");
 
-  const child: WorkflowDefinition<Record<string, never>, { value: unknown }> = {
+  const child: Definition<Record<string, never>, { value: unknown }> = {
     name: "child-workflow",
     async run(input, childContext) {
       return {
@@ -99,7 +99,7 @@ test("runWorkflow emits a parent trace wrapper and keeps child node events in th
       return `${input.message}!`;
     },
   };
-  const child: WorkflowDefinition<{ message: string }, string> = {
+  const child: Definition<{ message: string }, string> = {
     name: "child-workflow",
     async run(input, childContext) {
       return runNode(childNode, input, childContext);
@@ -139,7 +139,7 @@ test("safeRunWorkflow top-level execution does not emit a synthetic run-workflow
       return "ok";
     },
   };
-  const topLevel: WorkflowDefinition<Record<string, never>, string> = {
+  const topLevel: Definition<Record<string, never>, string> = {
     name: "top-level-workflow",
     run(input, childContext) {
       return runNode(childNode, input, childContext);
@@ -174,7 +174,7 @@ test("runWorkflow options with only name keep shared conversation and visible ou
       return { errCode: 0, errMessage: "", items: [] };
     },
   };
-  const child: WorkflowDefinition<Record<string, never>, { messageCount: number; errCode: number; errMessage: string; items: unknown[] }> = {
+  const child: Definition<Record<string, never>, { messageCount: number; errCode: number; errMessage: string; items: unknown[] }> = {
     name: "child-workflow",
     async run(input, childContext) {
       await childContext.conversation.appendMessage({ role: "assistant", content: "child wrote" });
@@ -212,7 +212,7 @@ test("runWorkflow shared-readonly conversation lets the child read but not write
   await context.conversation.appendMessage({ role: "user", content: "parent message" });
   await context.conversation.setTitle("Parent title");
 
-  const child: WorkflowDefinition<Record<string, never>, { before: number; after: number; title?: string }> = {
+  const child: Definition<Record<string, never>, { before: number; after: number; title?: string }> = {
     name: "child-workflow",
     async run(input, childContext) {
       const before = await childContext.conversation.getValue();
@@ -251,7 +251,7 @@ test("runWorkflow passes abortSignal, providers, files, and tokenUsage through t
     runId: "run-1",
     conversationId: "thread-1",
   });
-  const files: WorkflowContext["files"] = {
+  const files: RunContext["files"] = {
     resolveFile: async () => {
       throw new Error("not used");
     },
@@ -263,7 +263,7 @@ test("runWorkflow passes abortSignal, providers, files, and tokenUsage through t
     tokenUsage,
   });
 
-  const child: WorkflowDefinition<Record<string, never>, {
+  const child: Definition<Record<string, never>, {
     aborted: boolean;
     sameFiles: boolean;
     providerId?: string;
@@ -300,7 +300,7 @@ test("runWorkflow isolates local and server child KV namespaces", async () => {
   await context.storage.local.kv.conversation.setValue("state", "parent-conversation");
   await context.storage.server.kv.setValue("state", "parent-server-workflow");
 
-  const child: WorkflowDefinition<Record<string, never>, {
+  const child: Definition<Record<string, never>, {
     beforeWorkflow: unknown;
     beforeConversation: unknown;
     afterWorkflow: unknown;
@@ -350,7 +350,7 @@ test("runWorkflow isolates local and server child KV namespaces", async () => {
 
 test("runWorkflow stops recursive workflow composition at maxDepth", async () => {
   const context = createTestWorkflowContext();
-  const recursive: WorkflowDefinition<{ depth: number }, number> = {
+  const recursive: Definition<{ depth: number }, number> = {
     name: "recursive-workflow",
     async run(input, childContext) {
       return runWorkflow(recursive, { depth: input.depth + 1 }, childContext, {
@@ -390,7 +390,7 @@ test("runWorkflow hidden output visibility suppresses child output chunks", asyn
       return { errCode: 0, errMessage: "", items: [] };
     },
   };
-  const child: WorkflowDefinition<Record<string, never>, { errCode: number; errMessage: string; items: unknown[] }> = {
+  const child: Definition<Record<string, never>, { errCode: number; errMessage: string; items: unknown[] }> = {
     name: "child-workflow",
     async run(input, childContext) {
       return runStreamNode(outputNode, input, childContext).then((result) => result.output!);
@@ -425,7 +425,7 @@ test("runWorkflow can route child streaming output chunks to a parent handler", 
       return { errCode: 0, errMessage: "", items: [] };
     },
   };
-  const child: WorkflowDefinition<Record<string, never>, { errCode: number; errMessage: string; items: unknown[] }> = {
+  const child: Definition<Record<string, never>, { errCode: number; errMessage: string; items: unknown[] }> = {
     name: "child-workflow",
     async run(input, childContext) {
       return runStreamNode(outputNode, input, childContext).then((result) => result.output!);
@@ -467,7 +467,7 @@ test("runWorkflow fails fast when an output bridge handler throws", async () => 
       return { errCode: 0, errMessage: "", items: [] };
     },
   };
-  const child: WorkflowDefinition<Record<string, never>, { errCode: number; errMessage: string; items: unknown[] }> = {
+  const child: Definition<Record<string, never>, { errCode: number; errMessage: string; items: unknown[] }> = {
     name: "child-workflow",
     async run(input, childContext) {
       return runStreamNode(outputNode, input, childContext).then((result) => result.output!);
@@ -483,7 +483,7 @@ test("runWorkflow fails fast when an output bridge handler throws", async () => 
       },
     }),
     (error) => {
-      assert.ok(error instanceof WorkflowError);
+      assert.ok(error instanceof HarnessError);
       assert.equal(error.metadata?.outputBridgeFailed, true);
       assert.match(error.safeCause?.message ?? "", /bridge handler failed/);
       return true;
@@ -498,7 +498,7 @@ test("runWorkflow fails fast when an output bridge handler throws", async () => 
 test("runWorkflow can route child final output when the child is not streaming", async () => {
   const bridgedOutputs: unknown[] = [];
   const context = createTestWorkflowContext();
-  const child: WorkflowDefinition<Record<string, never>, { errCode: number; errMessage: string; items: Array<{ title: string; content: string }> }> = {
+  const child: Definition<Record<string, never>, { errCode: number; errMessage: string; items: Array<{ title: string; content: string }> }> = {
     name: "child-workflow",
     async run() {
       return {
@@ -565,10 +565,10 @@ function createTestWorkflowContext(options: {
   onFinish?: (event: NodeExecutionHookFinishEvent) => void;
   conversationId?: string;
   abortSignal?: AbortSignal;
-  providers?: WorkflowContext["providers"];
-  files?: WorkflowContext["files"];
-  tokenUsage?: WorkflowContext["tokenUsage"];
-} = {}): WorkflowContext {
+  providers?: RunContext["providers"];
+  files?: RunContext["files"];
+  tokenUsage?: RunContext["tokenUsage"];
+} = {}): RunContext {
   const kv = createMemoryKVContext();
 
   return {
@@ -594,7 +594,7 @@ function createTestWorkflowContext(options: {
   };
 }
 
-function createMemoryKVContext(): WorkflowKVContext {
+function createMemoryKVContext(): KVContext {
   const values = new Map<string, unknown>();
 
   function createNamespace(prefix: string) {

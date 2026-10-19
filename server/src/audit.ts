@@ -5,17 +5,17 @@ import {
   type AuthenticatedPrincipal,
 } from "./auth";
 import type {
-  WorkflowAuditEventInput,
-  WorkflowAuditEventListOptions,
-  WorkflowAuditEventPage,
+  AuditEventInput,
+  AuditEventListOptions,
+  AuditEventPage,
 } from "./account-db";
 
 const REDACTED = "[redacted]";
 const SECRET_KEY_PATTERN = /(token|secret|password|authorization|api[-_]?key|admin[-_]?key|cookie|session|refresh|access|credential|env|value)/i;
 
-export interface WorkflowAuditRouteEvent extends Omit<WorkflowAuditEventInput, "requestIp" | "userAgent"> {}
+export interface AuditRouteEvent extends Omit<AuditEventInput, "requestIp" | "userAgent"> {}
 
-export interface WorkflowPermissionDeniedAuditEvent {
+export interface PermissionDeniedAuditEvent {
   eventType: string;
   permission: string;
   resourceType?: string;
@@ -25,7 +25,7 @@ export interface WorkflowPermissionDeniedAuditEvent {
 
 export async function recordAuditEventForRequest(
   req: Request,
-  event: WorkflowAuditRouteEvent,
+  event: AuditRouteEvent,
 ): Promise<void> {
   const accountDb = getWorkflowAuthContext().accountDb;
   if (!accountDb) {
@@ -40,8 +40,8 @@ export async function recordAuditEventForRequest(
 }
 
 export async function listAuditEvents(
-  options: WorkflowAuditEventListOptions,
-): Promise<WorkflowAuditEventPage> {
+  options: AuditEventListOptions,
+): Promise<AuditEventPage> {
   const accountDb = getWorkflowAuthContext().accountDb;
   if (!accountDb) {
     throw new Error("Account storage is not configured.");
@@ -58,7 +58,7 @@ export async function listAuditEvents(
 
 export function createAuditActor(
   principal: AuthenticatedPrincipal | undefined,
-): Pick<WorkflowAuditRouteEvent, "principalKind" | "actorUserId" | "actorProfileId" | "actorDisplayName"> {
+): Pick<AuditRouteEvent, "principalKind" | "actorUserId" | "actorProfileId" | "actorDisplayName"> {
   if (!principal) {
     return { principalKind: "anonymous" };
   }
@@ -95,7 +95,7 @@ export function readRequestIp(req: Request): string | undefined {
 
 export function recordPermissionDeniedForRequest(
   req: Request,
-  event: WorkflowPermissionDeniedAuditEvent,
+  event: PermissionDeniedAuditEvent,
 ): void {
   const principal = getRequestPrincipal(req);
   void recordAuditEventForRequest(req, {

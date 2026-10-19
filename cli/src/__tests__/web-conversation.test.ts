@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ConversationController } from '../web/conversation-controller';
 import { composerOutputItems } from '../web/ui/output-display';
-import type { ConversationSession, WorkflowInputRequest, WorkflowProject, WorkflowReport, WorkflowRuntime } from '../web/workflow-types';
+import type { ConversationSession, InputRequest, Project, Report, Runtime } from '../web/workflow-types';
 
 function fixture() {
-  const project: WorkflowProject = { id: 'test', uri: '', folderPath: '/test', name: 'Conversation', projectType: 'conversation', fields: [], entrypoints: [] };
-  const runtime: WorkflowRuntime = {
+  const project: Project = { id: 'test', uri: '', folderPath: '/test', name: 'Conversation', projectType: 'conversation', fields: [], entrypoints: [] };
+  const runtime: Runtime = {
     available: true, inspect: vi.fn(), resolveParams: vi.fn(), run: vi.fn(), cancel: vi.fn(), dispose: vi.fn(),
     uploadFiles: vi.fn(), readFile: vi.fn(), deleteFiles: vi.fn(), cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(), readResource: vi.fn(),
   };
@@ -18,7 +18,7 @@ describe('Conversation execution lifecycle', () => {
   it('edits a queued message using its explicit target and deduplicates retries before and after consumption', async () => {
     const { controller, runtime } = fixture();
     controller.project.conversation = { inputQueue: { enabled: true } };
-    let finish!: (report: WorkflowReport) => void;
+    let finish!: (report: Report) => void;
     vi.mocked(runtime.run).mockImplementationOnce(() => new Promise(done => { finish = done; })).mockResolvedValue({ status: 'success' });
     await controller.send({ text: 'First', params: {}, attachments: [] });
     await vi.waitFor(() => expect(runtime.run).toHaveBeenCalledOnce());
@@ -126,7 +126,7 @@ describe('Conversation execution lifecycle', () => {
 
   it('releases a finished task even when saving its terminal state fails', async () => {
     const { controller, runtime, save } = fixture();
-    let finish!: (report: WorkflowReport) => void;
+    let finish!: (report: Report) => void;
     vi.mocked(runtime.run).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
     await controller.send({ text: 'Hello', params: {}, attachments: [] });
     await vi.waitFor(() => expect(runtime.run).toHaveBeenCalledOnce());
@@ -174,7 +174,7 @@ describe('Conversation execution lifecycle', () => {
     controller.project.conversation = { inputQueue: { enabled: true }, userInput: { effects: [
       { when: { type: 'review', nodeName: 'confirm', values: { accepted: true } }, params: { review: 'false' } },
     ] } };
-    const request: WorkflowInputRequest = { requestId: 'approval', nodeName: 'confirm', title: 'Continue?', metadata: { type: 'review' },
+    const request: InputRequest = { requestId: 'approval', nodeName: 'confirm', title: 'Continue?', metadata: { type: 'review' },
       params: [{ name: 'accepted', type: 'boolean', defaultValue: 'false' }] };
     vi.mocked(runtime.run).mockResolvedValueOnce({ status: 'waiting_for_input', pendingUserInput: request });
     return { ...fixtureResult, request };
@@ -190,7 +190,7 @@ describe('Conversation execution lifecycle', () => {
     await controller.updateDraft(session.id, draft.text, draft.attachments);
     await controller.create(); const other = controller.current;
     await controller.select(session.id);
-    let finish!: (report: WorkflowReport) => void, emit!: (event: Record<string, unknown>) => void;
+    let finish!: (report: Report) => void, emit!: (event: Record<string, unknown>) => void;
     vi.mocked(runtime.run).mockImplementationOnce((_request, callback) => { emit = callback; return new Promise(resolve => { finish = resolve; }); });
     await controller.resume(answer.id!, request.requestId, { accepted: true });
     await vi.waitFor(() => expect(runtime.run).toHaveBeenCalledTimes(2));
@@ -310,7 +310,7 @@ describe('Conversation execution lifecycle', () => {
 
   it.each(['success', 'waiting_for_input'])('ignores late events and a %s report after an explicit stop', async status => {
     const { controller, runtime, save } = fixture();
-    let finish!: (report: WorkflowReport) => void, emit!: (event: Record<string, unknown>) => void;
+    let finish!: (report: Report) => void, emit!: (event: Record<string, unknown>) => void;
     vi.mocked(runtime.run).mockImplementationOnce((_request, callback) => {
       emit = callback;
       emit({ type: 'node_chunk', chunk: { type: 'output_item_start', item: { id: 'live', content: 'Before stop' } } });
@@ -368,7 +368,7 @@ describe('Conversation execution lifecycle', () => {
 
   it.each([false, true])('retains every approved or revised plan across reports and reopening (full snapshot=%s)', async fullSnapshot => {
     const { controller, runtime, save } = fixture();
-    const request = (id: string): WorkflowInputRequest => ({ requestId: id, nodeName: 'plan-approval', title: 'Plan ready',
+    const request = (id: string): InputRequest => ({ requestId: id, nodeName: 'plan-approval', title: 'Plan ready',
       metadata: { type: 'agent-plan-approval' }, params: [{ name: 'decision', type: 'string' }, { name: 'instructions', type: 'string' }] });
     const first = { id: 'plan-7', content: 'Read for seven days', contentType: 'markdown' };
     const revised = { id: 'plan-30', content: 'Read for thirty days', contentType: 'markdown' };
@@ -406,7 +406,7 @@ describe('Conversation execution lifecycle', () => {
 
   it('keeps committed input history when a resumed report has empty authoritative output', async () => {
     const { controller, runtime } = fixture();
-    const request: WorkflowInputRequest = { requestId: 'approve', nodeName: 'gate', title: 'Continue?', params: [] };
+    const request: InputRequest = { requestId: 'approve', nodeName: 'gate', title: 'Continue?', params: [] };
     const plan = { id: 'plan', content: 'Keep this plan', contentType: 'markdown' };
     vi.mocked(runtime.run).mockImplementationOnce(async (_request, emit) => {
       emit({ type: 'node_chunk', chunk: { type: 'output_item_start', item: plan } });

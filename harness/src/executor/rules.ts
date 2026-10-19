@@ -2,30 +2,30 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import { workflowRuntimeApi } from "../runtime-api";
-import { WorkflowError } from "../workflow/index";
+import { HarnessError } from "../workflow/index";
 import type {
-  WorkflowConversationDefinition,
-  WorkflowEntrypointGroupDefinition,
-  WorkflowNodeRegistryItem,
-  WorkflowParamDeclaration,
-  WorkflowParamDefinition,
-  WorkflowParamLayout,
+  ConversationDefinition,
+  EntrypointGroupDefinition,
+  NodeRegistryItem,
+  ParamDeclaration,
+  ParamDefinition,
+  ParamLayout,
 } from "./types";
 import { assertWorkflowParamDeclarations, normalizeWorkflowParamDeclarations, readWorkflowParamDefinitionError } from "./param-definition";
 import { assertConversationFooter } from "./conversation-footer";
 import { assertConversationUserInput } from "./conversation-input";
 import { assertConversationCommands } from "./conversation-commands";
 import { STEAMHARNESS_ENTRYPOINT_ID_PATTERN } from "./definition";
-import type { WorkflowTokenUsageDefinition } from "../token-usage/index";
-import type { WorkflowToolPermissionDefinition } from "../tool-permissions/index";
+import type { TokenUsageDefinition } from "../token-usage/index";
+import type { ToolPermissionDefinition } from "../tool-permissions/index";
 import {
   STEAMHARNESS_PROJECT_TYPE_MIGRATION_EXAMPLE,
   assertNeverWorkflowExecutorProjectType,
   isWorkflowExecutorProjectType,
-  type WorkflowExecutorProjectType,
+  type ExecutorProjectType,
 } from "../project-types";
 
-export type WorkflowScriptRuleViolationType =
+export type ScriptRuleViolationType =
   | "duplicate_script_declaration"
   | "duplicate_node_name"
   | "declaration_conflicts_with_node"
@@ -37,37 +37,37 @@ export type WorkflowScriptRuleViolationType =
   | "invalid_executor_param_configuration"
   | "project_type_configuration_conflict";
 
-export interface WorkflowScriptRuleLocation {
+export interface ScriptRuleLocation {
   file: string;
   line: number;
   column: number;
 }
 
-export interface WorkflowScriptRuleViolation {
-  type: WorkflowScriptRuleViolationType;
+export interface ScriptRuleViolation {
+  type: ScriptRuleViolationType;
   name: string;
   message: string;
-  locations: WorkflowScriptRuleLocation[];
+  locations: ScriptRuleLocation[];
 }
 
-export interface WorkflowDefinedNode {
+export interface DefinedNode {
   order: number;
   name: string;
-  location: WorkflowScriptRuleLocation;
+  location: ScriptRuleLocation;
 }
 
-export type WorkflowStructureValue =
+export type StructureValue =
   | {
       kind: "literal";
       value: string | number | boolean | null;
     }
   | {
       kind: "array";
-      value: WorkflowStructureValue[];
+      value: StructureValue[];
     }
   | {
       kind: "object";
-      value: Record<string, WorkflowStructureValue>;
+      value: Record<string, StructureValue>;
     }
   | {
       kind: "function";
@@ -76,14 +76,14 @@ export type WorkflowStructureValue =
   | {
       kind: "variable";
       name: string;
-      resolved?: WorkflowStructureValue;
+      resolved?: StructureValue;
     }
   | {
       kind: "expression";
       source: string;
     };
 
-export type WorkflowStructureReference =
+export type StructureReference =
   | {
       kind: "workflow-input";
       name: string;
@@ -109,117 +109,117 @@ export type WorkflowStructureReference =
     }
   | {
       kind: "value";
-      value: WorkflowStructureValue;
+      value: StructureValue;
     }
   | {
       kind: "expression";
       source: string;
     };
 
-export interface WorkflowStructureNode {
+export interface StructureNode {
   id: string;
   order: number;
   standardName: string;
   configuredName?: string;
   factory: string;
-  location: WorkflowScriptRuleLocation;
-  options: WorkflowStructureValue;
+  location: ScriptRuleLocation;
+  options: StructureValue;
 }
 
-export interface WorkflowStructureCall {
+export interface StructureCall {
   order: number;
   callee: "runNode" | "runStreamNode" | "runIf" | "runFor" | "runWhile" | "runWorkflow";
   nodeRef: string;
   standardName?: string;
-  location: WorkflowScriptRuleLocation;
+  location: ScriptRuleLocation;
   arguments: Array<{
     position: number;
     source: string;
-    value: WorkflowStructureReference | WorkflowStructureValue;
+    value: StructureReference | StructureValue;
   }>;
-  input: WorkflowStructureReference;
-  output: WorkflowStructureReference;
+  input: StructureReference;
+  output: StructureReference;
 }
 
-export interface WorkflowStructureApiCall {
+export interface StructureApiCall {
   order: number;
   method: string;
-  location: WorkflowScriptRuleLocation;
+  location: ScriptRuleLocation;
   arguments: Array<{
     position: number;
     source: string;
-    value: WorkflowStructureValue;
+    value: StructureValue;
   }>;
-  output?: WorkflowStructureReference;
+  output?: StructureReference;
 }
 
-export interface WorkflowStructureEdge {
+export interface StructureEdge {
   order: number;
-  from: WorkflowStructureReference;
-  to: WorkflowStructureReference;
+  from: StructureReference;
+  to: StructureReference;
 }
 
-export type WorkflowStructureTreeItem =
-  | WorkflowStructureCallTreeItem
-  | WorkflowStructureIfTreeItem
-  | WorkflowStructureRunIfTreeItem
-  | WorkflowStructureLoopTreeItem;
+export type StructureTreeItem =
+  | StructureCallTreeItem
+  | StructureIfTreeItem
+  | StructureRunIfTreeItem
+  | StructureLoopTreeItem;
 
-export interface WorkflowStructureCallTreeItem {
+export interface StructureCallTreeItem {
   kind: "call";
   order: number;
   callOrder: number;
   callee: "runNode" | "runStreamNode" | "runIf" | "runFor" | "runWhile" | "runWorkflow";
   nodeRef: string;
   standardName?: string;
-  location: WorkflowScriptRuleLocation;
-  arguments: WorkflowStructureCall["arguments"];
-  input: WorkflowStructureReference;
-  output: WorkflowStructureReference;
+  location: ScriptRuleLocation;
+  arguments: StructureCall["arguments"];
+  input: StructureReference;
+  output: StructureReference;
 }
 
-export interface WorkflowStructureIfTreeItem {
+export interface StructureIfTreeItem {
   kind: "if";
   order: number;
   condition: string;
-  location: WorkflowScriptRuleLocation;
-  branches: WorkflowStructureIfBranch[];
+  location: ScriptRuleLocation;
+  branches: StructureIfBranch[];
 }
 
-export interface WorkflowStructureIfBranch {
+export interface StructureIfBranch {
   kind: "if" | "else-if" | "else";
   condition?: string;
-  location: WorkflowScriptRuleLocation;
-  children: WorkflowStructureTreeItem[];
+  location: ScriptRuleLocation;
+  children: StructureTreeItem[];
 }
 
-export interface WorkflowStructureRunIfTreeItem {
+export interface StructureRunIfTreeItem {
   kind: "run-if";
   order: number;
   callOrder: number;
   callId: string;
   label?: string;
-  location: WorkflowScriptRuleLocation;
+  location: ScriptRuleLocation;
   arguments: Array<{
     position: number;
     source: string;
-    value: WorkflowStructureReference | WorkflowStructureValue;
+    value: StructureReference | StructureValue;
   }>;
-  input: WorkflowStructureReference;
-  output: WorkflowStructureReference;
-  branches: WorkflowStructureRunIfBranch[];
+  input: StructureReference;
+  output: StructureReference;
+  branches: StructureRunIfBranch[];
 }
 
-export interface WorkflowStructureRunIfBranch {
+export interface StructureRunIfBranch {
   kind: "if" | "else-if" | "else";
   label?: string;
   description?: string;
   condition?: string;
-  location: WorkflowScriptRuleLocation;
-  children: WorkflowStructureTreeItem[];
+  location: ScriptRuleLocation;
+  children: StructureTreeItem[];
 }
 
-export interface WorkflowStructureLoopTreeItem {
+export interface StructureLoopTreeItem {
   kind: "loop";
   source: "run-for" | "run-while";
   order: number;
@@ -229,50 +229,50 @@ export interface WorkflowStructureLoopTreeItem {
   condition?: string;
   items?: string;
   maxIterations?: number;
-  location: WorkflowScriptRuleLocation;
+  location: ScriptRuleLocation;
   arguments: Array<{
     position: number;
     source: string;
-    value: WorkflowStructureReference | WorkflowStructureValue;
+    value: StructureReference | StructureValue;
   }>;
-  input: WorkflowStructureReference;
-  output: WorkflowStructureReference;
-  children: WorkflowStructureTreeItem[];
+  input: StructureReference;
+  output: StructureReference;
+  children: StructureTreeItem[];
 }
 
-export interface WorkflowStructureTree {
+export interface StructureTree {
   kind: "workflow-run";
   workflowRef?: string;
   workflowKey?: string;
-  location: WorkflowScriptRuleLocation;
-  children: WorkflowStructureTreeItem[];
+  location: ScriptRuleLocation;
+  children: StructureTreeItem[];
 }
 
-export interface WorkflowStructureWorkflow {
+export interface StructureWorkflow {
   name: string;
   dir: string;
   files: string[];
 }
 
-export interface WorkflowStructureDefinitions {
-  nodes: Record<string, WorkflowStructureNode>;
-  apiCalls: WorkflowStructureApiCall[];
-  variables: Record<string, Omit<WorkflowStructureVariable, "name">>;
-  registry: Record<string, WorkflowNodeRegistryItem>;
+export interface StructureDefinitions {
+  nodes: Record<string, StructureNode>;
+  apiCalls: StructureApiCall[];
+  variables: Record<string, Omit<StructureVariable, "name">>;
+  registry: Record<string, NodeRegistryItem>;
 }
 
-export type WorkflowStructureExecutionItem =
-  | WorkflowStructureExecutionNode
-  | WorkflowStructureExecutionBranch
-  | WorkflowStructureExecutionLoop;
+export type StructureExecutionItem =
+  | StructureExecutionNode
+  | StructureExecutionBranch
+  | StructureExecutionLoop;
 
-export interface WorkflowStructureExecution {
+export interface StructureExecution {
   kind: "sequence";
-  location?: WorkflowScriptRuleLocation;
-  children: WorkflowStructureExecutionItem[];
+  location?: ScriptRuleLocation;
+  children: StructureExecutionItem[];
 }
 
-export interface WorkflowStructureExecutionNode {
+export interface StructureExecutionNode {
   kind: "node";
   order: number;
   callId: string;
@@ -280,34 +280,34 @@ export interface WorkflowStructureExecutionNode {
   callee: "runNode" | "runStreamNode" | "runIf" | "runFor" | "runWhile" | "runWorkflow";
   nodeId: string;
   standardName?: string;
-  location: WorkflowScriptRuleLocation;
-  arguments: WorkflowStructureCall["arguments"];
-  input: WorkflowStructureReference;
-  output: WorkflowStructureReference;
+  location: ScriptRuleLocation;
+  arguments: StructureCall["arguments"];
+  input: StructureReference;
+  output: StructureReference;
 }
 
-export interface WorkflowStructureExecutionBranch {
+export interface StructureExecutionBranch {
   kind: "branch";
   source: "if" | "run-if" | "question-classifier";
   order: number;
   branchId: string;
   condition?: string;
-  decision?: WorkflowStructureExecutionNode;
-  location: WorkflowScriptRuleLocation;
-  branches: WorkflowStructureExecutionBranchPath[];
+  decision?: StructureExecutionNode;
+  location: ScriptRuleLocation;
+  branches: StructureExecutionBranchPath[];
 }
 
-export interface WorkflowStructureExecutionBranchPath {
+export interface StructureExecutionBranchPath {
   kind: "if" | "else-if" | "else" | "case";
   value?: string;
   label?: string;
   description?: string;
   condition?: string;
-  location: WorkflowScriptRuleLocation;
-  children: WorkflowStructureExecutionItem[];
+  location: ScriptRuleLocation;
+  children: StructureExecutionItem[];
 }
 
-export interface WorkflowStructureExecutionLoop {
+export interface StructureExecutionLoop {
   kind: "loop";
   source: "run-for" | "run-while";
   order: number;
@@ -316,86 +316,86 @@ export interface WorkflowStructureExecutionLoop {
   condition?: string;
   items?: string;
   maxIterations?: number;
-  decision: WorkflowStructureExecutionNode;
-  location: WorkflowScriptRuleLocation;
-  children: WorkflowStructureExecutionItem[];
+  decision: StructureExecutionNode;
+  location: ScriptRuleLocation;
+  children: StructureExecutionItem[];
 }
 
-export interface WorkflowStructureDiagnostics {
-  warnings: WorkflowStructureWarning[];
-  violations: WorkflowScriptRuleViolation[];
+export interface StructureDiagnostics {
+  warnings: StructureWarning[];
+  violations: ScriptRuleViolation[];
 }
 
-export interface WorkflowStructureVariable {
+export interface StructureVariable {
   name: string;
-  location: WorkflowScriptRuleLocation;
-  value: WorkflowStructureValue;
+  location: ScriptRuleLocation;
+  value: StructureValue;
 }
 
-export interface WorkflowStructureWarning {
+export interface StructureWarning {
   message: string;
-  location?: WorkflowScriptRuleLocation;
+  location?: ScriptRuleLocation;
 }
 
-export interface WorkflowStructureInspection {
-  projectType?: WorkflowExecutorProjectType;
-  workflow: WorkflowStructureWorkflow;
-  definitions: WorkflowStructureDefinitions;
-  diagnostics: WorkflowStructureDiagnostics;
+export interface StructureInspection {
+  projectType?: ExecutorProjectType;
+  workflow: StructureWorkflow;
+  definitions: StructureDefinitions;
+  diagnostics: StructureDiagnostics;
   defaultEntrypoint?: string;
-  entrypoints?: WorkflowStructureEntrypoint[];
-  execution?: WorkflowStructureExecution;
-  params?: WorkflowParamDefinition[];
-  paramLayout?: WorkflowParamLayout;
+  entrypoints?: StructureEntrypoint[];
+  execution?: StructureExecution;
+  params?: ParamDefinition[];
+  paramLayout?: ParamLayout;
   paramResolver?: { enabled: true };
-  tools?: WorkflowToolPermissionDefinition[];
-  conversation?: WorkflowConversationDefinition;
-  tokenUsage?: WorkflowTokenUsageDefinition;
-  registry?: WorkflowNodeRegistryItem[];
+  tools?: ToolPermissionDefinition[];
+  conversation?: ConversationDefinition;
+  tokenUsage?: TokenUsageDefinition;
+  registry?: NodeRegistryItem[];
 }
 
-export interface WorkflowStructureEntrypoint {
+export interface StructureEntrypoint {
   id: string;
   title: string;
   description?: string;
-  group?: WorkflowEntrypointGroupDefinition;
+  group?: EntrypointGroupDefinition;
   workflowName: string;
-  execution: WorkflowStructureExecution;
-  params?: WorkflowParamDefinition[];
-  paramLayout?: WorkflowParamLayout;
+  execution: StructureExecution;
+  params?: ParamDefinition[];
+  paramLayout?: ParamLayout;
   paramResolver?: { enabled: true };
-  tools?: WorkflowToolPermissionDefinition[];
-  tokenUsage?: WorkflowTokenUsageDefinition;
-  registry?: WorkflowNodeRegistryItem[];
+  tools?: ToolPermissionDefinition[];
+  tokenUsage?: TokenUsageDefinition;
+  registry?: NodeRegistryItem[];
 }
 
-interface AnalyzedWorkflowEntrypoint extends Omit<WorkflowStructureEntrypoint, "execution" | "workflowName"> {
+interface AnalyzedWorkflowEntrypoint extends Omit<StructureEntrypoint, "execution" | "workflowName"> {
   workflowRef: string;
   workflowKey?: string;
   workflowName?: string;
-  location: WorkflowScriptRuleLocation;
+  location: ScriptRuleLocation;
 }
 
-interface WorkflowModuleBinding {
+interface ModuleBinding {
   importedName: string;
   moduleSpecifier: string;
 }
 
-interface WorkflowModuleExportBinding {
+interface ModuleExportBinding {
   importedName?: string;
   localName?: string;
   moduleSpecifier?: string;
 }
 
-interface WorkflowModuleBindings {
-  imports: Record<string, WorkflowModuleBinding>;
-  exports: Record<string, WorkflowModuleExportBinding>;
+interface ModuleBindings {
+  imports: Record<string, ModuleBinding>;
+  exports: Record<string, ModuleExportBinding>;
   exportAllModuleSpecifiers: string[];
 }
 
 interface AnalyzedWorkflowModule {
   analysis: ScriptAnalysis;
-  bindings: WorkflowModuleBindings;
+  bindings: ModuleBindings;
   filePath: string;
   sourceFile: ts.SourceFile;
 }
@@ -405,9 +405,9 @@ interface ResolvedWorkflowDefinition {
   name: string;
 }
 
-export interface WorkflowScriptInspection {
-  definedNodes: WorkflowDefinedNode[];
-  violations: WorkflowScriptRuleViolation[];
+export interface ScriptInspection {
+  definedNodes: DefinedNode[];
+  violations: ScriptRuleViolation[];
 }
 
 export interface ValidateWorkflowScriptsOptions {
@@ -421,43 +421,43 @@ export interface ScriptNameOccurrence {
   normalizedName: string;
   scopeKey: string;
   canConflictWithNode: boolean;
-  location: WorkflowScriptRuleLocation;
+  location: ScriptRuleLocation;
 }
 
 export interface NodeNameOccurrence {
   name: string;
   normalizedName: string;
-  location: WorkflowScriptRuleLocation;
+  location: ScriptRuleLocation;
 }
 
-export interface WorkflowOutputTypeOccurrence {
+export interface OutputTypeOccurrence {
   name: string;
   extendsWorkflowExecutorResult: boolean;
-  location: WorkflowScriptRuleLocation;
+  location: ScriptRuleLocation;
 }
 
 export interface ScriptAnalysis {
   declarations: ScriptNameOccurrence[];
   nodeNames: NodeNameOccurrence[];
-  definedNodes: WorkflowDefinedNode[];
-  workflowOutputTypes: WorkflowOutputTypeOccurrence[];
-  structureNodes: WorkflowStructureNode[];
-  structureCalls: WorkflowStructureCall[];
-  structureApiCalls: WorkflowStructureApiCall[];
-  structureEdges: WorkflowStructureEdge[];
-  structureTrees: WorkflowStructureTree[];
-  structureVariables: WorkflowStructureVariable[];
-  structureWarnings: WorkflowStructureWarning[];
+  definedNodes: DefinedNode[];
+  workflowOutputTypes: OutputTypeOccurrence[];
+  structureNodes: StructureNode[];
+  structureCalls: StructureCall[];
+  structureApiCalls: StructureApiCall[];
+  structureEdges: StructureEdge[];
+  structureTrees: StructureTree[];
+  structureVariables: StructureVariable[];
+  structureWarnings: StructureWarning[];
   executorDefinitionCount: number;
-  executorProjectType?: WorkflowExecutorProjectType;
-  executorConfigurationViolations: WorkflowScriptRuleViolation[];
-  executorParams?: WorkflowParamDefinition[];
-  executorParamLayout?: WorkflowParamLayout;
+  executorProjectType?: ExecutorProjectType;
+  executorConfigurationViolations: ScriptRuleViolation[];
+  executorParams?: ParamDefinition[];
+  executorParamLayout?: ParamLayout;
   executorParamResolver?: { enabled: true };
-  executorTools?: WorkflowToolPermissionDefinition[];
-  executorConversation?: WorkflowConversationDefinition;
-  executorTokenUsage?: WorkflowTokenUsageDefinition;
-  executorRegistry?: WorkflowNodeRegistryItem[];
+  executorTools?: ToolPermissionDefinition[];
+  executorConversation?: ConversationDefinition;
+  executorTokenUsage?: TokenUsageDefinition;
+  executorRegistry?: NodeRegistryItem[];
   executorDefaultEntrypoint?: string;
   executorEntrypoints?: AnalyzedWorkflowEntrypoint[];
   workflowDefinitions: Record<string, string>;
@@ -483,14 +483,14 @@ const STEAMHARNESS_RUNTIME_API_NAMES = new Set([
 
 export function validateWorkflowScripts(
   options: ValidateWorkflowScriptsOptions,
-): WorkflowScriptInspection {
+): ScriptInspection {
   const inspection = inspectWorkflowScripts(options);
 
   if (inspection.violations.length === 0) {
     return inspection;
   }
 
-  throw new WorkflowError({
+  throw new HarnessError({
     type: "input_validation",
     message: `Workflow "${options.workflowName}" script validation failed.`,
     metadata: {
@@ -502,7 +502,7 @@ export function validateWorkflowScripts(
 
 export function inspectWorkflowScripts(
   options: ValidateWorkflowScriptsOptions,
-): WorkflowScriptInspection {
+): ScriptInspection {
   const scriptPaths = findWorkflowScriptPaths(options.workflowDir);
 
   if (scriptPaths.length === 0) {
@@ -524,7 +524,7 @@ export function inspectWorkflowScripts(
 
 export function inspectWorkflowStructure(
   options: ValidateWorkflowScriptsOptions,
-): WorkflowStructureInspection {
+): StructureInspection {
   const scriptPaths = findWorkflowScriptPaths(options.workflowDir);
 
   if (scriptPaths.length === 0) {
@@ -589,7 +589,7 @@ export function analyzeWorkflowScriptSource(
 export function validateWorkflowScriptSource(
   sourceText: string,
   fileName = "index.ts",
-): WorkflowScriptRuleViolation[] {
+): ScriptRuleViolation[] {
   return findWorkflowScriptRuleViolations(
     analyzeWorkflowScriptSource(sourceText, fileName),
   );
@@ -599,7 +599,7 @@ function createProjectTypeRuleMessage(reason: string): string {
   return `${reason}\n\nMigration example:\n${STEAMHARNESS_PROJECT_TYPE_MIGRATION_EXAMPLE}`;
 }
 
-function createMissingExecutorViolation(): WorkflowScriptRuleViolation {
+function createMissingExecutorViolation(): ScriptRuleViolation {
   return {
     type: "invalid_executor_project_type",
     name: "executor",
@@ -615,7 +615,7 @@ function findWorkflowScriptRuleViolations(
   options: {
     workflowName?: string;
   } = {},
-): WorkflowScriptRuleViolation[] {
+): ScriptRuleViolation[] {
   return [
     ...(analysis.executorDefinitionCount === 0 ? [createMissingExecutorViolation()] : []),
     ...analysis.executorConfigurationViolations,
@@ -632,7 +632,7 @@ function findWorkflowScriptRuleViolations(
 
 function findUnknownWorkflowEntrypointReferences(
   analysis: ScriptAnalysis,
-): WorkflowScriptRuleViolation[] {
+): ScriptRuleViolation[] {
   if (analysis.executorProjectType !== "workflow") return [];
 
   return (analysis.executorEntrypoints ?? []).flatMap((entrypoint) => (
@@ -653,7 +653,7 @@ function createWorkflowStructureInspection(options: {
   workflowDir: string;
   files: string[];
   analysis: ScriptAnalysis;
-}): WorkflowStructureInspection {
+}): StructureInspection {
   const nodeIds = new Set(options.analysis.structureNodes.map((node) => node.id));
   const nodesById = Object.fromEntries(
     options.analysis.structureNodes.map((node) => [node.id, node]),
@@ -748,9 +748,9 @@ function createWorkflowStructureInspection(options: {
 }
 
 function createWorkflowStructureExecution(
-  trees: WorkflowStructureTree[],
-  nodesById: Record<string, WorkflowStructureNode>,
-): WorkflowStructureExecution {
+  trees: StructureTree[],
+  nodesById: Record<string, StructureNode>,
+): StructureExecution {
   const firstTree = trees[0];
 
   return {
@@ -765,11 +765,11 @@ function createWorkflowStructureExecution(
 }
 
 function convertWorkflowStructureTreeItem(
-  item: WorkflowStructureTreeItem,
-  nodesById: Record<string, WorkflowStructureNode>,
-): WorkflowStructureExecutionItem {
+  item: StructureTreeItem,
+  nodesById: Record<string, StructureNode>,
+): StructureExecutionItem {
   if (item.kind === "call") {
-    const nodeItem: WorkflowStructureExecutionNode = {
+    const nodeItem: StructureExecutionNode = {
       kind: "node",
       order: item.order,
       callId: `call_${item.callOrder}`,
@@ -787,7 +787,7 @@ function convertWorkflowStructureTreeItem(
   }
 
   if (item.kind === "run-if") {
-    const decision: WorkflowStructureExecutionNode = {
+    const decision: StructureExecutionNode = {
       kind: "node",
       order: item.order,
       callId: item.callId,
@@ -825,7 +825,7 @@ function convertWorkflowStructureTreeItem(
   if (item.kind === "loop") {
     const standardName = item.source;
     const callee = item.source === "run-for" ? "runFor" : "runWhile";
-    const decision: WorkflowStructureExecutionNode = {
+    const decision: StructureExecutionNode = {
       kind: "node",
       order: item.order,
       callId: item.callId,
@@ -875,9 +875,9 @@ function convertWorkflowStructureTreeItem(
 }
 
 function createQuestionClassifierBranchItem(
-  item: WorkflowStructureExecutionNode,
-  nodesById: Record<string, WorkflowStructureNode>,
-): WorkflowStructureExecutionBranch | undefined {
+  item: StructureExecutionNode,
+  nodesById: Record<string, StructureNode>,
+): StructureExecutionBranch | undefined {
   const node = nodesById[item.nodeId];
 
   if (node?.standardName !== "question-classifier") {
@@ -917,7 +917,7 @@ function createQuestionClassifierBranchItem(
 }
 
 function readQuestionClassifierCategories(
-  options: WorkflowStructureValue,
+  options: StructureValue,
 ): Array<{
   name: string;
   description: string;
@@ -961,8 +961,8 @@ function readQuestionClassifierCategories(
 }
 
 function resolveStructureValue(
-  value: WorkflowStructureValue | undefined,
-): WorkflowStructureValue | undefined {
+  value: StructureValue | undefined,
+): StructureValue | undefined {
   if (value?.kind === "variable" && value.resolved !== undefined) {
     return resolveStructureValue(value.resolved);
   }
@@ -1141,8 +1141,8 @@ function analyzeWorkflowScripts(cwd: string, scriptPaths: string[]): ScriptAnaly
   return analysis;
 }
 
-function collectWorkflowModuleBindings(sourceFile: ts.SourceFile): WorkflowModuleBindings {
-  const bindings: WorkflowModuleBindings = {
+function collectWorkflowModuleBindings(sourceFile: ts.SourceFile): ModuleBindings {
+  const bindings: ModuleBindings = {
     imports: {},
     exports: {},
     exportAllModuleSpecifiers: [],
@@ -1327,7 +1327,7 @@ function hasExportModifier(node: ts.VariableStatement): boolean {
 }
 
 function offsetStructureReferenceCallOrder<
-  Value extends WorkflowStructureReference | WorkflowStructureValue,
+  Value extends StructureReference | StructureValue,
 >(value: Value, offset: number): Value {
   if (offset === 0) {
     return value;
@@ -1344,9 +1344,9 @@ function offsetStructureReferenceCallOrder<
 }
 
 function offsetWorkflowStructureTreeCallOrder(
-  tree: WorkflowStructureTree,
+  tree: StructureTree,
   callOffset: number,
-): WorkflowStructureTree {
+): StructureTree {
   if (callOffset === 0) {
     return tree;
   }
@@ -1360,9 +1360,9 @@ function offsetWorkflowStructureTreeCallOrder(
 }
 
 function offsetWorkflowStructureTreeItemCallOrder(
-  item: WorkflowStructureTreeItem,
+  item: StructureTreeItem,
   callOffset: number,
-): WorkflowStructureTreeItem {
+): StructureTreeItem {
   if (item.kind === "call") {
     return {
       ...item,
@@ -1459,15 +1459,15 @@ function analyzeSourceFile(
     workflowDefinitions: {},
   };
   const scopeStack = [createScopeKey(filePath, "source", 0)];
-  const constValues = new Map<string, WorkflowStructureValue>();
+  const constValues = new Map<string, StructureValue>();
   const nodeIdsByVariable = new Map<string, string>();
   const nodeNamesById = new Map<string, string>();
-  const outputVariables = new Map<string, WorkflowStructureReference>();
+  const outputVariables = new Map<string, StructureReference>();
   const workflowInputNames = new Set<string>();
-  const structureCallsByNode = new WeakMap<ts.CallExpression, WorkflowStructureCall>();
-  const structureWorkflowCallsByNode = new WeakMap<ts.CallExpression, WorkflowStructureCall>();
-  const structureRunIfByNode = new WeakMap<ts.CallExpression, WorkflowStructureRunIfTreeItem>();
-  const structureLoopByNode = new WeakMap<ts.CallExpression, WorkflowStructureLoopTreeItem>();
+  const structureCallsByNode = new WeakMap<ts.CallExpression, StructureCall>();
+  const structureWorkflowCallsByNode = new WeakMap<ts.CallExpression, StructureCall>();
+  const structureRunIfByNode = new WeakMap<ts.CallExpression, StructureRunIfTreeItem>();
+  const structureLoopByNode = new WeakMap<ts.CallExpression, StructureLoopTreeItem>();
   let treeItemOrder = 0;
 
   visitSourceFile(sourceFile);
@@ -1717,7 +1717,7 @@ function analyzeSourceFile(
       return;
     }
 
-    const tools: WorkflowToolPermissionDefinition[] = [];
+    const tools: ToolPermissionDefinition[] = [];
 
     for (const element of toolsProperty.initializer.elements) {
       if (!ts.isObjectLiteralExpression(element)) {
@@ -1903,7 +1903,7 @@ function analyzeSourceFile(
 
   function inferStaticExecutorProjectType(
     executorObject: ts.ObjectLiteralExpression,
-  ): WorkflowExecutorProjectType | undefined {
+  ): ExecutorProjectType | undefined {
     if (findStaticPropertyAssignment(executorObject, "entrypoints") !== undefined
         || findStaticPropertyAssignment(executorObject, "defaultEntrypoint") !== undefined) {
       return "workflow";
@@ -1918,7 +1918,7 @@ function analyzeSourceFile(
 
   function collectWorkflowEntrypoints(
     executorObject: ts.ObjectLiteralExpression,
-    executorLocation: WorkflowScriptRuleLocation,
+    executorLocation: ScriptRuleLocation,
   ): void {
     const legacyKeys = [
       "workflow",
@@ -1988,8 +1988,8 @@ function analyzeSourceFile(
     const entrypoints: AnalyzedWorkflowEntrypoint[] = [];
     const ids = new Set<string>();
     const groups = new Map<string, {
-      definition: WorkflowEntrypointGroupDefinition;
-      location: WorkflowScriptRuleLocation;
+      definition: EntrypointGroupDefinition;
+      location: ScriptRuleLocation;
     }>();
     for (const element of entrypointsProperty.initializer.elements) {
       if (
@@ -2207,7 +2207,7 @@ function analyzeSourceFile(
       return;
     }
 
-    const registry: WorkflowNodeRegistryItem[] = [];
+    const registry: NodeRegistryItem[] = [];
 
     for (const element of registryProperty.initializer.elements) {
       if (!ts.isObjectLiteralExpression(element)) {
@@ -2230,8 +2230,8 @@ function analyzeSourceFile(
     property: ts.ObjectLiteralElementLike | undefined,
     entrypointId: string,
   ): {
-    definition: WorkflowEntrypointGroupDefinition;
-    location: WorkflowScriptRuleLocation;
+    definition: EntrypointGroupDefinition;
+    location: ScriptRuleLocation;
   } | undefined {
     if (property === undefined) return undefined;
     if (!ts.isPropertyAssignment(property)) {
@@ -2324,7 +2324,7 @@ function analyzeSourceFile(
 
   function readEntrypointParams(
     obj: ts.ObjectLiteralExpression,
-  ): { params: WorkflowParamDefinition[]; layout?: WorkflowParamLayout } | undefined {
+  ): { params: ParamDefinition[]; layout?: ParamLayout } | undefined {
     const property = findStaticPropertyAssignment(obj, "params");
     if (property === undefined) return undefined;
     return readExecutorParamDeclarations(property, "Workflow entrypoint");
@@ -2333,7 +2333,7 @@ function analyzeSourceFile(
   function readExecutorParamDeclarations(
     property: ts.PropertyAssignment,
     owner: string,
-  ): { params: WorkflowParamDefinition[]; layout?: WorkflowParamLayout } | undefined {
+  ): { params: ParamDefinition[]; layout?: ParamLayout } | undefined {
     const initialViolationCount = analysis.executorConfigurationViolations.length;
     if (!ts.isArrayLiteralExpression(property.initializer)) {
       analysis.executorConfigurationViolations.push({
@@ -2344,7 +2344,7 @@ function analyzeSourceFile(
       });
       return undefined;
     }
-    const declarations: WorkflowParamDeclaration[] = [];
+    const declarations: ParamDeclaration[] = [];
     for (const element of property.initializer.elements) {
       if (!ts.isObjectLiteralExpression(element)) {
         analysis.executorConfigurationViolations.push({
@@ -2370,7 +2370,7 @@ function analyzeSourceFile(
         }
         const fields = fieldsProperty.initializer.elements
           .map((field) => readParamObject(field as ts.ObjectLiteralExpression))
-          .filter((field): field is WorkflowParamDefinition => field !== undefined);
+          .filter((field): field is ParamDefinition => field !== undefined);
         if (fields.length !== fieldsProperty.initializer.elements.length) {
           analysis.executorConfigurationViolations.push({
             type: "invalid_executor_param_configuration",
@@ -2394,7 +2394,7 @@ function analyzeSourceFile(
               id: readStringProperty(element, "id") ?? "",
               label: readStringProperty(element, "label") ?? "",
               fields,
-            }) as WorkflowParamDeclaration);
+            }) as ParamDeclaration);
         continue;
       }
       const param = readParamObject(element);
@@ -2419,7 +2419,7 @@ function analyzeSourceFile(
         });
       }
       if (kind === "mode") {
-        declarations.push({ ...param, kind: "mode", options: param.options ?? [] } as WorkflowParamDeclaration);
+        declarations.push({ ...param, kind: "mode", options: param.options ?? [] } as ParamDeclaration);
       } else if (kind === "slash") {
         const { control: _control, panel: _panel, multiple: _multiple, ...field } = param;
         const properties = ["control", "panel", "multiple"].filter(name => findStaticPropertyAssignment(element, name) !== undefined);
@@ -2428,9 +2428,9 @@ function analyzeSourceFile(
             message: `Slash parameter "${param.name}" cannot declare ${properties.join(", ")}.`,
             locations: [createLocation(cwd, filePath, sourceFile, element)] });
         }
-        declarations.push({ ...field, kind: "slash" } as WorkflowParamDeclaration);
+        declarations.push({ ...field, kind: "slash" } as ParamDeclaration);
       } else if (kind === undefined) {
-        declarations.push(param as WorkflowParamDeclaration);
+        declarations.push(param as ParamDeclaration);
       } else {
         analysis.executorConfigurationViolations.push({
           type: "invalid_executor_param_configuration",
@@ -2457,7 +2457,7 @@ function analyzeSourceFile(
 
   function readEntrypointTools(
     obj: ts.ObjectLiteralExpression,
-  ): WorkflowToolPermissionDefinition[] | undefined {
+  ): ToolPermissionDefinition[] | undefined {
     const property = findStaticPropertyAssignment(obj, "tools");
     if (property === undefined) return undefined;
     if (!ts.isArrayLiteralExpression(property.initializer)) return undefined;
@@ -2470,7 +2470,7 @@ function analyzeSourceFile(
 
   function readEntrypointTokenUsage(
     obj: ts.ObjectLiteralExpression,
-  ): WorkflowTokenUsageDefinition | undefined {
+  ): TokenUsageDefinition | undefined {
     const property = findStaticPropertyAssignment(obj, "tokenUsage");
     if (property === undefined || !ts.isObjectLiteralExpression(property.initializer)) {
       return undefined;
@@ -2486,7 +2486,7 @@ function analyzeSourceFile(
 
   function readEntrypointRegistry(
     obj: ts.ObjectLiteralExpression,
-  ): WorkflowNodeRegistryItem[] | undefined {
+  ): NodeRegistryItem[] | undefined {
     const property = findStaticPropertyAssignment(obj, "registry");
     if (property === undefined || !ts.isArrayLiteralExpression(property.initializer)) {
       return undefined;
@@ -2506,7 +2506,7 @@ function analyzeSourceFile(
 
   function readParamObject(
     obj: ts.ObjectLiteralExpression,
-  ): WorkflowParamDefinition | undefined {
+  ): ParamDefinition | undefined {
     const name = readStringProperty(obj, "name");
     const flag = readStringProperty(obj, "flag");
 
@@ -2514,7 +2514,7 @@ function analyzeSourceFile(
       return undefined;
     }
 
-    const type = (readStringProperty(obj, "type") as WorkflowParamDefinition["type"]) ?? "string";
+    const type = (readStringProperty(obj, "type") as ParamDefinition["type"]) ?? "string";
 
     return {
       name,
@@ -2536,12 +2536,12 @@ function analyzeSourceFile(
       accept: readStringArrayProperty(obj, "accept"),
       audio: readParamAudioProperty(obj),
       format: readStringProperty(obj, "format") === "json" ? "json" : undefined,
-    } as WorkflowParamDefinition;
+    } as ParamDefinition;
   }
 
   function readToolPermissionObject(
     obj: ts.ObjectLiteralExpression,
-  ): WorkflowToolPermissionDefinition | undefined {
+  ): ToolPermissionDefinition | undefined {
     const name = readStringProperty(obj, "name");
 
     if (name === undefined) {
@@ -2559,7 +2559,7 @@ function analyzeSourceFile(
 
   function readRegistryObject(
     obj: ts.ObjectLiteralExpression,
-  ): WorkflowNodeRegistryItem | undefined {
+  ): NodeRegistryItem | undefined {
     const name = readStringProperty(obj, "name");
     const nodeName = readIdentifierProperty(obj, "node");
 
@@ -2584,7 +2584,7 @@ function analyzeSourceFile(
   function readMetadataProperty(
     obj: ts.ObjectLiteralExpression,
     propertyName: string,
-  ): Partial<WorkflowNodeRegistryItem["metadata"]> | undefined {
+  ): Partial<NodeRegistryItem["metadata"]> | undefined {
     const prop = obj.properties.find(
       (p): p is ts.PropertyAssignment =>
         ts.isPropertyAssignment(p) &&
@@ -2623,7 +2623,7 @@ function analyzeSourceFile(
 
   function readNodeMetadataById(
     nodeId: string,
-  ): Partial<WorkflowNodeRegistryItem["metadata"]> | undefined {
+  ): Partial<NodeRegistryItem["metadata"]> | undefined {
     const node = analysis.structureNodes.find((item) => item.id === nodeId);
 
     if (node === undefined || node.options.kind !== "object") {
@@ -2648,7 +2648,7 @@ function analyzeSourceFile(
   }
 
   function readLiteralStringValue(
-    value: WorkflowStructureValue | undefined,
+    value: StructureValue | undefined,
   ): string | undefined {
     const resolved = resolveStructureValue(value);
 
@@ -2742,7 +2742,7 @@ function analyzeSourceFile(
   function readParamControlProperty(
     obj: ts.ObjectLiteralExpression,
     propertyName: string,
-  ): WorkflowParamDefinition["control"] | undefined {
+  ): ParamDefinition["control"] | undefined {
     const value = readStringProperty(obj, propertyName);
     return value === "text" ||
       value === "audio" ||
@@ -2758,12 +2758,12 @@ function analyzeSourceFile(
       : undefined;
   }
 
-  function readParamAudioProperty(obj: ts.ObjectLiteralExpression): WorkflowParamDefinition["audio"] {
+  function readParamAudioProperty(obj: ts.ObjectLiteralExpression): ParamDefinition["audio"] {
     const property = findStaticPropertyAssignment(obj, "audio");
     if (!property) return undefined;
     const initializer = unwrapExpression(property.initializer);
     if (!ts.isObjectLiteralExpression(initializer)) return undefined;
-    const limits: NonNullable<WorkflowParamDefinition["audio"]> = {};
+    const limits: NonNullable<ParamDefinition["audio"]> = {};
     for (const name of ["maxDurationSeconds", "maxBytes"] as const) {
       const field = findStaticPropertyAssignment(initializer, name);
       if (!field) continue;
@@ -2779,7 +2779,7 @@ function analyzeSourceFile(
   function readParamPanelProperty(
     obj: ts.ObjectLiteralExpression,
     propertyName: string,
-  ): WorkflowParamDefinition["panel"] | undefined {
+  ): ParamDefinition["panel"] | undefined {
     const value = readStringProperty(obj, propertyName);
     return value === "main" || value === "auxiliary" || value === "quick" || value === "mode" || value === "slash" ? value : undefined;
   }
@@ -2787,7 +2787,7 @@ function analyzeSourceFile(
   function readParamOptionsProperty(
     obj: ts.ObjectLiteralExpression,
     propertyName: string,
-  ): WorkflowParamDefinition["options"] | undefined {
+  ): ParamDefinition["options"] | undefined {
     const prop = findStaticPropertyAssignment(obj, propertyName);
 
     if (prop === undefined || !ts.isArrayLiteralExpression(prop.initializer)) {
@@ -2821,11 +2821,11 @@ function analyzeSourceFile(
     return options.length === 0 ? undefined : options;
   }
 
-  function readConversationUserInputProperty(obj: ts.ObjectLiteralExpression): WorkflowConversationDefinition["userInput"] {
+  function readConversationUserInputProperty(obj: ts.ObjectLiteralExpression): ConversationDefinition["userInput"] {
     const property = findStaticPropertyAssignment(obj, "userInput");
     if (!property) return undefined;
     try {
-      const literal = (value: WorkflowStructureValue): unknown => {
+      const literal = (value: StructureValue): unknown => {
         if (value.kind === "literal") return value.value;
         if (value.kind === "array") return value.value.map(literal);
         if (value.kind === "object") return Object.fromEntries(Object.entries(value.value).map(([name, child]) => [name, literal(child)]));
@@ -2842,11 +2842,11 @@ function analyzeSourceFile(
     }
   }
 
-  function readConversationFooterProperty(obj: ts.ObjectLiteralExpression): WorkflowConversationDefinition["footer"] {
+  function readConversationFooterProperty(obj: ts.ObjectLiteralExpression): ConversationDefinition["footer"] {
     const property = findStaticPropertyAssignment(obj, "footer");
     if (!property) return undefined;
     try {
-      const literal = (value: WorkflowStructureValue): unknown => {
+      const literal = (value: StructureValue): unknown => {
         if (value.kind === "literal") return value.value;
         if (value.kind === "array") return value.value.map(literal);
         if (value.kind === "object") return Object.fromEntries(Object.entries(value.value).map(([name, child]) => [name, literal(child)]));
@@ -2863,11 +2863,11 @@ function analyzeSourceFile(
     }
   }
 
-  function readConversationCommandsProperty(obj: ts.ObjectLiteralExpression): WorkflowConversationDefinition["commands"] {
+  function readConversationCommandsProperty(obj: ts.ObjectLiteralExpression): ConversationDefinition["commands"] {
     const property = findStaticPropertyAssignment(obj, "commands");
     if (!property) return undefined;
     try {
-      const literal = (value: WorkflowStructureValue): unknown => {
+      const literal = (value: StructureValue): unknown => {
         if (value.kind === "literal") return value.value;
         if (value.kind === "array") return value.value.map(literal);
         if (value.kind === "object") return Object.fromEntries(Object.entries(value.value).map(([name, child]) => [name, literal(child)]));
@@ -2886,7 +2886,7 @@ function analyzeSourceFile(
 
   function readConversationAttachmentsProperty(
     obj: ts.ObjectLiteralExpression,
-  ): WorkflowConversationDefinition["attachments"] | undefined {
+  ): ConversationDefinition["attachments"] | undefined {
     const prop = findStaticPropertyAssignment(obj, "attachments");
 
     if (prop === undefined || !ts.isObjectLiteralExpression(prop.initializer)) {
@@ -2906,7 +2906,7 @@ function analyzeSourceFile(
 
   function readConversationInputQueueProperty(
     obj: ts.ObjectLiteralExpression,
-  ): WorkflowConversationDefinition["inputQueue"] | undefined {
+  ): ConversationDefinition["inputQueue"] | undefined {
     const prop = findStaticPropertyAssignment(obj, "inputQueue");
 
     if (prop === undefined || !ts.isObjectLiteralExpression(prop.initializer)) {
@@ -2923,7 +2923,7 @@ function analyzeSourceFile(
 
   function readConversationOpenAIProperty(
     obj: ts.ObjectLiteralExpression,
-  ): WorkflowConversationDefinition["openai"] | undefined {
+  ): ConversationDefinition["openai"] | undefined {
     const prop = findStaticPropertyAssignment(obj, "openai");
     if (prop === undefined || !ts.isObjectLiteralExpression(prop.initializer)) {
       return undefined;
@@ -2964,7 +2964,7 @@ function analyzeSourceFile(
     ensureRunWorkflowTreeCall(node);
   }
 
-  function ensureRunNodeTreeCall(node: ts.CallExpression): WorkflowStructureCall {
+  function ensureRunNodeTreeCall(node: ts.CallExpression): StructureCall {
     const existing = structureCallsByNode.get(node);
     if (existing !== undefined) {
       return existing;
@@ -2974,7 +2974,7 @@ function analyzeSourceFile(
     const input = describeInputRef(node.arguments[1]);
     const output = describeOutputRef(node);
     const order = analysis.structureCalls.length + 1;
-    const call: WorkflowStructureCall = {
+    const call: StructureCall = {
       order,
       callee: readRunNodeCallee(node),
       nodeRef: nodeRef.id,
@@ -3037,7 +3037,7 @@ function analyzeSourceFile(
     return call;
   }
 
-  function ensureRunWorkflowTreeCall(node: ts.CallExpression): WorkflowStructureCall {
+  function ensureRunWorkflowTreeCall(node: ts.CallExpression): StructureCall {
     const existing = structureWorkflowCallsByNode.get(node);
     if (existing !== undefined) {
       return existing;
@@ -3047,7 +3047,7 @@ function analyzeSourceFile(
     const input = describeInputRef(node.arguments[1]);
     const output = describeOutputRef(node);
     const order = analysis.structureCalls.length + 1;
-    const call: WorkflowStructureCall = {
+    const call: StructureCall = {
       order,
       callee: "runWorkflow",
       nodeRef: workflowRef.id,
@@ -3126,7 +3126,7 @@ function analyzeSourceFile(
     ensureLoopTreeItem(node);
   }
 
-  function ensureRunIfTreeItem(node: ts.CallExpression): WorkflowStructureRunIfTreeItem {
+  function ensureRunIfTreeItem(node: ts.CallExpression): StructureRunIfTreeItem {
     const existing = structureRunIfByNode.get(node);
     if (existing !== undefined) {
       return existing;
@@ -3135,7 +3135,7 @@ function analyzeSourceFile(
     const input = describeInputRef(node.arguments[0]);
     const output = describeOutputRef(node);
     const order = analysis.structureCalls.length + 1;
-    const runIfItem: WorkflowStructureRunIfTreeItem = {
+    const runIfItem: StructureRunIfTreeItem = {
       kind: "run-if",
       order: 0,
       callOrder: order,
@@ -3200,7 +3200,7 @@ function analyzeSourceFile(
     return runIfItem;
   }
 
-  function ensureLoopTreeItem(node: ts.CallExpression): WorkflowStructureLoopTreeItem {
+  function ensureLoopTreeItem(node: ts.CallExpression): StructureLoopTreeItem {
     const existing = structureLoopByNode.get(node);
     if (existing !== undefined) {
       existing.children = describeLoopRunChildren(node.arguments[2]);
@@ -3212,7 +3212,7 @@ function analyzeSourceFile(
     const output = describeOutputRef(node);
     const order = analysis.structureCalls.length + 1;
     const optionsExpression = node.arguments[2];
-    const loopItem: WorkflowStructureLoopTreeItem = {
+    const loopItem: StructureLoopTreeItem = {
       kind: "loop",
       source,
       order: 0,
@@ -3292,7 +3292,7 @@ function analyzeSourceFile(
       return;
     }
 
-    const call: WorkflowStructureApiCall = {
+    const call: StructureApiCall = {
       order: analysis.structureApiCalls.length + 1,
       method,
       location: createLocation(cwd, filePath, sourceFile, node),
@@ -3330,11 +3330,11 @@ function analyzeSourceFile(
 
   function describeStatements(
     statements: ts.NodeArray<ts.Statement> | readonly ts.Statement[],
-  ): WorkflowStructureTreeItem[] {
+  ): StructureTreeItem[] {
     return statements.flatMap((statement) => describeStatement(statement));
   }
 
-  function describeStatement(statement: ts.Statement): WorkflowStructureTreeItem[] {
+  function describeStatement(statement: ts.Statement): StructureTreeItem[] {
     if (ts.isIfStatement(statement)) {
       return [describeIfStatement(statement)];
     }
@@ -3350,7 +3350,7 @@ function analyzeSourceFile(
     return collectCallTreeItems(statement);
   }
 
-  function describeIfStatement(statement: ts.IfStatement): WorkflowStructureIfTreeItem {
+  function describeIfStatement(statement: ts.IfStatement): StructureIfTreeItem {
     return {
       kind: "if",
       order: nextTreeItemOrder(),
@@ -3360,10 +3360,10 @@ function analyzeSourceFile(
     };
   }
 
-  function describeIfBranches(statement: ts.IfStatement): WorkflowStructureIfBranch[] {
-    const branches: WorkflowStructureIfBranch[] = [];
+  function describeIfBranches(statement: ts.IfStatement): StructureIfBranch[] {
+    const branches: StructureIfBranch[] = [];
     let current: ts.IfStatement | undefined = statement;
-    let branchKind: WorkflowStructureIfBranch["kind"] = "if";
+    let branchKind: StructureIfBranch["kind"] = "if";
 
     while (current !== undefined) {
       branches.push({
@@ -3398,7 +3398,7 @@ function analyzeSourceFile(
 
   function describeRunIfBranches(
     optionsExpression: ts.Expression | undefined,
-  ): WorkflowStructureRunIfBranch[] {
+  ): StructureRunIfBranch[] {
     if (optionsExpression === undefined) {
       return [];
     }
@@ -3409,7 +3409,7 @@ function analyzeSourceFile(
     }
 
     const branchesProperty = readObjectPropertyInitializer(options, "branches");
-    const branches: WorkflowStructureRunIfBranch[] = [];
+    const branches: StructureRunIfBranch[] = [];
 
     if (branchesProperty !== undefined && ts.isArrayLiteralExpression(branchesProperty)) {
       branchesProperty.elements.forEach((element, index) => {
@@ -3518,7 +3518,7 @@ function analyzeSourceFile(
 
   function describeRunIfRunChildren(
     branchObject: ts.ObjectLiteralExpression,
-  ): WorkflowStructureTreeItem[] {
+  ): StructureTreeItem[] {
     const runProperty = branchObject.properties.find((property) => {
       return hasPropertyName(property) && readStructurePropertyName(property.name) === "run";
     });
@@ -3543,7 +3543,7 @@ function analyzeSourceFile(
 
   function describeLoopRunChildren(
     optionsExpression: ts.Expression | undefined,
-  ): WorkflowStructureTreeItem[] {
+  ): StructureTreeItem[] {
     if (optionsExpression === undefined) {
       return [];
     }
@@ -3577,7 +3577,7 @@ function analyzeSourceFile(
 
   function describeFunctionBodyChildren(
     body: ts.ConciseBody | undefined,
-  ): WorkflowStructureTreeItem[] {
+  ): StructureTreeItem[] {
     if (body === undefined) {
       return [];
     }
@@ -3612,7 +3612,7 @@ function analyzeSourceFile(
     return value.text;
   }
 
-  function describeBranchChildren(statement: ts.Statement): WorkflowStructureTreeItem[] {
+  function describeBranchChildren(statement: ts.Statement): StructureTreeItem[] {
     if (ts.isBlock(statement)) {
       return describeStatements(statement.statements);
     }
@@ -3620,8 +3620,8 @@ function analyzeSourceFile(
     return describeStatement(statement);
   }
 
-  function collectCallTreeItems(node: ts.Node): WorkflowStructureTreeItem[] {
-    const items: WorkflowStructureTreeItem[] = [];
+  function collectCallTreeItems(node: ts.Node): StructureTreeItem[] {
+    const items: StructureTreeItem[] = [];
 
     visitCallTreeNode(node);
 
@@ -3667,7 +3667,7 @@ function analyzeSourceFile(
     }
   }
 
-  function createCallTreeItem(call: WorkflowStructureCall): WorkflowStructureCallTreeItem {
+  function createCallTreeItem(call: StructureCall): StructureCallTreeItem {
     return {
       kind: "call",
       order: nextTreeItemOrder(),
@@ -3688,7 +3688,7 @@ function analyzeSourceFile(
     return treeItemOrder;
   }
 
-  function readNodeOptions(node: ts.CallExpression): WorkflowStructureValue {
+  function readNodeOptions(node: ts.CallExpression): StructureValue {
     const firstArgument = node.arguments[0];
 
     if (firstArgument === undefined) {
@@ -3701,7 +3701,7 @@ function analyzeSourceFile(
     return evaluateExpression(firstArgument);
   }
 
-  function evaluateExpression(expression: ts.Expression): WorkflowStructureValue {
+  function evaluateExpression(expression: ts.Expression): StructureValue {
     if (
       ts.isParenthesizedExpression(expression) ||
       ts.isAsExpression(expression) ||
@@ -3797,8 +3797,8 @@ function analyzeSourceFile(
 
   function evaluateObjectLiteral(
     expression: ts.ObjectLiteralExpression,
-  ): Record<string, WorkflowStructureValue> {
-    const value: Record<string, WorkflowStructureValue> = {};
+  ): Record<string, StructureValue> {
+    const value: Record<string, StructureValue> = {};
 
     for (const property of expression.properties) {
       if (ts.isPropertyAssignment(property)) {
@@ -3844,7 +3844,7 @@ function analyzeSourceFile(
 
   function evaluateJoinCall(
     expression: ts.Expression,
-  ): WorkflowStructureValue | undefined {
+  ): StructureValue | undefined {
     if (
       !ts.isCallExpression(expression) ||
       !ts.isPropertyAccessExpression(expression.expression) ||
@@ -3919,7 +3919,7 @@ function analyzeSourceFile(
 
   function describeInputRef(
     expression: ts.Expression | undefined,
-  ): WorkflowStructureReference {
+  ): StructureReference {
     if (expression === undefined) {
       return {
         kind: "expression",
@@ -3953,7 +3953,7 @@ function analyzeSourceFile(
     };
   }
 
-  function describeOutputRef(node: ts.CallExpression): WorkflowStructureReference {
+  function describeOutputRef(node: ts.CallExpression): StructureReference {
     const variableName = readAssignedVariableName(node);
 
     if (variableName !== undefined) {
@@ -4017,7 +4017,7 @@ function collectWorkflowScriptPaths(directory: string): string[] {
 
 function findDuplicateDeclarations(
   declarations: ScriptNameOccurrence[],
-): WorkflowScriptRuleViolation[] {
+): ScriptRuleViolation[] {
   const declarationsByScopeAndName = new Map<string, ScriptNameOccurrence[]>();
 
   for (const declaration of declarations) {
@@ -4048,7 +4048,7 @@ function findDuplicateDeclarations(
 
 function findDuplicateNodeNames(
   nodeNames: NodeNameOccurrence[],
-): WorkflowScriptRuleViolation[] {
+): ScriptRuleViolation[] {
   const nodeNamesByName = new Map<string, NodeNameOccurrence[]>();
 
   for (const nodeName of nodeNames) {
@@ -4079,9 +4079,9 @@ function findDuplicateNodeNames(
 function findDeclarationNodeNameConflicts(
   declarations: ScriptNameOccurrence[],
   nodeNames: NodeNameOccurrence[],
-): WorkflowScriptRuleViolation[] {
+): ScriptRuleViolation[] {
   const nodeNamesByName = new Map<string, NodeNameOccurrence[]>();
-  const violations: WorkflowScriptRuleViolation[] = [];
+  const violations: ScriptRuleViolation[] = [];
 
   for (const nodeName of nodeNames) {
     const existing = nodeNamesByName.get(nodeName.normalizedName);
@@ -4120,11 +4120,11 @@ function findDeclarationNodeNameConflicts(
 }
 
 function findWorkflowOutputTypeViolations(
-  outputTypes: WorkflowOutputTypeOccurrence[],
+  outputTypes: OutputTypeOccurrence[],
   options: {
     workflowName?: string;
   },
-): WorkflowScriptRuleViolation[] {
+): ScriptRuleViolation[] {
   if (options.workflowName === undefined) {
     return [];
   }
@@ -4139,7 +4139,7 @@ function findWorkflowOutputTypeViolations(
     .map((outputType) => ({
       type: "workflow_output_type_not_executor_result",
       name: outputType.name,
-      message: `Workflow output type "${outputType.name}" must extend WorkflowExecutorResult.`,
+      message: `Workflow output type "${outputType.name}" must extend ExecutorResult.`,
       locations: [outputType.location],
     }));
 }
@@ -4370,7 +4370,7 @@ function isTransparentExpressionParent(parent: ts.Node, expression: ts.Node): pa
   ) && parent.expression === expression;
 }
 
-function describeApiCallOutputRef(node: ts.CallExpression): WorkflowStructureReference | undefined {
+function describeApiCallOutputRef(node: ts.CallExpression): StructureReference | undefined {
   const assignedName = readAssignedVariableName(node);
   if (assignedName !== undefined) {
     return {
@@ -4462,11 +4462,11 @@ function isWorkflowExecutorResultTypeNode(typeNode: ts.TypeNode): boolean {
 
 function isWorkflowExecutorResultExpression(expression: ts.Expression): boolean {
   if (ts.isIdentifier(expression)) {
-    return expression.text === "WorkflowExecutorResult";
+    return expression.text === "ExecutorResult";
   }
 
   if (ts.isPropertyAccessExpression(expression)) {
-    return expression.name.text === "WorkflowExecutorResult";
+    return expression.name.text === "ExecutorResult";
   }
 
   return false;
@@ -4474,10 +4474,10 @@ function isWorkflowExecutorResultExpression(expression: ts.Expression): boolean 
 
 function isWorkflowExecutorResultEntityName(name: ts.EntityName): boolean {
   if (ts.isIdentifier(name)) {
-    return name.text === "WorkflowExecutorResult";
+    return name.text === "ExecutorResult";
   }
 
-  return name.right.text === "WorkflowExecutorResult";
+  return name.right.text === "ExecutorResult";
 }
 
 function readNodeNameFromFactoryCall(
@@ -4531,7 +4531,7 @@ function createLocation(
   filePath: string,
   sourceFile: ts.SourceFile,
   node: ts.Node,
-): WorkflowScriptRuleLocation {
+): ScriptRuleLocation {
   const location = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
 
   return {

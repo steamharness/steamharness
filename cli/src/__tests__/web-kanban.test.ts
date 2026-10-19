@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import * as core from 'steamharness';
 import { startWebServer } from '../web/server';
 import { runKanbanDataCall, webProjectDataDirectory } from '../web/kanban-data';
-import type { WorkflowProject, WorkflowRuntime } from '../web/workflow-types';
+import type { Project, Runtime } from '../web/workflow-types';
 import { resolveHarnessRoot } from './harness-source';
 
 const folders: string[] = [], apps: Awaited<ReturnType<typeof startWebServer>>[] = [];
@@ -15,13 +15,13 @@ const id = '2bf9074d-ef0b-43b2-84c4-f379f920db92';
 async function fixture(options: { server?: boolean; artifact?: boolean; noParams?: boolean; real?: boolean } = {}) {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'steamharness-kanban-'))); folders.push(root);
   const directory = path.join(root, 'board'); await mkdir(directory);
-  const descriptor: WorkflowProject = { id, name: 'Board', uri: '', folderPath: directory, projectType: 'kanban', fields: [], entrypoints: [] };
+  const descriptor: Project = { id, name: 'Board', uri: '', folderPath: directory, projectType: 'kanban', fields: [], entrypoints: [] };
   const pkg = { id, name: 'Board', type: 'module', devDependencies: { 'steamharness': '0.2.4-20260929001' }, steamHarness: { projectType: 'kanban', kanban: options.artifact ? { artifactDir: 'dist', entry: 'pages/index.html' } : {}, projectInfo: { dataStorage: { mode: options.server ? 'server' : 'local' } } } };
   await writeFile(path.join(directory, 'package.json'), JSON.stringify(pkg));
   const artifactRoot = options.artifact ? path.join(directory, 'dist/pages') : directory;
   await mkdir(artifactRoot, { recursive: true }); await writeFile(path.join(artifactRoot, 'index.html'), '<!doctype html><script>window.boardLoaded = true;</script><h1>Board</h1>'); await writeFile(path.join(artifactRoot, 'board.js'), 'window.assetLoaded = true;');
   if (!options.noParams) { await writeFile(path.join(directory, 'kanban.json'), JSON.stringify({ version: 1, params: [{ name: 'title', type: 'string', defaultValue: 'Roadmap' }, { name: 'limit', type: 'number', defaultValue: '5' }, { name: 'visible', type: 'boolean', defaultValue: 'true' }, { name: 'tags', type: 'string', multiple: true, defaultValue: '["a"]' }] })); }
-  const runtime: WorkflowRuntime = { available: true, inspect: vi.fn(async () => ({ projects: [descriptor], errors: [] })), resolveParams: vi.fn(async () => ({})), run: vi.fn(async () => ({ status: 'success' })), uploadFiles: vi.fn(async () => []), readFile: vi.fn(), deleteFiles: vi.fn(), cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(), readResource: vi.fn(), cancel: vi.fn(), dispose: vi.fn(), kanbanBridge: vi.fn(async (_project, call) => ({ operation: call.operation })) };
+  const runtime: Runtime = { available: true, inspect: vi.fn(async () => ({ projects: [descriptor], errors: [] })), resolveParams: vi.fn(async () => ({})), run: vi.fn(async () => ({ status: 'success' })), uploadFiles: vi.fn(async () => []), readFile: vi.fn(), deleteFiles: vi.fn(), cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(), readResource: vi.fn(), cancel: vi.fn(), dispose: vi.fn(), kanbanBridge: vi.fn(async (_project, call) => ({ operation: call.operation })) };
   const dataDir = path.join(root, 'data');
   vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(root, 'auth')); vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
   if (options.real) {

@@ -27,8 +27,8 @@ import {
   createWorkflowKVContext,
   createWorkflowPersistentValueContext,
   createWorkflowRelatedProjectsContext,
-  type WorkflowKVStore,
-  type WorkflowStorageLocationContext,
+  type KVStore,
+  type StorageLocationContext,
 } from "../index";
 import type { NodeContext } from "../types/context";
 
@@ -610,7 +610,7 @@ function runCapability(
 
 function createContext(): NodeContext {
   const store = createMemoryKVStore();
-  const location: WorkflowStorageLocationContext = {
+  const location: StorageLocationContext = {
     kv: createWorkflowKVContext({ store, projectId: "demo", conversationId: "turn-1" }),
     persistentValue: createWorkflowPersistentValueContext({ store, projectId: "demo" }),
     relatedProjects: createWorkflowRelatedProjectsContext(),
@@ -618,7 +618,7 @@ function createContext(): NodeContext {
   return { storage: { local: location, server: location } } as unknown as NodeContext;
 }
 
-function createMemoryKVStore(): WorkflowKVStore {
+function createMemoryKVStore(): KVStore {
   const values = new Map<string, unknown>();
   const key = (input: {
     storageKind: string;
@@ -628,7 +628,7 @@ function createMemoryKVStore(): WorkflowKVStore {
     key: string;
   }) => [input.storageKind, input.scope, input.projectId, input.conversationId ?? "", input.key].join(":");
 
-  const store: WorkflowKVStore = {
+  const store: KVStore = {
     getValue: async (input) => values.get(key(input)),
     setValue: async (input) => {
       values.set(key(input), input.value);

@@ -1,10 +1,10 @@
-import { parseWorkflowFileReferences, type WorkflowFileReference } from "../files/index";
+import { parseWorkflowFileReferences, type FileReference } from "../files/index";
 
-export interface WorkflowConversationDefaultInputValue {
+export interface ConversationDefaultInputValue {
   message: string;
-  images: WorkflowFileReference[];
-  videos: WorkflowFileReference[];
-  files: WorkflowFileReference[];
+  images: FileReference[];
+  videos: FileReference[];
+  files: FileReference[];
 }
 
 /**
@@ -14,7 +14,7 @@ export interface WorkflowConversationDefaultInputValue {
  */
 export function parseConversationDefaultInputArgs(
   args: string[],
-): WorkflowConversationDefaultInputValue {
+): ConversationDefaultInputValue {
   const messageValues = readFlagValues(args, "--message");
   const imageValues = readFlagValues(args, "--images");
   const videoValues = readFlagValues(args, "--videos");

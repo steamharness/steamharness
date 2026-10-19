@@ -1,14 +1,14 @@
 import { t } from './localization';
 import { localizationHtml } from './localization-host';
 import * as vscode from 'vscode';
-import { projectVersion, projectDisplayName, type WorkflowProject } from './workflow-types';
-import type { WorkflowLauncher } from './workflow-cli-types';
-import type { WorkflowAccountController } from './workflow-auth';
+import { projectVersion, projectDisplayName, type Project } from './workflow-types';
+import type { Launcher } from './workflow-cli-types';
+import type { AccountController } from './workflow-auth';
 import type { ResourceKind, ResourceRequest } from './workflow-resources-types';
 
-export class WorkflowResourceViews implements vscode.Disposable {
-  private projects: WorkflowProject[] = [];
-  private selected?: WorkflowProject;
+export class ResourceViews implements vscode.Disposable {
+  private projects: Project[] = [];
+  private selected?: Project;
   private preferredUri?: string;
   private generation = 0;
   private controller = new AbortController();
@@ -17,11 +17,11 @@ export class WorkflowResourceViews implements vscode.Disposable {
   private readonly busy = new Set<ResourceKind>();
   private connectionKey?: string;
   private workspaceUris = new Set<string>();
-  private readonly external = new Map<string, { project: WorkflowProject; runtime: WorkflowProject; source: 'local' | 'server' }>();
+  private readonly external = new Map<string, { project: Project; runtime: Project; source: 'local' | 'server' }>();
   private readonly navigation = new Map<ResourceKind, Record<string, string>>();
 
-  constructor(private readonly context: vscode.ExtensionContext, private readonly launcher: WorkflowLauncher,
-    private readonly account: WorkflowAccountController, private readonly output: vscode.OutputChannel) {
+  constructor(private readonly context: vscode.ExtensionContext, private readonly launcher: Launcher,
+    private readonly account: AccountController, private readonly output: vscode.OutputChannel) {
     this.connectionKey = JSON.stringify(account.getConnection());
     context.subscriptions.push(this,
       ...(['kv', 'knowledge'] as const).map(kind => vscode.window.registerWebviewViewProvider(`studio.${kind}`, {
@@ -35,7 +35,7 @@ export class WorkflowResourceViews implements vscode.Disposable {
     );
   }
 
-  update(projects: WorkflowProject[], preferred?: WorkflowProject): void {
+  update(projects: Project[], preferred?: Project): void {
     this.workspaceUris = new Set(projects.filter(project => !project.assistant).map(project => project.uri));
     this.projects = [...projects.filter(project => !project.assistant), ...[...this.external.values()].map(entry => entry.project).filter(project => !projects.some(item => item.uri === project.uri))];
     const changedPreferred = preferred?.uri !== this.preferredUri;
@@ -53,7 +53,7 @@ export class WorkflowResourceViews implements vscode.Disposable {
     if (changed) { this.reset(); } else { this.publish(); }
   }
 
-  async open(kind: ResourceKind, project: WorkflowProject, target: Record<string, string>, owner: WorkflowProject): Promise<void> {
+  async open(kind: ResourceKind, project: Project, target: Record<string, string>, owner: Project): Promise<void> {
     if (project.id.toLowerCase() === owner.id.toLowerCase()) {
       project = this.projects.find(item => item.uri === owner.uri) ?? owner;
       this.external.delete(project.uri);

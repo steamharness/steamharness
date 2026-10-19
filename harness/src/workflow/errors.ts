@@ -1,4 +1,4 @@
-export type WorkflowErrorType =
+export type ErrorType =
   | "input_validation"
   | "execution_aborted"
   | "user_input_required"
@@ -8,61 +8,61 @@ export type WorkflowErrorType =
   | "workflow_execution"
   | "stream_interrupted";
 
-export interface WorkflowErrorCause {
+export interface ErrorCause {
   name?: string;
   message: string;
   statusCode?: number;
   url?: string;
   isRetryable?: boolean;
   responseBody?: string;
-  cause?: WorkflowErrorCause;
+  cause?: ErrorCause;
   validation?: Array<{
     path: string;
     message: string;
   }>;
 }
 
-export interface WorkflowErrorOptions {
-  type: WorkflowErrorType;
+export interface ErrorOptions {
+  type: ErrorType;
   message: string;
   nodeName?: string;
   cause?: unknown;
   metadata?: Record<string, unknown>;
 }
 
-export type WorkflowErrorFallbackOptions = Omit<WorkflowErrorOptions, "cause">;
+export type ErrorFallbackOptions = Omit<ErrorOptions, "cause">;
 
 export interface SerializedWorkflowError {
-  type: WorkflowErrorType;
+  type: ErrorType;
   message: string;
   nodeName?: string;
   metadata?: Record<string, unknown>;
-  cause?: WorkflowErrorCause;
+  cause?: ErrorCause;
 }
 
-export interface WorkflowSuccessResult<Output> {
+export interface SuccessResult<Output> {
   ok: true;
   data: Output;
 }
 
-export interface WorkflowFailureResult {
+export interface FailureResult {
   ok: false;
   error: SerializedWorkflowError;
 }
 
-export type WorkflowResult<Output> =
-  | WorkflowSuccessResult<Output>
-  | WorkflowFailureResult;
+export type RunResult<Output> =
+  | SuccessResult<Output>
+  | FailureResult;
 
-export class WorkflowError extends Error {
-  readonly type: WorkflowErrorType;
+export class HarnessError extends Error {
+  readonly type: ErrorType;
   readonly nodeName?: string;
   readonly metadata?: Record<string, unknown>;
-  readonly safeCause?: WorkflowErrorCause;
+  readonly safeCause?: ErrorCause;
 
-  constructor(options: WorkflowErrorOptions) {
+  constructor(options: ErrorOptions) {
     super(options.message);
-    this.name = "WorkflowError";
+    this.name = "HarnessError";
     this.type = options.type;
     this.nodeName = options.nodeName;
     this.metadata = options.metadata;
@@ -72,13 +72,13 @@ export class WorkflowError extends Error {
 
 export function toWorkflowError(
   error: unknown,
-  fallback: WorkflowErrorFallbackOptions & { cause?: unknown },
-): WorkflowError {
-  if (error instanceof WorkflowError) {
+  fallback: ErrorFallbackOptions & { cause?: unknown },
+): HarnessError {
+  if (error instanceof HarnessError) {
     return enrichWorkflowError(error, fallback);
   }
 
-  return new WorkflowError({
+  return new HarnessError({
     ...fallback,
     cause: fallback.cause ?? error,
   });
@@ -86,9 +86,9 @@ export function toWorkflowError(
 
 export function serializeWorkflowError(error: unknown): SerializedWorkflowError {
   const workflowError =
-    error instanceof WorkflowError
+    error instanceof HarnessError
       ? error
-      : new WorkflowError({
+      : new HarnessError({
           type: "workflow_execution",
           message: readPublicErrorMessage(error) ?? "Unexpected workflow error.",
           cause: error,
@@ -103,7 +103,7 @@ export function serializeWorkflowError(error: unknown): SerializedWorkflowError 
   };
 }
 
-export function createWorkflowFailure(error: unknown): WorkflowFailureResult {
+export function createWorkflowFailure(error: unknown): FailureResult {
   return {
     ok: false,
     error: serializeWorkflowError(error),
@@ -111,9 +111,9 @@ export function createWorkflowFailure(error: unknown): WorkflowFailureResult {
 }
 
 function enrichWorkflowError(
-  error: WorkflowError,
-  fallback: WorkflowErrorFallbackOptions & { cause?: unknown },
-): WorkflowError {
+  error: HarnessError,
+  fallback: ErrorFallbackOptions & { cause?: unknown },
+): HarnessError {
   if (
     error.nodeName !== undefined &&
     (fallback.metadata === undefined || Object.keys(fallback.metadata).length === 0)
@@ -121,7 +121,7 @@ function enrichWorkflowError(
     return error;
   }
 
-  return new WorkflowError({
+  return new HarnessError({
     type: error.type,
     message: error.message,
     nodeName: error.nodeName ?? fallback.nodeName,
@@ -133,7 +133,7 @@ function enrichWorkflowError(
   });
 }
 
-function sanitizeErrorCause(error: unknown): WorkflowErrorCause | undefined {
+function sanitizeErrorCause(error: unknown): ErrorCause | undefined {
   if (error === undefined || error === null) {
     return undefined;
   }
@@ -206,7 +206,7 @@ function normalizeErrorMessage(message: string | undefined): string | undefined 
   return trimmed === "" ? undefined : trimmed;
 }
 
-function extractKnownErrorFields(error: object): Omit<WorkflowErrorCause, "message" | "name"> {
+function extractKnownErrorFields(error: object): Omit<ErrorCause, "message" | "name"> {
   const validation = extractValidation(error);
 
   return {
@@ -280,7 +280,7 @@ function summarizeResponseBody(value: string | undefined): string | undefined {
     : redacted;
 }
 
-function extractValidation(error: object): WorkflowErrorCause["validation"] {
+function extractValidation(error: object): ErrorCause["validation"] {
   const cause = readUnknownProperty(error, "cause");
   const causeCause =
     typeof cause === "object" && cause !== null
@@ -324,7 +324,7 @@ function isValidationIssue(value: unknown): value is { path?: unknown; message: 
   );
 }
 
-function isWorkflowErrorCause(value: unknown): value is WorkflowErrorCause {
+function isWorkflowErrorCause(value: unknown): value is ErrorCause {
   return (
     typeof value === "object" &&
     value !== null &&

@@ -1,22 +1,22 @@
 import type {
-  WorkflowMcpErrorDetail,
-  WorkflowMcpExecutionReport,
-  WorkflowMcpPendingInputSummary,
-  WorkflowMcpStructuredResult,
-  WorkflowMcpToolResult,
+  McpErrorDetail,
+  McpExecutionReport,
+  McpPendingInputSummary,
+  McpStructuredResult,
+  McpToolResult,
 } from "./types";
 
 export function workflowReportToMcpResult(
-  report: WorkflowMcpExecutionReport,
+  report: McpExecutionReport,
   entrypoint: { id: string; title: string },
-  errorOverride?: WorkflowMcpErrorDetail,
-): WorkflowMcpToolResult {
+  errorOverride?: McpErrorDetail,
+): McpToolResult {
   const data = report.result?.ok === true ? report.result.data : undefined;
   const errCode = typeof data?.errCode === "number" ? data.errCode : undefined;
   const failed = report.status !== "success" || report.result?.ok !== true ||
     (errCode !== undefined && errCode !== 0);
   const error = errorOverride ?? (failed ? createReportError(report, errCode) : undefined);
-  const structuredContent: WorkflowMcpStructuredResult = {
+  const structuredContent: McpStructuredResult = {
     runId: report.runId,
     status: report.status,
     entrypointId: report.entrypointId ?? entrypoint.id,
@@ -35,8 +35,8 @@ export function workflowReportToMcpResult(
 export function createWorkflowMcpThrownErrorResult(
   error: unknown,
   entrypoint: { id: string; title: string },
-): WorkflowMcpToolResult {
-  const report: WorkflowMcpExecutionReport = {
+): McpToolResult {
+  const report: McpExecutionReport = {
     runId: "",
     status: "failed",
     entrypointId: entrypoint.id,
@@ -50,8 +50,8 @@ export function createWorkflowMcpThrownErrorResult(
 }
 
 export function summarizePendingWorkflowMcpInput(
-  report: WorkflowMcpExecutionReport,
-): WorkflowMcpPendingInputSummary | undefined {
+  report: McpExecutionReport,
+): McpPendingInputSummary | undefined {
   const pending = report.pendingUserInput;
   if (!pending) return undefined;
   return {
@@ -67,9 +67,9 @@ export function summarizePendingWorkflowMcpInput(
 }
 
 function createReportError(
-  report: WorkflowMcpExecutionReport,
+  report: McpExecutionReport,
   errCode: number | undefined,
-): WorkflowMcpErrorDetail {
+): McpErrorDetail {
   const data = report.result?.ok === true ? report.result.data : undefined;
   const resultError = report.result?.ok === false ? report.result.error?.message : undefined;
   const rawMessage = typeof data?.errMessage === "string" && data.errMessage.trim() !== ""
@@ -89,7 +89,7 @@ function createReportError(
   return { code: "workflow_failed", message };
 }
 
-function defaultStatusMessage(status: WorkflowMcpExecutionReport["status"], errCode: number | undefined): string {
+function defaultStatusMessage(status: McpExecutionReport["status"], errCode: number | undefined): string {
   if (status === "waiting_for_input") return "Workflow requires user input before it can continue.";
   if (status === "aborted") return "Workflow run was cancelled.";
   if (status === "timed_out") return "Workflow run timed out.";

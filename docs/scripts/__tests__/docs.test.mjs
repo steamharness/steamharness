@@ -51,7 +51,7 @@ test("OpenAPI exposes storage APIs without project execution contracts", async (
       `/api/auth/${legacyPrivateCatalog}/catalog`, `/api/auth/${legacyPrivateCatalog}/llm-proxy/v1/responses`,
       `/api/auth/admin/${legacyLlmModels}/catalog`, `/api/auth/admin/users/{userId}/${legacyAdminBinding}`,
     ]) assert.equal(specification.paths[endpoint], undefined, endpoint);
-    const legacySchema = ["WorkflowSub", "2ApiCatalog"].join("");
+    const legacySchema = ["Sub", "2ApiCatalog"].join("");
     assert.equal(specification.components.schemas[legacySchema], undefined);
     assert.equal(sourceAccessReason.enum, undefined);
     assert.equal(sourceAccessReason.minLength, 2);

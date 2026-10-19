@@ -45,7 +45,7 @@ Core API 分组记录业务 workflow 可直接使用的 `workflow.*` 运行时 A
 | [`getRuntimePlatform` / `isCli` / `isDesktop`](/core-api/runtime-platform) | 判断当前 workflow 的执行宿主是 CLI 还是本地桌面宿主。 |
 | [`getRuntimeLocale`](/core-api/runtime-locale) | 读取当前运行宿主选择的简体中文或英文，用于已启用国际化的用户可见输出。 |
 | [`getLLMProvider`](/core-api/get-llm-provider) | 按上下文、节点名和 provider source 解析 LLM provider。 |
-| [`WorkflowError`](/core-api/workflow-error) | 标准 workflow 错误类型。 |
+| [`HarnessError`](/core-api/workflow-error) | 标准 workflow 错误类型。 |
 
 ## 核心运行对象
 
@@ -54,8 +54,8 @@ Core API 分组记录业务 workflow 可直接使用的 `workflow.*` 运行时 A
 | 对象 | 类型 | 说明 |
 | --- | --- | --- |
 | `input` | `Input` 或节点 `Output` | 当前 workflow 或节点的输入数据。 |
-| `context` | `WorkflowContext` / `NodeContext` | 包含 provider、storage、conversation、files、metadata、hooks、abortSignal。 |
-| `payload` | `WorkflowPayload` 子类型 | 节点 payload 应继承 `WorkflowPayload`，成功时 `errCode: 0`、`errMessage: ""`。 |
+| `context` | `RunContext` / `NodeContext` | 包含 provider、storage、conversation、files、metadata、hooks、abortSignal。 |
+| `payload` | `RunPayload` 子类型 | 节点 payload 应继承 `RunPayload`，成功时 `errCode: 0`、`errMessage: ""`。 |
 | `provider` | `LLMProviderSource` / `LLMProvider` | LLM 节点通过 provider source 解析实际 provider。 |
 
 ## `NodeContext` 核心字段
@@ -63,15 +63,15 @@ Core API 分组记录业务 workflow 可直接使用的 `workflow.*` 运行时 A
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `providers` | `ProviderRegistry` | LLM provider 注册表和绑定表。 |
-| `storage` | `WorkflowStorageContext` | `local` 与 `server` 两个显式位置，每个位置都包含三层 `kv` 和 `persistentValue`。项目 `dataStorage.mode` 严格限制可访问位置；Core 0.2 不再提供顶层 `context.kv` / `context.persistentValue`。 |
-| `conversation` | `WorkflowConversationContext` | 会话状态读写入口。`setTitle` 可安全建议 UI 标题；未启用会话时其它读写会抛错。 |
-| `tokenUsage` | `WorkflowTokenUsageContext` | token 用量统计入口。未启用时 `report()` 是 no-op；启用后会写入 KV、运行报告和 runtime event。 |
-| `userInput` | `WorkflowUserInputContext \| undefined` | 用户输入和工具审批的等待/恢复入口。本地宿主 会按宿主能力注入。 |
-| `files` | `WorkflowFileStore \| undefined` | 文件引用解析入口；`createFile` 可生成 server-backed 运行文件。 |
+| `storage` | `StorageContext` | `local` 与 `server` 两个显式位置，每个位置都包含三层 `kv` 和 `persistentValue`。项目 `dataStorage.mode` 严格限制可访问位置；Core 0.2 不再提供顶层 `context.kv` / `context.persistentValue`。 |
+| `conversation` | `ConversationContext` | 会话状态读写入口。`setTitle` 可安全建议 UI 标题；未启用会话时其它读写会抛错。 |
+| `tokenUsage` | `TokenUsageContext` | token 用量统计入口。未启用时 `report()` 是 no-op；启用后会写入 KV、运行报告和 runtime event。 |
+| `userInput` | `UserInputContext \| undefined` | 用户输入和工具审批的等待/恢复入口。本地宿主 会按宿主能力注入。 |
+| `files` | `FileStore \| undefined` | 文件引用解析入口；`createFile` 可生成 server-backed 运行文件。 |
 | `metadata` | `object \| undefined` | 当前执行元信息，例如 workflow、runId、conversationId；Workflow 运行还包含 `entrypointId` 和 `entrypointTitle`。 |
 | `nodeHooks` | `NodeExecutionHooks \| undefined` | 节点开始、chunk、完成等事件回调。 |
-| `timers` | `WorkflowTimerContext \| undefined` | 业务计时节点上下文；`createTimerNode` 启动计时，`endTimer` 结束计时。 |
-| `toolPermissions` | `WorkflowToolPermissionContext \| undefined` | 当前 run 的工具权限上下文。按 executor `tools` 默认值和宿主覆盖值解析，供 `createToolApprovalGate()` 或自定义工具调用逻辑判断启用、自动批准和人工审批。 |
+| `timers` | `TimerContext \| undefined` | 业务计时节点上下文；`createTimerNode` 启动计时，`endTimer` 结束计时。 |
+| `toolPermissions` | `ToolPermissionContext \| undefined` | 当前 run 的工具权限上下文。按 executor `tools` 默认值和宿主覆盖值解析，供 `createToolApprovalGate()` 或自定义工具调用逻辑判断启用、自动批准和人工审批。 |
 | `abortSignal` | `AbortSignal \| undefined` | 中断执行和 provider 调用。 |
 
 ## Payload 约束

@@ -42,7 +42,7 @@ workflow.runNode<Input, Output>(
 |2. Send Start Event|The trigger node starts a hook and records the executionId, nodeName, metadata, and startedAt.|
 |3. Execution node|Call `node.run(input, context)`.|
 |4. Send Completion Event|Record the output, duration, and executionInfo, and trigger the completion of the hook.|
-|5. Wrong packaging|Convert to `WorkflowError` on failure and write report.|
+|5. Wrong packaging|Convert to `HarnessError` on failure and write report.|
 
 ## Return value
 
@@ -55,7 +55,7 @@ workflow.runNode<Input, Output>(
 |Situation|Error Type|Description|
 | --- | --- | --- |
 |Break before or during execution| `execution_aborted` |From `context.abortSignal`.|
-|Node throw error| `node_execution` |Unknown errors are wrapped as `WorkflowError`; existing `WorkflowError` is preserved and the context is supplemented.|
+|Node throw error| `node_execution` |Unknown errors are wrapped as `HarnessError`; existing `HarnessError` is preserved and the context is supplemented.|
 
 ## Example
 

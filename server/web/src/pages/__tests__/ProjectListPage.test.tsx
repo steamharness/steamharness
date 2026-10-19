@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { i18n } from "@steamharness/i18n";
 import { ProjectListPage } from "../ProjectListPage";
-import type { WorkflowSummary } from "../../types";
+import type { Summary } from "../../types";
 
 describe("ProjectListPage management table", () => {
   it("renders loading, empty, and searchable project rows without losing Chinese grid copy", () => {
@@ -283,10 +283,10 @@ describe("ProjectListPage management table", () => {
 });
 
 type RenderProjectListOptions = {
-  projects?: WorkflowSummary[];
+  projects?: Summary[];
   loading?: string;
-  onOpenDetail?: (project: WorkflowSummary) => void;
-  onOpenLogs?: (project: WorkflowSummary) => void;
+  onOpenDetail?: (project: Summary) => void;
+  onOpenLogs?: (project: Summary) => void;
 };
 
 function renderProjectList(options: RenderProjectListOptions = {}) {
@@ -308,7 +308,7 @@ function createProjectListElement(options: RenderProjectListOptions = {}) {
   );
 }
 
-function createProject(overrides: Partial<WorkflowSummary>): WorkflowSummary {
+function createProject(overrides: Partial<Summary>): Summary {
   const serverRunnable = (overrides.projectType ?? "workflow") !== "kanban" && overrides.latest !== null;
   return {
     id: "demo",

@@ -8,8 +8,8 @@ import {
   type Harness, type JsonObject, type Registry, type TaskId, type Storage, type SubmissionRecord,
   type ToolRegistration, type TaskGraphWatch, type Cursor, type Tx, type AgentChange, type TaskRecord, type RegistryReader,
 } from "@earendil-works/pi-durable";
-import type { WorkflowOutputItemInput } from "../node/output/index";
-import type { WorkflowTokenUsageAggregate } from "../token-usage/index";
+import type { RunOutputItemInput } from "../node/output/index";
+import type { TokenUsageAggregate } from "../token-usage/index";
 import { estimateAgentContextTokens, readAgentContextUsage } from "./compaction";
 import { durableContextMessages } from "./durable-context";
 import type { AgentPlanItem, AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt, AgentSessionResources, AgentSessionSnapshot, AgentSessionTask, AgentSessionTurn } from "./session-types";
@@ -609,12 +609,12 @@ function validatePlan(items: AgentPlanItem[]): AgentPlanItem[] {
   return plain(items);
 }
 
-export function projectSessionUsage(entries: readonly EntryRecord[], requestId: string): WorkflowTokenUsageAggregate {
+export function projectSessionUsage(entries: readonly EntryRecord[], requestId: string): TokenUsageAggregate {
   const usages = entries.flatMap(entry => entry.kind === "pi.assistant"
     ? (entry.model ?? []).flatMap(message => message.role === "assistant" ? [message.usage] : [])
     : entry.kind === "workflow.compaction-usage" && object(entry.data).requestId === requestId
       ? [object(entry.data).usage as unknown as Usage] : []);
-  return usages.reduce<WorkflowTokenUsageAggregate>((total, usage) => ({
+  return usages.reduce<TokenUsageAggregate>((total, usage) => ({
     inputTokens: total.inputTokens + (usage.input ?? 0),
     outputTokens: total.outputTokens + (usage.output ?? 0),
     totalTokens: total.totalTokens + (usage.totalTokens || (usage.input ?? 0) + (usage.output ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0)),
@@ -626,16 +626,16 @@ export function projectSessionUsage(entries: readonly EntryRecord[], requestId: 
 }
 
 /** Reuse the existing output contract: answers stay flat; reasoning and tools stay details. */
-export function projectSessionEntries(entries: readonly EntryRecord[], partial: AssistantMessage | undefined, scope: string): WorkflowOutputItemInput[] {
-  const items: WorkflowOutputItemInput[] = [];
-  const calls = new Map<string, WorkflowOutputItemInput>();
+export function projectSessionEntries(entries: readonly EntryRecord[], partial: AssistantMessage | undefined, scope: string): RunOutputItemInput[] {
+  const items: RunOutputItemInput[] = [];
+  const calls = new Map<string, RunOutputItemInput>();
   const append = (message: AssistantMessage, id: string) => {
     for (const [index, block] of message.content.entries()) {
       const itemId = `agent-session-${scope}-${id}-${index}`;
       if (block.type === "text") items.push({ id: itemId, title: "Output", content: block.text, contentType: "markdown", collapsed: false, metadata: { kind: "agent-part", partType: "text" } });
       else if (block.type === "thinking") items.push({ id: itemId, title: "Thinking", content: { text: block.thinking }, contentType: "json", collapsed: true, metadata: { kind: "agent-part", partType: "reasoning" } });
       else if (block.type === "toolCall" && message.stopReason !== "aborted" && message.stopReason !== "pending") {
-        const item: WorkflowOutputItemInput = { id: itemId, title: block.name, content: { tool: block.name, input: block.arguments, status: "running" }, contentType: "json", collapsed: true, metadata: { kind: "agent-part", partType: "tool", status: "running" } };
+        const item: RunOutputItemInput = { id: itemId, title: block.name, content: { tool: block.name, input: block.arguments, status: "running" }, contentType: "json", collapsed: true, metadata: { kind: "agent-part", partType: "tool", status: "running" } };
         calls.set(block.id, item); items.push(item);
       }
     }

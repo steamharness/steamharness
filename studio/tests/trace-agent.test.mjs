@@ -4,7 +4,7 @@ import { register } from 'tsx/esm/api';
 import { durableTraceState } from './fixtures/trace-agent.mjs';
 register();
 const { agentSession, latestAgentPlan, ownedActivity, orderedTasks, terminalTask } = await import('../extensions/studio-workstation/webview/trace-agent-model.ts');
-const { WorkflowTraceStore } = await import('../extensions/studio-workstation/src/workflow-trace-store.ts');
+const { TraceStore } = await import('../extensions/studio-workstation/src/workflow-trace-store.ts');
 
 test('Trace projects the selected child context while the current marker follows the actual editor', () => {
   const state = durableTraceState(); state.selection.sessionId = 'child';
@@ -57,7 +57,7 @@ test('plan projection excludes preambles, questions, tools, reasoning, rings and
 });
 test('Trace commands retain owner/session identity, scoped errors, pending state and stale-source protection', () => {
   const fixture = durableTraceState(), project = { ...fixture.snapshot.project, uri: fixture.selection.projectUri }, sent = [];
-  const store = new WorkflowTraceStore(); store.update([project]);
+  const store = new TraceStore(); store.update([project]);
   const binding = store.bind(project, 1, message => sent.push(message));
   const receive = (kind, value) => binding.receive({ type: 'workflow-trace', version: 1, kind, ...value });
   receive('state', { snapshot: fixture.snapshot }); receive('status', { status: 'connected' });
@@ -79,7 +79,7 @@ test('Trace commands retain owner/session identity, scoped errors, pending state
 test('a durable built-in assistant exposes Trace with its project version while explicit opens select the timeline', () => {
   const fixture = durableTraceState(), project = { ...fixture.snapshot.project, uri: fixture.selection.projectUri,
     manifest: { version: '1.2.3' }, assistant: { standalone: true } };
-  const store = new WorkflowTraceStore(); store.update([]); const binding = store.bind(project, 1, () => {});
+  const store = new TraceStore(); store.update([]); const binding = store.bind(project, 1, () => {});
   binding.receive({ type: 'workflow-trace', version: 1, kind: 'state', snapshot: fixture.snapshot });
   assert.equal(store.availableProjects().length, 1); assert.equal(store.selection.projectUri, project.uri);
   assert.equal(store.state().projects[0].version, '1.2.3');

@@ -83,7 +83,7 @@ workflow.getRuntimeLocale
 workflow.isCli
 workflow.isDesktop
 workflow.getLLMProvider
-workflow.WorkflowError
+workflow.HarnessError
 ```
 
 `workflow.getRuntimeLocale()` 返回当前本地宿主选择的 `"zh-CN"` 或 `"en"`。没有宿主语言标记时默认 `"zh-CN"`；明确支持国际化的项目应把用户可见输出、错误、日期和数字格式统一跟随该值，而不是自行探测浏览器或机器语言。静态 package、入口和参数清单保持项目默认语言。
@@ -132,7 +132,7 @@ const outputNode = workflow.createOutputNode<Parsed, OutputPayload>({
 });
 ```
 
-输出 payload 的当前协议是 `WorkflowOutputPayload.items: WorkflowOutputItem[]`。每个 item 都是一个可独立展示和折叠的消息块，包含 `id`、`title`、`content`、可选 `icon` / `iconPreset`、`contentType`、`collapsed` 和 `metadata`。`contentType` 只决定渲染方式：`markdown`、`text`、`json`、`audio` 或 `video`；对象和数组应直接放进 `content`，不要提前 stringify 成 Markdown code block。`audio` content 使用 `{ src, mimeType, name, size, durationMs?, format? }`，`src` 可为安全 `data:audio/...;base64,...` 或 `http(s)` URL。`video` content 使用 `{ src, mimeType: "video/mp4", name, durationMs?, format?: "mp4" }`，`src` 同样只接受 `data:video/mp4;base64,...` 或公开 `http(s)` URL，UI 通过浏览器原生 `<video controls preload="metadata" playsInline>` 播放；签名 OSS URL 视为 `http(s)` 但不缓存，不要作为不可重建视频产物的唯一发布形式。缺失必填字段或 `src` 不安全时会降级为文本预览并显示 `videoPlaybackUnsupported` 之类的文案，不要把 `src` 留空或使用 `file://`、`blob:` 等本地 URL。
+输出 payload 的当前协议是 `RunOutputPayload.items: OutputItem[]`。每个 item 都是一个可独立展示和折叠的消息块，包含 `id`、`title`、`content`、可选 `icon` / `iconPreset`、`contentType`、`collapsed` 和 `metadata`。`contentType` 只决定渲染方式：`markdown`、`text`、`json`、`audio` 或 `video`；对象和数组应直接放进 `content`，不要提前 stringify 成 Markdown code block。`audio` content 使用 `{ src, mimeType, name, size, durationMs?, format? }`，`src` 可为安全 `data:audio/...;base64,...` 或 `http(s)` URL。`video` content 使用 `{ src, mimeType: "video/mp4", name, durationMs?, format?: "mp4" }`，`src` 同样只接受 `data:video/mp4;base64,...` 或公开 `http(s)` URL，UI 通过浏览器原生 `<video controls preload="metadata" playsInline>` 播放；签名 OSS URL 视为 `http(s)` 但不缓存，不要作为不可重建视频产物的唯一发布形式。缺失必填字段或 `src` 不安全时会降级为文本预览并显示 `videoPlaybackUnsupported` 之类的文案，不要把 `src` 留空或使用 `file://`、`blob:` 等本地 URL。
 
 `workflow.createDetailsOutputNode` 是创建独立可折叠 output item 的便捷节点，会把 `{ title, content, icon }` 转成 `items: [{ title, content, icon, contentType, collapsed: true }]`，并仍按 `output` 标准节点被本地 CLI 收集。`workflow.createTimerNode` 会创建标准名为 `timer` 的普通节点，用于启动业务计时；`workflow.endTimer(timer, context, { status, message })` 显式结束计时并写入 `report.timers`，未结束的 running timer 会在 workflow 收尾前自动标记为 `cleared`，避免 UI 残留运行态。`workflow.runNode` 返回节点输出；`workflow.runStreamNode` 返回 `{ chunks, output }`，其中 `chunks` 是原始流式 chunk 数组，`output` 是 `finalize` 或 `format` 生成的最终 payload。流式 `createOutputNode({ stream, format })` 的 `format` 接收累积后的 `{ text, items, chunks }`；字符串 chunk 会自动写入一个默认 Markdown item，结构化输出可使用 `workflow.createOutputItemChunk(...)` 发送 `output_item_start`、`output_item_delta`、`output_item_end`。`output_item_delta` 除了合并 `content`，还可以携带 `item` patch 更新 `title`、`icon`、`collapsed`、`contentType` 或 `metadata.status`，用于展示工具调用从 running 到 success / failed 的状态变化。`workflow.runIf` 会按顺序检查 if / else-if / else 分支，命中后执行对应 `run`，并用 `branch-node` 运行事件记录所选分支。`workflow.runFor` 和 `workflow.runWhile` 会把循环本身记录为可追踪节点，让循环体在本地宿主 Diagram 中保持可见。
 
@@ -286,7 +286,7 @@ export const executor = workflow.defineExecutor<Input, OutputPayload>({
 
 Conversation executor 保持单入口，把 `workflow`、`params`、`createInput` 等字段直接放在 executor 上，不声明或接受 entrypoint。Executor 的 `projectType` 只允许 `"workflow"` 或 `"conversation"`。Kanban 在 `package.json.steamHarness.projectType` 中声明 `"kanban"`，不能伪造 executor。
 
-`createInput` 会接收 `workflowName`、`workflowDir`、`args`、`paramValues`、`env`、`abortSignal` 和可选 `conversationId`。Workflow 还会收到所选 `entrypointId`、`entrypointTitle`；相同字段会写入 `WorkflowContext.metadata`、report 和本地运行记录。本地宿主通过所选执行配置把参数转换为 workflow input；取消运行时，`abortSignal` 会传播到 workflow context，便于长耗时 provider/SDK 调用及时停止。
+`createInput` 会接收 `workflowName`、`workflowDir`、`args`、`paramValues`、`env`、`abortSignal` 和可选 `conversationId`。Workflow 还会收到所选 `entrypointId`、`entrypointTitle`；相同字段会写入 `RunContext.metadata`、report 和本地运行记录。本地宿主通过所选执行配置把参数转换为 workflow input；取消运行时，`abortSignal` 会传播到 workflow context，便于长耗时 provider/SDK 调用及时停止。
 
 `resolveParams` 可以按当前参数返回 `value`、`visible`、`disabled` 和单个 option 状态补丁，也可以用 `resolvedOptions` 数组替换参数当前的完整选项列表，或用 `null` 恢复静态选项。初始化以及 main、Advanced、Quick 的 Form 参数变化都会触发求值。`visible: false` 不会隐式清空旧值；互斥参数应同时返回 `value: null`，避免隐藏值继续进入 `args` 和 `paramValues`。动态列表适合读取服务器提供的 provider、model 或 variant 目录；读取必须可取消、限时，且不能在参数求值期间写入运行数据。
 

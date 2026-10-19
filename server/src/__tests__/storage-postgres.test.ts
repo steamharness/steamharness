@@ -7,10 +7,10 @@ import test from "node:test";
 import pg from "pg";
 import { create as createTar } from "tar";
 import type { DeclaredWorkflowProjectInfo } from "@steamharness/project-info";
-import type { WorkflowProjectGroupManifestV1 } from "@steamharness/project-dependencies";
-import { WorkflowLocalStorage } from "../local-storage";
+import type { ProjectGroupManifestV1 } from "@steamharness/project-dependencies";
+import { LocalStorage } from "../local-storage";
 import { ArtifactStorage, DatabaseRepository } from "../persistence";
-import { WorkflowStorage } from "../storage";
+import { Storage } from "../storage";
 
 const databaseUrl = process.env.STEAMHARNESS_TEST_DATABASE_URL?.trim();
 
@@ -26,8 +26,8 @@ test("PostgreSQL stores static project groups, immutable versions and independen
   const db = new DatabaseRepository(connection.toString());
   const pool = new pg.Pool({ connectionString: connection.toString() });
   const root = await mkdtemp(path.join(tmpdir(), "workflow-storage-postgres-"));
-  const objects = new WorkflowLocalStorage({ root: path.join(root, "objects"), publicBaseUrl: "http://localhost/" });
-  const storage = new WorkflowStorage({ serverRoot: process.cwd(), repoRoot: process.cwd(),
+  const objects = new LocalStorage({ root: path.join(root, "objects"), publicBaseUrl: "http://localhost/" });
+  const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(),
     dataRoot: path.join(root, "data"), db, objectStorage: objects, artifacts: new ArtifactStorage(objects) });
   const boardId = randomUUID();
   const workerId = randomUUID();
@@ -69,7 +69,7 @@ test("PostgreSQL stores static project groups, immutable versions and independen
       for (const file of files) await writeFile(path.join(source, file.path), file.content);
       await createTar({ cwd: source, file: path.join(groupDir, `${id}.tar.gz`), gzip: true }, ["."]);
     }
-    const manifest: WorkflowProjectGroupManifestV1 = { version: 1, rootProjectId: boardId,
+    const manifest: ProjectGroupManifestV1 = { version: 1, rootProjectId: boardId,
       projects: [
         { projectId: boardId, role: "root", archivePath: `${boardId}.tar.gz`, version: "1.0.0" },
         { projectId: workerId, role: "dependency", alias: "worker", archivePath: `${workerId}.tar.gz`, version: "1.0.0" },

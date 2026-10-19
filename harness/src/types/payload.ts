@@ -1,4 +1,4 @@
-export interface WorkflowPayload {
+export interface RunPayload {
   errCode: number;
   errMessage: string;
 }

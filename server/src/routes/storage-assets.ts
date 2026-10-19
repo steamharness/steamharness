@@ -2,7 +2,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import {
   AVATAR_FILE_PATTERN,
   AVATAR_USER_ID_PATTERN,
-  type WorkflowLocalStorage,
+  type LocalStorage,
 } from "../local-storage";
 import { HttpError } from "../protocol";
 
@@ -16,7 +16,7 @@ import { HttpError } from "../protocol";
  * The shape here must match the avatar URL validator exactly — a URL this route
  * cannot serve would be rejected at upload time, and vice versa.
  */
-export function createStorageAssetRouter(objectStorage: WorkflowLocalStorage): Router {
+export function createStorageAssetRouter(objectStorage: LocalStorage): Router {
   const router = Router();
 
   router.get("/avatars/:userId/:fileName", asyncHandler(async (req, res) => {

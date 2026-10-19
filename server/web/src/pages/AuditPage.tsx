@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "@steamharness/i18n/react";
 import type { AuditFilters } from "../state";
-import type { WorkflowAuditEventPage, WorkflowAuditEventRecord } from "../types";
+import type { AuditEventPage, AuditEventRecord } from "../types";
 import { formatDate, formatJson } from "../utils/format";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -33,7 +33,7 @@ import { UserIdentity } from "@/components/UserIdentity";
 import { cn } from "@/lib/utils";
 
 interface AuditPageProps {
-  auditPage: WorkflowAuditEventPage | null;
+  auditPage: AuditEventPage | null;
   filters: AuditFilters;
   loading?: string;
   error?: string | null;
@@ -306,7 +306,7 @@ export function AuditPage({
   );
 }
 
-function getAuditActorIdentity(item: WorkflowAuditEventRecord) {
+function getAuditActorIdentity(item: AuditEventRecord) {
   return {
     userId: item.actorProfile?.userId ?? item.actorProfileId ?? item.actorUserId,
     displayName: item.actorProfile?.displayName ?? item.actorDisplayName,
@@ -315,7 +315,7 @@ function getAuditActorIdentity(item: WorkflowAuditEventRecord) {
   };
 }
 
-function OutcomeBadge({ outcome }: { outcome: WorkflowAuditEventRecord["outcome"] }) {
+function OutcomeBadge({ outcome }: { outcome: AuditEventRecord["outcome"] }) {
   const { t } = useTranslation("serverWeb");
   if (outcome === "success") {
     return <Badge variant="secondary">{t("auditOutcomeSuccess")}</Badge>;

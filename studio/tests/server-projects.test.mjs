@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { createServer } from 'node:http';
 import { register } from 'tsx/esm/api';
 register();
-const { WorkflowProjectServerClient } = await import('../extensions/studio-workstation/src/workflow-server-projects.ts');
+const { ProjectServerClient } = await import('../extensions/studio-workstation/src/workflow-server-projects.ts');
 const { downloadServerProject, uploadServerProject, runWorkspaceTransfer } = await import('../extensions/studio-workstation/src/workflow-server-projects-node.ts');
 const { configureLocalization } = await import('../extensions/studio-workstation/src/localization.ts');
 const id = '784af2d9-240a-45d1-a659-452a21867934';
@@ -61,7 +61,7 @@ async function server(t, handler) {
 
 test('project API reads use the host account, host language and cancellable requests', async () => {
   const reads = [];
-  const client = new WorkflowProjectServerClient({ serverUrl: 'https://workflow.test/', accessToken: 'host-token' }, async (url, options) => {
+  const client = new ProjectServerClient({ serverUrl: 'https://workflow.test/', accessToken: 'host-token' }, async (url, options) => {
     reads.push({ url, options }); return Response.json({ errCode: 0, data: [] });
   });
   await client.projects(signal());
@@ -74,18 +74,18 @@ test('project API reads use the host account, host language and cancellable requ
 });
 
 test('API errors redact credentials and retain permission status', async () => {
-  const client = new WorkflowProjectServerClient({ serverUrl: 'https://workflow.test', accessToken: 'private-token' }, async () => Response.json({ errCode: 403, errMessage: 'private-token forbidden' }, { status: 403 }));
+  const client = new ProjectServerClient({ serverUrl: 'https://workflow.test', accessToken: 'private-token' }, async () => Response.json({ errCode: 403, errMessage: 'private-token forbidden' }, { status: 403 }));
   await assert.rejects(client.projects(signal()), error => error.status === 403 && error.message === '[redacted] forbidden');
 });
 
 test('malformed API envelopes produce a readable error', async () => {
-  const client = new WorkflowProjectServerClient({ serverUrl: 'https://workflow.test', accessToken: 'private-token' }, async () => Response.json(null));
+  const client = new ProjectServerClient({ serverUrl: 'https://workflow.test', accessToken: 'private-token' }, async () => Response.json(null));
   await assert.rejects(client.projects(signal()), /invalid response/);
 });
 
 test('cancelling while reading the API body retains cancellation semantics', async () => {
   const controller = new AbortController();
-  const client = new WorkflowProjectServerClient({ serverUrl: 'https://workflow.test', accessToken: 'private-token' }, async () => ({
+  const client = new ProjectServerClient({ serverUrl: 'https://workflow.test', accessToken: 'private-token' }, async () => ({
     status: 200, ok: true, json: async () => { controller.abort(); throw controller.signal.reason; },
   }));
   await assert.rejects(client.projects(controller.signal), { name: 'AbortError' });

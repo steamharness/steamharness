@@ -45,7 +45,7 @@ The Core API section documents the `workflow.*` runtime API available directly t
 | [`getRuntimePlatform` / `isCli` / `isDesktop`](/en/core-api/runtime-platform) |Determine whether the execution host for the current workflow is CLI or a local desktop host.|
 | [`getRuntimeLocale`](/en/core-api/runtime-locale) |Reads the Simplified Chinese or English language selected by the current host for localized visible output.|
 | [`getLLMProvider`](/en/core-api/get-llm-provider) |Resolves LLM provider by context, node name, and provider source.|
-| [`WorkflowError`](/en/core-api/workflow-error) |Standard workflow error type.|
+| [`HarnessError`](/en/core-api/workflow-error) |Standard workflow error type.|
 
 ## Core Run Object
 
@@ -54,8 +54,8 @@ Most API runs around `input`, `context`, `node`, and `payload`.
 |Object|Type|Description|
 | --- | --- | --- |
 | `input` |`Input` or node `Output`|The input data for the current workflow or node.|
-| `context` | `WorkflowContext` / `NodeContext` | Contains provider, storage, conversation, files, metadata, hooks, and abortSignal. |
-| `payload` |`WorkflowPayload` subtype|Node payload should inherit `WorkflowPayload`, `errCode: 0`, `errMessage: ""` on success.|
+| `context` | `RunContext` / `NodeContext` | Contains provider, storage, conversation, files, metadata, hooks, and abortSignal. |
+| `payload` |`RunPayload` subtype|Node payload should inherit `RunPayload`, `errCode: 0`, `errMessage: ""` on success.|
 | `provider` | `LLMProviderSource` / `LLMProvider` |The LLM node parses the actual provider by provider source.|
 
 ## `NodeContext` Core Fields
@@ -63,15 +63,15 @@ Most API runs around `input`, `context`, `node`, and `payload`.
 |Field|Type|Description|
 | --- | --- | --- |
 | `providers` | `ProviderRegistry` |LLM provider the registry and binding tables.|
-| `storage` | `WorkflowStorageContext` | Explicit `local` and `server` locations, each with three-scope `kv` and `persistentValue`. The project `dataStorage.mode` strictly limits accessible locations. Core 0.2 no longer provides top-level `context.kv` or `context.persistentValue`. |
-| `conversation` | `WorkflowConversationContext` |Session state read/write entry. `setTitle` can safely suggest UI title; other reads and writes will throw errors when the session is not enabled.|
-| `tokenUsage` | `WorkflowTokenUsageContext` | Token-usage reporting context. When disabled, `report()` is a no-op; when enabled, it writes KV, run reports, and runtime events. |
-| `userInput` | `WorkflowUserInputContext \| undefined` |Wait/resume entry for user input and tool approval. Local hosts will be injected according to the host capacity.|
-| `files` | `WorkflowFileStore \| undefined` |File reference resolution entry;`createFile` generates a server-backed run file.|
+| `storage` | `StorageContext` | Explicit `local` and `server` locations, each with three-scope `kv` and `persistentValue`. The project `dataStorage.mode` strictly limits accessible locations. Core 0.2 no longer provides top-level `context.kv` or `context.persistentValue`. |
+| `conversation` | `ConversationContext` |Session state read/write entry. `setTitle` can safely suggest UI title; other reads and writes will throw errors when the session is not enabled.|
+| `tokenUsage` | `TokenUsageContext` | Token-usage reporting context. When disabled, `report()` is a no-op; when enabled, it writes KV, run reports, and runtime events. |
+| `userInput` | `UserInputContext \| undefined` |Wait/resume entry for user input and tool approval. Local hosts will be injected according to the host capacity.|
+| `files` | `FileStore \| undefined` |File reference resolution entry;`createFile` generates a server-backed run file.|
 | `metadata` | `object \| undefined` |Current execution meta information, such as workflow, runId, conversationId;Workflow run also contains `entrypointId` and `entrypointTitle`.|
 | `nodeHooks` | `NodeExecutionHooks \| undefined` |Node start, chunk, complete, and other event callbacks.|
-| `timers` | `WorkflowTimerContext \| undefined` |Business timing node context;`createTimerNode` start timing,`endTimer` end timing.|
-| `toolPermissions` | `WorkflowToolPermissionContext \| undefined` |The tool permission context for the current run. Parses by executor `tools` default and host override values for `createToolApprovalGate()` or custom tool call logic to determine enablement, automatic approval, and manual approval.|
+| `timers` | `TimerContext \| undefined` |Business timing node context;`createTimerNode` start timing,`endTimer` end timing.|
+| `toolPermissions` | `ToolPermissionContext \| undefined` |The tool permission context for the current run. Parses by executor `tools` default and host override values for `createToolApprovalGate()` or custom tool call logic to determine enablement, automatic approval, and manual approval.|
 | `abortSignal` | `AbortSignal \| undefined` |Interrupt execution and provider calls.|
 
 ## Payload Constraint

@@ -3,9 +3,9 @@ import test from "node:test";
 import {
   createNodeExecutionReporter,
   createWorkflowExecutionReport,
-  type WorkflowRuntimeEvent,
+  type RuntimeEvent,
 } from "../report";
-import { WorkflowError } from "../../workflow/errors";
+import { HarnessError } from "../../workflow/errors";
 
 test("workflow report exposes provider cause status and url in errMessage", () => {
   const cause = new Error("Unauthorized") as Error & {
@@ -28,7 +28,7 @@ test("workflow report exposes provider cause status and url in errMessage", () =
       error: {
         type: "provider_call",
         message: "LLM provider chat call failed.",
-        cause: new WorkflowError({
+        cause: new HarnessError({
           type: "provider_call",
           message: "LLM provider chat call failed.",
           metadata: { provider: "openai-responses" },
@@ -53,7 +53,7 @@ test("workflow report exposes provider cause status and url in errMessage", () =
 });
 
 test("workflow report records durable user input pauses without failed finish events", async () => {
-  const events: WorkflowRuntimeEvent[] = [];
+  const events: RuntimeEvent[] = [];
   const reporter = createNodeExecutionReporter({
     runId: "run-input",
     workflowName: "input-workflow",
@@ -116,7 +116,7 @@ test("workflow report records durable user input pauses without failed finish ev
 });
 
 test("workflow report records resolved user input and clears the pending request", async () => {
-  const events: WorkflowRuntimeEvent[] = [];
+  const events: RuntimeEvent[] = [];
   const reporter = createNodeExecutionReporter({
     runId: "run-input",
     workflowName: "input-workflow",

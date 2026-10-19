@@ -1,23 +1,23 @@
-export interface WorkflowPayload {
+export interface RunPayload {
   errCode: number;
   errMessage: string;
 }
 
-export type WorkflowOutputContentType = "markdown" | "text" | "json";
+export type OutputContentType = "markdown" | "text" | "json";
 
-export interface WorkflowOutputItem {
+export interface OutputItem {
   id: string;
   title: string;
   content: unknown;
   icon?: string;
   iconPreset?: "info" | "success" | "warning" | "error" | "note" | "code" | "list" | "quote" | "none";
-  contentType?: WorkflowOutputContentType;
+  contentType?: OutputContentType;
   collapsed?: boolean;
   metadata?: Record<string, unknown>;
 }
 
-export interface WorkflowOutputPayload extends WorkflowPayload {
-  items: WorkflowOutputItem[];
+export interface RunOutputPayload extends RunPayload {
+  items: OutputItem[];
 }
 
 export interface OutputShowcaseDisplaySnapshotItem {
@@ -25,7 +25,7 @@ export interface OutputShowcaseDisplaySnapshotItem {
   kind: "output" | "tool" | "user-input-resolved" | "timer";
   title: string;
   content: unknown;
-  contentType: WorkflowOutputContentType;
+  contentType: OutputContentType;
   collapsed?: boolean;
   metadata?: Record<string, unknown>;
 }
@@ -39,7 +39,7 @@ export interface OutputShowcaseDisplaySnapshot {
   items: OutputShowcaseDisplaySnapshotItem[];
 }
 
-export interface WorkflowExecutorResult<Output extends WorkflowPayload> {
+export interface ExecutorResult<Output extends RunPayload> {
   ok: boolean;
   data?: Output;
   error?: unknown;
@@ -61,13 +61,13 @@ export interface OutputShowcaseConfirmationValues {
   confirmed: boolean;
 }
 
-export interface OutputShowcaseConfirmationPayload extends WorkflowPayload {
+export interface OutputShowcaseConfirmationPayload extends RunPayload {
   requestId: string;
   values: OutputShowcaseConfirmationValues;
   submittedAt: string;
 }
 
-export interface OutputShowcaseOutputPayload extends WorkflowOutputPayload {
+export interface OutputShowcaseOutputPayload extends RunOutputPayload {
   projectName: string;
   toolSummary: string;
   confirmed: boolean;
@@ -75,4 +75,4 @@ export interface OutputShowcaseOutputPayload extends WorkflowOutputPayload {
   pageSnapshot: OutputShowcaseDisplaySnapshot;
 }
 
-export type OutputShowcaseResult = WorkflowExecutorResult<OutputShowcaseOutputPayload>;
+export type OutputShowcaseResult = ExecutorResult<OutputShowcaseOutputPayload>;

@@ -12,15 +12,15 @@ description: "创建工具审批 gate，按 executor.tools 与运行策略控制
 ## 签名
 
 ```ts
-workflow.createToolApprovalGate(): WorkflowToolApprovalGate
+workflow.createToolApprovalGate(): ToolApprovalGate
 ```
 
 ```ts
-interface WorkflowToolApprovalGate {
+interface ToolApprovalGate {
   approve(
-    input: WorkflowToolApprovalRequestInput,
+    input: ToolApprovalRequestInput,
     context: NodeContext,
-  ): Promise<WorkflowToolApprovalDecision>;
+  ): Promise<ToolApprovalDecision>;
 
   wrap<Args extends unknown[], Result>(
     name: string,
@@ -111,8 +111,8 @@ const result = await searchWithApproval(context, input.query);
 
 | 状态 | 行为 |
 | --- | --- |
-| 工具未注册 | 抛出 `WorkflowError`，类型为 `input_validation`。 |
-| 工具被禁用 | 抛出 `WorkflowError`，类型为 `tool_permission_denied`。 |
+| 工具未注册 | 抛出 `HarnessError`，类型为 `input_validation`。 |
+| 工具被禁用 | 抛出 `HarnessError`，类型为 `tool_permission_denied`。 |
 | `autoApprove: true` | 直接返回 `{ approved: true }`，不会产生等待请求。 |
 | 需要审批，且本回合是 plan 模式 | 创建 `tool-approval` 请求，运行状态变为 `waiting_for_input`。 |
 | 需要审批，但本回合是 build 模式 | 直接返回 `{ approved: true }`，不会产生等待请求。 |

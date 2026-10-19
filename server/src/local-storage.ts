@@ -11,7 +11,7 @@ import { createReadStream, createWriteStream, mkdirSync } from "node:fs";
 import { lstat, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
-import type { WorkflowObjectStorage } from "./object-storage";
+import type { ObjectStorage } from "./object-storage";
 import { HttpError } from "./protocol";
 import {
   resolveLocalStoragePublicBaseUrl,
@@ -33,25 +33,25 @@ const AVATAR_CONTENT_TYPES: Record<string, string> = {
   webp: "image/webp",
 };
 
-export interface WorkflowLocalStorageOptions {
+export interface LocalStorageOptions {
   root: string;
   publicBaseUrl: string;
 }
 
-export interface WorkflowLocalObjectAsset {
+export interface LocalObjectAsset {
   filePath: string;
   size: number;
   contentType: string;
   hash: string;
 }
 
-export class WorkflowLocalStorage implements WorkflowObjectStorage {
+export class LocalStorage implements ObjectStorage {
   readonly driver = "local" as const;
   readonly root: string;
   readonly prefix = OBJECT_PREFIX;
   readonly publicBaseUrl: string;
 
-  constructor(options: WorkflowLocalStorageOptions) {
+  constructor(options: LocalStorageOptions) {
     this.root = path.resolve(options.root);
     this.publicBaseUrl = options.publicBaseUrl;
   }
@@ -147,7 +147,7 @@ export class WorkflowLocalStorage implements WorkflowObjectStorage {
    * public-read entry point and lives on the class rather than on the interface —
    * `res.sendFile` needs a path, size and ETag, which only a local backend has.
    */
-  async resolvePublicAvatar(userId: string, fileName: string): Promise<WorkflowLocalObjectAsset> {
+  async resolvePublicAvatar(userId: string, fileName: string): Promise<LocalObjectAsset> {
     const match = AVATAR_FILE_PATTERN.exec(fileName);
     if (!AVATAR_USER_ID_PATTERN.test(userId) || !match?.[1] || !match[2]) {
       throw createAvatarMissingError();
@@ -207,8 +207,8 @@ export class WorkflowLocalStorage implements WorkflowObjectStorage {
   }
 }
 
-export function isWorkflowLocalStorage(value: unknown): value is WorkflowLocalStorage {
-  return value instanceof WorkflowLocalStorage;
+export function isWorkflowLocalStorage(value: unknown): value is LocalStorage {
+  return value instanceof LocalStorage;
 }
 
 /**
@@ -218,7 +218,7 @@ export function isWorkflowLocalStorage(value: unknown): value is WorkflowLocalSt
 export function createWorkflowLocalStorageFromEnv(options: {
   env?: NodeJS.ProcessEnv;
   dataRoot: string;
-}): WorkflowLocalStorage {
+}): LocalStorage {
   const env = options.env ?? process.env;
   const root = resolveLocalStorageRootFromEnv({ env, dataRoot: options.dataRoot });
   const publicBaseUrl = resolveLocalStoragePublicBaseUrl(env);
@@ -231,7 +231,7 @@ export function createWorkflowLocalStorageFromEnv(options: {
     );
   }
 
-  return new WorkflowLocalStorage({ root, publicBaseUrl });
+  return new LocalStorage({ root, publicBaseUrl });
 }
 
 /**

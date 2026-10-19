@@ -1,14 +1,14 @@
 ---
 title: "Payload and error"
-description: "WorkflowPayload, execution results, and current constraints for error reporting."
+description: "RunPayload, execution results, and current constraints for error reporting."
 ---
 
 # Payload and error
 
-All data types passed between nodes, I .e. workflow payload, must inherit `WorkflowPayload`. The type comes from the core package:
+All data types passed between nodes, I .e. workflow payload, must inherit `RunPayload`. The type comes from the core package:
 
 ```ts
-export interface WorkflowPayload {
+export interface RunPayload {
   errCode: number;
   errMessage: string;
 }
@@ -28,7 +28,7 @@ Successful output unified use:
 Output node should explicitly return objects containing `errCode`, `errMessage`, and `items`:
 
 ```ts
-interface WorkflowOutputItem {
+interface OutputItem {
   id: string;
   title: string;
   content: unknown;
@@ -36,8 +36,8 @@ interface WorkflowOutputItem {
   collapsed?: boolean;
 }
 
-interface OutputPayload extends WorkflowPayload {
-  items: WorkflowOutputItem[];
+interface OutputPayload extends RunPayload {
+  items: OutputItem[];
 }
 
 const outputNode = workflow.createOutputNode<Parsed, OutputPayload>({
@@ -75,12 +75,12 @@ When `contentType: "video"`, the UI renders the item through the browser native 
 
 Signed OSS URLs fall under the `http(s)` category, but the UI does not cache them and they expire or stop working without notice. Do not publish generated video assets only through signed OSS URLs without a stable fallback; if persistent playback is required, store the asset in a local or OSS public location and surface the canonical URL or an external link in the metadata. Callers must not leave `src` empty and must not combine non-`http(s)`/`data` schemes such as `file://` or `blob:`.
 
-## WorkflowResult
+## RunResult
 
 The underlying safe run will first normalize the execution result of workflow:
 
 ```ts
-type WorkflowResult<T> =
+type RunResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: SerializedWorkflowError };
 ```
@@ -109,11 +109,11 @@ The user input node will pause workflow into the persistent `waiting_for_input` 
 | `pendingUserInput` |The currently waiting request, including `requestId`, node name, title, description, form `params`, default value, and node metadata.|
 | `resolvedUserInputs` |An array of submitted answers for this run, containing `requestId`, node names, `values`, and `submittedAt`.|
 
-Runtime event emits `user_input_requested` and `user_input_resolved`. The standard error code mapping for the wait state is `202`, which is used to indicate that workflow is still recoverable; the node payload after a successful recovery must still inherit `WorkflowPayload`, which contains `errCode: 0`, `errMessage: ""`, `requestId`, `values`, and `submittedAt` by default.
+Runtime event emits `user_input_requested` and `user_input_resolved`. The standard error code mapping for the wait state is `202`, which is used to indicate that workflow is still recoverable; the node payload after a successful recovery must still inherit `RunPayload`, which contains `errCode: 0`, `errMessage: ""`, `requestId`, `values`, and `submittedAt` by default.
 
-## WorkflowError
+## HarnessError
 
-Can proactively throw `workflow.WorkflowError`, with type, message, node and metadata. The framework also converts ordinary exceptions to `WorkflowError`.
+Can proactively throw `workflow.HarnessError`, with type, message, node and metadata. The framework also converts ordinary exceptions to `HarnessError`.
 
 Common error types include:
 

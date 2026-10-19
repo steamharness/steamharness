@@ -14,9 +14,9 @@ import {
   type LLMProvider,
   type LLMStreamChunk,
   type NodeContext,
-  type WorkflowKVStore,
-  type WorkflowTokenUsageAggregate,
-  type WorkflowTokenUsageContext,
+  type KVStore,
+  type TokenUsageAggregate,
+  type TokenUsageContext,
 } from "../index";
 
 test("disabled token usage report is a safe no-op", async () => {
@@ -45,7 +45,7 @@ test("manual token usage report writes project and conversation totals plus conv
     conversationId: "conv-1",
     source: { projectId: "demo", runId: "run-1", conversationId: "conv-1" },
   });
-  const updates: WorkflowTokenUsageAggregate[] = [];
+  const updates: TokenUsageAggregate[] = [];
   const tokenUsage = createWorkflowTokenUsageContext({
     definition: { enabled: true },
     kv,
@@ -430,7 +430,7 @@ test("LLM stream finish usage is reported once by the stream node", async () => 
 
 function createNodeContext(
   kv: ReturnType<typeof createWorkflowKVContext>,
-  tokenUsage: WorkflowTokenUsageContext,
+  tokenUsage: TokenUsageContext,
   llm?: LLMProvider,
 ): NodeContext {
   return {
@@ -444,13 +444,13 @@ function createNodeContext(
   };
 }
 
-function readAggregate(value: unknown): WorkflowTokenUsageAggregate {
+function readAggregate(value: unknown): TokenUsageAggregate {
   assert.equal(typeof value, "object");
   assert.notEqual(value, null);
-  return value as WorkflowTokenUsageAggregate;
+  return value as TokenUsageAggregate;
 }
 
-function createMemoryKVStore(): WorkflowKVStore & { values: Map<string, unknown> } {
+function createMemoryKVStore(): KVStore & { values: Map<string, unknown> } {
   const values = new Map<string, unknown>();
 
   function createKey(input: {

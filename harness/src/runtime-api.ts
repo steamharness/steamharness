@@ -72,7 +72,7 @@ import {
   createTimerNode,
   endTimer,
 } from "./timer/index";
-import { WorkflowError, defineWorkflow, runFor, runIf, runNode, runStreamNode, runWhile, runWorkflow } from "./workflow/index";
+import { HarnessError, defineWorkflow, runFor, runIf, runNode, runStreamNode, runWhile, runWorkflow } from "./workflow/index";
 import { getEnv } from "./env";
 import { getRuntimeLocale } from "./runtime-locale";
 import { getRuntimePlatform, isCli, isDesktop } from "./runtime-platform";
@@ -145,17 +145,17 @@ export const workflowRuntimeApi = {
   runWhile,
   runWorkflow,
   searchKnowledgeDocuments,
-  WorkflowError,
+  HarnessError,
 };
 
-export type WorkflowRuntimeApi = typeof workflowRuntimeApi;
+export type RuntimeApi = typeof workflowRuntimeApi;
 
 declare global {
   // eslint-disable-next-line no-var
-  var workflow: WorkflowRuntimeApi | undefined;
+  var workflow: RuntimeApi | undefined;
 }
 
-export function installWorkflowRuntimeGlobal(): WorkflowRuntimeApi {
+export function installWorkflowRuntimeGlobal(): RuntimeApi {
   globalThis.workflow = workflowRuntimeApi;
   return workflowRuntimeApi;
 }

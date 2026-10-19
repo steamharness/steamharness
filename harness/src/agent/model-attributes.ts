@@ -1,4 +1,4 @@
-import { WorkflowError } from "../workflow/errors";
+import { HarnessError } from "../workflow/errors";
 import type { AgentInputModality, AgentModelAttributes, AgentModelCost } from "./types";
 
 /**
@@ -170,8 +170,8 @@ function readThinkingLevelMap(value: unknown): AgentModelAttributes["thinkingLev
   return map;
 }
 
-function invalid(message: string, cause?: unknown): WorkflowError {
-  return new WorkflowError({
+function invalid(message: string, cause?: unknown): HarnessError {
+  return new HarnessError({
     type: "input_validation",
     message,
     ...(cause === undefined ? {} : { cause }),

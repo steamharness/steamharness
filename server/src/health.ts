@@ -6,7 +6,7 @@ import { resolveReleaseMetadataRootFromEnv } from "./release-paths";
 import type { ServerBuildInfo } from "./build-info";
 import type { SupportedLocale } from "@steamharness/i18n";
 
-export interface WorkflowServerHealthRelease {
+export interface ServerHealthRelease {
   unit: "server" | "server-web";
   tag: string | null;
   version: string | null;
@@ -18,7 +18,7 @@ export interface WorkflowServerHealthRelease {
   source: "release-metadata" | "package-manifest";
 }
 
-export interface WorkflowServerHealthData {
+export interface ServerHealthData {
   status: "ok";
   runtime: {
     mode: "development" | "production";
@@ -34,8 +34,8 @@ export interface WorkflowServerHealthData {
     docsUrl: string;
   } | null;
   deployment: {
-    server: WorkflowServerHealthRelease | null;
-    serverWeb: WorkflowServerHealthRelease | null;
+    server: ServerHealthRelease | null;
+    serverWeb: ServerHealthRelease | null;
   };
 }
 
@@ -48,7 +48,7 @@ export async function createWorkflowServerHealthData(options: {
   buildInfo?: ServerBuildInfo;
   locale?: SupportedLocale;
   channel?: "stable" | "alpha";
-} = {}): Promise<WorkflowServerHealthData> {
+} = {}): Promise<ServerHealthData> {
   const { serverRoot } = resolveServerPathRoots();
   const locale = options.locale ?? "en";
   const channel = options.channel ?? (process.env.STEAMHARNESS_RELEASE_CHANNEL === "alpha" ? "alpha" : "stable");
@@ -118,7 +118,7 @@ async function resolveDeploymentRelease(options: {
   packageJsonFile: string;
   locale: SupportedLocale;
   channel: "stable" | "alpha";
-}): Promise<WorkflowServerHealthRelease | null> {
+}): Promise<ServerHealthRelease | null> {
   const metadata = options.metadataRoot
     ? await readJsonIfExists(path.join(options.metadataRoot, options.unit, options.channel, "release.json"))
     : null;
@@ -164,7 +164,7 @@ function normalizeHealthRelease(input: {
   components: Record<string, string>;
   releaseNotes: { format: "markdown"; body: string } | null;
   source: "release-metadata" | "package-manifest";
-}): WorkflowServerHealthRelease | null {
+}): ServerHealthRelease | null {
   if (!input.version) {
     return null;
   }

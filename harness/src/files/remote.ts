@@ -4,11 +4,11 @@ import {
   createWorkflowFileCreateUnavailableError,
   normalizeWorkflowFileReference,
   createResolvedWorkflowFile,
-  type WorkflowCreateFileInput,
-  type WorkflowFileReference,
-  type WorkflowFileStore,
+  type CreateFileInput,
+  type FileReference,
+  type FileStore,
 } from "./index";
-import { WorkflowError } from "../workflow/errors";
+import { HarnessError } from "../workflow/errors";
 
 interface ApiResponse<T> {
   errCode: number;
@@ -23,12 +23,12 @@ export interface RemoteWorkflowFileStoreOptions {
   conversationId?: string;
 }
 
-export class RemoteWorkflowFileStore implements WorkflowFileStore {
+export class RemoteWorkflowFileStore implements FileStore {
   private readonly serverUrl: string;
   private readonly token: string;
   private readonly workflowName: string;
   private readonly conversationId?: string;
-  private readonly fallbackStore: WorkflowFileStore;
+  private readonly fallbackStore: FileStore;
 
   constructor(options: RemoteWorkflowFileStoreOptions) {
     this.serverUrl = normalizeServerUrl(options.serverUrl);
@@ -38,11 +38,11 @@ export class RemoteWorkflowFileStore implements WorkflowFileStore {
     this.fallbackStore = createWorkflowFileStore({});
   }
 
-  async resolveFile(reference: WorkflowFileReference) {
+  async resolveFile(reference: FileReference) {
     if (reference.storage !== "server") return this.fallbackStore.resolveFile(reference);
     const normalized = normalizeWorkflowFileReference(reference);
     if (normalized.workflowId !== undefined && normalized.workflowId !== this.workflowName) {
-      throw new WorkflowError({ type: "input_validation", message: "Workflow file belongs to another project." });
+      throw new HarnessError({ type: "input_validation", message: "Workflow file belongs to another project." });
     }
     if (this.serverUrl === "" || this.token === "") throw createWorkflowFileCreateUnavailableError();
     return createResolvedWorkflowFile(normalized, async () => {
@@ -53,7 +53,7 @@ export class RemoteWorkflowFileStore implements WorkflowFileStore {
       );
       if (!response.ok) {
         const payload = await readApiResponse(response);
-        throw new WorkflowError({
+        throw new HarnessError({
           type: "workflow_execution",
           message: payload.errMessage || `Workflow file read failed with HTTP ${response.status}.`,
           metadata: { fileId: normalized.id, status: response.status },
@@ -63,7 +63,7 @@ export class RemoteWorkflowFileStore implements WorkflowFileStore {
     });
   }
 
-  async createFile(input: WorkflowCreateFileInput): Promise<WorkflowFileReference> {
+  async createFile(input: CreateFileInput): Promise<FileReference> {
     if (this.serverUrl === "" || this.token === "") {
       throw createWorkflowFileCreateUnavailableError();
     }
@@ -91,7 +91,7 @@ export class RemoteWorkflowFileStore implements WorkflowFileStore {
         },
       );
     } catch (error) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "workflow_execution",
         message: `Workflow file creation could not connect to server storage at ${this.serverUrl}. Check the App server connection or STEAMHARNESS_SERVER_URL/STEAMHARNESS_SERVER_ADMIN_KEY.`,
         metadata: {
@@ -101,9 +101,9 @@ export class RemoteWorkflowFileStore implements WorkflowFileStore {
       });
     }
 
-    const payload = await readApiResponse<WorkflowFileReference[]>(response);
+    const payload = await readApiResponse<FileReference[]>(response);
     if (!response.ok || payload.errCode !== 0) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "workflow_execution",
         message: payload.errMessage || `Workflow file creation failed with HTTP ${response.status}.`,
         metadata: {
@@ -116,7 +116,7 @@ export class RemoteWorkflowFileStore implements WorkflowFileStore {
 
     const reference = payload.data?.[0];
     if (reference === undefined) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "workflow_execution",
         message: "Workflow file creation server did not return a file reference.",
         metadata: {
@@ -136,7 +136,7 @@ export function createRemoteWorkflowFileStoreFromEnv(options: {
   env?: NodeJS.ProcessEnv;
   workflowName: string;
   conversationId?: string;
-}): WorkflowFileStore | undefined {
+}): FileStore | undefined {
   const env = options.env ?? process.env;
   const explicitServerUrl = env.STEAMHARNESS_FILE_SERVER_URL ?? env.STEAMHARNESS_SERVER_URL;
   const explicitToken =
@@ -187,7 +187,7 @@ async function readApiResponse<T>(response: Response): Promise<ApiResponse<T>> {
   };
 }
 
-function normalizeCreateFileBody(value: WorkflowCreateFileInput["buffer"]): BodyInit {
+function normalizeCreateFileBody(value: CreateFileInput["buffer"]): BodyInit {
   if (typeof value === "string" || value instanceof ArrayBuffer) {
     return value;
   }

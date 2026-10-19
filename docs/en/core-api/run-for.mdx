@@ -12,16 +12,16 @@ description: "Execute the traceable for loop node and let shared runtime UI Diag
 ```ts
 workflow.runFor<State, Item>(
   input: State,
-  context: WorkflowContext,
+  context: RunContext,
   options: {
     name?: string;
     items(
       input: State,
-      context: WorkflowContext,
+      context: RunContext,
     ): Iterable<Item> | AsyncIterable<Item> | Promise<Iterable<Item> | AsyncIterable<Item>>;
-    run(input: State, item: Item, index: number, context: WorkflowContext): State | Promise<State>;
+    run(input: State, item: Item, index: number, context: RunContext): State | Promise<State>;
     maxIterations?: number;
-    metadata?: Partial<WorkflowNodeMetadata>;
+    metadata?: Partial<NodeMetadata>;
   },
 ): Promise<State>
 ```
@@ -31,12 +31,12 @@ workflow.runFor<State, Item>(
 |Parameter|Type|Description|
 | --- | --- | --- |
 | `input` | `State` |Initial cycle state.|
-| `context` | `WorkflowContext` |runtime context for hooks, provider, KV, files, abortSignal.|
+| `context` | `RunContext` |runtime context for hooks, provider, KV, files, abortSignal.|
 | `options.name` | `string` |Diagram and the cycle node title displayed in Trace. Default `Run for`.|
 | `options.items` | `Iterable` / `AsyncIterable` |A cycle term is generated based on the initial state. Supports synchronous and asynchronous iterable, and also supports return Promise.|
 | `options.run` | `function` |The loop body of each item. Receives the current state, item, index and context starting from `0`, and returns the next round state.|
 | `options.maxIterations` | `number` |The maximum number of iterations. Default `1000` to prevent accidental infinite loops.|
-| `options.metadata` | `Partial<WorkflowNodeMetadata>` |Overrides the loop node meta information. The default type is `run-for`.|
+| `options.metadata` | `Partial<NodeMetadata>` |Overrides the loop node meta information. The default type is `run-for`.|
 
 ## Operation Report
 
@@ -76,5 +76,5 @@ Static structure analysis recognizes `items`, `maxIterations`, and `run` as obje
 |Situation|Error Type|Description|
 | --- | --- | --- |
 |More than `maxIterations`| `node_execution` |Throw out `Run-for node "<name>" exceeded maxIterations (<value>).`.|
-|`items` or `run` error thrown| `node_execution` |The original error is wrapped as `WorkflowError` and written to the loop node report.|
+|`items` or `run` error thrown| `node_execution` |The original error is wrapped as `HarnessError` and written to the loop node report.|
 |Break before execution or in a loop|`execution_aborted` or `node_execution`|From `context.abortSignal`.|

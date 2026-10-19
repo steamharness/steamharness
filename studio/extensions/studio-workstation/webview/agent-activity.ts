@@ -1,5 +1,5 @@
 import { t } from './localization';
-import type { ConversationMessage, WorkflowOutputItem } from '../src/workflow-types';
+import type { ConversationMessage, OutputItem } from '../src/workflow-types';
 
 export type ActivityStatus = 'running' | 'success' | 'failed' | 'stopped' | 'waiting';
 export interface AgentActivity {
@@ -66,7 +66,7 @@ function statusTitle(action: string, target: string | undefined, status: Activit
 }
 
 // Agent and OpenCode use the same structured activity contract as Desktop.
-export function agentActivity(item: WorkflowOutputItem, message?: ConversationMessage): AgentActivity | undefined {
+export function agentActivity(item: OutputItem, message?: ConversationMessage): AgentActivity | undefined {
   const kind = item.metadata?.kind;
   const extraTypes: Record<string, string> = { 'agent-error': 'error', 'opencode-error': 'error', 'opencode-retry': 'retry', 'opencode-diff': 'patch', 'opencode-todo': 'todo', 'opencode-stream-recovery': 'stream_recovery' };
   if (!['agent-part', 'opencode-part'].includes(String(kind)) && !extraTypes[String(kind)]) { return; }

@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import {
   runLocalWorkflowWithReport,
-  type WorkflowKVStore,
+  type KVStore,
 } from "../index";
 
 const PROJECT_ID = "11111111-1111-4111-8111-111111111111";
@@ -110,8 +110,8 @@ test("legacy storage declarations are rejected and removed context getters are a
 async function runStorageWorkflow(
   workflowDir: string,
   target: "local" | "server",
-  localStore: WorkflowKVStore,
-  serverStore: WorkflowKVStore,
+  localStore: KVStore,
+  serverStore: KVStore,
 ) {
   return runLocalWorkflowWithReport({
     workflowDir,
@@ -178,12 +178,12 @@ async function createStorageWorkflow(
   return workflowDir;
 }
 
-function createMemoryKVStore(): WorkflowKVStore & {
+function createMemoryKVStore(): KVStore & {
   values: Map<string, unknown>;
-  sources: Map<string, Parameters<WorkflowKVStore["setValue"]>[0]["source"]>;
+  sources: Map<string, Parameters<KVStore["setValue"]>[0]["source"]>;
 } {
   const values = new Map<string, unknown>();
-  const sources = new Map<string, Parameters<WorkflowKVStore["setValue"]>[0]["source"]>();
+  const sources = new Map<string, Parameters<KVStore["setValue"]>[0]["source"]>();
   const key = (input: { storageKind: string; scope: string; projectId: string; conversationId?: string; key: string }) =>
     `${input.storageKind}:${input.scope}:${input.projectId}:${input.conversationId ?? ""}${input.key}`;
   return {

@@ -5,14 +5,14 @@ description: "创建独立可折叠 output item 的便捷输出节点。"
 
 # createDetailsOutputNode
 
-`workflow.createDetailsOutputNode()` 创建一个通用输出节点，用来把标题、内容和 icon 转成独立的可折叠 `WorkflowOutputItem`。
+`workflow.createDetailsOutputNode()` 创建一个通用输出节点，用来把标题、内容和 icon 转成独立的可折叠 `OutputItem`。
 
 该节点执行时仍然是 `output` 标准节点，因此 CLI、CLI Web 和日志 replay 会把它的 `items` 作为用户可见输出收集。适合把长日志、调试信息、结构化 JSON、执行摘要或可选说明输出成独立折叠块。
 
 ## 签名
 
 ```ts
-workflow.createDetailsOutputNode<Input = DetailsOutputInput, Output extends WorkflowPayload = DetailsOutputPayload>(
+workflow.createDetailsOutputNode<Input = DetailsOutputInput, Output extends RunPayload = DetailsOutputPayload>(
   options?: DetailsOutputNodeOptions<Input, Output>,
 ): BaseNode<Input, Output>
 ```
@@ -38,7 +38,7 @@ workflow.createDetailsOutputNode<Input = DetailsOutputInput, Output extends Work
 | `resolve` | `(input, context) => { title, content, icon? }` | 统一把业务 input 转成折叠块参数。 |
 | `format` | `(payload, details, input, context) => Output` | 在默认 payload 基础上追加业务字段。 |
 | `historyLimit` | `number` | 节点执行历史保留条数，默认 `50`。 |
-| `metadata` | `WorkflowNodeMetadataInput` | 节点展示元信息，默认 type 为 `details-output`。 |
+| `metadata` | `NodeMetadataInput` | 节点展示元信息，默认 type 为 `details-output`。 |
 
 ## Icon 预置
 
@@ -58,7 +58,7 @@ workflow.createDetailsOutputNode<Input = DetailsOutputInput, Output extends Work
 
 ## 返回 payload
 
-默认 payload 继承 `WorkflowPayload`：
+默认 payload 继承 `RunPayload`：
 
 | 字段 | 说明 |
 | --- | --- |

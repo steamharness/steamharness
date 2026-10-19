@@ -21,7 +21,7 @@ function fixture(t, operation = async () => ({ items: [], total: 0, hasMore: fal
   };
   const module = { exports: {} };
   runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name), crypto: globalThis.crypto, AbortController });
-  const provider = new module.exports.WorkflowResourceViews({ subscriptions: [], extensionUri: {} }, {
+  const provider = new module.exports.ResourceViews({ subscriptions: [], extensionUri: {} }, {
     resource: async (...args) => { calls.push(args); return operation(...args); },
   }, { getConnection: () => connection, onDidChange: callback => { accountChanged = callback; return disposable; },
     invalidate: async current => { invalidated.push(current); connection = undefined; accountChanged({ status: 'expired' }); }, open() {} }, { appendLine() {} });

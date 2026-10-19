@@ -1,7 +1,7 @@
 
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { WorkflowAuditEventPage, WorkflowKVEntryPage } from "../../types";
+import type { AuditEventPage, KVEntryPage } from "../../types";
 import { AuditPage } from "../AuditPage";
 import { KVInspectorPage } from "../ProjectKVPage";
 
@@ -9,7 +9,7 @@ describe("server/web feature parity", () => {
 
   it("adds KV run filters and opens JSON details in a dialog", async () => {
     const onFiltersChange = vi.fn();
-    const onLoadEntry = vi.fn(async (entry: WorkflowKVEntryPage["items"][number]) => ({
+    const onLoadEntry = vi.fn(async (entry: KVEntryPage["items"][number]) => ({
       errCode: 0,
       errMessage: "",
       data: { ...entry, value: { nested: true } },
@@ -129,7 +129,7 @@ function renderWithTheme(node: React.ReactElement) {
   return render(node);
 }
 
-function createAuditPage(): WorkflowAuditEventPage {
+function createAuditPage(): AuditEventPage {
   return {
     items: [
       {
@@ -153,7 +153,7 @@ function createAuditPage(): WorkflowAuditEventPage {
   };
 }
 
-function createKVPage(overrides: Partial<WorkflowKVEntryPage["items"][number]> = {}): WorkflowKVEntryPage {
+function createKVPage(overrides: Partial<KVEntryPage["items"][number]> = {}): KVEntryPage {
   return {
     total: 1,
     hasMore: false,

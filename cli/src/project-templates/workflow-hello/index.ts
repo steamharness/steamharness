@@ -1,6 +1,6 @@
-import type { WorkflowRuntimeApi } from 'steamharness/runtime-api';
+import type { RuntimeApi } from 'steamharness/runtime-api';
 
-const workflow = (globalThis as unknown as { workflow: WorkflowRuntimeApi }).workflow;
+const workflow = (globalThis as unknown as { workflow: RuntimeApi }).workflow;
 const answer = workflow.createOutputNode({
   name: 'hello', async *stream() { yield 'Hello'; },
   format: stream => workflow.createOutputPayload({ items: stream.items }),

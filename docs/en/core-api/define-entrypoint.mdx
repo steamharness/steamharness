@@ -13,14 +13,14 @@ Entrypoints are a flat set of runnable targets in one project, not parent-child 
 
 ```ts
 workflow.defineEntrypoint<Input, Output>(
-  definition: WorkflowEntrypointDefinition<Input, Output>,
-): WorkflowEntrypointDefinition<Input, Output>
+  definition: EntrypointDefinition<Input, Output>,
+): EntrypointDefinition<Input, Output>
 ```
 
 Optional group metadata is a static object:
 
 ```ts
-interface WorkflowEntrypointGroupDefinition {
+interface EntrypointGroupDefinition {
   id: string;
   title: string;
   order?: number;
@@ -34,18 +34,18 @@ interface WorkflowEntrypointGroupDefinition {
 | `id` | `string` | A project-unique entrypoint ID matching `/^[a-z][a-z0-9_-]{0,63}$/`. |
 | `title` | `string` | A non-empty display title used by CLI Web, logs, and replay. |
 | `description` | `string` | An optional entrypoint description. |
-| `group` | `WorkflowEntrypointGroupDefinition` | Optional display group. Every entrypoint with the same group `id` must use exactly the same `title` and `order`. |
-| `workflow` | `WorkflowDefinition<Input, Output>` | The workflow executed by this entrypoint. Required. |
-| `params` | `WorkflowParamDeclaration[]` | Ordered fields and action entries for this entrypoint; see [`defineExecutor` parameters](/en/core-api/define-executor#workflowparamdeclaration). |
+| `group` | `EntrypointGroupDefinition` | Optional display group. Every entrypoint with the same group `id` must use exactly the same `title` and `order`. |
+| `workflow` | `Definition<Input, Output>` | The workflow executed by this entrypoint. Required. |
+| `params` | `ParamDeclaration[]` | Ordered fields and action entries for this entrypoint; see [`defineExecutor` parameters](/en/core-api/define-executor#workflowparamdeclaration). |
 | `createInput` | `(context) => Input` | Converts this entrypoint's arguments and `paramValues` into workflow input. Required. |
-| `resolveParams` | `(context) => WorkflowParamResolveResult` | Parameter-resolution callback for this entrypoint. |
+| `resolveParams` | `(context) => ParamResolveResult` | Parameter-resolution callback for this entrypoint. |
 | `requiredProviders` | `ExecutorProviderName[]` | Providers required by this entrypoint. The only built-in name is currently `"llm"`. |
-| `tools` | `WorkflowToolPermissionDefinition[]` | Tools this entrypoint may invoke and their default approval policy. |
-| `tokenUsage` | `WorkflowTokenUsageDefinition` | Token-usage reporting configuration for this entrypoint. |
-| `registry` | `WorkflowNodeRegistryEntry[]` | Nodes that can be debugged separately for this entrypoint. |
-| `createContext` | `(context) => Partial<WorkflowContext>` | Adds providers, metadata, and hooks for this entrypoint. KV, PersistentValue, conversation, and files remain runtime-provided. |
+| `tools` | `ToolPermissionDefinition[]` | Tools this entrypoint may invoke and their default approval policy. |
+| `tokenUsage` | `TokenUsageDefinition` | Token-usage reporting configuration for this entrypoint. |
+| `registry` | `NodeRegistryEntry[]` | Nodes that can be debugged separately for this entrypoint. |
+| `createContext` | `(context) => Partial<RunContext>` | Adds providers, metadata, and hooks for this entrypoint. KV, PersistentValue, conversation, and files remain runtime-provided. |
 
-`createInput`, `resolveParams`, each registry entry's `createInput`, and `createContext` receive a `WorkflowExecutorContext`. When a Workflow entrypoint runs, `entrypointId` and `entrypointTitle` identify the selected entrypoint. The runtime also writes those values to `WorkflowContext.metadata`, runtime events, and the final report.
+`createInput`, `resolveParams`, each registry entry's `createInput`, and `createContext` receive a `ExecutorContext`. When a Workflow entrypoint runs, `entrypointId` and `entrypointTitle` identify the selected entrypoint. The runtime also writes those values to `RunContext.metadata`, runtime events, and the final report.
 
 ## Executor declaration
 

@@ -1,4 +1,4 @@
-import type { ConversationMessage, WorkflowOutputItem, WorkflowResolvedInput } from '../src/workflow-types';
+import type { ConversationMessage, OutputItem, ResolvedInput } from '../src/workflow-types';
 import type { TracePanelState } from '../src/workflow-trace-types';
 import type { TraceAgentSnapshot, TraceTask } from '../src/workflow-agent-types';
 
@@ -55,7 +55,7 @@ export function orderedTasks(tasks: TraceTask[], all: TraceTask[]): { task: Trac
   });
 }
 
-function planText(items: WorkflowOutputItem[]): string {
+function planText(items: OutputItem[]): string {
   let lastTool = -1;
   for (const [index, item] of items.entries()) if (item.metadata?.partType === 'tool') lastTool = index;
   return items.slice(lastTool + 1).filter(item => typeof item.content === 'string' && !item.collapsed && !item.display
@@ -72,7 +72,7 @@ export function latestAgentPlan(messages: readonly ConversationMessage[]): Agent
     const items = message.items ?? [];
     const answers = [...new Map([...(message.resolvedInputs ?? []), ...(message.submittingInput ? [message.submittingInput] : [])]
       .map(answer => [answer.requestId, answer])).values()];
-    const inputs: { request: WorkflowResolvedInput['request']; preceding?: string[]; state: AgentPlanDocument['state'] }[] = answers.map(answer => ({
+    const inputs: { request: ResolvedInput['request']; preceding?: string[]; state: AgentPlanDocument['state'] }[] = answers.map(answer => ({
       request: answer.request, preceding: answer.precedingOutputItemIds,
       state: message.submittingInput?.requestId === answer.requestId ? 'submitting'
         : answer.values.decision === 'approve' ? 'approved' : 'changes_requested',

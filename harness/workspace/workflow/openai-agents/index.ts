@@ -50,7 +50,7 @@ const toolApproval = workflow.createToolApprovalGate();
 
 disableOpenAIAgentsTracing();
 
-interface WorkflowNodeContext {
+interface NodeRunContext {
   storage: {
     local: {
       kv: {
@@ -109,7 +109,7 @@ const inputNode = workflow.createInputNode<OpenAIAgentsInput, OpenAIAgentsParsed
   parse(input) {
     const message = input.message.trim();
     if (message === "") {
-      throw new workflow.WorkflowError({
+      throw new workflow.HarnessError({
         type: "input_validation",
         message: "Message is required.",
         nodeName: "openai-agents-input",
@@ -493,7 +493,7 @@ export default openaiAgentsWorkflow;
 
 async function runLiveAgent(
   input: OpenAIAgentsRunInput,
-  context: WorkflowNodeContext,
+  context: NodeRunContext,
   events: {
     onTextDelta(delta: string): Promise<void>;
     onOutputChunk(chunk: unknown): Promise<void>;
@@ -501,7 +501,7 @@ async function runLiveAgent(
 ): Promise<OpenAIAgentsStreamResult> {
   const apiKey = normalizeOptionalString(workflow.getEnv("OPENAI_API_KEY")) ?? normalizeOptionalString(workflow.getEnv("LLM_API_KEY"));
   if (apiKey === undefined && input.agentRunner === undefined) {
-    throw new workflow.WorkflowError({
+    throw new workflow.HarnessError({
       type: "input_validation",
       message: "OPENAI_API_KEY or LLM_API_KEY is required for OpenAI Agents SDK runs.",
       nodeName: "openai-agents-output",
@@ -618,7 +618,7 @@ function buildVisibleAnswer(
 
 function createAgentResultStream(
   input: OpenAIAgentsRunInput,
-  context: WorkflowNodeContext,
+  context: NodeRunContext,
 ): AsyncIterable<OpenAIAgentsStreamEvent> {
   const queue = createAsyncEventQueue<OpenAIAgentsStreamEvent>();
   void runLiveAgent(input, context, {
@@ -666,7 +666,7 @@ function createVisibleTextRecorder(
 
 export function createOpenAIAgentTools(input: {
   input: OpenAIAgentsRunInput;
-  context: WorkflowNodeContext;
+  context: NodeRunContext;
   sdkContext: {
     workflowName: string;
     conversationId?: string;
@@ -770,7 +770,7 @@ export function createOpenAIAgentTools(input: {
 
 export async function approveOpenAIAgentsRunTools(input: {
   input: OpenAIAgentsRunInput;
-  context: WorkflowNodeContext;
+  context: NodeRunContext;
   toolReporter?: OpenAIAgentsToolOutputReporter;
 }): Promise<void> {
   if (!input.input.defaultTools) {
@@ -940,7 +940,7 @@ function waitForOutputChunkFlushOpportunity(): Promise<void> {
 function wrapFunctionToolsForOutput(
   tools: Tool[],
   reporter: OpenAIAgentsToolOutputReporter | undefined,
-  context?: WorkflowNodeContext,
+  context?: NodeRunContext,
 ): Tool[] {
   if (reporter === undefined && context === undefined) {
     return tools;
@@ -954,7 +954,7 @@ function wrapFunctionToolsForOutput(
 function wrapFunctionToolForOutput<Context>(
   agentTool: FunctionTool<Context, any, any>,
   reporter: OpenAIAgentsToolOutputReporter | undefined,
-  context: WorkflowNodeContext | undefined,
+  context: NodeRunContext | undefined,
 ): FunctionTool<Context, any, any> {
   return {
     ...agentTool,
@@ -1163,12 +1163,12 @@ function isSensitiveKey(key: string): boolean {
   return /authorization|api[_-]?key|token|secret|password|cookie/i.test(key);
 }
 
-function readApprovalRequestId(error: workflow.WorkflowError): string | undefined {
+function readApprovalRequestId(error: workflow.HarnessError): string | undefined {
   const requestId = error.metadata?.["requestId"];
   return typeof requestId === "string" ? requestId : undefined;
 }
 
-function readApprovalValues(error: workflow.WorkflowError): Record<string, unknown> | undefined {
+function readApprovalValues(error: workflow.HarnessError): Record<string, unknown> | undefined {
   const values = error.metadata?.["values"];
   return isRecord(values) ? values : undefined;
 }
@@ -1555,7 +1555,7 @@ export function disableOpenAIAgentsTracing(): void {
 
 function requireOpenAIAgentsOutput(value: OpenAIAgentsOutputPayload | undefined): OpenAIAgentsOutputPayload {
   if (value === undefined) {
-    throw new workflow.WorkflowError({
+    throw new workflow.HarnessError({
       type: "node_execution",
       message: "OpenAI Agents output node did not return an output payload.",
       nodeName: "openai-agents-output",
@@ -1567,7 +1567,7 @@ function requireOpenAIAgentsOutput(value: OpenAIAgentsOutputPayload | undefined)
 
 function requireOpenAIAgentsStreamResult(value: OpenAIAgentsStreamResult | undefined): OpenAIAgentsStreamResult {
   if (value === undefined) {
-    throw new workflow.WorkflowError({
+    throw new workflow.HarnessError({
       type: "node_execution",
       message: "OpenAI Agents stream finished without run details.",
       nodeName: "openai-agents-output",
@@ -1626,7 +1626,7 @@ function resolveAgentShellWorkdir(workdir: string): string {
   try {
     return resolveLocalShellWorkdir(workdir);
   } catch (cause) {
-    throw new workflow.WorkflowError({
+    throw new workflow.HarnessError({
       type: "input_validation",
       message: `Invalid --workdir: ${cause instanceof Error ? cause.message : String(cause)}`,
       nodeName: "openai-agents-output",
@@ -1636,7 +1636,7 @@ function resolveAgentShellWorkdir(workdir: string): string {
 }
 
 async function reportTokenUsage(
-  context: WorkflowNodeContext,
+  context: NodeRunContext,
   input: OpenAIAgentsRunInput,
   usage: AgentRunUsage,
 ): Promise<void> {
@@ -1690,7 +1690,7 @@ function parseInput(args: string[]): OpenAIAgentsInput {
 function createLocalShellTools(input: {
   enabled: boolean;
   workdir: string;
-  context: WorkflowNodeContext;
+  context: NodeRunContext;
   signal?: AbortSignal;
   toolEvents: AgentToolCallSummary[];
   toolReporter?: OpenAIAgentsToolOutputReporter;
@@ -1726,7 +1726,7 @@ function createLocalShellTools(input: {
           });
           return { approve: true };
         } catch (error) {
-          if (error instanceof workflow.WorkflowError && error.type === "tool_permission_denied") {
+          if (error instanceof workflow.HarnessError && error.type === "tool_permission_denied") {
             await input.toolReporter?.approval({
               name: "local_shell",
               label: input.context.toolPermissions?.getTool("local_shell")?.label,
@@ -1745,7 +1745,7 @@ function createLocalShellTools(input: {
   ];
 }
 
-function isOpenAIAgentsToolEnabled(context: WorkflowNodeContext, name: string): boolean {
+function isOpenAIAgentsToolEnabled(context: NodeRunContext, name: string): boolean {
   if (!OPENAI_AGENTS_TOOL_NAMES.includes(name)) {
     return false;
   }
@@ -1753,7 +1753,7 @@ function isOpenAIAgentsToolEnabled(context: WorkflowNodeContext, name: string): 
 }
 
 async function approveOpenAIAgentsFunctionTool(
-  context: WorkflowNodeContext | undefined,
+  context: NodeRunContext | undefined,
   toolName: string,
   args: unknown,
   options: { toolReporter?: OpenAIAgentsToolOutputReporter } = {},
@@ -1766,7 +1766,7 @@ async function approveOpenAIAgentsFunctionTool(
 }
 
 async function approveOpenAIAgentsHostedToolForRun(
-  context: WorkflowNodeContext | undefined,
+  context: NodeRunContext | undefined,
   name: string,
   options: { toolReporter?: OpenAIAgentsToolOutputReporter } = {},
 ): Promise<void> {
@@ -1801,7 +1801,7 @@ async function approveOpenAIAgentsHostedToolForRun(
 }
 
 async function approveOpenAIAgentsTool(
-  context: WorkflowNodeContext | undefined,
+  context: NodeRunContext | undefined,
   name: string,
   args: unknown,
   options: { toolReporter?: OpenAIAgentsToolOutputReporter } = {},

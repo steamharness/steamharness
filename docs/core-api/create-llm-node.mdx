@@ -36,7 +36,7 @@ workflow.createLLMNode<Input, Output>(
 | `mapInput` | `(input, context) => LLMChatInput` | 把业务输入转换成 LLM 请求。必填。 |
 | `mapOutput` | `(output, input, context) => Output` | 把 LLM 输出转换成业务输出；不传时返回原始 `LLMChatOutput`。 |
 | `historyLimit` | `number` | 节点执行历史保留条数，默认 `50`。 |
-| `metadata` | `WorkflowNodeMetadataInput` | 节点展示元信息。 |
+| `metadata` | `NodeMetadataInput` | 节点展示元信息。 |
 
 ## `LLMProviderSource`
 

@@ -1,8 +1,8 @@
-import type { NodeContext, WorkflowStorageLocationContext } from "../../types/context";
+import type { NodeContext, StorageLocationContext } from "../../types/context";
 
 export function selectWorkflowStorage(
   context: Pick<NodeContext, "storage">,
   location: "local" | "server" = "local",
-): WorkflowStorageLocationContext {
+): StorageLocationContext {
   return context.storage[location];
 }

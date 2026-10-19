@@ -14,7 +14,7 @@ import { VersionsTab } from "./detail/VersionsTab";
 import { KnowledgeTab } from "./detail/KnowledgeTab";
 import { DependenciesTab } from "./detail/DependenciesTab";
 import { type DetailPageProps } from "./detail/types";
-import type { WorkflowSummary } from "../types";
+import type { Summary } from "../types";
 import { cn } from "@/lib/utils";
 import { getWorkflowProjectServerStorageAccess } from "@/utils/project-presentation";
 
@@ -42,7 +42,7 @@ export const DETAIL_NAV_GROUPS: Array<{
 ];
 
 export function getDetailNavGroups(
-  project: Pick<WorkflowSummary, "projectType" | "canManage"> | undefined,
+  project: Pick<Summary, "projectType" | "canManage"> | undefined,
 ) {
   if (!project) return [];
   return DETAIL_NAV_GROUPS.map(group => ({ ...group,
@@ -51,13 +51,13 @@ export function getDetailNavGroups(
 }
 
 export function getDetailNavItems(
-  project: Pick<WorkflowSummary, "projectType" | "canManage"> | undefined,
+  project: Pick<Summary, "projectType" | "canManage"> | undefined,
 ) {
   return getDetailNavGroups(project).flatMap(group => group.items);
 }
 
 export function resolveDetailTab(
-  project: Pick<WorkflowSummary, "projectType" | "latest" | "canManage">,
+  project: Pick<Summary, "projectType" | "latest" | "canManage">,
   requestedTab: DetailTab,
 ): DetailTab {
   return getDetailNavItems(project).some((item) => item.tab === requestedTab)

@@ -8,7 +8,7 @@ import { inspectWebProject } from '../web/assistant-project';
 import { parseHostConfiguration } from '../web/host-config';
 import { createWebRuntime } from '../web/runtime';
 import { startWebServer } from '../web/server';
-import type { WorkflowProject, WorkflowRuntime } from '../web/workflow-types';
+import type { Project, Runtime } from '../web/workflow-types';
 import { resolveHarnessRoot } from './harness-source';
 
 const temporary: string[] = [];
@@ -27,13 +27,13 @@ it('loads the dedicated assistant declaration instead of the workspace executor'
   await writeFile(path.join(assistantProjectDir, 'result.txt'), 'Assistant installation file');
   const assistant = { standalone: true, workdir, roots: [{ uri: 'file:///workspace', folderPath: workdir, name: 'Assistant' }] };
   const host = parseHostConfiguration({ type: 'configure', surface: 'assistant', assistant, assistantProjectDir });
-  const descriptor: WorkflowProject = { id: 'dedicated-assistant', uri: '', folderPath: assistantProjectDir, name: 'Project Assistant', projectType: 'conversation',
+  const descriptor: Project = { id: 'dedicated-assistant', uri: '', folderPath: assistantProjectDir, name: 'Project Assistant', projectType: 'conversation',
     fields: [{ name: 'permissionPolicy', type: 'string', defaultValue: 'auto' }], entrypoints: [],
     tools: [{ name: 'skill' }, { name: 'read' }, { name: 'workflow-memory_global_memory' }, { name: 'workflow-desktop_open_project' },
       { name: 'workflow-studio_studio_state' }, { name: 'workflow-studio_get_diagnostics' }, { name: 'workflow-studio_open_file' },
       { name: 'workflow-studio_set_theme' }, { name: 'workflow-studio_open_terminal' }, { name: 'workflow-studio_show_view' }, { name: 'unregistered_control' }],
   };
-  const runtime = { available: true, inspect: vi.fn(async () => ({ projects: [descriptor], errors: [] })), dispose: vi.fn() } as unknown as WorkflowRuntime;
+  const runtime = { available: true, inspect: vi.fn(async () => ({ projects: [descriptor], errors: [] })), dispose: vi.fn() } as unknown as Runtime;
   const result = await inspectWebProject(runtime, workdir, host);
   expect(runtime.inspect).toHaveBeenCalledWith([assistantProjectDir]);
   expect(result.assistantProtocolVersion).toBe(1);
@@ -116,7 +116,7 @@ it('executes dedicated assistant skills using its own runtime and independent wo
     const inspection = await runtime.inspect([assistantProjectDir]);
     expect(inspection.errors).toEqual([]);
     expect((inspection.projects[0] as unknown as { runtime: { harnessPath: string } }).runtime.harnessPath).toBe(path.join(harnessRoot, 'dist', 'index.js'));
-    const project: WorkflowProject = { ...inspection.projects[0], uri: '', assistant: { standalone: true, workdir, roots: [{ uri: 'file:///workspace', folderPath: workdir, name: 'Assistant' }] } };
+    const project: Project = { ...inspection.projects[0], uri: '', assistant: { standalone: true, workdir, roots: [{ uri: 'file:///workspace', folderPath: workdir, name: 'Assistant' }] } };
     const report = await runtime.run({ project, conversationId: 'assistant-test', runId: 'assistant-test', args: [] }, () => {});
     expect(report.status).toBe('success');
     expect(report.output?.items?.[0].content).toMatchObject({ host: 'vscode', text: 'Independent workspace contents',

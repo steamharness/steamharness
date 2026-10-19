@@ -1,26 +1,26 @@
-export interface WorkflowPayload {
+export interface RunPayload {
   errCode: number;
   errMessage: string;
 }
 
-export type WorkflowOutputContentType = "markdown" | "text" | "json" | "audio";
+export type OutputContentType = "markdown" | "text" | "json" | "audio";
 
-export interface WorkflowOutputItem {
+export interface OutputItem {
   id: string;
   title: string;
   content: unknown;
   icon?: string;
   iconPreset?: "info" | "success" | "warning" | "error" | "note" | "code" | "list" | "quote" | "none";
-  contentType?: WorkflowOutputContentType;
+  contentType?: OutputContentType;
   collapsed?: boolean;
   metadata?: Record<string, unknown>;
 }
 
-export interface WorkflowOutputPayload extends WorkflowPayload {
-  items: WorkflowOutputItem[];
+export interface RunOutputPayload extends RunPayload {
+  items: OutputItem[];
 }
 
-export interface WorkflowExecutorResult<Output extends WorkflowPayload> {
+export interface ExecutorResult<Output extends RunPayload> {
   ok: boolean;
   data?: Output;
   error?: unknown;
@@ -36,7 +36,7 @@ export type MinimaxSpeechEmotion =
   | "disgusted"
   | "surprised";
 
-export interface MinimaxSpeechInput extends WorkflowPayload {
+export interface MinimaxSpeechInput extends RunPayload {
   text: string;
   model: string;
   voiceId: string;
@@ -57,7 +57,7 @@ export interface MinimaxSpeechRequest extends MinimaxSpeechInput {
   apiKey?: string;
 }
 
-export interface MinimaxSpeechResult extends WorkflowPayload {
+export interface MinimaxSpeechResult extends RunPayload {
   text: string;
   model: string;
   voiceId: string;
@@ -79,7 +79,7 @@ export interface AudioOutputDescriptor {
   format: MinimaxSpeechFormat;
 }
 
-export interface MinimaxSpeechOutputPayload extends WorkflowOutputPayload {
+export interface MinimaxSpeechOutputPayload extends RunOutputPayload {
   text: string;
   model: string;
   voiceId: string;
@@ -92,4 +92,4 @@ export interface MinimaxSpeechOutputPayload extends WorkflowOutputPayload {
   audio: AudioOutputDescriptor;
 }
 
-export type MinimaxSpeechOutput = WorkflowExecutorResult<MinimaxSpeechOutputPayload>;
+export type MinimaxSpeechOutput = ExecutorResult<MinimaxSpeechOutputPayload>;

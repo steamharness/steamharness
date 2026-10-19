@@ -7,10 +7,10 @@ import {
   readKnowledgeDocumentLines,
   searchKnowledgeDocuments,
 } from "../../knowledge/index";
-import { WorkflowError } from "../../workflow/errors";
+import { HarnessError } from "../../workflow/errors";
 import type { NodeContext } from "../../types/context";
 import { selectWorkflowStorage } from "./storage";
-import type { WorkflowCapability } from "./types";
+import type { Capability } from "./types";
 
 export const KNOWLEDGE_MCP_SERVER_ID = "workflow-knowledge";
 export const KNOWLEDGE_MCP_TOOL_NAME = "knowledge_documents";
@@ -49,7 +49,7 @@ export async function runKnowledgeAction(
   args: KnowledgeToolArgs,
 ): Promise<unknown> {
   if (!KNOWLEDGE_ACTIONS.includes(args.action)) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `knowledge_documents action is invalid: ${String(args.action)}.`,
       nodeName: KNOWLEDGE_MCP_TOOL_ID,
@@ -190,7 +190,7 @@ const STRING_BOUNDS: Readonly<Record<string, number>> = {
 function requireString(value: unknown, field: string, action: KnowledgeAction): string {
   const normalized = optionalString(value);
   if (normalized !== undefined) return assertWithinBounds(normalized, field, action);
-  throw new WorkflowError({
+  throw new HarnessError({
     type: "input_validation",
     message: `knowledge_documents action "${action}" requires ${field}.`,
     nodeName: KNOWLEDGE_MCP_TOOL_ID,
@@ -210,7 +210,7 @@ function optionalBoundedString(
 function assertWithinBounds(value: string, field: string, action: KnowledgeAction): string {
   const limit = STRING_BOUNDS[field];
   if (limit !== undefined && value.length > limit) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `knowledge_documents ${field} must be at most ${String(limit)} characters.`,
       nodeName: KNOWLEDGE_MCP_TOOL_ID,
@@ -223,7 +223,7 @@ function assertWithinBounds(value: string, field: string, action: KnowledgeActio
 
 function requireNumber(value: unknown, field: string, action: KnowledgeAction): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
-  throw new WorkflowError({
+  throw new HarnessError({
     type: "input_validation",
     message: `knowledge_documents action "${action}" requires ${field}.`,
     nodeName: KNOWLEDGE_MCP_TOOL_ID,
@@ -237,7 +237,7 @@ function optionalString(value: unknown): string | undefined {
   return trimmed === "" ? undefined : trimmed;
 }
 
-export const KNOWLEDGE_CAPABILITY: WorkflowCapability = {
+export const KNOWLEDGE_CAPABILITY: Capability = {
   serverId: KNOWLEDGE_MCP_SERVER_ID,
   toolName: KNOWLEDGE_MCP_TOOL_NAME,
   toolId: KNOWLEDGE_MCP_TOOL_ID,
@@ -275,7 +275,7 @@ export const KNOWLEDGE_CAPABILITY: WorkflowCapability = {
   },
   describeFailure(error) {
     return {
-      metadata: error instanceof WorkflowError ? error.metadata ?? null : undefined,
+      metadata: error instanceof HarnessError ? error.metadata ?? null : undefined,
     };
   },
 };

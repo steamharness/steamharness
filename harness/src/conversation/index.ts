@@ -1,54 +1,54 @@
 import { randomUUID } from "node:crypto";
-import type { WorkflowKVContext } from "../kv/index";
-import { WorkflowError } from "../workflow/errors";
+import type { KVContext } from "../kv/index";
+import { HarnessError } from "../workflow/errors";
 
 /** Where a conversation's own state lives inside its KV namespace. */
 export const CONVERSATION_STATE_KEY = "conversation.state";
 
-export type WorkflowConversationRole = "user" | "assistant" | "system" | "tool";
+export type ConversationRole = "user" | "assistant" | "system" | "tool";
 
-export interface WorkflowConversationMessage {
+export interface ConversationMessageContract {
   id: string;
-  role: WorkflowConversationRole;
+  role: ConversationRole;
   content: string;
   createdAt: string;
   metadata?: Record<string, unknown>;
 }
 
-export interface WorkflowConversationState {
+export interface ConversationState {
   conversationId: string;
   workflowName: string;
   title?: string;
   createdAt: string;
   updatedAt: string;
-  messages: WorkflowConversationMessage[];
+  messages: ConversationMessageContract[];
   values: Record<string, unknown>;
 }
 
 export interface AppendWorkflowConversationMessageInput {
   /** A stable projection identity replaces the same message when replayed. */
   id?: string;
-  role: WorkflowConversationRole;
+  role: ConversationRole;
   content: string;
   metadata?: Record<string, unknown>;
 }
 
-export interface WorkflowConversationContext {
+export interface ConversationContext {
   enabled: boolean;
   conversationId?: string;
-  getValue(): Promise<WorkflowConversationState>;
-  setValue(key: string, value: unknown): Promise<WorkflowConversationState>;
-  setTitle(title: string): Promise<WorkflowConversationState | undefined>;
+  getValue(): Promise<ConversationState>;
+  setValue(key: string, value: unknown): Promise<ConversationState>;
+  setTitle(title: string): Promise<ConversationState | undefined>;
   appendMessage(
     message: AppendWorkflowConversationMessageInput,
-  ): Promise<WorkflowConversationState>;
+  ): Promise<ConversationState>;
 }
 
-export interface WorkflowConversationRuntimeOptions {
+export interface ConversationRuntimeOptions {
   enabled?: boolean;
   conversationId?: string;
   workflowName: string;
-  kv?: WorkflowKVContext;
+  kv?: KVContext;
   onTitleChange?: (event: {
     conversationId: string;
     title?: string;
@@ -57,14 +57,14 @@ export interface WorkflowConversationRuntimeOptions {
 }
 
 export function createWorkflowConversationContext(
-  options: WorkflowConversationRuntimeOptions,
-): WorkflowConversationContext {
+  options: ConversationRuntimeOptions,
+): ConversationContext {
   if (options.enabled !== true) {
     return createDisabledWorkflowConversationContext();
   }
 
   if (options.kv === undefined) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message:
         "Workflow conversation is enabled, but no workflow KV context was configured.",
@@ -74,7 +74,7 @@ export function createWorkflowConversationContext(
 
   const conversationId = normalizeConversationId(options.conversationId);
   if (conversationId === undefined) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message:
         "Workflow conversation is enabled, but no conversation id was configured.",
@@ -98,7 +98,7 @@ export function createWorkflowConversationContext(
   };
 }
 
-export function createDisabledWorkflowConversationContext(): WorkflowConversationContext {
+export function createDisabledWorkflowConversationContext(): ConversationContext {
   return {
     enabled: false,
     async getValue() {
@@ -121,19 +121,19 @@ export function createDisabledWorkflowConversationContext(): WorkflowConversatio
 function createWorkflowConversationStore(options: {
   workflowName: string;
   conversationId: string;
-  kv: WorkflowKVContext;
+  kv: KVContext;
   onTitleChange?: (event: {
     conversationId: string;
     title?: string;
     updatedAt: string;
   }) => Promise<void> | void;
 }): {
-  readState(): Promise<WorkflowConversationState>;
-  setValue(key: string, value: unknown): Promise<WorkflowConversationState>;
-  setTitle(title: string): Promise<WorkflowConversationState | undefined>;
-  appendMessage(message: AppendWorkflowConversationMessageInput): Promise<WorkflowConversationState>;
+  readState(): Promise<ConversationState>;
+  setValue(key: string, value: unknown): Promise<ConversationState>;
+  setTitle(title: string): Promise<ConversationState | undefined>;
+  appendMessage(message: AppendWorkflowConversationMessageInput): Promise<ConversationState>;
 } {
-  async function readState(): Promise<WorkflowConversationState> {
+  async function readState(): Promise<ConversationState> {
     const value = await options.kv.conversation.getValue(CONVERSATION_STATE_KEY);
     if (isWorkflowConversationState(value)) {
       return value;
@@ -143,8 +143,8 @@ function createWorkflowConversationStore(options: {
   }
 
   async function writeState(
-    state: WorkflowConversationState,
-  ): Promise<WorkflowConversationState> {
+    state: ConversationState,
+  ): Promise<ConversationState> {
     await options.kv.conversation.setValue(CONVERSATION_STATE_KEY, state);
     return state;
   }
@@ -167,7 +167,7 @@ function createWorkflowConversationStore(options: {
       const normalizedTitle = normalizeOptionalTitle(title);
       const state = await readState();
       const updatedAt = new Date().toISOString();
-      const nextState: WorkflowConversationState = {
+      const nextState: ConversationState = {
         ...state,
         updatedAt,
         ...(normalizedTitle === undefined ? {} : { title: normalizedTitle }),
@@ -198,7 +198,7 @@ function createWorkflowConversationStore(options: {
         const messages = [...state.messages];
         if (existing < 0) messages.push(next); else messages[existing] = next;
         return { ...state, updatedAt: now, messages };
-      }) as WorkflowConversationState;
+      }) as ConversationState;
     },
   };
 }
@@ -206,7 +206,7 @@ function createWorkflowConversationStore(options: {
 function createInitialConversationState(
   workflowName: string,
   conversationId: string,
-): WorkflowConversationState {
+): ConversationState {
   const now = new Date().toISOString();
   return {
     conversationId,
@@ -218,8 +218,8 @@ function createInitialConversationState(
   };
 }
 
-function createDisabledConversationError(): WorkflowError {
-  return new WorkflowError({
+function createDisabledConversationError(): HarnessError {
+  return new HarnessError({
     type: "input_validation",
     message:
       'Workflow conversation context is disabled. Set executor.projectType to "conversation" before using context.conversation.',
@@ -237,7 +237,7 @@ function normalizeConversationId(value: string | undefined): string | undefined 
 function normalizeStateKey(value: string): string {
   const key = value.trim();
   if (key === "") {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "Conversation state key must be a non-empty string.",
     });
@@ -252,7 +252,7 @@ function normalizeOptionalTitle(value: string): string | undefined {
 
 function isWorkflowConversationState(
   value: unknown,
-): value is WorkflowConversationState {
+): value is ConversationState {
   return (
     isRecord(value) &&
     typeof value.conversationId === "string" &&
@@ -268,7 +268,7 @@ function isWorkflowConversationState(
 
 function isWorkflowConversationMessage(
   value: unknown,
-): value is WorkflowConversationMessage {
+): value is ConversationMessageContract {
   return (
     isRecord(value) &&
     typeof value.id === "string" &&
@@ -279,7 +279,7 @@ function isWorkflowConversationMessage(
   );
 }
 
-function isWorkflowConversationRole(value: unknown): value is WorkflowConversationRole {
+function isWorkflowConversationRole(value: unknown): value is ConversationRole {
   return value === "user" || value === "assistant" || value === "system" || value === "tool";
 }
 

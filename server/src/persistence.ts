@@ -1,17 +1,17 @@
 
 import { createHash } from "node:crypto";
 import type pg from "pg";
-import type { WorkflowProjectDataSummary } from "./storage";
+import type { ProjectDataSummary } from "./storage";
 import { KNOWLEDGE_DOCUMENT_KEY_PREFIX } from "steamharness";
-import type { WorkflowFile, WorkflowKVEntryPage, WorkflowKVEntryDetail, WorkflowKVEntrySummary, WorkflowKVEntryValueType, WorkflowTokenUsageDetail, WorkflowTokenUsagePage } from "./storage";
-import { normalizeWorkflowKVStoreInput, TOKEN_USAGE_ENTRY_KEY_PREFIX, TOKEN_USAGE_TOTAL_KEY, createEmptyTokenUsageAggregate, readStoredTokenUsageEntry, readStoredTokenUsageAggregate, type WorkflowKVStore, type WorkflowKVStoreGetInput, type WorkflowKVNamespaceLockInput, type WorkflowKVStoreSetInput, type WorkflowKVWriteSource, type WorkflowTokenUsageAggregate, type WorkflowTokenUsageEntry } from "steamharness";
+import type { File, KVEntryPage, KVEntryDetail, KVEntrySummary, KVEntryValueType, TokenUsageDetail, TokenUsagePage } from "./storage";
+import { normalizeWorkflowKVStoreInput, TOKEN_USAGE_ENTRY_KEY_PREFIX, TOKEN_USAGE_TOTAL_KEY, createEmptyTokenUsageAggregate, readStoredTokenUsageEntry, readStoredTokenUsageAggregate, type KVStore, type KVStoreGetInput, type KVNamespaceLockInput, type KVStoreSetInput, type KVWriteSource, type TokenUsageAggregate, type TokenUsageEntry } from "steamharness";
 import { createPostgresPool } from "./postgres";
 import { createWorkflowKVNamespaceLockKey, withPostgresWorkflowKVNamespaceLock, STEAMHARNESS_KV_NAMESPACE_LOCK_FAMILY } from "./kv-namespace-lock";
 import { normalizeProjectCardMetadata, type ProjectCardMetadata } from "@steamharness/project-card-metadata";
-import { normalizeWorkflowProjectInfo, writeWorkflowProjectInfo, type DeclaredWorkflowProjectInfo, type WorkflowProjectInfo } from "@steamharness/project-info";
-import { isWorkflowProjectType, STEAMHARNESS_PROJECT_TYPES, type WorkflowProjectType } from "@steamharness/project-types";
-import type { WorkflowObjectStorage } from "./object-storage";
-import { parseWorkflowProjectGroupManifest, type WorkflowProjectAccessRequest, type WorkflowProjectAccessRequestStatus, type WorkflowProjectCapabilityGrant, type WorkflowProjectDependencyLock, type WorkflowProjectGroupManifestV1 } from "@steamharness/project-dependencies";
+import { normalizeWorkflowProjectInfo, writeWorkflowProjectInfo, type DeclaredWorkflowProjectInfo, type ProjectInfoContract } from "@steamharness/project-info";
+import { isWorkflowProjectType, STEAMHARNESS_PROJECT_TYPES, type ProjectKind } from "@steamharness/project-types";
+import type { ObjectStorage } from "./object-storage";
+import { parseWorkflowProjectGroupManifest, type ProjectAccessRequest, type ProjectAccessRequestStatus, type ProjectCapabilityGrant, type ProjectDependencyLock, type ProjectGroupManifestV1 } from "@steamharness/project-dependencies";
 const STEAMHARNESS_PROJECT_TYPES_SQL = createPostgresTextList(STEAMHARNESS_PROJECT_TYPES);
 // PostgreSQL assigns a new xmin to each externally visible row version. It is
 // a stronger compare-and-set token than updated_at, whose transaction-start
@@ -21,7 +21,7 @@ const STEAMHARNESS_KV_REVISION_CHANNEL = "workflow_project_storage_revision";
 const STEAMHARNESS_KV_REVISION_RECONNECT_DELAY_MS = 1_000;
 const STEAMHARNESS_KV_REVISION_RECONNECT_MAX_DELAY_MS = 30_000;
 
-export interface WorkflowProjectStorageRevisionEvent {
+export interface ProjectStorageRevisionEvent {
   projectId: string;
   revision: string;
 }
@@ -30,12 +30,12 @@ function createPostgresTextList(values: readonly string[]): string {
   return values.map((value) => `'${value.replaceAll("'", "''")}'`).join(", ");
 }
 
-export interface WorkflowDbRecord {
+export interface DbRecord {
   id: string;
   name: string;
-  projectType: WorkflowProjectType;
+  projectType: ProjectKind;
   projectCard: ProjectCardMetadata;
-  projectInfo: WorkflowProjectInfo;
+  projectInfo: ProjectInfoContract;
   packageVersion: string;
   hasDraft: boolean;
   latest: string | null;
@@ -46,9 +46,9 @@ export interface WorkflowDbRecord {
   updatedAt: string;
 }
 
-export interface WorkflowDbVersionRecord { workflowId: string; workflowName: string; version: string; createdAt: string; createdByUserId?: string; releaseLog: string; sourceHash: string; sourceObjectPath: string; dependencies: WorkflowProjectDependencyLock[]; }
+export interface DbVersionRecord { workflowId: string; workflowName: string; version: string; createdAt: string; createdByUserId?: string; releaseLog: string; sourceHash: string; sourceObjectPath: string; dependencies: ProjectDependencyLock[]; }
 
-export interface WorkflowKanbanConfigurationRecord {
+export interface KanbanConfigurationRecord {
   id: string;
   name: string;
   values: Record<string, string>;
@@ -56,21 +56,21 @@ export interface WorkflowKanbanConfigurationRecord {
   updatedAt: string;
 }
 
-export interface WorkflowKanbanConfigurationStateRecord {
-  configurations: WorkflowKanbanConfigurationRecord[];
+export interface KanbanConfigurationStateRecord {
+  configurations: KanbanConfigurationRecord[];
   activeConfigurationId?: string;
 }
 
-export interface WorkflowDbVersionSummaryRecord { workflowId: string; workflowName: string; version: string; }
+export interface DbVersionSummaryRecord { workflowId: string; workflowName: string; version: string; }
 
 export interface SaveWorkflowDraftInput {
   workflowId: string;
   workflowName: string;
-  projectType: WorkflowProjectType;
+  projectType: ProjectKind;
   packageVersion: string;
   projectCard: ProjectCardMetadata;
-  projectInfo: WorkflowProjectInfo;
-  files: WorkflowFile[];
+  projectInfo: ProjectInfoContract;
+  files: File[];
   ownerUserId?: string;
   visibility?: "private" | "public";
   createdByUserId?: string;
@@ -79,7 +79,7 @@ export interface SaveWorkflowDraftInput {
 export interface CreateWorkflowProjectInput {
   workflowId: string;
   workflowName: string;
-  projectType: WorkflowProjectType;
+  projectType: ProjectKind;
   projectCard: ProjectCardMetadata;
   projectInfo: DeclaredWorkflowProjectInfo;
   packageVersion?: string;
@@ -97,11 +97,11 @@ export interface SaveWorkflowVersionInput {
   releaseLog: string;
   sourceHash: string;
   sourceObjectPath: string;
-  dependencies?: WorkflowProjectDependencyLock[];
+  dependencies?: ProjectDependencyLock[];
   updateLatest?: boolean;
 }
 
-export type WorkflowDeploymentStatus =
+export type DeploymentStatus =
   | "planned"
   | "preparing"
   | "prepared"
@@ -109,7 +109,7 @@ export type WorkflowDeploymentStatus =
   | "published"
   | "failed";
 
-export type WorkflowDeploymentItemStatus =
+export type DeploymentItemStatus =
   | "planned"
   | "preparing"
   | "prepared"
@@ -117,13 +117,13 @@ export type WorkflowDeploymentItemStatus =
   | "published"
   | "failed";
 
-export interface WorkflowDeploymentItemRecord {
+export interface DeploymentItemRecord {
   deploymentId: string;
   projectId: string;
   alias?: string;
   role: "root" | "dependency";
   delivery: "included";
-  status: WorkflowDeploymentItemStatus;
+  status: DeploymentItemStatus;
   stage?: string;
   plannedVersion?: string;
   preparedSourceHash?: string;
@@ -133,27 +133,27 @@ export interface WorkflowDeploymentItemRecord {
   updatedAt: string;
 }
 
-export interface WorkflowDeploymentRecord {
+export interface DeploymentRecord {
   id: string;
   rootProjectId: string;
-  status: WorkflowDeploymentStatus;
-  manifest: WorkflowProjectGroupManifestV1;
+  status: DeploymentStatus;
+  manifest: ProjectGroupManifestV1;
   releaseLog: string;
   createdByUserId: string;
   error?: string;
   createdAt: string;
   updatedAt: string;
   publishedAt?: string;
-  items: WorkflowDeploymentItemRecord[];
+  items: DeploymentItemRecord[];
 }
 
-export type WorkflowProjectRole = "owner" | "manager" | "writer" | "viewer";
-export type WorkflowVisibility = "private" | "public";
+export type ProjectRole = "owner" | "manager" | "writer" | "viewer";
+export type Visibility = "private" | "public";
 
-export interface WorkflowProjectMemberRecord {
+export interface ProjectMemberRecord {
   workflowId: string;
   userId: string;
-  role: WorkflowProjectRole;
+  role: ProjectRole;
   createdBy?: string;
   createdAt: string;
 }
@@ -161,11 +161,11 @@ export interface WorkflowProjectMemberRecord {
 // Project-scoped invitations: single-use, time-boxed tokens that let
 // an existing user join a workflow as manager/writer/viewer. Owner role is
 // never grantable through invitations.
-export interface WorkflowProjectInvitationRecord {
+export interface ProjectInvitationRecord {
   id: string;
   workflowId: string;
   token: string;
-  role: WorkflowProjectRole;
+  role: ProjectRole;
   createdBy?: string;
   createdAt: string;
   expiresAt: string;
@@ -174,7 +174,7 @@ export interface WorkflowProjectInvitationRecord {
   revokedAt?: string;
 }
 
-export class DatabaseRepository implements WorkflowKVStore {
+export class DatabaseRepository implements KVStore {
   private readonly pool: pg.Pool;
   private readonly publishLockPool: pg.Pool;
   private readonly workflowKVRevisionReconnectDelayMs = STEAMHARNESS_KV_REVISION_RECONNECT_DELAY_MS;
@@ -482,8 +482,8 @@ export class DatabaseRepository implements WorkflowKVStore {
     `);
   }
 
-  async listWorkflows(): Promise<WorkflowDbRecord[]> {
-    const result = await this.pool.query<WorkflowRow>(`
+  async listWorkflows(): Promise<DbRecord[]> {
+    const result = await this.pool.query<Row>(`
       select id, name, project_type, project_card, project_info, package_version, has_draft, latest_version,
         owner_user_id, visibility, created_by_user_id,
         created_at, updated_at
@@ -494,8 +494,8 @@ export class DatabaseRepository implements WorkflowKVStore {
     return result.rows.map(toWorkflowRecord);
   }
 
-  async getWorkflow(workflowId: string): Promise<WorkflowDbRecord | undefined> {
-    const result = await this.pool.query<WorkflowRow>(
+  async getWorkflow(workflowId: string): Promise<DbRecord | undefined> {
+    const result = await this.pool.query<Row>(
       `select id, name, project_type, project_card, project_info, package_version, has_draft, latest_version,
         owner_user_id, visibility, created_by_user_id,
         created_at, updated_at
@@ -510,8 +510,8 @@ export class DatabaseRepository implements WorkflowKVStore {
   async updateWorkflowProjectCard(
     workflowId: string,
     projectCard: ProjectCardMetadata,
-  ): Promise<WorkflowDbRecord | undefined> {
-    const result = await this.pool.query<WorkflowRow>(
+  ): Promise<DbRecord | undefined> {
+    const result = await this.pool.query<Row>(
       `update workflows
        set project_card = $2::jsonb, updated_at = now()
        where id = $1
@@ -527,7 +527,7 @@ export class DatabaseRepository implements WorkflowKVStore {
     workflowId: string,
     workflowName: string,
     projectInfo: DeclaredWorkflowProjectInfo,
-  ): Promise<WorkflowDbRecord | undefined> {
+  ): Promise<DbRecord | undefined> {
     return (await this.updateWorkflowProjectInfos([
       { workflowId, workflowName, projectInfo },
     ]))[0];
@@ -539,13 +539,13 @@ export class DatabaseRepository implements WorkflowKVStore {
       workflowName: string;
       projectInfo: DeclaredWorkflowProjectInfo;
     }>,
-  ): Promise<WorkflowDbRecord[]> {
+  ): Promise<DbRecord[]> {
     const client = await this.pool.connect();
-    const records: WorkflowDbRecord[] = [];
+    const records: DbRecord[] = [];
     try {
       await client.query("begin");
       for (const update of updates) {
-        const result = await client.query<WorkflowRow>(
+        const result = await client.query<Row>(
           `update workflows
            set name = $2, project_info = $3::jsonb, updated_at = now()
            where id = $1
@@ -558,7 +558,7 @@ export class DatabaseRepository implements WorkflowKVStore {
           throw new Error(`Workflow "${update.workflowId}" does not exist.`);
         }
         if (row.has_draft === true) {
-          const packageResult = await client.query<Pick<WorkflowFileRow, "content">>(
+          const packageResult = await client.query<Pick<FileRow, "content">>(
             `select content
              from workflow_draft_files
              where workflow_id = $1 and path = 'package.json'
@@ -596,8 +596,8 @@ export class DatabaseRepository implements WorkflowKVStore {
     }
   }
 
-  async createWorkflowProject(input: CreateWorkflowProjectInput): Promise<WorkflowDbRecord> {
-    const result = await this.pool.query<WorkflowRow>(
+  async createWorkflowProject(input: CreateWorkflowProjectInput): Promise<DbRecord> {
+    const result = await this.pool.query<Row>(
       `insert into workflows (
          id,
          name,
@@ -638,8 +638,8 @@ export class DatabaseRepository implements WorkflowKVStore {
     return toWorkflowRecord(row);
   }
 
-  async listWorkflowMembers(workflowId: string): Promise<WorkflowProjectMemberRecord[]> {
-    const result = await this.pool.query<WorkflowProjectMemberRow>(
+  async listWorkflowMembers(workflowId: string): Promise<ProjectMemberRecord[]> {
+    const result = await this.pool.query<ProjectMemberRow>(
       `select workflow_id, user_id, role, created_by, created_at
        from workflow_project_members
        where workflow_id = $1
@@ -662,8 +662,8 @@ export class DatabaseRepository implements WorkflowKVStore {
   async getWorkflowMember(
     workflowId: string,
     userId: string,
-  ): Promise<WorkflowProjectMemberRecord | undefined> {
-    const result = await this.pool.query<WorkflowProjectMemberRow>(
+  ): Promise<ProjectMemberRecord | undefined> {
+    const result = await this.pool.query<ProjectMemberRow>(
       `select workflow_id, user_id, role, created_by, created_at
        from workflow_project_members
        where workflow_id = $1 and user_id = $2`,
@@ -678,10 +678,10 @@ export class DatabaseRepository implements WorkflowKVStore {
   async upsertWorkflowMember(input: {
     workflowId: string;
     userId: string;
-    role: WorkflowProjectRole;
+    role: ProjectRole;
     createdBy?: string;
-  }): Promise<WorkflowProjectMemberRecord> {
-    const result = await this.pool.query<WorkflowProjectMemberRow>(
+  }): Promise<ProjectMemberRecord> {
+    const result = await this.pool.query<ProjectMemberRow>(
       `insert into workflow_project_members (
          workflow_id,
          user_id,
@@ -717,10 +717,10 @@ export class DatabaseRepository implements WorkflowKVStore {
   async createWorkflowDeployment(input: {
     id: string;
     rootProjectId: string;
-    manifest: WorkflowProjectGroupManifestV1;
+    manifest: ProjectGroupManifestV1;
     releaseLog: string;
     createdByUserId: string;
-  }): Promise<WorkflowDeploymentRecord> {
+  }): Promise<DeploymentRecord> {
     const now = new Date();
     const client = await this.pool.connect();
     try {
@@ -758,8 +758,8 @@ export class DatabaseRepository implements WorkflowKVStore {
     return (await this.getWorkflowDeployment(input.id))!;
   }
 
-  async getWorkflowDeployment(id: string): Promise<WorkflowDeploymentRecord | undefined> {
-    const result = await this.pool.query<WorkflowDeploymentRow>(
+  async getWorkflowDeployment(id: string): Promise<DeploymentRecord | undefined> {
+    const result = await this.pool.query<DeploymentRow>(
       `select id, root_workflow_id, status, manifest, release_log,
         created_by_user_id, error, created_at, updated_at, published_at
        from workflow_deployments where id = $1`,
@@ -767,7 +767,7 @@ export class DatabaseRepository implements WorkflowKVStore {
     );
     const row = result.rows[0];
     if (row === undefined) return undefined;
-    const items = await this.pool.query<WorkflowDeploymentItemRow>(
+    const items = await this.pool.query<DeploymentItemRow>(
       `select deployment_id, workflow_id, alias,
         role, delivery, status,
         stage, planned_version, prepared_source_hash, published_version,
@@ -783,10 +783,10 @@ export class DatabaseRepository implements WorkflowKVStore {
 
   async updateWorkflowDeployment(input: {
     id: string;
-    status: WorkflowDeploymentStatus;
+    status: DeploymentStatus;
     error?: string;
     publishedAt?: string;
-  }): Promise<WorkflowDeploymentRecord | undefined> {
+  }): Promise<DeploymentRecord | undefined> {
     const result = await this.pool.query(
       `update workflow_deployments
        set status = $2,
@@ -802,8 +802,8 @@ export class DatabaseRepository implements WorkflowKVStore {
 
   async transitionWorkflowDeploymentStatus(input: {
     id: string;
-    from: WorkflowDeploymentStatus[];
-    status: WorkflowDeploymentStatus;
+    from: DeploymentStatus[];
+    status: DeploymentStatus;
   }): Promise<boolean> {
     const result = await this.pool.query(
       `update workflow_deployments
@@ -817,7 +817,7 @@ export class DatabaseRepository implements WorkflowKVStore {
   async updateWorkflowDeploymentItem(input: {
     deploymentId: string;
     projectId: string;
-    status: WorkflowDeploymentItemStatus;
+    status: DeploymentItemStatus;
     stage?: string;
     plannedVersion?: string;
     preparedSourceHash?: string;
@@ -933,8 +933,8 @@ export class DatabaseRepository implements WorkflowKVStore {
 
   async listWorkflowProjectCapabilityGrants(
     projectId: string,
-  ): Promise<WorkflowProjectCapabilityGrant[]> {
-    const result = await this.pool.query<WorkflowProjectCapabilityGrantRow>(
+  ): Promise<ProjectCapabilityGrant[]> {
+    const result = await this.pool.query<ProjectCapabilityGrantRow>(
       `select workflow_id, user_id, capability, created_by_user_id,
         created_at, revoked_by_user_id, revoked_at
        from workflow_project_capability_grants
@@ -950,8 +950,8 @@ export class DatabaseRepository implements WorkflowKVStore {
     userId: string;
     capability: "download_source";
     createdByUserId?: string;
-  }): Promise<WorkflowProjectCapabilityGrant> {
-    const result = await this.pool.query<WorkflowProjectCapabilityGrantRow>(
+  }): Promise<ProjectCapabilityGrant> {
+    const result = await this.pool.query<ProjectCapabilityGrantRow>(
       `insert into workflow_project_capability_grants (
          workflow_id, user_id, capability, created_by_user_id, created_at
        ) values ($1, $2, $3, $4, now())
@@ -1007,8 +1007,8 @@ export class DatabaseRepository implements WorkflowKVStore {
     projectId: string;
     requesterUserId: string;
     capability: "download_source";
-  }): Promise<WorkflowProjectAccessRequest | undefined> {
-    const result = await this.pool.query<WorkflowProjectAccessRequestRow>(
+  }): Promise<ProjectAccessRequest | undefined> {
+    const result = await this.pool.query<ProjectAccessRequestRow>(
       `select id, workflow_id, requester_user_id, capability, reason, status,
         resolved_by_user_id, resolved_at, created_at, updated_at
        from workflow_project_access_requests
@@ -1025,8 +1025,8 @@ export class DatabaseRepository implements WorkflowKVStore {
     requesterUserId: string;
     capability: "download_source";
     reason: string;
-  }): Promise<WorkflowProjectAccessRequest> {
-    const result = await this.pool.query<WorkflowProjectAccessRequestRow>(
+  }): Promise<ProjectAccessRequest> {
+    const result = await this.pool.query<ProjectAccessRequestRow>(
       `insert into workflow_project_access_requests (
          id, workflow_id, requester_user_id, capability, reason, status,
          created_at, updated_at
@@ -1043,8 +1043,8 @@ export class DatabaseRepository implements WorkflowKVStore {
 
   async listWorkflowProjectAccessRequests(
     projectId: string,
-  ): Promise<WorkflowProjectAccessRequest[]> {
-    const result = await this.pool.query<WorkflowProjectAccessRequestRow>(
+  ): Promise<ProjectAccessRequest[]> {
+    const result = await this.pool.query<ProjectAccessRequestRow>(
       `select id, workflow_id, requester_user_id, capability, reason, status,
         resolved_by_user_id, resolved_at, created_at, updated_at
        from workflow_project_access_requests
@@ -1058,8 +1058,8 @@ export class DatabaseRepository implements WorkflowKVStore {
   async getWorkflowProjectAccessRequest(
     projectId: string,
     requestId: string,
-  ): Promise<WorkflowProjectAccessRequest | undefined> {
-    const result = await this.pool.query<WorkflowProjectAccessRequestRow>(
+  ): Promise<ProjectAccessRequest | undefined> {
+    const result = await this.pool.query<ProjectAccessRequestRow>(
       `select id, workflow_id, requester_user_id, capability, reason, status,
         resolved_by_user_id, resolved_at, created_at, updated_at
        from workflow_project_access_requests
@@ -1072,13 +1072,13 @@ export class DatabaseRepository implements WorkflowKVStore {
   async resolveWorkflowProjectAccessRequest(input: {
     projectId: string;
     requestId: string;
-    status: Exclude<WorkflowProjectAccessRequestStatus, "pending">;
+    status: Exclude<ProjectAccessRequestStatus, "pending">;
     resolvedByUserId?: string;
-  }): Promise<WorkflowProjectAccessRequest | undefined> {
+  }): Promise<ProjectAccessRequest | undefined> {
     const client = await this.pool.connect();
     try {
       await client.query("begin");
-      const result = await client.query<WorkflowProjectAccessRequestRow>(
+      const result = await client.query<ProjectAccessRequestRow>(
         `update workflow_project_access_requests
          set status = $3, resolved_by_user_id = $4, resolved_at = now(), updated_at = now()
          where workflow_id = $1 and id = $2 and status = 'pending'
@@ -1112,11 +1112,11 @@ export class DatabaseRepository implements WorkflowKVStore {
     id: string;
     workflowId: string;
     token: string;
-    role: WorkflowProjectRole;
+    role: ProjectRole;
     createdBy?: string;
     expiresAt: string;
-  }): Promise<WorkflowProjectInvitationRecord> {
-    const result = await this.pool.query<WorkflowProjectInvitationRow>(
+  }): Promise<ProjectInvitationRecord> {
+    const result = await this.pool.query<ProjectInvitationRow>(
       `insert into workflow_project_invitations (
          id, workflow_id, token, role, created_by, created_at, expires_at
        )
@@ -1137,8 +1137,8 @@ export class DatabaseRepository implements WorkflowKVStore {
 
   async listWorkflowProjectInvitations(
     workflowId: string,
-  ): Promise<WorkflowProjectInvitationRecord[]> {
-    const result = await this.pool.query<WorkflowProjectInvitationRow>(
+  ): Promise<ProjectInvitationRecord[]> {
+    const result = await this.pool.query<ProjectInvitationRow>(
       `select id, workflow_id, token, role, created_by, created_at,
               expires_at, accepted_by, accepted_at, revoked_at
        from workflow_project_invitations
@@ -1151,8 +1151,8 @@ export class DatabaseRepository implements WorkflowKVStore {
 
   async getWorkflowProjectInvitationByToken(
     token: string,
-  ): Promise<WorkflowProjectInvitationRecord | undefined> {
-    const result = await this.pool.query<WorkflowProjectInvitationRow>(
+  ): Promise<ProjectInvitationRecord | undefined> {
+    const result = await this.pool.query<ProjectInvitationRow>(
       `select id, workflow_id, token, role, created_by, created_at,
               expires_at, accepted_by, accepted_at, revoked_at
        from workflow_project_invitations
@@ -1166,8 +1166,8 @@ export class DatabaseRepository implements WorkflowKVStore {
 
   async getWorkflowProjectInvitationById(
     id: string,
-  ): Promise<WorkflowProjectInvitationRecord | undefined> {
-    const result = await this.pool.query<WorkflowProjectInvitationRow>(
+  ): Promise<ProjectInvitationRecord | undefined> {
+    const result = await this.pool.query<ProjectInvitationRow>(
       `select id, workflow_id, token, role, created_by, created_at,
               expires_at, accepted_by, accepted_at, revoked_at
        from workflow_project_invitations
@@ -1198,8 +1198,8 @@ export class DatabaseRepository implements WorkflowKVStore {
   async acceptWorkflowProjectInvitation(input: {
     id: string;
     acceptedBy: string;
-  }): Promise<WorkflowProjectInvitationRecord | undefined> {
-    const result = await this.pool.query<WorkflowProjectInvitationRow>(
+  }): Promise<ProjectInvitationRecord | undefined> {
+    const result = await this.pool.query<ProjectInvitationRow>(
       `update workflow_project_invitations
        set accepted_by = $2, accepted_at = now()
        where id = $1
@@ -1217,10 +1217,10 @@ export class DatabaseRepository implements WorkflowKVStore {
   async updateWorkflowAccess(input: {
     workflowId: string;
     ownerUserId?: string;
-    visibility?: WorkflowVisibility;
+    visibility?: Visibility;
     createdByUserId?: string;
-  }): Promise<WorkflowDbRecord | undefined> {
-    const result = await this.pool.query<WorkflowRow>(
+  }): Promise<DbRecord | undefined> {
+    const result = await this.pool.query<Row>(
       `update workflows
        set
          owner_user_id = coalesce($2, owner_user_id),
@@ -1353,8 +1353,8 @@ export class DatabaseRepository implements WorkflowKVStore {
     }
   }
 
-  async readDraftFiles(workflowId: string): Promise<WorkflowFile[]> {
-    const result = await this.pool.query<WorkflowFileRow>(
+  async readDraftFiles(workflowId: string): Promise<File[]> {
+    const result = await this.pool.query<FileRow>(
       `select path, content, size, encoding
        from workflow_draft_files
        where workflow_id = $1
@@ -1468,8 +1468,8 @@ export class DatabaseRepository implements WorkflowKVStore {
   async getVersion(
     workflowId: string,
     version: string,
-  ): Promise<WorkflowDbVersionRecord | undefined> {
-    const result = await this.pool.query<WorkflowVersionRow>(
+  ): Promise<DbVersionRecord | undefined> {
+    const result = await this.pool.query<VersionRow>(
       `select workflow_id, workflow_name, version, created_at, source_hash,
         source_object_path, release_log, created_by_user_id
        from workflow_versions
@@ -1484,8 +1484,8 @@ export class DatabaseRepository implements WorkflowKVStore {
     return record;
   }
 
-  async listVersions(workflowId: string): Promise<WorkflowDbVersionRecord[]> {
-    const result = await this.pool.query<WorkflowVersionRow>(
+  async listVersions(workflowId: string): Promise<DbVersionRecord[]> {
+    const result = await this.pool.query<VersionRow>(
       `select workflow_id, workflow_name, version, created_at, source_hash,
         source_object_path, release_log, created_by_user_id
        from workflow_versions
@@ -1495,7 +1495,7 @@ export class DatabaseRepository implements WorkflowKVStore {
     );
 
     const dependencies = await this.listVersionDependencies(workflowId);
-    const dependenciesByVersion = new Map<string, WorkflowProjectDependencyLock[]>();
+    const dependenciesByVersion = new Map<string, ProjectDependencyLock[]>();
     for (const dependency of dependencies) {
       const items = dependenciesByVersion.get(dependency.version) ?? [];
       items.push(dependency.lock);
@@ -1535,11 +1535,11 @@ export class DatabaseRepository implements WorkflowKVStore {
   async listVersionDependencies(
     workflowId: string,
     version?: string,
-  ): Promise<Array<{ version: string; lock: WorkflowProjectDependencyLock }>> {
+  ): Promise<Array<{ version: string; lock: ProjectDependencyLock }>> {
     const values: unknown[] = [workflowId];
     const versionFilter = version === undefined ? "" : " and version = $2";
     if (version !== undefined) values.push(version);
-    const result = await this.pool.query<WorkflowVersionDependencyRow>(
+    const result = await this.pool.query<VersionDependencyRow>(
       `select version, alias, project_id, delivery,
         dependency_version, source_hash
        from workflow_related_project_dependencies
@@ -1555,12 +1555,12 @@ export class DatabaseRepository implements WorkflowKVStore {
 
   async listVersionsForWorkflows(
     workflowIds: readonly string[],
-  ): Promise<Map<string, WorkflowDbVersionSummaryRecord[]>> {
+  ): Promise<Map<string, DbVersionSummaryRecord[]>> {
     if (workflowIds.length === 0) {
       return new Map();
     }
 
-    const result = await this.pool.query<WorkflowVersionSummaryRow>(
+    const result = await this.pool.query<VersionSummaryRow>(
       `select workflow_id, workflow_name, version
        from workflow_versions
        where workflow_id = any($1::text[])
@@ -1568,7 +1568,7 @@ export class DatabaseRepository implements WorkflowKVStore {
       [workflowIds],
     );
 
-    const versions = new Map<string, WorkflowDbVersionSummaryRecord[]>();
+    const versions = new Map<string, DbVersionSummaryRecord[]>();
     for (const row of result.rows) {
       const record = toVersionSummaryRecord(row);
       const records = versions.get(record.workflowId);
@@ -1584,7 +1584,7 @@ export class DatabaseRepository implements WorkflowKVStore {
   async readKanbanConfigurationState(
     workflowId: string,
     userId: string,
-  ): Promise<WorkflowKanbanConfigurationStateRecord> {
+  ): Promise<KanbanConfigurationStateRecord> {
     const [configurationsResult, activeResult] = await Promise.all([
       this.pool.query<KanbanConfigurationRow>(
         `select configuration_id, name, values, created_at, updated_at
@@ -1613,7 +1613,7 @@ export class DatabaseRepository implements WorkflowKVStore {
   async ensureKanbanConfiguration(
     workflowId: string,
     userId: string,
-    configuration: WorkflowKanbanConfigurationRecord,
+    configuration: KanbanConfigurationRecord,
   ): Promise<void> {
     const client = await this.pool.connect();
     try {
@@ -1664,7 +1664,7 @@ export class DatabaseRepository implements WorkflowKVStore {
   async saveKanbanConfiguration(
     workflowId: string,
     userId: string,
-    configuration: WorkflowKanbanConfigurationRecord,
+    configuration: KanbanConfigurationRecord,
   ): Promise<void> {
     await this.pool.query(
       `insert into workflow_kanban_configurations (
@@ -1711,7 +1711,7 @@ export class DatabaseRepository implements WorkflowKVStore {
     );
   }
 
-  async getProjectDataSummary(projectId: string): Promise<WorkflowProjectDataSummary> {
+  async getProjectDataSummary(projectId: string): Promise<ProjectDataSummary> {
     type SummaryRow = {
       kv_entries: string;
       kv_project_entries: string;
@@ -1783,10 +1783,10 @@ export class DatabaseRepository implements WorkflowKVStore {
     cursor?: string;
     scope?: "project" | "conversation";
     query?: string;
-    valueType?: WorkflowKVEntryValueType;
+    valueType?: KVEntryValueType;
     conversationId?: string;
     runId?: string;
-  }): Promise<WorkflowKVEntryPage> {
+  }): Promise<KVEntryPage> {
     const cursor = parseKVPageCursor(options.cursor);
     const params: unknown[] = [options.projectId];
     const where = [
@@ -1831,7 +1831,7 @@ export class DatabaseRepository implements WorkflowKVStore {
     return this.listKVEntries({ where, params, pageSize: options.pageSize, cursor });
   }
 
-  async getValue(input: WorkflowKVStoreGetInput): Promise<unknown | undefined> {
+  async getValue(input: KVStoreGetInput): Promise<unknown | undefined> {
     const normalized = normalizeWorkflowKVStoreInput(input);
     const conversationId = readNormalizedKVConversationId(normalized);
     const result = await this.pool.query<KVEntryRow>(
@@ -1879,7 +1879,7 @@ export class DatabaseRepository implements WorkflowKVStore {
   }
 
   async listenProjectStorageRevisions(
-    listener: (event: WorkflowProjectStorageRevisionEvent) => void,
+    listener: (event: ProjectStorageRevisionEvent) => void,
   ): Promise<() => Promise<void>> {
     let closed = false;
     let activeClient: pg.PoolClient | undefined;
@@ -1890,7 +1890,7 @@ export class DatabaseRepository implements WorkflowKVStore {
     const replayBuffers = new WeakMap<pg.PoolClient, Map<string, string>>();
     const emittedRevisions = new Map<string, string>();
 
-    const emitRevision = (event: WorkflowProjectStorageRevisionEvent) => {
+    const emitRevision = (event: ProjectStorageRevisionEvent) => {
       if (closed) return;
       const previous = emittedRevisions.get(event.projectId);
       if (previous !== undefined && !isNewerWorkflowKVRevision(event.revision, previous)) return;
@@ -2015,7 +2015,7 @@ export class DatabaseRepository implements WorkflowKVStore {
     };
   }
 
-  async getValueWithRevision(input: WorkflowKVStoreGetInput): Promise<{
+  async getValueWithRevision(input: KVStoreGetInput): Promise<{
     value: unknown;
     revision: string;
   } | undefined> {
@@ -2041,7 +2041,7 @@ export class DatabaseRepository implements WorkflowKVStore {
     return result.rows[0];
   }
 
-  async setValue(input: WorkflowKVStoreSetInput): Promise<void> {
+  async setValue(input: KVStoreSetInput): Promise<void> {
     if (input.value === undefined) {
       throw new Error("Workflow project storage value cannot be undefined.");
     }
@@ -2073,7 +2073,7 @@ export class DatabaseRepository implements WorkflowKVStore {
     );
   }
 
-  async deleteValue(input: WorkflowKVStoreGetInput): Promise<boolean> {
+  async deleteValue(input: KVStoreGetInput): Promise<boolean> {
     const normalized = normalizeWorkflowKVStoreInput(input);
     const conversationId = readNormalizedKVConversationId(normalized);
     const result = await this.pool.query(
@@ -2095,7 +2095,7 @@ export class DatabaseRepository implements WorkflowKVStore {
   }
 
   async compareAndSetValue(
-    input: WorkflowKVStoreSetInput,
+    input: KVStoreSetInput,
     expectedRevision: string | null,
   ): Promise<{ applied: boolean; revision?: string }> {
     if (input.value === undefined) {
@@ -2163,7 +2163,7 @@ export class DatabaseRepository implements WorkflowKVStore {
   }
 
   async updateValue(
-    input: WorkflowKVStoreGetInput & { source?: WorkflowKVWriteSource },
+    input: KVStoreGetInput & { source?: KVWriteSource },
     updater: (current: unknown | undefined) => unknown,
   ): Promise<unknown> {
     const normalized = normalizeWorkflowKVStoreInput(input);
@@ -2228,15 +2228,15 @@ export class DatabaseRepository implements WorkflowKVStore {
   }
 
   async withNamespaceLock<T>(
-    input: WorkflowKVNamespaceLockInput,
+    input: KVNamespaceLockInput,
     operation: () => Promise<T> | T,
   ): Promise<T> {
     return withPostgresWorkflowKVNamespaceLock(this.publishLockPool, input, operation);
   }
 
   async withNamespaceTransaction<T>(
-    input: WorkflowKVNamespaceLockInput,
-    operation: (store: WorkflowKVStore) => Promise<T> | T,
+    input: KVNamespaceLockInput,
+    operation: (store: KVStore) => Promise<T> | T,
   ): Promise<T> {
     const client = await this.pool.connect();
     const lockKey = createWorkflowKVNamespaceLockKey(input);
@@ -2267,7 +2267,7 @@ export class DatabaseRepository implements WorkflowKVStore {
     scope: "project" | "conversation";
     key: string;
     conversationId?: string;
-  }): Promise<WorkflowKVEntryDetail | undefined> {
+  }): Promise<KVEntryDetail | undefined> {
     const params: unknown[] = [
       options.scope,
       options.projectId,
@@ -2287,7 +2287,7 @@ export class DatabaseRepository implements WorkflowKVStore {
   async getSystemTokenUsage(options: {
     pageSize: number;
     cursor?: string;
-  }): Promise<WorkflowTokenUsagePage> {
+  }): Promise<TokenUsagePage> {
     const cursor = parseTokenUsageWorkflowCursor(options.cursor);
     const [systemTotal, projectPage] = await Promise.all([
       this.readSystemTokenUsageAggregate(),
@@ -2307,13 +2307,13 @@ export class DatabaseRepository implements WorkflowKVStore {
     projectId: string;
     conversationId?: string;
     includeEntries?: boolean;
-  }): Promise<WorkflowTokenUsageDetail> {
+  }): Promise<TokenUsageDetail> {
     const projectTotal = await this.readTokenUsageAggregate({
       scope: "project",
       projectId: options.projectId,
       key: TOKEN_USAGE_TOTAL_KEY,
     });
-    const detail: WorkflowTokenUsageDetail = {
+    const detail: TokenUsageDetail = {
       projectId: options.projectId,
       projectTotal,
     };
@@ -2345,7 +2345,7 @@ export class DatabaseRepository implements WorkflowKVStore {
     projectId: string;
     conversationId?: string;
     key: string;
-  }): Promise<WorkflowTokenUsageAggregate> {
+  }): Promise<TokenUsageAggregate> {
     const result = await this.pool.query<{ value: unknown }>(
       `select value
        from project_storage
@@ -2365,7 +2365,7 @@ export class DatabaseRepository implements WorkflowKVStore {
     return readStoredTokenUsageAggregate(value) ?? createEmptyTokenUsageAggregate();
   }
 
-  private async readSystemTokenUsageAggregate(): Promise<WorkflowTokenUsageAggregate> {
+  private async readSystemTokenUsageAggregate(): Promise<TokenUsageAggregate> {
     const result = await this.pool.query<{ value: unknown }>(
       `select value
        from project_storage
@@ -2397,7 +2397,7 @@ export class DatabaseRepository implements WorkflowKVStore {
     pageSize: number,
     cursor: TokenUsageWorkflowCursor | undefined,
   ): Promise<{
-    items: WorkflowTokenUsagePage["projects"];
+    items: TokenUsagePage["projects"];
     nextCursor?: string;
     hasMore: boolean;
     total: number;
@@ -2460,7 +2460,7 @@ export class DatabaseRepository implements WorkflowKVStore {
   private async listConversationTokenUsageEntries(options: {
     projectId: string;
     conversationId: string;
-  }): Promise<WorkflowTokenUsageEntry[]> {
+  }): Promise<TokenUsageEntry[]> {
     const result = await this.pool.query<{ value: unknown }>(
       `select value
        from project_storage
@@ -2479,7 +2479,7 @@ export class DatabaseRepository implements WorkflowKVStore {
 
     return result.rows
       .map((row) => readStoredTokenUsageEntry(row.value))
-      .filter((entry): entry is WorkflowTokenUsageEntry => entry !== undefined);
+      .filter((entry): entry is TokenUsageEntry => entry !== undefined);
   }
 
   private async listKVEntries(options: {
@@ -2487,7 +2487,7 @@ export class DatabaseRepository implements WorkflowKVStore {
     params: unknown[];
     pageSize: number;
     cursor?: KVPageCursor;
-  }): Promise<WorkflowKVEntryPage> {
+  }): Promise<KVEntryPage> {
     const params = [...options.params];
     const where = [...options.where];
     const total = await this.countKVEntries(where, params);
@@ -2549,7 +2549,7 @@ export class DatabaseRepository implements WorkflowKVStore {
     };
   }
 
-  private async getKVEntryDetail(where: string[], params: unknown[]): Promise<WorkflowKVEntryDetail | undefined> {
+  private async getKVEntryDetail(where: string[], params: unknown[]): Promise<KVEntryDetail | undefined> {
     const result = await this.pool.query<KVEntryRow>(
       // KV list pages stay lightweight; full value payloads are only
       // read through this explicit detail path after a user expands one row.
@@ -2597,7 +2597,7 @@ export class DatabaseRepository implements WorkflowKVStore {
 }
 
 export class ArtifactStorage {
-  constructor(private readonly storage: WorkflowObjectStorage) {}
+  constructor(private readonly storage: ObjectStorage) {}
   async init(): Promise<void> {}
   async uploadFile(objectPath: string, filePath: string): Promise<void> { await this.storage.uploadPrivateFile(objectPath, filePath, "application/gzip"); }
   async downloadFile(objectPath: string, filePath: string): Promise<void> { await this.storage.downloadPrivateFile(objectPath, filePath); }
@@ -2622,7 +2622,7 @@ export function sha256Buffer(buffer: Buffer): string {
   return createHash("sha256").update(buffer).digest("hex");
 }
 
-interface WorkflowRow {
+interface Row {
   id: string;
   name: string;
   project_type: unknown;
@@ -2638,7 +2638,7 @@ interface WorkflowRow {
   updated_at: Date;
 }
 
-interface WorkflowVersionRow {
+interface VersionRow {
   workflow_id: string;
   workflow_name: string;
   version: string;
@@ -2649,13 +2649,13 @@ interface WorkflowVersionRow {
   created_by_user_id: string | null;
 }
 
-interface WorkflowVersionSummaryRow {
+interface VersionSummaryRow {
   workflow_id: string;
   workflow_name: string;
   version: string;
 }
 
-interface WorkflowVersionDependencyRow {
+interface VersionDependencyRow {
   version: string;
   alias: string;
   project_id: string;
@@ -2664,7 +2664,7 @@ interface WorkflowVersionDependencyRow {
   source_hash: string | null;
 }
 
-interface WorkflowFileRow {
+interface FileRow {
   path: string;
   content: string;
   size: number;
@@ -2679,7 +2679,7 @@ interface KanbanConfigurationRow {
   updated_at: Date;
 }
 
-interface WorkflowProjectMemberRow {
+interface ProjectMemberRow {
   workflow_id: string;
   user_id: string;
   role: string;
@@ -2687,7 +2687,7 @@ interface WorkflowProjectMemberRow {
   created_at: Date;
 }
 
-interface WorkflowDeploymentRow {
+interface DeploymentRow {
   id: string;
   root_workflow_id: string;
   status: string;
@@ -2700,7 +2700,7 @@ interface WorkflowDeploymentRow {
   published_at: Date | null;
 }
 
-interface WorkflowDeploymentItemRow {
+interface DeploymentItemRow {
   deployment_id: string;
   workflow_id: string;
   alias: string | null;
@@ -2716,7 +2716,7 @@ interface WorkflowDeploymentItemRow {
   updated_at: Date;
 }
 
-interface WorkflowProjectCapabilityGrantRow {
+interface ProjectCapabilityGrantRow {
   workflow_id: string;
   user_id: string;
   capability: string;
@@ -2726,7 +2726,7 @@ interface WorkflowProjectCapabilityGrantRow {
   revoked_at: Date | null;
 }
 
-interface WorkflowProjectAccessRequestRow {
+interface ProjectAccessRequestRow {
   id: string;
   workflow_id: string;
   requester_user_id: string;
@@ -2739,7 +2739,7 @@ interface WorkflowProjectAccessRequestRow {
   updated_at: Date;
 }
 
-interface WorkflowProjectInvitationRow {
+interface ProjectInvitationRow {
   id: string;
   workflow_id: string;
   token: string;
@@ -2776,7 +2776,7 @@ interface TokenUsageWorkflowTotalRow {
   updated_at_cursor: string;
 }
 
-function toWorkflowRecord(row: WorkflowRow): WorkflowDbRecord {
+function toWorkflowRecord(row: Row): DbRecord {
   if (!isWorkflowProjectType(row.project_type)) {
     throw new Error(`Workflow "${row.id}" has invalid persisted project_type.`);
   }
@@ -2797,11 +2797,11 @@ function toWorkflowRecord(row: WorkflowRow): WorkflowDbRecord {
   };
 }
 
-function toVersionRecord(row: WorkflowVersionRow): WorkflowDbVersionRecord { return { workflowId: row.workflow_id, workflowName: row.workflow_name, version: row.version, createdAt: row.created_at.toISOString(), sourceHash: row.source_hash, sourceObjectPath: row.source_object_path, releaseLog: row.release_log, createdByUserId: row.created_by_user_id ?? undefined, dependencies: [] }; }
+function toVersionRecord(row: VersionRow): DbVersionRecord { return { workflowId: row.workflow_id, workflowName: row.workflow_name, version: row.version, createdAt: row.created_at.toISOString(), sourceHash: row.source_hash, sourceObjectPath: row.source_object_path, releaseLog: row.release_log, createdByUserId: row.created_by_user_id ?? undefined, dependencies: [] }; }
 
 function toWorkflowProjectDependencyLock(
-  row: WorkflowVersionDependencyRow,
-): WorkflowProjectDependencyLock {
+  row: VersionDependencyRow,
+): ProjectDependencyLock {
   const delivery = row.delivery === "included" ? "included" as const : "external" as const;
   return {
     alias: row.alias,
@@ -2816,11 +2816,11 @@ function toWorkflowProjectDependencyLock(
   };
 }
 
-function toVersionSummaryRecord(row: WorkflowVersionSummaryRow): WorkflowDbVersionSummaryRecord { return {workflowId: row.workflow_id, workflowName: row.workflow_name, version: row.version}; }
+function toVersionSummaryRecord(row: VersionSummaryRow): DbVersionSummaryRecord { return {workflowId: row.workflow_id, workflowName: row.workflow_name, version: row.version}; }
 
 function toKanbanConfigurationRecord(
   row: KanbanConfigurationRow,
-): WorkflowKanbanConfigurationRecord {
+): KanbanConfigurationRecord {
   return {
     id: row.configuration_id,
     name: row.name,
@@ -2830,13 +2830,13 @@ function toKanbanConfigurationRecord(
   };
 }
 
-function isWorkflowProjectRole(value: unknown): value is WorkflowProjectRole {
+function isWorkflowProjectRole(value: unknown): value is ProjectRole {
   return value === "owner" || value === "manager" || value === "writer" || value === "viewer";
 }
 
 function toWorkflowProjectMemberRecord(
-  row: WorkflowProjectMemberRow,
-): WorkflowProjectMemberRecord {
+  row: ProjectMemberRow,
+): ProjectMemberRecord {
   return {
     workflowId: row.workflow_id,
     userId: row.user_id,
@@ -2847,9 +2847,9 @@ function toWorkflowProjectMemberRecord(
 }
 
 function toWorkflowDeploymentRecord(
-  row: WorkflowDeploymentRow,
-  itemRows: WorkflowDeploymentItemRow[],
-): WorkflowDeploymentRecord {
+  row: DeploymentRow,
+  itemRows: DeploymentItemRow[],
+): DeploymentRecord {
   return {
     id: row.id,
     rootProjectId: row.root_workflow_id,
@@ -2880,8 +2880,8 @@ function toWorkflowDeploymentRecord(
 }
 
 function toWorkflowProjectCapabilityGrant(
-  row: WorkflowProjectCapabilityGrantRow,
-): WorkflowProjectCapabilityGrant {
+  row: ProjectCapabilityGrantRow,
+): ProjectCapabilityGrant {
   return {
     projectId: row.workflow_id,
     userId: row.user_id,
@@ -2894,8 +2894,8 @@ function toWorkflowProjectCapabilityGrant(
 }
 
 function toWorkflowProjectAccessRequest(
-  row: WorkflowProjectAccessRequestRow,
-): WorkflowProjectAccessRequest {
+  row: ProjectAccessRequestRow,
+): ProjectAccessRequest {
   return {
     id: row.id,
     projectId: row.workflow_id,
@@ -2911,8 +2911,8 @@ function toWorkflowProjectAccessRequest(
 }
 
 function toWorkflowProjectInvitationRecord(
-  row: WorkflowProjectInvitationRow,
-): WorkflowProjectInvitationRecord {
+  row: ProjectInvitationRow,
+): ProjectInvitationRecord {
   return {
     id: row.id,
     workflowId: row.workflow_id,
@@ -2927,19 +2927,19 @@ function toWorkflowProjectInvitationRecord(
   };
 }
 
-function isWorkflowDeploymentStatus(value: unknown): value is WorkflowDeploymentStatus {
+function isWorkflowDeploymentStatus(value: unknown): value is DeploymentStatus {
   return value === "planned" || value === "preparing" || value === "prepared" ||
     value === "publishing" || value === "published" || value === "failed";
 }
 
-function isWorkflowDeploymentItemStatus(value: unknown): value is WorkflowDeploymentItemStatus {
+function isWorkflowDeploymentItemStatus(value: unknown): value is DeploymentItemStatus {
   return value === "planned" || value === "preparing" || value === "prepared" ||
     value === "publishing" || value === "published" || value === "failed";
 }
 
 function isWorkflowProjectAccessRequestStatus(
   value: unknown,
-): value is WorkflowProjectAccessRequestStatus {
+): value is ProjectAccessRequestStatus {
   return value === "pending" || value === "approved" || value === "rejected" || value === "revoked";
 }
 
@@ -2955,8 +2955,8 @@ function sanitizeStringRecord(value: unknown): Record<string, string> {
   );
 }
 
-function toKVEntrySummary(row: KVEntryRow): WorkflowKVEntrySummary {
-  const summary: WorkflowKVEntrySummary = {
+function toKVEntrySummary(row: KVEntryRow): KVEntrySummary {
+  const summary: KVEntrySummary = {
     storageKind: row.storage_kind === "persistent_value" ? "persistent_value" : "kv",
     scope: isKVScope(row.scope) ? row.scope : "project",
     key: row.key,
@@ -2976,14 +2976,14 @@ function toKVEntrySummary(row: KVEntryRow): WorkflowKVEntrySummary {
   return summary;
 }
 
-function toKVEntryDetail(row: KVEntryRow): WorkflowKVEntryDetail {
+function toKVEntryDetail(row: KVEntryRow): KVEntryDetail {
   if (!("value" in row)) {
     throw new Error("Workflow KV detail row is missing value.");
   }
-  return toKVEntrySummary(row) as WorkflowKVEntryDetail;
+  return toKVEntrySummary(row) as KVEntryDetail;
 }
 
-function toProjectTokenUsageSummary(row: TokenUsageWorkflowTotalRow): WorkflowTokenUsagePage["projects"][number] {
+function toProjectTokenUsageSummary(row: TokenUsageWorkflowTotalRow): TokenUsagePage["projects"][number] {
   return {
     projectId: row.project_id,
     total: readStoredTokenUsageAggregate(row.value) ?? createEmptyTokenUsageAggregate(),
@@ -2999,10 +2999,10 @@ function readNormalizedKVConversationId(
 
 function createTransactionalWorkflowKVStore(
   client: pg.PoolClient,
-  transactionNamespace: WorkflowKVNamespaceLockInput,
-): WorkflowKVStore {
+  transactionNamespace: KVNamespaceLockInput,
+): KVStore {
   const transactionNamespaceLockKey = createWorkflowKVNamespaceLockKey(transactionNamespace);
-  const readValue = async (input: WorkflowKVStoreGetInput): Promise<unknown | undefined> => {
+  const readValue = async (input: KVStoreGetInput): Promise<unknown | undefined> => {
     const normalized = normalizeWorkflowKVStoreInput(input);
     const conversationId = readNormalizedKVConversationId(normalized);
     const result = await client.query<KVEntryRow>(
@@ -3024,7 +3024,7 @@ function createTransactionalWorkflowKVStore(
     return result.rows[0]?.value;
   };
 
-  const writeValue = async (input: WorkflowKVStoreSetInput): Promise<void> => {
+  const writeValue = async (input: KVStoreSetInput): Promise<void> => {
     if (input.value === undefined) {
       throw new Error("Workflow project storage value cannot be undefined.");
     }
@@ -3218,11 +3218,11 @@ function parseTokenUsageWorkflowCursor(cursor: string | undefined): TokenUsageWo
   return undefined;
 }
 
-function isKVScope(value: unknown): value is WorkflowKVEntrySummary["scope"] {
+function isKVScope(value: unknown): value is KVEntrySummary["scope"] {
   return value === "project" || value === "conversation";
 }
 
-function normalizeKVValueType(valueType: string | null, value: unknown): WorkflowKVEntryValueType {
+function normalizeKVValueType(valueType: string | null, value: unknown): KVEntryValueType {
   if (
     valueType === "null" ||
     valueType === "array" ||

@@ -4,7 +4,7 @@ import type pg from "pg";
 import {
   hashPassword,
   verifyPassword,
-  WorkflowAuthService,
+  AuthService,
 } from "../account-auth";
 
 test("scrypt password hashes use random salts and verify without storing plaintext", async () => {
@@ -83,8 +83,8 @@ test("resolvePrincipal does not revive an expired or revoked API key", async () 
   assert.equal(touched, false);
 });
 
-function createAuthService(accountDb: object): WorkflowAuthService {
-  return new WorkflowAuthService({
+function createAuthService(accountDb: object): AuthService {
+  return new AuthService({
     pool: createInitOnlyPool(),
     accountDb: accountDb as never,
   });

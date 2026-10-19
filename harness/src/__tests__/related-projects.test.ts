@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type {
-  WorkflowProjectInfo,
-  WorkflowProjectKVAccessRule,
+  ProjectInfoContract,
+  ProjectKVAccessRule,
 } from "@steamharness/project-info";
 import {
   createDeclaredWorkflowRelatedProjectKVResolver,
   createKnowledgeDocument,
   createWorkflowRelatedProjectsContext,
-  type WorkflowKVNamespace,
-  type WorkflowKVNamespaceMutation,
+  type KVNamespace,
+  type KVNamespaceMutation,
 } from "../index";
 
 const CONSUMER_ID = "11111111-1111-4111-8111-111111111111";
@@ -146,7 +146,7 @@ test("local and server related-project resolvers stay isolated", async () => {
   ]);
   const localKV = createMemoryNamespace({ value: "local" });
   const serverKV = createMemoryNamespace({ value: "server" });
-  const createResolver = (kv: WorkflowKVNamespace) =>
+  const createResolver = (kv: KVNamespace) =>
     createDeclaredWorkflowRelatedProjectKVResolver({
       getConsumerProject: () => ({ projectId: CONSUMER_ID, projectInfo }),
       getTargetProject: () => ({ projectId: TARGET_ID, projectInfo: targetInfo, kv }),
@@ -164,14 +164,14 @@ test("local and server related-project resolvers stay isolated", async () => {
 function createGrantedRelation(
   alias: string,
   projectId: string,
-  grantToRelatedProject: WorkflowProjectInfo["relatedProjects"][number]["grantToRelatedProject"],
-): WorkflowProjectInfo["relatedProjects"][number] {
+  grantToRelatedProject: ProjectInfoContract["relatedProjects"][number]["grantToRelatedProject"],
+): ProjectInfoContract["relatedProjects"][number] {
   return { alias, projectId, grantToRelatedProject };
 }
 
 interface RelatedProjectFixture {
-  grant: WorkflowProjectInfo["relatedProjects"][number]["grantToRelatedProject"];
-  persistentValue?: WorkflowKVNamespace;
+  grant: ProjectInfoContract["relatedProjects"][number]["grantToRelatedProject"];
+  persistentValue?: KVNamespace;
   runner?: {
     listEntrypoints(): Promise<Array<{ id: string }>>;
     run(entrypointId: string, args: readonly string[]): Promise<unknown>;
@@ -206,7 +206,7 @@ function createKnowledgeFixture(fixture: RelatedProjectFixture) {
 }
 
 /** A persistent-value namespace that can also take a namespace lock, as a local store does. */
-function createLockingNamespace(initial: Record<string, unknown> = {}): WorkflowKVNamespace {
+function createLockingNamespace(initial: Record<string, unknown> = {}): KVNamespace {
   const namespace = createMemoryNamespace(initial);
   return {
     ...namespace,
@@ -301,7 +301,7 @@ test("the knowledge scope mutates through whatever the target's store offers", a
   };
   // A store that can only take a namespace lock.
   const locks: string[] = [];
-  const lockingStore: WorkflowKVNamespace = {
+  const lockingStore: KVNamespace = {
     ...createMemoryNamespace(),
     async withLock<T>(operation: () => Promise<T> | T): Promise<T> {
       locks.push("lock");
@@ -315,7 +315,7 @@ test("the knowledge scope mutates through whatever the target's store offers", a
   // A store that can only run a namespace mutation. The sentinel proves which
   // of the two routes the helper took.
   const mutationRoute = new Error("mutation route");
-  const mutatingStore: WorkflowKVNamespace = {
+  const mutatingStore: KVNamespace = {
     ...createMemoryNamespace(),
     async executeMutation<T>(): Promise<T> {
       throw mutationRoute;
@@ -348,10 +348,10 @@ test("the mutation route checks the document key before the store runs the mutat
       write: { mode: "prefixes", prefixes: ["knowledge.documents"] },
     },
   };
-  const handedOver: WorkflowKVNamespaceMutation[] = [];
-  const mutatingStore: WorkflowKVNamespace = {
+  const handedOver: KVNamespaceMutation[] = [];
+  const mutatingStore: KVNamespace = {
     ...createMemoryNamespace(),
-    async executeMutation<T>(mutation: WorkflowKVNamespaceMutation): Promise<T> {
+    async executeMutation<T>(mutation: KVNamespaceMutation): Promise<T> {
       handedOver.push(mutation);
       throw new Error("the store ran an unchecked mutation");
     },
@@ -415,8 +415,8 @@ test("a host that cannot reach the target's knowledge or entrypoints says so", a
 });
 
 function createProjectInfo(
-  relatedProjects: WorkflowProjectInfo["relatedProjects"],
-): WorkflowProjectInfo {
+  relatedProjects: ProjectInfoContract["relatedProjects"],
+): ProjectInfoContract {
   return {
     localizedNames: {},
     declarations: [],
@@ -429,9 +429,9 @@ function createProjectInfo(
 function createRelation(
   alias: string,
   projectId: string,
-  read: WorkflowProjectKVAccessRule,
-  write: WorkflowProjectKVAccessRule,
-): WorkflowProjectInfo["relatedProjects"][number] {
+  read: ProjectKVAccessRule,
+  write: ProjectKVAccessRule,
+): ProjectInfoContract["relatedProjects"][number] {
   return {
     alias,
     projectId,
@@ -439,7 +439,7 @@ function createRelation(
   };
 }
 
-function createMemoryNamespace(initial: Record<string, unknown> = {}): WorkflowKVNamespace {
+function createMemoryNamespace(initial: Record<string, unknown> = {}): KVNamespace {
   const values = new Map(Object.entries(initial));
   return {
     async getValue(key) {

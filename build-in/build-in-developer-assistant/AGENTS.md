@@ -5,7 +5,7 @@
 - Issue 编号仅作为可选上下文；没有 issue 也可以直接分析、修改、测试、提交和说明，不得把创建或关联 issue 作为强制前置条件。
 - 本仓库只维护 `developer-assistant` 内置项目，仓库根就是 Workflow 项目根；不得再引用旧 monorepo 内置项目目录或其它仓库内部路径。
 - `skills/workflow-generator/AGENTS.md` 是 generator 专项规则入口；修改该目录前必须同时读取它。
-- 节点 payload 必须继承 `WorkflowPayload`，成功时使用 `errCode: 0, errMessage: ""`。
+- 节点 payload 必须继承 `RunPayload`，成功时使用 `errCode: 0, errMessage: ""`。
 - Studio 开发态从同级 `build-in/build-in-developer-assistant` 获取本项目依赖；VS Code 宿主通过 `STEAMHARNESS_DEVELOPER_ASSISTANT_HOST=vscode` 使用已有适配。宿主注入 `STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER` 时连接 Studio Control，使用现有工具权限和审批；不读取旧 Desktop Control 配置。原始控制凭据只传给 MCP 子进程，不进入编码工具 shell。
 - 用户可见行为变化必须同步中文/英文 `CHANGELOG.next*.md`，并按实际影响更新 `../../docs` 文档。
 - 代码变更必须补邻近 `__tests__/` 或 `scripts/__tests__/` 测试。提交前执行 `pnpm typecheck`、`pnpm test`、`pnpm coverage`、`pnpm build` 和 `git diff --check`。

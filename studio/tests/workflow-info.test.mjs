@@ -80,7 +80,7 @@ function fixture(t, read) {
   };
   const module = { exports: {} };
   runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name), TextDecoder, crypto });
-  const provider = new module.exports.WorkflowInfoView({ subscriptions: [], extensionUri: uri('/extension') }, {
+  const provider = new module.exports.InfoView({ subscriptions: [], extensionUri: uri('/extension') }, {
     getVersionStatus: () => ({ status: 'unpublished', canDownload: false }), onDidChangeVersions: () => disposable,
   });
   provider.resolveWebviewView(view);

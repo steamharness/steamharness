@@ -2,21 +2,21 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { WorkflowError } from "../workflow/errors";
+import { HarnessError } from "../workflow/errors";
 
 const DEFAULT_STEAMHARNESS_CREATED_FILE_LIMIT_BYTES = 50 * 1024 * 1024;
 
-export type WorkflowFileStorage = "local" | "server" | "path" | "url";
+export type FileStorage = "local" | "server" | "path" | "url";
 
-export type WorkflowFileKind = "image" | "file";
+export type FileKind = "image" | "file";
 
-export interface WorkflowFileReference {
+export interface FileReference {
   id: string;
   name: string;
   mimeType: string;
   size: number;
-  kind: WorkflowFileKind;
-  storage: WorkflowFileStorage;
+  kind: FileKind;
+  storage: FileStorage;
   workflowId?: string;
   conversationId?: string;
   createdAt: string;
@@ -24,7 +24,7 @@ export interface WorkflowFileReference {
   path?: string;
 }
 
-export interface WorkflowResolvedFile extends WorkflowFileReference {
+export interface ResolvedFile extends FileReference {
   readBuffer(): Promise<Buffer>;
   readBase64(): Promise<string>;
   readDataUrl(): Promise<string>;
@@ -33,23 +33,23 @@ export interface WorkflowResolvedFile extends WorkflowFileReference {
     image: string;
     mediaType: string;
   }>;
-  toJSON(): WorkflowFileReference;
+  toJSON(): FileReference;
 }
 
-export interface WorkflowCreateFileInput {
+export interface CreateFileInput {
   name: string;
   mimeType?: string;
   buffer: Buffer | Uint8Array | ArrayBuffer | string;
-  kind?: WorkflowFileKind;
+  kind?: FileKind;
   conversationId?: string;
 }
 
-export interface WorkflowFileStore {
-  resolveFile(reference: WorkflowFileReference): Promise<WorkflowResolvedFile>;
-  createFile?(input: WorkflowCreateFileInput): Promise<WorkflowFileReference>;
+export interface FileStore {
+  resolveFile(reference: FileReference): Promise<ResolvedFile>;
+  createFile?(input: CreateFileInput): Promise<FileReference>;
 }
 
-export type WorkflowFileCreator = (input: WorkflowCreateFileInput) => Promise<WorkflowFileReference>;
+export type FileCreator = (input: CreateFileInput) => Promise<FileReference>;
 
 export interface LocalWorkflowFileStoreOptions {
   rootDir?: string;
@@ -65,12 +65,12 @@ export interface ServerWorkflowFileStoreOptions {
 
 export function createLocalWorkflowFileStore(
   options: LocalWorkflowFileStoreOptions = {},
-): WorkflowFileStore {
+): FileStore {
   return {
     async resolveFile(reference) {
       const filePath = resolveReferencePath(reference, options);
       const info = await stat(filePath).catch((error) => {
-        throw new WorkflowError({
+        throw new HarnessError({
           type: "input_validation",
           message: `Workflow file "${reference.name || reference.id}" does not exist.`,
           metadata: {
@@ -81,7 +81,7 @@ export function createLocalWorkflowFileStore(
       });
 
       if (!info.isFile()) {
-        throw new WorkflowError({
+        throw new HarnessError({
           type: "input_validation",
           message: `Workflow file "${reference.name || reference.id}" is not a file.`,
           metadata: {
@@ -101,9 +101,9 @@ export function createLocalWorkflowFileStore(
 }
 
 export function createWorkflowFileStore(options: {
-  resolveStore?: WorkflowFileStore;
-  createFile?: WorkflowFileCreator;
-}): WorkflowFileStore {
+  resolveStore?: FileStore;
+  createFile?: FileCreator;
+}): FileStore {
   const resolveStore = options.resolveStore ?? createLocalWorkflowFileStore({ allowAbsolutePaths: true });
 
   return {
@@ -122,7 +122,7 @@ export function createWorkflowFileStore(options: {
 
 export function createServerWorkflowFileStore(
   options: ServerWorkflowFileStoreOptions,
-): WorkflowFileStore {
+): FileStore {
   const resolveStore = createLocalWorkflowFileStore({
     rootDir: options.rootDir,
     allowAbsolutePaths: true,
@@ -135,7 +135,7 @@ export function createServerWorkflowFileStore(
       const buffer = normalizeCreateFileBuffer(input.buffer);
       const maxBytes = options.maxBytes ?? DEFAULT_STEAMHARNESS_CREATED_FILE_LIMIT_BYTES;
       if (buffer.byteLength > maxBytes) {
-        throw new WorkflowError({
+        throw new HarnessError({
           type: "input_validation",
           message: `Workflow file "${input.name}" exceeds ${formatBytes(maxBytes)} limit.`,
           metadata: {
@@ -148,7 +148,7 @@ export function createServerWorkflowFileStore(
       const id = createWorkflowManagedFileId();
       const name = normalizeCreatedFileName(input.name);
       const mimeType = normalizeCreatedFileMimeType(input.mimeType, name);
-      const reference: WorkflowFileReference = {
+      const reference: FileReference = {
         id,
         name,
         mimeType,
@@ -171,9 +171,9 @@ export function createServerWorkflowFileStore(
 }
 
 export function createResolvedWorkflowFile(
-  reference: WorkflowFileReference,
+  reference: FileReference,
   readBuffer: () => Promise<Buffer>,
-): WorkflowResolvedFile {
+): ResolvedFile {
   const normalized = normalizeWorkflowFileReference(reference);
 
   return {
@@ -188,7 +188,7 @@ export function createResolvedWorkflowFile(
     },
     async toLLMImagePart() {
       if (normalized.kind !== "image" && !normalized.mimeType.startsWith("image/")) {
-        throw new WorkflowError({
+        throw new HarnessError({
           type: "input_validation",
           message: `Workflow file "${normalized.name}" is not an image.`,
           metadata: {
@@ -210,7 +210,7 @@ export function createResolvedWorkflowFile(
   };
 }
 
-export function normalizeWorkflowFileReference(value: unknown): WorkflowFileReference {
+export function normalizeWorkflowFileReference(value: unknown): FileReference {
   if (!isRecord(value)) {
     throw createInvalidFileReferenceError();
   }
@@ -248,7 +248,7 @@ export function normalizeWorkflowFileReference(value: unknown): WorkflowFileRefe
   };
 }
 
-export function parseWorkflowFileReferences(value: unknown): WorkflowFileReference[] {
+export function parseWorkflowFileReferences(value: unknown): FileReference[] {
   if (value === undefined || value === null || value === "") {
     return [];
   }
@@ -274,7 +274,7 @@ export function parseWorkflowFileReferences(value: unknown): WorkflowFileReferen
   return [normalizeWorkflowFileReference(value)];
 }
 
-function createPathWorkflowFileReference(filePath: string): WorkflowFileReference {
+function createPathWorkflowFileReference(filePath: string): FileReference {
   return {
     id: filePath,
     name: path.basename(filePath),
@@ -288,11 +288,11 @@ function createPathWorkflowFileReference(filePath: string): WorkflowFileReferenc
 }
 
 function resolveReferencePath(
-  reference: WorkflowFileReference,
+  reference: FileReference,
   options: LocalWorkflowFileStoreOptions,
 ): string {
   if (reference.storage === "url") {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "URL workflow files cannot be read by the local file store.",
       metadata: {
@@ -309,7 +309,7 @@ function resolveReferencePath(
     if (!path.isAbsolute(filePath) || options.allowAbsolutePaths === true) {
       return filePath;
     }
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "Absolute workflow file paths are not enabled for this runtime.",
       metadata: {
@@ -319,7 +319,7 @@ function resolveReferencePath(
   }
 
   if (options.rootDir === undefined) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "Workflow file store root is not configured.",
       metadata: {
@@ -343,7 +343,7 @@ function parseMaybeJson(value: string): unknown | undefined {
   }
 }
 
-function readWorkflowFileStorage(value: unknown, url?: string): WorkflowFileStorage {
+function readWorkflowFileStorage(value: unknown, url?: string): FileStorage {
   if (value === "local" || value === "server" || value === "path" || value === "url") {
     return value;
   }
@@ -355,7 +355,7 @@ function readWorkflowFileStorage(value: unknown, url?: string): WorkflowFileStor
   return "path";
 }
 
-function readWorkflowFileKind(value: unknown, mimeType: string): WorkflowFileKind {
+function readWorkflowFileKind(value: unknown, mimeType: string): FileKind {
   if (value === "image" || value === "file") {
     return value;
   }
@@ -367,15 +367,15 @@ function readNonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
 }
 
-function createInvalidFileReferenceError(): WorkflowError {
-  return new WorkflowError({
+function createInvalidFileReferenceError(): HarnessError {
+  return new HarnessError({
     type: "input_validation",
     message: "Workflow file reference must be an object with a non-empty id.",
   });
 }
 
-export function createWorkflowFileCreateUnavailableError(): WorkflowError {
-  return new WorkflowError({
+export function createWorkflowFileCreateUnavailableError(): HarnessError {
+  return new HarnessError({
     type: "workflow_execution",
     message: "Workflow file creation requires a configured file store. Connect the local host to server file storage or inject a workflow file creator.",
   });
@@ -443,7 +443,7 @@ function guessMimeType(filePath: string): string {
   }
 }
 
-function normalizeCreateFileBuffer(value: WorkflowCreateFileInput["buffer"]): Buffer {
+function normalizeCreateFileBuffer(value: CreateFileInput["buffer"]): Buffer {
   if (Buffer.isBuffer(value)) {
     return value;
   }
@@ -486,7 +486,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function workflowFileReferenceToDataUrl(reference: WorkflowFileReference): string | undefined {
+export function workflowFileReferenceToDataUrl(reference: FileReference): string | undefined {
   if (reference.url?.startsWith("data:")) {
     return reference.url;
   }
@@ -494,7 +494,7 @@ export function workflowFileReferenceToDataUrl(reference: WorkflowFileReference)
   return undefined;
 }
 
-export function workflowFileReferenceToUrl(reference: WorkflowFileReference): URL | undefined {
+export function workflowFileReferenceToUrl(reference: FileReference): URL | undefined {
   if (reference.url === undefined) {
     return undefined;
   }

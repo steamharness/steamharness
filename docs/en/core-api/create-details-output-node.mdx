@@ -5,14 +5,14 @@ description: "Create a convenient output node for a standalone collapsible outpu
 
 # createDetailsOutputNode
 
-`workflow.createDetailsOutputNode()` Create a generic output node to convert the title, content, and icon into separate collapsible `WorkflowOutputItem`.
+`workflow.createDetailsOutputNode()` Create a generic output node to convert the title, content, and icon into separate collapsible `OutputItem`.
 
 This node will still execute as a `output` standard node, so CLI, CLI Web, and log replay will collect its `items` as user-visible output. Ideal for outputting long logs, debug information, structured JSON, executive summary, or optional instructions as independent folding blocks.
 
 ## Signature
 
 ```ts
-workflow.createDetailsOutputNode<Input = DetailsOutputInput, Output extends WorkflowPayload = DetailsOutputPayload>(
+workflow.createDetailsOutputNode<Input = DetailsOutputInput, Output extends RunPayload = DetailsOutputPayload>(
   options?: DetailsOutputNodeOptions<Input, Output>,
 ): BaseNode<Input, Output>
 ```
@@ -38,7 +38,7 @@ When `options.resolve` is not passed, the node reads from input by default:
 | `resolve` | `(input, context) => { title, content, icon? }` |Unified conversion of business input into folding block parameters.|
 | `format` | `(payload, details, input, context) => Output` |Business fields are appended to the default payload.|
 | `historyLimit` | `number` |The number of nodes retained in the execution history. The default value is `50`.|
-| `metadata` | `WorkflowNodeMetadataInput` |The node displays the meta information. The default type is `details-output`.|
+| `metadata` | `NodeMetadataInput` |The node displays the meta information. The default type is `details-output`.|
 
 ## Icon Presets
 
@@ -58,7 +58,7 @@ If the passed-in icon is not a preset name, it will be placed on the left side o
 
 ## Return to payload
 
-Default payload inheritance `WorkflowPayload`:
+Default payload inheritance `RunPayload`:
 
 |Field|Description|
 | --- | --- |

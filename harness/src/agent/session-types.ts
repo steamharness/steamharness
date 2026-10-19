@@ -1,8 +1,8 @@
 import type { RegistryReader, ToolRegistration } from "@earendil-works/pi-durable";
 import type { JsonValue } from "@earendil-works/chord";
 import type { AgentExecutionEnvironment, AgentToolCatalog } from "./extensions";
-import type { WorkflowOutputItemInput } from "../node/output/index";
-import type { WorkflowTokenUsageAggregate } from "../token-usage/index";
+import type { RunOutputItemInput } from "../node/output/index";
+import type { TokenUsageAggregate } from "../token-usage/index";
 import type { AgentContextUsage, AgentImageInput } from "./types";
 
 export interface AgentPlanItem {
@@ -96,9 +96,9 @@ export interface AgentSessionTurn {
   answerId?: number;
   reason?: string;
   epoch: number;
-  items: WorkflowOutputItemInput[];
+  items: RunOutputItemInput[];
   /** This turn's model responses, including retries; inherited history is not billed again. */
-  usage?: WorkflowTokenUsageAggregate;
+  usage?: TokenUsageAggregate;
 }
 
 export interface AgentSessionSnapshot {
@@ -120,7 +120,7 @@ export interface AgentSessionSnapshot {
   contexts: { conversationId: number; foreground: boolean; backgroundCount: number; epoch: number; configuration: AgentSessionSnapshot['configuration'];
     prompt: AgentSessionSnapshot['prompt']; plan: AgentSessionSnapshot['plan']; contextUsage?: AgentContextUsage;
     /** Standard auxiliary outputs supplied by the Agent node for this conversation. */
-    outputs?: WorkflowOutputItemInput[] }[];
+    outputs?: RunOutputItemInput[] }[];
   records: { id: number; conversationId: number; kind: string; label: string; data?: unknown }[];
   receipts: AgentSessionReceipt[];
   usage: { conversationId: number; parentId?: number; models: Record<string, unknown>; tools: Record<string, unknown> }[];

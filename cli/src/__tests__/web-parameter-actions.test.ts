@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ParameterActions } from '../web/ui/parameter-actions';
-import type { WorkflowParameters, WorkflowParamState, WorkflowParamValue, WorkflowParamValues } from '../web/workflow-types';
+import type { Parameters, ParamState, ParamValue, ParamValues } from '../web/workflow-types';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -54,9 +54,9 @@ function fixture() {
     constructor(callback: ResizeObserverCallback) { observers.push(callback); }
     observe() {}
   });
-  const state = { values: { model: 'long', permission: 'auto' } as WorkflowParamValues,
-    states: {} as Record<string, WorkflowParamState>, disabled: false, loading: false };
-  const parameters: WorkflowParameters = { fields: [
+  const state = { values: { model: 'long', permission: 'auto' } as ParamValues,
+    states: {} as Record<string, ParamState>, disabled: false, loading: false };
+  const parameters: Parameters = { fields: [
     { name: 'model', type: 'string', control: 'select', options: [{ value: 'long', label: 'A long selected model' }, { value: 'short', label: 'Short' }] },
     { name: 'permission', label: 'Permission', type: 'string', control: 'select', defaultValue: 'auto', options: [
       { value: 'read', label: 'Read only' }, { value: 'workspace', label: 'Workspace' }, { value: 'auto', label: 'Auto approve' },
@@ -65,7 +65,7 @@ function fixture() {
     { kind: 'quick', id: 'models', label: 'AI', icon: 'sparkle', summary: ['model'], params: ['model'] },
     { kind: 'quick', id: 'access', label: 'Permission', icon: 'shield', summary: ['permission'], params: ['permission'] },
   ] } };
-  const onChange = vi.fn((name: string, value: WorkflowParamValue) => { state.values[name] = value; actions.update(); });
+  const onChange = vi.fn((name: string, value: ParamValue) => { state.values[name] = value; actions.update(); });
   const onReset = vi.fn((names: string[]) => {
     for (const name of names) {
       const field = parameters.fields.find(field => field.name === name);

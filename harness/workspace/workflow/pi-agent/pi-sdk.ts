@@ -89,10 +89,10 @@ type PiAgentSdkEvent =
 export interface PiAgentRuntimeOptions {
   getEnv(name: string): string | undefined;
   context?: unknown;
-  onPendingApproval?: (error: workflow.WorkflowError) => void;
+  onPendingApproval?: (error: workflow.HarnessError) => void;
 }
 
-interface WorkflowToolApprovalContext {
+interface ToolApprovalContext {
   toolPermissions?: {
     getTool(name: string): { enabled: boolean; autoApprove: boolean; label?: string; description?: string } | undefined;
   };
@@ -322,7 +322,7 @@ export function __test_createDelayedToolEventBuffer(toolName: string, enabled: b
 }
 
 function shouldDelayToolEventsUntilApproval(context: unknown, toolName: string): boolean {
-  const tool = (context as WorkflowToolApprovalContext | undefined)?.toolPermissions?.getTool(toolName);
+  const tool = (context as ToolApprovalContext | undefined)?.toolPermissions?.getTool(toolName);
   return tool?.enabled === true && tool.autoApprove === false;
 }
 
@@ -337,8 +337,8 @@ function isToolApprovalDecisionEnd(event: PiAgentSessionEvent): boolean {
     event.chunk.itemId.startsWith("pi-agent-tool-approval-");
 }
 
-function isPendingToolApprovalError(error: unknown): error is workflow.WorkflowError {
-  return error instanceof workflow.WorkflowError && error.type === "user_input_required";
+function isPendingToolApprovalError(error: unknown): error is workflow.HarnessError {
+  return error instanceof workflow.HarnessError && error.type === "user_input_required";
 }
 
 export function createWorkflowToolPermissionExtension(
@@ -347,7 +347,7 @@ export function createWorkflowToolPermissionExtension(
 ): ExtensionFactory {
   return (pi) => {
     pi.on("tool_call", async (event) => {
-      const workflowContext = context as WorkflowToolApprovalContext;
+      const workflowContext = context as ToolApprovalContext;
       const tool = workflowContext.toolPermissions?.getTool(event.toolName);
       if (event.toolName === KNOWLEDGE_DOCUMENTS_TOOL_NAME) {
         return undefined;
@@ -378,7 +378,7 @@ export function createWorkflowToolPermissionExtension(
         }
         return undefined;
       } catch (error) {
-        if (error instanceof workflow.WorkflowError && error.type === "tool_permission_denied") {
+        if (error instanceof workflow.HarnessError && error.type === "tool_permission_denied") {
           emitToolApprovalDecision(emit, {
             toolName: event.toolName,
             label: tool.label,
@@ -405,12 +405,12 @@ function emitToolApprovalDecision(
   }
 }
 
-function readApprovalRequestId(error: workflow.WorkflowError): string | undefined {
+function readApprovalRequestId(error: workflow.HarnessError): string | undefined {
   const requestId = error.metadata?.["requestId"];
   return typeof requestId === "string" ? requestId : undefined;
 }
 
-function readApprovalValues(error: workflow.WorkflowError): Record<string, unknown> | undefined {
+function readApprovalValues(error: workflow.HarnessError): Record<string, unknown> | undefined {
   const values = error.metadata?.["values"];
   return isRecord(values) ? values : undefined;
 }

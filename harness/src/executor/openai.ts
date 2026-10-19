@@ -2,20 +2,20 @@ import {
   isOpenAIConversationHostInput,
   type OpenAIConversationHostInput,
 } from "@steamharness/openai-responses";
-import { WorkflowError } from "../workflow/errors";
-import type { WorkflowExecutorContext } from "./types";
+import { HarnessError } from "../workflow/errors";
+import type { ExecutorContext } from "./types";
 
 export type { OpenAIConversationHostInput } from "@steamharness/openai-responses";
 
 export function readOpenAIConversationHostInput(
-  context: Pick<WorkflowExecutorContext, "hostInput">,
+  context: Pick<ExecutorContext, "hostInput">,
 ): OpenAIConversationHostInput | undefined {
   if (context.hostInput === undefined) return undefined;
   if (!isRecord(context.hostInput) || context.hostInput.kind !== "openai.responses") {
     return undefined;
   }
   if (!isOpenAIConversationHostInput(context.hostInput)) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "The OpenAI Responses host input is invalid.",
     });

@@ -3,7 +3,7 @@ import { ArrowLeft, CircleAlert, Download, Package, RefreshCw } from "lucide-rea
 import { formatDateTime } from "@steamharness/i18n";
 import { useTranslation } from "@steamharness/i18n/react";
 import { apiClient } from "@/api";
-import { isApiSuccess, type WorkflowSourceShare } from "@/types";
+import { isApiSuccess, type SourceShare } from "@/types";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import { projectSourceArchivePath } from "@/utils/routes";
 export function ProjectSourceSharePage({ id, version, onNavigateProjects }: { id: string; version: string; onNavigateProjects: () => void }) {
   const { t } = useTranslation("serverWeb");
   const [revision, setRevision] = useState(0);
-  const [state, setState] = useState<{ loading: boolean; data?: WorkflowSourceShare; error?: string }>({ loading: true });
+  const [state, setState] = useState<{ loading: boolean; data?: SourceShare; error?: string }>({ loading: true });
   useEffect(() => {
     const controller = new AbortController();
     setState({ loading: true });

@@ -31,7 +31,7 @@ const outputNode = workflow.createOutputNode<SmokeInput, SmokeOutputPayload>({
     });
     for (const part of ["smoke", ":", input.message]) {
       if (context.abortSignal?.aborted) {
-        throw new workflow.WorkflowError({
+        throw new workflow.HarnessError({
           type: "execution_aborted",
           message: "Smoke workflow was aborted.",
           nodeName: "smoke-output",
@@ -87,7 +87,7 @@ export const smokeWorkflow = workflow.defineWorkflow<SmokeInput, SmokeOutputPayl
     const parsed = await workflow.runNode(inputNode, input, context);
 
     if (parsed.mode === "fail") {
-      throw new workflow.WorkflowError({
+      throw new workflow.HarnessError({
         type: "workflow_execution",
         message: "Smoke fixture failure.",
         metadata: { mode: parsed.mode },
@@ -104,7 +104,7 @@ export const smokeWorkflow = workflow.defineWorkflow<SmokeInput, SmokeOutputPayl
 
     const result = await workflow.runStreamNode(outputNode, parsed, context);
     if (result.output === undefined) {
-      throw new workflow.WorkflowError({
+      throw new workflow.HarnessError({
         type: "workflow_execution",
         message: "Smoke output was not created.",
       });

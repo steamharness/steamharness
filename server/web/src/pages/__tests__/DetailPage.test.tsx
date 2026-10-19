@@ -12,7 +12,7 @@ import type {
 } from "@steamharness/knowledge-base";
 import { DetailPage, getDetailNavItems } from "../DetailPage";
 import type { DetailState, DetailTab } from "../../state";
-import type { WorkflowRelatedProjectStatus, WorkflowSummary, WorkflowVersionSummary } from "../../types";
+import type { RelatedProjectStatus, Summary, VersionSummary } from "../../types";
 
 type DetailPageProps = Parameters<typeof DetailPage>[0];
 
@@ -640,7 +640,7 @@ type RenderOptions = {
   onKVFiltersChange?: DetailPageProps["onKVFiltersChange"];
   onNavigateTab?: DetailPageProps["onNavigateTab"];
   onNavigateProjectTab?: DetailPageProps["onNavigateProjectTab"];
-  project?: WorkflowSummary;
+  project?: Summary;
   knowledgeRepository?: KnowledgeRepository;
   onResolveKnowledgeImageSrc?: DetailPageProps["onResolveKnowledgeImageSrc"];
 };
@@ -681,8 +681,8 @@ function createDetailPageElement(options: RenderOptions = {}) {
 }
 
 function mockRelatedProjectManagement(options: {
-  projects?: WorkflowSummary[];
-  relatedProjects?: WorkflowRelatedProjectStatus[];
+  projects?: Summary[];
+  relatedProjects?: RelatedProjectStatus[];
 } = {}) {
   const listRelations = vi.spyOn(apiClient, "listRelatedProjects").mockResolvedValue({
     errCode: 0,
@@ -702,7 +702,7 @@ function mockRelatedProjectManagement(options: {
   return { listRelations, listProjects, listRequests };
 }
 
-function createProject(): WorkflowSummary {
+function createProject(): Summary {
   return {
     id: "demo",
     name: "Demo Project",
@@ -738,7 +738,7 @@ function createDetailState(overrides: Partial<DetailState> = {}): DetailState {
   };
 }
 
-function createVersions(): WorkflowVersionSummary {
+function createVersions(): VersionSummary {
   return {
     id: "demo",
     name: "Demo Project",

@@ -4,13 +4,13 @@ import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:
 import os from "node:os";
 import path from "node:path";
 import { isWorkflowStorageNotFoundError } from "../object-storage";
-import { WorkflowLocalStorage } from "../local-storage";
+import { LocalStorage } from "../local-storage";
 
 const PUBLIC_BASE_URL = "https://storage.example.com/";
 const SAMPLE_KEY = "workflows/demo/1.0.0/hash/source.tar.gz";
 
-function createStorage(root: string): WorkflowLocalStorage {
-  return new WorkflowLocalStorage({ root, publicBaseUrl: PUBLIC_BASE_URL });
+function createStorage(root: string): LocalStorage {
+  return new LocalStorage({ root, publicBaseUrl: PUBLIC_BASE_URL });
 }
 
 async function withTempRoot<T>(run: (root: string) => Promise<T>): Promise<T> {

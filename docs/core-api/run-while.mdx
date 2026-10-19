@@ -12,13 +12,13 @@ description: "执行可追踪的 while 循环节点，并让共享运行界面 D
 ```ts
 workflow.runWhile<State>(
   input: State,
-  context: WorkflowContext,
+  context: RunContext,
   options: {
     name?: string;
-    condition(input: State, context: WorkflowContext, iteration: number): boolean | Promise<boolean>;
-    run(input: State, context: WorkflowContext, iteration: number): State | Promise<State>;
+    condition(input: State, context: RunContext, iteration: number): boolean | Promise<boolean>;
+    run(input: State, context: RunContext, iteration: number): State | Promise<State>;
     maxIterations?: number;
-    metadata?: Partial<WorkflowNodeMetadata>;
+    metadata?: Partial<NodeMetadata>;
   },
 ): Promise<State>
 ```
@@ -28,12 +28,12 @@ workflow.runWhile<State>(
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
 | `input` | `State` | 初始循环状态。 |
-| `context` | `WorkflowContext` | runtime 上下文，用于 hooks、provider、KV、files、abortSignal。 |
+| `context` | `RunContext` | runtime 上下文，用于 hooks、provider、KV、files、abortSignal。 |
 | `options.name` | `string` | Diagram 和 Trace 中显示的循环节点标题。默认 `Run while`。 |
 | `options.condition` | `function` | 每轮开始前执行；返回 `true` 时继续循环。第三个参数是从 `0` 开始的 iteration。 |
 | `options.run` | `function` | 条件命中后执行的循环体，返回下一轮状态。 |
 | `options.maxIterations` | `number` | 最大迭代次数。默认 `100`，防止意外无限循环。 |
-| `options.metadata` | `Partial<WorkflowNodeMetadata>` | 覆盖循环节点元信息，默认 type 为 `run-while`。 |
+| `options.metadata` | `Partial<NodeMetadata>` | 覆盖循环节点元信息，默认 type 为 `run-while`。 |
 
 ## 运行报告
 
@@ -97,5 +97,5 @@ const finalState = await workflow.runWhile(seed, context, {
 | 情况 | 错误类型 | 说明 |
 | --- | --- | --- |
 | 超过 `maxIterations` | `node_execution` | 抛出 `Run-while node "<name>" exceeded maxIterations (<value>).`。 |
-| `condition` 或 `run` 抛错 | `node_execution` | 原错误会被包装成 `WorkflowError` 并写入 loop 节点报告。 |
+| `condition` 或 `run` 抛错 | `node_execution` | 原错误会被包装成 `HarnessError` 并写入 loop 节点报告。 |
 | 执行前或循环中中断 | `execution_aborted` 或 `node_execution` | 来自 `context.abortSignal`。 |

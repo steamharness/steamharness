@@ -3,7 +3,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { getEnv } from "../../env";
 import { AiSdkLLMProvider } from "./ai-sdk";
 import type { LLMCallSettings, LLMProvider } from "./types";
-import { WorkflowError } from "../../workflow/errors";
+import { HarnessError } from "../../workflow/errors";
 
 export const LLM_PROVIDER_TYPES = [
   "openai-completion",
@@ -43,7 +43,7 @@ export function createLLMProvider(
   switch (options.type) {
     case "openai-completion": {
       if (options.webSearch) {
-        throw new WorkflowError({
+        throw new HarnessError({
           type: "input_validation",
           message: "Web search requires the OpenAI Responses or Anthropic provider.",
         });
@@ -146,7 +146,7 @@ export function parseLLMProviderType(value: string): LLMProviderType {
       return "anthropic";
 
     default:
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "input_validation",
         message: `Unsupported LLM provider type "${value}". Expected one of: ${LLM_PROVIDER_TYPES.join(", ")}.`,
         metadata: {
@@ -172,7 +172,7 @@ function readRequiredProviderEnv(
   const value = readOptionalProviderEnv(env, name, aliases);
 
   if (value === undefined) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `Missing required environment variable: ${name}.`,
       metadata: {
@@ -205,7 +205,7 @@ function readRequiredWorkflowEnv(name: string, aliases: string[] = []): string {
   const value = readOptionalWorkflowEnv(name, aliases);
 
   if (value === undefined) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `Missing required environment variable: ${name}.`,
       metadata: {

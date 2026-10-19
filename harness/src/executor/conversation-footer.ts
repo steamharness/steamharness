@@ -1,12 +1,12 @@
-import { WorkflowError } from "../workflow/index";
-import type { WorkflowConversationFooterItem, WorkflowParamDefinition } from "./types";
+import { HarnessError } from "../workflow/index";
+import type { ConversationFooterItem, ParamDefinition } from "./types";
 
 export function assertConversationFooter(
   value: unknown,
-  params: readonly WorkflowParamDefinition[],
-): asserts value is WorkflowConversationFooterItem[] | undefined {
+  params: readonly ParamDefinition[],
+): asserts value is ConversationFooterItem[] | undefined {
   if (value === undefined) return;
-  function fail(message: string): never { throw new WorkflowError({ type: "input_validation", message: `Conversation footer ${message}` }); }
+  function fail(message: string): never { throw new HarnessError({ type: "input_validation", message: `Conversation footer ${message}` }); }
   const record = (item: unknown): item is Record<string, unknown> => !!item && typeof item === "object" && !Array.isArray(item);
   const names = new Set(params.map(param => param.name));
   if (!Array.isArray(value)) fail("must be an array.");

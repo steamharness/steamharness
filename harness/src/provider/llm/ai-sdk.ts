@@ -7,7 +7,7 @@ import type {
   LLMProvider,
   LLMStreamChunk,
 } from "./types";
-import { WorkflowError } from "../../workflow/errors";
+import { HarnessError } from "../../workflow/errors";
 
 export interface AiSdkLLMProviderOptions {
   model: LLMModel;
@@ -58,7 +58,7 @@ export class AiSdkLLMProvider implements LLMProvider {
         providerMetadata: withProviderWarnings(result.providerMetadata, warnings),
       };
     } catch (error) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "provider_call",
         message: "LLM provider chat call failed.",
         cause: error,
@@ -115,7 +115,7 @@ export class AiSdkLLMProvider implements LLMProvider {
         }
       }
     } catch (error) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "stream_interrupted",
         message: "LLM provider stream call failed.",
         cause: error,

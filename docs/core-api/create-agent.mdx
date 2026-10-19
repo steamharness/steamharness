@@ -25,7 +25,7 @@ const agent = await workflow.createAgent({
   permissionPolicy?: AgentPermissionPolicy,
   mode?: AgentMode,
   tools?: string[],
-  toolDefinitions?: WorkflowToolPermissionDefinition[],
+  toolDefinitions?: ToolPermissionDefinition[],
   allowedDirectories?: string[],
   extraTools?: AgentTool[],
   sessionId?: string,
@@ -167,7 +167,7 @@ Studio Trace 在原轨迹页旁提供任务、计划、记录、用量四个 tab
 | `prompt` | `string` | 本轮输入。本轮带图片时可以为空字符串：一轮只有附件的运行是合法的一轮，运行时会把图片本身作为消息内容发出去，而不是先报「缺少 prompt」。 |
 | `requestId` | `string` | 逻辑提交身份。同一输入的恢复、重发使用原值；真正的新输入使用新值。同一存储内重复提交返回原提交，不再次调用模型或工具。 |
 | `images` | `AgentImageInput[]` | `{ data, mimeType }` 形式的图片。 |
-| `imageFiles` | `WorkflowFileReference[]` | 宿主文件引用形式的附件，由运行时的输入节点通过工作流文件存储解析。不可读或不是图片的引用会让本轮以命名到具体文件的错误结束，而不是静默丢掉附件。解析后它会变成 `images`，下游看不到引用这一步。 |
+| `imageFiles` | `FileReference[]` | 宿主文件引用形式的附件，由运行时的输入节点通过工作流文件存储解析。不可读或不是图片的引用会让本轮以命名到具体文件的错误结束，而不是静默丢掉附件。解析后它会变成 `images`，下游看不到引用这一步。 |
 | `modelAttributes` | `AgentModelAttributes` | 覆盖运行时选项里的同名项，见下方「模型属性」。 |
 | `workdir` | `string` | 覆盖运行时的工作目录。 |
 | `allowedDirectories` | `string[]` | 覆盖工具可访问的根目录；相对路径按本轮的 `workdir` 解析，省略时只有 `workdir`。 |

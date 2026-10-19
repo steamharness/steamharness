@@ -1,8 +1,8 @@
 import type {
-  WorkflowKVNamespace,
-  WorkflowKVNamespaceMutation,
+  KVNamespace,
+  KVNamespaceMutation,
 } from "../kv/index";
-import { WorkflowError } from "../workflow/errors";
+import { HarnessError } from "../workflow/errors";
 
 export const KNOWLEDGE_DOCUMENT_INDEX_KEY = "knowledge.documents";
 export const KNOWLEDGE_DOCUMENT_KEY_PREFIX = "knowledge.document.";
@@ -26,12 +26,12 @@ const KNOWLEDGE_MARKDOWN_PREVIEW_WHITESPACE_PATTERN = /\s/u;
 /**
  * What the knowledge helpers need: a persistent-value namespace.
  *
- * Named as one member rather than as `Pick<WorkflowStorageLocationContext, …>`
+ * Named as one member rather than as `Pick<StorageLocationContext, …>`
  * so a namespace that is not a run's own storage can be handed in — the
  * related-project scope builds one over the target project's store.
  */
-export interface WorkflowKnowledgeContext {
-  persistentValue: WorkflowKVNamespace;
+export interface KnowledgeContext {
+  persistentValue: KVNamespace;
 }
 
 /**
@@ -69,7 +69,7 @@ export function isKnowledgeDocumentStorageKey(key: string): boolean {
  * which keys it will write is refused rather than trusted.
  */
 export function describeKnowledgeMutationKeys(
-  mutation: WorkflowKVNamespaceMutation,
+  mutation: KVNamespaceMutation,
 ): { read: string[]; write: string[] } | undefined {
   const type = mutation.type.startsWith("knowledge-document.")
     ? mutation.type.slice("knowledge-document.".length)
@@ -116,7 +116,7 @@ function tryCreateKnowledgeDocumentKey(id: string): string | undefined {
   }
 }
 
-export interface WorkflowKnowledgeDocument {
+export interface KnowledgeDocument {
   id: string;
   title: string;
   markdown: string;
@@ -124,7 +124,7 @@ export interface WorkflowKnowledgeDocument {
   updatedAt: string;
 }
 
-export interface WorkflowKnowledgeDocumentSummary {
+export interface KnowledgeDocumentSummaryRecord {
   id: string;
   title: string;
   markdownPreview: string;
@@ -137,8 +137,8 @@ export interface ListKnowledgeDocumentsInput {
   cursor?: string;
 }
 
-export interface WorkflowKnowledgeDocumentPage {
-  items: WorkflowKnowledgeDocumentSummary[];
+export interface KnowledgeDocumentPageRecord {
+  items: KnowledgeDocumentSummaryRecord[];
   nextCursor?: string;
   hasMore: boolean;
   total: number;
@@ -172,7 +172,7 @@ export interface ReadKnowledgeDocumentLinesInput {
   endLine: number;
 }
 
-export interface WorkflowKnowledgeSearchMatch {
+export interface KnowledgeSearchMatch {
   documentId: string;
   title: string;
   lineNumber: number;
@@ -181,7 +181,7 @@ export interface WorkflowKnowledgeSearchMatch {
   after: Array<{ lineNumber: number; content: string }>;
 }
 
-export interface WorkflowKnowledgeSearchResult {
+export interface KnowledgeSearchResultRecord {
   query: string;
   documentsSearched: number;
   totalMatches: number;
@@ -191,10 +191,10 @@ export interface WorkflowKnowledgeSearchResult {
   cursor?: string;
   nextCursor?: string;
   hasMore: boolean;
-  matches: WorkflowKnowledgeSearchMatch[];
+  matches: KnowledgeSearchMatch[];
 }
 
-export interface WorkflowKnowledgeDocumentLinesResult {
+export interface KnowledgeDocumentLinesResult {
   documentId: string;
   title: string;
   startLine: number;
@@ -211,7 +211,7 @@ interface KnowledgeDocumentIndexMeta {
 }
 
 interface KnowledgeDocumentIndexEntry {
-  summary: WorkflowKnowledgeDocumentSummary;
+  summary: KnowledgeDocumentSummaryRecord;
   sequence: number;
 }
 
@@ -249,16 +249,16 @@ interface KnowledgeValueChange {
 }
 
 export async function listKnowledgeDocuments(
-  context: WorkflowKnowledgeContext,
-): Promise<WorkflowKnowledgeDocumentSummary[]> {
+  context: KnowledgeContext,
+): Promise<KnowledgeDocumentSummaryRecord[]> {
   const { meta } = await readKnowledgeDocumentIndexMeta(context);
   return readAllKnowledgeDocumentSummaries(context, meta);
 }
 
 export async function listKnowledgeDocumentPage(
-  context: WorkflowKnowledgeContext,
+  context: KnowledgeContext,
   input: ListKnowledgeDocumentsInput = {},
-): Promise<WorkflowKnowledgeDocumentPage> {
+): Promise<KnowledgeDocumentPageRecord> {
   const pageSize = normalizeKnowledgeDocumentPageSize(input.pageSize);
   const cursor = normalizeKnowledgeDocumentPageCursor(input.cursor);
   const { meta } = await readKnowledgeDocumentIndexMeta(context);
@@ -284,17 +284,17 @@ export async function listKnowledgeDocumentPage(
 }
 
 export async function getKnowledgeDocument(
-  context: WorkflowKnowledgeContext,
+  context: KnowledgeContext,
   documentId: string,
-): Promise<WorkflowKnowledgeDocument | undefined> {
+): Promise<KnowledgeDocument | undefined> {
   const id = normalizeKnowledgeDocumentId(documentId);
   return readKnowledgeDocumentValue(await context.persistentValue.getValue(createKnowledgeDocumentKey(id)));
 }
 
 export async function createKnowledgeDocument(
-  context: WorkflowKnowledgeContext,
+  context: KnowledgeContext,
   input: CreateKnowledgeDocumentInput,
-): Promise<WorkflowKnowledgeDocument> {
+): Promise<KnowledgeDocument> {
   // The id is settled here, before the mutation can leave for a store that
   // runs it, so that a host checking the grant on the way out can name the key
   // the store will write. Otherwise the id would be invented inside the store,
@@ -312,14 +312,14 @@ function createKnowledgeDocumentMutationId(input: CreateKnowledgeDocumentInput):
 }
 
 async function createKnowledgeDocumentUnlocked(
-  context: WorkflowKnowledgeContext,
+  context: KnowledgeContext,
   input: CreateKnowledgeDocumentInput,
-): Promise<WorkflowKnowledgeDocument> {
+): Promise<KnowledgeDocument> {
   const id = normalizeKnowledgeDocumentId(input.id ?? createKnowledgeDocumentId(input.title));
   const title = normalizeKnowledgeDocumentTitle(input.title);
   const markdown = normalizeKnowledgeDocumentMarkdown(input.markdown);
   const now = new Date().toISOString();
-  const document: WorkflowKnowledgeDocument = {
+  const document: KnowledgeDocument = {
     id,
     title,
     markdown,
@@ -330,7 +330,7 @@ async function createKnowledgeDocumentUnlocked(
   const documentKey = createKnowledgeDocumentKey(id);
   const previousDocument = await namespace.getValue(documentKey);
   if (readKnowledgeDocumentValue(previousDocument) !== undefined) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `Knowledge document "${id}" already exists.`,
       metadata: { documentId: id },
@@ -371,9 +371,9 @@ async function createKnowledgeDocumentUnlocked(
 }
 
 export async function editKnowledgeDocument(
-  context: WorkflowKnowledgeContext,
+  context: KnowledgeContext,
   input: EditKnowledgeDocumentInput,
-): Promise<WorkflowKnowledgeDocument> {
+): Promise<KnowledgeDocument> {
   return executeKnowledgeDocumentMutation(
     context,
     { type: "knowledge-document.edit", input },
@@ -382,23 +382,23 @@ export async function editKnowledgeDocument(
 }
 
 async function editKnowledgeDocumentUnlocked(
-  context: WorkflowKnowledgeContext,
+  context: KnowledgeContext,
   input: EditKnowledgeDocumentInput,
-): Promise<WorkflowKnowledgeDocument> {
+): Promise<KnowledgeDocument> {
   const id = normalizeKnowledgeDocumentId(input.id);
   const namespace = context.persistentValue;
   const documentKey = createKnowledgeDocumentKey(id);
   const previousDocument = await namespace.getValue(documentKey);
   const current = readKnowledgeDocumentValue(previousDocument);
   if (current === undefined) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `Knowledge document "${id}" does not exist.`,
       metadata: { documentId: id },
     });
   }
 
-  const next: WorkflowKnowledgeDocument = {
+  const next: KnowledgeDocument = {
     ...current,
     title: input.title === undefined ? current.title : normalizeKnowledgeDocumentTitle(input.title),
     markdown: input.markdown === undefined ? current.markdown : normalizeKnowledgeDocumentMarkdown(input.markdown),
@@ -501,7 +501,7 @@ async function editKnowledgeDocumentUnlocked(
 }
 
 export async function deleteKnowledgeDocument(
-  context: WorkflowKnowledgeContext,
+  context: KnowledgeContext,
   documentId: string,
 ): Promise<{ id: string; deleted: boolean }> {
   return executeKnowledgeDocumentMutation(
@@ -512,7 +512,7 @@ export async function deleteKnowledgeDocument(
 }
 
 async function deleteKnowledgeDocumentUnlocked(
-  context: WorkflowKnowledgeContext,
+  context: KnowledgeContext,
   documentId: string,
 ): Promise<{ id: string; deleted: boolean }> {
   const id = normalizeKnowledgeDocumentId(documentId);
@@ -587,9 +587,9 @@ async function deleteKnowledgeDocumentUnlocked(
 }
 
 export async function searchKnowledgeDocuments(
-  context: WorkflowKnowledgeContext,
+  context: KnowledgeContext,
   input: SearchKnowledgeDocumentsInput,
-): Promise<WorkflowKnowledgeSearchResult> {
+): Promise<KnowledgeSearchResultRecord> {
   const withReadLock = context.persistentValue.withReadLock;
   return withReadLock === undefined
     ? searchKnowledgeDocumentsUnlocked(context, input)
@@ -597,9 +597,9 @@ export async function searchKnowledgeDocuments(
 }
 
 async function searchKnowledgeDocumentsUnlocked(
-  context: WorkflowKnowledgeContext,
+  context: KnowledgeContext,
   input: SearchKnowledgeDocumentsInput,
-): Promise<WorkflowKnowledgeSearchResult> {
+): Promise<KnowledgeSearchResultRecord> {
   const query = normalizeSearchQuery(input.query);
   const beforeLines = normalizeContextLineCount(input.beforeLines, "beforeLines");
   const afterLines = normalizeContextLineCount(input.afterLines, "afterLines");
@@ -608,11 +608,11 @@ async function searchKnowledgeDocumentsUnlocked(
     : normalizeSearchPageSize(input.pageSize, "pageSize");
   const cursor = normalizeSearchCursor(input.cursor);
   const normalizedQuery = query.toLowerCase();
-  const matches: WorkflowKnowledgeSearchMatch[] = [];
+  const matches: KnowledgeSearchMatch[] = [];
   let totalMatches = 0;
   let documentsSearched = 0;
 
-  const scanDocument = (document: WorkflowKnowledgeDocument) => {
+  const scanDocument = (document: KnowledgeDocument) => {
     documentsSearched += 1;
     const lines = document.markdown.split(/\r?\n/);
     for (const [index, line] of lines.entries()) {
@@ -665,9 +665,9 @@ async function searchKnowledgeDocumentsUnlocked(
 }
 
 export async function readKnowledgeDocumentLines(
-  context: WorkflowKnowledgeContext,
+  context: KnowledgeContext,
   input: ReadKnowledgeDocumentLinesInput,
-): Promise<WorkflowKnowledgeDocumentLinesResult> {
+): Promise<KnowledgeDocumentLinesResult> {
   const document = await getRequiredKnowledgeDocument(context, input.documentId);
   const { startLine, endLine } = normalizeLineRange(input.startLine, input.endLine);
   const lines = document.markdown.split(/\r?\n/);
@@ -688,7 +688,7 @@ export function createKnowledgeDocumentKey(documentId: string): string {
   return `${KNOWLEDGE_DOCUMENT_KEY_PREFIX}${normalizeKnowledgeDocumentId(documentId)}`;
 }
 
-function createKnowledgeDocumentSummary(document: WorkflowKnowledgeDocument): WorkflowKnowledgeDocumentSummary {
+function createKnowledgeDocumentSummary(document: KnowledgeDocument): KnowledgeDocumentSummaryRecord {
   return {
     id: document.id,
     title: document.title,
@@ -699,12 +699,12 @@ function createKnowledgeDocumentSummary(document: WorkflowKnowledgeDocument): Wo
 }
 
 async function withKnowledgeDocumentMutationLock<T>(
-  context: WorkflowKnowledgeContext,
+  context: KnowledgeContext,
   operation: () => Promise<T>,
 ): Promise<T> {
   const namespace = context.persistentValue;
   if (namespace.withLock === undefined) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "workflow_execution",
       message: "Knowledge document mutations require an atomic PersistentValue namespace lock or mutation executor.",
     });
@@ -713,8 +713,8 @@ async function withKnowledgeDocumentMutationLock<T>(
 }
 
 async function executeKnowledgeDocumentMutation<T>(
-  context: WorkflowKnowledgeContext,
-  mutation: WorkflowKVNamespaceMutation,
+  context: KnowledgeContext,
+  mutation: KVNamespaceMutation,
   operation: () => Promise<T>,
 ): Promise<T> {
   const namespace = context.persistentValue;
@@ -725,13 +725,13 @@ async function executeKnowledgeDocumentMutation<T>(
 }
 
 async function getRequiredKnowledgeDocument(
-  context: WorkflowKnowledgeContext,
+  context: KnowledgeContext,
   documentId: string,
-): Promise<WorkflowKnowledgeDocument> {
+): Promise<KnowledgeDocument> {
   const id = normalizeKnowledgeDocumentId(documentId);
   const document = await getKnowledgeDocument(context, id);
   if (document === undefined) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `Knowledge document "${id}" does not exist.`,
       metadata: { documentId: id },
@@ -741,21 +741,21 @@ async function getRequiredKnowledgeDocument(
 }
 
 async function readKnowledgeDocumentIndexMeta(
-  context: WorkflowKnowledgeContext,
+  context: KnowledgeContext,
 ): Promise<{ meta: KnowledgeDocumentIndexMeta; raw: unknown }> {
   const raw = await context.persistentValue.getValue(KNOWLEDGE_DOCUMENT_INDEX_KEY);
   return { meta: normalizeKnowledgeDocumentIndexMeta(raw), raw };
 }
 
 async function readKnowledgeDocumentIndexPage(
-  context: WorkflowKnowledgeContext,
+  context: KnowledgeContext,
   pageId: string,
 ): Promise<KnowledgeDocumentIndexPageState> {
   const normalizedPageId = normalizeKnowledgeDocumentIndexPageId(pageId);
   const raw = await context.persistentValue.getValue(createKnowledgeDocumentIndexPageKey(normalizedPageId));
   const page = normalizeKnowledgeDocumentIndexPage(raw);
   if (page === undefined) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "workflow_execution",
       message: `Knowledge document index page "${normalizedPageId}" is missing or invalid.`,
       metadata: { pageId: normalizedPageId },
@@ -765,12 +765,12 @@ async function readKnowledgeDocumentIndexPage(
 }
 
 async function readAllKnowledgeDocumentSummaries(
-  context: WorkflowKnowledgeContext,
+  context: KnowledgeContext,
   meta: KnowledgeDocumentIndexMeta,
-): Promise<WorkflowKnowledgeDocumentSummary[]> {
+): Promise<KnowledgeDocumentSummaryRecord[]> {
   if (meta.headPageId === undefined) return [];
 
-  const summaries: WorkflowKnowledgeDocumentSummary[] = [];
+  const summaries: KnowledgeDocumentSummaryRecord[] = [];
   const visited = new Set<string>();
   let pageId: string | undefined = meta.headPageId;
   while (pageId !== undefined) {
@@ -786,13 +786,13 @@ async function readAllKnowledgeDocumentSummaries(
 }
 
 async function readKnowledgeDocumentSummaryPage(
-  context: WorkflowKnowledgeContext,
+  context: KnowledgeContext,
   meta: KnowledgeDocumentIndexMeta,
   initialPageId: string | undefined,
   beforeSequence: number | undefined,
   pageSize: number,
-): Promise<{ items: WorkflowKnowledgeDocumentSummary[]; nextCursor?: KnowledgeDocumentPageCursor }> {
-  const items: WorkflowKnowledgeDocumentSummary[] = [];
+): Promise<{ items: KnowledgeDocumentSummaryRecord[]; nextCursor?: KnowledgeDocumentPageCursor }> {
+  const items: KnowledgeDocumentSummaryRecord[] = [];
   const visited = new Set<string>();
   let pageId: string | undefined = initialPageId ?? meta.headPageId;
 
@@ -835,7 +835,7 @@ async function readKnowledgeDocumentSummaryPage(
 }
 
 async function hasKnowledgeDocumentEntryBeforeSequence(
-  context: WorkflowKnowledgeContext,
+  context: KnowledgeContext,
   initialPage: KnowledgeDocumentIndexPageValue,
   initialOffset: number,
   beforeSequence: number,
@@ -862,7 +862,7 @@ async function hasKnowledgeDocumentEntryBeforeSequence(
 }
 
 async function prepareKnowledgeDocumentHeadPage(
-  context: WorkflowKnowledgeContext,
+  context: KnowledgeContext,
   meta: KnowledgeDocumentIndexMeta,
   sequence: number,
 ): Promise<{
@@ -890,7 +890,7 @@ async function prepareKnowledgeDocumentHeadPage(
 }
 
 async function prepareKnowledgeDocumentEditTargetPage(
-  context: WorkflowKnowledgeContext,
+  context: KnowledgeContext,
   meta: KnowledgeDocumentIndexMeta,
   sequence: number,
   oldPage: KnowledgeDocumentIndexPageState,
@@ -911,7 +911,7 @@ async function prepareKnowledgeDocumentEditTargetPage(
 }
 
 async function findKnowledgeDocumentPreviousPage(
-  context: WorkflowKnowledgeContext,
+  context: KnowledgeContext,
   meta: KnowledgeDocumentIndexMeta,
   pageId: string,
 ): Promise<KnowledgeDocumentIndexPageState | undefined> {
@@ -940,7 +940,7 @@ function withKnowledgeDocumentIndexNextPageId(
 }
 
 async function writeKnowledgeValues(
-  context: WorkflowKnowledgeContext,
+  context: KnowledgeContext,
   changes: KnowledgeValueChange[],
 ): Promise<void> {
   const namespace = context.persistentValue;
@@ -1037,23 +1037,23 @@ function createKnowledgeDocumentTombstone(id: string): { deleted: true; id: stri
   };
 }
 
-function createKnowledgeDocumentIndexError(documentId: string, reason: string): WorkflowError {
-  return new WorkflowError({
+function createKnowledgeDocumentIndexError(documentId: string, reason: string): HarnessError {
+  return new HarnessError({
     type: "workflow_execution",
     message: `Knowledge document "${documentId}" ${reason}.`,
     metadata: { documentId },
   });
 }
 
-function createKnowledgeDocumentIndexCycleError(pageId: string): WorkflowError {
-  return new WorkflowError({
+function createKnowledgeDocumentIndexCycleError(pageId: string): HarnessError {
+  return new HarnessError({
     type: "workflow_execution",
     message: "Knowledge document index contains a page cycle.",
     metadata: { pageId },
   });
 }
 
-function readKnowledgeDocumentValue(value: unknown): WorkflowKnowledgeDocument | undefined {
+function readKnowledgeDocumentValue(value: unknown): KnowledgeDocument | undefined {
   return isKnowledgeDocument(value) ? value : undefined;
 }
 
@@ -1092,7 +1092,7 @@ function normalizeKnowledgeDocumentIndexMeta(value: unknown): KnowledgeDocumentI
     !isNonNegativeSafeInteger(value["total"]) ||
     !isNonNegativeSafeInteger(value["nextSequence"])
   ) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "workflow_execution",
       message: "Knowledge document index is invalid and cannot be overwritten safely.",
     });
@@ -1105,7 +1105,7 @@ function normalizeKnowledgeDocumentIndexMeta(value: unknown): KnowledgeDocumentI
     (value["total"] > 0 && headPageId === undefined) ||
     value["nextSequence"] < value["total"]
   ) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "workflow_execution",
       message: "Knowledge document index metadata is inconsistent and cannot be overwritten safely.",
     });
@@ -1155,7 +1155,7 @@ function normalizeKnowledgeDocumentPageCursor(value: string | undefined): Knowle
       beforeSequence: parsed["beforeSequence"],
     };
   } catch {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "cursor must be a valid knowledge document page cursor.",
       metadata: { cursor: value },
@@ -1166,7 +1166,7 @@ function normalizeKnowledgeDocumentPageCursor(value: string | undefined): Knowle
 function normalizeKnowledgeDocumentId(value: string): string {
   const id = value.trim();
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(id)) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "Knowledge document id must start with a letter or number and contain only letters, numbers, dot, underscore, or dash.",
       metadata: { documentId: value },
@@ -1177,7 +1177,7 @@ function normalizeKnowledgeDocumentId(value: string): string {
 
 function normalizeKnowledgeDocumentIndexPageId(value: string): string {
   if (!isKnowledgeDocumentIndexPageId(value)) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "workflow_execution",
       message: "Knowledge document index page id is invalid.",
       metadata: { pageId: value },
@@ -1193,7 +1193,7 @@ function isKnowledgeDocumentIndexPageId(value: string): boolean {
 function normalizeKnowledgeDocumentTitle(value: string): string {
   const title = value.trim();
   if (title === "") {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "Knowledge document title must be a non-empty string.",
     });
@@ -1203,7 +1203,7 @@ function normalizeKnowledgeDocumentTitle(value: string): string {
 
 function normalizeKnowledgeDocumentMarkdown(value: string): string {
   if (typeof value !== "string") {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "Knowledge document markdown must be a string.",
     });
@@ -1214,7 +1214,7 @@ function normalizeKnowledgeDocumentMarkdown(value: string): string {
 function normalizeSearchQuery(value: string): string {
   const query = value.trim();
   if (query === "") {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "Knowledge document search query must be a non-empty string.",
     });
@@ -1225,7 +1225,7 @@ function normalizeSearchQuery(value: string): string {
 function normalizeContextLineCount(value: number | undefined, fieldName: string): number {
   if (value === undefined) return 0;
   if (!Number.isInteger(value) || value < 0 || value > 50) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `${fieldName} must be an integer between 0 and 50.`,
       metadata: { [fieldName]: value },
@@ -1237,7 +1237,7 @@ function normalizeContextLineCount(value: number | undefined, fieldName: string)
 function normalizeSearchPageSize(value: number | undefined, fieldName: "pageSize" | "maxMatches"): number {
   if (value === undefined) return DEFAULT_KNOWLEDGE_SEARCH_PAGE_SIZE;
   if (!Number.isInteger(value) || value < 1 || value > MAX_KNOWLEDGE_SEARCH_PAGE_SIZE) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `${fieldName} must be an integer between 1 and ${MAX_KNOWLEDGE_SEARCH_PAGE_SIZE}.`,
       metadata: { [fieldName]: value },
@@ -1249,7 +1249,7 @@ function normalizeSearchPageSize(value: number | undefined, fieldName: "pageSize
 function normalizeKnowledgeDocumentPageSize(value: number | undefined): number {
   if (value === undefined) return DEFAULT_KNOWLEDGE_DOCUMENT_PAGE_SIZE;
   if (!Number.isInteger(value) || value < 1 || value > MAX_KNOWLEDGE_DOCUMENT_PAGE_SIZE) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `pageSize must be an integer between 1 and ${MAX_KNOWLEDGE_DOCUMENT_PAGE_SIZE}.`,
       metadata: { pageSize: value },
@@ -1261,7 +1261,7 @@ function normalizeKnowledgeDocumentPageSize(value: number | undefined): number {
 function normalizeSearchCursor(value: string | undefined): number {
   if (value === undefined || value.trim() === "") return 0;
   if (!/^\d+$/.test(value.trim())) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "cursor must be a non-negative integer offset.",
       metadata: { cursor: value },
@@ -1269,7 +1269,7 @@ function normalizeSearchCursor(value: string | undefined): number {
   }
   const offset = Number(value.trim());
   if (!Number.isSafeInteger(offset)) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "cursor must be a safe non-negative integer offset.",
       metadata: { cursor: value },
@@ -1280,21 +1280,21 @@ function normalizeSearchCursor(value: string | undefined): number {
 
 function normalizeLineRange(startLine: number, endLine: number): { startLine: number; endLine: number } {
   if (!Number.isInteger(startLine) || startLine < 1) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "startLine must be an integer greater than or equal to 1.",
       metadata: { startLine },
     });
   }
   if (!Number.isInteger(endLine) || endLine < startLine) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "endLine must be an integer greater than or equal to startLine.",
       metadata: { startLine, endLine },
     });
   }
   if (endLine - startLine + 1 > MAX_KNOWLEDGE_LINE_RANGE_LINES) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `Knowledge document line range cannot exceed ${MAX_KNOWLEDGE_LINE_RANGE_LINES} lines.`,
       metadata: { startLine, endLine, maxLines: MAX_KNOWLEDGE_LINE_RANGE_LINES },
@@ -1372,7 +1372,7 @@ function readContextLines(
   return result;
 }
 
-function isKnowledgeDocument(value: unknown): value is WorkflowKnowledgeDocument {
+function isKnowledgeDocument(value: unknown): value is KnowledgeDocument {
   return isRecord(value) &&
     typeof value["id"] === "string" &&
     typeof value["title"] === "string" &&
@@ -1381,7 +1381,7 @@ function isKnowledgeDocument(value: unknown): value is WorkflowKnowledgeDocument
     typeof value["updatedAt"] === "string";
 }
 
-function isKnowledgeDocumentSummary(value: unknown): value is WorkflowKnowledgeDocumentSummary {
+function isKnowledgeDocumentSummary(value: unknown): value is KnowledgeDocumentSummaryRecord {
   return isRecord(value) &&
     typeof value["id"] === "string" &&
     typeof value["title"] === "string" &&

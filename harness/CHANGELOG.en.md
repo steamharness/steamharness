@@ -162,7 +162,7 @@ All notable public changes to this release unit are recorded here.
 - Added system-AI model attributes returned by `getServerLLMCredentials()`, driving the context window, effort levels, and modalities.
 - Added `modelAttributes` letting a custom provider declare `contextWindow`, `maxTokens`, `cost`, and `thinkingLevelMap`.
 - Added static `group: { id, title, order? }` display metadata on Workflow entrypoints, preserved in structure reports.
-- Added `WorkflowServerLLMCredential.defaultModelId` exposing the Server's resolved system/user default model.
+- Added `ServerLLMCredential.defaultModelId` exposing the Server's resolved system/user default model.
 - Added `type: "file", control: "audio"` to parameter contracts, with duration and byte limits.
 - Added video attachments and common video MIME inference to the Conversation default input contract.
 

@@ -17,7 +17,7 @@ import {
   parseWorkflowMcpCliOptions,
   readSavedWorkflowMcpAuthEnv,
   resolveWorkflowMcpWorkerEntrypoint,
-  WorkflowMcpCliRunner,
+  McpCliRunner,
 } from "../mcp";
 import { main as cliMain } from "../index";
 
@@ -125,7 +125,7 @@ describe("steamharness mcp", () => {
     const workflowDir = await createMcpWorkflow();
     const dataDir = await createTemporaryDirectory("steamharness-mcp-audit-");
     const snapshots: Array<Parameters<NonNullable<ReturnType<typeof createWorkflowMcpDesktopAuditWriter>>>[0]> = [];
-    const runner = new WorkflowMcpCliRunner({
+    const runner = new McpCliRunner({
       ...parseWorkflowMcpCliOptions([workflowDir, "--data-dir", dataDir]),
       workerEntrypoint: cliPath,
     }, (snapshot) => { snapshots.push(snapshot); });
@@ -158,7 +158,7 @@ describe("steamharness mcp", () => {
     const workflowDir = await createMcpWorkflow();
     const dataDir = await createTemporaryDirectory("steamharness-mcp-resume-audit-");
     const snapshots: Array<Parameters<NonNullable<ReturnType<typeof createWorkflowMcpDesktopAuditWriter>>>[0]> = [];
-    const runner = new WorkflowMcpCliRunner({
+    const runner = new McpCliRunner({
       ...parseWorkflowMcpCliOptions([workflowDir, "--data-dir", dataDir]),
       workerEntrypoint: cliPath,
     }, (snapshot) => { snapshots.push(snapshot); });
@@ -218,7 +218,7 @@ describe("steamharness mcp", () => {
     const workflowDir = await createMcpWorkflow();
     const dataDir = await createTemporaryDirectory("steamharness-mcp-close-audit-");
     const snapshots: Array<Parameters<NonNullable<ReturnType<typeof createWorkflowMcpDesktopAuditWriter>>>[0]> = [];
-    const runner = new WorkflowMcpCliRunner({
+    const runner = new McpCliRunner({
       ...parseWorkflowMcpCliOptions([workflowDir, "--data-dir", dataDir]),
       workerEntrypoint: cliPath,
     }, (snapshot) => { snapshots.push(snapshot); });
@@ -255,7 +255,7 @@ describe("steamharness mcp", () => {
     const workflowDir = await createMcpWorkflow();
     const dataDir = await createTemporaryDirectory("steamharness-mcp-elicitation-failure-");
     const snapshots: Array<Parameters<NonNullable<ReturnType<typeof createWorkflowMcpDesktopAuditWriter>>>[0]> = [];
-    const runner = new WorkflowMcpCliRunner({
+    const runner = new McpCliRunner({
       ...parseWorkflowMcpCliOptions([workflowDir, "--data-dir", dataDir]),
       workerEntrypoint: cliPath,
     }, (snapshot) => { snapshots.push(snapshot); });

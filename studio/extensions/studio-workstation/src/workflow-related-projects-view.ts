@@ -3,8 +3,8 @@ import * as vscode from 'vscode';
 import { IMPORTED_PROJECTS_KEY, projectId, readImportedProjects, readRecentProjects, readRelatedProjects, rememberImportedProjects,
   projectTypeIcons, type ImportedProject, type RelatedProject, type ProjectType } from './projects';
 import type { ProjectIcons } from './project-icons';
-import type { WorkflowProject } from './workflow-types';
-import type { WorkflowRelatedProjectBinding } from './workflow-cli-types';
+import type { Project } from './workflow-types';
+import type { RelatedProjectBinding } from './workflow-cli-types';
 import type { DownloadedServerProject } from './workflow-server-projects';
 
 interface RelatedProjectItem extends RelatedProject {
@@ -48,15 +48,15 @@ export async function resolveImportedRelatedProject(context: Pick<vscode.Extensi
   return undefined;
 }
 
-export class WorkflowRelatedProjectsView implements vscode.TreeDataProvider<RelatedProjectItem>, vscode.Disposable {
+export class RelatedProjectsView implements vscode.TreeDataProvider<RelatedProjectItem>, vscode.Disposable {
   private readonly change = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this.change.event;
   private readonly bindingsChange = new vscode.EventEmitter<void>();
   readonly onDidChangeBindings = this.bindingsChange.event;
   private readonly view: vscode.TreeView<RelatedProjectItem>;
   private readonly ready: Promise<void>;
-  private projects: WorkflowProject[] = [];
-  private selected?: WorkflowProject;
+  private projects: Project[] = [];
+  private selected?: Project;
   private items: RelatedProjectItem[] = [];
   private pendingSave = Promise.resolve();
   private loading = Promise.resolve();
@@ -80,7 +80,7 @@ export class WorkflowRelatedProjectsView implements vscode.TreeDataProvider<Rela
     this.ready = this.migrate(discover).catch(error => output.appendLine(`Related projects: ${String(error)}`));
   }
 
-  update(projects: WorkflowProject[], preferred?: WorkflowProject): Promise<void> {
+  update(projects: Project[], preferred?: Project): Promise<void> {
     const available = projects.filter(project => !project.assistant);
     const selected = available.find(project => project.uri === preferred?.uri) ?? available[0];
     const changed = available.length !== this.projects.length || available.some((project, index) => project !== this.projects[index]);
@@ -135,7 +135,7 @@ export class WorkflowRelatedProjectsView implements vscode.TreeDataProvider<Rela
     await this.remember(imported.filter((project): project is ImportedProject => !!project));
   }
 
-  async bindings(project: WorkflowProject): Promise<WorkflowRelatedProjectBinding[]> {
+  async bindings(project: Project): Promise<RelatedProjectBinding[]> {
     if (project.assistant || this.disposed) { return []; }
     await this.ready;
     await this.pendingSave;
@@ -144,7 +144,7 @@ export class WorkflowRelatedProjectsView implements vscode.TreeDataProvider<Rela
       const imported = await resolveImportedRelatedProject(this.context, relation, project.uri);
       return imported ? { alias: relation.alias, projectDir: vscode.Uri.parse(imported.uri).fsPath } : undefined;
     }));
-    return bindings.filter((binding): binding is WorkflowRelatedProjectBinding => !!binding);
+    return bindings.filter((binding): binding is RelatedProjectBinding => !!binding);
   }
 
   async resourceProjects(): Promise<string[]> {
@@ -195,7 +195,7 @@ export class WorkflowRelatedProjectsView implements vscode.TreeDataProvider<Rela
     this.change.fire();
   }
 
-  private async load(project: WorkflowProject | undefined, projects: WorkflowProject[], generation: number): Promise<void> {
+  private async load(project: Project | undefined, projects: Project[], generation: number): Promise<void> {
     try {
       await this.ready;
       await this.remember(projects.map(entry => ({ id: entry.id, uri: entry.uri, name: entry.name })));

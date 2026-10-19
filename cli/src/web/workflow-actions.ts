@@ -1,13 +1,13 @@
-import { WorkflowController } from './workflow-controller';
-import { parseWorkflowArgs, type WorkflowDraft } from './workflow-workspace';
+import { Controller } from './workflow-controller';
+import { parseWorkflowArgs, type Draft } from './workflow-workspace';
 import {
   workflowParameters, workflowParamArgs, workflowParamValue, redactWorkflowData,
-  type WorkflowRuntime, type WorkflowProject, type WorkflowParamState, type WorkflowParamValues,
+  type Runtime, type Project, type ParamState, type ParamValues,
 } from './workflow-types';
 
 type Message = Record<string, any>;
-export function createWorkflowActions(controller: WorkflowController, runtime: WorkflowRuntime, project: WorkflowProject, revision: () => number, changed: () => void) {
-  const states = new Map<string, Record<string, WorkflowParamState>>();
+export function createWorkflowActions(controller: Controller, runtime: Runtime, project: Project, revision: () => number, changed: () => void) {
+  const states = new Map<string, Record<string, ParamState>>();
   const epochs = new Map<string, number>();
   let limit = 30, query = '';
   const entry = (id: unknown): string | undefined => {
@@ -15,11 +15,11 @@ export function createWorkflowActions(controller: WorkflowController, runtime: W
     if (value && !project.entrypoints.some(item => item.id === value)) { throw new Error('Unknown entrypoint.'); }
     return value;
   };
-  const values = (supplied: unknown, id?: string): WorkflowParamValues => {
+  const values = (supplied: unknown, id?: string): ParamValues => {
     if (!supplied || typeof supplied !== 'object' || Array.isArray(supplied)
       || Object.values(supplied).some(value => typeof value !== 'string' && !(Array.isArray(value) && value.every(item => typeof item === 'string')))) { throw new Error('Invalid parameters.'); }
     return Object.fromEntries(workflowParameters(project, id).fields.map(field => [field.name,
-      workflowParamValue(field, (supplied as WorkflowParamValues)[field.name] ?? field.defaultValue ?? (field.type === 'boolean' ? 'false' : ''))]));
+      workflowParamValue(field, (supplied as ParamValues)[field.name] ?? field.defaultValue ?? (field.type === 'boolean' ? 'false' : ''))]));
   };
   const resolve = async (message: Message, id?: string) => {
     const key = id ?? '', parameters = workflowParameters(project, id);
@@ -71,7 +71,7 @@ export function createWorkflowActions(controller: WorkflowController, runtime: W
           replies.push({ type: 'trace-run', runId: run.id, run }); break;
         }
         case 'workflow-draft': {
-          const draft: Partial<WorkflowDraft> = { values: values(message.params ?? {}, id) };
+          const draft: Partial<Draft> = { values: values(message.params ?? {}, id) };
           if (message.inputMode !== undefined) { draft.inputMode = message.inputMode === 'raw' ? 'raw' : 'form'; }
           if (message.rawArgs !== undefined) { draft.rawArgs = String(message.rawArgs).slice(0, 100_000); }
           epochs.set(id ?? '', (epochs.get(id ?? '') ?? 0) + 1);

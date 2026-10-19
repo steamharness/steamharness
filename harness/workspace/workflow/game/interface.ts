@@ -5,35 +5,35 @@ export type GameAttachment = "holo-sight" | "suppressor" | "extended-mag";
 export type GameMedicine = "field-bandage" | "adrenaline" | "trauma-kit";
 export type GameArmor = "light-plate" | "heavy-plate" | "recon-vest";
 
-export interface WorkflowPayload {
+export interface RunPayload {
   errCode: number;
   errMessage: string;
 }
 
-export type WorkflowOutputContentType = "markdown" | "text" | "json";
+export type OutputContentType = "markdown" | "text" | "json";
 
-export interface WorkflowOutputItem {
+export interface OutputItem {
   id: string;
   title: string;
   content: unknown;
   icon?: string;
   iconPreset?: "info" | "success" | "warning" | "error" | "note" | "code" | "list" | "quote" | "none";
-  contentType?: WorkflowOutputContentType;
+  contentType?: OutputContentType;
   collapsed?: boolean;
   metadata?: Record<string, unknown>;
 }
 
-export interface WorkflowOutputPayload extends WorkflowPayload {
-  items: WorkflowOutputItem[];
+export interface RunOutputPayload extends RunPayload {
+  items: OutputItem[];
 }
 
-export interface WorkflowExecutorResult<Output extends WorkflowPayload> {
+export interface ExecutorResult<Output extends RunPayload> {
   ok: boolean;
   data?: Output;
   error?: unknown;
 }
 
-export interface MissionSeed extends WorkflowPayload {
+export interface MissionSeed extends RunPayload {
   task: string;
   intensity: number;
   stealth: number;
@@ -70,7 +70,7 @@ export interface GameStory extends ArmorBrief {
   story: string;
 }
 
-export interface GameResultDraft extends WorkflowPayload {
+export interface GameResultDraft extends RunPayload {
   content: string;
   task: string;
   weapon: GameWeapon;
@@ -89,7 +89,7 @@ export interface GameResultDraft extends WorkflowPayload {
 
 export type MissionStatus = "true" | "false" | "";
 
-export interface GameResultOutput extends WorkflowOutputPayload {
+export interface GameResultOutput extends RunOutputPayload {
   task: string;
   weapon: GameWeapon;
   attachment: GameAttachment;
@@ -105,4 +105,4 @@ export interface GameResultOutput extends WorkflowOutputPayload {
   success: boolean;
 }
 
-export type GameOutput = WorkflowExecutorResult<GameResultOutput>;
+export type GameOutput = ExecutorResult<GameResultOutput>;

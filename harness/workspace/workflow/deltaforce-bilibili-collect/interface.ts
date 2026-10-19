@@ -1,26 +1,26 @@
-export interface WorkflowPayload {
+export interface RunPayload {
   errCode: number;
   errMessage: string;
 }
 
-export type WorkflowOutputContentType = "markdown" | "text" | "json";
+export type OutputContentType = "markdown" | "text" | "json";
 
-export interface WorkflowOutputItem {
+export interface OutputItem {
   id: string;
   title: string;
   content: unknown;
   icon?: string;
   iconPreset?: "info" | "success" | "warning" | "error" | "note" | "code" | "list" | "quote" | "none";
-  contentType?: WorkflowOutputContentType;
+  contentType?: OutputContentType;
   collapsed?: boolean;
   metadata?: Record<string, unknown>;
 }
 
-export interface WorkflowOutputPayload extends WorkflowPayload {
-  items: WorkflowOutputItem[];
+export interface RunOutputPayload extends RunPayload {
+  items: OutputItem[];
 }
 
-export interface WorkflowExecutorResult<Output extends WorkflowPayload> {
+export interface ExecutorResult<Output extends RunPayload> {
   ok: boolean;
   data?: Output;
   error?: unknown;
@@ -47,7 +47,7 @@ export interface DeltaforceBilibiliCollectInput {
   fetchImpl?: typeof fetch;
 }
 
-export interface DeltaforceBilibiliCollectParsedInput extends WorkflowPayload {
+export interface DeltaforceBilibiliCollectParsedInput extends RunPayload {
   videoUrl?: string;
   bvid?: string;
   mmFile: string | undefined;
@@ -92,7 +92,7 @@ export interface DeltaforceBilibiliCollectContext {
   conversation?: {
     conversationId?: string;
   };
-  files?: WorkflowFileStore;
+  files?: FileStore;
   abortSignal?: AbortSignal;
 }
 
@@ -136,7 +136,7 @@ export interface MinimaxUnderstandResult {
   model: string;
 }
 
-export interface WorkflowFileStore {
+export interface FileStore {
   createFile?(input: {
     name: string;
     mimeType?: string;
@@ -146,7 +146,7 @@ export interface WorkflowFileStore {
   }): Promise<unknown> | unknown;
 }
 
-export interface DeltaforceBilibiliCollectDocument extends WorkflowPayload {
+export interface DeltaforceBilibiliCollectDocument extends RunPayload {
   info: BilibiliVideoInfo;
   transcript: string;
   model: string;
@@ -159,7 +159,7 @@ export interface DeltaforceBilibiliCollectDocument extends WorkflowPayload {
   dryRun: boolean;
 }
 
-export interface DeltaforceBilibiliCollectOutputPayload extends WorkflowOutputPayload {
+export interface DeltaforceBilibiliCollectOutputPayload extends RunOutputPayload {
   documentId: string;
   documentTitle: string;
   videoTitle: string;
@@ -176,7 +176,7 @@ export interface DeltaforceBilibiliCollectOutputPayload extends WorkflowOutputPa
   dryRun: boolean;
 }
 
-export type DeltaforceBilibiliCollectOutput = WorkflowExecutorResult<DeltaforceBilibiliCollectOutputPayload>;
+export type DeltaforceBilibiliCollectOutput = ExecutorResult<DeltaforceBilibiliCollectOutputPayload>;
 
 export type BilibiliVideoCodecPreference = "auto" | "av1" | "hevc" | "h264";
 

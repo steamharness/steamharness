@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import path from 'node:path';
 import { realpath, stat } from 'node:fs/promises';
-import type { AssistantWorkspaceFolder, WorkflowProject } from './workflow-types';
+import type { AssistantWorkspaceFolder, Project } from './workflow-types';
 import { projectId, readRelatedProjects } from './projects';
 import { readWorkflowProjectManifest, resolveImportedRelatedProject } from './workflow-related-projects-view';
 import type { StudioControlPermissionPolicy } from './studio-control-bridge';
@@ -21,12 +21,12 @@ function contains(directory: string, filename: string): boolean {
   return relative === '' || (!path.isAbsolute(relative) && relative !== '..' && !relative.startsWith(`..${path.sep}`));
 }
 
-export function studioControlWorkspaceAvailable(scope: NonNullable<WorkflowProject['assistant']>, folders: AssistantWorkspaceFolder[]): boolean {
+export function studioControlWorkspaceAvailable(scope: NonNullable<Project['assistant']>, folders: AssistantWorkspaceFolder[]): boolean {
   return scope.roots.some(root => contains(root.folderPath, scope.workdir))
     && scope.roots.every(root => folders.some(folder => folder.uri === root.uri && folder.folderPath === root.folderPath));
 }
 
-export function createStudioControlHandler(assistant: NonNullable<WorkflowProject['assistant']>, signal: AbortSignal, context: Pick<vscode.ExtensionContext, 'globalState'>) {
+export function createStudioControlHandler(assistant: NonNullable<Project['assistant']>, signal: AbortSignal, context: Pick<vscode.ExtensionContext, 'globalState'>) {
   const installedThemes = (): string[] => [...new Set(vscode.extensions.all.flatMap(extension =>
     (extension.packageJSON?.contributes?.themes ?? []).flatMap((theme: { id?: string; label?: string }) =>
       typeof (theme.id ?? theme.label) === 'string' ? [theme.id ?? theme.label as string] : [])))].sort();

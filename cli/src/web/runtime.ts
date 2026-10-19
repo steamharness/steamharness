@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { STEAMHARNESS_RUNTIME_LOCALE_ENV } from 'steamharness';
 import { locale } from './localization';
-import { redactWorkflowData, type WorkflowRuntime, type WorkflowReport, type WorkflowProject } from './workflow-types';
+import { redactWorkflowData, type Runtime, type Report, type Project } from './workflow-types';
 import type { CliRelatedProjectSpec } from '../related-projects';
 import type { AgentSessionCommand, AgentSessionReceipt } from 'steamharness/agent';
 
@@ -26,7 +26,7 @@ export function cliRoot(): string {
 }
 
 export function createWebRuntime(projectDir: string, storageDir: string, connection: () => WebConnection | undefined,
-  relatedProjects: () => readonly CliRelatedProjectSpec[] = () => [], options: { allowSystemAi?: boolean } = {}): WorkflowRuntime {
+  relatedProjects: () => readonly CliRelatedProjectSpec[] = () => [], options: { allowSystemAi?: boolean } = {}): Runtime {
   const root = cliRoot();
   const builtWorker = path.join(root, 'dist/web/worker.mjs');
   const worker = existsSync(builtWorker) ? builtWorker : path.join(root, 'src/web/worker.mjs');
@@ -40,7 +40,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     const runtimeAuth: WebConnection | undefined = options.allowSystemAi === false && auth
       ? { serverUrl: auth.serverUrl, accessToken: auth.accessToken }
       : auth;
-    if ((request.method === 'run' || request.method === 'resolve') && (request.project as WorkflowProject)?.requiresLogin && !auth) { reject(new Error('SteamHarness Server login is not configured.')); return; }
+    if ((request.method === 'run' || request.method === 'resolve') && (request.project as Project)?.requiresLogin && !auth) { reject(new Error('SteamHarness Server login is not configured.')); return; }
     // Workers use the verified page identity, including after logout.
     const env: NodeJS.ProcessEnv = sanitizeWebWorkerEnvironment(process.env);
     Object.assign(env, { STEAMHARNESS_RUNTIME_PLATFORM: 'cli',
@@ -104,7 +104,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     child.once('close', (code, signal) => {
       cleanup();
       if (failure) { reject(new Error(failure)); }
-      else if (result !== undefined) { if (request.method === 'run') { (result as WorkflowReport).logs = String(redactWorkflowData(stderr, [runtimeAuth?.accessToken ?? '', runtimeAuth?.aiAccessToken ?? ''])); } resolve(result); }
+      else if (result !== undefined) { if (request.method === 'run') { (result as Report).logs = String(redactWorkflowData(stderr, [runtimeAuth?.accessToken ?? '', runtimeAuth?.aiAccessToken ?? ''])); } resolve(result); }
       else { reject(Object.assign(new Error(String(redactWorkflowData(stderr.trim(), [runtimeAuth?.accessToken ?? '', runtimeAuth?.aiAccessToken ?? ''])) || `Workflow runtime exited (${signal ?? code}).`),
         { code: 'STEAMHARNESS_WORKER_INTERRUPTED' })); }
     });

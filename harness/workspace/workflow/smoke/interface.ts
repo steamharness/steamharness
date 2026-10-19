@@ -4,35 +4,35 @@ export interface SmokeInput {
   waitMs: number;
 }
 
-export interface WorkflowPayload {
+export interface RunPayload {
   errCode: number;
   errMessage: string;
 }
 
-export type WorkflowOutputContentType = "markdown" | "text" | "json";
+export type OutputContentType = "markdown" | "text" | "json";
 
-export interface WorkflowOutputItem {
+export interface OutputItem {
   id: string;
   title: string;
   content: unknown;
   icon?: string;
   iconPreset?: "info" | "success" | "warning" | "error" | "note" | "code" | "list" | "quote" | "none";
-  contentType?: WorkflowOutputContentType;
+  contentType?: OutputContentType;
   collapsed?: boolean;
   metadata?: Record<string, unknown>;
 }
 
-export interface WorkflowOutputPayload extends WorkflowPayload {
-  items: WorkflowOutputItem[];
+export interface RunOutputPayload extends RunPayload {
+  items: OutputItem[];
 }
 
-export interface WorkflowExecutorResult<Output extends WorkflowPayload> {
+export interface ExecutorResult<Output extends RunPayload> {
   ok: boolean;
   data?: Output;
   error?: unknown;
 }
 
-export interface SmokeOutputPayload extends WorkflowOutputPayload {
+export interface SmokeOutputPayload extends RunOutputPayload {
   mode: SmokeInput["mode"];
   conversationId?: string;
   conversationMessages: number;
@@ -40,4 +40,4 @@ export interface SmokeOutputPayload extends WorkflowOutputPayload {
   kvLastMessage?: string;
 }
 
-export type SmokeOutput = WorkflowExecutorResult<SmokeOutputPayload>;
+export type SmokeOutput = ExecutorResult<SmokeOutputPayload>;

@@ -6,11 +6,11 @@ import {
   createWorkflowPersistentValueContext,
   createWorkflowRelatedProjectsContext,
   createWorkflowToolPermissionContext,
-  type WorkflowKVStore,
+  type KVStore,
 } from "steamharness";
 import { installWorkflowRuntimeGlobal } from "steamharness/runtime-api";
 import type { NodeContext } from "steamharness/types/context";
-import type { PiAgentRunInput, PiAgentSessionFactory, WorkflowOutputItem } from "../interface";
+import type { PiAgentRunInput, PiAgentSessionFactory, OutputItem } from "../interface";
 import { KNOWLEDGE_DOCUMENTS_TOOL_NAME } from "../knowledge-documents-tool";
 
 installWorkflowRuntimeGlobal();
@@ -28,7 +28,7 @@ beforeAll(async () => {
 
 describe("pi-agent tool approval stream", () => {
   it("pauses the workflow when a custom tool approval wait is reported by the SDK adapter", async () => {
-    let onPendingApproval: ((error: workflow.WorkflowError) => void) | undefined;
+    let onPendingApproval: ((error: workflow.HarnessError) => void) | undefined;
     const chunks: unknown[] = [];
     const input = createRunInput(async (_sessionInput, hooks) => {
       onPendingApproval = hooks?.onPendingApproval;
@@ -50,7 +50,7 @@ describe("pi-agent tool approval stream", () => {
         chunks.push(chunk);
       }
     }).rejects.toMatchObject({
-      name: "WorkflowError",
+      name: "HarnessError",
       type: "user_input_required",
       nodeName: "tool-approval",
     });
@@ -84,8 +84,8 @@ function createRunInput(sessionFactory: PiAgentSessionFactory): PiAgentRunInput 
   };
 }
 
-function createPendingToolApprovalError(): workflow.WorkflowError {
-  return new workflow.WorkflowError({
+function createPendingToolApprovalError(): workflow.HarnessError {
+  return new workflow.HarnessError({
     type: "user_input_required",
     message: `Tool "${KNOWLEDGE_DOCUMENTS_TOOL_NAME}" is waiting for approval.`,
     nodeName: "tool-approval",
@@ -147,13 +147,13 @@ function createNodeContext(): NodeContext {
   };
 }
 
-function isOutputItemStart(value: unknown): value is { type: "output_item_start"; item: WorkflowOutputItem } {
+function isOutputItemStart(value: unknown): value is { type: "output_item_start"; item: OutputItem } {
   return typeof value === "object" &&
     value !== null &&
     (value as { type?: unknown }).type === "output_item_start";
 }
 
-function createMemoryKVStore(): WorkflowKVStore {
+function createMemoryKVStore(): KVStore {
   const values = new Map<string, unknown>();
   function createKey(input: {
     storageKind: string;

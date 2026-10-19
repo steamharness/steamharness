@@ -19,8 +19,8 @@ import {
   deleteKnowledgeDocument,
   editKnowledgeDocument,
   runLocalWorkflowWithReport,
-  WorkflowError,
-  type WorkflowKVStore,
+  HarnessError,
+  type KVStore,
 } from "../index";
 
 const PERSISTENT_TEST_PROJECT_ID = "11111111-1111-4111-8111-111111111111";
@@ -241,7 +241,7 @@ test("persistentValue conversation scope still requires a conversation id", asyn
   await assert.rejects(
     () => persistentValue.conversation.setValue("conversation-key", "value"),
     (error) =>
-      error instanceof WorkflowError &&
+      error instanceof HarnessError &&
       error.message === "Workflow KV conversation scope requires a conversation id.",
   );
 });
@@ -769,12 +769,12 @@ async function assertPersistentValueUnavailable(operation: () => Promise<unknown
   await assert.rejects(
     operation,
     (error) =>
-      error instanceof WorkflowError &&
+      error instanceof HarnessError &&
       error.message.includes("Workflow PersistentValue requires"),
   );
 }
 
-function createMemoryKVStore(): WorkflowKVStore & {
+function createMemoryKVStore(): KVStore & {
   values: Map<string, unknown>;
   sources: Map<string, unknown>;
 } {

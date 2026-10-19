@@ -74,7 +74,7 @@ export const getDataWorkflow = workflow.defineWorkflow<GetDataInput, StorageData
     const kv = alias === undefined ? storage.kv : storage.relatedProjects.get(alias).kv;
     const content = await kv.getValue(createStorageKey(id));
     if (content === undefined) {
-      throw new workflow.WorkflowError({
+      throw new workflow.HarnessError({
         type: "input_validation",
         message: `未找到 id 为“${id}”的数据。`,
       });
@@ -264,7 +264,7 @@ function createStorageKey(id: string): string {
 
 function readRequiredContent(value: unknown): string {
   if (typeof value === "string") return value;
-  throw new workflow.WorkflowError({
+  throw new workflow.HarnessError({
     type: "input_validation",
     message: "存储内容不能为空。",
   });
@@ -272,7 +272,7 @@ function readRequiredContent(value: unknown): string {
 
 function readRequiredId(value: unknown): string {
   if (typeof value === "string" && value.trim() !== "") return value.trim();
-  throw new workflow.WorkflowError({
+  throw new workflow.HarnessError({
     type: "input_validation",
     message: "数据 id 不能为空。",
   });

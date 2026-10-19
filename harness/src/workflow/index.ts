@@ -6,24 +6,24 @@ import type {
   NodeContext,
   NodeDefinition,
   StreamNodeDefinition,
-  WorkflowContext,
-  WorkflowDefinition,
-  WorkflowNodeMetadata,
+  RunContext,
+  Definition,
+  NodeMetadata,
 } from "../types/index";
-import type { WorkflowConversationContext, WorkflowConversationState } from "../conversation/index";
-import type { WorkflowKVContext, WorkflowKVNamespace } from "../kv/index";
+import type { ConversationContext, ConversationState } from "../conversation/index";
+import type { KVContext, KVNamespace } from "../kv/index";
 import {
   createWorkflowFailure,
   toWorkflowError,
-  WorkflowError,
-  type WorkflowResult,
+  HarnessError,
+  type RunResult,
 } from "./errors";
 
 interface NodeExecutionRuntime {
   executionId: string;
   nodeName: string;
   kind: NodeExecutionKind;
-  metadata?: WorkflowNodeMetadata;
+  metadata?: NodeMetadata;
   startedAt: Date;
 }
 
@@ -36,51 +36,51 @@ interface StandardNodeNameProvider {
 }
 
 interface NodeMetadataProvider {
-  metadata?: WorkflowNodeMetadata;
+  metadata?: NodeMetadata;
 }
 
 let nodeExecutionId = 0;
 
 export function defineWorkflow<Input, Output>(
-  workflow: WorkflowDefinition<Input, Output>,
-): WorkflowDefinition<Input, Output> {
+  workflow: Definition<Input, Output>,
+): Definition<Input, Output> {
   return workflow;
 }
 
 export interface RunIfBranch<Input, Output> {
   label: string;
   description?: string;
-  condition(input: Input, context: WorkflowContext): Promise<boolean> | boolean;
-  run(input: Input, context: WorkflowContext): Promise<Output> | Output;
+  condition(input: Input, context: RunContext): Promise<boolean> | boolean;
+  run(input: Input, context: RunContext): Promise<Output> | Output;
 }
 
 export interface RunIfElseBranch<Input, Output> {
   label?: string;
   description?: string;
-  run(input: Input, context: WorkflowContext): Promise<Output> | Output;
+  run(input: Input, context: RunContext): Promise<Output> | Output;
 }
 
 export interface RunIfOptions<Input, Output> {
   name?: string;
   branches: Array<RunIfBranch<Input, Output>>;
   else?: RunIfElseBranch<Input, Output>;
-  metadata?: Partial<WorkflowNodeMetadata>;
+  metadata?: Partial<NodeMetadata>;
 }
 
 export interface RunForOptions<State, Item> {
   name?: string;
-  items(input: State, context: WorkflowContext): Iterable<Item> | AsyncIterable<Item> | Promise<Iterable<Item> | AsyncIterable<Item>>;
-  run(input: State, item: Item, index: number, context: WorkflowContext): Promise<State> | State;
+  items(input: State, context: RunContext): Iterable<Item> | AsyncIterable<Item> | Promise<Iterable<Item> | AsyncIterable<Item>>;
+  run(input: State, item: Item, index: number, context: RunContext): Promise<State> | State;
   maxIterations?: number;
-  metadata?: Partial<WorkflowNodeMetadata>;
+  metadata?: Partial<NodeMetadata>;
 }
 
 export interface RunWhileOptions<State> {
   name?: string;
-  condition(input: State, context: WorkflowContext, iteration: number): Promise<boolean> | boolean;
-  run(input: State, context: WorkflowContext, iteration: number): Promise<State> | State;
+  condition(input: State, context: RunContext, iteration: number): Promise<boolean> | boolean;
+  run(input: State, context: RunContext, iteration: number): Promise<State> | State;
   maxIterations?: number;
-  metadata?: Partial<WorkflowNodeMetadata>;
+  metadata?: Partial<NodeMetadata>;
 }
 
 export type RunWorkflowConversationMode = "shared" | "shared-readonly";
@@ -88,7 +88,7 @@ export type RunWorkflowKVMode = "shared" | "isolated";
 
 export interface RunWorkflowOptions<Output = unknown> {
   name?: string;
-  metadata?: Partial<WorkflowNodeMetadata>;
+  metadata?: Partial<NodeMetadata>;
   conversationMode?: RunWorkflowConversationMode;
   kvMode?: RunWorkflowKVMode;
   outputVisibility?: "visible" | "hidden";
@@ -114,7 +114,7 @@ const RUN_STEAMHARNESS_OUTPUT_BRIDGE_ERROR = Symbol("runWorkflowOutputBridgeErro
 // can show selected if / else-if / else paths instead of hiding them in plain TS control flow.
 export async function runIf<Input, Output>(
   input: Input,
-  context: WorkflowContext,
+  context: RunContext,
   options: RunIfOptions<Input, Output>,
 ): Promise<Output> {
   const nodeName = "run-if";
@@ -142,7 +142,7 @@ export async function runIf<Input, Output>(
     }
 
     if (selectedBranch === undefined) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "node_execution",
         message: `Run-if node "${displayName}" did not match any branch.`,
         nodeName: displayName,
@@ -181,7 +181,7 @@ export async function runIf<Input, Output>(
 // repeated body work in a visible loop container instead of hiding it in plain TS loops.
 export async function runFor<State, Item>(
   input: State,
-  context: WorkflowContext,
+  context: RunContext,
   options: RunForOptions<State, Item>,
 ): Promise<State> {
   const nodeName = "run-for";
@@ -200,7 +200,7 @@ export async function runFor<State, Item>(
     for await (const item of toAsyncIterable(items)) {
       throwIfContextAborted(context, displayName);
       if (iteration >= maxIterations) {
-        throw new WorkflowError({
+        throw new HarnessError({
           type: "node_execution",
           message: `Run-for node "${displayName}" exceeded maxIterations (${maxIterations}).`,
           nodeName: displayName,
@@ -250,7 +250,7 @@ export async function runFor<State, Item>(
 
 export async function runWhile<State>(
   input: State,
-  context: WorkflowContext,
+  context: RunContext,
   options: RunWhileOptions<State>,
 ): Promise<State> {
   const nodeName = "run-while";
@@ -267,7 +267,7 @@ export async function runWhile<State>(
     while (await options.condition(current, context, iteration)) {
       throwIfContextAborted(context, displayName);
       if (iteration >= maxIterations) {
-        throw new WorkflowError({
+        throw new HarnessError({
           type: "node_execution",
           message: `Run-while node "${displayName}" exceeded maxIterations (${maxIterations}).`,
           nodeName: displayName,
@@ -337,9 +337,9 @@ function createSelectedBranchInfo<Input, Output>(
 }
 
 export async function runWorkflow<Input, Output>(
-  workflow: WorkflowDefinition<Input, Output>,
+  workflow: Definition<Input, Output>,
   input: Input,
-  context: WorkflowContext,
+  context: RunContext,
   options?: RunWorkflowOptions<Output>,
 ): Promise<Output> {
   const conversationMode = resolveRunWorkflowConversationMode(options);
@@ -349,7 +349,7 @@ export async function runWorkflow<Input, Output>(
   const maxDepth = normalizeMaxIterations(options?.maxDepth, DEFAULT_RUN_STEAMHARNESS_MAX_DEPTH);
   const depth = readRunWorkflowDepth(context);
   if (depth >= maxDepth) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "workflow_execution",
       message: `runWorkflow exceeded maxDepth (${maxDepth}) while calling "${workflow.name}".`,
       metadata: {
@@ -424,10 +424,10 @@ export async function runWorkflow<Input, Output>(
 }
 
 export async function safeRunWorkflow<Input, Output>(
-  workflow: WorkflowDefinition<Input, Output>,
+  workflow: Definition<Input, Output>,
   input: Input,
-  context: WorkflowContext,
-): Promise<WorkflowResult<Output>> {
+  context: RunContext,
+): Promise<RunResult<Output>> {
   try {
     return {
       ok: true,
@@ -463,7 +463,7 @@ export function readEntrypointOutput(data: unknown): unknown {
   ) {
     const envelope = data as { errCode: number; errMessage?: unknown; output: unknown };
     if (envelope.errCode !== 0) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "workflow_execution",
         message: typeof envelope.errMessage === "string" && envelope.errMessage.trim() !== ""
           ? envelope.errMessage
@@ -614,7 +614,7 @@ async function beginNodeExecution(
 async function beginBranchExecution(
   context: NodeContext,
   nodeName: string,
-  metadata: WorkflowNodeMetadata,
+  metadata: NodeMetadata,
 ): Promise<NodeExecutionRuntime> {
   const execution: NodeExecutionRuntime = {
     executionId: createNodeExecutionId(nodeName),
@@ -636,7 +636,7 @@ function throwIfContextAborted(context: NodeContext, name: string): void {
     return;
   }
 
-  throw new WorkflowError({
+  throw new HarnessError({
     type: "execution_aborted",
     message: signal.reason instanceof Error
       ? signal.reason.message
@@ -680,14 +680,14 @@ async function finishNodeExecution(
 }
 
 function createBranchInfoNode(
-  metadata: WorkflowNodeMetadata,
+  metadata: NodeMetadata,
 ): NodeExecutionInfoProvider & StandardNodeNameProvider & NodeMetadataProvider {
   return createControlFlowInfoNode("run-if", metadata);
 }
 
 function createControlFlowInfoNode(
   standardName: "run-if" | "run-for" | "run-while" | "run-workflow",
-  metadata: WorkflowNodeMetadata,
+  metadata: NodeMetadata,
 ): NodeExecutionInfoProvider & StandardNodeNameProvider & NodeMetadataProvider {
   return {
     standardName,
@@ -700,16 +700,16 @@ function createControlFlowInfoNode(
 
 function createBranchMetadata(
   title: string,
-  metadata: Partial<WorkflowNodeMetadata> | undefined,
-): WorkflowNodeMetadata {
+  metadata: Partial<NodeMetadata> | undefined,
+): NodeMetadata {
   return createControlFlowMetadata("run-if", title, metadata);
 }
 
 function createControlFlowMetadata(
   type: "run-if" | "run-for" | "run-while",
   title: string,
-  metadata: Partial<WorkflowNodeMetadata> | undefined,
-): WorkflowNodeMetadata {
+  metadata: Partial<NodeMetadata> | undefined,
+): NodeMetadata {
   return {
     type: metadata?.type ?? type,
     title: metadata?.title ?? title,
@@ -730,16 +730,16 @@ function resolveRunWorkflowKVMode(
 }
 
 function createRunWorkflowContext<Input, Output>(
-  context: WorkflowContext,
+  context: RunContext,
   options: {
-    workflow: WorkflowDefinition<Input, Output>;
+    workflow: Definition<Input, Output>;
     conversationMode: RunWorkflowConversationMode;
     kvMode: RunWorkflowKVMode;
     outputVisibility: "visible" | "hidden";
     outputBridge?: RunWorkflowOutputBridge;
     depth: number;
   },
-): WorkflowContext {
+): RunContext {
   if (
     options.conversationMode !== "shared-readonly" &&
     options.kvMode !== "isolated" &&
@@ -750,7 +750,7 @@ function createRunWorkflowContext<Input, Output>(
     return context;
   }
 
-  const nextContext: WorkflowContext = {
+  const nextContext: RunContext = {
     ...context,
     storage: options.kvMode === "isolated"
       ? {
@@ -786,8 +786,8 @@ function createRunWorkflowContext<Input, Output>(
 }
 
 function createReadonlyConversationContext(
-  conversation: WorkflowConversationContext,
-): WorkflowConversationContext {
+  conversation: ConversationContext,
+): ConversationContext {
   return {
     enabled: conversation.enabled,
     conversationId: conversation.conversationId,
@@ -805,8 +805,8 @@ function createReadonlyConversationContext(
 }
 
 function createReadonlyDisabledConversationState(
-  conversation: WorkflowConversationContext,
-): WorkflowConversationState {
+  conversation: ConversationContext,
+): ConversationState {
   const now = new Date().toISOString();
 
   return {
@@ -820,9 +820,9 @@ function createReadonlyDisabledConversationState(
 }
 
 function createRunWorkflowIsolatedKVContext(
-  kv: WorkflowKVContext,
+  kv: KVContext,
   childWorkflowName: string,
-): WorkflowKVContext {
+): KVContext {
   const workflowPrefix = `runWorkflow:${childWorkflowName}`;
   const conversationPrefix = `${workflowPrefix}:conversation`;
   const project = createPrefixedKVNamespace(kv, workflowPrefix);
@@ -837,9 +837,9 @@ function createRunWorkflowIsolatedKVContext(
 }
 
 function createPrefixedKVNamespace(
-  namespace: WorkflowKVNamespace,
+  namespace: KVNamespace,
   prefix: string,
-): WorkflowKVNamespace {
+): KVNamespace {
   const prefixedKey = (key: string) => `${prefix}:${key}`;
 
   return {
@@ -858,7 +858,7 @@ function createPrefixedKVNamespace(
   };
 }
 
-function readRunWorkflowDepth(context: WorkflowContext): number {
+function readRunWorkflowDepth(context: RunContext): number {
   const value = context.metadata?.[RUN_STEAMHARNESS_DEPTH_METADATA_KEY];
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? Math.floor(value)
@@ -883,8 +883,8 @@ function readErrorMessage(error: unknown): string {
 
 function createWorkflowCallMetadata(
   title: string,
-  metadata: Partial<WorkflowNodeMetadata> | undefined,
-): WorkflowNodeMetadata {
+  metadata: Partial<NodeMetadata> | undefined,
+): NodeMetadata {
   return {
     type: metadata?.type ?? "workflow",
     title: metadata?.title ?? title,
@@ -893,13 +893,13 @@ function createWorkflowCallMetadata(
 }
 
 function createWorkflowCallInfoNode(
-  metadata: WorkflowNodeMetadata | undefined,
+  metadata: NodeMetadata | undefined,
 ): NodeExecutionInfoProvider & StandardNodeNameProvider & NodeMetadataProvider {
   return createControlFlowInfoNode("run-workflow", metadata ?? createWorkflowCallMetadata("Run workflow", undefined));
 }
 
 function createWorkflowCallExecutionInfo<Input, Output>(options: {
-  workflow: WorkflowDefinition<Input, Output>;
+  workflow: Definition<Input, Output>;
   conversationMode: RunWorkflowConversationMode;
   kvMode: RunWorkflowKVMode;
   outputVisibility: "visible" | "hidden";
@@ -1001,12 +1001,12 @@ function createRunWorkflowOutputBridge<Output>(
 }
 
 function createRunWorkflowNodeHooks(
-  nodeHooks: WorkflowContext["nodeHooks"],
+  nodeHooks: RunContext["nodeHooks"],
   options: {
     outputVisibility: "visible" | "hidden";
     outputBridge?: RunWorkflowOutputBridge;
   },
-): WorkflowContext["nodeHooks"] {
+): RunContext["nodeHooks"] {
   if (nodeHooks === undefined && options.outputBridge === undefined) {
     return undefined;
   }
@@ -1142,7 +1142,7 @@ function readNodeExecutionInfo(node: unknown): unknown {
   return node.getExecutionInfo();
 }
 
-function readNodeMetadata(node: unknown): WorkflowNodeMetadata | undefined {
+function readNodeMetadata(node: unknown): NodeMetadata | undefined {
   if (!hasNodeMetadata(node)) {
     return undefined;
   }

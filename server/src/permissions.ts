@@ -1,6 +1,6 @@
-export type WorkflowUserProfileStatus = "invited" | "active" | "disabled";
+export type UserProfileStatus = "invited" | "active" | "disabled";
 
-export type WorkflowPermissionKey =
+export type PermissionKey =
   | "system.admin"
   | "users.read"
   | "users.manage"
@@ -24,29 +24,29 @@ export type WorkflowPermissionKey =
   | "audit.read"
   | "audit.export";
 
-export interface WorkflowPermissionDefinition {
-  key: WorkflowPermissionKey;
+export interface PermissionDefinition {
+  key: PermissionKey;
   label: string;
   description: string;
   group: string;
 }
 
-export interface WorkflowPermissionGroup {
+export interface PermissionGroup {
   id: string;
   label: string;
-  permissions: WorkflowPermissionDefinition[];
+  permissions: PermissionDefinition[];
 }
 
-export interface WorkflowBuiltinRoleDefinition {
+export interface BuiltinRoleDefinition {
   id: string;
   name: string;
   description: string;
   builtin: true;
   protected: boolean;
-  permissions: WorkflowPermissionKey[];
+  permissions: PermissionKey[];
 }
 
-const PERMISSION_DEFINITIONS: WorkflowPermissionDefinition[] = [
+const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { key: "system.admin", label: "系统管理员", description: "拥有系统全部权限并用于恢复兜底。", group: "system" },
   { key: "users.read", label: "查看用户", description: "读取用户列表与用户状态。", group: "identity" },
   { key: "users.manage", label: "管理用户", description: "邀请、启用、禁用用户并分配角色。", group: "identity" },
@@ -79,11 +79,11 @@ const PERMISSION_GROUP_LABELS: Record<string, string> = {
   operations: "运维与审计",
 };
 
-export const ALL_STEAMHARNESS_PERMISSION_KEYS: WorkflowPermissionKey[] = PERMISSION_DEFINITIONS.map(
+export const ALL_STEAMHARNESS_PERMISSION_KEYS: PermissionKey[] = PERMISSION_DEFINITIONS.map(
   (definition) => definition.key,
 );
 
-export const BUILTIN_STEAMHARNESS_ROLES: WorkflowBuiltinRoleDefinition[] = [
+export const BUILTIN_STEAMHARNESS_ROLES: BuiltinRoleDefinition[] = [
   {
     id: "builtin_admin",
     name: "Admin",
@@ -138,25 +138,25 @@ export const BUILTIN_STEAMHARNESS_ROLES: WorkflowBuiltinRoleDefinition[] = [
 ];
 
 // 私有项目访问与数据写入由项目成员关系决定。
-export const DEFAULT_AUTHENTICATED_PERMISSION_KEYS: WorkflowPermissionKey[] = [
+export const DEFAULT_AUTHENTICATED_PERMISSION_KEYS: PermissionKey[] = [
   "api_keys.manage_self",
   "projects.create",
   "projects.read_public",
 ];
 
-const PERMISSION_KEY_SET = new Set<WorkflowPermissionKey>(ALL_STEAMHARNESS_PERMISSION_KEYS);
+const PERMISSION_KEY_SET = new Set<PermissionKey>(ALL_STEAMHARNESS_PERMISSION_KEYS);
 
-export function isWorkflowPermissionKey(value: string): value is WorkflowPermissionKey {
-  return PERMISSION_KEY_SET.has(value as WorkflowPermissionKey);
+export function isWorkflowPermissionKey(value: string): value is PermissionKey {
+  return PERMISSION_KEY_SET.has(value as PermissionKey);
 }
 
-export function listWorkflowPermissions(): WorkflowPermissionDefinition[] {
+export function listWorkflowPermissions(): PermissionDefinition[] {
   return [...PERMISSION_DEFINITIONS];
 }
 
-export function listWorkflowPermissionGroups(): WorkflowPermissionGroup[] {
+export function listWorkflowPermissionGroups(): PermissionGroup[] {
   return Object.entries(
-    PERMISSION_DEFINITIONS.reduce<Record<string, WorkflowPermissionDefinition[]>>((groups, definition) => {
+    PERMISSION_DEFINITIONS.reduce<Record<string, PermissionDefinition[]>>((groups, definition) => {
       const items = groups[definition.group] ?? [];
       items.push(definition);
       groups[definition.group] = items;
@@ -171,8 +171,8 @@ export function listWorkflowPermissionGroups(): WorkflowPermissionGroup[] {
 
 export function normalizeWorkflowPermissionKeys(
   values: Iterable<string>,
-): WorkflowPermissionKey[] {
-  const normalized = new Set<WorkflowPermissionKey>();
+): PermissionKey[] {
+  const normalized = new Set<PermissionKey>();
   for (const value of values) {
     if (!isWorkflowPermissionKey(value)) {
       throw new Error(`Unknown workflow permission "${value}".`);
@@ -182,11 +182,11 @@ export function normalizeWorkflowPermissionKeys(
   return [...normalized].sort();
 }
 
-export function permissionImpliesAdmin(permission: WorkflowPermissionKey): boolean {
+export function permissionImpliesAdmin(permission: PermissionKey): boolean {
   return permission === "system.admin";
 }
 
-export function listBuiltinWorkflowRoles(): WorkflowBuiltinRoleDefinition[] {
+export function listBuiltinWorkflowRoles(): BuiltinRoleDefinition[] {
   return BUILTIN_STEAMHARNESS_ROLES.map((role) => ({
     ...role,
     permissions: [...role.permissions],

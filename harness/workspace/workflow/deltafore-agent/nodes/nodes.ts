@@ -9,7 +9,7 @@ import type {
   ToolExecutionInput,
   ToolExecutionPayload,
   ReactThoughtPayload,
-  WorkflowNodeContext,
+  NodeRunContext,
 } from "../interface";
 import { parseReactThought } from "../agent/decision";
 import { clampRoundCount, DEFAULT_QUERY } from "../agent/input";
@@ -46,7 +46,7 @@ export const inputNode = workflow.createInputNode<DeltaforeAgentInput, ParsedAge
 export const agentDecisionNode = workflow.createLLMNode<AgentDecisionInput, ReactThoughtPayload>({
   name: "react-thought-llm",
   provider: llmProvider,
-  mapInput(input: AgentDecisionInput, context: WorkflowNodeContext) {
+  mapInput(input: AgentDecisionInput, context: NodeRunContext) {
     const config = readDeltaforeApiConfig(context);
 
     return {
@@ -96,7 +96,7 @@ export const thoughtOutputNode = workflow.createOutputNode<ThoughtOutputInput, T
 
 export const toolNode = workflow.createOutputNode<ToolExecutionInput, ToolExecutionPayload>({
   name: "equipment-tool",
-  async *stream(input: ToolExecutionInput, context: WorkflowNodeContext) {
+  async *stream(input: ToolExecutionInput, context: NodeRunContext) {
     const config = readDeltaforeApiConfig(context);
     const itemId = createToolItemId(input);
     yield workflow.createOutputItemChunk({
@@ -190,7 +190,7 @@ export const answerOutputNode = workflow.createOutputNode<FinalAnswerInput, Delt
 
     yield workflow.createOutputItemChunk({ type: "output_item_end", itemId });
   },
-  async format(stream, input: FinalAnswerInput, context: WorkflowNodeContext) {
+  async format(stream, input: FinalAnswerInput, context: NodeRunContext) {
     const answer = input.content.trim();
     const toolSummary = input.toolResults.length > 0
       ? input.toolResults.map((r) => `${r.toolName}(${JSON.stringify(r.args)}): ${r.ok ? "ok" : "failed"}`).join("; ")
@@ -245,7 +245,7 @@ function streamChunks(text: string, size: number): string[] {
   return chunks;
 }
 
-function readDeltaforeApiConfig(context: WorkflowNodeContext): DeltaforeApiConfig {
+function readDeltaforeApiConfig(context: NodeRunContext): DeltaforeApiConfig {
   const config = context.metadata?.deltaforeApi;
 
   if (isDeltaforeApiConfig(config)) {

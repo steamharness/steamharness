@@ -17,7 +17,7 @@ import {
 import { HttpError, toHttpError, toHttpErrorWithStatus } from "../../protocol";
 import { createWorkflowProjectDependencyLocks } from "@steamharness/project-dependencies";
 import { createApiRouter } from "../api";
-import type { WorkflowStorage } from "../../storage";
+import type { Storage } from "../../storage";
 
 // Server i18n is a startup singleton; initialize once for the whole test file.
 ensureServerI18n();
@@ -249,7 +249,7 @@ test("real auth middleware localizes unauthenticated and forbidden responses", a
 
 test("real API fallback route uses request-scoped localization", async () => {
   const server = await listen((app) => {
-    app.use("/api", createApiRouter({} as WorkflowStorage));
+    app.use("/api", createApiRouter({} as Storage));
   });
 
   try {

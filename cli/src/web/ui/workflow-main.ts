@@ -3,27 +3,27 @@ import './style.css';
 import './workflow-style.css';
 import { acquireWorkflowHost } from './host';
 import { requestAction } from './action-dialog';
-import { WorkflowFields } from './workflow-fields';
+import { Fields } from './workflow-fields';
 import { ConversationOutput } from './conversation-output';
 import { InputPrompt } from './input-prompt';
 import { ConversationTools } from './conversation-tools';
 import { iconHtml, iconButton, escapeHtml } from './ui';
 import { aiUsageButton, narrowMenuDismiss, projectInfoButton, toolPermissionsButton } from './toolbar';
-import { workflowParameters, workflowParamValue, type WorkflowProject, type WorkflowParamState, type WorkflowParamValues, type WorkflowAttachment } from '../workflow-types';
-import type { WorkflowDraft, WorkflowRunRecord } from '../workflow-workspace';
-import type { WorkflowAccountState } from '../workflow-auth-client';
+import { workflowParameters, workflowParamValue, type Project, type ParamState, type ParamValues, type Attachment } from '../workflow-types';
+import type { Draft, RunRecord } from '../workflow-workspace';
+import type { AccountState } from '../workflow-auth-client';
 import { layoutWorkflowGraph } from '../workflow-graph';
 
 interface State {
-  project: WorkflowProject;
-  runs: Pick<WorkflowRunRecord, 'id' | 'title' | 'status' | 'createdAt' | 'entrypointId'>[];
-  run?: WorkflowRunRecord;
-  occupiedRun?: WorkflowRunRecord;
+  project: Project;
+  runs: Pick<RunRecord, 'id' | 'title' | 'status' | 'createdAt' | 'entrypointId'>[];
+  run?: RunRecord;
+  occupiedRun?: RunRecord;
   occupiedId?: string;
-  drafts: Record<string, WorkflowDraft>;
+  drafts: Record<string, Draft>;
   history: { total: number; hasMore: boolean; query: string };
   running: boolean;
-  account: WorkflowAccountState;
+  account: AccountState;
   authenticationRevision: number;
 }
 const statusLabels: Record<string, string> = {
@@ -53,8 +53,8 @@ traceButton.id = 'open-trace'; document.querySelector('.run-heading-actions')!.p
 let state: State | undefined, entrypointId: string | undefined, entrySignature = '', renderedRun = '';
 let connected = false, resolving = false, submitting = false, draftsLoaded = false, requestId = 0, revision = -1;
 let errorScope = 0;
-let paramStates: Record<string, WorkflowParamState> = {};
-const drafts: Record<string, WorkflowDraft> = {};
+let paramStates: Record<string, ParamState> = {};
+const drafts: Record<string, Draft> = {};
 const saved = (host.getState() ?? {}) as { menuOpen?: boolean; entrypointId?: string; tab?: string };
 let menuOpen = saved.menuOpen ?? true, tab = 'result', scale = 1, graphWidth = 400, graphHeight = 160, graphSignature = '';
 let editTimer: ReturnType<typeof setTimeout> | undefined, searchTimer: ReturnType<typeof setTimeout> | undefined;
@@ -65,9 +65,9 @@ const output = new ConversationOutput(element('run-output'), {
   image: (src, title) => dialogs.image(src, title), resource: (card, action, requestId) => post({ type: 'resource', cardId: card.id, runId: state?.run?.id, action, requestId }),
 });
 const parameters = () => state ? workflowParameters(state.project, entrypointId) : { fields: [] };
-const draft = (): WorkflowDraft => drafts[entrypointId ?? ''] ??= { scopeId: '', values: {}, rawArgs: '[]', inputMode: 'form', policies: {} };
+const draft = (): Draft => drafts[entrypointId ?? ''] ??= { scopeId: '', values: {}, rawArgs: '[]', inputMode: 'form', policies: {} };
 const disabled = () => !connected || !!state?.running || submitting || !!state?.project.requiresLogin && state.account.status !== 'authenticated';
-const fields = new WorkflowFields(element('main-fields'), element('parameter-actions'), {
+const fields = new Fields(element('main-fields'), element('parameter-actions'), {
   values: () => draft().values, states: () => paramStates, disabled, loading: () => resolving,
   change: (name, value) => { draft().values[name] = value; fields.update(); scheduleResolve({ kind: 'param', paramName: name }); },
   file: name => post({ type: 'attach', entrypointId, paramName: name, accept: parameters().fields.find(field => field.name === name)?.accept }),
@@ -299,7 +299,7 @@ addEventListener('message', event => {
     if (message.runId && prompt && message.requestId === prompt.request.requestId) { prompt.fileValue(message.paramName, JSON.stringify(message.files)); }
     else if (message.entrypointId === entrypointId) {
       const field = parameters().fields.find(field => field.name === message.paramName);
-      if (field) { const files = (message.files as WorkflowAttachment[]).map(({ previewUrl: _, ...file }) => file); draft().values[field.name] = JSON.stringify(field.multiple ? files : files[0] ?? null); fields.update(); scheduleResolve({ kind: 'param', paramName: field.name }); }
+      if (field) { const files = (message.files as Attachment[]).map(({ previewUrl: _, ...file }) => file); draft().values[field.name] = JSON.stringify(field.multiple ? files : files[0] ?? null); fields.update(); scheduleResolve({ kind: 'param', paramName: field.name }); }
     }
   } else if (message?.type === 'usage') { dialogs.usageResult(message.requestId, message.usage); }
   else if (message?.type === 'error') {

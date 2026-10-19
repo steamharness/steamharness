@@ -1,15 +1,15 @@
 import './localization-host';
 import { t } from './localization';
 import * as vscode from 'vscode';
-import type { WorkflowAccountController } from './workflow-auth';
-import type { WorkflowAccountState } from './workflow-auth-client';
+import type { AccountController } from './workflow-auth';
+import type { AccountState } from './workflow-auth-client';
 
-export function registerWorkflowConnectionStatus(account: WorkflowAccountController): vscode.Disposable {
+export function registerWorkflowConnectionStatus(account: AccountController): vscode.Disposable {
   const status = vscode.window.createStatusBarItem('workflowConnection', vscode.StatusBarAlignment.Left, 120);
   status.name = t('SteamHarness Server');
   status.command = 'studio.openWorkflowAccount';
 
-  const update = (state: WorkflowAccountState): void => {
+  const update = (state: AccountState): void => {
     let icon = 'debug-disconnect', label = t('Server Disconnected');
     if (state.status === 'authenticated') { icon = 'plug'; label = t('Server Connected'); }
     else if (state.status === 'checking') { icon = 'loading~spin'; label = t('Connecting to Server'); }

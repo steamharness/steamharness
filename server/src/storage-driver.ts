@@ -10,7 +10,7 @@
 import path from "node:path";
 import { DEFAULT_DEV_SERVER_PORT } from "./dev-port";
 import { inferServerEnvMode } from "./env";
-import type { WorkflowStorageDriver } from "./object-storage";
+import type { StorageDriver } from "./object-storage";
 
 const LOOPBACK_HOST = "127.0.0.1";
 
@@ -33,7 +33,7 @@ const LOCAL_PUBLIC_BASE_URL_KEYS = [
  */
 export function resolveWorkflowStorageDriver(
   env: NodeJS.ProcessEnv = process.env,
-): WorkflowStorageDriver {
+): StorageDriver {
   const raw = env.STEAMHARNESS_STORAGE_DRIVER?.trim().toLowerCase();
   if (!raw || raw === "local") {
     return "local";

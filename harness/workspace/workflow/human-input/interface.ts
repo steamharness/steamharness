@@ -6,45 +6,45 @@ export interface NetworkPermissionValues {
   allowed: boolean;
 }
 
-export interface WorkflowPayload {
+export interface RunPayload {
   errCode: number;
   errMessage: string;
 }
 
-export type WorkflowOutputContentType = "markdown" | "text" | "json";
+export type OutputContentType = "markdown" | "text" | "json";
 
-export interface WorkflowOutputItem {
+export interface OutputItem {
   id: string;
   title: string;
   content: unknown;
   icon?: string;
   iconPreset?: "info" | "success" | "warning" | "error" | "note" | "code" | "list" | "quote" | "none";
-  contentType?: WorkflowOutputContentType;
+  contentType?: OutputContentType;
   collapsed?: boolean;
   metadata?: Record<string, unknown>;
 }
 
-export interface WorkflowOutputPayload extends WorkflowPayload {
-  items: WorkflowOutputItem[];
+export interface RunOutputPayload extends RunPayload {
+  items: OutputItem[];
 }
 
-export interface WorkflowExecutorResult<Output extends WorkflowPayload> {
+export interface ExecutorResult<Output extends RunPayload> {
   ok: boolean;
   data?: Output;
   error?: unknown;
 }
 
-export interface NetworkPermissionPayload extends WorkflowPayload {
+export interface NetworkPermissionPayload extends RunPayload {
   requestId: string;
   values: NetworkPermissionValues;
   submittedAt: string;
 }
 
-export interface PermissionOutputPayload extends WorkflowOutputPayload {
+export interface PermissionOutputPayload extends RunOutputPayload {
   allowed: boolean;
   message: string;
   requestId: string;
   submittedAt: string;
 }
 
-export type HumanInputResult = WorkflowExecutorResult<PermissionOutputPayload>;
+export type HumanInputResult = ExecutorResult<PermissionOutputPayload>;

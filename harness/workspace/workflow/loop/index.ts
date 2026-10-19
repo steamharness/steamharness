@@ -197,7 +197,7 @@ export const loopWorkflow = workflow.defineWorkflow<LoopInput, LoopOutputPayload
 
     const result = await workflow.runStreamNode(outputNode, whileResult, context);
     if (result.output === undefined) {
-      throw new workflow.WorkflowError({
+      throw new workflow.HarnessError({
         type: "workflow_execution",
         message: "Loop output was not created.",
       });

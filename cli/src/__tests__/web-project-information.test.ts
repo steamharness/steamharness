@@ -2,9 +2,9 @@ import { afterEach, expect, it } from 'vitest';
 import { initI18n } from '@steamharness/i18n';
 import { createDefaultWorkflowProjectInfo } from '@steamharness/project-info';
 import { projectInformation } from '../web/ui/project-information';
-import type { WorkflowProject } from '../web/workflow-types';
+import type { Project } from '../web/workflow-types';
 
-const project: WorkflowProject = { id: '448a05e4-6f18-4f62-b99e-413790796f4b', name: 'Display name',
+const project: Project = { id: '448a05e4-6f18-4f62-b99e-413790796f4b', name: 'Display name',
   manifest: { name: 'package-name', version: '1.2.3', description: 'Original description' },
   uri: 'file:///project', folderPath: '/project', projectType: 'conversation', fields: [], entrypoints: [] };
 afterEach(() => initI18n({ preference: 'zh-CN' }));

@@ -1,12 +1,12 @@
-import { WorkflowError } from "../workflow/index";
-import type { WorkflowConversationCommandDefinition, WorkflowParamDefinition } from "./types";
+import { HarnessError } from "../workflow/index";
+import type { ConversationCommandDefinition, ParamDefinition } from "./types";
 
 export function assertConversationCommands(
   value: unknown,
-  params: readonly WorkflowParamDefinition[],
-): asserts value is WorkflowConversationCommandDefinition[] | undefined {
+  params: readonly ParamDefinition[],
+): asserts value is ConversationCommandDefinition[] | undefined {
   if (value === undefined) return;
-  function fail(message: string): never { throw new WorkflowError({ type: "input_validation", message: `Conversation commands ${message}` }); }
+  function fail(message: string): never { throw new HarnessError({ type: "input_validation", message: `Conversation commands ${message}` }); }
   const record = (item: unknown): item is Record<string, unknown> => !!item && typeof item === "object" && !Array.isArray(item);
   const names = new Set(params.filter(param => param.panel === "slash").flatMap(param => param.type === "boolean"
     ? [param.command ?? param.name] : (param.options ?? []).map(option => option.command ?? option.value)));

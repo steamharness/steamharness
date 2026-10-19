@@ -13,7 +13,7 @@ description: "为宿主嵌入或测试一步构造完整的 Conversation Agent e
 
 ```ts
 workflow.defineAgentConversationExecutor(options?: AgentProjectOptions):
-  WorkflowConversationExecutorDefinition<AgentInput, AgentOutputPayload>
+  ConversationExecutorDefinition<AgentInput, AgentOutputPayload>
 ```
 
 返回值已经由 Core 校验，可以供嵌入方使用；把它传给项目入口的 `defineExecutor` 仍不能让静态结构分析看到内部字段。
@@ -29,7 +29,7 @@ workflow.defineAgentConversationExecutor(options?: AgentProjectOptions):
 | `projectName` | `string` | — | 项目展示名。 |
 | `workflowName` | `string` | `agent` | workflow 名，也是节点名前缀（`<name>-input`、`<name>-output`、`<name>-agent`）。 |
 | `outputItemId` | `string` | `agent-answer` | 助手正文回答的 item id，同时写入 `conversation.openai.outputItemId`。正文 item 用的就是这个值本身，因此适配器按 id 查找时一定能找到它。 |
-| `params` | `WorkflowConversationParamDeclaration[]` | 见下 | 完全覆盖默认参数表，只允许 Auxiliary、Quick 和 Mode。标准主输入框始终展示。 |
+| `params` | `ConversationParamDeclaration[]` | 见下 | 完全覆盖默认参数表，只允许 Auxiliary、Quick 和 Mode。标准主输入框始终展示。 |
 
 ## 生成的 executor
 

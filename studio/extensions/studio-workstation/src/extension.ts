@@ -4,8 +4,8 @@ import * as vscode from 'vscode';
 import { projectTypeIcons, readRecentProjects, rememberProjects, type RecentProject } from './projects';
 import { ProjectIcons } from './project-icons';
 import { activateWorkflow } from './workflow';
-import type { WorkflowLauncher } from './workflow-cli-types';
-import { activateWorkflowAccount, type WorkflowAccountController } from './workflow-auth';
+import type { Launcher } from './workflow-cli-types';
+import { activateWorkflowAccount, type AccountController } from './workflow-auth';
 import { activateDocumentPreviews } from './document-preview';
 import { StudioStartController } from './start-page';
 import { activateInternalLayer } from './internal-layer';
@@ -37,7 +37,7 @@ class RecentProjectsProvider {
   }
 }
 
-export async function activate(context: vscode.ExtensionContext, runtime?: WorkflowLauncher, suppliedAccount?: WorkflowAccountController): Promise<void> {
+export async function activate(context: vscode.ExtensionContext, runtime?: Launcher, suppliedAccount?: AccountController): Promise<void> {
   activateDocumentPreviews(context);
   const account = suppliedAccount ?? await activateWorkflowAccount(context);
   const output = vscode.window.createOutputChannel('Studio');

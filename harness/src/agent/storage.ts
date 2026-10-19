@@ -7,7 +7,7 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { Harness, createRegistry, type RegistryReader, type Storage } from "@earendil-works/pi-durable";
 import { createModels } from "@earendil-works/pi-ai";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
-import { WorkflowError } from "../workflow/errors";
+import { HarnessError } from "../workflow/errors";
 
 export interface AgentStorageFactory {
   /** Non-secret backend name shown in diagnostics. */
@@ -55,7 +55,7 @@ function acquireOwner(file: string): DatabaseSync {
     return owner;
   } catch (cause) {
     owner.close();
-    throw new WorkflowError({ type: "workflow_execution", message: "This agent session already has an execution owner.", metadata: { agentFailure: "owner_conflict" }, cause });
+    throw new HarnessError({ type: "workflow_execution", message: "This agent session already has an execution owner.", metadata: { agentFailure: "owner_conflict" }, cause });
   }
 }
 

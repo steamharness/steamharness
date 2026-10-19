@@ -42,7 +42,7 @@ function fixture(t, { files = new Map(), state = new Map([[IMPORTED_PROJECTS_KEY
   const context = { subscriptions: [], globalState: { get: key => state.get(key), update: async (key, value) => { state.set(key, value); } } };
   const module = { exports: {} };
   runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name), TextDecoder, URL, setTimeout, clearTimeout });
-  const provider = new module.exports.WorkflowRelatedProjectsView(context, { appendLine: line => output.push(line) },
+  const provider = new module.exports.RelatedProjectsView(context, { appendLine: line => output.push(line) },
     async root => (discover ? await discover(root.toString()) : [root.toString()]).map(uri), icons);
   t.after(() => provider.dispose());
   return { provider, state, commands, opened, warnings, errors, output, view,

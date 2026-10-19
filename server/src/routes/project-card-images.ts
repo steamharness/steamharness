@@ -1,10 +1,10 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { HttpError } from "../protocol";
-import type { WorkflowStorage } from "../storage";
+import type { Storage } from "../storage";
 
 const PROJECT_CARD_IMAGE_FILE_PATTERN = /^([a-f0-9]{64})\.webp$/;
 
-export function createProjectCardImageRouter(storage: WorkflowStorage): Router {
+export function createProjectCardImageRouter(storage: Storage): Router {
   const router = Router();
 
   router.get("/:workflowId/:fileName", asyncHandler(async (req, res) => {

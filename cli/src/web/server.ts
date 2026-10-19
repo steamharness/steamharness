@@ -10,14 +10,14 @@ import { assertLocalCliCoreCompatible } from '../local';
 import { readCliAuthConfig, clearCliAuthConfig } from '../auth-config';
 import { createEmptyWorkflowAuthConfig } from '@steamharness/auth-config';
 import { ConversationController, sessionRunning } from './conversation-controller';
-import { WorkflowController } from './workflow-controller';
+import { Controller } from './workflow-controller';
 import { KanbanController } from './kanban-controller';
 import { createWorkflowActions } from './workflow-actions';
-import { migrateWorkflowHistory, type WorkflowWorkspace } from './workflow-workspace';
+import { migrateWorkflowHistory, type WorkspaceContract } from './workflow-workspace';
 import { createWebRuntime, cliRoot, type WebConnection } from './runtime';
-import { redactWorkflowData, validateWorkflowValues, validateConversationCommandStates, mergeWorkflowParamStates, workflowParameters, workflowParamArgs, type WorkflowRuntime, type WorkflowProject, type ConversationSession, type ConversationDraftUpdate, type WorkflowAttachment, type WorkflowParamValues, type WorkflowParamState } from './workflow-types';
+import { redactWorkflowData, validateWorkflowValues, validateConversationCommandStates, mergeWorkflowParamStates, workflowParameters, workflowParamArgs, type Runtime, type Project, type ConversationSession, type ConversationDraftUpdate, type Attachment, type ParamValues, type ParamState } from './workflow-types';
 import { conversationResourceCards } from './resource-cards';
-import type { WorkflowAccountState } from './workflow-auth-client';
+import type { AccountState } from './workflow-auth-client';
 import { loginWebAccount } from './account-auth';
 import type { WebHostConfiguration } from './host-config';
 import { inspectWebProject } from './assistant-project';
@@ -25,14 +25,14 @@ import { ResourcePreviews } from './resource-preview';
 import { createLocalActivityWriter, summarizeLocalRuns } from './local-analysis';
 
 type Message = Record<string, any>;
-export interface WebOptions { projectDir: string; port?: number; dataDir?: string; theme?: 'auto' | 'light' | 'dark'; runtime?: WorkflowRuntime; host?: WebHostConfiguration }
+export interface WebOptions { projectDir: string; port?: number; dataDir?: string; theme?: 'auto' | 'light' | 'dark'; runtime?: Runtime; host?: WebHostConfiguration }
 
 export async function startWebServer(options: WebOptions) {
   const projectDir = await realpath(path.resolve(options.projectDir));
   const storageDir = path.resolve(options.dataDir ?? path.join(os.homedir(), '.steamharness', 'web'));
   const clients = new Set<ServerResponse>();
   let connection: WebConnection | undefined;
-  let account: WorkflowAccountState = { status: 'signed-out', serverUrl: 'http://localhost:7126', revision: 0 };
+  let account: AccountState = { status: 'signed-out', serverUrl: 'http://localhost:7126', revision: 0 };
   let signedOut = false;
   let authIdentity = '';
   let login: ChildProcess | undefined;
@@ -52,11 +52,11 @@ export async function startWebServer(options: WebOptions) {
   const runtime = options.runtime ?? createWebRuntime(projectDir, storageDir, () => connection, () => relatedProjects, { allowSystemAi: allowAiConnection });
   let inspected;
   try { inspected = await inspectWebProject(runtime, projectDir, options.host); } catch (error) { runtime.dispose(); throw error; }
-  const descriptor = inspected.projects[0] as WorkflowProject & { runtime?: { harnessVersion: string; harnessPath: string } };
+  const descriptor = inspected.projects[0] as Project & { runtime?: { harnessVersion: string; harnessPath: string } };
   if (!descriptor) { runtime.dispose(); throw new Error(inspected.errors.join('\n') || 'No Workflow project found.'); }
   if (!options.runtime) { assertLocalCliCoreCompatible(projectDir, descriptor.runtime!.harnessVersion); }
   if (!['conversation', 'workflow', 'kanban'].includes(descriptor.projectType)) { runtime.dispose(); throw new Error('Unsupported Workflow project type.'); }
-  const project: WorkflowProject = descriptor;
+  const project: Project = descriptor;
   const resources = new ResourcePreviews(project, runtime, storageDir, () => connection, () => relatedProjects, () => resourceProjects);
   const key = createHash('sha256').update(project.assistant ? `assistant:${project.id}:${project.assistant.workdir}` : projectDir).digest('hex').slice(0, 24);
   const historyPath = path.join(storageDir, key, 'conversations.json');
@@ -69,7 +69,7 @@ export async function startWebServer(options: WebOptions) {
   let activity: ReturnType<typeof createLocalActivityWriter> | undefined;
   const isWorkflow = project.projectType === 'workflow';
   const isKanban = project.projectType === 'kanban';
-  const parameterStates = new Map<string, Record<string, WorkflowParamState>>();
+  const parameterStates = new Map<string, Record<string, ParamState>>();
   const parameterEpochs = new Map<string, number>();
   const navigationSequences = new Map<string, number>();
   const selections = new Map<string, string>();
@@ -77,12 +77,12 @@ export async function startWebServer(options: WebOptions) {
   const blockedClients = new Set<ServerResponse>();
   const pendingFrames = new WeakMap<ServerResponse, string>();
   const sessionIdPattern = /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i;
-  const publicFile = (file: WorkflowAttachment) => ({ ...file, previewUrl: `/api/file/${encodeURIComponent(file.id)}` });
+  const publicFile = (file: Attachment) => ({ ...file, previewUrl: `/api/file/${encodeURIComponent(file.id)}` });
   const publicValue = (value: unknown): any => {
     if (Array.isArray(value)) { return value.map(publicValue); }
     if (value && typeof value === 'object') {
       const record = value as Record<string, unknown>;
-      if (typeof record.id === 'string' && /^wf_[a-f0-9]{32}$/.test(record.id) && typeof record.mimeType === 'string') { return publicFile(record as unknown as WorkflowAttachment); }
+      if (typeof record.id === 'string' && /^wf_[a-f0-9]{32}$/.test(record.id) && typeof record.mimeType === 'string') { return publicFile(record as unknown as Attachment); }
       return Object.fromEntries(Object.entries(record).map(([name, entry]) => [name, publicValue(entry)]));
     }
     return value;
@@ -125,7 +125,7 @@ export async function startWebServer(options: WebOptions) {
   });
   const controller = conversationController!;
   const runsPath = path.join(storageDir, key, 'runs.json');
-  let workspace: WorkflowWorkspace | undefined;
+  let workspace: WorkspaceContract | undefined;
   if (isWorkflow) {
     try {
       workspace = JSON.parse(await readFile(runsPath, 'utf8'));
@@ -135,7 +135,7 @@ export async function startWebServer(options: WebOptions) {
       workspace = migrateWorkflowHistory(saved.sessions ?? [], saved.activeId);
     }
   }
-  const workflowController = isWorkflow ? new WorkflowController(project, runtime, workspace!, {
+  const workflowController = isWorkflow ? new Controller(project, runtime, workspace!, {
     changed: broadcast, legacy: saved.sessions,
     log: message => process.stderr.write(`${message}\n`),
     save: workspace => {
@@ -237,7 +237,7 @@ export async function startWebServer(options: WebOptions) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) { throw new Error('Invalid request.'); }
     return value;
   };
-  const readAttachments = async (files: unknown, sessionId = controller.activeId): Promise<WorkflowAttachment[]> => {
+  const readAttachments = async (files: unknown, sessionId = controller.activeId): Promise<Attachment[]> => {
     if (!Array.isArray(files) || files.length > 32) { throw new Error('Invalid attachments.'); }
     return Promise.all(files.map(async file => { if (typeof file?.id !== 'string') { throw new Error('Invalid attachment.'); } const { reference } = await runtime.readFile(project, file.id); if (reference.conversationId !== sessionId) { throw new Error('Attachment belongs to another conversation.'); } return reference; }));
   };
@@ -326,7 +326,7 @@ export async function startWebServer(options: WebOptions) {
           const parameters = workflowParameters(project, entrypointId);
           const supplied = message.params ?? {};
           if (!supplied || typeof supplied !== 'object' || Array.isArray(supplied) || Object.values(supplied).some(value => typeof value !== 'string' && !(Array.isArray(value) && value.every(entry => typeof entry === 'string')))) { throw new Error('Invalid parameters.'); }
-          const values: WorkflowParamValues = Object.fromEntries(parameters.fields.filter(field => supplied[field.name] !== undefined).map(field => [field.name, supplied[field.name]]));
+          const values: ParamValues = Object.fromEntries(parameters.fields.filter(field => supplied[field.name] !== undefined).map(field => [field.name, supplied[field.name]]));
           const stateKey = `${current.id}:${entrypointId ?? ''}`;
           const epoch = (parameterEpochs.get(stateKey) ?? 0) + 1;
           parameterEpochs.set(stateKey, epoch);
@@ -368,7 +368,7 @@ export async function startWebServer(options: WebOptions) {
         }
         const text = command?.action.kind === 'prompt' ? command.action.text : message.text;
         if (typeof text !== 'string' || text.length > 100_000) { throw new Error('Invalid message text.'); }
-        const params = message.params as WorkflowParamValues;
+        const params = message.params as ParamValues;
         if (!params || typeof params !== 'object' || Array.isArray(params) || Object.values(params).some(value => typeof value !== 'string' && !(Array.isArray(value) && value.every(entry => typeof entry === 'string')))) { throw new Error('Invalid parameters.'); }
         const parameters = workflowParameters(project, entrypointId);
         const stateKey = `${current.id}:${entrypointId ?? ''}`;

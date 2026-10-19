@@ -1,30 +1,30 @@
 
 import type { NextFunction, Request, Response } from "express";
 import { type AccountRepository } from "./account-db";
-import { createWorkflowAuthServiceFromEnv, encodeCookieSession, getConfiguredAdminKey, getRequestPrincipal, hasConfiguredAdminKey, hasPermission, parseCookieHeader, readCookieSession, type AuthenticatedPrincipal, type WorkflowAuthService } from "./account-auth";
-import type { WorkflowPermissionKey } from "./permissions";
+import { createWorkflowAuthServiceFromEnv, encodeCookieSession, getConfiguredAdminKey, getRequestPrincipal, hasConfiguredAdminKey, hasPermission, parseCookieHeader, readCookieSession, type AuthenticatedPrincipal, type AuthService } from "./account-auth";
+import type { PermissionKey } from "./permissions";
 import { fail, HttpError } from "./protocol";
 import { getRequestT, localizeHttpErrorMessage, localizeServerMessage } from "./i18n";
-import type { WorkflowObjectStorage } from "./object-storage";
+import type { ObjectStorage } from "./object-storage";
 
 export const STEAMHARNESS_AUTH_COOKIE = "steamharness_auth_session";
 export type { AuthenticatedPrincipal } from "./account-auth";
 
-export interface WorkflowAuthContext {
-  authService?: WorkflowAuthService;
+export interface AuthContext {
+  authService?: AuthService;
   accountDb?: AccountRepository;
   dataDir?: string;
   /** Object storage used for avatars; absent when no backend is configured. */
-  objectStorage?: WorkflowObjectStorage;
+  objectStorage?: ObjectStorage;
 }
 
-let authContext: WorkflowAuthContext = {};
+let authContext: AuthContext = {};
 
-export function configureWorkflowAuthContext(context: WorkflowAuthContext): void {
+export function configureWorkflowAuthContext(context: AuthContext): void {
   authContext = context;
 }
 
-export function ensureWorkflowAuthService(accountDb?: AccountRepository): WorkflowAuthService | undefined {
+export function ensureWorkflowAuthService(accountDb?: AccountRepository): AuthService | undefined {
   if (authContext.authService) {
     return authContext.authService;
   }
@@ -67,7 +67,7 @@ export function requireAdminPrincipal() {
   return requirePermission("system.admin");
 }
 
-export function requirePermission(permission: WorkflowPermissionKey) {
+export function requirePermission(permission: PermissionKey) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const principal = await readRequestPrincipal(req);
@@ -184,7 +184,7 @@ export function clearAuthSessionCookie(res: Response): void {
   }
 }
 
-export function getWorkflowAuthContext(): WorkflowAuthContext {
+export function getWorkflowAuthContext(): AuthContext {
   return authContext;
 }
 

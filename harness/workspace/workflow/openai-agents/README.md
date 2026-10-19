@@ -3,7 +3,7 @@
 OpenAI Agents SDK workflow sample. It calls `@openai/agents`, passes workflow
 conversation context into the SDK run, exposes SDK tools backed by workflow KV
 and PersistentValue-backed project knowledge documents, and streams output
-through the current `WorkflowOutputPayload.items` protocol.
+through the current `RunOutputPayload.items` protocol.
 
 ## Install
 

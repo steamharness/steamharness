@@ -1,10 +1,10 @@
-import type { WorkflowParamResolveResult, WorkflowParamStatePatch } from "../executor/types";
+import type { ParamResolveResult, ParamStatePatch } from "../executor/types";
 import {
   getServerLLMCredentials,
-  type WorkflowServerLLMCredential,
-  type WorkflowServerLLMModelDetails,
+  type ServerLLMCredential,
+  type ServerLLMModelDetails,
 } from "../provider/llm/server";
-import { WorkflowError } from "../workflow/errors";
+import { HarnessError } from "../workflow/errors";
 import type { AgentInputModality, AgentModelAttributes } from "./types";
 
 /**
@@ -33,7 +33,7 @@ export function shouldFallbackFromSystemAI(error: unknown): boolean {
   if (error instanceof Error && error.message === SYSTEM_AI_UNSUPPORTED_MESSAGE) {
     return true;
   }
-  return error instanceof WorkflowError && error.metadata?.systemAiConfigured === false;
+  return error instanceof HarnessError && error.metadata?.systemAiConfigured === false;
 }
 
 export interface AgentSystemLLMRuntime {
@@ -56,7 +56,7 @@ export interface AgentSystemLLMRuntime {
 }
 
 export interface AgentSystemLLMSelection {
-  credential: WorkflowServerLLMCredential;
+  credential: ServerLLMCredential;
   protocol: AgentSystemLLMProtocol;
   model: string;
 }
@@ -69,7 +69,7 @@ export interface AgentSystemLLMSelection {
  */
 export async function readAgentSystemCredentials(
   signal?: AbortSignal,
-): Promise<WorkflowServerLLMCredential[]> {
+): Promise<ServerLLMCredential[]> {
   if (typeof getServerLLMCredentials !== "function") {
     throw new Error(SYSTEM_AI_UNSUPPORTED_MESSAGE);
   }
@@ -87,7 +87,7 @@ export function readAgentSystemProtocol(value: unknown): AgentSystemLLMProtocol 
   return undefined;
 }
 
-export function listAgentSystemModels(credential: WorkflowServerLLMCredential): string[] {
+export function listAgentSystemModels(credential: ServerLLMCredential): string[] {
   return [...new Set(credential.models)];
 }
 
@@ -100,11 +100,11 @@ export function listAgentSystemModels(credential: WorkflowServerLLMCredential): 
  * from the credential's own list.
  */
 export function selectAgentSystemLLM(
-  credentials: readonly WorkflowServerLLMCredential[],
+  credentials: readonly ServerLLMCredential[],
   requested: { provider?: string; model?: string },
 ): AgentSystemLLMSelection {
   if (credentials.length === 0) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "当前账户没有可供智能体使用的系统 AI 配置。",
     });
@@ -112,7 +112,7 @@ export function selectAgentSystemLLM(
 
   const credential = credentials.find((item) => item.id === requested.provider) ?? credentials[0];
   if (credential === undefined) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "当前账户没有可供智能体使用的系统 AI 配置。",
     });
@@ -120,7 +120,7 @@ export function selectAgentSystemLLM(
 
   const protocol = readAgentSystemProtocol(credential.providerType);
   if (protocol === undefined) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `AI 配置 "${credential.name}" 不支持智能体。`,
     });
@@ -135,7 +135,7 @@ export function selectAgentSystemLLM(
     readPreferredModel(protocol, models);
 
   if (model === undefined) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `AI 配置 "${credential.name}" 没有可用模型。`,
     });
@@ -165,7 +165,7 @@ export async function startAgentSystemLLMRuntime(options: {
   model?: string;
   signal?: AbortSignal;
   /** Credentials to use instead of reading the host's catalogue. */
-  credentials?: readonly WorkflowServerLLMCredential[];
+  credentials?: readonly ServerLLMCredential[];
 }): Promise<AgentSystemLLMRuntime> {
   const credentials = options.credentials ?? await readAgentSystemCredentials(options.signal);
   const selection = selectAgentSystemLLM(credentials, {
@@ -210,7 +210,7 @@ export async function startAgentSystemLLMRuntime(options: {
  * keeps pi's default instead of losing its effort options.
  */
 export function toAgentModelAttributes(
-  details: WorkflowServerLLMModelDetails | undefined,
+  details: ServerLLMModelDetails | undefined,
 ): AgentModelAttributes | undefined {
   if (details === undefined) return undefined;
 
@@ -260,13 +260,13 @@ export function resolveAgentBridgeBaseUrl(protocol: AgentSystemLLMProtocol, base
  */
 export function createAgentProjectParamResolver(): (
   context: { paramValues?: Record<string, unknown>; abortSignal?: AbortSignal },
-) => Promise<WorkflowParamResolveResult> {
+) => Promise<ParamResolveResult> {
   return async (context) => {
     const credentials = await readAgentSystemCredentials(context.abortSignal);
     const requested = readRequestedModel(context.paramValues);
     const selection = selectAgentSystemLLM(credentials, requested);
 
-    const params: Record<string, WorkflowParamStatePatch> = {
+    const params: Record<string, ParamStatePatch> = {
       provider: {
         value: selection.credential.id,
         disabled: false,
@@ -300,7 +300,7 @@ function readRequestedModel(
   };
 }
 
-function createAgentModelOption(credential: WorkflowServerLLMCredential, model: string) {
+function createAgentModelOption(credential: ServerLLMCredential, model: string) {
   const details = credential.modelDetails.find((entry) => entry.id === model);
   const capabilities = details?.capabilities;
   const labels = [
@@ -321,7 +321,7 @@ function createAgentModelOption(credential: WorkflowServerLLMCredential, model: 
  * turn before the provider does.
  */
 export function readAgentSystemModelCapabilities(
-  credentials: readonly WorkflowServerLLMCredential[],
+  credentials: readonly ServerLLMCredential[],
   model: string,
 ) {
   for (const credential of credentials) {

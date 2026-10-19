@@ -5,10 +5,10 @@ import {
   createDisabledWorkflowConversationContext,
   createDisabledWorkflowTokenUsageContext,
   createWorkflowRelatedProjectsContext,
-  type WorkflowKVContext,
+  type KVContext,
 } from "../index";
 import { runIf } from "../workflow/index";
-import type { NodeExecutionHookFinishEvent, WorkflowContext } from "../types/index";
+import type { NodeExecutionHookFinishEvent, RunContext } from "../types/index";
 
 test("runIf selects elseif branches and emits branch node hooks", async () => {
   const finishes: NodeExecutionHookFinishEvent[] = [];
@@ -132,7 +132,7 @@ test("workflow structure keeps nested runIf inside its branch", () => {
 
 function createTestWorkflowContext(options: {
   onFinish?: (event: NodeExecutionHookFinishEvent) => void;
-} = {}): WorkflowContext {
+} = {}): RunContext {
   const kv = createMemoryKVContext();
 
   return {
@@ -149,7 +149,7 @@ function createTestWorkflowContext(options: {
   };
 }
 
-function createMemoryKVContext(): WorkflowKVContext {
+function createMemoryKVContext(): KVContext {
   const values = new Map<string, unknown>();
 
   function createNamespace(prefix: string) {

@@ -207,7 +207,7 @@ Kanban 页面必须适配全屏工作区、手机、平板和 Conversation 对�
 }
 ```
 
-`params` 字段与 `WorkflowParamDefinition` 相同。宿主把值转换为 JSON 原生 string、number、boolean、array 或安全 file reference，并按当前用户保存多份命名配置。页面读取和监听：
+`params` 字段与 `ParamDefinition` 相同。宿主把值转换为 JSON 原生 string、number、boolean、array 或安全 file reference，并按当前用户保存多份命名配置。页面读取和监听：
 
 参数用于同一 HTML 页面在不同命名配置下切换标题、主题、过滤条件或显示模式。任务、卡片、记录等业务数据应由页面本身提供新建、编辑和删除操作，并通过 KV Bridge 持久化；不要把业务列表做成逗号分隔的 textarea 参数。
 
@@ -276,7 +276,7 @@ Bridge 缺失时回退为明确的只读或内存状态；调用失败只依赖�
 
 Bridge 同时最多保留 16 个请求，普通调用 15 秒超时，文件调用 120 秒超时。知识库列表 `pageSize` 上限 100，搜索 `pageSize` / `maxMatches` 上限 1000、前后上下文各 50 行，单次读取最多 1000 行。Server 看板预览的 Bridge 和配置 CRUD 固定页面首次加载的 `resolvedTarget`，版本变化后必须刷新页面。所有资源必须使用 `artifactDir` 内相对路径，并在 `sandbox="allow-scripts"`、离线 CSP、无 Node/preload 环境中工作；ES module、动态 import、WASM 和 `fetch()` 只能读取绑定项目、用户与固定版本且由宿主自动续期的短期 capability 下的同源产物，不能访问公网，也不要缓存或解析 capability URL。Kanban 支持 `steamharness structure`，不支持 `run`、`json`、Webhook 或 external run。
 
-文件 Bridge 与 KV 存储位置独立，始终使用当前服务器的 managed file storage；Desktop 未登录或目标 UUID 未创建于当前服务器时失败，不回退本地。`FileReference` 沿用 `WorkflowFileReference` 的安全字段（`id/name/mimeType/size/kind/storage/workflowId/createdAt/url`），`storage` 为 `server`。`createFile` 接受不超过 50 MiB 的 Blob、ArrayBuffer 或 Uint8Array；`readFile(id)` 返回原始字节及文件元数据，只接受当前项目且没有 conversation 作用域的文件，不能传 URL 或本地路径。图片可用 `URL.createObjectURL(new Blob([buffer], { type: file.mimeType }))` 显示，切换配置或卸载时释放。KV 保存文件引用与标注；不要把二进制数据分块存入 KV。替换图片时先上传和核验新文件，保存新引用成功后才能 `deleteFile` 旧文件。
+文件 Bridge 与 KV 存储位置独立，始终使用当前服务器的 managed file storage；Desktop 未登录或目标 UUID 未创建于当前服务器时失败，不回退本地。`FileReference` 沿用 `FileReference` 的安全字段（`id/name/mimeType/size/kind/storage/workflowId/createdAt/url`），`storage` 为 `server`。`createFile` 接受不超过 50 MiB 的 Blob、ArrayBuffer 或 Uint8Array；`readFile(id)` 返回原始字节及文件元数据，只接受当前项目且没有 conversation 作用域的文件，不能传 URL 或本地路径。图片可用 `URL.createObjectURL(new Blob([buffer], { type: file.mimeType }))` 显示，切换配置或卸载时释放。KV 保存文件引用与标注；不要把二进制数据分块存入 KV。替换图片时先上传和核验新文件，保存新引用成功后才能 `deleteFile` 旧文件。
 
 本地图片迁移使用 `steamharness workspace file-upload <项目 UUID> --file <路径> [--mime-type image/png]`，返回标准 `{ errCode: 0, errMessage: "", data: FileReference }`。通过 `steamharness workspace file-download <文件 ID> --output <新文件>` 读回比较字节或 SHA-256，已有文件不会覆盖；`file-delete <文件 ID>` 删除已明确不再使用的文件。三个命令使用 Desktop 注入的服务器身份或 CLI 登录态，不上传源码、不发布版本。CLI 过旧时要更新可用宿主或明确报告未验证，不改用图片 KV 分块兜底。
 
@@ -308,7 +308,7 @@ const detailsNode = workflow.createDetailsOutputNode({
 当 workflow 必须暂停等待人工回答并在稍后恢复同一个 run 时，使用 `workflow.createUserInputNode(...)`：
 
 ```ts
-interface ApprovalPayload extends WorkflowPayload {
+interface ApprovalPayload extends RunPayload {
   requestId: string;
   values: Record<string, unknown>;
   submittedAt: string;
@@ -327,7 +327,7 @@ const approvalNode = workflow.createUserInputNode<Plan, ApprovalPayload>({
 });
 ```
 
-等待节点的 `params` 使用普通 `WorkflowParamDefinition` 字段，不使用 executor 的 Auxiliary/Quick/Mode 分组；字段的取值、控件和校验规则一致，不需要第二套表单 schema。当 runtime 没有该节点的已解析答案时，run report 会进入 `waiting_for_input` 并包含 `pendingUserInput`。当 本地宿主或 CLI Web 提交答案后，同一个 `runId` 会带着 `resolvedUserInputs` 恢复；除非自定义 `format` 映射到其它 `WorkflowPayload`，节点会返回 `{ errCode: 0, errMessage: "", requestId, values, submittedAt }`。
+等待节点的 `params` 使用普通 `ParamDefinition` 字段，不使用 executor 的 Auxiliary/Quick/Mode 分组；字段的取值、控件和校验规则一致，不需要第二套表单 schema。当 runtime 没有该节点的已解析答案时，run report 会进入 `waiting_for_input` 并包含 `pendingUserInput`。当 本地宿主或 CLI Web 提交答案后，同一个 `runId` 会带着 `resolvedUserInputs` 恢复；除非自定义 `format` 映射到其它 `RunPayload`，节点会返回 `{ errCode: 0, errMessage: "", requestId, values, submittedAt }`。
 
 外部 agent 或当前节点输入需要动态决定问题字段时，可以另外提供 `resolveRequest(input, context)`，返回本次请求的 `title`、`description`、`params` 和 `defaultValues`。仍应在节点 options 中保留静态 `params`（没有固定字段时可为空数组）供结构分析使用；resolver 必须无副作用且对相同输入保持确定性，恢复同一个 requestId 时字段名和 option value 不能变化。
 
@@ -393,62 +393,62 @@ const title = locale === "en" ? "Market data" : "股票行情";
 在 `interface.ts` 或等价本地文件中保留这些最小类型：
 
 ```ts
-export interface WorkflowPayload {
+export interface RunPayload {
   errCode: number;
   errMessage: string;
 }
 
-export type WorkflowOutputContentType = "markdown" | "text" | "json" | "audio" | "video";
+export type OutputContentType = "markdown" | "text" | "json" | "audio" | "video";
 
-export interface WorkflowOutputDisplay {
+export interface OutputDisplay {
   type: "ring";
   placement?: "inline" | "composer-right";
 }
 
-export interface WorkflowRingContent {
+export interface RingContent {
   value: number;
   total?: number;
   unit?: string;
 }
 
-export interface WorkflowOutputItem {
+export interface OutputItem {
   id: string;
   title: string;
   content: unknown;
   icon?: string;
   iconPreset?: "info" | "success" | "warning" | "error" | "note" | "code" | "list" | "quote" | "none";
-  contentType?: WorkflowOutputContentType;
-  display?: WorkflowOutputDisplay;
+  contentType?: OutputContentType;
+  display?: OutputDisplay;
   collapsed?: boolean;
   metadata?: Record<string, unknown>;
 }
 
-export interface WorkflowOutputPayload extends WorkflowPayload {
-  items: WorkflowOutputItem[];
+export interface RunOutputPayload extends RunPayload {
+  items: OutputItem[];
 }
 
-export interface WorkflowTimerPayload extends WorkflowPayload {
+export interface TimerPayload extends RunPayload {
   timerId: string;
   title: string;
   startedAt: string;
   metadata?: Record<string, unknown>;
 }
 
-export interface WorkflowTimerRecord extends WorkflowTimerPayload {
+export interface TimerRecord extends TimerPayload {
   status: "running" | "success" | "failed" | "cleared";
   endedAt?: string;
   durationMs?: number;
   message?: string;
 }
 
-export interface WorkflowExecutorResult<Output extends WorkflowPayload> {
+export interface ExecutorResult<Output extends RunPayload> {
   ok: boolean;
   data?: Output;
   error?: unknown;
 }
 ```
 
-所有节点 payload 类型都必须包含 `WorkflowPayload`。成功输出统一使用：
+所有节点 payload 类型都必须包含 `RunPayload`。成功输出统一使用：
 
 ```ts
 errCode: 0,
@@ -456,7 +456,7 @@ errMessage: "",
 items: [],
 ```
 
-用户可见输出使用 `WorkflowOutputPayload.items`，不要使用顶层 `content` 聚合。每个 item 可以渲染为 `markdown`、`text`、`json`、`audio` 或 `video`。对象和数组内容应保持原始 JSON 值。`audio` 的 `content` 设置为 `{ src, mimeType, name, size, durationMs?, format? }`；`src` 可以是安全的 `data:audio/...;base64,...` URL 或 `http(s)` URL。`video` 的 `content` 约定为 `{ src, mimeType: "video/mp4", name: "output.mp4", durationMs?, format?: "mp4" }`；`src` 同样只接受安全的 `data:video/...;base64,...` 或 `http(s)` URL，宿主使用原生 `<video controls preload="metadata" playsInline>` 渲染，不安全的协议会被丢弃而不是报错。只有确实产出视频文件时才使用 `video` item；不要把视频地址写成 Markdown 链接或 base64 塞进 `text`/`json`。
+用户可见输出使用 `RunOutputPayload.items`，不要使用顶层 `content` 聚合。每个 item 可以渲染为 `markdown`、`text`、`json`、`audio` 或 `video`。对象和数组内容应保持原始 JSON 值。`audio` 的 `content` 设置为 `{ src, mimeType, name, size, durationMs?, format? }`；`src` 可以是安全的 `data:audio/...;base64,...` URL 或 `http(s)` URL。`video` 的 `content` 约定为 `{ src, mimeType: "video/mp4", name: "output.mp4", durationMs?, format?: "mp4" }`；`src` 同样只接受安全的 `data:video/...;base64,...` 或 `http(s)` URL，宿主使用原生 `<video controls preload="metadata" playsInline>` 渲染，不安全的协议会被丢弃而不是报错。只有确实产出视频文件时才使用 `video` item；不要把视频地址写成 Markdown 链接或 base64 塞进 `text`/`json`。
 
 用户可见答案默认使用流式输出，尤其是 LLM、agent、API workflow，否则用户必须等待完整 run 结束。使用 `workflow.createOutputNode({ async *stream, format })`，并用 `workflow.runStreamNode(...)` 执行；非流式 `workflow.runNode(...)` 只保留给小型内部转换或瞬时输出。可见文本流完后，finalizer 仍可写入 KV、conversation message 和 token usage。
 
@@ -536,25 +536,25 @@ export default exampleWorkflow;
 - `context.storage.*.kv.*.deleteValue(key)` 删除单条 KV 并返回布尔值：`true` 表示确实删除了已存在的条目，`false` 表示该键本来就不存在。删除是永久的、不可恢复，且未删到的键不是错误，因此可以用返回值区分“删掉了”和“本来就没有”。KV 值不允许是 `undefined`，所以 `setValue(key, undefined)` 永远不是删除，也不会把存储的 `null` 当成缺失。
 - `context.storage.*.relatedProjects.get(alias).kv` 访问直接关联项目。调用方用自己的 alias 找目标，权限读取目标项目对调用方的 `grantToRelatedProject`；`getValue` 检查 read，`setValue` 与 `deleteValue` 检查 write，`updateValue` 同时检查两者。关系必须双方声明且每次调用重新解析，不能递归进入目标关系，也不能跨 local/server 回退。
 - `context.storage.*.kv.*.updateValue(key, updater)` 在内置本地和 server KV 后端上原子更新 JSON 值；`context.storage.*.persistentValue.*.updateValue` 使用远程服务器时会通过服务端 compare-and-set 重试，所以 updater 必须保持纯函数并可能执行多次。自定义 store 未实现 `updateValue` 时才会回退到 read-modify-write。不要在 workflow 中依赖 store 内部的 namespace read lock；知识库 helper 会在本地大范围搜索时自行复用它。
-- `WorkflowKVStore` 可选实现 `withNamespaceLock(input, operation)` 来串行化同一 project 或 conversation namespace 的多 key 操作。远程 store 无法把回调锁跨 HTTP 持有时，可选实现 `executeNamespaceMutation(input, mutation)`；内置知识库仅使用它传递受限的 create、edit、delete 服务端 mutation，不要把任意回调或代码发送到 server。
+- `KVStore` 可选实现 `withNamespaceLock(input, operation)` 来串行化同一 project 或 conversation namespace 的多 key 操作。远程 store 无法把回调锁跨 HTTP 持有时，可选实现 `executeNamespaceMutation(input, mutation)`；内置知识库仅使用它传递受限的 create、edit、delete 服务端 mutation，不要把任意回调或代码发送到 server。
 - 每个位置的 `persistentValue` 是独立于同位置普通 `kv` 的持久值通道，顶层是当前 project，另有 `.conversation`，并提供 `getValue`、`setValue`、`deleteValue` 和 `updateValue`。本地 CLI/Desktop 需要显式配置本地 PersistentValue store；服务器位置使用登录态和同 UUID 项目绑定。
 - `context.files.createFile({ name, mimeType, buffer, kind })` 把 workflow 生成的文件写入 server-backed runtime file storage。
 - Server PostgreSQL 项目存储写入会自动记录最后写入来源（`projectId`、`runId`、`conversationId`），供 server/web 项目 KV 查看器使用。
 - 项目知识库 helper 封装所选位置顶层的 `persistentValue`，第一个参数必须显式传 `context.storage.local` 或 `context.storage.server`：`workflow.listKnowledgeDocuments`、`workflow.getKnowledgeDocument`、`workflow.createKnowledgeDocument`、`workflow.editKnowledgeDocument`、`workflow.deleteKnowledgeDocument`、`workflow.searchKnowledgeDocuments` 和 `workflow.readKnowledgeDocumentLines`。
 - Workflow entrypoint 上的 `tokenUsage: { enabled: true, display?: boolean }` 会为该入口启用 token usage 收集；Conversation 仍在 executor 上配置。
-- Workflow entrypoint 上的 `tools: WorkflowToolPermissionDefinition[]` 会启用该入口的工具策略元数据；Conversation 仍在 executor 上配置。每项包含 `name`、可选 `label/description`、`enabled` 默认值和 `autoApprove` 默认值。
+- Workflow entrypoint 上的 `tools: ToolPermissionDefinition[]` 会启用该入口的工具策略元数据；Conversation 仍在 executor 上配置。每项包含 `name`、可选 `label/description`、`enabled` 默认值和 `autoApprove` 默认值。
 - `params` 描述结构化 Desktop、server、external input。
 - `createInput({ args, paramValues, env, workflowName, workflowDir, entrypointId, entrypointTitle, abortSignal, hostInput, conversationId, toolPermissionPolicies })` 把 argv 或宿主结构化输入转成 workflow input。`paramValues` 是宿主按入口静态参数解析出的结构化值；`hostInput` 是宿主注入的请求级输入（普通运行缺省 `undefined`），不进入通用 run metadata；`conversationId`、`toolPermissionPolicies` 只在宿主提供时出现。
 - 把 `workflow` 作为别名导出，既保持现有平台发现稳定，又避免定义遮蔽全局命名空间的本地常量。
 - 入口的可选 `requiredProviders: ExecutorProviderName[]` 声明该入口运行需要的 provider，当前内置名称只有 `"llm"`；Conversation executor 同样支持。它是 Workflow 顶层被移除的 legacy key，只能写在入口上。
-- 入口的可选 `createContext({ ...WorkflowExecutorContext })` 返回 `Partial<WorkflowContext>`，用于为该入口增补 `providers`、`metadata` 和 hooks。`storage`、`conversation`、`files` 的注入与作用域由 runtime 负责，返回对象里不要试图替换它们。
+- 入口的可选 `createContext({ ...ExecutorContext })` 返回 `Partial<RunContext>`，用于为该入口增补 `providers`、`metadata` 和 hooks。`storage`、`conversation`、`files` 的注入与作用域由 runtime 负责，返回对象里不要试图替换它们。
 
 ### 入口分区（group）
 
 多入口项目可以在入口对象上声明可选分区，把同一业务域的入口折叠成 Desktop Run 区和 CLI Web 里的一个分区：
 
 ```ts
-interface WorkflowEntrypointGroupDefinition {
+interface EntrypointGroupDefinition {
   id: string;
   title: string;
   order?: number;
@@ -580,12 +580,12 @@ workflow.defineEntrypoint<Input, Output>({
 - 本地 CLI、MCP 和 OpenAI 接口 只按 `entrypoint.id` 执行，忽略分区；`group` 不影响 `defaultEntrypoint`、调度预设或参数解析。
 - 只有确实需要按业务域折叠多个入口时才声明 `group`；单入口项目或不需要分组的多入口项目保持不声明，界面会自动保持扁平列表。
 
-## 错误与暂停语义（WorkflowError）
+## 错误与暂停语义（HarnessError）
 
-运行时把失败归类为类型化错误。项目源码抛出的普通 `Error` 会被包成 `workflow_execution`，宿主只能看到泛化原因；需要宿主、Desktop 或 Server 识别具体失败种类（尤其是暂停与取消）时，必须显式抛出 `workflow.WorkflowError`：
+运行时把失败归类为类型化错误。项目源码抛出的普通 `Error` 会被包成 `workflow_execution`，宿主只能看到泛化原因；需要宿主、Desktop 或 Server 识别具体失败种类（尤其是暂停与取消）时，必须显式抛出 `workflow.HarnessError`：
 
 ```ts
-throw new workflow.WorkflowError({
+throw new workflow.HarnessError({
   type: "input_validation",
   message: "行情代码必须是大写字母加数字。",
   nodeName: "load-quotes",
@@ -593,7 +593,7 @@ throw new workflow.WorkflowError({
 });
 ```
 
-`WorkflowErrorOptions` 为 `{ type, message, nodeName?, cause?, metadata? }`；`cause` 会被脱敏成 `{ name, message, statusCode?, url?, isRetryable?, responseBody?, cause?, validation? }` 并进入 report，`metadata` 只放可公开的结构化信息。
+`ErrorOptions` 为 `{ type, message, nodeName?, cause?, metadata? }`；`cause` 会被脱敏成 `{ name, message, statusCode?, url?, isRetryable?, responseBody?, cause?, validation? }` 并进入 report，`metadata` 只放可公开的结构化信息。
 
 | `type` | 触发与宿主语义 |
 | --- | --- |
@@ -607,12 +607,12 @@ throw new workflow.WorkflowError({
 | `stream_interrupted` | 流式输出在完成前中断。 |
 
 - `workflow.runNode(...)` 会把 `user_input_required` 和 `execution_aborted` 原样向上抛出并保持等待/取消状态；不要把这两个错误吞掉、包装、转成成功返回值，否则宿主无法恢复同一个 run。
-- 不要用字符串或自定义 `errCode` 表达暂停与取消语义；只有 `WorkflowError.type` 会被宿主识别。
-- `workflow.WorkflowError` 可以从项目源码构造，但在节点内部捕获后重新抛出时，保留原始 `type`，必要时用 `metadata` 补充上下文。
+- 不要用字符串或自定义 `errCode` 表达暂停与取消语义；只有 `HarnessError.type` 会被宿主识别。
+- `workflow.HarnessError` 可以从项目源码构造，但在节点内部捕获后重新抛出时，保留原始 `type`，必要时用 `metadata` 补充上下文。
 
 ## 业务计时器
 
-当业务阶段需要在 本地桌面与 本地运行回放 中显示为计时卡片时，使用 `workflow.createTimerNode(...)`。该节点启动可序列化的 `WorkflowTimerPayload`；`workflow.endTimer(...)` 会把它标记为 `success` 或 `failed`，并把 `endedAt` / `durationMs` 写入 runtime events 和最终 report。
+当业务阶段需要在 本地桌面与 本地运行回放 中显示为计时卡片时，使用 `workflow.createTimerNode(...)`。该节点启动可序列化的 `TimerPayload`；`workflow.endTimer(...)` 会把它标记为 `success` 或 `failed`，并把 `endedAt` / `durationMs` 写入 runtime events 和最终 report。
 
 ```ts
 const timerNode = workflow.createTimerNode({
@@ -857,7 +857,7 @@ STEAMHARNESS_KV_STORE_DIR=/tmp/steamharness-kv \
 
 Workflow 的 `params` 必须是 `workflow.defineEntrypoint({ ... })` 内的静态数组字面量；Conversation 的 `params` 继续位于 `workflow.defineExecutor({ ... })`。静态结构分析不执行代码。
 
-Workflow 的数组条目是 `WorkflowParamDeclaration`，普通主字段可直接声明。Conversation 的数组条目是 `WorkflowConversationParamDeclaration`，只允许 Auxiliary、Quick、Mode 和 Slash；标准主输入框始终展示，不声明普通主字段或保留的 `--message`、`--images`、`--videos`、`--files`。Auxiliary 和 Quick 声明 `{ kind, id, label, fields }`，Quick 还要有 `summary`；Conversation 的单击轮换模式直接声明 `{ kind: "mode", name, flag, options }`，Slash 声明 `{ kind: "slash", name, flag, type, options? }` 并出现在 `/` 菜单中。可重复声明多个入口，工具栏按数组顺序从左到右展示。组内字段是普通参数，不能再设置 `panel` 或嵌套分组。所有字段的 `name`、flag 和 Auxiliary/Quick 的 `id` 必须各自唯一。结构报告把字段展平到 `params`，用 `paramLayout.actions` 记录入口归属和顺序；`createInput({ paramValues })` 仍按字段名读取值。
+Workflow 的数组条目是 `ParamDeclaration`，普通主字段可直接声明。Conversation 的数组条目是 `ConversationParamDeclaration`，只允许 Auxiliary、Quick、Mode 和 Slash；标准主输入框始终展示，不声明普通主字段或保留的 `--message`、`--images`、`--videos`、`--files`。Auxiliary 和 Quick 声明 `{ kind, id, label, fields }`，Quick 还要有 `summary`；Conversation 的单击轮换模式直接声明 `{ kind: "mode", name, flag, options }`，Slash 声明 `{ kind: "slash", name, flag, type, options? }` 并出现在 `/` 菜单中。可重复声明多个入口，工具栏按数组顺序从左到右展示。组内字段是普通参数，不能再设置 `panel` 或嵌套分组。所有字段的 `name`、flag 和 Auxiliary/Quick 的 `id` 必须各自唯一。结构报告把字段展平到 `params`，用 `paramLayout.actions` 记录入口归属和顺序；`createInput({ paramValues })` 仍按字段名读取值。
 
 Conversation 参数示例：
 
@@ -880,12 +880,12 @@ params: [
 
 规则：
 
-- `WorkflowConversationDefinition` 的 `recovery` 使用内联 `{ enabled: true }` 声明可跨进程恢复。只为持久 Agent 等可恢复项目启用；CLI Web / Studio 保存原 runId、args 和已解析答案，worker 意外退出最多自动恢复 3 次，再用现有 Retry 继续原运行。关闭宿主保留检查点，显式停止先保存取消意图、停 worker，再调用 `steamharness/agent` 的 `cancelAgentConversation({ agentStoreDir, conversationId })`，重开不能复活。
-- `WorkflowConversationDefinition` 的 `durable` 字段使用内联 `{ enabled: true }`，并在 Agent 选项设置 `session: { ... }`，启用持久输入队列、steer、后台任务及 Studio Trace 任务视图。Harness 是队列与历史的唯一权威，不能另建宿主队列调度同一 Agent。CLI Web / Studio 通过稳定 requestId 的双向命令和快照确认提交；多客户端各自选择会话，共享同一个执行 owner。常驻 owner 调度由本地 CLI / Studio 宿主负责。
+- `ConversationDefinition` 的 `recovery` 使用内联 `{ enabled: true }` 声明可跨进程恢复。只为持久 Agent 等可恢复项目启用；CLI Web / Studio 保存原 runId、args 和已解析答案，worker 意外退出最多自动恢复 3 次，再用现有 Retry 继续原运行。关闭宿主保留检查点，显式停止先保存取消意图、停 worker，再调用 `steamharness/agent` 的 `cancelAgentConversation({ agentStoreDir, conversationId })`，重开不能复活。
+- `ConversationDefinition` 的 `durable` 字段使用内联 `{ enabled: true }`，并在 Agent 选项设置 `session: { ... }`，启用持久输入队列、steer、后台任务及 Studio Trace 任务视图。Harness 是队列与历史的唯一权威，不能另建宿主队列调度同一 Agent。CLI Web / Studio 通过稳定 requestId 的双向命令和快照确认提交；多客户端各自选择会话，共享同一个执行 owner。常驻 owner 调度由本地 CLI / Studio 宿主负责。
 - Slash 只用于 Conversation，支持单选 `type: "string"` 和开关 `type: "boolean"`，不能声明 `control`、`panel` 或 `multiple`。单选须有非空 `options`，默认使用首项，显式默认值必须属于选项；boolean 不提供 `options`，默认 `"false"`。选项级 `command` 默认取 `value`，boolean 参数级 `command` 默认取 `name`，命令不带 `/`、在项目内唯一且匹配 `/^[a-z][a-z0-9_-]*$/`。`resolvedOptions` 也可提供命令，省略时沿用同值静态选项的别名再回退到 `value`，格式和唯一性仍须合法。菜单遵守 visibility/disabled，选择后更新普通参数值、移除光标处命令并触发 resolver，不直接发送消息。
-- `WorkflowConversationDefinition.commands` 使用静态 `WorkflowConversationCommandDefinition[]` 定义通用执行命令，与 Slash 参数共享菜单；单独输入 `/` 展示全部命令。每项声明 `command`、非空 `label`、可选 `description` / `localizedLabel` / `localizedDescription` 和 `action`。`{ kind: "prompt", text: "..." }` 将声明的文字作为独立回合运行该项目，`{ kind: "export" }` 下载当前会话的完整 JSON 并在正文保存命令与结果。命令必须满足 `/^[a-z][a-z0-9_-]*$/`，不得与静态或动态参数命令重复。命令保留其他草稿正文和附件，在运行、等待审批、队列未清空或编辑队列时禁用。
-- `WorkflowConversationDefinition.footer` 使用静态 `WorkflowConversationFooterItem[]` 在标准输入框外下方展示纯文字。每项只声明 `{ text: "Plan mode", localizedText: { "zh-CN": "Plan 模式" } }` 或 `{ param: "plan" }`，可加 `when: { param: "plan", value: "true" }`。参数引用必须存在，显示当前选项标签或原值；隐藏的引用参数不展示，条件不匹配不展示。翻译缺失回退到 `text`，不解析 HTML/Markdown。小助手采用 `kind: "slash", name: "plan", type: "boolean", defaultValue: "false"`，单个 `/plan` 开关控制 Plan，默认 Build，`createInput` 映射 `paramValues.plan === "true" ? "plan" : "build"` 到 Agent 的 `agent`。
-- `WorkflowConversationDefinition` 的 `userInput` 使用静态 `WorkflowConversationUserInputDefinition`。`hideComposer` 默认 true：等待任意用户输入请求期间隐藏底部主输入区，确认答案或停止后恢复，保留草稿、附件和参数；false 显式保留输入区。`effects: [{ when: { type?, nodeName?, values? }, params }]` 按声明顺序在运行时确认答案后执行一次，失败提交不执行。`type` 匹配请求 `metadata.type`，`nodeName` 匹配节点名，`values` 中所有字段精确匹配已解析答案（string / 有限 number / boolean / 有序 string 数组）；至少一个条件，多个条件须全部匹配。`params` 非空且只引用已有参数，值为字符串或字符串数组，boolean 使用 `"true"` / `"false"`。更新当前会话后续输入的参数、Slash/Quick/底部文字并持久化，当前运行仍用原始 args 恢复；旧参数刷新不能覆盖更新。小助手配置 `{ when: { type: "agent-plan-approval", values: { decision: "approve" } }, params: { plan: "false" } }`，普通节点可用任意类型、节点和答案配置，不允许宿主硬编码 Plan 判断。
+- `ConversationDefinition.commands` 使用静态 `ConversationCommandDefinition[]` 定义通用执行命令，与 Slash 参数共享菜单；单独输入 `/` 展示全部命令。每项声明 `command`、非空 `label`、可选 `description` / `localizedLabel` / `localizedDescription` 和 `action`。`{ kind: "prompt", text: "..." }` 将声明的文字作为独立回合运行该项目，`{ kind: "export" }` 下载当前会话的完整 JSON 并在正文保存命令与结果。命令必须满足 `/^[a-z][a-z0-9_-]*$/`，不得与静态或动态参数命令重复。命令保留其他草稿正文和附件，在运行、等待审批、队列未清空或编辑队列时禁用。
+- `ConversationDefinition.footer` 使用静态 `ConversationFooterItem[]` 在标准输入框外下方展示纯文字。每项只声明 `{ text: "Plan mode", localizedText: { "zh-CN": "Plan 模式" } }` 或 `{ param: "plan" }`，可加 `when: { param: "plan", value: "true" }`。参数引用必须存在，显示当前选项标签或原值；隐藏的引用参数不展示，条件不匹配不展示。翻译缺失回退到 `text`，不解析 HTML/Markdown。小助手采用 `kind: "slash", name: "plan", type: "boolean", defaultValue: "false"`，单个 `/plan` 开关控制 Plan，默认 Build，`createInput` 映射 `paramValues.plan === "true" ? "plan" : "build"` 到 Agent 的 `agent`。
+- `ConversationDefinition` 的 `userInput` 使用静态 `ConversationUserInputDefinition`。`hideComposer` 默认 true：等待任意用户输入请求期间隐藏底部主输入区，确认答案或停止后恢复，保留草稿、附件和参数；false 显式保留输入区。`effects: [{ when: { type?, nodeName?, values? }, params }]` 按声明顺序在运行时确认答案后执行一次，失败提交不执行。`type` 匹配请求 `metadata.type`，`nodeName` 匹配节点名，`values` 中所有字段精确匹配已解析答案（string / 有限 number / boolean / 有序 string 数组）；至少一个条件，多个条件须全部匹配。`params` 非空且只引用已有参数，值为字符串或字符串数组，boolean 使用 `"true"` / `"false"`。更新当前会话后续输入的参数、Slash/Quick/底部文字并持久化，当前运行仍用原始 args 恢复；旧参数刷新不能覆盖更新。小助手配置 `{ when: { type: "agent-plan-approval", values: { decision: "approve" } }, params: { plan: "false" } }`，普通节点可用任意类型、节点和答案配置，不允许宿主硬编码 Plan 判断。
 - 小助手声明 `/export` 的 export action，以及 `/compact` 的 `{ kind: "prompt", text: "/compact" }` action。Core Agent 对精确 `/compact` 或 `compact: true` 立即调用真实模型总结全部已有上下文，不受自动压缩阈值限制；展示执行中、完成或失败，成功后替换并持久化 Agent transcript，后续回合使用摘要，失败保留原上下文。空上下文直接完成；原 Conversation 正文不删除。公开 `compactAgentMessages` 的 `force: true` 同样强制总结已有消息。
 - `string` 和 `number`：追加 `flag value`。
 - `boolean`：只有 true 时追加 `flag`。当 boolean param 默认值为 `"true"` 时，结构化表单可追加 `flag false`，让 `createInput` 可以向下游 API 传递显式 false。
@@ -1093,7 +1093,7 @@ const details = await workflow.runNode(detailsNode, parsed, context);
 - 字符串 chunk 会自动追加到默认 inline Markdown `Output` item，适合 LLM/AI/agent 正文和普通文本。结构化 chunk 使用 `workflow.createOutputItemChunk(...)`，支持 `output_item_start`、`output_item_delta` 和 `output_item_end`，适合工具调用和辅助 detail。
 - `workflow.runIf` 运行显式分支节点。第一个命中的 `condition` 生效；没有任何分支命中且未声明 `else` 时抛 `node_execution`，所以要么覆盖全部情况，要么显式声明 `else`。
 - `workflow.runFor` 和 `workflow.runWhile` 运行显式循环节点。迭代次数达到 `maxIterations` 时抛 `node_execution`；`maxIterations` 为 `undefined`、非有限数或 ≤ 0 时会静默回落到默认值（`runFor` 1000、`runWhile` 100），不会报错，所以不要用非法值表达"不限制"。
-- `workflow.runWorkflow` 在当前 `WorkflowContext` 内调用另一个 imported workflow，嵌套深度最多 16 层，超过后抛 `workflow_execution`；可传 `{ name?, metadata?, conversationMode?, kvMode?, outputVisibility?, emitNode?, maxDepth?, onOutputChunk?, onOutput? }`，`maxDepth` 用于收紧而不是放开默认上限。
+- `workflow.runWorkflow` 在当前 `RunContext` 内调用另一个 imported workflow，嵌套深度最多 16 层，超过后抛 `workflow_execution`；可传 `{ name?, metadata?, conversationMode?, kvMode?, outputVisibility?, emitNode?, maxDepth?, onOutputChunk?, onOutput? }`，`maxDepth` 用于收紧而不是放开默认上限。
 - 用户可见的 terminal 或 Desktop 输出应来自 output-node stream chunks。
 - 如果 stream node 没有产生最终 output，应抛出清晰错误，不要返回 `undefined`。
 
@@ -1208,13 +1208,13 @@ Executor entrypoint 只提供一层扁平的独立启动目录，不表示父子
 async *stream(input, context) {
   // createAsyncQueue is a local helper, not a built-in workflow API. Implement
   // it in the workflow or replace it with an existing async iterable queue.
-  const queue = createAsyncQueue<WorkflowOutputStreamChunk>();
+  const queue = createAsyncQueue<RunOutputStreamChunk>();
   const childRun = workflow.runWorkflow(childWorkflow, input.childInput, context, {
     conversationMode: "shared-readonly",
     kvMode: "isolated",
     outputVisibility: "hidden",
     onOutputChunk(chunk) {
-      queue.push(chunk as WorkflowOutputStreamChunk);
+      queue.push(chunk as RunOutputStreamChunk);
     },
     onOutput(output) {
       for (const chunk of createChunksFromOutput(output)) {
@@ -1350,7 +1350,7 @@ const result = await workflow.runStreamNode(agentNode, input, context);
 - **自动压缩。** 恢复出来的记录可能已经超过模型窗口，因此每轮在调用模型之前会先判断一次：超过 `compaction` 阈值就先压缩（把较早的几轮换成一段模型生成的摘要），再让本轮正常跑。事件与手动压缩同形但 `auto: true`，并且**只在压缩确实成功后**才写这一行；压缩失败不写行、也不让本轮失败（请求本身会报出问题）。这与 `/compact` 的区别是：`/compact` 是用户要求的一次压缩，自动压缩是这一轮为了能发出去而做的。
 - **恢复使用稳定请求身份。** Agent 节点从原 `runId` 派生 requestId，重试与恢复必须沿用原参数、已解析答案和 runId。已提交工具结果不重做；默认 `replay: "never"` 的未知结果工具返回中断错误，只有明确 safe 的工具自动重放。写、编辑和 bash 都为 never；这不提供外部副作用 exactly-once 保证。存储或投影失败终止运行，不能静默丢历史继续。审批等待期间也不能压缩或替换上下文。
 - Agent 在运行开始、流式消息、工具结果和压缩后发送 `context_usage`，由节点转换为 `display: { type: "ring", placement: "composer-right" }` 的标准输出项；首次对话不等待模型响应即可出现圆环。宿主只消费通用输出协议，不能另读 Agent 字段实现专用显示。输出 payload 的 `contextUsage: { used, total }` 供程序读取，`--context-window` 可覆盖分母。`used` 优先取最近一次有效模型 usage（含缓存 token）加后续消息估算；没有有效 usage 时估算实际系统提示、命名提示段、工具定义与消息，西文按 4 字符约 1 token、CJK 按字符计、图片近似估算。实际压缩后保留的旧响应 usage 不再参与校准，恢复记录后同样生效。
-- Durable 快照的 `turns[].usage` 为该回答轮次已返回的模型用量（标准 `WorkflowTokenUsageAggregate`），包含工具循环、失败重试与轮内压缩；不得用 owner 工作流跨会话的累计 `token_usage_updated` 或最终报告覆盖回答。继承历史及其他 fork 不重复计入该轮。`contexts[].contextUsage` 提供各会话当前占用，Agent 节点将其转换为同 ID 的标准圆环 `contexts[].outputs`；宿主选择当前打开会话的通用输出覆盖历史值，保证后续轮次、fork、压缩与 reset 后同步。空闲后台压缩的消耗只保留在会话总用量，不回写已完成回答。
+- Durable 快照的 `turns[].usage` 为该回答轮次已返回的模型用量（标准 `TokenUsageAggregate`），包含工具循环、失败重试与轮内压缩；不得用 owner 工作流跨会话的累计 `token_usage_updated` 或最终报告覆盖回答。继承历史及其他 fork 不重复计入该轮。`contexts[].contextUsage` 提供各会话当前占用，Agent 节点将其转换为同 ID 的标准圆环 `contexts[].outputs`；宿主选择当前打开会话的通用输出覆盖历史值，保证后续轮次、fork、压缩与 reset 后同步。空闲后台压缩的消耗只保留在会话总用量，不回写已完成回答。
 - 编程式 `AgentRuntime.getContextUsage()` 随时返回当前上下文占用，包含正在流式生成的消息；模型窗口不可用时返回 `undefined`。`updateContextUsage({ used, total })` 提交当前占用的绝对测量值，`used` 必须为非负有限数，`total` 必须为正有限数；运行中的 `context_usage` 立即发送该更新。后续估算在测量值上增长，直到有效模型 usage 或实际压缩重新校准；`total` 不修改模型配置，模型校准使用本轮 `contextWindow` 或模型窗口。`reset()` 同时清除测量值和恢复记录。独立 transcript 可通过 `steamharness/agent` 的 `estimateAgentContextTokens(messages)` 估算。
 - AI 配置、模型和 Effort 放在一个 `kind: "quick"` 的 `fields` 中；Permission 用另一个 Quick。Agent 模式使用 `kind: "mode"` 独立开关，Context window 和工作目录可分别放在有明确标签的 Auxiliary 中。动作入口在 Desktop 上按声明顺序显示，具体形态见 `references/param-panels.md`。
 - 直接把 prompt 写成 `/compact` 或 `/summarize`（或传 `compact: true`）会立即总结全部已有上下文，不调用模型生成普通回答；空上下文直接完成。先发送 `compaction` start，成功后发送 end 并持久化摘要，后续回合使用摘要，原对话正文保留。只有非空且正常结束（`stopReason: "stop"`）的摘要才替换 transcript；模型失败、截断或未完成时抛错并保留原始记录，取消以 `execution_aborted` 结束，取消后返回的摘要也不能写入。公开 `compactAgentMessages({ ..., force: true })` 同样总结全部已有消息。自动压缩才保留最近的一段对话：最近的窗口里没有用户轮次时退到最近的 assistant 轮次，最新一条消息永远保留。
@@ -1469,7 +1469,7 @@ Core 提供「工作流能力」工具，把项目跟它周围的东西接起来
 - `await workflow.createWorkflowCapabilityServer(toolId, { context, approve? })`：取其中一个能力的 MCP 服务端，自己 `connect(transport)`；工具 id 未知时抛错。
 - `await workflow.runWorkflowCapabilityAction(toolId, context, args)`：按工具 id 直接执行一个动作。**审批恢复要用它**——暂停的那一轮已经结束，调用只能按宿主批准的那个 id 重新寻址，不能靠当初建它的闭包。
 - `workflow.listWorkflowCapabilityToolIds({ globalMemory? })`：列出这一轮会出现的工具 id。
-- `workflow.isWorkflowCapabilityAvailable(toolId)`：这个能力在**当前进程**里能不能干活。宿主配置与 Kanban 页面方法随宿主桥环境变化；Kanban 另需宿主明确启用。工具不可用时不应暴露给模型。`WorkflowCapability.run(context, args, signal?)` 可接收 Agent/MCP 的调用取消信号；Kanban 通道将其传递到页面 handler。
+- `workflow.isWorkflowCapabilityAvailable(toolId)`：这个能力在**当前进程**里能不能干活。宿主配置与 Kanban 页面方法随宿主桥环境变化；Kanban 另需宿主明确启用。工具不可用时不应暴露给模型。`Capability.run(context, args, signal?)` 可接收 Agent/MCP 的调用取消信号；Kanban 通道将其传递到页面 handler。
 
 **它们不受 `permissionPolicy` 约束**——策略只管内置的 7 个编码工具。项目在 `executor.tools` 里声明这些工具 id，声明里的 `enabled` 决定是否暴露、`autoApprove` 决定是否自动批准；把 `approve` 接到 `workflow.createToolApprovalGate().approve(...)` 上就是同一条审批链。
 

@@ -2,11 +2,11 @@ import type {
   NodeContext,
   NodeDefinition,
   StreamNodeDefinition,
-  WorkflowNodeMetadata,
-  WorkflowNodeMetadataInput,
+  NodeMetadata,
+  NodeMetadataInput,
 } from "../types/index";
 import { createWorkflowNodeMetadata } from "../types/index";
-import { WorkflowError } from "../workflow/errors";
+import { HarnessError } from "../workflow/errors";
 import { resolveLLMProvider } from "../provider/llm/resolver";
 import type { LLMProvider, LLMProviderSource } from "../provider/llm/types";
 import { readTokenUsageReportInput } from "../token-usage/index";
@@ -46,13 +46,13 @@ export interface BaseNodeOptions {
   name: string;
   standardName?: string;
   historyLimit?: number;
-  metadata?: WorkflowNodeMetadataInput;
+  metadata?: NodeMetadataInput;
 }
 
 export abstract class NodeExecutionStore {
   readonly name: string;
   readonly standardName: string;
-  readonly metadata: WorkflowNodeMetadata;
+  readonly metadata: NodeMetadata;
   private readonly historyLimit: number;
   private currentExecution: NodeExecutionInfo;
   private readonly executionHistory: NodeExecutionInfo[] = [];
@@ -322,11 +322,11 @@ export function getLLMProvider(
       nodeName,
     );
   } catch (error) {
-    if (error instanceof WorkflowError) {
+    if (error instanceof HarnessError) {
       throw error;
     }
 
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "provider_call",
       message: `LLM provider is required for node "${nodeName}" but could not be resolved.`,
       nodeName,

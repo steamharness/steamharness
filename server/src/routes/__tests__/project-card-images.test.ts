@@ -7,7 +7,7 @@ import path from "node:path";
 import test from "node:test";
 import express from "express";
 import { fail, toHttpError } from "../../protocol";
-import type { WorkflowStorage } from "../../storage";
+import type { Storage } from "../../storage";
 import { createProjectCardImageRouter } from "../project-card-images";
 
 test("public project card image route serves immutable WebP assets", async () => {
@@ -24,7 +24,7 @@ test("public project card image route serves immutable WebP assets", async () =>
       assert.equal(requestedHash, hash);
       return { filePath, size: body.byteLength, hash };
     },
-  } as WorkflowStorage));
+  } as Storage));
   app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     const httpError = toHttpError(error);
     res.status(httpError.statusCode).json(fail(httpError.errCode, httpError.message));

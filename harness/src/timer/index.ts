@@ -1,12 +1,12 @@
 import { BaseNode } from "../node/base";
-import type { NodeContext, WorkflowNodeMetadataInput } from "../types/index";
-import { WorkflowError } from "../workflow/errors";
+import type { NodeContext, NodeMetadataInput } from "../types/index";
+import { HarnessError } from "../workflow/errors";
 
-export type WorkflowTimerStatus = "running" | "success" | "failed" | "cleared";
-export type WorkflowTimerFinishStatus = "success" | "failed";
-type WorkflowTimerTerminalStatus = Exclude<WorkflowTimerStatus, "running">;
+export type TimerStatus = "running" | "success" | "failed" | "cleared";
+export type TimerFinishStatus = "success" | "failed";
+type TimerTerminalStatus = Exclude<TimerStatus, "running">;
 
-export interface WorkflowTimerPayload {
+export interface TimerPayload {
   errCode: number;
   errMessage: string;
   timerId: string;
@@ -15,43 +15,43 @@ export interface WorkflowTimerPayload {
   metadata?: Record<string, unknown>;
 }
 
-export interface WorkflowTimerRecord extends WorkflowTimerPayload {
-  status: WorkflowTimerStatus;
+export interface TimerRecord extends TimerPayload {
+  status: TimerStatus;
   endedAt?: string;
   durationMs?: number;
   message?: string;
 }
 
-export interface WorkflowTimerStartEvent {
-  timer: WorkflowTimerRecord;
+export interface TimerStartEvent {
+  timer: TimerRecord;
 }
 
-export interface WorkflowTimerFinishEvent {
-  timer: WorkflowTimerRecord;
+export interface TimerFinishEvent {
+  timer: TimerRecord;
 }
 
-export interface WorkflowTimerContext {
-  start(input?: WorkflowTimerNodeInput): Promise<WorkflowTimerPayload>;
-  finish(input: WorkflowTimerFinishInput): Promise<WorkflowTimerRecord>;
-  clearRunningTimers(): Promise<WorkflowTimerRecord[]>;
-  getTimers(): WorkflowTimerRecord[];
+export interface TimerContext {
+  start(input?: TimerNodeInput): Promise<TimerPayload>;
+  finish(input: TimerFinishInput): Promise<TimerRecord>;
+  clearRunningTimers(): Promise<TimerRecord[]>;
+  getTimers(): TimerRecord[];
 }
 
-export interface WorkflowTimerNodeInput {
+export interface TimerNodeInput {
   title?: string;
   timerId?: string;
   metadata?: Record<string, unknown>;
 }
 
-export interface WorkflowTimerFinishOptions {
-  status?: WorkflowTimerFinishStatus;
+export interface TimerFinishOptions {
+  status?: TimerFinishStatus;
   message?: string;
   metadata?: Record<string, unknown>;
 }
 
-export interface WorkflowTimerFinishInput {
-  timer: WorkflowTimerPayload | string;
-  status?: WorkflowTimerTerminalStatus;
+export interface TimerFinishInput {
+  timer: TimerPayload | string;
+  status?: TimerTerminalStatus;
   message?: string;
   metadata?: Record<string, unknown>;
 }
@@ -60,22 +60,22 @@ export interface TimerNodeOptions {
   name?: string;
   title?: string;
   historyLimit?: number;
-  metadata?: WorkflowNodeMetadataInput;
+  metadata?: NodeMetadataInput;
 }
 
 export function createTimerNode(
   options: TimerNodeOptions = {},
-): BaseNode<WorkflowTimerNodeInput | undefined, WorkflowTimerPayload> {
+): BaseNode<TimerNodeInput | undefined, TimerPayload> {
   return new TimerNode(options);
 }
 
 export function endTimer(
-  timer: WorkflowTimerPayload | string,
+  timer: TimerPayload | string,
   context: NodeContext,
-  options: WorkflowTimerFinishOptions = {},
-): Promise<WorkflowTimerRecord> {
+  options: TimerFinishOptions = {},
+): Promise<TimerRecord> {
   if (context.timers === undefined) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "workflow_execution",
       message: "Workflow timer context is not configured.",
     });
@@ -89,7 +89,7 @@ export function endTimer(
   });
 }
 
-class TimerNode extends BaseNode<WorkflowTimerNodeInput | undefined, WorkflowTimerPayload> {
+class TimerNode extends BaseNode<TimerNodeInput | undefined, TimerPayload> {
   private readonly title: string;
 
   constructor(options: TimerNodeOptions) {
@@ -107,11 +107,11 @@ class TimerNode extends BaseNode<WorkflowTimerNodeInput | undefined, WorkflowTim
   }
 
   protected async execute(
-    input: WorkflowTimerNodeInput | undefined,
+    input: TimerNodeInput | undefined,
     context: NodeContext,
-  ): Promise<WorkflowTimerPayload> {
+  ): Promise<TimerPayload> {
     if (context.timers === undefined) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "workflow_execution",
         message: `Timer node "${this.name}" is used, but no workflow timer context was configured.`,
         nodeName: this.name,
@@ -127,31 +127,31 @@ class TimerNode extends BaseNode<WorkflowTimerNodeInput | undefined, WorkflowTim
 }
 
 export function createWorkflowTimerContext(options: {
-  onTimerStart?(event: WorkflowTimerStartEvent): Promise<void> | void;
-  onTimerFinish?(event: WorkflowTimerFinishEvent): Promise<void> | void;
+  onTimerStart?(event: TimerStartEvent): Promise<void> | void;
+  onTimerFinish?(event: TimerFinishEvent): Promise<void> | void;
   now?: () => Date;
-} = {}): WorkflowTimerContext {
-  const timers = new Map<string, WorkflowTimerRecord>();
+} = {}): TimerContext {
+  const timers = new Map<string, TimerRecord>();
   const order: string[] = [];
   const now = options.now ?? (() => new Date());
 
-  function cloneTimer(timer: WorkflowTimerRecord): WorkflowTimerRecord {
+  function cloneTimer(timer: TimerRecord): TimerRecord {
     return {
       ...timer,
       metadata: timer.metadata === undefined ? undefined : { ...timer.metadata },
     };
   }
 
-  function readTimer(timer: WorkflowTimerPayload | string): string {
+  function readTimer(timer: TimerPayload | string): string {
     return typeof timer === "string" ? timer : timer.timerId;
   }
 
-  async function finishTimer(input: WorkflowTimerFinishInput): Promise<WorkflowTimerRecord> {
+  async function finishTimer(input: TimerFinishInput): Promise<TimerRecord> {
     const timerId = readTimer(input.timer);
     const existing = timers.get(timerId);
 
     if (existing === undefined) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "workflow_execution",
         message: `Workflow timer "${timerId}" was not started.`,
         metadata: {
@@ -161,7 +161,7 @@ export function createWorkflowTimerContext(options: {
     }
 
     if (existing.status !== "running") {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "workflow_execution",
         message: `Workflow timer "${timerId}" already finished with status "${existing.status}".`,
         metadata: {
@@ -173,7 +173,7 @@ export function createWorkflowTimerContext(options: {
 
     const endedAt = now();
     const status = normalizeTimerFinishStatus(input.status);
-    const next: WorkflowTimerRecord = {
+    const next: TimerRecord = {
       ...existing,
       status,
       endedAt: endedAt.toISOString(),
@@ -195,7 +195,7 @@ export function createWorkflowTimerContext(options: {
       const startedAt = now();
       const timerId = normalizeTimerId(input.timerId) ?? createWorkflowTimerId();
       if (timers.has(timerId)) {
-        throw new WorkflowError({
+        throw new HarnessError({
           type: "workflow_execution",
           message: `Workflow timer "${timerId}" already exists.`,
           metadata: {
@@ -204,7 +204,7 @@ export function createWorkflowTimerContext(options: {
         });
       }
 
-      const timer: WorkflowTimerRecord = {
+      const timer: TimerRecord = {
         errCode: 0,
         errMessage: "",
         timerId,
@@ -220,7 +220,7 @@ export function createWorkflowTimerContext(options: {
     },
     finish: finishTimer,
     async clearRunningTimers() {
-      const cleared: WorkflowTimerRecord[] = [];
+      const cleared: TimerRecord[] = [];
 
       for (const timer of timers.values()) {
         if (timer.status !== "running") {
@@ -239,13 +239,13 @@ export function createWorkflowTimerContext(options: {
     getTimers() {
       return order
         .map((timerId) => timers.get(timerId))
-        .filter((timer): timer is WorkflowTimerRecord => timer !== undefined)
+        .filter((timer): timer is TimerRecord => timer !== undefined)
         .map(cloneTimer);
     },
   };
 }
 
-function createTimerPayload(timer: WorkflowTimerRecord): WorkflowTimerPayload {
+function createTimerPayload(timer: TimerRecord): TimerPayload {
   return {
     errCode: timer.errCode,
     errMessage: timer.errMessage,
@@ -257,8 +257,8 @@ function createTimerPayload(timer: WorkflowTimerRecord): WorkflowTimerPayload {
 }
 
 function normalizeTimerFinishStatus(
-  value: WorkflowTimerTerminalStatus | undefined,
-): WorkflowTimerTerminalStatus {
+  value: TimerTerminalStatus | undefined,
+): TimerTerminalStatus {
   if (value === "failed" || value === "cleared") {
     return value;
   }

@@ -4,7 +4,7 @@ import {
   createCliOutputStreamHooks,
   formatCliOutputContent,
   formatWorkflowExecutionJson,
-  type WorkflowExecutionReport,
+  type ExecutionReport,
 } from "steamharness";
 
 const videoUrl = "https://cdn.example.test/minimax-video.mp4?signature=redacted";
@@ -112,7 +112,7 @@ describe("CLI output formatting", () => {
         },
       }],
       result: { ok: true, data: {} },
-    } as unknown as WorkflowExecutionReport;
+    } as unknown as ExecutionReport;
 
     const json = formatWorkflowExecutionJson(report);
     assert.match(json, /"contentType":\s*"video"/);

@@ -2,7 +2,7 @@
 
 Pi Coding Agent SDK workflow sample. It embeds `@earendil-works/pi-coding-agent`
 inside a steamharness sample, streams assistant text through
-`WorkflowOutputPayload.items`, records the turn in workflow conversation state,
+`RunOutputPayload.items`, records the turn in workflow conversation state,
 and keeps the smoke fixture offline through an explicit `--dry-run`.
 
 ## Install

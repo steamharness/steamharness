@@ -21,13 +21,13 @@ const skillRoot = path.join(root, "skills", "workflow-generator");
 const HOST_INTERNAL_RUNTIME_API = new Set<string>([]);
 
 const DOCUMENTED_DEFINITION_TYPES = [
-  "WorkflowEntrypointDefinition",
-  "WorkflowEntrypointGroupDefinition",
-  "WorkflowExecutorDefinition",
-  "WorkflowParamDefinition",
-  "WorkflowConversationDefinition",
-  "WorkflowConversationUserInputDefinition",
-  "WorkflowExecutorContext",
+  "EntrypointDefinition",
+  "EntrypointGroupDefinition",
+  "ExecutorDefinition",
+  "ParamDefinition",
+  "ConversationDefinition",
+  "ConversationUserInputDefinition",
+  "ExecutorContext",
 ] as const;
 
 async function readSkillCorpus(): Promise<string> {
@@ -126,11 +126,11 @@ describe("workflow-generator contract", () => {
 
     const { hasExport } = createDefinitionChecker();
     for (const name of [
-      "WorkflowEntrypointDefinition", "WorkflowExecutorDefinition", "WorkflowConversationExecutorDefinition",
-      "WorkflowExecutorContext", "WorkflowParamDeclaration", "WorkflowParamResolverContext",
-      "WorkflowParamResolveResult", "WorkflowOutputPayload", "WorkflowOutputItem",
-      "WorkflowContext", "WorkflowRelatedProjectStorageContext", "AgentInput",
-      "AgentOutputPayload", "AgentNodeOptions", "AgentProjectOptions", "WorkflowRuntimeApi",
+      "EntrypointDefinition", "ExecutorDefinition", "ConversationExecutorDefinition",
+      "ExecutorContext", "ParamDeclaration", "ParamResolverContext",
+      "ParamResolveResult", "RunOutputPayload", "OutputItem",
+      "RunContext", "RelatedProjectStorageContext", "AgentInput",
+      "AgentOutputPayload", "AgentNodeOptions", "AgentProjectOptions", "RuntimeApi",
     ]) {
       expect(taskMap).toContain(name);
       expect(hasExport(name), `${name} must be exported by steamharness`).toBe(true);

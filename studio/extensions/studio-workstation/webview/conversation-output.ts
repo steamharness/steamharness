@@ -1,4 +1,4 @@
-import type { ConversationMessage, WorkflowAttachment, WorkflowOutputItem, WorkflowResolvedInput, WorkflowTimerRecord } from '../src/workflow-types';
+import type { ConversationMessage, Attachment, OutputItem, ResolvedInput, TimerRecord } from '../src/workflow-types';
 import { conversationResourceCards, type ResourceCard } from '../src/resource-cards';
 import { escapeHtml, iconHtml, iconButton, managedFileForUrl, markdownHtml } from './ui';
 import { agentActivity, activeAgentActivity, activityGroupSummary, activityValueText, type AgentActivity } from './agent-activity';
@@ -11,7 +11,7 @@ interface OutputOptions {
   resource(card: ResourceCard): void;
 }
 interface OutputView { root: HTMLElement; signature: string }
-interface OutputEntry { key: string; item?: WorkflowOutputItem; answer?: WorkflowResolvedInput; card?: ResourceCard; text?: string; timer?: WorkflowTimerRecord; activity?: AgentActivity }
+interface OutputEntry { key: string; item?: OutputItem; answer?: ResolvedInput; card?: ResourceCard; text?: string; timer?: TimerRecord; activity?: AgentActivity }
 interface ActivityGroup { root: HTMLDetailsElement; list: HTMLDivElement }
 
 export class ConversationOutput {
@@ -20,7 +20,7 @@ export class ConversationOutput {
   private readonly activities = new Map<string, AgentActivity>();
   constructor(private readonly root: HTMLElement, private readonly options: OutputOptions) { root.className = 'message-output'; }
 
-  update(message: ConversationMessage, projectId: string, conversationId: string, files: WorkflowAttachment[]): void {
+  update(message: ConversationMessage, projectId: string, conversationId: string, files: Attachment[]): void {
     const items = message.items ?? [];
     const cards = conversationResourceCards(items, projectId, conversationId);
     const cardByItem = new Map(cards.map((card) => [card.itemId, card]));
@@ -175,7 +175,7 @@ export class ConversationOutput {
     body.scrollTop = scroll;
   }
 
-  private timer(timer: WorkflowTimerRecord): HTMLElement {
+  private timer(timer: TimerRecord): HTMLElement {
     const root = document.createElement('details'); root.className = 'output-detail timer-record';
     const summary = document.createElement('summary'); const title = document.createElement('span'); title.textContent = timer.title;
     const duration = document.createElement('span'); duration.className = 'timer-duration'; duration.textContent = `${((timer.durationMs ?? 0) / 1000).toFixed(1)}s`;
@@ -186,7 +186,7 @@ export class ConversationOutput {
     root.append(details); return root;
   }
 
-  private markdown(text: string, files: WorkflowAttachment[]): HTMLDivElement {
+  private markdown(text: string, files: Attachment[]): HTMLDivElement {
     const root = document.createElement('div'); root.className = 'message-content'; root.innerHTML = markdownHtml(text, files);
     for (const link of Array.from(root.querySelectorAll('a'))) {
       if (link.dataset.workflowFile) { link.addEventListener('click', (event) => { event.preventDefault(); this.options.file(link.dataset.workflowFile!); }); }
@@ -207,7 +207,7 @@ export class ConversationOutput {
     return root;
   }
 
-  private item(item: WorkflowOutputItem, files: WorkflowAttachment[]): HTMLElement {
+  private item(item: OutputItem, files: Attachment[]): HTMLElement {
     const text = typeof item.content === 'string' ? item.content : JSON.stringify(item.content, null, 2) ?? '';
     if (item.metadata?.plan === true) {
       const root = document.createElement('details'); root.className = 'output-detail plan-card';
@@ -236,7 +236,7 @@ export class ConversationOutput {
     return root;
   }
 
-  private answer(answer: WorkflowResolvedInput, submitting: boolean): HTMLElement {
+  private answer(answer: ResolvedInput, submitting: boolean): HTMLElement {
     const root = document.createElement('div'); root.className = 'resolved-inputs'; root.dataset.requestId = answer.requestId;
     const entry = document.createElement('div'); entry.className = 'resolved-input';
     for (const field of answer.request?.params ?? []) {

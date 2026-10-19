@@ -7,35 +7,35 @@ description: "Use PersistentValue to manage knowledge base documents markdown yo
 
 `workflow.listKnowledgeDocuments()`, `workflow.getKnowledgeDocument()`, `workflow.createKnowledgeDocument()`, `workflow.editKnowledgeDocument()`, `workflow.deleteKnowledgeDocument()`, and `workflow.searchKnowledgeDocuments()` manage project Markdown Knowledge documents. Their first argument must be `context.storage.local` or `context.storage.server`. Documents are written to the top-level, current-project `persistentValue` at that location and never fall back to the other location or ordinary KV.
 
-The project's `dataStorage.mode` strictly limits which location can be passed. `local` uses the local PersistentValue directory, `server` uses PostgreSQL data for the same-UUID project, and `both` lets source code choose per call. A forbidden location, missing login/UUID binding, or unsupported host location throws `WorkflowError`. Local and server Knowledge data remain independent and are never uploaded, downloaded, merged, or synchronized automatically.
+The project's `dataStorage.mode` strictly limits which location can be passed. `local` uses the local PersistentValue directory, `server` uses PostgreSQL data for the same-UUID project, and `both` lets source code choose per call. A forbidden location, missing login/UUID binding, or unsupported host location throws `HarnessError`. Local and server Knowledge data remain independent and are never uploaded, downloaded, merged, or synchronized automatically.
 
 ## Signature
 
 ```ts
-workflow.listKnowledgeDocuments(storage: WorkflowStorageLocationContext): Promise<WorkflowKnowledgeDocumentSummary[]>
+workflow.listKnowledgeDocuments(storage: StorageLocationContext): Promise<KnowledgeDocumentSummaryRecord[]>
 
 workflow.getKnowledgeDocument(
-  storage: WorkflowStorageLocationContext,
+  storage: StorageLocationContext,
   documentId: string,
-): Promise<WorkflowKnowledgeDocument | undefined>
+): Promise<KnowledgeDocument | undefined>
 
 workflow.createKnowledgeDocument(
-  storage: WorkflowStorageLocationContext,
+  storage: StorageLocationContext,
   input: { id?: string; title: string; markdown: string },
-): Promise<WorkflowKnowledgeDocument>
+): Promise<KnowledgeDocument>
 
 workflow.editKnowledgeDocument(
-  storage: WorkflowStorageLocationContext,
+  storage: StorageLocationContext,
   input: { id: string; title?: string; markdown?: string },
-): Promise<WorkflowKnowledgeDocument>
+): Promise<KnowledgeDocument>
 
 workflow.deleteKnowledgeDocument(
-  storage: WorkflowStorageLocationContext,
+  storage: StorageLocationContext,
   documentId: string,
 ): Promise<{ id: string; deleted: boolean }>
 
 workflow.searchKnowledgeDocuments(
-  storage: WorkflowStorageLocationContext,
+  storage: StorageLocationContext,
   input: {
     query: string;
     documentId?: string;
@@ -45,22 +45,22 @@ workflow.searchKnowledgeDocuments(
     pageSize?: number;
     cursor?: string;
   },
-): Promise<WorkflowKnowledgeSearchResult>
+): Promise<KnowledgeSearchResultRecord>
 
 workflow.readKnowledgeDocumentLines(
-  storage: WorkflowStorageLocationContext,
+  storage: StorageLocationContext,
   input: {
     documentId: string;
     startLine: number;
     endLine: number;
   },
-): Promise<WorkflowKnowledgeDocumentLinesResult>
+): Promise<KnowledgeDocumentLinesResult>
 ```
 
 ## Data Structures
 
 ```ts
-interface WorkflowKnowledgeDocument {
+interface KnowledgeDocument {
   id: string;
   title: string;
   markdown: string;
@@ -68,7 +68,7 @@ interface WorkflowKnowledgeDocument {
   updatedAt: string;
 }
 
-interface WorkflowKnowledgeDocumentSummary {
+interface KnowledgeDocumentSummaryRecord {
   id: string;
   title: string;
   markdownPreview: string;
@@ -76,14 +76,14 @@ interface WorkflowKnowledgeDocumentSummary {
   updatedAt: string;
 }
 
-interface WorkflowKnowledgeDocumentPage {
-  items: WorkflowKnowledgeDocumentSummary[];
+interface KnowledgeDocumentPageRecord {
+  items: KnowledgeDocumentSummaryRecord[];
   nextCursor?: string;
   hasMore: boolean;
   total: number;
 }
 
-interface WorkflowKnowledgeSearchResult {
+interface KnowledgeSearchResultRecord {
   query: string;
   documentsSearched: number;
   totalMatches: number;
@@ -103,7 +103,7 @@ interface WorkflowKnowledgeSearchResult {
   }>;
 }
 
-interface WorkflowKnowledgeDocumentLinesResult {
+interface KnowledgeDocumentLinesResult {
   documentId: string;
   title: string;
   startLine: number;
@@ -174,16 +174,16 @@ const excerpt = await workflow.readKnowledgeDocumentLines(context.storage.local,
 
 |Situation|Result|
 | --- | --- |
-| The project has no `dataStorage.mode`, or the declaration forbids the selected location | `WorkflowError` is thrown before the user module runs or when the location is accessed. There is no fallback. |
-| The selected local PersistentValue store is unavailable, or server storage lacks login/same-UUID binding | The call throws `WorkflowError` and does not write to the other location. |
-|`id` Illegal|Throw `WorkflowError`;id must start with a letter or number and can only contain letters, numbers, dots, underscores, and lines.|
-|`title` is empty|Throw `WorkflowError`.|
-|`query` is empty|Throw `WorkflowError`.|
-|Document list `pageSize` exceeds 1 to 100|Throw `WorkflowError`.|
-|Search `pageSize` / `maxMatches` exceeds 1 to 1000|Throw `WorkflowError`.|
-|`startLine` / `endLine` Illegal or more than 1000 rows at a time|Throw `WorkflowError`.|
-|New Existing Document|Throws `WorkflowError`;server management API mapping to 409.|
-|Edit or search for non-existent documents|Throws `WorkflowError`;server management API mapping to 404.|
+| The project has no `dataStorage.mode`, or the declaration forbids the selected location | `HarnessError` is thrown before the user module runs or when the location is accessed. There is no fallback. |
+| The selected local PersistentValue store is unavailable, or server storage lacks login/same-UUID binding | The call throws `HarnessError` and does not write to the other location. |
+|`id` Illegal|Throw `HarnessError`;id must start with a letter or number and can only contain letters, numbers, dots, underscores, and lines.|
+|`title` is empty|Throw `HarnessError`.|
+|`query` is empty|Throw `HarnessError`.|
+|Document list `pageSize` exceeds 1 to 100|Throw `HarnessError`.|
+|Search `pageSize` / `maxMatches` exceeds 1 to 1000|Throw `HarnessError`.|
+|`startLine` / `endLine` Illegal or more than 1000 rows at a time|Throw `HarnessError`.|
+|New Existing Document|Throws `HarnessError`;server management API mapping to 409.|
+|Edit or search for non-existent documents|Throws `HarnessError`;server management API mapping to 404.|
 
 ## Example
 

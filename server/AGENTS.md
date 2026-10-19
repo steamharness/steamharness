@@ -26,7 +26,7 @@
 - 修改 HTTP API、鉴权、错误码、静态预览或数据访问行为时，同步同级 Docs 仓库的 `../docs/openapi/steamharness.openapi.yaml` 和相关说明。
 - 修改项目管理、版本、文件、知识库、KV 或部署行为时，同步 `../docs/guides/server/**`；影响 CLI 调用结果时同步 `../docs/cli/workspace/**`。
 - 上传与发布只处理静态元数据和文件，不安装依赖、不构建、不加载项目代码。版本快照不可变，数据权限与源码下载权限独立；成员使用 `owner / manager / writer / viewer`。
-- 节点 payload 必须继承 `WorkflowPayload`，成功结果统一包含 `errCode: 0, errMessage: ""`。
+- 节点 payload 必须继承 `RunPayload`，成功结果统一包含 `errCode: 0, errMessage: ""`。
 - 用户可见文案必须遵循现有国际化边界；已有语言资源需要成对维护并补测试。
 
 ## 测试

@@ -9,7 +9,7 @@ import { KANBAN_METHODS_CAPABILITY } from "./kanban-methods";
 import { KNOWLEDGE_CAPABILITY } from "./knowledge";
 import { KV_CAPABILITY } from "./kv";
 import { PRESENTATION_CARD_CAPABILITY } from "./presentation-card";
-import type { WorkflowCapability } from "./types";
+import type { Capability } from "./types";
 
 /**
  * Every workflow capability, in the order a host's tool panel lists them.
@@ -18,7 +18,7 @@ import type { WorkflowCapability } from "./types";
  * still described here, and `isWorkflowCapabilityAvailable` is what a caller
  * asks before putting one in front of a model.
  */
-export const STEAMHARNESS_CAPABILITIES: readonly WorkflowCapability[] = [
+export const STEAMHARNESS_CAPABILITIES: readonly Capability[] = [
   KNOWLEDGE_CAPABILITY,
   KV_CAPABILITY,
   GLOBAL_MEMORY_CAPABILITY,
@@ -27,7 +27,7 @@ export const STEAMHARNESS_CAPABILITIES: readonly WorkflowCapability[] = [
   PRESENTATION_CARD_CAPABILITY,
 ];
 
-export interface WorkflowCapabilityContext {
+export interface CapabilityContext {
   context: NodeContext;
   /**
    * Consulted before a call runs. Throwing blocks it; throwing
@@ -47,7 +47,7 @@ export function listWorkflowCapabilityToolIds(options: { globalMemory?: boolean 
   return selectCapabilities(options).map((capability) => capability.toolId);
 }
 
-export function findWorkflowCapability(toolId: string): WorkflowCapability | undefined {
+export function findWorkflowCapability(toolId: string): Capability | undefined {
   return STEAMHARNESS_CAPABILITIES.find((capability) => capability.toolId === toolId);
 }
 
@@ -62,7 +62,7 @@ export function isWorkflowCapabilityAvailable(toolId: string): boolean {
   return requireWorkflowCapability(toolId).isAvailable?.() !== false;
 }
 
-function requireWorkflowCapability(toolId: string): WorkflowCapability {
+function requireWorkflowCapability(toolId: string): Capability {
   const capability = findWorkflowCapability(toolId);
   if (capability === undefined) {
     throw new Error(`Unknown workflow capability tool "${toolId}".`);
@@ -78,7 +78,7 @@ function requireWorkflowCapability(toolId: string): WorkflowCapability {
  * which of them exist and which need approving.
  */
 export async function createWorkflowCapabilityTools(
-  options: WorkflowCapabilityContext,
+  options: CapabilityContext,
 ): Promise<AgentTool[]> {
   const Type = await loadTypebox();
 
@@ -110,7 +110,7 @@ export async function createWorkflowCapabilityTools(
  */
 export async function createWorkflowCapabilityServer(
   toolId: string,
-  options: Pick<WorkflowCapabilityContext, "context" | "approve">,
+  options: Pick<CapabilityContext, "context" | "approve">,
 ): Promise<Server> {
   const capability = requireWorkflowCapability(toolId);
 
@@ -148,14 +148,14 @@ export async function runWorkflowCapabilityAction(
   return requireWorkflowCapability(toolId).run(context, args);
 }
 
-function selectCapabilities(options: { globalMemory?: boolean }): WorkflowCapability[] {
+function selectCapabilities(options: { globalMemory?: boolean }): Capability[] {
   return STEAMHARNESS_CAPABILITIES.filter(
     (capability) => capability !== GLOBAL_MEMORY_CAPABILITY || options.globalMemory === true,
   ).filter((capability) => capability.isAvailable?.() !== false);
 }
 
 function failureEnvelope(
-  capability: WorkflowCapability,
+  capability: Capability,
   args: Record<string, unknown>,
   error: unknown,
 ): Record<string, unknown> {

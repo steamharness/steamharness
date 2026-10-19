@@ -1,11 +1,11 @@
 import { t } from './localization';
 import type { KanbanArtifactConfig, KanbanBridgeCall } from '@steamharness/kanban-project';
-import type { WorkflowProjectInfo } from '@steamharness/project-info';
+import type { ProjectInfoContract } from '@steamharness/project-info';
 import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot } from 'steamharness/agent';
 
-export type WorkflowProjectType = 'conversation' | 'workflow' | 'kanban';
+export type ProjectKind = 'conversation' | 'workflow' | 'kanban';
 
-export interface WorkflowField {
+export interface Field {
   name: string;
   flag?: string;
   type: string;
@@ -25,7 +25,7 @@ export interface WorkflowField {
   audio?: { maxDurationSeconds?: number; maxBytes?: number };
 }
 
-export interface WorkflowParamLayout {
+export interface ParamLayout {
   actions: (
     | { kind: 'quick' | 'auxiliary'; id: string; label: string; icon?: string; summary?: string[]; params: string[] }
     | { kind: 'mode'; name: string }
@@ -33,63 +33,63 @@ export interface WorkflowParamLayout {
   )[];
 }
 
-export type WorkflowParamValue = string | string[];
-export type WorkflowParamValues = Record<string, WorkflowParamValue>;
-export interface WorkflowParamState {
-  value?: WorkflowParamValue | null;
+export type ParamValue = string | string[];
+export type ParamValues = Record<string, ParamValue>;
+export interface ParamState {
+  value?: ParamValue | null;
   visible?: boolean;
   disabled?: boolean;
-  resolvedOptions?: WorkflowField['options'] | null;
+  resolvedOptions?: Field['options'] | null;
   options?: Record<string, { visible?: boolean; disabled?: boolean }>;
 }
 
-export interface WorkflowParameters {
-  fields: WorkflowField[];
-  paramLayout?: WorkflowParamLayout;
+export interface Parameters {
+  fields: Field[];
+  paramLayout?: ParamLayout;
   paramResolver?: { enabled: true };
-  tools?: WorkflowTool[];
+  tools?: Tool[];
   tokenUsage?: { enabled: boolean; display?: boolean };
 }
 
-export interface WorkflowExecution {
+export interface Execution {
   kind: 'sequence';
-  children: WorkflowExecutionItem[];
+  children: ExecutionItem[];
 }
-export type WorkflowExecutionItem =
+export type ExecutionItem =
   | { kind: 'node'; nodeId: string; callId: string; standardName?: string; [key: string]: unknown }
-  | { kind: 'branch'; branchId: string; label?: string; condition?: string; decision?: Extract<WorkflowExecutionItem, { kind: 'node' }>; branches: { label?: string; condition?: string; kind: string; children: WorkflowExecutionItem[] }[] }
-  | { kind: 'loop'; loopId: string; label?: string; condition?: string; decision?: Extract<WorkflowExecutionItem, { kind: 'node' }>; children: WorkflowExecutionItem[] };
+  | { kind: 'branch'; branchId: string; label?: string; condition?: string; decision?: Extract<ExecutionItem, { kind: 'node' }>; branches: { label?: string; condition?: string; kind: string; children: ExecutionItem[] }[] }
+  | { kind: 'loop'; loopId: string; label?: string; condition?: string; decision?: Extract<ExecutionItem, { kind: 'node' }>; children: ExecutionItem[] };
 
-export interface WorkflowEntrypoint extends WorkflowParameters {
+export interface Entrypoint extends Parameters {
   id: string;
   title?: string;
   description?: string;
   group?: { id: string; title: string; order?: number };
-  execution?: WorkflowExecution;
+  execution?: Execution;
 }
 
-export interface WorkflowParamRequest {
+export interface ParamRequest {
   draftText: string;
   args: string[];
   inputMode: 'form' | 'raw';
   trigger: { kind: 'init' | 'input' } | { kind: 'param'; paramName: string };
 }
 
-export interface WorkflowProject extends WorkflowParameters {
+export interface Project extends Parameters {
   id: string;
   uri: string;
   folderPath: string;
   name: string;
   manifest?: { name?: string; version?: string; description?: string };
-  projectType: WorkflowProjectType;
-  entrypoints: WorkflowEntrypoint[];
-  execution?: WorkflowExecution;
+  projectType: ProjectKind;
+  entrypoints: Entrypoint[];
+  execution?: Execution;
   definitions?: { nodes: Record<string, { name?: string; standardName?: string; [key: string]: unknown }>; [key: string]: unknown };
   diagnostics?: { warnings?: { message: string }[]; violations?: { message: string }[] };
   defaultEntrypoint?: string;
   artifactEntry?: string;
   kanban?: KanbanArtifactConfig;
-  projectInfo?: WorkflowProjectInfo;
+  projectInfo?: ProjectInfoContract;
   requiresLogin?: boolean;
   assistant?: { workdir: string; roots: AssistantWorkspaceFolder[]; standalone?: boolean };
   conversation?: {
@@ -99,7 +99,7 @@ export interface WorkflowProject extends WorkflowParameters {
       hideComposer?: boolean;
       effects?: {
         when: { type?: string; nodeName?: string; values?: Record<string, string | number | boolean | string[]> };
-        params: WorkflowParamValues;
+        params: ParamValues;
       }[];
     };
     attachments?: { images?: boolean; videos?: boolean; files?: boolean };
@@ -127,22 +127,22 @@ export interface ConversationFooterItem {
 
 export interface AssistantWorkspaceFolder { uri: string; folderPath: string; name: string }
 
-export interface WorkflowTool { name: string; label?: string; description?: string; enabled?: boolean; autoApprove?: boolean }
-export type WorkflowToolPolicies = Record<string, { enabled?: boolean; autoApprove?: boolean }>;
-export interface WorkflowAttachment {
+export interface Tool { name: string; label?: string; description?: string; enabled?: boolean; autoApprove?: boolean }
+export type ToolPolicies = Record<string, { enabled?: boolean; autoApprove?: boolean }>;
+export interface Attachment {
   id: string; name: string; mimeType: string; size: number; kind: 'image' | 'file';
   storage: 'local' | 'server'; workflowId?: string; conversationId?: string; createdAt: string;
   path?: string; url?: string; previewUrl?: string;
 }
-export interface WorkflowUpload { name: string; mimeType?: string; data?: string; path?: string }
-export interface WorkflowInputRequest {
-  requestId: string; nodeName: string; title: string; description?: string; params: WorkflowField[];
+export interface Upload { name: string; mimeType?: string; data?: string; path?: string }
+export interface InputRequest {
+  requestId: string; nodeName: string; title: string; description?: string; params: Field[];
   defaultValues?: Record<string, unknown>; createdAt?: string;
   metadata?: { type?: string; toolName?: string; toolArguments?: unknown; [key: string]: unknown };
 }
-export interface WorkflowResolvedInput { requestId: string; nodeName: string; values: Record<string, unknown>; submittedAt: string; request?: WorkflowInputRequest; precedingOutputItemIds?: string[] }
+export interface ResolvedInput { requestId: string; nodeName: string; values: Record<string, unknown>; submittedAt: string; request?: InputRequest; precedingOutputItemIds?: string[] }
 
-export interface WorkflowOutputItem {
+export interface OutputItem {
   id?: string;
   title?: string;
   content: unknown;
@@ -152,52 +152,52 @@ export interface WorkflowOutputItem {
   metadata?: Record<string, unknown>;
 }
 
-export interface WorkflowTimerRecord {
+export interface TimerRecord {
   timerId: string; title: string; startedAt: string; endedAt?: string; durationMs?: number;
   status: 'running' | 'success' | 'failed' | 'cleared'; message?: string;
 }
 
-export interface WorkflowReport {
+export interface Report {
   status: string;
   durationMs?: number;
-  output?: { items?: WorkflowOutputItem[] };
+  output?: { items?: OutputItem[] };
   result?: { success?: boolean; data?: unknown; error?: { message?: string } };
   runId?: string;
-  pendingUserInput?: WorkflowInputRequest;
-  resolvedUserInputs?: WorkflowResolvedInput[];
+  pendingUserInput?: InputRequest;
+  resolvedUserInputs?: ResolvedInput[];
   tokenUsage?: { enabled: true; display: boolean; run: Record<string, unknown> };
   nodes?: Record<string, unknown>[];
   logs?: string;
-  files?: WorkflowAttachment[];
-  timers?: WorkflowTimerRecord[];
+  files?: Attachment[];
+  timers?: TimerRecord[];
   [key: string]: unknown;
 }
 
-export interface WorkflowRun {
-  agentCommands?: { command: AgentSessionCommand; scopeId: string; attachments?: WorkflowAttachment[] }[];
-  project: WorkflowProject;
+export interface Run {
+  agentCommands?: { command: AgentSessionCommand; scopeId: string; attachments?: Attachment[] }[];
+  project: Project;
   conversationId: string;
   args: string[];
   entrypointId?: string;
   runId?: string;
-  resolvedInputs?: WorkflowResolvedInput[];
+  resolvedInputs?: ResolvedInput[];
   resumeAfterRequestId?: string;
-  toolPermissionPolicies?: WorkflowToolPolicies;
+  toolPermissionPolicies?: ToolPolicies;
 }
 
-export interface WorkflowRuntime {
-  agentControl?(runId: string, command: AgentSessionCommand, scopeId: string, attachments?: WorkflowAttachment[]): Promise<AgentSessionReceipt>;
+export interface Runtime {
+  agentControl?(runId: string, command: AgentSessionCommand, scopeId: string, attachments?: Attachment[]): Promise<AgentSessionReceipt>;
   available: boolean;
-  kanbanBridge?(project: WorkflowProject, call: KanbanBridgeCall): Promise<unknown>;
-  inspect(paths: string[]): Promise<{ projects: Omit<WorkflowProject, 'uri'>[]; errors: string[] }>;
-  resolveParams(project: WorkflowProject, request: WorkflowParamRequest, entrypointId?: string): Promise<{ params?: Record<string, WorkflowParamState> }>;
-  run(request: WorkflowRun, onEvent: (event: Record<string, unknown>) => void): Promise<WorkflowReport>;
-  uploadFiles(project: WorkflowProject, conversationId: string, files: WorkflowUpload[]): Promise<WorkflowAttachment[]>;
-  readFile(project: WorkflowProject, id: string): Promise<{ reference: WorkflowAttachment; path: string }>;
-  deleteFiles(project: WorkflowProject, conversationId: string, ids: string[]): Promise<void>;
-  readResource(project: WorkflowProject, conversationId: string, kind: 'kv' | 'knowledge', target: Record<string, string>): Promise<unknown>;
-  deleteConversation(project: WorkflowProject, conversationId: string): Promise<void>;
-  cancelConversation(project: WorkflowProject, conversationId: string): Promise<void>;
+  kanbanBridge?(project: Project, call: KanbanBridgeCall): Promise<unknown>;
+  inspect(paths: string[]): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }>;
+  resolveParams(project: Project, request: ParamRequest, entrypointId?: string): Promise<{ params?: Record<string, ParamState> }>;
+  run(request: Run, onEvent: (event: Record<string, unknown>) => void): Promise<Report>;
+  uploadFiles(project: Project, conversationId: string, files: Upload[]): Promise<Attachment[]>;
+  readFile(project: Project, id: string): Promise<{ reference: Attachment; path: string }>;
+  deleteFiles(project: Project, conversationId: string, ids: string[]): Promise<void>;
+  readResource(project: Project, conversationId: string, kind: 'kv' | 'knowledge', target: Record<string, string>): Promise<unknown>;
+  deleteConversation(project: Project, conversationId: string): Promise<void>;
+  cancelConversation(project: Project, conversationId: string): Promise<void>;
   cancel(runId?: string): void;
   dispose(): void;
 }
@@ -210,7 +210,7 @@ export interface ConversationMessage {
   id?: string;
   role: 'user' | 'assistant';
   content: string;
-  items?: WorkflowOutputItem[];
+  items?: OutputItem[];
   error?: string;
   status?: string;
   recovering?: boolean;
@@ -219,22 +219,22 @@ export interface ConversationMessage {
   durationMs?: number;
   createdAt?: number;
   model?: string;
-  attachments?: WorkflowAttachment[];
+  attachments?: Attachment[];
   args?: string[];
   entrypointId?: string;
   runId?: string;
-  pendingInput?: WorkflowInputRequest;
-  resolvedInputs?: WorkflowResolvedInput[];
-  submittingInput?: WorkflowResolvedInput;
-  tokenUsage?: WorkflowReport['tokenUsage'];
-  report?: WorkflowReport;
+  pendingInput?: InputRequest;
+  resolvedInputs?: ResolvedInput[];
+  submittingInput?: ResolvedInput;
+  tokenUsage?: Report['tokenUsage'];
+  report?: Report;
   events?: Record<string, unknown>[];
   input?: Omit<ConversationQueuedInput, 'id' | 'createdAt'>;
-  files?: WorkflowAttachment[];
-  timers?: WorkflowTimerRecord[];
+  files?: Attachment[];
+  timers?: TimerRecord[];
 }
 
-export interface ConversationQueuedInput { id: string; requestId?: string; text: string; params: WorkflowParamValues; states?: Record<string, WorkflowParamState>; entrypointId?: string; attachments: WorkflowAttachment[]; createdAt: number }
+export interface ConversationQueuedInput { id: string; requestId?: string; text: string; params: ParamValues; states?: Record<string, ParamState>; entrypointId?: string; attachments: Attachment[]; createdAt: number }
 
 export interface ConversationSession {
   agentParameters?: { args: string[]; entrypointId?: string; policies: unknown };
@@ -242,7 +242,7 @@ export interface ConversationSession {
   agentOwnerId?: string;
   agentConversationId?: number;
   forkSource?: { sessionId: string; entryId: number };
-  agentCommands?: { command: AgentSessionCommand; scopeId: string; attachments?: WorkflowAttachment[] }[];
+  agentCommands?: { command: AgentSessionCommand; scopeId: string; attachments?: Attachment[] }[];
   /** Presentation metadata only; Harness owns input scheduling and consumption. */
   agentInputs?: Record<string, ConversationQueuedInput>;
   id: string;
@@ -250,11 +250,11 @@ export interface ConversationSession {
   createdAt?: number;
   updatedAt?: number;
   messages: ConversationMessage[];
-  parameterValues?: Record<string, WorkflowParamValues>;
+  parameterValues?: Record<string, ParamValues>;
   parameterRevisions?: Record<string, Record<string, string>>;
-  toolPermissionPolicies?: WorkflowToolPolicies;
+  toolPermissionPolicies?: ToolPolicies;
   queuedInputs?: ConversationQueuedInput[];
-  draft?: { text: string; attachments: WorkflowAttachment[]; editingQueueId?: string };
+  draft?: { text: string; attachments: Attachment[]; editingQueueId?: string };
   titleLocked?: boolean;
   activeRunId?: string;
 }
@@ -269,17 +269,17 @@ export function sessionRunning(session: ConversationSession): boolean {
   return id === session.agent.conversationId ? session.agent.foreground : session.agent.turns.some(turn => turn.conversationId === id && turn.status === 'placed');
 }
 
-export const projectTypeLabels: Record<WorkflowProjectType, string> = {
+export const projectTypeLabels: Record<ProjectKind, string> = {
   get conversation() { return t("Conversation"); },
   get workflow() { return t("Workflow"); },
   get kanban() { return t("Kanban"); },
 };
 
-export function workflowParameters(project: WorkflowProject, entrypointId?: string): WorkflowParameters {
+export function workflowParameters(project: Project, entrypointId?: string): Parameters {
   return project.entrypoints.find((entry) => entry.id === entrypointId) ?? project;
 }
 
-export function workflowParamValue(field: WorkflowField, value: WorkflowParamValue = field.defaultValue ?? ''): WorkflowParamValue {
+export function workflowParamValue(field: Field, value: ParamValue = field.defaultValue ?? ''): ParamValue {
   if (field.type === 'file' || field.control === 'audio' || !(field.multiple || field.control === 'checkboxes') || Array.isArray(value)) { return value; }
   if (!value.trim()) { return []; }
   try {
@@ -289,14 +289,14 @@ export function workflowParamValue(field: WorkflowField, value: WorkflowParamVal
   return [value];
 }
 
-export function workflowFormValue(field: WorkflowField, value: unknown): WorkflowParamValue {
+export function workflowFormValue(field: Field, value: unknown): ParamValue {
   if (value === undefined || value === null) { return workflowParamValue(field); }
   if (typeof value === 'string') { return workflowParamValue(field, value); }
   if (field.type === 'file' || field.control === 'audio' || field.format === 'json') { return JSON.stringify(value); }
   return workflowParamValue(field, Array.isArray(value) ? value.map(String) : String(value));
 }
 
-export function workflowParamArgs(fields: WorkflowField[], values: WorkflowParamValues, states: Record<string, WorkflowParamState> = {}): string[] {
+export function workflowParamArgs(fields: Field[], values: ParamValues, states: Record<string, ParamState> = {}): string[] {
   const args: string[] = [];
   for (const field of fields) {
     if (states[field.name]?.visible === false) { continue; }
@@ -311,9 +311,9 @@ export function workflowParamArgs(fields: WorkflowField[], values: WorkflowParam
   return args;
 }
 
-export function applyOutputChunk(items: WorkflowOutputItem[], value: unknown): void {
+export function applyOutputChunk(items: OutputItem[], value: unknown): void {
   if (!value || typeof value !== 'object') { return; }
-  const chunk = value as { type?: string; item?: WorkflowOutputItem; itemId?: string; delta?: unknown };
+  const chunk = value as { type?: string; item?: OutputItem; itemId?: string; delta?: unknown };
   if (chunk.type === 'output_item_start' && chunk.item) {
     const index = items.findIndex((item) => item.id && item.id === chunk.item?.id);
     if (index >= 0) { items[index] = { ...chunk.item }; }
@@ -336,12 +336,12 @@ export function applyOutputChunk(items: WorkflowOutputItem[], value: unknown): v
   }
 }
 
-export function outputText(items: WorkflowOutputItem[]): string {
+export function outputText(items: OutputItem[]): string {
   return items.filter((item) => !item.collapsed && item.metadata?.plan !== true && ['text', 'markdown', undefined].includes(item.contentType))
     .map((item) => typeof item.content === 'string' ? item.content : '').filter(Boolean).join('\n\n');
 }
 
-export function validateWorkflowValues(fields: WorkflowField[], values: WorkflowParamValues, states: Record<string, WorkflowParamState> = {}): void {
+export function validateWorkflowValues(fields: Field[], values: ParamValues, states: Record<string, ParamState> = {}): void {
   for (const field of fields) {
     if (states[field.name]?.visible === false || states[field.name]?.disabled) { continue; }
     const value = workflowParamValue(field, values[field.name]);
@@ -364,7 +364,7 @@ export function validateWorkflowValues(fields: WorkflowField[], values: Workflow
   }
 }
 
-export function validateConversationCommandStates(fields: WorkflowField[], states: Record<string, WorkflowParamState>, definitions: ConversationCommandDefinition[] = []): void {
+export function validateConversationCommandStates(fields: Field[], states: Record<string, ParamState>, definitions: ConversationCommandDefinition[] = []): void {
   const commands = definitions.map(definition => definition.command);
   for (const field of fields.filter(field => field.panel === 'slash')) {
     commands.push(...(field.type === 'boolean' ? [field.command ?? field.name]
@@ -378,10 +378,10 @@ export function validateConversationCommandStates(fields: WorkflowField[], state
   }
 }
 
-export function mergeWorkflowParamStates(states: Record<string, WorkflowParamState>, patches: Record<string, WorkflowParamState> = {}): Record<string, WorkflowParamState> {
+export function mergeWorkflowParamStates(states: Record<string, ParamState>, patches: Record<string, ParamState> = {}): Record<string, ParamState> {
   const next = { ...states };
   for (const [name, patch] of Object.entries(patches)) {
-    const options: NonNullable<WorkflowParamState['options']> = patch.resolvedOptions === undefined ? { ...states[name]?.options } : {};
+    const options: NonNullable<ParamState['options']> = patch.resolvedOptions === undefined ? { ...states[name]?.options } : {};
     for (const [value, option] of Object.entries(patch.options ?? {})) {
       options[value] = { ...options[value], ...option };
     }
@@ -390,7 +390,7 @@ export function mergeWorkflowParamStates(states: Record<string, WorkflowParamSta
   return next;
 }
 
-export function resolvedWorkflowValues(fields: WorkflowField[], values: WorkflowParamValues): Record<string, unknown> {
+export function resolvedWorkflowValues(fields: Field[], values: ParamValues): Record<string, unknown> {
   validateWorkflowValues(fields, values);
   return Object.fromEntries(fields.map((field) => {
     const value = workflowParamValue(field, values[field.name]);

@@ -1,21 +1,21 @@
 import type {
   NodeDefinition,
   StreamNodeDefinition,
-  WorkflowContext,
-  WorkflowDefinition,
-  WorkflowNodeMetadata,
-  WorkflowNodeMetadataInput,
+  RunContext,
+  Definition,
+  NodeMetadata,
+  NodeMetadataInput,
 } from "../types/index";
-import type { WorkflowTokenUsageDefinition } from "../token-usage/index";
+import type { TokenUsageDefinition } from "../token-usage/index";
 import type {
-  WorkflowToolPermissionDefinition,
-  WorkflowToolPermissionPolicyMap,
+  ToolPermissionDefinition,
+  ToolPermissionPolicyMap,
 } from "../tool-permissions/index";
 
 export type ExecutorProviderName = "llm";
 
-export type WorkflowParamType = "string" | "number" | "boolean" | "positional" | "file";
-export type WorkflowParamControl =
+export type ParamType = "string" | "number" | "boolean" | "positional" | "file";
+export type ParamControl =
   | "text"
   | "audio"
   | "textarea"
@@ -26,45 +26,45 @@ export type WorkflowParamControl =
   | "time"
   | "datetime"
   | "date-range";
-export type WorkflowParamPanel = "main" | "auxiliary" | "quick" | "mode" | "slash";
-export type WorkflowDateParamControl = Extract<
-  WorkflowParamControl,
+export type ParamPanel = "main" | "auxiliary" | "quick" | "mode" | "slash";
+export type DateParamControl = Extract<
+  ParamControl,
   "date" | "time" | "datetime" | "date-range"
 >;
-export type WorkflowParamValue = string | string[];
-export type WorkflowParamValues = Record<string, WorkflowParamValue>;
+export type ParamValue = string | string[];
+export type ParamValues = Record<string, ParamValue>;
 
-export type WorkflowParamResolveTrigger =
+export type ParamResolveTrigger =
   | { kind: "init" }
   | { kind: "input" }
   | { kind: "param"; paramName: string };
 
-export interface WorkflowParamResolveRequest {
+export interface ParamResolveRequest {
   draftText: string;
   args: string[];
   inputMode: "form" | "raw";
-  trigger: WorkflowParamResolveTrigger;
+  trigger: ParamResolveTrigger;
 }
 
-export interface WorkflowParamOptionStatePatch {
+export interface ParamOptionStatePatch {
   visible?: boolean;
   disabled?: boolean;
 }
 
-export interface WorkflowParamStatePatch {
-  value?: WorkflowParamValue | null;
+export interface ParamStatePatch {
+  value?: ParamValue | null;
   visible?: boolean;
   disabled?: boolean;
   /** Replaces the static option list for this resolved state. Null restores static options. */
-  resolvedOptions?: WorkflowParamOption[] | null;
-  options?: Record<string, WorkflowParamOptionStatePatch>;
+  resolvedOptions?: ParamOption[] | null;
+  options?: Record<string, ParamOptionStatePatch>;
 }
 
-export interface WorkflowParamResolveResult {
-  params?: Record<string, WorkflowParamStatePatch>;
+export interface ParamResolveResult {
+  params?: Record<string, ParamStatePatch>;
 }
 
-export interface WorkflowParamOption {
+export interface ParamOption {
   value: string;
   label?: string;
   description?: string;
@@ -72,12 +72,12 @@ export interface WorkflowParamOption {
   command?: string;
 }
 
-export interface WorkflowAudioParamOptions {
+export interface AudioParamOptions {
   maxDurationSeconds?: number;
   maxBytes?: number;
 }
 
-interface WorkflowParamDefinitionBase {
+interface ParamDefinitionBase {
   name: string;
   flag?: string;
   shortFlag?: string;
@@ -90,7 +90,7 @@ interface WorkflowParamDefinitionBase {
   /** Re-run resolveParams when the main composer input changes. Defaults to false. */
   resolveOnInput?: boolean;
   accept?: string[];
-  audio?: WorkflowAudioParamOptions;
+  audio?: AudioParamOptions;
   format?: "json";
   /**
    * The step this field is asked in, starting at 1. Fields sharing a step are
@@ -105,35 +105,35 @@ interface WorkflowParamDefinitionBase {
   step?: number;
 }
 
-export interface WorkflowDateParamDefinition extends WorkflowParamDefinitionBase {
+export interface DateParamDefinition extends ParamDefinitionBase {
   type: "string";
-  control: WorkflowDateParamControl;
+  control: DateParamControl;
   panel?: "main" | "auxiliary";
   multiple?: false;
   options?: never;
 }
 
-export interface WorkflowStandardParamDefinition extends WorkflowParamDefinitionBase {
-  type: WorkflowParamType;
+export interface StandardParamDefinition extends ParamDefinitionBase {
+  type: ParamType;
   // lets Run workspace render enum-style controls from static params.
-  control?: Exclude<WorkflowParamControl, WorkflowDateParamControl>;
-  panel?: WorkflowParamPanel;
+  control?: Exclude<ParamControl, DateParamControl>;
+  panel?: ParamPanel;
   multiple?: boolean;
-  options?: WorkflowParamOption[];
+  options?: ParamOption[];
 }
 
-export type WorkflowParamDefinition = WorkflowDateParamDefinition | WorkflowStandardParamDefinition;
+export type ParamDefinition = DateParamDefinition | StandardParamDefinition;
 
-export type WorkflowParamFieldDeclaration = WorkflowParamDefinition & { panel?: never };
+export type ParamFieldDeclaration = ParamDefinition & { panel?: never };
 
-export interface WorkflowAuxiliaryParamGroupDefinition {
+export interface AuxiliaryParamGroupDefinition {
   kind: "auxiliary";
   id: string;
   label: string;
-  fields: WorkflowParamFieldDeclaration[];
+  fields: ParamFieldDeclaration[];
 }
 
-export interface WorkflowQuickParamGroupDefinition {
+export interface QuickParamGroupDefinition {
   kind: "quick";
   id: string;
   label: string;
@@ -141,35 +141,35 @@ export interface WorkflowQuickParamGroupDefinition {
   icon?: string;
   /** Field names to show in this group's trigger, in display order. */
   summary: string[];
-  fields: Array<WorkflowStandardParamDefinition & { panel?: never }>;
+  fields: Array<StandardParamDefinition & { panel?: never }>;
 }
 
-export interface WorkflowModeParamDefinition extends Omit<WorkflowStandardParamDefinition, "type" | "control" | "panel" | "multiple" | "kind"> {
+export interface ModeParamDefinition extends Omit<StandardParamDefinition, "type" | "control" | "panel" | "multiple" | "kind"> {
   kind: "mode";
   flag: string;
-  options: WorkflowParamOption[];
+  options: ParamOption[];
 }
 
-export interface WorkflowSlashParamDefinition extends Omit<WorkflowStandardParamDefinition, "type" | "control" | "panel" | "multiple" | "kind"> {
+export interface SlashParamDefinition extends Omit<StandardParamDefinition, "type" | "control" | "panel" | "multiple" | "kind"> {
   kind: "slash";
   type: "string" | "boolean";
   flag: string;
 }
 
-export type WorkflowParamDeclaration =
-  | WorkflowParamFieldDeclaration
-  | WorkflowAuxiliaryParamGroupDefinition
-  | WorkflowQuickParamGroupDefinition
-  | WorkflowModeParamDefinition
-  | WorkflowSlashParamDefinition;
+export type ParamDeclaration =
+  | ParamFieldDeclaration
+  | AuxiliaryParamGroupDefinition
+  | QuickParamGroupDefinition
+  | ModeParamDefinition
+  | SlashParamDefinition;
 
-export type WorkflowConversationParamDeclaration =
-  | WorkflowAuxiliaryParamGroupDefinition
-  | WorkflowQuickParamGroupDefinition
-  | WorkflowModeParamDefinition
-  | WorkflowSlashParamDefinition;
+export type ConversationParamDeclaration =
+  | AuxiliaryParamGroupDefinition
+  | QuickParamGroupDefinition
+  | ModeParamDefinition
+  | SlashParamDefinition;
 
-export interface WorkflowParamLayout {
+export interface ParamLayout {
   actions: Array<
     | { kind: "auxiliary"; id: string; label: string; params: string[] }
     | { kind: "quick"; id: string; label: string; icon?: string; summary: string[]; params: string[] }
@@ -178,33 +178,33 @@ export interface WorkflowParamLayout {
   >;
 }
 
-export interface WorkflowExecutorContext {
+export interface ExecutorContext {
   workflowName: string;
   workflowDir: string;
   entrypointId?: string;
   entrypointTitle?: string;
   args: string[];
-  paramValues: WorkflowParamValues;
+  paramValues: ParamValues;
   env: NodeJS.ProcessEnv;
   abortSignal: AbortSignal;
   /** Host-owned structured input that is intentionally separate from argv and persisted run metadata. */
   hostInput?: unknown;
   conversationId?: string;
-  toolPermissionPolicies?: WorkflowToolPermissionPolicyMap;
+  toolPermissionPolicies?: ToolPermissionPolicyMap;
 }
 
-export interface WorkflowParamResolverContext extends WorkflowExecutorContext {
+export interface ParamResolverContext extends ExecutorContext {
   draftText: string;
   inputMode: "form" | "raw";
-  trigger: WorkflowParamResolveTrigger;
+  trigger: ParamResolveTrigger;
 }
 
-export type WorkflowConversationFooterItem = (
+export type ConversationFooterItem = (
   | { text: string; localizedText?: Record<string, string>; param?: never }
   | { param: string; text?: never; localizedText?: never }
 ) & { when?: { param: string; value: string } };
 
-export interface WorkflowConversationCommandDefinition {
+export interface ConversationCommandDefinition {
   /** Unique command name without the leading slash. */
   command: string;
   label: string;
@@ -216,22 +216,22 @@ export interface WorkflowConversationCommandDefinition {
     | { kind: "export" };
 }
 
-export interface WorkflowConversationUserInputDefinition {
+export interface ConversationUserInputDefinition {
   /** Hide the standard composer while a user-input request is pending. Defaults to true. */
   hideComposer?: boolean;
   /** Apply matching effects once the runtime accepts an answer, in declaration order. */
   effects?: {
     when: { type?: string; nodeName?: string; values?: Record<string, string | number | boolean | string[]> };
-    params: WorkflowParamValues;
+    params: ParamValues;
   }[];
 }
 
-export interface WorkflowConversationDefinition {
+export interface ConversationDefinition {
   /** Execution commands alongside Slash parameters in the standard input menu. */
-  commands?: WorkflowConversationCommandDefinition[];
+  commands?: ConversationCommandDefinition[];
   /** Plain text beneath, and outside, the standard message input. */
-  footer?: WorkflowConversationFooterItem[];
-  userInput?: WorkflowConversationUserInputDefinition;
+  footer?: ConversationFooterItem[];
+  userInput?: ConversationUserInputDefinition;
   attachments?: {
     images?: boolean;
     videos?: boolean;
@@ -250,40 +250,40 @@ export interface WorkflowConversationDefinition {
   };
 }
 
-export interface WorkflowExecutionDefinition<Input, Output> {
-  workflow: WorkflowDefinition<Input, Output>;
+export interface ExecutionDefinition<Input, Output> {
+  workflow: Definition<Input, Output>;
   requiredProviders?: ExecutorProviderName[];
-  params?: WorkflowParamDeclaration[];
-  tools?: WorkflowToolPermissionDefinition[];
-  tokenUsage?: WorkflowTokenUsageDefinition;
-  registry?: WorkflowNodeRegistryEntry[];
+  params?: ParamDeclaration[];
+  tools?: ToolPermissionDefinition[];
+  tokenUsage?: TokenUsageDefinition;
+  registry?: NodeRegistryEntry[];
   createInput(
-    context: WorkflowExecutorContext,
+    context: ExecutorContext,
   ): Promise<Input> | Input;
   resolveParams?(
-    context: WorkflowParamResolverContext,
-  ): Promise<WorkflowParamResolveResult> | WorkflowParamResolveResult;
+    context: ParamResolverContext,
+  ): Promise<ParamResolveResult> | ParamResolveResult;
   createContext?(
-    context: WorkflowExecutorContext,
-  ): Promise<Partial<Omit<WorkflowContext, "storage" | "conversation" | "files">>> |
-    Partial<Omit<WorkflowContext, "storage" | "conversation" | "files">>;
+    context: ExecutorContext,
+  ): Promise<Partial<Omit<RunContext, "storage" | "conversation" | "files">>> |
+    Partial<Omit<RunContext, "storage" | "conversation" | "files">>;
 }
 
-export interface WorkflowEntrypointGroupDefinition {
+export interface EntrypointGroupDefinition {
   id: string;
   title: string;
   order?: number;
 }
 
-export interface WorkflowEntrypointDefinition<Input = unknown, Output = unknown>
-  extends WorkflowExecutionDefinition<Input, Output> {
+export interface EntrypointDefinition<Input = unknown, Output = unknown>
+  extends ExecutionDefinition<Input, Output> {
   id: string;
   title: string;
   description?: string;
-  group?: WorkflowEntrypointGroupDefinition;
+  group?: EntrypointGroupDefinition;
 }
 
-export interface WorkflowNodeRegistryEntry<
+export interface NodeRegistryEntry<
   Input = unknown,
   Output = unknown,
 > {
@@ -291,40 +291,40 @@ export interface WorkflowNodeRegistryEntry<
   node:
     | NodeDefinition<Input, Output>
     | StreamNodeDefinition<Input, unknown, Output>;
-  metadata?: WorkflowNodeMetadataInput;
+  metadata?: NodeMetadataInput;
   stream?: boolean;
   createInput?(
-    context: WorkflowExecutorContext,
+    context: ExecutorContext,
   ): Promise<Input> | Input;
 }
 
-export interface WorkflowNodeRegistryItem {
+export interface NodeRegistryItem {
   name: string;
   standardName?: string;
-  metadata: WorkflowNodeMetadata;
+  metadata: NodeMetadata;
 }
 
-export interface WorkflowProjectExecutorDefinition {
+export interface ProjectExecutorDefinition {
   projectType: "workflow";
   defaultEntrypoint: string;
-  entrypoints: readonly WorkflowEntrypointDefinition<any, any>[];
+  entrypoints: readonly EntrypointDefinition<any, any>[];
   conversation?: never;
 }
 
-export type WorkflowConversationExecutorDefinition<Input, Output> =
-  Omit<WorkflowExecutionDefinition<Input, Output>, "params"> & {
+export type ConversationExecutorDefinition<Input, Output> =
+  Omit<ExecutionDefinition<Input, Output>, "params"> & {
     projectType: "conversation";
-    params?: WorkflowConversationParamDeclaration[];
-    conversation?: WorkflowConversationDefinition;
+    params?: ConversationParamDeclaration[];
+    conversation?: ConversationDefinition;
     defaultEntrypoint?: never;
     entrypoints?: never;
   };
 
-export type WorkflowExecutorDefinition<Input = unknown, Output = unknown> =
-  | WorkflowProjectExecutorDefinition
-  | WorkflowConversationExecutorDefinition<Input, Output>;
+export type ExecutorDefinition<Input = unknown, Output = unknown> =
+  | ProjectExecutorDefinition
+  | ConversationExecutorDefinition<Input, Output>;
 
-export interface WorkflowExecutorModule<Input = unknown, Output = unknown> {
+export interface ExecutorModule<Input = unknown, Output = unknown> {
   default?: unknown;
-  executor?: WorkflowExecutorDefinition<Input, Output>;
+  executor?: ExecutorDefinition<Input, Output>;
 }

@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, expect, it } from "vitest";
-import type { AgentOutputPayload, WorkflowConversationState, WorkflowTokenUsageAggregate, WorkflowUserInputRequest } from "steamharness";
+import type { AgentOutputPayload, ConversationState, TokenUsageAggregate, UserInputRequest } from "steamharness";
 import type { AgentSessionSnapshot } from "steamharness/agent";
 
 const directories: string[] = [], children: ChildProcess[] = [];
@@ -29,8 +29,8 @@ function worker(directory: string, scenario: string, phase: string) {
   children.push(child); return child;
 }
 interface Result {
-  type: string; calls: number; output: AgentOutputPayload; request: WorkflowUserInputRequest;
-  conversation: WorkflowConversationState; usage: WorkflowTokenUsageAggregate;
+  type: string; calls: number; output: AgentOutputPayload; request: UserInputRequest;
+  conversation: ConversationState; usage: TokenUsageAggregate;
   snapshot: AgentSessionSnapshot; childTools: string[];
 }
 

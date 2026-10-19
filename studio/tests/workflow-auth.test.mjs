@@ -5,7 +5,7 @@ import { register } from 'tsx/esm/api';
 
 register();
 const {
-  WorkflowAccount, WorkflowServerClient, normalizeWorkflowServerUrl, workflowAuthEnvironment,
+  Account, ServerClient, normalizeWorkflowServerUrl, workflowAuthEnvironment,
   isPrivateEnvironmentKey, sanitizeWorkflowEnvironment,
 } = await import('../extensions/studio-workstation/src/workflow-auth-client.ts');
 
@@ -69,7 +69,7 @@ function fixture() {
     });
   };
   const secrets = { get: async () => stored, store: async (value) => { writes.push(value); stored = value; }, delete: async () => { writes.push(undefined); stored = undefined; } };
-  const account = new WorkflowAccount(serverUrl, secrets, (event) => events.push(event), (url) => new WorkflowServerClient(url, fetcher));
+  const account = new Account(serverUrl, secrets, (event) => events.push(event), (url) => new ServerClient(url, fetcher));
   return {
     account, secrets, events, requests, writes, fetcher,
     get stored() { return stored; },
@@ -132,7 +132,7 @@ test('restoring credentials requires server verification and survives a temporar
   await f.account.login(serverUrl, user.email, 'correct-password');
   const saved = f.stored;
   f.unavailable = true;
-  const restored = new WorkflowAccount(serverUrl, f.secrets, () => undefined, (url) => new WorkflowServerClient(url, f.fetcher));
+  const restored = new Account(serverUrl, f.secrets, () => undefined, (url) => new ServerClient(url, f.fetcher));
   await restored.restore();
   assert.equal(restored.getState().status, 'error');
   assert.equal(restored.getConnection(), undefined);
@@ -197,7 +197,7 @@ test('logout wins over an unfinished login and revokes only this Studio session'
 test('verification and restore preserve the cookie required to revoke the issued API key', async () => {
   const f = fixture(); await f.account.login(serverUrl, user.email, 'correct-password'); await f.account.verify();
   assert.equal(JSON.parse(f.stored).sessionCookie, 'wf_session=test-cookie');
-  const restored = new WorkflowAccount(serverUrl, f.secrets, () => undefined, (url) => new WorkflowServerClient(url, f.fetcher));
+  const restored = new Account(serverUrl, f.secrets, () => undefined, (url) => new ServerClient(url, f.fetcher));
   await restored.restore(); await restored.logout();
   assert.ok(f.requests.some((request) => request.method === 'DELETE' && request.headers.Cookie === 'wf_session=test-cookie'));
 });
@@ -235,7 +235,7 @@ test('restoring another window\'s credentials verifies them without writing back
   const f = fixture(); await f.account.login(serverUrl, user.email, 'correct-password');
   const saved = f.stored, writes = f.writes.length;
   f.profile = { ...user, displayName: 'Updated profile' };
-  const restored = new WorkflowAccount(serverUrl, f.secrets, () => undefined, url => new WorkflowServerClient(url, f.fetcher));
+  const restored = new Account(serverUrl, f.secrets, () => undefined, url => new ServerClient(url, f.fetcher));
   await restored.restore();
   assert.equal(restored.getState().user.displayName, 'Updated profile');
   assert.equal(f.stored, saved);
@@ -257,7 +257,7 @@ test('an old secret read cannot restore credentials after logout', async () => {
 
 test('system AI usage and server resource cards use the active account and dev API contracts', async () => {
   const calls = [];
-  const client = new WorkflowServerClient(serverUrl, async (url, options) => {
+  const client = new ServerClient(serverUrl, async (url, options) => {
     calls.push({ url, options });
     const path = new URL(url).pathname;
     if (path === '/api/ai/usage') {
@@ -325,6 +325,6 @@ test('server URLs reject embedded credentials and authenticated redirects never 
   await new Promise((resolve) => source.listen(0, '127.0.0.1', resolve));
   t.after(() => Promise.all([source, destination].map((server) => new Promise((resolve) => server.close(resolve)))));
   const localUrl = `http://127.0.0.1:${source.address().port}`;
-  await assert.rejects(new WorkflowServerClient(localUrl).verify({ serverUrl: localUrl, accessToken: token }), /SteamHarness Server/);
+  await assert.rejects(new ServerClient(localUrl).verify({ serverUrl: localUrl, accessToken: token }), /SteamHarness Server/);
   assert.equal(redirectedRequests, 0);
 });

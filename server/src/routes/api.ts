@@ -9,17 +9,17 @@ import { createAuditActor, listAuditEvents, recordPermissionDeniedForRequest, re
 import { HttpError, fail, ok, toHttpError, toHttpErrorWithStatus } from "../protocol";
 import { getRequestT, localizeHttpErrorMessage, localizeServerMessage, resolveRequestLocale } from "../i18n";
 import { PROJECT_CARD_IMAGE_MAX_BYTES } from "../storage";
-import type { WorkflowKnowledgeDocumentListItem, WorkflowKnowledgeDocumentRecord, WorkflowManagedFileReference, WorkflowProjectInvitation, WorkflowProjectCardImage, WorkflowProjectMember, WorkflowProjectRole, WorkflowUserProfileSummary, WorkflowVersionSummary, WorkflowVisibility, WorkflowPersistentValueKnowledgeMutation, WorkflowStorage } from "../storage";
-import type { WorkflowAuditEventPage, WorkflowAuditEventRecord, WorkflowUserProfileRecord } from "../account-db";
-import type { WorkflowPermissionKey } from "../permissions";
+import type { KnowledgeDocumentListItem, KnowledgeDocumentRecord, ManagedFileReference, ProjectInvitation, ProjectCardImage, ProjectMember, ProjectRole, UserProfileSummary, VersionSummary, Visibility, PersistentValueKnowledgeMutation, Storage } from "../storage";
+import type { AuditEventPage, AuditEventRecord, UserProfileRecord } from "../account-db";
+import type { PermissionKey } from "../permissions";
 import { isWorkflowUuid } from "../workflow-ids";
 import { validateProjectCardMetadata, type ProjectCardMetadata } from "@steamharness/project-card-metadata";
-import { isWorkflowProjectType, STEAMHARNESS_PROJECT_TYPES, type WorkflowProjectType } from "@steamharness/project-types";
+import { isWorkflowProjectType, STEAMHARNESS_PROJECT_TYPES, type ProjectKind } from "@steamharness/project-types";
 import { encodeKanbanAssetUrlPath } from "@steamharness/kanban-project";
 import { invokeServerKanbanBridge, readKanbanBridgeCall } from "../kanban-bridge";
 import { createKanbanRevisionBatcher } from "../kanban-revision-batcher";
-import { parseWorkflowProjectGroupManifest, type WorkflowProjectGroupManifestV1 } from "@steamharness/project-dependencies";
-import { normalizeDeclaredWorkflowProjectInfo, type DeclaredWorkflowProjectInfo, type WorkflowRelatedProject } from "@steamharness/project-info";
+import { parseWorkflowProjectGroupManifest, type ProjectGroupManifestV1 } from "@steamharness/project-dependencies";
+import { normalizeDeclaredWorkflowProjectInfo, type DeclaredWorkflowProjectInfo, type RelatedProject } from "@steamharness/project-info";
 
 const DEFAULT_UPLOAD_LIMIT_BYTES = 50 * 1024 * 1024;
 const PERSISTENT_VALUE_REVISION_PATTERN = /^\d+$/;
@@ -36,7 +36,7 @@ function asyncHandler(
 function recordSourceDownloadsOnFinish(
   req: Request,
   res: Response,
-  storage: WorkflowStorage,
+  storage: Storage,
   downloads: readonly { workflowId: string; version: string }[],
 ): void {
   res.setHeader("Cache-Control", "no-store");
@@ -59,7 +59,7 @@ function requireRequestPrincipal(req: Request): AuthenticatedPrincipal {
   return principal;
 }
 
-function requireRequestPermission(req: Request, permission: WorkflowPermissionKey): AuthenticatedPrincipal {
+function requireRequestPermission(req: Request, permission: PermissionKey): AuthenticatedPrincipal {
   const principal = requireRequestPrincipal(req);
   if (!hasPermission(principal, permission)) {
     recordPermissionDeniedForRequest(req, {
@@ -126,7 +126,7 @@ function readRelatedProjectGrant(
   }
 }
 
-function requireWorkflowProjectType(value: unknown): WorkflowProjectType {
+function requireWorkflowProjectType(value: unknown): ProjectKind {
   if (!isWorkflowProjectType(value)) {
     throw new HttpError(
       400,
@@ -137,7 +137,7 @@ function requireWorkflowProjectType(value: unknown): WorkflowProjectType {
   return value;
 }
 
-function toUserProfileSummary(profile: WorkflowUserProfileRecord): WorkflowUserProfileSummary {
+function toUserProfileSummary(profile: UserProfileRecord): UserProfileSummary {
   return {
     userId: profile.userId,
     displayName: profile.displayName,
@@ -148,7 +148,7 @@ function toUserProfileSummary(profile: WorkflowUserProfileRecord): WorkflowUserP
 
 async function loadUserProfileSummaries(
   userIds: Iterable<string | null | undefined>,
-): Promise<Map<string, WorkflowUserProfileSummary>> {
+): Promise<Map<string, UserProfileSummary>> {
   const normalized = [...new Set(
     [...userIds]
       .filter((userId): userId is string => typeof userId === "string" && userId.trim() !== "")
@@ -162,9 +162,9 @@ async function loadUserProfileSummaries(
 }
 
 function pickProfile(
-  profiles: Map<string, WorkflowUserProfileSummary>,
+  profiles: Map<string, UserProfileSummary>,
   ...userIds: Array<string | null | undefined>
-): WorkflowUserProfileSummary | undefined {
+): UserProfileSummary | undefined {
   for (const userId of userIds) {
     if (!userId) continue;
     const profile = profiles.get(userId);
@@ -173,7 +173,7 @@ function pickProfile(
   return undefined;
 }
 
-async function enrichVersionSummary(summary: WorkflowVersionSummary): Promise<WorkflowVersionSummary> {
+async function enrichVersionSummary(summary: VersionSummary): Promise<VersionSummary> {
   const profiles = await loadUserProfileSummaries(summary.versions.map((version) => version.createdByUserId));
   if (profiles.size === 0) return summary;
   return {
@@ -185,7 +185,7 @@ async function enrichVersionSummary(summary: WorkflowVersionSummary): Promise<Wo
   };
 }
 
-async function enrichProjectMembers(members: WorkflowProjectMember[]): Promise<WorkflowProjectMember[]> {
+async function enrichProjectMembers(members: ProjectMember[]): Promise<ProjectMember[]> {
   const profiles = await loadUserProfileSummaries(members.flatMap((member) => [member.userId, member.createdBy]));
   if (profiles.size === 0) return members;
   return members.map((member) => ({
@@ -195,7 +195,7 @@ async function enrichProjectMembers(members: WorkflowProjectMember[]): Promise<W
   }));
 }
 
-async function enrichProjectInvitations(invitations: WorkflowProjectInvitation[]): Promise<WorkflowProjectInvitation[]> {
+async function enrichProjectInvitations(invitations: ProjectInvitation[]): Promise<ProjectInvitation[]> {
   const profiles = await loadUserProfileSummaries(
     invitations.flatMap((invitation) => [invitation.createdBy, invitation.acceptedBy]),
   );
@@ -207,12 +207,12 @@ async function enrichProjectInvitations(invitations: WorkflowProjectInvitation[]
   }));
 }
 
-async function enrichAuditPage(page: WorkflowAuditEventPage): Promise<WorkflowAuditEventPage> {
+async function enrichAuditPage(page: AuditEventPage): Promise<AuditEventPage> {
   const profiles = await loadUserProfileSummaries(page.items.flatMap((event) => [event.actorProfileId, event.actorUserId]));
   if (profiles.size === 0) return page;
   return {
     ...page,
-    items: page.items.map((event): WorkflowAuditEventRecord => {
+    items: page.items.map((event): AuditEventRecord => {
       const profile = pickProfile(profiles, event.actorProfileId, event.actorUserId);
       if (!profile) return event;
       return {
@@ -228,8 +228,8 @@ async function enrichAuditPage(page: WorkflowAuditEventPage): Promise<WorkflowAu
 
 async function requireProjectReadAccess(
   req: Request,
-  storage: WorkflowStorage,
-): Promise<{ principal: AuthenticatedPrincipal; access: Awaited<ReturnType<WorkflowStorage["getProjectAccessSummary"]>> }> {
+  storage: Storage,
+): Promise<{ principal: AuthenticatedPrincipal; access: Awaited<ReturnType<Storage["getProjectAccessSummary"]>> }> {
   const principal = requireRequestPrincipal(req);
   const userId = "userId" in principal ? principal.userId : undefined;
   const access = await storage.getProjectAccessSummary(req.params["name"], userId);
@@ -243,7 +243,7 @@ async function requireProjectReadAccess(
 }
 
 async function assertProjectReadableForPrincipal(
-  storage: WorkflowStorage,
+  storage: Storage,
   principal: AuthenticatedPrincipal,
   workflowName: string,
 ): Promise<void> {
@@ -256,19 +256,19 @@ async function assertProjectReadableForPrincipal(
     userId,
   });
 }
-async function assertProjectStorageAccessForPrincipal(storage: WorkflowStorage, principal: AuthenticatedPrincipal, projectId: string, write: boolean): Promise<void> {
+async function assertProjectStorageAccessForPrincipal(storage: Storage, principal: AuthenticatedPrincipal, projectId: string, write: boolean): Promise<void> {
   const userId = "userId" in principal ? principal.userId : undefined;
   const access = await storage.getProjectAccessSummary(projectId, userId);
   storage.assertReadableProject({ access, canReadAll: hasPermission(principal, "projects.read_all"), canReadPublic: hasPermission(principal, "projects.read_public"), userId });
   if (write) storage.assertDataWritableProject({ access, userId, canWriteAll: hasPermission(principal, "storage.write") });
 }
-async function requireProjectStorageWriteAccess(req: Request, storage: WorkflowStorage): Promise<void> {
+async function requireProjectStorageWriteAccess(req: Request, storage: Storage): Promise<void> {
   await assertProjectStorageAccessForPrincipal(storage, requireRequestPrincipal(req), req.params["name"], true);
 }
 
 
 async function canDownloadProjectSourceForPrincipal(
-  storage: WorkflowStorage,
+  storage: Storage,
   principal: AuthenticatedPrincipal,
   projectId: string,
 ): Promise<boolean> {
@@ -291,7 +291,7 @@ async function canDownloadProjectSourceForPrincipal(
 }
 
 async function canManageProjectForPrincipal(
-  storage: WorkflowStorage,
+  storage: Storage,
   principal: AuthenticatedPrincipal,
   projectId: string,
 ): Promise<boolean> {
@@ -318,7 +318,7 @@ function requirePrincipalUserId(principal: AuthenticatedPrincipal, action: strin
   return principal.userId;
 }
 
-function readProjectGroupManifest(value: unknown): WorkflowProjectGroupManifestV1 {
+function readProjectGroupManifest(value: unknown): ProjectGroupManifestV1 {
   try {
     return parseWorkflowProjectGroupManifest(value);
   } catch (error) {
@@ -328,16 +328,16 @@ function readProjectGroupManifest(value: unknown): WorkflowProjectGroupManifestV
 
 async function requireProjectManageAccess(
   req: Request,
-  storage: WorkflowStorage,
-): Promise<{ principal: AuthenticatedPrincipal; access: Awaited<ReturnType<WorkflowStorage["getProjectAccessSummary"]>> }> {
+  storage: Storage,
+): Promise<{ principal: AuthenticatedPrincipal; access: Awaited<ReturnType<Storage["getProjectAccessSummary"]>> }> {
   return requireWorkflowManageAccess(req, storage, req.params["name"]);
 }
 
 async function requireWorkflowManageAccess(
   req: Request,
-  storage: WorkflowStorage,
+  storage: Storage,
   workflowName: string,
-): Promise<{ principal: AuthenticatedPrincipal; access: Awaited<ReturnType<WorkflowStorage["getProjectAccessSummary"]>> }> {
+): Promise<{ principal: AuthenticatedPrincipal; access: Awaited<ReturnType<Storage["getProjectAccessSummary"]>> }> {
   const principal = requireRequestPrincipal(req);
   const userId = "userId" in principal ? principal.userId : undefined;
   const access = await storage.getProjectAccessSummary(workflowName, userId);
@@ -354,8 +354,8 @@ async function requireWorkflowManageAccess(
 
 async function requireProjectMemberManageAccess(
   req: Request,
-  storage: WorkflowStorage,
-): Promise<{ principal: AuthenticatedPrincipal; access: Awaited<ReturnType<WorkflowStorage["getProjectAccessSummary"]>> }> {
+  storage: Storage,
+): Promise<{ principal: AuthenticatedPrincipal; access: Awaited<ReturnType<Storage["getProjectAccessSummary"]>> }> {
   const principal = requireRequestPrincipal(req);
   const userId = "userId" in principal ? principal.userId : undefined;
   const access = await storage.getProjectAccessSummary(req.params["name"], userId);
@@ -584,8 +584,8 @@ function readKnowledgeWriteResponseMode(value: unknown): "document" | "summary" 
 }
 
 function summarizeKnowledgeDocument(
-  document: WorkflowKnowledgeDocumentRecord,
-): WorkflowKnowledgeDocumentListItem {
+  document: KnowledgeDocumentRecord,
+): KnowledgeDocumentListItem {
   return {
     id: document.id,
     title: document.title,
@@ -622,7 +622,7 @@ function readProjectStorageBody(value: unknown):
       storageKind: "persistent_value";
       operation: "knowledge-mutation";
       namespace: { scope: "project"; projectId: string };
-      mutation: WorkflowPersistentValueKnowledgeMutation;
+      mutation: PersistentValueKnowledgeMutation;
     } {
   if (!isRecord(value)) {
     throw new HttpError(400, 400, "Request body must be an object.");
@@ -755,7 +755,7 @@ function readProjectStorageKnowledgeNamespace(value: unknown): {
 
 function readPersistentValueKnowledgeMutation(
   value: unknown,
-): WorkflowPersistentValueKnowledgeMutation {
+): PersistentValueKnowledgeMutation {
   if (!isRecord(value)) {
     throw new HttpError(400, 400, "mutation must be an object.");
   }
@@ -910,7 +910,7 @@ function firstHeaderValue(value: string | string[] | undefined): string | undefi
 
 function sendManagedFile(
   res: Response,
-  metadata: WorkflowManagedFileReference,
+  metadata: ManagedFileReference,
   filePath: string,
   download: boolean,
 ): void {
@@ -928,7 +928,7 @@ function encodeHeaderFileName(value: string): string {
 }
 
 export function createApiRouter(
-  storage: WorkflowStorage,
+  storage: Storage,
 ): Router {
   const router = Router();
   const authenticateRequest = requireAuthenticatedPrincipal();
@@ -988,7 +988,7 @@ export function createApiRouter(
         throw new HttpError(415, 415, "Project card image content type must be image/webp.");
       }
       const body = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
-      const result: WorkflowProjectCardImage = await storage.saveProjectCardImage({
+      const result: ProjectCardImage = await storage.saveProjectCardImage({
         workflowName: req.params.name,
         buffer: body,
         origin: getRequestOrigin(req),
@@ -1280,7 +1280,7 @@ export function createApiRouter(
         workflowName: req.params.name,
         target,
       });
-      const authorizedRelations: WorkflowRelatedProject[] = [];
+      const authorizedRelations: RelatedProject[] = [];
       for (const relation of bindings.relatedProjects) {
         try {
           const access = await storage.resolveConfirmedRelatedProject(req.params.name, relation.alias);
@@ -2049,7 +2049,7 @@ export function createApiRouter(
       const result = await storage.setProjectMember({
         workflowId: req.params["name"],
         userId: req.params["userId"],
-        role: role as WorkflowProjectRole,
+        role: role as ProjectRole,
         createdBy: "userId" in principal ? principal.userId : undefined,
       });
       await recordRouteAudit(req, {
@@ -2111,7 +2111,7 @@ export function createApiRouter(
       }
       const { invitation, token } = await storage.createProjectInvitation({
         workflowId: req.params["name"],
-        role: role as WorkflowProjectRole,
+        role: role as ProjectRole,
         createdBy: "userId" in principal ? principal.userId : undefined,
       });
       await recordRouteAudit(req, {
@@ -2245,7 +2245,7 @@ export function createApiRouter(
       }
       const result = await storage.updateProjectVisibility({
         workflowId: req.params["name"],
-        visibility: visibility as WorkflowVisibility,
+        visibility: visibility as Visibility,
       });
       await recordRouteAudit(req, {
         principal,

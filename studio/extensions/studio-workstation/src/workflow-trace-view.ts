@@ -1,24 +1,24 @@
 import * as vscode from 'vscode';
 import { localizationHtml } from './localization-host';
-import { WorkflowTraceStore } from './workflow-trace-store';
-import type { WorkflowProject } from './workflow-types';
+import { TraceStore } from './workflow-trace-store';
+import type { Project } from './workflow-types';
 import type { TraceTarget } from './workflow-trace-types';
 import type { TraceAgentAction } from './workflow-agent-types';
 
-export class WorkflowTraceView {
-  private readonly store = new WorkflowTraceStore();
+export class TraceView {
+  private readonly store = new TraceStore();
   private view?: vscode.WebviewView;
   private published = '';
   private available?: boolean;
   private timer?: ReturnType<typeof setTimeout>;
-  constructor(private readonly context: vscode.ExtensionContext, private readonly openProject: (project: WorkflowProject) => Promise<void>,
+  constructor(private readonly context: vscode.ExtensionContext, private readonly openProject: (project: Project) => Promise<void>,
     private readonly output: vscode.OutputChannel) {
     context.subscriptions.push(vscode.window.registerWebviewViewProvider('studio.trace', {
       resolveWebviewView: view => this.resolve(view),
     }, { webviewOptions: { retainContextWhenHidden: true } }));
   }
-  update(projects: WorkflowProject[], preferred?: WorkflowProject): void { this.store.update(projects, preferred); this.publish(); }
-  bind(project: WorkflowProject, version: number | undefined, webview: vscode.Webview) {
+  update(projects: Project[], preferred?: Project): void { this.store.update(projects, preferred); this.publish(); }
+  bind(project: Project, version: number | undefined, webview: vscode.Webview) {
     const binding = this.store.bind(project, version, message => void webview.postMessage(message));
     this.publish();
     return {

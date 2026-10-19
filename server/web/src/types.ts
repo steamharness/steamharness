@@ -1,26 +1,26 @@
 
-import type { WorkflowProjectType as SharedWorkflowProjectType } from "@steamharness/project-types";
-import type { WorkflowProjectInfo, WorkflowRelatedProject, WorkflowRelatedProjectKVGrant } from "@steamharness/project-info";
-import type { WorkflowProjectAccessRequest, WorkflowProjectCapabilityGrant, WorkflowProjectDependencyLock, WorkflowProjectDependencyStatusResult } from "@steamharness/project-dependencies";
+import type { ProjectKind as SharedWorkflowProjectType } from "@steamharness/project-types";
+import type { ProjectInfoContract, RelatedProject, RelatedProjectKVGrant } from "@steamharness/project-info";
+import type { ProjectAccessRequest, ProjectCapabilityGrant, ProjectDependencyLock, ProjectDependencyStatusResult } from "@steamharness/project-dependencies";
 
 export type {
-  WorkflowProjectAccessRequest,
-  WorkflowProjectCapabilityGrant,
-  WorkflowProjectDependencyLock,
-  WorkflowProjectDependencyStatusResult,
+  ProjectAccessRequest,
+  ProjectCapabilityGrant,
+  ProjectDependencyLock,
+  ProjectDependencyStatusResult,
 };
 
-export interface WorkflowRelatedProjectStatus {
-  relation: WorkflowRelatedProject;
+export interface RelatedProjectStatus {
+  relation: RelatedProject;
   projectName?: string;
   reciprocalAlias?: string;
-  grantFromRelatedProject?: WorkflowRelatedProjectKVGrant;
+  grantFromRelatedProject?: RelatedProjectKVGrant;
   confirmed: boolean;
 }
 
-export interface WorkflowRelatedProjectListResult {
+export interface RelatedProjectListResult {
   projectId: string;
-  relatedProjects: WorkflowRelatedProjectStatus[];
+  relatedProjects: RelatedProjectStatus[];
 }
 
 export interface ApiSuccess<T> {
@@ -41,7 +41,7 @@ export function isApiSuccess<T>(response: ApiResponse<T>): response is ApiSucces
   return response.errCode === 0;
 }
 
-export interface WorkflowServerHealthRelease {
+export interface ServerHealthRelease {
   unit: "server" | "server-web";
   tag: string | null;
   version: string | null;
@@ -53,7 +53,7 @@ export interface WorkflowServerHealthRelease {
   source: "release-metadata" | "package-manifest";
 }
 
-export interface WorkflowServerHealthData {
+export interface ServerHealthData {
   status: "ok";
   versions: {
     serverVersion: string | null;
@@ -65,12 +65,12 @@ export interface WorkflowServerHealthData {
     docsUrl: string;
   } | null;
   deployment: {
-    server: WorkflowServerHealthRelease | null;
-    serverWeb: WorkflowServerHealthRelease | null;
+    server: ServerHealthRelease | null;
+    serverWeb: ServerHealthRelease | null;
   };
 }
 
-export type WorkflowPermissionKey =
+export type PermissionKey =
   | "system.admin"
   | "users.read"
   | "users.manage"
@@ -94,16 +94,16 @@ export type WorkflowPermissionKey =
   | "audit.read"
   | "audit.export";
 
-export type WorkflowUserProfileStatus = "invited" | "active" | "disabled";
+export type UserProfileStatus = "invited" | "active" | "disabled";
 
-export type WorkflowAuthPrincipalKind =
+export type AuthPrincipalKind =
   | "admin_key"
   | "admin_session"
   | "user_session"
   | "api_key";
 
-export interface WorkflowAuthPrincipal {
-  kind: WorkflowAuthPrincipalKind;
+export interface AuthPrincipal {
+  kind: AuthPrincipalKind;
   sessionId?: string;
   userId?: string;
   displayName?: string;
@@ -111,37 +111,37 @@ export interface WorkflowAuthPrincipal {
   // surface avatarUrl on the session so the header avatar renders on
   // every page without waiting for the settings-page profile fetch.
   avatarUrl?: string;
-  permissions?: WorkflowPermissionKey[];
+  permissions?: PermissionKey[];
   apiKeyId?: string;
   roleNames?: string[];
 }
 
 export interface AuthSessionState {
   authenticated: boolean;
-  principal?: WorkflowAuthPrincipal;
+  principal?: AuthPrincipal;
 }
 
-export interface WorkflowUserProfileRecord {
+export interface UserProfileRecord {
   userId: string;
   email: string;
   displayName: string;
   avatarUrl?: string;
-  status: WorkflowUserProfileStatus;
+  status: UserProfileStatus;
   createdByUserId?: string;
   createdAt: string;
   updatedAt: string;
   lastLoginAt?: string;
   roleIds: string[];
   roleNames: string[];
-  permissions: WorkflowPermissionKey[];
+  permissions: PermissionKey[];
 }
 
-export interface WorkflowMeResult {
-  principal?: WorkflowAuthPrincipal;
-  profile: WorkflowUserProfileRecord | null;
+export interface MeResult {
+  principal?: AuthPrincipal;
+  profile: UserProfileRecord | null;
 }
 
-export interface WorkflowApiKeyRecord {
+export interface ApiKeyRecord {
   id: string;
   userId: string;
   name: string;
@@ -157,12 +157,12 @@ export interface WorkflowApiKeyRecord {
   userAgent?: string;
 }
 
-export interface WorkflowApiKeyCreateResult {
-  apiKey: WorkflowApiKeyRecord;
+export interface ApiKeyCreateResult {
+  apiKey: ApiKeyRecord;
   token: string;
 }
 
-export interface WorkflowDeviceCodeResult {
+export interface DeviceCodeResult {
   id: string;
   userCode: string;
   clientName: string;
@@ -190,60 +190,60 @@ export interface WorkflowDeviceCodeResult {
   updatedAt: string;
 }
 
-export interface WorkflowPermissionDefinition {
-  key: WorkflowPermissionKey;
+export interface PermissionDefinition {
+  key: PermissionKey;
   label: string;
   description: string;
   group: string;
 }
 
-export interface WorkflowPermissionGroup {
+export interface PermissionGroup {
   id: string;
   label: string;
-  permissions: WorkflowPermissionDefinition[];
+  permissions: PermissionDefinition[];
 }
 
-export interface WorkflowRoleRecord {
+export interface RoleRecord {
   id: string;
   name: string;
   description: string;
   builtin: boolean;
   protected: boolean;
-  permissions: WorkflowPermissionKey[];
+  permissions: PermissionKey[];
   createdByUserId?: string;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface WorkflowAdminUserSummary {
+export interface AdminUserSummary {
   userId: string;
   email: string;
   displayName: string;
-  status: WorkflowUserProfileStatus;
+  status: UserProfileStatus;
   lastSignInAt?: string;
   createdAt?: string;
   roles: string[];
-  permissions: WorkflowPermissionKey[];
+  permissions: PermissionKey[];
   avatarUrl?: string;
 }
 
-export interface WorkflowUserInvitationResult {
-  profile: WorkflowUserProfileRecord;
+export interface UserInvitationResult {
+  profile: UserProfileRecord;
   invitationLink?: string;
   temporaryPassword?: string;
 }
 
-export interface WorkflowAccountInvitation {
+export interface AccountInvitation {
   email: string;
   displayName: string;
   expiresAt: string;
   acceptedAt?: string;
 }
 
-export interface WorkflowAccountInvitationLookupResult {
-  invitation: WorkflowAccountInvitation;
+export interface AccountInvitationLookupResult {
+  invitation: AccountInvitation;
 }
-export type WorkflowProjectType = SharedWorkflowProjectType;
+export type ProjectKind = SharedWorkflowProjectType;
 export type ProjectCardIconName =
   | "workflow"
   | "message-circle"
@@ -265,26 +265,26 @@ export interface ProjectCardMetadata {
   iconBackgroundColor: string;
 }
 
-export interface WorkflowUserProfileSummary {
+export interface UserProfileSummary {
   userId: string;
   displayName: string;
   email?: string;
   avatarUrl?: string;
 }
 
-export interface WorkflowSummary {
+export interface Summary {
   canManage?: boolean;
   canWriteData?: boolean;
   sourceDownload?: {allowed: boolean; available: boolean; target: string | null};
   id: string;
   name: string;
-  projectType: WorkflowProjectType;
+  projectType: ProjectKind;
   projectCard: ProjectCardMetadata;
-  projectInfo: WorkflowProjectInfo;
+  projectInfo: ProjectInfoContract;
   visibility?: "private" | "public";
   ownerUserId?: string;
   createdByUserId?: string;
-  createdByProfile?: WorkflowUserProfileSummary;
+  createdByProfile?: UserProfileSummary;
   createdAt?: string;
   updatedAt?: string;
   hasDraft: boolean;
@@ -301,14 +301,14 @@ export interface VersionEntry {
   downloadCount: number;
   createdAt?: string;
   createdByUserId?: string;
-  createdByProfile?: WorkflowUserProfileSummary;
+  createdByProfile?: UserProfileSummary;
   releaseLog?: string;
   sourceHash?: string;
-  dependencies: WorkflowProjectDependencyLock[];
+  dependencies: ProjectDependencyLock[];
   latest: boolean;
 }
 
-export interface WorkflowSourceShare {
+export interface SourceShare {
   id: string;
   name: string;
   version: string;
@@ -317,7 +317,7 @@ export interface WorkflowSourceShare {
   sourceHash: string;
 }
 
-export interface WorkflowVersionSummary {
+export interface VersionSummary {
   id: string;
   name: string;
   latest: string | null;
@@ -326,27 +326,27 @@ export interface WorkflowVersionSummary {
   versions: VersionEntry[];
 }
 
-export interface WorkflowProjectSourceAccessSummary {
-  requests: WorkflowProjectAccessRequest[];
-  grants: WorkflowProjectCapabilityGrant[];
+export interface ProjectSourceAccessSummary {
+  requests: ProjectAccessRequest[];
+  grants: ProjectCapabilityGrant[];
 }
 
-export interface WorkflowProjectAccessLinkInfo {
+export interface ProjectAccessLinkInfo {
   projectId: string;
   projectName: string;
 }
 
 
-export type WorkflowKVEntryScope = "project" | "conversation";
-export type WorkflowKVEntryValueType = "null" | "array" | "object" | "string" | "number" | "boolean";
+export type KVEntryScope = "project" | "conversation";
+export type KVEntryValueType = "null" | "array" | "object" | "string" | "number" | "boolean";
 
-export interface WorkflowKVEntrySummary {
+export interface KVEntrySummary {
   storageKind: "kv" | "persistent_value";
-  scope: WorkflowKVEntryScope;
+  scope: KVEntryScope;
   key: string;
   // KV list APIs omit full values; row expansion fetches details.
   value?: unknown;
-  valueType: WorkflowKVEntryValueType;
+  valueType: KVEntryValueType;
   valueSizeBytes: number;
   valuePreview: string;
   projectId: string;
@@ -357,45 +357,45 @@ export interface WorkflowKVEntrySummary {
   lastConversationId?: string;
 }
 
-export interface WorkflowKVEntryDetail extends WorkflowKVEntrySummary {
+export interface KVEntryDetail extends KVEntrySummary {
   value: unknown;
 }
 
-export type WorkflowAuditOutcome = "success" | "failed" | "denied";
+export type AuditOutcome = "success" | "failed" | "denied";
 
-export interface WorkflowAuditEventRecord {
+export interface AuditEventRecord {
   id: string;
   actorUserId?: string;
   actorProfileId?: string;
-  actorProfile?: WorkflowUserProfileSummary;
+  actorProfile?: UserProfileSummary;
   actorDisplayName?: string;
   principalKind: string;
   eventType: string;
   resourceType?: string;
   resourceId?: string;
-  outcome: WorkflowAuditOutcome;
+  outcome: AuditOutcome;
   requestIp?: string;
   userAgent?: string;
   context: Record<string, unknown>;
   createdAt: string;
 }
 
-export interface WorkflowAuditEventPage {
-  items: WorkflowAuditEventRecord[];
+export interface AuditEventPage {
+  items: AuditEventRecord[];
   nextCursor?: string;
   hasMore: boolean;
   total: number;
 }
 
-export interface WorkflowKVEntryPage {
-  items: WorkflowKVEntrySummary[];
+export interface KVEntryPage {
+  items: KVEntrySummary[];
   nextCursor?: string;
   hasMore: boolean;
   // Keys displays the server-side filtered total instead of visible rows.
   total: number;
 }
 
-export interface WorkflowProjectDataSummary {
+export interface ProjectDataSummary {
   kv: {
     entryCount: number;
     projectEntryCount: number;
@@ -413,7 +413,7 @@ export interface WorkflowProjectDataSummary {
   };
 }
 
-export interface WorkflowKnowledgeDocumentSummary {
+export interface KnowledgeDocumentSummaryRecord {
   id: string;
   title: string;
   markdownPreview: string;
@@ -421,14 +421,14 @@ export interface WorkflowKnowledgeDocumentSummary {
   updatedAt: string;
 }
 
-export interface WorkflowKnowledgeDocumentPage {
-  items: WorkflowKnowledgeDocumentSummary[];
+export interface KnowledgeDocumentPageRecord {
+  items: KnowledgeDocumentSummaryRecord[];
   nextCursor?: string;
   hasMore: boolean;
   total: number;
 }
 
-export interface WorkflowKnowledgeDocument {
+export interface KnowledgeDocument {
   id: string;
   title: string;
   markdown: string;
@@ -436,21 +436,21 @@ export interface WorkflowKnowledgeDocument {
   updatedAt: string;
 }
 
-export interface WorkflowKnowledgeSearchLine {
+export interface KnowledgeSearchLine {
   lineNumber: number;
   content: string;
 }
 
-export interface WorkflowKnowledgeSearchMatch {
+export interface KnowledgeSearchMatch {
   documentId: string;
   title: string;
   lineNumber: number;
   line: string;
-  before: WorkflowKnowledgeSearchLine[];
-  after: WorkflowKnowledgeSearchLine[];
+  before: KnowledgeSearchLine[];
+  after: KnowledgeSearchLine[];
 }
 
-export interface WorkflowKnowledgeSearchResult {
+export interface KnowledgeSearchResultRecord {
   query: string;
   documentsSearched: number;
   totalMatches: number;
@@ -460,55 +460,55 @@ export interface WorkflowKnowledgeSearchResult {
   cursor?: string;
   nextCursor?: string;
   hasMore: boolean;
-  matches: WorkflowKnowledgeSearchMatch[];
+  matches: KnowledgeSearchMatch[];
 }
 
-export interface WorkflowKnowledgeDocumentLinesResult {
+export interface KnowledgeDocumentLinesResult {
   documentId: string;
   title: string;
   startLine: number;
   endLine: number;
   totalLines: number;
-  lines: WorkflowKnowledgeSearchLine[];
+  lines: KnowledgeSearchLine[];
 }
 
 
 
 
-export type WorkflowProjectRole = "owner" | "manager" | "writer" | "viewer";
-export type WorkflowInvitationRole = "manager" | "writer" | "viewer";
+export type ProjectRole = "owner" | "manager" | "writer" | "viewer";
+export type InvitationRole = "manager" | "writer" | "viewer";
 
-export interface WorkflowProjectMember {
+export interface ProjectMember {
   workflowId: string;
   userId: string;
-  profile?: WorkflowUserProfileSummary;
-  role: WorkflowProjectRole;
+  profile?: UserProfileSummary;
+  role: ProjectRole;
   createdBy?: string;
-  createdByProfile?: WorkflowUserProfileSummary;
+  createdByProfile?: UserProfileSummary;
   createdAt: string;
 }
 
-export interface WorkflowProjectInvitation {
+export interface ProjectInvitation {
   id: string;
   workflowId: string;
   token: string;
-  role: WorkflowInvitationRole;
+  role: InvitationRole;
   createdBy?: string;
-  createdByProfile?: WorkflowUserProfileSummary;
+  createdByProfile?: UserProfileSummary;
   createdAt: string;
   expiresAt: string;
   acceptedBy?: string;
-  acceptedByProfile?: WorkflowUserProfileSummary;
+  acceptedByProfile?: UserProfileSummary;
   acceptedAt?: string;
   revokedAt?: string;
 }
 
-export interface WorkflowInvitationLookupResult {
-  invitation: WorkflowProjectInvitation;
+export interface InvitationLookupResult {
+  invitation: ProjectInvitation;
   project: { id: string; name: string };
 }
 
-export interface WorkflowInvitationAcceptResult {
-  invitation: WorkflowProjectInvitation;
-  member: WorkflowProjectMember;
+export interface InvitationAcceptResult {
+  invitation: ProjectInvitation;
+  member: ProjectMember;
 }

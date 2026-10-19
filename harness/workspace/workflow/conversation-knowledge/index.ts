@@ -282,7 +282,7 @@ function requireConversationId(value: string | undefined): string {
     return value.trim();
   }
 
-  throw new workflow.WorkflowError({
+  throw new workflow.HarnessError({
     type: "input_validation",
     message: "conversation-knowledge requires a conversation id.",
   });
@@ -306,7 +306,7 @@ function escapeMarkdownInline(value: string): string {
 
 function requireOutput(output: ConversationKnowledgeOutputPayload | undefined): ConversationKnowledgeOutputPayload {
   if (output === undefined) {
-    throw new workflow.WorkflowError({
+    throw new workflow.HarnessError({
       type: "workflow_execution",
       message: "Conversation knowledge output was not created.",
     });

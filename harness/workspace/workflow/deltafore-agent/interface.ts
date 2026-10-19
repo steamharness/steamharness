@@ -1,26 +1,26 @@
-export interface WorkflowPayload {
+export interface RunPayload {
   errCode: number;
   errMessage: string;
 }
 
-export type WorkflowOutputContentType = "markdown" | "text" | "json";
+export type OutputContentType = "markdown" | "text" | "json";
 
-export interface WorkflowOutputItem {
+export interface OutputItem {
   id: string;
   title: string;
   content: unknown;
   icon?: string;
   iconPreset?: "info" | "success" | "warning" | "error" | "note" | "code" | "list" | "quote" | "none";
-  contentType?: WorkflowOutputContentType;
+  contentType?: OutputContentType;
   collapsed?: boolean;
   metadata?: Record<string, unknown>;
 }
 
-export interface WorkflowOutputPayload extends WorkflowPayload {
-  items: WorkflowOutputItem[];
+export interface RunOutputPayload extends RunPayload {
+  items: OutputItem[];
 }
 
-export interface WorkflowExecutorResult<Output extends WorkflowPayload> {
+export interface ExecutorResult<Output extends RunPayload> {
   ok: boolean;
   data?: Output;
   error?: unknown;
@@ -31,7 +31,7 @@ export interface DeltaforeAgentInput {
   maxRounds: number;
 }
 
-export interface ParsedAgentInput extends WorkflowPayload {
+export interface ParsedAgentInput extends RunPayload {
   query: string;
   maxRounds: number;
 }
@@ -46,7 +46,7 @@ export interface ConversationChatMessage {
   };
 }
 
-export interface WorkflowConversationRuntime {
+export interface ConversationRuntime {
   conversationId?: string;
   getValue(): Promise<{
     messages: Array<{
@@ -63,8 +63,8 @@ export interface WorkflowConversationRuntime {
   setTitle(title: string): Promise<void>;
 }
 
-export interface WorkflowNodeContext {
-  conversation?: WorkflowConversationRuntime;
+export interface NodeRunContext {
+  conversation?: ConversationRuntime;
   metadata?: {
     deltaforeApi?: unknown;
     [key: string]: unknown;
@@ -111,7 +111,7 @@ export interface ReactStep {
 
 export type ReactLoopPhase = "thinking" | "done";
 
-export interface ReactLoopState extends WorkflowPayload {
+export interface ReactLoopState extends RunPayload {
   phase: ReactLoopPhase;
   query: string;
   maxRounds: number;
@@ -124,7 +124,7 @@ export interface ReactLoopState extends WorkflowPayload {
   usedObjectIDs: Array<number | string>;
 }
 
-export interface AgentDecisionInput extends WorkflowPayload {
+export interface AgentDecisionInput extends RunPayload {
   query: string;
   maxRounds: number;
   round: number;
@@ -133,7 +133,7 @@ export interface AgentDecisionInput extends WorkflowPayload {
   compactedHistory?: CompactedHistory;
 }
 
-export interface ReactThoughtPayload extends WorkflowPayload {
+export interface ReactThoughtPayload extends RunPayload {
   phase: "action" | "final_answer";
   rawText: string;
   thought: ReactThought;
@@ -143,12 +143,12 @@ export interface ReactThoughtPayload extends WorkflowPayload {
   usedObjectIDs?: Array<number | string>;
 }
 
-export interface ToolExecutionInput extends WorkflowPayload {
+export interface ToolExecutionInput extends RunPayload {
   round: number;
   toolCall: AgentToolCall;
 }
 
-export interface ToolExecutionPayload extends WorkflowOutputPayload {
+export interface ToolExecutionPayload extends RunOutputPayload {
   result: AgentToolResult;
   phase: "tool";
   round: number;
@@ -156,17 +156,17 @@ export interface ToolExecutionPayload extends WorkflowOutputPayload {
   ok: boolean;
 }
 
-export interface ThoughtOutputInput extends WorkflowPayload {
+export interface ThoughtOutputInput extends RunPayload {
   round: number;
   thought: ReactThought;
   action?: AgentToolCall;
 }
 
-export interface ThoughtOutputPayload extends WorkflowOutputPayload {
+export interface ThoughtOutputPayload extends RunOutputPayload {
   round: number;
 }
 
-export interface FinalAnswerInput extends WorkflowPayload {
+export interface FinalAnswerInput extends RunPayload {
   query: string;
   maxRounds: number;
   rounds: number;
@@ -178,7 +178,7 @@ export interface FinalAnswerInput extends WorkflowPayload {
   toolResults: AgentToolResult[];
 }
 
-export interface DeltaforeAgentOutputPayload extends WorkflowOutputPayload {
+export interface DeltaforeAgentOutputPayload extends RunOutputPayload {
   success: boolean;
   query: string;
   rounds: number;
@@ -189,7 +189,7 @@ export interface DeltaforeAgentOutputPayload extends WorkflowOutputPayload {
   usedObjectIDs: Array<number | string>;
 }
 
-export type DeltaforeAgentOutput = WorkflowExecutorResult<DeltaforeAgentOutputPayload>;
+export type DeltaforeAgentOutput = ExecutorResult<DeltaforeAgentOutputPayload>;
 
 // Context Management Types
 

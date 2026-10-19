@@ -2,15 +2,15 @@ import { readWorkflowCliAuthConfigSync } from "../auth-config";
 import {
   normalizeWorkflowKVStoreInput,
   type NormalizedWorkflowKVStoreInput,
-  type WorkflowKVStore,
-  type WorkflowKVStoreGetInput,
-  type WorkflowKVNamespaceLockInput,
-  type WorkflowKVNamespaceMutation,
-  type WorkflowKVStoreSetInput,
-  type WorkflowKVWriteSource,
-  type WorkflowStorageKind,
+  type KVStore,
+  type KVStoreGetInput,
+  type KVNamespaceLockInput,
+  type KVNamespaceMutation,
+  type KVStoreSetInput,
+  type KVWriteSource,
+  type StorageKind,
 } from "./index";
-import { WorkflowError } from "../workflow/errors";
+import { HarnessError } from "../workflow/errors";
 
 interface ApiResponse<T> {
   errCode: number;
@@ -39,18 +39,18 @@ export interface RemoteWorkflowStorageStoreOptions {
   serverUrl: string;
   token: string;
   projectId: string;
-  storageKind: WorkflowStorageKind;
+  storageKind: StorageKind;
   relatedProject?: {
     consumerProjectId: string;
     alias: string;
   };
 }
 
-export class RemoteWorkflowStorageStore implements WorkflowKVStore {
+export class RemoteWorkflowStorageStore implements KVStore {
   private readonly serverUrl: string;
   private readonly token: string;
   private readonly projectId: string;
-  private readonly storageKind: WorkflowStorageKind;
+  private readonly storageKind: StorageKind;
   private readonly relatedProject: RemoteWorkflowStorageStoreOptions["relatedProject"];
 
   constructor(options: RemoteWorkflowStorageStoreOptions) {
@@ -66,12 +66,12 @@ export class RemoteWorkflowStorageStore implements WorkflowKVStore {
         };
   }
 
-  async getValue(input: WorkflowKVStoreGetInput): Promise<unknown | undefined> {
+  async getValue(input: KVStoreGetInput): Promise<unknown | undefined> {
     const response = await this.getStorageEntry(input);
     return response.exists ? response.value : undefined;
   }
 
-  async setValue(input: WorkflowKVStoreSetInput): Promise<void> {
+  async setValue(input: KVStoreSetInput): Promise<void> {
     assertRemoteWorkflowStorageValue(input.value);
     await this.fetchStorage<void>({
       method: "POST",
@@ -84,7 +84,7 @@ export class RemoteWorkflowStorageStore implements WorkflowKVStore {
     });
   }
 
-  async deleteValue(input: WorkflowKVStoreGetInput): Promise<boolean> {
+  async deleteValue(input: KVStoreGetInput): Promise<boolean> {
     const result = await this.fetchStorage<RemoteWorkflowStorageDeleteResult>({
       method: "POST",
       body: {
@@ -101,7 +101,7 @@ export class RemoteWorkflowStorageStore implements WorkflowKVStore {
   }
 
   async updateValue(
-    input: WorkflowKVStoreGetInput & { source?: WorkflowKVWriteSource },
+    input: KVStoreGetInput & { source?: KVWriteSource },
     updater: (current: unknown | undefined) => unknown,
   ): Promise<unknown> {
     const entry = this.createStorageEntry(input);
@@ -135,7 +135,7 @@ export class RemoteWorkflowStorageStore implements WorkflowKVStore {
       }
     }
 
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "workflow_execution",
       message: "Workflow storage update could not complete because the value kept changing concurrently.",
       metadata: {
@@ -146,8 +146,8 @@ export class RemoteWorkflowStorageStore implements WorkflowKVStore {
   }
 
   async executeNamespaceMutation<T>(
-    input: WorkflowKVNamespaceLockInput,
-    mutation: WorkflowKVNamespaceMutation,
+    input: KVNamespaceLockInput,
+    mutation: KVNamespaceMutation,
   ): Promise<T> {
     return this.fetchStorage<T>({
       method: "POST",
@@ -190,7 +190,7 @@ export class RemoteWorkflowStorageStore implements WorkflowKVStore {
         }),
       });
     } catch (error) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "workflow_execution",
         message: `Workflow project storage could not connect to server database storage at ${this.serverUrl}. Check STEAMHARNESS_SERVER_URL/STEAMHARNESS_SERVER_ADMIN_KEY or Desktop server connection settings.`,
         metadata: {
@@ -205,7 +205,7 @@ export class RemoteWorkflowStorageStore implements WorkflowKVStore {
       return payload.data as T;
     }
 
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "workflow_execution",
       message: payload.errMessage || `Workflow project storage failed with HTTP ${response.status}.`,
       metadata: {
@@ -217,7 +217,7 @@ export class RemoteWorkflowStorageStore implements WorkflowKVStore {
     });
   }
 
-  private async getStorageEntry(input: WorkflowKVStoreGetInput): Promise<RemoteWorkflowStorageGetResult> {
+  private async getStorageEntry(input: KVStoreGetInput): Promise<RemoteWorkflowStorageGetResult> {
     const response = await this.fetchStorage<RemoteWorkflowStorageGetResult>({
       method: "POST",
       body: {
@@ -233,7 +233,7 @@ export class RemoteWorkflowStorageStore implements WorkflowKVStore {
     return response;
   }
 
-  private createStorageEntry(input: WorkflowKVStoreGetInput) {
+  private createStorageEntry(input: KVStoreGetInput) {
     const entry = createRemoteWorkflowStorageEntry(input);
     this.assertBoundInput(entry);
     if (this.relatedProject === undefined) return entry;
@@ -241,7 +241,7 @@ export class RemoteWorkflowStorageStore implements WorkflowKVStore {
     return relatedEntry;
   }
 
-  private createStorageNamespace(input: WorkflowKVNamespaceLockInput) {
+  private createStorageNamespace(input: KVNamespaceLockInput) {
     const namespace = createRemoteWorkflowStorageNamespace(input);
     this.assertBoundInput(namespace);
     if (this.relatedProject === undefined) return namespace;
@@ -257,9 +257,9 @@ export class RemoteWorkflowStorageStore implements WorkflowKVStore {
       : { ...this.relatedProject };
   }
 
-  private assertBoundInput(input: { storageKind: WorkflowStorageKind; projectId: string }): void {
+  private assertBoundInput(input: { storageKind: StorageKind; projectId: string }): void {
     if (input.storageKind !== this.storageKind || input.projectId !== this.projectId) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "input_validation",
         message: "Workflow project storage input does not match the bound project and storage kind.",
       });
@@ -269,9 +269,9 @@ export class RemoteWorkflowStorageStore implements WorkflowKVStore {
 
 export function createRemoteWorkflowStorageStoreFromEnv(
   projectId: string,
-  storageKind: WorkflowStorageKind,
+  storageKind: StorageKind,
   env: NodeJS.ProcessEnv = process.env,
-): WorkflowKVStore | undefined {
+): KVStore | undefined {
   return createRemoteWorkflowStorageStoreFromConnection({
     projectId,
     storageKind,
@@ -283,7 +283,7 @@ export function createRemoteWorkflowRelatedProjectKVStoreFromEnv(options: {
   targetProjectId: string;
   alias: string;
   env?: NodeJS.ProcessEnv;
-}): WorkflowKVStore | undefined {
+}): KVStore | undefined {
   return createRemoteWorkflowStorageStoreFromConnection({
     projectId: options.targetProjectId,
     storageKind: "kv",
@@ -297,7 +297,7 @@ export function createRemoteWorkflowRelatedProjectKVStoreFromEnv(options: {
 function createRemoteWorkflowStorageStoreFromConnection(
   options: Omit<RemoteWorkflowStorageStoreOptions, "serverUrl" | "token">,
   env: NodeJS.ProcessEnv,
-): WorkflowKVStore | undefined {
+): KVStore | undefined {
   const explicitServerUrl = env.STEAMHARNESS_SERVER_URL;
   const explicitToken = env.STEAMHARNESS_SERVER_ADMIN_KEY;
   const serverUrl = explicitServerUrl?.trim();
@@ -319,8 +319,8 @@ function createRemoteWorkflowStorageStoreFromConnection(
   return undefined;
 }
 
-function createRemoteWorkflowStorageEntry(input: WorkflowKVStoreGetInput): {
-  storageKind: WorkflowStorageKind;
+function createRemoteWorkflowStorageEntry(input: KVStoreGetInput): {
+  storageKind: StorageKind;
   scope: NormalizedWorkflowKVStoreInput["scope"];
   projectId: string;
   key: string;
@@ -343,8 +343,8 @@ function createRemoteWorkflowStorageEntry(input: WorkflowKVStoreGetInput): {
       };
 }
 
-function createRemoteWorkflowStorageNamespace(input: WorkflowKVNamespaceLockInput): {
-  storageKind: WorkflowStorageKind;
+function createRemoteWorkflowStorageNamespace(input: KVNamespaceLockInput): {
+  storageKind: StorageKind;
   scope: NormalizedWorkflowKVStoreInput["scope"];
   projectId: string;
   conversationId?: string;
@@ -378,7 +378,7 @@ function createRemoteWorkflowStorageNamespace(input: WorkflowKVNamespaceLockInpu
  * first, or the server rejects the request as malformed.
  */
 export function createRemoteWorkflowStorageKnowledgeMutation(
-  mutation: WorkflowKVNamespaceMutation,
+  mutation: KVNamespaceMutation,
 ): { type: "create" | "edit" | "delete"; input: unknown } {
   switch (mutation.type) {
     case "knowledge-document.create":
@@ -399,7 +399,7 @@ export function createRemoteWorkflowStorageKnowledgeMutation(
     case "knowledge-document.delete":
       return { type: "delete", input: mutation.input };
     default:
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "input_validation",
         message: `Remote Workflow storage does not support namespace mutation "${mutation.type}".`,
         metadata: { mutationType: mutation.type },
@@ -425,15 +425,15 @@ function normalizeServerUrl(value: string): string {
   return value.trim().replace(/\/+$/, "");
 }
 
-function createRemoteWorkflowStorageConfigError(): WorkflowError {
-  return new WorkflowError({
+function createRemoteWorkflowStorageConfigError(): HarnessError {
+  return new HarnessError({
     type: "input_validation",
     message: "Server storage requires a project id and an authenticated server connection. Sign in and bind this project to the same server project id before accessing context.storage.server.",
   });
 }
 
-function createRemoteWorkflowStorageProtocolError(message: string): WorkflowError {
-  return new WorkflowError({
+function createRemoteWorkflowStorageProtocolError(message: string): HarnessError {
+  return new HarnessError({
     type: "workflow_execution",
     message,
   });
@@ -441,7 +441,7 @@ function createRemoteWorkflowStorageProtocolError(message: string): WorkflowErro
 
 function assertRemoteWorkflowStorageValue(value: unknown): void {
   if (value === undefined) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "Workflow KV value cannot be undefined.",
     });

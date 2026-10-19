@@ -6,12 +6,12 @@ import { Badge, Button, Field, FieldGroup, FieldLabel, IconActionButton, PageSta
 import { TableLoadingRows } from "@/components/ui/table-loading-rows";
 import { ConfirmActionDialog, type ConfirmAction } from "@/components/ConfirmActionDialog";
 import { CopyButton } from "./CopyButton";
-import type { WorkflowInvitationRole } from "../../types";
+import type { InvitationRole } from "../../types";
 import { PROJECT_MEMBER_ROLE_OPTIONS, type DetailPageProps } from "./types";
 
 export function ProjectInvitationsTab({ project, detail, busy, onCreateProjectInvitation, onRevokeProjectInvitation }: DetailPageProps) {
   const { t } = useTranslation("serverWeb");
-  const [role, setRole] = useState<WorkflowInvitationRole>("viewer");
+  const [role, setRole] = useState<InvitationRole>("viewer");
   const [shareUrl, setShareUrl] = useState("");
   const [action, setAction] = useState<ConfirmAction | null>(null);
   const loading = Boolean(busy.project || busy.invitation || busy.revokeInvitationId);
@@ -33,7 +33,7 @@ export function ProjectInvitationsTab({ project, detail, busy, onCreateProjectIn
           <Field className="w-40" data-disabled={loading}>
             <FieldLabel htmlFor="invitation-role">{t("storageRole")}</FieldLabel>
             <SelectField id="invitation-role" options={PROJECT_MEMBER_ROLE_OPTIONS} value={role}
-              disabled={loading} onValueChange={value => setRole(value as WorkflowInvitationRole)} />
+              disabled={loading} onValueChange={value => setRole(value as InvitationRole)} />
           </Field>
           <Button type="submit" disabled={loading}>
             {busy.invitation ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Plus data-icon="inline-start" />}

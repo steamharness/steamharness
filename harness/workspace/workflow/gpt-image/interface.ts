@@ -9,7 +9,7 @@ export type GptImageModeration = "auto" | "low";
 
 export interface GptImageInput {
   prompt: string;
-  images: WorkflowFileReference[];
+  images: FileReference[];
   size?: string;
   quality?: string;
   outputFormat?: string;
@@ -20,35 +20,35 @@ export interface GptImageInput {
   imageRunner?: GptImageRunner;
 }
 
-export interface WorkflowPayload {
+export interface RunPayload {
   errCode: number;
   errMessage: string;
 }
 
-export type WorkflowOutputContentType = "markdown" | "text" | "json";
+export type OutputContentType = "markdown" | "text" | "json";
 
-export interface WorkflowOutputItem {
+export interface OutputItem {
   id: string;
   title: string;
   content: unknown;
   icon?: string;
   iconPreset?: "info" | "success" | "warning" | "error" | "note" | "code" | "list" | "quote" | "none";
-  contentType?: WorkflowOutputContentType;
+  contentType?: OutputContentType;
   collapsed?: boolean;
   metadata?: Record<string, unknown>;
 }
 
-export interface WorkflowOutputPayload extends WorkflowPayload {
-  items: WorkflowOutputItem[];
+export interface RunOutputPayload extends RunPayload {
+  items: OutputItem[];
 }
 
-export interface WorkflowExecutorResult<Output extends WorkflowPayload> {
+export interface ExecutorResult<Output extends RunPayload> {
   ok: boolean;
   data?: Output;
   error?: unknown;
 }
 
-export interface WorkflowFileReference {
+export interface FileReference {
   id: string;
   name: string;
   mimeType: string;
@@ -62,16 +62,16 @@ export interface WorkflowFileReference {
   path?: string;
 }
 
-export interface WorkflowResolvedFile extends WorkflowFileReference {
+export interface ResolvedFile extends FileReference {
   readBuffer(): Promise<Buffer>;
   readBase64(): Promise<string>;
   readDataUrl(): Promise<string>;
-  toJSON(): WorkflowFileReference;
+  toJSON(): FileReference;
 }
 
-export interface GptImageParsedInput extends WorkflowPayload {
+export interface GptImageParsedInput extends RunPayload {
   prompt: string;
-  images: WorkflowFileReference[];
+  images: FileReference[];
   size: GptImageSize;
   quality: GptImageQuality;
   outputFormat: GptImageFormat;
@@ -83,9 +83,9 @@ export interface GptImageParsedInput extends WorkflowPayload {
 }
 
 export interface GptImageRequest extends GptImageParsedInput {
-  resolvedImages: WorkflowResolvedFile[];
-  currentImages: WorkflowResolvedFile[];
-  contextImages: WorkflowResolvedFile[];
+  resolvedImages: ResolvedFile[];
+  currentImages: ResolvedFile[];
+  contextImages: ResolvedFile[];
   mode: GptImageMode;
   modelPrompt: string;
   contextMessageCount: number;
@@ -96,7 +96,7 @@ export interface GptImageRunnerInput {
   mode: GptImageMode;
   model: "gpt-image-2";
   prompt: string;
-  images: WorkflowResolvedFile[];
+  images: ResolvedFile[];
   size: GptImageSize;
   quality: GptImageQuality;
   outputFormat: GptImageFormat;
@@ -118,7 +118,7 @@ export type GptImageRunner = (
   input: GptImageRunnerInput,
 ) => Promise<GptImageRunnerResult> | GptImageRunnerResult;
 
-export interface GptImageOutputPayload extends WorkflowOutputPayload {
+export interface GptImageOutputPayload extends RunOutputPayload {
   conversationId?: string;
   historyLength: number;
   conversationMessages: number;
@@ -142,4 +142,4 @@ export interface GptImageOutputPayload extends WorkflowOutputPayload {
   dataUrl: string;
 }
 
-export type GptImageOutput = WorkflowExecutorResult<GptImageOutputPayload>;
+export type GptImageOutput = ExecutorResult<GptImageOutputPayload>;

@@ -9,7 +9,7 @@ function permissionLabelKey(key: string): string {
 function permissionDescriptionKey(key: string): string {
   return `permission_${key.replace(/\./g, "_")}_description`;
 }
-import type { WorkflowPermissionGroup, WorkflowRoleRecord } from "../types";
+import type { PermissionGroup, RoleRecord } from "../types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -24,15 +24,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { ConfirmActionDialog, type ConfirmAction } from "@/components/ConfirmActionDialog";
 
 interface RolesPageProps {
-  roles: WorkflowRoleRecord[] | null;
-  groups: WorkflowPermissionGroup[] | null;
+  roles: RoleRecord[] | null;
+  groups: PermissionGroup[] | null;
   loading?: string;
   saveBusy?: string;
   deleteRoleId?: string;
   onRefresh: () => void;
   onCreateRole: (payload: { name: string; description?: string; permissions: string[] }) => void;
-  onUpdateRole: (role: WorkflowRoleRecord, payload: { name?: string; description?: string; permissions?: string[] }) => void;
-  onDeleteRole: (role: WorkflowRoleRecord) => void;
+  onUpdateRole: (role: RoleRecord, payload: { name?: string; description?: string; permissions?: string[] }) => void;
+  onDeleteRole: (role: RoleRecord) => void;
 }
 
 export function RolesPage({
@@ -47,7 +47,7 @@ export function RolesPage({
 }: RolesPageProps) {
   const { t } = useTranslation("serverWeb");
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingRole, setEditingRole] = useState<WorkflowRoleRecord | null>(null);
+  const [editingRole, setEditingRole] = useState<RoleRecord | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [permissions, setPermissions] = useState<string[]>([]);
@@ -63,7 +63,7 @@ export function RolesPage({
     setDialogOpen(true);
   }
 
-  function openEditDialog(role: WorkflowRoleRecord) {
+  function openEditDialog(role: RoleRecord) {
     setEditingRole(role);
     setName(role.name);
     setDescription(role.description);

@@ -1,10 +1,10 @@
-import type { WorkflowManagedFileReference, WorkflowParamDefinition } from "../types";
+import type { ManagedFileReference, ParamDefinition } from "../types";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function parseFileParamReferences(value: string | undefined): WorkflowManagedFileReference[] {
+export function parseFileParamReferences(value: string | undefined): ManagedFileReference[] {
   const trimmed = value?.trim() ?? "";
   if (trimmed === "") return [];
 
@@ -15,18 +15,18 @@ export function parseFileParamReferences(value: string | undefined): WorkflowMan
   }
 }
 
-export function normalizeFileParamReferences(value: unknown): WorkflowManagedFileReference[] {
+export function normalizeFileParamReferences(value: unknown): ManagedFileReference[] {
   if (Array.isArray(value)) {
     return value
       .map(normalizeFileParamReference)
-      .filter((file): file is WorkflowManagedFileReference => file !== null);
+      .filter((file): file is ManagedFileReference => file !== null);
   }
 
   const single = normalizeFileParamReference(value);
   return single === null ? [] : [single];
 }
 
-export function normalizeFileParamReference(value: unknown): WorkflowManagedFileReference | null {
+export function normalizeFileParamReference(value: unknown): ManagedFileReference | null {
   if (!isRecord(value) || typeof value.id !== "string") return null;
 
   const mimeType = typeof value.mimeType === "string" ? value.mimeType : "application/octet-stream";
@@ -46,14 +46,14 @@ export function normalizeFileParamReference(value: unknown): WorkflowManagedFile
   };
 }
 
-export function serializeFileParamReferences(refs: WorkflowManagedFileReference[]): string {
+export function serializeFileParamReferences(refs: ManagedFileReference[]): string {
   return refs.length === 0 ? "" : JSON.stringify(refs);
 }
 
 export function mergeFileReferences(
-  current: WorkflowManagedFileReference[],
-  added: WorkflowManagedFileReference[],
-): WorkflowManagedFileReference[] {
+  current: ManagedFileReference[],
+  added: ManagedFileReference[],
+): ManagedFileReference[] {
   const byId = new Map(current.map((file) => [file.id, file]));
   for (const file of added) byId.set(file.id, file);
   return Array.from(byId.values());
@@ -61,8 +61,8 @@ export function mergeFileReferences(
 
 export function replaceFileParamArgs(
   args: string[],
-  param: WorkflowParamDefinition,
-  refs: WorkflowManagedFileReference[],
+  param: ParamDefinition,
+  refs: ManagedFileReference[],
 ): string[] {
   if (param.flag === undefined) return args;
 

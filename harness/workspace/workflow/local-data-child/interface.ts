@@ -1,42 +1,42 @@
-export interface WorkflowPayload {
+export interface RunPayload {
   errCode: number;
   errMessage: string;
 }
 
-export interface WorkflowExecutorResult<Output extends WorkflowPayload> {
+export interface ExecutorResult<Output extends RunPayload> {
   ok: boolean;
   data?: Output;
   error?: unknown;
 }
 
-export type WorkflowOutputContentType = "markdown" | "text" | "json" | "audio";
+export type OutputContentType = "markdown" | "text" | "json" | "audio";
 
-export interface WorkflowOutputItem {
+export interface OutputItem {
   id: string;
   title: string;
   content: unknown;
   icon?: string;
   iconPreset?: "info" | "success" | "warning" | "error" | "note" | "code" | "list" | "quote" | "none";
-  contentType?: WorkflowOutputContentType;
+  contentType?: OutputContentType;
   collapsed?: boolean;
   metadata?: Record<string, unknown>;
 }
 
-export interface WorkflowOutputPayload extends WorkflowPayload {
-  items: WorkflowOutputItem[];
+export interface RunOutputPayload extends RunPayload {
+  items: OutputItem[];
 }
 
-export interface StoreDataInput extends WorkflowPayload {
+export interface StoreDataInput extends RunPayload {
   alias?: string;
   content: string;
 }
 
-export interface GetDataInput extends WorkflowPayload {
+export interface GetDataInput extends RunPayload {
   alias?: string;
   id: string;
 }
 
-export interface StorageDataOutput extends WorkflowOutputPayload {
+export interface StorageDataOutput extends RunOutputPayload {
   action: "store" | "get";
   storageLocation: "local" | "server";
   target: "current" | "related";
@@ -45,15 +45,15 @@ export interface StorageDataOutput extends WorkflowOutputPayload {
   content?: unknown;
 }
 
-export interface NoteDataInput extends WorkflowPayload {
+export interface NoteDataInput extends RunPayload {
   title: string;
   markdown: string;
 }
 
-export interface NoteDataOutput extends WorkflowOutputPayload {
+export interface NoteDataOutput extends RunOutputPayload {
   action: "note";
   documentId: string;
   documents: number;
 }
 
-export type StorageDataExecutorOutput = WorkflowExecutorResult<StorageDataOutput>;
+export type StorageDataExecutorOutput = ExecutorResult<StorageDataOutput>;

@@ -2,7 +2,7 @@ import { AlertCircle, CheckCircle2, Copy, ImagePlus, KeyRound, Languages, Monito
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { formatDateTime, i18n, useTranslation, type LocalePreference } from "@steamharness/i18n/react";
 import type { SettingsTab, ThemeMode } from "../state";
-import type { WorkflowApiKeyRecord, WorkflowMeResult } from "../types";
+import type { ApiKeyRecord, MeResult } from "../types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,8 +21,8 @@ import { getAvatarFallbackText } from "@steamharness/avatar-fallback";
 
 interface AccountPageProps {
   tab: SettingsTab;
-  me: WorkflowMeResult | null;
-  apiKeys: WorkflowApiKeyRecord[] | null;
+  me: MeResult | null;
+  apiKeys: ApiKeyRecord[] | null;
   busy?: string;
   apiKeysBusy?: string;
   saveBusy?: string;

@@ -6,9 +6,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import * as ai from "@earendil-works/pi-ai";
-import { WorkflowDurableAgent } from "../agent/durable-agent";
+import { DurableAgent } from "../agent/durable-agent";
 import { agentConversationDirectory, cancelAgentConversation } from "../agent/storage";
-import { WorkflowError } from "../workflow/errors";
+import { HarnessError } from "../workflow/errors";
 
 function worker(directory: string, scenario: string, phase: string) {
   return spawn(process.execPath, ["--import", "tsx", "--conditions=development",
@@ -27,7 +27,7 @@ async function message(child: ChildProcess, type: string): Promise<Record<string
 function agent(databasePath?: string) {
   const faux = ai.fauxProvider({ models: [{ id: "test", contextWindow: 100_000, maxTokens: 100 }] });
   const models = ai.createModels(); models.setProvider(faux.provider);
-  const instance = new WorkflowDurableAgent({ databasePath, models, initialState: {
+  const instance = new DurableAgent({ databasePath, models, initialState: {
     systemPrompt: "Test", model: models.getModel("faux", "test")!, thinkingLevel: "off", messages: [], tools: [],
   } });
   return { instance, faux };
@@ -200,7 +200,7 @@ for (const storage of ["memory", "sqlite"]) test(`a parked unsafe tool resumes i
   let calls = 0;
   instance.state.tools = [{ name: "write", label: "Write", description: "Test", parameters: ai.Type.Object({}),
     execute: async () => { calls++; return { content: [{ type: "text", text: "Written" }], details: {} }; } }];
-  instance.beforeToolCall = async () => ({ block: true, reason: "Waiting", pause: new WorkflowError({ type: "user_input_required", message: "Approve?" }) });
+  instance.beforeToolCall = async () => ({ block: true, reason: "Waiting", pause: new HarnessError({ type: "user_input_required", message: "Approve?" }) });
   faux.setResponses([ai.fauxAssistantMessage([ai.fauxToolCall("write", {}, { id: "original-call" })], { stopReason: "toolUse" })]);
   instance.requestId = "approval-run";
   await instance.prompt("Write"); assert.equal(calls, 0);
@@ -227,7 +227,7 @@ for (const storage of ["memory", "sqlite"]) test(`reused call ids require separa
   instance.beforeToolCall = async ({ toolCall }) => {
     if (approved.has(toolCall.id)) return;
     pending.push(toolCall.id);
-    return { block: true, reason: "Waiting", pause: new WorkflowError({ type: "user_input_required", message: "Approve?" }) };
+    return { block: true, reason: "Waiting", pause: new HarnessError({ type: "user_input_required", message: "Approve?" }) };
   };
   faux.setResponses([
     ai.fauxAssistantMessage([ai.fauxToolCall("write", {}, { id: "reused" })], { stopReason: "toolUse" }),
@@ -308,7 +308,7 @@ test("cancelling a parked conversation settles its tasks without replaying tools
   let calls = 0;
   instance.state.tools = [{ name: "write", label: "Write", description: "Test", parameters: ai.Type.Object({}),
     execute: async () => { calls++; return { content: [], details: {} }; } }];
-  instance.beforeToolCall = async () => ({ block: true, reason: "Waiting", pause: new WorkflowError({ type: "user_input_required", message: "Approve?" }) });
+  instance.beforeToolCall = async () => ({ block: true, reason: "Waiting", pause: new HarnessError({ type: "user_input_required", message: "Approve?" }) });
   faux.setResponses([ai.fauxAssistantMessage([ai.fauxToolCall("write", {})], { stopReason: "toolUse" })]);
   instance.requestId = "parked"; await instance.prompt("Write"); await instance.close();
   await cancelAgentConversation({ agentStoreDir: directory, conversationId: "conversation" });

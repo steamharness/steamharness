@@ -25,7 +25,7 @@ const agent = await workflow.createAgent({
   permissionPolicy?: AgentPermissionPolicy,
   mode?: AgentMode,
   tools?: string[],
-  toolDefinitions?: WorkflowToolPermissionDefinition[],
+  toolDefinitions?: ToolPermissionDefinition[],
   allowedDirectories?: string[],
   extraTools?: AgentTool[],
   sessionId?: string,
@@ -164,7 +164,7 @@ Offline `cancelAgentConversation({ agentStoreDir, conversationId, registry? })` 
 | `prompt` | `string` | The turn's input. It may be an empty string when the turn carries images: an attachment-only turn is a real turn, and the runtime sends the images as the message content instead of failing with a missing prompt. |
 | `requestId` | `string` | Logical submission identity. Reuse it for recovery or retransmission; use a new value for new input. Repeating a submission in the same store returns its original result without invoking models or tools again. |
 | `images` | `AgentImageInput[]` | Images as `{ data, mimeType }`. |
-| `imageFiles` | `WorkflowFileReference[]` | Attachments as host file references, resolved through the workflow file store by the run's input node. An unreadable reference, or one that is not an image, ends the turn with an error naming the file rather than quietly dropping the attachment. Once resolved it becomes `images`, and nothing downstream sees that a reference was involved. |
+| `imageFiles` | `FileReference[]` | Attachments as host file references, resolved through the workflow file store by the run's input node. An unreadable reference, or one that is not an image, ends the turn with an error naming the file rather than quietly dropping the attachment. Once resolved it becomes `images`, and nothing downstream sees that a reference was involved. |
 | `modelAttributes` | `AgentModelAttributes` | Overrides the runtime option of the same name. See "Model attributes" below. |
 | `workdir` | `string` | Overrides the runtime's working directory. |
 | `allowedDirectories` | `string[]` | Overrides the roots the tools may reach. Relative entries resolve against this turn's `workdir`; omitting it leaves `workdir` alone. |

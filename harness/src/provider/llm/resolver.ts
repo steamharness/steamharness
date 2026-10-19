@@ -1,4 +1,4 @@
-import { WorkflowError } from "../../workflow/errors";
+import { HarnessError } from "../../workflow/errors";
 import type {
   LLMProvider,
   LLMProviderBinding,
@@ -45,7 +45,7 @@ export function resolveLLMProvider(
       return provider;
     }
 
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "provider_call",
       message: `LLM provider binding "${binding.providerId}/${binding.modelId}" for node "${nodeName}" was not found.`,
       nodeName,
@@ -78,7 +78,7 @@ export function resolveLLMProvider(
     return fallback;
   }
 
-  throw new WorkflowError({
+  throw new HarnessError({
     type: "provider_call",
     message: `LLM provider is required for node "${nodeName}" but no provider could be resolved.`,
     nodeName,

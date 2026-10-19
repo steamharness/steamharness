@@ -1,21 +1,21 @@
 import { BaseNode } from "../base";
 import type {
   NodeContext,
-  WorkflowNodeMetadataInput,
-  WorkflowPayload,
-  WorkflowUserInputRequest,
+  NodeMetadataInput,
+  RunPayload,
+  UserInputRequest,
 } from "../../types/index";
-import type { WorkflowParamDefinition } from "../../executor/types";
+import type { ParamDefinition } from "../../executor/types";
 import { assertWorkflowParamDefinitions, isWorkflowDateParamControl } from "../../executor/param-definition";
-import { WorkflowError } from "../../workflow/errors";
+import { HarnessError } from "../../workflow/errors";
 
-export interface UserInputPayload extends WorkflowPayload {
+export interface UserInputPayload extends RunPayload {
   requestId: string;
   values: Record<string, unknown>;
   submittedAt: string;
 }
 
-export type UserInputFormatter<Input, Output extends WorkflowPayload> = (
+export type UserInputFormatter<Input, Output extends RunPayload> = (
   payload: UserInputPayload,
   input: Input,
   context: NodeContext,
@@ -24,7 +24,7 @@ export type UserInputFormatter<Input, Output extends WorkflowPayload> = (
 export interface UserInputRequestDefinition {
   title?: string;
   description?: string;
-  params: WorkflowParamDefinition[];
+  params: ParamDefinition[];
   defaultValues?: Record<string, unknown>;
 }
 
@@ -33,29 +33,29 @@ export type UserInputRequestResolver<Input> = (
   context: NodeContext,
 ) => Promise<UserInputRequestDefinition> | UserInputRequestDefinition;
 
-export interface UserInputNodeOptions<Input, Output extends WorkflowPayload = UserInputPayload> {
+export interface UserInputNodeOptions<Input, Output extends RunPayload = UserInputPayload> {
   name?: string;
   title?: string;
   description?: string;
-  params: WorkflowParamDefinition[];
+  params: ParamDefinition[];
   defaultValues?: Record<string, unknown>;
   resolveRequest?: UserInputRequestResolver<Input>;
   createRequestId?: (input: Input, context: NodeContext) => string;
   format?: UserInputFormatter<Input, Output>;
   historyLimit?: number;
-  metadata?: WorkflowNodeMetadataInput;
+  metadata?: NodeMetadataInput;
 }
 
 export function createUserInputNode<
   Input = unknown,
-  Output extends WorkflowPayload = UserInputPayload,
+  Output extends RunPayload = UserInputPayload,
 >(
   options: UserInputNodeOptions<Input, Output>,
 ): BaseNode<Input, Output> {
   return new UserInputNode(options);
 }
 
-class UserInputNode<Input, Output extends WorkflowPayload> extends BaseNode<Input, Output> {
+class UserInputNode<Input, Output extends RunPayload> extends BaseNode<Input, Output> {
   private readonly options: UserInputNodeOptions<Input, Output>;
 
   constructor(options: UserInputNodeOptions<Input, Output>) {
@@ -93,7 +93,7 @@ class UserInputNode<Input, Output extends WorkflowPayload> extends BaseNode<Inpu
     }
 
     if (context.userInput === undefined) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "user_input_required",
         message: `User input node "${request.nodeName}" requires a runtime userInput handler.`,
         nodeName: request.nodeName,
@@ -111,7 +111,7 @@ class UserInputNode<Input, Output extends WorkflowPayload> extends BaseNode<Inpu
     // be read as false | undefined).
     const isAborted = context.abortSignal?.aborted === true;
     if (isAborted) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "execution_aborted",
         message: `User input node "${request.nodeName}" was cancelled before it could pause for input "${request.requestId}".`,
         nodeName: request.nodeName,
@@ -130,7 +130,7 @@ class UserInputNode<Input, Output extends WorkflowPayload> extends BaseNode<Inpu
       // instead so the run ends with status="aborted" rather than
       // getting stuck in waiting_for_input forever.
       if (context.abortSignal?.aborted === true) {
-        throw new WorkflowError({
+        throw new HarnessError({
           type: "execution_aborted",
           message: `User input node "${request.nodeName}" was cancelled while waiting for request "${request.requestId}".`,
           nodeName: request.nodeName,
@@ -146,7 +146,7 @@ class UserInputNode<Input, Output extends WorkflowPayload> extends BaseNode<Inpu
     // as the catch path above so the executor's existing
     // createAbortedWorkflowResult handler picks it up.
     if (context.abortSignal?.aborted === true) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "execution_aborted",
         message: `User input node "${request.nodeName}" was cancelled after registering request "${request.requestId}".`,
         nodeName: request.nodeName,
@@ -154,7 +154,7 @@ class UserInputNode<Input, Output extends WorkflowPayload> extends BaseNode<Inpu
       });
     }
 
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "user_input_required",
       message: `User input node "${request.nodeName}" is waiting for request "${request.requestId}".`,
       nodeName: request.nodeName,
@@ -162,7 +162,7 @@ class UserInputNode<Input, Output extends WorkflowPayload> extends BaseNode<Inpu
     });
   }
 
-  private async createRequest(input: Input, context: NodeContext): Promise<WorkflowUserInputRequest> {
+  private async createRequest(input: Input, context: NodeContext): Promise<UserInputRequest> {
     const nodeName = this.name;
     const definition = await this.options.resolveRequest?.(input, context);
     const requestId =
@@ -184,7 +184,7 @@ class UserInputNode<Input, Output extends WorkflowPayload> extends BaseNode<Inpu
   }
 }
 
-function cloneParamDefinition(param: WorkflowParamDefinition): WorkflowParamDefinition {
+function cloneParamDefinition(param: ParamDefinition): ParamDefinition {
   if (isWorkflowDateParamControl(param.control)) {
     return {
       ...param,
@@ -197,7 +197,7 @@ function cloneParamDefinition(param: WorkflowParamDefinition): WorkflowParamDefi
       ? {}
       : { options: param.options.map((option) => ({ ...option })) }),
     ...(param.accept === undefined ? {} : { accept: [...param.accept] }),
-  } as WorkflowParamDefinition;
+  } as ParamDefinition;
 }
 
 function cloneDefaultValues(

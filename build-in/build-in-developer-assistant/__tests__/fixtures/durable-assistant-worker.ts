@@ -5,8 +5,8 @@ import * as ai from "@earendil-works/pi-ai";
 import {
   createLocalWorkflowKVStore, createWorkflowKVContext, createWorkflowConversationContext,
   createWorkflowToolPermissionContext, createWorkflowTokenUsageContext, TOKEN_USAGE_TOTAL_KEY,
-  type WorkflowContext, type WorkflowConversationExecutorDefinition, type AgentInput, type AgentOutputPayload, type AgentProjectOptions,
-  type WorkflowUserInputResolved,
+  type RunContext, type ConversationExecutorDefinition, type AgentInput, type AgentOutputPayload, type AgentProjectOptions,
+  type UserInputResolved,
 } from "steamharness";
 import { installWorkflowRuntimeGlobal } from "steamharness/runtime-api";
 import { createAgentSessionHost, controlAgentSession, type AgentSessionSnapshot } from "steamharness/agent";
@@ -37,7 +37,7 @@ globalThis.workflow = { ...runtime, createAgentConversationWorkflow: options => 
     } }] } } : {}),
 }) };
 const { executor: declaration } = await import("../../index");
-const executor = declaration as WorkflowConversationExecutorDefinition<AgentInput, AgentOutputPayload>;
+const executor = declaration as ConversationExecutorDefinition<AgentInput, AgentOutputPayload>;
 const projectId = "durable-assistant", conversationId = scenario, workflowName = "developer-assistant";
 const runId = phase === "fresh" ? "fresh-run" : "original-run";
 const host = ["session", "extensions", "blocks", "approval-session"].includes(scenario) ? createAgentSessionHost(conversationId) : undefined;
@@ -51,7 +51,7 @@ async function until(check: () => boolean): Promise<void> {
 const kv = createWorkflowKVContext({ store: createLocalWorkflowKVStore({ rootDir: path.join(directory, "kv") }), projectId, conversationId });
 const conversation = createWorkflowConversationContext({ enabled: true, workflowName, conversationId, kv });
 const tokenUsage = createWorkflowTokenUsageContext({ kv, projectId, conversationId, runId, definition: executor.tokenUsage });
-let decisions: WorkflowUserInputResolved[] = [];
+let decisions: UserInputResolved[] = [];
 try { decisions = JSON.parse(await readFile(path.join(directory, "decisions.json"), "utf8")); }
 catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
 const userInput = {
@@ -71,7 +71,7 @@ const context = {
       }
     },
   },
-} as unknown as WorkflowContext;
+} as unknown as RunContext;
 const executorContext = {
   workflowName, workflowDir: path.resolve(import.meta.dirname, "../.."), env: process.env, abortSignal: new AbortController().signal,
   args: ["--message", scenario === "session" ? "Delegate background inspection" : "Create recovered.txt after checking the plan"],

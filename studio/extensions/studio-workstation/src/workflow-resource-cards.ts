@@ -5,7 +5,7 @@ export interface ResourceCardTarget {
   id: string; kind: 'kv' | 'knowledge' | 'project' | 'browser' | 'file' | 'kanban'; title: string;
   target: Record<string, string>; preview?: boolean;
 }
-export interface ResourceCardResult { id: string; url: string; action: 'open' | 'window' | 'project'; card: ResourceCardTarget; project?: import('./workflow-types').WorkflowProject }
+export interface ResourceCardResult { id: string; url: string; action: 'open' | 'window' | 'project'; card: ResourceCardTarget; project?: import('./workflow-types').Project }
 
 export function bindWorkflowResourceCards(webview: vscode.Webview, sessionUrl: string, open: (result: ResourceCardResult) => Promise<void>) {
   const controller = new AbortController();

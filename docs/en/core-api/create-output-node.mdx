@@ -7,7 +7,7 @@ description: "Create synchronous or streaming output nodes and format the final 
 
 `workflow.createOutputNode()` creates an output node. It can synchronously format its input like a normal node, or emit output incrementally through `stream` before `format` builds the final payload.
 
-The output protocol uses `WorkflowOutputPayload.items` directly. Do not aggregate all visible content into the top-level `content` field. Each visible portion of output should be a separate `WorkflowOutputItem`.
+The output protocol uses `RunOutputPayload.items` directly. Do not aggregate all visible content into the top-level `content` field. Each visible portion of output should be a separate `OutputItem`.
 
 ## Signature
 
@@ -40,7 +40,7 @@ workflow.createOutputNode<Input>(
 | `name` | `string` | The output node name. Defaults to `"output"`; the run report collects a successful output with that name. |
 | `format` | `(input, context) => Output` | Converts the input to the final payload. When omitted, returns the input unchanged. |
 | `historyLimit` | `number` | Number of node executions retained in history. Defaults to `50`. |
-| `metadata` | `WorkflowNodeMetadataInput` | Metadata displayed for the node. |
+| `metadata` | `NodeMetadataInput` | Metadata displayed for the node. |
 
 ## Streaming output options
 
@@ -50,7 +50,7 @@ workflow.createOutputNode<Input>(
 | `stream` | `(input, context) => Iterable<OutputStreamChunk>` | Produces string chunks or structured output-item chunks incrementally. Required. |
 | `format` | `(stream, input, context) => Output` | Converts accumulated `{ text, items, chunks }` to the final payload. Required. |
 | `historyLimit` | `number` | Number of node executions retained in history. Defaults to `50`. |
-| `metadata` | `WorkflowNodeMetadataInput` | Metadata displayed for the node. |
+| `metadata` | `NodeMetadataInput` | Metadata displayed for the node. |
 
 ## Return value
 
@@ -73,11 +73,11 @@ When agent text is interleaved with tool calls, do not patch all text into one s
 ## Output item protocol
 
 ```ts
-interface WorkflowOutputPayload extends WorkflowPayload {
-  items: WorkflowOutputItem[];
+interface RunOutputPayload extends RunPayload {
+  items: OutputItem[];
 }
 
-interface WorkflowOutputItem {
+interface OutputItem {
   id: string;
   title: string;
   content: unknown;
@@ -92,7 +92,7 @@ interface WorkflowOutputItem {
 
 `contentType` only controls rendering: `markdown` uses Markdown rendering, `text` uses plain text, `json` uses formatted JSON, `audio` uses the browser audio player, and `video` uses the browser native `<video>` player. Objects and arrays can be assigned directly to `content`; do not stringify them into Markdown code blocks first.
 
-`display` declares a ring for auxiliary numeric output. With `type: "ring"`, `content` uses `WorkflowRingContent`: `{ value: number, total?: number, unit?: string }`. `value` must be finite and nonnegative; a provided `total` must be positive. Without a total, the ring stays empty and its tooltip reports that the limit is unavailable. The ring shows only the proportion; hover or keyboard focus opens a light gray tooltip with the `title`, percentage and exact amount. Values over the limit fill the ring while retaining the actual percentage in the tooltip.
+`display` declares a ring for auxiliary numeric output. With `type: "ring"`, `content` uses `RingContent`: `{ value: number, total?: number, unit?: string }`. `value` must be finite and nonnegative; a provided `total` must be positive. Without a total, the ring stays empty and its tooltip reports that the limit is unavailable. The ring shows only the proportion; hover or keyboard focus opens a light gray tooltip with the `title`, percentage and exact amount. Values over the limit fill the ring while retaining the actual percentage in the tooltip.
 
 `placement` defaults to `"inline"`. With `"composer-right"`, Conversation pins the output to the right of its composer without repeating it in the message body. Use an `id` that stays stable across turns to update the same pinned output. Each conversation restores its latest values independently, and a turn that does not update an item retains its previous value. Changing the same `id` back to `"inline"` releases the pin. Ordinary Workflow output and replay show the ring in the output list.
 

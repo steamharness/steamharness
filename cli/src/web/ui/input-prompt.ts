@@ -1,9 +1,9 @@
 import { t } from '../localization';
-import { validateWorkflowValues, workflowFormValue, type WorkflowInputRequest, type WorkflowParamValues, type WorkflowField } from '../workflow-types';
+import { validateWorkflowValues, workflowFormValue, type InputRequest, type ParamValues, type Field } from '../workflow-types';
 import { iconButton } from './ui';
 
 interface PromptOptions {
-  submit(values: WorkflowParamValues): void;
+  submit(values: ParamValues): void;
   stop(): void;
   files?(name: string): void;
 }
@@ -11,14 +11,14 @@ interface PromptOptions {
 export class InputPrompt {
   readonly root = document.createElement('section');
   private readonly form = document.createElement('form');
-  private readonly values: WorkflowParamValues = {};
+  private readonly values: ParamValues = {};
   private readonly touched = new Set<string>();
   private readonly steps: number[];
   private index = 0;
   private busy = false;
   private error = '';
 
-  constructor(readonly request: WorkflowInputRequest, private readonly options: PromptOptions) {
+  constructor(readonly request: InputRequest, private readonly options: PromptOptions) {
     this.steps = [...new Set(request.params.map((field) => field.step ?? 1))].sort((a, b) => a - b);
     for (const field of request.params) {
       const value = request.defaultValues?.[field.name] ?? field.defaultValue ?? '';
@@ -63,7 +63,7 @@ export class InputPrompt {
     this.form.append(this.button(t("Execute plan"), () => this.submit({ decision: 'approve', instructions: this.values.instructions ?? '' }), 'plan-approve'), details);
   }
 
-  private field(field: WorkflowField): HTMLElement {
+  private field(field: Field): HTMLElement {
     const root = document.createElement('div'); root.className = 'prompt-field';
     const label = document.createElement('label'); label.textContent = `${field.label || field.name}${field.required ? ' *' : ''}`;
     root.append(label);

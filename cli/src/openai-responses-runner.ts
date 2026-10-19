@@ -4,7 +4,7 @@ import {
   isOutputItemStreamChunk,
   runLocalWorkflowWithReport,
   type NodeExecutionHooks,
-  type WorkflowExecutionReport,
+  type ExecutionReport,
 } from "steamharness";
 import {
   isOpenAIConversationHostInput,
@@ -48,7 +48,7 @@ export async function runOpenAIResponsesRunner(
   disableAiSdkWarningLogs();
   const writeFrame = dependencies.writeFrame ?? writeRunnerFrame;
   let request: OpenAIInternalRunnerRequest | undefined;
-  let executionReport: WorkflowExecutionReport | undefined;
+  let executionReport: ExecutionReport | undefined;
 
   try {
     request = parseOpenAIInternalRunnerRequest(
@@ -77,7 +77,7 @@ export async function runOpenAIResponsesRunner(
       hostInput: unknown;
       abortSignal?: AbortSignal;
       nodeHooks: NodeExecutionHooks;
-    }) => Promise<WorkflowExecutionReport>)({
+    }) => Promise<ExecutionReport>)({
       workflowDir: request.projectPath,
       runId: request.executionId,
       hostInput: request.hostInput,
@@ -167,7 +167,7 @@ function createRunnerNodeHooks(
   };
 }
 
-function createOpenAIUsage(report: WorkflowExecutionReport): OpenAIResponseUsage {
+function createOpenAIUsage(report: ExecutionReport): OpenAIResponseUsage {
   const usage = report.tokenUsage?.run;
   return {
     input_tokens: usage?.inputTokens ?? 0,
@@ -179,7 +179,7 @@ function createOpenAIUsage(report: WorkflowExecutionReport): OpenAIResponseUsage
 }
 
 function findOutputItem(
-  report: WorkflowExecutionReport,
+  report: ExecutionReport,
   outputItemId: string,
 ): { content?: unknown; metadata?: unknown } | undefined {
   for (const output of report.outputs) {
@@ -189,7 +189,7 @@ function findOutputItem(
   return undefined;
 }
 
-function readReportError(report: WorkflowExecutionReport): string {
+function readReportError(report: ExecutionReport): string {
   if (!report.result.ok) {
     return readDeepestErrorMessage(report.result.error) ?? report.result.error.message;
   }

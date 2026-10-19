@@ -1,18 +1,18 @@
 ---
 title: "createFileInputNode"
-description: "创建文件输入节点，把 file param 引用解析成 WorkflowResolvedFile。"
+description: "创建文件输入节点，把 file param 引用解析成 ResolvedFile。"
 ---
 
 # createFileInputNode
 
-`workflow.createFileInputNode()` 用来处理 `type: "file"` 的 executor param。它接收 file reference、JSON 字符串、数组或路径字符串，并通过 `context.files` 解析成 `WorkflowResolvedFile[]`。
+`workflow.createFileInputNode()` 用来处理 `type: "file"` 的 executor param。它接收 file reference、JSON 字符串、数组或路径字符串，并通过 `context.files` 解析成 `ResolvedFile[]`。
 
 ## 签名
 
 ```ts
 workflow.createFileInputNode(
   options?: FileInputNodeOptions,
-): BaseNode<unknown, WorkflowResolvedFile[]>
+): BaseNode<unknown, ResolvedFile[]>
 ```
 
 ## 参数
@@ -29,19 +29,19 @@ workflow.createFileInputNode(
 | `accept` | `string[]` | 允许的 MIME 或扩展名，例如 `image/*`、`image/png`、`.pdf`；空数组表示不限制。 |
 | `multiple` | `boolean` | 是否允许多个文件，默认 `true`。 |
 | `historyLimit` | `number` | 节点执行历史保留条数，默认 `50`。 |
-| `metadata` | `WorkflowNodeMetadataInput` | 节点展示元信息。 |
+| `metadata` | `NodeMetadataInput` | 节点展示元信息。 |
 
 ## 输入格式
 
 | 输入 | 示例 | 解析结果 |
 | --- | --- | --- |
 | 空值 | `undefined`、`null`、`""` | `[]` |
-| 路径字符串 | `"./input.png"` | 一个 `storage: "path"` 的 `WorkflowFileReference` |
+| 路径字符串 | `"./input.png"` | 一个 `storage: "path"` 的 `FileReference` |
 | JSON 字符串 | `"{\"id\":\"file1\",...}"` | 先 JSON parse，再规范化引用 |
 | 对象 | `{ id, name, storage, ... }` | 一个文件引用 |
 | 数组 | `[{ id, ... }, { id, ... }]` | 多个文件引用 |
 
-## `WorkflowFileReference`
+## `FileReference`
 
 | 字段 | 说明 |
 | --- | --- |
@@ -61,18 +61,18 @@ workflow.createFileInputNode(
 
 | 方法/字段 | 类型 | 说明 |
 | --- | --- | --- |
-| 引用字段 | `WorkflowFileReference` 字段 | 输出对象保留规范化后的引用字段。 |
+| 引用字段 | `FileReference` 字段 | 输出对象保留规范化后的引用字段。 |
 | `readBuffer()` | `Promise<Buffer>` | 读取文件内容。 |
 | `readBase64()` | `Promise<string>` | 读取 base64 内容。 |
 | `readDataUrl()` | `Promise<string>` | 读取 data URL。 |
 | `toLLMImagePart()` | `Promise<LLMImagePart>` | 转换成 LLM 图片输入片段。非图片会抛错。 |
-| `toJSON()` | `WorkflowFileReference` | 返回可保存的文件引用，不包含文件内容。 |
+| `toJSON()` | `FileReference` | 返回可保存的文件引用，不包含文件内容。 |
 
 ## 依赖的 context
 
 | 字段 | 说明 |
 | --- | --- |
-| `context.files` | 必须提供 `WorkflowFileStore`。没有文件 store 时会抛 `input_validation`。 |
+| `context.files` | 必须提供 `FileStore`。没有文件 store 时会抛 `input_validation`。 |
 | `context.abortSignal` | 可选。节点执行时由 `runNode` 检查。 |
 
 ## 示例

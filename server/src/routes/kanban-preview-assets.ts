@@ -1,5 +1,5 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
-import type { WorkflowStorage } from "../storage";
+import type { Storage } from "../storage";
 
 function asyncHandler(
   fn: (req: Request, res: Response, next: NextFunction) => Promise<void>,
@@ -9,7 +9,7 @@ function asyncHandler(
   };
 }
 
-export function createKanbanPreviewAssetRouter(storage: WorkflowStorage): Router {
+export function createKanbanPreviewAssetRouter(storage: Storage): Router {
   const router = Router();
 
   router.get(

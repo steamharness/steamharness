@@ -1,13 +1,13 @@
-import type { PiAgentToolEvent, WorkflowOutputItem } from "./interface";
+import type { PiAgentToolEvent, OutputItem } from "./interface";
 
-export interface WorkflowOutputItemChunk {
+export interface OutputItemChunk {
   type: "output_item_start" | "output_item_delta" | "output_item_end";
-  item?: WorkflowOutputItem;
+  item?: OutputItem;
   itemId?: string;
   delta?: unknown;
 }
 
-export function createAnswerItemStartChunk(itemId: string): WorkflowOutputItemChunk {
+export function createAnswerItemStartChunk(itemId: string): OutputItemChunk {
   return {
     type: "output_item_start",
     item: {
@@ -22,7 +22,7 @@ export function createAnswerItemStartChunk(itemId: string): WorkflowOutputItemCh
 }
 
 // Tool lifecycle events keep metadata so the UI renders them as output detail rows.
-export function createToolStartChunk(event: PiAgentToolEvent): WorkflowOutputItemChunk {
+export function createToolStartChunk(event: PiAgentToolEvent): OutputItemChunk {
   return {
     type: "output_item_start",
     item: {
@@ -45,7 +45,7 @@ export function createToolStartChunk(event: PiAgentToolEvent): WorkflowOutputIte
   };
 }
 
-export function createToolEndChunks(event: PiAgentToolEvent): WorkflowOutputItemChunk[] {
+export function createToolEndChunks(event: PiAgentToolEvent): OutputItemChunk[] {
   const itemId = createToolItemId(event.toolCallId);
   const status = event.isError ? "failed" : "success";
   return [
@@ -82,7 +82,7 @@ export function createToolApprovalDecisionChunks(input: {
   arguments?: unknown;
   values?: Record<string, unknown>;
   message?: string;
-}): WorkflowOutputItemChunk[] {
+}): OutputItemChunk[] {
   const statusText = input.status === "approved" ? "已批准" : "已拒绝";
   const itemId = `pi-agent-tool-approval-${sanitizeIdPart(`${input.requestId ?? input.toolName}-${input.status}`)}`;
   const displayName = normalizeDisplayText(input.label) ?? input.toolName;

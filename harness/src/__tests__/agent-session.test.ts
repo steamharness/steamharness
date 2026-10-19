@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import * as ai from "@earendil-works/pi-ai";
-import { WorkflowDurableAgent } from "../agent/durable-agent";
+import { DurableAgent } from "../agent/durable-agent";
 import type { AgentSessionSnapshot } from "../agent/session-types";
 import { projectSessionUsage } from "../agent/session";
 
@@ -21,7 +21,7 @@ function session(options: import("../agent/session-types").AgentSessionOptions =
   const faux = ai.fauxProvider({ models: [{ id: "test", contextWindow: 100_000, maxTokens: 100 }, { id: "other", contextWindow: 100_000, maxTokens: 100 }] });
   const models = ai.createModels(); models.setProvider(faux.provider);
   const lease = latch();
-  const instance = new WorkflowDurableAgent({ models, databasePath, session: options, sessionLease: lease.promise, initialState: {
+  const instance = new DurableAgent({ models, databasePath, session: options, sessionLease: lease.promise, initialState: {
     systemPrompt: "Session test", model: models.getModel("faux", "test")!, thinkingLevel: "off", messages: [], tools: [],
   } });
   let snapshot: AgentSessionSnapshot | undefined;
@@ -29,7 +29,7 @@ function session(options: import("../agent/session-types").AgentSessionOptions =
   return { instance, faux, lease, snapshot: () => snapshot! };
 }
 
-function reportScriptedUsage(instance: WorkflowDurableAgent, messages: ai.AssistantMessage[]): void {
+function reportScriptedUsage(instance: DurableAgent, messages: ai.AssistantMessage[]): void {
   const streamSimple = instance.models.streamSimple.bind(instance.models);
   let index = 0;
   instance.models.streamSimple = (...args) => {

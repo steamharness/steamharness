@@ -1,25 +1,25 @@
 ---
-title: "WorkflowError"
+title: "HarnessError"
 description: "标准 workflow 错误类，用于可序列化的错误报告。"
 ---
 
-# WorkflowError
+# HarnessError
 
-`workflow.WorkflowError` 是业务 workflow 和 runtime 使用的标准错误类。它会保留错误类型、节点名、metadata 和经过清洗的 cause，最终进入执行报告。
+`workflow.HarnessError` 是业务 workflow 和 runtime 使用的标准错误类。它会保留错误类型、节点名、metadata 和经过清洗的 cause，最终进入执行报告。
 
 ## 签名
 
 ```ts
-new workflow.WorkflowError(options: WorkflowErrorOptions)
+new workflow.HarnessError(options: ErrorOptions)
 ```
 
 ## 参数
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| `options` | `WorkflowErrorOptions` | 标准错误配置，包含错误类型、消息、节点名、cause 和 metadata。 |
+| `options` | `ErrorOptions` | 标准错误配置，包含错误类型、消息、节点名、cause 和 metadata。 |
 
-## `WorkflowErrorOptions`
+## `ErrorOptions`
 
 | 字段 | 说明 |
 | --- | --- |
@@ -29,7 +29,7 @@ new workflow.WorkflowError(options: WorkflowErrorOptions)
 | `cause` | 原始错误。序列化时只保留安全字段。 |
 | `metadata` | 可调试的结构化信息。 |
 
-## `WorkflowErrorType`
+## `ErrorType`
 
 | 类型 | 常见来源 | 说明 |
 | --- | --- | --- |
@@ -46,22 +46,22 @@ new workflow.WorkflowError(options: WorkflowErrorOptions)
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `name` | `"WorkflowError"` | Error 名称。 |
+| `name` | `"HarnessError"` | Error 名称。 |
 | `message` | `string` | 错误消息。 |
-| `type` | `WorkflowErrorType` | 错误分类。 |
+| `type` | `ErrorType` | 错误分类。 |
 | `nodeName` | `string \| undefined` | 关联节点。 |
 | `metadata` | `object \| undefined` | 附加调试信息。 |
-| `safeCause` | `WorkflowErrorCause \| undefined` | 清洗后的 cause，包含 `name`、`message`、`statusCode`、`url`、`isRetryable`、`responseBody`、嵌套 `cause` 与 `validation`。`responseBody` 是上游 HTTP 响应体摘要：空白折叠、对疑似凭据脱敏、截断到 200 字符；只携带 `Unauthorized` 这类状态短语的调用错误会在运行报告中附加 `response <摘要>`，避免真实原因被状态短语掩盖。 |
+| `safeCause` | `ErrorCause \| undefined` | 清洗后的 cause，包含 `name`、`message`、`statusCode`、`url`、`isRetryable`、`responseBody`、嵌套 `cause` 与 `validation`。`responseBody` 是上游 HTTP 响应体摘要：空白折叠、对疑似凭据脱敏、截断到 200 字符；只携带 `Unauthorized` 这类状态短语的调用错误会在运行报告中附加 `response <摘要>`，避免真实原因被状态短语掩盖。 |
 
 ## 序列化结构
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `type` | `WorkflowErrorType` | 错误分类。 |
+| `type` | `ErrorType` | 错误分类。 |
 | `message` | `string` | 错误信息。 |
 | `nodeName` | `string \| undefined` | 关联节点。 |
 | `metadata` | `object \| undefined` | 附加信息。 |
-| `cause` | `WorkflowErrorCause \| undefined` | 只保留安全 cause 字段。 |
+| `cause` | `ErrorCause \| undefined` | 只保留安全 cause 字段。 |
 
 ## 错误码映射
 
@@ -81,7 +81,7 @@ new workflow.WorkflowError(options: WorkflowErrorOptions)
 ## 示例
 
 ```ts
-throw new workflow.WorkflowError({
+throw new workflow.HarnessError({
   type: "input_validation",
   message: "message is required.",
   nodeName: "parse-input",
@@ -98,4 +98,4 @@ throw new workflow.WorkflowError({
 | 用户输入不合法 | 抛 `input_validation`。 |
 | 外部服务调用失败 | 抛 `provider_call` 或让 provider 层包装。 |
 | 想让报告保留结构化上下文 | 使用 `metadata`。 |
-| 普通未知异常 | 可以直接抛，runtime 会包装为 `WorkflowError`。 |
+| 普通未知异常 | 可以直接抛，runtime 会包装为 `HarnessError`。 |

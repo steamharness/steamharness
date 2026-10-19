@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { initI18n } from '@steamharness/i18n';
 import { composerOutputItems, isComposerOutputItem, ringOutputContent, ringOutputText } from '../web/ui/output-display';
-import { applyOutputChunk, outputText, type ConversationMessage, type WorkflowOutputItem } from '../web/workflow-types';
+import { applyOutputChunk, outputText, type ConversationMessage, type OutputItem } from '../web/workflow-types';
 
 afterEach(() => initI18n({ preference: 'zh-CN' }));
 
-function ring(value: number, total?: number, id = 'quota'): WorkflowOutputItem {
+function ring(value: number, total?: number, id = 'quota'): OutputItem {
   return { id, title: 'Storage quota', content: { value, total, unit: 'MB' }, contentType: 'json', display: { type: 'ring', placement: 'composer-right' } };
 }
 
@@ -59,7 +59,7 @@ describe('Output presentation', () => {
   });
 
   it('preserves declarations through streaming updates without adding JSON to the answer', () => {
-    const items: WorkflowOutputItem[] = [];
+    const items: OutputItem[] = [];
     applyOutputChunk(items, { type: 'output_item_start', item: { ...ring(25, 100), display: { type: 'ring' } } });
     applyOutputChunk(items, { type: 'output_item_delta', itemId: 'quota', delta: { value: 57, total: 100, unit: 'MB' }, item: { display: { type: 'ring', placement: 'composer-right' } } });
     applyOutputChunk(items, { type: 'output_item_start', item: { id: 'answer', title: 'Output', content: 'The answer', contentType: 'markdown' } });
@@ -68,7 +68,7 @@ describe('Output presentation', () => {
   });
 
   it('merges partial numeric updates without losing the limit or unit', () => {
-    const items: WorkflowOutputItem[] = [];
+    const items: OutputItem[] = [];
     applyOutputChunk(items, { type: 'output_item_start', item: ring(25, 100) });
     applyOutputChunk(items, { type: 'output_item_delta', itemId: 'quota', delta: { value: 75 } });
     expect(items[0].content).toEqual({ value: 75, total: 100, unit: 'MB' });
@@ -78,7 +78,7 @@ describe('Output presentation', () => {
   });
 
   it('appends array deltas and preserves metadata when only presentation is patched', () => {
-    const items: WorkflowOutputItem[] = [{ id: 'rows', content: [1], contentType: 'json' }, ring(25, 100)];
+    const items: OutputItem[] = [{ id: 'rows', content: [1], contentType: 'json' }, ring(25, 100)];
     applyOutputChunk(items, { type: 'output_item_delta', itemId: 'rows', delta: [2, 3] });
     expect(items[0].content).toEqual([1, 2, 3]);
     applyOutputChunk(items, { type: 'output_item_delta', itemId: 'quota', delta: { value: 75 }, item: { display: { type: 'ring' } } });

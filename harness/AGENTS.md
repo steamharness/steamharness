@@ -11,7 +11,7 @@
 - `.workflow-local` 以及任何跨仓 tsconfig/path alias 都不得提交。提交前和 CI 必须同时执行普通 `pnpm check:boundaries` 与 `STEAMHARNESS_REPOSITORY_MODE=main pnpm check:boundaries`。
 - Core 不得相对导入同级 CLI、Studio、Server 或内置项目源码。CLI 联动变更在同级 `../cli` 完成，公开文档在同级 `../docs` 完成。
 - 修改 Core 基础定义、公开 exports、节点 API、executor/provider 类型或 runtime report 时，必须同步 `.agents/skills/workflow-generator` 的 API 参考和生成规则。
-- 所有节点 payload 必须继承 `WorkflowPayload`，成功结果统一包含 `errCode: 0, errMessage: ""`。
+- 所有节点 payload 必须继承 `RunPayload`，成功结果统一包含 `errCode: 0, errMessage: ""`。
 - TypeScript 构建产物只能写入 `dist`；不得用忽略源码目录中的 `*.js` 或 `*.d.ts` 掩盖输出路径错误。
 - Node.js 脚本必须兼容 Windows、macOS 和 Linux 路径，使用 `node:path` 与 `pathToFileURL` / `fileURLToPath` 处理文件入口。
 

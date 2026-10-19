@@ -9,11 +9,11 @@ import {
   parseToolPermissionPoliciesJson,
   resolveLocalWorkflowParams,
   runLocalWorkflowWithReport,
-  type WorkflowExecutionReport,
-  type WorkflowParamResolveRequest,
-  type WorkflowRuntimeEvent,
-  type WorkflowToolPermissionPolicyMap,
-  type WorkflowUserInputResolved,
+  type ExecutionReport,
+  type ParamResolveRequest,
+  type RuntimeEvent,
+  type ToolPermissionPolicyMap,
+  type UserInputResolved,
 } from "steamharness";
 import { readWorkflowProjectInfo } from "@steamharness/project-info";
 import { i18n, translateSteamHarnessError } from "@steamharness/i18n";
@@ -171,8 +171,8 @@ export function formatParamResolverFailure(error: unknown): string {
   return `${STEAMHARNESS_PARAM_ERROR_MARKER}${JSON.stringify(createWorkflowFailure(error).error)}`;
 }
 
-function parseParamResolveRequest(value: string): WorkflowParamResolveRequest {
-  const parsed = JSON.parse(value) as Partial<WorkflowParamResolveRequest>;
+function parseParamResolveRequest(value: string): ParamResolveRequest {
+  const parsed = JSON.parse(value) as Partial<ParamResolveRequest>;
   if (
     typeof parsed !== "object" || parsed === null ||
     typeof parsed.draftText !== "string" ||
@@ -184,7 +184,7 @@ function parseParamResolveRequest(value: string): WorkflowParamResolveRequest {
   ) {
     throw new Error(i18n.t("invalidParamResolveRequest", { ns: "cli" }));
   }
-  return parsed as WorkflowParamResolveRequest;
+  return parsed as ParamResolveRequest;
 }
 
 export function parseWorkflowArgs(
@@ -198,8 +198,8 @@ export function parseWorkflowArgs(
   entrypointId?: string;
   conversationId?: string;
   fileStoreDir?: string;
-  resolvedUserInputs: WorkflowUserInputResolved[];
-  toolPermissionPolicies?: WorkflowToolPermissionPolicyMap;
+  resolvedUserInputs: UserInputResolved[];
+  toolPermissionPolicies?: ToolPermissionPolicyMap;
   relatedProjects: CliRelatedProjectSpec[];
 } {
   let json = options.json;
@@ -207,8 +207,8 @@ export function parseWorkflowArgs(
   let entrypointId: string | undefined;
   let conversationId: string | undefined;
   let fileStoreDir: string | undefined;
-  let resolvedUserInputs: WorkflowUserInputResolved[] = [];
-  let toolPermissionPolicies: WorkflowToolPermissionPolicyMap | undefined;
+  let resolvedUserInputs: UserInputResolved[] = [];
+  let toolPermissionPolicies: ToolPermissionPolicyMap | undefined;
   const relatedProjects: CliRelatedProjectSpec[] = [];
   const filteredArgv: string[] = [];
 
@@ -307,7 +307,7 @@ export function parseWorkflowArgs(
   };
 }
 
-function createCliUserInputContext(resolvedInputs: WorkflowUserInputResolved[]) {
+function createCliUserInputContext(resolvedInputs: UserInputResolved[]) {
   return {
     [RESUME_RUNTIME_EVENT_AFTER_REQUEST_ID]: resolvedInputs.at(-1)?.requestId,
     getResolvedInput(requestId: string) {
@@ -324,7 +324,7 @@ function createCliUserInputContext(resolvedInputs: WorkflowUserInputResolved[]) 
   };
 }
 
-function parseResolvedUserInputs(value: string): WorkflowUserInputResolved[] {
+function parseResolvedUserInputs(value: string): UserInputResolved[] {
   const parsed = JSON.parse(value) as unknown;
   if (!Array.isArray(parsed)) {
     throw new Error(i18n.t("resolvedInputsMustBeArray", { ns: "cli" }));
@@ -352,7 +352,7 @@ function parseResolvedUserInputs(value: string): WorkflowUserInputResolved[] {
   });
 }
 
-export function createDesktopRuntimeEventEmitter(): ((event: WorkflowRuntimeEvent) => void) | undefined {
+export function createDesktopRuntimeEventEmitter(): ((event: RuntimeEvent) => void) | undefined {
   if (process.env[STEAMHARNESS_DESKTOP_RUNTIME_EVENTS_ENV] !== "1") {
     return undefined;
   }
@@ -524,7 +524,7 @@ function removePnpmRunSeparator(argv: string[]): string[] {
   ];
 }
 
-function getReportExitCode(report: WorkflowExecutionReport): number {
+function getReportExitCode(report: ExecutionReport): number {
   if (report.status === "failed") {
     return 1;
   }

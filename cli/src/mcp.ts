@@ -7,11 +7,11 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   createLocalWorkflowMcpFileResolver,
   createWorkflowMcpServer,
-  type WorkflowMcpExecutionReport,
-  type WorkflowMcpRunSnapshot,
-  type WorkflowMcpRunSnapshotMessage,
-  type WorkflowMcpRunner,
-  type WorkflowMcpStructureReport,
+  type McpExecutionReport,
+  type McpRunSnapshot,
+  type McpRunSnapshotMessage,
+  type McpRunner,
+  type McpStructureReport,
 } from "@steamharness/workflow-mcp";
 import {
   isWorkflowAuthConfigLoggedIn,
@@ -26,7 +26,7 @@ import { assertWorkflowUuid } from "@steamharness/workflow-ids";
 export const STEAMHARNESS_MCP_CLI_ENTRYPOINT_ENV = "STEAMHARNESS_MCP_CLI_ENTRYPOINT";
 export const STEAMHARNESS_MCP_DESKTOP_AUDIT_IPC_ENV = "STEAMHARNESS_MCP_DESKTOP_AUDIT_IPC";
 
-export interface WorkflowMcpCliOptions {
+export interface McpCliOptions {
   workflowDir: string;
   dataDir: string;
   fileStoreDir: string;
@@ -40,15 +40,15 @@ export interface WorkflowMcpCliOptions {
   workerEntrypoint?: string;
 }
 
-interface WorkflowMcpResumeState {
+interface McpResumeState {
   entrypointId: string;
   entrypointTitle: string;
   input: Record<string, unknown>;
   args: string[];
-  snapshot: WorkflowMcpRunSnapshot;
+  snapshot: McpRunSnapshot;
 }
 
-export type WorkflowMcpRunSnapshotWriter = (snapshot: WorkflowMcpRunSnapshot) => Promise<void> | void;
+export type McpRunSnapshotWriter = (snapshot: McpRunSnapshot) => Promise<void> | void;
 
 const STEAMHARNESS_MCP_WORKER_TERMINATION_GRACE_MS = 2_000;
 
@@ -60,7 +60,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
 
   const options = parseWorkflowMcpCliOptions(argv);
   const projectId = readWorkflowProjectId(options.workflowDir);
-  const runner = new WorkflowMcpCliRunner({
+  const runner = new McpCliRunner({
     ...options,
     workerEntrypoint: resolveWorkflowMcpWorkerEntrypoint(),
   }, createWorkflowMcpDesktopAuditWriter());
@@ -90,7 +90,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   return 0;
 }
 
-export function parseWorkflowMcpCliOptions(argv: string[]): WorkflowMcpCliOptions {
+export function parseWorkflowMcpCliOptions(argv: string[]): McpCliOptions {
   const workflowArg = argv[0]?.trim();
   if (!workflowArg || workflowArg.startsWith("-")) {
     throw new Error("steamharness mcp requires a workflow project directory as its first argument.");
@@ -142,18 +142,18 @@ export function parseWorkflowMcpCliOptions(argv: string[]): WorkflowMcpCliOption
   };
 }
 
-export class WorkflowMcpCliRunner implements WorkflowMcpRunner {
-  private readonly resumeStates = new Map<string, WorkflowMcpResumeState>();
+export class McpCliRunner implements McpRunner {
+  private readonly resumeStates = new Map<string, McpResumeState>();
   private readonly activeChildren = new Set<ChildProcessWithoutNullStreams>();
   private readonly terminationTimers = new Map<ChildProcessWithoutNullStreams, ReturnType<typeof setTimeout>>();
   private workflowName = "workflow";
 
   constructor(
-    private readonly options: WorkflowMcpCliOptions,
-    private readonly writeRunSnapshot?: WorkflowMcpRunSnapshotWriter,
+    private readonly options: McpCliOptions,
+    private readonly writeRunSnapshot?: McpRunSnapshotWriter,
   ) {}
 
-  async inspectStructure(): Promise<WorkflowMcpStructureReport> {
+  async inspectStructure(): Promise<McpStructureReport> {
     const result = await this.runWorker(["structure", this.options.workflowDir]);
     const extracted = extractTrailingJson(result.stdout, isWorkflowMcpStructureCandidate);
     if (!extracted || result.exitCode !== 0) {
@@ -169,7 +169,7 @@ export class WorkflowMcpCliRunner implements WorkflowMcpRunner {
     return structure;
   }
 
-  async run(request: Parameters<WorkflowMcpRunner["run"]>[0]): Promise<WorkflowMcpExecutionReport> {
+  async run(request: Parameters<McpRunner["run"]>[0]): Promise<McpExecutionReport> {
     const execution = await this.runJsonWorker({
       projectId: request.projectId,
       entrypointId: request.entrypointId,
@@ -192,7 +192,7 @@ export class WorkflowMcpCliRunner implements WorkflowMcpRunner {
     return report;
   }
 
-  async resume(request: Parameters<WorkflowMcpRunner["resume"]>[0]): Promise<WorkflowMcpExecutionReport> {
+  async resume(request: Parameters<McpRunner["resume"]>[0]): Promise<McpExecutionReport> {
     const state = this.resumeStates.get(request.runId);
     if (!state || state.entrypointId !== request.entrypointId) {
       throw new Error(`Workflow MCP run "${request.runId}" is no longer available for resume.`);
@@ -203,7 +203,7 @@ export class WorkflowMcpCliRunner implements WorkflowMcpRunner {
       values: request.values,
       submittedAt: new Date().toISOString(),
     }];
-    let execution: Awaited<ReturnType<WorkflowMcpCliRunner["runJsonWorker"]>>;
+    let execution: Awaited<ReturnType<McpCliRunner["runJsonWorker"]>>;
     try {
       execution = await this.runJsonWorker({
         projectId: request.projectId,
@@ -227,7 +227,7 @@ export class WorkflowMcpCliRunner implements WorkflowMcpRunner {
     return report;
   }
 
-  async cancel(request: Parameters<NonNullable<WorkflowMcpRunner["cancel"]>>[0]): Promise<void> {
+  async cancel(request: Parameters<NonNullable<McpRunner["cancel"]>>[0]): Promise<void> {
     const state = this.resumeStates.get(request.runId);
     this.resumeStates.delete(request.runId);
     if (state === undefined) return;
@@ -258,7 +258,7 @@ export class WorkflowMcpCliRunner implements WorkflowMcpRunner {
 
   private async recordAbortedResumeState(
     runId: string,
-    state: WorkflowMcpResumeState,
+    state: McpResumeState,
     reason: string,
   ): Promise<void> {
     const endedAt = new Date().toISOString();
@@ -294,10 +294,10 @@ export class WorkflowMcpCliRunner implements WorkflowMcpRunner {
     args: string[];
     runId?: string;
     startedAt?: string;
-    previousSnapshot?: WorkflowMcpRunSnapshot;
-    resolvedInputs: WorkflowMcpRunSnapshot["resolvedUserInputs"];
+    previousSnapshot?: McpRunSnapshot;
+    resolvedInputs: McpRunSnapshot["resolvedUserInputs"];
     signal: AbortSignal;
-  }): Promise<{ report: WorkflowMcpExecutionReport; snapshot: WorkflowMcpRunSnapshot }> {
+  }): Promise<{ report: McpExecutionReport; snapshot: McpRunSnapshot }> {
     const runId = options.runId ?? randomUUID();
     const startedAt = options.startedAt ?? new Date().toISOString();
     const previousStdout = options.previousSnapshot?.stdout ?? "";
@@ -348,7 +348,7 @@ export class WorkflowMcpCliRunner implements WorkflowMcpRunner {
       "--",
       ...options.args,
     ];
-    let result: WorkflowWorkerResult | undefined;
+    let result: WorkerResult | undefined;
     try {
       result = await this.runWorker(hostArgs, options.signal);
       const extracted = extractTrailingJson(result.stdout, isWorkflowMcpExecutionCandidate);
@@ -364,7 +364,7 @@ export class WorkflowMcpCliRunner implements WorkflowMcpRunner {
       const endedAt = new Date().toISOString();
       const stdout = appendCapturedOutput(previousStdout, workerStdout);
       const stderr = appendCapturedOutput(previousStderr, result.stderr);
-      const snapshot: WorkflowMcpRunSnapshot = {
+      const snapshot: McpRunSnapshot = {
         projectId: options.projectId,
         entrypointId: options.entrypointId,
         entrypointTitle: options.entrypointTitle,
@@ -381,7 +381,7 @@ export class WorkflowMcpCliRunner implements WorkflowMcpRunner {
       await this.recordRunSnapshot(snapshot);
       return { report: extracted.value, snapshot };
     } catch (error) {
-      const workerFailure = error instanceof WorkflowMcpWorkerError ? error.result : undefined;
+      const workerFailure = error instanceof McpWorkerError ? error.result : undefined;
       const diagnostics = result ?? workerFailure;
       const workerStdout = diagnostics?.stdout ?? "";
       const workerStderr = diagnostics?.stderr ?? "";
@@ -426,7 +426,7 @@ export class WorkflowMcpCliRunner implements WorkflowMcpRunner {
     }
   }
 
-  private async recordRunSnapshot(snapshot: WorkflowMcpRunSnapshot): Promise<void> {
+  private async recordRunSnapshot(snapshot: McpRunSnapshot): Promise<void> {
     if (this.writeRunSnapshot === undefined) return;
     try {
       await this.writeRunSnapshot(snapshot);
@@ -435,7 +435,7 @@ export class WorkflowMcpCliRunner implements WorkflowMcpRunner {
     }
   }
 
-  private runWorker(args: string[], signal?: AbortSignal): Promise<WorkflowWorkerResult> {
+  private runWorker(args: string[], signal?: AbortSignal): Promise<WorkerResult> {
     const mainScript = this.options.workerEntrypoint ?? resolveWorkflowMcpWorkerEntrypoint();
     const execArgs = workerExecArguments(process.execArgv, mainScript);
     const child = spawn(process.execPath, [...execArgs, mainScript, ...args], {
@@ -474,7 +474,7 @@ export class WorkflowMcpCliRunner implements WorkflowMcpRunner {
         if (settled) return;
         settled = true;
         const cause = error instanceof Error ? error : new Error(String(error));
-        reject(new WorkflowMcpWorkerError(cause.message, {
+        reject(new McpWorkerError(cause.message, {
           exitCode: signal?.aborted ? 130 : 1,
           stdout: Buffer.concat(stdout).toString("utf8"),
           stderr: Buffer.concat(stderr).toString("utf8"),
@@ -527,19 +527,19 @@ export class WorkflowMcpCliRunner implements WorkflowMcpRunner {
   }
 }
 
-type WorkflowMcpIpcSend = (
-  message: WorkflowMcpRunSnapshotMessage,
+type McpIpcSend = (
+  message: McpRunSnapshotMessage,
   callback: (error: Error | null) => void,
 ) => boolean;
 
 export function createWorkflowMcpDesktopAuditWriter(options: {
   env?: NodeJS.ProcessEnv;
-  send?: WorkflowMcpIpcSend;
-} = {}): WorkflowMcpRunSnapshotWriter | undefined {
+  send?: McpIpcSend;
+} = {}): McpRunSnapshotWriter | undefined {
   const env = options.env ?? process.env;
   if (env[STEAMHARNESS_MCP_DESKTOP_AUDIT_IPC_ENV] !== "1") return undefined;
   const send = options.send ?? (typeof process.send === "function"
-    ? process.send.bind(process) as WorkflowMcpIpcSend
+    ? process.send.bind(process) as McpIpcSend
     : undefined);
   if (send === undefined) return undefined;
 
@@ -560,7 +560,7 @@ function createSyntheticWorkflowMcpReport(options: {
   workflowName: string;
   entrypointId: string;
   entrypointTitle: string;
-  status: WorkflowMcpExecutionReport["status"];
+  status: McpExecutionReport["status"];
   startedAt: string;
   endedAt: string;
   exitCode: number;
@@ -568,8 +568,8 @@ function createSyntheticWorkflowMcpReport(options: {
   stderr: string;
   message?: string;
   previousReport?: unknown;
-  resolvedUserInputs?: WorkflowMcpRunSnapshot["resolvedUserInputs"];
-}): WorkflowMcpExecutionReport & Record<string, unknown> {
+  resolvedUserInputs?: McpRunSnapshot["resolvedUserInputs"];
+}): McpExecutionReport & Record<string, unknown> {
   const previousSource = isRecord(options.previousReport) ? options.previousReport : {};
   const {
     pendingUserInput: _pendingUserInput,
@@ -666,20 +666,20 @@ export function resolveWorkflowMcpWorkerEntrypoint(
   return path.isAbsolute(candidate) ? path.normalize(candidate) : path.resolve(process.cwd(), candidate);
 }
 
-interface WorkflowWorkerResult {
+interface WorkerResult {
   exitCode: number;
   stdout: string;
   stderr: string;
 }
 
-class WorkflowMcpWorkerError extends Error {
+class McpWorkerError extends Error {
   constructor(
     message: string,
-    readonly result: WorkflowWorkerResult,
+    readonly result: WorkerResult,
     options?: ErrorOptions,
   ) {
     super(message, options);
-    this.name = "WorkflowMcpWorkerError";
+    this.name = "McpWorkerError";
   }
 }
 
@@ -712,12 +712,12 @@ function isWorkflowMcpReportCandidate(value: unknown): boolean {
   return isWorkflowMcpStructureCandidate(value) || isWorkflowMcpExecutionCandidate(value);
 }
 
-function isWorkflowMcpStructureCandidate(value: unknown): value is WorkflowMcpStructureReport {
+function isWorkflowMcpStructureCandidate(value: unknown): value is McpStructureReport {
   return isRecord(value) && typeof value.projectType === "string" &&
     isRecord(value.workflow) && typeof value.workflow.name === "string";
 }
 
-function isWorkflowMcpExecutionCandidate(value: unknown): value is WorkflowMcpExecutionReport {
+function isWorkflowMcpExecutionCandidate(value: unknown): value is McpExecutionReport {
   return isRecord(value) && typeof value.runId === "string" && isWorkflowMcpRunStatus(value.status);
 }
 
@@ -731,7 +731,7 @@ function forwardProjectStdout(value: string): void {
   if (output !== "") process.stderr.write(`${output}\n`);
 }
 
-function readWorkerFailure(result: WorkflowWorkerResult, parsed?: unknown): string {
+function readWorkerFailure(result: WorkerResult, parsed?: unknown): string {
   if (isRecord(parsed)) {
     const diagnostics = isRecord(parsed["diagnostics"]) ? parsed["diagnostics"] : undefined;
     const error = isRecord(parsed["error"])
@@ -789,7 +789,7 @@ function assertWorkflowDirectory(workflowDir: string): void {
 }
 
 export function readSavedWorkflowMcpAuthEnv(
-  options: WorkflowMcpCliOptions,
+  options: McpCliOptions,
   processEnv: NodeJS.ProcessEnv = process.env,
 ): Record<string, string> {
   const explicitServerUrl = processEnv.STEAMHARNESS_SERVER_URL?.trim() ?? "";

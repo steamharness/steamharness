@@ -11,15 +11,15 @@ description: "定义 Workflow 的入口目录，或 Conversation 的单入口执
 
 ```ts
 workflow.defineExecutor<Input, Output>(
-  definition: WorkflowExecutorDefinition<Input, Output>,
-): WorkflowExecutorDefinition<Input, Output>
+  definition: ExecutorDefinition<Input, Output>,
+): ExecutorDefinition<Input, Output>
 ```
 
 ## 参数
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| `definition` | `WorkflowExecutorDefinition<Input, Output>` | 平台发现和执行 workflow 的入口配置。 |
+| `definition` | `ExecutorDefinition<Input, Output>` | 平台发现和执行 workflow 的入口配置。 |
 
 ## Workflow executor
 
@@ -27,7 +27,7 @@ workflow.defineExecutor<Input, Output>(
 | --- | --- | --- |
 | `projectType` | `"workflow"` | Workflow 项目的类型标记。必填。 |
 | `defaultEntrypoint` | `string` | 省略入口选择时使用的入口 ID。必须是静态字符串并命中 `entrypoints`。 |
-| `entrypoints` | `WorkflowEntrypointDefinition[]` | 非空静态入口数组；每项必须直接调用 [`workflow.defineEntrypoint()`](/core-api/define-entrypoint)。 |
+| `entrypoints` | `EntrypointDefinition[]` | 非空静态入口数组；每项必须直接调用 [`workflow.defineEntrypoint()`](/core-api/define-entrypoint)。 |
 
 Workflow 的 `workflow`、`params`、`createInput`、`resolveParams`、`createContext`、`requiredProviders`、`tools`、`tokenUsage` 和 `registry` 全部属于具体 entrypoint，不能放在 executor 顶层。入口按声明顺序展示；选择任一入口会直接创建该入口的 run，不会先执行默认入口。
 
@@ -38,22 +38,22 @@ Workflow 可以在 `package.json.steamHarness.schedulePresets` 中声明建议�
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `projectType` | `"conversation"` | Conversation 项目的类型标记。必填。 |
-| `workflow` | `WorkflowDefinition<Input, Output>` | Conversation 的唯一 workflow。必填。 |
+| `workflow` | `Definition<Input, Output>` | Conversation 的唯一 workflow。必填。 |
 | `createInput` | `(context) => Input` | 把 args、环境和会话 ID 转成业务输入。必填。 |
-| `resolveParams` | `(context) => WorkflowParamResolveResult` | 可选参数联动回调。 |
-| `createContext` | `(context) => Partial<WorkflowContext>` | 增补 providers、metadata 和 hooks。 |
+| `resolveParams` | `(context) => ParamResolveResult` | 可选参数联动回调。 |
+| `createContext` | `(context) => Partial<RunContext>` | 增补 providers、metadata 和 hooks。 |
 | `requiredProviders` | `ExecutorProviderName[]` | 声明必需 provider。 |
-| `params` | `WorkflowConversationParamDeclaration[]` | Conversation 的有序 Auxiliary、Quick、Mode、Slash 入口声明。 |
-| `tools` | `WorkflowToolPermissionDefinition[]` | Conversation 可调用的工具和默认策略。 |
-| `conversation` | `WorkflowConversationDefinition` | 配置附件、输入队列和可选 OpenAI 网关。标准主输入框无需配置。 |
-| `tokenUsage` | `WorkflowTokenUsageDefinition` | 开启 token 用量统计。 |
-| `registry` | `WorkflowNodeRegistryEntry[]` | 注册可单独调试的节点。 |
+| `params` | `ConversationParamDeclaration[]` | Conversation 的有序 Auxiliary、Quick、Mode、Slash 入口声明。 |
+| `tools` | `ToolPermissionDefinition[]` | Conversation 可调用的工具和默认策略。 |
+| `conversation` | `ConversationDefinition` | 配置附件、输入队列和可选 OpenAI 网关。标准主输入框无需配置。 |
+| `tokenUsage` | `TokenUsageDefinition` | 开启 token 用量统计。 |
+| `registry` | `NodeRegistryEntry[]` | 注册可单独调试的节点。 |
 
 Conversation 不声明 `defaultEntrypoint` 或 `entrypoints`。CLI 收到非空入口选择时会返回错误，不会忽略该值。
 
 持久 Agent 项目可内联声明 `conversation.recovery: { enabled: true }` 与 `conversation.durable: { enabled: true }`，同时给 Agent 配置 `session`。前者启用宿主崩溃恢复，后者让 CLI Web / Studio 使用 Harness 队列、双向控制和常驻 owner，并在 Studio Trace 中提供完整任务视图。此时输入的 steer / followUp / reject 和撤回由 Harness 持久处理。`defineAgentConversationExecutor({ session })` 自动设置 durable 声明；静态结构项目仍须内联对象。显式 `tools` 列表需声明 `update_plan` 及启用时的 `subagent`，参见 [会话控制](/core-api/create-agent#持久会话控制)。执行由本地 CLI / Studio 宿主负责，Server 仅提供项目与数据管理。
 
-## `WorkflowExecutorContext`
+## `ExecutorContext`
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
@@ -66,9 +66,9 @@ Conversation 不声明 `defaultEntrypoint` 或 `entrypoints`。CLI 收到非空�
 | `env` | `NodeJS.ProcessEnv` | 环境变量集合。 |
 | `abortSignal` | `AbortSignal` | 中断信号；本地宿主取消运行时会传递到 workflow 和支持 signal 的 SDK/provider 调用。 |
 | `conversationId` | `string \| undefined` | 会话 ID。 |
-| `toolPermissionPolicies` | `WorkflowToolPermissionPolicyMap \| undefined` | 宿主传入的工具策略覆盖值。workflow 通常不直接读取该字段，而是使用 `context.toolPermissions` 或 `workflow.createToolApprovalGate()`。 |
+| `toolPermissionPolicies` | `ToolPermissionPolicyMap \| undefined` | 宿主传入的工具策略覆盖值。workflow 通常不直接读取该字段，而是使用 `context.toolPermissions` 或 `workflow.createToolApprovalGate()`。 |
 
-## `WorkflowParamDeclaration`
+## `ParamDeclaration`
 
 `params` 是有序声明数组，Workflow 写在对应 `defineEntrypoint` 中，Conversation 写在 `defineExecutor` 中。Workflow 可以直接声明普通主表单字段；Conversation 始终使用标准主输入框，只接受 `kind: "auxiliary"`、`kind: "quick"`、`kind: "mode"` 或 `kind: "slash"` 声明，不接受自定义主字段。可重复声明多个入口，工具栏按数组顺序从左到右展示。Auxiliary 和 Quick 的 `fields` 各自可以有多个字段；每个 Auxiliary 是独立参数面板，每个 Quick 是独立摘要菜单，Mode 是单击轮换的独立开关。Slash 参数出现在输入框上方的 `/` 菜单中，不生成工具栏按钮。`name` 和 flag 在整个 `params` 数组中必须唯一，Auxiliary/Quick 的 `id` 也必须在两类组之间唯一。Conversation 的 `--message`、`--images`、`--videos`、`--files` 保留给标准输入，不能作为参数 flag。
 
@@ -93,14 +93,14 @@ params: [
 ],
 ```
 
-普通字段及组内字段使用以下属性。源码声明中的字段不再填写 `panel`；结构报告仍把字段展平为 `WorkflowParamDefinition[]`，并用 `paramLayout.actions` 保存组名、字段归属和顺序，供宿主渲染。CLI、定时和外部 API 继续按相同的 flag 和 `paramValues[name]` 处理。
+普通字段及组内字段使用以下属性。源码声明中的字段不再填写 `panel`；结构报告仍把字段展平为 `ParamDefinition[]`，并用 `paramLayout.actions` 保存组名、字段归属和顺序，供宿主渲染。CLI、定时和外部 API 继续按相同的 flag 和 `paramValues[name]` 处理。
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `name` | `string` | 参数名。必填。 |
 | `flag` | `string` | 长参数，例如 `--message`。 |
 | `shortFlag` | `string` | 短参数，例如 `-m`。 |
-| `type` | `WorkflowParamType` | 参数类型。必填。 |
+| `type` | `ParamType` | 参数类型。必填。 |
 | `required` | `boolean` | 是否必填。 |
 | `description` | `string` | 参数说明。 |
 | `defaultValue` | `string` | 默认值。 |
@@ -144,7 +144,7 @@ conversation: {
 
 CLI Web 单独输入 `/` 时向上弹出全部命令，继续输入可筛选命令或标签。菜单项使用紧凑尺寸，外层圆角，不显示左侧对号。选择单选参数写入对应选项值，选择 boolean 参数切换 `"true"` / `"false"`，触发参数联动而不发送消息。菜单遵守参数及选项的可见性、禁用状态和 `resolvedOptions`；动态选项可声明 `command`，省略时先沿用同值静态选项的命令，再回退到 `value`，也必须满足命令格式及唯一性要求。
 
-`conversation.commands` 使用静态 `WorkflowConversationCommandDefinition[]` 声明执行命令，与参数命令一起展示。每项包含 `command`、非空 `label`、可选 `description`、`localizedLabel`、`localizedDescription` 和 `action`。`action: { kind: "prompt", text }` 将声明的文字作为独立回合交给该项目的 Workflow 执行，可用于任意业务命令；`action: { kind: "export" }` 生成当前会话完整记录的 JSON 下载，并把命令及结果保存到对话正文。命令名不得与参数命令重复；翻译缺失回退到原文。选择时只移除光标处的命令，保留其他正文与附件；执行命令在会话运行、等待审批、队列未清空或编辑队列时不可执行。
+`conversation.commands` 使用静态 `ConversationCommandDefinition[]` 声明执行命令，与参数命令一起展示。每项包含 `command`、非空 `label`、可选 `description`、`localizedLabel`、`localizedDescription` 和 `action`。`action: { kind: "prompt", text }` 将声明的文字作为独立回合交给该项目的 Workflow 执行，可用于任意业务命令；`action: { kind: "export" }` 生成当前会话完整记录的 JSON 下载，并把命令及结果保存到对话正文。命令名不得与参数命令重复；翻译缺失回退到原文。选择时只移除光标处的命令，保留其他正文与附件；执行命令在会话运行、等待审批、队列未清空或编辑队列时不可执行。
 
 CLI Web 在参数刷新和发送时校验累积的动态选项与执行命令是否冲突；非法更新报错并保留上一次有效参数。发送时保留未被本次补丁替换的动态选项，选项状态补丁中省略的 `visible` 或 `disabled` 保留原值；明确替换或恢复选项列表时清除旧状态。导出文件包含本次导出命令及结果，结果中的消息数量与文件内 `messages.length` 一致。
 
@@ -154,7 +154,7 @@ CLI Web 在参数刷新和发送时校验累积的动态选项与执行命令是
 
 小助手默认 Build，只有一个 `/plan` 开关：开启时 `createInput` 把 `paramValues.plan === "true"` 映射为 `agent: "plan"`，底部显示“Plan 模式”；再次执行恢复 Build 并隐藏提示。`/export` 导出当前会话的全部消息和执行记录；`/compact` 立即调用 Core Agent 的真实上下文总结，显示“正在执行中”及完成或失败状态，摘要持久化为后续回合使用的上下文，原对话正文仍保留。
 
-## `WorkflowParamStatePatch`
+## `ParamStatePatch`
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
@@ -164,13 +164,13 @@ CLI Web 在参数刷新和发送时校验累积的动态选项与执行命令是
 | `resolvedOptions` | `{ value, label?, description?, command? }[] \| null` | 数组替换参数当前的完整选项列表；`null` 恢复静态 `options`。 |
 | `options` | `Record<string, { visible?, disabled? }>` | 修改当前选项列表中单个值的显示或禁用状态。 |
 
-## `WorkflowNodeRegistryEntry`
+## `NodeRegistryEntry`
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `name` | `string` | registry 中的调试节点名。必填。 |
 | `node` | `NodeDefinition \| StreamNodeDefinition` | 实际执行的节点对象。必填。 |
-| `metadata` | `WorkflowNodeMetadataInput` | 覆盖节点展示元信息。 |
+| `metadata` | `NodeMetadataInput` | 覆盖节点展示元信息。 |
 | `stream` | `boolean` | 标记节点是否按流式节点执行。 |
 | `createInput` | `(context) => Input` | 单节点调试时的输入构造函数。 |
 
@@ -179,7 +179,7 @@ CLI Web 在参数刷新和发送时校验累积的动态选项与执行命令是
 | 阶段 | 说明 |
 | --- | --- |
 | 平台选择配置 | Workflow 按显式 ID 或 `defaultEntrypoint` 选择一个入口；Conversation 使用 executor 本身。 |
-| 创建上下文 | runtime 根据 args、env、workflowName、入口和 conversationId 创建 `WorkflowExecutorContext`。 |
+| 创建上下文 | runtime 根据 args、env、workflowName、入口和 conversationId 创建 `ExecutorContext`。 |
 | `createInput` | 调用所选入口或 Conversation executor 的输入构造。 |
 | `createContext` | 调用同一执行配置的可选上下文扩展。 |
 | workflow `run` | 只执行所选入口的 workflow，或 Conversation 的唯一 workflow。 |
@@ -313,7 +313,7 @@ export const executor = workflow.defineExecutor<Input, Output>({
 });
 ```
 
-标准输入由宿主绘制，不会自动改写 `WorkflowContext`。workflow 仍需在 `createInput({ args })` 中显式读取固定参数名：
+标准输入由宿主绘制，不会自动改写 `RunContext`。workflow 仍需在 `createInput({ args })` 中显式读取固定参数名：
 
 - 文本：`--message`
 - 图片附件：`--images`

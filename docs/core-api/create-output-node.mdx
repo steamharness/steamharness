@@ -7,7 +7,7 @@ description: "创建同步或流式输出节点，并格式化最终 workflow pa
 
 `workflow.createOutputNode()` 创建输出节点。它既可以像普通节点一样同步格式化输入，也可以提供 `stream` 逐段输出，最后用 `format` 生成最终 payload。
 
-当前输出协议直接使用 `WorkflowOutputPayload.items`。不要再把完整输出聚合到顶层 `content` 字段；每一段可见输出都应该是独立的 `WorkflowOutputItem`。
+当前输出协议直接使用 `RunOutputPayload.items`。不要再把完整输出聚合到顶层 `content` 字段；每一段可见输出都应该是独立的 `OutputItem`。
 
 ## 签名
 
@@ -40,7 +40,7 @@ workflow.createOutputNode<Input>(
 | `name` | `string` | 输出节点名，默认 `"output"`。运行报告会收集名为 `output` 的成功输出。 |
 | `format` | `(input, context) => Output` | 把输入转换成最终 payload；不传时原样返回 input。 |
 | `historyLimit` | `number` | 节点执行历史保留条数，默认 `50`。 |
-| `metadata` | `WorkflowNodeMetadataInput` | 节点展示元信息。 |
+| `metadata` | `NodeMetadataInput` | 节点展示元信息。 |
 
 ## 流式输出 options
 
@@ -50,7 +50,7 @@ workflow.createOutputNode<Input>(
 | `stream` | `(input, context) => Iterable<OutputStreamChunk>` | 逐段产出字符串 chunk 或结构化 output item chunk。必填。 |
 | `format` | `(stream, input, context) => Output` | 把累积后的 `{ text, items, chunks }` 转成最终 payload。必填。 |
 | `historyLimit` | `number` | 节点执行历史保留条数，默认 `50`。 |
-| `metadata` | `WorkflowNodeMetadataInput` | 节点展示元信息。 |
+| `metadata` | `NodeMetadataInput` | 节点展示元信息。 |
 
 ## 返回值
 
@@ -73,11 +73,11 @@ workflow.createOutputNode<Input>(
 ## 输出 item 协议
 
 ```ts
-interface WorkflowOutputPayload extends WorkflowPayload {
-  items: WorkflowOutputItem[];
+interface RunOutputPayload extends RunPayload {
+  items: OutputItem[];
 }
 
-interface WorkflowOutputItem {
+interface OutputItem {
   id: string;
   title: string;
   content: unknown;
@@ -92,7 +92,7 @@ interface WorkflowOutputItem {
 
 `contentType` 只决定 UI 渲染方式：`markdown` 使用 Markdown 渲染，`text` 使用纯文本渲染，`json` 使用格式化 JSON 展示，`audio` 使用浏览器音频播放器，`video` 使用浏览器原生 `<video>` 播放器。对象和数组可以直接放进 `content`，不要提前 stringify 成 Markdown code block。
 
-`display` 可为辅助数值输出声明圆环展示。`type: "ring"` 时，`content` 使用 `WorkflowRingContent`：`{ value: number, total?: number, unit?: string }`。`value` 必须是非负有限数，`total` 若提供必须大于零；未提供时显示空环并在提示框中注明上限未知。圆环本身只展示比例，悬停或键盘聚焦时用浅灰提示框显示 `title`、百分比和精确用量；超限时圆环填满，提示保留实际百分比。
+`display` 可为辅助数值输出声明圆环展示。`type: "ring"` 时，`content` 使用 `RingContent`：`{ value: number, total?: number, unit?: string }`。`value` 必须是非负有限数，`total` 若提供必须大于零；未提供时显示空环并在提示框中注明上限未知。圆环本身只展示比例，悬停或键盘聚焦时用浅灰提示框显示 `title`、百分比和精确用量；超限时圆环填满，提示保留实际百分比。
 
 `placement` 默认为 `"inline"`。设为 `"composer-right"` 时，Conversation 将该输出固定在输入栏右侧，不在消息正文重复显示。使用跨轮稳定的 `id` 更新同一个固定输出；每个会话独立恢复最近的值，后续轮次未更新该项时保留原值。同一 `id` 改回 `"inline"` 后解除固定。普通 Workflow 的输出与回放在输出列表中展示圆环。
 

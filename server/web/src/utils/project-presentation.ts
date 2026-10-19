@@ -1,15 +1,15 @@
 
 import { STEAMHARNESS_PROJECT_DECLARATION_DEFINITIONS, STEAMHARNESS_PROJECT_PLATFORM_DEFINITIONS, isWorkflowProjectDataStorageLocationAllowed, resolveWorkflowProjectName } from "@steamharness/project-info";
-import type { WorkflowSummary } from "../types";
+import type { Summary } from "../types";
 
 
 
-export interface WorkflowProjectPresentationLabel {
+export interface ProjectPresentationLabel {
   id: string;
   labelKey?: string;
 }
 
-export type WorkflowProjectServerStorageAccess =
+export type ProjectServerStorageAccess =
   | { allowed: true; mode: "server" | "both" }
   | { allowed: false; mode: "local" | null };
 
@@ -22,7 +22,7 @@ const PLATFORM_LABEL_KEYS = new Map<string, string>(
 );
 
 export function getWorkflowProjectDisplayName(
-  project: Pick<WorkflowSummary, "name" | "projectInfo">,
+  project: Pick<Summary, "name" | "projectInfo">,
   locale: string,
 ): string {
   return resolveWorkflowProjectName(project.name, project.projectInfo, locale);
@@ -31,8 +31,8 @@ export function getWorkflowProjectDisplayName(
 
 
 export function getWorkflowProjectServerStorageAccess(
-  project: Pick<WorkflowSummary, "projectInfo">,
-): WorkflowProjectServerStorageAccess {
+  project: Pick<Summary, "projectInfo">,
+): ProjectServerStorageAccess {
   const mode = project.projectInfo.dataStorage?.mode ?? null;
   if (isWorkflowProjectDataStorageLocationAllowed(project.projectInfo, "server")) {
     return { allowed: true, mode: mode as "server" | "both" };
@@ -41,8 +41,8 @@ export function getWorkflowProjectServerStorageAccess(
 }
 
 export function listWorkflowProjectDeclarationLabels(
-  project: Pick<WorkflowSummary, "projectInfo">,
-): WorkflowProjectPresentationLabel[] {
+  project: Pick<Summary, "projectInfo">,
+): ProjectPresentationLabel[] {
   return project.projectInfo.declarations.map((id) => ({
     id,
     labelKey: DECLARATION_LABEL_KEYS.get(id),
@@ -50,8 +50,8 @@ export function listWorkflowProjectDeclarationLabels(
 }
 
 export function listWorkflowProjectPlatformLabels(
-  project: Pick<WorkflowSummary, "projectInfo">,
-): WorkflowProjectPresentationLabel[] {
+  project: Pick<Summary, "projectInfo">,
+): ProjectPresentationLabel[] {
   if (project.projectInfo.platformSupport.mode === "agnostic") {
     return [{ id: "agnostic", labelKey: "projectPlatformAgnostic" }];
   }

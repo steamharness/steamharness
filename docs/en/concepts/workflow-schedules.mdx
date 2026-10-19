@@ -15,7 +15,7 @@ Schedules use an IANA time zone and support two trigger types:
 - `cron`: a five-field Cron expression evaluated in the schedule time zone. Cron seconds are not supported.
 
 ```ts
-type WorkflowScheduleTrigger =
+type ScheduleTrigger =
   | {
       kind: "window-interval";
       weekdays: number[]; // 1-7, Monday through Sunday

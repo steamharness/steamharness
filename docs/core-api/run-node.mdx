@@ -42,7 +42,7 @@ workflow.runNode<Input, Output>(
 | 2. 发送开始事件 | 触发节点开始 hook，并记录 executionId、nodeName、metadata 和 startedAt。 |
 | 3. 执行节点 | 调用 `node.run(input, context)`。 |
 | 4. 发送完成事件 | 记录 output、duration 和 executionInfo，并触发完成 hook。 |
-| 5. 错误包装 | 失败时转换为 `WorkflowError` 并写入报告。 |
+| 5. 错误包装 | 失败时转换为 `HarnessError` 并写入报告。 |
 
 ## 返回值
 
@@ -55,7 +55,7 @@ workflow.runNode<Input, Output>(
 | 情况 | 错误类型 | 说明 |
 | --- | --- | --- |
 | 执行前或执行中中断 | `execution_aborted` | 来自 `context.abortSignal`。 |
-| 节点抛错 | `node_execution` | 未知错误会包装为 `WorkflowError`；已有 `WorkflowError` 会保留并补充上下文。 |
+| 节点抛错 | `node_execution` | 未知错误会包装为 `HarnessError`；已有 `HarnessError` 会保留并补充上下文。 |
 
 ## 示例
 

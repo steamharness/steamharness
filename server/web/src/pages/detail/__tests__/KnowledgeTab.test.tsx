@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DetailPageProps } from "../types";
 import { KnowledgeTab } from "../KnowledgeTab";
-import type { WorkflowSummary } from "../../../types";
+import type { Summary } from "../../../types";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -123,15 +123,15 @@ describe("KnowledgeTab server image lifecycle", () => {
   });
 });
 
-function renderKnowledgeTab(project: WorkflowSummary) {
+function renderKnowledgeTab(project: Summary) {
   return render(createKnowledgeTabElement(project));
 }
 
-function createKnowledgeTabElement(project: WorkflowSummary, overrides: Partial<DetailPageProps> = {}) {
+function createKnowledgeTabElement(project: Summary, overrides: Partial<DetailPageProps> = {}) {
   return <KnowledgeTab {...({ project, knowledgeRefreshToken: 0, ...overrides } as DetailPageProps)} />;
 }
 
-function createProject(id: string, name: string): WorkflowSummary {
+function createProject(id: string, name: string): Summary {
   return {
     id,
     name,

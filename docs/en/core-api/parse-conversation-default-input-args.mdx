@@ -5,7 +5,7 @@ description: "Parses message, images, videos, and files from the default convers
 
 # parseConversationDefaultInputArgs
 
-`workflow.parseConversationDefaultInputArgs(args)` parses the fixed `--message`, `--images`, `--videos`, and `--files` parameters written by the default conversation input. It does not read `WorkflowContext` or replace the executor's `createInput`.
+`workflow.parseConversationDefaultInputArgs(args)` parses the fixed `--message`, `--images`, `--videos`, and `--files` parameters written by the default conversation input. It does not read `RunContext` or replace the executor's `createInput`.
 
 Conversation always uses the standard message input without an enable setting. Hosts serialize attachments according to `conversation.attachments`. Call this helper explicitly in `createInput({ args })`.
 
@@ -16,9 +16,9 @@ workflow.parseConversationDefaultInputArgs(
   args: string[],
 ): {
   message: string;
-  images: WorkflowFileReference[];
-  videos: WorkflowFileReference[];
-  files: WorkflowFileReference[];
+  images: FileReference[];
+  videos: FileReference[];
+  files: FileReference[];
 }
 ```
 
@@ -27,9 +27,9 @@ workflow.parseConversationDefaultInputArgs(
 |Parameter|Behavior|
 | --- | --- |
 | `--message <text>` |Reads the last occurrence of the value and executes `trim()`; returns an empty string if not passed.|
-| `--images <value>` |Each occurrence is parsed into one or more `WorkflowFileReference` s and eventually merged into an array.|
+| `--images <value>` |Each occurrence is parsed into one or more `FileReference` s and eventually merged into an array.|
 | `--videos <value>` | Each occurrence is parsed into one or more references and merged into the videos array. |
-| `--files <value>` |Each occurrence is parsed into one or more `WorkflowFileReference` s and eventually merged into an array.|
+| `--files <value>` |Each occurrence is parsed into one or more `FileReference` s and eventually merged into an array.|
 |Missing value|The flag is ignored.|
 |Other parameters|Reserved for business code to parse, this helper does not process.|
 
@@ -63,7 +63,7 @@ export const executor = workflow.defineExecutor<Input, OutputPayload>({
 
 ## with file input node
 
-The helper only resolves the parameter to `WorkflowFileReference[]`. If you need to read the contents of the file, pass the reference to `workflow.createFileInputNode()`:
+The helper only resolves the parameter to `FileReference[]`. If you need to read the contents of the file, pass the reference to `workflow.createFileInputNode()`:
 
 ```ts
 const imageInputNode = workflow.createFileInputNode({

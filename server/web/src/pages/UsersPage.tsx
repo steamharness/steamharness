@@ -2,7 +2,7 @@ import { Link, MailPlus, Pencil, RefreshCw, ShieldCheck, UserCheck, UserCog, Use
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "@steamharness/i18n/react";
 import { formatDateTime, i18n } from "@steamharness/i18n";
-import type { WorkflowAdminUserSummary, WorkflowRoleRecord, WorkflowUserInvitationResult } from "../types";
+import type { AdminUserSummary, RoleRecord, UserInvitationResult } from "../types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -23,12 +23,12 @@ import { cn } from "@/lib/utils";
 import { getAvatarFallbackText } from "@steamharness/avatar-fallback";
 
 interface UsersPageProps {
-  users: WorkflowAdminUserSummary[] | null;
-  roles: WorkflowRoleRecord[];
+  users: AdminUserSummary[] | null;
+  roles: RoleRecord[];
   loading?: string;
   inviteBusy?: string;
   updateBusyUserId?: string;
-  invitationResult?: WorkflowUserInvitationResult | null;
+  invitationResult?: UserInvitationResult | null;
   total: number;
   page: number;
   pageSize: number;
@@ -39,9 +39,9 @@ interface UsersPageProps {
   onPageChange: (page: number) => void;
   onRefresh: () => void;
   onInvite: (payload: { email: string; displayName?: string }) => void;
-  onUpdateUser: (user: WorkflowAdminUserSummary, patch: { email?: string; displayName?: string; disabled?: boolean; avatarUrl?: string | null }) => void;
-  onUpdateRoles: (user: WorkflowAdminUserSummary, roleIds: string[]) => void;
-  onUpdateAvatar: (user: WorkflowAdminUserSummary, file: File) => void;
+  onUpdateUser: (user: AdminUserSummary, patch: { email?: string; displayName?: string; disabled?: boolean; avatarUrl?: string | null }) => void;
+  onUpdateRoles: (user: AdminUserSummary, roleIds: string[]) => void;
+  onUpdateAvatar: (user: AdminUserSummary, file: File) => void;
   onFetchInviteLink: (userId: string) => Promise<string | null>;
 }
 
@@ -135,7 +135,7 @@ export function UsersPage({
     }
   }, [onFetchInviteLink]);
 
-  const openManagementDialog = useCallback((user: WorkflowAdminUserSummary) => {
+  const openManagementDialog = useCallback((user: AdminUserSummary) => {
     setSelectedUserId(user.userId);
     setManagementTab("profile");
     setSelectedRoleIds(roles.filter((role) => user.roles.includes(role.name)).map((role) => role.id));

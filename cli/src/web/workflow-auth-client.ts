@@ -1,4 +1,4 @@
-export interface WorkflowAccountState {
+export interface AccountState {
   status: 'signed-out' | 'checking' | 'authenticated' | 'expired' | 'error';
   serverUrl: string;
   aiServerUrl?: string;
@@ -9,7 +9,7 @@ export interface WorkflowAccountState {
   revision: number;
 }
 
-export interface WorkflowSystemAiUsage {
+export interface SystemAiUsage {
   balance: number;
   groups: { groupId: number; name: string; subscriptionType: string; subscription?: {
     status: string; dailyLimitUsd: number | null; dailyUsageUsd: number;

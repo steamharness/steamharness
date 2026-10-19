@@ -7,35 +7,35 @@ description: "使用 PersistentValue 管理 workflow 项目内 markdown 知识�
 
 `workflow.listKnowledgeDocuments()`、`workflow.getKnowledgeDocument()`、`workflow.createKnowledgeDocument()`、`workflow.editKnowledgeDocument()`、`workflow.deleteKnowledgeDocument()` 和 `workflow.searchKnowledgeDocuments()` 用于管理项目内 markdown 知识库。第一个参数必须是 `context.storage.local` 或 `context.storage.server`，文档会写入该位置顶层、当前项目的 `persistentValue`，不会回退到另一位置或普通 KV。
 
-项目 `dataStorage.mode` 严格限定可以传入的位置。`local` 使用本地 PersistentValue 目录，`server` 使用同 UUID 项目的 PostgreSQL 数据，`both` 由源码逐次选择。声明禁止、缺少登录/UUID 绑定或宿主不提供的位置会抛出 `WorkflowError`。本地知识库与服务器项目知识库相互独立，不会自动上传、下载、合并或同步。
+项目 `dataStorage.mode` 严格限定可以传入的位置。`local` 使用本地 PersistentValue 目录，`server` 使用同 UUID 项目的 PostgreSQL 数据，`both` 由源码逐次选择。声明禁止、缺少登录/UUID 绑定或宿主不提供的位置会抛出 `HarnessError`。本地知识库与服务器项目知识库相互独立，不会自动上传、下载、合并或同步。
 
 ## 签名
 
 ```ts
-workflow.listKnowledgeDocuments(storage: WorkflowStorageLocationContext): Promise<WorkflowKnowledgeDocumentSummary[]>
+workflow.listKnowledgeDocuments(storage: StorageLocationContext): Promise<KnowledgeDocumentSummaryRecord[]>
 
 workflow.getKnowledgeDocument(
-  storage: WorkflowStorageLocationContext,
+  storage: StorageLocationContext,
   documentId: string,
-): Promise<WorkflowKnowledgeDocument | undefined>
+): Promise<KnowledgeDocument | undefined>
 
 workflow.createKnowledgeDocument(
-  storage: WorkflowStorageLocationContext,
+  storage: StorageLocationContext,
   input: { id?: string; title: string; markdown: string },
-): Promise<WorkflowKnowledgeDocument>
+): Promise<KnowledgeDocument>
 
 workflow.editKnowledgeDocument(
-  storage: WorkflowStorageLocationContext,
+  storage: StorageLocationContext,
   input: { id: string; title?: string; markdown?: string },
-): Promise<WorkflowKnowledgeDocument>
+): Promise<KnowledgeDocument>
 
 workflow.deleteKnowledgeDocument(
-  storage: WorkflowStorageLocationContext,
+  storage: StorageLocationContext,
   documentId: string,
 ): Promise<{ id: string; deleted: boolean }>
 
 workflow.searchKnowledgeDocuments(
-  storage: WorkflowStorageLocationContext,
+  storage: StorageLocationContext,
   input: {
     query: string;
     documentId?: string;
@@ -45,22 +45,22 @@ workflow.searchKnowledgeDocuments(
     pageSize?: number;
     cursor?: string;
   },
-): Promise<WorkflowKnowledgeSearchResult>
+): Promise<KnowledgeSearchResultRecord>
 
 workflow.readKnowledgeDocumentLines(
-  storage: WorkflowStorageLocationContext,
+  storage: StorageLocationContext,
   input: {
     documentId: string;
     startLine: number;
     endLine: number;
   },
-): Promise<WorkflowKnowledgeDocumentLinesResult>
+): Promise<KnowledgeDocumentLinesResult>
 ```
 
 ## 数据结构
 
 ```ts
-interface WorkflowKnowledgeDocument {
+interface KnowledgeDocument {
   id: string;
   title: string;
   markdown: string;
@@ -68,7 +68,7 @@ interface WorkflowKnowledgeDocument {
   updatedAt: string;
 }
 
-interface WorkflowKnowledgeDocumentSummary {
+interface KnowledgeDocumentSummaryRecord {
   id: string;
   title: string;
   markdownPreview: string;
@@ -76,14 +76,14 @@ interface WorkflowKnowledgeDocumentSummary {
   updatedAt: string;
 }
 
-interface WorkflowKnowledgeDocumentPage {
-  items: WorkflowKnowledgeDocumentSummary[];
+interface KnowledgeDocumentPageRecord {
+  items: KnowledgeDocumentSummaryRecord[];
   nextCursor?: string;
   hasMore: boolean;
   total: number;
 }
 
-interface WorkflowKnowledgeSearchResult {
+interface KnowledgeSearchResultRecord {
   query: string;
   documentsSearched: number;
   totalMatches: number;
@@ -103,7 +103,7 @@ interface WorkflowKnowledgeSearchResult {
   }>;
 }
 
-interface WorkflowKnowledgeDocumentLinesResult {
+interface KnowledgeDocumentLinesResult {
   documentId: string;
   title: string;
   startLine: number;
@@ -174,16 +174,16 @@ const excerpt = await workflow.readKnowledgeDocumentLines(context.storage.local,
 
 | 情况 | 结果 |
 | --- | --- |
-| 项目缺少 `dataStorage.mode` 或所选位置被声明禁止 | 在执行用户模块前或调用时抛出 `WorkflowError`，不会回退。 |
-| 所选本地 PersistentValue store 未配置，或服务器位置缺少登录/同 UUID 绑定 | 调用时抛出 `WorkflowError`，不会写入另一位置。 |
-| `id` 非法 | 抛出 `WorkflowError`；id 必须以字母或数字开头，只能包含字母、数字、点、下划线和横线。 |
-| `title` 为空 | 抛出 `WorkflowError`。 |
-| `query` 为空 | 抛出 `WorkflowError`。 |
-| 文档列表 `pageSize` 超出 1 到 100 | 抛出 `WorkflowError`。 |
-| 搜索 `pageSize` / `maxMatches` 超出 1 到 1000 | 抛出 `WorkflowError`。 |
-| `startLine` / `endLine` 非法或单次超过 1000 行 | 抛出 `WorkflowError`。 |
-| 新建已存在文档 | 抛出 `WorkflowError`；server 管理 API 映射为 409。 |
-| 编辑或搜索不存在的文档 | 抛出 `WorkflowError`；server 管理 API 映射为 404。 |
+| 项目缺少 `dataStorage.mode` 或所选位置被声明禁止 | 在执行用户模块前或调用时抛出 `HarnessError`，不会回退。 |
+| 所选本地 PersistentValue store 未配置，或服务器位置缺少登录/同 UUID 绑定 | 调用时抛出 `HarnessError`，不会写入另一位置。 |
+| `id` 非法 | 抛出 `HarnessError`；id 必须以字母或数字开头，只能包含字母、数字、点、下划线和横线。 |
+| `title` 为空 | 抛出 `HarnessError`。 |
+| `query` 为空 | 抛出 `HarnessError`。 |
+| 文档列表 `pageSize` 超出 1 到 100 | 抛出 `HarnessError`。 |
+| 搜索 `pageSize` / `maxMatches` 超出 1 到 1000 | 抛出 `HarnessError`。 |
+| `startLine` / `endLine` 非法或单次超过 1000 行 | 抛出 `HarnessError`。 |
+| 新建已存在文档 | 抛出 `HarnessError`；server 管理 API 映射为 409。 |
+| 编辑或搜索不存在的文档 | 抛出 `HarnessError`；server 管理 API 映射为 404。 |
 
 ## 示例
 

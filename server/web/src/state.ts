@@ -1,5 +1,5 @@
 
-import type { WorkflowAdminUserSummary, WorkflowAuditEventPage, WorkflowApiKeyRecord, WorkflowKVEntryPage, WorkflowMeResult, WorkflowPermissionGroup, WorkflowProjectDataSummary, WorkflowProjectMember, WorkflowProjectInvitation, WorkflowRoleRecord, WorkflowVersionSummary } from "./types";
+import type { AdminUserSummary, AuditEventPage, ApiKeyRecord, KVEntryPage, MeResult, PermissionGroup, ProjectDataSummary, ProjectMember, ProjectInvitation, RoleRecord, VersionSummary } from "./types";
 
 export type SessionState =
   | { status: "checking" }
@@ -64,11 +64,11 @@ export type AsyncState = {
 };
 
 export type DetailState = {
-  versions: WorkflowVersionSummary | null;
-  members: WorkflowProjectMember[] | null;
-  invitations: WorkflowProjectInvitation[] | null;
-  kv: WorkflowKVEntryPage | null;
-  dataSummary?: WorkflowProjectDataSummary | null;
+  versions: VersionSummary | null;
+  members: ProjectMember[] | null;
+  invitations: ProjectInvitation[] | null;
+  kv: KVEntryPage | null;
+  dataSummary?: ProjectDataSummary | null;
   loadErrors?: Partial<Record<"versions" | "members" | "invitations" | "dataSummary", string>>;
 };
 
@@ -86,12 +86,12 @@ export const DEFAULT_DETAIL: DetailState = {
 };
 
 export interface AccountViewState {
-  me: WorkflowMeResult | null;
-  apiKeys: WorkflowApiKeyRecord[] | null;
+  me: MeResult | null;
+  apiKeys: ApiKeyRecord[] | null;
 }
 
 export interface AdminUsersState {
-  items: WorkflowAdminUserSummary[] | null;
+  items: AdminUserSummary[] | null;
   total: number;
   page: number;
   pageSize: number;
@@ -101,8 +101,8 @@ export interface AdminUsersState {
 }
 
 export interface AdminRolesState {
-  items: WorkflowRoleRecord[] | null;
-  groups: WorkflowPermissionGroup[] | null;
+  items: RoleRecord[] | null;
+  groups: PermissionGroup[] | null;
 }
 
 export interface AuditFilters {
@@ -117,7 +117,7 @@ export interface AuditFilters {
 }
 
 export interface AuditViewState {
-  page: WorkflowAuditEventPage | null;
+  page: AuditEventPage | null;
   selectedEventId: string | null;
 }
 

@@ -1,21 +1,21 @@
 import { t } from './localization';
-import type { WorkflowProject } from './workflow-types';
+import type { Project } from './workflow-types';
 import type { ProjectVersionStatus } from './workflow-server-projects';
 
-export interface WorkflowInfoItem {
+export interface InfoItem {
   id: string;
   label: string;
   value?: string;
   icon?: string;
   expanded?: boolean;
-  children?: WorkflowInfoItem[];
+  children?: InfoItem[];
 }
 
-export interface WorkflowInfoState {
+export interface InfoState {
   type: 'info-state';
   generation: number;
-  project?: Pick<WorkflowProject, 'uri' | 'name'>;
-  items: WorkflowInfoItem[];
+  project?: Pick<Project, 'uri' | 'name'>;
+  items: InfoItem[];
   update?: ProjectVersionStatus;
 }
 
@@ -30,8 +30,8 @@ function record(value: unknown): Record<string, unknown> {
 
 function text(value: unknown): string | undefined { return typeof value === 'string' && value.trim() ? value : undefined; }
 function strings(value: unknown): string[] { return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string' && !!entry.trim()) : []; }
-function row(id: string, label: string, value?: string, icon?: string): WorkflowInfoItem { return { id, label, value, icon }; }
-function group(id: string, label: string, icon: string, children: WorkflowInfoItem[], expanded = true): WorkflowInfoItem {
+function row(id: string, label: string, value?: string, icon?: string): InfoItem { return { id, label, value, icon }; }
+function group(id: string, label: string, icon: string, children: InfoItem[], expanded = true): InfoItem {
   return { id, label, icon, expanded, children: children.length ? children : [row(`${id}:empty`, t("Not declared"))] };
 }
 
@@ -43,7 +43,7 @@ function access(value: unknown): string {
   return text(rule.mode) ?? t("Not declared");
 }
 
-export function workflowInfoItems(project: WorkflowProject, manifest: unknown): WorkflowInfoItem[] {
+export function workflowInfoItems(project: Project, manifest: unknown): InfoItem[] {
   const pkg = record(manifest);
   const info = record(record(pkg.steamHarness).projectInfo);
   const declarations = strings(info.declarations);

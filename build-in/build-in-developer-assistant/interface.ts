@@ -29,7 +29,7 @@ export interface OpenAIConversationHostInput {
 }
 
 declare module "steamharness" {
-  interface WorkflowConversationDefinition {
+  interface ConversationDefinition {
     openai?: {
       enabled: true;
       outputItemId: string;

@@ -4,8 +4,8 @@ import { useTranslation } from "@steamharness/i18n/react";
 import { apiClient } from "../api";
 import {
   isApiSuccess,
-  type WorkflowProjectAccessLinkInfo,
-  type WorkflowProjectAccessRequest,
+  type ProjectAccessLinkInfo,
+  type ProjectAccessRequest,
 } from "../types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,8 +15,8 @@ import { Textarea } from "@/components/ui/textarea";
 
 type AccessRequestState =
   | { phase: "loading" }
-  | { phase: "ready"; project: WorkflowProjectAccessLinkInfo }
-  | { phase: "submitted"; project: WorkflowProjectAccessLinkInfo; request: WorkflowProjectAccessRequest }
+  | { phase: "ready"; project: ProjectAccessLinkInfo }
+  | { phase: "submitted"; project: ProjectAccessLinkInfo; request: ProjectAccessRequest }
   | { phase: "error"; message: string };
 
 export function ProjectSourceAccessRequestPage({

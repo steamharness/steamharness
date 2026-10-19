@@ -170,8 +170,8 @@ async function createToolApprovalWorkflow(): Promise<string> {
   await writeFile(
     path.join(workflowDir, "interface.ts"),
     [
-      "export interface WorkflowPayload { errCode: number; errMessage: string; }",
-      "export interface ToolApprovalPayload extends WorkflowPayload { tool: string; value: string; }",
+      "export interface RunPayload { errCode: number; errMessage: string; }",
+      "export interface ToolApprovalPayload extends RunPayload { tool: string; value: string; }",
       "",
     ].join("\n"),
   );

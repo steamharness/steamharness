@@ -1,5 +1,5 @@
 import { t, locale } from '../localization';
-import type { WorkflowAccountState } from '../workflow-auth-client';
+import type { AccountState } from '../workflow-auth-client';
 import { ParameterActions } from './parameter-actions';
 import { ConversationComposer } from './conversation-composer';
 import { ConversationSubmissions, type ConversationSubmission } from './conversation-submissions';
@@ -19,9 +19,9 @@ import {
   workflowParamValue,
   mergeWorkflowParamStates,
   sessionRunning,
-  type ConversationMessage, type ConversationSession, type ConversationDraftUpdate, type WorkflowProject, type WorkflowField,
-  type WorkflowParamValues, type WorkflowParamValue, type WorkflowParamState, type WorkflowParamRequest,
-  type WorkflowAttachment,
+  type ConversationMessage, type ConversationSession, type ConversationDraftUpdate, type Project, type Field,
+  type ParamValues, type ParamValue, type ParamState, type ParamRequest,
+  type Attachment,
 } from '../workflow-types';
 
 import { acquireWorkflowHost } from './host';
@@ -52,9 +52,9 @@ function initialize(): void {
       <button class="session-action" data-action="delete" role="menuitem" tabindex="-1">${icon('trash')}<span>${t("Delete conversation")}</span></button>
     </div>`;
 
-  interface State { project: WorkflowProject; sessions: ConversationSession[]; activeId: string; running: boolean; parameterValues?: Record<string, WorkflowParamValues>; account?: WorkflowAccountState; authenticationRevision?: number; parameterRevision?: number }
+  interface State { project: Project; sessions: ConversationSession[]; activeId: string; running: boolean; parameterValues?: Record<string, ParamValues>; account?: AccountState; authenticationRevision?: number; parameterRevision?: number }
   interface FieldView {
-    field: WorkflowField; root: HTMLDivElement;
+    field: Field; root: HTMLDivElement;
     controls: (HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)[];
     description: HTMLDivElement; optionsSignature?: string;
   }
@@ -72,7 +72,7 @@ function initialize(): void {
   let renderedProject = '';
   let renderedSession = '';
   let formKey = '';
-  let paramStates: Record<string, WorkflowParamState> = {};
+  let paramStates: Record<string, ParamState> = {};
   let resolving = false;
   let connectionAvailable = true;
   let connectionStatus: ConnectionState = 'connected';
@@ -88,10 +88,10 @@ function initialize(): void {
   let retryingMessage: string | undefined;
   let requestId = 0;
   let paramsNeedInit = false;
-  let pendingParameterTrigger: WorkflowParamRequest['trigger'] | undefined;
+  let pendingParameterTrigger: ParamRequest['trigger'] | undefined;
   let authenticationRequired = false;
   let inputTimer: ReturnType<typeof setTimeout> | undefined;
-  let draftFiles: WorkflowAttachment[] = [];
+  let draftFiles: Attachment[] = [];
   let draftTimer: ReturnType<typeof setTimeout> | undefined;
   let uploading = 0;
   let editingQueueId: string | undefined;
@@ -125,7 +125,7 @@ function initialize(): void {
   const sessionActions = Array.from(sessionMenu.querySelectorAll<HTMLButtonElement>('.session-action'));
   const fields = new Map<string, FieldView>();
   const messages = new Map<string, MessageView>();
-  const saved = (vscode.getState() ?? {}) as { drafts?: Record<string, string>; params?: Record<string, WorkflowParamValues>; panelOpen?: boolean; projectUri?: string; navigation?: SavedNavigation; submissions?: ConversationSubmission[] };
+  const saved = (vscode.getState() ?? {}) as { drafts?: Record<string, string>; params?: Record<string, ParamValues>; panelOpen?: boolean; projectUri?: string; navigation?: SavedNavigation; submissions?: ConversationSubmission[] };
   const drafts = saved.drafts ?? {};
   const paramValues = saved.params ?? {};
   const submissions = new ConversationSubmissions(saved.submissions, t('Message delivery was not confirmed. Retry to check or send it again.'));
@@ -139,7 +139,7 @@ function initialize(): void {
   const dialogs = new ConversationTools();
   const contentSearch = new ContentSearch(transcript);
   const currentParameters = () => workflowParameters(state!.project, entrypoint.value || undefined);
-  const values = (): WorkflowParamValues => paramValues[formKey] ??= {};
+  const values = (): ParamValues => paramValues[formKey] ??= {};
   const canQueue = (): boolean => state?.project.conversation?.inputQueue?.enabled === true && (!state.project.conversation.durable?.enabled || values().plan !== 'true');
   const hideComposer = (): boolean => state?.project.projectType === 'conversation' && state.project.conversation?.userInput?.hideComposer !== false
     && !!currentSession()?.messages.some(message => message.pendingInput);
@@ -194,7 +194,7 @@ function initialize(): void {
     textarea.style.height = `${Math.min(240, Math.max(72, textarea.scrollHeight))}px`;
   }
 
-  function requestParams(trigger: WorkflowParamRequest['trigger']): void {
+  function requestParams(trigger: ParamRequest['trigger']): void {
     clearTimeout(inputTimer);
     if (!state || !connectionAvailable || busy() || !fields.size) { return; }
     if (!navigationReady()) { paramsNeedInit = true; pendingParameterTrigger = trigger; return; }
@@ -207,7 +207,7 @@ function initialize(): void {
       requestId: ++requestId, entrypointId: entrypoint.value, params: values(), draftText: textarea.value, trigger });
   }
 
-  function createField(field: WorkflowField): FieldView {
+  function createField(field: Field): FieldView {
     const root = document.createElement('div');
     root.className = `param-field${field.type === 'boolean' ? ' boolean-field' : ''}`;
     root.dataset.param = field.name;
@@ -302,7 +302,7 @@ function initialize(): void {
     setFieldValue(name, values()[name]);
   }
 
-  function setFieldValue(name: string, value: WorkflowParamValue): void {
+  function setFieldValue(name: string, value: ParamValue): void {
     editedParams.add(name);
     values()[name] = value;
     persist(); updateFields(); requestParams({ kind: 'param', paramName: name });
@@ -682,7 +682,7 @@ function initialize(): void {
     }
   }
 
-  function attachmentList(container: HTMLElement, attachments: WorkflowAttachment[], removable: boolean): void {
+  function attachmentList(container: HTMLElement, attachments: Attachment[], removable: boolean): void {
     container.replaceChildren(); container.hidden = !attachments.length;
     for (const file of attachments) {
       const isImage = file.kind === 'image';
@@ -1236,7 +1236,7 @@ function initialize(): void {
         paramError.hidden = false;
       } else {
         authenticationRequired = false;
-        const patches = Object.fromEntries(Object.entries(message.params ?? {}).filter(([name]) => fields.has(name))) as Record<string, WorkflowParamState>;
+        const patches = Object.fromEntries(Object.entries(message.params ?? {}).filter(([name]) => fields.has(name))) as Record<string, ParamState>;
         paramStates = mergeWorkflowParamStates(paramStates, patches);
         for (const [name, patch] of Object.entries(patches)) {
           if (patch.value === null) { values()[name] = workflowParamValue(fields.get(name)!.field); }
@@ -1254,15 +1254,15 @@ function initialize(): void {
         const prompt = messages.get(message.messageId)?.prompt;
         if (prompt && prompt.request.requestId === message.requestId) {
           const field = prompt.request.params.find((field) => field.name === message.paramName);
-          if (field) { prompt.fileValue(field.name, JSON.stringify((field.multiple ? message.files : message.files.slice(0, 1)).map(({ previewUrl: _, ...file }: WorkflowAttachment) => file))); }
+          if (field) { prompt.fileValue(field.name, JSON.stringify((field.multiple ? message.files : message.files.slice(0, 1)).map(({ previewUrl: _, ...file }: Attachment) => file))); }
         }
       } else if (message.paramName && fields.has(message.paramName)) {
         const field = fields.get(message.paramName)!.field;
         const files = field.multiple ? message.files : message.files.slice(0, 1);
-        setFieldValue(message.paramName, JSON.stringify(files.map(({ previewUrl: _, ...file }: WorkflowAttachment) => file)));
+        setFieldValue(message.paramName, JSON.stringify(files.map(({ previewUrl: _, ...file }: Attachment) => file)));
       } else {
         const allowed = state.project.conversation?.attachments;
-        const accepted = (message.files as WorkflowAttachment[]).filter((file) => file.kind === 'image' ? allowed?.images : file.mimeType.startsWith('video/') ? allowed?.videos : allowed?.files);
+        const accepted = (message.files as Attachment[]).filter((file) => file.kind === 'image' ? allowed?.images : file.mimeType.startsWith('video/') ? allowed?.videos : allowed?.files);
         if (accepted.length !== message.files.length) { showError(t("The project does not support this attachment type.")); }
         draftFiles = [...new Map([...draftFiles, ...accepted].map((file) => [file.id, file])).values()].slice(0, 32); attachmentList(document.querySelector('#draft-attachments')!, draftFiles, true); saveDraft();
       }

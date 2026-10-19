@@ -8,26 +8,26 @@ import {
   safeRunWorkflow,
   runNode,
   runStreamNode,
-  WorkflowError,
-  type WorkflowResult,
+  HarnessError,
+  type RunResult,
 } from "../workflow/index";
 import type {
   NodeExecutionHooks,
   NodeDefinition,
   ProviderRegistry,
   StreamNodeDefinition,
-  WorkflowContext,
-  WorkflowStorageContext,
-  WorkflowStorageLocationContext,
-  WorkflowDefinition,
-  WorkflowNodeMetadata,
-  WorkflowUserInputContext,
+  RunContext,
+  StorageContext,
+  StorageLocationContext,
+  Definition,
+  NodeMetadata,
+  UserInputContext,
 } from "../types/index";
 import {
   assertWorkflowProjectDataStorageLocationAllowed,
   readWorkflowProjectInfo,
-  type WorkflowProjectDataStorageLocation,
-  type WorkflowProjectInfo,
+  type ProjectDataStorageLocation,
+  type ProjectInfoContract,
 } from "@steamharness/project-info";
 import { loadWorkflowEnv } from "./env";
 import {
@@ -35,10 +35,10 @@ import {
   createNodeExecutionReporter,
   createWorkflowExecutionReport,
   resolveWorkflowResultStatus,
-  type WorkflowDefinitionEvent,
-  type WorkflowExecutionReport,
-  type WorkflowRuntimeEvent,
-  type WorkflowStructureReport,
+  type DefinitionEvent,
+  type ExecutionReport,
+  type RuntimeEvent,
+  type StructureReport,
 } from "./report";
 import {
   formatWorkflowExecutionJson,
@@ -46,7 +46,7 @@ import {
 import {
   inspectWorkflowScripts,
   inspectWorkflowStructure,
-  type WorkflowDefinedNode,
+  type DefinedNode,
 } from "./rules";
 import { parseWorkflowParamValues, validateWorkflowParamResolveResult } from "./params";
 import { STEAMHARNESS_ENTRYPOINT_ID_PATTERN } from "./definition";
@@ -55,24 +55,24 @@ import { assertConversationFooter } from "./conversation-footer";
 import { assertConversationUserInput } from "./conversation-input";
 import { assertConversationCommands } from "./conversation-commands";
 import type {
-  WorkflowNodeRegistryEntry,
-  WorkflowNodeRegistryItem,
-  WorkflowExecutorContext,
-  WorkflowExecutorDefinition,
-  WorkflowExecutorModule,
-  WorkflowExecutionDefinition,
-  WorkflowEntrypointDefinition,
-  WorkflowEntrypointGroupDefinition,
-  WorkflowParamResolveRequest,
-  WorkflowParamResolveResult,
+  NodeRegistryEntry,
+  NodeRegistryItem,
+  ExecutorContext,
+  ExecutorDefinition,
+  ExecutorModule,
+  ExecutionDefinition,
+  EntrypointDefinition,
+  EntrypointGroupDefinition,
+  ParamResolveRequest,
+  ParamResolveResult,
 } from "./types";
 import {
   createAbortedWorkflowResult,
   createExecutionLimitLayer,
   createWorkflowRunId,
   createWorkflowRuntime,
-  type WorkflowRuntime,
-  type WorkflowRuntimeLayer,
+  type Runtime,
+  type RuntimeLayer,
 } from "./runtime";
 import { isOutputItemStreamChunk } from "../node/output/index";
 import { installWorkflowRuntimeGlobal } from "../runtime-api";
@@ -80,45 +80,45 @@ import {
   createLocalWorkflowFileStore,
   createServerWorkflowFileStore,
   createWorkflowFileStore,
-  type WorkflowFileStore,
+  type FileStore,
 } from "../files/index";
 import { createRemoteWorkflowFileStoreFromEnv } from "../files/remote";
 import { createWorkflowNodeMetadata } from "../types/index";
 import {
   createDisabledWorkflowConversationContext,
   createWorkflowConversationContext,
-  type WorkflowConversationContext,
+  type ConversationContext,
 } from "../conversation/index";
 import {
   createLocalWorkflowKVStore,
   createWorkflowPersistentValueContext,
   createWorkflowKVContext,
-  type WorkflowKVContext,
-  type WorkflowKVStore,
-  type WorkflowPersistentValueContext,
+  type KVContext,
+  type KVStore,
+  type PersistentValueContext,
 } from "../kv/index";
 import { createRemoteWorkflowStorageStoreFromEnv } from "../kv/remote";
 import {
   createWorkflowRelatedProjectsContext,
-  type WorkflowRelatedProjectKVResolver,
+  type RelatedProjectKVResolver,
 } from "../kv/related-projects";
 import {
   createWorkflowTokenUsageContext,
-  type WorkflowTokenUsageContext,
+  type TokenUsageContext,
 } from "../token-usage/index";
 import {
   createWorkflowTimerContext,
 } from "../timer/index";
 import {
   createWorkflowToolPermissionContext,
-  type WorkflowToolPermissionPolicyMap,
+  type ToolPermissionPolicyMap,
 } from "../tool-permissions/index";
 import {
   STEAMHARNESS_PROJECT_TYPE_MIGRATION_EXAMPLE,
   assertNeverWorkflowExecutorProjectType,
   isWorkflowExecutorProjectType,
-  type WorkflowExecutorProjectType,
-  type WorkflowProjectType,
+  type ExecutorProjectType,
+  type ProjectKind,
 } from "../project-types";
 import {
   KANBAN_MANIFEST_FILE,
@@ -131,7 +131,7 @@ import {
 import {
   parseWorkflowSchedulePresets,
   validateWorkflowScheduleParamValues,
-  type WorkflowSchedulePreset,
+  type SchedulePreset,
 } from "@steamharness/workflow-schedules";
 
 export interface RunWorkspaceWorkflowOptions {
@@ -148,15 +148,15 @@ export interface RunWorkspaceWorkflowOptions {
   runId?: string;
   entrypointId?: string;
   conversationId?: string;
-  storage?: WorkflowExecutionStorageOptions;
-  fileStore?: WorkflowFileStore;
+  storage?: ExecutionStorageOptions;
+  fileStore?: FileStore;
   fileStoreDir?: string;
   fileCreateStoreDir?: string;
-  layers?: WorkflowRuntimeLayer[];
-  userInput?: WorkflowUserInputContext;
-  toolPermissionPolicies?: WorkflowToolPermissionPolicyMap;
-  onRuntimeEvent?(event: WorkflowRuntimeEvent): Promise<void> | void;
-  onDefinedNodes?(event: WorkflowDefinitionEvent): Promise<void> | void;
+  layers?: RuntimeLayer[];
+  userInput?: UserInputContext;
+  toolPermissionPolicies?: ToolPermissionPolicyMap;
+  onRuntimeEvent?(event: RuntimeEvent): Promise<void> | void;
+  onDefinedNodes?(event: DefinitionEvent): Promise<void> | void;
 }
 
 export interface RunLocalWorkflowOptions {
@@ -171,40 +171,40 @@ export interface RunLocalWorkflowOptions {
   runId?: string;
   entrypointId?: string;
   conversationId?: string;
-  storage?: WorkflowExecutionStorageOptions;
-  fileStore?: WorkflowFileStore;
+  storage?: ExecutionStorageOptions;
+  fileStore?: FileStore;
   fileStoreDir?: string;
   fileCreateStoreDir?: string;
-  userInput?: WorkflowUserInputContext;
-  toolPermissionPolicies?: WorkflowToolPermissionPolicyMap;
-  onRuntimeEvent?(event: WorkflowRuntimeEvent): Promise<void> | void;
-  onDefinedNodes?(event: WorkflowDefinitionEvent): Promise<void> | void;
+  userInput?: UserInputContext;
+  toolPermissionPolicies?: ToolPermissionPolicyMap;
+  onRuntimeEvent?(event: RuntimeEvent): Promise<void> | void;
+  onDefinedNodes?(event: DefinitionEvent): Promise<void> | void;
 }
 
-export interface WorkflowExecutionStorageBackendOptions {
+export interface ExecutionStorageBackendOptions {
   /** Persistent, private directory for agent Harness databases and ownership locks. */
   agentStoreDir?: string;
-  kvStore?: WorkflowKVStore;
+  kvStore?: KVStore;
   kvStoreDir?: string;
-  persistentValueStore?: WorkflowKVStore;
+  persistentValueStore?: KVStore;
   persistentValueStoreDir?: string;
-  relatedProjectResolver?: WorkflowRelatedProjectKVResolver;
+  relatedProjectResolver?: RelatedProjectKVResolver;
 }
 
-export interface WorkflowExecutionStorageOptions {
-  host: WorkflowProjectDataStorageLocation;
-  local?: WorkflowExecutionStorageBackendOptions;
-  server?: WorkflowExecutionStorageBackendOptions;
+export interface ExecutionStorageOptions {
+  host: ProjectDataStorageLocation;
+  local?: ExecutionStorageBackendOptions;
+  server?: ExecutionStorageBackendOptions;
 }
 
-interface WorkflowProjectStorageDeclaration {
+interface ProjectStorageDeclaration {
   projectId: string;
-  projectInfo: WorkflowProjectInfo;
+  projectInfo: ProjectInfoContract;
 }
 
 interface ExecutorStorageContexts {
-  storage: WorkflowStorageContext;
-  host: WorkflowStorageLocationContext;
+  storage: StorageContext;
+  host: StorageLocationContext;
 }
 
 const STEAMHARNESS_PROJECT_UUID_PATTERN =
@@ -212,13 +212,13 @@ const STEAMHARNESS_PROJECT_UUID_PATTERN =
 
 const RESUME_RUNTIME_EVENT_AFTER_REQUEST_ID = "__workflowResumeRuntimeEventAfterRequestId";
 
-type WorkflowUserInputContextWithResumeBarrier = WorkflowUserInputContext & {
+type UserInputContextWithResumeBarrier = UserInputContext & {
   [RESUME_RUNTIME_EVENT_AFTER_REQUEST_ID]?: string;
 };
 
 export async function runWorkspaceWorkflow(
   options: RunWorkspaceWorkflowOptions,
-): Promise<WorkflowResult<unknown>> {
+): Promise<RunResult<unknown>> {
   const report = await runWorkspaceWorkflowWithReport(options);
 
   return report.result;
@@ -226,7 +226,7 @@ export async function runWorkspaceWorkflow(
 
 export async function runWorkspaceWorkflowWithReport(
   options: RunWorkspaceWorkflowOptions,
-): Promise<WorkflowExecutionReport<unknown>> {
+): Promise<ExecutionReport<unknown>> {
   const cwd = options.cwd ?? process.cwd();
   const args = options.args ?? [];
   const env = options.env ?? process.env;
@@ -246,14 +246,14 @@ export async function runWorkspaceWorkflowWithReport(
       ...(options.layers ?? []),
     ],
   });
-  let definedNodes: WorkflowDefinedNode[] = [];
-  let registry: WorkflowNodeRegistryItem[] = [];
+  let definedNodes: DefinedNode[] = [];
+  let registry: NodeRegistryItem[] = [];
   let workflowDir = "";
   let activeEntrypointId: string | undefined;
   let activeEntrypointTitle: string | undefined;
   let activeConversationId: string | undefined;
-  let tokenUsage: WorkflowTokenUsageContext | undefined;
-  let result: WorkflowResult<unknown>;
+  let tokenUsage: TokenUsageContext | undefined;
+  let result: RunResult<unknown>;
 
   try {
     await runtime.prepare();
@@ -277,7 +277,7 @@ export async function runWorkspaceWorkflowWithReport(
     });
 
     if (scriptInspection.violations.length > 0) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "input_validation",
         message: `Workflow "${options.workflowName}" script validation failed.`,
         metadata: {
@@ -299,7 +299,7 @@ export async function runWorkspaceWorkflowWithReport(
     installWorkflowRuntimeGlobal();
     const module = await import(pathToFileURL(modulePath).href);
     const definition = resolveExecutorDefinition(
-      module as WorkflowExecutorModule,
+      module as ExecutorModule,
       options.workflowName,
     );
     const selected = resolveExecutorExecution(
@@ -311,7 +311,7 @@ export async function runWorkspaceWorkflowWithReport(
     activeEntrypointId = selected.entrypointId;
     activeEntrypointTitle = selected.entrypointTitle;
     await runtime.start({ id: selected.entrypointId, title: selected.entrypointTitle });
-    const executorContext: WorkflowExecutorContext = {
+    const executorContext: ExecutorContext = {
       workflowName: options.workflowName,
       workflowDir,
       entrypointId: selected.entrypointId,
@@ -375,7 +375,7 @@ export async function runWorkspaceWorkflowWithReport(
       runtime,
       userInput: options.userInput,
     });
-    const context: WorkflowContext = {
+    const context: RunContext = {
       ...extraContext,
       providers: mergeProviderRegistries(extraContext.providers, options.providers),
       storage: executorStorage.storage,
@@ -443,7 +443,7 @@ export async function debugWorkspaceWorkflowNodeWithReport(
   options: RunWorkspaceWorkflowOptions & {
     nodeName: string;
   },
-): Promise<WorkflowExecutionReport<unknown>> {
+): Promise<ExecutionReport<unknown>> {
   const cwd = options.cwd ?? process.cwd();
   const args = options.args ?? [];
   const env = options.env ?? process.env;
@@ -459,14 +459,14 @@ export async function debugWorkspaceWorkflowNodeWithReport(
       ...(options.layers ?? []),
     ],
   });
-  let definedNodes: WorkflowDefinedNode[] = [];
-  let registry: WorkflowNodeRegistryItem[] = [];
+  let definedNodes: DefinedNode[] = [];
+  let registry: NodeRegistryItem[] = [];
   let workflowDir = "";
   let activeEntrypointId: string | undefined;
   let activeEntrypointTitle: string | undefined;
   let activeConversationId: string | undefined;
-  let tokenUsage: WorkflowTokenUsageContext | undefined;
-  let result: WorkflowResult<unknown>;
+  let tokenUsage: TokenUsageContext | undefined;
+  let result: RunResult<unknown>;
 
   try {
     await runtime.prepare();
@@ -484,7 +484,7 @@ export async function debugWorkspaceWorkflowNodeWithReport(
     definedNodes = scriptInspection.definedNodes;
 
     if (scriptInspection.violations.length > 0) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "input_validation",
         message: `Workflow "${options.workflowName}" script validation failed.`,
         metadata: {
@@ -506,7 +506,7 @@ export async function debugWorkspaceWorkflowNodeWithReport(
     installWorkflowRuntimeGlobal();
     const module = await import(pathToFileURL(modulePath).href);
     const definition = resolveExecutorDefinition(
-      module as WorkflowExecutorModule,
+      module as ExecutorModule,
       options.workflowName,
     );
     const selected = resolveExecutorExecution(
@@ -518,7 +518,7 @@ export async function debugWorkspaceWorkflowNodeWithReport(
     activeEntrypointId = selected.entrypointId;
     activeEntrypointTitle = selected.entrypointTitle;
     await runtime.start({ id: selected.entrypointId, title: selected.entrypointTitle });
-    const executorContext: WorkflowExecutorContext = {
+    const executorContext: ExecutorContext = {
       workflowName: options.workflowName,
       workflowDir,
       entrypointId: selected.entrypointId,
@@ -584,7 +584,7 @@ export async function debugWorkspaceWorkflowNodeWithReport(
       runtime,
       userInput: options.userInput,
     });
-    const context: WorkflowContext = {
+    const context: RunContext = {
       ...extraContext,
       providers: mergeProviderRegistries(extraContext.providers, options.providers),
       storage: executorStorage.storage,
@@ -657,14 +657,14 @@ export async function debugWorkspaceWorkflowNodeWithReport(
 
 function createExecutorUserInputContext(options: {
   workflowName: string;
-  runtime: WorkflowRuntime;
-  userInput?: WorkflowUserInputContext;
-}): WorkflowUserInputContext | undefined {
+  runtime: Runtime;
+  userInput?: UserInputContext;
+}): UserInputContext | undefined {
   if (options.userInput === undefined) {
     return undefined;
   }
 
-  const nextContext: WorkflowUserInputContextWithResumeBarrier = {
+  const nextContext: UserInputContextWithResumeBarrier = {
     [RESUME_RUNTIME_EVENT_AFTER_REQUEST_ID]: readResumeRuntimeEventAfterRequestId(options.userInput),
     async getResolvedInput(requestId, request) {
       const resolved = await options.userInput?.getResolvedInput(requestId, request);
@@ -681,11 +681,11 @@ function createExecutorUserInputContext(options: {
       try {
         await options.userInput?.requestInput(request);
       } catch (error) {
-        if (error instanceof WorkflowError && error.type === "user_input_required") {
+        if (error instanceof HarnessError && error.type === "user_input_required") {
           throw error;
         }
       }
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "user_input_required",
         message: `Workflow "${options.workflowName}" is waiting for user input "${request.requestId}".`,
         nodeName: request.nodeName,
@@ -701,13 +701,13 @@ function createLocalUserInputContext(options: {
   workflowName: string;
   runId: string;
   reporter: ReturnType<typeof createNodeExecutionReporter>;
-  userInput?: WorkflowUserInputContext;
-}): WorkflowUserInputContext | undefined {
+  userInput?: UserInputContext;
+}): UserInputContext | undefined {
   if (options.userInput === undefined) {
     return undefined;
   }
 
-  const nextContext: WorkflowUserInputContextWithResumeBarrier = {
+  const nextContext: UserInputContextWithResumeBarrier = {
     [RESUME_RUNTIME_EVENT_AFTER_REQUEST_ID]: readResumeRuntimeEventAfterRequestId(options.userInput),
     async getResolvedInput(requestId, request) {
       const resolved = await options.userInput?.getResolvedInput(requestId, request);
@@ -724,12 +724,12 @@ function createLocalUserInputContext(options: {
       try {
         await options.userInput?.requestInput(request);
       } catch (error) {
-        if (error instanceof WorkflowError && error.type === "user_input_required") {
+        if (error instanceof HarnessError && error.type === "user_input_required") {
           throw error;
         }
       }
       // Save the pause marker so a local report can be resumed by runId.
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "user_input_required",
         message: `Workflow "${options.workflowName}" is waiting for user input "${request.requestId}".`,
         nodeName: request.nodeName,
@@ -746,7 +746,7 @@ function createLocalUserInputContext(options: {
 
 export async function runLocalWorkflow(
   options: RunLocalWorkflowOptions = {},
-): Promise<WorkflowResult<unknown>> {
+): Promise<RunResult<unknown>> {
   const report = await runLocalWorkflowWithReport(options);
 
   return report.result;
@@ -754,7 +754,7 @@ export async function runLocalWorkflow(
 
 export async function runLocalWorkflowWithReport(
   options: RunLocalWorkflowOptions = {},
-): Promise<WorkflowExecutionReport<unknown>> {
+): Promise<ExecutionReport<unknown>> {
   const workflowDir = resolveLocalWorkflowDir(options.workflowDir);
   let workflowName = options.workflowName ?? readLocalWorkflowName(workflowDir);
   assertLocalProjectIsExecutable(workflowDir, workflowName);
@@ -787,14 +787,14 @@ export async function runLocalWorkflowWithReport(
         timer: event.timer,
       }),
   });
-  let definedNodes: WorkflowDefinedNode[] = [];
-  let registry: WorkflowNodeRegistryItem[] = [];
+  let definedNodes: DefinedNode[] = [];
+  let registry: NodeRegistryItem[] = [];
   let activeEntrypointId: string | undefined;
   let activeEntrypointTitle: string | undefined;
   let activeConversationId: string | undefined;
   let startedEventEmitted = false;
-  let tokenUsage: WorkflowTokenUsageContext | undefined;
-  let result: WorkflowResult<unknown>;
+  let tokenUsage: TokenUsageContext | undefined;
+  let result: RunResult<unknown>;
 
   try {
     const modulePath = resolveLocalWorkflowModulePath(workflowDir, workflowName);
@@ -812,7 +812,7 @@ export async function runLocalWorkflowWithReport(
     });
 
     if (scriptInspection.violations.length > 0) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "input_validation",
         message: `Workflow "${workflowName}" script validation failed.`,
         metadata: {
@@ -833,7 +833,7 @@ export async function runLocalWorkflowWithReport(
     installWorkflowRuntimeGlobal();
     const module = await import(pathToFileURL(modulePath).href);
     const definition = resolveExecutorDefinition(
-      module as WorkflowExecutorModule,
+      module as ExecutorModule,
       workflowName,
     );
     const selected = resolveExecutorExecution(
@@ -856,7 +856,7 @@ export async function runLocalWorkflowWithReport(
     });
     startedEventEmitted = true;
 
-    const executorContext: WorkflowExecutorContext = {
+    const executorContext: ExecutorContext = {
       workflowName,
       workflowDir,
       entrypointId: selected.entrypointId,
@@ -924,7 +924,7 @@ export async function runLocalWorkflowWithReport(
       reporter,
       userInput: options.userInput,
     });
-    const context: WorkflowContext = {
+    const context: RunContext = {
       ...extraContext,
       providers: mergeProviderRegistries(extraContext.providers, options.providers),
       storage: executorStorage.storage,
@@ -1042,20 +1042,20 @@ export async function runLocalWorkflowWithReport(
 }
 
 function readResumeRuntimeEventAfterRequestId(
-  userInput: WorkflowUserInputContext | undefined,
+  userInput: UserInputContext | undefined,
 ): string | undefined {
   if (userInput === undefined || typeof userInput !== "object" || userInput === null) {
     return undefined;
   }
 
-  const value = (userInput as unknown as WorkflowUserInputContextWithResumeBarrier)[RESUME_RUNTIME_EVENT_AFTER_REQUEST_ID];
+  const value = (userInput as unknown as UserInputContextWithResumeBarrier)[RESUME_RUNTIME_EVENT_AFTER_REQUEST_ID];
   return typeof value === "string" && value.trim() !== "" ? value : undefined;
 }
 
 function createResumeAwareRuntimeEventHandler(
-  onRuntimeEvent: ((event: WorkflowRuntimeEvent) => Promise<void> | void) | undefined,
+  onRuntimeEvent: ((event: RuntimeEvent) => Promise<void> | void) | undefined,
   resumeAfterRequestId: string | undefined,
-): ((event: WorkflowRuntimeEvent) => Promise<void>) | undefined {
+): ((event: RuntimeEvent) => Promise<void>) | undefined {
   if (onRuntimeEvent === undefined) {
     return undefined;
   }
@@ -1094,7 +1094,7 @@ function createResumeAwareRuntimeEventHandler(
 export function inspectWorkspaceWorkflowStructure(options: {
   cwd?: string;
   workflowName: string;
-}): WorkflowStructureReport {
+}): StructureReport {
   const cwd = options.cwd ?? process.cwd();
   const { workflowDir } = resolveWorkflowLocation(cwd, options.workflowName);
 
@@ -1105,7 +1105,7 @@ export function inspectWorkspaceWorkflowStructure(options: {
   });
 
   if (scriptInspection.diagnostics.violations.length > 0) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `Workflow "${options.workflowName}" script validation failed.`,
       metadata: {
@@ -1148,7 +1148,7 @@ export function inspectWorkspaceWorkflowStructure(options: {
 export function inspectLocalWorkflowStructure(options: {
   workflowDir?: string;
   workflowName?: string;
-} = {}): WorkflowStructureReport {
+} = {}): StructureReport {
   const workflowDir = resolveLocalWorkflowDir(options.workflowDir);
   const workflowName = options.workflowName ?? readLocalWorkflowName(workflowDir);
 
@@ -1159,7 +1159,7 @@ export function inspectLocalWorkflowStructure(options: {
     const artifactEntryPath = createKanbanArtifactEntryPath(artifact);
     const entryPath = path.join(workflowDir, ...artifactEntryPath.split("/"));
     if (!existsSync(entryPath) || !isRegularKanbanArtifactEntry(workflowDir, artifactEntryPath)) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "input_validation",
         message: `Kanban project "${workflowName}" must contain regular artifact entry ${artifactEntryPath}.`,
         metadata: { workflow: workflowName, workflowDir, artifact },
@@ -1191,7 +1191,7 @@ export function inspectLocalWorkflowStructure(options: {
   });
 
   if (scriptInspection.diagnostics.violations.length > 0) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `Workflow "${workflowName}" script validation failed.`,
       metadata: {
@@ -1233,11 +1233,11 @@ export function inspectLocalWorkflowStructure(options: {
 
 function resolveInspectedProjectType(
   inspection: {
-    projectType?: WorkflowExecutorProjectType;
+    projectType?: ExecutorProjectType;
     entrypoints?: unknown[];
     defaultEntrypoint?: string;
   },
-): WorkflowExecutorProjectType {
+): ExecutorProjectType {
   if (inspection.projectType !== undefined) return inspection.projectType;
   return inspection.entrypoints !== undefined || inspection.defaultEntrypoint !== undefined
     ? "workflow"
@@ -1248,12 +1248,12 @@ export async function resolveWorkspaceWorkflowParams(options: {
   cwd?: string;
   workflowName: string;
   entrypointId?: string;
-  request: WorkflowParamResolveRequest;
+  request: ParamResolveRequest;
   env?: NodeJS.ProcessEnv;
   abortSignal?: AbortSignal;
   hostInput?: unknown;
-  storage?: WorkflowExecutionStorageOptions;
-}): Promise<WorkflowParamResolveResult> {
+  storage?: ExecutionStorageOptions;
+}): Promise<ParamResolveResult> {
   const cwd = options.cwd ?? process.cwd();
   const location = resolveWorkflowLocation(cwd, options.workflowName);
   const declaration = readWorkflowProjectStorageDeclaration(location.workflowDir);
@@ -1275,12 +1275,12 @@ export async function resolveLocalWorkflowParams(options: {
   workflowDir?: string;
   workflowName?: string;
   entrypointId?: string;
-  request: WorkflowParamResolveRequest;
+  request: ParamResolveRequest;
   env?: NodeJS.ProcessEnv;
   abortSignal?: AbortSignal;
   hostInput?: unknown;
-  storage?: WorkflowExecutionStorageOptions;
-}): Promise<WorkflowParamResolveResult> {
+  storage?: ExecutionStorageOptions;
+}): Promise<ParamResolveResult> {
   const workflowDir = resolveLocalWorkflowDir(options.workflowDir);
   const workflowName = options.workflowName ?? readLocalWorkflowName(workflowDir);
   assertLocalProjectIsExecutable(workflowDir, workflowName);
@@ -1303,14 +1303,14 @@ async function resolveWorkflowParamsFromModule(options: {
   workflowName: string;
   workflowDir: string;
   modulePath: string;
-  declaration: WorkflowProjectStorageDeclaration;
-  storage?: WorkflowExecutionStorageOptions;
+  declaration: ProjectStorageDeclaration;
+  storage?: ExecutionStorageOptions;
   entrypointId?: string;
-  request: WorkflowParamResolveRequest;
+  request: ParamResolveRequest;
   env?: NodeJS.ProcessEnv;
   abortSignal?: AbortSignal;
   hostInput?: unknown;
-}): Promise<WorkflowParamResolveResult> {
+}): Promise<ParamResolveResult> {
   const abortSignal = options.abortSignal ?? new AbortController().signal;
   if (abortSignal.aborted) throw abortSignal.reason;
   loadWorkflowEnv(path.join(options.workflowDir, ".env"));
@@ -1322,7 +1322,7 @@ async function resolveWorkflowParamsFromModule(options: {
   });
   installWorkflowRuntimeGlobal();
   const module = await import(pathToFileURL(options.modulePath).href);
-  const definition = resolveExecutorDefinition(module as WorkflowExecutorModule, options.workflowName);
+  const definition = resolveExecutorDefinition(module as ExecutorModule, options.workflowName);
   const selected = resolveExecutorExecution(
     definition,
     options.entrypointId,
@@ -1359,16 +1359,16 @@ async function resolveWorkflowParamsFromModule(options: {
 }
 
 function createExecutorConversationContext(options: {
-  definition: WorkflowExecutorDefinition<unknown, unknown>;
+  definition: ExecutorDefinition<unknown, unknown>;
   workflowName: string;
   conversationId?: string;
-  kv: WorkflowKVContext;
+  kv: KVContext;
   onTitleChange?: (event: {
     conversationId: string;
     title?: string;
     updatedAt: string;
   }) => Promise<void> | void;
-}): WorkflowConversationContext {
+}): ConversationContext {
   if (!isConversationProjectType(options.definition.projectType)) {
     return createDisabledWorkflowConversationContext();
   }
@@ -1383,7 +1383,7 @@ function createExecutorConversationContext(options: {
   });
 }
 
-function createReportTokenUsage(tokenUsage?: WorkflowTokenUsageContext) {
+function createReportTokenUsage(tokenUsage?: TokenUsageContext) {
   return tokenUsage?.enabled === true
     ? {
         enabled: true as const,
@@ -1394,7 +1394,7 @@ function createReportTokenUsage(tokenUsage?: WorkflowTokenUsageContext) {
 }
 
 function resolveExecutorConversationId(
-  definition: WorkflowExecutorDefinition<unknown, unknown>,
+  definition: ExecutorDefinition<unknown, unknown>,
   requestedConversationId: string | undefined,
   inputConversationId?: string,
 ): string | undefined {
@@ -1422,12 +1422,12 @@ function readInputConversationId(input: unknown): string | undefined {
 }
 
 function createExecutorStorageContexts(options: {
-  declaration: WorkflowProjectStorageDeclaration;
+  declaration: ProjectStorageDeclaration;
   env?: NodeJS.ProcessEnv;
   workflowName: string;
   runId?: string;
   conversationId?: string;
-  options?: WorkflowExecutionStorageOptions;
+  options?: ExecutionStorageOptions;
 }): ExecutorStorageContexts {
   const executionStorage = resolveWorkflowExecutionStorageOptions(options.options, options.env);
   const local = createExecutorStorageLocationContext({
@@ -1463,15 +1463,15 @@ function createExecutorStorageContexts(options: {
 }
 
 function createExecutorStorageLocationContext(options: {
-  location: WorkflowProjectDataStorageLocation;
-  declaration: WorkflowProjectStorageDeclaration;
-  backend?: WorkflowExecutionStorageBackendOptions;
+  location: ProjectDataStorageLocation;
+  declaration: ProjectStorageDeclaration;
+  backend?: ExecutionStorageBackendOptions;
   env?: NodeJS.ProcessEnv;
   workflowName: string;
   runId?: string;
   conversationId?: string;
 }): {
-  context: WorkflowStorageLocationContext;
+  context: StorageLocationContext;
   available: boolean;
   unavailableReason?: string;
 } {
@@ -1593,11 +1593,11 @@ function createExecutorStorageLocationContext(options: {
 }
 
 function createUnavailableWorkflowStorageLocationContext(
-  location: WorkflowProjectDataStorageLocation,
+  location: ProjectDataStorageLocation,
   projectId: string,
   conversationId: string | undefined,
   reason: string,
-): WorkflowStorageLocationContext {
+): StorageLocationContext {
   const store = createUnavailableWorkflowStorageStore(location, reason);
   return {
     kv: createWorkflowKVContext({ store, projectId, conversationId }),
@@ -1607,9 +1607,9 @@ function createUnavailableWorkflowStorageLocationContext(
 }
 
 function createUnavailableWorkflowStorageStore(
-  location: WorkflowProjectDataStorageLocation,
+  location: ProjectDataStorageLocation,
   reason: string,
-): WorkflowKVStore {
+): KVStore {
   const fail = (): never => {
     throw createWorkflowStorageUnavailableError(location, reason);
   };
@@ -1625,10 +1625,10 @@ function createUnavailableWorkflowStorageStore(
 }
 
 function createWorkflowStorageUnavailableError(
-  location: WorkflowProjectDataStorageLocation,
+  location: ProjectDataStorageLocation,
   reason?: string,
-): WorkflowError {
-  return new WorkflowError({
+): HarnessError {
+  return new HarnessError({
     type: "input_validation",
     message: reason ?? `Workflow ${location} storage is unavailable.`,
     metadata: { storageLocation: location },
@@ -1636,9 +1636,9 @@ function createWorkflowStorageUnavailableError(
 }
 
 function resolveWorkflowExecutionStorageOptions(
-  options: WorkflowExecutionStorageOptions | undefined,
+  options: ExecutionStorageOptions | undefined,
   env: NodeJS.ProcessEnv | undefined,
-): WorkflowExecutionStorageOptions {
+): ExecutionStorageOptions {
   if (options !== undefined) return options;
   return {
     host: "local",
@@ -1650,12 +1650,12 @@ function resolveWorkflowExecutionStorageOptions(
 }
 
 function resolveWorkflowExecutionHostLocation(
-  projectInfo: WorkflowProjectInfo,
-  preferredHost: WorkflowProjectDataStorageLocation,
-): WorkflowProjectDataStorageLocation {
+  projectInfo: ProjectInfoContract,
+  preferredHost: ProjectDataStorageLocation,
+): ProjectDataStorageLocation {
   const mode = projectInfo.dataStorage?.mode;
   if (mode === undefined) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "steamHarness.projectInfo.dataStorage.mode must be declared before this project can run.",
     });
@@ -1664,10 +1664,10 @@ function resolveWorkflowExecutionHostLocation(
 }
 
 function assertWorkflowProjectStorageHostAvailable(options: {
-  declaration: WorkflowProjectStorageDeclaration;
+  declaration: ProjectStorageDeclaration;
   env?: NodeJS.ProcessEnv;
   workflowName: string;
-  options?: WorkflowExecutionStorageOptions;
+  options?: ExecutionStorageOptions;
 }): void {
   createExecutorStorageContexts({
     declaration: options.declaration,
@@ -1679,13 +1679,13 @@ function assertWorkflowProjectStorageHostAvailable(options: {
 
 function readWorkflowProjectStorageDeclaration(
   workflowDir: string,
-): WorkflowProjectStorageDeclaration {
+): ProjectStorageDeclaration {
   const packagePath = path.join(workflowDir, "package.json");
   let packageJson: unknown;
   try {
     packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
   } catch (error) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `Workflow package.json could not be read at ${packagePath}.`,
       metadata: {
@@ -1694,17 +1694,17 @@ function readWorkflowProjectStorageDeclaration(
       },
     });
   }
-  let projectInfo: WorkflowProjectInfo;
+  let projectInfo: ProjectInfoContract;
   try {
     projectInfo = readWorkflowProjectInfo(packageJson);
   } catch (error) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: error instanceof Error ? error.message : "steamHarness.projectInfo is invalid.",
     });
   }
   if (projectInfo.dataStorage === null) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "steamHarness.projectInfo.dataStorage.mode must be declared before this project can run or access data.",
       metadata: { packagePath },
@@ -1714,7 +1714,7 @@ function readWorkflowProjectStorageDeclaration(
     ? packageJson["id"].trim() || undefined
     : undefined;
   if (projectId === undefined || !STEAMHARNESS_PROJECT_UUID_PATTERN.test(projectId)) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "package.json.id must be a UUID before this project can run or access data.",
       metadata: { packagePath },
@@ -1725,7 +1725,7 @@ function readWorkflowProjectStorageDeclaration(
 
 function readReportConversationId(
   requestedConversationId: string | undefined,
-  result: WorkflowResult<unknown>,
+  result: RunResult<unknown>,
 ): string | undefined {
   if (requestedConversationId !== undefined) {
     return requestedConversationId;
@@ -1758,9 +1758,9 @@ function mergeProviderRegistries(
 }
 
 function resolveWorkflowNodeRegistry(
-  entries: WorkflowNodeRegistryEntry[] | undefined,
-  context: WorkflowExecutorContext,
-): WorkflowNodeRegistryItem[] {
+  entries: NodeRegistryEntry[] | undefined,
+  context: ExecutorContext,
+): NodeRegistryItem[] {
   return (entries ?? []).map((entry) => {
     const standardName = readNodeStandardName(entry.node);
     const fallbackType = standardName ?? entry.name;
@@ -1781,14 +1781,14 @@ function resolveWorkflowNodeRegistry(
 }
 
 function resolveDebugNodeEntry(
-  entries: WorkflowNodeRegistryEntry[] | undefined,
+  entries: NodeRegistryEntry[] | undefined,
   nodeName: string,
-): WorkflowNodeRegistryEntry {
+): NodeRegistryEntry {
   const normalizedName = nodeName.trim();
   const entry = (entries ?? []).find((item) => item.name === normalizedName);
 
   if (entry === undefined) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `Debug node "${normalizedName}" is not registered. Add it to executor.registry before using single-node debug.`,
       nodeName: normalizedName,
@@ -1803,13 +1803,13 @@ function resolveDebugNodeEntry(
 }
 
 function requireDebugNode(
-  entry: WorkflowNodeRegistryEntry,
+  entry: NodeRegistryEntry,
 ): NodeDefinition<unknown, unknown> {
   if ("run" in entry.node && typeof entry.node.run === "function") {
     return entry.node;
   }
 
-  throw new WorkflowError({
+  throw new HarnessError({
     type: "input_validation",
     message: `Debug node "${entry.name}" is a stream node. Mark its registry entry with stream: true.`,
     nodeName: entry.name,
@@ -1817,41 +1817,41 @@ function requireDebugNode(
 }
 
 function requireStreamDebugNode(
-  entry: WorkflowNodeRegistryEntry,
+  entry: NodeRegistryEntry,
 ): StreamNodeDefinition<unknown, unknown, unknown> {
   if ("stream" in entry.node && typeof entry.node.stream === "function") {
     return entry.node;
   }
 
-  throw new WorkflowError({
+  throw new HarnessError({
     type: "input_validation",
     message: `Debug node "${entry.name}" is not a stream node. Remove stream: true from its registry entry.`,
     nodeName: entry.name,
   });
 }
 
-function readNodeName(node: WorkflowNodeRegistryEntry["node"]): string | undefined {
+function readNodeName(node: NodeRegistryEntry["node"]): string | undefined {
   return typeof node.name === "string" && node.name.trim() !== "" ? node.name : undefined;
 }
 
-function readNodeStandardName(node: WorkflowNodeRegistryEntry["node"]): string | undefined {
+function readNodeStandardName(node: NodeRegistryEntry["node"]): string | undefined {
   return typeof node.standardName === "string" && node.standardName.trim() !== ""
     ? node.standardName
     : undefined;
 }
 
-function readNodeMetadata(node: WorkflowNodeRegistryEntry["node"]): WorkflowNodeMetadata | undefined {
+function readNodeMetadata(node: NodeRegistryEntry["node"]): NodeMetadata | undefined {
   return node.metadata === undefined ? undefined : { ...node.metadata };
 }
 
 export async function runWorkspaceWorkflowFromCli(
   argv: string[],
-): Promise<WorkflowResult<unknown>> {
+): Promise<RunResult<unknown>> {
   const { workflowName, args, entrypointId } = parseWorkspaceWorkflowCliArgs(argv);
 
   if (workflowName === undefined || workflowName.trim() === "") {
     return createWorkflowFailure(
-      new WorkflowError({
+      new HarnessError({
         type: "input_validation",
         message: "Missing workflow name. Usage: pnpm workflow <workflow-name> [...args]",
       }),
@@ -1875,14 +1875,14 @@ export async function runWorkspaceWorkflowFromCli(
 export async function runWorkspaceWorkflowReportFromCli(
   argv: string[],
   options: Pick<RunWorkspaceWorkflowOptions, "nodeHooks" | "onDefinedNodes" | "entrypointId"> = {},
-): Promise<WorkflowExecutionReport<unknown>> {
+): Promise<ExecutionReport<unknown>> {
   const parsed = parseWorkspaceWorkflowCliArgs(argv);
   const { workflowName, args } = parsed;
 
   if (workflowName === undefined || workflowName.trim() === "") {
     const startedAt = new Date();
     const result = createWorkflowFailure(
-      new WorkflowError({
+      new HarnessError({
         type: "input_validation",
         message: "Missing workflow name. Usage: pnpm workflow <workflow-name> [...args]",
       }),
@@ -1935,7 +1935,7 @@ function parseWorkspaceWorkflowCliArgs(argv: string[]): {
     if (arg === "--entrypoint") {
       const value = rest[++index];
       if (value === undefined || value.trim() === "") {
-        throw new WorkflowError({
+        throw new HarnessError({
           type: "input_validation",
           message: "Missing value for --entrypoint.",
         });
@@ -1950,11 +1950,11 @@ function parseWorkspaceWorkflowCliArgs(argv: string[]): {
 
 export function inspectWorkspaceWorkflowStructureFromCli(
   argv: string[],
-): WorkflowStructureReport {
+): StructureReport {
   const [workflowName] = argv;
 
   if (workflowName === undefined || workflowName.trim() === "") {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "Missing workflow directory. Usage: steamharness structure <workflow-dir>",
     });
@@ -1966,9 +1966,9 @@ export function inspectWorkspaceWorkflowStructureFromCli(
 }
 
 function resolveExecutorDefinition(
-  module: WorkflowExecutorModule,
+  module: ExecutorModule,
   workflowName: string,
-): WorkflowExecutorDefinition<unknown, unknown> {
+): ExecutorDefinition<unknown, unknown> {
   if (isWorkflowExecutorShape(module.executor)) {
     return validateExecutorDefinition(module.executor, workflowName);
   }
@@ -1977,7 +1977,7 @@ function resolveExecutorDefinition(
     return validateExecutorDefinition(module.default, workflowName);
   }
 
-  throw new WorkflowError({
+  throw new HarnessError({
     type: "input_validation",
     message: createProjectTypeValidationMessage(
       `Workflow "${workflowName}" must export an executor created by workflow.defineExecutor(...).`,
@@ -1988,7 +1988,7 @@ function resolveExecutorDefinition(
   });
 }
 
-interface WorkflowExecutorDefinitionShape extends Record<string, unknown> {
+interface ExecutorDefinitionShape extends Record<string, unknown> {
   projectType?: unknown;
   conversation?: unknown;
   workflow?: unknown;
@@ -1999,7 +1999,7 @@ interface WorkflowExecutorDefinitionShape extends Record<string, unknown> {
 
 function isWorkflowExecutorShape(
   value: unknown,
-): value is WorkflowExecutorDefinitionShape {
+): value is ExecutorDefinitionShape {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -2012,12 +2012,12 @@ function isWorkflowExecutorShape(
 }
 
 function validateExecutorDefinition(
-  definition: WorkflowExecutorDefinitionShape,
+  definition: ExecutorDefinitionShape,
   workflowName: string,
-): WorkflowExecutorDefinition<unknown, unknown> {
+): ExecutorDefinition<unknown, unknown> {
   const projectType = resolveRuntimeExecutorProjectType(definition);
   if (projectType === undefined) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `Workflow "${workflowName}" executor shape is not runnable.`,
       metadata: { workflow: workflowName },
@@ -2030,27 +2030,27 @@ function validateExecutorDefinition(
   switch (projectType) {
     case "conversation": {
       if (!isWorkflowDefinition(normalizedDefinition.workflow) || typeof normalizedDefinition.createInput !== "function") {
-        throw new WorkflowError({
+        throw new HarnessError({
           type: "input_validation",
           message: `Conversation "${workflowName}" must declare workflow and createInput on its executor.`,
           metadata: { workflow: workflowName, projectType },
         });
       }
       if (normalizedDefinition.entrypoints !== undefined || normalizedDefinition.defaultEntrypoint !== undefined) {
-        throw new WorkflowError({
+        throw new HarnessError({
           type: "input_validation",
           message: `Conversation "${workflowName}" does not support entrypoints. Keep its executor as a single workflow.`,
           metadata: { workflow: workflowName, projectType },
         });
       }
       validateConversationOpenAIAdapter(normalizedDefinition.conversation, workflowName);
-      assertWorkflowParamDeclarations((normalizedDefinition as WorkflowExecutionDefinition<unknown, unknown>).params, "conversation");
+      assertWorkflowParamDeclarations((normalizedDefinition as ExecutionDefinition<unknown, unknown>).params, "conversation");
       assertConversationFooter(isRecord(normalizedDefinition.conversation) ? normalizedDefinition.conversation.footer : undefined,
-        normalizeWorkflowParamDeclarations((normalizedDefinition as WorkflowExecutionDefinition<unknown, unknown>).params).params);
+        normalizeWorkflowParamDeclarations((normalizedDefinition as ExecutionDefinition<unknown, unknown>).params).params);
       assertConversationCommands(isRecord(normalizedDefinition.conversation) ? normalizedDefinition.conversation.commands : undefined,
-        normalizeWorkflowParamDeclarations((normalizedDefinition as WorkflowExecutionDefinition<unknown, unknown>).params).params);
+        normalizeWorkflowParamDeclarations((normalizedDefinition as ExecutionDefinition<unknown, unknown>).params).params);
       assertConversationUserInput(isRecord(normalizedDefinition.conversation) ? normalizedDefinition.conversation.userInput : undefined,
-        normalizeWorkflowParamDeclarations((normalizedDefinition as WorkflowExecutionDefinition<unknown, unknown>).params).params);
+        normalizeWorkflowParamDeclarations((normalizedDefinition as ExecutionDefinition<unknown, unknown>).params).params);
       break;
     }
     case "workflow": {
@@ -2061,20 +2061,20 @@ function validateExecutorDefinition(
       assertNeverWorkflowExecutorProjectType(projectType);
   }
 
-  return normalizedDefinition as WorkflowExecutorDefinition<unknown, unknown>;
+  return normalizedDefinition as ExecutorDefinition<unknown, unknown>;
 }
 
 function validateConversationOpenAIAdapter(value: unknown, workflowName: string): void {
   if (value === undefined) return;
   if (!isRecord(value)) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `Conversation "${workflowName}" settings must be an object.`,
       metadata: { workflow: workflowName, projectType: "conversation" },
     });
   }
   if (Object.hasOwn(value, "defaultInput")) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "conversation.defaultInput was removed. Conversation always uses the standard message input; declare attachment capabilities in conversation.attachments.",
     });
@@ -2086,7 +2086,7 @@ function validateConversationOpenAIAdapter(value: unknown, workflowName: string)
     || typeof value.openai.outputItemId !== "string"
     || value.openai.outputItemId.trim() === ""
   ) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `Conversation "${workflowName}" openai adapter must declare enabled: true and a non-empty outputItemId.`,
       metadata: { workflow: workflowName, projectType: "conversation" },
@@ -2095,8 +2095,8 @@ function validateConversationOpenAIAdapter(value: unknown, workflowName: string)
 }
 
 function resolveRuntimeExecutorProjectType(
-  definition: WorkflowExecutorDefinitionShape,
-): WorkflowExecutorProjectType | undefined {
+  definition: ExecutorDefinitionShape,
+): ExecutorProjectType | undefined {
   if (isWorkflowExecutorProjectType(definition.projectType)) return definition.projectType;
   if (Array.isArray(definition.entrypoints) || definition.defaultEntrypoint !== undefined) return "workflow";
   if (isWorkflowDefinition(definition.workflow)
@@ -2108,12 +2108,12 @@ function resolveRuntimeExecutorProjectType(
 }
 
 function assertWorkflowEntrypointsShape(
-  definition: WorkflowExecutorDefinitionShape,
+  definition: ExecutorDefinitionShape,
   workflowName: string,
-): asserts definition is WorkflowExecutorDefinitionShape & {
+): asserts definition is ExecutorDefinitionShape & {
   projectType: "workflow";
   defaultEntrypoint: string;
-  entrypoints: WorkflowEntrypointDefinition<unknown, unknown>[];
+  entrypoints: EntrypointDefinition<unknown, unknown>[];
 } {
   const legacyKeys = [
     "workflow",
@@ -2127,7 +2127,7 @@ function assertWorkflowEntrypointsShape(
     "createContext",
   ].filter((key) => Object.hasOwn(definition, key));
   if (legacyKeys.length > 0) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `Workflow "${workflowName}" uses removed top-level executor fields (${legacyKeys.join(", ")}). Move each execution configuration into workflow.defineEntrypoint(...).`,
       metadata: { workflow: workflowName, legacyKeys },
@@ -2137,14 +2137,14 @@ function assertWorkflowEntrypointsShape(
     typeof definition.defaultEntrypoint !== "string" ||
     definition.defaultEntrypoint.trim() === ""
   ) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `Workflow "${workflowName}" must declare a static defaultEntrypoint string.`,
       metadata: { workflow: workflowName },
     });
   }
   if (!Array.isArray(definition.entrypoints) || definition.entrypoints.length === 0) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `Workflow "${workflowName}" must declare at least one entrypoint.`,
       metadata: { workflow: workflowName },
@@ -2152,17 +2152,17 @@ function assertWorkflowEntrypointsShape(
   }
 
   const ids = new Set<string>();
-  const groups = new Map<string, WorkflowEntrypointGroupDefinition>();
+  const groups = new Map<string, EntrypointGroupDefinition>();
   for (const value of definition.entrypoints) {
     if (!isWorkflowEntrypointDefinition(value)) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "input_validation",
         message: `Workflow "${workflowName}" contains an invalid entrypoint definition.`,
         metadata: { workflow: workflowName },
       });
     }
     if (ids.has(value.id)) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "input_validation",
         message: `Workflow "${workflowName}" declares duplicate entrypoint id "${value.id}".`,
         metadata: { workflow: workflowName, entrypointId: value.id },
@@ -2175,7 +2175,7 @@ function assertWorkflowEntrypointsShape(
         existing !== undefined &&
         (existing.title !== value.group.title || existing.order !== value.group.order)
       ) {
-        throw new WorkflowError({
+        throw new HarnessError({
           type: "input_validation",
           message: `Workflow "${workflowName}" entrypoint group "${value.group.id}" must use identical title and order in every entrypoint.`,
           metadata: { workflow: workflowName, groupId: value.group.id },
@@ -2185,7 +2185,7 @@ function assertWorkflowEntrypointsShape(
     }
   }
   if (!ids.has(definition.defaultEntrypoint)) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `Workflow "${workflowName}" defaultEntrypoint "${definition.defaultEntrypoint}" does not match a declared entrypoint.`,
       metadata: {
@@ -2199,7 +2199,7 @@ function assertWorkflowEntrypointsShape(
 
 function isWorkflowEntrypointDefinition(
   value: unknown,
-): value is WorkflowEntrypointDefinition<unknown, unknown> {
+): value is EntrypointDefinition<unknown, unknown> {
   if (typeof value !== "object" || value === null) return false;
   const entrypoint = value as Record<string, unknown>;
   return (
@@ -2215,7 +2215,7 @@ function isWorkflowEntrypointDefinition(
 
 function isWorkflowEntrypointGroupDefinition(
   value: unknown,
-): value is WorkflowEntrypointGroupDefinition | undefined {
+): value is EntrypointGroupDefinition | undefined {
   if (value === undefined) return true;
   if (!isRecord(value)) return false;
   return (
@@ -2235,20 +2235,20 @@ function isWorkflowEntrypointGroupDefinition(
 }
 
 interface ResolvedExecutorExecution {
-  execution: WorkflowExecutionDefinition<unknown, unknown>;
+  execution: ExecutionDefinition<unknown, unknown>;
   entrypointId?: string;
   entrypointTitle?: string;
 }
 
 function resolveExecutorExecution(
-  definition: WorkflowExecutorDefinition<unknown, unknown>,
+  definition: ExecutorDefinition<unknown, unknown>,
   requestedEntrypointId: string | undefined,
   workflowName: string,
 ): ResolvedExecutorExecution {
   const requested = requestedEntrypointId?.trim();
   if (definition.projectType === "conversation") {
     if (requested !== undefined && requested !== "") {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "input_validation",
         message: `Conversation "${workflowName}" does not accept an entrypoint.`,
         metadata: { workflow: workflowName, entrypointId: requested },
@@ -2262,7 +2262,7 @@ function resolveExecutorExecution(
     : requested;
   const entrypoint = definition.entrypoints.find((item) => item.id === entrypointId);
   if (entrypoint === undefined) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `Unknown entrypoint "${entrypointId}" for workflow "${workflowName}".`,
       metadata: {
@@ -2274,7 +2274,7 @@ function resolveExecutorExecution(
     });
   }
   return {
-    execution: entrypoint as WorkflowExecutionDefinition<unknown, unknown>,
+    execution: entrypoint as ExecutionDefinition<unknown, unknown>,
     entrypointId: entrypoint.id,
     entrypointTitle: entrypoint.title,
   };
@@ -2284,7 +2284,7 @@ function createProjectTypeValidationMessage(reason: string): string {
   return `${reason}\n\nMigration example:\n${STEAMHARNESS_PROJECT_TYPE_MIGRATION_EXAMPLE}`;
 }
 
-function isConversationProjectType(projectType: WorkflowExecutorProjectType): boolean {
+function isConversationProjectType(projectType: ExecutorProjectType): boolean {
   switch (projectType) {
     case "conversation":
       return true;
@@ -2297,12 +2297,12 @@ function isConversationProjectType(projectType: WorkflowExecutorProjectType): bo
 
 function isWorkflowDefinition(
   value: unknown,
-): value is WorkflowDefinition<unknown, unknown> {
+): value is Definition<unknown, unknown> {
   return (
     typeof value === "object" &&
     value !== null &&
-    typeof (value as WorkflowDefinition<unknown, unknown>).name === "string" &&
-    typeof (value as WorkflowDefinition<unknown, unknown>).run === "function"
+    typeof (value as Definition<unknown, unknown>).name === "string" &&
+    typeof (value as Definition<unknown, unknown>).run === "function"
   );
 }
 
@@ -2321,7 +2321,7 @@ function diagnoseModuleImportError(
   error: unknown,
   workflowDir: string,
   workflowName: string,
-): WorkflowError | null {
+): HarnessError | null {
   if (!isModuleNotFoundError(error)) {
     return null;
   }
@@ -2334,7 +2334,7 @@ function diagnoseModuleImportError(
   const declaredDeps = readWorkflowDeclaredDependencies(workflowDir);
 
   if (declaredDeps.size > 0 && declaredDeps.has(missingModule)) {
-    return new WorkflowError({
+    return new HarnessError({
       type: "workflow_execution",
       message: `Workflow "${workflowName}" depends on "${missingModule}" which is not installed. Run "pnpm install" in the workflow directory to install dependencies.`,
       metadata: { workflow: workflowName, missingModule },
@@ -2342,7 +2342,7 @@ function diagnoseModuleImportError(
   }
 
   if (declaredDeps.size > 0) {
-    return new WorkflowError({
+    return new HarnessError({
       type: "workflow_execution",
       message: `Module "${missingModule}" is required by workflow "${workflowName}" but was not found. Dependencies may not be installed. Run "pnpm install" in the workflow directory to install dependencies.`,
       metadata: { workflow: workflowName, missingModule },
@@ -2413,7 +2413,7 @@ function resolveWorkflowLocation(
   const modulePath = resolveWorkflowModulePath(cwd, workflowDir, workflowName);
 
   if (!existsSync(modulePath)) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `Workflow "${workflowName}" does not exist.`,
       metadata: {
@@ -2479,7 +2479,7 @@ function resolveLocalWorkflowModulePath(
     }
   }
 
-  throw new WorkflowError({
+  throw new HarnessError({
     type: "input_validation",
     message: `Workflow "${workflowName}" does not have an index.ts or index.js entry.`,
     metadata: {
@@ -2534,7 +2534,7 @@ function readLocalPackageJson(workflowDir: string): unknown {
   try {
     return JSON.parse(readFileSync(packageJsonPath, "utf8")) as unknown;
   } catch {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `Project package.json is invalid JSON.`,
       metadata: { workflowDir },
@@ -2544,17 +2544,17 @@ function readLocalPackageJson(workflowDir: string): unknown {
 
 function readWorkflowSchedulePresets(
   workflowDir: string,
-  projectType: WorkflowExecutorProjectType,
-  entrypoints: WorkflowStructureReport["entrypoints"],
-): WorkflowSchedulePreset[] {
+  projectType: ExecutorProjectType,
+  entrypoints: StructureReport["entrypoints"],
+): SchedulePreset[] {
   return readSchedulePresetValue(readLocalPackageJson(workflowDir), projectType, entrypoints ?? []);
 }
 
 function readSchedulePresetValue(
   packageJson: unknown,
-  projectType: WorkflowProjectType,
-  entrypoints: NonNullable<WorkflowStructureReport["entrypoints"]>,
-): WorkflowSchedulePreset[] {
+  projectType: ProjectKind,
+  entrypoints: NonNullable<StructureReport["entrypoints"]>,
+): SchedulePreset[] {
   const steamHarness = readOptionalRecordField(packageJson, "steamHarness");
   const value = steamHarness?.["schedulePresets"];
   if (value === undefined) return [];
@@ -2576,7 +2576,7 @@ function readSchedulePresetValue(
     }
     return presets;
   } catch (error) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `Project schedule preset validation failed: ${readErrorMessage(error)}`,
       metadata: { projectType },
@@ -2589,7 +2589,7 @@ function readOptionalRecordField(value: unknown, field: string): Record<string, 
   const fieldValue = (value as Record<string, unknown>)[field];
   if (fieldValue === undefined) return undefined;
   if (fieldValue === null || typeof fieldValue !== "object" || Array.isArray(fieldValue)) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `Project package.json ${field} must be an object.`,
     });
@@ -2615,7 +2615,7 @@ function readKanbanStructureFiles(workflowDir: string, currentDir = workflowDir)
 
 function assertLocalProjectIsExecutable(workflowDir: string, workflowName: string): void {
   if (readLocalPackageProjectType(workflowDir) !== "kanban") return;
-  throw new WorkflowError({
+  throw new HarnessError({
     type: "input_validation",
     message: createKanbanExecutionUnsupportedMessage(workflowName),
     metadata: { workflow: workflowName, projectType: "kanban" },
@@ -2859,10 +2859,10 @@ function createExecutorFileStore(options: {
   env?: NodeJS.ProcessEnv;
   workflowName: string;
   conversationId?: string;
-  fileStore?: WorkflowFileStore;
+  fileStore?: FileStore;
   fileStoreDir?: string;
   fileCreateStoreDir?: string;
-}): WorkflowFileStore {
+}): FileStore {
   const resolveStore = options.fileStore ?? createLocalResolveFileStore(options.fileStoreDir);
 
   if (options.fileStore?.createFile !== undefined) {
@@ -2899,7 +2899,7 @@ function createExecutorFileStore(options: {
 
 function createLocalResolveFileStore(
   rootDir: string | undefined,
-): WorkflowFileStore {
+): FileStore {
   if (rootDir === undefined || rootDir.trim() === "") {
     return createLocalWorkflowFileStore({ allowAbsolutePaths: true });
   }
@@ -2937,7 +2937,7 @@ function throwIfRunLocalWorkflowAborted(signal: AbortSignal, workflowName: strin
     return;
   }
 
-  throw new WorkflowError({
+  throw new HarnessError({
     type: "execution_aborted",
     message: signal.reason instanceof Error
       ? signal.reason.message

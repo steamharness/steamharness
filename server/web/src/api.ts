@@ -1,11 +1,11 @@
 
-import type { AuthSessionState, ApiResponse, WorkflowAdminUserSummary, WorkflowAccountInvitationLookupResult, WorkflowApiKeyCreateResult, WorkflowApiKeyRecord, WorkflowAuditEventPage, WorkflowAuditOutcome, WorkflowDeviceCodeResult, WorkflowKVEntryDetail, WorkflowKVEntryPage, WorkflowKVEntryScope, WorkflowKVEntryValueType, WorkflowKnowledgeDocument, WorkflowKnowledgeDocumentPage, WorkflowKnowledgeDocumentLinesResult, WorkflowKnowledgeDocumentSummary, WorkflowKnowledgeSearchResult, WorkflowMeResult, WorkflowPermissionGroup, WorkflowProjectInvitation, WorkflowRelatedProjectListResult, WorkflowProjectAccessLinkInfo, WorkflowProjectAccessRequest, WorkflowProjectDependencyStatusResult, WorkflowProjectSourceAccessSummary, WorkflowInvitationAcceptResult, WorkflowInvitationLookupResult, WorkflowInvitationRole, WorkflowProjectMember, WorkflowRoleRecord, WorkflowUserInvitationResult, WorkflowServerHealthData, WorkflowSummary, WorkflowVersionSummary } from "./types";
+import type { AuthSessionState, ApiResponse, AdminUserSummary, AccountInvitationLookupResult, ApiKeyCreateResult, ApiKeyRecord, AuditEventPage, AuditOutcome, DeviceCodeResult, KVEntryDetail, KVEntryPage, KVEntryScope, KVEntryValueType, KnowledgeDocument, KnowledgeDocumentPageRecord, KnowledgeDocumentLinesResult, KnowledgeDocumentSummaryRecord, KnowledgeSearchResultRecord, MeResult, PermissionGroup, ProjectInvitation, RelatedProjectListResult, ProjectAccessLinkInfo, ProjectAccessRequest, ProjectDependencyStatusResult, ProjectSourceAccessSummary, InvitationAcceptResult, InvitationLookupResult, InvitationRole, ProjectMember, RoleRecord, UserInvitationResult, ServerHealthData, Summary, VersionSummary } from "./types";
 import { getCurrentLocale, translateDynamicKey, translateSteamHarnessError, type CommonResourceKey } from "@steamharness/i18n";
 
-import type { WorkflowProjectDataSummary, WorkflowSourceShare } from "./types";
+import type { ProjectDataSummary, SourceShare } from "./types";
 
 export class ServerApiClient {
-  getSourceShare(id: string, version: string, signal?: AbortSignal): Promise<ApiResponse<WorkflowSourceShare>> {
+  getSourceShare(id: string, version: string, signal?: AbortSignal): Promise<ApiResponse<SourceShare>> {
     return this.request(`/api/workflows/${encodeURIComponent(id)}/source-share?target=${encodeURIComponent(version)}`, { signal });
   }
 
@@ -96,8 +96,8 @@ export class ServerApiClient {
     }
   }
 
-  health(): Promise<ApiResponse<WorkflowServerHealthData>> {
-    return this.request<WorkflowServerHealthData>("/health");
+  health(): Promise<ApiResponse<ServerHealthData>> {
+    return this.request<ServerHealthData>("/health");
   }
 
   getSession(): Promise<ApiResponse<AuthSessionState>> {
@@ -121,7 +121,7 @@ export class ServerApiClient {
     });
   }
 
-  lookupAccountInvitation(token: string): Promise<ApiResponse<WorkflowAccountInvitationLookupResult>> {
+  lookupAccountInvitation(token: string): Promise<ApiResponse<AccountInvitationLookupResult>> {
     return this.request(`/api/auth/invitations/${encodeURIComponent(token)}`);
   }
 
@@ -161,7 +161,7 @@ export class ServerApiClient {
 
   pollDeviceToken(deviceCode: string): Promise<ApiResponse<{
     accessToken: string;
-    apiKey: WorkflowApiKeyRecord;
+    apiKey: ApiKeyRecord;
     user: {
       userId: string;
       email: string;
@@ -175,35 +175,35 @@ export class ServerApiClient {
     });
   }
 
-  approveDevice(userCode: string): Promise<ApiResponse<{ deviceCode: WorkflowDeviceCodeResult }>> {
+  approveDevice(userCode: string): Promise<ApiResponse<{ deviceCode: DeviceCodeResult }>> {
     return this.request("/api/auth/device/approve", {
       method: "POST",
       body: JSON.stringify({ userCode }),
     });
   }
 
-  denyDevice(userCode: string): Promise<ApiResponse<{ deviceCode: WorkflowDeviceCodeResult }>> {
+  denyDevice(userCode: string): Promise<ApiResponse<{ deviceCode: DeviceCodeResult }>> {
     return this.request("/api/auth/device/deny", {
       method: "POST",
       body: JSON.stringify({ userCode }),
     });
   }
 
-  getMe(): Promise<ApiResponse<WorkflowMeResult>> {
+  getMe(): Promise<ApiResponse<MeResult>> {
     return this.request("/api/auth/me");
   }
 
   updateMe(payload: {
     displayName?: string;
     avatarUrl?: string | null;
-  }): Promise<ApiResponse<{ profile: WorkflowMeResult["profile"] }>> {
+  }): Promise<ApiResponse<{ profile: MeResult["profile"] }>> {
     return this.request("/api/auth/me", {
       method: "PATCH",
       body: JSON.stringify(payload),
     });
   }
 
-  listApiKeys(): Promise<ApiResponse<{ items: WorkflowApiKeyRecord[] }>> {
+  listApiKeys(): Promise<ApiResponse<{ items: ApiKeyRecord[] }>> {
     return this.request("/api/auth/api-keys");
   }
 
@@ -212,7 +212,7 @@ export class ServerApiClient {
     expiresAt?: string;
     source?: string;
     scopes?: string[];
-  }): Promise<ApiResponse<WorkflowApiKeyCreateResult>> {
+  }): Promise<ApiResponse<ApiKeyCreateResult>> {
     return this.request("/api/auth/api-keys", {
       method: "POST",
       body: JSON.stringify(payload),
@@ -225,11 +225,11 @@ export class ServerApiClient {
     });
   }
 
-  listAdminPermissions(): Promise<ApiResponse<{ groups: WorkflowPermissionGroup[] }>> {
+  listAdminPermissions(): Promise<ApiResponse<{ groups: PermissionGroup[] }>> {
     return this.request("/api/auth/admin/permissions");
   }
 
-  listAdminRoles(): Promise<ApiResponse<{ items: WorkflowRoleRecord[] }>> {
+  listAdminRoles(): Promise<ApiResponse<{ items: RoleRecord[] }>> {
     return this.request("/api/auth/admin/roles");
   }
 
@@ -237,7 +237,7 @@ export class ServerApiClient {
     name: string;
     description?: string;
     permissions: string[];
-  }): Promise<ApiResponse<{ role: WorkflowRoleRecord }>> {
+  }): Promise<ApiResponse<{ role: RoleRecord }>> {
     return this.request("/api/auth/admin/roles", {
       method: "POST",
       body: JSON.stringify(payload),
@@ -248,7 +248,7 @@ export class ServerApiClient {
     name?: string;
     description?: string;
     permissions?: string[];
-  }): Promise<ApiResponse<{ role: WorkflowRoleRecord }>> {
+  }): Promise<ApiResponse<{ role: RoleRecord }>> {
     return this.request(`/api/auth/admin/roles/${encodeURIComponent(roleId)}`, {
       method: "PATCH",
       body: JSON.stringify(payload),
@@ -266,7 +266,7 @@ export class ServerApiClient {
     status?: string;
     page?: number;
     pageSize?: number;
-  }): Promise<ApiResponse<{ items: WorkflowAdminUserSummary[]; total: number; page: number; pageSize: number; totalPages: number }>> {
+  }): Promise<ApiResponse<{ items: AdminUserSummary[]; total: number; page: number; pageSize: number; totalPages: number }>> {
     const query = new URLSearchParams();
     if (params?.search) query.set("search", params.search);
     if (params?.status) query.set("status", params.status);
@@ -286,8 +286,8 @@ export class ServerApiClient {
     eventType?: string;
     resourceType?: string;
     resourceId?: string;
-    outcome?: WorkflowAuditOutcome | "all";
-  } = {}): Promise<ApiResponse<WorkflowAuditEventPage>> {
+    outcome?: AuditOutcome | "all";
+  } = {}): Promise<ApiResponse<AuditEventPage>> {
     const params = new URLSearchParams();
     if (options.pageSize) params.set("pageSize", String(options.pageSize));
     if (options.cursor) params.set("cursor", options.cursor);
@@ -312,7 +312,7 @@ export class ServerApiClient {
     displayName?: string;
     temporaryPassword?: string;
     redirectTo?: string;
-  }): Promise<ApiResponse<WorkflowUserInvitationResult>> {
+  }): Promise<ApiResponse<UserInvitationResult>> {
     return this.request("/api/auth/admin/users/invitations", {
       method: "POST",
       body: JSON.stringify(payload),
@@ -322,8 +322,8 @@ export class ServerApiClient {
   async uploadAdminAvatar(
     userId: string,
     file: File,
-  ): Promise<ApiResponse<{ profile: WorkflowMeResult["profile"]; avatarUrl: string }>> {
-    return this.request<{ profile: WorkflowMeResult["profile"]; avatarUrl: string }>(
+  ): Promise<ApiResponse<{ profile: MeResult["profile"]; avatarUrl: string }>> {
+    return this.request<{ profile: MeResult["profile"]; avatarUrl: string }>(
       `/api/auth/admin/users/${encodeURIComponent(userId)}/avatar`,
       { method: "POST", body: file },
     );
@@ -335,26 +335,26 @@ export class ServerApiClient {
     temporaryPassword?: string;
     disabled?: boolean;
     avatarUrl?: string | null;
-  }): Promise<ApiResponse<{ profile: WorkflowMeResult["profile"] }>> {
+  }): Promise<ApiResponse<{ profile: MeResult["profile"] }>> {
     return this.request(`/api/auth/admin/users/${encodeURIComponent(userId)}`, {
       method: "PATCH",
       body: JSON.stringify(payload),
     });
   }
 
-  updateAdminUserRoles(userId: string, roleIds: string[]): Promise<ApiResponse<{ profile: WorkflowMeResult["profile"] }>> {
+  updateAdminUserRoles(userId: string, roleIds: string[]): Promise<ApiResponse<{ profile: MeResult["profile"] }>> {
     return this.request(`/api/auth/admin/users/${encodeURIComponent(userId)}/roles`, {
       method: "PUT",
       body: JSON.stringify({ roleIds }),
     });
   }
 
-  listWorkflows(): Promise<ApiResponse<WorkflowSummary[]>> {
-    return this.request<WorkflowSummary[]>("/api/workflows");
+  listWorkflows(): Promise<ApiResponse<Summary[]>> {
+    return this.request<Summary[]>("/api/workflows");
   }
 
-  listVersions(workflowName: string): Promise<ApiResponse<WorkflowVersionSummary>> {
-    return this.request<WorkflowVersionSummary>(
+  listVersions(workflowName: string): Promise<ApiResponse<VersionSummary>> {
+    return this.request<VersionSummary>(
       `/api/workflows/${encodeURIComponent(workflowName)}/versions`,
     );
   }
@@ -362,14 +362,14 @@ export class ServerApiClient {
   getProjectDependencies(
     workflowName: string,
     target = "latest",
-  ): Promise<ApiResponse<WorkflowProjectDependencyStatusResult>> {
-    return this.request<WorkflowProjectDependencyStatusResult>(
+  ): Promise<ApiResponse<ProjectDependencyStatusResult>> {
+    return this.request<ProjectDependencyStatusResult>(
       `/api/workflows/${encodeURIComponent(workflowName)}/dependencies?target=${encodeURIComponent(target)}`,
     );
   }
 
-  listRelatedProjects(projectId: string): Promise<ApiResponse<WorkflowRelatedProjectListResult>> {
-    return this.request<WorkflowRelatedProjectListResult>(
+  listRelatedProjects(projectId: string): Promise<ApiResponse<RelatedProjectListResult>> {
+    return this.request<RelatedProjectListResult>(
       `/api/workflows/${encodeURIComponent(projectId)}/related-projects`,
     );
   }
@@ -380,11 +380,11 @@ export class ServerApiClient {
     input: {
       targetProjectId: string;
       targetAlias: string;
-      grantToRelatedProject: import("@steamharness/project-info").WorkflowRelatedProjectKVGrant;
-      targetGrantToRelatedProject: import("@steamharness/project-info").WorkflowRelatedProjectKVGrant;
+      grantToRelatedProject: import("@steamharness/project-info").RelatedProjectKVGrant;
+      targetGrantToRelatedProject: import("@steamharness/project-info").RelatedProjectKVGrant;
     },
-  ): Promise<ApiResponse<WorkflowRelatedProjectListResult>> {
-    return this.request<WorkflowRelatedProjectListResult>(
+  ): Promise<ApiResponse<RelatedProjectListResult>> {
+    return this.request<RelatedProjectListResult>(
       `/api/workflows/${encodeURIComponent(projectId)}/related-projects/${encodeURIComponent(alias)}`,
       { method: "PUT", body: JSON.stringify(input) },
     );
@@ -393,7 +393,7 @@ export class ServerApiClient {
   removeRelatedProject(
     projectId: string,
     alias: string,
-  ): Promise<ApiResponse<{ removed: boolean; relatedProjects: WorkflowRelatedProjectListResult["relatedProjects"] }>> {
+  ): Promise<ApiResponse<{ removed: boolean; relatedProjects: RelatedProjectListResult["relatedProjects"] }>> {
     return this.request(
       `/api/workflows/${encodeURIComponent(projectId)}/related-projects/${encodeURIComponent(alias)}`,
       { method: "DELETE" },
@@ -402,8 +402,8 @@ export class ServerApiClient {
 
   listSourceAccessRequests(
     workflowName: string,
-  ): Promise<ApiResponse<WorkflowProjectSourceAccessSummary>> {
-    return this.request<WorkflowProjectSourceAccessSummary>(
+  ): Promise<ApiResponse<ProjectSourceAccessSummary>> {
+    return this.request<ProjectSourceAccessSummary>(
       `/api/workflows/${encodeURIComponent(workflowName)}/source-access-requests`,
     );
   }
@@ -412,8 +412,8 @@ export class ServerApiClient {
     workflowName: string,
     requestId: string,
     status: "approved" | "rejected",
-  ): Promise<ApiResponse<WorkflowProjectAccessRequest>> {
-    return this.request<WorkflowProjectAccessRequest>(
+  ): Promise<ApiResponse<ProjectAccessRequest>> {
+    return this.request<ProjectAccessRequest>(
       `/api/workflows/${encodeURIComponent(workflowName)}/source-access-requests/${encodeURIComponent(requestId)}`,
       { method: "PATCH", body: JSON.stringify({ status }) },
     );
@@ -431,8 +431,8 @@ export class ServerApiClient {
 
   getProjectSourceAccessLink(
     token: string,
-  ): Promise<ApiResponse<WorkflowProjectAccessLinkInfo>> {
-    return this.request<WorkflowProjectAccessLinkInfo>(
+  ): Promise<ApiResponse<ProjectAccessLinkInfo>> {
+    return this.request<ProjectAccessLinkInfo>(
       `/api/project-source-access/${encodeURIComponent(token)}`,
     );
   }
@@ -440,14 +440,14 @@ export class ServerApiClient {
   createProjectSourceAccessRequest(
     token: string,
     reason: string,
-  ): Promise<ApiResponse<WorkflowProjectAccessRequest>> {
-    return this.request<WorkflowProjectAccessRequest>(
+  ): Promise<ApiResponse<ProjectAccessRequest>> {
+    return this.request<ProjectAccessRequest>(
       `/api/project-source-access/${encodeURIComponent(token)}/requests`,
       { method: "POST", body: JSON.stringify({ reason }) },
     );
   }
 
-  listProjectMembers(workflowName: string): Promise<ApiResponse<WorkflowProjectMember[]>> {
+  listProjectMembers(workflowName: string): Promise<ApiResponse<ProjectMember[]>> {
     return this.request(`/api/workflows/${encodeURIComponent(workflowName)}/members`);
   }
 
@@ -455,7 +455,7 @@ export class ServerApiClient {
     workflowName: string,
     userId: string,
     payload: { role: "owner" | "manager" | "writer" | "viewer" },
-  ): Promise<ApiResponse<WorkflowProjectMember>> {
+  ): Promise<ApiResponse<ProjectMember>> {
     return this.request(
       `/api/workflows/${encodeURIComponent(workflowName)}/members/${encodeURIComponent(userId)}`,
       {
@@ -477,8 +477,8 @@ export class ServerApiClient {
 
   createProjectInvitation(
     workflowName: string,
-    payload: { role: WorkflowInvitationRole },
-  ): Promise<ApiResponse<{ invitation: WorkflowProjectInvitation; token: string }>> {
+    payload: { role: InvitationRole },
+  ): Promise<ApiResponse<{ invitation: ProjectInvitation; token: string }>> {
     return this.request(
       `/api/workflows/${encodeURIComponent(workflowName)}/invitations`,
       { method: "POST", body: JSON.stringify(payload) },
@@ -487,7 +487,7 @@ export class ServerApiClient {
 
   listProjectInvitations(
     workflowName: string,
-  ): Promise<ApiResponse<WorkflowProjectInvitation[]>> {
+  ): Promise<ApiResponse<ProjectInvitation[]>> {
     return this.request(`/api/workflows/${encodeURIComponent(workflowName)}/invitations`);
   }
 
@@ -501,11 +501,11 @@ export class ServerApiClient {
     );
   }
 
-  lookupInvitation(token: string): Promise<ApiResponse<WorkflowInvitationLookupResult>> {
+  lookupInvitation(token: string): Promise<ApiResponse<InvitationLookupResult>> {
     return this.request(`/api/invitations/${encodeURIComponent(token)}`);
   }
 
-  acceptInvitation(token: string): Promise<ApiResponse<WorkflowInvitationAcceptResult>> {
+  acceptInvitation(token: string): Promise<ApiResponse<InvitationAcceptResult>> {
     return this.request(`/api/invitations/${encodeURIComponent(token)}/accept`, {
       method: "POST",
     });
@@ -514,7 +514,7 @@ export class ServerApiClient {
   updateProjectVisibility(
     workflowName: string,
     payload: { visibility: "private" | "public" },
-  ): Promise<ApiResponse<WorkflowSummary>> {
+  ): Promise<ApiResponse<Summary>> {
     return this.request(
       `/api/workflows/${encodeURIComponent(workflowName)}/visibility`,
       {
@@ -524,7 +524,7 @@ export class ServerApiClient {
     );
   }
 
-  getProjectDataSummary(projectId: string): Promise<ApiResponse<WorkflowProjectDataSummary>> {
+  getProjectDataSummary(projectId: string): Promise<ApiResponse<ProjectDataSummary>> {
     return this.request(`/api/workflows/${encodeURIComponent(projectId)}/data-summary`);
   }
 
@@ -535,11 +535,11 @@ export class ServerApiClient {
       cursor?: string;
       scope?: "project" | "conversation" | "all";
       query?: string;
-      valueType?: WorkflowKVEntryValueType | "all";
+      valueType?: KVEntryValueType | "all";
       conversationId?: string;
       runId?: string;
     } = {},
-  ): Promise<ApiResponse<WorkflowKVEntryPage>> {
+  ): Promise<ApiResponse<KVEntryPage>> {
     const query = new URLSearchParams();
     query.set("pageSize", String(options.pageSize ?? 20));
     if (options.cursor) query.set("cursor", options.cursor);
@@ -549,7 +549,7 @@ export class ServerApiClient {
     if (options.conversationId) query.set("conversationId", options.conversationId);
     if (options.runId) query.set("runId", options.runId);
 
-    return this.request<WorkflowKVEntryPage>(
+    return this.request<KVEntryPage>(
       `/api/workflows/${encodeURIComponent(projectId)}/kv?${query.toString()}`,
     );
   }
@@ -557,17 +557,17 @@ export class ServerApiClient {
   getProjectKVEntry(
     projectId: string,
     options: {
-      scope: WorkflowKVEntryScope;
+      scope: KVEntryScope;
       key: string;
       conversationId?: string;
     },
-  ): Promise<ApiResponse<WorkflowKVEntryDetail>> {
+  ): Promise<ApiResponse<KVEntryDetail>> {
     const query = new URLSearchParams();
     query.set("scope", options.scope);
     query.set("key", options.key);
     if (options.conversationId) query.set("conversationId", options.conversationId);
 
-    return this.request<WorkflowKVEntryDetail>(
+    return this.request<KVEntryDetail>(
       `/api/workflows/${encodeURIComponent(projectId)}/kv/entry?${query.toString()}`,
     );
   }
@@ -575,17 +575,17 @@ export class ServerApiClient {
   deleteProjectKVEntry(
     projectId: string,
     options: {
-      scope: WorkflowKVEntryScope;
+      scope: KVEntryScope;
       key: string;
       conversationId?: string;
     },
-  ): Promise<ApiResponse<{ scope: WorkflowKVEntryScope; key: string; conversationId?: string }>> {
+  ): Promise<ApiResponse<{ scope: KVEntryScope; key: string; conversationId?: string }>> {
     const query = new URLSearchParams();
     query.set("scope", options.scope);
     query.set("key", options.key);
     if (options.conversationId) query.set("conversationId", options.conversationId);
 
-    return this.request<{ scope: WorkflowKVEntryScope; key: string; conversationId?: string }>(
+    return this.request<{ scope: KVEntryScope; key: string; conversationId?: string }>(
       `/api/workflows/${encodeURIComponent(projectId)}/kv/entry?${query.toString()}`,
       { method: "DELETE" },
     );
@@ -594,12 +594,12 @@ export class ServerApiClient {
   listKnowledgeDocuments(
     workflowName: string,
     options: { pageSize?: number; cursor?: string; signal?: AbortSignal } = {},
-  ): Promise<ApiResponse<WorkflowKnowledgeDocumentPage>> {
+  ): Promise<ApiResponse<KnowledgeDocumentPageRecord>> {
     const query = new URLSearchParams();
     if (options.pageSize !== undefined) query.set("pageSize", String(options.pageSize));
     if (options.cursor) query.set("cursor", options.cursor);
     const suffix = query.size > 0 ? `?${query.toString()}` : "";
-    return this.request<WorkflowKnowledgeDocumentPage>(
+    return this.request<KnowledgeDocumentPageRecord>(
       `/api/workflows/${encodeURIComponent(workflowName)}/knowledge-documents${suffix}`,
       { signal: options.signal },
     );
@@ -609,8 +609,8 @@ export class ServerApiClient {
     workflowName: string,
     documentId: string,
     options: { signal?: AbortSignal } = {},
-  ): Promise<ApiResponse<WorkflowKnowledgeDocument>> {
-    return this.request<WorkflowKnowledgeDocument>(
+  ): Promise<ApiResponse<KnowledgeDocument>> {
+    return this.request<KnowledgeDocument>(
       `/api/workflows/${encodeURIComponent(workflowName)}/knowledge-documents/${encodeURIComponent(documentId)}`,
       { signal: options.signal },
     );
@@ -620,11 +620,11 @@ export class ServerApiClient {
     workflowName: string,
     payload: { id?: string; title: string; markdown: string },
     options: { response?: "document" | "summary"; signal?: AbortSignal } = {},
-  ): Promise<ApiResponse<WorkflowKnowledgeDocument | WorkflowKnowledgeDocumentSummary>> {
+  ): Promise<ApiResponse<KnowledgeDocument | KnowledgeDocumentSummaryRecord>> {
     const query = new URLSearchParams();
     if (options.response) query.set("response", options.response);
     const suffix = query.size > 0 ? `?${query.toString()}` : "";
-    return this.request<WorkflowKnowledgeDocument | WorkflowKnowledgeDocumentSummary>(
+    return this.request<KnowledgeDocument | KnowledgeDocumentSummaryRecord>(
       `/api/workflows/${encodeURIComponent(workflowName)}/knowledge-documents${suffix}`,
       {
         method: "POST",
@@ -639,11 +639,11 @@ export class ServerApiClient {
     documentId: string,
     payload: { title?: string; markdown?: string },
     options: { response?: "document" | "summary"; signal?: AbortSignal } = {},
-  ): Promise<ApiResponse<WorkflowKnowledgeDocument | WorkflowKnowledgeDocumentSummary>> {
+  ): Promise<ApiResponse<KnowledgeDocument | KnowledgeDocumentSummaryRecord>> {
     const query = new URLSearchParams();
     if (options.response) query.set("response", options.response);
     const suffix = query.size > 0 ? `?${query.toString()}` : "";
-    return this.request<WorkflowKnowledgeDocument | WorkflowKnowledgeDocumentSummary>(
+    return this.request<KnowledgeDocument | KnowledgeDocumentSummaryRecord>(
       `/api/workflows/${encodeURIComponent(workflowName)}/knowledge-documents/${encodeURIComponent(documentId)}${suffix}`,
       {
         method: "PUT",
@@ -676,7 +676,7 @@ export class ServerApiClient {
       cursor?: string;
       signal?: AbortSignal;
     },
-  ): Promise<ApiResponse<WorkflowKnowledgeSearchResult>> {
+  ): Promise<ApiResponse<KnowledgeSearchResultRecord>> {
     const query = new URLSearchParams();
     query.set("q", options.query);
     if (options.documentId) query.set("documentId", options.documentId);
@@ -685,7 +685,7 @@ export class ServerApiClient {
     if (options.maxMatches !== undefined) query.set("maxMatches", String(options.maxMatches));
     if (options.pageSize !== undefined) query.set("pageSize", String(options.pageSize));
     if (options.cursor) query.set("cursor", options.cursor);
-    return this.request<WorkflowKnowledgeSearchResult>(
+    return this.request<KnowledgeSearchResultRecord>(
       `/api/workflows/${encodeURIComponent(workflowName)}/knowledge-documents/search?${query.toString()}`,
       { signal: options.signal },
     );
@@ -695,11 +695,11 @@ export class ServerApiClient {
     workflowName: string,
     documentId: string,
     options: { startLine: number; endLine: number; signal?: AbortSignal },
-  ): Promise<ApiResponse<WorkflowKnowledgeDocumentLinesResult>> {
+  ): Promise<ApiResponse<KnowledgeDocumentLinesResult>> {
     const query = new URLSearchParams();
     query.set("startLine", String(options.startLine));
     query.set("endLine", String(options.endLine));
-    return this.request<WorkflowKnowledgeDocumentLinesResult>(
+    return this.request<KnowledgeDocumentLinesResult>(
       `/api/workflows/${encodeURIComponent(workflowName)}/knowledge-documents/${encodeURIComponent(documentId)}/lines?${query.toString()}`,
       { signal: options.signal },
     );

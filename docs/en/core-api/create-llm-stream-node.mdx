@@ -32,7 +32,7 @@ workflow.createLLMStreamNode<Input>(
 | `provider` | `LLMProviderSource` |provider instance, provider id, provider ref, or resolver. Required.|
 | `mapInput` | `(input, context) => LLMChatInput` |Translate the business input into an LLM request. Required.|
 | `historyLimit` | `number` |The number of nodes retained in the execution history. The default value is `50`.|
-| `metadata` | `WorkflowNodeMetadataInput` |The node displays meta information.|
+| `metadata` | `NodeMetadataInput` |The node displays meta information.|
 
 ## `LLMStreamChunk`
 

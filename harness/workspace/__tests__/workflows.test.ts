@@ -6,24 +6,24 @@ import {
   MockLLMProvider,
   inspectLocalWorkflowStructure,
   runLocalWorkflowWithReport,
-  WorkflowError,
+  HarnessError,
   type LLMChatInput,
-  type WorkflowExecutionReport,
-  type WorkflowExecutionStorageOptions,
-  type WorkflowFileReference,
-  type WorkflowKVStore,
-  type WorkflowRuntimeEvent,
-  type WorkflowStructureReport,
-  type WorkflowUserInputContext,
+  type ExecutionReport,
+  type ExecutionStorageOptions,
+  type FileReference,
+  type KVStore,
+  type RuntimeEvent,
+  type StructureReport,
+  type UserInputContext,
 } from "steamharness";
-import type { WorkflowOutputItem } from "steamharness/node/output";
+import type { OutputItem } from "steamharness/node/output";
 import type {
-  WorkflowStructureExecution,
-  WorkflowStructureExecutionBranch,
-  WorkflowStructureExecutionBranchPath,
-  WorkflowStructureExecutionItem,
-  WorkflowStructureExecutionLoop,
-  WorkflowStructureExecutionNode,
+  StructureExecution,
+  StructureExecutionBranch,
+  StructureExecutionBranchPath,
+  StructureExecutionItem,
+  StructureExecutionLoop,
+  StructureExecutionNode,
 } from "steamharness/executor/rules";
 
 const workflowNames = [
@@ -57,9 +57,9 @@ const workflowNames = [
 
 const STEAMHARNESS_ROOT = path.resolve(process.cwd(), "workflow");
 
-type WorkflowName = (typeof workflowNames)[number];
+type ProjectName = (typeof workflowNames)[number];
 
-interface WorkflowOutputItemExpectation {
+interface OutputItemExpectation {
   index?: number;
   title?: string;
   content?: unknown;
@@ -72,13 +72,13 @@ interface WorkflowOutputItemExpectation {
   contentMatches?: unknown;
 }
 
-interface WorkflowSmokeFixture {
+interface SmokeFixture {
   args: string[];
   conversationId?: string;
   run?: boolean;
   skipReason?: string;
   expected: {
-    status?: WorkflowExecutionReport["status"];
+    status?: ExecutionReport["status"];
     errCode: number;
     errMessage?: string;
     outputRequired?: boolean;
@@ -90,7 +90,7 @@ interface WorkflowSmokeFixture {
       iconPreset?: string;
     };
     itemCount?: number;
-    items?: WorkflowOutputItemExpectation[];
+    items?: OutputItemExpectation[];
     contentIncludes?: string[];
     nodes?: string[];
     outputCount?: number;
@@ -105,11 +105,11 @@ interface WorkflowSmokeFixture {
       cachedInputTokens?: number;
       cacheCreationTokens?: number;
     };
-    timers?: WorkflowTimerExpectation[];
+    timers?: TimerExpectation[];
   };
 }
 
-interface WorkflowTimerExpectation {
+interface TimerExpectation {
   timerId?: string;
   title?: string;
   status?: "running" | "success" | "failed" | "cleared";
@@ -167,7 +167,7 @@ describe("workspace workflow offline runtime smoke", () => {
       return;
     }
 
-    const events: WorkflowRuntimeEvent[] = [];
+    const events: RuntimeEvent[] = [];
     const runtimeEventRecorder = createFixtureRuntimeEventRecorder(workflowName);
     const runFixture = async () => runLocalWorkflowWithReport({
       workflowDir: workflowDirectory(workflowName),
@@ -374,7 +374,7 @@ describe("conversation knowledge persistence", () => {
 describe("workspace workflow human input resume", () => {
   it("human-input pauses for network permission, then resumes the same run", async () => {
     const args: string[] = [];
-    const events: WorkflowRuntimeEvent[] = [];
+    const events: RuntimeEvent[] = [];
 
     const waitingReport = await runLocalWorkflowWithReport({
       workflowDir: workflowDirectory("human-input"),
@@ -397,7 +397,7 @@ describe("workspace workflow human input resume", () => {
     expect(events.some((event) => event.type === "user_input_requested")).toBe(true);
 
     const submittedAt = new Date("2026-06-04T10:30:00.000Z");
-    const resumedEvents: WorkflowRuntimeEvent[] = [];
+    const resumedEvents: RuntimeEvent[] = [];
     const resumedReport = await resumeHumanInputWorkflow({
       args,
       runId: waitingReport.runId,
@@ -490,7 +490,7 @@ describe("workspace workflow output-showcase resume", () => {
       "--stream-delay-ms",
       "1",
     ];
-    const waitingEvents: WorkflowRuntimeEvent[] = [];
+    const waitingEvents: RuntimeEvent[] = [];
     const waitingReport = await runLocalWorkflowWithReport({
       workflowDir: workflowDirectory("output-showcase"),
       workflowName: "output-showcase",
@@ -526,7 +526,7 @@ describe("workspace workflow output-showcase resume", () => {
     })).toBe(false);
 
     const submittedAt = new Date("2026-06-10T12:00:00.000Z");
-    const longTaskEvents: WorkflowRuntimeEvent[] = [];
+    const longTaskEvents: RuntimeEvent[] = [];
     const longTaskReport = await resumeOutputShowcaseWorkflow({
       args,
       runId: waitingReport.runId,
@@ -587,7 +587,7 @@ describe("workspace workflow output-showcase resume", () => {
     expect(longTaskReport.timers?.[0]?.message).toBe("业务阶段已显式结束");
     expect(longTaskReport.timers?.[0]?.durationMs).toBeGreaterThanOrEqual(15);
 
-    const skippedEvents: WorkflowRuntimeEvent[] = [];
+    const skippedEvents: RuntimeEvent[] = [];
     const skippedReport = await resumeOutputShowcaseWorkflow({
       args,
       runId: waitingReport.runId,
@@ -639,7 +639,7 @@ describe("workspace workflow output-showcase resume", () => {
 
   it("interrupts the simulated tool wait as soon as the run is cancelled", async () => {
     const controller = new AbortController();
-    const events: WorkflowRuntimeEvent[] = [];
+    const events: RuntimeEvent[] = [];
     let abortedDuringTool = false;
     const reportPromise = runLocalWorkflowWithReport({
       workflowDir: workflowDirectory("output-showcase"),
@@ -688,7 +688,7 @@ function resumeHumanInputWorkflow(options: {
   requestId: string;
   allowed: boolean;
   submittedAt: Date;
-  onRuntimeEvent?(event: WorkflowRuntimeEvent): void;
+  onRuntimeEvent?(event: RuntimeEvent): void;
 }) {
   const requestId = options.requestId;
   return runLocalWorkflowWithReport({
@@ -725,7 +725,7 @@ function resumeOutputShowcaseWorkflow(options: {
   requestId: string;
   confirmed: boolean;
   submittedAt: Date;
-  onRuntimeEvent?(event: WorkflowRuntimeEvent): void;
+  onRuntimeEvent?(event: RuntimeEvent): void;
 }) {
   const requestId = options.requestId;
   return runLocalWorkflowWithReport({
@@ -759,7 +759,7 @@ function resumeOutputShowcaseWorkflow(options: {
   });
 }
 
-function expectStreamingChunksForNodes(events: WorkflowRuntimeEvent[], configuredNames: string[]): void {
+function expectStreamingChunksForNodes(events: RuntimeEvent[], configuredNames: string[]): void {
   for (const configuredName of configuredNames) {
     // runtime events 的 nodeName 是 standard name (output / user-input / timer),
     // 真正能区分节点的是 metadata.title,这里就是 workflow.createOutputNode
@@ -785,7 +785,7 @@ function expectStreamingChunksForNodes(events: WorkflowRuntimeEvent[], configure
   }
 }
 
-function expectOutputNodeStreamedSlowText(events: WorkflowRuntimeEvent[], configuredName: string): void {
+function expectOutputNodeStreamedSlowText(events: RuntimeEvent[], configuredName: string): void {
   const chunks = events.filter((event) => {
     if (event.type !== "node_chunk") return false;
     const meta = (event as { metadata?: { title?: string } }).metadata;
@@ -801,7 +801,7 @@ function expectOutputNodeStreamedSlowText(events: WorkflowRuntimeEvent[], config
   expect(combined.length).toBeGreaterThan(20);
 }
 
-function expectToolOutputStatusTransition(events: WorkflowRuntimeEvent[]): void {
+function expectToolOutputStatusTransition(events: RuntimeEvent[]): void {
   const toolChunks = events.filter((event) => {
     if (event.type !== "node_chunk") return false;
     const meta = (event as { metadata?: { title?: string } }).metadata;
@@ -832,7 +832,7 @@ function expectToolOutputStatusTransition(events: WorkflowRuntimeEvent[]): void 
   expect(isRecord(successItem?.metadata) ? successItem.metadata.status : undefined).toBe("success");
 }
 
-function createFixtureRuntimeEventRecorder(workflowName: WorkflowName) {
+function createFixtureRuntimeEventRecorder(workflowName: ProjectName) {
   if (workflowName !== "deltaforce-openai-agent") {
     return undefined;
   }
@@ -840,7 +840,7 @@ function createFixtureRuntimeEventRecorder(workflowName: WorkflowName) {
   const outputItemIds: string[] = [];
   let nestedOutputStartedBeforeNestedWorkflowFinished = false;
 
-  return (event: WorkflowRuntimeEvent) => {
+  return (event: RuntimeEvent) => {
     if (event.type === "workflow_succeeded") {
       expect(outputItemIds).toContain("openai-agents-tool-1-get_api_guns");
       expect(outputItemIds).toContain("openai-agents-answer");
@@ -863,7 +863,7 @@ function createFixtureRuntimeEventRecorder(workflowName: WorkflowName) {
   };
 }
 
-function createMemoryKVStore(): WorkflowKVStore & {
+function createMemoryKVStore(): KVStore & {
   values: Map<string, unknown>;
 } {
   const values = new Map<string, unknown>();
@@ -910,7 +910,7 @@ function createMemoryKVStore(): WorkflowKVStore & {
   };
 }
 
-function summarizeStructure(report: WorkflowStructureReport) {
+function summarizeStructure(report: StructureReport) {
   // keep structure snapshots stable across Windows and POSIX hosts.
   const workflowFiles = report.workflow.files.map((file) => file.replaceAll("\\", "/"));
 
@@ -964,7 +964,7 @@ function summarizeStructure(report: WorkflowStructureReport) {
   };
 }
 
-function summarizeParams(params: WorkflowStructureReport["params"]) {
+function summarizeParams(params: StructureReport["params"]) {
   return (params ?? []).map((param) => dropUndefined({
     name: param.name,
     flag: param.flag,
@@ -979,7 +979,7 @@ function summarizeParams(params: WorkflowStructureReport["params"]) {
   }));
 }
 
-function summarizeRegistry(registry: WorkflowStructureReport["registry"]) {
+function summarizeRegistry(registry: StructureReport["registry"]) {
   return (registry ?? []).map((entry) => ({
     name: entry.name,
     type: entry.metadata.type,
@@ -998,7 +998,7 @@ function dropUndefined<T extends Record<string, unknown>>(value: T): Partial<T> 
   return result;
 }
 
-function summarizeExecution(execution: WorkflowStructureExecution) {
+function summarizeExecution(execution: StructureExecution) {
   const state = {
     kind: execution.kind,
     counts: {} as Record<string, number>,
@@ -1020,9 +1020,9 @@ function summarizeExecution(execution: WorkflowStructureExecution) {
 
 function walkExecution(
   item:
-    | WorkflowStructureExecution
-    | WorkflowStructureExecutionItem
-    | WorkflowStructureExecutionBranchPath,
+    | StructureExecution
+    | StructureExecutionItem
+    | StructureExecutionBranchPath,
   state: {
     counts: Record<string, number>;
     callees: string[];
@@ -1054,13 +1054,13 @@ function walkExecution(
   }
 }
 
-async function readSmokeFixture(workflowName: WorkflowName): Promise<WorkflowSmokeFixture> {
-  return JSON.parse(await readWorkflowFile(workflowName, "__fixtures__/smoke.json")) as WorkflowSmokeFixture;
+async function readSmokeFixture(workflowName: ProjectName): Promise<SmokeFixture> {
+  return JSON.parse(await readWorkflowFile(workflowName, "__fixtures__/smoke.json")) as SmokeFixture;
 }
 
 async function createFixtureStorage(
-  workflowName: WorkflowName,
-): Promise<WorkflowExecutionStorageOptions> {
+  workflowName: ProjectName,
+): Promise<ExecutionStorageOptions> {
   const packageJson = JSON.parse(await readWorkflowFile(workflowName, "package.json")) as {
     steamHarness?: { projectInfo?: { dataStorage?: { mode?: unknown } } };
   };
@@ -1077,11 +1077,11 @@ async function createFixtureStorage(
   };
 }
 
-async function readStructureSnapshot(workflowName: WorkflowName) {
+async function readStructureSnapshot(workflowName: ProjectName) {
   return JSON.parse(await readWorkflowFile(workflowName, "__snapshots__/structure.json")) as unknown;
 }
 
-async function writeStructureSnapshot(workflowName: WorkflowName, structure: unknown): Promise<void> {
+async function writeStructureSnapshot(workflowName: ProjectName, structure: unknown): Promise<void> {
   await writeFile(
     path.join(workflowDirectory(workflowName), "__snapshots__/structure.json"),
     `${JSON.stringify(structure, null, 2)}\n`,
@@ -1089,7 +1089,7 @@ async function writeStructureSnapshot(workflowName: WorkflowName, structure: unk
   );
 }
 
-async function readWorkflowFile(workflowName: WorkflowName, relativePath: string): Promise<string> {
+async function readWorkflowFile(workflowName: ProjectName, relativePath: string): Promise<string> {
   return readFile(path.join(workflowDirectory(workflowName), relativePath), "utf8");
 }
 
@@ -1097,11 +1097,11 @@ function workflowDirectory(workflowName: string): string {
   return path.join(STEAMHARNESS_ROOT, workflowName);
 }
 
-function resolveExpectedRunText(value: string, report: WorkflowExecutionReport): string {
+function resolveExpectedRunText(value: string, report: ExecutionReport): string {
   return value.replaceAll("{RUN_ID}", report.runId);
 }
 
-function createFixtureUserInputContext(workflowName: WorkflowName): WorkflowUserInputContext | undefined {
+function createFixtureUserInputContext(workflowName: ProjectName): UserInputContext | undefined {
   if (!isUserInputFixtureWorkflow(workflowName)) {
     return undefined;
   }
@@ -1111,7 +1111,7 @@ function createFixtureUserInputContext(workflowName: WorkflowName): WorkflowUser
       return undefined;
     },
     requestInput(request) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "user_input_required",
         message: `Workflow "${workflowName}" is waiting for user input "${request.requestId}".`,
         nodeName: request.nodeName,
@@ -1121,14 +1121,14 @@ function createFixtureUserInputContext(workflowName: WorkflowName): WorkflowUser
   };
 }
 
-function isUserInputFixtureWorkflow(workflowName: WorkflowName): workflowName is "human-input" | "output-showcase" {
+function isUserInputFixtureWorkflow(workflowName: ProjectName): workflowName is "human-input" | "output-showcase" {
   return workflowName === "human-input" || workflowName === "output-showcase";
 }
 
-async function resolveFixtureArgs(workflowName: WorkflowName, args: string[]): Promise<string[]> {
+async function resolveFixtureArgs(workflowName: ProjectName, args: string[]): Promise<string[]> {
   if (workflowName === "gpt-image") {
     const imagePath = path.join(workflowDirectory("gpt-image"), "__fixtures__", "pixel.png");
-    const imageReference: WorkflowFileReference = {
+    const imageReference: FileReference = {
       id: "gpt-image-pixel",
       name: "pixel.png",
       mimeType: "image/png",
@@ -1147,7 +1147,7 @@ async function resolveFixtureArgs(workflowName: WorkflowName, args: string[]): P
   }
 
   const imagePath = path.join(workflowDirectory("conversation"), "__fixtures__", "pixel.svg");
-  const imageReference: WorkflowFileReference = {
+  const imageReference: FileReference = {
     id: "conversation-pixel",
     name: "pixel.svg",
     mimeType: "image/svg+xml",
@@ -1157,7 +1157,7 @@ async function resolveFixtureArgs(workflowName: WorkflowName, args: string[]): P
     path: imagePath,
     createdAt: "2026-05-26T00:00:00.000Z",
   };
-  const fileReference: WorkflowFileReference = {
+  const fileReference: FileReference = {
     id: "conversation-file",
     name: "pixel.svg",
     mimeType: "application/pdf",
@@ -1179,7 +1179,7 @@ async function resolveFixtureArgs(workflowName: WorkflowName, args: string[]): P
   });
 }
 
-function createFixtureLLMProvider(workflowName: WorkflowName): MockLLMProvider {
+function createFixtureLLMProvider(workflowName: ProjectName): MockLLMProvider {
   let deltaforeThoughtCount = 0;
 
   return new MockLLMProvider({
@@ -1245,7 +1245,7 @@ function createFixtureLLMProvider(workflowName: WorkflowName): MockLLMProvider {
   });
 }
 
-function createFixtureEnv(workflowName: WorkflowName): NodeJS.ProcessEnv | undefined {
+function createFixtureEnv(workflowName: ProjectName): NodeJS.ProcessEnv | undefined {
   if (workflowName === "gpt-image") {
     return {
       ...process.env,
@@ -1267,7 +1267,7 @@ function createFixtureEnv(workflowName: WorkflowName): NodeJS.ProcessEnv | undef
   };
 }
 
-function isDeltaforceFixtureWorkflow(workflowName: WorkflowName): workflowName is "deltafore-agent" | "deltaforce-openai-agent" {
+function isDeltaforceFixtureWorkflow(workflowName: ProjectName): workflowName is "deltafore-agent" | "deltaforce-openai-agent" {
   return workflowName === "deltafore-agent" || workflowName === "deltaforce-openai-agent";
 }
 
@@ -1542,10 +1542,10 @@ function readLastUserText(input: LLMChatInput): string {
 
 function readExecutionChildren(
   item:
-    | WorkflowStructureExecution
-    | WorkflowStructureExecutionItem
-    | WorkflowStructureExecutionBranchPath,
-): WorkflowStructureExecutionItem[] {
+    | StructureExecution
+    | StructureExecutionItem
+    | StructureExecutionBranchPath,
+): StructureExecutionItem[] {
   if (item.kind === "sequence" || item.kind === "loop" || isExecutionBranchPath(item)) {
     return item.children;
   }
@@ -1555,37 +1555,37 @@ function readExecutionChildren(
 
 function isExecutionNode(
   item:
-    | WorkflowStructureExecution
-    | WorkflowStructureExecutionItem
-    | WorkflowStructureExecutionBranchPath,
-): item is WorkflowStructureExecutionNode {
+    | StructureExecution
+    | StructureExecutionItem
+    | StructureExecutionBranchPath,
+): item is StructureExecutionNode {
   return item.kind === "node";
 }
 
 function isExecutionLoop(
   item:
-    | WorkflowStructureExecution
-    | WorkflowStructureExecutionItem
-    | WorkflowStructureExecutionBranchPath,
-): item is WorkflowStructureExecutionLoop {
+    | StructureExecution
+    | StructureExecutionItem
+    | StructureExecutionBranchPath,
+): item is StructureExecutionLoop {
   return item.kind === "loop";
 }
 
 function isExecutionBranch(
   item:
-    | WorkflowStructureExecution
-    | WorkflowStructureExecutionItem
-    | WorkflowStructureExecutionBranchPath,
-): item is WorkflowStructureExecutionBranch {
+    | StructureExecution
+    | StructureExecutionItem
+    | StructureExecutionBranchPath,
+): item is StructureExecutionBranch {
   return item.kind === "branch";
 }
 
 function isExecutionBranchPath(
   item:
-    | WorkflowStructureExecution
-    | WorkflowStructureExecutionItem
-    | WorkflowStructureExecutionBranchPath,
-): item is WorkflowStructureExecutionBranchPath {
+    | StructureExecution
+    | StructureExecutionItem
+    | StructureExecutionBranchPath,
+): item is StructureExecutionBranchPath {
   return item.kind === "if" || item.kind === "else-if" || item.kind === "else" || item.kind === "case";
 }
 
@@ -1610,13 +1610,13 @@ function readOutputContent(output: Record<string, unknown>): string {
     .join("\n");
 }
 
-function readReportOutputContent(report: WorkflowExecutionReport): string {
+function readReportOutputContent(report: ExecutionReport): string {
   return readReportOutputItems(report)
     .map((item) => stringifyOutputItemContent(item.content))
     .join("\n");
 }
 
-function readReportOutputItems(report: WorkflowExecutionReport): Array<Record<string, unknown>> {
+function readReportOutputItems(report: ExecutionReport): Array<Record<string, unknown>> {
   return report.outputs
     .flatMap((entry) => entry.output.items)
     .filter(isRecord);
@@ -1641,7 +1641,7 @@ function expectPlainTextOutputItem(
 }
 
 function expectMergedRuntimeItemsToAvoidDuplicateContent(
-  events: WorkflowRuntimeEvent[],
+  events: RuntimeEvent[],
   finalItems: Array<Record<string, unknown>>,
 ): void {
   const liveItems = readLiveOutputItems(events);
@@ -1666,7 +1666,7 @@ function expectMergedRuntimeItemsToAvoidDuplicateContent(
   }
 }
 
-function readLiveOutputItems(events: WorkflowRuntimeEvent[]): Array<Record<string, unknown>> {
+function readLiveOutputItems(events: RuntimeEvent[]): Array<Record<string, unknown>> {
   return events.reduce((items, event) => {
     if (event.type !== "node_chunk") {
       return items;
@@ -1772,16 +1772,16 @@ function normalizeOutputItem(item: Record<string, unknown>): Record<string, unkn
   };
 }
 
-function normalizeOutputItemPatch(value: unknown): Partial<WorkflowOutputItem> {
+function normalizeOutputItemPatch(value: unknown): Partial<OutputItem> {
   if (!isRecord(value)) {
     return {};
   }
 
-  const patch: Partial<WorkflowOutputItem> = {};
+  const patch: Partial<OutputItem> = {};
   if (typeof value.title === "string") patch.title = value.title;
   if (typeof value.icon === "string") patch.icon = value.icon;
-  if (typeof value.iconPreset === "string") patch.iconPreset = value.iconPreset as WorkflowOutputItem["iconPreset"];
-  if (typeof value.contentType === "string") patch.contentType = value.contentType as WorkflowOutputItem["contentType"];
+  if (typeof value.iconPreset === "string") patch.iconPreset = value.iconPreset as OutputItem["iconPreset"];
+  if (typeof value.contentType === "string") patch.contentType = value.contentType as OutputItem["contentType"];
   if (typeof value.collapsed === "boolean") patch.collapsed = value.collapsed;
   if (isRecord(value.metadata)) patch.metadata = value.metadata;
   return patch;
@@ -1803,7 +1803,7 @@ function mergeOutputItemContent(current: unknown, delta: unknown): unknown {
   return delta;
 }
 
-function inferOutputContentType(value: unknown): WorkflowOutputItem["contentType"] {
+function inferOutputContentType(value: unknown): OutputItem["contentType"] {
   return typeof value === "object" && value !== null ? "json" : "markdown";
 }
 
@@ -1813,7 +1813,7 @@ function normalizeOutputItemContentForDuplicateCheck(value: unknown): string {
 
 function expectOutputItem(
   items: Array<Record<string, unknown>>,
-  expectedItem: WorkflowOutputItemExpectation,
+  expectedItem: OutputItemExpectation,
   fallbackIndex: number,
 ): void {
   const index = expectedItem.index ?? fallbackIndex;
@@ -1853,8 +1853,8 @@ function expectOutputItem(
 }
 
 function expectTimerRecord(
-  timer: WorkflowExecutionReport["timers"] extends Array<infer Timer> ? Timer | undefined : never,
-  expectedTimer: WorkflowTimerExpectation,
+  timer: ExecutionReport["timers"] extends Array<infer Timer> ? Timer | undefined : never,
+  expectedTimer: TimerExpectation,
   index: number,
 ): void {
   expect(timer, `timer at index ${index}`).toBeDefined();

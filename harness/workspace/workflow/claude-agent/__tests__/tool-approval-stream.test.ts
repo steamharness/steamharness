@@ -5,9 +5,9 @@ import {
   createDisabledWorkflowTokenUsageContext,
   createWorkflowRelatedProjectsContext,
   createWorkflowToolPermissionContext,
-  type WorkflowKVContext,
-  type WorkflowUserInputResolved,
-  type WorkflowUserInputRequest,
+  type KVContext,
+  type UserInputResolved,
+  type UserInputRequest,
 } from "steamharness";
 import type { NodeContext } from "steamharness/types/context";
 import type { ClaudeAgentSessionInput } from "../interface";
@@ -105,7 +105,7 @@ beforeAll(async () => {
 
 describe("claude-agent tool approval stream", () => {
   it("pauses the workflow when the SDK continues after a pending tool approval", async () => {
-    const requests: WorkflowUserInputRequest[] = [];
+    const requests: UserInputRequest[] = [];
     const chunks: unknown[] = [];
     const iterator = outputNode.stream(createSessionInput(), createNodeContext(requests));
 
@@ -114,7 +114,7 @@ describe("claude-agent tool approval stream", () => {
         chunks.push(chunk);
       }
     }).rejects.toMatchObject({
-      name: "WorkflowError",
+      name: "HarnessError",
       type: "user_input_required",
       nodeName: "tool-approval",
     });
@@ -200,8 +200,8 @@ function createSessionInput(): ClaudeAgentSessionInput {
 }
 
 function createNodeContext(
-  requests: WorkflowUserInputRequest[],
-  resolvedInput?: WorkflowUserInputResolved,
+  requests: UserInputRequest[],
+  resolvedInput?: UserInputResolved,
 ): NodeContext {
   return {
     providers: {},
@@ -250,7 +250,7 @@ function createNodeContext(
   };
 }
 
-function createMemoryKVContext(): WorkflowKVContext {
+function createMemoryKVContext(): KVContext {
   const values = new Map<string, unknown>();
   function createNamespace(prefix: string) {
     return {

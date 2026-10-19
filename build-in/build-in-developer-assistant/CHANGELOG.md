@@ -145,13 +145,13 @@
 
 ### 新特性
 
-- **生成器契约对齐**：Generator skill 补齐入口分组、音频与视频、Conversation 网关与八种 `workflow.WorkflowError`。
+- **生成器契约对齐**：Generator skill 补齐入口分组、音频与视频、Conversation 网关与八种 `workflow.HarnessError`。
 - **脚手架发布元数据**：生成的 `package.json` 带上 `steamHarness.projectCard` 与 `steamHarness.release`。
 
 ### 新增
 
 - 新增 Generator skill 覆盖 `entrypoint.group`、音频输入、视频附件与输出、Conversation 的 `context.hostInput`。
-- 新增 Generator skill 覆盖八种 `workflow.WorkflowError` 与 `createLLMNode`。
+- 新增 Generator skill 覆盖八种 `workflow.HarnessError` 与 `createLLMNode`。
 - 新增 Generator skill 覆盖 `getLLMProvider` 与 `tokenUsage.getRunUsage()`。
 - 新增 脚手架生成 `steamHarness.projectCard` 与 `steamHarness.release`，取值按项目类型默认。
 

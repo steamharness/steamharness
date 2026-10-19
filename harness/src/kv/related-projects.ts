@@ -2,9 +2,9 @@ import {
   STEAMHARNESS_RELATED_PROJECT_ALIAS_PATTERN,
   isWorkflowProjectAccessAllowed,
   resolveWorkflowRelatedProjectAccess,
-  type WorkflowProjectAccessRule,
-  type WorkflowProjectInfo,
-  type WorkflowRelatedProjectGrant,
+  type ProjectAccessRule,
+  type ProjectInfoContract,
+  type RelatedProjectGrant,
 } from "@steamharness/project-info";
 import {
   createKnowledgeDocument,
@@ -21,21 +21,21 @@ import {
   type ListKnowledgeDocumentsInput,
   type ReadKnowledgeDocumentLinesInput,
   type SearchKnowledgeDocumentsInput,
-  type WorkflowKnowledgeContext,
-  type WorkflowKnowledgeDocument,
-  type WorkflowKnowledgeDocumentLinesResult,
-  type WorkflowKnowledgeDocumentPage,
-  type WorkflowKnowledgeSearchResult,
+  type KnowledgeContext,
+  type KnowledgeDocument,
+  type KnowledgeDocumentLinesResult,
+  type KnowledgeDocumentPageRecord,
+  type KnowledgeSearchResultRecord,
 } from "../knowledge/index";
 import {
   normalizeWorkflowKVKey,
-  type WorkflowKVNamespace,
-  type WorkflowKVNamespaceMutation,
+  type KVNamespace,
+  type KVNamespaceMutation,
 } from "./index";
-import { WorkflowError } from "../workflow/errors";
+import { HarnessError } from "../workflow/errors";
 
 /** One entrypoint of the target project a consumer may call. */
-export interface WorkflowRelatedProjectEntrypoint {
+export interface RelatedProjectEntrypoint {
   id: string;
   title?: string;
   description?: string;
@@ -52,8 +52,8 @@ export interface WorkflowRelatedProjectEntrypoint {
  * relations are direct, so a project reached this way cannot reach a third one
  * through itself.
  */
-export interface WorkflowRelatedProjectRunner {
-  listEntrypoints(): Promise<WorkflowRelatedProjectEntrypoint[]>;
+export interface RelatedProjectRunner {
+  listEntrypoints(): Promise<RelatedProjectEntrypoint[]>;
   /**
    * Runs the entrypoint with the argument list its own `createInput` parses,
    * and resolves with the payload it produced — `readEntrypointOutput` is how
@@ -62,25 +62,25 @@ export interface WorkflowRelatedProjectRunner {
   run(entrypointId: string, args: readonly string[]): Promise<unknown>;
 }
 
-export interface WorkflowResolvedRelatedProject {
+export interface ResolvedRelatedProject {
   projectId: string;
-  grant: WorkflowRelatedProjectGrant;
-  kv: WorkflowKVNamespace;
+  grant: RelatedProjectGrant;
+  kv: KVNamespace;
   /** The target's project-scoped persistent values; omitted when unreachable. */
-  persistentValue?: WorkflowKVNamespace;
+  persistentValue?: KVNamespace;
   /** Omitted when the host cannot run the target project. */
-  runner?: WorkflowRelatedProjectRunner;
+  runner?: RelatedProjectRunner;
 }
 
-export interface WorkflowRelatedProjectKVResolver {
+export interface RelatedProjectKVResolver {
   resolve(alias: string):
-    | Promise<WorkflowResolvedRelatedProject | undefined>
-    | WorkflowResolvedRelatedProject
+    | Promise<ResolvedRelatedProject | undefined>
+    | ResolvedRelatedProject
     | undefined;
 }
 
-/** @deprecated Renamed to {@link WorkflowResolvedRelatedProject}. */
-export type WorkflowResolvedRelatedProjectKV = WorkflowResolvedRelatedProject;
+/** @deprecated Renamed to {@link ResolvedRelatedProject}. */
+export type ResolvedRelatedProjectKV = ResolvedRelatedProject;
 
 /**
  * The target project's knowledge base, addressed by alias.
@@ -89,21 +89,21 @@ export type WorkflowResolvedRelatedProjectKV = WorkflowResolvedRelatedProject;
  * rather than to this run's own storage, and each call re-reads the target's
  * grant before it touches anything.
  */
-export interface WorkflowRelatedProjectKnowledgeContext {
-  listDocuments(input?: ListKnowledgeDocumentsInput): Promise<WorkflowKnowledgeDocumentPage>;
-  getDocument(documentId: string): Promise<WorkflowKnowledgeDocument | undefined>;
-  createDocument(input: CreateKnowledgeDocumentInput): Promise<WorkflowKnowledgeDocument>;
-  editDocument(input: EditKnowledgeDocumentInput): Promise<WorkflowKnowledgeDocument>;
+export interface RelatedProjectKnowledgeContext {
+  listDocuments(input?: ListKnowledgeDocumentsInput): Promise<KnowledgeDocumentPageRecord>;
+  getDocument(documentId: string): Promise<KnowledgeDocument | undefined>;
+  createDocument(input: CreateKnowledgeDocumentInput): Promise<KnowledgeDocument>;
+  editDocument(input: EditKnowledgeDocumentInput): Promise<KnowledgeDocument>;
   deleteDocument(documentId: string): Promise<{ id: string; deleted: boolean }>;
-  searchDocuments(input: SearchKnowledgeDocumentsInput): Promise<WorkflowKnowledgeSearchResult>;
-  readDocumentLines(input: ReadKnowledgeDocumentLinesInput): Promise<WorkflowKnowledgeDocumentLinesResult>;
+  searchDocuments(input: SearchKnowledgeDocumentsInput): Promise<KnowledgeSearchResultRecord>;
+  readDocumentLines(input: ReadKnowledgeDocumentLinesInput): Promise<KnowledgeDocumentLinesResult>;
 }
 
-export interface WorkflowRelatedProjectStorageContext {
-  kv: WorkflowKVNamespace;
-  knowledge: WorkflowRelatedProjectKnowledgeContext;
+export interface RelatedProjectStorageContext {
+  kv: KVNamespace;
+  knowledge: RelatedProjectKnowledgeContext;
   /** The entrypoints of the target this consumer is allowed to call. */
-  listEntrypoints(): Promise<WorkflowRelatedProjectEntrypoint[]>;
+  listEntrypoints(): Promise<RelatedProjectEntrypoint[]>;
   /**
    * Calls one of them with the arguments its own input reader parses — the
    * same shape every host uses to start a project, so what a consumer sends is
@@ -112,22 +112,22 @@ export interface WorkflowRelatedProjectStorageContext {
   runEntrypoint(entrypointId: string, args?: readonly string[]): Promise<unknown>;
 }
 
-export interface WorkflowRelatedProjectsContext {
-  get(alias: string): WorkflowRelatedProjectStorageContext;
+export interface RelatedProjectsContext {
+  get(alias: string): RelatedProjectStorageContext;
 }
 
-export interface WorkflowRelatedProjectResolverProject {
+export interface RelatedProjectResolverProject {
   projectId: string;
-  projectInfo: WorkflowProjectInfo;
-  kv: WorkflowKVNamespace;
-  persistentValue?: WorkflowKVNamespace;
-  runner?: WorkflowRelatedProjectRunner;
+  projectInfo: ProjectInfoContract;
+  kv: KVNamespace;
+  persistentValue?: KVNamespace;
+  runner?: RelatedProjectRunner;
 }
 
 export function createWorkflowRelatedProjectsContext(
-  resolver?: WorkflowRelatedProjectKVResolver,
-): WorkflowRelatedProjectsContext {
-  const contexts = new Map<string, WorkflowRelatedProjectStorageContext>();
+  resolver?: RelatedProjectKVResolver,
+): RelatedProjectsContext {
+  const contexts = new Map<string, RelatedProjectStorageContext>();
   return {
     get(rawAlias) {
       const alias = normalizeRelatedProjectAlias(rawAlias);
@@ -148,13 +148,13 @@ export function createWorkflowRelatedProjectsContext(
 
 export function createDeclaredWorkflowRelatedProjectKVResolver(options: {
   getConsumerProject():
-    | Promise<Omit<WorkflowRelatedProjectResolverProject, "kv">>
-    | Omit<WorkflowRelatedProjectResolverProject, "kv">;
+    | Promise<Omit<RelatedProjectResolverProject, "kv">>
+    | Omit<RelatedProjectResolverProject, "kv">;
   getTargetProject(projectId: string):
-    | Promise<WorkflowRelatedProjectResolverProject | undefined>
-    | WorkflowRelatedProjectResolverProject
+    | Promise<RelatedProjectResolverProject | undefined>
+    | RelatedProjectResolverProject
     | undefined;
-}): WorkflowRelatedProjectKVResolver {
+}): RelatedProjectKVResolver {
   return {
     async resolve(alias) {
       const consumer = await options.getConsumerProject();
@@ -186,8 +186,8 @@ export function createDeclaredWorkflowRelatedProjectKVResolver(options: {
 
 function createRelatedProjectKVNamespace(
   alias: string,
-  resolver: WorkflowRelatedProjectKVResolver | undefined,
-): WorkflowKVNamespace {
+  resolver: RelatedProjectKVResolver | undefined,
+): KVNamespace {
   return {
     async getValue(rawKey) {
       const key = normalizeWorkflowKVKey(rawKey);
@@ -221,11 +221,11 @@ function createRelatedProjectKVNamespace(
 
 async function resolveRelatedProject(
   alias: string,
-  resolver: WorkflowRelatedProjectKVResolver | undefined,
-): Promise<WorkflowResolvedRelatedProject> {
+  resolver: RelatedProjectKVResolver | undefined,
+): Promise<ResolvedRelatedProject> {
   const resolved = await resolver?.resolve(alias);
   if (resolved !== undefined) return resolved;
-  throw new WorkflowError({
+  throw new HarnessError({
     type: "input_validation",
     message: `Related project "${alias}" is unavailable or awaiting confirmation.`,
     metadata: { alias, code: "RELATED_PROJECT_UNAVAILABLE" },
@@ -245,29 +245,29 @@ async function resolveRelatedProject(
  */
 function createRelatedProjectKnowledgeContext(
   alias: string,
-  resolver: WorkflowRelatedProjectKVResolver | undefined,
-): WorkflowRelatedProjectKnowledgeContext {
+  resolver: RelatedProjectKVResolver | undefined,
+): RelatedProjectKnowledgeContext {
   // The gate here is only "is this side open at all"; which documents it opens
   // is decided per key below, so a prefix rule that names one document works
   // for reading that document and says which key it was refused on everywhere
   // else. Every document also shares one index key, which is why listing and
   // creating need a rule that covers it and reading a named document does not.
-  const open = async (side: "read" | "write"): Promise<WorkflowKnowledgeContext> => {
+  const open = async (side: "read" | "write"): Promise<KnowledgeContext> => {
     const resolved = await resolveRelatedProject(alias, resolver);
-    const rule: WorkflowProjectAccessRule | undefined = side === "read"
+    const rule: ProjectAccessRule | undefined = side === "read"
       ? resolved.grant.knowledge?.read
       : resolved.grant.knowledge?.write;
     // "Cannot reach it here" and "was never granted" are different answers:
     // the first is the host's to fix, the second the manifest's.
     if (resolved.persistentValue === undefined) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "input_validation",
         message: `Related project "${alias}" knowledge base cannot be reached from here: this host provided no persistent-value store for it.`,
         metadata: { alias, operation: side, code: "RELATED_PROJECT_UNAVAILABLE" },
       });
     }
     if (rule === undefined || rule.mode === "none") {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "input_validation",
         message: `Related project "${alias}" does not share its knowledge base with this project.`,
         metadata: { alias, operation: side, code: "RELATED_PROJECT_KNOWLEDGE_ACCESS_DENIED" },
@@ -317,20 +317,20 @@ function createRelatedProjectKnowledgeContext(
  */
 function createRestrictedKnowledgeNamespace(
   alias: string,
-  resolved: WorkflowResolvedRelatedProject,
-): WorkflowKVNamespace {
+  resolved: ResolvedRelatedProject,
+): KVNamespace {
   const persistentValue = resolved.persistentValue!;
   const assertAccess = (key: string, operation: "read" | "write"): void => {
     const rule = operation === "read" ? resolved.grant.knowledge?.read : resolved.grant.knowledge?.write;
     if (isKnowledgeDocumentStorageKey(key) && isWorkflowProjectAccessAllowed(rule, key)) return;
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `Related project "${alias}" does not grant ${operation} access to this knowledge document.`,
       metadata: { alias, operation, key, code: "RELATED_PROJECT_KNOWLEDGE_ACCESS_DENIED" },
     });
   };
 
-  const namespace: WorkflowKVNamespace = {
+  const namespace: KVNamespace = {
     async getValue(rawKey) {
       const key = normalizeWorkflowKVKey(rawKey);
       assertAccess(key, "read");
@@ -368,14 +368,14 @@ function createRestrictedKnowledgeNamespace(
       persistentValue.withReadLock!<T>(operation);
   }
   if (persistentValue.executeMutation !== undefined) {
-    namespace.executeMutation = <T>(mutation: WorkflowKVNamespaceMutation): Promise<T> => {
+    namespace.executeMutation = <T>(mutation: KVNamespaceMutation): Promise<T> => {
       // The store runs this one whole, index writes included, so `assertAccess`
       // never sees the keys it touches. Check the ones it declares first: they
       // are the same keys the lock route checks one call at a time, and a
       // mutation that will not name them is refused rather than trusted.
       const keys = describeKnowledgeMutationKeys(mutation);
       if (keys === undefined) {
-        throw new WorkflowError({
+        throw new HarnessError({
           type: "input_validation",
           message: `Related project "${alias}" only applies knowledge mutations whose documents it can name.`,
           metadata: {
@@ -396,8 +396,8 @@ function createRestrictedKnowledgeNamespace(
 
 async function listRelatedProjectEntrypoints(
   alias: string,
-  resolver: WorkflowRelatedProjectKVResolver | undefined,
-): Promise<WorkflowRelatedProjectEntrypoint[]> {
+  resolver: RelatedProjectKVResolver | undefined,
+): Promise<RelatedProjectEntrypoint[]> {
   const resolved = await resolveRelatedProject(alias, resolver);
   const runner = requireRelatedProjectRunner(alias, resolved);
   const entrypoints = await runner.listEntrypoints();
@@ -409,14 +409,14 @@ async function listRelatedProjectEntrypoints(
 
 async function runRelatedProjectEntrypoint(
   alias: string,
-  resolver: WorkflowRelatedProjectKVResolver | undefined,
+  resolver: RelatedProjectKVResolver | undefined,
   rawEntrypointId: string,
   args: readonly string[],
 ): Promise<unknown> {
   const entrypointId = normalizeRelatedProjectEntrypointId(rawEntrypointId);
   const resolved = await resolveRelatedProject(alias, resolver);
   if (!isWorkflowProjectAccessAllowed(resolved.grant.entrypoints, entrypointId)) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `Related project "${alias}" does not grant this project access to entrypoint "${entrypointId}".`,
       metadata: { alias, entrypointId, code: "RELATED_PROJECT_ENTRYPOINT_ACCESS_DENIED" },
@@ -427,10 +427,10 @@ async function runRelatedProjectEntrypoint(
 
 function requireRelatedProjectRunner(
   alias: string,
-  resolved: WorkflowResolvedRelatedProject,
-): WorkflowRelatedProjectRunner {
+  resolved: ResolvedRelatedProject,
+): RelatedProjectRunner {
   if (resolved.runner !== undefined) return resolved.runner;
-  throw new WorkflowError({
+  throw new HarnessError({
     type: "input_validation",
     message: `Related project "${alias}" cannot be run from here.`,
     metadata: { alias, code: "RELATED_PROJECT_UNAVAILABLE" },
@@ -440,7 +440,7 @@ function requireRelatedProjectRunner(
 function normalizeRelatedProjectEntrypointId(value: string): string {
   const entrypointId = value.trim();
   if (entrypointId === "") {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "Related project entrypoint id must be a non-empty string.",
     });
@@ -449,13 +449,13 @@ function normalizeRelatedProjectEntrypointId(value: string): string {
 }
 
 function assertRelatedProjectAccess(
-  rule: WorkflowProjectAccessRule,
+  rule: ProjectAccessRule,
   alias: string,
   key: string,
   operation: "read" | "write",
 ): void {
   if (isWorkflowProjectAccessAllowed(rule, key)) return;
-  throw new WorkflowError({
+  throw new HarnessError({
     type: "input_validation",
     message: `Related project "${alias}" does not grant ${operation} access to this KV key.`,
     metadata: { alias, operation, code: "RELATED_PROJECT_KV_ACCESS_DENIED" },
@@ -465,7 +465,7 @@ function assertRelatedProjectAccess(
 function normalizeRelatedProjectAlias(value: string): string {
   const alias = value.trim();
   if (!STEAMHARNESS_RELATED_PROJECT_ALIAS_PATTERN.test(alias)) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "Related project alias is invalid.",
     });

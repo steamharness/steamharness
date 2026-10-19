@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { WorkflowServerHealthData } from "../../types";
+import type { ServerHealthData } from "../../types";
 import {
   consumeUnseenServerRelease,
   LAST_SEEN_SERVER_RELEASE_VERSION_KEY,
 } from "../server-release-notes";
 
-const health: WorkflowServerHealthData = {
+const health: ServerHealthData = {
   status: "ok",
   versions: {
     serverVersion: "0.2.0",
@@ -42,7 +42,7 @@ describe("server release notes", () => {
     const withoutRelease = {
       ...health,
       currentRelease: null,
-    } satisfies WorkflowServerHealthData;
+    } satisfies ServerHealthData;
 
     expect(consumeUnseenServerRelease(withoutRelease)).toBeNull();
     expect(window.localStorage.getItem(LAST_SEEN_SERVER_RELEASE_VERSION_KEY)).toBeNull();

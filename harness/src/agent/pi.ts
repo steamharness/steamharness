@@ -10,7 +10,7 @@ import type {
 import type { AgentThinkingLevel } from "./effort";
 import type { AgentModelAttributes } from "./types";
 import type { TypeboxLike } from "./tools";
-import { WorkflowError } from "../workflow/errors";
+import { HarnessError } from "../workflow/errors";
 
 /**
  * How many times one model call may be retried before the run fails.
@@ -209,7 +209,7 @@ export async function createPiRuntime(options: PiRuntimeOptions): Promise<PiRunt
 
   if (model === undefined) {
     if (modelId === undefined) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "input_validation",
         message: `Agent model is required for provider "${providerId}".`,
         metadata: { provider: providerId },
@@ -219,7 +219,7 @@ export async function createPiRuntime(options: PiRuntimeOptions): Promise<PiRunt
       // A model the catalog does not know and no endpoint to reach it on is a
       // typo, not a provider we can synthesize. Failing here beats registering
       // an empty-baseUrl provider whose first request fails confusingly.
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "input_validation",
         message: `Agent model "${modelId}" is unknown for provider "${providerId}". Pass a baseUrl to use a custom endpoint.`,
         metadata: { provider: providerId, model: modelId },

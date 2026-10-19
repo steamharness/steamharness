@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { conversationResourceCards } from '../web/resource-cards';
-import type { WorkflowOutputItem } from '../web/workflow-types';
+import type { OutputItem } from '../web/workflow-types';
 
 describe('custom tool resource cards', () => {
   const projectId = 'agent', conversationId = 'conversation';
-  const item = (tool: string, output: unknown, status = 'success'): WorkflowOutputItem => ({
+  const item = (tool: string, output: unknown, status = 'success'): OutputItem => ({
     id: 'tool-call', contentType: 'application/json', title: tool,
     metadata: { kind: 'agent-part', partType: 'tool' },
     content: { type: 'tool', tool, status, input: {}, output },

@@ -9,12 +9,12 @@ import {
   workflowParamsToMcpElicitationSchema,
   workflowParamsToMcpInputSchema,
   workflowParamsToMcpJsonSchema,
-  WorkflowMcpInvalidParamsError,
-  type WorkflowMcpManagedFileReference,
-  type WorkflowMcpParamDefinition,
+  McpInvalidParamsError,
+  type McpManagedFileReference,
+  type McpParamDefinition,
 } from "../index";
 
-const params: WorkflowMcpParamDefinition[] = [
+const params: McpParamDefinition[] = [
   {
     name: "message",
     flag: "--message",
@@ -116,7 +116,7 @@ describe("workflow MCP schemas", () => {
   });
 
   it("uses the same normalized number and boolean options for validation and JSON Schema", async () => {
-    const normalizedParams: WorkflowMcpParamDefinition[] = [
+    const normalizedParams: McpParamDefinition[] = [
       { name: "count", type: "number", options: [{ value: "1.0" }, { value: "invalid" }] },
       { name: "enabled", type: "boolean", options: [{ value: "true" }, { value: "invalid" }] },
     ];
@@ -150,7 +150,7 @@ describe("workflow MCP schemas", () => {
   });
 
   it("uses host-specific file contracts and rejects unknown fields", async () => {
-    const fileParam: WorkflowMcpParamDefinition[] = [
+    const fileParam: McpParamDefinition[] = [
       { name: "files", flag: "--files", type: "file", multiple: true, required: true },
     ];
     expect(workflowParamsToMcpJsonSchema(fileParam, "local").properties.files).toMatchObject({
@@ -255,7 +255,7 @@ describe("workflow MCP args and files", () => {
         resolveFiles,
         signal: new AbortController().signal,
       });
-      const refs = JSON.parse(args[1] ?? "[]") as WorkflowMcpManagedFileReference[];
+      const refs = JSON.parse(args[1] ?? "[]") as McpManagedFileReference[];
       expect(args[0]).toBe("--file");
       expect(refs[0]).toMatchObject({
         id: "wf_12345678901234567890",
@@ -295,8 +295,8 @@ describe("workflow MCP args and files", () => {
         param: { name: "file", flag: "--file", type: "file" as const },
         signal: new AbortController().signal,
       };
-      await expect(resolver(["relative.txt"], context)).rejects.toBeInstanceOf(WorkflowMcpInvalidParamsError);
-      await expect(resolver([root], context)).rejects.toBeInstanceOf(WorkflowMcpInvalidParamsError);
+      await expect(resolver(["relative.txt"], context)).rejects.toBeInstanceOf(McpInvalidParamsError);
+      await expect(resolver([root], context)).rejects.toBeInstanceOf(McpInvalidParamsError);
       await expect(resolver([source], context)).rejects.toThrow(/exceeds 50MB/);
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -316,7 +316,7 @@ describe("workflow MCP args and files", () => {
         entrypointId: "main",
         param: { name: "file", flag: "--file", type: "file" as const },
         signal: new AbortController().signal,
-      })).rejects.toBeInstanceOf(WorkflowMcpInvalidParamsError);
+      })).rejects.toBeInstanceOf(McpInvalidParamsError);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -334,7 +334,7 @@ describe("workflow MCP args and files", () => {
         entrypointId: "main",
         param: { name: "files", flag: "--files", type: "file", multiple: true },
         signal: new AbortController().signal,
-      })).rejects.toBeInstanceOf(WorkflowMcpInvalidParamsError);
+      })).rejects.toBeInstanceOf(McpInvalidParamsError);
       await expect(readdir(store)).rejects.toMatchObject({ code: "ENOENT" });
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -342,7 +342,7 @@ describe("workflow MCP args and files", () => {
   });
 
   it("re-reads authoritative server metadata and enforces project ownership", async () => {
-    const metadata: WorkflowMcpManagedFileReference = {
+    const metadata: McpManagedFileReference = {
       id: "wf_server_file_1234567890",
       name: "actual.txt",
       mimeType: "text/plain",
@@ -363,7 +363,7 @@ describe("workflow MCP args and files", () => {
     };
 
     await expect(resolver([{ id: metadata.id, name: "spoofed.txt" }], context))
-      .rejects.toBeInstanceOf(WorkflowMcpInvalidParamsError);
+      .rejects.toBeInstanceOf(McpInvalidParamsError);
     await expect(resolver([{ id: metadata.id }], context)).resolves.toEqual([metadata]);
     await expect(resolver([{ id: "missing" }], context)).rejects.toThrow(/does not belong/);
   });

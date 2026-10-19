@@ -1,5 +1,5 @@
 import { t, locale } from '../localization';
-import type { WorkflowAccountState } from '../workflow-auth-client';
+import type { AccountState } from '../workflow-auth-client';
 import { iconHtml } from './ui';
 import './account.css';
 
@@ -8,7 +8,7 @@ type AccountAction = { type: 'login'; serverUrl: string; email?: string; passwor
 export class AccountPanel {
   private readonly button = document.createElement('button');
   private readonly dialog = document.createElement('dialog');
-  private state?: WorkflowAccountState;
+  private state?: AccountState;
   private pending = false;
   private avatarKey = '';
 
@@ -77,7 +77,7 @@ export class AccountPanel {
     if (!this.dialog.open) { this.dialog.showModal(); }
   }
 
-  update(state: WorkflowAccountState): void {
+  update(state: AccountState): void {
     this.state = state;
     this.button.hidden = false;
     this.pending = state.status === 'checking';

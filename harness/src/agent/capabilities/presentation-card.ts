@@ -1,6 +1,6 @@
 import type { NodeContext } from "../../types/context";
 import { readHostConfigurationBridgeConfig, runHostConfigurationAction } from "./host-configuration";
-import type { WorkflowCapability } from "./types";
+import type { Capability } from "./types";
 
 export const PRESENTATION_CARD_MCP_SERVER_ID = "workflow-ui";
 export const PRESENTATION_CARD_MCP_TOOL_NAME = "present_card";
@@ -156,7 +156,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export const PRESENTATION_CARD_CAPABILITY: WorkflowCapability = {
+export const PRESENTATION_CARD_CAPABILITY: Capability = {
   serverId: PRESENTATION_CARD_MCP_SERVER_ID,
   toolName: PRESENTATION_CARD_MCP_TOOL_NAME,
   toolId: PRESENTATION_CARD_MCP_TOOL_ID,

@@ -5,14 +5,14 @@
 
 import type { RefObject } from "react";
 
-export type WorkflowParamType = "string" | "number" | "boolean" | "positional" | "file";
+export type ParamType = "string" | "number" | "boolean" | "positional" | "file";
 
 // The full control union, not just the subset the inlined ParamsForm renders.
-// Kanban manifests only declare the first five, but `WorkflowParamDefinition`
+// Kanban manifests only declare the first five, but `ParamDefinition`
 // has to stay structurally identical to the canonical one in
 // `desktop/packages/run-workspace-input` so hosts can pass the same param
 // arrays to both without a nominal type conflict.
-export type WorkflowParamControl =
+export type ParamControl =
   | "text"
   | "audio"
   | "textarea"
@@ -24,57 +24,57 @@ export type WorkflowParamControl =
   | "datetime"
   | "date-range";
 
-export type WorkflowParamPanel = "main" | "auxiliary" | "quick";
+export type ParamPanel = "main" | "auxiliary" | "quick";
 
-export type WorkflowParamValue = string | string[];
+export type ParamValue = string | string[];
 
-export interface WorkflowParamOption {
+export interface ParamOption {
   value: string;
   label?: string;
   description?: string;
 }
 
-export interface WorkflowAudioParamOptions {
+export interface AudioParamOptions {
   maxDurationSeconds?: number;
   maxBytes?: number;
 }
 
-export type WorkflowFileObjectsUploader = (
-  param: WorkflowParamDefinition,
+export type FileObjectsUploader = (
+  param: ParamDefinition,
   files: File[],
   options: { signal: AbortSignal },
-) => Promise<WorkflowManagedFileReference[]>;
+) => Promise<ManagedFileReference[]>;
 
-export interface WorkflowParamDefinition {
+export interface ParamDefinition {
   name: string;
   flag?: string;
   shortFlag?: string;
-  type: WorkflowParamType;
+  type: ParamType;
   required?: boolean;
   description?: string;
   defaultValue?: string;
   multiple?: boolean;
-  control?: WorkflowParamControl;
-  panel?: WorkflowParamPanel;
+  control?: ParamControl;
+  panel?: ParamPanel;
   resolveOnInput?: boolean;
-  options?: WorkflowParamOption[];
+  options?: ParamOption[];
   accept?: string[];
-  audio?: WorkflowAudioParamOptions;
+  audio?: AudioParamOptions;
   format?: "json";
   label?: string;
 }
 
-export interface WorkflowParamOptionStatePatch { visible?: boolean; disabled?: boolean }
+export interface ParamOptionStatePatch { visible?: boolean; disabled?: boolean }
 
-export interface WorkflowParamStatePatch {
-  value?: WorkflowParamValue | null;
+export interface ParamStatePatch {
+  value?: ParamValue | null;
   visible?: boolean;
   disabled?: boolean;
-  resolvedOptions?: WorkflowParamOption[] | null;
-  options?: Record<string, WorkflowParamOptionStatePatch>;
+  resolvedOptions?: ParamOption[] | null;
+  options?: Record<string, ParamOptionStatePatch>;
 }
 
-export interface WorkflowManagedFileReference {
+export interface ManagedFileReference {
   id: string;
   name: string;
   mimeType: string;

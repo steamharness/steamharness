@@ -3,8 +3,8 @@ import { mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { webProjectDataDirectory } from './kanban-data';
-import type { ConversationSession, WorkflowProject } from './workflow-types';
-import type { WorkflowRunRecord } from './workflow-workspace';
+import type { ConversationSession, Project } from './workflow-types';
+import type { RunRecord } from './workflow-workspace';
 
 export interface LocalRunSummary {
   id: string; title: string; status: string; createdAt?: number; durationMs?: number; entrypointId?: string; sessionId?: string;
@@ -29,14 +29,14 @@ function summary(value: Record<string, any>, fallback: string): LocalRunSummary 
     ...(typeof value.sessionId === 'string' ? { sessionId: value.sessionId } : {}) };
 }
 
-export function summarizeLocalRuns(runs?: WorkflowRunRecord[], sessions?: ConversationSession[]): LocalRunSummary[] {
+export function summarizeLocalRuns(runs?: RunRecord[], sessions?: ConversationSession[]): LocalRunSummary[] {
   if (runs) { return runs.map(run => summary(run, run.id)); }
   return (sessions ?? []).flatMap(session => session.messages.flatMap((message, index) => message.role !== 'assistant' ? []
     : [{ ...summary({ ...message, createdAt: message.createdAt ?? session.createdAt }, `legacy-${session.id}-${index}`), id: message.runId ?? message.id ?? `legacy-${session.id}-${index}`, title: session.title, sessionId: session.id }]));
 }
 
 // A separate lease per service keeps another Studio window's live status intact.
-export function createLocalActivityWriter(directory: string, project: Pick<WorkflowProject, 'id' | 'projectType'>,
+export function createLocalActivityWriter(directory: string, project: Pick<Project, 'id' | 'projectType'>,
   state: () => { runs: LocalRunSummary[]; queued: number; queuedInputIds?: string[] }, log: (message: string) => void) {
   const filename = path.join(directory, 'activity', `${randomUUID()}.json`);
   // Idle windows must not republish runs completed or deleted by another window.

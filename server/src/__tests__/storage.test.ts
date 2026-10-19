@@ -6,15 +6,15 @@ import path from "node:path";
 import { gzipSync } from "node:zlib";
 import test from "node:test";
 import { Header } from "tar";
-import type { WorkflowKVNamespaceLockInput, WorkflowKVStore, WorkflowKVStoreGetInput, WorkflowKVStoreSetInput } from "steamharness";
+import type { KVNamespaceLockInput, KVStore, KVStoreGetInput, KVStoreSetInput } from "steamharness";
 import { AccountRepository } from "../account-db";
 import {
   ArtifactStorage,
   DatabaseRepository,
-  type WorkflowDeploymentRecord,
+  type DeploymentRecord,
 } from "../persistence";
-import type { WorkflowRelatedProjectKVGrant } from "@steamharness/project-info";
-import { isKnowledgeMutationGranted, validateArchiveEntries, validateTarArchiveEntries, WorkflowStorage, type WorkflowPreparationJob, type WorkflowKVEntryDetail, type WorkflowKnowledgeDocumentListItem, type WorkflowTokenUsagePage } from "../storage";
+import type { RelatedProjectKVGrant } from "@steamharness/project-info";
+import { isKnowledgeMutationGranted, validateArchiveEntries, validateTarArchiveEntries, Storage, type PreparationJob, type KVEntryDetail, type KnowledgeDocumentListItem, type TokenUsagePage } from "../storage";
 
 // assertWorkflowId now requires UUID format; use fixed UUID fixtures
 const DEMO_WF_ID = "00000000-0000-4000-8000-000000000001";
@@ -114,7 +114,7 @@ test("tar archive validation rejects links and expanded archive bombs before ext
   );
 });
 
-test("WorkflowStorage rejects an actual tar symbolic-link member before extraction", async () => {
+test("Storage rejects an actual tar symbolic-link member before extraction", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-tar-link-"));
   const archivePath = path.join(dataRoot, "linked.tgz");
   const extractDir = path.join(dataRoot, "extract");
@@ -132,7 +132,7 @@ test("WorkflowStorage rejects an actual tar symbolic-link member before extracti
   assert.ok(header.block);
   await writeFile(archivePath, gzipSync(Buffer.concat([header.block, Buffer.alloc(1024)])));
   await mkdir(extractDir, { recursive: true });
-  const storage = new WorkflowStorage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot });
+  const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot });
   const extractArchive = Reflect.get(storage, "extractArchive") as (
     archive: string,
     archiveName: string,
@@ -149,14 +149,14 @@ test("WorkflowStorage rejects an actual tar symbolic-link member before extracti
   }
 });
 
-test("WorkflowStorage init keeps server online when artifact storage init fails", async () => {
+test("Storage init keeps server online when artifact storage init fails", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-artifact-init-"));
   const warnings: unknown[][] = [];
   const originalWarn = console.warn;
   console.warn = (...args: unknown[]) => {
     warnings.push(args);
   };
-  const storage = new WorkflowStorage({
+  const storage = new Storage({
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
@@ -208,9 +208,9 @@ test("ArtifactStorage delegates immutable archives to the object storage backend
   ]);
 });
 
-test("WorkflowStorage.saveManagedFiles stores opaque image references outside workflow source", async () => {
+test("Storage.saveManagedFiles stores opaque image references outside workflow source", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-files-"));
-  const storage = new WorkflowStorage({
+  const storage = new Storage({
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
@@ -248,9 +248,9 @@ test("WorkflowStorage.saveManagedFiles stores opaque image references outside wo
   }
 });
 
-test("WorkflowStorage.saveManagedFiles infers video types and preserves explicit audio WebM", async () => {
+test("Storage.saveManagedFiles infers video types and preserves explicit audio WebM", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-video-files-"));
-  const storage = new WorkflowStorage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot });
+  const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot });
   try {
     await storage.init();
     const cases = [
@@ -277,9 +277,9 @@ test("WorkflowStorage.saveManagedFiles infers video types and preserves explicit
   }
 });
 
-test("WorkflowStorage.saveManagedFiles leaves no partial batch when a later file is invalid", async () => {
+test("Storage.saveManagedFiles leaves no partial batch when a later file is invalid", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-file-rollback-"));
-  const storage = new WorkflowStorage({
+  const storage = new Storage({
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
@@ -308,9 +308,9 @@ test("WorkflowStorage.saveManagedFiles leaves no partial batch when a later file
   }
 });
 
-test("WorkflowStorage.saveManagedFiles rolls back earlier files after a filesystem failure", async () => {
+test("Storage.saveManagedFiles rolls back earlier files after a filesystem failure", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-file-write-rollback-"));
-  const storage = new WorkflowStorage({
+  const storage = new Storage({
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
@@ -1092,10 +1092,10 @@ test("DatabaseRepository orders reconnect snapshots before buffered revision not
   }
 });
 
-test("WorkflowStorage.listProjectKVEntries preserves exact ID filter case", async () => {
+test("Storage.listProjectKVEntries preserves exact ID filter case", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-kv-"));
   const calls: unknown[] = [];
-  const storage = new WorkflowStorage({
+  const storage = new Storage({
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
@@ -1132,10 +1132,10 @@ test("WorkflowStorage.listProjectKVEntries preserves exact ID filter case", asyn
   }
 });
 
-test("WorkflowStorage.deleteProjectKVEntry deletes one exact scoped entry", async () => {
+test("Storage.deleteProjectKVEntry deletes one exact scoped entry", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-kv-delete-"));
   const calls: unknown[] = [];
-  const storage = new WorkflowStorage({
+  const storage = new Storage({
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
@@ -1170,10 +1170,10 @@ test("WorkflowStorage.deleteProjectKVEntry deletes one exact scoped entry", asyn
   }
 });
 
-test("WorkflowStorage.deleteProjectKVEntry omits the conversation for project scope", async () => {
+test("Storage.deleteProjectKVEntry omits the conversation for project scope", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-kv-delete-scope-"));
   const calls: unknown[] = [];
-  const storage = new WorkflowStorage({
+  const storage = new Storage({
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
@@ -1205,9 +1205,9 @@ test("WorkflowStorage.deleteProjectKVEntry omits the conversation for project sc
   }
 });
 
-test("WorkflowStorage.deleteProjectKVEntry reports an already-removed entry as missing", async () => {
+test("Storage.deleteProjectKVEntry reports an already-removed entry as missing", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-kv-delete-missing-"));
-  const storage = new WorkflowStorage({
+  const storage = new Storage({
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
@@ -1231,9 +1231,9 @@ test("WorkflowStorage.deleteProjectKVEntry reports an already-removed entry as m
   }
 });
 
-test("WorkflowStorage.deleteProjectKVEntry requires a conversation id for conversation scope", async () => {
+test("Storage.deleteProjectKVEntry requires a conversation id for conversation scope", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-kv-delete-conv-"));
-  const storage = new WorkflowStorage({
+  const storage = new Storage({
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
@@ -1257,10 +1257,10 @@ test("WorkflowStorage.deleteProjectKVEntry requires a conversation id for conver
   }
 });
 
-test("WorkflowStorage.getProjectKVEntry preserves exact key and conversation case", async () => {
+test("Storage.getProjectKVEntry preserves exact key and conversation case", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-kv-detail-"));
   const calls: unknown[] = [];
-  const storage = new WorkflowStorage({
+  const storage = new Storage({
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
@@ -1292,9 +1292,9 @@ test("WorkflowStorage.getProjectKVEntry preserves exact key and conversation cas
   }
 });
 
-test("WorkflowStorage token usage inspection requires PostgreSQL storage", async () => {
+test("Storage token usage inspection requires PostgreSQL storage", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-token-"));
-  const storage = new WorkflowStorage({
+  const storage = new Storage({
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
@@ -1316,9 +1316,9 @@ test("WorkflowStorage token usage inspection requires PostgreSQL storage", async
   }
 });
 
-test("WorkflowStorage knowledge base requires PostgreSQL storage", async () => {
+test("Storage knowledge base requires PostgreSQL storage", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-knowledge-"));
-  const storage = new WorkflowStorage({
+  const storage = new Storage({
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
@@ -1336,10 +1336,10 @@ test("WorkflowStorage knowledge base requires PostgreSQL storage", async () => {
   }
 });
 
-test("WorkflowStorage knowledge documents use the PersistentValue project domain", async () => {
+test("Storage knowledge documents use the PersistentValue project domain", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-knowledge-"));
   const db = createMemoryKVStore();
-  const storage = new WorkflowStorage({
+  const storage = new Storage({
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
@@ -1374,7 +1374,7 @@ test("WorkflowStorage knowledge documents use the PersistentValue project domain
 
     assert.equal(created.markdown, "# Readme\n\nPersistentValue knowledge.");
     assert.equal(edited.markdown, "# Readme\n\nSearchable markdown.");
-    assert.deepEqual(list.items.map((item: WorkflowKnowledgeDocumentListItem) => item.id), ["readme"]);
+    assert.deepEqual(list.items.map((item: KnowledgeDocumentListItem) => item.id), ["readme"]);
     assert.deepEqual(search.matches.map((match) => [match.documentId, match.lineNumber, match.line]), [
       ["readme", 3, "Searchable markdown."],
     ]);
@@ -1391,10 +1391,10 @@ test("WorkflowStorage knowledge documents use the PersistentValue project domain
   }
 });
 
-test("WorkflowStorage knowledge documents delegate opaque page cursors to core index pages", async () => {
+test("Storage knowledge documents delegate opaque page cursors to core index pages", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-knowledge-page-"));
   const db = createMemoryKVStore();
-  const storage = new WorkflowStorage({
+  const storage = new Storage({
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
@@ -1433,10 +1433,10 @@ test("WorkflowStorage knowledge documents delegate opaque page cursors to core i
   }
 });
 
-test("WorkflowStorage persistent value compare-and-set rejects stale revisions", async () => {
+test("Storage persistent value compare-and-set rejects stale revisions", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-persistent-cas-"));
   const db = createMemoryKVStore();
-  const storage = new WorkflowStorage({
+  const storage = new Storage({
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
@@ -1483,9 +1483,9 @@ test("WorkflowStorage persistent value compare-and-set rejects stale revisions",
   }
 });
 
-test("WorkflowStorage knowledge create conflict maps to HTTP conflict", async () => {
+test("Storage knowledge create conflict maps to HTTP conflict", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-knowledge-conflict-"));
-  const storage = new WorkflowStorage({
+  const storage = new Storage({
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
@@ -1513,16 +1513,16 @@ test("WorkflowStorage knowledge create conflict maps to HTTP conflict", async ()
   }
 });
 
-test("WorkflowStorage.getSystemTokenUsage forwards clamped pagination", async () => {
+test("Storage.getSystemTokenUsage forwards clamped pagination", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-token-"));
   const calls: unknown[] = [];
-  const page: WorkflowTokenUsagePage = {
+  const page: TokenUsagePage = {
     systemTotal: createTokenUsageAggregate(120),
     projects: [],
     hasMore: false,
     total: 0,
   };
-  const storage = new WorkflowStorage({
+  const storage = new Storage({
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
@@ -1550,10 +1550,10 @@ test("WorkflowStorage.getSystemTokenUsage forwards clamped pagination", async ()
   }
 });
 
-test("WorkflowStorage.getProjectTokenUsage preserves conversation filter case", async () => {
+test("Storage.getProjectTokenUsage preserves conversation filter case", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-token-"));
   const calls: unknown[] = [];
-  const storage = new WorkflowStorage({
+  const storage = new Storage({
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
@@ -1586,7 +1586,7 @@ test("WorkflowStorage.getProjectTokenUsage preserves conversation filter case", 
   }
 });
 
-test("WorkflowStorage restores an owned UUID binding and synchronizes its full declaration atomically", async () => {
+test("Storage restores an owned UUID binding and synchronizes its full declaration atomically", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-project-restore-"));
   const existing = {
     ...createDbWorkflowRecord(DEMO_WF_ID, null),
@@ -1609,7 +1609,7 @@ test("WorkflowStorage restores an owned UUID binding and synchronizes its full d
     iconBackgroundColor: "#0f766e",
   };
   const updates: unknown[] = [];
-  const storage = new WorkflowStorage({
+  const storage = new Storage({
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
@@ -1712,9 +1712,9 @@ test("AccountRepository.getUserProfilesByIds returns a keyed profile map", async
   }
 });
 
-test("WorkflowStorage.listWorkflows returns uploaded package project card metadata", async () => {
+test("Storage.listWorkflows returns uploaded package project card metadata", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-project-card-"));
-  const storage = new WorkflowStorage({
+  const storage = new Storage({
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
@@ -1754,9 +1754,9 @@ test("WorkflowStorage.listWorkflows returns uploaded package project card metada
   }
 });
 
-test("WorkflowStorage stores cropped project card images by content hash", async () => {
+test("Storage stores cropped project card images by content hash", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-project-card-image-"));
-  const storage = new WorkflowStorage({
+  const storage = new Storage({
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
@@ -1792,9 +1792,9 @@ test("WorkflowStorage stores cropped project card images by content hash", async
   }
 });
 
-test("WorkflowStorage rejects the first upload when executor type differs from the empty project", async () => {
+test("Storage rejects the first upload when executor type differs from the empty project", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-project-type-conflict-"));
-  const storage = new WorkflowStorage({
+  const storage = new Storage({
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
@@ -1819,10 +1819,10 @@ test("WorkflowStorage rejects the first upload when executor type differs from t
   }
 });
 
-test("WorkflowStorage serializes Kanban saves and later configuration selection", async () => {
+test("Storage serializes Kanban saves and later configuration selection", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-kanban-lock-"));
   const sourceRoot = path.join(dataRoot, "workflows", DEMO_WF_ID, "draft", "source");
-  const storage = new WorkflowStorage({
+  const storage = new Storage({
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
@@ -1933,10 +1933,10 @@ test("WorkflowStorage serializes Kanban saves and later configuration selection"
   }
 });
 
-test("WorkflowStorage keeps immutable project card images after metadata changes", async () => {
+test("Storage keeps immutable project card images after metadata changes", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-project-card-history-"));
   const cards: unknown[] = [];
-  const storage = new WorkflowStorage({
+  const storage = new Storage({
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
@@ -1984,7 +1984,7 @@ test("WorkflowStorage keeps immutable project card images after metadata changes
   }
 });
 
-test("WorkflowStorage shares concurrent database draft materialization and reuses its revision", async () => {
+test("Storage shares concurrent database draft materialization and reuses its revision", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-draft-materialization-"));
   let revision = "2026-08-07T00:00:00.000Z";
   let content = "first snapshot";
@@ -1997,7 +1997,7 @@ test("WorkflowStorage shares concurrent database draft materialization and reuse
   const firstReadReleased = new Promise<void>((resolve) => {
     releaseFirstRead = resolve;
   });
-  const storage = new WorkflowStorage({
+  const storage = new Storage({
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
@@ -2059,7 +2059,7 @@ test("WorkflowStorage shares concurrent database draft materialization and reuse
   }
 });
 
-test("WorkflowStorage shares concurrent database version source materialization", async () => {
+test("Storage shares concurrent database version source materialization", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-version-materialization-"));
   const version = createDbVersionRecord(DEMO_WF_ID, "1.0.0");
   let downloads = 0;
@@ -2071,7 +2071,7 @@ test("WorkflowStorage shares concurrent database version source materialization"
   const downloadReleased = new Promise<void>((resolve) => {
     releaseDownload = resolve;
   });
-  const storage = new WorkflowStorage({
+  const storage = new Storage({
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
@@ -2114,10 +2114,10 @@ test("WorkflowStorage shares concurrent database version source materialization"
   }
 });
 
-test("WorkflowStorage retries database source materialization after a failed task", async () => {
+test("Storage retries database source materialization after a failed task", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-materialization-retry-"));
   let readCalls = 0;
-  const storage = new WorkflowStorage({
+  const storage = new Storage({
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
@@ -2350,7 +2350,7 @@ test("DatabaseRepository namespace transactions commit all knowledge KV writes o
   pool.end = async () => {};
   lockPool.end = async () => {};
 
-  const writeKnowledgeValues = async (store: WorkflowKVStore) => {
+  const writeKnowledgeValues = async (store: KVStore) => {
     assert.ok(store.withNamespaceLock);
     await store.withNamespaceLock(
       { storageKind: "persistent_value", scope: "project", projectId: DEMO_WF_ID },
@@ -2412,9 +2412,9 @@ test("DatabaseRepository namespace transactions commit all knowledge KV writes o
   }
 });
 
-test("WorkflowStorage preserves preparation failure stage and reason", async () => {
+test("Storage preserves preparation failure stage and reason", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-preparation-failure-"));
-  const storage = new WorkflowStorage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot });
+  const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot });
   Reflect.set(storage, "uploadPackage", async (options: {
     onStage?: (stage: "bundling") => Promise<void>;
   }) => {
@@ -2438,9 +2438,9 @@ test("WorkflowStorage preserves preparation failure stage and reason", async () 
   }
 });
 
-test("WorkflowStorage gives concurrent project deployments distinct reserved versions", async () => {
+test("Storage gives concurrent project deployments distinct reserved versions", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-deployment-reservations-"));
-  const createDeployment = (id: string): WorkflowDeploymentRecord => ({
+  const createDeployment = (id: string): DeploymentRecord => ({
     id,
     rootProjectId: DEMO_WF_ID,
     status: "planned",
@@ -2490,11 +2490,11 @@ test("WorkflowStorage gives concurrent project deployments distinct reserved ver
     getWorkflow: async () => undefined,
     withWorkflowPublishLock: async (_workflowId: string, operation: () => Promise<unknown>) => operation(),
   } as unknown as DatabaseRepository;
-  const storage = new WorkflowStorage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot, db });
+  const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot, db });
   const reserve = Reflect.get(storage, "reserveProjectGroupDeploymentVersions") as (
-    deployment: WorkflowDeploymentRecord,
+    deployment: DeploymentRecord,
     reset: boolean,
-  ) => Promise<WorkflowDeploymentRecord>;
+  ) => Promise<DeploymentRecord>;
 
   try {
     const [first, second] = await Promise.all(
@@ -2509,14 +2509,14 @@ test("WorkflowStorage gives concurrent project deployments distinct reserved ver
   }
 });
 
-test("WorkflowStorage skips active deployment reservations for ordinary publish versions", async () => {
+test("Storage skips active deployment reservations for ordinary publish versions", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-publish-reservations-"));
   const db = {
     listVersions: async () => [{ version: "0.0.2" }],
     getWorkflow: async () => ({ latest: "0.0.2" }),
     listWorkflowVersionReservations: async () => ["0.0.3", "0.0.4"],
   } as unknown as DatabaseRepository;
-  const storage = new WorkflowStorage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot, db });
+  const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot, db });
   const resolveNextVersion = Reflect.get(storage, "resolveNextVersion") as (
     workflowName: string,
   ) => Promise<string>;
@@ -2528,9 +2528,9 @@ test("WorkflowStorage skips active deployment reservations for ordinary publish 
   }
 });
 
-test("WorkflowStorage resets and re-reserves every item before re-preparing a failed deployment", async () => {
+test("Storage resets and re-reserves every item before re-preparing a failed deployment", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-deployment-reprepare-"));
-  const deployment: WorkflowDeploymentRecord = {
+  const deployment: DeploymentRecord = {
     id: "00000000-0000-4000-8000-000000000013",
     rootProjectId: DEMO_WF_ID,
     status: "failed",
@@ -2575,11 +2575,11 @@ test("WorkflowStorage resets and re-reserves every item before re-preparing a fa
     listWorkflowVersionReservations: async () => [],
     withWorkflowPublishLock: async (_workflowId: string, operation: () => Promise<unknown>) => operation(),
   } as unknown as DatabaseRepository;
-  const storage = new WorkflowStorage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot, db });
+  const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot, db });
   const reserve = Reflect.get(storage, "reserveProjectGroupDeploymentVersions") as (
-    value: WorkflowDeploymentRecord,
+    value: DeploymentRecord,
     reset: boolean,
-  ) => Promise<WorkflowDeploymentRecord>;
+  ) => Promise<DeploymentRecord>;
 
   try {
     const result = await reserve.call(storage, deployment, true);
@@ -2591,7 +2591,7 @@ test("WorkflowStorage resets and re-reserves every item before re-preparing a fa
   }
 });
 
-test("WorkflowStorage rejects project-group publishing while a relationship is pending", async () => {
+test("Storage rejects project-group publishing while a relationship is pending", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-project-group-grant-error-"));
   const dependency = {
     alias: "stocks",
@@ -2599,7 +2599,7 @@ test("WorkflowStorage rejects project-group publishing while a relationship is p
     delivery: "external" as const,
   };
   const now = "2026-08-05T00:00:00.000Z";
-  const deployment: WorkflowDeploymentRecord = {
+  const deployment: DeploymentRecord = {
     id: "00000000-0000-4000-8000-000000000016",
     rootProjectId: DEMO_WF_ID,
     status: "prepared",
@@ -2629,7 +2629,7 @@ test("WorkflowStorage rejects project-group publishing while a relationship is p
   const db = {
     getWorkflow: async () => createDbWorkflowRecord(DEMO_CONV_WF_ID, null),
   } as unknown as DatabaseRepository;
-  const storage = new WorkflowStorage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot, db });
+  const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot, db });
   const sourceRoot = path.join(dataRoot, "workflows", DEMO_WF_ID, "draft", "source");
   await mkdir(sourceRoot, { recursive: true });
   await writeFile(path.join(sourceRoot, "package.json"), JSON.stringify({
@@ -2652,7 +2652,7 @@ test("WorkflowStorage rejects project-group publishing while a relationship is p
     },
   }), "utf8");
   const assertReady = Reflect.get(storage, "assertProjectGroupPublishReady") as (
-    value: WorkflowDeploymentRecord,
+    value: DeploymentRecord,
   ) => Promise<void>;
 
   try {
@@ -2665,9 +2665,9 @@ test("WorkflowStorage rejects project-group publishing while a relationship is p
   }
 });
 
-test("WorkflowStorage offers a source request link only when the pinned dependency source exists", async () => {
+test("Storage offers a source request link only when the pinned dependency source exists", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-dependency-request-link-"));
-  const storage = new WorkflowStorage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot });
+  const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot });
   const dependency = {
     alias: "stocks",
     projectId: DEMO_CONV_WF_ID,
@@ -2737,10 +2737,10 @@ test("WorkflowStorage offers a source request link only when the pinned dependen
   }
 });
 
-test("WorkflowStorage accepts a replacement package after deployment preparation was interrupted", async () => {
+test("Storage accepts a replacement package after deployment preparation was interrupted", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-project-group-prepare-resume-"));
-  const storage = new WorkflowStorage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot });
-  const deployment: WorkflowDeploymentRecord = {
+  const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot });
+  const deployment: DeploymentRecord = {
     id: "00000000-0000-4000-8000-000000000014",
     rootProjectId: DEMO_WF_ID,
     status: "preparing",
@@ -2776,7 +2776,7 @@ test("WorkflowStorage accepts a replacement package after deployment preparation
       transitionFrom = from;
       return true;
     },
-    updateWorkflowDeployment: async ({ status }: { status: WorkflowDeploymentRecord["status"] }) => {
+    updateWorkflowDeployment: async ({ status }: { status: DeploymentRecord["status"] }) => {
       deployment.status = status;
     },
   });
@@ -2801,7 +2801,7 @@ test("WorkflowStorage accepts a replacement package after deployment preparation
   }
 });
 
-test("WorkflowStorage resumes a persisted project-group preparation after restart", async () => {
+test("Storage resumes a persisted project-group preparation after restart", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-project-group-restart-"));
   const deploymentId = "00000000-0000-4000-8000-000000000016";
   const preparationDir = path.join(dataRoot, "deployment-preparations", deploymentId);
@@ -2815,12 +2815,12 @@ test("WorkflowStorage resumes a persisted project-group preparation after restar
   const deployment = {
     id: deploymentId,
     status: "preparing",
-  } as WorkflowDeploymentRecord;
+  } as DeploymentRecord;
   const db = {
     getWorkflowDeployment: async () => deployment,
     updateWorkflowDeployment: async () => deployment,
   } as unknown as DatabaseRepository;
-  const storage = new WorkflowStorage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot, db });
+  const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot, db });
   let scheduledDeploymentId: string | undefined;
   Reflect.set(storage, "scheduleProjectGroupPreparation", (preparation: { deploymentId: string }) => {
     scheduledDeploymentId = preparation.deploymentId;
@@ -2836,10 +2836,10 @@ test("WorkflowStorage resumes a persisted project-group preparation after restar
 });
 
 async function waitForPreparationTerminal(
-  storage: WorkflowStorage,
+  storage: Storage,
   workflowId: string,
   jobId: string,
-): Promise<WorkflowPreparationJob> {
+): Promise<PreparationJob> {
   for (let attempt = 0; attempt < 100; attempt += 1) {
     const job = await storage.getPreparationJob(workflowId, jobId);
     if (job.status === "success" || job.status === "failed") return job;
@@ -3022,7 +3022,7 @@ function createKVRow(key: string, updatedAtCursor: string, overrides: Partial<Re
   return { ...row, ...overrides };
 }
 
-function createKVSummary(key: string, overrides: Partial<WorkflowKVEntryDetail> = {}): WorkflowKVEntryDetail {
+function createKVSummary(key: string, overrides: Partial<KVEntryDetail> = {}): KVEntryDetail {
   return {
     storageKind: "kv",
     scope: "conversation",
@@ -3038,18 +3038,18 @@ function createKVSummary(key: string, overrides: Partial<WorkflowKVEntryDetail> 
   };
 }
 
-function createMemoryKVStore(): WorkflowKVStore & {
+function createMemoryKVStore(): KVStore & {
   getWorkflow(workflowId: string): Promise<ReturnType<typeof createDbWorkflowRecord>>;
   values: Map<string, unknown>;
   sources: Map<string, unknown>;
-  getValueWithRevision(input: WorkflowKVStoreGetInput): Promise<{ value: unknown; revision: string } | undefined>;
+  getValueWithRevision(input: KVStoreGetInput): Promise<{ value: unknown; revision: string } | undefined>;
   compareAndSetValue(
-    input: WorkflowKVStoreSetInput,
+    input: KVStoreSetInput,
     expectedRevision: string | null,
   ): Promise<{ applied: boolean; revision?: string }>;
   withNamespaceTransaction<T>(
-    input: WorkflowKVNamespaceLockInput,
-    operation: (store: WorkflowKVStore) => Promise<T> | T,
+    input: KVNamespaceLockInput,
+    operation: (store: KVStore) => Promise<T> | T,
   ): Promise<T>;
 } {
   const values = new Map<string, unknown>();
@@ -3170,8 +3170,8 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 
 test("a related knowledge mutation is checked on the document, not only the index", () => {
   const grant = (
-    knowledge: { read: WorkflowRelatedProjectKVGrant["read"]; write: WorkflowRelatedProjectKVGrant["write"] },
-  ): WorkflowRelatedProjectKVGrant => ({ read: { mode: "none" }, write: { mode: "none" }, knowledge });
+    knowledge: { read: RelatedProjectKVGrant["read"]; write: RelatedProjectKVGrant["write"] },
+  ): RelatedProjectKVGrant => ({ read: { mode: "none" }, write: { mode: "none" }, knowledge });
 
   const indexOnly = grant({
     read: { mode: "prefixes", prefixes: ["knowledge.documents"] },

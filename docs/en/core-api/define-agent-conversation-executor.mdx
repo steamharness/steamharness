@@ -13,7 +13,7 @@ The helper saves an embedding host from implementing streaming, approvals, compa
 
 ```ts
 workflow.defineAgentConversationExecutor(options?: AgentProjectOptions):
-  WorkflowConversationExecutorDefinition<AgentInput, AgentOutputPayload>
+  ConversationExecutorDefinition<AgentInput, AgentOutputPayload>
 ```
 
 Core validates the returned definition for embedding callers. Passing it to a project's `defineExecutor` still does not expose its fields to static structure analysis.
@@ -29,7 +29,7 @@ Every [createAgentNode](./create-agent-node.mdx) option, plus:
 | `projectName` | `string` | — | Display name of the project. |
 | `workflowName` | `string` | `agent` | Workflow name, also the node-name prefix (`<name>-input`, `<name>-output`, `<name>-agent`). |
 | `outputItemId` | `string` | `agent-answer` | Item id of the assistant's answer, also written to `conversation.openai.outputItemId`. The answer item carries exactly this value, so an adapter looking it up by id always finds it. |
-| `params` | `WorkflowConversationParamDeclaration[]` | see below | Replaces the default parameter table with Auxiliary, Quick, and Mode entries only. The standard message input is always shown. |
+| `params` | `ConversationParamDeclaration[]` | see below | Replaces the default parameter table with Auxiliary, Quick, and Mode entries only. The standard message input is always shown. |
 
 ## What it generates
 

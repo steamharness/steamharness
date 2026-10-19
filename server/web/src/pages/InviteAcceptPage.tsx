@@ -4,7 +4,7 @@ import { formatDateTime, useTranslation } from "@steamharness/i18n/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiClient } from "../api";
-import { isApiSuccess, type WorkflowInvitationAcceptResult, type WorkflowInvitationLookupResult } from "../types";
+import { isApiSuccess, type InvitationAcceptResult, type InvitationLookupResult } from "../types";
 
 interface InviteAcceptPageProps {
   token: string;
@@ -15,11 +15,11 @@ interface InviteAcceptPageProps {
 
 type InviteState =
   | { phase: "loading" }
-  | { phase: "ready"; lookup: WorkflowInvitationLookupResult }
+  | { phase: "ready"; lookup: InvitationLookupResult }
   | { phase: "missing" }
   | { phase: "expired" }
   | { phase: "revoked" }
-  | { phase: "accepted"; result: WorkflowInvitationAcceptResult; projectId: string }
+  | { phase: "accepted"; result: InvitationAcceptResult; projectId: string }
   | { phase: "error"; message: string };
 
 export function InviteAcceptPage({

@@ -1,4 +1,4 @@
-import type { AssistantWorkspaceFolder, WorkflowProject } from './workflow-types';
+import type { AssistantWorkspaceFolder, Project } from './workflow-types';
 
 export const DEVELOPER_ASSISTANT_PROJECT_ID = 'a3aca697-b086-459b-84e4-d357ad2d9fb2';
 
@@ -8,8 +8,8 @@ const assistantTools = new Set(['read', 'write', 'edit', 'bash', 'grep', 'find',
   'workflow-studio_set_theme', 'workflow-studio_open_terminal', 'workflow-studio_show_view']);
 
 export function createAssistantProject(
-  template: WorkflowProject, target: AssistantWorkspaceFolder, folders: AssistantWorkspaceFolder[],
-): WorkflowProject {
+  template: Project, target: AssistantWorkspaceFolder, folders: AssistantWorkspaceFolder[],
+): Project {
   const roots = [target, ...folders.filter((folder) => folder.uri !== target.uri)];
   return { ...template, uri: `studio-assistant:${encodeURIComponent(target.folderPath)}`,
     assistant: { ...template.assistant, workdir: target.folderPath, roots }, requiresLogin: true,
@@ -19,13 +19,13 @@ export function createAssistantProject(
 }
 
 export function assistantWorkspaceAvailable(
-  assistant: NonNullable<WorkflowProject['assistant']>, folders: AssistantWorkspaceFolder[],
+  assistant: NonNullable<Project['assistant']>, folders: AssistantWorkspaceFolder[],
 ): boolean {
   return assistant.roots.some(root => root.folderPath === assistant.workdir)
     && assistant.roots.every(root => folders.some(folder => folder.uri === root.uri && folder.folderPath === root.folderPath));
 }
 
-export function assistantWorkspaceManifest(assistant: NonNullable<WorkflowProject['assistant']>) {
+export function assistantWorkspaceManifest(assistant: NonNullable<Project['assistant']>) {
   const primary = assistant.roots.find((folder) => folder.folderPath === assistant.workdir);
   if (!primary) { throw new Error('Assistant working directory is not an opened workspace folder.'); }
   return { schemaVersion: 2, primaryTarget: { kind: 'folder', folderId: primary.uri }, warnings: [],

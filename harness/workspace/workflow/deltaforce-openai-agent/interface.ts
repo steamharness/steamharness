@@ -6,8 +6,8 @@ import type {
   DeltaforeAgentOutputPayload,
   FinalAnswerInput,
   ParsedAgentInput,
-  WorkflowPayload,
-  WorkflowNodeContext,
+  RunPayload,
+  NodeRunContext,
 } from "@steamharness/deltafore-agent-workflow/interface";
 
 export type DeltaforceOpenAIAgentInput = DeltaforeAgentInput & {
@@ -27,6 +27,6 @@ export type DeltaforceOpenAIAgentOutputPayload = DeltaforeAgentOutputPayload;
 export type {
   AgentToolResult,
   ConversationChatMessage,
-  WorkflowPayload,
-  WorkflowNodeContext,
+  RunPayload,
+  NodeRunContext,
 };

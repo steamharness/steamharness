@@ -295,12 +295,12 @@ workflow 仍需在 `createInput({ args })` 中显式读取这些参数；推荐�
 ## 会话状态结构
 
 ```ts
-interface WorkflowConversationState {
+interface ConversationState {
   conversationId: string;
   workflowName: string;
   title?: string;
   values: Record<string, unknown>;
-  messages: WorkflowConversationMessage[];
+  messages: ConversationMessageContract[];
 }
 ```
 

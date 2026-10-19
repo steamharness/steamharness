@@ -1,18 +1,18 @@
 import type {
-  WorkflowDefinitionEvent,
-  WorkflowExecutionReport,
-  WorkflowOutputReport,
-  WorkflowStructureReport,
+  DefinitionEvent,
+  ExecutionReport,
+  OutputReport,
+  StructureReport,
 } from "./report";
-import type { WorkflowDefinedNode } from "./rules";
+import type { DefinedNode } from "./rules";
 
-export interface WorkflowExecutionFormatOptions {
+export interface ExecutionFormatOptions {
   includeDefinedNodes?: boolean;
   includeJson?: boolean;
 }
 
 export function formatWorkflowDefinitionEvent(
-  event: WorkflowDefinitionEvent,
+  event: DefinitionEvent,
 ): string {
   return [
     "Workflow Definition",
@@ -23,13 +23,13 @@ export function formatWorkflowDefinitionEvent(
 }
 
 export function formatWorkflowStructureReport(
-  report: WorkflowStructureReport,
+  report: StructureReport,
 ): string {
   return formatJson(report);
 }
 
 export function formatWorkflowResultOnly(
-  report: WorkflowExecutionReport,
+  report: ExecutionReport,
 ): string {
   return [
     "Workflow Result",
@@ -43,8 +43,8 @@ export function formatWorkflowResultOnly(
 }
 
 export function formatWorkflowExecutionReport(
-  report: WorkflowExecutionReport,
-  options: WorkflowExecutionFormatOptions = {},
+  report: ExecutionReport,
+  options: ExecutionFormatOptions = {},
 ): string {
   const includeDefinedNodes = options.includeDefinedNodes ?? true;
   const includeJson = options.includeJson ?? true;
@@ -80,11 +80,11 @@ export function formatWorkflowExecutionReport(
   return lines.join("\n");
 }
 
-export function formatWorkflowExecutionJson(report: WorkflowExecutionReport): string {
+export function formatWorkflowExecutionJson(report: ExecutionReport): string {
   return formatJson(report);
 }
 
-function formatDefinedNodeLines(nodes: WorkflowDefinedNode[]): string[] {
+function formatDefinedNodeLines(nodes: DefinedNode[]): string[] {
   if (nodes.length === 0) {
     return ["  (none)"];
   }
@@ -94,7 +94,7 @@ function formatDefinedNodeLines(nodes: WorkflowDefinedNode[]): string[] {
   });
 }
 
-function formatExecutedNodeLines(report: WorkflowExecutionReport): string[] {
+function formatExecutedNodeLines(report: ExecutionReport): string[] {
   if (report.nodes.length === 0) {
     return ["  (none)"];
   }
@@ -114,7 +114,7 @@ function formatExecutedNodeLines(report: WorkflowExecutionReport): string[] {
   });
 }
 
-function formatOutputLines(outputs: WorkflowOutputReport[]): string[] {
+function formatOutputLines(outputs: OutputReport[]): string[] {
   if (outputs.length === 0) {
     return ["  (none)"];
   }
@@ -127,7 +127,7 @@ function formatOutputLines(outputs: WorkflowOutputReport[]): string[] {
   });
 }
 
-function formatWorkflowResult(report: WorkflowExecutionReport): string {
+function formatWorkflowResult(report: ExecutionReport): string {
   if (report.result.ok) {
     return formatJson(report.result.data);
   }
@@ -135,7 +135,7 @@ function formatWorkflowResult(report: WorkflowExecutionReport): string {
   return formatJson(report.result.error);
 }
 
-function formatLocation(location: WorkflowDefinedNode["location"]): string {
+function formatLocation(location: DefinedNode["location"]): string {
   return `${location.file}:${location.line}:${location.column}`;
 }
 

@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import { IMPORTED_PROJECTS_KEY, readImportedProjects } from './projects';
-import type { WorkflowProject } from './workflow-types';
+import type { Project } from './workflow-types';
 
-export function studioAnalysisProjects(context: Pick<vscode.ExtensionContext, 'globalState'>, current: WorkflowProject[]) {
+export function studioAnalysisProjects(context: Pick<vscode.ExtensionContext, 'globalState'>, current: Project[]) {
   const projects = new Map(readImportedProjects(context.globalState.get(IMPORTED_PROJECTS_KEY)).map(project => [project.uri, project]));
   for (const project of current.filter(project => !project.assistant && !project.builtin)) { projects.set(project.uri, project); }
   return [...projects.values()].filter(project => vscode.Uri.parse(project.uri).scheme === 'file').map(project => {

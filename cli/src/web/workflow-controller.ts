@@ -1,27 +1,27 @@
 import { t } from './localization';
 import {
   applyOutputChunk, resolvedWorkflowValues, validateWorkflowValues, workflowFormValue, workflowParameters, workflowParamArgs,
-  type ConversationSession, type WorkflowProject, type WorkflowRuntime, type WorkflowResolvedInput, type WorkflowTimerRecord,
+  type ConversationSession, type Project, type Runtime, type ResolvedInput, type TimerRecord,
 } from './workflow-types';
 import {
-  parseWorkflowArgs, workflowStorageReferences, type WorkflowDraft, type WorkflowRunRecord, type WorkflowStartInput, type WorkflowWorkspace,
+  parseWorkflowArgs, workflowStorageReferences, type Draft, type RunRecord, type StartInput, type WorkspaceContract,
 } from './workflow-workspace';
 
 interface Options {
-  save(workspace: WorkflowWorkspace): Promise<void>;
+  save(workspace: WorkspaceContract): Promise<void>;
   changed(): void;
   log(message: string): void;
   legacy?: ConversationSession[];
 }
-interface Task { record: WorkflowRunRecord; cancelled: boolean; finished: Promise<void> }
+interface Task { record: RunRecord; cancelled: boolean; finished: Promise<void> }
 
-export class WorkflowController {
-  readonly workspace: WorkflowWorkspace;
+export class Controller {
+  readonly workspace: WorkspaceContract;
   private task?: Task;
   private disposed = false;
   private eventSave?: ReturnType<typeof setTimeout>;
 
-  constructor(readonly project: WorkflowProject, private readonly runtime: WorkflowRuntime, saved: Partial<WorkflowWorkspace>, private readonly options: Options) {
+  constructor(readonly project: Project, private readonly runtime: Runtime, saved: Partial<WorkspaceContract>, private readonly options: Options) {
     this.workspace = { version: 1, runs: [], drafts: {}, ...saved };
     for (const record of this.workspace.runs) {
       delete record.submittingInput;
@@ -35,11 +35,11 @@ export class WorkflowController {
     if (!this.workspace.runs.some(record => record.id === this.workspace.selectedId)) { delete this.workspace.selectedId; }
   }
 
-  get runs(): WorkflowRunRecord[] { return this.workspace.runs; }
-  get current(): WorkflowRunRecord | undefined { return this.runs.find(record => record.id === this.workspace.selectedId); }
+  get runs(): RunRecord[] { return this.workspace.runs; }
+  get current(): RunRecord | undefined { return this.runs.find(record => record.id === this.workspace.selectedId); }
   get running(): boolean { return !!this.workspace.occupiedId; }
-  get occupied(): WorkflowRunRecord | undefined { return this.runs.find(record => record.id === this.workspace.occupiedId); }
-  draft(entrypointId?: string): WorkflowDraft {
+  get occupied(): RunRecord | undefined { return this.runs.find(record => record.id === this.workspace.occupiedId); }
+  draft(entrypointId?: string): Draft {
     return this.workspace.drafts[entrypointId ?? ''] ??= { scopeId: globalThis.crypto.randomUUID(), values: {}, rawArgs: '[]', inputMode: 'form', policies: {} };
   }
   async persist(): Promise<void> {
@@ -57,14 +57,14 @@ export class WorkflowController {
     if (id && !this.runs.some(record => record.id === id)) { throw new Error('Run no longer exists.'); }
     this.workspace.selectedId = id; this.changed(); await this.persist();
   }
-  async updateDraft(entrypointId: string | undefined, draft: Partial<Omit<WorkflowDraft, 'scopeId'>>): Promise<void> {
+  async updateDraft(entrypointId: string | undefined, draft: Partial<Omit<Draft, 'scopeId'>>): Promise<void> {
     Object.assign(this.draft(entrypointId), draft); this.changed(); await this.persist();
   }
   private assertAvailable(): void {
     if (this.disposed) { throw new Error('Workflow workspace has closed.'); }
     if (this.running || this.task) { throw new Error('A workflow is already running or waiting for input.'); }
   }
-  async start(input: WorkflowStartInput): Promise<WorkflowRunRecord> {
+  async start(input: StartInput): Promise<RunRecord> {
     this.assertAvailable();
     const parameters = workflowParameters(this.project, input.entrypointId);
     const args = input.inputMode === 'raw' ? parseWorkflowArgs(input.rawArgs ?? '[]')
@@ -73,7 +73,7 @@ export class WorkflowController {
     this.assertAvailable();
     const draft = this.draft(input.entrypointId);
     const id = globalThis.crypto.randomUUID(), now = Date.now();
-    const record: WorkflowRunRecord = {
+    const record: RunRecord = {
       id, scopeId: id, entrypointId: input.entrypointId,
       title: this.project.entrypoints.find(entry => entry.id === input.entrypointId)?.title ?? this.project.name,
       createdAt: now, updatedAt: now, status: 'running', args: [...args], params: { ...input.params }, policies: structuredClone(draft.policies),
@@ -83,14 +83,14 @@ export class WorkflowController {
     draft.values = { ...input.params }; draft.rawArgs = input.rawArgs ?? draft.rawArgs; draft.inputMode = input.inputMode ?? 'form';
     this.launch(record); await this.persist(); return record;
   }
-  async rerun(previousId: string): Promise<WorkflowRunRecord> {
+  async rerun(previousId: string): Promise<RunRecord> {
     this.assertAvailable();
     const previous = this.runs.find(record => record.id === previousId);
     if (!previous) { throw new Error('Run no longer exists.'); }
     const files = await this.inputFiles([previous.params, previous.args]);
     this.assertAvailable();
     const id = globalThis.crypto.randomUUID(), now = Date.now();
-    const record: WorkflowRunRecord = { id, scopeId: id, title: previous.title, entrypointId: previous.entrypointId, createdAt: now, updatedAt: now,
+    const record: RunRecord = { id, scopeId: id, title: previous.title, entrypointId: previous.entrypointId, createdAt: now, updatedAt: now,
       status: 'running', args: [...previous.args], params: structuredClone(previous.params), policies: structuredClone(previous.policies),
       items: [], events: [], files, nodes: [], logs: '', resolvedInputs: [] };
     this.runs.unshift(record); this.workspace.selectedId = id; this.launch(record); await this.persist(); return record;
@@ -98,7 +98,7 @@ export class WorkflowController {
   private async inputFiles(value: unknown) {
     return Promise.all([...workflowStorageReferences(value).files].map(async id => (await this.runtime.readFile(this.project, id)).reference));
   }
-  private launch(record: WorkflowRunRecord): void {
+  private launch(record: RunRecord): void {
     record.status = 'running'; record.error = undefined; record.updatedAt = Date.now();
     this.workspace.occupiedId = record.id;
     const task: Task = { record, cancelled: false, finished: Promise.resolve() };
@@ -125,24 +125,24 @@ export class WorkflowController {
           if (index >= 0) { record.nodes[index] = node; } else { record.nodes.push(node); }
         }
         if (event.type === 'runtime_log' && typeof event.text === 'string') { record.logs = (record.logs + event.text).slice(-100_000); }
-        if (event.type === 'user_input_requested') { record.pendingInput = event as unknown as WorkflowRunRecord['pendingInput']; }
+        if (event.type === 'user_input_requested') { record.pendingInput = event as unknown as RunRecord['pendingInput']; }
         if (event.type === 'user_input_resolved') {
-          this.confirmInput(record, event as unknown as WorkflowResolvedInput);
+          this.confirmInput(record, event as unknown as ResolvedInput);
           if (record.pendingInput?.requestId === event.requestId) { delete record.pendingInput; }
         }
         if (event.type === 'token_usage_updated') {
           record.tokenUsage = { enabled: true, display: workflowParameters(this.project, record.entrypointId).tokenUsage?.display !== false, run: event.usage as Record<string, unknown> };
         }
-        if (event.type === 'file_created') { record.files.push(event.file as unknown as WorkflowRunRecord['files'][number]); }
+        if (event.type === 'file_created') { record.files.push(event.file as unknown as RunRecord['files'][number]); }
         if (event.type === 'timer_started' || event.type === 'timer_finished') {
-          const timer = event.timer as WorkflowTimerRecord;
+          const timer = event.timer as TimerRecord;
           record.timers = [...(record.timers ?? []).filter(entry => entry.timerId !== timer.timerId), timer];
         }
         record.updatedAt = Date.now(); this.changed(); this.scheduleSave();
       });
       if (task.cancelled || this.disposed) { throw new Error('Stopped.'); }
       record.report = report; record.durationMs = report.durationMs;
-      record.status = report.status as WorkflowRunRecord['status'];
+      record.status = report.status as RunRecord['status'];
       // Paused reports omit unfinished streams; successful reports replace the replayed snapshot.
       const items = report.output?.items ?? [];
       if (report.output && (report.status === 'success' || !record.items.length || (report.status !== 'waiting_for_input' && items.length))) { record.items = items; }
@@ -175,11 +175,11 @@ export class WorkflowController {
       record.updatedAt = Date.now(); this.task = undefined; this.changed(); await this.persist();
     }
   }
-  private clearTimers(record: WorkflowRunRecord): void {
+  private clearTimers(record: RunRecord): void {
     record.timers = record.timers?.map(timer => timer.status === 'running'
       ? { ...timer, status: 'cleared', endedAt: new Date().toISOString(), durationMs: Math.max(0, Date.now() - Date.parse(timer.startedAt)) } : timer);
   }
-  private confirmInput(record: WorkflowRunRecord, resolved: WorkflowResolvedInput): void {
+  private confirmInput(record: RunRecord, resolved: ResolvedInput): void {
     const previous = record.resolvedInputs.find(input => input.requestId === resolved.requestId)
       ?? (record.submittingInput?.requestId === resolved.requestId ? record.submittingInput : undefined);
     record.resolvedInputs = [...record.resolvedInputs.filter(input => input.requestId !== resolved.requestId),

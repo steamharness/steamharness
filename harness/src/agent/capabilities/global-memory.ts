@@ -6,10 +6,10 @@ import {
   listKnowledgeDocuments,
   searchKnowledgeDocuments,
 } from "../../knowledge/index";
-import { WorkflowError } from "../../workflow/errors";
+import { HarnessError } from "../../workflow/errors";
 import type { NodeContext } from "../../types/context";
 import { selectWorkflowStorage } from "./storage";
-import type { WorkflowCapability } from "./types";
+import type { Capability } from "./types";
 
 export const GLOBAL_MEMORY_MCP_SERVER_ID = "workflow-memory";
 export const GLOBAL_MEMORY_MCP_TOOL_NAME = "global_memory";
@@ -50,7 +50,7 @@ export async function runGlobalMemoryAction(
   args: GlobalMemoryToolArgs,
 ): Promise<unknown> {
   if (!GLOBAL_MEMORY_ACTIONS.includes(args.action)) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `global_memory action is invalid: ${String(args.action)}.`,
       nodeName: GLOBAL_MEMORY_MCP_TOOL_ID,
@@ -135,7 +135,7 @@ export async function runGlobalMemoryAction(
 function requireMemoryId(value: unknown, action: GlobalMemoryAction): string {
   const memoryId = requireString(value, "memoryId", action).toLowerCase();
   if (!MEMORY_ID_PATTERN.test(memoryId)) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "global_memory memoryId must use lowercase letters, numbers, dots, underscores, or hyphens.",
       nodeName: GLOBAL_MEMORY_MCP_TOOL_ID,
@@ -160,7 +160,7 @@ function requireString(value: unknown, field: string, action: GlobalMemoryAction
   if (typeof value === "string" && value.trim() !== "") {
     return assertWithinBounds(value.trim(), field, action);
   }
-  throw new WorkflowError({
+  throw new HarnessError({
     type: "input_validation",
     message: `global_memory action "${action}" requires ${field}.`,
     nodeName: GLOBAL_MEMORY_MCP_TOOL_ID,
@@ -170,7 +170,7 @@ function requireString(value: unknown, field: string, action: GlobalMemoryAction
 function assertWithinBounds(value: string, field: string, action: GlobalMemoryAction): string {
   const limit = STRING_BOUNDS[field];
   if (limit !== undefined && value.length > limit) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `global_memory ${field} must be at most ${String(limit)} characters.`,
       nodeName: GLOBAL_MEMORY_MCP_TOOL_ID,
@@ -189,7 +189,7 @@ function assertNoLikelySecret(markdown: string): void {
     /\b(?:api[_-]?key|password|secret|token)\s*[:=]\s*[^\s`]{12,}/i,
   ];
   if (secretPatterns.some((pattern) => pattern.test(markdown))) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "Global memory rejected content that looks like a credential or secret.",
       nodeName: GLOBAL_MEMORY_MCP_TOOL_ID,
@@ -207,7 +207,7 @@ function readListCursor(value: string | undefined): number {
   const raw = value.startsWith(LIST_CURSOR_PREFIX) ? value.slice(LIST_CURSOR_PREFIX.length) : value;
   const parsed = Number.parseInt(raw, 10);
   if (Number.isSafeInteger(parsed) && parsed >= 0 && String(parsed) === raw) return parsed;
-  throw new WorkflowError({
+  throw new HarnessError({
     type: "input_validation",
     message: "global_memory cursor is invalid for action \"list\".",
     nodeName: GLOBAL_MEMORY_MCP_TOOL_ID,
@@ -225,7 +225,7 @@ function assertNotForeignCursor(value: string, action: GlobalMemoryAction): void
   const foreign = action === "list" ? SEARCH_CURSOR_PREFIX : LIST_CURSOR_PREFIX;
   if (!value.startsWith(foreign)) return;
 
-  throw new WorkflowError({
+  throw new HarnessError({
     type: "input_validation",
     message: `global_memory cursor belongs to another action; use the cursor ${expected} returned.`,
     nodeName: GLOBAL_MEMORY_MCP_TOOL_ID,
@@ -238,7 +238,7 @@ function stripMemoryPrefix<T extends { id: string }>(document: T): Omit<T, "id">
   return { ...rest, memoryId: id.slice(MEMORY_DOCUMENT_PREFIX.length) };
 }
 
-export const GLOBAL_MEMORY_CAPABILITY: WorkflowCapability = {
+export const GLOBAL_MEMORY_CAPABILITY: Capability = {
   serverId: GLOBAL_MEMORY_MCP_SERVER_ID,
   toolName: GLOBAL_MEMORY_MCP_TOOL_NAME,
   toolId: GLOBAL_MEMORY_MCP_TOOL_ID,

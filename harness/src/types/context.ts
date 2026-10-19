@@ -3,15 +3,15 @@ import type {
   LLMProviderBinding,
   LLMProviderBindingInput,
 } from "../provider/llm/types";
-import type { WorkflowConversationContext } from "../conversation/index";
-import type { WorkflowFileStore } from "../files/index";
-import type { WorkflowKVContext, WorkflowPersistentValueContext } from "../kv/index";
-import type { WorkflowRelatedProjectsContext } from "../kv/related-projects";
-import type { WorkflowTokenUsageContext } from "../token-usage/index";
-import type { WorkflowTimerContext } from "../timer/index";
-import type { WorkflowToolPermissionContext } from "../tool-permissions/index";
-import type { WorkflowNodeMetadata } from "./node";
-import type { WorkflowParamDefinition } from "../executor/types";
+import type { ConversationContext } from "../conversation/index";
+import type { FileStore } from "../files/index";
+import type { KVContext, PersistentValueContext } from "../kv/index";
+import type { RelatedProjectsContext } from "../kv/related-projects";
+import type { TokenUsageContext } from "../token-usage/index";
+import type { TimerContext } from "../timer/index";
+import type { ToolPermissionContext } from "../tool-permissions/index";
+import type { NodeMetadata } from "./node";
+import type { ParamDefinition } from "../executor/types";
 
 export interface ProviderRegistry {
   llm?: LLMProvider;
@@ -29,7 +29,7 @@ export interface NodeExecutionHookStartEvent {
   executionId: string;
   nodeName: string;
   kind: NodeExecutionKind;
-  metadata?: WorkflowNodeMetadata;
+  metadata?: NodeMetadata;
   startedAt: Date;
 }
 
@@ -50,31 +50,31 @@ export interface NodeExecutionHookChunkEvent extends NodeExecutionHookStartEvent
   timestamp: Date;
 }
 
-export interface WorkflowUserInputRequest {
+export interface UserInputRequest {
   requestId: string;
   nodeName: string;
   title: string;
   description?: string;
-  params: WorkflowParamDefinition[];
+  params: ParamDefinition[];
   defaultValues?: Record<string, unknown>;
-  metadata?: WorkflowNodeMetadata;
+  metadata?: NodeMetadata;
   createdAt: Date;
 }
 
-export interface WorkflowUserInputResolved {
+export interface UserInputResolved {
   requestId: string;
   nodeName: string;
   values: Record<string, unknown>;
   submittedAt: Date;
-  request?: WorkflowUserInputRequest;
+  request?: UserInputRequest;
 }
 
-export interface WorkflowUserInputContext {
+export interface UserInputContext {
   getResolvedInput(
     requestId: string,
-    request?: WorkflowUserInputRequest,
-  ): Promise<WorkflowUserInputResolved | undefined> | WorkflowUserInputResolved | undefined;
-  requestInput(request: WorkflowUserInputRequest): Promise<void> | void;
+    request?: UserInputRequest,
+  ): Promise<UserInputResolved | undefined> | UserInputResolved | undefined;
+  requestInput(request: UserInputRequest): Promise<void> | void;
 }
 
 export interface NodeExecutionHooks {
@@ -95,29 +95,29 @@ export interface NodeExecutionHooks {
   ): Promise<void> | void;
 }
 
-export interface WorkflowStorageLocationContext {
-  kv: WorkflowKVContext;
-  persistentValue: WorkflowPersistentValueContext;
-  relatedProjects: WorkflowRelatedProjectsContext;
+export interface StorageLocationContext {
+  kv: KVContext;
+  persistentValue: PersistentValueContext;
+  relatedProjects: RelatedProjectsContext;
 }
 
-export interface WorkflowStorageContext {
-  local: WorkflowStorageLocationContext;
-  server: WorkflowStorageLocationContext;
+export interface StorageContext {
+  local: StorageLocationContext;
+  server: StorageLocationContext;
 }
 
 export interface NodeContext {
   providers: ProviderRegistry;
-  storage: WorkflowStorageContext;
-  conversation: WorkflowConversationContext;
-  tokenUsage: WorkflowTokenUsageContext;
-  userInput?: WorkflowUserInputContext;
-  toolPermissions?: WorkflowToolPermissionContext;
-  timers?: WorkflowTimerContext;
-  files?: WorkflowFileStore;
+  storage: StorageContext;
+  conversation: ConversationContext;
+  tokenUsage: TokenUsageContext;
+  userInput?: UserInputContext;
+  toolPermissions?: ToolPermissionContext;
+  timers?: TimerContext;
+  files?: FileStore;
   metadata?: Record<string, unknown>;
   nodeHooks?: NodeExecutionHooks;
   abortSignal?: AbortSignal;
 }
 
-export interface WorkflowContext extends NodeContext {}
+export interface RunContext extends NodeContext {}

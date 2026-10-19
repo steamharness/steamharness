@@ -12,13 +12,13 @@ description: "Execute the traceable while loop node and have shared runtime UI D
 ```ts
 workflow.runWhile<State>(
   input: State,
-  context: WorkflowContext,
+  context: RunContext,
   options: {
     name?: string;
-    condition(input: State, context: WorkflowContext, iteration: number): boolean | Promise<boolean>;
-    run(input: State, context: WorkflowContext, iteration: number): State | Promise<State>;
+    condition(input: State, context: RunContext, iteration: number): boolean | Promise<boolean>;
+    run(input: State, context: RunContext, iteration: number): State | Promise<State>;
     maxIterations?: number;
-    metadata?: Partial<WorkflowNodeMetadata>;
+    metadata?: Partial<NodeMetadata>;
   },
 ): Promise<State>
 ```
@@ -28,12 +28,12 @@ workflow.runWhile<State>(
 |Parameter|Type|Description|
 | --- | --- | --- |
 | `input` | `State` |Initial cycle state.|
-| `context` | `WorkflowContext` |runtime context for hooks, provider, KV, files, abortSignal.|
+| `context` | `RunContext` |runtime context for hooks, provider, KV, files, abortSignal.|
 | `options.name` | `string` |Diagram and the loop node titles displayed in the Trace. Default `Run while`.|
 | `options.condition` | `function` |Execute before start of each round; continue loop when return `true`. The third argument is the iteration starting at `0`.|
 | `options.run` | `function` |The body of the loop executed after the condition is hit, returning to the next round.|
 | `options.maxIterations` | `number` |The maximum number of iterations. Default `100` to prevent accidental infinite loops.|
-| `options.metadata` | `Partial<WorkflowNodeMetadata>` |Overwrites the metadata of loop nodes; by default, the type is `run-while`.|
+| `options.metadata` | `Partial<NodeMetadata>` |Overwrites the metadata of loop nodes; by default, the type is `run-while`.|
 
 ## Operation Report
 
@@ -97,5 +97,5 @@ Static structural analysis identifies object literals in the forms of `condition
 |Situation|Error Type|Description|
 | --- | --- | --- |
 |More than `maxIterations`| `node_execution` |Throw out `Run-while node "<name>" exceeded maxIterations (<value>).`.|
-|`condition` or `run` throws an error| `node_execution` |The original error is wrapped as `WorkflowError` and written to the loop node report.|
+|`condition` or `run` throws an error| `node_execution` |The original error is wrapped as `HarnessError` and written to the loop node report.|
 |Break before execution or in a loop|`execution_aborted` or `node_execution`|From `context.abortSignal`.|

@@ -1,4 +1,4 @@
-import type { WorkflowOutputItem } from './workflow-types';
+import type { OutputItem } from './workflow-types';
 
 export interface ResourceCard {
   id: string;
@@ -14,7 +14,7 @@ const record = (value: unknown): Record<string, unknown> | undefined => value &&
 const string = (value: unknown): string | undefined => typeof value === 'string' && value.trim() ? value.trim() : undefined;
 
 // Core tool results carry the same resourceCard / present_card contract used by Desktop.
-export function conversationResourceCards(items: WorkflowOutputItem[], projectId: string, conversationId: string, storageSource: 'local' | 'server' = 'local'): ResourceCard[] {
+export function conversationResourceCards(items: OutputItem[], projectId: string, conversationId: string, storageSource: 'local' | 'server' = 'local'): ResourceCard[] {
   const cards = new Map<string, ResourceCard>();
   for (const [index, item] of items.entries()) {
     if (!['agent-part', 'opencode-part'].includes(String(item.metadata?.kind)) || item.metadata?.partType !== 'tool') { continue; }

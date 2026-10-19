@@ -13,7 +13,7 @@ import { KanbanMethodHub } from './kanban-methods';
 import { getCurrentLocale } from '@steamharness/i18n';
 import { localKanbanRelatedProjects, readWorkflowProjectInfo, webProjectDataDirectory } from './kanban-data';
 import type { WebConnection } from './runtime';
-import type { WorkflowProject, WorkflowRuntime } from './workflow-types';
+import type { Project, Runtime } from './workflow-types';
 import { requestStudioAnalysis } from './local-analysis';
 
 type Message = Record<string, any>;
@@ -41,7 +41,7 @@ export class KanbanController {
   private readonly requests = new Set<AbortController>();
   private readonly historyPath: string;
   readonly methods: KanbanMethodHub;
-  constructor(readonly project: WorkflowProject, private readonly runtime: WorkflowRuntime, private readonly storageDir: string, private readonly hooks: Hooks) {
+  constructor(readonly project: Project, private readonly runtime: Runtime, private readonly storageDir: string, private readonly hooks: Hooks) {
     this.historyPath = path.join(webProjectDataDirectory(storageDir, project.folderPath), 'kanban.json');
     this.methods = new KanbanMethodHub(() => this.configuration(), message => hooks.emit(message));
   }
@@ -160,7 +160,7 @@ export class KanbanController {
     if (previewChanged) { this.newPreview(); } this.hooks.changed();
     return [{ type: 'kanban-updated', requestId: message.requestId, kanban: this.state() }];
   }
-  async bridge(call: Parameters<NonNullable<WorkflowRuntime['kanbanBridge']>>[1]): Promise<unknown> {
+  async bridge(call: Parameters<NonNullable<Runtime['kanbanBridge']>>[1]): Promise<unknown> {
     if (this.disposed) { throw new Error('Kanban has closed.'); }
     if (call.operation === 'runtime.getLocale') { return getCurrentLocale(); }
     const generation = this.generation;

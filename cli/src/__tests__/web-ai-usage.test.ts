@@ -1,9 +1,9 @@
 import { afterEach, expect, it } from 'vitest';
 import { initI18n } from '@steamharness/i18n';
 import { usageAmount, usagePeriods } from '../web/ui/ai-usage';
-import type { WorkflowSystemAiUsage } from '../web/workflow-auth-client';
+import type { SystemAiUsage } from '../web/workflow-auth-client';
 
-type Subscription = NonNullable<WorkflowSystemAiUsage['groups'][number]['subscription']>;
+type Subscription = NonNullable<SystemAiUsage['groups'][number]['subscription']>;
 const subscription: Subscription = { status: 'active', dailyLimitUsd: 10, dailyUsageUsd: 8,
   weeklyLimitUsd: 20, weeklyUsageUsd: 25, monthlyLimitUsd: null, monthlyUsageUsd: 30 };
 afterEach(() => initI18n({ preference: 'zh-CN' }));

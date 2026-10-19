@@ -12,19 +12,19 @@ import {
   runLocalWorkflowWithReport,
   runWorkspaceWorkflowWithReport,
   validateWorkflowScriptSource,
-  WorkflowError,
+  HarnessError,
 } from "../index";
 
 test("workspace structure CLI errors use the standalone CLI command", () => {
   assert.throws(
     () => inspectWorkspaceWorkflowStructureFromCli([]),
     (error: unknown) =>
-      error instanceof WorkflowError &&
+      error instanceof HarnessError &&
       error.message === "Missing workflow directory. Usage: steamharness structure <workflow-dir>",
   );
 });
 
-test("workflow entrypoint definitions report validation failures as WorkflowError", () => {
+test("workflow entrypoint definitions report validation failures as HarnessError", () => {
   const workflow = {
     name: "test",
     run() {
@@ -42,7 +42,7 @@ test("workflow entrypoint definitions report validation failures as WorkflowErro
         return { errCode: 0, errMessage: "" };
       },
     } as never),
-    (error: unknown) => error instanceof WorkflowError && /non-empty title/.test(error.message),
+    (error: unknown) => error instanceof HarnessError && /non-empty title/.test(error.message),
   );
 });
 
@@ -73,7 +73,7 @@ test("workflow entrypoint groups validate metadata and reject conflicting defini
   ] as const) {
     assert.throws(
       () => defineWorkflowEntrypoint(createEntrypoint("main", group) as never),
-      (error: unknown) => error instanceof WorkflowError && message.test(error.message),
+      (error: unknown) => error instanceof HarnessError && message.test(error.message),
     );
   }
 
@@ -91,7 +91,7 @@ test("workflow entrypoint groups validate metadata and reject conflicting defini
           createEntrypoint("secondary", conflictingGroup),
         ],
       } as never),
-      (error: unknown) => error instanceof WorkflowError && /identical title and order/.test(error.message),
+      (error: unknown) => error instanceof HarnessError && /identical title and order/.test(error.message),
     );
   }
 });
@@ -376,7 +376,7 @@ test("workflow entrypoint structure does not accept an unrelated same-name workf
 
     assert.throws(
       () => inspectLocalWorkflowStructure({ workflowDir }),
-      (error: unknown) => error instanceof WorkflowError && (
+      (error: unknown) => error instanceof HarnessError && (
         (error.metadata?.violations as Array<{ type?: string; message?: string }> | undefined)?.some(
           (violation) => violation.type === "invalid_workflow_entrypoints" &&
             /must reference a workflow defined with workflow\.defineWorkflow/.test(violation.message ?? ""),

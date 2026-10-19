@@ -155,7 +155,7 @@ async function runKnowledgeDocumentsAction(
       };
     }
     default:
-      throw new workflow.WorkflowError({
+      throw new workflow.HarnessError({
         type: "input_validation",
         message: `Unsupported knowledge_documents action: ${String(args.action)}.`,
         nodeName: "openai-agents-output",
@@ -212,7 +212,7 @@ function requireToolString(
     return normalized;
   }
 
-  throw new workflow.WorkflowError({
+  throw new workflow.HarnessError({
     type: "input_validation",
     message: `knowledge_documents action "${action}" requires ${field}.`,
     nodeName: "openai-agents-output",
@@ -229,7 +229,7 @@ function requireToolNumber(
     return value;
   }
 
-  throw new workflow.WorkflowError({
+  throw new workflow.HarnessError({
     type: "input_validation",
     message: `knowledge_documents action "${action}" requires ${field}.`,
     nodeName: "openai-agents-output",

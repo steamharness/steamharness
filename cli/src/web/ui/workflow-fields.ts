@@ -1,23 +1,23 @@
 import { t } from '../localization';
 import {
-  workflowParamValue, type WorkflowField, type WorkflowParameters, type WorkflowParamState, type WorkflowParamValues, type WorkflowParamValue,
+  workflowParamValue, type Field, type Parameters, type ParamState, type ParamValues, type ParamValue,
 } from '../workflow-types';
 import { ParameterActions } from './parameter-actions';
 import { iconButton } from './ui';
 
 interface Options {
-  values(): WorkflowParamValues;
-  states(): Record<string, WorkflowParamState>;
+  values(): ParamValues;
+  states(): Record<string, ParamState>;
   disabled(): boolean;
   loading(): boolean;
-  change(name: string, value: WorkflowParamValue): void;
+  change(name: string, value: ParamValue): void;
   file(name: string): void;
   downloadFile?(id: string): void;
 }
-interface FieldView { field: WorkflowField; root: HTMLElement; controls: (HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement)[]; signature?: string }
+interface FieldView { field: Field; root: HTMLElement; controls: (HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement)[]; signature?: string }
 
-export class WorkflowFields {
-  private parameters: WorkflowParameters = { fields: [] };
+export class Fields {
+  private parameters: Parameters = { fields: [] };
   private readonly fields = new Map<string, FieldView>();
   private readonly actions: ParameterActions;
   constructor(private readonly root: HTMLElement, actions: HTMLElement, private readonly options: Options) {
@@ -29,7 +29,7 @@ export class WorkflowFields {
     });
   }
   close(): void { this.actions.close(); }
-  render(parameters: WorkflowParameters): void {
+  render(parameters: Parameters): void {
     this.parameters = parameters; this.fields.clear(); this.root.replaceChildren();
     const inActions = new Set(parameters.paramLayout?.actions.flatMap(action => action.kind === 'mode' || action.kind === 'slash' ? [action.name] : action.params) ?? []);
     for (const field of parameters.fields) {
@@ -38,7 +38,7 @@ export class WorkflowFields {
     }
     this.actions.render(parameters); this.update();
   }
-  private field(field: WorkflowField): FieldView {
+  private field(field: Field): FieldView {
     const root = document.createElement('div'); root.className = `param-field${field.type === 'boolean' ? ' boolean-field' : ''}`; root.dataset.param = field.name;
     const label = document.createElement('label'); label.className = 'field-label';
     label.textContent = `${field.label || field.name}${field.required ? ' *' : ''}`; label.title = field.description ?? ''; root.append(label);

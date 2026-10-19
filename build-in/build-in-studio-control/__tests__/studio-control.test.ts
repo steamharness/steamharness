@@ -8,7 +8,7 @@ beforeEach(() => {
     defineExecutor: (value: unknown) => value,
     defineEntrypoint: (value: unknown) => value,
     createOutputPayload: (input: { items?: unknown[] }) => ({ errCode: 0, errMessage: "", items: input.items ?? [] }),
-    WorkflowError: class extends Error {
+    HarnessError: class extends Error {
       type: string;
       constructor(input: { type: string; message: string }) { super(input.message); this.type = input.type; }
     },

@@ -1,5 +1,5 @@
 import { t, locale } from './localization';
-import { WorkflowAuthError, normalizeWorkflowServerUrl, type WorkflowConnection } from './workflow-auth-client';
+import { AuthError, normalizeWorkflowServerUrl, type Connection } from './workflow-auth-client';
 
 export interface ServerProject {
   id: string; name: string; projectType: string; latest: string | null;
@@ -14,7 +14,7 @@ export interface ServerProjectVersion {
 export interface ServerProjectVersions {
   id: string; name: string; latest: string | null; versions: ServerProjectVersion[];
 }
-export interface WorkflowVersionsState {
+export interface VersionsState {
   type: 'versions-state'; generation: number; signedIn: boolean; loading: boolean; busy: boolean;
   project?: { id: string; name: string; uri: string };
   localVersion?: string; versions: ServerProjectVersion[];
@@ -64,8 +64,8 @@ export interface ProjectPreparation {
   result?: { workflowId: string; sourceHash: string };
 }
 
-export class WorkflowProjectServerClient {
-  constructor(private readonly connection: WorkflowConnection, private readonly fetcher: typeof fetch = fetch) {}
+export class ProjectServerClient {
+  constructor(private readonly connection: Connection, private readonly fetcher: typeof fetch = fetch) {}
 
   async request<T>(apiPath: string, signal: AbortSignal, body?: object): Promise<T> {
     signal.throwIfAborted();
@@ -79,19 +79,19 @@ export class WorkflowProjectServerClient {
       });
     } catch {
       signal.throwIfAborted();
-      throw new WorkflowAuthError(t('Cannot connect to SteamHarness Server. Check the server address and network.'));
+      throw new AuthError(t('Cannot connect to SteamHarness Server. Check the server address and network.'));
     }
     let payload: { errCode: number; errMessage?: string; data?: T };
     try { payload = await response.json() as typeof payload; }
-    catch { signal.throwIfAborted(); throw new WorkflowAuthError(t('The server returned an invalid response.'), response.status); }
+    catch { signal.throwIfAborted(); throw new AuthError(t('The server returned an invalid response.'), response.status); }
     signal.throwIfAborted();
     if (!payload || typeof payload !== 'object' || typeof payload.errCode !== 'number') {
-      throw new WorkflowAuthError(t('The server returned an invalid response.'), response.status);
+      throw new AuthError(t('The server returned an invalid response.'), response.status);
     }
     if (!response.ok || payload.errCode !== 0 || payload.data === undefined) {
       const message = response.status === 401 ? t('Sign-in expired. Sign in again.')
         : payload.errMessage || t('SteamHarness Server request failed ({0}).', response.status);
-      throw new WorkflowAuthError(message.replaceAll(this.connection.accessToken, '[redacted]'), response.status);
+      throw new AuthError(message.replaceAll(this.connection.accessToken, '[redacted]'), response.status);
     }
     return payload.data;
   }

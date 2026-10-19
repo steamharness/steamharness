@@ -1,13 +1,13 @@
-import { WorkflowError } from "../workflow/index";
+import { HarnessError } from "../workflow/index";
 import type {
-  WorkflowDateParamControl,
-  WorkflowParamControl,
-  WorkflowParamDeclaration,
-  WorkflowParamDefinition,
-  WorkflowParamLayout,
+  DateParamControl,
+  ParamControl,
+  ParamDeclaration,
+  ParamDefinition,
+  ParamLayout,
 } from "./types";
 
-const DATE_PARAM_CONTROLS = new Set<WorkflowParamControl>([
+const DATE_PARAM_CONTROLS = new Set<ParamControl>([
   "date",
   "time",
   "datetime",
@@ -15,13 +15,13 @@ const DATE_PARAM_CONTROLS = new Set<WorkflowParamControl>([
 ]);
 
 export function isWorkflowDateParamControl(
-  control: WorkflowParamControl | undefined,
-): control is WorkflowDateParamControl {
+  control: ParamControl | undefined,
+): control is DateParamControl {
   return control !== undefined && DATE_PARAM_CONTROLS.has(control);
 }
 
 export function readWorkflowParamDefinitionError(
-  param: WorkflowParamDefinition,
+  param: ParamDefinition,
   declaredProperties?: { options?: boolean },
 ): string | undefined {
   if (param.step !== undefined && (!Number.isInteger(param.step) || param.step < 1)) {
@@ -60,10 +60,10 @@ export function readWorkflowParamDefinitionError(
 }
 
 export function normalizeWorkflowParamDeclarations(
-  declarations: readonly WorkflowParamDeclaration[] | undefined,
-): { params: WorkflowParamDefinition[]; layout?: WorkflowParamLayout } {
-  const params: WorkflowParamDefinition[] = [];
-  const layout: WorkflowParamLayout = { actions: [] };
+  declarations: readonly ParamDeclaration[] | undefined,
+): { params: ParamDefinition[]; layout?: ParamLayout } {
+  const params: ParamDefinition[] = [];
+  const layout: ParamLayout = { actions: [] };
   const names = new Set<string>();
   const flags = new Set<string>();
   const groupIds = new Set<string>();
@@ -75,7 +75,7 @@ export function normalizeWorkflowParamDeclarations(
     commands.add(command);
   };
 
-  const addField = (field: WorkflowParamDefinition) => {
+  const addField = (field: ParamDefinition) => {
     const error = readWorkflowParamDefinitionError(field);
     if (error !== undefined) throw paramError(error);
     if (typeof field.name !== "string" || field.name.trim() === "" || names.has(field.name)) {
@@ -213,7 +213,7 @@ export function normalizeWorkflowParamDeclarations(
 }
 
 export function assertWorkflowParamDeclarations(
-  declarations: readonly WorkflowParamDeclaration[] | undefined,
+  declarations: readonly ParamDeclaration[] | undefined,
   projectType: "conversation" | "workflow",
 ): void {
   const { params, layout } = normalizeWorkflowParamDeclarations(declarations);
@@ -231,16 +231,16 @@ export function assertWorkflowParamDeclarations(
   }
 }
 
-function paramError(message: string): WorkflowError {
-  return new WorkflowError({ type: "input_validation", message });
+function paramError(message: string): HarnessError {
+  return new HarnessError({ type: "input_validation", message });
 }
 
 export function assertWorkflowParamDefinitions(
-  params: readonly WorkflowParamDefinition[] | undefined,
+  params: readonly ParamDefinition[] | undefined,
 ): void {
   for (const param of params ?? []) {
     const error = readWorkflowParamDefinitionError(param);
     if (error === undefined) continue;
-    throw new WorkflowError({ type: "input_validation", message: error });
+    throw new HarnessError({ type: "input_validation", message: error });
   }
 }

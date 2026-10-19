@@ -7,9 +7,9 @@ import {
   isWorkflowProjectDataStorageLocationAllowed,
   readWorkflowProjectInfo,
   resolveWorkflowRelatedProjectAccess,
-  type WorkflowProjectDataStorageLocation,
-  type WorkflowProjectInfo,
-  type WorkflowRelatedProjectKVGrant,
+  type ProjectDataStorageLocation,
+  type ProjectInfoContract,
+  type RelatedProjectKVGrant,
 } from "@steamharness/project-info";
 import { assertWorkflowUuid } from "@steamharness/workflow-ids";
 
@@ -45,7 +45,7 @@ interface CliWorkflowKVNamespace {
 
 interface CliWorkflowResolvedRelatedProjectKV {
   projectId: string;
-  grant: WorkflowRelatedProjectKVGrant;
+  grant: RelatedProjectKVGrant;
   kv: CliWorkflowKVNamespace;
   persistentValue?: CliWorkflowKVNamespace;
   runner?: CliWorkflowRelatedProjectRunner;
@@ -111,7 +111,7 @@ const defaultStorageApi = steamHarness as unknown as TargetSteamHarnessStorageAp
 interface ProjectSnapshot {
   projectDir: string;
   projectId: string;
-  projectInfo: WorkflowProjectInfo;
+  projectInfo: ProjectInfoContract;
 }
 
 export function parseCliRelatedProjectSpec(value: string): CliRelatedProjectSpec {
@@ -196,7 +196,7 @@ export function createCliRelatedProjectRuntime(options: {
   };
 
   function createResolver(
-    location: WorkflowProjectDataStorageLocation,
+    location: ProjectDataStorageLocation,
     fixedStore?: CliWorkflowKVStore,
     fixedPersistentValueStore?: CliWorkflowKVStore,
   ): CliWorkflowRelatedProjectKVResolver {
@@ -300,7 +300,7 @@ export function createCliRelatedProjectRuntime(options: {
 function createLocalProjectRunner(options: {
   projectDir: string;
   /** Where the target project keeps its data, which is where its run reads and writes. */
-  location: WorkflowProjectDataStorageLocation;
+  location: ProjectDataStorageLocation;
   kvStoreDir?: string;
   persistentValueStoreDir?: string;
   storageApi: TargetSteamHarnessStorageApi;

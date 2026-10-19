@@ -1,8 +1,8 @@
 import { t } from './localization';
 import * as vscode from 'vscode';
 import { createAssistantProject, DEVELOPER_ASSISTANT_PROJECT_ID } from './assistant-workspace';
-import type { AssistantWorkspaceFolder, WorkflowProject } from './workflow-types';
-import type { WorkflowLauncher } from './workflow-cli-types';
+import type { AssistantWorkspaceFolder, Project } from './workflow-types';
+import type { Launcher } from './workflow-cli-types';
 
 export interface AssistantConversation { dispose(): Promise<void>; closed: Promise<void> }
 
@@ -19,9 +19,9 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
 
   constructor(
     private readonly context: vscode.ExtensionContext,
-    private readonly runtime: WorkflowLauncher,
+    private readonly runtime: Launcher,
     private readonly output: vscode.OutputChannel,
-    private readonly openConversation: (project: WorkflowProject, view: vscode.WebviewView) => Promise<AssistantConversation>,
+    private readonly openConversation: (project: Project, view: vscode.WebviewView) => Promise<AssistantConversation>,
   ) {
     context.subscriptions.push(this,
       vscode.window.registerWebviewViewProvider('studio.developerAssistant', this, { webviewOptions: { retainContextWhenHidden: true } }),

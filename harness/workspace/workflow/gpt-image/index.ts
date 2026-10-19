@@ -12,8 +12,8 @@ import type {
   GptImageRunnerInput,
   GptImageRunnerResult,
   GptImageSize,
-  WorkflowFileReference,
-  WorkflowResolvedFile,
+  FileReference,
+  ResolvedFile,
 } from "./interface";
 
 const model = "gpt-image-2";
@@ -41,7 +41,7 @@ const inputNode = workflow.createInputNode<GptImageInput, GptImageParsedInput>({
     );
 
     if (background === "transparent") {
-      throw new workflow.WorkflowError({
+      throw new workflow.HarnessError({
         type: "input_validation",
         message: "gpt-image-2 does not support transparent background. Use auto or opaque.",
         nodeName: "gpt-image-input",
@@ -365,7 +365,7 @@ async function runGptImage(
   });
 
   if (result.b64Json.trim() === "") {
-    throw new workflow.WorkflowError({
+    throw new workflow.HarnessError({
       type: "provider_call",
       message: "OpenAI image response did not include base64 image data.",
       nodeName: "gpt-image-output",
@@ -382,7 +382,7 @@ function createOpenAIImageRunner(): GptImageRunner {
   return async (input) => {
     const apiKey = input.apiKey;
     if (apiKey === undefined) {
-      throw new workflow.WorkflowError({
+      throw new workflow.HarnessError({
         type: "input_validation",
         message: "Missing required environment variable: OPENAI_API_KEY.",
         nodeName: "gpt-image-output",
@@ -466,15 +466,15 @@ function createEnvImageRunner(env: NodeJS.ProcessEnv): GptImageRunner | undefine
 
 async function resolveConversationContextImages(
   messages: Array<{ role: string; metadata?: Record<string, unknown> }>,
-  currentImages: WorkflowResolvedFile[],
-  files: { resolveFile(reference: WorkflowFileReference): Promise<WorkflowResolvedFile> } | undefined,
-): Promise<WorkflowResolvedFile[]> {
+  currentImages: ResolvedFile[],
+  files: { resolveFile(reference: FileReference): Promise<ResolvedFile> } | undefined,
+): Promise<ResolvedFile[]> {
   if (files === undefined || currentImages.length >= maxImageInputs) {
     return [];
   }
 
   const seen = new Set(currentImages.map((file) => file.id));
-  const contextImages: WorkflowResolvedFile[] = [];
+  const contextImages: ResolvedFile[] = [];
   for (const reference of readRecentConversationImageReferences(messages)) {
     if (seen.has(reference.id)) {
       continue;
@@ -498,7 +498,7 @@ async function resolveConversationContextImages(
 
 function readRecentConversationImageReferences(
   messages: Array<{ role: string; metadata?: Record<string, unknown> }>,
-): WorkflowFileReference[] {
+): FileReference[] {
   return messages
     .slice()
     .reverse()
@@ -524,11 +524,11 @@ function readRecentConversationImageReferences(
 }
 
 function mergeResolvedImages(
-  currentImages: WorkflowResolvedFile[],
-  contextImages: WorkflowResolvedFile[],
+  currentImages: ResolvedFile[],
+  contextImages: ResolvedFile[],
   limit: number,
-): WorkflowResolvedFile[] {
-  const merged: WorkflowResolvedFile[] = [];
+): ResolvedFile[] {
+  const merged: ResolvedFile[] = [];
   const seen = new Set<string>();
 
   for (const image of [...currentImages, ...contextImages]) {
@@ -672,7 +672,7 @@ function parseInput(args: string[]): GptImageInput {
   return input;
 }
 
-function parseImageReferences(value: string): WorkflowFileReference[] {
+function parseImageReferences(value: string): FileReference[] {
   const trimmed = value.trim();
   if (trimmed === "") {
     return [];
@@ -698,9 +698,9 @@ function parseImageReferences(value: string): WorkflowFileReference[] {
   }
 }
 
-function normalizeFileReference(value: unknown): WorkflowFileReference {
+function normalizeFileReference(value: unknown): FileReference {
   if (!isRecord(value)) {
-    throw new workflow.WorkflowError({
+    throw new workflow.HarnessError({
       type: "input_validation",
       message: "Image file reference must be an object.",
       nodeName: "gpt-image-input",
@@ -709,7 +709,7 @@ function normalizeFileReference(value: unknown): WorkflowFileReference {
   const id = readString(value.id);
   const name = readString(value.name) ?? id;
   if (id === undefined || name === undefined) {
-    throw new workflow.WorkflowError({
+    throw new workflow.HarnessError({
       type: "input_validation",
       message: "Image file reference requires id and name.",
       nodeName: "gpt-image-input",
@@ -731,7 +731,7 @@ function normalizeFileReference(value: unknown): WorkflowFileReference {
   };
 }
 
-function readFileStorage(value: unknown): WorkflowFileReference["storage"] {
+function readFileStorage(value: unknown): FileReference["storage"] {
   return value === "local" || value === "server" || value === "url" ? value : "path";
 }
 
@@ -743,7 +743,7 @@ function normalizeSize(value: string | undefined): GptImageSize {
 
   const match = normalized.match(/^(\d+)x(\d+)$/);
   if (!match) {
-    throw new workflow.WorkflowError({
+    throw new workflow.HarnessError({
       type: "input_validation",
       message: `Invalid image size "${normalized}". Use auto or WIDTHxHEIGHT.`,
       nodeName: "gpt-image-input",
@@ -752,7 +752,7 @@ function normalizeSize(value: string | undefined): GptImageSize {
   const width = Number(match[1]);
   const height = Number(match[2]);
   if (width % 16 !== 0 || height % 16 !== 0 || width <= 0 || height <= 0) {
-    throw new workflow.WorkflowError({
+    throw new workflow.HarnessError({
       type: "input_validation",
       message: "Custom gpt-image-2 sizes must be positive and divisible by 16.",
       nodeName: "gpt-image-input",
@@ -760,7 +760,7 @@ function normalizeSize(value: string | undefined): GptImageSize {
   }
   const ratio = width / height;
   if (ratio < 1 / 3 || ratio > 3) {
-    throw new workflow.WorkflowError({
+    throw new workflow.HarnessError({
       type: "input_validation",
       message: "Custom gpt-image-2 sizes must use an aspect ratio between 1:3 and 3:1.",
       nodeName: "gpt-image-input",
@@ -779,7 +779,7 @@ function normalizeCompression(
   }
   const compression = value ?? 100;
   if (!Number.isInteger(compression) || compression < 0 || compression > 100) {
-    throw new workflow.WorkflowError({
+    throw new workflow.HarnessError({
       type: "input_validation",
       message: "Output compression must be an integer between 0 and 100.",
       nodeName: "gpt-image-input",
@@ -799,7 +799,7 @@ function readEnum<Value extends string>(
     return normalized as Value;
   }
 
-  throw new workflow.WorkflowError({
+  throw new workflow.HarnessError({
     type: "input_validation",
     message: `Invalid ${name} "${normalized}". Expected one of: ${allowed.join(", ")}.`,
     nodeName: "gpt-image-input",
@@ -860,7 +860,7 @@ function readOptionalEnv(...keys: string[]): string | undefined {
 function requireArgValue(args: string[], index: number, flag: string): string {
   const value = args[index];
   if (value === undefined) {
-    throw new workflow.WorkflowError({
+    throw new workflow.HarnessError({
       type: "input_validation",
       message: `Missing value for ${flag}.`,
       nodeName: "gpt-image-input",
@@ -872,7 +872,7 @@ function requireArgValue(args: string[], index: number, flag: string): string {
 function parseNumber(value: string, flag: string): number {
   const numberValue = Number(value);
   if (!Number.isFinite(numberValue)) {
-    throw new workflow.WorkflowError({
+    throw new workflow.HarnessError({
       type: "input_validation",
       message: `${flag} must be a number.`,
       nodeName: "gpt-image-input",

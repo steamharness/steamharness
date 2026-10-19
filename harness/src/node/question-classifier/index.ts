@@ -1,11 +1,11 @@
 import { BaseNode, getLLMProvider } from "../base";
-import type { NodeContext, WorkflowNodeMetadataInput } from "../../types/index";
+import type { NodeContext, NodeMetadataInput } from "../../types/index";
 import type {
   LLMCallSettings,
   LLMChatInput,
   LLMProviderSource,
 } from "../../provider/llm/types";
-import { WorkflowError } from "../../workflow/errors";
+import { HarnessError } from "../../workflow/errors";
 
 export interface QuestionClassifierCategory<Name extends string = string> {
   name: Name;
@@ -26,7 +26,7 @@ export interface QuestionClassifierNodeOptions<
   system?: string;
   settings?: Omit<LLMCallSettings, "abortSignal">;
   historyLimit?: number;
-  metadata?: WorkflowNodeMetadataInput;
+  metadata?: NodeMetadataInput;
 }
 
 interface ResolvedQuestionClassifierCategory {
@@ -116,7 +116,7 @@ function resolveCategories(
   categories: readonly QuestionClassifierCategory[],
 ): ResolvedQuestionClassifierCategory[] {
   if (!Array.isArray(categories) || categories.length === 0) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "Question classifier categories are required.",
       nodeName: "question-classifier",
@@ -133,7 +133,7 @@ function resolveCategories(
   const duplicatedName = findDuplicatedCategoryName(resolvedCategories);
 
   if (duplicatedName !== undefined) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `Question classifier category "${duplicatedName}" is duplicated.`,
       nodeName: "question-classifier",
@@ -164,7 +164,7 @@ function findDuplicatedCategoryName(
 
 function resolveRequiredText(value: unknown, fieldName: string): string {
   if (typeof value !== "string" || value.trim() === "") {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `Question classifier field "${fieldName}" is required.`,
       nodeName: "question-classifier",

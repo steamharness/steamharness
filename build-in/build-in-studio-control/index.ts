@@ -15,7 +15,7 @@ export const studioControlWorkflow = workflow.defineWorkflow<StudioControlInput,
         value,
       };
     } catch (error) {
-      throw new workflow.WorkflowError({
+      throw new workflow.HarnessError({
         type: typeof error === "object" && error !== null && "code" in error && error.code === "STUDIO_CONTROL_INVALID_REQUEST"
           ? "input_validation" : "workflow_execution",
         message: error instanceof Error ? error.message : String(error),

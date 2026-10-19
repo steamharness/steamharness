@@ -9,14 +9,14 @@ description: "Create a user input node that can be persisted, have workflow paus
 
 While a Conversation is waiting for input, shared runtime UI hides the bottom message composer and keeps the waiting form available until the user submits or cancels it.
 
-The form field reuses the `WorkflowParamDefinition` of the current Workflow entrypoint(Conversation is executor), and does not create another schema for the user input node.
+The form field reuses the `ParamDefinition` of the current Workflow entrypoint(Conversation is executor), and does not create another schema for the user input node.
 
 Wait forms also support `date`, `time`, `datetime`, and `date-range`. The submitted values remain `YYYY-MM-DD`, `HH:mm:ss`, local `YYYY-MM-DDTHH:mm:ss`, and closed interval `YYYY-MM-DD/YYYY-MM-DD` strings, respectively, so workflow can read directly from `payload.values[param.name]` without receiving a `Date` object or a time zone-converted value. The date field must use `type: "string"`, can only be placed in main or auxiliary, cannot declare enumeration options or `multiple: true`; Required blank values or formatting errors will remain in the form to display errors and prevent submission until the user corrects them.
 
 ## Signature
 
 ```ts
-workflow.createUserInputNode<Input, Output extends WorkflowPayload>(
+workflow.createUserInputNode<Input, Output extends RunPayload>(
   options: UserInputNodeOptions<Input, Output>,
 ): BaseNode<Input, Output>
 ```
@@ -28,18 +28,18 @@ workflow.createUserInputNode<Input, Output extends WorkflowPayload>(
 | `name` | `string` |Node name, default `"user-input"`. will be used for report, requestId, and Diagram.|
 | `title` | `string` |Wait for the form title. Use `name` when not passed.|
 | `description` | `string` |Wait for the form description.|
-| `params` | `WorkflowParamDefinition[]` |Form field, field definition is consistent with `params` of the selected Workflow entry;Conversation uses `executor.params`.|
+| `params` | `ParamDefinition[]` |Form field, field definition is consistent with `params` of the selected Workflow entry;Conversation uses `executor.params`.|
 | `defaultValues` | `Record<string, unknown>` |Form default, match by param `name`.|
 | `resolveRequest` | `(input, context) => UserInputRequestDefinition \| Promise<UserInputRequestDefinition>` |Dynamically generate `title`, `description`, `params`, and `defaultValues` based on the current node input.|
 | `createRequestId` | `(input, context) => string` |The custom request ID. The default contains workflow, runId, and node name.|
 | `format` | `(payload, input, context) => Output` |Convert the default submission payload to the business payload.|
 | `historyLimit` | `number` |The number of nodes retained in the execution history. The default value is `50`.|
-| `metadata` | `WorkflowNodeMetadataInput` |The node displays meta information.|
+| `metadata` | `NodeMetadataInput` |The node displays meta information.|
 
 ## Default payload
 
 ```ts
-interface UserInputPayload extends WorkflowPayload {
+interface UserInputPayload extends RunPayload {
   requestId: string;
   values: Record<string, unknown>;
   submittedAt: string;
@@ -58,7 +58,7 @@ Default return on successful recovery:
 }
 ```
 
-If `format` is passed in, the return value must still inherit `WorkflowPayload`, using `errCode: 0, errMessage: ""` on success.
+If `format` is passed in, the return value must still inherit `RunPayload`, using `errCode: 0, errMessage: ""` on success.
 
 ## Runtime behavior
 
@@ -100,7 +100,7 @@ const questionNode = workflow.createUserInputNode<AgentQuestion>({
 ## Example
 
 ```ts
-interface ApprovalPayload extends WorkflowPayload {
+interface ApprovalPayload extends RunPayload {
   approved: boolean;
   note: string;
   reviewDate: string;

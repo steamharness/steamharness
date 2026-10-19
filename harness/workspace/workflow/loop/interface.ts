@@ -1,26 +1,26 @@
-export interface WorkflowPayload {
+export interface RunPayload {
   errCode: number;
   errMessage: string;
 }
 
-export type WorkflowOutputContentType = "markdown" | "text" | "json";
+export type OutputContentType = "markdown" | "text" | "json";
 
-export interface WorkflowOutputItem {
+export interface OutputItem {
   id: string;
   title: string;
   content: unknown;
   icon?: string;
   iconPreset?: "info" | "success" | "warning" | "error" | "note" | "code" | "list" | "quote" | "none";
-  contentType?: WorkflowOutputContentType;
+  contentType?: OutputContentType;
   collapsed?: boolean;
   metadata?: Record<string, unknown>;
 }
 
-export interface WorkflowOutputPayload extends WorkflowPayload {
-  items: WorkflowOutputItem[];
+export interface RunOutputPayload extends RunPayload {
+  items: OutputItem[];
 }
 
-export interface WorkflowExecutorResult<Output extends WorkflowPayload> {
+export interface ExecutorResult<Output extends RunPayload> {
   ok: boolean;
   data?: Output;
   error?: unknown;
@@ -31,7 +31,7 @@ export interface LoopInput {
   target: number;
 }
 
-export interface LoopState extends WorkflowPayload {
+export interface LoopState extends RunPayload {
   rounds: number;
   target: number;
   total: number;
@@ -39,7 +39,7 @@ export interface LoopState extends WorkflowPayload {
   lastBoostRoute?: "burst" | "steady" | "finish";
 }
 
-export interface LoopOutputPayload extends WorkflowOutputPayload {
+export interface LoopOutputPayload extends RunOutputPayload {
   rounds: number;
   target: number;
   total: number;
@@ -47,4 +47,4 @@ export interface LoopOutputPayload extends WorkflowOutputPayload {
   success: boolean;
 }
 
-export type LoopOutput = WorkflowExecutorResult<LoopOutputPayload>;
+export type LoopOutput = ExecutorResult<LoopOutputPayload>;

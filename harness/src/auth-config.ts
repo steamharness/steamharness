@@ -3,12 +3,12 @@ import {
   createEmptyWorkflowAuthConfig,
   normalizeWorkflowAuthConfig,
   resolveWorkflowCliAuthFilePath,
-  type WorkflowAuthConfig,
+  type AuthConfig,
 } from "@steamharness/auth-config";
 
 export function readWorkflowCliAuthConfigSync(
   env: NodeJS.ProcessEnv = process.env,
-): WorkflowAuthConfig {
+): AuthConfig {
   try {
     const raw = readFileSync(resolveWorkflowCliAuthFilePath(env), "utf8");
     return normalizeWorkflowAuthConfig(JSON.parse(raw));

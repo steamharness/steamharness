@@ -6,39 +6,39 @@ import {
   DEFAULT_AUTHENTICATED_PERMISSION_KEYS,
   listBuiltinWorkflowRoles,
   normalizeWorkflowPermissionKeys,
-  type WorkflowPermissionKey,
+  type PermissionKey,
 } from "./permissions";
 
-export type WorkflowUserProfileStatus = "invited" | "active" | "disabled";
-export type WorkflowDeviceCodeState = "pending" | "approved" | "denied" | "expired" | "consumed";
-export interface WorkflowUserProfileRecord {
+export type UserProfileStatus = "invited" | "active" | "disabled";
+export type DeviceCodeState = "pending" | "approved" | "denied" | "expired" | "consumed";
+export interface UserProfileRecord {
   userId: string;
   email: string;
   displayName: string;
   avatarUrl?: string;
-  status: WorkflowUserProfileStatus;
+  status: UserProfileStatus;
   createdByUserId?: string;
   createdAt: string;
   updatedAt: string;
   lastLoginAt?: string;
   roleIds: string[];
   roleNames: string[];
-  permissions: WorkflowPermissionKey[];
+  permissions: PermissionKey[];
 }
 
-export interface WorkflowRoleRecord {
+export interface RoleRecord {
   id: string;
   name: string;
   description: string;
   builtin: boolean;
   protected: boolean;
-  permissions: WorkflowPermissionKey[];
+  permissions: PermissionKey[];
   createdByUserId?: string;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface WorkflowApiKeyRecord {
+export interface ApiKeyRecord {
   id: string;
   userId: string;
   name: string;
@@ -54,18 +54,18 @@ export interface WorkflowApiKeyRecord {
   userAgent?: string;
 }
 
-export interface WorkflowApiKeyLookupRecord extends WorkflowApiKeyRecord {
+export interface ApiKeyLookupRecord extends ApiKeyRecord {
   secretHash: string;
-  user: WorkflowUserProfileRecord;
+  user: UserProfileRecord;
 }
 
-export interface WorkflowDeviceCodeRecord {
+export interface DeviceCodeRecord {
   id: string;
   userCode: string;
   clientName: string;
   source: string;
   requestedScopes: string[];
-  state: WorkflowDeviceCodeState;
+  state: DeviceCodeState;
   requestedByIp?: string;
   userAgent?: string;
   expiresAt: string;
@@ -87,11 +87,11 @@ export interface WorkflowDeviceCodeRecord {
   updatedAt: string;
 }
 
-export interface WorkflowDeviceCodeSecretRecord extends WorkflowDeviceCodeRecord {
+export interface DeviceCodeSecretRecord extends DeviceCodeRecord {
   deviceCodeHash: string;
 }
 
-export interface WorkflowAuditEventInput {
+export interface AuditEventInput {
   actorUserId?: string;
   actorProfileId?: string;
   actorDisplayName?: string;
@@ -105,7 +105,7 @@ export interface WorkflowAuditEventInput {
   context?: Record<string, unknown>;
 }
 
-export interface WorkflowAuditEventRecord extends WorkflowAuditEventInput {
+export interface AuditEventRecord extends AuditEventInput {
   id: string;
   actorProfile?: {
     userId: string;
@@ -116,14 +116,14 @@ export interface WorkflowAuditEventRecord extends WorkflowAuditEventInput {
   createdAt: string;
 }
 
-export interface WorkflowAuditEventPage {
-  items: WorkflowAuditEventRecord[];
+export interface AuditEventPage {
+  items: AuditEventRecord[];
   nextCursor?: string;
   hasMore: boolean;
   total: number;
 }
 
-export interface WorkflowAuthUserRecord {
+export interface AuthUserRecord {
   userId: string;
   email: string;
   displayName: string;
@@ -131,7 +131,7 @@ export interface WorkflowAuthUserRecord {
   lastSignInAt?: string;
 }
 
-export interface WorkflowAuditEventListOptions {
+export interface AuditEventListOptions {
   pageSize?: number;
   cursor?: string;
   from?: string;
@@ -141,10 +141,10 @@ export interface WorkflowAuditEventListOptions {
   eventType?: string;
   resourceType?: string;
   resourceId?: string;
-  outcome?: WorkflowAuditEventInput["outcome"];
+  outcome?: AuditEventInput["outcome"];
 }
 
-interface WorkflowUserProfileRow {
+interface UserProfileRow {
   user_id: string;
   email: string;
   display_name: string;
@@ -156,7 +156,7 @@ interface WorkflowUserProfileRow {
   last_login_at: Date | null;
 }
 
-interface WorkflowRoleRow {
+interface RoleRow {
   id: string;
   name: string;
   description: string;
@@ -167,18 +167,18 @@ interface WorkflowRoleRow {
   updated_at: Date;
 }
 
-interface WorkflowRolePermissionRow {
+interface RolePermissionRow {
   role_id: string;
   permission_key: string;
 }
 
-interface WorkflowUserRoleRow {
+interface UserRoleRow {
   user_id: string;
   role_id: string;
   role_name: string;
 }
 
-interface WorkflowApiKeyRow {
+interface ApiKeyRow {
   id: string;
   user_id: string;
   name: string;
@@ -195,7 +195,7 @@ interface WorkflowApiKeyRow {
   user_agent: string | null;
 }
 
-interface WorkflowDeviceCodeRow {
+interface DeviceCodeRow {
   id: string;
   device_code_hash: string;
   user_code: string;
@@ -216,7 +216,7 @@ interface WorkflowDeviceCodeRow {
   updated_at: Date;
 }
 
-interface WorkflowAuditEventRow {
+interface AuditEventRow {
   id: string;
   actor_user_id: string | null;
   actor_profile_id: string | null;
@@ -232,7 +232,7 @@ interface WorkflowAuditEventRow {
   created_at: Date;
 }
 
-interface WorkflowAuthUserRow {
+interface AuthUserRow {
   id: string;
   email: string;
   display_name: string;
@@ -372,10 +372,10 @@ export class AccountRepository {
     userId: string;
     email: string;
     displayName?: string;
-    status?: WorkflowUserProfileStatus;
+    status?: UserProfileStatus;
     createdByUserId?: string;
     lastLoginAt?: string;
-  }): Promise<WorkflowUserProfileRecord> {
+  }): Promise<UserProfileRecord> {
     const displayName = normalizeDisplayName(input.displayName, input.email);
     await this.pool.query(
       `insert into workflow_user_profiles (
@@ -400,7 +400,7 @@ export class AccountRepository {
     return this.getUserProfileOrThrow(input.userId);
   }
 
-  async getUserProfile(userId: string): Promise<WorkflowUserProfileRecord | undefined> {
+  async getUserProfile(userId: string): Promise<UserProfileRecord | undefined> {
     const row = await this.readProfileRow(userId);
     if (row === undefined) {
       return undefined;
@@ -408,13 +408,13 @@ export class AccountRepository {
     return this.inflateProfiles([row]).then((profiles) => profiles[0]);
   }
 
-  async getUserProfilesByIds(userIds: string[]): Promise<Map<string, WorkflowUserProfileRecord>> {
+  async getUserProfilesByIds(userIds: string[]): Promise<Map<string, UserProfileRecord>> {
     // project tables need uploader summaries without issuing one query per row.
     const normalizedUserIds = [...new Set(userIds.filter((userId) => typeof userId === "string" && userId.trim() !== ""))];
     if (normalizedUserIds.length === 0) {
       return new Map();
     }
-    const result = await this.pool.query<WorkflowUserProfileRow>(
+    const result = await this.pool.query<UserProfileRow>(
       `select user_id, email, display_name, status, created_by_user_id, created_at, updated_at, last_login_at
       , avatar_url
        from workflow_user_profiles
@@ -426,7 +426,7 @@ export class AccountRepository {
     return new Map(profiles.map((profile) => [profile.userId, profile]));
   }
 
-  async getUserProfileOrThrow(userId: string): Promise<WorkflowUserProfileRecord> {
+  async getUserProfileOrThrow(userId: string): Promise<UserProfileRecord> {
     const profile = await this.getUserProfile(userId);
     if (profile === undefined) {
       throw new Error(`User profile "${userId}" not found.`);
@@ -436,8 +436,8 @@ export class AccountRepository {
 
   async listUserProfiles(options?: {
     query?: string;
-    status?: WorkflowUserProfileStatus;
-  }): Promise<WorkflowUserProfileRecord[]> {
+    status?: UserProfileStatus;
+  }): Promise<UserProfileRecord[]> {
     const params: unknown[] = [];
     const where: string[] = [];
 
@@ -450,7 +450,7 @@ export class AccountRepository {
       where.push(`status = $${params.length}`);
     }
 
-    const result = await this.pool.query<WorkflowUserProfileRow>(
+    const result = await this.pool.query<UserProfileRow>(
       `select user_id, email, display_name, status, created_by_user_id, created_at, updated_at, last_login_at
       , avatar_url
        from workflow_user_profiles
@@ -466,10 +466,10 @@ export class AccountRepository {
     patch: {
       displayName?: string;
       avatarUrl?: string | null;
-      status?: WorkflowUserProfileStatus;
+      status?: UserProfileStatus;
       lastLoginAt?: string | null;
     },
-  ): Promise<WorkflowUserProfileRecord> {
+  ): Promise<UserProfileRecord> {
     const updates: string[] = [];
     const params: unknown[] = [userId];
 
@@ -502,14 +502,14 @@ export class AccountRepository {
     return this.getUserProfileOrThrow(userId);
   }
 
-  async listRoles(): Promise<WorkflowRoleRecord[]> {
+  async listRoles(): Promise<RoleRecord[]> {
     const roles = await this.readRoleRows();
     const permissions = await this.readRolePermissions();
     return roles.map((row) => toRoleRecord(row, permissions.get(row.id) ?? []));
   }
 
-  async getRole(roleId: string): Promise<WorkflowRoleRecord | undefined> {
-    const result = await this.pool.query<WorkflowRoleRow>(
+  async getRole(roleId: string): Promise<RoleRecord | undefined> {
+    const result = await this.pool.query<RoleRow>(
       `select id, name, description, builtin, protected, created_by_user_id, created_at, updated_at
        from workflow_roles
        where id = $1`,
@@ -526,9 +526,9 @@ export class AccountRepository {
   async createRole(input: {
     name: string;
     description?: string;
-    permissions: WorkflowPermissionKey[];
+    permissions: PermissionKey[];
     createdByUserId?: string;
-  }): Promise<WorkflowRoleRecord> {
+  }): Promise<RoleRecord> {
     const roleId = randomUUID();
     const permissions = normalizeWorkflowPermissionKeys(input.permissions);
     const client = await this.pool.connect();
@@ -568,9 +568,9 @@ export class AccountRepository {
     input: {
       name?: string;
       description?: string;
-      permissions?: WorkflowPermissionKey[];
+      permissions?: PermissionKey[];
     },
-  ): Promise<WorkflowRoleRecord> {
+  ): Promise<RoleRecord> {
     const existing = await this.getRole(roleId);
     if (existing === undefined) {
       throw new Error(`Role "${roleId}" not found.`);
@@ -628,7 +628,7 @@ export class AccountRepository {
     await this.pool.query(`delete from workflow_roles where id = $1`, [roleId]);
   }
 
-  async setUserRoles(userId: string, roleIds: string[]): Promise<WorkflowUserProfileRecord> {
+  async setUserRoles(userId: string, roleIds: string[]): Promise<UserProfileRecord> {
     const normalizedRoleIds = [...new Set(roleIds)];
     const client = await this.pool.connect();
     try {
@@ -660,7 +660,7 @@ export class AccountRepository {
     scopes?: string[];
     createdByUserId?: string;
     expiresAt?: string;
-  }): Promise<{ record: WorkflowApiKeyRecord; token: string }> {
+  }): Promise<{ record: ApiKeyRecord; token: string }> {
     const { token, prefix } = createWorkflowApiKeyToken();
     const id = randomUUID();
     await this.pool.query(
@@ -689,7 +689,7 @@ export class AccountRepository {
   async listApiKeys(options?: {
     userId?: string;
     includeRevoked?: boolean;
-  }): Promise<WorkflowApiKeyRecord[]> {
+  }): Promise<ApiKeyRecord[]> {
     const params: unknown[] = [];
     const where: string[] = [];
     if (options?.userId) {
@@ -699,7 +699,7 @@ export class AccountRepository {
     if (options?.includeRevoked !== true) {
       where.push(`revoked_at is null`);
     }
-    const result = await this.pool.query<WorkflowApiKeyRow>(
+    const result = await this.pool.query<ApiKeyRow>(
       `select
          id, user_id, name, prefix, secret_hash, source, scopes, created_by_user_id,
          created_at, expires_at, revoked_at, last_used_at, last_used_ip, user_agent
@@ -711,8 +711,8 @@ export class AccountRepository {
     return result.rows.map(toApiKeyRecord);
   }
 
-  async getApiKey(apiKeyId: string): Promise<WorkflowApiKeyRecord | undefined> {
-    const result = await this.pool.query<WorkflowApiKeyRow>(
+  async getApiKey(apiKeyId: string): Promise<ApiKeyRecord | undefined> {
+    const result = await this.pool.query<ApiKeyRow>(
       `select
          id, user_id, name, prefix, secret_hash, source, scopes, created_by_user_id,
          created_at, expires_at, revoked_at, last_used_at, last_used_ip, user_agent
@@ -724,7 +724,7 @@ export class AccountRepository {
     return row ? toApiKeyRecord(row) : undefined;
   }
 
-  async getApiKeyOrThrow(apiKeyId: string): Promise<WorkflowApiKeyRecord> {
+  async getApiKeyOrThrow(apiKeyId: string): Promise<ApiKeyRecord> {
     const apiKey = await this.getApiKey(apiKeyId);
     if (apiKey === undefined) {
       throw new Error(`API key "${apiKeyId}" not found.`);
@@ -732,13 +732,13 @@ export class AccountRepository {
     return apiKey;
   }
 
-  async findApiKeyByToken(token: string): Promise<WorkflowApiKeyLookupRecord | undefined> {
+  async findApiKeyByToken(token: string): Promise<ApiKeyLookupRecord | undefined> {
     const prefix = parseWorkflowApiKeyPrefix(token);
     if (prefix === undefined) {
       return undefined;
     }
 
-    const result = await this.pool.query<WorkflowApiKeyRow>(
+    const result = await this.pool.query<ApiKeyRow>(
       `select
          id, user_id, name, prefix, secret_hash, source, scopes, created_by_user_id,
          created_at, expires_at, revoked_at, last_used_at, last_used_ip, user_agent
@@ -813,7 +813,7 @@ export class AccountRepository {
     intervalSeconds: number;
     requestedByIp?: string;
     userAgent?: string;
-  }): Promise<{ record: WorkflowDeviceCodeRecord; deviceCode: string }> {
+  }): Promise<{ record: DeviceCodeRecord; deviceCode: string }> {
     const id = randomUUID();
     const deviceCode = `wfdev_${randomBytes(24).toString("hex")}`;
     const userCode = createWorkflowUserCode();
@@ -842,8 +842,8 @@ export class AccountRepository {
     };
   }
 
-  async getDeviceCodeById(deviceCodeId: string): Promise<WorkflowDeviceCodeRecord | undefined> {
-    const result = await this.pool.query<WorkflowDeviceCodeRow>(
+  async getDeviceCodeById(deviceCodeId: string): Promise<DeviceCodeRecord | undefined> {
+    const result = await this.pool.query<DeviceCodeRow>(
       `select
          id, device_code_hash, user_code, client_name, source, requested_scopes, state,
          requested_by_ip, user_agent, expires_at, interval_seconds, approved_at,
@@ -856,8 +856,8 @@ export class AccountRepository {
     return row ? toDeviceCodeRecord(row) : undefined;
   }
 
-  async getDeviceCodeByUserCode(userCode: string): Promise<WorkflowDeviceCodeRecord | undefined> {
-    const result = await this.pool.query<WorkflowDeviceCodeRow>(
+  async getDeviceCodeByUserCode(userCode: string): Promise<DeviceCodeRecord | undefined> {
+    const result = await this.pool.query<DeviceCodeRow>(
       `select
          id, device_code_hash, user_code, client_name, source, requested_scopes, state,
          requested_by_ip, user_agent, expires_at, interval_seconds, approved_at,
@@ -870,8 +870,8 @@ export class AccountRepository {
     return row ? toDeviceCodeRecord(row) : undefined;
   }
 
-  async getDeviceCodeBySecret(deviceCode: string): Promise<WorkflowDeviceCodeSecretRecord | undefined> {
-    const result = await this.pool.query<WorkflowDeviceCodeRow>(
+  async getDeviceCodeBySecret(deviceCode: string): Promise<DeviceCodeSecretRecord | undefined> {
+    const result = await this.pool.query<DeviceCodeRow>(
       `select
          id, device_code_hash, user_code, client_name, source, requested_scopes, state,
          requested_by_ip, user_agent, expires_at, interval_seconds, approved_at,
@@ -887,14 +887,14 @@ export class AccountRepository {
   async updateDeviceCodeState(
     deviceCodeId: string,
     input: {
-      state: WorkflowDeviceCodeState;
+      state: DeviceCodeState;
       approvedAt?: string | null;
       approvedByUserId?: string | null;
       deniedAt?: string | null;
       consumedAt?: string | null;
-      result?: WorkflowDeviceCodeRecord["result"] | null;
+      result?: DeviceCodeRecord["result"] | null;
     },
-  ): Promise<WorkflowDeviceCodeRecord> {
+  ): Promise<DeviceCodeRecord> {
     await this.pool.query(
       `update steamharness_auth_device_codes
        set state = $2,
@@ -927,15 +927,15 @@ export class AccountRepository {
       createdByUserId?: string;
       expiresAt?: string;
       consumedAt: string;
-      result: WorkflowDeviceCodeRecord["result"];
+      result: DeviceCodeRecord["result"];
     },
-  ): Promise<{ deviceCode: WorkflowDeviceCodeRecord; apiKey: { record: WorkflowApiKeyRecord; token: string } } | undefined> {
+  ): Promise<{ deviceCode: DeviceCodeRecord; apiKey: { record: ApiKeyRecord; token: string } } | undefined> {
     const client = await this.pool.connect();
     try {
       await client.query("begin");
       // exchanges approved device codes exactly once and creates the
       // API key in the same transaction so concurrent polls cannot mint extras.
-      const consumed = await client.query<WorkflowDeviceCodeRow>(
+      const consumed = await client.query<DeviceCodeRow>(
         `update steamharness_auth_device_codes
          set state = 'consumed',
            consumed_at = $2,
@@ -961,7 +961,7 @@ export class AccountRepository {
 
       const { token, prefix } = createWorkflowApiKeyToken();
       const apiKeyId = randomUUID();
-      const apiKey = await client.query<WorkflowApiKeyRow>(
+      const apiKey = await client.query<ApiKeyRow>(
         `insert into workflow_api_keys (
            id, user_id, name, prefix, secret_hash, source, scopes, created_by_user_id, created_at, expires_at
          )
@@ -982,7 +982,7 @@ export class AccountRepository {
         ],
       );
 
-      const updatedDeviceCode = await client.query<WorkflowDeviceCodeRow>(
+      const updatedDeviceCode = await client.query<DeviceCodeRow>(
         `update steamharness_auth_device_codes
          set result = $2::jsonb,
            updated_at = now()
@@ -1016,7 +1016,7 @@ export class AccountRepository {
     }
   }
 
-  async createAuditEvent(event: WorkflowAuditEventInput): Promise<void> {
+  async createAuditEvent(event: AuditEventInput): Promise<void> {
     await this.pool.query(
       `insert into workflow_audit_events (
          id, actor_user_id, actor_profile_id, actor_display_name, principal_kind, event_type,
@@ -1040,7 +1040,7 @@ export class AccountRepository {
     );
   }
 
-  async listAuditEvents(options: WorkflowAuditEventListOptions = {}): Promise<WorkflowAuditEventPage> {
+  async listAuditEvents(options: AuditEventListOptions = {}): Promise<AuditEventPage> {
     const pageSize = clampAuditPageSize(options.pageSize);
     const params: unknown[] = [];
     const filterWhere: string[] = [];
@@ -1087,7 +1087,7 @@ export class AccountRepository {
     }
     const pageWhereClause = pageWhere.length > 0 ? `where ${pageWhere.join(" and ")}` : "";
     const totalWhereClause = filterWhere.length > 0 ? `where ${filterWhere.join(" and ")}` : "";
-    const rows = await this.pool.query<WorkflowAuditEventRow>(
+    const rows = await this.pool.query<AuditEventRow>(
       `select
          id,
          actor_user_id,
@@ -1123,12 +1123,12 @@ export class AccountRepository {
     };
   }
 
-  async findAuthUserByEmail(email: string): Promise<WorkflowAuthUserRecord | undefined> {
+  async findAuthUserByEmail(email: string): Promise<AuthUserRecord | undefined> {
     const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail) {
       return undefined;
     }
-    const result = await this.pool.query<WorkflowAuthUserRow>(
+    const result = await this.pool.query<AuthUserRow>(
       `select id, email, display_name, created_at, last_sign_in_at
        from steamharness_auth_users
        where lower(email) = $1
@@ -1139,8 +1139,8 @@ export class AccountRepository {
     return result.rows[0] ? toAuthUserRecord(result.rows[0]) : undefined;
   }
 
-  async listAuthUsers(): Promise<WorkflowAuthUserRecord[]> {
-    const result = await this.pool.query<WorkflowAuthUserRow>(
+  async listAuthUsers(): Promise<AuthUserRecord[]> {
+    const result = await this.pool.query<AuthUserRow>(
       `select id, email, display_name, created_at, last_sign_in_at
        from steamharness_auth_users
        order by created_at desc, id asc`,
@@ -1185,8 +1185,8 @@ export class AccountRepository {
     }
   }
 
-  private async readProfileRow(userId: string): Promise<WorkflowUserProfileRow | undefined> {
-    const result = await this.pool.query<WorkflowUserProfileRow>(
+  private async readProfileRow(userId: string): Promise<UserProfileRow | undefined> {
+    const result = await this.pool.query<UserProfileRow>(
       `select user_id, email, display_name, status, created_by_user_id, created_at, updated_at, last_login_at
       , avatar_url
        from workflow_user_profiles
@@ -1196,7 +1196,7 @@ export class AccountRepository {
     return result.rows[0];
   }
 
-  private async inflateProfiles(rows: WorkflowUserProfileRow[]): Promise<WorkflowUserProfileRecord[]> {
+  private async inflateProfiles(rows: UserProfileRow[]): Promise<UserProfileRecord[]> {
     if (rows.length === 0) {
       return [];
     }
@@ -1224,8 +1224,8 @@ export class AccountRepository {
     });
   }
 
-  private async readRoleRows(): Promise<WorkflowRoleRow[]> {
-    const result = await this.pool.query<WorkflowRoleRow>(
+  private async readRoleRows(): Promise<RoleRow[]> {
+    const result = await this.pool.query<RoleRow>(
       `select id, name, description, builtin, protected, created_by_user_id, created_at, updated_at
        from workflow_roles
        order by builtin desc, name asc, id asc`,
@@ -1233,25 +1233,25 @@ export class AccountRepository {
     return result.rows;
   }
 
-  private async readRolePermissions(roleIds?: string[]): Promise<Map<string, WorkflowPermissionKey[]>> {
-    const result = await this.pool.query<WorkflowRolePermissionRow>(
+  private async readRolePermissions(roleIds?: string[]): Promise<Map<string, PermissionKey[]>> {
+    const result = await this.pool.query<RolePermissionRow>(
       `select role_id, permission_key
        from workflow_role_permissions
        ${roleIds && roleIds.length > 0 ? `where role_id = any($1::text[])` : ""}
        order by role_id asc, permission_key asc`,
       roleIds && roleIds.length > 0 ? [roleIds] : [],
     );
-    const grouped = new Map<string, WorkflowPermissionKey[]>();
+    const grouped = new Map<string, PermissionKey[]>();
     for (const row of result.rows) {
       const list = grouped.get(row.role_id) ?? [];
-      list.push(row.permission_key as WorkflowPermissionKey);
+      list.push(row.permission_key as PermissionKey);
       grouped.set(row.role_id, list);
     }
     return grouped;
   }
 
   private async readUserRoles(userIds: string[]): Promise<Map<string, Array<{ roleId: string; name: string }>>> {
-    const result = await this.pool.query<WorkflowUserRoleRow>(
+    const result = await this.pool.query<UserRoleRow>(
       `select ur.user_id, ur.role_id, r.name as role_name
        from workflow_user_roles ur
        join workflow_roles r on r.id = ur.role_id
@@ -1268,8 +1268,8 @@ export class AccountRepository {
     return grouped;
   }
 
-  private async readUserPermissions(userIds: string[]): Promise<Map<string, WorkflowPermissionKey[]>> {
-    const result = await this.pool.query<WorkflowUserRoleRow & { permission_key: string }>(
+  private async readUserPermissions(userIds: string[]): Promise<Map<string, PermissionKey[]>> {
+    const result = await this.pool.query<UserRoleRow & { permission_key: string }>(
       `select ur.user_id, ur.role_id, r.name as role_name, rp.permission_key
        from workflow_user_roles ur
        join workflow_roles r on r.id = ur.role_id
@@ -1277,13 +1277,13 @@ export class AccountRepository {
        where ur.user_id = any($1::text[])`,
       [userIds],
     );
-    const grouped = new Map<string, Set<WorkflowPermissionKey>>();
+    const grouped = new Map<string, Set<PermissionKey>>();
     for (const userId of userIds) {
       grouped.set(userId, new Set(DEFAULT_AUTHENTICATED_PERMISSION_KEYS));
     }
     for (const row of result.rows) {
-      const set = grouped.get(row.user_id) ?? new Set<WorkflowPermissionKey>(DEFAULT_AUTHENTICATED_PERMISSION_KEYS);
-      set.add(row.permission_key as WorkflowPermissionKey);
+      const set = grouped.get(row.user_id) ?? new Set<PermissionKey>(DEFAULT_AUTHENTICATED_PERMISSION_KEYS);
+      set.add(row.permission_key as PermissionKey);
       grouped.set(row.user_id, set);
     }
     return new Map([...grouped.entries()].map(([userId, permissions]) => [userId, [...permissions].sort()]));
@@ -1313,7 +1313,7 @@ function createWorkflowUserCode(): string {
   return `${chars.slice(0, 4).join("")}-${chars.slice(4).join("")}`;
 }
 
-function toRoleRecord(row: WorkflowRoleRow, permissions: WorkflowPermissionKey[]): WorkflowRoleRecord {
+function toRoleRecord(row: RoleRow, permissions: PermissionKey[]): RoleRecord {
   return {
     id: row.id,
     name: row.name,
@@ -1327,7 +1327,7 @@ function toRoleRecord(row: WorkflowRoleRow, permissions: WorkflowPermissionKey[]
   };
 }
 
-function toApiKeyRecord(row: WorkflowApiKeyRow): WorkflowApiKeyRecord {
+function toApiKeyRecord(row: ApiKeyRow): ApiKeyRecord {
   return {
     id: row.id,
     userId: row.user_id,
@@ -1345,7 +1345,7 @@ function toApiKeyRecord(row: WorkflowApiKeyRow): WorkflowApiKeyRecord {
   };
 }
 
-function toDeviceCodeRecord(row: WorkflowDeviceCodeRow): WorkflowDeviceCodeRecord {
+function toDeviceCodeRecord(row: DeviceCodeRow): DeviceCodeRecord {
   return {
     id: row.id,
     userCode: row.user_code,
@@ -1367,14 +1367,14 @@ function toDeviceCodeRecord(row: WorkflowDeviceCodeRow): WorkflowDeviceCodeRecor
   };
 }
 
-function toDeviceCodeSecretRecord(row: WorkflowDeviceCodeRow): WorkflowDeviceCodeSecretRecord {
+function toDeviceCodeSecretRecord(row: DeviceCodeRow): DeviceCodeSecretRecord {
   return {
     ...toDeviceCodeRecord(row),
     deviceCodeHash: row.device_code_hash,
   };
 }
 
-function normalizeDeviceCodeResult(value: unknown): WorkflowDeviceCodeRecord["result"] {
+function normalizeDeviceCodeResult(value: unknown): DeviceCodeRecord["result"] {
   if (!isRecord(value)) {
     return undefined;
   }
@@ -1442,7 +1442,7 @@ function clampAuditPageSize(value: number | undefined): number {
   return Math.max(1, Math.min(100, Math.trunc(value ?? 20)));
 }
 
-function encodeAuditCursor(record: Pick<WorkflowAuditEventRecord, "id" | "createdAt">): string {
+function encodeAuditCursor(record: Pick<AuditEventRecord, "id" | "createdAt">): string {
   return Buffer.from(JSON.stringify({ id: record.id, createdAt: record.createdAt }), "utf8").toString("base64url");
 }
 
@@ -1461,7 +1461,7 @@ function parseAuditCursor(cursor: string | undefined): { id: string; createdAt: 
   throw new Error("Invalid audit cursor.");
 }
 
-function toAuditEventRecord(row: WorkflowAuditEventRow): WorkflowAuditEventRecord {
+function toAuditEventRecord(row: AuditEventRow): AuditEventRecord {
   return {
     id: row.id,
     actorUserId: row.actor_user_id ?? undefined,
@@ -1479,7 +1479,7 @@ function toAuditEventRecord(row: WorkflowAuditEventRow): WorkflowAuditEventRecor
   };
 }
 
-function toAuthUserRecord(row: WorkflowAuthUserRow): WorkflowAuthUserRecord {
+function toAuthUserRecord(row: AuthUserRow): AuthUserRecord {
   const email = row.email.trim().toLowerCase();
   return {
     userId: row.id,
@@ -1499,10 +1499,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function isUserProfileStatus(value: string): value is WorkflowUserProfileStatus {
+function isUserProfileStatus(value: string): value is UserProfileStatus {
   return value === "invited" || value === "active" || value === "disabled";
 }
 
-function isDeviceCodeState(value: string): value is WorkflowDeviceCodeState {
+function isDeviceCodeState(value: string): value is DeviceCodeState {
   return value === "pending" || value === "approved" || value === "denied" || value === "expired" || value === "consumed";
 }

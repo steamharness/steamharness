@@ -46,7 +46,7 @@ workflow.getEnv(name: string): string | undefined
 const apiKey = workflow.getEnv("MY_API_KEY");
 
 if (apiKey === undefined) {
-  throw new workflow.WorkflowError({
+  throw new workflow.HarnessError({
     type: "input_validation",
     message: "Missing MY_API_KEY.",
   });

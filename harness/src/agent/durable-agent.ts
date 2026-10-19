@@ -12,7 +12,7 @@ import { CodingTools } from "@earendil-works/pi-durable/tools";
 import type { AgentEvent, AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
 import type { Api, AssistantMessage, ImageContent, Model, Models, ToolCall } from "@earendil-works/pi-ai";
 import { createAssistantMessageEventStream, isRetryableAssistantError } from "@earendil-works/pi-ai";
-import { WorkflowError } from "../workflow/errors";
+import { HarnessError } from "../workflow/errors";
 import type { AgentAskResume } from "./types";
 import { createAgentStreamResumePrompt } from "./plan";
 import { openAgentStorage, type AgentStorageFactory } from "./storage";
@@ -59,10 +59,10 @@ export interface DurableAgentOptions {
   retryDelayMs?: number;
 }
 
-type ApprovalResult = { block: true; reason: string; pause?: WorkflowError } | undefined;
+type ApprovalResult = { block: true; reason: string; pause?: HarnessError } | undefined;
 
 /** One Harness owns the transcript. `state` is a disposable projection for Workflow's run policy. */
-export class WorkflowDurableAgent {
+export class DurableAgent {
   readonly state: DurableAgentState;
   models: Models;
   requestId?: string;
@@ -390,7 +390,7 @@ export class WorkflowDurableAgent {
               }
               return run.failure;
             }, context);
-            if (failure) throw new WorkflowError({ type: "workflow_execution", message: failure });
+            if (failure) throw new HarnessError({ type: "workflow_execution", message: failure });
           }
           const last = [...history.entries].reverse().find(entry => entry.model?.[0]?.role === "assistant");
           const message = last?.model?.[0];
@@ -590,7 +590,7 @@ export class WorkflowDurableAgent {
 
   private async replaceContext(): Promise<void> {
     if ((await this.harness!.inspect(context)).tasks.length > 0) {
-      throw new WorkflowError({ type: "workflow_execution", message: "Cannot replace agent context while durable tasks are active." });
+      throw new HarnessError({ type: "workflow_execution", message: "Cannot replace agent context while durable tasks are active." });
     }
     const messages = this.state.messages;
     await this.root!.commit(tx => tx.appendEntry(this.root!.id, {

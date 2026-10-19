@@ -1,25 +1,25 @@
 ---
-title: "WorkflowError"
+title: "HarnessError"
 description: "The standard workflow error class for serializable error reporting."
 ---
 
-# WorkflowError
+# HarnessError
 
-`workflow.WorkflowError` is the standard error class used by the business workflow and runtime. It keeps the error type, node name, metadata, and cleaned cause, which eventually goes into the execution report.
+`workflow.HarnessError` is the standard error class used by the business workflow and runtime. It keeps the error type, node name, metadata, and cleaned cause, which eventually goes into the execution report.
 
 ## Signature
 
 ```ts
-new workflow.WorkflowError(options: WorkflowErrorOptions)
+new workflow.HarnessError(options: ErrorOptions)
 ```
 
 ## Parameter
 
 |Parameter|Type|Description|
 | --- | --- | --- |
-| `options` | `WorkflowErrorOptions` |Standard error configuration, including error type, message, node name, cause, and metadata.|
+| `options` | `ErrorOptions` |Standard error configuration, including error type, message, node name, cause, and metadata.|
 
-## `WorkflowErrorOptions`
+## `ErrorOptions`
 
 |Field|Description|
 | --- | --- |
@@ -29,7 +29,7 @@ new workflow.WorkflowError(options: WorkflowErrorOptions)
 | `cause` |Original error. Only safe fields are preserved during serialization.|
 | `metadata` |Debuggable structured information.|
 
-## `WorkflowErrorType`
+## `ErrorType`
 
 |Type|Common Sources|Description|
 | --- | --- | --- |
@@ -46,22 +46,22 @@ new workflow.WorkflowError(options: WorkflowErrorOptions)
 
 |Field|Type|Description|
 | --- | --- | --- |
-| `name` | `"WorkflowError"` |The Error name.|
+| `name` | `"HarnessError"` |The Error name.|
 | `message` | `string` |The error message.|
-| `type` | `WorkflowErrorType` |Misclassification.|
+| `type` | `ErrorType` |Misclassification.|
 | `nodeName` | `string \| undefined` |The associated node.|
 | `metadata` | `object \| undefined` |Additional debugging information.|
-| `safeCause` | `WorkflowErrorCause \| undefined` |The sanitized cause, carrying `name`, `message`, `statusCode`, `url`, `isRetryable`, `responseBody`, a nested `cause`, and `validation`. `responseBody` is an excerpt of the upstream HTTP response body: whitespace-collapsed, redacted for credential-shaped values, and truncated to 200 characters. Call errors that carry only a status phrase such as `Unauthorized` gain a `response <excerpt>` detail in the run report so the status phrase cannot hide the real reason.|
+| `safeCause` | `ErrorCause \| undefined` |The sanitized cause, carrying `name`, `message`, `statusCode`, `url`, `isRetryable`, `responseBody`, a nested `cause`, and `validation`. `responseBody` is an excerpt of the upstream HTTP response body: whitespace-collapsed, redacted for credential-shaped values, and truncated to 200 characters. Call errors that carry only a status phrase such as `Unauthorized` gain a `response <excerpt>` detail in the run report so the status phrase cannot hide the real reason.|
 
 ## serialization structure
 
 |Field|Type|Description|
 | --- | --- | --- |
-| `type` | `WorkflowErrorType` |Misclassification.|
+| `type` | `ErrorType` |Misclassification.|
 | `message` | `string` |The error message.|
 | `nodeName` | `string \| undefined` |The associated node.|
 | `metadata` | `object \| undefined` |Additional information.|
-| `cause` | `WorkflowErrorCause \| undefined` |Keep only the safe cause field.|
+| `cause` | `ErrorCause \| undefined` |Keep only the safe cause field.|
 
 ## Error Code Mapping
 
@@ -81,7 +81,7 @@ Running the report maps the failure type to payload `errCode`.
 ## Example
 
 ```ts
-throw new workflow.WorkflowError({
+throw new workflow.HarnessError({
   type: "input_validation",
   message: "message is required.",
   nodeName: "parse-input",
@@ -98,4 +98,4 @@ throw new workflow.WorkflowError({
 |Illegal user input|Throw `input_validation`.|
 |External service call failed|Throw `provider_call` or let the provider layer wrap.|
 |Want the report to retain structured context|Use `metadata`.|
-|Common Unknown Exception|Can be thrown directly,runtime will be wrapped as `WorkflowError`.|
+|Common Unknown Exception|Can be thrown directly,runtime will be wrapped as `HarnessError`.|

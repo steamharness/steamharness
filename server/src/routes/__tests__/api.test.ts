@@ -8,11 +8,11 @@ import { configureWorkflowAuthContext } from "../../auth";
 import { HttpError } from "../../protocol";
 import { listBuiltinWorkflowRoles, listWorkflowPermissions } from "../../permissions";
 import { createApiRouter } from "../api";
-import type { WorkflowAuditEventPage, WorkflowUserProfileRecord } from "../../account-db";
-import { PROJECT_CARD_IMAGE_MAX_BYTES, WorkflowStorage } from "../../storage";
-import type { WorkflowKVEntryDetail, WorkflowKVEntryPage, WorkflowKnowledgeDocumentLinesRecord, WorkflowKnowledgeDocumentListItem, WorkflowKnowledgeDocumentPage, WorkflowKnowledgeDocumentRecord, WorkflowKnowledgeDocumentSearchResult, WorkflowTokenUsageDetail, WorkflowTokenUsagePage } from "../../storage";
+import type { AuditEventPage, UserProfileRecord } from "../../account-db";
+import { PROJECT_CARD_IMAGE_MAX_BYTES, Storage } from "../../storage";
+import type { KVEntryDetail, KVEntryPage, KnowledgeDocumentLinesRecord, KnowledgeDocumentListItem, KnowledgeDocumentPageRecord, KnowledgeDocumentRecord, KnowledgeDocumentSearchResult, TokenUsageDetail, TokenUsagePage } from "../../storage";
 import { STEAMHARNESS_PROJECT_TYPES } from "@steamharness/project-types";
-import type { WorkflowRelatedProject, WorkflowRelatedProjectKVGrant } from "@steamharness/project-info";
+import type { RelatedProject, RelatedProjectKVGrant } from "@steamharness/project-info";
 
 test("source download permission is exposed and granted to the developer role", () => {
   assert.equal(
@@ -1551,7 +1551,7 @@ test("audit events endpoint requires audit.read permission", async () => {
 
 test("audit events endpoint forwards filters and returns paged audit data", async () => {
   const accountDb = createAccountDbStub();
-  const expectedPage: WorkflowAuditEventPage = {
+  const expectedPage: AuditEventPage = {
     items: [
       {
         id: "audit-1",
@@ -2405,10 +2405,10 @@ test("knowledge document endpoints forward CRUD payloads", async () => {
     assert.equal(get.errCode, 0);
     assert.equal(edit.errCode, 0);
     assert.equal(deleted.errCode, 0);
-    assert.deepEqual((list.data as WorkflowKnowledgeDocumentPage).items.map((item) => item.id), ["guide"]);
-    assert.equal((create.data as WorkflowKnowledgeDocumentListItem).markdownPreview, "Guide");
+    assert.deepEqual((list.data as KnowledgeDocumentPageRecord).items.map((item) => item.id), ["guide"]);
+    assert.equal((create.data as KnowledgeDocumentListItem).markdownPreview, "Guide");
     assert.equal("markdown" in (create.data as Record<string, unknown>), false);
-    assert.equal((edit.data as WorkflowKnowledgeDocumentListItem).markdownPreview, "Guide v2");
+    assert.equal((edit.data as KnowledgeDocumentListItem).markdownPreview, "Guide v2");
     assert.equal("markdown" in (edit.data as Record<string, unknown>), false);
     assert.deepEqual(deleted.data, { id: "guide", deleted: true });
     assert.deepEqual(calls, [
@@ -2424,7 +2424,7 @@ test("knowledge document endpoints forward CRUD payloads", async () => {
 });
 
 test("knowledge summary responses use the bounded shared markdown preview", async () => {
-  const document: WorkflowKnowledgeDocumentRecord = {
+  const document: KnowledgeDocumentRecord = {
     ...createKnowledgeDocument("large-guide"),
     markdown: `${"#".repeat(20_000)}late markdown`,
   };
@@ -2441,7 +2441,7 @@ test("knowledge summary responses use the bounded shared markdown preview", asyn
     });
 
     assert.equal(response.errCode, 0);
-    assert.equal((response.data as WorkflowKnowledgeDocumentListItem).markdownPreview, "");
+    assert.equal((response.data as KnowledgeDocumentListItem).markdownPreview, "");
     assert.equal("markdown" in (response.data as Record<string, unknown>), false);
   } finally {
     await server.close();
@@ -2449,7 +2449,7 @@ test("knowledge summary responses use the bounded shared markdown preview", asyn
 });
 
 test("knowledge search endpoint forwards line context query parameters", async () => {
-  const result: WorkflowKnowledgeDocumentSearchResult = {
+  const result: KnowledgeDocumentSearchResult = {
     query: "markdown",
     documentsSearched: 1,
     totalMatches: 1,
@@ -2496,7 +2496,7 @@ test("knowledge search endpoint forwards line context query parameters", async (
 });
 
 test("knowledge document line endpoint forwards document id and range query parameters", async () => {
-  const result: WorkflowKnowledgeDocumentLinesRecord = {
+  const result: KnowledgeDocumentLinesRecord = {
     documentId: "guide",
     title: "Guide",
     startLine: 2,
@@ -2532,7 +2532,7 @@ test("knowledge document line endpoint forwards document id and range query para
 });
 
 test("system token usage endpoint forwards pagination filters", async () => {
-  const usagePage: WorkflowTokenUsagePage = {
+  const usagePage: TokenUsagePage = {
     systemTotal: createTokenUsageAggregate(120),
     projects: [
       { projectId: "demo", total: createTokenUsageAggregate(80), updatedAt: "2026-05-22T00:00:00.000Z" },
@@ -2562,7 +2562,7 @@ test("system token usage endpoint forwards pagination filters", async () => {
 });
 
 test("project token usage endpoint forwards conversation detail filters", async () => {
-  const detail: WorkflowTokenUsageDetail = {
+  const detail: TokenUsageDetail = {
     projectId: "demo",
     projectTotal: createTokenUsageAggregate(120),
     conversationId: "Thread-1",
@@ -2596,7 +2596,7 @@ test("all member roles can read data while only writers and managers can mutate 
     const storage = createStorageStub({
       getProjectAccessSummary: async workflowId => ({ workflowId, workflowName: workflowId, visibility: "private",
         member: { workflowId, userId: "member", role, createdAt: "2026-10-16T00:00:00.000Z" } }),
-      canDownloadProjectSource: WorkflowStorage.prototype.canDownloadProjectSource,
+      canDownloadProjectSource: Storage.prototype.canDownloadProjectSource,
       getFiles: async () => ({ workflowId: "demo", workflowName: "demo", target: "draft", resolvedTarget: "draft", files: [] }),
       getSourceArchive: async () => ({ version: "1.0.0", archive: Buffer.from("archive") }),
       cloneWorkflow: async () => ({ workflowId: "copy", workflowName: "copy", sourceTarget: "latest", resolvedSourceTarget: "1.0.0", nextVersion: "1.0.1" }),
@@ -2656,10 +2656,10 @@ test("removed execution APIs return JSON 404 before authentication", async () =>
   } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
 });
 
-function createStorageStub(overrides: Partial<WorkflowStorage>): WorkflowStorage {
-  const stub: Partial<WorkflowStorage> = {
-    canWriteProjectData: WorkflowStorage.prototype.canWriteProjectData,
-    assertDataWritableProject: WorkflowStorage.prototype.assertDataWritableProject,
+function createStorageStub(overrides: Partial<Storage>): Storage {
+  const stub: Partial<Storage> = {
+    canWriteProjectData: Storage.prototype.canWriteProjectData,
+    assertDataWritableProject: Storage.prototype.assertDataWritableProject,
     hasProjectSourceCapability: async () => false,
     assertServerProjectDataAccess: async () => ({
       localizedNames: {},
@@ -2702,7 +2702,7 @@ function createStorageStub(overrides: Partial<WorkflowStorage>): WorkflowStorage
         options.canPublish,
       ) && isOwnerOrCreator;
     },
-    canDownloadProjectSource: WorkflowStorage.prototype.canDownloadProjectSource,
+    canDownloadProjectSource: Storage.prototype.canDownloadProjectSource,
     getSourceDownloadAvailability: async () => ({
       available: true,
       target: "1.0.0",
@@ -2742,17 +2742,17 @@ function createStorageStub(overrides: Partial<WorkflowStorage>): WorkflowStorage
         throw new HttpError(403, 403, "Permission denied.");
       }
     },
-    listProjectKVEntries: async (): Promise<WorkflowKVEntryPage> => ({ items: [], hasMore: false, total: 0 }),
-    getProjectKVEntry: async (): Promise<WorkflowKVEntryDetail> => createKVDetail({ scope: "project", key: "settings" }),
+    listProjectKVEntries: async (): Promise<KVEntryPage> => ({ items: [], hasMore: false, total: 0 }),
+    getProjectKVEntry: async (): Promise<KVEntryDetail> => createKVDetail({ scope: "project", key: "settings" }),
     getProjectStorageValue: async () => ({ exists: false }),
     setProjectStorageValue: async () => ({ ok: true }),
     compareAndSetProjectStorageValue: async () => ({ applied: true, revision: "1" }),
-    listKnowledgeDocuments: async (): Promise<WorkflowKnowledgeDocumentPage> => ({ items: [], hasMore: false, total: 0 }),
-    getKnowledgeDocument: async (): Promise<WorkflowKnowledgeDocumentRecord> => createKnowledgeDocument("guide"),
-    createKnowledgeDocument: async (): Promise<WorkflowKnowledgeDocumentRecord> => createKnowledgeDocument("guide"),
-    editKnowledgeDocument: async (): Promise<WorkflowKnowledgeDocumentRecord> => createKnowledgeDocument("guide"),
+    listKnowledgeDocuments: async (): Promise<KnowledgeDocumentPageRecord> => ({ items: [], hasMore: false, total: 0 }),
+    getKnowledgeDocument: async (): Promise<KnowledgeDocumentRecord> => createKnowledgeDocument("guide"),
+    createKnowledgeDocument: async (): Promise<KnowledgeDocumentRecord> => createKnowledgeDocument("guide"),
+    editKnowledgeDocument: async (): Promise<KnowledgeDocumentRecord> => createKnowledgeDocument("guide"),
     deleteKnowledgeDocument: async (): Promise<{ id: string; deleted: boolean }> => ({ id: "guide", deleted: true }),
-    searchKnowledgeDocuments: async (): Promise<WorkflowKnowledgeDocumentSearchResult> => ({
+    searchKnowledgeDocuments: async (): Promise<KnowledgeDocumentSearchResult> => ({
       query: "",
       documentsSearched: 0,
       totalMatches: 0,
@@ -2762,7 +2762,7 @@ function createStorageStub(overrides: Partial<WorkflowStorage>): WorkflowStorage
       hasMore: false,
       matches: [],
     }),
-    readKnowledgeDocumentLines: async (): Promise<WorkflowKnowledgeDocumentLinesRecord> => ({
+    readKnowledgeDocumentLines: async (): Promise<KnowledgeDocumentLinesRecord> => ({
       documentId: "guide",
       title: "Guide",
       startLine: 1,
@@ -2770,13 +2770,13 @@ function createStorageStub(overrides: Partial<WorkflowStorage>): WorkflowStorage
       totalLines: 1,
       lines: [{ lineNumber: 1, content: "# Guide" }],
     }),
-    getSystemTokenUsage: async (): Promise<WorkflowTokenUsagePage> => ({
+    getSystemTokenUsage: async (): Promise<TokenUsagePage> => ({
       systemTotal: createTokenUsageAggregate(0),
       projects: [],
       hasMore: false,
       total: 0,
     }),
-    getProjectTokenUsage: async (options): Promise<WorkflowTokenUsageDetail> => ({
+    getProjectTokenUsage: async (options): Promise<TokenUsageDetail> => ({
       projectId: options.projectId,
       projectTotal: createTokenUsageAggregate(0),
     }),
@@ -2800,7 +2800,7 @@ function createStorageStub(overrides: Partial<WorkflowStorage>): WorkflowStorage
     },
     ...overrides,
   };
-  return stub as WorkflowStorage;
+  return stub as Storage;
 }
 
 function createWebpFixture(payload: string): Buffer {
@@ -2817,7 +2817,7 @@ function createAccountDbStub() {
       outcome: string;
       context?: Record<string, unknown>;
     }>,
-    async getUserProfilesByIds(_userIds: string[]): Promise<Map<string, WorkflowUserProfileRecord>> {
+    async getUserProfilesByIds(_userIds: string[]): Promise<Map<string, UserProfileRecord>> {
       return new Map();
     },
     async createAuditEvent(event: {
@@ -2827,7 +2827,7 @@ function createAccountDbStub() {
     }) {
       this.createdAuditEvents.push(event);
     },
-    async listAuditEvents(): Promise<WorkflowAuditEventPage> {
+    async listAuditEvents(): Promise<AuditEventPage> {
       return {
         items: [],
         hasMore: false,
@@ -2838,7 +2838,7 @@ function createAccountDbStub() {
 }
 
 async function listen(
-  storage: WorkflowStorage,
+  storage: Storage,
   principal?: AuthenticatedPrincipal,
 ): Promise<{
   close: () => Promise<void>;
@@ -2874,7 +2874,7 @@ function createProfile(
   email: string,
   displayName: string,
   avatarUrl?: string,
-): WorkflowUserProfileRecord {
+): UserProfileRecord {
   return {
     userId,
     email,
@@ -2959,8 +2959,8 @@ async function fetchJson(
   return await response.json() as unknown & { errCode?: number; data?: unknown };
 }
 
-function createKVDetail(overrides: Partial<WorkflowKVEntryDetail>): WorkflowKVEntryDetail {
-  const detail: WorkflowKVEntryDetail = {
+function createKVDetail(overrides: Partial<KVEntryDetail>): KVEntryDetail {
+  const detail: KVEntryDetail = {
     storageKind: "kv",
     scope: "project",
     key: "settings",
@@ -2982,7 +2982,7 @@ function createKVDetail(overrides: Partial<WorkflowKVEntryDetail>): WorkflowKVEn
 function createRelatedProject(
   projectId: string,
   alias = "stocks",
-): WorkflowRelatedProject {
+): RelatedProject {
   return {
     alias,
     projectId,
@@ -2995,12 +2995,12 @@ function createRelatedProject(
 
 function createRelatedProjectAccess(
   targetProjectId: string,
-  grant: WorkflowRelatedProjectKVGrant = createRelatedProject(targetProjectId).grantToRelatedProject,
-): { targetProjectId: string; grant: WorkflowRelatedProjectKVGrant } {
+  grant: RelatedProjectKVGrant = createRelatedProject(targetProjectId).grantToRelatedProject,
+): { targetProjectId: string; grant: RelatedProjectKVGrant } {
   return { targetProjectId, grant };
 }
 
-function createKnowledgeDocument(id: string): WorkflowKnowledgeDocumentRecord {
+function createKnowledgeDocument(id: string): KnowledgeDocumentRecord {
   return {
     id,
     title: "Guide",
@@ -3010,7 +3010,7 @@ function createKnowledgeDocument(id: string): WorkflowKnowledgeDocumentRecord {
   };
 }
 
-function createKnowledgeListItem(id: string): WorkflowKnowledgeDocumentListItem {
+function createKnowledgeListItem(id: string): KnowledgeDocumentListItem {
   return {
     id,
     title: "Guide",

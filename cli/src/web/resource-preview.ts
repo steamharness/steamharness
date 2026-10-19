@@ -9,7 +9,7 @@ import {
 import { readWorkflowProjectInfo, isWorkflowProjectDataStorageLocationAllowed } from '@steamharness/project-info';
 import type { CliRelatedProjectSpec } from '../related-projects';
 import type { ResourceCard } from './resource-cards';
-import type { WorkflowProject, WorkflowRuntime } from './workflow-types';
+import type { Project, Runtime } from './workflow-types';
 import type { WebConnection } from './runtime';
 import { KanbanPreview } from './kanban-preview';
 import { webProjectDataDirectory } from './kanban-data';
@@ -17,7 +17,7 @@ import { t, locale } from './localization';
 
 export interface ResourcePreviewData {
   card: ResourceCard;
-  project?: WorkflowProject;
+  project?: Project;
   content?: unknown;
   format?: 'markdown' | 'text' | 'json' | 'browser' | 'kanban' | 'project';
   kanban?: { url: string; nonce: string; configuration: KanbanInjectedConfiguration };
@@ -32,7 +32,7 @@ interface PreviewEntry {
 export class ResourcePreviews {
   private readonly entries = new Map<string, PreviewEntry>();
   private generation = 0;
-  constructor(private readonly owner: WorkflowProject, private readonly runtime: WorkflowRuntime, private readonly storageDir: string,
+  constructor(private readonly owner: Project, private readonly runtime: Runtime, private readonly storageDir: string,
     private readonly connection: () => WebConnection | undefined, private readonly related: () => readonly CliRelatedProjectSpec[],
     private readonly resourceProjects: () => readonly string[] = () => []) {}
 
@@ -51,7 +51,7 @@ export class ResourcePreviews {
     return result.data;
   }
 
-  async resolve(card: ResourceCard): Promise<WorkflowProject | undefined> {
+  async resolve(card: ResourceCard): Promise<Project | undefined> {
     if (card.kind === 'browser') { return; }
     const id = card.target.projectId ?? this.owner.id;
     if (card.target.source === 'server') {

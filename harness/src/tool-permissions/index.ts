@@ -1,8 +1,8 @@
-import type { NodeContext, WorkflowUserInputRequest, WorkflowUserInputResolved } from "../types/index";
-import { WorkflowError } from "../workflow/errors";
+import type { NodeContext, UserInputRequest, UserInputResolved } from "../types/index";
+import { HarnessError } from "../workflow/errors";
 import { createHash } from "node:crypto";
 
-export interface WorkflowToolPermissionDefinition {
+export interface ToolPermissionDefinition {
   name: string;
   label?: string;
   description?: string;
@@ -10,24 +10,24 @@ export interface WorkflowToolPermissionDefinition {
   autoApprove?: boolean;
 }
 
-export interface WorkflowToolPermissionPolicy {
+export interface ToolPermissionPolicy {
   enabled?: boolean;
   autoApprove?: boolean;
 }
 
-export type WorkflowToolPermissionPolicyMap = Record<string, WorkflowToolPermissionPolicy>;
+export type ToolPermissionPolicyMap = Record<string, ToolPermissionPolicy>;
 
-export interface WorkflowToolPermissionResolved extends Required<WorkflowToolPermissionPolicy> {
+export interface ToolPermissionResolved extends Required<ToolPermissionPolicy> {
   name: string;
   label?: string;
   description?: string;
 }
 
-export interface WorkflowToolPermissionContext {
-  definitions: WorkflowToolPermissionDefinition[];
-  policies: WorkflowToolPermissionPolicyMap;
-  getTool(name: string): WorkflowToolPermissionResolved | undefined;
-  requireToolApproval(input: WorkflowToolApprovalRequestInput): Promise<WorkflowToolApprovalDecision>;
+export interface ToolPermissionContext {
+  definitions: ToolPermissionDefinition[];
+  policies: ToolPermissionPolicyMap;
+  getTool(name: string): ToolPermissionResolved | undefined;
+  requireToolApproval(input: ToolApprovalRequestInput): Promise<ToolApprovalDecision>;
   /**
    * Whether a tool call that is not auto-approved pauses this run to ask the
    * user. Unset means yes, which is what a run that never declares an agent
@@ -41,7 +41,7 @@ export interface WorkflowToolPermissionContext {
   requiresUserApproval?: boolean;
 }
 
-export interface WorkflowToolApprovalRequestInput {
+export interface ToolApprovalRequestInput {
   callId?: string;
   name: string;
   label?: string;
@@ -50,27 +50,27 @@ export interface WorkflowToolApprovalRequestInput {
   arguments?: unknown;
 }
 
-export interface WorkflowToolApprovalDecision {
+export interface ToolApprovalDecision {
   approved: boolean;
   requestId?: string;
   values?: Record<string, unknown>;
 }
 
-export interface WorkflowToolApprovalGate {
+export interface ToolApprovalGate {
   approve(
-    input: WorkflowToolApprovalRequestInput,
+    input: ToolApprovalRequestInput,
     context: NodeContext,
-  ): Promise<WorkflowToolApprovalDecision>;
+  ): Promise<ToolApprovalDecision>;
   wrap<Args extends unknown[], Result>(
     name: string,
     fn: (...args: Args) => Promise<Result> | Result,
-    options?: Omit<WorkflowToolApprovalRequestInput, "name" | "arguments"> & {
+    options?: Omit<ToolApprovalRequestInput, "name" | "arguments"> & {
       arguments?: (...args: Args) => unknown;
     },
   ): (context: NodeContext, ...args: Args) => Promise<Result>;
 }
 
-export function createToolApprovalGate(): WorkflowToolApprovalGate {
+export function createToolApprovalGate(): ToolApprovalGate {
   return {
     approve(input, context) {
       return requireWorkflowToolApproval(context, input);
@@ -91,12 +91,12 @@ export function createToolApprovalGate(): WorkflowToolApprovalGate {
 }
 
 export function createWorkflowToolPermissionContext(options: {
-  definitions?: WorkflowToolPermissionDefinition[];
-  policies?: WorkflowToolPermissionPolicyMap;
+  definitions?: ToolPermissionDefinition[];
+  policies?: ToolPermissionPolicyMap;
   userInput?: NodeContext["userInput"];
   workflowName: string;
   runId: string;
-}): WorkflowToolPermissionContext {
+}): ToolPermissionContext {
   const definitions = normalizeToolPermissionDefinitions(options.definitions);
   const policies = normalizeToolPermissionPolicies(options.policies, definitions);
   const resolved = new Map(
@@ -105,7 +105,7 @@ export function createWorkflowToolPermissionContext(options: {
       resolveToolPermissionDefinition(definition, policies[definition.name]),
     ]),
   );
-  const context: WorkflowToolPermissionContext = {
+  const context: ToolPermissionContext = {
     definitions,
     policies,
     // Asking is the conservative default; the agent runtime lowers it for the
@@ -131,10 +131,10 @@ export function createWorkflowToolPermissionContext(options: {
 }
 
 export function normalizeToolPermissionDefinitions(
-  definitions: WorkflowToolPermissionDefinition[] | undefined,
-): WorkflowToolPermissionDefinition[] {
+  definitions: ToolPermissionDefinition[] | undefined,
+): ToolPermissionDefinition[] {
   const seen = new Set<string>();
-  const normalized: WorkflowToolPermissionDefinition[] = [];
+  const normalized: ToolPermissionDefinition[] = [];
 
   for (const definition of definitions ?? []) {
     const name = normalizeToolName(definition.name);
@@ -155,11 +155,11 @@ export function normalizeToolPermissionDefinitions(
 }
 
 export function normalizeToolPermissionPolicies(
-  policies: WorkflowToolPermissionPolicyMap | undefined,
-  definitions: WorkflowToolPermissionDefinition[],
-): WorkflowToolPermissionPolicyMap {
+  policies: ToolPermissionPolicyMap | undefined,
+  definitions: ToolPermissionDefinition[],
+): ToolPermissionPolicyMap {
   const allowed = new Set(definitions.map((definition) => definition.name));
-  const normalized: WorkflowToolPermissionPolicyMap = {};
+  const normalized: ToolPermissionPolicyMap = {};
 
   if (policies === undefined) {
     return normalized;
@@ -182,8 +182,8 @@ export function normalizeToolPermissionPolicies(
 
 export function parseToolPermissionPoliciesJson(
   value: string | undefined,
-  definitions?: WorkflowToolPermissionDefinition[],
-): WorkflowToolPermissionPolicyMap | undefined {
+  definitions?: ToolPermissionDefinition[],
+): ToolPermissionPolicyMap | undefined {
   if (value === undefined || value.trim() === "") {
     return undefined;
   }
@@ -193,7 +193,7 @@ export function parseToolPermissionPoliciesJson(
     throw new Error("Tool permission policies must be a JSON object.");
   }
 
-  const rawPolicies = normalizeRawToolPermissionPolicies(parsed as WorkflowToolPermissionPolicyMap);
+  const rawPolicies = normalizeRawToolPermissionPolicies(parsed as ToolPermissionPolicyMap);
 
   return definitions === undefined
     ? rawPolicies
@@ -205,11 +205,11 @@ export function parseToolPermissionPoliciesJson(
 
 export async function requireWorkflowToolApproval(
   context: Pick<NodeContext, "toolPermissions" | "userInput" | "metadata">,
-  input: WorkflowToolApprovalRequestInput,
-): Promise<WorkflowToolApprovalDecision> {
+  input: ToolApprovalRequestInput,
+): Promise<ToolApprovalDecision> {
   const name = normalizeToolName(input.name);
   if (name === undefined) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "Tool approval requires a non-empty tool name.",
       metadata: { toolName: input.name },
@@ -218,7 +218,7 @@ export async function requireWorkflowToolApproval(
 
   const tool = context.toolPermissions?.getTool(name);
   if (tool === undefined) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `Tool "${name}" is not registered in executor.tools.`,
       metadata: { toolName: name },
@@ -226,7 +226,7 @@ export async function requireWorkflowToolApproval(
   }
 
   if (!tool.enabled) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "tool_permission_denied",
       message: `Tool "${name}" is disabled by the current tool permission policy.`,
       metadata: { toolName: name, policy: tool },
@@ -256,7 +256,7 @@ export async function requireWorkflowToolApproval(
   }
 
   if (context.userInput === undefined) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "user_input_required",
       message: `Tool "${name}" requires approval but the runtime has no userInput handler.`,
       metadata: { request },
@@ -264,7 +264,7 @@ export async function requireWorkflowToolApproval(
   }
 
   await context.userInput.requestInput(request);
-  throw new WorkflowError({
+  throw new HarnessError({
     type: "user_input_required",
     message: `Tool "${name}" is waiting for approval.`,
     nodeName: request.nodeName,
@@ -273,9 +273,9 @@ export async function requireWorkflowToolApproval(
 }
 
 function resolveToolPermissionDefinition(
-  definition: WorkflowToolPermissionDefinition,
-  policy: WorkflowToolPermissionPolicy | undefined,
-): WorkflowToolPermissionResolved {
+  definition: ToolPermissionDefinition,
+  policy: ToolPermissionPolicy | undefined,
+): ToolPermissionResolved {
   return {
     name: definition.name,
     label: definition.label,
@@ -286,9 +286,9 @@ function resolveToolPermissionDefinition(
 }
 
 function normalizeRawToolPermissionPolicies(
-  policies: WorkflowToolPermissionPolicyMap,
-): WorkflowToolPermissionPolicyMap {
-  const normalized: WorkflowToolPermissionPolicyMap = {};
+  policies: ToolPermissionPolicyMap,
+): ToolPermissionPolicyMap {
+  const normalized: ToolPermissionPolicyMap = {};
 
   for (const [rawName, policy] of Object.entries(policies)) {
     const name = normalizeToolName(rawName);
@@ -306,10 +306,10 @@ function normalizeRawToolPermissionPolicies(
 }
 
 function createToolApprovalRequest(options: {
-  tool: WorkflowToolPermissionResolved;
-  input: WorkflowToolApprovalRequestInput;
+  tool: ToolPermissionResolved;
+  input: ToolApprovalRequestInput;
   metadata?: Record<string, unknown>;
-}): WorkflowUserInputRequest {
+}): UserInputRequest {
   const workflow = normalizeRequestIdPart(options.metadata?.["workflow"]) ?? "workflow";
   const runId = normalizeRequestIdPart(options.metadata?.["runId"]) ?? "run";
   const tool = normalizeRequestIdPart(options.tool.name) ?? "tool";
@@ -358,12 +358,12 @@ function canonicalArguments(value: unknown): unknown {
 }
 
 function readApprovalDecision(
-  resolved: WorkflowUserInputResolved,
+  resolved: UserInputResolved,
   toolName: string,
-): WorkflowToolApprovalDecision {
+): ToolApprovalDecision {
   const approved = resolved.values["approved"] === true;
   if (!approved) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "tool_permission_denied",
       message: `Tool "${toolName}" was rejected by the approval request.`,
       metadata: {

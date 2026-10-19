@@ -11,15 +11,15 @@ description: "Defines a Workflow project's entrypoints or a Conversation project
 
 ```ts
 workflow.defineExecutor<Input, Output>(
-  definition: WorkflowExecutorDefinition<Input, Output>,
-): WorkflowExecutorDefinition<Input, Output>
+  definition: ExecutorDefinition<Input, Output>,
+): ExecutorDefinition<Input, Output>
 ```
 
 ## Parameter
 
 |Parameter|Type|Description|
 | --- | --- | --- |
-| `definition` | `WorkflowExecutorDefinition<Input, Output>` |Platform discovery and implementation of ingress configuration for workflow.|
+| `definition` | `ExecutorDefinition<Input, Output>` |Platform discovery and implementation of ingress configuration for workflow.|
 
 ## Workflow executor
 
@@ -27,7 +27,7 @@ workflow.defineExecutor<Input, Output>(
 | --- | --- | --- |
 | `projectType` | `"workflow"` |The project type. Required.|
 | `defaultEntrypoint` | `string` |The entrypoint ID used when no entrypoint is selected. It must be a string literal that names an item in `entrypoints`.|
-| `entrypoints` | `WorkflowEntrypointDefinition[]` |A non-empty array of static entrypoint definitions. Each item must call [`workflow.defineEntrypoint()`](/en/core-api/define-entrypoint) directly.|
+| `entrypoints` | `EntrypointDefinition[]` |A non-empty array of static entrypoint definitions. Each item must call [`workflow.defineEntrypoint()`](/en/core-api/define-entrypoint) directly.|
 
 `workflow`, `params`, `createInput`, `resolveParams`, `createContext`, `requiredProviders`, `tools`, `tokenUsage`, and `registry` are entrypoint-specific Workflow fields and cannot appear at the top level of an executor. Hosts display entrypoints in declaration order. Selecting one creates a run for that entrypoint directly; the default entrypoint does not run first.
 
@@ -38,22 +38,22 @@ Workflow can declare the proposed schedule in `package.json.steamHarness.schedul
 |Field|Type|Description|
 | --- | --- | --- |
 | `projectType` | `"conversation"` |The type tag for the Conversation item. Required.|
-| `workflow` | `WorkflowDefinition<Input, Output>` |Conversation is unique to workflow. Required.|
+| `workflow` | `Definition<Input, Output>` |Conversation is unique to workflow. Required.|
 | `createInput` | `(context) => Input` |Converts args, environment, and session IDs into business inputs. Required.|
-| `resolveParams` | `(context) => WorkflowParamResolveResult` |Optional parameter linkage callback.|
-| `createContext` | `(context) => Partial<WorkflowContext>` |Add providers, metadata and hooks.|
+| `resolveParams` | `(context) => ParamResolveResult` |Optional parameter linkage callback.|
+| `createContext` | `(context) => Partial<RunContext>` |Add providers, metadata and hooks.|
 | `requiredProviders` | `ExecutorProviderName[]` |Declares a required provider.|
-| `params` | `WorkflowConversationParamDeclaration[]` | Ordered Conversation Auxiliary, Quick, Mode, and Slash entries. |
-| `tools` | `WorkflowToolPermissionDefinition[]` |Conversation Callable tools and default policies.|
-| `conversation` | `WorkflowConversationDefinition` | Configure attachments, the input queue, and the optional OpenAI gateway. The standard message input needs no configuration. |
-| `tokenUsage` | `WorkflowTokenUsageDefinition` |Enable token usage statistics.|
-| `registry` | `WorkflowNodeRegistryEntry[]` |Register nodes that can be debugged individually.|
+| `params` | `ConversationParamDeclaration[]` | Ordered Conversation Auxiliary, Quick, Mode, and Slash entries. |
+| `tools` | `ToolPermissionDefinition[]` |Conversation Callable tools and default policies.|
+| `conversation` | `ConversationDefinition` | Configure attachments, the input queue, and the optional OpenAI gateway. The standard message input needs no configuration. |
+| `tokenUsage` | `TokenUsageDefinition` |Enable token usage statistics.|
+| `registry` | `NodeRegistryEntry[]` |Register nodes that can be debugged individually.|
 
 Conversation does not declare `defaultEntrypoint` or `entrypoints`. CLI rejects a non-empty entrypoint selection instead of silently ignoring it.
 
 Durable Agent projects can declare inline `conversation.recovery: { enabled: true }` and `conversation.durable: { enabled: true }` alongside Agent `session` options. Recovery enables host crash recovery; durable enables the Harness inbox, bidirectional controls and persistent owner in CLI Web / Studio, with complete task views in Studio Trace. Harness persists steer / followUp / reject submissions and withdrawals. `defineAgentConversationExecutor({ session })` adds durable automatically; static structure projects must still declare inline objects. Explicit `tools` lists must include `update_plan` and, when enabled, `subagent`. See [session control](/en/core-api/create-agent#durable-session-control). Local CLI / Studio hosts execute projects; Server only manages projects and data.
 
-## `WorkflowExecutorContext`
+## `ExecutorContext`
 
 |Field|Type|Description|
 | --- | --- | --- |
@@ -66,9 +66,9 @@ Durable Agent projects can declare inline `conversation.recovery: { enabled: tru
 | `env` | `NodeJS.ProcessEnv` |A collection of environment variables.|
 | `abortSignal` | `AbortSignal` | An interrupt signal; CLI Web cancellation is passed to workflow and SDK/provider calls that support signals. |
 | `conversationId` | `string \| undefined` |The session ID.|
-| `toolPermissionPolicies` | `WorkflowToolPermissionPolicyMap \| undefined` |The tool policy override value passed in by the host. workflow usually does not read this field directly, but uses `context.toolPermissions` or `workflow.createToolApprovalGate()`.|
+| `toolPermissionPolicies` | `ToolPermissionPolicyMap \| undefined` |The tool policy override value passed in by the host. workflow usually does not read this field directly, but uses `context.toolPermissions` or `workflow.createToolApprovalGate()`.|
 
-## `WorkflowParamDeclaration`
+## `ParamDeclaration`
 
 `params` is an ordered declaration array: place it on each Workflow `defineEntrypoint` or on the Conversation `defineExecutor`. Workflow can declare main form fields directly. Conversation always uses the standard message input and only accepts `kind: "auxiliary"`, `kind: "quick"`, `kind: "mode"`, or `kind: "slash"` entries. Multiple toolbar entries appear from left to right in declaration order. Each Auxiliary is an independent parameter panel; each Quick is a summary menu. Both can contain multiple fields. Each Mode is an independent cycling switch. Slash parameters appear in the `/` menu above the input without a toolbar button. Names and flags must be unique across all fields, and Auxiliary/Quick IDs must be unique across both group kinds. Conversation reserves `--message`, `--images`, `--videos`, and `--files` for the standard input.
 
@@ -93,14 +93,14 @@ params: [
 ],
 ```
 
-Main and grouped fields use the properties below. Source declarations no longer set `panel`. The structure report flattens fields into `WorkflowParamDefinition[]` and preserves action labels, membership, and order in `paramLayout.actions`. CLI, schedules, and external APIs continue to parse the same flags and `paramValues[name]`.
+Main and grouped fields use the properties below. Source declarations no longer set `panel`. The structure report flattens fields into `ParamDefinition[]` and preserves action labels, membership, and order in `paramLayout.actions`. CLI, schedules, and external APIs continue to parse the same flags and `paramValues[name]`.
 
 |Field|Type|Description|
 | --- | --- | --- |
 | `name` | `string` |The parameter name. Required.|
 | `flag` | `string` |Long parameters, such as `--message`.|
 | `shortFlag` | `string` |Short parameters, such as `-m`.|
-| `type` | `WorkflowParamType` |The parameter type. Required.|
+| `type` | `ParamType` |The parameter type. Required.|
 | `required` | `boolean` |Whether it is required.|
 | `description` | `string` |The parameter description.|
 | `defaultValue` | `string` |Default value.|
@@ -144,7 +144,7 @@ conversation: {
 
 In CLI Web, a bare `/` opens all commands above the input; further typing filters commands and labels. The rounded menu has compact rows without a left checkmark. Choosing a selector writes its option value; choosing a boolean toggles `"true"` / `"false"` and resolves parameters without sending a message. The menu observes parameter and option visibility, disabled states, and `resolvedOptions`. Dynamic options may set `command`; otherwise they reuse the static option's command for the same value, then fall back to `value`. Dynamic commands must also satisfy the format and uniqueness rules.
 
-`conversation.commands` declares execution commands as a static `WorkflowConversationCommandDefinition[]`, displayed alongside parameter commands. Each entry contains `command`, a non-empty `label`, optional `description`, `localizedLabel`, `localizedDescription`, and `action`. An `action: { kind: "prompt", text }` runs the declared text as a separate turn through the project's Workflow for any business command. An `action: { kind: "export" }` downloads the complete current session as JSON and persists the command and result in the conversation body. Command names must not collide with parameter commands. Missing translations fall back to the original text. Selection removes only the command at the caret and preserves other text and attachments. Execution commands are unavailable while the session is running, awaiting approval, has queued input, or is editing a queued message.
+`conversation.commands` declares execution commands as a static `ConversationCommandDefinition[]`, displayed alongside parameter commands. Each entry contains `command`, a non-empty `label`, optional `description`, `localizedLabel`, `localizedDescription`, and `action`. An `action: { kind: "prompt", text }` runs the declared text as a separate turn through the project's Workflow for any business command. An `action: { kind: "export" }` downloads the complete current session as JSON and persists the command and result in the conversation body. Command names must not collide with parameter commands. Missing translations fall back to the original text. Selection removes only the command at the caret and preserves other text and attachments. Execution commands are unavailable while the session is running, awaiting approval, has queued input, or is editing a queued message.
 
 CLI Web checks accumulated dynamic options against execution commands during parameter refresh and send. Invalid updates return an error and retain the previous valid parameters. Sends retain dynamic options not replaced by the current patch. Omitted `visible` or `disabled` properties in option patches retain their previous values; explicitly replacing or restoring the option list clears old states. The export includes its own command and result; the receipt count matches `messages.length` in the file.
 
@@ -154,7 +154,7 @@ CLI Web checks accumulated dynamic options against execution commands during par
 
 Project Assistant defaults to Build and uses a single `/plan` toggle. Its `createInput` maps `paramValues.plan === "true"` to `agent: "plan"` and the footer displays "Plan mode"; executing it again restores Build and hides the notice. `/export` exports every message and execution record in the current session. `/compact` immediately runs Core Agent's real context summarization, displays running and completed or failed states, and persists the summary as the context for subsequent turns while retaining the original conversation body.
 
-## `WorkflowParamStatePatch`
+## `ParamStatePatch`
 
 |Field|Type|Description|
 | --- | --- | --- |
@@ -164,13 +164,13 @@ Project Assistant defaults to Build and uses a single `/plan` toggle. Its `creat
 | `resolvedOptions` | `{ value, label?, description?, command? }[] \| null` |Array replaces the current full list of options for the argument;`null` restores static `options`.|
 | `options` | `Record<string, { visible?, disabled? }>` |Modifies the display or disabled state of individual values in the current selection list.|
 
-## `WorkflowNodeRegistryEntry`
+## `NodeRegistryEntry`
 
 |Field|Type|Description|
 | --- | --- | --- |
 | `name` | `string` |The name of the debug node in the registry. Required.|
 | `node` | `NodeDefinition \| StreamNodeDefinition` |The node object actually executed. Required.|
-| `metadata` | `WorkflowNodeMetadataInput` |The overlay node displays meta information.|
+| `metadata` | `NodeMetadataInput` |The overlay node displays meta information.|
 | `stream` | `boolean` |Marks whether the node is executed as a streaming node.|
 | `createInput` | `(context) => Input` |Input constructor for single-node debugging.|
 
@@ -179,7 +179,7 @@ Project Assistant defaults to Build and uses a single `/plan` toggle. Its `creat
 |Phase|Description|
 | --- | --- |
 |Platform Selection Configuration|Workflow selects an entry by explicit ID or `defaultEntrypoint`;Conversation uses executor itself.|
-|Create Context|runtime creates a `WorkflowExecutorContext` based on args, env, workflowName, entry, and conversationId.|
+|Create Context|runtime creates a `ExecutorContext` based on args, env, workflowName, entry, and conversationId.|
 | `createInput` |Invokes the input construct of the selected entry or Conversation executor.|
 | `createContext` |An optional context extension that invokes the same execution configuration.|
 | workflow `run` |Execute only the workflow of the selected entry, or the only workflow of Conversation.|
@@ -313,7 +313,7 @@ export const executor = workflow.defineExecutor<Input, Output>({
 });
 ```
 
-The host renders the standard input without automatically modifying `WorkflowContext`. Read its fixed arguments explicitly in `createInput({ args })`:
+The host renders the standard input without automatically modifying `RunContext`. Read its fixed arguments explicitly in `createInput({ args })`:
 
 - Text:`--message`
 - Image Attachment:`--images`

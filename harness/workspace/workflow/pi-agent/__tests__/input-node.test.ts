@@ -4,7 +4,7 @@ import {
   createDisabledWorkflowTokenUsageContext,
   createWorkflowRelatedProjectsContext,
   createWorkflowToolPermissionContext,
-  type WorkflowKVContext,
+  type KVContext,
 } from "steamharness";
 import { installWorkflowRuntimeGlobal } from "steamharness/runtime-api";
 import type { NodeContext } from "steamharness/types/context";
@@ -126,7 +126,7 @@ function createNodeContext(
   };
 }
 
-function createMemoryKVContext(): WorkflowKVContext {
+function createMemoryKVContext(): KVContext {
   const values = new Map<string, unknown>();
   function createNamespace(prefix: string) {
     return {

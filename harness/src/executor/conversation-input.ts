@@ -1,12 +1,12 @@
-import { WorkflowError } from "../workflow/index";
-import type { WorkflowConversationUserInputDefinition, WorkflowParamDefinition } from "./types";
+import { HarnessError } from "../workflow/index";
+import type { ConversationUserInputDefinition, ParamDefinition } from "./types";
 
 export function assertConversationUserInput(
   value: unknown,
-  params: WorkflowParamDefinition[],
-): asserts value is WorkflowConversationUserInputDefinition | undefined {
+  params: ParamDefinition[],
+): asserts value is ConversationUserInputDefinition | undefined {
   if (value === undefined) return;
-  function fail(message: string): never { throw new WorkflowError({ type: "input_validation", message: `Conversation userInput ${message}` }); }
+  function fail(message: string): never { throw new HarnessError({ type: "input_validation", message: `Conversation userInput ${message}` }); }
   const record = (item: unknown): item is Record<string, unknown> => !!item && typeof item === "object" && !Array.isArray(item);
   const matchValue = (item: unknown): boolean => typeof item === "string" || typeof item === "boolean"
     || typeof item === "number" && Number.isFinite(item) || Array.isArray(item) && item.every(entry => typeof entry === "string");

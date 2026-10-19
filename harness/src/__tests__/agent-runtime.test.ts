@@ -7,7 +7,7 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { createAgentRuntime, type AgentRuntimeInternalOptions } from "../agent/runtime";
 import { parseAgentInput } from "../agent/runtime";
 import { compactAgentMessages, estimateAgentContextTokens, estimateAgentTokens, findCompactionSplitIndex } from "../agent/compaction";
-import { WorkflowError } from "../workflow/errors";
+import { HarnessError } from "../workflow/errors";
 import type { PiRuntime } from "../agent/pi";
 import { resolveAgentBridgeBaseUrl } from "../agent/system-llm";
 import { recordAgentRunContextUsage, readAgentRunContextUsage } from "../agent/node";
@@ -291,7 +291,7 @@ test("context measurements validate inputs, remain snapshots, and reset with res
   for (const usage of [{ used: -1, total: 100 }, { used: Infinity, total: 100 },
     { used: 1, total: NaN }, { used: 1, total: 0 }]) {
     assert.throws(() => runtime.updateContextUsage(usage), (error: unknown) =>
-      error instanceof WorkflowError && error.type === "input_validation");
+      error instanceof HarnessError && error.type === "input_validation");
   }
   const supplied = { used: 800, total: 1_000 };
   runtime.updateContextUsage(supplied);
@@ -318,7 +318,7 @@ test("cancelling after the initial context event prevents the model request", as
   assert.equal((await events.next()).value?.type, "context_usage");
   controller.abort();
   await assert.rejects(() => events.next(), (error: unknown) =>
-    error instanceof WorkflowError && error.type === "execution_aborted");
+    error instanceof HarnessError && error.type === "execution_aborted");
   assert.equal(called, false);
 });
 
@@ -804,7 +804,7 @@ test("manual compact preserves the transcript when the provider returns after ca
     const events: AgentStreamEvent[] = [];
     await assert.rejects(async () => {
       for await (const event of runtime.run({ prompt: "/compact", errCode: 0, errMessage: "" }, { abortSignal: controller.signal })) events.push(event);
-    }, error => error instanceof WorkflowError && error.type === "execution_aborted" && /Summary cancelled/.test(error.message));
+    }, error => error instanceof HarnessError && error.type === "execution_aborted" && /Summary cancelled/.test(error.message));
     assert.deepEqual(runtime.readTranscript?.(), before);
     assert.deepEqual(events.filter(event => event.type === "compaction"), [{ type: "compaction", phase: "start", auto: false }]);
   });
@@ -1223,7 +1223,7 @@ test("a cancelled run stops the turn and is reported as aborted", async () => {
           if (event.type === "text_delta") deltas.push(event.delta);
         }
       },
-      (error: unknown) => error instanceof WorkflowError && error.type === "execution_aborted",
+      (error: unknown) => error instanceof HarnessError && error.type === "execution_aborted",
     );
 
     assert.equal(deltas.join("").includes("never run"), false);
@@ -1249,7 +1249,7 @@ test("a run that arrives after the cancellation does not start", async () => {
           // Nothing should be produced.
         }
       },
-      (error: unknown) => error instanceof WorkflowError && error.type === "execution_aborted",
+      (error: unknown) => error instanceof HarnessError && error.type === "execution_aborted",
     );
   });
 });
@@ -1702,7 +1702,7 @@ test("cancelling a durable continuation settles the turn", async () => {
           events.push(event);
         }
       },
-      (error: unknown) => error instanceof WorkflowError && error.type === "execution_aborted",
+      (error: unknown) => error instanceof HarnessError && error.type === "execution_aborted",
     );
 
     assert.equal(events.filter((event) => event.type === "retry").length, 1);

@@ -11,10 +11,10 @@ import {
   createDisabledWorkflowTokenUsageContext,
   createWorkflowRelatedProjectsContext,
   createWorkflowToolPermissionContext,
-  type WorkflowKVContext,
+  type KVContext,
 } from "steamharness";
 import { installWorkflowRuntimeGlobal } from "steamharness/runtime-api";
-import type { WorkflowContext } from "steamharness/types/context";
+import type { RunContext } from "steamharness/types/context";
 
 installWorkflowRuntimeGlobal();
 
@@ -125,7 +125,7 @@ describe("pi-agent SDK adapter", () => {
       toolCallId: "call-waiting",
       input: { command: "pwd" },
     })).rejects.toMatchObject({
-      name: "WorkflowError",
+      name: "HarnessError",
       type: "user_input_required",
     });
   });
@@ -184,7 +184,7 @@ describe("pi-agent SDK adapter", () => {
   });
 });
 
-async function createToolCallHandler(context: WorkflowContext) {
+async function createToolCallHandler(context: RunContext) {
   const handlers: Array<(event: {
     type: "tool_call";
     toolName: string;
@@ -205,7 +205,7 @@ async function createToolCallHandler(context: WorkflowContext) {
 
 function createToolContext(
   policies: Record<string, { enabled?: boolean; autoApprove?: boolean }> = {},
-): WorkflowContext {
+): RunContext {
   return {
     providers: {},
     storage: {
@@ -240,7 +240,7 @@ function createToolContext(
   };
 }
 
-function createMemoryKVContext(): WorkflowKVContext {
+function createMemoryKVContext(): KVContext {
   const values = new Map<string, unknown>();
   function createNamespace(prefix: string) {
     return {

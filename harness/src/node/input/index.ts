@@ -1,5 +1,5 @@
 import { BaseNode } from "../base";
-import type { NodeContext, WorkflowNodeMetadataInput } from "../../types/index";
+import type { NodeContext, NodeMetadataInput } from "../../types/index";
 
 export type InputParser<Input, Output> = (
   input: Input,
@@ -10,7 +10,7 @@ export interface InputNodeOptions<Input, Output> {
   name?: string;
   parse?: InputParser<Input, Output>;
   historyLimit?: number;
-  metadata?: WorkflowNodeMetadataInput;
+  metadata?: NodeMetadataInput;
 }
 
 export function createInputNode<Input>(

@@ -13,9 +13,9 @@ import {
   validateWorkflowParamResolveResult,
   readWorkflowParamDefinitionError,
   normalizeWorkflowParamDeclarations,
-  type WorkflowParamDeclaration,
-  type WorkflowParamDefinition,
-  type WorkflowKVStore,
+  type ParamDeclaration,
+  type ParamDefinition,
+  type KVStore,
 } from "../index";
 
 const params = [
@@ -37,7 +37,7 @@ test("parseWorkflowParamValues returns structured defaults and selected values",
 });
 
 test("multiple parameter actions retain declaration order and flatten into one value namespace", () => {
-  const declarations: WorkflowParamDeclaration[] = [
+  const declarations: ParamDeclaration[] = [
     { name: "message", flag: "--message", type: "string" },
     {
       kind: "auxiliary", id: "workspace", label: "Workspace",
@@ -249,7 +249,7 @@ test("date params reject option patches from resolveParams", () => {
 });
 
 test("a param step must be a positive integer", () => {
-  const param: WorkflowParamDefinition = { name: "question_1", type: "string", step: 2 };
+  const param: ParamDefinition = { name: "question_1", type: "string", step: 2 };
   assert.equal(readWorkflowParamDefinitionError(param), undefined);
   assert.match(readWorkflowParamDefinitionError({ ...param, step: 0 }) ?? "", /step must be a positive integer/);
   assert.match(readWorkflowParamDefinitionError({ ...param, step: 1.5 }) ?? "", /step must be a positive integer/);
@@ -262,7 +262,7 @@ test("a param step must be a positive integer", () => {
 });
 
 test("audio params use the file contract and validate limits", () => {
-  const audio: WorkflowParamDefinition = {
+  const audio: ParamDefinition = {
     name: "audio", type: "file", control: "audio", multiple: false,
     audio: { maxDurationSeconds: 500, maxBytes: 52428800 },
   };
@@ -392,7 +392,7 @@ test("server-only parameter resolution loads project server credentials before i
     inputMode: "form" as const,
     trigger: { kind: "init" as const },
   };
-  const store: WorkflowKVStore = {
+  const store: KVStore = {
     async getValue() { return undefined; },
     async setValue() {},
     async deleteValue() { return false; },

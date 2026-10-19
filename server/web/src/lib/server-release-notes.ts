@@ -1,4 +1,4 @@
-import type { WorkflowServerHealthData } from "../types";
+import type { ServerHealthData } from "../types";
 import { i18n } from "@steamharness/i18n";
 
 export const LAST_SEEN_SERVER_RELEASE_VERSION_KEY =
@@ -14,7 +14,7 @@ export interface ServerReleaseAnnouncement {
 type ReleaseVersionStorage = Pick<Storage, "getItem" | "setItem">;
 
 export function consumeUnseenServerRelease(
-  health: WorkflowServerHealthData,
+  health: ServerHealthData,
   storage: ReleaseVersionStorage = window.localStorage,
 ): ServerReleaseAnnouncement | null {
   const version = health.versions.serverVersion?.trim();

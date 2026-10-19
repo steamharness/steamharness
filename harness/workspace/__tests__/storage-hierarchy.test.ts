@@ -9,14 +9,14 @@ import {
   inspectLocalWorkflowStructure,
   readEntrypointOutput,
   runLocalWorkflowWithReport,
-  type WorkflowExecutionReport,
-  type WorkflowExecutionStorageOptions,
-  type WorkflowKVStore,
-  type WorkflowRelatedProjectResolverProject,
+  type ExecutionReport,
+  type ExecutionStorageOptions,
+  type KVStore,
+  type RelatedProjectResolverProject,
 } from "steamharness";
 
 type StorageLocation = "local" | "server";
-type ProjectInfo = WorkflowRelatedProjectResolverProject["projectInfo"];
+type ProjectInfo = RelatedProjectResolverProject["projectInfo"];
 
 interface HierarchyProject {
   slug: string;
@@ -275,14 +275,14 @@ async function createHierarchyRunner(location: StorageLocation) {
     role: keyof typeof hierarchy.byRole,
     entrypoint: "store" | "get" | "note",
     input: { alias?: string; id?: string; content?: string; title?: string; markdown?: string },
-  ): Promise<WorkflowExecutionReport> {
+  ): Promise<ExecutionReport> {
     const project = hierarchy.byRole[role];
     const selectedBackend = {
       kvStore: selectedStore,
       relatedProjectResolver: createResolver(project),
     };
     const fallbackBackend = { kvStore: fallbackStore };
-    const storage: WorkflowExecutionStorageOptions = location === "local"
+    const storage: ExecutionStorageOptions = location === "local"
       ? { host: "local", local: selectedBackend, server: fallbackBackend }
       : { host: "server", local: fallbackBackend, server: selectedBackend };
     const args: string[] = [];
@@ -362,14 +362,14 @@ interface NoteAccessOutput {
   content?: string;
 }
 
-function readNoteOutput(report: WorkflowExecutionReport): NoteAccessOutput {
+function readNoteOutput(report: ExecutionReport): NoteAccessOutput {
   expect(report.status).toBe("success");
   expect(report.result.ok).toBe(true);
   if (!report.result.ok) throw new Error("Expected workflow execution to succeed.");
   return readEntrypointOutput(report.result.data) as NoteAccessOutput;
 }
 
-function readOutput(report: WorkflowExecutionReport): StorageAccessOutput {
+function readOutput(report: ExecutionReport): StorageAccessOutput {
   expect(report.status).toBe("success");
   expect(report.result.ok).toBe(true);
   if (!report.result.ok) throw new Error("Expected workflow execution to succeed.");
@@ -383,7 +383,7 @@ function readOutput(report: WorkflowExecutionReport): StorageAccessOutput {
   return data.output;
 }
 
-function createMemoryKVStore(): WorkflowKVStore & { values: Map<string, unknown> } {
+function createMemoryKVStore(): KVStore & { values: Map<string, unknown> } {
   const values = new Map<string, unknown>();
   const createKey = (input: {
     storageKind: string;

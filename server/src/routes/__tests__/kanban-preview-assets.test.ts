@@ -6,7 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import express from "express";
 import { configureWorkflowAuthContext, requireAuthenticatedPrincipal } from "../../auth";
-import type { WorkflowStorage } from "../../storage";
+import type { Storage } from "../../storage";
 import { createKanbanPreviewAssetRouter } from "../kanban-preview-assets";
 
 test.afterEach(() => {
@@ -14,7 +14,7 @@ test.afterEach(() => {
 });
 
 test("sandboxed Kanban JS and CSS use preview capability without an App login", async () => {
-  const requests: Array<Parameters<WorkflowStorage["getKanbanAsset"]>[0]> = [];
+  const requests: Array<Parameters<Storage["getKanbanAsset"]>[0]> = [];
   const storage = {
     async getKanbanAsset(options) {
       requests.push(options);
@@ -27,7 +27,7 @@ test("sandboxed Kanban JS and CSS use preview capability without an App login", 
         contentSecurityPolicy: "default-src 'self'; connect-src 'self' data: blob:",
       };
     },
-  } as WorkflowStorage;
+  } as Storage;
   const server = await listen(storage);
 
   try {
@@ -74,7 +74,7 @@ test("production mounts preview capabilities before authenticated API routes", a
   assert.ok(capabilityRouter < apiAuthentication);
 });
 
-async function listen(storage: WorkflowStorage): Promise<{
+async function listen(storage: Storage): Promise<{
   close: () => Promise<void>;
   url: (pathname: string) => string;
 }> {

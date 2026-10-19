@@ -8,7 +8,7 @@ import type { NodeContext } from "../../types/context";
  * handed too (wrapped, unchanged) — so the two renderings cannot drift, and
  * neither side needs a translation layer in the middle.
  */
-export interface WorkflowCapability {
+export interface Capability {
   /** MCP server id, and the prefix of the tool id. */
   serverId: string;
   toolName: string;

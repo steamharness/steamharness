@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { MockLanguageModelV3, simulateReadableStream } from "ai/test";
-import { AiSdkLLMProvider, createLLMProvider, WorkflowError } from "../index";
+import { AiSdkLLMProvider, createLLMProvider, HarnessError } from "../index";
 
 const usage = {
   inputTokens: { total: 3, noCache: 3, cacheRead: 0, cacheWrite: 0 },
@@ -71,7 +71,7 @@ test("AI SDK provider surfaces fullStream error parts", async () => {
         // Consume the stream.
       }
     },
-    (error: unknown) => error instanceof WorkflowError
+    (error: unknown) => error instanceof HarnessError
       && error.type === "stream_interrupted"
       && error.safeCause?.message === providerError.message,
   );
@@ -190,7 +190,7 @@ test("AI SDK provider still fails on real generation errors", async () => {
 
   await assert.rejects(
     provider.chat({ prompt: "hi", temperature: 0.4 }),
-    (error: unknown) => error instanceof WorkflowError
+    (error: unknown) => error instanceof HarnessError
       && error.type === "provider_call"
       && error.safeCause?.message === providerError.message,
   );

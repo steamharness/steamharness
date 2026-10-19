@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import { t } from './localization';
-import type { WorkflowLauncher } from './workflow-cli-types';
-import type { WorkflowAccountController } from './workflow-auth';
-import { projectVersion, type WorkflowProject } from './workflow-types';
+import type { Launcher } from './workflow-cli-types';
+import type { AccountController } from './workflow-auth';
+import { projectVersion, type Project } from './workflow-types';
 import type { CreatedProject, PendingProjectSetup, ProjectCreationDialog, ProjectCreationDialogResult, StudioStartState } from './start-page-types';
 import { parseServerProjectShareLink, type ProjectVersionStatus } from './workflow-server-projects';
 import { IMPORTED_PROJECTS_KEY, readImportedProjects, rememberImportedProjects, type RecentProject } from './projects';
@@ -40,9 +40,9 @@ export function readPendingProjectSetups(value: unknown): PendingProjectSetup[] 
 }
 
 interface ProjectSource {
-  getProjects(): WorkflowProject[];
+  getProjects(): Project[];
   onDidChangeProjects: vscode.Event<void>;
-  getVersionStatus(project: WorkflowProject): ProjectVersionStatus;
+  getVersionStatus(project: Project): ProjectVersionStatus;
   onDidChangeVersions: vscode.Event<void>;
 }
 
@@ -64,8 +64,8 @@ export class StudioStartController implements vscode.Disposable {
   private readonly logUri = vscode.Uri.parse('studio-project-setup:/installation.log');
   private logTimer?: ReturnType<typeof setTimeout>;
 
-  constructor(private readonly context: vscode.ExtensionContext, private readonly launcher: WorkflowLauncher,
-    private readonly account: WorkflowAccountController, private readonly projects: ProjectSource,
+  constructor(private readonly context: vscode.ExtensionContext, private readonly launcher: Launcher,
+    private readonly account: AccountController, private readonly projects: ProjectSource,
     private readonly recent: { getChildren(): RecentProject[]; onDidChangeTreeData: vscode.Event<void> },
     private readonly remember: (project: CreatedProject) => Promise<void>, private readonly output: vscode.OutputChannel) {
     this.state = { version: 1, labels: startPageLabels(), templates: [], projects: [], recent: [], pending: [], busy: false,

@@ -2,11 +2,11 @@
 import { translateDynamicKey } from "@steamharness/i18n";
 import type { AsyncState, DetailState, DetailTab } from "../../state";
 import type { KnowledgeRepository, KnowledgeWorkspaceProps } from "@steamharness/knowledge-base";
-import type { WorkflowInvitationRole, WorkflowKVEntryDetail, WorkflowKVEntrySummary, WorkflowProjectInvitation, WorkflowSummary, ApiResponse } from "../../types";
+import type { InvitationRole, KVEntryDetail, KVEntrySummary, ProjectInvitation, Summary, ApiResponse } from "../../types";
 import type { KVFilters } from "../ProjectKVPage";
 
 export interface DetailPageProps {
-  project: WorkflowSummary;
+  project: Summary;
   detail: DetailState;
   activeTab: DetailTab;
   busy: AsyncState;
@@ -14,7 +14,7 @@ export interface DetailPageProps {
   onSetProjectMember: (userId: string, role: "owner" | "manager" | "writer" | "viewer") => void;
   onRemoveProjectMember: (userId: string) => void;
   onCreateProjectInvitation: (role: "manager" | "writer" | "viewer") => Promise<{
-    invitation: WorkflowProjectInvitation;
+    invitation: ProjectInvitation;
     token: string;
     shareUrl: string;
   } | null>;
@@ -24,8 +24,8 @@ export interface DetailPageProps {
   kvFilters: KVFilters;
   onKVFiltersChange: (filters: KVFilters) => void;
   onKVPageChange: (direction: "next" | "previous") => void;
-  onLoadKVEntry: (entry: WorkflowKVEntrySummary) => Promise<ApiResponse<WorkflowKVEntryDetail>>;
-  onDeleteKVEntry: (entry: WorkflowKVEntrySummary) => Promise<ApiResponse<unknown>>;
+  onLoadKVEntry: (entry: KVEntrySummary) => Promise<ApiResponse<KVEntryDetail>>;
+  onDeleteKVEntry: (entry: KVEntrySummary) => Promise<ApiResponse<unknown>>;
   knowledgeRepository?: KnowledgeRepository;
   knowledgeRefreshToken: number;
   refreshToken?: number;
@@ -52,7 +52,7 @@ export function getTabLabel(tab: DetailTab): string {
   return translateDynamicKey(map[tab], "serverWeb");
 }
 
-export const PROJECT_MEMBER_ROLE_OPTIONS: Array<{ value: WorkflowInvitationRole; label: string }> = [
+export const PROJECT_MEMBER_ROLE_OPTIONS: Array<{ value: InvitationRole; label: string }> = [
   { value: "manager", label: "Manager" },
   { value: "writer", label: "Writer" },
   { value: "viewer", label: "Viewer" },

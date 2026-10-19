@@ -1,15 +1,15 @@
-import type { WorkflowKVContext } from "../kv/index";
+import type { KVContext } from "../kv/index";
 import { createHash } from "node:crypto";
 
 export const TOKEN_USAGE_TOTAL_KEY = "tokenUsage.total";
 export const TOKEN_USAGE_ENTRY_KEY_PREFIX = "tokenUsage.entry.";
 
-export interface WorkflowTokenUsageDefinition {
+export interface TokenUsageDefinition {
   enabled: boolean;
   display?: boolean;
 }
 
-export interface WorkflowTokenUsageReportInput {
+export interface TokenUsageReportInput {
   /** Stable identity for an upserted billing record, including recovery replay. */
   recordId?: string;
   inputTokens?: number;
@@ -24,7 +24,7 @@ export interface WorkflowTokenUsageReportInput {
   metadata?: Record<string, unknown>;
 }
 
-export interface WorkflowTokenUsageEntry {
+export interface TokenUsageEntry {
   id: string;
   projectId: string;
   runId: string;
@@ -43,7 +43,7 @@ export interface WorkflowTokenUsageEntry {
   metadata?: Record<string, unknown>;
 }
 
-export interface WorkflowTokenUsageAggregate {
+export interface TokenUsageAggregate {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
@@ -54,23 +54,23 @@ export interface WorkflowTokenUsageAggregate {
   updatedAt?: string;
 }
 
-export interface WorkflowTokenUsageContext {
+export interface TokenUsageContext {
   enabled: boolean;
   display: boolean;
-  report(input: WorkflowTokenUsageReportInput): Promise<WorkflowTokenUsageEntry | undefined>;
-  getRunUsage(): WorkflowTokenUsageAggregate;
+  report(input: TokenUsageReportInput): Promise<TokenUsageEntry | undefined>;
+  getRunUsage(): TokenUsageAggregate;
 }
 
-export interface WorkflowTokenUsageContextOptions {
-  definition?: WorkflowTokenUsageDefinition;
-  kv: WorkflowKVContext;
+export interface TokenUsageContextOptions {
+  definition?: TokenUsageDefinition;
+  kv: KVContext;
   projectId: string;
   runId: string;
   conversationId?: string;
-  onUpdate?(aggregate: WorkflowTokenUsageAggregate): Promise<void> | void;
+  onUpdate?(aggregate: TokenUsageAggregate): Promise<void> | void;
 }
 
-export function createDisabledWorkflowTokenUsageContext(): WorkflowTokenUsageContext {
+export function createDisabledWorkflowTokenUsageContext(): TokenUsageContext {
   return {
     enabled: false,
     display: false,
@@ -84,8 +84,8 @@ export function createDisabledWorkflowTokenUsageContext(): WorkflowTokenUsageCon
 }
 
 export function createWorkflowTokenUsageContext(
-  options: WorkflowTokenUsageContextOptions,
-): WorkflowTokenUsageContext {
+  options: TokenUsageContextOptions,
+): TokenUsageContext {
   if (options.definition?.enabled !== true) {
     return createDisabledWorkflowTokenUsageContext();
   }
@@ -96,7 +96,7 @@ export function createWorkflowTokenUsageContext(
   const display = options.definition.display ?? true;
   let sequence = 0;
   let runUsage = createEmptyTokenUsageAggregate();
-  const runRecords = new Map<string, WorkflowTokenUsageEntry>();
+  const runRecords = new Map<string, TokenUsageEntry>();
 
   return {
     enabled: true,
@@ -110,7 +110,7 @@ export function createWorkflowTokenUsageContext(
       sequence += 1;
       const createdAt = new Date().toISOString();
       const recordId = normalizeOptionalString(input.recordId);
-      const entry: WorkflowTokenUsageEntry = {
+      const entry: TokenUsageEntry = {
         id: recordId ?? `${options.runId}.${sequence}`,
         projectId: options.projectId,
         runId: options.runId,
@@ -154,7 +154,7 @@ export function createTokenUsageEntryKey(runId: string, sequence: number): strin
   return `${TOKEN_USAGE_ENTRY_KEY_PREFIX}${encodeTokenUsageKeyPart(runId)}.${sequence}`;
 }
 
-export function createEmptyTokenUsageAggregate(): WorkflowTokenUsageAggregate {
+export function createEmptyTokenUsageAggregate(): TokenUsageAggregate {
   return {
     inputTokens: 0,
     outputTokens: 0,
@@ -167,8 +167,8 @@ export function createEmptyTokenUsageAggregate(): WorkflowTokenUsageAggregate {
 }
 
 export function cloneTokenUsageAggregate(
-  value: WorkflowTokenUsageAggregate,
-): WorkflowTokenUsageAggregate {
+  value: TokenUsageAggregate,
+): TokenUsageAggregate {
   return {
     inputTokens: value.inputTokens,
     outputTokens: value.outputTokens,
@@ -182,13 +182,13 @@ export function cloneTokenUsageAggregate(
 }
 
 export function addTokenUsageAggregate(
-  aggregate: WorkflowTokenUsageAggregate,
+  aggregate: TokenUsageAggregate,
   usage: Pick<
-    WorkflowTokenUsageAggregate,
+    TokenUsageAggregate,
     "inputTokens" | "outputTokens" | "totalTokens" | "reasoningTokens" | "cachedInputTokens" | "cacheCreationTokens"
   >,
   updatedAt = new Date().toISOString(),
-): WorkflowTokenUsageAggregate {
+): TokenUsageAggregate {
   return {
     inputTokens: aggregate.inputTokens + usage.inputTokens,
     outputTokens: aggregate.outputTokens + usage.outputTokens,
@@ -201,7 +201,7 @@ export function addTokenUsageAggregate(
   };
 }
 
-export function isWorkflowTokenUsageAggregate(value: unknown): value is WorkflowTokenUsageAggregate {
+export function isWorkflowTokenUsageAggregate(value: unknown): value is TokenUsageAggregate {
   return isRecord(value) &&
     isFiniteNumber(value.inputTokens) &&
     isFiniteNumber(value.outputTokens) &&
@@ -213,12 +213,12 @@ export function isWorkflowTokenUsageAggregate(value: unknown): value is Workflow
     (value.updatedAt === undefined || typeof value.updatedAt === "string");
 }
 
-export function isWorkflowTokenUsageEntry(value: unknown): value is WorkflowTokenUsageEntry {
+export function isWorkflowTokenUsageEntry(value: unknown): value is TokenUsageEntry {
   return readStoredTokenUsageEntry(value) !== undefined;
 }
 
-export function normalizeTokenUsage(value: WorkflowTokenUsageReportInput): Omit<
-  WorkflowTokenUsageAggregate,
+export function normalizeTokenUsage(value: TokenUsageReportInput): Omit<
+  TokenUsageAggregate,
   "calls" | "updatedAt"
 > {
   const inputTokens = normalizeTokenCount(value.inputTokens);
@@ -241,8 +241,8 @@ export function normalizeTokenUsage(value: WorkflowTokenUsageReportInput): Omit<
 
 export function readTokenUsageReportInput(
   value: unknown,
-  metadata: Omit<WorkflowTokenUsageReportInput, "inputTokens" | "outputTokens" | "totalTokens" | "reasoningTokens" | "cachedInputTokens" | "cacheCreationTokens"> = {},
-): WorkflowTokenUsageReportInput | undefined {
+  metadata: Omit<TokenUsageReportInput, "inputTokens" | "outputTokens" | "totalTokens" | "reasoningTokens" | "cachedInputTokens" | "cacheCreationTokens"> = {},
+): TokenUsageReportInput | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
@@ -294,8 +294,8 @@ export function readTokenUsageReportInput(
 }
 
 async function writeTokenUsageAggregate(
-  kv: WorkflowKVContext,
-  entry: WorkflowTokenUsageEntry,
+  kv: KVContext,
+  entry: TokenUsageEntry,
   updatedAt: string,
   recordId?: string,
 ): Promise<void> {
@@ -320,8 +320,8 @@ async function writeTokenUsageAggregate(
   }
 }
 
-function replaceUsage(aggregate: WorkflowTokenUsageAggregate, previous: WorkflowTokenUsageEntry | undefined,
-  entry: WorkflowTokenUsageEntry, updatedAt: string): WorkflowTokenUsageAggregate {
+function replaceUsage(aggregate: TokenUsageAggregate, previous: TokenUsageEntry | undefined,
+  entry: TokenUsageEntry, updatedAt: string): TokenUsageAggregate {
   if (previous === undefined) return addTokenUsageAggregate(aggregate, entry, updatedAt);
   return { inputTokens: aggregate.inputTokens - previous.inputTokens + entry.inputTokens,
     outputTokens: aggregate.outputTokens - previous.outputTokens + entry.outputTokens,
@@ -332,7 +332,7 @@ function replaceUsage(aggregate: WorkflowTokenUsageAggregate, previous: Workflow
     calls: aggregate.calls, updatedAt };
 }
 
-export function readStoredTokenUsageAggregate(value: unknown): WorkflowTokenUsageAggregate | undefined {
+export function readStoredTokenUsageAggregate(value: unknown): TokenUsageAggregate | undefined {
   if (!isRecord(value) ||
     !isFiniteNumber(value.inputTokens) ||
     !isFiniteNumber(value.outputTokens) ||
@@ -357,7 +357,7 @@ export function readStoredTokenUsageAggregate(value: unknown): WorkflowTokenUsag
   };
 }
 
-export function readStoredTokenUsageEntry(value: unknown): WorkflowTokenUsageEntry | undefined {
+export function readStoredTokenUsageEntry(value: unknown): TokenUsageEntry | undefined {
   if (!isRecord(value) ||
     typeof value.id !== "string" ||
     typeof value.projectId !== "string" ||

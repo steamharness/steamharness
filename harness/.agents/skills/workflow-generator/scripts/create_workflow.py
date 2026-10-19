@@ -279,55 +279,55 @@ def env_example() -> str:
 
 
 def interface_ts(type_name: str) -> str:
-    return f'''export interface WorkflowPayload {{
+    return f'''export interface RunPayload {{
   errCode: number;
   errMessage: string;
 }}
 
-export type WorkflowOutputContentType = "markdown" | "text" | "json" | "audio" | "video";
+export type OutputContentType = "markdown" | "text" | "json" | "audio" | "video";
 
-export interface WorkflowOutputDisplay {{
+export interface OutputDisplay {{
   type: "ring";
   placement?: "inline" | "composer-right";
 }}
 
-export interface WorkflowRingContent {{
+export interface RingContent {{
   value: number;
   total?: number;
   unit?: string;
 }}
 
-export interface WorkflowOutputItem {{
+export interface OutputItem {{
   id: string;
   title: string;
   content: unknown;
   icon?: string;
   iconPreset?: "info" | "success" | "warning" | "error" | "note" | "code" | "list" | "quote" | "none";
-  contentType?: WorkflowOutputContentType;
-  display?: WorkflowOutputDisplay;
+  contentType?: OutputContentType;
+  display?: OutputDisplay;
   collapsed?: boolean;
   metadata?: Record<string, unknown>;
 }}
 
-export interface WorkflowOutputPayload extends WorkflowPayload {{
-  items: WorkflowOutputItem[];
+export interface RunOutputPayload extends RunPayload {{
+  items: OutputItem[];
 }}
 
-export interface WorkflowTimerPayload extends WorkflowPayload {{
+export interface TimerPayload extends RunPayload {{
   timerId: string;
   title: string;
   startedAt: string;
   metadata?: Record<string, unknown>;
 }}
 
-export interface WorkflowTimerRecord extends WorkflowTimerPayload {{
+export interface TimerRecord extends TimerPayload {{
   status: "running" | "success" | "failed" | "cleared";
   endedAt?: string;
   durationMs?: number;
   message?: string;
 }}
 
-export interface WorkflowExecutorResult<Output extends WorkflowPayload> {{
+export interface ExecutorResult<Output extends RunPayload> {{
   ok: boolean;
   data?: Output;
   error?: unknown;
@@ -335,11 +335,11 @@ export interface WorkflowExecutorResult<Output extends WorkflowPayload> {{
 
 export type {type_name}Input = string;
 
-export interface {type_name}OutputPayload extends WorkflowOutputPayload {{
+export interface {type_name}OutputPayload extends RunOutputPayload {{
   success: boolean;
 }}
 
-export type {type_name}Output = WorkflowExecutorResult<{type_name}OutputPayload>;
+export type {type_name}Output = ExecutorResult<{type_name}OutputPayload>;
 '''
 
 

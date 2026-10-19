@@ -3,24 +3,24 @@ import { localizationHtml } from './localization-host';
 import * as vscode from 'vscode';
 import { registerWorkflowConnectionStatus } from './workflow-connection-status';
 import {
-  DEFAULT_STEAMHARNESS_SERVER_URL, WorkflowAccount,
-  type WorkflowAccountState, type WorkflowConnection,
+  DEFAULT_STEAMHARNESS_SERVER_URL, Account,
+  type AccountState, type Connection,
 } from './workflow-auth-client';
 
 const SECRET_KEY = 'studio.workflow.account';
 const PROVIDER_ID = 'studio-workflow';
 
-export class WorkflowAccountController implements vscode.Disposable {
-  private readonly change = new vscode.EventEmitter<WorkflowAccountState>();
+export class AccountController implements vscode.Disposable {
+  private readonly change = new vscode.EventEmitter<AccountState>();
   readonly onDidChange = this.change.event;
   private readonly sessionChange = new vscode.EventEmitter<vscode.AuthenticationProviderAuthenticationSessionsChangeEvent>();
   private previousSession?: vscode.AuthenticationSession;
   private panel?: vscode.WebviewPanel;
-  private readonly account: WorkflowAccount;
+  private readonly account: Account;
   private readonly disposables: vscode.Disposable[] = [];
 
   constructor(private readonly context: vscode.ExtensionContext) {
-    this.account = new WorkflowAccount(this.configuredServer(), {
+    this.account = new Account(this.configuredServer(), {
       get: () => context.secrets.get(SECRET_KEY),
       store: (value) => context.secrets.store(SECRET_KEY, value),
       delete: () => context.secrets.delete(SECRET_KEY),
@@ -99,13 +99,13 @@ export class WorkflowAccountController implements vscode.Disposable {
     await vscode.commands.executeCommand('setContext', 'studio.workflowAccountAvailable', true);
     await this.account.restore();
   }
-  getState(): WorkflowAccountState { return this.account.getState(); }
-  getConnection(): WorkflowConnection | undefined { return this.account.getConnection(); }
+  getState(): AccountState { return this.account.getState(); }
+  getConnection(): Connection | undefined { return this.account.getConnection(); }
   setAiConnection(connection: { serverUrl: string; accessToken: string } | undefined): void {
     this.account.setAiConnection(connection);
   }
-  invalidate(connection: WorkflowConnection): Promise<void> { return this.account.invalidate(connection); }
-  async verifyConnection(connection: WorkflowConnection): Promise<void> {
+  invalidate(connection: Connection): Promise<void> { return this.account.invalidate(connection); }
+  async verifyConnection(connection: Connection): Promise<void> {
     const current = this.account.getConnection();
     if (current?.serverUrl === connection.serverUrl && current.accessToken === connection.accessToken) { await this.account.verify(); }
   }
@@ -162,8 +162,8 @@ export class WorkflowAccountController implements vscode.Disposable {
   }
 }
 
-export async function activateWorkflowAccount(context: vscode.ExtensionContext): Promise<WorkflowAccountController> {
-  const account = new WorkflowAccountController(context);
+export async function activateWorkflowAccount(context: vscode.ExtensionContext): Promise<AccountController> {
+  const account = new AccountController(context);
   context.subscriptions.push(account);
   await account.initialize();
   return account;

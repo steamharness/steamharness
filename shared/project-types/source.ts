@@ -4,37 +4,37 @@ import {
   assertNeverWorkflowExecutorProjectType,
   formatWorkflowProjectTypeMigrationMessage,
   isWorkflowExecutorProjectType,
-  type WorkflowExecutorProjectType,
+  type ExecutorProjectType,
 } from "./index";
 
-export type WorkflowProjectTypeSourceViolationType =
+export type ProjectTypeSourceViolationType =
   | "invalid_executor_project_type"
   | "legacy_conversation_enabled"
   | "project_type_configuration_conflict";
 
-export interface WorkflowProjectTypeSourceViolation {
-  type: WorkflowProjectTypeSourceViolationType;
+export interface ProjectTypeSourceViolation {
+  type: ProjectTypeSourceViolationType;
   message: string;
   fileName: string;
 }
 
-export interface WorkflowProjectTypeSourceInspection {
-  projectType?: WorkflowExecutorProjectType;
-  violations: WorkflowProjectTypeSourceViolation[];
+export interface ProjectTypeSourceInspection {
+  projectType?: ExecutorProjectType;
+  violations: ProjectTypeSourceViolation[];
 }
 
-export class WorkflowProjectTypeMigrationError extends Error {
-  constructor(violations: WorkflowProjectTypeSourceViolation[]) {
+export class ProjectTypeMigrationError extends Error {
+  constructor(violations: ProjectTypeSourceViolation[]) {
     super(`${violations.map((violation) => violation.message).join("\n")}\n\nMigration example:\n${STEAMHARNESS_PROJECT_TYPE_MIGRATION_EXAMPLE}`);
-    this.name = "WorkflowProjectTypeMigrationError";
+    this.name = "ProjectTypeMigrationError";
   }
 }
 
 export function inspectWorkflowProjectTypeSources(
   sources: Array<{ fileName: string; sourceText: string }>,
-): WorkflowProjectTypeSourceInspection {
-  const violations: WorkflowProjectTypeSourceViolation[] = [];
-  const projectTypes: WorkflowExecutorProjectType[] = [];
+): ProjectTypeSourceInspection {
+  const violations: ProjectTypeSourceViolation[] = [];
+  const projectTypes: ExecutorProjectType[] = [];
   let executorCount = 0;
 
   for (const source of sources) {
@@ -149,19 +149,19 @@ export function inspectWorkflowProjectTypeSources(
 
 export function readWorkflowProjectTypeFromSources(
   sources: Array<{ fileName: string; sourceText: string }>,
-): WorkflowExecutorProjectType {
+): ExecutorProjectType {
   const inspection = inspectWorkflowProjectTypeSources(sources);
   if (inspection.violations.length > 0 || inspection.projectType === undefined) {
-    throw new WorkflowProjectTypeMigrationError(inspection.violations);
+    throw new ProjectTypeMigrationError(inspection.violations);
   }
   return inspection.projectType;
 }
 
 function createViolation(
-  type: WorkflowProjectTypeSourceViolationType,
+  type: ProjectTypeSourceViolationType,
   message: string,
   fileName: string,
-): WorkflowProjectTypeSourceViolation {
+): ProjectTypeSourceViolation {
   return { type, message, fileName };
 }
 

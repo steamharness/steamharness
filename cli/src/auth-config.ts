@@ -5,12 +5,12 @@ import {
   normalizeWorkflowAuthConfig,
   resolveWorkflowCliAuthDir,
   resolveWorkflowCliAuthFilePath,
-  type WorkflowAuthConfig,
+  type AuthConfig,
 } from "@steamharness/auth-config";
 
 export async function readCliAuthConfig(
   env: NodeJS.ProcessEnv = process.env,
-): Promise<WorkflowAuthConfig> {
+): Promise<AuthConfig> {
   try {
     const raw = await readFile(resolveWorkflowCliAuthFilePath(env), "utf8");
     return normalizeWorkflowAuthConfig(JSON.parse(raw));
@@ -21,7 +21,7 @@ export async function readCliAuthConfig(
 
 export function readCliAuthConfigSync(
   env: NodeJS.ProcessEnv = process.env,
-): WorkflowAuthConfig {
+): AuthConfig {
   try {
     const raw = readFileSync(resolveWorkflowCliAuthFilePath(env), "utf8");
     return normalizeWorkflowAuthConfig(JSON.parse(raw));
@@ -31,7 +31,7 @@ export function readCliAuthConfigSync(
 }
 
 export async function writeCliAuthConfig(
-  config: WorkflowAuthConfig,
+  config: AuthConfig,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
   const directory = resolveWorkflowCliAuthDir(env);

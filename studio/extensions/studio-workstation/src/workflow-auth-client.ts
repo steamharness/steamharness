@@ -1,33 +1,33 @@
 import { t } from './localization';
 export const DEFAULT_STEAMHARNESS_SERVER_URL = 'http://localhost:7126';
 
-export interface WorkflowUser {
+export interface User {
   userId: string;
   email: string;
   displayName: string;
   avatarUrl?: string;
 }
 
-export interface WorkflowConnection {
+export interface Connection {
   serverUrl: string;
   accessToken: string;
   /** Optional private system-AI service connection kept separate from project auth. */
   aiServerUrl?: string;
   aiAccessToken?: string;
 }
-export interface WorkflowLoginSession extends WorkflowConnection {
-  user: WorkflowUser;
+export interface LoginSession extends Connection {
+  user: User;
   apiKeyId: string;
   expiresAt?: string;
   sessionCookie?: string;
 }
 
-export interface WorkflowAccountState {
+export interface AccountState {
   status: 'signed-out' | 'checking' | 'authenticated' | 'expired' | 'error';
   serverUrl: string;
   aiServerUrl?: string;
   aiConfigured?: boolean;
-  user?: WorkflowUser;
+  user?: User;
   expiresAt?: string;
   error?: string;
   revision: number;
@@ -35,7 +35,7 @@ export interface WorkflowAccountState {
 
 interface ApiEnvelope<T> { errCode: number; errMessage?: string; data?: T }
 interface MeResponse {
-  profile: WorkflowUser | null;
+  profile: User | null;
   principal?: { apiKeyId?: string; expiresAt?: string };
 }
 interface LoginResponse {
@@ -45,7 +45,7 @@ interface LoginResponse {
   expiresAt?: string;
 }
 
-export interface WorkflowSystemAiUsage {
+export interface SystemAiUsage {
   balance: number;
   groups: { groupId: number; name: string; subscriptionType: string; subscription?: {
     status: string; dailyLimitUsd: number | null; dailyUsageUsd: number;
@@ -54,16 +54,16 @@ export interface WorkflowSystemAiUsage {
   } }[];
 }
 
-export class WorkflowAuthError extends Error {
+export class AuthError extends Error {
   constructor(message: string, readonly status?: number) { super(message); }
 }
 
 export function normalizeWorkflowServerUrl(value: string): string {
   let url: URL;
   try { url = new URL(value.trim()); }
-  catch { throw new WorkflowAuthError(t("Enter a valid server address.")); }
+  catch { throw new AuthError(t("Enter a valid server address.")); }
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
-    throw new WorkflowAuthError(t("The server address must use HTTP or HTTPS and contain no credentials or query parameters."));
+    throw new AuthError(t("The server address must use HTTP or HTTPS and contain no credentials or query parameters."));
   }
   return url.toString().replace(/\/+$/, '');
 }
@@ -84,7 +84,7 @@ export function sanitizeWorkflowEnvironment(base: Record<string, string | undefi
   return Object.fromEntries(Object.entries(base).filter(([key, value]) => value !== undefined && !isPrivateEnvironmentKey(key)));
 }
 
-export class WorkflowServerClient {
+export class ServerClient {
   readonly serverUrl: string;
   constructor(serverUrl: string, private readonly fetcher: typeof fetch = fetch) {
     this.serverUrl = normalizeWorkflowServerUrl(serverUrl);
@@ -108,29 +108,29 @@ export class WorkflowServerClient {
         },
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
-    } catch { throw new WorkflowAuthError(t("Cannot connect to SteamHarness Server. Check the server address and network.")); }
+    } catch { throw new AuthError(t("Cannot connect to SteamHarness Server. Check the server address and network.")); }
     options.headersReceived?.(response.headers);
     let payload: ApiEnvelope<T>;
     try { payload = await response.json() as ApiEnvelope<T>; }
-    catch { throw new WorkflowAuthError(t("The server returned an invalid response."), response.status); }
+    catch { throw new AuthError(t("The server returned an invalid response."), response.status); }
     if (!response.ok || payload.errCode !== 0 || payload.data === undefined) {
       const message = response.status === 401
         ? (path === '/api/auth/login' ? t("Incorrect email or password.") : t("Sign-in expired. Sign in again."))
         : response.status === 429 ? t("Too many requests. Try again later.")
           : payload.errMessage || t("SteamHarness Server request failed ({0}).", response.status);
-      throw new WorkflowAuthError(accessToken ? message.replaceAll(accessToken, '[redacted]') : message, response.status);
+      throw new AuthError(accessToken ? message.replaceAll(accessToken, '[redacted]') : message, response.status);
     }
     return payload.data;
   }
 
-  async verify(connection: WorkflowConnection): Promise<WorkflowLoginSession> {
+  async verify(connection: Connection): Promise<LoginSession> {
     if (normalizeWorkflowServerUrl(connection.serverUrl) !== this.serverUrl || !connection.accessToken) {
-      throw new WorkflowAuthError(t("Sign-in credentials do not match the server."), 401);
+      throw new AuthError(t("Sign-in credentials do not match the server."), 401);
     }
     const me = await this.request<MeResponse>('/api/auth/me', { accessToken: connection.accessToken });
     const profile = me.profile;
     if (!profile || typeof profile.userId !== 'string' || !profile.userId || typeof profile.email !== 'string' || typeof profile.displayName !== 'string' || !me.principal?.apiKeyId) {
-      throw new WorkflowAuthError(t("The server did not return valid account information."));
+      throw new AuthError(t("The server did not return valid account information."));
     }
     let avatarUrl: string | undefined;
     if (typeof profile.avatarUrl === 'string' && profile.avatarUrl) {
@@ -146,8 +146,8 @@ export class WorkflowServerClient {
     };
   }
 
-  async login(email: string, password: string): Promise<WorkflowLoginSession> {
-    if (!email.trim() || !password) { throw new WorkflowAuthError(t("Enter your email and password.")); }
+  async login(email: string, password: string): Promise<LoginSession> {
+    if (!email.trim() || !password) { throw new AuthError(t("Enter your email and password.")); }
     let sessionCookie: string | undefined;
     const result = await this.request<LoginResponse>('/api/auth/login', {
       body: { email: email.trim(), password, source: 'desktop', clientName: 'Studio Workstation' },
@@ -157,7 +157,7 @@ export class WorkflowServerClient {
       },
     });
     if (!result.authenticated || !result.accessToken || !result.apiKey?.id) {
-      throw new WorkflowAuthError(t("The server did not return desktop sign-in credentials."));
+      throw new AuthError(t("The server did not return desktop sign-in credentials."));
     }
     try { return { ...await this.verify({ serverUrl: this.serverUrl, accessToken: result.accessToken }), sessionCookie }; }
     catch (error) {
@@ -169,14 +169,14 @@ export class WorkflowServerClient {
     }
   }
 
-  systemAiUsage(connection: WorkflowConnection): Promise<WorkflowSystemAiUsage> {
-    if (!connection.aiServerUrl || !connection.aiAccessToken) { throw new WorkflowAuthError(t('System AI is unavailable.')); }
-    const aiClient = new WorkflowServerClient(connection.aiServerUrl, this.fetcher);
+  systemAiUsage(connection: Connection): Promise<SystemAiUsage> {
+    if (!connection.aiServerUrl || !connection.aiAccessToken) { throw new AuthError(t('System AI is unavailable.')); }
+    const aiClient = new ServerClient(connection.aiServerUrl, this.fetcher);
     return aiClient.request('/api/ai/usage', { accessToken: connection.aiAccessToken });
   }
 
-  async resource(connection: WorkflowConnection, kind: string, target: Record<string, string>): Promise<unknown> {
-    if (normalizeWorkflowServerUrl(connection.serverUrl) !== this.serverUrl || !target.projectId) { throw new WorkflowAuthError('Invalid resource server or project.'); }
+  async resource(connection: Connection, kind: string, target: Record<string, string>): Promise<unknown> {
+    if (normalizeWorkflowServerUrl(connection.serverUrl) !== this.serverUrl || !target.projectId) { throw new AuthError('Invalid resource server or project.'); }
     const prefix = `/api/workflows/${encodeURIComponent(target.projectId)}`;
     const auth = { accessToken: connection.accessToken };
     if (kind === 'knowledge') {
@@ -192,14 +192,14 @@ export class WorkflowServerClient {
     if (kind === 'file') {
       const result = await this.request<{ files: { path: string; content: string; encoding?: string }[] }>(`${prefix}/files?target=${encodeURIComponent(target.target || 'latest')}&includeBinary=true`, auth);
       const file = result.files.find((file) => file.path === target.filePath);
-      if (!file) { throw new WorkflowAuthError(t("File does not exist.")); }
+      if (!file) { throw new AuthError(t("File does not exist.")); }
       return file;
     }
     if (kind === 'project' || kind === 'kanban') { return this.request(`${prefix}/structure`, auth); }
-    throw new WorkflowAuthError('Unsupported resource type.');
+    throw new AuthError('Unsupported resource type.');
   }
 
-  async revoke(session: WorkflowLoginSession): Promise<void> {
+  async revoke(session: LoginSession): Promise<void> {
     const auth = session.sessionCookie ? { sessionCookie: session.sessionCookie } : { accessToken: session.accessToken };
     // API keys cannot manage keys; revoke with the password-login session.
     if (session.sessionCookie) {
@@ -215,28 +215,28 @@ interface SecretStore {
   delete(): PromiseLike<void>;
 }
 
-export class WorkflowAccount {
-  private session?: WorkflowLoginSession;
+export class Account {
+  private session?: LoginSession;
   private verified = false;
   private stored?: string;
   private initialized = false;
   private epoch = 0;
   private writes = Promise.resolve();
   private verification?: { epoch: number; promise: Promise<void> };
-  private state: WorkflowAccountState;
+  private state: AccountState;
   private aiConnection?: { serverUrl: string; accessToken: string };
 
   constructor(
     serverUrl: string, private readonly secrets: SecretStore,
-    private readonly onChange: (state: WorkflowAccountState) => void,
-    private readonly client = (url: string) => new WorkflowServerClient(url),
+    private readonly onChange: (state: AccountState) => void,
+    private readonly client = (url: string) => new ServerClient(url),
   ) {
     this.state = { status: 'signed-out', serverUrl: normalizeWorkflowServerUrl(serverUrl), revision: 0 };
   }
 
-  getState(): WorkflowAccountState { return { ...this.state, user: this.state.user && { ...this.state.user } }; }
-  getSession(): WorkflowLoginSession | undefined { return this.verified ? this.session : undefined; }
-  getConnection(): WorkflowConnection | undefined {
+  getState(): AccountState { return { ...this.state, user: this.state.user && { ...this.state.user } }; }
+  getSession(): LoginSession | undefined { return this.verified ? this.session : undefined; }
+  getConnection(): Connection | undefined {
     const session = this.getSession();
     return session ? { serverUrl: session.serverUrl, accessToken: session.accessToken,
       ...(this.aiConnection ? { aiServerUrl: this.aiConnection.serverUrl, aiAccessToken: this.aiConnection.accessToken } : {}) } : undefined;
@@ -244,7 +244,7 @@ export class WorkflowAccount {
 
   setAiConnection(connection: { serverUrl: string; accessToken: string } | undefined): void {
     if (connection && (typeof connection.accessToken !== 'string' || !connection.accessToken || connection.accessToken.length > 16_384)) {
-      throw new WorkflowAuthError(t('Invalid AI login.'));
+      throw new AuthError(t('Invalid AI login.'));
     }
     this.aiConnection = connection
       ? { serverUrl: normalizeWorkflowServerUrl(connection.serverUrl), accessToken: connection.accessToken }
@@ -253,13 +253,13 @@ export class WorkflowAccount {
     this.onChange(this.getState());
   }
 
-  private update(status: WorkflowAccountState['status'], error?: string): void {
+  private update(status: AccountState['status'], error?: string): void {
     this.state = { status, serverUrl: this.state.serverUrl, aiServerUrl: this.aiConnection?.serverUrl,
       aiConfigured: this.aiConnection !== undefined, user: this.session?.user, expiresAt: this.session?.expiresAt, error, revision: this.state.revision + 1 };
     this.onChange(this.getState());
   }
 
-  private async save(session: WorkflowLoginSession | undefined, epoch: number): Promise<void> {
+  private async save(session: LoginSession | undefined, epoch: number): Promise<void> {
     this.writes = this.writes.catch(() => undefined).then(async () => {
       if (epoch !== this.epoch) { return; }
       const encoded = session ? JSON.stringify(session) : undefined;
@@ -289,7 +289,7 @@ export class WorkflowAccount {
     this.verified = false;
     if (!encoded) { this.aiConnection = undefined; this.update('signed-out'); return; }
     try {
-      const saved = JSON.parse(encoded) as WorkflowLoginSession;
+      const saved = JSON.parse(encoded) as LoginSession;
       if (typeof saved.accessToken !== 'string' || !saved.accessToken || normalizeWorkflowServerUrl(saved.serverUrl) !== this.state.serverUrl) {
         this.aiConnection = undefined;
         await this.save(undefined, epoch); this.update('signed-out'); return;
@@ -357,7 +357,7 @@ export class WorkflowAccount {
         this.update('authenticated');
       } catch (error) {
         if (epoch !== this.epoch) { return; }
-        if (error instanceof WorkflowAuthError && error.status === 401) {
+        if (error instanceof AuthError && error.status === 401) {
           this.session = undefined;
           this.verified = false;
           this.aiConnection = undefined;
@@ -371,7 +371,7 @@ export class WorkflowAccount {
     finally { if (this.verification?.epoch === epoch) { this.verification = undefined; } }
   }
 
-  async invalidate(connection: WorkflowConnection): Promise<void> {
+  async invalidate(connection: Connection): Promise<void> {
     if (this.session?.accessToken !== connection.accessToken || this.session.serverUrl !== connection.serverUrl) { return; }
     const epoch = ++this.epoch;
     this.session = undefined;
@@ -404,12 +404,12 @@ export class WorkflowAccount {
   }
 }
 
-function sameProjectAccount(left: WorkflowLoginSession, right: WorkflowLoginSession): boolean {
+function sameProjectAccount(left: LoginSession, right: LoginSession): boolean {
   return left.serverUrl === right.serverUrl && left.user.userId === right.user.userId;
 }
 
 export function workflowAuthEnvironment(
-  base: Record<string, string | undefined>, connection: WorkflowConnection | undefined, authDirectory: string,
+  base: Record<string, string | undefined>, connection: Connection | undefined, authDirectory: string,
 ): Record<string, string | undefined> {
   const cleanBase = sanitizeWorkflowEnvironment(base);
   delete cleanBase.STEAMHARNESS_LLM_SERVER_URL;

@@ -1,63 +1,63 @@
 import type {
   NodeExecutionHooks,
-  WorkflowUserInputRequest,
-  WorkflowUserInputResolved,
+  UserInputRequest,
+  UserInputResolved,
 } from "../types/index";
 import {
   createWorkflowTimerContext,
-  type WorkflowTimerContext,
+  type TimerContext,
 } from "../timer/index";
 import {
   createWorkflowFailure,
-  WorkflowError,
-  type WorkflowResult,
+  HarnessError,
+  type RunResult,
 } from "../workflow/index";
 import {
   combineNodeExecutionHooks,
   createNodeExecutionReporter,
   createWorkflowExecutionReport,
   resolveWorkflowResultStatus,
-  type WorkflowOutputReport,
-  type WorkflowExecutionReport,
-  type WorkflowRuntimeEvent,
-  type WorkflowRunStatus,
-  type WorkflowExecutionReportTokenUsage,
+  type OutputReport,
+  type ExecutionReport,
+  type RuntimeEvent,
+  type RunStatus,
+  type ExecutionReportTokenUsage,
 } from "./report";
-import type { WorkflowNodeRegistryItem } from "./types";
-import type { WorkflowDefinedNode } from "./rules";
+import type { NodeRegistryItem } from "./types";
+import type { DefinedNode } from "./rules";
 
-export interface WorkflowRuntimeLayer {
+export interface RuntimeLayer {
   name?: string;
-  onBeforeRun?(runtime: WorkflowRuntime): Promise<void> | void;
+  onBeforeRun?(runtime: Runtime): Promise<void> | void;
   onRuntimeEvent?(
-    event: WorkflowRuntimeEvent,
-    runtime: WorkflowRuntime,
+    event: RuntimeEvent,
+    runtime: Runtime,
   ): Promise<void> | void;
-  createNodeHooks?(runtime: WorkflowRuntime): NodeExecutionHooks | undefined;
+  createNodeHooks?(runtime: Runtime): NodeExecutionHooks | undefined;
   onAfterRun?(
-    report: WorkflowExecutionReport<unknown>,
-    runtime: WorkflowRuntime,
+    report: ExecutionReport<unknown>,
+    runtime: Runtime,
   ): Promise<void> | void;
 }
 
-export interface WorkflowRuntimeOptions {
+export interface RuntimeOptions {
   workflowName: string;
   runId?: string;
   abortSignal?: AbortSignal;
   timeoutMs?: number;
   nodeHooks?: NodeExecutionHooks;
-  onRuntimeEvent?(event: WorkflowRuntimeEvent): Promise<void> | void;
-  layers?: WorkflowRuntimeLayer[];
+  onRuntimeEvent?(event: RuntimeEvent): Promise<void> | void;
+  layers?: RuntimeLayer[];
 }
 
-export interface WorkflowRuntimeFinishOptions<Output> {
-  definedNodes?: WorkflowDefinedNode[];
-  registry?: WorkflowNodeRegistryItem[];
+export interface RuntimeFinishOptions<Output> {
+  definedNodes?: DefinedNode[];
+  registry?: NodeRegistryItem[];
   entrypointId?: string;
   entrypointTitle?: string;
   conversationId?: string;
-  tokenUsage?: WorkflowExecutionReportTokenUsage;
-  result: WorkflowResult<Output>;
+  tokenUsage?: ExecutionReportTokenUsage;
+  result: RunResult<Output>;
 }
 
 export interface ExecutionLimitLayerOptions {
@@ -66,28 +66,28 @@ export interface ExecutionLimitLayerOptions {
 
 export interface RuntimePersistenceLayerOptions {
   name?: string;
-  onEvent?(event: WorkflowRuntimeEvent): Promise<void> | void;
-  onReport?(report: WorkflowExecutionReport<unknown>): Promise<void> | void;
+  onEvent?(event: RuntimeEvent): Promise<void> | void;
+  onReport?(report: ExecutionReport<unknown>): Promise<void> | void;
 }
 
-export class WorkflowRuntime {
+export class Runtime {
   readonly runId: string;
   readonly workflowName: string;
   readonly startedAt: Date;
   readonly abortController: AbortController;
-  readonly timers: WorkflowTimerContext;
+  readonly timers: TimerContext;
 
   private readonly reporter;
   private readonly timeout?: ReturnType<typeof setTimeout>;
-  private readonly layers: WorkflowRuntimeLayer[];
+  private readonly layers: RuntimeLayer[];
   private readonly nodeHooks?: NodeExecutionHooks;
-  private readonly onRuntimeEvent?: (event: WorkflowRuntimeEvent) => Promise<void> | void;
+  private readonly onRuntimeEvent?: (event: RuntimeEvent) => Promise<void> | void;
   private endedAt?: Date;
   private prepared = false;
   private started = false;
-  private status: WorkflowRunStatus = "running";
+  private status: RunStatus = "running";
 
-  constructor(options: WorkflowRuntimeOptions) {
+  constructor(options: RuntimeOptions) {
     this.runId = options.runId ?? createWorkflowRunId();
     this.workflowName = options.workflowName;
     this.startedAt = new Date();
@@ -125,7 +125,7 @@ export class WorkflowRuntime {
     return this.abortController.signal;
   }
 
-  get currentStatus(): WorkflowRunStatus {
+  get currentStatus(): RunStatus {
     return this.status;
   }
 
@@ -185,7 +185,7 @@ export class WorkflowRuntime {
 
   async emitTokenUsageUpdated(event: {
     conversationId?: string;
-    usage: WorkflowExecutionReportTokenUsage["run"];
+    usage: ExecutionReportTokenUsage["run"];
     updatedAt: Date;
   }): Promise<void> {
     await this.reporter.emitTokenUsageUpdated({
@@ -197,17 +197,17 @@ export class WorkflowRuntime {
     });
   }
 
-  async emitUserInputRequested(event: WorkflowUserInputRequest): Promise<void> {
+  async emitUserInputRequested(event: UserInputRequest): Promise<void> {
     await this.reporter.emitUserInputRequested(event);
   }
 
-  async emitUserInputResolved(event: WorkflowUserInputResolved): Promise<void> {
+  async emitUserInputResolved(event: UserInputResolved): Promise<void> {
     await this.reporter.emitUserInputResolved(event);
   }
 
   async finish<Output>(
-    options: WorkflowRuntimeFinishOptions<Output>,
-  ): Promise<WorkflowExecutionReport<Output>> {
+    options: RuntimeFinishOptions<Output>,
+  ): Promise<ExecutionReport<Output>> {
     clearWorkflowTimeout(this.timeout);
     this.endedAt = new Date();
     const outputs = this.reporter.getOutputs();
@@ -257,13 +257,13 @@ export class WorkflowRuntime {
     });
 
     for (const layer of this.layers) {
-      await layer.onAfterRun?.(report as WorkflowExecutionReport<unknown>, this);
+      await layer.onAfterRun?.(report as ExecutionReport<unknown>, this);
     }
 
     return report;
   }
 
-  private async emitRuntimeEvent(event: WorkflowRuntimeEvent): Promise<void> {
+  private async emitRuntimeEvent(event: RuntimeEvent): Promise<void> {
     for (const layer of this.layers) {
       await layer.onRuntimeEvent?.(event, this);
     }
@@ -273,14 +273,14 @@ export class WorkflowRuntime {
 }
 
 export function createWorkflowRuntime(
-  options: WorkflowRuntimeOptions,
-): WorkflowRuntime {
-  return new WorkflowRuntime(options);
+  options: RuntimeOptions,
+): Runtime {
+  return new Runtime(options);
 }
 
 export function createExecutionLimitLayer(
   options: ExecutionLimitLayerOptions,
-): WorkflowRuntimeLayer {
+): RuntimeLayer {
   const maxNodeExecutions = normalizePositiveInteger(options.maxNodeExecutions);
 
   return {
@@ -297,7 +297,7 @@ export function createExecutionLimitLayer(
           nodeExecutions += 1;
 
           if (nodeExecutions > maxNodeExecutions) {
-            runtime.abort(new WorkflowError({
+            runtime.abort(new HarnessError({
               type: "execution_aborted",
               message: `Workflow "${runtime.workflowName}" exceeded node execution limit of ${maxNodeExecutions}.`,
               metadata: {
@@ -315,7 +315,7 @@ export function createExecutionLimitLayer(
 
 export function createRuntimePersistenceLayer(
   options: RuntimePersistenceLayerOptions,
-): WorkflowRuntimeLayer {
+): RuntimeLayer {
   return {
     name: options.name ?? "runtime-persistence",
     onRuntimeEvent(event) {
@@ -336,11 +336,11 @@ export function createWorkflowRunId(): string {
 export function createWorkflowAbortError(
   signal: AbortSignal,
   workflowName: string,
-): WorkflowError {
+): HarnessError {
   const reason = signal.reason;
 
-  if (reason instanceof WorkflowTimeoutError) {
-    return new WorkflowError({
+  if (reason instanceof TimeoutError) {
+    return new HarnessError({
       type: "execution_aborted",
       message: `Workflow "${workflowName}" timed out after ${reason.timeoutMs}ms.`,
       metadata: {
@@ -351,11 +351,11 @@ export function createWorkflowAbortError(
     });
   }
 
-  if (reason instanceof WorkflowError) {
+  if (reason instanceof HarnessError) {
     return reason;
   }
 
-  return new WorkflowError({
+  return new HarnessError({
     type: "execution_aborted",
     message: reason instanceof Error
       ? reason.message
@@ -371,7 +371,7 @@ export function createWorkflowAbortError(
 export function createAbortedWorkflowResult(
   signal: AbortSignal,
   workflowName: string,
-): WorkflowResult<never> {
+): RunResult<never> {
   return createWorkflowFailure(createWorkflowAbortError(signal, workflowName));
 }
 
@@ -407,7 +407,7 @@ function createWorkflowTimeout(
   }
 
   return setTimeout(() => {
-    controller.abort(new WorkflowTimeoutError(timeoutMs));
+    controller.abort(new TimeoutError(timeoutMs));
   }, timeoutMs);
 }
 
@@ -426,27 +426,27 @@ function throwIfAborted(signal: AbortSignal, workflowName: string): void {
 }
 
 function resolveWorkflowRunStatus(
-  result: WorkflowResult<unknown>,
+  result: RunResult<unknown>,
   signal: AbortSignal,
-  outputs: WorkflowOutputReport[] = [],
-): WorkflowRunStatus {
+  outputs: OutputReport[] = [],
+): RunStatus {
   if (result.ok) {
     return resolveWorkflowResultStatus(result, outputs);
   }
 
-  if (signal.aborted && signal.reason instanceof WorkflowTimeoutError) {
+  if (signal.aborted && signal.reason instanceof TimeoutError) {
     return "timed_out";
   }
 
   if (result.error.type === "execution_aborted") {
-    return signal.reason instanceof WorkflowTimeoutError ? "timed_out" : "aborted";
+    return signal.reason instanceof TimeoutError ? "timed_out" : "aborted";
   }
 
   return "failed";
 }
 
 function readTimeoutMs(signal: AbortSignal): number | undefined {
-  return signal.reason instanceof WorkflowTimeoutError ? signal.reason.timeoutMs : undefined;
+  return signal.reason instanceof TimeoutError ? signal.reason.timeoutMs : undefined;
 }
 
 function normalizePositiveInteger(value: number | undefined): number | undefined {
@@ -457,12 +457,12 @@ function normalizePositiveInteger(value: number | undefined): number | undefined
   return Math.floor(value);
 }
 
-class WorkflowTimeoutError extends Error {
+class TimeoutError extends Error {
   readonly timeoutMs: number;
 
   constructor(timeoutMs: number) {
     super(`Workflow timed out after ${timeoutMs}ms.`);
-    this.name = "WorkflowTimeoutError";
+    this.name = "TimeoutError";
     this.timeoutMs = timeoutMs;
   }
 }

@@ -5,7 +5,7 @@ import {
   createDisabledWorkflowTokenUsageContext,
   createWorkflowRelatedProjectsContext,
   createWorkflowToolPermissionContext,
-  type WorkflowKVContext,
+  type KVContext,
 } from "steamharness";
 import type { NodeContext } from "steamharness/types/context";
 import type { ClaudeAgentInput, ClaudeAgentParsedInput } from "../interface";
@@ -153,7 +153,7 @@ describe("claude-agent input node", () => {
       signal: new AbortController().signal,
       toolUseID: "toolu-wait",
     })).rejects.toMatchObject({
-      name: "WorkflowError",
+      name: "HarnessError",
       type: "user_input_required",
     });
   });
@@ -244,7 +244,7 @@ function createNodeContext(
   };
 }
 
-function createMemoryKVContext(): WorkflowKVContext {
+function createMemoryKVContext(): KVContext {
   const values = new Map<string, unknown>();
   function createNamespace(prefix: string) {
     return {

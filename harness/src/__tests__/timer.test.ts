@@ -6,16 +6,16 @@ import {
   createWorkflowRelatedProjectsContext,
   createTimerNode,
   endTimer,
-  type WorkflowRuntimeEvent,
+  type RuntimeEvent,
 } from "../index";
 import { analyzeWorkflowScriptSource } from "../executor/rules";
 import { createWorkflowRuntime } from "../executor/runtime";
-import type { WorkflowKVContext } from "../kv/index";
+import type { KVContext } from "../kv/index";
 import { runNode } from "../workflow/index";
-import type { WorkflowContext } from "../types/index";
+import type { RunContext } from "../types/index";
 
 test("timer node starts and endTimer finishes a business timer", async () => {
-  const events: WorkflowRuntimeEvent[] = [];
+  const events: RuntimeEvent[] = [];
   const runtime = createWorkflowRuntime({
     workflowName: "timer-workflow",
     runId: "run-timer",
@@ -71,7 +71,7 @@ test("endTimer supports failed status and rejects duplicate finish", async () =>
 });
 
 test("runtime finish clears running timers before terminal report", async () => {
-  const events: WorkflowRuntimeEvent[] = [];
+  const events: RuntimeEvent[] = [];
   const runtime = createWorkflowRuntime({
     workflowName: "timer-fixture",
     runId: "run-clear",
@@ -124,7 +124,7 @@ test("workflow structure recognizes timer node and endTimer API call", () => {
   assert.equal(analysis.structureApiCalls.some((call) => call.method === "endTimer"), true);
 });
 
-function createTestWorkflowContext(timers: WorkflowContext["timers"]): WorkflowContext {
+function createTestWorkflowContext(timers: RunContext["timers"]): RunContext {
   const kv = createMemoryKVContext();
   return {
     providers: {},
@@ -138,7 +138,7 @@ function createTestWorkflowContext(timers: WorkflowContext["timers"]): WorkflowC
   };
 }
 
-function createMemoryKVContext(): WorkflowKVContext {
+function createMemoryKVContext(): KVContext {
   const values = new Map<string, unknown>();
 
   function createNamespace(prefix: string) {

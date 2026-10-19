@@ -3,17 +3,17 @@ import {
   createAnswerItemStartChunk,
   createToolEndChunks,
   createToolStartChunk,
-  type WorkflowOutputItemChunk,
+  type OutputItemChunk,
 } from "./output-items";
 
 export async function* runPiAgentStream(
   events: AsyncIterable<PiAgentSessionEvent>,
-): AsyncGenerator<WorkflowOutputItemChunk> {
+): AsyncGenerator<OutputItemChunk> {
   let answerItemId: string | undefined;
   let answerSegmentIndex = 0;
   const startedToolCalls = new Set<string>();
 
-  const closeAnswerSegment = function* (): Generator<WorkflowOutputItemChunk> {
+  const closeAnswerSegment = function* (): Generator<OutputItemChunk> {
     if (answerItemId === undefined) {
       return;
     }

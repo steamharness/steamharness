@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { defineWorkflowExecutor, inspectLocalWorkflowStructure, normalizeWorkflowParamDeclarations, parseWorkflowParamValues,
-  validateWorkflowParamResolveResult, type WorkflowConversationParamDeclaration, type WorkflowParamDeclaration } from "../index";
+  validateWorkflowParamResolveResult, type ConversationParamDeclaration, type ParamDeclaration } from "../index";
 
 const commands = [
   { command: "export", label: "Export conversation", action: { kind: "export" as const } },
@@ -22,7 +22,7 @@ test("Conversation execution commands are independent of parameters and reject c
   ]) { assert.throws(() => defineWorkflowExecutor({ ...definition, conversation: { commands: invalid as never } }), /Conversation commands/); }
 });
 
-const params: WorkflowConversationParamDeclaration[] = [
+const params: ConversationParamDeclaration[] = [
   { kind: "slash", name: "agent", flag: "--agent", type: "string", defaultValue: "build", options: [
     { value: "build", label: "Build" }, { value: "plan", label: "Plan" },
   ] },
@@ -86,7 +86,7 @@ test("Conversation user input configures composer visibility and generic paramet
 });
 
 test("resolved Slash options preserve aliases and reject conflicting or invalid commands", () => {
-  const aliased = [{ ...params[0], defaultValue: "planning", options: [{ value: "planning", command: "plan" }] }, params[1]] as WorkflowParamDeclaration[];
+  const aliased = [{ ...params[0], defaultValue: "planning", options: [{ value: "planning", command: "plan" }] }, params[1]] as ParamDeclaration[];
   const result = { params: { agent: { resolvedOptions: [{ value: "planning", label: "Planning" }] } } };
   assert.deepEqual(validateWorkflowParamResolveResult(aliased, result), result);
   for (const option of [{ value: "search" }, { value: "other", command: "search" }, { value: "other", command: "/bad" }, { value: "other", command: 123 }]) {

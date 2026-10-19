@@ -11,7 +11,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runLocalWorkflowWithReport, type WorkflowKVStore, type WorkflowRuntimeEvent } from "steamharness";
+import { runLocalWorkflowWithReport, type KVStore, type RuntimeEvent } from "steamharness";
 import {
   createBilibiliPlayUrl,
   fetchBilibiliDownloadUrl,
@@ -574,9 +574,9 @@ describe("deltaforce-bilibili-collect workflow runtime", () => {
 
 async function runWithMockEnv(options: {
   args: string[];
-  persistentValueStore?: WorkflowKVStore;
+  persistentValueStore?: KVStore;
   env?: Record<string, string>;
-  onRuntimeEvent?(event: WorkflowRuntimeEvent): Promise<void> | void;
+  onRuntimeEvent?(event: RuntimeEvent): Promise<void> | void;
 }) {
   const kvStoreDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-bilibili-test-"));
   try {
@@ -678,12 +678,12 @@ interface MemoryRecord {
   markdown: string;
 }
 
-function createMemoryKVStore(): WorkflowKVStore & { records: Map<string, MemoryRecord> } {
+function createMemoryKVStore(): KVStore & { records: Map<string, MemoryRecord> } {
   const records = new Map<string, MemoryRecord>();
   const namespaceTails = new Map<string, Promise<void>>();
   const compositeKey = (input: { storageKind: string; scope: string; projectId: string; conversationId?: string; key: string }): string =>
     [input.storageKind, input.scope, input.projectId, input.conversationId ?? "", input.key].join(":");
-  const store: WorkflowKVStore & { records: Map<string, MemoryRecord> } = {
+  const store: KVStore & { records: Map<string, MemoryRecord> } = {
     records,
     async getValue(input) {
       return records.get(compositeKey(input)) as MemoryRecord | undefined;

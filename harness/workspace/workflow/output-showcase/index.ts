@@ -665,7 +665,7 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
     return;
   }
 
-  throw new workflow.WorkflowError({
+  throw new workflow.HarnessError({
     type: "execution_aborted",
     message: "Output showcase run was cancelled.",
     cause: signal.reason,

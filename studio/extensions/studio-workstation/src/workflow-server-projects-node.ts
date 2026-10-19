@@ -3,11 +3,11 @@ import { mkdir, mkdtemp, readFile, readdir, rename, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { t, locale } from './localization';
-import { WorkflowAuthError, type WorkflowConnection } from './workflow-auth-client';
-import { WorkflowProjectServerClient, type DownloadedServerProject, type ProjectPreparation, type ProjectTransferProgress } from './workflow-server-projects';
+import { AuthError, type Connection } from './workflow-auth-client';
+import { ProjectServerClient, type DownloadedServerProject, type ProjectPreparation, type ProjectTransferProgress } from './workflow-server-projects';
 
 interface TransferOptions {
-  cliEntry: string; runtimeDirectory: string; nodePath: string; connection: WorkflowConnection;
+  cliEntry: string; runtimeDirectory: string; nodePath: string; connection: Connection;
   signal: AbortSignal; progress: (value: ProjectTransferProgress) => void;
 }
 
@@ -60,10 +60,10 @@ export async function uploadServerProject(options: TransferOptions & { projectId
   if (!/^\d+\.\d+\.\d+$/.test(options.version)) { throw new Error(t('Declare a valid project UUID and version in package.json first.')); }
   const temporary = await mkdtemp(path.join(tmpdir(), 'studio-upload-'));
   try {
-    const client = new WorkflowProjectServerClient(options.connection);
+    const client = new ProjectServerClient(options.connection);
     let create = false;
     try { await client.versions(options.projectId, options.signal); }
-    catch (error) { if (error instanceof WorkflowAuthError && error.status === 404) { create = true; } else { throw error; } }
+    catch (error) { if (error instanceof AuthError && error.status === 404) { create = true; } else { throw error; } }
     options.progress({ message: t('Packing and uploading project') });
     const job = await runWorkspaceTransfer(options, ['upload', options.projectId, '--path', options.directory, ...(create ? ['--create'] : []), '--no-wait'], temporary) as { jobId: string };
     if (typeof job?.jobId !== 'string') { throw new Error(t('The server returned an invalid response.')); }

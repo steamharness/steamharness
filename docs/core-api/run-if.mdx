@@ -12,21 +12,21 @@ description: "执行 if / else-if / else 分支节点，并把分支选择写入
 ```ts
 workflow.runIf<Input, Output>(
   input: Input,
-  context: WorkflowContext,
+  context: RunContext,
   options: {
     name?: string;
     branches: Array<{
       label: string;
       description?: string;
-      condition(input: Input, context: WorkflowContext): boolean | Promise<boolean>;
-      run(input: Input, context: WorkflowContext): Output | Promise<Output>;
+      condition(input: Input, context: RunContext): boolean | Promise<boolean>;
+      run(input: Input, context: RunContext): Output | Promise<Output>;
     }>;
     else?: {
       label?: string;
       description?: string;
-      run(input: Input, context: WorkflowContext): Output | Promise<Output>;
+      run(input: Input, context: RunContext): Output | Promise<Output>;
     };
-    metadata?: Partial<WorkflowNodeMetadata>;
+    metadata?: Partial<NodeMetadata>;
   },
 ): Promise<Output>
 ```
@@ -36,11 +36,11 @@ workflow.runIf<Input, Output>(
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
 | `input` | `Input` | 分支判断和分支执行共用的输入。 |
-| `context` | `WorkflowContext` | runtime 上下文，用于 hooks、provider、KV、files、abortSignal。 |
+| `context` | `RunContext` | runtime 上下文，用于 hooks、provider、KV、files、abortSignal。 |
 | `options.name` | `string` | Diagram 和 Trace 中显示的分支节点标题。默认 `Run if`。 |
 | `options.branches` | `RunIfBranch[]` | 按顺序检查的 if / else-if 分支。第一个元素显示为 `if`，后续元素显示为 `else-if`。 |
 | `options.else` | `RunIfElseBranch` | 可选 fallback。未命中且没有 `else` 时会抛错。 |
-| `options.metadata` | `Partial<WorkflowNodeMetadata>` | 覆盖分支节点元信息，默认 type 为 `run-if`。 |
+| `options.metadata` | `Partial<NodeMetadata>` | 覆盖分支节点元信息，默认 type 为 `run-if`。 |
 
 ## 分支
 
@@ -100,5 +100,5 @@ const loadout = await workflow.runIf(seed, context, {
 | 情况 | 错误类型 | 说明 |
 | --- | --- | --- |
 | 未命中且没有 `else` | `node_execution` | 抛出 `Run-if node "<name>" did not match any branch.`。 |
-| 分支 condition/run 抛错 | `node_execution` | 原错误会被包装成 `WorkflowError` 并写入 branch-node 报告。 |
+| 分支 condition/run 抛错 | `node_execution` | 原错误会被包装成 `HarnessError` 并写入 branch-node 报告。 |
 | 执行前或分支判断中中断 | `execution_aborted` 或 `node_execution` | 来自 `context.abortSignal`。 |

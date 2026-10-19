@@ -1,9 +1,9 @@
 import { CONVERSATION_STATE_KEY } from "../../conversation/index";
 import { TOKEN_USAGE_ENTRY_KEY_PREFIX, TOKEN_USAGE_TOTAL_KEY } from "../../token-usage/index";
-import { WorkflowError } from "../../workflow/errors";
+import { HarnessError } from "../../workflow/errors";
 import type { NodeContext } from "../../types/context";
 import { selectWorkflowStorage } from "./storage";
-import type { WorkflowCapability } from "./types";
+import type { Capability } from "./types";
 
 export const KV_MCP_SERVER_ID = "workflow-kv";
 export const KV_MCP_TOOL_NAME = "kv_store";
@@ -46,14 +46,14 @@ export async function runKvAction(
   // Nothing validates the arguments on the way in — an MCP client publishes
   // the schema but is not obliged to honour it — so the shape is checked here.
   if (args.action !== "get" && args.action !== "set") {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `kv_store action is invalid: ${String(args.action)}.`,
       nodeName: KV_MCP_TOOL_ID,
     });
   }
   if (args.scope !== "project" && args.scope !== "conversation") {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `kv_store scope is invalid: ${String(args.scope)}.`,
       nodeName: KV_MCP_TOOL_ID,
@@ -77,7 +77,7 @@ export async function runKvAction(
   }
 
   if (args.value === undefined) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: 'kv_store action "set" requires value.',
       nodeName: KV_MCP_TOOL_ID,
@@ -92,14 +92,14 @@ export async function runKvAction(
 function readKey(value: unknown): string {
   const key = typeof value === "string" ? value.trim() : "";
   if (key === "") {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "kv_store requires a non-empty key.",
       nodeName: KV_MCP_TOOL_ID,
     });
   }
   if (key.length > MAX_KEY_LENGTH) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `kv_store key must be at most ${String(MAX_KEY_LENGTH)} characters.`,
       nodeName: KV_MCP_TOOL_ID,
@@ -118,7 +118,7 @@ function assertKeyWritable(scope: KvScope, key: string): void {
     return;
   }
 
-  throw new WorkflowError({
+  throw new HarnessError({
     type: "input_validation",
     message: `kv_store cannot write "${key}": this key belongs to the workflow runtime.`,
     nodeName: KV_MCP_TOOL_ID,
@@ -130,7 +130,7 @@ function assertJsonSerializable(value: unknown): void {
   try {
     if (JSON.stringify(value) === undefined) throw new Error("value cannot be represented as JSON");
   } catch (error) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: `kv_store value must be JSON serializable: ${error instanceof Error ? error.message : String(error)}.`,
       nodeName: KV_MCP_TOOL_ID,
@@ -138,7 +138,7 @@ function assertJsonSerializable(value: unknown): void {
   }
 }
 
-export const KV_CAPABILITY: WorkflowCapability = {
+export const KV_CAPABILITY: Capability = {
   serverId: KV_MCP_SERVER_ID,
   toolName: KV_MCP_TOOL_NAME,
   toolId: KV_MCP_TOOL_ID,

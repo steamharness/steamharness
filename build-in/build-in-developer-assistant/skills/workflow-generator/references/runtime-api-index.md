@@ -8,14 +8,14 @@
 
 ## 关联项目（`context.storage.<local|server>.relatedProjects.get(alias)`）
 
-### 关联项目上下文（`WorkflowRelatedProjectStorageContext`）
+### 关联项目上下文（`RelatedProjectStorageContext`）
 
 - `kv`
 - `knowledge`
 - `listEntrypoints()`
 - `runEntrypoint(entrypointId, args)`
 
-### 关联项目知识库（`WorkflowRelatedProjectKnowledgeContext`）
+### 关联项目知识库（`RelatedProjectKnowledgeContext`）
 
 - `listDocuments(input)`
 - `getDocument(documentId)`
@@ -25,7 +25,7 @@
 - `searchDocuments(input)`
 - `readDocumentLines(input)`
 
-### 关联项目入口运行器（`WorkflowRelatedProjectRunner`）
+### 关联项目入口运行器（`RelatedProjectRunner`）
 
 - `listEntrypoints()`
 - `run(entrypointId, args)`
@@ -105,7 +105,7 @@
 - `workflow.runWhile(...)`
 - `workflow.runWorkflow(...)`
 - `workflow.searchKnowledgeDocuments(...)`
-- `workflow.WorkflowError(...)`
+- `workflow.HarnessError(...)`
 
 每个成员的契约（参数、返回值、错误码）在 `references/steamharness-api.md` 里按小节说明。
 

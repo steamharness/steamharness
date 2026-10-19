@@ -12,7 +12,7 @@ printf '%s' '{"draftText":"Search the documentation","args":["--tone","balanced"
   | steamharness resolve-params ./workspace/workflow/example --entrypoint search
 ```
 
-On success stdout returns `WorkflowParamResolveResult`:
+On success stdout returns `ParamResolveResult`:
 
 ```json
 {"params":{"tone":{"value":"precise","resolvedOptions":[{"value":"precise","label":"Precise"},{"value":"creative","label":"Creative"}],"options":{"creative":{"disabled":true}}}}}

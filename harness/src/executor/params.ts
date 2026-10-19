@@ -1,24 +1,24 @@
-import { WorkflowError } from "../workflow/index";
+import { HarnessError } from "../workflow/index";
 import type {
-  WorkflowParamDefinition,
-  WorkflowParamDeclaration,
-  WorkflowParamResolveResult,
-  WorkflowParamStatePatch,
-  WorkflowParamValue,
-  WorkflowParamValues,
+  ParamDefinition,
+  ParamDeclaration,
+  ParamResolveResult,
+  ParamStatePatch,
+  ParamValue,
+  ParamValues,
 } from "./types";
 import { assertWorkflowParamDefinitions, isWorkflowDateParamControl, normalizeWorkflowParamDeclarations } from "./param-definition";
 
 export function parseWorkflowParamValues(
-  params: WorkflowParamDeclaration[] | undefined,
+  params: ParamDeclaration[] | undefined,
   args: string[],
-): WorkflowParamValues {
+): ParamValues {
   const definitions = normalizeWorkflowParamDeclarations(params).params;
-  const values: WorkflowParamValues = Object.fromEntries(definitions.map((param) => [
+  const values: ParamValues = Object.fromEntries(definitions.map((param) => [
     param.name,
     isMultiParam(param) ? readMultiValue(param.defaultValue ?? "") : param.defaultValue ?? "",
   ]));
-  const flags = new Map<string, WorkflowParamDefinition>();
+  const flags = new Map<string, ParamDefinition>();
   const positional = definitions.filter((param) => param.type === "positional");
 
   for (const param of definitions) {
@@ -59,13 +59,13 @@ export function parseWorkflowParamValues(
 }
 
 export function validateWorkflowParamResolveResult(
-  params: WorkflowParamDeclaration[] | undefined,
-  result: WorkflowParamResolveResult,
-): WorkflowParamResolveResult {
+  params: ParamDeclaration[] | undefined,
+  result: ParamResolveResult,
+): ParamResolveResult {
   const fields = normalizeWorkflowParamDeclarations(params).params;
   assertWorkflowParamDefinitions(fields);
   const definitions = new Map(fields.map((param) => [param.name, param]));
-  const patches: Record<string, WorkflowParamStatePatch> = {};
+  const patches: Record<string, ParamStatePatch> = {};
 
   for (const [name, patch] of Object.entries(result.params ?? {})) {
     const param = definitions.get(name);
@@ -110,7 +110,7 @@ export function validateWorkflowParamResolveResult(
 
 function validateResolvedOptions(
   paramName: string,
-  options: WorkflowParamStatePatch["resolvedOptions"],
+  options: ParamStatePatch["resolvedOptions"],
 ): void {
   if (options === undefined || options === null) return;
   if (!Array.isArray(options)) {
@@ -140,7 +140,7 @@ function validateResolvedOptions(
   }
 }
 
-function validatePatchValue(param: WorkflowParamDefinition, value: WorkflowParamValue): void {
+function validatePatchValue(param: ParamDefinition, value: ParamValue): void {
   if (isMultiParam(param)) {
     if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
       throw resolverError(`Parameter "${param.name}" requires a string array value.`);
@@ -152,11 +152,11 @@ function validatePatchValue(param: WorkflowParamDefinition, value: WorkflowParam
   }
 }
 
-function normalizeValue(param: WorkflowParamDefinition, value: string): WorkflowParamValue {
+function normalizeValue(param: ParamDefinition, value: string): ParamValue {
   return isMultiParam(param) ? readMultiValue(value) : value;
 }
 
-function isMultiParam(param: WorkflowParamDefinition): boolean {
+function isMultiParam(param: ParamDefinition): boolean {
   return param.type !== "file" && (param.multiple === true || param.control === "checkboxes");
 }
 
@@ -170,6 +170,6 @@ function readMultiValue(value: string): string[] {
   }
 }
 
-function resolverError(message: string): WorkflowError {
-  return new WorkflowError({ type: "input_validation", message });
+function resolverError(message: string): HarnessError {
+  return new HarnessError({ type: "input_validation", message });
 }

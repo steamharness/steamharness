@@ -3,10 +3,10 @@ import { isDeepStrictEqual } from 'node:util';
 import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot } from 'steamharness/agent';
 import {
   applyOutputChunk, outputText, validateWorkflowValues, workflowParameters, workflowParamArgs, resolvedWorkflowValues, workflowFormValue, sessionRunning,
-  type ConversationSession, type ConversationMessage, type ConversationQueuedInput, type ConversationDraftUpdate, type WorkflowAttachment,
-  type WorkflowProject, type WorkflowRuntime, type WorkflowRun, type WorkflowParamValues,
-  type WorkflowResolvedInput,
-  type WorkflowTimerRecord,
+  type ConversationSession, type ConversationMessage, type ConversationQueuedInput, type ConversationDraftUpdate, type Attachment,
+  type Project, type Runtime, type Run, type ParamValues,
+  type ResolvedInput,
+  type TimerRecord,
 } from './workflow-types';
 
 interface ControllerOptions {
@@ -25,7 +25,7 @@ export class ConversationController {
   private readonly agentWaiters = new Map<string, { ownerId: string; targetId?: number; requestId: string; promise: Promise<AgentSessionReceipt>; resolve(receipt: AgentSessionReceipt): void; reject(error: Error): void }>();
   private readonly agentSaves = new Map<string, ReturnType<typeof setTimeout>>();
 
-  constructor(readonly project: WorkflowProject, private readonly runtime: WorkflowRuntime, saved: { sessions?: ConversationSession[]; activeId?: string }, private readonly options: ControllerOptions) {
+  constructor(readonly project: Project, private readonly runtime: Runtime, saved: { sessions?: ConversationSession[]; activeId?: string }, private readonly options: ControllerOptions) {
     this.sessions = (saved.sessions ?? []).filter((entry) => typeof entry.id === 'string' && typeof entry.title === 'string' && Array.isArray(entry.messages));
     if (!this.sessions.length) { this.sessions.push(this.blank()); }
     this.activeId = this.sessions.some((entry) => entry.id === saved.activeId) ? saved.activeId! : this.sessions.at(-1)!.id;
@@ -149,7 +149,7 @@ export class ConversationController {
       this.changed(); await this.persist();
     } finally { this.removing.delete(id); }
   }
-  async updateDraft(id: string, text: string, attachments: WorkflowAttachment[], editingQueueId?: string): Promise<void> {
+  async updateDraft(id: string, text: string, attachments: Attachment[], editingQueueId?: string): Promise<void> {
     const entry = this.sessions.find((entry) => entry.id === id);
     if (!entry) { return; }
     entry.draft = { text: text.slice(0, 100_000), attachments, editingQueueId: editingQueueId ?? entry.draft?.editingQueueId };
@@ -237,7 +237,7 @@ export class ConversationController {
       answer.runId = answer.id;
       entry.messages.push(answer);
     }
-    const request: WorkflowRun = {
+    const request: Run = {
       project: this.project, conversationId: entry.id, args: answer.args ?? args, runId: answer.runId,
       entrypointId: answer.entrypointId, toolPermissionPolicies: entry.toolPermissionPolicies,
       resolvedInputs: [...(answer.resolvedInputs ?? []), ...(answer.submittingInput ? [answer.submittingInput] : [])],
@@ -259,7 +259,7 @@ export class ConversationController {
     if (!Array.isArray(raw) || !raw.every((arg) => typeof arg === 'string')) { throw new Error(t("Run arguments must be an array of strings.")); }
     return raw;
   }
-  private async execute(entry: ConversationSession, answer: ConversationMessage, request: WorkflowRun, task: RunTask): Promise<void> {
+  private async execute(entry: ConversationSession, answer: ConversationMessage, request: Run, task: RunTask): Promise<void> {
     const pending = answer.pendingInput;
     let restart = false;
     try {
@@ -295,13 +295,13 @@ export class ConversationController {
         }
         if (event.type === 'user_input_requested') { answer.pendingInput = event as unknown as ConversationMessage['pendingInput']; }
         if (event.type === 'user_input_resolved') {
-          this.confirmInput(entry, answer, event as unknown as WorkflowResolvedInput);
+          this.confirmInput(entry, answer, event as unknown as ResolvedInput);
           if (answer.pendingInput?.requestId === event.requestId) { answer.pendingInput = undefined; }
           void this.persist().catch(error => this.options.log(`Workflow persistence: ${String(error)}`));
         }
-        if (event.type === 'file_created') { (answer.files ??= []).push(event.file as unknown as WorkflowAttachment); }
+        if (event.type === 'file_created') { (answer.files ??= []).push(event.file as unknown as Attachment); }
         if (event.type === 'timer_started' || event.type === 'timer_finished') {
-          const timer = event.timer as WorkflowTimerRecord;
+          const timer = event.timer as TimerRecord;
           answer.timers = [...(answer.timers ?? []).filter((entry) => entry.timerId !== timer.timerId), timer];
         }
         this.changed();
@@ -478,7 +478,7 @@ export class ConversationController {
       this.agentSaves.delete(owner.id); void this.persist().catch(error => this.options.log(String(error)));
     }, 100));
   }
-  async agentCommand(sessionId: string, command: AgentSessionCommand, attachments?: WorkflowAttachment[]): Promise<AgentSessionReceipt> {
+  async agentCommand(sessionId: string, command: AgentSessionCommand, attachments?: Attachment[]): Promise<AgentSessionReceipt> {
     if (!this.project.conversation?.durable?.enabled || !this.runtime.agentControl) throw new Error('Durable session control is unavailable.');
     const entry = this.sessions.find(session => session.id === sessionId);
     if (!entry || this.disposed) throw new Error(t("Conversation no longer exists."));
@@ -529,7 +529,7 @@ export class ConversationController {
     this.runtime.cancel(owner.activeRunId);
     await task.finished;
   }
-  private confirmInput(entry: ConversationSession, answer: ConversationMessage, resolved: WorkflowResolvedInput): void {
+  private confirmInput(entry: ConversationSession, answer: ConversationMessage, resolved: ResolvedInput): void {
     const existing = answer.resolvedInputs?.find((input) => input.requestId === resolved.requestId);
     const previous = existing
       ?? (answer.submittingInput?.requestId === resolved.requestId ? answer.submittingInput : undefined);
@@ -539,7 +539,7 @@ export class ConversationController {
     answer.resolvedInputs = [...(answer.resolvedInputs ?? []).filter((input) => input.requestId !== resolved.requestId), confirmed];
     if (answer.submittingInput?.requestId === resolved.requestId) { delete answer.submittingInput; }
     if (existing || !confirmed.request) { return; }
-    const updates: WorkflowParamValues = {};
+    const updates: ParamValues = {};
     for (const effect of this.project.conversation?.userInput?.effects ?? []) {
       const { when } = effect;
       if (when.type !== undefined && when.type !== confirmed.request.metadata?.type ||
@@ -609,7 +609,7 @@ export class ConversationController {
     if (!answer?.pendingInput || entry.activeRunId) { return; }
     const request = answer.pendingInput;
     const allowed = Object.fromEntries(request.params.map((field) => [field.name, values[field.name] ?? request.defaultValues?.[field.name] ?? field.defaultValue ?? '']));
-    const form: WorkflowParamValues = Object.fromEntries(request.params.map((field) => [field.name, workflowFormValue(field, allowed[field.name])]));
+    const form: ParamValues = Object.fromEntries(request.params.map((field) => [field.name, workflowFormValue(field, allowed[field.name])]));
     const typedValues = resolvedWorkflowValues(request.params, form);
     const resolved = { requestId, nodeName: request.nodeName, values: typedValues, submittedAt: new Date().toISOString(), request,
       precedingOutputItemIds: (answer.items ?? []).map((item, index) => item.id ?? String(index)) };
@@ -662,7 +662,7 @@ export class ConversationController {
     if (!user || entry.activeRunId && !entry.agent) { return; }
     if (user.input) { await this.send(user.input, entry); return; }
     const parameters = workflowParameters(this.project, user.entrypointId);
-    const params: WorkflowParamValues = {};
+    const params: ParamValues = {};
     for (const field of parameters.fields) { const index = user.args?.indexOf(field.flag ?? '') ?? -1; if (index >= 0) { params[field.name] = user.args![index + 1]; } }
     await this.send({ text: user.content, params, entrypointId: user.entrypointId, attachments: user.attachments ?? [] }, entry);
   }
@@ -679,4 +679,4 @@ export class ConversationController {
 
 export { sessionRunning } from './workflow-types';
 
-function attachmentsUnsupported(attachments: WorkflowAttachment[]): boolean { return attachments.some(file => file.kind !== 'image'); }
+function attachmentsUnsupported(attachments: Attachment[]): boolean { return attachments.some(file => file.kind !== 'image'); }

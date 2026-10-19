@@ -26,38 +26,38 @@ export interface ClaudeAgentSessionInput extends ClaudeAgentParsedInput {
   isResume: boolean;
 }
 
-export interface WorkflowPayload {
+export interface RunPayload {
   errCode: number;
   errMessage: string;
 }
 
-export type WorkflowOutputContentType = "markdown" | "text" | "json";
+export type OutputContentType = "markdown" | "text" | "json";
 
-export interface WorkflowOutputItem {
+export interface OutputItem {
   id: string;
   title: string;
   content: unknown;
   icon?: string;
   iconPreset?: "info" | "success" | "warning" | "error" | "note" | "code" | "list" | "quote" | "none";
-  contentType?: WorkflowOutputContentType;
+  contentType?: OutputContentType;
   collapsed?: boolean;
   metadata?: Record<string, unknown>;
 }
 
-export interface WorkflowOutputPayload extends WorkflowPayload {
-  items: WorkflowOutputItem[];
+export interface RunOutputPayload extends RunPayload {
+  items: OutputItem[];
 }
 
-export interface WorkflowExecutorResult<Output extends WorkflowPayload> {
+export interface ExecutorResult<Output extends RunPayload> {
   ok: boolean;
   data?: Output;
   error?: unknown;
 }
 
-export interface ClaudeAgentOutputPayload extends WorkflowOutputPayload {
+export interface ClaudeAgentOutputPayload extends RunOutputPayload {
   prompt: string;
   toolCallCount: number;
   resultSubtype?: string;
 }
 
-export type ClaudeAgentOutput = WorkflowExecutorResult<ClaudeAgentOutputPayload>;
+export type ClaudeAgentOutput = ExecutorResult<ClaudeAgentOutputPayload>;

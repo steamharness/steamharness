@@ -13,14 +13,14 @@ description: "定义 Workflow 项目中可独立运行的类型安全入口。"
 
 ```ts
 workflow.defineEntrypoint<Input, Output>(
-  definition: WorkflowEntrypointDefinition<Input, Output>,
-): WorkflowEntrypointDefinition<Input, Output>
+  definition: EntrypointDefinition<Input, Output>,
+): EntrypointDefinition<Input, Output>
 ```
 
 入口可选的分区元数据是静态对象：
 
 ```ts
-interface WorkflowEntrypointGroupDefinition {
+interface EntrypointGroupDefinition {
   id: string;
   title: string;
   order?: number;
@@ -34,18 +34,18 @@ interface WorkflowEntrypointGroupDefinition {
 | `id` | `string` | 项目内唯一入口 ID。必须匹配 `/^[a-z][a-z0-9_-]{0,63}$/`。 |
 | `title` | `string` | 非空展示标题。CLI Web、日志和回放使用该标题。 |
 | `description` | `string` | 可选的入口说明。 |
-| `group` | `WorkflowEntrypointGroupDefinition` | 可选的入口分区。相同分区 `id` 的入口必须使用完全一致的 `title` 和 `order`。 |
-| `workflow` | `WorkflowDefinition<Input, Output>` | 该入口实际执行的 workflow。必填。 |
-| `params` | `WorkflowParamDeclaration[]` | 该入口的有序参数与动作入口声明，详见 [`defineExecutor` 参数](/core-api/define-executor#workflowparamdeclaration)。 |
+| `group` | `EntrypointGroupDefinition` | 可选的入口分区。相同分区 `id` 的入口必须使用完全一致的 `title` 和 `order`。 |
+| `workflow` | `Definition<Input, Output>` | 该入口实际执行的 workflow。必填。 |
+| `params` | `ParamDeclaration[]` | 该入口的有序参数与动作入口声明，详见 [`defineExecutor` 参数](/core-api/define-executor#workflowparamdeclaration)。 |
 | `createInput` | `(context) => Input` | 把该入口的 args 和 `paramValues` 转成 workflow input。必填。 |
-| `resolveParams` | `(context) => WorkflowParamResolveResult` | 该入口的参数联动回调。 |
+| `resolveParams` | `(context) => ParamResolveResult` | 该入口的参数联动回调。 |
 | `requiredProviders` | `ExecutorProviderName[]` | 该入口需要的 provider；当前内置名称只有 `"llm"`。 |
-| `tools` | `WorkflowToolPermissionDefinition[]` | 该入口允许调用的工具和默认审批策略。 |
-| `tokenUsage` | `WorkflowTokenUsageDefinition` | 该入口的 token 用量统计配置。 |
-| `registry` | `WorkflowNodeRegistryEntry[]` | 该入口可单独调试的节点。 |
-| `createContext` | `(context) => Partial<WorkflowContext>` | 为该入口增补 providers、metadata 和 hooks。KV、PersistentValue、conversation 和 files 仍由 runtime 注入。 |
+| `tools` | `ToolPermissionDefinition[]` | 该入口允许调用的工具和默认审批策略。 |
+| `tokenUsage` | `TokenUsageDefinition` | 该入口的 token 用量统计配置。 |
+| `registry` | `NodeRegistryEntry[]` | 该入口可单独调试的节点。 |
+| `createContext` | `(context) => Partial<RunContext>` | 为该入口增补 providers、metadata 和 hooks。KV、PersistentValue、conversation 和 files 仍由 runtime 注入。 |
 
-`createInput`、`resolveParams`、registry entry 的 `createInput` 和 `createContext` 都会收到 `WorkflowExecutorContext`。Workflow 入口运行时，`entrypointId` 和 `entrypointTitle` 为当前所选入口；runtime 也会把这两个字段写入 `WorkflowContext.metadata`、runtime event 和最终 report。
+`createInput`、`resolveParams`、registry entry 的 `createInput` 和 `createContext` 都会收到 `ExecutorContext`。Workflow 入口运行时，`entrypointId` 和 `entrypointTitle` 为当前所选入口；runtime 也会把这两个字段写入 `RunContext.metadata`、runtime event 和最终 report。
 
 ## Executor 目录
 

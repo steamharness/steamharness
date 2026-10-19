@@ -3,18 +3,18 @@ import { createHash, createHmac, randomBytes, randomUUID, scrypt, timingSafeEqua
 import type pg from "pg";
 import {
   AccountRepository,
-  type WorkflowApiKeyLookupRecord,
-  type WorkflowAuthUserRecord,
-  type WorkflowAuditEventInput,
-  type WorkflowDeviceCodeRecord,
-  type WorkflowUserProfileRecord,
+  type ApiKeyLookupRecord,
+  type AuthUserRecord,
+  type AuditEventInput,
+  type DeviceCodeRecord,
+  type UserProfileRecord,
 } from "./account-db";
 import { createSlidingApiKeyExpiresAt } from "./api-key-lifetime";
-import type { WorkflowPermissionKey } from "./permissions";
+import type { PermissionKey } from "./permissions";
 import { createPostgresPool } from "./postgres";
 import { HttpError } from "./protocol";
 
-export interface WorkflowAuthSession {
+export interface AuthSession {
   accessToken: string;
   refreshToken: string;
   expiresAt?: string;
@@ -25,13 +25,13 @@ export interface WorkflowAuthSession {
   };
 }
 
-export type WorkflowAuthCookieSession =
+export type AuthCookieSession =
   | { kind: "refresh"; refreshToken: string }
   | { kind: "admin_key" };
 
-interface WorkflowAuthCookieEnvelope {
+interface AuthCookieEnvelope {
   v: 1;
-  payload: WorkflowAuthCookieSession;
+  payload: AuthCookieSession;
   sig: string;
 }
 
@@ -39,15 +39,15 @@ export type AuthenticatedPrincipal =
   | {
       kind: "admin_key";
       tokenSource: "bearer" | "query" | "cookie";
-      permissions: WorkflowPermissionKey[];
+      permissions: PermissionKey[];
       isSystemAdmin: true;
     }
   | {
       kind: "admin_session";
       tokenSource: "cookie";
       userId: string;
-      profile: WorkflowUserProfileRecord;
-      permissions: WorkflowPermissionKey[];
+      profile: UserProfileRecord;
+      permissions: PermissionKey[];
       isSystemAdmin: true;
       accessToken: string;
       refreshToken: string;
@@ -57,8 +57,8 @@ export type AuthenticatedPrincipal =
       kind: "user_session";
       tokenSource: "cookie";
       userId: string;
-      profile: WorkflowUserProfileRecord;
-      permissions: WorkflowPermissionKey[];
+      profile: UserProfileRecord;
+      permissions: PermissionKey[];
       isSystemAdmin: boolean;
       accessToken: string;
       refreshToken: string;
@@ -68,10 +68,10 @@ export type AuthenticatedPrincipal =
       kind: "api_key";
       tokenSource: "bearer";
       userId: string;
-      profile: WorkflowUserProfileRecord;
-      permissions: WorkflowPermissionKey[];
+      profile: UserProfileRecord;
+      permissions: PermissionKey[];
       isSystemAdmin: boolean;
-      apiKey: WorkflowApiKeyLookupRecord;
+      apiKey: ApiKeyLookupRecord;
     };
 
 interface NativeAuthUserRow {
@@ -110,14 +110,14 @@ const PASSWORD_SCRYPT_N = 16_384;
 const PASSWORD_SCRYPT_R = 8;
 const PASSWORD_SCRYPT_P = 1;
 
-export class WorkflowAuthService {
+export class AuthService {
   private readonly pool: pg.Pool;
   private readonly accountDb: AccountRepository;
   private readonly ready: Promise<void>;
 
   constructor(options: { databaseUrl?: string; accountDb: AccountRepository; pool?: pg.Pool }) {
     if (!options.pool && !options.databaseUrl?.trim()) {
-      throw new Error("WorkflowAuthService requires a PostgreSQL connection.");
+      throw new Error("AuthService requires a PostgreSQL connection.");
     }
     this.pool = options.pool ?? createPostgresPool({
       connectionString: options.databaseUrl,
@@ -174,7 +174,7 @@ export class WorkflowAuthService {
     `);
   }
 
-  async signInWithPassword(input: { email: string; password: string }): Promise<WorkflowAuthSession> {
+  async signInWithPassword(input: { email: string; password: string }): Promise<AuthSession> {
     await this.ready;
     const user = await this.findUserByEmail(input.email);
     if (!user || !user.password_hash || user.disabled || !(await verifyPassword(input.password, user.password_hash))) {
@@ -203,7 +203,7 @@ export class WorkflowAuthService {
     email: string;
     password: string;
     displayName?: string;
-  }): Promise<WorkflowAuthSession> {
+  }): Promise<AuthSession> {
     await this.ready;
     const email = normalizeEmail(input.email);
     const displayName = input.displayName?.trim() || email;
@@ -255,7 +255,7 @@ export class WorkflowAuthService {
     return this.createSession(user);
   }
 
-  async refreshSession(refreshToken: string): Promise<WorkflowAuthSession> {
+  async refreshSession(refreshToken: string): Promise<AuthSession> {
     await this.ready;
     const result = await this.pool.query<NativeAuthSessionRow>(
       `select
@@ -282,7 +282,7 @@ export class WorkflowAuthService {
     return toAuthSession(row, accessToken, refreshToken, accessExpiresAt);
   }
 
-  async getUserByAccessToken(accessToken: string): Promise<WorkflowAuthSession> {
+  async getUserByAccessToken(accessToken: string): Promise<AuthSession> {
     await this.ready;
     const result = await this.pool.query<NativeAuthSessionRow>(
       `select
@@ -309,7 +309,7 @@ export class WorkflowAuthService {
     redirectTo?: string;
     createdByUserId?: string;
   }): Promise<{
-    profile: WorkflowUserProfileRecord;
+    profile: UserProfileRecord;
     invitationLink?: string;
     temporaryPassword?: string;
   }> {
@@ -358,7 +358,7 @@ export class WorkflowAuthService {
     };
   }
 
-  async acceptInvitation(input: { token: string; password: string; displayName?: string }): Promise<WorkflowAuthSession> {
+  async acceptInvitation(input: { token: string; password: string; displayName?: string }): Promise<AuthSession> {
     if (input.password.length < 8) throw new HttpError(400, 400, "Password must contain at least 8 characters.");
     await this.ready;
     const passwordHash = await hashPassword(input.password);
@@ -409,7 +409,7 @@ export class WorkflowAuthService {
     return this.createSession(await this.getUserById(invitation.user_id));
   }
 
-  async listUsers(): Promise<Array<{ user: WorkflowAuthUserRecord; profile?: WorkflowUserProfileRecord }>> {
+  async listUsers(): Promise<Array<{ user: AuthUserRecord; profile?: UserProfileRecord }>> {
     await this.ready;
     const result = await this.pool.query<NativeAuthUserRow>(
       `select id, email, password_hash, display_name, disabled, created_at, last_sign_in_at
@@ -540,7 +540,7 @@ export class WorkflowAuthService {
     requestedScopes?: string[];
     requestedByIp?: string;
     userAgent?: string;
-  }): Promise<{ record: WorkflowDeviceCodeRecord; deviceCode: string }> {
+  }): Promise<{ record: DeviceCodeRecord; deviceCode: string }> {
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
     return this.accountDb.createDeviceCode({
       clientName: input.clientName,
@@ -553,7 +553,7 @@ export class WorkflowAuthService {
     });
   }
 
-  async recordAudit(event: WorkflowAuditEventInput): Promise<void> {
+  async recordAudit(event: AuditEventInput): Promise<void> {
     await this.accountDb.createAuditEvent(event);
   }
 
@@ -565,7 +565,7 @@ export class WorkflowAuthService {
     );
   }
 
-  setAuthCookie(res: { append(name: string, value: string): void }, session: WorkflowAuthSession): void {
+  setAuthCookie(res: { append(name: string, value: string): void }, session: AuthSession): void {
     const encoded = encodeCookieSession({ kind: "refresh", refreshToken: session.refreshToken });
     res.append(
       "Set-Cookie",
@@ -585,7 +585,7 @@ export class WorkflowAuthService {
     res.append("Set-Cookie", `${STEAMHARNESS_AUTH_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
   }
 
-  private async createSession(user: NativeAuthUserRow): Promise<WorkflowAuthSession> {
+  private async createSession(user: NativeAuthUserRow): Promise<AuthSession> {
     const accessToken = createOpaqueToken("wf_access");
     const refreshToken = createOpaqueToken("wf_refresh");
     const accessExpiresAt = new Date(Date.now() + ACCESS_TOKEN_TTL_MS);
@@ -681,7 +681,7 @@ export class WorkflowAuthService {
   private async ensureAdminProfile(
     userId: string,
     input: { email: string; displayName?: string },
-  ): Promise<WorkflowUserProfileRecord> {
+  ): Promise<UserProfileRecord> {
     const profile = await this.accountDb.upsertUserProfile({
       userId,
       email: normalizeEmail(input.email),
@@ -702,9 +702,9 @@ export function getConfiguredAdminKey(): string {
   return process.env.STEAMHARNESS_SERVER_ADMIN_KEY?.trim() ?? "";
 }
 
-export function createWorkflowAuthServiceFromEnv(accountDb: AccountRepository): WorkflowAuthService | undefined {
+export function createWorkflowAuthServiceFromEnv(accountDb: AccountRepository): AuthService | undefined {
   const databaseUrl = process.env.STEAMHARNESS_DATABASE_URL?.trim();
-  return databaseUrl ? new WorkflowAuthService({ databaseUrl, accountDb }) : undefined;
+  return databaseUrl ? new AuthService({ databaseUrl, accountDb }) : undefined;
 }
 
 export function getRequestPrincipal(req: Request): AuthenticatedPrincipal | undefined {
@@ -713,22 +713,22 @@ export function getRequestPrincipal(req: Request): AuthenticatedPrincipal | unde
 
 export function hasPermission(
   principal: AuthenticatedPrincipal | undefined,
-  permission: WorkflowPermissionKey,
+  permission: PermissionKey,
 ): boolean {
   return Boolean(principal && (principal.permissions.includes("system.admin") || principal.permissions.includes(permission)));
 }
 
-export function encodeCookieSession(session: WorkflowAuthCookieSession): string {
+export function encodeCookieSession(session: AuthCookieSession): string {
   const secret = getAuthCookieSecret();
   if (!secret) {
     throw new Error("STEAMHARNESS_AUTH_COOKIE_SECRET or STEAMHARNESS_SERVER_ADMIN_KEY is required to issue auth cookies.");
   }
   const payload = Buffer.from(JSON.stringify(session), "utf8").toString("base64url");
-  const envelope: WorkflowAuthCookieEnvelope = { v: 1, payload: session, sig: signCookiePayload(payload, secret) };
+  const envelope: AuthCookieEnvelope = { v: 1, payload: session, sig: signCookiePayload(payload, secret) };
   return encodeURIComponent(JSON.stringify(envelope));
 }
 
-export function readCookieSession(value: string): WorkflowAuthCookieSession | undefined {
+export function readCookieSession(value: string): AuthCookieSession | undefined {
   try {
     const decodedValue = value.trim().startsWith("{") ? value : decodeURIComponent(value);
     const parsed = JSON.parse(decodedValue) as { v?: unknown; payload?: unknown; sig?: unknown };
@@ -812,7 +812,7 @@ function toAuthSession(
   accessToken: string,
   refreshToken: string,
   accessExpiresAt: Date,
-): WorkflowAuthSession {
+): AuthSession {
   return {
     accessToken,
     refreshToken,
@@ -821,7 +821,7 @@ function toAuthSession(
   };
 }
 
-function toAuthUserRecord(user: NativeAuthUserRow): WorkflowAuthUserRecord {
+function toAuthUserRecord(user: NativeAuthUserRow): AuthUserRecord {
   return {
     userId: user.id,
     email: user.email,
@@ -846,7 +846,7 @@ function readAuthPublicBaseUrl(redirectTo?: string): string {
   return `http://127.0.0.1:${process.env.STEAMHARNESS_SERVER_PORT?.trim() || "7130"}`;
 }
 
-function isWorkflowAuthCookieSession(value: unknown): value is WorkflowAuthCookieSession {
+function isWorkflowAuthCookieSession(value: unknown): value is AuthCookieSession {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const record = value as { kind?: unknown; refreshToken?: unknown };
   return record.kind === "admin_key"

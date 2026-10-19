@@ -1,5 +1,5 @@
-import type { WorkflowParameters, WorkflowToolPolicies } from '../src/workflow-types';
-import type { WorkflowSystemAiUsage } from '../src/workflow-auth-client';
+import type { Parameters, ToolPolicies } from '../src/workflow-types';
+import type { SystemAiUsage } from '../src/workflow-auth-client';
 import { iconButton, markdownHtml } from './ui';
 
 export class ConversationTools {
@@ -26,13 +26,13 @@ export class ConversationTools {
     this.show(title || '\u56fe\u7247'); const image = document.createElement('img'); image.src = src; image.alt = title; image.className = 'image-preview'; this.body.append(image);
   }
 
-  permissions(parameters: WorkflowParameters, policies: WorkflowToolPolicies, changed: (policies: WorkflowToolPolicies) => void): void {
+  permissions(parameters: Parameters, policies: ToolPolicies, changed: (policies: ToolPolicies) => void): void {
     this.show('\u5de5\u5177\u6743\u9650');
     const tools = parameters.tools ?? [];
     const count = document.createElement('p'); count.className = 'tool-count'; count.textContent = `${tools.length} \u4e2a\u5de5\u5177`; this.body.append(count);
     const table = document.createElement('table'); table.className = 'permissions-table';
     table.innerHTML = '<thead><tr><th>\u5de5\u5177</th><th>\u542f\u7528</th><th>\u81ea\u52a8\u6279\u51c6</th></tr></thead>';
-    const body = document.createElement('tbody'); const draft: WorkflowToolPolicies = {};
+    const body = document.createElement('tbody'); const draft: ToolPolicies = {};
     for (const tool of tools) {
       draft[tool.name] = { enabled: policies[tool.name]?.enabled ?? tool.enabled ?? true, autoApprove: policies[tool.name]?.autoApprove ?? tool.autoApprove ?? false };
       const row = document.createElement('tr'); const label = document.createElement('td'); label.textContent = tool.label || tool.name;
@@ -55,7 +55,7 @@ export class ConversationTools {
     this.dialog.querySelector('header')!.insertBefore(refresh, this.dialog.querySelector('header > button:last-child'));
     this.body.textContent = '\u52a0\u8f7d\u4e2d...'; load();
   }
-  usageResult(data?: WorkflowSystemAiUsage, error?: string): void {
+  usageResult(data?: SystemAiUsage, error?: string): void {
     if (!this.usageOpen) { return; }
     this.body.replaceChildren();
     if (error) { this.body.textContent = error; return; }

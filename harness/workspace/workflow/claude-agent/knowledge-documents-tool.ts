@@ -12,7 +12,7 @@ type KnowledgeDocumentsAction =
 
 interface KnowledgeDocumentsToolContext {
   // We only need the PersistentValue slice that the workflow knowledge helpers
-  // reach into, but we type against the full WorkflowContext so the helpers
+  // reach into, but we type against the full RunContext so the helpers
   // accept it directly.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   context: any;
@@ -178,7 +178,7 @@ async function runKnowledgeDocumentsAction(
       };
     }
     default:
-      throw new workflow.WorkflowError({
+      throw new workflow.HarnessError({
         type: "input_validation",
         message: `Unsupported knowledge_documents action: ${String(args.action)}.`,
         nodeName: "claude-agent-output",
@@ -236,7 +236,7 @@ function requireToolString(
     return normalized;
   }
 
-  throw new workflow.WorkflowError({
+  throw new workflow.HarnessError({
     type: "input_validation",
     message: `knowledge_documents action "${action}" requires ${field}.`,
     nodeName: "claude-agent-output",
@@ -253,7 +253,7 @@ function requireToolNumber(
     return value;
   }
 
-  throw new workflow.WorkflowError({
+  throw new workflow.HarnessError({
     type: "input_validation",
     message: `knowledge_documents action "${action}" requires ${field}.`,
     nodeName: "claude-agent-output",
@@ -270,7 +270,7 @@ function normalizeOptionalString(value: unknown): string | undefined {
 }
 
 function formatToolError(error: unknown, action: KnowledgeDocumentsAction) {
-  if (error instanceof workflow.WorkflowError) {
+  if (error instanceof workflow.HarnessError) {
     return {
       isError: true,
       content: [

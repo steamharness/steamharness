@@ -3,7 +3,7 @@
 // ./markdown, ./ui, ./utils, and ./hooks. New fields belong here only when a
 // retained file needs them.
 
-export interface WorkflowManagedFileReference {
+export interface ManagedFileReference {
   id: string;
   name: string;
   mimeType: string;

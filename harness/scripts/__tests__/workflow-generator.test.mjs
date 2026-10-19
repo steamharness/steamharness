@@ -25,9 +25,9 @@ test("workflow generator reads standalone Core and CLI versions", async () => {
     await execFileAsync("python3", [generator, "standalone-check", "--dir", target]);
     const generated = JSON.parse(await readFile(path.join(target, "package.json"), "utf8"));
     const outputTypes = await readFile(path.join(target, "interface.ts"), "utf8");
-    assert.ok(outputTypes.includes('display?: WorkflowOutputDisplay;'));
+    assert.ok(outputTypes.includes('display?: OutputDisplay;'));
     assert.ok(outputTypes.includes('placement?: "inline" | "composer-right";'));
-    assert.ok(outputTypes.includes('export interface WorkflowRingContent'));
+    assert.ok(outputTypes.includes('export interface RingContent'));
     const core = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
     const workspace = JSON.parse(await readFile(path.join(root, "workspace", "package.json"), "utf8"));
 

@@ -66,7 +66,7 @@ function fixture(t, options = {}) {
     downloadProject: async (projectId, version, signal) => { f.downloads.push({ projectId, version }); await f.download?.(signal); return [{ id: projectId, name: 'Demo', version, directory: path.resolve('/defaults/demo-0.9.0'), role: 'root' }]; },
   };
   if (options.noTransfers) { delete launcher.uploadProject; delete launcher.downloadProject; }
-  const provider = new module.exports.WorkflowVersionsView(context, launcher, { getConnection: () => f.connection, onDidChange: accountChanged.event, open: () => { f.signIn = true; } },
+  const provider = new module.exports.VersionsView(context, launcher, { getConnection: () => f.connection, onDidChange: accountChanged.event, open: () => { f.signIn = true; } },
     { appendLine() {} }, async () => ({ dispose() {} }), async projects => { f.remembered = projects; });
   provider.update(options.noLocal ? [] : [local], options.noLocal ? undefined : local);
   provider.resolveWebviewView(view);

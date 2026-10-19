@@ -14,11 +14,11 @@ import {
   createWorkflowRelatedProjectsContext,
   isOutputContentType,
   isOutputItemStreamChunk,
-  type WorkflowKVContext,
-  type WorkflowOutputPayload,
+  type KVContext,
+  type RunOutputPayload,
 } from "../index";
 import { runNode, runStreamNode } from "../workflow/index";
-import type { WorkflowContext } from "../types/index";
+import type { RunContext } from "../types/index";
 import { createWorkflowExecutionReport } from "../executor/report";
 
 test("ring presentation survives output helpers and stream patches", () => {
@@ -320,7 +320,7 @@ test("execution reports preserve ring display declarations and raw values", () =
     outputs: [{ order: 1, nodeOrder: 1, nodeName: "output", output: payload }],
   });
   assert.deepEqual(report.outputs[0]?.output.items[0]?.display, payload.items[0]?.display);
-  const data = report.result.ok ? report.result.data as { output?: WorkflowOutputPayload } : undefined;
+  const data = report.result.ok ? report.result.data as { output?: RunOutputPayload } : undefined;
   assert.deepEqual(data?.output?.items[0]?.display, payload.items[0]?.display);
   assert.deepEqual(data?.output?.items[0]?.content, { value: 57, total: 100, unit: "MB" });
 });
@@ -410,7 +410,7 @@ test("output stream accumulator merges item start, delta and end chunks", async 
 });
 
 test("createOutputNode stream format receives text, items and chunks", async () => {
-  interface TestOutputPayload extends WorkflowOutputPayload {
+  interface TestOutputPayload extends RunOutputPayload {
     text: string;
     chunkCount: number;
   }
@@ -449,7 +449,7 @@ test("createOutputNode stream format receives text, items and chunks", async () 
   assert.equal(result.output?.items[1]?.content, "body");
 });
 
-function createTestWorkflowContext(): WorkflowContext {
+function createTestWorkflowContext(): RunContext {
   const kv = createMemoryKVContext();
 
   return {
@@ -463,7 +463,7 @@ function createTestWorkflowContext(): WorkflowContext {
   };
 }
 
-function createMemoryKVContext(): WorkflowKVContext {
+function createMemoryKVContext(): KVContext {
   const values = new Map<string, unknown>();
 
   function createNamespace(prefix: string) {

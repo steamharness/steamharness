@@ -1,26 +1,26 @@
-export interface WorkflowPayload {
+export interface RunPayload {
   errCode: number;
   errMessage: string;
 }
 
-export type WorkflowOutputContentType = "markdown" | "text" | "json" | "audio";
+export type OutputContentType = "markdown" | "text" | "json" | "audio";
 
-export interface WorkflowOutputItem {
+export interface OutputItem {
   id: string;
   title: string;
   content: unknown;
   icon?: string;
   iconPreset?: "info" | "success" | "warning" | "error" | "note" | "code" | "list" | "quote" | "none";
-  contentType?: WorkflowOutputContentType;
+  contentType?: OutputContentType;
   collapsed?: boolean;
   metadata?: Record<string, unknown>;
 }
 
-export interface WorkflowOutputPayload extends WorkflowPayload {
-  items: WorkflowOutputItem[];
+export interface RunOutputPayload extends RunPayload {
+  items: OutputItem[];
 }
 
-export interface WorkflowExecutorResult<Output extends WorkflowPayload> {
+export interface ExecutorResult<Output extends RunPayload> {
   ok: boolean;
   data?: Output;
   error?: unknown;
@@ -56,7 +56,7 @@ export interface PiAgentRunInput extends PiAgentParsedInput {
   __snapshot?: PiAgentSessionSnapshot;
 }
 
-export interface PiAgentOutputPayload extends WorkflowOutputPayload {
+export interface PiAgentOutputPayload extends RunOutputPayload {
   prompt: string;
   workdir: string;
   model?: string;
@@ -70,7 +70,7 @@ export interface PiAgentOutputPayload extends WorkflowOutputPayload {
   activeTools: string[];
 }
 
-export type PiAgentOutput = WorkflowExecutorResult<PiAgentOutputPayload>;
+export type PiAgentOutput = ExecutorResult<PiAgentOutputPayload>;
 
 export interface PiAgentUsage {
   inputTokens?: number;
@@ -107,7 +107,7 @@ export type PiAgentOutputChunkEvent = {
   type: "output_chunk";
   chunk: {
     type: "output_item_start" | "output_item_delta" | "output_item_end";
-    item?: WorkflowOutputItem;
+    item?: OutputItem;
     itemId?: string;
     delta?: unknown;
   };
@@ -122,7 +122,7 @@ export interface PiAgentSessionRunner {
 }
 
 export interface PiAgentSessionRuntimeHooks {
-  onPendingApproval?: (error: workflow.WorkflowError) => void;
+  onPendingApproval?: (error: workflow.HarnessError) => void;
 }
 
 export type PiAgentSessionFactory = (

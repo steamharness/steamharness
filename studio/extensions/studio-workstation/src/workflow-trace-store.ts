@@ -1,14 +1,14 @@
-import { projectVersion, type WorkflowProject } from './workflow-types';
+import { projectVersion, type Project } from './workflow-types';
 import type { TracePanelState, TraceSnapshot, TraceSelection, TraceTarget, TraceRun } from './workflow-trace-types';
 import type { TraceAgentAction } from './workflow-agent-types';
 
 interface Source {
-  project: WorkflowProject; token: number; send?: (message: unknown) => void;
+  project: Project; token: number; send?: (message: unknown) => void;
   snapshot?: TraceSnapshot; runs: Map<string, TraceRun>; requested: Set<string>; failed: Set<string>; status: string; error?: string;
   pending: Map<string, string>; actionErrors: Map<string, string>;
 }
-export class WorkflowTraceStore {
-  private projects: WorkflowProject[] = [];
+export class TraceStore {
+  private projects: Project[] = [];
   private readonly sources = new Map<string, Source>();
   private readonly assistants = new Set<string>();
   private token = 0;
@@ -17,7 +17,7 @@ export class WorkflowTraceStore {
   generation = 0;
   private reveal = 0;
 
-  update(projects: WorkflowProject[], preferred?: WorkflowProject): void {
+  update(projects: Project[], preferred?: Project): void {
     this.projects = projects.filter(project => !project.assistant && ['workflow', 'conversation'].includes(project.projectType));
     for (const [uri, source] of this.sources) {
       if (!source.project.assistant && !this.projects.some(project => project.uri === uri && project.id === source.project.id)) { this.sources.delete(uri); }
@@ -29,12 +29,12 @@ export class WorkflowTraceStore {
     if (!this.availableProjects().some(project => project.uri === this.selection.projectUri)
       && this.selection.projectUri !== this.projects[0]?.uri) { this.select(this.projects[0]?.uri); }
   }
-  availableProjects(): WorkflowProject[] { return [...this.projects, ...[...this.assistants].flatMap(uri => this.sources.get(uri)?.project ?? [])]; }
+  availableProjects(): Project[] { return [...this.projects, ...[...this.assistants].flatMap(uri => this.sources.get(uri)?.project ?? [])]; }
   select(uri?: string, target: TraceTarget = {}): void {
     this.selection = { projectUri: uri, ...target }; ++this.generation;
     const source = this.sources.get(uri ?? ''); if (source) { source.error = undefined; }
   }
-  bind(project: WorkflowProject, version: number | undefined, send: (message: unknown) => void) {
+  bind(project: Project, version: number | undefined, send: (message: unknown) => void) {
     const token = ++this.token;
     const previous = this.sources.get(project.uri);
     const source: Source = { project, token, send, snapshot: previous?.snapshot, runs: previous?.runs ?? new Map(), pending: new Map(), actionErrors: new Map(),

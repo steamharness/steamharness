@@ -1,7 +1,7 @@
-import type { WorkflowRuntimeApi } from 'steamharness/runtime-api';
-import type { WorkflowOutputPayload } from 'steamharness';
+import type { RuntimeApi } from 'steamharness/runtime-api';
+import type { RunOutputPayload } from 'steamharness';
 
-const workflow = (globalThis as unknown as { workflow: WorkflowRuntimeApi }).workflow;
+const workflow = (globalThis as unknown as { workflow: RuntimeApi }).workflow;
 interface Input {
   errCode: number; errMessage: string; subject: string; style: string; rounds: number;
   review: boolean; delay: number; note: string; files: unknown[]; fail: boolean;
@@ -26,7 +26,7 @@ const step = workflow.createInputNode<Input>({
     console.log(`Iteration for ${input.subject}`); return input;
   },
 });
-const previewNode = workflow.createOutputNode<Input, WorkflowOutputPayload>({
+const previewNode = workflow.createOutputNode<Input, RunOutputPayload>({
   name: 'preview',
   async *stream(input, context) {
     const text = `## ${input.subject}\n\n${input.note}\n\n\u5df2\u5b8c\u6210 ${input.rounds} \u8f6e\u672c\u5730\u5904\u7406\u3002`;
@@ -46,7 +46,7 @@ const reviewNode = workflow.createUserInputNode<Input>({
     { name: 'notes', type: 'string', control: 'textarea', label: '\u5907\u6ce8' },
   ], defaultValues: { approved: true },
 });
-const exportResult = workflow.createOutputNode<Input, WorkflowOutputPayload>({
+const exportResult = workflow.createOutputNode<Input, RunOutputPayload>({
   name: 'export',
   async format(input, context) {
     const text = `${input.subject}\n${input.note}\nRounds: ${input.rounds}\nFiles: ${input.files.length}\n`;
@@ -54,7 +54,7 @@ const exportResult = workflow.createOutputNode<Input, WorkflowOutputPayload>({
     return workflow.createOutputPayload({ items: [{ id: 'export', title: 'Export', contentType: 'markdown', content: `[workflow-result.txt](${file.path ?? file.url ?? file.id})` }] });
   },
 });
-const report = workflow.defineWorkflow<Input, WorkflowOutputPayload>({
+const report = workflow.defineWorkflow<Input, RunOutputPayload>({
   name: 'studio-report',
   async run(input, context) {
     const prepared = await workflow.runNode(prepareNode, input, context);
@@ -75,7 +75,7 @@ const report = workflow.defineWorkflow<Input, WorkflowOutputPayload>({
     return workflow.createOutputPayload({ items: [...output.output!.items, ...exported.items] });
   },
 });
-const echo = workflow.defineWorkflow<Input, WorkflowOutputPayload>({
+const echo = workflow.defineWorkflow<Input, RunOutputPayload>({
   name: 'studio-echo', async run(input, context) { return (await workflow.runStreamNode(previewNode, input, context)).output!; },
 });
 export const executor = workflow.defineExecutor({

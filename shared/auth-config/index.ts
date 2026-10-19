@@ -1,22 +1,22 @@
-export interface WorkflowAuthUserInfo {
+export interface AuthUserInfo {
   userId: string;
   email: string;
   displayName: string;
   avatarUrl?: string;
 }
 
-export interface WorkflowAuthConfig {
+export interface AuthConfig {
   serverUrl: string;
   apiKey: string;
   /** Optional private system-AI service connection; never falls back to the project server. */
   aiServerUrl?: string;
   aiApiKey?: string;
   expiresAt?: string;
-  user?: WorkflowAuthUserInfo;
+  user?: AuthUserInfo;
   source?: "device_flow" | "manual" | "password";
 }
 
-export interface WorkflowAuthEnvLike {
+export interface AuthEnvLike {
   STEAMHARNESS_CLI_AUTH_DIR?: string;
   STEAMHARNESS_DESKTOP_CONFIG_DIR?: string;
   XDG_CONFIG_HOME?: string;
@@ -32,7 +32,7 @@ const DEFAULT_MAC_PLATFORM = "darwin";
 const DEFAULT_WINDOWS_PLATFORM = "win32";
 const DEFAULT_OTHER_PLATFORM = "linux";
 
-export function createEmptyWorkflowAuthConfig(): WorkflowAuthConfig {
+export function createEmptyWorkflowAuthConfig(): AuthConfig {
   return {
     serverUrl: "",
     apiKey: "",
@@ -41,7 +41,7 @@ export function createEmptyWorkflowAuthConfig(): WorkflowAuthConfig {
 
 export function normalizeWorkflowAuthConfig(
   value: unknown,
-): WorkflowAuthConfig {
+): AuthConfig {
   if (!isRecord(value)) {
     return createEmptyWorkflowAuthConfig();
   }
@@ -72,11 +72,11 @@ export function normalizeWorkflowAuthConfig(
   };
 }
 
-export function isWorkflowAuthConfigLoggedIn(config: WorkflowAuthConfig): boolean {
+export function isWorkflowAuthConfigLoggedIn(config: AuthConfig): boolean {
   return config.serverUrl.trim() !== "" && config.apiKey.trim() !== "";
 }
 
-export function isWorkflowAuthConfigAiLoggedIn(config: WorkflowAuthConfig): boolean {
+export function isWorkflowAuthConfigAiLoggedIn(config: AuthConfig): boolean {
   return (config.aiServerUrl ?? "").trim() !== "" && (config.aiApiKey ?? "").trim() !== "";
 }
 
@@ -97,7 +97,7 @@ export function isWorkflowAuthExpiringSoon(
 }
 
 export function resolveWorkflowCliAuthDir(
-  env: WorkflowAuthEnvLike = readProcessEnv(),
+  env: AuthEnvLike = readProcessEnv(),
 ): string {
   if (readString(env.STEAMHARNESS_CLI_AUTH_DIR)) {
     return normalizePath(env.STEAMHARNESS_CLI_AUTH_DIR!);
@@ -121,13 +121,13 @@ export function resolveWorkflowCliAuthDir(
 }
 
 export function resolveWorkflowCliAuthFilePath(
-  env: WorkflowAuthEnvLike = readProcessEnv(),
+  env: AuthEnvLike = readProcessEnv(),
 ): string {
   return joinPath(resolveWorkflowCliAuthDir(env), STEAMHARNESS_AUTH_FILE_NAME);
 }
 
 export function resolveWorkflowDesktopConfigDir(
-  env: WorkflowAuthEnvLike = readProcessEnv(),
+  env: AuthEnvLike = readProcessEnv(),
 ): string {
   if (readString(env.STEAMHARNESS_DESKTOP_CONFIG_DIR)) {
     return normalizePath(env.STEAMHARNESS_DESKTOP_CONFIG_DIR!);
@@ -151,16 +151,16 @@ export function resolveWorkflowDesktopConfigDir(
 }
 
 export function resolveWorkflowDesktopConfigFilePath(
-  env: WorkflowAuthEnvLike = readProcessEnv(),
+  env: AuthEnvLike = readProcessEnv(),
 ): string {
   return joinPath(resolveWorkflowDesktopConfigDir(env), STEAMHARNESS_DESKTOP_CONFIG_FILE_NAME);
 }
 
-function resolveHomeDir(env: WorkflowAuthEnvLike): string {
+function resolveHomeDir(env: AuthEnvLike): string {
   return env.HOME ?? "";
 }
 
-function readPlatform(env: WorkflowAuthEnvLike): string {
+function readPlatform(env: AuthEnvLike): string {
   return env.platform ?? readProcessPlatform();
 }
 
@@ -186,7 +186,7 @@ function normalizePath(value: string): string {
   return normalized.replace(/\/+/g, "/");
 }
 
-function readProcessEnv(): WorkflowAuthEnvLike {
+function readProcessEnv(): AuthEnvLike {
   const processValue = readGlobalProcess();
   return {
     ...(processValue?.env ?? {}),

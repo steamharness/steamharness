@@ -8,16 +8,16 @@ import {
   createOutputNode,
   createWorkflowRelatedProjectsContext,
   createUserInputNode,
-  WorkflowError,
+  HarnessError,
   type NodeContext,
-  type WorkflowKVContext,
-  type WorkflowUserInputRequest,
+  type KVContext,
+  type UserInputRequest,
 } from "../index";
 import { createNodeExecutionReporter } from "../executor/report";
 import { runNode, runStreamNode } from "../workflow/index";
 
 test("createUserInputNode publishes a durable request when no answer is resolved", async () => {
-  const requests: WorkflowUserInputRequest[] = [];
+  const requests: UserInputRequest[] = [];
   const node = createUserInputNode<{ prompt: string }>({
     name: "confirm",
     title: "Confirm deployment",
@@ -40,9 +40,9 @@ test("createUserInputNode publishes a durable request when no answer is resolved
       },
     })),
     (error) => {
-      assert.equal(error instanceof WorkflowError, true);
-      assert.equal((error as WorkflowError).type, "user_input_required");
-      assert.equal((error as WorkflowError).metadata?.["request"], requests[0]);
+      assert.equal(error instanceof HarnessError, true);
+      assert.equal((error as HarnessError).type, "user_input_required");
+      assert.equal((error as HarnessError).metadata?.["request"], requests[0]);
       return true;
     },
   );
@@ -85,8 +85,8 @@ test("createUserInputNode keeps runtime node running while waiting for input", a
       nodeHooks: reporter.hooks,
     })),
     (error) => {
-      assert.equal(error instanceof WorkflowError, true);
-      assert.equal((error as WorkflowError).type, "user_input_required");
+      assert.equal(error instanceof HarnessError, true);
+      assert.equal((error as HarnessError).type, "user_input_required");
       return true;
     },
   );
@@ -105,7 +105,7 @@ test("stream nodes stay running when waiting for user input", async () => {
     runId: "run-1",
     workflowName: "demo",
   });
-  const requests: WorkflowUserInputRequest[] = [];
+  const requests: UserInputRequest[] = [];
   const node = createOutputNode<{ prompt: string }, { errCode: number; errMessage: string }>({
     name: "agent-stream",
     async *stream(_input, context) {
@@ -137,8 +137,8 @@ test("stream nodes stay running when waiting for user input", async () => {
       nodeHooks: reporter.hooks,
     })),
     (error) => {
-      assert.equal(error instanceof WorkflowError, true);
-      assert.equal((error as WorkflowError).type, "user_input_required");
+      assert.equal(error instanceof HarnessError, true);
+      assert.equal((error as HarnessError).type, "user_input_required");
       return true;
     },
   );
@@ -186,7 +186,7 @@ test("createUserInputNode resumes from a resolved answer and returns a standard 
 });
 
 test("createUserInputNode resolves a dynamic request definition from the current input", async () => {
-  const requests: WorkflowUserInputRequest[] = [];
+  const requests: UserInputRequest[] = [];
   const node = createUserInputNode<{ question: string; choices: string[] }>({
     name: "agent-question",
     title: "Fallback title",
@@ -220,7 +220,7 @@ test("createUserInputNode resolves a dynamic request definition from the current
         requests.push(request);
       },
     })),
-    (error) => error instanceof WorkflowError && error.type === "user_input_required",
+    (error) => error instanceof HarnessError && error.type === "user_input_required",
   );
 
   assert.equal(requests[0]?.title, "Choose an approach");
@@ -256,7 +256,7 @@ test("createUserInputNode rejects invalid dynamic date parameter combinations", 
 
   await assert.rejects(
     () => runNode(node, {}, createTestWorkflowContext(undefined)),
-    (error) => error instanceof WorkflowError &&
+    (error) => error instanceof HarnessError &&
       error.type === "input_validation" &&
       /cannot use panel: "quick"/.test(error.message),
   );
@@ -334,7 +334,7 @@ test("workflow structure recognizes createUserInputNode as a user-input node", (
 // abort as execution_aborted (not user_input_required) so the executor's
 // existing createAbortedWorkflowResult handler picks it up.
 test("createUserInputNode aborts when the run signal is already aborted", async () => {
-  const requests: WorkflowUserInputRequest[] = [];
+  const requests: UserInputRequest[] = [];
   const node = createUserInputNode<{ prompt: string }>({
     name: "confirm",
     title: "Confirm",
@@ -362,8 +362,8 @@ test("createUserInputNode aborts when the run signal is already aborted", async 
       // reaching the user input node's own abort check. Either way the
       // host must see execution_aborted (never user_input_required)
       // and the run must end with status="aborted".
-      assert.equal(error instanceof WorkflowError, true);
-      assert.equal((error as WorkflowError).type, "execution_aborted");
+      assert.equal(error instanceof HarnessError, true);
+      assert.equal((error as HarnessError).type, "execution_aborted");
       return true;
     },
   );
@@ -375,7 +375,7 @@ test("createUserInputNode aborts when the run signal is already aborted", async 
 });
 
 test("createUserInputNode aborts when the run signal fires after requestInput", async () => {
-  const requests: WorkflowUserInputRequest[] = [];
+  const requests: UserInputRequest[] = [];
   const node = createUserInputNode<{ prompt: string }>({
     name: "confirm",
     title: "Confirm",
@@ -401,8 +401,8 @@ test("createUserInputNode aborts when the run signal fires after requestInput", 
       abortSignal: controller.signal,
     }),
     (error) => {
-      assert.equal(error instanceof WorkflowError, true);
-      assert.equal((error as WorkflowError).type, "execution_aborted");
+      assert.equal(error instanceof HarnessError, true);
+      assert.equal((error as HarnessError).type, "execution_aborted");
       return true;
     },
   );
@@ -431,7 +431,7 @@ function createTestWorkflowContext(
   };
 }
 
-function createMemoryKVContext(): WorkflowKVContext {
+function createMemoryKVContext(): KVContext {
   const values = new Map<string, unknown>();
 
   function createNamespace(prefix: string) {

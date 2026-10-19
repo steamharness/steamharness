@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { apiClient } from "../api";
-import { isApiSuccess, type WorkflowAccountInvitation } from "../types";
+import { isApiSuccess, type AccountInvitation } from "../types";
 
 interface AccountInvitePageProps {
   token: string;
@@ -16,7 +16,7 @@ interface AccountInvitePageProps {
 
 type AccountInviteState =
   | { phase: "loading" }
-  | { phase: "ready"; invitation: WorkflowAccountInvitation }
+  | { phase: "ready"; invitation: AccountInvitation }
   | { phase: "success" }
   | { phase: "error"; message: string; retryable: boolean };
 

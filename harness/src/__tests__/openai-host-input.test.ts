@@ -9,7 +9,7 @@ import {
   resolveWorkspaceWorkflowParams,
   runLocalWorkflowWithReport,
   runWorkspaceWorkflowWithReport,
-  WorkflowError,
+  HarnessError,
   type OpenAIConversationHostInput,
 } from "../index";
 
@@ -39,7 +39,7 @@ test("OpenAI host input is typed, rejects malformed OpenAI payloads, and ignores
   assert.equal(readOpenAIConversationHostInput({ hostInput: { kind: "another-host" } }), undefined);
   assert.throws(
     () => readOpenAIConversationHostInput({ hostInput: { kind: "openai.responses" } }),
-    (error: unknown) => error instanceof WorkflowError && /host input is invalid/u.test(error.message),
+    (error: unknown) => error instanceof HarnessError && /host input is invalid/u.test(error.message),
   );
 });
 

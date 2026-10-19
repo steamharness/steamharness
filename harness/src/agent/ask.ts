@@ -1,6 +1,6 @@
-import type { WorkflowUserInputRequest, WorkflowUserInputResolved } from "../types/context";
-import type { WorkflowParamDefinition } from "../executor/types";
-import type { WorkflowNodeMetadata } from "../types/index";
+import type { UserInputRequest, UserInputResolved } from "../types/context";
+import type { ParamDefinition } from "../executor/types";
+import type { NodeMetadata } from "../types/index";
 import type { AgentQuestion } from "./types";
 import { readRuntimeLocaleSafe } from "./plan";
 
@@ -136,10 +136,10 @@ function agentAskCustomParamName(index: number): string {
 export function createAgentAskRequest(options: {
   requestId: string;
   questions: AgentQuestion[];
-}): WorkflowUserInputRequest {
+}): UserInputRequest {
   const text = readAgentAskText();
   const params = options.questions.flatMap((question, index) => {
-    const answer: WorkflowParamDefinition = {
+    const answer: ParamDefinition = {
       name: agentAskAnswerParamName(index),
       type: "string",
       required: true,
@@ -183,11 +183,11 @@ export function createAgentAskRequest(options: {
         description: text.customOptionDescription,
         control: "textarea",
         step: index + 1,
-      } satisfies WorkflowParamDefinition,
+      } satisfies ParamDefinition,
     ];
   });
 
-  const metadata: WorkflowNodeMetadata = {
+  const metadata: NodeMetadata = {
     type: "agent-ask",
     title: text.title,
     version: "1.0.0",
@@ -214,7 +214,7 @@ export function createAgentAskRequest(options: {
  * ("option:0").
  */
 export function readAgentAskAnswers(
-  resolved: WorkflowUserInputResolved,
+  resolved: UserInputResolved,
   questions: AgentQuestion[],
 ): string[] {
   return questions.map((question, index) => {

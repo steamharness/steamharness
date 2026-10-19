@@ -1,14 +1,14 @@
 ---
 title: "Payload 与错误"
-description: "WorkflowPayload、执行结果和错误报告的当前约束。"
+description: "RunPayload、执行结果和错误报告的当前约束。"
 ---
 
 # Payload 与错误
 
-所有节点间传递的数据类型，也就是 workflow payload，都必须继承 `WorkflowPayload`。该类型来自核心包：
+所有节点间传递的数据类型，也就是 workflow payload，都必须继承 `RunPayload`。该类型来自核心包：
 
 ```ts
-export interface WorkflowPayload {
+export interface RunPayload {
   errCode: number;
   errMessage: string;
 }
@@ -28,7 +28,7 @@ export interface WorkflowPayload {
 Output node 应该显式返回包含 `errCode`、`errMessage` 和 `items` 的对象：
 
 ```ts
-interface WorkflowOutputItem {
+interface OutputItem {
   id: string;
   title: string;
   content: unknown;
@@ -36,8 +36,8 @@ interface WorkflowOutputItem {
   collapsed?: boolean;
 }
 
-interface OutputPayload extends WorkflowPayload {
-  items: WorkflowOutputItem[];
+interface OutputPayload extends RunPayload {
+  items: OutputItem[];
 }
 
 const outputNode = workflow.createOutputNode<Parsed, OutputPayload>({
@@ -75,12 +75,12 @@ const outputNode = workflow.createOutputNode<Parsed, OutputPayload>({
 
 生成的 OSS 签名 URL 视为 `http(s)`，但其有效期和不可重建性会导致 UI 无法缓存、过期即不可播放，因此不要把生成式视频产物仅以 OSS 签名 URL 形式发布到不可重建的位置；如需持久展示，需要在本地或 OSS 公开存储中保存稳定副本，或在元信息中标注外部链接作为 fallback。调用方不要把 `src` 留空，也不要拼接 `file://`、`blob:` 等非 http(s)/data URL。
 
-## WorkflowResult
+## RunResult
 
 底层 safe run 会先把 workflow 执行结果归一为：
 
 ```ts
-type WorkflowResult<T> =
+type RunResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: SerializedWorkflowError };
 ```
@@ -109,11 +109,11 @@ type WorkflowResult<T> =
 | `pendingUserInput` | 当前等待的请求，包含 `requestId`、节点名、标题、描述、表单 `params`、默认值和节点 metadata。 |
 | `resolvedUserInputs` | 本 run 已提交的答案数组，包含 `requestId`、节点名、`values` 和 `submittedAt`。 |
 
-Runtime event 会发出 `user_input_requested` 和 `user_input_resolved`。等待状态的标准错误码映射为 `202`，用于表示 workflow 仍可恢复；成功恢复后的节点 payload 仍必须继承 `WorkflowPayload`，默认包含 `errCode: 0`、`errMessage: ""`、`requestId`、`values` 和 `submittedAt`。
+Runtime event 会发出 `user_input_requested` 和 `user_input_resolved`。等待状态的标准错误码映射为 `202`，用于表示 workflow 仍可恢复；成功恢复后的节点 payload 仍必须继承 `RunPayload`，默认包含 `errCode: 0`、`errMessage: ""`、`requestId`、`values` 和 `submittedAt`。
 
-## WorkflowError
+## HarnessError
 
-可以主动抛出 `workflow.WorkflowError`，附带类型、消息、节点和 metadata。框架也会把普通异常转换成 `WorkflowError`。
+可以主动抛出 `workflow.HarnessError`，附带类型、消息、节点和 metadata。框架也会把普通异常转换成 `HarnessError`。
 
 常见错误类型包括：
 

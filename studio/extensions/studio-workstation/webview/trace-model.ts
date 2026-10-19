@@ -1,6 +1,6 @@
 import { t } from './localization';
 import { agentActivity, activityValueText } from './agent-activity';
-import type { ConversationMessage, WorkflowOutputItem } from '../src/workflow-types';
+import type { ConversationMessage, OutputItem } from '../src/workflow-types';
 import type { TraceRun, TraceSnapshot, TraceSelection } from '../src/workflow-trace-types';
 
 export type TraceLane = 'input' | 'model' | 'tool' | 'node' | 'output' | 'log';
@@ -108,7 +108,7 @@ export function traceRows(snapshot: TraceSnapshot | undefined, selection: TraceS
       sections: [{ label: t("Content"), value: user.content }] });
     if (message.role === 'user') { addInput(message); continue; }
     if ((selection.messageId || selection.runId) && input) { addInput(input); }
-    const items: WorkflowOutputItem[] = message.items ?? message.report?.output?.items ?? (message.content ? [{ content: message.content }] : []);
+    const items: OutputItem[] = message.items ?? message.report?.output?.items ?? (message.content ? [{ content: message.content }] : []);
     rows.push(...runRows({ ...message, id: message.id ?? String(index), title: message.model ?? t("Assistant"), status: message.status ?? 'success', items,
       resolvedInputs: message.resolvedInputs ?? message.report?.resolvedUserInputs }, turn, true));
   }

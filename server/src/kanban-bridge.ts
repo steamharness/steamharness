@@ -1,13 +1,13 @@
 import type {
-  WorkflowKnowledgeDocumentRecord,
-  WorkflowStorage,
+  KnowledgeDocumentRecord,
+  Storage,
 } from "./storage";
 import { HttpError } from "./protocol";
 import {
   parseKanbanBridgeCall,
   type KanbanBridgeCall,
 } from "@steamharness/kanban-project";
-import type { WorkflowRuntimeLocale } from "steamharness";
+import type { RuntimeLocale } from "steamharness";
 import { readFile } from "node:fs/promises";
 
 export function readKanbanBridgeCall(value: unknown): KanbanBridgeCall {
@@ -19,12 +19,12 @@ export function readKanbanBridgeCall(value: unknown): KanbanBridgeCall {
 }
 
 export async function invokeServerKanbanBridge(
-  storage: WorkflowStorage,
+  storage: Storage,
   workflowName: string,
   call: KanbanBridgeCall,
   options: {
     target?: string;
-    runtimeLocale?: WorkflowRuntimeLocale;
+    runtimeLocale?: RuntimeLocale;
   } = {},
 ): Promise<unknown> {
   const input = call.input;
@@ -183,10 +183,10 @@ export async function invokeServerKanbanBridge(
 }
 
 async function readOptionalKnowledgeDocument(
-  storage: WorkflowStorage,
+  storage: Storage,
   workflowName: string,
   documentId: string,
-): Promise<WorkflowKnowledgeDocumentRecord | null> {
+): Promise<KnowledgeDocumentRecord | null> {
   try {
     return await storage.getKnowledgeDocument({ workflowName, documentId });
   } catch (reason) {

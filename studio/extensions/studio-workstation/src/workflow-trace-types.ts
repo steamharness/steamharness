@@ -1,4 +1,4 @@
-import type { ConversationSession, WorkflowOutputItem, WorkflowReport, WorkflowInputRequest, WorkflowResolvedInput } from './workflow-types';
+import type { ConversationSession, OutputItem, Report, InputRequest, ResolvedInput } from './workflow-types';
 import type { TraceAgentSnapshot } from './workflow-agent-types';
 
 export interface TraceSession extends ConversationSession {
@@ -7,9 +7,9 @@ export interface TraceSession extends ConversationSession {
 
 export interface TraceRunSummary { id: string; title: string; status: string; createdAt?: number; durationMs?: number; entrypointId?: string }
 export interface TraceRun extends TraceRunSummary {
-  args?: string[]; params?: Record<string, unknown>; items?: WorkflowOutputItem[]; events?: Record<string, unknown>[];
-  nodes?: Record<string, unknown>[]; logs?: string; report?: WorkflowReport; error?: string;
-  pendingInput?: WorkflowInputRequest; resolvedInputs?: WorkflowResolvedInput[];
+  args?: string[]; params?: Record<string, unknown>; items?: OutputItem[]; events?: Record<string, unknown>[];
+  nodes?: Record<string, unknown>[]; logs?: string; report?: Report; error?: string;
+  pendingInput?: InputRequest; resolvedInputs?: ResolvedInput[];
 }
 export interface TraceSnapshot {
   project: { id: string; name: string; projectType: 'conversation' | 'workflow' };

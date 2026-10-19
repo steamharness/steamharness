@@ -7,8 +7,8 @@ import {
   DEFAULT_AGENT_MAX_TOKENS,
 } from "../agent/pi";
 import { toAgentModelAttributes } from "../agent/system-llm";
-import { WorkflowError } from "../workflow/errors";
-import type { WorkflowServerLLMModelDetails } from "../provider/llm/server";
+import { HarnessError } from "../workflow/errors";
+import type { ServerLLMModelDetails } from "../provider/llm/server";
 
 test("model attributes round-trip through the string and object forms", () => {
   const expected = {
@@ -34,7 +34,7 @@ test("a field this build does not know is refused rather than dropped", () => {
   // Silently ignoring it would look like the model ignored the setting.
   assert.throws(
     () => parseAgentModelAttributes('{"contextWindows": 1000}'),
-    (error: unknown) => error instanceof WorkflowError && error.message.includes("contextWindows"),
+    (error: unknown) => error instanceof HarnessError && error.message.includes("contextWindows"),
   );
 });
 
@@ -56,7 +56,7 @@ test("unusable values are rejected with the offending field named", () => {
   for (const [value, field] of rejected) {
     assert.throws(
       () => parseAgentModelAttributes(value),
-      (error: unknown) => error instanceof WorkflowError && error.message.includes(field),
+      (error: unknown) => error instanceof HarnessError && error.message.includes(field),
       `${value} must be rejected`,
     );
   }
@@ -129,7 +129,7 @@ test("a model that takes no images says so", async () => {
   assert.deepEqual(runtime.model.input, ["text"]);
 });
 
-function createDetails(overrides: Partial<WorkflowServerLLMModelDetails>): WorkflowServerLLMModelDetails {
+function createDetails(overrides: Partial<ServerLLMModelDetails>): ServerLLMModelDetails {
   return {
     id: "MiniMax-M3",
     name: "MiniMax-M3",

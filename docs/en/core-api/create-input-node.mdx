@@ -34,7 +34,7 @@ workflow.createInputNode<Input, Output>(
 | `name` | `string` |Node name, default `"input"`.|
 | `parse` | `(input, context) => Output` |Input parsing function; return input as it is if it is not passed.|
 | `historyLimit` | `number` |The number of nodes retained in the execution history. The default value is `50`.|
-| `metadata` | `WorkflowNodeMetadataInput` |The node displays meta information.|
+| `metadata` | `NodeMetadataInput` |The node displays meta information.|
 
 ## `parse` Input
 
@@ -78,5 +78,5 @@ const inputNode = workflow.createInputNode<Input, ParsedInput>({
 | --- | --- |
 |Cleanup String|In `parse` `trim()`.|
 |Convert type|Convert the string constructed by executor to number/boolean/object.|
-|Input verification|`workflow.WorkflowError` is thrown when the verification fails, and the type is usually `input_validation`.|
+|Input verification|`workflow.HarnessError` is thrown when the verification fails, and the type is usually `input_validation`.|
 |Direct pass-through|Do not pass `parse`, node output is equal to input.|

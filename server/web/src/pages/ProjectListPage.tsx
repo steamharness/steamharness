@@ -4,7 +4,7 @@ import { Bot, Boxes, Brain, Code2, Cpu, Database, FileText, FolderKanban, GitBra
 import { translateDynamicKey, useTranslation } from "@steamharness/i18n/react";
 import { i18n } from "@steamharness/i18n";
 import { matchesWorkflowProjectSearch } from "@steamharness/project-info";
-import type { ProjectCardIconName, ProjectCardMetadata, WorkflowProjectType, WorkflowSummary } from "../types";
+import type { ProjectCardIconName, ProjectCardMetadata, ProjectKind, Summary } from "../types";
 import { getWorkflowProjectTypeDefinition, getWorkflowProjectTypeLabelKey } from "@steamharness/project-types";
 import { formatDate } from "../utils/format";
 import { Button } from "@/components/ui/button";
@@ -47,7 +47,7 @@ function getProjectCardIconComponent(icon: ProjectCardIconName) {
   return PROJECT_CARD_ICONS[icon] ?? Workflow;
 }
 
-function getProjectTypeIconComponent(projectType: WorkflowProjectType) {
+function getProjectTypeIconComponent(projectType: ProjectKind) {
   return getProjectCardIconComponent(
     getWorkflowProjectTypeDefinition(projectType).defaultIcon,
   );
@@ -56,11 +56,11 @@ function getProjectTypeIconComponent(projectType: WorkflowProjectType) {
 
 
 interface ProjectListPageProps {
-  projects: WorkflowSummary[];
+  projects: Summary[];
   selectedId: string;
   loading?: string;
   onRefresh: () => void;
-  onOpenDetail: (project: WorkflowSummary) => void;
+  onOpenDetail: (project: Summary) => void;
 }
 
 type StatusFilter = "all" | "published" | "draft";
@@ -217,7 +217,7 @@ export function ProjectListPage({
   );
 }
 
-function compareProjectsByUpdatedAt(left: WorkflowSummary, right: WorkflowSummary): number {
+function compareProjectsByUpdatedAt(left: Summary, right: Summary): number {
   const leftUpdatedAt = Date.parse(left.updatedAt ?? "");
   const rightUpdatedAt = Date.parse(right.updatedAt ?? "");
   const leftTimestamp = Number.isFinite(leftUpdatedAt) ? leftUpdatedAt : Number.NEGATIVE_INFINITY;
@@ -230,9 +230,9 @@ function ProjectRow({
   selected,
   onOpenDetail,
 }: {
-  project: WorkflowSummary;
+  project: Summary;
   selected: boolean;
-  onOpenDetail: (p: WorkflowSummary) => void;
+  onOpenDetail: (p: Summary) => void;
 }) {
   const { t } = useTranslation("serverWeb");
   const ProjectTypeIcon = getProjectTypeIconComponent(project.projectType);
@@ -301,7 +301,7 @@ function ProjectCardIcon({ projectId, projectName, card }: { projectId: string; 
   );
 }
 
-function ProjectUploaderSummary({ project }: { project: WorkflowSummary }) {
+function ProjectUploaderSummary({ project }: { project: Summary }) {
   const { t } = useTranslation("serverWeb");
   const uploader = getProjectUploaderIdentity(project);
   if (!uploader.userId && !uploader.displayName && !uploader.email) return <span className="text-sm text-muted-foreground">—</span>;
@@ -310,11 +310,11 @@ function ProjectUploaderSummary({ project }: { project: WorkflowSummary }) {
   );
 }
 
-function getProjectKindLabel(kind: WorkflowProjectType): string {
+function getProjectKindLabel(kind: ProjectKind): string {
   return translateDynamicKey(getWorkflowProjectTypeLabelKey(kind));
 }
 
-function getProjectUploaderIdentity(project: WorkflowSummary) {
+function getProjectUploaderIdentity(project: Summary) {
   return {
     userId: project.createdByProfile?.userId ?? project.createdByUserId,
     displayName: project.createdByProfile?.displayName,

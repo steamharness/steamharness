@@ -1,4 +1,4 @@
-import type { WorkflowAccountState } from '../src/workflow-auth-client';
+import type { AccountState } from '../src/workflow-auth-client';
 import { ParameterActions } from './parameter-actions';
 import { InputPrompt } from './input-prompt';
 import { ConversationTools } from './conversation-tools';
@@ -10,9 +10,9 @@ import './style.css';
 import {
   workflowParameters,
   workflowParamValue,
-  type ConversationMessage, type ConversationSession, type WorkflowProject, type WorkflowField,
-  type WorkflowParamValues, type WorkflowParamValue, type WorkflowParamState, type WorkflowParamRequest,
-  type WorkflowAttachment,
+  type ConversationMessage, type ConversationSession, type Project, type Field,
+  type ParamValues, type ParamValue, type ParamState, type ParamRequest,
+  type Attachment,
 } from '../src/workflow-types';
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void; getState(): unknown; setState(state: unknown): void };
@@ -43,9 +43,9 @@ function initialize(): void {
       <button class="session-action" data-action="delete" role="menuitem" tabindex="-1">${icon('trash')}<span>\u5220\u9664\u5bf9\u8bdd</span></button>
     </div>`;
 
-  interface State { project: WorkflowProject; sessions: ConversationSession[]; activeId: string; running: boolean; parameterValues?: Record<string, WorkflowParamValues>; account?: WorkflowAccountState; authenticationRevision?: number; parameterRevision?: number }
+  interface State { project: Project; sessions: ConversationSession[]; activeId: string; running: boolean; parameterValues?: Record<string, ParamValues>; account?: AccountState; authenticationRevision?: number; parameterRevision?: number }
   interface FieldView {
-    field: WorkflowField; root: HTMLDivElement;
+    field: Field; root: HTMLDivElement;
     controls: (HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)[];
     description: HTMLDivElement; optionsSignature?: string;
   }
@@ -60,14 +60,14 @@ function initialize(): void {
   let renderedProject = '';
   let renderedSession = '';
   let formKey = '';
-  let paramStates: Record<string, WorkflowParamState> = {};
+  let paramStates: Record<string, ParamState> = {};
   let resolving = false;
   let submitting = false;
   let requestId = 0;
   let paramsNeedInit = false;
   let authenticationRequired = false;
   let inputTimer: ReturnType<typeof setTimeout> | undefined;
-  let draftFiles: WorkflowAttachment[] = [];
+  let draftFiles: Attachment[] = [];
   let draftTimer: ReturnType<typeof setTimeout> | undefined;
   let uploading = 0;
   let editingQueueId: string | undefined;
@@ -91,7 +91,7 @@ function initialize(): void {
   const sessionActions = Array.from(sessionMenu.querySelectorAll<HTMLButtonElement>('.session-action'));
   const fields = new Map<string, FieldView>();
   const messages = new Map<string, MessageView>();
-  const saved = (vscode.getState() ?? {}) as { drafts?: Record<string, string>; params?: Record<string, WorkflowParamValues>; panelOpen?: boolean; projectUri?: string };
+  const saved = (vscode.getState() ?? {}) as { drafts?: Record<string, string>; params?: Record<string, ParamValues>; panelOpen?: boolean; projectUri?: string };
   const drafts = saved.drafts ?? {};
   const paramValues = saved.params ?? {};
   const narrow = window.matchMedia('(max-width: 680px)');
@@ -102,7 +102,7 @@ function initialize(): void {
   const dialogs = new ConversationTools();
   const contentSearch = new ContentSearch(transcript);
   const currentParameters = () => workflowParameters(state!.project, entrypoint.value || undefined);
-  const values = (): WorkflowParamValues => paramValues[formKey] ??= {};
+  const values = (): ParamValues => paramValues[formKey] ??= {};
   const canQueue = (): boolean => state?.project.conversation?.inputQueue?.enabled === true;
   const busy = (): boolean => submitting || (!!state?.running || !!currentSession()?.messages.some((message) => message.pendingInput)) && !canQueue();
   const parameterActions = new ParameterActions(document.querySelector('#parameter-actions')!, {
@@ -140,7 +140,7 @@ function initialize(): void {
     textarea.style.height = `${Math.min(240, Math.max(72, textarea.scrollHeight))}px`;
   }
 
-  function requestParams(trigger: WorkflowParamRequest['trigger']): void {
+  function requestParams(trigger: ParamRequest['trigger']): void {
     clearTimeout(inputTimer);
     if (!state || busy() || !fields.size) { return; }
     paramsNeedInit = false;
@@ -151,7 +151,7 @@ function initialize(): void {
       requestId: ++requestId, entrypointId: entrypoint.value, params: values(), draftText: textarea.value, trigger });
   }
 
-  function createField(field: WorkflowField): FieldView {
+  function createField(field: Field): FieldView {
     const root = document.createElement('div');
     root.className = `param-field${field.type === 'boolean' ? ' boolean-field' : ''}`;
     root.dataset.param = field.name;
@@ -236,7 +236,7 @@ function initialize(): void {
     setFieldValue(name, values()[name]);
   }
 
-  function setFieldValue(name: string, value: WorkflowParamValue): void {
+  function setFieldValue(name: string, value: ParamValue): void {
     values()[name] = value;
     persist(); updateFields(); requestParams({ kind: 'param', paramName: name });
   }
@@ -490,7 +490,7 @@ function initialize(): void {
     persist(); post({ type: 'draft', text: textarea.value, attachments: draftFiles });
   }
 
-  function attachmentList(container: HTMLElement, attachments: WorkflowAttachment[], removable: boolean): void {
+  function attachmentList(container: HTMLElement, attachments: Attachment[], removable: boolean): void {
     container.replaceChildren(); container.hidden = !attachments.length;
     for (const file of attachments) {
       const item = document.createElement('div'); item.className = 'attachment';
@@ -836,7 +836,7 @@ function initialize(): void {
         paramError.hidden = false;
       } else {
         authenticationRequired = false;
-        for (const [name, patch] of Object.entries(message.params ?? {}) as [string, WorkflowParamState][]) {
+        for (const [name, patch] of Object.entries(message.params ?? {}) as [string, ParamState][]) {
           if (!fields.has(name)) { continue; }
           paramStates[name] = { ...paramStates[name], ...patch, options: { ...paramStates[name]?.options, ...patch.options } };
           if (patch.value === null) { values()[name] = workflowParamValue(fields.get(name)!.field); }
@@ -852,15 +852,15 @@ function initialize(): void {
         const prompt = messages.get(message.messageId)?.prompt;
         if (prompt && prompt.request.requestId === message.requestId) {
           const field = prompt.request.params.find((field) => field.name === message.paramName);
-          if (field) { prompt.fileValue(field.name, JSON.stringify((field.multiple ? message.files : message.files.slice(0, 1)).map(({ previewUrl: _, ...file }: WorkflowAttachment) => file))); }
+          if (field) { prompt.fileValue(field.name, JSON.stringify((field.multiple ? message.files : message.files.slice(0, 1)).map(({ previewUrl: _, ...file }: Attachment) => file))); }
         }
       } else if (message.paramName && fields.has(message.paramName)) {
         const field = fields.get(message.paramName)!.field;
         const files = field.multiple ? message.files : message.files.slice(0, 1);
-        setFieldValue(message.paramName, JSON.stringify(files.map(({ previewUrl: _, ...file }: WorkflowAttachment) => file)));
+        setFieldValue(message.paramName, JSON.stringify(files.map(({ previewUrl: _, ...file }: Attachment) => file)));
       } else {
         const allowed = state.project.conversation?.attachments;
-        const accepted = (message.files as WorkflowAttachment[]).filter((file) => file.kind === 'image' ? allowed?.images : file.mimeType.startsWith('video/') ? allowed?.videos : allowed?.files);
+        const accepted = (message.files as Attachment[]).filter((file) => file.kind === 'image' ? allowed?.images : file.mimeType.startsWith('video/') ? allowed?.videos : allowed?.files);
         if (accepted.length !== message.files.length) { showError('\u9879\u76ee\u4e0d\u652f\u6301\u6b64\u7c7b\u9644\u4ef6\u3002'); }
         draftFiles = [...new Map([...draftFiles, ...accepted].map((file) => [file.id, file])).values()].slice(0, 32); attachmentList(document.querySelector('#draft-attachments')!, draftFiles, true); saveDraft();
       }

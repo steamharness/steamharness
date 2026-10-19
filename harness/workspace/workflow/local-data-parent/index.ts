@@ -74,7 +74,7 @@ export const getDataWorkflow = workflow.defineWorkflow<GetDataInput, StorageData
     const kv = alias === undefined ? storage.kv : storage.relatedProjects.get(alias).kv;
     const content = await kv.getValue(createStorageKey(id));
     if (content === undefined) {
-      throw new workflow.WorkflowError({
+      throw new workflow.HarnessError({
         type: "input_validation",
         message: `未找到 id 为“${id}”的数据。`,
       });
@@ -285,7 +285,7 @@ function createStorageKey(id: string): string {
 
 function readRequiredContent(value: unknown): string {
   if (typeof value === "string") return value;
-  throw new workflow.WorkflowError({
+  throw new workflow.HarnessError({
     type: "input_validation",
     message: "存储内容不能为空。",
   });
@@ -293,7 +293,7 @@ function readRequiredContent(value: unknown): string {
 
 function readRequiredId(value: unknown): string {
   if (typeof value === "string" && value.trim() !== "") return value.trim();
-  throw new workflow.WorkflowError({
+  throw new workflow.HarnessError({
     type: "input_validation",
     message: "数据 id 不能为空。",
   });
@@ -301,7 +301,7 @@ function readRequiredId(value: unknown): string {
 
 function readRequiredAlias(value: unknown): string {
   if (typeof value === "string" && value.trim() !== "") return value.trim();
-  throw new workflow.WorkflowError({
+  throw new workflow.HarnessError({
     type: "input_validation",
     message: "关联项目 alias 不能为空。",
   });
@@ -311,7 +311,7 @@ function readRequiredAlias(value: unknown): string {
 function readCreatedDocumentId(value: unknown): string {
   const documentId = (value as { documentId?: unknown } | null | undefined)?.documentId;
   if (typeof documentId === "string" && documentId !== "") return documentId;
-  throw new workflow.WorkflowError({
+  throw new workflow.HarnessError({
     type: "workflow_execution",
     message: `关联项目的 note 入口没有返回文档 id：${JSON.stringify(value)}`,
   });

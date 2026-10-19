@@ -44,9 +44,9 @@ const END_MARKER = "<!-- runtime-api-index:end -->";
 
 /** Interfaces whose members are the related-project surface, in reading order. */
 const RELATED_PROJECT_INTERFACES = [
-  { name: "WorkflowRelatedProjectStorageContext", title: "关联项目上下文" },
-  { name: "WorkflowRelatedProjectKnowledgeContext", title: "关联项目知识库" },
-  { name: "WorkflowRelatedProjectRunner", title: "关联项目入口运行器" },
+  { name: "RelatedProjectStorageContext", title: "关联项目上下文" },
+  { name: "RelatedProjectKnowledgeContext", title: "关联项目知识库" },
+  { name: "RelatedProjectRunner", title: "关联项目入口运行器" },
 ];
 
 export async function readRuntimeApiIndex() {

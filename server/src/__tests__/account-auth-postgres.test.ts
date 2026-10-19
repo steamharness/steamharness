@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import test from "node:test";
 import pg from "pg";
 import { AccountRepository } from "../account-db";
-import { WorkflowAuthService } from "../account-auth";
+import { AuthService } from "../account-auth";
 
 const databaseUrl = process.env.STEAMHARNESS_TEST_DATABASE_URL?.trim();
 
@@ -12,7 +12,7 @@ test("native PostgreSQL auth preserves sessions, invitations, API keys, locks, t
 }, async () => {
   assert.ok(databaseUrl);
   const accountDb = new AccountRepository(databaseUrl);
-  const auth = new WorkflowAuthService({ databaseUrl, accountDb });
+  const auth = new AuthService({ databaseUrl, accountDb });
   const pool = new pg.Pool({ connectionString: databaseUrl });
   await accountDb.init();
 

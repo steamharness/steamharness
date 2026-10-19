@@ -6,7 +6,7 @@ import {
   createWorkflowToolPermissionContext,
   createWorkflowTokenUsageContext,
   createWorkflowConversationContext,
-  type WorkflowKVContext,
+  type KVContext,
 } from "steamharness";
 import type {
   AgentFact,
@@ -14,7 +14,7 @@ import type {
   ConversationSnapshot,
   OpenAIAgentsRunInput,
 } from "../interface";
-import type { NodeExecutionHookChunkEvent, WorkflowContext } from "steamharness/types/context";
+import type { NodeExecutionHookChunkEvent, RunContext } from "steamharness/types/context";
 import { tool } from "@openai/agents";
 import { z } from "zod";
 
@@ -636,7 +636,7 @@ describe("openai-agents reusable mode", () => {
         web_search: { autoApprove: false },
       }),
     })).rejects.toMatchObject({
-      name: "WorkflowError",
+      name: "HarnessError",
       type: "user_input_required",
     });
   });
@@ -736,7 +736,7 @@ describe("openai-agents reusable mode", () => {
       { context: {} } as Parameters<typeof lookup.invoke>[0],
       JSON.stringify({ q: "M7" }),
     )).rejects.toMatchObject({
-      name: "WorkflowError",
+      name: "HarnessError",
       type: "user_input_required",
     });
   });
@@ -1142,7 +1142,7 @@ function createToolContext(
 function createOpenAIAgentsContext(options: {
   onChunk?: (event: NodeExecutionHookChunkEvent) => void;
   tokenUsageEnabled?: boolean;
-} = {}): WorkflowContext {
+} = {}): RunContext {
   const kv = createMemoryKVContext();
   const persistentValue = createMemoryKVContext();
   const tokenUsage = options.tokenUsageEnabled === true
@@ -1182,7 +1182,7 @@ function createOpenAIAgentsContext(options: {
   };
 }
 
-function createMemoryKVContext(): WorkflowKVContext {
+function createMemoryKVContext(): KVContext {
   const values = new Map<string, unknown>();
 
   function createNamespace(prefix: string) {

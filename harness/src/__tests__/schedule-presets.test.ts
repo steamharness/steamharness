@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { inspectLocalWorkflowStructure, WorkflowError } from "../index";
+import { inspectLocalWorkflowStructure, HarnessError } from "../index";
 
 test("Workflow structure exposes validated schedule presets", async () => {
   const workflowDir = await createScriptProject("workflow", {
@@ -55,7 +55,7 @@ test("schedule presets must reference an existing Workflow entrypoint", async ()
   try {
     assert.throws(
       () => inspectLocalWorkflowStructure({ workflowDir }),
-      (error: unknown) => error instanceof WorkflowError && /unknown entrypoint/.test(error.message),
+      (error: unknown) => error instanceof HarnessError && /unknown entrypoint/.test(error.message),
     );
   } finally {
     await rm(workflowDir, { recursive: true, force: true });
@@ -84,7 +84,7 @@ test("schedule presets must satisfy the selected entrypoint static params", asyn
     try {
       assert.throws(
         () => inspectLocalWorkflowStructure({ workflowDir }),
-        (error: unknown) => error instanceof WorkflowError && expected.test(error.message),
+        (error: unknown) => error instanceof HarnessError && expected.test(error.message),
       );
     } finally {
       await rm(workflowDir, { recursive: true, force: true });

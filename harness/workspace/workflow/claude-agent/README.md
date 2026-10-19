@@ -1,7 +1,7 @@
 # claude-agent workflow
 
 Claude Agent SDK workflow sample. It opens or resumes a Claude Agent session,
-streams assistant text through `WorkflowOutputPayload.items`, maps tool activity
+streams assistant text through `RunOutputPayload.items`, maps tool activity
 to collapsed output items, and stores the Claude Agent session id in workflow
 conversation state.
 

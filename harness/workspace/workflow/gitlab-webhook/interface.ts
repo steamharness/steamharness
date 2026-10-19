@@ -1,26 +1,26 @@
-export interface WorkflowPayload {
+export interface RunPayload {
   errCode: number;
   errMessage: string;
 }
 
-export type WorkflowOutputContentType = "markdown" | "text" | "json";
+export type OutputContentType = "markdown" | "text" | "json";
 
-export interface WorkflowOutputItem {
+export interface OutputItem {
   id: string;
   title: string;
   content: unknown;
   icon?: string;
   iconPreset?: "info" | "success" | "warning" | "error" | "note" | "code" | "list" | "quote" | "none";
-  contentType?: WorkflowOutputContentType;
+  contentType?: OutputContentType;
   collapsed?: boolean;
   metadata?: Record<string, unknown>;
 }
 
-export interface WorkflowOutputPayload extends WorkflowPayload {
-  items: WorkflowOutputItem[];
+export interface RunOutputPayload extends RunPayload {
+  items: OutputItem[];
 }
 
-export interface WorkflowExecutorResult<Output extends WorkflowPayload> {
+export interface ExecutorResult<Output extends RunPayload> {
   ok: boolean;
   data?: Output;
   error?: unknown;
@@ -42,7 +42,7 @@ export interface GitlabWebhookEventSummary {
   rawEvent: string;
 }
 
-export interface GitlabWebhookOutputPayload extends WorkflowOutputPayload {
+export interface GitlabWebhookOutputPayload extends RunOutputPayload {
   event: string;
   action: string;
   id: string;
@@ -53,4 +53,4 @@ export interface GitlabWebhookOutputPayload extends WorkflowOutputPayload {
   success: true;
 }
 
-export type GitlabWebhookOutput = WorkflowExecutorResult<GitlabWebhookOutputPayload>;
+export type GitlabWebhookOutput = ExecutorResult<GitlabWebhookOutputPayload>;

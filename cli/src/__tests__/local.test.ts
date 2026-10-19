@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { it } from "vitest";
 import * as steamHarness from "steamharness";
-import { createLocalWorkflowKVStore, WorkflowError } from "steamharness";
+import { createLocalWorkflowKVStore, HarnessError } from "steamharness";
 import { STEAMHARNESS_RUNTIME_LOCALE_ENV } from "steamharness";
 import {
   formatParamResolverFailure,
@@ -386,7 +386,7 @@ function restoreEnv(name: string, value: string | undefined): void {
 }
 
 it("param resolver failures retain localizable metadata after the CLI marker", () => {
-  const output = formatParamResolverFailure(new WorkflowError({
+  const output = formatParamResolverFailure(new HarnessError({
     type: "input_validation",
     message: "SteamHarness Server login is not configured.",
     metadata: {
@@ -523,22 +523,22 @@ async function createArgsEchoWorkflow(declareStorage = true): Promise<string> {
   await writeFile(
     path.join(workflowDir, "interface.ts"),
     [
-      "export interface WorkflowPayload {",
+      "export interface RunPayload {",
       "  errCode: number;",
       "  errMessage: string;",
       "}",
       "",
-      "export interface WorkflowExecutorResult<Output extends WorkflowPayload> {",
+      "export interface ExecutorResult<Output extends RunPayload> {",
       "  ok: boolean;",
       "  data?: Output;",
       "  error?: unknown;",
       "}",
       "",
-      "export interface CliTestOutputPayload extends WorkflowPayload {",
+      "export interface CliTestOutputPayload extends RunPayload {",
       "  items: Array<{ id: string; title: string; content: unknown; contentType?: string; collapsed?: boolean }>;",
       "}",
       "",
-      "export type CliTestOutput = WorkflowExecutorResult<CliTestOutputPayload>;",
+      "export type CliTestOutput = ExecutorResult<CliTestOutputPayload>;",
       "",
     ].join("\n"),
   );

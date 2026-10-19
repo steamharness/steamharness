@@ -6,72 +6,72 @@ import { create as createTar, extract as extractTar, list as listTar, type ReadE
 import { Open as openZip } from "unzipper";
 import { copyWorkflowUploadFiles } from "@steamharness/project-upload/node";
 import { createWorkflowUploadPortablePathKey } from "@steamharness/project-upload";
-import { createKnowledgeDocument, createWorkflowKVContext, createWorkflowPersistentValueContext, createWorkflowRelatedProjectsContext, deleteKnowledgeDocument, editKnowledgeDocument, getKnowledgeDocument, isWorkflowProjectType, listKnowledgeDocumentPage, searchKnowledgeDocuments, readKnowledgeDocumentLines, WorkflowError, type WorkflowKVScope, type WorkflowKVStore, type WorkflowKVStoreGetInput, type WorkflowKVWriteSource, type WorkflowStorageKind, type WorkflowProjectType, type WorkflowStorageLocationContext, type WorkflowKnowledgeDocument, type WorkflowKnowledgeDocumentSummary, type WorkflowKnowledgeSearchResult, type WorkflowKnowledgeDocumentLinesResult, type WorkflowTokenUsageAggregate, type WorkflowTokenUsageEntry, describeKnowledgeMutationKeys, isKnowledgeDocumentStorageKey } from "steamharness";
+import { createKnowledgeDocument, createWorkflowKVContext, createWorkflowPersistentValueContext, createWorkflowRelatedProjectsContext, deleteKnowledgeDocument, editKnowledgeDocument, getKnowledgeDocument, isWorkflowProjectType, listKnowledgeDocumentPage, searchKnowledgeDocuments, readKnowledgeDocumentLines, HarnessError, type KVScope, type KVStore, type KVStoreGetInput, type KVWriteSource, type StorageKind, type ProjectKind, type StorageLocationContext, type KnowledgeDocument, type KnowledgeDocumentSummaryRecord, type KnowledgeSearchResultRecord, type KnowledgeDocumentLinesResult, type TokenUsageAggregate, type TokenUsageEntry, describeKnowledgeMutationKeys, isKnowledgeDocumentStorageKey } from "steamharness";
 import { getAuthCookieSecret } from "./account-auth";
 import { resolveServerPathRoots } from "./paths";
-import { ArtifactStorage, createObjectPath, DatabaseRepository, type WorkflowProjectMemberRecord, type WorkflowProjectInvitationRecord, type WorkflowProjectRole, type WorkflowVisibility, type WorkflowDbRecord, type WorkflowDbVersionRecord, type WorkflowKanbanConfigurationStateRecord, type WorkflowProjectStorageRevisionEvent, type WorkflowDeploymentRecord } from "./persistence";
+import { ArtifactStorage, createObjectPath, DatabaseRepository, type ProjectMemberRecord, type ProjectInvitationRecord, type ProjectRole, type Visibility, type DbRecord, type DbVersionRecord, type KanbanConfigurationStateRecord, type ProjectStorageRevisionEvent, type DeploymentRecord } from "./persistence";
 import { HttpError, toHttpErrorWithStatus } from "./protocol";
 import { createWorkflowLocalStorageFromEnv } from "./local-storage";
-import { isWorkflowStorageNotFoundError, type WorkflowObjectStorage } from "./object-storage";
+import { isWorkflowStorageNotFoundError, type ObjectStorage } from "./object-storage";
 import { resolveWorkflowStorageDriver } from "./storage-driver";
 import { resolveServerDataRootFromEnv } from "./release-paths";
 import { createInvalidWorkflowUuidMessage, createUnsafeWorkflowIdMessage, isSafeWorkflowId, isWorkflowUuid, resolveWorkflowRoot } from "./workflow-ids";
 import { readProjectCardMetadataFromPackageJson, type ProjectCardMetadata } from "@steamharness/project-card-metadata";
-import { assertWorkflowProjectDataStorageLocationAllowed, createDefaultWorkflowRelatedProjectGrant, isWorkflowProjectAccessAllowed, isWorkflowProjectKVAccessAllowed, normalizeDeclaredWorkflowProjectInfo, normalizeWorkflowProjectInfo, readWorkflowProjectInfo, resolveWorkflowRelatedProjectAccess, writeWorkflowProjectInfo, type DeclaredWorkflowProjectInfo, type WorkflowProjectInfo, type WorkflowRelatedProject, type WorkflowRelatedProjectKVGrant } from "@steamharness/project-info";
+import { assertWorkflowProjectDataStorageLocationAllowed, createDefaultWorkflowRelatedProjectGrant, isWorkflowProjectAccessAllowed, isWorkflowProjectKVAccessAllowed, normalizeDeclaredWorkflowProjectInfo, normalizeWorkflowProjectInfo, readWorkflowProjectInfo, resolveWorkflowRelatedProjectAccess, writeWorkflowProjectInfo, type DeclaredWorkflowProjectInfo, type ProjectInfoContract, type RelatedProject, type RelatedProjectKVGrant } from "@steamharness/project-info";
 import { KANBAN_MANIFEST_FILE, areKanbanValuesEqual, createInjectedKanbanParams, createKanbanContentSecurityPolicy, createKanbanArtifactEntryPath, createDefaultKanbanValues, injectKanbanBridge, isSafeKanbanPublicAssetPath, parseKanbanManifestText, readKanbanArtifactConfig, readKanbanAssetMimeType, readPackageProjectType, sanitizeKanbanValues, type KanbanConfiguration, type KanbanArtifactConfig, type KanbanManifest } from "@steamharness/kanban-project";
 import { readRequiredCoreVersion } from "@steamharness/runtime-compatibility";
 import { readServerBuildInfo, type ServerBuildInfo } from "./build-info";
-import { STEAMHARNESS_PROJECT_GROUP_MANIFEST_FILE, createExternalWorkflowProjectDependencyLocks, finalizeWorkflowProjectDependencyLock, isProjectGroupHostDataPath, parseWorkflowProjectDependencyLocks, parseWorkflowProjectGroupManifest, type WorkflowProjectAccessRequest, type WorkflowProjectCapabilityGrant, type WorkflowProjectDependencyLock, type WorkflowProjectDependencyStatusResult, type WorkflowProjectDownloadPlan, type WorkflowProjectGroupManifestV1 } from "@steamharness/project-dependencies";
+import { STEAMHARNESS_PROJECT_GROUP_MANIFEST_FILE, createExternalWorkflowProjectDependencyLocks, finalizeWorkflowProjectDependencyLock, isProjectGroupHostDataPath, parseWorkflowProjectDependencyLocks, parseWorkflowProjectGroupManifest, type ProjectAccessRequest, type ProjectCapabilityGrant, type ProjectDependencyLock, type ProjectDependencyStatusResult, type ProjectDownloadPlan, type ProjectGroupManifestV1 } from "@steamharness/project-dependencies";
 export const PROJECT_CARD_IMAGE_MAX_BYTES = 1024 * 1024;
 const PROJECT_CARD_IMAGE_HASH_PATTERN = /^[a-f0-9]{64}$/;
 const MAX_KANBAN_ASSET_SIZE_BYTES = 20 * 1024 * 1024;
 const KANBAN_PREVIEW_CAPABILITY_TTL_MS = 15 * 60 * 1000;
 
-export interface WorkflowFile {
+export interface File {
   path: string;
   content: string;
   size: number;
   encoding?: "base64";
 }
 
-type WorkflowFileInput = Pick<WorkflowFile, "path" | "content" | "encoding">;
+type FileInput = Pick<File, "path" | "content" | "encoding">;
 
-export type WorkflowManagedFileStorage = "server";
-export type WorkflowManagedFileKind = "image" | "file";
+export type ManagedFileStorage = "server";
+export type ManagedFileKind = "image" | "file";
 
-export interface WorkflowManagedFileReference {
+export interface ManagedFileReference {
   id: string;
   name: string;
   mimeType: string;
   size: number;
-  kind: WorkflowManagedFileKind;
-  storage: WorkflowManagedFileStorage;
+  kind: ManagedFileKind;
+  storage: ManagedFileStorage;
   workflowId?: string;
   conversationId?: string;
   createdAt: string;
 }
 
-export interface WorkflowProjectCardImage {
+export interface ProjectCardImage {
   workflowId: string;
   url: string;
   mimeType: "image/webp";
   size: number;
   hash: string;
 }
-export type WorkflowPreparationStatus = "queued" | "preparing" | "success" | "failed";
-export type WorkflowPreparationStage =
+export type PreparationStatus = "queued" | "preparing" | "success" | "failed";
+export type PreparationStage =
   | "queued"
   | "extracting"
   | "validating"
   | "committing";
 
-export interface WorkflowPreparationJob {
+export interface PreparationJob {
   jobId: string;
   workflowId: string;
   archiveName: string;
   createOnly: boolean;
-  status: WorkflowPreparationStatus;
-  stage: WorkflowPreparationStage;
+  status: PreparationStatus;
+  stage: PreparationStage;
   createdAt: string;
   startedAt?: string;
   endedAt?: string;
@@ -79,20 +79,20 @@ export interface WorkflowPreparationJob {
   result?: UploadPackageResult;
 }
 
-interface WorkflowDeploymentPreparation {
+interface DeploymentPreparation {
   deploymentId: string;
   archiveName: string;
   createdAt: string;
 }
 
-export interface WorkflowSummary {
+export interface Summary {
   id: string;
   name: string;
-  projectType: WorkflowProjectType;
+  projectType: ProjectKind;
   projectCard: ProjectCardMetadata;
-  projectInfo: WorkflowProjectInfo;
+  projectInfo: ProjectInfoContract;
   ownerUserId?: string;
-  visibility: WorkflowVisibility;
+  visibility: Visibility;
   createdByUserId?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -100,18 +100,18 @@ export interface WorkflowSummary {
   latest: string | null;
   versions: string[];
   nextVersion: string;
-  sourceDownload?: WorkflowSourceDownloadAvailability;
+  sourceDownload?: SourceDownloadAvailability;
   canManage?: boolean;
   canWriteData?: boolean;
 }
 
-export interface WorkflowSourceDownloadAvailability {
+export interface SourceDownloadAvailability {
   allowed: boolean;
   available: boolean;
   target: string | null;
 }
 
-export interface WorkflowSourceShare {
+export interface SourceShare {
   id: string;
   name: string;
   version: string;
@@ -120,7 +120,7 @@ export interface WorkflowSourceShare {
   sourceHash: string;
 }
 
-export interface WorkflowVersionSummary {
+export interface VersionSummary {
   id: string;
   name: string;
   latest: string | null;
@@ -131,17 +131,17 @@ export interface WorkflowVersionSummary {
     downloadCount: number;
     createdAt?: string;
     createdByUserId?: string;
-    createdByProfile?: WorkflowUserProfileSummary;
+    createdByProfile?: UserProfileSummary;
     releaseLog?: string;
     sourceHash?: string;
     sourceObjectPath?: string;
-    dependencies: WorkflowProjectDependencyLock[];
+    dependencies: ProjectDependencyLock[];
     latest: boolean;
   }>;
 }
 
-export type WorkflowKVEntryScope = "project" | "conversation";
-export type WorkflowKVEntryValueType =
+export type KVEntryScope = "project" | "conversation";
+export type KVEntryValueType =
   | "null"
   | "array"
   | "object"
@@ -149,14 +149,14 @@ export type WorkflowKVEntryValueType =
   | "number"
   | "boolean";
 
-export interface WorkflowKVEntrySummary {
-  storageKind: WorkflowStorageKind;
-  scope: WorkflowKVEntryScope;
+export interface KVEntrySummary {
+  storageKind: StorageKind;
+  scope: KVEntryScope;
   key: string;
   // KV list responses intentionally omit full values so the web
   // inspector does not freeze on large conversation state rows.
   value?: unknown;
-  valueType: WorkflowKVEntryValueType;
+  valueType: KVEntryValueType;
   valueSizeBytes: number;
   valuePreview: string;
   projectId: string;
@@ -167,19 +167,19 @@ export interface WorkflowKVEntrySummary {
   lastConversationId?: string;
 }
 
-export interface WorkflowKVEntryDetail extends WorkflowKVEntrySummary {
+export interface KVEntryDetail extends KVEntrySummary {
   value: unknown;
 }
 
-export interface WorkflowKVEntryPage {
-  items: WorkflowKVEntrySummary[];
+export interface KVEntryPage {
+  items: KVEntrySummary[];
   nextCursor?: string;
   hasMore: boolean;
   // server/web KV pagination and Keys metrics use the full filtered total.
   total: number;
 }
 
-export interface WorkflowProjectDataSummary {
+export interface ProjectDataSummary {
   kv: {
     entryCount: number;
     projectEntryCount: number;
@@ -197,18 +197,18 @@ export interface WorkflowProjectDataSummary {
   };
 }
 
-export interface WorkflowPersistentValueGetResult {
+export interface PersistentValueGetResult {
   exists: boolean;
   value?: unknown;
   revision?: string;
 }
 
-export interface WorkflowPersistentValueCompareAndSetResult {
+export interface PersistentValueCompareAndSetResult {
   applied: boolean;
   revision?: string;
 }
 
-export type WorkflowPersistentValueKnowledgeMutation =
+export type PersistentValueKnowledgeMutation =
   | {
       type: "create";
       input: { id?: string; title: string; markdown: string };
@@ -232,53 +232,53 @@ export type WorkflowPersistentValueKnowledgeMutation =
  * same as "touches nothing".
  */
 export function isKnowledgeMutationGranted(
-  grant: WorkflowRelatedProjectKVGrant,
-  mutation: WorkflowPersistentValueKnowledgeMutation,
+  grant: RelatedProjectKVGrant,
+  mutation: PersistentValueKnowledgeMutation,
 ): boolean {
   const keys = describeKnowledgeMutationKeys(mutation);
   if (keys === undefined) return false;
   const covered = (
     // A grant written before Knowledge existed has no rule here at all, and
     // "no rule" is a refusal rather than an open door.
-    rule: WorkflowRelatedProjectKVGrant["read"] | undefined,
+    rule: RelatedProjectKVGrant["read"] | undefined,
     key: string,
   ): boolean => isKnowledgeDocumentStorageKey(key) && isWorkflowProjectAccessAllowed(rule, key);
   return keys.read.every((key) => covered(grant.knowledge?.read, key))
     && keys.write.every((key) => covered(grant.knowledge?.write, key));
 }
 
-export type WorkflowKnowledgeDocumentRecord = WorkflowKnowledgeDocument;
-export type WorkflowKnowledgeDocumentListItem = WorkflowKnowledgeDocumentSummary;
-export type WorkflowKnowledgeDocumentSearchResult = WorkflowKnowledgeSearchResult;
-export type WorkflowKnowledgeDocumentLinesRecord = WorkflowKnowledgeDocumentLinesResult;
+export type KnowledgeDocumentRecord = KnowledgeDocument;
+export type KnowledgeDocumentListItem = KnowledgeDocumentSummaryRecord;
+export type KnowledgeDocumentSearchResult = KnowledgeSearchResultRecord;
+export type KnowledgeDocumentLinesRecord = KnowledgeDocumentLinesResult;
 
-export interface WorkflowKnowledgeDocumentPage {
-  items: WorkflowKnowledgeDocumentListItem[];
+export interface KnowledgeDocumentPageRecord {
+  items: KnowledgeDocumentListItem[];
   nextCursor?: string;
   hasMore: boolean;
   total: number;
 }
 
-export interface WorkflowTokenUsageWorkflowSummary {
+export interface TokenUsageWorkflowSummary {
   projectId: string;
-  total: WorkflowTokenUsageAggregate;
+  total: TokenUsageAggregate;
   updatedAt?: string;
 }
 
-export interface WorkflowTokenUsagePage {
-  systemTotal: WorkflowTokenUsageAggregate;
-  projects: WorkflowTokenUsageWorkflowSummary[];
+export interface TokenUsagePage {
+  systemTotal: TokenUsageAggregate;
+  projects: TokenUsageWorkflowSummary[];
   nextCursor?: string;
   hasMore: boolean;
   total: number;
 }
 
-export interface WorkflowTokenUsageDetail {
+export interface TokenUsageDetail {
   projectId: string;
-  projectTotal: WorkflowTokenUsageAggregate;
+  projectTotal: TokenUsageAggregate;
   conversationId?: string;
-  conversationTotal?: WorkflowTokenUsageAggregate;
-  entries?: WorkflowTokenUsageEntry[];
+  conversationTotal?: TokenUsageAggregate;
+  entries?: TokenUsageEntry[];
 }
 
 export interface UploadPackageResult {
@@ -304,7 +304,7 @@ export interface PublishResult {
   latest: string;
   nextVersion: string;
   releaseLog: string;
-  dependencies: WorkflowProjectDependencyLock[];
+  dependencies: ProjectDependencyLock[];
 }
 
 export interface CloneWorkflowResult {
@@ -326,7 +326,7 @@ export interface DeleteWorkflowResult {
   workflowId: string;
 }
 
-export interface WorkflowManifest {
+export interface Manifest {
   workflowId: string;
   workflowName: string;
   version: string;
@@ -335,11 +335,11 @@ export interface WorkflowManifest {
   releaseLog?: string;
   sourceHash: string;
   sourceObjectPath?: string;
-  projectType?: WorkflowProjectType;
-  dependencies?: WorkflowProjectDependencyLock[];
+  projectType?: ProjectKind;
+  dependencies?: ProjectDependencyLock[];
 }
 
-export interface WorkflowProjectGroupDownloadResult extends WorkflowProjectDownloadPlan {
+export interface ProjectGroupDownloadResult extends ProjectDownloadPlan {
   projects: Array<{
     alias?: string;
     projectId: string;
@@ -347,26 +347,26 @@ export interface WorkflowProjectGroupDownloadResult extends WorkflowProjectDownl
     version: string;
     sourceHash: string;
     role: "root" | "dependency";
-    files: WorkflowFile[];
+    files: File[];
   }>;
 }
 
-export interface WorkflowPackageMetadata {
+export interface PackageMetadata {
   id: string;
   name: string;
   version: string;
-  projectType: WorkflowProjectType;
+  projectType: ProjectKind;
   projectCard: ProjectCardMetadata;
-  projectInfo: WorkflowProjectInfo;
+  projectInfo: ProjectInfoContract;
   requiredCoreVersion: string;
 }
 
 interface StoredWorkflowProjectInfoMetadata {
   name: string;
-  projectInfo: WorkflowProjectInfo;
+  projectInfo: ProjectInfoContract;
 }
 
-export interface WorkflowUserProfileSummary {
+export interface UserProfileSummary {
   userId: string;
   displayName: string;
   email?: string;
@@ -374,71 +374,71 @@ export interface WorkflowUserProfileSummary {
 }
 
 export type {
-  WorkflowProjectRole,
-  WorkflowVisibility,
+  ProjectRole,
+  Visibility,
 };
 
-export interface WorkflowProjectMember extends WorkflowProjectMemberRecord {
-  profile?: WorkflowUserProfileSummary;
-  createdByProfile?: WorkflowUserProfileSummary;
+export interface ProjectMember extends ProjectMemberRecord {
+  profile?: UserProfileSummary;
+  createdByProfile?: UserProfileSummary;
 }
 
-export interface WorkflowProjectInvitation extends WorkflowProjectInvitationRecord {
-  createdByProfile?: WorkflowUserProfileSummary;
-  acceptedByProfile?: WorkflowUserProfileSummary;
+export interface ProjectInvitation extends ProjectInvitationRecord {
+  createdByProfile?: UserProfileSummary;
+  acceptedByProfile?: UserProfileSummary;
 }
 
-export interface WorkflowProjectAccessSummary {
+export interface ProjectAccessSummary {
   workflowId: string;
   workflowName: string;
   ownerUserId?: string;
-  visibility: WorkflowVisibility;
+  visibility: Visibility;
   createdByUserId?: string;
-  member?: WorkflowProjectMember;
+  member?: ProjectMember;
 }
 
-export interface WorkflowProjectCreateResult {
+export interface ProjectCreateResult {
   workflowId: string;
   workflowName: string;
-  projectType: WorkflowProjectType;
+  projectType: ProjectKind;
   projectInfo: DeclaredWorkflowProjectInfo;
-  visibility: WorkflowVisibility;
+  visibility: Visibility;
 }
 
-export interface WorkflowRelatedProjectStatus {
-  relation: WorkflowRelatedProject;
+export interface RelatedProjectStatus {
+  relation: RelatedProject;
   projectName?: string;
   reciprocalAlias?: string;
-  grantFromRelatedProject?: WorkflowRelatedProjectKVGrant;
+  grantFromRelatedProject?: RelatedProjectKVGrant;
   confirmed: boolean;
 }
 
-export interface WorkflowRelatedProjectListResult {
+export interface RelatedProjectListResult {
   projectId: string;
-  relatedProjects: WorkflowRelatedProjectStatus[];
+  relatedProjects: RelatedProjectStatus[];
 }
 
-export interface WorkflowKanbanWorkspaceState {
+export interface KanbanWorkspaceState {
   workflowId: string;
   workflowName: string;
   target: string;
   resolvedTarget: string;
   artifactDir: string;
   entry: string;
-  relatedProjects: WorkflowRelatedProject[];
+  relatedProjects: RelatedProject[];
   manifest?: KanbanManifest;
   configurations: KanbanConfiguration[];
   activeConfigurationId?: string;
 }
 
-export interface WorkflowKanbanAsset {
+export interface KanbanAsset {
   content: Buffer | string;
   contentType: string;
   contentLength: number;
   contentSecurityPolicy: string;
 }
 
-export interface WorkflowKanbanPreviewCapability {
+export interface KanbanPreviewCapability {
   token: string;
   resolvedTarget: string;
   expiresAt: string;
@@ -480,13 +480,13 @@ const TEXT_EXTENSIONS = new Set([
   ".yaml",
   ".yml",
 ]);
-export class WorkflowStorage {
+export class Storage {
   readonly serverRoot: string;
   readonly repoRoot: string;
   readonly dataRoot: string;
   private readonly db?: DatabaseRepository;
   private readonly artifacts?: ArtifactStorage;
-  readonly objectStorage?: WorkflowObjectStorage;
+  readonly objectStorage?: ObjectStorage;
   private readonly publishLocks = new Map<string, Promise<void>>();
   private readonly deploymentLocks = new Map<string, Promise<void>>();
   private readonly preparationLocks = new Map<string, Promise<void>>();
@@ -498,7 +498,7 @@ export class WorkflowStorage {
   private readonly sourceMaterializationTasks = new Map<string, Promise<void>>();
   private readonly materializedDraftSourceRevisions = new Map<string, string>();
   private readonly projectStorageRevisionListeners = new Set<(
-    event: WorkflowProjectStorageRevisionEvent,
+    event: ProjectStorageRevisionEvent,
   ) => void>();
   private projectStorageRevisionSubscription?: Promise<() => Promise<void>>;
   private readonly kanbanPreviewCapabilitySecret: string;
@@ -510,7 +510,7 @@ export class WorkflowStorage {
     dataRoot?: string;
     db?: DatabaseRepository;
     artifacts?: ArtifactStorage;
-    objectStorage?: WorkflowObjectStorage;
+    objectStorage?: ObjectStorage;
     kanbanPreviewCapabilitySecret?: string;
     buildInfo?: ServerBuildInfo;
   }) {
@@ -545,13 +545,13 @@ export class WorkflowStorage {
   async createProject(options: {
     workflowId: string;
     workflowName: string;
-    projectType: WorkflowProjectType;
+    projectType: ProjectKind;
     projectInfo: DeclaredWorkflowProjectInfo;
     ownerUserId?: string;
-    visibility?: WorkflowVisibility;
+    visibility?: Visibility;
     createdByUserId?: string;
     projectCard?: ProjectCardMetadata;
-  }): Promise<WorkflowProjectCreateResult> {
+  }): Promise<ProjectCreateResult> {
     if (this.db === undefined) {
       throw new HttpError(501, 501, "Project creation API requires PostgreSQL storage.");
     }
@@ -607,7 +607,7 @@ export class WorkflowStorage {
       };
     }
 
-    let created: WorkflowDbRecord;
+    let created: DbRecord;
     try {
       created = await this.db.createWorkflowProject({
         workflowId,
@@ -649,7 +649,7 @@ export class WorkflowStorage {
     workflowName: string;
     buffer: Buffer;
     origin: string;
-  }): Promise<WorkflowProjectCardImage> {
+  }): Promise<ProjectCardImage> {
     this.assertWorkflowId(options.workflowName);
     assertProjectCardImage(options.buffer);
 
@@ -748,7 +748,7 @@ export class WorkflowStorage {
     return { name, projectInfo };
   }
 
-  async listRelatedProjects(projectId: string): Promise<WorkflowRelatedProjectListResult> {
+  async listRelatedProjects(projectId: string): Promise<RelatedProjectListResult> {
     this.assertWorkflowId(projectId);
     const db = this.requireProjectDependencyDatabase();
     const project = await db.getWorkflow(projectId);
@@ -775,7 +775,7 @@ export class WorkflowStorage {
           ? undefined
           : cloneRelatedProjectGrant(reciprocal.grantToRelatedProject),
         confirmed,
-      } satisfies WorkflowRelatedProjectStatus;
+      } satisfies RelatedProjectStatus;
     }));
     return { projectId, relatedProjects };
   }
@@ -784,11 +784,11 @@ export class WorkflowStorage {
     projectId: string;
     alias: string;
     targetProjectId: string;
-    grantToRelatedProject?: WorkflowRelatedProject["grantToRelatedProject"];
+    grantToRelatedProject?: RelatedProject["grantToRelatedProject"];
     updateTarget: boolean;
     targetAlias?: string;
-    targetGrantToRelatedProject?: WorkflowRelatedProject["grantToRelatedProject"];
-  }): Promise<WorkflowRelatedProjectListResult> {
+    targetGrantToRelatedProject?: RelatedProject["grantToRelatedProject"];
+  }): Promise<RelatedProjectListResult> {
     this.assertWorkflowId(options.projectId);
     this.assertWorkflowId(options.targetProjectId);
     const db = this.requireProjectDependencyDatabase();
@@ -838,7 +838,7 @@ export class WorkflowStorage {
     projectId: string;
     alias: string;
     updateTarget: boolean;
-  }): Promise<{ removed: boolean; relatedProjects: WorkflowRelatedProjectStatus[] }> {
+  }): Promise<{ removed: boolean; relatedProjects: RelatedProjectStatus[] }> {
     this.assertWorkflowId(options.projectId);
     const db = this.requireProjectDependencyDatabase();
     const project = await db.getWorkflow(options.projectId);
@@ -854,7 +854,7 @@ export class WorkflowStorage {
       options.alias,
     ));
     const updates = [{ workflowId: project.id, workflowName: project.name, projectInfo }];
-    let target: WorkflowDbRecord | undefined;
+    let target: DbRecord | undefined;
     let targetInfo: DeclaredWorkflowProjectInfo | undefined;
     if (options.updateTarget) {
       target = await db.getWorkflow(relation.projectId);
@@ -932,7 +932,7 @@ export class WorkflowStorage {
   async resolveRelatedProjectKnowledgeMutationAccess(options: {
     consumerProjectId: string;
     alias: string;
-    mutation: WorkflowPersistentValueKnowledgeMutation;
+    mutation: PersistentValueKnowledgeMutation;
   }): Promise<{ targetProjectId: string }> {
     const access = await this.resolveConfirmedRelatedProject(options.consumerProjectId, options.alias);
     if (!isKnowledgeMutationGranted(access.grant, options.mutation)) {
@@ -944,7 +944,7 @@ export class WorkflowStorage {
   async resolveConfirmedRelatedProject(
     consumerProjectId: string,
     alias: string,
-  ): Promise<{ targetProjectId: string; grant: WorkflowRelatedProjectKVGrant }> {
+  ): Promise<{ targetProjectId: string; grant: RelatedProjectKVGrant }> {
     this.assertWorkflowId(consumerProjectId);
     const db = this.requireProjectDependencyDatabase();
     const consumer = await db.getWorkflow(consumerProjectId);
@@ -973,11 +973,11 @@ export class WorkflowStorage {
     return { targetProjectId: target.id, grant: access.grant };
   }
 
-  async assertServerProjectDataAccess(workflowId: string): Promise<WorkflowProjectInfo> {
+  async assertServerProjectDataAccess(workflowId: string): Promise<ProjectInfoContract> {
     return this.assertServerProjectStorageMode(workflowId, "access server data");
   }
 
-  async listProjectMembers(workflowId: string): Promise<WorkflowProjectMember[]> {
+  async listProjectMembers(workflowId: string): Promise<ProjectMember[]> {
     this.assertWorkflowId(workflowId);
     if (this.db === undefined) {
       return [];
@@ -988,9 +988,9 @@ export class WorkflowStorage {
   async setProjectMember(options: {
     workflowId: string;
     userId: string;
-    role: WorkflowProjectRole;
+    role: ProjectRole;
     createdBy?: string;
-  }): Promise<WorkflowProjectMember> {
+  }): Promise<ProjectMember> {
     this.assertWorkflowId(options.workflowId);
     if (this.db === undefined) {
       throw new HttpError(501, 501, "Project member management requires PostgreSQL storage.");
@@ -1008,10 +1008,10 @@ export class WorkflowStorage {
 
   async createProjectInvitation(options: {
     workflowId: string;
-    role: WorkflowProjectRole;
+    role: ProjectRole;
     createdBy?: string;
     ttlMs?: number;
-  }): Promise<{ invitation: WorkflowProjectInvitation; token: string }> {
+  }): Promise<{ invitation: ProjectInvitation; token: string }> {
     this.assertWorkflowId(options.workflowId);
     if (this.db === undefined) {
       throw new HttpError(501, 501, "Project invitations require PostgreSQL storage.");
@@ -1034,7 +1034,7 @@ export class WorkflowStorage {
     return { invitation, token };
   }
 
-  async listProjectInvitations(workflowId: string): Promise<WorkflowProjectInvitation[]> {
+  async listProjectInvitations(workflowId: string): Promise<ProjectInvitation[]> {
     this.assertWorkflowId(workflowId);
     if (this.db === undefined) {
       return [];
@@ -1042,7 +1042,7 @@ export class WorkflowStorage {
     return await this.db.listWorkflowProjectInvitations(workflowId);
   }
 
-  async getInvitationByToken(token: string): Promise<WorkflowProjectInvitation | undefined> {
+  async getInvitationByToken(token: string): Promise<ProjectInvitation | undefined> {
     if (this.db === undefined) {
       return undefined;
     }
@@ -1063,7 +1063,7 @@ export class WorkflowStorage {
   async acceptInvitation(input: {
     token: string;
     acceptedBy: string;
-  }): Promise<{ invitation: WorkflowProjectInvitation; member: WorkflowProjectMember }> {
+  }): Promise<{ invitation: ProjectInvitation; member: ProjectMember }> {
     if (this.db === undefined) {
       throw new HttpError(501, 501, "Project invitations require PostgreSQL storage.");
     }
@@ -1098,8 +1098,8 @@ export class WorkflowStorage {
 
   async updateProjectVisibility(options: {
     workflowId: string;
-    visibility: WorkflowVisibility;
-  }): Promise<WorkflowSummary> {
+    visibility: Visibility;
+  }): Promise<Summary> {
     this.assertWorkflowId(options.workflowId);
     if (this.db === undefined) {
       throw new HttpError(501, 501, "Project access management requires PostgreSQL storage.");
@@ -1114,14 +1114,14 @@ export class WorkflowStorage {
     return this.summarizeDbWorkflow(updated);
   }
 
-  async getProjectAccessSummary(workflowId: string, userId?: string): Promise<WorkflowProjectAccessSummary> {
+  async getProjectAccessSummary(workflowId: string, userId?: string): Promise<ProjectAccessSummary> {
     this.assertWorkflowId(workflowId);
     const workflow = await this.readWorkflowRecordForAccess(workflowId);
     return this.createProjectAccessSummary(workflow, userId);
   }
 
   canReadProject(options: {
-    access: WorkflowProjectAccessSummary;
+    access: ProjectAccessSummary;
     canReadAll?: boolean;
     canReadPublic?: boolean;
     userId?: string;
@@ -1132,7 +1132,7 @@ export class WorkflowStorage {
   }
 
   canManageProject(options: {
-    access: WorkflowProjectAccessSummary;
+    access: ProjectAccessSummary;
     canManageAll?: boolean;
     canManageOwn?: boolean;
     canUpload?: boolean;
@@ -1155,7 +1155,7 @@ export class WorkflowStorage {
   }
 
   canDownloadProjectSource(options: {
-    access: WorkflowProjectAccessSummary;
+    access: ProjectAccessSummary;
     canDownloadSource?: boolean;
     userId?: string;
   }): boolean {
@@ -1166,7 +1166,7 @@ export class WorkflowStorage {
   }
 
   assertReadableProject(options: {
-    access: WorkflowProjectAccessSummary;
+    access: ProjectAccessSummary;
     canReadAll?: boolean;
     canReadPublic?: boolean;
     userId?: string;
@@ -1176,23 +1176,23 @@ export class WorkflowStorage {
     }
   }
 
-  assertManageableProject(options: Parameters<WorkflowStorage["canManageProject"]>[0]): void {
+  assertManageableProject(options: Parameters<Storage["canManageProject"]>[0]): void {
     if (!this.canManageProject(options)) {
       throw new HttpError(403, 403, "Permission denied.");
     }
   }
 
-  assertDataWritableProject(options: { access: WorkflowProjectAccessSummary; userId?: string; canWriteAll?: boolean }): void {
+  assertDataWritableProject(options: { access: ProjectAccessSummary; userId?: string; canWriteAll?: boolean }): void {
     if (this.canWriteProjectData(options)) return;
     throw new HttpError(403, 403, "Project data write access is required.");
   }
 
-  canWriteProjectData(options: { access: WorkflowProjectAccessSummary; userId?: string; canWriteAll?: boolean }): boolean {
+  canWriteProjectData(options: { access: ProjectAccessSummary; userId?: string; canWriteAll?: boolean }): boolean {
     const role = options.access.member?.role;
     return options.canWriteAll === true || Boolean(options.userId && (role === "owner" || role === "manager" || role === "writer"));
   }
 
-  async listWorkflows(): Promise<WorkflowSummary[]> {
+  async listWorkflows(): Promise<Summary[]> {
     if (this.db) {
       const workflows = await this.db.listWorkflows();
       const versions = await this.db.listVersionsForWorkflows(workflows.map(item => item.id));
@@ -1207,7 +1207,7 @@ export class WorkflowStorage {
     return summaries.sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  async listVersions(workflowId: string): Promise<WorkflowVersionSummary> {
+  async listVersions(workflowId: string): Promise<VersionSummary> {
     this.assertWorkflowId(workflowId);
     const metadata = await this.readWorkflowRecordForAccess(workflowId);
     const versions = this.db ? await this.db.listVersions(workflowId) : await Promise.all((await this.listVersionNames(workflowId)).map(version => this.readManifest(workflowId, version)));
@@ -1281,7 +1281,7 @@ export class WorkflowStorage {
     archiveName: string;
     archiveBuffer: Buffer;
     createOnly?: boolean;
-    onStage?: (stage: WorkflowPreparationStage) => Promise<void>;
+    onStage?: (stage: PreparationStage) => Promise<void>;
   }): Promise<UploadPackageResult> {
     this.assertWorkflowId(options.workflowName);
     assertArchiveName(options.archiveName);
@@ -1338,7 +1338,7 @@ export class WorkflowStorage {
     archiveName: string;
     archiveBuffer: Buffer;
     createOnly?: boolean;
-  }): Promise<WorkflowPreparationJob> {
+  }): Promise<PreparationJob> {
     this.assertWorkflowId(options.workflowName);
     assertArchiveName(options.archiveName);
     return this.withLocalPreparationLock(options.workflowName, async () => {
@@ -1351,7 +1351,7 @@ export class WorkflowStorage {
     archiveName: string;
     archiveBuffer: Buffer;
     createOnly?: boolean;
-  }): Promise<WorkflowPreparationJob> {
+  }): Promise<PreparationJob> {
     if (options.createOnly === true) {
       await this.assertWorkflowDoesNotExist(options.workflowName);
     }
@@ -1366,7 +1366,7 @@ export class WorkflowStorage {
     }
 
     const createdAt = new Date().toISOString();
-    const job: WorkflowPreparationJob = {
+    const job: PreparationJob = {
       jobId: randomUUID(),
       workflowId: options.workflowName,
       archiveName: options.archiveName,
@@ -1399,26 +1399,26 @@ export class WorkflowStorage {
     }
   }
 
-  async getPreparationJob(workflowName: string, jobId: string): Promise<WorkflowPreparationJob> {
+  async getPreparationJob(workflowName: string, jobId: string): Promise<PreparationJob> {
     this.assertWorkflowId(workflowName);
     if (!isWorkflowUuid(jobId)) {
       throw new HttpError(400, 400, createInvalidWorkflowUuidMessage(jobId, "preparation job id"));
     }
-    const job = await readJson<WorkflowPreparationJob>(this.preparationJobPath(workflowName, jobId));
+    const job = await readJson<PreparationJob>(this.preparationJobPath(workflowName, jobId));
     if (job === undefined || job.workflowId !== workflowName || job.jobId !== jobId) {
       throw new HttpError(404, 404, `Preparation job "${jobId}" does not exist for workflow "${workflowName}".`);
     }
     return job;
   }
 
-  async getLatestPreparationJob(workflowName: string): Promise<WorkflowPreparationJob | undefined> {
+  async getLatestPreparationJob(workflowName: string): Promise<PreparationJob | undefined> {
     this.assertWorkflowId(workflowName);
     const root = this.preparationWorkflowRoot(workflowName);
     if (!(await exists(root))) return undefined;
     const entries = await readdir(root, { withFileTypes: true });
     const jobs = (await Promise.all(entries
       .filter((entry) => entry.isDirectory())
-      .map((entry) => readJson<WorkflowPreparationJob>(this.preparationJobPath(workflowName, entry.name)))))
+      .map((entry) => readJson<PreparationJob>(this.preparationJobPath(workflowName, entry.name)))))
       .filter(isDefined);
     return jobs.sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
   }
@@ -1435,7 +1435,7 @@ export class WorkflowStorage {
 
   private async runPreparationJob(workflowId: string, jobId: string, createOnly: boolean): Promise<void> {
     let job = await this.getPreparationJob(workflowId, jobId);
-    const updateStage = async (stage: WorkflowPreparationStage): Promise<void> => {
+    const updateStage = async (stage: PreparationStage): Promise<void> => {
       job = {
         ...job,
         status: "preparing",
@@ -1499,7 +1499,7 @@ export class WorkflowStorage {
     }
   }
 
-  private async writePreparationJob(job: WorkflowPreparationJob): Promise<void> {
+  private async writePreparationJob(job: PreparationJob): Promise<void> {
     const target = this.preparationJobPath(job.workflowId, job.jobId);
     const temp = `${target}.${randomUUID()}.tmp`;
     await writeJson(temp, job);
@@ -1508,7 +1508,7 @@ export class WorkflowStorage {
 
   async createWorkflow(options: {
     workflowName: string;
-    files: WorkflowFileInput[];
+    files: FileInput[];
   }): Promise<UploadPackageResult> {
     this.assertWorkflowId(options.workflowName);
 
@@ -1557,7 +1557,7 @@ export class WorkflowStorage {
     workflowName: string;
     target: string;
     resolvedTarget: string;
-    files: WorkflowFile[];
+    files: File[];
   }> {
     this.assertWorkflowId(options.workflowName);
     const resolved = await this.resolveSourceTarget(
@@ -1578,12 +1578,12 @@ export class WorkflowStorage {
     };
   }
 
-  async getSourceDownloadAvailability(workflowName: string): Promise<Omit<WorkflowSourceDownloadAvailability, "allowed">> {
+  async getSourceDownloadAvailability(workflowName: string): Promise<Omit<SourceDownloadAvailability, "allowed">> {
     const latest = await this.readLatest(workflowName);
     return { available: latest !== null, target: latest };
   }
 
-  async getDownloadableSourceFiles(options: { workflowName: string; target?: string }): Promise<{ workflowId: string; workflowName: string; target: string; resolvedTarget: string; files: WorkflowFile[] }> {
+  async getDownloadableSourceFiles(options: { workflowName: string; target?: string }): Promise<{ workflowId: string; workflowName: string; target: string; resolvedTarget: string; files: File[] }> {
     this.assertWorkflowId(options.workflowName);
     const target = options.target?.trim() || "latest";
     if (target === "draft") throw new HttpError(400, 400, "Download a published project version.");
@@ -1594,12 +1594,12 @@ export class WorkflowStorage {
   }
 
   async createProjectGroupDeployment(options: {
-    manifest: WorkflowProjectGroupManifestV1;
+    manifest: ProjectGroupManifestV1;
     releaseLog?: string;
     createdByUserId: string;
-  }): Promise<WorkflowDeploymentRecord> {
+  }): Promise<DeploymentRecord> {
     const db = this.requireProjectDependencyDatabase();
-    let manifest: WorkflowProjectGroupManifestV1;
+    let manifest: ProjectGroupManifestV1;
     try {
       manifest = parseWorkflowProjectGroupManifest(options.manifest);
     } catch (error) {
@@ -1640,7 +1640,7 @@ export class WorkflowStorage {
     }
   }
 
-  async getProjectGroupDeployment(deploymentId: string): Promise<WorkflowDeploymentRecord> {
+  async getProjectGroupDeployment(deploymentId: string): Promise<DeploymentRecord> {
     if (!isWorkflowUuid(deploymentId)) {
       throw new HttpError(400, 400, createInvalidWorkflowUuidMessage(deploymentId, "deployment id"));
     }
@@ -1655,7 +1655,7 @@ export class WorkflowStorage {
     deploymentId: string;
     archiveName: string;
     archiveBuffer: Buffer;
-  }): Promise<WorkflowDeploymentRecord> {
+  }): Promise<DeploymentRecord> {
     return this.withProjectGroupDeploymentLock(options.deploymentId, () =>
       this.prepareProjectGroupDeploymentLocked(options));
   }
@@ -1664,7 +1664,7 @@ export class WorkflowStorage {
     deploymentId: string;
     archiveName: string;
     archiveBuffer: Buffer;
-  }): Promise<WorkflowDeploymentRecord> {
+  }): Promise<DeploymentRecord> {
     assertArchiveName(options.archiveName);
     if (!isTarGzipName(options.archiveName)) {
       throw new HttpError(400, 400, "Project-group packages must use .tar.gz or .tgz format.");
@@ -1681,7 +1681,7 @@ export class WorkflowStorage {
         );
       }
 
-      const preparation: WorkflowDeploymentPreparation = {
+      const preparation: DeploymentPreparation = {
         deploymentId: deployment.id,
         archiveName: options.archiveName,
         createdAt: new Date().toISOString(),
@@ -1710,7 +1710,7 @@ export class WorkflowStorage {
     });
   }
 
-  private scheduleProjectGroupPreparation(preparation: WorkflowDeploymentPreparation): void {
+  private scheduleProjectGroupPreparation(preparation: DeploymentPreparation): void {
     if (this.activeDeploymentPreparations.has(preparation.deploymentId)) return;
     this.activeDeploymentPreparations.add(preparation.deploymentId);
     setImmediate(() => {
@@ -1720,7 +1720,7 @@ export class WorkflowStorage {
     });
   }
 
-  private async runProjectGroupPreparation(preparation: WorkflowDeploymentPreparation): Promise<void> {
+  private async runProjectGroupPreparation(preparation: DeploymentPreparation): Promise<void> {
     try {
       const archiveBuffer = await readFile(this.deploymentPreparationArchivePath(preparation));
       await this.prepareProjectGroupDeployment({
@@ -1752,7 +1752,7 @@ export class WorkflowStorage {
       if (deployment === undefined) continue;
       if (deployment.status !== "planned" && deployment.status !== "preparing") continue;
 
-      const preparation = await readJson<WorkflowDeploymentPreparation>(
+      const preparation = await readJson<DeploymentPreparation>(
         this.deploymentPreparationMetadataPath(entry.name),
       );
       const valid = preparation !== undefined &&
@@ -1784,7 +1784,7 @@ export class WorkflowStorage {
     deploymentId: string;
     archiveName: string;
     archiveBuffer: Buffer;
-  }): Promise<WorkflowDeploymentRecord> {
+  }): Promise<DeploymentRecord> {
     assertArchiveName(options.archiveName);
     if (!isTarGzipName(options.archiveName)) {
       throw new HttpError(400, 400, "Project-group packages must use .tar.gz or .tgz format.");
@@ -1833,7 +1833,7 @@ export class WorkflowStorage {
         extractDir,
       );
       const manifestPath = path.join(extractDir, STEAMHARNESS_PROJECT_GROUP_MANIFEST_FILE);
-      let uploadedManifest: WorkflowProjectGroupManifestV1;
+      let uploadedManifest: ProjectGroupManifestV1;
       try {
         uploadedManifest = parseWorkflowProjectGroupManifest(
           JSON.parse(await readFile(manifestPath, "utf8")) as unknown,
@@ -1937,14 +1937,14 @@ export class WorkflowStorage {
     return this.getProjectGroupDeployment(deployment.id);
   }
 
-  async publishProjectGroupDeployment(deploymentId: string): Promise<WorkflowDeploymentRecord> {
+  async publishProjectGroupDeployment(deploymentId: string): Promise<DeploymentRecord> {
     return this.withProjectGroupDeploymentLock(deploymentId, () =>
       this.publishProjectGroupDeploymentLocked(deploymentId));
   }
 
   private async publishProjectGroupDeploymentLocked(
     deploymentId: string,
-  ): Promise<WorkflowDeploymentRecord> {
+  ): Promise<DeploymentRecord> {
     const db = this.requireProjectDependencyDatabase();
     const deployment = await this.getProjectGroupDeployment(deploymentId);
     if (deployment.status === "published") return deployment;
@@ -2025,7 +2025,7 @@ export class WorkflowStorage {
         const rootItem = deployment.items.find((item) => item.projectId === rootProject.projectId)!;
         const existingRoot = await this.resolvePublishedDeploymentItem(rootItem);
         let rootVersion: string;
-        let rootManifest: WorkflowManifest | undefined;
+        let rootManifest: Manifest | undefined;
         if (existingRoot !== undefined) {
           if (JSON.stringify(existingRoot.manifest.dependencies ?? []) !== JSON.stringify(dependencies)) {
             throw new HttpError(409, 409, "The previously published Kanban root has a different dependency lock.");
@@ -2082,7 +2082,7 @@ export class WorkflowStorage {
     target?: string;
     canDownloadProject: (projectId: string) => Promise<boolean>;
     requestUrlForProject?: (projectId: string) => string;
-  }): Promise<WorkflowProjectDependencyStatusResult> {
+  }): Promise<ProjectDependencyStatusResult> {
     const target = options.target?.trim() || "latest";
     const resolved = await this.resolveSourceTarget(options.workflowName, target);
     const dependencies = resolved.resolvedTarget === "draft"
@@ -2139,14 +2139,14 @@ export class WorkflowStorage {
     target?: string;
     canDownloadProject: (projectId: string) => Promise<boolean>;
     requestUrlForProject?: (projectId: string) => string;
-  }): Promise<WorkflowProjectGroupDownloadResult> {
+  }): Promise<ProjectGroupDownloadResult> {
     const target = options.target?.trim() || "latest";
     if (target === "draft") throw new HttpError(400, 400, "Project groups can only download immutable published versions.");
     const resolved = await this.resolveSourceTarget(options.workflowName, target);
     const rootManifest = (await this.readManifest(options.workflowName, resolved.resolvedTarget))!;
     const dependencies = await this.readVersionDependencyLocks(options.workflowName, resolved.resolvedTarget, rootManifest);
-    const downloads: WorkflowProjectDownloadPlan["downloads"] = [];
-    const skippedDependencies: WorkflowProjectDownloadPlan["skippedDependencies"] = [];
+    const downloads: ProjectDownloadPlan["downloads"] = [];
+    const skippedDependencies: ProjectDownloadPlan["skippedDependencies"] = [];
     downloads.push({
       projectId: options.workflowName,
       version: resolved.resolvedTarget,
@@ -2154,7 +2154,7 @@ export class WorkflowStorage {
       projectName: rootManifest.workflowName,
       role: "root",
     });
-    const downloadsByProject = new Map<string, WorkflowProjectDownloadPlan["downloads"][number]>([
+    const downloadsByProject = new Map<string, ProjectDownloadPlan["downloads"][number]>([
       [`${options.workflowName}\0${resolved.resolvedTarget}\0${rootManifest.sourceHash}`, downloads[0]!],
     ]);
     for (const dependency of dependencies) {
@@ -2188,12 +2188,12 @@ export class WorkflowStorage {
         sourceHash: dependency.sourceHash!,
         projectName: metadata.name,
         role: "dependency",
-      } satisfies WorkflowProjectDownloadPlan["downloads"][number];
+      } satisfies ProjectDownloadPlan["downloads"][number];
       downloads.push(download);
       downloadsByProject.set(downloadKey, download);
     }
     const missingIncluded = skippedDependencies.some((item) => item.dependency.delivery === "included");
-    const plan: WorkflowProjectDownloadPlan = {
+    const plan: ProjectDownloadPlan = {
       rootProjectId: options.workflowName,
       rootVersion: resolved.resolvedTarget,
       dependencies: dependencies.map(cloneWorkflowProjectDependencyLock),
@@ -2233,12 +2233,12 @@ export class WorkflowStorage {
     });
   }
 
-  async listProjectSourceCapabilities(projectId: string): Promise<WorkflowProjectCapabilityGrant[]> {
+  async listProjectSourceCapabilities(projectId: string): Promise<ProjectCapabilityGrant[]> {
     this.assertWorkflowId(projectId);
     return this.requireProjectDependencyDatabase().listWorkflowProjectCapabilityGrants(projectId);
   }
 
-  async listProjectAccessRequests(projectId: string): Promise<WorkflowProjectAccessRequest[]> {
+  async listProjectAccessRequests(projectId: string): Promise<ProjectAccessRequest[]> {
     this.assertWorkflowId(projectId);
     return this.requireProjectDependencyDatabase().listWorkflowProjectAccessRequests(projectId);
   }
@@ -2247,7 +2247,7 @@ export class WorkflowStorage {
     projectId: string;
     requesterUserId: string;
     reason: string;
-  }): Promise<WorkflowProjectAccessRequest> {
+  }): Promise<ProjectAccessRequest> {
     this.assertWorkflowId(options.projectId);
     const reason = options.reason.trim();
     if (reason.length < 2 || reason.length > 1000) {
@@ -2272,7 +2272,7 @@ export class WorkflowStorage {
     requestId: string;
     status: "approved" | "rejected";
     resolvedByUserId?: string;
-  }): Promise<WorkflowProjectAccessRequest> {
+  }): Promise<ProjectAccessRequest> {
     const resolved = await this.requireProjectDependencyDatabase().resolveWorkflowProjectAccessRequest({
       ...options,
     });
@@ -2312,7 +2312,7 @@ export class WorkflowStorage {
     return { projectId: payload.projectId };
   }
 
-  private async isPinnedProjectSourceAvailable(dependency: WorkflowProjectDependencyLock): Promise<boolean> {
+  private async isPinnedProjectSourceAvailable(dependency: ProjectDependencyLock): Promise<boolean> {
     if (dependency.delivery !== "included" || !dependency.version || !dependency.sourceHash) return false;
     try {
       const manifest = await this.readManifest(dependency.projectId, dependency.version);
@@ -2323,8 +2323,8 @@ export class WorkflowStorage {
   }
 
   private async resolvePublishedDeploymentItem(
-    item: WorkflowDeploymentRecord["items"][number],
-  ): Promise<{ version: string; sourceHash: string; manifest: WorkflowManifest } | undefined> {
+    item: DeploymentRecord["items"][number],
+  ): Promise<{ version: string; sourceHash: string; manifest: Manifest } | undefined> {
     const version = item.publishedVersion ?? item.plannedVersion;
     const sourceHash = item.publishedSourceHash ?? item.preparedSourceHash;
     if (!version || !sourceHash) return undefined;
@@ -2334,7 +2334,7 @@ export class WorkflowStorage {
   }
 
   private async assertReservedDeploymentVersion(
-    item: WorkflowDeploymentRecord["items"][number],
+    item: DeploymentRecord["items"][number],
   ): Promise<void> {
     if (!item.plannedVersion || !await this.requireProjectDependencyDatabase().hasWorkflowVersionReservation({
       deploymentId: item.deploymentId,
@@ -2348,9 +2348,9 @@ export class WorkflowStorage {
   }
 
   private async reserveProjectGroupDeploymentVersions(
-    deployment: WorkflowDeploymentRecord,
+    deployment: DeploymentRecord,
     reset: boolean,
-  ): Promise<WorkflowDeploymentRecord> {
+  ): Promise<DeploymentRecord> {
     const db = this.requireProjectDependencyDatabase();
     const projectIds = deployment.items.map((item) => item.projectId).sort();
     return this.withWorkflowPublishLocks(projectIds, async () => {
@@ -2381,7 +2381,7 @@ export class WorkflowStorage {
     });
   }
 
-  private async assertProjectGroupPublishReady(deployment: WorkflowDeploymentRecord): Promise<void> {
+  private async assertProjectGroupPublishReady(deployment: DeploymentRecord): Promise<void> {
     const rootProject = deployment.manifest.projects.find((project) => project.role === "root");
     if (rootProject === undefined) {
       throw new HttpError(409, 409, "Project-group root is missing.");
@@ -2431,7 +2431,7 @@ export class WorkflowStorage {
       buffer: Buffer;
       conversationId?: string;
     }>;
-  }): Promise<WorkflowManagedFileReference[]> {
+  }): Promise<ManagedFileReference[]> {
     // Keep uploaded run attachments outside workflow source/runtime
     // trees; workflows receive opaque references and resolve them at run time.
     this.assertWorkflowId(options.workflowName);
@@ -2440,7 +2440,7 @@ export class WorkflowStorage {
       assertManagedFileSize(file.buffer.byteLength);
       const id = createManagedFileId();
       const mimeType = normalizeMimeType(file.mimeType, file.name);
-      const ref: WorkflowManagedFileReference = {
+      const ref: ManagedFileReference = {
         id,
         name: normalizeManagedFileName(file.name),
         mimeType,
@@ -2471,11 +2471,11 @@ export class WorkflowStorage {
   }
 
   async getManagedFile(fileId: string): Promise<{
-    metadata: WorkflowManagedFileReference;
+    metadata: ManagedFileReference;
     filePath: string;
   }> {
     assertManagedFileId(fileId);
-    const metadata = await readJson<WorkflowManagedFileReference>(
+    const metadata = await readJson<ManagedFileReference>(
       path.join(this.managedFileDir(fileId), "metadata.json"),
     );
 
@@ -2499,7 +2499,7 @@ export class WorkflowStorage {
     workflowName: string;
     target?: string;
     actorId: string;
-  }): Promise<WorkflowKanbanWorkspaceState> {
+  }): Promise<KanbanWorkspaceState> {
     return this.withKanbanConfigurationLock(options.workflowName, options.actorId, () =>
       this.getKanbanWorkspaceUnlocked(options));
   }
@@ -2508,7 +2508,7 @@ export class WorkflowStorage {
     workflowName: string;
     target?: string;
     alias: string;
-  }): Promise<WorkflowRelatedProject> {
+  }): Promise<RelatedProject> {
     const project = await this.resolveKanbanProject(options.workflowName, options.target);
     const relation = project.relatedProjects.find((item) => item.alias === options.alias);
     if (relation === undefined) {
@@ -2522,7 +2522,7 @@ export class WorkflowStorage {
     target?: string;
   }): Promise<{
     resolvedTarget: string;
-    relatedProjects: WorkflowRelatedProject[];
+    relatedProjects: RelatedProject[];
   }> {
     this.assertWorkflowId(options.workflowName);
     await this.assertServerProjectDataAccess(options.workflowName);
@@ -2548,7 +2548,7 @@ export class WorkflowStorage {
   }
 
   async subscribeProjectStorageRevisions(
-    listener: (event: WorkflowProjectStorageRevisionEvent) => void,
+    listener: (event: ProjectStorageRevisionEvent) => void,
   ): Promise<() => Promise<void>> {
     if (!this.db) return async () => undefined;
     this.projectStorageRevisionListeners.add(listener);
@@ -2579,7 +2579,7 @@ export class WorkflowStorage {
     workflowName: string;
     target?: string;
     actorId: string;
-  }): Promise<WorkflowKanbanWorkspaceState> {
+  }): Promise<KanbanWorkspaceState> {
     const project = await this.resolveKanbanProject(options.workflowName, options.target);
     const actorId = requireKanbanActorId(options.actorId);
     const params = project.manifest?.params ?? [];
@@ -2617,7 +2617,7 @@ export class WorkflowStorage {
     workflowName: string;
     target?: string;
     actorId: string;
-  }): Promise<WorkflowKanbanPreviewCapability> {
+  }): Promise<KanbanPreviewCapability> {
     const project = await this.resolveKanbanProject(options.workflowName, options.target);
     const actorId = requireKanbanActorId(options.actorId);
     const now = Date.now();
@@ -2643,7 +2643,7 @@ export class WorkflowStorage {
     previewCapabilityToken?: string;
     assetPath: string;
     nonce: string;
-  }): Promise<WorkflowKanbanAsset> {
+  }): Promise<KanbanAsset> {
     const actorId = options.previewCapabilityToken
       ? this.requireKanbanPreviewCapability(
           options.previewCapabilityToken,
@@ -2753,7 +2753,7 @@ export class WorkflowStorage {
     target?: string;
     actorId: string;
     sourceConfigurationId?: string;
-  }): Promise<WorkflowKanbanWorkspaceState> {
+  }): Promise<KanbanWorkspaceState> {
     return this.withKanbanConfigurationLock(options.workflowName, options.actorId, async () => {
       const workspace = await this.getKanbanWorkspaceUnlocked(options);
       const params = workspace.manifest?.params ?? [];
@@ -2787,7 +2787,7 @@ export class WorkflowStorage {
     actorId: string;
     configurationId: string;
     name: string;
-  }): Promise<WorkflowKanbanWorkspaceState> {
+  }): Promise<KanbanWorkspaceState> {
     return this.withKanbanConfigurationLock(options.workflowName, options.actorId, async () => {
       const workspace = await this.getKanbanWorkspaceUnlocked(options);
       const current = requireKanbanConfiguration(workspace.configurations, options.configurationId);
@@ -2808,7 +2808,7 @@ export class WorkflowStorage {
     actorId: string;
     configurationId: string;
     values: Record<string, unknown>;
-  }): Promise<WorkflowKanbanWorkspaceState> {
+  }): Promise<KanbanWorkspaceState> {
     return this.withKanbanConfigurationLock(options.workflowName, options.actorId, async () => {
       const workspace = await this.getKanbanWorkspaceUnlocked(options);
       const current = requireKanbanConfiguration(workspace.configurations, options.configurationId);
@@ -2826,7 +2826,7 @@ export class WorkflowStorage {
     target?: string;
     actorId: string;
     configurationId: string;
-  }): Promise<WorkflowKanbanWorkspaceState> {
+  }): Promise<KanbanWorkspaceState> {
     return this.withKanbanConfigurationLock(options.workflowName, options.actorId, async () => {
       const workspace = await this.getKanbanWorkspaceUnlocked(options);
       requireKanbanConfiguration(workspace.configurations, options.configurationId);
@@ -2840,7 +2840,7 @@ export class WorkflowStorage {
     target?: string;
     actorId: string;
     configurationId: string;
-  }): Promise<WorkflowKanbanWorkspaceState> {
+  }): Promise<KanbanWorkspaceState> {
     return this.withKanbanConfigurationLock(options.workflowName, options.actorId, async () => {
       const workspace = await this.getKanbanWorkspaceUnlocked(options);
       requireKanbanConfiguration(workspace.configurations, options.configurationId);
@@ -2856,7 +2856,7 @@ export class WorkflowStorage {
 
   async saveDraftFiles(options: {
     workflowName: string;
-    files: WorkflowFileInput[];
+    files: FileInput[];
     removePaths?: string[];
   }): Promise<SaveDraftFilesResult> {
     this.assertWorkflowId(options.workflowName);
@@ -3085,7 +3085,7 @@ export class WorkflowStorage {
     workflowName: string;
     releaseLog?: string;
     createdByUserId?: string;
-    dependencies?: WorkflowProjectDependencyLock[];
+    dependencies?: ProjectDependencyLock[];
     expectedVersion?: string;
     expectedSourceHash?: string;
   }): Promise<PublishResult> {
@@ -3097,7 +3097,7 @@ export class WorkflowStorage {
   }
 
   private async publishLocked(options: {
-    workflowName: string; releaseLog?: string; createdByUserId?: string; dependencies?: WorkflowProjectDependencyLock[];
+    workflowName: string; releaseLog?: string; createdByUserId?: string; dependencies?: ProjectDependencyLock[];
     expectedVersion?: string; expectedSourceHash?: string; reservationDeploymentId?: string;
   }): Promise<PublishResult> {
     const tempDir = path.join(this.dataRoot, "tmp", randomUUID());
@@ -3131,7 +3131,7 @@ export class WorkflowStorage {
         throw new HttpError(409, 409, "Project draft changed after preparation.");
       }
       const artifacts = await this.uploadVersionArtifacts({ workflowName: options.workflowName, version, sourceHash, sourceDir });
-      const manifest: WorkflowManifest = { workflowId: options.workflowName, workflowName: metadata.name, version,
+      const manifest: Manifest = { workflowId: options.workflowName, workflowName: metadata.name, version,
         createdAt: new Date().toISOString(), createdByUserId: options.createdByUserId, releaseLog, sourceHash,
         sourceObjectPath: artifacts?.sourceObjectPath, projectType: metadata.projectType, dependencies };
       await writeJson(path.join(stagedVersionDir, "manifest.json"), manifest);
@@ -3155,12 +3155,12 @@ export class WorkflowStorage {
   private async resolvePublishDependencyLocks(options: {
     workflowName: string;
     sourceDir: string;
-    projectType: WorkflowProjectType;
-    dependencies?: WorkflowProjectDependencyLock[];
-  }): Promise<WorkflowProjectDependencyLock[]> {
+    projectType: ProjectKind;
+    dependencies?: ProjectDependencyLock[];
+  }): Promise<ProjectDependencyLock[]> {
     const packageJson = await readPackageJson(options.sourceDir);
     const projectInfo = readWorkflowProjectInfo(packageJson);
-    const confirmed: WorkflowRelatedProject[] = [];
+    const confirmed: RelatedProject[] = [];
     if (this.db !== undefined) {
       for (const relation of projectInfo.relatedProjects) {
         const target = await this.db.getWorkflow(relation.projectId);
@@ -3178,7 +3178,7 @@ export class WorkflowStorage {
       return declared;
     }
 
-    let dependencies: WorkflowProjectDependencyLock[];
+    let dependencies: ProjectDependencyLock[];
     try {
       dependencies = parseWorkflowProjectDependencyLocks(options.dependencies, { published: true });
     } catch (error) {
@@ -3204,7 +3204,7 @@ export class WorkflowStorage {
     await this.db?.close();
   }
 
-  async getProjectDataSummary(projectId: string): Promise<WorkflowProjectDataSummary> {
+  async getProjectDataSummary(projectId: string): Promise<ProjectDataSummary> {
     this.assertWorkflowId(projectId);
     await this.assertServerProjectDataAccess(projectId);
     if (this.db === undefined) {
@@ -3219,10 +3219,10 @@ export class WorkflowStorage {
     cursor?: string;
     scope?: "project" | "conversation";
     query?: string;
-    valueType?: WorkflowKVEntryValueType;
+    valueType?: KVEntryValueType;
     conversationId?: string;
     runId?: string;
-  }): Promise<WorkflowKVEntryPage> {
+  }): Promise<KVEntryPage> {
     this.assertWorkflowId(options.projectId);
     await this.assertServerProjectDataAccess(options.projectId);
     if (this.db === undefined) {
@@ -3246,7 +3246,7 @@ export class WorkflowStorage {
     scope: "project" | "conversation";
     key: string;
     conversationId?: string;
-  }): Promise<WorkflowKVEntryDetail> {
+  }): Promise<KVEntryDetail> {
     this.assertWorkflowId(options.projectId);
     await this.assertServerProjectDataAccess(options.projectId);
     if (this.db === undefined) {
@@ -3317,12 +3317,12 @@ export class WorkflowStorage {
   }
 
   async getProjectStorageValue(options: {
-    storageKind: WorkflowStorageKind;
-    scope: WorkflowKVScope;
+    storageKind: StorageKind;
+    scope: KVScope;
     projectId: string;
     key: string;
     conversationId?: string;
-  }): Promise<WorkflowPersistentValueGetResult> {
+  }): Promise<PersistentValueGetResult> {
     const input = normalizeProjectStorageInput(options);
     await this.assertServerProjectDataAccess(input.projectId);
     if (this.db === undefined) {
@@ -3336,13 +3336,13 @@ export class WorkflowStorage {
   }
 
   async setProjectStorageValue(options: {
-    storageKind: WorkflowStorageKind;
-    scope: WorkflowKVScope;
+    storageKind: StorageKind;
+    scope: KVScope;
     projectId: string;
     key: string;
     conversationId?: string;
     value: unknown;
-    source?: WorkflowKVWriteSource;
+    source?: KVWriteSource;
   }): Promise<{ ok: true }> {
     const input = normalizeProjectStorageInput(options);
     await this.assertServerProjectDataAccess(input.projectId);
@@ -3364,8 +3364,8 @@ export class WorkflowStorage {
   }
 
   async deleteProjectStorageValue(options: {
-    storageKind: WorkflowStorageKind;
-    scope: WorkflowKVScope;
+    storageKind: StorageKind;
+    scope: KVScope;
     projectId: string;
     key: string;
     conversationId?: string;
@@ -3380,15 +3380,15 @@ export class WorkflowStorage {
   }
 
   async compareAndSetProjectStorageValue(options: {
-    storageKind: WorkflowStorageKind;
-    scope: WorkflowKVScope;
+    storageKind: StorageKind;
+    scope: KVScope;
     projectId: string;
     key: string;
     conversationId?: string;
     value: unknown;
     expectedRevision: string | null;
-    source?: WorkflowKVWriteSource;
-  }): Promise<WorkflowPersistentValueCompareAndSetResult> {
+    source?: KVWriteSource;
+  }): Promise<PersistentValueCompareAndSetResult> {
     const input = normalizeProjectStorageInput(options);
     await this.assertServerProjectDataAccess(input.projectId);
     if (this.db === undefined) {
@@ -3408,10 +3408,10 @@ export class WorkflowStorage {
 
   async mutateProjectStorageKnowledgeDocument(options: {
     projectId: string;
-    mutation: WorkflowPersistentValueKnowledgeMutation;
-  }): Promise<WorkflowKnowledgeDocumentRecord | { id: string; deleted: boolean }> {
+    mutation: PersistentValueKnowledgeMutation;
+  }): Promise<KnowledgeDocumentRecord | { id: string; deleted: boolean }> {
     return this.withPersistentValueKnowledgeMutationContext<
-      WorkflowKnowledgeDocumentRecord | { id: string; deleted: boolean }
+      KnowledgeDocumentRecord | { id: string; deleted: boolean }
     >(
       options.projectId,
       async (context) => {
@@ -3435,7 +3435,7 @@ export class WorkflowStorage {
   async listKnowledgeDocuments(
     workflowName: string,
     options: { pageSize?: number; cursor?: string } = {},
-  ): Promise<WorkflowKnowledgeDocumentPage> {
+  ): Promise<KnowledgeDocumentPageRecord> {
     this.assertWorkflowId(workflowName);
     return this.withKnowledgeContext(workflowName, (context) =>
       listKnowledgeDocumentPage(context, options));
@@ -3444,7 +3444,7 @@ export class WorkflowStorage {
   async getKnowledgeDocument(options: {
     workflowName: string;
     documentId: string;
-  }): Promise<WorkflowKnowledgeDocumentRecord> {
+  }): Promise<KnowledgeDocumentRecord> {
     this.assertWorkflowId(options.workflowName);
     const document = await this.withKnowledgeContext(options.workflowName, (context) =>
       getKnowledgeDocument(context, options.documentId));
@@ -3459,7 +3459,7 @@ export class WorkflowStorage {
     id?: string;
     title: string;
     markdown: string;
-  }): Promise<WorkflowKnowledgeDocumentRecord> {
+  }): Promise<KnowledgeDocumentRecord> {
     this.assertWorkflowId(options.workflowName);
     return this.withPersistentValueKnowledgeMutationContext(options.workflowName, (context) =>
       createKnowledgeDocument(context, {
@@ -3474,7 +3474,7 @@ export class WorkflowStorage {
     documentId: string;
     title?: string;
     markdown?: string;
-  }): Promise<WorkflowKnowledgeDocumentRecord> {
+  }): Promise<KnowledgeDocumentRecord> {
     this.assertWorkflowId(options.workflowName);
     return this.withPersistentValueKnowledgeMutationContext(options.workflowName, (context) =>
       editKnowledgeDocument(context, {
@@ -3502,7 +3502,7 @@ export class WorkflowStorage {
     maxMatches?: number;
     pageSize?: number;
     cursor?: string;
-  }): Promise<WorkflowKnowledgeDocumentSearchResult> {
+  }): Promise<KnowledgeDocumentSearchResult> {
     this.assertWorkflowId(options.workflowName);
     return this.withKnowledgeContext(options.workflowName, (context) =>
       searchKnowledgeDocuments(context, {
@@ -3521,7 +3521,7 @@ export class WorkflowStorage {
     documentId: string;
     startLine: number;
     endLine: number;
-  }): Promise<WorkflowKnowledgeDocumentLinesRecord> {
+  }): Promise<KnowledgeDocumentLinesRecord> {
     this.assertWorkflowId(options.workflowName);
     return this.withKnowledgeContext(options.workflowName, (context) =>
       readKnowledgeDocumentLines(context, {
@@ -3534,7 +3534,7 @@ export class WorkflowStorage {
   async getSystemTokenUsage(options: {
     pageSize?: number;
     cursor?: string;
-  } = {}): Promise<WorkflowTokenUsagePage> {
+  } = {}): Promise<TokenUsagePage> {
     if (this.db === undefined) {
       throw new HttpError(501, 501, "Server token usage inspection requires PostgreSQL storage.");
     }
@@ -3549,7 +3549,7 @@ export class WorkflowStorage {
     projectId: string;
     conversationId?: string;
     includeEntries?: boolean;
-  }): Promise<WorkflowTokenUsageDetail> {
+  }): Promise<TokenUsageDetail> {
     this.assertWorkflowId(options.projectId);
     await this.assertServerProjectDataAccess(options.projectId);
     if (this.db === undefined) {
@@ -3755,13 +3755,13 @@ export class WorkflowStorage {
     return { resolvedTarget: version, sourceDir };
   }
 
-  private async readRetainedSourceFiles(workflowName: string, version: string): Promise<{ workflowName: string; files: WorkflowFile[] }> {
+  private async readRetainedSourceFiles(workflowName: string, version: string): Promise<{ workflowName: string; files: File[] }> {
     const resolved = await this.resolveSourceTarget(workflowName, version);
     const metadata = await this.readPackageMetadataForTarget(workflowName, version);
     return { workflowName: metadata.name, files: await readProjectFiles(resolved.sourceDir, true) };
   }
 
-  async getSourceShare(workflowId: string, version: string): Promise<WorkflowSourceShare> {
+  async getSourceShare(workflowId: string, version: string): Promise<SourceShare> {
     this.assertWorkflowId(workflowId);
     assertVersion(version);
     await this.assertVersionReadable(workflowId, version);
@@ -3794,7 +3794,7 @@ export class WorkflowStorage {
 
   private requireBuildInfo(): ServerBuildInfo {
     if (this.buildInfo === undefined) {
-      throw new Error("WorkflowStorage.init() must complete before runtime versions are used.");
+      throw new Error("Storage.init() must complete before runtime versions are used.");
     }
     return this.buildInfo;
   }
@@ -3802,7 +3802,7 @@ export class WorkflowStorage {
   private async requireDbVersion(
     workflowName: string,
     version: string,
-  ): Promise<WorkflowDbVersionRecord> {
+  ): Promise<DbVersionRecord> {
     const record = this.db === undefined
       ? undefined
       : await this.db.getVersion(workflowName, version);
@@ -3832,7 +3832,7 @@ export class WorkflowStorage {
   private async assertServerProjectStorageMode(
     workflowId: string,
     action: "access server data",
-  ): Promise<WorkflowProjectInfo> {
+  ): Promise<ProjectInfoContract> {
     this.assertWorkflowId(workflowId);
     const stored = await this.db?.getWorkflow(workflowId);
     const projectInfo = stored?.projectInfo ?? (await this.readPackageMetadata(workflowId)).projectInfo;
@@ -3872,7 +3872,7 @@ export class WorkflowStorage {
     }
   }
 
-  private async readPackageMetadata(workflowId: string): Promise<WorkflowPackageMetadata> {
+  private async readPackageMetadata(workflowId: string): Promise<PackageMetadata> {
     const sourceDir = this.draftSourceDir(workflowId);
     if (await exists(sourceDir)) {
       const metadata = await validateWorkflowPackage(sourceDir, workflowId);
@@ -3911,8 +3911,8 @@ export class WorkflowStorage {
 
   private async applyStoredProjectInfoMetadata(
     workflowId: string,
-    metadata: WorkflowPackageMetadata,
-  ): Promise<WorkflowPackageMetadata> {
+    metadata: PackageMetadata,
+  ): Promise<PackageMetadata> {
     const stored = await readJson<StoredWorkflowProjectInfoMetadata>(
       this.workflowProjectInfoMetadataPath(workflowId),
     );
@@ -3930,14 +3930,14 @@ export class WorkflowStorage {
     }
   }
 
-  private async readPackageMetadataForTarget(workflowName: string, target: string): Promise<WorkflowPackageMetadata> {
+  private async readPackageMetadataForTarget(workflowName: string, target: string): Promise<PackageMetadata> {
     const resolved = await this.resolveSourceTarget(workflowName, target);
     return this.applyStoredProjectInfoMetadata(workflowName, await validateWorkflowPackage(resolved.sourceDir, workflowName));
   }
 
   private async readWorkflowMetadataForEditing(
     workflowId: string,
-  ): Promise<WorkflowPackageMetadata> {
+  ): Promise<PackageMetadata> {
     try {
       return await this.readPackageMetadata(workflowId);
     } catch (error) {
@@ -4128,7 +4128,7 @@ export class WorkflowStorage {
   private async readManifest(
     workflowName: string,
     version: string,
-  ): Promise<WorkflowManifest | undefined> {
+  ): Promise<Manifest | undefined> {
     if (this.db !== undefined) {
       const record = await this.db.getVersion(workflowName, version);
       if (record !== undefined) {
@@ -4145,10 +4145,10 @@ export class WorkflowStorage {
       }
     }
 
-    return readJson<WorkflowManifest>(this.versionManifestPath(workflowName, version));
+    return readJson<Manifest>(this.versionManifestPath(workflowName, version));
   }
 
-  private async readVersionDependencyLocks(workflowName: string, version: string, manifest?: WorkflowManifest): Promise<WorkflowProjectDependencyLock[]> {
+  private async readVersionDependencyLocks(workflowName: string, version: string, manifest?: Manifest): Promise<ProjectDependencyLock[]> {
     const stored = manifest ?? await this.readManifest(workflowName, version);
     if (!stored) throw new HttpError(404, 404, "Published version does not exist.");
     try { return parseWorkflowProjectDependencyLocks(stored.dependencies, { published: true }); }
@@ -4269,7 +4269,7 @@ export class WorkflowStorage {
     }
   }
 
-  private async summarizeDbWorkflow(workflow: WorkflowDbRecord, records?: Array<{ version: string }>): Promise<WorkflowSummary> {
+  private async summarizeDbWorkflow(workflow: DbRecord, records?: Array<{ version: string }>): Promise<Summary> {
     const versions = (records ?? await this.db?.listVersions(workflow.id) ?? []).map(item => item.version).sort(compareSemverVersions);
     return { id: workflow.id, name: workflow.name, projectType: workflow.projectType, projectCard: workflow.projectCard,
       projectInfo: workflow.projectInfo, ownerUserId: workflow.ownerUserId, visibility: workflow.visibility,
@@ -4279,7 +4279,7 @@ export class WorkflowStorage {
 
   private async readWorkflowRecordForAccess(
     workflowId: string,
-  ): Promise<WorkflowDbRecord> {
+  ): Promise<DbRecord> {
     if (this.db !== undefined) {
       const workflow = await this.db.getWorkflow(workflowId);
       if (workflow === undefined) {
@@ -4306,7 +4306,7 @@ export class WorkflowStorage {
     };
   }
 
-  private async createProjectAccessSummary(workflow: WorkflowDbRecord, userId?: string): Promise<WorkflowProjectAccessSummary> {
+  private async createProjectAccessSummary(workflow: DbRecord, userId?: string): Promise<ProjectAccessSummary> {
     return { workflowId: workflow.id, workflowName: workflow.name, ownerUserId: workflow.ownerUserId, visibility: workflow.visibility,
       createdByUserId: workflow.createdByUserId, member: this.db && userId ? await this.db.getWorkflowMember(workflow.id, userId) : undefined };
   }
@@ -4344,7 +4344,7 @@ export class WorkflowStorage {
 
   private async assertUploadedProjectType(
     workflowId: string,
-    sourceProjectType: WorkflowProjectType,
+    sourceProjectType: ProjectKind,
   ): Promise<void> {
     if (this.db === undefined) {
       return;
@@ -4574,7 +4574,7 @@ export class WorkflowStorage {
   private async resolveKanbanProject(
     workflowName: string,
     requestedTarget?: string,
-  ): Promise<Omit<WorkflowKanbanWorkspaceState, "configurations" | "activeConfigurationId">> {
+  ): Promise<Omit<KanbanWorkspaceState, "configurations" | "activeConfigurationId">> {
     this.assertWorkflowId(workflowName);
     await this.assertServerProjectDataAccess(workflowName);
     const target = requestedTarget?.trim() || "draft";
@@ -4601,7 +4601,7 @@ export class WorkflowStorage {
   private async readStoredKanbanConfigurationState(
     workflowName: string,
     actorId: string,
-  ): Promise<WorkflowKanbanConfigurationStateRecord> {
+  ): Promise<KanbanConfigurationStateRecord> {
     const normalizedActorId = requireKanbanActorId(actorId);
     if (this.db) {
       return this.db.readKanbanConfigurationState(workflowName, normalizedActorId);
@@ -4689,7 +4689,7 @@ export class WorkflowStorage {
   private async writeLocalKanbanConfigurationState(
     workflowName: string,
     actorId: string,
-    state: WorkflowKanbanConfigurationStateRecord,
+    state: KanbanConfigurationStateRecord,
   ): Promise<void> {
     const target = this.kanbanConfigurationStatePath(workflowName, actorId);
     await mkdir(path.dirname(target), { recursive: true });
@@ -4703,7 +4703,7 @@ export class WorkflowStorage {
 
   private async withKnowledgeContext<T>(
     workflowName: string,
-    run: (context: WorkflowStorageLocationContext) => Promise<T>,
+    run: (context: StorageLocationContext) => Promise<T>,
     options: { conflictAs?: number; notFoundAs?: number } = {},
   ): Promise<T> {
     this.assertWorkflowId(workflowName);
@@ -4712,7 +4712,7 @@ export class WorkflowStorage {
 
   private async withPersistentValueKnowledgeContext<T>(
     workflowName: string,
-    run: (context: WorkflowStorageLocationContext) => Promise<T>,
+    run: (context: StorageLocationContext) => Promise<T>,
     options: { conflictAs?: number; notFoundAs?: number } = {},
   ): Promise<T> {
     await this.assertServerProjectDataAccess(workflowName);
@@ -4732,7 +4732,7 @@ export class WorkflowStorage {
 
   private async withPersistentValueKnowledgeMutationContext<T>(
     workflowName: string,
-    run: (context: WorkflowStorageLocationContext) => Promise<T>,
+    run: (context: StorageLocationContext) => Promise<T>,
     options: { conflictAs?: number; notFoundAs?: number } = {},
   ): Promise<T> {
     await this.assertServerProjectDataAccess(workflowName);
@@ -4753,8 +4753,8 @@ export class WorkflowStorage {
 
   private createKnowledgeWorkflowContext(
     projectId: string,
-    store?: WorkflowKVStore,
-  ): WorkflowStorageLocationContext {
+    store?: KVStore,
+  ): StorageLocationContext {
     const persistentStore = store ?? this.db;
     if (persistentStore === undefined) {
       throw new HttpError(501, 501, "Project knowledge base requires PostgreSQL storage.");
@@ -4799,7 +4799,7 @@ export class WorkflowStorage {
   }
 
   private deploymentPreparationArchivePath(
-    preparation: Pick<WorkflowDeploymentPreparation, "deploymentId" | "archiveName">,
+    preparation: Pick<DeploymentPreparation, "deploymentId" | "archiveName">,
   ): string {
     return path.join(this.deploymentPreparationDir(preparation.deploymentId), preparation.archiveName);
   }
@@ -4816,7 +4816,7 @@ export class WorkflowStorage {
     return path.join(this.preparationJobDir(workflowName, jobId), "job.json");
   }
 
-  private preparationArchivePath(job: Pick<WorkflowPreparationJob, "workflowId" | "jobId" | "archiveName">): string {
+  private preparationArchivePath(job: Pick<PreparationJob, "workflowId" | "jobId" | "archiveName">): string {
     return path.join(this.preparationJobDir(job.workflowId, job.jobId), job.archiveName);
   }
 
@@ -4916,7 +4916,7 @@ function mapKnowledgeError(
   error: unknown,
   options: { conflictAs?: number; notFoundAs?: number },
 ): unknown {
-  if (!(error instanceof WorkflowError)) {
+  if (!(error instanceof HarnessError)) {
     return error;
   }
 
@@ -4931,12 +4931,12 @@ function mapKnowledgeError(
 }
 
 function normalizeProjectStorageInput(input: {
-  storageKind: WorkflowStorageKind;
-  scope: WorkflowKVScope;
+  storageKind: StorageKind;
+  scope: KVScope;
   projectId: string;
   key: string;
   conversationId?: string;
-}): WorkflowKVStoreGetInput {
+}): KVStoreGetInput {
   const key = normalizeExactFilter(input.key);
   if (key === "") {
     throw new HttpError(400, 400, "Project storage key must be a non-empty string.");
@@ -4959,8 +4959,8 @@ function normalizeProjectStorageInput(input: {
 }
 
 function normalizeProjectStorageSource(
-  source: WorkflowKVWriteSource | undefined,
-): WorkflowKVWriteSource | undefined {
+  source: KVWriteSource | undefined,
+): KVWriteSource | undefined {
   if (source === undefined) {
     return undefined;
   }
@@ -4977,7 +4977,7 @@ function normalizeOptionalExactFilter(value: string | undefined): string | undef
   return normalized === "" ? undefined : normalized;
 }
 
-function cloneRelatedProject(relation: WorkflowRelatedProject): WorkflowRelatedProject {
+function cloneRelatedProject(relation: RelatedProject): RelatedProject {
   return {
     alias: relation.alias,
     projectId: relation.projectId,
@@ -4993,8 +4993,8 @@ function cloneRelatedProject(relation: WorkflowRelatedProject): WorkflowRelatedP
 }
 
 function cloneRelatedProjectGrant(
-  grant: WorkflowRelatedProjectKVGrant,
-): WorkflowRelatedProjectKVGrant {
+  grant: RelatedProjectKVGrant,
+): RelatedProjectKVGrant {
   return {
     read: grant.read.mode === "prefixes"
       ? { mode: "prefixes", prefixes: [...grant.read.prefixes] }
@@ -5006,9 +5006,9 @@ function cloneRelatedProjectGrant(
 }
 
 function upsertRelatedProject(
-  projectInfo: WorkflowProjectInfo,
-  relation: WorkflowRelatedProject,
-): WorkflowProjectInfo {
+  projectInfo: ProjectInfoContract,
+  relation: RelatedProject,
+): ProjectInfoContract {
   const next = projectInfo.relatedProjects.filter((item) => item.alias !== relation.alias);
   const existingForProject = next.find(
     (item) => item.projectId.toLowerCase() === relation.projectId.toLowerCase(),
@@ -5020,9 +5020,9 @@ function upsertRelatedProject(
 }
 
 function removeRelatedProjectByAlias(
-  projectInfo: WorkflowProjectInfo,
+  projectInfo: ProjectInfoContract,
   alias: string,
-): WorkflowProjectInfo {
+): ProjectInfoContract {
   return {
     ...projectInfo,
     relatedProjects: projectInfo.relatedProjects
@@ -5032,9 +5032,9 @@ function removeRelatedProjectByAlias(
 }
 
 function removeRelatedProjectByProjectId(
-  projectInfo: WorkflowProjectInfo,
+  projectInfo: ProjectInfoContract,
   projectId: string,
-): WorkflowProjectInfo {
+): ProjectInfoContract {
   return {
     ...projectInfo,
     relatedProjects: projectInfo.relatedProjects
@@ -5053,18 +5053,18 @@ function removeRelatedProjectByProjectId(
 export function createWorkflowObjectStorageFromEnv(options: {
   dataRoot: string;
   env?: NodeJS.ProcessEnv;
-}): WorkflowObjectStorage {
+}): ObjectStorage {
   const env = options.env ?? process.env;
   resolveWorkflowStorageDriver(env);
   return createWorkflowLocalStorageFromEnv({ env, dataRoot: options.dataRoot });
 }
-export async function createStorageFromEnv(): Promise<WorkflowStorage> {
+export async function createStorageFromEnv(): Promise<Storage> {
   const { repoRoot, serverRoot } = resolveServerPathRoots();
   const dataRoot = resolveServerDataRootFromEnv({ serverRoot });
   const connectionString = process.env.STEAMHARNESS_DATABASE_URL?.trim();
   if (!connectionString) throw new Error("STEAMHARNESS_DATABASE_URL is required for project storage.");
   const objectStorage = createWorkflowObjectStorageFromEnv({ dataRoot });
-  const storage = new WorkflowStorage({ repoRoot, serverRoot, dataRoot, db: new DatabaseRepository(connectionString),
+  const storage = new Storage({ repoRoot, serverRoot, dataRoot, db: new DatabaseRepository(connectionString),
     objectStorage, artifacts: new ArtifactStorage(objectStorage) });
   await storage.init();
   return storage;
@@ -5074,7 +5074,7 @@ async function validateWorkflowPackage(
   sourceDir: string,
   expectedId?: string,
   hostCoreVersion?: string,
-): Promise<WorkflowPackageMetadata> {
+): Promise<PackageMetadata> {
   if (!(await exists(path.join(sourceDir, "package.json")))) {
     throw new HttpError(400, 400, "Workflow package must contain package.json.");
   }
@@ -5133,9 +5133,9 @@ async function validateWorkflowPackage(
 async function readWorkflowPackageMetadata(
   sourceDir: string,
   expectedId?: string,
-  persistedProjectType?: WorkflowProjectType,
+  persistedProjectType?: ProjectKind,
   hostCoreVersion?: string,
-): Promise<WorkflowPackageMetadata> {
+): Promise<PackageMetadata> {
   if (!(await exists(path.join(sourceDir, "package.json")))) {
     throw new HttpError(400, 400, "Workflow package must contain package.json.");
   }
@@ -5214,7 +5214,7 @@ function readRequiredPackageString(
   return value.trim();
 }
 
-function createDefaultProjectCardMetadata(projectType: WorkflowProjectType): ProjectCardMetadata {
+function createDefaultProjectCardMetadata(projectType: ProjectKind): ProjectCardMetadata {
   return readProjectCardMetadataFromPackageJson(
     {},
     projectType,
@@ -5398,7 +5398,7 @@ async function moveDirectoryIfAbsent(
 
 async function writeWorkflowFiles(
   targetDir: string,
-  files: WorkflowFile[],
+  files: File[],
 ): Promise<void> {
   await rm(targetDir, { recursive: true, force: true });
   await mkdir(targetDir, { recursive: true });
@@ -5411,7 +5411,7 @@ async function writeWorkflowFiles(
   }
 }
 
-function decodeWorkflowFileContent(file: WorkflowFileInput): string | Buffer {
+function decodeWorkflowFileContent(file: FileInput): string | Buffer {
   if (file.encoding !== "base64") return file.content;
   if (file.content === "") return Buffer.alloc(0);
   const decoded = Buffer.from(file.content, "base64");
@@ -5472,8 +5472,8 @@ async function extractTarGz(
 async function readProjectFiles(
   rootDir: string,
   includeBinaryFiles: boolean,
-): Promise<WorkflowFile[]> {
-  const files: WorkflowFile[] = [];
+): Promise<File[]> {
+  const files: File[] = [];
 
   await walkFiles(rootDir, async (filePath) => {
     const relative = normalizeSlash(path.relative(rootDir, filePath));
@@ -5955,7 +5955,7 @@ function requireKanbanConfiguration(
 
 function normalizeStoredKanbanConfigurationState(
   value: unknown,
-): WorkflowKanbanConfigurationStateRecord {
+): KanbanConfigurationStateRecord {
   if (!isRecord(value) || !Array.isArray(value["configurations"])) {
     return { configurations: [] };
   }
@@ -6030,8 +6030,8 @@ function assertResolvedPathInsideRoot(rootPath: string, targetPath: string, allo
 }
 
 function cloneWorkflowProjectDependencyLock(
-  dependency: WorkflowProjectDependencyLock,
-): WorkflowProjectDependencyLock {
+  dependency: ProjectDependencyLock,
+): ProjectDependencyLock {
   return {
     alias: dependency.alias,
     projectId: dependency.projectId,

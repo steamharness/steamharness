@@ -1,14 +1,14 @@
 import { t } from './localization';
 import dagre from '@dagrejs/dagre';
-import type { WorkflowExecutionItem, WorkflowProject } from './workflow-types';
-import type { WorkflowRunRecord } from './workflow-workspace';
+import type { ExecutionItem, Project } from './workflow-types';
+import type { RunRecord } from './workflow-workspace';
 
-export interface WorkflowGraphNode { id: string; label: string; kind: string; status?: string; detail?: unknown; executionId?: string; x: number; y: number; width: number; height: number }
-export interface WorkflowGraphEdge { from: string; to: string; label?: string; points: { x: number; y: number }[] }
+export interface GraphNode { id: string; label: string; kind: string; status?: string; detail?: unknown; executionId?: string; x: number; y: number; width: number; height: number }
+export interface GraphEdge { from: string; to: string; label?: string; points: { x: number; y: number }[] }
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
-function callTitle(item: Extract<WorkflowExecutionItem, { kind: 'node' }>): string | undefined {
+function callTitle(item: Extract<ExecutionItem, { kind: 'node' }>): string | undefined {
   for (const argument of Array.isArray(item.arguments) ? item.arguments : []) {
     const value = record(record(record(argument).value).value);
     const name = record(value.name);
@@ -16,15 +16,15 @@ function callTitle(item: Extract<WorkflowExecutionItem, { kind: 'node' }>): stri
   }
   return undefined;
 }
-export function layoutWorkflowGraph(project: WorkflowProject, entrypointId?: string, run?: Pick<WorkflowRunRecord, 'nodes'>) {
-  const nodes: WorkflowGraphNode[] = [], edges: WorkflowGraphEdge[] = [], diagnostics: string[] = [];
+export function layoutWorkflowGraph(project: Project, entrypointId?: string, run?: Pick<RunRecord, 'nodes'>) {
+  const nodes: GraphNode[] = [], edges: GraphEdge[] = [], diagnostics: string[] = [];
   const execution = project.entrypoints.find(entry => entry.id === entrypointId)?.execution ?? project.execution;
   const used = new Set<string>();
   const add = (id: string, label: string, kind: string, detail?: unknown, status?: string, executionId?: string) => {
     nodes.push({ id, label, kind, detail, status, executionId, x: 0, y: 0, width: 200, height: 62 }); return id;
   };
   const edge = (from: string, to: string, label?: string) => edges.push({ from, to, label, points: [] });
-  const sequence = (items: WorkflowExecutionItem[], inputs: string[], prefix: string): string[] => {
+  const sequence = (items: ExecutionItem[], inputs: string[], prefix: string): string[] => {
     let previous = inputs;
     for (const [index, item] of items.entries()) {
       const key = `${prefix}-${index}`;

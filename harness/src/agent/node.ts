@@ -7,12 +7,12 @@ import {
   createOutputStreamAccumulator,
   createOutputItemChunk,
   type OutputItemStreamChunk,
-  type WorkflowOutputItemInput,
-  type WorkflowRingContent,
+  type RunOutputItemInput,
+  type RingContent,
 } from "../node/output/index";
-import type { NodeContext, WorkflowUserInputRequest } from "../types/index";
+import type { NodeContext, UserInputRequest } from "../types/index";
 import { createToolApprovalGate } from "../tool-permissions/index";
-import { WorkflowError } from "../workflow/errors";
+import { HarnessError } from "../workflow/errors";
 import { createAgentAskRequest, readAgentAskAnswers, readAgentQuestions } from "./ask";
 import { parseAgentPermissionPolicy } from "./permission";
 import {
@@ -58,7 +58,7 @@ import type {
   AgentStreamEvent,
   AgentToolSet,
 } from "./types";
-import type { WorkflowUserInputContext } from "../types/context";
+import type { UserInputContext } from "../types/context";
 
 /**
  * What a run learned about itself, keyed by that run's input object.
@@ -133,7 +133,7 @@ interface PendingPlanState {
    * that shows the user what they chose has nothing but the request's own
    * wording to show.
    */
-  request?: WorkflowUserInputRequest;
+  request?: UserInputRequest;
 }
 
 const PENDING_ASK_STATE_KEY = "agent.pendingAskUser";
@@ -143,7 +143,7 @@ interface PendingAskState {
   requestId: string;
   questions: AgentQuestion[];
   /** The form the user answered, so the answer keeps its labels. */
-  request?: WorkflowUserInputRequest;
+  request?: UserInputRequest;
 }
 
 async function readPendingAskState(context: NodeContext): Promise<PendingAskState | undefined> {
@@ -192,7 +192,7 @@ async function readPendingPlanState(context: NodeContext): Promise<PendingPlanSt
   };
 }
 
-function readPendingPlanRequest(value: unknown): WorkflowUserInputRequest | undefined {
+function readPendingPlanRequest(value: unknown): UserInputRequest | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return undefined;
   }
@@ -202,7 +202,7 @@ function readPendingPlanRequest(value: unknown): WorkflowUserInputRequest | unde
     typeof record.nodeName === "string" &&
     typeof record.title === "string" &&
     Array.isArray(record.params)
-    ? value as WorkflowUserInputRequest
+    ? value as UserInputRequest
     : undefined;
 }
 
@@ -811,7 +811,7 @@ async function requestAgentAskAnswers(
   } satisfies PendingAskState);
 
   if (userInput === undefined) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "user_input_required",
       message: "The agent asked the user a question, but this run cannot pause for an answer.",
       nodeName: ask.nodeName,
@@ -820,7 +820,7 @@ async function requestAgentAskAnswers(
   }
 
   await userInput.requestInput(ask);
-  throw new WorkflowError({
+  throw new HarnessError({
     type: "user_input_required",
     message: "The agent is waiting for the user's answers.",
     nodeName: ask.nodeName,
@@ -862,7 +862,7 @@ async function resolveAskResume(
 }
 
 async function requestAgentPlanApproval(
-  userInput: WorkflowUserInputContext,
+  userInput: UserInputContext,
   options: { requestId: string; plan: string; context: NodeContext },
 ) {
   const request = createAgentPlanApprovalRequest({ requestId: options.requestId, plan: options.plan });
@@ -880,7 +880,7 @@ async function requestAgentPlanApproval(
   } satisfies PendingPlanState);
 
   await userInput.requestInput(request);
-  throw new WorkflowError({
+  throw new HarnessError({
     type: "user_input_required",
     message: "The agent is waiting for plan approval.",
     nodeName: request.nodeName,
@@ -920,13 +920,13 @@ async function resolvePlanResume(
   };
 }
 
-function createContextUsageItem(usage: AgentContextUsage, sessionKey: string): WorkflowOutputItemInput {
+function createContextUsageItem(usage: AgentContextUsage, sessionKey: string): RunOutputItemInput {
   const contextId = /^[A-Za-z0-9_.:-]*$/.test(sessionKey) ? `context-${sessionKey}`
     : `context:${Buffer.from(sessionKey, "utf16le").toString("base64url")}`;
   return {
     id: createAgentOutputItemId(contextId),
     title: readRuntimeLocaleSafe() === "en" ? "Context window" : "上下文窗口",
-    content: { value: usage.used, total: usage.total, unit: "tokens" } satisfies WorkflowRingContent,
+    content: { value: usage.used, total: usage.total, unit: "tokens" } satisfies RingContent,
     contentType: "json", display: { type: "ring", placement: "composer-right" },
   };
 }
@@ -942,7 +942,7 @@ function answerSummaryId(context: NodeContext): string {
   return typeof id === "string" && id !== "" ? id : AGENT_ANSWER_ITEM_ID;
 }
 
-function isToolItem(item: WorkflowOutputItemInput): boolean {
+function isToolItem(item: RunOutputItemInput): boolean {
   return item.metadata?.["kind"] === AGENT_OUTPUT_KINDS.part && item.metadata["partType"] === "tool";
 }
 
@@ -963,11 +963,11 @@ async function closeIgnoringFailure(close: (() => Promise<void>) | undefined): P
 }
 
 function isAgentPause(error: unknown): boolean {
-  return error instanceof WorkflowError && error.type === "user_input_required";
+  return error instanceof HarnessError && error.type === "user_input_required";
 }
 
 function isAbortedRun(error: unknown): boolean {
-  return error instanceof WorkflowError && error.type === "execution_aborted";
+  return error instanceof HarnessError && error.type === "execution_aborted";
 }
 
 export type { AgentPendingApproval, AgentContextUsage };

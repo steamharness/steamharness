@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { RolesPage } from "../RolesPage";
-import type { WorkflowPermissionGroup, WorkflowRoleRecord } from "../../types";
+import type { PermissionGroup, RoleRecord } from "../../types";
 
 describe("RolesPage create dialog", () => {
   it("keeps the dialog bounded so header and footer stay visible while body scrolls", () => {
@@ -88,11 +88,11 @@ describe("RolesPage create dialog", () => {
   });
 });
 
-function createRoles(): WorkflowRoleRecord[] {
+function createRoles(): RoleRecord[] {
   return [];
 }
 
-function createGroups(): WorkflowPermissionGroup[] {
+function createGroups(): PermissionGroup[] {
   return [
     {
       id: "projects",

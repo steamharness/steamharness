@@ -9,8 +9,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createWorkflowMcpServer,
   workflowReportToMcpResult,
-  type WorkflowMcpExecutionReport,
-  type WorkflowMcpRunner,
+  type McpExecutionReport,
+  type McpRunner,
   type CreateWorkflowMcpServerOptions,
 } from "../index";
 
@@ -102,7 +102,7 @@ describe("workflow MCP server", () => {
   });
 
   it("lists a fixed entrypoint catalog and calls tools through the SDK", async () => {
-    const runner: WorkflowMcpRunner = {
+    const runner: McpRunner = {
       run: vi.fn(async (request) => successReport(request.entrypointId, request.entrypointTitle, request.args)),
       resume: vi.fn(),
     };
@@ -196,7 +196,7 @@ describe("workflow MCP server", () => {
 
   it("resumes the same run through consecutive form elicitations", async () => {
     let resumeCount = 0;
-    const runner: WorkflowMcpRunner = {
+    const runner: McpRunner = {
       run: vi.fn(async () => waitingReport("request-1", [
         { name: "name", type: "string", required: true, label: "Name" },
       ])),
@@ -231,7 +231,7 @@ describe("workflow MCP server", () => {
   });
 
   it("returns a compact interaction-required tool error when elicitation is unavailable", async () => {
-    const runner: WorkflowMcpRunner = {
+    const runner: McpRunner = {
       run: vi.fn(async () => waitingReport("request-1", [
         { name: "name", type: "string", required: true, label: "Name" },
       ])),
@@ -256,7 +256,7 @@ describe("workflow MCP server", () => {
   });
 
   it("turns malformed pending input metadata into a compact run failure", async () => {
-    const runner: WorkflowMcpRunner = {
+    const runner: McpRunner = {
       run: vi.fn(async () => ({
         ...waitingReport("request-1", []),
         pendingUserInput: {
@@ -287,7 +287,7 @@ describe("workflow MCP server", () => {
   });
 
   it("keeps the waiting run resumable when MCP forms cannot represent an arbitrary array", async () => {
-    const runner: WorkflowMcpRunner = {
+    const runner: McpRunner = {
       run: vi.fn(async () => waitingReport("request-1", [
         { name: "items", type: "string", multiple: true, required: true, label: "Items" },
       ])),
@@ -314,7 +314,7 @@ describe("workflow MCP server", () => {
   });
 
   it("resumes static checkbox input through a standard MCP multi-select form", async () => {
-    const runner: WorkflowMcpRunner = {
+    const runner: McpRunner = {
       run: vi.fn(async () => waitingReport("request-1", [{
         name: "choices",
         type: "string",
@@ -342,7 +342,7 @@ describe("workflow MCP server", () => {
   it.each(["decline", "cancel"] as const)(
     "cancels the waiting run when form elicitation returns %s",
     async (action) => {
-      const runner: WorkflowMcpRunner = {
+      const runner: McpRunner = {
         run: vi.fn(async () => waitingReport("request-1", [
           { name: "name", type: "string", required: true, label: "Name" },
         ])),
@@ -373,7 +373,7 @@ describe("workflow MCP server", () => {
   it("cancels the waiting run when the MCP tool request is aborted during elicitation", async () => {
     let markElicitationStarted!: () => void;
     const elicitationStarted = new Promise<void>((resolve) => { markElicitationStarted = resolve; });
-    const runner: WorkflowMcpRunner = {
+    const runner: McpRunner = {
       run: vi.fn(async () => waitingReport("request-1", [
         { name: "name", type: "string", required: true, label: "Name" },
       ])),
@@ -404,7 +404,7 @@ describe("workflow MCP server", () => {
   });
 
   it("cancels the waiting run when the client elicitation request fails", async () => {
-    const runner: WorkflowMcpRunner = {
+    const runner: McpRunner = {
       run: vi.fn(async () => waitingReport("request-1", [
         { name: "name", type: "string", required: true, label: "Name" },
       ])),
@@ -429,7 +429,7 @@ describe("workflow MCP server", () => {
     { name: "missing form content", response: { action: "accept" } as ElicitResult },
     { name: "invalid form content", response: { action: "accept", content: { name: 42 } } as ElicitResult },
   ])("cancels the waiting run for $name", async ({ response }) => {
-    const runner: WorkflowMcpRunner = {
+    const runner: McpRunner = {
       run: vi.fn(async () => waitingReport("request-1", [
         { name: "name", type: "string", required: true, label: "Name" },
       ])),
@@ -451,7 +451,7 @@ describe("workflow MCP server", () => {
   it.each(["beforeRun", "resume", "runId"] as const)(
     "cancels the waiting run when %s fails after elicitation",
     async (failure) => {
-      const runner: WorkflowMcpRunner = {
+      const runner: McpRunner = {
         run: vi.fn(async () => waitingReport("request-1", [
           { name: "name", type: "string", required: true, label: "Name" },
         ])),
@@ -487,10 +487,10 @@ describe("workflow MCP server", () => {
     const external = new AbortController();
     let requestId: string | number | undefined;
     let runnerSignal: AbortSignal | undefined;
-    const runner: WorkflowMcpRunner = {
+    const runner: McpRunner = {
       run: vi.fn(async (request) => {
         runnerSignal = request.signal;
-        return new Promise<WorkflowMcpExecutionReport>((_resolve, reject) => {
+        return new Promise<McpExecutionReport>((_resolve, reject) => {
           request.signal.addEventListener("abort", () => reject(request.signal.reason), { once: true });
         });
       }),
@@ -586,7 +586,7 @@ describe("workflow MCP server", () => {
 });
 
 async function connect(
-  runner: WorkflowMcpRunner,
+  runner: McpRunner,
   elicitationResponses?: Array<ElicitResult | (() => Promise<ElicitResult>)>,
   beforeRun?: CreateWorkflowMcpServerOptions["beforeRun"],
 ): Promise<{ client: Client; serverTransport: InMemoryTransport }> {
@@ -628,7 +628,7 @@ function successReport(
   entrypointId: string,
   entrypointTitle: string,
   args: string[],
-): WorkflowMcpExecutionReport {
+): McpExecutionReport {
   return {
     runId: "run-1",
     status: "success",
@@ -640,8 +640,8 @@ function successReport(
 
 function waitingReport(
   requestId: string,
-  params: NonNullable<WorkflowMcpExecutionReport["pendingUserInput"]>["params"],
-): WorkflowMcpExecutionReport {
+  params: NonNullable<McpExecutionReport["pendingUserInput"]>["params"],
+): McpExecutionReport {
   return {
     runId: "run-1",
     status: "waiting_for_input",

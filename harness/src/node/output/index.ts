@@ -1,5 +1,5 @@
 import { BaseNode, BaseStreamNode } from "../base";
-import type { NodeContext, WorkflowNodeMetadataInput, WorkflowPayload } from "../../types/index";
+import type { NodeContext, NodeMetadataInput, RunPayload } from "../../types/index";
 import type { LLMStreamChunk } from "../../provider/llm/types";
 
 export type OutputFormatter<Input, Output> = (
@@ -22,7 +22,7 @@ export interface OutputNodeOptions<Input, Output> {
   name?: string;
   format?: OutputFormatter<Input, Output>;
   historyLimit?: number;
-  metadata?: WorkflowNodeMetadataInput;
+  metadata?: NodeMetadataInput;
 }
 
 export interface OutputStreamNodeOptions<Input, Output> {
@@ -30,7 +30,7 @@ export interface OutputStreamNodeOptions<Input, Output> {
   stream: OutputStreamer<Input>;
   format: OutputStreamFormatter<Input, Output>;
   historyLimit?: number;
-  metadata?: WorkflowNodeMetadataInput;
+  metadata?: NodeMetadataInput;
 }
 
 export const DETAILS_OUTPUT_ICON_PRESETS = {
@@ -47,13 +47,13 @@ export const DETAILS_OUTPUT_ICON_PRESETS = {
 
 export type DetailsOutputIconPreset = keyof typeof DETAILS_OUTPUT_ICON_PRESETS;
 export type DetailsOutputIcon = DetailsOutputIconPreset | string;
-export type WorkflowOutputContentType = "markdown" | "text" | "json" | "audio" | "video";
-export interface WorkflowOutputDisplay {
+export type OutputContentType = "markdown" | "text" | "json" | "audio" | "video";
+export interface OutputDisplay {
   type: "ring";
   placement?: "inline" | "composer-right";
 }
 
-export interface WorkflowRingContent {
+export interface RingContent {
   value: number;
   total?: number;
   unit?: string;
@@ -68,32 +68,32 @@ export type DetailsOutputStaticContent =
   | readonly unknown[]
   | Record<string, unknown>;
 
-export interface WorkflowOutputItem {
+export interface OutputItem {
   id: string;
   title: string;
   content: unknown;
   icon?: string;
   iconPreset?: DetailsOutputIconPreset;
-  contentType?: WorkflowOutputContentType;
-  display?: WorkflowOutputDisplay;
+  contentType?: OutputContentType;
+  display?: OutputDisplay;
   collapsed?: boolean;
   metadata?: Record<string, unknown>;
 }
 
-export interface WorkflowOutputItemInput {
+export interface RunOutputItemInput {
   id?: string;
   title: string;
   content: unknown;
   icon?: DetailsOutputIcon;
   iconPreset?: DetailsOutputIconPreset;
-  contentType?: WorkflowOutputContentType;
-  display?: WorkflowOutputDisplay;
+  contentType?: OutputContentType;
+  display?: OutputDisplay;
   collapsed?: boolean;
   metadata?: Record<string, unknown>;
 }
 
-export interface WorkflowOutputPayload extends WorkflowPayload {
-  items: WorkflowOutputItem[];
+export interface RunOutputPayload extends RunPayload {
+  items: OutputItem[];
   [key: string]: unknown;
 }
 
@@ -102,13 +102,13 @@ export type OutputItemChunkOperation = "output_item_start" | "output_item_delta"
 export type OutputItemStreamChunk =
   | {
       type: "output_item_start";
-      item: WorkflowOutputItemInput;
+      item: RunOutputItemInput;
     }
   | {
       type: "output_item_delta";
       itemId: string;
       delta: unknown;
-      item?: Partial<WorkflowOutputItemInput>;
+      item?: Partial<RunOutputItemInput>;
     }
   | {
       type: "output_item_end";
@@ -119,7 +119,7 @@ export type OutputStreamChunk = string | OutputItemStreamChunk;
 
 export interface OutputStreamAccumulator {
   text: string;
-  items: WorkflowOutputItem[];
+  items: OutputItem[];
   chunks: OutputStreamChunk[];
 }
 
@@ -138,12 +138,12 @@ export interface DetailsOutputBlock {
 export interface ResolvedDetailsOutputBlock {
   title: string;
   content: unknown;
-  contentType: WorkflowOutputContentType;
+  contentType: OutputContentType;
   icon: string;
   iconPreset?: DetailsOutputIconPreset;
 }
 
-export interface DetailsOutputPayload extends WorkflowOutputPayload {}
+export interface DetailsOutputPayload extends RunOutputPayload {}
 
 export type DetailsOutputFieldResolver<Input> = (
   input: Input,
@@ -162,7 +162,7 @@ export type DetailsOutputFormatter<Input, Output> = (
   context: NodeContext,
 ) => Promise<Output> | Output;
 
-export interface DetailsOutputNodeOptions<Input, Output extends WorkflowPayload = DetailsOutputPayload> {
+export interface DetailsOutputNodeOptions<Input, Output extends RunPayload = DetailsOutputPayload> {
   name?: string;
   title?: string | DetailsOutputFieldResolver<Input>;
   content?: DetailsOutputStaticContent | DetailsOutputFieldResolver<Input>;
@@ -170,7 +170,7 @@ export interface DetailsOutputNodeOptions<Input, Output extends WorkflowPayload 
   resolve?: DetailsOutputResolver<Input>;
   format?: DetailsOutputFormatter<Input, Output>;
   historyLimit?: number;
-  metadata?: WorkflowNodeMetadataInput;
+  metadata?: NodeMetadataInput;
 }
 
 export function createOutputNode<Input, Output>(
@@ -196,7 +196,7 @@ export function createOutputNode<Input, Output = Input>(
 
 export function createDetailsOutputNode<
   Input = DetailsOutputInput,
-  Output extends WorkflowPayload = DetailsOutputPayload,
+  Output extends RunPayload = DetailsOutputPayload,
 >(
   options: DetailsOutputNodeOptions<Input, Output> = {},
 ): BaseNode<Input, Output> {
@@ -283,7 +283,7 @@ export function collectLLMStreamText(chunks: LLMStreamChunk[]): string {
     .join("");
 }
 
-async function resolveDetailsOutputBlock<Input, Output extends WorkflowPayload>(
+async function resolveDetailsOutputBlock<Input, Output extends RunPayload>(
   input: Input,
   context: NodeContext,
   options: DetailsOutputNodeOptions<Input, Output>,
@@ -372,7 +372,7 @@ function isDetailsOutputIconPreset(value: string): value is DetailsOutputIconPre
 
 let outputItemId = 0;
 
-export function createOutputItem(input: WorkflowOutputItemInput): WorkflowOutputItem {
+export function createOutputItem(input: RunOutputItemInput): OutputItem {
   const resolvedIcon = resolveOutputItemIcon(input);
 
   return {
@@ -390,7 +390,7 @@ export function createOutputItem(input: WorkflowOutputItemInput): WorkflowOutput
   };
 }
 
-function resolveOutputItemIcon(input: WorkflowOutputItemInput): {
+function resolveOutputItemIcon(input: RunOutputItemInput): {
   value?: string;
   preset?: DetailsOutputIconPreset;
 } {
@@ -410,11 +410,11 @@ function resolveOutputItemIcon(input: WorkflowOutputItemInput): {
 
 export function createOutputPayload(
   input: {
-    items?: WorkflowOutputItemInput[] | WorkflowOutputItem[];
+    items?: RunOutputItemInput[] | OutputItem[];
     errCode?: number;
     errMessage?: string;
   } & Record<string, unknown> = {},
-): WorkflowOutputPayload {
+): RunOutputPayload {
   const { items = [], errCode = 0, errMessage = "", ...rest } = input;
 
   return {
@@ -425,9 +425,9 @@ export function createOutputPayload(
   };
 }
 
-export function addOutputItem<Payload extends WorkflowOutputPayload>(
+export function addOutputItem<Payload extends RunOutputPayload>(
   payload: Payload,
-  item: WorkflowOutputItemInput | WorkflowOutputItem,
+  item: RunOutputItemInput | OutputItem,
 ): Payload {
   return {
     ...payload,
@@ -440,20 +440,20 @@ export function addOutputItem<Payload extends WorkflowOutputPayload>(
 
 export function createOutputItemChunk(
   chunk:
-    | { type: "output_item_start"; item: WorkflowOutputItemInput }
-    | { type: "output_item_delta"; itemId: string; delta: unknown; item?: Partial<WorkflowOutputItemInput> }
+    | { type: "output_item_start"; item: RunOutputItemInput }
+    | { type: "output_item_delta"; itemId: string; delta: unknown; item?: Partial<RunOutputItemInput> }
     | { type: "output_item_end"; itemId: string },
 ): OutputItemStreamChunk {
   return chunk;
 }
 
 export function createOutputStreamAccumulator(chunks: OutputStreamChunk[]): OutputStreamAccumulator {
-  const items: WorkflowOutputItem[] = [];
-  const itemsById = new Map<string, WorkflowOutputItem>();
+  const items: OutputItem[] = [];
+  const itemsById = new Map<string, OutputItem>();
   const textParts: string[] = [];
   let defaultMarkdownItemId: string | undefined;
 
-  const upsertItem = (item: WorkflowOutputItem): void => {
+  const upsertItem = (item: OutputItem): void => {
     const existingIndex = items.findIndex((candidate) => candidate.id === item.id);
     if (existingIndex >= 0) {
       items[existingIndex] = item;
@@ -513,13 +513,13 @@ export function createOutputStreamAccumulator(chunks: OutputStreamChunk[]): Outp
 }
 
 function normalizeOutputItemPatch(
-  patch: Partial<WorkflowOutputItemInput> | undefined,
-): Partial<WorkflowOutputItem> {
+  patch: Partial<RunOutputItemInput> | undefined,
+): Partial<OutputItem> {
   if (patch === undefined) {
     return {};
   }
 
-  const normalized: Partial<WorkflowOutputItem> = {};
+  const normalized: Partial<OutputItem> = {};
   if (patch.title !== undefined) normalized.title = patch.title;
   if (patch.icon !== undefined) normalized.icon = resolveDetailsOutputIcon(patch.icon).value;
   if (patch.iconPreset !== undefined) normalized.iconPreset = patch.iconPreset;
@@ -530,7 +530,7 @@ function normalizeOutputItemPatch(
   return normalized;
 }
 
-export function isWorkflowOutputPayload(value: unknown): value is WorkflowOutputPayload {
+export function isWorkflowOutputPayload(value: unknown): value is RunOutputPayload {
   return isRecord(value) && Array.isArray(value.items);
 }
 
@@ -560,7 +560,7 @@ export function isOutputItemStreamChunk(value: unknown): value is OutputItemStre
   return false;
 }
 
-export function isOutputContentType(value: unknown): value is WorkflowOutputContentType {
+export function isOutputContentType(value: unknown): value is OutputContentType {
   return value === "markdown" ||
     value === "text" ||
     value === "json" ||
@@ -568,7 +568,7 @@ export function isOutputContentType(value: unknown): value is WorkflowOutputCont
     value === "video";
 }
 
-function isWorkflowOutputItem(value: unknown): value is WorkflowOutputItem {
+function isWorkflowOutputItem(value: unknown): value is OutputItem {
   return (
     isRecord(value) &&
     typeof value.id === "string" &&
@@ -587,7 +587,7 @@ function normalizeOutputItemId(value: string | undefined): string {
   return `output-item-${Date.now().toString(36)}-${outputItemId.toString(36)}`;
 }
 
-function inferOutputContentType(value: unknown): WorkflowOutputContentType {
+function inferOutputContentType(value: unknown): OutputContentType {
   if (typeof value === "object" && value !== null) {
     return "json";
   }

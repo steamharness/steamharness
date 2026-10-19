@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConversationOutput } from '../web/ui/conversation-output';
 import { ComposerOutput, RingOutput } from '../web/ui/output-display';
-import type { WorkflowOutputItem } from '../web/workflow-types';
+import type { OutputItem } from '../web/workflow-types';
 
 vi.mock('../web/resource-cards', () => ({ conversationResourceCards: () => [] }));
 vi.mock('../web/ui/ui', () => ({ escapeHtml: (value: string) => value, iconHtml: () => '', iconButton: () => ({}), markdownHtml: () => '', mediaUrl: () => '', updateIcon: () => {} }));
@@ -52,7 +52,7 @@ function fixture() {
   return { Element, documentState, windowState, tooltips };
 }
 
-function ring(value: number, id = 'quota'): WorkflowOutputItem {
+function ring(value: number, id = 'quota'): OutputItem {
   return { id, title: 'Quota', content: { value, total: 100, unit: 'MB' }, contentType: 'json', display: { type: 'ring' } };
 }
 

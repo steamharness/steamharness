@@ -9,14 +9,14 @@ description: "创建可持久恢复的用户输入节点，让 workflow 暂停�
 
 Conversation 等待输入时，共享运行界面会隐藏底部消息输入框，只保留等待表单；提交或取消后才恢复正常输入。
 
-表单字段复用当前 Workflow entrypoint（Conversation 则为 executor）的 `WorkflowParamDefinition`，不要为用户输入节点另建一套 schema。
+表单字段复用当前 Workflow entrypoint（Conversation 则为 executor）的 `ParamDefinition`，不要为用户输入节点另建一套 schema。
 
 等待表单同样支持 `date`、`time`、`datetime` 和 `date-range`。提交值分别保持 `YYYY-MM-DD`、`HH:mm:ss`、本地 `YYYY-MM-DDTHH:mm:ss` 和闭区间 `YYYY-MM-DD/YYYY-MM-DD` 字符串，因此 workflow 可以直接从 `payload.values[param.name]` 读取，不会收到 `Date` 对象或经过时区转换的值。日期字段必须使用 `type: "string"`，只能放在 main 或 auxiliary，不能声明枚举选项或 `multiple: true`；必填空值或格式错误会保留在表单中显示错误，并阻止提交直至用户修正。
 
 ## 签名
 
 ```ts
-workflow.createUserInputNode<Input, Output extends WorkflowPayload>(
+workflow.createUserInputNode<Input, Output extends RunPayload>(
   options: UserInputNodeOptions<Input, Output>,
 ): BaseNode<Input, Output>
 ```
@@ -28,18 +28,18 @@ workflow.createUserInputNode<Input, Output extends WorkflowPayload>(
 | `name` | `string` | 节点名，默认 `"user-input"`。会用于 report、requestId 和 Diagram。 |
 | `title` | `string` | 等待表单标题。未传时使用 `name`。 |
 | `description` | `string` | 等待表单说明。 |
-| `params` | `WorkflowParamDefinition[]` | 表单字段，字段定义与所选 Workflow 入口的 `params` 一致；Conversation 使用 `executor.params`。 |
+| `params` | `ParamDefinition[]` | 表单字段，字段定义与所选 Workflow 入口的 `params` 一致；Conversation 使用 `executor.params`。 |
 | `defaultValues` | `Record<string, unknown>` | 表单默认值，按 param `name` 匹配。 |
 | `resolveRequest` | `(input, context) => UserInputRequestDefinition \| Promise<UserInputRequestDefinition>` | 按本次节点输入动态生成 `title`、`description`、`params` 和 `defaultValues`。 |
 | `createRequestId` | `(input, context) => string` | 自定义请求 ID。默认包含 workflow、runId 和 node name。 |
 | `format` | `(payload, input, context) => Output` | 把默认提交 payload 转为业务 payload。 |
 | `historyLimit` | `number` | 节点执行历史保留条数，默认 `50`。 |
-| `metadata` | `WorkflowNodeMetadataInput` | 节点展示元信息。 |
+| `metadata` | `NodeMetadataInput` | 节点展示元信息。 |
 
 ## 默认 payload
 
 ```ts
-interface UserInputPayload extends WorkflowPayload {
+interface UserInputPayload extends RunPayload {
   requestId: string;
   values: Record<string, unknown>;
   submittedAt: string;
@@ -58,7 +58,7 @@ interface UserInputPayload extends WorkflowPayload {
 }
 ```
 
-如果传入 `format`，返回值仍必须继承 `WorkflowPayload`，成功时使用 `errCode: 0, errMessage: ""`。
+如果传入 `format`，返回值仍必须继承 `RunPayload`，成功时使用 `errCode: 0, errMessage: ""`。
 
 ## Runtime 行为
 
@@ -100,7 +100,7 @@ const questionNode = workflow.createUserInputNode<AgentQuestion>({
 ## 示例
 
 ```ts
-interface ApprovalPayload extends WorkflowPayload {
+interface ApprovalPayload extends RunPayload {
   approved: boolean;
   note: string;
   reviewDate: string;

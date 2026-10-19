@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { composerSlashToken, conversationSlashCommands, conversationFooterTexts, ConversationComposer } from '../web/ui/conversation-composer';
 import { mergeWorkflowParamStates } from '../web/workflow-types';
-import type { ConversationCommandDefinition, ConversationFooterItem, WorkflowParameters, WorkflowParamState, WorkflowParamValues } from '../web/workflow-types';
+import type { ConversationCommandDefinition, ConversationFooterItem, Parameters, ParamState, ParamValues } from '../web/workflow-types';
 
-const parameters: WorkflowParameters = { fields: [
+const parameters: Parameters = { fields: [
   { name: 'agent', type: 'string', panel: 'slash', flag: '--agent', defaultValue: 'build', options: [
     { value: 'build', label: 'Build' }, { value: 'plan', label: 'Plan' },
   ] },
@@ -98,8 +98,8 @@ function fixture() {
   const viewport = Object.assign(new EventTarget(), { innerWidth: 1280, innerHeight: 800 });
   vi.stubGlobal('window', viewport); vi.stubGlobal('ResizeObserver', class { observe() {} });
   const textarea = new Textarea(), popup = new Element(), footerRoot = new Element(); popup.id = 'commands';
-  const state = { scope: 'first', enabled: true, parameters, values: { agent: 'build', search: 'false' } as WorkflowParamValues,
-    states: {} as Record<string, WorkflowParamState>, footer, commands: [] as ConversationCommandDefinition[], commandDisabled: false, disabled: false, loading: false };
+  const state = { scope: 'first', enabled: true, parameters, values: { agent: 'build', search: 'false' } as ParamValues,
+    states: {} as Record<string, ParamState>, footer, commands: [] as ConversationCommandDefinition[], commandDisabled: false, disabled: false, loading: false };
   const changed = vi.fn((name: string, value: string) => { state.values[name] = value; });
   const input = vi.fn(); textarea.addEventListener('input', input);
   const command = vi.fn(() => true);

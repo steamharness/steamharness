@@ -2,13 +2,13 @@
 import { Router } from "express";
 import express from "express";
 import { createHash } from "node:crypto";
-import type { AccountRepository, WorkflowUserProfileRecord } from "../account-db";
+import type { AccountRepository, UserProfileRecord } from "../account-db";
 import { createApiKeyExpiresAt } from "../api-key-lifetime";
 import { createAuditActor, recordAuditEventForRequest, readRequestIp } from "../audit";
 import { clearAuthSessionCookie, getRequestPrincipal, getWorkflowAuthContext, hasConfiguredAdminKey, hasPermission, readRequestPrincipal, requireAuthenticatedPrincipal, writeAdminKeySessionCookie, writeAuthSessionCookie, type AuthenticatedPrincipal } from "../auth";
-import { listWorkflowPermissionGroups, type WorkflowPermissionKey } from "../permissions";
+import { listWorkflowPermissionGroups, type PermissionKey } from "../permissions";
 import { fail, HttpError, ok } from "../protocol";
-import type { WorkflowStorageDriver } from "../object-storage";
+import type { StorageDriver } from "../object-storage";
 import { getRequestT, localizeServerMessage } from "../i18n";
 
 interface AuthSessionResponse {
@@ -21,7 +21,7 @@ interface AuthSessionResponse {
     // surface avatarUrl on the session so the header avatar loads on
     // every page instead of waiting for the settings-page profile fetch.
     avatarUrl?: string;
-    permissions?: WorkflowPermissionKey[];
+    permissions?: PermissionKey[];
     apiKeyId?: string;
     expiresAt?: string;
     roleNames?: string[];
@@ -1391,7 +1391,7 @@ function serializePrincipal(principal: AuthenticatedPrincipal | undefined): Auth
 }
 
 
-function requirePermissionRoute(permission: WorkflowPermissionKey) {
+function requirePermissionRoute(permission: PermissionKey) {
   return async (req: express.Request, res: express.Response, next: express.NextFunction) => {
     try {
       const principal = getRequestPrincipal(req);
@@ -1415,11 +1415,11 @@ function requireString(value: unknown, fieldName: string): string {
   return value.trim();
 }
 
-function readPermissionArray(value: unknown): WorkflowPermissionKey[] {
+function readPermissionArray(value: unknown): PermissionKey[] {
   if (!Array.isArray(value)) {
     throw new HttpError(400, 400, "permissions must be an array.");
   }
-  return value.filter((item): item is WorkflowPermissionKey => typeof item === "string") as WorkflowPermissionKey[];
+  return value.filter((item): item is PermissionKey => typeof item === "string") as PermissionKey[];
 }
 
 function readRequestOrigin(req: express.Request): string {
@@ -1453,7 +1453,7 @@ function readNonWebClientSource(
   throw new HttpError(400, 400, `Invalid non-web client source "${source}".`);
 }
 
-function readProfileDisplayName(profile: WorkflowUserProfileRecord | undefined, email: string | undefined): string {
+function readProfileDisplayName(profile: UserProfileRecord | undefined, email: string | undefined): string {
   return profile?.displayName || email || "未命名用户";
 }
 
@@ -1474,7 +1474,7 @@ async function uploadAvatar(
   ext: string,
   mimeType: string,
   buffer: Buffer,
-): Promise<{ url: string; backend: WorkflowStorageDriver }> {
+): Promise<{ url: string; backend: StorageDriver }> {
   const objectStorage = getWorkflowAuthContext().objectStorage;
   if (!objectStorage) throw new HttpError(503, 503, "Workflow object storage is not configured.");
   return {

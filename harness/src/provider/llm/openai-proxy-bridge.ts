@@ -33,14 +33,14 @@ const STRIPPED_RESPONSE_HEADERS = new Set([
   "upgrade",
 ]);
 
-export interface WorkflowServerOpenAIProxyBridge {
+export interface ServerOpenAIProxyBridge {
   readonly baseUrl: string;
   readonly apiKey: string;
   close(): Promise<void>;
 }
 
-export type WorkflowServerLLMProxyProtocol = "openai-responses" | "anthropic";
-export type WorkflowServerLLMProxyBridge = WorkflowServerOpenAIProxyBridge;
+export type ServerLLMProxyProtocol = "openai-responses" | "anthropic";
+export type ServerLLMProxyBridge = ServerOpenAIProxyBridge;
 
 interface StartOpenAIProxyBridgeOptions {
   targetUrl: string;
@@ -49,18 +49,18 @@ interface StartOpenAIProxyBridgeOptions {
 }
 
 interface StartLLMProxyBridgeOptions extends StartOpenAIProxyBridgeOptions {
-  protocol: WorkflowServerLLMProxyProtocol;
+  protocol: ServerLLMProxyProtocol;
 }
 
 export async function startOpenAIProxyBridge(
   options: StartOpenAIProxyBridgeOptions,
-): Promise<WorkflowServerOpenAIProxyBridge> {
+): Promise<ServerOpenAIProxyBridge> {
   return startLLMProxyBridge({ ...options, protocol: "openai-responses" });
 }
 
 export async function startLLMProxyBridge(
   options: StartLLMProxyBridgeOptions,
-): Promise<WorkflowServerLLMProxyBridge> {
+): Promise<ServerLLMProxyBridge> {
   options.signal?.throwIfAborted();
   const endpoint = options.protocol === "anthropic" ? "messages" : "responses";
   const endpointPath = `/${randomBytes(24).toString("hex")}/v1/${endpoint}`;

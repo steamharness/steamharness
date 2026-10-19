@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { runLocalWorkflowWithReport } from "../index";
-import { serializeWorkflowError, WorkflowError } from "../workflow/errors";
+import { serializeWorkflowError, HarnessError } from "../workflow/errors";
 
 const dashedProviderKey = `sk-${"a".repeat(18)}01`;
 
@@ -87,7 +87,7 @@ test("run report redacts credential shaped values and truncates long upstream bo
 function summarize(responseBody: string): string {
   const error = Object.assign(new Error("Unauthorized"), { statusCode: 401, responseBody });
   const serialized = serializeWorkflowError(
-    new WorkflowError({ type: "provider_call", message: "call failed", cause: error }),
+    new HarnessError({ type: "provider_call", message: "call failed", cause: error }),
   );
 
   return serialized.cause?.responseBody ?? "";
@@ -116,8 +116,8 @@ async function createUpstreamErrorWorkflow(
   await writeFile(
     path.join(workflowDir, "interface.ts"),
     [
-      "export interface WorkflowPayload { errCode: number; errMessage: string; }",
-      "export interface UpstreamErrorPayload extends WorkflowPayload { value: string; }",
+      "export interface RunPayload { errCode: number; errMessage: string; }",
+      "export interface UpstreamErrorPayload extends RunPayload { value: string; }",
       "",
     ].join("\n"),
   );

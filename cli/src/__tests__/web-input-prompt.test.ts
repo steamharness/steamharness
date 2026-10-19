@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { build } from 'esbuild';
 import { runInNewContext } from 'node:vm';
-import type { WorkflowInputRequest } from '../web/workflow-types';
+import type { InputRequest } from '../web/workflow-types';
 
 class Element {
   children: Element[] = [];
@@ -16,7 +16,7 @@ class Element {
 
 it('shows both single-file and multiple-file defaults in a restored input request', async () => {
   const compiled = await build({ entryPoints: ['src/web/ui/input-prompt.ts'], bundle: true, platform: 'node', format: 'cjs', write: false });
-  const module = { exports: {} as { InputPrompt: new (request: WorkflowInputRequest, options: object) => { root: Element } } };
+  const module = { exports: {} as { InputPrompt: new (request: InputRequest, options: object) => { root: Element } } };
   runInNewContext(compiled.outputFiles[0].text, {
     module, exports: module.exports,
     document: { createElement: () => new Element() }, HTMLInputElement: Element, HTMLTextAreaElement: Element,

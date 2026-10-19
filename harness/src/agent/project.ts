@@ -1,4 +1,4 @@
-import type { WorkflowConversationExecutorDefinition, WorkflowConversationParamDeclaration } from "../executor/types";
+import type { ConversationExecutorDefinition, ConversationParamDeclaration } from "../executor/types";
 import { defineWorkflowExecutor } from "../executor/definition";
 import { createOutputNode, createOutputPayload } from "../node/output/index";
 import { createInputNode } from "../node/input/index";
@@ -6,8 +6,8 @@ import { parseConversationDefaultInputArgs } from "../executor/default-input";
 import { parseAgentModelAttributes } from "./model-attributes";
 import type { NodeContext } from "../types/index";
 import { defineWorkflow, runNode, runStreamNode } from "../workflow/index";
-import type { WorkflowDefinition } from "../types/index";
-import { WorkflowError } from "../workflow/errors";
+import type { Definition } from "../types/index";
+import { HarnessError } from "../workflow/errors";
 import {
   createAgentNode,
   readAgentRunContextUsage,
@@ -23,7 +23,7 @@ import {
 } from "./output-items";
 import { readAgentToolDefinitions } from "./permission";
 import { readRuntimeLocaleSafe } from "./plan";
-import type { WorkflowFileReference } from "../files/index";
+import type { FileReference } from "../files/index";
 import {
   DEFAULT_AGENT_EFFORT,
   DEFAULT_AGENT_PERMISSION_POLICY,
@@ -46,7 +46,7 @@ const DEFAULT_OUTPUT_ITEM_ID = "agent-answer";
  */
 export function createAgentConversationWorkflow(
   options: AgentProjectOptions = {},
-): WorkflowDefinition<AgentInput, AgentOutputPayload> {
+): Definition<AgentInput, AgentOutputPayload> {
   const workflowName = options.workflowName ?? "agent";
   const outputItemId = options.outputItemId ?? DEFAULT_OUTPUT_ITEM_ID;
   const node = createAgentNode({ ...options, name: `${workflowName}-agent` });
@@ -59,7 +59,7 @@ export function createAgentConversationWorkflow(
       // An attachment is a question of its own: a run that carries one and no
       // text is a user showing the agent something, not an empty turn.
       if (prompt.trim() === "" && (resolved.images?.length ?? 0) === 0) {
-        throw new WorkflowError({
+        throw new HarnessError({
           type: "input_validation",
           message: "Prompt is required.",
           nodeName: `${workflowName}-input`,
@@ -134,7 +134,7 @@ export function createAgentConversationWorkflow(
       const result = await runStreamNode(outputNode, parsed, context);
 
       if (result.output === undefined) {
-        throw new WorkflowError({
+        throw new HarnessError({
           type: "workflow_execution",
           message: `Workflow "${workflowName}" did not produce output.`,
         });
@@ -169,13 +169,13 @@ export function createAgentProjectInput(
  */
 export function defineAgentConversationExecutor(
   options: AgentProjectOptions = {},
-): WorkflowConversationExecutorDefinition<AgentInput, AgentOutputPayload> {
+): ConversationExecutorDefinition<AgentInput, AgentOutputPayload> {
   const workflowName = options.workflowName ?? "agent";
   const outputItemId = options.outputItemId ?? DEFAULT_OUTPUT_ITEM_ID;
 
   // Annotated before validation so the returned definition keeps the narrower
   // conversation type — a builtin that receives the union would lose `workflow`.
-  const definition: WorkflowConversationExecutorDefinition<AgentInput, AgentOutputPayload> = {
+  const definition: ConversationExecutorDefinition<AgentInput, AgentOutputPayload> = {
     projectType: "conversation",
     workflow: createAgentConversationWorkflow(options),
     conversation: {
@@ -216,7 +216,7 @@ async function* runAgentNode(
   }
 }
 
-export function createAgentProjectParams(options: AgentProjectOptions = {}): WorkflowConversationParamDeclaration[] {
+export function createAgentProjectParams(options: AgentProjectOptions = {}): ConversationParamDeclaration[] {
   return [
     {
       kind: "auxiliary",
@@ -398,7 +398,7 @@ export async function resolveAgentImageFiles(
 
   const files = context.files;
   if (files === undefined) {
-    throw new WorkflowError({
+    throw new HarnessError({
       type: "input_validation",
       message: "本次运行带有图片附件，但运行环境没有配置文件存储，无法读取附件内容。",
       nodeName,
@@ -408,7 +408,7 @@ export async function resolveAgentImageFiles(
   const images: AgentImageInput[] = [...(input.images ?? [])];
   for (const reference of references) {
     if (!isImageReference(reference)) {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "input_validation",
         message: `附件 "${reference.name || reference.id}" 不是图片，无法作为图片输入。`,
         nodeName,
@@ -420,7 +420,7 @@ export async function resolveAgentImageFiles(
     const data = await file.readBase64();
     const mimeType = file.mimeType === "" ? reference.mimeType : file.mimeType;
     if (data === "" || mimeType === "") {
-      throw new WorkflowError({
+      throw new HarnessError({
         type: "input_validation",
         message: `附件 "${reference.name || reference.id}" 没有可用的图片内容。`,
         nodeName,
@@ -434,7 +434,7 @@ export async function resolveAgentImageFiles(
   return { ...rest, images };
 }
 
-function isImageReference(reference: WorkflowFileReference): boolean {
+function isImageReference(reference: FileReference): boolean {
   return reference.kind === "image" || reference.mimeType.startsWith("image/");
 }
 

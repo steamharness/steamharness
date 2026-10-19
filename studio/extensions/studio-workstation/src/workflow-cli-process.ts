@@ -4,10 +4,10 @@ import { createRequire } from 'node:module';
 import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
-import type { WorkflowConnection } from './workflow-auth-client';
+import type { Connection } from './workflow-auth-client';
 import { sanitizeWorkflowEnvironment } from './workflow-auth-client';
-import type { WorkflowProject } from './workflow-types';
-import type { WorkflowWebReady, WorkflowWebSession, WorkflowRelatedProjectBinding } from './workflow-cli-types';
+import type { Project } from './workflow-types';
+import type { WebReady, WebSession, RelatedProjectBinding } from './workflow-cli-types';
 
 export interface StudioControlConfiguration { mcpServer?: string; url: string; token: string }
 
@@ -16,7 +16,7 @@ export interface StudioControlConfiguration { mcpServer?: string; url: string; t
  * assistant surface. The editor and its project workers must never receive
  * those fields, even when the host account has an AI session configured.
  */
-export function sanitizeConnectionForSurface(connection: WorkflowConnection | undefined, surface: 'editor' | 'assistant'): WorkflowConnection | undefined {
+export function sanitizeConnectionForSurface(connection: Connection | undefined, surface: 'editor' | 'assistant'): Connection | undefined {
   if (!connection) { return undefined; }
   if (surface === 'assistant') { return { ...connection }; }
   return { serverUrl: connection.serverUrl, accessToken: connection.accessToken };
@@ -61,7 +61,7 @@ function environment(studioControl?: StudioControlConfiguration): NodeJS.Process
   return createProjectCliEnvironment(process.env, studioControl);
 }
 
-export async function inspectProjectCli(projectDir: string, nodePath: string, signal?: AbortSignal, assistantProjectDir?: string, assistant?: WorkflowProject['assistant'], locale = 'en'): Promise<{ projects: Omit<WorkflowProject, 'uri'>[]; errors: string[] }> {
+export async function inspectProjectCli(projectDir: string, nodePath: string, signal?: AbortSignal, assistantProjectDir?: string, assistant?: Project['assistant'], locale = 'en'): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }> {
   const { entry } = await resolveProjectCli(projectDir);
   return new Promise((resolve, reject) => {
     const child = spawn(nodePath, [entry, '--locale', locale.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en', 'web', projectDir, '--inspect', '--json', '--no-open', ...(assistantProjectDir ? ['--host-stdio'] : [])], { cwd: projectDir, env: environment(), shell: false, stdio: ['pipe', 'pipe', 'pipe'], signal });
@@ -83,7 +83,7 @@ export async function inspectProjectCli(projectDir: string, nodePath: string, si
         if (assistantProjectDir && result.assistantProtocolVersion !== 1) {
           throw new Error(t("The standalone Assistant CLI is incompatible. Update its @steamharness/cli."));
         }
-        resolve({ ...result, projects: result.projects.map((project: Omit<WorkflowProject, 'uri'>) => ({ ...project, folderPath: path.resolve(assistantProjectDir ?? projectDir) })) });
+        resolve({ ...result, projects: result.projects.map((project: Omit<Project, 'uri'>) => ({ ...project, folderPath: path.resolve(assistantProjectDir ?? projectDir) })) });
       } catch (error) { reject(error); }
     });
   });
@@ -91,13 +91,13 @@ export async function inspectProjectCli(projectDir: string, nodePath: string, si
 
 export async function startProjectCli(options: {
   projectDir: string; dataDir: string; nodePath: string; theme: 'dark' | 'light'; locale?: string;
-  surface: 'editor' | 'assistant'; connection?: WorkflowConnection; assistant?: WorkflowProject['assistant']; signal?: AbortSignal;
+  surface: 'editor' | 'assistant'; connection?: Connection; assistant?: Project['assistant']; signal?: AbortSignal;
   assistantProjectDir?: string;
   expectedProjectId?: string;
-  relatedProjects?: WorkflowRelatedProjectBinding[];
+  relatedProjects?: RelatedProjectBinding[];
   resourceProjects?: string[];
   studioControl?: StudioControlConfiguration;
-}): Promise<WorkflowWebSession> {
+}): Promise<WebSession> {
   const { entry } = await resolveProjectCli(options.projectDir);
   options.signal?.throwIfAborted();
   const connection = sanitizeConnectionForSurface(options.connection, options.surface);
@@ -126,9 +126,9 @@ export async function startProjectCli(options: {
   child.stderr?.on('data', chunk => { stderr = (stderr + chunk).slice(-8_000); });
   child.once('close', () => { finished = true; clearTimeout(force); events.emit('exit'); finishClose(); });
   try {
-    const ready = await new Promise<WorkflowWebReady>((resolve, reject) => {
+    const ready = await new Promise<WebReady>((resolve, reject) => {
       const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('SteamHarness Web startup timed out.')); }, 45_000);
-      const settle = (error?: Error, message?: WorkflowWebReady) => {
+      const settle = (error?: Error, message?: WebReady) => {
         clearTimeout(timer); child.off('error', failed); child.off('close', exited); child.stdout?.off('data', received);
         if (error) { reject(error); } else { resolve(message!); }
       };
@@ -142,7 +142,7 @@ export async function startProjectCli(options: {
           const line = buffer.slice(0, newline); buffer = buffer.slice(newline + 1);
           if (!line.startsWith('{')) { continue; }
           try {
-            const message = JSON.parse(line) as WorkflowWebReady;
+            const message = JSON.parse(line) as WebReady;
             if (message.type !== 'ready') { continue; }
             const url = new URL(message.url);
             if (message.protocolVersion !== 1 || message.hostProtocolVersion !== 1 || message.accountProtocolVersion !== 1 || (options.relatedProjects?.length && message.relatedProjectsProtocolVersion !== 1) || (options.assistant && message.assistantProtocolVersion !== 1) || (options.expectedProjectId && message.project?.id !== options.expectedProjectId) || url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port || url.pathname !== '/' || !/^#session=[a-f0-9]{64}$/.test(url.hash)) {

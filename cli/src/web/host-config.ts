@@ -1,12 +1,12 @@
 import path from 'node:path';
 import type { WebConnection } from './runtime';
-import type { WorkflowProject } from './workflow-types';
+import type { Project } from './workflow-types';
 import type { CliRelatedProjectSpec } from '../related-projects';
 
 export interface WebHostConfiguration {
   connection?: WebConnection;
   surface: 'editor' | 'assistant';
-  assistant?: NonNullable<WorkflowProject['assistant']>;
+  assistant?: NonNullable<Project['assistant']>;
   assistantProjectDir?: string;
   relatedProjects?: CliRelatedProjectSpec[];
   resourceProjects?: string[];

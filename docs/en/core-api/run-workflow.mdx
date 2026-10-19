@@ -1,11 +1,11 @@
 ---
 title: "runWorkflow"
-description: "Invoke another workflow in the current WorkflowContext while reusing the parent context."
+description: "Invoke another workflow in the current RunContext while reusing the parent context."
 ---
 
 # runWorkflow
 
-Use `workflow.runWorkflow()` to invoke an imported `WorkflowDefinition<Input, Output>` from another workflow. It reuses the parent `WorkflowContext`, making it suitable for composing reusable workflows as part of a larger workflow.
+Use `workflow.runWorkflow()` to invoke an imported `Definition<Input, Output>` from another workflow. It reuses the parent `RunContext`, making it suitable for composing reusable workflows as part of a larger workflow.
 
 This is distinct from a project entrypoint. An entrypoint is a flat target that CLI and local hosts can start directly. `runWorkflow()` composes business logic inside one run. Running an entrypoint never runs the default or another entrypoint automatically. When a main flow needs to invoke a child flow, the selected entrypoint's workflow explicitly calls `runWorkflow(childWorkflow, ...)`.
 
@@ -13,12 +13,12 @@ This is distinct from a project entrypoint. An entrypoint is a flat target that 
 
 ```ts
 workflow.runWorkflow<Input, Output>(
-  workflow: WorkflowDefinition<Input, Output>,
+  workflow: Definition<Input, Output>,
   input: Input,
-  context: WorkflowContext,
+  context: RunContext,
   options?: {
     name?: string;
-    metadata?: Partial<WorkflowNodeMetadata>;
+    metadata?: Partial<NodeMetadata>;
     conversationMode?: "shared" | "shared-readonly";
     kvMode?: "shared" | "isolated";
     outputVisibility?: "visible" | "hidden";
@@ -34,11 +34,11 @@ workflow.runWorkflow<Input, Output>(
 
 | Parameter | Type | Description |
 | --- | --- | --- |
-| `workflow` | `WorkflowDefinition<Input, Output>` | The child workflow to reuse. |
+| `workflow` | `Definition<Input, Output>` | The child workflow to reuse. |
 | `input` | `Input` | Input passed to the child workflow. |
-| `context` | `WorkflowContext` | The current context of the parent workflow. |
+| `context` | `RunContext` | The current context of the parent workflow. |
 | `options.name` | `string` | Display title for the child-workflow call in the parent trace. |
-| `options.metadata` | `Partial<WorkflowNodeMetadata>` | Overrides trace-node metadata. The default type is `workflow`. |
+| `options.metadata` | `Partial<NodeMetadata>` | Overrides trace-node metadata. The default type is `workflow`. |
 | `options.conversationMode` | `"shared" \| "shared-readonly"` | How the child workflow uses the parent conversation. Defaults to `shared`. |
 | `options.kvMode` | `"shared" \| "isolated"` | How the child workflow uses parent KV. Defaults to `shared`; `isolated` prefixes project and conversation KV keys with the child workflow name. |
 | `options.outputVisibility` | `"visible" \| "hidden"` | Whether child-workflow output enters the parent's visible output. Defaults to `visible`. |

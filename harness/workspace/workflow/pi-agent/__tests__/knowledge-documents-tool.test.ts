@@ -6,10 +6,10 @@ import {
   createWorkflowPersistentValueContext,
   createWorkflowRelatedProjectsContext,
   createWorkflowToolPermissionContext,
-  type WorkflowKVStore,
+  type KVStore,
 } from "steamharness";
 import { installWorkflowRuntimeGlobal } from "steamharness/runtime-api";
-import type { WorkflowContext } from "steamharness/types/context";
+import type { RunContext } from "steamharness/types/context";
 import {
   KNOWLEDGE_DOCUMENTS_TOOL_NAME,
   createKnowledgeDocumentsTool,
@@ -17,7 +17,7 @@ import {
 
 installWorkflowRuntimeGlobal();
 
-let context: WorkflowContext;
+let context: RunContext;
 
 beforeAll(() => {
   context = createToolContext();
@@ -128,7 +128,7 @@ describe("pi-agent knowledge_documents tool", () => {
   });
 
   it("propagates tool approval waits and denials", async () => {
-    let pendingApprovalError: workflow.WorkflowError | undefined;
+    let pendingApprovalError: workflow.HarnessError | undefined;
     const waitingContext = createToolContext({ autoApprove: false });
     const waitingTool = createKnowledgeDocumentsTool({
       context: waitingContext,
@@ -143,11 +143,11 @@ describe("pi-agent knowledge_documents tool", () => {
       undefined,
       {} as never,
     )).rejects.toMatchObject({
-      name: "WorkflowError",
+      name: "HarnessError",
       type: "user_input_required",
     });
     expect(pendingApprovalError).toMatchObject({
-      name: "WorkflowError",
+      name: "HarnessError",
       type: "user_input_required",
     });
 
@@ -160,7 +160,7 @@ describe("pi-agent knowledge_documents tool", () => {
       undefined,
       {} as never,
     )).rejects.toMatchObject({
-      name: "WorkflowError",
+      name: "HarnessError",
       type: "tool_permission_denied",
     });
   });
@@ -222,13 +222,13 @@ function parseToolResult<T>(result: Awaited<ReturnType<ReturnType<typeof createK
 
 function createToolContext(
   toolPolicy: { enabled?: boolean; autoApprove?: boolean } = {},
-  userInput: WorkflowContext["userInput"] = {
+  userInput: RunContext["userInput"] = {
     async getResolvedInput() {
       return undefined;
     },
     async requestInput() {},
   },
-): WorkflowContext {
+): RunContext {
   const store = createMemoryKVStore();
   return {
     providers: {},
@@ -274,7 +274,7 @@ function createToolContext(
   };
 }
 
-function createMemoryKVStore(): WorkflowKVStore {
+function createMemoryKVStore(): KVStore {
   const values = new Map<string, unknown>();
   const namespaceTails = new Map<string, Promise<void>>();
   function createKey(input: {

@@ -7,7 +7,7 @@ import { DatabaseSync } from "node:sqlite";
 import * as ai from "@earendil-works/pi-ai";
 import { createRegistry, defineExtension, defineTask, GenerationTask, Harness, hook, MemoryStorage, ToolTask } from "@earendil-works/pi-durable";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { WorkflowDurableAgent } from "../agent/durable-agent";
+import { DurableAgent } from "../agent/durable-agent";
 import { agentConversationDirectory, cancelAgentConversation, exportAgentDatabase, importAgentDatabase, openAgentStorage } from "../agent/storage";
 import type { AgentSessionOptions, AgentSessionSnapshot } from "../agent/session-types";
 import type { AgentTool } from "../agent/types";
@@ -26,7 +26,7 @@ function agent(session: AgentSessionOptions, databasePath?: string, storage?: Ag
   const provider = ai.fauxProvider({ models: [{ id: "test", contextWindow: 100_000, maxTokens: 1000 }] });
   const models = ai.createModels(); models.setProvider(provider.provider);
   const lease = latch();
-  const instance = new WorkflowDurableAgent({ models, databasePath, storage, session, sessionLease: lease.promise, initialState: {
+  const instance = new DurableAgent({ models, databasePath, storage, session, sessionLease: lease.promise, initialState: {
     systemPrompt: "Extension test", model: models.getModel("faux", "test")!, thinkingLevel: "off", messages: [], tools: [],
   } });
   let snapshot: AgentSessionSnapshot | undefined;

@@ -1,6 +1,6 @@
 import { t } from './localization';
 import { escapeHtml, iconHtml } from './ui';
-import type { WorkflowInfoItem, WorkflowInfoState } from '../src/workflow-info';
+import type { InfoItem, InfoState } from '../src/workflow-info';
 import { projectVersionHtml } from './project-version';
 import './info.css';
 
@@ -11,9 +11,9 @@ const host = acquireVsCodeApi();
 const app = document.querySelector<HTMLElement>('#info-app')!;
 const saved = host.getState() ?? {};
 const sections = saved.sections ?? {};
-let state: WorkflowInfoState | undefined, signature = '';
+let state: InfoState | undefined, signature = '';
 
-function renderItem(item: WorkflowInfoItem, nested = false): string {
+function renderItem(item: InfoItem, nested = false): string {
   const id = escapeHtml(item.id), label = escapeHtml(item.label);
   if (item.children) {
     const empty = item.children.length === 1 && item.children[0].id === `${item.id}:empty`;
@@ -33,7 +33,7 @@ function renderItem(item: WorkflowInfoItem, nested = false): string {
     <dd class="field-action"><button class="copy-button" type="button" data-copy="${id}" title="${copy}" aria-label="${copy}">${iconHtml('copy')}</button></dd></dl>`;
 }
 
-function render(next: WorkflowInfoState): void {
+function render(next: InfoState): void {
   const previousUri = state?.project?.uri;
   state = next;
   const nextSignature = JSON.stringify([next.project, next.items, next.update]);

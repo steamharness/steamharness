@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import test from "node:test";
 import express from "express";
-import type { WorkflowDeviceCodeSecretRecord } from "../../account-db";
+import type { DeviceCodeSecretRecord } from "../../account-db";
 import { configureWorkflowAuthContext, requireAdminPrincipal } from "../../auth";
 import { getRequestT, localizeHttpErrorMessage } from "../../i18n";
 import { fail, HttpError, ok, toHttpError } from "../../protocol";
@@ -1336,35 +1336,35 @@ interface DeviceCodeStateUpdate {
 }
 
 function createAccountDbStub(): {
-  deviceCodeBySecret: Map<string, WorkflowDeviceCodeSecretRecord>;
+  deviceCodeBySecret: Map<string, DeviceCodeSecretRecord>;
   updatedDeviceStates: DeviceCodeStateUpdate[];
   consumedDeviceCodeIds: string[];
   consumeApprovedDeviceCodeWithApiKeyResult?: {
-    deviceCode: WorkflowDeviceCodeSecretRecord;
+    deviceCode: DeviceCodeSecretRecord;
     apiKey: { token: string; record: { id: string; expiresAt?: string } };
   } | null;
   createdApiKeys: Array<Record<string, unknown>>;
   createdAuditEvents: Array<{ eventType: string; outcome: string; context?: Record<string, unknown> }>;
-  getDeviceCodeBySecret(deviceCode: string): Promise<WorkflowDeviceCodeSecretRecord | undefined>;
-  updateDeviceCodeState(_deviceCodeId: string, input: DeviceCodeStateUpdate): Promise<WorkflowDeviceCodeSecretRecord>;
+  getDeviceCodeBySecret(deviceCode: string): Promise<DeviceCodeSecretRecord | undefined>;
+  updateDeviceCodeState(_deviceCodeId: string, input: DeviceCodeStateUpdate): Promise<DeviceCodeSecretRecord>;
   consumeApprovedDeviceCodeWithApiKey(deviceCodeId: string, input: {
     consumedAt: string;
     result?: Record<string, unknown>;
     expiresAt?: string;
   } & Record<string, unknown>): Promise<{
-    deviceCode: WorkflowDeviceCodeSecretRecord;
+    deviceCode: DeviceCodeSecretRecord;
     apiKey: { token: string; record: { id: string; expiresAt?: string } };
   } | undefined>;
   createApiKey(input: Record<string, unknown>): Promise<{ token: string; record: { id: string; expiresAt?: string } }>;
   createAuditEvent(event: { eventType: string; outcome: string; context?: Record<string, unknown> }): Promise<void>;
 } {
-  const deviceCodeBySecret = new Map<string, WorkflowDeviceCodeSecretRecord>();
+  const deviceCodeBySecret = new Map<string, DeviceCodeSecretRecord>();
   return {
     deviceCodeBySecret,
     updatedDeviceStates: [] as DeviceCodeStateUpdate[],
     consumedDeviceCodeIds: [] as string[],
     consumeApprovedDeviceCodeWithApiKeyResult: null as {
-      deviceCode: WorkflowDeviceCodeSecretRecord;
+      deviceCode: DeviceCodeSecretRecord;
       apiKey: { token: string; record: { id: string; expiresAt?: string } };
     } | null | undefined,
     createdApiKeys: [] as Array<Record<string, unknown>>,
@@ -1469,7 +1469,7 @@ function createDeviceCodeRecord(overrides: Partial<{
     };
     expiresAt?: string;
   };
-}> = {}): WorkflowDeviceCodeSecretRecord {
+}> = {}): DeviceCodeSecretRecord {
   return {
     id: overrides.id ?? "device-1",
     deviceCodeHash: overrides.deviceCodeHash ?? "device-code-hash",

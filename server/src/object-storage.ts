@@ -9,10 +9,10 @@
  * of a transitive transport dependency.
  */
 
-export type WorkflowStorageDriver = "local";
+export type StorageDriver = "local";
 
-export interface WorkflowObjectStorage {
-  readonly driver: WorkflowStorageDriver;
+export interface ObjectStorage {
+  readonly driver: StorageDriver;
   /** Origin that object URLs are minted from. */
   readonly publicBaseUrl: string;
   objectKey(logicalPath: string): string;

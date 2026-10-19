@@ -39,9 +39,9 @@ describe("packaged workflow generator", () => {
       await execFileAsync("python3", [generator, "storage-contract", "--dir", target]);
       const generated = JSON.parse(await readFile(path.join(target, "package.json"), "utf8"));
       const outputTypes = await readFile(path.join(target, "interface.ts"), "utf8");
-      expect(outputTypes).toContain('display?: WorkflowOutputDisplay;');
+      expect(outputTypes).toContain('display?: OutputDisplay;');
       expect(outputTypes).toContain('placement?: "inline" | "composer-right";');
-      expect(outputTypes).toContain('export interface WorkflowRingContent');
+      expect(outputTypes).toContain('export interface RingContent');
 
       expect(generated.steamHarness.projectInfo).toEqual({
         dataStorage: { mode: "both" },

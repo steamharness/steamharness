@@ -5,7 +5,7 @@ import type {
   DeltaforeAgentOutputPayload,
   ReactLoopState,
   ReactThoughtPayload,
-  WorkflowNodeContext,
+  NodeRunContext,
 } from "./interface";
 import {
   createCompactedHistorySummary,
@@ -27,7 +27,7 @@ export const deltaforeAgentWorkflow = workflow.defineWorkflow<DeltaforeAgentInpu
   name: "deltafore-agent",
   async run(input, context) {
     const parsed = await workflow.runNode(inputNode, input, context);
-    const conversationContext = context as WorkflowNodeContext;
+    const conversationContext = context as NodeRunContext;
     await conversationContext.conversation?.setTitle(createConversationTitle(parsed.query));
     const conversationState = await conversationContext.conversation?.getValue();
     const history = createHistoryMessages(conversationState?.messages ?? []);

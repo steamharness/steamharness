@@ -4,24 +4,24 @@ import { mkdtemp, mkdir, readFile, rm, writeFile, symlink, realpath } from 'node
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { WorkflowController } from '../web/workflow-controller';
-import { migrateWorkflowHistory, workflowStorageReferences, type WorkflowRunRecord, type WorkflowWorkspace } from '../web/workflow-workspace';
+import { Controller } from '../web/workflow-controller';
+import { migrateWorkflowHistory, workflowStorageReferences, type RunRecord, type WorkspaceContract } from '../web/workflow-workspace';
 import { layoutWorkflowGraph } from '../web/workflow-graph';
 import { t } from '../web/localization';
 import { createWebRuntime } from '../web/runtime';
 import { startWebServer } from '../web/server';
-import type { WorkflowProject, WorkflowRuntime, WorkflowReport, WorkflowInputRequest, ConversationSession, WorkflowParamState } from '../web/workflow-types';
+import type { Project, Runtime, Report, InputRequest, ConversationSession, ParamState } from '../web/workflow-types';
 import { resolveHarnessRoot } from './harness-source';
 
 const services: Awaited<ReturnType<typeof startWebServer>>[] = [], folders: string[] = [];
 afterEach(async () => { for (const service of services.splice(0)) { await service.close(); } for (const directory of folders.splice(0)) { await rm(directory, { force: true, recursive: true }); } vi.unstubAllEnvs(); vi.restoreAllMocks(); });
-const request: WorkflowInputRequest = { requestId: 'approval', nodeName: 'approval', title: 'Review', params: [{ name: 'approved', type: 'boolean', required: true }] };
-const project: WorkflowProject = {
+const request: InputRequest = { requestId: 'approval', nodeName: 'approval', title: 'Review', params: [{ name: 'approved', type: 'boolean', required: true }] };
+const project: Project = {
   id: '14ab25f6-5a51-4b9b-9a09-df612356fd01', uri: 'file:///test', folderPath: '/test', name: 'Test workflow', projectType: 'workflow', fields: [], defaultEntrypoint: 'main',
   entrypoints: [{ id: 'main', title: 'Main', fields: [{ name: 'subject', flag: '--subject', type: 'string', required: true, defaultValue: 'Default' }], paramResolver: { enabled: true }, tools: [{ name: 'read', enabled: true }] },
     { id: 'other', title: 'Other', fields: [{ name: 'subject', flag: '--subject', type: 'string', defaultValue: 'Other' }] }],
 };
-function runtime(): WorkflowRuntime {
+function runtime(): Runtime {
   return {
     available: true, inspect: vi.fn(async () => ({ projects: [project], errors: [] })), resolveParams: vi.fn(async () => ({ params: {} })),
     run: vi.fn(async () => ({ status: 'success', output: { items: [] }, nodes: [] })), cancel: vi.fn(), dispose: vi.fn(),
@@ -29,9 +29,9 @@ function runtime(): WorkflowRuntime {
     deleteFiles: vi.fn(async () => {}), cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(async () => {}), readResource: vi.fn(async () => null),
   };
 }
-function controller(saved: Partial<WorkflowWorkspace> = {}, legacy?: ConversationSession[]) {
-  const executor = runtime(), save = vi.fn(async (_value: WorkflowWorkspace) => {});
-  const controller = new WorkflowController(project, executor, saved, { save, legacy, changed: vi.fn(), log: vi.fn() });
+function controller(saved: Partial<WorkspaceContract> = {}, legacy?: ConversationSession[]) {
+  const executor = runtime(), save = vi.fn(async (_value: WorkspaceContract) => {});
+  const controller = new Controller(project, executor, saved, { save, legacy, changed: vi.fn(), log: vi.fn() });
   return { controller, runtime: executor, save };
 }
 async function service(legacy?: ConversationSession[]) {
@@ -175,7 +175,7 @@ describe('Workflow workspace controller', () => {
 
   it('cancels an active worker and ignores its late events and final success', async () => {
     const { controller: c, runtime: r } = controller();
-    let finish!: (report: WorkflowReport) => void, emit!: (event: Record<string, unknown>) => void;
+    let finish!: (report: Report) => void, emit!: (event: Record<string, unknown>) => void;
     vi.mocked(r.run).mockImplementationOnce((_request, event) => { emit = event; return new Promise(resolve => { finish = resolve; }); });
     const record = await c.start({ entrypointId: 'main', params: { subject: 'Main' } });
     await vi.waitFor(() => expect(r.run).toHaveBeenCalled());
@@ -319,7 +319,7 @@ describe('SteamHarness Web routing and history', () => {
 
   it('rejects stale resolver results, keeping drafts isolated per entrypoint and respecting the input mode', async () => {
     const { app, post, runtime: r } = await service();
-    let finish!: (value: { params: Record<string, WorkflowParamState> }) => void;
+    let finish!: (value: { params: Record<string, ParamState> }) => void;
     vi.mocked(r.resolveParams).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
     const first = post({ type: 'resolve', entrypointId: 'main', requestId: 1, params: { subject: 'Old' } });
     await vi.waitFor(() => expect(r.resolveParams).toHaveBeenCalledTimes(1));
@@ -351,7 +351,7 @@ describe('SteamHarness Web routing and history', () => {
 
 describe('Workflow graph layout', () => {
   it('matches configured titles without assigning every standard input node to the first definition', () => {
-    const descriptor: WorkflowProject = { ...project, entrypoints: [], definitions: { nodes: {
+    const descriptor: Project = { ...project, entrypoints: [], definitions: { nodes: {
       prepare: { configuredName: 'Prepare', standardName: 'input' }, iteration: { configuredName: 'Iteration', standardName: 'input' },
     } }, execution: { kind: 'sequence', children: [
       { kind: 'node', nodeId: 'prepare', callId: 'prepare-call', standardName: 'input' },
@@ -368,7 +368,7 @@ describe('Workflow graph layout', () => {
     expect(graph.diagnostics).toEqual([]);
   });
   it('retains branches, loops, and distinct repeated execution IDs', () => {
-    const descriptor: WorkflowProject = { ...project, definitions: { nodes: { repeated: { configuredName: 'step' } } }, execution: { kind: 'sequence', children: [
+    const descriptor: Project = { ...project, definitions: { nodes: { repeated: { configuredName: 'step' } } }, execution: { kind: 'sequence', children: [
       { kind: 'branch', branchId: 'b', branches: [{ kind: 'if', label: 'Yes', children: [{ kind: 'node', nodeId: 'repeated', callId: 'step-call' }] }, { kind: 'else', label: 'No', children: [] }] },
       { kind: 'loop', loopId: 'l', label: 'Loop', children: [{ kind: 'node', nodeId: 'other', callId: 'other-call' }] },
     ] } };

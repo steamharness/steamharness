@@ -35,7 +35,7 @@ describe("the runtime API index", () => {
 
   it("says what a related project exposes and what it does not", async () => {
     const { relatedContext } = await readRuntimeApiIndex();
-    const storage = relatedContext.find((context) => context.name === "WorkflowRelatedProjectStorageContext");
+    const storage = relatedContext.find((context) => context.name === "RelatedProjectStorageContext");
     const signatures = storage.members.map((member) => member.signature);
 
     expect(signatures).toContain("kv");
@@ -70,9 +70,9 @@ describe("the runtime API index", () => {
   it("refuses a context member it cannot name", async () => {
     const coreSource = await createCoreSource({
       "kv/related-projects.ts": [
-        "export interface WorkflowRelatedProjectStorageContext { kv: string; [key: string]: unknown }",
-        "export interface WorkflowRelatedProjectKnowledgeContext { getDocument(id: string): void }",
-        "export interface WorkflowRelatedProjectRunner { run(id: string): void }",
+        "export interface RelatedProjectStorageContext { kv: string; [key: string]: unknown }",
+        "export interface RelatedProjectKnowledgeContext { getDocument(id: string): void }",
+        "export interface RelatedProjectRunner { run(id: string): void }",
       ].join("\n"),
     });
 
@@ -82,9 +82,9 @@ describe("the runtime API index", () => {
   it("refuses a context that publishes no members", async () => {
     const coreSource = await createCoreSource({
       "kv/related-projects.ts": [
-        "export interface WorkflowRelatedProjectStorageContext { kv: string }",
-        "export interface WorkflowRelatedProjectKnowledgeContext {}",
-        "export interface WorkflowRelatedProjectRunner { run(id: string): void }",
+        "export interface RelatedProjectStorageContext { kv: string }",
+        "export interface RelatedProjectKnowledgeContext {}",
+        "export interface RelatedProjectRunner { run(id: string): void }",
       ].join("\n"),
     });
 

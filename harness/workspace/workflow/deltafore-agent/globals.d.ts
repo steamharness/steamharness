@@ -1,4 +1,4 @@
-type WorkflowOutputItemChunk =
+type OutputItemChunk =
   | {
       type: "output_item_start";
       item: {
@@ -27,8 +27,8 @@ type WorkflowOutputItemChunk =
     }
   | { type: "output_item_end"; itemId: string };
 
-type WorkflowOutputStreamChunk = string | WorkflowOutputItemChunk;
-type WorkflowDetailsOutputStaticContent =
+type RunOutputStreamChunk = string | OutputItemChunk;
+type RunDetailsOutputStaticContent =
   | string
   | number
   | boolean
@@ -83,28 +83,28 @@ declare const workflow: {
   };
   createOutputNode<Input, Output>(options: {
     name?: string;
-    stream(input: Input, context: unknown): AsyncIterable<WorkflowOutputStreamChunk> | Iterable<WorkflowOutputStreamChunk>;
+    stream(input: Input, context: unknown): AsyncIterable<RunOutputStreamChunk> | Iterable<RunOutputStreamChunk>;
     format(stream: { text: string; items: unknown[]; chunks: unknown[] }, input: Input, context: unknown): Promise<Output> | Output;
   }): {
     name: string;
-    stream(input: Input, context: unknown): AsyncIterable<WorkflowOutputStreamChunk>;
-    finalize(chunks: WorkflowOutputStreamChunk[], context: unknown, input?: Input): Promise<Output> | Output;
+    stream(input: Input, context: unknown): AsyncIterable<RunOutputStreamChunk>;
+    finalize(chunks: RunOutputStreamChunk[], context: unknown, input?: Input): Promise<Output> | Output;
   };
   createOutputNode<Input, Output>(options: {
     name?: string;
-    stream?: (input: Input, context: unknown) => AsyncIterable<WorkflowOutputStreamChunk> | Iterable<WorkflowOutputStreamChunk>;
+    stream?: (input: Input, context: unknown) => AsyncIterable<RunOutputStreamChunk> | Iterable<RunOutputStreamChunk>;
     format: ((input: Input, context: unknown) => Promise<Output> | Output)
       | ((stream: { text: string; items: unknown[]; chunks: unknown[] }, input: Input, context: unknown) => Promise<Output> | Output);
   }): {
     name: string;
     run?: (input: Input, context: unknown) => Promise<Output> | Output;
-    stream?: (input: Input, context: unknown) => AsyncIterable<WorkflowOutputStreamChunk>;
-    finalize?: (chunks: WorkflowOutputStreamChunk[], context: unknown, input?: Input) => Promise<Output> | Output;
+    stream?: (input: Input, context: unknown) => AsyncIterable<RunOutputStreamChunk>;
+    finalize?: (chunks: RunOutputStreamChunk[], context: unknown, input?: Input) => Promise<Output> | Output;
   };
   createDetailsOutputNode<Input, Output>(options?: {
     name?: string;
     title?: string | ((input: Input, context: unknown) => unknown);
-    content?: WorkflowDetailsOutputStaticContent | ((input: Input, context: unknown) => unknown);
+    content?: RunDetailsOutputStaticContent | ((input: Input, context: unknown) => unknown);
     icon?: string | ((input: Input, context: unknown) => unknown);
     resolve?: (input: Input, context: unknown) => {
       title: string;
@@ -178,13 +178,13 @@ declare const workflow: {
   ): Promise<Output>;
   runStreamNode<Input, Output>(
     node: {
-      stream(input: Input, context: unknown): AsyncIterable<WorkflowOutputStreamChunk>;
-      finalize(chunks: WorkflowOutputStreamChunk[], context: unknown, input?: Input): Promise<Output> | Output;
+      stream(input: Input, context: unknown): AsyncIterable<RunOutputStreamChunk>;
+      finalize(chunks: RunOutputStreamChunk[], context: unknown, input?: Input): Promise<Output> | Output;
     },
     input: Input,
     context: unknown,
   ): Promise<{
-    chunks: WorkflowOutputStreamChunk[];
+    chunks: RunOutputStreamChunk[];
     output: Output | undefined;
   }>;
   runWorkflow<Input, Output>(

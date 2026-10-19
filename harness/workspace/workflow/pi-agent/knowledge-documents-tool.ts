@@ -17,7 +17,7 @@ interface KnowledgeDocumentsToolContext {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   context: any;
   emit?: (event: PiAgentSessionEvent) => void;
-  onPendingApproval?: (error: workflow.WorkflowError) => void;
+  onPendingApproval?: (error: workflow.HarnessError) => void;
 }
 
 interface KnowledgeDocumentsToolArgs {
@@ -83,7 +83,7 @@ export function createKnowledgeDocumentsTool(input: KnowledgeDocumentsToolContex
         return createToolResult(result);
       } catch (error) {
         if (
-          error instanceof workflow.WorkflowError &&
+          error instanceof workflow.HarnessError &&
           (error.type === "user_input_required" || error.type === "tool_permission_denied")
         ) {
           if (error.type === "user_input_required") {
@@ -116,7 +116,7 @@ function emitToolApprovalDecision(
   }
 }
 
-function readApprovalRequestId(error: workflow.WorkflowError): string | undefined {
+function readApprovalRequestId(error: workflow.HarnessError): string | undefined {
   const requestId = error.metadata?.["requestId"];
   if (typeof requestId === "string") {
     return requestId;
@@ -128,7 +128,7 @@ function readApprovalRequestId(error: workflow.WorkflowError): string | undefine
     : undefined;
 }
 
-function readApprovalValues(error: workflow.WorkflowError): Record<string, unknown> | undefined {
+function readApprovalValues(error: workflow.HarnessError): Record<string, unknown> | undefined {
   const values = error.metadata?.["values"];
   return isRecord(values) ? values : undefined;
 }
@@ -223,7 +223,7 @@ async function runKnowledgeDocumentsAction(
       };
     }
     default:
-      throw new workflow.WorkflowError({
+      throw new workflow.HarnessError({
         type: "input_validation",
         message: `Unsupported knowledge_documents action: ${String(args.action)}.`,
         nodeName: "pi-agent-output",
@@ -340,7 +340,7 @@ function normalizeKnowledgeDocumentsAction(value: unknown): KnowledgeDocumentsAc
     return value;
   }
 
-  throw new workflow.WorkflowError({
+  throw new workflow.HarnessError({
     type: "input_validation",
     message: `Unsupported knowledge_documents action: ${String(value)}.`,
     nodeName: "pi-agent-output",
@@ -362,7 +362,7 @@ function requireToolString(
     return normalized;
   }
 
-  throw new workflow.WorkflowError({
+  throw new workflow.HarnessError({
     type: "input_validation",
     message: `knowledge_documents action "${action}" requires ${field}.`,
     nodeName: "pi-agent-output",
@@ -379,7 +379,7 @@ function requireToolNumber(
     return value;
   }
 
-  throw new workflow.WorkflowError({
+  throw new workflow.HarnessError({
     type: "input_validation",
     message: `knowledge_documents action "${action}" requires ${field}.`,
     nodeName: "pi-agent-output",
@@ -388,7 +388,7 @@ function requireToolNumber(
 }
 
 function formatToolError(error: unknown, action: KnowledgeDocumentsAction) {
-  if (error instanceof workflow.WorkflowError) {
+  if (error instanceof workflow.HarnessError) {
     return {
       action,
       errCode: 1,

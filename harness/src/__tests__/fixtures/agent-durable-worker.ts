@@ -1,7 +1,7 @@
 import path from "node:path";
 import { appendFile } from "node:fs/promises";
 import * as ai from "@earendil-works/pi-ai";
-import { WorkflowDurableAgent } from "../../agent/durable-agent";
+import { DurableAgent } from "../../agent/durable-agent";
 
 const [directory, scenario, phase] = process.argv.slice(2) as [string, string, string];
 const faux = ai.fauxProvider({ models: [{ id: "durable", contextWindow: 100_000, maxTokens: 100 }] });
@@ -10,7 +10,7 @@ const tool = (name: string, replay: "safe" | "never", execute: () => Promise<unk
   name, label: name, description: name, replay, parameters: ai.Type.Object({}),
   execute: async () => { await execute(); return { content: [{ type: "text" as const, text: "ok" }], details: {} }; },
 });
-const agent = new WorkflowDurableAgent({
+const agent = new DurableAgent({
   databasePath: path.join(directory, "session.sqlite"), models,
   initialState: { systemPrompt: "Offline durable test", model: models.getModel("faux", "durable")!,
     thinkingLevel: "off", messages: [], tools: [

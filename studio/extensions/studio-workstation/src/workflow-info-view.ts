@@ -2,34 +2,34 @@ import { t } from './localization';
 import { localizationHtml } from './localization-host';
 import * as vscode from 'vscode';
 import { projectTypeIcons } from './projects';
-import { projectDisplayName, type WorkflowProject } from './workflow-types';
-import { workflowInfoItems, type WorkflowInfoItem, type WorkflowInfoState } from './workflow-info';
+import { projectDisplayName, type Project } from './workflow-types';
+import { workflowInfoItems, type InfoItem, type InfoState } from './workflow-info';
 import type { ProjectVersionStatus } from './workflow-server-projects';
 
-export class WorkflowInfoView implements vscode.WebviewViewProvider, vscode.Disposable {
+export class InfoView implements vscode.WebviewViewProvider, vscode.Disposable {
   private view?: vscode.WebviewView;
   private listeners: vscode.Disposable[] = [];
-  private projects: WorkflowProject[] = [];
-  private selected?: WorkflowProject;
+  private projects: Project[] = [];
+  private selected?: Project;
   private preferredUri?: string;
-  private items: WorkflowInfoItem[] = [];
+  private items: InfoItem[] = [];
   private loading = Promise.resolve();
   private generation = 0;
   private loadedUri?: string;
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly versions: {
-    getVersionStatus(project: WorkflowProject): ProjectVersionStatus; onDidChangeVersions: vscode.Event<void>;
+    getVersionStatus(project: Project): ProjectVersionStatus; onDidChangeVersions: vscode.Event<void>;
   }) {
     context.subscriptions.push(this,
       vscode.window.registerWebviewViewProvider('studio.projectInfo', this, { webviewOptions: { retainContextWhenHidden: true } }),
       vscode.commands.registerCommand('studio.selectInfoProject', () => this.select()),
       vscode.commands.registerCommand('studio.openInfoProjectSource', () => this.selected && vscode.commands.executeCommand('studio.openWorkflowSource', this.selected)),
-      vscode.commands.registerCommand('studio.copyProjectInfoValue', (item?: WorkflowInfoItem) => this.copy(item?.id)),
+      vscode.commands.registerCommand('studio.copyProjectInfoValue', (item?: InfoItem) => this.copy(item?.id)),
       versions.onDidChangeVersions(() => this.publish()),
     );
   }
 
-  update(projects: WorkflowProject[], preferred?: WorkflowProject): Promise<void> {
+  update(projects: Project[], preferred?: Project): Promise<void> {
     this.projects = projects.filter(project => !project.assistant && ['workflow', 'conversation', 'kanban'].includes(project.projectType));
     const changedPreferred = preferred?.uri !== this.preferredUri;
     this.preferredUri = preferred?.uri;
@@ -50,8 +50,8 @@ export class WorkflowInfoView implements vscode.WebviewViewProvider, vscode.Disp
     return this.loading;
   }
 
-  private async load(project: WorkflowProject, generation: number): Promise<void> {
-    let items: WorkflowInfoItem[];
+  private async load(project: Project, generation: number): Promise<void> {
+    let items: InfoItem[];
     try {
       const bytes = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(vscode.Uri.parse(project.uri), 'package.json'));
       items = workflowInfoItems(project, JSON.parse(new TextDecoder().decode(bytes)));
@@ -75,7 +75,7 @@ export class WorkflowInfoView implements vscode.WebviewViewProvider, vscode.Disp
   private publish(): void {
     if (!this.view) { return; }
     this.view.description = this.selected && projectDisplayName(this.selected);
-    const state: WorkflowInfoState = { type: 'info-state', generation: this.generation,
+    const state: InfoState = { type: 'info-state', generation: this.generation,
       project: this.selected && { uri: this.selected.uri, name: this.selected.name }, items: this.items,
       update: this.selected && !this.selected.builtin ? this.versions.getVersionStatus(this.selected) : undefined };
     void this.view.webview.postMessage(state);
@@ -111,7 +111,7 @@ export class WorkflowInfoView implements vscode.WebviewViewProvider, vscode.Disp
   }
 
   private async copy(id?: string): Promise<boolean> {
-    const find = (items: WorkflowInfoItem[]): WorkflowInfoItem | undefined => {
+    const find = (items: InfoItem[]): InfoItem | undefined => {
       for (const item of items) {
         if (item.id === id) { return item; }
         const child = item.children && find(item.children);

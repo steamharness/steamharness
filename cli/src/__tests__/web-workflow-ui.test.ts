@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { validateWorkflowValues, type WorkflowProject } from '../web/workflow-types';
-import type { WorkflowRunRecord } from '../web/workflow-workspace';
+import { validateWorkflowValues, type Project } from '../web/workflow-types';
+import type { RunRecord } from '../web/workflow-workspace';
 
 const host = vi.hoisted(() => ({ postMessage: vi.fn(), getState: vi.fn(), setState: vi.fn() }));
 vi.mock('../web/ui/host', () => ({ acquireWorkflowHost: () => host }));
-vi.mock('../web/ui/workflow-fields', () => ({ WorkflowFields: class { close() {} render() {} update() {} } }));
+vi.mock('../web/ui/workflow-fields', () => ({ Fields: class { close() {} render() {} update() {} } }));
 vi.mock('../web/ui/conversation-output', () => ({ ConversationOutput: class { update() {} } }));
 vi.mock('../web/ui/conversation-tools', () => ({ ConversationTools: class { closeUsage() {} } }));
 vi.mock('../web/ui/ui', () => ({ iconHtml: () => '', iconButton: () => ({}), escapeHtml: (value: string) => value }));
@@ -35,18 +35,18 @@ class Element {
   click() { this.onclick?.(); this.events.get('click')?.({ preventDefault() {} }); }
 }
 
-const project: WorkflowProject = {
+const project: Project = {
   id: 'workflow-ui', uri: 'file:///workflow-ui', folderPath: '/workflow-ui', name: 'Studio Control', projectType: 'workflow', fields: [],
   defaultEntrypoint: 'theme', entrypoints: [
     { id: 'theme', title: 'Set Studio theme', fields: [{ name: 'theme', label: 'Theme', type: 'string', required: true }] },
     { id: 'state', title: 'Get Studio state', fields: [] },
   ],
 };
-function state(run?: WorkflowRunRecord) {
+function state(run?: RunRecord) {
   return { type: 'state', project, drafts: {}, runs: run ? [run] : [], run, running: false,
     history: { total: run ? 1 : 0, hasMore: false, query: '' }, account: { status: 'unauthenticated' }, authenticationRevision: 0 };
 }
-function record(status: 'success' | 'failed'): WorkflowRunRecord {
+function record(status: 'success' | 'failed'): RunRecord {
   return { id: status, scopeId: status, title: 'Get Studio state', entrypointId: 'state', status, createdAt: 1, updatedAt: 1,
     args: [], params: {}, policies: {}, items: [], files: [], events: [], nodes: [], logs: '', resolvedInputs: [],
     ...(status === 'failed' ? { error: 'Run failure' } : {}) };
