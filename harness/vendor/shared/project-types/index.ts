@@ -4,7 +4,7 @@ export const STEAMHARNESS_PROJECT_TYPE_DEFINITIONS = [
   {
     id: "workflow",
     label: "Workflow",
-    labelKey: "projectTypeProject",
+    labelKey: "projectTypeWorkflow",
     defaultIcon: "workflow",
     defaultIconBackgroundColor: "#2563eb",
     hasExecutor: true,
@@ -56,7 +56,7 @@ const STEAMHARNESS_PROJECT_TYPE_DEFINITIONS_BY_ID = Object.fromEntries(
   >;
 };
 
-export const STEAMHARNESS_PROJECT_TYPE_MIGRATION_EXAMPLE = `workflow.defineExecutor({
+export const STEAMHARNESS_PROJECT_TYPE_MIGRATION_EXAMPLE = `steamharness.defineExecutor({
   projectType: "conversation",
   conversation: {
     inputQueue: { enabled: true },

@@ -82,7 +82,7 @@ export const serverWeb = {
   accountInviteAccept: "Set password and sign in",
   accountInviteAcceptedDescription: "This invitation has already been accepted. Ask an administrator for a new invitation if you cannot sign in.",
   accountInviteConfirmPasswordLabel: "Confirm password",
-  accountInviteDescription: "Set the initial password for {{email}} to activate this Workflow account.",
+  accountInviteDescription: "Set the initial password for {{email}} to activate this SteamHarness account.",
   accountInviteExpiredDescription: "This invitation has expired. Ask an administrator to generate a new invitation.",
   accountInviteExpiresAt: "This single-use link expires {{expiresAt}}.",
   accountInviteInvalidDescription: "This invitation link is invalid or no longer exists.",

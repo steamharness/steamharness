@@ -32,7 +32,7 @@ describe("project type registry", () => {
 
   it("provides labels and card defaults through the same registry", () => {
     expect(getProjectKindLabel("conversation")).toBe("Conversation");
-    expect(getProjectKindLabelKey("workflow")).toBe("projectTypeProject");
+    expect(getProjectKindLabelKey("workflow")).toBe("projectTypeWorkflow");
     expect(getProjectKindLabelKey("conversation")).toBe("projectTypeConversation");
     expect(getProjectKindDefinition("kanban")).toMatchObject({
       label: "Kanban",

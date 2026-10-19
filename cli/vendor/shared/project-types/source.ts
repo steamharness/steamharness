@@ -176,7 +176,7 @@ function isDefineExecutorCall(node: ts.CallExpression): boolean {
   }
   return ts.isPropertyAccessExpression(node.expression) &&
     ts.isIdentifier(node.expression.expression) &&
-    node.expression.expression.text === "workflow" &&
+    node.expression.expression.text === "steamharness" &&
     (node.expression.name.text === "defineExecutor" ||
       node.expression.name.text === "defineProjectExecutor");
 }

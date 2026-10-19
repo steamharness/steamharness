@@ -35,7 +35,7 @@ describe("translation resolution", () => {
     initI18n({ preference: "zh-CN" });
     expect(i18n.t("copy")).toBe("复制");
     expect([
-      i18n.t("projectTypeProject"),
+      i18n.t("projectTypeWorkflow"),
       i18n.t("projectTypeConversation"),
       i18n.t("projectTypeKanban"),
     ]).toEqual(["工作流", "对话", "看板"]);
@@ -47,7 +47,7 @@ describe("translation resolution", () => {
     initI18n({ preference: "en" });
     expect(i18n.t("copy")).toBe("Copy");
     expect([
-      i18n.t("projectTypeProject"),
+      i18n.t("projectTypeWorkflow"),
       i18n.t("projectTypeConversation"),
       i18n.t("projectTypeKanban"),
     ]).toEqual(["Workflow", "Conversation", "Kanban"]);

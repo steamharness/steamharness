@@ -45,7 +45,7 @@ rawEvent=issue
 
 ## Server webhook
 
-Configure the workflow server webhook with full-body mapping:
+Configure the SteamHarness Server webhook with full-body mapping:
 
 ```json
 {
