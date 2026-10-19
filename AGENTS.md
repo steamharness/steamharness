@@ -5,7 +5,6 @@
 ## 命名
 
 - 品牌统一为 **SteamHarness**。npm scope 为 `@steamharness`，运行时 SDK 是裸包 `steamharness`，CLI 命令是 `steamharness`。
-- `workflow` 出现在两处含义，必须区分：**领域词**（workflow 运行、调度、输出、`WorkflowRunner`/`WorkflowContext`、`*-workflow` 示例包后缀、`workflow-ids`/`workflow-mcp`/`workflow-schedules` 子包名、`studio.openWorkflow*` 命令）保持不变；**产品词**一律用 SteamHarness 形式——manifest 键 `steamHarness`、事件前缀 `steamharness:`、环境变量 `STEAMHARNESS_*` 前缀、配置目录 `~/.steamharness`，cookie、docker/数据库名同理。
 - 运行时 SDK 位于 `harness/` 目录（包名 `steamharness`）；内部仓库通过 `open-sources/` 子模块引用本仓库。
 
 ## 逐字节副本
