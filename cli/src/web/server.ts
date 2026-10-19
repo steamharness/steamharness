@@ -48,6 +48,8 @@ export async function startWebServer(options: WebOptions) {
   let authEpoch = 0;
   let authenticationInitialized = false;
   let authCheck: AbortController | undefined;
+  let authCheckPending = false;
+  let nextProfileCheck = 0;
   const sensitiveTokens = new Set<string>();
   let relatedProjects = options.host?.relatedProjects ?? [];
   let resourceProjects = options.host?.resourceProjects ?? [];
@@ -175,7 +177,11 @@ export async function startWebServer(options: WebOptions) {
     if (aiToken) { sensitiveTokens.add(aiToken); }
     const identity = signedOut ? '' : `${serverUrl}\n${token}\n${aiServerUrl}\n${aiToken}`;
     const expired = account.expiresAt && Date.parse(account.expiresAt) <= Date.now();
-    if (!force && identity === authIdentity && account.status !== 'error' && !expired) { return; }
+    const background = !force && identity === authIdentity && account.status === 'authenticated' && !expired;
+    if (!force && identity === authIdentity) {
+      if (authCheckPending) { return; }
+      if (account.status !== 'error' && !expired && (!background || Date.now() < nextProfileCheck)) { return; }
+    }
     const epoch = ++authEpoch;
     authCheck?.abort();
     const check = authCheck = new AbortController();
@@ -196,10 +202,14 @@ export async function startWebServer(options: WebOptions) {
       if (epoch !== authEpoch) { return; }
     }
     authenticationInitialized = true;
-    account = { status: candidate ? 'checking' : 'signed-out', serverUrl: serverUrl || 'http://localhost:7126',
-      aiServerUrl: aiServerUrl || undefined, aiConfigured: Boolean(aiServerUrl && aiToken),
-      user: candidate ? changed ? hostManaged ? undefined : config.user : account.user : undefined, revision: account.revision + 1 };
+    if (!background) {
+      account = { status: candidate ? 'checking' : 'signed-out', serverUrl: serverUrl || 'http://localhost:7126',
+        aiServerUrl: aiServerUrl || undefined, aiConfigured: Boolean(aiServerUrl && aiToken),
+        user: candidate ? changed ? hostManaged ? undefined : config.user : account.user : undefined, revision: account.revision + 1 };
+    }
     if (candidate) {
+      authCheckPending = true;
+      nextProfileCheck = Date.now() + 30_000;
       let unauthorized = false;
       try {
         const response = await fetch(`${candidate.serverUrl}/api/auth/me`, { headers: { Authorization: `Bearer ${candidate.accessToken}` }, signal: AbortSignal.any([check.signal, AbortSignal.timeout(10_000)]), redirect: 'error' });
@@ -210,17 +220,22 @@ export async function startWebServer(options: WebOptions) {
         if (!response.ok || result.errCode !== 0 || typeof profile?.userId !== 'string' || !profile.userId || typeof profile.email !== 'string' || typeof profile.displayName !== 'string') { throw new Error('Workflow login is invalid or expired.'); }
         if (!connection) { authRevision++; parameterStates.clear(); projectActions?.invalidate(); }
         connection = candidate;
-        kanbanController?.authenticationChanged();
+        if (!background) { kanbanController?.authenticationChanged(); }
         const savedConnection = !hostManaged && candidate.serverUrl === config.serverUrl.replace(/\/+$/, '') && candidate.accessToken === config.apiKey;
-        account = { ...account, status: 'authenticated', user: profile, expiresAt: result.data.principal?.expiresAt ?? (savedConnection ? config.expiresAt : undefined) };
+        const expiresAt = result.data.principal?.expiresAt ?? (savedConnection ? config.expiresAt : undefined);
+        if (background && (['userId', 'email', 'displayName', 'avatarUrl'] as const).every(key => profile[key] === account.user?.[key]) && expiresAt === account.expiresAt) { return; }
+        account = { ...account, status: 'authenticated', user: profile, expiresAt, revision: account.revision + (background ? 1 : 0) };
       } catch (error) {
         if (epoch !== authEpoch) { return; }
+        if (background && !unauthorized) { return; }
         connection = undefined;
         resources.clear();
         kanbanController?.authenticationChanged();
         if (!changed) { authRevision++; parameterStates.clear(); projectActions?.invalidate(); await stopForAuthentication(); }
         if (epoch !== authEpoch) { return; }
         account = { ...account, status: unauthorized ? 'expired' : 'error', error: String((error as Error).message) };
+      } finally {
+        if (epoch === authEpoch) { authCheckPending = false; }
       }
     } else { connection = undefined; }
     broadcast();

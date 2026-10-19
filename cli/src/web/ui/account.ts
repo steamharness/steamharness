@@ -99,7 +99,8 @@ export class AccountPanel {
         if (!state.user?.avatarUrl) { continue; }
         let url: URL;
         try { url = new URL(state.user.avatarUrl, `${state.serverUrl}/`); } catch { continue; }
-        if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) { continue; }
+        const imageData = /^data:image\/(png|jpe?g|webp|gif);base64,/i.test(url.href) && url.href.length <= 1024 * 1024;
+        if ((!['http:', 'https:'].includes(url.protocol) && !imageData) || url.username || url.password) { continue; }
         const image = document.createElement('img');
         image.src = url.toString(); image.alt = ''; image.hidden = true; image.referrerPolicy = 'no-referrer';
         image.addEventListener('load', () => { image.hidden = false; (avatar.firstElementChild as HTMLElement).hidden = true; });

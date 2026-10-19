@@ -142,7 +142,8 @@ export class ServerClient {
     if (typeof profile.avatarUrl === 'string' && profile.avatarUrl) {
       try {
         const url = new URL(profile.avatarUrl, `${this.serverUrl}/`);
-        if (['http:', 'https:'].includes(url.protocol) && !url.username && !url.password) { avatarUrl = url.toString(); }
+        const imageData = /^data:image\/(png|jpe?g|webp|gif);base64,/i.test(url.href) && url.href.length <= 1024 * 1024;
+        if ((['http:', 'https:'].includes(url.protocol) || imageData) && !url.username && !url.password) { avatarUrl = url.toString(); }
       } catch { /* An invalid avatar does not invalidate the account. */ }
     }
     return {
@@ -346,21 +347,26 @@ export class Account {
     await this.verifySession(true);
   }
 
-  private async verifySession(persist: boolean): Promise<void> {
+  async refresh(): Promise<void> {
+    if (this.verified && this.state.status !== 'checking') { await this.verifySession(true, true); }
+  }
+
+  private async verifySession(persist: boolean, background = false): Promise<void> {
     if (this.verification?.epoch === this.epoch) { return this.verification.promise; }
     const session = this.session;
     if (!session) { this.update('signed-out'); return; }
     const epoch = ++this.epoch;
-    this.update('checking');
+    if (!background) { this.update('checking'); }
     const promise = (async () => {
       try {
         const verified = { ...await this.client(session.serverUrl).verify(session), sessionCookie: session.sessionCookie };
         if (epoch !== this.epoch) { return; }
         if (persist) { await this.save(verified, epoch); }
         if (epoch !== this.epoch) { return; }
+        const changed = JSON.stringify(verified) !== JSON.stringify(session);
         this.session = verified;
         this.verified = true;
-        this.update('authenticated');
+        if (!background || changed || this.state.status !== 'authenticated') { this.update('authenticated'); }
       } catch (error) {
         if (epoch !== this.epoch) { return; }
         if (error instanceof AuthError && error.status === 401) {
@@ -369,7 +375,7 @@ export class Account {
           this.aiConnection = undefined;
           await this.save(undefined, epoch);
           if (epoch === this.epoch) { this.update('expired', error.message); }
-        } else { this.update('error', error instanceof Error ? error.message : t("Account verification failed.")); }
+        } else if (!background) { this.update('error', error instanceof Error ? error.message : t("Account verification failed.")); }
       }
     })();
     this.verification = { epoch, promise };

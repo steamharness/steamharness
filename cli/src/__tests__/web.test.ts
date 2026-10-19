@@ -375,6 +375,58 @@ describe('steamharness web', () => {
     expect(await accountState(app, cookie)).toMatchObject({ status: 'error' });
   });
 
+  it.each(['host', 'standalone'])('refreshes changed and removed profile avatars for %s without invalidating project authentication', async source => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    const realFetch = globalThis.fetch;
+    let profile = { userId: 'user', email: 'user@example.com', displayName: 'Original user', avatarUrl: 'data:image/png;base64,b2xk' as string | undefined };
+    const verify = vi.fn(async () => Response.json({ errCode: 0, data: { profile } }));
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, options) => String(input).startsWith('https://steamharness.test') ? verify() : realFetch(input, options));
+    const { app, cookie } = await fixture(source === 'host' ? { surface: 'editor', connection: { serverUrl: 'https://steamharness.test', accessToken: 'profile-token' } } : undefined, async () => {
+      if (source === 'standalone') {
+        vi.stubEnv('STEAMHARNESS_SERVER_URL', undefined); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', undefined);
+        await writeCliAuthConfig({ serverUrl: 'https://steamharness.test', apiKey: 'profile-token' });
+      }
+    });
+    const initial = await accountState(app, cookie);
+    const stop = vi.spyOn(app.controller, 'stop');
+    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.waitFor(() => expect(verify).toHaveBeenCalledTimes(2));
+    expect(await accountState(app, cookie)).toEqual(initial);
+
+    profile = { ...profile, displayName: 'Updated user', avatarUrl: 'data:image/webp;base64,bmV3' };
+    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.waitFor(async () => expect(await accountState(app, cookie)).toMatchObject({ status: 'authenticated', user: profile }));
+    const refreshed = await accountState(app, cookie);
+    expect(refreshed.revision).toBe(initial.revision + 1);
+
+    profile = { ...profile, avatarUrl: undefined };
+    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.waitFor(async () => expect((await accountState(app, cookie)).user).not.toHaveProperty('avatarUrl'));
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  it('background profile checks preserve the active account on network failure and expire revoked credentials', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    const realFetch = globalThis.fetch;
+    let unavailable = false, revoked = false;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => {
+      if (!String(input).startsWith('https://steamharness.test')) { return realFetch(input, options); }
+      if (unavailable) { throw new TypeError('Temporary network failure.'); }
+      if (revoked) { return Response.json({ errCode: 401 }, { status: 401 }); }
+      return Response.json({ errCode: 0, data: { profile: { userId: 'user', email: 'user@example.com', displayName: 'Current user' } } });
+    });
+    const { app, cookie } = await fixture({ surface: 'editor', connection: { serverUrl: 'https://steamharness.test', accessToken: 'profile-token' } });
+    const initial = await accountState(app, cookie), stop = vi.spyOn(app.controller, 'stop');
+    unavailable = true;
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(await accountState(app, cookie)).toEqual(initial);
+    expect(stop).not.toHaveBeenCalled();
+    unavailable = false; revoked = true;
+    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.waitFor(async () => expect(await accountState(app, cookie)).toMatchObject({ status: 'expired' }));
+    expect(stop).toHaveBeenCalledOnce();
+  });
+
   it('an older host verification cannot replace a newer injected account', async () => {
     const { app, cookie } = await fixture();
     const realFetch = globalThis.fetch;

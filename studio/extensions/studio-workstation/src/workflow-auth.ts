@@ -98,6 +98,15 @@ export class AccountController implements vscode.Disposable {
   async initialize(): Promise<void> {
     await vscode.commands.executeCommand('setContext', 'studio.accountAvailable', true);
     await this.account.restore();
+    const refresh = (): void => {
+      if (vscode.window.state.focused) { void this.account.refresh().catch(() => undefined); }
+    };
+    const timer = setInterval(refresh, 30_000);
+    timer.unref?.();
+    this.disposables.push(
+      { dispose: () => clearInterval(timer) },
+      vscode.window.onDidChangeWindowState(({ focused }) => { if (focused) { refresh(); } }),
+    );
   }
   getState(): AccountState { return this.account.getState(); }
   getConnection(): Connection | undefined { return this.account.getConnection(); }

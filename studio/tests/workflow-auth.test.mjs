@@ -100,6 +100,23 @@ test('desktop password login verifies the issued token and keeps it out of publi
   assert.equal(f.requests[1].headers.Authorization, `Bearer ${token}`);
 });
 
+test('account avatars accept Server image data URLs and local storage URLs', async () => {
+  const f = fixture();
+  for (const avatarUrl of [
+    ...['png', 'jpeg', 'jpg', 'webp', 'gif'].map(type => `data:image/${type};base64,YXZhdGFy`),
+    'http://127.0.0.1:7126/storage/avatars/user/avatar.png',
+  ]) {
+    f.profile = { ...user, avatarUrl };
+    const session = await new ServerClient(serverUrl, f.fetcher).verify({ serverUrl, accessToken: token });
+    assert.equal(session.user.avatarUrl, avatarUrl);
+  }
+  for (const avatarUrl of ['data:text/html;base64,YXZhdGFy', 'data:image/svg+xml;base64,YXZhdGFy', 'javascript:alert(1)', 'https://user:password@example.test/avatar.png', `data:image/png;base64,${'a'.repeat(1024 * 1024)}`]) {
+    f.profile = { ...user, avatarUrl };
+    const session = await new ServerClient(serverUrl, f.fetcher).verify({ serverUrl, accessToken: token });
+    assert.equal(session.user.avatarUrl, undefined);
+  }
+});
+
 test('a rejected password or missing profile never becomes a saved login', async () => {
   const f = fixture();
   await f.account.restore();
@@ -229,6 +246,68 @@ test('unchanged verification does not write secrets or disconnect an account on 
   f.token = 'revoked-token'; f.unavailable = false; await f.account.verify();
   assert.equal(f.account.getConnection(), undefined);
   assert.equal(f.account.getState().status, 'expired');
+});
+
+test('background profile refresh updates and clears avatars without changing the connection or flashing account state', async () => {
+  const f = fixture(); await f.account.login(serverUrl, user.email, 'correct-password');
+  const connection = f.account.getConnection(), eventCount = f.events.length, writes = f.writes.length;
+  await f.account.refresh();
+  assert.equal(f.events.length, eventCount);
+  assert.equal(f.writes.length, writes);
+
+  const avatarUrl = 'data:image/png;base64,YXZhdGFy';
+  f.profile = { ...user, displayName: 'Updated user', avatarUrl };
+  let release;
+  f.verificationGate = new Promise(resolve => { release = resolve; });
+  const requests = f.requests.length;
+  const refreshing = [f.account.refresh(), f.account.refresh()];
+  assert.equal(f.requests.length - requests, 1);
+  assert.equal(f.account.getState().status, 'authenticated');
+  assert.deepEqual(f.account.getConnection(), connection);
+  release(); await Promise.all(refreshing);
+  assert.equal(f.account.getState().user.avatarUrl, avatarUrl);
+  assert.equal(f.account.getState().user.displayName, 'Updated user');
+  assert.equal(JSON.parse(f.stored).user.avatarUrl, avatarUrl);
+  assert.deepEqual(f.events.slice(eventCount).map(state => state.status), ['authenticated']);
+  assert.deepEqual(f.account.getConnection(), connection);
+
+  f.profile = { ...user, avatarUrl: undefined };
+  await f.account.refresh();
+  assert.equal(f.account.getState().user.avatarUrl, undefined);
+});
+
+test('background profile refresh preserves login on network failure and expires revoked credentials', async () => {
+  const f = fixture(); await f.account.login(serverUrl, user.email, 'correct-password');
+  const state = f.account.getState(), connection = f.account.getConnection(), writes = f.writes.length;
+  f.unavailable = true; await f.account.refresh();
+  assert.deepEqual(f.account.getState(), state);
+  assert.deepEqual(f.account.getConnection(), connection);
+  assert.equal(f.writes.length, writes);
+  f.unavailable = false; f.token = 'revoked-token';
+  await f.account.refresh();
+  assert.equal(f.account.getState().status, 'expired');
+  assert.equal(f.account.getConnection(), undefined);
+  assert.equal(f.stored, undefined);
+});
+
+test('background profile refresh cannot interrupt login or restore an account after logout', async () => {
+  const f = fixture(); await f.account.refresh();
+  assert.equal(f.requests.length, 0);
+  await f.account.login(serverUrl, user.email, 'correct-password');
+  let release;
+  f.gate = new Promise(resolve => { release = resolve; });
+  const signingIn = f.account.login(serverUrl, user.email, 'correct-password');
+  const requests = f.requests.length;
+  await f.account.refresh();
+  assert.equal(f.requests.length, requests);
+  release(); await signingIn;
+  f.verificationGate = new Promise(resolve => { release = resolve; });
+  const refreshing = f.account.refresh();
+  await f.account.logout(false);
+  release(); await refreshing;
+  assert.equal(f.account.getState().status, 'signed-out');
+  assert.equal(f.account.getConnection(), undefined);
+  assert.equal(f.stored, undefined);
 });
 
 test('restoring another window\'s credentials verifies them without writing back refreshed metadata', async () => {
