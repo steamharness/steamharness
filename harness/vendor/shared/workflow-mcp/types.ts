@@ -1,8 +1,8 @@
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 
-export type WorkflowMcpFileInputMode = "local" | "server";
+export type McpFileInputMode = "local" | "server";
 
-export type WorkflowMcpRunStatus =
+export type McpRunStatus =
   | "running"
   | "waiting_for_input"
   | "success"
@@ -10,8 +10,8 @@ export type WorkflowMcpRunStatus =
   | "aborted"
   | "timed_out";
 
-export type WorkflowMcpParamType = "string" | "number" | "boolean" | "positional" | "file";
-export type WorkflowMcpParamControl =
+export type McpParamType = "string" | "number" | "boolean" | "positional" | "file";
+export type McpParamControl =
   | "text"
   | "textarea"
   | "radio"
@@ -22,48 +22,48 @@ export type WorkflowMcpParamControl =
   | "datetime"
   | "date-range";
 
-export interface WorkflowMcpParamOption {
+export interface McpParamOption {
   value: string;
   label?: string;
   description?: string;
 }
 
-export interface WorkflowMcpParamDefinition {
+export interface McpParamDefinition {
   name: string;
   flag?: string;
   shortFlag?: string;
-  type: WorkflowMcpParamType;
+  type: McpParamType;
   required?: boolean;
   description?: string;
   defaultValue?: string;
   multiple?: boolean;
-  control?: WorkflowMcpParamControl;
-  options?: WorkflowMcpParamOption[];
+  control?: McpParamControl;
+  options?: McpParamOption[];
   accept?: string[];
   title?: string;
   label?: string;
 }
 
-export interface WorkflowMcpEntrypointStructure {
+export interface McpEntrypointStructure {
   id: string;
   title: string;
   description?: string;
-  params?: WorkflowMcpParamDefinition[];
+  params?: McpParamDefinition[];
 }
 
-export interface WorkflowMcpStructureReport {
+export interface McpStructureReport {
   projectType: "workflow" | "conversation" | "kanban" | string;
   workflow: { name: string };
   defaultEntrypoint?: string;
-  entrypoints?: WorkflowMcpEntrypointStructure[];
+  entrypoints?: McpEntrypointStructure[];
 }
 
-export interface WorkflowMcpUserInputRequest {
+export interface McpUserInputRequest {
   requestId: string;
   nodeName: string;
   title: string;
   description?: string;
-  params: WorkflowMcpParamDefinition[];
+  params: McpParamDefinition[];
   defaultValues?: Record<string, unknown>;
   metadata?: {
     type: string;
@@ -74,12 +74,12 @@ export interface WorkflowMcpUserInputRequest {
   createdAt?: string;
 }
 
-export interface WorkflowMcpExecutionReport {
+export interface McpExecutionReport {
   runId: string;
   workflowName?: string;
   entrypointId?: string;
   entrypointTitle?: string;
-  status: WorkflowMcpRunStatus;
+  status: McpRunStatus;
   result?: {
     ok: boolean;
     data?: {
@@ -92,10 +92,10 @@ export interface WorkflowMcpExecutionReport {
       message?: string;
     };
   };
-  pendingUserInput?: WorkflowMcpUserInputRequest;
+  pendingUserInput?: McpUserInputRequest;
 }
 
-export interface WorkflowMcpManagedFileReference {
+export interface McpManagedFileReference {
   id: string;
   name: string;
   mimeType: string;
@@ -107,19 +107,19 @@ export interface WorkflowMcpManagedFileReference {
   createdAt: string;
 }
 
-export interface WorkflowMcpFileResolveContext {
+export interface McpFileResolveContext {
   projectId: string;
   entrypointId: string;
-  param: WorkflowMcpParamDefinition;
+  param: McpParamDefinition;
   signal: AbortSignal;
 }
 
-export type WorkflowMcpFileResolver = (
+export type McpFileResolver = (
   values: unknown[],
-  context: WorkflowMcpFileResolveContext,
-) => Promise<WorkflowMcpManagedFileReference[]>;
+  context: McpFileResolveContext,
+) => Promise<McpManagedFileReference[]>;
 
-export interface WorkflowMcpRunRequest {
+export interface McpRunRequest {
   projectId: string;
   entrypointId: string;
   entrypointTitle: string;
@@ -129,7 +129,7 @@ export interface WorkflowMcpRunRequest {
   signal: AbortSignal;
 }
 
-export interface WorkflowMcpResumeRequest {
+export interface McpResumeRequest {
   projectId: string;
   entrypointId: string;
   entrypointTitle: string;
@@ -140,7 +140,7 @@ export interface WorkflowMcpResumeRequest {
   signal: AbortSignal;
 }
 
-export interface WorkflowMcpCancelRequest {
+export interface McpCancelRequest {
   projectId: string;
   entrypointId: string;
   entrypointTitle: string;
@@ -150,13 +150,13 @@ export interface WorkflowMcpCancelRequest {
   signal: AbortSignal;
 }
 
-export interface WorkflowMcpRunner {
-  run(request: WorkflowMcpRunRequest): Promise<WorkflowMcpExecutionReport>;
-  resume(request: WorkflowMcpResumeRequest): Promise<WorkflowMcpExecutionReport>;
-  cancel?(request: WorkflowMcpCancelRequest): Promise<void>;
+export interface McpRunner {
+  run(request: McpRunRequest): Promise<McpExecutionReport>;
+  resume(request: McpResumeRequest): Promise<McpExecutionReport>;
+  cancel?(request: McpCancelRequest): Promise<void>;
 }
 
-export interface WorkflowMcpResolvedUserInput {
+export interface McpResolvedUserInput {
   requestId: string;
   nodeName: string;
   values: Record<string, unknown>;
@@ -168,13 +168,13 @@ export interface WorkflowMcpResolvedUserInput {
  * the cropped MCP tool result so a trusted host can persist diagnostics without
  * exposing reports, logs, or local inputs to the MCP client.
  */
-export interface WorkflowMcpRunSnapshot {
+export interface McpRunSnapshot {
   projectId: string;
   entrypointId: string;
   entrypointTitle: string;
   input: Record<string, unknown>;
   args: string[];
-  resolvedUserInputs: WorkflowMcpResolvedUserInput[];
+  resolvedUserInputs: McpResolvedUserInput[];
   startedAt: string;
   endedAt: string;
   exitCode: number;
@@ -183,49 +183,49 @@ export interface WorkflowMcpRunSnapshot {
   report: unknown;
 }
 
-export interface WorkflowMcpRunSnapshotMessage {
+export interface McpRunSnapshotMessage {
   type: "workflow_mcp_run_snapshot";
-  snapshot: WorkflowMcpRunSnapshot;
+  snapshot: McpRunSnapshot;
 }
 
-export interface WorkflowMcpPendingInputSummary {
+export interface McpPendingInputSummary {
   requestId: string;
   title: string;
   fields: Array<{
     name: string;
     title: string;
-    type: WorkflowMcpParamType;
+    type: McpParamType;
     required: boolean;
   }>;
 }
 
-export interface WorkflowMcpErrorDetail {
+export interface McpErrorDetail {
   code: "workflow_failed" | "cancelled" | "timed_out" | "interaction_required";
   message: string;
-  pendingInput?: WorkflowMcpPendingInputSummary;
+  pendingInput?: McpPendingInputSummary;
 }
 
-export interface WorkflowMcpStructuredResult extends Record<string, unknown> {
+export interface McpStructuredResult extends Record<string, unknown> {
   runId: string;
-  status: WorkflowMcpRunStatus;
+  status: McpRunStatus;
   entrypointId: string;
   entrypointTitle: string;
   output: unknown;
-  error?: WorkflowMcpErrorDetail;
+  error?: McpErrorDetail;
 }
 
-export type WorkflowMcpToolResult = CallToolResult & {
-  structuredContent: WorkflowMcpStructuredResult;
+export type McpToolResult = CallToolResult & {
+  structuredContent: McpStructuredResult;
 };
 
-export interface WorkflowMcpJsonSchema {
+export interface McpJsonSchema {
   type: "object";
   properties: Record<string, Record<string, unknown>>;
   required?: string[];
   additionalProperties: false;
 }
 
-export interface WorkflowMcpAuditEvent {
+export interface McpAuditEvent {
   type:
     | "tool_call_started"
     | "tool_call_waiting"
@@ -235,6 +235,6 @@ export interface WorkflowMcpAuditEvent {
   entrypointId: string;
   runId?: string;
   requestId?: string;
-  status?: WorkflowMcpRunStatus;
+  status?: McpRunStatus;
   isError?: boolean;
 }

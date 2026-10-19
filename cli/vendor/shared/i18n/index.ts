@@ -156,7 +156,7 @@ export function translateDynamicKeyWithFallback(
   return value === key ? fallback : value;
 }
 
-/** Read a single descriptor from an error, serialized WorkflowError, or API failure payload. */
+/** Read a single descriptor from an error, serialized HarnessError, or API failure payload. */
 export function readSteamHarnessI18nDescriptor(value: unknown): SteamHarnessI18nDescriptor | undefined {
   const visited = new Set<object>();
 
@@ -179,7 +179,7 @@ export function readSteamHarnessI18nDescriptor(value: unknown): SteamHarnessI18n
   return visit(value);
 }
 
-/** Read title/content descriptors stored on WorkflowOutputItem metadata. */
+/** Read title/content descriptors stored on OutputItem metadata. */
 export function readSteamHarnessI18nTextDescriptors(
   value: unknown,
 ): SteamHarnessI18nTextDescriptors | undefined {

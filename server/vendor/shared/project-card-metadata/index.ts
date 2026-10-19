@@ -1,6 +1,6 @@
 import {
   getWorkflowProjectTypeDefinition,
-  type WorkflowProjectType,
+  type ProjectKind,
 } from "../project-types/index";
 
 export const PROJECT_CARD_ICON_NAMES = [
@@ -64,11 +64,11 @@ function canonicalizeProjectCardIconName(icon: ProjectCardIconName): ProjectCard
   return icon === "sparkles" ? "workflow" : icon;
 }
 
-export function defaultProjectCardIcon(kind: WorkflowProjectType): ProjectCardIconName {
+export function defaultProjectCardIcon(kind: ProjectKind): ProjectCardIconName {
   return getWorkflowProjectTypeDefinition(kind).defaultIcon;
 }
 
-export function defaultProjectCardBackgroundColor(kind: WorkflowProjectType): string {
+export function defaultProjectCardBackgroundColor(kind: ProjectKind): string {
   return getWorkflowProjectTypeDefinition(kind).defaultIconBackgroundColor;
 }
 
@@ -165,7 +165,7 @@ export function generateProjectCardColorPair(random: () => number = Math.random)
 
 export function normalizeProjectCardMetadata(
   value: unknown,
-  projectType: WorkflowProjectType,
+  projectType: ProjectKind,
 ): ProjectCardMetadata {
   const raw = isRecord(value) ? value : {};
   return {
@@ -219,7 +219,7 @@ export function validateProjectCardMetadata(value: unknown): ProjectCardMetadata
 
 export function readProjectCardMetadataFromPackageJson(
   packageJson: Record<string, unknown>,
-  projectType: WorkflowProjectType,
+  projectType: ProjectKind,
 ): ProjectCardMetadata {
   const steamHarness = isRecord(packageJson[PROJECT_CARD_PACKAGE_ROOT])
     ? packageJson[PROJECT_CARD_PACKAGE_ROOT]

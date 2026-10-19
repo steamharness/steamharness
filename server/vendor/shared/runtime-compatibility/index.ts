@@ -3,7 +3,7 @@ import semver from "semver";
 export const STEAMHARNESS_HARNESS_PACKAGE_NAME = "steamharness";
 export const STEAMHARNESS_CLI_PACKAGE_NAME = "@steamharness/cli";
 
-export type WorkflowPackageManifest = Record<string, unknown>;
+export type PackageManifest = Record<string, unknown>;
 
 /** `dev`/功能分支用本地相对路径引用同级仓库；`main`/`alpha` 必须写精确的已发布版本。 */
 export type RepositoryMode = "dev" | "main";
@@ -12,7 +12,7 @@ export type PackageVersionReference =
   | { kind: "exact"; version: string; specifier: string }
   | { kind: "local"; specifier: string; relative: string };
 
-export interface WorkflowCoreCompatibilityResult {
+export interface CoreCompatibilityResult {
   compatible: boolean;
   hostCoreVersion: string;
   requiredCoreVersion: string;
@@ -181,7 +181,7 @@ export function normalizeExactVersion(value: string, label = "version"): string 
 export function evaluateCoreCompatibility(
   hostCoreVersion: string,
   requiredCoreVersion: string,
-): WorkflowCoreCompatibilityResult {
+): CoreCompatibilityResult {
   const host = normalizeExactVersion(hostCoreVersion, "Host Core version");
   const required = normalizeExactVersion(requiredCoreVersion, "Required Core version");
   const hostParsed = semver.parse(host);
@@ -203,7 +203,7 @@ export function evaluateCoreCompatibility(
 export function assertCoreCompatibility(
   hostCoreVersion: string,
   requiredCoreVersion: string,
-): WorkflowCoreCompatibilityResult {
+): CoreCompatibilityResult {
   const result = evaluateCoreCompatibility(hostCoreVersion, requiredCoreVersion);
   if (!result.compatible) {
     throw new Error(

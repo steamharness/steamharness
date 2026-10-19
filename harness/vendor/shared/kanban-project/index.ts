@@ -1,9 +1,9 @@
-import type { WorkflowParamDefinition } from "./run-workspace/types";
+import type { ParamDefinition } from "./run-workspace/types";
 import { createKanbanMethodsBridgeScript, type KanbanBrowserMethodsApi } from "./methods";
 import {
   STEAMHARNESS_RELATED_PROJECT_ALIAS_PATTERN,
   STEAMHARNESS_RELATED_PROJECT_KEY_LIMIT,
-  type WorkflowRelatedProject,
+  type RelatedProject,
 } from "../project-info/index";
 
 export * from "./revision-stream";
@@ -30,7 +30,7 @@ export const KANBAN_PREVIEW_CAPABILITY_RETRY_MS = 15_000;
 
 export type KanbanParamControl = "text" | "textarea" | "radio" | "select" | "checkboxes";
 
-export interface KanbanParamDefinition extends Omit<WorkflowParamDefinition, "control"> {
+export interface KanbanParamDefinition extends Omit<ParamDefinition, "control"> {
   control?: KanbanParamControl;
 }
 
@@ -393,13 +393,13 @@ export function createEmptyKanbanManifest(): KanbanManifest {
 }
 
 export function createDefaultKanbanValues(
-  params: WorkflowParamDefinition[],
+  params: ParamDefinition[],
 ): KanbanConfigurationValues {
   return Object.fromEntries(params.map((param) => [param.name, param.defaultValue ?? ""]));
 }
 
 export function sanitizeKanbanValues(
-  params: WorkflowParamDefinition[],
+  params: ParamDefinition[],
   values: Record<string, unknown>,
 ): KanbanConfigurationValues {
   const next: KanbanConfigurationValues = {};
@@ -420,7 +420,7 @@ export function areKanbanValuesEqual(
 }
 
 export function createInjectedKanbanParams(
-  params: WorkflowParamDefinition[],
+  params: ParamDefinition[],
   values: KanbanConfigurationValues,
 ): Record<string, unknown> {
   return Object.fromEntries(params.map((param) => [
@@ -603,10 +603,10 @@ export function createKanbanBridgeError(reason: unknown): KanbanBridgeError {
 }
 
 export function resolveKanbanRelatedProject(
-  relatedProjects: readonly WorkflowRelatedProject[],
+  relatedProjects: readonly RelatedProject[],
   alias: string,
   key: string,
-): WorkflowRelatedProject {
+): RelatedProject {
   const relatedProject = relatedProjects.find((item) => item.alias === alias);
   if (
     relatedProject === undefined ||
@@ -976,7 +976,7 @@ function parseOption(value: unknown, paramIndex: number, optionIndex: number) {
   };
 }
 
-function parseInjectedValue(param: WorkflowParamDefinition, value: string): unknown {
+function parseInjectedValue(param: ParamDefinition, value: string): unknown {
   if (param.type === "file") {
     try {
       const parsed = JSON.parse(value) as unknown;
@@ -1040,7 +1040,7 @@ function readOptionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
 }
 
-function isParamType(value: unknown): value is WorkflowParamDefinition["type"] {
+function isParamType(value: unknown): value is ParamDefinition["type"] {
   return value === "string" || value === "number" || value === "boolean" || value === "positional" || value === "file";
 }
 

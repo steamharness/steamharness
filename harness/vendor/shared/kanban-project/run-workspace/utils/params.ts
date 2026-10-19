@@ -1,14 +1,14 @@
-import type { WorkflowParamDefinition, WorkflowParamStatePatch } from "../types";
+import type { ParamDefinition, ParamStatePatch } from "../types";
 
 export function resolveParamDefinition(
-  param: WorkflowParamDefinition,
-  state: WorkflowParamStatePatch | undefined,
-): WorkflowParamDefinition {
+  param: ParamDefinition,
+  state: ParamStatePatch | undefined,
+): ParamDefinition {
   if (state?.resolvedOptions === undefined || state.resolvedOptions === null) return param;
   return { ...param, options: state.resolvedOptions };
 }
 
-export function isMultiParam(param: WorkflowParamDefinition): boolean {
+export function isMultiParam(param: ParamDefinition): boolean {
   return param.type !== "file" && (param.multiple === true || param.control === "checkboxes");
 }
 

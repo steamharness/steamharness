@@ -9,21 +9,21 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { formatFileSize } from "../utils/files";
 import { formatImagePreviewError } from "../utils/labels";
-import type { WorkflowManagedFileReference } from "../types";
+import type { ManagedFileReference } from "../types";
 import { attachmentActionButtonClassName, rwiClass } from "../styles";
 import { useTranslation } from "@steamharness/i18n/react";
 
-export function isImageFileReference(file: WorkflowManagedFileReference): boolean {
+export function isImageFileReference(file: ManagedFileReference): boolean {
   return file.kind === "image" || file.mimeType.startsWith("image/");
 }
 
-export function isVideoFileReference(file: Pick<WorkflowManagedFileReference, "mimeType" | "name">): boolean {
+export function isVideoFileReference(file: Pick<ManagedFileReference, "mimeType" | "name">): boolean {
   const mimeType = file.mimeType.split(";", 1)[0]!.trim().toLowerCase();
   return mimeType.startsWith("video/") || ((mimeType === "" || mimeType === "application/octet-stream") &&
     /\.(mp4|m4v|mov|avi|mkv|webm|ogv|mpeg|mpg)$/i.test(file.name));
 }
 
-function createAttachmentPreviewKey(file: WorkflowManagedFileReference): string {
+function createAttachmentPreviewKey(file: ManagedFileReference): string {
   // Image thumbnail previews must survive form re-parsing while the
   // user types in another field; avoid volatile normalized fields like createdAt.
   return [
@@ -44,11 +44,11 @@ function ImageAttachmentButton({
   onOpen,
   onResolveAttachmentPreview,
 }: {
-  file: WorkflowManagedFileReference;
+  file: ManagedFileReference;
   loading: boolean;
   disabled: boolean;
   onOpen: (trigger: HTMLButtonElement) => void;
-  onResolveAttachmentPreview?: (file: WorkflowManagedFileReference) => Promise<string | undefined> | string | undefined;
+  onResolveAttachmentPreview?: (file: ManagedFileReference) => Promise<string | undefined> | string | undefined;
 }) {
   const { t } = useTranslation();
   const [previewUrl, setPreviewUrl] = useState<string>();
@@ -123,12 +123,12 @@ export function AttachmentStrip({
   onOpenAttachment,
   onResolveAttachmentPreview,
 }: {
-  attachments: WorkflowManagedFileReference[];
+  attachments: ManagedFileReference[];
   compact?: boolean;
   thumbnail?: boolean;
   onRemove?: (fileId: string) => void;
-  onOpenAttachment?: (file: WorkflowManagedFileReference, options?: { download?: boolean }) => Promise<void> | void;
-  onResolveAttachmentPreview?: (file: WorkflowManagedFileReference) => Promise<string | undefined> | string | undefined;
+  onOpenAttachment?: (file: ManagedFileReference, options?: { download?: boolean }) => Promise<void> | void;
+  onResolveAttachmentPreview?: (file: ManagedFileReference) => Promise<string | undefined> | string | undefined;
 }) {
   const { t } = useTranslation();
   const [loadingId, setLoadingId] = useState<string>();
@@ -136,7 +136,7 @@ export function AttachmentStrip({
 
   if (attachments.length === 0) return null;
 
-  const openAttachment = async (file: WorkflowManagedFileReference, download = false) => {
+  const openAttachment = async (file: ManagedFileReference, download = false) => {
     if (!onOpenAttachment) return;
     setLoadingId(file.id);
     setError(undefined);
@@ -154,7 +154,7 @@ export function AttachmentStrip({
   // can drive its own dialog; the returned URL is intentionally ignored
   // here and the host is responsible for opening, focusing, and restoring
   // focus on close.
-  const openPreview = (file: WorkflowManagedFileReference) => {
+  const openPreview = (file: ManagedFileReference) => {
     if (!onResolveAttachmentPreview) return;
     void Promise.resolve(onResolveAttachmentPreview(file)).catch(() => undefined);
   };

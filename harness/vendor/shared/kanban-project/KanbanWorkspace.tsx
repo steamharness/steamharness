@@ -2,7 +2,7 @@ import { useTranslation } from "@steamharness/i18n/react";
 import { translateSteamHarnessError } from "@steamharness/i18n";
 import { ParamsForm } from "./run-workspace/form/params-form";
 import { useMenuFocus, useModalFocus } from "./run-workspace/hooks/useOverlayFocus";
-import type { WorkflowManagedFileReference, WorkflowParamDefinition } from "./run-workspace/types";
+import type { ManagedFileReference, ParamDefinition } from "./run-workspace/types";
 import { AlertCircle, Check, ChevronDown, Copy, Ellipsis, Loader2, Pencil, Plus, RefreshCw, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
@@ -17,7 +17,7 @@ import { KanbanPreviewFrame } from "./KanbanPreviewFrame";
 import "./styles.css";
 import type { KanbanMethodRegistry, KanbanMethodTarget } from "./methods";
 
-const EMPTY_PARAMS: WorkflowParamDefinition[] = [];
+const EMPTY_PARAMS: ParamDefinition[] = [];
 
 export interface KanbanWorkspaceLayout {
   configuration?: ReactNode;
@@ -29,7 +29,7 @@ export interface KanbanWorkspaceLayout {
 
 export interface KanbanWorkspaceProps {
   projectName: string;
-  params?: WorkflowParamDefinition[];
+  params?: ParamDefinition[];
   configurations: KanbanConfiguration[];
   activeConfigurationId?: string;
   previewUrl: string;
@@ -49,9 +49,9 @@ export interface KanbanWorkspaceProps {
     configurationId: string,
     values: Record<string, string>,
   ) => Promise<void> | void;
-  onFileUpload?: (param: WorkflowParamDefinition) => Promise<WorkflowManagedFileReference[]>;
-  onOpenAttachment?: (file: WorkflowManagedFileReference, options?: { download?: boolean }) => Promise<void> | void;
-  onResolveAttachmentPreview?: (file: WorkflowManagedFileReference) => Promise<string | undefined> | string | undefined;
+  onFileUpload?: (param: ParamDefinition) => Promise<ManagedFileReference[]>;
+  onOpenAttachment?: (file: ManagedFileReference, options?: { download?: boolean }) => Promise<void> | void;
+  onResolveAttachmentPreview?: (file: ManagedFileReference) => Promise<string | undefined> | string | undefined;
   onBridgeRequest?: (call: KanbanBridgeCall) => Promise<unknown> | unknown;
   methodRegistry?: KanbanMethodRegistry;
   methodTarget?: KanbanMethodTarget;
@@ -274,7 +274,7 @@ export function KanbanWorkspace(props: KanbanWorkspaceProps) {
     }, 300);
   };
 
-  const uploadFile = async (param: WorkflowParamDefinition) => {
+  const uploadFile = async (param: ParamDefinition) => {
     if (!props.onFileUpload || uploadPendingRef.current) return [];
     const scope = uploadScopeRef.current;
     uploadPendingRef.current = true;

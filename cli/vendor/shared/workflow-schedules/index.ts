@@ -7,26 +7,26 @@ export const STEAMHARNESS_SCHEDULE_MAX_PRESETS = 20;
 export const STEAMHARNESS_SCHEDULE_MAX_WINDOWS = 12;
 export const STEAMHARNESS_SCHEDULE_MAX_INTERVAL_MINUTES = 1_440;
 
-export interface WorkflowScheduleI18nDescriptor {
+export interface ScheduleI18nDescriptor {
   namespace: "common";
   key: string;
   values?: Record<string, unknown>;
 }
 
-export interface WorkflowScheduleLocalizedError extends Error {
-  steamHarnessI18n: WorkflowScheduleI18nDescriptor;
+export interface ScheduleLocalizedError extends Error {
+  steamHarnessI18n: ScheduleI18nDescriptor;
 }
 
-export interface WorkflowScheduleWindow {
+export interface ScheduleWindow {
   start: string;
   end: string;
 }
 
-export type WorkflowScheduleTrigger =
+export type ScheduleTrigger =
   | {
       kind: "window-interval";
       weekdays: number[];
-      windows: WorkflowScheduleWindow[];
+      windows: ScheduleWindow[];
       intervalMinutes: number;
     }
   | {
@@ -34,27 +34,27 @@ export type WorkflowScheduleTrigger =
       expression: string;
     };
 
-export interface WorkflowSchedulePreset {
+export interface SchedulePreset {
   id: string;
   title: string;
   description?: string;
   entrypointId: string;
   timezone: string;
-  trigger: WorkflowScheduleTrigger;
+  trigger: ScheduleTrigger;
   paramValues: Record<string, unknown>;
 }
 
-export interface WorkflowScheduleInput {
+export interface ScheduleInput {
   name: string;
   enabled: boolean;
   resolvedTarget: string;
   entrypointId: string;
   timezone: string;
-  trigger: WorkflowScheduleTrigger;
+  trigger: ScheduleTrigger;
   paramValues: Record<string, unknown>;
 }
 
-export interface WorkflowScheduleParamDefinition {
+export interface ScheduleParamDefinition {
   name: string;
   type: "string" | "number" | "boolean" | "positional" | "file";
   required?: boolean;
@@ -64,11 +64,11 @@ export interface WorkflowScheduleParamDefinition {
   options?: ReadonlyArray<{ value: string }>;
 }
 
-export interface WorkflowScheduleOccurrencePreview {
+export interface ScheduleOccurrencePreview {
   nextRuns: string[];
 }
 
-export type WorkflowScheduleFireStatus =
+export type ScheduleFireStatus =
   | "pending"
   | "running"
   | "success"
@@ -79,16 +79,16 @@ export type WorkflowScheduleFireStatus =
   | "skipped_authorization"
   | "skipped_invalid_target";
 
-export interface WorkflowScheduleSourceMetadata {
+export interface ScheduleSourceMetadata {
   source: "schedule";
   scheduleId: string;
   scheduleName: string;
   fireId: string;
   scheduledFor: string;
-  triggerKind: WorkflowScheduleTrigger["kind"];
+  triggerKind: ScheduleTrigger["kind"];
 }
 
-export interface WorkflowScheduleRecord extends WorkflowScheduleInput {
+export interface ScheduleRecord extends ScheduleInput {
   id: string;
   workflowId: string;
   createdByUserId: string;
@@ -97,12 +97,12 @@ export interface WorkflowScheduleRecord extends WorkflowScheduleInput {
   updatedAt: string;
 }
 
-export interface WorkflowScheduleFireRecord {
+export interface ScheduleFireRecord {
   id: string;
   scheduleId: string;
   workflowId: string;
   scheduledFor: string;
-  status: WorkflowScheduleFireStatus;
+  status: ScheduleFireStatus;
   runId?: string;
   reason?: string;
   leaseOwner?: string;
@@ -113,17 +113,17 @@ export interface WorkflowScheduleFireRecord {
   updatedAt: string;
 }
 
-export interface WorkflowScheduleRecordWithPreview extends WorkflowScheduleRecord {
-  preview: WorkflowScheduleOccurrencePreview;
+export interface ScheduleRecordWithPreview extends ScheduleRecord {
+  preview: ScheduleOccurrencePreview;
 }
 
 export function createWorkflowScheduleLocalizedError(
   key: string,
   message: string,
   values?: Record<string, unknown>,
-): WorkflowScheduleLocalizedError {
+): ScheduleLocalizedError {
   return Object.assign(new Error(message), {
-    name: "WorkflowScheduleLocalizedError",
+    name: "ScheduleLocalizedError",
     steamHarnessI18n: {
       namespace: "common" as const,
       key: `schedule.${key}`,
@@ -134,7 +134,7 @@ export function createWorkflowScheduleLocalizedError(
 
 export function getWorkflowScheduleFireReasonI18n(
   reason: string,
-): WorkflowScheduleI18nDescriptor | undefined {
+): ScheduleI18nDescriptor | undefined {
   const stableKey = STABLE_FIRE_REASON_KEYS[reason];
   if (stableKey !== undefined) {
     return { namespace: "common", key: `schedule.fireReason.${stableKey}` };
@@ -156,7 +156,7 @@ export function getWorkflowScheduleFireReasonI18n(
 export function parseWorkflowSchedulePresets(
   value: unknown,
   projectType: string,
-): WorkflowSchedulePreset[] {
+): SchedulePreset[] {
   if (value === undefined) return [];
   if (projectType !== "workflow") {
     throw scheduleError(
@@ -222,7 +222,7 @@ export function parseWorkflowScheduleTrigger(
   value: unknown,
   field = "trigger",
   timezone?: string,
-): WorkflowScheduleTrigger {
+): ScheduleTrigger {
   const record = readRecord(value, field);
   const kind = readString(record.kind, `${field}.kind`);
   if (kind === "cron") {
@@ -310,7 +310,7 @@ export function parseWorkflowScheduleTrigger(
   return { kind, weekdays, windows, intervalMinutes: Number(intervalMinutes) };
 }
 
-export function parseWorkflowScheduleInput(value: unknown): WorkflowScheduleInput {
+export function parseWorkflowScheduleInput(value: unknown): ScheduleInput {
   const record = readRecord(value, "schedule");
   assertOnlyFields(record, "schedule", [
     "name",
@@ -347,7 +347,7 @@ export function parseWorkflowScheduleInput(value: unknown): WorkflowScheduleInpu
 
 export function validateWorkflowScheduleParamValues(
   paramValues: Record<string, unknown>,
-  params: readonly WorkflowScheduleParamDefinition[],
+  params: readonly ScheduleParamDefinition[],
   field = "schedule.paramValues",
 ): void {
   const definitions = new Map(params.map((param) => [param.name, param]));
@@ -390,9 +390,9 @@ export function validateWorkflowScheduleParamValues(
 }
 
 export function previewWorkflowSchedule(
-  input: Pick<WorkflowScheduleInput, "trigger" | "timezone">,
+  input: Pick<ScheduleInput, "trigger" | "timezone">,
   after: Date | string | number = new Date(),
-): WorkflowScheduleOccurrencePreview {
+): ScheduleOccurrencePreview {
   return {
     nextRuns: listNextWorkflowScheduleOccurrences({
       trigger: input.trigger,
@@ -404,7 +404,7 @@ export function previewWorkflowSchedule(
 }
 
 export function advanceWorkflowSchedulePastMissed(options: {
-  trigger: WorkflowScheduleTrigger;
+  trigger: ScheduleTrigger;
   timezone: string;
   nextFireAt: Date | string | number;
   now: Date | string | number;
@@ -462,7 +462,7 @@ export function validateWorkflowScheduleTimezone(value: string): string {
 }
 
 export function listNextWorkflowScheduleOccurrences(options: {
-  trigger: WorkflowScheduleTrigger;
+  trigger: ScheduleTrigger;
   timezone: string;
   after: Date | string | number;
   count?: number;
@@ -493,7 +493,7 @@ export function listNextWorkflowScheduleOccurrences(options: {
 }
 
 export function getNextWorkflowScheduleOccurrence(options: {
-  trigger: WorkflowScheduleTrigger;
+  trigger: ScheduleTrigger;
   timezone: string;
   after: Date | string | number;
 }): Date {
@@ -501,7 +501,7 @@ export function getNextWorkflowScheduleOccurrence(options: {
 }
 
 function listNextWindowOccurrences(
-  trigger: Extract<WorkflowScheduleTrigger, { kind: "window-interval" }>,
+  trigger: Extract<ScheduleTrigger, { kind: "window-interval" }>,
   timezone: string,
   after: Date,
   count: number,
@@ -576,7 +576,7 @@ function validateFiveFieldCron(expression: string, timezone?: string): void {
 }
 
 function readScheduleParamValues(
-  param: WorkflowScheduleParamDefinition,
+  param: ScheduleParamDefinition,
   value: unknown,
 ): unknown[] {
   if (value === undefined || value === null || value === "") return [];
@@ -595,7 +595,7 @@ function readScheduleParamValues(
 }
 
 function validateScheduleParamValue(
-  param: WorkflowScheduleParamDefinition,
+  param: ScheduleParamDefinition,
   value: unknown,
   field: string,
 ): void {
@@ -816,6 +816,6 @@ function scheduleError(
   key: string,
   message: string,
   values?: Record<string, unknown>,
-): WorkflowScheduleLocalizedError {
+): ScheduleLocalizedError {
   return createWorkflowScheduleLocalizedError(`validation.${key}`, message, values);
 }

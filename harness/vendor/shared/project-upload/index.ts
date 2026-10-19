@@ -8,13 +8,13 @@ import {
 
 export const STEAMHARNESS_IGNORE_FILE = ".workflowignore";
 
-export interface WorkflowUploadPathOptions {
+export interface UploadPathOptions {
   directory?: boolean;
 }
 
-export interface WorkflowUploadMatcher {
-  ignores(relativePath: string, options?: WorkflowUploadPathOptions): boolean;
-  explain(relativePath: string, options?: WorkflowUploadPathOptions): string | undefined;
+export interface UploadMatcher {
+  ignores(relativePath: string, options?: UploadPathOptions): boolean;
+  explain(relativePath: string, options?: UploadPathOptions): string | undefined;
   assertRequiredPaths(relativePaths: readonly string[]): void;
 }
 
@@ -44,7 +44,7 @@ export function resolveWorkflowUploadRequiredPaths(
   return ["package.json", "index.ts"];
 }
 
-export function createWorkflowUploadMatcher(content?: string): WorkflowUploadMatcher {
+export function createWorkflowUploadMatcher(content?: string): UploadMatcher {
   const ruleLines = content === undefined ? [] : content.split(/\r?\n/);
   const matcher = ignore().add(ruleLines);
 
@@ -74,7 +74,7 @@ export function createWorkflowUploadMatcher(content?: string): WorkflowUploadMat
 
 export function normalizeWorkflowUploadPath(
   relativePath: string,
-  options: WorkflowUploadPathOptions = {},
+  options: UploadPathOptions = {},
 ): string {
   const normalized = relativePath.replaceAll("\\", "/").replace(/^\.\/+/, "");
   const withoutTrailingSlash = normalized.replace(/\/+$/, "");

@@ -9,7 +9,7 @@ export {
   workflowParamsToMcpElicitationSchema,
   workflowParamsToMcpInputSchema,
   workflowParamsToMcpJsonSchema,
-  WorkflowMcpInvalidParamsError,
+  McpInvalidParamsError,
 } from "./schema";
 export { workflowMcpInputToArgs } from "./args";
 export {

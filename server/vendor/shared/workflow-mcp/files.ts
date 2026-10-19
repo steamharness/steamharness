@@ -3,10 +3,10 @@ import { constants } from "node:fs";
 import { lstat, mkdir, open, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type {
-  WorkflowMcpFileResolver,
-  WorkflowMcpManagedFileReference,
+  McpFileResolver,
+  McpManagedFileReference,
 } from "./types";
-import { WorkflowMcpInvalidParamsError } from "./schema";
+import { McpInvalidParamsError } from "./schema";
 
 export const STEAMHARNESS_MCP_MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
 
@@ -15,20 +15,20 @@ export function createLocalWorkflowMcpFileResolver(options: {
   now?: () => Date;
   createId?: () => string;
   maxFileSizeBytes?: number;
-}): WorkflowMcpFileResolver {
+}): McpFileResolver {
   const root = path.resolve(options.fileStoreDir);
   const maxFileSizeBytes = options.maxFileSizeBytes ?? STEAMHARNESS_MCP_MAX_FILE_SIZE_BYTES;
 
   return async (values, context) => {
     const sources: Array<{ path: string; handle: Awaited<ReturnType<typeof open>>; size: number }> = [];
-    const refs: WorkflowMcpManagedFileReference[] = [];
+    const refs: McpManagedFileReference[] = [];
     const createdDirs: string[] = [];
     try {
       // Keep validated file handles open through the copy. A path-based lstat
       // followed by copyFile would allow the source to be swapped in between.
       for (const value of values) {
         if (typeof value !== "string" || !path.isAbsolute(value)) {
-          throw new WorkflowMcpInvalidParamsError(
+          throw new McpInvalidParamsError(
             `File parameter "${context.param.name}" only accepts absolute paths.`,
           );
         }
@@ -36,7 +36,7 @@ export function createLocalWorkflowMcpFileResolver(options: {
         const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0;
         const handle = await open(value, constants.O_RDONLY | noFollow).catch(() => undefined);
         if (handle === undefined) {
-          throw new WorkflowMcpInvalidParamsError(`File "${value}" does not exist or is not a regular file.`);
+          throw new McpInvalidParamsError(`File "${value}" does not exist or is not a regular file.`);
         }
         let valid = false;
         try {
@@ -46,10 +46,10 @@ export function createLocalWorkflowMcpFileResolver(options: {
           const pathInfo = await lstat(value).catch(() => undefined);
           valid = info.isFile() && !pathInfo?.isSymbolicLink() && pathInfo?.isFile() === true;
           if (!valid) {
-            throw new WorkflowMcpInvalidParamsError(`File "${value}" does not exist or is not a regular file.`);
+            throw new McpInvalidParamsError(`File "${value}" does not exist or is not a regular file.`);
           }
           if (info.size > maxFileSizeBytes) {
-            throw new WorkflowMcpInvalidParamsError(`File "${path.basename(value)}" exceeds 50MB.`);
+            throw new McpInvalidParamsError(`File "${path.basename(value)}" exceeds 50MB.`);
           }
           sources.push({ path: value, handle, size: info.size });
         } catch (error) {
@@ -63,7 +63,7 @@ export function createLocalWorkflowMcpFileResolver(options: {
         throwIfAborted(context.signal);
         const id = options.createId?.() ?? `wf_${randomUUID().replaceAll("-", "")}`;
         if (!isSafeManagedFileId(id)) {
-          throw new WorkflowMcpInvalidParamsError("Generated managed file id is invalid.");
+          throw new McpInvalidParamsError("Generated managed file id is invalid.");
         }
         const createdAt = (options.now?.() ?? new Date()).toISOString();
         const mimeType = guessMimeType(source.path);
@@ -72,7 +72,7 @@ export function createLocalWorkflowMcpFileResolver(options: {
         await mkdir(targetDir);
         createdDirs.push(targetDir);
         const copiedSize = await copyFileHandle(source.handle, temporaryContent, maxFileSizeBytes, context.signal, source.path);
-        const metadata: WorkflowMcpManagedFileReference = {
+        const metadata: McpManagedFileReference = {
           id,
           name: path.basename(source.path),
           mimeType,
@@ -114,7 +114,7 @@ async function copyFileHandle(
       if (bytesRead === 0) break;
       total += bytesRead;
       if (total > maxFileSizeBytes) {
-        throw new WorkflowMcpInvalidParamsError(`File "${path.basename(sourcePath)}" exceeds 50MB.`);
+        throw new McpInvalidParamsError(`File "${path.basename(sourcePath)}" exceeds 50MB.`);
       }
       let offset = 0;
       while (offset < bytesRead) {
@@ -145,14 +145,14 @@ function isSafeManagedFileId(value: string): boolean {
 }
 
 export function createServerWorkflowMcpFileResolver(options: {
-  readFile(projectId: string, fileId: string): Promise<WorkflowMcpManagedFileReference | undefined>;
-}): WorkflowMcpFileResolver {
+  readFile(projectId: string, fileId: string): Promise<McpManagedFileReference | undefined>;
+}): McpFileResolver {
   return async (values, context) => {
-    const refs: WorkflowMcpManagedFileReference[] = [];
+    const refs: McpManagedFileReference[] = [];
     for (const value of values) {
       if (context.signal.aborted) throw context.signal.reason;
       if (!isIdReference(value)) {
-        throw new WorkflowMcpInvalidParamsError(
+        throw new McpInvalidParamsError(
           `File parameter "${context.param.name}" only accepts an object containing id.`,
         );
       }
@@ -163,7 +163,7 @@ export function createServerWorkflowMcpFileResolver(options: {
         metadata.storage !== "server" ||
         metadata.workflowId !== context.projectId
       ) {
-        throw new WorkflowMcpInvalidParamsError(
+        throw new McpInvalidParamsError(
           `File "${value.id}" does not belong to project "${context.projectId}".`,
         );
       }
@@ -180,9 +180,9 @@ function isIdReference(value: unknown): value is { id: string } {
 }
 
 function normalizeAuthoritativeServerFile(
-  metadata: WorkflowMcpManagedFileReference,
+  metadata: McpManagedFileReference,
   projectId: string,
-): WorkflowMcpManagedFileReference {
+): McpManagedFileReference {
   return {
     id: metadata.id,
     name: metadata.name,

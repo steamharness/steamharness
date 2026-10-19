@@ -1,11 +1,11 @@
-import type { WorkflowRelatedProject } from "../project-info/index";
+import type { RelatedProject } from "../project-info/index";
 import { isWorkflowUuid } from "../workflow-ids/index";
 
 export const STEAMHARNESS_PROJECT_GROUP_VERSION = 1;
 export const STEAMHARNESS_PROJECT_GROUP_MANIFEST_FILE = "project-group.json";
 export const STEAMHARNESS_PROJECT_DEPENDENCY_CAPABILITY = "download_source" as const;
 
-export interface WorkflowProjectDependencyLocalizedError extends Error {
+export interface ProjectDependencyLocalizedError extends Error {
   steamHarnessI18n: {
     namespace: "common";
     key: string;
@@ -13,17 +13,17 @@ export interface WorkflowProjectDependencyLocalizedError extends Error {
   };
 }
 
-export type WorkflowProjectDependencyDelivery = "included" | "external";
+export type ProjectDependencyDelivery = "included" | "external";
 
-export interface WorkflowProjectDependencyLock {
+export interface ProjectDependencyLock {
   alias: string;
   projectId: string;
-  delivery: WorkflowProjectDependencyDelivery;
+  delivery: ProjectDependencyDelivery;
   version?: string;
   sourceHash?: string;
 }
 
-export interface WorkflowProjectGroupProject {
+export interface ProjectGroupProject {
   projectId: string;
   role: "root" | "dependency";
   archivePath: string;
@@ -35,19 +35,19 @@ export interface WorkflowProjectGroupProject {
   version?: string;
 }
 
-export interface WorkflowProjectGroupManifestV1 {
+export interface ProjectGroupManifestV1 {
   version: 1;
   rootProjectId: string;
-  projects: WorkflowProjectGroupProject[];
-  dependencies: WorkflowProjectDependencyLock[];
+  projects: ProjectGroupProject[];
+  dependencies: ProjectDependencyLock[];
 }
 
-export interface WorkflowProjectDependencySelection {
+export interface ProjectDependencySelection {
   alias: string;
-  delivery: WorkflowProjectDependencyDelivery;
+  delivery: ProjectDependencyDelivery;
 }
 
-export interface WorkflowProjectDownloadItem {
+export interface ProjectDownloadItem {
   alias?: string;
   projectId: string;
   version: string;
@@ -57,24 +57,24 @@ export interface WorkflowProjectDownloadItem {
   alreadyAvailable?: boolean;
 }
 
-export interface WorkflowProjectSkippedDependency {
-  dependency: WorkflowProjectDependencyLock;
+export interface ProjectSkippedDependency {
+  dependency: ProjectDependencyLock;
   reason: "external" | "source_unavailable" | "permission_required";
   requestUrl?: string;
 }
 
-export interface WorkflowProjectDownloadPlan {
+export interface ProjectDownloadPlan {
   rootProjectId: string;
   rootVersion: string;
-  dependencies: WorkflowProjectDependencyLock[];
-  downloads: WorkflowProjectDownloadItem[];
-  skippedDependencies: WorkflowProjectSkippedDependency[];
+  dependencies: ProjectDependencyLock[];
+  downloads: ProjectDownloadItem[];
+  skippedDependencies: ProjectSkippedDependency[];
   complete: boolean;
   copyAllowed: boolean;
 }
 
-export interface WorkflowProjectDependencyStatus {
-  dependency: WorkflowProjectDependencyLock;
+export interface ProjectDependencyStatus {
+  dependency: ProjectDependencyLock;
   projectName?: string;
   projectAvailable: boolean;
   sourceAvailable: boolean;
@@ -84,33 +84,33 @@ export interface WorkflowProjectDependencyStatus {
   requestUrl?: string;
 }
 
-export interface WorkflowProjectDependencyStatusResult {
+export interface ProjectDependencyStatusResult {
   rootProjectId: string;
   rootVersion: string;
-  dependencies: WorkflowProjectDependencyStatus[];
+  dependencies: ProjectDependencyStatus[];
   publishable: boolean;
 }
 
-export type WorkflowProjectAccessRequestStatus =
+export type ProjectAccessRequestStatus =
   | "pending"
   | "approved"
   | "rejected"
   | "revoked";
 
-export interface WorkflowProjectAccessRequest {
+export interface ProjectAccessRequest {
   id: string;
   projectId: string;
   requesterUserId: string;
   capability: typeof STEAMHARNESS_PROJECT_DEPENDENCY_CAPABILITY;
   reason: string;
-  status: WorkflowProjectAccessRequestStatus;
+  status: ProjectAccessRequestStatus;
   createdAt: string;
   updatedAt: string;
   resolvedByUserId?: string;
   resolvedAt?: string;
 }
 
-export interface WorkflowProjectCapabilityGrant {
+export interface ProjectCapabilityGrant {
   projectId: string;
   userId: string;
   capability: typeof STEAMHARNESS_PROJECT_DEPENDENCY_CAPABILITY;
@@ -121,8 +121,8 @@ export interface WorkflowProjectCapabilityGrant {
 }
 
 export function createExternalWorkflowProjectDependencyLocks(
-  relatedProjects: readonly WorkflowRelatedProject[],
-): WorkflowProjectDependencyLock[] {
+  relatedProjects: readonly RelatedProject[],
+): ProjectDependencyLock[] {
   return relatedProjects.map((relatedProject) => ({
     alias: relatedProject.alias,
     projectId: relatedProject.projectId,
@@ -131,10 +131,10 @@ export function createExternalWorkflowProjectDependencyLocks(
 }
 
 export function createWorkflowProjectDependencyLocks(
-  relatedProjects: readonly WorkflowRelatedProject[],
-  selections: readonly WorkflowProjectDependencySelection[],
-): WorkflowProjectDependencyLock[] {
-  const selectionsById = new Map<string, WorkflowProjectDependencyDelivery>();
+  relatedProjects: readonly RelatedProject[],
+  selections: readonly ProjectDependencySelection[],
+): ProjectDependencyLock[] {
+  const selectionsById = new Map<string, ProjectDependencyDelivery>();
   for (const selection of selections) {
     if (selectionsById.has(selection.alias)) {
       throw dependencyError(
@@ -150,7 +150,7 @@ export function createWorkflowProjectDependencyLocks(
     alias: relatedProject.alias,
     projectId: relatedProject.projectId,
     delivery: selectionsById.get(relatedProject.alias) ?? "external",
-  } satisfies WorkflowProjectDependencyLock));
+  } satisfies ProjectDependencyLock));
 
   for (const alias of selectionsById.keys()) {
     if (!relatedProjects.some((relatedProject) => relatedProject.alias === alias)) {
@@ -167,7 +167,7 @@ export function createWorkflowProjectDependencyLocks(
 export function parseWorkflowProjectDependencyLocks(
   value: unknown,
   options: { published?: boolean } = {},
-): WorkflowProjectDependencyLock[] {
+): ProjectDependencyLock[] {
   if (!Array.isArray(value)) {
     throw dependencyError("lockArray", "Project dependency lock must be an array.");
   }
@@ -197,7 +197,7 @@ export function parseWorkflowProjectDependencyLocks(
 
 export function parseWorkflowProjectGroupManifest(
   value: unknown,
-): WorkflowProjectGroupManifestV1 {
+): ProjectGroupManifestV1 {
   if (!isRecord(value) || value["version"] !== STEAMHARNESS_PROJECT_GROUP_VERSION) {
     throw dependencyError(
       "manifestVersion",
@@ -279,7 +279,7 @@ export function parseWorkflowProjectGroupManifest(
       archivePath,
       ...(alias === undefined ? {} : { alias }),
       ...(version === undefined ? {} : { version }),
-    } satisfies WorkflowProjectGroupProject;
+    } satisfies ProjectGroupProject;
   });
 
   const roots = projects.filter((project) => project.role === "root");
@@ -332,9 +332,9 @@ export function parseWorkflowProjectGroupManifest(
 }
 
 export function finalizeWorkflowProjectDependencyLock(
-  dependency: WorkflowProjectDependencyLock,
+  dependency: ProjectDependencyLock,
   published: { version: string; sourceHash: string } | undefined,
-): WorkflowProjectDependencyLock {
+): ProjectDependencyLock {
   if (dependency.delivery === "external") {
     return {
       alias: dependency.alias,
@@ -389,7 +389,7 @@ function parseDependencyLock(
   value: unknown,
   index: number,
   published: boolean,
-): WorkflowProjectDependencyLock {
+): ProjectDependencyLock {
   if (!isRecord(value)) {
     throw dependencyError(
       "lockObject",
@@ -522,9 +522,9 @@ function dependencyError(
   key: string,
   message: string,
   values?: Record<string, unknown>,
-): WorkflowProjectDependencyLocalizedError {
+): ProjectDependencyLocalizedError {
   return Object.assign(new Error(message), {
-    name: "WorkflowProjectDependencyLocalizedError",
+    name: "ProjectDependencyLocalizedError",
     steamHarnessI18n: {
       namespace: "common" as const,
       key: `projectDependencies.validation.${key}`,

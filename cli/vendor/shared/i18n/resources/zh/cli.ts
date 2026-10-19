@@ -89,7 +89,7 @@ export const cli: typeof Encli = {
     unknownLocalCommand: "未知的 steamharness 命令：{{command}}",
     unknownWorkspaceCommand: "未知的 workspace 命令：{{command}}",
     packageProjectTypeRequired: "package.json.steamHarness.projectType 必须为 workflow、conversation 或 kanban。",
-    invalidParamResolveRequest: "resolve-params 的标准输入必须是有效的 WorkflowParamResolveRequest JSON 对象。",
+    invalidParamResolveRequest: "resolve-params 的标准输入必须是有效的 ParamResolveRequest JSON 对象。",
     waitingForUserInput: "Workflow 正在等待用户输入。请使用 --run-id 和 --resolved-user-inputs-json 重新运行以继续。",
     resolvedInputsMustBeArray: "--resolved-user-inputs-json 必须是数组。",
     invalidResolvedInput: "用户输入恢复项无效。",

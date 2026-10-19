@@ -1,8 +1,8 @@
 import { z } from "zod";
 import type {
-  WorkflowMcpFileInputMode,
-  WorkflowMcpJsonSchema,
-  WorkflowMcpParamDefinition,
+  McpFileInputMode,
+  McpJsonSchema,
+  McpParamDefinition,
 } from "./types";
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -10,19 +10,19 @@ const TIME_PATTERN = /^\d{2}:\d{2}:\d{2}$/;
 const DATETIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/;
 const DATE_RANGE_PATTERN = /^\d{4}-\d{2}-\d{2}\/\d{4}-\d{2}-\d{2}$/;
 
-export class WorkflowMcpInvalidParamsError extends Error {
+export class McpInvalidParamsError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "WorkflowMcpInvalidParamsError";
+    this.name = "McpInvalidParamsError";
   }
 }
 
-export function isWorkflowMcpMultiParam(param: WorkflowMcpParamDefinition): boolean {
+export function isWorkflowMcpMultiParam(param: McpParamDefinition): boolean {
   return param.multiple === true || param.control === "checkboxes";
 }
 
 export function canWorkflowParamsUseMcpFormElicitation(
-  params: readonly WorkflowMcpParamDefinition[],
+  params: readonly McpParamDefinition[],
 ): boolean {
   return params.every((param) => {
     if (param.type === "file") return false;
@@ -33,8 +33,8 @@ export function canWorkflowParamsUseMcpFormElicitation(
 }
 
 export function workflowParamsToMcpInputSchema(
-  params: readonly WorkflowMcpParamDefinition[] | undefined,
-  fileInputMode: WorkflowMcpFileInputMode,
+  params: readonly McpParamDefinition[] | undefined,
+  fileInputMode: McpFileInputMode,
 ): z.ZodObject<Record<string, z.ZodType>> {
   const shape: Record<string, z.ZodType> = {};
   for (const param of params ?? []) {
@@ -46,9 +46,9 @@ export function workflowParamsToMcpInputSchema(
 }
 
 export function workflowParamsToMcpJsonSchema(
-  params: readonly WorkflowMcpParamDefinition[] | undefined,
-  fileInputMode: WorkflowMcpFileInputMode,
-): WorkflowMcpJsonSchema {
+  params: readonly McpParamDefinition[] | undefined,
+  fileInputMode: McpFileInputMode,
+): McpJsonSchema {
   const properties: Record<string, Record<string, unknown>> = {};
   const required: string[] = [];
 
@@ -66,7 +66,7 @@ export function workflowParamsToMcpJsonSchema(
 }
 
 export function workflowParamsToMcpElicitationSchema(
-  params: readonly WorkflowMcpParamDefinition[],
+  params: readonly McpParamDefinition[],
   defaultValues: Record<string, unknown> | undefined,
 ): {
   type: "object";
@@ -74,7 +74,7 @@ export function workflowParamsToMcpElicitationSchema(
   required?: string[];
 } {
   if (params.some((param) => param.type === "file")) {
-    throw new WorkflowMcpInvalidParamsError("File fields cannot be requested through MCP elicitation.");
+    throw new McpInvalidParamsError("File fields cannot be requested through MCP elicitation.");
   }
 
   const schema = workflowParamsToMcpJsonSchema(params, "local");
@@ -100,8 +100,8 @@ export function workflowParamsToMcpElicitationSchema(
 }
 
 function createParamSchema(
-  param: WorkflowMcpParamDefinition,
-  fileInputMode: WorkflowMcpFileInputMode,
+  param: McpParamDefinition,
+  fileInputMode: McpFileInputMode,
 ): z.ZodType {
   let schema: z.ZodType;
   if (param.type === "file") {
@@ -132,7 +132,7 @@ function createParamSchema(
   return schema;
 }
 
-function createStringParamSchema(param: WorkflowMcpParamDefinition): z.ZodType {
+function createStringParamSchema(param: McpParamDefinition): z.ZodType {
   let schema = z.string();
   if (param.required === true) schema = schema.min(1);
   switch (param.control) {
@@ -150,8 +150,8 @@ function createStringParamSchema(param: WorkflowMcpParamDefinition): z.ZodType {
 }
 
 function createParamJsonSchema(
-  param: WorkflowMcpParamDefinition,
-  fileInputMode: WorkflowMcpFileInputMode,
+  param: McpParamDefinition,
+  fileInputMode: McpFileInputMode,
 ): Record<string, unknown> {
   const title = param.title?.trim() || param.label?.trim() || param.name;
   const description = param.description?.trim();
@@ -202,7 +202,7 @@ function createParamJsonSchema(
   };
 }
 
-function normalizeOptionValues(param: WorkflowMcpParamDefinition): Array<string | number | boolean> {
+function normalizeOptionValues(param: McpParamDefinition): Array<string | number | boolean> {
   if (!param.options) return [];
   if (param.type === "number") {
     return param.options
@@ -219,17 +219,17 @@ function normalizeOptionValues(param: WorkflowMcpParamDefinition): Array<string 
 }
 
 export function normalizeWorkflowMcpDefaultValue(
-  param: WorkflowMcpParamDefinition,
-  fileInputMode: WorkflowMcpFileInputMode,
+  param: McpParamDefinition,
+  fileInputMode: McpFileInputMode,
 ): unknown {
   if (param.defaultValue === undefined) return undefined;
   return normalizeWorkflowMcpValue(param, param.defaultValue, fileInputMode);
 }
 
 function normalizeWorkflowMcpValue(
-  param: WorkflowMcpParamDefinition,
+  param: McpParamDefinition,
   rawValue: unknown,
-  fileInputMode: WorkflowMcpFileInputMode,
+  fileInputMode: McpFileInputMode,
 ): unknown {
   if (isWorkflowMcpMultiParam(param)) {
     if (rawValue === "") return [];
@@ -253,9 +253,9 @@ function normalizeWorkflowMcpValue(
 }
 
 function normalizeScalarDefaultValue(
-  param: WorkflowMcpParamDefinition,
+  param: McpParamDefinition,
   rawValue: unknown,
-  fileInputMode: WorkflowMcpFileInputMode,
+  fileInputMode: McpFileInputMode,
 ): unknown {
   if (param.type === "file") {
     if (fileInputMode === "local") {

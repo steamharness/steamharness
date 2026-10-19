@@ -1,4 +1,4 @@
-export interface WorkflowFileBlobClient {
+export interface FileBlobClient {
   fetchWorkflowFile(fileId: string): Promise<Blob>;
 }
 
@@ -43,7 +43,7 @@ export function readWorkflowFileIdFromMarkdownImageSrc(src: string, origin = rea
 export async function resolveKnowledgeImageSrc(
   src: string,
   options: {
-    client: WorkflowFileBlobClient;
+    client: FileBlobClient;
     cache: Map<string, string>;
     origin?: string;
   },

@@ -15,7 +15,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, RefObject } from "react";
 import { mergeFileReferences, parseFileParamReferences, serializeFileParamReferences } from "../utils/files";
 import { isMultiParam, readMultiParamValues, resolveParamDefinition, writeMultiParamValues } from "../utils/params";
-import type { WorkflowManagedFileReference, WorkflowParamDefinition, WorkflowParamOption, WorkflowParamStatePatch } from "../types";
+import type { ManagedFileReference, ParamDefinition, ParamOption, ParamStatePatch } from "../types";
 import { AttachmentStrip, isImageFileReference, isVideoFileReference } from "../ui/attachment";
 import { SecondaryButton } from "../ui/buttons";
 import { resolveRwiClassName, rwiClass } from "../styles";
@@ -48,16 +48,16 @@ export function ParamsForm({
 }: {
   className?: string;
   variant?: "default" | "settings";
-  params?: WorkflowParamDefinition[];
-  states?: Record<string, WorkflowParamStatePatch>;
+  params?: ParamDefinition[];
+  states?: Record<string, ParamStatePatch>;
   values?: Record<string, string>;
   disabled?: boolean;
   onChange: (paramName: string, value: string) => void;
-  onFileUpload?: (param: WorkflowParamDefinition) => Promise<WorkflowManagedFileReference[]>;
-  onUploadFileObjects?: import("../types").WorkflowFileObjectsUploader;
-  onAddClipboardImage?: (param: WorkflowParamDefinition) => Promise<WorkflowManagedFileReference[]>;
-  onOpenAttachment?: (file: WorkflowManagedFileReference, options?: { download?: boolean }) => Promise<void> | void;
-  onResolveAttachmentPreview?: (file: WorkflowManagedFileReference) => Promise<string | undefined> | string | undefined;
+  onFileUpload?: (param: ParamDefinition) => Promise<ManagedFileReference[]>;
+  onUploadFileObjects?: import("../types").FileObjectsUploader;
+  onAddClipboardImage?: (param: ParamDefinition) => Promise<ManagedFileReference[]>;
+  onOpenAttachment?: (file: ManagedFileReference, options?: { download?: boolean }) => Promise<void> | void;
+  onResolveAttachmentPreview?: (file: ManagedFileReference) => Promise<string | undefined> | string | undefined;
   fileUploadingParam?: string;
   clipboardImageParam?: string;
   onAuxiliaryOpenChange?: (open: boolean) => void;
@@ -364,15 +364,15 @@ function ParamField({
   variant = "default",
   showValidationErrors = true,
 }: {
-  param: WorkflowParamDefinition;
+  param: ParamDefinition;
   value: string;
   disabled?: boolean;
   onChange: (value: string) => void;
-  onFileUpload?: (param: WorkflowParamDefinition) => Promise<WorkflowManagedFileReference[]>;
-  onUploadFileObjects?: import("../types").WorkflowFileObjectsUploader;
-  onAddClipboardImage?: (param: WorkflowParamDefinition) => Promise<WorkflowManagedFileReference[]>;
-  onOpenAttachment?: (file: WorkflowManagedFileReference, options?: { download?: boolean }) => Promise<void> | void;
-  onResolveAttachmentPreview?: (file: WorkflowManagedFileReference) => Promise<string | undefined> | string | undefined;
+  onFileUpload?: (param: ParamDefinition) => Promise<ManagedFileReference[]>;
+  onUploadFileObjects?: import("../types").FileObjectsUploader;
+  onAddClipboardImage?: (param: ParamDefinition) => Promise<ManagedFileReference[]>;
+  onOpenAttachment?: (file: ManagedFileReference, options?: { download?: boolean }) => Promise<void> | void;
+  onResolveAttachmentPreview?: (file: ManagedFileReference) => Promise<string | undefined> | string | undefined;
   fileUploading?: boolean;
   clipboardImageLoading?: boolean;
   variant?: "default" | "settings";
@@ -647,7 +647,7 @@ function NumberStepper({
   );
 }
 
-function resolveOptionControl(param: WorkflowParamDefinition): "radio" | "select" | "checkboxes" | "text" | "textarea" {
+function resolveOptionControl(param: ParamDefinition): "radio" | "select" | "checkboxes" | "text" | "textarea" {
   if (param.control === "checkboxes" || isMultiParam(param)) {
     return "checkboxes";
   }
@@ -671,7 +671,7 @@ function RadioOptions({
 }: {
   id: string;
   paramName: string;
-  options: WorkflowParamOption[];
+  options: ParamOption[];
   value: string;
   disabled?: boolean;
   onChange: (value: string) => void;
@@ -713,7 +713,7 @@ function CheckboxOptions({
 }: {
   id: string;
   paramName: string;
-  options: WorkflowParamOption[];
+  options: ParamOption[];
   value: string;
   disabled?: boolean;
   onChange: (value: string) => void;
@@ -748,7 +748,7 @@ function CheckboxOptions({
   );
 }
 
-function OptionLabel({ option }: { option: WorkflowParamOption }) {
+function OptionLabel({ option }: { option: ParamOption }) {
   const color = resolveOptionColor(option.value);
   return (
     <span className={rwiClass("rwi-option-copy")}>

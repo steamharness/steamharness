@@ -27,31 +27,31 @@ export const STEAMHARNESS_PROJECT_TYPE_DEFINITIONS = [
   },
 ] as const;
 
-export type WorkflowProjectTypeDefinition = (typeof STEAMHARNESS_PROJECT_TYPE_DEFINITIONS)[number];
-export type WorkflowProjectType = WorkflowProjectTypeDefinition["id"];
-export type WorkflowProjectTypeIcon = WorkflowProjectTypeDefinition["defaultIcon"];
-export type WorkflowExecutorProjectType = {
-  [ProjectType in WorkflowProjectType]: Extract<
-    WorkflowProjectTypeDefinition,
+export type ProjectTypeDefinition = (typeof STEAMHARNESS_PROJECT_TYPE_DEFINITIONS)[number];
+export type ProjectKind = ProjectTypeDefinition["id"];
+export type ProjectTypeIcon = ProjectTypeDefinition["defaultIcon"];
+export type ExecutorProjectType = {
+  [ProjectType in ProjectKind]: Extract<
+    ProjectTypeDefinition,
     { id: ProjectType }
   >["hasExecutor"] extends true
     ? ProjectType
     : never;
-}[WorkflowProjectType];
+}[ProjectKind];
 
-export const STEAMHARNESS_PROJECT_TYPES: readonly WorkflowProjectType[] =
+export const STEAMHARNESS_PROJECT_TYPES: readonly ProjectKind[] =
   STEAMHARNESS_PROJECT_TYPE_DEFINITIONS.map((definition) => definition.id);
 
-export const STEAMHARNESS_EXECUTOR_PROJECT_TYPES: readonly WorkflowExecutorProjectType[] =
+export const STEAMHARNESS_EXECUTOR_PROJECT_TYPES: readonly ExecutorProjectType[] =
   STEAMHARNESS_PROJECT_TYPE_DEFINITIONS
     .filter((definition) => definition.hasExecutor)
-    .map((definition) => definition.id as WorkflowExecutorProjectType);
+    .map((definition) => definition.id as ExecutorProjectType);
 
 const STEAMHARNESS_PROJECT_TYPE_DEFINITIONS_BY_ID = Object.fromEntries(
   STEAMHARNESS_PROJECT_TYPE_DEFINITIONS.map((definition) => [definition.id, definition]),
 ) as {
-  [ProjectType in WorkflowProjectType]: Extract<
-    WorkflowProjectTypeDefinition,
+  [ProjectType in ProjectKind]: Extract<
+    ProjectTypeDefinition,
     { id: ProjectType }
   >;
 };
@@ -64,28 +64,28 @@ export const STEAMHARNESS_PROJECT_TYPE_MIGRATION_EXAMPLE = `workflow.defineExecu
   // ...
 })`;
 
-export function isWorkflowProjectType(value: unknown): value is WorkflowProjectType {
-  return typeof value === "string" && STEAMHARNESS_PROJECT_TYPES.includes(value as WorkflowProjectType);
+export function isWorkflowProjectType(value: unknown): value is ProjectKind {
+  return typeof value === "string" && STEAMHARNESS_PROJECT_TYPES.includes(value as ProjectKind);
 }
 
-export function isWorkflowExecutorProjectType(value: unknown): value is WorkflowExecutorProjectType {
+export function isWorkflowExecutorProjectType(value: unknown): value is ExecutorProjectType {
   return typeof value === "string" &&
-    STEAMHARNESS_EXECUTOR_PROJECT_TYPES.includes(value as WorkflowExecutorProjectType);
+    STEAMHARNESS_EXECUTOR_PROJECT_TYPES.includes(value as ExecutorProjectType);
 }
 
-export function getWorkflowProjectTypeDefinition<ProjectType extends WorkflowProjectType>(
+export function getWorkflowProjectTypeDefinition<ProjectType extends ProjectKind>(
   projectType: ProjectType,
-): Extract<WorkflowProjectTypeDefinition, { id: ProjectType }> {
+): Extract<ProjectTypeDefinition, { id: ProjectType }> {
   return STEAMHARNESS_PROJECT_TYPE_DEFINITIONS_BY_ID[projectType];
 }
 
-export function getWorkflowProjectTypeLabel(projectType: WorkflowProjectType): string {
+export function getWorkflowProjectTypeLabel(projectType: ProjectKind): string {
   return getWorkflowProjectTypeDefinition(projectType).label;
 }
 
 export function getWorkflowProjectTypeLabelKey(
-  projectType: WorkflowProjectType,
-): WorkflowProjectTypeDefinition["labelKey"] {
+  projectType: ProjectKind,
+): ProjectTypeDefinition["labelKey"] {
   return getWorkflowProjectTypeDefinition(projectType).labelKey;
 }
 
@@ -97,7 +97,7 @@ export function assertNeverWorkflowExecutorProjectType(value: never): never {
   throw new Error(`Unsupported workflow executor project type "${String(value)}".`);
 }
 
-export function assertWorkflowProjectType(value: unknown): asserts value is WorkflowProjectType {
+export function assertWorkflowProjectType(value: unknown): asserts value is ProjectKind {
   if (!isWorkflowProjectType(value)) {
     throw new Error(
       `${formatWorkflowProjectTypeMigrationMessage("Executor projectType is missing or unknown")}\n\n${STEAMHARNESS_PROJECT_TYPE_MIGRATION_EXAMPLE}`,
@@ -107,7 +107,7 @@ export function assertWorkflowProjectType(value: unknown): asserts value is Work
 
 export function assertWorkflowExecutorProjectType(
   value: unknown,
-): asserts value is WorkflowExecutorProjectType {
+): asserts value is ExecutorProjectType {
   if (!isWorkflowExecutorProjectType(value)) {
     throw new Error(
       `${formatWorkflowProjectTypeMigrationMessage("Executor projectType is missing or unknown")}\n\n${STEAMHARNESS_PROJECT_TYPE_MIGRATION_EXAMPLE}`,

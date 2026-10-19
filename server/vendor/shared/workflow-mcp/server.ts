@@ -9,7 +9,7 @@ import {
 import { workflowMcpInputToArgs } from "./args";
 import {
   canWorkflowParamsUseMcpFormElicitation,
-  WorkflowMcpInvalidParamsError,
+  McpInvalidParamsError,
   workflowParamsToMcpElicitationSchema,
   workflowParamsToMcpInputSchema,
   workflowParamsToMcpJsonSchema,
@@ -20,24 +20,24 @@ import {
   workflowReportToMcpResult,
 } from "./result";
 import type {
-  WorkflowMcpAuditEvent,
-  WorkflowMcpCancelRequest,
-  WorkflowMcpEntrypointStructure,
-  WorkflowMcpExecutionReport,
-  WorkflowMcpFileInputMode,
-  WorkflowMcpFileResolver,
-  WorkflowMcpRunner,
-  WorkflowMcpStructureReport,
-  WorkflowMcpToolResult,
-  WorkflowMcpUserInputRequest,
+  McpAuditEvent,
+  McpCancelRequest,
+  McpEntrypointStructure,
+  McpExecutionReport,
+  McpFileInputMode,
+  McpFileResolver,
+  McpRunner,
+  McpStructureReport,
+  McpToolResult,
+  McpUserInputRequest,
 } from "./types";
 
 export interface CreateWorkflowMcpServerOptions {
   projectId: string;
-  structure: WorkflowMcpStructureReport;
-  runner: WorkflowMcpRunner;
-  fileInputMode: WorkflowMcpFileInputMode;
-  resolveFiles?: WorkflowMcpFileResolver;
+  structure: McpStructureReport;
+  runner: McpRunner;
+  fileInputMode: McpFileInputMode;
+  resolveFiles?: McpFileResolver;
   version?: string;
   instructions?: string;
   beforeRun?(context: {
@@ -52,7 +52,7 @@ export interface CreateWorkflowMcpServerOptions {
    * disconnect; the SDK's own signal only covers protocol cancellation.
    */
   requestSignal?(requestId: RequestId): AbortSignal | undefined;
-  onAudit?(event: WorkflowMcpAuditEvent): Promise<void> | void;
+  onAudit?(event: McpAuditEvent): Promise<void> | void;
 }
 
 export function createWorkflowMcpServerName(projectId: string): string {
@@ -169,7 +169,7 @@ export function createWorkflowMcpServer(options: CreateWorkflowMcpServerOptions)
           isError: true,
         })).catch(() => undefined);
       }
-      if (error instanceof WorkflowMcpInvalidParamsError) {
+      if (error instanceof McpInvalidParamsError) {
         throw new McpError(ErrorCode.InvalidParams, error.message);
       }
       if (error instanceof McpError) throw error;
@@ -191,14 +191,14 @@ function combineAbortSignals(
 async function resolveWorkflowMcpInteractions(
   server: Server,
   options: CreateWorkflowMcpServerOptions,
-  entrypoint: WorkflowMcpEntrypointStructure,
-  initialReport: WorkflowMcpExecutionReport,
+  entrypoint: McpEntrypointStructure,
+  initialReport: McpExecutionReport,
   signal: AbortSignal,
   relatedRequestId: RequestId,
-): Promise<WorkflowMcpExecutionReport> {
+): Promise<McpExecutionReport> {
   let report = initialReport;
   for (let interaction = 0; report.status === "waiting_for_input" && interaction < 32; interaction += 1) {
-    let pending: WorkflowMcpUserInputRequest | undefined;
+    let pending: McpUserInputRequest | undefined;
     try {
       pending = clonePendingUserInput(report.pendingUserInput, entrypoint.id);
     } catch {
@@ -301,10 +301,10 @@ async function resolveWorkflowMcpInteractions(
 
 async function cancelWorkflowMcpWaitingRun(
   options: CreateWorkflowMcpServerOptions,
-  entrypoint: WorkflowMcpEntrypointStructure,
-  report: WorkflowMcpExecutionReport,
-  pending: WorkflowMcpUserInputRequest,
-  reason: WorkflowMcpCancelRequest["reason"],
+  entrypoint: McpEntrypointStructure,
+  report: McpExecutionReport,
+  pending: McpUserInputRequest,
+  reason: McpCancelRequest["reason"],
   signal: AbortSignal,
 ): Promise<void> {
   await options.runner.cancel?.({
@@ -319,9 +319,9 @@ async function cancelWorkflowMcpWaitingRun(
 }
 
 function workflowReportToInvalidPendingInput(
-  report: WorkflowMcpExecutionReport,
-  entrypoint: WorkflowMcpEntrypointStructure,
-): WorkflowMcpExecutionReport {
+  report: McpExecutionReport,
+  entrypoint: McpEntrypointStructure,
+): McpExecutionReport {
   return {
     ...report,
     status: "failed",
@@ -340,10 +340,10 @@ function workflowReportToInvalidPendingInput(
 }
 
 function workflowReportToMcpInteractionDeclined(
-  report: WorkflowMcpExecutionReport,
-  entrypoint: WorkflowMcpEntrypointStructure,
+  report: McpExecutionReport,
+  entrypoint: McpEntrypointStructure,
   action: "decline" | "cancel",
-): WorkflowMcpExecutionReport {
+): McpExecutionReport {
   const pending = summarizePendingWorkflowMcpInput(report);
   return {
     ...report,
@@ -365,8 +365,8 @@ function workflowReportToMcpInteractionDeclined(
 }
 
 function cloneEntrypoints(
-  entrypoints: WorkflowMcpEntrypointStructure[] | undefined,
-): WorkflowMcpEntrypointStructure[] {
+  entrypoints: McpEntrypointStructure[] | undefined,
+): McpEntrypointStructure[] {
   if (entrypoints !== undefined && !Array.isArray(entrypoints)) {
     throw new Error("Workflow MCP received an invalid entrypoint catalog.");
   }
@@ -412,9 +412,9 @@ function cloneEntrypoints(
 }
 
 function clonePendingUserInput(
-  value: WorkflowMcpUserInputRequest | undefined,
+  value: McpUserInputRequest | undefined,
   entrypointId: string,
-): WorkflowMcpUserInputRequest | undefined {
+): McpUserInputRequest | undefined {
   if (value === undefined) return undefined;
   if (!isRecord(value)) {
     throw new Error("Workflow MCP received an invalid pending input request.");
@@ -462,7 +462,7 @@ const STEAMHARNESS_MCP_RESERVED_PARAM_NAMES = new Set(["__proto__", "constructor
 function cloneParam(
   value: unknown,
   entrypointId: string,
-): NonNullable<WorkflowMcpEntrypointStructure["params"]>[number] {
+): NonNullable<McpEntrypointStructure["params"]>[number] {
   if (!isRecord(value)) {
     throw new Error(`Workflow MCP entrypoint "${entrypointId}" has an invalid parameter.`);
   }
@@ -508,7 +508,7 @@ function cloneParam(
     ...(value.description !== undefined ? { description: value.description as string } : {}),
     ...(value.defaultValue !== undefined ? { defaultValue: value.defaultValue as string } : {}),
     ...(value.multiple !== undefined ? { multiple: value.multiple as boolean } : {}),
-    ...(value.control !== undefined ? { control: value.control as NonNullable<NonNullable<WorkflowMcpEntrypointStructure["params"]>[number]["control"]> } : {}),
+    ...(value.control !== undefined ? { control: value.control as NonNullable<NonNullable<McpEntrypointStructure["params"]>[number]["control"]> } : {}),
     ...(options !== undefined ? { options } : {}),
     ...(accept !== undefined ? { accept } : {}),
     ...(value.title !== undefined ? { title: value.title as string } : {}),
@@ -519,7 +519,7 @@ function cloneParam(
 function cloneParamOptions(
   value: unknown,
   paramName: string,
-): NonNullable<WorkflowMcpEntrypointStructure["params"]>[number]["options"] {
+): NonNullable<McpEntrypointStructure["params"]>[number]["options"] {
   if (value === undefined) return undefined;
   if (!Array.isArray(value)) {
     throw new Error(`Workflow MCP parameter "${paramName}" has an invalid options list.`);
@@ -554,7 +554,7 @@ function cloneParamAccept(value: unknown, paramName: string): string[] | undefin
   return [...value] as string[];
 }
 
-function isWorkflowMcpParamType(value: unknown): value is NonNullable<WorkflowMcpEntrypointStructure["params"]>[number]["type"] {
+function isWorkflowMcpParamType(value: unknown): value is NonNullable<McpEntrypointStructure["params"]>[number]["type"] {
   return value === "string" || value === "number" || value === "boolean" || value === "positional" || value === "file";
 }
 
@@ -563,9 +563,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function createWorkflowMcpInteractionRequiredResult(
-  report: WorkflowMcpExecutionReport,
-  entrypoint: WorkflowMcpEntrypointStructure,
-): WorkflowMcpToolResult {
+  report: McpExecutionReport,
+  entrypoint: McpEntrypointStructure,
+): McpToolResult {
   return workflowReportToMcpResult(report, entrypoint, {
     code: "interaction_required",
     message: "Reconnect with a client that supports MCP form elicitation to continue this run.",

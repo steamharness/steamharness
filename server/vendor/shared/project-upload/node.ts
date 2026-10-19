@@ -9,22 +9,22 @@ import {
   resolveWorkflowUploadRequiredPaths,
 } from "./index";
 
-export interface WorkflowUploadFileEntry {
+export interface UploadFileEntry {
   path: string;
   absolutePath: string;
   size: number;
 }
 
-export interface WorkflowUploadPlan {
+export interface UploadPlan {
   workflowIgnorePresent: boolean;
   workflowIgnoreConfigured: boolean;
-  files: WorkflowUploadFileEntry[];
+  files: UploadFileEntry[];
   ignoredPaths: string[];
   totalBytes: number;
   requiredPaths: string[];
 }
 
-export async function createWorkflowUploadPlan(rootDir: string): Promise<WorkflowUploadPlan> {
+export async function createWorkflowUploadPlan(rootDir: string): Promise<UploadPlan> {
   const projectRoot = path.resolve(rootDir);
   const workflowIgnorePath = path.join(projectRoot, STEAMHARNESS_IGNORE_FILE);
   const workflowIgnoreStat = await lstat(workflowIgnorePath).catch(() => undefined);
@@ -41,7 +41,7 @@ export async function createWorkflowUploadPlan(rootDir: string): Promise<Workflo
   const matcher = createWorkflowUploadMatcher(
     workflowIgnoreContent,
   );
-  const files: WorkflowUploadFileEntry[] = [];
+  const files: UploadFileEntry[] = [];
   const availableRegularPaths = new Set<string>();
   const portablePaths = new Map<string, string>();
   const ignoredPaths: string[] = [];
@@ -114,7 +114,7 @@ export async function createWorkflowUploadPlan(rootDir: string): Promise<Workflo
 export async function copyWorkflowUploadFiles(
   sourceDir: string,
   targetDir: string,
-): Promise<WorkflowUploadPlan> {
+): Promise<UploadPlan> {
   const plan = await createWorkflowUploadPlan(sourceDir);
   await mkdir(targetDir, { recursive: true });
   for (const file of plan.files) {

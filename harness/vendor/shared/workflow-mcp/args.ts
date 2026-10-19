@@ -1,22 +1,22 @@
 import {
   isWorkflowMcpMultiParam,
   normalizeWorkflowMcpDefaultValue,
-  WorkflowMcpInvalidParamsError,
+  McpInvalidParamsError,
 } from "./schema";
 import type {
-  WorkflowMcpFileInputMode,
-  WorkflowMcpFileResolver,
-  WorkflowMcpManagedFileReference,
-  WorkflowMcpParamDefinition,
+  McpFileInputMode,
+  McpFileResolver,
+  McpManagedFileReference,
+  McpParamDefinition,
 } from "./types";
 
 export async function workflowMcpInputToArgs(options: {
   projectId: string;
   entrypointId: string;
-  params: readonly WorkflowMcpParamDefinition[] | undefined;
+  params: readonly McpParamDefinition[] | undefined;
   input: Record<string, unknown>;
-  fileInputMode: WorkflowMcpFileInputMode;
-  resolveFiles?: WorkflowMcpFileResolver;
+  fileInputMode: McpFileInputMode;
+  resolveFiles?: McpFileResolver;
   signal: AbortSignal;
 }): Promise<string[]> {
   const args: string[] = [];
@@ -31,7 +31,7 @@ export async function workflowMcpInputToArgs(options: {
 
     if (param.type === "file") {
       if (!options.resolveFiles) {
-        throw new WorkflowMcpInvalidParamsError(`File parameter "${param.name}" is not supported by this host.`);
+        throw new McpInvalidParamsError(`File parameter "${param.name}" is not supported by this host.`);
       }
       const values = Array.isArray(value) ? value : [value];
       if (values.length === 0 && param.required !== true) continue;
@@ -61,7 +61,7 @@ export async function workflowMcpInputToArgs(options: {
 }
 
 function appendBoolean(
-  param: WorkflowMcpParamDefinition,
+  param: McpParamDefinition,
   value: unknown,
   args: string[],
 ): void {
@@ -74,7 +74,7 @@ function appendBoolean(
 }
 
 function appendValue(
-  param: WorkflowMcpParamDefinition,
+  param: McpParamDefinition,
   value: string,
   args: string[],
   positional: string[],
@@ -88,9 +88,9 @@ function appendValue(
   }
 }
 
-function serializeManagedFiles(refs: WorkflowMcpManagedFileReference[]): string {
+function serializeManagedFiles(refs: McpManagedFileReference[]): string {
   if (refs.length === 0) {
-    throw new WorkflowMcpInvalidParamsError("At least one managed file is required.");
+    throw new McpInvalidParamsError("At least one managed file is required.");
   }
   return JSON.stringify(refs);
 }
