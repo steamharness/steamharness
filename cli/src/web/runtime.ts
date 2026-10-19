@@ -145,7 +145,21 @@ export function sanitizeWebWorkerEnvironment(base: NodeJS.ProcessEnv = process.e
   return Object.fromEntries(Object.entries(base).filter(([key, value]) => value !== undefined && !isPrivateEnvironmentKey(key)));
 }
 
+/**
+ * Studio Control is a per-session capability the host injects only when it has
+ * opened a control bridge. The assistant project reads these values once and
+ * removes them before spawning coding tools, so the worker must receive all
+ * three together; the generic TOKEN rule would otherwise strip only the token
+ * and leave the MCP definition pointing at an unusable capability.
+ */
+const STUDIO_CONTROL_CAPABILITY_KEYS = new Set([
+  'STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER',
+  'STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL',
+  'STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN',
+]);
+
 function isPrivateEnvironmentKey(key: string): boolean {
+  if (STUDIO_CONTROL_CAPABILITY_KEYS.has(key)) { return false; }
   return key === 'NODE_OPTIONS' ||
     /^(?:STEAMHARNESS_(?:AI|LLM|SERVER|PUBLIC_SERVER|STUDIO_INTERNAL)(?:_|$)|SUB2API_)/u.test(key) ||
     /(?:^|_)(?:API[_-]?KEY|ACCESS[_-]?KEY(?:_ID)?|SECRET|TOKEN|PASSWORD|PRIVATE[_-]?KEY|DATABASE_URL|REDIS_URL|CREDENTIALS?|AUTH(?:ORIZATION)?|CONFIG)(?:$|_)/iu.test(key) ||

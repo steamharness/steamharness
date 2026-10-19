@@ -69,6 +69,9 @@ describe('steamharness web', () => {
       STEAMHARNESS_STUDIO_INTERNAL: '1',
       STEAMHARNESS_STUDIO_INTERNAL_MODULE: '/private/studio-internal/src/extension-layer.mjs',
       STEAMHARNESS_STUDIO_INTERNAL_SERVER_URL: 'http://127.0.0.1:7127',
+      STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER: '{"id":"workflow-studio"}',
+      STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL: 'http://127.0.0.1:9999/studio-control',
+      STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN: 'capability-token',
       SUB2API_JWT_SECRET: 'sub2api-secret',
       DATABASE_URL: 'postgres://private',
       GOOGLE_APPLICATION_CREDENTIALS: '/private/gcp.json',
@@ -80,7 +83,10 @@ describe('steamharness web', () => {
       SSH_AUTH_SOCK: '/private/ssh-agent.sock',
       STEAMHARNESS_RUNTIME_LOCALE: 'zh-CN',
     });
-    expect(environment).toEqual({ PATH: '/bin', STEAMHARNESS_RUNTIME_LOCALE: 'zh-CN' });
+    expect(environment).toEqual({ PATH: '/bin', STEAMHARNESS_RUNTIME_LOCALE: 'zh-CN',
+      STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER: '{"id":"workflow-studio"}',
+      STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL: 'http://127.0.0.1:9999/studio-control',
+      STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN: 'capability-token' });
   });
 
   it('routes Trace controls to an explicitly selected historical session and rejects a replaced owner', async () => {
