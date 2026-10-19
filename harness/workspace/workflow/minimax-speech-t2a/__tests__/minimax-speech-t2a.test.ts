@@ -47,7 +47,7 @@ describe("minimax dry-run synthesis", () => {
   it("returns a playable wav data URL output item", async () => {
     const report = await runLocalWorkflowWithReport({
       workflowDir: path.resolve(process.cwd(), "workflow/minimax-speech-t2a"),
-      workflowName: "minimax-speech-t2a",
+      projectName: "minimax-speech-t2a",
       args: [
         "--dry-run",
         "--format",
@@ -77,7 +77,7 @@ describe("minimax dry-run synthesis", () => {
   it("does not serialize the MiniMax API key into runtime node input", async () => {
     const report = await runLocalWorkflowWithReport({
       workflowDir: path.resolve(process.cwd(), "workflow/minimax-speech-t2a"),
-      workflowName: "minimax-speech-t2a",
+      projectName: "minimax-speech-t2a",
       args: [
         "--dry-run",
         "--format",

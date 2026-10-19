@@ -1,5 +1,5 @@
 {
-  "workflowName": "runtime-platform",
+  "projectName": "runtime-platform",
   "projectType": "workflow",
   "files": [
     "index.ts",
@@ -18,7 +18,7 @@
     {
       "id": "main",
       "title": "Runtime Platform",
-      "workflowName": "runtime-platform",
+      "projectName": "runtime-platform",
       "params": [],
       "registry": [],
       "execution": {

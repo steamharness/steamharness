@@ -349,7 +349,7 @@ export const executor = workflow.defineExecutor<
       createInput({ args }) {
         return parseInputArgs(args);
       },
-      createContext({ env, workflowName, conversationId }) {
+      createContext({ env, projectName, conversationId }) {
         return {
           metadata: {
             bilibiliCredential: readBilibiliCredential(env),
@@ -359,7 +359,7 @@ export const executor = workflow.defineExecutor<
             minimaxBaseUrl: readString(env.MINIMAX_BASE_URL),
             serverUpload: readServerUploadConfig(
               env,
-              workflowName,
+              projectName,
               conversationId,
             ),
             bilibiliDownloadMock: env.DELTAFORCE_BILIBILI_DOWNLOAD_MOCK === "1",
@@ -491,11 +491,11 @@ function readBilibiliCredential(env: NodeJS.ProcessEnv): BilibiliCredentialConfi
 
 function readServerUploadConfig(
   env: NodeJS.ProcessEnv,
-  workflowName: string,
+  projectName: string,
   conversationId: string | undefined,
 ): ServerUploadConfig {
   return {
-    workflowName,
+    projectName,
     conversationId,
   };
 }

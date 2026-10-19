@@ -135,7 +135,7 @@ function createNodeContext(): NodeContext {
       runId: "pi-agent-stream-test-run",
     },
     toolPermissions: createWorkflowToolPermissionContext({
-      workflowName: "pi-agent",
+      projectName: "pi-agent",
       runId: "pi-agent-stream-test-run",
       definitions: [
         { name: KNOWLEDGE_DOCUMENTS_TOOL_NAME, enabled: true, autoApprove: false },

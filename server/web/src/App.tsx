@@ -112,7 +112,7 @@ function AppContent() {
   const [busy, setBusy] = useState<AsyncState>({});
   const projectDetailRequestRef = useRef(0);
   const projectKVRequestRef = useRef(0);
-  const detailWorkflowIdRef = useRef<string | null>(null);
+  const detailProjectIdRef = useRef<string | null>(null);
   const projectKVCursorHistoryRef = useRef<Array<string | undefined>>([undefined]);
   const auditCursorHistoryRef = useRef<Array<string | undefined>>([undefined]);
   const auditRequestRef = useRef(0);
@@ -164,7 +164,7 @@ function AppContent() {
   const canViewUsers = isSystemAdmin || principalPermissions.has("users.read");
   const canViewRoles = isSystemAdmin || principalPermissions.has("roles.read");
   const canManageRoles = isSystemAdmin || principalPermissions.has("roles.manage");
-  const detailBelongsToSelectedProject = page !== "detail" || !selectedProject || detailWorkflowIdRef.current === selectedProject.id;
+  const detailBelongsToSelectedProject = page !== "detail" || !selectedProject || detailProjectIdRef.current === selectedProject.id;
   const renderedDetail = detailBelongsToSelectedProject ? detail : DEFAULT_DETAIL;
   const renderedBusy = detailBelongsToSelectedProject ? busy : { ...busy, project: busy.project ?? t("busyLoadProjectDetail") };
 
@@ -464,18 +464,18 @@ function AppContent() {
       return current;
     });
   }
-  async function loadProjectDetail(workflowName: string) {
+  async function loadProjectDetail(projectName: string) {
     const requestId = ++projectDetailRequestRef.current;
-    const switching = detailWorkflowIdRef.current !== workflowName;
-    detailWorkflowIdRef.current = workflowName;
+    const switching = detailProjectIdRef.current !== projectName;
+    detailProjectIdRef.current = projectName;
     if (switching) { projectKVRequestRef.current += 1; setDetail(DEFAULT_DETAIL); projectKVCursorHistoryRef.current = [undefined]; setProjectKVPageIndex(0); }
     setBusy(state => ({...state, project: t("busyLoadProjectDetail")}));
     const [versions, members, invitations, dataSummary] = await Promise.all([
-      apiClient.listVersions(workflowName), apiClient.listProjectMembers(workflowName),
-      activeDetailTab === "invitations" && selectedProject?.canManage ? apiClient.listProjectInvitations(workflowName) : undefined,
-      activeDetailTab === "project" && selectedProjectServerStorageAllowed ? apiClient.getProjectDataSummary(workflowName) : undefined,
+      apiClient.listVersions(projectName), apiClient.listProjectMembers(projectName),
+      activeDetailTab === "invitations" && selectedProject?.canManage ? apiClient.listProjectInvitations(projectName) : undefined,
+      activeDetailTab === "project" && selectedProjectServerStorageAllowed ? apiClient.getProjectDataSummary(projectName) : undefined,
     ]);
-    if (requestId !== projectDetailRequestRef.current || selectedIdRef.current !== workflowName) return;
+    if (requestId !== projectDetailRequestRef.current || selectedIdRef.current !== projectName) return;
     setBusy(state => ({...state, project: undefined}));
     for (const result of [versions, members, invitations, dataSummary]) if (result && !isApiSuccess(result)) pushToast("error", result.errMessage);
     setDetail(state => ({...state, versions: isApiSuccess(versions) ? versions.data : null,
@@ -563,8 +563,8 @@ function AppContent() {
     void loadProjectDetail(selectedProject.id);
   }
 
-  async function loadProjectKV(workflowName: string, options: { reset?: boolean; cursor?: string; pageIndex?: number } = {}) {
-    const project = projects.find((item) => item.id === workflowName);
+  async function loadProjectKV(projectName: string, options: { reset?: boolean; cursor?: string; pageIndex?: number } = {}) {
+    const project = projects.find((item) => item.id === projectName);
     if (project && !getWorkflowProjectServerStorageAccess(project).allowed) return;
     const cursor = options.reset ? undefined : options.cursor;
     const pageIndex = options.reset ? 0 : options.pageIndex ?? 0;
@@ -572,8 +572,8 @@ function AppContent() {
     const requestId = ++projectKVRequestRef.current;
     setBusy((s) => ({ ...s, kv: options.reset ? t("busyKvLoad") : t("busyKvPage") }));
     if (options.reset) { projectKVCursorHistoryRef.current = [undefined]; setProjectKVPageIndex(0); setDetail((s) => ({ ...s, kv: null })); }
-    const res = await apiClient.listProjectKVEntries(workflowName, { pageSize: KV_PAGE_SIZE, cursor, scope: kvFilters.scope, query: kvFilters.query, valueType: kvFilters.valueType, conversationId: kvFilters.conversationId, runId: kvFilters.runId });
-    if (requestId !== projectKVRequestRef.current || selectedIdRef.current !== workflowName) return;
+    const res = await apiClient.listProjectKVEntries(projectName, { pageSize: KV_PAGE_SIZE, cursor, scope: kvFilters.scope, query: kvFilters.query, valueType: kvFilters.valueType, conversationId: kvFilters.conversationId, runId: kvFilters.runId });
+    if (requestId !== projectKVRequestRef.current || selectedIdRef.current !== projectName) return;
     setBusy((s) => ({ ...s, kv: undefined }));
     if (!isApiSuccess(res)) { pushToast("error", res.errMessage); return; }
     setDetail((s) => ({ ...s, kv: res.data }));
@@ -620,19 +620,19 @@ function AppContent() {
     setAuditPageIndex(pageIndex);
   }
 
-  async function changeProjectKVPage(workflowName: string, direction: "next" | "previous") {
+  async function changeProjectKVPage(projectName: string, direction: "next" | "previous") {
     if (busy.kv) return;
     if (direction === "previous") {
       const nextIndex = Math.max(0, projectKVPageIndex - 1);
       if (nextIndex === projectKVPageIndex) return;
-      await loadProjectKV(workflowName, { cursor: projectKVCursorHistoryRef.current[nextIndex], pageIndex: nextIndex });
+      await loadProjectKV(projectName, { cursor: projectKVCursorHistoryRef.current[nextIndex], pageIndex: nextIndex });
       return;
     }
     const nextCursor = detail.kv?.nextCursor;
     if (!detail.kv?.hasMore || !nextCursor) return;
     const nextIndex = projectKVPageIndex + 1;
     projectKVCursorHistoryRef.current[nextIndex] = nextCursor;
-    await loadProjectKV(workflowName, { cursor: nextCursor, pageIndex: nextIndex });
+    await loadProjectKV(projectName, { cursor: nextCursor, pageIndex: nextIndex });
   }
 
   async function changeAuditPage(direction: "next" | "previous") {
@@ -650,21 +650,21 @@ function AppContent() {
     await loadAuditEvents({ cursor: nextCursor, pageIndex: nextIndex });
   }
 
-  async function loadProjectKVEntry(workflowName: string, entry: KVEntrySummary) {
+  async function loadProjectKVEntry(projectName: string, entry: KVEntrySummary) {
     if (entry.scope !== "project" && entry.scope !== "conversation") {
       return {
         errCode: 400,
         errMessage: t("projectKvDetailScopeError"),
       };
     }
-    return apiClient.getProjectKVEntry(workflowName, {
+    return apiClient.getProjectKVEntry(projectName, {
       scope: entry.scope,
       key: entry.key,
       conversationId: entry.scope === "conversation" ? entry.conversationId ?? entry.lastConversationId : undefined,
     });
   }
 
-  async function deleteProjectKVEntry(workflowName: string, entry: KVEntrySummary) {
+  async function deleteProjectKVEntry(projectName: string, entry: KVEntrySummary) {
     if (entry.scope !== "project" && entry.scope !== "conversation") {
       return {
         errCode: 400,
@@ -673,7 +673,7 @@ function AppContent() {
     }
     // The conversation scope is part of the entry's identity, and the row can
     // carry it on lastConversationId, so resolve it exactly like the detail load.
-    return apiClient.deleteProjectKVEntry(workflowName, {
+    return apiClient.deleteProjectKVEntry(projectName, {
       scope: entry.scope,
       key: entry.key,
       conversationId: entry.scope === "conversation" ? entry.conversationId ?? entry.lastConversationId : undefined,
@@ -899,7 +899,7 @@ function AppContent() {
     setAdminRoles({ items: null, groups: null });
     setSelectedId("");
     navigateTo({ page: "login" }, { replace: true, skipKnowledgeGuard: true });
-    detailWorkflowIdRef.current = null;
+    detailProjectIdRef.current = null;
     setDetail(DEFAULT_DETAIL);
   }
 

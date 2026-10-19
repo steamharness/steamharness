@@ -258,7 +258,7 @@ function createToolContext(
       runId: "pi-agent-test-run",
     },
     toolPermissions: createWorkflowToolPermissionContext({
-      workflowName: "pi-agent",
+      projectName: "pi-agent",
       runId: "pi-agent-test-run",
       definitions: [
         {

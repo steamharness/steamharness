@@ -94,7 +94,7 @@ export function createWorkflowToolPermissionContext(options: {
   definitions?: ToolPermissionDefinition[];
   policies?: ToolPermissionPolicyMap;
   userInput?: NodeContext["userInput"];
-  workflowName: string;
+  projectName: string;
   runId: string;
 }): ToolPermissionContext {
   const definitions = normalizeToolPermissionDefinitions(options.definitions);
@@ -120,7 +120,7 @@ export function createWorkflowToolPermissionContext(options: {
         toolPermissions: context,
         userInput: options.userInput,
         metadata: {
-          workflow: options.workflowName,
+          workflow: options.projectName,
           runId: options.runId,
         },
       }, input);

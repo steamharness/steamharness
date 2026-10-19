@@ -29,7 +29,7 @@ function createAttachmentPreviewKey(file: ManagedFileReference): string {
   return [
     file.id,
     file.storage,
-    file.workflowId ?? "",
+    file.projectId ?? "",
     file.conversationId ?? "",
     file.kind,
     file.mimeType,

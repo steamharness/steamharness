@@ -99,7 +99,7 @@ export const cli: typeof Encli = {
     invalidUploadFile: "上传内容必须是大小不超过 50 MiB 的普通文件。",
     mimeTypeCommandUnsupported: "--mime-type 仅支持 file-upload。",
     deviceLoginPrompt: "请打开验证页面批准本次登录：\n{{url}}\n用户代码：{{code}}",
-    workflowIdRequired: "Workflow package.json 必须预先包含 UUID 格式的 id；--create 只按该 UUID 创建或复用服务端项目，不会分配或回写 id。",
+    projectIdRequired: "Workflow package.json 必须预先包含 UUID 格式的 id；--create 只按该 UUID 创建或复用服务端项目，不会分配或回写 id。",
     archiveCreateFailed: "创建归档失败：{{details}}",
     workflowNotBound: "Workflow \"{{workflow}}\" 尚未绑定服务端 UUID。请先运行 `steamharness workspace upload {{workflow}} --create` 创建或绑定。",
     projectCreationFailed: "创建 Workflow 项目失败。",

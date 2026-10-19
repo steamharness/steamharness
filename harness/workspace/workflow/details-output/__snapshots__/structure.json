@@ -1,5 +1,5 @@
 {
-  "workflowName": "details-output",
+  "projectName": "details-output",
   "projectType": "workflow",
   "files": [
     "index.ts",
@@ -24,7 +24,7 @@
     {
       "id": "main",
       "title": "Details Output",
-      "workflowName": "details-output",
+      "projectName": "details-output",
       "params": [
         {
           "name": "icon",

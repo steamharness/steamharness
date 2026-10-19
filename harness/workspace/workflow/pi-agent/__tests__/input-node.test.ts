@@ -109,7 +109,7 @@ function createNodeContext(
     conversation: createDisabledWorkflowConversationContext(),
     tokenUsage: createDisabledWorkflowTokenUsageContext(),
     toolPermissions: createWorkflowToolPermissionContext({
-      workflowName: "pi-agent",
+      projectName: "pi-agent",
       runId: "pi-agent-test-run",
       definitions: [
         { name: "read", enabled: true, autoApprove: true },

@@ -803,7 +803,7 @@ function buildDisplaySnapshot(input: {
   }
 
   return {
-    workflowName: "output-showcase",
+    projectName: "output-showcase",
     projectName: input.projectName,
     confirmed: input.confirmed,
     toolSummary: input.toolSummary,

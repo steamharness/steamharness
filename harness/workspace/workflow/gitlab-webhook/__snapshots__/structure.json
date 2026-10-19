@@ -1,5 +1,5 @@
 {
-  "workflowName": "gitlab-webhook",
+  "projectName": "gitlab-webhook",
   "projectType": "conversation",
   "files": [
     "index.ts",

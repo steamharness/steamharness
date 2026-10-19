@@ -40,7 +40,7 @@ export function normalizeFileParamReference(value: unknown): ManagedFileReferenc
     size: typeof value.size === "number" && Number.isFinite(value.size) ? value.size : 0,
     kind: value.kind === "image" || mimeType.startsWith("image/") ? "image" : "file",
     storage,
-    workflowId: typeof value.workflowId === "string" ? value.workflowId : undefined,
+    projectId: typeof value.projectId === "string" ? value.projectId : undefined,
     conversationId: typeof value.conversationId === "string" ? value.conversationId : undefined,
     createdAt: typeof value.createdAt === "string" ? value.createdAt : new Date().toISOString(),
   };

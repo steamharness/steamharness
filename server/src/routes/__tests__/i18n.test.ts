@@ -131,7 +131,7 @@ test("storage declaration and PersistentValue binding errors are localized", () 
         undefined,
         {
           messageKey: "server:projectDataStorageDeclarationRequired",
-          params: { workflowId: "project-1" },
+          params: { projectId: "project-1" },
         },
       ),
       zh,
@@ -147,12 +147,12 @@ test("storage declaration and PersistentValue binding errors are localized", () 
         undefined,
         {
           messageKey: "server:persistentValueProjectBindingMismatch",
-          params: { projectId: "project-1", workflowName: "other", field: "entry.workflowName" },
+          params: { projectId: "project-1", projectName: "other", field: "entry.projectName" },
         },
       ),
       zh,
     ),
-    "访问非全局 PersistentValue 时，entry.workflowName 必须与 projectId 一致。",
+    "访问非全局 PersistentValue 时，entry.projectName 必须与 projectId 一致。",
   );
   assert.equal(
     localizeServerMessage(

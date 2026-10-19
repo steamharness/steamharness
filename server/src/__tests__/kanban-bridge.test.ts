@@ -10,17 +10,17 @@ import { join } from "node:path";
 test("Kanban files preserve binary bytes and reject other projects and conversation attachments", async () => {
   const root = await mkdtemp(join(tmpdir(), "kanban-files-"));
   const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 255]);
-  const metadata = { id: "wf_abc123", name: "map.png", mimeType: "image/png", size: bytes.length, kind: "image", storage: "server", workflowId: "demo", createdAt: "2026-10-08T00:00:00Z" };
+  const metadata = { id: "wf_abc123", name: "map.png", mimeType: "image/png", size: bytes.length, kind: "image", storage: "server", projectId: "demo", createdAt: "2026-10-08T00:00:00Z" };
   let owner = "demo";
   let conversationId: string | undefined;
   let deleted = false;
   const storage = {
-    async saveManagedFiles(input: { workflowName: string; files: Array<{ buffer: Buffer }> }) {
-      assert.equal(input.workflowName, "demo");
+    async saveManagedFiles(input: { projectName: string; files: Array<{ buffer: Buffer }> }) {
+      assert.equal(input.projectName, "demo");
       assert.deepEqual(input.files[0]!.buffer, bytes);
       return [metadata];
     },
-    async getManagedFile() { return { metadata: { ...metadata, workflowId: owner, conversationId }, filePath: join(root, "content") }; },
+    async getManagedFile() { return { metadata: { ...metadata, projectId: owner, conversationId }, filePath: join(root, "content") }; },
     async deleteManagedFile() { deleted = true; },
   } as unknown as Storage;
   const invoke = (operation: "files.createFile" | "files.readFile" | "files.deleteFile", input: Record<string, unknown>) => (
@@ -56,8 +56,8 @@ test("server Kanban bridge dispatches the complete project data API", async () =
       calls.push({ operation: "kv.set", input });
       return { ok: true };
     },
-    listKnowledgeDocuments: async (workflowName: string, input: unknown) => {
-      calls.push({ operation: "knowledge.list", input: { workflowName, input } });
+    listKnowledgeDocuments: async (projectName: string, input: unknown) => {
+      calls.push({ operation: "knowledge.list", input: { projectName, input } });
       return { items: [], hasMore: false, total: 0 };
     },
     getKnowledgeDocument: async (input: unknown) => {
@@ -102,13 +102,13 @@ test("server Kanban bridge dispatches the complete project data API", async () =
   assert.deepEqual(calls, [
     { operation: "kv.get", input: { storageKind: "kv", scope: "project", projectId: "demo", key: "board" } },
     { operation: "kv.set", input: { storageKind: "kv", scope: "project", projectId: "demo", key: "board", value: { version: 1 }, source: { projectId: "demo" } } },
-    { operation: "knowledge.list", input: { workflowName: "demo", input: { pageSize: 20 } } },
-    { operation: "knowledge.get", input: { workflowName: "demo", documentId: "guide" } },
-    { operation: "knowledge.create", input: { workflowName: "demo", id: "guide", title: "Guide", markdown: "# Guide" } },
-    { operation: "knowledge.edit", input: { workflowName: "demo", documentId: "guide", title: "Updated" } },
-    { operation: "knowledge.delete", input: { workflowName: "demo", documentId: "guide" } },
-    { operation: "knowledge.search", input: { workflowName: "demo", query: "Guide", pageSize: 20 } },
-    { operation: "knowledge.lines", input: { workflowName: "demo", documentId: "guide", startLine: 1, endLine: 1 } },
+    { operation: "knowledge.list", input: { projectName: "demo", input: { pageSize: 20 } } },
+    { operation: "knowledge.get", input: { projectName: "demo", documentId: "guide" } },
+    { operation: "knowledge.create", input: { projectName: "demo", id: "guide", title: "Guide", markdown: "# Guide" } },
+    { operation: "knowledge.edit", input: { projectName: "demo", documentId: "guide", title: "Updated" } },
+    { operation: "knowledge.delete", input: { projectName: "demo", documentId: "guide" } },
+    { operation: "knowledge.search", input: { projectName: "demo", query: "Guide", pageSize: 20 } },
+    { operation: "knowledge.lines", input: { projectName: "demo", documentId: "guide", startLine: 1, endLine: 1 } },
   ]);
 });
 
@@ -172,7 +172,7 @@ test("server Kanban bridge reads a confirmed fixed-target related project", asyn
   }, { target: "1.2.3" }), { schemaVersion: 3 });
   assert.deepEqual(calls, [
     { resolve: {
-      workflowName: "kanban-project",
+      projectName: "kanban-project",
       target: "1.2.3",
       alias: "stocks",
     } },

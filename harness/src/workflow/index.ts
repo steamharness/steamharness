@@ -811,7 +811,7 @@ function createReadonlyDisabledConversationState(
 
   return {
     conversationId: conversation.conversationId ?? "disabled",
-    workflowName: "disabled",
+    projectName: "disabled",
     createdAt: now,
     updatedAt: now,
     messages: [],
@@ -821,9 +821,9 @@ function createReadonlyDisabledConversationState(
 
 function createRunWorkflowIsolatedKVContext(
   kv: KVContext,
-  childWorkflowName: string,
+  childProjectName: string,
 ): KVContext {
-  const workflowPrefix = `runWorkflow:${childWorkflowName}`;
+  const workflowPrefix = `runWorkflow:${childProjectName}`;
   const conversationPrefix = `${workflowPrefix}:conversation`;
   const project = createPrefixedKVNamespace(kv, workflowPrefix);
 
@@ -905,14 +905,14 @@ function createWorkflowCallExecutionInfo<Input, Output>(options: {
   outputVisibility: "visible" | "hidden";
   outputBridge?: RunWorkflowOutputBridge;
 }): {
-  workflowName: string;
+  projectName: string;
   conversationMode: RunWorkflowConversationMode;
   kvMode: RunWorkflowKVMode;
   outputVisibility: "visible" | "hidden";
   outputBridge: boolean;
 } {
   return {
-    workflowName: options.workflow.name,
+    projectName: options.workflow.name,
     conversationMode: options.conversationMode,
     kvMode: options.kvMode,
     outputVisibility: options.outputVisibility,

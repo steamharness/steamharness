@@ -19,8 +19,8 @@ test("public project card image route serves immutable WebP assets", async () =>
 
   const app = express();
   app.use("/project-card-images", createProjectCardImageRouter({
-    getProjectCardImage: async (workflowId, requestedHash) => {
-      assert.equal(workflowId, "00000000-0000-4000-8000-000000000001");
+    getProjectCardImage: async (projectId, requestedHash) => {
+      assert.equal(projectId, "00000000-0000-4000-8000-000000000001");
       assert.equal(requestedHash, hash);
       return { filePath, size: body.byteLength, hash };
     },

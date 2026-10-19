@@ -93,7 +93,7 @@ All notable public changes of this release unit are recorded here.
 - Server only runs projects and serves server data when `dataStorage.mode` is `server` or `both`.
   Migration: `local` and undeclared projects must become `server` or `both`, otherwise every entry point returns a structured `409`.
 - Core and CLI move to exact `0.2.0` dependencies and PersistentValue APIs must carry `projectId`.
-  Migration: non-global namespaces, entries, and sources must set `workflowName` to the project ID.
+  Migration: non-global namespaces, entries, and sources must set `projectName` to the project ID.
 - Server removes Supabase entirely; accounts, sessions, and invitations move to native PostgreSQL.
   Migration: account data has to be migrated once into Server's own PostgreSQL database.
 - Desktop login and run sources standardize on `desktop`, and the old `app` source is no longer accepted.

@@ -65,7 +65,7 @@ export function ProjectSettingsTab({ project, busy, onUpdateVisibility, onNaviga
           <CardContent>
             <dl className="grid min-w-0 grid-cols-1 gap-4 text-sm sm:grid-cols-2">
               <div className="min-w-0 sm:col-span-2">
-                <dt className="text-muted-foreground">{t("projectSettingsBaselineWorkflowId")}</dt>
+                <dt className="text-muted-foreground">{t("projectSettingsBaselineProjectId")}</dt>
                 <dd className="mt-1 flex min-w-0 items-center gap-2">
                   <span className="min-w-0 break-all font-mono">{project.id}</span>
                   <CopyButton value={project.id}>{copied => copied ? <Check /> : <Copy />}</CopyButton>

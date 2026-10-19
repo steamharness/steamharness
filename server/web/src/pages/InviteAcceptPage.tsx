@@ -9,7 +9,7 @@ import { isApiSuccess, type InvitationAcceptResult, type InvitationLookupResult 
 interface InviteAcceptPageProps {
   token: string;
   onNavigateProjects: () => void;
-  onNavigateProject: (workflowId: string) => void;
+  onNavigateProject: (projectId: string) => void;
   onNavigateLogin: () => void;
 }
 
@@ -52,7 +52,7 @@ export function InviteAcceptPage({
     setSignedIn(true);
     const lookup = res.data;
     if (lookup.invitation.acceptedAt) {
-      setState({ phase: "accepted", result: { invitation: lookup.invitation, member: { workflowId: lookup.project.id, userId: "", role: lookup.invitation.role, createdAt: lookup.invitation.acceptedAt } }, projectId: lookup.project.id });
+      setState({ phase: "accepted", result: { invitation: lookup.invitation, member: { projectId: lookup.project.id, userId: "", role: lookup.invitation.role, createdAt: lookup.invitation.acceptedAt } }, projectId: lookup.project.id });
       return;
     }
     if (lookup.invitation.revokedAt) setState({ phase: "revoked" });
@@ -81,7 +81,7 @@ export function InviteAcceptPage({
       else setState({ phase: "error", message });
       return;
     }
-    setState({ phase: "accepted", result: res.data, projectId: res.data.invitation.workflowId });
+    setState({ phase: "accepted", result: res.data, projectId: res.data.invitation.projectId });
   }
 
   if (state.phase === "loading") {
@@ -168,7 +168,7 @@ export function InviteAcceptPage({
       <CenteredCard>
         <CardContent className="flex flex-col items-center gap-3 py-10">
           <CheckCircle2 className="size-8 text-foreground" />
-          <div className="text-base font-semibold text-foreground">{t("inviteSuccessJoined", { workflowId: state.result.invitation.workflowId })}</div>
+          <div className="text-base font-semibold text-foreground">{t("inviteSuccessJoined", { projectId: state.result.invitation.projectId })}</div>
           <div className="text-sm text-muted-foreground">{t("inviteRoleLabel")}{state.result.invitation.role}</div>
           <div className="flex gap-2 pt-2">
             <Button onClick={() => onNavigateProject(state.projectId)}>{t("inviteOpenProject")}</Button>

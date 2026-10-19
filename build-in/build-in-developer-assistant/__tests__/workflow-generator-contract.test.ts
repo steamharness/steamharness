@@ -142,7 +142,7 @@ describe("workflow-generator contract", () => {
     const structure = inspectWorkflowStructure({
       cwd: exampleDir,
       workflowDir: exampleDir,
-      workflowName: "assistant",
+      projectName: "assistant",
     });
 
     expect(structure.diagnostics.violations).toEqual([]);
@@ -212,7 +212,7 @@ describe("workflow-generator contract", () => {
     const directory = await mkdtemp(path.join(tmpdir(), "workflow-standard-input-"));
     try {
       execFileSync("python3", [path.join(skillRoot, "scripts/create_workflow.py"), "standard-input", "--project-type", "conversation", "--dir", directory], { encoding: "utf8" });
-      const structure = inspectWorkflowStructure({ cwd: directory, workflowName: "standard-input", workflowDir: directory });
+      const structure = inspectWorkflowStructure({ cwd: directory, projectName: "standard-input", workflowDir: directory });
       expect(structure.diagnostics.violations).toEqual([]);
       expect(structure.params ?? []).toEqual([]);
       expect(structure.conversation).toBeUndefined();

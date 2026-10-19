@@ -1,5 +1,5 @@
 {
-  "workflowName": "output-showcase",
+  "projectName": "output-showcase",
   "projectType": "workflow",
   "files": [
     "index.ts",
@@ -66,7 +66,7 @@
     {
       "id": "main",
       "title": "Output Showcase",
-      "workflowName": "output-showcase",
+      "projectName": "output-showcase",
       "params": [
         {
           "name": "projectName",

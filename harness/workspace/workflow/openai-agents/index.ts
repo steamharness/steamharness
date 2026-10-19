@@ -513,7 +513,7 @@ async function runLiveAgent(
   const toolEvents: AgentToolCallSummary[] = [];
   const facts = [...input.facts];
   const sdkContext = {
-    workflowName: "openai-agents",
+    projectName: "openai-agents",
     conversationId: input.conversation.conversationId,
     messages: input.conversation.messages,
     runCount: input.runCount,
@@ -668,7 +668,7 @@ export function createOpenAIAgentTools(input: {
   input: OpenAIAgentsRunInput;
   context: NodeRunContext;
   sdkContext: {
-    workflowName: string;
+    projectName: string;
     conversationId?: string;
     messages: ConversationMessageSnapshot[];
     runCount: number;
@@ -1926,7 +1926,7 @@ function upsertFact(facts: AgentFact[], fact: AgentFact): AgentFact {
 }
 
 function summarizeAgentContext(context: {
-  workflowName: string;
+  projectName: string;
   conversationId?: string;
   messages: ConversationMessageSnapshot[];
   runCount: number;
@@ -1935,7 +1935,7 @@ function summarizeAgentContext(context: {
   facts: AgentFact[];
 }) {
   return {
-    workflowName: context.workflowName,
+    projectName: context.projectName,
     conversationId: context.conversationId,
     recentMessages: context.messages,
     runCount: context.runCount,

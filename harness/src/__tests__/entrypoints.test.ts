@@ -111,7 +111,7 @@ test("workflow entrypoints expose group metadata in a flat structure and run ind
       title: entrypoint.title,
       description: entrypoint.description,
       group: entrypoint.group,
-      workflowName: entrypoint.workflowName,
+      projectName: entrypoint.projectName,
       params: entrypoint.params?.map((param) => param.name),
       resolver: entrypoint.paramResolver,
     })), [
@@ -120,7 +120,7 @@ test("workflow entrypoints expose group metadata in a flat structure and run ind
         title: "Complete flow",
         description: "Runs the complete flow",
         group: { id: "operations", title: "Operations", order: 10 },
-        workflowName: "main-flow",
+        projectName: "main-flow",
         params: ["message"],
         resolver: undefined,
       },
@@ -129,7 +129,7 @@ test("workflow entrypoints expose group metadata in a flat structure and run ind
         title: "Validate data",
         description: "Only validates input",
         group: { id: "operations", title: "Operations", order: 10 },
-        workflowName: "validate-flow",
+        projectName: "validate-flow",
         params: ["rule"],
         resolver: { enabled: true },
       },
@@ -253,21 +253,21 @@ test("workflow entrypoint structure resolves imported workflows and keeps regist
     assert.deepEqual(structure.entrypoints?.map((entrypoint) => ({
       id: entrypoint.id,
       hasGroup: Object.hasOwn(entrypoint, "group"),
-      workflowName: entrypoint.workflowName,
+      projectName: entrypoint.projectName,
       registry: entrypoint.registry?.map((item) => item.name),
       executionNodes: entrypoint.execution.children.length,
     })), [
       {
         id: "main",
         hasGroup: false,
-        workflowName: "main-flow",
+        projectName: "main-flow",
         registry: ["shared-debug"],
         executionNodes: 1,
       },
       {
         id: "validate",
         hasGroup: false,
-        workflowName: "validate-flow",
+        projectName: "validate-flow",
         registry: ["shared-debug"],
         executionNodes: 1,
       },
@@ -335,11 +335,11 @@ test("workflow entrypoint structure resolves wrapped definitions and inline defa
     assert.deepEqual(structure.diagnostics.violations, []);
     assert.deepEqual(structure.entrypoints?.map((entrypoint) => ({
       id: entrypoint.id,
-      workflowName: entrypoint.workflowName,
+      projectName: entrypoint.projectName,
       executionNodes: entrypoint.execution.children.length,
     })), [
-      { id: "main", workflowName: "wrapped-flow", executionNodes: 1 },
-      { id: "inline-default", workflowName: "inline-default-flow", executionNodes: 1 },
+      { id: "main", projectName: "wrapped-flow", executionNodes: 1 },
+      { id: "inline-default", projectName: "inline-default-flow", executionNodes: 1 },
     ]);
   } finally {
     await rm(workflowDir, { recursive: true, force: true });
@@ -437,7 +437,7 @@ test("conversation executors reject entrypoint selection without changing their 
 
     const conversation = await runLocalWorkflowWithReport({ workflowDir });
     assert.equal(conversation.status, "success");
-    assert.equal(conversation.workflowName, "conversation-flow");
+    assert.equal(conversation.projectName, "conversation-flow");
     assert.equal(conversation.entrypointId, undefined);
     assert.equal(conversation.entrypointTitle, undefined);
 
@@ -459,8 +459,8 @@ test("conversation executors reject entrypoint selection without changing their 
 
 test("workspace runtime layers prepare before inspection and started events include the selected entrypoint", async () => {
   const cwd = await mkdtemp(path.join(os.tmpdir(), "steamharness-entrypoint-runtime-"));
-  const workflowName = "runtime-order";
-  const workflowDir = path.join(cwd, "workspace", "workflow", workflowName);
+  const projectName = "runtime-order";
+  const workflowDir = path.join(cwd, "workspace", "workflow", projectName);
   let layerPrepared = false;
   const events: Array<{ type: string; entrypointId?: string; entrypointTitle?: string }> = [];
 
@@ -468,7 +468,7 @@ test("workspace runtime layers prepare before inspection and started events incl
     await mkdir(workflowDir, { recursive: true });
     await writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
       id: "11111111-1111-4111-8111-111111111111",
-      name: workflowName,
+      name: projectName,
       version: "0.1.0",
       type: "module",
       steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
@@ -492,7 +492,7 @@ test("workspace runtime layers prepare before inspection and started events incl
 
     const report = await runWorkspaceWorkflowWithReport({
       cwd,
-      workflowName,
+      projectName,
       layers: [{
         name: "runtime-order-test",
         onBeforeRun() {
@@ -512,7 +512,7 @@ test("workspace runtime layers prepare before inspection and started events incl
     assert.deepEqual(events.filter((event) => event.type === "workflow_started"), [{
       type: "workflow_started",
       runId: report.runId,
-      workflowName,
+      projectName,
       entrypointId: "main",
       entrypointTitle: "Main entrypoint",
       startedAt: report.startedAt,
@@ -683,7 +683,7 @@ test("workflow entrypoint structure rules reject legacy and dynamic declarations
     /must reference a workflow defined with workflow\.defineWorkflow/.test(violation.message)
   )), true);
 
-  const constantWorkflowName = validateWorkflowScriptSource(`
+  const constantProjectName = validateWorkflowScriptSource(`
     const STEAMHARNESS_NAME = "main-flow";
     const mainWorkflow = workflow.defineWorkflow({
       name: STEAMHARNESS_NAME,
@@ -700,7 +700,7 @@ test("workflow entrypoint structure rules reject legacy and dynamic declarations
       })],
     });
   `);
-  assert.equal(constantWorkflowName.some((violation) => (
+  assert.equal(constantProjectName.some((violation) => (
     violation.type === "invalid_workflow_entrypoints"
   )), false);
 });

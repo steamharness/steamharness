@@ -55,7 +55,7 @@ export interface FileReference {
   size: number;
   kind: "image" | "file";
   storage: "local" | "server" | "path" | "url";
-  workflowId?: string;
+  projectId?: string;
   conversationId?: string;
   createdAt: string;
   url?: string;

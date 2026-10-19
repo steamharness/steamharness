@@ -466,8 +466,8 @@ export interface AgentNodeOptions extends AgentRuntimeOptions {
 export interface AgentProjectOptions extends AgentNodeOptions {
   /** Display name of the generated project. */
   projectName?: string;
-  /** Workflow name used for the executor and its node names. Defaults to `agent`. */
-  workflowName?: string;
+  /** Name used for the executor and its node names. Defaults to `agent`. */
+  executorName?: string;
   /** Assistant output item id; must match `conversation.openai.outputItemId`. */
   outputItemId?: string;
   params?: ConversationParamDeclaration[];

@@ -76,7 +76,7 @@ export interface McpUserInputRequest {
 
 export interface McpExecutionReport {
   runId: string;
-  workflowName?: string;
+  projectName?: string;
   entrypointId?: string;
   entrypointTitle?: string;
   status: McpRunStatus;
@@ -102,7 +102,7 @@ export interface McpManagedFileReference {
   size: number;
   kind: "image" | "file";
   storage: "local" | "server";
-  workflowId?: string;
+  projectId?: string;
   conversationId?: string;
   createdAt: string;
 }

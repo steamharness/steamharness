@@ -314,7 +314,7 @@ test("execution reports preserve ring display declarations and raw values", () =
     display: { type: "ring", placement: "composer-right" },
   }] });
   const report = createWorkflowExecutionReport({
-    runId: "run-quota", workflowName: "quota", status: "success",
+    runId: "run-quota", projectName: "quota", status: "success",
     startedAt: new Date("2026-10-14T00:00:00.000Z"), endedAt: new Date("2026-10-14T00:00:01.000Z"),
     result: { ok: true, data: payload }, nodes: [],
     outputs: [{ order: 1, nodeOrder: 1, nodeName: "output", output: payload }],
@@ -344,7 +344,7 @@ test("final execution reports retain video content types during normalization", 
 
   const report = createWorkflowExecutionReport({
     runId: "run-video",
-    workflowName: "video",
+    projectName: "video",
     startedAt,
     endedAt,
     status: "success",

@@ -146,7 +146,7 @@ export class McpCliRunner implements McpRunner {
   private readonly resumeStates = new Map<string, McpResumeState>();
   private readonly activeChildren = new Set<ChildProcessWithoutNullStreams>();
   private readonly terminationTimers = new Map<ChildProcessWithoutNullStreams, ReturnType<typeof setTimeout>>();
-  private workflowName = "workflow";
+  private projectName = "workflow";
 
   constructor(
     private readonly options: McpCliOptions,
@@ -165,7 +165,7 @@ export class McpCliRunner implements McpRunner {
       throw new Error(`Project type "${String(structure.projectType)}" cannot be exposed through MCP.`);
     }
     forwardProjectStdout(result.stdout.slice(0, extracted.startIndex));
-    this.workflowName = structure.workflow.name;
+    this.projectName = structure.workflow.name;
     return structure;
   }
 
@@ -264,7 +264,7 @@ export class McpCliRunner implements McpRunner {
     const endedAt = new Date().toISOString();
     const report = createSyntheticWorkflowMcpReport({
       runId,
-      workflowName: this.workflowName,
+      projectName: this.projectName,
       entrypointId: state.entrypointId,
       entrypointTitle: state.entrypointTitle,
       status: "aborted",
@@ -316,7 +316,7 @@ export class McpCliRunner implements McpRunner {
       stderr: previousStderr,
       report: createSyntheticWorkflowMcpReport({
         runId,
-        workflowName: this.workflowName,
+        projectName: this.projectName,
         entrypointId: options.entrypointId,
         entrypointTitle: options.entrypointTitle,
         status: "running",
@@ -395,7 +395,7 @@ export class McpCliRunner implements McpRunner {
       const persistedStderr = appendDiagnostic(stderr, message);
       const report = createSyntheticWorkflowMcpReport({
         runId,
-        workflowName: this.workflowName,
+        projectName: this.projectName,
         entrypointId: options.entrypointId,
         entrypointTitle: options.entrypointTitle,
         status: aborted ? "aborted" : "failed",
@@ -557,7 +557,7 @@ export function createWorkflowMcpDesktopAuditWriter(options: {
 
 function createSyntheticWorkflowMcpReport(options: {
   runId: string;
-  workflowName: string;
+  projectName: string;
   entrypointId: string;
   entrypointTitle: string;
   status: McpExecutionReport["status"];
@@ -595,7 +595,7 @@ function createSyntheticWorkflowMcpReport(options: {
   return {
     ...previous,
     runId: options.runId,
-    workflowName: options.workflowName,
+    projectName: options.projectName,
     entrypointId: options.entrypointId,
     entrypointTitle: options.entrypointTitle,
     status: options.status,

@@ -47,7 +47,7 @@ test("video paths and managed references retain MIME type and bytes through file
       await assert.rejects(() => resolved.toLLMImagePart(), /not an image/);
     }
 
-    const serverStore = createServerWorkflowFileStore({ rootDir: path.join(rootDir, "managed"), workflowName: "demo" });
+    const serverStore = createServerWorkflowFileStore({ rootDir: path.join(rootDir, "managed"), projectName: "demo" });
     const audio = await serverStore.createFile!({ name: "recording.webm", mimeType: "audio/webm", buffer: Buffer.from("audio") });
     assert.equal(audio.mimeType, "audio/webm");
     assert.equal((await serverStore.resolveFile(audio)).mimeType, "audio/webm");
@@ -62,7 +62,7 @@ test("server workflow file store writes generated files into the server file nam
   try {
     const store = createServerWorkflowFileStore({
       rootDir,
-      workflowName: "demo",
+      projectName: "demo",
       conversationId: "thread-1",
     });
 
@@ -78,7 +78,7 @@ test("server workflow file store writes generated files into the server file nam
     assert.equal(reference.mimeType, "image/png");
     assert.equal(reference.kind, "image");
     assert.equal(reference.storage, "server");
-    assert.equal(reference.workflowId, "demo");
+    assert.equal(reference.projectId, "demo");
     assert.equal(reference.conversationId, "thread-1");
     assert.equal(reference.url, `/api/projects/files/${encodeURIComponent(reference.id)}`);
     assert.equal(await readFile(path.join(rootDir, reference.id, "content"), "utf8"), "png-bytes");
@@ -119,7 +119,7 @@ test("remote workflow file store uploads generated files through the server file
         size: 3,
         kind: "image",
         storage: "server",
-        workflowId: "demo",
+        projectId: "demo",
         createdAt: "2026-06-03T00:00:00.000Z",
       }],
     }), { status: 200 });
@@ -129,7 +129,7 @@ test("remote workflow file store uploads generated files through the server file
     const store = new RemoteWorkflowFileStore({
       serverUrl: "http://localhost:7125/",
       token: "token",
-      workflowName: "demo",
+      projectName: "demo",
       conversationId: "thread-1",
     });
 
@@ -168,7 +168,7 @@ test("remote workflow file store from env falls back to saved CLI auth file", as
       env: {
         STEAMHARNESS_CLI_AUTH_DIR: authDir,
       } as NodeJS.ProcessEnv,
-      workflowName: "demo",
+      projectName: "demo",
       conversationId: "thread-1",
     });
 
@@ -187,10 +187,10 @@ test("remote uploaded files are read with authentication from the managed endpoi
     return new Response(bytes, { status: 200 });
   }) as typeof fetch;
   try {
-    const store = new RemoteWorkflowFileStore({ serverUrl: "https://server.example/", token: "file-token", workflowName: "demo" });
+    const store = new RemoteWorkflowFileStore({ serverUrl: "https://server.example/", token: "file-token", projectName: "demo" });
     const reference = {
       id: "wf_abc123", name: "image.png", mimeType: "image/png", size: bytes.length,
-      kind: "image" as const, storage: "server" as const, workflowId: "demo", createdAt: "2026-10-08T00:00:00Z",
+      kind: "image" as const, storage: "server" as const, projectId: "demo", createdAt: "2026-10-08T00:00:00Z",
       url: "https://untrusted.example/image.png", path: "/private/file",
     };
     const file = await store.resolveFile(reference);
@@ -198,7 +198,7 @@ test("remote uploaded files are read with authentication from the managed endpoi
     assert.equal(calls[0]?.url, "https://server.example/api/projects/files/wf_abc123");
     assert.deepEqual(calls[0]?.init?.headers, { Authorization: "Bearer file-token" });
     assert.equal(calls[0]?.init?.redirect, "error");
-    await assert.rejects(store.resolveFile({ ...reference, workflowId: "other-project" }), /another project/);
+    await assert.rejects(store.resolveFile({ ...reference, projectId: "other-project" }), /another project/);
     assert.equal(calls.length, 1);
   } finally {
     globalThis.fetch = originalFetch;
@@ -209,10 +209,10 @@ test("remote file read failures do not return an API error document as file byte
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () => new Response(JSON.stringify({ errCode: 403, errMessage: "File access denied." }), { status: 403 })) as typeof fetch;
   try {
-    const store = new RemoteWorkflowFileStore({ serverUrl: "https://server.example", token: "token", workflowName: "demo" });
+    const store = new RemoteWorkflowFileStore({ serverUrl: "https://server.example", token: "token", projectName: "demo" });
     const file = await store.resolveFile({
       id: "wf_abc123", name: "image.png", mimeType: "image/png", size: 4,
-      kind: "image", storage: "server", workflowId: "demo", createdAt: "2026-10-08T00:00:00Z",
+      kind: "image", storage: "server", projectId: "demo", createdAt: "2026-10-08T00:00:00Z",
     });
     await assert.rejects(file.readBuffer(), /File access denied/);
   } finally {

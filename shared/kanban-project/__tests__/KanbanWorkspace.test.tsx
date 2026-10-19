@@ -163,7 +163,7 @@ describe("KanbanWorkspace", () => {
       requestId: "request-forged-project",
       operation: "kv.getValue",
       input: { key: "board" },
-      workflowName: "another-project",
+      projectName: "another-project",
     });
 
     await waitFor(() => expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({

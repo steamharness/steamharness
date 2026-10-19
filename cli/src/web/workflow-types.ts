@@ -131,7 +131,7 @@ export interface Tool { name: string; label?: string; description?: string; enab
 export type ToolPolicies = Record<string, { enabled?: boolean; autoApprove?: boolean }>;
 export interface Attachment {
   id: string; name: string; mimeType: string; size: number; kind: 'image' | 'file';
-  storage: 'local' | 'server'; workflowId?: string; conversationId?: string; createdAt: string;
+  storage: 'local' | 'server'; projectId?: string; conversationId?: string; createdAt: string;
   path?: string; url?: string; previewUrl?: string;
 }
 export interface Upload { name: string; mimeType?: string; data?: string; path?: string }

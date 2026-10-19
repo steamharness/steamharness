@@ -79,7 +79,7 @@ export function createLocalWorkflowMcpFileResolver(options: {
           size: copiedSize,
           kind: mimeType.startsWith("image/") ? "image" : "file",
           storage: "local",
-          workflowId: context.projectId,
+          projectId: context.projectId,
           createdAt,
         };
         throwIfAborted(context.signal);
@@ -161,7 +161,7 @@ export function createServerWorkflowMcpFileResolver(options: {
         !metadata ||
         metadata.id !== value.id ||
         metadata.storage !== "server" ||
-        metadata.workflowId !== context.projectId
+        metadata.projectId !== context.projectId
       ) {
         throw new McpInvalidParamsError(
           `File "${value.id}" does not belong to project "${context.projectId}".`,
@@ -190,7 +190,7 @@ function normalizeAuthoritativeServerFile(
     size: metadata.size,
     kind: metadata.kind,
     storage: "server",
-    workflowId: projectId,
+    projectId: projectId,
     conversationId: metadata.conversationId,
     createdAt: metadata.createdAt,
   };

@@ -13,12 +13,12 @@ export function createKanbanPreviewAssetRouter(storage: Storage): Router {
   const router = Router();
 
   router.get(
-    "/projects/:workflowName/kanban/previews/:capability/:nonce/:target/*",
+    "/projects/:projectName/kanban/previews/:capability/:nonce/:target/*",
     asyncHandler(async (req, res) => {
       // The short-lived capability is the credential for sandboxed
       // iframe subresources, which cannot inherit the App's authenticated session.
       const asset = await storage.getKanbanAsset({
-        workflowName: req.params.workflowName,
+        projectName: req.params.projectName,
         target: req.params.target,
         previewCapabilityToken: req.params.capability,
         assetPath: req.params[0] ?? "",

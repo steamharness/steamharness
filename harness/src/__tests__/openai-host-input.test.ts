@@ -45,13 +45,13 @@ test("OpenAI host input is typed, rejects malformed OpenAI payloads, and ignores
 
 test("local and workspace execution plus param resolution receive hostInput", async () => {
   const cwd = await mkdtemp(path.join(os.tmpdir(), "steamharness-openai-host-input-"));
-  const workflowName = "openai-host-input";
-  const workflowDir = path.join(cwd, "workspace", "workflow", workflowName);
+  const projectName = "openai-host-input";
+  const workflowDir = path.join(cwd, "workspace", "workflow", projectName);
   try {
     await mkdir(workflowDir, { recursive: true });
     await writeFile(path.join(workflowDir, "package.json"), JSON.stringify({
       id: hostInput.projectId,
-      name: workflowName,
+      name: projectName,
       version: "0.1.0",
       type: "module",
       steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
@@ -94,7 +94,7 @@ test("local and workspace execution plus param resolution receive hostInput", as
     `, "utf8");
 
     const local = await runLocalWorkflowWithReport({ workflowDir, hostInput });
-    const workspace = await runWorkspaceWorkflowWithReport({ cwd, workflowName, hostInput });
+    const workspace = await runWorkspaceWorkflowWithReport({ cwd, projectName, hostInput });
     for (const report of [local, workspace]) {
       assert.equal(report.status, "success");
       assert.match(JSON.stringify(report.result), /resp_test/u);
@@ -111,7 +111,7 @@ test("local and workspace execution plus param resolution receive hostInput", as
     assert.deepEqual(await resolveLocalWorkflowParams({ workflowDir, hostInput, request }), {
       params: { modelEcho: { value: "provider/model" } },
     });
-    assert.deepEqual(await resolveWorkspaceWorkflowParams({ cwd, workflowName, hostInput, request }), {
+    assert.deepEqual(await resolveWorkspaceWorkflowParams({ cwd, projectName, hostInput, request }), {
       params: { modelEcho: { value: "provider/model" } },
     });
   } finally {

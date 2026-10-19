@@ -57,7 +57,7 @@ export type RuntimeEvent =
   | {
       type: "workflow_started";
       runId: string;
-      workflowName: string;
+      projectName: string;
       entrypointId?: string;
       entrypointTitle?: string;
       startedAt: Date;
@@ -65,7 +65,7 @@ export type RuntimeEvent =
   | {
       type: "workflow_succeeded";
       runId: string;
-      workflowName: string;
+      projectName: string;
       entrypointId?: string;
       entrypointTitle?: string;
       endedAt: Date;
@@ -74,7 +74,7 @@ export type RuntimeEvent =
   | {
       type: "workflow_failed";
       runId: string;
-      workflowName: string;
+      projectName: string;
       entrypointId?: string;
       entrypointTitle?: string;
       endedAt: Date;
@@ -84,7 +84,7 @@ export type RuntimeEvent =
   | {
       type: "workflow_aborted";
       runId: string;
-      workflowName: string;
+      projectName: string;
       entrypointId?: string;
       entrypointTitle?: string;
       endedAt: Date;
@@ -94,7 +94,7 @@ export type RuntimeEvent =
   | {
       type: "workflow_timed_out";
       runId: string;
-      workflowName: string;
+      projectName: string;
       entrypointId?: string;
       entrypointTitle?: string;
       endedAt: Date;
@@ -104,7 +104,7 @@ export type RuntimeEvent =
   | {
       type: "conversation_title_updated";
       runId: string;
-      workflowName: string;
+      projectName: string;
       conversationId: string;
       title?: string;
       updatedAt: Date;
@@ -112,7 +112,7 @@ export type RuntimeEvent =
   | {
       type: "token_usage_updated";
       runId: string;
-      workflowName: string;
+      projectName: string;
       conversationId?: string;
       usage: TokenUsageAggregate;
       updatedAt: Date;
@@ -120,29 +120,29 @@ export type RuntimeEvent =
   | ({
       type: "user_input_requested";
       runId: string;
-      workflowName: string;
+      projectName: string;
     } & UserInputRequest)
   | ({
       type: "user_input_resolved";
       runId: string;
-      workflowName: string;
+      projectName: string;
     } & UserInputResolved)
   | {
       type: "timer_started";
       runId: string;
-      workflowName: string;
+      projectName: string;
       timer: TimerRecord;
     }
   | {
       type: "timer_finished";
       runId: string;
-      workflowName: string;
+      projectName: string;
       timer: TimerRecord;
     }
   | {
       type: "node_started";
       runId: string;
-      workflowName: string;
+      projectName: string;
       executionId: string;
       nodeName: string;
       kind: NodeExecutionKind;
@@ -152,7 +152,7 @@ export type RuntimeEvent =
   | {
       type: "node_chunk";
       runId: string;
-      workflowName: string;
+      projectName: string;
       executionId: string;
       nodeName: string;
       kind: NodeExecutionKind;
@@ -164,7 +164,7 @@ export type RuntimeEvent =
   | {
       type: "node_finished";
       runId: string;
-      workflowName: string;
+      projectName: string;
       executionId: string;
       nodeName: string;
       kind: NodeExecutionKind;
@@ -216,7 +216,7 @@ export interface ExecutorResult<
 
 export interface ExecutionReport<Output = unknown> {
   runId: string;
-  workflowName: string;
+  projectName: string;
   entrypointId?: string;
   entrypointTitle?: string;
   source?: ScheduleSourceMetadata["source"];
@@ -249,7 +249,7 @@ export interface ExecutionReportTokenUsage {
 }
 
 export interface DefinitionEvent {
-  workflowName: string;
+  projectName: string;
   workflowDir: string;
   nodes: DefinedNode[];
 }
@@ -286,7 +286,7 @@ export interface NodeExecutionReporter {
 export interface ExecutionReporter extends NodeExecutionReporter {
   emitWorkflowStarted(event: {
     runId: string;
-    workflowName: string;
+    projectName: string;
     entrypointId?: string;
     entrypointTitle?: string;
     conversationId?: string;
@@ -294,7 +294,7 @@ export interface ExecutionReporter extends NodeExecutionReporter {
   }): Promise<void>;
   emitWorkflowFinished(event: {
     runId: string;
-    workflowName: string;
+    projectName: string;
     entrypointId?: string;
     entrypointTitle?: string;
     conversationId?: string;
@@ -307,14 +307,14 @@ export interface ExecutionReporter extends NodeExecutionReporter {
   }): Promise<void>;
   emitConversationTitleUpdated(event: {
     runId: string;
-    workflowName: string;
+    projectName: string;
     conversationId: string;
     title?: string;
     updatedAt: Date;
   }): Promise<void>;
   emitTokenUsageUpdated(event: {
     runId: string;
-    workflowName: string;
+    projectName: string;
     conversationId?: string;
     usage: TokenUsageAggregate;
     updatedAt: Date;
@@ -325,12 +325,12 @@ export interface ExecutionReporter extends NodeExecutionReporter {
   getResolvedUserInputs(): UserInputResolved[];
   emitTimerStarted(event: {
     runId: string;
-    workflowName: string;
+    projectName: string;
     timer: TimerRecord;
   }): Promise<void>;
   emitTimerFinished(event: {
     runId: string;
-    workflowName: string;
+    projectName: string;
     timer: TimerRecord;
   }): Promise<void>;
   getConversationTitle(): string | undefined;
@@ -338,14 +338,14 @@ export interface ExecutionReporter extends NodeExecutionReporter {
 
 export function createNodeExecutionReporter(options: {
   runId?: string;
-  workflowName?: string;
+  projectName?: string;
   onRuntimeEvent?(event: RuntimeEvent): Promise<void> | void;
 } = {}): ExecutionReporter {
   const reports: ExecutorNodeExecutionReport[] = [];
   const reportsById = new Map<string, ExecutorNodeExecutionReport>();
   const outputs: OutputReport[] = [];
   const runId = options.runId ?? "";
-  const workflowName = options.workflowName ?? "";
+  const projectName = options.projectName ?? "";
   const onRuntimeEvent = options.onRuntimeEvent;
   let conversationTitle: string | undefined;
   let pendingUserInput: UserInputRequest | undefined;
@@ -364,7 +364,7 @@ export function createNodeExecutionReporter(options: {
       return emit({
         type: "workflow_started",
         runId: event.runId,
-        workflowName: event.workflowName,
+        projectName: event.projectName,
         entrypointId: event.entrypointId,
         entrypointTitle: event.entrypointTitle,
         startedAt: event.startedAt,
@@ -377,7 +377,7 @@ export function createNodeExecutionReporter(options: {
         return emit({
           type: "workflow_succeeded",
           runId: event.runId,
-          workflowName: event.workflowName,
+          projectName: event.projectName,
           entrypointId: event.entrypointId,
           entrypointTitle: event.entrypointTitle,
           endedAt: event.endedAt,
@@ -389,7 +389,7 @@ export function createNodeExecutionReporter(options: {
         return emit({
           type: "workflow_aborted",
           runId: event.runId,
-          workflowName: event.workflowName,
+          projectName: event.projectName,
           entrypointId: event.entrypointId,
           entrypointTitle: event.entrypointTitle,
           endedAt: event.endedAt,
@@ -403,7 +403,7 @@ export function createNodeExecutionReporter(options: {
         return emit({
           type: "workflow_timed_out",
           runId: event.runId,
-          workflowName: event.workflowName,
+          projectName: event.projectName,
           entrypointId: event.entrypointId,
           entrypointTitle: event.entrypointTitle,
           endedAt: event.endedAt,
@@ -419,7 +419,7 @@ export function createNodeExecutionReporter(options: {
       return emit({
         type: "workflow_failed",
         runId: event.runId,
-        workflowName: event.workflowName,
+        projectName: event.projectName,
         entrypointId: event.entrypointId,
         entrypointTitle: event.entrypointTitle,
         endedAt: event.endedAt,
@@ -432,7 +432,7 @@ export function createNodeExecutionReporter(options: {
       return emit({
         type: "conversation_title_updated",
         runId: event.runId,
-        workflowName: event.workflowName,
+        projectName: event.projectName,
         conversationId: event.conversationId,
         title: event.title,
         updatedAt: event.updatedAt,
@@ -442,7 +442,7 @@ export function createNodeExecutionReporter(options: {
       return emit({
         type: "token_usage_updated",
         runId: event.runId,
-        workflowName: event.workflowName,
+        projectName: event.projectName,
         conversationId: event.conversationId,
         usage: event.usage,
         updatedAt: event.updatedAt,
@@ -453,7 +453,7 @@ export function createNodeExecutionReporter(options: {
       return emit({
         type: "user_input_requested",
         runId,
-        workflowName,
+        projectName,
         ...cloneUserInputRequest(event),
       });
     },
@@ -463,7 +463,7 @@ export function createNodeExecutionReporter(options: {
       return emit({
         type: "user_input_resolved",
         runId,
-        workflowName,
+        projectName,
         ...cloneUserInputResolved(event),
       });
     },
@@ -471,7 +471,7 @@ export function createNodeExecutionReporter(options: {
       return emit({
         type: "timer_started",
         runId: event.runId,
-        workflowName: event.workflowName,
+        projectName: event.projectName,
         timer: cloneTimerRecord(event.timer),
       });
     },
@@ -479,7 +479,7 @@ export function createNodeExecutionReporter(options: {
       return emit({
         type: "timer_finished",
         runId: event.runId,
-        workflowName: event.workflowName,
+        projectName: event.projectName,
         timer: cloneTimerRecord(event.timer),
       });
     },
@@ -500,7 +500,7 @@ export function createNodeExecutionReporter(options: {
         return emit({
           type: "node_started",
           runId,
-          workflowName,
+          projectName,
           executionId: event.executionId,
           nodeName: event.nodeName,
           kind: event.kind,
@@ -512,7 +512,7 @@ export function createNodeExecutionReporter(options: {
         return emit({
           type: "node_chunk",
           runId,
-          workflowName,
+          projectName,
           executionId: event.executionId,
           nodeName: event.nodeName,
           kind: event.kind,
@@ -554,7 +554,7 @@ export function createNodeExecutionReporter(options: {
         return emit({
           type: "node_finished",
           runId,
-          workflowName,
+          projectName,
           executionId: event.executionId,
           nodeName: event.nodeName,
           kind: event.kind,
@@ -621,7 +621,7 @@ export function combineNodeExecutionHooks(
 export function createWorkflowExecutionReport<Output>(
   options: {
     runId: string;
-    workflowName: string;
+    projectName: string;
     entrypointId?: string;
     entrypointTitle?: string;
     startedAt: Date;
@@ -644,7 +644,7 @@ export function createWorkflowExecutionReport<Output>(
 
   return {
     runId: options.runId,
-    workflowName: options.workflowName,
+    projectName: options.projectName,
     entrypointId: options.entrypointId,
     entrypointTitle: options.entrypointTitle,
     conversationId: options.conversationId,

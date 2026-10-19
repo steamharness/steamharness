@@ -16,7 +16,7 @@ import {
 import type { RelatedProjectKVGrant } from "@steamharness/project-info";
 import { isKnowledgeMutationGranted, validateArchiveEntries, validateTarArchiveEntries, Storage, type PreparationJob, type KVEntryDetail, type KnowledgeDocumentListItem, type TokenUsagePage } from "../storage";
 
-// assertWorkflowId now requires UUID format; use fixed UUID fixtures
+// assertProjectId now requires UUID format; use fixed UUID fixtures
 const DEMO_WF_ID = "00000000-0000-4000-8000-000000000001";
 const DEMO_CONV_WF_ID = "00000000-0000-4000-8000-000000000002";
 const DECLARED_SERVER_PROJECT_INFO = {
@@ -219,7 +219,7 @@ test("Storage.saveManagedFiles stores opaque image references outside workflow s
   try {
     await storage.init();
     const [reference] = await storage.saveManagedFiles({
-      workflowName: DEMO_WF_ID,
+      projectName: DEMO_WF_ID,
       files: [{
         name: "screenshot.png",
         mimeType: "image/png",
@@ -232,7 +232,7 @@ test("Storage.saveManagedFiles stores opaque image references outside workflow s
     assert.match(reference.id, /^wf_[a-f0-9]+$/);
     assert.equal(reference.kind, "image");
     assert.equal(reference.storage, "server");
-    assert.equal(reference.workflowId, DEMO_WF_ID);
+    assert.equal(reference.projectId, DEMO_WF_ID);
     assert.equal(reference.conversationId, "thread-1");
 
     const stored = await storage.getManagedFile(reference.id);
@@ -262,7 +262,7 @@ test("Storage.saveManagedFiles infers video types and preserves explicit audio W
       ["recording.webm", "audio/webm", "audio/webm"],
     ];
     const refs = await storage.saveManagedFiles({
-      workflowName: DEMO_WF_ID,
+      projectName: DEMO_WF_ID,
       files: cases.map(([name, mimeType]) => ({ name: name!, mimeType, buffer: Buffer.from(name!) })),
     });
     for (const [index, reference] of refs.entries()) {
@@ -290,7 +290,7 @@ test("Storage.saveManagedFiles leaves no partial batch when a later file is inva
     await storage.init();
     process.env.STEAMHARNESS_MANAGED_FILE_SIZE_LIMIT_BYTES = "1";
     await assert.rejects(storage.saveManagedFiles({
-      workflowName: DEMO_WF_ID,
+      projectName: DEMO_WF_ID,
       files: [
         { name: "first.png", mimeType: "image/png", buffer: Buffer.alloc(1) },
         { name: "second.png", mimeType: "image/png", buffer: Buffer.alloc(2) },
@@ -325,7 +325,7 @@ test("Storage.saveManagedFiles rolls back earlier files after a filesystem failu
     (storage as unknown as { managedFileDir(fileId: string): string }).managedFileDir = () => generatedDirs.shift()!;
 
     await assert.rejects(storage.saveManagedFiles({
-      workflowName: DEMO_WF_ID,
+      projectName: DEMO_WF_ID,
       files: [
         { name: "first.png", mimeType: "image/png", buffer: Buffer.from("first") },
         { name: "second.png", mimeType: "image/png", buffer: Buffer.from("second") },
@@ -370,7 +370,7 @@ test("DatabaseRepository scopes Kanban configuration reads by workflow and user"
     assert.equal(state.activeConfigurationId, "configuration-a");
     assert.deepEqual(state.configurations[0]?.values, { title: "A" });
     assert.equal(queries.length, 2);
-    assert.ok(queries.every((query) => query.sql.includes("workflow_id = $1 and user_id = $2")));
+    assert.ok(queries.every((query) => query.sql.includes("project_id = $1 and user_id = $2")));
     assert.ok(queries.every((query) => query.params?.[0] === DEMO_WF_ID && query.params?.[1] === "user-a"));
   } finally {
     pool.query = originalQuery;
@@ -459,7 +459,7 @@ test("DatabaseRepository.init creates project deployment locks and access-contro
     assert.match(schema, /create table if not exists workflow_project_capability_grants/);
     assert.match(
       schema,
-      /create unique index if not exists workflow_deployment_items_active_version_idx[\s\S]*workflow_id, planned_version[\s\S]*published_version is null[\s\S]*status in \('planned', 'preparing', 'prepared', 'publishing'\)/,
+      /create unique index if not exists workflow_deployment_items_active_version_idx[\s\S]*project_id, planned_version[\s\S]*published_version is null[\s\S]*status in \('planned', 'preparing', 'prepared', 'publishing'\)/,
     );
     assert.match(
       schema,
@@ -533,7 +533,7 @@ test("DatabaseRepository keeps one pending source request and grants capability 
   const repository = new DatabaseRepository("postgresql://example.invalid/postgres");
   const requestRow = {
     id: "00000000-0000-4000-8000-000000000051",
-    workflow_id: DEMO_WF_ID,
+    project_id: DEMO_WF_ID,
     requester_user_id: "user-requester",
     capability: "download_source",
     reason: "Need local source",
@@ -589,7 +589,7 @@ test("DatabaseRepository keeps one pending source request and grants capability 
     assert.equal(first.id, requestRow.id);
     assert.equal(second.id, requestRow.id);
     assert.ok(directQueries.every((query) => (
-      /on conflict \(workflow_id, requester_user_id, capability\)[\s\S]*where status = 'pending'/.test(query.sql)
+      /on conflict \(project_id, requester_user_id, capability\)[\s\S]*where status = 'pending'/.test(query.sql)
     )));
 
     const approved = await repository.resolveWorkflowProjectAccessRequest({
@@ -1348,25 +1348,25 @@ test("Storage knowledge documents use the PersistentValue project domain", async
 
   try {
     const created = await storage.createKnowledgeDocument({
-      workflowName: DEMO_WF_ID,
+      projectName: DEMO_WF_ID,
       id: "readme",
       title: "Readme",
       markdown: "# Readme\n\nPersistentValue knowledge.",
     });
     const edited = await storage.editKnowledgeDocument({
-      workflowName: DEMO_WF_ID,
+      projectName: DEMO_WF_ID,
       documentId: "readme",
       markdown: "# Readme\n\nSearchable markdown.",
     });
     const list = await storage.listKnowledgeDocuments(DEMO_WF_ID);
     const search = await storage.searchKnowledgeDocuments({
-      workflowName: DEMO_WF_ID,
+      projectName: DEMO_WF_ID,
       query: "searchable",
       beforeLines: 1,
       afterLines: 0,
     });
     const lines = await storage.readKnowledgeDocumentLines({
-      workflowName: DEMO_WF_ID,
+      projectName: DEMO_WF_ID,
       documentId: "readme",
       startLine: 2,
       endLine: 3,
@@ -1404,7 +1404,7 @@ test("Storage knowledge documents delegate opaque page cursors to core index pag
   try {
     for (const id of ["one", "two", "three"]) {
       await storage.createKnowledgeDocument({
-        workflowName: DEMO_WF_ID,
+        projectName: DEMO_WF_ID,
         id,
         title: id,
         markdown: id,
@@ -1494,14 +1494,14 @@ test("Storage knowledge create conflict maps to HTTP conflict", async () => {
 
   try {
     await storage.createKnowledgeDocument({
-      workflowName: DEMO_WF_ID,
+      projectName: DEMO_WF_ID,
       id: "readme",
       title: "Readme",
       markdown: "",
     });
     await assert.rejects(
       () => storage.createKnowledgeDocument({
-        workflowName: DEMO_WF_ID,
+        projectName: DEMO_WF_ID,
         id: "readme",
         title: "Readme",
         markdown: "",
@@ -1616,12 +1616,12 @@ test("Storage restores an owned UUID binding and synchronizes its full declarati
     db: {
       getWorkflow: async () => existing,
       getWorkflowMember: async () => undefined,
-      updateWorkflowProjectInfo: async (workflowId: string, workflowName: string, value: unknown) => {
-        updates.push({ workflowId, workflowName, projectInfo: value });
-        return { ...existing, name: workflowName, projectInfo: value };
+      updateWorkflowProjectInfo: async (projectId: string, projectName: string, value: unknown) => {
+        updates.push({ projectId, projectName, projectInfo: value });
+        return { ...existing, name: projectName, projectInfo: value };
       },
-      updateWorkflowProjectCard: async (workflowId: string, value: unknown) => {
-        updates.push({ workflowId, projectCard: value });
+      updateWorkflowProjectCard: async (projectId: string, value: unknown) => {
+        updates.push({ projectId, projectCard: value });
         return { ...existing, projectCard: value };
       },
     } as unknown as DatabaseRepository,
@@ -1629,8 +1629,8 @@ test("Storage restores an owned UUID binding and synchronizes its full declarati
 
   try {
     const restored = await storage.createProject({
-      workflowId: DEMO_WF_ID,
-      workflowName: DEMO_WF_ID,
+      projectId: DEMO_WF_ID,
+      projectName: DEMO_WF_ID,
       projectType: "workflow",
       projectInfo,
       projectCard,
@@ -1639,11 +1639,11 @@ test("Storage restores an owned UUID binding and synchronizes its full declarati
     });
 
     assert.deepEqual(updates, [
-      { workflowId: DEMO_WF_ID, workflowName: DEMO_WF_ID, projectInfo },
-      { workflowId: DEMO_WF_ID, projectCard },
+      { projectId: DEMO_WF_ID, projectName: DEMO_WF_ID, projectInfo },
+      { projectId: DEMO_WF_ID, projectCard },
     ]);
     assert.deepEqual(restored.projectInfo, projectInfo);
-    assert.equal(restored.workflowId, DEMO_WF_ID);
+    assert.equal(restored.projectId, DEMO_WF_ID);
   } finally {
     await rm(dataRoot, { recursive: true, force: true });
   }
@@ -1769,7 +1769,7 @@ test("Storage stores cropped project card images by content hash", async () => {
   try {
     await storage.init();
     const saved = await storage.saveProjectCardImage({
-      workflowName: DEMO_WF_ID,
+      projectName: DEMO_WF_ID,
       buffer: webp,
       origin: "https://workflow.example/",
     });
@@ -1781,7 +1781,7 @@ test("Storage stores cropped project card images by content hash", async () => {
     assert.deepEqual(await readFile(resolved.filePath), webp);
     await assert.rejects(
       storage.saveProjectCardImage({
-        workflowName: DEMO_WF_ID,
+        projectName: DEMO_WF_ID,
         buffer: Buffer.from("not-webp"),
         origin: "https://workflow.example",
       }),
@@ -1806,7 +1806,7 @@ test("Storage rejects the first upload when executor type differs from the empty
 
   try {
     const assertUploadedProjectType = Reflect.get(storage, "assertUploadedProjectType") as (
-      workflowId: string,
+      projectId: string,
       projectType: "workflow" | "conversation",
     ) => Promise<void>;
 
@@ -1847,19 +1847,19 @@ test("Storage serializes Kanban saves and later configuration selection", async 
     ]);
 
     const initial = await storage.getKanbanWorkspace({
-      workflowName: DEMO_WF_ID,
+      projectName: DEMO_WF_ID,
       target: "draft",
       actorId: "user-a",
     });
     const firstConfigurationId = initial.activeConfigurationId!;
     const created = await storage.createKanbanConfiguration({
-      workflowName: DEMO_WF_ID,
+      projectName: DEMO_WF_ID,
       target: "draft",
       actorId: "user-a",
     });
     const secondConfigurationId = created.activeConfigurationId!;
     await storage.selectKanbanConfiguration({
-      workflowName: DEMO_WF_ID,
+      projectName: DEMO_WF_ID,
       target: "draft",
       actorId: "user-a",
       configurationId: firstConfigurationId,
@@ -1867,7 +1867,7 @@ test("Storage serializes Kanban saves and later configuration selection", async 
 
     const localStore = storage as unknown as {
       writeLocalKanbanConfigurationState: (
-        workflowName: string,
+        projectName: string,
         actorId: string,
         state: unknown,
       ) => Promise<void>;
@@ -1892,7 +1892,7 @@ test("Storage serializes Kanban saves and later configuration selection", async 
     };
 
     const savePromise = storage.saveKanbanConfigurationValues({
-      workflowName: DEMO_WF_ID,
+      projectName: DEMO_WF_ID,
       target: "draft",
       actorId: "user-a",
       configurationId: firstConfigurationId,
@@ -1902,7 +1902,7 @@ test("Storage serializes Kanban saves and later configuration selection", async 
 
     let selectionSettled = false;
     const selectPromise = storage.selectKanbanConfiguration({
-      workflowName: DEMO_WF_ID,
+      projectName: DEMO_WF_ID,
       target: "draft",
       actorId: "user-a",
       configurationId: secondConfigurationId,
@@ -1923,7 +1923,7 @@ test("Storage serializes Kanban saves and later configuration selection", async 
     );
 
     const persisted = await storage.getKanbanWorkspace({
-      workflowName: DEMO_WF_ID,
+      projectName: DEMO_WF_ID,
       target: "draft",
       actorId: "user-a",
     });
@@ -1941,10 +1941,10 @@ test("Storage keeps immutable project card images after metadata changes", async
     repoRoot: process.cwd(),
     dataRoot,
     db: {
-      updateWorkflowProjectCard: async (workflowId: string, projectCard: unknown) => {
+      updateWorkflowProjectCard: async (projectId: string, projectCard: unknown) => {
         cards.push(projectCard);
         return {
-          id: workflowId,
+          id: projectId,
           name: "Demo",
           projectCard,
         };
@@ -1956,12 +1956,12 @@ test("Storage keeps immutable project card images after metadata changes", async
 
   try {
     const firstImage = await storage.saveProjectCardImage({
-      workflowName: DEMO_WF_ID,
+      projectName: DEMO_WF_ID,
       buffer: first,
       origin: "https://workflow.example",
     });
     const secondImage = await storage.saveProjectCardImage({
-      workflowName: DEMO_WF_ID,
+      projectName: DEMO_WF_ID,
       buffer: second,
       origin: "https://workflow.example",
     });
@@ -1973,7 +1973,7 @@ test("Storage keeps immutable project card images after metadata changes", async
     };
 
     assert.deepEqual(await storage.updateProjectCardMetadata({
-      workflowName: DEMO_WF_ID,
+      projectName: DEMO_WF_ID,
       projectCard,
     }), projectCard);
     assert.deepEqual(cards, [projectCard]);
@@ -2018,7 +2018,7 @@ test("Storage shares concurrent database draft materialization and reuses its re
     } as unknown as DatabaseRepository,
   });
   const materializeDraft = Reflect.get(storage, "materializeDbDraftSource") as (
-    workflowName: string,
+    projectName: string,
   ) => Promise<void>;
 
   try {
@@ -2091,7 +2091,7 @@ test("Storage shares concurrent database version source materialization", async 
     await writeFile(path.join(targetDir, "package.json"), "{}", "utf8");
   });
   const materializeVersion = Reflect.get(storage, "materializeDbVersionSource") as (
-    workflowName: string,
+    projectName: string,
     requestedVersion: string,
   ) => Promise<void>;
 
@@ -2136,7 +2136,7 @@ test("Storage retries database source materialization after a failed task", asyn
     } as unknown as DatabaseRepository,
   });
   const materializeDraft = Reflect.get(storage, "materializeDbDraftSource") as (
-    workflowName: string,
+    projectName: string,
   ) => Promise<void>;
 
   try {
@@ -2300,7 +2300,7 @@ test("DatabaseRepository.withWorkflowPublishLock does not occupy storage pool cl
 
   try {
     await repository.withWorkflowPublishLock(DEMO_WF_ID, async () => {
-      await repository.updateWorkflowName(DEMO_WF_ID, "Demo");
+      await repository.updateProjectName(DEMO_WF_ID, "Demo");
     });
 
     assert.equal(storageConnects, 1);
@@ -2425,7 +2425,7 @@ test("Storage preserves preparation failure stage and reason", async () => {
   try {
     await storage.init();
     const accepted = await storage.enqueuePackagePreparation({
-      workflowName: DEMO_WF_ID,
+      projectName: DEMO_WF_ID,
       archiveName: "demo.tgz",
       archiveBuffer: Buffer.from("archive"),
     });
@@ -2482,13 +2482,13 @@ test("Storage gives concurrent project deployments distinct reserved versions", 
       assert.ok(item);
       Object.assign(item, input, { updatedAt: "2026-08-05T00:00:01.000Z" });
     },
-    listWorkflowVersionReservations: async (workflowId: string) => [...deployments.values()]
+    listWorkflowVersionReservations: async (projectId: string) => [...deployments.values()]
       .flatMap((deployment) => deployment.items)
-      .filter((item) => item.projectId === workflowId && item.plannedVersion !== undefined)
+      .filter((item) => item.projectId === projectId && item.plannedVersion !== undefined)
       .map((item) => item.plannedVersion!),
     listVersions: async () => [],
     getWorkflow: async () => undefined,
-    withWorkflowPublishLock: async (_workflowId: string, operation: () => Promise<unknown>) => operation(),
+    withWorkflowPublishLock: async (_projectId: string, operation: () => Promise<unknown>) => operation(),
   } as unknown as DatabaseRepository;
   const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot, db });
   const reserve = Reflect.get(storage, "reserveProjectGroupDeploymentVersions") as (
@@ -2518,7 +2518,7 @@ test("Storage skips active deployment reservations for ordinary publish versions
   } as unknown as DatabaseRepository;
   const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot, db });
   const resolveNextVersion = Reflect.get(storage, "resolveNextVersion") as (
-    workflowName: string,
+    projectName: string,
   ) => Promise<string>;
 
   try {
@@ -2573,7 +2573,7 @@ test("Storage resets and re-reserves every item before re-preparing a failed dep
     listVersions: async () => [{ version: "0.0.8" }],
     getWorkflow: async () => ({ latest: "0.0.8" }),
     listWorkflowVersionReservations: async () => [],
-    withWorkflowPublishLock: async (_workflowId: string, operation: () => Promise<unknown>) => operation(),
+    withWorkflowPublishLock: async (_projectId: string, operation: () => Promise<unknown>) => operation(),
   } as unknown as DatabaseRepository;
   const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot, db });
   const reserve = Reflect.get(storage, "reserveProjectGroupDeploymentVersions") as (
@@ -2716,7 +2716,7 @@ test("Storage offers a source request link only when the pinned dependency sourc
 
   try {
     const readStatus = () => storage.getProjectDependencyStatus({
-      workflowName: DEMO_WF_ID,
+      projectName: DEMO_WF_ID,
       target: "1.0.0",
       canDownloadProject: async () => false,
       requestUrlForProject: () => "https://example.test/access-requests/signed",
@@ -2837,27 +2837,27 @@ test("Storage resumes a persisted project-group preparation after restart", asyn
 
 async function waitForPreparationTerminal(
   storage: Storage,
-  workflowId: string,
+  projectId: string,
   jobId: string,
 ): Promise<PreparationJob> {
   for (let attempt = 0; attempt < 100; attempt += 1) {
-    const job = await storage.getPreparationJob(workflowId, jobId);
+    const job = await storage.getPreparationJob(projectId, jobId);
     if (job.status === "success" || job.status === "failed") return job;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error(`Preparation job ${jobId} did not reach a terminal status.`);
 }
 
-async function writePublishableDraft(dataRoot: string, workflowName: string): Promise<void> {
-  const draftRoot = path.join(dataRoot, "workflows", workflowName, "draft");
+async function writePublishableDraft(dataRoot: string, projectName: string): Promise<void> {
+  const draftRoot = path.join(dataRoot, "workflows", projectName, "draft");
   const sourceRoot = path.join(draftRoot, "source");
 
   await mkdir(sourceRoot, { recursive: true });
   await writeFile(
     path.join(sourceRoot, "package.json"),
     JSON.stringify({
-      id: workflowName,
-      name: workflowName,
+      id: projectName,
+      name: projectName,
       version: "0.1.0",
       devDependencies: testToolchainDependencies,
       steamHarness: { projectType: "workflow", projectInfo: DECLARED_SERVER_PROJECT_INFO },
@@ -2866,27 +2866,27 @@ async function writePublishableDraft(dataRoot: string, workflowName: string): Pr
   );
   await writeFile(
     path.join(sourceRoot, "index.ts"),
-    `const draftWorkflow = workflow.defineWorkflow({ name: "${workflowName}", run: async () => ({ errCode: 0, errMessage: "" }) });\nexport const executor = workflow.defineExecutor({ projectType: "workflow", defaultEntrypoint: "main", entrypoints: [workflow.defineEntrypoint({ id: "main", title: "Main", workflow: draftWorkflow, createInput: () => ({ errCode: 0, errMessage: "" }) })] });\nexport default draftWorkflow;\n`,
+    `const draftWorkflow = workflow.defineWorkflow({ name: "${projectName}", run: async () => ({ errCode: 0, errMessage: "" }) });\nexport const executor = workflow.defineExecutor({ projectType: "workflow", defaultEntrypoint: "main", entrypoints: [workflow.defineEntrypoint({ id: "main", title: "Main", workflow: draftWorkflow, createInput: () => ({ errCode: 0, errMessage: "" }) })] });\nexport default draftWorkflow;\n`,
     "utf8",
   );
-  await writeFile(path.join(sourceRoot, "README.md"), `# ${workflowName}\n`, "utf8");
+  await writeFile(path.join(sourceRoot, "README.md"), `# ${projectName}\n`, "utf8");
 }
 
 async function writeFileVersion(
   dataRoot: string,
-  workflowName: string,
+  projectName: string,
   version: string,
   createdAt: string,
   packageJsonOverrides: Record<string, unknown> = {},
   projectType: "workflow" | "conversation" = "workflow",
 ): Promise<void> {
-  const versionRoot = path.join(dataRoot, "workflows", workflowName, "versions", version);
+  const versionRoot = path.join(dataRoot, "workflows", projectName, "versions", version);
   await mkdir(path.join(versionRoot, "source"), { recursive: true });
   await writeFile(
     path.join(versionRoot, "source", "package.json"),
     JSON.stringify({
-      id: workflowName,
-      name: workflowName,
+      id: projectName,
+      name: projectName,
       version: "0.1.0",
       devDependencies: testToolchainDependencies,
       steamHarness: { projectType: "workflow", projectInfo: DECLARED_SERVER_PROJECT_INFO },
@@ -2903,14 +2903,14 @@ async function writeFileVersion(
   );
   await writeFile(
     path.join(versionRoot, "source", "README.md"),
-    `# ${workflowName}\n`,
+    `# ${projectName}\n`,
     "utf8",
   );
   await writeFile(
     path.join(versionRoot, "manifest.json"),
     JSON.stringify({
-      workflowId: workflowName,
-      workflowName,
+      projectId: projectName,
+      projectName,
       version,
       createdAt,
       releaseLog: "",
@@ -2923,25 +2923,25 @@ async function writeFileVersion(
 
 async function writeFileBackedProject(
   dataRoot: string,
-  workflowId: string,
+  projectId: string,
 ): Promise<void> {
   await writeFileVersion(
     dataRoot,
-    workflowId,
+    projectId,
     "1.0.0",
     "2026-08-25T00:00:00.000Z",
   );
   await writeFile(
-    path.join(dataRoot, "workflows", workflowId, "latest.json"),
+    path.join(dataRoot, "workflows", projectId, "latest.json"),
     JSON.stringify({ version: "1.0.0" }),
     "utf8",
   );
 }
 
-function createDbWorkflowRecord(workflowId: string, latest: string | null) {
+function createDbWorkflowRecord(projectId: string, latest: string | null) {
   return {
-    id: workflowId,
-    name: workflowId,
+    id: projectId,
+    name: projectId,
     projectType: "workflow" as const,
     projectCard: {
       icon: "workflow",
@@ -2963,15 +2963,15 @@ function createDbWorkflowRecord(workflowId: string, latest: string | null) {
   };
 }
 
-function createDbVersionRecord(workflowId: string, version: string) {
+function createDbVersionRecord(projectId: string, version: string) {
   return {
-    workflowId,
-    workflowName: workflowId,
+    projectId,
+    projectName: projectId,
     version,
     createdAt: "2026-05-21T00:00:00.000Z",
     releaseLog: "",
     sourceHash: version,
-    sourceObjectPath: `workflows/${workflowId}/versions/${version}/source.tar.gz`,
+    sourceObjectPath: `workflows/${projectId}/versions/${version}/source.tar.gz`,
   } as const;
 }
 
@@ -3039,7 +3039,7 @@ function createKVSummary(key: string, overrides: Partial<KVEntryDetail> = {}): K
 }
 
 function createMemoryKVStore(): KVStore & {
-  getWorkflow(workflowId: string): Promise<ReturnType<typeof createDbWorkflowRecord>>;
+  getWorkflow(projectId: string): Promise<ReturnType<typeof createDbWorkflowRecord>>;
   values: Map<string, unknown>;
   sources: Map<string, unknown>;
   getValueWithRevision(input: KVStoreGetInput): Promise<{ value: unknown; revision: string } | undefined>;
@@ -3065,8 +3065,8 @@ function createMemoryKVStore(): KVStore & {
   }) => [input.storageKind, input.scope, input.projectId, input.conversationId ?? "", input.key].join(":");
 
   return {
-    async getWorkflow(workflowId) {
-      return createDbWorkflowRecord(workflowId, null);
+    async getWorkflow(projectId) {
+      return createDbWorkflowRecord(projectId, null);
     },
     values,
     sources,

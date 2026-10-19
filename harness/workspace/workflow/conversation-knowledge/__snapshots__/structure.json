@@ -1,5 +1,5 @@
 {
-  "workflowName": "conversation-knowledge",
+  "projectName": "conversation-knowledge",
   "projectType": "conversation",
   "files": [
     "index.ts",

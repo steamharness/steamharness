@@ -6,7 +6,7 @@ const workflow = globalThis.workflow as RuntimeApi | undefined;
 if (workflow === undefined) throw new Error("The workflow runtime is not installed.");
 
 const agentWorkflow = workflow.createAgentConversationWorkflow({
-  workflowName: "assistant",
+  projectName: "assistant",
   outputItemId: "assistant-answer",
 });
 

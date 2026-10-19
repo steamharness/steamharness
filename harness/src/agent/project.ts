@@ -47,14 +47,14 @@ const DEFAULT_OUTPUT_ITEM_ID = "agent-answer";
 export function createAgentConversationWorkflow(
   options: AgentProjectOptions = {},
 ): Definition<AgentInput, AgentOutputPayload> {
-  const workflowName = options.workflowName ?? "agent";
+  const executorName = options.executorName ?? "agent";
   const outputItemId = options.outputItemId ?? DEFAULT_OUTPUT_ITEM_ID;
-  const node = createAgentNode({ ...options, name: `${workflowName}-agent` });
+  const node = createAgentNode({ ...options, name: `${executorName}-agent` });
 
   const inputNode = createInputNode<AgentInput, AgentInput>({
-    name: `${workflowName}-input`,
+    name: `${executorName}-input`,
     async parse(input, context) {
-      const resolved = await resolveAgentImageFiles(input, context, `${workflowName}-input`);
+      const resolved = await resolveAgentImageFiles(input, context, `${executorName}-input`);
       const prompt = typeof resolved.prompt === "string" ? resolved.prompt : "";
       // An attachment is a question of its own: a run that carries one and no
       // text is a user showing the agent something, not an empty turn.
@@ -62,7 +62,7 @@ export function createAgentConversationWorkflow(
         throw new HarnessError({
           type: "input_validation",
           message: "Prompt is required.",
-          nodeName: `${workflowName}-input`,
+          nodeName: `${executorName}-input`,
         });
       }
 
@@ -71,7 +71,7 @@ export function createAgentConversationWorkflow(
   });
 
   const outputNode = createOutputNode<AgentInput, AgentOutputPayload>({
-    name: `${workflowName}-output`,
+    name: `${executorName}-output`,
     async *stream(input, context) {
       // The rows are ordered by where each one finished, not by where it
       // started: an answer that keeps streaming after a tool call would
@@ -96,13 +96,13 @@ export function createAgentConversationWorkflow(
         const turnText = readConversationTurnText(input);
         const turnId = input.requestId ?? String(context.metadata?.["runId"]);
         if (turnText !== undefined) {
-          await context.conversation.appendMessage({ id: `${workflowName}:${turnId}:user`, role: "user", content: turnText });
+          await context.conversation.appendMessage({ id: `${executorName}:${turnId}:user`, role: "user", content: turnText });
         }
         // A turn that only called tools has no answer; an empty assistant
         // message would read as a reply that said nothing.
         if (answer !== "") {
           await context.conversation.appendMessage({
-            id: `${workflowName}:${turnId}:assistant`,
+            id: `${executorName}:${turnId}:assistant`,
             role: "assistant",
             content: answer,
             metadata: { agent: readAgentRunMode(input) ?? input.agent ?? "build" },
@@ -128,7 +128,7 @@ export function createAgentConversationWorkflow(
   });
 
   return defineWorkflow<AgentInput, AgentOutputPayload>({
-    name: workflowName,
+    name: executorName,
     async run(input, context) {
       const parsed = await runNode(inputNode, input, context);
       const result = await runStreamNode(outputNode, parsed, context);
@@ -136,7 +136,7 @@ export function createAgentConversationWorkflow(
       if (result.output === undefined) {
         throw new HarnessError({
           type: "workflow_execution",
-          message: `Workflow "${workflowName}" did not produce output.`,
+          message: `Workflow "${executorName}" did not produce output.`,
         });
       }
 
@@ -170,7 +170,7 @@ export function createAgentProjectInput(
 export function defineAgentConversationExecutor(
   options: AgentProjectOptions = {},
 ): ConversationExecutorDefinition<AgentInput, AgentOutputPayload> {
-  const workflowName = options.workflowName ?? "agent";
+  const executorName = options.executorName ?? "agent";
   const outputItemId = options.outputItemId ?? DEFAULT_OUTPUT_ITEM_ID;
 
   // Annotated before validation so the returned definition keeps the narrower

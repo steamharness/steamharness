@@ -60,7 +60,7 @@ export class ResourcePreviews {
         return { id, uri: `workflow-server:${id}`, folderPath: '', name: id, projectType: 'workflow', fields: [], entrypoints: [] };
       }
       const snapshot = await this.server(id, '/structure'), structure = snapshot.structure;
-      return { ...structure, id, uri: `workflow-server:${id}`, folderPath: '', name: snapshot.workflowName ?? card.title, projectType: structure.projectType,
+      return { ...structure, id, uri: `workflow-server:${id}`, folderPath: '', name: snapshot.projectName ?? card.title, projectType: structure.projectType,
         fields: structure.params ?? [], entrypoints: structure.entrypoints ?? [] };
     }
     if (id === this.owner.id) { return this.owner; }

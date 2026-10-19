@@ -582,7 +582,7 @@ async function runWithMockEnv(options: {
   try {
     return await runLocalWorkflowWithReport({
       workflowDir: path.resolve(process.cwd(), "workflow/deltaforce-bilibili-collect"),
-      workflowName: "deltaforce-bilibili-collect",
+      projectName: "deltaforce-bilibili-collect",
       args: options.args,
       env: {
         ...process.env,

@@ -17,7 +17,7 @@ export interface FileReference {
   size: number;
   kind: FileKind;
   storage: FileStorage;
-  workflowId?: string;
+  projectId?: string;
   conversationId?: string;
   createdAt: string;
   url?: string;
@@ -58,7 +58,7 @@ export interface LocalWorkflowFileStoreOptions {
 
 export interface ServerWorkflowFileStoreOptions {
   rootDir: string;
-  workflowName: string;
+  projectName: string;
   conversationId?: string;
   maxBytes?: number;
 }
@@ -155,7 +155,7 @@ export function createServerWorkflowFileStore(
         size: buffer.byteLength,
         kind: input.kind ?? (mimeType.startsWith("image/") ? "image" : "file"),
         storage: "server",
-        workflowId: options.workflowName,
+        projectId: options.projectName,
         conversationId: readNonEmptyString(input.conversationId) ?? readNonEmptyString(options.conversationId),
         createdAt: new Date().toISOString(),
         url: `/api/projects/files/${encodeURIComponent(id)}`,
@@ -221,7 +221,7 @@ export function normalizeWorkflowFileReference(value: unknown): FileReference {
     ? Math.round(value.size)
     : 0;
   const createdAt = readNonEmptyString(value.createdAt) ?? new Date().toISOString();
-  const workflowId = readNonEmptyString(value.workflowId);
+  const projectId = readNonEmptyString(value.projectId);
   const conversationId = readNonEmptyString(value.conversationId);
   const url = readNonEmptyString(value.url);
   const storage = readWorkflowFileStorage(value.storage, url);
@@ -240,7 +240,7 @@ export function normalizeWorkflowFileReference(value: unknown): FileReference {
     size,
     kind,
     storage,
-    workflowId,
+    projectId,
     conversationId,
     createdAt,
     url,

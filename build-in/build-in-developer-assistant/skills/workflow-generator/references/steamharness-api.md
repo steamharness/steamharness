@@ -262,7 +262,7 @@ interface SteamHarnessKanbanApi {
 
 `getRuntimeLocale()` 返回宿主当前界面语言，已明确要求国际化的 Kanban 页面必须用它选择文案，不要自行猜测 `navigator.language`。
 
-当前项目 KV 只有 project scope 的 get/set。value 必须是 JSON 原生值且不能为 `undefined`；页面不能传项目、scope、workflowName、数据库路径或 target。建议以 `<feature>.v1:${configuration.id || "default"}` 保存版本化且按配置隔离的数据。配置切换时使用请求代次避免旧读取覆盖新配置；写入使用串行防抖队列，并按 storage key 保留失败值与重试入口，切换配置时不能清空其它 key 的失败记录。
+当前项目 KV 只有 project scope 的 get/set。value 必须是 JSON 原生值且不能为 `undefined`；页面不能传项目、scope、projectName、数据库路径或 target。建议以 `<feature>.v1:${configuration.id || "default"}` 保存版本化且按配置隔离的数据。配置切换时使用请求代次避免旧读取覆盖新配置；写入使用串行防抖队列，并按 storage key 保留失败值与重试入口，切换配置时不能清空其它 key 的失败记录。
 
 跨项目通过 `relatedProjects.get(alias).kv` 读写。宿主只接受 package 中已声明的 alias，并按目标项目对当前项目的 `grantToRelatedProject` 检查 key；请求不能携带目标 UUID、scope、target 或数据库路径。本地 Desktop 要求目标项目已经导入；Server Web 看板预览 要求访问者可读当前 Kanban，双方关系已确认后无需访问者成为目标项目成员。每次调用读取双方当前声明，撤销立即生效；待确认、缺失或越权统一返回安全的关联项目不可用错误。
 
@@ -276,7 +276,7 @@ Bridge 缺失时回退为明确的只读或内存状态；调用失败只依赖�
 
 Bridge 同时最多保留 16 个请求，普通调用 15 秒超时，文件调用 120 秒超时。知识库列表 `pageSize` 上限 100，搜索 `pageSize` / `maxMatches` 上限 1000、前后上下文各 50 行，单次读取最多 1000 行。Server 看板预览的 Bridge 和配置 CRUD 固定页面首次加载的 `resolvedTarget`，版本变化后必须刷新页面。所有资源必须使用 `artifactDir` 内相对路径，并在 `sandbox="allow-scripts"`、离线 CSP、无 Node/preload 环境中工作；ES module、动态 import、WASM 和 `fetch()` 只能读取绑定项目、用户与固定版本且由宿主自动续期的短期 capability 下的同源产物，不能访问公网，也不要缓存或解析 capability URL。Kanban 支持 `steamharness structure`，不支持 `run`、`json`、Webhook 或 external run。
 
-文件 Bridge 与 KV 存储位置独立，始终使用当前服务器的 managed file storage；Desktop 未登录或目标 UUID 未创建于当前服务器时失败，不回退本地。`FileReference` 沿用 `FileReference` 的安全字段（`id/name/mimeType/size/kind/storage/workflowId/createdAt/url`），`storage` 为 `server`。`createFile` 接受不超过 50 MiB 的 Blob、ArrayBuffer 或 Uint8Array；`readFile(id)` 返回原始字节及文件元数据，只接受当前项目且没有 conversation 作用域的文件，不能传 URL 或本地路径。图片可用 `URL.createObjectURL(new Blob([buffer], { type: file.mimeType }))` 显示，切换配置或卸载时释放。KV 保存文件引用与标注；不要把二进制数据分块存入 KV。替换图片时先上传和核验新文件，保存新引用成功后才能 `deleteFile` 旧文件。
+文件 Bridge 与 KV 存储位置独立，始终使用当前服务器的 managed file storage；Desktop 未登录或目标 UUID 未创建于当前服务器时失败，不回退本地。`FileReference` 沿用 `FileReference` 的安全字段（`id/name/mimeType/size/kind/storage/projectId/createdAt/url`），`storage` 为 `server`。`createFile` 接受不超过 50 MiB 的 Blob、ArrayBuffer 或 Uint8Array；`readFile(id)` 返回原始字节及文件元数据，只接受当前项目且没有 conversation 作用域的文件，不能传 URL 或本地路径。图片可用 `URL.createObjectURL(new Blob([buffer], { type: file.mimeType }))` 显示，切换配置或卸载时释放。KV 保存文件引用与标注；不要把二进制数据分块存入 KV。替换图片时先上传和核验新文件，保存新引用成功后才能 `deleteFile` 旧文件。
 
 本地图片迁移使用 `steamharness workspace file-upload <项目 UUID> --file <路径> [--mime-type image/png]`，返回标准 `{ errCode: 0, errMessage: "", data: FileReference }`。通过 `steamharness workspace file-download <文件 ID> --output <新文件>` 读回比较字节或 SHA-256，已有文件不会覆盖；`file-delete <文件 ID>` 删除已明确不再使用的文件。三个命令使用 Desktop 注入的服务器身份或 CLI 登录态，不上传源码、不发布版本。CLI 过旧时要更新可用宿主或明确报告未验证，不改用图片 KV 分块兜底。
 
@@ -544,7 +544,7 @@ export default exampleWorkflow;
 - Workflow entrypoint 上的 `tokenUsage: { enabled: true, display?: boolean }` 会为该入口启用 token usage 收集；Conversation 仍在 executor 上配置。
 - Workflow entrypoint 上的 `tools: ToolPermissionDefinition[]` 会启用该入口的工具策略元数据；Conversation 仍在 executor 上配置。每项包含 `name`、可选 `label/description`、`enabled` 默认值和 `autoApprove` 默认值。
 - `params` 描述结构化 Desktop、server、external input。
-- `createInput({ args, paramValues, env, workflowName, workflowDir, entrypointId, entrypointTitle, abortSignal, hostInput, conversationId, toolPermissionPolicies })` 把 argv 或宿主结构化输入转成 workflow input。`paramValues` 是宿主按入口静态参数解析出的结构化值；`hostInput` 是宿主注入的请求级输入（普通运行缺省 `undefined`），不进入通用 run metadata；`conversationId`、`toolPermissionPolicies` 只在宿主提供时出现。
+- `createInput({ args, paramValues, env, projectName, workflowDir, entrypointId, entrypointTitle, abortSignal, hostInput, conversationId, toolPermissionPolicies })` 把 argv 或宿主结构化输入转成 workflow input。`paramValues` 是宿主按入口静态参数解析出的结构化值；`hostInput` 是宿主注入的请求级输入（普通运行缺省 `undefined`），不进入通用 run metadata；`conversationId`、`toolPermissionPolicies` 只在宿主提供时出现。
 - 把 `workflow` 作为别名导出，既保持现有平台发现稳定，又避免定义遮蔽全局命名空间的本地常量。
 - 入口的可选 `requiredProviders: ExecutorProviderName[]` 声明该入口运行需要的 provider，当前内置名称只有 `"llm"`；Conversation executor 同样支持。它是 Workflow 顶层被移除的 legacy key，只能写在入口上。
 - 入口的可选 `createContext({ ...ExecutorContext })` 返回 `Partial<RunContext>`，用于为该入口增补 `providers`、`metadata` 和 hooks。`storage`、`conversation`、`files` 的注入与作用域由 runtime 负责，返回对象里不要试图替换它们。
@@ -576,7 +576,7 @@ workflow.defineEntrypoint<Input, Output>({
 - `group` 必须是**静态内联对象字面量**，并且只包含 `id`、`title` 和可选 `order` 三个属性；`group` 为 `null`、数组、非对象、或来自变量/函数调用时，`steamharness structure` 直接报 violation。
 - `id` 和 `title` 必须是非空静态字符串字面量；`order` 一旦被声明就必须是非负整数——包括显式写 `order: undefined` 也会失败。省略 `order` 与写上 `order` 是两种不同声明。
 - **同一个 `group.id` 在所有入口上的 `title` 和 `order` 必须逐字一致**（含“有 order”与“无 order”的差异）：`workflow.defineExecutor(...)` 在加载时校验，`steamharness structure` 在静态分析时校验，不一致会分别抛出 `input_validation` 和 violation。
-- Desktop 与 CLI Web 只在至少一个入口声明了 `group` 时才启用分区层；显式 `order` 按升序排列，同值按源码首次出现顺序，未声明 `order` 的分区排在其后，未分组的入口归入本地化“未分组”分区并按第一个未分组入口的位置参与排序。分区展开状态按 `workflowId + resolved target` 使用版本化键持久化，不在项目源码里配置。
+- Desktop 与 CLI Web 只在至少一个入口声明了 `group` 时才启用分区层；显式 `order` 按升序排列，同值按源码首次出现顺序，未声明 `order` 的分区排在其后，未分组的入口归入本地化“未分组”分区并按第一个未分组入口的位置参与排序。分区展开状态按 `projectId + resolved target` 使用版本化键持久化，不在项目源码里配置。
 - 本地 CLI、MCP 和 OpenAI 接口 只按 `entrypoint.id` 执行，忽略分区；`group` 不影响 `defaultEntrypoint`、调度预设或参数解析。
 - 只有确实需要按业务域折叠多个入口时才声明 `group`；单入口项目或不需要分组的多入口项目保持不声明，界面会自动保持扁平列表。
 
@@ -686,7 +686,7 @@ await context.storage.local.persistentValue.setValue("knowledge.doc", {
 
 **本地存储根目录是调用方与版本共有的资源。** 本地运行从环境变量取目录：KV 用 `STEAMHARNESS_KV_STORE_DIR`（未配置时默认 `os.tmpdir()/steamharness-kv`），PersistentValue 用 `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR`，文件用 `STEAMHARNESS_FILE_STORE_DIR`。这些变量随进程继承，宿主（Desktop、上层 agent、父 CLI）调度出的进程因此默认使用**宿主自己的**根目录——在别人配置的环境里跑另一个项目，会把该项目的运行态数据写进宿主的存储，或反过来读到别人写的数据。跑本地检查前，把这三个变量指向该项目的临时目录。
 
-根目录的布局与条目字段随版本演进：早期版本的作用域是 `global` / `workflow` / `conversation`，条目里写工作流名 `workflowName`；当前版本只有 project / conversation，条目里写 `projectId`，并在根目录写 `.workflow-storage-format.json` 标记（当前 `{ version: 2, storageKind }`）。两种后果都必须避免：
+根目录的布局与条目字段随版本演进：早期版本的作用域是 `global` / `workflow` / `conversation`，条目里写工作流名 `projectName`；当前版本只有 project / conversation，条目里写 `projectId`，并在根目录写 `.workflow-storage-format.json` 标记（当前 `{ version: 2, storageKind }`）。两种后果都必须避免：
 
 - 旧版本在同一个根目录里读到当前版本写下的条目会抛 `workflow_execution`：`Local workflow KV entry is invalid and cannot be read safely.`。旧版本每次写入都会枚举整个根目录，所以只要目录里存在一个它不认识的条目，写入就会失败——和当前项目自己的代码无关。
 - 当前版本遇到没有标记或标记不符的根目录，会把它当作待重建的旧根目录：删除 `.inspection`、`.locks`、`.transactions`、`conversation`、`global`、`project` 后写入新标记；如果标记里的 `storageKind` 与本次用途不同（KV 目录被当 PersistentValue 目录使用，或反之），直接抛 `input_validation`。
@@ -1313,7 +1313,7 @@ Core 内置一层基于 pi agent SDK 的 agent 能力，覆盖输入、输出、
 // 宿主嵌入或测试：一次构造 executor，不作为项目的静态声明
 const executor = workflow.defineAgentConversationExecutor({
   projectName: "Pi",
-  workflowName: "pi",
+  projectName: "pi",
   outputItemId: "pi-answer",
 });
 
@@ -1357,7 +1357,7 @@ const result = await workflow.runStreamNode(agentNode, input, context);
 - 总结响应的计费用量同样通过 `host.reportUsage` 上报，包括失败或取消响应中的已消耗 token；不能把它当作总结后的上下文大小。直接调用 `compactAgentMessages` 可传 `onUsage(usage)`，在摘要校验前接收模型返回的 pi `Usage`。
 - **取消运行会中止本轮**：`context.abortSignal` 一触发就调用 pi 侧的 `agent.abort()`，模型流与正在执行的工具一起停下，本轮以 `execution_aborted` 结束（工作流据此把运行标成 aborted，而不是失败），已经花掉的 token 仍会照常上报。
 
-配置对象（`AgentProjectOptions`，三个成员共用）：`workdir`、`systemPrompt`、`provider`、`model`、`baseUrl`、`effort`、`permissionPolicy`、`mode`、`tools`、`toolDefinitions`、`allowedDirectories`、`extraTools`、`createTools`、`session`、`sessionId`、`sessionKey`、`databasePath`、`storage`、`name`、`historyLimit`，以及项目级 `projectName`、`workflowName`、`outputItemId`、`params`。
+配置对象（`AgentProjectOptions`，三个成员共用）：`workdir`、`systemPrompt`、`provider`、`model`、`baseUrl`、`effort`、`permissionPolicy`、`mode`、`tools`、`toolDefinitions`、`allowedDirectories`、`extraTools`、`createTools`、`session`、`sessionId`、`sessionKey`、`databasePath`、`storage`、`name`、`historyLimit`，以及项目级 `projectName`、`projectName`、`outputItemId`、`params`。
 
 内置工具为 `read`、`write`、`edit`、`bash`、`grep`、`find`、`ls`，以及**只在 plan 模式提供**的 `ask_user`。问答和计划通过 `context.userInput` 暂停，跨进程以原 runId 恢复；工具从原持久意图继续，askResume 回填答案，plan 决定使用稳定续跑身份，旧决定不能批准新 run。文件类工具经 realpath 校验工作区与 allowedDirectories；grep/find 不跟随软链接。bash 以宿主身份执行，不是文件沙箱。工具审批复用 context.toolPermissions，plan 回合才对未自动批准工具提问，build 直接执行，禁用工具仍拒绝。模型用量携带稳定 recordId，Core 原子 upsert，重放不重复累计；上游强杀前未返回的用量须另行对账。
 

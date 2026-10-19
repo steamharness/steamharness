@@ -66,7 +66,7 @@ describe.each(["local", "server"] as const)("%s data hierarchy", (location) => {
     for (const project of Object.values(hierarchy.byRole)) {
       const structure = inspectLocalWorkflowStructure({
         workflowDir: path.join(STEAMHARNESS_ROOT, project.slug),
-        workflowName: project.slug,
+        projectName: project.slug,
       });
       expect(structure.diagnostics.violations).toEqual([]);
       expect(structure.defaultEntrypoint).toBe("store");
@@ -214,7 +214,7 @@ async function createHierarchyRunner(location: StorageLocation) {
       async listEntrypoints() {
         const structure = inspectLocalWorkflowStructure({
           workflowDir: path.join(STEAMHARNESS_ROOT, target.slug),
-          workflowName: target.slug,
+          projectName: target.slug,
         });
         return (structure.entrypoints ?? []).map((entrypoint) => ({
           id: entrypoint.id,
@@ -225,7 +225,7 @@ async function createHierarchyRunner(location: StorageLocation) {
       async run(entrypointId: string, args: readonly string[]): Promise<unknown> {
         const report = await runLocalWorkflowWithReport({
           workflowDir: path.join(STEAMHARNESS_ROOT, target.slug),
-          workflowName: target.slug,
+          projectName: target.slug,
           entrypointId,
           args: [...args],
           // No related resolver travels into it, which is what keeps a
@@ -294,7 +294,7 @@ async function createHierarchyRunner(location: StorageLocation) {
 
     return runLocalWorkflowWithReport({
       workflowDir: path.join(STEAMHARNESS_ROOT, project.slug),
-      workflowName: project.slug,
+      projectName: project.slug,
       entrypointId: entrypoint,
       args,
       storage,

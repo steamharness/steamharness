@@ -17,7 +17,7 @@ export interface ConversationMessageContract {
 
 export interface ConversationState {
   conversationId: string;
-  workflowName: string;
+  projectName: string;
   title?: string;
   createdAt: string;
   updatedAt: string;
@@ -47,7 +47,7 @@ export interface ConversationContext {
 export interface ConversationRuntimeOptions {
   enabled?: boolean;
   conversationId?: string;
-  workflowName: string;
+  projectName: string;
   kv?: KVContext;
   onTitleChange?: (event: {
     conversationId: string;
@@ -68,7 +68,7 @@ export function createWorkflowConversationContext(
       type: "input_validation",
       message:
         "Workflow conversation is enabled, but no workflow KV context was configured.",
-      metadata: { workflow: options.workflowName },
+      metadata: { workflow: options.projectName },
     });
   }
 
@@ -78,11 +78,11 @@ export function createWorkflowConversationContext(
       type: "input_validation",
       message:
         "Workflow conversation is enabled, but no conversation id was configured.",
-      metadata: { workflow: options.workflowName },
+      metadata: { workflow: options.projectName },
     });
   }
   const store = createWorkflowConversationStore({
-    workflowName: options.workflowName,
+    projectName: options.projectName,
     conversationId,
     kv: options.kv,
     onTitleChange: options.onTitleChange,
@@ -119,7 +119,7 @@ export function createDisabledWorkflowConversationContext(): ConversationContext
 }
 
 function createWorkflowConversationStore(options: {
-  workflowName: string;
+  projectName: string;
   conversationId: string;
   kv: KVContext;
   onTitleChange?: (event: {
@@ -139,7 +139,7 @@ function createWorkflowConversationStore(options: {
       return value;
     }
 
-    return createInitialConversationState(options.workflowName, options.conversationId);
+    return createInitialConversationState(options.projectName, options.conversationId);
   }
 
   async function writeState(
@@ -190,7 +190,7 @@ function createWorkflowConversationStore(options: {
       const id = message.id ?? randomUUID();
       return await options.kv.conversation.updateValue(CONVERSATION_STATE_KEY, current => {
         const state = isWorkflowConversationState(current) ? current
-          : createInitialConversationState(options.workflowName, options.conversationId);
+          : createInitialConversationState(options.projectName, options.conversationId);
         const existing = state.messages.findIndex(entry => entry.id === id);
         const now = new Date().toISOString();
         const next = { id, role: message.role, content: message.content,
@@ -204,13 +204,13 @@ function createWorkflowConversationStore(options: {
 }
 
 function createInitialConversationState(
-  workflowName: string,
+  projectName: string,
   conversationId: string,
 ): ConversationState {
   const now = new Date().toISOString();
   return {
     conversationId,
-    workflowName,
+    projectName,
     createdAt: now,
     updatedAt: now,
     messages: [],
@@ -256,7 +256,7 @@ function isWorkflowConversationState(
   return (
     isRecord(value) &&
     typeof value.conversationId === "string" &&
-    typeof value.workflowName === "string" &&
+    typeof value.projectName === "string" &&
     (value.title === undefined || typeof value.title === "string") &&
     typeof value.createdAt === "string" &&
     typeof value.updatedAt === "string" &&

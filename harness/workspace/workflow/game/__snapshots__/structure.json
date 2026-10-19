@@ -1,5 +1,5 @@
 {
-  "workflowName": "game",
+  "projectName": "game",
   "projectType": "workflow",
   "files": [
     "index.ts",
@@ -60,7 +60,7 @@
     {
       "id": "main",
       "title": "Game",
-      "workflowName": "game",
+      "projectName": "game",
       "tokenUsage": {
         "enabled": true,
         "display": true

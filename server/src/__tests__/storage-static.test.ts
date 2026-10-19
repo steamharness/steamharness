@@ -33,7 +33,7 @@ test("creation, upload, publication and historical downloads never load or build
   const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot });
   const stages: PreparationStage[] = [];
   try {
-    await storage.createWorkflow({ workflowName: projectId, files: [
+    await storage.createWorkflow({ projectName: projectId, files: [
       { path: "package.json", content: JSON.stringify(packageJson("1.0.0")) },
       { path: "index.ts", content: `import 'node:fs'; throw new Error('must never execute');` },
     ] });
@@ -45,40 +45,40 @@ test("creation, upload, publication and historical downloads never load or build
     await writeFile(path.join(source, "image.bin"), Buffer.from([0, 1, 255]));
     const archivePath = path.join(root, "upload.tar.gz");
     await createTar({ cwd: source, file: archivePath, gzip: true }, ["."]);
-    const uploaded = await storage.uploadPackage({ workflowName: projectId, archiveName: "upload.tar.gz",
+    const uploaded = await storage.uploadPackage({ projectName: projectId, archiveName: "upload.tar.gz",
       archiveBuffer: await readFile(archivePath), onStage: async stage => { stages.push(stage); } });
     assert.deepEqual(stages, ["extracting", "validating", "committing"]);
 
-    const preparedFiles = (await storage.getFiles({ workflowName: projectId, target: "draft", includeBinary: true })).files;
-    await storage.saveDraftFiles({ workflowName: projectId, files: preparedFiles.map(file => file.path === "index.ts"
+    const preparedFiles = (await storage.getFiles({ projectName: projectId, target: "draft", includeBinary: true })).files;
+    await storage.saveDraftFiles({ projectName: projectId, files: preparedFiles.map(file => file.path === "index.ts"
       ? { ...file, content: "replacement draft" } : file) });
-    await assert.rejects(storage.publish({ workflowName: projectId, expectedVersion: "1.0.0", expectedSourceHash: uploaded.sourceHash }),
+    await assert.rejects(storage.publish({ projectName: projectId, expectedVersion: "1.0.0", expectedSourceHash: uploaded.sourceHash }),
       /draft changed after preparation/);
     assert.deepEqual((await storage.listVersions(projectId)).versions, []);
     assert.equal((await storage.listVersions(projectId)).latest, null);
-    await storage.saveDraftFiles({ workflowName: projectId, files: preparedFiles });
-    await assert.rejects(storage.publish({ workflowName: projectId, expectedVersion: "1.0.1", expectedSourceHash: uploaded.sourceHash }),
+    await storage.saveDraftFiles({ projectName: projectId, files: preparedFiles });
+    await assert.rejects(storage.publish({ projectName: projectId, expectedVersion: "1.0.1", expectedSourceHash: uploaded.sourceHash }),
       /version differs/);
-    const published = await storage.publish({ workflowName: projectId, releaseLog: "First snapshot",
+    const published = await storage.publish({ projectName: projectId, releaseLog: "First snapshot",
       expectedVersion: "1.0.0", expectedSourceHash: uploaded.sourceHash });
     assert.equal(published.version, "1.0.0");
-    const before = await storage.getDownloadableSourceFiles({ workflowName: projectId, target: "1.0.0" });
+    const before = await storage.getDownloadableSourceFiles({ projectName: projectId, target: "1.0.0" });
     assert.equal(before.files.find(file => file.path === "image.bin")?.content, "AAH/");
-    await assert.rejects(storage.publish({ workflowName: projectId }), /already exists|already published/);
-    await assert.rejects(storage.uploadPackage({ workflowName: projectId, archiveName: "bad.tgz", archiveBuffer: Buffer.from("invalid") }));
-    assert.deepEqual(await storage.getDownloadableSourceFiles({ workflowName: projectId, target: "1.0.0" }), before);
+    await assert.rejects(storage.publish({ projectName: projectId }), /already exists|already published/);
+    await assert.rejects(storage.uploadPackage({ projectName: projectId, archiveName: "bad.tgz", archiveBuffer: Buffer.from("invalid") }));
+    assert.deepEqual(await storage.getDownloadableSourceFiles({ projectName: projectId, target: "1.0.0" }), before);
     assert.equal((await storage.listVersions(projectId)).latest, "1.0.0");
 
-    const next = await storage.getFiles({ workflowName: projectId, target: "draft", includeBinary: true });
-    await storage.saveDraftFiles({ workflowName: projectId, files: next.files.map(file => file.path === "package.json"
+    const next = await storage.getFiles({ projectName: projectId, target: "draft", includeBinary: true });
+    await storage.saveDraftFiles({ projectName: projectId, files: next.files.map(file => file.path === "package.json"
       ? { ...file, content: JSON.stringify(packageJson("1.0.1")) } : file) });
     const publications = await Promise.allSettled([
-      storage.publish({ workflowName: projectId }), storage.publish({ workflowName: projectId }),
+      storage.publish({ projectName: projectId }), storage.publish({ projectName: projectId }),
     ]);
     assert.equal(publications.filter(result => result.status === "fulfilled").length, 1);
     assert.equal(publications.filter(result => result.status === "rejected").length, 1);
     assert.equal((await storage.listVersions(projectId)).latest, "1.0.1");
-    assert.deepEqual(await storage.getDownloadableSourceFiles({ workflowName: projectId, target: "1.0.0" }), before);
+    assert.deepEqual(await storage.getDownloadableSourceFiles({ projectName: projectId, target: "1.0.0" }), before);
     const archive = await storage.getSourceArchive(projectId, "1.0.0");
     const downloaded = path.join(root, "download.tar.gz");
     await writeFile(downloaded, archive.archive);
@@ -105,14 +105,14 @@ test("draft replacement waits for a publication and preserves the snapshot's ver
   const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot,
     artifacts: { async uploadFile() { enteredUpload(); await uploadGate; } } as unknown as ArtifactStorage });
   try {
-    await storage.createWorkflow({ workflowName: projectId, files: [
+    await storage.createWorkflow({ projectName: projectId, files: [
       { path: "package.json", content: JSON.stringify(packageJson("2.0.0")) },
       { path: "index.ts", content: "original snapshot" },
     ] });
-    const publish = storage.publish({ workflowName: projectId });
+    const publish = storage.publish({ projectName: projectId });
     await uploadEntered;
     let replacementFinished = false;
-    const replacement = storage.saveDraftFiles({ workflowName: projectId, files: [
+    const replacement = storage.saveDraftFiles({ projectName: projectId, files: [
       { path: "package.json", content: JSON.stringify(packageJson("2.0.1")) },
       { path: "index.ts", content: "replacement draft" },
     ] }).then(() => { replacementFinished = true; });
@@ -121,9 +121,9 @@ test("draft replacement waits for a publication and preserves the snapshot's ver
     releaseUpload();
     assert.equal((await publish).version, "2.0.0");
     await replacement;
-    const published = await storage.getDownloadableSourceFiles({ workflowName: projectId, target: "2.0.0" });
+    const published = await storage.getDownloadableSourceFiles({ projectName: projectId, target: "2.0.0" });
     assert.equal(published.files.find(file => file.path === "index.ts")?.content, "original snapshot");
-    const draft = await storage.getFiles({ workflowName: projectId, target: "draft" });
+    const draft = await storage.getFiles({ projectName: projectId, target: "draft" });
     assert.equal(draft.files.find(file => file.path === "index.ts")?.content, "replacement draft");
   } finally {
     releaseUpload?.();
@@ -135,8 +135,8 @@ test("draft replacement waits for a publication and preserves the snapshot's ver
 test("project data roles, management and source downloads have independent permissions", () => {
   const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot: tmpdir() });
   for (const role of ["owner", "manager", "writer", "viewer"] as ProjectRole[]) {
-    const access = { workflowId: projectId, workflowName: "Static upload", visibility: "private" as const,
-      member: { workflowId: projectId, userId: "member", role, createdAt: "2026-10-16T00:00:00.000Z" } };
+    const access = { projectId: projectId, projectName: "Static upload", visibility: "private" as const,
+      member: { projectId: projectId, userId: "member", role, createdAt: "2026-10-16T00:00:00.000Z" } };
     assert.equal(storage.canReadProject({ access, userId: "member" }), true);
     assert.equal(storage.canWriteProjectData({ access, userId: "member" }), role !== "viewer");
     assert.equal(storage.canManageProject({ access, userId: "member" }), role === "owner" || role === "manager");

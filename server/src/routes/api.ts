@@ -37,7 +37,7 @@ function recordSourceDownloadsOnFinish(
   req: Request,
   res: Response,
   storage: Storage,
-  downloads: readonly { workflowId: string; version: string }[],
+  downloads: readonly { projectId: string; version: string }[],
 ): void {
   res.setHeader("Cache-Control", "no-store");
   if (req.method !== "GET") return;
@@ -245,10 +245,10 @@ async function requireProjectReadAccess(
 async function assertProjectReadableForPrincipal(
   storage: Storage,
   principal: AuthenticatedPrincipal,
-  workflowName: string,
+  projectName: string,
 ): Promise<void> {
   const userId = "userId" in principal ? principal.userId : undefined;
-  const access = await storage.getProjectAccessSummary(workflowName, userId);
+  const access = await storage.getProjectAccessSummary(projectName, userId);
   storage.assertReadableProject({
     access,
     canReadAll: hasPermission(principal, "projects.read_all"),
@@ -336,11 +336,11 @@ async function requireProjectManageAccess(
 async function requireWorkflowManageAccess(
   req: Request,
   storage: Storage,
-  workflowName: string,
+  projectName: string,
 ): Promise<{ principal: AuthenticatedPrincipal; access: Awaited<ReturnType<Storage["getProjectAccessSummary"]>> }> {
   const principal = requireRequestPrincipal(req);
   const userId = "userId" in principal ? principal.userId : undefined;
-  const access = await storage.getProjectAccessSummary(workflowName, userId);
+  const access = await storage.getProjectAccessSummary(projectName, userId);
   storage.assertManageableProject({
     access,
     canManageAll: hasPermission(principal, "projects.manage_all"),
@@ -966,7 +966,7 @@ export function createApiRouter(
       );
 
       res.json(ok(await storage.saveManagedFiles({
-        workflowName: name,
+        projectName: name,
         files: [{
           name: fileName,
           mimeType,
@@ -989,7 +989,7 @@ export function createApiRouter(
       }
       const body = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
       const result: ProjectCardImage = await storage.saveProjectCardImage({
-        workflowName: req.params.name,
+        projectName: req.params.name,
         buffer: body,
         origin: getRequestOrigin(req),
       });
@@ -1018,7 +1018,7 @@ export function createApiRouter(
         throw new HttpError(400, 400, "projectCard is required.");
       }
       const updated = await storage.updateProjectCardMetadata({
-        workflowName: req.params.name,
+        projectName: req.params.name,
         projectCard: card,
       });
       await recordRouteAudit(req, {
@@ -1044,7 +1044,7 @@ export function createApiRouter(
       const name = requireString(body["name"], "name");
       const projectInfo = readDeclaredWorkflowProjectInfo(body["projectInfo"]);
       const updated = await storage.updateProjectInfoMetadata({
-        workflowName: req.params.name,
+        projectName: req.params.name,
         name,
         projectInfo,
       });
@@ -1135,11 +1135,11 @@ export function createApiRouter(
     asyncHandler(async (req, res) => {
       const principal = requireRequestPrincipal(req);
       const { metadata, filePath } = await storage.getManagedFile(req.params.fileId);
-      if (!metadata.workflowId) {
+      if (!metadata.projectId) {
         throw new HttpError(404, 404, `Workflow file "${req.params.fileId}" does not exist.`);
       }
       const userId = "userId" in principal ? principal.userId : undefined;
-      const access = await storage.getProjectAccessSummary(metadata.workflowId, userId);
+      const access = await storage.getProjectAccessSummary(metadata.projectId, userId);
       storage.assertReadableProject({
         access,
         canReadAll: hasPermission(principal, "projects.read_all"),
@@ -1157,12 +1157,12 @@ export function createApiRouter(
     asyncHandler(async (req, res) => {
       const principal = requireRequestPrincipal(req);
       const { metadata } = await storage.getManagedFile(req.params.fileId);
-      if (!metadata.workflowId) {
+      if (!metadata.projectId) {
         throw new HttpError(404, 404, `Workflow file "${req.params.fileId}" does not exist.`);
       }
       const userId = "userId" in principal ? principal.userId : undefined;
-      const access = await storage.getProjectAccessSummary(metadata.workflowId, userId);
-      await assertProjectStorageAccessForPrincipal(storage, principal, metadata.workflowId, true);
+      const access = await storage.getProjectAccessSummary(metadata.projectId, userId);
+      await assertProjectStorageAccessForPrincipal(storage, principal, metadata.projectId, true);
       res.json(ok(await storage.deleteManagedFile(req.params.fileId)));
     }),
   );
@@ -1254,7 +1254,7 @@ export function createApiRouter(
       }
       const target = readOptionalString(body["target"], "target");
       const workspace = await storage.getKanbanWorkspace({
-        workflowName: req.params.name,
+        projectName: req.params.name,
         target,
         actorId: requireKanbanConfigurationActorId(principal),
       });
@@ -1277,7 +1277,7 @@ export function createApiRouter(
       const { principal } = await requireProjectReadAccess(req, storage);
       const target = readOptionalString(req.query["target"], "target");
       const bindings = await storage.getKanbanRelatedProjectBindings({
-        workflowName: req.params.name,
+        projectName: req.params.name,
         target,
       });
       const authorizedRelations: RelatedProject[] = [];
@@ -1336,7 +1336,7 @@ export function createApiRouter(
       const validateBindings = async () => {
         await assertProjectReadableForPrincipal(storage, principal, req.params.name);
         const current = await storage.getKanbanRelatedProjectBindings({
-          workflowName: req.params.name,
+          projectName: req.params.name,
           target: bindings.resolvedTarget,
         });
         if (
@@ -1407,15 +1407,15 @@ export function createApiRouter(
     asyncHandler(async (req, res) => {
       const principal = requireRequestPermission(req, "projects.create");
       const body = isRecord(req.body) ? req.body : {};
-      const workflowName = requireString(body["name"], "name");
-      const workflowId = requireString(body["workflowId"], "workflowId");
+      const projectName = requireString(body["name"], "name");
+      const projectId = requireString(body["projectId"], "projectId");
       const projectType = requireWorkflowProjectType(body["projectType"]);
       const projectInfo = readDeclaredWorkflowProjectInfo(body["projectInfo"]);
       const visibility = readOptionalString(body["visibility"], "visibility");
       const projectCard = readOptionalProjectCardMetadata(body["projectCard"]);
       const created = await storage.createProject({
-        workflowId,
-        workflowName,
+        projectId,
+        projectName,
         projectType,
         projectInfo,
         ownerUserId: "userId" in principal ? principal.userId : undefined,
@@ -1428,10 +1428,10 @@ export function createApiRouter(
         eventType: "workflow.project.create",
         outcome: "success",
         resourceType: "workflow",
-        resourceId: created.workflowId,
+        resourceId: created.projectId,
         context: {
-          workflowId: created.workflowId,
-          workflowName,
+          projectId: created.projectId,
+          projectName,
           visibility: created.visibility,
         },
       });
@@ -1673,7 +1673,7 @@ export function createApiRouter(
       const { name } = req.params;
       const body = isRecord(req.body) ? req.body : {};
       const files = readWorkflowFileInputs(body["files"]);
-      res.json(ok(await storage.createWorkflow({ workflowName: name, files })));
+      res.json(ok(await storage.createWorkflow({ projectName: name, files })));
     }),
   );
 
@@ -1695,7 +1695,7 @@ export function createApiRouter(
         : Buffer.from(req.body as string);
 
       const result = await storage.enqueuePackagePreparation({
-        workflowName: name,
+        projectName: name,
         archiveName,
         archiveBuffer,
         createOnly,
@@ -1750,7 +1750,7 @@ export function createApiRouter(
       const { name } = req.params;
       const target = (req.query["target"] as string | undefined) ?? "draft";
       const includeBinary = req.query["includeBinary"] === "true";
-      res.json(ok(await storage.getFiles({ workflowName: name, target, includeBinary })));
+      res.json(ok(await storage.getFiles({ projectName: name, target, includeBinary })));
     }),
   );
 
@@ -1766,10 +1766,10 @@ export function createApiRouter(
       }
       const target = (req.query["target"] as string | undefined) ?? "latest";
       const result = await storage.getDownloadableSourceFiles({
-        workflowName: req.params.name,
+        projectName: req.params.name,
         target,
       });
-      recordSourceDownloadsOnFinish(req, res, storage, [{ workflowId: result.workflowId, version: result.resolvedTarget }]);
+      recordSourceDownloadsOnFinish(req, res, storage, [{ projectId: result.projectId, version: result.resolvedTarget }]);
       res.json(ok(result));
     }),
   );
@@ -1797,7 +1797,7 @@ export function createApiRouter(
         throw new HttpError(403, 403, "Permission denied.");
       }
       const result = await storage.getSourceArchive(req.params.name, readOptionalString(req.query["target"], "target"));
-      recordSourceDownloadsOnFinish(req, res, storage, [{ workflowId: req.params.name, version: result.version }]);
+      recordSourceDownloadsOnFinish(req, res, storage, [{ projectId: req.params.name, version: result.version }]);
       res.type("application/gzip");
       res.setHeader("Content-Disposition", `attachment; filename="${encodeHeaderFileName(`${req.params.name}-${result.version}.tar.gz`)}"`);
       res.send(result.archive);
@@ -1811,7 +1811,7 @@ export function createApiRouter(
       const { principal } = await requireProjectReadAccess(req, storage);
       const origin = getRequestOrigin(req);
       res.json(ok(await storage.getProjectDependencyStatus({
-        workflowName: req.params.name,
+        projectName: req.params.name,
         target: readOptionalString(req.query["target"], "target"),
         canDownloadProject: (projectId) => canDownloadProjectSourceForPrincipal(storage, principal, projectId),
         requestUrlForProject: (projectId) => storage.createProjectAccessRequestUrl(origin, projectId),
@@ -1829,12 +1829,12 @@ export function createApiRouter(
       }
       const origin = getRequestOrigin(req);
       const result = await storage.getProjectGroupDownload({
-        workflowName: req.params.name,
+        projectName: req.params.name,
         target: readOptionalString(req.query["target"], "target"),
         canDownloadProject: (projectId) => canDownloadProjectSourceForPrincipal(storage, principal, projectId),
         requestUrlForProject: (projectId) => storage.createProjectAccessRequestUrl(origin, projectId),
       });
-      recordSourceDownloadsOnFinish(req, res, storage, result.projects.map(project => ({ workflowId: project.projectId, version: project.version })));
+      recordSourceDownloadsOnFinish(req, res, storage, result.projects.map(project => ({ projectId: project.projectId, version: project.version })));
       res.json(ok(result));
     }),
   );
@@ -1892,7 +1892,7 @@ export function createApiRouter(
       requirePrincipalUserId(principal, "view a project source access request");
       const { projectId } = storage.readProjectAccessRequestToken(req.params.token);
       const access = await storage.getProjectAccessSummary(projectId);
-      res.json(ok({ projectId, projectName: access.workflowName }));
+      res.json(ok({ projectId, projectName: access.projectName }));
     }),
   );
 
@@ -1919,12 +1919,12 @@ export function createApiRouter(
     asyncHandler(async (req, res) => {
       const { principal } = await requireProjectReadAccess(req, storage);
       const workspace = await storage.getKanbanWorkspace({
-        workflowName: req.params.name,
+        projectName: req.params.name,
         target: readOptionalString(req.query["target"], "target"),
         actorId: requireKanbanConfigurationActorId(principal),
       });
       const previewCapability = await storage.issueKanbanPreviewCapability({
-        workflowName: req.params.name,
+        projectName: req.params.name,
         target: workspace.resolvedTarget,
         actorId: requireKanbanConfigurationActorId(principal),
       });
@@ -1948,7 +1948,7 @@ export function createApiRouter(
       const { principal } = await requireProjectReadAccess(req, storage);
       const body = isRecord(req.body) ? req.body : {};
       res.status(201).json(ok(await storage.createKanbanConfiguration({
-        workflowName: req.params.name,
+        projectName: req.params.name,
         target: readOptionalString(body["target"], "target"),
         actorId: requireKanbanConfigurationActorId(principal),
         sourceConfigurationId: readOptionalString(body["sourceConfigurationId"], "sourceConfigurationId"),
@@ -1964,7 +1964,7 @@ export function createApiRouter(
       const { principal } = await requireProjectReadAccess(req, storage);
       const body = isRecord(req.body) ? req.body : {};
       const common = {
-        workflowName: req.params.name,
+        projectName: req.params.name,
         target: readOptionalString(body["target"], "target"),
         actorId: requireKanbanConfigurationActorId(principal),
         configurationId: req.params.configurationId,
@@ -1995,7 +1995,7 @@ export function createApiRouter(
       const { principal } = await requireProjectReadAccess(req, storage);
       const body = isRecord(req.body) ? req.body : {};
       res.json(ok(await storage.selectKanbanConfiguration({
-        workflowName: req.params.name,
+        projectName: req.params.name,
         target: readOptionalString(body["target"], "target"),
         actorId: requireKanbanConfigurationActorId(principal),
         configurationId: requireString(body["configurationId"], "configurationId"),
@@ -2009,7 +2009,7 @@ export function createApiRouter(
     asyncHandler(async (req, res) => {
       const { principal } = await requireProjectReadAccess(req, storage);
       res.json(ok(await storage.deleteKanbanConfiguration({
-        workflowName: req.params.name,
+        projectName: req.params.name,
         target: readOptionalString(req.query["target"], "target"),
         actorId: requireKanbanConfigurationActorId(principal),
         configurationId: req.params.configurationId,
@@ -2047,7 +2047,7 @@ export function createApiRouter(
         throw new HttpError(409, 409, "issue #95 owner transfer is not supported in phase three.");
       }
       const result = await storage.setProjectMember({
-        workflowId: req.params["name"],
+        projectId: req.params["name"],
         userId: req.params["userId"],
         role: role as ProjectRole,
         createdBy: "userId" in principal ? principal.userId : undefined,
@@ -2059,7 +2059,7 @@ export function createApiRouter(
         resourceType: "workflow_member",
         resourceId: `${req.params["name"]}:${req.params["userId"]}`,
         context: {
-          workflowId: req.params["name"],
+          projectId: req.params["name"],
           userId: req.params["userId"],
           role: result.role,
           ownerUserId: access.ownerUserId,
@@ -2086,7 +2086,7 @@ export function createApiRouter(
         resourceType: "workflow_member",
         resourceId: `${req.params["name"]}:${req.params["userId"]}`,
         context: {
-          workflowId: req.params["name"],
+          projectId: req.params["name"],
           userId: req.params["userId"],
           removed: result.removed,
         },
@@ -2110,7 +2110,7 @@ export function createApiRouter(
         throw new HttpError(400, 400, `Invalid role "${role}".`);
       }
       const { invitation, token } = await storage.createProjectInvitation({
-        workflowId: req.params["name"],
+        projectId: req.params["name"],
         role: role as ProjectRole,
         createdBy: "userId" in principal ? principal.userId : undefined,
       });
@@ -2121,7 +2121,7 @@ export function createApiRouter(
         resourceType: "workflow_invitation",
         resourceId: invitation.id,
         context: {
-          workflowId: invitation.workflowId,
+          projectId: invitation.projectId,
           role: invitation.role,
           expiresAt: invitation.expiresAt,
         },
@@ -2159,7 +2159,7 @@ export function createApiRouter(
         resourceType: "workflow_invitation",
         resourceId: req.params["invitationId"],
         context: {
-          workflowId: req.params["name"],
+          projectId: req.params["name"],
         },
       });
       res.json(ok(result));
@@ -2180,7 +2180,7 @@ export function createApiRouter(
         throw new HttpError(404, 404, "Invitation not found.");
       }
       const summary = await storage.getProjectAccessSummary(
-        invitation.workflowId,
+        invitation.projectId,
         principal && "userId" in principal ? principal.userId : undefined,
       );
       const [enrichedInvitation] = await enrichProjectInvitations([invitation]);
@@ -2188,8 +2188,8 @@ export function createApiRouter(
         ok({
           invitation: enrichedInvitation ?? invitation,
           project: {
-            id: summary.workflowId,
-            name: summary.workflowName,
+            id: summary.projectId,
+            name: summary.projectName,
           },
         }),
       );
@@ -2218,7 +2218,7 @@ export function createApiRouter(
         resourceType: "workflow_invitation",
         resourceId: result.invitation.id,
         context: {
-          workflowId: result.invitation.workflowId,
+          projectId: result.invitation.projectId,
           role: result.invitation.role,
           acceptedBy: principal.userId,
         },
@@ -2244,7 +2244,7 @@ export function createApiRouter(
         throw new HttpError(400, 400, `Invalid visibility "${visibility}".`);
       }
       const result = await storage.updateProjectVisibility({
-        workflowId: req.params["name"],
+        projectId: req.params["name"],
         visibility: visibility as Visibility,
       });
       await recordRouteAudit(req, {
@@ -2276,7 +2276,7 @@ export function createApiRouter(
           ? undefined
           : assertStringArray(body["removePaths"], "removePaths");
 
-      const result = await storage.saveDraftFiles({ workflowName: name, files, removePaths });
+      const result = await storage.saveDraftFiles({ projectName: name, files, removePaths });
       await recordRouteAudit(req, {
         principal,
         eventType: "workflow.draft.save_files",
@@ -2305,14 +2305,14 @@ export function createApiRouter(
         throw new HttpError(403, 403, "Permission denied.");
       }
       const body = req.body as {
-        targetWorkflowName?: unknown;
+        targetProjectName?: unknown;
         displayName?: unknown;
         sourceTarget?: unknown;
       };
-      const targetWorkflowName = requireString(body.targetWorkflowName, "targetWorkflowName");
+      const targetProjectName = requireString(body.targetProjectName, "targetProjectName");
       const result = await storage.cloneWorkflow({
-        workflowName: name,
-        targetWorkflowName,
+        projectName: name,
+        targetProjectName,
         ownerUserId: "userId" in principal ? principal.userId : undefined,
         displayName: typeof body.displayName === "string" ? body.displayName : undefined,
         sourceTarget: typeof body.sourceTarget === "string" ? body.sourceTarget : undefined,
@@ -2322,11 +2322,11 @@ export function createApiRouter(
         eventType: "workflow.clone",
         outcome: "success",
         resourceType: "workflow",
-        resourceId: result.workflowId,
+        resourceId: result.projectId,
         context: {
-          sourceWorkflowName: name,
-          targetWorkflowName,
-          displayName: result.workflowName,
+          sourceProjectName: name,
+          targetProjectName,
+          displayName: result.projectName,
           sourceTarget: typeof body.sourceTarget === "string" ? body.sourceTarget : undefined,
         },
       });
@@ -2348,7 +2348,7 @@ export function createApiRouter(
       };
 
       const result = await storage.updateWorkflowInfo({
-        workflowName: name,
+        projectName: name,
         target: typeof body.target === "string" ? body.target : undefined,
         displayName: requireString(body.displayName, "displayName"),
       });
@@ -2359,7 +2359,7 @@ export function createApiRouter(
         resourceType: "workflow",
         resourceId: name,
         context: {
-          displayName: result.workflowName,
+          displayName: result.projectName,
           target: result.target,
           resolvedTarget: result.resolvedTarget,
         },
@@ -2397,7 +2397,7 @@ export function createApiRouter(
       const { name } = req.params;
       const body = isRecord(req.body) ? req.body : {};
       const result = await storage.publish({
-        workflowName: name,
+        projectName: name,
         releaseLog: typeof body["releaseLog"] === "string" ? body["releaseLog"] : undefined,
         expectedVersion: readOptionalString(body["expectedVersion"], "expectedVersion"),
         expectedSourceHash: readOptionalString(body["expectedSourceHash"], "expectedSourceHash"),
@@ -2520,7 +2520,7 @@ export function createApiRouter(
       // Project knowledge documents are backed by the workflow PersistentValue
       // namespace on the server.
       const document = await storage.createKnowledgeDocument({
-        workflowName: name,
+        projectName: name,
         id: body.id,
         title: body.title,
         markdown: body.markdown,
@@ -2537,7 +2537,7 @@ export function createApiRouter(
       await requireProjectReadAccess(req, storage);
       const { name } = req.params;
       res.json(ok(await storage.searchKnowledgeDocuments({
-        workflowName: name,
+        projectName: name,
         query: requireString(req.query["q"], "q"),
         documentId: readOptionalString(req.query["documentId"], "documentId"),
         beforeLines: readOptionalNonNegativeInteger(req.query["beforeLines"], "beforeLines"),
@@ -2557,7 +2557,7 @@ export function createApiRouter(
       await requireProjectReadAccess(req, storage);
       const { name, documentId } = req.params;
       res.json(ok(await storage.readKnowledgeDocumentLines({
-        workflowName: name,
+        projectName: name,
         documentId,
         startLine: requirePositiveInteger(req.query["startLine"], "startLine"),
         endLine: requirePositiveInteger(req.query["endLine"], "endLine"),
@@ -2572,7 +2572,7 @@ export function createApiRouter(
     asyncHandler(async (req, res) => {
       await requireProjectReadAccess(req, storage);
       const { name, documentId } = req.params;
-      res.json(ok(await storage.getKnowledgeDocument({ workflowName: name, documentId })));
+      res.json(ok(await storage.getKnowledgeDocument({ projectName: name, documentId })));
     }),
   );
 
@@ -2587,7 +2587,7 @@ export function createApiRouter(
       const body = readKnowledgeEditBody(req.body);
       const responseMode = readKnowledgeWriteResponseMode(req.query["response"]);
       const document = await storage.editKnowledgeDocument({
-        workflowName: name,
+        projectName: name,
         documentId,
         title: body.title,
         markdown: body.markdown,
@@ -2603,7 +2603,7 @@ export function createApiRouter(
     asyncHandler(async (req, res) => {
       await requireProjectStorageWriteAccess(req, storage);
       const { name, documentId } = req.params;
-      res.json(ok(await storage.deleteKnowledgeDocument({ workflowName: name, documentId })));
+      res.json(ok(await storage.deleteKnowledgeDocument({ projectName: name, documentId })));
     }),
   );
 

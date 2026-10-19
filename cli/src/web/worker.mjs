@@ -136,7 +136,7 @@ try {
     }
     const filesDir = path.join(dataDir, 'files');
     const createdFiles = [];
-    const managed = createServerWorkflowFileStore({ rootDir: filesDir, workflowName: request.project.id, conversationId: request.conversationId });
+    const managed = createServerWorkflowFileStore({ rootDir: filesDir, projectName: request.project.id, conversationId: request.conversationId });
     const createFile = async (input) => {
       const file = await managed.createFile(input);
       const previewDir = path.join(filesDir, file.id, 'preview');

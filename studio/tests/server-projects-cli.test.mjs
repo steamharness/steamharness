@@ -55,9 +55,9 @@ for (const projectType of ['workflow', 'conversation', 'kanban']) {
       const url = new URL(request.url, 'http://localhost');
       let data, status = 200;
       if (url.pathname.endsWith('/versions')) { status = created ? 200 : 404; data = { versions: [] }; }
-      else if (url.pathname === '/api/projects' && request.method === 'POST') { created = true; data = { workflowId: projectId }; }
+      else if (url.pathname === '/api/projects' && request.method === 'POST') { created = true; data = { projectId: projectId }; }
       else if (url.pathname.endsWith('/package')) { data = { jobId: 'job-1' }; }
-      else if (url.pathname.endsWith('/preparations/job-1')) { data = { status: 'success', stage: 'committing', result: { workflowId: projectId, sourceHash: projects[0].sourceHash } }; }
+      else if (url.pathname.endsWith('/preparations/job-1')) { data = { status: 'success', stage: 'committing', result: { projectId: projectId, sourceHash: projects[0].sourceHash } }; }
       else if (url.pathname.endsWith('/publish')) { data = { version: manifest.version }; }
       else if (url.pathname.endsWith('/project-group-download')) { data = { rootProjectId: projectId, rootVersion: manifest.version, dependencies,
         projects, downloads: projects.map(({ files, ...project }) => project), skippedDependencies: [], complete: true, copyAllowed: true }; }

@@ -100,7 +100,7 @@ test("conversation inputQueue is exposed through structure reports", async () =>
       `, "utf8"),
     ]);
 
-    const report = inspectLocalWorkflowStructure({ workflowDir, workflowName: "conversation" });
+    const report = inspectLocalWorkflowStructure({ workflowDir, projectName: "conversation" });
     assert.equal(report.projectType, "conversation");
     assert.equal("defaultInput" in (report.conversation ?? {}), false);
     assert.equal(report.conversation?.attachments?.videos, true);

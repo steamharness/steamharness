@@ -17,7 +17,7 @@ import type { RunContext } from "../types/index";
 test("timer node starts and endTimer finishes a business timer", async () => {
   const events: RuntimeEvent[] = [];
   const runtime = createWorkflowRuntime({
-    workflowName: "timer-workflow",
+    projectName: "timer-workflow",
     runId: "run-timer",
     onRuntimeEvent(event) {
       events.push(event);
@@ -53,7 +53,7 @@ test("timer node starts and endTimer finishes a business timer", async () => {
 });
 
 test("endTimer supports failed status and rejects duplicate finish", async () => {
-  const runtime = createWorkflowRuntime({ workflowName: "timer-failed" });
+  const runtime = createWorkflowRuntime({ projectName: "timer-failed" });
   const context = createTestWorkflowContext(runtime.timers);
   const timer = await runNode(createTimerNode(), { timerId: "phase-failed" }, context);
 
@@ -73,7 +73,7 @@ test("endTimer supports failed status and rejects duplicate finish", async () =>
 test("runtime finish clears running timers before terminal report", async () => {
   const events: RuntimeEvent[] = [];
   const runtime = createWorkflowRuntime({
-    workflowName: "timer-fixture",
+    projectName: "timer-fixture",
     runId: "run-clear",
     onRuntimeEvent(event) {
       events.push(event);

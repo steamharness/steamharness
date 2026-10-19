@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import path from "node:path";
 import {
-  assertSafeWorkflowId,
+  assertSafeProjectId,
   createInvalidWorkflowUuidMessage,
   isWorkflowUuid,
   resolveWorkflowRoot,
@@ -9,13 +9,13 @@ import {
 
 describe("workflow-ids package", () => {
   it("accepts safe workflow ids and resolves roots under the workflow directory", () => {
-    expect(assertSafeWorkflowId("demo-flow")).toBe("demo-flow");
+    expect(assertSafeProjectId("demo-flow")).toBe("demo-flow");
     const workflowsRoot = path.resolve("workflow-id-test-root");
     expect(resolveWorkflowRoot(workflowsRoot, "demo-flow")).toBe(path.join(workflowsRoot, "demo-flow"));
   });
 
   it("rejects invalid workflow ids and reports invalid UUID messages", () => {
-    expect(() => assertSafeWorkflowId("../demo")).toThrow('Invalid workflow id "../demo".');
+    expect(() => assertSafeProjectId("../demo")).toThrow('Invalid workflow id "../demo".');
     expect(createInvalidWorkflowUuidMessage("demo")).toBe('Invalid workflow id "demo". Expected a UUID.');
   });
 

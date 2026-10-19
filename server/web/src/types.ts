@@ -479,7 +479,7 @@ export type ProjectRole = "owner" | "manager" | "writer" | "viewer";
 export type InvitationRole = "manager" | "writer" | "viewer";
 
 export interface ProjectMember {
-  workflowId: string;
+  projectId: string;
   userId: string;
   profile?: UserProfileSummary;
   role: ProjectRole;
@@ -490,7 +490,7 @@ export interface ProjectMember {
 
 export interface ProjectInvitation {
   id: string;
-  workflowId: string;
+  projectId: string;
   token: string;
   role: InvitationRole;
   createdBy?: string;

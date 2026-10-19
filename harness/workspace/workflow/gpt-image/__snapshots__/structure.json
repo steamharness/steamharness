@@ -1,5 +1,5 @@
 {
-  "workflowName": "gpt-image",
+  "projectName": "gpt-image",
   "projectType": "conversation",
   "files": [
     "__tests__/gpt-image.test.ts",

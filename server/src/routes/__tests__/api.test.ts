@@ -33,10 +33,10 @@ test("Kanban file upload accepts images above the ordinary JSON limit without re
   const storage = createStorageStub({
     getKanbanWorkspace: async () => { throw new Error("Preview source has not been uploaded."); },
     saveManagedFiles: async (options) => {
-      assert.equal(options.workflowName, "demo");
+      assert.equal(options.projectName, "demo");
       assert.deepEqual(options.files[0]!.buffer, bytes);
       uploaded = true;
-      return [{ id: "wf_abc123", name: "map.png", mimeType: "image/png", size: bytes.length, kind: "image", storage: "server", workflowId: "demo", createdAt: "2026-10-08T00:00:00Z" }];
+      return [{ id: "wf_abc123", name: "map.png", mimeType: "image/png", size: bytes.length, kind: "image", storage: "server", projectId: "demo", createdAt: "2026-10-08T00:00:00Z" }];
     },
   });
   const server = await listen(storage, createApiKeyPrincipal("desktop"));
@@ -57,13 +57,13 @@ test("Kanban workspace issues a short-lived preview capability for Bearer-authen
   const storage = createStorageStub({
     getKanbanWorkspace: async (options) => {
       assert.deepEqual(options, {
-        workflowName: "demo",
+        projectName: "demo",
         target: "draft",
         actorId: "user-1",
       });
       return {
-        workflowId: "demo",
-        workflowName: "Kanban Demo",
+        projectId: "demo",
+        projectName: "Kanban Demo",
         target: "draft",
         resolvedTarget: "draft",
         artifactDir: "dist",
@@ -74,7 +74,7 @@ test("Kanban workspace issues a short-lived preview capability for Bearer-authen
     },
     issueKanbanPreviewCapability: async (options) => {
       assert.deepEqual(options, {
-        workflowName: "demo",
+        projectName: "demo",
         target: "draft",
         actorId: "user-1",
       });
@@ -106,13 +106,13 @@ test("Kanban Studio bridge fixes KV access to the authenticated project scope", 
   const storage = createStorageStub({
     getKanbanWorkspace: async (options) => {
       assert.deepEqual(options, {
-        workflowName: "demo",
+        projectName: "demo",
         target: "draft",
         actorId: "user-1",
       });
       return {
-        workflowId: "demo",
-        workflowName: "Demo",
+        projectId: "demo",
+        projectName: "Demo",
         target: "draft",
         resolvedTarget: "draft",
         artifactDir: ".",
@@ -155,8 +155,8 @@ test("Kanban Studio bridge reads a confirmed related project's KV through its al
   const accessChecks: string[] = [];
   const storage = createStorageStub({
     getKanbanWorkspace: async () => ({
-      workflowId: "demo",
-      workflowName: "Demo",
+      projectId: "demo",
+      projectName: "Demo",
       target: "draft",
       resolvedTarget: "draft",
       artifactDir: ".",
@@ -178,15 +178,15 @@ test("Kanban Studio bridge reads a confirmed related project's KV through its al
       });
       return { targetProjectId: sourceProjectId };
     },
-    getProjectAccessSummary: async (workflowId, userId) => {
-      accessChecks.push(workflowId);
+    getProjectAccessSummary: async (projectId, userId) => {
+      accessChecks.push(projectId);
       return {
-        workflowId,
-        workflowName: workflowId,
+        projectId,
+        projectName: projectId,
         visibility: "private",
         ownerUserId: userId,
         member: userId ? {
-          workflowId,
+          projectId,
           userId,
           role: "owner",
           createdAt: "2026-08-03T00:00:00.000Z",
@@ -231,8 +231,8 @@ test("Kanban Studio bridge applies related-project grant revocation immediately"
   let grantActive = true;
   const storage = createStorageStub({
     getKanbanWorkspace: async () => ({
-      workflowId: "demo",
-      workflowName: "Demo",
+      projectId: "demo",
+      projectName: "Demo",
       target: "1.0.0",
       resolvedTarget: "1.0.0",
       artifactDir: ".",
@@ -241,10 +241,10 @@ test("Kanban Studio bridge applies related-project grant revocation immediately"
       configurations: [],
     }),
     resolveKanbanRelatedProject: async () => createRelatedProject(sourceProjectId),
-    getProjectAccessSummary: async (workflowId) => ({
-      workflowId,
-      workflowName: workflowId,
-      visibility: workflowId === "demo" ? "public" : "private",
+    getProjectAccessSummary: async (projectId) => ({
+      projectId,
+      projectName: projectId,
+      visibility: projectId === "demo" ? "public" : "private",
       ownerUserId: "owner-1",
     }),
     resolveRelatedProjectKVAccess: async (options) => {
@@ -295,8 +295,8 @@ test("Kanban Studio bridge rejects operations outside the public whitelist", asy
   let storageRead = false;
   const storage = createStorageStub({
     getKanbanWorkspace: async () => ({
-      workflowId: "demo",
-      workflowName: "Demo",
+      projectId: "demo",
+      projectName: "Demo",
       target: "draft",
       resolvedTarget: "draft",
       artifactDir: ".",
@@ -334,17 +334,17 @@ test("Kanban Studio bridge rejects operations outside the public whitelist", asy
 test("Kanban Studio bridge allows project readers to perform read-only operations", async () => {
   let workspaceRead = false;
   const storage = createStorageStub({
-    getProjectAccessSummary: async (workflowId) => ({
-      workflowId,
-      workflowName: workflowId,
+    getProjectAccessSummary: async (projectId) => ({
+      projectId,
+      projectName: projectId,
       visibility: "public",
       ownerUserId: "owner-1",
     }),
     getKanbanWorkspace: async () => {
       workspaceRead = true;
       return {
-        workflowId: "demo",
-        workflowName: "Demo",
+        projectId: "demo",
+        projectName: "Demo",
         target: "draft",
         resolvedTarget: "draft",
         artifactDir: ".",
@@ -378,7 +378,7 @@ test("Kanban Studio bridge allows project readers to perform read-only operation
 test("Kanban file mutations are denied to a project reader before accessing file storage", async () => {
   let touched = false;
   const storage = createStorageStub({
-    getProjectAccessSummary: async (workflowId) => ({ workflowId, workflowName: workflowId, visibility: "public", ownerUserId: "owner-1" }),
+    getProjectAccessSummary: async (projectId) => ({ projectId, projectName: projectId, visibility: "public", ownerUserId: "owner-1" }),
     saveManagedFiles: async () => { touched = true; return []; },
     deleteManagedFile: async (id) => { touched = true; return { id }; },
     getManagedFile: async () => { touched = true; throw new Error("Unexpected file access."); },
@@ -511,15 +511,15 @@ test("Kanban revision stream closes before publishing after project access is re
   let revisionListener: ((event: { projectId: string; revision: string }) => void) | undefined;
   let kanbanReadable = true;
   const storage = createStorageStub({
-    getProjectAccessSummary: async (workflowId, userId) => ({
-      workflowId,
-      workflowName: workflowId,
+    getProjectAccessSummary: async (projectId, userId) => ({
+      projectId,
+      projectName: projectId,
       visibility: "private",
       ownerUserId: "owner-1",
-      member: workflowId === "demo" && !kanbanReadable
+      member: projectId === "demo" && !kanbanReadable
         ? undefined
         : {
-            workflowId,
+            projectId,
             userId: userId ?? "viewer-1",
             role: "viewer",
             createdAt: "2026-06-18T00:00:00.000Z",
@@ -567,10 +567,10 @@ test("Kanban revision stream closes before publishing after related-project acce
   let revisionListener: ((event: { projectId: string; revision: string }) => void) | undefined;
   let grantActive = true;
   const storage = createStorageStub({
-    getProjectAccessSummary: async (workflowId) => ({
-      workflowId,
-      workflowName: workflowId,
-      visibility: workflowId === "demo" ? "public" : "private",
+    getProjectAccessSummary: async (projectId) => ({
+      projectId,
+      projectName: projectId,
+      visibility: projectId === "demo" ? "public" : "private",
       ownerUserId: "owner-1",
     }),
     getKanbanRelatedProjectBindings: async () => ({
@@ -616,10 +616,10 @@ test("Kanban revision stream omits unconfirmed related projects from its snapsho
   const sourceProjectId = "00000000-0000-4000-8000-000000000301";
   let subscribed = false;
   const storage = createStorageStub({
-    getProjectAccessSummary: async (workflowId) => ({
-      workflowId,
-      workflowName: workflowId,
-      visibility: workflowId === "demo" ? "public" : "private",
+    getProjectAccessSummary: async (projectId) => ({
+      projectId,
+      projectName: projectId,
+      visibility: projectId === "demo" ? "public" : "private",
       ownerUserId: "owner-1",
     }),
     getKanbanRelatedProjectBindings: async () => ({
@@ -665,8 +665,8 @@ test("Kanban draft file saves preserve declared base64 encoding", async () => {
     saveDraftFiles: async (options) => {
       received = options;
       return {
-        workflowId: "demo",
-        workflowName: "Kanban Demo",
+        projectId: "demo",
+        projectName: "Kanban Demo",
         updatedFiles: ["assets/board.png"],
         removedFiles: [],
         nextVersion: "0.1.0",
@@ -691,7 +691,7 @@ test("Kanban draft file saves preserve declared base64 encoding", async () => {
 
     assert.equal(response.errCode, 0);
     assert.deepEqual(received, {
-      workflowName: "demo",
+      projectName: "demo",
       files: [{ path: "assets/board.png", content: "/wAQIEA=", encoding: "base64" }],
       removePaths: undefined,
     });
@@ -732,11 +732,11 @@ test("project card image upload accepts cropped WebP data and returns the server
   const webp = createWebpFixture("project-card");
   const storage = createStorageStub({
     saveProjectCardImage: async (options) => {
-      assert.equal(options.workflowName, "demo");
+      assert.equal(options.projectName, "demo");
       assert.deepEqual(options.buffer, webp);
       assert.equal(options.origin.startsWith("http://127.0.0.1:"), true);
       return {
-        workflowId: "demo",
+        projectId: "demo",
         url: `${options.origin}/project-card-images/demo/${"a".repeat(64)}.webp`,
         mimeType: "image/webp",
         size: options.buffer.byteLength,
@@ -819,7 +819,7 @@ test("project card metadata endpoint validates and persists server-issued image 
   };
   const storage = createStorageStub({
     updateProjectCardMetadata: async (options) => {
-      assert.equal(options.workflowName, "demo");
+      assert.equal(options.projectName, "demo");
       assert.deepEqual(options.projectCard, projectCard);
       return options.projectCard;
     },
@@ -849,7 +849,7 @@ test("project info endpoint preserves localized names and future declaration ids
   };
   const storage = createStorageStub({
     updateProjectInfoMetadata: async (options) => {
-      assert.equal(options.workflowName, "demo");
+      assert.equal(options.projectName, "demo");
       assert.equal(options.name, "Default Name");
       assert.deepEqual(options.projectInfo, projectInfo);
       return { name: options.name, projectInfo: options.projectInfo };
@@ -873,9 +873,9 @@ test("project info endpoint preserves localized names and future declaration ids
 test("source files endpoint does not let a global source permission bypass project read access", async () => {
   let sourceRead = false;
   const storage = createStorageStub({
-    getProjectAccessSummary: async (workflowId) => ({
-      workflowId,
-      workflowName: workflowId,
+    getProjectAccessSummary: async (projectId) => ({
+      projectId,
+      projectName: projectId,
       visibility: "private",
       ownerUserId: "owner-1",
     }),
@@ -946,13 +946,13 @@ test("project deployment details authorize every manifest project when a depende
     getProjectAccessSummary: async (projectId, userId) => {
       checkedProjects.push(projectId);
       return {
-        workflowId: projectId,
-        workflowName: projectId,
+        projectId: projectId,
+        projectName: projectId,
         visibility: projectId === rootProjectId ? "public" : "private",
         ownerUserId: "owner-1",
         member: userId === "viewer-1" && projectId === rootProjectId
           ? {
-              workflowId: projectId,
+              projectId: projectId,
               userId,
               role: "manager",
               createdAt: "2026-08-05T00:00:00.000Z",
@@ -1018,12 +1018,12 @@ test("dependency status and project-group download APIs retain exact targets and
   };
   const storage = createStorageStub({
     getProjectDependencyStatus: async (options) => {
-      assert.equal(options.workflowName, "demo");
+      assert.equal(options.projectName, "demo");
       assert.equal(options.target, "0.3.0");
       return statusResult;
     },
     getProjectGroupDownload: async (options) => {
-      assert.equal(options.workflowName, "demo");
+      assert.equal(options.projectName, "demo");
       assert.equal(options.target, "0.3.0");
       return downloadResult;
     },
@@ -1221,9 +1221,9 @@ test("workflows endpoint hides legacy non-UUID ids from admins after cleanup", a
         webhookEnabled: false,
       },
     ]) as any,
-    getProjectAccessSummary: async (workflowId) => ({
-      workflowId,
-      workflowName: workflowId,
+    getProjectAccessSummary: async (projectId) => ({
+      projectId,
+      projectName: projectId,
       visibility: "public",
     }) as any,
   });
@@ -1272,9 +1272,9 @@ test("workflows endpoint hides legacy non-UUID ids from ordinary public readers"
         webhookEnabled: false,
       },
     ]) as any,
-    getProjectAccessSummary: async (workflowId) => ({
-      workflowId,
-      workflowName: workflowId,
+    getProjectAccessSummary: async (projectId) => ({
+      projectId,
+      projectName: projectId,
       visibility: "public",
     }) as any,
   });
@@ -1303,8 +1303,8 @@ test("create workflow endpoint atomically forwards package UUID and project info
   const storage = createStorageStub({
     createProject: async (options) => {
       assert.deepEqual(options, {
-        workflowId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
-        workflowName: "Hello Workflow",
+        projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
+        projectName: "Hello Workflow",
         projectType: "workflow",
         projectInfo,
         ownerUserId: "creator-1",
@@ -1312,8 +1312,8 @@ test("create workflow endpoint atomically forwards package UUID and project info
         visibility: "private",
       });
       return {
-        workflowId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
-        workflowName: "Hello Workflow",
+        projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
+        projectName: "Hello Workflow",
         projectType: "workflow",
         projectInfo,
         visibility: "private",
@@ -1327,7 +1327,7 @@ test("create workflow endpoint atomically forwards package UUID and project info
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        workflowId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
+        projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
         name: "Hello Workflow",
         projectType: "workflow",
         projectInfo,
@@ -1336,8 +1336,8 @@ test("create workflow endpoint atomically forwards package UUID and project info
 
     assert.equal(response.errCode, 0);
     assert.deepEqual(response.data, {
-      workflowId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
-      workflowName: "Hello Workflow",
+      projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
+      projectName: "Hello Workflow",
       projectType: "workflow",
       projectInfo,
       visibility: "private",
@@ -1360,12 +1360,12 @@ test("create workflow endpoint rejects missing and unknown project types", async
   try {
     for (const body of [
       {
-        workflowId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
+        projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
         name: "Missing Type",
         projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: "agnostic" }, dataStorage: { mode: "both" } },
       },
       {
-        workflowId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
+        projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
         name: "Unknown Type",
         projectType: "agent",
         projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: "agnostic" }, dataStorage: { mode: "both" } },
@@ -1411,11 +1411,11 @@ test("create workflow endpoint requires a package UUID and declared data storage
     const cases = [
       {
         body: { name: "Missing UUID", projectType: "workflow", projectInfo: validProjectInfo },
-        message: /workflowId must be a string/i,
+        message: /projectId must be a string/i,
       },
       {
         body: {
-          workflowId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
+          projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
           name: "Missing declaration",
           projectType: "workflow",
         },
@@ -1423,7 +1423,7 @@ test("create workflow endpoint requires a package UUID and declared data storage
       },
       {
         body: {
-          workflowId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
+          projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
           name: "Invalid declaration",
           projectType: "workflow",
           projectInfo: { ...validProjectInfo, dataStorage: { mode: "archive" } },
@@ -1465,8 +1465,8 @@ test("create workflow endpoint validates and forwards optional project card meta
     createProject: async (options) => {
       receivedOptions = options;
       return {
-        workflowId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
-        workflowName: "Round Conversation",
+        projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
+        projectName: "Round Conversation",
         projectType: "conversation",
         projectInfo,
         visibility: "private",
@@ -1480,7 +1480,7 @@ test("create workflow endpoint validates and forwards optional project card meta
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        workflowId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
+        projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
         name: "Round Conversation",
         projectType: "conversation",
         projectInfo,
@@ -1490,8 +1490,8 @@ test("create workflow endpoint validates and forwards optional project card meta
 
     assert.equal(response.errCode, 0);
     assert.deepEqual(receivedOptions, {
-      workflowId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
-      workflowName: "Round Conversation",
+      projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
+      projectName: "Round Conversation",
       projectType: "conversation",
       projectInfo,
       ownerUserId: "creator-1",
@@ -1519,7 +1519,7 @@ test("create workflow endpoint rejects invalid project card metadata", async () 
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        workflowId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
+        projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
         name: "Invalid Card",
         projectType: "workflow",
         projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: "agnostic" }, dataStorage: { mode: "both" } },
@@ -1565,7 +1565,7 @@ test("audit events endpoint forwards filters and returns paged audit data", asyn
         outcome: "success",
         requestIp: "127.0.0.1",
         userAgent: "test-agent",
-        context: { workflowName: "demo", token: "abcd...wxyz" },
+        context: { projectName: "demo", token: "abcd...wxyz" },
         createdAt: "2026-06-18T08:00:00.000Z",
       },
     ],
@@ -1624,14 +1624,14 @@ test("audit events endpoint forwards filters and returns paged audit data", asyn
 
 test("member endpoint rejects owner demotion", async () => {
   const storage = createStorageStub({
-    getProjectAccessSummary: async (workflowId, userId) => ({
-      workflowId,
-      workflowName: "demo",
+    getProjectAccessSummary: async (projectId, userId) => ({
+      projectId,
+      projectName: "demo",
       visibility: "private",
       ownerUserId: "owner-1",
       member: userId === "owner-1"
         ? {
-            workflowId,
+            projectId,
             userId,
             role: "owner",
             createdAt: "2026-06-18T00:00:00.000Z",
@@ -1656,14 +1656,14 @@ test("member endpoint rejects owner demotion", async () => {
 
 test("manager cannot transfer ownership", async () => {
   const storage = createStorageStub({
-    getProjectAccessSummary: async (workflowId, userId) => ({
-      workflowId,
-      workflowName: "demo",
+    getProjectAccessSummary: async (projectId, userId) => ({
+      projectId,
+      projectName: "demo",
       visibility: "private",
       ownerUserId: "owner-1",
       member: userId === "manager-1"
         ? {
-            workflowId,
+            projectId,
             userId,
             role: "manager",
             createdAt: "2026-06-18T00:00:00.000Z",
@@ -1688,16 +1688,16 @@ test("manager cannot transfer ownership", async () => {
 
 test("project creator can manage members without owner membership", async () => {
   const storage = createStorageStub({
-    getProjectAccessSummary: async (workflowId) => ({
-      workflowId,
-      workflowName: "demo",
+    getProjectAccessSummary: async (projectId) => ({
+      projectId,
+      projectName: "demo",
       visibility: "private",
       ownerUserId: "owner-1",
       createdByUserId: "creator-1",
       member: undefined,
     }),
     setProjectMember: async (options) => ({
-      workflowId: options.workflowId,
+      projectId: options.projectId,
       userId: options.userId,
       role: options.role,
       createdBy: options.createdBy,
@@ -1706,7 +1706,7 @@ test("project creator can manage members without owner membership", async () => 
     createProjectInvitation: async (options) => ({
       invitation: {
         id: "inv-creator",
-        workflowId: options.workflowId,
+        projectId: options.projectId,
         token: "tok-creator",
         role: options.role,
         createdAt: "2026-06-18T00:00:00.000Z",
@@ -1726,7 +1726,7 @@ test("project creator can manage members without owner membership", async () => 
     });
     assert.equal(memberResponse.errCode, 0);
     assert.deepEqual(memberResponse.data, {
-      workflowId: "demo",
+      projectId: "demo",
       userId: "viewer-2",
       role: "viewer",
       createdBy: "creator-1",
@@ -1755,7 +1755,7 @@ test("invitation endpoint creates a manager invitation with a token", async () =
     createProjectInvitation: async (options) => ({
       invitation: {
         id: "inv-1",
-        workflowId: options.workflowId,
+        projectId: options.projectId,
         token: "tok-abc",
         role: options.role,
         createdAt: "2026-06-18T00:00:00.000Z",
@@ -1841,7 +1841,7 @@ test("publish endpoint forwards exact version and source preconditions", async (
   const storage = createStorageStub({
     publish: async (options) => {
       published.push(options);
-      return { workflowId: "demo", workflowName: "demo", version: "1.2.3", latest: "1.2.3", nextVersion: "1.2.4", releaseLog: "Version notes", dependencies: [] };
+      return { projectId: "demo", projectName: "demo", version: "1.2.3", latest: "1.2.3", nextVersion: "1.2.4", releaseLog: "Version notes", dependencies: [] };
     },
   });
   const server = await listen(storage, createPrincipal(["projects.manage_all"]));
@@ -1851,7 +1851,7 @@ test("publish endpoint forwards exact version and source preconditions", async (
       body: JSON.stringify({ releaseLog: "Version notes", expectedVersion: "1.2.3", expectedSourceHash: sourceHash }),
     });
     assert.equal(response.errCode, 0);
-    assert.deepEqual(published, [{ workflowName: "demo", releaseLog: "Version notes", expectedVersion: "1.2.3", expectedSourceHash: sourceHash, createdByUserId: "user-1" }]);
+    assert.deepEqual(published, [{ projectName: "demo", releaseLog: "Version notes", expectedVersion: "1.2.3", expectedSourceHash: sourceHash, createdByUserId: "user-1" }]);
     const invalid = await fetchJson(server.url("/api/projects/demo/publish"), {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expectedSourceHash: 123 }),
     });
@@ -1862,9 +1862,9 @@ test("publish endpoint forwards exact version and source preconditions", async (
 
 test("publish endpoint rejects callers without project management permission", async () => {
   const storage = createStorageStub({
-    getProjectAccessSummary: async (workflowId) => ({
-      workflowId,
-      workflowName: "demo",
+    getProjectAccessSummary: async (projectId) => ({
+      projectId,
+      projectName: "demo",
       visibility: "private",
       ownerUserId: "owner-2",
     }),
@@ -2221,9 +2221,9 @@ test("project storage endpoint forwards atomic PersistentValue knowledge mutatio
 test("PersistentValue knowledge mutations require data write access to the current project", async () => {
   let mutationCalled = false;
   const storage = createStorageStub({
-    getProjectAccessSummary: async (workflowId) => ({
-      workflowId,
-      workflowName: workflowId,
+    getProjectAccessSummary: async (projectId) => ({
+      projectId,
+      projectName: projectId,
       visibility: "private",
       ownerUserId: "owner-1",
     }),
@@ -2264,9 +2264,9 @@ test("current project and conversation writes require project data write access"
   let readCalled = false;
   let writeCalled = false;
   const storage = createStorageStub({
-    getProjectAccessSummary: async (workflowId) => ({
-      workflowId,
-      workflowName: workflowId,
+    getProjectAccessSummary: async (projectId) => ({
+      projectId,
+      projectName: projectId,
       visibility: "private",
       ownerUserId: "owner-1",
     }),
@@ -2358,24 +2358,24 @@ test("knowledge document endpoints forward CRUD payloads", async () => {
   const calls: string[] = [];
   const document = createKnowledgeDocument("guide");
   const storage = createStorageStub({
-    listKnowledgeDocuments: async (workflowName, options) => {
-      calls.push(`list:${workflowName}:${options?.pageSize}:${options?.cursor}`);
+    listKnowledgeDocuments: async (projectName, options) => {
+      calls.push(`list:${projectName}:${options?.pageSize}:${options?.cursor}`);
       return { items: [createKnowledgeListItem("guide")], hasMore: false, total: 1 };
     },
     createKnowledgeDocument: async (options) => {
-      calls.push(`create:${options.workflowName}:${options.id}:${options.title}:${options.markdown}`);
+      calls.push(`create:${options.projectName}:${options.id}:${options.title}:${options.markdown}`);
       return document;
     },
     getKnowledgeDocument: async (options) => {
-      calls.push(`get:${options.workflowName}:${options.documentId}`);
+      calls.push(`get:${options.projectName}:${options.documentId}`);
       return document;
     },
     editKnowledgeDocument: async (options) => {
-      calls.push(`edit:${options.workflowName}:${options.documentId}:${options.title}:${options.markdown}`);
+      calls.push(`edit:${options.projectName}:${options.documentId}:${options.title}:${options.markdown}`);
       return { ...document, title: options.title ?? document.title, markdown: options.markdown ?? document.markdown };
     },
     deleteKnowledgeDocument: async (options) => {
-      calls.push(`delete:${options.workflowName}:${options.documentId}`);
+      calls.push(`delete:${options.projectName}:${options.documentId}`);
       return { id: options.documentId, deleted: true };
     },
   });
@@ -2471,7 +2471,7 @@ test("knowledge search endpoint forwards line context query parameters", async (
   const storage = createStorageStub({
     searchKnowledgeDocuments: async (options) => {
       assert.deepEqual(options, {
-        workflowName: "demo",
+        projectName: "demo",
         query: "markdown",
         documentId: "guide",
         beforeLines: 1,
@@ -2511,7 +2511,7 @@ test("knowledge document line endpoint forwards document id and range query para
   const storage = createStorageStub({
     readKnowledgeDocumentLines: async (options) => {
       assert.deepEqual(options, {
-        workflowName: "demo",
+        projectName: "demo",
         documentId: "guide",
         startLine: 2,
         endLine: 4,
@@ -2594,13 +2594,13 @@ test("project token usage endpoint forwards conversation detail filters", async 
 test("all member roles can read data while only writers and managers can mutate it", async () => {
   for (const role of ["owner", "manager", "writer", "viewer"] as const) {
     const storage = createStorageStub({
-      getProjectAccessSummary: async workflowId => ({ workflowId, workflowName: workflowId, visibility: "private",
-        member: { workflowId, userId: "member", role, createdAt: "2026-10-16T00:00:00.000Z" } }),
+      getProjectAccessSummary: async projectId => ({ projectId, projectName: projectId, visibility: "private",
+        member: { projectId, userId: "member", role, createdAt: "2026-10-16T00:00:00.000Z" } }),
       canDownloadProjectSource: Storage.prototype.canDownloadProjectSource,
-      getFiles: async () => ({ workflowId: "demo", workflowName: "demo", target: "draft", resolvedTarget: "draft", files: [] }),
+      getFiles: async () => ({ projectId: "demo", projectName: "demo", target: "draft", resolvedTarget: "draft", files: [] }),
       getSourceArchive: async () => ({ version: "1.0.0", archive: Buffer.from("archive") }),
-      cloneWorkflow: async () => ({ workflowId: "copy", workflowName: "copy", sourceTarget: "latest", resolvedSourceTarget: "1.0.0", nextVersion: "1.0.1" }),
-      getKanbanWorkspace: async () => ({ workflowId: "demo", workflowName: "demo", target: "latest",
+      cloneWorkflow: async () => ({ projectId: "copy", projectName: "copy", sourceTarget: "latest", resolvedSourceTarget: "1.0.0", nextVersion: "1.0.1" }),
+      getKanbanWorkspace: async () => ({ projectId: "demo", projectName: "demo", target: "latest",
         resolvedTarget: "1.0.0", artifactDir: ".", entry: "index.html", relatedProjects: [], configurations: [] }),
     });
     const server = await listen(storage, createPrincipal(["projects.create"], { userId: "member" }));
@@ -2626,7 +2626,7 @@ test("all member roles can read data while only writers and managers can mutate 
       assert.equal((await fetch(server.url("/api/projects/demo/source-archive?target=1.0.0"))).status, downloadStatus, role);
       assert.equal((await fetch(server.url("/api/projects/demo/clone"), {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetWorkflowName: "copy" }),
+        body: JSON.stringify({ targetProjectName: "copy" }),
       })).status, downloadStatus, role);
     } finally { await server.close(); }
   }
@@ -2668,15 +2668,15 @@ function createStorageStub(overrides: Partial<Storage>): Storage {
       dataStorage: { mode: "both" },
       relatedProjects: [],
     }),
-    getProjectAccessSummary: async (workflowId, userId) => ({
-      workflowId,
-      workflowName: workflowId,
+    getProjectAccessSummary: async (projectId, userId) => ({
+      projectId,
+      projectName: projectId,
       visibility: "private",
       ownerUserId: userId ?? "user-1",
       member: userId === undefined
         ? undefined
         : {
-            workflowId,
+            projectId,
             userId,
             role: "owner",
             createdAt: "2026-06-18T00:00:00.000Z",
@@ -2783,7 +2783,7 @@ function createStorageStub(overrides: Partial<Storage>): Storage {
     createProjectInvitation: async (options) => ({
       invitation: {
         id: "inv-stub",
-        workflowId: options.workflowId,
+        projectId: options.projectId,
         token: "stub-token",
         role: options.role,
         createdAt: "2026-05-26T00:00:00.000Z",

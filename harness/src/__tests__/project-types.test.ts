@@ -99,7 +99,7 @@ test("workflow script inspection rejects a project without an executor", async (
     const inspection = inspectWorkflowScripts({
       cwd: workflowDir,
       workflowDir,
-      workflowName: "no-executor",
+      projectName: "no-executor",
     });
 
     assert.equal(
@@ -146,7 +146,7 @@ test("structure inspection warns about conflicting executor project types across
     const inspection = inspectWorkflowStructure({
       cwd: workflowDir,
       workflowDir,
-      workflowName: "conflicting-project-types",
+      projectName: "conflicting-project-types",
     });
     assert.equal(
       inspection.diagnostics.violations.length,
@@ -196,7 +196,7 @@ test("runtime infers a legacy conversation executor without projectType", async 
 
     const report = await runLocalWorkflowWithReport({
       workflowDir,
-      workflowName: "legacy-conversation-runtime",
+      projectName: "legacy-conversation-runtime",
       conversationId: "legacy-thread",
     });
 
@@ -241,7 +241,7 @@ test("runtime infers a Workflow executor with entrypoints but no projectType", a
 
     const report = await runLocalWorkflowWithReport({
       workflowDir,
-      workflowName: "inferred-workflow-runtime",
+      projectName: "inferred-workflow-runtime",
     });
 
     assert.equal(report.status, "success");
@@ -265,12 +265,12 @@ test("projectType alone controls runtime conversation context", async () => {
     const [workflowReport, conversationReport] = await Promise.all([
       runLocalWorkflowWithReport({
         workflowDir,
-        workflowName: "workflow-mode",
+        projectName: "workflow-mode",
         conversationId: "ignored-thread",
       }),
       runLocalWorkflowWithReport({
         workflowDir: conversationDir,
-        workflowName: "conversation-mode",
+        projectName: "conversation-mode",
         conversationId: "active-thread",
       }),
     ]);
@@ -324,7 +324,7 @@ test("runtime reports static violations before server storage connection checks"
 
     const report = await runLocalWorkflowWithReport({
       workflowDir,
-      workflowName: "legacy-runtime",
+      projectName: "legacy-runtime",
       env: {} as NodeJS.ProcessEnv,
     });
 

@@ -81,7 +81,7 @@ export interface KanbanFileReference {
   size: number;
   kind: "image" | "file";
   storage: "server";
-  workflowId?: string;
+  projectId?: string;
   createdAt: string;
   url?: string;
 }
@@ -1025,7 +1025,7 @@ function sanitizeInjectedFileReference(value: unknown) {
       : 0,
     kind: value["kind"] === "image" || mimeType.startsWith("image/") ? "image" as const : "file" as const,
     storage: value["storage"],
-    ...(typeof value["workflowId"] === "string" ? { workflowId: value["workflowId"] } : {}),
+    ...(typeof value["projectId"] === "string" ? { projectId: value["projectId"] } : {}),
     ...(typeof value["conversationId"] === "string" ? { conversationId: value["conversationId"] } : {}),
     ...(typeof value["createdAt"] === "string" ? { createdAt: value["createdAt"] } : {}),
   };

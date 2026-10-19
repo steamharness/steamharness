@@ -359,7 +359,7 @@ export interface StructureEntrypoint {
   title: string;
   description?: string;
   group?: EntrypointGroupDefinition;
-  workflowName: string;
+  projectName: string;
   execution: StructureExecution;
   params?: ParamDefinition[];
   paramLayout?: ParamLayout;
@@ -369,10 +369,10 @@ export interface StructureEntrypoint {
   registry?: NodeRegistryItem[];
 }
 
-interface AnalyzedWorkflowEntrypoint extends Omit<StructureEntrypoint, "execution" | "workflowName"> {
+interface AnalyzedWorkflowEntrypoint extends Omit<StructureEntrypoint, "execution" | "projectName"> {
   workflowRef: string;
   workflowKey?: string;
-  workflowName?: string;
+  projectName?: string;
   location: ScriptRuleLocation;
 }
 
@@ -412,7 +412,7 @@ export interface ScriptInspection {
 
 export interface ValidateWorkflowScriptsOptions {
   cwd: string;
-  workflowName: string;
+  projectName: string;
   workflowDir: string;
 }
 
@@ -492,9 +492,9 @@ export function validateWorkflowScripts(
 
   throw new HarnessError({
     type: "input_validation",
-    message: `Workflow "${options.workflowName}" script validation failed.`,
+    message: `Workflow "${options.projectName}" script validation failed.`,
     metadata: {
-      workflow: options.workflowName,
+      workflow: options.projectName,
       violations: inspection.violations,
     },
   });
@@ -517,7 +517,7 @@ export function inspectWorkflowScripts(
   return {
     definedNodes: analysis.definedNodes,
     violations: findWorkflowScriptRuleViolations(analysis, {
-      workflowName: options.workflowName,
+      projectName: options.projectName,
     }),
   };
 }
@@ -530,7 +530,7 @@ export function inspectWorkflowStructure(
   if (scriptPaths.length === 0) {
     return {
       workflow: {
-        name: options.workflowName,
+        name: options.projectName,
         dir: options.workflowDir,
         files: [],
       },
@@ -564,7 +564,7 @@ export function inspectWorkflowStructure(
   const analysis = analyzeWorkflowScripts(options.cwd, scriptPaths);
 
   return createWorkflowStructureInspection({
-    workflowName: options.workflowName,
+    projectName: options.projectName,
     workflowDir: options.workflowDir,
     files: scriptPaths.map((scriptPath) => path.relative(options.cwd, scriptPath)),
     analysis,
@@ -613,7 +613,7 @@ function createMissingExecutorViolation(): ScriptRuleViolation {
 function findWorkflowScriptRuleViolations(
   analysis: ScriptAnalysis,
   options: {
-    workflowName?: string;
+    projectName?: string;
   } = {},
 ): ScriptRuleViolation[] {
   return [
@@ -649,7 +649,7 @@ function findUnknownWorkflowEntrypointReferences(
 }
 
 function createWorkflowStructureInspection(options: {
-  workflowName: string;
+  projectName: string;
   workflowDir: string;
   files: string[];
   analysis: ScriptAnalysis;
@@ -663,7 +663,7 @@ function createWorkflowStructureInspection(options: {
     title: entrypoint.title,
     ...(entrypoint.description === undefined ? {} : { description: entrypoint.description }),
     ...(entrypoint.group === undefined ? {} : { group: entrypoint.group }),
-    workflowName: entrypoint.workflowName ??
+    projectName: entrypoint.projectName ??
       (entrypoint.workflowKey === undefined
         ? undefined
         : options.analysis.workflowDefinitions[entrypoint.workflowKey]) ??
@@ -690,7 +690,7 @@ function createWorkflowStructureInspection(options: {
   return {
     projectType: options.analysis.executorProjectType,
     workflow: {
-      name: options.workflowName,
+      name: options.projectName,
       dir: options.workflowDir,
       files: options.files,
     },
@@ -723,7 +723,7 @@ function createWorkflowStructureInspection(options: {
     diagnostics: {
       warnings: options.analysis.structureWarnings,
       violations: findWorkflowScriptRuleViolations(options.analysis, {
-        workflowName: options.workflowName,
+        projectName: options.projectName,
       }),
     },
     ...(options.analysis.executorProjectType === "workflow"
@@ -1023,7 +1023,7 @@ function analyzeWorkflowScripts(cwd: string, scriptPaths: string[]): ScriptAnaly
         modulesByPath,
       });
       entrypoint.workflowKey = definition?.key;
-      entrypoint.workflowName = definition?.name;
+      entrypoint.projectName = definition?.name;
     }
   }
 
@@ -1133,8 +1133,8 @@ function analyzeWorkflowScripts(cwd: string, scriptPaths: string[]): ScriptAnaly
     if (fileAnalysis.executorEntrypoints && !analysis.executorEntrypoints) {
       analysis.executorEntrypoints = fileAnalysis.executorEntrypoints;
     }
-    for (const [workflowKey, workflowName] of Object.entries(fileAnalysis.workflowDefinitions)) {
-      analysis.workflowDefinitions[workflowKey] = workflowName;
+    for (const [workflowKey, projectName] of Object.entries(fileAnalysis.workflowDefinitions)) {
+      analysis.workflowDefinitions[workflowKey] = projectName;
     }
   }
 
@@ -1236,9 +1236,9 @@ function resolveWorkflowDefinition(options: {
     const module = options.modulesByPath.get(filePath);
     if (module === undefined) return undefined;
     const definitionKey = createWorkflowDefinitionKey(filePath, localName);
-    const workflowName = module.analysis.workflowDefinitions[definitionKey];
-    if (workflowName !== undefined) {
-      return { key: definitionKey, name: workflowName };
+    const projectName = module.analysis.workflowDefinitions[definitionKey];
+    if (projectName !== undefined) {
+      return { key: definitionKey, name: projectName };
     }
 
     const imported = module.bindings.imports[localName];
@@ -1635,11 +1635,11 @@ function analyzeSourceFile(
     const objectArg = node.arguments[0];
     if (variableName === undefined) return;
     const workflowOptions = objectArg === undefined ? undefined : unwrapExpression(objectArg);
-    const workflowName = workflowOptions !== undefined && ts.isObjectLiteralExpression(workflowOptions)
+    const projectName = workflowOptions !== undefined && ts.isObjectLiteralExpression(workflowOptions)
       ? readStringProperty(workflowOptions, "name")
       : undefined;
     analysis.workflowDefinitions[createWorkflowDefinitionKey(filePath, variableName)] =
-      workflowName ?? variableName;
+      projectName ?? variableName;
   }
 
   function collectExecutorParams(node: ts.Node): void {
@@ -2106,7 +2106,7 @@ function analyzeSourceFile(
         group: group?.definition,
         workflowRef,
         workflowKey: createWorkflowDefinitionKey(filePath, workflowRef),
-        workflowName: analysis.workflowDefinitions[createWorkflowDefinitionKey(filePath, workflowRef)],
+        projectName: analysis.workflowDefinitions[createWorkflowDefinitionKey(filePath, workflowRef)],
         location: createLocation(cwd, filePath, sourceFile, entrypointObject),
         params: paramDeclarations?.params,
         paramLayout: paramDeclarations?.layout,
@@ -4122,14 +4122,14 @@ function findDeclarationNodeNameConflicts(
 function findWorkflowOutputTypeViolations(
   outputTypes: OutputTypeOccurrence[],
   options: {
-    workflowName?: string;
+    projectName?: string;
   },
 ): ScriptRuleViolation[] {
-  if (options.workflowName === undefined) {
+  if (options.projectName === undefined) {
     return [];
   }
 
-  const expectedTypeName = createWorkflowOutputTypeName(options.workflowName);
+  const expectedTypeName = createWorkflowOutputTypeName(options.projectName);
   const matchedOutputTypes = outputTypes.filter((outputType) => {
     return outputType.name === expectedTypeName;
   });
@@ -4551,14 +4551,14 @@ function normalizeComparableName(name: string): string {
   return normalized === "" ? name.trim().toLowerCase() : normalized;
 }
 
-function createWorkflowOutputTypeName(workflowName: string): string {
-  const words = workflowName
+function createWorkflowOutputTypeName(projectName: string): string {
+  const words = projectName
     .split(/[^a-zA-Z0-9]+/g)
     .map((word) => word.trim())
     .filter((word) => word !== "");
   const prefix =
     words.length === 0
-      ? workflowName
+      ? projectName
       : words
           .map((word) => {
             return `${word.charAt(0).toUpperCase()}${word.slice(1)}`;

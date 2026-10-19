@@ -852,7 +852,7 @@ paths:
       summary: Atomically create a server project with a specified UUID
       description: |
         An authenticated user or administrator creates or recovers a same-UUID server project from the UUID in local
-        `package.json.id`. `workflowId`, `name`, `projectType`, and complete `projectInfo` containing
+        `package.json.id`. `projectId`, `name`, `projectType`, and complete `projectInfo` containing
         `dataStorage.mode` are required; `projectCard` and `visibility` are optional. Server atomically stores the
         complete project declaration and records the creator as owner. It does not create a default record first,
         perform a second metadata synchronization, or accept project source. If the same account already manages
@@ -866,7 +866,7 @@ paths:
             schema:
               $ref: "#/components/schemas/CreateWorkflowProjectRequest"
             example:
-              workflowId: 8bd4fef2-e083-4201-a89f-6f7d0676df53
+              projectId: 8bd4fef2-e083-4201-a89f-6f7d0676df53
               name: "@steamharness/hello-workflow"
               projectType: workflow
               projectInfo:
@@ -1744,7 +1744,7 @@ paths:
                 $ref: "#/components/schemas/ProjectAccessRequestResponse"
         "410":
           $ref: "#/components/responses/HarnessError"
-  /project-card-images/{workflowId}/{fileName}:
+  /project-card-images/{projectId}/{fileName}:
     get:
       tags:
         - Admin Workflows
@@ -1754,7 +1754,7 @@ paths:
       security: []
       operationId: getWorkflowProjectCardImage
       parameters:
-        - name: workflowId
+        - name: projectId
           in: path
           required: true
           schema:
@@ -1907,7 +1907,7 @@ paths:
       summary: Call Kanban project data Bridge
       description: |
         Project readers may perform read operations; writes require project management access. Server first verifies that target
-        resolves to a Kanban project, then pins current-project operations to the path workflowName and project scope.
+        resolves to a Kanban project, then pins current-project operations to the path projectName and project scope.
         A related-project operation accepts only alias and key. Server resolves the target UUID from the fixed version
         and rereads both current declarations to check the target's grant to the Kanban. A request cannot specify a
         project UUID, scope, database path, or release version.
@@ -2178,7 +2178,7 @@ paths:
             schema:
               type: object
               properties:
-                targetWorkflowName:
+                targetProjectName:
                   type: string
                   example: smoke-copy
                 displayName:
@@ -2188,7 +2188,7 @@ paths:
                   type: string
                   example: latest
               required:
-                - targetWorkflowName
+                - targetProjectName
       responses:
         "200":
           description: Clone the result.
@@ -3140,7 +3140,7 @@ components:
         administrator key login.
   parameters:
     ProjectName:
-      name: workflowName
+      name: projectName
       in: path
       required: true
       schema:
@@ -4177,7 +4177,7 @@ components:
     ProjectCardImage:
       type: object
       properties:
-        workflowId:
+        projectId:
           type: string
         url:
           type: string
@@ -4193,7 +4193,7 @@ components:
           type: string
           pattern: ^[a-f0-9]{64}$
       required:
-        - workflowId
+        - projectId
         - url
         - mimeType
         - size
@@ -4414,9 +4414,9 @@ components:
     GetFilesResult:
       type: object
       properties:
-        workflowId:
+        projectId:
           type: string
-        workflowName:
+        projectName:
           type: string
         target:
           type: string
@@ -4427,8 +4427,8 @@ components:
           items:
             $ref: "#/components/schemas/File"
       required:
-        - workflowId
-        - workflowName
+        - projectId
+        - projectName
         - target
         - resolvedTarget
         - files
@@ -4462,9 +4462,9 @@ components:
     DownloadableSourceFilesResult:
       type: object
       properties:
-        workflowId:
+        projectId:
           type: string
-        workflowName:
+        projectName:
           type: string
         target:
           type: string
@@ -4475,8 +4475,8 @@ components:
           items:
             $ref: "#/components/schemas/File"
       required:
-        - workflowId
-        - workflowName
+        - projectId
+        - projectName
         - target
         - resolvedTarget
         - files
@@ -4981,9 +4981,9 @@ components:
     UploadPackageResult:
       type: object
       properties:
-        workflowId:
+        projectId:
           type: string
-        workflowName:
+        projectName:
           type: string
         archiveName:
           type: string
@@ -4992,8 +4992,8 @@ components:
         nextVersion:
           type: string
       required:
-        - workflowId
-        - workflowName
+        - projectId
+        - projectName
         - archiveName
         - sourceHash
         - nextVersion
@@ -5003,7 +5003,7 @@ components:
         jobId:
           type: string
           format: uuid
-        workflowId:
+        projectId:
           type: string
         archiveName:
           type: string
@@ -5038,7 +5038,7 @@ components:
           $ref: "#/components/schemas/UploadPackageResult"
       required:
         - jobId
-        - workflowId
+        - projectId
         - archiveName
         - createOnly
         - status
@@ -5056,7 +5056,7 @@ components:
     CreateWorkflowProjectRequest:
       type: object
       properties:
-        workflowId:
+        projectId:
           type: string
           format: uuid
           description: Required UUID from local package.json.id; used as the server
@@ -5072,7 +5072,7 @@ components:
         projectCard:
           $ref: "#/components/schemas/ProjectCardMetadata"
       required:
-        - workflowId
+        - projectId
         - name
         - projectType
         - projectInfo
@@ -5347,7 +5347,7 @@ components:
       properties:
         id:
           type: string
-        workflowId:
+        projectId:
           type: string
         token:
           type: string
@@ -5377,7 +5377,7 @@ components:
           format: date-time
       required:
         - id
-        - workflowId
+        - projectId
         - token
         - role
         - createdAt
@@ -5455,7 +5455,7 @@ components:
     ProjectMember:
       type: object
       properties:
-        workflowId:
+        projectId:
           type: string
         userId:
           type: string
@@ -5471,7 +5471,7 @@ components:
           type: string
           format: date-time
       required:
-        - workflowId
+        - projectId
         - userId
         - role
         - createdAt
@@ -5561,9 +5561,9 @@ components:
     ProjectCreateResult:
       type: object
       properties:
-        workflowId:
+        projectId:
           type: string
-        workflowName:
+        projectName:
           type: string
         projectType:
           $ref: "#/components/schemas/ProjectKind"
@@ -5572,8 +5572,8 @@ components:
         visibility:
           $ref: "#/components/schemas/Visibility"
       required:
-        - workflowId
-        - workflowName
+        - projectId
+        - projectName
         - projectType
         - projectInfo
         - visibility
@@ -5612,9 +5612,9 @@ components:
     SaveDraftFilesResult:
       type: object
       properties:
-        workflowId:
+        projectId:
           type: string
-        workflowName:
+        projectName:
           type: string
         updatedFiles:
           type: array
@@ -5627,8 +5627,8 @@ components:
         nextVersion:
           type: string
       required:
-        - workflowId
-        - workflowName
+        - projectId
+        - projectName
         - updatedFiles
         - removedFiles
         - nextVersion
@@ -5644,9 +5644,9 @@ components:
     PublishResult:
       type: object
       properties:
-        workflowId:
+        projectId:
           type: string
-        workflowName:
+        projectName:
           type: string
         version:
           type: string
@@ -5657,8 +5657,8 @@ components:
         releaseLog:
           type: string
       required:
-        - workflowId
-        - workflowName
+        - projectId
+        - projectName
         - version
         - latest
         - nextVersion
@@ -5675,9 +5675,9 @@ components:
     CloneWorkflowResult:
       type: object
       properties:
-        workflowId:
+        projectId:
           type: string
-        workflowName:
+        projectName:
           type: string
         sourceTarget:
           type: string
@@ -5686,8 +5686,8 @@ components:
         nextVersion:
           type: string
       required:
-        - workflowId
-        - workflowName
+        - projectId
+        - projectName
         - sourceTarget
         - resolvedSourceTarget
         - nextVersion
@@ -5703,17 +5703,17 @@ components:
     UpdateWorkflowInfoResult:
       type: object
       properties:
-        workflowId:
+        projectId:
           type: string
-        workflowName:
+        projectName:
           type: string
         target:
           type: string
         resolvedTarget:
           type: string
       required:
-        - workflowId
-        - workflowName
+        - projectId
+        - projectName
         - target
         - resolvedTarget
     UpdateWorkflowInfoResultResponse:
@@ -5733,10 +5733,10 @@ components:
             data:
               type: object
               properties:
-                workflowId:
+                projectId:
                   type: string
               required:
-                - workflowId
+                - projectId
           required:
             - data
     ParamDefinition:
@@ -5901,7 +5901,7 @@ components:
       type: object
       description: |
         The iframe generates the requestId and selects the operation from the fixed whitelist. The fields of input are operation by
-        Decide; the server rejects additional project, scope, workflowName, database path, or target control fields.
+        Decide; the server rejects additional project, scope, projectName, database path, or target control fields.
       properties:
         requestId:
           type: string
@@ -5952,9 +5952,9 @@ components:
     KanbanWorkspaceState:
       type: object
       properties:
-        workflowId:
+        projectId:
           type: string
-        workflowName:
+        projectName:
           type: string
         target:
           type: string
@@ -5978,8 +5978,8 @@ components:
           type: string
           format: uuid
       required:
-        - workflowId
-        - workflowName
+        - projectId
+        - projectName
         - target
         - resolvedTarget
         - artifactDir
@@ -6714,7 +6714,7 @@ components:
           properties:
             id:
               type: string
-            workflowName:
+            projectName:
               type: string
             runId:
               type: string
@@ -6830,7 +6830,7 @@ components:
           type: string
           enum:
             - server
-        workflowId:
+        projectId:
           type: string
         conversationId:
           type: string

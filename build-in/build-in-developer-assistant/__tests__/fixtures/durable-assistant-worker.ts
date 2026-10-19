@@ -38,7 +38,7 @@ globalThis.workflow = { ...runtime, createAgentConversationWorkflow: options => 
 }) };
 const { executor: declaration } = await import("../../index");
 const executor = declaration as ConversationExecutorDefinition<AgentInput, AgentOutputPayload>;
-const projectId = "durable-assistant", conversationId = scenario, workflowName = "developer-assistant";
+const projectId = "durable-assistant", conversationId = scenario, projectName = "developer-assistant";
 const runId = phase === "fresh" ? "fresh-run" : "original-run";
 const host = ["session", "extensions", "blocks", "approval-session"].includes(scenario) ? createAgentSessionHost(conversationId) : undefined;
 const keepAlive = host ? setInterval(() => undefined, 1_000) : undefined;
@@ -49,7 +49,7 @@ async function until(check: () => boolean): Promise<void> {
   while (!check()) { if (Date.now() > deadline) throw new Error("Assistant session did not settle."); await new Promise(resolve => setTimeout(resolve, 10)); }
 }
 const kv = createWorkflowKVContext({ store: createLocalWorkflowKVStore({ rootDir: path.join(directory, "kv") }), projectId, conversationId });
-const conversation = createWorkflowConversationContext({ enabled: true, workflowName, conversationId, kv });
+const conversation = createWorkflowConversationContext({ enabled: true, projectName, conversationId, kv });
 const tokenUsage = createWorkflowTokenUsageContext({ kv, projectId, conversationId, runId, definition: executor.tokenUsage });
 let decisions: UserInputResolved[] = [];
 try { decisions = JSON.parse(await readFile(path.join(directory, "decisions.json"), "utf8")); }
@@ -59,10 +59,10 @@ const userInput = {
   requestInput: async () => undefined,
 };
 const context = {
-  metadata: { workflow: workflowName, runId, agentStoreDir: path.join(directory, "agents") },
+  metadata: { workflow: projectName, runId, agentStoreDir: path.join(directory, "agents") },
   providers: {}, storage: { local: { kv, persistentValue: kv }, server: { kv, persistentValue: kv } },
   conversation, tokenUsage, userInput,
-  toolPermissions: createWorkflowToolPermissionContext({ definitions: [...(executor.tools ?? []), ...(scenario === "extensions" ? [{ name: "checkpoint", enabled: true, autoApprove: true }] : [])], workflowName, runId, userInput }),
+  toolPermissions: createWorkflowToolPermissionContext({ definitions: [...(executor.tools ?? []), ...(scenario === "extensions" ? [{ name: "checkpoint", enabled: true, autoApprove: true }] : [])], projectName, runId, userInput }),
   nodeHooks: {
     onNodeChunk(event: { chunk: Record<string, unknown> }) {
       if (event.chunk.type === "output_item_start" && (event.chunk.item as { metadata?: { kind?: string } })?.metadata?.kind === "agent-session") sessionSnapshot = (event.chunk.item as { content: AgentSessionSnapshot }).content;
@@ -73,7 +73,7 @@ const context = {
   },
 } as unknown as RunContext;
 const executorContext = {
-  workflowName, workflowDir: path.resolve(import.meta.dirname, "../.."), env: process.env, abortSignal: new AbortController().signal,
+  projectName, workflowDir: path.resolve(import.meta.dirname, "../.."), env: process.env, abortSignal: new AbortController().signal,
   args: ["--message", scenario === "session" ? "Delegate background inspection" : "Create recovered.txt after checking the plan"],
   paramValues: { provider: "faux", model: "fixture", plan: scenario.startsWith("approval") ? "true" : "false" },
 } as Parameters<typeof executor.createInput>[0];

@@ -45,12 +45,12 @@ test("PostgreSQL stores static project groups, immutable versions and independen
       [boardId, "kanban", projectInfo("worker", workerId)],
       [workerId, "workflow", projectInfo("board", boardId)],
     ] as const) {
-      const created = await storage.createProject({ workflowId: id, workflowName: type,
+      const created = await storage.createProject({ projectId: id, projectName: type,
         projectType: type, projectInfo: info, ownerUserId: "owner", createdByUserId: "owner" });
       assert.equal(created.visibility, "private");
       assert.equal((await storage.getProjectAccessSummary(id, "owner")).member?.role, "owner");
       for (const role of ["manager", "writer", "viewer"] as const) {
-        await storage.setProjectMember({ workflowId: id, userId: role, role });
+        await storage.setProjectMember({ projectId: id, userId: role, role });
         assert.equal((await storage.getProjectAccessSummary(id, role)).member?.role, role);
       }
       const manifest = { id, name: type, version: "1.0.0",
@@ -63,7 +63,7 @@ test("PostgreSQL stores static project groups, immutable versions and independen
           ? "<!doctype html><title>Static board</title>" : "throw new Error('never execute uploaded code');" },
         { path: "must-not-run.cjs", content: `require('node:fs').writeFileSync(${JSON.stringify(path.join(root, "executed"))}, 'executed');` },
       ];
-      await storage.saveDraftFiles({ workflowName: id, files });
+      await storage.saveDraftFiles({ projectName: id, files });
       const source = path.join(root, id);
       await mkdir(source);
       for (const file of files) await writeFile(path.join(source, file.path), file.content);
@@ -84,20 +84,20 @@ test("PostgreSQL stores static project groups, immutable versions and independen
     const versions = await storage.listVersions(boardId);
     assert.equal(versions.latest, "1.0.0");
     assert.equal(versions.versions[0]?.dependencies[0]?.version, "1.0.0");
-    const snapshot = await storage.getDownloadableSourceFiles({ workflowName: boardId, target: "1.0.0" });
+    const snapshot = await storage.getDownloadableSourceFiles({ projectName: boardId, target: "1.0.0" });
     const copyId = randomUUID();
-    await storage.cloneWorkflow({ workflowName: boardId, sourceTarget: "1.0.0",
-      targetWorkflowName: copyId, ownerUserId: "copier" });
+    await storage.cloneWorkflow({ projectName: boardId, sourceTarget: "1.0.0",
+      targetProjectName: copyId, ownerUserId: "copier" });
     const copied = await storage.getProjectAccessSummary(copyId, "copier");
     assert.equal(copied.ownerUserId, "copier");
     assert.equal(copied.member?.role, "owner");
     assert.equal(copied.visibility, "private");
-    assert.equal((await storage.getFiles({ workflowName: copyId, target: "draft" })).files.length, snapshot.files.length);
-    await assert.rejects(storage.publish({ workflowName: boardId }), /already published|already exists/);
-    await assert.rejects(storage.uploadPackage({ workflowName: boardId, archiveName: "bad.tgz", archiveBuffer: Buffer.from("invalid") }));
-    assert.deepEqual(await storage.getDownloadableSourceFiles({ workflowName: boardId, target: "1.0.0" }), snapshot);
-    assert.equal((await storage.getProjectGroupDownload({ workflowName: boardId, canDownloadProject: async () => true })).projects.length, 2);
-    const skipped = await storage.getProjectGroupDownload({ workflowName: boardId, canDownloadProject: async () => false });
+    assert.equal((await storage.getFiles({ projectName: copyId, target: "draft" })).files.length, snapshot.files.length);
+    await assert.rejects(storage.publish({ projectName: boardId }), /already published|already exists/);
+    await assert.rejects(storage.uploadPackage({ projectName: boardId, archiveName: "bad.tgz", archiveBuffer: Buffer.from("invalid") }));
+    assert.deepEqual(await storage.getDownloadableSourceFiles({ projectName: boardId, target: "1.0.0" }), snapshot);
+    assert.equal((await storage.getProjectGroupDownload({ projectName: boardId, canDownloadProject: async () => true })).projects.length, 2);
+    const skipped = await storage.getProjectGroupDownload({ projectName: boardId, canDownloadProject: async () => false });
     assert.equal(skipped.skippedDependencies[0]?.reason, "permission_required");
     assert.equal(skipped.copyAllowed, false);
 
@@ -113,15 +113,15 @@ test("PostgreSQL stores static project groups, immutable versions and independen
     await storage.removeRelatedProject({ projectId: workerId, alias: "board", updateTarget: false });
     await assert.rejects(storage.resolveRelatedProjectKVAccess({ consumerProjectId: boardId, alias: "worker", key: "stock", operation: "read" }), /unavailable|confirmation/);
 
-    const document = await storage.createKnowledgeDocument({ workflowName: workerId, title: "Guide", markdown: "# Guide\nStorage only" });
-    await storage.editKnowledgeDocument({ workflowName: workerId, documentId: document.id, markdown: "# Guide\nUpdated storage" });
+    const document = await storage.createKnowledgeDocument({ projectName: workerId, title: "Guide", markdown: "# Guide\nStorage only" });
+    await storage.editKnowledgeDocument({ projectName: workerId, documentId: document.id, markdown: "# Guide\nUpdated storage" });
     assert.equal((await storage.listKnowledgeDocuments(workerId)).total, 1);
-    assert.equal((await storage.searchKnowledgeDocuments({ workflowName: workerId, query: "Updated" })).matches.length, 1);
-    const file = (await storage.saveManagedFiles({ workflowName: workerId, files: [{ name: "note.txt", buffer: Buffer.from("saved") }] }))[0]!;
+    assert.equal((await storage.searchKnowledgeDocuments({ projectName: workerId, query: "Updated" })).matches.length, 1);
+    const file = (await storage.saveManagedFiles({ projectName: workerId, files: [{ name: "note.txt", buffer: Buffer.from("saved") }] }))[0]!;
     assert.equal(await readFile((await storage.getManagedFile(file.id)).filePath, "utf8"), "saved");
     await storage.deleteManagedFile(file.id);
     await assert.rejects(storage.getManagedFile(file.id));
-    await storage.deleteKnowledgeDocument({ workflowName: workerId, documentId: document.id });
+    await storage.deleteKnowledgeDocument({ projectName: workerId, documentId: document.id });
     assert.equal((await storage.listKnowledgeDocuments(workerId)).total, 0);
 
     await pool.query("create table workflow_runs (record text); insert into workflow_runs values ('historical data')");

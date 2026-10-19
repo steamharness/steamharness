@@ -1,5 +1,5 @@
 {
-  "workflowName": "openai-agents",
+  "projectName": "openai-agents",
   "projectType": "conversation",
   "files": [
     "__tests__/local-shell.test.ts",

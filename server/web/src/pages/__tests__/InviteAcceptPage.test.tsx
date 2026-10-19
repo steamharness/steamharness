@@ -35,7 +35,7 @@ describe("InviteAcceptPage", () => {
       data: {
         invitation: {
           id: "inv-1",
-          workflowId: "demo",
+          projectId: "demo",
           token: "tok-abc",
           role: "viewer",
           createdAt: "2026-06-18T00:00:00.000Z",
@@ -50,7 +50,7 @@ describe("InviteAcceptPage", () => {
       data: {
         invitation: {
           id: "inv-1",
-          workflowId: "demo",
+          projectId: "demo",
           token: "tok-abc",
           role: "viewer",
           createdAt: "2026-06-18T00:00:00.000Z",
@@ -59,7 +59,7 @@ describe("InviteAcceptPage", () => {
           acceptedAt: "2026-06-18T01:00:00.000Z",
         },
         member: {
-          workflowId: "demo",
+          projectId: "demo",
           userId: "user-1",
           role: "viewer",
           createdAt: "2026-06-18T01:00:00.000Z",
@@ -94,7 +94,7 @@ describe("InviteAcceptPage", () => {
       data: {
         invitation: {
           id: "inv-1",
-          workflowId: "demo",
+          projectId: "demo",
           token: "tok-abc",
           role: "viewer",
           createdAt: "2026-06-18T00:00:00.000Z",
@@ -115,7 +115,7 @@ describe("InviteAcceptPage", () => {
       data: {
         invitation: {
           id: "inv-1",
-          workflowId: "demo",
+          projectId: "demo",
           token: "tok-abc",
           role: "viewer",
           createdAt: "2020-01-01T00:00:00.000Z",

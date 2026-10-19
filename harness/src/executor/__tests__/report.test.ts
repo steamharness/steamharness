@@ -20,7 +20,7 @@ test("workflow report exposes provider cause status and url in errMessage", () =
 
   const report = createWorkflowExecutionReport({
     runId: "run-provider-failed",
-    workflowName: "provider failure",
+    projectName: "provider failure",
     startedAt: new Date("2026-05-26T00:00:00.000Z"),
     endedAt: new Date("2026-05-26T00:00:01.000Z"),
     result: {
@@ -56,7 +56,7 @@ test("workflow report records durable user input pauses without failed finish ev
   const events: RuntimeEvent[] = [];
   const reporter = createNodeExecutionReporter({
     runId: "run-input",
-    workflowName: "input-workflow",
+    projectName: "input-workflow",
     onRuntimeEvent(event) {
       events.push(event);
     },
@@ -73,7 +73,7 @@ test("workflow report records durable user input pauses without failed finish ev
   await reporter.emitUserInputRequested(request);
   await reporter.emitWorkflowFinished({
     runId: "run-input",
-    workflowName: "input-workflow",
+    projectName: "input-workflow",
     status: "waiting_for_input",
     startedAt: new Date("2026-06-04T10:00:00.000Z"),
     endedAt: new Date("2026-06-04T10:00:01.000Z"),
@@ -91,7 +91,7 @@ test("workflow report records durable user input pauses without failed finish ev
 
   const report = createWorkflowExecutionReport({
     runId: "run-input",
-    workflowName: "input-workflow",
+    projectName: "input-workflow",
     status: "waiting_for_input",
     startedAt: new Date("2026-06-04T10:00:00.000Z"),
     endedAt: new Date("2026-06-04T10:00:01.000Z"),
@@ -119,7 +119,7 @@ test("workflow report records resolved user input and clears the pending request
   const events: RuntimeEvent[] = [];
   const reporter = createNodeExecutionReporter({
     runId: "run-input",
-    workflowName: "input-workflow",
+    projectName: "input-workflow",
     onRuntimeEvent(event) {
       events.push(event);
     },

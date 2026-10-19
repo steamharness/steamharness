@@ -1,5 +1,5 @@
 {
-  "workflowName": "loop",
+  "projectName": "loop",
   "projectType": "workflow",
   "files": [
     "index.ts",
@@ -54,7 +54,7 @@
     {
       "id": "main",
       "title": "Loop",
-      "workflowName": "loop",
+      "projectName": "loop",
       "params": [
         {
           "name": "rounds",

@@ -4,7 +4,7 @@ interface RuntimeContextShape {
 }
 
 interface ExecutorContextShape {
-  workflowName: string;
+  projectName: string;
   workflowDir: string;
   args: string[];
   env: NodeJS.ProcessEnv;

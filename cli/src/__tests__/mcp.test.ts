@@ -342,11 +342,11 @@ describe("steamharness mcp", () => {
       arguments: { message: "file", file: sourceFile },
     });
     const output = (result.structuredContent as {
-      output: { echo: { file: Array<{ id: string; name: string; workflowId: string }> } };
+      output: { echo: { file: Array<{ id: string; name: string; projectId: string }> } };
     }).output;
     const file = output.echo.file[0];
     assert.equal(file?.name, "source.txt");
-    assert.equal(file?.workflowId, "11111111-1111-4111-8111-111111111111");
+    assert.equal(file?.projectId, "11111111-1111-4111-8111-111111111111");
     assert.equal(
       await readFile(path.join(connection.dataDir, "workflow-files", file?.id ?? "", "content"), "utf8"),
       "managed content",

@@ -881,7 +881,7 @@ export const common: typeof Encommon = {
         localStructureUnavailable: "无法检查本地 Workflow 结构。",
         entrypointMissing: "入口“{{entrypointId}}”已不存在。",
         runRecordMissing: "定时 Workflow 未生成 Run 记录。",
-        unknownEntrypoint: "Workflow“{{workflowId}}”中已不存在入口“{{entrypointId}}”。",
+        unknownEntrypoint: "Workflow“{{projectId}}”中已不存在入口“{{entrypointId}}”。",
         dependenciesMissing: "Workflow 项目依赖尚未安装。项目：{{projectPath}}。缺少：{{missing}}。请先在此项目目录中手动安装依赖再运行。",
       },
       validation: {

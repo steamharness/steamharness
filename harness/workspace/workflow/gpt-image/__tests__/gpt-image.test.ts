@@ -171,7 +171,7 @@ async function runWithMockEnv(options: {
   try {
     return await runLocalWorkflowWithReport({
       workflowDir: path.resolve(process.cwd(), "workflow/gpt-image"),
-      workflowName: "gpt-image",
+      projectName: "gpt-image",
       args: options.args,
       conversationId: options.conversationId,
       env: {

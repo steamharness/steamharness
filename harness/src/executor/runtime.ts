@@ -41,7 +41,7 @@ export interface RuntimeLayer {
 }
 
 export interface RuntimeOptions {
-  workflowName: string;
+  projectName: string;
   runId?: string;
   abortSignal?: AbortSignal;
   timeoutMs?: number;
@@ -72,7 +72,7 @@ export interface RuntimePersistenceLayerOptions {
 
 export class Runtime {
   readonly runId: string;
-  readonly workflowName: string;
+  readonly projectName: string;
   readonly startedAt: Date;
   readonly abortController: AbortController;
   readonly timers: TimerContext;
@@ -89,27 +89,27 @@ export class Runtime {
 
   constructor(options: RuntimeOptions) {
     this.runId = options.runId ?? createWorkflowRunId();
-    this.workflowName = options.workflowName;
+    this.projectName = options.projectName;
     this.startedAt = new Date();
     this.abortController = createWorkflowAbortController(options.abortSignal);
     this.layers = options.layers ?? [];
     this.onRuntimeEvent = options.onRuntimeEvent;
     this.reporter = createNodeExecutionReporter({
       runId: this.runId,
-      workflowName: this.workflowName,
+      projectName: this.projectName,
       onRuntimeEvent: (event) => this.emitRuntimeEvent(event),
     });
     this.timers = createWorkflowTimerContext({
       onTimerStart: (event) =>
         this.reporter.emitTimerStarted({
           runId: this.runId,
-          workflowName: this.workflowName,
+          projectName: this.projectName,
           timer: event.timer,
         }),
       onTimerFinish: (event) =>
         this.reporter.emitTimerFinished({
           runId: this.runId,
-          workflowName: this.workflowName,
+          projectName: this.projectName,
           timer: event.timer,
         }),
     });
@@ -144,7 +144,7 @@ export class Runtime {
   }
 
   throwIfAborted(): void {
-    throwIfAborted(this.abortSignal, this.workflowName);
+    throwIfAborted(this.abortSignal, this.projectName);
   }
 
   async prepare(): Promise<void> {
@@ -162,7 +162,7 @@ export class Runtime {
 
     await this.reporter.emitWorkflowStarted({
       runId: this.runId,
-      workflowName: this.workflowName,
+      projectName: this.projectName,
       entrypointId: entrypoint?.id,
       entrypointTitle: entrypoint?.title,
       startedAt: this.startedAt,
@@ -176,7 +176,7 @@ export class Runtime {
   }): Promise<void> {
     await this.reporter.emitConversationTitleUpdated({
       runId: this.runId,
-      workflowName: this.workflowName,
+      projectName: this.projectName,
       conversationId: event.conversationId,
       title: event.title,
       updatedAt: event.updatedAt,
@@ -190,7 +190,7 @@ export class Runtime {
   }): Promise<void> {
     await this.reporter.emitTokenUsageUpdated({
       runId: this.runId,
-      workflowName: this.workflowName,
+      projectName: this.projectName,
       conversationId: event.conversationId,
       usage: event.usage,
       updatedAt: event.updatedAt,
@@ -223,7 +223,7 @@ export class Runtime {
 
     await this.reporter.emitWorkflowFinished({
       runId: this.runId,
-      workflowName: this.workflowName,
+      projectName: this.projectName,
       entrypointId: options.entrypointId,
       entrypointTitle: options.entrypointTitle,
       conversationId: options.conversationId,
@@ -237,7 +237,7 @@ export class Runtime {
 
     const report = createWorkflowExecutionReport({
       runId: this.runId,
-      workflowName: this.workflowName,
+      projectName: this.projectName,
       entrypointId: options.entrypointId,
       entrypointTitle: options.entrypointTitle,
       status: this.status,
@@ -299,9 +299,9 @@ export function createExecutionLimitLayer(
           if (nodeExecutions > maxNodeExecutions) {
             runtime.abort(new HarnessError({
               type: "execution_aborted",
-              message: `Workflow "${runtime.workflowName}" exceeded node execution limit of ${maxNodeExecutions}.`,
+              message: `Workflow "${runtime.projectName}" exceeded node execution limit of ${maxNodeExecutions}.`,
               metadata: {
-                workflow: runtime.workflowName,
+                workflow: runtime.projectName,
                 reason: "node_limit",
                 maxNodeExecutions,
               },
@@ -335,16 +335,16 @@ export function createWorkflowRunId(): string {
 
 export function createWorkflowAbortError(
   signal: AbortSignal,
-  workflowName: string,
+  projectName: string,
 ): HarnessError {
   const reason = signal.reason;
 
   if (reason instanceof TimeoutError) {
     return new HarnessError({
       type: "execution_aborted",
-      message: `Workflow "${workflowName}" timed out after ${reason.timeoutMs}ms.`,
+      message: `Workflow "${projectName}" timed out after ${reason.timeoutMs}ms.`,
       metadata: {
-        workflow: workflowName,
+        workflow: projectName,
         reason: "timeout",
         timeoutMs: reason.timeoutMs,
       },
@@ -359,9 +359,9 @@ export function createWorkflowAbortError(
     type: "execution_aborted",
     message: reason instanceof Error
       ? reason.message
-      : `Workflow "${workflowName}" execution was aborted.`,
+      : `Workflow "${projectName}" execution was aborted.`,
     metadata: {
-      workflow: workflowName,
+      workflow: projectName,
       reason: "abort",
     },
     cause: reason,
@@ -370,9 +370,9 @@ export function createWorkflowAbortError(
 
 export function createAbortedWorkflowResult(
   signal: AbortSignal,
-  workflowName: string,
+  projectName: string,
 ): RunResult<never> {
-  return createWorkflowFailure(createWorkflowAbortError(signal, workflowName));
+  return createWorkflowFailure(createWorkflowAbortError(signal, projectName));
 }
 
 function createWorkflowAbortController(abortSignal: AbortSignal | undefined): AbortController {
@@ -417,12 +417,12 @@ function clearWorkflowTimeout(timeout: ReturnType<typeof setTimeout> | undefined
   }
 }
 
-function throwIfAborted(signal: AbortSignal, workflowName: string): void {
+function throwIfAborted(signal: AbortSignal, projectName: string): void {
   if (!signal.aborted) {
     return;
   }
 
-  throw createWorkflowAbortError(signal, workflowName);
+  throw createWorkflowAbortError(signal, projectName);
 }
 
 function resolveWorkflowRunStatus(

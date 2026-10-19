@@ -1,5 +1,5 @@
 {
-  "workflowName": "classify",
+  "projectName": "classify",
   "projectType": "workflow",
   "files": [
     "index.ts",
@@ -33,7 +33,7 @@
     {
       "id": "main",
       "title": "Classify",
-      "workflowName": "classify",
+      "projectName": "classify",
       "tokenUsage": {
         "enabled": true,
         "display": true

@@ -156,7 +156,7 @@ test('upload waits for static preparation and only then publishes release notes'
   let polls = 0;
   const remote = await server(t, request => request.url.endsWith('/versions') ? { data: { versions: [] } }
     : request.method === 'POST' ? { data: { version: '1.2.3' } }
-      : { data: { jobId: 'job-1', workflowId: id, status: ++polls === 1 ? 'preparing' : 'success', stage: 'validating', result: { workflowId: id, sourceHash: 'a'.repeat(64) } } });
+      : { data: { jobId: 'job-1', projectId: id, status: ++polls === 1 ? 'preparing' : 'success', stage: 'validating', result: { projectId: id, sourceHash: 'a'.repeat(64) } } });
   await uploadServerProject({ ...f.options, directory: f.directory, releaseLog: 'New version', connection: { ...f.options.connection, serverUrl: remote.url } });
   assert.equal(remote.requests.at(-1).url, `/api/projects/${id}/publish`);
   assert.deepEqual(JSON.parse(remote.requests.at(-1).body), { releaseLog: 'New version', expectedVersion: '1.2.3', expectedSourceHash: 'a'.repeat(64) });
@@ -171,7 +171,7 @@ test('upload waits for static preparation and only then publishes release notes'
 test('a new project requests creation and a failed preparation never publishes', async t => {
   const f = await fixture(t);
   const remote = await server(t, request => request.url.endsWith('/versions') ? { status: 404, payload: { errCode: 404 } }
-    : { data: { jobId: 'job-1', workflowId: id, status: 'failed', failureReason: 'Invalid source metadata' } });
+    : { data: { jobId: 'job-1', projectId: id, status: 'failed', failureReason: 'Invalid source metadata' } });
   await assert.rejects(uploadServerProject({ ...f.options, directory: f.directory, releaseLog: '', connection: { ...f.options.connection, serverUrl: remote.url } }), /Invalid source metadata/);
   assert.ok(remote.requests.every(request => request.method === 'GET'));
   const request = JSON.parse(await fs.readFile(path.join(f.directory, 'request.json'), 'utf8'));
@@ -183,7 +183,7 @@ test('a concurrent draft replacement rejects publication without retrying anothe
   const f = await fixture(t);
   const remote = await server(t, request => request.url.endsWith('/versions') ? { data: { versions: [] } }
     : request.method === 'POST' ? { status: 409, payload: { errCode: 409, errMessage: 'Project draft changed after preparation.' } }
-      : { data: { status: 'success', result: { workflowId: id, sourceHash: 'a'.repeat(64) } } });
+      : { data: { status: 'success', result: { projectId: id, sourceHash: 'a'.repeat(64) } } });
   await assert.rejects(uploadServerProject({ ...f.options, directory: f.directory, releaseLog: '', connection: { ...f.options.connection, serverUrl: remote.url } }), /draft changed/);
   assert.equal(remote.requests.filter(request => request.method === 'POST').length, 1);
   assert.deepEqual(JSON.parse(remote.requests.at(-1).body), { releaseLog: '', expectedVersion: '1.2.3', expectedSourceHash: 'a'.repeat(64) });
@@ -192,7 +192,7 @@ test('a concurrent draft replacement rejects publication without retrying anothe
 test('a preparation without matching upload identity cannot publish', async t => {
   const f = await fixture(t);
   const remote = await server(t, request => request.url.endsWith('/versions') ? { data: { versions: [] } }
-    : { data: { status: 'success', result: { workflowId: dependencyId, sourceHash: 'a'.repeat(64) } } });
+    : { data: { status: 'success', result: { projectId: dependencyId, sourceHash: 'a'.repeat(64) } } });
   await assert.rejects(uploadServerProject({ ...f.options, directory: f.directory, releaseLog: '', connection: { ...f.options.connection, serverUrl: remote.url } }), /invalid response/);
   assert.ok(remote.requests.every(request => request.method === 'GET'));
 });

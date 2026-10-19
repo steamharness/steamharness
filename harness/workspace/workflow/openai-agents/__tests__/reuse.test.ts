@@ -94,7 +94,7 @@ describe("openai-agents reusable mode", () => {
       conversation: createWorkflowConversationContext({
         enabled: true,
         conversationId: "reuse-thread",
-        workflowName: "openai-agents",
+        projectName: "openai-agents",
         kv,
       }),
       tokenUsage: createDisabledWorkflowTokenUsageContext(),
@@ -1058,7 +1058,7 @@ function createRunInput(overrides: Partial<OpenAIAgentsRunInput> = {}): OpenAIAg
 
 function createSdkContext() {
   return {
-    workflowName: "openai-agents",
+    projectName: "openai-agents",
     conversationId: "thread",
     messages: [],
     runCount: 1,
@@ -1121,7 +1121,7 @@ function createToolContext(
       async requestInput() {},
     },
     toolPermissions: createWorkflowToolPermissionContext({
-      workflowName: "openai-agents",
+      projectName: "openai-agents",
       runId: "openai-agents-test-run",
       definitions: [
         { name: "web_search", enabled: true, autoApprove: true },
@@ -1172,7 +1172,7 @@ function createOpenAIAgentsContext(options: {
     conversation: createWorkflowConversationContext({
       enabled: true,
       conversationId: "stream-thread",
-      workflowName: "openai-agents",
+      projectName: "openai-agents",
       kv,
     }),
     tokenUsage,

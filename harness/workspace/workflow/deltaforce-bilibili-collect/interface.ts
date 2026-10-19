@@ -76,7 +76,7 @@ export interface BilibiliCredentialConfig {
 }
 
 export interface ServerUploadConfig {
-  workflowName: string;
+  projectName: string;
   conversationId?: string;
 }
 

@@ -294,7 +294,7 @@ describe("kanban project contract", () => {
     expect(() => parseKanbanBridgeCall({
       requestId: "request-4",
       operation: "kv.getValue",
-      input: { key: "board", workflowName: "another-project" },
+      input: { key: "board", projectName: "another-project" },
     })).toThrow(/unsupported fields/);
     expect(() => parseKanbanBridgeCall({
       requestId: "request-5",
@@ -310,7 +310,7 @@ describe("kanban project contract", () => {
       requestId: "request-7",
       operation: "kv.getValue",
       input: { key: "board" },
-      workflowName: "another-project",
+      projectName: "another-project",
     })).toThrow(/request contains unsupported fields/);
     expect(() => parseKanbanBridgeCall({
       requestId: "request-8",

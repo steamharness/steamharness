@@ -26,7 +26,7 @@ import type {
   StructureExecutionNode,
 } from "steamharness/executor/rules";
 
-const workflowNames = [
+const projectNames = [
   "classify",
   "claude-agent",
   "conversation-knowledge",
@@ -57,7 +57,7 @@ const workflowNames = [
 
 const STEAMHARNESS_ROOT = path.resolve(process.cwd(), "workflow");
 
-type ProjectName = (typeof workflowNames)[number];
+type ProjectName = (typeof projectNames)[number];
 
 interface OutputItemExpectation {
   index?: number;
@@ -125,8 +125,8 @@ afterAll(async () => {
 });
 
 describe("workspace workflow fixtures", () => {
-  it.each(workflowNames)("%s has a dedicated smoke fixture", async (workflowName) => {
-    const fixture = await readSmokeFixture(workflowName);
+  it.each(projectNames)("%s has a dedicated smoke fixture", async (projectName) => {
+    const fixture = await readSmokeFixture(projectName);
 
     expect(Array.isArray(fixture.args)).toBe(true);
     expect(fixture.expected.errCode).toEqual(expect.any(Number));
@@ -137,30 +137,30 @@ describe("workspace workflow fixtures", () => {
 });
 
 describe("workspace workflow structure snapshots", () => {
-  it.each(workflowNames)("%s matches its structure snapshot", async (workflowName) => {
+  it.each(projectNames)("%s matches its structure snapshot", async (projectName) => {
     // turns every sample workflow into an owned contract: each sample
     // keeps a fixture and a compact structure snapshot next to its source.
     // The nested workspace resolves its projects explicitly and
     // does not depend on the repository's former workspace/workflow lookup.
     const report = inspectLocalWorkflowStructure({
-      workflowDir: workflowDirectory(workflowName),
-      workflowName,
+      workflowDir: workflowDirectory(projectName),
+      projectName,
     });
 
     const structure = summarizeStructure(report);
     if (process.env.UPDATE_STEAMHARNESS_STRUCTURE_SNAPSHOTS === "1") {
-      await writeStructureSnapshot(workflowName, structure);
+      await writeStructureSnapshot(projectName, structure);
     }
 
     expect(report.diagnostics.violations).toEqual([]);
-    expect(structure).toEqual(await readStructureSnapshot(workflowName));
+    expect(structure).toEqual(await readStructureSnapshot(projectName));
     expect(Object.values(report.definitions.nodes).some((node) => node.standardName === "output")).toBe(true);
   });
 });
 
 describe("workspace workflow offline runtime smoke", () => {
-  it.each(workflowNames)("%s runs or is explicitly opted out", async (workflowName) => {
-    const fixture = await readSmokeFixture(workflowName);
+  it.each(projectNames)("%s runs or is explicitly opted out", async (projectName) => {
+    const fixture = await readSmokeFixture(projectName);
 
     if (fixture.run === false) {
       expect(fixture.skipReason?.trim()).not.toBe("");
@@ -168,25 +168,25 @@ describe("workspace workflow offline runtime smoke", () => {
     }
 
     const events: RuntimeEvent[] = [];
-    const runtimeEventRecorder = createFixtureRuntimeEventRecorder(workflowName);
+    const runtimeEventRecorder = createFixtureRuntimeEventRecorder(projectName);
     const runFixture = async () => runLocalWorkflowWithReport({
-      workflowDir: workflowDirectory(workflowName),
-      workflowName,
-      args: await resolveFixtureArgs(workflowName, fixture.args),
-      env: createFixtureEnv(workflowName),
+      workflowDir: workflowDirectory(projectName),
+      projectName,
+      args: await resolveFixtureArgs(projectName, fixture.args),
+      env: createFixtureEnv(projectName),
       conversationId: fixture.conversationId,
-      storage: await createFixtureStorage(workflowName),
+      storage: await createFixtureStorage(projectName),
       providers: {
-        llm: createFixtureLLMProvider(workflowName),
+        llm: createFixtureLLMProvider(projectName),
       },
       maxNodeExecutions: 80,
-      userInput: createFixtureUserInputContext(workflowName),
+      userInput: createFixtureUserInputContext(projectName),
       onRuntimeEvent(event) {
         events.push(event);
         runtimeEventRecorder?.(event);
       },
     });
-    const report = isDeltaforceFixtureWorkflow(workflowName)
+    const report = isDeltaforceFixtureWorkflow(projectName)
       ? await withDeltaforeFixtureFetch(runFixture)
       : await runFixture();
 
@@ -243,7 +243,7 @@ describe("workspace workflow offline runtime smoke", () => {
       // item ids line up with final report items when the content is the same.
       expectMergedRuntimeItemsToAvoidDuplicateContent(events, outputItems);
     }
-    if (isDeltaforceFixtureWorkflow(workflowName)) {
+    if (isDeltaforceFixtureWorkflow(projectName)) {
       expect(outputContent).not.toContain("\"decision\":\"final_answer\"");
       expect(outputContent).not.toContain("\"phase\":\"final_answer\"");
       expect(outputContent).not.toContain("\"phase\":\"action\"");
@@ -309,7 +309,7 @@ describe("conversation knowledge persistence", () => {
     const persistentValueStore = createMemoryKVStore();
     const report = await runLocalWorkflowWithReport({
       workflowDir: workflowDirectory("conversation-knowledge"),
-      workflowName: "conversation-knowledge",
+      projectName: "conversation-knowledge",
       args: ["--message", "记录真实写入", "--title", "Persistent Conversation"],
       conversationId: "persistent-conversation-thread",
       storage: {
@@ -378,7 +378,7 @@ describe("workspace workflow human input resume", () => {
 
     const waitingReport = await runLocalWorkflowWithReport({
       workflowDir: workflowDirectory("human-input"),
-      workflowName: "human-input",
+      projectName: "human-input",
       args,
       runId: "human-input-fixture-run",
       userInput: createFixtureUserInputContext("human-input"),
@@ -493,7 +493,7 @@ describe("workspace workflow output-showcase resume", () => {
     const waitingEvents: RuntimeEvent[] = [];
     const waitingReport = await runLocalWorkflowWithReport({
       workflowDir: workflowDirectory("output-showcase"),
-      workflowName: "output-showcase",
+      projectName: "output-showcase",
       args,
       runId: "output-showcase-fixture-run",
       userInput: createFixtureUserInputContext("output-showcase"),
@@ -563,7 +563,7 @@ describe("workspace workflow output-showcase resume", () => {
     expect(readOutputContent(longTaskOutput)).toContain("长任务执行完毕");
     expect(readOutputContent(longTaskOutput)).toContain("工具摘要");
     expect(readOutputContent(longTaskOutput)).toContain("当前页面全部展示内容组成的原始 JSON");
-    expect(readOutputContent(longTaskOutput)).toContain("\"workflowName\": \"output-showcase\"");
+    expect(readOutputContent(longTaskOutput)).toContain("\"projectName\": \"output-showcase\"");
     expect(readOutputContent(longTaskOutput)).toContain("\"confirmed\": true");
     expect(longTaskItems.some((item) =>
       item.id === "output-showcase-finished" &&
@@ -643,7 +643,7 @@ describe("workspace workflow output-showcase resume", () => {
     let abortedDuringTool = false;
     const reportPromise = runLocalWorkflowWithReport({
       workflowDir: workflowDirectory("output-showcase"),
-      workflowName: "output-showcase",
+      projectName: "output-showcase",
       args: [
         "--tool-delay-ms",
         "6000",
@@ -693,7 +693,7 @@ function resumeHumanInputWorkflow(options: {
   const requestId = options.requestId;
   return runLocalWorkflowWithReport({
     workflowDir: workflowDirectory("human-input"),
-    workflowName: "human-input",
+    projectName: "human-input",
     args: options.args,
     runId: options.runId,
     userInput: {
@@ -730,7 +730,7 @@ function resumeOutputShowcaseWorkflow(options: {
   const requestId = options.requestId;
   return runLocalWorkflowWithReport({
     workflowDir: workflowDirectory("output-showcase"),
-    workflowName: "output-showcase",
+    projectName: "output-showcase",
     args: options.args,
     runId: options.runId,
     userInput: {
@@ -832,8 +832,8 @@ function expectToolOutputStatusTransition(events: RuntimeEvent[]): void {
   expect(isRecord(successItem?.metadata) ? successItem.metadata.status : undefined).toBe("success");
 }
 
-function createFixtureRuntimeEventRecorder(workflowName: ProjectName) {
-  if (workflowName !== "deltaforce-openai-agent") {
+function createFixtureRuntimeEventRecorder(projectName: ProjectName) {
+  if (projectName !== "deltaforce-openai-agent") {
     return undefined;
   }
 
@@ -915,7 +915,7 @@ function summarizeStructure(report: StructureReport) {
   const workflowFiles = report.workflow.files.map((file) => file.replaceAll("\\", "/"));
 
   const summary = {
-    workflowName: report.workflow.name,
+    projectName: report.workflow.name,
     projectType: report.projectType,
     files: workflowFiles.filter((file) => !file.includes("/__fixtures__/") && !file.includes("/__snapshots__/")),
     nodes: Object.values(report.definitions.nodes).map((node) => ({
@@ -935,7 +935,7 @@ function summarizeStructure(report: StructureReport) {
         title: entrypoint.title,
         ...dropUndefined({
           description: entrypoint.description,
-          workflowName: entrypoint.workflowName,
+          projectName: entrypoint.projectName,
           paramResolver: entrypoint.paramResolver,
           tools: entrypoint.tools,
           tokenUsage: entrypoint.tokenUsage,
@@ -1054,14 +1054,14 @@ function walkExecution(
   }
 }
 
-async function readSmokeFixture(workflowName: ProjectName): Promise<SmokeFixture> {
-  return JSON.parse(await readWorkflowFile(workflowName, "__fixtures__/smoke.json")) as SmokeFixture;
+async function readSmokeFixture(projectName: ProjectName): Promise<SmokeFixture> {
+  return JSON.parse(await readWorkflowFile(projectName, "__fixtures__/smoke.json")) as SmokeFixture;
 }
 
 async function createFixtureStorage(
-  workflowName: ProjectName,
+  projectName: ProjectName,
 ): Promise<ExecutionStorageOptions> {
-  const packageJson = JSON.parse(await readWorkflowFile(workflowName, "package.json")) as {
+  const packageJson = JSON.parse(await readWorkflowFile(projectName, "package.json")) as {
     steamHarness?: { projectInfo?: { dataStorage?: { mode?: unknown } } };
   };
   const mode = packageJson.steamHarness?.projectInfo?.dataStorage?.mode;
@@ -1073,36 +1073,36 @@ async function createFixtureStorage(
   }
   return {
     host: "local",
-    local: { kvStoreDir: await createTempDir(`${workflowName}-kv-`) },
+    local: { kvStoreDir: await createTempDir(`${projectName}-kv-`) },
   };
 }
 
-async function readStructureSnapshot(workflowName: ProjectName) {
-  return JSON.parse(await readWorkflowFile(workflowName, "__snapshots__/structure.json")) as unknown;
+async function readStructureSnapshot(projectName: ProjectName) {
+  return JSON.parse(await readWorkflowFile(projectName, "__snapshots__/structure.json")) as unknown;
 }
 
-async function writeStructureSnapshot(workflowName: ProjectName, structure: unknown): Promise<void> {
+async function writeStructureSnapshot(projectName: ProjectName, structure: unknown): Promise<void> {
   await writeFile(
-    path.join(workflowDirectory(workflowName), "__snapshots__/structure.json"),
+    path.join(workflowDirectory(projectName), "__snapshots__/structure.json"),
     `${JSON.stringify(structure, null, 2)}\n`,
     "utf8",
   );
 }
 
-async function readWorkflowFile(workflowName: ProjectName, relativePath: string): Promise<string> {
-  return readFile(path.join(workflowDirectory(workflowName), relativePath), "utf8");
+async function readWorkflowFile(projectName: ProjectName, relativePath: string): Promise<string> {
+  return readFile(path.join(workflowDirectory(projectName), relativePath), "utf8");
 }
 
-function workflowDirectory(workflowName: string): string {
-  return path.join(STEAMHARNESS_ROOT, workflowName);
+function workflowDirectory(projectName: string): string {
+  return path.join(STEAMHARNESS_ROOT, projectName);
 }
 
 function resolveExpectedRunText(value: string, report: ExecutionReport): string {
   return value.replaceAll("{RUN_ID}", report.runId);
 }
 
-function createFixtureUserInputContext(workflowName: ProjectName): UserInputContext | undefined {
-  if (!isUserInputFixtureWorkflow(workflowName)) {
+function createFixtureUserInputContext(projectName: ProjectName): UserInputContext | undefined {
+  if (!isUserInputFixtureWorkflow(projectName)) {
     return undefined;
   }
 
@@ -1113,7 +1113,7 @@ function createFixtureUserInputContext(workflowName: ProjectName): UserInputCont
     requestInput(request) {
       throw new HarnessError({
         type: "user_input_required",
-        message: `Workflow "${workflowName}" is waiting for user input "${request.requestId}".`,
+        message: `Workflow "${projectName}" is waiting for user input "${request.requestId}".`,
         nodeName: request.nodeName,
         metadata: { request },
       });
@@ -1121,12 +1121,12 @@ function createFixtureUserInputContext(workflowName: ProjectName): UserInputCont
   };
 }
 
-function isUserInputFixtureWorkflow(workflowName: ProjectName): workflowName is "human-input" | "output-showcase" {
-  return workflowName === "human-input" || workflowName === "output-showcase";
+function isUserInputFixtureWorkflow(projectName: ProjectName): projectName is "human-input" | "output-showcase" {
+  return projectName === "human-input" || projectName === "output-showcase";
 }
 
-async function resolveFixtureArgs(workflowName: ProjectName, args: string[]): Promise<string[]> {
-  if (workflowName === "gpt-image") {
+async function resolveFixtureArgs(projectName: ProjectName, args: string[]): Promise<string[]> {
+  if (projectName === "gpt-image") {
     const imagePath = path.join(workflowDirectory("gpt-image"), "__fixtures__", "pixel.png");
     const imageReference: FileReference = {
       id: "gpt-image-pixel",
@@ -1142,7 +1142,7 @@ async function resolveFixtureArgs(workflowName: ProjectName, args: string[]): Pr
     return args.map((arg) => arg === "__GPT_IMAGE_IMAGE_JSON__" ? JSON.stringify([imageReference]) : arg);
   }
 
-  if (workflowName !== "conversation") {
+  if (projectName !== "conversation") {
     return args;
   }
 
@@ -1179,7 +1179,7 @@ async function resolveFixtureArgs(workflowName: ProjectName, args: string[]): Pr
   });
 }
 
-function createFixtureLLMProvider(workflowName: ProjectName): MockLLMProvider {
+function createFixtureLLMProvider(projectName: ProjectName): MockLLMProvider {
   let deltaforeThoughtCount = 0;
 
   return new MockLLMProvider({
@@ -1191,7 +1191,7 @@ function createFixtureLLMProvider(workflowName: ProjectName): MockLLMProvider {
       if (input.prompt?.includes("uniapp-x") || input.prompt?.includes("uni-app x")) {
         return "uni-app x";
       }
-      if (workflowName === "deltafore-agent") {
+      if (projectName === "deltafore-agent") {
         if (input.prompt?.includes("请按 ReAct 协议决定下一步")) {
           deltaforeThoughtCount += 1;
           if (deltaforeThoughtCount === 1) {
@@ -1237,16 +1237,16 @@ function createFixtureLLMProvider(workflowName: ProjectName): MockLLMProvider {
           usedObjectIDs: [],
         });
       }
-      if (workflowName === "conversation" && Array.isArray(input.messages)) {
+      if (projectName === "conversation" && Array.isArray(input.messages)) {
         return `离线回复:${readLastUserText(input)}`;
       }
-      return `离线 mock ${workflowName}: ${readPromptPreview(input)}`;
+      return `离线 mock ${projectName}: ${readPromptPreview(input)}`;
     },
   });
 }
 
-function createFixtureEnv(workflowName: ProjectName): NodeJS.ProcessEnv | undefined {
-  if (workflowName === "gpt-image") {
+function createFixtureEnv(projectName: ProjectName): NodeJS.ProcessEnv | undefined {
+  if (projectName === "gpt-image") {
     return {
       ...process.env,
       GPT_IMAGE_MOCK: "1",
@@ -1254,7 +1254,7 @@ function createFixtureEnv(workflowName: ProjectName): NodeJS.ProcessEnv | undefi
     };
   }
 
-  if (!isDeltaforceFixtureWorkflow(workflowName)) {
+  if (!isDeltaforceFixtureWorkflow(projectName)) {
     return undefined;
   }
 
@@ -1263,12 +1263,12 @@ function createFixtureEnv(workflowName: ProjectName): NodeJS.ProcessEnv | undefi
     DELTAFORE_OPENAPI_URL: "http://hookcode.win:7222/openapi.json",
     DELTAFORE_API_BASE_URL: "http://hookcode.win:7222",
     OPENAI_API_KEY: "fixture-openai-key",
-    ...(workflowName === "deltaforce-openai-agent" ? { DELTAFORCE_OPENAI_AGENT_MOCK: "1" } : {}),
+    ...(projectName === "deltaforce-openai-agent" ? { DELTAFORCE_OPENAI_AGENT_MOCK: "1" } : {}),
   };
 }
 
-function isDeltaforceFixtureWorkflow(workflowName: ProjectName): workflowName is "deltafore-agent" | "deltaforce-openai-agent" {
-  return workflowName === "deltafore-agent" || workflowName === "deltaforce-openai-agent";
+function isDeltaforceFixtureWorkflow(projectName: ProjectName): projectName is "deltafore-agent" | "deltaforce-openai-agent" {
+  return projectName === "deltafore-agent" || projectName === "deltaforce-openai-agent";
 }
 
 async function withDeltaforeFixtureFetch<T>(run: () => Promise<T>): Promise<T> {

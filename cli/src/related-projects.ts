@@ -91,12 +91,12 @@ interface TargetSteamHarnessStorageApi {
   }): CliWorkflowKVNamespace;
   inspectLocalWorkflowStructure?(options: {
     workflowDir?: string;
-    workflowName?: string;
+    projectName?: string;
   }): { entrypoints?: Array<{ id: string; title?: string; description?: string }> };
   readEntrypointOutput?(data: unknown): unknown;
   runLocalWorkflowWithReport?(options: {
     workflowDir?: string;
-    workflowName?: string;
+    projectName?: string;
     entrypointId?: string;
     args?: string[];
     storage?: unknown;

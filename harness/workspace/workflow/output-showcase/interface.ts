@@ -31,7 +31,7 @@ export interface OutputShowcaseDisplaySnapshotItem {
 }
 
 export interface OutputShowcaseDisplaySnapshot {
-  workflowName: string;
+  projectName: string;
   projectName: string;
   confirmed: boolean;
   toolSummary: string;

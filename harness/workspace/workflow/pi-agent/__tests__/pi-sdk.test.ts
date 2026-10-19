@@ -229,7 +229,7 @@ function createToolContext(
       async requestInput() {},
     },
     toolPermissions: createWorkflowToolPermissionContext({
-      workflowName: "pi-agent",
+      projectName: "pi-agent",
       runId: "pi-agent-sdk-test-run",
       definitions: [
         { name: "bash", enabled: true, autoApprove: true },

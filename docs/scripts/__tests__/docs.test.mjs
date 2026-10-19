@@ -36,13 +36,13 @@ test("OpenAPI exposes storage APIs without project execution contracts", async (
 
     assert.equal(specification.components.schemas.OpenAIResponse, undefined);
     for (const endpoint of [
-      "/api/projects/{workflowName}/run", "/api/projects/{workflowName}/runs",
-      "/api/projects/{workflowName}/structure", "/api/projects/{workflowName}/resolve-params",
+      "/api/projects/{projectName}/run", "/api/projects/{projectName}/runs",
+      "/api/projects/{projectName}/structure", "/api/projects/{projectName}/resolve-params",
       "/api/admin/runners", "/v1/responses",
     ]) assert.equal(specification.paths[endpoint], undefined);
     for (const endpoint of [
-      "/api/project-storage", "/api/projects/{workflowName}/knowledge-documents",
-      "/api/projects/{workflowName}/source-archive",
+      "/api/project-storage", "/api/projects/{projectName}/knowledge-documents",
+      "/api/projects/{projectName}/source-archive",
     ]) assert.ok(specification.paths[endpoint], endpoint);
     const legacyPrivateCatalog = ["sub", "2api"].join("");
     const legacyLlmModels = ["llm-", "models"].join("");

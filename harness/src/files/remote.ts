@@ -19,21 +19,21 @@ interface ApiResponse<T> {
 export interface RemoteWorkflowFileStoreOptions {
   serverUrl: string;
   token: string;
-  workflowName: string;
+  projectName: string;
   conversationId?: string;
 }
 
 export class RemoteWorkflowFileStore implements FileStore {
   private readonly serverUrl: string;
   private readonly token: string;
-  private readonly workflowName: string;
+  private readonly projectName: string;
   private readonly conversationId?: string;
   private readonly fallbackStore: FileStore;
 
   constructor(options: RemoteWorkflowFileStoreOptions) {
     this.serverUrl = normalizeServerUrl(options.serverUrl);
     this.token = options.token.trim();
-    this.workflowName = options.workflowName;
+    this.projectName = options.projectName;
     this.conversationId = options.conversationId;
     this.fallbackStore = createWorkflowFileStore({});
   }
@@ -41,7 +41,7 @@ export class RemoteWorkflowFileStore implements FileStore {
   async resolveFile(reference: FileReference) {
     if (reference.storage !== "server") return this.fallbackStore.resolveFile(reference);
     const normalized = normalizeWorkflowFileReference(reference);
-    if (normalized.workflowId !== undefined && normalized.workflowId !== this.workflowName) {
+    if (normalized.projectId !== undefined && normalized.projectId !== this.projectName) {
       throw new HarnessError({ type: "input_validation", message: "Workflow file belongs to another project." });
     }
     if (this.serverUrl === "" || this.token === "") throw createWorkflowFileCreateUnavailableError();
@@ -80,7 +80,7 @@ export class RemoteWorkflowFileStore implements FileStore {
     let response: Response;
     try {
       response = await fetch(
-        `${this.serverUrl}/api/projects/${encodeURIComponent(this.workflowName)}/files?${query.toString()}`,
+        `${this.serverUrl}/api/projects/${encodeURIComponent(this.projectName)}/files?${query.toString()}`,
         {
           method: "POST",
           headers: {
@@ -134,7 +134,7 @@ export class RemoteWorkflowFileStore implements FileStore {
 
 export function createRemoteWorkflowFileStoreFromEnv(options: {
   env?: NodeJS.ProcessEnv;
-  workflowName: string;
+  projectName: string;
   conversationId?: string;
 }): FileStore | undefined {
   const env = options.env ?? process.env;
@@ -149,7 +149,7 @@ export function createRemoteWorkflowFileStoreFromEnv(options: {
     return new RemoteWorkflowFileStore({
       serverUrl,
       token,
-      workflowName: options.workflowName,
+      projectName: options.projectName,
       conversationId: options.conversationId,
     });
   }
@@ -162,7 +162,7 @@ export function createRemoteWorkflowFileStoreFromEnv(options: {
   return new RemoteWorkflowFileStore({
     serverUrl: authConfig.serverUrl,
     token: authConfig.apiKey,
-    workflowName: options.workflowName,
+    projectName: options.projectName,
     conversationId: options.conversationId,
   });
 }

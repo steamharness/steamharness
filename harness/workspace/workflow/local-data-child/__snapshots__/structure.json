@@ -1,5 +1,5 @@
 {
-  "workflowName": "local-data-child",
+  "projectName": "local-data-child",
   "projectType": "workflow",
   "files": [
     "index.ts",
@@ -25,7 +25,7 @@
       "id": "store",
       "title": "存储数据",
       "description": "输入内容并返回可用于读取的 id。",
-      "workflowName": "storeDataWorkflow",
+      "projectName": "storeDataWorkflow",
       "params": [
         {
           "name": "content",
@@ -59,7 +59,7 @@
       "id": "get",
       "title": "读取数据",
       "description": "输入存储时返回的 id 并读取内容。",
-      "workflowName": "getDataWorkflow",
+      "projectName": "getDataWorkflow",
       "params": [
         {
           "name": "id",
@@ -94,7 +94,7 @@
       "id": "note",
       "title": "写入知识库",
       "description": "在本项目知识库里新建一篇文档，返回文档 id 与当前文档数。",
-      "workflowName": "noteDataWorkflow",
+      "projectName": "noteDataWorkflow",
       "params": [
         {
           "name": "title",

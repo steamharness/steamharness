@@ -20,7 +20,7 @@ export function readKanbanBridgeCall(value: unknown): KanbanBridgeCall {
 
 export async function invokeServerKanbanBridge(
   storage: Storage,
-  workflowName: string,
+  projectName: string,
   call: KanbanBridgeCall,
   options: {
     target?: string;
@@ -34,7 +34,7 @@ export async function invokeServerKanbanBridge(
         return options.runtimeLocale ?? "en";
       case "files.createFile": {
         const [file] = await storage.saveManagedFiles({
-          workflowName,
+          projectName,
           files: [{
             name: input["name"] as string,
             mimeType: input["mimeType"] as string | undefined,
@@ -47,7 +47,7 @@ export async function invokeServerKanbanBridge(
       case "files.deleteFile": {
         const fileId = input["fileId"] as string;
         const { metadata, filePath } = await storage.getManagedFile(fileId);
-        if (metadata.workflowId !== workflowName || metadata.conversationId !== undefined) {
+        if (metadata.projectId !== projectName || metadata.conversationId !== undefined) {
           throw new HttpError(404, 404, "Kanban file is unavailable in this project.");
         }
         if (call.operation === "files.deleteFile") {
@@ -63,7 +63,7 @@ export async function invokeServerKanbanBridge(
         const result = await storage.getProjectStorageValue({
           storageKind: "kv",
           scope: "project",
-          projectId: workflowName,
+          projectId: projectName,
           key: input["key"] as string,
         });
         return result.exists ? result.value : undefined;
@@ -72,21 +72,21 @@ export async function invokeServerKanbanBridge(
         await storage.setProjectStorageValue({
           storageKind: "kv",
           scope: "project",
-          projectId: workflowName,
+          projectId: projectName,
           key: input["key"] as string,
           value: input["value"],
-          source: { projectId: workflowName },
+          source: { projectId: projectName },
         });
         return undefined;
       case "relatedProject.kv.getValue": {
         try {
           const declared = await storage.resolveKanbanRelatedProject({
-            workflowName,
+            projectName,
             target: options.target,
             alias: input["alias"] as string,
           });
           const access = await storage.resolveRelatedProjectKVAccess({
-            consumerProjectId: workflowName,
+            consumerProjectId: projectName,
             alias: input["alias"] as string,
             key: input["key"] as string,
             operation: "read",
@@ -108,12 +108,12 @@ export async function invokeServerKanbanBridge(
       case "relatedProject.kv.setValue": {
         try {
           const declared = await storage.resolveKanbanRelatedProject({
-            workflowName,
+            projectName,
             target: options.target,
             alias: input["alias"] as string,
           });
           const access = await storage.resolveRelatedProjectKVAccess({
-            consumerProjectId: workflowName,
+            consumerProjectId: projectName,
             alias: input["alias"] as string,
             key: input["key"] as string,
             operation: "write",
@@ -127,7 +127,7 @@ export async function invokeServerKanbanBridge(
             projectId: access.targetProjectId,
             key: input["key"] as string,
             value: input["value"],
-            source: { projectId: workflowName },
+            source: { projectId: projectName },
           });
           return undefined;
         } catch {
@@ -135,31 +135,31 @@ export async function invokeServerKanbanBridge(
         }
       }
       case "knowledge.listDocuments":
-        return await storage.listKnowledgeDocuments(workflowName, input);
+        return await storage.listKnowledgeDocuments(projectName, input);
       case "knowledge.getDocument":
-        return await readOptionalKnowledgeDocument(storage, workflowName, input["documentId"] as string);
+        return await readOptionalKnowledgeDocument(storage, projectName, input["documentId"] as string);
       case "knowledge.createDocument":
         return await storage.createKnowledgeDocument({
-          workflowName,
+          projectName,
           ...(input["id"] === undefined ? {} : { id: input["id"] as string }),
           title: input["title"] as string,
           markdown: input["markdown"] as string,
         });
       case "knowledge.editDocument":
         return await storage.editKnowledgeDocument({
-          workflowName,
+          projectName,
           documentId: input["documentId"] as string,
           ...(input["title"] === undefined ? {} : { title: input["title"] as string }),
           ...(input["markdown"] === undefined ? {} : { markdown: input["markdown"] as string }),
         });
       case "knowledge.deleteDocument":
         return await storage.deleteKnowledgeDocument({
-          workflowName,
+          projectName,
           documentId: input["documentId"] as string,
         });
       case "knowledge.searchDocuments":
         return await storage.searchKnowledgeDocuments({
-          workflowName,
+          projectName,
           query: input["query"] as string,
           ...(input["documentId"] === undefined ? {} : { documentId: input["documentId"] as string }),
           ...(input["beforeLines"] === undefined ? {} : { beforeLines: input["beforeLines"] as number }),
@@ -170,7 +170,7 @@ export async function invokeServerKanbanBridge(
         });
       case "knowledge.readDocumentLines":
         return await storage.readKnowledgeDocumentLines({
-          workflowName,
+          projectName,
           documentId: input["documentId"] as string,
           startLine: input["startLine"] as number,
           endLine: input["endLine"] as number,
@@ -184,11 +184,11 @@ export async function invokeServerKanbanBridge(
 
 async function readOptionalKnowledgeDocument(
   storage: Storage,
-  workflowName: string,
+  projectName: string,
   documentId: string,
 ): Promise<KnowledgeDocumentRecord | null> {
   try {
-    return await storage.getKnowledgeDocument({ workflowName, documentId });
+    return await storage.getKnowledgeDocument({ projectName, documentId });
   } catch (reason) {
     if (reason instanceof HttpError && reason.statusCode === 404) return null;
     throw reason;

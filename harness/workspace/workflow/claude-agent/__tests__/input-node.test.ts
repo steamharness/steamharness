@@ -211,7 +211,7 @@ function createNodeContext(
       async requestInput() {},
     },
     toolPermissions: createWorkflowToolPermissionContext({
-      workflowName: "claude-agent",
+      projectName: "claude-agent",
       runId: "claude-agent-test-run",
       definitions: [
         { name: "Read", enabled: true, autoApprove: true },

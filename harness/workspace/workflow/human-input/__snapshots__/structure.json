@@ -1,5 +1,5 @@
 {
-  "workflowName": "human-input",
+  "projectName": "human-input",
   "projectType": "workflow",
   "files": [
     "index.ts",
@@ -36,7 +36,7 @@
     {
       "id": "main",
       "title": "Human Input",
-      "workflowName": "human-input",
+      "projectName": "human-input",
       "params": [],
       "registry": [],
       "execution": {

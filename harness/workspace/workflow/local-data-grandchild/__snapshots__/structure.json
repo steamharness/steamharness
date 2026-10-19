@@ -1,5 +1,5 @@
 {
-  "workflowName": "local-data-grandchild",
+  "projectName": "local-data-grandchild",
   "projectType": "workflow",
   "files": [
     "index.ts",
@@ -19,7 +19,7 @@
       "id": "store",
       "title": "存储数据",
       "description": "输入内容并返回可用于读取的 id。",
-      "workflowName": "storeDataWorkflow",
+      "projectName": "storeDataWorkflow",
       "params": [
         {
           "name": "content",
@@ -53,7 +53,7 @@
       "id": "get",
       "title": "读取数据",
       "description": "输入存储时返回的 id 并读取内容。",
-      "workflowName": "getDataWorkflow",
+      "projectName": "getDataWorkflow",
       "params": [
         {
           "name": "id",

@@ -16,7 +16,7 @@ export function formatWorkflowDefinitionEvent(
 ): string {
   return [
     "Workflow Definition",
-    `Workflow: ${event.workflowName}`,
+    `Workflow: ${event.projectName}`,
     "Loaded Nodes:",
     ...formatDefinedNodeLines(event.nodes),
   ].join("\n");
@@ -33,7 +33,7 @@ export function formatWorkflowResultOnly(
 ): string {
   return [
     "Workflow Result",
-    `Workflow: ${report.workflowName || "(missing)"}`,
+    `Workflow: ${report.projectName || "(missing)"}`,
     `Status: ${report.status}`,
     `Duration: ${formatDuration(report.durationMs)}`,
     "",
@@ -50,7 +50,7 @@ export function formatWorkflowExecutionReport(
   const includeJson = options.includeJson ?? true;
   const lines = [
     "Workflow Execution",
-    `Workflow: ${report.workflowName || "(missing)"}`,
+    `Workflow: ${report.projectName || "(missing)"}`,
     `Status: ${report.status}`,
     `Duration: ${formatDuration(report.durationMs)}`,
     `Started: ${report.startedAt.toISOString()}`,

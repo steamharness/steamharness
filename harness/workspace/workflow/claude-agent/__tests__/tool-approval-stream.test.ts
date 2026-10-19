@@ -228,7 +228,7 @@ function createNodeContext(
       },
     },
     toolPermissions: createWorkflowToolPermissionContext({
-      workflowName: "claude-agent",
+      projectName: "claude-agent",
       runId: "run-test",
       definitions: [
         {

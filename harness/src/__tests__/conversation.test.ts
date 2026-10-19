@@ -16,7 +16,7 @@ test("conversation setTitle persists a normalized title and emits updates", asyn
   const titleEvents: Array<{ conversationId: string; title?: string; updatedAt: string }> = [];
   const conversation = createWorkflowConversationContext({
     enabled: true,
-    workflowName: "demo",
+    projectName: "demo",
     conversationId: "conv-1",
     kv,
     onTitleChange(event) {
@@ -39,7 +39,7 @@ test("conversation setTitle persists a normalized title and emits updates", asyn
 
 test("stable message identities update projections without duplicates or lost state", async () => {
   const kv = createWorkflowKVContext({ store: createMemoryKVStore(), projectId: "demo", conversationId: "durable" });
-  const conversation = createWorkflowConversationContext({ enabled: true, workflowName: "demo", conversationId: "durable", kv });
+  const conversation = createWorkflowConversationContext({ enabled: true, projectName: "demo", conversationId: "durable", kv });
   await conversation.setValue("approval", "waiting");
   await conversation.appendMessage({ id: "input", role: "user", content: "Hello" });
   await conversation.appendMessage({ id: "answer", role: "assistant", content: "Partial" });
@@ -58,7 +58,7 @@ test("conversation setTitle clears blank titles without throwing", async () => {
   });
   const conversation = createWorkflowConversationContext({
     enabled: true,
-    workflowName: "demo",
+    projectName: "demo",
     conversationId: "conv-1",
     kv,
   });

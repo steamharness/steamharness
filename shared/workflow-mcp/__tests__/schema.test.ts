@@ -259,7 +259,7 @@ describe("workflow MCP args and files", () => {
       expect(args[0]).toBe("--file");
       expect(refs[0]).toMatchObject({
         id: "wf_12345678901234567890",
-        workflowId: "project-1",
+        projectId: "project-1",
         storage: "local",
         size: 5,
       });
@@ -349,7 +349,7 @@ describe("workflow MCP args and files", () => {
       size: 4,
       kind: "file",
       storage: "server",
-      workflowId: "project-1",
+      projectId: "project-1",
       createdAt: "2026-08-28T00:00:00.000Z",
     };
     const resolver = createServerWorkflowMcpFileResolver({

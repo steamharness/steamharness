@@ -7,12 +7,12 @@ const PROJECT_CARD_IMAGE_FILE_PATTERN = /^([a-f0-9]{64})\.webp$/;
 export function createProjectCardImageRouter(storage: Storage): Router {
   const router = Router();
 
-  router.get("/:workflowId/:fileName", asyncHandler(async (req, res) => {
+  router.get("/:projectId/:fileName", asyncHandler(async (req, res) => {
     const match = PROJECT_CARD_IMAGE_FILE_PATTERN.exec(req.params.fileName);
     if (!match?.[1]) {
       throw new HttpError(404, 404, "Project card image does not exist.");
     }
-    const image = await storage.getProjectCardImage(req.params.workflowId, match[1]);
+    const image = await storage.getProjectCardImage(req.params.projectId, match[1]);
     res.setHeader("Content-Type", "image/webp");
     res.setHeader("Content-Length", String(image.size));
     res.setHeader("Cache-Control", "public, max-age=31536000, immutable");

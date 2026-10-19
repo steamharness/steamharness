@@ -65,7 +65,7 @@ test("createUserInputNode publishes a durable request when no answer is resolved
 test("createUserInputNode keeps runtime node running while waiting for input", async () => {
   const reporter = createNodeExecutionReporter({
     runId: "run-1",
-    workflowName: "demo",
+    projectName: "demo",
   });
   const node = createUserInputNode<{ prompt: string }>({
     name: "review",
@@ -103,7 +103,7 @@ test("createUserInputNode keeps runtime node running while waiting for input", a
 test("stream nodes stay running when waiting for user input", async () => {
   const reporter = createNodeExecutionReporter({
     runId: "run-1",
-    workflowName: "demo",
+    projectName: "demo",
   });
   const requests: UserInputRequest[] = [];
   const node = createOutputNode<{ prompt: string }, { errCode: number; errMessage: string }>({

@@ -46,7 +46,7 @@ it('controls the real worker over IPC and replays pending commands after reopeni
       export const executor = workflow.defineExecutor({
         projectType: 'conversation',
         workflow: workflow.createAgentConversationWorkflow({
-          projectName: 'IPC', workflowName: 'ipc', outputItemId: 'answer',
+          projectName: 'IPC', projectName: 'ipc', outputItemId: 'answer',
           provider: 'openai', model: 'ipc-test', apiKind: 'openai-completions',
           baseUrl: 'http://127.0.0.1:${port}/v1', apiKey: 'offline-fixture', contextWindow: 8192,
           tools: [], session: { registry, codeMode: {}, compaction: { enabled: false } },

@@ -1,5 +1,5 @@
 {
-  "workflowName": "deltaforce-bilibili-collect",
+  "projectName": "deltaforce-bilibili-collect",
   "projectType": "workflow",
   "files": [
     "__tests__/deltaforce-bilibili-collect.test.ts",
@@ -36,7 +36,7 @@
     {
       "id": "main",
       "title": "Bilibili Collect",
-      "workflowName": "deltaforceBilibiliCollectWorkflow",
+      "projectName": "deltaforceBilibiliCollectWorkflow",
       "params": [
         {
           "name": "videoUrl",

@@ -59,9 +59,9 @@ export function parseServerProjectShareLink(value: string): { serverUrl: string;
 }
 export interface ProjectTransferProgress { message: string }
 export interface ProjectPreparation {
-  jobId: string; workflowId: string; status: 'queued' | 'preparing' | 'success' | 'failed';
+  jobId: string; projectId: string; status: 'queued' | 'preparing' | 'success' | 'failed';
   stage: string; failureReason?: string;
-  result?: { workflowId: string; sourceHash: string };
+  result?: { projectId: string; sourceHash: string };
 }
 
 export class ProjectServerClient {

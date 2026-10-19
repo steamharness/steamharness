@@ -90,7 +90,7 @@ export interface ScheduleSourceMetadata {
 
 export interface ScheduleRecord extends ScheduleInput {
   id: string;
-  workflowId: string;
+  projectId: string;
   createdByUserId: string;
   nextFireAt?: string;
   createdAt: string;
@@ -100,7 +100,7 @@ export interface ScheduleRecord extends ScheduleInput {
 export interface ScheduleFireRecord {
   id: string;
   scheduleId: string;
-  workflowId: string;
+  projectId: string;
   scheduledFor: string;
   status: ScheduleFireStatus;
   runId?: string;
@@ -804,7 +804,7 @@ const DYNAMIC_FIRE_REASON_RULES: ReadonlyArray<{
   },
   {
     key: "unknownEntrypoint",
-    pattern: /^Unknown entrypoint "(?<entrypointId>[^"]*)" for workflow "(?<workflowId>[^"]+)"\.$/,
+    pattern: /^Unknown entrypoint "(?<entrypointId>[^"]*)" for workflow "(?<projectId>[^"]+)"\.$/,
   },
   {
     key: "dependenciesMissing",

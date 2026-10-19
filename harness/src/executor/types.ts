@@ -179,7 +179,7 @@ export interface ParamLayout {
 }
 
 export interface ExecutorContext {
-  workflowName: string;
+  projectName: string;
   workflowDir: string;
   entrypointId?: string;
   entrypointTitle?: string;

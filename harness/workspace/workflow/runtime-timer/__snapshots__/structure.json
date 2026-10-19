@@ -1,5 +1,5 @@
 {
-  "workflowName": "runtime-timer",
+  "projectName": "runtime-timer",
   "projectType": "workflow",
   "files": [
     "index.ts",
@@ -24,7 +24,7 @@
     {
       "id": "main",
       "title": "Runtime Timer",
-      "workflowName": "runtime-timer",
+      "projectName": "runtime-timer",
       "params": [
         {
           "name": "title",

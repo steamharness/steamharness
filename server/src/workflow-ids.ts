@@ -1,9 +1,9 @@
 export {
-  assertSafeWorkflowId,
+  assertSafeProjectId,
   assertWorkflowUuid,
   createInvalidWorkflowUuidMessage,
-  createUnsafeWorkflowIdMessage,
-  isSafeWorkflowId,
+  createUnsafeProjectIdMessage,
+  isSafeProjectId,
   isWorkflowUuid,
   resolveWorkflowRoot,
   STEAMHARNESS_ID_PATTERN,

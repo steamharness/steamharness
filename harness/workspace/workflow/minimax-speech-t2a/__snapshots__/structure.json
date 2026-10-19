@@ -1,5 +1,5 @@
 {
-  "workflowName": "minimax-speech-t2a",
+  "projectName": "minimax-speech-t2a",
   "projectType": "workflow",
   "files": [
     "__tests__/minimax-speech-t2a.test.ts",
@@ -37,7 +37,7 @@
     {
       "id": "main",
       "title": "MiniMax Speech T2A",
-      "workflowName": "minimax-speech-t2a",
+      "projectName": "minimax-speech-t2a",
       "params": [
         {
           "name": "text",

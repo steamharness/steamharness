@@ -93,7 +93,7 @@
 - Server 仅允许 `dataStorage.mode` 为 `server` 或 `both` 的项目运行和访问服务器数据。
   迁移：`local` 或未声明存储的项目需改为 `server` 或 `both`，否则所有入口统一返回 `409`。
 - Core 与 CLI 精确依赖升级到 `0.2.0`，PersistentValue API 强制携带 `projectId`。
-  迁移：非 global 的 namespace、entry 和 source 必须把 `workflowName` 设为项目 ID。
+  迁移：非 global 的 namespace、entry 和 source 必须把 `projectName` 设为项目 ID。
 - Server 已完整移除 Supabase，账号、会话和邀请改用原生 PostgreSQL。
   迁移：账号数据需要一次性迁移到 Server 自有的 PostgreSQL 库。
 - Desktop 登录与运行来源统一使用 `desktop`，旧 `app` 来源不再接受。

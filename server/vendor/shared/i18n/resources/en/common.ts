@@ -879,7 +879,7 @@ export const common = {
         localStructureUnavailable: "Unable to inspect the local Workflow structure.",
         entrypointMissing: "Entrypoint \"{{entrypointId}}\" no longer exists.",
         runRecordMissing: "The scheduled Workflow did not produce a Run record.",
-        unknownEntrypoint: "Entrypoint \"{{entrypointId}}\" no longer exists in Workflow \"{{workflowId}}\".",
+        unknownEntrypoint: "Entrypoint \"{{entrypointId}}\" no longer exists in Workflow \"{{projectId}}\".",
         dependenciesMissing: "Workflow project dependencies are not installed. Project: {{projectPath}}. Missing: {{missing}}. Install dependencies manually in this project directory before running it.",
       },
       validation: {

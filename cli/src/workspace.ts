@@ -52,7 +52,7 @@ interface CliOptions {
 
 interface PreparationJob {
   jobId: string;
-  workflowId: string;
+  projectId: string;
   archiveName: string;
   createOnly: boolean;
   status: "queued" | "preparing" | "success" | "failed";
@@ -325,14 +325,14 @@ async function commandStatus(parsed: ParsedArgs): Promise<void> {
 }
 
 async function commandPack(parsed: ParsedArgs): Promise<void> {
-  const workflowName = requirePositional(parsed, 0, "workflow");
+  const projectName = requirePositional(parsed, 0, "workflow");
   if (
     parsed.options.projectGroup === true ||
     parsed.options.publishGroup === true ||
     parsed.options.dependencies.length > 0
   ) {
     const packed = await packProjectGroup({
-      workflowArg: workflowName,
+      workflowArg: projectName,
       sourcePath: parsed.options.path,
       outputPath: parsed.options.output,
       dependencyOptions: parsed.options.dependencies,
@@ -340,7 +340,7 @@ async function commandPack(parsed: ParsedArgs): Promise<void> {
     console.log(JSON.stringify({ archivePath: packed.archivePath, manifest: packed.manifest }, null, 2));
     return;
   }
-  const archivePath = await packWorkflow(workflowName, parsed.options.output, parsed.options.path);
+  const archivePath = await packWorkflow(projectName, parsed.options.output, parsed.options.path);
 
   console.log(JSON.stringify({ archivePath }, null, 2));
 }
@@ -353,7 +353,7 @@ async function commandUpload(parsed: ParsedArgs): Promise<void> {
     return;
   }
   const packageContext = await readWorkflowPackageContext(workflowArg, parsed.options.path);
-  let workflowId = packageContext.workflowId;
+  let projectId = packageContext.projectId;
 
   if (parsed.options.create === true) {
     const created = await ensureWorkflowProjectCreated({
@@ -361,18 +361,18 @@ async function commandUpload(parsed: ParsedArgs): Promise<void> {
       server: parsed.options.server,
       token: parsed.options.token,
     });
-    workflowId = created.workflowId;
+    projectId = created.projectId;
   }
 
-  if (!workflowId) {
-    throw new Error(i18n.t("workflowIdRequired", { ns: "cli" }));
+  if (!projectId) {
+    throw new Error(i18n.t("projectIdRequired", { ns: "cli" }));
   }
 
   const archivePath = parsed.options.file
     ? path.resolve(parsed.options.file)
     : await packWorkflow(workflowArg, parsed.options.output, parsed.options.path);
   const uploadResult = await uploadPackage({
-    workflowId,
+    projectId,
     archivePath,
     server: parsed.options.server,
     token: parsed.options.token,
@@ -389,7 +389,7 @@ async function commandUpload(parsed: ParsedArgs): Promise<void> {
   }
 
   const preparationResult = await waitForPreparation({
-    workflowId,
+    projectId,
     jobId: uploadResult.data.jobId,
     server: parsed.options.server,
     token: parsed.options.token,
@@ -404,7 +404,7 @@ async function commandUpload(parsed: ParsedArgs): Promise<void> {
     const publishResult = await fetchApi({
       server: parsed.options.server,
       token: parsed.options.token,
-      path: `/api/projects/${encodeURIComponent(workflowId)}/publish`,
+      path: `/api/projects/${encodeURIComponent(projectId)}/publish`,
       method: "POST",
       body: {
         releaseLog: parsed.options.releaseLog,
@@ -435,7 +435,7 @@ async function commandProjectGroupUpload(
   }
 
   let rootContext = await readWorkflowPackageContext(workflowArg, parsed.options.path);
-  if (parsed.options.create === true || rootContext.workflowId !== undefined) {
+  if (parsed.options.create === true || rootContext.projectId !== undefined) {
     await ensureWorkflowProjectCreated({
       packageContext: rootContext,
       server: parsed.options.server,
@@ -443,7 +443,7 @@ async function commandProjectGroupUpload(
     });
     rootContext = await readWorkflowPackageContext(workflowArg, parsed.options.path);
   }
-  if (!rootContext.workflowId) {
+  if (!rootContext.projectId) {
     throw new Error(i18n.t("projectGroupUploadRootIdRequired", { ns: "cli" }));
   }
 
@@ -527,10 +527,10 @@ async function commandProjectGroupUpload(
 
 async function commandPreparation(parsed: ParsedArgs): Promise<void> {
   requireLogin(parsed);
-  const workflowId = requirePositional(parsed, 0, "workflow");
+  const projectId = requirePositional(parsed, 0, "workflow");
   const jobId = requirePositional(parsed, 1, "jobId");
   const result = await getPreparation({
-    workflowId,
+    projectId,
     jobId,
     server: parsed.options.server,
     token: parsed.options.token,
@@ -542,7 +542,7 @@ async function commandPreparation(parsed: ParsedArgs): Promise<void> {
 async function commandFileUpload(parsed: ParsedArgs): Promise<void> {
   requireLogin(parsed);
   if (!parsed.options.file) throw new Error(i18n.t("fileUploadRequiresFile", { ns: "cli" }));
-  const workflowId = await resolveRemoteWorkflowId(parsed);
+  const projectId = await resolveRemoteProjectId(parsed);
   const filePath = path.resolve(parsed.options.file);
   const info = await stat(filePath);
   if (!info.isFile() || info.size > 50 * 1024 * 1024) {
@@ -552,7 +552,7 @@ async function commandFileUpload(parsed: ParsedArgs): Promise<void> {
   const store = new RemoteWorkflowFileStore({
     serverUrl: parsed.options.server,
     token: parsed.options.token,
-    workflowName: workflowId,
+    projectName: projectId,
   });
   const file = await store.createFile({
     name: path.basename(filePath),
@@ -597,11 +597,11 @@ async function commandFileDelete(parsed: ParsedArgs): Promise<void> {
 
 async function commandVersions(parsed: ParsedArgs): Promise<void> {
   requireLogin(parsed);
-  const workflowId = await resolveRemoteWorkflowId(parsed);
+  const projectId = await resolveRemoteProjectId(parsed);
   const result = await fetchApi({
     server: parsed.options.server,
     token: parsed.options.token,
-    path: `/api/projects/${encodeURIComponent(workflowId)}/versions`,
+    path: `/api/projects/${encodeURIComponent(projectId)}/versions`,
   });
 
   printApiResponse(result);
@@ -611,13 +611,13 @@ async function commandVersions(parsed: ParsedArgs): Promise<void> {
 async function commandDownload(parsed: ParsedArgs): Promise<void> {
   requireLogin(parsed);
   const workflowArg = requirePositional(parsed, 0, "workflow");
-  const workflowId = await resolveRemoteWorkflowId(parsed);
+  const projectId = await resolveRemoteProjectId(parsed);
   const target = parsed.options.target ?? "latest";
   if (target !== "draft") {
     const result = await fetchApi<ProjectGroupDownloadResult>({
       server: parsed.options.server,
       token: parsed.options.token,
-      path: `/api/projects/${encodeURIComponent(workflowId)}/project-group-download?target=${encodeURIComponent(target)}`,
+      path: `/api/projects/${encodeURIComponent(projectId)}/project-group-download?target=${encodeURIComponent(target)}`,
     });
     assertApiOk(result);
     if (result.errCode !== 0 || result.data === undefined) {
@@ -652,7 +652,7 @@ async function commandDownload(parsed: ParsedArgs): Promise<void> {
   }>({
     server: parsed.options.server,
     token: parsed.options.token,
-    path: `/api/projects/${encodeURIComponent(workflowId)}/files?target=${encodeURIComponent(target)}&includeBinary=true`,
+    path: `/api/projects/${encodeURIComponent(projectId)}/files?target=${encodeURIComponent(target)}&includeBinary=true`,
   });
   printApiResponse(result);
   assertApiOk(result);
@@ -692,11 +692,11 @@ async function commandPublish(parsed: ParsedArgs): Promise<void> {
     await commandProjectGroupUpload(parsed, workflowArg, true);
     return;
   }
-  const workflowId = await resolveRemoteWorkflowId(parsed);
+  const projectId = await resolveRemoteProjectId(parsed);
   const publishResult = await fetchApi({
     server: parsed.options.server,
     token: parsed.options.token,
-    path: `/api/projects/${encodeURIComponent(workflowId)}/publish`,
+    path: `/api/projects/${encodeURIComponent(projectId)}/publish`,
     method: "POST",
     body: {
       releaseLog: parsed.options.releaseLog,
@@ -1068,14 +1068,14 @@ async function commandHealth(parsed: ParsedArgs): Promise<void> {
 }
 
 async function packWorkflow(
-  workflowName: string,
+  projectName: string,
   outputPath: string | undefined,
   sourcePath: string | undefined,
   options: { projectGroupSafe?: boolean } = {},
 ): Promise<string> {
   const repoRoot = resolveRepoRoot();
   const workflowDir = sourcePath === undefined
-    ? path.join(repoRoot, "workspace", "workflow", workflowName)
+    ? path.join(repoRoot, "workspace", "workflow", projectName)
     : path.resolve(sourcePath);
   await readPackageJsonFile(path.join(workflowDir, "package.json"));
   // Packaged App uploads run the workspace CLI from app.asar, so
@@ -1084,10 +1084,10 @@ async function packWorkflow(
   const packsDir = process.env.STEAMHARNESS_WORKSPACE_PACKS_DIR
     ? path.resolve(process.env.STEAMHARNESS_WORKSPACE_PACKS_DIR)
     : path.join(repoRoot, "workspace", ".packs");
-  const stagingDir = path.join(packsDir, "tmp", randomUUID(), workflowName);
+  const stagingDir = path.join(packsDir, "tmp", randomUUID(), projectName);
   const archivePath = outputPath
     ? path.resolve(outputPath)
-    : path.join(packsDir, `${workflowName}-${createTimestamp()}.tgz`);
+    : path.join(packsDir, `${projectName}-${createTimestamp()}.tgz`);
   const workspaceRoot = sourcePath === undefined
     ? path.join(repoRoot, "workspace", "workflow")
     : path.dirname(workflowDir);
@@ -1100,7 +1100,7 @@ async function packWorkflow(
   await stageWorkflowWithLocalDependencies({
     workspaceRoot,
     workflowDir,
-    workflowName,
+    projectName,
     stagingRoot: path.join(stagingDir, "workspace", "workflow"),
     projectGroupSafe: options.projectGroupSafe === true,
   });
@@ -1134,7 +1134,7 @@ async function readProjectGroupContexts(options: {
   if (root.projectType !== "kanban") {
     throw new Error(i18n.t("projectGroupRootMustBeKanban", { ns: "cli" }));
   }
-  if (!root.workflowId) {
+  if (!root.projectId) {
     throw new Error(i18n.t("projectGroupRootIdRequired", { ns: "cli" }));
   }
 
@@ -1168,7 +1168,7 @@ async function readProjectGroupContexts(options: {
   for (const [alias, dependencyPath] of dependencyPaths) {
     const relation = relatedProjects.find((candidate) => candidate.alias === alias)!;
     const context = await readWorkflowPackageContext(alias, dependencyPath);
-    if (context.workflowId !== relation.projectId) {
+    if (context.projectId !== relation.projectId) {
       throw new Error(i18n.t("dependencyPackageIdMismatch", {
         ns: "cli",
         alias: JSON.stringify(alias),
@@ -1176,9 +1176,9 @@ async function readProjectGroupContexts(options: {
       }));
     }
     assertConfirmedRelatedProject({
-      rootProjectId: root.workflowId,
+      rootProjectId: root.projectId,
       rootProjectInfo,
-      targetProjectId: context.workflowId,
+      targetProjectId: context.projectId,
       targetPackageJson: context.packageJson,
       alias,
     });
@@ -1215,9 +1215,9 @@ async function packProjectGroup(options: {
   await mkdir(projectsDir, { recursive: true });
   await mkdir(path.dirname(archivePath), { recursive: true });
 
-  const rootArchivePath = `projects/${contexts.root.workflowId}.tgz`;
+  const rootArchivePath = `projects/${contexts.root.projectId}.tgz`;
   const projects: ProjectGroupManifestV1["projects"] = [{
-    projectId: contexts.root.workflowId!,
+    projectId: contexts.root.projectId!,
     role: "root",
     archivePath: rootArchivePath,
     version: readWorkflowPackageVersion(contexts.root.packageJson),
@@ -1231,9 +1231,9 @@ async function packProjectGroup(options: {
       { projectGroupSafe: true },
     );
     for (const dependency of contexts.dependencies) {
-      const dependencyArchivePath = `projects/${dependency.packageContext.workflowId}.tgz`;
+      const dependencyArchivePath = `projects/${dependency.packageContext.projectId}.tgz`;
       projects.push({
-        projectId: dependency.packageContext.workflowId!,
+        projectId: dependency.packageContext.projectId!,
         role: "dependency",
         archivePath: dependencyArchivePath,
         alias: dependency.alias,
@@ -1249,7 +1249,7 @@ async function packProjectGroup(options: {
 
     const manifest: ProjectGroupManifestV1 = {
       version: 1,
-      rootProjectId: contexts.root.workflowId!,
+      rootProjectId: contexts.root.projectId!,
       projects,
       dependencies: contexts.locks,
     };
@@ -1338,14 +1338,14 @@ async function waitForProjectGroupPreparation(options: {
   }
 }
 
-async function resolveRemoteWorkflowId(parsed: ParsedArgs): Promise<string> {
+async function resolveRemoteProjectId(parsed: ParsedArgs): Promise<string> {
   const workflowArg = requirePositional(parsed, 0, "workflow");
   if (isWorkflowUuid(workflowArg)) {
     return workflowArg;
   }
   const packageContext = await readWorkflowPackageContext(workflowArg, parsed.options.path);
-  if (packageContext.workflowId) {
-    return packageContext.workflowId;
+  if (packageContext.projectId) {
+    return packageContext.projectId;
   }
   throw new Error(i18n.t("workflowNotBound", {
     ns: "cli",
@@ -1363,18 +1363,18 @@ async function readWorkflowPackageContext(
     : path.resolve(sourcePath);
   const packageJsonPath = path.join(workflowDir, "package.json");
   const packageJson = await readPackageJsonFile(packageJsonPath);
-  const workflowId = typeof packageJson.id === "string" && isWorkflowUuid(packageJson.id)
+  const projectId = typeof packageJson.id === "string" && isWorkflowUuid(packageJson.id)
     ? packageJson.id.trim()
     : undefined;
-  const workflowName = readRequiredPackageString(packageJson, "name");
+  const projectName = readRequiredPackageString(packageJson, "name");
   const projectType = readStaticProjectType(packageJson);
 
   return {
     workflowArg,
     workflowDir,
     packageJsonPath,
-    workflowId,
-    workflowName,
+    projectId,
+    projectName,
     projectType,
     packageJson,
   };
@@ -1385,9 +1385,9 @@ async function ensureWorkflowProjectCreated(options: {
   server: string;
   token: string;
 }): Promise<ProjectCreateResult> {
-  const workflowId = options.packageContext.workflowId;
-  if (workflowId === undefined) {
-    throw new Error(i18n.t("workflowIdRequired", { ns: "cli" }));
+  const projectId = options.packageContext.projectId;
+  if (projectId === undefined) {
+    throw new Error(i18n.t("projectIdRequired", { ns: "cli" }));
   }
   const projectInfo = readWorkflowProjectInfo(options.packageContext.packageJson);
   if (projectInfo.dataStorage === null) {
@@ -1399,9 +1399,9 @@ async function ensureWorkflowProjectCreated(options: {
     path: "/api/projects",
     method: "POST",
     body: {
-      name: options.packageContext.workflowName,
+      name: options.packageContext.projectName,
       projectType: options.packageContext.projectType,
-      workflowId,
+      projectId,
       projectInfo,
     },
   });
@@ -1411,7 +1411,7 @@ async function ensureWorkflowProjectCreated(options: {
     throw new Error(i18n.t("projectCreationFailed", { ns: "cli" }));
   }
 
-  if (created.data.workflowId !== workflowId) {
+  if (created.data.projectId !== projectId) {
     throw new Error(i18n.t("projectCreationIdMismatch", { ns: "cli" }));
   }
   return created.data;
@@ -1459,7 +1459,7 @@ function readWorkflowPackageVersion(packageJson: Record<string, unknown>): strin
 }
 
 async function uploadPackage(options: {
-  workflowId: string;
+  projectId: string;
   archivePath: string;
   server: string;
   token: string;
@@ -1468,7 +1468,7 @@ async function uploadPackage(options: {
   const archiveName = path.basename(options.archivePath);
   const query = new URLSearchParams({ fileName: archiveName });
   const response = await fetch(
-    `${trimTrailingSlash(options.server)}/api/projects/${encodeURIComponent(options.workflowId)}/package?${query.toString()}`,
+    `${trimTrailingSlash(options.server)}/api/projects/${encodeURIComponent(options.projectId)}/package?${query.toString()}`,
     {
       method: "POST",
       headers: {
@@ -1485,7 +1485,7 @@ async function uploadPackage(options: {
 }
 
 async function waitForPreparation(options: {
-  workflowId: string;
+  projectId: string;
   jobId: string;
   server: string;
   token: string;
@@ -1498,7 +1498,7 @@ async function waitForPreparation(options: {
     const response = await fetchApi<PreparationJob>({
       server: options.server,
       token: options.token,
-      path: `/api/projects/${encodeURIComponent(options.workflowId)}/preparations/${encodeURIComponent(options.jobId)}`,
+      path: `/api/projects/${encodeURIComponent(options.projectId)}/preparations/${encodeURIComponent(options.jobId)}`,
     });
     if (response.errCode !== 0 || response.data === undefined) {
       return response;
@@ -1530,7 +1530,7 @@ async function waitForPreparation(options: {
 }
 
 async function getPreparation(options: {
-  workflowId: string;
+  projectId: string;
   jobId: string;
   server: string;
   token: string;
@@ -1538,7 +1538,7 @@ async function getPreparation(options: {
   return fetchApi<PreparationJob>({
     server: options.server,
     token: options.token,
-    path: `/api/projects/${encodeURIComponent(options.workflowId)}/preparations/${encodeURIComponent(options.jobId)}`,
+    path: `/api/projects/${encodeURIComponent(options.projectId)}/preparations/${encodeURIComponent(options.jobId)}`,
   });
 }
 
@@ -1607,38 +1607,38 @@ async function copyWorkflowSource(
 async function stageWorkflowWithLocalDependencies(options: {
   workspaceRoot: string;
   workflowDir: string;
-  workflowName: string;
+  projectName: string;
   stagingRoot: string;
   projectGroupSafe?: boolean;
 }): Promise<void> {
-  const queue = [options.workflowName];
+  const queue = [options.projectName];
   const visited = new Set<string>();
 
   while (queue.length > 0) {
-    const currentWorkflowName = queue.shift();
-    if (!currentWorkflowName || visited.has(currentWorkflowName)) {
+    const currentProjectName = queue.shift();
+    if (!currentProjectName || visited.has(currentProjectName)) {
       continue;
     }
-    visited.add(currentWorkflowName);
+    visited.add(currentProjectName);
 
-    const sourceDir = currentWorkflowName === options.workflowName
+    const sourceDir = currentProjectName === options.projectName
       ? options.workflowDir
-      : path.join(options.workspaceRoot, currentWorkflowName);
+      : path.join(options.workspaceRoot, currentProjectName);
     if (!existsSync(path.join(sourceDir, "package.json"))) {
       throw new Error(i18n.t("localDependencyMissingPackage", {
         ns: "cli",
-        workflow: options.workflowName,
-        dependency: currentWorkflowName,
+        workflow: options.projectName,
+        dependency: currentProjectName,
         path: sourceDir,
       }));
     }
 
     const uploadPlan = await copyWorkflowSource(
       sourceDir,
-      path.join(options.stagingRoot, currentWorkflowName),
+      path.join(options.stagingRoot, currentProjectName),
       { projectGroupSafe: options.projectGroupSafe },
     );
-    if (currentWorkflowName === options.workflowName && !uploadPlan.workflowIgnoreConfigured) {
+    if (currentProjectName === options.projectName && !uploadPlan.workflowIgnoreConfigured) {
       process.stderr.write(`${i18n.t("workflowIgnoreWarning", {
         ns: "cli",
         files: uploadPlan.files.length,
@@ -1664,15 +1664,15 @@ async function findLocalWorkflowDependencies(sourceDir: string): Promise<string[
     }
     const source = await readFile(filePath, "utf8");
     for (const match of source.matchAll(/(?:from\s+|reference path=)\"(\.\.\/([^/\"']+)(?:\/[^\"']*)?)\"/g)) {
-      const workflowName = match[2]?.trim();
-      if (workflowName) {
-        discovered.add(workflowName);
+      const projectName = match[2]?.trim();
+      if (projectName) {
+        discovered.add(projectName);
       }
     }
     for (const match of source.matchAll(/(?:from\s+|reference path=)'(\.\.\/([^/'"]+)(?:\/[^'"]*)?)'/g)) {
-      const workflowName = match[2]?.trim();
-      if (workflowName) {
-        discovered.add(workflowName);
+      const projectName = match[2]?.trim();
+      if (projectName) {
+        discovered.add(projectName);
       }
     }
   }
@@ -1870,8 +1870,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
 }
 
 interface ProjectCreateResult {
-  workflowId: string;
-  workflowName: string;
+  projectId: string;
+  projectName: string;
   visibility: "private" | "public";
   projectType?: ProjectKind;
 }
@@ -1880,8 +1880,8 @@ interface PackageContext {
   workflowArg: string;
   workflowDir: string;
   packageJsonPath: string;
-  workflowId?: string;
-  workflowName: string;
+  projectId?: string;
+  projectName: string;
   projectType: ProjectKind;
   packageJson: Record<string, unknown>;
 }
@@ -2100,7 +2100,7 @@ export {
   materializeProjectGroupDownload,
   packProjectGroup,
   readProjectGroupContexts,
-  resolveRemoteWorkflowId,
+  resolveRemoteProjectId,
   stageWorkflowWithLocalDependencies,
   shouldUseProjectGroupUpload,
   waitForProjectGroupPreparation,

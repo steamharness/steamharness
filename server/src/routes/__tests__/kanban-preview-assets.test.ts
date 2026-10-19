@@ -47,7 +47,7 @@ test("sandboxed Kanban JS and CSS use preview capability without an App login", 
     }
 
     assert.deepEqual(requests, paths.map((assetPath) => ({
-      workflowName: "demo",
+      projectName: "demo",
       target: "1.0.0",
       previewCapabilityToken: "preview-capability",
       assetPath,

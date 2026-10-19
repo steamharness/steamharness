@@ -32,7 +32,7 @@ const toolApproval = workflow.createToolApprovalGate();
  * at, the persona that workspace implies, and the capabilities Studio offers.
  */
 const assistantWorkflow = workflow.createAgentConversationWorkflow({
-  workflowName: STEAMHARNESS_NAME,
+  projectName: STEAMHARNESS_NAME,
   outputItemId: OUTPUT_ITEM_ID,
   session: { subagents: { tools: ["read", "grep", "find", "ls"], maxAgents: 4 }, planFork: "asOf", toolSearch: {},
     codeMode: workflow.getEnv("STEAMHARNESS_DEVELOPER_ASSISTANT_CODE_MODE") === "true" ? {} : undefined },

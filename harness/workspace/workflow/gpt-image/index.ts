@@ -723,7 +723,7 @@ function normalizeFileReference(value: unknown): FileReference {
     size: readNumber(value.size) ?? 0,
     kind: value.kind === "file" ? "file" : "image",
     storage: readFileStorage(value.storage),
-    workflowId: readString(value.workflowId),
+    projectId: readString(value.projectId),
     conversationId: readString(value.conversationId),
     createdAt: readString(value.createdAt) ?? new Date().toISOString(),
     url: readString(value.url),

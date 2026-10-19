@@ -173,13 +173,13 @@ function createContext(conversationId: string, files?: FileStore): RunContext {
     conversation: createWorkflowConversationContext({
       enabled: true,
       conversationId,
-      workflowName: "pi",
+      projectName: "pi",
       kv,
     }),
     tokenUsage: createDisabledWorkflowTokenUsageContext(),
     toolPermissions: createWorkflowToolPermissionContext({
       definitions: readAgentToolDefinitions(undefined),
-      workflowName: "pi",
+      projectName: "pi",
       runId: "run-1",
     }),
   } as unknown as RunContext;
@@ -242,7 +242,7 @@ async function withTempDir(run: (dir: string) => Promise<void>): Promise<void> {
 test("defineAgentConversationExecutor produces a complete conversation executor", () => {
   const executor = defineAgentConversationExecutor({
     projectName: "Pi",
-    workflowName: "pi",
+    executorName: "pi",
     outputItemId: "pi-answer",
   });
 
@@ -292,7 +292,7 @@ test("the generated params expose the agent capability in the UI", () => {
 });
 
 test("createInput reads the composer message and the agent params", () => {
-  const executor = defineAgentConversationExecutor({ workflowName: "pi" });
+  const executor = defineAgentConversationExecutor({ projectName: "pi" });
   const input = executor.createInput({
     args: ["--agent", "plan", "--effort", "high", "--permission-policy", "read-only", "refactor the parser"],
   } as never) as unknown as Record<string, unknown> | undefined;
@@ -311,7 +311,7 @@ function createToolPermissionContext(extra: Array<{ name: string; autoApprove: b
       ...readAgentToolDefinitions(undefined),
       ...extra.map((tool) => ({ name: tool.name, enabled: true, autoApprove: tool.autoApprove })),
     ],
-    workflowName: "pi",
+    projectName: "pi",
     runId: "run-1",
   });
 }
@@ -320,7 +320,7 @@ test("tool approval identity separates calls, arguments and permission definitio
   async function identity(callId: string, args: unknown, label = "External") {
     const permissions = createWorkflowToolPermissionContext({
       definitions: [{ name: "external", label, enabled: true, autoApprove: false }],
-      workflowName: "pi", runId: "approval-run",
+      projectName: "pi", runId: "approval-run",
     });
     try { await permissions.requireToolApproval({ name: "external", callId, arguments: args }); }
     catch (error) {
@@ -356,7 +356,7 @@ test("a plan turn pauses for approval and runs the tool once approved", async ()
 
   await withTempDir(async (workdir) => {
     const executor = defineAgentConversationExecutor({
-      workflowName: "pi",
+      projectName: "pi",
       models,
       resolvedModel: model,
       createTools: () => [{
@@ -419,7 +419,7 @@ test("a build turn runs the tool that a plan turn would have asked about", async
 
   await withTempDir(async (workdir) => {
     const executor = defineAgentConversationExecutor({
-      workflowName: "pi",
+      projectName: "pi",
       models,
       resolvedModel: model,
       createTools: () => [{
@@ -471,7 +471,7 @@ test("a tool factory's own resources are released when the run ends", async () =
     const abort = new AbortController();
     let failNextRun = false;
     const executor = defineAgentConversationExecutor({
-      workflowName: "pi",
+      projectName: "pi",
       models,
       resolvedModel: model,
       createTools: async () => {
@@ -518,7 +518,7 @@ test("a resource that will not release does not decide the run", async () => {
 
   await withTempDir(async (workdir) => {
     const executor = defineAgentConversationExecutor({
-      workflowName: "pi",
+      projectName: "pi",
       models,
       resolvedModel: model,
       createTools: () => ({
@@ -606,7 +606,7 @@ test("an approved plan resumes as a build turn that runs it", async () => {
   ] as never[]);
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({ workflowName: "pi", models, resolvedModel: model });
+    const executor = defineAgentConversationExecutor({ projectName: "pi", models, resolvedModel: model });
     const context = createContext("conv-resume");
     const requestId = "agent-plan-approval:agent";
     await context.conversation.setValue("agent.pendingPlanApproval", {
@@ -642,7 +642,7 @@ test("plan mode shows the plan once, and not in the answer body", async () => {
   faux.setResponses([ai.fauxAssistantMessage([ai.fauxText("1. read the code\n2. propose")])] as never[]);
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({ workflowName: "pi", models, resolvedModel: model });
+    const executor = defineAgentConversationExecutor({ projectName: "pi", models, resolvedModel: model });
     const result = await executor.workflow.run(
       { prompt: "plan it", errCode: 0, errMessage: "", workdir, agent: "plan" },
       createContext("conv-plan"),
@@ -669,7 +669,7 @@ test("plan introductions stay before the tool and the final plan remains in conv
   ] as never[]);
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({ workflowName: "pi", models, resolvedModel: model });
+    const executor = defineAgentConversationExecutor({ projectName: "pi", models, resolvedModel: model });
     const context = createContext("conv-plan-introduction");
     const result = await executor.workflow.run(
       { prompt: "plan it", errCode: 0, errMessage: "", workdir, agent: "plan" }, context,
@@ -697,7 +697,7 @@ test("a host-driven plan streams into its declared answer without a duplicate pl
 
   await withTempDir(async (workdir) => {
     const executor = defineAgentConversationExecutor({
-      workflowName: "pi", outputItemId: "pi-answer", models, resolvedModel: model,
+      projectName: "pi", outputItemId: "pi-answer", models, resolvedModel: model,
     });
     const result = await executor.workflow.run({
       prompt: "plan it", errCode: 0, errMessage: "", workdir, agent: "plan", hostInput: { messages: [] },
@@ -753,7 +753,7 @@ test("the agent emits context usage as a standard ring output pinned to the comp
   ] as never[]);
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({ workflowName: "pi", models, resolvedModel: model });
+    const executor = defineAgentConversationExecutor({ projectName: "pi", models, resolvedModel: model });
     const result = await executor.workflow.run(
       { prompt: "hi", errCode: 0, errMessage: "", workdir },
       createContext("conv-usage"),
@@ -819,7 +819,7 @@ test("context output IDs keep distinct session keys separate", async () => {
     const context = createContext("conv-multiple-agents");
     const ids: string[] = [];
     for (const sessionKey of [...sessionKeys, sessionKeys[0]]) {
-      const executor = defineAgentConversationExecutor({ workflowName: "pi", sessionKey, models, resolvedModel: model });
+      const executor = defineAgentConversationExecutor({ projectName: "pi", sessionKey, models, resolvedModel: model });
       const result = await executor.workflow.run({ prompt: "hi", errCode: 0, errMessage: "", workdir }, context);
       const ring = result.items.find((item) => item.display?.placement === "composer-right");
       assert.ok(ring);
@@ -849,7 +849,7 @@ test("the permission policy decides how far the tools reach", async () => {
     ] as never[]);
 
     await withTempDir(async (workdir) => {
-      const executor = defineAgentConversationExecutor({ workflowName: "pi", models, resolvedModel: model });
+      const executor = defineAgentConversationExecutor({ projectName: "pi", models, resolvedModel: model });
       const result = await executor.workflow.run(
         { prompt: "hi", errCode: 0, errMessage: "", workdir, permissionPolicy: item.policy },
         createContext(`conv-${item.policy}`),
@@ -870,7 +870,7 @@ test("a write runs without asking under the aligned policies", async () => {
   ] as never[]);
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({ workflowName: "pi", models, resolvedModel: model });
+    const executor = defineAgentConversationExecutor({ projectName: "pi", models, resolvedModel: model });
     const result = await executor.workflow.run(
       { prompt: "write a file", errCode: 0, errMessage: "", workdir, permissionPolicy: "workspace" },
       createContext("conv-write"),
@@ -895,7 +895,7 @@ test("reasoning and tool rows are emitted alongside the answer", async () => {
   ] as never[]);
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({ workflowName: "pi", models, resolvedModel: model });
+    const executor = defineAgentConversationExecutor({ projectName: "pi", models, resolvedModel: model });
     const result = await executor.workflow.run(
       { prompt: "list the directory", errCode: 0, errMessage: "", workdir },
       createContext("conv-2"),
@@ -929,7 +929,7 @@ test("thinking reaches the host while it happens, not once it is over", async ()
   ] as never[]);
 
   await withTempDir(async (workdir) => {
-    const executor = defineAgentConversationExecutor({ workflowName: "pi", models, resolvedModel: model });
+    const executor = defineAgentConversationExecutor({ projectName: "pi", models, resolvedModel: model });
     const chunks: Array<Record<string, unknown>> = [];
     const context = {
       ...createContext("conv-reasoning"),
@@ -985,7 +985,7 @@ test("a conversation run streams its text as a row and appends it to the convers
 
   await withTempDir(async (workdir) => {
     const executor = defineAgentConversationExecutor({
-      workflowName: "pi",
+      projectName: "pi",
       outputItemId: "pi-answer",
       models,
       resolvedModel: model,
@@ -1029,7 +1029,7 @@ test("a host-input run leaves the workflow conversation alone", async () => {
 
   await withTempDir(async (workdir) => {
     const executor = defineAgentConversationExecutor({
-      workflowName: "pi",
+      projectName: "pi",
       outputItemId: "pi-answer",
       models,
       resolvedModel: model,
@@ -1077,7 +1077,7 @@ test("a turn that only called tools appends no empty answer", async () => {
 
   await withTempDir(async (workdir) => {
     const executor = defineAgentConversationExecutor({
-      workflowName: "pi",
+      projectName: "pi",
       outputItemId: "pi-answer",
       models,
       resolvedModel: model,
@@ -1123,7 +1123,7 @@ test("a stream cut off mid-answer is continued, and the turn says so", async () 
 
   await withTempDir(async (workdir) => {
     const executor = defineAgentConversationExecutor({
-      workflowName: "pi",
+      projectName: "pi",
       outputItemId: "pi-answer",
       models,
       resolvedModel: model,
@@ -1154,7 +1154,7 @@ test("a provider failure reaches the host as a failure", async () => {
 
   await withTempDir(async (workdir) => {
     const executor = defineAgentConversationExecutor({
-      workflowName: "pi",
+      projectName: "pi",
       outputItemId: "pi-answer",
       models,
       resolvedModel: model,
@@ -1180,7 +1180,7 @@ test("a turn's text stays where it was written, on either side of its tool", asy
 
   await withTempDir(async (workdir) => {
     const executor = defineAgentConversationExecutor({
-      workflowName: "pi",
+      projectName: "pi",
       outputItemId: "pi-answer",
       models,
       resolvedModel: model,
@@ -1225,7 +1225,7 @@ test("a turn the model answered with nothing still says so", async () => {
 
   await withTempDir(async (workdir) => {
     const executor = defineAgentConversationExecutor({
-      workflowName: "pi",
+      projectName: "pi",
       outputItemId: "pi-answer",
       models,
       resolvedModel: model,
@@ -1261,7 +1261,7 @@ test("a second turn in the same conversation sees the first one", async () => {
     // is a new process, so nothing the first turn held in memory can reach the
     // second one. The conversation store is the only channel between them.
     const turn = () => defineAgentConversationExecutor({
-      workflowName: "pi",
+      projectName: "pi",
       outputItemId: "pi-answer",
       models,
       resolvedModel: model,
@@ -1294,7 +1294,7 @@ test("a tool call and its result are still there on the next turn", async () => 
 
   await withTempDir(async (workdir) => {
     const turn = () => defineAgentConversationExecutor({
-      workflowName: "pi",
+      projectName: "pi",
       outputItemId: "pi-answer",
       models,
       resolvedModel: model,
@@ -1332,7 +1332,7 @@ test("a cancelled turn leaves the conversation where it was", async () => {
 
   await withTempDir(async (workdir) => {
     const turn = () => defineAgentConversationExecutor({
-      workflowName: "pi",
+      projectName: "pi",
       outputItemId: "pi-answer",
       models,
       resolvedModel: model,
@@ -1480,7 +1480,7 @@ test("a build turn is never offered the asking tool", async () => {
 
   await withTempDir(async (workdir) => {
     const executor = defineAgentConversationExecutor({
-      workflowName: "pi",
+      projectName: "pi",
       outputItemId: "pi-answer",
       models,
       resolvedModel: model,
@@ -1520,7 +1520,7 @@ test("a plan pause is remembered by the turn that resumes it", async () => {
 
   await withTempDir(async (workdir) => {
     const turn = () => defineAgentConversationExecutor({
-      workflowName: "pi",
+      projectName: "pi",
       outputItemId: "pi-answer",
       models,
       resolvedModel: model,
@@ -1652,7 +1652,7 @@ test("a pause for approval leaves a transcript that can be sent", async () => {
 
   await withTempDir(async (workdir) => {
     const turn = () => defineAgentConversationExecutor({
-      workflowName: "pi",
+      projectName: "pi",
       outputItemId: "pi-answer",
       models,
       resolvedModel: model,
@@ -1692,7 +1692,7 @@ test("a host-driven run neither reads nor writes the conversation transcript", a
 
   await withTempDir(async (workdir) => {
     const executor = defineAgentConversationExecutor({
-      workflowName: "pi",
+      projectName: "pi",
       outputItemId: "pi-answer",
       models,
       resolvedModel: model,
@@ -1729,7 +1729,7 @@ test("a corrupt durable store fails without silently starting a new conversation
 
   await withTempDir(async (workdir) => {
     const executor = defineAgentConversationExecutor({
-      workflowName: "pi",
+      projectName: "pi",
       outputItemId: "pi-answer",
       models,
       resolvedModel: model,
@@ -1806,7 +1806,7 @@ test("an image-only turn runs and says how many images it carried", async () => 
     await withTempDir(async (workdir) => {
       const files = await createFileStore(path.join(workdir, "files"), ["wf-image"]);
       const executor = defineAgentConversationExecutor({
-        workflowName: "pi",
+        projectName: "pi",
         outputItemId: "pi-answer",
         models,
         resolvedModel: model,
@@ -1852,7 +1852,7 @@ test("an attachment nothing can read fails the turn instead of vanishing", async
     // attachment silently and the model answered as if nothing was attached.
     const files = await createFileStore(path.join(workdir, "files"), []);
     const executor = defineAgentConversationExecutor({
-      workflowName: "pi",
+      projectName: "pi",
       outputItemId: "pi-answer",
       models,
       resolvedModel: model,
@@ -1881,7 +1881,7 @@ test("a turn with neither text nor attachments is still refused", async () => {
 
   await withTempDir(async (workdir) => {
     const executor = defineAgentConversationExecutor({
-      workflowName: "pi",
+      projectName: "pi",
       outputItemId: "pi-answer",
       models,
       resolvedModel: model,

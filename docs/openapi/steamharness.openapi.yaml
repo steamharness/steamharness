@@ -829,13 +829,13 @@ paths:
       summary: 使用指定 UUID 原子创建 server 项目
       description: |
         登录用户或管理员使用本地 `package.json.id` 中的 UUID 创建或恢复同 UUID server 项目。
-        `workflowId`、`name`、`projectType` 和包含 `dataStorage.mode` 的完整 `projectInfo` 必填；
+        `projectId`、`name`、`projectType` 和包含 `dataStorage.mode` 的完整 `projectInfo` 必填；
         `projectCard` 与 `visibility` 可选。Server 在一个请求中原子保存完整项目声明并把创建者记为
         owner，不先创建默认记录再二次同步，也不接收项目源码。已有且由同一账号管理的同 UUID、
         名称与类型请求会恢复绑定并刷新声明；其它冲突返回 `409`。
 
         An authenticated user or administrator creates or recovers a same-UUID server project from the
-        UUID in local `package.json.id`. `workflowId`, `name`, `projectType`, and complete `projectInfo`
+        UUID in local `package.json.id`. `projectId`, `name`, `projectType`, and complete `projectInfo`
         containing `dataStorage.mode` are required. Server stores the complete declaration atomically;
         it does not create a default record first or accept project source.
       operationId: createWorkflowProject
@@ -846,7 +846,7 @@ paths:
             schema:
               $ref: "#/components/schemas/CreateWorkflowProjectRequest"
             example:
-              workflowId: 8bd4fef2-e083-4201-a89f-6f7d0676df53
+              projectId: 8bd4fef2-e083-4201-a89f-6f7d0676df53
               name: "@steamharness/hello-workflow"
               projectType: workflow
               projectInfo:
@@ -1701,7 +1701,7 @@ paths:
                 $ref: "#/components/schemas/ProjectAccessRequestResponse"
         "410":
           $ref: "#/components/responses/HarnessError"
-  /project-card-images/{workflowId}/{fileName}:
+  /project-card-images/{projectId}/{fileName}:
     get:
       tags:
         - Admin Workflows
@@ -1710,7 +1710,7 @@ paths:
       security: []
       operationId: getWorkflowProjectCardImage
       parameters:
-        - name: workflowId
+        - name: projectId
           in: path
           required: true
           schema:
@@ -1860,7 +1860,7 @@ paths:
       summary: 调用 Kanban 项目数据 Bridge
       description: |
         当前项目可读用户可以执行读取操作，写入需要项目数据写权限。服务端先校验 target 对应 Kanban
-        项目，再把当前项目操作固定到路径中的 workflowName 和 project scope。关联项目操作
+        项目，再把当前项目操作固定到路径中的 projectName 和 project scope。关联项目操作
         只接受 alias 和 key，服务端按固定版本解析目标 UUID，并读取双方当前声明校验目标对
         Kanban 的授权。请求不能指定项目 UUID、scope、数据库路径或发布版本。
         files 操作使用路径固定项目的服务器文件存储，不要求已经上传预览产物，也不受版本 target 影响。
@@ -2123,7 +2123,7 @@ paths:
             schema:
               type: object
               properties:
-                targetWorkflowName:
+                targetProjectName:
                   type: string
                   example: smoke-copy
                 displayName:
@@ -2133,7 +2133,7 @@ paths:
                   type: string
                   example: latest
               required:
-                - targetWorkflowName
+                - targetProjectName
       responses:
         "200":
           description: 克隆结果。
@@ -3043,7 +3043,7 @@ components:
       description: 通过密码登录或管理员密钥登录建立的 httpOnly 浏览器会话。
   parameters:
     ProjectName:
-      name: workflowName
+      name: projectName
       in: path
       required: true
       schema:
@@ -4075,7 +4075,7 @@ components:
     ProjectCardImage:
       type: object
       properties:
-        workflowId:
+        projectId:
           type: string
         url:
           type: string
@@ -4091,7 +4091,7 @@ components:
           type: string
           pattern: ^[a-f0-9]{64}$
       required:
-        - workflowId
+        - projectId
         - url
         - mimeType
         - size
@@ -4308,9 +4308,9 @@ components:
     GetFilesResult:
       type: object
       properties:
-        workflowId:
+        projectId:
           type: string
-        workflowName:
+        projectName:
           type: string
         target:
           type: string
@@ -4321,8 +4321,8 @@ components:
           items:
             $ref: "#/components/schemas/File"
       required:
-        - workflowId
-        - workflowName
+        - projectId
+        - projectName
         - target
         - resolvedTarget
         - files
@@ -4355,9 +4355,9 @@ components:
     DownloadableSourceFilesResult:
       type: object
       properties:
-        workflowId:
+        projectId:
           type: string
-        workflowName:
+        projectName:
           type: string
         target:
           type: string
@@ -4368,8 +4368,8 @@ components:
           items:
             $ref: "#/components/schemas/File"
       required:
-        - workflowId
-        - workflowName
+        - projectId
+        - projectName
         - target
         - resolvedTarget
         - files
@@ -4870,9 +4870,9 @@ components:
     UploadPackageResult:
       type: object
       properties:
-        workflowId:
+        projectId:
           type: string
-        workflowName:
+        projectName:
           type: string
         archiveName:
           type: string
@@ -4881,8 +4881,8 @@ components:
         nextVersion:
           type: string
       required:
-        - workflowId
-        - workflowName
+        - projectId
+        - projectName
         - archiveName
         - sourceHash
         - nextVersion
@@ -4892,7 +4892,7 @@ components:
         jobId:
           type: string
           format: uuid
-        workflowId:
+        projectId:
           type: string
         archiveName:
           type: string
@@ -4927,7 +4927,7 @@ components:
           $ref: "#/components/schemas/UploadPackageResult"
       required:
         - jobId
-        - workflowId
+        - projectId
         - archiveName
         - createOnly
         - status
@@ -4945,7 +4945,7 @@ components:
     CreateWorkflowProjectRequest:
       type: object
       properties:
-        workflowId:
+        projectId:
           type: string
           format: uuid
           description: 本地 package.json.id 中的必填 UUID，作为 server 项目主键。 / Required UUID from
@@ -4961,7 +4961,7 @@ components:
         projectCard:
           $ref: "#/components/schemas/ProjectCardMetadata"
       required:
-        - workflowId
+        - projectId
         - name
         - projectType
         - projectInfo
@@ -5238,7 +5238,7 @@ components:
       properties:
         id:
           type: string
-        workflowId:
+        projectId:
           type: string
         token:
           type: string
@@ -5267,7 +5267,7 @@ components:
           format: date-time
       required:
         - id
-        - workflowId
+        - projectId
         - token
         - role
         - createdAt
@@ -5345,7 +5345,7 @@ components:
     ProjectMember:
       type: object
       properties:
-        workflowId:
+        projectId:
           type: string
         userId:
           type: string
@@ -5361,7 +5361,7 @@ components:
           type: string
           format: date-time
       required:
-        - workflowId
+        - projectId
         - userId
         - role
         - createdAt
@@ -5451,9 +5451,9 @@ components:
     ProjectCreateResult:
       type: object
       properties:
-        workflowId:
+        projectId:
           type: string
-        workflowName:
+        projectName:
           type: string
         projectType:
           $ref: "#/components/schemas/ProjectKind"
@@ -5462,8 +5462,8 @@ components:
         visibility:
           $ref: "#/components/schemas/Visibility"
       required:
-        - workflowId
-        - workflowName
+        - projectId
+        - projectName
         - projectType
         - projectInfo
         - visibility
@@ -5502,9 +5502,9 @@ components:
     SaveDraftFilesResult:
       type: object
       properties:
-        workflowId:
+        projectId:
           type: string
-        workflowName:
+        projectName:
           type: string
         updatedFiles:
           type: array
@@ -5517,8 +5517,8 @@ components:
         nextVersion:
           type: string
       required:
-        - workflowId
-        - workflowName
+        - projectId
+        - projectName
         - updatedFiles
         - removedFiles
         - nextVersion
@@ -5534,9 +5534,9 @@ components:
     PublishResult:
       type: object
       properties:
-        workflowId:
+        projectId:
           type: string
-        workflowName:
+        projectName:
           type: string
         version:
           type: string
@@ -5547,8 +5547,8 @@ components:
         releaseLog:
           type: string
       required:
-        - workflowId
-        - workflowName
+        - projectId
+        - projectName
         - version
         - latest
         - nextVersion
@@ -5565,9 +5565,9 @@ components:
     CloneWorkflowResult:
       type: object
       properties:
-        workflowId:
+        projectId:
           type: string
-        workflowName:
+        projectName:
           type: string
         sourceTarget:
           type: string
@@ -5576,8 +5576,8 @@ components:
         nextVersion:
           type: string
       required:
-        - workflowId
-        - workflowName
+        - projectId
+        - projectName
         - sourceTarget
         - resolvedSourceTarget
         - nextVersion
@@ -5593,17 +5593,17 @@ components:
     UpdateWorkflowInfoResult:
       type: object
       properties:
-        workflowId:
+        projectId:
           type: string
-        workflowName:
+        projectName:
           type: string
         target:
           type: string
         resolvedTarget:
           type: string
       required:
-        - workflowId
-        - workflowName
+        - projectId
+        - projectName
         - target
         - resolvedTarget
     UpdateWorkflowInfoResultResponse:
@@ -5623,10 +5623,10 @@ components:
             data:
               type: object
               properties:
-                workflowId:
+                projectId:
                   type: string
               required:
-                - workflowId
+                - projectId
           required:
             - data
     ParamDefinition:
@@ -5788,7 +5788,7 @@ components:
       type: object
       description: |
         iframe 生成 requestId，并从固定白名单选择 operation。input 的字段由 operation
-        决定；服务端拒绝额外的项目、scope、workflowName、数据库路径或 target 控制字段。
+        决定；服务端拒绝额外的项目、scope、projectName、数据库路径或 target 控制字段。
       properties:
         requestId:
           type: string
@@ -5838,9 +5838,9 @@ components:
     KanbanWorkspaceState:
       type: object
       properties:
-        workflowId:
+        projectId:
           type: string
-        workflowName:
+        projectName:
           type: string
         target:
           type: string
@@ -5864,8 +5864,8 @@ components:
           type: string
           format: uuid
       required:
-        - workflowId
-        - workflowName
+        - projectId
+        - projectName
         - target
         - resolvedTarget
         - artifactDir
@@ -6585,7 +6585,7 @@ components:
           properties:
             id:
               type: string
-            workflowName:
+            projectName:
               type: string
             runId:
               type: string
@@ -6701,7 +6701,7 @@ components:
           type: string
           enum:
             - server
-        workflowId:
+        projectId:
           type: string
         conversationId:
           type: string

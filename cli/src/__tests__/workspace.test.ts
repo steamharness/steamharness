@@ -290,7 +290,7 @@ describe("server workspace CLI helpers", () => {
       await stageWorkflowWithLocalDependencies({
         workspaceRoot: path.dirname(sourceDir),
         workflowDir: sourceDir,
-        workflowName: "workflow",
+        projectName: "workflow",
         stagingRoot,
         projectGroupSafe: true,
       });
@@ -773,7 +773,7 @@ describe("server workspace CLI helpers", () => {
         errMessage: "",
         data: {
           jobId,
-          workflowId: "demo",
+          projectId: "demo",
           archiveName: "demo.tgz",
           createOnly: false,
           status: "preparing",
@@ -786,20 +786,20 @@ describe("server workspace CLI helpers", () => {
         errMessage: "",
         data: {
           jobId,
-          workflowId: "demo",
+          projectId: "demo",
           archiveName: "demo.tgz",
           createOnly: false,
           status: "success",
           stage: "committing",
           createdAt: "2026-07-16T00:00:00.000Z",
-          result: { workflowId: "demo", sourceHash: "hash" },
+          result: { projectId: "demo", sourceHash: "hash" },
         },
       }));
     vi.stubGlobal("fetch", fetchMock);
     vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
     const result = await waitForPreparation({
-      workflowId: "demo",
+      projectId: "demo",
       jobId,
       server: "http://localhost:7125",
       token: "token",
@@ -809,7 +809,7 @@ describe("server workspace CLI helpers", () => {
     expect(result).toEqual({
       errCode: 0,
       errMessage: "",
-      data: { workflowId: "demo", sourceHash: "hash" },
+      data: { projectId: "demo", sourceHash: "hash" },
     });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
@@ -860,7 +860,7 @@ describe("server workspace CLI helpers", () => {
       errMessage: "",
       data: {
         jobId: "a0000000-0000-4000-8000-000000000031",
-        workflowId: "demo",
+        projectId: "demo",
         archiveName: "demo.tgz",
         createOnly: false,
         status: "preparing",
@@ -871,7 +871,7 @@ describe("server workspace CLI helpers", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(getPreparation({
-      workflowId: "demo",
+      projectId: "demo",
       jobId: "a0000000-0000-4000-8000-000000000031",
       server: "http://localhost:7125",
       token: "token",
@@ -1236,8 +1236,8 @@ describe("server workspace CLI helpers", () => {
     process.env.STEAMHARNESS_REPO_ROOT = root;
     try {
       const context = await readWorkflowPackageContext("hello", undefined);
-      expect(context.workflowId).toBe("8bd4fef2-e083-4201-a89f-6f7d0676df53");
-      expect(context.workflowName).toBe("Hello Workflow");
+      expect(context.projectId).toBe("8bd4fef2-e083-4201-a89f-6f7d0676df53");
+      expect(context.projectName).toBe("Hello Workflow");
       expect(context.workflowDir).toBe(workflowDir);
     } finally {
       if (previousRepoRoot === undefined) {
@@ -1300,8 +1300,8 @@ describe("server workspace CLI helpers", () => {
       errCode: 0,
       errMessage: "",
       data: {
-        workflowId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
-        workflowName: "Hello Workflow",
+        projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
+        projectName: "Hello Workflow",
         visibility: "private",
       },
     }));
@@ -1315,7 +1315,7 @@ describe("server workspace CLI helpers", () => {
         token: "api-key",
       });
 
-      expect(created.workflowId).toBe("8bd4fef2-e083-4201-a89f-6f7d0676df53");
+      expect(created.projectId).toBe("8bd4fef2-e083-4201-a89f-6f7d0676df53");
       expect(fetchMock).toHaveBeenCalledWith(
         "http://127.0.0.1:7125/api/projects",
         expect.objectContaining({
@@ -1323,7 +1323,7 @@ describe("server workspace CLI helpers", () => {
           body: JSON.stringify({
             name: "Hello Workflow",
             projectType: "workflow",
-            workflowId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
+            projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
             projectInfo: {
               localizedNames: {},
               declarations: [],
@@ -1449,7 +1449,7 @@ describe("server workspace CLI helpers", () => {
     await stageWorkflowWithLocalDependencies({
       workspaceRoot,
       workflowDir: sourceWorkflowDir,
-      workflowName: "deltaforce-openai-agent",
+      projectName: "deltaforce-openai-agent",
       stagingRoot,
     });
 

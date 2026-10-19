@@ -96,7 +96,7 @@ describe("server/web feature parity", () => {
     );
     expect(detailRender.getByRole("dialog")).toBeTruthy();
     expect(detailRender.getByText(/脱敏后的字段/)).toBeTruthy();
-    expect(detailRender.getByText(/"workflowName": "demo"/)).toBeTruthy();
+    expect(detailRender.getByText(/"projectName": "demo"/)).toBeTruthy();
     detailRender.unmount();
 
     renderWithTheme(
@@ -144,7 +144,7 @@ function createAuditPage(): AuditEventPage {
         outcome: "success",
         requestIp: "127.0.0.1",
         userAgent: "Mozilla/5.0",
-        context: { workflowName: "demo", token: "abcd...wxyz" },
+        context: { projectName: "demo", token: "abcd...wxyz" },
         createdAt: "2026-06-18T08:00:00.000Z",
       },
     ],

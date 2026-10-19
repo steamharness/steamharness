@@ -75,7 +75,7 @@ export async function uploadServerProject(options: TransferOptions & { projectId
       const preparation = await client.request<ProjectPreparation>(`/api/projects/${encodeURIComponent(options.projectId)}/preparations/${encodeURIComponent(job.jobId)}`, signal);
       if (preparation.status === 'failed') { throw new Error((preparation.failureReason || t('Project transfer failed.')).replaceAll(options.connection.accessToken, '[redacted]')); }
       if (preparation.status === 'success') {
-        if (preparation.result?.workflowId !== options.projectId || !/^[a-f0-9]{64}$/.test(preparation.result.sourceHash)) { throw new Error(t('The server returned an invalid response.')); }
+        if (preparation.result?.projectId !== options.projectId || !/^[a-f0-9]{64}$/.test(preparation.result.sourceHash)) { throw new Error(t('The server returned an invalid response.')); }
         sourceHash = preparation.result.sourceHash;
         break;
       }

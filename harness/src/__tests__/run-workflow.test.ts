@@ -118,7 +118,7 @@ test("runWorkflow emits a parent trace wrapper and keeps child node events in th
   assert.equal(finishes.at(-1)?.nodeName, "run-workflow");
   assert.equal(finishes.at(-1)?.metadata?.title, "Nested child trace");
   assert.deepEqual(finishes.at(-1)?.executionInfo, {
-    workflowName: "child-workflow",
+    projectName: "child-workflow",
     conversationMode: "shared",
     kvMode: "shared",
     outputVisibility: "visible",
@@ -197,7 +197,7 @@ test("runWorkflow options with only name keep shared conversation and visible ou
   assert.deepEqual(chunks.map((event) => event.chunk), ["visible child text"]);
   assert.equal(finishes.find((event) => event.nodeName === "output")?.outputVisibility, undefined);
   assert.deepEqual(finishes.at(-1)?.executionInfo, {
-    workflowName: "child-workflow",
+    projectName: "child-workflow",
     conversationMode: "shared",
     kvMode: "shared",
     outputVisibility: "visible",
@@ -580,7 +580,7 @@ function createTestWorkflowContext(options: {
     conversation: createWorkflowConversationContext({
       enabled: options.conversationId !== undefined,
       conversationId: options.conversationId,
-      workflowName: "parent-workflow",
+      projectName: "parent-workflow",
       kv,
     }),
     tokenUsage: options.tokenUsage ?? createDisabledWorkflowTokenUsageContext(),

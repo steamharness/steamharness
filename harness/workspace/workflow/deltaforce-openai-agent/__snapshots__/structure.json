@@ -1,5 +1,5 @@
 {
-  "workflowName": "deltaforce-openai-agent",
+  "projectName": "deltaforce-openai-agent",
   "projectType": "conversation",
   "files": [
     "index.ts",

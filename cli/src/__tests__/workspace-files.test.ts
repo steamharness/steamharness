@@ -28,7 +28,7 @@ it("uploads a business image, reads the original bytes back, and deletes only it
   const source = join(root, "map.png");
   const output = join(root, "download.png");
   await writeFile(source, bytes);
-  const reference = { id: "wf_abc123", name: "map.png", mimeType: "image/png", size: bytes.length, kind: "image", storage: "server", workflowId: projectId, createdAt: "2026-10-08T00:00:00Z" };
+  const reference = { id: "wf_abc123", name: "map.png", mimeType: "image/png", size: bytes.length, kind: "image", storage: "server", projectId: projectId, createdAt: "2026-10-08T00:00:00Z" };
   const fetch = vi.fn()
     .mockResolvedValueOnce(new Response(JSON.stringify({ errCode: 0, errMessage: "", data: [reference] })))
     .mockResolvedValueOnce(new Response(bytes))

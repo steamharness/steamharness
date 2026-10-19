@@ -97,7 +97,7 @@ export const cli = {
     invalidUploadFile: "Upload requires a regular file no larger than 50 MiB.",
     mimeTypeCommandUnsupported: "--mime-type is only supported by file-upload.",
     deviceLoginPrompt: "Open the verification page to approve this login:\n{{url}}\nUser code: {{code}}",
-    workflowIdRequired: "Workflow package.json must declare a UUID id first; --create only creates or reuses that UUID and never assigns or writes back an id.",
+    projectIdRequired: "Workflow package.json must declare a UUID id first; --create only creates or reuses that UUID and never assigns or writes back an id.",
     archiveCreateFailed: "Failed to create archive: {{details}}",
     workflowNotBound: "Workflow \"{{workflow}}\" is not bound to a server UUID. Create or bind it first with `steamharness workspace upload {{workflow}} --create`.",
     projectCreationFailed: "Workflow project creation failed.",

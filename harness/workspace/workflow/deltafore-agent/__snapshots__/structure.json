@@ -1,5 +1,5 @@
 {
-  "workflowName": "deltafore-agent",
+  "projectName": "deltafore-agent",
   "projectType": "conversation",
   "files": [
     "agent/__tests__/prompts.test.ts",
