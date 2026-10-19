@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { ROOT, assertRuntime, assertUpstream, builtinProjectDirectory, exists, git, prepareDistribution, readJSON, resolveMonorepoRoot, run } from './distribution.mjs';
 import { buildExtension } from './build-extension.mjs';
@@ -8,6 +9,25 @@ import { ensureDefaultExtensions } from './default-extensions.mjs';
 
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const [command = 'help', ...args] = process.argv.slice(2);
+
+// macOS caps Unix domain socket paths at 103 characters.
+const UNIX_SOCKET_PATH_LIMIT = 103;
+// VS Code names its main-process socket `<major.minor>-main.sock`; this leaves
+// room for that plus the separating slash.
+const SOCKET_NAME_BUDGET = 32;
+
+/**
+ * The desktop build opens a Unix domain socket inside the user-data directory,
+ * so a deeply nested checkout can push that path past the macOS limit and the
+ * launch fails with `listen EINVAL`. Prefer the checkout-local directory and
+ * fall back to a short, persistent one under the home directory only when the
+ * socket would not fit.
+ */
+function resolveDesktopUserDataDir(preferred) {
+  if (process.platform !== 'darwin') return preferred;
+  if (preferred.length + SOCKET_NAME_BUDGET <= UNIX_SOCKET_PATH_LIMIT) return preferred;
+  return path.join(os.homedir(), '.studio', 'desktop-user-data');
+}
 
 async function prepare() {
   await assertRuntime();
@@ -174,7 +194,7 @@ async function main() {
       const testing = command === 'test:desktop';
       const extensionsDirectory = path.join(ROOT, testing ? '.studio/test-desktop-extensions' : '.studio/desktop-extensions');
       const directoryArgs = [
-        '--user-data-dir', path.join(ROOT, testing ? `.studio/test-${process.pid}` : '.studio/desktop-user-data'),
+        '--user-data-dir', resolveDesktopUserDataDir(path.join(ROOT, testing ? `.studio/test-${process.pid}` : '.studio/desktop-user-data')),
         '--extensions-dir', extensionsDirectory,
         '--builtin-extensions-dir', path.join(upstream.directory, 'extensions'),
       ];
