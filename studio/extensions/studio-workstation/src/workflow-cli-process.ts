@@ -12,14 +12,14 @@ import type { WebReady, WebSession, RelatedProjectBinding } from './workflow-cli
 export interface StudioControlConfiguration { mcpServer?: string; url: string; token: string }
 
 /**
- * Keep the private system-AI connection available only to the dedicated
- * assistant surface. The editor and its project workers must never receive
- * those fields, even when the host account has an AI session configured.
+ * Project surfaces need the host's system-AI connection to run projects that
+ * ask the host for LLM credentials (conversation and agent projects do this by
+ * default). The open-source Studio never injects `aiServerUrl`/`aiAccessToken`,
+ * so this only widens what an internal host can provide; it does not expose a
+ * separate AI service to public builds.
  */
-export function sanitizeConnectionForSurface(connection: Connection | undefined, surface: 'editor' | 'assistant'): Connection | undefined {
-  if (!connection) { return undefined; }
-  if (surface === 'assistant') { return { ...connection }; }
-  return { serverUrl: connection.serverUrl, accessToken: connection.accessToken };
+export function sanitizeConnectionForSurface(connection: Connection | undefined, _surface: 'editor' | 'assistant'): Connection | undefined {
+  return connection ? { ...connection } : undefined;
 }
 
 export async function resolveProjectCli(projectDir: string): Promise<{ entry: string; version: string }> {

@@ -63,7 +63,7 @@ export async function main(argv: string[]): Promise<number> {
           if (line.length > 256_000) { throw new Error('Web host message is too large.'); }
           const message = JSON.parse(line);
           if (message.type === 'auth') {
-            void app.setHostConnection(parseHostConnection(message.connection, { allowAi: host?.surface === 'assistant' })).catch(() => { console.error('Workflow web host connection failed.'); process.exitCode = 1; close(); });
+            void app.setHostConnection(parseHostConnection(message.connection, { allowAi: true })).catch(() => { console.error('Workflow web host connection failed.'); process.exitCode = 1; close(); });
           }
           else if (message.type === 'related-projects') { app.setHostRelatedProjects(parseHostRelatedProjects(message.relatedProjects)); if (message.resourceProjects !== undefined) { app.setHostResourceProjects(parseHostResourceProjects(message.resourceProjects)); } }
           else if (message.type === 'close') { break; }

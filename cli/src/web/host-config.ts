@@ -67,7 +67,7 @@ export function parseHostConfiguration(value: unknown): WebHostConfiguration {
   }
   if (configuration.surface !== 'assistant' && (assistant || assistantProjectDir !== undefined)) { throw new Error('Assistant configuration requires the assistant surface.'); }
   return { surface: configuration.surface, assistant, assistantProjectDir,
-    connection: parseHostConnection(configuration.connection, { allowAi: configuration.surface === 'assistant' }),
+    connection: parseHostConnection(configuration.connection, { allowAi: true }),
     relatedProjects: parseHostRelatedProjects(configuration.relatedProjects),
     ...(configuration.resourceProjects === undefined ? {} : { resourceProjects: parseHostResourceProjects(configuration.resourceProjects) }) };
 }

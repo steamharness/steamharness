@@ -191,7 +191,9 @@ describe('steamharness web', () => {
     expect(parseHostConnection({ serverUrl: 'https://steamharness.test/', accessToken: 'host-token' })).toEqual({ serverUrl: 'https://steamharness.test', accessToken: 'host-token' });
     for (const connection of [{ serverUrl: 'file:///tmp', accessToken: 'token' }, { serverUrl: 'https://user:password@steamharness.test', accessToken: 'token' }, { serverUrl: 'https://steamharness.test', accessToken: '' }]) { expect(() => parseHostConnection(connection)).toThrow(); }
     const aiConnection = { serverUrl: 'https://steamharness.test', accessToken: 'host-token', aiServerUrl: 'https://ai.workflow.test', aiAccessToken: 'ai-token' };
-    expect(() => parseHostConfiguration({ type: 'configure', surface: 'editor', connection: aiConnection })).toThrow('assistant surface');
+    // Editor surfaces also receive the host's system-AI connection: a project
+    // that asks for host LLM credentials must be able to run in the editor.
+    expect(parseHostConfiguration({ type: 'configure', surface: 'editor', connection: aiConnection }).connection).toEqual(aiConnection);
     expect(parseHostConfiguration({ type: 'configure', surface: 'assistant', connection: aiConnection,
       assistant: { workdir: '/tmp/workflow-assistant', roots: [{ uri: 'file:///tmp/workflow-assistant', folderPath: '/tmp/workflow-assistant', name: 'Assistant' }] },
       assistantProjectDir: '/tmp/workflow-assistant' }).connection).toEqual(aiConnection);

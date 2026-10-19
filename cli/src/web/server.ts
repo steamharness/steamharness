@@ -42,7 +42,9 @@ export async function startWebServer(options: WebOptions) {
   // A normal editor host may authenticate its project Server, but it must not
   // hand the private system-AI credentials to arbitrary project workflows.
   // Standalone CLI sessions keep their explicit local AI configuration.
-  const allowAiConnection = options.host === undefined || options.host.surface === 'assistant';
+  // Host-managed surfaces (editor and assistant) may carry the private system-AI
+  // connection; the open-source host simply never provides those fields.
+  const allowAiConnection = true;
   let authEpoch = 0;
   let authenticationInitialized = false;
   let authCheck: AbortController | undefined;
