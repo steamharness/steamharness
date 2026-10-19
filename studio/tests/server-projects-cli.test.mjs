@@ -55,7 +55,7 @@ for (const projectType of ['workflow', 'conversation', 'kanban']) {
       const url = new URL(request.url, 'http://localhost');
       let data, status = 200;
       if (url.pathname.endsWith('/versions')) { status = created ? 200 : 404; data = { versions: [] }; }
-      else if (url.pathname === '/api/workflows' && request.method === 'POST') { created = true; data = { workflowId: projectId }; }
+      else if (url.pathname === '/api/projects' && request.method === 'POST') { created = true; data = { workflowId: projectId }; }
       else if (url.pathname.endsWith('/package')) { data = { jobId: 'job-1' }; }
       else if (url.pathname.endsWith('/preparations/job-1')) { data = { status: 'success', stage: 'committing', result: { workflowId: projectId, sourceHash: projects[0].sourceHash } }; }
       else if (url.pathname.endsWith('/publish')) { data = { version: manifest.version }; }
@@ -71,7 +71,7 @@ for (const projectType of ['workflow', 'conversation', 'kanban']) {
       connection: { serverUrl: `http://127.0.0.1:${http.address().port}`, accessToken: 'local-test-token' },
       signal: new AbortController().signal, progress() {}, projectId, version: manifest.version };
     await uploadServerProject({ ...options, directory: source, releaseLog: 'Version notes' });
-    assert.equal(JSON.parse(requests.find(request => request.url === '/api/workflows').body).projectType, projectType);
+    assert.equal(JSON.parse(requests.find(request => request.url === '/api/projects').body).projectType, projectType);
     const upload = requests.find(request => request.url.includes('/package?'));
     assert.ok(upload.body.length > 0);
     const archive = path.join(directory, 'upload.tgz'); await fs.writeFile(archive, upload.body);

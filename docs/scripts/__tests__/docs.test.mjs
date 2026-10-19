@@ -36,13 +36,13 @@ test("OpenAPI exposes storage APIs without project execution contracts", async (
 
     assert.equal(specification.components.schemas.OpenAIResponse, undefined);
     for (const endpoint of [
-      "/api/workflows/{workflowName}/run", "/api/workflows/{workflowName}/runs",
-      "/api/workflows/{workflowName}/structure", "/api/workflows/{workflowName}/resolve-params",
+      "/api/projects/{workflowName}/run", "/api/projects/{workflowName}/runs",
+      "/api/projects/{workflowName}/structure", "/api/projects/{workflowName}/resolve-params",
       "/api/admin/runners", "/v1/responses",
     ]) assert.equal(specification.paths[endpoint], undefined);
     for (const endpoint of [
-      "/api/project-storage", "/api/workflows/{workflowName}/knowledge-documents",
-      "/api/workflows/{workflowName}/source-archive",
+      "/api/project-storage", "/api/projects/{workflowName}/knowledge-documents",
+      "/api/projects/{workflowName}/source-archive",
     ]) assert.ok(specification.paths[endpoint], endpoint);
     const legacyPrivateCatalog = ["sub", "2api"].join("");
     const legacyLlmModels = ["llm-", "models"].join("");
@@ -220,8 +220,8 @@ test("Docs static server resolves Docusaurus routes and protects deployment inte
     const route = await fetch(`http://127.0.0.1:${port}/guides/studio/overview`);
     assert.equal(route.status, 200);
     assert.match(await route.text(), /Studio overview/u);
-    assert.equal(route.headers.get("x-workflow-docs-framework"), "docusaurus");
-    assert.equal(route.headers.get("x-workflow-docs-commit"), commit);
+    assert.equal(route.headers.get("x-steamharness-docs-framework"), "docusaurus");
+    assert.equal(route.headers.get("x-steamharness-docs-commit"), commit);
     assert.equal(route.headers.get("cache-control"), "public, max-age=0, must-revalidate");
 
     const asset = await fetch(`http://127.0.0.1:${port}/assets/js/app.12345678.js`);
@@ -324,8 +324,8 @@ test("Docs activation preflights and replaces a legacy Mint PID with the exact D
     assert.notEqual(second.pid, first.pid);
     const response = await fetch(`http://127.0.0.1:${productionPort}/`);
     assert.match(await response.text(), /Second release/u);
-    assert.equal(response.headers.get("x-workflow-docs-framework"), "docusaurus");
-    assert.equal(response.headers.get("x-workflow-docs-commit"), secondCommit);
+    assert.equal(response.headers.get("x-steamharness-docs-framework"), "docusaurus");
+    assert.equal(response.headers.get("x-steamharness-docs-commit"), secondCommit);
     const deployment = JSON.parse(await readFile(path.join(runtimeRoot, "deployment.json"), "utf8"));
     assert.equal(deployment.framework, "docusaurus");
     assert.equal(deployment.commitSha, secondCommit);

@@ -72,7 +72,7 @@ export async function uploadServerProject(options: TransferOptions & { projectId
       validating: t('Validating project files'), committing: t('Saving project files') };
     let sourceHash: string;
     for (;;) {
-      const preparation = await client.request<ProjectPreparation>(`/api/workflows/${encodeURIComponent(options.projectId)}/preparations/${encodeURIComponent(job.jobId)}`, signal);
+      const preparation = await client.request<ProjectPreparation>(`/api/projects/${encodeURIComponent(options.projectId)}/preparations/${encodeURIComponent(job.jobId)}`, signal);
       if (preparation.status === 'failed') { throw new Error((preparation.failureReason || t('Project transfer failed.')).replaceAll(options.connection.accessToken, '[redacted]')); }
       if (preparation.status === 'success') {
         if (preparation.result?.workflowId !== options.projectId || !/^[a-f0-9]{64}$/.test(preparation.result.sourceHash)) { throw new Error(t('The server returned an invalid response.')); }
@@ -88,7 +88,7 @@ export async function uploadServerProject(options: TransferOptions & { projectId
       });
     }
     options.progress({ message: t('Publishing project version') });
-    const published = await client.request<{ version: string }>(`/api/workflows/${encodeURIComponent(options.projectId)}/publish`, signal,
+    const published = await client.request<{ version: string }>(`/api/projects/${encodeURIComponent(options.projectId)}/publish`, signal,
       { releaseLog: options.releaseLog, expectedVersion: options.version, expectedSourceHash: sourceHash });
     if (published?.version !== options.version) { throw new Error(t('The server returned an invalid response.')); }
   } finally { await rm(temporary, { recursive: true, force: true }); }

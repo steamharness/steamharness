@@ -5,7 +5,7 @@ export function projectSourceSharePath(id: string, version: string): string {
 }
 
 export function projectSourceArchivePath(id: string, version: string): string {
-  return `/api/workflows/${encodeURIComponent(id)}/source-archive?target=${encodeURIComponent(version)}`;
+  return `/api/projects/${encodeURIComponent(id)}/source-archive?target=${encodeURIComponent(version)}`;
 }
 
 // /detail 的设置与成员现在使用稳定子路由，避免只靠概览页内局部状态切换。

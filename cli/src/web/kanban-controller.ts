@@ -174,7 +174,7 @@ export class KanbanController {
       if (!connection) { throw Object.assign(new Error('SteamHarness Server login is required.'), { code: call.operation.startsWith('files.') ? 'KANBAN_FILE_UNAVAILABLE' : 'KANBAN_BRIDGE_UNAVAILABLE' }); }
       const abort = new AbortController(); this.requests.add(abort);
       try {
-        const response = await fetch(`${connection.serverUrl}/api/workflows/${encodeURIComponent(this.project.id)}/kanban/bridge`, { method: 'POST', headers: { Authorization: `Bearer ${connection.accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ call }), redirect: 'error', signal: AbortSignal.any([abort.signal, AbortSignal.timeout(call.operation.startsWith('files.') ? 120_000 : 15_000)]) });
+        const response = await fetch(`${connection.serverUrl}/api/projects/${encodeURIComponent(this.project.id)}/kanban/bridge`, { method: 'POST', headers: { Authorization: `Bearer ${connection.accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ call }), redirect: 'error', signal: AbortSignal.any([abort.signal, AbortSignal.timeout(call.operation.startsWith('files.') ? 120_000 : 15_000)]) });
         const value = await response.json();
         if (!response.ok || value.errCode !== 0) { throw Object.assign(new Error('Kanban Server operation failed.'), { code: call.operation.startsWith('files.') ? 'KANBAN_FILE_UNAVAILABLE' : 'KANBAN_DATA_OPERATION_FAILED' }); }
         result = value.data ?? null;
@@ -199,7 +199,7 @@ export class KanbanController {
     const abort = this.feed = new AbortController();
     void (async () => {
       try {
-        const response = await fetch(`${connection.serverUrl}/api/workflows/${encodeURIComponent(this.project.id)}/kanban/related-project-revisions`, { headers: { Authorization: `Bearer ${connection.accessToken}` }, signal: abort.signal, redirect: 'error' });
+        const response = await fetch(`${connection.serverUrl}/api/projects/${encodeURIComponent(this.project.id)}/kanban/related-project-revisions`, { headers: { Authorization: `Bearer ${connection.accessToken}` }, signal: abort.signal, redirect: 'error' });
         if (!response.ok || !response.body) { throw new Error('Kanban related project updates are unavailable.'); }
         const apply = (revisions: KanbanRelatedProjectRevision[]) => { if (!abort.signal.aborted) { this.relatedProjectRevisions = revisions; this.relatedProjectWarning = ''; this.hooks.changed(); } };
         await consumeKanbanRelatedProjectRevisionStream(response.body, { onSnapshot: value => apply(value.revisions), onRevision: value => apply([...this.relatedProjectRevisions.filter(item => item.alias !== value.alias), value]), onUnavailable: () => { throw new Error('Related projects are unavailable.'); } }, abort.signal);

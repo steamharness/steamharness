@@ -6,7 +6,7 @@ import type { ProjectDataSummary, SourceShare } from "./types";
 
 export class ServerApiClient {
   getSourceShare(id: string, version: string, signal?: AbortSignal): Promise<ApiResponse<SourceShare>> {
-    return this.request(`/api/workflows/${encodeURIComponent(id)}/source-share?target=${encodeURIComponent(version)}`, { signal });
+    return this.request(`/api/projects/${encodeURIComponent(id)}/source-share?target=${encodeURIComponent(version)}`, { signal });
   }
 
   private async request<T>(
@@ -14,7 +14,7 @@ export class ServerApiClient {
     init?: RequestInit,
   ): Promise<ApiResponse<T>> {
     const headers: Record<string, string> = {
-      "X-Workflow-Locale": getCurrentLocale(),
+      "X-SteamHarness-Locale": getCurrentLocale(),
       ...(typeof init?.body === "string" ? { "Content-Type": "application/json" } : {}),
     };
 
@@ -72,9 +72,9 @@ export class ServerApiClient {
   ): Promise<Blob> {
     const query = options?.download ? "?download=1" : "";
     try {
-      const res = await fetch(`/api/workflows/files/${encodeURIComponent(fileId)}${query}`, {
+      const res = await fetch(`/api/projects/files/${encodeURIComponent(fileId)}${query}`, {
         credentials: "include",
-        headers: { "X-Workflow-Locale": getCurrentLocale() },
+        headers: { "X-SteamHarness-Locale": getCurrentLocale() },
         signal: options?.signal,
       });
       if (!res.ok) {
@@ -350,12 +350,12 @@ export class ServerApiClient {
   }
 
   listWorkflows(): Promise<ApiResponse<Summary[]>> {
-    return this.request<Summary[]>("/api/workflows");
+    return this.request<Summary[]>("/api/projects");
   }
 
   listVersions(workflowName: string): Promise<ApiResponse<VersionSummary>> {
     return this.request<VersionSummary>(
-      `/api/workflows/${encodeURIComponent(workflowName)}/versions`,
+      `/api/projects/${encodeURIComponent(workflowName)}/versions`,
     );
   }
 
@@ -364,13 +364,13 @@ export class ServerApiClient {
     target = "latest",
   ): Promise<ApiResponse<ProjectDependencyStatusResult>> {
     return this.request<ProjectDependencyStatusResult>(
-      `/api/workflows/${encodeURIComponent(workflowName)}/dependencies?target=${encodeURIComponent(target)}`,
+      `/api/projects/${encodeURIComponent(workflowName)}/dependencies?target=${encodeURIComponent(target)}`,
     );
   }
 
   listRelatedProjects(projectId: string): Promise<ApiResponse<RelatedProjectListResult>> {
     return this.request<RelatedProjectListResult>(
-      `/api/workflows/${encodeURIComponent(projectId)}/related-projects`,
+      `/api/projects/${encodeURIComponent(projectId)}/related-projects`,
     );
   }
 
@@ -385,7 +385,7 @@ export class ServerApiClient {
     },
   ): Promise<ApiResponse<RelatedProjectListResult>> {
     return this.request<RelatedProjectListResult>(
-      `/api/workflows/${encodeURIComponent(projectId)}/related-projects/${encodeURIComponent(alias)}`,
+      `/api/projects/${encodeURIComponent(projectId)}/related-projects/${encodeURIComponent(alias)}`,
       { method: "PUT", body: JSON.stringify(input) },
     );
   }
@@ -395,7 +395,7 @@ export class ServerApiClient {
     alias: string,
   ): Promise<ApiResponse<{ removed: boolean; relatedProjects: RelatedProjectListResult["relatedProjects"] }>> {
     return this.request(
-      `/api/workflows/${encodeURIComponent(projectId)}/related-projects/${encodeURIComponent(alias)}`,
+      `/api/projects/${encodeURIComponent(projectId)}/related-projects/${encodeURIComponent(alias)}`,
       { method: "DELETE" },
     );
   }
@@ -404,7 +404,7 @@ export class ServerApiClient {
     workflowName: string,
   ): Promise<ApiResponse<ProjectSourceAccessSummary>> {
     return this.request<ProjectSourceAccessSummary>(
-      `/api/workflows/${encodeURIComponent(workflowName)}/source-access-requests`,
+      `/api/projects/${encodeURIComponent(workflowName)}/source-access-requests`,
     );
   }
 
@@ -414,7 +414,7 @@ export class ServerApiClient {
     status: "approved" | "rejected",
   ): Promise<ApiResponse<ProjectAccessRequest>> {
     return this.request<ProjectAccessRequest>(
-      `/api/workflows/${encodeURIComponent(workflowName)}/source-access-requests/${encodeURIComponent(requestId)}`,
+      `/api/projects/${encodeURIComponent(workflowName)}/source-access-requests/${encodeURIComponent(requestId)}`,
       { method: "PATCH", body: JSON.stringify({ status }) },
     );
   }
@@ -424,7 +424,7 @@ export class ServerApiClient {
     userId: string,
   ): Promise<ApiResponse<{ revoked: boolean }>> {
     return this.request<{ revoked: boolean }>(
-      `/api/workflows/${encodeURIComponent(workflowName)}/source-capabilities/${encodeURIComponent(userId)}`,
+      `/api/projects/${encodeURIComponent(workflowName)}/source-capabilities/${encodeURIComponent(userId)}`,
       { method: "DELETE" },
     );
   }
@@ -448,7 +448,7 @@ export class ServerApiClient {
   }
 
   listProjectMembers(workflowName: string): Promise<ApiResponse<ProjectMember[]>> {
-    return this.request(`/api/workflows/${encodeURIComponent(workflowName)}/members`);
+    return this.request(`/api/projects/${encodeURIComponent(workflowName)}/members`);
   }
 
   setProjectMember(
@@ -457,7 +457,7 @@ export class ServerApiClient {
     payload: { role: "owner" | "manager" | "writer" | "viewer" },
   ): Promise<ApiResponse<ProjectMember>> {
     return this.request(
-      `/api/workflows/${encodeURIComponent(workflowName)}/members/${encodeURIComponent(userId)}`,
+      `/api/projects/${encodeURIComponent(workflowName)}/members/${encodeURIComponent(userId)}`,
       {
         method: "PUT",
         body: JSON.stringify(payload),
@@ -470,7 +470,7 @@ export class ServerApiClient {
     userId: string,
   ): Promise<ApiResponse<{ removed: boolean }>> {
     return this.request(
-      `/api/workflows/${encodeURIComponent(workflowName)}/members/${encodeURIComponent(userId)}`,
+      `/api/projects/${encodeURIComponent(workflowName)}/members/${encodeURIComponent(userId)}`,
       { method: "DELETE" },
     );
   }
@@ -480,7 +480,7 @@ export class ServerApiClient {
     payload: { role: InvitationRole },
   ): Promise<ApiResponse<{ invitation: ProjectInvitation; token: string }>> {
     return this.request(
-      `/api/workflows/${encodeURIComponent(workflowName)}/invitations`,
+      `/api/projects/${encodeURIComponent(workflowName)}/invitations`,
       { method: "POST", body: JSON.stringify(payload) },
     );
   }
@@ -488,7 +488,7 @@ export class ServerApiClient {
   listProjectInvitations(
     workflowName: string,
   ): Promise<ApiResponse<ProjectInvitation[]>> {
-    return this.request(`/api/workflows/${encodeURIComponent(workflowName)}/invitations`);
+    return this.request(`/api/projects/${encodeURIComponent(workflowName)}/invitations`);
   }
 
   revokeProjectInvitation(
@@ -496,7 +496,7 @@ export class ServerApiClient {
     invitationId: string,
   ): Promise<ApiResponse<{ revoked: boolean }>> {
     return this.request(
-      `/api/workflows/${encodeURIComponent(workflowName)}/invitations/${encodeURIComponent(invitationId)}`,
+      `/api/projects/${encodeURIComponent(workflowName)}/invitations/${encodeURIComponent(invitationId)}`,
       { method: "DELETE" },
     );
   }
@@ -516,7 +516,7 @@ export class ServerApiClient {
     payload: { visibility: "private" | "public" },
   ): Promise<ApiResponse<Summary>> {
     return this.request(
-      `/api/workflows/${encodeURIComponent(workflowName)}/visibility`,
+      `/api/projects/${encodeURIComponent(workflowName)}/visibility`,
       {
         method: "PATCH",
         body: JSON.stringify(payload),
@@ -525,7 +525,7 @@ export class ServerApiClient {
   }
 
   getProjectDataSummary(projectId: string): Promise<ApiResponse<ProjectDataSummary>> {
-    return this.request(`/api/workflows/${encodeURIComponent(projectId)}/data-summary`);
+    return this.request(`/api/projects/${encodeURIComponent(projectId)}/data-summary`);
   }
 
   listProjectKVEntries(
@@ -550,7 +550,7 @@ export class ServerApiClient {
     if (options.runId) query.set("runId", options.runId);
 
     return this.request<KVEntryPage>(
-      `/api/workflows/${encodeURIComponent(projectId)}/kv?${query.toString()}`,
+      `/api/projects/${encodeURIComponent(projectId)}/kv?${query.toString()}`,
     );
   }
 
@@ -568,7 +568,7 @@ export class ServerApiClient {
     if (options.conversationId) query.set("conversationId", options.conversationId);
 
     return this.request<KVEntryDetail>(
-      `/api/workflows/${encodeURIComponent(projectId)}/kv/entry?${query.toString()}`,
+      `/api/projects/${encodeURIComponent(projectId)}/kv/entry?${query.toString()}`,
     );
   }
 
@@ -586,7 +586,7 @@ export class ServerApiClient {
     if (options.conversationId) query.set("conversationId", options.conversationId);
 
     return this.request<{ scope: KVEntryScope; key: string; conversationId?: string }>(
-      `/api/workflows/${encodeURIComponent(projectId)}/kv/entry?${query.toString()}`,
+      `/api/projects/${encodeURIComponent(projectId)}/kv/entry?${query.toString()}`,
       { method: "DELETE" },
     );
   }
@@ -600,7 +600,7 @@ export class ServerApiClient {
     if (options.cursor) query.set("cursor", options.cursor);
     const suffix = query.size > 0 ? `?${query.toString()}` : "";
     return this.request<KnowledgeDocumentPageRecord>(
-      `/api/workflows/${encodeURIComponent(workflowName)}/knowledge-documents${suffix}`,
+      `/api/projects/${encodeURIComponent(workflowName)}/knowledge-documents${suffix}`,
       { signal: options.signal },
     );
   }
@@ -611,7 +611,7 @@ export class ServerApiClient {
     options: { signal?: AbortSignal } = {},
   ): Promise<ApiResponse<KnowledgeDocument>> {
     return this.request<KnowledgeDocument>(
-      `/api/workflows/${encodeURIComponent(workflowName)}/knowledge-documents/${encodeURIComponent(documentId)}`,
+      `/api/projects/${encodeURIComponent(workflowName)}/knowledge-documents/${encodeURIComponent(documentId)}`,
       { signal: options.signal },
     );
   }
@@ -625,7 +625,7 @@ export class ServerApiClient {
     if (options.response) query.set("response", options.response);
     const suffix = query.size > 0 ? `?${query.toString()}` : "";
     return this.request<KnowledgeDocument | KnowledgeDocumentSummaryRecord>(
-      `/api/workflows/${encodeURIComponent(workflowName)}/knowledge-documents${suffix}`,
+      `/api/projects/${encodeURIComponent(workflowName)}/knowledge-documents${suffix}`,
       {
         method: "POST",
         body: JSON.stringify(payload),
@@ -644,7 +644,7 @@ export class ServerApiClient {
     if (options.response) query.set("response", options.response);
     const suffix = query.size > 0 ? `?${query.toString()}` : "";
     return this.request<KnowledgeDocument | KnowledgeDocumentSummaryRecord>(
-      `/api/workflows/${encodeURIComponent(workflowName)}/knowledge-documents/${encodeURIComponent(documentId)}${suffix}`,
+      `/api/projects/${encodeURIComponent(workflowName)}/knowledge-documents/${encodeURIComponent(documentId)}${suffix}`,
       {
         method: "PUT",
         body: JSON.stringify(payload),
@@ -659,7 +659,7 @@ export class ServerApiClient {
     options: { signal?: AbortSignal } = {},
   ): Promise<ApiResponse<{ id: string; deleted: boolean }>> {
     return this.request<{ id: string; deleted: boolean }>(
-      `/api/workflows/${encodeURIComponent(workflowName)}/knowledge-documents/${encodeURIComponent(documentId)}`,
+      `/api/projects/${encodeURIComponent(workflowName)}/knowledge-documents/${encodeURIComponent(documentId)}`,
       { method: "DELETE", signal: options.signal },
     );
   }
@@ -686,7 +686,7 @@ export class ServerApiClient {
     if (options.pageSize !== undefined) query.set("pageSize", String(options.pageSize));
     if (options.cursor) query.set("cursor", options.cursor);
     return this.request<KnowledgeSearchResultRecord>(
-      `/api/workflows/${encodeURIComponent(workflowName)}/knowledge-documents/search?${query.toString()}`,
+      `/api/projects/${encodeURIComponent(workflowName)}/knowledge-documents/search?${query.toString()}`,
       { signal: options.signal },
     );
   }
@@ -700,7 +700,7 @@ export class ServerApiClient {
     query.set("startLine", String(options.startLine));
     query.set("endLine", String(options.endLine));
     return this.request<KnowledgeDocumentLinesResult>(
-      `/api/workflows/${encodeURIComponent(workflowName)}/knowledge-documents/${encodeURIComponent(documentId)}/lines?${query.toString()}`,
+      `/api/projects/${encodeURIComponent(workflowName)}/knowledge-documents/${encodeURIComponent(documentId)}/lines?${query.toString()}`,
       { signal: options.signal },
     );
   }

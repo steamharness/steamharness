@@ -49,7 +49,7 @@ describe('resource previews', () => {
     const { previews, card } = await fixture();
     const fetcher = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ errCode: 0, data: { id: 'doc', markdown: '# Foreign document' } })));
     const result = await previews.open(card('knowledge', { source: 'server', projectId: 'database', documentId: 'doc' }));
-    expect(fetcher).toHaveBeenCalledWith('https://workflow.test/api/workflows/database/knowledge-documents/doc', expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer test-only-token' }), redirect: 'error' }));
+    expect(fetcher).toHaveBeenCalledWith('https://workflow.test/api/projects/database/knowledge-documents/doc', expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer test-only-token' }), redirect: 'error' }));
     expect(result.data.format).toBe('markdown'); expect(JSON.stringify(result)).not.toContain('test-only-token');
     fetcher.mockResolvedValue(new Response(JSON.stringify({ errCode: 403, errMessage: 'Access denied' }), { status: 403 }));
     await expect(previews.open(card('knowledge', { source: 'server', projectId: 'private', documentId: 'doc' }))).rejects.toThrow('Access denied');
@@ -67,7 +67,7 @@ describe('resource previews', () => {
     const fetcher = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ errCode: 0, data: { key: 'state', value: 7 } })));
     await previews.open(card('kv', { source: 'server', projectId: 'database', key: 'state', scope: 'conversation', conversationId: 'session-b' }));
     const url = new URL(String(fetcher.mock.calls[0][0]));
-    expect(url.pathname).toBe('/api/workflows/database/kv/entry'); expect(Object.fromEntries(url.searchParams)).toEqual({ scope: 'conversation', conversationId: 'session-b', key: 'state' });
+    expect(url.pathname).toBe('/api/projects/database/kv/entry'); expect(Object.fromEntries(url.searchParams)).toEqual({ scope: 'conversation', conversationId: 'session-b', key: 'state' });
   });
 
   it('does not guess a local directory from a card project UUID', async () => {
@@ -119,7 +119,7 @@ describe('resource previews', () => {
 
   it('discards a pending remote asset after resource access changes', async () => {
     const { previews, card } = await fixture();
-    const prefix = 'https://workflow.test/api/workflows/board/kanban/previews/nonce/browser/local/';
+    const prefix = 'https://workflow.test/api/projects/board/kanban/previews/nonce/browser/local/';
     const fetcher = vi.spyOn(globalThis, 'fetch').mockImplementation(async url => new Response(JSON.stringify({ errCode: 0, data:
       String(url).endsWith('/structure') ? { structure: { projectType: 'kanban' } } : {
         manifest: { params: [] }, configurations: [], preview: { url: `${prefix}index.html`, nonce: 'nonce' },
@@ -174,7 +174,7 @@ describe('resource previews', () => {
       const data = address.endsWith('/api/auth/me') ? { profile: { userId: 'user', email: 'test@example.com', displayName: 'User' } }
         : address.endsWith('/structure') ? { structure: { projectType: 'kanban' } }
         : address.endsWith('/kanban') ? { manifest: { params: [] }, configurations: [],
-          preview: { url: `${connection.serverUrl}/api/workflows/board/kanban/previews/nonce/browser/local/index.html`, nonce: 'nonce' } }
+          preview: { url: `${connection.serverUrl}/api/projects/board/kanban/previews/nonce/browser/local/index.html`, nonce: 'nonce' } }
         : undefined;
       return Promise.resolve(data ? new Response(JSON.stringify({ errCode: 0, data })) : new Response('Remote board artifact'));
     });

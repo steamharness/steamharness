@@ -87,7 +87,7 @@ async function localRequest(request, core, folderPath) {
 async function serverRequest(request, fetcher) {
   const { connection, project, input } = request;
   if (!connection?.accessToken) { throw Object.assign(new Error('Please sign in to SteamHarness Server.'), { status: 401 }); }
-  const prefix = `${connection.serverUrl.replace(/\/+$/, '')}/api/workflows/${encodeURIComponent(project.id)}`;
+  const prefix = `${connection.serverUrl.replace(/\/+$/, '')}/api/projects/${encodeURIComponent(project.id)}`;
   const query = new URLSearchParams();
   let suffix, method = 'GET', body;
   if (input.kind === 'kv') {

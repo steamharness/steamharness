@@ -274,8 +274,8 @@ test('system AI usage and server resource cards use the active account and dev A
   const file = await client.resource(connection, 'file', { projectId: 'project', filePath: 'notes.md' });
   assert.equal(file.content, 'Notes');
   assert.deepEqual(calls.map((call) => call.url), [
-    `${aiServerUrl}/api/ai/usage`, `${serverUrl}/api/workflows/project/kv/entry?scope=conversation&conversationId=session&key=a+key`,
-    `${serverUrl}/api/workflows/project/knowledge-documents/document`, `${serverUrl}/api/workflows/project/files?target=latest&includeBinary=true`,
+    `${aiServerUrl}/api/ai/usage`, `${serverUrl}/api/projects/project/kv/entry?scope=conversation&conversationId=session&key=a+key`,
+    `${serverUrl}/api/projects/project/knowledge-documents/document`, `${serverUrl}/api/projects/project/files?target=latest&includeBinary=true`,
   ]);
   assert.equal(calls[0].options.headers.Authorization, 'Bearer ai-token');
   assert.ok(calls.slice(1).every((call) => call.options.headers.Authorization === `Bearer ${token}` && call.options.redirect === 'error'));

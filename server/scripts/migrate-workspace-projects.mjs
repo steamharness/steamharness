@@ -234,7 +234,7 @@ export async function syncWorkspaceProjects(options) {
     }
 
     const workflowsResponse = await fetchApiJson(
-      `${trimTrailingSlash(options.serverUrl)}/api/workflows`,
+      `${trimTrailingSlash(options.serverUrl)}/api/projects`,
       {
         method: "GET",
         headers: {
@@ -471,7 +471,7 @@ async function findLocalWorkflowDependencies(sourceDir) {
 
 async function ensureRemoteProjectExists({ serverUrl, adminToken, project }) {
   const response = await fetchApiJson(
-    `${trimTrailingSlash(serverUrl)}/api/workflows`,
+    `${trimTrailingSlash(serverUrl)}/api/projects`,
     {
       method: "POST",
       headers: {
@@ -492,13 +492,13 @@ async function uploadWorkflowArchive({ serverUrl, adminToken, workflowId, archiv
   const archiveName = path.basename(archivePath);
   const archiveBuffer = await readFile(archivePath);
   const response = await fetchApiJson(
-    `${trimTrailingSlash(serverUrl)}/api/workflows/${encodeURIComponent(workflowId)}/package?fileName=${encodeURIComponent(archiveName)}`,
+    `${trimTrailingSlash(serverUrl)}/api/projects/${encodeURIComponent(workflowId)}/package?fileName=${encodeURIComponent(archiveName)}`,
     {
       method: "POST",
       headers: {
         authorization: `Bearer ${adminToken}`,
         "content-type": "application/octet-stream",
-        "x-workflow-package-name": archiveName,
+        "x-steamharness-package-name": archiveName,
       },
       body: archiveBuffer,
     },
@@ -509,7 +509,7 @@ async function uploadWorkflowArchive({ serverUrl, adminToken, workflowId, archiv
 
 async function publishWorkflowProject({ serverUrl, adminToken, workflowId, releaseLog }) {
   const response = await fetchApiJson(
-    `${trimTrailingSlash(serverUrl)}/api/workflows/${encodeURIComponent(workflowId)}/publish`,
+    `${trimTrailingSlash(serverUrl)}/api/projects/${encodeURIComponent(workflowId)}/publish`,
     {
       method: "POST",
       headers: {

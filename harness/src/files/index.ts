@@ -158,7 +158,7 @@ export function createServerWorkflowFileStore(
         workflowId: options.workflowName,
         conversationId: readNonEmptyString(input.conversationId) ?? readNonEmptyString(options.conversationId),
         createdAt: new Date().toISOString(),
-        url: `/api/workflows/files/${encodeURIComponent(id)}`,
+        url: `/api/projects/files/${encodeURIComponent(id)}`,
       };
       const dir = path.join(options.rootDir, id);
       await mkdir(dir, { recursive: true });

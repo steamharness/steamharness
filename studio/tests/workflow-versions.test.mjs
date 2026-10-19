@@ -54,7 +54,7 @@ function fixture(t, options = {}) {
   const fetcher = async (url, init) => {
     requests.push({ url, init });
     if (f.read) { const result = await f.read(url, init); if (result) { return result; } }
-    const selected = /\/workflows\/([^/]+)\/versions$/.exec(url)?.[1];
+    const selected = /\/projects\/([^/]+)\/versions$/.exec(url)?.[1];
     return Response.json({ errCode: 0, data: selected ? { id: selected, versions: f.versions.get(selected) ?? [] } : f.projects });
   };
   const module = { exports: {} };

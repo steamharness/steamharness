@@ -28,7 +28,7 @@ export function readWorkflowFileIdFromMarkdownImageSrc(src: string, origin = rea
   })();
   if (!rawPath) return null;
 
-  const prefix = "/api/workflows/files/";
+  const prefix = "/api/projects/files/";
   if (!rawPath.startsWith(prefix)) return null;
   const fileId = rawPath.slice(prefix.length).split("/", 1)[0] ?? "";
   if (!fileId) return null;

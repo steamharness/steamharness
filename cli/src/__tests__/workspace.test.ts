@@ -876,7 +876,7 @@ describe("server workspace CLI helpers", () => {
       server: "http://localhost:7125",
       token: "token",
     })).resolves.toMatchObject({ errCode: 0, data: { status: "preparing" } });
-    expect(fetchMock.mock.calls[0]?.[0]).toContain("/api/workflows/demo/preparations/a0000000-0000-4000-8000-000000000031");
+    expect(fetchMock.mock.calls[0]?.[0]).toContain("/api/projects/demo/preparations/a0000000-0000-4000-8000-000000000031");
   });
 
   it("packages executable project source without requiring a README", async () => {
@@ -1317,7 +1317,7 @@ describe("server workspace CLI helpers", () => {
 
       expect(created.workflowId).toBe("8bd4fef2-e083-4201-a89f-6f7d0676df53");
       expect(fetchMock).toHaveBeenCalledWith(
-        "http://127.0.0.1:7125/api/workflows",
+        "http://127.0.0.1:7125/api/projects",
         expect.objectContaining({
           method: "POST",
           body: JSON.stringify({

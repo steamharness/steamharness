@@ -210,7 +210,7 @@ test("the web app's host serves the app at its root and the API from the Server"
   const vhost = vhosts.get("alpha-web.steamharness.yuhe.space");
   assert.ok(vhost, "alpha-web.steamharness.yuhe.space must have an HTTPS vhost");
 
-  for (const requestPath of ["/api/auth/session", "/api/workflows", "/api/workflows/abc/runs"]) {
+  for (const requestPath of ["/api/auth/session", "/api/projects", "/api/projects/abc/runs"]) {
     assert.equal(
       resolveLocation(vhost, requestPath).upstream,
       "steamharness_alpha",

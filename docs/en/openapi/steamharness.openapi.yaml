@@ -29,7 +29,7 @@ paths:
       security: []
       parameters:
         - in: header
-          name: X-Workflow-Locale
+          name: X-SteamHarness-Locale
           required: false
           description: Response language. Supports `zh-CN` and `en`; requests without a
             locale retain the Server's existing English default.
@@ -43,7 +43,7 @@ paths:
           name: locale
           required: false
           description: Language fallback for WebSocket clients or callers that cannot set
-            a custom header. `X-Workflow-Locale` takes precedence when present.
+            a custom header. `X-SteamHarness-Locale` takes precedence when present.
           schema:
             type: string
             enum:
@@ -833,7 +833,7 @@ paths:
           $ref: "#/components/responses/HarnessError"
         "403":
           $ref: "#/components/responses/HarnessError"
-  /api/workflows:
+  /api/projects:
     get:
       tags:
         - Admin Workflows
@@ -1100,7 +1100,7 @@ paths:
                 $ref: "#/components/schemas/AuditEventPageResponse"
         "403":
           description: The current principal is missing `audit.read`.
-  /api/workflows/{workflowName}/init:
+  /api/projects/{projectId}/init:
     post:
       tags:
         - Admin Workflows
@@ -1134,7 +1134,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UploadPackageResultResponse"
-  /api/workflows/{workflowName}/preparations/latest:
+  /api/projects/{projectId}/preparations/latest:
     get:
       tags:
         - Admin Workflows
@@ -1151,7 +1151,7 @@ paths:
                 $ref: "#/components/schemas/PreparationJobResponse"
         "404":
           $ref: "#/components/responses/HarnessError"
-  /api/workflows/{workflowName}/preparations/{jobId}:
+  /api/projects/{projectId}/preparations/{jobId}:
     get:
       tags:
         - Admin Workflows
@@ -1174,7 +1174,7 @@ paths:
                 $ref: "#/components/schemas/PreparationJobResponse"
         "404":
           $ref: "#/components/responses/HarnessError"
-  /api/workflows/{workflowName}/package:
+  /api/projects/{projectId}/package:
     post:
       tags:
         - Admin Workflows
@@ -1210,7 +1210,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PreparationJobResponse"
-  /api/workflows/{workflowName}/files:
+  /api/projects/{projectId}/files:
     get:
       tags:
         - Admin Workflows
@@ -1279,7 +1279,7 @@ paths:
                           $ref: "#/components/schemas/ManagedFileReference"
                     required:
                       - data
-  /api/workflows/{workflowName}/project-card-image:
+  /api/projects/{projectId}/project-card-image:
     post:
       tags:
         - Admin Workflows
@@ -1316,7 +1316,7 @@ paths:
           $ref: "#/components/responses/HarnessError"
         "415":
           $ref: "#/components/responses/HarnessError"
-  /api/workflows/{workflowName}/project-card:
+  /api/projects/{projectId}/project-card:
     put:
       tags:
         - Admin Workflows
@@ -1357,7 +1357,7 @@ paths:
           $ref: "#/components/responses/HarnessError"
         "501":
           $ref: "#/components/responses/HarnessError"
-  /api/workflows/{workflowName}/source-files:
+  /api/projects/{projectId}/source-files:
     get:
       tags:
         - Admin Workflows
@@ -1492,7 +1492,7 @@ paths:
                 $ref: "#/components/schemas/DeploymentResponse"
         "409":
           $ref: "#/components/responses/HarnessError"
-  /api/workflows/{workflowName}/dependencies:
+  /api/projects/{projectId}/dependencies:
     get:
       tags:
         - Admin Workflows
@@ -1514,7 +1514,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProjectDependencyStatusResponse"
-  /api/workflows/{workflowName}/project-group-download:
+  /api/projects/{projectId}/project-group-download:
     get:
       tags:
         - Admin Workflows
@@ -1547,7 +1547,7 @@ paths:
           $ref: "#/components/responses/HarnessError"
         "409":
           $ref: "#/components/responses/HarnessError"
-  /api/workflows/{projectId}/related-projects:
+  /api/projects/{projectId}/related-projects:
     get:
       tags:
         - Admin Workflows
@@ -1564,7 +1564,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RelatedProjectListResponse"
-  /api/workflows/{projectId}/related-projects/{alias}:
+  /api/projects/{projectId}/related-projects/{alias}:
     put:
       tags:
         - Admin Workflows
@@ -1615,7 +1615,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RelatedProjectRemoveResponse"
-  /api/workflows/{workflowName}/source-access-requests:
+  /api/projects/{projectId}/source-access-requests:
     get:
       tags:
         - Admin Workflows
@@ -1631,7 +1631,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SourceAccessStateResponse"
-  /api/workflows/{workflowName}/source-access-requests/{requestId}:
+  /api/projects/{projectId}/source-access-requests/{requestId}:
     patch:
       tags:
         - Admin Workflows
@@ -1669,7 +1669,7 @@ paths:
                 $ref: "#/components/schemas/ProjectAccessRequestResponse"
         "404":
           $ref: "#/components/responses/HarnessError"
-  /api/workflows/{workflowName}/source-capabilities/{userId}:
+  /api/projects/{projectId}/source-capabilities/{userId}:
     delete:
       tags:
         - Admin Workflows
@@ -1827,7 +1827,7 @@ paths:
                 format: binary
         "404":
           description: The avatar does not exist.
-  /api/workflows/files/{fileId}:
+  /api/projects/files/{fileId}:
     get:
       tags:
         - Admin Files
@@ -1879,7 +1879,7 @@ paths:
                         additionalProperties: true
                     required:
                       - data
-  /api/workflows/{workflowName}/kanban:
+  /api/projects/{projectId}/kanban:
     get:
       tags:
         - Admin Workflows
@@ -1900,7 +1900,7 @@ paths:
                 $ref: "#/components/schemas/KanbanWorkspaceResultResponse"
         "409":
           $ref: "#/components/responses/HarnessError"
-  /api/workflows/{workflowName}/kanban/bridge:
+  /api/projects/{projectId}/kanban/bridge:
     post:
       tags:
         - Admin Workflows
@@ -1942,7 +1942,7 @@ paths:
           $ref: "#/components/responses/HarnessError"
         "500":
           $ref: "#/components/responses/HarnessError"
-  /api/workflows/{workflowName}/kanban/related-project-revisions:
+  /api/projects/{projectId}/kanban/related-project-revisions:
     get:
       tags:
         - Admin Workflows
@@ -1979,7 +1979,7 @@ paths:
           $ref: "#/components/responses/HarnessError"
         "409":
           $ref: "#/components/responses/HarnessError"
-  /api/workflows/{workflowName}/kanban/previews/{capability}/{nonce}/{target}/{assetPath}:
+  /api/projects/{projectId}/kanban/previews/{capability}/{nonce}/{target}/{assetPath}:
     get:
       tags:
         - Admin Workflows
@@ -2038,7 +2038,7 @@ paths:
             application/octet-stream: {}
         "404":
           $ref: "#/components/responses/HarnessError"
-  /api/workflows/{workflowName}/kanban/configurations:
+  /api/projects/{projectId}/kanban/configurations:
     post:
       tags:
         - Admin Workflows
@@ -2062,7 +2062,7 @@ paths:
                 $ref: "#/components/schemas/KanbanWorkspaceStateResponse"
         "409":
           $ref: "#/components/responses/HarnessError"
-  /api/workflows/{workflowName}/kanban/configurations/{configurationId}:
+  /api/projects/{projectId}/kanban/configurations/{configurationId}:
     patch:
       tags:
         - Admin Workflows
@@ -2108,7 +2108,7 @@ paths:
                 $ref: "#/components/schemas/KanbanWorkspaceStateResponse"
         "409":
           $ref: "#/components/responses/HarnessError"
-  /api/workflows/{workflowName}/kanban/active-configuration:
+  /api/projects/{projectId}/kanban/active-configuration:
     put:
       tags:
         - Admin Workflows
@@ -2131,7 +2131,7 @@ paths:
                 $ref: "#/components/schemas/KanbanWorkspaceStateResponse"
         "404":
           $ref: "#/components/responses/HarnessError"
-  /api/workflows/{workflowName}/draft/files:
+  /api/projects/{projectId}/draft/files:
     put:
       tags:
         - Admin Workflows
@@ -2163,7 +2163,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SaveDraftFilesResultResponse"
-  /api/workflows/{workflowName}/clone:
+  /api/projects/{projectId}/clone:
     post:
       tags:
         - Admin Workflows
@@ -2196,7 +2196,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CloneWorkflowResultResponse"
-  /api/workflows/{workflowName}/project-info:
+  /api/projects/{projectId}/project-info:
     put:
       tags:
         - Admin Workflows
@@ -2235,7 +2235,7 @@ paths:
           $ref: "#/components/responses/HarnessError"
         "404":
           $ref: "#/components/responses/HarnessError"
-  /api/workflows/{workflowName}/info:
+  /api/projects/{projectId}/info:
     patch:
       tags:
         - Admin Workflows
@@ -2265,7 +2265,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UpdateWorkflowInfoResultResponse"
-  /api/workflows/{workflowName}:
+  /api/projects/{projectId}:
     delete:
       tags:
         - Admin Workflows
@@ -2280,7 +2280,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DeleteWorkflowResultResponse"
-  /api/workflows/{workflowName}/publish:
+  /api/projects/{projectId}/publish:
     post:
       tags:
         - Admin Workflows
@@ -2320,7 +2320,7 @@ paths:
                 $ref: "#/components/schemas/PublishResultResponse"
         "409":
           $ref: "#/components/responses/HarnessError"
-  /api/workflows/{workflowName}/members:
+  /api/projects/{projectId}/members:
     get:
       tags:
         - Admin Workflows
@@ -2337,7 +2337,7 @@ paths:
                 $ref: "#/components/schemas/ProjectMemberListResponse"
         "403":
           $ref: "#/components/responses/HarnessError"
-  /api/workflows/{workflowName}/members/{userId}:
+  /api/projects/{projectId}/members/{userId}:
     put:
       tags:
         - Admin Workflows
@@ -2394,7 +2394,7 @@ paths:
           $ref: "#/components/responses/HarnessError"
         "409":
           $ref: "#/components/responses/HarnessError"
-  /api/workflows/{workflowName}/invitations:
+  /api/projects/{projectId}/invitations:
     get:
       tags:
         - Admin Workflows
@@ -2447,7 +2447,7 @@ paths:
           $ref: "#/components/responses/HarnessError"
         "403":
           $ref: "#/components/responses/HarnessError"
-  /api/workflows/{workflowName}/invitations/{invitationId}:
+  /api/projects/{projectId}/invitations/{invitationId}:
     delete:
       tags:
         - Admin Workflows
@@ -2535,7 +2535,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiFailure"
-  /api/workflows/{workflowName}/visibility:
+  /api/projects/{projectId}/visibility:
     patch:
       tags:
         - Admin Workflows
@@ -2567,7 +2567,7 @@ paths:
           $ref: "#/components/responses/HarnessError"
         "403":
           $ref: "#/components/responses/HarnessError"
-  /api/workflows/{workflowName}/versions:
+  /api/projects/{projectId}/versions:
     get:
       tags:
         - Admin Workflows
@@ -2582,7 +2582,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/VersionSummaryResponse"
-  /api/workflows/{workflowName}/data-summary:
+  /api/projects/{projectId}/data-summary:
     get:
       tags:
         - Admin Workflows
@@ -2601,7 +2601,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProjectDataSummaryResponse"
-  /api/workflows/{workflowName}/kv:
+  /api/projects/{projectId}/kv:
     get:
       tags:
         - Admin Workflows
@@ -2657,7 +2657,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/KVEntryPageResponse"
-  /api/workflows/{workflowName}/kv/entry:
+  /api/projects/{projectId}/kv/entry:
     get:
       tags:
         - Admin Workflows
@@ -2750,7 +2750,7 @@ paths:
                             type: string
         "404":
           description: KV does not exist.
-  /api/workflows/{workflowName}/knowledge-documents:
+  /api/projects/{projectId}/knowledge-documents:
     get:
       tags:
         - Admin Workflows
@@ -2822,7 +2822,7 @@ paths:
         "501":
           description: PostgreSQL is not enabled for the current storage, and the project
             repository is not available.
-  /api/workflows/{workflowName}/knowledge-documents/search:
+  /api/projects/{projectId}/knowledge-documents/search:
     get:
       tags:
         - Admin Workflows
@@ -2899,7 +2899,7 @@ paths:
         "501":
           description: PostgreSQL is not enabled for the current storage, and the project
             repository is not available.
-  /api/workflows/{workflowName}/knowledge-documents/{documentId}/lines:
+  /api/projects/{projectId}/knowledge-documents/{documentId}/lines:
     get:
       tags:
         - Admin Workflows
@@ -2941,7 +2941,7 @@ paths:
         "501":
           description: PostgreSQL is not enabled for the current storage, and the project
             repository is not available.
-  /api/workflows/{workflowName}/knowledge-documents/{documentId}:
+  /api/projects/{projectId}/knowledge-documents/{documentId}:
     get:
       tags:
         - Admin Workflows
@@ -3031,7 +3031,7 @@ paths:
         "501":
           description: PostgreSQL is not enabled for the current storage, and the project
             repository is not available.
-  /api/workflows/{workflowName}/token-usage:
+  /api/projects/{projectId}/token-usage:
     get:
       tags:
         - Admin Workflows
@@ -3058,7 +3058,7 @@ paths:
                 $ref: "#/components/schemas/TokenUsageDetailResponse"
         "501":
           description: The current storage does not support the PostgreSQL KV inspection.
-  /api/workflows/{workflowName}/source-share:
+  /api/projects/{projectId}/source-share:
     get:
       tags:
         - Admin Workflows
@@ -3093,7 +3093,7 @@ paths:
           $ref: "#/components/responses/HarnessError"
         "404":
           $ref: "#/components/responses/HarnessError"
-  /api/workflows/{workflowName}/source-archive:
+  /api/projects/{projectId}/source-archive:
     get:
       tags:
         - Admin Workflows

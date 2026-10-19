@@ -48,7 +48,7 @@ export class RemoteWorkflowFileStore implements FileStore {
     return createResolvedWorkflowFile(normalized, async () => {
       // Use the managed endpoint, never a caller-supplied URL or path with credentials.
       const response = await fetch(
-        `${this.serverUrl}/api/workflows/files/${encodeURIComponent(normalized.id)}`,
+        `${this.serverUrl}/api/projects/files/${encodeURIComponent(normalized.id)}`,
         { headers: { Authorization: `Bearer ${this.token}` }, redirect: "error" },
       );
       if (!response.ok) {
@@ -80,7 +80,7 @@ export class RemoteWorkflowFileStore implements FileStore {
     let response: Response;
     try {
       response = await fetch(
-        `${this.serverUrl}/api/workflows/${encodeURIComponent(this.workflowName)}/files?${query.toString()}`,
+        `${this.serverUrl}/api/projects/${encodeURIComponent(this.workflowName)}/files?${query.toString()}`,
         {
           method: "POST",
           headers: {
@@ -127,7 +127,7 @@ export class RemoteWorkflowFileStore implements FileStore {
 
     return normalizeWorkflowFileReference({
       ...reference,
-      url: reference.url ?? `/api/workflows/files/${encodeURIComponent(reference.id)}`,
+      url: reference.url ?? `/api/projects/files/${encodeURIComponent(reference.id)}`,
     });
   }
 }

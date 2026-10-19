@@ -125,7 +125,7 @@ All notable public changes to this release unit are recorded here.
 ### New Features
 
 - **Run records can be renamed and deleted**: project managers or the run's initiator may act, and active runs can still be renamed.
-- **KV entries can be deleted**: the detail dialog confirms and calls `DELETE /api/workflows/:name/kv/entry` for one entry.
+- **KV entries can be deleted**: the detail dialog confirms and calls `DELETE /api/projects/:name/kv/entry` for one entry.
 
 ### Breaking Changes
 

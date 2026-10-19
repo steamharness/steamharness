@@ -11,10 +11,10 @@ afterEach(() => {
 
 describe("knowledge markdown image utilities", () => {
   it("extracts workflow file ids from relative and configured-server markdown URLs", () => {
-    expect(readWorkflowFileIdFromMarkdownImageSrc("/api/workflows/files/wf_123?download=1", "http://localhost:7125")).toBe("wf_123");
-    expect(readWorkflowFileIdFromMarkdownImageSrc("http://localhost:7125/api/workflows/files/wf_a%2Fb", "http://localhost:7125/api")).toBe("wf_a/b");
-    expect(readWorkflowFileIdFromMarkdownImageSrc("https://example.com/api/workflows/files/wf_123", "http://localhost:7125")).toBeNull();
-    expect(readWorkflowFileIdFromMarkdownImageSrc("/embed/api/workflows/demo/files/wf_123", "http://localhost:7125")).toBeNull();
+    expect(readWorkflowFileIdFromMarkdownImageSrc("/api/projects/files/wf_123?download=1", "http://localhost:7125")).toBe("wf_123");
+    expect(readWorkflowFileIdFromMarkdownImageSrc("http://localhost:7125/api/projects/files/wf_a%2Fb", "http://localhost:7125/api")).toBe("wf_a/b");
+    expect(readWorkflowFileIdFromMarkdownImageSrc("https://example.com/api/projects/files/wf_123", "http://localhost:7125")).toBeNull();
+    expect(readWorkflowFileIdFromMarkdownImageSrc("/embed/api/projects/demo/files/wf_123", "http://localhost:7125")).toBeNull();
   });
 
   it("fetches authenticated workflow files once and returns cached object URLs", async () => {
@@ -24,8 +24,8 @@ describe("knowledge markdown image utilities", () => {
     };
     const cache = new Map<string, string>();
 
-    const first = await resolveKnowledgeImageSrc("/api/workflows/files/wf_123", { client, cache });
-    const second = await resolveKnowledgeImageSrc("/api/workflows/files/wf_123", { client, cache });
+    const first = await resolveKnowledgeImageSrc("/api/projects/files/wf_123", { client, cache });
+    const second = await resolveKnowledgeImageSrc("/api/projects/files/wf_123", { client, cache });
 
     expect(first).toBe("blob:http://localhost/wf_123");
     expect(second).toBe("blob:http://localhost/wf_123");
@@ -43,8 +43,8 @@ describe("knowledge markdown image utilities", () => {
     };
     const cache = new Map<string, string>();
 
-    const first = resolveKnowledgeImageSrc("/api/workflows/files/wf_late", { client, cache });
-    const second = resolveKnowledgeImageSrc("/api/workflows/files/wf_late", { client, cache });
+    const first = resolveKnowledgeImageSrc("/api/projects/files/wf_late", { client, cache });
+    const second = resolveKnowledgeImageSrc("/api/projects/files/wf_late", { client, cache });
     expect(client.fetchWorkflowFile).toHaveBeenCalledTimes(1);
 
     disposeKnowledgeImageCache(cache);

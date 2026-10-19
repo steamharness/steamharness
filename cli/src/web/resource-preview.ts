@@ -42,7 +42,7 @@ export class ResourcePreviews {
   private async server(id: string, suffix: string, init: RequestInit = {}): Promise<any> {
     const connection = this.connection();
     if (!connection) { throw new Error(t('Please sign in to preview this server resource.')); }
-    const response = await fetch(`${connection.serverUrl}/api/workflows/${encodeURIComponent(id)}${suffix}`, {
+    const response = await fetch(`${connection.serverUrl}/api/projects/${encodeURIComponent(id)}${suffix}`, {
       ...init, headers: { Authorization: `Bearer ${connection.accessToken}`, 'Content-Type': 'application/json' },
       signal: AbortSignal.timeout(30_000), redirect: 'error',
     });
@@ -114,7 +114,7 @@ export class ResourcePreviews {
         const workspace = await this.server(project.id, '/kanban');
         params = workspace.manifest?.params ?? []; configurations = workspace.configurations; activeId = workspace.activeConfigurationId;
         const connection = this.connection()!, url = new URL(workspace.preview.url, `${connection.serverUrl}/`);
-        const expected = `/api/workflows/${encodeURIComponent(project.id)}/kanban/previews/`;
+        const expected = `/api/projects/${encodeURIComponent(project.id)}/kanban/previews/`;
         if (url.origin !== new URL(connection.serverUrl).origin || !url.pathname.startsWith(expected) || url.search || url.hash) { throw new Error(t('Invalid resource preview URL.')); }
         // The capability URL contains nonce, target and the entry's relative path.
         const segments = url.pathname.slice(expected.length).split('/');

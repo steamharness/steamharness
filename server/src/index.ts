@@ -106,7 +106,7 @@ app.get("/health", (req, res) => {
 
 // Project card images are public presentation assets. Upload and metadata
 // changes remain protected by the authenticated project routes below.
-app.use(["/v1", "/webhooks", "/workflows"], (req, res) => { res.status(404).json(fail(404, localizeServerMessage("API route not found.", getRequestT(req)))); });
+app.use(["/v1", "/webhooks", "/projects"], (req, res) => { res.status(404).json(fail(404, localizeServerMessage("API route not found.", getRequestT(req)))); });
 app.use("/project-card-images", createProjectCardImageRouter(storage));
 
 // Locally stored public objects (avatars) are served straight from disk. Mounted

@@ -34,17 +34,17 @@ describe("KnowledgeTab server image lifecycle", () => {
     const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL");
     vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
       const path = String(input);
-      if (path === "/api/workflows/project-a/knowledge-documents?pageSize=20") {
+      if (path === "/api/projects/project-a/knowledge-documents?pageSize=20") {
         return Promise.resolve(successResponse(createPage("Guide A")));
       }
-      if (path === "/api/workflows/project-a/knowledge-documents/guide") {
+      if (path === "/api/projects/project-a/knowledge-documents/guide") {
         return Promise.resolve(successResponse(createDocument("Guide A")));
       }
-      if (path === "/api/workflows/files/wf-project-a-image") {
+      if (path === "/api/projects/files/wf-project-a-image") {
         lateFileSignal = init?.signal as AbortSignal | undefined;
         return lateFileResponse.promise;
       }
-      if (path === "/api/workflows/project-b/knowledge-documents?pageSize=20") {
+      if (path === "/api/projects/project-b/knowledge-documents?pageSize=20") {
         return Promise.resolve(successResponse({ items: [], hasMore: false, total: 0 }));
       }
       throw new Error(`Unexpected request: ${path}`);
@@ -71,13 +71,13 @@ describe("KnowledgeTab server image lifecycle", () => {
     const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL");
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       const path = String(input);
-      if (path === "/api/workflows/project-a/knowledge-documents?pageSize=20") {
+      if (path === "/api/projects/project-a/knowledge-documents?pageSize=20") {
         return Promise.resolve(successResponse(createPage("Guide A")));
       }
-      if (path === "/api/workflows/project-a/knowledge-documents/guide") {
+      if (path === "/api/projects/project-a/knowledge-documents/guide") {
         return Promise.resolve(successResponse(createDocument("Guide A")));
       }
-      if (path === "/api/workflows/files/wf-project-a-image") {
+      if (path === "/api/projects/files/wf-project-a-image") {
         return Promise.resolve(imageResponse());
       }
       throw new Error(`Unexpected request: ${path}`);
@@ -96,10 +96,10 @@ describe("KnowledgeTab server image lifecycle", () => {
     const onKnowledgeDirtyChange = vi.fn();
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
       const path = String(input);
-      if (path === "/api/workflows/project-a/knowledge-documents?pageSize=20") {
+      if (path === "/api/projects/project-a/knowledge-documents?pageSize=20") {
         return Promise.resolve(successResponse(createPage("Guide A")));
       }
-      if (path === "/api/workflows/project-a/knowledge-documents/guide") {
+      if (path === "/api/projects/project-a/knowledge-documents/guide") {
         return Promise.resolve(successResponse({
           id: "guide",
           title: "Guide A",
@@ -173,7 +173,7 @@ function createDocument(title: string) {
   return {
     id: "guide",
     title,
-    markdown: "![Project image](/api/workflows/files/wf-project-a-image)",
+    markdown: "![Project image](/api/projects/files/wf-project-a-image)",
     createdAt: "2026-07-13T00:00:00.000Z",
     updatedAt: "2026-07-13T00:00:00.000Z",
   };

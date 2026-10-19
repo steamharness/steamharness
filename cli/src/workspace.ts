@@ -404,7 +404,7 @@ async function commandUpload(parsed: ParsedArgs): Promise<void> {
     const publishResult = await fetchApi({
       server: parsed.options.server,
       token: parsed.options.token,
-      path: `/api/workflows/${encodeURIComponent(workflowId)}/publish`,
+      path: `/api/projects/${encodeURIComponent(workflowId)}/publish`,
       method: "POST",
       body: {
         releaseLog: parsed.options.releaseLog,
@@ -567,7 +567,7 @@ async function commandFileDownload(parsed: ParsedArgs): Promise<void> {
   const fileId = requirePositional(parsed, 0, "file-id");
   if (!parsed.options.output) throw new Error(i18n.t("fileDownloadRequiresOutput", { ns: "cli" }));
   const response = await fetch(
-    `${trimTrailingSlash(parsed.options.server)}/api/workflows/files/${encodeURIComponent(fileId)}`,
+    `${trimTrailingSlash(parsed.options.server)}/api/projects/files/${encodeURIComponent(fileId)}`,
     { headers: { Authorization: `Bearer ${parsed.options.token}` }, redirect: "error" },
   );
   if (!response.ok) {
@@ -588,7 +588,7 @@ async function commandFileDelete(parsed: ParsedArgs): Promise<void> {
   const result = await fetchApi({
     server: parsed.options.server,
     token: parsed.options.token,
-    path: `/api/workflows/files/${encodeURIComponent(fileId)}`,
+    path: `/api/projects/files/${encodeURIComponent(fileId)}`,
     method: "DELETE",
   });
   printApiResponse(result);
@@ -601,7 +601,7 @@ async function commandVersions(parsed: ParsedArgs): Promise<void> {
   const result = await fetchApi({
     server: parsed.options.server,
     token: parsed.options.token,
-    path: `/api/workflows/${encodeURIComponent(workflowId)}/versions`,
+    path: `/api/projects/${encodeURIComponent(workflowId)}/versions`,
   });
 
   printApiResponse(result);
@@ -617,7 +617,7 @@ async function commandDownload(parsed: ParsedArgs): Promise<void> {
     const result = await fetchApi<ProjectGroupDownloadResult>({
       server: parsed.options.server,
       token: parsed.options.token,
-      path: `/api/workflows/${encodeURIComponent(workflowId)}/project-group-download?target=${encodeURIComponent(target)}`,
+      path: `/api/projects/${encodeURIComponent(workflowId)}/project-group-download?target=${encodeURIComponent(target)}`,
     });
     assertApiOk(result);
     if (result.errCode !== 0 || result.data === undefined) {
@@ -652,7 +652,7 @@ async function commandDownload(parsed: ParsedArgs): Promise<void> {
   }>({
     server: parsed.options.server,
     token: parsed.options.token,
-    path: `/api/workflows/${encodeURIComponent(workflowId)}/files?target=${encodeURIComponent(target)}&includeBinary=true`,
+    path: `/api/projects/${encodeURIComponent(workflowId)}/files?target=${encodeURIComponent(target)}&includeBinary=true`,
   });
   printApiResponse(result);
   assertApiOk(result);
@@ -696,7 +696,7 @@ async function commandPublish(parsed: ParsedArgs): Promise<void> {
   const publishResult = await fetchApi({
     server: parsed.options.server,
     token: parsed.options.token,
-    path: `/api/workflows/${encodeURIComponent(workflowId)}/publish`,
+    path: `/api/projects/${encodeURIComponent(workflowId)}/publish`,
     method: "POST",
     body: {
       releaseLog: parsed.options.releaseLog,
@@ -1288,7 +1288,7 @@ async function uploadProjectGroupPackage(options: {
       headers: {
         authorization: `Bearer ${options.token}`,
         "content-type": "application/octet-stream",
-        "x-workflow-package-name": archiveName,
+        "x-steamharness-package-name": archiveName,
       },
       body: new Blob([archiveBuffer]),
     },
@@ -1396,7 +1396,7 @@ async function ensureWorkflowProjectCreated(options: {
   const created = await fetchApi<ProjectCreateResult>({
     server: options.server,
     token: options.token,
-    path: "/api/workflows",
+    path: "/api/projects",
     method: "POST",
     body: {
       name: options.packageContext.workflowName,
@@ -1468,14 +1468,14 @@ async function uploadPackage(options: {
   const archiveName = path.basename(options.archivePath);
   const query = new URLSearchParams({ fileName: archiveName });
   const response = await fetch(
-    `${trimTrailingSlash(options.server)}/api/workflows/${encodeURIComponent(options.workflowId)}/package?${query.toString()}`,
+    `${trimTrailingSlash(options.server)}/api/projects/${encodeURIComponent(options.workflowId)}/package?${query.toString()}`,
     {
       method: "POST",
       headers: {
         authorization: `Bearer ${options.token}`,
         "content-type": "application/octet-stream",
-        "x-workflow-package-name": archiveName,
-        "x-workflow-locale": getCurrentLocale(),
+        "x-steamharness-package-name": archiveName,
+        "x-steamharness-locale": getCurrentLocale(),
       },
       body: new Blob([archiveBuffer]),
     },
@@ -1498,7 +1498,7 @@ async function waitForPreparation(options: {
     const response = await fetchApi<PreparationJob>({
       server: options.server,
       token: options.token,
-      path: `/api/workflows/${encodeURIComponent(options.workflowId)}/preparations/${encodeURIComponent(options.jobId)}`,
+      path: `/api/projects/${encodeURIComponent(options.workflowId)}/preparations/${encodeURIComponent(options.jobId)}`,
     });
     if (response.errCode !== 0 || response.data === undefined) {
       return response;
@@ -1538,7 +1538,7 @@ async function getPreparation(options: {
   return fetchApi<PreparationJob>({
     server: options.server,
     token: options.token,
-    path: `/api/workflows/${encodeURIComponent(options.workflowId)}/preparations/${encodeURIComponent(options.jobId)}`,
+    path: `/api/projects/${encodeURIComponent(options.workflowId)}/preparations/${encodeURIComponent(options.jobId)}`,
   });
 }
 
@@ -1560,7 +1560,7 @@ async function fetchApi<T = unknown>(options: {
     headers["content-type"] = "application/json";
   }
 
-  headers["x-workflow-locale"] = getCurrentLocale();
+  headers["x-steamharness-locale"] = getCurrentLocale();
 
   const response = await fetch(`${trimTrailingSlash(options.server)}${options.path}`, {
     method: options.method ?? "GET",

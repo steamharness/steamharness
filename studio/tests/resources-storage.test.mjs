@@ -110,11 +110,11 @@ test('server storage uses the declared project identity and authenticated manage
   };
   const page = await request({ kind: 'kv', action: 'list', query: 'remote' }, connection, fetcher);
   assert.equal(page.source, 'server'); assert.equal(page.items[0].title, 'remote');
-  assert.equal(calls[0].url.pathname, `/api/workflows/${project.id}/kv`);
+  assert.equal(calls[0].url.pathname, `/api/projects/${project.id}/kv`);
   assert.equal(calls[0].url.searchParams.get('q'), 'remote');
   assert.equal(calls[0].options.headers.Authorization, `Bearer ${connection.accessToken}`);
   await request({ kind: 'knowledge', action: 'save', documentId: 'doc / ?', title: 'Edited', markdown: 'content' }, connection, async (url, options) => {
-    assert.equal(new URL(url).pathname, `/api/workflows/${project.id}/knowledge-documents/doc%20%2F%20%3F`);
+    assert.equal(new URL(url).pathname, `/api/projects/${project.id}/knowledge-documents/doc%20%2F%20%3F`);
     assert.equal(options.method, 'PUT'); assert.deepEqual(JSON.parse(options.body), { title: 'Edited', markdown: 'content' });
     return new Response(JSON.stringify({ errCode: 0, data: { id: 'doc / ?', title: 'Edited', markdown: 'content' } }));
   });
@@ -135,7 +135,7 @@ test('knowledge search pagination preserves document and line identities on the 
 test('foreign server search retains pagination without a local project or Core runtime', async () => {
   const page = await runResourceRequest({ project: { id: 'owner' }, input: { kind: 'knowledge', action: 'list', source: 'server',
     projectId: 'foreign', query: 'needle', cursor: '30' }, connection: { serverUrl: 'https://workflow.test', accessToken: 'token' } }, undefined, async url => {
-    assert.equal(new URL(url).pathname, '/api/workflows/foreign/knowledge-documents/search');
+    assert.equal(new URL(url).pathname, '/api/projects/foreign/knowledge-documents/search');
     assert.equal(new URL(url).searchParams.get('cursor'), '30');
     return new Response(JSON.stringify({ errCode: 0, data: { totalMatches: 33, hasMore: true, nextCursor: '60',
       matches: [{ documentId: 'doc', title: 'Title', lineNumber: 4, line: 'needle' }] } }));

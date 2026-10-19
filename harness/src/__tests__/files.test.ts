@@ -80,7 +80,7 @@ test("server workflow file store writes generated files into the server file nam
     assert.equal(reference.storage, "server");
     assert.equal(reference.workflowId, "demo");
     assert.equal(reference.conversationId, "thread-1");
-    assert.equal(reference.url, `/api/workflows/files/${encodeURIComponent(reference.id)}`);
+    assert.equal(reference.url, `/api/projects/files/${encodeURIComponent(reference.id)}`);
     assert.equal(await readFile(path.join(rootDir, reference.id, "content"), "utf8"), "png-bytes");
 
     const resolved = await store.resolveFile(reference);
@@ -142,10 +142,10 @@ test("remote workflow file store uploads generated files through the server file
 
     assert.equal(
       calls[0]?.url,
-      "http://localhost:7125/api/workflows/demo/files?fileName=frame.png&mimeType=image%2Fpng&conversationId=thread-1",
+      "http://localhost:7125/api/projects/demo/files?fileName=frame.png&mimeType=image%2Fpng&conversationId=thread-1",
     );
     assert.equal((calls[0]?.init?.headers as Record<string, string>).Authorization, "Bearer token");
-    assert.equal(reference.url, "/api/workflows/files/wf_remote");
+    assert.equal(reference.url, "/api/projects/files/wf_remote");
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -195,7 +195,7 @@ test("remote uploaded files are read with authentication from the managed endpoi
     };
     const file = await store.resolveFile(reference);
     assert.deepEqual(await file.readBuffer(), bytes);
-    assert.equal(calls[0]?.url, "https://server.example/api/workflows/files/wf_abc123");
+    assert.equal(calls[0]?.url, "https://server.example/api/projects/files/wf_abc123");
     assert.deepEqual(calls[0]?.init?.headers, { Authorization: "Bearer file-token" });
     assert.equal(calls[0]?.init?.redirect, "error");
     await assert.rejects(store.resolveFile({ ...reference, workflowId: "other-project" }), /another project/);

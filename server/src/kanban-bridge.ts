@@ -41,7 +41,7 @@ export async function invokeServerKanbanBridge(
             buffer: Buffer.from(input["base64"] as string, "base64"),
           }],
         });
-        return { ...file, url: `/api/workflows/files/${encodeURIComponent(file!.id)}` };
+        return { ...file, url: `/api/projects/files/${encodeURIComponent(file!.id)}` };
       }
       case "files.readFile":
       case "files.deleteFile": {
@@ -55,7 +55,7 @@ export async function invokeServerKanbanBridge(
           return true;
         }
         return {
-          file: { ...metadata, url: `/api/workflows/files/${encodeURIComponent(fileId)}` },
+          file: { ...metadata, url: `/api/projects/files/${encodeURIComponent(fileId)}` },
           base64: (await readFile(filePath)).toString("base64"),
         };
       }

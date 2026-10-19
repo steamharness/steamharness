@@ -10,7 +10,7 @@ import type { HttpError } from "./protocol";
 
 // 服务端默认语言保持英文：服务端既有报错文案全部是英文，改成中文默认会让
 // 不带语言头的 API 调用方（curl、脚本、第三方集成）的 errMessage 从英文变中文。
-// 中英文界面客户端都会在请求头里带上 X-Workflow-Locale，按需得到本地化文案。
+// 中英文界面客户端都会在请求头里带上 X-SteamHarness-Locale，按需得到本地化文案。
 const SERVER_DEFAULT_LOCALE = "en";
 
 /**
@@ -123,7 +123,7 @@ export function ensureServerI18n(): void {
 }
 
 /**
- * 解析请求语言。只信任显式 X-Workflow-Locale 头（第一方客户端注入），
+ * 解析请求语言。只信任显式 X-SteamHarness-Locale 头（第一方客户端注入），
  * WebSocket 升级无法设置自定义头时回退 ?locale= 查询参数；都不带时回退
  * 服务端默认（en）。accept-language 被刻意忽略，避免 errMessage 随调用方
  * 系统/浏览器语言漂移而破坏现有英文断言的调用方。
@@ -132,7 +132,7 @@ export function resolveRequestLocale(req: {
   headers: { [k: string]: string | string[] | undefined };
   url?: string;
 }): SupportedLocale {
-  const localeHeader = req.headers["x-workflow-locale"];
+  const localeHeader = req.headers["x-steamharness-locale"];
   let raw = typeof localeHeader === "string"
     ? localeHeader
     : Array.isArray(localeHeader)

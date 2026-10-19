@@ -65,7 +65,7 @@ test('project API reads use the host account, host language and cancellable requ
     reads.push({ url, options }); return Response.json({ errCode: 0, data: [] });
   });
   await client.projects(signal());
-  assert.equal(reads[0].url, 'https://workflow.test/api/workflows');
+  assert.equal(reads[0].url, 'https://workflow.test/api/projects');
   assert.equal(reads[0].options.headers.Authorization, 'Bearer host-token');
   assert.equal(reads[0].options.redirect, 'error');
   const cancelled = new AbortController(); cancelled.abort();
@@ -158,7 +158,7 @@ test('upload waits for static preparation and only then publishes release notes'
     : request.method === 'POST' ? { data: { version: '1.2.3' } }
       : { data: { jobId: 'job-1', workflowId: id, status: ++polls === 1 ? 'preparing' : 'success', stage: 'validating', result: { workflowId: id, sourceHash: 'a'.repeat(64) } } });
   await uploadServerProject({ ...f.options, directory: f.directory, releaseLog: 'New version', connection: { ...f.options.connection, serverUrl: remote.url } });
-  assert.equal(remote.requests.at(-1).url, `/api/workflows/${id}/publish`);
+  assert.equal(remote.requests.at(-1).url, `/api/projects/${id}/publish`);
   assert.deepEqual(JSON.parse(remote.requests.at(-1).body), { releaseLog: 'New version', expectedVersion: '1.2.3', expectedSourceHash: 'a'.repeat(64) });
   assert.ok(remote.requests.every(request => request.auth === 'Bearer host-secret-token'));
   assert.ok(f.progress.includes('Validating project files'));

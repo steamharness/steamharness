@@ -34,7 +34,7 @@ test("sandboxed Kanban JS and CSS use preview capability without an App login", 
     const paths = ["assets/index.js", "assets/index.css"];
     for (const assetPath of paths) {
       const response = await fetch(server.url(
-        `/api/workflows/demo/kanban/previews/preview-capability/preview-nonce/1.0.0/${assetPath}`,
+        `/api/projects/demo/kanban/previews/preview-capability/preview-nonce/1.0.0/${assetPath}`,
       ), {
         headers: { Origin: "null" },
       });
@@ -54,7 +54,7 @@ test("sandboxed Kanban JS and CSS use preview capability without an App login", 
       nonce: "preview-nonce",
     })));
 
-    const protectedResponse = await fetch(server.url("/api/workflows/demo/kanban"), {
+    const protectedResponse = await fetch(server.url("/api/projects/demo/kanban"), {
       headers: { Origin: "null" },
     });
     assert.equal(protectedResponse.status, 401);
@@ -82,7 +82,7 @@ async function listen(storage: Storage): Promise<{
   const app = express();
   // Keep this order aligned with the production entrypoint regression above.
   app.use("/api", createKanbanPreviewAssetRouter(storage));
-  app.get("/api/workflows/demo/kanban", requireAuthenticatedPrincipal(), (_req, res) => {
+  app.get("/api/projects/demo/kanban", requireAuthenticatedPrincipal(), (_req, res) => {
     res.json({ errCode: 0, errMessage: "", data: {} });
   });
   const server = createServer(app);

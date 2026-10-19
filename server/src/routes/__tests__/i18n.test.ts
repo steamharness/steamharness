@@ -22,8 +22,8 @@ import type { Storage } from "../../storage";
 // Server i18n is a startup singleton; initialize once for the whole test file.
 ensureServerI18n();
 
-test("getRequestT reads the X-Workflow-Locale header", () => {
-  const t = getRequestT({ headers: { "x-workflow-locale": "en" } });
+test("getRequestT reads the X-SteamHarness-Locale header", () => {
+  const t = getRequestT({ headers: { "x-steamharness-locale": "en" } });
   assert.equal(t("server:requestBodyTooLarge"), "Request body is too large.");
 });
 
@@ -38,12 +38,12 @@ test("getRequestT ignores accept-language and keeps the server default", () => {
 });
 
 test("getRequestT handles array header values", () => {
-  const t = getRequestT({ headers: { "x-workflow-locale": ["en"] } });
+  const t = getRequestT({ headers: { "x-steamharness-locale": ["en"] } });
   assert.equal(t("server:requestBodyTooLarge"), "Request body is too large.");
 });
 
 test("localizeHttpErrorMessage resolves messageKey through the fixed-locale t()", () => {
-  const t = getRequestT({ headers: { "x-workflow-locale": "en" } });
+  const t = getRequestT({ headers: { "x-steamharness-locale": "en" } });
   const error = new HttpError(409, 409, "fallback", undefined, {
     messageKey: "server:requestBodyTooLarge",
   });
@@ -51,7 +51,7 @@ test("localizeHttpErrorMessage resolves messageKey through the fixed-locale t()"
 });
 
 test("localizeHttpErrorMessage prefers a structured descriptor over messageKey", () => {
-  const t = getRequestT({ headers: { "x-workflow-locale": "zh-CN" } });
+  const t = getRequestT({ headers: { "x-steamharness-locale": "zh-CN" } });
   const error = new HttpError(
     404,
     404,
@@ -69,13 +69,13 @@ test("localizeHttpErrorMessage prefers a structured descriptor over messageKey",
 });
 
 test("localizeHttpErrorMessage keeps the literal message when no messageKey", () => {
-  const t = getRequestT({ headers: { "x-workflow-locale": "en" } });
+  const t = getRequestT({ headers: { "x-steamharness-locale": "en" } });
   const error = new HttpError(400, 400, "Literal fallback.");
   assert.equal(localizeHttpErrorMessage(error, t), "Literal fallback.");
 });
 
 test("localizeHttpErrorMessage maps stable legacy HttpError literals without changing dynamic details", () => {
-  const zh = getRequestT({ headers: { "x-workflow-locale": "zh-CN" } });
+  const zh = getRequestT({ headers: { "x-steamharness-locale": "zh-CN" } });
   assert.equal(
     localizeHttpErrorMessage(new HttpError(401, 401, "Unauthorized."), zh),
     "未授权。",
@@ -91,7 +91,7 @@ test("localizeHttpErrorMessage maps stable legacy HttpError literals without cha
 });
 
 test("localizeServerMessage maps dynamic server errors with captured parameters", () => {
-  const zh = getRequestT({ headers: { "x-workflow-locale": "zh-CN" } });
+  const zh = getRequestT({ headers: { "x-steamharness-locale": "zh-CN" } });
   assert.equal(
     localizeServerMessage('Included project "prices" does not exist on this Server.', zh),
     "included 项目“prices”不存在于当前 Server。",
@@ -121,7 +121,7 @@ test("localizeServerMessage maps dynamic server errors with captured parameters"
 });
 
 test("storage declaration and PersistentValue binding errors are localized", () => {
-  const zh = getRequestT({ headers: { "x-workflow-locale": "zh-CN" } });
+  const zh = getRequestT({ headers: { "x-steamharness-locale": "zh-CN" } });
   assert.equal(
     localizeHttpErrorMessage(
       new HttpError(
@@ -170,10 +170,10 @@ test("toHttpError maps 413 body-too-large to a translatable messageKey", () => {
 
   assert.equal(httpError.messageKey, "server:requestBodyTooLarge");
   assert.equal(
-    getRequestT({ headers: { "x-workflow-locale": "en" } })(httpError.messageKey!),
+    getRequestT({ headers: { "x-steamharness-locale": "en" } })(httpError.messageKey!),
     "Request body is too large.",
   );
-  assert.equal(getRequestT({ headers: { "x-workflow-locale": "zh-CN" } })(httpError.messageKey!), "请求体过大。");
+  assert.equal(getRequestT({ headers: { "x-steamharness-locale": "zh-CN" } })(httpError.messageKey!), "请求体过大。");
 });
 
 test("toHttpErrorWithStatus preserves shared validation descriptors", () => {
@@ -188,7 +188,7 @@ test("toHttpErrorWithStatus preserves shared validation descriptors", () => {
   assert.equal(httpError.statusCode, 400);
   assert.equal(httpError.messageKey, "common:projectDependencies.validation.unknownSelection");
   assert.equal(
-    localizeHttpErrorMessage(httpError, getRequestT({ headers: { "x-workflow-locale": "zh-CN" } })),
+    localizeHttpErrorMessage(httpError, getRequestT({ headers: { "x-steamharness-locale": "zh-CN" } })),
     "未知的依赖选择“prices”。",
   );
 });
@@ -225,7 +225,7 @@ test("real auth middleware localizes unauthenticated and forbidden responses", a
   try {
     const unauthorized = await fetchJson<{ errCode: number; errMessage: string }>(
       server.url("/authenticated"),
-      { headers: { "X-Workflow-Locale": "zh-CN" } },
+      { headers: { "X-SteamHarness-Locale": "zh-CN" } },
       { statusCode: 401 },
     );
     assert.deepEqual(unauthorized, { errCode: 401, errMessage: "未授权。" });
@@ -234,7 +234,7 @@ test("real auth middleware localizes unauthenticated and forbidden responses", a
       server.url("/forbidden"),
       {
         headers: {
-          "X-Workflow-Locale": "zh-CN",
+          "X-SteamHarness-Locale": "zh-CN",
           "X-Test-Principal": "user",
         },
       },
@@ -255,12 +255,12 @@ test("real API fallback route uses request-scoped localization", async () => {
   try {
     const response = await fetchJson<{ errCode: number; errMessage: string }>(
       server.url("/api/not-a-real-route"),
-      { headers: { "X-Workflow-Locale": "zh-CN" } },
+      { headers: { "X-SteamHarness-Locale": "zh-CN" } },
       { statusCode: 404 },
     );
     assert.deepEqual(response, { errCode: 404, errMessage: "API 路由不存在。" });
     assert.equal(
-      localizeServerMessage("Dynamic external detail.", getRequestT({ headers: { "x-workflow-locale": "zh-CN" } })),
+      localizeServerMessage("Dynamic external detail.", getRequestT({ headers: { "x-steamharness-locale": "zh-CN" } })),
       "Dynamic external detail.",
     );
   } finally {

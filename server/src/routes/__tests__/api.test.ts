@@ -41,7 +41,7 @@ test("Kanban file upload accepts images above the ordinary JSON limit without re
   });
   const server = await listen(storage, createApiKeyPrincipal("desktop"));
   try {
-    const response = await fetchJson(server.url("/api/workflows/demo/kanban/bridge"), {
+    const response = await fetchJson(server.url("/api/projects/demo/kanban/bridge"), {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ call: { requestId: "map", operation: "files.createFile", input: { name: "map.png", mimeType: "image/png", base64: bytes.toString("base64") } } }),
     });
@@ -88,14 +88,14 @@ test("Kanban workspace issues a short-lived preview capability for Bearer-authen
   const server = await listen(storage, createApiKeyPrincipal("desktop"));
 
   try {
-    const response = await fetchJson(server.url("/api/workflows/demo/kanban?target=draft"));
+    const response = await fetchJson(server.url("/api/projects/demo/kanban?target=draft"));
 
     assert.equal(response.errCode, 0);
     const preview = (response.data as { preview?: { url?: string; expiresAt?: string } }).preview;
     assert.equal(preview?.expiresAt, "2026-07-27T00:15:00.000Z");
     assert.match(
       preview?.url ?? "",
-      /^\/api\/workflows\/demo\/kanban\/previews\/preview-capability\/[A-Za-z0-9_-]+\/draft\/pages\/board%20view\.htm$/,
+      /^\/api\/projects\/demo\/kanban\/previews\/preview-capability\/[A-Za-z0-9_-]+\/draft\/pages\/board%20view\.htm$/,
     );
   } finally {
     await server.close();
@@ -134,7 +134,7 @@ test("Kanban Studio bridge fixes KV access to the authenticated project scope", 
   const server = await listen(storage, createApiKeyPrincipal("desktop"));
 
   try {
-    const response = await fetchJson(server.url("/api/workflows/demo/kanban/bridge"), {
+    const response = await fetchJson(server.url("/api/projects/demo/kanban/bridge"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -206,7 +206,7 @@ test("Kanban Studio bridge reads a confirmed related project's KV through its al
   const server = await listen(storage, createApiKeyPrincipal("desktop"));
 
   try {
-    const response = await fetchJson(server.url("/api/workflows/demo/kanban/bridge"), {
+    const response = await fetchJson(server.url("/api/projects/demo/kanban/bridge"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -263,7 +263,7 @@ test("Kanban Studio bridge applies related-project grant revocation immediately"
     storage,
     createPrincipal(["projects.read_public"], { userId: "viewer-1" }),
   );
-  const request = () => fetch(server.url("/api/workflows/demo/kanban/bridge"), {
+  const request = () => fetch(server.url("/api/projects/demo/kanban/bridge"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -312,7 +312,7 @@ test("Kanban Studio bridge rejects operations outside the public whitelist", asy
   const server = await listen(storage, createApiKeyPrincipal("desktop"));
 
   try {
-    const response = await fetch(server.url("/api/workflows/demo/kanban/bridge"), {
+    const response = await fetch(server.url("/api/projects/demo/kanban/bridge"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -357,7 +357,7 @@ test("Kanban Studio bridge allows project readers to perform read-only operation
   const server = await listen(storage, createPrincipal(["projects.read_public"], { userId: "viewer-1" }));
 
   try {
-    const response = await fetch(server.url("/api/workflows/demo/kanban/bridge"), {
+    const response = await fetch(server.url("/api/projects/demo/kanban/bridge"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -389,7 +389,7 @@ test("Kanban file mutations are denied to a project reader before accessing file
       ["files.createFile", { name: "map.png", base64: "AP8=" }],
       ["files.deleteFile", { fileId: "wf_abc123" }],
     ]) {
-      const response = await fetch(server.url("/api/workflows/demo/kanban/bridge"), {
+      const response = await fetch(server.url("/api/projects/demo/kanban/bridge"), {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ call: { requestId: "write", operation, input } }),
       });
@@ -422,7 +422,7 @@ test("Kanban revision stream releases a subscription when the client disconnects
   const controller = new AbortController();
 
   try {
-    const response = await fetch(server.url("/api/workflows/demo/kanban/related-project-revisions?target=1.0.0"), {
+    const response = await fetch(server.url("/api/projects/demo/kanban/related-project-revisions?target=1.0.0"), {
       signal: controller.signal,
     });
     assert.equal(response.status, 200);
@@ -455,7 +455,7 @@ test("Kanban revision stream reports a safe unavailable event when subscription 
 
   try {
     const response = await fetch(server.url(
-      "/api/workflows/demo/kanban/related-project-revisions?target=1.0.0",
+      "/api/projects/demo/kanban/related-project-revisions?target=1.0.0",
     ));
     const body = await response.text();
     assert.equal(response.status, 200);
@@ -493,7 +493,7 @@ test("Kanban revision stream does not repeat a revision already included in its 
 
   try {
     const response = await fetch(server.url(
-      "/api/workflows/demo/kanban/related-project-revisions?target=1.0.0",
+      "/api/projects/demo/kanban/related-project-revisions?target=1.0.0",
     ));
     const body = await response.text();
     assert.match(body, /event: snapshot/);
@@ -545,7 +545,7 @@ test("Kanban revision stream closes before publishing after project access is re
 
   try {
     const response = await fetch(server.url(
-      "/api/workflows/demo/kanban/related-project-revisions?target=1.0.0",
+      "/api/projects/demo/kanban/related-project-revisions?target=1.0.0",
     ), { signal: controller.signal });
     assert.equal(response.status, 200);
     await subscriptionReady.promise;
@@ -596,7 +596,7 @@ test("Kanban revision stream closes before publishing after related-project acce
 
   try {
     const response = await fetch(server.url(
-      "/api/workflows/demo/kanban/related-project-revisions?target=1.0.0",
+      "/api/projects/demo/kanban/related-project-revisions?target=1.0.0",
     ), { signal: controller.signal });
     assert.equal(response.status, 200);
     await subscriptionReady.promise;
@@ -642,7 +642,7 @@ test("Kanban revision stream omits unconfirmed related projects from its snapsho
 
   try {
     const response = await fetch(server.url(
-      "/api/workflows/demo/kanban/related-project-revisions?target=1.0.0",
+      "/api/projects/demo/kanban/related-project-revisions?target=1.0.0",
     ), { signal: controller.signal });
     assert.equal(response.status, 200);
     const reader = response.body!.getReader();
@@ -681,7 +681,7 @@ test("Kanban draft file saves preserve declared base64 encoding", async () => {
   });
 
   try {
-    const response = await fetchJson(server.url("/api/workflows/demo/draft/files"), {
+    const response = await fetchJson(server.url("/api/projects/demo/draft/files"), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -716,7 +716,7 @@ test("draft file saves reject malformed file collections as client errors", asyn
     for (const files of [{ path: "index.html", content: "html" }, [null], [
       { path: "assets/board.png", content: "AAAA", encoding: "hex" },
     ]]) {
-      const response = await fetch(server.url("/api/workflows/demo/draft/files"), {
+      const response = await fetch(server.url("/api/projects/demo/draft/files"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ files }),
@@ -747,7 +747,7 @@ test("project card image upload accepts cropped WebP data and returns the server
   const server = await listen(storage, createPrincipal(["projects.manage_own"]));
 
   try {
-    const response = await fetch(server.url("/api/workflows/demo/project-card-image"), {
+    const response = await fetch(server.url("/api/projects/demo/project-card-image"), {
       method: "POST",
       headers: { "Content-Type": "image/webp" },
       body: new Uint8Array(webp),
@@ -771,7 +771,7 @@ test("project card image upload rejects non-WebP content types", async () => {
   const server = await listen(storage, createPrincipal(["projects.manage_own"]));
 
   try {
-    const response = await fetch(server.url("/api/workflows/demo/project-card-image"), {
+    const response = await fetch(server.url("/api/projects/demo/project-card-image"), {
       method: "POST",
       headers: { "Content-Type": "image/png" },
       body: "not-an-image",
@@ -796,7 +796,7 @@ test("project card image upload reports oversized WebP bodies as 413", async () 
   oversizedWebp.write("WEBP", 8, "ascii");
 
   try {
-    const response = await fetch(server.url("/api/workflows/demo/project-card-image"), {
+    const response = await fetch(server.url("/api/projects/demo/project-card-image"), {
       method: "POST",
       headers: { "Content-Type": "image/webp" },
       body: new Uint8Array(oversizedWebp),
@@ -827,7 +827,7 @@ test("project card metadata endpoint validates and persists server-issued image 
   const server = await listen(storage, createPrincipal(["projects.manage_own"]));
 
   try {
-    const response = await fetchJson(server.url("/api/workflows/demo/project-card"), {
+    const response = await fetchJson(server.url("/api/projects/demo/project-card"), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ projectCard }),
@@ -858,7 +858,7 @@ test("project info endpoint preserves localized names and future declaration ids
   const server = await listen(storage, createPrincipal(["projects.manage_own"]));
 
   try {
-    const response = await fetchJson(server.url("/api/workflows/demo/project-info"), {
+    const response = await fetchJson(server.url("/api/projects/demo/project-info"), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: "Default Name", projectInfo }),
@@ -891,7 +891,7 @@ test("source files endpoint does not let a global source permission bypass proje
   );
 
   try {
-    const response = await fetch(server.url("/api/workflows/demo/source-files"));
+    const response = await fetch(server.url("/api/projects/demo/source-files"));
     assert.equal(response.status, 403);
     assert.equal(sourceRead, false);
   } finally {
@@ -1031,9 +1031,9 @@ test("dependency status and project-group download APIs retain exact targets and
   const server = await listen(storage, createPrincipal([]));
 
   try {
-    const status = await fetchJson(server.url("/api/workflows/demo/dependencies?target=0.3.0"));
+    const status = await fetchJson(server.url("/api/projects/demo/dependencies?target=0.3.0"));
     assert.deepEqual(status.data, statusResult);
-    const download = await fetchJson(server.url("/api/workflows/demo/project-group-download?target=0.3.0"));
+    const download = await fetchJson(server.url("/api/projects/demo/project-group-download?target=0.3.0"));
     assert.deepEqual(download.data, downloadResult);
   } finally {
     await server.close();
@@ -1079,9 +1079,9 @@ test("related-project API lists, updates, and removes a confirmed relationship",
   const server = await listen(storage, createPrincipal(["projects.manage_own"]));
 
   try {
-    const list = await fetchJson(server.url(`/api/workflows/${rootProjectId}/related-projects`));
+    const list = await fetchJson(server.url(`/api/projects/${rootProjectId}/related-projects`));
     assert.deepEqual(list.data, result);
-    const saved = await fetchJson(server.url(`/api/workflows/${rootProjectId}/related-projects/inventory`), {
+    const saved = await fetchJson(server.url(`/api/projects/${rootProjectId}/related-projects/inventory`), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1092,7 +1092,7 @@ test("related-project API lists, updates, and removes a confirmed relationship",
       }),
     });
     assert.deepEqual(saved.data, result);
-    const removed = await fetchJson(server.url(`/api/workflows/${rootProjectId}/related-projects/inventory`), {
+    const removed = await fetchJson(server.url(`/api/projects/${rootProjectId}/related-projects/inventory`), {
       method: "DELETE",
     });
     assert.deepEqual(removed.data, { removed: true, relatedProjects: [] });
@@ -1157,11 +1157,11 @@ test("source access request API submits, approves, rejects, and revokes download
 
   const manager = await listen(storage, createPrincipal(["projects.manage_own"], { userId: "user-1" }));
   try {
-    const listed = await fetchJson(manager.url(`/api/workflows/${projectId}/source-access-requests`));
+    const listed = await fetchJson(manager.url(`/api/projects/${projectId}/source-access-requests`));
     assert.deepEqual((listed.data as { requests: unknown }).requests, [request]);
     for (const status of ["approved", "rejected"] as const) {
       const resolved = await fetchJson(manager.url(
-        `/api/workflows/${projectId}/source-access-requests/${requestId}`,
+        `/api/projects/${projectId}/source-access-requests/${requestId}`,
       ), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -1170,7 +1170,7 @@ test("source access request API submits, approves, rejects, and revokes download
       assert.equal((resolved.data as { status: string }).status, status);
     }
     const revoked = await fetchJson(manager.url(
-      `/api/workflows/${projectId}/source-capabilities/user-1`,
+      `/api/projects/${projectId}/source-capabilities/user-1`,
     ), { method: "DELETE" });
     assert.deepEqual(revoked.data, { revoked: true });
   } finally {
@@ -1230,7 +1230,7 @@ test("workflows endpoint hides legacy non-UUID ids from admins after cleanup", a
   const server = await listen(storage, createPrincipal(["projects.read_all"]));
 
   try {
-    const response = await fetchJson(server.url("/api/workflows"));
+    const response = await fetchJson(server.url("/api/projects"));
 
     // 旧版 non-UUID 项目不再兼容展示，管理员也只应看到 UUID 项目。
     assert.equal(response.errCode, 0);
@@ -1281,7 +1281,7 @@ test("workflows endpoint hides legacy non-UUID ids from ordinary public readers"
   const server = await listen(storage, createPrincipal(["projects.read_public"]));
 
   try {
-    const response = await fetchJson(server.url("/api/workflows"));
+    const response = await fetchJson(server.url("/api/projects"));
 
     assert.equal(response.errCode, 0);
     assert.deepEqual((response.data as Array<{ id: string }>).map((item) => item.id), [
@@ -1323,7 +1323,7 @@ test("create workflow endpoint atomically forwards package UUID and project info
   const server = await listen(storage, createPrincipal(["projects.create"], { userId: "creator-1" }));
 
   try {
-    const response = await fetchJson(server.url("/api/workflows"), {
+    const response = await fetchJson(server.url("/api/projects"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1371,7 +1371,7 @@ test("create workflow endpoint rejects missing and unknown project types", async
         projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: "agnostic" }, dataStorage: { mode: "both" } },
       },
     ]) {
-      const response = await fetchJson(server.url("/api/workflows"), {
+      const response = await fetchJson(server.url("/api/projects"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -1433,7 +1433,7 @@ test("create workflow endpoint requires a package UUID and declared data storage
     ];
 
     for (const entry of cases) {
-      const response = await fetchJson(server.url("/api/workflows"), {
+      const response = await fetchJson(server.url("/api/projects"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(entry.body),
@@ -1476,7 +1476,7 @@ test("create workflow endpoint validates and forwards optional project card meta
   const server = await listen(storage, createPrincipal(["projects.create"], { userId: "creator-1" }));
 
   try {
-    const response = await fetchJson(server.url("/api/workflows"), {
+    const response = await fetchJson(server.url("/api/projects"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1515,7 +1515,7 @@ test("create workflow endpoint rejects invalid project card metadata", async () 
   const server = await listen(storage, createPrincipal(["projects.create"]));
 
   try {
-    const response = await fetchJson(server.url("/api/workflows"), {
+    const response = await fetchJson(server.url("/api/projects"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1642,7 +1642,7 @@ test("member endpoint rejects owner demotion", async () => {
   const server = await listen(storage, createPrincipal(["projects.manage_own"], { userId: "owner-1" }));
 
   try {
-    const response = await fetchJson(server.url("/api/workflows/demo/members/owner-1"), {
+    const response = await fetchJson(server.url("/api/projects/demo/members/owner-1"), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role: "viewer" }),
@@ -1674,7 +1674,7 @@ test("manager cannot transfer ownership", async () => {
   const server = await listen(storage, createPrincipal(["projects.manage_own"], { userId: "manager-1" }));
 
   try {
-    const response = await fetchJson(server.url("/api/workflows/demo/members/viewer-2"), {
+    const response = await fetchJson(server.url("/api/projects/demo/members/viewer-2"), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role: "owner" }),
@@ -1719,7 +1719,7 @@ test("project creator can manage members without owner membership", async () => 
   const server = await listen(storage, createPrincipal(["projects.create"], { userId: "creator-1" }));
 
   try {
-    const memberResponse = await fetchJson(server.url("/api/workflows/demo/members/viewer-2"), {
+    const memberResponse = await fetchJson(server.url("/api/projects/demo/members/viewer-2"), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role: "viewer" }),
@@ -1733,7 +1733,7 @@ test("project creator can manage members without owner membership", async () => 
       createdAt: "2026-06-18T00:00:00.000Z",
     });
 
-    const invitationResponse = await fetchJson(server.url("/api/workflows/demo/invitations"), {
+    const invitationResponse = await fetchJson(server.url("/api/projects/demo/invitations"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role: "writer" }),
@@ -1768,7 +1768,7 @@ test("invitation endpoint creates a manager invitation with a token", async () =
   const server = await listen(storage, createPrincipal(["projects.manage_own"], { userId: "owner-1" }));
 
   try {
-    const response = await fetchJson(server.url("/api/workflows/demo/invitations"), {
+    const response = await fetchJson(server.url("/api/projects/demo/invitations"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role: "manager" }),
@@ -1787,14 +1787,14 @@ test("invitation endpoint rejects owner role and unknown roles", async () => {
   const server = await listen(createStorageStub({}), createPrincipal(["projects.manage_own"], { userId: "owner-1" }));
 
   try {
-    const ownerResponse = await fetchJson(server.url("/api/workflows/demo/invitations"), {
+    const ownerResponse = await fetchJson(server.url("/api/projects/demo/invitations"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role: "owner" }),
     });
     assert.equal(ownerResponse.errCode, 400);
 
-    const badResponse = await fetchJson(server.url("/api/workflows/demo/invitations"), {
+    const badResponse = await fetchJson(server.url("/api/projects/demo/invitations"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role: "superuser" }),
@@ -1812,7 +1812,7 @@ test("invitation revoke endpoint requires a still-pending invitation", async () 
   const server = await listen(storage, createPrincipal(["projects.manage_own"], { userId: "owner-1" }));
 
   try {
-    const response = await fetchJson(server.url("/api/workflows/demo/invitations/inv-1"), {
+    const response = await fetchJson(server.url("/api/projects/demo/invitations/inv-1"), {
       method: "DELETE",
     });
     assert.equal(response.errCode, 0);
@@ -1826,7 +1826,7 @@ test("invitation revoke endpoint requires a still-pending invitation", async () 
     createPrincipal(["projects.manage_own"], { userId: "owner-1" }),
   );
   try {
-    const response = await fetchJson(blockedServer.url("/api/workflows/demo/invitations/inv-1"), {
+    const response = await fetchJson(blockedServer.url("/api/projects/demo/invitations/inv-1"), {
       method: "DELETE",
     });
     assert.equal(response.errCode, 409);
@@ -1846,13 +1846,13 @@ test("publish endpoint forwards exact version and source preconditions", async (
   });
   const server = await listen(storage, createPrincipal(["projects.manage_all"]));
   try {
-    const response = await fetchJson(server.url("/api/workflows/demo/publish"), {
+    const response = await fetchJson(server.url("/api/projects/demo/publish"), {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ releaseLog: "Version notes", expectedVersion: "1.2.3", expectedSourceHash: sourceHash }),
     });
     assert.equal(response.errCode, 0);
     assert.deepEqual(published, [{ workflowName: "demo", releaseLog: "Version notes", expectedVersion: "1.2.3", expectedSourceHash: sourceHash, createdByUserId: "user-1" }]);
-    const invalid = await fetchJson(server.url("/api/workflows/demo/publish"), {
+    const invalid = await fetchJson(server.url("/api/projects/demo/publish"), {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expectedSourceHash: 123 }),
     });
     assert.equal(invalid.errCode, 400);
@@ -1875,7 +1875,7 @@ test("publish endpoint rejects callers without project management permission", a
   const server = await listen(storage, createPrincipal(["projects.read_all"]));
 
   try {
-    const response = await fetch(server.url("/api/workflows/demo/publish"), {
+    const response = await fetch(server.url("/api/projects/demo/publish"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ releaseLog: "test" }),
@@ -1907,7 +1907,7 @@ test("workflow KV endpoint forwards project filters", async () => {
   const server = await listen(storage);
 
   try {
-    const response = await fetchJson(server.url("/api/workflows/demo/kv?pageSize=25&scope=conversation&q=memory&valueType=object&linkState=unlinked&conversationId=Thread-1&runId=RUN-1"));
+    const response = await fetchJson(server.url("/api/projects/demo/kv?pageSize=25&scope=conversation&q=memory&valueType=object&linkState=unlinked&conversationId=Thread-1&runId=RUN-1"));
 
     assert.equal(response.errCode, 0);
     assert.deepEqual(response.data, { items: [], hasMore: false, total: 0 });
@@ -1932,7 +1932,7 @@ test("workflow KV detail endpoint forwards exact entry identity", async () => {
   const server = await listen(storage);
 
   try {
-    const response = await fetchJson(server.url("/api/workflows/demo/kv/entry?scope=conversation&key=conversation.state&conversationId=Thread-1"));
+    const response = await fetchJson(server.url("/api/projects/demo/kv/entry?scope=conversation&key=conversation.state&conversationId=Thread-1"));
 
     // loads full KV values only after a row is expanded.
     assert.equal(response.errCode, 0);
@@ -2382,19 +2382,19 @@ test("knowledge document endpoints forward CRUD payloads", async () => {
   const server = await listen(storage);
 
   try {
-    const list = await fetchJson(server.url("/api/workflows/demo/knowledge-documents?pageSize=10&cursor=20"));
-    const create = await fetchJson(server.url("/api/workflows/demo/knowledge-documents?response=summary"), {
+    const list = await fetchJson(server.url("/api/projects/demo/knowledge-documents?pageSize=10&cursor=20"));
+    const create = await fetchJson(server.url("/api/projects/demo/knowledge-documents?response=summary"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: "guide", title: "Guide", markdown: "# Guide" }),
     });
-    const get = await fetchJson(server.url("/api/workflows/demo/knowledge-documents/guide"));
-    const edit = await fetchJson(server.url("/api/workflows/demo/knowledge-documents/guide?response=summary"), {
+    const get = await fetchJson(server.url("/api/projects/demo/knowledge-documents/guide"));
+    const edit = await fetchJson(server.url("/api/projects/demo/knowledge-documents/guide?response=summary"), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: "Guide v2", markdown: "# Guide v2" }),
     });
-    const deleted = await fetchJson(server.url("/api/workflows/demo/knowledge-documents/guide"), {
+    const deleted = await fetchJson(server.url("/api/projects/demo/knowledge-documents/guide"), {
       method: "DELETE",
     });
 
@@ -2434,7 +2434,7 @@ test("knowledge summary responses use the bounded shared markdown preview", asyn
   const server = await listen(storage);
 
   try {
-    const response = await fetchJson(server.url("/api/workflows/demo/knowledge-documents?response=summary"), {
+    const response = await fetchJson(server.url("/api/projects/demo/knowledge-documents?response=summary"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: "large-guide", title: "Large guide", markdown: document.markdown }),
@@ -2486,7 +2486,7 @@ test("knowledge search endpoint forwards line context query parameters", async (
   const server = await listen(storage);
 
   try {
-    const response = await fetchJson(server.url("/api/workflows/demo/knowledge-documents/search?q=markdown&documentId=guide&beforeLines=1&afterLines=1&maxMatches=50&pageSize=25&cursor=75"));
+    const response = await fetchJson(server.url("/api/projects/demo/knowledge-documents/search?q=markdown&documentId=guide&beforeLines=1&afterLines=1&maxMatches=50&pageSize=25&cursor=75"));
 
     assert.equal(response.errCode, 0);
     assert.deepEqual(response.data, result);
@@ -2522,7 +2522,7 @@ test("knowledge document line endpoint forwards document id and range query para
   const server = await listen(storage);
 
   try {
-    const response = await fetchJson(server.url("/api/workflows/demo/knowledge-documents/guide/lines?startLine=2&endLine=4"));
+    const response = await fetchJson(server.url("/api/projects/demo/knowledge-documents/guide/lines?startLine=2&endLine=4"));
 
     assert.equal(response.errCode, 0);
     assert.deepEqual(response.data, result);
@@ -2582,7 +2582,7 @@ test("project token usage endpoint forwards conversation detail filters", async 
   const server = await listen(storage);
 
   try {
-    const response = await fetchJson(server.url("/api/workflows/demo/token-usage?conversationId=Thread-1&includeEntries=true"));
+    const response = await fetchJson(server.url("/api/projects/demo/token-usage?conversationId=Thread-1&includeEntries=true"));
 
     assert.equal(response.errCode, 0);
     assert.deepEqual(response.data, detail);
@@ -2612,19 +2612,19 @@ test("all member roles can read data while only writers and managers can mutate 
       });
       assert.equal((await request("get")).status, 200, role);
       assert.equal((await request("set")).status, role === "viewer" ? 403 : 200, role);
-      assert.equal((await fetch(server.url("/api/workflows/demo/knowledge-documents"))).status, 200, role);
-      assert.equal((await fetch(server.url("/api/workflows/demo/knowledge-documents"), {
+      assert.equal((await fetch(server.url("/api/projects/demo/knowledge-documents"))).status, 200, role);
+      assert.equal((await fetch(server.url("/api/projects/demo/knowledge-documents"), {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "Guide", markdown: "# Guide" }),
       })).status, role === "viewer" ? 403 : 201, role);
-      const bridge = await fetch(server.url("/api/workflows/demo/kanban/bridge"), {
+      const bridge = await fetch(server.url("/api/projects/demo/kanban/bridge"), {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ call: { requestId: "write", operation: "kv.setValue", input: { key: "settings", value: true } } }),
       });
       assert.equal(bridge.status, role === "viewer" ? 403 : 200, role);
       const downloadStatus = role === "owner" || role === "manager" ? 200 : 403;
-      assert.equal((await fetch(server.url("/api/workflows/demo/files?target=draft"))).status, downloadStatus, role);
-      assert.equal((await fetch(server.url("/api/workflows/demo/source-archive?target=1.0.0"))).status, downloadStatus, role);
-      assert.equal((await fetch(server.url("/api/workflows/demo/clone"), {
+      assert.equal((await fetch(server.url("/api/projects/demo/files?target=draft"))).status, downloadStatus, role);
+      assert.equal((await fetch(server.url("/api/projects/demo/source-archive?target=1.0.0"))).status, downloadStatus, role);
+      assert.equal((await fetch(server.url("/api/projects/demo/clone"), {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetWorkflowName: "copy" }),
       })).status, downloadStatus, role);
@@ -2640,19 +2640,19 @@ test("removed execution APIs return JSON 404 before authentication", async () =>
   const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   try {
     for (const [method, endpoint] of [
-      ["POST", "/workflows/demo/run"], ["POST", "/workflows/demo/run-stream"],
-      ["GET", "/workflows/demo/runs"], ["GET", "/workflows/demo/run-stats"],
-      ["GET", "/workflows/demo/structure"], ["POST", "/workflows/demo/resolve-params"],
-      ["GET", "/workflows/demo/env"], ["GET", "/workflows/demo/webhook"],
-      ["GET", "/workflows/demo/schedules"], ["POST", "/workflows/demo/mcp"],
-      ["POST", "/workflows/demo/versions/1.0.0/online"], ["GET", "/admin/runners"],
+      ["POST", "/projects/demo/run"], ["POST", "/projects/demo/run-stream"],
+      ["GET", "/projects/demo/runs"], ["GET", "/projects/demo/run-stats"],
+      ["GET", "/projects/demo/structure"], ["POST", "/projects/demo/resolve-params"],
+      ["GET", "/projects/demo/env"], ["GET", "/projects/demo/webhook"],
+      ["GET", "/projects/demo/schedules"], ["POST", "/projects/demo/mcp"],
+      ["POST", "/projects/demo/versions/1.0.0/online"], ["GET", "/admin/runners"],
       ["POST", "/runner/heartbeat"], ["POST", "/runtime/storage"],
     ]) {
       const response = await fetch(`${origin}/api${endpoint}`, { method });
       assert.equal(response.status, 404, `${method} ${endpoint}`);
       assert.equal((await response.json() as { errCode: number }).errCode, 404);
     }
-    assert.equal((await fetch(`${origin}/api/workflows`)).status, 401);
+    assert.equal((await fetch(`${origin}/api/projects`)).status, 401);
   } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
 });
 

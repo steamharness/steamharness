@@ -125,7 +125,7 @@ export function initI18n(options?: {
   return locale;
 }
 
-/** 当前解析后的语言（归一化到支持语言），供 HTTP 请求注入 X-Workflow-Locale 头。 */
+/** 当前解析后的语言（归一化到支持语言），供 HTTP 请求注入 X-SteamHarness-Locale 头。 */
 export function getCurrentLocale(): SupportedLocale {
   return normalizeLocale(i18n.language);
 }

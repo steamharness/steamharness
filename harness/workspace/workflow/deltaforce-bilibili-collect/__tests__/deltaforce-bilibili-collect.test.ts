@@ -728,7 +728,7 @@ function createMemoryFileStore() {
           ? Buffer.from(input.buffer)
           : Buffer.from(input.buffer);
       files.set(id, { name: input.name, mimeType: input.mimeType, buffer });
-      return { id, name: input.name, url: `/api/workflows/files/${encodeURIComponent(id)}` };
+      return { id, name: input.name, url: `/api/projects/files/${encodeURIComponent(id)}` };
     },
     resolveFile: (id: string) => files.get(id),
   };

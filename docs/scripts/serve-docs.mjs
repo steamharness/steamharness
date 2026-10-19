@@ -118,8 +118,8 @@ function writeHeaders(response, deployment, statusCode, type, size, immutable) {
     "Content-Length": String(size),
     "Content-Type": type,
     "X-Content-Type-Options": "nosniff",
-    "X-Workflow-Docs-Commit": String(deployment.commitSha ?? "local"),
-    "X-Workflow-Docs-Framework": "docusaurus",
+    "X-SteamHarness-Docs-Commit": String(deployment.commitSha ?? "local"),
+    "X-SteamHarness-Docs-Framework": "docusaurus",
   });
 }
 

@@ -96,11 +96,11 @@ export class ProjectServerClient {
     return payload.data;
   }
 
-  projects(signal: AbortSignal): Promise<ServerProject[]> { return this.request('/api/workflows', signal); }
+  projects(signal: AbortSignal): Promise<ServerProject[]> { return this.request('/api/projects', signal); }
   versions(id: string, signal: AbortSignal): Promise<ServerProjectVersions> {
-    return this.request(`/api/workflows/${encodeURIComponent(id)}/versions`, signal);
+    return this.request(`/api/projects/${encodeURIComponent(id)}/versions`, signal);
   }
   sourceShare(id: string, version: string, signal: AbortSignal): Promise<ServerProjectShare> {
-    return this.request(`/api/workflows/${encodeURIComponent(id)}/source-share?target=${encodeURIComponent(version)}`, signal);
+    return this.request(`/api/projects/${encodeURIComponent(id)}/source-share?target=${encodeURIComponent(version)}`, signal);
   }
 }

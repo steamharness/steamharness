@@ -28,7 +28,7 @@ test("Kanban files preserve binary bytes and reject other projects and conversat
   );
   try {
     await writeFile(join(root, "content"), bytes);
-    assert.deepEqual(await invoke("files.createFile", { name: "map.png", mimeType: "image/png", base64: bytes.toString("base64") }), { ...metadata, url: "/api/workflows/files/wf_abc123" });
+    assert.deepEqual(await invoke("files.createFile", { name: "map.png", mimeType: "image/png", base64: bytes.toString("base64") }), { ...metadata, url: "/api/projects/files/wf_abc123" });
     assert.deepEqual((await invoke("files.readFile", { fileId: metadata.id }) as { base64: string }).base64, bytes.toString("base64"));
     owner = "another-project";
     await assert.rejects(invoke("files.readFile", { fileId: metadata.id }), /unavailable/);

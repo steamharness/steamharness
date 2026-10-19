@@ -22,7 +22,7 @@ document is created or updated in PostgreSQL with a stable conversation id.
 display name:
 
 ```bash
-curl -X POST "$STEAMHARNESS_SERVER_URL/api/workflows/$STEAMHARNESS_ID/run" \
+curl -X POST "$STEAMHARNESS_SERVER_URL/api/projects/$STEAMHARNESS_ID/run" \
   -H "Authorization: Bearer $STEAMHARNESS_SERVER_ADMIN_KEY" \
   -H "Content-Type: application/json" \
   -d '{

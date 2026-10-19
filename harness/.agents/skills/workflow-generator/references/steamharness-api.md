@@ -992,9 +992,9 @@ const frame = await context.files?.createFile?.({
 });
 ```
 
-`createFile` 是可选方法：只有 server-backed runtime file storage 存在时可用，否则抛 `workflow_execution`。本地宿主或 CLI 已显式连接服务器时可调用，未连接时报错，不回退本地。默认单文件上限 50 MiB，省略 `kind` 时按 mime 推导，返回 `{ storage: "server", url: "/api/workflows/files/<id>" }`。Remote file store 可通过 `context.files.resolveFile(reference)` 鉴权读回服务器文件的原始字节，不使用引用中的任意 URL 或磁盘路径。
+`createFile` 是可选方法：只有 server-backed runtime file storage 存在时可用，否则抛 `workflow_execution`。本地宿主或 CLI 已显式连接服务器时可调用，未连接时报错，不回退本地。默认单文件上限 50 MiB，省略 `kind` 时按 mime 推导，返回 `{ storage: "server", url: "/api/projects/files/<id>" }`。Remote file store 可通过 `context.files.resolveFile(reference)` 鉴权读回服务器文件的原始字节，不使用引用中的任意 URL 或磁盘路径。
 
-返回 reference 使用 server file URL 形态 `/api/workflows/files/<fileId>`。Desktop 或 CLI 本地 run 只有连接 server 时才能创建这些 reference；否则调用会在 runtime 失败，而不是回退到本地文件。
+返回 reference 使用 server file URL 形态 `/api/projects/files/<fileId>`。Desktop 或 CLI 本地 run 只有连接 server 时才能创建这些 reference；否则调用会在 runtime 失败，而不是回退到本地文件。
 
 Output node 示例：
 
@@ -1590,7 +1590,7 @@ Server 提供项目创建、上传、不可变源码发布、历史版本下载�
 
 **workspace 子命令**（连接 SteamHarness Server 时）：
 
-`login`、`logout`、`status`、`health`、`pack`、`upload`、`preparation`、`download`、`publish`、`versions`、`file-upload`、`file-download`、`file-delete`。常用 flag：`--path <dir>`、`--create`、`--no-wait`、`--project-group`、`--publish-group`、`--deployment <id>`、`--dependency <alias>=<路径>`。项目端点：`/api/workflows/<id>/package|publish|versions|source-files|source-archive`。
+`login`、`logout`、`status`、`health`、`pack`、`upload`、`preparation`、`download`、`publish`、`versions`、`file-upload`、`file-download`、`file-delete`。常用 flag：`--path <dir>`、`--create`、`--no-wait`、`--project-group`、`--publish-group`、`--deployment <id>`、`--dependency <alias>=<路径>`。项目端点：`/api/projects/<id>/package|publish|versions|source-files|source-archive`。
 
 ## 验证
 

@@ -222,7 +222,7 @@ describe('Kanban CLI Web workspace', () => {
     expect((await bridge('kv.getValue', { key: 'board' })).value).toEqual({ result: 'server' });
     expect((await bridge('files.createFile', { name: 'file.txt', base64: 'aGVsbG8=' })).value).toEqual({ result: 'server' });
     expect(runtime.kanbanBridge).not.toHaveBeenCalled(); expect(JSON.stringify(await state())).not.toContain('private-kanban-token');
-    expect(remote).toHaveBeenCalledWith(expect.stringContaining(`/api/workflows/${id}/kanban/bridge`), expect.objectContaining({ redirect: 'error' }));
+    expect(remote).toHaveBeenCalledWith(expect.stringContaining(`/api/projects/${id}/kanban/bridge`), expect.objectContaining({ redirect: 'error' }));
     await app.setHostConnection(undefined); expect((await bridge('kv.getValue', { key: 'board' })).ok).toBe(false);
   });
 });

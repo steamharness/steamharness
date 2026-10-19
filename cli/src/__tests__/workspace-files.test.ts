@@ -36,7 +36,7 @@ it("uploads a business image, reads the original bytes back, and deletes only it
   vi.stubGlobal("fetch", fetch);
 
   await main(["file-upload", projectId, "--file", source, ...connection]);
-  expect(fetch.mock.calls[0]![0]).toBe(`https://server.example/api/workflows/${projectId}/files?fileName=map.png&mimeType=image%2Fpng`);
+  expect(fetch.mock.calls[0]![0]).toBe(`https://server.example/api/projects/${projectId}/files?fileName=map.png&mimeType=image%2Fpng`);
   expect(fetch.mock.calls[0]![1]).toMatchObject({ method: "POST", headers: { Authorization: "Bearer test-token" } });
   expect(Buffer.from(fetch.mock.calls[0]![1].body)).toEqual(bytes);
   expect(console.log).toHaveBeenCalledWith(expect.stringContaining('"storage": "server"'));
@@ -45,7 +45,7 @@ it("uploads a business image, reads the original bytes back, and deletes only it
   expect(await readFile(output)).toEqual(bytes);
   expect(fetch.mock.calls[1]![1]).toMatchObject({ headers: { Authorization: "Bearer test-token" }, redirect: "error" });
   await main(["file-delete", reference.id, ...connection]);
-  expect(fetch.mock.calls[2]![0]).toBe("https://server.example/api/workflows/files/wf_abc123");
+  expect(fetch.mock.calls[2]![0]).toBe("https://server.example/api/projects/files/wf_abc123");
   expect(fetch.mock.calls[2]![1].method).toBe("DELETE");
 });
 

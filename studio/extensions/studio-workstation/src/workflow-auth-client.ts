@@ -177,7 +177,7 @@ export class ServerClient {
 
   async resource(connection: Connection, kind: string, target: Record<string, string>): Promise<unknown> {
     if (normalizeWorkflowServerUrl(connection.serverUrl) !== this.serverUrl || !target.projectId) { throw new AuthError('Invalid resource server or project.'); }
-    const prefix = `/api/workflows/${encodeURIComponent(target.projectId)}`;
+    const prefix = `/api/projects/${encodeURIComponent(target.projectId)}`;
     const auth = { accessToken: connection.accessToken };
     if (kind === 'knowledge') {
       return this.request(`${prefix}/knowledge-documents${target.documentId ? `/${encodeURIComponent(target.documentId)}` : '?pageSize=100'}`, auth);

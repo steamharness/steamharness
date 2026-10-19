@@ -197,8 +197,8 @@ async function waitForHealthyDocs(options) {
       await response.body?.cancel();
       if (
         response.ok
-        && response.headers.get("x-workflow-docs-framework") === "docusaurus"
-        && response.headers.get("x-workflow-docs-commit") === options.commitSha
+        && response.headers.get("x-steamharness-docs-framework") === "docusaurus"
+        && response.headers.get("x-steamharness-docs-commit") === options.commitSha
       ) return;
     } catch {
       // The static server may still be binding its port.

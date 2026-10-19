@@ -591,7 +591,7 @@ describe("DetailPage management tabs", () => {
     const onResolveKnowledgeImageSrc = vi.fn().mockResolvedValue("blob:http://localhost/preview");
     const document = {
       ...createKnowledgeDocument(),
-      markdown: "![0s 截图](/api/workflows/files/wf_5043435afa7b49c9a6b9342a1b61c920)",
+      markdown: "![0s 截图](/api/projects/files/wf_5043435afa7b49c9a6b9342a1b61c920)",
     };
     renderDetailPage({
       activeTab: "knowledge",
@@ -603,12 +603,12 @@ describe("DetailPage management tabs", () => {
     await waitFor(() => {
       expect(screen.getByRole("img", { name: "0s 截图" }).getAttribute("src")).toBe("blob:http://localhost/preview");
     });
-    expect(onResolveKnowledgeImageSrc).toHaveBeenCalledWith("/api/workflows/files/wf_5043435afa7b49c9a6b9342a1b61c920");
+    expect(onResolveKnowledgeImageSrc).toHaveBeenCalledWith("/api/projects/files/wf_5043435afa7b49c9a6b9342a1b61c920");
   });
 
   it("keeps knowledge preview stable by deferring screenshot-heavy markdown images", async () => {
     const onResolveKnowledgeImageSrc = vi.fn().mockResolvedValue("blob:http://localhost/manual-preview");
-    const heavyMarkdown = Array.from({ length: 49 }, (_, index) => `![${index}s 截图](/api/workflows/files/wf_${index})`).join("\n\n");
+    const heavyMarkdown = Array.from({ length: 49 }, (_, index) => `![${index}s 截图](/api/projects/files/wf_${index})`).join("\n\n");
     renderDetailPage({
       activeTab: "knowledge",
       knowledgeRepository: createKnowledgeRepository({ document: { ...createKnowledgeDocument(), markdown: heavyMarkdown } }),
@@ -623,7 +623,7 @@ describe("DetailPage management tabs", () => {
     await waitFor(() => {
       expect(screen.getByRole("img", { name: "0s 截图" }).getAttribute("src")).toBe("blob:http://localhost/manual-preview");
     });
-    expect(onResolveKnowledgeImageSrc).toHaveBeenCalledWith("/api/workflows/files/wf_0");
+    expect(onResolveKnowledgeImageSrc).toHaveBeenCalledWith("/api/projects/files/wf_0");
   });
 });
 

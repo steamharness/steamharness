@@ -942,9 +942,9 @@ export function createApiRouter(
   const raw = express.raw({ type: "*/*", limit: DEFAULT_UPLOAD_LIMIT_BYTES });
   const projectCardImage = express.raw({ type: "image/webp", limit: PROJECT_CARD_IMAGE_MAX_BYTES });
 
-  // POST /api/workflows/:name/files
+  // POST /api/projects/:name/files
   router.post(
-    "/workflows/:name/files",
+    "/projects/:name/files",
     authenticate,
     raw,
     asyncHandler(async (req, res) => {
@@ -955,7 +955,7 @@ export function createApiRouter(
         : Buffer.from(req.body as Uint8Array);
       const fileName =
         readOptionalString(req.query["fileName"], "fileName") ??
-        readOptionalString(req.headers["x-workflow-file-name"], "x-workflow-file-name") ??
+        readOptionalString(req.headers["x-steamharness-file-name"], "x-steamharness-file-name") ??
         "file";
       const mimeType =
         readOptionalString(req.query["mimeType"], "mimeType") ??
@@ -977,9 +977,9 @@ export function createApiRouter(
     }),
   );
 
-  // POST /api/workflows/:name/project-card-image
+  // POST /api/projects/:name/project-card-image
   router.post(
-    "/workflows/:name/project-card-image",
+    "/projects/:name/project-card-image",
     authenticate,
     projectCardImage,
     asyncHandler(async (req, res) => {
@@ -1005,9 +1005,9 @@ export function createApiRouter(
     }),
   );
 
-  // PUT /api/workflows/:name/project-card
+  // PUT /api/projects/:name/project-card
   router.put(
-    "/workflows/:name/project-card",
+    "/projects/:name/project-card",
     authenticate,
     json,
     asyncHandler(async (req, res) => {
@@ -1033,9 +1033,9 @@ export function createApiRouter(
     }),
   );
 
-  // PUT /api/workflows/:name/project-info
+  // PUT /api/projects/:name/project-info
   router.put(
-    "/workflows/:name/project-info",
+    "/projects/:name/project-info",
     authenticate,
     json,
     asyncHandler(async (req, res) => {
@@ -1065,7 +1065,7 @@ export function createApiRouter(
   );
 
   router.get(
-    "/workflows/:name/related-projects",
+    "/projects/:name/related-projects",
     authenticate,
     asyncHandler(async (req, res) => {
       await requireProjectReadAccess(req, storage);
@@ -1074,7 +1074,7 @@ export function createApiRouter(
   );
 
   router.put(
-    "/workflows/:name/related-projects/:alias",
+    "/projects/:name/related-projects/:alias",
     authenticate,
     json,
     asyncHandler(async (req, res) => {
@@ -1107,7 +1107,7 @@ export function createApiRouter(
   );
 
   router.delete(
-    "/workflows/:name/related-projects/:alias",
+    "/projects/:name/related-projects/:alias",
     authenticate,
     asyncHandler(async (req, res) => {
       const { principal } = await requireProjectManageAccess(req, storage);
@@ -1128,9 +1128,9 @@ export function createApiRouter(
     }),
   );
 
-  // GET /api/workflows/files/:fileId
+  // GET /api/projects/files/:fileId
   router.get(
-    "/workflows/files/:fileId",
+    "/projects/files/:fileId",
     authenticate,
     asyncHandler(async (req, res) => {
       const principal = requireRequestPrincipal(req);
@@ -1150,9 +1150,9 @@ export function createApiRouter(
     }),
   );
 
-  // DELETE /api/workflows/files/:fileId
+  // DELETE /api/projects/files/:fileId
   router.delete(
-    "/workflows/files/:fileId",
+    "/projects/files/:fileId",
     authenticate,
     asyncHandler(async (req, res) => {
       const principal = requireRequestPrincipal(req);
@@ -1167,9 +1167,9 @@ export function createApiRouter(
     }),
   );
 
-  // GET /api/workflows
+  // GET /api/projects
   router.get(
-    "/workflows",
+    "/projects",
     authenticate,
     asyncHandler(async (req, res) => {
       const principal = requireRequestPrincipal(req);
@@ -1229,7 +1229,7 @@ export function createApiRouter(
   );
 
   router.post(
-    "/workflows/:name/kanban/bridge",
+    "/projects/:name/kanban/bridge",
     authenticate,
     kanbanJson,
     asyncHandler(async (req, res) => {
@@ -1271,7 +1271,7 @@ export function createApiRouter(
   );
 
   router.get(
-    "/workflows/:name/kanban/related-project-revisions",
+    "/projects/:name/kanban/related-project-revisions",
     authenticate,
     asyncHandler(async (req, res) => {
       const { principal } = await requireProjectReadAccess(req, storage);
@@ -1401,7 +1401,7 @@ export function createApiRouter(
   );
 
   router.post(
-    "/workflows",
+    "/projects",
     authenticate,
     json,
     asyncHandler(async (req, res) => {
@@ -1621,7 +1621,7 @@ export function createApiRouter(
       }
       const archiveName =
         (req.query["fileName"] as string | undefined) ??
-        (req.headers["x-workflow-package-name"] as string | undefined) ??
+        (req.headers["x-steamharness-package-name"] as string | undefined) ??
         `project-group-${deployment.id}.tgz`;
       const archiveBuffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body as string);
       const result = await storage.enqueueProjectGroupPreparation({
@@ -1663,9 +1663,9 @@ export function createApiRouter(
     }),
   );
 
-  // POST /api/workflows/:name/init  (create from template files)
+  // POST /api/projects/:name/init  (create from template files)
   router.post(
-    "/workflows/:name/init",
+    "/projects/:name/init",
     authenticate,
     json,
     asyncHandler(async (req, res) => {
@@ -1677,9 +1677,9 @@ export function createApiRouter(
     }),
   );
 
-  // POST /api/workflows/:name/package
+  // POST /api/projects/:name/package
   router.post(
-    "/workflows/:name/package",
+    "/projects/:name/package",
     authenticate,
     raw,
     asyncHandler(async (req, res) => {
@@ -1687,7 +1687,7 @@ export function createApiRouter(
       const { name } = req.params;
       const archiveName =
         (req.query["fileName"] as string | undefined) ??
-        (req.headers["x-workflow-package-name"] as string | undefined) ??
+        (req.headers["x-steamharness-package-name"] as string | undefined) ??
         `${name}.tgz`;
       const createOnly = req.query["mode"] === "create";
       const archiveBuffer = Buffer.isBuffer(req.body)
@@ -1718,7 +1718,7 @@ export function createApiRouter(
 
   // Preparation jobs remain queryable after clients disconnect.
   router.get(
-    "/workflows/:name/preparations/latest",
+    "/projects/:name/preparations/latest",
     authenticate,
     asyncHandler(async (req, res) => {
       await requireProjectReadAccess(req, storage);
@@ -1731,7 +1731,7 @@ export function createApiRouter(
   );
 
   router.get(
-    "/workflows/:name/preparations/:jobId",
+    "/projects/:name/preparations/:jobId",
     authenticate,
     asyncHandler(async (req, res) => {
       await requireProjectReadAccess(req, storage);
@@ -1739,9 +1739,9 @@ export function createApiRouter(
     }),
   );
 
-  // GET /api/workflows/:name/files
+  // GET /api/projects/:name/files
   router.get(
-    "/workflows/:name/files",
+    "/projects/:name/files",
     authenticate,
     asyncHandler(async (req, res) => {
       if (!await canDownloadProjectSourceForPrincipal(storage, requireRequestPrincipal(req), req.params.name)) {
@@ -1757,7 +1757,7 @@ export function createApiRouter(
   // Source localization has a dedicated permission boundary and
   // never falls back to the ordinary runtime/file-read response.
   router.get(
-    "/workflows/:name/source-files",
+    "/projects/:name/source-files",
     authenticate,
     asyncHandler(async (req, res) => {
       const principal = requireRequestPrincipal(req);
@@ -1775,7 +1775,7 @@ export function createApiRouter(
   );
 
   router.get(
-    "/workflows/:name/source-share",
+    "/projects/:name/source-share",
     authenticate,
     asyncHandler(async (req, res) => {
       const principal = requireRequestPrincipal(req);
@@ -1789,7 +1789,7 @@ export function createApiRouter(
   );
 
   router.get(
-    "/workflows/:name/source-archive",
+    "/projects/:name/source-archive",
     authenticate,
     asyncHandler(async (req, res) => {
       const principal = requireRequestPrincipal(req);
@@ -1805,7 +1805,7 @@ export function createApiRouter(
   );
 
   router.get(
-    "/workflows/:name/dependencies",
+    "/projects/:name/dependencies",
     authenticate,
     asyncHandler(async (req, res) => {
       const { principal } = await requireProjectReadAccess(req, storage);
@@ -1820,7 +1820,7 @@ export function createApiRouter(
   );
 
   router.get(
-    "/workflows/:name/project-group-download",
+    "/projects/:name/project-group-download",
     authenticate,
     asyncHandler(async (req, res) => {
       const principal = requireRequestPrincipal(req);
@@ -1840,7 +1840,7 @@ export function createApiRouter(
   );
 
   router.get(
-    "/workflows/:name/source-access-requests",
+    "/projects/:name/source-access-requests",
     authenticate,
     asyncHandler(async (req, res) => {
       await requireProjectManageAccess(req, storage);
@@ -1852,7 +1852,7 @@ export function createApiRouter(
   );
 
   router.patch(
-    "/workflows/:name/source-access-requests/:requestId",
+    "/projects/:name/source-access-requests/:requestId",
     authenticate,
     json,
     asyncHandler(async (req, res) => {
@@ -1872,7 +1872,7 @@ export function createApiRouter(
   );
 
   router.delete(
-    "/workflows/:name/source-capabilities/:userId",
+    "/projects/:name/source-capabilities/:userId",
     authenticate,
     asyncHandler(async (req, res) => {
       const { principal } = await requireProjectManageAccess(req, storage);
@@ -1914,7 +1914,7 @@ export function createApiRouter(
   );
 
   router.get(
-    "/workflows/:name/kanban",
+    "/projects/:name/kanban",
     authenticate,
     asyncHandler(async (req, res) => {
       const { principal } = await requireProjectReadAccess(req, storage);
@@ -1934,14 +1934,14 @@ export function createApiRouter(
         preview: {
           nonce,
           expiresAt: previewCapability.expiresAt,
-          url: `/api/workflows/${encodeURIComponent(req.params.name)}/kanban/previews/${encodeURIComponent(previewCapability.token)}/${nonce}/${encodeURIComponent(workspace.resolvedTarget)}/${encodeKanbanAssetUrlPath(workspace.entry)}`,
+          url: `/api/projects/${encodeURIComponent(req.params.name)}/kanban/previews/${encodeURIComponent(previewCapability.token)}/${nonce}/${encodeURIComponent(workspace.resolvedTarget)}/${encodeKanbanAssetUrlPath(workspace.entry)}`,
         },
       }));
     }),
   );
 
   router.post(
-    "/workflows/:name/kanban/configurations",
+    "/projects/:name/kanban/configurations",
     authenticate,
     json,
     asyncHandler(async (req, res) => {
@@ -1957,7 +1957,7 @@ export function createApiRouter(
   );
 
   router.patch(
-    "/workflows/:name/kanban/configurations/:configurationId",
+    "/projects/:name/kanban/configurations/:configurationId",
     authenticate,
     json,
     asyncHandler(async (req, res) => {
@@ -1988,7 +1988,7 @@ export function createApiRouter(
   );
 
   router.put(
-    "/workflows/:name/kanban/active-configuration",
+    "/projects/:name/kanban/active-configuration",
     authenticate,
     json,
     asyncHandler(async (req, res) => {
@@ -2004,7 +2004,7 @@ export function createApiRouter(
   );
 
   router.delete(
-    "/workflows/:name/kanban/configurations/:configurationId",
+    "/projects/:name/kanban/configurations/:configurationId",
     authenticate,
     asyncHandler(async (req, res) => {
       const { principal } = await requireProjectReadAccess(req, storage);
@@ -2018,7 +2018,7 @@ export function createApiRouter(
   );
 
   router.get(
-    "/workflows/:name/members",
+    "/projects/:name/members",
     authenticate,
     asyncHandler(async (req, res) => {
       await requireProjectReadAccess(req, storage);
@@ -2027,7 +2027,7 @@ export function createApiRouter(
   );
 
   router.put(
-    "/workflows/:name/members/:userId",
+    "/projects/:name/members/:userId",
     authenticate,
     json,
     asyncHandler(async (req, res) => {
@@ -2071,7 +2071,7 @@ export function createApiRouter(
   );
 
   router.delete(
-    "/workflows/:name/members/:userId",
+    "/projects/:name/members/:userId",
     authenticate,
     asyncHandler(async (req, res) => {
       const { principal, access } = await requireProjectMemberManageAccess(req, storage);
@@ -2099,7 +2099,7 @@ export function createApiRouter(
   // user join this project via a server-issued token. The API does not email
   // the link; the inviter copies it from the UI and shares it manually.
   router.post(
-    "/workflows/:name/invitations",
+    "/projects/:name/invitations",
     authenticate,
     json,
     asyncHandler(async (req, res) => {
@@ -2132,7 +2132,7 @@ export function createApiRouter(
   );
 
   router.get(
-    "/workflows/:name/invitations",
+    "/projects/:name/invitations",
     authenticate,
     asyncHandler(async (req, res) => {
       await requireProjectMemberManageAccess(req, storage);
@@ -2141,7 +2141,7 @@ export function createApiRouter(
   );
 
   router.delete(
-    "/workflows/:name/invitations/:invitationId",
+    "/projects/:name/invitations/:invitationId",
     authenticate,
     asyncHandler(async (req, res) => {
       const { principal } = await requireProjectMemberManageAccess(req, storage);
@@ -2233,7 +2233,7 @@ export function createApiRouter(
   );
 
   router.patch(
-    "/workflows/:name/visibility",
+    "/projects/:name/visibility",
     authenticate,
     json,
     asyncHandler(async (req, res) => {
@@ -2261,9 +2261,9 @@ export function createApiRouter(
     }),
   );
 
-  // PUT /api/workflows/:name/draft/files
+  // PUT /api/projects/:name/draft/files
   router.put(
-    "/workflows/:name/draft/files",
+    "/projects/:name/draft/files",
     authenticate,
     json,
     asyncHandler(async (req, res) => {
@@ -2293,9 +2293,9 @@ export function createApiRouter(
     }),
   );
 
-  // POST /api/workflows/:name/clone
+  // POST /api/projects/:name/clone
   router.post(
-    "/workflows/:name/clone",
+    "/projects/:name/clone",
     authenticate,
     json,
     asyncHandler(async (req, res) => {
@@ -2334,9 +2334,9 @@ export function createApiRouter(
     }),
   );
 
-  // PATCH /api/workflows/:name/info
+  // PATCH /api/projects/:name/info
   router.patch(
-    "/workflows/:name/info",
+    "/projects/:name/info",
     authenticate,
     json,
     asyncHandler(async (req, res) => {
@@ -2368,9 +2368,9 @@ export function createApiRouter(
     }),
   );
 
-  // DELETE /api/workflows/:name
+  // DELETE /api/projects/:name
   router.delete(
-    "/workflows/:name",
+    "/projects/:name",
     authenticate,
     asyncHandler(async (req, res) => {
       const { principal } = await requireProjectManageAccess(req, storage);
@@ -2387,9 +2387,9 @@ export function createApiRouter(
     }),
   );
 
-  // POST /api/workflows/:name/publish
+  // POST /api/projects/:name/publish
   router.post(
-    "/workflows/:name/publish",
+    "/projects/:name/publish",
     authenticate,
     json,
     asyncHandler(async (req, res) => {
@@ -2419,9 +2419,9 @@ export function createApiRouter(
     }),
   );
 
-  // GET /api/workflows/:name/versions
+  // GET /api/projects/:name/versions
   router.get(
-    "/workflows/:name/versions",
+    "/projects/:name/versions",
     authenticate,
     asyncHandler(async (req, res) => {
       await requireProjectReadAccess(req, storage);
@@ -2431,7 +2431,7 @@ export function createApiRouter(
   );
 
   router.get(
-    "/workflows/:name/data-summary",
+    "/projects/:name/data-summary",
     authenticate,
     asyncHandler(async (req, res) => {
       await requireProjectReadAccess(req, storage);
@@ -2439,9 +2439,9 @@ export function createApiRouter(
     }),
   );
 
-  // GET /api/workflows/:name/kv
+  // GET /api/projects/:name/kv
   router.get(
-    "/workflows/:name/kv",
+    "/projects/:name/kv",
     authenticate,
     asyncHandler(async (req, res) => {
       await requireProjectReadAccess(req, storage);
@@ -2459,9 +2459,9 @@ export function createApiRouter(
     }),
   );
 
-  // GET /api/workflows/:name/kv/entry
+  // GET /api/projects/:name/kv/entry
   router.get(
-    "/workflows/:name/kv/entry",
+    "/projects/:name/kv/entry",
     authenticate,
     asyncHandler(async (req, res) => {
       await requireProjectReadAccess(req, storage);
@@ -2477,9 +2477,9 @@ export function createApiRouter(
     }),
   );
 
-  // DELETE /api/workflows/:name/kv/entry
+  // DELETE /api/projects/:name/kv/entry
   router.delete(
-    "/workflows/:name/kv/entry",
+    "/projects/:name/kv/entry",
     authenticate,
     asyncHandler(async (req, res) => {
       await requireProjectStorageWriteAccess(req, storage);
@@ -2493,9 +2493,9 @@ export function createApiRouter(
     }),
   );
 
-  // GET /api/workflows/:name/knowledge-documents
+  // GET /api/projects/:name/knowledge-documents
   router.get(
-    "/workflows/:name/knowledge-documents",
+    "/projects/:name/knowledge-documents",
     authenticate,
     asyncHandler(async (req, res) => {
       await requireProjectReadAccess(req, storage);
@@ -2507,9 +2507,9 @@ export function createApiRouter(
     }),
   );
 
-  // POST /api/workflows/:name/knowledge-documents
+  // POST /api/projects/:name/knowledge-documents
   router.post(
-    "/workflows/:name/knowledge-documents",
+    "/projects/:name/knowledge-documents",
     authenticate,
     json,
     asyncHandler(async (req, res) => {
@@ -2529,9 +2529,9 @@ export function createApiRouter(
     }),
   );
 
-  // GET /api/workflows/:name/knowledge-documents/search
+  // GET /api/projects/:name/knowledge-documents/search
   router.get(
-    "/workflows/:name/knowledge-documents/search",
+    "/projects/:name/knowledge-documents/search",
     authenticate,
     asyncHandler(async (req, res) => {
       await requireProjectReadAccess(req, storage);
@@ -2549,9 +2549,9 @@ export function createApiRouter(
     }),
   );
 
-  // GET /api/workflows/:name/knowledge-documents/:documentId/lines
+  // GET /api/projects/:name/knowledge-documents/:documentId/lines
   router.get(
-    "/workflows/:name/knowledge-documents/:documentId/lines",
+    "/projects/:name/knowledge-documents/:documentId/lines",
     authenticate,
     asyncHandler(async (req, res) => {
       await requireProjectReadAccess(req, storage);
@@ -2565,9 +2565,9 @@ export function createApiRouter(
     }),
   );
 
-  // GET /api/workflows/:name/knowledge-documents/:documentId
+  // GET /api/projects/:name/knowledge-documents/:documentId
   router.get(
-    "/workflows/:name/knowledge-documents/:documentId",
+    "/projects/:name/knowledge-documents/:documentId",
     authenticate,
     asyncHandler(async (req, res) => {
       await requireProjectReadAccess(req, storage);
@@ -2576,9 +2576,9 @@ export function createApiRouter(
     }),
   );
 
-  // PUT /api/workflows/:name/knowledge-documents/:documentId
+  // PUT /api/projects/:name/knowledge-documents/:documentId
   router.put(
-    "/workflows/:name/knowledge-documents/:documentId",
+    "/projects/:name/knowledge-documents/:documentId",
     authenticate,
     json,
     asyncHandler(async (req, res) => {
@@ -2596,9 +2596,9 @@ export function createApiRouter(
     }),
   );
 
-  // DELETE /api/workflows/:name/knowledge-documents/:documentId
+  // DELETE /api/projects/:name/knowledge-documents/:documentId
   router.delete(
-    "/workflows/:name/knowledge-documents/:documentId",
+    "/projects/:name/knowledge-documents/:documentId",
     authenticate,
     asyncHandler(async (req, res) => {
       await requireProjectStorageWriteAccess(req, storage);
@@ -2607,9 +2607,9 @@ export function createApiRouter(
     }),
   );
 
-  // GET /api/workflows/:name/token-usage
+  // GET /api/projects/:name/token-usage
   router.get(
-    "/workflows/:name/token-usage",
+    "/projects/:name/token-usage",
     authenticate,
     asyncHandler(async (req, res) => {
       await requireProjectManageAccess(req, storage);

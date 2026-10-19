@@ -176,9 +176,9 @@ NODE_PATH=<repo-root>/node_modules pnpm -C <repo-root> exec tsc -p <workflow-dir
 
 ```bash
 steamharness workspace pack <workflow-name> --path <workflow-dir> --output /tmp/<workflow>.tgz
-curl -X POST -H 'Authorization: Bearer <server-token>' -H 'Content-Type: application/gzip' -H 'X-Workflow-Package-Name: <workflow>.tgz' --data-binary @/tmp/<workflow>.tgz http://localhost:<port>/api/workflows/<workflow>/package
-curl -X POST -H 'Authorization: Bearer <server-token>' -H 'Content-Type: application/json' -d '{"releaseLog":"publish source snapshot"}' http://localhost:<port>/api/workflows/<workflow>/publish
-curl -H 'Authorization: Bearer <server-token>' http://localhost:<port>/api/workflows/<workflow>/versions
+curl -X POST -H 'Authorization: Bearer <server-token>' -H 'Content-Type: application/gzip' -H 'X-SteamHarness-Package-Name: <workflow>.tgz' --data-binary @/tmp/<workflow>.tgz http://localhost:<port>/api/projects/<workflow>/package
+curl -X POST -H 'Authorization: Bearer <server-token>' -H 'Content-Type: application/json' -d '{"releaseLog":"publish source snapshot"}' http://localhost:<port>/api/projects/<workflow>/publish
+curl -H 'Authorization: Bearer <server-token>' http://localhost:<port>/api/projects/<workflow>/versions
 ```
 
 服务器连接异常时检查 `health` 和服务日志；项目运行日志只在本地宿主查看：

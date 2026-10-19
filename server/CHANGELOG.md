@@ -52,7 +52,7 @@
 
 ### 新特性
 
-- **运行语言随请求注入**：第一方 API 读取 `X-Workflow-Locale`，为管理端、Embed、Webhook 和参数解析注入运行语言。
+- **运行语言随请求注入**：第一方 API 读取 `X-SteamHarness-Locale`，为管理端、Embed、Webhook 和参数解析注入运行语言。
 - **按版本授权的只读 KV 数据源**：Kanban Studio 与 Embed 经鉴权 revision SSE 自动刷新，权限撤销后立即失效。
 - **Workflow 定时任务**：支持固定版本和入口的计划、常用时间规则、立即运行及 fire 历史。
 
@@ -102,7 +102,7 @@
 ### 新增
 
 - 新增 云端项目创建原子接收 UUID 和完整 `projectInfo`，Desktop 可按同 UUID 创建或恢复绑定。
-- 新增 项目默认名称、本地化名称、手工声明和展示平台，经项目列表与 `PUT /api/workflows/{id}/project-info` 提供。
+- 新增 项目默认名称、本地化名称、手工声明和展示平台，经项目列表与 `PUT /api/projects/{id}/project-info` 提供。
 - 新增 每个版本固化 Server、macOS 和 Windows 发行目标，仅本地版本跳过依赖安装与 runtime 构建。
 - 新增 源码与项目组下载按 macOS/Windows 发行目标校验并独立解析平台 `latest`。
 - 新增 Alpha 部署链路与正式版共用数据库和 bucket，隔离代码、进程、日志和本地缓存。
@@ -166,7 +166,7 @@
 
 - **本地执行模式**：`pnpm dev` / `pnpm start:local` 默认在本机跑云端 Workflow，无需 Runner 或容器构建。参见 [部署](../docs/guides/server/deployment.mdx)。
 - **关联项目跨服务调用**：运行容器可读目标项目知识库并调用其入口，调用方以发起者身份执行。参见 [项目管理](../docs/guides/server/project-management.mdx)。
-- **项目 KV 条目删除**：新增 `DELETE /api/workflows/:name/kv/entry`，按 scope 与 key 删除单条项目 KV。
+- **项目 KV 条目删除**：新增 `DELETE /api/projects/:name/kv/entry`，按 scope 与 key 删除单条项目 KV。
 
 ### 破坏性变更
 
@@ -212,7 +212,7 @@
 
 ### 移除
 
-- 移除 `GET/PUT /api/workflows/{workflowName}/embed` 与全部 `/embed/**` 路由。
+- 移除 `GET/PUT /api/projects/{projectId}/embed` 与全部 `/embed/**` 路由。
 - 移除 `wfembed` 域名与 `STEAMHARNESS_EMBED_PUBLIC_BASE_URL`；`workflow_embed_configs` 表按 expand-only 保留。
 - 移除 Server Web 的 `/web` 入口页及其可运行版本列表与 `next=web` 回跳。
 - 移除 `server-live` 发布单元、`/api/desktop/v1/*` 与 `/api/web-runs/*` 路由和 `web` 发行目标。

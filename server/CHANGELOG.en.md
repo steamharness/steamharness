@@ -52,7 +52,7 @@ All notable public changes of this release unit are recorded here.
 
 ### New Features
 
-- **Request-scoped runtime language**: first-party APIs read `X-Workflow-Locale` and inject the run language into the console, Embed, Webhooks, and parameter parsing.
+- **Request-scoped runtime language**: first-party APIs read `X-SteamHarness-Locale` and inject the run language into the console, Embed, Webhooks, and parameter parsing.
 - **Version-scoped read-only KV sources**: Kanban Studio and Embed refresh over authenticated revision SSE and drop the source as soon as access is revoked.
 - **Workflow schedules**: fixed-version, fixed-entrypoint plans, common time rules, run-now, and fire history.
 
@@ -102,7 +102,7 @@ All notable public changes of this release unit are recorded here.
 ### Added
 
 - Added atomic cloud project creation receiving the UUID and full `projectInfo`, letting Desktop bind or restore by the same UUID.
-- Added default name, localized name, manual declaration, and display platform, served through the project list and `PUT /api/workflows/{id}/project-info`.
+- Added default name, localized name, manual declaration, and display platform, served through the project list and `PUT /api/projects/{id}/project-info`.
 - Added Server, macOS, and Windows release targets pinned per version, with local-only versions skipping dependency install and runtime builds.
 - Added source and project group downloads validated per macOS/Windows target and resolving `latest` per platform.
 - Added an Alpha deployment path sharing the database and bucket with stable while isolating code, processes, logs, and local caches.
@@ -166,7 +166,7 @@ All notable public changes of this release unit are recorded here.
 
 - **Local execution mode**: `pnpm dev` and `pnpm start:local` run cloud Workflows on the host without a Runner or container build. See [Deployment](../docs/guides/server/deployment.mdx).
 - **Cross-service related project calls**: run containers read a target project's knowledge base and invoke its entrypoints as the calling user. See [Project management](../docs/guides/server/project-management.mdx).
-- **Project KV entry deletion**: `DELETE /api/workflows/:name/kv/entry` removes a single project KV entry by scope and key.
+- **Project KV entry deletion**: `DELETE /api/projects/:name/kv/entry` removes a single project KV entry by scope and key.
 
 ### Breaking Changes
 
@@ -212,7 +212,7 @@ All notable public changes of this release unit are recorded here.
 
 ### Removed
 
-- Removed `GET/PUT /api/workflows/{workflowName}/embed` and every `/embed/**` route.
+- Removed `GET/PUT /api/projects/{projectId}/embed` and every `/embed/**` route.
 - Removed the `wfembed` host and `STEAMHARNESS_EMBED_PUBLIC_BASE_URL`; `workflow_embed_configs` stays expand-only.
 - Removed the Server Web `/web` entry page with its runnable version list and `next=web` redirect.
 - Removed the `server-live` release unit, the `/api/desktop/v1/*` and `/api/web-runs/*` routes, and the `web` release target.

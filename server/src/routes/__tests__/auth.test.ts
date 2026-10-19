@@ -1001,7 +1001,7 @@ test("device start rejects the removed App source without creating a device code
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-Workflow-Locale": "zh-CN",
+        "X-SteamHarness-Locale": "zh-CN",
       },
       body: JSON.stringify({
         clientName: "Legacy App",
