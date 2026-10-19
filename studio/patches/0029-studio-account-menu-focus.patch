@@ -1,0 +1,61 @@
+diff --git a/src/vs/workbench/browser/parts/media/studioAccountMenu.css b/src/vs/workbench/browser/parts/media/studioAccountMenu.css
+index 93f661009c1..a50c6c85fb8 100644
+--- a/src/vs/workbench/browser/parts/media/studioAccountMenu.css
++++ b/src/vs/workbench/browser/parts/media/studioAccountMenu.css
+@@ -25,6 +25,7 @@
+ 	scrollbar-color: var(--vscode-scrollbarSlider-background) transparent;
+ }
+ 
++.studio-account-menu:focus { outline: none !important; }
+ .studio-account-menu [hidden] { display: none !important; }
+ .studio-account-menu button { font: inherit; color: inherit; cursor: pointer; }
+ .studio-account-menu button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -2px; }
+diff --git a/src/vs/workbench/browser/parts/studioAccountMenu.ts b/src/vs/workbench/browser/parts/studioAccountMenu.ts
+index efa8ca3277f..1f01e6af92f 100644
+--- a/src/vs/workbench/browser/parts/studioAccountMenu.ts
++++ b/src/vs/workbench/browser/parts/studioAccountMenu.ts
+@@ -97,7 +97,7 @@ export class StudioAccountMenu extends Disposable {
+ 
+ 	private render(container: HTMLElement, anchor: HTMLElement, setFocus: (callback: () => void) => void): DisposableStore {
+ 		const disposables = new DisposableStore();
+-		const root = append(container, $('.studio-account-menu', { role: 'dialog', 'aria-label': this.state!.labels.title }));
++		const root = append(container, $('.studio-account-menu', { role: 'dialog', tabindex: '-1', 'aria-label': this.state!.labels.title }));
+ 		const heading = append(root, $('.studio-account-heading'));
+ 		append(heading, $('span', undefined, 'SteamHarness'));
+ 		const close = append(heading, $<HTMLButtonElement>('button.studio-account-close', { type: 'button', 'aria-label': this.state!.labels.close, title: this.state!.labels.close }));
+@@ -154,7 +154,7 @@ export class StudioAccountMenu extends Disposable {
+ 		let avatarUrl: string | undefined;
+ 		const update = () => {
+ 			const state = this.state!;
+-			const focused = root.contains(getWindow(root).document.activeElement);
++			const focused = getWindow(root).document.activeElement;
+ 			text(name, state.name);
+ 			text(email, state.email ?? '');
+ 			email.hidden = !state.email;
+@@ -178,12 +178,12 @@ export class StudioAccountMenu extends Disposable {
+ 				if (avatarUrl) { image.src = FileAccess.uriToBrowserUri(URI.parse(avatarUrl)).toString(true); }
+ 				else { image.removeAttribute('src'); }
+ 			}
+-			if (refresh.hidden && focused) { profile.focus(); }
++			if (refresh.hidden && (focused === refresh || focused === signOut)) { profile.focus(); }
+ 			this.contextViews.layout();
+ 		};
+ 		this.updateView = update;
+ 		update();
+-		setFocus(() => profile.focus());
++		setFocus(() => root.focus());
+ 		disposables.add(addDisposableListener(close, 'click', () => hide(true)));
+ 		disposables.add(addDisposableListener(root, 'mousedown', (event: MouseEvent) => {
+ 			const target = (event.target as HTMLElement).closest<HTMLButtonElement>('button');
+@@ -204,7 +204,10 @@ export class StudioAccountMenu extends Disposable {
+ 				const buttons = [...root.querySelectorAll<HTMLButtonElement>('button')].filter(item => !item.hidden && !item.disabled);
+ 				const current = buttons.indexOf(getWindow(root).document.activeElement as HTMLButtonElement);
+ 				const backwards = event.key === 'ArrowUp' || (event.key === 'Tab' && event.shiftKey);
+-				const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (current + (backwards ? -1 : 1) + buttons.length) % buttons.length;
++				const next = event.key === 'Home' ? 0
++					: event.key === 'End' ? buttons.length - 1
++						: current < 0 ? (backwards ? buttons.length - 1 : 0)
++							: (current + (backwards ? -1 : 1) + buttons.length) % buttons.length;
+ 				event.preventDefault(); event.stopPropagation(); buttons[next]?.focus();
+ 			}
+ 		}));

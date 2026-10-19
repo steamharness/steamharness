@@ -45,6 +45,7 @@ const bundle = await build({
 });
 const javascript = bundle.outputFiles.find(file => file.path.endsWith('.js')).text;
 const stylesheet = bundle.outputFiles.find(file => file.path.endsWith('.css')).text;
+const workbenchStyles = await readFile(path.join(root, 'upstream/vscode/src/vs/workbench/browser/media/style.css'), 'utf8');
 const iconDirectory = path.join(root, 'node_modules/@vscode/codicons/dist');
 const font = await readFile(path.join(iconDirectory, 'codicon.ttf'));
 const icons = (await readFile(path.join(iconDirectory, 'codicon.css'), 'utf8')).replace(/url\([^)]+\)/g, `url(data:font/ttf;base64,${font.toString('base64')})`);
@@ -86,16 +87,25 @@ try {
           --vscode-scrollbarSlider-background:#79797966; }
           body { margin:0; height:100vh; background:${dark ? '#1f1f1f' : '#f6f6f6'}; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
           #avatar { position:fixed; left:8px; bottom:34px; width:32px; height:32px; }
-          ${icons}\n${stylesheet}
-        </style></head><body><button id="avatar" aria-label="Account">A</button></body></html>`);
+          ${workbenchStyles}\n${icons}\n${stylesheet}
+        </style></head><body class="monaco-workbench mac"><button id="avatar" aria-label="Account">A</button></body></html>`);
         await page.addScriptTag({ content: javascript });
         await push(initial);
         await page.evaluate(() => window.fixture.open());
+        assert.deepEqual(await menu.evaluate(node => ({
+          focused: document.activeElement === node,
+          focusedButtons: node.querySelectorAll('button:focus').length,
+          outline: getComputedStyle(node).outlineStyle,
+        })), { focused: true, focusedButtons: 0, outline: 'none' }, 'Opening the menu must not highlight an action');
         await fits();
         assert.equal(await command('studio.openAccount').textContent(), language === 'en' ? 'Personal Information' : '个人信息');
         assert.doesNotMatch(await menu.textContent(), /Manage Trusted|Manage Extension|Manage Language|AI|余额|套餐|用量/);
         assert.equal(await menu.locator('img').evaluate(image => image.complete && image.naturalWidth > 0), true);
         await page.screenshot({ path: path.join(output, `menu-${language}-${theme}-${width}.png`) });
+        await page.keyboard.press('Tab');
+        assert.equal(await page.locator('.studio-account-close').evaluate(node => document.activeElement === node && node.matches(':focus-visible')), true);
+        await page.keyboard.press('ArrowDown');
+        assert.equal(await command('studio.openAccount').evaluate(node => document.activeElement === node && node.matches(':focus-visible')), true);
         await page.keyboard.press('ArrowDown');
         assert.equal(await command('studio.refreshAccount').evaluate(node => document.activeElement === node), true);
         await page.keyboard.press('End');
@@ -122,6 +132,8 @@ try {
         assert.equal(await page.locator('#avatar').evaluate(node => document.activeElement === node), true);
         await page.evaluate(() => window.fixture.open('right'));
         await fits();
+        await page.keyboard.press('ArrowUp');
+        assert.equal(await command('studio.logout').evaluate(node => document.activeElement === node), true);
         await command('studio.openAccount').click();
         assert.equal(await menu.isVisible(), false);
         assert.deepEqual(await page.evaluate(() => window.fixture.commands), ['studio.refreshAccount', 'studio.openAccount']);
@@ -137,10 +149,11 @@ try {
         assert.equal(await command('studio.logout').isVisible(), false);
         assert.equal(await command('studio.openAccount').textContent(), language === 'en' ? 'Sign In' : '登录');
         assert.equal(await menu.locator('img').getAttribute('src'), null);
+        assert.equal(await menu.evaluate(node => document.activeElement === node), true, 'Account updates must preserve the neutral initial focus');
         await fits();
         await page.evaluate(() => window.fixture.dispose());
         assert.deepEqual(await page.evaluate(() => window.fixture.errors), []);
-        checks.push(`${language}/${theme}/${width}: layout, avatar, public data, refresh, profile, expiry, keyboard and outside dismissal`);
+        checks.push(`${language}/${theme}/${width}: neutral initial focus, layout, avatar, public data, refresh, profile, expiry, keyboard and outside dismissal`);
       }
     }
   }

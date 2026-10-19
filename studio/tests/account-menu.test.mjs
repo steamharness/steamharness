@@ -6,7 +6,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { ROOT, applyPatches } from '../scripts/distribution.mjs';
 
-test('the account menu patch applies repeatably to the pinned kernel and preserves extension authorization commands', async t => {
+test('the account menu patches apply repeatably to the pinned kernel and preserve extension authorization commands', async t => {
   const fixture = await mkdtemp(path.join(tmpdir(), 'studio-account-menu-'));
   t.after(() => rm(fixture, { recursive: true, force: true }));
   const kernel = path.join(fixture, 'vscode');
@@ -21,19 +21,24 @@ test('the account menu patch applies repeatably to the pinned kernel and preserv
   const git = args => execFileSync('git', args, { cwd: kernel, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   git(['init', '-q']);
   await mkdir(path.join(fixture, 'patches'));
-  await copyFile(path.join(ROOT, 'patches/0028-studio-account-menu.patch'), path.join(fixture, 'patches/0028.patch'));
-  const patch = path.join(fixture, 'patches/0028.patch');
-  if (present.length === paths.length) { git(['apply', '--reverse', patch]); }
+  const patches = ['0028-studio-account-menu.patch', '0029-studio-account-menu-focus.patch'];
+  for (const name of patches) { await copyFile(path.join(ROOT, 'patches', name), path.join(fixture, 'patches', name)); }
+  for (const name of [...patches].reverse()) {
+    const patch = path.join(fixture, 'patches', name);
+    try { git(['apply', '--reverse', '--check', patch]); }
+    catch { continue; }
+    git(['apply', '--reverse', patch]);
+  }
   git(['add', '--all']);
   git(['-c', 'user.name=Studio Test', '-c', 'user.email=studio@example.invalid', '-c', 'commit.gpgsign=false',
     '-c', `core.hooksPath=${path.join(fixture, 'hooks')}`, 'commit', '--quiet', '-m', 'pinned kernel fixture']);
   await applyPatches(fixture, kernel);
-  const first = await readFile(path.join(kernel, filename), 'utf8');
+  const first = await Promise.all(paths.map(file => readFile(path.join(kernel, file), 'utf8')));
   await applyPatches(fixture, kernel);
-  assert.equal(await readFile(path.join(kernel, filename), 'utf8'), first);
-  assert.match(first, /await this\.studioAccountMenu\.toggle\(this\.label/);
-  assert.match(first, /executeCommand\('_manageTrustedExtensionsForAccount'/);
-  assert.doesNotMatch(first, /MenuRegistry\.appendMenuItem\(MenuId\.AccountsContext/);
-  const menu = await readFile(path.join(kernel, 'src/vs/workbench/browser/parts/studioAccountMenu.ts'), 'utf8');
+  assert.deepEqual(await Promise.all(paths.map(file => readFile(path.join(kernel, file), 'utf8'))), first);
+  assert.match(first[0], /await this\.studioAccountMenu\.toggle\(this\.label/);
+  assert.match(first[0], /executeCommand\('_manageTrustedExtensionsForAccount'/);
+  assert.doesNotMatch(first[0], /MenuRegistry\.appendMenuItem\(MenuId\.AccountsContext/);
+  const menu = first[1];
   assert.doesNotMatch(menu, /Manage Trusted|Manage Extension|Manage Language|\/api\/ai|System AI/);
 });

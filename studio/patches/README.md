@@ -48,4 +48,6 @@
 
 `0028-studio-account-menu.patch` 将 Studio 头像入口改为独立账号弹层，展示开源账号的头像、昵称、邮箱与服务器状态，提供个人信息、刷新资料和退出入口；扩展账号授权管理继续通过命令面板使用。文案与公开展示数据由 Studio 扩展提供。
 
+`0029-studio-account-menu-focus.patch` 将账号菜单的初始焦点放在弹层容器，避免默认高亮个人信息按钮，并保留键盘导航与焦点提示。
+
 新内核修改应通过 `git diff` 导出统一格式补丁，并排除脚本生成的 `product.json` 及 Studio 扩展链接。品牌配置由 `config/product.json` 维护。
