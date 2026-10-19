@@ -31,7 +31,7 @@ const deferred = () => {
 };
 
 const RunDoc = defineDocFamily({
-  kind: "workflow.agent.run", version: 1, scope: "conversation", history: "latest", fork: "initial", family: true,
+  kind: "project.agent.run", version: 1, scope: "conversation", history: "latest", fork: "initial", family: true,
   initial: () => ({ cutoff: 0, initialized: false as boolean, approvals: {} as JsonObject, usage: {} as JsonObject,
     retries: {} as JsonObject, continuations: {} as JsonObject, failure: "", end: 0 }),
 });
@@ -160,7 +160,7 @@ export class DurableAgent {
             await this.refresh();
             this.state.model = this.models.getModel(snapshot.configuration.provider, snapshot.configuration.model) ?? this.state.model;
             this.state.thinkingLevel = snapshot.configuration.effort;
-            await this.emit({ type: "workflow_session", snapshot } as unknown as AgentEvent);
+            await this.emit({ type: "project_session", snapshot } as unknown as AgentEvent);
           }, error => this.fail(error), this.models, storage, registry,
           (loaded) => this.resources!.snapshot(registry.snapshot(), loaded, this.options.storage?.label ?? (this.options.databasePath ? "SQLite" : "Memory")),
           (provider, model) => provider === this.state.model.provider && model === this.state.model.id
@@ -315,19 +315,19 @@ export class DurableAgent {
             // result never become tool intents and must not reach the next request.
             message.content = message.content.filter(block => block.type !== "toolCall");
             message.stopReason = "stop";
-            (message as InterruptedMessage).workflowInterrupted = message.errorMessage ?? "Stream interrupted";
-            (message as InterruptedMessage).workflowContextUsageInvalid = true;
+            (message as InterruptedMessage).projectInterrupted = message.errorMessage ?? "Stream interrupted";
+            (message as InterruptedMessage).projectContextUsageInvalid = true;
             delete message.errorMessage;
           }
         },
         onYield: async (message, api) => {
           const root = (await harness.conversation(api.conversationId, context))!;
           const logicalRequestId = this.session ? await this.session.requestIdFor(root.id) : requestId;
-          const kind = (message as InterruptedMessage).workflowInterrupted ? "dropped"
+          const kind = (message as InterruptedMessage).projectInterrupted ? "dropped"
             : message.stopReason === "length" && message.content.length > 0 ? "length"
             : message.stopReason === "toolUse" && !message.content.some(block => block.type === "toolCall") ? "lost-call" : undefined;
           if (kind === undefined) return;
-          const reason = kind === "length" ? "max output tokens" : kind === "lost-call" ? "tool call missing" : (message as InterruptedMessage).workflowInterrupted ?? "Stream interrupted";
+          const reason = kind === "length" ? "max output tokens" : kind === "lost-call" ? "tool call missing" : (message as InterruptedMessage).projectInterrupted ?? "Stream interrupted";
           const maxAttempts = kind === "length" ? 2 : 10;
           const continuation = await root.commit(async tx => {
             const run = await tx.doc(RunDoc, root.id, logicalRequestId, null);
@@ -346,7 +346,7 @@ export class DurableAgent {
             }
             const prompt = createAgentStreamResumePrompt({ kind, reason, keptPartial: message.content.length > 0 });
             run.continuations[api.taskId] = prompt;
-            await tx.appendEntry(root.id, { kind: "workflow.retry", data: { attempt, maxAttempts, reason, kind } });
+            await tx.appendEntry(root.id, { kind: "project.retry", data: { attempt, maxAttempts, reason, kind } });
             return prompt;
           }, context);
           return continuation === undefined ? undefined : { continue: continuation };
@@ -374,7 +374,7 @@ export class DurableAgent {
                 const message = json(entry.model![0]) as unknown as InterruptedMessage;
                 message.content = message.content.filter(block => block.type !== "toolCall");
                 message.stopReason = "stop";
-                message.workflowContextUsageInvalid = true;
+                message.projectContextUsageInvalid = true;
                 const attempt = Number(run.continuations["count:transport"] ?? 0) + 1;
                 run.continuations["count:transport"] = attempt;
                 run.retries[entry.id] = attempt;
@@ -383,7 +383,7 @@ export class DurableAgent {
                   break;
                 }
                 await tx.appendEntry(root.id, {
-                  kind: "workflow.retry", data: { attempt, maxAttempts: 10, kind: "dropped", reason: "Model request interrupted" },
+                  kind: "project.retry", data: { attempt, maxAttempts: 10, kind: "dropped", reason: "Model request interrupted" },
                   edits: [{ target: entry.id, action: "replace", messages: [message] }],
                   model: [{ role: "user", content: createAgentStreamResumePrompt({ kind: "dropped", reason: "Model request interrupted", keptPartial: true }), timestamp: Date.now() }],
                 });
@@ -400,7 +400,7 @@ export class DurableAgent {
               if (last.id <= run.cutoff || run.retries[last.id] !== undefined) return;
               const attempt = Object.keys(run.retries).length + 1;
               run.retries[last.id] = attempt;
-              await tx.appendEntry(root.id, { kind: "workflow.retry", data: { attempt, maxAttempts: 10, kind: "dropped", reason: message.errorMessage ?? "Model request interrupted" } });
+              await tx.appendEntry(root.id, { kind: "project.retry", data: { attempt, maxAttempts: 10, kind: "dropped", reason: message.errorMessage ?? "Model request interrupted" } });
             }, context);
           }
           if (partials.length > 0) return { messages: (await root.context(context)).messages };
@@ -414,7 +414,7 @@ export class DurableAgent {
     }));
     const change = { model: { provider: this.state.model.provider, modelId: this.state.model.id },
       thinkingLevel: this.state.thinkingLevel as never, cwd: this.options.workdir,
-      tools: [...tools, ...(this.session?.tools ?? []), ...this.registry.snapshot().tools().filter(item => item.extension.name !== "workflow" && item.extension.name !== "workflow.session").map(item => item.tool),
+      tools: [...tools, ...(this.session?.tools ?? []), ...this.registry.snapshot().tools().filter(item => item.extension.name !== "workflow" && item.extension.name !== "project.session").map(item => item.tool),
         ...(this.options.session?.registry?.snapshot().tools().map(item => item.tool) ?? [])] };
     if (this.session) await this.session.configureRoot({ ...change, tools: null });
     else await root.configure(change, context);
@@ -448,7 +448,7 @@ export class DurableAgent {
     try {
       // requestId remains the same after a worker crash or a lost submit acknowledgement.
       const submission = await root.submit({ type: "input", content, requestId, whenBusy: "reject",
-        ...(this.session ? { entry: { kind: "workflow.input", data: { requestId, mode: "reject" } } } : {}) }, context);
+        ...(this.session ? { entry: { kind: "project.input", data: { requestId, mode: "reject" } } } : {}) }, context);
       this.commandReady.resolve();
       harness.resume();
       const settled = await Promise.race([submission.wait(context), pause, fatal]);
@@ -580,7 +580,7 @@ export class DurableAgent {
   private async emitUsage(recordId: string, usage: unknown): Promise<void> {
     if (this.usageEmitted.has(recordId)) return;
     this.usageEmitted.add(recordId);
-    await this.emit({ type: "workflow_usage", recordId, usage } as unknown as AgentEvent);
+    await this.emit({ type: "project_usage", recordId, usage } as unknown as AgentEvent);
   }
 
   private async flushUsage(): Promise<void> {
@@ -594,7 +594,7 @@ export class DurableAgent {
     }
     const messages = this.state.messages;
     await this.root!.commit(tx => tx.appendEntry(this.root!.id, {
-      kind: "workflow.context", head: "self", model: json(messages) as unknown as AgentMessage[],
+      kind: "project.context", head: "self", model: json(messages) as unknown as AgentMessage[],
     }), context);
     this.projected = messages;
   }
@@ -641,8 +641,8 @@ export class DurableAgent {
   private async entry(entry: EntryRecord, replay: boolean): Promise<void> {
     if (this.entries.has(entry.id)) return;
     this.entries.add(entry.id);
-    if (entry.kind === "workflow.retry") {
-      await this.emit({ type: "workflow_retry", ...entry.data as JsonObject } as unknown as AgentEvent);
+    if (entry.kind === "project.retry") {
+      await this.emit({ type: "project_retry", ...entry.data as JsonObject } as unknown as AgentEvent);
       return;
     }
     for (const original of entry.model ?? []) {
@@ -736,7 +736,7 @@ function json(value: unknown): JsonValue {
   return JSON.parse(JSON.stringify(value)) as JsonValue;
 }
 
-type InterruptedMessage = AssistantMessage & { workflowInterrupted?: string; workflowContextUsageInvalid?: boolean };
+type InterruptedMessage = AssistantMessage & { projectInterrupted?: string; projectContextUsageInvalid?: boolean };
 
 // The agent owns this store across Harness suspensions; it holds no external resources.
 class AgentMemoryStorage extends MemoryStorage {

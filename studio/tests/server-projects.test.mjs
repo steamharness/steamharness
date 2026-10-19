@@ -41,7 +41,7 @@ async function fixture(t, configuration = {}) {
   `);
   const progress = [];
   return { directory, cliEntry, progress, options: { cliEntry, runtimeDirectory: directory, nodePath: process.execPath,
-    connection: { serverUrl: 'https://workflow.test', accessToken: 'host-secret-token' },
+    connection: { serverUrl: 'https://steamharness.test', accessToken: 'host-secret-token' },
     signal: signal(), progress: value => progress.push(value.message), projectId: id, version: '1.2.3', parentDirectory: path.join(directory, 'projects') } };
 }
 
@@ -61,11 +61,11 @@ async function server(t, handler) {
 
 test('project API reads use the host account, host language and cancellable requests', async () => {
   const reads = [];
-  const client = new ProjectServerClient({ serverUrl: 'https://workflow.test/', accessToken: 'host-token' }, async (url, options) => {
+  const client = new ProjectServerClient({ serverUrl: 'https://steamharness.test/', accessToken: 'host-token' }, async (url, options) => {
     reads.push({ url, options }); return Response.json({ errCode: 0, data: [] });
   });
   await client.projects(signal());
-  assert.equal(reads[0].url, 'https://workflow.test/api/projects');
+  assert.equal(reads[0].url, 'https://steamharness.test/api/projects');
   assert.equal(reads[0].options.headers.Authorization, 'Bearer host-token');
   assert.equal(reads[0].options.redirect, 'error');
   const cancelled = new AbortController(); cancelled.abort();
@@ -74,18 +74,18 @@ test('project API reads use the host account, host language and cancellable requ
 });
 
 test('API errors redact credentials and retain permission status', async () => {
-  const client = new ProjectServerClient({ serverUrl: 'https://workflow.test', accessToken: 'private-token' }, async () => Response.json({ errCode: 403, errMessage: 'private-token forbidden' }, { status: 403 }));
+  const client = new ProjectServerClient({ serverUrl: 'https://steamharness.test', accessToken: 'private-token' }, async () => Response.json({ errCode: 403, errMessage: 'private-token forbidden' }, { status: 403 }));
   await assert.rejects(client.projects(signal()), error => error.status === 403 && error.message === '[redacted] forbidden');
 });
 
 test('malformed API envelopes produce a readable error', async () => {
-  const client = new ProjectServerClient({ serverUrl: 'https://workflow.test', accessToken: 'private-token' }, async () => Response.json(null));
+  const client = new ProjectServerClient({ serverUrl: 'https://steamharness.test', accessToken: 'private-token' }, async () => Response.json(null));
   await assert.rejects(client.projects(signal()), /invalid response/);
 });
 
 test('cancelling while reading the API body retains cancellation semantics', async () => {
   const controller = new AbortController();
-  const client = new ProjectServerClient({ serverUrl: 'https://workflow.test', accessToken: 'private-token' }, async () => ({
+  const client = new ProjectServerClient({ serverUrl: 'https://steamharness.test', accessToken: 'private-token' }, async () => ({
     status: 200, ok: true, json: async () => { controller.abort(); throw controller.signal.reason; },
   }));
   await assert.rejects(client.projects(controller.signal), { name: 'AbortError' });

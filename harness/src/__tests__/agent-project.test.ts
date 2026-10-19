@@ -10,19 +10,19 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { agentConversationDirectory } from "../agent/storage";
 import { createAgentProjectInput, defineAgentConversationExecutor } from "../agent/project";
-import { normalizeWorkflowParamDeclarations } from "../executor/param-definition";
+import { normalizeProjectParamDeclarations } from "../executor/param-definition";
 import { AGENT_OUTPUT_KINDS } from "../agent/output-items";
 import { createAgentNode } from "../agent/node";
 import type { OutputItemStreamChunk } from "../node/output/index";
 import { createAgentPlanApprovalRequest, readAgentPlanDecision } from "../agent/plan";
-import { createWorkflowConversationContext } from "../conversation/index";
+import { createProjectConversationContext } from "../conversation/index";
 import type { UserInputRequest } from "../types/index";
-import { createLocalWorkflowFileStore, type FileReference, type FileStore } from "../files/index";
+import { createLocalProjectFileStore, type FileReference, type FileStore } from "../files/index";
 import { HarnessError } from "../workflow/errors";
-import { createWorkflowRelatedProjectsContext } from "../kv/related-projects";
-import { createWorkflowToolPermissionContext } from "../tool-permissions/index";
+import { createProjectRelatedProjectsContext } from "../kv/related-projects";
+import { createProjectToolPermissionContext } from "../tool-permissions/index";
 import { readAgentToolDefinitions } from "../agent/permission";
-import { createDisabledWorkflowTokenUsageContext } from "../token-usage/index";
+import { createDisabledProjectTokenUsageContext } from "../token-usage/index";
 import type { RunContext } from "../types/index";
 import type { KVContext } from "../kv/index";
 
@@ -167,17 +167,17 @@ function createContext(conversationId: string, files?: FileStore): RunContext {
     providers: {},
     ...(files === undefined ? {} : { files }),
     storage: {
-      local: { kv, persistentValue: createMemoryKV(), relatedProjects: createWorkflowRelatedProjectsContext() },
-      server: { kv: createMemoryKV(), persistentValue: createMemoryKV(), relatedProjects: createWorkflowRelatedProjectsContext() },
+      local: { kv, persistentValue: createMemoryKV(), relatedProjects: createProjectRelatedProjectsContext() },
+      server: { kv: createMemoryKV(), persistentValue: createMemoryKV(), relatedProjects: createProjectRelatedProjectsContext() },
     },
-    conversation: createWorkflowConversationContext({
+    conversation: createProjectConversationContext({
       enabled: true,
       conversationId,
       projectName: "pi",
       kv,
     }),
-    tokenUsage: createDisabledWorkflowTokenUsageContext(),
-    toolPermissions: createWorkflowToolPermissionContext({
+    tokenUsage: createDisabledProjectTokenUsageContext(),
+    toolPermissions: createProjectToolPermissionContext({
       definitions: readAgentToolDefinitions(undefined),
       projectName: "pi",
       runId: "run-1",
@@ -257,7 +257,7 @@ test("defineAgentConversationExecutor produces a complete conversation executor"
   const toolNames = (executor.tools ?? []).map((tool) => tool.name).sort();
   assert.deepEqual(toolNames, ["bash", "edit", "find", "grep", "ls", "read", "write"]);
 
-  const paramNames = normalizeWorkflowParamDeclarations(executor.params).params.map((param) => param.name);
+  const paramNames = normalizeProjectParamDeclarations(executor.params).params.map((param) => param.name);
   assert.deepEqual(
     paramNames,
     ["workdir", "provider", "model", "effort", "agent", "contextWindow", "modelAttributes", "permissionPolicy"],
@@ -266,7 +266,7 @@ test("defineAgentConversationExecutor produces a complete conversation executor"
 
 test("the generated params expose the agent capability in the UI", () => {
   const executor = defineAgentConversationExecutor({});
-  const normalized = normalizeWorkflowParamDeclarations(executor.params);
+  const normalized = normalizeProjectParamDeclarations(executor.params);
   const params = new Map(normalized.params.map((param) => [param.name, param]));
 
   assert.equal(params.get("agent")?.control, "select");
@@ -306,7 +306,7 @@ test("createInput reads the composer message and the agent params", () => {
 
 /** The host's catalogue, as the workflow runtime builds it: built-ins plus the declared tools. */
 function createToolPermissionContext(extra: Array<{ name: string; autoApprove: boolean }>) {
-  return createWorkflowToolPermissionContext({
+  return createProjectToolPermissionContext({
     definitions: [
       ...readAgentToolDefinitions(undefined),
       ...extra.map((tool) => ({ name: tool.name, enabled: true, autoApprove: tool.autoApprove })),
@@ -318,7 +318,7 @@ function createToolPermissionContext(extra: Array<{ name: string; autoApprove: b
 
 test("tool approval identity separates calls, arguments and permission definitions", async () => {
   async function identity(callId: string, args: unknown, label = "External") {
-    const permissions = createWorkflowToolPermissionContext({
+    const permissions = createProjectToolPermissionContext({
       definitions: [{ name: "external", label, enabled: true, autoApprove: false }],
       projectName: "pi", runId: "approval-run",
     });
@@ -1779,7 +1779,7 @@ async function createFileStore(rootDir: string, ids: readonly string[]): Promise
     await mkdir(path.join(rootDir, id), { recursive: true });
     await writeFile(path.join(rootDir, id, "content"), "hi!", "utf8");
   }
-  return createLocalWorkflowFileStore({ rootDir });
+  return createLocalProjectFileStore({ rootDir });
 }
 
 test("createInput carries attachments as references the run resolves", () => {

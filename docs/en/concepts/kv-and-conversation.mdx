@@ -161,8 +161,8 @@ The built-in Codex and OpenCode projects create temporary Streamable HTTP MCP en
 
 |Project|Tool Management Name|MCP Tools|Data mapping|
 | --- | --- | --- | --- |
-| Codex | `mcp__workflow-knowledge__knowledge_documents` | `knowledge_documents` | Uses Knowledge helpers at the location selected by the declaration and runtime host. |
-| Codex | `mcp__workflow-kv__kv_store` | `kv_store` | `project` and `conversation` use project/conversation KV scopes at that selected location. |
+| Codex | `mcp__steamharness-knowledge__knowledge_documents` | `knowledge_documents` | Uses Knowledge helpers at the location selected by the declaration and runtime host. |
+| Codex | `mcp__steamharness-kv__kv_store` | `kv_store` | `project` and `conversation` use project/conversation KV scopes at that selected location. |
 | OpenCode | `workflow-knowledge_knowledge_documents` | `knowledge_documents` |Access project markdown documents through the same knowledge base helper.|
 | OpenCode | `workflow-kv_kv_store` | `kv_store` |Use the same project / conversation KV scope as Codex.|
 |Little assistant| `workflow-memory_global_memory` | `global_memory` |Execute `list/get/search/remember/forget` in the small helper stable Knowledge namespace.|
@@ -202,7 +202,7 @@ export const executor = workflow.defineExecutor<Input, OutputPayload>({
     workflow.defineEntrypoint<Input, OutputPayload>({
       id: "main",
       title: "Full workflow",
-      workflow: assistantWorkflow,
+      workflow: assistantProject,
       tokenUsage: {
         enabled: true,
         display: true,
@@ -242,7 +242,7 @@ Session capability is enabled by the explicit item type of executor:
 ```ts
 export const executor = workflow.defineExecutor<Input, OutputPayload>({
   projectType: "conversation",
-  workflow: conversationWorkflow,
+  workflow: conversationProject,
   createInput({ args, conversationId }) {
     return { message: args.join(" "), conversationId };
   },
@@ -297,7 +297,7 @@ Local sessions can pass in or generate a conversation id.
 ```ts
 interface ConversationState {
   conversationId: string;
-  workflowName: string;
+  projectName: string;
   title?: string;
   values: Record<string, unknown>;
   messages: ConversationMessageContract[];

@@ -1,10 +1,10 @@
 import type { HelloInput, HelloOutputPayload } from "./interface";
 
-const llmProvider = workflow.createLLMProviderRef("default", () => {
-  return workflow.createLLMProviderFromEnv();
+const llmProvider = steamharness.createLLMProviderRef("default", () => {
+  return steamharness.createLLMProviderFromEnv();
 });
 
-const llmNode = workflow.createLLMStreamNode<HelloInput>({
+const llmNode = steamharness.createLLMStreamNode<HelloInput>({
   name: "hello-llm",
   provider: llmProvider,
   mapInput() {
@@ -17,12 +17,12 @@ const llmNode = workflow.createLLMStreamNode<HelloInput>({
   },
 });
 
-const outputNode = workflow.createOutputNode<string, HelloOutputPayload>({
+const outputNode = steamharness.createOutputNode<string, HelloOutputPayload>({
   name: "hello-output",
   format(content) {
     const answer = content.trim();
     return {
-      ...workflow.createOutputPayload({
+      ...steamharness.createOutputPayload({
         items: [{
           title: "Hello",
           content: answer,
@@ -35,25 +35,25 @@ const outputNode = workflow.createOutputNode<string, HelloOutputPayload>({
   },
 });
 
-export const helloWorkflow = workflow.defineWorkflow<HelloInput, HelloOutputPayload>({
+export const helloProject = steamharness.defineProject<HelloInput, HelloOutputPayload>({
   name: "hello",
   async run(input, context) {
-    const llmResult = await workflow.runStreamNode(llmNode, input, context);
+    const llmResult = await steamharness.runStreamNode(llmNode, input, context);
     const content = llmResult.output ?? "";
 
-    return workflow.runNode(outputNode, content, context);
+    return steamharness.runNode(outputNode, content, context);
   },
 });
 
-export const executor = workflow.defineExecutor<HelloInput, HelloOutputPayload>(
+export const executor = steamharness.defineExecutor<HelloInput, HelloOutputPayload>(
   {
     projectType: "workflow",
     defaultEntrypoint: "main",
     entrypoints: [
-      workflow.defineEntrypoint<HelloInput, HelloOutputPayload>({
+      steamharness.defineEntrypoint<HelloInput, HelloOutputPayload>({
         id: "main",
         title: "Hello",
-        workflow: helloWorkflow,
+        workflow: helloProject,
         tokenUsage: {
           enabled: true,
           display: true,
@@ -66,5 +66,5 @@ export const executor = workflow.defineExecutor<HelloInput, HelloOutputPayload>(
   },
 );
 
-export { helloWorkflow as workflow };
-export default helloWorkflow;
+export { helloProject as workflow };
+export default helloProject;

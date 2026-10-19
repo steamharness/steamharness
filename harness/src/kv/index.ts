@@ -49,7 +49,7 @@ export interface KVWriteSource {
   conversationId?: string;
 }
 
-export type NormalizedWorkflowKVStoreInput =
+export type NormalizedProjectKVStoreInput =
   | {
       storageKind: StorageKind;
       scope: "project";
@@ -129,11 +129,11 @@ export interface PersistentValueContextOptions extends Omit<KVContextOptions, "s
   store?: KVStore;
 }
 
-export interface LocalWorkflowPersistentValueContextOptions extends Omit<KVContextOptions, "store"> {
+export interface LocalProjectPersistentValueContextOptions extends Omit<KVContextOptions, "store"> {
   rootDir: string;
 }
 
-export interface LocalWorkflowKVEntrySummary {
+export interface LocalProjectKVEntrySummary {
   storageKind: StorageKind;
   scope: KVScope;
   projectId: string;
@@ -146,18 +146,18 @@ export interface LocalWorkflowKVEntrySummary {
   source?: KVWriteSource;
 }
 
-export interface LocalWorkflowKVEntryDetail extends LocalWorkflowKVEntrySummary {
+export interface LocalProjectKVEntryDetail extends LocalProjectKVEntrySummary {
   value: unknown;
 }
 
-export interface LocalWorkflowKVEntryPage {
-  items: LocalWorkflowKVEntrySummary[];
+export interface LocalProjectKVEntryPage {
+  items: LocalProjectKVEntrySummary[];
   nextCursor?: string;
   hasMore: boolean;
   total: number;
 }
 
-export interface ListLocalWorkflowKVEntriesOptions {
+export interface ListLocalProjectKVEntriesOptions {
   rootDir: string;
   storageKind: StorageKind;
   pageSize?: number;
@@ -169,26 +169,26 @@ export interface ListLocalWorkflowKVEntriesOptions {
   query?: string;
 }
 
-export interface GetLocalWorkflowKVEntryOptions extends KVStoreGetInput {
+export interface GetLocalProjectKVEntryOptions extends KVStoreGetInput {
   rootDir: string;
 }
 
-export function createWorkflowKVContext(
+export function createProjectKVContext(
   options: KVContextOptions,
 ): KVContext {
-  return createWorkflowStorageValueContext(options, "kv");
+  return createProjectStorageValueContext(options, "kv");
 }
 
-function createWorkflowStorageValueContext(
+function createProjectStorageValueContext(
   options: KVContextOptions,
   storageKind: StorageKind,
 ): KVContext {
-  const projectNamespace = createWorkflowKVNamespace(options.store, {
+  const projectNamespace = createProjectKVNamespace(options.store, {
     storageKind,
     scope: "project",
     projectId: options.projectId,
   }, options.source);
-  const conversationNamespace = createWorkflowKVNamespace(options.store, {
+  const conversationNamespace = createProjectKVNamespace(options.store, {
     storageKind,
     scope: "conversation",
     projectId: options.projectId,
@@ -207,14 +207,14 @@ function createWorkflowStorageValueContext(
   };
 }
 
-export function createWorkflowPersistentValueContext(
+export function createProjectPersistentValueContext(
   options: PersistentValueContextOptions,
 ): PersistentValueContext {
   if (options.store === undefined) {
-    return createUnavailableWorkflowPersistentValueContext();
+    return createUnavailableProjectPersistentValueContext();
   }
 
-  return createWorkflowStorageValueContext({
+  return createProjectStorageValueContext({
     store: options.store,
     projectId: options.projectId,
     conversationId: options.conversationId,
@@ -222,11 +222,11 @@ export function createWorkflowPersistentValueContext(
   }, "persistent_value");
 }
 
-export function createLocalWorkflowPersistentValueContext(
-  options: LocalWorkflowPersistentValueContextOptions,
+export function createLocalProjectPersistentValueContext(
+  options: LocalProjectPersistentValueContextOptions,
 ): PersistentValueContext {
-  return createWorkflowPersistentValueContext({
-    store: createLocalWorkflowKVStore({
+  return createProjectPersistentValueContext({
+    store: createLocalProjectKVStore({
       rootDir: options.rootDir,
       storageKind: "persistent_value",
     }),
@@ -236,7 +236,7 @@ export function createLocalWorkflowPersistentValueContext(
   });
 }
 
-export function createLocalWorkflowKVStore(options: {
+export function createLocalProjectKVStore(options: {
   rootDir: string;
   storageKind?: StorageKind;
 }): KVStore {
@@ -245,14 +245,14 @@ export function createLocalWorkflowKVStore(options: {
   const namespaceTransactions = new AsyncLocalStorage<LocalKVNamespaceTransaction>();
   let initialization: Promise<void> | undefined;
   const initialize = (): Promise<void> => {
-    initialization ??= ensureLocalWorkflowStorageFormat(rootDir, storageKind);
+    initialization ??= ensureLocalProjectStorageFormat(rootDir, storageKind);
     return initialization;
   };
 
   const getValue = async (input: KVStoreGetInput): Promise<unknown | undefined> => {
     await initialize();
-    const normalized = normalizeWorkflowKVStoreInput(input);
-    assertWorkflowStorageKindMatches(storageKind, normalized.storageKind);
+    const normalized = normalizeProjectKVStoreInput(input);
+    assertProjectStorageKindMatches(storageKind, normalized.storageKind);
     const transaction = namespaceTransactions.getStore();
     if (transaction !== undefined) {
       assertLocalKVTransactionNamespace(transaction, normalized);
@@ -268,8 +268,8 @@ export function createLocalWorkflowKVStore(options: {
 
   const setValue = async (input: KVStoreSetInput): Promise<void> => {
     await initialize();
-    const normalized = normalizeWorkflowKVStoreInput(input);
-    assertWorkflowStorageKindMatches(storageKind, normalized.storageKind);
+    const normalized = normalizeProjectKVStoreInput(input);
+    assertProjectStorageKindMatches(storageKind, normalized.storageKind);
     const transaction = namespaceTransactions.getStore();
     if (transaction !== undefined) {
       assertLocalKVTransactionNamespace(transaction, normalized);
@@ -286,8 +286,8 @@ export function createLocalWorkflowKVStore(options: {
 
   const deleteValue = async (input: KVStoreGetInput): Promise<boolean> => {
     await initialize();
-    const normalized = normalizeWorkflowKVStoreInput(input);
-    assertWorkflowStorageKindMatches(storageKind, normalized.storageKind);
+    const normalized = normalizeProjectKVStoreInput(input);
+    assertProjectStorageKindMatches(storageKind, normalized.storageKind);
     const transaction = namespaceTransactions.getStore();
     if (transaction !== undefined) {
       assertLocalKVTransactionNamespace(transaction, normalized);
@@ -306,8 +306,8 @@ export function createLocalWorkflowKVStore(options: {
     operation: () => Promise<T> | T,
   ): Promise<T> => {
     await initialize();
-    const normalized = normalizeWorkflowKVNamespaceLockInput(input);
-    assertWorkflowStorageKindMatches(storageKind, normalized.storageKind);
+    const normalized = normalizeProjectKVNamespaceLockInput(input);
+    assertProjectStorageKindMatches(storageKind, normalized.storageKind);
     const activeTransaction = namespaceTransactions.getStore();
     if (activeTransaction !== undefined) {
       if (isSameLocalKVNamespace(activeTransaction.namespace, normalized)) {
@@ -337,8 +337,8 @@ export function createLocalWorkflowKVStore(options: {
     deleteValue,
     async updateValue(input, updater) {
       await initialize();
-      const normalized = normalizeWorkflowKVStoreInput(input);
-      assertWorkflowStorageKindMatches(storageKind, normalized.storageKind);
+      const normalized = normalizeProjectKVStoreInput(input);
+      assertProjectStorageKindMatches(storageKind, normalized.storageKind);
       const transaction = namespaceTransactions.getStore();
       if (transaction !== undefined) {
         assertLocalKVTransactionNamespace(transaction, normalized);
@@ -361,7 +361,7 @@ export function createLocalWorkflowKVStore(options: {
 
 async function readLocalKVValue(
   rootDir: string,
-  input: NormalizedWorkflowKVStoreInput,
+  input: NormalizedProjectKVStoreInput,
 ): Promise<unknown | undefined> {
   const entry = await readLocalKVEntry(resolveLocalKVEntryPath(rootDir, input), input);
   return entry?.value;
@@ -369,7 +369,7 @@ async function readLocalKVValue(
 
 async function writeLocalKVValue(
   rootDir: string,
-  input: NormalizedWorkflowKVStoreInput,
+  input: NormalizedProjectKVStoreInput,
   value: unknown,
   source: KVWriteSource | undefined,
 ): Promise<void> {
@@ -383,7 +383,7 @@ async function writeLocalKVValue(
 
 async function deleteLocalKVValue(
   rootDir: string,
-  input: NormalizedWorkflowKVStoreInput,
+  input: NormalizedProjectKVStoreInput,
 ): Promise<boolean> {
   const entryPath = resolveLocalKVEntryPath(rootDir, input);
   return withLocalKVPathLock(resolveLocalKVEntryLockPath(entryPath), () =>
@@ -393,7 +393,7 @@ async function deleteLocalKVValue(
 
 async function updateLocalKVValue(
   rootDir: string,
-  input: NormalizedWorkflowKVStoreInput,
+  input: NormalizedProjectKVStoreInput,
   source: KVWriteSource | undefined,
   updater: (current: unknown | undefined) => unknown,
 ): Promise<unknown> {
@@ -409,8 +409,8 @@ async function updateLocalKVValue(
 }
 
 function toLocalKVNamespace(
-  input: NormalizedWorkflowKVStoreInput,
-): NormalizedWorkflowKVNamespaceLockInput {
+  input: NormalizedProjectKVStoreInput,
+): NormalizedProjectKVNamespaceLockInput {
   return input.scope === "project"
     ? {
         storageKind: input.storageKind,
@@ -427,14 +427,14 @@ function toLocalKVNamespace(
 
 function isLocalKVTransactionNamespace(
   transaction: LocalKVNamespaceTransaction,
-  input: NormalizedWorkflowKVStoreInput,
+  input: NormalizedProjectKVStoreInput,
 ): boolean {
   return isSameLocalKVNamespace(transaction.namespace, toLocalKVNamespace(input));
 }
 
 function assertLocalKVTransactionNamespace(
   transaction: LocalKVNamespaceTransaction,
-  input: NormalizedWorkflowKVStoreInput,
+  input: NormalizedProjectKVStoreInput,
 ): void {
   if (!isLocalKVTransactionNamespace(transaction, input)) {
     throw createLocalKVNestedNamespaceError(transaction.namespace, toLocalKVNamespace(input));
@@ -442,8 +442,8 @@ function assertLocalKVTransactionNamespace(
 }
 
 function createLocalKVNestedNamespaceError(
-  current: NormalizedWorkflowKVNamespaceLockInput,
-  requested: NormalizedWorkflowKVNamespaceLockInput,
+  current: NormalizedProjectKVNamespaceLockInput,
+  requested: NormalizedProjectKVNamespaceLockInput,
 ): HarnessError {
   return new HarnessError({
     type: "execution",
@@ -453,8 +453,8 @@ function createLocalKVNestedNamespaceError(
 }
 
 function isSameLocalKVNamespace(
-  left: NormalizedWorkflowKVNamespaceLockInput,
-  right: NormalizedWorkflowKVNamespaceLockInput,
+  left: NormalizedProjectKVNamespaceLockInput,
+  right: NormalizedProjectKVNamespaceLockInput,
 ): boolean {
   return left.scope === right.scope &&
     left.storageKind === right.storageKind &&
@@ -462,7 +462,7 @@ function isSameLocalKVNamespace(
     readLocalKVNamespaceConversationId(left) === readLocalKVNamespaceConversationId(right);
 }
 
-function getLocalKVTransactionWriteKey(input: NormalizedWorkflowKVStoreInput): string {
+function getLocalKVTransactionWriteKey(input: NormalizedProjectKVStoreInput): string {
   return getLocalKVEntryIdentity(input);
 }
 
@@ -495,7 +495,7 @@ function isLocalKVTransactionWriteDelete(
 async function getLocalKVTransactionValue(
   rootDir: string,
   transaction: LocalKVNamespaceTransaction,
-  input: NormalizedWorkflowKVStoreInput,
+  input: NormalizedProjectKVStoreInput,
 ): Promise<unknown | undefined> {
   const staged = transaction.writes.get(getLocalKVTransactionWriteKey(input));
   if (staged === undefined) return readLocalKVValue(rootDir, input);
@@ -506,7 +506,7 @@ async function getLocalKVTransactionValue(
 
 function stageLocalKVTransactionValue(
   transaction: LocalKVNamespaceTransaction,
-  input: NormalizedWorkflowKVStoreInput,
+  input: NormalizedProjectKVStoreInput,
   value: unknown,
   source: KVWriteSource | undefined,
 ): void {
@@ -514,14 +514,14 @@ function stageLocalKVTransactionValue(
   transaction.writes.set(getLocalKVTransactionWriteKey(input), {
     input,
     value: serialized.value,
-    source: normalizeWorkflowKVWriteSource(source),
+    source: normalizeProjectKVWriteSource(source),
   });
 }
 
 async function stageLocalKVTransactionDelete(
   rootDir: string,
   transaction: LocalKVNamespaceTransaction,
-  input: NormalizedWorkflowKVStoreInput,
+  input: NormalizedProjectKVStoreInput,
 ): Promise<boolean> {
   // Staging replaces any earlier write for the same key, so a set-then-delete
   // inside one lock commits as a delete and reports the key as removed.
@@ -598,7 +598,7 @@ async function recoverLocalKVTransactions(rootDir: string): Promise<void> {
  */
 async function recoverLocalKVTransactionsForLockedNamespace(
   rootDir: string,
-  namespace: NormalizedWorkflowKVNamespaceLockInput,
+  namespace: NormalizedProjectKVNamespaceLockInput,
 ): Promise<void> {
   const transactionDirectory = resolveLocalKVTransactionDirectory(rootDir);
   const entries = await readLocalKVDirectory(transactionDirectory);
@@ -633,9 +633,9 @@ function parseLocalKVTransactionJournal(value: unknown): LocalKVTransactionJourn
     return undefined;
   }
 
-  let namespace: NormalizedWorkflowKVNamespaceLockInput;
+  let namespace: NormalizedProjectKVNamespaceLockInput;
   try {
-    namespace = normalizeWorkflowKVNamespaceLockInput(value["namespace"] as KVNamespaceLockInput);
+    namespace = normalizeProjectKVNamespaceLockInput(value["namespace"] as KVNamespaceLockInput);
   } catch {
     return undefined;
   }
@@ -661,9 +661,9 @@ function parseLocalKVTransactionJournal(value: unknown): LocalKVTransactionJourn
       return undefined;
     }
 
-    let input: NormalizedWorkflowKVStoreInput;
+    let input: NormalizedProjectKVStoreInput;
     try {
-      input = normalizeWorkflowKVStoreInput(candidate["input"] as unknown as KVStoreGetInput);
+      input = normalizeProjectKVStoreInput(candidate["input"] as unknown as KVStoreGetInput);
     } catch {
       return undefined;
     }
@@ -681,7 +681,7 @@ function parseLocalKVTransactionJournal(value: unknown): LocalKVTransactionJourn
     }
 
     const source = candidate["source"];
-    if (source !== undefined && !isWorkflowKVWriteSource(source)) {
+    if (source !== undefined && !isProjectKVWriteSource(source)) {
       return undefined;
     }
     let serializedValue: { value: unknown };
@@ -693,18 +693,18 @@ function parseLocalKVTransactionJournal(value: unknown): LocalKVTransactionJourn
     writes.push({
       input,
       value: serializedValue.value,
-      source: source === undefined ? undefined : normalizeWorkflowKVWriteSource(source),
+      source: source === undefined ? undefined : normalizeProjectKVWriteSource(source),
     });
   }
 
   return { version: LOCAL_KV_TRANSACTION_JOURNAL_VERSION, namespace, writes };
 }
 
-export async function listLocalWorkflowKVEntries(
-  options: ListLocalWorkflowKVEntriesOptions,
-): Promise<LocalWorkflowKVEntryPage> {
+export async function listLocalProjectKVEntries(
+  options: ListLocalProjectKVEntriesOptions,
+): Promise<LocalProjectKVEntryPage> {
   const normalizedOptions = normalizeLocalKVInspectionOptions(options);
-  await ensureLocalWorkflowStorageFormat(
+  await ensureLocalProjectStorageFormat(
     normalizedOptions.rootDir,
     normalizedOptions.storageKind,
   );
@@ -730,13 +730,13 @@ export async function listLocalWorkflowKVEntries(
   };
 }
 
-export async function getLocalWorkflowKVEntry(
-  options: GetLocalWorkflowKVEntryOptions,
-): Promise<LocalWorkflowKVEntryDetail | undefined> {
+export async function getLocalProjectKVEntry(
+  options: GetLocalProjectKVEntryOptions,
+): Promise<LocalProjectKVEntryDetail | undefined> {
   const rootDir = normalizeLocalKVRootDir(options.rootDir);
-  await ensureLocalWorkflowStorageFormat(rootDir, options.storageKind);
+  await ensureLocalProjectStorageFormat(rootDir, options.storageKind);
   await recoverLocalKVTransactions(rootDir);
-  const input = normalizeWorkflowKVStoreInput(options);
+  const input = normalizeProjectKVStoreInput(options);
   const entryPath = resolveLocalKVEntryPath(rootDir, input);
   const entry = await readLocalKVEntry(entryPath, input);
   if (entry === undefined) {
@@ -751,23 +751,23 @@ export async function getLocalWorkflowKVEntry(
  * Removes one entry from a local store directory and reports whether it was
  * there. Inspection callers use this instead of holding a store instance.
  */
-export async function deleteLocalWorkflowKVEntry(
-  options: GetLocalWorkflowKVEntryOptions,
+export async function deleteLocalProjectKVEntry(
+  options: GetLocalProjectKVEntryOptions,
 ): Promise<boolean> {
-  const input = normalizeWorkflowKVStoreInput(options);
-  const store = createLocalWorkflowKVStore({
+  const input = normalizeProjectKVStoreInput(options);
+  const store = createLocalProjectKVStore({
     rootDir: normalizeLocalKVRootDir(options.rootDir),
     storageKind: input.storageKind,
   });
   return store.deleteValue(input);
 }
 
-export function normalizeWorkflowKVStoreInput(
+export function normalizeProjectKVStoreInput(
   input: KVStoreGetInput,
-): NormalizedWorkflowKVStoreInput {
-  const storageKind = normalizeWorkflowStorageKind(input.storageKind);
-  const projectId = normalizeWorkflowKVProjectId(input.projectId);
-  const key = normalizeWorkflowKVKey(input.key);
+): NormalizedProjectKVStoreInput {
+  const storageKind = normalizeProjectStorageKind(input.storageKind);
+  const projectId = normalizeProjectKVProjectId(input.projectId);
+  const key = normalizeProjectKVKey(input.key);
 
   switch (input.scope) {
     case "project":
@@ -782,7 +782,7 @@ export function normalizeWorkflowKVStoreInput(
         storageKind,
         scope: "conversation",
         projectId,
-        conversationId: normalizeWorkflowKVConversationId(input.conversationId),
+        conversationId: normalizeProjectKVConversationId(input.conversationId),
         key,
       };
     default:
@@ -794,7 +794,7 @@ export function normalizeWorkflowKVStoreInput(
   }
 }
 
-export function normalizeWorkflowKVKey(value: string): string {
+export function normalizeProjectKVKey(value: string): string {
   const key = value.trim();
   if (key === "") {
     throw new HarnessError({
@@ -805,7 +805,7 @@ export function normalizeWorkflowKVKey(value: string): string {
   return key;
 }
 
-export function normalizeWorkflowStorageKind(value: unknown): StorageKind {
+export function normalizeProjectStorageKind(value: unknown): StorageKind {
   if (value !== "kv" && value !== "persistent_value") {
     throw new HarnessError({
       type: "input_validation",
@@ -815,7 +815,7 @@ export function normalizeWorkflowStorageKind(value: unknown): StorageKind {
   return value;
 }
 
-export function normalizeWorkflowKVProjectId(value: string | undefined): string {
+export function normalizeProjectKVProjectId(value: string | undefined): string {
   const projectId = value?.trim();
   if (projectId === undefined || projectId === "") {
     throw new HarnessError({
@@ -826,7 +826,7 @@ export function normalizeWorkflowKVProjectId(value: string | undefined): string 
   return projectId;
 }
 
-export function normalizeWorkflowKVConversationId(value: string | undefined): string {
+export function normalizeProjectKVConversationId(value: string | undefined): string {
   const conversationId = value?.trim();
   if (conversationId === undefined || conversationId === "") {
     throw new HarnessError({
@@ -837,25 +837,25 @@ export function normalizeWorkflowKVConversationId(value: string | undefined): st
   return conversationId;
 }
 
-function createWorkflowKVNamespace(
+function createProjectKVNamespace(
   store: KVStore,
   scope: Omit<KVStoreGetInput, "key">,
   source: KVWriteSource | undefined,
 ): KVNamespace {
   const namespace: KVNamespace = {
     async getValue(key) {
-      return store.getValue(normalizeWorkflowKVStoreInput({ ...scope, key }));
+      return store.getValue(normalizeProjectKVStoreInput({ ...scope, key }));
     },
     async setValue(key, value) {
       assertKVValue(value);
-      const normalized = normalizeWorkflowKVStoreInput({ ...scope, key });
+      const normalized = normalizeProjectKVStoreInput({ ...scope, key });
       await store.setValue({ ...normalized, value, source });
     },
     async deleteValue(key) {
-      return store.deleteValue(normalizeWorkflowKVStoreInput({ ...scope, key }));
+      return store.deleteValue(normalizeProjectKVStoreInput({ ...scope, key }));
     },
     async updateValue(key, updater) {
-      const normalized = normalizeWorkflowKVStoreInput({ ...scope, key });
+      const normalized = normalizeProjectKVStoreInput({ ...scope, key });
       if (store.updateValue !== undefined) {
         return store.updateValue({ ...normalized, source }, updater);
       }
@@ -886,8 +886,8 @@ function createWorkflowKVNamespace(
   return namespace;
 }
 
-function createUnavailableWorkflowPersistentValueContext(): PersistentValueContext {
-  const namespace = createUnavailableWorkflowPersistentValueNamespace();
+function createUnavailableProjectPersistentValueContext(): PersistentValueContext {
+  const namespace = createUnavailableProjectPersistentValueNamespace();
 
   return {
     getValue: namespace.getValue,
@@ -895,31 +895,31 @@ function createUnavailableWorkflowPersistentValueContext(): PersistentValueConte
     deleteValue: namespace.deleteValue,
     updateValue: namespace.updateValue,
     withLock: namespace.withLock,
-    conversation: createUnavailableWorkflowPersistentValueNamespace(),
+    conversation: createUnavailableProjectPersistentValueNamespace(),
   };
 }
 
-function createUnavailableWorkflowPersistentValueNamespace(): KVNamespace {
+function createUnavailableProjectPersistentValueNamespace(): KVNamespace {
   return {
     async getValue() {
-      throw createUnavailableWorkflowPersistentValueError();
+      throw createUnavailableProjectPersistentValueError();
     },
     async setValue() {
-      throw createUnavailableWorkflowPersistentValueError();
+      throw createUnavailableProjectPersistentValueError();
     },
     async deleteValue(): Promise<boolean> {
-      throw createUnavailableWorkflowPersistentValueError();
+      throw createUnavailableProjectPersistentValueError();
     },
     async updateValue() {
-      throw createUnavailableWorkflowPersistentValueError();
+      throw createUnavailableProjectPersistentValueError();
     },
     async withLock<T>() {
-      throw createUnavailableWorkflowPersistentValueError();
+      throw createUnavailableProjectPersistentValueError();
     },
   };
 }
 
-function createUnavailableWorkflowPersistentValueError(): HarnessError {
+function createUnavailableProjectPersistentValueError(): HarnessError {
   return new HarnessError({
     type: "input_validation",
     message: "Workflow PersistentValue requires a configured local store, server database storage, or an injected persistent value store. Set STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR for local CLI/App runs, or configure STEAMHARNESS_SERVER_URL and STEAMHARNESS_SERVER_ADMIN_KEY.",
@@ -935,7 +935,7 @@ function assertKVValue(value: unknown): void {
   }
 }
 
-interface LocalWorkflowKVEntry {
+interface LocalProjectKVEntry {
   storageKind: StorageKind;
   scope: KVScope;
   projectId: string;
@@ -946,7 +946,7 @@ interface LocalWorkflowKVEntry {
   updatedAt?: string;
 }
 
-interface LocalWorkflowKVEntryMetadata extends Omit<LocalWorkflowKVEntry, "value"> {
+interface LocalProjectKVEntryMetadata extends Omit<LocalProjectKVEntry, "value"> {
   version: 1;
   entryMtimeMs?: number;
   valueType: KVValueType;
@@ -956,10 +956,10 @@ interface LocalWorkflowKVEntryMetadata extends Omit<LocalWorkflowKVEntry, "value
 
 interface LocalKVInspectionIndex {
   version: 1;
-  entries: LocalWorkflowKVEntrySummary[];
+  entries: LocalProjectKVEntrySummary[];
 }
 
-type NormalizedWorkflowKVNamespaceLockInput =
+type NormalizedProjectKVNamespaceLockInput =
   | { storageKind: StorageKind; scope: "project"; projectId: string }
   | {
       storageKind: StorageKind;
@@ -969,26 +969,26 @@ type NormalizedWorkflowKVNamespaceLockInput =
     };
 
 interface LocalKVTransactionWriteValue {
-  input: NormalizedWorkflowKVStoreInput;
+  input: NormalizedProjectKVStoreInput;
   value: unknown;
   source?: KVWriteSource;
 }
 
 interface LocalKVTransactionWriteDelete {
-  input: NormalizedWorkflowKVStoreInput;
+  input: NormalizedProjectKVStoreInput;
   deleted: true;
 }
 
 type LocalKVTransactionWrite = LocalKVTransactionWriteValue | LocalKVTransactionWriteDelete;
 
 interface LocalKVNamespaceTransaction {
-  namespace: NormalizedWorkflowKVNamespaceLockInput;
+  namespace: NormalizedProjectKVNamespaceLockInput;
   writes: Map<string, LocalKVTransactionWrite>;
 }
 
 interface LocalKVTransactionJournal {
   version: 1;
-  namespace: NormalizedWorkflowKVNamespaceLockInput;
+  namespace: NormalizedProjectKVNamespaceLockInput;
   writes: LocalKVTransactionWrite[];
 }
 
@@ -1005,7 +1005,7 @@ interface LocalKVObservedLock {
 }
 
 interface LocalKVEntryLocation {
-  input: NormalizedWorkflowKVStoreInput;
+  input: NormalizedProjectKVStoreInput;
   entryPath: string;
 }
 
@@ -1059,7 +1059,7 @@ function normalizeLocalKVRootDir(value: string): string {
   return path.resolve(value.trim());
 }
 
-async function ensureLocalWorkflowStorageFormat(
+async function ensureLocalProjectStorageFormat(
   rootDir: string,
   storageKind: StorageKind,
 ): Promise<void> {
@@ -1085,7 +1085,7 @@ async function ensureLocalWorkflowStorageFormat(
       marker !== undefined &&
       isRecord(marker.value) &&
       marker.value["version"] === LOCAL_STEAMHARNESS_STORAGE_FORMAT_VERSION &&
-      isWorkflowStorageKind(marker.value["storageKind"])
+      isProjectStorageKind(marker.value["storageKind"])
     ) {
       throw new HarnessError({
         type: "input_validation",
@@ -1104,7 +1104,7 @@ async function ensureLocalWorkflowStorageFormat(
   });
 }
 
-function assertWorkflowStorageKindMatches(
+function assertProjectStorageKindMatches(
   expected: StorageKind,
   actual: StorageKind,
 ): void {
@@ -1116,7 +1116,7 @@ function assertWorkflowStorageKindMatches(
   });
 }
 
-function normalizeWorkflowKVWriteSource(
+function normalizeProjectKVWriteSource(
   source: KVWriteSource | undefined,
 ): KVWriteSource | undefined {
   if (source === undefined) {
@@ -1166,10 +1166,10 @@ function serializeLocalKVValue(value: unknown): { value: unknown; serialized: st
 }
 
 function createLocalKVEntryMetadata(
-  entry: LocalWorkflowKVEntry,
+  entry: LocalProjectKVEntry,
   serializedValue: string,
   entryMtimeMs: number,
-): LocalWorkflowKVEntryMetadata {
+): LocalProjectKVEntryMetadata {
   return {
     version: 1,
     entryMtimeMs,
@@ -1180,13 +1180,13 @@ function createLocalKVEntryMetadata(
     key: entry.key,
     source: entry.source,
     updatedAt: entry.updatedAt,
-    valueType: getWorkflowKVValueType(entry.value),
+    valueType: getProjectKVValueType(entry.value),
     valueSizeBytes: Buffer.byteLength(serializedValue, "utf8"),
-    valuePreview: createWorkflowKVValuePreview(entry.value),
+    valuePreview: createProjectKVValuePreview(entry.value),
   };
 }
 
-function getWorkflowKVValueType(value: unknown): KVValueType {
+function getProjectKVValueType(value: unknown): KVValueType {
   if (value === null) return "null";
   if (Array.isArray(value)) return "array";
   switch (typeof value) {
@@ -1203,7 +1203,7 @@ function getWorkflowKVValueType(value: unknown): KVValueType {
   }
 }
 
-function createWorkflowKVValuePreview(value: unknown): string {
+function createProjectKVValuePreview(value: unknown): string {
   const serialized = typeof value === "string" ? value : JSON.stringify(value) ?? "";
   return serialized.length > 160 ? `${serialized.slice(0, 157)}...` : serialized;
 }
@@ -1211,7 +1211,7 @@ function createWorkflowKVValuePreview(value: unknown): string {
 async function writeLocalKVEntry(
   rootDir: string,
   entryPath: string,
-  input: NormalizedWorkflowKVStoreInput,
+  input: NormalizedProjectKVStoreInput,
   value: unknown,
   source: KVWriteSource | undefined,
 ): Promise<void> {
@@ -1263,7 +1263,7 @@ async function writeLocalKVEntries(
  */
 async function removeLocalKVEntries(
   rootDir: string,
-  inputs: NormalizedWorkflowKVStoreInput[],
+  inputs: NormalizedProjectKVStoreInput[],
 ): Promise<boolean> {
   if (inputs.length === 0) return false;
   const inspectionIndexWasDirty = await markLocalKVInspectionIndexDirty(rootDir);
@@ -1282,7 +1282,7 @@ async function removeLocalKVEntries(
 
 async function removeLocalKVEntryFiles(
   rootDir: string,
-  input: NormalizedWorkflowKVStoreInput,
+  input: NormalizedProjectKVStoreInput,
 ): Promise<void> {
   const entryPath = resolveLocalKVEntryPath(rootDir, input);
   await rm(entryPath, { force: true });
@@ -1291,19 +1291,19 @@ async function removeLocalKVEntryFiles(
 
 async function writeLocalKVEntryFiles(
   entryPath: string,
-  input: NormalizedWorkflowKVStoreInput,
+  input: NormalizedProjectKVStoreInput,
   value: unknown,
   source: KVWriteSource | undefined,
-): Promise<LocalWorkflowKVEntryMetadata> {
+): Promise<LocalProjectKVEntryMetadata> {
   const serializedValue = serializeLocalKVValue(value);
-  const entry: LocalWorkflowKVEntry = {
+  const entry: LocalProjectKVEntry = {
     storageKind: input.storageKind,
     scope: input.scope,
     projectId: input.projectId,
     conversationId: readNormalizedConversationId(input),
     key: input.key,
     value: serializedValue.value,
-    source: normalizeWorkflowKVWriteSource(source),
+    source: normalizeProjectKVWriteSource(source),
     updatedAt: new Date().toISOString(),
   };
 
@@ -1340,11 +1340,11 @@ function createLocalKVTemporaryPath(filePath: string): string {
   return `${filePath}.${process.pid}.${Date.now().toString(36)}.${localKVTemporaryFileSequence.toString(36)}.tmp`;
 }
 
-function normalizeWorkflowKVNamespaceLockInput(
+function normalizeProjectKVNamespaceLockInput(
   input: KVNamespaceLockInput,
-): NormalizedWorkflowKVNamespaceLockInput {
-  const storageKind = normalizeWorkflowStorageKind(input.storageKind);
-  const projectId = normalizeWorkflowKVProjectId(input.projectId);
+): NormalizedProjectKVNamespaceLockInput {
+  const storageKind = normalizeProjectStorageKind(input.storageKind);
+  const projectId = normalizeProjectKVProjectId(input.projectId);
   switch (input.scope) {
     case "project":
       return {
@@ -1357,7 +1357,7 @@ function normalizeWorkflowKVNamespaceLockInput(
         storageKind,
         scope: "conversation",
         projectId,
-        conversationId: normalizeWorkflowKVConversationId(input.conversationId),
+        conversationId: normalizeProjectKVConversationId(input.conversationId),
       };
     default:
       throw new HarnessError({
@@ -1369,14 +1369,14 @@ function normalizeWorkflowKVNamespaceLockInput(
 }
 
 function readLocalKVNamespaceConversationId(
-  input: NormalizedWorkflowKVNamespaceLockInput,
+  input: NormalizedProjectKVNamespaceLockInput,
 ): string | undefined {
   return input.scope === "conversation" ? input.conversationId : undefined;
 }
 
 function resolveLocalKVEntryPath(
   rootDir: string,
-  input: NormalizedWorkflowKVStoreInput,
+  input: NormalizedProjectKVStoreInput,
 ): string {
   const parts: string[] = [input.scope, encodePathSegment(input.projectId)];
 
@@ -1422,7 +1422,7 @@ function resolveLocalKVTransactionRecoveryLockPath(rootDir: string): string {
 
 function resolveLocalKVNamespaceLockPath(
   rootDir: string,
-  input: NormalizedWorkflowKVNamespaceLockInput,
+  input: NormalizedProjectKVNamespaceLockInput,
 ): string {
   const parts = [
     ".locks",
@@ -1464,7 +1464,7 @@ async function withLocalKVInspectionIndexLock<T>(
 
 async function withRecoveredLocalKVNamespaceLock<T>(
   rootDir: string,
-  namespace: NormalizedWorkflowKVNamespaceLockInput,
+  namespace: NormalizedProjectKVNamespaceLockInput,
   operation: () => Promise<T> | T,
 ): Promise<T> {
   return withLocalKVPathLock(
@@ -1640,7 +1640,7 @@ function waitForLocalKVLockRetry(): Promise<void> {
 async function readLocalKVInspectionIndex(
   rootDir: string,
   storageKind: StorageKind,
-): Promise<LocalWorkflowKVEntrySummary[]> {
+): Promise<LocalProjectKVEntrySummary[]> {
   const existing = await readCleanLocalKVInspectionIndex(rootDir);
   if (existing !== undefined) {
     return existing.entries;
@@ -1678,7 +1678,7 @@ async function readLocalKVInspectionIndexFile(
 async function buildLocalKVInspectionIndex(
   rootDir: string,
   storageKind: StorageKind,
-): Promise<LocalWorkflowKVEntrySummary[]> {
+): Promise<LocalProjectKVEntrySummary[]> {
   const locations = await listLocalKVEntryLocations({
     rootDir,
     storageKind,
@@ -1693,7 +1693,7 @@ async function buildLocalKVInspectionIndex(
     locations,
     16,
     (location) => readLocalKVEntrySummary(location),
-  )).filter((summary): summary is LocalWorkflowKVEntrySummary => summary !== undefined);
+  )).filter((summary): summary is LocalProjectKVEntrySummary => summary !== undefined);
   entries.sort(compareLocalKVEntries);
   return entries;
 }
@@ -1724,7 +1724,7 @@ async function clearLocalKVInspectionIndexDirty(rootDir: string): Promise<void> 
 
 async function updateLocalKVInspectionIndexEntries(
   rootDir: string,
-  metadataEntries: LocalWorkflowKVEntryMetadata[],
+  metadataEntries: LocalProjectKVEntryMetadata[],
   storageKind: StorageKind,
   removedIdentities: string[],
   inspectionIndexWasDirty: boolean,
@@ -1752,7 +1752,7 @@ async function updateLocalKVInspectionIndexEntries(
 
 async function writeLocalKVInspectionIndex(
   rootDir: string,
-  entries: LocalWorkflowKVEntrySummary[],
+  entries: LocalProjectKVEntrySummary[],
 ): Promise<void> {
   const indexPath = resolveLocalKVInspectionIndexPath(rootDir);
   const index: LocalKVInspectionIndex = {
@@ -1773,7 +1773,7 @@ function isLocalKVInspectionIndex(value: unknown): value is LocalKVInspectionInd
   }
 
   const identities = new Set<string>();
-  let previous: LocalWorkflowKVEntrySummary | undefined;
+  let previous: LocalProjectKVEntrySummary | undefined;
   for (const entry of value["entries"]) {
     if (!isLocalKVEntrySummary(entry)) {
       return false;
@@ -1788,23 +1788,23 @@ function isLocalKVInspectionIndex(value: unknown): value is LocalKVInspectionInd
   return true;
 }
 
-function isLocalKVEntrySummary(value: unknown): value is LocalWorkflowKVEntrySummary {
+function isLocalKVEntrySummary(value: unknown): value is LocalProjectKVEntrySummary {
   if (
     !isRecord(value) ||
-    !isWorkflowStorageKind(value["storageKind"]) ||
-    !isWorkflowKVScope(value["scope"]) ||
+    !isProjectStorageKind(value["storageKind"]) ||
+    !isProjectKVScope(value["scope"]) ||
     typeof value["projectId"] !== "string" ||
     value["projectId"].trim() === "" ||
     typeof value["key"] !== "string" ||
     value["key"].trim() === "" ||
-    !isWorkflowKVValueType(value["valueType"]) ||
+    !isProjectKVValueType(value["valueType"]) ||
     typeof value["valueSizeBytes"] !== "number" ||
     !Number.isInteger(value["valueSizeBytes"]) ||
     value["valueSizeBytes"] < 0 ||
     typeof value["valuePreview"] !== "string" ||
     typeof value["updatedAt"] !== "string" ||
     Number.isNaN(Date.parse(value["updatedAt"])) ||
-    (value["source"] !== undefined && !isWorkflowKVWriteSource(value["source"]))
+    (value["source"] !== undefined && !isProjectKVWriteSource(value["source"]))
   ) {
     return false;
   }
@@ -1819,7 +1819,7 @@ function isLocalKVEntrySummary(value: unknown): value is LocalWorkflowKVEntrySum
     : typeof conversationId === "string";
 }
 
-function getLocalKVInspectionEntryIdentity(entry: LocalWorkflowKVEntrySummary): string {
+function getLocalKVInspectionEntryIdentity(entry: LocalProjectKVEntrySummary): string {
   return getLocalKVEntryIdentity(entry);
 }
 
@@ -1887,7 +1887,7 @@ async function listLocalKVEntriesInDirectory(options: {
     if (!entry.isFile()) continue;
     const key = decodeLocalKVEntryFilename(entry.name);
     if (key === undefined) continue;
-    const input = normalizeWorkflowKVStoreInput({ ...options.input, key });
+    const input = normalizeProjectKVStoreInput({ ...options.input, key });
     locations.push({
       input,
       entryPath: resolveLocalKVEntryPath(options.rootDir, input),
@@ -1910,7 +1910,7 @@ async function readLocalKVDirectory(directory: string): Promise<Dirent[]> {
 
 async function readLocalKVEntrySummary(
   location: LocalKVEntryLocation,
-): Promise<LocalWorkflowKVEntrySummary | undefined> {
+): Promise<LocalProjectKVEntrySummary | undefined> {
   const [entryStat, metadata] = await Promise.all([
     readLocalKVEntryStat(location.entryPath),
     readLocalKVJsonFile(resolveLocalKVEntryMetadataPath(location.entryPath)),
@@ -1936,8 +1936,8 @@ async function readLocalKVEntrySummary(
 
 async function readLocalKVEntry(
   entryPath: string,
-  expected: NormalizedWorkflowKVStoreInput,
-): Promise<LocalWorkflowKVEntry | undefined> {
+  expected: NormalizedProjectKVStoreInput,
+): Promise<LocalProjectKVEntry | undefined> {
   const entry = await readLocalKVJsonFile(entryPath, { strict: true });
   if (entry === undefined) return undefined;
   if (!isLocalKVEntry(entry.value, expected)) {
@@ -1984,8 +1984,8 @@ async function readLocalKVJsonFile(
 }
 
 function createLocalKVEntrySummaryFromMetadata(
-  metadata: LocalWorkflowKVEntryMetadata,
-): LocalWorkflowKVEntrySummary {
+  metadata: LocalProjectKVEntryMetadata,
+): LocalProjectKVEntrySummary {
   return {
     storageKind: metadata.storageKind,
     scope: metadata.scope,
@@ -2001,9 +2001,9 @@ function createLocalKVEntrySummaryFromMetadata(
 }
 
 function createLocalKVEntrySummary(
-  entry: LocalWorkflowKVEntry,
+  entry: LocalProjectKVEntry,
   fallbackUpdatedAt: string,
-): LocalWorkflowKVEntrySummary {
+): LocalProjectKVEntrySummary {
   const serializedValue = JSON.stringify(entry.value) ?? "";
   return {
     storageKind: entry.storageKind,
@@ -2011,18 +2011,18 @@ function createLocalKVEntrySummary(
     projectId: entry.projectId,
     key: entry.key,
     conversationId: entry.conversationId,
-    valueType: getWorkflowKVValueType(entry.value),
+    valueType: getProjectKVValueType(entry.value),
     valueSizeBytes: Buffer.byteLength(serializedValue, "utf8"),
-    valuePreview: createWorkflowKVValuePreview(entry.value),
+    valuePreview: createProjectKVValuePreview(entry.value),
     updatedAt: readLocalKVUpdatedAt(entry.updatedAt, fallbackUpdatedAt),
     source: entry.source,
   };
 }
 
 function createLocalKVEntryDetail(
-  entry: LocalWorkflowKVEntry,
+  entry: LocalProjectKVEntry,
   fallbackUpdatedAt: string,
-): LocalWorkflowKVEntryDetail {
+): LocalProjectKVEntryDetail {
   return {
     ...createLocalKVEntrySummary(entry, fallbackUpdatedAt),
     value: entry.value,
@@ -2031,35 +2031,35 @@ function createLocalKVEntryDetail(
 
 function isLocalKVEntry(
   value: unknown,
-  expected: NormalizedWorkflowKVStoreInput,
-): value is LocalWorkflowKVEntry {
+  expected: NormalizedProjectKVStoreInput,
+): value is LocalProjectKVEntry {
   if (
     !isRecord(value) ||
     !("value" in value) ||
-    !isWorkflowStorageKind(value["storageKind"]) ||
-    !isWorkflowKVScope(value["scope"])
+    !isProjectStorageKind(value["storageKind"]) ||
+    !isProjectKVScope(value["scope"])
   ) {
     return false;
   }
 
-  const entry = value as unknown as LocalWorkflowKVEntry;
+  const entry = value as unknown as LocalProjectKVEntry;
   return entry.storageKind === expected.storageKind &&
     entry.scope === expected.scope &&
     entry.projectId === expected.projectId &&
     entry.key === expected.key &&
     entry.conversationId === readNormalizedConversationId(expected) &&
-    (entry.source === undefined || isWorkflowKVWriteSource(entry.source));
+    (entry.source === undefined || isProjectKVWriteSource(entry.source));
 }
 
 function isLocalKVEntryMetadata(
   value: unknown,
-  expected: NormalizedWorkflowKVStoreInput,
-): value is LocalWorkflowKVEntryMetadata {
+  expected: NormalizedProjectKVStoreInput,
+): value is LocalProjectKVEntryMetadata {
   if (
     !isRecord(value) ||
     value["version"] !== 1 ||
-    !isWorkflowStorageKind(value["storageKind"]) ||
-    !isWorkflowKVValueType(value["valueType"])
+    !isProjectStorageKind(value["storageKind"]) ||
+    !isProjectKVValueType(value["valueType"])
   ) {
     return false;
   }
@@ -2072,7 +2072,7 @@ function isLocalKVEntryMetadata(
     (value["entryMtimeMs"] !== undefined &&
       (typeof value["entryMtimeMs"] !== "number" || !Number.isFinite(value["entryMtimeMs"]))) ||
     (value["updatedAt"] !== undefined && typeof value["updatedAt"] !== "string") ||
-    (value["source"] !== undefined && !isWorkflowKVWriteSource(value["source"]))
+    (value["source"] !== undefined && !isProjectKVWriteSource(value["source"]))
   ) {
     return false;
   }
@@ -2084,22 +2084,22 @@ function isLocalKVEntryMetadata(
     value["conversationId"] === readNormalizedConversationId(expected);
 }
 
-function isWorkflowKVWriteSource(value: unknown): value is KVWriteSource {
+function isProjectKVWriteSource(value: unknown): value is KVWriteSource {
   if (!isRecord(value)) return false;
   return ["projectId", "runId", "conversationId"].every((key) =>
     value[key] === undefined || typeof value[key] === "string",
   );
 }
 
-function isWorkflowKVScope(value: unknown): value is KVScope {
+function isProjectKVScope(value: unknown): value is KVScope {
   return value === "project" || value === "conversation";
 }
 
-function isWorkflowStorageKind(value: unknown): value is StorageKind {
+function isProjectStorageKind(value: unknown): value is StorageKind {
   return value === "kv" || value === "persistent_value";
 }
 
-function isWorkflowKVValueType(value: unknown): value is KVValueType {
+function isProjectKVValueType(value: unknown): value is KVValueType {
   return value === "null" ||
     value === "array" ||
     value === "object" ||
@@ -2113,12 +2113,12 @@ function readLocalKVUpdatedAt(value: string | undefined, fallback: string): stri
 }
 
 function normalizeLocalKVInspectionOptions(
-  options: ListLocalWorkflowKVEntriesOptions,
+  options: ListLocalProjectKVEntriesOptions,
 ): NormalizedLocalKVInspectionOptions {
   const rootDir = normalizeLocalKVRootDir(options.rootDir);
-  const storageKind = normalizeWorkflowStorageKind(options.storageKind);
+  const storageKind = normalizeProjectStorageKind(options.storageKind);
   const scope = options.scope;
-  if (scope !== undefined && !isWorkflowKVScope(scope)) {
+  if (scope !== undefined && !isProjectKVScope(scope)) {
     throw new HarnessError({
       type: "input_validation",
       message: `Unsupported workflow KV scope: ${String(scope)}.`,
@@ -2126,10 +2126,10 @@ function normalizeLocalKVInspectionOptions(
   }
   const projectId = options.projectId === undefined
     ? undefined
-    : normalizeWorkflowKVProjectId(options.projectId);
+    : normalizeProjectKVProjectId(options.projectId);
   const conversationId = options.conversationId === undefined
     ? undefined
-    : normalizeWorkflowKVConversationId(options.conversationId);
+    : normalizeProjectKVConversationId(options.conversationId);
   if (conversationId !== undefined && projectId === undefined) {
     throw new HarnessError({
       type: "input_validation",
@@ -2142,7 +2142,7 @@ function normalizeLocalKVInspectionOptions(
       message: "Local project storage project scope cannot filter by conversation.",
     });
   }
-  if (options.valueType !== undefined && !isWorkflowKVValueType(options.valueType)) {
+  if (options.valueType !== undefined && !isProjectKVValueType(options.valueType)) {
     throw new HarnessError({
       type: "input_validation",
       message: `Unsupported workflow KV value type: ${String(options.valueType)}.`,
@@ -2172,7 +2172,7 @@ function normalizeLocalKVInspectionOptions(
 }
 
 function matchesLocalKVInspectionOptions(
-  entry: LocalWorkflowKVEntrySummary,
+  entry: LocalProjectKVEntrySummary,
   options: NormalizedLocalKVInspectionOptions,
 ): boolean {
   if (options.scope !== undefined && entry.scope !== options.scope) return false;
@@ -2194,22 +2194,22 @@ function matchesLocalKVInspectionOptions(
 }
 
 function compareLocalKVEntries(
-  left: LocalWorkflowKVEntrySummary,
-  right: LocalWorkflowKVEntrySummary,
+  left: LocalProjectKVEntrySummary,
+  right: LocalProjectKVEntrySummary,
 ): number {
   return compareLocalKVEntryValues(left, right);
 }
 
 function compareLocalKVEntryToCursor(
-  entry: LocalWorkflowKVEntrySummary,
+  entry: LocalProjectKVEntrySummary,
   cursor: LocalKVPageCursor,
 ): number {
   return compareLocalKVEntryValues(entry, cursor);
 }
 
 function compareLocalKVEntryValues(
-  left: Pick<LocalWorkflowKVEntrySummary, "updatedAt" | "storageKind" | "scope" | "key" | "projectId" | "conversationId">,
-  right: Pick<LocalWorkflowKVEntrySummary, "updatedAt" | "storageKind" | "scope" | "key" | "projectId" | "conversationId">,
+  left: Pick<LocalProjectKVEntrySummary, "updatedAt" | "storageKind" | "scope" | "key" | "projectId" | "conversationId">,
+  right: Pick<LocalProjectKVEntrySummary, "updatedAt" | "storageKind" | "scope" | "key" | "projectId" | "conversationId">,
 ): number {
   return compareDescendingLocalKVValue(left.updatedAt, right.updatedAt) ||
     compareDescendingLocalKVValue(left.storageKind, right.storageKind) ||
@@ -2224,7 +2224,7 @@ function compareDescendingLocalKVValue(left: string, right: string): number {
   return left > right ? -1 : 1;
 }
 
-function createLocalKVPageCursor(entry: LocalWorkflowKVEntrySummary | undefined): string | undefined {
+function createLocalKVPageCursor(entry: LocalProjectKVEntrySummary | undefined): string | undefined {
   if (entry === undefined) return undefined;
   return Buffer.from(JSON.stringify({
     updatedAt: entry.updatedAt,
@@ -2243,8 +2243,8 @@ function parseLocalKVPageCursor(value: string | undefined): LocalKVPageCursor | 
     if (
       isRecord(parsed) &&
       typeof parsed["updatedAt"] === "string" &&
-      isWorkflowStorageKind(parsed["storageKind"]) &&
-      isWorkflowKVScope(parsed["scope"]) &&
+      isProjectStorageKind(parsed["storageKind"]) &&
+      isProjectKVScope(parsed["scope"]) &&
       typeof parsed["key"] === "string" &&
       typeof parsed["projectId"] === "string" &&
       (parsed["conversationId"] === undefined || typeof parsed["conversationId"] === "string")
@@ -2302,7 +2302,7 @@ function decodePathSegment(value: string): string | undefined {
 }
 
 function readNormalizedConversationId(
-  input: NormalizedWorkflowKVStoreInput,
+  input: NormalizedProjectKVStoreInput,
 ): string | undefined {
   return input.scope === "conversation" ? input.conversationId : undefined;
 }

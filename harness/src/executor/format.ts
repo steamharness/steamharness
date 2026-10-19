@@ -11,7 +11,7 @@ export interface ExecutionFormatOptions {
   includeJson?: boolean;
 }
 
-export function formatWorkflowDefinitionEvent(
+export function formatProjectDefinitionEvent(
   event: DefinitionEvent,
 ): string {
   return [
@@ -22,13 +22,13 @@ export function formatWorkflowDefinitionEvent(
   ].join("\n");
 }
 
-export function formatWorkflowStructureReport(
+export function formatProjectStructureReport(
   report: StructureReport,
 ): string {
   return formatJson(report);
 }
 
-export function formatWorkflowResultOnly(
+export function formatProjectResultOnly(
   report: ExecutionReport,
 ): string {
   return [
@@ -38,11 +38,11 @@ export function formatWorkflowResultOnly(
     `Duration: ${formatDuration(report.durationMs)}`,
     "",
     "Result:",
-    indent(formatWorkflowResult(report), 2),
+    indent(formatProjectResult(report), 2),
   ].join("\n");
 }
 
-export function formatWorkflowExecutionReport(
+export function formatProjectExecutionReport(
   report: ExecutionReport,
   options: ExecutionFormatOptions = {},
 ): string {
@@ -70,7 +70,7 @@ export function formatWorkflowExecutionReport(
     ...formatOutputLines(report.outputs),
     "",
     "Workflow Result:",
-    indent(formatWorkflowResult(report), 2),
+    indent(formatProjectResult(report), 2),
   );
 
   if (includeJson) {
@@ -80,7 +80,7 @@ export function formatWorkflowExecutionReport(
   return lines.join("\n");
 }
 
-export function formatWorkflowExecutionJson(report: ExecutionReport): string {
+export function formatProjectExecutionJson(report: ExecutionReport): string {
   return formatJson(report);
 }
 
@@ -127,7 +127,7 @@ function formatOutputLines(outputs: OutputReport[]): string[] {
   });
 }
 
-function formatWorkflowResult(report: ExecutionReport): string {
+function formatProjectResult(report: ExecutionReport): string {
   if (report.result.ok) {
     return formatJson(report.result.data);
   }

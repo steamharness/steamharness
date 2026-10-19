@@ -9,7 +9,7 @@ export interface NodeMetadata {
 
 export type NodeMetadataInput = Partial<NodeMetadata>;
 
-export function createWorkflowNodeMetadata(
+export function createProjectNodeMetadata(
   metadata: NodeMetadataInput | undefined,
   fallback: {
     type: string;

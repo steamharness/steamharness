@@ -32,10 +32,10 @@ for (const type of ['conversation', 'workflow', 'kanban']) {
   await symlink(await realpath(path.join(original, 'node_modules/@steamharness/cli')), path.join(folder, 'node_modules/@steamharness/cli'), 'dir');
   const manifest = JSON.parse(await readFile(path.join(folder, 'package.json'), 'utf8'));
   const data = path.join(storageDir, createHash('sha256').update(folder).digest('hex').slice(0, 24));
-  const kv = core.createWorkflowKVContext({ projectId: manifest.id, store: core.createLocalWorkflowKVStore({ rootDir: path.join(data, 'kv') }) });
+  const kv = core.createProjectKVContext({ projectId: manifest.id, store: core.createLocalProjectKVStore({ rootDir: path.join(data, 'kv') }) });
   await kv.setValue(`${type}.state`, { type, active: true, count: 7 });
   for (let index = 0; index < 31; index++) { await kv.setValue(`item.${String(index).padStart(2, '0')}`, index); }
-  const values = core.createWorkflowPersistentValueContext({ projectId: manifest.id, store: core.createLocalWorkflowKVStore({ rootDir: path.join(data, 'values'), storageKind: 'persistent_value' }) });
+  const values = core.createProjectPersistentValueContext({ projectId: manifest.id, store: core.createLocalProjectKVStore({ rootDir: path.join(data, 'values'), storageKind: 'persistent_value' }) });
   await core.createKnowledgeDocument({ persistentValue: values }, { title: `${type} notes`, markdown: `# ${type}\n\nPanel resource evidence.\n\n- First item\n- Second item` });
   projects.push({ type, folder, manifest, kv, values });
 }

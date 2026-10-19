@@ -346,7 +346,7 @@ await api.kv.setValue(`map:${api.getConfiguration().id}`, { image: reference, an
 window.addEventListener("pagehide", () => URL.revokeObjectURL(imageUrl), { once: true });
 ```
 
-`createFile` accepts Blob (including File), ArrayBuffer, or Uint8Array, with a 50 MiB limit per file. References contain `id/name/mimeType/size/kind/storage/workflowId/createdAt/url`, with `storage: "server"`; credentials and disk paths never enter the page. `readFile` returns original bytes for managed file IDs belonging to the current project without a conversation scope. It cannot read arbitrary URLs or local paths. Render images using temporary Blob URLs, release old URLs when configurations change, and prevent stale reads from replacing the new configuration.
+`createFile` accepts Blob (including File), ArrayBuffer, or Uint8Array, with a 50 MiB limit per file. References contain `id/name/mimeType/size/kind/storage/projectId/createdAt/url`, with `storage: "server"`; credentials and disk paths never enter the page. `readFile` returns original bytes for managed file IDs belonging to the current project without a conversation scope. It cannot read arbitrary URLs or local paths. Render images using temporary Blob URLs, release old URLs when configurations change, and prevent stale reads from replacing the new configuration.
 
 Upload and verify a replacement first, save its new KV reference, and only then call `files.deleteFile(oldFileId)` to remove the old file. Existing local images can be migrated using the [business file commands](/en/cli/server-workspace#business-files), which do not publish project source. Managed files are not automatically included in project archives or version downloads.
 
@@ -388,9 +388,9 @@ Do not depend on a CDN, remote fonts, remote APIs, or browser capabilities requi
 
 ## Upload Ignore Rules
 
-The root `.workflowignore` is the only ignore configuration used when CLI packages files for upload. It is independent of Git: `.gitignore` files, including nested ones, do not participate in upload matching. Server receives the selected archive, and Server Web never reads a local directory.
+The root `.steamharnessignore` is the only ignore configuration used when CLI packages files for upload. It is independent of Git: `.gitignore` files, including nested ones, do not participate in upload matching. Server receives the selected archive, and Server Web never reads a local directory.
 
-Rules support comments, directories, globs, `**`, and `!` re-inclusion. Paths are always matched with `/`. When `.workflowignore` is missing, empty, or contains only comments, every regular file under the project root is uploaded; CLI shows the file count and total size first. `.workflowignore` itself is always included in the upload package.
+Rules support comments, directories, globs, `**`, and `!` re-inclusion. Paths are always matched with `/`. When `.steamharnessignore` is missing, empty, or contains only comments, every regular file under the project root is uploaded; CLI shows the file count and total size first. `.steamharnessignore` itself is always included in the upload package.
 
 These files cannot be excluded: `package.json`, the Workflow or Conversation entry point, the configured Kanban HTML entry point, and an existing `kanban.json`. If a rule excludes a required file, upload identifies the matching rule. Symbolic links, special device files, directory escape, individual-file limits, and package-size limits are independent security checks and cannot be bypassed with ignore rules.
 
@@ -414,11 +414,11 @@ tests/
 dist/**/*.map
 ```
 
-Do not ignore the actual `artifactDir`. For example, when `artifactDir` is `dist`, `.gitignore` may exclude `dist/` to keep it out of Git, but `.workflowignore` must retain it so the build artifacts are uploaded.
+Do not ignore the actual `artifactDir`. For example, when `artifactDir` is `dist`, `.gitignore` may exclude `dist/` to keep it out of Git, but `.steamharnessignore` must retain it so the build artifacts are uploaded.
 
 ## CLI Web and Server Web
 
-CLI can select local Kanban text and binary static resources with `.workflowignore` and upload them to Server. Server does not run tsup, install dependencies, or create a Node runtime for Kanban. It validates the configured HTML entry point and retains the static artifacts; Server Web only inspects and manages uploaded server versions.
+CLI can select local Kanban text and binary static resources with `.steamharnessignore` and upload them to Server. Server does not run tsup, install dependencies, or create a Node runtime for Kanban. It validates the configured HTML entry point and retains the static artifacts; Server Web only inspects and manages uploaded server versions.
 
 Server Web static previews pin the current project and selected target. Reads require project read access; current-project KV and Knowledge writes require data-write permission, so viewers are read-only. Related access also checks both declarations and the target's key grants. The site issues a short-lived signed capability tied to the project, user, and fixed version; resource URLs carry a CSP nonce and cannot read other projects or versions. Signing uses `STEAMHARNESS_AUTH_COOKIE_SECRET`, falling back to `STEAMHARNESS_SERVER_ADMIN_KEY`; all instances should share the same stable key. Previews refresh capabilities before expiry, reload the iframe, and preserve named configurations. Temporary failures retry; an expired capability that cannot be refreshed shows an error. Bridge and configuration operations always carry the initial `resolvedTarget`. Named configurations are isolated by user, while KV and Knowledge are shared within the project.
 
@@ -476,6 +476,6 @@ python .agents/skills/workflow-generator/scripts/create_workflow.py roadmap \
   --dir ./roadmap-kanban --project-type kanban --with-kanban-params
 ```
 
-Both commands generate a complete editable Kanban project with `.workflowignore`, `package.json`, `index.html`, `board-state.js`, `board-storage.js`, a README, and pure-logic tests. `--with-kanban-params` also creates `kanban.json` with only a title and accent color. Tasks are always created, edited, dragged, and deleted in the page, then persisted per configuration through the KV bridge.
+Both commands generate a complete editable Kanban project with `.steamharnessignore`, `package.json`, `index.html`, `board-state.js`, `board-storage.js`, a README, and pure-logic tests. `--with-kanban-params` also creates `kanban.json` with only a title and accent color. Tasks are always created, edited, dragged, and deleted in the page, then persisted per configuration through the KV bridge.
 
 The generator creates a Simplified Chinese project by default and does not automatically add translation resources, a language switch, or locale detection. It adds those adaptations only after you explicitly request internationalization or multilingual support and identify the target languages.

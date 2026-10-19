@@ -43,7 +43,7 @@ function access(value: unknown): string {
   return text(rule.mode) ?? t("Not declared");
 }
 
-export function workflowInfoItems(project: Project, manifest: unknown): InfoItem[] {
+export function projectInfoItems(project: Project, manifest: unknown): InfoItem[] {
   const pkg = record(manifest);
   const info = record(record(pkg.steamHarness).projectInfo);
   const declarations = strings(info.declarations);

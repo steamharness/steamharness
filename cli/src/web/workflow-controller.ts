@@ -1,10 +1,10 @@
 import { t } from './localization';
 import {
-  applyOutputChunk, resolvedWorkflowValues, validateWorkflowValues, workflowFormValue, workflowParameters, workflowParamArgs,
+  applyOutputChunk, resolvedProjectValues, validateProjectValues, projectFormValue, projectParameters, projectParamArgs,
   type ConversationSession, type Project, type Runtime, type ResolvedInput, type TimerRecord,
 } from './workflow-types';
 import {
-  parseWorkflowArgs, workflowStorageReferences, type Draft, type RunRecord, type StartInput, type WorkspaceContract,
+  parseProjectArgs, projectStorageReferences, type Draft, type RunRecord, type StartInput, type WorkspaceContract,
 } from './workflow-workspace';
 
 interface Options {
@@ -66,9 +66,9 @@ export class Controller {
   }
   async start(input: StartInput): Promise<RunRecord> {
     this.assertAvailable();
-    const parameters = workflowParameters(this.project, input.entrypointId);
-    const args = input.inputMode === 'raw' ? parseWorkflowArgs(input.rawArgs ?? '[]')
-      : (validateWorkflowValues(parameters.fields, input.params, input.states), workflowParamArgs(parameters.fields, input.params, input.states));
+    const parameters = projectParameters(this.project, input.entrypointId);
+    const args = input.inputMode === 'raw' ? parseProjectArgs(input.rawArgs ?? '[]')
+      : (validateProjectValues(parameters.fields, input.params, input.states), projectParamArgs(parameters.fields, input.params, input.states));
     const files = await this.inputFiles([input.params, args]);
     this.assertAvailable();
     const draft = this.draft(input.entrypointId);
@@ -96,7 +96,7 @@ export class Controller {
     this.runs.unshift(record); this.workspace.selectedId = id; this.launch(record); await this.persist(); return record;
   }
   private async inputFiles(value: unknown) {
-    return Promise.all([...workflowStorageReferences(value).files].map(async id => (await this.runtime.readFile(this.project, id)).reference));
+    return Promise.all([...projectStorageReferences(value).files].map(async id => (await this.runtime.readFile(this.project, id)).reference));
   }
   private launch(record: RunRecord): void {
     record.status = 'running'; record.error = undefined; record.updatedAt = Date.now();
@@ -131,7 +131,7 @@ export class Controller {
           if (record.pendingInput?.requestId === event.requestId) { delete record.pendingInput; }
         }
         if (event.type === 'token_usage_updated') {
-          record.tokenUsage = { enabled: true, display: workflowParameters(this.project, record.entrypointId).tokenUsage?.display !== false, run: event.usage as Record<string, unknown> };
+          record.tokenUsage = { enabled: true, display: projectParameters(this.project, record.entrypointId).tokenUsage?.display !== false, run: event.usage as Record<string, unknown> };
         }
         if (event.type === 'file_created') { record.files.push(event.file as unknown as RunRecord['files'][number]); }
         if (event.type === 'timer_started' || event.type === 'timer_finished') {
@@ -192,8 +192,8 @@ export class Controller {
     if (!record?.pendingInput) { throw new Error('Input request is no longer available.'); }
     if (this.workspace.occupiedId && this.workspace.occupiedId !== id) { throw new Error('Another workflow is waiting for input.'); }
     const request = record.pendingInput;
-    const form = Object.fromEntries(request.params.map(field => [field.name, workflowFormValue(field, values[field.name] ?? request.defaultValues?.[field.name])]));
-    record.submittingInput = { requestId, nodeName: request.nodeName, values: resolvedWorkflowValues(request.params, form),
+    const form = Object.fromEntries(request.params.map(field => [field.name, projectFormValue(field, values[field.name] ?? request.defaultValues?.[field.name])]));
+    record.submittingInput = { requestId, nodeName: request.nodeName, values: resolvedProjectValues(request.params, form),
       submittedAt: new Date().toISOString(), request, precedingOutputItemIds: record.items.map((item, index) => item.id ?? String(index)) };
     this.launch(record); await this.persist();
   }
@@ -208,8 +208,8 @@ export class Controller {
     if (this.workspace.occupiedId === id || this.task?.record.id === id) { throw new Error('Stop the workflow before deleting its record.'); }
     const record = this.runs.find(record => record.id === id);
     if (!record) { throw new Error('Run no longer exists.'); }
-    const other = workflowStorageReferences([this.runs.filter(item => item !== record), this.workspace.drafts, this.options.legacy ?? []]);
-    const own = workflowStorageReferences(record);
+    const other = projectStorageReferences([this.runs.filter(item => item !== record), this.workspace.drafts, this.options.legacy ?? []]);
+    const own = projectStorageReferences(record);
     for (const session of this.options.legacy ?? []) { other.scopes.add(session.id); }
     let unresolvedOwner = false;
     for (const id of other.files) {

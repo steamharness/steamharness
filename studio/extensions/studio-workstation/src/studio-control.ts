@@ -3,7 +3,7 @@ import path from 'node:path';
 import { realpath, stat } from 'node:fs/promises';
 import type { AssistantWorkspaceFolder, Project } from './workflow-types';
 import { projectId, readRelatedProjects } from './projects';
-import { readWorkflowProjectManifest, resolveImportedRelatedProject } from './workflow-related-projects-view';
+import { readProjectManifest, resolveImportedRelatedProject } from './workflow-related-projects-view';
 import type { StudioControlPermissionPolicy } from './studio-control-bridge';
 import { t } from './localization';
 
@@ -88,7 +88,7 @@ export function createStudioControlHandler(assistant: NonNullable<Project['assis
         const directory = await allowedPath(optionalString('projectDir') ?? assistant.workdir);
         if (!(await stat(directory)).isDirectory()) { throw new Error(t('Studio Control requires a directory.')); }
         await allowedPath(path.join(directory, 'package.json'));
-        const manifest = await readWorkflowProjectManifest(vscode.Uri.file(directory));
+        const manifest = await readProjectManifest(vscode.Uri.file(directory));
         const id = projectId((manifest as { id?: unknown } | null)?.id);
         if (!id) { throw new Error(t('Studio Control requires a Workflow project directory.')); }
         const relatedProjects = await Promise.all(readRelatedProjects(manifest).map(async relation => {

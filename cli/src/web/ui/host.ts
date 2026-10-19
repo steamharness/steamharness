@@ -10,7 +10,7 @@ type Message = Record<string, any>;
 interface Host { postMessage(message: Message): void | Promise<void | boolean>; getState(): unknown; setState(state: unknown): void }
 interface EditTarget { element: HTMLElement; selection?: { start: number; end: number; direction: 'forward' | 'backward' | 'none'; value: string } }
 
-export function acquireWorkflowHost(options: { live?: boolean; connectionBanner?: boolean } = {}): Host {
+export function acquireProjectHost(options: { live?: boolean; connectionBanner?: boolean } = {}): Host {
   let contextInput: EditTarget | undefined, lastInput: EditTarget | undefined;
   let contextText: string | undefined;
   addEventListener('keydown', event => {

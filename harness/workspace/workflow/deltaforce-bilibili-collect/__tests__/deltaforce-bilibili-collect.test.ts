@@ -1,5 +1,5 @@
 /**
- * Tests for the M3-driven deltaforce-bilibili-collect workflow.
+ * Tests for the M3-driven deltaforce-bilibili-collect steamharness.
  *
  *  every test below stays offline; env-gated mocks
  * (`DELTAFORCE_BILIBILI_DOWNLOAD_MOCK`, `MINIMAX_DRY_RUN`) plus a stubbed
@@ -11,7 +11,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runLocalWorkflowWithReport, type KVStore, type RuntimeEvent } from "steamharness";
+import { runLocalProjectWithReport, type KVStore, type RuntimeEvent } from "steamharness";
 import {
   createBilibiliPlayUrl,
   fetchBilibiliDownloadUrl,
@@ -580,7 +580,7 @@ async function runWithMockEnv(options: {
 }) {
   const kvStoreDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-bilibili-test-"));
   try {
-    return await runLocalWorkflowWithReport({
+    return await runLocalProjectWithReport({
       projectDir: path.resolve(process.cwd(), "workflow/deltaforce-bilibili-collect"),
       projectName: "deltaforce-bilibili-collect",
       args: options.args,

@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { ClipboardBridge } from '../web/ui/clipboard-bridge';
-import { acquireWorkflowHost } from '../web/ui/host';
+import { acquireProjectHost } from '../web/ui/host';
 import { pasteHostClipboard, selectedText } from '../web/ui/edit-commands';
 
 vi.mock('../web/ui/account', () => ({ AccountPanel: class {} }));
@@ -74,7 +74,7 @@ it('the UI host accepts clipboard replies only from its parent and exposes the c
   vi.stubGlobal('navigator', { clipboard: { writeText: browserWrite } });
   vi.stubGlobal('acquireVsCodeApi', undefined);
   vi.stubGlobal('addEventListener', (type: string, listener: (event: any) => void) => listeners.set(type, listener));
-  const host = acquireWorkflowHost();
+  const host = acquireProjectHost();
   const receive = (source: unknown, extra: Record<string, any>) => listeners.get('message')!({ source, data: { type: 'workflow-host', ...extra } });
   receive({}, { editCommand: 'paste' });
   receive(parent, { editCommand: 'insertHTML' });

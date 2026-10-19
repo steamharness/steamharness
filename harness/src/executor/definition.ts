@@ -4,21 +4,21 @@ import type {
   EntrypointGroupDefinition,
   ExecutorDefinition,
 } from "./types";
-import { assertWorkflowParamDeclarations, normalizeWorkflowParamDeclarations } from "./param-definition";
+import { assertProjectParamDeclarations, normalizeProjectParamDeclarations } from "./param-definition";
 import { assertConversationFooter } from "./conversation-footer";
 import { assertConversationCommands } from "./conversation-commands";
 import { assertConversationUserInput } from "./conversation-input";
 
 export const STEAMHARNESS_ENTRYPOINT_ID_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/;
 
-export function defineWorkflowEntrypoint<Input, Output>(
+export function defineProjectEntrypoint<Input, Output>(
   definition: EntrypointDefinition<Input, Output>,
 ): EntrypointDefinition<Input, Output> {
-  assertWorkflowEntrypointDefinition(definition);
+  assertProjectEntrypointDefinition(definition);
   return definition;
 }
 
-export function defineWorkflowExecutor<Input = unknown, Output = unknown>(
+export function defineProjectExecutor<Input = unknown, Output = unknown>(
   definition: ExecutorDefinition<Input, Output>,
 ): ExecutorDefinition<Input, Output> {
   if (definition.projectType === "workflow") {
@@ -31,7 +31,7 @@ export function defineWorkflowExecutor<Input = unknown, Output = unknown>(
     const ids = new Set<string>();
     const groups = new Map<string, EntrypointGroupDefinition>();
     for (const entrypoint of definition.entrypoints) {
-      assertWorkflowEntrypointDefinition(entrypoint);
+      assertProjectEntrypointDefinition(entrypoint);
       if (ids.has(entrypoint.id)) {
         throw new HarnessError({
           type: "input_validation",
@@ -69,15 +69,15 @@ export function defineWorkflowExecutor<Input = unknown, Output = unknown>(
         message: "conversation.defaultInput was removed. Conversation always uses the standard message input; declare attachment capabilities in conversation.attachments.",
       });
     }
-    assertWorkflowParamDeclarations(definition.params, "conversation");
-    assertConversationFooter(definition.conversation?.footer, normalizeWorkflowParamDeclarations(definition.params).params);
-    assertConversationCommands(definition.conversation?.commands, normalizeWorkflowParamDeclarations(definition.params).params);
-    assertConversationUserInput(definition.conversation?.userInput, normalizeWorkflowParamDeclarations(definition.params).params);
+    assertProjectParamDeclarations(definition.params, "conversation");
+    assertConversationFooter(definition.conversation?.footer, normalizeProjectParamDeclarations(definition.params).params);
+    assertConversationCommands(definition.conversation?.commands, normalizeProjectParamDeclarations(definition.params).params);
+    assertConversationUserInput(definition.conversation?.userInput, normalizeProjectParamDeclarations(definition.params).params);
   }
   return definition;
 }
 
-function assertWorkflowEntrypointDefinition(
+function assertProjectEntrypointDefinition(
   definition: EntrypointDefinition<any, any>,
 ): void {
   if (
@@ -103,11 +103,11 @@ function assertWorkflowEntrypointDefinition(
       message: `Workflow entrypoint "${definition.id}" description must be a string when provided.`,
     });
   }
-  assertWorkflowEntrypointGroupDefinition(definition.id, definition.group);
-  assertWorkflowParamDeclarations(definition.params, "workflow");
+  assertProjectEntrypointGroupDefinition(definition.id, definition.group);
+  assertProjectParamDeclarations(definition.params, "workflow");
 }
 
-function assertWorkflowEntrypointGroupDefinition(
+function assertProjectEntrypointGroupDefinition(
   entrypointId: string,
   group: EntrypointGroupDefinition | undefined,
 ): void {

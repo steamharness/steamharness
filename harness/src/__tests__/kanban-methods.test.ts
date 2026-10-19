@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { runKanbanMethodsAction, readKanbanMethodsBridgeConfig, KANBAN_METHODS_CAPABILITY } from "../agent/capabilities/kanban-methods";
-import { createWorkflowCapabilityTools, listWorkflowCapabilityToolIds } from "../agent/capabilities/index";
+import { createProjectCapabilityTools, listProjectCapabilityToolIds } from "../agent/capabilities/index";
 import type { NodeContext } from "../types/context";
 
 const config = { url: "http://127.0.0.1:12345/host", token: "test-token" };
@@ -56,13 +56,13 @@ test("the Agent offers the enabled Kanban capability and asks approval before se
   Object.assign(process.env, enabled);
   globalThis.fetch = (async () => { requests += 1; return Response.json({ ok: true, value: { instances: [] } }); }) as typeof fetch;
   try {
-    assert.ok(listWorkflowCapabilityToolIds().includes(KANBAN_METHODS_CAPABILITY.toolId));
-    const tools = await createWorkflowCapabilityTools({ context: {} as NodeContext,
+    assert.ok(listProjectCapabilityToolIds().includes(KANBAN_METHODS_CAPABILITY.toolId));
+    const tools = await createProjectCapabilityTools({ context: {} as NodeContext,
       approve: async (toolId) => { assert.equal(toolId, KANBAN_METHODS_CAPABILITY.toolId); throw new Error("approval denied"); } });
     const tool = tools.find((item) => item.name === KANBAN_METHODS_CAPABILITY.toolId)!;
     await assert.rejects(() => tool.execute("call", { action: "list" }), /approval denied/);
     assert.equal(requests, 0);
-    const approved = await createWorkflowCapabilityTools({ context: {} as NodeContext, approve: async () => {} });
+    const approved = await createProjectCapabilityTools({ context: {} as NodeContext, approve: async () => {} });
     const result = await approved.find((item) => item.name === KANBAN_METHODS_CAPABILITY.toolId)!.execute("call", { action: "list" });
     assert.equal(requests, 1);
     assert.match(JSON.stringify(result.content), /instances/);

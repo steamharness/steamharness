@@ -8,7 +8,7 @@ import {
 } from "../../knowledge/index";
 import { HarnessError } from "../../workflow/errors";
 import type { NodeContext } from "../../types/context";
-import { selectWorkflowStorage } from "./storage";
+import { selectProjectStorage } from "./storage";
 import type { Capability } from "./types";
 
 export const GLOBAL_MEMORY_MCP_SERVER_ID = "workflow-memory";
@@ -57,7 +57,7 @@ export async function runGlobalMemoryAction(
     });
   }
 
-  const storage = selectWorkflowStorage(context);
+  const storage = selectProjectStorage(context);
   switch (args.action) {
     case "list": {
       const memories = (await listKnowledgeDocuments(storage))

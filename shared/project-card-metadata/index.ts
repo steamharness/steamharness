@@ -1,5 +1,5 @@
 import {
-  getWorkflowProjectTypeDefinition,
+  getProjectKindDefinition,
   type ProjectKind,
 } from "../project-types/index";
 
@@ -65,11 +65,11 @@ function canonicalizeProjectCardIconName(icon: ProjectCardIconName): ProjectCard
 }
 
 export function defaultProjectCardIcon(kind: ProjectKind): ProjectCardIconName {
-  return getWorkflowProjectTypeDefinition(kind).defaultIcon;
+  return getProjectKindDefinition(kind).defaultIcon;
 }
 
 export function defaultProjectCardBackgroundColor(kind: ProjectKind): string {
-  return getWorkflowProjectTypeDefinition(kind).defaultIconBackgroundColor;
+  return getProjectKindDefinition(kind).defaultIconBackgroundColor;
 }
 
 export function defaultProjectCardIconColor(): string {

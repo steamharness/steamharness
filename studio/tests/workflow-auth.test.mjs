@@ -5,8 +5,8 @@ import { register } from 'tsx/esm/api';
 
 register();
 const {
-  Account, ServerClient, normalizeWorkflowServerUrl, workflowAuthEnvironment,
-  isPrivateEnvironmentKey, sanitizeWorkflowEnvironment,
+  Account, ServerClient, normalizeProjectServerUrl, projectAuthEnvironment,
+  isPrivateEnvironmentKey, sanitizeProjectEnvironment,
 } = await import('../extensions/studio-workstation/src/workflow-auth-client.ts');
 
 const serverUrl = 'https://dev.workflow.test';
@@ -14,7 +14,7 @@ const user = { userId: 'test-user', email: 'user@example.test', displayName: 'St
 const token = 'test-studio-session';
 
 test('worker environment filtering removes internal extension and cloud credential paths', () => {
-  const environment = sanitizeWorkflowEnvironment({
+  const environment = sanitizeProjectEnvironment({
     PATH: '/bin',
     STEAMHARNESS_STUDIO_INTERNAL: '1',
     STEAMHARNESS_STUDIO_INTERNAL_MODULE: '/private/extension-layer.mjs',
@@ -296,16 +296,16 @@ test('an old worker failure cannot invalidate a newer login', async () => {
 
 test('worker and CLI environments isolate Studio credentials from inherited and saved logins', () => {
   const inherited = { STEAMHARNESS_LLM_SERVER_URL: 'https://old.workflow.test', STEAMHARNESS_LLM_SERVER_TOKEN: 'old-token', STEAMHARNESS_SERVER_TOKEN: 'legacy-token', PATH: '/usr/bin' };
-  const loggedOut = workflowAuthEnvironment(inherited, undefined, '/studio/auth');
+  const loggedOut = projectAuthEnvironment(inherited, undefined, '/studio/auth');
   assert.deepEqual(loggedOut, {
     STEAMHARNESS_AI_SERVER_URL: '', STEAMHARNESS_AI_API_KEY: '', STEAMHARNESS_SERVER_TOKEN: '', PATH: '/usr/bin',
     STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '', STEAMHARNESS_CLI_AUTH_DIR: '/studio/auth',
   });
-  const loggedIn = workflowAuthEnvironment(inherited, { serverUrl, accessToken: token }, '/studio/auth');
+  const loggedIn = projectAuthEnvironment(inherited, { serverUrl, accessToken: token }, '/studio/auth');
   assert.equal(loggedIn.STEAMHARNESS_SERVER_ADMIN_KEY, token);
   assert.equal(loggedIn.STEAMHARNESS_AI_SERVER_URL, '');
   assert.equal(loggedIn.STEAMHARNESS_AI_API_KEY, '');
-  const withAi = workflowAuthEnvironment(inherited, { serverUrl, accessToken: token, aiServerUrl: 'https://ai.workflow.test', aiAccessToken: 'ai-token' }, '/studio/auth');
+  const withAi = projectAuthEnvironment(inherited, { serverUrl, accessToken: token, aiServerUrl: 'https://ai.workflow.test', aiAccessToken: 'ai-token' }, '/studio/auth');
   assert.equal(withAi.STEAMHARNESS_AI_SERVER_URL, 'https://ai.workflow.test');
   assert.equal(withAi.STEAMHARNESS_AI_API_KEY, 'ai-token');
   assert.equal(withAi.STEAMHARNESS_LLM_SERVER_URL, undefined);
@@ -314,7 +314,7 @@ test('worker and CLI environments isolate Studio credentials from inherited and 
 
 test('server URLs reject embedded credentials and authenticated redirects never forward the token', async (t) => {
   for (const url of ['file:///tmp/server', 'https://user:password@example.test', 'https://example.test?token=secret']) {
-    assert.throws(() => normalizeWorkflowServerUrl(url));
+    assert.throws(() => normalizeProjectServerUrl(url));
   }
   let redirectedRequests = 0;
   const destination = createServer((_req, res) => { redirectedRequests++; res.end('{}'); });

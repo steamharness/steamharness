@@ -23,7 +23,7 @@ description: "Core v0.2.4 的更新说明。"
 - 新增 `workflow.createAgentNode(...)` 放进任意 workflow 的 agent 节点。
 - 新增 `workflow.defineAgentConversationExecutor(...)` 一步生成完整 conversation executor。
 - 新增 该 executor 含 conversation 配置、token usage、工具、参数与 OpenAI 网关对接。
-- 新增 需过结构校验的项目可用 `createAgentConversationWorkflow(...)` 与 `createAgentProjectParams(...)` 拆分形式。
+- 新增 需过结构校验的项目可用 `createAgentConversationProject(...)` 与 `createAgentProjectParams(...)` 拆分形式。
 - 新增 Agent 输入支持 `prompt`、`images`、`workdir`、`provider`、`model` 与 `baseUrl`。
 - 新增 Agent 输入支持 `effort`、`agent`、`permissionPolicy`、`contextWindow`、`compact` 与审批恢复载荷。
 - 新增 `effort` 取 `off` 到 `max`，`ultra` 等同 `max`，超出模型支持范围自动收敛。
@@ -43,11 +43,11 @@ description: "Core v0.2.4 的更新说明。"
 - 新增 `workflow.createMcpTools(...)` 把 MCP 工具变成 agent 工具，名字保持 `<服务 id>_<工具名>`。
 - 新增 `workflow.normalizeMcpServers(...)` 在启动任何子进程之前校验服务定义。
 - 新增 带能力的变量只能按名继承：`allowedInheritedEnvKeys` 列出允许项，`inheritEnvironment` 申请。
-- 新增 `workflow.createWorkflowCapabilityTools({ context })` 渲染能力为 agent 原生工具。
-- 新增 `workflow.createWorkflowCapabilityServer(toolId, { context })` 渲染同一能力为 MCP 服务端。
-- 新增 `workflow.runWorkflowCapabilityAction(toolId, context, args)` 按工具 id 直接执行，供审批恢复使用。
-- 新增 `workflow.listWorkflowCapabilityToolIds({ globalMemory? })` 列出本次运行会提供的工具。
-- 新增 `workflow.isWorkflowCapabilityAvailable(toolId)` 报告能力在当前进程能否工作。
+- 新增 `workflow.createProjectCapabilityTools({ context })` 渲染能力为 agent 原生工具。
+- 新增 `workflow.createProjectCapabilityServer(toolId, { context })` 渲染同一能力为 MCP 服务端。
+- 新增 `workflow.runProjectCapabilityAction(toolId, context, args)` 按工具 id 直接执行，供审批恢复使用。
+- 新增 `workflow.listProjectCapabilityToolIds({ globalMemory? })` 列出本次运行会提供的工具。
+- 新增 `workflow.isProjectCapabilityAvailable(toolId)` 报告能力在当前进程能否工作。
 - 新增 四个内置工作流能力工具：知识库、KV、跨会话记忆与宿主配置，工具 id 与内置 OpenCode 项目一致。
 - 新增 `workflow.createSkillTools({ directories, approve? })` 把技能做成按需读取的工具。
 - 新增 `workflow.runSkillAction(directories, args)` 供审批恢复时按名字重跑同一动作。
@@ -77,7 +77,7 @@ description: "Core v0.2.4 的更新说明。"
 - 修复 被取消或中断的轮次留下未回答工具调用的消息导致 provider 拒收，落盘前修剪未收尾尾部。
 - 修复 `agent.transcript.<sessionKey>` 读写失败不再让整轮失败，改以一行说明代替。
 - 修复 Agent 类项目的 OpenAI / Responses 适配器必然以「did not produce output item」结束。
-- 修复 `createAgentConversationWorkflow({ outputItemId })` 不再按会话派生 id，改用声明的 id。
+- 修复 `createAgentConversationProject({ outputItemId })` 不再按会话派生 id，改用声明的 id。
 - 修复 工作区内的软链接可让 `read` / `write` / `edit` / `grep` / `find` 访问工作区之外的路径。
 - 修复 `bash` 超时或中止只结束 shell，现在连同整棵进程树一起结束。
 - 修复 取消运行未真正中止本轮，`context.abortSignal` 现在调用 pi 的 `agent.abort()`。

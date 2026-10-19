@@ -33,14 +33,14 @@ workflow.parseConversationDefaultInputArgs(
 | 缺少值 | 该 flag 会被忽略。 |
 | 其它参数 | 保留给业务代码自行解析，本 helper 不处理。 |
 
-`--images`、`--videos` 和 `--files` 复用文件引用协议，参数值可以是文件引用 JSON 或本地路径字符串。解析逻辑与文件输入节点相同，底层使用 `parseWorkflowFileReferences()`。只有显式启用 `attachments.videos: true` 的项目使用 `--videos`；旧项目仅启用 `files: true` 时，视频继续使用 `--files`。
+`--images`、`--videos` 和 `--files` 复用文件引用协议，参数值可以是文件引用 JSON 或本地路径字符串。解析逻辑与文件输入节点相同，底层使用 `parseProjectFileReferences()`。只有显式启用 `attachments.videos: true` 的项目使用 `--videos`；旧项目仅启用 `files: true` 时，视频继续使用 `--files`。
 
 ## executor 配置
 
 ```ts
 export const executor = workflow.defineExecutor<Input, OutputPayload>({
   projectType: "conversation",
-  workflow: conversationWorkflow,
+  workflow: conversationProject,
   conversation: {
     attachments: {
       images: true,

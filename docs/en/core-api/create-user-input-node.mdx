@@ -127,7 +127,7 @@ const approvalNode = workflow.createUserInputNode<Plan, ApprovalPayload>({
   },
 });
 
-export const deployWorkflow = workflow.defineWorkflow<Input, OutputPayload>({
+export const deployProject = workflow.defineProject<Input, OutputPayload>({
   name: "deploy",
   async run(input, context) {
     const plan = await workflow.runNode(planNode, input, context);

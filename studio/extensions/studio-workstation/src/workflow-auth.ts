@@ -1,14 +1,14 @@
 import { t } from './localization';
 import { localizationHtml } from './localization-host';
 import * as vscode from 'vscode';
-import { registerWorkflowConnectionStatus } from './workflow-connection-status';
+import { registerProjectConnectionStatus } from './workflow-connection-status';
 import {
   DEFAULT_STEAMHARNESS_SERVER_URL, Account,
   type AccountState, type Connection,
 } from './workflow-auth-client';
 
 const SECRET_KEY = 'studio.project.account';
-const PROVIDER_ID = 'studio-workflow';
+const PROVIDER_ID = 'studio-steamharness';
 
 export class AccountController implements vscode.Disposable {
   private readonly change = new vscode.EventEmitter<AccountState>();
@@ -40,7 +40,7 @@ export class AccountController implements vscode.Disposable {
     });
     this.disposables.push(
       this.change, this.sessionChange,
-      registerWorkflowConnectionStatus(this),
+      registerProjectConnectionStatus(this),
       vscode.authentication.registerAuthenticationProvider(PROVIDER_ID, 'Workflow', {
         onDidChangeSessions: this.sessionChange.event,
         getSessions: async (scopes, options) => {
@@ -162,7 +162,7 @@ export class AccountController implements vscode.Disposable {
   }
 }
 
-export async function activateWorkflowAccount(context: vscode.ExtensionContext): Promise<AccountController> {
+export async function activateProjectAccount(context: vscode.ExtensionContext): Promise<AccountController> {
   const account = new AccountController(context);
   context.subscriptions.push(account);
   await account.initialize();

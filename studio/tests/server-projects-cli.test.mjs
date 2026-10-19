@@ -38,7 +38,7 @@ for (const projectType of ['workflow', 'conversation', 'kanban']) {
       { path: 'image.bin', content: 'AAH/', encoding: 'base64' }];
     if (projectType === 'kanban') { files.push({ path: 'index.html', content: '<!doctype html><title>Sample</title>' }); }
     for (const file of files) { await fs.writeFile(path.join(source, file.path), file.encoding === 'base64' ? Buffer.from(file.content, 'base64') : file.content); }
-    await fs.writeFile(path.join(source, '.workflowignore'), 'node_modules\n');
+    await fs.writeFile(path.join(source, '.steamharnessignore'), 'node_modules\n');
     const projects = [{ projectId, projectName: manifest.name, role: 'root', version: manifest.version, sourceHash: sourceHash(files), files }];
     const dependencies = [];
     if (projectType === 'kanban') {

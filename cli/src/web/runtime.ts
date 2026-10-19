@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { STEAMHARNESS_RUNTIME_LOCALE_ENV } from 'steamharness';
 import { locale } from './localization';
-import { redactWorkflowData, type Runtime, type Report, type Project } from './workflow-types';
+import { redactProjectData, type Runtime, type Report, type Project } from './workflow-types';
 import type { CliRelatedProjectSpec } from '../related-projects';
 import type { AgentSessionCommand, AgentSessionReceipt } from 'steamharness/agent';
 
@@ -78,7 +78,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     child.stdout!.setEncoding('utf8'); child.stderr!.setEncoding('utf8');
     child.stderr!.on('data', (chunk: string) => {
       stderr = (stderr + chunk).slice(-100_000);
-      onEvent?.({ type: 'runtime_log', text: redactWorkflowData(chunk, [runtimeAuth?.accessToken ?? '', runtimeAuth?.aiAccessToken ?? '']), runId: request.runId });
+      onEvent?.({ type: 'runtime_log', text: redactProjectData(chunk, [runtimeAuth?.accessToken ?? '', runtimeAuth?.aiAccessToken ?? '']), runId: request.runId });
     });
     child.stdout!.on('data', (chunk: string) => {
       buffer += chunk;
@@ -87,7 +87,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
         const line = buffer.slice(0, newline); buffer = buffer.slice(newline + 1);
         if (!line.startsWith('__STEAMHARNESS_WEB__')) { continue; }
         try {
-          const message = redactWorkflowData(JSON.parse(line.slice('__STEAMHARNESS_WEB__'.length)), [runtimeAuth?.accessToken ?? '', runtimeAuth?.aiAccessToken ?? ''], false) as { kind: string; value: T & Record<string, unknown>; error?: string };
+          const message = redactProjectData(JSON.parse(line.slice('__STEAMHARNESS_WEB__'.length)), [runtimeAuth?.accessToken ?? '', runtimeAuth?.aiAccessToken ?? ''], false) as { kind: string; value: T & Record<string, unknown>; error?: string };
           if (message.kind === 'event') { onEvent?.(message.value); }
           if (message.kind === 'result') { result = message.value; }
           if (message.kind === 'error') { failure = message.error; }
@@ -104,8 +104,8 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     child.once('close', (code, signal) => {
       cleanup();
       if (failure) { reject(new Error(failure)); }
-      else if (result !== undefined) { if (request.method === 'run') { (result as Report).logs = String(redactWorkflowData(stderr, [runtimeAuth?.accessToken ?? '', runtimeAuth?.aiAccessToken ?? ''])); } resolve(result); }
-      else { reject(Object.assign(new Error(String(redactWorkflowData(stderr.trim(), [runtimeAuth?.accessToken ?? '', runtimeAuth?.aiAccessToken ?? ''])) || `Workflow runtime exited (${signal ?? code}).`),
+      else if (result !== undefined) { if (request.method === 'run') { (result as Report).logs = String(redactProjectData(stderr, [runtimeAuth?.accessToken ?? '', runtimeAuth?.aiAccessToken ?? ''])); } resolve(result); }
+      else { reject(Object.assign(new Error(String(redactProjectData(stderr.trim(), [runtimeAuth?.accessToken ?? '', runtimeAuth?.aiAccessToken ?? ''])) || `Workflow runtime exited (${signal ?? code}).`),
         { code: 'STEAMHARNESS_WORKER_INTERRUPTED' })); }
     });
     child.stdin!.on('error', () => undefined);

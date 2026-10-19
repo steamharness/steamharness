@@ -6,7 +6,7 @@ import {
   createDefaultKanbanValues, createInjectedKanbanParams, parseKanbanManifestText, sanitizeKanbanValues,
   parseKanbanBridgeCall, type KanbanInjectedConfiguration, type KanbanParamDefinition,
 } from '@steamharness/kanban-project';
-import { readWorkflowProjectInfo, isWorkflowProjectDataStorageLocationAllowed } from '@steamharness/project-info';
+import { readProjectInfo, isProjectDataStorageLocationAllowed } from '@steamharness/project-info';
 import type { CliRelatedProjectSpec } from '../related-projects';
 import type { ResourceCard } from './resource-cards';
 import type { Project, Runtime } from './workflow-types';
@@ -91,8 +91,8 @@ export class ResourcePreviews {
           ? `/knowledge-documents${target.documentId ? `/${encodeURIComponent(target.documentId)}` : ''}`
           : `/kv${target.key ? '/entry' : ''}?${query}`);
       } else {
-        const info = readWorkflowProjectInfo(JSON.parse(await readFile(path.join(project!.folderPath, 'package.json'), 'utf8')));
-        if (info.dataStorage && !isWorkflowProjectDataStorageLocationAllowed(info, 'local')) { throw new Error(t('The project does not allow this storage location.')); }
+        const info = readProjectInfo(JSON.parse(await readFile(path.join(project!.folderPath, 'package.json'), 'utf8')));
+        if (info.dataStorage && !isProjectDataStorageLocationAllowed(info, 'local')) { throw new Error(t('The project does not allow this storage location.')); }
         data.content = await this.runtime.readResource(project!, scopeId, card.kind, target);
       }
       if (card.kind === 'knowledge' && (data.content === null || data.content === undefined)) { throw new Error(t('This resource no longer exists.')); }
@@ -144,7 +144,7 @@ export class ResourcePreviews {
     if (generation !== this.generation) { throw new Error(t('Resource access changed. Open the card again.')); }
     if (this.entries.size >= 64) { this.entries.delete(this.entries.keys().next().value!); }
     this.entries.set(id, entry);
-    return { id, data, url: `/resource/${id}?workflowLocale=${locale()}` };
+    return { id, data, url: `/resource/${id}?projectLocale=${locale()}` };
   }
 
   get(id: string): ResourcePreviewData {

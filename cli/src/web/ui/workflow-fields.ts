@@ -1,6 +1,6 @@
 import { t } from '../localization';
 import {
-  workflowParamValue, type Field, type Parameters, type ParamState, type ParamValues, type ParamValue,
+  projectParamValue, type Field, type Parameters, type ParamState, type ParamValues, type ParamValue,
 } from '../workflow-types';
 import { ParameterActions } from './parameter-actions';
 import { iconButton } from './ui';
@@ -25,7 +25,7 @@ export class Fields {
       current: () => ({ values: options.values(), states: options.states(), disabled: options.disabled(), loading: options.loading() }),
       fieldRoot: name => this.fields.get(name)!.root,
       onChange: (name, value) => options.change(name, value),
-      onReset: names => { for (const name of names) { options.change(name, workflowParamValue(this.fields.get(name)!.field)); } },
+      onReset: names => { for (const name of names) { options.change(name, projectParamValue(this.fields.get(name)!.field)); } },
     });
   }
   close(): void { this.actions.close(); }

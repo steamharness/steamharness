@@ -31,7 +31,7 @@ const LOCAL_PUBLIC_BASE_URL_KEYS = [
  * silently serving from a different backend than the environment claims is the
  * failure mode worth the extra error.
  */
-export function resolveWorkflowStorageDriver(
+export function resolveProjectStorageDriver(
   env: NodeJS.ProcessEnv = process.env,
 ): StorageDriver {
   const raw = env.STEAMHARNESS_STORAGE_DRIVER?.trim().toLowerCase();

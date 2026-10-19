@@ -123,7 +123,7 @@ All notable public changes to this release unit are recorded here.
 - Added `workflow.createAgentNode(...)`, an agent node for any workflow.
 - Added `workflow.defineAgentConversationExecutor(...)`, which produces a complete conversation executor in one call.
 - Added conversation configuration, token usage, tools, params, and OpenAI gateway wiring inside that executor.
-- Added the `createAgentConversationWorkflow(...)` and `createAgentProjectParams(...)` split form for projects that must pass structure validation.
+- Added the `createAgentConversationProject(...)` and `createAgentProjectParams(...)` split form for projects that must pass structure validation.
 - Added `workflow.createAgentProjectParamResolver()` for taking model options from `workflow.getServerLLMCredentials(...)`.
 - Added agents reaching the host's system AI by default, opening a loopback bridge per run through `startLLMProxyBridge()` and holding no upstream key.
 - Added agent input fields `prompt`, `images`, `workdir`, `provider`, `model`, and `baseUrl`.
@@ -145,11 +145,11 @@ All notable public changes to this release unit are recorded here.
 - Added `workflow.createMcpTools(...)` turning MCP tools into agent tools, keeping the `<serverId>_<toolName>` names.
 - Added `workflow.normalizeMcpServers(...)` validating server definitions before anything is spawned.
 - Added capability-bearing variables inheritable only by name, with `allowedInheritedEnvKeys` listing them and `inheritEnvironment` requesting them.
-- Added `workflow.createWorkflowCapabilityTools({ context })` rendering a capability as native agent tools.
-- Added `workflow.createWorkflowCapabilityServer(toolId, { context })` rendering the same capability as an MCP server.
-- Added `workflow.runWorkflowCapabilityAction(toolId, context, args)` running one action by tool id for approval resumes.
-- Added `workflow.listWorkflowCapabilityToolIds({ globalMemory? })` listing what a run will offer.
-- Added `workflow.isWorkflowCapabilityAvailable(toolId)` reporting whether a capability can serve in this process.
+- Added `workflow.createProjectCapabilityTools({ context })` rendering a capability as native agent tools.
+- Added `workflow.createProjectCapabilityServer(toolId, { context })` rendering the same capability as an MCP server.
+- Added `workflow.runProjectCapabilityAction(toolId, context, args)` running one action by tool id for approval resumes.
+- Added `workflow.listProjectCapabilityToolIds({ globalMemory? })` listing what a run will offer.
+- Added `workflow.isProjectCapabilityAvailable(toolId)` reporting whether a capability can serve in this process.
 - Added four built-in workflow capability tools — knowledge documents, KV, cross-session memory, and host configuration — keeping the tool ids of the built-in OpenCode project.
 - Added `workflow.createSkillTools({ directories, approve? })` offering skills as a tool the model reads on demand.
 - Added `workflow.runSkillAction(directories, args)` rerunning the same action by name for an approval resume.
@@ -181,7 +181,7 @@ All notable public changes to this release unit are recorded here.
 - Fixed cancelled or interrupted turns leaving unanswered tool calls that providers refuse, trimming the unsettled tail before it is stored.
 - Fixed a failed read or write of `agent.transcript.<sessionKey>` failing the whole turn, now reported as a row instead.
 - Fixed the OpenAI / Responses adapter for agent projects always ending with "did not produce output item".
-- Fixed `createAgentConversationWorkflow({ outputItemId })` deriving the answer item id from the session instead of the declared one.
+- Fixed `createAgentConversationProject({ outputItemId })` deriving the answer item id from the session instead of the declared one.
 - Fixed a symlink inside the workspace letting `read`, `write`, `edit`, `grep`, and `find` reach outside it.
 - Fixed a `bash` timeout or abort ending only the shell, now ending the whole process tree it started.
 - Fixed cancelling a run not really stopping the turn, with `context.abortSignal` now calling pi's `agent.abort()`.

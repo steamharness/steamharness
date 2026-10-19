@@ -147,7 +147,7 @@ test("a completed request replays its answer and billing identity without anothe
     const ids: string[] = [], text: string[] = [];
     instance.subscribe(event => {
       const record = event as unknown as { type: string; recordId: string };
-      if (record.type === "workflow_usage") ids.push(record.recordId);
+      if (record.type === "project_usage") ids.push(record.recordId);
       if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") text.push(event.assistantMessageEvent.delta);
     });
     try { await instance.prompt("Hello"); } finally { await instance.close(); }

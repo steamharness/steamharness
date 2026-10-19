@@ -4,26 +4,26 @@ import { existsSync } from "node:fs";
 import { copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { isWorkflowAuthExpiringSoon } from "@steamharness/auth-config";
-import { isWorkflowUuid } from "@steamharness/workflow-ids";
+import { isProjectAuthExpiringSoon } from "@steamharness/auth-config";
+import { isProjectUuid } from "@steamharness/workflow-ids";
 import {
-  copyWorkflowUploadFiles,
-  createWorkflowUploadPlan,
+  copyProjectUploadFiles,
+  createProjectUploadPlan,
   type UploadPlan,
 } from "@steamharness/project-upload/node";
 import {
-  createWorkflowProjectDependencyLocks,
+  createProjectDependencyLocks,
   isProjectGroupHostDataPath,
-  parseWorkflowProjectDependencyLocks,
+  parseProjectDependencyLocks,
   type ProjectDependencyLock,
   type ProjectGroupManifestV1,
 } from "@steamharness/project-dependencies";
 import {
-  readWorkflowProjectInfo,
-  resolveWorkflowRelatedProjectAccess,
+  readProjectInfo,
+  resolveProjectRelatedProjectAccess,
   type ProjectInfoContract,
 } from "@steamharness/project-info";
-import { isWorkflowProjectType, parseWorkflowFileReferences, RemoteWorkflowFileStore, type ProjectKind } from "steamharness";
+import { isProjectKind, parseProjectFileReferences, RemoteProjectFileStore, type ProjectKind } from "steamharness";
 import { clearCliAuthConfig, readCliAuthConfig, readCliAuthConfigSync, writeCliAuthConfig } from "./auth-config";
 import { findWorkspaceRepositoryRoot, loadCliEnv } from "./env";
 import {
@@ -317,7 +317,7 @@ async function commandStatus(parsed: ParsedArgs): Promise<void> {
       serverUrl: authConfig.serverUrl,
       user: authConfig.user,
       expiresAt: authConfig.expiresAt,
-      expiringSoon: isWorkflowAuthExpiringSoon(authConfig.expiresAt),
+      expiringSoon: isProjectAuthExpiringSoon(authConfig.expiresAt),
       source: authConfig.source ?? null,
       effective: parsed.effective,
     },
@@ -332,7 +332,7 @@ async function commandPack(parsed: ParsedArgs): Promise<void> {
     parsed.options.dependencies.length > 0
   ) {
     const packed = await packProjectGroup({
-      workflowArg: projectName,
+      projectArg: projectName,
       sourcePath: parsed.options.path,
       outputPath: parsed.options.output,
       dependencyOptions: parsed.options.dependencies,
@@ -340,23 +340,23 @@ async function commandPack(parsed: ParsedArgs): Promise<void> {
     console.log(JSON.stringify({ archivePath: packed.archivePath, manifest: packed.manifest }, null, 2));
     return;
   }
-  const archivePath = await packWorkflow(projectName, parsed.options.output, parsed.options.path);
+  const archivePath = await packProject(projectName, parsed.options.output, parsed.options.path);
 
   console.log(JSON.stringify({ archivePath }, null, 2));
 }
 
 async function commandUpload(parsed: ParsedArgs): Promise<void> {
   requireLogin(parsed);
-  const workflowArg = requirePositional(parsed, 0, "workflow");
+  const projectArg = requirePositional(parsed, 0, "workflow");
   if (shouldUseProjectGroupUpload(parsed.options)) {
-    await commandProjectGroupUpload(parsed, workflowArg);
+    await commandProjectGroupUpload(parsed, projectArg);
     return;
   }
-  const packageContext = await readWorkflowPackageContext(workflowArg, parsed.options.path);
+  const packageContext = await readProjectPackageContext(projectArg, parsed.options.path);
   let projectId = packageContext.projectId;
 
   if (parsed.options.create === true) {
-    const created = await ensureWorkflowProjectCreated({
+    const created = await ensureProjectCreated({
       packageContext,
       server: parsed.options.server,
       token: parsed.options.token,
@@ -370,7 +370,7 @@ async function commandUpload(parsed: ParsedArgs): Promise<void> {
 
   const archivePath = parsed.options.file
     ? path.resolve(parsed.options.file)
-    : await packWorkflow(workflowArg, parsed.options.output, parsed.options.path);
+    : await packProject(projectArg, parsed.options.output, parsed.options.path);
   const uploadResult = await uploadPackage({
     projectId,
     archivePath,
@@ -427,33 +427,33 @@ function shouldUseProjectGroupUpload(options: Pick<
 
 async function commandProjectGroupUpload(
   parsed: ParsedArgs,
-  workflowArg: string,
+  projectArg: string,
   forcePublish = false,
 ): Promise<void> {
   if (parsed.options.file !== undefined) {
     throw new Error(i18n.t("projectGroupUploadFileUnsupported", { ns: "cli" }));
   }
 
-  let rootContext = await readWorkflowPackageContext(workflowArg, parsed.options.path);
+  let rootContext = await readProjectPackageContext(projectArg, parsed.options.path);
   if (parsed.options.create === true || rootContext.projectId !== undefined) {
-    await ensureWorkflowProjectCreated({
+    await ensureProjectCreated({
       packageContext: rootContext,
       server: parsed.options.server,
       token: parsed.options.token,
     });
-    rootContext = await readWorkflowPackageContext(workflowArg, parsed.options.path);
+    rootContext = await readProjectPackageContext(projectArg, parsed.options.path);
   }
   if (!rootContext.projectId) {
     throw new Error(i18n.t("projectGroupUploadRootIdRequired", { ns: "cli" }));
   }
 
   const contexts = await readProjectGroupContexts({
-    workflowArg,
+    projectArg,
     sourcePath: parsed.options.path,
     dependencyOptions: parsed.options.dependencies,
   });
   for (const dependency of contexts.dependencies) {
-    await ensureWorkflowProjectCreated({
+    await ensureProjectCreated({
       packageContext: dependency.packageContext,
       server: parsed.options.server,
       token: parsed.options.token,
@@ -461,7 +461,7 @@ async function commandProjectGroupUpload(
   }
 
   const packed = await packProjectGroup({
-    workflowArg,
+    projectArg,
     sourcePath: parsed.options.path,
     outputPath: parsed.options.output,
     dependencyOptions: parsed.options.dependencies,
@@ -548,8 +548,8 @@ async function commandFileUpload(parsed: ParsedArgs): Promise<void> {
   if (!info.isFile() || info.size > 50 * 1024 * 1024) {
     throw new Error(i18n.t("invalidUploadFile", { ns: "cli" }));
   }
-  const [source] = parseWorkflowFileReferences(filePath);
-  const store = new RemoteWorkflowFileStore({
+  const [source] = parseProjectFileReferences(filePath);
+  const store = new RemoteProjectFileStore({
     serverUrl: parsed.options.server,
     token: parsed.options.token,
     projectName: projectId,
@@ -610,7 +610,7 @@ async function commandVersions(parsed: ParsedArgs): Promise<void> {
 
 async function commandDownload(parsed: ParsedArgs): Promise<void> {
   requireLogin(parsed);
-  const workflowArg = requirePositional(parsed, 0, "workflow");
+  const projectArg = requirePositional(parsed, 0, "workflow");
   const projectId = await resolveRemoteProjectId(parsed);
   const target = parsed.options.target ?? "latest";
   if (target !== "draft") {
@@ -627,7 +627,7 @@ async function commandDownload(parsed: ParsedArgs): Promise<void> {
     const repoRoot = resolveRepoRoot();
     const rootTargetDir = parsed.options.path
       ? path.resolve(parsed.options.path)
-      : path.join(repoRoot, "workspace", "workflow", workflowArg);
+      : path.join(repoRoot, "workspace", "workflow", projectArg);
     const materialized = await materializeProjectGroupDownload(result.data, rootTargetDir);
     const locallyAvailableProjectIds = new Set(materialized.map((project) => project.projectId));
     const skippedDependencies = result.data.skippedDependencies.filter((item) => (
@@ -663,14 +663,14 @@ async function commandDownload(parsed: ParsedArgs): Promise<void> {
   const repoRoot = resolveRepoRoot();
   const targetDir = parsed.options.path
     ? path.resolve(parsed.options.path)
-    : path.join(repoRoot, "workspace", "workflow", workflowArg);
+    : path.join(repoRoot, "workspace", "workflow", projectArg);
   await rm(targetDir, { recursive: true, force: true });
   await mkdir(targetDir, { recursive: true });
   for (const file of result.data.files) {
-    const safePath = normalizeWorkflowFilePath(file.path);
+    const safePath = normalizeProjectFilePath(file.path);
     const targetPath = path.join(targetDir, safePath);
     await mkdir(path.dirname(targetPath), { recursive: true });
-    await writeFile(targetPath, decodeWorkflowFileContent(file));
+    await writeFile(targetPath, decodeProjectFileContent(file));
   }
 }
 
@@ -688,8 +688,8 @@ async function commandPublish(parsed: ParsedArgs): Promise<void> {
     return;
   }
   if (shouldUseProjectGroupUpload(parsed.options)) {
-    const workflowArg = requirePositional(parsed, 0, "workflow");
-    await commandProjectGroupUpload(parsed, workflowArg, true);
+    const projectArg = requirePositional(parsed, 0, "workflow");
+    await commandProjectGroupUpload(parsed, projectArg, true);
     return;
   }
   const projectId = await resolveRemoteProjectId(parsed);
@@ -718,10 +718,10 @@ async function materializeProjectGroupDownload(
   path: string;
   alreadyAvailable: boolean;
 }>> {
-  if (!isWorkflowUuid(download.rootProjectId)) {
+  if (!isProjectUuid(download.rootProjectId)) {
     throw new Error(i18n.t("projectGroupDownloadInvalidRootId", { ns: "cli" }));
   }
-  const dependencies = parseWorkflowProjectDependencyLocks(download.dependencies, { published: true });
+  const dependencies = parseProjectDependencyLocks(download.dependencies, { published: true });
   const includedDependencies = dependencies.filter((dependency) => dependency.delivery === "included");
   const includedProjectIds = new Set(includedDependencies.map((dependency) => dependency.projectId));
   const rootProjects = download.projects.filter((project) => project.role === "root");
@@ -732,7 +732,7 @@ async function materializeProjectGroupDownload(
   if (rootProject.version !== download.rootVersion) {
     throw new Error(i18n.t("projectGroupDownloadRootVersionMismatch", { ns: "cli" }));
   }
-  const rootPackageFile = rootProject.files.find((file) => normalizeWorkflowFilePath(file.path) === "package.json");
+  const rootPackageFile = rootProject.files.find((file) => normalizeProjectFilePath(file.path) === "package.json");
   if (rootPackageFile === undefined || rootPackageFile.encoding === "base64") {
     throw new Error(i18n.t("projectGroupDownloadRootPackageUtf8", { ns: "cli" }));
   }
@@ -742,7 +742,7 @@ async function materializeProjectGroupDownload(
   } catch {
     throw new Error(i18n.t("projectGroupDownloadRootPackageInvalidJson", { ns: "cli" }));
   }
-  const rootProjectInfo = readWorkflowProjectInfo(rootPackageJson);
+  const rootProjectInfo = readProjectInfo(rootPackageJson);
   const declaredRelations = rootProjectInfo.relatedProjects;
   // Only mutually confirmed relationships enter the published dependency lock.
   if (dependencies.some((dependency) => !declaredRelations.some((relation) => (
@@ -752,7 +752,7 @@ async function materializeProjectGroupDownload(
   }
   const responseProjectIds = new Set<string>();
   for (const project of download.projects) {
-    if (!isWorkflowUuid(project.projectId) || responseProjectIds.has(project.projectId)) {
+    if (!isProjectUuid(project.projectId) || responseProjectIds.has(project.projectId)) {
       throw new Error(i18n.t("projectGroupDownloadInvalidOrDuplicateProjectId", {
         ns: "cli",
         projectId: JSON.stringify(project.projectId),
@@ -761,7 +761,7 @@ async function materializeProjectGroupDownload(
     responseProjectIds.add(project.projectId);
     const filePaths = new Set<string>();
     for (const file of project.files) {
-      const safePath = normalizeWorkflowFilePath(file.path);
+      const safePath = normalizeProjectFilePath(file.path);
       if (isProjectGroupHostDataPath(safePath)) {
         throw new Error(i18n.t("projectGroupDownloadForbiddenHostData", {
           ns: "cli",
@@ -777,7 +777,7 @@ async function materializeProjectGroupDownload(
       }
       filePaths.add(fileKey);
     }
-    const packageFile = project.files.find((file) => normalizeWorkflowFilePath(file.path) === "package.json");
+    const packageFile = project.files.find((file) => normalizeProjectFilePath(file.path) === "package.json");
     if (packageFile === undefined || packageFile.encoding === "base64") {
       throw new Error(i18n.t("projectGroupDownloadPackageUtf8", { ns: "cli", role: project.role }));
     }
@@ -793,7 +793,7 @@ async function materializeProjectGroupDownload(
         projectId: JSON.stringify(project.projectId),
       }));
     }
-    if (hashWorkflowSourceFiles(project.files) !== project.sourceHash) {
+    if (hashProjectSourceFiles(project.files) !== project.sourceHash) {
       throw new Error(i18n.t("projectGroupDownloadSourceHashMismatch", {
         ns: "cli",
         role: project.role,
@@ -946,10 +946,10 @@ async function materializeProjectGroupDownload(
       const stagingDir = path.join(stagingRoot, project.projectId);
       await mkdir(stagingDir, { recursive: true });
       for (const file of project.files) {
-        const safePath = normalizeWorkflowFilePath(file.path);
+        const safePath = normalizeProjectFilePath(file.path);
         const targetPath = path.join(stagingDir, ...safePath.split("/"));
         await mkdir(path.dirname(targetPath), { recursive: true });
-        await writeFile(targetPath, decodeWorkflowFileContent(file));
+        await writeFile(targetPath, decodeProjectFileContent(file));
       }
       const packageJson = await readPackageJsonFile(path.join(stagingDir, "package.json"));
       if (packageJson["id"] !== project.projectId) {
@@ -1010,8 +1010,8 @@ function assertConfirmedRelatedProject(options: {
   targetPackageJson: Record<string, unknown>;
   alias: string;
 }): void {
-  const targetProjectInfo = readWorkflowProjectInfo(options.targetPackageJson);
-  if (resolveWorkflowRelatedProjectAccess({
+  const targetProjectInfo = readProjectInfo(options.targetPackageJson);
+  if (resolveProjectRelatedProjectAccess({
     consumerProjectId: options.rootProjectId,
     consumerProjectInfo: options.rootProjectInfo,
     targetProjectId: options.targetProjectId,
@@ -1037,7 +1037,7 @@ async function findSiblingProjectsById(parentDir: string, expectedVersions: Read
     const projectDir = path.join(parentDir, entry.name);
     const packageJson = await readPackageJsonFile(path.join(projectDir, "package.json")).catch(() => undefined);
     const projectId = packageJson?.["id"];
-    if (typeof projectId === "string" && isWorkflowUuid(projectId) && expectedVersions.has(projectId)
+    if (typeof projectId === "string" && isProjectUuid(projectId) && expectedVersions.has(projectId)
       && expectedVersions.get(projectId) === packageJson?.["version"] && !projects.has(projectId)) {
       projects.set(projectId, projectDir);
     }
@@ -1067,7 +1067,7 @@ async function commandHealth(parsed: ParsedArgs): Promise<void> {
   assertApiOk(result);
 }
 
-async function packWorkflow(
+async function packProject(
   projectName: string,
   outputPath: string | undefined,
   sourcePath: string | undefined,
@@ -1097,7 +1097,7 @@ async function packWorkflow(
   await mkdir(path.dirname(archivePath), { recursive: true });
   // Uploading a UUID-bound workflow must stage any sibling workflow
   // source imports so the downloaded project can resolve workspace-local modules.
-  await stageWorkflowWithLocalDependencies({
+  await stageProjectWithLocalDependencies({
     workspaceRoot,
     projectDir,
     projectName,
@@ -1122,7 +1122,7 @@ async function packWorkflow(
 }
 
 async function readProjectGroupContexts(options: {
-  workflowArg: string;
+  projectArg: string;
   sourcePath?: string;
   dependencyOptions: readonly string[];
 }): Promise<{
@@ -1130,7 +1130,7 @@ async function readProjectGroupContexts(options: {
   dependencies: ProjectGroupDependencyContext[];
   locks: ProjectDependencyLock[];
 }> {
-  const root = await readWorkflowPackageContext(options.workflowArg, options.sourcePath);
+  const root = await readProjectPackageContext(options.projectArg, options.sourcePath);
   if (root.projectType !== "kanban") {
     throw new Error(i18n.t("projectGroupRootMustBeKanban", { ns: "cli" }));
   }
@@ -1138,7 +1138,7 @@ async function readProjectGroupContexts(options: {
     throw new Error(i18n.t("projectGroupRootIdRequired", { ns: "cli" }));
   }
 
-  const rootProjectInfo = readWorkflowProjectInfo(root.packageJson);
+  const rootProjectInfo = readProjectInfo(root.packageJson);
   const relatedProjects = rootProjectInfo.relatedProjects;
   const dependencyPaths = new Map<string, string>();
   for (const option of options.dependencyOptions) {
@@ -1160,14 +1160,14 @@ async function readProjectGroupContexts(options: {
     dependencyPaths.set(alias, path.resolve(dependencyPath));
   }
 
-  const locks = createWorkflowProjectDependencyLocks(
+  const locks = createProjectDependencyLocks(
     relatedProjects,
     [...dependencyPaths.keys()].map((alias) => ({ alias, delivery: "included" as const })),
   );
   const dependenciesByProject = new Map<string, ProjectGroupDependencyContext>();
   for (const [alias, dependencyPath] of dependencyPaths) {
     const relation = relatedProjects.find((candidate) => candidate.alias === alias)!;
-    const context = await readWorkflowPackageContext(alias, dependencyPath);
+    const context = await readProjectPackageContext(alias, dependencyPath);
     if (context.projectId !== relation.projectId) {
       throw new Error(i18n.t("dependencyPackageIdMismatch", {
         ns: "cli",
@@ -1196,7 +1196,7 @@ async function readProjectGroupContexts(options: {
 }
 
 async function packProjectGroup(options: {
-  workflowArg: string;
+  projectArg: string;
   sourcePath?: string;
   outputPath?: string;
   dependencyOptions: readonly string[];
@@ -1220,12 +1220,12 @@ async function packProjectGroup(options: {
     projectId: contexts.root.projectId!,
     role: "root",
     archivePath: rootArchivePath,
-    version: readWorkflowPackageVersion(contexts.root.packageJson),
+    version: readProjectPackageVersion(contexts.root.packageJson),
   }];
 
   try {
-    await packWorkflow(
-      contexts.root.workflowArg,
+    await packProject(
+      contexts.root.projectArg,
       path.join(groupRoot, ...rootArchivePath.split("/")),
       contexts.root.projectDir,
       { projectGroupSafe: true },
@@ -1237,10 +1237,10 @@ async function packProjectGroup(options: {
         role: "dependency",
         archivePath: dependencyArchivePath,
         alias: dependency.alias,
-        version: readWorkflowPackageVersion(dependency.packageContext.packageJson),
+        version: readProjectPackageVersion(dependency.packageContext.packageJson),
       });
-      await packWorkflow(
-        dependency.packageContext.workflowArg,
+      await packProject(
+        dependency.packageContext.projectArg,
         path.join(groupRoot, ...dependencyArchivePath.split("/")),
         dependency.packageContext.projectDir,
         { projectGroupSafe: true },
@@ -1339,38 +1339,38 @@ async function waitForProjectGroupPreparation(options: {
 }
 
 async function resolveRemoteProjectId(parsed: ParsedArgs): Promise<string> {
-  const workflowArg = requirePositional(parsed, 0, "workflow");
-  if (isWorkflowUuid(workflowArg)) {
-    return workflowArg;
+  const projectArg = requirePositional(parsed, 0, "workflow");
+  if (isProjectUuid(projectArg)) {
+    return projectArg;
   }
-  const packageContext = await readWorkflowPackageContext(workflowArg, parsed.options.path);
+  const packageContext = await readProjectPackageContext(projectArg, parsed.options.path);
   if (packageContext.projectId) {
     return packageContext.projectId;
   }
-  throw new Error(i18n.t("workflowNotBound", {
+  throw new Error(i18n.t("projectNotBound", {
     ns: "cli",
-    workflow: workflowArg,
+    workflow: projectArg,
   }));
 }
 
-async function readWorkflowPackageContext(
-  workflowArg: string,
+async function readProjectPackageContext(
+  projectArg: string,
   sourcePath: string | undefined,
 ): Promise<PackageContext> {
   const repoRoot = resolveRepoRoot();
   const projectDir = sourcePath === undefined
-    ? path.join(repoRoot, "workspace", "workflow", workflowArg)
+    ? path.join(repoRoot, "workspace", "workflow", projectArg)
     : path.resolve(sourcePath);
   const packageJsonPath = path.join(projectDir, "package.json");
   const packageJson = await readPackageJsonFile(packageJsonPath);
-  const projectId = typeof packageJson.id === "string" && isWorkflowUuid(packageJson.id)
+  const projectId = typeof packageJson.id === "string" && isProjectUuid(packageJson.id)
     ? packageJson.id.trim()
     : undefined;
   const projectName = readRequiredPackageString(packageJson, "name");
   const projectType = readStaticProjectType(packageJson);
 
   return {
-    workflowArg,
+    projectArg,
     projectDir,
     packageJsonPath,
     projectId,
@@ -1380,7 +1380,7 @@ async function readWorkflowPackageContext(
   };
 }
 
-async function ensureWorkflowProjectCreated(options: {
+async function ensureProjectCreated(options: {
   packageContext: PackageContext;
   server: string;
   token: string;
@@ -1389,7 +1389,7 @@ async function ensureWorkflowProjectCreated(options: {
   if (projectId === undefined) {
     throw new Error(i18n.t("projectIdRequired", { ns: "cli" }));
   }
-  const projectInfo = readWorkflowProjectInfo(options.packageContext.packageJson);
+  const projectInfo = readProjectInfo(options.packageContext.packageJson);
   if (projectInfo.dataStorage === null) {
     throw new Error(i18n.t("projectInfoDataStorageRequired", { ns: "cli" }));
   }
@@ -1436,7 +1436,7 @@ function readStaticProjectType(packageJson: Record<string, unknown>): ProjectKin
   const config = packageJson["steamHarness"];
   const value = config && typeof config === "object" && !Array.isArray(config)
     ? (config as Record<string, unknown>)["projectType"] : undefined;
-  if (!isWorkflowProjectType(value)) {
+  if (!isProjectKind(value)) {
     throw new Error(i18n.t("packageProjectTypeRequired", { ns: "cli" }));
   }
   return value;
@@ -1450,7 +1450,7 @@ function readRequiredPackageString(packageJson: Record<string, unknown>, key: st
   return value.trim();
 }
 
-function readWorkflowPackageVersion(packageJson: Record<string, unknown>): string {
+function readProjectPackageVersion(packageJson: Record<string, unknown>): string {
   const version = readRequiredPackageString(packageJson, "version");
   if (!/^\d+\.\d+\.\d+$/.test(version)) {
     throw new Error(i18n.t("packageVersionInvalid", { ns: "cli", version }));
@@ -1571,14 +1571,14 @@ async function fetchApi<T = unknown>(options: {
   return response.json() as Promise<ApiResponse<T>>;
 }
 
-async function copyWorkflowSource(
+async function copyProjectSource(
   sourceDir: string,
   targetDir: string,
   options: { projectGroupSafe?: boolean } = {},
 ): Promise<UploadPlan> {
-  if (options.projectGroupSafe !== true) return copyWorkflowUploadFiles(sourceDir, targetDir);
+  if (options.projectGroupSafe !== true) return copyProjectUploadFiles(sourceDir, targetDir);
 
-  const plan = await createWorkflowUploadPlan(sourceDir);
+  const plan = await createProjectUploadPlan(sourceDir);
   const files = plan.files.filter((file) => !isProjectGroupHostDataPath(file.path));
   const forbiddenRequiredPath = plan.requiredPaths.find((requiredPath) => isProjectGroupHostDataPath(requiredPath));
   if (forbiddenRequiredPath !== undefined) {
@@ -1604,7 +1604,7 @@ async function copyWorkflowSource(
   };
 }
 
-async function stageWorkflowWithLocalDependencies(options: {
+async function stageProjectWithLocalDependencies(options: {
   workspaceRoot: string;
   projectDir: string;
   projectName: string;
@@ -1627,26 +1627,26 @@ async function stageWorkflowWithLocalDependencies(options: {
     if (!existsSync(path.join(sourceDir, "package.json"))) {
       throw new Error(i18n.t("localDependencyMissingPackage", {
         ns: "cli",
-        workflow: options.projectName,
+        project: options.projectName,
         dependency: currentProjectName,
         path: sourceDir,
       }));
     }
 
-    const uploadPlan = await copyWorkflowSource(
+    const uploadPlan = await copyProjectSource(
       sourceDir,
       path.join(options.stagingRoot, currentProjectName),
       { projectGroupSafe: options.projectGroupSafe },
     );
-    if (currentProjectName === options.projectName && !uploadPlan.workflowIgnoreConfigured) {
-      process.stderr.write(`${i18n.t("workflowIgnoreWarning", {
+    if (currentProjectName === options.projectName && !uploadPlan.projectIgnoreConfigured) {
+      process.stderr.write(`${i18n.t("projectIgnoreWarning", {
         ns: "cli",
         files: uploadPlan.files.length,
         bytes: uploadPlan.totalBytes,
       })}\n`);
     }
 
-    for (const dependency of await findLocalWorkflowDependencies(sourceDir)) {
+    for (const dependency of await findLocalProjectDependencies(sourceDir)) {
       if (!visited.has(dependency)) {
         queue.push(dependency);
       }
@@ -1654,7 +1654,7 @@ async function stageWorkflowWithLocalDependencies(options: {
   }
 }
 
-async function findLocalWorkflowDependencies(sourceDir: string): Promise<string[]> {
+async function findLocalProjectDependencies(sourceDir: string): Promise<string[]> {
   const discovered = new Set<string>();
 
   for (const fileName of ["index.ts", "interface.ts", "globals.d.ts"]) {
@@ -1680,7 +1680,7 @@ async function findLocalWorkflowDependencies(sourceDir: string): Promise<string[
   return [...discovered].sort((left, right) => left.localeCompare(right));
 }
 
-export function normalizeWorkflowFilePath(filePath: string): string {
+export function normalizeProjectFilePath(filePath: string): string {
   const normalized = filePath.replaceAll("\\", "/").replace(/^\.\/+/, "");
   if (
     normalized === "" ||
@@ -1688,12 +1688,12 @@ export function normalizeWorkflowFilePath(filePath: string): string {
     /^[a-zA-Z]:/.test(normalized) ||
     normalized.split("/").some((part) => part === "" || part === "." || part === "..")
   ) {
-    throw new Error(i18n.t("invalidWorkflowFilePath", { ns: "cli", path: filePath }));
+    throw new Error(i18n.t("invalidProjectFilePath", { ns: "cli", path: filePath }));
   }
   return normalized;
 }
 
-function decodeWorkflowFileContent(file: {
+function decodeProjectFileContent(file: {
   path: string;
   content: string;
   encoding?: "base64";
@@ -1702,7 +1702,7 @@ function decodeWorkflowFileContent(file: {
     return file.content;
   }
   if (file.encoding !== "base64") {
-    throw new Error(i18n.t("unsupportedWorkflowEncoding", { ns: "cli", path: file.path }));
+    throw new Error(i18n.t("unsupportedProjectEncoding", { ns: "cli", path: file.path }));
   }
 
   const normalized = file.content.replace(/=+$/, "");
@@ -1716,18 +1716,18 @@ function decodeWorkflowFileContent(file: {
   return decoded;
 }
 
-function hashWorkflowSourceFiles(
+function hashProjectSourceFiles(
   files: ReadonlyArray<{ path: string; content: string; encoding?: "base64" }>,
 ): string {
   const hash = createHash("sha256");
   const normalizedFiles = files.map((file) => ({
     file,
-    path: normalizeWorkflowFilePath(file.path),
+    path: normalizeProjectFilePath(file.path),
   })).sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
   for (const item of normalizedFiles) {
     hash.update(item.path);
     hash.update("\0");
-    hash.update(decodeWorkflowFileContent(item.file));
+    hash.update(decodeProjectFileContent(item.file));
     hash.update("\0");
   }
   return hash.digest("hex");
@@ -1877,7 +1877,7 @@ interface ProjectCreateResult {
 }
 
 interface PackageContext {
-  workflowArg: string;
+  projectArg: string;
   projectDir: string;
   packageJsonPath: string;
   projectId?: string;
@@ -2089,19 +2089,19 @@ if (
 }
 
 export {
-  ensureWorkflowProjectCreated,
+  ensureProjectCreated,
   formatForbiddenMessage,
-  findLocalWorkflowDependencies,
-  decodeWorkflowFileContent,
-  packWorkflow,
+  findLocalProjectDependencies,
+  decodeProjectFileContent,
+  packProject,
   getPreparation,
   readPackageJsonFile,
-  readWorkflowPackageContext,
+  readProjectPackageContext,
   materializeProjectGroupDownload,
   packProjectGroup,
   readProjectGroupContexts,
   resolveRemoteProjectId,
-  stageWorkflowWithLocalDependencies,
+  stageProjectWithLocalDependencies,
   shouldUseProjectGroupUpload,
   waitForProjectGroupPreparation,
   waitForPreparation,

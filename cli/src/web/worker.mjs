@@ -71,28 +71,28 @@ try {
   ts = (await import(resolve('typescript', coreUrl))).default;
   const tsconfig = path.join(projectDir, 'tsconfig.json');
   register({ tsconfig: await stat(tsconfig).then(() => tsconfig, () => false) });
-  const {  inspectLocalWorkflowStructure, resolveLocalWorkflowParams, runLocalWorkflowWithReport, createKanbanArtifactEntryPath,
-  createLocalWorkflowFileStore, createServerWorkflowFileStore, createWorkflowFileStore,
-  createLocalWorkflowKVStore, createWorkflowKVContext, createWorkflowPersistentValueContext,
-  listLocalWorkflowKVEntries, deleteLocalWorkflowKVEntry, getKnowledgeDocument, listKnowledgeDocuments,
+  const {  inspectLocalProjectStructure, resolveLocalProjectParams, runLocalProjectWithReport, createKanbanArtifactEntryPath,
+  createLocalProjectFileStore, createServerProjectFileStore, createProjectFileStore,
+  createLocalProjectKVStore, createProjectKVContext, createProjectPersistentValueContext,
+  listLocalProjectKVEntries, deleteLocalProjectKVEntry, getKnowledgeDocument, listKnowledgeDocuments,
 } = await import(coreUrl);
   const core = await import(coreUrl);
   const language = /^zh/i.test(process.env[core.STEAMHARNESS_RUNTIME_LOCALE_ENV] ?? process.env.STEAMHARNESS_LOCALE ?? 'en') ? 'zh-CN' : 'en';
-  const { readWorkflowProjectInfo, resolveWorkflowProjectName, runKanbanDataCall } = await import(new URL(import.meta.url.includes('/src/web/') ? './kanban-data.ts' : './kanban-data.mjs', import.meta.url));
+  const { readProjectInfo, resolveProjectName, runKanbanDataCall } = await import(new URL(import.meta.url.includes('/src/web/') ? './kanban-data.ts' : './kanban-data.mjs', import.meta.url));
   if (request.method === 'inspect') {
     const projects = [];
     const errors = [];
     for (const folderPath of request.paths) {
       try {
         const pkg = JSON.parse(readFileSync(path.join(folderPath, 'package.json'), 'utf8'));
-        const structure = inspectLocalWorkflowStructure({ projectDir: folderPath });
-        const projectInfo = readWorkflowProjectInfo(pkg);
+        const structure = inspectLocalProjectStructure({ projectDir: folderPath });
+        const projectInfo = readProjectInfo(pkg);
         const parameters = (entry) => ({ fields: entry.params ?? [], paramLayout: entry.paramLayout, paramResolver: entry.paramResolver, tools: entry.tools, tokenUsage: entry.tokenUsage });
         projects.push({
           id: pkg.id,
           runtime: { harnessVersion: coreManifest.version, harnessPath },
           folderPath,
-          name: resolveWorkflowProjectName(pkg.name ?? path.basename(folderPath), projectInfo, language),
+          name: resolveProjectName(pkg.name ?? path.basename(folderPath), projectInfo, language),
           manifest: Object.fromEntries(['name', 'version', 'description'].filter(key => typeof pkg[key] === 'string').map(key => [key, pkg[key]])),
           projectType: structure.projectType,
           ...parameters(structure),
@@ -136,7 +136,7 @@ try {
     }
     const filesDir = path.join(dataDir, 'files');
     const createdFiles = [];
-    const managed = createServerWorkflowFileStore({ rootDir: filesDir, projectName: request.project.id, conversationId: request.conversationId });
+    const managed = createServerProjectFileStore({ rootDir: filesDir, projectName: request.project.id, conversationId: request.conversationId });
     const createFile = async (input) => {
       const file = await managed.createFile(input);
       const previewDir = path.join(filesDir, file.id, 'preview');
@@ -157,7 +157,7 @@ try {
     if (request.method === 'kanban-bridge') {
       send('result', await runKanbanDataCall(core, request.project, request.storageDir, request.call));
     } else if (request.method === 'resolve') {
-      send('result', await resolveLocalWorkflowParams({
+      send('result', await resolveLocalProjectParams({
         projectDir: request.project.folderPath,
         entrypointId: request.entrypointId,
         request: request.request,
@@ -201,17 +201,17 @@ try {
           } catch (error) { process.send?.({ type: 'agent-receipt', id: message.id, error: error.message, code: error.code }); }
         });
       }
-      const running = runLocalWorkflowWithReport({
+      const running = runLocalProjectWithReport({
         projectDir: request.project.folderPath,
         args: request.args,
         entrypointId: request.entrypointId,
         conversationId: request.conversationId,
         runId: request.runId,
         storage,
-        fileStore: createWorkflowFileStore({ resolveStore: createLocalWorkflowFileStore({ rootDir: filesDir, allowAbsolutePaths: true }), createFile }),
+        fileStore: createProjectFileStore({ resolveStore: createLocalProjectFileStore({ rootDir: filesDir, allowAbsolutePaths: true }), createFile }),
         toolPermissionPolicies: request.toolPermissionPolicies,
         userInput: {
-          __workflowResumeRuntimeEventAfterRequestId: request.resumeAfterRequestId,
+          __projectResumeRuntimeEventAfterRequestId: request.resumeAfterRequestId,
           getResolvedInput: (id) => {
             const input = request.resolvedInputs?.find((input) => input.requestId === id);
             return input && { ...input, submittedAt: new Date(input.submittedAt), request: input.request && { ...input.request, createdAt: new Date(input.request.createdAt) } };
@@ -259,16 +259,16 @@ try {
     } else if (request.method === 'resource') {
       const target = request.target ?? {};
       const rootDir = request.kind === 'knowledge' ? path.join(dataDir, 'values') : path.join(dataDir, 'kv');
-      const store = createLocalWorkflowKVStore({ rootDir, storageKind: request.kind === 'knowledge' ? 'persistent_value' : 'kv' });
+      const store = createLocalProjectKVStore({ rootDir, storageKind: request.kind === 'knowledge' ? 'persistent_value' : 'kv' });
       const context = request.kind === 'knowledge'
-        ? createWorkflowPersistentValueContext({ store, projectId: request.project.id, conversationId: target.conversationId ?? request.conversationId })
-        : createWorkflowKVContext({ store, projectId: request.project.id, conversationId: target.conversationId ?? request.conversationId });
+        ? createProjectPersistentValueContext({ store, projectId: request.project.id, conversationId: target.conversationId ?? request.conversationId })
+        : createProjectKVContext({ store, projectId: request.project.id, conversationId: target.conversationId ?? request.conversationId });
       if (request.kind === 'knowledge') {
         send('result', target.documentId ? await getKnowledgeDocument({ persistentValue: context }, target.documentId) : await listKnowledgeDocuments({ persistentValue: context }));
       } else if (target.key) {
         send('result', await (target.scope === 'conversation' ? context.conversation : context).getValue(target.key) ?? null);
       } else {
-        send('result', await listLocalWorkflowKVEntries({ rootDir, storageKind: 'kv', projectId: request.project.id, scope: target.scope === 'conversation' ? 'conversation' : 'project', conversationId: target.scope === 'conversation' ? target.conversationId ?? request.conversationId : undefined, pageSize: 100 }));
+        send('result', await listLocalProjectKVEntries({ rootDir, storageKind: 'kv', projectId: request.project.id, scope: target.scope === 'conversation' ? 'conversation' : 'project', conversationId: target.scope === 'conversation' ? target.conversationId ?? request.conversationId : undefined, pageSize: 100 }));
       }
     } else if (request.method === 'cancel-conversation' || request.method === 'delete-conversation') {
       const { cancelAgentConversation } = await import(resolve('steamharness/agent', coreUrl));
@@ -279,10 +279,10 @@ try {
         const entries = [];
         let cursor;
         do {
-          const page = await listLocalWorkflowKVEntries({ rootDir, storageKind, projectId: request.project.id, scope: 'conversation', conversationId: request.conversationId, pageSize: 100, cursor });
+          const page = await listLocalProjectKVEntries({ rootDir, storageKind, projectId: request.project.id, scope: 'conversation', conversationId: request.conversationId, pageSize: 100, cursor });
           entries.push(...page.items); cursor = page.nextCursor;
         } while (cursor);
-        for (const entry of entries) { await deleteLocalWorkflowKVEntry({ ...entry, rootDir }); }
+        for (const entry of entries) { await deleteLocalProjectKVEntry({ ...entry, rootDir }); }
       }
       for (const directory of await readdir(filesDir).catch(() => [])) {
         if (!/^wf_[a-f0-9]{32}$/.test(directory)) { continue; }

@@ -53,13 +53,13 @@ export interface StartInput {
   inputMode?: 'form' | 'raw';
 }
 
-export function parseWorkflowArgs(text: string): string[] {
+export function parseProjectArgs(text: string): string[] {
   const value: unknown = JSON.parse(text || '[]');
   if (!Array.isArray(value) || !value.every(arg => typeof arg === 'string')) { throw new Error('Run arguments must be a JSON string array.'); }
   return value;
 }
 
-export function migrateWorkflowHistory(sessions: ConversationSession[], activeId?: string): WorkspaceContract {
+export function migrateProjectHistory(sessions: ConversationSession[], activeId?: string): WorkspaceContract {
   const workspace: WorkspaceContract = { version: 1, runs: [], drafts: {}, migratedConversations: true };
   for (const session of sessions) {
     let user: ConversationSession['messages'][number] | undefined;
@@ -91,7 +91,7 @@ export function migrateWorkflowHistory(sessions: ConversationSession[], activeId
 }
 
 // File parameters are JSON strings; include references nested in them when cleaning storage.
-export function workflowStorageReferences(value: unknown): { files: Set<string>; scopes: Set<string> } {
+export function projectStorageReferences(value: unknown): { files: Set<string>; scopes: Set<string> } {
   const files = new Set<string>(), scopes = new Set<string>();
   const visit = (item: unknown): void => {
     if (typeof item === 'string') {

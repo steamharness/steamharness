@@ -1,6 +1,6 @@
 import { t } from './localization';
 import {
-  applyOutputChunk, outputText, validateWorkflowValues, workflowParameters, workflowParamArgs, resolvedWorkflowValues, workflowFormValue,
+  applyOutputChunk, outputText, validateProjectValues, projectParameters, projectParamArgs, resolvedProjectValues, projectFormValue,
   type ConversationSession, type ConversationMessage, type ConversationQueuedInput, type Attachment,
   type Project, type Runtime, type Run, type ParamValues,
   type ResolvedInput,
@@ -93,8 +93,8 @@ export class ConversationController {
   }
   async send(input: Omit<ConversationQueuedInput, 'id' | 'createdAt'>): Promise<void> {
     const entry = this.current;
-    const parameters = workflowParameters(this.project, input.entrypointId);
-    validateWorkflowValues(parameters.fields, input.params, input.states);
+    const parameters = projectParameters(this.project, input.entrypointId);
+    validateProjectValues(parameters.fields, input.params, input.states);
     if (this.removing.has(entry.id)) { return; }
     if (this.project.projectType !== 'conversation' && input.text) { this.rawArgs(input.text); }
     if (this.project.projectType === 'conversation' && !input.text.trim() && !input.attachments.length) { return; }
@@ -115,8 +115,8 @@ export class ConversationController {
     this.start(entry, queued); await this.persist();
   }
   private start(entry: ConversationSession, input: ConversationQueuedInput, answer?: ConversationMessage): void {
-    const parameters = workflowParameters(this.project, input.entrypointId);
-    const args = workflowParamArgs(parameters.fields, input.params, input.states);
+    const parameters = projectParameters(this.project, input.entrypointId);
+    const args = projectParamArgs(parameters.fields, input.params, input.states);
     if (this.project.projectType === 'conversation') {
       args.push('--message', input.text);
       for (const [flag, files] of [
@@ -234,13 +234,13 @@ export class ConversationController {
     if (!answer?.pendingInput || entry.activeRunId) { return; }
     const request = answer.pendingInput;
     const allowed = Object.fromEntries(request.params.map((field) => [field.name, values[field.name] ?? request.defaultValues?.[field.name] ?? field.defaultValue ?? '']));
-    const form: ParamValues = Object.fromEntries(request.params.map((field) => [field.name, workflowFormValue(field, allowed[field.name])]));
-    const typedValues = resolvedWorkflowValues(request.params, form);
+    const form: ParamValues = Object.fromEntries(request.params.map((field) => [field.name, projectFormValue(field, allowed[field.name])]));
+    const typedValues = resolvedProjectValues(request.params, form);
     const resolved = { requestId, nodeName: request.nodeName, values: typedValues, submittedAt: new Date().toISOString(), request,
       precedingOutputItemIds: (answer.items ?? []).map((item, index) => item.id ?? String(index)) };
     answer.submittingInput = resolved;
     if (request.metadata?.type === 'agent-plan-approval' && allowed.decision === 'approve') {
-      const mode = workflowParameters(this.project, answer.entrypointId).fields.find((field) => field.panel === 'mode');
+      const mode = projectParameters(this.project, answer.entrypointId).fields.find((field) => field.panel === 'mode');
       if (mode) { (entry.parameterValues ??= {})[answer.entrypointId ?? ''] ??= {}; entry.parameterValues[answer.entrypointId ?? ''][mode.name] = 'build'; }
     }
     this.start(entry, { id: messageId, text: '', params: {}, entrypointId: answer.entrypointId, attachments: [], createdAt: Date.now() }, answer);
@@ -283,7 +283,7 @@ export class ConversationController {
     const user = [...this.current.messages.slice(0, index)].reverse().find((message) => message.role === 'user');
     if (!user || this.current.activeRunId) { return; }
     if (user.input) { await this.send(user.input); return; }
-    const parameters = workflowParameters(this.project, user.entrypointId);
+    const parameters = projectParameters(this.project, user.entrypointId);
     const params: ParamValues = {};
     for (const field of parameters.fields) { const index = user.args?.indexOf(field.flag ?? '') ?? -1; if (index >= 0) { params[field.name] = user.args![index + 1]; } }
     await this.send({ text: user.content, params, entrypointId: user.entrypointId, attachments: user.attachments ?? [] });

@@ -6,7 +6,7 @@ import {
   readPackageProjectType,
 } from "../kanban-project/index";
 
-export const STEAMHARNESS_IGNORE_FILE = ".workflowignore";
+export const STEAMHARNESS_IGNORE_FILE = ".steamharnessignore";
 
 export interface UploadPathOptions {
   directory?: boolean;
@@ -18,7 +18,7 @@ export interface UploadMatcher {
   assertRequiredPaths(relativePaths: readonly string[]): void;
 }
 
-export function hasWorkflowIgnoreRules(content: string | undefined): boolean {
+export function hasProjectIgnoreRules(content: string | undefined): boolean {
   if (content === undefined) return false;
   return content.split(/\r?\n/).some((line) => {
     const trimmed = line.trim();
@@ -26,12 +26,12 @@ export function hasWorkflowIgnoreRules(content: string | undefined): boolean {
   });
 }
 
-export function resolveWorkflowUploadRequiredPaths(
+export function resolveProjectUploadRequiredPaths(
   packageJson: unknown,
   availablePaths: Iterable<string>,
 ): string[] {
   const normalizedAvailablePaths = new Set(
-    Array.from(availablePaths, (filePath) => normalizeWorkflowUploadPath(filePath)),
+    Array.from(availablePaths, (filePath) => normalizeProjectUploadPath(filePath)),
   );
   if (readPackageProjectType(packageJson) === "kanban") {
     const artifact = readKanbanArtifactConfig(packageJson);
@@ -44,25 +44,25 @@ export function resolveWorkflowUploadRequiredPaths(
   return ["package.json", "index.ts"];
 }
 
-export function createWorkflowUploadMatcher(content?: string): UploadMatcher {
+export function createProjectUploadMatcher(content?: string): UploadMatcher {
   const ruleLines = content === undefined ? [] : content.split(/\r?\n/);
   const matcher = ignore().add(ruleLines);
 
   return {
     ignores(relativePath, options) {
-      const normalized = normalizeWorkflowUploadPath(relativePath, options);
+      const normalized = normalizeProjectUploadPath(relativePath, options);
       return normalized === STEAMHARNESS_IGNORE_FILE ? false : matcher.ignores(normalized);
     },
     explain(relativePath, options) {
-      const normalized = normalizeWorkflowUploadPath(relativePath, options);
+      const normalized = normalizeProjectUploadPath(relativePath, options);
       if (normalized === STEAMHARNESS_IGNORE_FILE) return undefined;
-      return findEffectiveWorkflowIgnoreRule(normalized, ruleLines);
+      return findEffectiveProjectIgnoreRule(normalized, ruleLines);
     },
     assertRequiredPaths(relativePaths) {
       for (const relativePath of relativePaths) {
-        const normalized = normalizeWorkflowUploadPath(relativePath);
+        const normalized = normalizeProjectUploadPath(relativePath);
         if (!matcher.ignores(normalized)) continue;
-        const rule = findEffectiveWorkflowIgnoreRule(normalized, ruleLines);
+        const rule = findEffectiveProjectIgnoreRule(normalized, ruleLines);
         const suffix = rule === undefined ? "" : ` by rule ${JSON.stringify(rule)}`;
         throw new Error(
           `Required upload path ${JSON.stringify(normalized)} is excluded by ${STEAMHARNESS_IGNORE_FILE}${suffix}.`,
@@ -72,7 +72,7 @@ export function createWorkflowUploadMatcher(content?: string): UploadMatcher {
   };
 }
 
-export function normalizeWorkflowUploadPath(
+export function normalizeProjectUploadPath(
   relativePath: string,
   options: UploadPathOptions = {},
 ): string {
@@ -90,11 +90,11 @@ export function normalizeWorkflowUploadPath(
   return options.directory === true ? `${withoutTrailingSlash}/` : withoutTrailingSlash;
 }
 
-export function createWorkflowUploadPortablePathKey(relativePath: string): string {
-  return normalizeWorkflowUploadPath(relativePath).normalize("NFC").toLowerCase();
+export function createProjectUploadPortablePathKey(relativePath: string): string {
+  return normalizeProjectUploadPath(relativePath).normalize("NFC").toLowerCase();
 }
 
-function findEffectiveWorkflowIgnoreRule(
+function findEffectiveProjectIgnoreRule(
   normalizedPath: string,
   ruleLines: readonly string[],
 ): string | undefined {

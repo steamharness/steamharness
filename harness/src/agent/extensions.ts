@@ -14,9 +14,9 @@ export interface AgentToolCatalog {
   open(): Promise<AgentToolSet>;
 }
 
-const CatalogDoc = defineDoc({ kind: "workflow.catalog-manifests", version: 1, scope: "conversation", history: "latest", fork: "initial",
+const CatalogDoc = defineDoc({ kind: "project.catalog-manifests", version: 1, scope: "conversation", history: "latest", fork: "initial",
   initial: () => ({ catalogs: {} as Record<string, JsonObject[]> }) });
-const EnvironmentDoc = defineDoc({ kind: "workflow.environment", version: 1, scope: "conversation", history: "latest", fork: "current",
+const EnvironmentDoc = defineDoc({ kind: "project.environment", version: 1, scope: "conversation", history: "latest", fork: "current",
   initial: () => ({ id: "" }) });
 type Directory = { catalog: AgentToolCatalog; tools: readonly Omit<AgentTool, "execute">[]; fingerprints?: readonly string[]; state: "idle" | "connecting" | "ready" | "failed"; connection?: Promise<AgentToolSet> };
 
@@ -45,10 +45,10 @@ export function mergeAgentRegistries(internal: RegistryReader, application?: Reg
       const taskNames = new Set(tasks.map(task => task.definition.name)), tools = new Set(own.tools().map(item => item.tool.name));
       if (tools.size !== own.tools().length) throw new Error("Duplicate agent tool in the session registry.");
       for (const extension of extra?.installed() ?? []) {
-        if (names.has(extension.name) || /^(pi|workflow)\./.test(extension.name)) throw new Error(`Reserved agent extension: ${extension.name}`);
+        if (names.has(extension.name) || /^(pi|steamharness)\./.test(extension.name)) throw new Error(`Reserved agent extension: ${extension.name}`);
         names.add(extension.name);
         for (const task of extension.tasks ?? []) {
-          if (taskNames.has(task.definition.name) || /^(pi|workflow)\./.test(task.definition.name)) throw new Error(`Reserved or duplicate agent task: ${task.definition.name}`);
+          if (taskNames.has(task.definition.name) || /^(pi|steamharness)\./.test(task.definition.name)) throw new Error(`Reserved or duplicate agent task: ${task.definition.name}`);
           taskNames.add(task.definition.name);
         }
         for (const tool of extension.tools ?? []) {
@@ -133,7 +133,7 @@ export class AgentExtensionResources {
       } };
       return { ...this.adapt!(lazy), deferred: true as const };
     });
-    this.registry!.install(defineExtension({ name: `workflow.catalog.${directory.catalog.id}`, tools }));
+    this.registry!.install(defineExtension({ name: `project.catalog.${directory.catalog.id}`, tools }));
   }
 
   private connect(directory: Directory): Promise<AgentToolSet> {

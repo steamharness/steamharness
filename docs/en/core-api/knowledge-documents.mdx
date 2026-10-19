@@ -188,7 +188,7 @@ const excerpt = await workflow.readKnowledgeDocumentLines(context.storage.local,
 ## Example
 
 ```ts
-export const workflowWithKnowledge = workflow.defineWorkflow<Input, OutputPayload>({
+export const projectWithKnowledge = workflow.defineProject<Input, OutputPayload>({
   name: "knowledge-demo",
   async run(input, context) {
     const storage = context.storage.local;

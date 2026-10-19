@@ -35,7 +35,7 @@ describe("translation resolution", () => {
     initI18n({ preference: "zh-CN" });
     expect(i18n.t("copy")).toBe("复制");
     expect([
-      i18n.t("projectTypeWorkflow"),
+      i18n.t("projectTypeProject"),
       i18n.t("projectTypeConversation"),
       i18n.t("projectTypeKanban"),
     ]).toEqual(["工作流", "对话", "看板"]);
@@ -47,7 +47,7 @@ describe("translation resolution", () => {
     initI18n({ preference: "en" });
     expect(i18n.t("copy")).toBe("Copy");
     expect([
-      i18n.t("projectTypeWorkflow"),
+      i18n.t("projectTypeProject"),
       i18n.t("projectTypeConversation"),
       i18n.t("projectTypeKanban"),
     ]).toEqual(["Workflow", "Conversation", "Kanban"]);
@@ -95,7 +95,7 @@ describe("translation resolution", () => {
         data: {
           steamHarnessI18n: {
             namespace: "common",
-            key: "workflowServerLoginRequired",
+            key: "projectServerLoginRequired",
           },
         },
       },
@@ -103,7 +103,7 @@ describe("translation resolution", () => {
 
     expect(readSteamHarnessI18nDescriptor(error)).toEqual({
       namespace: "common",
-      key: "workflowServerLoginRequired",
+      key: "projectServerLoginRequired",
     });
     expect(translateSteamHarnessError(error)).toBe(
       "SteamHarness Server login is not configured. Sign in to the server in Desktop or workspace CLI first.",

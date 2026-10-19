@@ -12,32 +12,32 @@ import {
   readArgValue,
 } from "./lib/validation";
 
-export const minimaxSpeechT2aWorkflow = workflow.defineWorkflow<MinimaxSpeechInput, MinimaxSpeechOutputPayload>({
+export const minimaxSpeechT2aProject = steamharness.defineProject<MinimaxSpeechInput, MinimaxSpeechOutputPayload>({
   name: "minimax-speech-t2a",
   async run(input, context) {
-    const parsed = await workflow.runNode(inputNode, input, context);
-    const synthesized = await workflow.runNode(synthesisNode, parsed, {
+    const parsed = await steamharness.runNode(inputNode, input, context);
+    const synthesized = await steamharness.runNode(synthesisNode, parsed, {
       ...context,
       metadata: {
         ...context.metadata,
-        minimaxApiKey: workflow.getEnv("MINIMAX_API_KEY"),
+        minimaxApiKey: steamharness.getEnv("MINIMAX_API_KEY"),
       },
     });
-    return workflow.runNode(outputNode, synthesized, context);
+    return steamharness.runNode(outputNode, synthesized, context);
   },
 });
 
-export const executor = workflow.defineExecutor<
+export const executor = steamharness.defineExecutor<
   MinimaxSpeechInput,
   MinimaxSpeechOutputPayload
 >({
   projectType: "workflow",
   defaultEntrypoint: "main",
   entrypoints: [
-    workflow.defineEntrypoint<MinimaxSpeechInput, MinimaxSpeechOutputPayload>({
+    steamharness.defineEntrypoint<MinimaxSpeechInput, MinimaxSpeechOutputPayload>({
       id: "main",
       title: "MiniMax Speech T2A",
-      workflow: minimaxSpeechT2aWorkflow,
+      workflow: minimaxSpeechT2aProject,
       registry: [
         { name: "input", node: inputNode },
         { name: "synthesis", node: synthesisNode },
@@ -177,5 +177,5 @@ export const executor = workflow.defineExecutor<
   ],
 });
 
-export { minimaxSpeechT2aWorkflow as workflow };
-export default minimaxSpeechT2aWorkflow;
+export { minimaxSpeechT2aProject as workflow };
+export default minimaxSpeechT2aProject;

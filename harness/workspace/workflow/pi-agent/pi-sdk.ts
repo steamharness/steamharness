@@ -89,7 +89,7 @@ type PiAgentSdkEvent =
 export interface PiAgentRuntimeOptions {
   getEnv(name: string): string | undefined;
   context?: unknown;
-  onPendingApproval?: (error: workflow.HarnessError) => void;
+  onPendingApproval?: (error: steamharness.HarnessError) => void;
 }
 
 interface ToolApprovalContext {
@@ -187,7 +187,7 @@ async function createLivePiAgentSession(
     settingsManager: piSdk.SettingsManager.create(input.workdir, agentDir),
     extensionFactories: options.context === undefined
       ? []
-      : [createWorkflowToolPermissionExtension(options.context, (event) => {
+      : [createProjectToolPermissionExtension(options.context, (event) => {
           queue.push(event);
           pendingResolve?.();
           pendingResolve = undefined;
@@ -337,18 +337,18 @@ function isToolApprovalDecisionEnd(event: PiAgentSessionEvent): boolean {
     event.chunk.itemId.startsWith("pi-agent-tool-approval-");
 }
 
-function isPendingToolApprovalError(error: unknown): error is workflow.HarnessError {
-  return error instanceof workflow.HarnessError && error.type === "user_input_required";
+function isPendingToolApprovalError(error: unknown): error is steamharness.HarnessError {
+  return error instanceof steamharness.HarnessError && error.type === "user_input_required";
 }
 
-export function createWorkflowToolPermissionExtension(
+export function createProjectToolPermissionExtension(
   context: unknown,
   emit?: PiAgentEventSink,
 ): ExtensionFactory {
   return (pi) => {
     pi.on("tool_call", async (event) => {
-      const workflowContext = context as ToolApprovalContext;
-      const tool = workflowContext.toolPermissions?.getTool(event.toolName);
+      const projectContext = context as ToolApprovalContext;
+      const tool = projectContext.toolPermissions?.getTool(event.toolName);
       if (event.toolName === KNOWLEDGE_DOCUMENTS_TOOL_NAME) {
         return undefined;
       }
@@ -360,7 +360,7 @@ export function createWorkflowToolPermissionExtension(
         // uses Pi's tool_call extension hook as the pre-execution
         // checkpoint for built-in tools; the custom tool also guards its
         // execute() path for SDK versions that skip extension events.
-        const decision = await workflow.createToolApprovalGate().approve({
+        const decision = await steamharness.createToolApprovalGate().approve({
           name: event.toolName,
           label: tool.label,
           description: tool.description,
@@ -378,7 +378,7 @@ export function createWorkflowToolPermissionExtension(
         }
         return undefined;
       } catch (error) {
-        if (error instanceof workflow.HarnessError && error.type === "tool_permission_denied") {
+        if (error instanceof steamharness.HarnessError && error.type === "tool_permission_denied") {
           emitToolApprovalDecision(emit, {
             toolName: event.toolName,
             label: tool.label,
@@ -405,12 +405,12 @@ function emitToolApprovalDecision(
   }
 }
 
-function readApprovalRequestId(error: workflow.HarnessError): string | undefined {
+function readApprovalRequestId(error: steamharness.HarnessError): string | undefined {
   const requestId = error.metadata?.["requestId"];
   return typeof requestId === "string" ? requestId : undefined;
 }
 
-function readApprovalValues(error: workflow.HarnessError): Record<string, unknown> | undefined {
+function readApprovalValues(error: steamharness.HarnessError): Record<string, unknown> | undefined {
   const values = error.metadata?.["values"];
   return isRecord(values) ? values : undefined;
 }

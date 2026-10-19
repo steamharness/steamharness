@@ -14,13 +14,13 @@ const DATE_PARAM_CONTROLS = new Set<ParamControl>([
   "date-range",
 ]);
 
-export function isWorkflowDateParamControl(
+export function isProjectDateParamControl(
   control: ParamControl | undefined,
 ): control is DateParamControl {
   return control !== undefined && DATE_PARAM_CONTROLS.has(control);
 }
 
-export function readWorkflowParamDefinitionError(
+export function readProjectParamDefinitionError(
   param: ParamDefinition,
   declaredProperties?: { options?: boolean },
 ): string | undefined {
@@ -43,7 +43,7 @@ export function readWorkflowParamDefinitionError(
       }
     }
   }
-  if (!isWorkflowDateParamControl(param.control)) return undefined;
+  if (!isProjectDateParamControl(param.control)) return undefined;
   if (param.type !== "string") {
     return `Date parameter "${param.name}" must use type: "string".`;
   }
@@ -59,7 +59,7 @@ export function readWorkflowParamDefinitionError(
   return undefined;
 }
 
-export function normalizeWorkflowParamDeclarations(
+export function normalizeProjectParamDeclarations(
   declarations: readonly ParamDeclaration[] | undefined,
 ): { params: ParamDefinition[]; layout?: ParamLayout } {
   const params: ParamDefinition[] = [];
@@ -76,7 +76,7 @@ export function normalizeWorkflowParamDeclarations(
   };
 
   const addField = (field: ParamDefinition) => {
-    const error = readWorkflowParamDefinitionError(field);
+    const error = readProjectParamDefinitionError(field);
     if (error !== undefined) throw paramError(error);
     if (typeof field.name !== "string" || field.name.trim() === "" || names.has(field.name)) {
       throw paramError(`Parameter name "${String(field.name)}" must be non-empty and unique.`);
@@ -212,11 +212,11 @@ export function normalizeWorkflowParamDeclarations(
   return { params, layout: layout.actions.length > 0 ? layout : undefined };
 }
 
-export function assertWorkflowParamDeclarations(
+export function assertProjectParamDeclarations(
   declarations: readonly ParamDeclaration[] | undefined,
   projectType: "conversation" | "workflow",
 ): void {
-  const { params, layout } = normalizeWorkflowParamDeclarations(declarations);
+  const { params, layout } = normalizeProjectParamDeclarations(declarations);
   if (projectType === "conversation") {
     if (declarations?.some((declaration) => !("kind" in declaration))) {
       throw paramError("Conversation uses the standard message input. Declare parameters inside auxiliary, quick, mode, or slash entries.");
@@ -235,11 +235,11 @@ function paramError(message: string): HarnessError {
   return new HarnessError({ type: "input_validation", message });
 }
 
-export function assertWorkflowParamDefinitions(
+export function assertProjectParamDefinitions(
   params: readonly ParamDefinition[] | undefined,
 ): void {
   for (const param of params ?? []) {
-    const error = readWorkflowParamDefinitionError(param);
+    const error = readProjectParamDefinitionError(param);
     if (error === undefined) continue;
     throw new HarnessError({ type: "input_validation", message: error });
   }

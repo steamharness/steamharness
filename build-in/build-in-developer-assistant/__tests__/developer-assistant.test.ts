@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { inspectLocalWorkflowStructure } from "steamharness";
+import { inspectLocalProjectStructure } from "steamharness";
 
 const projectDir = path.resolve(process.cwd());
 // Run-scoped Knowledge and KV must not expose the assistant's store as project data.
@@ -22,12 +22,12 @@ const EXPECTED_TOOL_NAMES = [...SESSION_TOOL_NAMES, ...CONTROL_TOOL_NAMES, ...CO
 
 describe("developer assistant workflow", () => {
   it("runs on Core's agent with system AI quick params and declared tools", async () => {
-    const structure = inspectLocalWorkflowStructure({ projectDir });
+    const structure = inspectLocalProjectStructure({ projectDir });
     const source = await readFile(path.join(projectDir, "index.ts"), "utf8");
 
     expect(structure.diagnostics).toEqual({ warnings: [], violations: [] });
     expect(structure.definitions.apiCalls.map((call) => call.method))
-      .toContain("createAgentConversationWorkflow");
+      .toContain("createAgentConversationProject");
     expect(structure.params?.filter((param) => param.panel === "quick").map((param) => param.name))
       .toEqual(["provider", "model", "effort", "permissionPolicy"]);
     expect(structure.paramLayout?.actions).toEqual([
@@ -102,15 +102,15 @@ describe("developer assistant workflow", () => {
 
     // The four workflow capabilities come from Core, described once and
     // rendered both as MCP servers and as agent tools.
-    expect(source).toContain("workflow.createWorkflowCapabilityTools({");
+    expect(source).toContain("steamharness.createProjectCapabilityTools({");
     expect(source).toContain("globalMemory: true");
     // Skills are read on demand rather than injected into every prompt.
-    expect(source).toContain('workflow.createSkillTools({ directories: [SKILLS_DIRECTORY], approve })');
+    expect(source).toContain('steamharness.createSkillTools({ directories: [SKILLS_DIRECTORY], approve })');
     expect(source).not.toContain("skillPaths");
     expect(source).not.toContain("desktop-control-mcp");
     expect(source).not.toContain("connectMcpServer");
     expect(source).toContain("context.toolPermissions?.getTool(tool.name)?.enabled !== false");
-    expect(source).toContain("workflow.createAgentProjectParamResolver()");
+    expect(source).toContain("steamharness.createAgentProjectParamResolver()");
     expect(source).not.toContain("openCodeDependency");
     expect(source).not.toContain("STEAMHARNESS_BUILTIN_OPENCODE_ENTRY");
   });
@@ -128,10 +128,10 @@ describe("developer assistant workflow", () => {
     expect(source).toContain("allowedDirectories: [");
     expect(source).toContain('root.role === "linked"');
     expect(source).toContain("systemPrompt: createDeveloperAssistantSystemPrompt(manifest, readAssistantHost(), permissionPolicy)");
-    expect(source).toContain('(workflow.getEnv(ASSISTANT_WORKDIR_ENV) ?? "").trim()');
+    expect(source).toContain('(steamharness.getEnv(ASSISTANT_WORKDIR_ENV) ?? "").trim()');
     expect(source).toContain("ASSISTANT_WORKSPACE_MANIFEST_ENV");
-    expect(source).toContain("workflow.readOpenAIConversationHostInput(context)");
-    expect(source).toContain("workflow.parseConversationDefaultInputArgs(context.args)");
+    expect(source).toContain("steamharness.readOpenAIConversationHostInput(context)");
+    expect(source).toContain("steamharness.parseConversationDefaultInputArgs(context.args)");
     expect(source).toContain("readDeveloperAssistantPermissionPolicy(paramValues.permissionPolicy)");
 
     // The composer's attachments are references to bytes this process can
@@ -178,8 +178,8 @@ describe("developer assistant workflow", () => {
   });
 
   it("loads as a project against the injected runtime", async () => {
-    const { installWorkflowRuntimeGlobal } = await import("steamharness/runtime-api");
-    const runtime = installWorkflowRuntimeGlobal();
+    const { installProjectRuntimeGlobal } = await import("steamharness/runtime-api");
+    const runtime = installProjectRuntimeGlobal();
 
     // Loading the module is itself the assertion: `createToolApprovalGate()`
     // runs at module scope, and `defineExecutor` validates the declaration —
@@ -195,7 +195,7 @@ describe("developer assistant workflow", () => {
       tools?: Array<{ name: string }>;
     };
 
-    expect(runtime).toBe(globalThis.workflow);
+    expect(runtime).toBe(globalThis.steamharness);
     expect(executor.projectType).toBe("conversation");
     expect(executor.workflow.name).toBe("developer-assistant");
     expect(typeof executor.createInput).toBe("function");

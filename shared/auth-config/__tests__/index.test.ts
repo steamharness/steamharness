@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
-  isWorkflowAuthExpiringSoon,
-  normalizeWorkflowAuthConfig,
-  resolveWorkflowCliAuthFilePath,
-  resolveWorkflowDesktopConfigFilePath,
+  isProjectAuthExpiringSoon,
+  normalizeProjectAuthConfig,
+  resolveProjectCliAuthFilePath,
+  resolveProjectDesktopConfigFilePath,
 } from "@steamharness/auth-config";
 
 describe("auth-config package", () => {
   it("normalizes legacy auth fields", () => {
     expect(
-      normalizeWorkflowAuthConfig({
+      normalizeProjectAuthConfig({
         remoteUrl: " https://example.com ",
         token: " secret ",
         source: "device_flow",
@@ -23,7 +23,7 @@ describe("auth-config package", () => {
 
   it("keeps password login as a first-class App auth source", () => {
     expect(
-      normalizeWorkflowAuthConfig({
+      normalizeProjectAuthConfig({
         serverUrl: "https://example.com",
         apiKey: "secret",
         source: "password",
@@ -37,14 +37,14 @@ describe("auth-config package", () => {
 
   it("resolves the CLI auth file path from the configured auth dir", () => {
     expect(
-      resolveWorkflowCliAuthFilePath({
+      resolveProjectCliAuthFilePath({
         STEAMHARNESS_CLI_AUTH_DIR: "/tmp/workflow-auth",
       }),
     ).toBe("/tmp/workflow-auth/workflow-auth.json");
   });
 
   it("resolves the Desktop config file without an App compatibility path", () => {
-    expect(resolveWorkflowDesktopConfigFilePath({
+    expect(resolveProjectDesktopConfigFilePath({
       STEAMHARNESS_DESKTOP_CONFIG_DIR: "C:\\workflow\\desktop",
       platform: "win32",
     })).toBe("C:/workflow/desktop/workflow-desktop.json");
@@ -57,19 +57,19 @@ describe("auth-config package", () => {
       platform: "win32",
     };
 
-    expect(resolveWorkflowDesktopConfigFilePath(legacyOnlyEnv)).toBe(
+    expect(resolveProjectDesktopConfigFilePath(legacyOnlyEnv)).toBe(
       "C:/Users/workflow/AppData/Roaming/steamharness/workflow-desktop.json",
     );
   });
 
   it("detects expiration within the threshold window", () => {
     expect(
-      isWorkflowAuthExpiringSoon("2026-06-28T00:00:00.000Z", {
+      isProjectAuthExpiringSoon("2026-06-28T00:00:00.000Z", {
         now: Date.parse("2026-06-26T00:00:00.000Z"),
       }),
     ).toBe(true);
     expect(
-      isWorkflowAuthExpiringSoon("2026-07-05T00:00:00.000Z", {
+      isProjectAuthExpiringSoon("2026-07-05T00:00:00.000Z", {
         now: Date.parse("2026-06-26T00:00:00.000Z"),
       }),
     ).toBe(false);

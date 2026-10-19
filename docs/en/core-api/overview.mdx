@@ -18,7 +18,7 @@ The Core API section documents the `workflow.*` runtime API available directly t
 
 | API |Description|
 | --- | --- |
-| [`defineWorkflow`](/en/core-api/define-workflow) |Defines a workflow and its main execution function.|
+| [`defineProject`](/en/core-api/define-workflow) |Defines a workflow and its main execution function.|
 | [`defineEntrypoint`](/en/core-api/define-entrypoint) |Defines an independently runnable Workflow entrypoint, including its parameters, tools, and registry.|
 | [`defineExecutor`](/en/core-api/define-executor) |Defines a Workflow project's entrypoints or a Conversation project's single execution configuration.|
 | [`parseConversationDefaultInputArgs`](/en/core-api/parse-conversation-default-input-args) |Parses the serialized `--message`, `--images`, and `--files` values from the default conversation input.|
@@ -39,7 +39,7 @@ The Core API section documents the `workflow.*` runtime API available directly t
 | [`runIf`](/en/core-api/run-if) |Execute the if / else-if / else branch and write the branch selection to the run report and Diagram.|
 | [`runFor`](/en/core-api/run-for) |Execute a traceable for loop and let Diagram display the loop body with the loop container.|
 | [`runWhile`](/en/core-api/run-while) |Execute the traceable while loop and let Diagram display the loop body with the loop container.|
-| [`runWorkflow`](/en/core-api/run-workflow) |Call another workflow in the current context, multiplexing KV, session, provider, token usage, and trace.|
+| [`runProject`](/en/core-api/run-workflow) |Call another workflow in the current context, multiplexing KV, session, provider, token usage, and trace.|
 | [`Knowledge Documents`](/en/core-api/knowledge-documents) | Manage project Markdown Knowledge documents through an explicit local or server storage context. |
 | [`getEnv`](/en/core-api/get-env) |Reads a non-empty variable in the current runtime environment.|
 | [`getRuntimePlatform` / `isCli` / `isDesktop`](/en/core-api/runtime-platform) |Determine whether the execution host for the current workflow is CLI or a local desktop host.|

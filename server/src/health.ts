@@ -39,7 +39,7 @@ export interface ServerHealthData {
   };
 }
 
-export async function createWorkflowServerHealthData(options: {
+export async function createProjectServerHealthData(options: {
   mode?: "development" | "production";
   startedAt?: string;
   serverRoot?: string;

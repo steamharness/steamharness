@@ -7,7 +7,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { chromium } from 'playwright';
-import { validateWorkflowScriptSource } from 'steamharness';
+import { validateProjectScriptSource } from 'steamharness';
 import { translations } from '../src/locales.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -20,19 +20,19 @@ const environment = { ...process.env, STEAMHARNESS_CLI_AUTH_DIR: path.join(data,
   STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL: '', STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN: '' };
 const dependencies = await realpath(path.join(root, 'node_modules'));
 const source = `
-const output = workflow.createOutputNode({ name: 'result', format() { return workflow.createOutputPayload({ items: [{ content: 'Local result', contentType: 'text' }] }); } });
-const approval = workflow.createUserInputNode({ name: 'approval-node', title: 'Approval', params: [{ name: 'approved', type: 'boolean', required: true }] });
-const task = workflow.defineWorkflow({ name: 'analysis-fixture', async run(input, context) {
+const output = steamharness.createOutputNode({ name: 'result', format() { return steamharness.createOutputPayload({ items: [{ content: 'Local result', contentType: 'text' }] }); } });
+const approval = steamharness.createUserInputNode({ name: 'approval-node', title: 'Approval', params: [{ name: 'approved', type: 'boolean', required: true }] });
+const task = steamharness.defineProject({ name: 'analysis-fixture', async run(input, context) {
   if (input.mode === 'failed') throw new Error('Expected local failure');
   if (input.mode === 'slow') await new Promise((resolve, reject) => { const timer = setTimeout(resolve, 120000); context.abortSignal.addEventListener('abort', () => { clearTimeout(timer); reject(new Error('Stopped')); }, { once: true }); });
-  if (input.mode === 'waiting') await workflow.runNode(approval, input, context);
-  return workflow.runNode(output, input, context);
+  if (input.mode === 'waiting') await steamharness.runNode(approval, input, context);
+  return steamharness.runNode(output, input, context);
 } });
-export const executor = workflow.defineExecutor({ projectType: 'workflow', defaultEntrypoint: 'success', entrypoints: [
-  workflow.defineEntrypoint({ id: 'success', title: 'success', workflow: task, createInput() { return { errCode: 0, errMessage: '', mode: 'success' }; } }),
-  workflow.defineEntrypoint({ id: 'failed', title: 'failed', workflow: task, createInput() { return { errCode: 0, errMessage: '', mode: 'failed' }; } }),
-  workflow.defineEntrypoint({ id: 'slow', title: 'slow', workflow: task, createInput() { return { errCode: 0, errMessage: '', mode: 'slow' }; } }),
-  workflow.defineEntrypoint({ id: 'waiting', title: 'waiting', workflow: task, createInput() { return { errCode: 0, errMessage: '', mode: 'waiting' }; } }),
+export const executor = steamharness.defineExecutor({ projectType: 'workflow', defaultEntrypoint: 'success', entrypoints: [
+  steamharness.defineEntrypoint({ id: 'success', title: 'success', workflow: task, createInput() { return { errCode: 0, errMessage: '', mode: 'success' }; } }),
+  steamharness.defineEntrypoint({ id: 'failed', title: 'failed', workflow: task, createInput() { return { errCode: 0, errMessage: '', mode: 'failed' }; } }),
+  steamharness.defineEntrypoint({ id: 'slow', title: 'slow', workflow: task, createInput() { return { errCode: 0, errMessage: '', mode: 'slow' }; } }),
+  steamharness.defineEntrypoint({ id: 'waiting', title: 'waiting', workflow: task, createInput() { return { errCode: 0, errMessage: '', mode: 'waiting' }; } }),
 ] });
 `;
 async function project(name) {
@@ -75,7 +75,7 @@ async function stop(child) {
 let browser, bridge, failedRefresh = false, emptyScope = false, analysisNow;
 const proof = { checks: [], screenshots: [], errors: [] };
 try {
-  assert.deepEqual(validateWorkflowScriptSource(source, 'index.ts'), [], 'The live fixture must satisfy Core script validation.');
+  assert.deepEqual(validateProjectScriptSource(source, 'index.ts'), [], 'The live fixture must satisfy Core script validation.');
   const tasks = await project('Local tasks'), prompts = await project('Local approvals');
   const taskService = await start(tasks.folderPath), promptService = await start(prompts.folderPath);
   for (const entrypointId of ['success', 'failed']) {

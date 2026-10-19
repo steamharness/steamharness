@@ -5,8 +5,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { Controller } from '../web/workflow-controller';
-import { migrateWorkflowHistory, workflowStorageReferences, type RunRecord, type WorkspaceContract } from '../web/workflow-workspace';
-import { layoutWorkflowGraph } from '../web/workflow-graph';
+import { migrateProjectHistory, projectStorageReferences, type RunRecord, type WorkspaceContract } from '../web/workflow-workspace';
+import { layoutProjectGraph } from '../web/workflow-graph';
 import { t } from '../web/localization';
 import { createWebRuntime } from '../web/runtime';
 import { startWebServer } from '../web/server';
@@ -57,7 +57,7 @@ describe('Workflow workspace controller', () => {
     expect(await invalid.json()).toMatchObject({ message: t('Please enter {0}.', 'subject') });
     expect((await state()).runs).toEqual([]); expect(executor.run).not.toHaveBeenCalled();
     const valid = await post({ type: 'workflow-run', entrypointId: 'other', params: {} });
-    expect(valid.status).toBe(200); await app.workflowController!.idle();
+    expect(valid.status).toBe(200); await app.projectController!.idle();
     const completed = await state();
     expect(completed.run).toMatchObject({ entrypointId: 'other', status: 'success' }); expect(completed.run.error).toBeUndefined();
     await post({ type: 'workflow-select' });
@@ -67,9 +67,9 @@ describe('Workflow workspace controller', () => {
 
   it('reads a historical trace without changing the selected or occupied run', async () => {
     const { app, post, state } = await service();
-    await post({ type: 'workflow-run', entrypointId: 'main', params: { subject: 'First' } }); await app.workflowController!.idle();
+    await post({ type: 'workflow-run', entrypointId: 'main', params: { subject: 'First' } }); await app.projectController!.idle();
     const first = (await state()).run;
-    await post({ type: 'workflow-run', entrypointId: 'main', params: { subject: 'Second' } }); await app.workflowController!.idle();
+    await post({ type: 'workflow-run', entrypointId: 'main', params: { subject: 'Second' } }); await app.projectController!.idle();
     const before = await state();
     const reply = await post({ type: 'workflow-trace', id: first.id }).then(response => response.json());
     expect(reply.messages[0]).toMatchObject({ type: 'trace-run', runId: first.id, run: { id: first.id, args: first.args } });
@@ -193,9 +193,9 @@ describe('Workflow workspace controller', () => {
     vi.mocked(r.readFile).mockResolvedValue({ reference: file, path: '/shared' });
     await c.remove(first.id);
     expect(r.deleteFiles).not.toHaveBeenCalled(); expect(r.deleteConversation).not.toHaveBeenCalled();
-    expect(workflowStorageReferences(c.workspace.drafts).files.has(file.id)).toBe(true);
+    expect(projectStorageReferences(c.workspace.drafts).files.has(file.id)).toBe(true);
     const legacy: ConversationSession[] = [{ id: 'old-scope', title: 'Old', messages: [{ role: 'assistant', content: 'Output', files: [{ ...file, conversationId: 'old-scope' }] }] }];
-    const migrated = controller(migrateWorkflowHistory(legacy), legacy);
+    const migrated = controller(migrateProjectHistory(legacy), legacy);
     await migrated.controller.remove(migrated.controller.runs[0].id); expect(migrated.runtime.deleteConversation).not.toHaveBeenCalled();
   });
 
@@ -209,7 +209,7 @@ describe('Workflow workspace controller', () => {
 
   it('retains legacy conversation storage even when its history has no file references', async () => {
     const legacy: ConversationSession[] = [{ id: 'old-scope', title: 'Old', messages: [{ id: 'old-run', role: 'assistant', content: 'Stored KV result', status: 'success' }] }];
-    const { controller: c, runtime: r } = controller(migrateWorkflowHistory(legacy), legacy);
+    const { controller: c, runtime: r } = controller(migrateProjectHistory(legacy), legacy);
     await c.remove('old-run');
     expect(c.runs).toEqual([]); expect(r.deleteConversation).not.toHaveBeenCalled();
   });
@@ -232,12 +232,12 @@ describe('SteamHarness Web routing and history', () => {
     let delayed = false, release: ((response: Response) => void) | undefined;
     vi.spyOn(globalThis, 'fetch').mockImplementation((url, options) => {
       const address = String(url);
-      if (!address.startsWith('https://workflow.test') && !address.startsWith('https://project.test')) { return realFetch(url, options); }
-      if (address.startsWith('https://workflow.test') && address.endsWith('/api/ai/usage') && delayed) { return new Promise(resolve => { release = resolve; }); }
+      if (!address.startsWith('https://steamharness.test') && !address.startsWith('https://project.test')) { return realFetch(url, options); }
+      if (address.startsWith('https://steamharness.test') && address.endsWith('/api/ai/usage') && delayed) { return new Promise(resolve => { release = resolve; }); }
       const data = address.endsWith('/api/ai/usage') ? usage : { profile: { userId: 'user', email: 'user@example.com', displayName: 'User' } };
       return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data })));
     });
-    await app.setHostConnection({ serverUrl: 'https://project.test', accessToken: 'project-token', aiServerUrl: 'https://workflow.test', aiAccessToken: 'test-usage-token' });
+    await app.setHostConnection({ serverUrl: 'https://project.test', accessToken: 'project-token', aiServerUrl: 'https://steamharness.test', aiAccessToken: 'test-usage-token' });
     const current = await post({ type: 'usage', requestId: 'current-usage' }).then(response => response.json());
     expect(current.messages).toEqual([{ type: 'usage', requestId: 'current-usage', usage }]);
     delayed = true;
@@ -245,7 +245,7 @@ describe('SteamHarness Web routing and history', () => {
     await vi.waitFor(() => expect(release).toBeDefined());
     const saving = post({ type: 'workflow-draft', entrypointId: 'main', params: { subject: 'Edited while loading usage' } });
     try {
-      await vi.waitFor(() => expect(app.workflowController!.draft('main').values.subject).toBe('Edited while loading usage'));
+      await vi.waitFor(() => expect(app.projectController!.draft('main').values.subject).toBe('Edited while loading usage'));
       await app.setHostConnection(undefined);
     }
     finally { release!(new Response(JSON.stringify({ errCode: 0, data: usage }))); }
@@ -262,8 +262,8 @@ describe('SteamHarness Web routing and history', () => {
     const resolved = await post({ type: 'resolve', params: { subject: 'Custom', apiKey: 'initial-key' } }).then(response => response.json());
     expect(resolved.messages[0]).toMatchObject({ params: { apiKey: { value: 'project-key' } }, values: { apiKey: 'project-key' } });
     expect((await state()).drafts.main.values.apiKey).toBe('project-key');
-    await post({ type: 'workflow-run', params: { subject: 'Custom', apiKey: 'project-key' } }); await app.workflowController!.idle();
-    const id = app.workflowController!.runs[0].id;
+    await post({ type: 'workflow-run', params: { subject: 'Custom', apiKey: 'project-key' } }); await app.projectController!.idle();
+    const id = app.projectController!.runs[0].id;
     const exported = await post({ type: 'workflow-export', id }).then(response => response.json());
     expect(JSON.parse(exported.messages[0].content).params.apiKey).toBe('project-key');
   });
@@ -271,17 +271,17 @@ describe('SteamHarness Web routing and history', () => {
   it('keeps the newest authenticated account when an older identity is still stopping a task', async () => {
     const { app, state } = await service();
     let release!: () => void;
-    vi.spyOn(app.workflowController!, 'stop').mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    vi.spyOn(app.projectController!, 'stop').mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
     const realFetch = globalThis.fetch;
     vi.spyOn(globalThis, 'fetch').mockImplementation((url, options) => {
-      if (!String(url).startsWith('https://workflow.test')) { return realFetch(url, options); }
+      if (!String(url).startsWith('https://steamharness.test')) { return realFetch(url, options); }
       const userId = new Headers(options?.headers).get('Authorization') === 'Bearer new-token' ? 'New' : 'Old';
       return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { profile: { userId, email: `${userId}@example.com`, displayName: userId } } })));
     });
-    const old = app.setHostConnection({ serverUrl: 'https://workflow.test', accessToken: 'old-token' });
+    const old = app.setHostConnection({ serverUrl: 'https://steamharness.test', accessToken: 'old-token' });
     try {
       await vi.waitFor(() => expect(release).toBeDefined());
-      await app.setHostConnection({ serverUrl: 'https://workflow.test', accessToken: 'new-token' });
+      await app.setHostConnection({ serverUrl: 'https://steamharness.test', accessToken: 'new-token' });
     } finally { release(); await old; }
     expect((await state()).account).toMatchObject({ status: 'authenticated', user: { displayName: 'New' } });
   });
@@ -295,19 +295,19 @@ describe('SteamHarness Web routing and history', () => {
     const original = await readFile(path.join(historyDir, 'conversations.json'), 'utf8');
     expect(await fetch(app.origin).then(response => response.text())).toContain('/assets/workflow-workspace.js');
     expect((await state()).runs).toHaveLength(1);
-    expect(app.workflowController!.runs[0]).toMatchObject({ id: 'old-run', scopeId: 'old-scope', args: ['--subject', 'Old'] });
-    await post({ type: 'workflow-run', params: { subject: 'New' } }); await app.workflowController!.idle();
+    expect(app.projectController!.runs[0]).toMatchObject({ id: 'old-run', scopeId: 'old-scope', args: ['--subject', 'Old'] });
+    await post({ type: 'workflow-run', params: { subject: 'New' } }); await app.projectController!.idle();
     expect(JSON.parse(await readFile(path.join(historyDir, 'runs.json'), 'utf8')).runs).toHaveLength(2);
     expect(await readFile(path.join(historyDir, 'conversations.json'), 'utf8')).toBe(original);
     expect(r.run).toHaveBeenCalledWith(expect.objectContaining({ entrypointId: 'main', args: ['--subject', 'New'] }), expect.any(Function));
     expect((await post({ type: 'send', text: 'Wrong surface' })).status).toBe(400);
-    const id = app.workflowController!.runs[0].id;
+    const id = app.projectController!.runs[0].id;
     expect(await post({ type: 'workflow-export', id }).then(response => response.json())).toMatchObject({ messages: [{ type: 'download', name: `workflow-${id}.json` }] });
   });
 
   it('paginates 30 records at a time and searches using the same history endpoint', async () => {
     const { app, post, state } = await service();
-    const c = app.workflowController!;
+    const c = app.projectController!;
     const run = await c.start({ entrypointId: 'main', params: { subject: 'Seed' } }); await c.idle();
     c.runs.splice(0, 1, ...Array.from({ length: 65 }, (_, index) => ({ ...run, id: String(index), title: `Run ${index}`, createdAt: 65 - index })));
     expect((await state()).runs).toHaveLength(30);
@@ -327,9 +327,9 @@ describe('SteamHarness Web routing and history', () => {
     finish({ params: { subject: { value: 'Stale' } } });
     expect((await first.then(response => response.json())).messages[0].error).toContain('changed');
     await post({ type: 'resolve', entrypointId: 'other', requestId: 3, params: { subject: 'Other' } });
-    expect(app.workflowController!.draft('main').values.subject).toBe('New'); expect(app.workflowController!.draft('other').values.subject).toBe('Other');
+    expect(app.projectController!.draft('main').values.subject).toBe('New'); expect(app.projectController!.draft('other').values.subject).toBe('Other');
     expect((await post({ type: 'workflow-run', entrypointId: 'other', inputMode: 'raw', rawArgs: '[1]', params: {} })).status).toBe(400);
-    await post({ type: 'workflow-run', entrypointId: 'main', inputMode: 'raw', rawArgs: '["--subject","Raw"]', params: {} }); await app.workflowController!.idle();
+    await post({ type: 'workflow-run', entrypointId: 'main', inputMode: 'raw', rawArgs: '["--subject","Raw"]', params: {} }); await app.projectController!.idle();
     expect(r.resolveParams).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ inputMode: 'raw', args: ['--subject', 'Raw'] }), 'main');
     expect(r.run).toHaveBeenLastCalledWith(expect.objectContaining({ args: ['--subject', 'Raw'] }), expect.any(Function));
   });
@@ -337,14 +337,14 @@ describe('SteamHarness Web routing and history', () => {
   it('uses only declared tool policies and cancels waiting input when host identity changes', async () => {
     const { app, post, runtime: r, state } = await service();
     await post({ type: 'tool-policy', policies: { read: { enabled: false, autoApprove: false }, injected: { enabled: true } } });
-    expect(app.workflowController!.draft('main').policies).toEqual({ read: { enabled: false, autoApprove: false } });
+    expect(app.projectController!.draft('main').policies).toEqual({ read: { enabled: false, autoApprove: false } });
     vi.mocked(r.run).mockResolvedValueOnce({ status: 'waiting_for_input', pendingUserInput: request });
-    await post({ type: 'workflow-run', params: { subject: 'Wait' } }); await app.workflowController!.idle();
+    await post({ type: 'workflow-run', params: { subject: 'Wait' } }); await app.projectController!.idle();
     const realFetch = globalThis.fetch;
-    vi.spyOn(globalThis, 'fetch').mockImplementation((url, options) => String(url).startsWith('https://workflow.test')
+    vi.spyOn(globalThis, 'fetch').mockImplementation((url, options) => String(url).startsWith('https://steamharness.test')
       ? Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'host', email: 'host@example.com', displayName: 'Host' } } }))) : realFetch(url, options));
-    await app.setHostConnection({ serverUrl: 'https://workflow.test', accessToken: 'private-host-token' });
-    expect(app.workflowController!.runs[0].status).toBe('aborted');
+    await app.setHostConnection({ serverUrl: 'https://steamharness.test', accessToken: 'private-host-token' });
+    expect(app.projectController!.runs[0].status).toBe('aborted');
     const next = await state(); expect(next.account.status).toBe('authenticated'); expect(JSON.stringify(next)).not.toContain('private-host-token');
   });
 });
@@ -357,7 +357,7 @@ describe('Workflow graph layout', () => {
       { kind: 'node', nodeId: 'prepare', callId: 'prepare-call', standardName: 'input' },
       { kind: 'loop', loopId: 'loop', children: [{ kind: 'node', nodeId: 'iteration', callId: 'iteration-call', standardName: 'input' }] },
     ] } };
-    const graph = layoutWorkflowGraph(descriptor, undefined, { nodes: [
+    const graph = layoutProjectGraph(descriptor, undefined, { nodes: [
       { name: 'input', metadata: { title: 'Prepare' }, executionId: 'prepare', status: 'success' },
       { name: 'input', metadata: { title: 'Iteration' }, executionId: 'iteration-1', status: 'success' },
       { name: 'input', metadata: { title: 'Iteration' }, executionId: 'iteration-2', status: 'running' },
@@ -372,11 +372,11 @@ describe('Workflow graph layout', () => {
       { kind: 'branch', branchId: 'b', branches: [{ kind: 'if', label: 'Yes', children: [{ kind: 'node', nodeId: 'repeated', callId: 'step-call' }] }, { kind: 'else', label: 'No', children: [] }] },
       { kind: 'loop', loopId: 'l', label: 'Loop', children: [{ kind: 'node', nodeId: 'other', callId: 'other-call' }] },
     ] } };
-    const graph = layoutWorkflowGraph(descriptor, undefined, { nodes: [{ executionId: 'one', name: 'step', status: 'success' }, { executionId: 'two', name: 'step', status: 'running' }] });
+    const graph = layoutProjectGraph(descriptor, undefined, { nodes: [{ executionId: 'one', name: 'step', status: 'success' }, { executionId: 'two', name: 'step', status: 'running' }] });
     expect(graph.nodes.filter(node => node.executionId).map(node => node.executionId)).toEqual(['one', 'two']);
     expect(graph.nodes.some(node => node.kind === 'branch')).toBe(true); expect(graph.edges.some(edge => edge.label === t('Loop'))).toBe(true);
     expect(graph.nodes.every(node => Number.isFinite(node.x) && Number.isFinite(node.y))).toBe(true);
-    const fallback = layoutWorkflowGraph(project, 'main', { nodes: [{ executionId: 'existing', name: 'Existing', status: 'success' }] });
+    const fallback = layoutProjectGraph(project, 'main', { nodes: [{ executionId: 'existing', name: 'Existing', status: 'success' }] });
     expect(fallback.nodes[0].executionId).toBe('existing'); expect(fallback.diagnostics.length).toBeGreaterThan(0);
   });
 });
@@ -388,20 +388,20 @@ it('inspects and executes a real offline workflow with its own Core, streaming, 
   await symlink(harnessRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
   await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: project.id, name: 'Workflow fixture', type: 'module', steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } }));
   await writeFile(path.join(directory, 'index.ts'), `
-    const preview = workflow.createOutputNode({ name: 'preview-node', async *stream() {
-      yield workflow.createOutputItemChunk({ type:'output_item_start', item:{id:'preview',title:'Preview',content:'Before input',contentType:'text'} });
-    }, format: stream => workflow.createOutputPayload({ items: stream.items }) });
-    const approval = workflow.createUserInputNode({name:'approval-node', title:'Approve', params:[{name:'approved',type:'boolean',required:true}]});
-    const result = workflow.createOutputNode({name:'result-node', async format(input, context) {
+    const preview = steamharness.createOutputNode({ name: 'preview-node', async *stream() {
+      yield steamharness.createOutputItemChunk({ type:'output_item_start', item:{id:'preview',title:'Preview',content:'Before input',contentType:'text'} });
+    }, format: stream => steamharness.createOutputPayload({ items: stream.items }) });
+    const approval = steamharness.createUserInputNode({name:'approval-node', title:'Approve', params:[{name:'approved',type:'boolean',required:true}]});
+    const result = steamharness.createOutputNode({name:'result-node', async format(input, context) {
       const file = await context.files.createFile({name:'result.txt',mimeType:'text/plain',buffer:Buffer.from('Exported')});
-      return workflow.createOutputPayload({items:[...input.items,{id:'final',title:'Final',content:'After input',contentType:'text'}]});
+      return steamharness.createOutputPayload({items:[...input.items,{id:'final',title:'Final',content:'After input',contentType:'text'}]});
     }});
-    const flow = workflow.defineWorkflow({name:'fixture', async run(input, context) {
-      const output = await workflow.runStreamNode(preview,input,context);
-      await workflow.runNode(approval,input,context);
-      return workflow.runNode(result, output.output, context);
+    const flow = steamharness.defineProject({name:'fixture', async run(input, context) {
+      const output = await steamharness.runStreamNode(preview,input,context);
+      await steamharness.runNode(approval,input,context);
+      return steamharness.runNode(result, output.output, context);
     }});
-    export const executor = workflow.defineExecutor({projectType:'workflow',defaultEntrypoint:'main',entrypoints:[workflow.defineEntrypoint({id:'main',title:'Main',group:{id:'group',title:'Group'},workflow:flow,
+    export const executor = steamharness.defineExecutor({projectType:'workflow',defaultEntrypoint:'main',entrypoints:[steamharness.defineEntrypoint({id:'main',title:'Main',group:{id:'group',title:'Group'},workflow:flow,
       params:[{name:'subject',flag:'--subject',type:'string',defaultValue:'Subject'}],createInput: context => context.paramValues})]});
   `);
   const executor = createWebRuntime(directory, path.join(directory, 'data'), () => undefined);

@@ -13,20 +13,20 @@ import {
   KV_MCP_TOOL_ID,
   PRESENTATION_CARD_MCP_TOOL_ID,
   STEAMHARNESS_CAPABILITIES,
-  createWorkflowCapabilityServer,
-  createWorkflowCapabilityTools,
-  findWorkflowCapability,
-  isWorkflowCapabilityAvailable,
-  listWorkflowCapabilityToolIds,
+  createProjectCapabilityServer,
+  createProjectCapabilityTools,
+  findProjectCapability,
+  isProjectCapabilityAvailable,
+  listProjectCapabilityToolIds,
   readHostConfigurationBridgeConfig,
   runHostConfigurationAction,
-  runWorkflowCapabilityAction,
-  selectWorkflowStorage,
+  runProjectCapabilityAction,
+  selectProjectStorage,
 } from "../agent/capabilities/index";
 import {
-  createWorkflowKVContext,
-  createWorkflowPersistentValueContext,
-  createWorkflowRelatedProjectsContext,
+  createProjectKVContext,
+  createProjectPersistentValueContext,
+  createProjectRelatedProjectsContext,
   type KVStore,
   type StorageLocationContext,
 } from "../index";
@@ -39,9 +39,9 @@ test("capabilities use local storage by default and permit explicit server stora
   const base = createContext();
   const context = { storage: { local: base.storage.local, server: { ...base.storage.server } } };
 
-  assert.equal(selectWorkflowStorage(context), context.storage.local);
+  assert.equal(selectProjectStorage(context), context.storage.local);
 
-  assert.equal(selectWorkflowStorage(context, "server"), context.storage.server);
+  assert.equal(selectProjectStorage(context, "server"), context.storage.server);
 });
 
 test("kv stores and reads back through the scope the caller named", async () => {
@@ -332,7 +332,7 @@ test("host configuration is only reachable when the host brought a bridge", asyn
   try {
     assert.equal(readHostConfigurationBridgeConfig(), undefined);
     await assert.rejects(
-      () => runWorkflowCapabilityAction(HOST_CONFIGURATION_MCP_TOOL_ID, createContext(), { action: "get" }),
+      () => runProjectCapabilityAction(HOST_CONFIGURATION_MCP_TOOL_ID, createContext(), { action: "get" }),
       /unavailable/u,
     );
 
@@ -443,8 +443,8 @@ test("memory is left out of a run the host did not offer it", () => {
   try {
     // Host configuration is missing from the offer for the same reason memory
     // is: this process has no bridge to reach it through.
-    assert.deepEqual(listWorkflowCapabilityToolIds(), [KNOWLEDGE_MCP_TOOL_ID, KV_MCP_TOOL_ID, PRESENTATION_CARD_MCP_TOOL_ID]);
-    assert.deepEqual(listWorkflowCapabilityToolIds({ globalMemory: true }), [
+    assert.deepEqual(listProjectCapabilityToolIds(), [KNOWLEDGE_MCP_TOOL_ID, KV_MCP_TOOL_ID, PRESENTATION_CARD_MCP_TOOL_ID]);
+    assert.deepEqual(listProjectCapabilityToolIds({ globalMemory: true }), [
       KNOWLEDGE_MCP_TOOL_ID,
       KV_MCP_TOOL_ID,
       GLOBAL_MEMORY_MCP_TOOL_ID,
@@ -454,17 +454,17 @@ test("memory is left out of a run the host did not offer it", () => {
     // The catalogue still describes it — it is the environment, not the
     // declaration, that decided.
     assert.equal(STEAMHARNESS_CAPABILITIES.length, 6);
-    assert.equal(isWorkflowCapabilityAvailable(HOST_CONFIGURATION_MCP_TOOL_ID), false);
-    assert.equal(isWorkflowCapabilityAvailable(KNOWLEDGE_MCP_TOOL_ID), true);
-    assert.equal(isWorkflowCapabilityAvailable(GLOBAL_MEMORY_MCP_TOOL_ID), true);
-    assert.equal(findWorkflowCapability(KV_MCP_TOOL_ID), KV_CAPABILITY);
-    assert.equal(findWorkflowCapability("nope"), undefined);
-    assert.throws(() => isWorkflowCapabilityAvailable("nope"), /Unknown workflow capability/u);
+    assert.equal(isProjectCapabilityAvailable(HOST_CONFIGURATION_MCP_TOOL_ID), false);
+    assert.equal(isProjectCapabilityAvailable(KNOWLEDGE_MCP_TOOL_ID), true);
+    assert.equal(isProjectCapabilityAvailable(GLOBAL_MEMORY_MCP_TOOL_ID), true);
+    assert.equal(findProjectCapability(KV_MCP_TOOL_ID), KV_CAPABILITY);
+    assert.equal(findProjectCapability("nope"), undefined);
+    assert.throws(() => isProjectCapabilityAvailable("nope"), /Unknown workflow capability/u);
 
     process.env[BRIDGE_URL_ENV] = "http://127.0.0.1:4321/bridge";
     process.env[BRIDGE_TOKEN_ENV] = "token";
-    assert.equal(isWorkflowCapabilityAvailable(HOST_CONFIGURATION_MCP_TOOL_ID), true);
-    assert.deepEqual(listWorkflowCapabilityToolIds(), [
+    assert.equal(isProjectCapabilityAvailable(HOST_CONFIGURATION_MCP_TOOL_ID), true);
+    assert.deepEqual(listProjectCapabilityToolIds(), [
       KNOWLEDGE_MCP_TOOL_ID,
       KV_MCP_TOOL_ID,
       HOST_CONFIGURATION_MCP_TOOL_ID,
@@ -483,7 +483,7 @@ test("an unavailable capability is not put in front of the model", async () => {
   delete process.env[BRIDGE_TOKEN_ENV];
 
   try {
-    const tools = await createWorkflowCapabilityTools({ context: createContext() });
+    const tools = await createProjectCapabilityTools({ context: createContext() });
     assert.deepEqual(
       tools.map((tool) => tool.name),
       [KNOWLEDGE_MCP_TOOL_ID, KV_MCP_TOOL_ID, PRESENTATION_CARD_MCP_TOOL_ID],
@@ -505,7 +505,7 @@ test("the agent rendering gates, approves and reports like a tool should", async
 
   const context = createContext();
   const approvals: string[] = [];
-  const tools = await createWorkflowCapabilityTools({
+  const tools = await createProjectCapabilityTools({
     context,
     globalMemory: true,
     approve: async (toolId) => {
@@ -544,7 +544,7 @@ test("the agent rendering gates, approves and reports like a tool should", async
 test("the MCP rendering publishes the same tool and answers the same way", async () => {
   const context = createContext();
   const approvals: string[] = [];
-  const server = await createWorkflowCapabilityServer(KV_MCP_TOOL_ID, {
+  const server = await createProjectCapabilityServer(KV_MCP_TOOL_ID, {
     context,
     approve: async (toolId) => {
       approvals.push(toolId);
@@ -605,15 +605,15 @@ function runCapability(
   context: NodeContext,
   args: Record<string, unknown>,
 ): Promise<unknown> {
-  return runWorkflowCapabilityAction(toolId, context, args);
+  return runProjectCapabilityAction(toolId, context, args);
 }
 
 function createContext(): NodeContext {
   const store = createMemoryKVStore();
   const location: StorageLocationContext = {
-    kv: createWorkflowKVContext({ store, projectId: "demo", conversationId: "turn-1" }),
-    persistentValue: createWorkflowPersistentValueContext({ store, projectId: "demo" }),
-    relatedProjects: createWorkflowRelatedProjectsContext(),
+    kv: createProjectKVContext({ store, projectId: "demo", conversationId: "turn-1" }),
+    persistentValue: createProjectPersistentValueContext({ store, projectId: "demo" }),
+    relatedProjects: createProjectRelatedProjectsContext(),
   };
   return { storage: { local: location, server: location } } as unknown as NodeContext;
 }

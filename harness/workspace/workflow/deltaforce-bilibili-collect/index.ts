@@ -51,7 +51,7 @@ const DEFAULT_OUTPUT_DIR = join(tmpdir(), "deltaforce-bilibili-collect");
 const PROGRESS_ITEM_ID = "deltaforce-bilibili-collect-progress";
 const runDocuments = new WeakMap<DeltaforceBilibiliCollectParsedInput, DeltaforceBilibiliCollectDocument>();
 
-const inputNode = workflow.createInputNode<DeltaforceBilibiliCollectInput, DeltaforceBilibiliCollectParsedInput>({
+const inputNode = steamharness.createInputNode<DeltaforceBilibiliCollectInput, DeltaforceBilibiliCollectParsedInput>({
   name: "deltaforce-bilibili-collect-input",
   parse(input) {
     try {
@@ -86,7 +86,7 @@ const inputNode = workflow.createInputNode<DeltaforceBilibiliCollectInput, Delta
         fetchImpl: input.fetchImpl,
       };
     } catch (error) {
-      throw new workflow.HarnessError({
+      throw new steamharness.HarnessError({
         type: "input_validation",
         message: error instanceof Error ? error.message : String(error),
         nodeName: "deltaforce-bilibili-collect-input",
@@ -97,7 +97,7 @@ const inputNode = workflow.createInputNode<DeltaforceBilibiliCollectInput, Delta
 
 // Keep the whole slow collect/write pipeline in an output stream node
 // so the UI receives visible node_chunk events between every major step.
-const outputNode = workflow.createOutputNode<DeltaforceBilibiliCollectParsedInput, DeltaforceBilibiliCollectOutputPayload>({
+const outputNode = steamharness.createOutputNode<DeltaforceBilibiliCollectParsedInput, DeltaforceBilibiliCollectOutputPayload>({
   name: "deltaforce-bilibili-collect-output",
   async *stream(input, context) {
     const runtimeContext = context as DeltaforceBilibiliCollectContext;
@@ -142,15 +142,15 @@ const outputNode = workflow.createOutputNode<DeltaforceBilibiliCollectParsedInpu
         yield createProgressDeltaChunk("dry-run 模式：跳过知识库写入，只生成预览结果。");
       } else {
         yield createProgressDeltaChunk(`开始写入知识库文档：${document.documentId}。`);
-        const existing = await workflow.getKnowledgeDocument(context.storage.local, document.documentId);
+        const existing = await steamharness.getKnowledgeDocument(context.storage.local, document.documentId);
         if (existing === undefined) {
-          await workflow.createKnowledgeDocument(context.storage.local, {
+          await steamharness.createKnowledgeDocument(context.storage.local, {
             id: document.documentId,
             title: document.documentTitle,
             markdown: document.markdown,
           });
         } else {
-          await workflow.editKnowledgeDocument(context.storage.local, {
+          await steamharness.editKnowledgeDocument(context.storage.local, {
             id: document.documentId,
             title: document.documentTitle,
             markdown: document.markdown,
@@ -165,13 +165,13 @@ const outputNode = workflow.createOutputNode<DeltaforceBilibiliCollectParsedInpu
 
       runDocuments.set(input, document);
       yield createProgressDeltaChunk(`执行结果已生成：${document.documentTitle}。`);
-      yield workflow.createOutputItemChunk({
+      yield steamharness.createOutputItemChunk({
         type: "output_item_end",
         itemId: PROGRESS_ITEM_ID,
       });
     } catch (error) {
       yield createProgressDeltaChunk(`执行失败：${error instanceof Error ? error.message : String(error)}`);
-      yield workflow.createOutputItemChunk({
+      yield steamharness.createOutputItemChunk({
         type: "output_item_end",
         itemId: PROGRESS_ITEM_ID,
       });
@@ -187,29 +187,29 @@ const outputNode = workflow.createOutputNode<DeltaforceBilibiliCollectParsedInpu
   },
 });
 
-export const deltaforceBilibiliCollectWorkflow = workflow.defineWorkflow<DeltaforceBilibiliCollectInput, DeltaforceBilibiliCollectOutputPayload>({
+export const deltaforceBilibiliCollectProject = steamharness.defineProject<DeltaforceBilibiliCollectInput, DeltaforceBilibiliCollectOutputPayload>({
   name: STEAMHARNESS_NAME,
   async run(input, context) {
-    const parsed = await workflow.runNode(inputNode, input, context);
-    const output = await workflow.runStreamNode(outputNode, parsed, context);
+    const parsed = await steamharness.runNode(inputNode, input, context);
+    const output = await steamharness.runStreamNode(outputNode, parsed, context);
     return requireOutput(output.output);
   },
 });
 
-export const executor = workflow.defineExecutor<
+export const executor = steamharness.defineExecutor<
   DeltaforceBilibiliCollectInput,
   DeltaforceBilibiliCollectOutputPayload
 >({
   projectType: "workflow",
   defaultEntrypoint: "main",
   entrypoints: [
-    workflow.defineEntrypoint<
+    steamharness.defineEntrypoint<
       DeltaforceBilibiliCollectInput,
       DeltaforceBilibiliCollectOutputPayload
     >({
       id: "main",
       title: "Bilibili Collect",
-      workflow: deltaforceBilibiliCollectWorkflow,
+      workflow: deltaforceBilibiliCollectProject,
       registry: [
         { name: "collect-input", node: inputNode },
         { name: "collect-progress-output", node: outputNode, stream: true },
@@ -373,8 +373,8 @@ export const executor = workflow.defineExecutor<
   ],
 });
 
-export { deltaforceBilibiliCollectWorkflow as workflow };
-export default deltaforceBilibiliCollectWorkflow;
+export { deltaforceBilibiliCollectProject as workflow };
+export default deltaforceBilibiliCollectProject;
 
 function parseInputArgs(args: string[]): DeltaforceBilibiliCollectInput {
   let videoUrl = "";
@@ -533,7 +533,7 @@ function parseIntMaxDuration(value: unknown): number {
 
 function requireOutput(output: DeltaforceBilibiliCollectOutputPayload | undefined): DeltaforceBilibiliCollectOutputPayload {
   if (output === undefined) {
-    throw new workflow.HarnessError({
+    throw new steamharness.HarnessError({
       type: "execution",
       message: "deltaforce-bilibili-collect output was not created.",
     });
@@ -543,7 +543,7 @@ function requireOutput(output: DeltaforceBilibiliCollectOutputPayload | undefine
 
 function requireDocument(document: DeltaforceBilibiliCollectDocument | undefined): DeltaforceBilibiliCollectDocument {
   if (document === undefined) {
-    throw new workflow.HarnessError({
+    throw new steamharness.HarnessError({
       type: "execution",
       message: "deltaforce-bilibili-collect document was not created.",
       nodeName: "deltaforce-bilibili-collect-output",
@@ -553,7 +553,7 @@ function requireDocument(document: DeltaforceBilibiliCollectDocument | undefined
 }
 
 function createProgressStartChunk() {
-  return workflow.createOutputItemChunk({
+  return steamharness.createOutputItemChunk({
     type: "output_item_start",
     item: {
       id: PROGRESS_ITEM_ID,
@@ -566,7 +566,7 @@ function createProgressStartChunk() {
 }
 
 function createProgressDeltaChunk(content: string) {
-  return workflow.createOutputItemChunk({
+  return steamharness.createOutputItemChunk({
     type: "output_item_delta",
     itemId: PROGRESS_ITEM_ID,
     delta: `${content}\n`,

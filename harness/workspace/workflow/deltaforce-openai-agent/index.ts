@@ -1,6 +1,6 @@
 import { tool, type FunctionTool } from "@openai/agents";
 import { z } from "zod";
-import { openaiAgentsWorkflow } from "@steamharness/openai-agents-workflow";
+import { openaiAgentsProject } from "@steamharness/openai-agents-workflow";
 import type { AgentToolCallSummary, OpenAIAgentsInput, OpenAIAgentsOutputPayload } from "@steamharness/openai-agents-workflow/interface";
 import { createFinalAnswerInput, parseReactThought } from "@steamharness/deltafore-agent-workflow/agent/decision";
 import { clampRoundCount, DEFAULT_QUERY, parseInputArgs } from "@steamharness/deltafore-agent-workflow/agent/input";
@@ -53,7 +53,7 @@ interface DeltaforceOpenAIAgentContext extends NodeRunContext {
 
 type DeltaforceOutputChunk = RunOutputStreamChunk;
 
-const inputNode = workflow.createInputNode<DeltaforceOpenAIAgentInput, DeltaforceOpenAIParsedInput>({
+const inputNode = steamharness.createInputNode<DeltaforceOpenAIAgentInput, DeltaforceOpenAIParsedInput>({
   name: "deltaforce-openai-agent-input",
   parse(input) {
     const query = input.query.trim() || DEFAULT_QUERY;
@@ -68,7 +68,7 @@ const inputNode = workflow.createInputNode<DeltaforceOpenAIAgentInput, Deltaforc
   },
 });
 
-const outputNode = workflow.createOutputNode<DeltaforceOpenAIAgentRunInput, DeltaforceOpenAIAgentOutputPayload>({
+const outputNode = steamharness.createOutputNode<DeltaforceOpenAIAgentRunInput, DeltaforceOpenAIAgentOutputPayload>({
   name: "deltaforce-openai-agent-output",
   async *stream(input) {
     const queue = createAsyncEventQueue<DeltaforceOutputChunk>();
@@ -122,7 +122,7 @@ const outputNode = workflow.createOutputNode<DeltaforceOpenAIAgentRunInput, Delt
     });
 
     return {
-      ...workflow.createOutputPayload({
+      ...steamharness.createOutputPayload({
         errCode: finalInput.errCode,
         errMessage: finalInput.errMessage,
         items: stream.items.length > 0
@@ -151,26 +151,26 @@ const outputNode = workflow.createOutputNode<DeltaforceOpenAIAgentRunInput, Delt
   },
 });
 
-export const deltaforceOpenAIAgentWorkflow = workflow.defineWorkflow<DeltaforceOpenAIAgentInput, DeltaforceOpenAIAgentOutputPayload>({
+export const deltaforceOpenAIAgentProject = steamharness.defineProject<DeltaforceOpenAIAgentInput, DeltaforceOpenAIAgentOutputPayload>({
   name: "deltaforce-openai-agent",
   async run(input, context) {
-    const parsed = await workflow.runNode(inputNode, input, context);
-    const workflowContext = context as DeltaforceOpenAIAgentContext;
-    await workflowContext.conversation?.setTitle(createConversationTitle(parsed.query));
-    const conversationState = await workflowContext.conversation?.getValue();
+    const parsed = await steamharness.runNode(inputNode, input, context);
+    const projectContext = context as DeltaforceOpenAIAgentContext;
+    await projectContext.conversation?.setTitle(createConversationTitle(parsed.query));
+    const conversationState = await projectContext.conversation?.getValue();
     const history = createHistoryMessages(conversationState?.messages ?? []);
-    const config = readDeltaforeApiConfig(workflowContext);
-    const output = await workflow.runStreamNode(
+    const config = readDeltaforeApiConfig(projectContext);
+    const output = await steamharness.runStreamNode(
       outputNode,
       {
         errCode: 0,
         errMessage: "",
         parsed,
         config,
-        configModel: workflowContext.metadata?.openaiModel,
-        mockAgentRunner: workflowContext.metadata?.mockAgentRunner,
+        configModel: projectContext.metadata?.openaiModel,
+        mockAgentRunner: projectContext.metadata?.mockAgentRunner,
         history,
-        context: workflowContext,
+        context: projectContext,
       },
       context,
     );
@@ -179,9 +179,9 @@ export const deltaforceOpenAIAgentWorkflow = workflow.defineWorkflow<DeltaforceO
   },
 });
 
-export const executor = workflow.defineExecutor<DeltaforceOpenAIAgentInput, DeltaforceOpenAIAgentOutputPayload>({
+export const executor = steamharness.defineExecutor<DeltaforceOpenAIAgentInput, DeltaforceOpenAIAgentOutputPayload>({
   projectType: "conversation",
-  workflow: deltaforceOpenAIAgentWorkflow,
+  workflow: deltaforceOpenAIAgentProject,
   tokenUsage: {
     enabled: true,
     display: true,
@@ -208,7 +208,7 @@ export const executor = workflow.defineExecutor<DeltaforceOpenAIAgentInput, Delt
     },
   ],
   createInput({ args }) {
-    const defaults = workflow.parseConversationDefaultInputArgs(args);
+    const defaults = steamharness.parseConversationDefaultInputArgs(args);
     return parseInputArgs(args, { message: defaults.message });
   },
   async createContext({ env, abortSignal }) {
@@ -228,8 +228,8 @@ export const executor = workflow.defineExecutor<DeltaforceOpenAIAgentInput, Delt
   },
 });
 
-export { deltaforceOpenAIAgentWorkflow as workflow };
-export default deltaforceOpenAIAgentWorkflow;
+export { deltaforceOpenAIAgentProject as workflow };
+export default deltaforceOpenAIAgentProject;
 
 export function createDeltaforceTools(input: {
   config: DeltaforeApiConfig;
@@ -282,8 +282,8 @@ async function runDeltaforceOpenAIAgents(
     toolResults,
     toolEvents,
   });
-  const agentOutput = await workflow.runWorkflow(
-    openaiAgentsWorkflow,
+  const agentOutput = await steamharness.runProject(
+    openaiAgentsProject,
     createOpenAIAgentsInput({
       parsed: input.parsed,
       config: input.config,
@@ -604,7 +604,7 @@ function createOutputChunksFromPayload(output: OpenAIAgentsOutputPayload): Delta
       ? item.id
       : `nested-workflow-output-${index + 1}`;
     return [
-      workflow.createOutputItemChunk({
+      steamharness.createOutputItemChunk({
         type: "output_item_start",
         item: {
           id,
@@ -619,12 +619,12 @@ function createOutputChunksFromPayload(output: OpenAIAgentsOutputPayload): Delta
           metadata: isRecord(item.metadata) ? item.metadata : undefined,
         },
       }),
-      workflow.createOutputItemChunk({
+      steamharness.createOutputItemChunk({
         type: "output_item_delta",
         itemId: id,
         delta: item.content ?? "",
       }),
-      workflow.createOutputItemChunk({
+      steamharness.createOutputItemChunk({
         type: "output_item_end",
         itemId: id,
       }),

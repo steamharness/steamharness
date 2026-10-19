@@ -8,8 +8,8 @@ import { activeAgentActivity } from './agent-activity';
 import { iconHtml as icon, escapeHtml as escape, iconButton } from './ui';
 import './style.css';
 import {
-  workflowParameters,
-  workflowParamValue,
+  projectParameters,
+  projectParamValue,
   type ConversationMessage, type ConversationSession, type Project, type Field,
   type ParamValues, type ParamValue, type ParamState, type ParamRequest,
   type Attachment,
@@ -101,7 +101,7 @@ function initialize(): void {
   const currentSession = () => state?.sessions.find((session) => session.id === state?.activeId);
   const dialogs = new ConversationTools();
   const contentSearch = new ContentSearch(transcript);
-  const currentParameters = () => workflowParameters(state!.project, entrypoint.value || undefined);
+  const currentParameters = () => projectParameters(state!.project, entrypoint.value || undefined);
   const values = (): ParamValues => paramValues[formKey] ??= {};
   const canQueue = (): boolean => state?.project.conversation?.inputQueue?.enabled === true;
   const busy = (): boolean => submitting || (!!state?.running || !!currentSession()?.messages.some((message) => message.pendingInput)) && !canQueue();
@@ -112,7 +112,7 @@ function initialize(): void {
     onReset: (names) => {
       for (const name of names) {
         const field = fields.get(name)!.field;
-        values()[name] = workflowParamValue(field);
+        values()[name] = projectParamValue(field);
       }
       persist(); updateFields(); requestParams({ kind: 'param', paramName: names[0] });
     },
@@ -215,7 +215,7 @@ function initialize(): void {
     const container = document.querySelector<HTMLDivElement>('#main-fields')!;
     container.replaceChildren();
     for (const field of parameters.fields) {
-      values()[field.name] = workflowParamValue(field, values()[field.name] ?? field.defaultValue ?? (field.type === 'boolean' ? 'false' : ''));
+      values()[field.name] = projectParamValue(field, values()[field.name] ?? field.defaultValue ?? (field.type === 'boolean' ? 'false' : ''));
       fields.set(field.name, createField(field));
       if (project.projectType !== 'conversation' && (field.panel === undefined || field.panel === 'main')) { container.append(fields.get(field.name)!.root); }
     }
@@ -839,8 +839,8 @@ function initialize(): void {
         for (const [name, patch] of Object.entries(message.params ?? {}) as [string, ParamState][]) {
           if (!fields.has(name)) { continue; }
           paramStates[name] = { ...paramStates[name], ...patch, options: { ...paramStates[name]?.options, ...patch.options } };
-          if (patch.value === null) { values()[name] = workflowParamValue(fields.get(name)!.field); }
-          else if (patch.value !== undefined) { values()[name] = workflowParamValue(fields.get(name)!.field, patch.value); }
+          if (patch.value === null) { values()[name] = projectParamValue(fields.get(name)!.field); }
+          else if (patch.value !== undefined) { values()[name] = projectParamValue(fields.get(name)!.field, patch.value); }
         }
         updateFields();
         persist();

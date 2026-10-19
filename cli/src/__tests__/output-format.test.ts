@@ -3,7 +3,7 @@ import { describe, it } from "vitest";
 import {
   createCliOutputStreamHooks,
   formatCliOutputContent,
-  formatWorkflowExecutionJson,
+  formatProjectExecutionJson,
   type ExecutionReport,
 } from "steamharness";
 
@@ -114,7 +114,7 @@ describe("CLI output formatting", () => {
       result: { ok: true, data: {} },
     } as unknown as ExecutionReport;
 
-    const json = formatWorkflowExecutionJson(report);
+    const json = formatProjectExecutionJson(report);
     assert.match(json, /"contentType":\s*"video"/);
     assert.match(json, /"src":\s*"https:\/\/cdn\.example\.test\/minimax-video\.mp4/);
   });

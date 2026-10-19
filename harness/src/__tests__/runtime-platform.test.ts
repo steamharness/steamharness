@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { analyzeWorkflowScriptSource } from "../executor/rules";
+import { analyzeProjectScriptSource } from "../executor/rules";
 import {
   getRuntimePlatform,
   getRuntimeLocale,
   isCli,
   isDesktop,
-  workflowRuntimeApi,
+  projectRuntimeApi,
   STEAMHARNESS_RUNTIME_LOCALE_ENV,
   STEAMHARNESS_RUNTIME_PLATFORM_ENV,
 } from "../index";
@@ -39,11 +39,11 @@ test("runtime platform preserves local hosts and rejects removed server hosts", 
 });
 
 test("workflow runtime API exposes platform helpers", () => {
-  assert.equal(workflowRuntimeApi.getRuntimePlatform, getRuntimePlatform);
-  assert.equal(workflowRuntimeApi.isCli, isCli);
-  assert.equal(Object.hasOwn(workflowRuntimeApi, "isWeb"), false);
-  assert.equal(workflowRuntimeApi.isDesktop, isDesktop);
-  assert.equal(Object.hasOwn(workflowRuntimeApi, "isApp"), false);
+  assert.equal(projectRuntimeApi.getRuntimePlatform, getRuntimePlatform);
+  assert.equal(projectRuntimeApi.isCli, isCli);
+  assert.equal(Object.hasOwn(projectRuntimeApi, "isWeb"), false);
+  assert.equal(projectRuntimeApi.isDesktop, isDesktop);
+  assert.equal(Object.hasOwn(projectRuntimeApi, "isApp"), false);
 });
 
 test("runtime locale normalizes host markers and defaults to Chinese", () => {
@@ -62,25 +62,25 @@ test("runtime locale normalizes host markers and defaults to Chinese", () => {
 });
 
 test("workflow runtime API exposes the locale helper", () => {
-  assert.equal(workflowRuntimeApi.getRuntimeLocale, getRuntimeLocale);
+  assert.equal(projectRuntimeApi.getRuntimeLocale, getRuntimeLocale);
 });
 
 test("workflow structure records platform helper calls as runtime API calls", () => {
-  const analysis = analyzeWorkflowScriptSource(`
-    const outputNode = workflow.createOutputNode({
+  const analysis = analyzeProjectScriptSource(`
+    const outputNode = steamharness.createOutputNode({
       name: "output",
       format() {
         return { errCode: 0, errMessage: "", items: [] };
       },
     });
 
-    export const demo = workflow.defineWorkflow({
+    export const demo = steamharness.defineProject({
       name: "runtime-platform",
       async run(input, context) {
-        const platform = workflow.getRuntimePlatform();
-        const locale = workflow.getRuntimeLocale();
-        const flags = [workflow.isCli(), workflow.isDesktop()];
-        return workflow.runNode(outputNode, { platform, locale, flags }, context);
+        const platform = steamharness.getRuntimePlatform();
+        const locale = steamharness.getRuntimeLocale();
+        const flags = [steamharness.isCli(), steamharness.isDesktop()];
+        return steamharness.runNode(outputNode, { platform, locale, flags }, context);
       },
     });
   `);

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   disposeKnowledgeImageCache,
-  readWorkflowFileIdFromMarkdownImageSrc,
+  readProjectFileIdFromMarkdownImageSrc,
   resolveKnowledgeImageSrc,
 } from "../workflow-file-images";
 
@@ -11,16 +11,16 @@ afterEach(() => {
 
 describe("knowledge markdown image utilities", () => {
   it("extracts workflow file ids from relative and configured-server markdown URLs", () => {
-    expect(readWorkflowFileIdFromMarkdownImageSrc("/api/projects/files/wf_123?download=1", "http://localhost:7125")).toBe("wf_123");
-    expect(readWorkflowFileIdFromMarkdownImageSrc("http://localhost:7125/api/projects/files/wf_a%2Fb", "http://localhost:7125/api")).toBe("wf_a/b");
-    expect(readWorkflowFileIdFromMarkdownImageSrc("https://example.com/api/projects/files/wf_123", "http://localhost:7125")).toBeNull();
-    expect(readWorkflowFileIdFromMarkdownImageSrc("/embed/api/projects/demo/files/wf_123", "http://localhost:7125")).toBeNull();
+    expect(readProjectFileIdFromMarkdownImageSrc("/api/projects/files/wf_123?download=1", "http://localhost:7125")).toBe("wf_123");
+    expect(readProjectFileIdFromMarkdownImageSrc("http://localhost:7125/api/projects/files/wf_a%2Fb", "http://localhost:7125/api")).toBe("wf_a/b");
+    expect(readProjectFileIdFromMarkdownImageSrc("https://example.com/api/projects/files/wf_123", "http://localhost:7125")).toBeNull();
+    expect(readProjectFileIdFromMarkdownImageSrc("/embed/api/projects/demo/files/wf_123", "http://localhost:7125")).toBeNull();
   });
 
   it("fetches authenticated workflow files once and returns cached object URLs", async () => {
     const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:http://localhost/wf_123");
     const client = {
-      fetchWorkflowFile: vi.fn().mockResolvedValue(new Blob(["png"], { type: "image/png" })),
+      fetchProjectFile: vi.fn().mockResolvedValue(new Blob(["png"], { type: "image/png" })),
     };
     const cache = new Map<string, string>();
 
@@ -29,8 +29,8 @@ describe("knowledge markdown image utilities", () => {
 
     expect(first).toBe("blob:http://localhost/wf_123");
     expect(second).toBe("blob:http://localhost/wf_123");
-    expect(client.fetchWorkflowFile).toHaveBeenCalledTimes(1);
-    expect(client.fetchWorkflowFile).toHaveBeenCalledWith("wf_123");
+    expect(client.fetchProjectFile).toHaveBeenCalledTimes(1);
+    expect(client.fetchProjectFile).toHaveBeenCalledWith("wf_123");
     expect(createObjectURL).toHaveBeenCalledTimes(1);
   });
 
@@ -39,13 +39,13 @@ describe("knowledge markdown image utilities", () => {
     const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:http://localhost/late-image");
     const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL");
     const client = {
-      fetchWorkflowFile: vi.fn().mockReturnValue(response.promise),
+      fetchProjectFile: vi.fn().mockReturnValue(response.promise),
     };
     const cache = new Map<string, string>();
 
     const first = resolveKnowledgeImageSrc("/api/projects/files/wf_late", { client, cache });
     const second = resolveKnowledgeImageSrc("/api/projects/files/wf_late", { client, cache });
-    expect(client.fetchWorkflowFile).toHaveBeenCalledTimes(1);
+    expect(client.fetchProjectFile).toHaveBeenCalledTimes(1);
 
     disposeKnowledgeImageCache(cache);
     response.resolve(new Blob(["png"], { type: "image/png" }));

@@ -57,7 +57,7 @@ export async function readRuntimeApiIndex() {
   return { runtimeMembers, relatedContext };
 }
 
-/** The `workflow.*` members a project may call. */
+/** The `steamharness.*` members a project may call. */
 export async function readRuntimeNamespaceMembers(coreSource = HARNESS_SOURCE) {
   const file = path.join(coreSource, "runtime-api.ts");
   const source = ts.createSourceFile(file, await readFile(file, "utf8"), ts.ScriptTarget.Latest, true);
@@ -65,7 +65,7 @@ export async function readRuntimeNamespaceMembers(coreSource = HARNESS_SOURCE) {
   for (const statement of source.statements) {
     if (!ts.isVariableStatement(statement)) continue;
     for (const declaration of statement.declarationList.declarations) {
-      if (declaration.name.getText(source) !== "workflowRuntimeApi") continue;
+      if (declaration.name.getText(source) !== "projectRuntimeApi") continue;
       const initializer = declaration.initializer;
       if (initializer === undefined || !ts.isObjectLiteralExpression(initializer)) continue;
       // Every member has to be a name this script can read. A spread or a
@@ -75,7 +75,7 @@ export async function readRuntimeNamespaceMembers(coreSource = HARNESS_SOURCE) {
       return initializer.properties.map((property) => {
         if (property.name === undefined || !ts.isIdentifier(property.name)) {
           throw new Error(
-            `runtime-api.ts declares workflowRuntimeApi with a member this script cannot read: ${property.getText(source)}`,
+            `runtime-api.ts declares projectRuntimeApi with a member this script cannot read: ${property.getText(source)}`,
           );
         }
         return property.name.text;
@@ -83,7 +83,7 @@ export async function readRuntimeNamespaceMembers(coreSource = HARNESS_SOURCE) {
     }
   }
 
-  throw new Error("runtime-api.ts no longer declares workflowRuntimeApi as an object literal.");
+  throw new Error("runtime-api.ts no longer declares projectRuntimeApi as an object literal.");
 }
 
 /** The members a related project exposes, taken from the interfaces that define them. */
@@ -159,11 +159,11 @@ export async function renderRuntimeApiIndex() {
     "就是没有开放；关系只走一跳（被调起来的项目自己不能再访问关联项目）。",
     "授权由目标项目在 `grantToRelatedProject` 的 `read` / `write` / `knowledge` / `entrypoints` 里声明。",
     "",
-    "## 运行时成员（`workflow.*`）",
+    "## 运行时成员（`steamharness.*`）",
     "",
-    "项目源码里能调用的运行时成员，除此之外的 `workflow.*` 都不存在：",
+    "项目源码里能调用的运行时成员，除此之外的 `steamharness.*` 都不存在：",
     "",
-    ...runtimeMembers.map((name) => `- \`workflow.${name}(...)\``),
+    ...runtimeMembers.map((name) => `- \`steamharness.${name}(...)\``),
     "",
     "每个成员的契约（参数、返回值、错误码）在 `references/steamharness-api.md` 里按小节说明。",
     "",

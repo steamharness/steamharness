@@ -54,24 +54,24 @@ async function localRequest(request, core, folderPath) {
   const rootDir = path.join(dataDir, input.kind === 'kv' ? 'kv' : 'values');
   const storageKind = input.kind === 'kv' ? 'kv' : 'persistent_value';
   const projectId = request.project.id;
-  const store = core.createLocalWorkflowKVStore({ rootDir, storageKind });
+  const store = core.createLocalProjectKVStore({ rootDir, storageKind });
   if (input.kind === 'kv') {
     if (input.action === 'list') {
-      return core.listLocalWorkflowKVEntries({ rootDir, storageKind, projectId, pageSize: PAGE_SIZE, cursor: input.cursor,
+      return core.listLocalProjectKVEntries({ rootDir, storageKind, projectId, pageSize: PAGE_SIZE, cursor: input.cursor,
         scope: input.scope, conversationId: input.conversationId || undefined, query: input.query || undefined });
     }
     if (typeof input.key !== 'string' || !input.key.trim()) { throw new Error('A KV key is required.'); }
     const entry = { storageKind, projectId, scope: input.scope ?? 'project', conversationId: input.conversationId, key: input.key };
-    if (input.action === 'get') { return await core.getLocalWorkflowKVEntry({ rootDir, ...entry }) ?? null; }
-    if (input.action === 'delete') { return { removed: await core.deleteLocalWorkflowKVEntry({ rootDir, ...entry }) }; }
+    if (input.action === 'get') { return await core.getLocalProjectKVEntry({ rootDir, ...entry }) ?? null; }
+    if (input.action === 'delete') { return { removed: await core.deleteLocalProjectKVEntry({ rootDir, ...entry }) }; }
     if (input.value === undefined) { throw new Error('A JSON value is required.'); }
     await store.withNamespaceLock(entry, async () => {
       if (input.create && await store.getValue(entry) !== undefined) { throw new Error('This key already exists.'); }
       await store.setValue({ ...entry, value: input.value });
     });
-    return core.getLocalWorkflowKVEntry({ rootDir, ...entry });
+    return core.getLocalProjectKVEntry({ rootDir, ...entry });
   }
-  const context = { persistentValue: core.createWorkflowPersistentValueContext({ store, projectId }) };
+  const context = { persistentValue: core.createProjectPersistentValueContext({ store, projectId }) };
   if (input.action === 'list') {
     return input.query?.trim()
       ? core.searchKnowledgeDocuments(context, { query: input.query.trim(), pageSize: PAGE_SIZE, cursor: input.cursor })

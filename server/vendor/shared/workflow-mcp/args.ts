@@ -1,6 +1,6 @@
 import {
-  isWorkflowMcpMultiParam,
-  normalizeWorkflowMcpDefaultValue,
+  isProjectMcpMultiParam,
+  normalizeProjectMcpDefaultValue,
   McpInvalidParamsError,
 } from "./schema";
 import type {
@@ -10,7 +10,7 @@ import type {
   McpParamDefinition,
 } from "./types";
 
-export async function workflowMcpInputToArgs(options: {
+export async function projectMcpInputToArgs(options: {
   projectId: string;
   entrypointId: string;
   params: readonly McpParamDefinition[] | undefined;
@@ -26,7 +26,7 @@ export async function workflowMcpInputToArgs(options: {
     const hasInput = Object.prototype.hasOwnProperty.call(options.input, param.name);
     const value = hasInput
       ? options.input[param.name]
-      : normalizeWorkflowMcpDefaultValue(param, options.fileInputMode);
+      : normalizeProjectMcpDefaultValue(param, options.fileInputMode);
     if (value === undefined) continue;
 
     if (param.type === "file") {
@@ -45,12 +45,12 @@ export async function workflowMcpInputToArgs(options: {
       continue;
     }
 
-    if (param.type === "boolean" && !isWorkflowMcpMultiParam(param)) {
+    if (param.type === "boolean" && !isProjectMcpMultiParam(param)) {
       appendBoolean(param, value, args);
       continue;
     }
 
-    const serialized = isWorkflowMcpMultiParam(param)
+    const serialized = isProjectMcpMultiParam(param)
       ? JSON.stringify(value)
       : String(value);
     appendValue(param, serialized, args, positional);

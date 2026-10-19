@@ -37,7 +37,7 @@ export default defineConfig({
   // and friends. esbuild rewrites those into a shim that throws in ESM output
   // unless a real `require` is in scope, so every emitted file gets one.
   banner: {
-    js: 'import { createRequire as __workflowCreateRequire } from "node:module";\nconst require = __workflowCreateRequire(import.meta.url);',
+    js: 'import { createRequire as __projectCreateRequire } from "node:module";\nconst require = __projectCreateRequire(import.meta.url);',
   },
   splitting: true,
   clean: true,

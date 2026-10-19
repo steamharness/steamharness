@@ -33,7 +33,7 @@
         "selector": [{ "filenamePattern": "*.tex" }, { "filenamePattern": "*.latex" }]
       }
     ],
-    "authentication": [{ "id": "studio-workflow", "label": "Workflow" }],
+    "authentication": [{ "id": "studio-steamharness", "label": "SteamHarness" }],
     "commands": [
       { "command": "studio.openStart", "title": "%command.openStart%", "category": "Studio", "icon": "$(home)" },
       { "command": "studio.createProject", "title": "%command.createProject%", "category": "Studio", "icon": "$(new-file)" },
@@ -51,7 +51,7 @@
       { "command": "studio.openRecentProject", "title": "%command.openRecentProject%", "category": "Studio" },
       { "command": "studio.removeRecentProject", "title": "%command.removeRecentProject%", "category": "Studio", "icon": "$(close)" },
       { "command": "studio.clearRecentProjects", "title": "%command.clearRecentProjects%", "category": "Studio", "icon": "$(clear-all)" },
-      { "command": "studio.openProject", "title": "%command.openWorkflow%", "category": "Workflow", "icon": "$(play)" },
+      { "command": "studio.openProject", "title": "%command.openProject%", "category": "Workflow", "icon": "$(play)" },
       { "command": "studio.uploadProject", "title": "%command.uploadProject%", "category": "Workflow", "icon": "$(cloud-upload)" },
       { "command": "studio.upgradeProject", "title": "%command.upgradeProject%", "category": "Workflow", "icon": "$(arrow-circle-up)" },
       { "command": "studio.downloadProject", "title": "%command.downloadProject%", "category": "Workflow", "icon": "$(cloud-download)" },
@@ -61,19 +61,19 @@
       { "command": "studio.openAssistant", "title": "%command.openAssistant%", "category": "Workflow", "icon": "$(hubot)" },
       { "command": "studio.newAssistantConversation", "title": "%command.newAssistantConversation%", "category": "Workflow", "icon": "$(edit)" },
       { "command": "studio.searchAssistantConversations", "title": "%command.searchAssistantConversations%", "category": "Workflow", "icon": "$(search)" },
-      { "command": "studio.refreshProjects", "title": "%command.refreshWorkflows%", "category": "Workflow", "icon": "$(refresh)" },
+      { "command": "studio.refreshProjects", "title": "%command.refreshProjects%", "category": "Workflow", "icon": "$(refresh)" },
       { "command": "studio.refreshResources", "title": "%command.refreshResources%", "category": "Workflow", "icon": "$(refresh)" },
       { "command": "studio.selectInfoProject", "title": "%command.selectInfoProject%", "category": "Workflow", "icon": "$(list-selection)" },
       { "command": "studio.openInfoProjectSource", "title": "%command.openInfoProjectSource%", "category": "Workflow", "icon": "$(json)" },
       { "command": "studio.copyProjectInfoValue", "title": "%command.copyProjectInfoValue%", "category": "Workflow", "icon": "$(copy)" },
       { "command": "studio.openRelatedProject", "title": "%command.openRelatedProject%", "category": "Workflow", "icon": "$(link-external)" },
       { "command": "studio.refreshRelatedProjects", "title": "%command.refreshRelatedProjects%", "category": "Workflow", "icon": "$(refresh)" },
-      { "command": "studio.openProjectSource", "title": "%command.openWorkflowSource%", "category": "Workflow", "icon": "$(code)" },
-      { "command": "studio.openProjectDemo", "title": "%command.openWorkflowDemo%", "category": "Workflow", "icon": "$(comment-discussion)" },
-      { "command": "studio.openProjectCli", "title": "%command.openWorkflowCli%", "category": "Workflow", "icon": "$(terminal)" },
-      { "command": "studio.openAccount", "title": "%command.openWorkflowAccount%", "category": "Workflow", "icon": "$(account)" },
-      { "command": "studio.validateLogin", "title": "%command.validateWorkflowLogin%", "category": "Workflow", "icon": "$(verified)" },
-      { "command": "studio.logout", "title": "%command.logoutWorkflow%", "category": "Workflow", "icon": "$(sign-out)" }
+      { "command": "studio.openProjectSource", "title": "%command.openProjectSource%", "category": "Workflow", "icon": "$(code)" },
+      { "command": "studio.openProjectDemo", "title": "%command.openProjectDemo%", "category": "Workflow", "icon": "$(comment-discussion)" },
+      { "command": "studio.openProjectCli", "title": "%command.openProjectCli%", "category": "Workflow", "icon": "$(terminal)" },
+      { "command": "studio.openAccount", "title": "%command.openProjectAccount%", "category": "Workflow", "icon": "$(account)" },
+      { "command": "studio.validateLogin", "title": "%command.validateProjectLogin%", "category": "Workflow", "icon": "$(verified)" },
+      { "command": "studio.logout", "title": "%command.logoutProject%", "category": "Workflow", "icon": "$(sign-out)" }
     ],
     "viewsContainers": {
       "activitybar": [

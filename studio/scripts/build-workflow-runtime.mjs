@@ -7,7 +7,7 @@ import { ROOT, builtinProjectDirectory, exists, resolveMonorepoRoot } from './di
 
 const require = createRequire(import.meta.url);
 
-export async function buildWorkflowRuntime(directory) {
+export async function buildProjectRuntime(directory) {
   const source = await resolveMonorepoRoot();
   const useSource = await exists(path.join(source, 'harness/dist/index.js')) && await exists(path.join(source, 'cli/dist/index.js'));
   const harnessEntry = useSource ? path.join(source, 'harness/dist/index.js') : fileURLToPath(import.meta.resolve('steamharness'));

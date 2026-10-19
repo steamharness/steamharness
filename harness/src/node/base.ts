@@ -5,7 +5,7 @@ import type {
   NodeMetadata,
   NodeMetadataInput,
 } from "../types/index";
-import { createWorkflowNodeMetadata } from "../types/index";
+import { createProjectNodeMetadata } from "../types/index";
 import { HarnessError } from "../workflow/errors";
 import { resolveLLMProvider } from "../provider/llm/resolver";
 import type { LLMProvider, LLMProviderSource } from "../provider/llm/types";
@@ -60,7 +60,7 @@ export abstract class NodeExecutionStore {
   constructor(options: BaseNodeOptions) {
     this.name = options.name;
     this.standardName = options.standardName ?? options.name;
-    this.metadata = createWorkflowNodeMetadata(options.metadata, {
+    this.metadata = createProjectNodeMetadata(options.metadata, {
       type: this.standardName,
       title: this.name,
     });

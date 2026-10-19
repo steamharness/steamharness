@@ -69,7 +69,7 @@ describe("server/web feature parity", () => {
     expect(onFiltersChange).toHaveBeenCalledWith(expect.objectContaining({ actorUserId: "user-1" }));
     fireEvent.click(screen.getByRole("button", { name: "查看审计详情" }));
     expect(onOpenDetail).toHaveBeenCalledWith("audit-1");
-    expect(screen.getByText("workflow.publish")).toBeTruthy();
+    expect(screen.getByText("steamharness.publish")).toBeTruthy();
     initialRender.unmount();
 
     const detailRender = renderWithTheme(
@@ -138,8 +138,8 @@ function createAuditPage(): AuditEventPage {
         actorUserId: "user-1",
         actorProfileId: "user-1",
         actorDisplayName: "Admin User",
-        eventType: "workflow.publish",
-        resourceType: "workflow_version",
+        eventType: "steamharness.publish",
+        resourceType: "project_version",
         resourceId: "demo:1.0.0",
         outcome: "success",
         requestIp: "127.0.0.1",

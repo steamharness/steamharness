@@ -1,17 +1,17 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import {
-  createDisabledWorkflowConversationContext,
-  createDisabledWorkflowTokenUsageContext,
-  createWorkflowRelatedProjectsContext,
-  createWorkflowToolPermissionContext,
+  createDisabledProjectConversationContext,
+  createDisabledProjectTokenUsageContext,
+  createProjectRelatedProjectsContext,
+  createProjectToolPermissionContext,
   type KVContext,
 } from "steamharness";
-import { installWorkflowRuntimeGlobal } from "steamharness/runtime-api";
+import { installProjectRuntimeGlobal } from "steamharness/runtime-api";
 import type { NodeContext } from "steamharness/types/context";
 import type { PiAgentInput, PiAgentParsedInput } from "../interface";
 import { KNOWLEDGE_DOCUMENTS_TOOL_NAME } from "../knowledge-documents-tool";
 
-installWorkflowRuntimeGlobal();
+installProjectRuntimeGlobal();
 
 type InputNodeLike = {
   parse(input: PiAgentInput, context: NodeContext): Promise<PiAgentParsedInput>;
@@ -98,17 +98,17 @@ function createNodeContext(
       local: {
         kv: createMemoryKVContext(),
         persistentValue: createMemoryKVContext(),
-        relatedProjects: createWorkflowRelatedProjectsContext(),
+        relatedProjects: createProjectRelatedProjectsContext(),
       },
       server: {
         kv: createMemoryKVContext(),
         persistentValue: createMemoryKVContext(),
-        relatedProjects: createWorkflowRelatedProjectsContext(),
+        relatedProjects: createProjectRelatedProjectsContext(),
       },
     },
-    conversation: createDisabledWorkflowConversationContext(),
-    tokenUsage: createDisabledWorkflowTokenUsageContext(),
-    toolPermissions: createWorkflowToolPermissionContext({
+    conversation: createDisabledProjectConversationContext(),
+    tokenUsage: createDisabledProjectTokenUsageContext(),
+    toolPermissions: createProjectToolPermissionContext({
       projectName: "pi-agent",
       runId: "pi-agent-test-run",
       definitions: [

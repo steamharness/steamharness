@@ -6,7 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import pg from "pg";
 import { create as createTar } from "tar";
-import type { DeclaredWorkflowProjectInfo } from "@steamharness/project-info";
+import type { DeclaredProjectInfo } from "@steamharness/project-info";
 import type { ProjectGroupManifestV1 } from "@steamharness/project-dependencies";
 import { LocalStorage } from "../local-storage";
 import { ArtifactStorage, DatabaseRepository } from "../persistence";
@@ -33,7 +33,7 @@ test("PostgreSQL stores static project groups, immutable versions and independen
   const workerId = randomUUID();
   const packageVersion = JSON.parse(await readFile(new URL("../../package.json", import.meta.url), "utf8"))
     .dependencies["steamharness"] as string;
-  const projectInfo = (alias: string, projectId: string): DeclaredWorkflowProjectInfo => ({
+  const projectInfo = (alias: string, projectId: string): DeclaredProjectInfo => ({
     localizedNames: {}, declarations: [], platformSupport: { mode: "agnostic" }, dataStorage: { mode: "server" },
     relatedProjects: [{ alias, projectId, grantToRelatedProject: { read: { mode: "all" }, write: { mode: "all" } } }],
   });
@@ -86,7 +86,7 @@ test("PostgreSQL stores static project groups, immutable versions and independen
     assert.equal(versions.versions[0]?.dependencies[0]?.version, "1.0.0");
     const snapshot = await storage.getDownloadableSourceFiles({ projectName: boardId, target: "1.0.0" });
     const copyId = randomUUID();
-    await storage.cloneWorkflow({ projectName: boardId, sourceTarget: "1.0.0",
+    await storage.cloneProject({ projectName: boardId, sourceTarget: "1.0.0",
       targetProjectName: copyId, ownerUserId: "copier" });
     const copied = await storage.getProjectAccessSummary(copyId, "copier");
     assert.equal(copied.ownerUserId, "copier");

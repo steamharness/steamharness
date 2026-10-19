@@ -15,15 +15,15 @@ import { durableContextMessages } from "./durable-context";
 import type { AgentPlanItem, AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt, AgentSessionResources, AgentSessionSnapshot, AgentSessionTask, AgentSessionTurn } from "./session-types";
 
 const SessionDoc = defineDoc({
-  kind: "workflow.session", version: 1, scope: "conversation", history: "rewindable", fork: "initial",
+  kind: "project.session", version: 1, scope: "conversation", history: "rewindable", fork: "initial",
   initial: () => ({ configurationVersion: 0, promptHash: "", promptVersion: 0,
     commands: {} as Record<string, JsonObject>, title: "", background: false as boolean, deleted: false as boolean, hostConfigurationHash: "" }),
 });
 const initialPlan = () => ({ version: 0, items: [] as { id: string; text: string; status: string }[] });
-const PlanAsOf = defineDoc({ kind: "workflow.plan.as-of", version: 1, scope: "conversation", history: "rewindable", fork: "asOf", initial: initialPlan });
-const PlanCurrent = defineDoc({ kind: "workflow.plan.current", version: 1, scope: "conversation", history: "rewindable", fork: "current", initial: initialPlan });
-const PlanInitial = defineDoc({ kind: "workflow.plan.initial", version: 1, scope: "conversation", history: "rewindable", fork: "initial", initial: initialPlan });
-const DelegationDoc = defineDoc({ kind: "workflow.delegation", version: 1, scope: "task", initial: () => ({ taskId: 0 }) });
+const PlanAsOf = defineDoc({ kind: "project.plan.as-of", version: 1, scope: "conversation", history: "rewindable", fork: "asOf", initial: initialPlan });
+const PlanCurrent = defineDoc({ kind: "project.plan.current", version: 1, scope: "conversation", history: "rewindable", fork: "current", initial: initialPlan });
+const PlanInitial = defineDoc({ kind: "project.plan.initial", version: 1, scope: "conversation", history: "rewindable", fork: "initial", initial: initialPlan });
+const DelegationDoc = defineDoc({ kind: "project.delegation", version: 1, scope: "task", initial: () => ({ taskId: 0 }) });
 
 const plain = <T>(value: T): T => value === undefined ? value : JSON.parse(JSON.stringify(value)) as T;
 const object = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -73,7 +73,7 @@ export class DurableAgentSession {
         await api.commit(async tx => {
           const plan = await tx.doc(this.planDoc, api.conversationId);
           plan.items = items; plan.version++;
-          await tx.appendEntry(api.conversationId, { kind: "workflow.plan", data: { version: plan.version, count: items.length } });
+          await tx.appendEntry(api.conversationId, { kind: "project.plan", data: { version: plan.version, count: items.length } });
         }, ctx);
         return { output: [{ type: "text", text: "Plan saved." }] };
       },
@@ -90,7 +90,7 @@ export class DurableAgentSession {
         const id = await api.commit(async tx => {
           const memo = await tx.doc(DelegationDoc, api.taskId);
           if (memo.taskId) return memo.taskId;
-          const live = await scanAll(cursor => tx.scanTasks({ kind: "workflow.delegation" }, 100, cursor));
+          const live = await scanAll(cursor => tx.scanTasks({ kind: "project.delegation" }, 100, cursor));
           if (live.filter(task => task.state.status !== "terminal").length >= (this.options.subagents!.maxAgents ?? 4)) throw new Error("The project's subagent limit was reached.");
           memo.taskId = await tx.createTask(this.delegation, { prompt: input.task, background: input.background === true, model: input.model ?? null, sourceId: api.callId },
             { conversationId: api.conversationId, ownership: input.background ? { kind: "conversation" } : { kind: "task", taskId: api.taskId }, background: input.background === true });
@@ -102,7 +102,7 @@ export class DurableAgentSession {
         return { output: [{ type: "text", text: result.state.outcome.status === "completed" ? String(result.state.outcome.result) : `Subagent ${result.state.outcome.status}` }] };
       },
     });
-    registry.install(defineExtension({ name: "workflow.session", tools, tasks: [this.delegation] }));
+    registry.install(defineExtension({ name: "project.session", tools, tasks: [this.delegation] }));
     this.tools = tools;
     this.setTools(tools);
   }
@@ -119,7 +119,7 @@ export class DurableAgentSession {
     type Input = { prompt: string; background: boolean; model: { provider: string; modelId: string } | null; sourceId: string };
     type State = { phase: "create" } | { phase: "wait"; childId: number } | { phase: "report"; childId: number; answer: string };
     return defineTask<Input, State, string>({
-      name: "workflow.delegation", version: 1, initial: () => ({ phase: "create" }),
+      name: "project.delegation", version: 1, initial: () => ({ phase: "create" }),
       phases: {
         create: async (task, runtime, ctx) => {
           const parent = await this.harness.conversation(task.conversationId, ctx);
@@ -142,7 +142,7 @@ export class DurableAgentSession {
         wait: async (task, runtime, ctx) => {
           const child = (await runtime.conversation(task.state.checkpoint.childId as ConversationId, ctx))!;
           const settled = await (await child.submit({ type: "input", content: task.input.prompt, requestId: `delegate:${task.id}`,
-            entry: { kind: "workflow.input", data: { requestId: `delegate:${task.id}`, mode: "followUp" } } }, ctx)).wait(ctx);
+            entry: { kind: "project.input", data: { requestId: `delegate:${task.id}`, mode: "followUp" } } }, ctx)).wait(ctx);
           const history = await runtime.context(child.id, ctx, settled.status === "done" ? { at: settled.answer } : undefined);
           const message = [...history.messages].reverse().find(message => message.role === "assistant");
           const answer = settled.status === "done" ? textOf(message) : `Subagent failed: ${settled.reason}`;
@@ -153,7 +153,7 @@ export class DurableAgentSession {
           if (task.input.background) {
             const parent = (await runtime.conversation(task.conversationId, ctx))!;
             await parent.submit({ type: "input", content: `Subagent result (${childId}):\n${answer}`, whenBusy: "followUp", requestId: `report:${task.id}`,
-              entry: { kind: "workflow.child-result", data: { requestId: `report:${task.id}`, sourceId: childId, mode: "report" } } }, ctx);
+              entry: { kind: "project.child-result", data: { requestId: `report:${task.id}`, sourceId: childId, mode: "report" } } }, ctx);
           }
           await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: answer } }), ctx);
         },
@@ -186,7 +186,7 @@ export class DurableAgentSession {
       const hash = createHash("sha256").update(prompt).digest("hex");
       if (doc.promptHash !== hash) {
         doc.promptHash = hash; doc.promptVersion++;
-        await tx.appendEntry(this.root.id, { kind: "workflow.prompt", data: { hash, version: doc.promptVersion } });
+        await tx.appendEntry(this.root.id, { kind: "project.prompt", data: { hash, version: doc.promptVersion } });
       }
       await tx.doc(this.planDoc, this.root.id);
     }, context);
@@ -204,7 +204,7 @@ export class DurableAgentSession {
       await configure(tx, this.root.id, changed ? change : { tools: change.tools, cwd: change.cwd });
       if (changed && info.hostConfigurationHash) {
         info.configurationVersion++;
-        await tx.appendEntry(this.root.id, { kind: "workflow.configuration", data: { version: info.configurationVersion } });
+        await tx.appendEntry(this.root.id, { kind: "project.configuration", data: { version: info.configurationVersion } });
       }
       info.hostConfigurationHash = hash;
     }, context);
@@ -223,7 +223,7 @@ export class DurableAgentSession {
       if (provider?.sessionId !== sessionId) continue;
       const requestId = await this.requestIdFor(id as ConversationId);
       await this.harness.commit(tx => tx.appendEntry(id as ConversationId, {
-        kind: "workflow.compaction-usage", data: { requestId, recordId, usage: plain(usage) as unknown as JsonValue },
+        kind: "project.compaction-usage", data: { requestId, recordId, usage: plain(usage) as unknown as JsonValue },
       }), context);
       return;
     }
@@ -311,7 +311,7 @@ export class DurableAgentSession {
     switch (command.type) {
       case "task": {
         const task = this.options.registry?.snapshot().task(command.name);
-        if (!task || /^(pi|workflow)\./.test(command.name)) throw new Error("The project has not registered this task.");
+        if (!task || /^(pi|project)\./.test(command.name)) throw new Error("The project has not registered this task.");
         await target.commit(async tx => {
           receipt.taskId = await tx.createTask(task as import("@earendil-works/pi-durable").Task<JsonValue, { phase: string }, JsonValue, object>, command.input,
             { conversationId: target.id, ownership: { kind: "conversation" }, background: command.background === true });
@@ -324,7 +324,7 @@ export class DurableAgentSession {
         if (typeof command.prompt !== "string" || command.prompt.length > 100_000 || !["steer", "followUp", "reject"].includes(command.mode)) throw new Error("Invalid agent input.");
         const content = command.images?.length ? [{ type: "text" as const, text: command.prompt }, ...command.images.map(image => ({ type: "image" as const, ...image }))] : command.prompt;
         const submission = await target.submit({ type: "input", content, requestId: command.requestId, whenBusy: command.mode,
-          entry: { kind: "workflow.input", data: { requestId: command.requestId, mode: command.mode } } }, context);
+          entry: { kind: "project.input", data: { requestId: command.requestId, mode: command.mode } } }, context);
         receipt.submissionId = submission.id;
         break;
       }
@@ -346,7 +346,7 @@ export class DurableAgentSession {
             const item = inbox.items.find(item => item.id === record.id);
             if (!item || item.mode === "write") throw new Error("The queued input does not exist.");
             item.mode = "steer";
-            item.entry ??= { kind: "workflow.input", data: { requestId: command.inputId } };
+            item.entry ??= { kind: "project.input", data: { requestId: command.inputId } };
             item.entry.data = { ...object(item.entry.data) as JsonObject, mode: "steer" };
           }
           await save(tx);
@@ -400,7 +400,7 @@ export class DurableAgentSession {
         await target.commit(async tx => {
           await configure(tx, target.id, { ...(command.model ? { model: command.model } : {}), ...(command.effort ? { thinkingLevel: command.effort as "medium" } : {}) });
           (await tx.doc(SessionDoc, target.id)).configurationVersion++;
-          await tx.appendEntry(target.id, { kind: "workflow.configuration", data: { version: command.expectedVersion + 1 } });
+          await tx.appendEntry(target.id, { kind: "project.configuration", data: { version: command.expectedVersion + 1 } });
           await save(tx);
         }, context);
         break;
@@ -411,7 +411,7 @@ export class DurableAgentSession {
           const doc = await tx.doc(this.planDoc, target.id);
           if (doc.version !== command.expectedVersion) throw new Error("The plan changed. Refresh before editing.");
           doc.items = items; doc.version++;
-          await tx.appendEntry(target.id, { kind: "workflow.plan", data: { version: doc.version, count: items.length } });
+          await tx.appendEntry(target.id, { kind: "project.plan", data: { version: doc.version, count: items.length } });
           await save(tx);
         }, context);
         break;
@@ -539,7 +539,7 @@ export class DurableAgentSession {
         const inspected = inspections.get(task.id);
         const descriptor: AgentSessionTask = {
           id: task.id, conversationId: record.id, ...(task.owner === undefined ? {} : { parentId: task.owner }), kind: task.kind,
-          label: tool ?? (task.kind === "workflow.delegation" ? String(object(task.input).prompt ?? "Subagent").slice(0, 120) : task.kind),
+          label: tool ?? (task.kind === "project.delegation" ? String(object(task.input).prompt ?? "Subagent").slice(0, 120) : task.kind),
           status: task.state.status === "terminal" ? task.state.outcome.status : inspected?.kind === "blocked" ? "blocked" : task.state.status,
           ...(state.phase ? { phase: String(state.phase) } : {}), background: task.background || info?.background === true,
           definitionVersion: task.version,
@@ -565,7 +565,7 @@ export class DurableAgentSession {
         let mode = ["steer", "followUp", "reject", "report"].includes(String(data.mode)) ? String(data.mode) as AgentSessionTurn["mode"] : "followUp";
         if (mode === "steer" && (submission.status === "done" && !submitted.some(other => other.id < submission.id && other.type === "input" && other.status === "done" && other.answer === submission.answer)
           || submission.status === "placed" && live.run?.inputs[0] === submission.id)) mode = "followUp";
-        const nextInput = entries.find(candidate => candidate.id > (submission.entry ?? Infinity) && ["workflow.input", "workflow.child-result", "pi.user"].includes(candidate.kind) && object(candidate.data).mode !== "steer");
+        const nextInput = entries.find(candidate => candidate.id > (submission.entry ?? Infinity) && ["project.input", "project.child-result", "pi.user"].includes(candidate.kind) && object(candidate.data).mode !== "steer");
         const end = submission.status === "done" ? submission.answer : nextInput?.id;
         const visible = submission.entry === undefined ? [] : entries.filter(candidate => candidate.id > submission.entry! && (end === undefined || candidate.id <= end));
         const partial = submission.status === "placed" ? live?.generation?.message as unknown as AssistantMessage | undefined : undefined;
@@ -575,7 +575,7 @@ export class DurableAgentSession {
           ...(submission.status === "unanswered" ? { reason: submission.reason } : {}), items: mode === "steer" ? [] : projectSessionEntries(visible, partial, submission.requestId),
           ...(mode === "steer" ? {} : { usage: projectSessionUsage(visible, submission.requestId) }) });
       }
-      for (const entry of entries) if (entry.kind.startsWith("workflow.") || entry.kind === "pi.reset" || entry.kind === "pi.compaction") {
+      for (const entry of entries) if (entry.kind.startsWith("project.") || entry.kind === "pi.reset" || entry.kind === "pi.compaction") {
         records.push({ id: entry.id, conversationId: record.id, kind: entry.kind, label: entry.kind, ...(entry.data === undefined ? {} : { data: plain(entry.data) }) });
       }
       for (const command of Object.values(info.commands).slice(-200)) if (command.receipt) receipts.push(plain(command.receipt) as unknown as AgentSessionReceipt);
@@ -612,7 +612,7 @@ function validatePlan(items: AgentPlanItem[]): AgentPlanItem[] {
 export function projectSessionUsage(entries: readonly EntryRecord[], requestId: string): TokenUsageAggregate {
   const usages = entries.flatMap(entry => entry.kind === "pi.assistant"
     ? (entry.model ?? []).flatMap(message => message.role === "assistant" ? [message.usage] : [])
-    : entry.kind === "workflow.compaction-usage" && object(entry.data).requestId === requestId
+    : entry.kind === "project.compaction-usage" && object(entry.data).requestId === requestId
       ? [object(entry.data).usage as unknown as Usage] : []);
   return usages.reduce<TokenUsageAggregate>((total, usage) => ({
     inputTokens: total.inputTokens + (usage.input ?? 0),

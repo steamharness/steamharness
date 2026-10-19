@@ -13,7 +13,7 @@ description: "管理 Server 项目上传、不可变源码版本和数据文件�
 | --- | --- |
 | [login](/cli/workspace/login)、[logout](/cli/workspace/logout)、[status](/cli/workspace/status) | 登录、退出和查看连接状态。 |
 | [health](/cli/workspace/health) | 检查 Server 健康状态。 |
-| [pack](/cli/workspace/pack) | 按 `.workflowignore` 打包本地文件。 |
+| [pack](/cli/workspace/pack) | 按 `.steamharnessignore` 打包本地文件。 |
 | [upload](/cli/workspace/upload) | 上传源码或项目组，可同时发布。 |
 | `preparation` | 查询文件处理进度和失败原因。 |
 | [publish](/cli/workspace/publish) | 保存不可变源码版本并更新 latest。 |
@@ -50,7 +50,7 @@ steamharness workspace versions hello
 steamharness workspace download hello --target latest --path ./downloaded-hello
 ```
 
-项目参数支持 UUID、名称和本地目录，CLI 优先读取目录中的稳定 `package.json.id`。打包只按每个项目根目录的 `.workflowignore` 选择文件，不读取 `.gitignore`；规则文件自身和必需入口不能被排除。项目组 included 依赖锁定精确版本与源码哈希，下载逐项目检查源码权限，并报告跳过原因和申请入口。下载不受操作系统限制。
+项目参数支持 UUID、名称和本地目录，CLI 优先读取目录中的稳定 `package.json.id`。打包只按每个项目根目录的 `.steamharnessignore` 选择文件，不读取 `.gitignore`；规则文件自身和必需入口不能被排除。项目组 included 依赖锁定精确版本与源码哈希，下载逐项目检查源码权限，并报告跳过原因和申请入口。下载不受操作系统限制。
 
 ## 业务文件
 

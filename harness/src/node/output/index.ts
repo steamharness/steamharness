@@ -420,7 +420,7 @@ export function createOutputPayload(
   return {
     errCode,
     errMessage,
-    items: items.map((item) => isWorkflowOutputItem(item) ? item : createOutputItem(item)),
+    items: items.map((item) => isProjectOutputItem(item) ? item : createOutputItem(item)),
     ...rest,
   };
 }
@@ -433,7 +433,7 @@ export function addOutputItem<Payload extends RunOutputPayload>(
     ...payload,
     items: [
       ...payload.items,
-      isWorkflowOutputItem(item) ? item : createOutputItem(item),
+      isProjectOutputItem(item) ? item : createOutputItem(item),
     ],
   };
 }
@@ -530,7 +530,7 @@ function normalizeOutputItemPatch(
   return normalized;
 }
 
-export function isWorkflowOutputPayload(value: unknown): value is RunOutputPayload {
+export function isProjectOutputPayload(value: unknown): value is RunOutputPayload {
   return isRecord(value) && Array.isArray(value.items);
 }
 
@@ -568,7 +568,7 @@ export function isOutputContentType(value: unknown): value is OutputContentType 
     value === "video";
 }
 
-function isWorkflowOutputItem(value: unknown): value is OutputItem {
+function isProjectOutputItem(value: unknown): value is OutputItem {
   return (
     isRecord(value) &&
     typeof value.id === "string" &&

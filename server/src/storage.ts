@@ -4,24 +4,24 @@ import { cp, lstat, mkdir, open, readFile, readdir, realpath, rename, rm, stat, 
 import path from "node:path";
 import { create as createTar, extract as extractTar, list as listTar, type ReadEntry } from "tar";
 import { Open as openZip } from "unzipper";
-import { copyWorkflowUploadFiles } from "@steamharness/project-upload/node";
-import { createWorkflowUploadPortablePathKey } from "@steamharness/project-upload";
-import { createKnowledgeDocument, createWorkflowKVContext, createWorkflowPersistentValueContext, createWorkflowRelatedProjectsContext, deleteKnowledgeDocument, editKnowledgeDocument, getKnowledgeDocument, isWorkflowProjectType, listKnowledgeDocumentPage, searchKnowledgeDocuments, readKnowledgeDocumentLines, HarnessError, type KVScope, type KVStore, type KVStoreGetInput, type KVWriteSource, type StorageKind, type ProjectKind, type StorageLocationContext, type KnowledgeDocument, type KnowledgeDocumentSummaryRecord, type KnowledgeSearchResultRecord, type KnowledgeDocumentLinesResult, type TokenUsageAggregate, type TokenUsageEntry, describeKnowledgeMutationKeys, isKnowledgeDocumentStorageKey } from "steamharness";
+import { copyProjectUploadFiles } from "@steamharness/project-upload/node";
+import { createProjectUploadPortablePathKey } from "@steamharness/project-upload";
+import { createKnowledgeDocument, createProjectKVContext, createProjectPersistentValueContext, createProjectRelatedProjectsContext, deleteKnowledgeDocument, editKnowledgeDocument, getKnowledgeDocument, isProjectKind, listKnowledgeDocumentPage, searchKnowledgeDocuments, readKnowledgeDocumentLines, HarnessError, type KVScope, type KVStore, type KVStoreGetInput, type KVWriteSource, type StorageKind, type ProjectKind, type StorageLocationContext, type KnowledgeDocument, type KnowledgeDocumentSummaryRecord, type KnowledgeSearchResultRecord, type KnowledgeDocumentLinesResult, type TokenUsageAggregate, type TokenUsageEntry, describeKnowledgeMutationKeys, isKnowledgeDocumentStorageKey } from "steamharness";
 import { getAuthCookieSecret } from "./account-auth";
 import { resolveServerPathRoots } from "./paths";
 import { ArtifactStorage, createObjectPath, DatabaseRepository, type ProjectMemberRecord, type ProjectInvitationRecord, type ProjectRole, type Visibility, type DbRecord, type DbVersionRecord, type KanbanConfigurationStateRecord, type ProjectStorageRevisionEvent, type DeploymentRecord } from "./persistence";
 import { HttpError, toHttpErrorWithStatus } from "./protocol";
-import { createWorkflowLocalStorageFromEnv } from "./local-storage";
-import { isWorkflowStorageNotFoundError, type ObjectStorage } from "./object-storage";
-import { resolveWorkflowStorageDriver } from "./storage-driver";
+import { createProjectLocalStorageFromEnv } from "./local-storage";
+import { isProjectStorageNotFoundError, type ObjectStorage } from "./object-storage";
+import { resolveProjectStorageDriver } from "./storage-driver";
 import { resolveServerDataRootFromEnv } from "./release-paths";
-import { createInvalidWorkflowUuidMessage, createUnsafeProjectIdMessage, isSafeProjectId, isWorkflowUuid, resolveWorkflowRoot } from "./workflow-ids";
+import { createInvalidProjectUuidMessage, createUnsafeProjectIdMessage, isSafeProjectId, isProjectUuid, resolveProjectRoot } from "./workflow-ids";
 import { readProjectCardMetadataFromPackageJson, type ProjectCardMetadata } from "@steamharness/project-card-metadata";
-import { assertWorkflowProjectDataStorageLocationAllowed, createDefaultWorkflowRelatedProjectGrant, isWorkflowProjectAccessAllowed, isWorkflowProjectKVAccessAllowed, normalizeDeclaredWorkflowProjectInfo, normalizeWorkflowProjectInfo, readWorkflowProjectInfo, resolveWorkflowRelatedProjectAccess, writeWorkflowProjectInfo, type DeclaredWorkflowProjectInfo, type ProjectInfoContract, type RelatedProject, type RelatedProjectKVGrant } from "@steamharness/project-info";
+import { assertProjectDataStorageLocationAllowed, createDefaultProjectRelatedProjectGrant, isProjectAccessAllowed, isProjectKVAccessAllowed, normalizeDeclaredProjectInfoInput, normalizeProjectInfo, readProjectInfo, resolveProjectRelatedProjectAccess, writeProjectInfo, type DeclaredProjectInfo, type ProjectInfoContract, type RelatedProject, type RelatedProjectKVGrant } from "@steamharness/project-info";
 import { KANBAN_MANIFEST_FILE, areKanbanValuesEqual, createInjectedKanbanParams, createKanbanContentSecurityPolicy, createKanbanArtifactEntryPath, createDefaultKanbanValues, injectKanbanBridge, isSafeKanbanPublicAssetPath, parseKanbanManifestText, readKanbanArtifactConfig, readKanbanAssetMimeType, readPackageProjectType, sanitizeKanbanValues, type KanbanConfiguration, type KanbanArtifactConfig, type KanbanManifest } from "@steamharness/kanban-project";
 import { readRequiredCoreVersion } from "@steamharness/runtime-compatibility";
 import { readServerBuildInfo, type ServerBuildInfo } from "./build-info";
-import { STEAMHARNESS_PROJECT_GROUP_MANIFEST_FILE, createExternalWorkflowProjectDependencyLocks, finalizeWorkflowProjectDependencyLock, isProjectGroupHostDataPath, parseWorkflowProjectDependencyLocks, parseWorkflowProjectGroupManifest, type ProjectAccessRequest, type ProjectCapabilityGrant, type ProjectDependencyLock, type ProjectDependencyStatusResult, type ProjectDownloadPlan, type ProjectGroupManifestV1 } from "@steamharness/project-dependencies";
+import { STEAMHARNESS_PROJECT_GROUP_MANIFEST_FILE, createExternalProjectDependencyLocks, finalizeProjectDependencyLock, isProjectGroupHostDataPath, parseProjectDependencyLocks, parseProjectGroupManifest, type ProjectAccessRequest, type ProjectCapabilityGrant, type ProjectDependencyLock, type ProjectDependencyStatusResult, type ProjectDownloadPlan, type ProjectGroupManifestV1 } from "@steamharness/project-dependencies";
 export const PROJECT_CARD_IMAGE_MAX_BYTES = 1024 * 1024;
 const PROJECT_CARD_IMAGE_HASH_PATTERN = /^[a-f0-9]{64}$/;
 const MAX_KANBAN_ASSET_SIZE_BYTES = 20 * 1024 * 1024;
@@ -242,7 +242,7 @@ export function isKnowledgeMutationGranted(
     // "no rule" is a refusal rather than an open door.
     rule: RelatedProjectKVGrant["read"] | undefined,
     key: string,
-  ): boolean => isKnowledgeDocumentStorageKey(key) && isWorkflowProjectAccessAllowed(rule, key);
+  ): boolean => isKnowledgeDocumentStorageKey(key) && isProjectAccessAllowed(rule, key);
   return keys.read.every((key) => covered(grant.knowledge?.read, key))
     && keys.write.every((key) => covered(grant.knowledge?.write, key));
 }
@@ -259,7 +259,7 @@ export interface KnowledgeDocumentPageRecord {
   total: number;
 }
 
-export interface TokenUsageWorkflowSummary {
+export interface TokenUsageProjectSummary {
   projectId: string;
   total: TokenUsageAggregate;
   updatedAt?: string;
@@ -267,7 +267,7 @@ export interface TokenUsageWorkflowSummary {
 
 export interface TokenUsagePage {
   systemTotal: TokenUsageAggregate;
-  projects: TokenUsageWorkflowSummary[];
+  projects: TokenUsageProjectSummary[];
   nextCursor?: string;
   hasMore: boolean;
   total: number;
@@ -307,7 +307,7 @@ export interface PublishResult {
   dependencies: ProjectDependencyLock[];
 }
 
-export interface CloneWorkflowResult {
+export interface CloneProjectResult {
   projectId: string;
   projectName: string;
   sourceTarget: string;
@@ -315,14 +315,14 @@ export interface CloneWorkflowResult {
   nextVersion: string;
 }
 
-export interface UpdateWorkflowInfoResult {
+export interface UpdateProjectInfoResult {
   projectId: string;
   projectName: string;
   target: string;
   resolvedTarget: string;
 }
 
-export interface DeleteWorkflowResult {
+export interface DeleteProjectResult {
   projectId: string;
 }
 
@@ -361,7 +361,7 @@ export interface PackageMetadata {
   requiredCoreVersion: string;
 }
 
-interface StoredWorkflowProjectInfoMetadata {
+interface StoredProjectInfoMetadata {
   name: string;
   projectInfo: ProjectInfoContract;
 }
@@ -401,7 +401,7 @@ export interface ProjectCreateResult {
   projectId: string;
   projectName: string;
   projectType: ProjectKind;
-  projectInfo: DeclaredWorkflowProjectInfo;
+  projectInfo: DeclaredProjectInfo;
   visibility: Visibility;
 }
 
@@ -546,7 +546,7 @@ export class Storage {
     projectId: string;
     projectName: string;
     projectType: ProjectKind;
-    projectInfo: DeclaredWorkflowProjectInfo;
+    projectInfo: DeclaredProjectInfo;
     ownerUserId?: string;
     visibility?: Visibility;
     createdByUserId?: string;
@@ -564,7 +564,7 @@ export class Storage {
     this.assertProjectId(projectId);
     const projectInfo = this.normalizeDeclaredProjectInfo(options.projectInfo);
 
-    const existing = await this.db.getWorkflow(projectId);
+    const existing = await this.db.getProject(projectId);
     if (existing) {
       if (existing.name !== projectName) {
         throw new HttpError(409, 409, `Workflow "${projectId}" is already bound to "${existing.name}".`);
@@ -577,7 +577,7 @@ export class Storage {
         );
       }
       if (options.ownerUserId) {
-        const existingMember = await this.db.getWorkflowMember(projectId, options.ownerUserId);
+        const existingMember = await this.db.getProjectMember(projectId, options.ownerUserId);
         const ownsExisting = existing.ownerUserId === options.ownerUserId ||
           existing.createdByUserId === options.ownerUserId ||
           existingMember?.role === "owner" ||
@@ -586,7 +586,7 @@ export class Storage {
           throw new HttpError(409, 409, `Workflow "${projectId}" already exists and is owned by another account.`);
         }
       }
-      const updated = await this.db.updateWorkflowProjectInfo(
+      const updated = await this.db.updateProjectInfo(
         projectId,
         projectName,
         projectInfo,
@@ -595,7 +595,7 @@ export class Storage {
         throw new HttpError(404, 404, `Workflow "${projectId}" does not exist.`);
       }
       if (options.projectCard !== undefined) {
-        await this.db.updateWorkflowProjectCard(projectId, options.projectCard);
+        await this.db.updateProjectCard(projectId, options.projectCard);
       }
       await this.updateMaterializedDraftProjectInfo(projectId, projectName, projectInfo);
       return {
@@ -609,7 +609,7 @@ export class Storage {
 
     let created: DbRecord;
     try {
-      created = await this.db.createWorkflowProject({
+      created = await this.db.createProjectRecord({
         projectId,
         projectName,
         projectType: options.projectType,
@@ -628,7 +628,7 @@ export class Storage {
     }
 
     if (options.ownerUserId) {
-      await this.db.upsertWorkflowMember({
+      await this.db.upsertProjectMember({
         projectId,
         userId: options.ownerUserId,
         role: "owner",
@@ -704,7 +704,7 @@ export class Storage {
       throw new HttpError(501, 501, "Project card updates require PostgreSQL storage.");
     }
 
-    const updated = await this.db.updateWorkflowProjectCard(
+    const updated = await this.db.updateProjectCard(
       options.projectName,
       options.projectCard,
     );
@@ -718,14 +718,14 @@ export class Storage {
   async updateProjectInfoMetadata(options: {
     projectName: string;
     name: string;
-    projectInfo: DeclaredWorkflowProjectInfo;
-  }): Promise<{ name: string; projectInfo: DeclaredWorkflowProjectInfo }> {
+    projectInfo: DeclaredProjectInfo;
+  }): Promise<{ name: string; projectInfo: DeclaredProjectInfo }> {
     this.assertProjectId(options.projectName);
     const name = options.name.trim();
     if (name === "") throw new HttpError(400, 400, "name must not be empty.");
     const projectInfo = this.normalizeDeclaredProjectInfo(options.projectInfo);
     if (this.db !== undefined) {
-      const updated = await this.db.updateWorkflowProjectInfo(
+      const updated = await this.db.updateProjectInfo(
         options.projectName,
         name,
         projectInfo,
@@ -744,23 +744,23 @@ export class Storage {
       throw new HttpError(404, 404, `Workflow "${options.projectName}" does not exist.`);
     }
     await this.updateMaterializedDraftProjectInfo(options.projectName, name, projectInfo);
-    await writeJson(this.workflowProjectInfoMetadataPath(options.projectName), { name, projectInfo });
+    await writeJson(this.projectInfoMetadataPath(options.projectName), { name, projectInfo });
     return { name, projectInfo };
   }
 
   async listRelatedProjects(projectId: string): Promise<RelatedProjectListResult> {
     this.assertProjectId(projectId);
     const db = this.requireProjectDependencyDatabase();
-    const project = await db.getWorkflow(projectId);
+    const project = await db.getProject(projectId);
     if (project === undefined) {
       throw new HttpError(404, 404, `Workflow "${projectId}" does not exist.`);
     }
     const relatedProjects = await Promise.all(project.projectInfo.relatedProjects.map(async (relation) => {
-      const target = await db.getWorkflow(relation.projectId);
+      const target = await db.getProject(relation.projectId);
       const reciprocal = target?.projectInfo.relatedProjects.find(
         (item) => item.projectId.toLowerCase() === projectId.toLowerCase(),
       );
-      const confirmed = target !== undefined && resolveWorkflowRelatedProjectAccess({
+      const confirmed = target !== undefined && resolveProjectRelatedProjectAccess({
         consumerProjectId: projectId,
         consumerProjectInfo: project.projectInfo,
         targetProjectId: target.id,
@@ -793,8 +793,8 @@ export class Storage {
     this.assertProjectId(options.targetProjectId);
     const db = this.requireProjectDependencyDatabase();
     const [project, target] = await Promise.all([
-      db.getWorkflow(options.projectId),
-      db.getWorkflow(options.targetProjectId),
+      db.getProject(options.projectId),
+      db.getProject(options.targetProjectId),
     ]);
     if (project === undefined || target === undefined) {
       throw new HttpError(404, 404, "Related project does not exist.");
@@ -804,11 +804,11 @@ export class Storage {
       {
         alias: options.alias,
         projectId: target.id,
-        grantToRelatedProject: options.grantToRelatedProject ?? createDefaultWorkflowRelatedProjectGrant(),
+        grantToRelatedProject: options.grantToRelatedProject ?? createDefaultProjectRelatedProjectGrant(),
       },
     ));
     const updates = [{ projectId: project.id, projectName: project.name, projectInfo }];
-    let targetInfo: DeclaredWorkflowProjectInfo | undefined;
+    let targetInfo: DeclaredProjectInfo | undefined;
     if (options.updateTarget) {
       const targetAlias = options.targetAlias?.trim();
       if (!targetAlias) {
@@ -819,12 +819,12 @@ export class Storage {
         {
           alias: targetAlias,
           projectId: project.id,
-          grantToRelatedProject: options.targetGrantToRelatedProject ?? createDefaultWorkflowRelatedProjectGrant(),
+          grantToRelatedProject: options.targetGrantToRelatedProject ?? createDefaultProjectRelatedProjectGrant(),
         },
       ));
       updates.push({ projectId: target.id, projectName: target.name, projectInfo: targetInfo });
     }
-    await db.updateWorkflowProjectInfos(updates);
+    await db.updateProjectInfos(updates);
     await Promise.all([
       this.updateMaterializedDraftProjectInfo(project.id, project.name, projectInfo),
       ...(targetInfo === undefined
@@ -841,7 +841,7 @@ export class Storage {
   }): Promise<{ removed: boolean; relatedProjects: RelatedProjectStatus[] }> {
     this.assertProjectId(options.projectId);
     const db = this.requireProjectDependencyDatabase();
-    const project = await db.getWorkflow(options.projectId);
+    const project = await db.getProject(options.projectId);
     if (project === undefined) {
       throw new HttpError(404, 404, `Workflow "${options.projectId}" does not exist.`);
     }
@@ -855,9 +855,9 @@ export class Storage {
     ));
     const updates = [{ projectId: project.id, projectName: project.name, projectInfo }];
     let target: DbRecord | undefined;
-    let targetInfo: DeclaredWorkflowProjectInfo | undefined;
+    let targetInfo: DeclaredProjectInfo | undefined;
     if (options.updateTarget) {
-      target = await db.getWorkflow(relation.projectId);
+      target = await db.getProject(relation.projectId);
       if (target !== undefined) {
         targetInfo = this.normalizeDeclaredProjectInfo(removeRelatedProjectByProjectId(
           target.projectInfo,
@@ -866,7 +866,7 @@ export class Storage {
         updates.push({ projectId: target.id, projectName: target.name, projectInfo: targetInfo });
       }
     }
-    await db.updateWorkflowProjectInfos(updates);
+    await db.updateProjectInfos(updates);
     await Promise.all([
       this.updateMaterializedDraftProjectInfo(project.id, project.name, projectInfo),
       ...(target !== undefined && targetInfo !== undefined
@@ -883,8 +883,8 @@ export class Storage {
     operation: "read" | "write" | "update";
   }): Promise<{ targetProjectId: string }> {
     const access = await this.resolveConfirmedRelatedProject(options.consumerProjectId, options.alias);
-    const readAllowed = isWorkflowProjectKVAccessAllowed(access.grant.read, options.key);
-    const writeAllowed = isWorkflowProjectKVAccessAllowed(access.grant.write, options.key);
+    const readAllowed = isProjectKVAccessAllowed(access.grant.read, options.key);
+    const writeAllowed = isProjectKVAccessAllowed(access.grant.write, options.key);
     const allowed = options.operation === "read"
       ? readAllowed
       : options.operation === "write"
@@ -914,7 +914,7 @@ export class Storage {
     const rule = options.operation === "read"
       ? access.grant.knowledge?.read
       : access.grant.knowledge?.write;
-    if (!isKnowledgeDocumentStorageKey(options.key) || !isWorkflowProjectAccessAllowed(rule, options.key)) {
+    if (!isKnowledgeDocumentStorageKey(options.key) || !isProjectAccessAllowed(rule, options.key)) {
       throw new HttpError(403, 403, "Related project Knowledge access is not granted for this key.");
     }
     return { targetProjectId: access.targetProjectId };
@@ -947,7 +947,7 @@ export class Storage {
   ): Promise<{ targetProjectId: string; grant: RelatedProjectKVGrant }> {
     this.assertProjectId(consumerProjectId);
     const db = this.requireProjectDependencyDatabase();
-    const consumer = await db.getWorkflow(consumerProjectId);
+    const consumer = await db.getProject(consumerProjectId);
     if (consumer === undefined) {
       throw new HttpError(404, 404, "Related project is unavailable or awaiting confirmation.");
     }
@@ -955,12 +955,12 @@ export class Storage {
     if (declared === undefined) {
       throw new HttpError(404, 404, "Related project is unavailable or awaiting confirmation.");
     }
-    const target = await db.getWorkflow(declared.projectId);
+    const target = await db.getProject(declared.projectId);
     if (target === undefined) {
       throw new HttpError(404, 404, "Related project is unavailable or awaiting confirmation.");
     }
     await this.assertServerProjectDataAccess(target.id);
-    const access = resolveWorkflowRelatedProjectAccess({
+    const access = resolveProjectRelatedProjectAccess({
       consumerProjectId: consumer.id,
       consumerProjectInfo: consumer.projectInfo,
       targetProjectId: target.id,
@@ -982,7 +982,7 @@ export class Storage {
     if (this.db === undefined) {
       return [];
     }
-    return await this.db.listWorkflowMembers(projectId);
+    return await this.db.listProjectMemberRecords(projectId);
   }
 
   async setProjectMember(options: {
@@ -995,7 +995,7 @@ export class Storage {
     if (this.db === undefined) {
       throw new HttpError(501, 501, "Project member management requires PostgreSQL storage.");
     }
-    return this.db.upsertWorkflowMember(options);
+    return this.db.upsertProjectMember(options);
   }
 
   async removeProjectMember(projectId: string, userId: string): Promise<{ removed: boolean }> {
@@ -1003,7 +1003,7 @@ export class Storage {
     if (this.db === undefined) {
       throw new HttpError(501, 501, "Project member management requires PostgreSQL storage.");
     }
-    return { removed: await this.db.deleteWorkflowMember(projectId, userId) };
+    return { removed: await this.db.deleteProjectMember(projectId, userId) };
   }
 
   async createProjectInvitation(options: {
@@ -1023,7 +1023,7 @@ export class Storage {
     const token = randomBytes(24).toString("base64url");
     const ttl = options.ttlMs ?? 7 * 24 * 60 * 60 * 1000;
     const expiresAt = new Date(Date.now() + ttl).toISOString();
-    const invitation = await this.db.createWorkflowProjectInvitation({
+    const invitation = await this.db.createProjectInvitation({
       id,
       projectId: options.projectId,
       token,
@@ -1039,14 +1039,14 @@ export class Storage {
     if (this.db === undefined) {
       return [];
     }
-    return await this.db.listWorkflowProjectInvitations(projectId);
+    return await this.db.listProjectInvitations(projectId);
   }
 
   async getInvitationByToken(token: string): Promise<ProjectInvitation | undefined> {
     if (this.db === undefined) {
       return undefined;
     }
-    return await this.db.getWorkflowProjectInvitationByToken(token);
+    return await this.db.getProjectInvitationByToken(token);
   }
 
   async revokeProjectInvitation(
@@ -1057,7 +1057,7 @@ export class Storage {
     if (this.db === undefined) {
       throw new HttpError(501, 501, "Project invitations require PostgreSQL storage.");
     }
-    return { revoked: await this.db.revokeWorkflowProjectInvitation(projectId, invitationId) };
+    return { revoked: await this.db.revokeProjectInvitation(projectId, invitationId) };
   }
 
   async acceptInvitation(input: {
@@ -1067,7 +1067,7 @@ export class Storage {
     if (this.db === undefined) {
       throw new HttpError(501, 501, "Project invitations require PostgreSQL storage.");
     }
-    const pending = await this.db.getWorkflowProjectInvitationByToken(input.token);
+    const pending = await this.db.getProjectInvitationByToken(input.token);
     if (!pending) {
       throw new HttpError(404, 404, "Invitation not found.");
     }
@@ -1080,14 +1080,14 @@ export class Storage {
     if (Date.parse(pending.expiresAt) <= Date.now()) {
       throw new HttpError(410, 410, "Invitation expired.");
     }
-    const accepted = await this.db.acceptWorkflowProjectInvitation({
+    const accepted = await this.db.acceptProjectInvitation({
       id: pending.id,
       acceptedBy: input.acceptedBy,
     });
     if (!accepted) {
       throw new HttpError(409, 409, "Invitation could not be accepted.");
     }
-    const member = await this.db.upsertWorkflowMember({
+    const member = await this.db.upsertProjectMember({
       projectId: pending.projectId,
       userId: input.acceptedBy,
       role: pending.role,
@@ -1104,20 +1104,20 @@ export class Storage {
     if (this.db === undefined) {
       throw new HttpError(501, 501, "Project access management requires PostgreSQL storage.");
     }
-    const updated = await this.db.updateWorkflowAccess({
+    const updated = await this.db.updateProjectAccess({
       projectId: options.projectId,
       visibility: options.visibility,
     });
     if (updated === undefined) {
       throw new HttpError(404, 404, `Workflow "${options.projectId}" does not exist.`);
     }
-    return this.summarizeDbWorkflow(updated);
+    return this.summarizeDbProject(updated);
   }
 
   async getProjectAccessSummary(projectId: string, userId?: string): Promise<ProjectAccessSummary> {
     this.assertProjectId(projectId);
-    const workflow = await this.readWorkflowRecordForAccess(projectId);
-    return this.createProjectAccessSummary(workflow, userId);
+    const record = await this.readProjectRecordForAccess(projectId);
+    return this.createProjectAccessSummary(record, userId);
   }
 
   canReadProject(options: {
@@ -1192,24 +1192,24 @@ export class Storage {
     return options.canWriteAll === true || Boolean(options.userId && (role === "owner" || role === "manager" || role === "writer"));
   }
 
-  async listWorkflows(): Promise<Summary[]> {
+  async listProjects(): Promise<Summary[]> {
     if (this.db) {
-      const workflows = await this.db.listWorkflows();
-      const versions = await this.db.listVersionsForWorkflows(workflows.map(item => item.id));
-      return Promise.all(workflows.map(item => this.summarizeDbWorkflow(item, versions.get(item.id))));
+      const workflows = await this.db.listProjects();
+      const versions = await this.db.listVersionsForProjects(workflows.map(item => item.id));
+      return Promise.all(workflows.map(item => this.summarizeDbProject(item, versions.get(item.id))));
     }
     await mkdir(this.projectsRoot(), { recursive: true });
     const entries = await readdir(this.projectsRoot(), { withFileTypes: true });
-    const summaries = await Promise.all(entries.filter(entry => entry.isDirectory() && isWorkflowUuid(entry.name)).map(async entry => {
-      const record = await this.readWorkflowRecordForAccess(entry.name);
-      return this.summarizeDbWorkflow(record, await Promise.all((await this.listVersionNames(entry.name)).map(async version => ({ version }))));
+    const summaries = await Promise.all(entries.filter(entry => entry.isDirectory() && isProjectUuid(entry.name)).map(async entry => {
+      const record = await this.readProjectRecordForAccess(entry.name);
+      return this.summarizeDbProject(record, await Promise.all((await this.listVersionNames(entry.name)).map(async version => ({ version }))));
     }));
     return summaries.sort((a, b) => a.name.localeCompare(b.name));
   }
 
   async listVersions(projectId: string): Promise<VersionSummary> {
     this.assertProjectId(projectId);
-    const metadata = await this.readWorkflowRecordForAccess(projectId);
+    const metadata = await this.readProjectRecordForAccess(projectId);
     const versions = this.db ? await this.db.listVersions(projectId) : await Promise.all((await this.listVersionNames(projectId)).map(version => this.readManifest(projectId, version)));
     const downloadCounts = await this.readVersionDownloadCounts(projectId);
     const publishedVersions = versions.filter(isDefined).map(version => ({
@@ -1219,7 +1219,7 @@ export class Storage {
       createdByUserId: version.createdByUserId,
       releaseLog: version.releaseLog,
       sourceHash: version.sourceHash,
-      dependencies: (version.dependencies ?? []).map(cloneWorkflowProjectDependencyLock),
+      dependencies: (version.dependencies ?? []).map(cloneProjectDependencyLock),
       latest: metadata.latest === version.version,
     }));
     return {
@@ -1233,26 +1233,26 @@ export class Storage {
   }
 
   async recordSourceDownloads(downloads: readonly { projectId: string; version: string }[]): Promise<void> {
-    const versionsByWorkflow = new Map<string, Set<string>>();
+    const versionsByProject = new Map<string, Set<string>>();
     for (const item of downloads) {
       this.assertProjectId(item.projectId);
       assertVersion(item.version);
-      const versions = versionsByWorkflow.get(item.projectId) ?? new Set<string>();
+      const versions = versionsByProject.get(item.projectId) ?? new Set<string>();
       versions.add(item.version);
-      versionsByWorkflow.set(item.projectId, versions);
+      versionsByProject.set(item.projectId, versions);
     }
     if (this.db !== undefined) {
       await this.db.recordSourceDownloads(downloads);
       return;
     }
-    for (const [projectId, versions] of versionsByWorkflow) {
-      await this.withLocalWorkflowPublishLock(projectId, async () => {
+    for (const [projectId, versions] of versionsByProject) {
+      await this.withLocalProjectPublishLock(projectId, async () => {
         const counts = await this.readVersionDownloadCounts(projectId);
         for (const version of versions) {
           await this.assertVersionExists(projectId, version);
           counts[version] = (counts[version] ?? 0) + 1;
         }
-        const target = path.join(this.workflowRoot(projectId), "download-counts.json");
+        const target = path.join(this.projectDirectory(projectId), "download-counts.json");
         const temporary = `${target}.${randomUUID()}.tmp`;
         try {
           await writeJson(temporary, counts);
@@ -1269,7 +1269,7 @@ export class Storage {
       return Object.fromEntries(await this.db.listVersionDownloadCounts(projectId));
     }
     try {
-      return JSON.parse(await readFile(path.join(this.workflowRoot(projectId), "download-counts.json"), "utf8")) as Record<string, number>;
+      return JSON.parse(await readFile(path.join(this.projectDirectory(projectId), "download-counts.json"), "utf8")) as Record<string, number>;
     } catch (error) {
       if (isMissingFileError(error)) return {};
       throw error;
@@ -1287,7 +1287,7 @@ export class Storage {
     assertArchiveName(options.archiveName);
 
     if (options.createOnly === true) {
-      await this.assertWorkflowDoesNotExist(options.projectName);
+      await this.assertProjectDoesNotExist(options.projectName);
     }
 
     const tempDir = path.join(this.dataRoot, "tmp", randomUUID());
@@ -1303,16 +1303,16 @@ export class Storage {
       await options.onStage?.("extracting");
       await this.extractArchive(archivePath, options.archiveName, extractDir);
       const packageRoot = await resolvePackageRoot(extractDir, options.projectName);
-      const metadata = await validateWorkflowPackage(
+      const metadata = await validateProjectPackage(
         packageRoot,
         options.projectName,
       );
       await this.assertUploadedProjectType(options.projectName, metadata.projectType);
 
-      await copyUploadedWorkflowSource(packageRoot, stagedSourceDir);
+      await copyUploadedProjectSource(packageRoot, stagedSourceDir);
       await copyWorkspaceDependencySources(packageRoot, stagedSourceDir);
       await options.onStage?.("validating");
-      await validateWorkflowPackage(
+      await validateProjectPackage(
         stagedSourceDir,
         options.projectName,
       );
@@ -1353,7 +1353,7 @@ export class Storage {
     createOnly?: boolean;
   }): Promise<PreparationJob> {
     if (options.createOnly === true) {
-      await this.assertWorkflowDoesNotExist(options.projectName);
+      await this.assertProjectDoesNotExist(options.projectName);
     }
 
     const latest = await this.getLatestPreparationJob(options.projectName);
@@ -1401,19 +1401,19 @@ export class Storage {
 
   async getPreparationJob(projectName: string, jobId: string): Promise<PreparationJob> {
     this.assertProjectId(projectName);
-    if (!isWorkflowUuid(jobId)) {
-      throw new HttpError(400, 400, createInvalidWorkflowUuidMessage(jobId, "preparation job id"));
+    if (!isProjectUuid(jobId)) {
+      throw new HttpError(400, 400, createInvalidProjectUuidMessage(jobId, "preparation job id"));
     }
     const job = await readJson<PreparationJob>(this.preparationJobPath(projectName, jobId));
     if (job === undefined || job.projectId !== projectName || job.jobId !== jobId) {
-      throw new HttpError(404, 404, `Preparation job "${jobId}" does not exist for workflow "${projectName}".`);
+      throw new HttpError(404, 404, `Preparation job "${jobId}" does not exist for project "${projectName}".`);
     }
     return job;
   }
 
   async getLatestPreparationJob(projectName: string): Promise<PreparationJob | undefined> {
     this.assertProjectId(projectName);
-    const root = this.preparationWorkflowRoot(projectName);
+    const root = this.preparationProjectRoot(projectName);
     if (!(await exists(root))) return undefined;
     const entries = await readdir(root, { withFileTypes: true });
     const jobs = (await Promise.all(entries
@@ -1480,10 +1480,10 @@ export class Storage {
   private async resumePendingPreparationJobs(): Promise<void> {
     const root = this.preparationsRoot();
     if (!(await exists(root))) return;
-    const workflowEntries = await readdir(root, { withFileTypes: true });
-    for (const workflowEntry of workflowEntries) {
-      if (!workflowEntry.isDirectory() || !isWorkflowUuid(workflowEntry.name)) continue;
-      const latest = await this.getLatestPreparationJob(workflowEntry.name);
+    const projectEntries = await readdir(root, { withFileTypes: true });
+    for (const projectEntry of projectEntries) {
+      if (!projectEntry.isDirectory() || !isProjectUuid(projectEntry.name)) continue;
+      const latest = await this.getLatestPreparationJob(projectEntry.name);
       if (latest?.status === "queued" || latest?.status === "preparing") {
         if (await exists(this.preparationArchivePath(latest))) {
           this.schedulePreparationJob(latest.jobId, latest.projectId, latest.createOnly);
@@ -1506,13 +1506,13 @@ export class Storage {
     await rename(temp, target);
   }
 
-  async createWorkflow(options: {
+  async createProjectFromFiles(options: {
     projectName: string;
     files: FileInput[];
   }): Promise<UploadPackageResult> {
     this.assertProjectId(options.projectName);
 
-    await this.assertWorkflowDoesNotExist(options.projectName);
+    await this.assertProjectDoesNotExist(options.projectName);
 
     const tempDir = path.join(this.dataRoot, "tmp", randomUUID());
     const stagedDraftDir = path.join(tempDir, "draft");
@@ -1523,14 +1523,14 @@ export class Storage {
       await mkdir(rawSourceDir, { recursive: true });
 
       for (const file of options.files) {
-        const safePath = normalizeWorkflowFilePath(file.path);
+        const safePath = normalizeProjectFilePath(file.path);
         const targetPath = path.join(rawSourceDir, safePath);
         await mkdir(path.dirname(targetPath), { recursive: true });
-        await writeFile(targetPath, decodeWorkflowFileContent(file));
+        await writeFile(targetPath, decodeProjectFileContent(file));
       }
 
-      await copyUploadedWorkflowSource(rawSourceDir, stagedSourceDir);
-      const metadata = await validateWorkflowPackage(
+      await copyUploadedProjectSource(rawSourceDir, stagedSourceDir);
+      const metadata = await validateProjectPackage(
         stagedSourceDir,
         options.projectName,
       );
@@ -1564,7 +1564,7 @@ export class Storage {
       options.projectName,
       options.target,
     );
-    const metadata = await this.readWorkflowMetadataForEditing(options.projectName);
+    const metadata = await this.readProjectMetadataForEditing(options.projectName);
 
     return {
       projectId: options.projectName,
@@ -1601,17 +1601,17 @@ export class Storage {
     const db = this.requireProjectDependencyDatabase();
     let manifest: ProjectGroupManifestV1;
     try {
-      manifest = parseWorkflowProjectGroupManifest(options.manifest);
+      manifest = parseProjectGroupManifest(options.manifest);
     } catch (error) {
       throw toHttpErrorWithStatus(error, 400, 400, "Project group manifest is invalid.");
     }
 
-    const root = await db.getWorkflow(manifest.rootProjectId);
+    const root = await db.getProject(manifest.rootProjectId);
     if (root === undefined || root.projectType !== "kanban") {
       throw new HttpError(409, 409, "A project group root must be an existing Kanban project.");
     }
     for (const project of manifest.projects) {
-      const record = await db.getWorkflow(project.projectId);
+      const record = await db.getProject(project.projectId);
       if (record === undefined) {
         throw new HttpError(409, 409, `Included project "${project.projectId}" does not exist on this Server.`);
       }
@@ -1620,7 +1620,7 @@ export class Storage {
       }
     }
 
-    const deployment = await db.createWorkflowDeployment({
+    const deployment = await db.createProjectDeployment({
       id: randomUUID(),
       rootProjectId: manifest.rootProjectId,
       manifest,
@@ -1630,8 +1630,8 @@ export class Storage {
     try {
       return await this.reserveProjectGroupDeploymentVersions(deployment, false);
     } catch (error) {
-      await db.releaseWorkflowDeploymentVersionReservations(deployment.id).catch(() => undefined);
-      await db.updateWorkflowDeployment({
+      await db.releaseProjectDeploymentVersionReservations(deployment.id).catch(() => undefined);
+      await db.updateProjectDeployment({
         id: deployment.id,
         status: "failed",
         error: readErrorMessage(error),
@@ -1641,10 +1641,10 @@ export class Storage {
   }
 
   async getProjectGroupDeployment(deploymentId: string): Promise<DeploymentRecord> {
-    if (!isWorkflowUuid(deploymentId)) {
-      throw new HttpError(400, 400, createInvalidWorkflowUuidMessage(deploymentId, "deployment id"));
+    if (!isProjectUuid(deploymentId)) {
+      throw new HttpError(400, 400, createInvalidProjectUuidMessage(deploymentId, "deployment id"));
     }
-    const deployment = await this.requireProjectDependencyDatabase().getWorkflowDeployment(deploymentId);
+    const deployment = await this.requireProjectDependencyDatabase().getProjectDeployment(deploymentId);
     if (deployment === undefined) {
       throw new HttpError(404, 404, `Deployment "${deploymentId}" does not exist.`);
     }
@@ -1692,7 +1692,7 @@ export class Storage {
       try {
         await writeFile(this.deploymentPreparationArchivePath(preparation), options.archiveBuffer);
         await writeJson(this.deploymentPreparationMetadataPath(deployment.id), preparation);
-        const transitioned = await db.transitionWorkflowDeploymentStatus({
+        const transitioned = await db.transitionProjectDeploymentStatus({
           id: deployment.id,
           from: ["planned", "failed"],
           status: "preparing",
@@ -1729,7 +1729,7 @@ export class Storage {
         archiveBuffer,
       });
     } catch (error) {
-      await this.requireProjectDependencyDatabase().updateWorkflowDeployment({
+      await this.requireProjectDependencyDatabase().updateProjectDeployment({
         id: preparation.deploymentId,
         status: "failed",
         error: readErrorMessage(error),
@@ -1747,8 +1747,8 @@ export class Storage {
     if (!(await exists(root))) return;
     const entries = await readdir(root, { withFileTypes: true });
     for (const entry of entries) {
-      if (!entry.isDirectory() || !isWorkflowUuid(entry.name)) continue;
-      const deployment = await this.requireProjectDependencyDatabase().getWorkflowDeployment(entry.name);
+      if (!entry.isDirectory() || !isProjectUuid(entry.name)) continue;
+      const deployment = await this.requireProjectDependencyDatabase().getProjectDeployment(entry.name);
       if (deployment === undefined) continue;
       if (deployment.status !== "planned" && deployment.status !== "preparing") continue;
 
@@ -1760,7 +1760,7 @@ export class Storage {
         isTarGzipName(preparation.archiveName) &&
         await exists(this.deploymentPreparationArchivePath(preparation));
       if (!valid) {
-        await this.requireProjectDependencyDatabase().updateWorkflowDeployment({
+        await this.requireProjectDependencyDatabase().updateProjectDeployment({
           id: entry.name,
           status: "failed",
           error: "Project-group preparation archive is missing after server restart.",
@@ -1769,7 +1769,7 @@ export class Storage {
       }
 
       if (deployment.status === "planned") {
-        const transitioned = await this.requireProjectDependencyDatabase().transitionWorkflowDeploymentStatus({
+        const transitioned = await this.requireProjectDependencyDatabase().transitionProjectDeploymentStatus({
           id: entry.name,
           from: ["planned"],
           status: "preparing",
@@ -1800,7 +1800,7 @@ export class Storage {
     }
 
     const previousStatus = deployment.status;
-    if (!await db.transitionWorkflowDeploymentStatus({
+    if (!await db.transitionProjectDeploymentStatus({
       id: deployment.id,
       from: ["planned", "failed", "preparing"],
       status: "preparing",
@@ -1813,7 +1813,7 @@ export class Storage {
         previousStatus === "failed",
       );
     } catch (error) {
-      await db.updateWorkflowDeployment({
+      await db.updateProjectDeployment({
         id: deployment.id,
         status: "failed",
         error: readErrorMessage(error),
@@ -1835,7 +1835,7 @@ export class Storage {
       const manifestPath = path.join(extractDir, STEAMHARNESS_PROJECT_GROUP_MANIFEST_FILE);
       let uploadedManifest: ProjectGroupManifestV1;
       try {
-        uploadedManifest = parseWorkflowProjectGroupManifest(
+        uploadedManifest = parseProjectGroupManifest(
           JSON.parse(await readFile(manifestPath, "utf8")) as unknown,
         );
       } catch (error) {
@@ -1860,7 +1860,7 @@ export class Storage {
         left.role === right.role ? 0 : left.role === "dependency" ? -1 : 1
       ));
       for (const project of orderedProjects) {
-        await db.updateWorkflowDeploymentItem({
+        await db.updateProjectDeploymentItem({
           deploymentId: deployment.id,
           projectId: project.projectId,
           status: "preparing",
@@ -1880,7 +1880,7 @@ export class Storage {
           }
         });
         const packageRoot = await resolvePackageRoot(innerExtractDir, project.projectId);
-        const metadata = await validateWorkflowPackage(
+        const metadata = await validateProjectPackage(
           packageRoot,
           project.projectId,
         );
@@ -1907,14 +1907,14 @@ export class Storage {
           projectName: project.projectId,
           archiveName: path.basename(project.archivePath),
           archiveBuffer: await readFile(projectArchivePath),
-          onStage: async (stage) => db.updateWorkflowDeploymentItem({
+          onStage: async (stage) => db.updateProjectDeploymentItem({
             deploymentId: deployment.id,
             projectId: project.projectId,
             status: "preparing",
             stage,
           }),
         });
-        await db.updateWorkflowDeploymentItem({
+        await db.updateProjectDeploymentItem({
           deploymentId: deployment.id,
           projectId: project.projectId,
           status: "prepared",
@@ -1923,9 +1923,9 @@ export class Storage {
           preparedSourceHash: result.sourceHash,
         });
       }
-      await db.updateWorkflowDeployment({ id: deployment.id, status: "prepared" });
+      await db.updateProjectDeployment({ id: deployment.id, status: "prepared" });
     } catch (error) {
-      await db.updateWorkflowDeployment({
+      await db.updateProjectDeployment({
         id: deployment.id,
         status: "failed",
         error: readErrorMessage(error),
@@ -1960,7 +1960,7 @@ export class Storage {
     }
     const projectIds = deployment.items.map((item) => item.projectId).sort();
 
-    if (!await db.transitionWorkflowDeploymentStatus({
+    if (!await db.transitionProjectDeploymentStatus({
       id: deployment.id,
       from: ["prepared", "failed", "publishing"],
       status: "publishing",
@@ -1969,7 +1969,7 @@ export class Storage {
     }
     try {
       await this.assertProjectGroupPublishReady(deployment);
-      await this.withWorkflowPublishLocks(projectIds, async () => {
+      await this.withProjectPublishLocks(projectIds, async () => {
         const publishedDependencies = new Map<string, { version: string; sourceHash: string }>();
         const dependencyProjects = deployment.manifest.projects.filter((project) => project.role === "dependency");
         for (const project of dependencyProjects) {
@@ -1977,7 +1977,7 @@ export class Storage {
           const existing = await this.resolvePublishedDeploymentItem(item);
           if (existing !== undefined) {
             publishedDependencies.set(project.projectId, existing);
-            await db.updateWorkflowDeploymentItem({
+            await db.updateProjectDeploymentItem({
               deploymentId: deployment.id,
               projectId: project.projectId,
               status: "published",
@@ -1988,7 +1988,7 @@ export class Storage {
             continue;
           }
           await this.assertReservedDeploymentVersion(item);
-          await db.updateWorkflowDeploymentItem({
+          await db.updateProjectDeploymentItem({
             deploymentId: deployment.id,
             projectId: project.projectId,
             status: "publishing",
@@ -2008,7 +2008,7 @@ export class Storage {
             version: result.version,
             sourceHash: publishedManifest.sourceHash,
           });
-          await db.updateWorkflowDeploymentItem({
+          await db.updateProjectDeploymentItem({
             deploymentId: deployment.id,
             projectId: project.projectId,
             status: "published",
@@ -2019,7 +2019,7 @@ export class Storage {
         }
 
         const dependencies = deployment.manifest.dependencies.map((dependency) => (
-          finalizeWorkflowProjectDependencyLock(dependency, publishedDependencies.get(dependency.projectId))
+          finalizeProjectDependencyLock(dependency, publishedDependencies.get(dependency.projectId))
         ));
         const rootProject = deployment.manifest.projects.find((project) => project.role === "root")!;
         const rootItem = deployment.items.find((item) => item.projectId === rootProject.projectId)!;
@@ -2034,7 +2034,7 @@ export class Storage {
           rootManifest = existingRoot.manifest;
         } else {
           await this.assertReservedDeploymentVersion(rootItem);
-          await db.updateWorkflowDeploymentItem({
+          await db.updateProjectDeploymentItem({
             deploymentId: deployment.id,
             projectId: rootProject.projectId,
             status: "publishing",
@@ -2052,7 +2052,7 @@ export class Storage {
           rootVersion = rootResult.version;
           rootManifest = await this.readManifest(rootProject.projectId, rootResult.version);
         }
-        await db.updateWorkflowDeploymentItem({
+        await db.updateProjectDeploymentItem({
           deploymentId: deployment.id,
           projectId: rootProject.projectId,
           status: "published",
@@ -2061,13 +2061,13 @@ export class Storage {
           publishedSourceHash: rootManifest?.sourceHash,
         });
       });
-      await db.updateWorkflowDeployment({
+      await db.updateProjectDeployment({
         id: deployment.id,
         status: "published",
         publishedAt: new Date().toISOString(),
       });
     } catch (error) {
-      await db.updateWorkflowDeployment({
+      await db.updateProjectDeployment({
         id: deployment.id,
         status: "failed",
         error: readErrorMessage(error),
@@ -2086,21 +2086,21 @@ export class Storage {
     const target = options.target?.trim() || "latest";
     const resolved = await this.resolveSourceTarget(options.projectName, target);
     const dependencies = resolved.resolvedTarget === "draft"
-      ? createExternalWorkflowProjectDependencyLocks(
+      ? createExternalProjectDependencyLocks(
           (await this.readPackageMetadataForTarget(options.projectName, "draft"))
             .projectInfo.relatedProjects,
         )
       : await this.readVersionDependencyLocks(options.projectName, resolved.resolvedTarget);
     const db = this.requireProjectDependencyDatabase();
     const statuses = await Promise.all(dependencies.map(async (dependency) => {
-      const project = await db.getWorkflow(dependency.projectId);
+      const project = await db.getProject(dependency.projectId);
       const sourceAvailable = dependency.delivery === "included"
         ? await this.isPinnedProjectSourceAvailable(dependency)
         : project !== undefined;
       const sourceDownloadAllowed = project !== undefined && await options.canDownloadProject(dependency.projectId);
-      const root = await db.getWorkflow(options.projectName);
+      const root = await db.getProject(options.projectName);
       const relationshipConfirmed = project !== undefined && root !== undefined &&
-        resolveWorkflowRelatedProjectAccess({
+        resolveProjectRelatedProjectAccess({
           consumerProjectId: root.id,
           consumerProjectInfo: root.projectInfo,
           targetProjectId: project.id,
@@ -2109,7 +2109,7 @@ export class Storage {
         }) !== undefined;
       const dataInitialized = project !== undefined && await db.hasProjectKV(dependency.projectId);
       return {
-        dependency: cloneWorkflowProjectDependencyLock(dependency),
+        dependency: cloneProjectDependencyLock(dependency),
         projectName: project?.name,
         projectAvailable: project !== undefined,
         sourceAvailable,
@@ -2159,16 +2159,16 @@ export class Storage {
     ]);
     for (const dependency of dependencies) {
       if (dependency.delivery === "external") {
-        skippedDependencies.push({ dependency: cloneWorkflowProjectDependencyLock(dependency), reason: "external" });
+        skippedDependencies.push({ dependency: cloneProjectDependencyLock(dependency), reason: "external" });
         continue;
       }
       if (!await this.isPinnedProjectSourceAvailable(dependency)) {
-        skippedDependencies.push({ dependency: cloneWorkflowProjectDependencyLock(dependency), reason: "source_unavailable" });
+        skippedDependencies.push({ dependency: cloneProjectDependencyLock(dependency), reason: "source_unavailable" });
         continue;
       }
       if (!await options.canDownloadProject(dependency.projectId)) {
         skippedDependencies.push({
-          dependency: cloneWorkflowProjectDependencyLock(dependency),
+          dependency: cloneProjectDependencyLock(dependency),
           reason: "permission_required",
           ...(options.requestUrlForProject ? { requestUrl: options.requestUrlForProject(dependency.projectId) } : {}),
         });
@@ -2196,7 +2196,7 @@ export class Storage {
     const plan: ProjectDownloadPlan = {
       rootProjectId: options.projectName,
       rootVersion: resolved.resolvedTarget,
-      dependencies: dependencies.map(cloneWorkflowProjectDependencyLock),
+      dependencies: dependencies.map(cloneProjectDependencyLock),
       downloads,
       skippedDependencies,
       complete: !missingIncluded,
@@ -2226,7 +2226,7 @@ export class Storage {
   }
 
   async hasProjectSourceCapability(projectId: string, userId: string): Promise<boolean> {
-    return this.requireProjectDependencyDatabase().hasWorkflowProjectCapabilityGrant({
+    return this.requireProjectDependencyDatabase().hasProjectCapabilityGrant({
       projectId,
       userId,
       capability: "download_source",
@@ -2235,12 +2235,12 @@ export class Storage {
 
   async listProjectSourceCapabilities(projectId: string): Promise<ProjectCapabilityGrant[]> {
     this.assertProjectId(projectId);
-    return this.requireProjectDependencyDatabase().listWorkflowProjectCapabilityGrants(projectId);
+    return this.requireProjectDependencyDatabase().listProjectCapabilityGrants(projectId);
   }
 
   async listProjectAccessRequests(projectId: string): Promise<ProjectAccessRequest[]> {
     this.assertProjectId(projectId);
-    return this.requireProjectDependencyDatabase().listWorkflowProjectAccessRequests(projectId);
+    return this.requireProjectDependencyDatabase().listProjectAccessRequests(projectId);
   }
 
   async createProjectAccessRequest(options: {
@@ -2254,11 +2254,11 @@ export class Storage {
       throw new HttpError(400, 400, "Access request reason must contain 2 to 1000 characters.");
     }
     const db = this.requireProjectDependencyDatabase();
-    const project = await db.getWorkflow(options.projectId);
+    const project = await db.getProject(options.projectId);
     if (project === undefined) {
       throw new HttpError(404, 404, `Workflow "${options.projectId}" does not exist.`);
     }
-    return db.createWorkflowProjectAccessRequest({
+    return db.createProjectAccessRequest({
       id: randomUUID(),
       projectId: options.projectId,
       requesterUserId: options.requesterUserId,
@@ -2273,7 +2273,7 @@ export class Storage {
     status: "approved" | "rejected";
     resolvedByUserId?: string;
   }): Promise<ProjectAccessRequest> {
-    const resolved = await this.requireProjectDependencyDatabase().resolveWorkflowProjectAccessRequest({
+    const resolved = await this.requireProjectDependencyDatabase().resolveProjectAccessRequest({
       ...options,
     });
     if (resolved === undefined) {
@@ -2288,7 +2288,7 @@ export class Storage {
     revokedByUserId?: string;
   }): Promise<{ revoked: boolean }> {
     return {
-      revoked: await this.requireProjectDependencyDatabase().revokeWorkflowProjectCapabilityGrant({
+      revoked: await this.requireProjectDependencyDatabase().revokeProjectCapabilityGrant({
         ...options,
         capability: "download_source",
       }),
@@ -2336,7 +2336,7 @@ export class Storage {
   private async assertReservedDeploymentVersion(
     item: DeploymentRecord["items"][number],
   ): Promise<void> {
-    if (!item.plannedVersion || !await this.requireProjectDependencyDatabase().hasWorkflowVersionReservation({
+    if (!item.plannedVersion || !await this.requireProjectDependencyDatabase().hasProjectVersionReservation({
       deploymentId: item.deploymentId,
       projectId: item.projectId,
       version: item.plannedVersion,
@@ -2353,11 +2353,11 @@ export class Storage {
   ): Promise<DeploymentRecord> {
     const db = this.requireProjectDependencyDatabase();
     const projectIds = deployment.items.map((item) => item.projectId).sort();
-    return this.withWorkflowPublishLocks(projectIds, async () => {
+    return this.withProjectPublishLocks(projectIds, async () => {
       if (reset) {
-        await db.resetWorkflowDeploymentItemsForPreparation(deployment.id);
+        await db.resetProjectDeploymentItemsForPreparation(deployment.id);
       }
-      let current = (await db.getWorkflowDeployment(deployment.id)) ?? deployment;
+      let current = (await db.getProjectDeployment(deployment.id)) ?? deployment;
       for (const item of current.items) {
         if (item.plannedVersion !== undefined) continue;
         const requestedVersion = current.manifest.projects.find(
@@ -2365,7 +2365,7 @@ export class Storage {
         )?.version;
         const plannedVersion = requestedVersion ?? await this.resolveNextVersion(item.projectId);
         await this.assertVersionPublishable(item.projectId, plannedVersion, deployment.id);
-        await db.updateWorkflowDeploymentItem({
+        await db.updateProjectDeploymentItem({
           deploymentId: deployment.id,
           projectId: item.projectId,
           status: "planned",
@@ -2373,7 +2373,7 @@ export class Storage {
           plannedVersion,
         });
       }
-      current = (await db.getWorkflowDeployment(deployment.id)) ?? current;
+      current = (await db.getProjectDeployment(deployment.id)) ?? current;
       if (current.items.some((item) => item.plannedVersion === undefined)) {
         throw new HttpError(409, 409, `Deployment "${deployment.id}" could not reserve every project version.`);
       }
@@ -2387,7 +2387,7 @@ export class Storage {
       throw new HttpError(409, 409, "Project-group root is missing.");
     }
     const packageJson = await readPackageJson(this.draftSourceDir(rootProject.projectId));
-    const rootProjectInfo = readWorkflowProjectInfo(packageJson);
+    const rootProjectInfo = readProjectInfo(packageJson);
     const db = this.requireProjectDependencyDatabase();
     for (const actual of deployment.manifest.dependencies) {
       const expected = rootProjectInfo.relatedProjects.find(
@@ -2403,8 +2403,8 @@ export class Storage {
           `Project-group dependency ${JSON.stringify(actual.alias)} no longer matches the root project draft.`,
         );
       }
-      const target = await db.getWorkflow(actual.projectId);
-      if (target === undefined || resolveWorkflowRelatedProjectAccess({
+      const target = await db.getProject(actual.projectId);
+      if (target === undefined || resolveProjectRelatedProjectAccess({
         consumerProjectId: rootProject.projectId,
         consumerProjectInfo: rootProjectInfo,
         targetProjectId: target.id,
@@ -2432,7 +2432,7 @@ export class Storage {
       conversationId?: string;
     }>;
   }): Promise<ManagedFileReference[]> {
-    // Keep uploaded run attachments outside workflow source/runtime
+    // Keep uploaded run attachments outside project source/runtime
     // trees; workflows receive opaque references and resolve them at run time.
     this.assertProjectId(options.projectName);
     const now = new Date().toISOString();
@@ -2870,13 +2870,13 @@ export class Storage {
     try {
       await this.materializeDbDraftSource(options.projectName);
       if (await exists(this.draftSourceDir(options.projectName))) {
-        await copyWorkflowSource(this.draftSourceDir(options.projectName), stagedSourceDir);
+        await copyProjectSource(this.draftSourceDir(options.projectName), stagedSourceDir);
       } else {
         await mkdir(stagedSourceDir, { recursive: true });
       }
 
       for (const removePath of options.removePaths ?? []) {
-        const safePath = normalizeWorkflowFilePath(removePath);
+        const safePath = normalizeProjectFilePath(removePath);
         await rm(path.join(stagedSourceDir, safePath), {
           recursive: true,
           force: true,
@@ -2885,15 +2885,15 @@ export class Storage {
       }
 
       for (const file of options.files) {
-        const safePath = normalizeWorkflowFilePath(file.path);
+        const safePath = normalizeProjectFilePath(file.path);
         const targetPath = path.join(stagedSourceDir, safePath);
 
         await mkdir(path.dirname(targetPath), { recursive: true });
-        await writeFile(targetPath, decodeWorkflowFileContent(file));
+        await writeFile(targetPath, decodeProjectFileContent(file));
         updatedFiles.push(safePath);
       }
 
-      const metadata = await validateWorkflowPackage(
+      const metadata = await validateProjectPackage(
         stagedSourceDir,
         options.projectName,
       );
@@ -2914,27 +2914,27 @@ export class Storage {
     }
   }
 
-  async cloneWorkflow(options: {
+  async cloneProject(options: {
     projectName: string;
     sourceTarget?: string;
     targetProjectName: string;
     displayName?: string;
     ownerUserId?: string;
-  }): Promise<CloneWorkflowResult> {
+  }): Promise<CloneProjectResult> {
     this.assertProjectId(options.projectName);
     this.assertProjectId(options.targetProjectName);
 
     if (options.projectName === options.targetProjectName) {
-      throw new HttpError(409, 409, "Clone target id must be different from source workflow id.");
+      throw new HttpError(409, 409, "Clone target id must be different from source project id.");
     }
 
-    const existingWorkflow = this.db === undefined
+    const existingProject = this.db === undefined
       ? undefined
-      : await this.db.getWorkflow(options.targetProjectName);
+      : await this.db.getProject(options.targetProjectName);
     if (
-      existingWorkflow !== undefined ||
+      existingProject !== undefined ||
       await exists(this.draftSourceDir(options.targetProjectName)) ||
-      await exists(this.workflowRoot(options.targetProjectName))
+      await exists(this.projectDirectory(options.targetProjectName))
     ) {
       throw new HttpError(
         409,
@@ -2950,7 +2950,7 @@ export class Storage {
     const stagedSourceDir = path.join(stagedDraftDir, "source");
 
     try {
-      await copyWorkflowSource(resolved.sourceDir, stagedSourceDir);
+      await copyProjectSource(resolved.sourceDir, stagedSourceDir);
 
       if (options.displayName?.trim()) {
         await this.updatePackageMetadataName(
@@ -2967,7 +2967,7 @@ export class Storage {
         );
       }
 
-      const metadata = await validateWorkflowPackage(
+      const metadata = await validateProjectPackage(
         stagedSourceDir,
         options.targetProjectName,
       );
@@ -2997,11 +2997,11 @@ export class Storage {
     }
   }
 
-  async updateWorkflowInfo(options: {
+  async updateProjectInfo(options: {
     projectName: string;
     target?: string;
     displayName: string;
-  }): Promise<UpdateWorkflowInfoResult> {
+  }): Promise<UpdateProjectInfoResult> {
     this.assertProjectId(options.projectName);
     const displayName = options.displayName.trim();
     if (displayName === "") {
@@ -3009,7 +3009,7 @@ export class Storage {
     }
 
     const target = options.target?.trim() || "draft";
-    const resolvedTarget = await this.resolveWorkflowConfigTarget(
+    const resolvedTarget = await this.resolveProjectConfigTarget(
       options.projectName,
       target,
     );
@@ -3058,21 +3058,21 @@ export class Storage {
     };
   }
 
-  async deleteWorkflow(projectName: string): Promise<DeleteWorkflowResult> {
+  async deleteProject(projectName: string): Promise<DeleteProjectResult> {
     this.assertProjectId(projectName);
-    const hasDbWorkflow = this.db !== undefined
-      ? (await this.db.getWorkflow(projectName)) !== undefined
+    const hasDbProject = this.db !== undefined
+      ? (await this.db.getProject(projectName)) !== undefined
       : false;
-    const hasFileWorkflow = await exists(this.workflowRoot(projectName));
+    const hasFileProject = await exists(this.projectDirectory(projectName));
 
-    if (!hasDbWorkflow && !hasFileWorkflow) {
+    if (!hasDbProject && !hasFileProject) {
       throw new HttpError(404, 404, `Workflow "${projectName}" does not exist.`);
     }
 
     if (this.db !== undefined) {
-      await this.db.deleteWorkflow(projectName);
+      await this.db.deleteProject(projectName);
     }
-    await rm(this.workflowRoot(projectName), {
+    await rm(this.projectDirectory(projectName), {
       recursive: true,
       force: true,
     });
@@ -3091,9 +3091,9 @@ export class Storage {
   }): Promise<PublishResult> {
     this.assertProjectId(options.projectName);
 
-    // Publish must reserve versions serially per workflow so
+    // Publish must reserve versions serially per project so
     // concurrent requests cannot compute and mutate the same next version.
-    return this.withWorkflowPublishLock(options.projectName, () => this.publishLocked(options));
+    return this.withProjectPublishLock(options.projectName, () => this.publishLocked(options));
   }
 
   private async publishLocked(options: {
@@ -3109,17 +3109,17 @@ export class Storage {
     let committed = false;
     try {
       if (this.db) {
-        await writeWorkflowFiles(sourceDir, await this.db.readDraftFiles(options.projectName));
+        await writeProjectFiles(sourceDir, await this.db.readDraftFiles(options.projectName));
       } else {
-        await copyWorkflowSource(this.draftSourceDir(options.projectName), sourceDir);
+        await copyProjectSource(this.draftSourceDir(options.projectName), sourceDir);
       }
-      const metadata = await validateWorkflowPackage(sourceDir, options.projectName);
+      const metadata = await validateProjectPackage(sourceDir, options.projectName);
       version = metadata.version;
       assertVersion(version);
       if (options.expectedVersion !== undefined && options.expectedVersion !== version) {
         throw new HttpError(409, 409, "Project version differs from its reservation.");
       }
-      if (options.reservationDeploymentId && !await this.requireProjectDependencyDatabase().hasWorkflowVersionReservation({
+      if (options.reservationDeploymentId && !await this.requireProjectDependencyDatabase().hasProjectVersionReservation({
         deploymentId: options.reservationDeploymentId, projectId: options.projectName, version })) {
         throw new HttpError(409, 409, "Project version reservation is unavailable.");
       }
@@ -3159,12 +3159,12 @@ export class Storage {
     dependencies?: ProjectDependencyLock[];
   }): Promise<ProjectDependencyLock[]> {
     const packageJson = await readPackageJson(options.sourceDir);
-    const projectInfo = readWorkflowProjectInfo(packageJson);
+    const projectInfo = readProjectInfo(packageJson);
     const confirmed: RelatedProject[] = [];
     if (this.db !== undefined) {
       for (const relation of projectInfo.relatedProjects) {
-        const target = await this.db.getWorkflow(relation.projectId);
-        if (target !== undefined && resolveWorkflowRelatedProjectAccess({
+        const target = await this.db.getProject(relation.projectId);
+        if (target !== undefined && resolveProjectRelatedProjectAccess({
           consumerProjectId: options.projectName,
           consumerProjectInfo: projectInfo,
           targetProjectId: target.id,
@@ -3173,14 +3173,14 @@ export class Storage {
         }) !== undefined) confirmed.push(relation);
       }
     }
-    const declared = createExternalWorkflowProjectDependencyLocks(confirmed);
+    const declared = createExternalProjectDependencyLocks(confirmed);
     if (options.dependencies === undefined) {
       return declared;
     }
 
     let dependencies: ProjectDependencyLock[];
     try {
-      dependencies = parseWorkflowProjectDependencyLocks(options.dependencies, { published: true });
+      dependencies = parseProjectDependencyLocks(options.dependencies, { published: true });
     } catch (error) {
       throw toHttpErrorWithStatus(error, 400, 400, "Project dependency lock is invalid.");
     }
@@ -3196,7 +3196,7 @@ export class Storage {
         throw new HttpError(409, 409, `Published dependency lock ${JSON.stringify(expected.alias)} does not match a confirmed related project.`);
       }
     }
-    return dependencies.map(cloneWorkflowProjectDependencyLock);
+    return dependencies.map(cloneProjectDependencyLock);
   }
 
   async close(): Promise<void> {
@@ -3607,7 +3607,7 @@ export class Storage {
       recursive: true,
       force: true,
     });
-    await copyWorkflowSource(resolved.sourceDir, this.draftSourceDir(projectName));
+    await copyProjectSource(resolved.sourceDir, this.draftSourceDir(projectName));
   }
 
   private async stageDraftEdit(projectName: string, editSourceDir: (sourceDir: string) => Promise<void>): Promise<void> {
@@ -3615,7 +3615,7 @@ export class Storage {
     const draft = path.join(tempDir, "draft");
     try {
       await this.materializeDbDraftSource(projectName);
-      await copyWorkflowSource(this.draftSourceDir(projectName), path.join(draft, "source"));
+      await copyProjectSource(this.draftSourceDir(projectName), path.join(draft, "source"));
       await editSourceDir(path.join(draft, "source"));
       await this.commitStagedDraft(projectName, draft);
     } finally { await rm(tempDir, { recursive: true, force: true }); }
@@ -3626,7 +3626,7 @@ export class Storage {
     const tempDir = path.join(this.dataRoot, "tmp", randomUUID());
     const draft = path.join(tempDir, "draft");
     try {
-      await copyWorkflowSource(this.versionSourceDir(projectName, sourceVersion), path.join(draft, "source"));
+      await copyProjectSource(this.versionSourceDir(projectName, sourceVersion), path.join(draft, "source"));
       await editSourceDir?.(path.join(draft, "source"));
       await this.commitStagedDraft(projectName, draft);
     } finally { await rm(tempDir, { recursive: true, force: true }); }
@@ -3660,14 +3660,14 @@ export class Storage {
     await writeFile(packageJsonPath, `${JSON.stringify(nextPackageJson, null, 2)}\n`);
   }
 
-  private async assertWorkflowDoesNotExist(projectName: string): Promise<void> {
-    const existingWorkflow = this.db === undefined
+  private async assertProjectDoesNotExist(projectName: string): Promise<void> {
+    const existingProject = this.db === undefined
       ? undefined
-      : await this.db.getWorkflow(projectName);
+      : await this.db.getProject(projectName);
     if (
-      existingWorkflow !== undefined ||
+      existingProject !== undefined ||
       await exists(this.draftSourceDir(projectName)) ||
-      await exists(this.workflowRoot(projectName))
+      await exists(this.projectDirectory(projectName))
     ) {
       throw new HttpError(
         409,
@@ -3678,13 +3678,13 @@ export class Storage {
   }
 
   private async commitStagedDraft(projectName: string, stagedDraftDir: string): Promise<void> {
-    await this.withWorkflowPublishLock(projectName, async () => {
+    await this.withProjectPublishLock(projectName, async () => {
       const sourceDir = path.join(stagedDraftDir, "source");
-      const metadata = await validateWorkflowPackage(sourceDir, projectName);
+      const metadata = await validateProjectPackage(sourceDir, projectName);
       await this.persistDraftFromSourceDir(projectName, sourceDir);
       await replaceDirectory(stagedDraftDir, this.draftDir(projectName));
       this.materializedDraftSourceRevisions.delete(projectName);
-      if (!this.db) await writeJson(this.workflowProjectInfoMetadataPath(projectName), {
+      if (!this.db) await writeJson(this.projectInfoMetadataPath(projectName), {
         name: metadata.name, projectInfo: this.normalizeDeclaredProjectInfo(metadata.projectInfo) });
     });
   }
@@ -3692,14 +3692,14 @@ export class Storage {
   private async updateMaterializedDraftProjectInfo(
     projectName: string,
     name: string,
-    projectInfo: DeclaredWorkflowProjectInfo,
+    projectInfo: DeclaredProjectInfo,
   ): Promise<void> {
     const sourceDir = this.draftSourceDir(projectName);
     if (!(await exists(sourceDir))) return;
     const packageJson = await readPackageJson(sourceDir);
     await writeJson(
       path.join(sourceDir, "package.json"),
-      writeWorkflowProjectInfo({
+      writeProjectInfo({
         ...packageJson,
         name,
       }, projectInfo),
@@ -3816,14 +3816,14 @@ export class Storage {
     if (!isSafeProjectId(projectId)) {
       throw new HttpError(400, 400, createUnsafeProjectIdMessage(projectId));
     }
-    if (!isWorkflowUuid(projectId)) {
-      throw new HttpError(400, 400, createInvalidWorkflowUuidMessage(projectId));
+    if (!isProjectUuid(projectId)) {
+      throw new HttpError(400, 400, createInvalidProjectUuidMessage(projectId));
     }
   }
 
-  private normalizeDeclaredProjectInfo(value: unknown): DeclaredWorkflowProjectInfo {
+  private normalizeDeclaredProjectInfo(value: unknown): DeclaredProjectInfo {
     try {
-      return normalizeDeclaredWorkflowProjectInfo(value);
+      return normalizeDeclaredProjectInfoInput(value);
     } catch (error) {
       throw new HttpError(400, 400, readErrorMessage(error));
     }
@@ -3834,10 +3834,10 @@ export class Storage {
     action: "access server data",
   ): Promise<ProjectInfoContract> {
     this.assertProjectId(projectId);
-    const stored = await this.db?.getWorkflow(projectId);
+    const stored = await this.db?.getProject(projectId);
     const projectInfo = stored?.projectInfo ?? (await this.readPackageMetadata(projectId)).projectInfo;
     try {
-      assertWorkflowProjectDataStorageLocationAllowed(projectInfo, "server");
+      assertProjectDataStorageLocationAllowed(projectInfo, "server");
       return projectInfo;
     } catch {
       const mode = projectInfo.dataStorage?.mode ?? null;
@@ -3875,21 +3875,21 @@ export class Storage {
   private async readPackageMetadata(projectId: string): Promise<PackageMetadata> {
     const sourceDir = this.draftSourceDir(projectId);
     if (await exists(sourceDir)) {
-      const metadata = await validateWorkflowPackage(sourceDir, projectId);
+      const metadata = await validateProjectPackage(sourceDir, projectId);
       return this.db === undefined
         ? this.applyStoredProjectInfoMetadata(projectId, metadata)
         : metadata;
     }
     if (this.db !== undefined) {
-      const workflow = await this.db.getWorkflow(projectId);
-      if (workflow !== undefined) {
+      const record = await this.db.getProject(projectId);
+      if (record !== undefined) {
         return {
-          id: workflow.id,
-          name: workflow.name,
-          version: workflow.packageVersion,
-          projectType: workflow.projectType,
-          projectCard: workflow.projectCard,
-          projectInfo: workflow.projectInfo,
+          id: record.id,
+          name: record.name,
+          version: record.packageVersion,
+          projectType: record.projectType,
+          projectCard: record.projectCard,
+          projectInfo: record.projectInfo,
           requiredCoreVersion: "unknown",
         };
       }
@@ -3897,7 +3897,7 @@ export class Storage {
 
     const latest = await this.readLatest(projectId);
     if (latest !== null) {
-      const metadata = await validateWorkflowPackage(
+      const metadata = await validateProjectPackage(
         this.versionSourceDir(projectId, latest),
         projectId,
       );
@@ -3913,8 +3913,8 @@ export class Storage {
     projectId: string,
     metadata: PackageMetadata,
   ): Promise<PackageMetadata> {
-    const stored = await readJson<StoredWorkflowProjectInfoMetadata>(
-      this.workflowProjectInfoMetadataPath(projectId),
+    const stored = await readJson<StoredProjectInfoMetadata>(
+      this.projectInfoMetadataPath(projectId),
     );
     if (stored === undefined) return metadata;
     const name = typeof stored.name === "string" ? stored.name.trim() : "";
@@ -3923,7 +3923,7 @@ export class Storage {
       return {
         ...metadata,
         name,
-        projectInfo: normalizeWorkflowProjectInfo(stored.projectInfo),
+        projectInfo: normalizeProjectInfo(stored.projectInfo),
       };
     } catch {
       return metadata;
@@ -3932,24 +3932,24 @@ export class Storage {
 
   private async readPackageMetadataForTarget(projectName: string, target: string): Promise<PackageMetadata> {
     const resolved = await this.resolveSourceTarget(projectName, target);
-    return this.applyStoredProjectInfoMetadata(projectName, await validateWorkflowPackage(resolved.sourceDir, projectName));
+    return this.applyStoredProjectInfoMetadata(projectName, await validateProjectPackage(resolved.sourceDir, projectName));
   }
 
-  private async readWorkflowMetadataForEditing(
+  private async readProjectMetadataForEditing(
     projectId: string,
   ): Promise<PackageMetadata> {
     try {
       return await this.readPackageMetadata(projectId);
     } catch (error) {
-      const workflow = await this.db?.getWorkflow(projectId);
-      if (workflow !== undefined) {
+      const record = await this.db?.getProject(projectId);
+      if (record !== undefined) {
         return {
-          id: workflow.id,
-          name: workflow.name,
-          version: workflow.packageVersion,
-          projectType: workflow.projectType,
-          projectCard: workflow.projectCard,
-          projectInfo: workflow.projectInfo,
+          id: record.id,
+          name: record.name,
+          version: record.packageVersion,
+          projectType: record.projectType,
+          projectCard: record.projectCard,
+          projectInfo: record.projectInfo,
           requiredCoreVersion: "unknown",
         };
       }
@@ -3957,7 +3957,7 @@ export class Storage {
     }
   }
 
-  private async resolveWorkflowConfigTarget(
+  private async resolveProjectConfigTarget(
     projectName: string,
     target: string,
   ): Promise<string> {
@@ -3965,8 +3965,8 @@ export class Storage {
 
     if (normalizedTarget === "draft") {
       if (this.db !== undefined) {
-        const workflow = await this.db.getWorkflow(projectName);
-        if (workflow?.hasDraft) {
+        const record = await this.db.getProject(projectName);
+        if (record?.hasDraft) {
           return "draft";
         }
       }
@@ -4001,7 +4001,7 @@ export class Storage {
 
   private async readLatest(projectName: string): Promise<string | null> {
     if (this.db !== undefined) {
-      return (await this.db.getWorkflow(projectName))?.latest ?? null;
+      return (await this.db.getProject(projectName))?.latest ?? null;
     }
 
     const latest = await readJson<{ version?: unknown }>(this.latestPath(projectName));
@@ -4057,7 +4057,7 @@ export class Storage {
     const latest = await this.readLatest(projectName);
     const reservations = this.db === undefined
       ? []
-      : await this.db.listWorkflowVersionReservations(projectName);
+      : await this.db.listProjectVersionReservations(projectName);
     const candidates = latest !== null && SEMVER_PATTERN.test(latest)
       ? [latest, ...versions, ...reservations]
       : [...versions, ...reservations];
@@ -4095,7 +4095,7 @@ export class Storage {
 
     const reservations = this.db === undefined
       ? []
-      : await this.db.listWorkflowVersionReservations(projectName, reservationDeploymentId);
+      : await this.db.listProjectVersionReservations(projectName, reservationDeploymentId);
     const conflictingReservation = reservations.find((candidate) => candidate === version);
     if (conflictingReservation !== undefined) {
       throw new HttpError(
@@ -4140,7 +4140,7 @@ export class Storage {
           releaseLog: record.releaseLog,
           sourceHash: record.sourceHash,
           sourceObjectPath: record.sourceObjectPath,
-          dependencies: record.dependencies.map(cloneWorkflowProjectDependencyLock),
+          dependencies: record.dependencies.map(cloneProjectDependencyLock),
         };
       }
     }
@@ -4151,7 +4151,7 @@ export class Storage {
   private async readVersionDependencyLocks(projectName: string, version: string, manifest?: Manifest): Promise<ProjectDependencyLock[]> {
     const stored = manifest ?? await this.readManifest(projectName, version);
     if (!stored) throw new HttpError(404, 404, "Published version does not exist.");
-    try { return parseWorkflowProjectDependencyLocks(stored.dependencies, { published: true }); }
+    try { return parseProjectDependencyLocks(stored.dependencies, { published: true }); }
     catch (error) { throw new HttpError(409, 409, "Invalid project dependency lock.", { reason: readErrorMessage(error) }); }
   }
 
@@ -4172,20 +4172,20 @@ export class Storage {
 
   private async assertVersionReadable(projectName: string, version: string): Promise<void> { await this.assertVersionExists(projectName, version); }
 
-  private async withWorkflowPublishLock<T>(
+  private async withProjectPublishLock<T>(
     projectName: string,
     operation: () => Promise<T>,
   ): Promise<T> {
     if (this.db !== undefined) {
-      return this.withLocalWorkflowPublishLock(projectName, () =>
-        this.db?.withWorkflowPublishLock(projectName, operation) ?? operation(),
+      return this.withLocalProjectPublishLock(projectName, () =>
+        this.db?.withProjectPublishLock(projectName, operation) ?? operation(),
       );
     }
 
-    return this.withLocalWorkflowPublishLock(projectName, operation);
+    return this.withLocalProjectPublishLock(projectName, operation);
   }
 
-  private async withWorkflowPublishLocks<T>(
+  private async withProjectPublishLocks<T>(
     projectNames: readonly string[],
     operation: () => Promise<T>,
   ): Promise<T> {
@@ -4193,7 +4193,7 @@ export class Storage {
     const acquire = (index: number): Promise<T> => {
       const projectName = names[index];
       if (projectName === undefined) return operation();
-      return this.withWorkflowPublishLock(projectName, () => acquire(index + 1));
+      return this.withProjectPublishLock(projectName, () => acquire(index + 1));
     };
     return acquire(0);
   }
@@ -4203,7 +4203,7 @@ export class Storage {
     operation: () => Promise<T>,
   ): Promise<T> {
     return this.withLocalProjectGroupDeploymentLock(deploymentId, () =>
-      this.db?.withWorkflowDeploymentLock(deploymentId, operation) ?? operation());
+      this.db?.withProjectDeploymentLock(deploymentId, operation) ?? operation());
   }
 
   private async withLocalProjectGroupDeploymentLock<T>(
@@ -4230,7 +4230,7 @@ export class Storage {
     }
   }
 
-  private async withLocalWorkflowPublishLock<T>(
+  private async withLocalProjectPublishLock<T>(
     projectName: string,
     operation: () => Promise<T>,
   ): Promise<T> {
@@ -4269,28 +4269,28 @@ export class Storage {
     }
   }
 
-  private async summarizeDbWorkflow(workflow: DbRecord, records?: Array<{ version: string }>): Promise<Summary> {
-    const versions = (records ?? await this.db?.listVersions(workflow.id) ?? []).map(item => item.version).sort(compareSemverVersions);
-    return { id: workflow.id, name: workflow.name, projectType: workflow.projectType, projectCard: workflow.projectCard,
-      projectInfo: workflow.projectInfo, ownerUserId: workflow.ownerUserId, visibility: workflow.visibility,
-      createdByUserId: workflow.createdByUserId, createdAt: workflow.createdAt, updatedAt: workflow.updatedAt,
-      hasDraft: workflow.hasDraft, latest: workflow.latest, versions, nextVersion: resolveNextManagedVersionFromRecords(workflow.latest, versions) };
+  private async summarizeDbProject(record: DbRecord, records?: Array<{ version: string }>): Promise<Summary> {
+    const versions = (records ?? await this.db?.listVersions(record.id) ?? []).map(item => item.version).sort(compareSemverVersions);
+    return { id: record.id, name: record.name, projectType: record.projectType, projectCard: record.projectCard,
+      projectInfo: record.projectInfo, ownerUserId: record.ownerUserId, visibility: record.visibility,
+      createdByUserId: record.createdByUserId, createdAt: record.createdAt, updatedAt: record.updatedAt,
+      hasDraft: record.hasDraft, latest: record.latest, versions, nextVersion: resolveNextManagedVersionFromRecords(record.latest, versions) };
   }
 
-  private async readWorkflowRecordForAccess(
+  private async readProjectRecordForAccess(
     projectId: string,
   ): Promise<DbRecord> {
     if (this.db !== undefined) {
-      const workflow = await this.db.getWorkflow(projectId);
-      if (workflow === undefined) {
+      const record = await this.db.getProject(projectId);
+      if (record === undefined) {
         throw new HttpError(404, 404, `Workflow "${projectId}" does not exist.`);
       }
-      return workflow;
+      return record;
     }
 
     const metadata = await this.readPackageMetadata(projectId);
     const versions = await this.listVersionNames(projectId);
-    const timestamps = await this.readFileWorkflowTimestamps(projectId, versions);
+    const timestamps = await this.readFileProjectTimestamps(projectId, versions);
     return {
       id: metadata.id,
       name: metadata.name,
@@ -4306,17 +4306,17 @@ export class Storage {
     };
   }
 
-  private async createProjectAccessSummary(workflow: DbRecord, userId?: string): Promise<ProjectAccessSummary> {
-    return { projectId: workflow.id, projectName: workflow.name, ownerUserId: workflow.ownerUserId, visibility: workflow.visibility,
-      createdByUserId: workflow.createdByUserId, member: this.db && userId ? await this.db.getWorkflowMember(workflow.id, userId) : undefined };
+  private async createProjectAccessSummary(record: DbRecord, userId?: string): Promise<ProjectAccessSummary> {
+    return { projectId: record.id, projectName: record.name, ownerUserId: record.ownerUserId, visibility: record.visibility,
+      createdByUserId: record.createdByUserId, member: this.db && userId ? await this.db.getProjectMember(record.id, userId) : undefined };
   }
 
-  private async readFileWorkflowTimestamps(
+  private async readFileProjectTimestamps(
     projectName: string,
     versions: string[],
   ): Promise<{ createdAt?: string; updatedAt?: string }> {
     const candidates = [
-      await statIfExists(this.workflowRoot(projectName)),
+      await statIfExists(this.projectDirectory(projectName)),
       await statIfExists(this.draftSourceDir(projectName)),
       ...(await Promise.all(
         versions.map((version) => statIfExists(this.versionDir(projectName, version))),
@@ -4335,7 +4335,7 @@ export class Storage {
 
   private async persistDraftFromSourceDir(projectName: string, sourceDir = this.draftSourceDir(projectName)): Promise<void> {
     if (!this.db) return;
-    const metadata = await validateWorkflowPackage(sourceDir, projectName);
+    const metadata = await validateProjectPackage(sourceDir, projectName);
     await this.assertUploadedProjectType(projectName, metadata.projectType);
     await this.db.saveDraft({ projectId: metadata.id, projectName: metadata.name, projectType: metadata.projectType,
       packageVersion: metadata.version, projectCard: metadata.projectCard, projectInfo: this.normalizeDeclaredProjectInfo(metadata.projectInfo),
@@ -4349,7 +4349,7 @@ export class Storage {
     if (this.db === undefined) {
       return;
     }
-    const existing = await this.db.getWorkflow(projectId);
+    const existing = await this.db.getProject(projectId);
     if (existing === undefined || existing.projectType === sourceProjectType) return;
     if (existing.hasDraft) return;
     if ((await this.db.listVersions(projectId)).length > 0) return;
@@ -4368,22 +4368,22 @@ export class Storage {
     }
 
     await this.materializeSourceOnce(`draft\0${projectName}`, async () => {
-      const workflow = await db.getWorkflow(projectName);
-      if (!workflow?.hasDraft) {
+      const record = await db.getProject(projectName);
+      if (!record?.hasDraft) {
         this.materializedDraftSourceRevisions.delete(projectName);
         return;
       }
 
       const sourceDir = this.draftSourceDir(projectName);
       if (
-        this.materializedDraftSourceRevisions.get(projectName) === workflow.updatedAt &&
+        this.materializedDraftSourceRevisions.get(projectName) === record.updatedAt &&
         await exists(sourceDir)
       ) {
         return;
       }
 
-      await writeWorkflowFiles(sourceDir, await db.readDraftFiles(projectName));
-      this.materializedDraftSourceRevisions.set(projectName, workflow.updatedAt);
+      await writeProjectFiles(sourceDir, await db.readDraftFiles(projectName));
+      this.materializedDraftSourceRevisions.set(projectName, record.updatedAt);
     });
   }
 
@@ -4452,11 +4452,11 @@ export class Storage {
     objectPath: string;
     error: unknown;
   }): HttpError {
-    const isMissing = isWorkflowStorageNotFoundError(options.error);
+    const isMissing = isProjectStorageNotFoundError(options.error);
     const reason = readErrorMessage(options.error);
     const message = isMissing
       ? `Workflow "${options.projectId}" version "${options.version}" ${options.artifact} artifact is missing from storage.`
-      : `Failed to read workflow "${options.projectId}" version "${options.version}" ${options.artifact} artifact. ${reason}`;
+      : `Failed to read project "${options.projectId}" version "${options.version}" ${options.artifact} artifact. ${reason}`;
     return new HttpError(
       isMissing ? 404 : 500,
       isMissing ? 404 : 500,
@@ -4486,7 +4486,7 @@ export class Storage {
         throw new HttpError(
           500,
           500,
-          "Workflow object storage is required to publish database-backed workflow versions.",
+          "Workflow object storage is required to publish database-backed project versions.",
         );
       }
       return undefined;
@@ -4525,7 +4525,7 @@ export class Storage {
       throw new HttpError(
         500,
         500,
-        `Failed to upload workflow ${artifactName} artifact ${objectPath} (${formatBytes(archiveSize)}). ${readErrorMessage(error)}`,
+        `Failed to upload project ${artifactName} artifact ${objectPath} (${formatBytes(archiveSize)}). ${readErrorMessage(error)}`,
         {
           artifact: artifactName,
           objectPath,
@@ -4698,7 +4698,7 @@ export class Storage {
 
   private kanbanConfigurationStatePath(projectName: string, actorId: string): string {
     const actorKey = createHash("sha256").update(actorId).digest("hex");
-    return path.join(this.workflowRoot(projectName), "kanban-configurations", `${actorKey}.json`);
+    return path.join(this.projectDirectory(projectName), "kanban-configurations", `${actorKey}.json`);
   }
 
   private async withKnowledgeContext<T>(
@@ -4720,7 +4720,7 @@ export class Storage {
       throw new HttpError(501, 501, "PersistentValue knowledge base requires PostgreSQL storage.");
     }
 
-    const context = this.createKnowledgeWorkflowContext(
+    const context = this.createKnowledgeProjectContext(
       projectName,
     );
     try {
@@ -4744,14 +4744,14 @@ export class Storage {
     try {
       return await this.db.withNamespaceTransaction(
         { storageKind: "persistent_value", scope: "project", projectId: projectName },
-        (store) => run(this.createKnowledgeWorkflowContext(projectName, store)),
+        (store) => run(this.createKnowledgeProjectContext(projectName, store)),
       );
     } catch (error) {
       throw mapKnowledgeError(error, options);
     }
   }
 
-  private createKnowledgeWorkflowContext(
+  private createKnowledgeProjectContext(
     projectId: string,
     store?: KVStore,
   ): StorageLocationContext {
@@ -4764,17 +4764,17 @@ export class Storage {
     // domain as local client writes, without introducing a new table.
     const source = { projectId };
     return {
-      kv: createWorkflowKVContext({
+      kv: createProjectKVContext({
         store: persistentStore,
         projectId,
         source,
       }),
-      persistentValue: createWorkflowPersistentValueContext({
+      persistentValue: createProjectPersistentValueContext({
         store: persistentStore,
         projectId,
         source,
       }),
-      relatedProjects: createWorkflowRelatedProjectsContext(),
+      relatedProjects: createProjectRelatedProjectsContext(),
     };
   }
 
@@ -4804,12 +4804,12 @@ export class Storage {
     return path.join(this.deploymentPreparationDir(preparation.deploymentId), preparation.archiveName);
   }
 
-  private preparationWorkflowRoot(projectName: string): string {
+  private preparationProjectRoot(projectName: string): string {
     return path.join(this.preparationsRoot(), projectName);
   }
 
   private preparationJobDir(projectName: string, jobId: string): string {
-    return path.join(this.preparationWorkflowRoot(projectName), jobId);
+    return path.join(this.preparationProjectRoot(projectName), jobId);
   }
 
   private preparationJobPath(projectName: string, jobId: string): string {
@@ -4820,16 +4820,16 @@ export class Storage {
     return path.join(this.preparationJobDir(job.projectId, job.jobId), job.archiveName);
   }
 
-  private workflowRoot(projectName: string): string {
+  private projectDirectory(projectName: string): string {
     try {
-      return resolveWorkflowRoot(this.projectsRoot(), projectName);
+      return resolveProjectRoot(this.projectsRoot(), projectName);
     } catch (error) {
       throw new HttpError(400, 400, error instanceof Error ? error.message : String(error));
     }
   }
 
   private draftDir(projectName: string): string {
-    return path.join(this.workflowRoot(projectName), "draft");
+    return path.join(this.projectDirectory(projectName), "draft");
   }
 
   private draftSourceDir(projectName: string): string {
@@ -4837,7 +4837,7 @@ export class Storage {
   }
 
   private versionsRoot(projectName: string): string {
-    return path.join(this.workflowRoot(projectName), "versions");
+    return path.join(this.projectDirectory(projectName), "versions");
   }
 
   private versionDir(projectName: string, version: string): string {
@@ -4853,11 +4853,11 @@ export class Storage {
   }
 
   private latestPath(projectName: string): string {
-    return path.join(this.workflowRoot(projectName), "latest.json");
+    return path.join(this.projectDirectory(projectName), "latest.json");
   }
 
-  private workflowProjectInfoMetadataPath(projectName: string): string {
-    return path.join(this.workflowRoot(projectName), "project-info.json");
+  private projectInfoMetadataPath(projectName: string): string {
+    return path.join(this.projectDirectory(projectName), "project-info.json");
   }
 
   private kvRoot(): string {
@@ -4942,7 +4942,7 @@ function normalizeProjectStorageInput(input: {
     throw new HttpError(400, 400, "Project storage key must be a non-empty string.");
   }
   const projectId = normalizeExactFilter(input.projectId);
-  if (!isWorkflowUuid(projectId)) {
+  if (!isProjectUuid(projectId)) {
     throw new HttpError(400, 400, "Project storage projectId must be a UUID.");
   }
   if (input.scope === "project") {
@@ -5050,27 +5050,27 @@ function removeRelatedProjectByProjectId(
  * a checkout runs with no object-storage configuration at all, and a driver value
  * this build does not implement fails at startup instead of being ignored.
  */
-export function createWorkflowObjectStorageFromEnv(options: {
+export function createProjectObjectStorageFromEnv(options: {
   dataRoot: string;
   env?: NodeJS.ProcessEnv;
 }): ObjectStorage {
   const env = options.env ?? process.env;
-  resolveWorkflowStorageDriver(env);
-  return createWorkflowLocalStorageFromEnv({ env, dataRoot: options.dataRoot });
+  resolveProjectStorageDriver(env);
+  return createProjectLocalStorageFromEnv({ env, dataRoot: options.dataRoot });
 }
 export async function createStorageFromEnv(): Promise<Storage> {
   const { repoRoot, serverRoot } = resolveServerPathRoots();
   const dataRoot = resolveServerDataRootFromEnv({ serverRoot });
   const connectionString = process.env.STEAMHARNESS_DATABASE_URL?.trim();
   if (!connectionString) throw new Error("STEAMHARNESS_DATABASE_URL is required for project storage.");
-  const objectStorage = createWorkflowObjectStorageFromEnv({ dataRoot });
+  const objectStorage = createProjectObjectStorageFromEnv({ dataRoot });
   const storage = new Storage({ repoRoot, serverRoot, dataRoot, db: new DatabaseRepository(connectionString),
     objectStorage, artifacts: new ArtifactStorage(objectStorage) });
   await storage.init();
   return storage;
 }
 
-async function validateWorkflowPackage(
+async function validateProjectPackage(
   sourceDir: string,
   expectedId?: string,
   hostCoreVersion?: string,
@@ -5111,7 +5111,7 @@ async function validateWorkflowPackage(
       }
     }
     // Static Kanban projects follow the same Core compatibility contract.
-    return readWorkflowPackageMetadata(
+    return readProjectPackageMetadata(
       sourceDir,
       expectedId,
       undefined,
@@ -5122,7 +5122,7 @@ async function validateWorkflowPackage(
   if (!(await exists(path.join(sourceDir, "index.ts")))) {
     throw new HttpError(400, 400, "Workflow package must contain index.ts.");
   }
-  return readWorkflowPackageMetadata(
+  return readProjectPackageMetadata(
     sourceDir,
     expectedId,
     undefined,
@@ -5130,7 +5130,7 @@ async function validateWorkflowPackage(
   );
 }
 
-async function readWorkflowPackageMetadata(
+async function readProjectPackageMetadata(
   sourceDir: string,
   expectedId?: string,
   persistedProjectType?: ProjectKind,
@@ -5151,8 +5151,8 @@ async function readWorkflowPackageMetadata(
     throw new HttpError(400, 400, readErrorMessage(error));
   }
 
-  if (!isWorkflowUuid(id)) {
-    throw new HttpError(400, 400, createInvalidWorkflowUuidMessage(id, "workflow package id"));
+  if (!isProjectUuid(id)) {
+    throw new HttpError(400, 400, createInvalidProjectUuidMessage(id, "project package id"));
   }
 
   if (!SEMVER_PATTERN.test(version)) {
@@ -5169,7 +5169,7 @@ async function readWorkflowPackageMetadata(
 
   const steamHarness = packageJson["steamHarness"];
   const projectType = isRecord(steamHarness) ? steamHarness["projectType"] : undefined;
-  if (!isWorkflowProjectType(projectType)) {
+  if (!isProjectKind(projectType)) {
     throw new HttpError(400, 400, "package.json.steamHarness.projectType must be workflow, conversation or kanban.");
   }
   if (persistedProjectType !== undefined && persistedProjectType !== projectType) {
@@ -5182,7 +5182,7 @@ async function readWorkflowPackageMetadata(
     version,
     projectType,
     projectCard: readProjectCardMetadataFromPackageJson(packageJson, projectType),
-    projectInfo: readWorkflowProjectInfo(packageJson),
+    projectInfo: readProjectInfo(packageJson),
     requiredCoreVersion,
   };
 }
@@ -5266,7 +5266,7 @@ async function resolvePackageRoot(extractDir: string, expectedId?: string): Prom
     400,
     expectedId === undefined
       ? "Package root must contain package.json and the entry required by its project configuration."
-      : `Package root must contain package.json and the configured entry for workflow "${expectedId}".`,
+      : `Package root must contain package.json and the configured entry for project "${expectedId}".`,
   );
 }
 
@@ -5294,14 +5294,14 @@ async function packageRootMatchesExpectedId(
   }
 }
 
-async function copyWorkflowSource(sourceDir: string, targetDir: string): Promise<void> {
+async function copyProjectSource(sourceDir: string, targetDir: string): Promise<void> {
   await mkdir(targetDir, { recursive: true });
   await cp(sourceDir, targetDir, { recursive: true });
 }
 
-async function copyUploadedWorkflowSource(sourceDir: string, targetDir: string): Promise<void> {
+async function copyUploadedProjectSource(sourceDir: string, targetDir: string): Promise<void> {
   try {
-    await copyWorkflowUploadFiles(sourceDir, targetDir);
+    await copyProjectUploadFiles(sourceDir, targetDir);
   } catch (error) {
     throw new HttpError(400, 400, readErrorMessage(error));
   }
@@ -5320,7 +5320,7 @@ async function copyWorkspaceDependencySources(
   await mkdir(dependencyStoreRoot, { recursive: true });
 
   for (const dependencyRoot of dependencyRoots) {
-    await copyUploadedWorkflowSource(
+    await copyUploadedProjectSource(
       dependencyRoot,
       path.join(dependencyStoreRoot, path.basename(dependencyRoot)),
     );
@@ -5346,10 +5346,10 @@ async function collectWorkspaceDependencyRoots(packageRoot: string): Promise<str
     }
 
     try {
-      await validateWorkflowPackage(candidate);
+      await validateProjectPackage(candidate);
       dependencyRoots.push(candidate);
     } catch {
-      // Ignore sibling directories that are not valid workflow packages.
+      // Ignore sibling directories that are not valid project packages.
     }
   }
 
@@ -5396,7 +5396,7 @@ async function moveDirectoryIfAbsent(
   }
 }
 
-async function writeWorkflowFiles(
+async function writeProjectFiles(
   targetDir: string,
   files: File[],
 ): Promise<void> {
@@ -5404,14 +5404,14 @@ async function writeWorkflowFiles(
   await mkdir(targetDir, { recursive: true });
 
   for (const file of files) {
-    const safePath = normalizeWorkflowFilePath(file.path);
+    const safePath = normalizeProjectFilePath(file.path);
     const targetPath = path.join(targetDir, safePath);
     await mkdir(path.dirname(targetPath), { recursive: true });
-    await writeFile(targetPath, decodeWorkflowFileContent(file));
+    await writeFile(targetPath, decodeProjectFileContent(file));
   }
 }
 
-function decodeWorkflowFileContent(file: FileInput): string | Buffer {
+function decodeProjectFileContent(file: FileInput): string | Buffer {
   if (file.encoding !== "base64") return file.content;
   if (file.content === "") return Buffer.alloc(0);
   const decoded = Buffer.from(file.content, "base64");
@@ -5438,7 +5438,7 @@ async function createTarGz(sourceDir: string, archivePath: string): Promise<void
     throw new HttpError(
       500,
       500,
-      `Failed to create portable workflow artifact archive. ${readErrorMessage(error)}`,
+      `Failed to create portable project artifact archive. ${readErrorMessage(error)}`,
     );
   }
 }
@@ -5462,7 +5462,7 @@ async function extractTarGz(
       preservePaths: false,
     });
   } catch (error) {
-    throw new HttpError(400, 400, "Failed to extract workflow artifact archive.", {
+    throw new HttpError(400, 400, "Failed to extract project artifact archive.", {
       error: readErrorMessage(error),
     });
   }
@@ -5515,7 +5515,7 @@ async function isEditableTextFile(filePath: string): Promise<boolean> {
   if (
     !TEXT_EXTENSIONS.has(extension) &&
     baseName !== ".env.example" &&
-    baseName !== ".workflowignore"
+    baseName !== ".steamharnessignore"
   ) {
     return false;
   }
@@ -5545,7 +5545,7 @@ async function walkFiles(
   }
 }
 
-function normalizeWorkflowFilePath(filePath: string): string {
+function normalizeProjectFilePath(filePath: string): string {
   const normalized = normalizeSlash(filePath).replace(/^\.\/+/, "");
 
   if (
@@ -5554,7 +5554,7 @@ function normalizeWorkflowFilePath(filePath: string): string {
     /^[a-zA-Z]:/.test(normalized) ||
     normalized.split("/").some((part) => part === "" || part === "." || part === "..")
   ) {
-    throw new HttpError(400, 400, `Invalid workflow file path "${filePath}".`);
+    throw new HttpError(400, 400, `Invalid project file path "${filePath}".`);
   }
 
   return normalized;
@@ -5650,7 +5650,7 @@ export function validateArchiveEntries(entries: string[]): void {
     const parts = normalized.split("/");
     for (let index = 1; index <= parts.length; index += 1) {
       const candidate = parts.slice(0, index).join("/");
-      const portablePath = createWorkflowUploadPortablePathKey(candidate);
+      const portablePath = createProjectUploadPortablePathKey(candidate);
       const conflictingPath = normalizedPathPrefixes.get(portablePath);
       if (conflictingPath !== undefined && conflictingPath !== candidate) {
         throw new HttpError(
@@ -5671,7 +5671,7 @@ export function validateArchiveEntries(entries: string[]): void {
         requiredDirectoryPaths.add(portablePath);
       }
     }
-    const portableEntryPath = createWorkflowUploadPortablePathKey(normalized);
+    const portableEntryPath = createProjectUploadPortablePathKey(normalized);
     if (normalizedEntryPaths.has(portableEntryPath)) {
       throw new HttpError(400, 400, `Duplicate archive entry "${entry}".`);
     }
@@ -5736,7 +5736,7 @@ function isTarGzipName(archiveName: string): boolean {
 
 function assertVersion(version: string): void {
   if (!SEMVER_PATTERN.test(version)) {
-    throw new HttpError(400, 400, `Invalid workflow version "${version}". Use x.y.z format.`);
+    throw new HttpError(400, 400, `Invalid project version "${version}". Use x.y.z format.`);
   }
 }
 
@@ -5839,7 +5839,7 @@ function createManagedFileId(): string {
 
 function assertManagedFileId(value: string): void {
   if (!MANAGED_FILE_ID_PATTERN.test(value)) {
-    throw new HttpError(400, 400, `Invalid workflow file id "${value}".`);
+    throw new HttpError(400, 400, `Invalid project file id "${value}".`);
   }
 }
 
@@ -6029,7 +6029,7 @@ function assertResolvedPathInsideRoot(rootPath: string, targetPath: string, allo
   }
 }
 
-function cloneWorkflowProjectDependencyLock(
+function cloneProjectDependencyLock(
   dependency: ProjectDependencyLock,
 ): ProjectDependencyLock {
   return {
@@ -6107,7 +6107,7 @@ function readProjectAccessRequestToken(
     if (
       parsed.version !== 1 ||
       typeof parsed.projectId !== "string" ||
-      !isWorkflowUuid(parsed.projectId) ||
+      !isProjectUuid(parsed.projectId) ||
       typeof parsed.expiresAtMs !== "number" ||
       !Number.isSafeInteger(parsed.expiresAtMs)
     ) return undefined;

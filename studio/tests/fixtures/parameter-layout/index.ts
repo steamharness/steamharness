@@ -1,14 +1,14 @@
 import type { RuntimeApi } from 'steamharness/runtime-api';
 
-const workflow = (globalThis as unknown as { workflow: RuntimeApi }).workflow;
-const task = workflow.defineWorkflow({
+const steamharness = (globalThis as unknown as { steamharness: RuntimeApi }).steamharness;
+const task = steamharness.defineProject({
   name: 'parameter-layout',
   run(input) {
-    return workflow.createOutputPayload({ items: [{ id: 'answer', contentType: 'text', content: JSON.stringify(input) }] });
+    return steamharness.createOutputPayload({ items: [{ id: 'answer', contentType: 'text', content: JSON.stringify(input) }] });
   },
 });
 
-export const executor = workflow.defineExecutor({
+export const executor = steamharness.defineExecutor({
   projectType: 'conversation',
   workflow: task,
   params: [
@@ -44,6 +44,6 @@ export const executor = workflow.defineExecutor({
     } };
   },
   createInput(context) {
-    return { ...context.paramValues, message: workflow.parseConversationDefaultInputArgs(context.args).message };
+    return { ...context.paramValues, message: steamharness.parseConversationDefaultInputArgs(context.args).message };
   },
 });

@@ -5,11 +5,11 @@ import type {
   MinimaxSpeechResult,
 } from "../interface";
 
-export const outputNode = workflow.createOutputNode<MinimaxSpeechResult, MinimaxSpeechOutputPayload>({
+export const outputNode = steamharness.createOutputNode<MinimaxSpeechResult, MinimaxSpeechOutputPayload>({
   name: "minimax-speech-output",
   format(result) {
     const audio = createAudioDescriptor(result);
-    const payload = workflow.createOutputPayload({
+    const payload = steamharness.createOutputPayload({
       items: [{
         title: result.dryRun ? "MiniMax speech audio preview" : "MiniMax speech audio",
         content: audio,

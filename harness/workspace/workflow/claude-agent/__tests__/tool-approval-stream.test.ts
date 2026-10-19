@@ -1,10 +1,10 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { installWorkflowRuntimeGlobal } from "steamharness/runtime-api";
+import { installProjectRuntimeGlobal } from "steamharness/runtime-api";
 import {
-  createDisabledWorkflowConversationContext,
-  createDisabledWorkflowTokenUsageContext,
-  createWorkflowRelatedProjectsContext,
-  createWorkflowToolPermissionContext,
+  createDisabledProjectConversationContext,
+  createDisabledProjectTokenUsageContext,
+  createProjectRelatedProjectsContext,
+  createProjectToolPermissionContext,
   type KVContext,
   type UserInputResolved,
   type UserInputRequest,
@@ -12,9 +12,9 @@ import {
 import type { NodeContext } from "steamharness/types/context";
 import type { ClaudeAgentSessionInput } from "../interface";
 
-installWorkflowRuntimeGlobal();
+installProjectRuntimeGlobal();
 
-const KNOWLEDGE_TOOL = "mcp__workflow-knowledge-documents__knowledge_documents";
+const KNOWLEDGE_TOOL = "mcp__steamharness-knowledge-documents__knowledge_documents";
 
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   createSdkMcpServer: vi.fn((server) => server),
@@ -136,7 +136,7 @@ describe("claude-agent tool approval stream", () => {
   });
 
   it("keeps the approved tool permission decision as a durable output item", async () => {
-    const requestId = "claude-agent:run-test:tool-approval:mcp__workflow-knowledge-documents__knowledge_documents";
+    const requestId = "claude-agent:run-test:tool-approval:mcp__steamharness-knowledge-documents__knowledge_documents";
     const chunks: unknown[] = [];
     const iterator = outputNode.stream(
       createSessionInput(),
@@ -209,16 +209,16 @@ function createNodeContext(
       local: {
         kv: createMemoryKVContext(),
         persistentValue: createMemoryKVContext(),
-        relatedProjects: createWorkflowRelatedProjectsContext(),
+        relatedProjects: createProjectRelatedProjectsContext(),
       },
       server: {
         kv: createMemoryKVContext(),
         persistentValue: createMemoryKVContext(),
-        relatedProjects: createWorkflowRelatedProjectsContext(),
+        relatedProjects: createProjectRelatedProjectsContext(),
       },
     },
-    conversation: createDisabledWorkflowConversationContext(),
-    tokenUsage: createDisabledWorkflowTokenUsageContext(),
+    conversation: createDisabledProjectConversationContext(),
+    tokenUsage: createDisabledProjectTokenUsageContext(),
     userInput: {
       async getResolvedInput() {
         return resolvedInput;
@@ -227,7 +227,7 @@ function createNodeContext(
         requests.push(request);
       },
     },
-    toolPermissions: createWorkflowToolPermissionContext({
+    toolPermissions: createProjectToolPermissionContext({
       projectName: "claude-agent",
       runId: "run-test",
       definitions: [
@@ -244,7 +244,7 @@ function createNodeContext(
       },
     }),
     metadata: {
-      workflow: "claude-agent",
+      project: "claude-agent",
       runId: "run-test",
     },
   };

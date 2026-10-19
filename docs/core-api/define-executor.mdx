@@ -57,8 +57,8 @@ Conversation 不声明 `defaultEntrypoint` 或 `entrypoints`。CLI 收到非空�
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `workflowName` | `string` | 当前 workflow 名称。 |
-| `workflowDir` | `string` | 当前 workflow 目录。 |
+| `projectName` | `string` | 当前 workflow 名称。 |
+| `projectDir` | `string` | 当前 workflow 目录。 |
 | `entrypointId` | `string \| undefined` | Workflow 当前所选入口 ID；Conversation 为 `undefined`。 |
 | `entrypointTitle` | `string \| undefined` | Workflow 当前所选入口标题；Conversation 为 `undefined`。 |
 | `args` | `string[]` | 原始 CLI 风格参数。 |
@@ -179,7 +179,7 @@ CLI Web 在参数刷新和发送时校验累积的动态选项与执行命令是
 | 阶段 | 说明 |
 | --- | --- |
 | 平台选择配置 | Workflow 按显式 ID 或 `defaultEntrypoint` 选择一个入口；Conversation 使用 executor 本身。 |
-| 创建上下文 | runtime 根据 args、env、workflowName、入口和 conversationId 创建 `ExecutorContext`。 |
+| 创建上下文 | runtime 根据 args、env、projectName、入口和 conversationId 创建 `ExecutorContext`。 |
 | `createInput` | 调用所选入口或 Conversation executor 的输入构造。 |
 | `createContext` | 调用同一执行配置的可选上下文扩展。 |
 | workflow `run` | 只执行所选入口的 workflow，或 Conversation 的唯一 workflow。 |
@@ -295,7 +295,7 @@ Conversation 固定使用标准主输入框，无需声明开关，也不能关�
 ```ts
 export const executor = workflow.defineExecutor<Input, Output>({
   projectType: "conversation",
-  workflow: conversationWorkflow,
+  workflow: conversationProject,
   conversation: {
     recovery: { enabled: true },
     inputQueue: {
@@ -365,7 +365,7 @@ export const executor = workflow.defineExecutor<Input, Output>({
     workflow.defineEntrypoint<Input, Output>({
       id: "main",
       title: "完整流程",
-      workflow: exampleWorkflow,
+      workflow: exampleProject,
       tokenUsage: { enabled: true, display: true },
       tools: [
         {

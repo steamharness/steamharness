@@ -51,20 +51,20 @@ export interface FileStore {
 
 export type FileCreator = (input: CreateFileInput) => Promise<FileReference>;
 
-export interface LocalWorkflowFileStoreOptions {
+export interface LocalProjectFileStoreOptions {
   rootDir?: string;
   allowAbsolutePaths?: boolean;
 }
 
-export interface ServerWorkflowFileStoreOptions {
+export interface ServerProjectFileStoreOptions {
   rootDir: string;
   projectName: string;
   conversationId?: string;
   maxBytes?: number;
 }
 
-export function createLocalWorkflowFileStore(
-  options: LocalWorkflowFileStoreOptions = {},
+export function createLocalProjectFileStore(
+  options: LocalProjectFileStoreOptions = {},
 ): FileStore {
   return {
     async resolveFile(reference) {
@@ -90,21 +90,21 @@ export function createLocalWorkflowFileStore(
         });
       }
 
-      const normalized = normalizeWorkflowFileReference({
+      const normalized = normalizeProjectFileReference({
         ...reference,
         size: reference.size || info.size,
       });
 
-      return createResolvedWorkflowFile(normalized, async () => readFile(filePath));
+      return createResolvedProjectFile(normalized, async () => readFile(filePath));
     },
   };
 }
 
-export function createWorkflowFileStore(options: {
+export function createProjectFileStore(options: {
   resolveStore?: FileStore;
   createFile?: FileCreator;
 }): FileStore {
-  const resolveStore = options.resolveStore ?? createLocalWorkflowFileStore({ allowAbsolutePaths: true });
+  const resolveStore = options.resolveStore ?? createLocalProjectFileStore({ allowAbsolutePaths: true });
 
   return {
     resolveFile(reference) {
@@ -112,23 +112,23 @@ export function createWorkflowFileStore(options: {
     },
     async createFile(input) {
       if (options.createFile === undefined) {
-        throw createWorkflowFileCreateUnavailableError();
+        throw createProjectFileCreateUnavailableError();
       }
 
-      return normalizeWorkflowFileReference(await options.createFile(input));
+      return normalizeProjectFileReference(await options.createFile(input));
     },
   };
 }
 
-export function createServerWorkflowFileStore(
-  options: ServerWorkflowFileStoreOptions,
+export function createServerProjectFileStore(
+  options: ServerProjectFileStoreOptions,
 ): FileStore {
-  const resolveStore = createLocalWorkflowFileStore({
+  const resolveStore = createLocalProjectFileStore({
     rootDir: options.rootDir,
     allowAbsolutePaths: true,
   });
 
-  return createWorkflowFileStore({
+  return createProjectFileStore({
     resolveStore,
     // This explicit store writes generated files to the server-managed namespace.
     async createFile(input) {
@@ -145,7 +145,7 @@ export function createServerWorkflowFileStore(
         });
       }
 
-      const id = createWorkflowManagedFileId();
+      const id = createProjectManagedFileId();
       const name = normalizeCreatedFileName(input.name);
       const mimeType = normalizeCreatedFileMimeType(input.mimeType, name);
       const reference: FileReference = {
@@ -170,11 +170,11 @@ export function createServerWorkflowFileStore(
   });
 }
 
-export function createResolvedWorkflowFile(
+export function createResolvedProjectFile(
   reference: FileReference,
   readBuffer: () => Promise<Buffer>,
 ): ResolvedFile {
-  const normalized = normalizeWorkflowFileReference(reference);
+  const normalized = normalizeProjectFileReference(reference);
 
   return {
     ...normalized,
@@ -210,7 +210,7 @@ export function createResolvedWorkflowFile(
   };
 }
 
-export function normalizeWorkflowFileReference(value: unknown): FileReference {
+export function normalizeProjectFileReference(value: unknown): FileReference {
   if (!isRecord(value)) {
     throw createInvalidFileReferenceError();
   }
@@ -224,8 +224,8 @@ export function normalizeWorkflowFileReference(value: unknown): FileReference {
   const projectId = readNonEmptyString(value.projectId);
   const conversationId = readNonEmptyString(value.conversationId);
   const url = readNonEmptyString(value.url);
-  const storage = readWorkflowFileStorage(value.storage, url);
-  const kind = readWorkflowFileKind(value.kind, mimeType);
+  const storage = readProjectFileStorage(value.storage, url);
+  const kind = readProjectFileKind(value.kind, mimeType);
   const filePath = readNonEmptyString(value.path);
 
   if (id === undefined) {
@@ -248,7 +248,7 @@ export function normalizeWorkflowFileReference(value: unknown): FileReference {
   };
 }
 
-export function parseWorkflowFileReferences(value: unknown): FileReference[] {
+export function parseProjectFileReferences(value: unknown): FileReference[] {
   if (value === undefined || value === null || value === "") {
     return [];
   }
@@ -261,20 +261,20 @@ export function parseWorkflowFileReferences(value: unknown): FileReference[] {
 
     const parsed = parseMaybeJson(trimmed);
     if (parsed !== undefined) {
-      return parseWorkflowFileReferences(parsed);
+      return parseProjectFileReferences(parsed);
     }
 
-    return [createPathWorkflowFileReference(trimmed)];
+    return [createPathProjectFileReference(trimmed)];
   }
 
   if (Array.isArray(value)) {
-    return value.map(normalizeWorkflowFileReference);
+    return value.map(normalizeProjectFileReference);
   }
 
-  return [normalizeWorkflowFileReference(value)];
+  return [normalizeProjectFileReference(value)];
 }
 
-function createPathWorkflowFileReference(filePath: string): FileReference {
+function createPathProjectFileReference(filePath: string): FileReference {
   return {
     id: filePath,
     name: path.basename(filePath),
@@ -289,7 +289,7 @@ function createPathWorkflowFileReference(filePath: string): FileReference {
 
 function resolveReferencePath(
   reference: FileReference,
-  options: LocalWorkflowFileStoreOptions,
+  options: LocalProjectFileStoreOptions,
 ): string {
   if (reference.storage === "url") {
     throw new HarnessError({
@@ -343,7 +343,7 @@ function parseMaybeJson(value: string): unknown | undefined {
   }
 }
 
-function readWorkflowFileStorage(value: unknown, url?: string): FileStorage {
+function readProjectFileStorage(value: unknown, url?: string): FileStorage {
   if (value === "local" || value === "server" || value === "path" || value === "url") {
     return value;
   }
@@ -355,7 +355,7 @@ function readWorkflowFileStorage(value: unknown, url?: string): FileStorage {
   return "path";
 }
 
-function readWorkflowFileKind(value: unknown, mimeType: string): FileKind {
+function readProjectFileKind(value: unknown, mimeType: string): FileKind {
   if (value === "image" || value === "file") {
     return value;
   }
@@ -374,7 +374,7 @@ function createInvalidFileReferenceError(): HarnessError {
   });
 }
 
-export function createWorkflowFileCreateUnavailableError(): HarnessError {
+export function createProjectFileCreateUnavailableError(): HarnessError {
   return new HarnessError({
     type: "execution",
     message: "Workflow file creation requires a configured file store. Connect the local host to server file storage or inject a workflow file creator.",
@@ -456,7 +456,7 @@ function normalizeCreateFileBuffer(value: CreateFileInput["buffer"]): Buffer {
   return Buffer.from(value);
 }
 
-function createWorkflowManagedFileId(): string {
+function createProjectManagedFileId(): string {
   return `wf_${randomUUID().replaceAll("-", "")}`;
 }
 
@@ -486,7 +486,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function workflowFileReferenceToDataUrl(reference: FileReference): string | undefined {
+export function projectFileReferenceToDataUrl(reference: FileReference): string | undefined {
   if (reference.url?.startsWith("data:")) {
     return reference.url;
   }
@@ -494,7 +494,7 @@ export function workflowFileReferenceToDataUrl(reference: FileReference): string
   return undefined;
 }
 
-export function workflowFileReferenceToUrl(reference: FileReference): URL | undefined {
+export function projectFileReferenceToUrl(reference: FileReference): URL | undefined {
   if (reference.url === undefined) {
     return undefined;
   }

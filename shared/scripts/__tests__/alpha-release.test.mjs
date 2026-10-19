@@ -72,7 +72,7 @@ test("release change detection ignores policy, test, and documentation paths", a
     ".claude/settings.json",
     ".codex/release-notes.json",
     "src/__tests__/alpha.test.ts",
-    "workspace/__tests__/workflow.test.ts",
+    "workspace/__tests__/steamharness.test.ts",
     "scripts/__tests__/release.test.mjs",
     "docs/guides/release.mdx",
     "documentation/README.md",

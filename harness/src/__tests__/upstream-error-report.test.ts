@@ -3,8 +3,8 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { runLocalWorkflowWithReport } from "../index";
-import { serializeWorkflowError, HarnessError } from "../workflow/errors";
+import { runLocalProjectWithReport } from "../index";
+import { serializeProjectError, HarnessError } from "../workflow/errors";
 
 const dashedProviderKey = `sk-${"a".repeat(18)}01`;
 
@@ -47,9 +47,9 @@ test("redaction leaves ordinary diagnostic prose intact", () => {
 });
 
 test("run report surfaces the upstream response body instead of only the HTTP status text", async () => {
-  const projectDir = await createUpstreamErrorWorkflow();
+  const projectDir = await createUpstreamErrorProject();
 
-  const report = await runLocalWorkflowWithReport({ projectDir, args: [] });
+  const report = await runLocalProjectWithReport({ projectDir, args: [] });
 
   assert.equal(report.status, "failed");
   assert.equal(report.result.ok, true);
@@ -66,11 +66,11 @@ test("run report surfaces the upstream response body instead of only the HTTP st
 });
 
 test("run report redacts credential shaped values and truncates long upstream bodies", async () => {
-  const projectDir = await createUpstreamErrorWorkflow({
+  const projectDir = await createUpstreamErrorProject({
     responseBody: `{"message":"rejected ${dashedProviderKey}","padding":"${"x".repeat(400)}"}`,
   });
 
-  const report = await runLocalWorkflowWithReport({ projectDir, args: [] });
+  const report = await runLocalProjectWithReport({ projectDir, args: [] });
 
   assert.equal(report.result.ok, true);
   if (!report.result.ok) return;
@@ -86,7 +86,7 @@ test("run report redacts credential shaped values and truncates long upstream bo
 /** Round-trips a body through the sanitizer to observe the exact excerpt a run report would carry. */
 function summarize(responseBody: string): string {
   const error = Object.assign(new Error("Unauthorized"), { statusCode: 401, responseBody });
-  const serialized = serializeWorkflowError(
+  const serialized = serializeProjectError(
     new HarnessError({ type: "provider_call", message: "call failed", cause: error }),
   );
 
@@ -97,7 +97,7 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&");
 }
 
-async function createUpstreamErrorWorkflow(
+async function createUpstreamErrorProject(
   options: { responseBody?: string } = {},
 ): Promise<string> {
   const responseBody = options.responseBody
@@ -137,26 +137,26 @@ async function createUpstreamErrorWorkflow(
       "  }",
       "}",
       "",
-      "export const upstreamErrorWorkflow = workflow.defineWorkflow<Record<string, never>, UpstreamErrorPayload>({",
+      "export const upstreamErrorProject = steamharness.defineProject<Record<string, never>, UpstreamErrorPayload>({",
       "  name: \"upstream-error-test\",",
       "  async run() {",
       "    throw new ApiCallError();",
       "  },",
       "});",
       "",
-      "export const executor = workflow.defineExecutor<Record<string, never>, UpstreamErrorPayload>({",
+      "export const executor = steamharness.defineExecutor<Record<string, never>, UpstreamErrorPayload>({",
       "  projectType: \"workflow\",",
       "  defaultEntrypoint: \"main\",",
-      "  entrypoints: [workflow.defineEntrypoint<Record<string, never>, UpstreamErrorPayload>({",
-      "    id: \"main\", title: \"Main\", workflow: upstreamErrorWorkflow,",
+      "  entrypoints: [steamharness.defineEntrypoint<Record<string, never>, UpstreamErrorPayload>({",
+      "    id: \"main\", title: \"Main\", workflow: upstreamErrorProject,",
       "    createInput() {",
       "      return {};",
       "    },",
       "  })],",
       "});",
       "",
-      "export { upstreamErrorWorkflow as workflow };",
-      "export default upstreamErrorWorkflow;",
+      "export { upstreamErrorProject as workflow };",
+      "export default upstreamErrorProject;",
       "",
     ].join("\n"),
   );

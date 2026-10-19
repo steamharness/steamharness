@@ -3,19 +3,19 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   createCliOutputStreamHooks,
-  createWorkflowFailure,
-  formatWorkflowExecutionJson,
-  inspectLocalWorkflowStructure,
+  createProjectFailure,
+  formatProjectExecutionJson,
+  inspectLocalProjectStructure,
   parseToolPermissionPoliciesJson,
-  resolveLocalWorkflowParams,
-  runLocalWorkflowWithReport,
+  resolveLocalProjectParams,
+  runLocalProjectWithReport,
   type ExecutionReport,
   type ParamResolveRequest,
   type RuntimeEvent,
   type ToolPermissionPolicyMap,
   type UserInputResolved,
 } from "steamharness";
-import { readWorkflowProjectInfo } from "@steamharness/project-info";
+import { readProjectInfo } from "@steamharness/project-info";
 import { i18n, translateSteamHarnessError } from "@steamharness/i18n";
 import {
   assertCoreCompatibility,
@@ -38,7 +38,7 @@ type SteamHarnessCommand = "run" | "json" | "structure" | "resolve-params" | "he
 export const STEAMHARNESS_DESKTOP_RUNTIME_EVENTS_ENV = "STEAMHARNESS_DESKTOP_RUNTIME_EVENTS";
 export const STEAMHARNESS_DESKTOP_RUNTIME_EVENT_PREFIX = "__STEAMHARNESS_RUNTIME_EVENT__";
 export const STEAMHARNESS_PARAM_ERROR_MARKER = "__STEAMHARNESS_PARAM_ERROR__";
-const RESUME_RUNTIME_EVENT_AFTER_REQUEST_ID = "__workflowResumeRuntimeEventAfterRequestId";
+const RESUME_RUNTIME_EVENT_AFTER_REQUEST_ID = "__projectResumeRuntimeEventAfterRequestId";
 
 export async function main(
   argv = process.argv.slice(2),
@@ -65,7 +65,7 @@ export async function main(
     return runResolveParamsCommand(args, abortController.signal);
   }
 
-  const parsed = parseWorkflowArgs(args, {
+  const parsed = parseProjectArgs(args, {
     json: command === "json",
   });
   assertLocalCliCoreCompatible(parsed.projectDir);
@@ -89,8 +89,8 @@ export async function main(
     server: {
       relatedProjectResolver: relatedProjectRuntime.serverResolver,
     },
-  } as unknown as NonNullable<Parameters<typeof runLocalWorkflowWithReport>[0]>["storage"];
-  const report = await runLocalWorkflowWithReport({
+  } as unknown as NonNullable<Parameters<typeof runLocalProjectWithReport>[0]>["storage"];
+  const report = await runLocalProjectWithReport({
     projectDir: parsed.projectDir,
     entrypointId: parsed.entrypointId,
     args: parsed.args,
@@ -107,9 +107,9 @@ export async function main(
   });
 
   if (parsed.json) {
-    console.log(formatWorkflowExecutionJson(report));
+    console.log(formatProjectExecutionJson(report));
   } else if (report.status === "failed") {
-    console.error(formatWorkflowExecutionJson(report));
+    console.error(formatProjectExecutionJson(report));
   }
 
   return getReportExitCode(report);
@@ -150,10 +150,10 @@ function parseCommand(value: string | undefined): SteamHarnessCommand {
 
 async function runResolveParamsCommand(argv: string[], abortSignal: AbortSignal): Promise<number> {
   try {
-    const parsed = parseWorkflowArgs(argv, { json: true });
+    const parsed = parseProjectArgs(argv, { json: true });
     assertLocalCliCoreCompatible(parsed.projectDir);
     const request = parseParamResolveRequest(readFileSync(0, "utf8"));
-    const result = await resolveLocalWorkflowParams({
+    const result = await resolveLocalProjectParams({
       projectDir: parsed.projectDir,
       entrypointId: parsed.entrypointId,
       request,
@@ -168,7 +168,7 @@ async function runResolveParamsCommand(argv: string[], abortSignal: AbortSignal)
 }
 
 export function formatParamResolverFailure(error: unknown): string {
-  return `${STEAMHARNESS_PARAM_ERROR_MARKER}${JSON.stringify(createWorkflowFailure(error).error)}`;
+  return `${STEAMHARNESS_PARAM_ERROR_MARKER}${JSON.stringify(createProjectFailure(error).error)}`;
 }
 
 function parseParamResolveRequest(value: string): ParamResolveRequest {
@@ -187,7 +187,7 @@ function parseParamResolveRequest(value: string): ParamResolveRequest {
   return parsed as ParamResolveRequest;
 }
 
-export function parseWorkflowArgs(
+export function parseProjectArgs(
   argv: string[],
   options: { json: boolean },
 ): {
@@ -227,35 +227,35 @@ export function parseWorkflowArgs(
     }
 
     if (arg === "--conversation-id") {
-      conversationId = readWorkflowArgValue(argv, ++index, "--conversation-id");
+      conversationId = readProjectArgValue(argv, ++index, "--conversation-id");
       continue;
     }
 
     if (arg === "--run-id") {
-      runId = readWorkflowArgValue(argv, ++index, "--run-id");
+      runId = readProjectArgValue(argv, ++index, "--run-id");
       continue;
     }
 
     if (arg === "--entrypoint") {
-      entrypointId = readWorkflowArgValue(argv, ++index, "--entrypoint");
+      entrypointId = readProjectArgValue(argv, ++index, "--entrypoint");
       continue;
     }
 
     if (arg === "--file-store-dir") {
-      fileStoreDir = readWorkflowArgValue(argv, ++index, "--file-store-dir");
+      fileStoreDir = readProjectArgValue(argv, ++index, "--file-store-dir");
       continue;
     }
 
     if (arg === "--related-project") {
       relatedProjects.push(parseCliRelatedProjectSpec(
-        readWorkflowArgValue(argv, ++index, "--related-project"),
+        readProjectArgValue(argv, ++index, "--related-project"),
       ));
       continue;
     }
 
     if (arg === "--resolved-user-inputs-json") {
       resolvedUserInputs = parseResolvedUserInputs(
-        readWorkflowArgValue(argv, ++index, "--resolved-user-inputs-json"),
+        readProjectArgValue(argv, ++index, "--resolved-user-inputs-json"),
       );
       continue;
     }
@@ -264,7 +264,7 @@ export function parseWorkflowArgs(
       // Internal host transport for App/server policy overrides.
       // The executor runtime filters unknown tools after reading registrations.
       toolPermissionPolicies = parseToolPermissionPoliciesJson(
-        readWorkflowArgValue(argv, ++index, "--tool-permissions-json"),
+        readProjectArgValue(argv, ++index, "--tool-permissions-json"),
       );
       continue;
     }
@@ -398,7 +398,7 @@ function createRuntimeEventJsonReplacer(): (key: string, value: unknown) => unkn
   };
 }
 
-function readWorkflowArgValue(argv: string[], index: number, name: string): string {
+function readProjectArgValue(argv: string[], index: number, name: string): string {
   const value = argv[index];
   if (value === undefined) {
     throw new Error(i18n.t("missingOptionValue", { ns: "cli", name }));
@@ -407,7 +407,7 @@ function readWorkflowArgValue(argv: string[], index: number, name: string): stri
 }
 
 function runStructureCommand(argv: string[]): number {
-  const parsed = parseWorkflowArgs(argv, { json: true });
+  const parsed = parseProjectArgs(argv, { json: true });
 
   try {
     assertLocalCliCoreCompatible(parsed.projectDir);
@@ -415,22 +415,22 @@ function runStructureCommand(argv: string[]): number {
       path.join(parsed.projectDir, "package.json"),
       "Workflow package.json",
     );
-    readWorkflowProjectInfo(projectManifest);
-    const report = inspectLocalWorkflowStructure({
+    readProjectInfo(projectManifest);
+    const report = inspectLocalProjectStructure({
       projectDir: parsed.projectDir,
     });
 
     console.log(JSON.stringify(report, null, 2));
     return 0;
   } catch (error) {
-    console.log(formatWorkflowStructureError(error));
+    console.log(formatProjectStructureError(error));
     return 1;
   }
 }
 
 export function assertLocalCliCoreCompatible(
   projectDir: string,
-  hostCoreVersion = readInstalledWorkflowCoreVersion(),
+  hostCoreVersion = readInstalledProjectCoreVersion(),
   options: { mode?: RepositoryMode } = {},
 ): { cliRequiredCoreVersion: string; projectRequiredCoreVersion: string } {
   // CLI 自己的清单是发布契约：它永远钉精确的 Core 版本，不接受相对路径。
@@ -460,7 +460,7 @@ export function assertLocalCliCoreCompatible(
   return { cliRequiredCoreVersion, projectRequiredCoreVersion };
 }
 
-export function readInstalledWorkflowCoreVersion(env: NodeJS.ProcessEnv = process.env): string {
+export function readInstalledProjectCoreVersion(env: NodeJS.ProcessEnv = process.env): string {
   const developmentRoot = env.STEAMHARNESS_LOCAL_HARNESS_ROOT?.trim();
   if (developmentRoot) {
     return readCoreVersionFromPackage(path.resolve(developmentRoot, "package.json"));
@@ -544,7 +544,7 @@ function getReportExitCode(report: ExecutionReport): number {
   return 0;
 }
 
-function formatWorkflowStructureError(error: unknown): string {
+function formatProjectStructureError(error: unknown): string {
   return JSON.stringify(
     {
       workflow: {
@@ -562,7 +562,7 @@ function formatWorkflowStructureError(error: unknown): string {
       diagnostics: {
         warnings: [],
         violations: [],
-        error: createWorkflowFailure(error).error,
+        error: createProjectFailure(error).error,
       },
     },
     null,

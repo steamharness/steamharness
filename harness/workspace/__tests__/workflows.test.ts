@@ -4,8 +4,8 @@ import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import {
   MockLLMProvider,
-  inspectLocalWorkflowStructure,
-  runLocalWorkflowWithReport,
+  inspectLocalProjectStructure,
+  runLocalProjectWithReport,
   HarnessError,
   type LLMChatInput,
   type ExecutionReport,
@@ -142,7 +142,7 @@ describe("workspace workflow structure snapshots", () => {
     // keeps a fixture and a compact structure snapshot next to its source.
     // The nested workspace resolves its projects explicitly and
     // does not depend on the repository's former workspace/workflow lookup.
-    const report = inspectLocalWorkflowStructure({
+    const report = inspectLocalProjectStructure({
       projectDir: projectDirectory(projectName),
       projectName,
     });
@@ -169,7 +169,7 @@ describe("workspace workflow offline runtime smoke", () => {
 
     const events: RuntimeEvent[] = [];
     const runtimeEventRecorder = createFixtureRuntimeEventRecorder(projectName);
-    const runFixture = async () => runLocalWorkflowWithReport({
+    const runFixture = async () => runLocalProjectWithReport({
       projectDir: projectDirectory(projectName),
       projectName,
       args: await resolveFixtureArgs(projectName, fixture.args),
@@ -186,7 +186,7 @@ describe("workspace workflow offline runtime smoke", () => {
         runtimeEventRecorder?.(event);
       },
     });
-    const report = isDeltaforceFixtureWorkflow(projectName)
+    const report = isDeltaforceFixtureProject(projectName)
       ? await withDeltaforeFixtureFetch(runFixture)
       : await runFixture();
 
@@ -243,7 +243,7 @@ describe("workspace workflow offline runtime smoke", () => {
       // item ids line up with final report items when the content is the same.
       expectMergedRuntimeItemsToAvoidDuplicateContent(events, outputItems);
     }
-    if (isDeltaforceFixtureWorkflow(projectName)) {
+    if (isDeltaforceFixtureProject(projectName)) {
       expect(outputContent).not.toContain("\"decision\":\"final_answer\"");
       expect(outputContent).not.toContain("\"phase\":\"final_answer\"");
       expect(outputContent).not.toContain("\"phase\":\"action\"");
@@ -307,7 +307,7 @@ describe("workspace workflow offline runtime smoke", () => {
 describe("conversation knowledge persistence", () => {
   it("writes a conversation transcript into PersistentValue-backed knowledge documents", async () => {
     const persistentValueStore = createMemoryKVStore();
-    const report = await runLocalWorkflowWithReport({
+    const report = await runLocalProjectWithReport({
       projectDir: projectDirectory("conversation-knowledge"),
       projectName: "conversation-knowledge",
       args: ["--message", "记录真实写入", "--title", "Persistent Conversation"],
@@ -376,7 +376,7 @@ describe("workspace workflow human input resume", () => {
     const args: string[] = [];
     const events: RuntimeEvent[] = [];
 
-    const waitingReport = await runLocalWorkflowWithReport({
+    const waitingReport = await runLocalProjectWithReport({
       projectDir: projectDirectory("human-input"),
       projectName: "human-input",
       args,
@@ -398,7 +398,7 @@ describe("workspace workflow human input resume", () => {
 
     const submittedAt = new Date("2026-06-04T10:30:00.000Z");
     const resumedEvents: RuntimeEvent[] = [];
-    const resumedReport = await resumeHumanInputWorkflow({
+    const resumedReport = await resumeHumanInputProject({
       args,
       runId: waitingReport.runId,
       requestId: waitingReport.pendingUserInput?.requestId ?? "",
@@ -448,7 +448,7 @@ describe("workspace workflow human input resume", () => {
     const outputItems = readOutputItems(output);
     expectPlainTextOutputItem(outputItems[outputItems.length - 1], "成功获取权限");
 
-    const deniedReport = await resumeHumanInputWorkflow({
+    const deniedReport = await resumeHumanInputProject({
       args,
       runId: waitingReport.runId,
       requestId: waitingReport.pendingUserInput?.requestId ?? "",
@@ -491,7 +491,7 @@ describe("workspace workflow output-showcase resume", () => {
       "1",
     ];
     const waitingEvents: RuntimeEvent[] = [];
-    const waitingReport = await runLocalWorkflowWithReport({
+    const waitingReport = await runLocalProjectWithReport({
       projectDir: projectDirectory("output-showcase"),
       projectName: "output-showcase",
       args,
@@ -527,7 +527,7 @@ describe("workspace workflow output-showcase resume", () => {
 
     const submittedAt = new Date("2026-06-10T12:00:00.000Z");
     const longTaskEvents: RuntimeEvent[] = [];
-    const longTaskReport = await resumeOutputShowcaseWorkflow({
+    const longTaskReport = await resumeOutputShowcaseProject({
       args,
       runId: waitingReport.runId,
       requestId: waitingReport.pendingUserInput?.requestId ?? "",
@@ -588,7 +588,7 @@ describe("workspace workflow output-showcase resume", () => {
     expect(longTaskReport.timers?.[0]?.durationMs).toBeGreaterThanOrEqual(15);
 
     const skippedEvents: RuntimeEvent[] = [];
-    const skippedReport = await resumeOutputShowcaseWorkflow({
+    const skippedReport = await resumeOutputShowcaseProject({
       args,
       runId: waitingReport.runId,
       requestId: waitingReport.pendingUserInput?.requestId ?? "",
@@ -641,7 +641,7 @@ describe("workspace workflow output-showcase resume", () => {
     const controller = new AbortController();
     const events: RuntimeEvent[] = [];
     let abortedDuringTool = false;
-    const reportPromise = runLocalWorkflowWithReport({
+    const reportPromise = runLocalProjectWithReport({
       projectDir: projectDirectory("output-showcase"),
       projectName: "output-showcase",
       args: [
@@ -673,7 +673,7 @@ describe("workspace workflow output-showcase resume", () => {
 
       expect(abortedDuringTool).toBe(true);
       expect(report.status).toBe("aborted");
-      expect(events.some((event) => event.type === "workflow_aborted")).toBe(true);
+      expect(events.some((event) => event.type === "project_aborted")).toBe(true);
     } finally {
       if (timeout !== undefined) {
         clearTimeout(timeout);
@@ -682,7 +682,7 @@ describe("workspace workflow output-showcase resume", () => {
   });
 });
 
-function resumeHumanInputWorkflow(options: {
+function resumeHumanInputProject(options: {
   args: string[];
   runId: string;
   requestId: string;
@@ -691,13 +691,13 @@ function resumeHumanInputWorkflow(options: {
   onRuntimeEvent?(event: RuntimeEvent): void;
 }) {
   const requestId = options.requestId;
-  return runLocalWorkflowWithReport({
+  return runLocalProjectWithReport({
     projectDir: projectDirectory("human-input"),
     projectName: "human-input",
     args: options.args,
     runId: options.runId,
     userInput: {
-      __workflowResumeRuntimeEventAfterRequestId: requestId,
+      __projectResumeRuntimeEventAfterRequestId: requestId,
       getResolvedInput(requestId) {
         if (requestId !== options.requestId) {
           return undefined;
@@ -719,7 +719,7 @@ function resumeHumanInputWorkflow(options: {
   });
 }
 
-function resumeOutputShowcaseWorkflow(options: {
+function resumeOutputShowcaseProject(options: {
   args: string[];
   runId: string;
   requestId: string;
@@ -728,13 +728,13 @@ function resumeOutputShowcaseWorkflow(options: {
   onRuntimeEvent?(event: RuntimeEvent): void;
 }) {
   const requestId = options.requestId;
-  return runLocalWorkflowWithReport({
+  return runLocalProjectWithReport({
     projectDir: projectDirectory("output-showcase"),
     projectName: "output-showcase",
     args: options.args,
     runId: options.runId,
     userInput: {
-      __workflowResumeRuntimeEventAfterRequestId: requestId,
+      __projectResumeRuntimeEventAfterRequestId: requestId,
       getResolvedInput(requestId) {
         if (requestId !== options.requestId) {
           return undefined;
@@ -762,7 +762,7 @@ function resumeOutputShowcaseWorkflow(options: {
 function expectStreamingChunksForNodes(events: RuntimeEvent[], configuredNames: string[]): void {
   for (const configuredName of configuredNames) {
     // runtime events 的 nodeName 是 standard name (output / user-input / timer),
-    // 真正能区分节点的是 metadata.title,这里就是 workflow.createOutputNode
+    // 真正能区分节点的是 metadata.title,这里就是 steamharness.createOutputNode
     // 配的 name。
     const chunks = events.filter((event) => {
       if (event.type !== "node_chunk") return false;
@@ -838,21 +838,21 @@ function createFixtureRuntimeEventRecorder(projectName: ProjectName) {
   }
 
   const outputItemIds: string[] = [];
-  let nestedOutputStartedBeforeNestedWorkflowFinished = false;
+  let nestedOutputStartedBeforeNestedProjectFinished = false;
 
   return (event: RuntimeEvent) => {
-    if (event.type === "workflow_succeeded") {
+    if (event.type === "project_succeeded") {
       expect(outputItemIds).toContain("openai-agents-tool-1-get_api_guns");
       expect(outputItemIds).toContain("openai-agents-answer");
       expect(outputItemIds.indexOf("openai-agents-tool-1-get_api_guns")).toBeLessThan(outputItemIds.indexOf("openai-agents-answer"));
-      expect(nestedOutputStartedBeforeNestedWorkflowFinished).toBe(true);
+      expect(nestedOutputStartedBeforeNestedProjectFinished).toBe(true);
       return;
     }
     if (event.type === "node_finished" && event.nodeName === "run-workflow") {
       expect(outputItemIds).toContain("openai-agents-tool-1-get_api_guns");
       expect(outputItemIds).toContain("openai-agents-answer");
       expect(outputItemIds.indexOf("openai-agents-tool-1-get_api_guns")).toBeLessThan(outputItemIds.indexOf("openai-agents-answer"));
-      nestedOutputStartedBeforeNestedWorkflowFinished = true;
+      nestedOutputStartedBeforeNestedProjectFinished = true;
       return;
     }
     if (event.type !== "node_chunk" || !isOutputItemStartChunk(event.chunk)) {
@@ -912,12 +912,12 @@ function createMemoryKVStore(): KVStore & {
 
 function summarizeStructure(report: StructureReport) {
   // keep structure snapshots stable across Windows and POSIX hosts.
-  const workflowFiles = report.workflow.files.map((file) => file.replaceAll("\\", "/"));
+  const projectFiles = report.workflow.files.map((file) => file.replaceAll("\\", "/"));
 
   const summary = {
     projectName: report.workflow.name,
     projectType: report.projectType,
-    files: workflowFiles.filter((file) => !file.includes("/__fixtures__/") && !file.includes("/__snapshots__/")),
+    files: projectFiles.filter((file) => !file.includes("/__fixtures__/") && !file.includes("/__snapshots__/")),
     nodes: Object.values(report.definitions.nodes).map((node) => ({
       id: node.id,
       factory: node.factory,
@@ -1055,13 +1055,13 @@ function walkExecution(
 }
 
 async function readSmokeFixture(projectName: ProjectName): Promise<SmokeFixture> {
-  return JSON.parse(await readWorkflowFile(projectName, "__fixtures__/smoke.json")) as SmokeFixture;
+  return JSON.parse(await readProjectFile(projectName, "__fixtures__/smoke.json")) as SmokeFixture;
 }
 
 async function createFixtureStorage(
   projectName: ProjectName,
 ): Promise<ExecutionStorageOptions> {
-  const packageJson = JSON.parse(await readWorkflowFile(projectName, "package.json")) as {
+  const packageJson = JSON.parse(await readProjectFile(projectName, "package.json")) as {
     steamHarness?: { projectInfo?: { dataStorage?: { mode?: unknown } } };
   };
   const mode = packageJson.steamHarness?.projectInfo?.dataStorage?.mode;
@@ -1078,7 +1078,7 @@ async function createFixtureStorage(
 }
 
 async function readStructureSnapshot(projectName: ProjectName) {
-  return JSON.parse(await readWorkflowFile(projectName, "__snapshots__/structure.json")) as unknown;
+  return JSON.parse(await readProjectFile(projectName, "__snapshots__/structure.json")) as unknown;
 }
 
 async function writeStructureSnapshot(projectName: ProjectName, structure: unknown): Promise<void> {
@@ -1089,7 +1089,7 @@ async function writeStructureSnapshot(projectName: ProjectName, structure: unkno
   );
 }
 
-async function readWorkflowFile(projectName: ProjectName, relativePath: string): Promise<string> {
+async function readProjectFile(projectName: ProjectName, relativePath: string): Promise<string> {
   return readFile(path.join(projectDirectory(projectName), relativePath), "utf8");
 }
 
@@ -1102,7 +1102,7 @@ function resolveExpectedRunText(value: string, report: ExecutionReport): string 
 }
 
 function createFixtureUserInputContext(projectName: ProjectName): UserInputContext | undefined {
-  if (!isUserInputFixtureWorkflow(projectName)) {
+  if (!isUserInputFixtureProject(projectName)) {
     return undefined;
   }
 
@@ -1121,7 +1121,7 @@ function createFixtureUserInputContext(projectName: ProjectName): UserInputConte
   };
 }
 
-function isUserInputFixtureWorkflow(projectName: ProjectName): projectName is "human-input" | "output-showcase" {
+function isUserInputFixtureProject(projectName: ProjectName): projectName is "human-input" | "output-showcase" {
   return projectName === "human-input" || projectName === "output-showcase";
 }
 
@@ -1254,7 +1254,7 @@ function createFixtureEnv(projectName: ProjectName): NodeJS.ProcessEnv | undefin
     };
   }
 
-  if (!isDeltaforceFixtureWorkflow(projectName)) {
+  if (!isDeltaforceFixtureProject(projectName)) {
     return undefined;
   }
 
@@ -1267,7 +1267,7 @@ function createFixtureEnv(projectName: ProjectName): NodeJS.ProcessEnv | undefin
   };
 }
 
-function isDeltaforceFixtureWorkflow(projectName: ProjectName): projectName is "deltafore-agent" | "deltaforce-openai-agent" {
+function isDeltaforceFixtureProject(projectName: ProjectName): projectName is "deltafore-agent" | "deltaforce-openai-agent" {
   return projectName === "deltafore-agent" || projectName === "deltaforce-openai-agent";
 }
 

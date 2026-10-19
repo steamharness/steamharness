@@ -1,12 +1,12 @@
 import {
-  defineWorkflowEntrypoint,
-  defineWorkflowExecutor,
+  defineProjectEntrypoint,
+  defineProjectExecutor,
 } from "./executor/definition";
 import {
   parseConversationDefaultInputArgs,
 } from "./executor/default-input";
 import {
-  createAgentConversationWorkflow,
+  createAgentConversationProject,
   createAgentNode,
   createAgentProjectInput,
   createAgentProjectParamResolver,
@@ -28,11 +28,11 @@ import {
   normalizeMcpServers,
 } from "./agent/mcp/index";
 import {
-  createWorkflowCapabilityServer,
-  createWorkflowCapabilityTools,
-  isWorkflowCapabilityAvailable,
-  listWorkflowCapabilityToolIds,
-  runWorkflowCapabilityAction,
+  createProjectCapabilityServer,
+  createProjectCapabilityTools,
+  isProjectCapabilityAvailable,
+  listProjectCapabilityToolIds,
+  runProjectCapabilityAction,
 } from "./agent/capabilities/index";
 import { createSkillTools, runSkillAction } from "./agent/skills";
 import { readOpenAIConversationHostInput } from "./executor/openai";
@@ -55,7 +55,7 @@ import {
   createToolApprovalGate,
 } from "./tool-permissions/index";
 import {
-  createLLMProviderFromWorkflowEnv,
+  createLLMProviderFromProjectEnv,
   createLLMProviderRef,
   getServerLLMCredentials,
 } from "./provider/llm/index";
@@ -72,12 +72,12 @@ import {
   createTimerNode,
   endTimer,
 } from "./timer/index";
-import { HarnessError, defineWorkflow, runFor, runIf, runNode, runStreamNode, runWhile, runWorkflow } from "./workflow/index";
+import { HarnessError, defineProject, runFor, runIf, runNode, runStreamNode, runWhile, runProject } from "./workflow/index";
 import { getEnv } from "./env";
 import { getRuntimeLocale } from "./runtime-locale";
 import { getRuntimePlatform, isCli, isDesktop } from "./runtime-platform";
 
-export const workflowRuntimeApi = {
+export const projectRuntimeApi = {
   createAgent,
   createAgentRegistry,
   defineAgentTask,
@@ -86,7 +86,7 @@ export const workflowRuntimeApi = {
   agentHook,
   AgentToolTask,
   AgentGenerationTask,
-  createAgentConversationWorkflow,
+  createAgentConversationProject,
   createAgentNode,
   createAgentProjectInput,
   createAgentProjectParamResolver,
@@ -99,7 +99,7 @@ export const workflowRuntimeApi = {
   createKnowledgeDocument,
   createInputNode,
   createLLMNode,
-  createLLMProviderFromEnv: createLLMProviderFromWorkflowEnv,
+  createLLMProviderFromEnv: createLLMProviderFromProjectEnv,
   createLLMProviderRef,
   createLLMStreamNode,
   createMcpTools,
@@ -113,12 +113,12 @@ export const workflowRuntimeApi = {
   createUserInputNode,
   createTimerNode,
   createToolApprovalGate,
-  createWorkflowCapabilityServer,
-  createWorkflowCapabilityTools,
+  createProjectCapabilityServer,
+  createProjectCapabilityTools,
   deleteKnowledgeDocument,
-  defineEntrypoint: defineWorkflowEntrypoint,
-  defineExecutor: defineWorkflowExecutor,
-  defineWorkflow,
+  defineEntrypoint: defineProjectEntrypoint,
+  defineExecutor: defineProjectExecutor,
+  defineProject,
   editKnowledgeDocument,
   endTimer,
   getEnv,
@@ -129,33 +129,33 @@ export const workflowRuntimeApi = {
   getServerLLMCredentials,
   isCli,
   isDesktop,
-  isWorkflowCapabilityAvailable,
+  isProjectCapabilityAvailable,
   parseConversationDefaultInputArgs,
   readOpenAIConversationHostInput,
   runFor,
   runIf,
   runNode,
   runSkillAction,
-  runWorkflowCapabilityAction,
+  runProjectCapabilityAction,
   listKnowledgeDocuments,
-  listWorkflowCapabilityToolIds,
+  listProjectCapabilityToolIds,
   normalizeMcpServers,
   readKnowledgeDocumentLines,
   runStreamNode,
   runWhile,
-  runWorkflow,
+  runProject,
   searchKnowledgeDocuments,
   HarnessError,
 };
 
-export type RuntimeApi = typeof workflowRuntimeApi;
+export type RuntimeApi = typeof projectRuntimeApi;
 
 declare global {
   // eslint-disable-next-line no-var
-  var workflow: RuntimeApi | undefined;
+  var steamharness: RuntimeApi | undefined;
 }
 
-export function installWorkflowRuntimeGlobal(): RuntimeApi {
-  globalThis.workflow = workflowRuntimeApi;
-  return workflowRuntimeApi;
+export function installProjectRuntimeGlobal(): RuntimeApi {
+  globalThis.steamharness = projectRuntimeApi;
+  return projectRuntimeApi;
 }

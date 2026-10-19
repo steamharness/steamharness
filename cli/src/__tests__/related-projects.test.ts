@@ -7,15 +7,15 @@ import * as steamHarness from "steamharness";
 import {
   createCliRelatedProjectRuntime,
   parseCliRelatedProjectSpec,
-  type CliWorkflowRelatedProjectKVResolver,
+  type CliProjectRelatedProjectKVResolver,
 } from "../related-projects";
 
 const CONSUMER_ID = "33333333-3333-4333-8333-333333333333";
 const TARGET_ID = "44444444-4444-4444-8444-444444444444";
 const roots: string[] = [];
 const hasRelatedProjectCore = typeof (steamHarness as unknown as {
-  createWorkflowRelatedProjectsContext?: unknown;
-}).createWorkflowRelatedProjectsContext === "function";
+  createProjectRelatedProjectsContext?: unknown;
+}).createProjectRelatedProjectsContext === "function";
 
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -238,11 +238,11 @@ function createRelatedKnowledge(persistentValue: unknown) {
 
 function createTargetPersistentValue(rootDir: string, projectId: string): unknown {
   const api = steamHarness as unknown as {
-    createLocalWorkflowKVStore(options: { rootDir: string; storageKind: "persistent_value" }): unknown;
-    createWorkflowPersistentValueContext(options: { store: unknown; projectId: string }): unknown;
+    createLocalProjectKVStore(options: { rootDir: string; storageKind: "persistent_value" }): unknown;
+    createProjectPersistentValueContext(options: { store: unknown; projectId: string }): unknown;
   };
-  return api.createWorkflowPersistentValueContext({
-    store: api.createLocalWorkflowKVStore({ rootDir, storageKind: "persistent_value" }),
+  return api.createProjectPersistentValueContext({
+    store: api.createLocalProjectKVStore({ rootDir, storageKind: "persistent_value" }),
     projectId,
   });
 }
@@ -331,13 +331,13 @@ interface RelatedProjectsTestContext {
 }
 
 function createRelatedProjectsContext(
-  resolver: CliWorkflowRelatedProjectKVResolver | undefined,
+  resolver: CliProjectRelatedProjectKVResolver | undefined,
 ): RelatedProjectsTestContext {
   const create = (steamHarness as unknown as {
-    createWorkflowRelatedProjectsContext?: (
-      resolver: CliWorkflowRelatedProjectKVResolver | undefined,
+    createProjectRelatedProjectsContext?: (
+      resolver: CliProjectRelatedProjectKVResolver | undefined,
     ) => RelatedProjectsTestContext;
-  }).createWorkflowRelatedProjectsContext;
+  }).createProjectRelatedProjectsContext;
   if (typeof create !== "function") {
     throw new Error("Installed steamharness does not support related project storage.");
   }

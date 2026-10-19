@@ -6,18 +6,18 @@ import {
   McpError,
   type RequestId,
 } from "@modelcontextprotocol/sdk/types.js";
-import { workflowMcpInputToArgs } from "./args";
+import { projectMcpInputToArgs } from "./args";
 import {
-  canWorkflowParamsUseMcpFormElicitation,
+  canProjectParamsUseMcpFormElicitation,
   McpInvalidParamsError,
-  workflowParamsToMcpElicitationSchema,
-  workflowParamsToMcpInputSchema,
-  workflowParamsToMcpJsonSchema,
+  projectParamsToMcpElicitationSchema,
+  projectParamsToMcpInputSchema,
+  projectParamsToMcpJsonSchema,
 } from "./schema";
 import {
-  createWorkflowMcpThrownErrorResult,
-  summarizePendingWorkflowMcpInput,
-  workflowReportToMcpResult,
+  createProjectMcpThrownErrorResult,
+  summarizePendingProjectMcpInput,
+  projectReportToMcpResult,
 } from "./result";
 import type {
   McpAuditEvent,
@@ -32,7 +32,7 @@ import type {
   McpUserInputRequest,
 } from "./types";
 
-export interface CreateWorkflowMcpServerOptions {
+export interface CreateProjectMcpServerOptions {
   projectId: string;
   structure: McpStructureReport;
   runner: McpRunner;
@@ -55,7 +55,7 @@ export interface CreateWorkflowMcpServerOptions {
   onAudit?(event: McpAuditEvent): Promise<void> | void;
 }
 
-export function createWorkflowMcpServerName(projectId: string): string {
+export function createProjectMcpServerName(projectId: string): string {
   const normalized = projectId.trim();
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(normalized)) {
     throw new Error("Workflow MCP project ID must be a safe non-empty identifier.");
@@ -63,7 +63,7 @@ export function createWorkflowMcpServerName(projectId: string): string {
   return `workflow-${normalized}`;
 }
 
-export function createWorkflowMcpServer(options: CreateWorkflowMcpServerOptions): Server {
+export function createProjectMcpServer(options: CreateProjectMcpServerOptions): Server {
   if (options.structure.projectType !== "workflow") {
     throw new Error(`Project type "${options.structure.projectType}" cannot be exposed through MCP.`);
   }
@@ -77,13 +77,13 @@ export function createWorkflowMcpServer(options: CreateWorkflowMcpServerOptions)
   const entrypoints = cloneEntrypoints(options.structure.entrypoints);
 
   const server = new Server(
-    { name: createWorkflowMcpServerName(options.projectId), version: options.version ?? "0.1.0" },
+    { name: createProjectMcpServerName(options.projectId), version: options.version ?? "0.1.0" },
     { capabilities: { tools: {} }, instructions: options.instructions },
   );
   const entrypointsById = new Map(entrypoints.map((entrypoint) => [entrypoint.id, entrypoint]));
   const schemas = new Map(entrypoints.map((entrypoint) => [
     entrypoint.id,
-    workflowParamsToMcpInputSchema(entrypoint.params, options.fileInputMode),
+    projectParamsToMcpInputSchema(entrypoint.params, options.fileInputMode),
   ]));
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -91,7 +91,7 @@ export function createWorkflowMcpServer(options: CreateWorkflowMcpServerOptions)
       name: entrypoint.id,
       title: entrypoint.title,
       description: entrypoint.description,
-      inputSchema: workflowParamsToMcpJsonSchema(entrypoint.params, options.fileInputMode),
+      inputSchema: projectParamsToMcpJsonSchema(entrypoint.params, options.fileInputMode),
     })),
   }));
 
@@ -123,7 +123,7 @@ export function createWorkflowMcpServer(options: CreateWorkflowMcpServerOptions)
         entrypointId: entrypoint.id,
         signal,
       });
-      const args = await workflowMcpInputToArgs({
+      const args = await projectMcpInputToArgs({
         projectId: options.projectId,
         entrypointId: entrypoint.id,
         params: entrypoint.params,
@@ -140,7 +140,7 @@ export function createWorkflowMcpServer(options: CreateWorkflowMcpServerOptions)
         args,
         signal,
       });
-      report = await resolveWorkflowMcpInteractions(
+      report = await resolveProjectMcpInteractions(
         server,
         options,
         entrypoint,
@@ -148,7 +148,7 @@ export function createWorkflowMcpServer(options: CreateWorkflowMcpServerOptions)
         signal,
         extra.requestId,
       );
-      const toolResult = workflowReportToMcpResult(report, entrypoint);
+      const toolResult = projectReportToMcpResult(report, entrypoint);
       auditFinished = true;
       await Promise.resolve(options.onAudit?.({
         type: "tool_call_finished",
@@ -173,7 +173,7 @@ export function createWorkflowMcpServer(options: CreateWorkflowMcpServerOptions)
         throw new McpError(ErrorCode.InvalidParams, error.message);
       }
       if (error instanceof McpError) throw error;
-      return createWorkflowMcpThrownErrorResult(error, entrypoint);
+      return createProjectMcpThrownErrorResult(error, entrypoint);
     }
   });
 
@@ -188,9 +188,9 @@ function combineAbortSignals(
   return AbortSignal.any([primary, secondary]);
 }
 
-async function resolveWorkflowMcpInteractions(
+async function resolveProjectMcpInteractions(
   server: Server,
-  options: CreateWorkflowMcpServerOptions,
+  options: CreateProjectMcpServerOptions,
   entrypoint: McpEntrypointStructure,
   initialReport: McpExecutionReport,
   signal: AbortSignal,
@@ -202,13 +202,13 @@ async function resolveWorkflowMcpInteractions(
     try {
       pending = clonePendingUserInput(report.pendingUserInput, entrypoint.id);
     } catch {
-      return workflowReportToInvalidPendingInput(report, entrypoint);
+      return projectReportToInvalidPendingInput(report, entrypoint);
     }
     if (pending !== undefined && pending !== report.pendingUserInput) {
       report = { ...report, pendingUserInput: pending };
     }
     const supportsFormElicitation = server.getClientCapabilities()?.elicitation?.form !== undefined;
-    if (!pending || !supportsFormElicitation || !canWorkflowParamsUseMcpFormElicitation(pending.params)) {
+    if (!pending || !supportsFormElicitation || !canProjectParamsUseMcpFormElicitation(pending.params)) {
       return report;
     }
     await Promise.resolve(options.onAudit?.({
@@ -224,10 +224,10 @@ async function resolveWorkflowMcpInteractions(
       elicited = await server.elicitInput({
         mode: "form",
         message: pending.description?.trim() || pending.title,
-        requestedSchema: workflowParamsToMcpElicitationSchema(pending.params, pending.defaultValues) as never,
+        requestedSchema: projectParamsToMcpElicitationSchema(pending.params, pending.defaultValues) as never,
       }, { signal, relatedRequestId });
     } catch (error) {
-      await cancelWorkflowMcpWaitingRun(
+      await cancelProjectMcpWaitingRun(
         options,
         entrypoint,
         report,
@@ -238,7 +238,7 @@ async function resolveWorkflowMcpInteractions(
       throw error;
     }
     if (elicited.action !== "accept") {
-      await cancelWorkflowMcpWaitingRun(
+      await cancelProjectMcpWaitingRun(
         options,
         entrypoint,
         report,
@@ -246,13 +246,13 @@ async function resolveWorkflowMcpInteractions(
         elicited.action === "decline" ? "elicitation_declined" : "elicitation_cancelled",
         signal,
       );
-      return workflowReportToMcpInteractionDeclined(report, entrypoint, elicited.action);
+      return projectReportToMcpInteractionDeclined(report, entrypoint, elicited.action);
     }
     try {
       if (!elicited.content) {
         throw new McpError(ErrorCode.InvalidParams, "Accepted elicitation response did not contain form data.");
       }
-      const parsed = await workflowParamsToMcpInputSchema(pending.params, "local")
+      const parsed = await projectParamsToMcpInputSchema(pending.params, "local")
         .safeParseAsync(elicited.content);
       if (!parsed.success) {
         throw new McpError(ErrorCode.InvalidParams, `Invalid elicitation response: ${parsed.error.message}`);
@@ -285,7 +285,7 @@ async function resolveWorkflowMcpInteractions(
       }
       report = resumed;
     } catch (error) {
-      await cancelWorkflowMcpWaitingRun(
+      await cancelProjectMcpWaitingRun(
         options,
         entrypoint,
         report,
@@ -299,8 +299,8 @@ async function resolveWorkflowMcpInteractions(
   return report;
 }
 
-async function cancelWorkflowMcpWaitingRun(
-  options: CreateWorkflowMcpServerOptions,
+async function cancelProjectMcpWaitingRun(
+  options: CreateProjectMcpServerOptions,
   entrypoint: McpEntrypointStructure,
   report: McpExecutionReport,
   pending: McpUserInputRequest,
@@ -318,7 +318,7 @@ async function cancelWorkflowMcpWaitingRun(
   });
 }
 
-function workflowReportToInvalidPendingInput(
+function projectReportToInvalidPendingInput(
   report: McpExecutionReport,
   entrypoint: McpEntrypointStructure,
 ): McpExecutionReport {
@@ -339,12 +339,12 @@ function workflowReportToInvalidPendingInput(
   };
 }
 
-function workflowReportToMcpInteractionDeclined(
+function projectReportToMcpInteractionDeclined(
   report: McpExecutionReport,
   entrypoint: McpEntrypointStructure,
   action: "decline" | "cancel",
 ): McpExecutionReport {
-  const pending = summarizePendingWorkflowMcpInput(report);
+  const pending = summarizePendingProjectMcpInput(report);
   return {
     ...report,
     status: "aborted",
@@ -476,7 +476,7 @@ function cloneParam(
   ) {
     throw new Error(`Workflow MCP entrypoint "${entrypointId}" has an invalid parameter name.`);
   }
-  if (!isWorkflowMcpParamType(value.type)) {
+  if (!isProjectMcpParamType(value.type)) {
     throw new Error(`Workflow MCP parameter "${name}" has an unsupported type.`);
   }
 
@@ -554,7 +554,7 @@ function cloneParamAccept(value: unknown, paramName: string): string[] | undefin
   return [...value] as string[];
 }
 
-function isWorkflowMcpParamType(value: unknown): value is NonNullable<McpEntrypointStructure["params"]>[number]["type"] {
+function isProjectMcpParamType(value: unknown): value is NonNullable<McpEntrypointStructure["params"]>[number]["type"] {
   return value === "string" || value === "number" || value === "boolean" || value === "positional" || value === "file";
 }
 
@@ -562,13 +562,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function createWorkflowMcpInteractionRequiredResult(
+export function createProjectMcpInteractionRequiredResult(
   report: McpExecutionReport,
   entrypoint: McpEntrypointStructure,
 ): McpToolResult {
-  return workflowReportToMcpResult(report, entrypoint, {
+  return projectReportToMcpResult(report, entrypoint, {
     code: "interaction_required",
     message: "Reconnect with a client that supports MCP form elicitation to continue this run.",
-    pendingInput: summarizePendingWorkflowMcpInput(report),
+    pendingInput: summarizePendingProjectMcpInput(report),
   });
 }

@@ -58,9 +58,9 @@ it.each([['en', 'workflow'], ['zh-CN', 'workflow'], ['en', 'conversation'], ['zh
     await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: '294b1eec-23fa-42cf-9fd3-2417f71c0570', name: 'Default name', version: '1.2.3', description: 'Original description', privateToken: 'not-public', type: 'module',
       steamHarness: { projectInfo: { localizedNames: { EN: 'English name', 'zh-cn': '\u4e2d\u6587\u540d\u79f0' }, dataStorage: { mode: 'server' } } } }));
     await writeFile(path.join(directory, 'index.ts'), `
-      const graph = workflow.defineWorkflow({ name: 'locale-fixture', async run() { return workflow.createOutputPayload({ items: [] }); } });
-      export const executor = workflow.defineExecutor(${projectType === 'workflow' ? `
-        { projectType: 'workflow', defaultEntrypoint: 'main', entrypoints: [workflow.defineEntrypoint({ id: 'main', title: 'Main', workflow: graph, createInput: context => context.paramValues })] }`
+      const graph = steamharness.defineProject({ name: 'locale-fixture', async run() { return steamharness.createOutputPayload({ items: [] }); } });
+      export const executor = steamharness.defineExecutor(${projectType === 'workflow' ? `
+        { projectType: 'workflow', defaultEntrypoint: 'main', entrypoints: [steamharness.defineEntrypoint({ id: 'main', title: 'Main', workflow: graph, createInput: context => context.paramValues })] }`
         : `{ projectType: 'conversation', workflow: graph, createInput: context => context.paramValues }`});`);
     const result = await runtime.inspect([directory]);
     expect(result.errors).toEqual([]);

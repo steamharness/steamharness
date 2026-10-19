@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  createDisabledWorkflowConversationContext,
+  createDisabledProjectConversationContext,
   createLLMNode,
   createLLMStreamNode,
-  createWorkflowKVContext,
-  createWorkflowRelatedProjectsContext,
-  createWorkflowTokenUsageContext,
+  createProjectKVContext,
+  createProjectRelatedProjectsContext,
+  createProjectTokenUsageContext,
   getLLMProvider,
   runNode,
   runStreamNode,
@@ -20,12 +20,12 @@ import {
 } from "../index";
 
 test("disabled token usage report is a safe no-op", async () => {
-  const kv = createWorkflowKVContext({
+  const kv = createProjectKVContext({
     store: createMemoryKVStore(),
     projectId: "demo",
     conversationId: "conv-1",
   });
-  const tokenUsage = createWorkflowTokenUsageContext({
+  const tokenUsage = createProjectTokenUsageContext({
     definition: { enabled: false },
     kv,
     projectId: "demo",
@@ -39,14 +39,14 @@ test("disabled token usage report is a safe no-op", async () => {
 
 test("manual token usage report writes project and conversation totals plus conversation entries", async () => {
   const store = createMemoryKVStore();
-  const kv = createWorkflowKVContext({
+  const kv = createProjectKVContext({
     store,
     projectId: "demo",
     conversationId: "conv-1",
     source: { projectId: "demo", runId: "run-1", conversationId: "conv-1" },
   });
   const updates: TokenUsageAggregate[] = [];
-  const tokenUsage = createWorkflowTokenUsageContext({
+  const tokenUsage = createProjectTokenUsageContext({
     definition: { enabled: true },
     kv,
     projectId: "demo",
@@ -89,8 +89,8 @@ test("manual token usage report writes project and conversation totals plus conv
 
 test("durable billing receipts repair a partial write and replace replayed usage", async () => {
   const store = createMemoryKVStore();
-  const kv = createWorkflowKVContext({ store, projectId: "durable", conversationId: "session" });
-  const makeUsage = () => createWorkflowTokenUsageContext({ definition: { enabled: true }, kv,
+  const kv = createProjectKVContext({ store, projectId: "durable", conversationId: "session" });
+  const makeUsage = () => createProjectTokenUsageContext({ definition: { enabled: true }, kv,
     projectId: "durable", conversationId: "session", runId: "same-run" });
   const update = kv.conversation.updateValue;
   kv.conversation.updateValue = async () => { throw new Error("crash between aggregates"); };
@@ -111,7 +111,7 @@ test("durable billing receipts repair a partial write and replace replayed usage
 
 test("token usage report upgrades stored aggregate without cache creation tokens", async () => {
   const store = createMemoryKVStore();
-  const kv = createWorkflowKVContext({
+  const kv = createProjectKVContext({
     store,
     projectId: "demo",
     source: { projectId: "demo", runId: "run-upgrade" },
@@ -125,7 +125,7 @@ test("token usage report upgrades stored aggregate without cache creation tokens
     calls: 1,
     updatedAt: "2026-01-01T00:00:00.000Z",
   });
-  const tokenUsage = createWorkflowTokenUsageContext({
+  const tokenUsage = createProjectTokenUsageContext({
     definition: { enabled: true },
     kv,
     projectId: "demo",
@@ -153,12 +153,12 @@ test("token usage report upgrades stored aggregate without cache creation tokens
 
 test("LLM node provider usage is reported before mapOutput can strip it", async () => {
   const store = createMemoryKVStore();
-  const kv = createWorkflowKVContext({
+  const kv = createProjectKVContext({
     store,
     projectId: "demo",
     source: { projectId: "demo", runId: "run-llm" },
   });
-  const tokenUsage = createWorkflowTokenUsageContext({
+  const tokenUsage = createProjectTokenUsageContext({
     definition: { enabled: true },
     kv,
     projectId: "demo",
@@ -212,12 +212,12 @@ test("LLM node provider usage is reported before mapOutput can strip it", async 
 });
 
 test("token usage parser reads snake case cache creation aliases", async () => {
-  const kv = createWorkflowKVContext({
+  const kv = createProjectKVContext({
     store: createMemoryKVStore(),
     projectId: "demo",
     source: { projectId: "demo", runId: "run-alias" },
   });
-  const tokenUsage = createWorkflowTokenUsageContext({
+  const tokenUsage = createProjectTokenUsageContext({
     definition: { enabled: true },
     kv,
     projectId: "demo",
@@ -258,12 +258,12 @@ test("token usage parser reads snake case cache creation aliases", async () => {
 });
 
 test("token usage parser reads Claude cache creation alias", async () => {
-  const kv = createWorkflowKVContext({
+  const kv = createProjectKVContext({
     store: createMemoryKVStore(),
     projectId: "demo",
     source: { projectId: "demo", runId: "run-claude-alias" },
   });
-  const tokenUsage = createWorkflowTokenUsageContext({
+  const tokenUsage = createProjectTokenUsageContext({
     definition: { enabled: true },
     kv,
     projectId: "demo",
@@ -296,12 +296,12 @@ test("token usage parser reads Claude cache creation alias", async () => {
 });
 
 test("custom node usage-shaped output is not reported automatically", async () => {
-  const kv = createWorkflowKVContext({
+  const kv = createProjectKVContext({
     store: createMemoryKVStore(),
     projectId: "demo",
     source: { projectId: "demo", runId: "run-custom" },
   });
-  const tokenUsage = createWorkflowTokenUsageContext({
+  const tokenUsage = createProjectTokenUsageContext({
     definition: { enabled: true },
     kv,
     projectId: "demo",
@@ -328,12 +328,12 @@ test("custom node usage-shaped output is not reported automatically", async () =
 });
 
 test("getLLMProvider reports provider usage for custom node calls", async () => {
-  const kv = createWorkflowKVContext({
+  const kv = createProjectKVContext({
     store: createMemoryKVStore(),
     projectId: "demo",
     source: { projectId: "demo", runId: "run-provider" },
   });
-  const tokenUsage = createWorkflowTokenUsageContext({
+  const tokenUsage = createProjectTokenUsageContext({
     definition: { enabled: true },
     kv,
     projectId: "demo",
@@ -375,12 +375,12 @@ test("getLLMProvider reports provider usage for custom node calls", async () => 
 });
 
 test("LLM stream finish usage is reported once by the stream node", async () => {
-  const kv = createWorkflowKVContext({
+  const kv = createProjectKVContext({
     store: createMemoryKVStore(),
     projectId: "demo",
     source: { projectId: "demo", runId: "run-stream" },
   });
-  const tokenUsage = createWorkflowTokenUsageContext({
+  const tokenUsage = createProjectTokenUsageContext({
     definition: { enabled: true },
     kv,
     projectId: "demo",
@@ -429,17 +429,17 @@ test("LLM stream finish usage is reported once by the stream node", async () => 
 });
 
 function createNodeContext(
-  kv: ReturnType<typeof createWorkflowKVContext>,
+  kv: ReturnType<typeof createProjectKVContext>,
   tokenUsage: TokenUsageContext,
   llm?: LLMProvider,
 ): NodeContext {
   return {
     providers: llm === undefined ? {} : { llm },
     storage: {
-      local: { kv, persistentValue: kv, relatedProjects: createWorkflowRelatedProjectsContext() },
-      server: { kv, persistentValue: kv, relatedProjects: createWorkflowRelatedProjectsContext() },
+      local: { kv, persistentValue: kv, relatedProjects: createProjectRelatedProjectsContext() },
+      server: { kv, persistentValue: kv, relatedProjects: createProjectRelatedProjectsContext() },
     },
-    conversation: createDisabledWorkflowConversationContext(),
+    conversation: createDisabledProjectConversationContext(),
     tokenUsage,
   };
 }

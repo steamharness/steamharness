@@ -23,7 +23,7 @@ const maxImageInputs = 16;
 const GPT_IMAGE_PROGRESS_ITEM_ID = "gpt-image-progress";
 const GPT_IMAGE_RESULT_ITEM_ID = "gpt-image-result";
 
-const inputNode = workflow.createInputNode<GptImageInput, GptImageParsedInput>({
+const inputNode = steamharness.createInputNode<GptImageInput, GptImageParsedInput>({
   name: "gpt-image-input",
   parse(input) {
     const prompt = input.prompt.trim() || defaultPrompt;
@@ -41,7 +41,7 @@ const inputNode = workflow.createInputNode<GptImageInput, GptImageParsedInput>({
     );
 
     if (background === "transparent") {
-      throw new workflow.HarnessError({
+      throw new steamharness.HarnessError({
         type: "input_validation",
         message: "gpt-image-2 does not support transparent background. Use auto or opaque.",
         nodeName: "gpt-image-input",
@@ -80,18 +80,18 @@ const inputNode = workflow.createInputNode<GptImageInput, GptImageParsedInput>({
   },
 });
 
-const imageInputNode = workflow.createFileInputNode({
+const imageInputNode = steamharness.createFileInputNode({
   name: "gpt-image-input-images",
   accept: acceptedImageTypes,
   multiple: true,
 });
 
-const generateNode = workflow.createOutputNode<GptImageRequest, GptImageOutputPayload>({
+const generateNode = steamharness.createOutputNode<GptImageRequest, GptImageOutputPayload>({
   name: "gpt-image-output",
   async *stream(input) {
     // Keep progress as its own stable item so the final generated
     // image item does not duplicate the live text item in App conversations.
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_start",
       item: {
         id: GPT_IMAGE_PROGRESS_ITEM_ID,
@@ -101,12 +101,12 @@ const generateNode = workflow.createOutputNode<GptImageRequest, GptImageOutputPa
         collapsed: false,
       },
     });
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_delta",
       itemId: GPT_IMAGE_PROGRESS_ITEM_ID,
       delta: "Generating image with gpt-image-2...\n",
     });
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_end",
       itemId: GPT_IMAGE_PROGRESS_ITEM_ID,
     });
@@ -144,7 +144,7 @@ const generateNode = workflow.createOutputNode<GptImageRequest, GptImageOutputPa
     const state = await context.conversation.getValue();
 
     return {
-      ...workflow.createOutputPayload({
+      ...steamharness.createOutputPayload({
         items: [{
           id: GPT_IMAGE_RESULT_ITEM_ID,
           title: "Generated Image",
@@ -181,12 +181,12 @@ const generateNode = workflow.createOutputNode<GptImageRequest, GptImageOutputPa
   },
 });
 
-export const gptImageWorkflow = workflow.defineWorkflow<GptImageInput, GptImageOutputPayload>({
+export const gptImageProject = steamharness.defineProject<GptImageInput, GptImageOutputPayload>({
   name: "gpt-image",
   async run(input, context) {
-    const parsed = await workflow.runNode(inputNode, input, context);
+    const parsed = await steamharness.runNode(inputNode, input, context);
     const conversationState = await context.conversation.getValue();
-    const currentImages = await workflow.runNode(imageInputNode, parsed.images, context);
+    const currentImages = await steamharness.runNode(imageInputNode, parsed.images, context);
     const contextImages = await resolveConversationContextImages(
       conversationState.messages,
       currentImages,
@@ -205,15 +205,15 @@ export const gptImageWorkflow = workflow.defineWorkflow<GptImageInput, GptImageO
         ? createConversationTitle(parsed.prompt)
         : undefined,
     };
-    const result = await workflow.runStreamNode(generateNode, request, context);
+    const result = await steamharness.runStreamNode(generateNode, request, context);
 
     return requireOutput(result.output);
   },
 });
 
-export const executor = workflow.defineExecutor<GptImageInput, GptImageOutputPayload>({
+export const executor = steamharness.defineExecutor<GptImageInput, GptImageOutputPayload>({
   projectType: "conversation",
-  workflow: gptImageWorkflow,
+  workflow: gptImageProject,
   conversation: {
         // 第二阶段把 gpt-image conversation 示例迁到 shared 默认输入框协议。
     attachments: {
@@ -340,8 +340,8 @@ export const executor = workflow.defineExecutor<GptImageInput, GptImageOutputPay
   },
 });
 
-export { gptImageWorkflow as workflow };
-export default gptImageWorkflow;
+export { gptImageProject as workflow };
+export default gptImageProject;
 
 async function runGptImage(
   input: GptImageRequest,
@@ -365,7 +365,7 @@ async function runGptImage(
   });
 
   if (result.b64Json.trim() === "") {
-    throw new workflow.HarnessError({
+    throw new steamharness.HarnessError({
       type: "provider_call",
       message: "OpenAI image response did not include base64 image data.",
       nodeName: "gpt-image-output",
@@ -382,7 +382,7 @@ function createOpenAIImageRunner(): GptImageRunner {
   return async (input) => {
     const apiKey = input.apiKey;
     if (apiKey === undefined) {
-      throw new workflow.HarnessError({
+      throw new steamharness.HarnessError({
         type: "input_validation",
         message: "Missing required environment variable: OPENAI_API_KEY.",
         nodeName: "gpt-image-output",
@@ -615,7 +615,7 @@ function createConversationTitle(prompt: string): string {
 }
 
 function parseInput(args: string[]): GptImageInput {
-  const defaults = workflow.parseConversationDefaultInputArgs(args);
+  const defaults = steamharness.parseConversationDefaultInputArgs(args);
   const defaultMessage = defaults.message.trim();
   const input: GptImageInput = {
     prompt: defaults.message,
@@ -700,7 +700,7 @@ function parseImageReferences(value: string): FileReference[] {
 
 function normalizeFileReference(value: unknown): FileReference {
   if (!isRecord(value)) {
-    throw new workflow.HarnessError({
+    throw new steamharness.HarnessError({
       type: "input_validation",
       message: "Image file reference must be an object.",
       nodeName: "gpt-image-input",
@@ -709,7 +709,7 @@ function normalizeFileReference(value: unknown): FileReference {
   const id = readString(value.id);
   const name = readString(value.name) ?? id;
   if (id === undefined || name === undefined) {
-    throw new workflow.HarnessError({
+    throw new steamharness.HarnessError({
       type: "input_validation",
       message: "Image file reference requires id and name.",
       nodeName: "gpt-image-input",
@@ -743,7 +743,7 @@ function normalizeSize(value: string | undefined): GptImageSize {
 
   const match = normalized.match(/^(\d+)x(\d+)$/);
   if (!match) {
-    throw new workflow.HarnessError({
+    throw new steamharness.HarnessError({
       type: "input_validation",
       message: `Invalid image size "${normalized}". Use auto or WIDTHxHEIGHT.`,
       nodeName: "gpt-image-input",
@@ -752,7 +752,7 @@ function normalizeSize(value: string | undefined): GptImageSize {
   const width = Number(match[1]);
   const height = Number(match[2]);
   if (width % 16 !== 0 || height % 16 !== 0 || width <= 0 || height <= 0) {
-    throw new workflow.HarnessError({
+    throw new steamharness.HarnessError({
       type: "input_validation",
       message: "Custom gpt-image-2 sizes must be positive and divisible by 16.",
       nodeName: "gpt-image-input",
@@ -760,7 +760,7 @@ function normalizeSize(value: string | undefined): GptImageSize {
   }
   const ratio = width / height;
   if (ratio < 1 / 3 || ratio > 3) {
-    throw new workflow.HarnessError({
+    throw new steamharness.HarnessError({
       type: "input_validation",
       message: "Custom gpt-image-2 sizes must use an aspect ratio between 1:3 and 3:1.",
       nodeName: "gpt-image-input",
@@ -779,7 +779,7 @@ function normalizeCompression(
   }
   const compression = value ?? 100;
   if (!Number.isInteger(compression) || compression < 0 || compression > 100) {
-    throw new workflow.HarnessError({
+    throw new steamharness.HarnessError({
       type: "input_validation",
       message: "Output compression must be an integer between 0 and 100.",
       nodeName: "gpt-image-input",
@@ -799,7 +799,7 @@ function readEnum<Value extends string>(
     return normalized as Value;
   }
 
-  throw new workflow.HarnessError({
+  throw new steamharness.HarnessError({
     type: "input_validation",
     message: `Invalid ${name} "${normalized}". Expected one of: ${allowed.join(", ")}.`,
     nodeName: "gpt-image-input",
@@ -849,7 +849,7 @@ function requireOutput<Output>(output: Output | undefined): Output {
 
 function readOptionalEnv(...keys: string[]): string | undefined {
   for (const key of keys) {
-    const value = workflow.getEnv(key);
+    const value = steamharness.getEnv(key);
     if (value !== undefined && value.trim() !== "") {
       return value;
     }
@@ -860,7 +860,7 @@ function readOptionalEnv(...keys: string[]): string | undefined {
 function requireArgValue(args: string[], index: number, flag: string): string {
   const value = args[index];
   if (value === undefined) {
-    throw new workflow.HarnessError({
+    throw new steamharness.HarnessError({
       type: "input_validation",
       message: `Missing value for ${flag}.`,
       nodeName: "gpt-image-input",
@@ -872,7 +872,7 @@ function requireArgValue(args: string[], index: number, flag: string): string {
 function parseNumber(value: string, flag: string): number {
   const numberValue = Number(value);
   if (!Number.isFinite(numberValue)) {
-    throw new workflow.HarnessError({
+    throw new steamharness.HarnessError({
       type: "input_validation",
       message: `${flag} must be a number.`,
       nodeName: "gpt-image-input",

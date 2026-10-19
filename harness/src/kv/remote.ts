@@ -1,7 +1,7 @@
-import { readWorkflowCliAuthConfigSync } from "../auth-config";
+import { readProjectCliAuthConfigSync } from "../auth-config";
 import {
-  normalizeWorkflowKVStoreInput,
-  type NormalizedWorkflowKVStoreInput,
+  normalizeProjectKVStoreInput,
+  type NormalizedProjectKVStoreInput,
   type KVStore,
   type KVStoreGetInput,
   type KVNamespaceLockInput,
@@ -18,24 +18,24 @@ interface ApiResponse<T> {
   data?: T;
 }
 
-interface RemoteWorkflowStorageGetResult {
+interface RemoteProjectStorageGetResult {
   exists: boolean;
   value?: unknown;
   revision?: string;
 }
 
-interface RemoteWorkflowStorageCompareAndSetResult {
+interface RemoteProjectStorageCompareAndSetResult {
   applied: boolean;
   revision?: string;
 }
 
-interface RemoteWorkflowStorageDeleteResult {
+interface RemoteProjectStorageDeleteResult {
   removed: boolean;
 }
 
 const REMOTE_STEAMHARNESS_STORAGE_UPDATE_MAX_ATTEMPTS = 8;
 
-export interface RemoteWorkflowStorageStoreOptions {
+export interface RemoteProjectStorageStoreOptions {
   serverUrl: string;
   token: string;
   projectId: string;
@@ -46,14 +46,14 @@ export interface RemoteWorkflowStorageStoreOptions {
   };
 }
 
-export class RemoteWorkflowStorageStore implements KVStore {
+export class RemoteProjectStorageStore implements KVStore {
   private readonly serverUrl: string;
   private readonly token: string;
   private readonly projectId: string;
   private readonly storageKind: StorageKind;
-  private readonly relatedProject: RemoteWorkflowStorageStoreOptions["relatedProject"];
+  private readonly relatedProject: RemoteProjectStorageStoreOptions["relatedProject"];
 
-  constructor(options: RemoteWorkflowStorageStoreOptions) {
+  constructor(options: RemoteProjectStorageStoreOptions) {
     this.serverUrl = normalizeServerUrl(options.serverUrl);
     this.token = options.token.trim();
     this.projectId = options.projectId.trim();
@@ -72,7 +72,7 @@ export class RemoteWorkflowStorageStore implements KVStore {
   }
 
   async setValue(input: KVStoreSetInput): Promise<void> {
-    assertRemoteWorkflowStorageValue(input.value);
+    assertRemoteProjectStorageValue(input.value);
     await this.fetchStorage<void>({
       method: "POST",
       body: {
@@ -85,7 +85,7 @@ export class RemoteWorkflowStorageStore implements KVStore {
   }
 
   async deleteValue(input: KVStoreGetInput): Promise<boolean> {
-    const result = await this.fetchStorage<RemoteWorkflowStorageDeleteResult>({
+    const result = await this.fetchStorage<RemoteProjectStorageDeleteResult>({
       method: "POST",
       body: {
         operation: "delete",
@@ -93,7 +93,7 @@ export class RemoteWorkflowStorageStore implements KVStore {
       },
     });
     if (typeof result.removed !== "boolean") {
-      throw createRemoteWorkflowStorageProtocolError(
+      throw createRemoteProjectStorageProtocolError(
         "Workflow storage server returned an invalid delete result.",
       );
     }
@@ -108,14 +108,14 @@ export class RemoteWorkflowStorageStore implements KVStore {
     for (let attempt = 0; attempt < REMOTE_STEAMHARNESS_STORAGE_UPDATE_MAX_ATTEMPTS; attempt += 1) {
       const current = await this.getStorageEntry(input);
       if (current.exists && typeof current.revision !== "string") {
-        throw createRemoteWorkflowStorageProtocolError(
+        throw createRemoteProjectStorageProtocolError(
           "Workflow storage server did not return a revision for an existing value.",
         );
       }
 
       const value = updater(current.exists ? current.value : undefined);
-      assertRemoteWorkflowStorageValue(value);
-      const result = await this.fetchStorage<RemoteWorkflowStorageCompareAndSetResult>({
+      assertRemoteProjectStorageValue(value);
+      const result = await this.fetchStorage<RemoteProjectStorageCompareAndSetResult>({
         method: "POST",
         body: {
           operation: "compare-and-set",
@@ -129,7 +129,7 @@ export class RemoteWorkflowStorageStore implements KVStore {
         return value;
       }
       if (result.applied !== false) {
-        throw createRemoteWorkflowStorageProtocolError(
+        throw createRemoteProjectStorageProtocolError(
           "Workflow storage server returned an invalid compare-and-set result.",
         );
       }
@@ -154,7 +154,7 @@ export class RemoteWorkflowStorageStore implements KVStore {
       body: {
         operation: "knowledge-mutation",
         namespace: this.createStorageNamespace(input),
-        mutation: createRemoteWorkflowStorageKnowledgeMutation(mutation),
+        mutation: createRemoteProjectStorageKnowledgeMutation(mutation),
       },
     });
   }
@@ -172,7 +172,7 @@ export class RemoteWorkflowStorageStore implements KVStore {
         !/^[a-z][a-z0-9_-]{0,63}$/.test(this.relatedProject.alias)
       ))
     ) {
-      throw createRemoteWorkflowStorageConfigError();
+      throw createRemoteProjectStorageConfigError();
     }
 
     let response: Response;
@@ -217,8 +217,8 @@ export class RemoteWorkflowStorageStore implements KVStore {
     });
   }
 
-  private async getStorageEntry(input: KVStoreGetInput): Promise<RemoteWorkflowStorageGetResult> {
-    const response = await this.fetchStorage<RemoteWorkflowStorageGetResult>({
+  private async getStorageEntry(input: KVStoreGetInput): Promise<RemoteProjectStorageGetResult> {
+    const response = await this.fetchStorage<RemoteProjectStorageGetResult>({
       method: "POST",
       body: {
         operation: "get",
@@ -226,7 +226,7 @@ export class RemoteWorkflowStorageStore implements KVStore {
       },
     });
     if (typeof response.exists !== "boolean") {
-      throw createRemoteWorkflowStorageProtocolError(
+      throw createRemoteProjectStorageProtocolError(
         "Workflow storage server returned an invalid get result.",
       );
     }
@@ -234,7 +234,7 @@ export class RemoteWorkflowStorageStore implements KVStore {
   }
 
   private createStorageEntry(input: KVStoreGetInput) {
-    const entry = createRemoteWorkflowStorageEntry(input);
+    const entry = createRemoteProjectStorageEntry(input);
     this.assertBoundInput(entry);
     if (this.relatedProject === undefined) return entry;
     const { projectId: _targetProjectId, ...relatedEntry } = entry;
@@ -242,7 +242,7 @@ export class RemoteWorkflowStorageStore implements KVStore {
   }
 
   private createStorageNamespace(input: KVNamespaceLockInput) {
-    const namespace = createRemoteWorkflowStorageNamespace(input);
+    const namespace = createRemoteProjectStorageNamespace(input);
     this.assertBoundInput(namespace);
     if (this.relatedProject === undefined) return namespace;
     const { projectId: _targetProjectId, ...relatedNamespace } = namespace;
@@ -267,24 +267,24 @@ export class RemoteWorkflowStorageStore implements KVStore {
   }
 }
 
-export function createRemoteWorkflowStorageStoreFromEnv(
+export function createRemoteProjectStorageStoreFromEnv(
   projectId: string,
   storageKind: StorageKind,
   env: NodeJS.ProcessEnv = process.env,
 ): KVStore | undefined {
-  return createRemoteWorkflowStorageStoreFromConnection({
+  return createRemoteProjectStorageStoreFromConnection({
     projectId,
     storageKind,
   }, env);
 }
 
-export function createRemoteWorkflowRelatedProjectKVStoreFromEnv(options: {
+export function createRemoteProjectRelatedProjectKVStoreFromEnv(options: {
   consumerProjectId: string;
   targetProjectId: string;
   alias: string;
   env?: NodeJS.ProcessEnv;
 }): KVStore | undefined {
-  return createRemoteWorkflowStorageStoreFromConnection({
+  return createRemoteProjectStorageStoreFromConnection({
     projectId: options.targetProjectId,
     storageKind: "kv",
     relatedProject: {
@@ -294,8 +294,8 @@ export function createRemoteWorkflowRelatedProjectKVStoreFromEnv(options: {
   }, options.env ?? process.env);
 }
 
-function createRemoteWorkflowStorageStoreFromConnection(
-  options: Omit<RemoteWorkflowStorageStoreOptions, "serverUrl" | "token">,
+function createRemoteProjectStorageStoreFromConnection(
+  options: Omit<RemoteProjectStorageStoreOptions, "serverUrl" | "token">,
   env: NodeJS.ProcessEnv,
 ): KVStore | undefined {
   const explicitServerUrl = env.STEAMHARNESS_SERVER_URL;
@@ -304,12 +304,12 @@ function createRemoteWorkflowStorageStoreFromConnection(
   const token = explicitToken?.trim();
 
   if (serverUrl !== undefined && serverUrl !== "" && token !== undefined && token !== "") {
-    return new RemoteWorkflowStorageStore({ serverUrl, token, ...options });
+    return new RemoteProjectStorageStore({ serverUrl, token, ...options });
   }
 
-  const authConfig = readWorkflowCliAuthConfigSync(env);
+  const authConfig = readProjectCliAuthConfigSync(env);
   if (authConfig.serverUrl.trim() !== "" && authConfig.apiKey.trim() !== "") {
-    return new RemoteWorkflowStorageStore({
+    return new RemoteProjectStorageStore({
       serverUrl: authConfig.serverUrl,
       token: authConfig.apiKey,
       ...options,
@@ -319,14 +319,14 @@ function createRemoteWorkflowStorageStoreFromConnection(
   return undefined;
 }
 
-function createRemoteWorkflowStorageEntry(input: KVStoreGetInput): {
+function createRemoteProjectStorageEntry(input: KVStoreGetInput): {
   storageKind: StorageKind;
-  scope: NormalizedWorkflowKVStoreInput["scope"];
+  scope: NormalizedProjectKVStoreInput["scope"];
   projectId: string;
   key: string;
   conversationId?: string;
 } {
-  const normalized = normalizeWorkflowKVStoreInput(input);
+  const normalized = normalizeProjectKVStoreInput(input);
   return normalized.scope === "project"
     ? {
         storageKind: normalized.storageKind,
@@ -343,13 +343,13 @@ function createRemoteWorkflowStorageEntry(input: KVStoreGetInput): {
       };
 }
 
-function createRemoteWorkflowStorageNamespace(input: KVNamespaceLockInput): {
+function createRemoteProjectStorageNamespace(input: KVNamespaceLockInput): {
   storageKind: StorageKind;
-  scope: NormalizedWorkflowKVStoreInput["scope"];
+  scope: NormalizedProjectKVStoreInput["scope"];
   projectId: string;
   conversationId?: string;
 } {
-  const normalized = normalizeWorkflowKVStoreInput({
+  const normalized = normalizeProjectKVStoreInput({
     ...input,
     key: "namespace-mutation",
   });
@@ -374,10 +374,10 @@ function createRemoteWorkflowStorageNamespace(input: KVNamespaceLockInput): {
  * This module's own helpers name their mutations `knowledge-document.*`; the
  * Runtime API takes `create`/`edit`/`delete` with the document id spelled
  * `documentId`. A host that forwards the mutation verbatim (rather than
- * routing it through `RemoteWorkflowStorageStore`) has to translate it here
+ * routing it through `RemoteProjectStorageStore`) has to translate it here
  * first, or the server rejects the request as malformed.
  */
-export function createRemoteWorkflowStorageKnowledgeMutation(
+export function createRemoteProjectStorageKnowledgeMutation(
   mutation: KVNamespaceMutation,
 ): { type: "create" | "edit" | "delete"; input: unknown } {
   switch (mutation.type) {
@@ -425,21 +425,21 @@ function normalizeServerUrl(value: string): string {
   return value.trim().replace(/\/+$/, "");
 }
 
-function createRemoteWorkflowStorageConfigError(): HarnessError {
+function createRemoteProjectStorageConfigError(): HarnessError {
   return new HarnessError({
     type: "input_validation",
     message: "Server storage requires a project id and an authenticated server connection. Sign in and bind this project to the same server project id before accessing context.storage.server.",
   });
 }
 
-function createRemoteWorkflowStorageProtocolError(message: string): HarnessError {
+function createRemoteProjectStorageProtocolError(message: string): HarnessError {
   return new HarnessError({
     type: "execution",
     message,
   });
 }
 
-function assertRemoteWorkflowStorageValue(value: unknown): void {
+function assertRemoteProjectStorageValue(value: unknown): void {
   if (value === undefined) {
     throw new HarnessError({
       type: "input_validation",

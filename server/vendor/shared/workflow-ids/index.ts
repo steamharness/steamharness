@@ -15,7 +15,7 @@ export function isSafeProjectId(value: string): boolean {
   );
 }
 
-export function isWorkflowUuid(value: string): boolean {
+export function isProjectUuid(value: string): boolean {
   return STEAMHARNESS_UUID_PATTERN.test(value.trim());
 }
 
@@ -29,10 +29,10 @@ export function assertSafeProjectId(value: string, label = "workflow id"): strin
   return normalized;
 }
 
-export function assertWorkflowUuid(value: string, label = "workflow id"): string {
+export function assertProjectUuid(value: string, label = "workflow id"): string {
   const normalized = value.trim();
 
-  if (!isWorkflowUuid(normalized)) {
+  if (!isProjectUuid(normalized)) {
     throw new Error(`Invalid ${label} "${value}".`);
   }
 
@@ -43,11 +43,11 @@ export function createUnsafeProjectIdMessage(value: string, label = "workflow id
   return `Invalid ${label} "${value}".`;
 }
 
-export function createInvalidWorkflowUuidMessage(value: string, label = "workflow id"): string {
+export function createInvalidProjectUuidMessage(value: string, label = "workflow id"): string {
   return `Invalid ${label} "${value}". Expected a UUID.`;
 }
 
-export function resolveWorkflowRoot(projectsRoot: string, projectId: string): string {
+export function resolveProjectRoot(projectsRoot: string, projectId: string): string {
   const safeProjectId = assertSafeProjectId(projectId);
   const root = path.resolve(projectsRoot);
   const resolved = path.resolve(root, safeProjectId);

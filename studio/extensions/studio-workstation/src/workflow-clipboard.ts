@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-export function bindWorkflowClipboard(webview: vscode.Webview) {
+export function bindProjectClipboard(webview: vscode.Webview) {
   let disposed = false;
   let writing = Promise.resolve();
   return {

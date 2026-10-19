@@ -4,14 +4,14 @@ import type pg from "pg";
 import type { ProjectDataSummary } from "./storage";
 import { KNOWLEDGE_DOCUMENT_KEY_PREFIX } from "steamharness";
 import type { File, KVEntryPage, KVEntryDetail, KVEntrySummary, KVEntryValueType, TokenUsageDetail, TokenUsagePage } from "./storage";
-import { normalizeWorkflowKVStoreInput, TOKEN_USAGE_ENTRY_KEY_PREFIX, TOKEN_USAGE_TOTAL_KEY, createEmptyTokenUsageAggregate, readStoredTokenUsageEntry, readStoredTokenUsageAggregate, type KVStore, type KVStoreGetInput, type KVNamespaceLockInput, type KVStoreSetInput, type KVWriteSource, type TokenUsageAggregate, type TokenUsageEntry } from "steamharness";
+import { normalizeProjectKVStoreInput, TOKEN_USAGE_ENTRY_KEY_PREFIX, TOKEN_USAGE_TOTAL_KEY, createEmptyTokenUsageAggregate, readStoredTokenUsageEntry, readStoredTokenUsageAggregate, type KVStore, type KVStoreGetInput, type KVNamespaceLockInput, type KVStoreSetInput, type KVWriteSource, type TokenUsageAggregate, type TokenUsageEntry } from "steamharness";
 import { createPostgresPool } from "./postgres";
-import { createWorkflowKVNamespaceLockKey, withPostgresWorkflowKVNamespaceLock, STEAMHARNESS_KV_NAMESPACE_LOCK_FAMILY } from "./kv-namespace-lock";
+import { createProjectKVNamespaceLockKey, withPostgresProjectKVNamespaceLock, STEAMHARNESS_KV_NAMESPACE_LOCK_FAMILY } from "./kv-namespace-lock";
 import { normalizeProjectCardMetadata, type ProjectCardMetadata } from "@steamharness/project-card-metadata";
-import { normalizeWorkflowProjectInfo, writeWorkflowProjectInfo, type DeclaredWorkflowProjectInfo, type ProjectInfoContract } from "@steamharness/project-info";
-import { isWorkflowProjectType, STEAMHARNESS_PROJECT_TYPES, type ProjectKind } from "@steamharness/project-types";
+import { normalizeProjectInfo, writeProjectInfo, type DeclaredProjectInfo, type ProjectInfoContract } from "@steamharness/project-info";
+import { isProjectKind, STEAMHARNESS_PROJECT_TYPES, type ProjectKind } from "@steamharness/project-types";
 import type { ObjectStorage } from "./object-storage";
-import { parseWorkflowProjectGroupManifest, type ProjectAccessRequest, type ProjectAccessRequestStatus, type ProjectCapabilityGrant, type ProjectDependencyLock, type ProjectGroupManifestV1 } from "@steamharness/project-dependencies";
+import { parseProjectGroupManifest, type ProjectAccessRequest, type ProjectAccessRequestStatus, type ProjectCapabilityGrant, type ProjectDependencyLock, type ProjectGroupManifestV1 } from "@steamharness/project-dependencies";
 const STEAMHARNESS_PROJECT_TYPES_SQL = createPostgresTextList(STEAMHARNESS_PROJECT_TYPES);
 // PostgreSQL assigns a new xmin to each externally visible row version. It is
 // a stronger compare-and-set token than updated_at, whose transaction-start
@@ -63,7 +63,7 @@ export interface KanbanConfigurationStateRecord {
 
 export interface DbVersionSummaryRecord { projectId: string; projectName: string; version: string; }
 
-export interface SaveWorkflowDraftInput {
+export interface SaveProjectDraftInput {
   projectId: string;
   projectName: string;
   projectType: ProjectKind;
@@ -76,19 +76,19 @@ export interface SaveWorkflowDraftInput {
   createdByUserId?: string;
 }
 
-export interface CreateWorkflowProjectInput {
+export interface CreateProjectInput {
   projectId: string;
   projectName: string;
   projectType: ProjectKind;
   projectCard: ProjectCardMetadata;
-  projectInfo: DeclaredWorkflowProjectInfo;
+  projectInfo: DeclaredProjectInfo;
   packageVersion?: string;
   ownerUserId?: string;
   visibility?: "private" | "public";
   createdByUserId?: string;
 }
 
-export interface SaveWorkflowVersionInput {
+export interface SaveProjectVersionInput {
   projectId: string;
   projectName: string;
   version: string;
@@ -177,7 +177,7 @@ export interface ProjectInvitationRecord {
 export class DatabaseRepository implements KVStore {
   private readonly pool: pg.Pool;
   private readonly publishLockPool: pg.Pool;
-  private readonly workflowKVRevisionReconnectDelayMs = STEAMHARNESS_KV_REVISION_RECONNECT_DELAY_MS;
+  private readonly projectKVRevisionReconnectDelayMs = STEAMHARNESS_KV_REVISION_RECONNECT_DELAY_MS;
 
   constructor(connectionString: string) {
     this.pool = createPostgresPool({
@@ -482,7 +482,7 @@ export class DatabaseRepository implements KVStore {
     `);
   }
 
-  async listWorkflows(): Promise<DbRecord[]> {
+  async listProjects(): Promise<DbRecord[]> {
     const result = await this.pool.query<Row>(`
       select id, name, project_type, project_card, project_info, package_version, has_draft, latest_version,
         owner_user_id, visibility, created_by_user_id,
@@ -491,10 +491,10 @@ export class DatabaseRepository implements KVStore {
       order by name asc, id asc
     `);
 
-    return result.rows.map(toWorkflowRecord);
+    return result.rows.map(toProjectRecord);
   }
 
-  async getWorkflow(projectId: string): Promise<DbRecord | undefined> {
+  async getProject(projectId: string): Promise<DbRecord | undefined> {
     const result = await this.pool.query<Row>(
       `select id, name, project_type, project_card, project_info, package_version, has_draft, latest_version,
         owner_user_id, visibility, created_by_user_id,
@@ -504,10 +504,10 @@ export class DatabaseRepository implements KVStore {
       [projectId],
     );
 
-    return result.rows[0] === undefined ? undefined : toWorkflowRecord(result.rows[0]);
+    return result.rows[0] === undefined ? undefined : toProjectRecord(result.rows[0]);
   }
 
-  async updateWorkflowProjectCard(
+  async updateProjectCard(
     projectId: string,
     projectCard: ProjectCardMetadata,
   ): Promise<DbRecord | undefined> {
@@ -520,24 +520,24 @@ export class DatabaseRepository implements KVStore {
       [projectId, JSON.stringify(projectCard)],
     );
 
-    return result.rows[0] === undefined ? undefined : toWorkflowRecord(result.rows[0]);
+    return result.rows[0] === undefined ? undefined : toProjectRecord(result.rows[0]);
   }
 
-  async updateWorkflowProjectInfo(
+  async updateProjectInfo(
     projectId: string,
     projectName: string,
-    projectInfo: DeclaredWorkflowProjectInfo,
+    projectInfo: DeclaredProjectInfo,
   ): Promise<DbRecord | undefined> {
-    return (await this.updateWorkflowProjectInfos([
+    return (await this.updateProjectInfos([
       { projectId, projectName, projectInfo },
     ]))[0];
   }
 
-  async updateWorkflowProjectInfos(
+  async updateProjectInfos(
     updates: Array<{
       projectId: string;
       projectName: string;
-      projectInfo: DeclaredWorkflowProjectInfo;
+      projectInfo: DeclaredProjectInfo;
     }>,
   ): Promise<DbRecord[]> {
     const client = await this.pool.connect();
@@ -569,7 +569,7 @@ export class DatabaseRepository implements KVStore {
           if (packageContent !== undefined) {
             const parsed = JSON.parse(packageContent) as unknown;
             if (!isRecord(parsed)) throw new Error("Workflow draft package.json root must be an object.");
-            const content = `${JSON.stringify(writeWorkflowProjectInfo(
+            const content = `${JSON.stringify(writeProjectInfo(
               {
                 ...parsed,
                 name: update.projectName,
@@ -584,7 +584,7 @@ export class DatabaseRepository implements KVStore {
             );
           }
         }
-        records.push(toWorkflowRecord(row));
+        records.push(toProjectRecord(row));
       }
       await client.query("commit");
       return records;
@@ -596,7 +596,7 @@ export class DatabaseRepository implements KVStore {
     }
   }
 
-  async createWorkflowProject(input: CreateWorkflowProjectInput): Promise<DbRecord> {
+  async createProjectRecord(input: CreateProjectInput): Promise<DbRecord> {
     const result = await this.pool.query<Row>(
       `insert into projects (
          id,
@@ -635,10 +635,10 @@ export class DatabaseRepository implements KVStore {
       throw new Error(`Workflow "${input.projectId}" already exists.`);
     }
 
-    return toWorkflowRecord(row);
+    return toProjectRecord(row);
   }
 
-  async listWorkflowMembers(projectId: string): Promise<ProjectMemberRecord[]> {
+  async listProjectMemberRecords(projectId: string): Promise<ProjectMemberRecord[]> {
     const result = await this.pool.query<ProjectMemberRow>(
       `select project_id, user_id, role, created_by, created_at
        from project_members
@@ -656,10 +656,10 @@ export class DatabaseRepository implements KVStore {
       [projectId],
     );
 
-    return result.rows.map(toWorkflowProjectMemberRecord);
+    return result.rows.map(toProjectMemberRecord);
   }
 
-  async getWorkflowMember(
+  async getProjectMember(
     projectId: string,
     userId: string,
   ): Promise<ProjectMemberRecord | undefined> {
@@ -672,10 +672,10 @@ export class DatabaseRepository implements KVStore {
 
     return result.rows[0] === undefined
       ? undefined
-      : toWorkflowProjectMemberRecord(result.rows[0]);
+      : toProjectMemberRecord(result.rows[0]);
   }
 
-  async upsertWorkflowMember(input: {
+  async upsertProjectMember(input: {
     projectId: string;
     userId: string;
     role: ProjectRole;
@@ -702,10 +702,10 @@ export class DatabaseRepository implements KVStore {
       ],
     );
 
-    return toWorkflowProjectMemberRecord(result.rows[0]!);
+    return toProjectMemberRecord(result.rows[0]!);
   }
 
-  async deleteWorkflowMember(projectId: string, userId: string): Promise<boolean> {
+  async deleteProjectMember(projectId: string, userId: string): Promise<boolean> {
     const result = await this.pool.query(
       `delete from project_members
        where project_id = $1 and user_id = $2`,
@@ -714,7 +714,7 @@ export class DatabaseRepository implements KVStore {
     return (result.rowCount ?? 0) > 0;
   }
 
-  async createWorkflowDeployment(input: {
+  async createProjectDeployment(input: {
     id: string;
     rootProjectId: string;
     manifest: ProjectGroupManifestV1;
@@ -755,10 +755,10 @@ export class DatabaseRepository implements KVStore {
     } finally {
       client.release();
     }
-    return (await this.getWorkflowDeployment(input.id))!;
+    return (await this.getProjectDeployment(input.id))!;
   }
 
-  async getWorkflowDeployment(id: string): Promise<DeploymentRecord | undefined> {
+  async getProjectDeployment(id: string): Promise<DeploymentRecord | undefined> {
     const result = await this.pool.query<DeploymentRow>(
       `select id, root_project_id, status, manifest, release_log,
         created_by_user_id, error, created_at, updated_at, published_at
@@ -778,10 +778,10 @@ export class DatabaseRepository implements KVStore {
          alias asc nulls last`,
       [id],
     );
-    return toWorkflowDeploymentRecord(row, items.rows);
+    return toProjectDeploymentRecord(row, items.rows);
   }
 
-  async updateWorkflowDeployment(input: {
+  async updateProjectDeployment(input: {
     id: string;
     status: DeploymentStatus;
     error?: string;
@@ -797,10 +797,10 @@ export class DatabaseRepository implements KVStore {
       [input.id, input.status, input.error ?? null, input.publishedAt ?? null],
     );
     if ((result.rowCount ?? 0) === 0) return undefined;
-    return this.getWorkflowDeployment(input.id);
+    return this.getProjectDeployment(input.id);
   }
 
-  async transitionWorkflowDeploymentStatus(input: {
+  async transitionProjectDeploymentStatus(input: {
     id: string;
     from: DeploymentStatus[];
     status: DeploymentStatus;
@@ -814,7 +814,7 @@ export class DatabaseRepository implements KVStore {
     return (result.rowCount ?? 0) > 0;
   }
 
-  async updateWorkflowDeploymentItem(input: {
+  async updateProjectDeploymentItem(input: {
     deploymentId: string;
     projectId: string;
     status: DeploymentItemStatus;
@@ -852,7 +852,7 @@ export class DatabaseRepository implements KVStore {
     );
   }
 
-  async listWorkflowVersionReservations(
+  async listProjectVersionReservations(
     projectId: string,
     excludeDeploymentId?: string,
   ): Promise<string[]> {
@@ -870,7 +870,7 @@ export class DatabaseRepository implements KVStore {
     return result.rows.map((row) => row.planned_version);
   }
 
-  async hasWorkflowVersionReservation(input: {
+  async hasProjectVersionReservation(input: {
     deploymentId: string;
     projectId: string;
     version: string;
@@ -888,7 +888,7 @@ export class DatabaseRepository implements KVStore {
     return result.rows.length > 0;
   }
 
-  async resetWorkflowDeploymentItemsForPreparation(deploymentId: string): Promise<void> {
+  async resetProjectDeploymentItemsForPreparation(deploymentId: string): Promise<void> {
     await this.pool.query(
       `update project_deployment_items
        set status = 'planned',
@@ -904,7 +904,7 @@ export class DatabaseRepository implements KVStore {
     );
   }
 
-  async releaseWorkflowDeploymentVersionReservations(deploymentId: string): Promise<void> {
+  async releaseProjectDeploymentVersionReservations(deploymentId: string): Promise<void> {
     await this.pool.query(
       `update project_deployment_items
        set status = 'failed',
@@ -917,7 +917,7 @@ export class DatabaseRepository implements KVStore {
     );
   }
 
-  async hasWorkflowProjectCapabilityGrant(input: {
+  async hasProjectCapabilityGrant(input: {
     projectId: string;
     userId: string;
     capability: "download_source";
@@ -931,7 +931,7 @@ export class DatabaseRepository implements KVStore {
     return result.rows.length > 0;
   }
 
-  async listWorkflowProjectCapabilityGrants(
+  async listProjectCapabilityGrants(
     projectId: string,
   ): Promise<ProjectCapabilityGrant[]> {
     const result = await this.pool.query<ProjectCapabilityGrantRow>(
@@ -942,10 +942,10 @@ export class DatabaseRepository implements KVStore {
        order by created_at desc`,
       [projectId],
     );
-    return result.rows.map(toWorkflowProjectCapabilityGrant);
+    return result.rows.map(toProjectCapabilityGrant);
   }
 
-  async upsertWorkflowProjectCapabilityGrant(input: {
+  async upsertProjectCapabilityGrant(input: {
     projectId: string;
     userId: string;
     capability: "download_source";
@@ -964,10 +964,10 @@ export class DatabaseRepository implements KVStore {
          created_at, revoked_by_user_id, revoked_at`,
       [input.projectId, input.userId, input.capability, input.createdByUserId ?? null],
     );
-    return toWorkflowProjectCapabilityGrant(result.rows[0]!);
+    return toProjectCapabilityGrant(result.rows[0]!);
   }
 
-  async revokeWorkflowProjectCapabilityGrant(input: {
+  async revokeProjectCapabilityGrant(input: {
     projectId: string;
     userId: string;
     capability: "download_source";
@@ -1003,7 +1003,7 @@ export class DatabaseRepository implements KVStore {
     }
   }
 
-  async getPendingWorkflowProjectAccessRequest(input: {
+  async getPendingProjectAccessRequest(input: {
     projectId: string;
     requesterUserId: string;
     capability: "download_source";
@@ -1016,10 +1016,10 @@ export class DatabaseRepository implements KVStore {
          and status = 'pending'`,
       [input.projectId, input.requesterUserId, input.capability],
     );
-    return result.rows[0] === undefined ? undefined : toWorkflowProjectAccessRequest(result.rows[0]);
+    return result.rows[0] === undefined ? undefined : toProjectAccessRequest(result.rows[0]);
   }
 
-  async createWorkflowProjectAccessRequest(input: {
+  async createProjectAccessRequest(input: {
     id: string;
     projectId: string;
     requesterUserId: string;
@@ -1038,10 +1038,10 @@ export class DatabaseRepository implements KVStore {
          resolved_by_user_id, resolved_at, created_at, updated_at`,
       [input.id, input.projectId, input.requesterUserId, input.capability, input.reason],
     );
-    return toWorkflowProjectAccessRequest(result.rows[0]!);
+    return toProjectAccessRequest(result.rows[0]!);
   }
 
-  async listWorkflowProjectAccessRequests(
+  async listProjectAccessRequests(
     projectId: string,
   ): Promise<ProjectAccessRequest[]> {
     const result = await this.pool.query<ProjectAccessRequestRow>(
@@ -1052,10 +1052,10 @@ export class DatabaseRepository implements KVStore {
        order by case status when 'pending' then 0 else 1 end, created_at desc`,
       [projectId],
     );
-    return result.rows.map(toWorkflowProjectAccessRequest);
+    return result.rows.map(toProjectAccessRequest);
   }
 
-  async getWorkflowProjectAccessRequest(
+  async getProjectAccessRequest(
     projectId: string,
     requestId: string,
   ): Promise<ProjectAccessRequest | undefined> {
@@ -1066,10 +1066,10 @@ export class DatabaseRepository implements KVStore {
        where project_id = $1 and id = $2`,
       [projectId, requestId],
     );
-    return result.rows[0] === undefined ? undefined : toWorkflowProjectAccessRequest(result.rows[0]);
+    return result.rows[0] === undefined ? undefined : toProjectAccessRequest(result.rows[0]);
   }
 
-  async resolveWorkflowProjectAccessRequest(input: {
+  async resolveProjectAccessRequest(input: {
     projectId: string;
     requestId: string;
     status: Exclude<ProjectAccessRequestStatus, "pending">;
@@ -1099,7 +1099,7 @@ export class DatabaseRepository implements KVStore {
         );
       }
       await client.query("commit");
-      return row === undefined ? undefined : toWorkflowProjectAccessRequest(row);
+      return row === undefined ? undefined : toProjectAccessRequest(row);
     } catch (error) {
       await client.query("rollback");
       throw error;
@@ -1108,7 +1108,7 @@ export class DatabaseRepository implements KVStore {
     }
   }
 
-  async createWorkflowProjectInvitation(input: {
+  async createProjectInvitation(input: {
     id: string;
     projectId: string;
     token: string;
@@ -1132,10 +1132,10 @@ export class DatabaseRepository implements KVStore {
         new Date(input.expiresAt),
       ],
     );
-    return toWorkflowProjectInvitationRecord(result.rows[0]!);
+    return toProjectInvitationRecord(result.rows[0]!);
   }
 
-  async listWorkflowProjectInvitations(
+  async listProjectInvitations(
     projectId: string,
   ): Promise<ProjectInvitationRecord[]> {
     const result = await this.pool.query<ProjectInvitationRow>(
@@ -1146,10 +1146,10 @@ export class DatabaseRepository implements KVStore {
        order by created_at desc`,
       [projectId],
     );
-    return result.rows.map(toWorkflowProjectInvitationRecord);
+    return result.rows.map(toProjectInvitationRecord);
   }
 
-  async getWorkflowProjectInvitationByToken(
+  async getProjectInvitationByToken(
     token: string,
   ): Promise<ProjectInvitationRecord | undefined> {
     const result = await this.pool.query<ProjectInvitationRow>(
@@ -1161,10 +1161,10 @@ export class DatabaseRepository implements KVStore {
     );
     return result.rows[0] === undefined
       ? undefined
-      : toWorkflowProjectInvitationRecord(result.rows[0]);
+      : toProjectInvitationRecord(result.rows[0]);
   }
 
-  async getWorkflowProjectInvitationById(
+  async getProjectInvitationById(
     id: string,
   ): Promise<ProjectInvitationRecord | undefined> {
     const result = await this.pool.query<ProjectInvitationRow>(
@@ -1176,10 +1176,10 @@ export class DatabaseRepository implements KVStore {
     );
     return result.rows[0] === undefined
       ? undefined
-      : toWorkflowProjectInvitationRecord(result.rows[0]);
+      : toProjectInvitationRecord(result.rows[0]);
   }
 
-  async revokeWorkflowProjectInvitation(
+  async revokeProjectInvitation(
     projectId: string,
     id: string,
   ): Promise<boolean> {
@@ -1195,7 +1195,7 @@ export class DatabaseRepository implements KVStore {
     return (result.rowCount ?? 0) > 0;
   }
 
-  async acceptWorkflowProjectInvitation(input: {
+  async acceptProjectInvitation(input: {
     id: string;
     acceptedBy: string;
   }): Promise<ProjectInvitationRecord | undefined> {
@@ -1211,10 +1211,10 @@ export class DatabaseRepository implements KVStore {
     );
     return result.rows[0] === undefined
       ? undefined
-      : toWorkflowProjectInvitationRecord(result.rows[0]);
+      : toProjectInvitationRecord(result.rows[0]);
   }
 
-  async updateWorkflowAccess(input: {
+  async updateProjectAccess(input: {
     projectId: string;
     ownerUserId?: string;
     visibility?: Visibility;
@@ -1238,10 +1238,10 @@ export class DatabaseRepository implements KVStore {
       ],
     );
 
-    return result.rows[0] === undefined ? undefined : toWorkflowRecord(result.rows[0]);
+    return result.rows[0] === undefined ? undefined : toProjectRecord(result.rows[0]);
   }
 
-  async saveDraft(input: SaveWorkflowDraftInput): Promise<void> {
+  async saveDraft(input: SaveProjectDraftInput): Promise<void> {
     const client = await this.pool.connect();
     try {
       await client.query("begin");
@@ -1304,7 +1304,7 @@ export class DatabaseRepository implements KVStore {
     }
   }
 
-  async withWorkflowPublishLock<T>(
+  async withProjectPublishLock<T>(
     projectId: string,
     operation: () => Promise<T>,
   ): Promise<T> {
@@ -1330,7 +1330,7 @@ export class DatabaseRepository implements KVStore {
     }
   }
 
-  async withWorkflowDeploymentLock<T>(
+  async withProjectDeploymentLock<T>(
     deploymentId: string,
     operation: () => Promise<T>,
   ): Promise<T> {
@@ -1370,7 +1370,7 @@ export class DatabaseRepository implements KVStore {
     }));
   }
 
-  async saveVersion(input: SaveWorkflowVersionInput): Promise<void> {
+  async saveVersion(input: SaveProjectVersionInput): Promise<void> {
     const updateLatest = input.updateLatest ?? true;
     const client = await this.pool.connect();
     try {
@@ -1549,11 +1549,11 @@ export class DatabaseRepository implements KVStore {
     );
     return result.rows.map((row) => ({
       version: row.version,
-      lock: toWorkflowProjectDependencyLock(row),
+      lock: toProjectDependencyLock(row),
     }));
   }
 
-  async listVersionsForWorkflows(
+  async listVersionsForProjects(
     projectIds: readonly string[],
   ): Promise<Map<string, DbVersionSummaryRecord[]>> {
     if (projectIds.length === 0) {
@@ -1832,7 +1832,7 @@ export class DatabaseRepository implements KVStore {
   }
 
   async getValue(input: KVStoreGetInput): Promise<unknown | undefined> {
-    const normalized = normalizeWorkflowKVStoreInput(input);
+    const normalized = normalizeProjectKVStoreInput(input);
     const conversationId = readNormalizedKVConversationId(normalized);
     const result = await this.pool.query<KVEntryRow>(
       `select value
@@ -1893,7 +1893,7 @@ export class DatabaseRepository implements KVStore {
     const emitRevision = (event: ProjectStorageRevisionEvent) => {
       if (closed) return;
       const previous = emittedRevisions.get(event.projectId);
-      if (previous !== undefined && !isNewerWorkflowKVRevision(event.revision, previous)) return;
+      if (previous !== undefined && !isNewerProjectKVRevision(event.revision, previous)) return;
       emittedRevisions.set(event.projectId, event.revision);
       try {
         listener(event);
@@ -1912,7 +1912,7 @@ export class DatabaseRepository implements KVStore {
         const replayBuffer = replayBuffers.get(this);
         if (replayBuffer !== undefined) {
           const buffered = replayBuffer.get(projectId);
-          if (buffered === undefined || isNewerWorkflowKVRevision(revision, buffered)) {
+          if (buffered === undefined || isNewerProjectKVRevision(revision, buffered)) {
             replayBuffer.set(projectId, revision);
           }
           return;
@@ -1936,7 +1936,7 @@ export class DatabaseRepository implements KVStore {
     const scheduleReconnect = () => {
       if (closed || reconnectTimer !== undefined || reconnectPromise !== undefined) return;
       const delay = Math.min(
-        this.workflowKVRevisionReconnectDelayMs * (2 ** reconnectAttempt),
+        this.projectKVRevisionReconnectDelayMs * (2 ** reconnectAttempt),
         STEAMHARNESS_KV_REVISION_RECONNECT_MAX_DELAY_MS,
       );
       reconnectTimer = setTimeout(() => {
@@ -2019,7 +2019,7 @@ export class DatabaseRepository implements KVStore {
     value: unknown;
     revision: string;
   } | undefined> {
-    const normalized = normalizeWorkflowKVStoreInput(input);
+    const normalized = normalizeProjectKVStoreInput(input);
     const conversationId = readNormalizedKVConversationId(normalized);
     const result = await this.pool.query<{ value: unknown; revision: string }>(
       `select value, ${STEAMHARNESS_KV_REVISION_SQL} as revision
@@ -2045,7 +2045,7 @@ export class DatabaseRepository implements KVStore {
     if (input.value === undefined) {
       throw new Error("Workflow project storage value cannot be undefined.");
     }
-    const normalized = normalizeWorkflowKVStoreInput(input);
+    const normalized = normalizeProjectKVStoreInput(input);
     const conversationId = readNormalizedKVConversationId(normalized);
     await this.pool.query(
       `insert into project_storage (
@@ -2074,7 +2074,7 @@ export class DatabaseRepository implements KVStore {
   }
 
   async deleteValue(input: KVStoreGetInput): Promise<boolean> {
-    const normalized = normalizeWorkflowKVStoreInput(input);
+    const normalized = normalizeProjectKVStoreInput(input);
     const conversationId = readNormalizedKVConversationId(normalized);
     const result = await this.pool.query(
       `delete from project_storage
@@ -2102,7 +2102,7 @@ export class DatabaseRepository implements KVStore {
       throw new Error("Workflow KV value cannot be undefined.");
     }
 
-    const normalized = normalizeWorkflowKVStoreInput(input);
+    const normalized = normalizeProjectKVStoreInput(input);
     const conversationId = readNormalizedKVConversationId(normalized);
     const writeParams = [
       normalized.storageKind,
@@ -2166,7 +2166,7 @@ export class DatabaseRepository implements KVStore {
     input: KVStoreGetInput & { source?: KVWriteSource },
     updater: (current: unknown | undefined) => unknown,
   ): Promise<unknown> {
-    const normalized = normalizeWorkflowKVStoreInput(input);
+    const normalized = normalizeProjectKVStoreInput(input);
     const conversationId = readNormalizedKVConversationId(normalized);
     const client = await this.pool.connect();
 
@@ -2231,7 +2231,7 @@ export class DatabaseRepository implements KVStore {
     input: KVNamespaceLockInput,
     operation: () => Promise<T> | T,
   ): Promise<T> {
-    return withPostgresWorkflowKVNamespaceLock(this.publishLockPool, input, operation);
+    return withPostgresProjectKVNamespaceLock(this.publishLockPool, input, operation);
   }
 
   async withNamespaceTransaction<T>(
@@ -2239,7 +2239,7 @@ export class DatabaseRepository implements KVStore {
     operation: (store: KVStore) => Promise<T> | T,
   ): Promise<T> {
     const client = await this.pool.connect();
-    const lockKey = createWorkflowKVNamespaceLockKey(input);
+    const lockKey = createProjectKVNamespaceLockKey(input);
     let transactionStarted = false;
 
     try {
@@ -2249,7 +2249,7 @@ export class DatabaseRepository implements KVStore {
         "select pg_advisory_xact_lock(hashtext($1), hashtext($2))",
         [STEAMHARNESS_KV_NAMESPACE_LOCK_FAMILY, lockKey],
       );
-      const result = await operation(createTransactionalWorkflowKVStore(client, input));
+      const result = await operation(createTransactionalProjectKVStore(client, input));
       await client.query("commit");
       return result;
     } catch (error) {
@@ -2288,7 +2288,7 @@ export class DatabaseRepository implements KVStore {
     pageSize: number;
     cursor?: string;
   }): Promise<TokenUsagePage> {
-    const cursor = parseTokenUsageWorkflowCursor(options.cursor);
+    const cursor = parseTokenUsageProjectCursor(options.cursor);
     const [systemTotal, projectPage] = await Promise.all([
       this.readSystemTokenUsageAggregate(),
       this.listProjectTokenUsageTotals(options.pageSize, cursor),
@@ -2395,7 +2395,7 @@ export class DatabaseRepository implements KVStore {
 
   private async listProjectTokenUsageTotals(
     pageSize: number,
-    cursor: TokenUsageWorkflowCursor | undefined,
+    cursor: TokenUsageProjectCursor | undefined,
   ): Promise<{
     items: TokenUsagePage["projects"];
     nextCursor?: string;
@@ -2420,7 +2420,7 @@ export class DatabaseRepository implements KVStore {
     }
 
     params.push(pageSize + 1);
-    const result = await this.pool.query<TokenUsageWorkflowTotalRow>(
+    const result = await this.pool.query<TokenUsageProjectTotalRow>(
       `select
          project_id,
          value,
@@ -2436,7 +2436,7 @@ export class DatabaseRepository implements KVStore {
 
     return {
       items: rows.map(toProjectTokenUsageSummary),
-      nextCursor: result.rows.length > pageSize ? createTokenUsageWorkflowCursor(rows.at(-1)) : undefined,
+      nextCursor: result.rows.length > pageSize ? createTokenUsageProjectCursor(rows.at(-1)) : undefined,
       hasMore: result.rows.length > pageSize,
       total,
     };
@@ -2591,7 +2591,7 @@ export class DatabaseRepository implements KVStore {
     return Number.isFinite(total) ? total : 0;
   }
 
-  async deleteWorkflow(projectId: string): Promise<void> {
+  async deleteProject(projectId: string): Promise<void> {
     await this.pool.query("delete from projects where id = $1", [projectId]);
   }
 }
@@ -2769,15 +2769,15 @@ interface KVEntryRow {
   last_conversation_id: string | null;
 }
 
-interface TokenUsageWorkflowTotalRow {
+interface TokenUsageProjectTotalRow {
   project_id: string;
   value: unknown;
   updated_at: Date;
   updated_at_cursor: string;
 }
 
-function toWorkflowRecord(row: Row): DbRecord {
-  if (!isWorkflowProjectType(row.project_type)) {
+function toProjectRecord(row: Row): DbRecord {
+  if (!isProjectKind(row.project_type)) {
     throw new Error(`Workflow "${row.id}" has invalid persisted project_type.`);
   }
   return {
@@ -2785,7 +2785,7 @@ function toWorkflowRecord(row: Row): DbRecord {
     name: row.name,
     projectType: row.project_type,
     projectCard: normalizeProjectCardMetadata(row.project_card, row.project_type),
-    projectInfo: normalizeWorkflowProjectInfo(row.project_info ?? {}),
+    projectInfo: normalizeProjectInfo(row.project_info ?? {}),
     packageVersion: row.package_version,
     hasDraft: row.has_draft,
     latest: row.latest_version,
@@ -2799,7 +2799,7 @@ function toWorkflowRecord(row: Row): DbRecord {
 
 function toVersionRecord(row: VersionRow): DbVersionRecord { return { projectId: row.project_id, projectName: row.project_name, version: row.version, createdAt: row.created_at.toISOString(), sourceHash: row.source_hash, sourceObjectPath: row.source_object_path, releaseLog: row.release_log, createdByUserId: row.created_by_user_id ?? undefined, dependencies: [] }; }
 
-function toWorkflowProjectDependencyLock(
+function toProjectDependencyLock(
   row: VersionDependencyRow,
 ): ProjectDependencyLock {
   const delivery = row.delivery === "included" ? "included" as const : "external" as const;
@@ -2830,31 +2830,31 @@ function toKanbanConfigurationRecord(
   };
 }
 
-function isWorkflowProjectRole(value: unknown): value is ProjectRole {
+function isProjectRole(value: unknown): value is ProjectRole {
   return value === "owner" || value === "manager" || value === "writer" || value === "viewer";
 }
 
-function toWorkflowProjectMemberRecord(
+function toProjectMemberRecord(
   row: ProjectMemberRow,
 ): ProjectMemberRecord {
   return {
     projectId: row.project_id,
     userId: row.user_id,
-    role: isWorkflowProjectRole(row.role) ? row.role : "viewer",
+    role: isProjectRole(row.role) ? row.role : "viewer",
     createdBy: row.created_by ?? undefined,
     createdAt: row.created_at.toISOString(),
   };
 }
 
-function toWorkflowDeploymentRecord(
+function toProjectDeploymentRecord(
   row: DeploymentRow,
   itemRows: DeploymentItemRow[],
 ): DeploymentRecord {
   return {
     id: row.id,
     rootProjectId: row.root_project_id,
-    status: isWorkflowDeploymentStatus(row.status) ? row.status : "failed",
-    manifest: parseWorkflowProjectGroupManifest(row.manifest),
+    status: isProjectDeploymentStatus(row.status) ? row.status : "failed",
+    manifest: parseProjectGroupManifest(row.manifest),
     releaseLog: row.release_log,
     createdByUserId: row.created_by_user_id,
     error: row.error ?? undefined,
@@ -2867,7 +2867,7 @@ function toWorkflowDeploymentRecord(
       alias: item.alias ?? undefined,
       role: item.role === "root" ? "root" : "dependency",
       delivery: "included",
-      status: isWorkflowDeploymentItemStatus(item.status) ? item.status : "failed",
+      status: isProjectDeploymentItemStatus(item.status) ? item.status : "failed",
       stage: item.stage ?? undefined,
       plannedVersion: item.planned_version ?? undefined,
       preparedSourceHash: item.prepared_source_hash ?? undefined,
@@ -2879,7 +2879,7 @@ function toWorkflowDeploymentRecord(
   };
 }
 
-function toWorkflowProjectCapabilityGrant(
+function toProjectCapabilityGrant(
   row: ProjectCapabilityGrantRow,
 ): ProjectCapabilityGrant {
   return {
@@ -2893,7 +2893,7 @@ function toWorkflowProjectCapabilityGrant(
   };
 }
 
-function toWorkflowProjectAccessRequest(
+function toProjectAccessRequest(
   row: ProjectAccessRequestRow,
 ): ProjectAccessRequest {
   return {
@@ -2902,7 +2902,7 @@ function toWorkflowProjectAccessRequest(
     requesterUserId: row.requester_user_id,
     capability: "download_source",
     reason: row.reason,
-    status: isWorkflowProjectAccessRequestStatus(row.status) ? row.status : "rejected",
+    status: isProjectAccessRequestStatus(row.status) ? row.status : "rejected",
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
     resolvedByUserId: row.resolved_by_user_id ?? undefined,
@@ -2910,14 +2910,14 @@ function toWorkflowProjectAccessRequest(
   };
 }
 
-function toWorkflowProjectInvitationRecord(
+function toProjectInvitationRecord(
   row: ProjectInvitationRow,
 ): ProjectInvitationRecord {
   return {
     id: row.id,
     projectId: row.project_id,
     token: row.token,
-    role: isWorkflowProjectRole(row.role) ? row.role : "viewer",
+    role: isProjectRole(row.role) ? row.role : "viewer",
     createdBy: row.created_by ?? undefined,
     createdAt: row.created_at.toISOString(),
     expiresAt: row.expires_at.toISOString(),
@@ -2927,17 +2927,17 @@ function toWorkflowProjectInvitationRecord(
   };
 }
 
-function isWorkflowDeploymentStatus(value: unknown): value is DeploymentStatus {
+function isProjectDeploymentStatus(value: unknown): value is DeploymentStatus {
   return value === "planned" || value === "preparing" || value === "prepared" ||
     value === "publishing" || value === "published" || value === "failed";
 }
 
-function isWorkflowDeploymentItemStatus(value: unknown): value is DeploymentItemStatus {
+function isProjectDeploymentItemStatus(value: unknown): value is DeploymentItemStatus {
   return value === "planned" || value === "preparing" || value === "prepared" ||
     value === "publishing" || value === "published" || value === "failed";
 }
 
-function isWorkflowProjectAccessRequestStatus(
+function isProjectAccessRequestStatus(
   value: unknown,
 ): value is ProjectAccessRequestStatus {
   return value === "pending" || value === "approved" || value === "rejected" || value === "revoked";
@@ -2983,7 +2983,7 @@ function toKVEntryDetail(row: KVEntryRow): KVEntryDetail {
   return toKVEntrySummary(row) as KVEntryDetail;
 }
 
-function toProjectTokenUsageSummary(row: TokenUsageWorkflowTotalRow): TokenUsagePage["projects"][number] {
+function toProjectTokenUsageSummary(row: TokenUsageProjectTotalRow): TokenUsagePage["projects"][number] {
   return {
     projectId: row.project_id,
     total: readStoredTokenUsageAggregate(row.value) ?? createEmptyTokenUsageAggregate(),
@@ -2992,18 +2992,18 @@ function toProjectTokenUsageSummary(row: TokenUsageWorkflowTotalRow): TokenUsage
 }
 
 function readNormalizedKVConversationId(
-  input: ReturnType<typeof normalizeWorkflowKVStoreInput>,
+  input: ReturnType<typeof normalizeProjectKVStoreInput>,
 ): string {
   return input.scope === "conversation" ? input.conversationId : "";
 }
 
-function createTransactionalWorkflowKVStore(
+function createTransactionalProjectKVStore(
   client: pg.PoolClient,
   transactionNamespace: KVNamespaceLockInput,
 ): KVStore {
-  const transactionNamespaceLockKey = createWorkflowKVNamespaceLockKey(transactionNamespace);
+  const transactionNamespaceLockKey = createProjectKVNamespaceLockKey(transactionNamespace);
   const readValue = async (input: KVStoreGetInput): Promise<unknown | undefined> => {
-    const normalized = normalizeWorkflowKVStoreInput(input);
+    const normalized = normalizeProjectKVStoreInput(input);
     const conversationId = readNormalizedKVConversationId(normalized);
     const result = await client.query<KVEntryRow>(
       `select value
@@ -3028,7 +3028,7 @@ function createTransactionalWorkflowKVStore(
     if (input.value === undefined) {
       throw new Error("Workflow project storage value cannot be undefined.");
     }
-    const normalized = normalizeWorkflowKVStoreInput(input);
+    const normalized = normalizeProjectKVStoreInput(input);
     const conversationId = readNormalizedKVConversationId(normalized);
     await client.query(
       `insert into project_storage (
@@ -3060,7 +3060,7 @@ function createTransactionalWorkflowKVStore(
     getValue: readValue,
     setValue: writeValue,
     async updateValue(input, updater) {
-      const normalized = normalizeWorkflowKVStoreInput(input);
+      const normalized = normalizeProjectKVStoreInput(input);
       const conversationId = readNormalizedKVConversationId(normalized);
       const result = await client.query<KVEntryRow>(
         `select value
@@ -3087,7 +3087,7 @@ function createTransactionalWorkflowKVStore(
       return value;
     },
     async deleteValue(input) {
-      const normalized = normalizeWorkflowKVStoreInput(input);
+      const normalized = normalizeProjectKVStoreInput(input);
       const conversationId = readNormalizedKVConversationId(normalized);
       const result = await client.query(
         `delete from project_storage
@@ -3107,7 +3107,7 @@ function createTransactionalWorkflowKVStore(
       return (result.rowCount ?? 0) > 0;
     },
     async withNamespaceLock(input, operation) {
-      const lockKey = createWorkflowKVNamespaceLockKey(input);
+      const lockKey = createProjectKVNamespaceLockKey(input);
       // The outer transaction already holds this namespace's transaction-scoped
       // advisory lock. A nested PersistentValue mutation must reuse it instead
       // of opening a separate connection or dropping atomicity.
@@ -3130,7 +3130,7 @@ type KVPageCursor = {
   key: string;
 };
 
-type TokenUsageWorkflowCursor = {
+type TokenUsageProjectCursor = {
   updatedAt: string;
   projectId: string;
 };
@@ -3181,8 +3181,8 @@ function parseKVPageCursor(cursor: string | undefined): KVPageCursor | undefined
   return undefined;
 }
 
-function createTokenUsageWorkflowCursor(
-  row: Pick<TokenUsageWorkflowTotalRow, "updated_at_cursor" | "project_id"> | undefined,
+function createTokenUsageProjectCursor(
+  row: Pick<TokenUsageProjectTotalRow, "updated_at_cursor" | "project_id"> | undefined,
 ): string | undefined {
   if (row === undefined) {
     return undefined;
@@ -3194,7 +3194,7 @@ function createTokenUsageWorkflowCursor(
   }), "utf8").toString("base64url");
 }
 
-function parseTokenUsageWorkflowCursor(cursor: string | undefined): TokenUsageWorkflowCursor | undefined {
+function parseTokenUsageProjectCursor(cursor: string | undefined): TokenUsageProjectCursor | undefined {
   if (cursor === undefined || cursor.trim() === "") {
     return undefined;
   }
@@ -3253,7 +3253,7 @@ function normalizeNumber(value: number | string | null): number {
   return 0;
 }
 
-function isNewerWorkflowKVRevision(candidate: string, previous: string): boolean {
+function isNewerProjectKVRevision(candidate: string, previous: string): boolean {
   if (/^\d+$/.test(candidate) && /^\d+$/.test(previous)) {
     return BigInt(candidate) > BigInt(previous);
   }

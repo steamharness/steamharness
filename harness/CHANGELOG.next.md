@@ -31,6 +31,8 @@
 
 ### 破坏性变更
 
+- **产品改名**：SDK 全局 `workflow` 改为 `steamharness`；`defineWorkflow` / `runWorkflow` / `defineWorkflowExecutor` / `defineWorkflowEntrypoint` 改为 `defineProject` / `runProject` / `defineProjectExecutor` / `defineProjectEntrypoint`，其余 `Workflow*` 导出同步改名。
+- **字段改名**：`workflowId` / `workflowName` 改为 `projectId` / `projectName`；`WorkflowError` 改为 `HarnessError`，错误类型 `workflow_execution` 改为 `execution`；运行上下文与错误 metadata 的 `workflow` 键改为 `project`。
 - Conversation 移除输入开关与自定义主字段，旧配置在结构校验时报错。
   迁移：附件声明改用 `conversation.attachments`，参数只保留 Auxiliary / Quick / Mode / Slash。
 - Executor 的 `params` 改为有序入口声明，旧 `panel` 声明不再接受。

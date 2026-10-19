@@ -161,8 +161,8 @@ Kanban 的 `knowledge.listDocuments/getDocument/createDocument/editDocument/dele
 
 | 项目 | Tool 管理名称 | MCP 工具 | 数据映射 |
 | --- | --- | --- | --- |
-| Codex | `mcp__workflow-knowledge__knowledge_documents` | `knowledge_documents` | 通过知识库 helper 访问项目声明与运行宿主选定位置的 markdown 文档。 |
-| Codex | `mcp__workflow-kv__kv_store` | `kv_store` | `project` 与 `conversation` 访问同一选定位置的项目/会话 KV scope。 |
+| Codex | `mcp__steamharness-knowledge__knowledge_documents` | `knowledge_documents` | 通过知识库 helper 访问项目声明与运行宿主选定位置的 markdown 文档。 |
+| Codex | `mcp__steamharness-kv__kv_store` | `kv_store` | `project` 与 `conversation` 访问同一选定位置的项目/会话 KV scope。 |
 | OpenCode | `workflow-knowledge_knowledge_documents` | `knowledge_documents` | 通过相同知识库 helper 访问项目 markdown 文档。 |
 | OpenCode | `workflow-kv_kv_store` | `kv_store` | 使用与 Codex 相同的 project / conversation KV scope。 |
 | 小助手 | `workflow-memory_global_memory` | `global_memory` | 在小助手稳定 Knowledge namespace 中执行 `list/get/search/remember/forget`。 |
@@ -202,7 +202,7 @@ export const executor = workflow.defineExecutor<Input, OutputPayload>({
     workflow.defineEntrypoint<Input, OutputPayload>({
       id: "main",
       title: "完整流程",
-      workflow: assistantWorkflow,
+      workflow: assistantProject,
       tokenUsage: {
         enabled: true,
         display: true,
@@ -242,7 +242,7 @@ await context.tokenUsage.report({
 ```ts
 export const executor = workflow.defineExecutor<Input, OutputPayload>({
   projectType: "conversation",
-  workflow: conversationWorkflow,
+  workflow: conversationProject,
   createInput({ args, conversationId }) {
     return { message: args.join(" "), conversationId };
   },
@@ -297,7 +297,7 @@ workflow 仍需在 `createInput({ args })` 中显式读取这些参数；推荐�
 ```ts
 interface ConversationState {
   conversationId: string;
-  workflowName: string;
+  projectName: string;
   title?: string;
   values: Record<string, unknown>;
   messages: ConversationMessageContract[];

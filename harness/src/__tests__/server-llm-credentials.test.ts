@@ -10,7 +10,7 @@ test("server LLM credentials hide proxy tokens and refresh before provider calls
   const previousFetch = globalThis.fetch;
   const previousUrl = process.env.STEAMHARNESS_AI_SERVER_URL;
   const previousToken = process.env.STEAMHARNESS_AI_API_KEY;
-  process.env.STEAMHARNESS_AI_SERVER_URL = "https://workflow.example.test";
+  process.env.STEAMHARNESS_AI_SERVER_URL = "https://steamharness.example.test";
   process.env.STEAMHARNESS_AI_API_KEY = "account-token";
   let catalogReads = 0;
   const proxyAuthorizations: string[] = [];
@@ -109,7 +109,7 @@ test("server LLM credentials hide proxy tokens and refresh before provider calls
 test("server LLM credentials preserve the provider preference order returned by Server", async () => {
   const previousFetch = globalThis.fetch;
   const previous = snapshotEnv(["STEAMHARNESS_AI_SERVER_URL", "STEAMHARNESS_AI_API_KEY"]);
-  process.env.STEAMHARNESS_AI_SERVER_URL = "https://workflow.example.test";
+  process.env.STEAMHARNESS_AI_SERVER_URL = "https://steamharness.example.test";
   process.env.STEAMHARNESS_AI_API_KEY = "account-token";
   globalThis.fetch = (async () => Response.json({
     errCode: 0,
@@ -136,7 +136,7 @@ test("server LLM credentials preserve the provider preference order returned by 
 test("server LLM credentials canonicalize the configured default model case-insensitively", async () => {
   const previousFetch = globalThis.fetch;
   const previous = snapshotEnv(["STEAMHARNESS_AI_SERVER_URL", "STEAMHARNESS_AI_API_KEY"]);
-  process.env.STEAMHARNESS_AI_SERVER_URL = "https://workflow.example.test";
+  process.env.STEAMHARNESS_AI_SERVER_URL = "https://steamharness.example.test";
   process.env.STEAMHARNESS_AI_API_KEY = "account-token";
   const defaults = ["GPT-Test", "gpt-missing", undefined];
   let reads = 0;
@@ -178,7 +178,7 @@ test("server LLM OpenAI bridge proxies only loopback Responses requests without 
     "STEAMHARNESS_SERVER_URL",
     "STEAMHARNESS_SERVER_ADMIN_KEY",
   ]);
-  process.env.STEAMHARNESS_AI_SERVER_URL = "https://workflow.example.test";
+  process.env.STEAMHARNESS_AI_SERVER_URL = "https://steamharness.example.test";
   process.env.STEAMHARNESS_AI_API_KEY = "account-token";
   delete process.env.STEAMHARNESS_SERVER_URL;
   delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
@@ -241,7 +241,7 @@ test("server LLM OpenAI bridge proxies only loopback Responses requests without 
     assert.equal(response.headers.get("content-type"), "text/event-stream");
     assert.equal(response.headers.get("set-cookie"), null);
     assert.equal(await response.text(), "data: first\n\ndata: second\n\n");
-    assert.equal(upstreamUrl, "https://workflow.example.test/api/ai/proxy/provider%3A4/responses");
+    assert.equal(upstreamUrl, "https://steamharness.example.test/api/ai/proxy/provider%3A4/responses");
     assert.equal(upstreamAuthorization, "Bearer hidden-proxy-token");
     assert.equal(upstreamCookie, "");
     assert.deepEqual(JSON.parse(upstreamBody), { model: "gpt-test", input: "hello" });
@@ -258,7 +258,7 @@ test("server LLM OpenAI bridge proxies only loopback Responses requests without 
 test("server LLM credentials keep undeclared model web search disabled", async () => {
   const previousFetch = globalThis.fetch;
   const previous = snapshotEnv(["STEAMHARNESS_AI_SERVER_URL", "STEAMHARNESS_AI_API_KEY"]);
-  process.env.STEAMHARNESS_AI_SERVER_URL = "https://workflow.example.test";
+  process.env.STEAMHARNESS_AI_SERVER_URL = "https://steamharness.example.test";
   process.env.STEAMHARNESS_AI_API_KEY = "account-token";
   globalThis.fetch = (async () => createCatalogResponse()) as typeof fetch;
   try {
@@ -289,7 +289,7 @@ test("server LLM credentials keep undeclared model web search disabled", async (
 test("server LLM OpenAI bridge rejects Anthropic credentials", async () => {
   const previousFetch = globalThis.fetch;
   const previous = snapshotEnv(["STEAMHARNESS_AI_SERVER_URL", "STEAMHARNESS_AI_API_KEY"]);
-  process.env.STEAMHARNESS_AI_SERVER_URL = "https://workflow.example.test";
+  process.env.STEAMHARNESS_AI_SERVER_URL = "https://steamharness.example.test";
   process.env.STEAMHARNESS_AI_API_KEY = "account-token";
   globalThis.fetch = (async () => Response.json({
     errCode: 0,
@@ -332,7 +332,7 @@ test("server LLM OpenAI bridge rejects Anthropic credentials", async () => {
 test("server LLM generic bridge proxies Anthropic Messages with server credentials", async () => {
   const previousFetch = globalThis.fetch;
   const previous = snapshotEnv(["STEAMHARNESS_AI_SERVER_URL", "STEAMHARNESS_AI_API_KEY"]);
-  process.env.STEAMHARNESS_AI_SERVER_URL = "https://workflow.example.test";
+  process.env.STEAMHARNESS_AI_SERVER_URL = "https://steamharness.example.test";
   process.env.STEAMHARNESS_AI_API_KEY = "account-token";
   let upstreamUrl = "";
   let upstreamApiKey = "";
@@ -378,7 +378,7 @@ test("server LLM generic bridge proxies Anthropic Messages with server credentia
       body: JSON.stringify({ model: "claude-test", messages: [] }),
     });
     assert.equal(response.status, 200);
-    assert.equal(upstreamUrl, "https://workflow.example.test/api/ai/proxy/provider%3Aanthropic/messages");
+    assert.equal(upstreamUrl, "https://steamharness.example.test/api/ai/proxy/provider%3Aanthropic/messages");
     assert.equal(upstreamApiKey, "hidden-anthropic-token");
   } finally {
     await bridge?.close();
@@ -390,7 +390,7 @@ test("server LLM generic bridge proxies Anthropic Messages with server credentia
 test("server LLM OpenAI bridge cancels active upstream requests when closed", async () => {
   const previousFetch = globalThis.fetch;
   const previous = snapshotEnv(["STEAMHARNESS_AI_SERVER_URL", "STEAMHARNESS_AI_API_KEY"]);
-  process.env.STEAMHARNESS_AI_SERVER_URL = "https://workflow.example.test";
+  process.env.STEAMHARNESS_AI_SERVER_URL = "https://steamharness.example.test";
   process.env.STEAMHARNESS_AI_API_KEY = "account-token";
   let markStarted: (() => void) | undefined;
   const started = new Promise<void>((resolve) => {
@@ -438,7 +438,7 @@ test("server LLM provider keeps a still-valid token when refresh fails", async (
     "STEAMHARNESS_SERVER_URL",
     "STEAMHARNESS_SERVER_ADMIN_KEY",
   ]);
-  process.env.STEAMHARNESS_AI_SERVER_URL = "https://workflow.example.test";
+  process.env.STEAMHARNESS_AI_SERVER_URL = "https://steamharness.example.test";
   process.env.STEAMHARNESS_AI_API_KEY = "account-token";
   delete process.env.STEAMHARNESS_SERVER_URL;
   delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
@@ -536,14 +536,14 @@ test("server LLM connection sources keep URL and token pairs together in priorit
 test("server LLM connection variables must be configured as a pair", async () => {
   const previousUrl = process.env.STEAMHARNESS_AI_SERVER_URL;
   const previousToken = process.env.STEAMHARNESS_AI_API_KEY;
-  process.env.STEAMHARNESS_AI_SERVER_URL = "https://workflow.example.test";
+  process.env.STEAMHARNESS_AI_SERVER_URL = "https://steamharness.example.test";
   delete process.env.STEAMHARNESS_AI_API_KEY;
   try {
     await assert.rejects(() => getServerLLMCredentials(), (error: unknown) => {
       assert.match((error as Error).message, /must be configured together/);
       assert.deepEqual((error as { metadata?: Record<string, unknown> }).metadata?.steamHarnessI18n, {
         namespace: "common",
-        key: "workflowServerConnectionPairRequired",
+        key: "projectServerConnectionPairRequired",
         values: { names: "STEAMHARNESS_AI_SERVER_URL/STEAMHARNESS_AI_API_KEY" },
       });
       return true;
@@ -641,7 +641,7 @@ test("model attributes ride along, and a broken one is dropped rather than fatal
   const previousEnv = snapshotEnv(names);
   const previousFetch = globalThis.fetch;
   names.forEach((name) => delete process.env[name]);
-  process.env.STEAMHARNESS_AI_SERVER_URL = "https://workflow.example.test";
+  process.env.STEAMHARNESS_AI_SERVER_URL = "https://steamharness.example.test";
   process.env.STEAMHARNESS_AI_API_KEY = "account-token";
 
   const modelDetails = [

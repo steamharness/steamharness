@@ -25,7 +25,7 @@
       "id": "store",
       "title": "存储数据",
       "description": "输入内容并返回可用于读取的 id。",
-      "projectName": "storeDataWorkflow",
+      "projectName": "storeDataProject",
       "params": [
         {
           "name": "content",
@@ -59,7 +59,7 @@
       "id": "get",
       "title": "读取数据",
       "description": "输入存储时返回的 id 并读取内容。",
-      "projectName": "getDataWorkflow",
+      "projectName": "getDataProject",
       "params": [
         {
           "name": "id",
@@ -94,7 +94,7 @@
       "id": "note",
       "title": "经关联项目写入知识库",
       "description": "调用关联项目的 note 入口写入文档，再通过关联知识库读回来。",
-      "projectName": "noteDataWorkflow",
+      "projectName": "noteDataProject",
       "params": [
         {
           "name": "alias",

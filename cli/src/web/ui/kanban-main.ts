@@ -1,7 +1,7 @@
 import { t } from '../localization';
 import './style.css';
 import './kanban-style.css';
-import { acquireWorkflowHost } from './host';
+import { acquireProjectHost } from './host';
 import { Fields } from './workflow-fields';
 import { requestAction } from './action-dialog';
 import { ConversationTools } from './conversation-tools';
@@ -12,11 +12,11 @@ import {
   KANBAN_BRIDGE_MAX_PENDING_REQUESTS, KANBAN_PREVIEW_READY_MESSAGE, KANBAN_BRIDGE_REQUEST_MESSAGE, KANBAN_BRIDGE_RESPONSE_MESSAGE,
   type KanbanConfiguration, type KanbanInjectedConfiguration, type KanbanPresentationMode,
 } from '@steamharness/kanban-project';
-import { workflowParamValue, type Project, type ParamValues } from '../workflow-types';
+import { projectParamValue, type Project, type ParamValues } from '../workflow-types';
 
 type Message = Record<string, any>;
 interface KanbanState { revision: number; configurations: KanbanConfiguration[]; activeConfigurationId?: string; configuration: KanbanInjectedConfiguration; params: Project['fields']; preview: { url: string; nonce: string }; relatedProjectRevisions: { alias: string; revision: string }[]; missingRelatedProjectAliases: string[]; relatedProjectWarning: string }
-const app = document.querySelector<HTMLElement>('#app')!, host = acquireWorkflowHost();
+const app = document.querySelector<HTMLElement>('#app')!, host = acquireProjectHost();
 app.classList.add('kanban-app');
 app.innerHTML = `
 <header class="toolbar"><div class="project-title"><button id="menu-toggle" class="icon-button" aria-label="${t("Show Kanban configurations")}" title="${t("Show Kanban configurations")}">${iconHtml('layout-sidebar-left')}</button><h1 id="kanban-title">Kanban</h1></div><div class="toolbar-actions"><div id="preview-modes" class="kanban-modes" role="group" aria-label="${t("Preview size")}"></div><button id="dimensions" class="icon-button" title="${t("Resize preview")}" aria-label="${t("Resize preview")}" hidden>${iconHtml('settings')}</button><button id="refresh" class="icon-button" title="${t("Refresh Kanban")}" aria-label="${t("Refresh Kanban")}">${iconHtml('refresh')}</button>${aiUsageButton()}<button id="methods" class="icon-button" title="${t("Page methods")}" aria-label="${t("Page methods")}">${iconHtml('wrench')}</button>${projectInfoButton()}</div></header>
@@ -57,7 +57,7 @@ function request(message: Message): Promise<Message> {
 function showError(error: unknown): void { element('error').textContent = (error as Error).message ?? String(error); element('error').hidden = false; }
 function configurationValues(current: KanbanState): ParamValues {
   const stored = current.configurations.find(item => item.id === current.activeConfigurationId)?.values ?? {};
-  return Object.fromEntries(current.params.map(field => [field.name, workflowParamValue(field, stored[field.name] ?? field.defaultValue ?? '')]));
+  return Object.fromEntries(current.params.map(field => [field.name, projectParamValue(field, stored[field.name] ?? field.defaultValue ?? '')]));
 }
 async function save(): Promise<void> {
   clearTimeout(saveTimer); if (!dirty || !state || working) { return; }

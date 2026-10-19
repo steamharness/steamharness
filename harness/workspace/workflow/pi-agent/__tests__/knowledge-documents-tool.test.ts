@@ -1,21 +1,21 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import {
-  createDisabledWorkflowConversationContext,
-  createDisabledWorkflowTokenUsageContext,
-  createWorkflowKVContext,
-  createWorkflowPersistentValueContext,
-  createWorkflowRelatedProjectsContext,
-  createWorkflowToolPermissionContext,
+  createDisabledProjectConversationContext,
+  createDisabledProjectTokenUsageContext,
+  createProjectKVContext,
+  createProjectPersistentValueContext,
+  createProjectRelatedProjectsContext,
+  createProjectToolPermissionContext,
   type KVStore,
 } from "steamharness";
-import { installWorkflowRuntimeGlobal } from "steamharness/runtime-api";
+import { installProjectRuntimeGlobal } from "steamharness/runtime-api";
 import type { RunContext } from "steamharness/types/context";
 import {
   KNOWLEDGE_DOCUMENTS_TOOL_NAME,
   createKnowledgeDocumentsTool,
 } from "../knowledge-documents-tool";
 
-installWorkflowRuntimeGlobal();
+installProjectRuntimeGlobal();
 
 let context: RunContext;
 
@@ -128,7 +128,7 @@ describe("pi-agent knowledge_documents tool", () => {
   });
 
   it("propagates tool approval waits and denials", async () => {
-    let pendingApprovalError: workflow.HarnessError | undefined;
+    let pendingApprovalError: steamharness.HarnessError | undefined;
     const waitingContext = createToolContext({ autoApprove: false });
     const waitingTool = createKnowledgeDocumentsTool({
       context: waitingContext,
@@ -234,30 +234,30 @@ function createToolContext(
     providers: {},
     storage: {
       local: {
-        kv: createWorkflowKVContext({ store, projectId: "7afb5837-251e-4938-bae4-83f8569d9d6b" }),
-        persistentValue: createWorkflowPersistentValueContext({
+        kv: createProjectKVContext({ store, projectId: "7afb5837-251e-4938-bae4-83f8569d9d6b" }),
+        persistentValue: createProjectPersistentValueContext({
           store,
           projectId: "7afb5837-251e-4938-bae4-83f8569d9d6b",
         }),
-        relatedProjects: createWorkflowRelatedProjectsContext(),
+        relatedProjects: createProjectRelatedProjectsContext(),
       },
       server: {
-        kv: createWorkflowKVContext({ store, projectId: "7afb5837-251e-4938-bae4-83f8569d9d6b" }),
-        persistentValue: createWorkflowPersistentValueContext({
+        kv: createProjectKVContext({ store, projectId: "7afb5837-251e-4938-bae4-83f8569d9d6b" }),
+        persistentValue: createProjectPersistentValueContext({
           store,
           projectId: "7afb5837-251e-4938-bae4-83f8569d9d6b",
         }),
-        relatedProjects: createWorkflowRelatedProjectsContext(),
+        relatedProjects: createProjectRelatedProjectsContext(),
       },
     },
-    conversation: createDisabledWorkflowConversationContext(),
-    tokenUsage: createDisabledWorkflowTokenUsageContext(),
+    conversation: createDisabledProjectConversationContext(),
+    tokenUsage: createDisabledProjectTokenUsageContext(),
     userInput,
     metadata: {
-      workflow: "pi-agent",
+      project: "pi-agent",
       runId: "pi-agent-test-run",
     },
-    toolPermissions: createWorkflowToolPermissionContext({
+    toolPermissions: createProjectToolPermissionContext({
       projectName: "pi-agent",
       runId: "pi-agent-test-run",
       definitions: [

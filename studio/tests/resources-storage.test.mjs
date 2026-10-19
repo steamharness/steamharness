@@ -28,7 +28,7 @@ async function fixture(t, mode = 'local') {
 
 test('resource views read the exact project CLI namespace, retain null, and isolate conversation entries', localOptions, async t => {
   const { project, dataDir, request } = await fixture(t);
-  const store = core.createLocalWorkflowKVStore({ rootDir: path.join(dataDir, 'kv') });
+  const store = core.createLocalProjectKVStore({ rootDir: path.join(dataDir, 'kv') });
   await store.setValue({ storageKind: 'kv', projectId: project.id, scope: 'project', key: 'nullable', value: null });
   await store.setValue({ storageKind: 'kv', projectId: project.id, scope: 'conversation', conversationId: 'first', key: 'private', value: 'one' });
   await store.setValue({ storageKind: 'kv', projectId: 'another-project', scope: 'project', key: 'hidden', value: 'no' });
@@ -58,8 +58,8 @@ test('KV creation, editing, deletion, search and pagination operate through Core
 
 test('knowledge documents share runtime PersistentValue storage and support full-text search and edits', localOptions, async t => {
   const { project, dataDir, request } = await fixture(t);
-  const persistentValue = core.createWorkflowPersistentValueContext({ projectId: project.id,
-    store: core.createLocalWorkflowKVStore({ rootDir: path.join(dataDir, 'values'), storageKind: 'persistent_value' }) });
+  const persistentValue = core.createProjectPersistentValueContext({ projectId: project.id,
+    store: core.createLocalProjectKVStore({ rootDir: path.join(dataDir, 'values'), storageKind: 'persistent_value' }) });
   const seeded = await core.createKnowledgeDocument({ persistentValue }, { title: 'Runtime document', markdown: '# Evidence\n\nshared storage' });
   const page = await request({ kind: 'knowledge', action: 'list' });
   assert.equal(page.items[0].documentId, seeded.id);
@@ -102,7 +102,7 @@ test('a changed manifest or forbidden storage source cannot mutate a different p
 
 test('server storage uses the declared project identity and authenticated management endpoints', async t => {
   const { request, project } = await fixture(t, 'server');
-  const connection = { serverUrl: 'https://workflow.test', accessToken: 'private-host-token' };
+  const connection = { serverUrl: 'https://steamharness.test', accessToken: 'private-host-token' };
   const calls = [];
   const fetcher = async (url, options) => {
     calls.push({ url: new URL(url), options });
@@ -125,7 +125,7 @@ test('server storage uses the declared project identity and authenticated manage
 
 test('knowledge search pagination preserves document and line identities on the server', async t => {
   const { request } = await fixture(t, 'server');
-  const page = await request({ kind: 'knowledge', action: 'list', query: 'needle', cursor: '30' }, { serverUrl: 'https://workflow.test', accessToken: 'token' }, async url => {
+  const page = await request({ kind: 'knowledge', action: 'list', query: 'needle', cursor: '30' }, { serverUrl: 'https://steamharness.test', accessToken: 'token' }, async url => {
     assert.equal(new URL(url).searchParams.get('q'), 'needle'); assert.equal(new URL(url).searchParams.get('cursor'), '30');
     return new Response(JSON.stringify({ errCode: 0, data: { totalMatches: 33, hasMore: false, matches: [{ documentId: 'doc', title: 'Title', lineNumber: 4, line: 'needle' }] } }));
   });
@@ -134,7 +134,7 @@ test('knowledge search pagination preserves document and line identities on the 
 
 test('foreign server search retains pagination without a local project or Core runtime', async () => {
   const page = await runResourceRequest({ project: { id: 'owner' }, input: { kind: 'knowledge', action: 'list', source: 'server',
-    projectId: 'foreign', query: 'needle', cursor: '30' }, connection: { serverUrl: 'https://workflow.test', accessToken: 'token' } }, undefined, async url => {
+    projectId: 'foreign', query: 'needle', cursor: '30' }, connection: { serverUrl: 'https://steamharness.test', accessToken: 'token' } }, undefined, async url => {
     assert.equal(new URL(url).pathname, '/api/projects/foreign/knowledge-documents/search');
     assert.equal(new URL(url).searchParams.get('cursor'), '30');
     return new Response(JSON.stringify({ errCode: 0, data: { totalMatches: 33, hasMore: true, nextCursor: '60',

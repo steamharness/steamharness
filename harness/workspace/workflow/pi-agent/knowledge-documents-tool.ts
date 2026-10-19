@@ -17,7 +17,7 @@ interface KnowledgeDocumentsToolContext {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   context: any;
   emit?: (event: PiAgentSessionEvent) => void;
-  onPendingApproval?: (error: workflow.HarnessError) => void;
+  onPendingApproval?: (error: steamharness.HarnessError) => void;
 }
 
 interface KnowledgeDocumentsToolArgs {
@@ -63,7 +63,7 @@ export function createKnowledgeDocumentsTool(input: KnowledgeDocumentsToolContex
         args = normalizeKnowledgeDocumentsArgs(rawParams);
         // routes the Pi custom tool through the shared tool approval
         // gate before touching PersistentValue-backed knowledge documents.
-        const decision = await workflow.createToolApprovalGate().approve({
+        const decision = await steamharness.createToolApprovalGate().approve({
           name: KNOWLEDGE_DOCUMENTS_TOOL_NAME,
           label: "Knowledge Documents",
           description: "Manage PersistentValue-backed project markdown knowledge documents.",
@@ -83,7 +83,7 @@ export function createKnowledgeDocumentsTool(input: KnowledgeDocumentsToolContex
         return createToolResult(result);
       } catch (error) {
         if (
-          error instanceof workflow.HarnessError &&
+          error instanceof steamharness.HarnessError &&
           (error.type === "user_input_required" || error.type === "tool_permission_denied")
         ) {
           if (error.type === "user_input_required") {
@@ -116,7 +116,7 @@ function emitToolApprovalDecision(
   }
 }
 
-function readApprovalRequestId(error: workflow.HarnessError): string | undefined {
+function readApprovalRequestId(error: steamharness.HarnessError): string | undefined {
   const requestId = error.metadata?.["requestId"];
   if (typeof requestId === "string") {
     return requestId;
@@ -128,19 +128,19 @@ function readApprovalRequestId(error: workflow.HarnessError): string | undefined
     : undefined;
 }
 
-function readApprovalValues(error: workflow.HarnessError): Record<string, unknown> | undefined {
+function readApprovalValues(error: steamharness.HarnessError): Record<string, unknown> | undefined {
   const values = error.metadata?.["values"];
   return isRecord(values) ? values : undefined;
 }
 
 async function runKnowledgeDocumentsAction(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  workflowContext: any,
+  projectContext: any,
   args: KnowledgeDocumentsToolArgs,
 ) {
   switch (args.action) {
     case "list": {
-      const documents = await workflow.listKnowledgeDocuments(workflowContext.storage.local);
+      const documents = await steamharness.listKnowledgeDocuments(projectContext.storage.local);
       return {
         action: "list" as const,
         count: documents.length,
@@ -149,7 +149,7 @@ async function runKnowledgeDocumentsAction(
     }
     case "get": {
       const documentId = requireToolString(args.documentId, "documentId", args.action);
-      const document = await workflow.getKnowledgeDocument(workflowContext.storage.local, documentId);
+      const document = await steamharness.getKnowledgeDocument(projectContext.storage.local, documentId);
       return {
         action: "get" as const,
         found: document !== undefined,
@@ -163,7 +163,7 @@ async function runKnowledgeDocumentsAction(
       };
     }
     case "create": {
-      const document = await workflow.createKnowledgeDocument(workflowContext.storage.local, {
+      const document = await steamharness.createKnowledgeDocument(projectContext.storage.local, {
         id: normalizeOptionalString(args.documentId),
         title: requireToolString(args.title, "title", args.action),
         markdown: requireToolString(args.markdown, "markdown", args.action),
@@ -177,7 +177,7 @@ async function runKnowledgeDocumentsAction(
       };
     }
     case "edit": {
-      const document = await workflow.editKnowledgeDocument(workflowContext.storage.local, {
+      const document = await steamharness.editKnowledgeDocument(projectContext.storage.local, {
         id: requireToolString(args.documentId, "documentId", args.action),
         ...(args.title === undefined ? {} : { title: args.title }),
         ...(args.markdown === undefined ? {} : { markdown: args.markdown }),
@@ -193,8 +193,8 @@ async function runKnowledgeDocumentsAction(
     case "delete": {
       return {
         action: "delete" as const,
-        ...(await workflow.deleteKnowledgeDocument(
-          workflowContext.storage.local,
+        ...(await steamharness.deleteKnowledgeDocument(
+          projectContext.storage.local,
           requireToolString(args.documentId, "documentId", args.action),
         )),
       };
@@ -202,7 +202,7 @@ async function runKnowledgeDocumentsAction(
     case "search": {
       return {
         action: "search" as const,
-        ...(await workflow.searchKnowledgeDocuments(workflowContext.storage.local, {
+        ...(await steamharness.searchKnowledgeDocuments(projectContext.storage.local, {
           query: requireToolString(args.query, "query", args.action),
           ...(args.documentId === undefined ? {} : { documentId: args.documentId }),
           beforeLines: args.beforeLines,
@@ -215,7 +215,7 @@ async function runKnowledgeDocumentsAction(
     case "read_lines": {
       return {
         action: "read_lines" as const,
-        ...(await workflow.readKnowledgeDocumentLines(workflowContext.storage.local, {
+        ...(await steamharness.readKnowledgeDocumentLines(projectContext.storage.local, {
           documentId: requireToolString(args.documentId, "documentId", args.action),
           startLine: requireToolNumber(args.startLine, "startLine", args.action),
           endLine: requireToolNumber(args.endLine, "endLine", args.action),
@@ -223,7 +223,7 @@ async function runKnowledgeDocumentsAction(
       };
     }
     default:
-      throw new workflow.HarnessError({
+      throw new steamharness.HarnessError({
         type: "input_validation",
         message: `Unsupported knowledge_documents action: ${String(args.action)}.`,
         nodeName: "pi-agent-output",
@@ -340,7 +340,7 @@ function normalizeKnowledgeDocumentsAction(value: unknown): KnowledgeDocumentsAc
     return value;
   }
 
-  throw new workflow.HarnessError({
+  throw new steamharness.HarnessError({
     type: "input_validation",
     message: `Unsupported knowledge_documents action: ${String(value)}.`,
     nodeName: "pi-agent-output",
@@ -362,7 +362,7 @@ function requireToolString(
     return normalized;
   }
 
-  throw new workflow.HarnessError({
+  throw new steamharness.HarnessError({
     type: "input_validation",
     message: `knowledge_documents action "${action}" requires ${field}.`,
     nodeName: "pi-agent-output",
@@ -379,7 +379,7 @@ function requireToolNumber(
     return value;
   }
 
-  throw new workflow.HarnessError({
+  throw new steamharness.HarnessError({
     type: "input_validation",
     message: `knowledge_documents action "${action}" requires ${field}.`,
     nodeName: "pi-agent-output",
@@ -388,7 +388,7 @@ function requireToolNumber(
 }
 
 function formatToolError(error: unknown, action: KnowledgeDocumentsAction) {
-  if (error instanceof workflow.HarnessError) {
+  if (error instanceof steamharness.HarnessError) {
     return {
       action,
       errCode: 1,

@@ -1,6 +1,6 @@
 import type { RuntimeTimerInput, RuntimeTimerOutputPayload } from "./interface";
 
-const timerNode = workflow.createTimerNode({
+const timerNode = steamharness.createTimerNode({
   name: "business-timer",
   title: "业务阶段计时",
   metadata: {
@@ -10,7 +10,7 @@ const timerNode = workflow.createTimerNode({
   },
 });
 
-const outputNode = workflow.createOutputNode<RuntimeTimerInput & {
+const outputNode = steamharness.createOutputNode<RuntimeTimerInput & {
   completedTimerId: string;
 }, RuntimeTimerOutputPayload>({
   name: "runtime-timer-output",
@@ -21,7 +21,7 @@ const outputNode = workflow.createOutputNode<RuntimeTimerInput & {
     ];
 
     return {
-      ...workflow.createOutputPayload({
+      ...steamharness.createOutputPayload({
         items: [{
           title: "Runtime Timer",
           content: lines.join("\n"),
@@ -36,39 +36,39 @@ const outputNode = workflow.createOutputNode<RuntimeTimerInput & {
   },
 });
 
-export const runtimeTimerWorkflow = workflow.defineWorkflow<RuntimeTimerInput, RuntimeTimerOutputPayload>({
+export const runtimeTimerProject = steamharness.defineProject<RuntimeTimerInput, RuntimeTimerOutputPayload>({
   name: "runtime-timer",
   async run(input, context) {
-    const completedTimer = await workflow.runNode(timerNode, {
+    const completedTimer = await steamharness.runNode(timerNode, {
       timerId: "runtime-timer-completed",
       title: input.title,
       metadata: { phase: "completed" },
     }, context);
 
     await wait(input.milliseconds);
-    await workflow.endTimer(completedTimer, context, {
+    await steamharness.endTimer(completedTimer, context, {
       message: "业务阶段已显式结束",
       metadata: { waitedMs: input.milliseconds },
     });
 
-    return workflow.runNode(outputNode, {
+    return steamharness.runNode(outputNode, {
       ...input,
       completedTimerId: completedTimer.timerId,
     }, context);
   },
 });
 
-export const executor = workflow.defineExecutor<
+export const executor = steamharness.defineExecutor<
   RuntimeTimerInput,
   RuntimeTimerOutputPayload
 >({
   projectType: "workflow",
   defaultEntrypoint: "main",
   entrypoints: [
-    workflow.defineEntrypoint<RuntimeTimerInput, RuntimeTimerOutputPayload>({
+    steamharness.defineEntrypoint<RuntimeTimerInput, RuntimeTimerOutputPayload>({
       id: "main",
       title: "Runtime Timer",
-      workflow: runtimeTimerWorkflow,
+      workflow: runtimeTimerProject,
       params: [
         {
           name: "title",
@@ -94,8 +94,8 @@ export const executor = workflow.defineExecutor<
   ],
 });
 
-export { runtimeTimerWorkflow as workflow };
-export default runtimeTimerWorkflow;
+export { runtimeTimerProject as workflow };
+export default runtimeTimerProject;
 
 function parseInput(args: string[]): RuntimeTimerInput {
   let title = "业务阶段计时";

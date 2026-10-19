@@ -21,7 +21,7 @@ import { readFile } from 'node:fs/promises';
 import type { ProjectType } from './projects';
 import { uploadServerProject, downloadServerProject } from './steamharness-server-projects-node';
 
-export function createWorkflowRuntime(context: vscode.ExtensionContext, account: AccountController): Launcher {
+export function createProjectRuntime(context: vscode.ExtensionContext, account: AccountController): Launcher {
   const sessions = new Set<WebSession>();
   const controller = new AbortController();
   const executable = (): string => vscode.workspace.getConfiguration('studio').get<string>('workflow.nodePath') || process.execPath;
@@ -111,7 +111,7 @@ export function createWorkflowRuntime(context: vscode.ExtensionContext, account:
       const rules = await import(resolve('steamharness/executor/rules', pathToFileURL(path.join(directory, 'package.json')).href));
       const types = new Set<ProjectType>();
       for (const source of sources) {
-        const type = rules.analyzeWorkflowScriptSource(source.text, source.name).executorProjectType;
+        const type = rules.analyzeProjectScriptSource(source.text, source.name).executorProjectType;
         if (type === 'workflow' || type === 'conversation') { types.add(type); }
       }
       return types.size === 1 ? [...types][0] : undefined;

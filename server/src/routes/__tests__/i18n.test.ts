@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import test from "node:test";
 import express from "express";
 import {
-  configureWorkflowAuthContext,
+  configureProjectAuthContext,
   requireAuthenticatedPrincipal,
   requirePermission,
 } from "../../auth";
@@ -15,7 +15,7 @@ import {
   localizeServerMessage,
 } from "../../i18n";
 import { HttpError, toHttpError, toHttpErrorWithStatus } from "../../protocol";
-import { createWorkflowProjectDependencyLocks } from "@steamharness/project-dependencies";
+import { createProjectDependencyLocks } from "@steamharness/project-dependencies";
 import { createApiRouter } from "../api";
 import type { Storage } from "../../storage";
 
@@ -179,7 +179,7 @@ test("toHttpError maps 413 body-too-large to a translatable messageKey", () => {
 test("toHttpErrorWithStatus preserves shared validation descriptors", () => {
   let failure: unknown;
   try {
-    createWorkflowProjectDependencyLocks([], [{ alias: "prices", delivery: "included" }]);
+    createProjectDependencyLocks([], [{ alias: "prices", delivery: "included" }]);
   } catch (error) {
     failure = error;
   }
@@ -194,7 +194,7 @@ test("toHttpErrorWithStatus preserves shared validation descriptors", () => {
 });
 
 test("real auth middleware localizes unauthenticated and forbidden responses", async () => {
-  configureWorkflowAuthContext({
+  configureProjectAuthContext({
     authService: {
       async resolvePrincipal(req: { headers: { "x-test-principal"?: string } }) {
         if (req.headers["x-test-principal"] !== "user") return undefined;
@@ -243,7 +243,7 @@ test("real auth middleware localizes unauthenticated and forbidden responses", a
     assert.deepEqual(forbidden, { errCode: 403, errMessage: "权限不足。" });
   } finally {
     await server.close();
-    configureWorkflowAuthContext({});
+    configureProjectAuthContext({});
   }
 });
 

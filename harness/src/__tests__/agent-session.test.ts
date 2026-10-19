@@ -25,7 +25,7 @@ function session(options: import("../agent/session-types").AgentSessionOptions =
     systemPrompt: "Session test", model: models.getModel("faux", "test")!, thinkingLevel: "off", messages: [], tools: [],
   } });
   let snapshot: AgentSessionSnapshot | undefined;
-  instance.subscribe(event => { const value = event as unknown as { type: string; snapshot: AgentSessionSnapshot }; if (value.type === "workflow_session") snapshot = value.snapshot; });
+  instance.subscribe(event => { const value = event as unknown as { type: string; snapshot: AgentSessionSnapshot }; if (value.type === "project_session") snapshot = value.snapshot; });
   return { instance, faux, lease, snapshot: () => snapshot! };
 }
 
@@ -112,7 +112,7 @@ test("session context updates after follow-up, compaction and reset without usin
   const compacted = snapshot().contexts[0]!.contextUsage!;
   assert.ok(compacted.used > 0 && compacted.used < 3755, "the summary request's 6000 billed tokens do not calibrate the compacted history");
   assert.equal(snapshot().turns.find(turn => turn.requestId === "follow")?.usage?.totalTokens, 8000);
-  assert.ok(snapshot().records.some(record => record.kind === "workflow.compaction-usage"));
+  assert.ok(snapshot().records.some(record => record.kind === "project.compaction-usage"));
   await instance.control({ type: "reset", requestId: "reset" });
   assert.deepEqual(snapshot().contexts[0]?.contextUsage, { used: 0, total: 100_000 });
   assert.equal(snapshot().turns[0]?.usage?.totalTokens, 3755);
@@ -122,10 +122,10 @@ test("turn billing includes failed model responses and its own compaction but ne
   const message = ai.fauxAssistantMessage("Failed", { stopReason: "error" });
   message.usage = { ...message.usage, input: 100, output: 20, cacheRead: 30, cacheWrite: 40, reasoning: 10, totalTokens: 0 };
   const entries = [
-    { kind: "workflow.context", model: [message] },
+    { kind: "project.context", model: [message] },
     { kind: "pi.assistant", model: [message] },
-    { kind: "workflow.compaction-usage", data: { requestId: "this-turn", usage: message.usage } },
-    { kind: "workflow.compaction-usage", data: { requestId: "other-turn", usage: message.usage } },
+    { kind: "project.compaction-usage", data: { requestId: "this-turn", usage: message.usage } },
+    { kind: "project.compaction-usage", data: { requestId: "other-turn", usage: message.usage } },
   ] as unknown as Parameters<typeof projectSessionUsage>[0];
   assert.deepEqual(projectSessionUsage(entries, "this-turn"), { inputTokens: 200, outputTokens: 40, totalTokens: 380,
     cachedInputTokens: 60, cacheCreationTokens: 80, reasoningTokens: 20, calls: 2 });
@@ -149,7 +149,7 @@ test("an observer failure settles running tools, queued inputs and independent f
     } }];
   let failedProjection = false;
   first.instance.subscribe(event => {
-    if ((event as { type: string }).type === "workflow_session" && entered === 2 && !failedProjection) {
+    if ((event as { type: string }).type === "project_session" && entered === 2 && !failedProjection) {
       failedProjection = true; throw new Error("projection unavailable");
     }
   });
@@ -283,7 +283,7 @@ test("foreground cancellation leaves a background subagent alive and cancelling 
   await instance.control({ type: "configure", requestId: "child-effort", targetId: child.id, expectedVersion: 0, effort: "low" });
   await instance.control({ type: "cancel", requestId: "foreground", scope: "foreground" });
   assert.ok(snapshot().tasks.some(task => task.toolName === "wait"));
-  const delegation = snapshot().tasks.find(task => task.kind === "workflow.delegation")!;
+  const delegation = snapshot().tasks.find(task => task.kind === "project.delegation")!;
   await instance.control({ type: "cancel", requestId: "stop-child", scope: "task", taskId: delegation.id });
   assert.equal(snapshot().tasks.length, 0);
   assert.equal(snapshot().turns.filter(turn => turn.requestId.startsWith("report:")).length, 0);

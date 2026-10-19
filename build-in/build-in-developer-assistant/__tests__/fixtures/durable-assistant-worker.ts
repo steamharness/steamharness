@@ -3,12 +3,12 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import * as ai from "@earendil-works/pi-ai";
 import {
-  createLocalWorkflowKVStore, createWorkflowKVContext, createWorkflowConversationContext,
-  createWorkflowToolPermissionContext, createWorkflowTokenUsageContext, TOKEN_USAGE_TOTAL_KEY,
+  createLocalProjectKVStore, createProjectKVContext, createProjectConversationContext,
+  createProjectToolPermissionContext, createProjectTokenUsageContext, TOKEN_USAGE_TOTAL_KEY,
   type RunContext, type ConversationExecutorDefinition, type AgentInput, type AgentOutputPayload, type AgentProjectOptions,
   type UserInputResolved,
 } from "steamharness";
-import { installWorkflowRuntimeGlobal } from "steamharness/runtime-api";
+import { installProjectRuntimeGlobal } from "steamharness/runtime-api";
 import { createAgentSessionHost, controlAgentSession, type AgentSessionSnapshot } from "steamharness/agent";
 
 const [directory, scenario, phase] = process.argv.slice(2) as [string, string, string];
@@ -18,7 +18,7 @@ const faux = ai.fauxProvider({ models: [{ id: "fixture", contextWindow: 100_000,
 const models = ai.createModels(); models.setProvider(faux.provider);
 // Core's bundled declarations own the transcript brand; this fixture pins the same upstream runtime.
 const injectedModels = models as unknown as NonNullable<AgentProjectOptions["models"]>;
-const runtime = installWorkflowRuntimeGlobal();
+const runtime = installProjectRuntimeGlobal();
 const registry = runtime.createAgentRegistry();
 const timer = runtime.defineAgentTask<{ wakeAt: number }, { phase: "sleep"; wakeAt: number }, string>({ name: "fixture.timer", version: 1,
   initial: input => ({ phase: "sleep", wakeAt: input.wakeAt }), phases: { sleep: async (task, api, ctx) => {
@@ -28,7 +28,7 @@ const timer = runtime.defineAgentTask<{ wakeAt: number }, { phase: "sleep"; wake
 registry.install(runtime.defineAgentExtension({ name: "fixture", tasks: [timer] }));
 let scriptWaiting = false;
 // Keep the real assistant declaration, persona, tools and nodes; only the model is scripted.
-globalThis.workflow = { ...runtime, createAgentConversationWorkflow: options => runtime.createAgentConversationWorkflow({
+globalThis.steamharness = { ...runtime, createAgentConversationProject: options => runtime.createAgentConversationProject({
   ...options, models: injectedModels, resolvedModel: models.getModel("faux", "fixture")!,
   ...(scenario === "extensions" ? { session: { ...options?.session, registry, nativeTools: [{ name: "checkpoint", description: "Fixture restart barrier", replay: "safe" as const,
     parameters: ai.Type.Object({}), execute: async () => { scriptWaiting = true;
@@ -48,9 +48,9 @@ async function until(check: () => boolean): Promise<void> {
   const deadline = Date.now() + 10_000;
   while (!check()) { if (Date.now() > deadline) throw new Error("Assistant session did not settle."); await new Promise(resolve => setTimeout(resolve, 10)); }
 }
-const kv = createWorkflowKVContext({ store: createLocalWorkflowKVStore({ rootDir: path.join(directory, "kv") }), projectId, conversationId });
-const conversation = createWorkflowConversationContext({ enabled: true, projectName, conversationId, kv });
-const tokenUsage = createWorkflowTokenUsageContext({ kv, projectId, conversationId, runId, definition: executor.tokenUsage });
+const kv = createProjectKVContext({ store: createLocalProjectKVStore({ rootDir: path.join(directory, "kv") }), projectId, conversationId });
+const conversation = createProjectConversationContext({ enabled: true, projectName, conversationId, kv });
+const tokenUsage = createProjectTokenUsageContext({ kv, projectId, conversationId, runId, definition: executor.tokenUsage });
 let decisions: UserInputResolved[] = [];
 try { decisions = JSON.parse(await readFile(path.join(directory, "decisions.json"), "utf8")); }
 catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
@@ -59,10 +59,10 @@ const userInput = {
   requestInput: async () => undefined,
 };
 const context = {
-  metadata: { workflow: projectName, runId, agentStoreDir: path.join(directory, "agents") },
+  metadata: { project: projectName, runId, agentStoreDir: path.join(directory, "agents") },
   providers: {}, storage: { local: { kv, persistentValue: kv }, server: { kv, persistentValue: kv } },
   conversation, tokenUsage, userInput,
-  toolPermissions: createWorkflowToolPermissionContext({ definitions: [...(executor.tools ?? []), ...(scenario === "extensions" ? [{ name: "checkpoint", enabled: true, autoApprove: true }] : [])], projectName, runId, userInput }),
+  toolPermissions: createProjectToolPermissionContext({ definitions: [...(executor.tools ?? []), ...(scenario === "extensions" ? [{ name: "checkpoint", enabled: true, autoApprove: true }] : [])], projectName, runId, userInput }),
   nodeHooks: {
     onNodeChunk(event: { chunk: Record<string, unknown> }) {
       if (event.chunk.type === "output_item_start" && (event.chunk.item as { metadata?: { kind?: string } })?.metadata?.kind === "agent-session") sessionSnapshot = (event.chunk.item as { content: AgentSessionSnapshot }).content;

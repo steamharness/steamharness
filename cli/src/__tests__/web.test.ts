@@ -188,9 +188,9 @@ describe('steamharness web', () => {
 
   it('validates the private host configuration and assistant workspace', () => {
     expect(parseHostConfiguration({ type: 'configure', surface: 'editor', connection: null })).toEqual({ surface: 'editor', connection: undefined, relatedProjects: [] });
-    expect(parseHostConnection({ serverUrl: 'https://workflow.test/', accessToken: 'host-token' })).toEqual({ serverUrl: 'https://workflow.test', accessToken: 'host-token' });
-    for (const connection of [{ serverUrl: 'file:///tmp', accessToken: 'token' }, { serverUrl: 'https://user:password@workflow.test', accessToken: 'token' }, { serverUrl: 'https://workflow.test', accessToken: '' }]) { expect(() => parseHostConnection(connection)).toThrow(); }
-    const aiConnection = { serverUrl: 'https://workflow.test', accessToken: 'host-token', aiServerUrl: 'https://ai.workflow.test', aiAccessToken: 'ai-token' };
+    expect(parseHostConnection({ serverUrl: 'https://steamharness.test/', accessToken: 'host-token' })).toEqual({ serverUrl: 'https://steamharness.test', accessToken: 'host-token' });
+    for (const connection of [{ serverUrl: 'file:///tmp', accessToken: 'token' }, { serverUrl: 'https://user:password@steamharness.test', accessToken: 'token' }, { serverUrl: 'https://steamharness.test', accessToken: '' }]) { expect(() => parseHostConnection(connection)).toThrow(); }
+    const aiConnection = { serverUrl: 'https://steamharness.test', accessToken: 'host-token', aiServerUrl: 'https://ai.workflow.test', aiAccessToken: 'ai-token' };
     expect(() => parseHostConfiguration({ type: 'configure', surface: 'editor', connection: aiConnection })).toThrow('assistant surface');
     expect(parseHostConfiguration({ type: 'configure', surface: 'assistant', connection: aiConnection,
       assistant: { workdir: '/tmp/workflow-assistant', roots: [{ uri: 'file:///tmp/workflow-assistant', folderPath: '/tmp/workflow-assistant', name: 'Assistant' }] },
@@ -241,11 +241,11 @@ describe('steamharness web', () => {
     const { app, cookie, post } = await fixture();
     const realFetch = globalThis.fetch;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => {
-      if (!String(input).startsWith('https://workflow.test')) { return realFetch(input, options); }
+      if (!String(input).startsWith('https://steamharness.test')) { return realFetch(input, options); }
       expect(new Headers(options?.headers).get('Authorization')).toBe('Bearer private-host-token');
       return new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'host', email: 'host@example.com', displayName: 'Host user', secret: 'non-public-profile-field' } } }));
     });
-    await app.setHostConnection({ serverUrl: 'https://workflow.test', accessToken: 'private-host-token' });
+    await app.setHostConnection({ serverUrl: 'https://steamharness.test', accessToken: 'private-host-token' });
     expect(await readCliAuthConfig()).toEqual({ serverUrl: '', apiKey: '' });
     const state = async () => {
       const events = await fetch(`${app.origin}/api/events`, { headers: { Cookie: cookie } }); const reader = events.body!.getReader();
@@ -266,8 +266,8 @@ describe('steamharness web', () => {
     const verify = vi.fn(async () => new Response(JSON.stringify({ errCode: 0, data: {
       profile: { userId: 'host', email: 'host@example.com', displayName: 'Host user' },
     } })));
-    vi.spyOn(globalThis, 'fetch').mockImplementation((input, options) => String(input).startsWith('https://workflow.test') ? verify() : realFetch(input, options));
-    const saved = { serverUrl: 'https://workflow.test', apiKey: 'cached-cli-token', user: { userId: 'cached', email: 'cached@example.com', displayName: 'Cached user' } };
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, options) => String(input).startsWith('https://steamharness.test') ? verify() : realFetch(input, options));
+    const saved = { serverUrl: 'https://steamharness.test', apiKey: 'cached-cli-token', user: { userId: 'cached', email: 'cached@example.com', displayName: 'Cached user' } };
     const { app, cookie, post } = await fixture({ surface: 'editor' }, async () => {
       await writeCliAuthConfig(saved);
       vi.stubEnv('STEAMHARNESS_SERVER_URL', source === 'environment' ? saved.serverUrl : undefined);
@@ -294,13 +294,13 @@ describe('steamharness web', () => {
   it('still restores cached CLI login for a standalone Web page', async () => {
     const realFetch = globalThis.fetch;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => {
-      if (!String(input).startsWith('https://workflow.test')) { return realFetch(input, options); }
+      if (!String(input).startsWith('https://steamharness.test')) { return realFetch(input, options); }
       expect(new Headers(options?.headers).get('Authorization')).toBe('Bearer cached-cli-token');
       return new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'cached', email: 'cached@example.com', displayName: 'Cached user' } } }));
     });
     const { app, cookie } = await fixture(undefined, async () => {
       vi.stubEnv('STEAMHARNESS_SERVER_URL', undefined); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', undefined);
-      await writeCliAuthConfig({ serverUrl: 'https://workflow.test', apiKey: 'cached-cli-token' });
+      await writeCliAuthConfig({ serverUrl: 'https://steamharness.test', apiKey: 'cached-cli-token' });
     });
     expect(await accountState(app, cookie)).toMatchObject({ status: 'authenticated', user: { displayName: 'Cached user' } });
   });
@@ -309,16 +309,16 @@ describe('steamharness web', () => {
     const { app, cookie, post } = await fixture({ surface: 'editor' });
     const realFetch = globalThis.fetch;
     const verify = vi.fn(async () => new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'host', email: 'host@example.com', displayName: 'Host user' } } })));
-    vi.spyOn(globalThis, 'fetch').mockImplementation((input, options) => String(input).startsWith('https://workflow.test') ? verify() : realFetch(input, options));
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, options) => String(input).startsWith('https://steamharness.test') ? verify() : realFetch(input, options));
     expect(await fetch(app.origin).then(response => response.text())).toContain('data-account-host="true"');
     for (const action of [
-      { type: 'login', serverUrl: 'https://workflow.test', email: 'other@example.com', password: 'password' },
-      { type: 'login', serverUrl: 'https://workflow.test' },
+      { type: 'login', serverUrl: 'https://steamharness.test', email: 'other@example.com', password: 'password' },
+      { type: 'login', serverUrl: 'https://steamharness.test' },
       { type: 'logout' },
     ]) { expect((await post(action)).status).toBe(400); }
     expect(verify).not.toHaveBeenCalled();
     expect(await readCliAuthConfig()).toEqual({ serverUrl: '', apiKey: '' });
-    await app.setHostConnection({ serverUrl: 'https://workflow.test', accessToken: 'host-token' });
+    await app.setHostConnection({ serverUrl: 'https://steamharness.test', accessToken: 'host-token' });
     expect((await post({ type: 'logout' })).status).toBe(400);
     expect(await accountState(app, cookie)).toMatchObject({ status: 'authenticated', user: { displayName: 'Host user' } });
   });
@@ -326,8 +326,8 @@ describe('steamharness web', () => {
   it('redacts failed host verification even after the active connection is cleared', async () => {
     const { app, cookie } = await fixture();
     const realFetch = globalThis.fetch;
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => String(input).startsWith('https://workflow.test') ? new Response('secret-host-value') : realFetch(input, options));
-    await app.setHostConnection({ serverUrl: 'https://workflow.test', accessToken: 'secret-host-value' });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => String(input).startsWith('https://steamharness.test') ? new Response('secret-host-value') : realFetch(input, options));
+    await app.setHostConnection({ serverUrl: 'https://steamharness.test', accessToken: 'secret-host-value' });
     const events = await fetch(`${app.origin}/api/events`, { headers: { Cookie: cookie } });
     const reader = events.body!.getReader(); const state = new TextDecoder().decode((await reader.read()).value); await reader.cancel();
     expect(state).toContain('"status":"error"'); expect(state).not.toContain('secret-host-value');
@@ -340,14 +340,14 @@ describe('steamharness web', () => {
     const realFetch = globalThis.fetch;
     let checks = 0;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => {
-      if (!String(input).startsWith('https://workflow.test')) { return realFetch(input, options); }
+      if (!String(input).startsWith('https://steamharness.test')) { return realFetch(input, options); }
       checks++;
       expect(new Headers(options?.headers).get('Authorization')).toBe('Bearer current-token');
       return new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'current', email: 'current@example.com', displayName: 'Current account' } } }));
     });
-    if (source === 'host') { await app.setHostConnection({ serverUrl: 'https://workflow.test', accessToken: 'current-token' }); }
+    if (source === 'host') { await app.setHostConnection({ serverUrl: 'https://steamharness.test', accessToken: 'current-token' }); }
     else {
-      vi.stubEnv('STEAMHARNESS_SERVER_URL', 'https://workflow.test'); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', 'current-token');
+      vi.stubEnv('STEAMHARNESS_SERVER_URL', 'https://steamharness.test'); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', 'current-token');
       expect((await post({ type: 'verify' })).status).toBe(200);
     }
     const account = await accountState(app, cookie);
@@ -361,9 +361,9 @@ describe('steamharness web', () => {
   it('does not authenticate a token when the server returns a malformed account profile', async () => {
     const { app, cookie } = await fixture();
     const realFetch = globalThis.fetch;
-    vi.spyOn(globalThis, 'fetch').mockImplementation((input, options) => String(input).startsWith('https://workflow.test')
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, options) => String(input).startsWith('https://steamharness.test')
       ? Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { profile: {} } }))) : realFetch(input, options));
-    await app.setHostConnection({ serverUrl: 'https://workflow.test', accessToken: 'host-token' });
+    await app.setHostConnection({ serverUrl: 'https://steamharness.test', accessToken: 'host-token' });
     expect(await accountState(app, cookie)).toMatchObject({ status: 'error' });
   });
 
@@ -373,12 +373,12 @@ describe('steamharness web', () => {
     let finishOld!: (response: Response) => void;
     const profile = (name: string) => new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: name, email: `${name}@example.com`, displayName: name } } }));
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => {
-      if (!String(input).startsWith('https://workflow.test')) { return realFetch(input, options); }
+      if (!String(input).startsWith('https://steamharness.test')) { return realFetch(input, options); }
       return new Headers(options?.headers).get('Authorization') === 'Bearer old-host-token' ? new Promise(resolve => { finishOld = resolve; }) : profile('New account');
     });
-    const old = app.setHostConnection({ serverUrl: 'https://workflow.test', accessToken: 'old-host-token' });
+    const old = app.setHostConnection({ serverUrl: 'https://steamharness.test', accessToken: 'old-host-token' });
     await vi.waitFor(() => expect(finishOld).toBeDefined());
-    await app.setHostConnection({ serverUrl: 'https://workflow.test', accessToken: 'new-host-token' });
+    await app.setHostConnection({ serverUrl: 'https://steamharness.test', accessToken: 'new-host-token' });
     finishOld(profile('Old account')); await old;
     const events = await fetch(`${app.origin}/api/events`, { headers: { Cookie: cookie } });
     const reader = events.body!.getReader(); const state = new TextDecoder().decode((await reader.read()).value); await reader.cancel();
@@ -391,11 +391,11 @@ describe('steamharness web', () => {
     const realFetch = globalThis.fetch;
     let checks = 0;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => {
-      if (!String(input).startsWith('https://workflow.test')) { return realFetch(input, options); }
+      if (!String(input).startsWith('https://steamharness.test')) { return realFetch(input, options); }
       if (++checks === 1) { throw new TypeError('Temporary network failure.'); }
       return new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'host', email: 'host@example.com', displayName: 'Recovered account' } } }));
     });
-    await app.setHostConnection({ serverUrl: 'https://workflow.test', accessToken: 'host-token' });
+    await app.setHostConnection({ serverUrl: 'https://steamharness.test', accessToken: 'host-token' });
     expect(await accountState(app, cookie)).toMatchObject({ status: 'error' });
     await vi.advanceTimersByTimeAsync(5_000);
     await vi.waitFor(async () => expect(await accountState(app, cookie)).toMatchObject({ status: 'authenticated', user: { displayName: 'Recovered account' } }));
@@ -410,11 +410,11 @@ describe('steamharness web', () => {
     const pending = new Promise<Response>(resolve => { finish = resolve; });
     let checks = 0;
     vi.spyOn(globalThis, 'fetch').mockImplementation((input, options) => {
-      if (!String(input).startsWith('https://workflow.test')) { return realFetch(input, options); }
+      if (!String(input).startsWith('https://steamharness.test')) { return realFetch(input, options); }
       checks++;
       return pending;
     });
-    const checking = app.setHostConnection({ serverUrl: 'https://workflow.test', accessToken: 'host-token' });
+    const checking = app.setHostConnection({ serverUrl: 'https://steamharness.test', accessToken: 'host-token' });
     try {
       await vi.waitFor(() => expect(checks).toBe(1));
       await vi.advanceTimersByTimeAsync(5_000);
@@ -434,14 +434,14 @@ describe('steamharness web', () => {
     let finishLogin!: (response: Response) => void;
     const profile = (userId: string) => ({ userId, email: `${userId}@example.com`, displayName: userId });
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => {
-      if (!String(input).startsWith('https://workflow.test')) { return realFetch(input, options); }
+      if (!String(input).startsWith('https://steamharness.test')) { return realFetch(input, options); }
       if (String(input).endsWith('/api/auth/login')) { return new Promise(resolve => { finishLogin = resolve; }); }
       const name = new Headers(options?.headers).get('Authorization') === 'Bearer host-token' ? 'Injected account' : 'CLI account';
       return new Response(JSON.stringify({ errCode: 0, data: { profile: profile(name) } }));
     });
-    const passwordLogin = post({ type: 'login', serverUrl: 'https://workflow.test', email: 'cli@example.com', password: 'test-password' });
+    const passwordLogin = post({ type: 'login', serverUrl: 'https://steamharness.test', email: 'cli@example.com', password: 'test-password' });
     await vi.waitFor(() => expect(finishLogin).toBeDefined());
-    await app.setHostConnection({ serverUrl: 'https://workflow.test', accessToken: 'host-token' });
+    await app.setHostConnection({ serverUrl: 'https://steamharness.test', accessToken: 'host-token' });
     finishLogin(new Response(JSON.stringify({ errCode: 0, data: { authenticated: true, accessToken: 'cli-token', apiKey: { id: 'cli-key' } } })));
     expect((await passwordLogin).status).toBe(200);
     expect(await accountState(app, cookie)).toMatchObject({ status: 'authenticated', user: { displayName: 'Injected account' } });
@@ -507,12 +507,12 @@ describe('steamharness web', () => {
     let checks = 0;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => {
       const url = String(input);
-      if (!url.startsWith('https://workflow.test')) { return realFetch(input, options); }
+      if (!url.startsWith('https://steamharness.test')) { return realFetch(input, options); }
       if (url.endsWith('/api/auth/login')) { return new Response(JSON.stringify({ errCode: 0, data: { authenticated: true, accessToken: 'test-api-key', apiKey: { id: 'key-id' } } })); }
       checks++;
       return new Response(JSON.stringify({ errCode: 0, data: { profile, principal: { expiresAt: '2027-01-01T00:00:00Z' } } }));
     });
-    const result = await post({ type: 'login', serverUrl: 'https://workflow.test', email: profile.email, password: 'test-password' });
+    const result = await post({ type: 'login', serverUrl: 'https://steamharness.test', email: profile.email, password: 'test-password' });
     expect(result.status).toBe(200);
     expect(await readCliAuthConfig()).toMatchObject({ apiKey: 'test-api-key', user: profile, source: 'password' });
     expect((await post({ type: 'verify' })).status).toBe(200);
@@ -731,14 +731,14 @@ describe('steamharness web', () => {
     const harnessVersion = JSON.parse(await readFile(path.join(harnessRoot, 'package.json'), 'utf8')).version;
     await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: '364764e9-ef0e-4e86-9e56-77d0410e1723', name: 'project-runtime', type: 'module', devDependencies: { 'steamharness': harnessVersion }, steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } }));
     await writeFile(path.join(directory, 'index.ts'), `
-      const flow = workflow.defineWorkflow({ name: 'test', run() { return {
+      const flow = steamharness.defineProject({ name: 'test', run() { return {
         errCode: 0, errMessage: '', text: 'project runtime',
         llmServer: process.env.STEAMHARNESS_AI_SERVER_URL,
         llmToken: process.env.STEAMHARNESS_AI_API_KEY,
         llmLoginIsCurrent: process.env.STEAMHARNESS_AI_API_KEY === process.env.STEAMHARNESS_SERVER_ADMIN_KEY,
         assistantEnvironmentEmpty: !process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_HOST && !process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR && !process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST
       }; } });
-      export const executor = workflow.defineExecutor({
+      export const executor = steamharness.defineExecutor({
         projectType: 'conversation', workflow: flow,
         params: [
           { kind: 'auxiliary', id: 'formatting', label: 'Project formatting', fields: [

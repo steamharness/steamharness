@@ -29,7 +29,7 @@ import { isApiSuccess, type AdminUserSummary, type KVEntrySummary, type Permissi
 import { parseRoute, readRouteProjectId, replaceCurrentRouteIfNeeded, routeToPath } from "./utils/routes";
 import { normalizeDateTimeFilter } from "./utils/date-filters";
 import { consumeUnseenServerRelease } from "./lib/server-release-notes";
-import { getWorkflowProjectDisplayName, getWorkflowProjectServerStorageAccess } from "./utils/project-presentation";
+import { getProjectDisplayName, getProjectServerStorageAccess } from "./utils/project-presentation";
 
 // keeps all server/web server-backed table pagination at 20 rows.
 const RUN_PAGE_SIZE = 20;
@@ -135,10 +135,10 @@ function AppContent() {
     ? resolveDetailTab(selectedProject, requestedDetailTab)
     : requestedDetailTab;
   const selectedProjectDisplayName = selectedProject
-    ? getWorkflowProjectDisplayName(selectedProject, i18n.language)
+    ? getProjectDisplayName(selectedProject, i18n.language)
     : undefined;
   const selectedProjectServerStorageAllowed = selectedProject
-    ? getWorkflowProjectServerStorageAccess(selectedProject).allowed
+    ? getProjectServerStorageAccess(selectedProject).allowed
     : false;
   const principalPermissions = useMemo(
     () => new Set<PermissionKey>((session.status === "ready" ? (session.principal.permissions ?? []) : []) as PermissionKey[]),
@@ -347,7 +347,7 @@ function AppContent() {
       return;
     }
 
-    const workflows = await apiClient.listWorkflows();
+    const workflows = await apiClient.listProjects();
     if (requestId !== validateSessionRequestRef.current) {
       return;
     }
@@ -452,7 +452,7 @@ function AppContent() {
 
   async function loadProjects(options: { keepSelection?: boolean } = {}) {
     setBusy((s) => ({ ...s, global: t("busyGlobalRefreshProjects") }));
-    const res = await apiClient.listWorkflows();
+    const res = await apiClient.listProjects();
     setBusy((s) => ({ ...s, global: undefined }));
     if (!isApiSuccess(res)) { pushToast("error", res.errMessage); return; }
     const uploadedProjects = res.data.filter(isUploadedVersionProject);
@@ -565,7 +565,7 @@ function AppContent() {
 
   async function loadProjectKV(projectName: string, options: { reset?: boolean; cursor?: string; pageIndex?: number } = {}) {
     const project = projects.find((item) => item.id === projectName);
-    if (project && !getWorkflowProjectServerStorageAccess(project).allowed) return;
+    if (project && !getProjectServerStorageAccess(project).allowed) return;
     const cursor = options.reset ? undefined : options.cursor;
     const pageIndex = options.reset ? 0 : options.pageIndex ?? 0;
     if (!options.reset && busy.kv) return;

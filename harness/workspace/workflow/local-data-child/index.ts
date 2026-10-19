@@ -11,7 +11,7 @@ const STORAGE_LOCATION = "local" as const;
 const PROJECT_TITLE = "本地数据测试子项目";
 const STORAGE_KEY_PREFIX = "stored-content:";
 
-const storageDataOutputNode = workflow.createOutputNode<StorageDataOutput, StorageDataOutput>({
+const storageDataOutputNode = steamharness.createOutputNode<StorageDataOutput, StorageDataOutput>({
   name: "storage-data-output",
   format(result) {
     const content = JSON.stringify({
@@ -24,7 +24,7 @@ const storageDataOutputNode = workflow.createOutputNode<StorageDataOutput, Stora
     }, null, 2);
 
     return {
-      ...workflow.createOutputPayload({
+      ...steamharness.createOutputPayload({
         items: [{
           id: "storage-data-result",
           title: result.action === "store" ? "数据已存储" : "数据读取结果",
@@ -43,7 +43,7 @@ const storageDataOutputNode = workflow.createOutputNode<StorageDataOutput, Stora
   },
 });
 
-export const storeDataWorkflow = workflow.defineWorkflow<StoreDataInput, StorageDataOutput>({
+export const storeDataProject = steamharness.defineProject<StoreDataInput, StorageDataOutput>({
   name: `${PROJECT_TITLE} - 存储数据`,
   async run(input, context) {
     const alias = readOptionalString(input.alias);
@@ -52,7 +52,7 @@ export const storeDataWorkflow = workflow.defineWorkflow<StoreDataInput, Storage
     const id = randomUUID();
     await kv.setValue(createStorageKey(id), input.content);
 
-    return workflow.runNode(storageDataOutputNode, {
+    return steamharness.runNode(storageDataOutputNode, {
       errCode: 0,
       errMessage: "",
       items: [],
@@ -65,7 +65,7 @@ export const storeDataWorkflow = workflow.defineWorkflow<StoreDataInput, Storage
   },
 });
 
-export const getDataWorkflow = workflow.defineWorkflow<GetDataInput, StorageDataOutput>({
+export const getDataProject = steamharness.defineProject<GetDataInput, StorageDataOutput>({
   name: `${PROJECT_TITLE} - 读取数据`,
   async run(input, context) {
     const id = readRequiredId(input.id);
@@ -74,13 +74,13 @@ export const getDataWorkflow = workflow.defineWorkflow<GetDataInput, StorageData
     const kv = alias === undefined ? storage.kv : storage.relatedProjects.get(alias).kv;
     const content = await kv.getValue(createStorageKey(id));
     if (content === undefined) {
-      throw new workflow.HarnessError({
+      throw new steamharness.HarnessError({
         type: "input_validation",
         message: `未找到 id 为“${id}”的数据。`,
       });
     }
 
-    return workflow.runNode(storageDataOutputNode, {
+    return steamharness.runNode(storageDataOutputNode, {
       errCode: 0,
       errMessage: "",
       items: [],
@@ -94,11 +94,11 @@ export const getDataWorkflow = workflow.defineWorkflow<GetDataInput, StorageData
   },
 });
 
-const noteDataOutputNode = workflow.createOutputNode<NoteDataOutput, NoteDataOutput>({
+const noteDataOutputNode = steamharness.createOutputNode<NoteDataOutput, NoteDataOutput>({
   name: "note-data-output",
   format(result) {
     return {
-      ...workflow.createOutputPayload({
+      ...steamharness.createOutputPayload({
         items: [{
           id: "note-data-result",
           title: "知识库已写入",
@@ -121,17 +121,17 @@ const noteDataOutputNode = workflow.createOutputNode<NoteDataOutput, NoteDataOut
  * project calls it through the relation and the document lands here, in the
  * store this project reads on its own side.
  */
-export const noteDataWorkflow = workflow.defineWorkflow<NoteDataInput, NoteDataOutput>({
+export const noteDataProject = steamharness.defineProject<NoteDataInput, NoteDataOutput>({
   name: `${PROJECT_TITLE} - 写入知识库`,
   async run(input, context) {
     const storage = context.storage[STORAGE_LOCATION];
-    const document = await workflow.createKnowledgeDocument(storage, {
+    const document = await steamharness.createKnowledgeDocument(storage, {
       title: input.title,
       markdown: input.markdown,
     });
-    const documents = (await workflow.listKnowledgeDocuments(storage)).length;
+    const documents = (await steamharness.listKnowledgeDocuments(storage)).length;
 
-    return workflow.runNode(noteDataOutputNode, {
+    return steamharness.runNode(noteDataOutputNode, {
       errCode: 0,
       errMessage: "",
       items: [],
@@ -142,15 +142,15 @@ export const noteDataWorkflow = workflow.defineWorkflow<NoteDataInput, NoteDataO
   },
 });
 
-export const executor = workflow.defineExecutor({
+export const executor = steamharness.defineExecutor({
   projectType: "workflow",
   defaultEntrypoint: "store",
   entrypoints: [
-    workflow.defineEntrypoint<StoreDataInput, StorageDataOutput>({
+    steamharness.defineEntrypoint<StoreDataInput, StorageDataOutput>({
       id: "store",
       title: "存储数据",
       description: "输入内容并返回可用于读取的 id。",
-      workflow: storeDataWorkflow,
+      workflow: storeDataProject,
       params: [
         {
           name: "content",
@@ -184,11 +184,11 @@ export const executor = workflow.defineExecutor({
         };
       },
     }),
-    workflow.defineEntrypoint<GetDataInput, StorageDataOutput>({
+    steamharness.defineEntrypoint<GetDataInput, StorageDataOutput>({
       id: "get",
       title: "读取数据",
       description: "输入存储时返回的 id 并读取内容。",
-      workflow: getDataWorkflow,
+      workflow: getDataProject,
       params: [
         {
           name: "id",
@@ -221,11 +221,11 @@ export const executor = workflow.defineExecutor({
         };
       },
     }),
-    workflow.defineEntrypoint<NoteDataInput, NoteDataOutput>({
+    steamharness.defineEntrypoint<NoteDataInput, NoteDataOutput>({
       id: "note",
       title: "写入知识库",
       description: "在本项目知识库里新建一篇文档，返回文档 id 与当前文档数。",
-      workflow: noteDataWorkflow,
+      workflow: noteDataProject,
       params: [
         {
           name: "title",
@@ -255,8 +255,8 @@ export const executor = workflow.defineExecutor({
   ],
 });
 
-export { storeDataWorkflow as workflow };
-export default storeDataWorkflow;
+export { storeDataProject as workflow };
+export default storeDataProject;
 
 function createStorageKey(id: string): string {
   return `${STORAGE_KEY_PREFIX}${id}`;
@@ -264,7 +264,7 @@ function createStorageKey(id: string): string {
 
 function readRequiredContent(value: unknown): string {
   if (typeof value === "string") return value;
-  throw new workflow.HarnessError({
+  throw new steamharness.HarnessError({
     type: "input_validation",
     message: "存储内容不能为空。",
   });
@@ -272,7 +272,7 @@ function readRequiredContent(value: unknown): string {
 
 function readRequiredId(value: unknown): string {
   if (typeof value === "string" && value.trim() !== "") return value.trim();
-  throw new workflow.HarnessError({
+  throw new steamharness.HarnessError({
     type: "input_validation",
     message: "数据 id 不能为空。",
   });

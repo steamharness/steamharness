@@ -36,22 +36,22 @@ pnpm exec steamharness workspace pack <workflow> [--path <workflow-dir>] [--outp
 |Output Directory| `<repo-root>/workspace/.packs` |
 |Output file name| `<workflow>-<UTC timestamp>.tgz` |
 
-## `.workflowignore`
+## `.steamharnessignore`
 
-`pack` reads only the project root `.workflowignore` and does not read `.gitignore` in the root or nested directories. The syntax supports comments, directory rules, wildcards, `**` and `!` reverse inclusions, and paths match by `/`.
+`pack` reads only the project root `.steamharnessignore` and does not read `.gitignore` in the root or nested directories. The syntax supports comments, directory rules, wildcards, `**` and `!` reverse inclusions, and paths match by `/`.
 
 |Scene|Behavior|
 | --- | --- |
 |Missing, empty file, or only comments|Upload all common files under the project, and output the number of files and the total size warning.|
-|`.workflowignore` Self hit rule|will remain in the archive.|
+|`.steamharnessignore` Self hit rule|will remain in the archive.|
 |`package.json`, entry, or existing `kanban.json` excluded|Packing failed and the effective rule was indicated.|
 |Symbolic links, special files, or case-conflict paths|Reject packaging, not by ignoring the rule release, to avoid the archive coverage differences between Windows, macOS and Linux.|
 
-Kanban does not automatically preserve `dist` or other product directories; they are not implicitly excluded by the host. You should keep the actual `artifactDir` in `.workflowignore`, while excluding `src/`, test, and source map as needed. `.gitignore` Whether to ignore the product is independent of the upload.
+Kanban does not automatically preserve `dist` or other product directories; they are not implicitly excluded by the host. You should keep the actual `artifactDir` in `.steamharnessignore`, while excluding `src/`, test, and source map as needed. `.gitignore` Whether to ignore the product is independent of the upload.
 
 ## Project Team Archiving
 
-The project-group root must be a Kanban with `steamHarness.projectInfo.relatedProjects`. Every `--dependency` alias must match a mutually confirmed direct relation, and the local dependency UUID must match its declaration; pending relations cannot become included dependencies. Each related UUID is packaged only once. The archive contains `project-group.json`, the root project package, and the selected dependency packages; each project still selects source through its own `.workflowignore`.
+The project-group root must be a Kanban with `steamHarness.projectInfo.relatedProjects`. Every `--dependency` alias must match a mutually confirmed direct relation, and the local dependency UUID must match its declaration; pending relations cannot become included dependencies. Each related UUID is packaged only once. The archive contains `project-group.json`, the root project package, and the selected dependency packages; each project still selects source through its own `.steamharnessignore`.
 
 Packaging will reject symbolic links, special tar entries, as well as `.env*`, KV, PersistentValue, scheduled tasks, execution history, SQLite, `workflow-auth.json`, and other host‑specific user configurations; the root user Kanban is also prohibited from declaring their own UUID as a source project. The project team does not carry any locally executed data, nor does it modify any Server states; developers initialize data by running Workflow locally and explicitly choosing local or server storage.
 

@@ -95,13 +95,13 @@ try {
   const popup = await page.locator('#parameter-popover').boundingBox(), anchor = await page.locator('[data-action-id=execution]').boundingBox();
   assert.ok(popup.y + popup.height <= anchor.y, JSON.stringify({ popup, anchor }));
   await page.evaluate(() => {
-    window.__workflowDraftRounds = '';
+    window.__projectDraftRounds = '';
     window.addEventListener('message', event => {
-      if (event.data?.type === 'state') { window.__workflowDraftRounds = event.data.drafts?.report?.values.rounds; }
+      if (event.data?.type === 'state') { window.__projectDraftRounds = event.data.drafts?.report?.values.rounds; }
     });
   });
   await page.locator('#workflow-param-rounds').fill('3');
-  await page.waitForFunction(() => window.__workflowDraftRounds === '3');
+  await page.waitForFunction(() => window.__projectDraftRounds === '3');
   assert.equal(await page.locator('[data-action-id=execution]').getAttribute('aria-expanded'), 'true', 'Draft updates must keep the parameter panel open');
   await page.locator('#workflow-param-delay').fill('5');
   proof.checks.push('draft updates retain the parameter panel for consecutive edits');

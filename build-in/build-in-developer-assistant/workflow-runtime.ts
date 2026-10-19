@@ -1,18 +1,18 @@
 import type { RuntimeApi } from "steamharness/runtime-api";
 import type { OpenAIConversationHostInput } from "./interface";
 
-type OpenAIWorkflowRuntimeApi = RuntimeApi & {
+type OpenAIProjectRuntimeApi = RuntimeApi & {
   readOpenAIConversationHostInput(
     context: unknown,
   ): OpenAIConversationHostInput | undefined;
 };
 
-// Hosts inject globalThis.workflow before loading a project. The proxy keeps
+// Hosts inject globalThis.steamharness before loading a project. The proxy keeps
 // tests that replace the injected runtime after module evaluation observable.
-export const workflow = new Proxy({} as OpenAIWorkflowRuntimeApi, {
+export const steamharness = new Proxy({} as OpenAIProjectRuntimeApi, {
   get(_target, property) {
-    const value = (globalThis.workflow as OpenAIWorkflowRuntimeApi | undefined)
-      ?.[property as keyof OpenAIWorkflowRuntimeApi];
+    const value = (globalThis.steamharness as OpenAIProjectRuntimeApi | undefined)
+      ?.[property as keyof OpenAIProjectRuntimeApi];
     if (property === "readOpenAIConversationHostInput" && typeof value !== "function") {
       return () => undefined;
     }

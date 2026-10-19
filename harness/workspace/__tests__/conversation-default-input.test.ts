@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { installWorkflowRuntimeGlobal } from "steamharness/runtime-api";
+import { installProjectRuntimeGlobal } from "steamharness/runtime-api";
 
-installWorkflowRuntimeGlobal();
+installProjectRuntimeGlobal();
 
 type ExecutorLike<Input> = {
   params?: Array<{

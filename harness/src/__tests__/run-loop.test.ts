@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { analyzeWorkflowScriptSource } from "../executor/rules";
+import { analyzeProjectScriptSource } from "../executor/rules";
 import {
-  createDisabledWorkflowConversationContext,
-  createDisabledWorkflowTokenUsageContext,
-  createWorkflowRelatedProjectsContext,
+  createDisabledProjectConversationContext,
+  createDisabledProjectTokenUsageContext,
+  createProjectRelatedProjectsContext,
   type KVContext,
 } from "../index";
 import { runFor, runWhile } from "../workflow/index";
@@ -12,7 +12,7 @@ import type { NodeExecutionHookFinishEvent, RunContext } from "../types/index";
 
 test("runFor iterates items and emits loop node hooks", async () => {
   const finishes: NodeExecutionHookFinishEvent[] = [];
-  const context = createTestWorkflowContext({
+  const context = createTestProjectContext({
     onFinish(event) {
       finishes.push(event);
     },
@@ -39,7 +39,7 @@ test("runFor iterates items and emits loop node hooks", async () => {
 });
 
 test("runWhile iterates until condition fails", async () => {
-  const result = await runWhile({ count: 0 }, createTestWorkflowContext(), {
+  const result = await runWhile({ count: 0 }, createTestProjectContext(), {
     name: "Count while",
     condition: (state) => state.count < 3,
     run: (state) => ({ count: state.count + 1 }),
@@ -50,7 +50,7 @@ test("runWhile iterates until condition fails", async () => {
 
 test("runWhile fails when maxIterations is exceeded", async () => {
   await assert.rejects(
-    () => runWhile(0, createTestWorkflowContext(), {
+    () => runWhile(0, createTestProjectContext(), {
       name: "No exit",
       maxIterations: 2,
       condition: () => true,
@@ -61,49 +61,49 @@ test("runWhile fails when maxIterations is exceeded", async () => {
 });
 
 test("workflow structure keeps runFor and runWhile bodies inside loop items", () => {
-  const analysis = analyzeWorkflowScriptSource(`
-    const stepNode = workflow.createInputNode({
+  const analysis = analyzeProjectScriptSource(`
+    const stepNode = steamharness.createInputNode({
       name: "step",
       parse(input) {
         return input;
       },
     });
 
-    const outputNode = workflow.createOutputNode({
+    const outputNode = steamharness.createOutputNode({
       name: "output",
       format(input) {
         return { errCode: 0, errMessage: "", content: String(input.count) };
       },
     });
 
-    export const demo = workflow.defineWorkflow({
+    export const demo = steamharness.defineProject({
       name: "demo",
       async run(input, context) {
-        const forResult = await workflow.runFor({ count: 0 }, context, {
+        const forResult = await steamharness.runFor({ count: 0 }, context, {
           name: "For loop",
           items: () => ["alpha", "beta"],
           async run(state, item, index, loopContext) {
-            return workflow.runNode(stepNode, { count: state.count + index + 1, item }, loopContext);
+            return steamharness.runNode(stepNode, { count: state.count + index + 1, item }, loopContext);
           },
         });
 
-        const whileResult = await workflow.runWhile(forResult, context, {
+        const whileResult = await steamharness.runWhile(forResult, context, {
           name: "While loop",
           maxIterations: 3,
           condition: (state) => state.count < 5,
           async run(state, loopContext) {
-            return workflow.runIf(state, loopContext, {
+            return steamharness.runIf(state, loopContext, {
               name: "While branch",
               branches: [
                 {
                   label: "needs steps",
                   condition: (current) => current.count < 4,
                   async run(current, branchContext) {
-                    return workflow.runFor(current, branchContext, {
+                    return steamharness.runFor(current, branchContext, {
                       name: "Inner for",
                       items: () => [1],
                       async run(innerState, value, index, innerContext) {
-                        return workflow.runNode(stepNode, { ...innerState, count: innerState.count + value + index }, innerContext);
+                        return steamharness.runNode(stepNode, { ...innerState, count: innerState.count + value + index }, innerContext);
                       },
                     });
                   },
@@ -112,14 +112,14 @@ test("workflow structure keeps runFor and runWhile bodies inside loop items", ()
               else: {
                 label: "finish",
                 async run(current, branchContext) {
-                  return workflow.runNode(stepNode, { ...current, count: current.count + 1 }, branchContext);
+                  return steamharness.runNode(stepNode, { ...current, count: current.count + 1 }, branchContext);
                 },
               },
             });
           },
         });
 
-        return workflow.runNode(outputNode, whileResult, context);
+        return steamharness.runNode(outputNode, whileResult, context);
       },
     });
   `);
@@ -147,7 +147,7 @@ test("workflow structure keeps runFor and runWhile bodies inside loop items", ()
   assert.equal(whileBranch.branches[1]?.children[0]?.kind, "call");
 });
 
-function createTestWorkflowContext(options: {
+function createTestProjectContext(options: {
   onFinish?: (event: NodeExecutionHookFinishEvent) => void;
 } = {}): RunContext {
   const kv = createMemoryKVContext();
@@ -155,11 +155,11 @@ function createTestWorkflowContext(options: {
   return {
     providers: {},
     storage: {
-      local: { kv, persistentValue: createMemoryKVContext(), relatedProjects: createWorkflowRelatedProjectsContext() },
-      server: { kv: createMemoryKVContext(), persistentValue: createMemoryKVContext(), relatedProjects: createWorkflowRelatedProjectsContext() },
+      local: { kv, persistentValue: createMemoryKVContext(), relatedProjects: createProjectRelatedProjectsContext() },
+      server: { kv: createMemoryKVContext(), persistentValue: createMemoryKVContext(), relatedProjects: createProjectRelatedProjectsContext() },
     },
-    conversation: createDisabledWorkflowConversationContext(),
-    tokenUsage: createDisabledWorkflowTokenUsageContext(),
+    conversation: createDisabledProjectConversationContext(),
+    tokenUsage: createDisabledProjectTokenUsageContext(),
     nodeHooks: {
       onNodeFinish: options.onFinish,
     },

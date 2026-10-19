@@ -4,8 +4,8 @@ import type {
   ClassifyOutputPayload,
 } from "./interface";
 
-const llmProvider = workflow.createLLMProviderRef("default", () => {
-  return workflow.createLLMProviderFromEnv();
+const llmProvider = steamharness.createLLMProviderRef("default", () => {
+  return steamharness.createLLMProviderFromEnv();
 });
 const CLASSIFICATION_RESULT_ITEM_ID = "classification-result";
 
@@ -25,14 +25,14 @@ const userDescription = [
   "最终只输出一个分类结果，不要输出解释、分析过程或其他内容。",
 ].join("\n");
 
-const inputNode = workflow.createInputNode<ClassifyInput, ClassifyInput>({
+const inputNode = steamharness.createInputNode<ClassifyInput, ClassifyInput>({
   name: "classification-input",
   parse(input) {
     return input.trim();
   },
 });
 
-const classifierNode = workflow.createQuestionClassifierNode({
+const classifierNode = steamharness.createQuestionClassifierNode({
   name: "uni-question-classifier",
   provider: llmProvider,
   userDescription,
@@ -108,12 +108,12 @@ const classifierNode = workflow.createQuestionClassifierNode({
   },
 });
 
-const outputNode = workflow.createOutputNode<ClassifyCategoryResult, ClassifyOutputPayload>({
+const outputNode = steamharness.createOutputNode<ClassifyCategoryResult, ClassifyOutputPayload>({
   name: "classification-output",
   async *stream(category) {
     // String chunks create host-local fallback item ids. Use a stable
     // item id so live App output and report.json merge into one result.
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_start",
       item: {
         id: CLASSIFICATION_RESULT_ITEM_ID,
@@ -123,12 +123,12 @@ const outputNode = workflow.createOutputNode<ClassifyCategoryResult, ClassifyOut
         collapsed: false,
       },
     });
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_delta",
       itemId: CLASSIFICATION_RESULT_ITEM_ID,
       delta: category,
     });
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_end",
       itemId: CLASSIFICATION_RESULT_ITEM_ID,
     });
@@ -137,7 +137,7 @@ const outputNode = workflow.createOutputNode<ClassifyCategoryResult, ClassifyOut
     const category = readOutputItemText(stream.items, CLASSIFICATION_RESULT_ITEM_ID) as ClassifyCategoryResult;
 
     return {
-      ...workflow.createOutputPayload({
+      ...steamharness.createOutputPayload({
         items: stream.items,
       }),
       category,
@@ -146,28 +146,28 @@ const outputNode = workflow.createOutputNode<ClassifyCategoryResult, ClassifyOut
   },
 });
 
-export const classifyWorkflow = workflow.defineWorkflow<ClassifyInput, ClassifyOutputPayload>({
+export const classifyProject = steamharness.defineProject<ClassifyInput, ClassifyOutputPayload>({
   name: "classify",
   async run(input, context) {
-    const question = await workflow.runNode(inputNode, input, context);
-    const category = await workflow.runNode(classifierNode, question, context);
-    const result = await workflow.runStreamNode(outputNode, category, context);
+    const question = await steamharness.runNode(inputNode, input, context);
+    const category = await steamharness.runNode(classifierNode, question, context);
+    const result = await steamharness.runStreamNode(outputNode, category, context);
 
     return requireOutput(result.output);
   },
 });
 
-export const executor = workflow.defineExecutor<
+export const executor = steamharness.defineExecutor<
   ClassifyInput,
   ClassifyOutputPayload
 >({
   projectType: "workflow",
   defaultEntrypoint: "main",
   entrypoints: [
-    workflow.defineEntrypoint<ClassifyInput, ClassifyOutputPayload>({
+    steamharness.defineEntrypoint<ClassifyInput, ClassifyOutputPayload>({
       id: "main",
       title: "Classify",
-      workflow: classifyWorkflow,
+      workflow: classifyProject,
       tokenUsage: {
         enabled: true,
         display: true,
@@ -188,8 +188,8 @@ export const executor = workflow.defineExecutor<
   ],
 });
 
-export { classifyWorkflow as workflow };
-export default classifyWorkflow;
+export { classifyProject as workflow };
+export default classifyProject;
 
 function readOutputItemText(
   items: Array<{ id: string; content: unknown }>,

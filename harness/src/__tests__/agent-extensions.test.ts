@@ -30,7 +30,7 @@ function agent(session: AgentSessionOptions, databasePath?: string, storage?: Ag
     systemPrompt: "Extension test", model: models.getModel("faux", "test")!, thinkingLevel: "off", messages: [], tools: [],
   } });
   let snapshot: AgentSessionSnapshot | undefined;
-  instance.subscribe(event => { const value = event as unknown as { type: string; snapshot: AgentSessionSnapshot }; if (value.type === "workflow_session") snapshot = value.snapshot; });
+  instance.subscribe(event => { const value = event as unknown as { type: string; snapshot: AgentSessionSnapshot }; if (value.type === "project_session") snapshot = value.snapshot; });
   instance.requestId = "initial";
   return { instance, provider, lease, snapshot: () => snapshot! };
 }
@@ -130,7 +130,7 @@ test("registry hook publications apply to later generations and reserved or dupl
   await until(() => snapshot().turns.some(turn => turn.requestId === "second" && turn.status === "done"));
   assert.deepEqual(observed, ["first", "next"]);
   const internal = createRegistry(), application = createRegistry();
-  application.install(defineExtension({ name: "workflow.forged" }));
+  application.install(defineExtension({ name: "steamharness.forged" }));
   assert.throws(() => mergeAgentRegistries(internal, application).snapshot(), /Reserved/);
   internal.install(defineExtension({ name: "one", tools: [{ name: "same", description: "one", parameters: {}, execute: async () => ({ output: [] }) }] }));
   internal.install(defineExtension({ name: "two", tools: [{ name: "same", description: "two", parameters: {}, execute: async () => ({ output: [] }) }] }));
@@ -311,7 +311,7 @@ test("custom storage closes before releasing its owner even when initialization 
     const order: string[] = [], storage = new MemoryStorage();
     const close = storage.close.bind(storage); storage.close = async context => { order.push("close"); await close(context); };
     const factory: AgentStorageFactory = { label: "Custom", open: async () => ({ storage, release: async () => { order.push("release"); } }) };
-    const registry = createRegistry(); if (fail) registry.install(defineExtension({ name: "workflow.invalid" }));
+    const registry = createRegistry(); if (fail) registry.install(defineExtension({ name: "steamharness.invalid" }));
     const { instance, provider, lease, snapshot } = agent({ registry }, undefined, factory);
     if (fail) await assert.rejects(() => instance.open(), /Reserved/);
     else {

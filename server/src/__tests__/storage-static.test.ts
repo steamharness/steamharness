@@ -33,7 +33,7 @@ test("creation, upload, publication and historical downloads never load or build
   const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot });
   const stages: PreparationStage[] = [];
   try {
-    await storage.createWorkflow({ projectName: projectId, files: [
+    await storage.createProjectFromFiles({ projectName: projectId, files: [
       { path: "package.json", content: JSON.stringify(packageJson("1.0.0")) },
       { path: "index.ts", content: `import 'node:fs'; throw new Error('must never execute');` },
     ] });
@@ -105,7 +105,7 @@ test("draft replacement waits for a publication and preserves the snapshot's ver
   const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot,
     artifacts: { async uploadFile() { enteredUpload(); await uploadGate; } } as unknown as ArtifactStorage });
   try {
-    await storage.createWorkflow({ projectName: projectId, files: [
+    await storage.createProjectFromFiles({ projectName: projectId, files: [
       { path: "package.json", content: JSON.stringify(packageJson("2.0.0")) },
       { path: "index.ts", content: "original snapshot" },
     ] });

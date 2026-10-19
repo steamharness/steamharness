@@ -1,5 +1,5 @@
 import { t, locale } from './localization';
-import { AuthError, normalizeWorkflowServerUrl, type Connection } from './workflow-auth-client';
+import { AuthError, normalizeProjectServerUrl, type Connection } from './workflow-auth-client';
 
 export interface ServerProject {
   id: string; name: string; projectType: string; latest: string | null;
@@ -46,12 +46,12 @@ export interface ServerProjectShare {
 export function parseServerProjectShareLink(value: string): { serverUrl: string; id: string; version: string } {
   try {
     const url = new URL(value.trim());
-    normalizeWorkflowServerUrl(url.href);
+    normalizeProjectServerUrl(url.href);
     const match = /^(.*)\/share\/projects\/([^/]+)\/([^/]+)\/?$/.exec(url.pathname);
     if (match) {
       const id = decodeURIComponent(match[2]), version = decodeURIComponent(match[3]);
       if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id) && /^\d+\.\d+\.\d+$/.test(version)) {
-        return { serverUrl: normalizeWorkflowServerUrl(`${url.origin}${match[1]}`), id, version };
+        return { serverUrl: normalizeProjectServerUrl(`${url.origin}${match[1]}`), id, version };
       }
     }
   } catch { /* Invalid URLs use the same credential-free error. */ }
@@ -71,7 +71,7 @@ export class ProjectServerClient {
     signal.throwIfAborted();
     let response: Response;
     try {
-      response = await this.fetcher(`${normalizeWorkflowServerUrl(this.connection.serverUrl)}${apiPath}`, {
+      response = await this.fetcher(`${normalizeProjectServerUrl(this.connection.serverUrl)}${apiPath}`, {
         method: body ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.any([signal, AbortSignal.timeout(30_000)]),
         headers: { Accept: 'application/json', 'Accept-Language': locale(), Authorization: `Bearer ${this.connection.accessToken}`,
           ...(body ? { 'Content-Type': 'application/json' } : {}) },

@@ -14,8 +14,8 @@
 
 ### 破坏性变更
 
-- 项目打包只读取根目录 `.workflowignore`，其它忽略文件不再生效。
-  迁移：在 `.workflowignore` 中显式排除凭据、依赖目录和临时文件。
+- 项目打包只读取根目录 `.steamharnessignore`，其它忽略文件不再生效。
+  迁移：在 `.steamharnessignore` 中显式排除凭据、依赖目录和临时文件。
 
 ### 新增
 

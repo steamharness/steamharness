@@ -9,7 +9,7 @@ export function createOutputPayloadFromDocument(
   document: DeltaforceBilibiliCollectDocument,
   existingItems: OutputItemInput[] = [],
 ): DeltaforceBilibiliCollectOutputPayload {
-  const base = workflow.createOutputPayload({
+  const base = steamharness.createOutputPayload({
     items: [
       ...existingItems,
       {

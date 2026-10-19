@@ -6,7 +6,7 @@ import type {
   McpToolResult,
 } from "./types";
 
-export function workflowReportToMcpResult(
+export function projectReportToMcpResult(
   report: McpExecutionReport,
   entrypoint: { id: string; title: string },
   errorOverride?: McpErrorDetail,
@@ -32,7 +32,7 @@ export function workflowReportToMcpResult(
   };
 }
 
-export function createWorkflowMcpThrownErrorResult(
+export function createProjectMcpThrownErrorResult(
   error: unknown,
   entrypoint: { id: string; title: string },
 ): McpToolResult {
@@ -46,10 +46,10 @@ export function createWorkflowMcpThrownErrorResult(
       data: { errCode: 500, errMessage: readSafeErrorMessage(error), output: null },
     },
   };
-  return workflowReportToMcpResult(report, entrypoint);
+  return projectReportToMcpResult(report, entrypoint);
 }
 
-export function summarizePendingWorkflowMcpInput(
+export function summarizePendingProjectMcpInput(
   report: McpExecutionReport,
 ): McpPendingInputSummary | undefined {
   const pending = report.pendingUserInput;
@@ -75,13 +75,13 @@ function createReportError(
   const rawMessage = typeof data?.errMessage === "string" && data.errMessage.trim() !== ""
     ? data.errMessage
     : resultError?.trim() || defaultStatusMessage(report.status, errCode);
-  const message = sanitizeWorkflowMcpErrorMessage(rawMessage);
+  const message = sanitizeProjectMcpErrorMessage(rawMessage);
 
   if (report.status === "waiting_for_input") {
     return {
       code: "interaction_required",
       message,
-      pendingInput: summarizePendingWorkflowMcpInput(report),
+      pendingInput: summarizePendingProjectMcpInput(report),
     };
   }
   if (report.status === "aborted") return { code: "cancelled", message };
@@ -98,12 +98,12 @@ function defaultStatusMessage(status: McpExecutionReport["status"], errCode: num
 }
 
 function readSafeErrorMessage(error: unknown): string {
-  return sanitizeWorkflowMcpErrorMessage(
+  return sanitizeProjectMcpErrorMessage(
     error instanceof Error ? error.message : "",
   );
 }
 
-function sanitizeWorkflowMcpErrorMessage(value: string): string {
+function sanitizeProjectMcpErrorMessage(value: string): string {
   const compact = value.replace(/\s+/g, " ").trim();
   if (compact === "") return "Workflow run failed.";
   const redacted = compact

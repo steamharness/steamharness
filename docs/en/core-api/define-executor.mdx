@@ -57,8 +57,8 @@ Durable Agent projects can declare inline `conversation.recovery: { enabled: tru
 
 |Field|Type|Description|
 | --- | --- | --- |
-| `workflowName` | `string` |The current workflow name.|
-| `workflowDir` | `string` |The current workflow directory.|
+| `projectName` | `string` |The current workflow name.|
+| `projectDir` | `string` |The current workflow directory.|
 | `entrypointId` | `string \| undefined` | The selected Workflow entry-point ID; `undefined` for Conversation. |
 | `entrypointTitle` | `string \| undefined` | The selected Workflow entry-point title; `undefined` for Conversation. |
 | `args` | `string[]` |Original CLI style parameter.|
@@ -179,7 +179,7 @@ Project Assistant defaults to Build and uses a single `/plan` toggle. Its `creat
 |Phase|Description|
 | --- | --- |
 |Platform Selection Configuration|Workflow selects an entry by explicit ID or `defaultEntrypoint`;Conversation uses executor itself.|
-|Create Context|runtime creates a `ExecutorContext` based on args, env, workflowName, entry, and conversationId.|
+|Create Context|runtime creates a `ExecutorContext` based on args, env, projectName, entry, and conversationId.|
 | `createInput` |Invokes the input construct of the selected entry or Conversation executor.|
 | `createContext` |An optional context extension that invokes the same execution configuration.|
 | workflow `run` |Execute only the workflow of the selected entry, or the only workflow of Conversation.|
@@ -295,7 +295,7 @@ Conversation always uses the standard message input. It needs no enable setting 
 ```ts
 export const executor = workflow.defineExecutor<Input, Output>({
   projectType: "conversation",
-  workflow: conversationWorkflow,
+  workflow: conversationProject,
   conversation: {
     recovery: { enabled: true },
     inputQueue: {
@@ -364,7 +364,7 @@ export const executor = workflow.defineExecutor<Input, Output>({
     workflow.defineEntrypoint<Input, Output>({
       id: "main",
       title: "Full workflow",
-      workflow: exampleWorkflow,
+      workflow: exampleProject,
       tokenUsage: { enabled: true, display: true },
       tools: [
         {

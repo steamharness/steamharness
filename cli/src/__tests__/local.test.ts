@@ -6,23 +6,23 @@ import os from "node:os";
 import path from "node:path";
 import { it } from "vitest";
 import * as steamHarness from "steamharness";
-import { createLocalWorkflowKVStore, HarnessError } from "steamharness";
+import { createLocalProjectKVStore, HarnessError } from "steamharness";
 import { STEAMHARNESS_RUNTIME_LOCALE_ENV } from "steamharness";
 import {
   formatParamResolverFailure,
   assertLocalCliCoreCompatible,
   main,
-  parseWorkflowArgs,
+  parseProjectArgs,
   createDesktopRuntimeEventEmitter,
   STEAMHARNESS_DESKTOP_RUNTIME_EVENTS_ENV,
   STEAMHARNESS_DESKTOP_RUNTIME_EVENT_PREFIX,
   STEAMHARNESS_PARAM_ERROR_MARKER,
 } from "../local";
-import type { CliWorkflowKVStore } from "../related-projects";
+import type { CliProjectKVStore } from "../related-projects";
 import { prepareCliInvocation } from "../locale";
 
 it("run command preserves workflow args after explicit separator", async () => {
-  const projectDir = await createArgsEchoWorkflow();
+  const projectDir = await createArgsEchoProject();
   const originalStdoutWrite = process.stdout.write;
   const chunks: string[] = [];
 
@@ -77,7 +77,7 @@ it("run command preserves workflow args after explicit separator", async () => {
 });
 
 it("structure preserves workflow entrypoint group metadata", async () => {
-  const projectDir = await createArgsEchoWorkflow();
+  const projectDir = await createArgsEchoProject();
   const output: string[] = [];
   const originalLog = console.log;
   console.log = ((value?: unknown) => output.push(String(value ?? ""))) as typeof console.log;
@@ -101,37 +101,37 @@ it("structure preserves workflow entrypoint group metadata", async () => {
 });
 
 it("runs image, video, and audio paths through the published Core file input", async () => {
-  const projectDir = await createArgsEchoWorkflow();
+  const projectDir = await createArgsEchoProject();
   const originalStdoutWrite = process.stdout.write;
   const chunks: string[] = [];
   try {
     await writeFile(path.join(projectDir, "index.ts"), `
       import type { CliTestOutputPayload } from "./interface";
-      const filesNode = workflow.createFileInputNode({ accept: ["image/*", "video/*", "audio/*"] });
-      const outputNode = workflow.createOutputNode({
+      const filesNode = steamharness.createFileInputNode({ accept: ["image/*", "video/*", "audio/*"] });
+      const outputNode = steamharness.createOutputNode({
         name: "output",
         format(input): CliTestOutputPayload {
           return { errCode: 0, errMessage: "", items: [{ id: "media", title: "Output", content: JSON.stringify(input), contentType: "json" }] };
         },
       });
-      export const mediaWorkflow = workflow.defineWorkflow({
+      export const mediaProject = steamharness.defineProject({
         name: "media-input",
         async run(input, context) {
-          const files = await workflow.runNode(filesNode, [...input.images, ...input.videos, ...input.files], context);
+          const files = await steamharness.runNode(filesNode, [...input.images, ...input.videos, ...input.files], context);
           const media = await Promise.all(files.map(async file => ({ name: file.name, mimeType: file.mimeType, bytes: (await file.readBuffer()).length })));
-          return workflow.runNode(outputNode, media, context);
+          return steamharness.runNode(outputNode, media, context);
         },
       });
-      export const executor = workflow.defineExecutor({
+      export const executor = steamharness.defineExecutor({
         projectType: "workflow",
         defaultEntrypoint: "media",
-        entrypoints: [workflow.defineEntrypoint({
-          id: "media", title: "Media", workflow: mediaWorkflow,
-          createInput({ args }) { return workflow.parseConversationDefaultInputArgs(args); },
+        entrypoints: [steamharness.defineEntrypoint({
+          id: "media", title: "Media", workflow: mediaProject,
+          createInput({ args }) { return steamharness.parseConversationDefaultInputArgs(args); },
         })],
       });
-      export { mediaWorkflow as workflow };
-      export default mediaWorkflow;
+      export { mediaProject as workflow };
+      export default mediaProject;
     `);
     for (const name of ["frame.png", "clip.mp4", "recording.wav"]) await writeFile(path.join(projectDir, name), "media");
     process.stdout.write = ((chunk: string | Uint8Array) => { chunks.push(String(chunk)); return true; }) as typeof process.stdout.write;
@@ -153,7 +153,7 @@ it("runs image, video, and audio paths through the published Core file input", a
 });
 
 it("local commands reject projects without an explicit data storage declaration", async () => {
-  const projectDir = await createArgsEchoWorkflow(false);
+  const projectDir = await createArgsEchoProject(false);
   try {
     await assert.rejects(
       () => main(["json", projectDir]),
@@ -165,7 +165,7 @@ it("local commands reject projects without an explicit data storage declaration"
 });
 
 it("local commands require an exact project Core version and allow patch changes", async () => {
-  const projectDir = await createArgsEchoWorkflow();
+  const projectDir = await createArgsEchoProject();
   const packagePath = path.join(projectDir, "package.json");
   const manifest = JSON.parse(await readFile(packagePath, "utf8")) as {
     devDependencies: Record<string, string>;
@@ -217,7 +217,7 @@ it.each(["build-in", "ci-namespace"])("nested built-ins resolve Core from the ag
 });
 
 it("structure rejects obsolete related-project fields before reporting success", async () => {
-  const projectDir = await createArgsEchoWorkflow();
+  const projectDir = await createArgsEchoProject();
   const packagePath = path.join(projectDir, "package.json");
   const manifest = JSON.parse(await readFile(packagePath, "utf8")) as {
     steamHarness: { projectInfo: Record<string, unknown> };
@@ -248,7 +248,7 @@ it("structure rejects obsolete related-project fields before reporting success",
 });
 
 it("run command parses tool permission overrides before workflow args", () => {
-  const parsed = parseWorkflowArgs([
+  const parsed = parseProjectArgs([
     path.join(os.tmpdir(), "workflow"),
     "--tool-permissions-json",
     JSON.stringify({
@@ -271,7 +271,7 @@ it("run command parses tool permission overrides before workflow args", () => {
 });
 
 it("run command parses entrypoint before the separator and preserves it after", () => {
-  const parsed = parseWorkflowArgs([
+  const parsed = parseProjectArgs([
     "/tmp/workflow",
     "--entrypoint",
     "validate",
@@ -285,7 +285,7 @@ it("run command parses entrypoint before the separator and preserves it after", 
 });
 
 it("run command leaves tool permissions undefined when host does not pass overrides", () => {
-  const parsed = parseWorkflowArgs([path.join(os.tmpdir(), "workflow"), "--", "--prompt", "hello"], { json: true });
+  const parsed = parseProjectArgs([path.join(os.tmpdir(), "workflow"), "--", "--prompt", "hello"], { json: true });
 
   // CLI default behavior is executor registrations only.
   assert.equal(parsed.toolPermissionPolicies, undefined);
@@ -303,7 +303,7 @@ it("global locale parsing removes CLI options but preserves workflow-owned args"
       "--locale",
       "workflow-owned",
     ]);
-    const parsed = parseWorkflowArgs(prepared.argv.slice(1), { json: true });
+    const parsed = parseProjectArgs(prepared.argv.slice(1), { json: true });
 
     assert.equal(prepared.locale, "en");
     assert.equal(process.env[STEAMHARNESS_RUNTIME_LOCALE_ENV], "en");
@@ -392,7 +392,7 @@ it("param resolver failures retain localizable metadata after the CLI marker", (
     metadata: {
       steamHarnessI18n: {
         namespace: "common",
-        key: "workflowServerLoginRequired",
+        key: "projectServerLoginRequired",
       },
     },
   }));
@@ -404,18 +404,18 @@ it("param resolver failures retain localizable metadata after the CLI marker", (
     metadata: {
       steamHarnessI18n: {
         namespace: "common",
-        key: "workflowServerLoginRequired",
+        key: "projectServerLoginRequired",
       },
     },
   });
 });
 
 const hasProjectStorageCore = typeof (steamHarness as unknown as {
-  createRemoteWorkflowRelatedProjectKVStoreFromEnv?: unknown;
-}).createRemoteWorkflowRelatedProjectKVStoreFromEnv === "function";
+  createRemoteProjectRelatedProjectKVStoreFromEnv?: unknown;
+}).createRemoteProjectRelatedProjectKVStoreFromEnv === "function";
 
 it.runIf(hasProjectStorageCore)("CLI forwards the local PersistentValue store directory", async () => {
-  const projectDir = await createPersistentValueCliWorkflow();
+  const projectDir = await createPersistentValueCliProject();
   const persistentValueStoreDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-cli-persistent-value-"));
   const originalStoreDir = process.env.STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR;
   const originalLog = console.log;
@@ -424,10 +424,10 @@ it.runIf(hasProjectStorageCore)("CLI forwards the local PersistentValue store di
 
   try {
     assert.equal(await main(["json", projectDir]), 0);
-    const store = (createLocalWorkflowKVStore as unknown as (options: {
+    const store = (createLocalProjectKVStore as unknown as (options: {
       rootDir: string;
       storageKind: "persistent_value";
-    }) => CliWorkflowKVStore)({
+    }) => CliProjectKVStore)({
       rootDir: persistentValueStoreDir,
       storageKind: "persistent_value",
     });
@@ -505,7 +505,7 @@ it("core package manifest publishes built dist entrypoints", async () => {
   assert.equal(packageJson.exports?.["."].import, "./dist/index.js");
 });
 
-async function createArgsEchoWorkflow(declareStorage = true): Promise<string> {
+async function createArgsEchoProject(declareStorage = true): Promise<string> {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-cli-"));
 
   await writeFile(
@@ -553,7 +553,7 @@ async function createArgsEchoWorkflow(declareStorage = true): Promise<string> {
       "  fileStoreReady: boolean;",
       "}",
       "",
-      "const outputNode = workflow.createOutputNode<CliInput, CliTestOutputPayload>({",
+      "const outputNode = steamharness.createOutputNode<CliInput, CliTestOutputPayload>({",
       "  name: \"output\",",
       "  format(input) {",
       "    return {",
@@ -570,20 +570,20 @@ async function createArgsEchoWorkflow(declareStorage = true): Promise<string> {
       "  },",
       "});",
       "",
-      "export const cliTestWorkflow = workflow.defineWorkflow<CliInput, CliTestOutputPayload>({",
+      "export const cliTestProject = steamharness.defineProject<CliInput, CliTestOutputPayload>({",
       "  name: \"cli-test\",",
       "  run(input, context) {",
-      "    return workflow.runNode(outputNode, input, context);",
+      "    return steamharness.runNode(outputNode, input, context);",
       "  },",
       "});",
       "",
-      "export const executor = workflow.defineExecutor<CliInput, CliTestOutputPayload>({",
+      "export const executor = steamharness.defineExecutor<CliInput, CliTestOutputPayload>({",
       "  projectType: \"workflow\",",
       "  defaultEntrypoint: \"main\",",
-      "  entrypoints: [workflow.defineEntrypoint<CliInput, CliTestOutputPayload>({",
+      "  entrypoints: [steamharness.defineEntrypoint<CliInput, CliTestOutputPayload>({",
       "    id: \"main\", title: \"Main\",",
       "    group: { id: \"operations\", title: \"Operations\", order: 10 },",
-      "    workflow: cliTestWorkflow,",
+      "    workflow: cliTestProject,",
       "    createInput(context) {",
       "      return {",
       "        args: context.args,",
@@ -594,8 +594,8 @@ async function createArgsEchoWorkflow(declareStorage = true): Promise<string> {
       "  })],",
       "});",
       "",
-      "export { cliTestWorkflow as workflow };",
-      "export default cliTestWorkflow;",
+      "export { cliTestProject as workflow };",
+      "export default cliTestProject;",
       "",
     ].join("\n"),
   );
@@ -603,7 +603,7 @@ async function createArgsEchoWorkflow(declareStorage = true): Promise<string> {
   return projectDir;
 }
 
-async function createPersistentValueCliWorkflow(): Promise<string> {
+async function createPersistentValueCliProject(): Promise<string> {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-cli-persistent-value-workflow-"));
   await writeFile(
     path.join(projectDir, "package.json"),
@@ -617,32 +617,32 @@ async function createPersistentValueCliWorkflow(): Promise<string> {
   await writeFile(
     path.join(projectDir, "index.ts"),
     [
-      "const outputNode = workflow.createOutputNode({",
+      "const outputNode = steamharness.createOutputNode({",
       "  name: \"output\",",
       "  format() {",
       "    return { errCode: 0, errMessage: \"\", items: [] };",
       "  },",
       "});",
       "",
-      "export const persistentCliWorkflow = workflow.defineWorkflow({",
+      "export const persistentCliProject = steamharness.defineProject({",
       "  name: \"persistent-cli-test\",",
       "  async run(input, context) {",
       "    await context.storage.local.persistentValue.setValue(\"local-key\", \"from-cli\");",
-      "    return workflow.runNode(outputNode, input, context);",
+      "    return steamharness.runNode(outputNode, input, context);",
       "  },",
       "});",
       "",
-      "export const executor = workflow.defineExecutor({",
+      "export const executor = steamharness.defineExecutor({",
       "  projectType: \"workflow\",",
       "  defaultEntrypoint: \"main\",",
-      "  entrypoints: [workflow.defineEntrypoint({",
-      "    id: \"main\", title: \"Main\", workflow: persistentCliWorkflow,",
+      "  entrypoints: [steamharness.defineEntrypoint({",
+      "    id: \"main\", title: \"Main\", workflow: persistentCliProject,",
       "    createInput() { return {}; },",
       "  })],",
       "});",
       "",
-      "export { persistentCliWorkflow as workflow };",
-      "export default persistentCliWorkflow;",
+      "export { persistentCliProject as workflow };",
+      "export default persistentCliProject;",
       "",
     ].join("\n"),
   );

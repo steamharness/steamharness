@@ -8,14 +8,14 @@ import os from 'node:os';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { assertLocalCliCoreCompatible } from '../local';
 import { readCliAuthConfig, clearCliAuthConfig } from '../auth-config';
-import { createEmptyWorkflowAuthConfig } from '@steamharness/auth-config';
+import { createEmptyProjectAuthConfig } from '@steamharness/auth-config';
 import { ConversationController, sessionRunning } from './conversation-controller';
 import { Controller } from './workflow-controller';
 import { KanbanController } from './kanban-controller';
-import { createWorkflowActions } from './workflow-actions';
-import { migrateWorkflowHistory, type WorkspaceContract } from './workflow-workspace';
+import { createProjectActions } from './workflow-actions';
+import { migrateProjectHistory, type WorkspaceContract } from './workflow-workspace';
 import { createWebRuntime, cliRoot, type WebConnection } from './runtime';
-import { redactWorkflowData, validateWorkflowValues, validateConversationCommandStates, mergeWorkflowParamStates, workflowParameters, workflowParamArgs, type Runtime, type Project, type ConversationSession, type ConversationDraftUpdate, type Attachment, type ParamValues, type ParamState } from './workflow-types';
+import { redactProjectData, validateProjectValues, validateConversationCommandStates, mergeProjectParamStates, projectParameters, projectParamArgs, type Runtime, type Project, type ConversationSession, type ConversationDraftUpdate, type Attachment, type ParamValues, type ParamState } from './workflow-types';
 import { conversationResourceCards } from './resource-cards';
 import type { AccountState } from './workflow-auth-client';
 import { loginWebAccount } from './account-auth';
@@ -67,7 +67,7 @@ export async function startWebServer(options: WebOptions) {
   let stateRevision = 0;
   let authRevision = 0;
   let activity: ReturnType<typeof createLocalActivityWriter> | undefined;
-  const isWorkflow = project.projectType === 'workflow';
+  const isProject = project.projectType === 'workflow';
   const isKanban = project.projectType === 'kanban';
   const parameterStates = new Map<string, Record<string, ParamState>>();
   const parameterEpochs = new Map<string, number>();
@@ -90,8 +90,8 @@ export async function startWebServer(options: WebOptions) {
   // Preserve project-owned data keys; remove host credentials by their actual values.
   const state = (clientId?: string) => {
     const selected = controller?.sessions.find(entry => entry.id === selections.get(clientId ?? '')) ?? controller?.current;
-    return publicValue(redactWorkflowData({ type: 'state', stateRevision: ++stateRevision, project,
-    ...(isKanban ? { kanban: kanbanController!.state() } : isWorkflow ? workflowActions!.state() : { sessions: controller.sessions, activeId: selected.id, running: sessionRunning(selected), parameterValues: selected.parameterValues ?? {} }),
+    return publicValue(redactProjectData({ type: 'state', stateRevision: ++stateRevision, project,
+    ...(isKanban ? { kanban: kanbanController!.state() } : isProject ? projectActions!.state() : { sessions: controller.sessions, activeId: selected.id, running: sessionRunning(selected), parameterValues: selected.parameterValues ?? {} }),
     account: { ...account, user: account.user && { userId: account.user.userId, email: account.user.email, displayName: account.user.displayName, avatarUrl: account.user.avatarUrl } },
     authenticationRevision: authRevision, resourceRevision: resources.revision }, [...sensitiveTokens], false));
   };
@@ -110,7 +110,7 @@ export async function startWebServer(options: WebOptions) {
     if (broadcastTimer) { return; }
     broadcastTimer = setTimeout(() => { broadcastTimer = undefined; activity?.changed(); for (const client of clients) { writeFrame(client, `data: ${JSON.stringify(state(clientIds.get(client)))}\n\n`); } }, 30);
   };
-  const conversationController = isWorkflow || isKanban ? undefined : new ConversationController(project, runtime, saved, {
+  const conversationController = isProject || isKanban ? undefined : new ConversationController(project, runtime, saved, {
     changed: broadcast,
     log: message => process.stderr.write(`${message}\n`),
     save: (sessions, activeId) => {
@@ -126,16 +126,16 @@ export async function startWebServer(options: WebOptions) {
   const controller = conversationController!;
   const runsPath = path.join(storageDir, key, 'runs.json');
   let workspace: WorkspaceContract | undefined;
-  if (isWorkflow) {
+  if (isProject) {
     try {
       workspace = JSON.parse(await readFile(runsPath, 'utf8'));
       if (workspace?.version !== 1 || !Array.isArray(workspace.runs) || !workspace.drafts || typeof workspace.drafts !== 'object') { throw new Error('Invalid Workflow history.'); }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') { runtime.dispose(); throw error; }
-      workspace = migrateWorkflowHistory(saved.sessions ?? [], saved.activeId);
+      workspace = migrateProjectHistory(saved.sessions ?? [], saved.activeId);
     }
   }
-  const workflowController = isWorkflow ? new Controller(project, runtime, workspace!, {
+  const projectController = isProject ? new Controller(project, runtime, workspace!, {
     changed: broadcast, legacy: saved.sessions,
     log: message => process.stderr.write(`${message}\n`),
     save: workspace => {
@@ -148,18 +148,18 @@ export async function startWebServer(options: WebOptions) {
       return pendingSave;
     },
   }) : undefined;
-  const workflowActions = workflowController ? createWorkflowActions(workflowController, runtime, project, () => authRevision, broadcast) : undefined;
+  const projectActions = projectController ? createProjectActions(projectController, runtime, project, () => authRevision, broadcast) : undefined;
   const kanbanController = isKanban ? new KanbanController(project, runtime, storageDir, { changed: broadcast, emit: message => { for (const client of clients) { client.write(`data: ${JSON.stringify(message)}\n\n`); } }, connection: () => connection, log: message => process.stderr.write(`${message}\n`) }) : undefined;
   if (kanbanController) { try { await kanbanController.initialize(); } catch (error) { await kanbanController.close(); runtime.dispose(); throw error; } }
-  if (workflowController) { await workflowController.persist(); }
+  if (projectController) { await projectController.persist(); }
   const stopForAuthentication = async () => {
     for (const session of conversationController?.sessions ?? []) { await conversationController!.stop(session); }
-    if (workflowController) { await workflowController.stop('Workflow login changed.'); }
+    if (projectController) { await projectController.stop('Workflow login changed.'); }
   };
   const refreshAuth = async (force = false) => {
     if ((passwordLogin || login) && !force) { return; }
     const readingEpoch = authEpoch;
-    const config = hostManaged ? createEmptyWorkflowAuthConfig() : await readCliAuthConfig();
+    const config = hostManaged ? createEmptyProjectAuthConfig() : await readCliAuthConfig();
     if (readingEpoch !== authEpoch) { return; }
     const serverUrl = hostManaged ? hostConnection?.serverUrl : process.env.STEAMHARNESS_SERVER_URL ?? config.serverUrl;
     const token = hostManaged ? hostConnection?.accessToken : process.env.STEAMHARNESS_SERVER_ADMIN_KEY ?? config.apiKey;
@@ -188,7 +188,7 @@ export async function startWebServer(options: WebOptions) {
       connection = undefined;
       authRevision++;
       parameterStates.clear();
-      workflowActions?.invalidate();
+      projectActions?.invalidate();
       kanbanController?.authenticationChanged();
       if (authenticationInitialized) { await stopForAuthentication(); }
       if (epoch !== authEpoch) { return; }
@@ -206,7 +206,7 @@ export async function startWebServer(options: WebOptions) {
         if (epoch !== authEpoch) { return; }
         const profile = result.data?.profile;
         if (!response.ok || result.errCode !== 0 || typeof profile?.userId !== 'string' || !profile.userId || typeof profile.email !== 'string' || typeof profile.displayName !== 'string') { throw new Error('Workflow login is invalid or expired.'); }
-        if (!connection) { authRevision++; parameterStates.clear(); workflowActions?.invalidate(); }
+        if (!connection) { authRevision++; parameterStates.clear(); projectActions?.invalidate(); }
         connection = candidate;
         kanbanController?.authenticationChanged();
         const savedConnection = !hostManaged && candidate.serverUrl === config.serverUrl.replace(/\/+$/, '') && candidate.accessToken === config.apiKey;
@@ -216,7 +216,7 @@ export async function startWebServer(options: WebOptions) {
         connection = undefined;
         resources.clear();
         kanbanController?.authenticationChanged();
-        if (!changed) { authRevision++; parameterStates.clear(); workflowActions?.invalidate(); await stopForAuthentication(); }
+        if (!changed) { authRevision++; parameterStates.clear(); projectActions?.invalidate(); await stopForAuthentication(); }
         if (epoch !== authEpoch) { return; }
         account = { ...account, status: unauthorized ? 'expired' : 'error', error: String((error as Error).message) };
       }
@@ -226,7 +226,7 @@ export async function startWebServer(options: WebOptions) {
   await refreshAuth();
   const authPoll = setInterval(() => void refreshAuth().catch(error => process.stderr.write(`${String(error)}\n`)), 5_000); authPoll.unref();
   const capability = randomBytes(32).toString('hex');
-  const cookie = `workflow_web_${randomBytes(8).toString('hex')}`;
+  const cookie = `project_web_${randomBytes(8).toString('hex')}`;
   let origin = '';
   const json = (response: ServerResponse, status: number, value: unknown) => { response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); response.end(JSON.stringify(value)); };
   const authMatches = (value: string) => { const a = Buffer.from(value), b = Buffer.from(capability); return a.length === b.length && timingSafeEqual(a, b); };
@@ -261,8 +261,8 @@ export async function startWebServer(options: WebOptions) {
     if (message.type === 'resource') {
       if (!['open', 'inline', 'window', 'project', undefined].includes(message.action)) { throw new Error(t('Invalid resource action.')); }
       let items, scopeId;
-      if (workflowController) {
-        const run = workflowController.runs.find(run => run.id === message.runId);
+      if (projectController) {
+        const run = projectController.runs.find(run => run.id === message.runId);
         if (!run) { throw new Error(t('Run no longer exists.')); }
         items = run.items; scopeId = run.scopeId;
       } else {
@@ -277,7 +277,7 @@ export async function startWebServer(options: WebOptions) {
         id: preview.id, url: preview.url, card, project: preview.data.project }];
     }
     if (kanbanController && !['ready', 'login', 'verify', 'logout', 'usage'].includes(message.type)) { return kanbanController.handle(message); }
-    if (workflowActions && !['ready', 'login', 'verify', 'logout', 'usage'].includes(message.type)) { return publicValue(await workflowActions.handle(message)); }
+    if (projectActions && !['ready', 'login', 'verify', 'logout', 'usage'].includes(message.type)) { return publicValue(await projectActions.handle(message)); }
     if (message.type === 'navigate') {
       if (!conversationController || typeof message.id !== 'string' || !Array.isArray(message.updates) || message.updates.length > 1000
         || typeof message.clientId !== 'string' || !sessionIdPattern.test(message.clientId) || !Number.isSafeInteger(message.requestId) || message.requestId < 1) { throw new Error('Invalid conversation navigation.'); }
@@ -302,7 +302,7 @@ export async function startWebServer(options: WebOptions) {
     }
     const replies: Message[] = [];
     const current = (message.sessionId ? conversationController?.sessions.find(entry => entry.id === message.sessionId) : conversationController?.current) as ConversationSession;
-    if (!isKanban && !isWorkflow && !current) { throw new Error(t("Conversation no longer exists.")); }
+    if (!isKanban && !isProject && !current) { throw new Error(t("Conversation no longer exists.")); }
     const entrypointId = typeof message.entrypointId === 'string' && message.entrypointId ? message.entrypointId : project.defaultEntrypoint;
     if (entrypointId && !project.entrypoints.some(entry => entry.id === entrypointId)) { throw new Error('Unknown entrypoint.'); }
     switch (message.type) {
@@ -323,7 +323,7 @@ export async function startWebServer(options: WebOptions) {
       }
       case 'resolve': {
         try {
-          const parameters = workflowParameters(project, entrypointId);
+          const parameters = projectParameters(project, entrypointId);
           const supplied = message.params ?? {};
           if (!supplied || typeof supplied !== 'object' || Array.isArray(supplied) || Object.values(supplied).some(value => typeof value !== 'string' && !(Array.isArray(value) && value.every(entry => typeof entry === 'string')))) { throw new Error('Invalid parameters.'); }
           const values: ParamValues = Object.fromEntries(parameters.fields.filter(field => supplied[field.name] !== undefined).map(field => [field.name, supplied[field.name]]));
@@ -335,11 +335,11 @@ export async function startWebServer(options: WebOptions) {
           const states = parameterStates.get(stateKey) ?? {};
           const trigger = message.trigger?.kind === 'param' && parameters.fields.some(field => field.name === message.trigger.paramName)
             ? { kind: 'param' as const, paramName: message.trigger.paramName as string } : { kind: message.trigger?.kind === 'input' ? 'input' as const : 'init' as const };
-          const result = parameters.paramResolver?.enabled ? await runtime.resolveParams(project, { draftText: String(message.draftText ?? '').slice(0, 20_000), args: workflowParamArgs(parameters.fields, values, states), inputMode: 'form', trigger }, entrypointId) : { params: {} };
+          const result = parameters.paramResolver?.enabled ? await runtime.resolveParams(project, { draftText: String(message.draftText ?? '').slice(0, 20_000), args: projectParamArgs(parameters.fields, values, states), inputMode: 'form', trigger }, entrypointId) : { params: {} };
           if (revision !== authRevision || parameterRevisions !== current.parameterRevisions) { break; }
           // Reply to every page; only the newest request may persist shared parameters.
           if (parameterEpochs.get(stateKey) === epoch) {
-            const nextStates = mergeWorkflowParamStates(states, result.params);
+            const nextStates = mergeProjectParamStates(states, result.params);
             if (project.projectType === 'conversation') { validateConversationCommandStates(parameters.fields, nextStates, project.conversation?.commands); }
             for (const [name, patch] of Object.entries(result.params ?? {})) {
               if (patch.value === null) { delete values[name]; } else if (patch.value !== undefined) { values[name] = patch.value; }
@@ -361,7 +361,7 @@ export async function startWebServer(options: WebOptions) {
             const name = `conversation-${current.id}.json`;
             const count = current.messages.length + 2;
             await controller.recordCommand(command.command, t("Conversation export ready: {0} ({1} messages).", name, count), current);
-            replies.push({ type: 'download', name, content: JSON.stringify(redactWorkflowData(current, [...sensitiveTokens], false), null, 2) },
+            replies.push({ type: 'download', name, content: JSON.stringify(redactProjectData(current, [...sensitiveTokens], false), null, 2) },
               { type: 'command-executed', command: command.command, sessionId: current.id });
             break;
           }
@@ -370,15 +370,15 @@ export async function startWebServer(options: WebOptions) {
         if (typeof text !== 'string' || text.length > 100_000) { throw new Error('Invalid message text.'); }
         const params = message.params as ParamValues;
         if (!params || typeof params !== 'object' || Array.isArray(params) || Object.values(params).some(value => typeof value !== 'string' && !(Array.isArray(value) && value.every(entry => typeof entry === 'string')))) { throw new Error('Invalid parameters.'); }
-        const parameters = workflowParameters(project, entrypointId);
+        const parameters = projectParameters(project, entrypointId);
         const stateKey = `${current.id}:${entrypointId ?? ''}`;
         parameterEpochs.set(stateKey, (parameterEpochs.get(stateKey) ?? 0) + 1);
         const revision = authRevision;
-        const resolved = parameters.paramResolver?.enabled ? await runtime.resolveParams(project, { draftText: text, args: workflowParamArgs(parameters.fields, params), inputMode: 'form', trigger: { kind: 'init' } }, entrypointId) : { params: {} };
+        const resolved = parameters.paramResolver?.enabled ? await runtime.resolveParams(project, { draftText: text, args: projectParamArgs(parameters.fields, params), inputMode: 'form', trigger: { kind: 'init' } }, entrypointId) : { params: {} };
         if (revision !== authRevision) { throw new Error('Workflow login changed. Send the message again.'); }
-        const states = mergeWorkflowParamStates(parameterStates.get(stateKey) ?? {}, resolved.params);
+        const states = mergeProjectParamStates(parameterStates.get(stateKey) ?? {}, resolved.params);
         if (project.projectType === 'conversation') { validateConversationCommandStates(parameters.fields, states, project.conversation?.commands); }
-        validateWorkflowValues(parameters.fields, params, states);
+        validateProjectValues(parameters.fields, params, states);
         const attachments = command ? [] : await readAttachments(message.attachments ?? [], current.id);
         if (revision !== authRevision) { throw new Error('Workflow login changed. Send the message again.'); }
         parameterStates.set(stateKey, states);
@@ -396,7 +396,7 @@ export async function startWebServer(options: WebOptions) {
       case 'retry': await controller.retry(String(message.messageId), current); break;
       case 'resume': await controller.resume(String(message.messageId), String(message.requestId), message.values ?? {}, current); break;
       case 'tool-policy': {
-        const tools = workflowParameters(project, entrypointId).tools ?? [];
+        const tools = projectParameters(project, entrypointId).tools ?? [];
         current.toolPermissionPolicies = Object.fromEntries(tools.map(tool => [tool.name, { enabled: typeof message.policies?.[tool.name]?.enabled === 'boolean' ? message.policies[tool.name].enabled : tool.enabled, autoApprove: typeof message.policies?.[tool.name]?.autoApprove === 'boolean' ? message.policies[tool.name].autoApprove : tool.autoApprove }]));
         await controller.persist(); broadcast(); break;
       }
@@ -412,7 +412,7 @@ export async function startWebServer(options: WebOptions) {
         if (message.action === 'rename') { await controller.rename(session.id, String(message.title ?? '')); }
         else if (message.action === 'lock') { await controller.lockTitle(session.id, !session.titleLocked); }
         else if (message.action === 'delete') { await controller.remove(session.id); }
-        else if (message.action === 'export') { replies.push({ type: 'download', name: `conversation-${session.id}.json`, content: JSON.stringify(redactWorkflowData(session, [...sensitiveTokens], false), null, 2) }); }
+        else if (message.action === 'export') { replies.push({ type: 'download', name: `conversation-${session.id}.json`, content: JSON.stringify(redactProjectData(session, [...sensitiveTokens], false), null, 2) }); }
         break;
       }
       case 'upload': {
@@ -423,7 +423,7 @@ export async function startWebServer(options: WebOptions) {
       case 'trace': case 'logs': case 'export-message': {
         const answer = current.messages.find(entry => entry.id === message.messageId);
         if (!answer) { throw new Error('Message no longer exists.'); }
-        if (message.type === 'export-message') { replies.push({ type: 'download', name: `run-${answer.id}.json`, content: JSON.stringify(redactWorkflowData(answer, [...sensitiveTokens], false), null, 2) }, { type: 'exported', sessionId: current.id, messageId: answer.id }); }
+        if (message.type === 'export-message') { replies.push({ type: 'download', name: `run-${answer.id}.json`, content: JSON.stringify(redactProjectData(answer, [...sensitiveTokens], false), null, 2) }, { type: 'exported', sessionId: current.id, messageId: answer.id }); }
         else { replies.push({ type: 'preview', title: message.type === 'logs' ? t("Run logs") : t("Trace"), content: message.type === 'logs' ? answer.report?.logs ?? '' : { report: answer.report, events: answer.events, items: answer.items } }); }
         break;
       }
@@ -512,7 +512,7 @@ export async function startWebServer(options: WebOptions) {
           const concurrent = ['navigate', 'resolve', 'ready', 'usage', 'resource', 'resource-data', 'resource-refresh', 'resource-select', 'resource-bridge', 'kanban-bridge', 'kanban-method-state', 'kanban-method-reply', 'kanban-methods'].includes(message.type);
           const task = concurrent ? operation() : mutations.catch(() => undefined).then(operation);
           if (!concurrent) { mutations = task; }
-          await task; json(response, 200, { messages: redactWorkflowData(messages, [...sensitiveTokens], false) }); return;
+          await task; json(response, 200, { messages: redactProjectData(messages, [...sensitiveTokens], false) }); return;
         }
         if (url.pathname.startsWith('/api/file/') && request.method === 'GET') {
           const file = await runtime.readFile(project, decodeURIComponent(url.pathname.slice('/api/file/'.length)));
@@ -526,7 +526,7 @@ export async function startWebServer(options: WebOptions) {
       if (url.pathname === '/' || /^\/resource\/[a-f\d-]{36}$/.test(url.pathname)) {
         const ancestors = options.host ? "'self' vscode-webview: vscode-file: https://*.vscode-cdn.net https://*.vscode-webview.net http://127.0.0.1:* http://localhost:*" : "'self' vscode-webview:";
         response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; font-src 'self'; connect-src 'self'; media-src 'self' blob:; frame-src 'self' https: http:; object-src 'none'; base-uri 'none'; frame-ancestors ${ancestors}; form-action 'self'` });
-        const ui = url.pathname !== '/' ? 'resource-preview' : isKanban ? 'kanban-workspace' : isWorkflow ? 'workflow-workspace' : 'workflow-ui';
+        const ui = url.pathname !== '/' ? 'resource-preview' : isKanban ? 'kanban-workspace' : isProject ? 'workflow-workspace' : 'workflow-ui';
         response.end(`<!doctype html><html lang="${locale()}" data-theme="${options.theme ?? 'auto'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="steamharness-project" content="${key}"><title>Workflow</title><link rel="stylesheet" href="/assets/codicons/codicon.css"><link rel="stylesheet" href="/assets/${ui}.css"><link rel="stylesheet" href="/assets/theme.css"></head><body data-surface="${options.host?.surface ?? 'editor'}" data-account-host="${hostManaged}"><div id="app"></div><script src="/assets/${ui}.js" defer></script></body></html>`); return;
       }
       const assets: Record<string, string> = { '/assets/workflow-ui.js': 'application/javascript', '/assets/workflow-ui.css': 'text/css', '/assets/theme.css': 'text/css', '/assets/codicons/codicon.css': 'text/css', '/assets/codicons/codicon.ttf': 'font/ttf' };
@@ -535,13 +535,13 @@ export async function startWebServer(options: WebOptions) {
       assets['/assets/resource-preview.js'] = 'application/javascript'; assets['/assets/resource-preview.css'] = 'text/css';
       if (!assets[url.pathname]) { json(response, 404, { message: 'Not found.' }); return; }
       const content = await readFile(path.join(cliRoot(), 'dist/web', url.pathname.slice('/assets/'.length))); response.writeHead(200, { 'Content-Type': assets[url.pathname], 'Cache-Control': 'no-cache' }); response.end(content);
-    })().catch(error => { if (!response.headersSent) { json(response, 400, { message: String(redactWorkflowData((error as Error).message, [...sensitiveTokens])) }); } else { response.end(); } });
+    })().catch(error => { if (!response.headersSent) { json(response, 400, { message: String(redactProjectData((error as Error).message, [...sensitiveTokens])) }); } else { response.end(); } });
   });
   try { await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(options.port ?? 0, '127.0.0.1', () => { server.off('error', reject); resolve(); }); }); }
-  catch (error) { clearInterval(authPoll); conversationController?.dispose(); workflowController?.dispose(); await kanbanController?.close(); runtime.dispose(); throw error; }
+  catch (error) { clearInterval(authPoll); conversationController?.dispose(); projectController?.dispose(); await kanbanController?.close(); runtime.dispose(); throw error; }
   origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   activity = createLocalActivityWriter(path.dirname(historyPath), project, () => ({
-    runs: summarizeLocalRuns(workflowController?.runs, conversationController?.sessions),
+    runs: summarizeLocalRuns(projectController?.runs, conversationController?.sessions),
     queued: (conversationController?.sessions ?? []).reduce((total, session) => total + (session.queuedInputs?.length ?? 0), 0),
     queuedInputIds: (conversationController?.sessions ?? []).flatMap(session => (session.queuedInputs ?? []).map(input => input.id)),
   }), message => process.stderr.write(`${message}\n`));
@@ -549,7 +549,7 @@ export async function startWebServer(options: WebOptions) {
   conversationController?.recover();
   let closing: Promise<void> | undefined;
   return {
-    origin, url: `${origin}/#session=${capability}`, project, controller, workflowController, kanbanController,
+    origin, url: `${origin}/#session=${capability}`, project, controller, projectController, kanbanController,
     setHostRelatedProjects: (value: NonNullable<WebHostConfiguration['relatedProjects']>) => { relatedProjects = value; resources.clear(); },
     setHostResourceProjects: (value: string[]) => { resourceProjects = value; resources.clear(); },
     setHostConnection: async (value: WebConnection | undefined) => {
@@ -562,13 +562,13 @@ export async function startWebServer(options: WebOptions) {
     },
     close: () => closing ??= (async () => {
       authEpoch++; authCheck?.abort();
-      clearInterval(authPoll); if (broadcastTimer) { clearTimeout(broadcastTimer); } login?.kill(); conversationController?.dispose(); workflowController?.dispose(); runtime.dispose();
+      clearInterval(authPoll); if (broadcastTimer) { clearTimeout(broadcastTimer); } login?.kill(); conversationController?.dispose(); projectController?.dispose(); runtime.dispose();
       await kanbanController?.close();
       for (const client of clients) { client.end(); }
       await new Promise<void>(resolve => server.close(() => resolve()));
       try {
         await conversationController?.idle(); await conversationController?.persist();
-        await workflowController?.idle(); await workflowController?.persist(); await pendingSave;
+        await projectController?.idle(); await projectController?.persist(); await pendingSave;
       } finally { await activity?.close(); }
     })(),
   };

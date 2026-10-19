@@ -11,7 +11,7 @@ import {
 import { KanbanPreview } from './kanban-preview';
 import { KanbanMethodHub } from './kanban-methods';
 import { getCurrentLocale } from '@steamharness/i18n';
-import { localKanbanRelatedProjects, readWorkflowProjectInfo, webProjectDataDirectory } from './kanban-data';
+import { localKanbanRelatedProjects, readProjectInfo, webProjectDataDirectory } from './kanban-data';
 import type { WebConnection } from './runtime';
 import type { Project, Runtime } from './workflow-types';
 import { requestStudioAnalysis } from './local-analysis';
@@ -87,7 +87,7 @@ export class KanbanController {
   private async load(): Promise<void> {
     const pkg = JSON.parse(await readFile(path.join(this.project.folderPath, 'package.json'), 'utf8'));
     const artifact = readKanbanArtifactConfig(pkg);
-    const projectInfo = readWorkflowProjectInfo(pkg);
+    const projectInfo = readProjectInfo(pkg);
     let params: KanbanParamDefinition[];
     try { params = parseKanbanManifestText(await readFile(path.join(this.project.folderPath, 'kanban.json'), 'utf8')).params; }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') { throw error; } params = []; }

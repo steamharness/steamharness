@@ -1,9 +1,9 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { installWorkflowRuntimeGlobal } from "steamharness/runtime-api";
+import { installProjectRuntimeGlobal } from "steamharness/runtime-api";
 import {
-  createDisabledWorkflowConversationContext,
-  createDisabledWorkflowTokenUsageContext,
-  createWorkflowRelatedProjectsContext,
+  createDisabledProjectConversationContext,
+  createDisabledProjectTokenUsageContext,
+  createProjectRelatedProjectsContext,
   type KVContext,
 } from "steamharness";
 import type { RunContext } from "steamharness/types/context";
@@ -15,7 +15,7 @@ import {
 } from "../knowledge-documents-tool";
 import type { SdkMcpToolDefinition } from "@anthropic-ai/claude-agent-sdk";
 
-installWorkflowRuntimeGlobal();
+installProjectRuntimeGlobal();
 
 type ToolHandler = (
   args: Record<string, unknown>,
@@ -154,16 +154,16 @@ function createToolContext(): RunContext {
       local: {
         kv: createMemoryKVContext(),
         persistentValue: createMemoryKVContext(),
-        relatedProjects: createWorkflowRelatedProjectsContext(),
+        relatedProjects: createProjectRelatedProjectsContext(),
       },
       server: {
         kv: createMemoryKVContext(),
         persistentValue: createMemoryKVContext(),
-        relatedProjects: createWorkflowRelatedProjectsContext(),
+        relatedProjects: createProjectRelatedProjectsContext(),
       },
     },
-    conversation: createDisabledWorkflowConversationContext(),
-    tokenUsage: createDisabledWorkflowTokenUsageContext(),
+    conversation: createDisabledProjectConversationContext(),
+    tokenUsage: createDisabledProjectTokenUsageContext(),
   };
 }
 

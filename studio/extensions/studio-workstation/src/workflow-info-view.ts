@@ -3,7 +3,7 @@ import { localizationHtml } from './localization-host';
 import * as vscode from 'vscode';
 import { projectTypeIcons } from './projects';
 import { projectDisplayName, type Project } from './workflow-types';
-import { workflowInfoItems, type InfoItem, type InfoState } from './workflow-info';
+import { projectInfoItems, type InfoItem, type InfoState } from './workflow-info';
 import type { ProjectVersionStatus } from './steamharness-server-projects';
 
 export class InfoView implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -54,7 +54,7 @@ export class InfoView implements vscode.WebviewViewProvider, vscode.Disposable {
     let items: InfoItem[];
     try {
       const bytes = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(vscode.Uri.parse(project.uri), 'package.json'));
-      items = workflowInfoItems(project, JSON.parse(new TextDecoder().decode(bytes)));
+      items = projectInfoItems(project, JSON.parse(new TextDecoder().decode(bytes)));
     } catch (error) {
       items = [{ id: 'error', label: t("Unable to read project information"), value: error instanceof Error ? error.message : String(error), icon: 'warning' }];
     }

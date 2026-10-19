@@ -158,14 +158,14 @@ function withProviderWarnings(
 ): ProviderMetadata | undefined {
   if (!warnings?.length) return providerMetadata;
   const formatted = [...new Set(warnings.map(formatProviderWarning))];
-  const workflowMetadata = providerMetadata?.["steamharness"];
-  const existingWarnings = Array.isArray(workflowMetadata?.["warnings"])
-    ? workflowMetadata["warnings"].filter((value): value is string => typeof value === "string")
+  const projectMetadata = providerMetadata?.["steamharness"];
+  const existingWarnings = Array.isArray(projectMetadata?.["warnings"])
+    ? projectMetadata["warnings"].filter((value): value is string => typeof value === "string")
     : [];
   return {
     ...providerMetadata,
     "steamharness": {
-      ...workflowMetadata,
+      ...projectMetadata,
       warnings: [...new Set([...existingWarnings, ...formatted])],
     },
   };

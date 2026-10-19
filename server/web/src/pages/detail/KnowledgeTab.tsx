@@ -32,7 +32,7 @@ export function KnowledgeTab({
   const resolveServerImage = useCallback(async (src: string) => {
     const resolved = await resolveKnowledgeImageSrc(src, {
       client: {
-        fetchWorkflowFile: (fileId) => apiClient.fetchWorkflowFile(fileId, {
+        fetchProjectFile: (fileId) => apiClient.fetchProjectFile(fileId, {
           signal: imageSession.controller.signal,
         }),
       },

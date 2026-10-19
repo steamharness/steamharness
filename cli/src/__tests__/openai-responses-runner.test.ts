@@ -94,7 +94,7 @@ describe("OpenAI Responses internal runner", () => {
         projectType: "conversation",
         conversation: { openai: { enabled: true, outputItemId: "conversation-answer" } },
       })) as never,
-      runWorkflow: (async (options: { nodeHooks: { onNodeChunk?: (event: unknown) => void } }) => {
+      runProject: (async (options: { nodeHooks: { onNodeChunk?: (event: unknown) => void } }) => {
         options.nodeHooks.onNodeChunk?.({
           nodeName: "conversation-answer",
           executionId: "node_test",
@@ -141,7 +141,7 @@ describe("OpenAI Responses internal runner", () => {
       readInput: () => JSON.stringify(request),
       writeFrame: (frame) => frames.push(frame),
       inspectProject: (() => ({ projectType: "conversation", conversation: {} })) as never,
-      runWorkflow: (async () => {
+      runProject: (async () => {
         throw new Error("must not run");
       }) as never,
     });
@@ -179,7 +179,7 @@ describe("OpenAI Responses internal runner", () => {
         projectType: "conversation",
         conversation: { openai: { enabled: true, outputItemId: "conversation-answer" } },
       })) as never,
-      runWorkflow: (async () => report) as never,
+      runProject: (async () => report) as never,
     });
 
     assert.equal(exitCode, 1);

@@ -10,7 +10,7 @@ import {
 describe("claude-agent output items", () => {
   describe("friendlyToolName", () => {
     it("strips the mcp__server__ prefix from SDK MCP tool names", () => {
-      expect(friendlyToolName("mcp__workflow-knowledge-documents__knowledge_documents")).toBe(
+      expect(friendlyToolName("mcp__steamharness-knowledge-documents__knowledge_documents")).toBe(
         "knowledge_documents",
       );
     });
@@ -29,7 +29,7 @@ describe("claude-agent output items", () => {
     it("renders a friendly name + Chinese action label + target in the title", () => {
       const [start] = createToolUseChunks(
         {
-          name: "mcp__workflow-knowledge-documents__knowledge_documents",
+          name: "mcp__steamharness-knowledge-documents__knowledge_documents",
           input: { action: "create", documentId: "essay-1", title: "我的小作文" },
         },
         3,
@@ -64,7 +64,7 @@ describe("claude-agent output items", () => {
     it("uses the document id as the target when no title is supplied", () => {
       const [start] = createToolUseChunks(
         {
-          name: "mcp__workflow-knowledge-documents__knowledge_documents",
+          name: "mcp__steamharness-knowledge-documents__knowledge_documents",
           input: { action: "get", documentId: "essay-1" },
         },
         4,
@@ -82,7 +82,7 @@ describe("claude-agent output items", () => {
     it("omits the args section when the input is empty", () => {
       const [start] = createToolUseChunks(
         {
-          name: "mcp__workflow-knowledge-documents__knowledge_documents",
+          name: "mcp__steamharness-knowledge-documents__knowledge_documents",
           input: {},
         },
         1,
@@ -108,7 +108,7 @@ describe("claude-agent output items", () => {
     it("falls back to a friendly default for unknown actions", () => {
       const [start] = createToolUseChunks(
         {
-          name: "mcp__workflow-knowledge-documents__knowledge_documents",
+          name: "mcp__steamharness-knowledge-documents__knowledge_documents",
           input: { action: "explode" },
         },
         1,
@@ -126,7 +126,7 @@ describe("claude-agent output items", () => {
     it("creates a durable approved tool permission output item", () => {
       const [start, end] = createToolApprovalDecisionChunks(
         {
-          rawToolName: "mcp__workflow-knowledge-documents__knowledge_documents",
+          rawToolName: "mcp__steamharness-knowledge-documents__knowledge_documents",
           label: "Knowledge Documents",
           status: "approved",
           requestId: "claude-agent:run:tool-approval:knowledge",
@@ -148,7 +148,7 @@ describe("claude-agent output items", () => {
           metadata: {
             kind: "claude-agent-tool-approval",
             tool: "knowledge_documents",
-            rawToolName: "mcp__workflow-knowledge-documents__knowledge_documents",
+            rawToolName: "mcp__steamharness-knowledge-documents__knowledge_documents",
             status: "approved",
             requestId: "claude-agent:run:tool-approval:knowledge",
           },
@@ -265,7 +265,7 @@ describe("claude-agent output items", () => {
 
     it("backfills the action label from the result when the start had no input", () => {
       const start = summarizeToolInputForDisplay(
-        "mcp__workflow-knowledge-documents__knowledge_documents",
+        "mcp__steamharness-knowledge-documents__knowledge_documents",
         {},
       );
       // start should be empty since input is {}
@@ -296,7 +296,7 @@ describe("claude-agent output items", () => {
 
     it("keeps the start-time action label when both start and result have one", () => {
       const start = summarizeToolInputForDisplay(
-        "mcp__workflow-knowledge-documents__knowledge_documents",
+        "mcp__steamharness-knowledge-documents__knowledge_documents",
         { action: "create", title: "原稿" },
       );
       const [delta] = createToolResultChunks(
@@ -314,7 +314,7 @@ describe("claude-agent output items", () => {
 
     it("derives count from the result when start had no input", () => {
       const start = summarizeToolInputForDisplay(
-        "mcp__workflow-knowledge-documents__knowledge_documents",
+        "mcp__steamharness-knowledge-documents__knowledge_documents",
         {},
       );
       const [delta] = createToolResultChunks(

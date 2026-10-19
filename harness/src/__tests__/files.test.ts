@@ -4,28 +4,28 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
-  createRemoteWorkflowFileStoreFromEnv,
-  createServerWorkflowFileStore,
-  createWorkflowFileStore,
+  createRemoteProjectFileStoreFromEnv,
+  createServerProjectFileStore,
+  createProjectFileStore,
   createFileInputNode,
-  createWorkflowKVContext,
-  createLocalWorkflowKVStore,
-  createWorkflowRelatedProjectsContext,
-  createDisabledWorkflowConversationContext,
-  createDisabledWorkflowTokenUsageContext,
-  parseWorkflowFileReferences,
-  RemoteWorkflowFileStore,
+  createProjectKVContext,
+  createLocalProjectKVStore,
+  createProjectRelatedProjectsContext,
+  createDisabledProjectConversationContext,
+  createDisabledProjectTokenUsageContext,
+  parseProjectFileReferences,
+  RemoteProjectFileStore,
 } from "../index";
 
 test("video paths and managed references retain MIME type and bytes through file storage", async () => {
   const rootDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-video-files-"));
   try {
-    const store = createWorkflowFileStore({});
-    const kv = createWorkflowKVContext({ store: createLocalWorkflowKVStore({ rootDir }), projectId: "media-test" });
-    const storage = { kv, persistentValue: kv, relatedProjects: createWorkflowRelatedProjectsContext() };
+    const store = createProjectFileStore({});
+    const kv = createProjectKVContext({ store: createLocalProjectKVStore({ rootDir }), projectId: "media-test" });
+    const storage = { kv, persistentValue: kv, relatedProjects: createProjectRelatedProjectsContext() };
     const context = {
       files: store, providers: {}, storage: { local: storage, server: storage },
-      conversation: createDisabledWorkflowConversationContext(), tokenUsage: createDisabledWorkflowTokenUsageContext(),
+      conversation: createDisabledProjectConversationContext(), tokenUsage: createDisabledProjectTokenUsageContext(),
     };
     const node = createFileInputNode({ accept: ["image/*", "video/*"] });
     for (const [extension, mimeType] of Object.entries({
@@ -35,10 +35,10 @@ test("video paths and managed references retain MIME type and bytes through file
       const filePath = path.join(rootDir, `clip.${extension}`);
       const bytes = Buffer.from(`video-${extension}`);
       await writeFile(filePath, bytes);
-      const [reference] = parseWorkflowFileReferences(filePath);
+      const [reference] = parseProjectFileReferences(filePath);
       assert.equal(reference!.mimeType, mimeType);
       assert.equal(reference!.kind, "file");
-      const [roundTrip] = parseWorkflowFileReferences(JSON.stringify([reference]));
+      const [roundTrip] = parseProjectFileReferences(JSON.stringify([reference]));
       assert.deepEqual(JSON.parse(JSON.stringify(roundTrip)), reference);
       const [resolved] = await node.run([roundTrip], context);
       assert.ok(resolved);
@@ -47,7 +47,7 @@ test("video paths and managed references retain MIME type and bytes through file
       await assert.rejects(() => resolved.toLLMImagePart(), /not an image/);
     }
 
-    const serverStore = createServerWorkflowFileStore({ rootDir: path.join(rootDir, "managed"), projectName: "demo" });
+    const serverStore = createServerProjectFileStore({ rootDir: path.join(rootDir, "managed"), projectName: "demo" });
     const audio = await serverStore.createFile!({ name: "recording.webm", mimeType: "audio/webm", buffer: Buffer.from("audio") });
     assert.equal(audio.mimeType, "audio/webm");
     assert.equal((await serverStore.resolveFile(audio)).mimeType, "audio/webm");
@@ -60,7 +60,7 @@ test("video paths and managed references retain MIME type and bytes through file
 test("server workflow file store writes generated files into the server file namespace", async () => {
   const rootDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-created-files-"));
   try {
-    const store = createServerWorkflowFileStore({
+    const store = createServerProjectFileStore({
       rootDir,
       projectName: "demo",
       conversationId: "thread-1",
@@ -96,7 +96,7 @@ test("server workflow file store writes generated files into the server file nam
 });
 
 test("workflow file store requires a configured file creator", async () => {
-  const store = createWorkflowFileStore({});
+  const store = createProjectFileStore({});
 
   await assert.rejects(
     () => store.createFile!({ name: "frame.png", buffer: Buffer.from("png") }),
@@ -126,7 +126,7 @@ test("remote workflow file store uploads generated files through the server file
   }) as typeof fetch;
 
   try {
-    const store = new RemoteWorkflowFileStore({
+    const store = new RemoteProjectFileStore({
       serverUrl: "http://localhost:7125/",
       token: "token",
       projectName: "demo",
@@ -164,7 +164,7 @@ test("remote workflow file store from env falls back to saved CLI auth file", as
       "utf8",
     );
 
-    const store = createRemoteWorkflowFileStoreFromEnv({
+    const store = createRemoteProjectFileStoreFromEnv({
       env: {
         STEAMHARNESS_CLI_AUTH_DIR: authDir,
       } as NodeJS.ProcessEnv,
@@ -172,7 +172,7 @@ test("remote workflow file store from env falls back to saved CLI auth file", as
       conversationId: "thread-1",
     });
 
-    assert.ok(store instanceof RemoteWorkflowFileStore);
+    assert.ok(store instanceof RemoteProjectFileStore);
   } finally {
     await rm(authDir, { recursive: true, force: true });
   }
@@ -187,7 +187,7 @@ test("remote uploaded files are read with authentication from the managed endpoi
     return new Response(bytes, { status: 200 });
   }) as typeof fetch;
   try {
-    const store = new RemoteWorkflowFileStore({ serverUrl: "https://server.example/", token: "file-token", projectName: "demo" });
+    const store = new RemoteProjectFileStore({ serverUrl: "https://server.example/", token: "file-token", projectName: "demo" });
     const reference = {
       id: "wf_abc123", name: "image.png", mimeType: "image/png", size: bytes.length,
       kind: "image" as const, storage: "server" as const, projectId: "demo", createdAt: "2026-10-08T00:00:00Z",
@@ -209,7 +209,7 @@ test("remote file read failures do not return an API error document as file byte
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () => new Response(JSON.stringify({ errCode: 403, errMessage: "File access denied." }), { status: 403 })) as typeof fetch;
   try {
-    const store = new RemoteWorkflowFileStore({ serverUrl: "https://server.example", token: "token", projectName: "demo" });
+    const store = new RemoteProjectFileStore({ serverUrl: "https://server.example", token: "token", projectName: "demo" });
     const file = await store.resolveFile({
       id: "wf_abc123", name: "image.png", mimeType: "image/png", size: 4,
       kind: "image", storage: "server", projectId: "demo", createdAt: "2026-10-08T00:00:00Z",

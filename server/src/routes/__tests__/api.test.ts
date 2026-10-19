@@ -4,9 +4,9 @@ import test from "node:test";
 import type { AddressInfo } from "node:net";
 import express from "express";
 import { type AuthenticatedPrincipal } from "../../auth";
-import { configureWorkflowAuthContext } from "../../auth";
+import { configureProjectAuthContext } from "../../auth";
 import { HttpError } from "../../protocol";
-import { listBuiltinWorkflowRoles, listWorkflowPermissions } from "../../permissions";
+import { listBuiltinProjectRoles, listProjectPermissions } from "../../permissions";
 import { createApiRouter } from "../api";
 import type { AuditEventPage, UserProfileRecord } from "../../account-db";
 import { PROJECT_CARD_IMAGE_MAX_BYTES, Storage } from "../../storage";
@@ -16,11 +16,11 @@ import type { RelatedProject, RelatedProjectKVGrant } from "@steamharness/projec
 
 test("source download permission is exposed and granted to the developer role", () => {
   assert.equal(
-    listWorkflowPermissions().some((permission) => permission.key === "projects.download_source"),
+    listProjectPermissions().some((permission) => permission.key === "projects.download_source"),
     true,
   );
   assert.equal(
-    listBuiltinWorkflowRoles()
+    listBuiltinProjectRoles()
       .find((role) => role.id === "builtin_developer")
       ?.permissions.includes("projects.download_source"),
     true,
@@ -1193,7 +1193,7 @@ test("source access request API submits, approves, rejects, and revokes download
 
 test("workflows endpoint hides legacy non-UUID ids from admins after cleanup", async () => {
   const storage = createStorageStub({
-    listWorkflows: async () => ([
+    listProjects: async () => ([
       {
         id: "claude-agent",
         name: "@steamharness/claude-agent-workflow",
@@ -1244,7 +1244,7 @@ test("workflows endpoint hides legacy non-UUID ids from admins after cleanup", a
 
 test("workflows endpoint hides legacy non-UUID ids from ordinary public readers", async () => {
   const storage = createStorageStub({
-    listWorkflows: async () => ([
+    listProjects: async () => ([
       {
         id: "legacy-name",
         name: "Legacy",
@@ -1535,7 +1535,7 @@ test("create workflow endpoint rejects invalid project card metadata", async () 
 });
 
 test("audit events endpoint requires audit.read permission", async () => {
-  configureWorkflowAuthContext({ accountDb: createAccountDbStub() as any });
+  configureProjectAuthContext({ accountDb: createAccountDbStub() as any });
   const server = await listen(createStorageStub({}), createPrincipal(["projects.read_all"]));
 
   try {
@@ -1544,7 +1544,7 @@ test("audit events endpoint requires audit.read permission", async () => {
     assert.equal(response.errCode, 403);
     assert.equal((response as { errMessage?: string }).errMessage, "Permission denied.");
   } finally {
-    configureWorkflowAuthContext({});
+    configureProjectAuthContext({});
     await server.close();
   }
 });
@@ -1582,7 +1582,7 @@ test("audit events endpoint forwards filters and returns paged audit data", asyn
     capturedOptions = options;
     return expectedPage;
   };
-  configureWorkflowAuthContext({ accountDb: accountDb as any });
+  configureProjectAuthContext({ accountDb: accountDb as any });
   const server = await listen(createStorageStub({}), createPrincipal(["audit.read"]));
 
   try {
@@ -1617,7 +1617,7 @@ test("audit events endpoint forwards filters and returns paged audit data", asyn
     assert.equal(recordedEvent?.eventType, "audit.events.list");
     assert.equal(recordedEvent?.context?.eventType, "project.publish");
   } finally {
-    configureWorkflowAuthContext({});
+    configureProjectAuthContext({});
     await server.close();
   }
 });
@@ -2599,7 +2599,7 @@ test("all member roles can read data while only writers and managers can mutate 
       canDownloadProjectSource: Storage.prototype.canDownloadProjectSource,
       getFiles: async () => ({ projectId: "demo", projectName: "demo", target: "draft", resolvedTarget: "draft", files: [] }),
       getSourceArchive: async () => ({ version: "1.0.0", archive: Buffer.from("archive") }),
-      cloneWorkflow: async () => ({ projectId: "copy", projectName: "copy", sourceTarget: "latest", resolvedSourceTarget: "1.0.0", nextVersion: "1.0.1" }),
+      cloneProject: async () => ({ projectId: "copy", projectName: "copy", sourceTarget: "latest", resolvedSourceTarget: "1.0.0", nextVersion: "1.0.1" }),
       getKanbanWorkspace: async () => ({ projectId: "demo", projectName: "demo", target: "latest",
         resolvedTarget: "1.0.0", artifactDir: ".", entry: "index.html", relatedProjects: [], configurations: [] }),
     });

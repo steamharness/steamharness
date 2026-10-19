@@ -4,13 +4,13 @@ import type { AddressInfo } from "node:net";
 import test from "node:test";
 import express from "express";
 import type { DeviceCodeSecretRecord } from "../../account-db";
-import { configureWorkflowAuthContext, requireAdminPrincipal } from "../../auth";
+import { configureProjectAuthContext, requireAdminPrincipal } from "../../auth";
 import { getRequestT, localizeHttpErrorMessage } from "../../i18n";
 import { fail, HttpError, ok, toHttpError } from "../../protocol";
 import { createAdminAliasRouter, createAuthRouter, createMeAliasRouter } from "../auth";
 
 test.afterEach(() => {
-  configureWorkflowAuthContext({});
+  configureProjectAuthContext({});
 });
 
 test("admin key login creates a workflow auth cookie visible to /api/auth/session", async () => {
@@ -256,7 +256,7 @@ test("admin key login upgrades to admin_session when auth service is configured"
     },
     async createAuditEvent() {},
   };
-  configureWorkflowAuthContext({ authService: authService as any, accountDb: accountDb as any });
+  configureProjectAuthContext({ authService: authService as any, accountDb: accountDb as any });
   const server = await listen();
 
   try {
@@ -285,7 +285,7 @@ test("admin key login upgrades to admin_session when auth service is configured"
     assert.equal(response.errCode, 0);
     assert.ok(Array.isArray(response.data?.groups));
   } finally {
-    configureWorkflowAuthContext({});
+    configureProjectAuthContext({});
     await server.close();
     delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
   }
@@ -314,7 +314,7 @@ test("valid admin key keeps its signed cookie when bootstrap account login is re
     },
     async recordAudit() {},
   };
-  configureWorkflowAuthContext({ authService: authService as any });
+  configureProjectAuthContext({ authService: authService as any });
   const server = await listen();
 
   try {
@@ -336,7 +336,7 @@ test("valid admin key keeps its signed cookie when bootstrap account login is re
     assert.equal(protectedResponse.errCode, 0);
     assert.equal(protectedResponse.data?.principal?.kind, "admin_key");
   } finally {
-    configureWorkflowAuthContext({});
+    configureProjectAuthContext({});
     await server.close();
     delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
   }
@@ -411,7 +411,7 @@ test("password login can bootstrap the env-configured admin account into an admi
     },
     async createAuditEvent() {},
   };
-  configureWorkflowAuthContext({ authService: authService as any, accountDb: accountDb as any });
+  configureProjectAuthContext({ authService: authService as any, accountDb: accountDb as any });
   const server = await listen();
 
   try {
@@ -434,7 +434,7 @@ test("password login can bootstrap the env-configured admin account into an admi
     assert.equal(session.data?.authenticated, true);
     assert.equal(session.data?.principal?.kind, "admin_session");
   } finally {
-    configureWorkflowAuthContext({});
+    configureProjectAuthContext({});
     await server.close();
     delete process.env.STEAMHARNESS_BOOTSTRAP_ADMIN_EMAIL;
     delete process.env.STEAMHARNESS_BOOTSTRAP_ADMIN_PASSWORD;
@@ -477,7 +477,7 @@ test("bootstrap password login falls back to admin key session when auth service
       createdAuditEvents.push(event);
     },
   };
-  configureWorkflowAuthContext({ authService: authService as any, accountDb: accountDb as any });
+  configureProjectAuthContext({ authService: authService as any, accountDb: accountDb as any });
   const server = await listen();
 
   try {
@@ -500,7 +500,7 @@ test("bootstrap password login falls back to admin key session when auth service
     assert.equal(protectedResponse.errCode, 0);
     assert.equal(protectedResponse.data?.principal?.kind, "admin_key");
   } finally {
-    configureWorkflowAuthContext({});
+    configureProjectAuthContext({});
     await server.close();
     delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
     delete process.env.STEAMHARNESS_BOOTSTRAP_ADMIN_EMAIL;
@@ -517,7 +517,7 @@ test("bootstrap password login does not bypass a rejected native account", async
       throw new HttpError(401, 401, "Email or password is invalid.");
     },
   };
-  configureWorkflowAuthContext({ authService: authService as any });
+  configureProjectAuthContext({ authService: authService as any });
   const server = await listen();
 
   try {
@@ -531,7 +531,7 @@ test("bootstrap password login does not bypass a rejected native account", async
     assert.equal(payload.errCode, 401);
     assert.equal(response.headers.get("set-cookie"), null);
   } finally {
-    configureWorkflowAuthContext({});
+    configureProjectAuthContext({});
     await server.close();
     delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
     delete process.env.STEAMHARNESS_BOOTSTRAP_ADMIN_EMAIL;
@@ -636,7 +636,7 @@ test("admin users list merges compatible auth user summaries with workflow profi
   const accountDb = {
     async createAuditEvent() {},
   };
-  configureWorkflowAuthContext({ authService: authService as any, accountDb: accountDb as any });
+  configureProjectAuthContext({ authService: authService as any, accountDb: accountDb as any });
   const server = await listen();
 
   try {
@@ -652,7 +652,7 @@ test("admin users list merges compatible auth user summaries with workflow profi
     assert.deepEqual(response.data?.items?.[0]?.roles, ["Admin"]);
     assert.equal(response.data?.items?.[0]?.lastSignInAt, "2026-06-22T00:00:00.000Z");
   } finally {
-    configureWorkflowAuthContext({});
+    configureProjectAuthContext({});
     await server.close();
   }
 });
@@ -677,7 +677,7 @@ test("password login records a failed audit event when signInWithPassword reject
       auditEvents.push({ eventType: event.eventType, outcome: event.outcome, context: event.context });
     },
   };
-  configureWorkflowAuthContext({ authService: authService as any, accountDb: accountDb as any });
+  configureProjectAuthContext({ authService: authService as any, accountDb: accountDb as any });
   const server = await listen();
 
   try {
@@ -693,7 +693,7 @@ test("password login records a failed audit event when signInWithPassword reject
     assert.ok(failed, "expected a failed password-login audit event");
     assert.equal(failed.context?.email, "user@example.com");
   } finally {
-    configureWorkflowAuthContext({});
+    configureProjectAuthContext({});
     await server.close();
   }
 });
@@ -756,7 +756,7 @@ test("password login mints an API key when called with source=desktop for non-we
     },
     async createAuditEvent() {},
   };
-  configureWorkflowAuthContext({ authService: authService as any, accountDb: accountDb as any });
+  configureProjectAuthContext({ authService: authService as any, accountDb: accountDb as any });
   const server = await listen();
 
   try {
@@ -813,7 +813,7 @@ test("password login mints an API key when called with source=desktop for non-we
     assert.equal(webResponse.data?.apiKey, undefined);
     assert.equal(createdKeys.length, 1);
   } finally {
-    configureWorkflowAuthContext({});
+    configureProjectAuthContext({});
     await server.close();
   }
 });
@@ -855,7 +855,7 @@ test("me exposes the refreshed expiration for a Desktop API key principal", asyn
       };
     },
   };
-  configureWorkflowAuthContext({ authService: authService as any });
+  configureProjectAuthContext({ authService: authService as any });
   const server = await listen();
 
   try {
@@ -868,7 +868,7 @@ test("me exposes the refreshed expiration for a Desktop API key principal", asyn
     assert.equal(response.data?.principal?.apiKeyId, "api-key-desktop");
     assert.equal(response.data?.principal?.expiresAt, refreshedExpiresAt);
   } finally {
-    configureWorkflowAuthContext({});
+    configureProjectAuthContext({});
     await server.close();
   }
 });
@@ -928,7 +928,7 @@ test("me patch updates display name and avatar url for authenticated sessions", 
     },
     async createAuditEvent() {},
   };
-  configureWorkflowAuthContext({ authService: authService as any, accountDb: accountDb as any });
+  configureProjectAuthContext({ authService: authService as any, accountDb: accountDb as any });
   const server = await listen();
 
   try {
@@ -957,7 +957,7 @@ test("me patch updates display name and avatar url for authenticated sessions", 
     assert.equal(payload.data?.profile?.displayName, "New Name");
     assert.equal(payload.data?.profile?.avatarUrl, "data:image/png;base64,abc");
   } finally {
-    configureWorkflowAuthContext({});
+    configureProjectAuthContext({});
     await server.close();
   }
 });
@@ -993,7 +993,7 @@ test("device start rejects the removed App source without creating a device code
       throw new Error("createDeviceCode must not run for a removed source");
     },
   };
-  configureWorkflowAuthContext({ authService: authService as any });
+  configureProjectAuthContext({ authService: authService as any });
   const server = await listen();
 
   try {
@@ -1015,7 +1015,7 @@ test("device start rejects the removed App source without creating a device code
     assert.equal(payload.errMessage, "非 Web 客户端来源“app”无效。");
     assert.equal(createDeviceCodeCalls, 0);
   } finally {
-    configureWorkflowAuthContext({});
+    configureProjectAuthContext({});
     await server.close();
   }
 });
@@ -1023,7 +1023,7 @@ test("device start rejects the removed App source without creating a device code
 test("device token returns expired_token when a pending device code is already expired", async () => {
   const accountDb = createAccountDbStub();
   const authService = createAuthServiceStub();
-  configureWorkflowAuthContext({ accountDb: accountDb as any, authService: authService as any });
+  configureProjectAuthContext({ accountDb: accountDb as any, authService: authService as any });
   const server = await listen();
 
   const expiredRecord = createDeviceCodeRecord({
@@ -1050,14 +1050,14 @@ test("device token returns expired_token when a pending device code is already e
     assert.equal(accountDb.createdAuditEvents.at(-1)?.outcome, "failed");
     assert.equal(authService.auditEvents.length, 0);
   } finally {
-    configureWorkflowAuthContext({});
+    configureProjectAuthContext({});
     await server.close();
   }
 });
 
 test("device token returns slow_down with retry-after after repeated polls for the same code", async () => {
   const accountDb = createAccountDbStub();
-  configureWorkflowAuthContext({ accountDb: accountDb as any, authService: createAuthServiceStub() as any });
+  configureProjectAuthContext({ accountDb: accountDb as any, authService: createAuthServiceStub() as any });
   const server = await listen();
 
   const pendingRecord = createDeviceCodeRecord({
@@ -1092,14 +1092,14 @@ test("device token returns slow_down with retry-after after repeated polls for t
       assert.ok((payload.data?.retryAfterSeconds ?? 0) > 0);
     }
   } finally {
-    configureWorkflowAuthContext({});
+    configureProjectAuthContext({});
     await server.close();
   }
 });
 
 test("device token consumes approved code before creating an API key", async () => {
   const accountDb = createAccountDbStub();
-  configureWorkflowAuthContext({ accountDb: accountDb as any, authService: createAuthServiceStub() as any });
+  configureProjectAuthContext({ accountDb: accountDb as any, authService: createAuthServiceStub() as any });
   const server = await listen();
   const approvedRecord = createDeviceCodeRecord({
     id: "device-approved",
@@ -1130,7 +1130,7 @@ test("device token consumes approved code before creating an API key", async () 
     assert.equal(accountDb.consumedDeviceCodeIds.at(-1), "device-approved");
     assert.equal(accountDb.createdApiKeys.length, 1);
   } finally {
-    configureWorkflowAuthContext({});
+    configureProjectAuthContext({});
     await server.close();
   }
 });
@@ -1138,7 +1138,7 @@ test("device token consumes approved code before creating an API key", async () 
 test("device token rejects approved code when another request already consumed it", async () => {
   const accountDb = createAccountDbStub();
   accountDb.consumeApprovedDeviceCodeWithApiKeyResult = undefined;
-  configureWorkflowAuthContext({ accountDb: accountDb as any, authService: createAuthServiceStub() as any });
+  configureProjectAuthContext({ accountDb: accountDb as any, authService: createAuthServiceStub() as any });
   const server = await listen();
   accountDb.deviceCodeBySecret.set("approved-secret", createDeviceCodeRecord({
     id: "device-approved",
@@ -1165,7 +1165,7 @@ test("device token rejects approved code when another request already consumed i
     assert.equal(accountDb.createdApiKeys.length, 0);
     assert.equal(accountDb.createdAuditEvents.at(-1)?.context?.state, "already_consumed");
   } finally {
-    configureWorkflowAuthContext({});
+    configureProjectAuthContext({});
     await server.close();
   }
 });
@@ -1202,7 +1202,7 @@ test("account invitation routes expose metadata and establish a session after pa
     },
   };
   const accountDb = { async createAuditEvent() {} };
-  configureWorkflowAuthContext({ authService: authService as any, accountDb: accountDb as any });
+  configureProjectAuthContext({ authService: authService as any, accountDb: accountDb as any });
   const server = await listen();
 
   try {
@@ -1221,7 +1221,7 @@ test("account invitation routes expose metadata and establish a session after pa
     assert.equal(payload.data?.authenticated, true);
     assert.match(accept.headers.get("set-cookie") ?? "", /steamharness_auth_session=/u);
   } finally {
-    configureWorkflowAuthContext({});
+    configureProjectAuthContext({});
     await server.close();
   }
 });
@@ -1260,7 +1260,7 @@ test("logout revokes a PostgreSQL refresh session before clearing its cookie", a
     },
   };
   const accountDb = { async createAuditEvent() {} };
-  configureWorkflowAuthContext({ authService: authService as any, accountDb: accountDb as any });
+  configureProjectAuthContext({ authService: authService as any, accountDb: accountDb as any });
   const server = await listen();
 
   try {
@@ -1272,7 +1272,7 @@ test("logout revokes a PostgreSQL refresh session before clearing its cookie", a
     assert.equal(revokedRefreshToken, "wf_refresh_logout");
     assert.match(response.headers.get("set-cookie") ?? "", /Max-Age=0/u);
   } finally {
-    configureWorkflowAuthContext({});
+    configureProjectAuthContext({});
     await server.close();
   }
 });

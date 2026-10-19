@@ -187,11 +187,11 @@ Kanban 页面必须适配全屏工作区、手机、平板和 Conversation 对�
 
 项目开发工具修改 Vue、React、Vite 等框架源码后，需要更新预览产物。小助手应读取项目已有的非 watch `build` 脚本，按 `packageManager` 或现有 lockfile 选择包管理器并执行一次 `<manager> run build`，随后确认 `<artifactDir>/<entry>` 存在并运行 `steamharness structure`。依赖缺失时按 `SKILL.md` 的「依赖安装与环境」节处理：项目根可写、包管理器可用且安装确属本任务必需时直接装一次，优先与现有 lockfile 对齐的不可变模式，只补缺、不改依赖图、不编造构建脚本，lockfile 有变化要说明。不要启动 `dev`、`watch`、`serve` 或其它长期任务；构建无法执行或失败时必须说明入口仍是旧产物，不能把源码修改等同于预览已经更新。直接编辑产物目录内静态文件时不需要构建。
 
-上传只读取项目根目录 `.workflowignore`，不读取任何 `.gitignore`。缺失或空规则会上传全部普通文件；规则支持目录、glob、`**` 和 `!`。`.workflowignore` 自身始终保留，`package.json`、项目入口和已有 `kanban.json` 不能被排除。Kanban 的规则不得忽略实际产物目录；是否把 `dist` 提交 Git 与是否上传是两件独立的事。
+上传只读取项目根目录 `.steamharnessignore`，不读取任何 `.gitignore`。缺失或空规则会上传全部普通文件；规则支持目录、glob、`**` 和 `!`。`.steamharnessignore` 自身始终保留，`package.json`、项目入口和已有 `kanban.json` 不能被排除。Kanban 的规则不得忽略实际产物目录；是否把 `dist` 提交 Git 与是否上传是两件独立的事。
 
-`.workflowignore` 必须是普通文件（符号链接会被拒绝）且内容为 UTF-8。必备上传路径必须真实存在：Workflow/Conversation 是 `package.json` 与 `index.ts`，Kanban 是 `package.json`、`artifactDir/entry` 和已存在的 `kanban.json`；上传清单里出现的路径也必须是普通文件或目录，符号链接同样会被拒绝。
+`.steamharnessignore` 必须是普通文件（符号链接会被拒绝）且内容为 UTF-8。必备上传路径必须真实存在：Workflow/Conversation 是 `package.json` 与 `index.ts`，Kanban 是 `package.json`、`artifactDir/entry` 和已存在的 `kanban.json`；上传清单里出现的路径也必须是普通文件或目录，符号链接同样会被拒绝。
 
-仓库提供的标准 scaffold 会在最小入口之外生成 `.workflowignore`、`board-state.js`、`board-storage.js`、`README.md` 和 `tests/*.test.mjs`，用于页面内任务操作、KV 持久化和离线逻辑验证。参数化 scaffold 才会额外生成 `kanban.json`。
+仓库提供的标准 scaffold 会在最小入口之外生成 `.steamharnessignore`、`board-state.js`、`board-storage.js`、`README.md` 和 `tests/*.test.mjs`，用于页面内任务操作、KV 持久化和离线逻辑验证。参数化 scaffold 才会额外生成 `kanban.json`。
 
 需要宿主参数时增加 `kanban.json`：
 
@@ -476,7 +476,7 @@ items: [],
 ```ts
 import type { Input, OutputPayload } from "./interface";
 
-export const exampleWorkflow = workflow.defineWorkflow<Input, OutputPayload>({
+export const exampleProject = workflow.defineProject<Input, OutputPayload>({
   name: "example",
   async run(input, context) {
     const result = await workflow.runStreamNode(outputNode, input, context);
@@ -491,7 +491,7 @@ export const executor = workflow.defineExecutor<Input, OutputPayload>({
     workflow.defineEntrypoint<Input, OutputPayload>({
       id: "main",
       title: "完整流程",
-      workflow: exampleWorkflow,
+      workflow: exampleProject,
       tools: [
         {
           name: "search",
@@ -517,14 +517,14 @@ export const executor = workflow.defineExecutor<Input, OutputPayload>({
   ],
 });
 
-export { exampleWorkflow as workflow };
-export default exampleWorkflow;
+export { exampleProject as workflow };
+export default exampleProject;
 ```
 
-- `workflow.defineWorkflow<Input, Output>()` 定义业务 workflow：**只接收一个对象字面量** `{ name, async run(input, context) {...} }`，没有 `(name, runFn)` 形式的重载。返回值原样就是 workflow 对象，宿主按 `typeof value.name === "string" && typeof value.run === "function"` 识别它——少写 `name`、或按别的签名调用，都会在运行时报「must declare workflow and createInput on its executor」。`interface.ts` 里的本地类型只是声明，不会改变运行时的实际形状。
+- `workflow.defineProject<Input, Output>()` 定义业务 workflow：**只接收一个对象字面量** `{ name, async run(input, context) {...} }`，没有 `(name, runFn)` 形式的重载。返回值原样就是 workflow 对象，宿主按 `typeof value.name === "string" && typeof value.run === "function"` 识别它——少写 `name`、或按别的签名调用，都会在运行时报「must declare workflow and createInput on its executor」。`interface.ts` 里的本地类型只是声明，不会改变运行时的实际形状。
 - `workflow.defineExecutor<Input, Output>()` 定义项目运行模式；Workflow 使用 `workflow.defineEntrypoint<Input, Output>()` 定义一个或多个独立运行入口。
 - `projectType` 是 executor 运行模式的唯一真相源，必填且只接受 `"workflow"` 或 `"conversation"`。Workflow executor 不得声明 `conversation`；Conversation executor 自动启用 conversation context，禁止使用已移除的 `conversation.enabled`。
-- `workflow.defineExecutor(...)` 必须接收内联对象字面量，并把返回值作为模块 executor 导出。Workflow 的 `defaultEntrypoint` 必须是命中入口 ID 的静态字符串，`entrypoints` 必须是非空静态数组且每项直接调用 `workflow.defineEntrypoint({...})`。入口 ID 匹配 `/^[a-z][a-z0-9_-]{0,63}$/`，项目内唯一；标题必填，描述可选。每个入口的 `workflow` 必须引用项目源码中由 `workflow.defineWorkflow(...)` 定义的标识符；跨文件可通过项目内相对路径使用命名、别名或 default import，不能传入外部包值或动态构造值。旧的 Workflow 顶层 `workflow/params/createInput/...` 已移除。Conversation 保持单入口顶层配置且不接受 entrypoint。
+- `workflow.defineExecutor(...)` 必须接收内联对象字面量，并把返回值作为模块 executor 导出。Workflow 的 `defaultEntrypoint` 必须是命中入口 ID 的静态字符串，`entrypoints` 必须是非空静态数组且每项直接调用 `workflow.defineEntrypoint({...})`。入口 ID 匹配 `/^[a-z][a-z0-9_-]{0,63}$/`，项目内唯一；标题必填，描述可选。每个入口的 `workflow` 必须引用项目源码中由 `workflow.defineProject(...)` 定义的标识符；跨文件可通过项目内相对路径使用命名、别名或 default import，不能传入外部包值或动态构造值。旧的 Workflow 顶层 `workflow/params/createInput/...` 已移除。Conversation 保持单入口顶层配置且不接受 entrypoint。
 - `workflow.getEnv(name)` 为 CLI 和本地宿主 读取运行时配置。
 - `workflow.getRuntimePlatform()` 返回 `"cli"` 或 `"desktop"`；`workflow.isCli()` 与 `workflow.isDesktop()` 是便捷判断函数。
 - `workflow.getRuntimeLocale()` 返回 `"zh-CN"` 或 `"en"`，用于已明确要求国际化的 Workflow 或 Conversation 项目按宿主语言生成用户可见输出；未注入时回退 `"zh-CN"`。
@@ -564,7 +564,7 @@ workflow.defineEntrypoint<Input, Output>({
   id: "media-export",
   title: "媒体导出",
   group: { id: "media", title: "媒体处理", order: 10 },
-  workflow: mediaExportWorkflow,
+  workflow: mediaExportProject,
   params: [],
   createInput() {
     return { errCode: 0, errMessage: "" };
@@ -572,7 +572,7 @@ workflow.defineEntrypoint<Input, Output>({
 });
 ```
 
-- `group` 是可选的展示元数据，不表达父子执行关系，也不改变入口的扁平运行目录。用户直接运行任一入口时只创建该入口的 run，不会先运行默认入口或同分区其它入口。需要在一个 run 内组合多个业务流程时继续用 `workflow.runWorkflow(...)`，不要把业务层级编码进 `group.id` 或入口 ID。
+- `group` 是可选的展示元数据，不表达父子执行关系，也不改变入口的扁平运行目录。用户直接运行任一入口时只创建该入口的 run，不会先运行默认入口或同分区其它入口。需要在一个 run 内组合多个业务流程时继续用 `workflow.runProject(...)`，不要把业务层级编码进 `group.id` 或入口 ID。
 - `group` 必须是**静态内联对象字面量**，并且只包含 `id`、`title` 和可选 `order` 三个属性；`group` 为 `null`、数组、非对象、或来自变量/函数调用时，`steamharness structure` 直接报 violation。
 - `id` 和 `title` 必须是非空静态字符串字面量；`order` 一旦被声明就必须是非负整数——包括显式写 `order: undefined` 也会失败。省略 `order` 与写上 `order` 是两种不同声明。
 - **同一个 `group.id` 在所有入口上的 `title` 和 `order` 必须逐字一致**（含“有 order”与“无 order”的差异）：`workflow.defineExecutor(...)` 在加载时校验，`steamharness structure` 在静态分析时校验，不一致会分别抛出 `input_validation` 和 violation。
@@ -582,7 +582,7 @@ workflow.defineEntrypoint<Input, Output>({
 
 ## 错误与暂停语义（HarnessError）
 
-运行时把失败归类为类型化错误。项目源码抛出的普通 `Error` 会被包成 `workflow_execution`，宿主只能看到泛化原因；需要宿主、Desktop 或 Server 识别具体失败种类（尤其是暂停与取消）时，必须显式抛出 `workflow.HarnessError`：
+运行时把失败归类为类型化错误。项目源码抛出的普通 `Error` 会被包成 `project_execution`，宿主只能看到泛化原因；需要宿主、Desktop 或 Server 识别具体失败种类（尤其是暂停与取消）时，必须显式抛出 `workflow.HarnessError`：
 
 ```ts
 throw new workflow.HarnessError({
@@ -603,7 +603,7 @@ throw new workflow.HarnessError({
 | `tool_permission_denied` | 工具被策略拒绝或未启用。 |
 | `node_execution` | 单个节点执行失败，例如 `runIf` 没有任何分支命中且未声明 `else`、循环超过 `maxIterations`。 |
 | `provider_call` | 模型或 provider 调用失败，例如 provider 无法解析（`getLLMProvider` 找不到任何来源）、绑定的 provider/model 不存在。 |
-| `workflow_execution` | workflow 级失败，例如 `runWorkflow` 嵌套过深、计时器未启动或重复结束、知识库缺少原子 mutation 能力。 |
+| `project_execution` | workflow 级失败，例如 `runProject` 嵌套过深、计时器未启动或重复结束、知识库缺少原子 mutation 能力。 |
 | `stream_interrupted` | 流式输出在完成前中断。 |
 
 - `workflow.runNode(...)` 会把 `user_input_required` 和 `execution_aborted` 原样向上抛出并保持等待/取消状态；不要把这两个错误吞掉、包装、转成成功返回值，否则宿主无法恢复同一个 run。
@@ -637,7 +637,7 @@ try {
 }
 ```
 
-必须 `await` `workflow.endTimer(timer, context, { status?, message?, metadata? })`：`timer` 可以是 `workflow.createTimerNode` 返回的 payload，也可以是 `timerId` 字符串；结束一个未启动的计时器、或重复结束同一个计时器，都会抛 `workflow_execution`。如果 workflow 业务代码在计时器仍为 `running` 时返回或中止，runtime cleanup 会在终端 report 前把它标记为 `cleared`，避免 UI 保留过期 running 卡片。
+必须 `await` `workflow.endTimer(timer, context, { status?, message?, metadata? })`：`timer` 可以是 `workflow.createTimerNode` 返回的 payload，也可以是 `timerId` 字符串；结束一个未启动的计时器、或重复结束同一个计时器，都会抛 `project_execution`。如果 workflow 业务代码在计时器仍为 `running` 时返回或中止，runtime cleanup 会在终端 report 前把它标记为 `cleared`，避免 UI 保留过期 running 卡片。
 
 ## 运行时 KV 与 Conversation 状态
 
@@ -688,7 +688,7 @@ await context.storage.local.persistentValue.setValue("knowledge.doc", {
 
 根目录的布局与条目字段随版本演进：早期版本的作用域是 `global` / `workflow` / `conversation`，条目里写工作流名 `projectName`；当前版本只有 project / conversation，条目里写 `projectId`，并在根目录写 `.workflow-storage-format.json` 标记（当前 `{ version: 2, storageKind }`）。两种后果都必须避免：
 
-- 旧版本在同一个根目录里读到当前版本写下的条目会抛 `workflow_execution`：`Local workflow KV entry is invalid and cannot be read safely.`。旧版本每次写入都会枚举整个根目录，所以只要目录里存在一个它不认识的条目，写入就会失败——和当前项目自己的代码无关。
+- 旧版本在同一个根目录里读到当前版本写下的条目会抛 `project_execution`：`Local workflow KV entry is invalid and cannot be read safely.`。旧版本每次写入都会枚举整个根目录，所以只要目录里存在一个它不认识的条目，写入就会失败——和当前项目自己的代码无关。
 - 当前版本遇到没有标记或标记不符的根目录，会把它当作待重建的旧根目录：删除 `.inspection`、`.locks`、`.transactions`、`conversation`、`global`、`project` 后写入新标记；如果标记里的 `storageKind` 与本次用途不同（KV 目录被当 PersistentValue 目录使用，或反之），直接抛 `input_validation`。
 
 不要把不同项目的运行指向同一个根目录，也不要靠删除目录排查这类错误：先确认失败进程真正拿到的路径（`env | grep -E 'STEAMHARNESS_.*STORE'`）和实际安装的 Core/CLI 版本，再判断是不是项目代码的问题。
@@ -740,7 +740,7 @@ conversation knowledge 应用要保持映射稳定：一个 `context.conversatio
 - `workflow.searchKnowledgeDocuments(storage, { query, documentId?, beforeLines?, afterLines?, pageSize?, cursor?, maxMatches? })` 按行搜索 Markdown，并返回 `lineNumber`、匹配行和请求的上下文行。`pageSize` 与 `maxMatches` 上限为 1000，`beforeLines` 与 `afterLines` 取值 0–50；`cursor` 是不透明 offset，只能原样回传。
 - `workflow.readKnowledgeDocumentLines(storage, { documentId, startLine, endLine })` 返回单个文档的 1-based 闭区间行范围，每次最多 1000 行，超过上限抛 `input_validation`。
 - `createKnowledgeDocument` 的 `id` 必须匹配 `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`，重复 id 抛 `input_validation`；`editKnowledgeDocument` 对不存在的 id 抛 `input_validation`。
-- create、edit、delete 需要原子写入：目标 `persistentValue` namespace 必须提供 `withLock`，或 store 实现了受限的 `executeMutation`；两者都没有时 helper 直接抛 `workflow_execution`（提示 "Knowledge document mutations require an atomic PersistentValue namespace lock or mutation executor"）。自建 store 时不要省略这两个能力之一，否则知识库 workflow 会在运行期失败。
+- create、edit、delete 需要原子写入：目标 `persistentValue` namespace 必须提供 `withLock`，或 store 实现了受限的 `executeMutation`；两者都没有时 helper 直接抛 `project_execution`（提示 "Knowledge document mutations require an atomic PersistentValue namespace lock or mutation executor"）。自建 store 时不要省略这两个能力之一，否则知识库 workflow 会在运行期失败。
 
 Token usage collection 存在 KV 中：
 
@@ -758,7 +758,7 @@ Conversation workflow 在 executor 上启用 conversation state：
 ```ts
 export const executor = workflow.defineExecutor<Input, OutputPayload>({
   projectType: "conversation",
-  workflow: conversationWorkflow,
+  workflow: conversationProject,
   conversation: {
     attachments: {
       images: true,
@@ -992,7 +992,7 @@ const frame = await context.files?.createFile?.({
 });
 ```
 
-`createFile` 是可选方法：只有 server-backed runtime file storage 存在时可用，否则抛 `workflow_execution`。本地宿主或 CLI 已显式连接服务器时可调用，未连接时报错，不回退本地。默认单文件上限 50 MiB，省略 `kind` 时按 mime 推导，返回 `{ storage: "server", url: "/api/projects/files/<id>" }`。Remote file store 可通过 `context.files.resolveFile(reference)` 鉴权读回服务器文件的原始字节，不使用引用中的任意 URL 或磁盘路径。
+`createFile` 是可选方法：只有 server-backed runtime file storage 存在时可用，否则抛 `project_execution`。本地宿主或 CLI 已显式连接服务器时可调用，未连接时报错，不回退本地。默认单文件上限 50 MiB，省略 `kind` 时按 mime 推导，返回 `{ storage: "server", url: "/api/projects/files/<id>" }`。Remote file store 可通过 `context.files.resolveFile(reference)` 鉴权读回服务器文件的原始字节，不使用引用中的任意 URL 或磁盘路径。
 
 返回 reference 使用 server file URL 形态 `/api/projects/files/<fileId>`。Desktop 或 CLI 本地 run 只有连接 server 时才能创建这些 reference；否则调用会在 runtime 失败，而不是回退到本地文件。
 
@@ -1093,7 +1093,7 @@ const details = await workflow.runNode(detailsNode, parsed, context);
 - 字符串 chunk 会自动追加到默认 inline Markdown `Output` item，适合 LLM/AI/agent 正文和普通文本。结构化 chunk 使用 `workflow.createOutputItemChunk(...)`，支持 `output_item_start`、`output_item_delta` 和 `output_item_end`，适合工具调用和辅助 detail。
 - `workflow.runIf` 运行显式分支节点。第一个命中的 `condition` 生效；没有任何分支命中且未声明 `else` 时抛 `node_execution`，所以要么覆盖全部情况，要么显式声明 `else`。
 - `workflow.runFor` 和 `workflow.runWhile` 运行显式循环节点。迭代次数达到 `maxIterations` 时抛 `node_execution`；`maxIterations` 为 `undefined`、非有限数或 ≤ 0 时会静默回落到默认值（`runFor` 1000、`runWhile` 100），不会报错，所以不要用非法值表达"不限制"。
-- `workflow.runWorkflow` 在当前 `RunContext` 内调用另一个 imported workflow，嵌套深度最多 16 层，超过后抛 `workflow_execution`；可传 `{ name?, metadata?, conversationMode?, kvMode?, outputVisibility?, emitNode?, maxDepth?, onOutputChunk?, onOutput? }`，`maxDepth` 用于收紧而不是放开默认上限。
+- `workflow.runProject` 在当前 `RunContext` 内调用另一个 imported workflow，嵌套深度最多 16 层，超过后抛 `project_execution`；可传 `{ name?, metadata?, conversationMode?, kvMode?, outputVisibility?, emitNode?, maxDepth?, onOutputChunk?, onOutput? }`，`maxDepth` 用于收紧而不是放开默认上限。
 - 用户可见的 terminal 或 Desktop 输出应来自 output-node stream chunks。
 - 如果 stream node 没有产生最终 output，应抛出清晰错误，不要返回 `undefined`。
 
@@ -1175,10 +1175,10 @@ const boosted = await workflow.runWhile(rounded, context, {
 Nested workflow 示例：
 
 ```ts
-import { openaiAgentsWorkflow } from "../openai-agents/index";
+import { openaiAgentsProject } from "../openai-agents/index";
 
-const agentOutput = await workflow.runWorkflow(
-  openaiAgentsWorkflow,
+const agentOutput = await workflow.runProject(
+  openaiAgentsProject,
   {
     message: input.query,
     defaultTools: false,
@@ -1198,7 +1198,7 @@ const agentOutput = await workflow.runWorkflow(
 );
 ```
 
-Executor entrypoint 只提供一层扁平的独立启动目录，不表示父子执行关系。用户直接运行任一 entrypoint 时只创建该入口的 run，不会先运行默认入口；多级业务编排继续通过 `workflow.runWorkflow(...)` 显式表达，不要把层级编码到 entrypoint ID。
+Executor entrypoint 只提供一层扁平的独立启动目录，不表示父子执行关系。用户直接运行任一 entrypoint 时只创建该入口的 run，不会先运行默认入口；多级业务编排继续通过 `workflow.runProject(...)` 显式表达，不要把层级编码到 entrypoint ID。
 
 `conversationMode` 始终默认 `shared`，即使提供了 options object。除非父 workflow 显式使用 `shared-readonly`，否则子 workflow 可以写父 conversation；`shared-readonly` 会让该次调用中的 `appendMessage`、`setValue` 和 `setTitle` 成为 no-op。除非父 workflow 显式传入 `outputVisibility: "hidden"`，否则子输出仍可见。父 workflow 想避免重复 transcript 时，应由父 workflow 追加 user 或 assistant message、设置标题，并发出或转发最终 output item。使用 `kvMode: "isolated"` 避免子 workflow 特有 history KV 污染。
 
@@ -1209,7 +1209,7 @@ async *stream(input, context) {
   // createAsyncQueue is a local helper, not a built-in workflow API. Implement
   // it in the workflow or replace it with an existing async iterable queue.
   const queue = createAsyncQueue<RunOutputStreamChunk>();
-  const childRun = workflow.runWorkflow(childWorkflow, input.childInput, context, {
+  const childRun = workflow.runProject(childProject, input.childInput, context, {
     conversationMode: "shared-readonly",
     kvMode: "isolated",
     outputVisibility: "hidden",
@@ -1290,7 +1290,7 @@ Core 内置一层基于 pi agent SDK 的 agent 能力，覆盖输入、输出、
 
 四种用法，按需要选择：
 
-- `workflow.createAgentConversationWorkflow({ ... })` 配合项目内联 `workflow.defineExecutor({ ... })`：生成完整的 Agent Conversation 工作流，让 Core 负责输入/输出节点与 agent 执行，项目只保留静态声明。**新建需要通过 structure 的 Agent 项目首选此组合**；可直接读取 `assets/examples/agent-conversation/index.ts`。
+- `workflow.createAgentConversationProject({ ... })` 配合项目内联 `workflow.defineExecutor({ ... })`：生成完整的 Agent Conversation 工作流，让 Core 负责输入/输出节点与 agent 执行，项目只保留静态声明。**新建需要通过 structure 的 Agent 项目首选此组合**；可直接读取 `assets/examples/agent-conversation/index.ts`。
 - `workflow.defineAgentConversationExecutor({ ... })`：一步构造完整 executor，适合不经过项目结构检查的宿主嵌入或测试。
 - `workflow.createAgentNode({ ... })`：只取一个 agent 节点，放进自己的 workflow 用 `runNode` / `runStreamNode` 执行。需要自定义前后节点时使用。
 - `workflow.createAgent({ ... })`：直接拿到一个可编程驱动的 agent 运行时（`async function* run(input, host?)`），不经过 workflow 节点体系；适合脚本化调用。
@@ -1303,7 +1303,7 @@ Core 内置一层基于 pi agent SDK 的 agent 能力，覆盖输入、输出、
 
 完整、经过类型与结构检查的项目 `index.ts` 见 `assets/examples/agent-conversation/index.ts`。先创建 Conversation scaffold，再以这个示例替换其入口，并按项目需求调整声明。`workflow` 变量名要保持不变，运行时由宿主注入；只允许从 `steamharness` 导入类型。
 
-  `workflow.createAgentConversationWorkflow(...)` 返回整个 workflow（输入节点、agent 节点、输出节点与 conversation 落库），`workflow.createAgentProjectInput(args)` 从 executor 的 `createInput({ args })` 调用。`workflow.createAgentProjectParams(...)` 返回 Core 的完整默认参数表；项目按需选择字段并保持内联字面量，沿用默认表的字段时可在测试中比对，防止漂移。
+  `workflow.createAgentConversationProject(...)` 返回整个 workflow（输入节点、agent 节点、输出节点与 conversation 落库），`workflow.createAgentProjectInput(args)` 从 executor 的 `createInput({ args })` 调用。`workflow.createAgentProjectParams(...)` 返回 Core 的完整默认参数表；项目按需选择字段并保持内联字面量，沿用默认表的字段时可在测试中比对，防止漂移。
 
   `resolveParams: workflow.createAgentProjectParamResolver()` 把 provider 与 model 参数接到宿主的**系统 AI**：选项来自 `workflow.getServerLLMCredentials(...)`，因此这两个参数要声明成 `control: "select"`、`options: []`、`required: true`，不要写死 anthropic / openai 这类静态选项。运行时 Core 会为每一轮通过凭据的 `startLLMProxyBridge()` 建立回环代理，把 agent 指向它，并在本轮结束时关闭；因此**项目里不要保存任何 LLM Key**。仅当调用方自己给了 `baseUrl`，或注入了 `models`/`resolvedModel`（测试、自建端点）时才会跳过系统 AI。
 
@@ -1324,7 +1324,7 @@ const result = await workflow.runStreamNode(agentNode, input, context);
 
 输入字段（`AgentInput`）：`prompt`、`images`、`workdir`、`allowedDirectories`、`systemPrompt`、`provider`、`model`、`baseUrl`、`effort`、`agent`、`permissionPolicy`、`contextWindow`、`compact`、`hostInput`、`requestId`、`planResume`、`askResume`。
 
-**回答 item 的 id 就是 `outputItemId`。** `createAgentConversationWorkflow({ outputItemId })` 产出的正文 item 使用这个 id 原样（不做前缀、不改写），因此它必须与 `conversation.openai.outputItemId` 是同一个值：OpenAI / Responses 适配器是在 `report.outputs[].output.items` 里**按 id 查找**这段正文的，两个值不一致时运行会在适配器一侧以「did not produce output item」失败（本地网关与 CLI 的 `__openai-responses-runner` 都走这条查找）。不传时才会退化成按会话派生的 id，那种 id 适配器无法预先知道。
+**回答 item 的 id 就是 `outputItemId`。** `createAgentConversationProject({ outputItemId })` 产出的正文 item 使用这个 id 原样（不做前缀、不改写），因此它必须与 `conversation.openai.outputItemId` 是同一个值：OpenAI / Responses 适配器是在 `report.outputs[].output.items` 里**按 id 查找**这段正文的，两个值不一致时运行会在适配器一侧以「did not produce output item」失败（本地网关与 CLI 的 `__openai-responses-runner` 都走这条查找）。不传时才会退化成按会话派生的 id，那种 id 适配器无法预先知道。
 
 - `workdir` 与 `allowedDirectories` 合起来决定本轮内置工具能碰哪些路径（相对 `allowedDirectories` 按本轮的 `workdir` 解析，省略时就是 `[workdir]`）。**两者都是逐轮生效的**，所以宿主把外部文件夹挂进工作区时，按这一轮实际的工作区传进来，而不是在建运行时写死。
 - `systemPrompt` 是本轮的系统提示词，逐轮生效并覆盖 `AgentProjectOptions.systemPrompt`。plan 模式下 plan 提示词仍在前，这段内容追加在后，所以 plan 的只读约束不能靠它改掉。
@@ -1465,11 +1465,11 @@ Core 提供「工作流能力」工具，把项目跟它周围的东西接起来
 | Kanban 页面方法 | `steamharness-kanban` | `steamharness-kanban_kanban_methods` |
 | Conversation 资源卡片 | `workflow-ui` | `workflow-ui_present_card` |
 
-- `await workflow.createWorkflowCapabilityTools({ context, approve?, globalMemory? })`：返回可以交给 agent 的原生工具（放在 `extraTools` 或 `createTools` 里）。`globalMemory` 为 `true` 时才包含跨会话记忆——宿主没有记忆存储时，不要给模型一个每次调用都会失败的工具。
-- `await workflow.createWorkflowCapabilityServer(toolId, { context, approve? })`：取其中一个能力的 MCP 服务端，自己 `connect(transport)`；工具 id 未知时抛错。
-- `await workflow.runWorkflowCapabilityAction(toolId, context, args)`：按工具 id 直接执行一个动作。**审批恢复要用它**——暂停的那一轮已经结束，调用只能按宿主批准的那个 id 重新寻址，不能靠当初建它的闭包。
-- `workflow.listWorkflowCapabilityToolIds({ globalMemory? })`：列出这一轮会出现的工具 id。
-- `workflow.isWorkflowCapabilityAvailable(toolId)`：这个能力在**当前进程**里能不能干活。宿主配置与 Kanban 页面方法随宿主桥环境变化；Kanban 另需宿主明确启用。工具不可用时不应暴露给模型。`Capability.run(context, args, signal?)` 可接收 Agent/MCP 的调用取消信号；Kanban 通道将其传递到页面 handler。
+- `await workflow.createProjectCapabilityTools({ context, approve?, globalMemory? })`：返回可以交给 agent 的原生工具（放在 `extraTools` 或 `createTools` 里）。`globalMemory` 为 `true` 时才包含跨会话记忆——宿主没有记忆存储时，不要给模型一个每次调用都会失败的工具。
+- `await workflow.createProjectCapabilityServer(toolId, { context, approve? })`：取其中一个能力的 MCP 服务端，自己 `connect(transport)`；工具 id 未知时抛错。
+- `await workflow.runProjectCapabilityAction(toolId, context, args)`：按工具 id 直接执行一个动作。**审批恢复要用它**——暂停的那一轮已经结束，调用只能按宿主批准的那个 id 重新寻址，不能靠当初建它的闭包。
+- `workflow.listProjectCapabilityToolIds({ globalMemory? })`：列出这一轮会出现的工具 id。
+- `workflow.isProjectCapabilityAvailable(toolId)`：这个能力在**当前进程**里能不能干活。宿主配置与 Kanban 页面方法随宿主桥环境变化；Kanban 另需宿主明确启用。工具不可用时不应暴露给模型。`Capability.run(context, args, signal?)` 可接收 Agent/MCP 的调用取消信号；Kanban 通道将其传递到页面 handler。
 
 **它们不受 `permissionPolicy` 约束**——策略只管内置的 7 个编码工具。项目在 `executor.tools` 里声明这些工具 id，声明里的 `enabled` 决定是否暴露、`autoApprove` 决定是否自动批准；把 `approve` 接到 `workflow.createToolApprovalGate().approve(...)` 上就是同一条审批链。
 
@@ -1495,7 +1495,7 @@ export const executor = workflow.defineExecutor<Input, OutputPayload>({
     workflow.defineEntrypoint<Input, OutputPayload>({
       id: "main",
       title: "完整流程",
-      workflow: exampleWorkflow,
+      workflow: exampleProject,
       registry: [
         {
           name: "output",
@@ -1566,7 +1566,7 @@ const response = await fetch("https://api.example.com/run", {
 }
 ```
 
-workflow package 的顶层 `id` 必须是 UUID。它既是远程项目主键，也是 server 权限校验边界；不要再使用目录名、包名或 `steamHarness.id` 代替。`steamHarness.projectInfo.dataStorage.mode` 是必填权威声明，新项目默认 `both`。通用关系写在 `projectInfo.relatedProjects`：alias 匹配 `[a-z][a-z0-9_-]{0,63}`，最多 32 项，alias 与 projectId 均不得重复或指向自身；每项只允许 `alias`、`projectId`、`grantToRelatedProject`，权限规则为 `none | all | prefixes`，`prefixes` 必须非空且去重。双方默认显式互写 `read: all`、`write: none`，单边声明可保存但只表示待确认。旧 `access`、`kanban.dataSources`、`.workflow` 存储作用域和全局 KV 不会自动转换。Core/CLI 使用独立的精确版本，除此之外只声明真实第三方依赖。CLI binary 由外层 Desktop、workspace、server tooling 提供。上传只按项目根目录 `.workflowignore` 选择文件，`.gitignore` 不参与；下载恢复服务端已保存的完整文件清单，不再次应用上传忽略规则。
+workflow package 的顶层 `id` 必须是 UUID。它既是远程项目主键，也是 server 权限校验边界；不要再使用目录名、包名或 `steamHarness.id` 代替。`steamHarness.projectInfo.dataStorage.mode` 是必填权威声明，新项目默认 `both`。通用关系写在 `projectInfo.relatedProjects`：alias 匹配 `[a-z][a-z0-9_-]{0,63}`，最多 32 项，alias 与 projectId 均不得重复或指向自身；每项只允许 `alias`、`projectId`、`grantToRelatedProject`，权限规则为 `none | all | prefixes`，`prefixes` 必须非空且去重。双方默认显式互写 `read: all`、`write: none`，单边声明可保存但只表示待确认。旧 `access`、`kanban.dataSources`、`.workflow` 存储作用域和全局 KV 不会自动转换。Core/CLI 使用独立的精确版本，除此之外只声明真实第三方依赖。CLI binary 由外层 Desktop、workspace、server tooling 提供。上传只按项目根目录 `.steamharnessignore` 选择文件，`.gitignore` 不参与；下载恢复服务端已保存的完整文件清单，不再次应用上传忽略规则。
 
 ## Server 数据服务
 

@@ -33,11 +33,11 @@ import type {
   StructureDiagnostics,
   StructureEntrypoint,
   StructureExecution,
-  StructureWorkflow,
+  StructureProject,
 } from "./rules";
 import {
-  serializeWorkflowError,
-  type SerializedWorkflowError,
+  serializeProjectError,
+  type SerializedProjectError,
   type ErrorType,
   type RunResult,
 } from "../workflow/index";
@@ -45,7 +45,7 @@ import {
   createOutputItem,
   createOutputPayload,
   isOutputContentType,
-  isWorkflowOutputPayload,
+  isProjectOutputPayload,
   type OutputItem,
   type RunOutputPayload,
 } from "../node/output/index";
@@ -55,7 +55,7 @@ export type RunStatus = "running" | "waiting_for_input" | "success" | "failed" |
 
 export type RuntimeEvent =
   | {
-      type: "workflow_started";
+      type: "project_started";
       runId: string;
       projectName: string;
       entrypointId?: string;
@@ -63,7 +63,7 @@ export type RuntimeEvent =
       startedAt: Date;
     }
   | {
-      type: "workflow_succeeded";
+      type: "project_succeeded";
       runId: string;
       projectName: string;
       entrypointId?: string;
@@ -79,10 +79,10 @@ export type RuntimeEvent =
       entrypointTitle?: string;
       endedAt: Date;
       durationMs: number;
-      error?: SerializedWorkflowError;
+      error?: SerializedProjectError;
     }
   | {
-      type: "workflow_aborted";
+      type: "project_aborted";
       runId: string;
       projectName: string;
       entrypointId?: string;
@@ -92,7 +92,7 @@ export type RuntimeEvent =
       reason: string;
     }
   | {
-      type: "workflow_timed_out";
+      type: "project_timed_out";
       runId: string;
       projectName: string;
       entrypointId?: string;
@@ -175,7 +175,7 @@ export type RuntimeEvent =
       durationMs: number;
       input?: unknown;
       output?: unknown;
-      error?: SerializedWorkflowError;
+      error?: SerializedProjectError;
       executionInfo?: unknown;
     };
 
@@ -191,7 +191,7 @@ export interface ExecutorNodeExecutionReport {
   durationMs?: number;
   input?: unknown;
   output?: unknown;
-  error?: SerializedWorkflowError;
+  error?: SerializedProjectError;
   executionInfo?: unknown;
 }
 
@@ -256,7 +256,7 @@ export interface DefinitionEvent {
 
 export interface StructureReport {
   projectType: ProjectKind;
-  workflow: StructureWorkflow;
+  workflow: StructureProject;
   definitions: StructureDefinitions;
   defaultEntrypoint?: string;
   entrypoints?: StructureEntrypoint[];
@@ -284,7 +284,7 @@ export interface NodeExecutionReporter {
 }
 
 export interface ExecutionReporter extends NodeExecutionReporter {
-  emitWorkflowStarted(event: {
+  emitProjectStarted(event: {
     runId: string;
     projectName: string;
     entrypointId?: string;
@@ -292,7 +292,7 @@ export interface ExecutionReporter extends NodeExecutionReporter {
     conversationId?: string;
     startedAt: Date;
   }): Promise<void>;
-  emitWorkflowFinished(event: {
+  emitProjectFinished(event: {
     runId: string;
     projectName: string;
     entrypointId?: string;
@@ -360,9 +360,9 @@ export function createNodeExecutionReporter(options: {
   }
 
   return {
-    emitWorkflowStarted(event) {
+    emitProjectStarted(event) {
       return emit({
-        type: "workflow_started",
+        type: "project_started",
         runId: event.runId,
         projectName: event.projectName,
         entrypointId: event.entrypointId,
@@ -370,12 +370,12 @@ export function createNodeExecutionReporter(options: {
         startedAt: event.startedAt,
       });
     },
-    emitWorkflowFinished(event) {
+    emitProjectFinished(event) {
       const durationMs = event.endedAt.getTime() - event.startedAt.getTime();
 
       if (event.status === "success") {
         return emit({
-          type: "workflow_succeeded",
+          type: "project_succeeded",
           runId: event.runId,
           projectName: event.projectName,
           entrypointId: event.entrypointId,
@@ -387,21 +387,21 @@ export function createNodeExecutionReporter(options: {
 
       if (event.status === "aborted") {
         return emit({
-          type: "workflow_aborted",
+          type: "project_aborted",
           runId: event.runId,
           projectName: event.projectName,
           entrypointId: event.entrypointId,
           entrypointTitle: event.entrypointTitle,
           endedAt: event.endedAt,
           durationMs,
-          reason: readWorkflowResultMessage(event.result, event.outputs ?? outputs) ??
+          reason: readProjectResultMessage(event.result, event.outputs ?? outputs) ??
             "Workflow execution was aborted.",
         });
       }
 
       if (event.status === "timed_out") {
         return emit({
-          type: "workflow_timed_out",
+          type: "project_timed_out",
           runId: event.runId,
           projectName: event.projectName,
           entrypointId: event.entrypointId,
@@ -424,7 +424,7 @@ export function createNodeExecutionReporter(options: {
         entrypointTitle: event.entrypointTitle,
         endedAt: event.endedAt,
         durationMs,
-        error: readWorkflowResultError(event.result, event.outputs ?? outputs),
+        error: readProjectResultError(event.result, event.outputs ?? outputs),
       });
     },
     emitConversationTitleUpdated(event) {
@@ -543,12 +543,12 @@ export function createNodeExecutionReporter(options: {
             order: outputs.length + 1,
             nodeOrder: report.order,
             nodeName: event.nodeName,
-            output: normalizeWorkflowOutputPayload(event.output),
+            output: normalizeProjectOutputPayload(event.output),
           });
         }
 
         if (event.error !== undefined) {
-          report.error = serializeWorkflowError(event.error);
+          report.error = serializeProjectError(event.error);
         }
 
         return emit({
@@ -565,7 +565,7 @@ export function createNodeExecutionReporter(options: {
           durationMs: event.durationMs,
           input: event.input,
           output: event.output,
-          error: event.error === undefined ? undefined : serializeWorkflowError(event.error),
+          error: event.error === undefined ? undefined : serializeProjectError(event.error),
           executionInfo: event.executionInfo,
         });
       },
@@ -618,7 +618,7 @@ export function combineNodeExecutionHooks(
   };
 }
 
-export function createWorkflowExecutionReport<Output>(
+export function createProjectExecutionReport<Output>(
   options: {
     runId: string;
     projectName: string;
@@ -649,13 +649,13 @@ export function createWorkflowExecutionReport<Output>(
     entrypointTitle: options.entrypointTitle,
     conversationId: options.conversationId,
     conversationTitle: options.conversationTitle,
-    status: options.status ?? resolveWorkflowResultStatus(options.result, outputs),
+    status: options.status ?? resolveProjectResultStatus(options.result, outputs),
     startedAt: options.startedAt,
     endedAt: options.endedAt,
     durationMs: options.endedAt.getTime() - options.startedAt.getTime(),
     definedNodes: options.definedNodes ?? [],
     registry: options.registry ?? [],
-    result: createReportedWorkflowResult(options.result, outputs),
+    result: createReportedProjectResult(options.result, outputs),
     nodes: options.nodes,
     outputs,
     pendingUserInput: options.pendingUserInput,
@@ -665,7 +665,7 @@ export function createWorkflowExecutionReport<Output>(
   };
 }
 
-function createReportedWorkflowResult<Output>(
+function createReportedProjectResult<Output>(
   result: RunResult<Output>,
   outputs: OutputReport[],
 ): RunResult<Output> {
@@ -674,13 +674,13 @@ function createReportedWorkflowResult<Output>(
       ok: true,
       data: {
         errCode: mapErrorTypeToCode(result.error.type),
-        errMessage: readWorkflowErrorMessage(result.error),
+        errMessage: readProjectErrorMessage(result.error),
         output: null,
       } as Output,
     };
   }
 
-  const output = createWorkflowExecutorOutput(
+  const output = createProjectExecutorOutput(
     outputs.length === 0
       ? [result.data]
       : outputs.map((item) => item.output),
@@ -706,14 +706,14 @@ function createReportedWorkflowResult<Output>(
   };
 }
 
-export function resolveWorkflowResultStatus(
+export function resolveProjectResultStatus(
   result: RunResult<unknown>,
   outputs: OutputReport[] = [],
 ): RunStatus {
-  return readWorkflowResultErrCode(result, outputs) === 0 ? "success" : "failed";
+  return readProjectResultErrCode(result, outputs) === 0 ? "success" : "failed";
 }
 
-export function readWorkflowResultErrCode(
+export function readProjectResultErrCode(
   result: RunResult<unknown>,
   outputs: OutputReport[] = [],
 ): number {
@@ -722,7 +722,7 @@ export function readWorkflowResultErrCode(
   }
 
   if (outputs.length > 0) {
-    const output = createWorkflowExecutorOutput(outputs.map((item) => item.output));
+    const output = createProjectExecutorOutput(outputs.map((item) => item.output));
     const resultErrCode = readPayloadErrCode(result.data);
     const outputErrCode = readPayloadErrCode(output);
     return resultErrCode !== undefined && resultErrCode !== 0
@@ -781,36 +781,36 @@ function cloneDate(value: Date | undefined): Date | undefined {
   return value === undefined ? undefined : new Date(value);
 }
 
-function readWorkflowResultError(
+function readProjectResultError(
   result: RunResult<unknown>,
   outputs: OutputReport[] = [],
-): SerializedWorkflowError | undefined {
+): SerializedProjectError | undefined {
   if (!result.ok) {
     return result.error;
   }
 
-  const errCode = readWorkflowResultErrCode(result, outputs);
+  const errCode = readProjectResultErrCode(result, outputs);
   if (errCode === 0) {
     return undefined;
   }
 
   return {
     type: "execution",
-    message: readWorkflowResultMessage(result, outputs) ?? `Workflow returned errCode ${errCode}.`,
+    message: readProjectResultMessage(result, outputs) ?? `Workflow returned errCode ${errCode}.`,
     metadata: { errCode },
   };
 }
 
-function readWorkflowResultMessage(
+function readProjectResultMessage(
   result: RunResult<unknown>,
   outputs: OutputReport[] = [],
 ): string | undefined {
   if (!result.ok) {
-    return readWorkflowErrorMessage(result.error);
+    return readProjectErrorMessage(result.error);
   }
 
   if (outputs.length > 0) {
-    const output = createWorkflowExecutorOutput(outputs.map((item) => item.output));
+    const output = createProjectExecutorOutput(outputs.map((item) => item.output));
     const errMessage = readPayloadErrMessage(output);
     if (errMessage !== undefined) {
       return errMessage;
@@ -824,8 +824,8 @@ function readWorkflowResultMessage(
   return undefined;
 }
 
-function readWorkflowErrorMessage(error: SerializedWorkflowError): string {
-  const causeMessage = formatWorkflowErrorCause(error.cause);
+function readProjectErrorMessage(error: SerializedProjectError): string {
+  const causeMessage = formatProjectErrorCause(error.cause);
   if (causeMessage !== undefined && causeMessage !== "") {
     return causeMessage;
   }
@@ -833,14 +833,14 @@ function readWorkflowErrorMessage(error: SerializedWorkflowError): string {
   return error.message;
 }
 
-function formatWorkflowErrorCause(
-  cause: SerializedWorkflowError["cause"] | undefined,
+function formatProjectErrorCause(
+  cause: SerializedProjectError["cause"] | undefined,
 ): string | undefined {
   if (cause === undefined) {
     return undefined;
   }
 
-  const nested = formatWorkflowErrorCause(cause.cause);
+  const nested = formatProjectErrorCause(cause.cause);
   const message = nested ?? cause.message?.trim();
   if (message === undefined || message === "") {
     return undefined;
@@ -866,7 +866,7 @@ function formatWorkflowErrorCause(
  * deeper message with this level's body would attribute the body to the wrong failure.
  */
 function readResponseBodyDetail(
-  cause: NonNullable<SerializedWorkflowError["cause"]>,
+  cause: NonNullable<SerializedProjectError["cause"]>,
   nested: string | undefined,
 ): string | undefined {
   if (nested !== undefined) {
@@ -889,7 +889,7 @@ function readResponseBodyDetail(
   return `response ${responseBody}`;
 }
 
-function createWorkflowExecutorOutput(values: unknown[]): ExecutorOutput {
+function createProjectExecutorOutput(values: unknown[]): ExecutorOutput {
   const output = createOutputPayload();
   const items: OutputItem[] = [];
 
@@ -919,7 +919,7 @@ function createWorkflowExecutorOutput(values: unknown[]): ExecutorOutput {
       }
 
       if (Array.isArray(value.items)) {
-        items.push(...value.items.map((item) => normalizeWorkflowOutputItem(item)));
+        items.push(...value.items.map((item) => normalizeProjectOutputItem(item)));
         continue;
       }
     }
@@ -937,18 +937,18 @@ function createWorkflowExecutorOutput(values: unknown[]): ExecutorOutput {
   return output;
 }
 
-function normalizeWorkflowOutputPayload(value: unknown): RunOutputPayload {
-  if (isWorkflowOutputPayload(value)) {
+function normalizeProjectOutputPayload(value: unknown): RunOutputPayload {
+  if (isProjectOutputPayload(value)) {
     return createOutputPayload({
       ...value,
-      items: value.items.map((item) => normalizeWorkflowOutputItem(item)),
+      items: value.items.map((item) => normalizeProjectOutputItem(item)),
     });
   }
 
   if (isOutputObject(value) && Array.isArray(value.items)) {
     return createOutputPayload({
       ...value,
-      items: value.items.map((item) => normalizeWorkflowOutputItem(item)),
+      items: value.items.map((item) => normalizeProjectOutputItem(item)),
     });
   }
 
@@ -962,7 +962,7 @@ function normalizeWorkflowOutputPayload(value: unknown): RunOutputPayload {
   });
 }
 
-function normalizeWorkflowOutputItem(value: unknown): OutputItem {
+function normalizeProjectOutputItem(value: unknown): OutputItem {
   if (isOutputObject(value)) {
     return createOutputItem({
       id: typeof value.id === "string" ? value.id : undefined,
@@ -1095,7 +1095,7 @@ function cloneNodeMetadata(
   return metadata === undefined ? undefined : { ...metadata };
 }
 
-function cloneError(error: SerializedWorkflowError): SerializedWorkflowError {
+function cloneError(error: SerializedProjectError): SerializedProjectError {
   return {
     ...error,
     metadata: error.metadata === undefined ? undefined : { ...error.metadata },

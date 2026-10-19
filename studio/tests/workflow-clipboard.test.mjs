@@ -13,7 +13,7 @@ function fixture(writeText) {
     module, exports: module.exports, Error,
     require: () => ({ env: { clipboard: { writeText } } }),
   });
-  const binding = module.exports.bindWorkflowClipboard({ postMessage: async message => { replies.push(message); } });
+  const binding = module.exports.bindProjectClipboard({ postMessage: async message => { replies.push(message); } });
   return { binding, replies };
 }
 

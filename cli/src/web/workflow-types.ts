@@ -275,11 +275,11 @@ export const projectTypeLabels: Record<ProjectKind, string> = {
   get kanban() { return t("Kanban"); },
 };
 
-export function workflowParameters(project: Project, entrypointId?: string): Parameters {
+export function projectParameters(project: Project, entrypointId?: string): Parameters {
   return project.entrypoints.find((entry) => entry.id === entrypointId) ?? project;
 }
 
-export function workflowParamValue(field: Field, value: ParamValue = field.defaultValue ?? ''): ParamValue {
+export function projectParamValue(field: Field, value: ParamValue = field.defaultValue ?? ''): ParamValue {
   if (field.type === 'file' || field.control === 'audio' || !(field.multiple || field.control === 'checkboxes') || Array.isArray(value)) { return value; }
   if (!value.trim()) { return []; }
   try {
@@ -289,18 +289,18 @@ export function workflowParamValue(field: Field, value: ParamValue = field.defau
   return [value];
 }
 
-export function workflowFormValue(field: Field, value: unknown): ParamValue {
-  if (value === undefined || value === null) { return workflowParamValue(field); }
-  if (typeof value === 'string') { return workflowParamValue(field, value); }
+export function projectFormValue(field: Field, value: unknown): ParamValue {
+  if (value === undefined || value === null) { return projectParamValue(field); }
+  if (typeof value === 'string') { return projectParamValue(field, value); }
   if (field.type === 'file' || field.control === 'audio' || field.format === 'json') { return JSON.stringify(value); }
-  return workflowParamValue(field, Array.isArray(value) ? value.map(String) : String(value));
+  return projectParamValue(field, Array.isArray(value) ? value.map(String) : String(value));
 }
 
-export function workflowParamArgs(fields: Field[], values: ParamValues, states: Record<string, ParamState> = {}): string[] {
+export function projectParamArgs(fields: Field[], values: ParamValues, states: Record<string, ParamState> = {}): string[] {
   const args: string[] = [];
   for (const field of fields) {
     if (states[field.name]?.visible === false) { continue; }
-    const value = workflowParamValue(field, values[field.name]);
+    const value = projectParamValue(field, values[field.name]);
     const entries = Array.isArray(value) ? value.length ? [JSON.stringify(value)] : [] : [value];
     for (const entry of entries) {
       if (entry === '') { continue; }
@@ -341,10 +341,10 @@ export function outputText(items: OutputItem[]): string {
     .map((item) => typeof item.content === 'string' ? item.content : '').filter(Boolean).join('\n\n');
 }
 
-export function validateWorkflowValues(fields: Field[], values: ParamValues, states: Record<string, ParamState> = {}): void {
+export function validateProjectValues(fields: Field[], values: ParamValues, states: Record<string, ParamState> = {}): void {
   for (const field of fields) {
     if (states[field.name]?.visible === false || states[field.name]?.disabled) { continue; }
-    const value = workflowParamValue(field, values[field.name]);
+    const value = projectParamValue(field, values[field.name]);
     const label = field.label || field.name;
     if (field.required && (typeof value === 'string' && !value.trim() || Array.isArray(value) && !value.length)) { throw new Error(t("Please enter {0}.", label)); }
     if (value === '' || Array.isArray(value) && !value.length) { continue; }
@@ -378,7 +378,7 @@ export function validateConversationCommandStates(fields: Field[], states: Recor
   }
 }
 
-export function mergeWorkflowParamStates(states: Record<string, ParamState>, patches: Record<string, ParamState> = {}): Record<string, ParamState> {
+export function mergeProjectParamStates(states: Record<string, ParamState>, patches: Record<string, ParamState> = {}): Record<string, ParamState> {
   const next = { ...states };
   for (const [name, patch] of Object.entries(patches)) {
     const options: NonNullable<ParamState['options']> = patch.resolvedOptions === undefined ? { ...states[name]?.options } : {};
@@ -390,10 +390,10 @@ export function mergeWorkflowParamStates(states: Record<string, ParamState>, pat
   return next;
 }
 
-export function resolvedWorkflowValues(fields: Field[], values: ParamValues): Record<string, unknown> {
-  validateWorkflowValues(fields, values);
+export function resolvedProjectValues(fields: Field[], values: ParamValues): Record<string, unknown> {
+  validateProjectValues(fields, values);
   return Object.fromEntries(fields.map((field) => {
-    const value = workflowParamValue(field, values[field.name]);
+    const value = projectParamValue(field, values[field.name]);
     if (field.type === 'boolean') { return [field.name, value === 'true']; }
     if (field.type === 'number' && value !== '') { return [field.name, Number(value)]; }
     if ((field.type === 'file' || field.control === 'audio' || field.format === 'json') && typeof value === 'string' && value !== '') { return [field.name, JSON.parse(value)]; }
@@ -401,12 +401,12 @@ export function resolvedWorkflowValues(fields: Field[], values: ParamValues): Re
   }));
 }
 
-export function redactWorkflowData(value: unknown, secrets: string[] = [], redactKeys = true): unknown {
+export function redactProjectData(value: unknown, secrets: string[] = [], redactKeys = true): unknown {
   if (typeof value === 'string') { for (const secret of secrets.filter(Boolean)) { value = (value as string).replaceAll(secret, '[redacted]'); } return value; }
-  if (Array.isArray(value)) { return value.map((entry) => redactWorkflowData(entry, secrets, redactKeys)); }
+  if (Array.isArray(value)) { return value.map((entry) => redactProjectData(entry, secrets, redactKeys)); }
   if (value && typeof value === 'object') {
     return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key,
-      redactKeys && /password|secret|authorization|cookie|^(?:api[-_]?key|access[-_]?token|refresh[-_]?token)$/i.test(key) ? '[redacted]' : redactWorkflowData(entry, secrets, redactKeys)]));
+      redactKeys && /password|secret|authorization|cookie|^(?:api[-_]?key|access[-_]?token|refresh[-_]?token)$/i.test(key) ? '[redacted]' : redactProjectData(entry, secrets, redactKeys)]));
   }
   return value;
 }

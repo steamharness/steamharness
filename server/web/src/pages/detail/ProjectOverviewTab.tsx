@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { ArrowUpRight, BookOpenText, CircleAlert, Database, Download, Link2, Package, RefreshCw, Settings2, Users, type LucideIcon } from "lucide-react";
 import { translateDynamicKey, useTranslation } from "@steamharness/i18n/react";
 import { formatDateTime } from "@steamharness/i18n";
-import { getWorkflowProjectTypeLabelKey } from "@steamharness/project-types";
+import { getProjectKindLabelKey } from "@steamharness/project-types";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import { TablePanel } from "@/components/ui/table-panel";
 import { UserIdentity } from "@/components/UserIdentity";
 import { ProjectVersionShareButton } from "@/components/ProjectVersionShareButton";
 import { projectSourceArchivePath } from "@/utils/routes";
-import { getWorkflowProjectDisplayName, getWorkflowProjectServerStorageAccess } from "@/utils/project-presentation";
+import { getProjectDisplayName, getProjectServerStorageAccess } from "@/utils/project-presentation";
 import { formatBytes } from "@/utils/format";
 import type { DetailPageProps } from "./types";
 
@@ -26,7 +26,7 @@ export function ProjectOverviewTab({ project, detail, busy, onNavigateTab, onRef
   const loading = Boolean(busy.project);
   const versions = [...(detail.versions?.versions ?? [])].reverse();
   const latestVersion = versions.find(version => version.version === project.latest);
-  const storageAccess = getWorkflowProjectServerStorageAccess(project);
+  const storageAccess = getProjectServerStorageAccess(project);
   const storageMode = project.projectInfo.dataStorage?.mode;
   const storageModeLabel = storageMode === "both" ? t("projectStorageModeBoth")
     : storageMode === "server" ? t("projectStorageModeServer")
@@ -44,8 +44,8 @@ export function ProjectOverviewTab({ project, detail, busy, onNavigateTab, onRef
     <div className="@container flex min-w-0 flex-col gap-4 p-4 lg:p-6">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
         <div className="flex min-w-0 flex-1 basis-64 flex-wrap items-center gap-3">
-          <h1 className="min-w-0 max-w-full text-xl font-semibold break-words">{getWorkflowProjectDisplayName(project, i18n.language)}</h1>
-          <Badge variant="secondary">{translateDynamicKey(getWorkflowProjectTypeLabelKey(project.projectType))}</Badge>
+          <h1 className="min-w-0 max-w-full text-xl font-semibold break-words">{getProjectDisplayName(project, i18n.language)}</h1>
+          <Badge variant="secondary">{translateDynamicKey(getProjectKindLabelKey(project.projectType))}</Badge>
           <Badge variant="outline">{project.latest ?? t("storageUnpublished")}</Badge>
           {project.projectInfo.declarations.includes("multilingual") && (
             <Badge variant="outline">{t("projectDeclarationMultilingual")}</Badge>

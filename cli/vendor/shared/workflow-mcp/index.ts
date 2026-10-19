@@ -1,25 +1,25 @@
 export {
-  createWorkflowMcpServer,
-  createWorkflowMcpServerName,
-  createWorkflowMcpInteractionRequiredResult,
-  type CreateWorkflowMcpServerOptions,
+  createProjectMcpServer,
+  createProjectMcpServerName,
+  createProjectMcpInteractionRequiredResult,
+  type CreateProjectMcpServerOptions,
 } from "./server";
 export {
-  isWorkflowMcpMultiParam,
-  workflowParamsToMcpElicitationSchema,
-  workflowParamsToMcpInputSchema,
-  workflowParamsToMcpJsonSchema,
+  isProjectMcpMultiParam,
+  projectParamsToMcpElicitationSchema,
+  projectParamsToMcpInputSchema,
+  projectParamsToMcpJsonSchema,
   McpInvalidParamsError,
 } from "./schema";
-export { workflowMcpInputToArgs } from "./args";
+export { projectMcpInputToArgs } from "./args";
 export {
-  createLocalWorkflowMcpFileResolver,
-  createServerWorkflowMcpFileResolver,
+  createLocalProjectMcpFileResolver,
+  createServerProjectMcpFileResolver,
   STEAMHARNESS_MCP_MAX_FILE_SIZE_BYTES,
 } from "./files";
 export {
-  createWorkflowMcpThrownErrorResult,
-  summarizePendingWorkflowMcpInput,
-  workflowReportToMcpResult,
+  createProjectMcpThrownErrorResult,
+  summarizePendingProjectMcpInput,
+  projectReportToMcpResult,
 } from "./result";
 export type * from "./types";

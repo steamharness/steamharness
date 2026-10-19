@@ -5,12 +5,12 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 import test from "node:test";
 import express from "express";
-import { configureWorkflowAuthContext, requireAuthenticatedPrincipal } from "../../auth";
+import { configureProjectAuthContext, requireAuthenticatedPrincipal } from "../../auth";
 import type { Storage } from "../../storage";
 import { createKanbanPreviewAssetRouter } from "../kanban-preview-assets";
 
 test.afterEach(() => {
-  configureWorkflowAuthContext({});
+  configureProjectAuthContext({});
 });
 
 test("sandboxed Kanban JS and CSS use preview capability without an App login", async () => {
@@ -78,7 +78,7 @@ async function listen(storage: Storage): Promise<{
   close: () => Promise<void>;
   url: (pathname: string) => string;
 }> {
-  configureWorkflowAuthContext({});
+  configureProjectAuthContext({});
   const app = express();
   // Keep this order aligned with the production entrypoint regression above.
   app.use("/api", createKanbanPreviewAssetRouter(storage));

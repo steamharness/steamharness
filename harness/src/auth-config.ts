@@ -1,18 +1,18 @@
 import { readFileSync } from "node:fs";
 import {
-  createEmptyWorkflowAuthConfig,
-  normalizeWorkflowAuthConfig,
-  resolveWorkflowCliAuthFilePath,
+  createEmptyProjectAuthConfig,
+  normalizeProjectAuthConfig,
+  resolveProjectCliAuthFilePath,
   type AuthConfig,
 } from "@steamharness/auth-config";
 
-export function readWorkflowCliAuthConfigSync(
+export function readProjectCliAuthConfigSync(
   env: NodeJS.ProcessEnv = process.env,
 ): AuthConfig {
   try {
-    const raw = readFileSync(resolveWorkflowCliAuthFilePath(env), "utf8");
-    return normalizeWorkflowAuthConfig(JSON.parse(raw));
+    const raw = readFileSync(resolveProjectCliAuthFilePath(env), "utf8");
+    return normalizeProjectAuthConfig(JSON.parse(raw));
   } catch {
-    return createEmptyWorkflowAuthConfig();
+    return createEmptyProjectAuthConfig();
   }
 }

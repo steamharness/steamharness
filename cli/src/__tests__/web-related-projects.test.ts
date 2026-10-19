@@ -27,11 +27,11 @@ it('validates explicit host bindings and rejects relative paths, duplicate alias
 it('executes imported related KV, knowledge and entrypoints using the target Web storage, then applies removal and revocation', async () => {
   const fixture = await createFixture();
   const directory = webProjectDataDirectory(fixture.storageDir, fixture.targetDir);
-  const store = core.createLocalWorkflowKVStore({ rootDir: path.join(directory, 'kv'), storageKind: 'kv' });
-  const kv = core.createWorkflowKVContext({ projectId: targetId, store });
+  const store = core.createLocalProjectKVStore({ rootDir: path.join(directory, 'kv'), storageKind: 'kv' });
+  const kv = core.createProjectKVContext({ projectId: targetId, store });
   await kv.setValue('visible:value', 'Imported database value');
-  const persistentValue = core.createWorkflowPersistentValueContext({ projectId: targetId,
-    store: core.createLocalWorkflowKVStore({ rootDir: path.join(directory, 'values'), storageKind: 'persistent_value' }) });
+  const persistentValue = core.createProjectPersistentValueContext({ projectId: targetId,
+    store: core.createLocalProjectKVStore({ rootDir: path.join(directory, 'values'), storageKind: 'persistent_value' }) });
   await core.createKnowledgeDocument({ persistentValue }, { title: 'Imported document', markdown: '# Target knowledge' });
   let bindings: { alias: string; projectDir: string }[] = [];
   const runtime = createWebRuntime(fixture.consumerDir, fixture.storageDir, () => undefined, () => bindings);
@@ -46,7 +46,7 @@ it('executes imported related KV, knowledge and entrypoints using the target Web
     expect(report.status, JSON.stringify(report)).toBe('success');
     expect(report.output?.items?.[0].content).toMatchObject({ value: 'Imported database value',
       documents: { items: [{ title: 'Imported document' }] }, entrypoint: { value: 'Imported database value' } });
-    const consumerStore = core.createLocalWorkflowKVStore({ rootDir: path.join(webProjectDataDirectory(fixture.storageDir, fixture.consumerDir), 'kv'), storageKind: 'kv' });
+    const consumerStore = core.createLocalProjectKVStore({ rootDir: path.join(webProjectDataDirectory(fixture.storageDir, fixture.consumerDir), 'kv'), storageKind: 'kv' });
     expect(await consumerStore.getValue({ projectId: targetId, storageKind: 'kv', scope: 'project', key: 'visible:value' })).toBeUndefined();
     bindings = [];
     expect((await run()).status).toBe('failed');
@@ -65,16 +65,16 @@ it('uses the project Core for server KV and knowledge and rechecks grants and id
   const fixture = await createFixture('server');
   const namespace = { getValue: vi.fn(async () => 'server value'), setValue: vi.fn(), updateValue: vi.fn() };
   const remoteStore = { getValue: vi.fn(), setValue: vi.fn() };
-  const api = { ...core, createRemoteWorkflowRelatedProjectKVStoreFromEnv: vi.fn(() => remoteStore),
-    createWorkflowKVContext: vi.fn(() => namespace), createWorkflowPersistentValueContext: vi.fn(() => namespace) };
+  const api = { ...core, createRemoteProjectRelatedProjectKVStoreFromEnv: vi.fn(() => remoteStore),
+    createProjectKVContext: vi.fn(() => namespace), createProjectPersistentValueContext: vi.fn(() => namespace) };
   const related = createWebRelatedProjectRuntime(api as unknown as typeof core, { projectDir: fixture.consumerDir, storageDir: fixture.storageDir,
     relatedProjects: [{ alias: 'database', projectDir: fixture.targetDir }], runId: 'server-test' });
   expect(related.localResolver?.resolve('database')).toBeUndefined();
   const target = related.serverResolver?.resolve('database');
   expect(target?.persistentValue).toBe(namespace);
-  expect(api.createRemoteWorkflowRelatedProjectKVStoreFromEnv).toHaveBeenCalledWith(expect.objectContaining({
+  expect(api.createRemoteProjectRelatedProjectKVStoreFromEnv).toHaveBeenCalledWith(expect.objectContaining({
     consumerProjectId: consumerId, targetProjectId: targetId, alias: 'database', env: process.env }));
-  expect(api.createWorkflowPersistentValueContext).toHaveBeenCalledWith(expect.objectContaining({ store: remoteStore, projectId: targetId }));
+  expect(api.createProjectPersistentValueContext).toHaveBeenCalledWith(expect.objectContaining({ store: remoteStore, projectId: targetId }));
   const manifest = JSON.parse(await readFile(path.join(fixture.targetDir, 'package.json'), 'utf8'));
   manifest.steamHarness.projectInfo.relatedProjects = [];
   await writeFile(path.join(fixture.targetDir, 'package.json'), JSON.stringify(manifest));
@@ -95,20 +95,20 @@ async function createFixture(location = 'local') {
       steamHarness: { projectInfo: { dataStorage: { mode: directory === targetDir ? location : 'both' }, relatedProjects } } }));
   }
   await writeFile(path.join(consumerDir, 'index.ts'), `
-    const flow = workflow.defineWorkflow({ name: 'related-consumer', async run(input, context) {
+    const flow = steamharness.defineProject({ name: 'related-consumer', async run(input, context) {
       const database = context.storage.local.relatedProjects.get('database');
       return { errCode: 0, errMessage: '', value: await database.kv.getValue('visible:value'),
         documents: await database.knowledge.listDocuments(), entrypoint: await database.runEntrypoint('read', []) };
     } });
-    export const executor = workflow.defineExecutor({ projectType: 'conversation', workflow: flow,
+    export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow: flow,
       createInput() { return {}; } });
   `);
   await writeFile(path.join(targetDir, 'index.ts'), `
-    const flow = workflow.defineWorkflow({ name: 'related-target', async run(input, context) {
+    const flow = steamharness.defineProject({ name: 'related-target', async run(input, context) {
       return { errCode: 0, errMessage: '', value: await context.storage.local.kv.getValue('visible:value') };
     } });
-    export const executor = workflow.defineExecutor({ projectType: 'workflow', defaultEntrypoint: 'read',
-      entrypoints: [workflow.defineEntrypoint({ id: 'read', title: 'Read', workflow: flow, createInput() { return {}; } })] });
+    export const executor = steamharness.defineExecutor({ projectType: 'workflow', defaultEntrypoint: 'read',
+      entrypoints: [steamharness.defineEntrypoint({ id: 'read', title: 'Read', workflow: flow, createInput() { return {}; } })] });
   `);
   return { root, consumerDir, targetDir, storageDir: path.join(root, 'web') };
 }

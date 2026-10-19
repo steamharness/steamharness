@@ -58,7 +58,7 @@ export class AuthError extends Error {
   constructor(message: string, readonly status?: number) { super(message); }
 }
 
-export function normalizeWorkflowServerUrl(value: string): string {
+export function normalizeProjectServerUrl(value: string): string {
   let url: URL;
   try { url = new URL(value.trim()); }
   catch { throw new AuthError(t("Enter a valid server address.")); }
@@ -80,14 +80,14 @@ export function isPrivateEnvironmentKey(key: string): boolean {
     /^(?:DOCKER_CONFIG|KUBECONFIG|SSH_AUTH_SOCK|GIT_(?:CONFIG|SSH|ASKPASS)|NPM_CONFIG_USERCONFIG|PIP_CONFIG_FILE|CARGO_HOME|AZURE_CONFIG_DIR)$/u.test(key);
 }
 
-export function sanitizeWorkflowEnvironment(base: Record<string, string | undefined>): Record<string, string | undefined> {
+export function sanitizeProjectEnvironment(base: Record<string, string | undefined>): Record<string, string | undefined> {
   return Object.fromEntries(Object.entries(base).filter(([key, value]) => value !== undefined && !isPrivateEnvironmentKey(key)));
 }
 
 export class ServerClient {
   readonly serverUrl: string;
   constructor(serverUrl: string, private readonly fetcher: typeof fetch = fetch) {
-    this.serverUrl = normalizeWorkflowServerUrl(serverUrl);
+    this.serverUrl = normalizeProjectServerUrl(serverUrl);
   }
 
   private async request<T>(path: string, options: {
@@ -124,7 +124,7 @@ export class ServerClient {
   }
 
   async verify(connection: Connection): Promise<LoginSession> {
-    if (normalizeWorkflowServerUrl(connection.serverUrl) !== this.serverUrl || !connection.accessToken) {
+    if (normalizeProjectServerUrl(connection.serverUrl) !== this.serverUrl || !connection.accessToken) {
       throw new AuthError(t("Sign-in credentials do not match the server."), 401);
     }
     const me = await this.request<MeResponse>('/api/auth/me', { accessToken: connection.accessToken });
@@ -176,7 +176,7 @@ export class ServerClient {
   }
 
   async resource(connection: Connection, kind: string, target: Record<string, string>): Promise<unknown> {
-    if (normalizeWorkflowServerUrl(connection.serverUrl) !== this.serverUrl || !target.projectId) { throw new AuthError('Invalid resource server or project.'); }
+    if (normalizeProjectServerUrl(connection.serverUrl) !== this.serverUrl || !target.projectId) { throw new AuthError('Invalid resource server or project.'); }
     const prefix = `/api/projects/${encodeURIComponent(target.projectId)}`;
     const auth = { accessToken: connection.accessToken };
     if (kind === 'knowledge') {
@@ -231,7 +231,7 @@ export class Account {
     private readonly onChange: (state: AccountState) => void,
     private readonly client = (url: string) => new ServerClient(url),
   ) {
-    this.state = { status: 'signed-out', serverUrl: normalizeWorkflowServerUrl(serverUrl), revision: 0 };
+    this.state = { status: 'signed-out', serverUrl: normalizeProjectServerUrl(serverUrl), revision: 0 };
   }
 
   getState(): AccountState { return { ...this.state, user: this.state.user && { ...this.state.user } }; }
@@ -247,7 +247,7 @@ export class Account {
       throw new AuthError(t('Invalid AI login.'));
     }
     this.aiConnection = connection
-      ? { serverUrl: normalizeWorkflowServerUrl(connection.serverUrl), accessToken: connection.accessToken }
+      ? { serverUrl: normalizeProjectServerUrl(connection.serverUrl), accessToken: connection.accessToken }
       : undefined;
     this.state = { ...this.state, aiServerUrl: this.aiConnection?.serverUrl, aiConfigured: this.aiConnection !== undefined, revision: this.state.revision + 1 };
     this.onChange(this.getState());
@@ -290,7 +290,7 @@ export class Account {
     if (!encoded) { this.aiConnection = undefined; this.update('signed-out'); return; }
     try {
       const saved = JSON.parse(encoded) as LoginSession;
-      if (typeof saved.accessToken !== 'string' || !saved.accessToken || normalizeWorkflowServerUrl(saved.serverUrl) !== this.state.serverUrl) {
+      if (typeof saved.accessToken !== 'string' || !saved.accessToken || normalizeProjectServerUrl(saved.serverUrl) !== this.state.serverUrl) {
         this.aiConnection = undefined;
         await this.save(undefined, epoch); this.update('signed-out'); return;
       }
@@ -314,7 +314,7 @@ export class Account {
   }
 
   async login(serverUrl: string, email: string, password: string): Promise<void> {
-    const url = normalizeWorkflowServerUrl(serverUrl);
+    const url = normalizeProjectServerUrl(serverUrl);
     const epoch = ++this.epoch;
     this.update('checking');
     try {
@@ -396,7 +396,7 @@ export class Account {
   }
 
   async changeServer(serverUrl: string): Promise<void> {
-    const url = normalizeWorkflowServerUrl(serverUrl);
+    const url = normalizeProjectServerUrl(serverUrl);
     if (url === this.state.serverUrl) { return; }
     await this.logout(false);
     this.state.serverUrl = url;
@@ -408,10 +408,10 @@ function sameProjectAccount(left: LoginSession, right: LoginSession): boolean {
   return left.serverUrl === right.serverUrl && left.user.userId === right.user.userId;
 }
 
-export function workflowAuthEnvironment(
+export function projectAuthEnvironment(
   base: Record<string, string | undefined>, connection: Connection | undefined, authDirectory: string,
 ): Record<string, string | undefined> {
-  const cleanBase = sanitizeWorkflowEnvironment(base);
+  const cleanBase = sanitizeProjectEnvironment(base);
   delete cleanBase.STEAMHARNESS_LLM_SERVER_URL;
   delete cleanBase.STEAMHARNESS_LLM_SERVER_TOKEN;
   return {

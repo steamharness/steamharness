@@ -13,14 +13,14 @@ interface RelatedProjectItem extends RelatedProject {
   projectType?: ProjectType;
 }
 
-export async function readWorkflowProjectManifest(uri: vscode.Uri): Promise<unknown> {
+export async function readProjectManifest(uri: vscode.Uri): Promise<unknown> {
   const bytes = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(uri, 'package.json'));
   return JSON.parse(new TextDecoder().decode(bytes));
 }
 
-async function readImportedWorkflowProject(uri: vscode.Uri): Promise<ImportedProject | undefined> {
+async function readImportedProject(uri: vscode.Uri): Promise<ImportedProject | undefined> {
   try {
-    const pkg = await readWorkflowProjectManifest(uri) as { id?: unknown; name?: unknown; version?: unknown; steamHarness?: { projectInfo?: { localizedNames?: unknown } } } | null;
+    const pkg = await readProjectManifest(uri) as { id?: unknown; name?: unknown; version?: unknown; steamHarness?: { projectInfo?: { localizedNames?: unknown } } } | null;
     const id = projectId(pkg?.id);
     if (id) {
       const names = pkg?.steamHarness?.projectInfo?.localizedNames;
@@ -42,7 +42,7 @@ export async function resolveImportedRelatedProject(context: Pick<vscode.Extensi
   const known = downloadRootUri ? candidates.filter(project => project.downloadRootUri === downloadRootUri)
     : [...candidates.filter(project => !project.downloadRootUri), ...candidates.filter(project => project.downloadRootUri)];
   for (const project of known) {
-    const imported = await readImportedWorkflowProject(vscode.Uri.parse(project.uri));
+    const imported = await readImportedProject(vscode.Uri.parse(project.uri));
     if (imported?.id === relation.projectId && (!downloadRootUri || imported.version === project.version)) { return imported; }
   }
   return undefined;
@@ -131,7 +131,7 @@ export class RelatedProjectsView implements vscode.TreeDataProvider<RelatedProje
     if (Array.isArray(this.context.globalState.get(IMPORTED_PROJECTS_KEY))) { return; }
     const folders = readRecentProjects(this.context.globalState.get('studio.recentProjects')).filter(project => project.kind === 'folder');
     const candidates = (await Promise.all(folders.map(project => discover(vscode.Uri.parse(project.uri))))).flat();
-    const imported = await Promise.all([...new Map(candidates.map(uri => [uri.toString(), uri])).values()].map(readImportedWorkflowProject));
+    const imported = await Promise.all([...new Map(candidates.map(uri => [uri.toString(), uri])).values()].map(readImportedProject));
     await this.remember(imported.filter((project): project is ImportedProject => !!project));
   }
 
@@ -139,7 +139,7 @@ export class RelatedProjectsView implements vscode.TreeDataProvider<RelatedProje
     if (project.assistant || this.disposed) { return []; }
     await this.ready;
     await this.pendingSave;
-    const relations = readRelatedProjects(await readWorkflowProjectManifest(vscode.Uri.parse(project.uri)));
+    const relations = readRelatedProjects(await readProjectManifest(vscode.Uri.parse(project.uri)));
     const bindings = await Promise.all(relations.map(async relation => {
       const imported = await resolveImportedRelatedProject(this.context, relation, project.uri);
       return imported ? { alias: relation.alias, projectDir: vscode.Uri.parse(imported.uri).fsPath } : undefined;
@@ -150,7 +150,7 @@ export class RelatedProjectsView implements vscode.TreeDataProvider<RelatedProje
   async resourceProjects(): Promise<string[]> {
     await this.ready; await this.loading; await this.pendingSave;
     const imported = await Promise.all(readImportedProjects(this.context.globalState.get(IMPORTED_PROJECTS_KEY)).map(async project => {
-      const current = await readImportedWorkflowProject(vscode.Uri.parse(project.uri));
+      const current = await readImportedProject(vscode.Uri.parse(project.uri));
       return current?.id === project.id && vscode.Uri.parse(current.uri).scheme === 'file' ? vscode.Uri.parse(current.uri).fsPath : undefined;
     }));
     return [...new Set(imported.filter((directory): directory is string => !!directory))].slice(0, 100);
@@ -199,7 +199,7 @@ export class RelatedProjectsView implements vscode.TreeDataProvider<RelatedProje
     try {
       await this.ready;
       await this.remember(projects.map(entry => ({ id: entry.id, uri: entry.uri, name: entry.name })));
-      const relations = project ? readRelatedProjects(await readWorkflowProjectManifest(vscode.Uri.parse(project.uri))) : [];
+      const relations = project ? readRelatedProjects(await readProjectManifest(vscode.Uri.parse(project.uri))) : [];
       const items = await Promise.all(relations.map(async relation => {
         const imported = await resolveImportedRelatedProject(this.context, relation, project!.uri);
         const detected = imported ? await this.icons?.resolveMany([imported.uri]) : undefined;
@@ -228,7 +228,7 @@ export class RelatedProjectsView implements vscode.TreeDataProvider<RelatedProje
         if (answer !== action) { return; }
         const folders = await vscode.window.showOpenDialog({ canSelectFolders: true, canSelectFiles: false, canSelectMany: false, openLabel: action });
         if (!folders?.[0]) { return; }
-        project = await readImportedWorkflowProject(folders[0]);
+        project = await readImportedProject(folders[0]);
         if (!project || project.id !== item.projectId) {
           await vscode.window.showWarningMessage(t("The selected folder's project UUID does not match the related project."));
           return;

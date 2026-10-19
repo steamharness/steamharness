@@ -5,8 +5,8 @@ import { createHash } from "node:crypto";
 import type { AccountRepository, UserProfileRecord } from "../account-db";
 import { createApiKeyExpiresAt } from "../api-key-lifetime";
 import { createAuditActor, recordAuditEventForRequest, readRequestIp } from "../audit";
-import { clearAuthSessionCookie, getRequestPrincipal, getWorkflowAuthContext, hasConfiguredAdminKey, hasPermission, readRequestPrincipal, requireAuthenticatedPrincipal, writeAdminKeySessionCookie, writeAuthSessionCookie, type AuthenticatedPrincipal } from "../auth";
-import { listWorkflowPermissionGroups, type PermissionKey } from "../permissions";
+import { clearAuthSessionCookie, getRequestPrincipal, getProjectAuthContext, hasConfiguredAdminKey, hasPermission, readRequestPrincipal, requireAuthenticatedPrincipal, writeAdminKeySessionCookie, writeAuthSessionCookie, type AuthenticatedPrincipal } from "../auth";
+import { listProjectPermissionGroups, type PermissionKey } from "../permissions";
 import { fail, HttpError, ok } from "../protocol";
 import type { StorageDriver } from "../object-storage";
 import { getRequestT, localizeServerMessage } from "../i18n";
@@ -93,7 +93,7 @@ export function createAuthRouter(): Router {
   });
 
   router.post("/admin-key/session", json, async (req, res) => {
-    const authService = getWorkflowAuthContext().authService;
+    const authService = getProjectAuthContext().authService;
     const authAttempt = consumeAuthRateLimit({
       scope: "admin-key-session",
       key: readRequestIp(req) ?? "unknown",
@@ -150,7 +150,7 @@ export function createAuthRouter(): Router {
 
     if (session) {
       writeAuthSessionCookie(res, session);
-      const profile = await getWorkflowAuthContext().accountDb?.getUserProfileOrThrow(session.user.userId);
+      const profile = await getProjectAuthContext().accountDb?.getUserProfileOrThrow(session.user.userId);
       void recordAuthAudit(req, {
         principalKind: "admin_session",
         actorUserId: session.user.userId,
@@ -213,7 +213,7 @@ export function createAuthRouter(): Router {
         !!bootstrapPassword &&
         email.trim().toLowerCase() === bootstrapEmail &&
         password === bootstrapPassword;
-      const authService = getWorkflowAuthContext().authService;
+      const authService = getProjectAuthContext().authService;
       if (!authService) {
         if (shouldBootstrapAdmin && hasConfiguredAdminKey()) {
           writeAdminKeySessionCookie(res);
@@ -290,7 +290,7 @@ export function createAuthRouter(): Router {
         throw authError;
       }
       writeAuthSessionCookie(res, session);
-      const accountDb = getWorkflowAuthContext().accountDb;
+      const accountDb = getProjectAuthContext().accountDb;
       const profile = await accountDb?.getUserProfileOrThrow(session.user.userId);
       const principalKind = profile?.permissions.includes("system.admin") ? "admin_session" : "user_session";
       await recordAuthAudit(req, {
@@ -396,7 +396,7 @@ export function createAuthRouter(): Router {
     try {
       const principal = await readRequestPrincipal(req).catch(() => undefined);
       if (principal && "refreshToken" in principal && principal.refreshToken) {
-        await getWorkflowAuthContext().authService?.revokeSession(principal.refreshToken);
+        await getProjectAuthContext().authService?.revokeSession(principal.refreshToken);
       }
       clearAuthSessionCookie(res);
       await recordAuthAudit(req, {
@@ -419,7 +419,7 @@ export function createAuthRouter(): Router {
 
   router.get("/invitations/:token", async (req, res, next) => {
     try {
-      const authService = getWorkflowAuthContext().authService;
+      const authService = getProjectAuthContext().authService;
       if (!authService) throw new HttpError(503, 503, "Account auth is not configured.");
       res.json(ok({ invitation: await authService.getInvitation(req.params.token) }));
     } catch (error) {
@@ -429,7 +429,7 @@ export function createAuthRouter(): Router {
 
   router.post("/invitations/:token/accept", json, async (req, res, next) => {
     try {
-      const authService = getWorkflowAuthContext().authService;
+      const authService = getProjectAuthContext().authService;
       if (!authService) throw new HttpError(503, 503, "Account auth is not configured.");
       const session = await authService.acceptInvitation({
         token: req.params.token,
@@ -473,7 +473,7 @@ export function createAuthRouter(): Router {
         writeRateLimitResponse(res, authAttempt.retryAfterSeconds);
         return;
       }
-      const authService = getWorkflowAuthContext().authService;
+      const authService = getProjectAuthContext().authService;
       if (!authService) {
         throw new HttpError(503, 503, "Account auth is not configured.");
       }
@@ -529,7 +529,7 @@ export function createAuthRouter(): Router {
         });
         return;
       }
-      const accountDb = getWorkflowAuthContext().accountDb;
+      const accountDb = getProjectAuthContext().accountDb;
       if (!accountDb) {
         throw new HttpError(503, 503, "Account storage is not configured.");
       }
@@ -655,8 +655,8 @@ export function createAuthRouter(): Router {
   router.patch("/me", json, async (req, res, next) => {
     try {
       const principal = getRequestPrincipal(req);
-      const accountDb = getWorkflowAuthContext().accountDb;
-      const authService = getWorkflowAuthContext().authService;
+      const accountDb = getProjectAuthContext().accountDb;
+      const authService = getProjectAuthContext().authService;
       if (!principal || !("profile" in principal) || !accountDb) {
         throw new HttpError(401, 401, "Unauthorized.");
       }
@@ -699,7 +699,7 @@ export function createAuthRouter(): Router {
   router.post("/me/avatar", rawBody, async (req, res, next) => {
     try {
       const principal = getRequestPrincipal(req);
-      const accountDb = getWorkflowAuthContext().accountDb;
+      const accountDb = getProjectAuthContext().accountDb;
       if (!principal || !("profile" in principal) || !accountDb) {
         throw new HttpError(401, 401, "Unauthorized.");
       }
@@ -734,7 +734,7 @@ export function createAuthRouter(): Router {
   router.get("/api-keys", async (req, res, next) => {
     try {
       const principal = getRequestPrincipal(req);
-      const accountDb = getWorkflowAuthContext().accountDb;
+      const accountDb = getProjectAuthContext().accountDb;
       if (!principal || !accountDb) {
         throw new HttpError(401, 401, "Unauthorized.");
       }
@@ -755,7 +755,7 @@ export function createAuthRouter(): Router {
   router.post("/api-keys", json, async (req, res, next) => {
     try {
       const principal = getRequestPrincipal(req);
-      const accountDb = getWorkflowAuthContext().accountDb;
+      const accountDb = getProjectAuthContext().accountDb;
       if (!principal || !accountDb || !("userId" in principal)) {
         throw new HttpError(401, 401, "Unauthorized.");
       }
@@ -809,7 +809,7 @@ export function createAuthRouter(): Router {
   router.delete("/api-keys/:id", async (req, res, next) => {
     try {
       const principal = getRequestPrincipal(req);
-      const accountDb = getWorkflowAuthContext().accountDb;
+      const accountDb = getProjectAuthContext().accountDb;
       if (!principal || !accountDb) {
         throw new HttpError(401, 401, "Unauthorized.");
       }
@@ -840,7 +840,7 @@ export function createAuthRouter(): Router {
   router.post("/device/approve", json, async (req, res, next) => {
     try {
       const principal = getRequestPrincipal(req);
-      const accountDb = getWorkflowAuthContext().accountDb;
+      const accountDb = getProjectAuthContext().accountDb;
       if (
         !principal ||
         !accountDb ||
@@ -902,7 +902,7 @@ export function createAuthRouter(): Router {
   router.post("/device/deny", json, async (req, res, next) => {
     try {
       const principal = getRequestPrincipal(req);
-      const accountDb = getWorkflowAuthContext().accountDb;
+      const accountDb = getProjectAuthContext().accountDb;
       if (
         !principal ||
         !accountDb ||
@@ -950,12 +950,12 @@ export function createAuthRouter(): Router {
   });
 
   router.get("/admin/permissions", requirePermissionRoute("roles.read"), async (_req, res) => {
-    res.json(ok({ groups: listWorkflowPermissionGroups() }));
+    res.json(ok({ groups: listProjectPermissionGroups() }));
   });
 
   router.get("/admin/roles", requirePermissionRoute("roles.read"), async (_req, res, next) => {
     try {
-      const accountDb = getWorkflowAuthContext().accountDb;
+      const accountDb = getProjectAuthContext().accountDb;
       if (!accountDb) {
         throw new HttpError(503, 503, "Account storage is not configured.");
       }
@@ -968,7 +968,7 @@ export function createAuthRouter(): Router {
 
   router.post("/admin/roles", requirePermissionRoute("roles.manage"), json, async (req, res, next) => {
     try {
-      const accountDb = getWorkflowAuthContext().accountDb;
+      const accountDb = getProjectAuthContext().accountDb;
       const principal = getRequestPrincipal(req);
       if (!accountDb || !principal || !("userId" in principal)) {
         throw new HttpError(401, 401, "Unauthorized.");
@@ -998,7 +998,7 @@ export function createAuthRouter(): Router {
 
   router.patch("/admin/roles/:roleId", requirePermissionRoute("roles.manage"), json, async (req, res, next) => {
     try {
-      const accountDb = getWorkflowAuthContext().accountDb;
+      const accountDb = getProjectAuthContext().accountDb;
       if (!accountDb) {
         throw new HttpError(503, 503, "Account storage is not configured.");
       }
@@ -1027,7 +1027,7 @@ export function createAuthRouter(): Router {
 
   router.delete("/admin/roles/:roleId", requirePermissionRoute("roles.manage"), async (req, res, next) => {
     try {
-      const accountDb = getWorkflowAuthContext().accountDb;
+      const accountDb = getProjectAuthContext().accountDb;
       if (!accountDb) {
         throw new HttpError(503, 503, "Account storage is not configured.");
       }
@@ -1049,8 +1049,8 @@ export function createAuthRouter(): Router {
 
   router.get("/admin/users", requirePermissionRoute("users.read"), async (req, res, next) => {
     try {
-      const authService = getWorkflowAuthContext().authService;
-      const accountDb = getWorkflowAuthContext().accountDb;
+      const authService = getProjectAuthContext().authService;
+      const accountDb = getProjectAuthContext().accountDb;
       if (!authService || !accountDb) {
         throw new HttpError(503, 503, "Account auth is not configured.");
       }
@@ -1098,8 +1098,8 @@ export function createAuthRouter(): Router {
 
   router.get("/admin/users/invitation-link/:userId", requirePermissionRoute("users.manage"), async (req, res, next) => {
     try {
-      const authService = getWorkflowAuthContext().authService;
-      const accountDb = getWorkflowAuthContext().accountDb;
+      const authService = getProjectAuthContext().authService;
+      const accountDb = getProjectAuthContext().accountDb;
       if (!authService || !accountDb) {
         throw new HttpError(503, 503, "Account auth is not configured.");
       }
@@ -1116,7 +1116,7 @@ export function createAuthRouter(): Router {
 
   router.post("/admin/users/invitations", requirePermissionRoute("users.manage"), json, async (req, res, next) => {
     try {
-      const authService = getWorkflowAuthContext().authService;
+      const authService = getProjectAuthContext().authService;
       const principal = getRequestPrincipal(req);
       if (!authService || !principal || !("userId" in principal)) {
         throw new HttpError(401, 401, "Unauthorized.");
@@ -1148,8 +1148,8 @@ export function createAuthRouter(): Router {
 
   router.patch("/admin/users/:userId", requirePermissionRoute("users.manage"), json, async (req, res, next) => {
     try {
-      const authService = getWorkflowAuthContext().authService;
-      const accountDb = getWorkflowAuthContext().accountDb;
+      const authService = getProjectAuthContext().authService;
+      const accountDb = getProjectAuthContext().accountDb;
       if (!authService || !accountDb) {
         throw new HttpError(503, 503, "Account auth is not configured.");
       }
@@ -1196,7 +1196,7 @@ export function createAuthRouter(): Router {
 
   router.post("/admin/users/:userId/avatar", requirePermissionRoute("users.manage"), rawBody, async (req, res, next) => {
     try {
-      const accountDb = getWorkflowAuthContext().accountDb;
+      const accountDb = getProjectAuthContext().accountDb;
       if (!accountDb) {
         throw new HttpError(503, 503, "Account storage is not configured.");
       }
@@ -1227,7 +1227,7 @@ export function createAuthRouter(): Router {
 
   router.put("/admin/users/:userId/roles", requirePermissionRoute("users.manage"), json, async (req, res, next) => {
     try {
-      const accountDb = getWorkflowAuthContext().accountDb;
+      const accountDb = getProjectAuthContext().accountDb;
       if (!accountDb) {
         throw new HttpError(503, 503, "Account storage is not configured.");
       }
@@ -1310,8 +1310,8 @@ async function recordAuthAudit(
     context?: Record<string, unknown>;
   },
 ): Promise<void> {
-  const authService = getWorkflowAuthContext().authService;
-  const accountDb = getWorkflowAuthContext().accountDb;
+  const authService = getProjectAuthContext().authService;
+  const accountDb = getProjectAuthContext().accountDb;
   if (!authService && !accountDb) {
     return;
   }
@@ -1475,7 +1475,7 @@ async function uploadAvatar(
   mimeType: string,
   buffer: Buffer,
 ): Promise<{ url: string; backend: StorageDriver }> {
-  const objectStorage = getWorkflowAuthContext().objectStorage;
+  const objectStorage = getProjectAuthContext().objectStorage;
   if (!objectStorage) throw new HttpError(503, 503, "Workflow object storage is not configured.");
   return {
     url: await objectStorage.uploadBuffer(`avatars/${userId}/${hash}${ext}`, buffer, mimeType),

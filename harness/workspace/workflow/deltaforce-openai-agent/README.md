@@ -11,7 +11,7 @@ parent input
   -> load Delta Force OpenAPI + object-config
   -> build Delta Force system prompt
   -> create Agents SDK function tools from OpenAPI operations
-  -> parent output node starts workflow.runWorkflow(openaiAgentsWorkflow, ...)
+  -> parent output node starts workflow.runProject(openaiAgentsProject, ...)
   -> parent forwards the nested workflow output chunks unchanged
   -> parent format step appends user/assistant messages
 ```
@@ -29,7 +29,7 @@ into the parent workflow KV namespace. Its default hosted/native/sample tools ar
 - `test_tool`
 
 Only Delta Force OpenAPI function tools are registered through `customTools`.
-The parent output node calls `workflow.runWorkflow(openaiAgentsWorkflow, ...)`
+The parent output node calls `workflow.runProject(openaiAgentsProject, ...)`
 with `onOutputChunk` and `onOutput`. If `openai-agents` streams output, those
 chunks are forwarded as-is into the parent stream; if a reused child workflow is
 non-streaming, the parent can still display its final output payload. The

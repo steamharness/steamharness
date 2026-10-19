@@ -2,7 +2,7 @@ import { t } from './localization';
 import { isDeepStrictEqual } from 'node:util';
 import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot } from 'steamharness/agent';
 import {
-  applyOutputChunk, outputText, validateWorkflowValues, workflowParameters, workflowParamArgs, resolvedWorkflowValues, workflowFormValue, sessionRunning,
+  applyOutputChunk, outputText, validateProjectValues, projectParameters, projectParamArgs, resolvedProjectValues, projectFormValue, sessionRunning,
   type ConversationSession, type ConversationMessage, type ConversationQueuedInput, type ConversationDraftUpdate, type Attachment,
   type Project, type Runtime, type Run, type ParamValues,
   type ResolvedInput,
@@ -163,8 +163,8 @@ export class ConversationController {
     entry.updatedAt = now; this.changed(); await this.persist();
   }
   async send(input: Omit<ConversationQueuedInput, 'id' | 'createdAt'>, entry = this.current, preserveDraft = false, requestId?: string, mode: 'steer' | 'followUp' | 'reject' = 'followUp', editingQueueId?: string): Promise<void> {
-    const parameters = workflowParameters(this.project, input.entrypointId);
-    validateWorkflowValues(parameters.fields, input.params, input.states);
+    const parameters = projectParameters(this.project, input.entrypointId);
+    validateProjectValues(parameters.fields, input.params, input.states);
     if (this.disposed || this.removing.has(entry.id) || !this.sessions.includes(entry)) { throw new Error(t("Conversation no longer exists.")); }
     if (this.project.projectType !== 'conversation' && input.text) { this.rawArgs(input.text); }
     if (this.project.projectType === 'conversation' && !input.text.trim() && !input.attachments.length) { return; }
@@ -176,7 +176,7 @@ export class ConversationController {
     if (this.project.conversation?.durable?.enabled && (entry.agent || entry.activeRunId || entry.agentOwnerId)) {
       const owner = this.owner(entry);
       if (owner.messages.some(message => message.pendingInput)) throw new Error(t("Awaiting confirmation"));
-      const args = workflowParamArgs(parameters.fields, input.params, input.states);
+      const args = projectParamArgs(parameters.fields, input.params, input.states);
       const previous = owner.agentParameters;
       const changed = previous && (JSON.stringify(previous.args) !== JSON.stringify(args) || previous.entrypointId !== input.entrypointId || JSON.stringify(previous.policies) !== JSON.stringify(owner.toolPermissionPolicies));
       if (changed) {
@@ -219,8 +219,8 @@ export class ConversationController {
     this.start(entry, queued); await this.persist();
   }
   private start(entry: ConversationSession, input: ConversationQueuedInput, answer?: ConversationMessage): void {
-    const parameters = workflowParameters(this.project, input.entrypointId);
-    const args = workflowParamArgs(parameters.fields, input.params, input.states);
+    const parameters = projectParameters(this.project, input.entrypointId);
+    const args = projectParamArgs(parameters.fields, input.params, input.states);
     if (this.project.projectType === 'conversation') {
       args.push('--message', input.text);
       for (const [flag, files] of [
@@ -230,7 +230,7 @@ export class ConversationController {
       ] as const) { if (files.length) { args.push(flag, JSON.stringify(files.map(({ previewUrl: _, ...reference }) => reference))); } }
     } else if (input.text) { args.push(...this.rawArgs(input.text)); }
     if (!answer) {
-      if (this.project.conversation?.durable?.enabled) entry.agentParameters = { args: workflowParamArgs(parameters.fields, input.params, input.states), entrypointId: input.entrypointId, policies: JSON.parse(JSON.stringify(entry.toolPermissionPolicies ?? {})) };
+      if (this.project.conversation?.durable?.enabled) entry.agentParameters = { args: projectParamArgs(parameters.fields, input.params, input.states), entrypointId: input.entrypointId, policies: JSON.parse(JSON.stringify(entry.toolPermissionPolicies ?? {})) };
       if (!entry.messages.length && !entry.titleLocked) { entry.title = (input.text || input.attachments[0]?.name || t("Workflow run")).slice(0, 80); }
       entry.messages.push({ id: globalThis.crypto.randomUUID(), role: 'user', content: input.text || '', attachments: input.attachments, args, input, entrypointId: input.entrypointId, createdAt: Date.now() });
       answer = { id: input.id, role: 'assistant', content: '', items: [], status: 'running', createdAt: Date.now(), model: typeof input.params.model === 'string' ? input.params.model : undefined, args, entrypointId: input.entrypointId, events: [] };
@@ -609,8 +609,8 @@ export class ConversationController {
     if (!answer?.pendingInput || entry.activeRunId) { return; }
     const request = answer.pendingInput;
     const allowed = Object.fromEntries(request.params.map((field) => [field.name, values[field.name] ?? request.defaultValues?.[field.name] ?? field.defaultValue ?? '']));
-    const form: ParamValues = Object.fromEntries(request.params.map((field) => [field.name, workflowFormValue(field, allowed[field.name])]));
-    const typedValues = resolvedWorkflowValues(request.params, form);
+    const form: ParamValues = Object.fromEntries(request.params.map((field) => [field.name, projectFormValue(field, allowed[field.name])]));
+    const typedValues = resolvedProjectValues(request.params, form);
     const resolved = { requestId, nodeName: request.nodeName, values: typedValues, submittedAt: new Date().toISOString(), request,
       precedingOutputItemIds: (answer.items ?? []).map((item, index) => item.id ?? String(index)) };
     answer.submittingInput = resolved;
@@ -661,7 +661,7 @@ export class ConversationController {
     const user = [...entry.messages.slice(0, index)].reverse().find((message) => message.role === 'user');
     if (!user || entry.activeRunId && !entry.agent) { return; }
     if (user.input) { await this.send(user.input, entry); return; }
-    const parameters = workflowParameters(this.project, user.entrypointId);
+    const parameters = projectParameters(this.project, user.entrypointId);
     const params: ParamValues = {};
     for (const field of parameters.fields) { const index = user.args?.indexOf(field.flag ?? '') ?? -1; if (index >= 0) { params[field.name] = user.args![index + 1]; } }
     await this.send({ text: user.content, params, entrypointId: user.entrypointId, attachments: user.attachments ?? [] }, entry);

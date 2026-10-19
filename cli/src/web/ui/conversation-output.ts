@@ -233,7 +233,7 @@ export class ConversationOutput {
   private markdown(text: string, files: Attachment[]): HTMLDivElement {
     const root = document.createElement('div'); root.className = 'message-content'; root.innerHTML = markdownHtml(text, files);
     for (const link of Array.from(root.querySelectorAll('a'))) {
-      if (link.dataset.workflowFile) { link.addEventListener('click', (event) => { event.preventDefault(); this.options.file(link.dataset.workflowFile!); }); }
+      if (link.dataset.projectFile) { link.addEventListener('click', (event) => { event.preventDefault(); this.options.file(link.dataset.projectFile!); }); }
       else { link.target = '_blank'; link.rel = 'noopener noreferrer'; }
     }
     for (const image of Array.from(root.querySelectorAll('img'))) {

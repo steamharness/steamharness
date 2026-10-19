@@ -5,7 +5,7 @@ description: "从 workflow runtime 环境变量创建默认 LLM provider。"
 
 # createLLMProviderFromEnv
 
-`workflow.createLLMProviderFromEnv()` 是 Core 仓库 `src/runtime-api.ts` 暴露给业务 workflow 的 provider 工厂。它实际指向 `createLLMProviderFromWorkflowEnv()`，会通过 `workflow.getEnv` 读取环境变量。
+`workflow.createLLMProviderFromEnv()` 是 Core 仓库 `src/runtime-api.ts` 暴露给业务 workflow 的 provider 工厂。它实际指向 `createLLMProviderFromProjectEnv()`，会通过 `workflow.getEnv` 读取环境变量。
 
 ## 签名
 

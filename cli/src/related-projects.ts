@@ -4,14 +4,14 @@ import { readFileSync, realpathSync, statSync } from "node:fs";
 import * as steamHarness from "steamharness";
 import {
   STEAMHARNESS_RELATED_PROJECT_ALIAS_PATTERN,
-  isWorkflowProjectDataStorageLocationAllowed,
-  readWorkflowProjectInfo,
-  resolveWorkflowRelatedProjectAccess,
+  isProjectDataStorageLocationAllowed,
+  readProjectInfo,
+  resolveProjectRelatedProjectAccess,
   type ProjectDataStorageLocation,
   type ProjectInfoContract,
   type RelatedProjectKVGrant,
 } from "@steamharness/project-info";
-import { assertWorkflowUuid } from "@steamharness/workflow-ids";
+import { assertProjectUuid } from "@steamharness/workflow-ids";
 
 export interface CliRelatedProjectSpec {
   alias: string;
@@ -19,17 +19,17 @@ export interface CliRelatedProjectSpec {
 }
 
 export interface CliRelatedProjectRuntime {
-  localKvStore?: CliWorkflowKVStore;
-  localResolver?: CliWorkflowRelatedProjectKVResolver;
-  serverResolver?: CliWorkflowRelatedProjectKVResolver;
+  localKvStore?: CliProjectKVStore;
+  localResolver?: CliProjectRelatedProjectKVResolver;
+  serverResolver?: CliProjectRelatedProjectKVResolver;
 }
 
-export interface CliWorkflowKVStore {
-  getValue(input: CliWorkflowKVStoreInput): Promise<unknown | undefined>;
-  setValue(input: CliWorkflowKVStoreInput & { value: unknown }): Promise<void>;
+export interface CliProjectKVStore {
+  getValue(input: CliProjectKVStoreInput): Promise<unknown | undefined>;
+  setValue(input: CliProjectKVStoreInput & { value: unknown }): Promise<void>;
 }
 
-interface CliWorkflowKVStoreInput {
+interface CliProjectKVStoreInput {
   storageKind: "kv" | "persistent_value";
   scope: "project" | "conversation";
   projectId: string;
@@ -37,18 +37,18 @@ interface CliWorkflowKVStoreInput {
   key: string;
 }
 
-interface CliWorkflowKVNamespace {
+interface CliProjectKVNamespace {
   getValue(key: string): Promise<unknown | undefined>;
   setValue(key: string, value: unknown): Promise<void>;
   updateValue<T>(key: string, updater: (current: unknown | undefined) => T | Promise<T>): Promise<T>;
 }
 
-interface CliWorkflowResolvedRelatedProjectKV {
+interface CliProjectResolvedRelatedProjectKV {
   projectId: string;
   grant: RelatedProjectKVGrant;
-  kv: CliWorkflowKVNamespace;
-  persistentValue?: CliWorkflowKVNamespace;
-  runner?: CliWorkflowRelatedProjectRunner;
+  kv: CliProjectKVNamespace;
+  persistentValue?: CliProjectKVNamespace;
+  runner?: CliProjectRelatedProjectRunner;
 }
 
 /**
@@ -59,42 +59,42 @@ interface CliWorkflowResolvedRelatedProjectKV {
  * a relation stays direct — the project this call reaches cannot reach a third
  * one through itself.
  */
-export interface CliWorkflowRelatedProjectRunner {
+export interface CliProjectRelatedProjectRunner {
   listEntrypoints(): Promise<Array<{ id: string; title?: string; description?: string }>>;
   run(entrypointId: string, args: readonly string[]): Promise<unknown>;
 }
 
-export interface CliWorkflowRelatedProjectKVResolver {
-  resolve(alias: string): CliWorkflowResolvedRelatedProjectKV | undefined;
+export interface CliProjectRelatedProjectKVResolver {
+  resolve(alias: string): CliProjectResolvedRelatedProjectKV | undefined;
 }
 
 interface TargetSteamHarnessStorageApi {
-  createLocalWorkflowKVStore(options: {
+  createLocalProjectKVStore(options: {
     rootDir: string;
     storageKind: "kv" | "persistent_value";
-  }): CliWorkflowKVStore;
-  createRemoteWorkflowRelatedProjectKVStoreFromEnv(options: {
+  }): CliProjectKVStore;
+  createRemoteProjectRelatedProjectKVStoreFromEnv(options: {
     consumerProjectId: string;
     targetProjectId: string;
     alias: string;
     env?: NodeJS.ProcessEnv;
-  }): CliWorkflowKVStore | undefined;
-  createWorkflowKVContext(options: {
-    store: CliWorkflowKVStore;
+  }): CliProjectKVStore | undefined;
+  createProjectKVContext(options: {
+    store: CliProjectKVStore;
     projectId: string;
     source?: { projectId?: string; runId?: string; conversationId?: string };
-  }): CliWorkflowKVNamespace;
-  createWorkflowPersistentValueContext?(options: {
-    store: CliWorkflowKVStore;
+  }): CliProjectKVNamespace;
+  createProjectPersistentValueContext?(options: {
+    store: CliProjectKVStore;
     projectId: string;
     source?: { projectId?: string; runId?: string; conversationId?: string };
-  }): CliWorkflowKVNamespace;
-  inspectLocalWorkflowStructure?(options: {
+  }): CliProjectKVNamespace;
+  inspectLocalProjectStructure?(options: {
     projectDir?: string;
     projectName?: string;
   }): { entrypoints?: Array<{ id: string; title?: string; description?: string }> };
   readEntrypointOutput?(data: unknown): unknown;
-  runLocalWorkflowWithReport?(options: {
+  runLocalProjectWithReport?(options: {
     projectDir?: string;
     projectName?: string;
     entrypointId?: string;
@@ -176,14 +176,14 @@ export function createCliRelatedProjectRuntime(options: {
   // and the relation reports Knowledge as unavailable rather than inventing one.
   const localKvStoreDir = options.localKvStoreDir ?? path.join(os.tmpdir(), "steamharness-kv");
   const localPersistentValueStoreDir = options.localPersistentValueStoreDir;
-  const localKvStore = targetStorageApi.createLocalWorkflowKVStore({
+  const localKvStore = targetStorageApi.createLocalProjectKVStore({
     rootDir: localKvStoreDir,
     storageKind: "kv",
   });
   const localPersistentValueStore =
-    typeof targetStorageApi.createWorkflowPersistentValueContext === "function"
+    typeof targetStorageApi.createProjectPersistentValueContext === "function"
       && localPersistentValueStoreDir !== undefined
-      ? targetStorageApi.createLocalWorkflowKVStore({
+      ? targetStorageApi.createLocalProjectKVStore({
           rootDir: localPersistentValueStoreDir,
           storageKind: "persistent_value",
         })
@@ -197,9 +197,9 @@ export function createCliRelatedProjectRuntime(options: {
 
   function createResolver(
     location: ProjectDataStorageLocation,
-    fixedStore?: CliWorkflowKVStore,
-    fixedPersistentValueStore?: CliWorkflowKVStore,
-  ): CliWorkflowRelatedProjectKVResolver {
+    fixedStore?: CliProjectKVStore,
+    fixedPersistentValueStore?: CliProjectKVStore,
+  ): CliProjectRelatedProjectKVResolver {
     return {
       resolve(alias) {
         const configured = configuredByAlias.get(alias);
@@ -214,7 +214,7 @@ export function createCliRelatedProjectRuntime(options: {
           || currentTarget.projectId.toLowerCase() !== configured.projectId.toLowerCase()) {
           return undefined;
         }
-        const access = resolveWorkflowRelatedProjectAccess({
+        const access = resolveProjectRelatedProjectAccess({
           consumerProjectId: currentConsumer.projectId,
           consumerProjectInfo: currentConsumer.projectInfo,
           targetProjectId: currentTarget.projectId,
@@ -223,19 +223,19 @@ export function createCliRelatedProjectRuntime(options: {
         });
         if (
           access === undefined ||
-          !isWorkflowProjectDataStorageLocationAllowed(currentTarget.projectInfo, location)
+          !isProjectDataStorageLocationAllowed(currentTarget.projectInfo, location)
         ) {
           return undefined;
         }
 
-        const createRemoteStore = targetStorageApi.createRemoteWorkflowRelatedProjectKVStoreFromEnv;
+        const createRemoteStore = targetStorageApi.createRemoteProjectRelatedProjectKVStoreFromEnv;
         if (fixedStore === undefined && typeof createRemoteStore !== "function") {
           throw new Error("Installed steamharness does not support related project storage.");
         }
         const roots = options.localStorageForProject?.(currentTarget.projectDir)
           ?? { kvStoreDir: localKvStoreDir, persistentValueStoreDir: localPersistentValueStoreDir };
         const store = location === "local" && options.localStorageForProject
-          ? targetStorageApi.createLocalWorkflowKVStore({ rootDir: roots.kvStoreDir, storageKind: "kv" })
+          ? targetStorageApi.createLocalProjectKVStore({ rootDir: roots.kvStoreDir, storageKind: "kv" })
           : fixedStore ?? createRemoteStore({
           consumerProjectId: currentConsumer.projectId,
           targetProjectId: currentTarget.projectId,
@@ -251,11 +251,11 @@ export function createCliRelatedProjectRuntime(options: {
         };
         const persistentStore = location === "server" ? store
           : options.localStorageForProject && roots.persistentValueStoreDir !== undefined
-            ? targetStorageApi.createLocalWorkflowKVStore({ rootDir: roots.persistentValueStoreDir, storageKind: "persistent_value" })
+            ? targetStorageApi.createLocalProjectKVStore({ rootDir: roots.persistentValueStoreDir, storageKind: "persistent_value" })
             : fixedPersistentValueStore;
         const persistentValue = persistentStore === undefined
           ? undefined
-          : targetStorageApi.createWorkflowPersistentValueContext?.({
+          : targetStorageApi.createProjectPersistentValueContext?.({
               store: persistentStore,
               projectId: currentTarget.projectId,
               source,
@@ -275,7 +275,7 @@ export function createCliRelatedProjectRuntime(options: {
         return {
           projectId: currentTarget.projectId,
           grant: access.grant,
-          kv: targetStorageApi.createWorkflowKVContext({
+          kv: targetStorageApi.createProjectKVContext({
             store,
             projectId: currentTarget.projectId,
             source,
@@ -304,11 +304,11 @@ function createLocalProjectRunner(options: {
   kvStoreDir?: string;
   persistentValueStoreDir?: string;
   storageApi: TargetSteamHarnessStorageApi;
-}): CliWorkflowRelatedProjectRunner | undefined {
+}): CliProjectRelatedProjectRunner | undefined {
   const projectDir = options.projectDir;
   const targetStorageApi = options.storageApi;
-  const inspect = targetStorageApi.inspectLocalWorkflowStructure;
-  const run = targetStorageApi.runLocalWorkflowWithReport;
+  const inspect = targetStorageApi.inspectLocalProjectStructure;
+  const run = targetStorageApi.runLocalProjectWithReport;
   // The unwrapper is what makes the answer a payload rather than this
   // package's node envelope, so an installed Core without it is no runner at
   // all — better no entrypoint runner than one that answers in the wrong shape.
@@ -370,7 +370,7 @@ function assertConfirmedRelationship(
       `Current project does not declare related project "${alias}" with UUID "${target.projectId}".`,
     );
   }
-  if (resolveWorkflowRelatedProjectAccess({
+  if (resolveProjectRelatedProjectAccess({
     consumerProjectId: consumer.projectId,
     consumerProjectInfo: consumer.projectInfo,
     targetProjectId: target.projectId,
@@ -404,8 +404,8 @@ function readProjectSnapshot(projectDir: string, label: string): ProjectSnapshot
   if (!isRecord(packageJson) || typeof packageJson["id"] !== "string") {
     throw new Error(`${label} package.json.id must be a UUID.`);
   }
-  const projectId = assertWorkflowUuid(packageJson["id"], `${label} package.json.id`);
-  const projectInfo = readWorkflowProjectInfo(packageJson);
+  const projectId = assertProjectUuid(packageJson["id"], `${label} package.json.id`);
+  const projectInfo = readProjectInfo(packageJson);
   if (projectInfo.dataStorage === null) {
     throw new Error(`${label} must declare steamHarness.projectInfo.dataStorage.mode.`);
   }

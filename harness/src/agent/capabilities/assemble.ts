@@ -15,7 +15,7 @@ import type { Capability } from "./types";
  * Every workflow capability, in the order a host's tool panel lists them.
  *
  * The catalogue, not the offer: a capability the environment cannot serve is
- * still described here, and `isWorkflowCapabilityAvailable` is what a caller
+ * still described here, and `isProjectCapabilityAvailable` is what a caller
  * asks before putting one in front of a model.
  */
 export const STEAMHARNESS_CAPABILITIES: readonly Capability[] = [
@@ -43,11 +43,11 @@ export interface CapabilityContext {
   globalMemory?: boolean;
 }
 
-export function listWorkflowCapabilityToolIds(options: { globalMemory?: boolean } = {}): string[] {
+export function listProjectCapabilityToolIds(options: { globalMemory?: boolean } = {}): string[] {
   return selectCapabilities(options).map((capability) => capability.toolId);
 }
 
-export function findWorkflowCapability(toolId: string): Capability | undefined {
+export function findProjectCapability(toolId: string): Capability | undefined {
   return STEAMHARNESS_CAPABILITIES.find((capability) => capability.toolId === toolId);
 }
 
@@ -58,12 +58,12 @@ export function findWorkflowCapability(toolId: string): Capability | undefined {
  * stand up before a client ever asks, and the answer for host configuration
  * depends on the environment rather than on the project.
  */
-export function isWorkflowCapabilityAvailable(toolId: string): boolean {
-  return requireWorkflowCapability(toolId).isAvailable?.() !== false;
+export function isProjectCapabilityAvailable(toolId: string): boolean {
+  return requireProjectCapability(toolId).isAvailable?.() !== false;
 }
 
-function requireWorkflowCapability(toolId: string): Capability {
-  const capability = findWorkflowCapability(toolId);
+function requireProjectCapability(toolId: string): Capability {
+  const capability = findProjectCapability(toolId);
   if (capability === undefined) {
     throw new Error(`Unknown workflow capability tool "${toolId}".`);
   }
@@ -77,7 +77,7 @@ function requireWorkflowCapability(toolId: string): Capability {
  * the built-in coding tools — so the host's own catalogue is what decides
  * which of them exist and which need approving.
  */
-export async function createWorkflowCapabilityTools(
+export async function createProjectCapabilityTools(
   options: CapabilityContext,
 ): Promise<AgentTool[]> {
   const Type = await loadTypebox();
@@ -108,11 +108,11 @@ export async function createWorkflowCapabilityTools(
  * a project that reaches these capabilities over MCP and one that calls them
  * directly describe them identically to their model.
  */
-export async function createWorkflowCapabilityServer(
+export async function createProjectCapabilityServer(
   toolId: string,
   options: Pick<CapabilityContext, "context" | "approve">,
 ): Promise<Server> {
-  const capability = requireWorkflowCapability(toolId);
+  const capability = requireProjectCapability(toolId);
 
   return createMcpToolServer({
     name: capability.serverId,
@@ -140,12 +140,12 @@ export async function createWorkflowCapabilityServer(
  * that raised it is gone, so the call has to be re-addressable by the id the
  * host approved rather than by the closure that built it.
  */
-export async function runWorkflowCapabilityAction(
+export async function runProjectCapabilityAction(
   toolId: string,
   context: NodeContext,
   args: Record<string, unknown>,
 ): Promise<unknown> {
-  return requireWorkflowCapability(toolId).run(context, args);
+  return requireProjectCapability(toolId).run(context, args);
 }
 
 function selectCapabilities(options: { globalMemory?: boolean }): Capability[] {

@@ -33,8 +33,8 @@ exports.run = async () => {
   assert.ok(terminal, 'New Terminal must create a native terminal.');
   assert.equal(terminal.name, 'Studio');
   terminal.dispose();
-  assert.ok(Array.isArray(await vscode.authentication.getAccounts('studio-workflow')), 'Workflow authentication provider must be registered.');
-  await vscode.commands.executeCommand('studio.openWorkflowAccount');
+  assert.ok(Array.isArray(await vscode.authentication.getAccounts('studio-steamharness')), 'Workflow authentication provider must be registered.');
+  await vscode.commands.executeCommand('studio.openAccount');
   const findAccountTab = () => vscode.window.tabGroups.all.flatMap((group) => group.tabs)
     .find((tab) => tab.input instanceof vscode.TabInputWebview && tab.label === (vscode.env.language.startsWith('zh') ? 'Workflow \u8d26\u53f7' : 'SteamHarness Account'));
   await new Promise((resolve, reject) => {
@@ -71,15 +71,15 @@ exports.run = async () => {
   assert.ok(vscode.workspace.updateWorkspaceFolders(vscode.workspace.workspaceFolders?.length ?? 0, 0, { uri: vscode.Uri.file(projectDir), name: demoName }));
   await new Promise(resolve => setTimeout(resolve, 300));
   assert.equal(vscode.workspace.isTrusted, true, 'Adding a new folder must preserve workspace trust.');
-  await vscode.commands.executeCommand('studio.refreshWorkflows');
-  await vscode.commands.executeCommand('studio.openWorkflow', { uri: vscode.Uri.file(projectDir).toString() });
-  const findWorkflowTab = () => vscode.window.tabGroups.all.flatMap((group) => group.tabs)
+  await vscode.commands.executeCommand('studio.refreshProjects');
+  await vscode.commands.executeCommand('studio.openProject', { uri: vscode.Uri.file(projectDir).toString() });
+  const findProjectTab = () => vscode.window.tabGroups.all.flatMap((group) => group.tabs)
     .find((tab) => tab.input instanceof vscode.TabInputWebview && tab.label === demoName);
-  if (!findWorkflowTab()) {
+  if (!findProjectTab()) {
     // Tab notifications can arrive after the command resolves.
     await new Promise((resolve, reject) => {
       const changed = vscode.window.tabGroups.onDidChangeTabs(() => {
-        if (findWorkflowTab()) { clearTimeout(timeout); changed.dispose(); resolve(); }
+        if (findProjectTab()) { clearTimeout(timeout); changed.dispose(); resolve(); }
       });
       const timeout = setTimeout(() => {
         changed.dispose(); reject(new Error('Workflow demo must open as a native editor webview.'));
@@ -105,7 +105,7 @@ exports.run = async () => {
   assert.notEqual(assistantPid, firstPid, 'The assistant and editor tab must have independent CLI sessions.');
   process.kill(firstPid);
   await new Promise(resolve => setTimeout(resolve, 250));
-  await vscode.commands.executeCommand('studio.openWorkflow', { uri: vscode.Uri.file(projectDir).toString() });
+  await vscode.commands.executeCommand('studio.openProject', { uri: vscode.Uri.file(projectDir).toString() });
   assert.notEqual(Number(fs.readFileSync(path.join(projectDir, 'editor.pid'), 'utf8')), firstPid, 'Running again must replace an exited project CLI.');
   assert.equal(vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab => tab.label === demoName).length, 1, 'Restart must reuse the existing tab.');
   const secondPid = Number(fs.readFileSync(path.join(projectDir, 'editor.pid'), 'utf8'));
@@ -113,28 +113,28 @@ exports.run = async () => {
   await new Promise(resolve => setTimeout(resolve, 250));
   fs.writeFileSync(path.join(projectDir, 'startup.fail'), '');
   let failedRestartFinished = false;
-  const failedRestart = vscode.commands.executeCommand('studio.openWorkflow', { uri: vscode.Uri.file(projectDir).toString() }).then(() => { failedRestartFinished = true; });
+  const failedRestart = vscode.commands.executeCommand('studio.openProject', { uri: vscode.Uri.file(projectDir).toString() }).then(() => { failedRestartFinished = true; });
   for (let attempt = 0; attempt < 100 && !failedRestartFinished; attempt++) {
     await vscode.commands.executeCommand('notifications.clearAll');
     await new Promise(resolve => setTimeout(resolve, 50));
   }
   assert.ok(failedRestartFinished, 'The failed restart command must finish after its notification is dismissed.');
   await failedRestart;
-  assert.equal(findWorkflowTab(), undefined, 'A failed restart must dispose its disconnected tab.');
+  assert.equal(findProjectTab(), undefined, 'A failed restart must dispose its disconnected tab.');
   fs.rmSync(path.join(projectDir, 'startup.fail'));
-  await vscode.commands.executeCommand('studio.openWorkflow', { uri: vscode.Uri.file(projectDir).toString() });
+  await vscode.commands.executeCommand('studio.openProject', { uri: vscode.Uri.file(projectDir).toString() });
   assert.equal(vscode.window.tabGroups.all.flatMap(group => group.tabs).filter(tab => tab.label === demoName).length, 1, 'Running after a failed restart must not leave a duplicate tab.');
-  await vscode.commands.executeCommand('studio.openWorkflowSource');
+  await vscode.commands.executeCommand('studio.openProjectSource');
   assert.ok(vscode.window.activeTextEditor.document.getText().includes(projectId), 'Workflow source action must open the selected project.');
-  await vscode.commands.executeCommand('studio.openWorkflowCli');
+  await vscode.commands.executeCommand('studio.openProjectCli');
   const cli = vscode.window.terminals.find((terminal) => terminal.name === 'SteamHarness CLI');
   assert.ok(cli, 'SteamHarness CLI must open a native terminal.');
   const closed = new Promise((resolve, reject) => {
     const listener = vscode.window.onDidCloseTerminal((terminal) => { if (terminal === cli) { clearTimeout(timeout); listener.dispose(); resolve(); } });
     const timeout = setTimeout(() => { listener.dispose(); reject(new Error('Logout must close the SteamHarness CLI terminal.')); }, 5000);
   });
-  await vscode.commands.executeCommand('studio.logoutWorkflow'); await closed;
-  await vscode.window.tabGroups.close(findWorkflowTab());
+  await vscode.commands.executeCommand('studio.logout'); await closed;
+  await vscode.window.tabGroups.close(findProjectTab());
   const originalFolder = vscode.workspace.workspaceFolders.find(folder => folder.name !== demoName);
   await vscode.window.showTextDocument(vscode.Uri.joinPath(originalFolder.uri, 'package.json'));
   await vscode.commands.executeCommand('studio.openAssistant');

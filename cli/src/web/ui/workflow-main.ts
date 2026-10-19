@@ -1,7 +1,7 @@
 import { t, locale } from '../localization';
 import './style.css';
 import './workflow-style.css';
-import { acquireWorkflowHost } from './host';
+import { acquireProjectHost } from './host';
 import { requestAction } from './action-dialog';
 import { Fields } from './workflow-fields';
 import { ConversationOutput } from './conversation-output';
@@ -9,10 +9,10 @@ import { InputPrompt } from './input-prompt';
 import { ConversationTools } from './conversation-tools';
 import { iconHtml, iconButton, escapeHtml } from './ui';
 import { aiUsageButton, narrowMenuDismiss, projectInfoButton, toolPermissionsButton } from './toolbar';
-import { workflowParameters, workflowParamValue, type Project, type ParamState, type ParamValues, type Attachment } from '../workflow-types';
+import { projectParameters, projectParamValue, type Project, type ParamState, type ParamValues, type Attachment } from '../workflow-types';
 import type { Draft, RunRecord } from '../workflow-workspace';
 import type { AccountState } from '../workflow-auth-client';
-import { layoutWorkflowGraph } from '../workflow-graph';
+import { layoutProjectGraph } from '../workflow-graph';
 
 interface State {
   project: Project;
@@ -31,7 +31,7 @@ const statusLabels: Record<string, string> = {
   aborted: t("Stopped"), timed_out: t("Timed out"), interrupted: t("Interrupted"),
 };
 const app = document.querySelector<HTMLElement>('#app')!;
-const host = acquireWorkflowHost();
+const host = acquireProjectHost();
 app.classList.add('workflow-app');
 app.innerHTML = `
   <header class="toolbar"><div class="project-title"><button id="menu-toggle" class="icon-button" aria-label="${t("Show runs")}" title="${t("Show runs")}">${iconHtml('layout-sidebar-left')}</button><h1 id="workflow-title">Workflow</h1></div><div class="toolbar-actions">${aiUsageButton()}${toolPermissionsButton()}${projectInfoButton()}</div></header>
@@ -64,7 +64,7 @@ const output = new ConversationOutput(element('run-output'), {
   copy: text => host.postMessage({ type: 'copy', text }), plan: text => dialogs.plan(text), file: id => host.postMessage({ type: 'open-file', id }),
   image: (src, title) => dialogs.image(src, title), resource: (card, action, requestId) => post({ type: 'resource', cardId: card.id, runId: state?.run?.id, action, requestId }),
 });
-const parameters = () => state ? workflowParameters(state.project, entrypointId) : { fields: [] };
+const parameters = () => state ? projectParameters(state.project, entrypointId) : { fields: [] };
 const draft = (): Draft => drafts[entrypointId ?? ''] ??= { scopeId: '', values: {}, rawArgs: '[]', inputMode: 'form', policies: {} };
 const disabled = () => !connected || !!state?.running || submitting || !!state?.project.requiresLogin && state.account.status !== 'authenticated';
 const fields = new Fields(element('main-fields'), element('parameter-actions'), {
@@ -103,7 +103,7 @@ function selectEntrypoint(id?: string): void {
   if (editTimer && state && entrypointId !== id) { post({ type: 'workflow-draft', params: draft().values, rawArgs: draft().rawArgs, inputMode: draft().inputMode }); }
   clearTimeout(editTimer); ++requestId; clearError(); submitting = false; fields.close(); entrypointId = id;
   paramStates = {}; const current = draft();
-  for (const field of parameters().fields) { current.values[field.name] ??= workflowParamValue(field, field.defaultValue ?? (field.type === 'boolean' ? 'false' : '')); }
+  for (const field of parameters().fields) { current.values[field.name] ??= projectParamValue(field, field.defaultValue ?? (field.type === 'boolean' ? 'false' : '')); }
   const detail = Array.from(element('entrypoints').querySelectorAll<HTMLDetailsElement>('.workflow-entry')).find(detail => detail.dataset.entrypoint === (id ?? ''));
   if (detail) {
     for (const other of Array.from(element('entrypoints').querySelectorAll<HTMLDetailsElement>('.workflow-entry'))) { if (other !== detail) { other.open = false; } }
@@ -179,7 +179,7 @@ function renderGraph(): void {
   const signature = JSON.stringify([state.run.id, state.run.nodes, state.run.entrypointId]);
   if (signature === graphSignature) { return; }
   const first = !graphSignature; graphSignature = signature;
-  const graph = layoutWorkflowGraph(state.project, state.run.entrypointId, state.run); graphWidth = graph.width; graphHeight = graph.height;
+  const graph = layoutProjectGraph(state.project, state.run.entrypointId, state.run); graphWidth = graph.width; graphHeight = graph.height;
   const surface = element('graph-surface'); surface.replaceChildren(); surface.style.width = `${graph.width}px`; surface.style.height = `${graph.height}px`;
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('width', String(graph.width)); svg.setAttribute('height', String(graph.height)); svg.setAttribute('aria-hidden', 'true');
   svg.innerHTML = '<defs><marker id="workflow-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" /></marker></defs>';

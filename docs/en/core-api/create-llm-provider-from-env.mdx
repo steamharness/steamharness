@@ -5,7 +5,7 @@ description: "Creates a default LLM provider from the workflow runtime environme
 
 # createLLMProviderFromEnv
 
-`workflow.createLLMProviderFromEnv()` is the provider factory exposed to business workflows by `src/runtime-api.ts` in the Core repository. It delegates to `createLLMProviderFromWorkflowEnv()` and reads environment variables through `workflow.getEnv`.
+`workflow.createLLMProviderFromEnv()` is the provider factory exposed to business workflows by `src/runtime-api.ts` in the Core repository. It delegates to `createLLMProviderFromProjectEnv()` and reads environment variables through `workflow.getEnv`.
 
 ## Signature
 

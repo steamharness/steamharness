@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { composerSlashToken, conversationSlashCommands, conversationFooterTexts, ConversationComposer } from '../web/ui/conversation-composer';
-import { mergeWorkflowParamStates } from '../web/workflow-types';
+import { mergeProjectParamStates } from '../web/workflow-types';
 import type { ConversationCommandDefinition, ConversationFooterItem, Parameters, ParamState, ParamValues } from '../web/workflow-types';
 
 const parameters: Parameters = { fields: [
@@ -44,11 +44,11 @@ describe('Conversation composer contract', () => {
   it('retains partial parameter updates but clears old option visibility when the list is replaced or restored', () => {
     const previous = { agent: { resolvedOptions: [{ value: 'plan', label: 'Old plan' }], options: { plan: { visible: false } } } };
     const unchanged = structuredClone(previous);
-    const retained = mergeWorkflowParamStates(previous, { agent: { disabled: true } });
+    const retained = mergeProjectParamStates(previous, { agent: { disabled: true } });
     expect(conversationSlashCommands(parameters, {}, retained).some(entry => entry.command === 'plan')).toBe(false);
-    const replaced = mergeWorkflowParamStates(previous, { agent: { resolvedOptions: [{ value: 'plan', label: 'New plan' }] } });
+    const replaced = mergeProjectParamStates(previous, { agent: { resolvedOptions: [{ value: 'plan', label: 'New plan' }] } });
     expect(conversationSlashCommands(parameters, {}, replaced)[0]).toMatchObject({ command: 'plan', label: 'New plan', disabled: false });
-    const restored = mergeWorkflowParamStates(previous, { agent: { resolvedOptions: null, options: { build: { disabled: true } } } });
+    const restored = mergeProjectParamStates(previous, { agent: { resolvedOptions: null, options: { build: { disabled: true } } } });
     expect(conversationSlashCommands(parameters, {}, restored).slice(0, 2)).toEqual([
       expect.objectContaining({ command: 'build', disabled: true }), expect.objectContaining({ command: 'plan', disabled: false }),
     ]);
@@ -58,13 +58,13 @@ describe('Conversation composer contract', () => {
   it('merges visibility and disabled option patches independently until the options are replaced', () => {
     const previous = { agent: { options: { plan: { visible: false, disabled: true } } } };
     const unchanged = structuredClone(previous);
-    const visible = mergeWorkflowParamStates(previous, { agent: { options: { plan: { visible: true } } } });
+    const visible = mergeProjectParamStates(previous, { agent: { options: { plan: { visible: true } } } });
     expect(conversationSlashCommands(parameters, {}, visible).find(entry => entry.command === 'plan')).toMatchObject({ disabled: true });
-    const hidden = mergeWorkflowParamStates(previous, { agent: { options: { plan: { disabled: false } } } });
+    const hidden = mergeProjectParamStates(previous, { agent: { options: { plan: { disabled: false } } } });
     expect(conversationSlashCommands(parameters, {}, hidden).some(entry => entry.command === 'plan')).toBe(false);
-    const enabled = mergeWorkflowParamStates(visible, { agent: { options: { plan: { disabled: false } } } });
+    const enabled = mergeProjectParamStates(visible, { agent: { options: { plan: { disabled: false } } } });
     expect(conversationSlashCommands(parameters, {}, enabled).find(entry => entry.command === 'plan')).toMatchObject({ disabled: false });
-    const replaced = mergeWorkflowParamStates(previous, { agent: { resolvedOptions: null, options: { plan: { visible: true } } } });
+    const replaced = mergeProjectParamStates(previous, { agent: { resolvedOptions: null, options: { plan: { visible: true } } } });
     expect(conversationSlashCommands(parameters, {}, replaced).find(entry => entry.command === 'plan')).toMatchObject({ disabled: false });
     expect(previous).toEqual(unchanged);
   });

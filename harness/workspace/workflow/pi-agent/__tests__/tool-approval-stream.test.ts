@@ -1,19 +1,19 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import {
-  createDisabledWorkflowConversationContext,
-  createDisabledWorkflowTokenUsageContext,
-  createWorkflowKVContext,
-  createWorkflowPersistentValueContext,
-  createWorkflowRelatedProjectsContext,
-  createWorkflowToolPermissionContext,
+  createDisabledProjectConversationContext,
+  createDisabledProjectTokenUsageContext,
+  createProjectKVContext,
+  createProjectPersistentValueContext,
+  createProjectRelatedProjectsContext,
+  createProjectToolPermissionContext,
   type KVStore,
 } from "steamharness";
-import { installWorkflowRuntimeGlobal } from "steamharness/runtime-api";
+import { installProjectRuntimeGlobal } from "steamharness/runtime-api";
 import type { NodeContext } from "steamharness/types/context";
 import type { PiAgentRunInput, PiAgentSessionFactory, OutputItem } from "../interface";
 import { KNOWLEDGE_DOCUMENTS_TOOL_NAME } from "../knowledge-documents-tool";
 
-installWorkflowRuntimeGlobal();
+installProjectRuntimeGlobal();
 
 type OutputNodeLike = {
   stream(input: PiAgentRunInput, context: NodeContext): AsyncGenerator<unknown>;
@@ -28,7 +28,7 @@ beforeAll(async () => {
 
 describe("pi-agent tool approval stream", () => {
   it("pauses the workflow when a custom tool approval wait is reported by the SDK adapter", async () => {
-    let onPendingApproval: ((error: workflow.HarnessError) => void) | undefined;
+    let onPendingApproval: ((error: steamharness.HarnessError) => void) | undefined;
     const chunks: unknown[] = [];
     const input = createRunInput(async (_sessionInput, hooks) => {
       onPendingApproval = hooks?.onPendingApproval;
@@ -84,8 +84,8 @@ function createRunInput(sessionFactory: PiAgentSessionFactory): PiAgentRunInput 
   };
 }
 
-function createPendingToolApprovalError(): workflow.HarnessError {
-  return new workflow.HarnessError({
+function createPendingToolApprovalError(): steamharness.HarnessError {
+  return new steamharness.HarnessError({
     type: "user_input_required",
     message: `Tool "${KNOWLEDGE_DOCUMENTS_TOOL_NAME}" is waiting for approval.`,
     nodeName: "tool-approval",
@@ -112,29 +112,29 @@ function createNodeContext(): NodeContext {
     providers: {},
     storage: {
       local: {
-        kv: createWorkflowKVContext({ store, projectId: "7afb5837-251e-4938-bae4-83f8569d9d6b" }),
-        persistentValue: createWorkflowPersistentValueContext({
+        kv: createProjectKVContext({ store, projectId: "7afb5837-251e-4938-bae4-83f8569d9d6b" }),
+        persistentValue: createProjectPersistentValueContext({
           store,
           projectId: "7afb5837-251e-4938-bae4-83f8569d9d6b",
         }),
-        relatedProjects: createWorkflowRelatedProjectsContext(),
+        relatedProjects: createProjectRelatedProjectsContext(),
       },
       server: {
-        kv: createWorkflowKVContext({ store, projectId: "7afb5837-251e-4938-bae4-83f8569d9d6b" }),
-        persistentValue: createWorkflowPersistentValueContext({
+        kv: createProjectKVContext({ store, projectId: "7afb5837-251e-4938-bae4-83f8569d9d6b" }),
+        persistentValue: createProjectPersistentValueContext({
           store,
           projectId: "7afb5837-251e-4938-bae4-83f8569d9d6b",
         }),
-        relatedProjects: createWorkflowRelatedProjectsContext(),
+        relatedProjects: createProjectRelatedProjectsContext(),
       },
     },
-    conversation: createDisabledWorkflowConversationContext(),
-    tokenUsage: createDisabledWorkflowTokenUsageContext(),
+    conversation: createDisabledProjectConversationContext(),
+    tokenUsage: createDisabledProjectTokenUsageContext(),
     metadata: {
-      workflow: "pi-agent",
+      project: "pi-agent",
       runId: "pi-agent-stream-test-run",
     },
-    toolPermissions: createWorkflowToolPermissionContext({
+    toolPermissions: createProjectToolPermissionContext({
       projectName: "pi-agent",
       runId: "pi-agent-stream-test-run",
       definitions: [

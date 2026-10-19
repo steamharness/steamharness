@@ -8,7 +8,7 @@ export function durableContextMessages(view: ContextView, streaming?: AssistantM
   const obsolete = new Set(compaction ? view.contributions.flatMap((messages, index) =>
     view.entries[index]!.id <= compaction.id ? messages : []) : []);
   const messages = view.messages.map(message => message.role === "assistant" && obsolete.has(message)
-    ? { ...message, workflowContextUsageInvalid: true } : message) as AgentMessage[];
+    ? { ...message, projectContextUsageInvalid: true } : message) as AgentMessage[];
   return withStreamingMessage(messages, streaming);
 }
 

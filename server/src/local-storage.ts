@@ -207,7 +207,7 @@ export class LocalStorage implements ObjectStorage {
   }
 }
 
-export function isWorkflowLocalStorage(value: unknown): value is LocalStorage {
+export function isProjectLocalStorage(value: unknown): value is LocalStorage {
   return value instanceof LocalStorage;
 }
 
@@ -215,7 +215,7 @@ export function isWorkflowLocalStorage(value: unknown): value is LocalStorage {
  * Always returns an instance or throws: an unusable root is a misconfiguration, so
  * it must fail at startup rather than at the first avatar upload.
  */
-export function createWorkflowLocalStorageFromEnv(options: {
+export function createProjectLocalStorageFromEnv(options: {
   env?: NodeJS.ProcessEnv;
   dataRoot: string;
 }): LocalStorage {
@@ -236,7 +236,7 @@ export function createWorkflowLocalStorageFromEnv(options: {
 
 /**
  * Map a filesystem miss onto the backend-agnostic not-found shape. `status`/`code`
- * are what `isWorkflowStorageNotFoundError` reads, and that predicate gates the
+ * are what `isProjectStorageNotFoundError` reads, and that predicate gates the
  * 404-vs-500 distinction for artifact reads.
  */
 function toReadError(error: unknown, message: string): unknown {
@@ -258,7 +258,7 @@ function createObjectMissingError(message: string): Error {
  * Public reads are served straight to a client, so they need a real `HttpError` for
  * the error middleware to answer 404. The private paths keep the plain not-found
  * shape instead, because their callers translate it through
- * `isWorkflowStorageNotFoundError`.
+ * `isProjectStorageNotFoundError`.
  */
 function createAvatarMissingError(): HttpError {
   return new HttpError(404, 404, "Avatar does not exist.");

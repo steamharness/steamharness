@@ -1,20 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  createDisabledWorkflowConversationContext,
-  createWorkflowConversationContext,
-  createWorkflowKVContext,
+  createDisabledProjectConversationContext,
+  createProjectConversationContext,
+  createProjectKVContext,
   type KVStore,
 } from "../index";
 
 test("conversation setTitle persists a normalized title and emits updates", async () => {
-  const kv = createWorkflowKVContext({
+  const kv = createProjectKVContext({
     store: createMemoryKVStore(),
     projectId: "demo",
     conversationId: "conv-1",
   });
   const titleEvents: Array<{ conversationId: string; title?: string; updatedAt: string }> = [];
-  const conversation = createWorkflowConversationContext({
+  const conversation = createProjectConversationContext({
     enabled: true,
     projectName: "demo",
     conversationId: "conv-1",
@@ -38,8 +38,8 @@ test("conversation setTitle persists a normalized title and emits updates", asyn
 });
 
 test("stable message identities update projections without duplicates or lost state", async () => {
-  const kv = createWorkflowKVContext({ store: createMemoryKVStore(), projectId: "demo", conversationId: "durable" });
-  const conversation = createWorkflowConversationContext({ enabled: true, projectName: "demo", conversationId: "durable", kv });
+  const kv = createProjectKVContext({ store: createMemoryKVStore(), projectId: "demo", conversationId: "durable" });
+  const conversation = createProjectConversationContext({ enabled: true, projectName: "demo", conversationId: "durable", kv });
   await conversation.setValue("approval", "waiting");
   await conversation.appendMessage({ id: "input", role: "user", content: "Hello" });
   await conversation.appendMessage({ id: "answer", role: "assistant", content: "Partial" });
@@ -51,12 +51,12 @@ test("stable message identities update projections without duplicates or lost st
 });
 
 test("conversation setTitle clears blank titles without throwing", async () => {
-  const kv = createWorkflowKVContext({
+  const kv = createProjectKVContext({
     store: createMemoryKVStore(),
     projectId: "demo",
     conversationId: "conv-1",
   });
-  const conversation = createWorkflowConversationContext({
+  const conversation = createProjectConversationContext({
     enabled: true,
     projectName: "demo",
     conversationId: "conv-1",
@@ -71,7 +71,7 @@ test("conversation setTitle clears blank titles without throwing", async () => {
 });
 
 test("disabled conversation setTitle is a safe no-op", async () => {
-  const conversation = createDisabledWorkflowConversationContext();
+  const conversation = createDisabledProjectConversationContext();
 
   await assert.doesNotReject(() => conversation.setTitle("ignored"));
   assert.equal(await conversation.setTitle("ignored"), undefined);

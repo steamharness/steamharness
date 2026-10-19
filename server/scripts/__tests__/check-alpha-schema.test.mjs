@@ -12,10 +12,10 @@ test("alpha schema gate permits expand changes and rejects destructive DDL", () 
 +alter table workflows drop column legacy_value;`).length > 0);
   assert.ok(findDestructiveSchemaChanges(`diff --git a/src/account-db.ts b/src/account-db.ts
 +++ b/src/account-db.ts
-+alter table workflow_users alter column email set not null;`).length > 0);
++alter table project_users alter column email set not null;`).length > 0);
   assert.ok(findDestructiveSchemaChanges(`diff --git a/src/account-db.ts b/src/account-db.ts
 --- a/src/account-db.ts
 +++ b/src/account-db.ts
- alter table workflow_users
+ alter table project_users
 +alter column email set not null;`).length > 0);
 });

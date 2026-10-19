@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  analyzeWorkflowScriptSource,
-  createDisabledWorkflowConversationContext,
-  createDisabledWorkflowTokenUsageContext,
+  analyzeProjectScriptSource,
+  createDisabledProjectConversationContext,
+  createDisabledProjectTokenUsageContext,
   createOutputItemChunk,
   createOutputNode,
-  createWorkflowRelatedProjectsContext,
+  createProjectRelatedProjectsContext,
   createUserInputNode,
   HarnessError,
   type NodeContext,
@@ -31,7 +31,7 @@ test("createUserInputNode publishes a durable request when no answer is resolved
   });
 
   await assert.rejects(
-    () => runNode(node, { prompt: "deploy" }, createTestWorkflowContext({
+    () => runNode(node, { prompt: "deploy" }, createTestProjectContext({
       async getResolvedInput() {
         return undefined;
       },
@@ -74,7 +74,7 @@ test("createUserInputNode keeps runtime node running while waiting for input", a
   });
 
   await assert.rejects(
-    () => runNode(node, { prompt: "deploy" }, createTestWorkflowContext({
+    () => runNode(node, { prompt: "deploy" }, createTestProjectContext({
       getResolvedInput() {
         return undefined;
       },
@@ -126,7 +126,7 @@ test("stream nodes stay running when waiting for user input", async () => {
   });
 
   await assert.rejects(
-    () => runStreamNode(node, { prompt: "deploy" }, createTestWorkflowContext({
+    () => runStreamNode(node, { prompt: "deploy" }, createTestProjectContext({
       getResolvedInput() {
         return undefined;
       },
@@ -161,7 +161,7 @@ test("createUserInputNode resumes from a resolved answer and returns a standard 
     params: [{ name: "owner", flag: "--owner", type: "string" }],
   });
 
-  const output = await runNode(node, { prompt: "who owns this?" }, createTestWorkflowContext({
+  const output = await runNode(node, { prompt: "who owns this?" }, createTestProjectContext({
     getResolvedInput(requestId) {
       assert.equal(requestId, "demo:run-1:ask-owner");
       return {
@@ -212,7 +212,7 @@ test("createUserInputNode resolves a dynamic request definition from the current
     () => runNode(node, {
       question: "Inspect tests or docs first?",
       choices: ["Tests", "Docs"],
-    }, createTestWorkflowContext({
+    }, createTestProjectContext({
       getResolvedInput() {
         return undefined;
       },
@@ -255,7 +255,7 @@ test("createUserInputNode rejects invalid dynamic date parameter combinations", 
   });
 
   await assert.rejects(
-    () => runNode(node, {}, createTestWorkflowContext(undefined)),
+    () => runNode(node, {}, createTestProjectContext(undefined)),
     (error) => error instanceof HarnessError &&
       error.type === "input_validation" &&
       /cannot use panel: "quick"/.test(error.message),
@@ -283,7 +283,7 @@ test("createUserInputNode lets workflows format the resolved payload", async () 
     },
   });
 
-  const output = await runNode(node, { ticket: "T-1" }, createTestWorkflowContext({
+  const output = await runNode(node, { ticket: "T-1" }, createTestProjectContext({
     getResolvedInput(requestId) {
       return {
         requestId,
@@ -306,8 +306,8 @@ test("createUserInputNode lets workflows format the resolved payload", async () 
 });
 
 test("workflow structure recognizes createUserInputNode as a user-input node", () => {
-  const analysis = analyzeWorkflowScriptSource(`
-    const approvalNode = workflow.createUserInputNode({
+  const analysis = analyzeProjectScriptSource(`
+    const approvalNode = steamharness.createUserInputNode({
       name: "approval",
       title: "Review request",
       params: [
@@ -315,10 +315,10 @@ test("workflow structure recognizes createUserInputNode as a user-input node", (
       ],
     });
 
-    export const demo = workflow.defineWorkflow({
+    export const demo = steamharness.defineProject({
       name: "demo",
       async run(input, context) {
-        return workflow.runNode(approvalNode, input, context);
+        return steamharness.runNode(approvalNode, input, context);
       },
     });
   `);
@@ -332,7 +332,7 @@ test("workflow structure recognizes createUserInputNode as a user-input node", (
 // the local host's cancel button can end a paused run
 // without leaving the run stuck in waiting_for_input forever. Surface the
 // abort as execution_aborted (not user_input_required) so the executor's
-// existing createAbortedWorkflowResult handler picks it up.
+// existing createAbortedProjectResult handler picks it up.
 test("createUserInputNode aborts when the run signal is already aborted", async () => {
   const requests: UserInputRequest[] = [];
   const node = createUserInputNode<{ prompt: string }>({
@@ -346,7 +346,7 @@ test("createUserInputNode aborts when the run signal is already aborted", async 
 
   await assert.rejects(
     () => runNode(node, { prompt: "deploy" }, {
-      ...createTestWorkflowContext({
+      ...createTestProjectContext({
         async getResolvedInput() {
           return undefined;
         },
@@ -386,7 +386,7 @@ test("createUserInputNode aborts when the run signal fires after requestInput", 
 
   await assert.rejects(
     () => runNode(node, { prompt: "deploy" }, {
-      ...createTestWorkflowContext({
+      ...createTestProjectContext({
         async getResolvedInput() {
           return undefined;
         },
@@ -410,22 +410,22 @@ test("createUserInputNode aborts when the run signal fires after requestInput", 
   assert.equal(requests.length, 1);
 });
 
-function createTestWorkflowContext(
+function createTestProjectContext(
   userInput: NodeContext["userInput"],
   options: Pick<NodeContext, "nodeHooks"> = {},
 ): NodeContext {
   return {
     providers: {},
     storage: {
-      local: { kv: createMemoryKVContext(), persistentValue: createMemoryKVContext(), relatedProjects: createWorkflowRelatedProjectsContext() },
-      server: { kv: createMemoryKVContext(), persistentValue: createMemoryKVContext(), relatedProjects: createWorkflowRelatedProjectsContext() },
+      local: { kv: createMemoryKVContext(), persistentValue: createMemoryKVContext(), relatedProjects: createProjectRelatedProjectsContext() },
+      server: { kv: createMemoryKVContext(), persistentValue: createMemoryKVContext(), relatedProjects: createProjectRelatedProjectsContext() },
     },
-    conversation: createDisabledWorkflowConversationContext(),
-    tokenUsage: createDisabledWorkflowTokenUsageContext(),
+    conversation: createDisabledProjectConversationContext(),
+    tokenUsage: createDisabledProjectTokenUsageContext(),
     userInput,
     nodeHooks: options.nodeHooks,
     metadata: {
-      workflow: "demo",
+      project: "demo",
       runId: "run-1",
     },
   };

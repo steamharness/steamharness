@@ -43,7 +43,7 @@ The root `package.json` is the sole source of truth for project information. Its
 The current `workflow` global object comes from `src/runtime-api.ts` in the Core repository and contains:
 
 ```ts
-workflow.defineWorkflow
+workflow.defineProject
 workflow.defineEntrypoint
 workflow.defineExecutor
 workflow.parseConversationDefaultInputArgs
@@ -69,7 +69,7 @@ workflow.runStreamNode
 workflow.runIf
 workflow.runFor
 workflow.runWhile
-workflow.runWorkflow
+workflow.runProject
 workflow.listKnowledgeDocuments
 workflow.getKnowledgeDocument
 workflow.createKnowledgeDocument
@@ -92,10 +92,10 @@ See [Core API](/en/core-api/overview) for complete methods, parameters, and runt
 
 ## Workflow
 
-A Workflow defines the business process through `workflow.defineWorkflow<Input, Output>()`:
+A Workflow defines the business process through `workflow.defineProject<Input, Output>()`:
 
 ```ts
-export const exampleWorkflow = workflow.defineWorkflow<Input, OutputPayload>({
+export const exampleProject = workflow.defineProject<Input, OutputPayload>({
   name: "example",
   async run(input, context) {
     const parsed = await workflow.runNode(inputNode, input, context);
@@ -222,16 +222,16 @@ const boosted = await workflow.runWhile(rounded, context, {
 
 local host diagram use two types of information to present workflow:
 
-- Static structure from TypeScript source code analysis. All known `workflow.*` runtime API calls are written to `definitions.apiCalls` and exposed as static API nodes, such as `workflow.createInputNode`, `workflow.defineWorkflow`, `workflow.getEnv`. These nodes help understand which platform capabilities are used by the source code, but are not executed individually or strung into the `Input -> Result` execution path.
-- The running status is from the `nodeHooks` report of `workflow.runNode` / `workflow.runStreamNode` / `workflow.runIf` / `workflow.runFor` / `workflow.runWhile`/`workflow.runWorkflow`. Only nodes that are actually executed by these API s will show running, success, failure, elapsed time, and errors.
+- Static structure from TypeScript source code analysis. All known `workflow.*` runtime API calls are written to `definitions.apiCalls` and exposed as static API nodes, such as `workflow.createInputNode`, `workflow.defineProject`, `workflow.getEnv`. These nodes help understand which platform capabilities are used by the source code, but are not executed individually or strung into the `Input -> Result` execution path.
+- The running status is from the `nodeHooks` report of `workflow.runNode` / `workflow.runStreamNode` / `workflow.runIf` / `workflow.runFor` / `workflow.runWhile`/`workflow.runProject`. Only nodes that are actually executed by these API s will show running, success, failure, elapsed time, and errors.
 
 `workflow.runIf` will be displayed as a `run-if` branch node, and local host will use the branch icon and semantic color to distinguish from LLM, output, provider, question-classifier. `executionInfo` of the completion event logs `selectedBranch`, `selectedBranchIndex`, and `description` for Trace to see which branch was actually taken. Static structural analysis prioritizes `branches` / `else` in the form of object literals; dynamic assembly branches can still run, but Diagram cannot fully expand all static paths.
 
 `workflow.runFor` and `workflow.runWhile` are exposed as `run-for` / `run-while` loop nodes. local host Diagram will wrap the loop body children with a rectangular background container with semantic color. The loop head node can still be clicked to view `items`, `condition`, `maxIterations` and runtime iteration information. Loop bodies can continue to nest `workflow.runIf`, `workflow.runFor`, or `workflow.runWhile` to express internal while branches and multi-level loops. Static structural analysis prioritizes the identification of loop options in the form of object literals; dynamic assembly options can still run, but Diagram cannot fully expand the loop body.
 
-`workflow.runWorkflow` is shown as a `run-workflow` invocation node. The child workflow does not create an independent run report, and the child node events will enter the parent trace; the top-level executor entry will not insert this package node. Default `conversationMode: "shared"`, `kvMode: "shared"`, `outputVisibility: "visible"`, passing only `name` does not change session or output semantics; when the parent workflow passes in `conversationMode: "shared-readonly"`, the child workflow can read the parent session snapshot, but does not append transcript or modify the title. When the child workflow will write the exclusive KV state, it can pass in the `kvMode: "isolated"` at the same time.
+`workflow.runProject` is shown as a `run-workflow` invocation node. The child workflow does not create an independent run report, and the child node events will enter the parent trace; the top-level executor entry will not insert this package node. Default `conversationMode: "shared"`, `kvMode: "shared"`, `outputVisibility: "visible"`, passing only `name` does not change session or output semantics; when the parent workflow passes in `conversationMode: "shared-readonly"`, the child workflow can read the parent session snapshot, but does not append transcript or modify the title. When the child workflow will write the exclusive KV state, it can pass in the `kvMode: "isolated"` at the same time.
 
-Entrypoint is not a nested node in Diagram and does not express a parent-child relationship. The project exposes only one layer of independent entry. When multi-level business orchestration is required, the `workflow.runWorkflow()` is continuously nested. The default maximum depth is `16`.
+Entrypoint is not a nested node in Diagram and does not express a parent-child relationship. The project exposes only one layer of independent entry. When multi-level business orchestration is required, the `workflow.runProject()` is continuously nested. The default maximum depth is `16`.
 
 The normal nodes returned by the built-in node factory inherit `BaseNode` and the streaming nodes inherit `BaseStreamNode`; together they provide common information such as `name`, `standardName`, `metadata`, and `getExecutionInfo()`. Diagram does not bind the `BaseNode` class directly, but reads the `NodeDefinition` / `StreamNodeDefinition` execution protocol and runs the report, so future custom nodes can be executed and recorded as long as they conform to the protocol.
 
@@ -260,7 +260,7 @@ export const executor = workflow.defineExecutor<Input, OutputPayload>({
       id: "main",
       title: "Complete workflow",
       group: { id: "operations", title: "Operations", order: 10 },
-      workflow: exampleWorkflow,
+      workflow: exampleProject,
       params: [
         {
           name: "message",
@@ -280,13 +280,13 @@ export const executor = workflow.defineExecutor<Input, OutputPayload>({
 
 Selecting or requesting an entrypoint creates a run only for that entrypoint; it does not run `main` first. Entry IDs are unique within the project and must match `/^[a-z][a-z0-9_-]{0,63}$/`. `entrypoints` must be a non-empty static array, and `defaultEntrypoint` must name one of its entries. Each entrypoint independently declares its `workflow`, `params`, `resolveParams`, `createInput`, provider, tools, token usage, registry, and context factory. An entrypoint may also declare static `group: { id, title, order? }` metadata: `id` and `title` must be non-empty strings and `order` must be a non-negative integer. All entries sharing a group ID must use exactly the same title and order, including whether `order` is omitted. Legacy top-level Workflow execution fields are no longer accepted.
 
-When any explicit group exists, the local Run workspace renders entrypoints in collapsible groups. Explicit orders sort ascending with first-seen order as the tie breaker; groups without an order follow in first-seen order, and entries without a group use a localized **Ungrouped** group. The default group is open on first entry, and starting a run or receiving a new active/result entry reopens its group. Only group expansion is persisted by stable `workflowId + resolved target`. Projects without groups retain the existing flat layout. CLI and local schedules continue to use entrypoint IDs.
+When any explicit group exists, the local Run workspace renders entrypoints in collapsible groups. Explicit orders sort ascending with first-seen order as the tie breaker; groups without an order follow in first-seen order, and entries without a group use a localized **Ungrouped** group. The default group is open on first entry, and starting a run or receiving a new active/result entry reopens its group. Only group expansion is persisted by stable `projectId + resolved target`. Projects without groups retain the existing flat layout. CLI and local schedules continue to use entrypoint IDs.
 
 Projects can use `package.json.steamHarness.schedulePresets` to propose schedules for an entrypoint. Structure validation checks the preset ID, entrypoint, time zone, trigger rule, and JSON parameters, then exposes the presets to the local host. Presets are not enabled automatically. See [Workflow scheduled runs](/en/concepts/workflow-schedules).
 
 Conversation executor keeps a single entry, places fields such as `workflow`, `params`, and `createInput` directly on executor, and does not declare or accept entrypoint. `projectType` of Executor only allows `"workflow"` or `"conversation"`. Kanban declares `"kanban"` in `package.json.steamHarness.projectType` and cannot forge executor.
 
-`createInput` receives `workflowName`, `workflowDir`, `args`, `paramValues`, `env`, `abortSignal`, and optional `conversationId`. Workflow also receives the selected `entrypointId` and `entrypointTitle`; the same fields are written to `RunContext.metadata`, reports, and local run records. The local host converts parameters to workflow input through the selected execution configuration. Cancellation propagates `abortSignal` to the workflow context so long-running provider and SDK calls can stop promptly.
+`createInput` receives `projectName`, `projectDir`, `args`, `paramValues`, `env`, `abortSignal`, and optional `conversationId`. Workflow also receives the selected `entrypointId` and `entrypointTitle`; the same fields are written to `RunContext.metadata`, reports, and local run records. The local host converts parameters to workflow input through the selected execution configuration. Cancellation propagates `abortSignal` to the workflow context so long-running provider and SDK calls can stop promptly.
 
 `resolveParams` can return `value`, `visible`, `disabled`, and a single option status patch as the current parameter, or replace the current full list of options for the parameter with an `resolvedOptions` array, or restore the static options with `null`. Initialization and changes to the Form parameters of main, Advanced, and Quick will trigger evaluation. `visible: false` does not implicitly empty old values; mutex parameters should also return `value: null` to prevent hidden values from continuing into `args` and `paramValues`. Dynamic lists are suitable for reading provider, model, or variant directories provided by the server; reads must be cancelable, time-limited, and run data cannot be written during parameter evaluation.
 
@@ -302,7 +302,7 @@ export const executor = workflow.defineExecutor<Input, OutputPayload>({
     workflow.defineEntrypoint({
       id: "main",
       title: "Complete workflow",
-      workflow: exampleWorkflow,
+      workflow: exampleProject,
       registry: [
         {
           name: "output",

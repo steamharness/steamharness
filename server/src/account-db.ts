@@ -4,8 +4,8 @@ import { createPostgresPool } from "./postgres";
 import { resolveStorageAvatarBaseUrlOrigin } from "./storage-driver";
 import {
   DEFAULT_AUTHENTICATED_PERMISSION_KEYS,
-  listBuiltinWorkflowRoles,
-  normalizeWorkflowPermissionKeys,
+  listBuiltinProjectRoles,
+  normalizeProjectPermissionKeys,
   type PermissionKey,
 } from "./permissions";
 
@@ -530,7 +530,7 @@ export class AccountRepository {
     createdByUserId?: string;
   }): Promise<RoleRecord> {
     const roleId = randomUUID();
-    const permissions = normalizeWorkflowPermissionKeys(input.permissions);
+    const permissions = normalizeProjectPermissionKeys(input.permissions);
     const client = await this.pool.connect();
     try {
       await client.query("begin");
@@ -597,7 +597,7 @@ export class AccountRepository {
         );
       }
       if (input.permissions !== undefined) {
-        const permissions = normalizeWorkflowPermissionKeys(input.permissions);
+        const permissions = normalizeProjectPermissionKeys(input.permissions);
         await client.query(`delete from role_permissions where role_id = $1`, [roleId]);
         for (const permission of permissions) {
           await client.query(
@@ -661,7 +661,7 @@ export class AccountRepository {
     createdByUserId?: string;
     expiresAt?: string;
   }): Promise<{ record: ApiKeyRecord; token: string }> {
-    const { token, prefix } = createWorkflowApiKeyToken();
+    const { token, prefix } = createProjectApiKeyToken();
     const id = randomUUID();
     await this.pool.query(
       `insert into api_keys (
@@ -733,7 +733,7 @@ export class AccountRepository {
   }
 
   async findApiKeyByToken(token: string): Promise<ApiKeyLookupRecord | undefined> {
-    const prefix = parseWorkflowApiKeyPrefix(token);
+    const prefix = parseProjectApiKeyPrefix(token);
     if (prefix === undefined) {
       return undefined;
     }
@@ -816,7 +816,7 @@ export class AccountRepository {
   }): Promise<{ record: DeviceCodeRecord; deviceCode: string }> {
     const id = randomUUID();
     const deviceCode = `wfdev_${randomBytes(24).toString("hex")}`;
-    const userCode = createWorkflowUserCode();
+    const userCode = createProjectUserCode();
     await this.pool.query(
       `insert into steamharness_auth_device_codes (
          id, device_code_hash, user_code, client_name, source, requested_scopes, state,
@@ -959,7 +959,7 @@ export class AccountRepository {
         return undefined;
       }
 
-      const { token, prefix } = createWorkflowApiKeyToken();
+      const { token, prefix } = createProjectApiKeyToken();
       const apiKeyId = randomUUID();
       const apiKey = await client.query<ApiKeyRow>(
         `insert into api_keys (
@@ -1152,7 +1152,7 @@ export class AccountRepository {
     const client = await this.pool.connect();
     try {
       await client.query("begin");
-      for (const role of listBuiltinWorkflowRoles()) {
+      for (const role of listBuiltinProjectRoles()) {
         await client.query(
           `insert into roles (
              id, name, description, builtin, protected, created_at, updated_at
@@ -1290,7 +1290,7 @@ export class AccountRepository {
   }
 }
 
-export function createWorkflowApiKeyToken(): { token: string; prefix: string } {
+export function createProjectApiKeyToken(): { token: string; prefix: string } {
   const prefixSeed = randomBytes(6).toString("hex");
   const secret = randomBytes(24).toString("hex");
   return {
@@ -1299,12 +1299,12 @@ export function createWorkflowApiKeyToken(): { token: string; prefix: string } {
   };
 }
 
-export function parseWorkflowApiKeyPrefix(token: string): string | undefined {
+export function parseProjectApiKeyPrefix(token: string): string | undefined {
   const match = /^(wfk_[a-f0-9]{12})_[a-f0-9]{48}$/i.exec(token.trim());
   return match?.[1];
 }
 
-function createWorkflowUserCode(): string {
+function createProjectUserCode(): string {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const chars: string[] = [];
   for (let index = 0; index < 8; index += 1) {
@@ -1320,7 +1320,7 @@ function toRoleRecord(row: RoleRow, permissions: PermissionKey[]): RoleRecord {
     description: row.description,
     builtin: row.builtin,
     protected: row.protected,
-    permissions: normalizeWorkflowPermissionKeys(permissions),
+    permissions: normalizeProjectPermissionKeys(permissions),
     createdByUserId: row.created_by_user_id ?? undefined,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),

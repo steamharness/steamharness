@@ -9,7 +9,7 @@ import {
 } from "../../knowledge/index";
 import { HarnessError } from "../../workflow/errors";
 import type { NodeContext } from "../../types/context";
-import { selectWorkflowStorage } from "./storage";
+import { selectProjectStorage } from "./storage";
 import type { Capability } from "./types";
 
 export const KNOWLEDGE_MCP_SERVER_ID = "workflow-knowledge";
@@ -56,7 +56,7 @@ export async function runKnowledgeAction(
     });
   }
 
-  const storage = selectWorkflowStorage(context);
+  const storage = selectProjectStorage(context);
   switch (args.action) {
     case "list": {
       const documents = await listKnowledgeDocuments(storage);

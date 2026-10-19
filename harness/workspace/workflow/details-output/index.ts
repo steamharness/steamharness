@@ -1,6 +1,6 @@
 import type { DetailsOutputInput, DetailsOutputPayload } from "./interface";
 
-const inputNode = workflow.createInputNode<DetailsOutputInput, DetailsOutputInput>({
+const inputNode = steamharness.createInputNode<DetailsOutputInput, DetailsOutputInput>({
   name: "details-input",
   parse(input) {
     return {
@@ -11,7 +11,7 @@ const inputNode = workflow.createInputNode<DetailsOutputInput, DetailsOutputInpu
   },
 });
 
-const detailsOutputNode = workflow.createDetailsOutputNode<DetailsOutputInput, DetailsOutputPayload>({
+const detailsOutputNode = steamharness.createDetailsOutputNode<DetailsOutputInput, DetailsOutputPayload>({
   name: "output",
   metadata: {
     title: "Details Output",
@@ -20,25 +20,25 @@ const detailsOutputNode = workflow.createDetailsOutputNode<DetailsOutputInput, D
   },
 });
 
-export const detailsOutputWorkflow = workflow.defineWorkflow<DetailsOutputInput, DetailsOutputPayload>({
+export const detailsOutputProject = steamharness.defineProject<DetailsOutputInput, DetailsOutputPayload>({
   name: "details-output",
   async run(input, context) {
-    const parsed = await workflow.runNode(inputNode, input, context);
-    return workflow.runNode(detailsOutputNode, parsed, context);
+    const parsed = await steamharness.runNode(inputNode, input, context);
+    return steamharness.runNode(detailsOutputNode, parsed, context);
   },
 });
 
-export const executor = workflow.defineExecutor<
+export const executor = steamharness.defineExecutor<
   DetailsOutputInput,
   DetailsOutputPayload
 >({
   projectType: "workflow",
   defaultEntrypoint: "main",
   entrypoints: [
-    workflow.defineEntrypoint<DetailsOutputInput, DetailsOutputPayload>({
+    steamharness.defineEntrypoint<DetailsOutputInput, DetailsOutputPayload>({
       id: "main",
       title: "Details Output",
-      workflow: detailsOutputWorkflow,
+      workflow: detailsOutputProject,
       params: [
         {
           name: "icon",
@@ -112,8 +112,8 @@ export const executor = workflow.defineExecutor<
   ],
 });
 
-export { detailsOutputWorkflow as workflow };
-export default detailsOutputWorkflow;
+export { detailsOutputProject as workflow };
+export default detailsOutputProject;
 
 const iconValues: DetailsOutputInput["icon"][] = [
   "info",

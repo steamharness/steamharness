@@ -3,9 +3,9 @@ import { t } from './localization';
 import * as vscode from 'vscode';
 import { projectTypeIcons, readRecentProjects, rememberProjects, type RecentProject } from './projects';
 import { ProjectIcons } from './project-icons';
-import { activateWorkflow } from './workflow';
+import { activateProject } from './workflow';
 import type { Launcher } from './workflow-cli-types';
-import { activateWorkflowAccount, type AccountController } from './workflow-auth';
+import { activateProjectAccount, type AccountController } from './workflow-auth';
 import { activateDocumentPreviews } from './document-preview';
 import { StudioStartController } from './start-page';
 import { activateInternalLayer } from './internal-layer';
@@ -39,7 +39,7 @@ class RecentProjectsProvider {
 
 export async function activate(context: vscode.ExtensionContext, runtime?: Launcher, suppliedAccount?: AccountController): Promise<void> {
   activateDocumentPreviews(context);
-  const account = suppliedAccount ?? await activateWorkflowAccount(context);
+  const account = suppliedAccount ?? await activateProjectAccount(context);
   const output = vscode.window.createOutputChannel('Studio');
   const launcher = runtime ?? {
     available: false,
@@ -164,7 +164,7 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
   // runtime is created, so assistant workers see the current session on the
   // first launch after a restart.
   await activateInternalLayer(context, output, account);
-  const workflows = await activateWorkflow(context, launcher, output, account, icons);
+  const workflows = await activateProject(context, launcher, output, account, icons);
   context.subscriptions.push(new StudioStartController(context, launcher, account, workflows, recent,
     project => saveRecent(previous => rememberProjects(previous, [{ uri: vscode.Uri.file(project.directory).toString(), label: project.name, kind: 'folder', lastOpened: Date.now() }],
       vscode.workspace.getConfiguration('studio').get<number>('recentProjects.limit', 12))), output));

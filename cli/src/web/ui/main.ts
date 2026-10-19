@@ -15,21 +15,21 @@ import { iconHtml as icon, escapeHtml as escape, iconButton, updateIcon } from '
 import { aiUsageButton, narrowMenuDismiss, projectInfoButton, toolPermissionsButton } from './toolbar';
 import './style.css';
 import {
-  workflowParameters,
-  workflowParamValue,
-  mergeWorkflowParamStates,
+  projectParameters,
+  projectParamValue,
+  mergeProjectParamStates,
   sessionRunning,
   type ConversationMessage, type ConversationSession, type ConversationDraftUpdate, type Project, type Field,
   type ParamValues, type ParamValue, type ParamState, type ParamRequest,
   type Attachment,
 } from '../workflow-types';
 
-import { acquireWorkflowHost } from './host';
+import { acquireProjectHost } from './host';
 
 function initialize(): void {
   const app = document.querySelector<HTMLDivElement>('#app')!;
   if (app.dataset.initialized === 'true') { return; }
-  const vscode = acquireWorkflowHost({ connectionBanner: false });
+  const vscode = acquireProjectHost({ connectionBanner: false });
   app.dataset.initialized = 'true';
   app.innerHTML = `
     <header class="toolbar">
@@ -138,7 +138,7 @@ function initialize(): void {
   const currentSession = () => state?.sessions.find((session) => session.id === state?.activeId);
   const dialogs = new ConversationTools();
   const contentSearch = new ContentSearch(transcript);
-  const currentParameters = () => workflowParameters(state!.project, entrypoint.value || undefined);
+  const currentParameters = () => projectParameters(state!.project, entrypoint.value || undefined);
   const values = (): ParamValues => paramValues[formKey] ??= {};
   const canQueue = (): boolean => state?.project.conversation?.inputQueue?.enabled === true && (!state.project.conversation.durable?.enabled || values().plan !== 'true');
   const hideComposer = (): boolean => state?.project.projectType === 'conversation' && state.project.conversation?.userInput?.hideComposer !== false
@@ -155,7 +155,7 @@ function initialize(): void {
     onReset: (names) => {
       for (const name of names) {
         const field = fields.get(name)!.field;
-        values()[name] = workflowParamValue(field);
+        values()[name] = projectParamValue(field);
       }
       persist(); updateFields(); requestParams({ kind: 'param', paramName: names[0] });
     },
@@ -281,7 +281,7 @@ function initialize(): void {
     const container = document.querySelector<HTMLDivElement>('#main-fields')!;
     container.replaceChildren();
     for (const field of parameters.fields) {
-      values()[field.name] = workflowParamValue(field, values()[field.name] ?? field.defaultValue ?? (field.type === 'boolean' ? 'false' : ''));
+      values()[field.name] = projectParamValue(field, values()[field.name] ?? field.defaultValue ?? (field.type === 'boolean' ? 'false' : ''));
       fields.set(field.name, createField(field));
       if (project.projectType !== 'conversation' && (field.panel === undefined || field.panel === 'main')) { container.append(fields.get(field.name)!.root); }
     }
@@ -984,7 +984,7 @@ function initialize(): void {
       ++requestId; resolving = false; clearTimeout(inputTimer);
       for (const name of updatedParams) {
         if (!fields.has(name)) { continue; }
-        values()[name] = workflowParamValue(fields.get(name)!.field, session.parameterValues?.[entrypoint.value]?.[name]);
+        values()[name] = projectParamValue(fields.get(name)!.field, session.parameterValues?.[entrypoint.value]?.[name]);
         editedParams.delete(name);
       }
       paramsNeedInit = fields.size > 0;
@@ -1237,10 +1237,10 @@ function initialize(): void {
       } else {
         authenticationRequired = false;
         const patches = Object.fromEntries(Object.entries(message.params ?? {}).filter(([name]) => fields.has(name))) as Record<string, ParamState>;
-        paramStates = mergeWorkflowParamStates(paramStates, patches);
+        paramStates = mergeProjectParamStates(paramStates, patches);
         for (const [name, patch] of Object.entries(patches)) {
-          if (patch.value === null) { values()[name] = workflowParamValue(fields.get(name)!.field); }
-          else if (patch.value !== undefined) { values()[name] = workflowParamValue(fields.get(name)!.field, patch.value); }
+          if (patch.value === null) { values()[name] = projectParamValue(fields.get(name)!.field); }
+          else if (patch.value !== undefined) { values()[name] = projectParamValue(fields.get(name)!.field, patch.value); }
         }
         updateFields();
         persist();

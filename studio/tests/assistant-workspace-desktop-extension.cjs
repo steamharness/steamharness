@@ -9,7 +9,7 @@ exports.activate = context => {
       vscode.window.showTextDocument(vscode.Uri.file(path.join(directory, folder, 'scope.txt')))));
   }
   context.subscriptions.push(
-    vscode.commands.registerCommand('studio.testOpenAccount', () => vscode.commands.executeCommand('studio.openWorkflowAccount')),
+    vscode.commands.registerCommand('studio.testOpenAccount', () => vscode.commands.executeCommand('studio.openAccount')),
     vscode.commands.registerCommand('studio.testReadClipboard', async () => {
       await fs.writeFile(path.join(directory, 'clipboard.json'), JSON.stringify(await vscode.env.clipboard.readText()));
     }),

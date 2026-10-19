@@ -17,19 +17,19 @@ const DEFAULT_PROVIDER: PiAgentProvider = "anthropic";
 const DEFAULT_PI_TOOLS = ["read", "write", "edit", "bash", "grep", "find", "ls"];
 const REGISTERED_PI_TOOLS = [...DEFAULT_PI_TOOLS, KNOWLEDGE_DOCUMENTS_TOOL_NAME];
 
-const inputNode = workflow.createInputNode<PiAgentInput, PiAgentParsedInput>({
+const inputNode = steamharness.createInputNode<PiAgentInput, PiAgentParsedInput>({
   name: "pi-agent-input",
   parse(input, context) {
     const prompt = (input.prompt || DEFAULT_PROMPT).trim();
     if (prompt === "") {
-      throw new workflow.HarnessError({
+      throw new steamharness.HarnessError({
         type: "input_validation",
         message: "Prompt is required.",
         nodeName: "pi-agent-input",
       });
     }
 
-    const provider = normalizeProvider(input.provider ?? workflow.getEnv("PI_AGENT_PROVIDER"));
+    const provider = normalizeProvider(input.provider ?? steamharness.getEnv("PI_AGENT_PROVIDER"));
     const knowledgeTools = input.knowledgeTools !== false;
 
     return {
@@ -52,13 +52,13 @@ const inputNode = workflow.createInputNode<PiAgentInput, PiAgentParsedInput>({
   },
 });
 
-const outputNode = workflow.createOutputNode<PiAgentRunInput, PiAgentOutputPayload>({
+const outputNode = steamharness.createOutputNode<PiAgentRunInput, PiAgentOutputPayload>({
   name: "pi-agent-output",
   async *stream(input, context) {
-    let pendingToolApprovalError: workflow.HarnessError | undefined;
+    let pendingToolApprovalError: steamharness.HarnessError | undefined;
     const sessionFactory = input.sessionFactory ?? createPiAgentSessionFactory({
       getEnv(name) {
-        return workflow.getEnv(name);
+        return steamharness.getEnv(name);
       },
       context,
       onPendingApproval(error) {
@@ -74,7 +74,7 @@ const outputNode = workflow.createOutputNode<PiAgentRunInput, PiAgentOutputPaylo
     try {
       for await (const chunk of runPiAgentStream(session.prompt(input.prompt))) {
         throwPendingToolApprovalError(pendingToolApprovalError);
-        yield workflow.createOutputItemChunk(chunk);
+        yield steamharness.createOutputItemChunk(chunk);
       }
       throwPendingToolApprovalError(pendingToolApprovalError);
 
@@ -101,7 +101,7 @@ const outputNode = workflow.createOutputNode<PiAgentRunInput, PiAgentOutputPaylo
     });
 
     return {
-      ...workflow.createOutputPayload({ items: stream.items }),
+      ...steamharness.createOutputPayload({ items: stream.items }),
       prompt: input.prompt,
       workdir: input.workdir,
       model: input.model,
@@ -117,7 +117,7 @@ const outputNode = workflow.createOutputNode<PiAgentRunInput, PiAgentOutputPaylo
   },
 });
 
-function throwPendingToolApprovalError(error: workflow.HarnessError | undefined): void {
+function throwPendingToolApprovalError(error: steamharness.HarnessError | undefined): void {
   if (error !== undefined) {
     // Pi SDK custom tools can surface thrown approval waits as tool
     // errors. Re-throw from the workflow stream so the shared user-input resume
@@ -126,11 +126,11 @@ function throwPendingToolApprovalError(error: workflow.HarnessError | undefined)
   }
 }
 
-export const piAgentWorkflow = workflow.defineWorkflow<PiAgentInput, PiAgentOutputPayload>({
+export const piAgentProject = steamharness.defineProject<PiAgentInput, PiAgentOutputPayload>({
   name: "pi-agent",
   async run(input, context) {
-    const parsed = await workflow.runNode(inputNode, input, context);
-    const result = await workflow.runStreamNode(
+    const parsed = await steamharness.runNode(inputNode, input, context);
+    const result = await steamharness.runStreamNode(
       outputNode,
       parsed,
       context,
@@ -140,9 +140,9 @@ export const piAgentWorkflow = workflow.defineWorkflow<PiAgentInput, PiAgentOutp
   },
 });
 
-export const executor = workflow.defineExecutor<PiAgentInput, PiAgentOutputPayload>({
+export const executor = steamharness.defineExecutor<PiAgentInput, PiAgentOutputPayload>({
   projectType: "conversation",
-  workflow: piAgentWorkflow,
+  workflow: piAgentProject,
   tokenUsage: {
     enabled: true,
     display: true,
@@ -283,7 +283,7 @@ export const executor = workflow.defineExecutor<PiAgentInput, PiAgentOutputPaylo
     },
   ],
   createInput({ args }) {
-    const defaults = workflow.parseConversationDefaultInputArgs(args);
+    const defaults = steamharness.parseConversationDefaultInputArgs(args);
     const defaultMessage = defaults.message.trim();
     const input: PiAgentInput = defaults.message.trim() === ""
       ? {}
@@ -329,8 +329,8 @@ export const executor = workflow.defineExecutor<PiAgentInput, PiAgentOutputPaylo
   },
 });
 
-export { piAgentWorkflow as workflow };
-export default piAgentWorkflow;
+export { piAgentProject as workflow };
+export default piAgentProject;
 export const __test_inputNode = inputNode;
 export const __test_outputNode = outputNode;
 
@@ -370,20 +370,20 @@ function normalizeProvider(value: unknown): PiAgentProvider {
 
 function readProviderModelEnv(provider: PiAgentProvider): string | undefined {
   if (provider === "openai") {
-    return normalizeOptionalString(workflow.getEnv("OPENAI_MODEL")) ??
-      normalizeOptionalString(workflow.getEnv("OPENAPI_MODEL"));
+    return normalizeOptionalString(steamharness.getEnv("OPENAI_MODEL")) ??
+      normalizeOptionalString(steamharness.getEnv("OPENAPI_MODEL"));
   }
 
-  return normalizeOptionalString(workflow.getEnv("ANTHROPIC_MODEL"));
+  return normalizeOptionalString(steamharness.getEnv("ANTHROPIC_MODEL"));
 }
 
 function readProviderBaseUrlEnv(provider: PiAgentProvider): string | undefined {
   if (provider === "openai") {
-    return normalizeOptionalString(workflow.getEnv("OPENAI_BASE_URL")) ??
-      normalizeOptionalString(workflow.getEnv("OPENAPI_BASE_URL"));
+    return normalizeOptionalString(steamharness.getEnv("OPENAI_BASE_URL")) ??
+      normalizeOptionalString(steamharness.getEnv("OPENAPI_BASE_URL"));
   }
 
-  return normalizeOptionalString(workflow.getEnv("ANTHROPIC_BASE_URL"));
+  return normalizeOptionalString(steamharness.getEnv("ANTHROPIC_BASE_URL"));
 }
 
 function normalizeTools(value: unknown, knowledgeTools = true): string[] {

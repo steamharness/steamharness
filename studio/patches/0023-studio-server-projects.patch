@@ -98,6 +98,6 @@ index 1753b4c1..95b9dc5e 100644
  				},
 -				actionViewItemProvider: (action, options) => action instanceof MenuItemAction && action.id === 'studio.openProject'
 +				actionViewItemProvider: (action, options) => action instanceof MenuItemAction && ['studio.openProject', 'studio.uploadProject'].includes(action.id)
- 					? this.instantiationService.createInstance(StudioWorkflowRunActionViewItem, action, options)
+ 					? this.instantiationService.createInstance(StudioProjectRunActionViewItem, action, options)
  					: createActionViewItem(this.instantiationService, action, options),
  				hoverDelegate: this.hoverDelegate

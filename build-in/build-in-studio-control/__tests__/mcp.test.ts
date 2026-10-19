@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
-import { installWorkflowRuntimeGlobal } from "steamharness/runtime-api";
+import { installProjectRuntimeGlobal } from "steamharness/runtime-api";
 
 it.each(["workspace", "read-only", "auto"])("exposes the Workflow through real stdio MCP with the %s policy and authenticated host", async permissionPolicy => {
   const calls: unknown[] = [];
@@ -21,7 +21,7 @@ it.each(["workspace", "read-only", "auto"])("exposes the Workflow through real s
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("No test address");
-  const runtime = installWorkflowRuntimeGlobal();
+  const runtime = installProjectRuntimeGlobal();
   const cliManifest = createRequire(import.meta.url).resolve("@steamharness/cli/package.json");
   const cli = JSON.parse(await readFile(cliManifest, "utf8"));
   const keys = ["STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL", "STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN"];

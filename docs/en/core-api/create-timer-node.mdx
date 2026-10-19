@@ -55,7 +55,7 @@ const timerNode = workflow.createTimerNode({
   title: "External API call",
 });
 
-export const demo = workflow.defineWorkflow<Input, OutputPayload>({
+export const demo = workflow.defineProject<Input, OutputPayload>({
   name: "demo",
   async run(input, context) {
     const timer = await workflow.runNode(timerNode, {

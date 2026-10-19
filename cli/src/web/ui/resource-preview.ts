@@ -1,7 +1,7 @@
 import { t } from '../localization';
 import './style.css';
 import './resource-preview.css';
-import { acquireWorkflowHost } from './host';
+import { acquireProjectHost } from './host';
 import { iconButton, markdownHtml } from './ui';
 import type { ResourcePreviewData } from '../resource-preview';
 import { KANBAN_PREVIEW_READY_MESSAGE, KANBAN_BRIDGE_REQUEST_MESSAGE, KANBAN_BRIDGE_RESPONSE_MESSAGE,
@@ -11,7 +11,7 @@ type Message = Record<string, any>;
 const app = document.querySelector<HTMLElement>('#app')!;
 app.className = 'resource-preview-app';
 app.innerHTML = '<header class="resource-preview-toolbar"><div><h1></h1><span></span></div></header><main><div class="resource-preview-status" role="status"></div><div class="resource-preview-content"></div></main><aside id="project-menu" hidden></aside>';
-const host = acquireWorkflowHost({ live: false }), status = app.querySelector<HTMLElement>('.resource-preview-status')!, content = app.querySelector<HTMLElement>('.resource-preview-content')!;
+const host = acquireProjectHost({ live: false }), status = app.querySelector<HTMLElement>('.resource-preview-status')!, content = app.querySelector<HTMLElement>('.resource-preview-content')!;
 let id = location.pathname.split('/').at(-1)!, connected = false, data: ResourcePreviewData | undefined, frame: HTMLIFrameElement | undefined;
 let readyTimer: ReturnType<typeof setTimeout> | undefined, pendingBridge = 0, epoch = 0, authRevision: number | undefined, resourceRevision: number | undefined;
 const pending = new Map<string, { resolve(message: Message): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();

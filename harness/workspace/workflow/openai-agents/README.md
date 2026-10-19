@@ -120,10 +120,10 @@ manual approval.
 `openai-agents` can also be imported as a reusable Agents SDK core:
 
 ```ts
-import { openaiAgentsWorkflow } from "../openai-agents/index";
+import { openaiAgentsProject } from "../openai-agents/index";
 
-const output = await workflow.runWorkflow(
-  openaiAgentsWorkflow,
+const output = await workflow.runProject(
+  openaiAgentsProject,
   {
     message: input.query,
     instructions: [systemPrompt],
@@ -161,7 +161,7 @@ messages without appending duplicate messages or changing the title. Use
 
 The visible answer streams before final KV/conversation/token-usage writes
 complete. Reuse callers that want to show this workflow exactly as-is should
-call `workflow.runWorkflow(...)` from their own output node and forward
+call `workflow.runProject(...)` from their own output node and forward
 `onOutputChunk` / `onOutput` into the parent stream. Function tool calls are
 also emitted as collapsed Markdown output items as soon as the SDK invokes the
 tool. The final answer item starts only when answer text actually arrives, so

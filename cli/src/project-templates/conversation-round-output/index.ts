@@ -1,25 +1,25 @@
 import type { RuntimeApi } from 'steamharness/runtime-api';
 
-const workflow = (globalThis as unknown as { workflow: RuntimeApi }).workflow;
-const answer = workflow.createOutputNode<{ message: string }, unknown>({
+const steamharness = (globalThis as unknown as { steamharness: RuntimeApi }).steamharness;
+const answer = steamharness.createOutputNode<{ message: string }, unknown>({
   name: 'round-answer',
   async *stream(input, context) {
     const history = await context.conversation.getValue();
     const round = history.messages.filter(message => message.role === 'assistant').length + 1;
     const text = `Round ${round}: ${input.message}`;
-    yield workflow.createOutputItemChunk({ type: 'output_item_start', item: { id: 'answer', title: 'Output', contentType: 'markdown', content: '', collapsed: false } });
-    yield workflow.createOutputItemChunk({ type: 'output_item_delta', itemId: 'answer', delta: text });
-    yield workflow.createOutputItemChunk({ type: 'output_item_end', itemId: 'answer' });
+    yield steamharness.createOutputItemChunk({ type: 'output_item_start', item: { id: 'answer', title: 'Output', contentType: 'markdown', content: '', collapsed: false } });
+    yield steamharness.createOutputItemChunk({ type: 'output_item_delta', itemId: 'answer', delta: text });
+    yield steamharness.createOutputItemChunk({ type: 'output_item_end', itemId: 'answer' });
     await context.conversation.appendMessage({ role: 'user', content: input.message });
     await context.conversation.appendMessage({ role: 'assistant', content: text });
   },
-  format: stream => workflow.createOutputPayload({ items: stream.items }),
+  format: stream => steamharness.createOutputPayload({ items: stream.items }),
 });
-const conversation = workflow.defineWorkflow<{ message: string }, unknown>({
+const conversation = steamharness.defineProject<{ message: string }, unknown>({
   name: 'round-conversation',
-  async run(input, context) { return (await workflow.runStreamNode(answer, input, context)).output; },
+  async run(input, context) { return (await steamharness.runStreamNode(answer, input, context)).output; },
 });
-export const executor = workflow.defineExecutor({
+export const executor = steamharness.defineExecutor({
   projectType: 'conversation', workflow: conversation,
-  createInput: context => ({ message: workflow.parseConversationDefaultInputArgs(context.args).message }),
+  createInput: context => ({ message: steamharness.parseConversationDefaultInputArgs(context.args).message }),
 });

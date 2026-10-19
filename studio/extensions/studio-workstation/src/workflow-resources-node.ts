@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import type { Project } from './workflow-types';
 import type { ResourceRequest } from './workflow-resources-types';
-import { sanitizeWorkflowEnvironment, AuthError, type Connection } from './workflow-auth-client';
+import { sanitizeProjectEnvironment, AuthError, type Connection } from './workflow-auth-client';
 import { sanitizeConnectionForSurface } from './workflow-cli-process';
 
 export function requestProjectResource(options: {
@@ -11,7 +11,7 @@ export function requestProjectResource(options: {
   return new Promise((resolve, reject) => {
     options.signal.throwIfAborted();
     const connection = sanitizeConnectionForSurface(options.connection, 'editor');
-    const env: NodeJS.ProcessEnv = sanitizeWorkflowEnvironment(process.env);
+    const env: NodeJS.ProcessEnv = sanitizeProjectEnvironment(process.env);
     env.ELECTRON_RUN_AS_NODE = '1';
     const child = spawn(options.nodePath, [options.worker], { cwd: options.project.folderPath, env, shell: false, stdio: ['pipe', 'pipe', 'pipe'], signal: options.signal });
     let stdout = '', stderr = '';

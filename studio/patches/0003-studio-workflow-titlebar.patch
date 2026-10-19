@@ -44,7 +44,7 @@ index b1df33f2..53dfd3dc 100644
 +MenuRegistry.appendMenuItem(MenuId.TitleBarAdjacentCenter, {
 +	command: {
 +		id: 'studio.openProject',
-+		get title() { return MenuRegistry.getCommand('studio.openProject')?.title ?? localize('studio.runWorkflowProject', "Run Project"); },
++		get title() { return MenuRegistry.getCommand('studio.openProject')?.title ?? localize('studio.runProject', "Run Project"); },
 +		icon: Codicon.play
 +	},
 +	when: ContextKeyExpr.equals('studio.projectAvailable', true),
@@ -74,7 +74,7 @@ index 41154e42..5a9c1410 100644
  	readonly contextKey: string;
  }
  
-+class StudioWorkflowRunActionViewItem extends MenuEntryActionViewItem {
++class StudioProjectRunActionViewItem extends MenuEntryActionViewItem {
 +	override render(container: HTMLElement): void {
 +		this.options.icon = true;
 +		this.options.label = false;
@@ -92,7 +92,7 @@ index 41154e42..5a9c1410 100644
  				},
 -				actionViewItemProvider: (action, options) => createActionViewItem(this.instantiationService, action, options),
 +				actionViewItemProvider: (action, options) => action instanceof MenuItemAction && action.id === 'studio.openProject'
-+					? this.instantiationService.createInstance(StudioWorkflowRunActionViewItem, action, options)
++					? this.instantiationService.createInstance(StudioProjectRunActionViewItem, action, options)
 +					: createActionViewItem(this.instantiationService, action, options),
  				hoverDelegate: this.hoverDelegate
  			}));

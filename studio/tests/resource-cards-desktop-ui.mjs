@@ -44,9 +44,9 @@ for (const language of languages) {
     await symlink(cli, path.join(folder, 'node_modules/@steamharness/cli'), 'dir');
     const manifest = JSON.parse(await readFile(path.join(folder, 'package.json'), 'utf8'));
     const data = path.join(storageDir, createHash('sha256').update(folder).digest('hex').slice(0, 24));
-    const kv = core.createWorkflowKVContext({ projectId: manifest.id, store: core.createLocalWorkflowKVStore({ rootDir: path.join(data, 'kv') }) });
-    const values = core.createWorkflowPersistentValueContext({ projectId: manifest.id,
-      store: core.createLocalWorkflowKVStore({ rootDir: path.join(data, 'values'), storageKind: 'persistent_value' }) });
+    const kv = core.createProjectKVContext({ projectId: manifest.id, store: core.createLocalProjectKVStore({ rootDir: path.join(data, 'kv') }) });
+    const values = core.createProjectPersistentValueContext({ projectId: manifest.id,
+      store: core.createLocalProjectKVStore({ rootDir: path.join(data, 'values'), storageKind: 'persistent_value' }) });
     const document = await core.createKnowledgeDocument({ persistentValue: values }, { title: `${type} guide`, markdown: `# ${type} guide\n\nExact resource content.\n\n- Accessible preview` });
     projects.push({ folder, manifest, data, kv, document });
   }
@@ -154,7 +154,7 @@ for (const language of languages) {
     browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
     for (let attempt = 0; attempt < 100; attempt++) { page = browser.contexts()[0].pages().find(candidate => candidate.url().includes('workbench')); if (page) { break; } await pause(100); }
     assert.ok(page); page.setDefaultTimeout(20_000); page.on('pageerror', error => proof.errors.push(error.message)); await page.setViewportSize({ width: 1440, height: 1000 });
-    await command(`Workflow: ${catalog['command.openWorkflowDemo']}`);
+    await command(`Workflow: ${catalog['command.openProjectDemo']}`);
     let conversationFrame = await frameFor('body[data-surface=editor] #message');
     await conversationFrame.locator('.resource-card').nth(7).waitFor();
     assert.equal(await conversationFrame.locator('.resource-card').count(), 8);
@@ -182,7 +182,7 @@ for (const language of languages) {
     assert.equal(JSON.parse(await readFile(path.join(board.data, 'kanban.json'), 'utf8')).configurations[0].values.title, 'Saved map');
     await card('map').scrollIntoViewIfNeeded(); await screenshot('kanban-inline');
     proof.checks.push('the actual Kanban artifact renders tasks using the named configuration and temporary parameters without overwriting saved configuration');
-    await command(`Workflow: ${catalog['command.openWorkflowAccount']}`);
+    await command(`Workflow: ${catalog['command.openProjectAccount']}`);
     const account = await frameFor('#account-app'); await account.locator('#server-url').fill(serverUrl);
     await account.locator('#login-email').fill('cards@example.com'); await account.locator('#login-password').fill('offline-password'); await account.locator('#login-submit').click();
     await account.locator('#display-name').filter({ hasText: 'Card Test' }).waitFor();
@@ -241,7 +241,7 @@ for (const language of languages) {
     conversationFrame = await frameFor('body[data-surface=editor] #message');
     const serverPreview = card('server-doc').frameLocator('.resource-inline > iframe');
     await serverPreview.locator('.markdown h1').filter({ hasText: 'Shared server guide' }).waitFor();
-    await command(`Workflow: ${catalog['command.logoutWorkflow']}`);
+    await command(`Workflow: ${catalog['command.logoutProject']}`);
     await serverPreview.locator('.resource-preview-status[role=alert]').waitFor();
     assert.equal(await serverPreview.locator('.resource-preview-content').innerText(), '');
     await command(`Workflow: ${catalog['command.openAssistant']}`);

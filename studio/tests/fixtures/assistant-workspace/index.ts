@@ -3,7 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import * as ai from '@earendil-works/pi-ai';
 import { Agent } from '@earendil-works/pi-agent-core';
 
-const task = workflow.defineWorkflow({
+const task = steamharness.defineProject({
   name: 'assistant-workspace-proof',
   async run(input, context) {
     const workdir = process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR;
@@ -15,7 +15,7 @@ const task = workflow.defineWorkflow({
       () => ai.fauxAssistantMessage([ai.fauxToolCall('read', { path: 'scope.txt' })]),
       () => ai.fauxAssistantMessage([ai.fauxText('done')]),
     ]);
-    const agent = await workflow.createAgent({ workdir, pi: {
+    const agent = await steamharness.createAgent({ workdir, pi: {
       Agent, Type: ai.Type, models, model: models.getModel('faux', 'offline'), streamFn: models.streamSimple.bind(models),
       providerId: 'faux', modelId: 'offline', supportedThinkingLevels: ['off'], clampThinkingLevel: () => 'off',
     } });
@@ -30,14 +30,14 @@ const task = workflow.defineWorkflow({
     if (input.message === 'slow') {
       for (let count = 0; count < 200; count++) { context.abortSignal.throwIfAborted(); await new Promise(resolve => setTimeout(resolve, 100)); }
     }
-    return workflow.createOutputPayload({ items: [{ id: 'answer', contentType: 'markdown',
+    return steamharness.createOutputPayload({ items: [{ id: 'answer', contentType: 'markdown',
       content: `Folder: ${workdir}\n\n\`\`\`text\n${cwd}\n\`\`\`\n\nFile: ${file}\n\nInput: ${input.message}`,
     }] });
   },
 });
 
-export const executor = workflow.defineExecutor({
+export const executor = steamharness.defineExecutor({
   projectType: 'conversation', workflow: task,
   tools: [{ name: 'bash', enabled: true, autoApprove: true }, { name: 'read', enabled: true, autoApprove: true }],
-  createInput(context) { return workflow.parseConversationDefaultInputArgs(context.args); },
+  createInput(context) { return steamharness.parseConversationDefaultInputArgs(context.args); },
 });

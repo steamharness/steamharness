@@ -1,5 +1,11 @@
 # Unreleased
 
+### Breaking Changes
+
+- Project endpoints moved from `/api/workflows` to `/api/projects`; `workflowId` / `workflowName` are now `projectId` / `projectName`, and `X-Workflow-Locale` is now `X-SteamHarness-Locale`.
+- Database tables `workflows` / `workflow_*` are now `projects` / `project_*`, and account tables dropped the `workflow_` prefix. Run `docker-internal/deploy/migrate-project-tables.sql` before deploying.
+- Audit event types `workflow.*` are now `project.*`; the object-storage prefix and on-disk data directory are `projects/`.
+
 ### Changes
 
 - Changed publication to check version and source hash against concurrent draft changes.

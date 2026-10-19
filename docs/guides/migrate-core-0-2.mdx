@@ -87,4 +87,4 @@ CLI 0.2 的 Core peer 范围只接受 `0.2.x`，并会在 `run`、`json`、`stru
 - `server`：未登录或 UUID 未绑定时失败；登录并绑定同 UUID 后读写服务器数据，本地位置明确失败。
 - `both`：本地路径可离线使用；服务器路径只在登录并绑定后可用，二者数据不自动同步。
 
-同时检查 `runWorkflow(..., { kvMode: "isolated" })` 的本地和服务器 KV，以及所有知识库调用是否传入了正确的存储位置。若项目使用关联项目，还应确认双方 package 都声明关系，并通过 CLI `--related-project alias=/绝对项目目录` 显式提供每个本地目录。
+同时检查 `runProject(..., { kvMode: "isolated" })` 的本地和服务器 KV，以及所有知识库调用是否传入了正确的存储位置。若项目使用关联项目，还应确认双方 package 都声明关系，并通过 CLI `--related-project alias=/绝对项目目录` 显式提供每个本地目录。

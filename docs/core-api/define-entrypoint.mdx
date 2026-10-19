@@ -7,7 +7,7 @@ description: "定义 Workflow 项目中可独立运行的类型安全入口。"
 
 `workflow.defineEntrypoint<Input, Output>()` 定义 Workflow 项目中的一个可独立运行入口。每个入口拥有自己的 workflow、参数、输入构造、工具、token usage、调试 registry 和上下文扩展；平台选择入口后只执行该入口，不会先执行默认入口。
 
-入口是同一项目下的扁平运行目录，不表示父子调用关系。需要把多个业务流程组合在一次 run 中时，应在 workflow 内显式调用 [`workflow.runWorkflow()`](/core-api/run-workflow)。
+入口是同一项目下的扁平运行目录，不表示父子调用关系。需要把多个业务流程组合在一次 run 中时，应在 workflow 内显式调用 [`workflow.runProject()`](/core-api/run-workflow)。
 
 ## 签名
 
@@ -36,7 +36,7 @@ interface EntrypointGroupDefinition {
 | `description` | `string` | 可选的入口说明。 |
 | `group` | `EntrypointGroupDefinition` | 可选的入口分区。相同分区 `id` 的入口必须使用完全一致的 `title` 和 `order`。 |
 | `workflow` | `Definition<Input, Output>` | 该入口实际执行的 workflow。必填。 |
-| `params` | `ParamDeclaration[]` | 该入口的有序参数与动作入口声明，详见 [`defineExecutor` 参数](/core-api/define-executor#workflowparamdeclaration)。 |
+| `params` | `ParamDeclaration[]` | 该入口的有序参数与动作入口声明，详见 [`defineExecutor` 参数](/core-api/define-executor#projectparamdeclaration)。 |
 | `createInput` | `(context) => Input` | 把该入口的 args 和 `paramValues` 转成 workflow input。必填。 |
 | `resolveParams` | `(context) => ParamResolveResult` | 该入口的参数联动回调。 |
 | `requiredProviders` | `ExecutorProviderName[]` | 该入口需要的 provider；当前内置名称只有 `"llm"`。 |
@@ -60,7 +60,7 @@ export const executor = workflow.defineExecutor({
       id: "main",
       title: "完整流程",
       group: { id: "operations", title: "业务操作", order: 10 },
-      workflow: mainWorkflow,
+      workflow: mainProject,
       params: [],
       createInput() {
         return { errCode: 0, errMessage: "" };
@@ -71,7 +71,7 @@ export const executor = workflow.defineExecutor({
       title: "数据校验",
       description: "仅执行校验阶段。",
       group: { id: "operations", title: "业务操作", order: 10 },
-      workflow: validateWorkflow,
+      workflow: validateProject,
       params: [],
       createInput() {
         return { errCode: 0, errMessage: "" };
@@ -81,7 +81,7 @@ export const executor = workflow.defineExecutor({
 });
 ```
 
-省略入口选择时运行 `defaultEntrypoint`。显式选择 `validate` 时只运行 `validateWorkflow`；`mainWorkflow` 不会先执行。
+省略入口选择时运行 `defaultEntrypoint`。显式选择 `validate` 时只运行 `validateProject`；`mainProject` 不会先执行。
 
 ## 静态结构规则
 
@@ -92,11 +92,11 @@ export const executor = workflow.defineExecutor({
 - `id`、`title`、可选 `description` 和 `defaultEntrypoint` 必须是静态字符串。
 - `group` 必须是静态内联对象；`id`、`title` 必须是非空静态字符串，`order`（如果存在）必须是非负整数。
 - 同一个 `group.id` 的所有入口必须完全一致地声明 `title` 和 `order`，包括 `order` 未设置与已设置的差异。
-- `workflow` 必须引用项目源码中由 `workflow.defineWorkflow(...)` 定义的标识符；可以通过项目内相对路径使用命名、别名或 default import。Structure 会按实际 import/export 绑定解析定义，未引用的同名定义、外部包值或动态构造值都会产生 violation。
+- `workflow` 必须引用项目源码中由 `workflow.defineProject(...)` 定义的标识符；可以通过项目内相对路径使用命名、别名或 default import。Structure 会按实际 import/export 绑定解析定义，未引用的同名定义、外部包值或动态构造值都会产生 violation。
 - ID 必须合法且不能重复；`defaultEntrypoint` 必须命中其中一项。
 - Workflow executor 不再接受顶层 `workflow`、`params`、`createInput`、`resolveParams`、`requiredProviders`、`tools`、`tokenUsage`、`registry` 或 `createContext`。这些字段必须移动到具体入口。
 
-结构报告在项目级返回 `defaultEntrypoint` 和 `entrypoints[]`。每个入口包含 `id`、`title`、可选 `description`、`group`、`workflowName`、`execution`、展平的 `params`、保存动作顺序的 `paramLayout`、`paramResolver`、`tools`、`tokenUsage` 和 `registry`；Workflow 不再返回顶层 `params` 或 `execution` 兼容字段，也不会把各入口的 registry 聚合到 `definitions.registry`。静态分析无法读取或发现分区元数据冲突时，会在 `diagnostics.violations` 中报告明确原因。
+结构报告在项目级返回 `defaultEntrypoint` 和 `entrypoints[]`。每个入口包含 `id`、`title`、可选 `description`、`group`、`projectName`、`execution`、展平的 `params`、保存动作顺序的 `paramLayout`、`paramResolver`、`tools`、`tokenUsage` 和 `registry`；Workflow 不再返回顶层 `params` 或 `execution` 兼容字段，也不会把各入口的 registry 聚合到 `definitions.registry`。静态分析无法读取或发现分区元数据冲突时，会在 `diagnostics.violations` 中报告明确原因。
 
 ## 状态与隔离
 
@@ -106,7 +106,7 @@ export const executor = workflow.defineExecutor({
 | --- | --- |
 | run / report / history | 每次运行记录实际入口 ID 和标题快照。 |
 | 参数、附件、工具策略草稿 | 宿主按项目、解析目标和入口隔离。 |
-| 入口分区展开状态 | 共享运行界面和 CLI Web 仅在声明了至少一个分区时启用分区界面；按 `workflowId + resolved target` 使用版本化 localStorage 键持久化分区展开状态，未分组入口归入本地化“未分组”分区。 |
+| 入口分区展开状态 | 共享运行界面和 CLI Web 仅在声明了至少一个分区时启用分区界面；按 `projectId + resolved target` 使用版本化 localStorage 键持久化分区展开状态，未分组入口归入本地化“未分组”分区。 |
 | registry / debug node | 只读取所选入口的 registry。 |
 | `context.storage.local/server` | 同一项目的入口继续共享每个位置的 workflow namespace。需要业务隔离时由 workflow 自行设计 key。 |
 | Conversation | 不使用 `defineEntrypoint`，也不接受入口选择。 |

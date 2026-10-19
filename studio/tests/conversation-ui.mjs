@@ -247,7 +247,7 @@ try {
   await frame.locator('.assistant .message-content img').waitFor();
   try { await frame.waitForFunction(() => document.querySelector('.assistant .message-content img')?.naturalWidth === 96); }
   catch (error) {
-    proof.generatedImages = await frame.locator('.assistant .message-content img').evaluateAll((images) => images.map((image) => ({ src: image.src, complete: image.complete, width: image.naturalWidth, fileId: image.dataset.workflowFile })));
+    proof.generatedImages = await frame.locator('.assistant .message-content img').evaluateAll((images) => images.map((image) => ({ src: image.src, complete: image.complete, width: image.naturalWidth, fileId: image.dataset.projectFile })));
     throw error;
   }
   await frame.locator('.assistant .message-content img').click(); await frame.locator('.conversation-dialog[open] .image-preview').waitFor();

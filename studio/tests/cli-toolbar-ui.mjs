@@ -22,16 +22,16 @@ const manifest = { id: '94b414b7-cdb4-491d-bc73-7282ebd74692', name: 'Default pr
 await fs.writeFile(path.join(projectDir, 'package.json'), JSON.stringify(manifest));
 await fs.symlink(await fs.realpath(path.join(root, 'examples/conversation/node_modules')), path.join(projectDir, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
 await fs.writeFile(path.join(projectDir, 'index.ts'), `
-  const task = workflow.defineWorkflow({ name: 'toolbar-test', run(input) {
-    return workflow.createOutputPayload({ items: [{ id: 'answer', contentType: 'text', content: input.message }] });
+  const task = steamharness.defineProject({ name: 'toolbar-test', run(input) {
+    return steamharness.createOutputPayload({ items: [{ id: 'answer', contentType: 'text', content: input.message }] });
   } });
-  function credentialsMarker() { return workflow.getServerLLMCredentials(); }
-  export const executor = workflow.defineExecutor({ projectType: 'conversation', workflow: task,
+  function credentialsMarker() { return steamharness.getServerLLMCredentials(); }
+  export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow: task,
     params: [{ kind: 'quick', id: 'ai', label: 'AI configuration with a very long display name', icon: 'sparkle', summary: ['model', 'effort'], fields: [
       { name: 'model', type: 'string', flag: '--model', label: 'Model', defaultValue: 'long-model', control: 'select', options: [
         { value: 'long-model', label: 'Long model name to verify compact AI configuration' }, { value: 'alternate', label: 'Alternate model' } ] },
       { name: 'effort', type: 'string', flag: '--effort', label: 'Effort', defaultValue: 'high', control: 'select', options: [{ value: 'high', label: 'High' }] }
-    ] }], createInput(context) { return { message: workflow.parseConversationDefaultInputArgs(context.args).message }; }
+    ] }], createInput(context) { return { message: steamharness.parseConversationDefaultInputArgs(context.args).message }; }
   });
 `);
 let catalogMode = 'success', delay = 0, copyHostHtml;

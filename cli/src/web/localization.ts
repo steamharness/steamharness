@@ -2,7 +2,7 @@ import { getCurrentLocale, i18n, initI18n, normalizeLocale } from '@steamharness
 import chinese from './messages.zh-cn.json';
 
 if (typeof document !== 'undefined' && document.documentElement) {
-  const requested = new URL(location.href).searchParams.get('workflowLocale');
+  const requested = new URL(location.href).searchParams.get('projectLocale');
   initI18n({ preference: normalizeLocale(requested || document.documentElement.lang || navigator.language) });
 } else if (!i18n.isInitialized) {
   initI18n();

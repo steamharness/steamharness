@@ -13,8 +13,8 @@ import type {
 import type { ConversationContext, ConversationState } from "../conversation/index";
 import type { KVContext, KVNamespace } from "../kv/index";
 import {
-  createWorkflowFailure,
-  toWorkflowError,
+  createProjectFailure,
+  toProjectError,
   HarnessError,
   type RunResult,
 } from "./errors";
@@ -41,7 +41,7 @@ interface NodeMetadataProvider {
 
 let nodeExecutionId = 0;
 
-export function defineWorkflow<Input, Output>(
+export function defineProject<Input, Output>(
   workflow: Definition<Input, Output>,
 ): Definition<Input, Output> {
   return workflow;
@@ -83,14 +83,14 @@ export interface RunWhileOptions<State> {
   metadata?: Partial<NodeMetadata>;
 }
 
-export type RunWorkflowConversationMode = "shared" | "shared-readonly";
-export type RunWorkflowKVMode = "shared" | "isolated";
+export type RunProjectConversationMode = "shared" | "shared-readonly";
+export type RunProjectKVMode = "shared" | "isolated";
 
-export interface RunWorkflowOptions<Output = unknown> {
+export interface RunProjectOptions<Output = unknown> {
   name?: string;
   metadata?: Partial<NodeMetadata>;
-  conversationMode?: RunWorkflowConversationMode;
-  kvMode?: RunWorkflowKVMode;
+  conversationMode?: RunProjectConversationMode;
+  kvMode?: RunProjectKVMode;
   outputVisibility?: "visible" | "hidden";
   emitNode?: boolean;
   maxDepth?: number;
@@ -107,8 +107,8 @@ export interface RunWorkflowOptions<Output = unknown> {
 const DEFAULT_RUN_FOR_MAX_ITERATIONS = 1000;
 const DEFAULT_RUN_WHILE_MAX_ITERATIONS = 100;
 const DEFAULT_RUN_STEAMHARNESS_MAX_DEPTH = 16;
-const RUN_STEAMHARNESS_DEPTH_METADATA_KEY = "__steamHarnessRunWorkflowDepth";
-const RUN_STEAMHARNESS_OUTPUT_BRIDGE_ERROR = Symbol("runWorkflowOutputBridgeError");
+const RUN_STEAMHARNESS_DEPTH_METADATA_KEY = "__steamHarnessRunProjectDepth";
+const RUN_STEAMHARNESS_OUTPUT_BRIDGE_ERROR = Symbol("runProjectOutputBridgeError");
 
 // Make workflow branches first-class runtime nodes so App Trace and Diagram
 // can show selected if / else-if / else paths instead of hiding them in plain TS control flow.
@@ -159,7 +159,7 @@ export async function runIf<Input, Output>(
 
     return output;
   } catch (error) {
-    const workflowError = toWorkflowError(error, {
+    const projectError = toProjectError(error, {
       type: "node_execution",
       message: `Run-if node "${displayName}" failed.`,
       nodeName: displayName,
@@ -167,13 +167,13 @@ export async function runIf<Input, Output>(
 
     await finishNodeExecution(context, execution, "failed", createBranchInfoNode(metadata), {
       input,
-      error: workflowError,
+      error: projectError,
       executionInfo: {
         selectedBranch: undefined,
       },
     });
 
-    throw workflowError;
+    throw projectError;
   }
 }
 
@@ -226,7 +226,7 @@ export async function runFor<State, Item>(
 
     return current;
   } catch (error) {
-    const workflowError = toWorkflowError(error, {
+    const projectError = toProjectError(error, {
       type: "node_execution",
       message: `Run-for node "${displayName}" failed.`,
       nodeName: displayName,
@@ -235,7 +235,7 @@ export async function runFor<State, Item>(
     await finishNodeExecution(context, execution, "failed", createControlFlowInfoNode("run-for", metadata), {
       input,
       output: current,
-      error: workflowError,
+      error: projectError,
       executionInfo: createLoopExecutionInfo({
         loopType: "for",
         iterations: iteration,
@@ -244,7 +244,7 @@ export async function runFor<State, Item>(
       }),
     });
 
-    throw workflowError;
+    throw projectError;
   }
 }
 
@@ -293,7 +293,7 @@ export async function runWhile<State>(
 
     return current;
   } catch (error) {
-    const workflowError = toWorkflowError(error, {
+    const projectError = toProjectError(error, {
       type: "node_execution",
       message: `Run-while node "${displayName}" failed.`,
       nodeName: displayName,
@@ -302,7 +302,7 @@ export async function runWhile<State>(
     await finishNodeExecution(context, execution, "failed", createControlFlowInfoNode("run-while", metadata), {
       input,
       output: current,
-      error: workflowError,
+      error: projectError,
       executionInfo: createLoopExecutionInfo({
         loopType: "while",
         iterations: iteration,
@@ -311,7 +311,7 @@ export async function runWhile<State>(
       }),
     });
 
-    throw workflowError;
+    throw projectError;
   }
 }
 
@@ -336,30 +336,30 @@ function createSelectedBranchInfo<Input, Output>(
   };
 }
 
-export async function runWorkflow<Input, Output>(
+export async function runProject<Input, Output>(
   workflow: Definition<Input, Output>,
   input: Input,
   context: RunContext,
-  options?: RunWorkflowOptions<Output>,
+  options?: RunProjectOptions<Output>,
 ): Promise<Output> {
-  const conversationMode = resolveRunWorkflowConversationMode(options);
-  const kvMode = resolveRunWorkflowKVMode(options);
-  const outputVisibility = resolveRunWorkflowOutputVisibility(options);
-  const outputBridge = createRunWorkflowOutputBridge(options);
+  const conversationMode = resolveRunProjectConversationMode(options);
+  const kvMode = resolveRunProjectKVMode(options);
+  const outputVisibility = resolveRunProjectOutputVisibility(options);
+  const outputBridge = createRunProjectOutputBridge(options);
   const maxDepth = normalizeMaxIterations(options?.maxDepth, DEFAULT_RUN_STEAMHARNESS_MAX_DEPTH);
-  const depth = readRunWorkflowDepth(context);
+  const depth = readRunProjectDepth(context);
   if (depth >= maxDepth) {
     throw new HarnessError({
       type: "execution",
-      message: `runWorkflow exceeded maxDepth (${maxDepth}) while calling "${workflow.name}".`,
+      message: `runProject exceeded maxDepth (${maxDepth}) while calling "${workflow.name}".`,
       metadata: {
-        workflow: workflow.name,
+        project: workflow.name,
         maxDepth,
         depth,
       },
     });
   }
-  const childContext = createRunWorkflowContext(context, {
+  const childContext = createRunProjectContext(context, {
     workflow,
     conversationMode,
     kvMode,
@@ -370,7 +370,7 @@ export async function runWorkflow<Input, Output>(
   const displayName = options?.name?.trim() || workflow.name;
   const emitNode = options?.emitNode !== false;
   const execution = emitNode
-    ? await beginBranchExecution(context, "run-workflow", createWorkflowCallMetadata(displayName, options?.metadata))
+    ? await beginBranchExecution(context, "run-workflow", createProjectCallMetadata(displayName, options?.metadata))
     : undefined;
 
   try {
@@ -379,10 +379,10 @@ export async function runWorkflow<Input, Output>(
     await outputBridge?.emitReturnedOutputIfNeeded(output);
     outputBridge?.throwIfFailed();
     if (execution !== undefined) {
-      await finishNodeExecution(context, execution, "success", createWorkflowCallInfoNode(execution.metadata), {
+      await finishNodeExecution(context, execution, "success", createProjectCallInfoNode(execution.metadata), {
         input,
         output,
-        executionInfo: createWorkflowCallExecutionInfo({
+        executionInfo: createProjectCallExecutionInfo({
           workflow,
           conversationMode,
           kvMode,
@@ -394,22 +394,22 @@ export async function runWorkflow<Input, Output>(
     return output;
   } catch (error) {
     const bridgeError = outputBridge?.readError();
-    const cause = bridgeError === undefined ? error : createRunWorkflowCombinedError(error, bridgeError);
-    const workflowError = toWorkflowError(error, {
+    const cause = bridgeError === undefined ? error : createRunProjectCombinedError(error, bridgeError);
+    const projectError = toProjectError(error, {
       type: "execution",
       message: `Workflow "${workflow.name}" failed.`,
       cause,
       metadata: {
-        workflow: workflow.name,
+        project: workflow.name,
         ...(bridgeError === undefined ? {} : { outputBridgeFailed: true }),
       },
     });
 
     if (execution !== undefined) {
-      await finishNodeExecution(context, execution, "failed", createWorkflowCallInfoNode(execution.metadata), {
+      await finishNodeExecution(context, execution, "failed", createProjectCallInfoNode(execution.metadata), {
         input,
-        error: workflowError,
-        executionInfo: createWorkflowCallExecutionInfo({
+        error: projectError,
+        executionInfo: createProjectCallExecutionInfo({
           workflow,
           conversationMode,
           kvMode,
@@ -419,11 +419,11 @@ export async function runWorkflow<Input, Output>(
       });
     }
 
-    throw workflowError;
+    throw projectError;
   }
 }
 
-export async function safeRunWorkflow<Input, Output>(
+export async function safeRunProject<Input, Output>(
   workflow: Definition<Input, Output>,
   input: Input,
   context: RunContext,
@@ -434,7 +434,7 @@ export async function safeRunWorkflow<Input, Output>(
       data: await workflow.run(input, context),
     };
   } catch (error) {
-    return createWorkflowFailure(error);
+    return createProjectFailure(error);
   }
 }
 
@@ -496,32 +496,32 @@ export async function runNode<Input, Output>(
 
     return output;
   } catch (error) {
-    const workflowError = toWorkflowError(error, {
+    const projectError = toProjectError(error, {
       type: "node_execution",
       message: `Node "${nodeName}" failed.`,
       nodeName,
     });
 
-    if (workflowError.type === "user_input_required") {
+    if (projectError.type === "user_input_required") {
       // A user-input pause is resumable; keep the node running in the
       // report so Diagram can show a waiting state instead of a failed route.
-      throw workflowError;
+      throw projectError;
     }
 
-    if (workflowError.type === "execution_aborted") {
+    if (projectError.type === "execution_aborted") {
       // The user-input node throws execution_aborted when the
       // host cancels a paused run ("结束运行"). Propagate the abort
-      // unchanged so the executor's createAbortedWorkflowResult handler
+      // unchanged so the executor's createAbortedProjectResult handler
       // surfaces the run as status="aborted" instead of a failed node.
-      throw workflowError;
+      throw projectError;
     }
 
     await finishNodeExecution(context, execution, "failed", node, {
       input,
-      error: workflowError,
+      error: projectError,
     });
 
-    throw workflowError;
+    throw projectError;
   }
 }
 
@@ -565,28 +565,28 @@ export async function runStreamNode<Input, Chunk, Output>(
 
     return result;
   } catch (error) {
-    const workflowError = toWorkflowError(error, {
+    const projectError = toProjectError(error, {
       type: "stream_interrupted",
       message: `Stream node "${nodeName}" failed.`,
       nodeName,
     });
 
-    if (workflowError.type === "user_input_required") {
+    if (projectError.type === "user_input_required") {
       // Tool approval can pause from inside streaming agent nodes.
       // Keep the stream node in its running/waiting state, matching runNode().
-      throw workflowError;
+      throw projectError;
     }
 
-    if (workflowError.type === "execution_aborted") {
-      throw workflowError;
+    if (projectError.type === "execution_aborted") {
+      throw projectError;
     }
 
     await finishNodeExecution(context, execution, "failed", node, {
       input,
-      error: workflowError,
+      error: projectError,
     });
 
-    throw workflowError;
+    throw projectError;
   }
 }
 
@@ -717,26 +717,26 @@ function createControlFlowMetadata(
   };
 }
 
-function resolveRunWorkflowConversationMode(
-  options: RunWorkflowOptions | undefined,
-): RunWorkflowConversationMode {
+function resolveRunProjectConversationMode(
+  options: RunProjectOptions | undefined,
+): RunProjectConversationMode {
   return options?.conversationMode ?? "shared";
 }
 
-function resolveRunWorkflowKVMode(
-  options: RunWorkflowOptions | undefined,
-): RunWorkflowKVMode {
+function resolveRunProjectKVMode(
+  options: RunProjectOptions | undefined,
+): RunProjectKVMode {
   return options?.kvMode ?? "shared";
 }
 
-function createRunWorkflowContext<Input, Output>(
+function createRunProjectContext<Input, Output>(
   context: RunContext,
   options: {
     workflow: Definition<Input, Output>;
-    conversationMode: RunWorkflowConversationMode;
-    kvMode: RunWorkflowKVMode;
+    conversationMode: RunProjectConversationMode;
+    kvMode: RunProjectKVMode;
     outputVisibility: "visible" | "hidden";
-    outputBridge?: RunWorkflowOutputBridge;
+    outputBridge?: RunProjectOutputBridge;
     depth: number;
   },
 ): RunContext {
@@ -745,7 +745,7 @@ function createRunWorkflowContext<Input, Output>(
     options.kvMode !== "isolated" &&
     options.outputVisibility !== "hidden" &&
     options.outputBridge === undefined &&
-    options.depth === readRunWorkflowDepth(context)
+    options.depth === readRunProjectDepth(context)
   ) {
     return context;
   }
@@ -756,14 +756,14 @@ function createRunWorkflowContext<Input, Output>(
       ? {
           local: {
             ...context.storage.local,
-            kv: createRunWorkflowIsolatedKVContext(
+            kv: createRunProjectIsolatedKVContext(
               context.storage.local.kv,
               options.workflow.name,
             ),
           },
           server: {
             ...context.storage.server,
-            kv: createRunWorkflowIsolatedKVContext(
+            kv: createRunProjectIsolatedKVContext(
               context.storage.server.kv,
               options.workflow.name,
             ),
@@ -777,7 +777,7 @@ function createRunWorkflowContext<Input, Output>(
       ...context.metadata,
       [RUN_STEAMHARNESS_DEPTH_METADATA_KEY]: options.depth,
     },
-    nodeHooks: createRunWorkflowNodeHooks(context.nodeHooks, {
+    nodeHooks: createRunProjectNodeHooks(context.nodeHooks, {
       outputVisibility: options.outputVisibility,
       outputBridge: options.outputBridge,
     }),
@@ -819,13 +819,13 @@ function createReadonlyDisabledConversationState(
   };
 }
 
-function createRunWorkflowIsolatedKVContext(
+function createRunProjectIsolatedKVContext(
   kv: KVContext,
   childProjectName: string,
 ): KVContext {
-  const workflowPrefix = `runWorkflow:${childProjectName}`;
-  const conversationPrefix = `${workflowPrefix}:conversation`;
-  const project = createPrefixedKVNamespace(kv, workflowPrefix);
+  const projectPrefix = `runProject:${childProjectName}`;
+  const conversationPrefix = `${projectPrefix}:conversation`;
+  const project = createPrefixedKVNamespace(kv, projectPrefix);
 
   return {
     getValue: project.getValue,
@@ -858,20 +858,20 @@ function createPrefixedKVNamespace(
   };
 }
 
-function readRunWorkflowDepth(context: RunContext): number {
+function readRunProjectDepth(context: RunContext): number {
   const value = context.metadata?.[RUN_STEAMHARNESS_DEPTH_METADATA_KEY];
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? Math.floor(value)
     : 0;
 }
 
-function createRunWorkflowCombinedError(error: unknown, bridgeError: unknown): Error {
+function createRunProjectCombinedError(error: unknown, bridgeError: unknown): Error {
   const combined = new Error(
     `Workflow failed after output bridge handler failed: ${readErrorMessage(bridgeError)}; workflow error: ${readErrorMessage(error)}`,
   );
-  combined.name = "RunWorkflowOutputBridgeError";
+  combined.name = "RunProjectOutputBridgeError";
   (combined as { cause?: unknown }).cause = {
-    workflowError: error,
+    projectError: error,
     outputBridgeError: bridgeError,
   };
   return combined;
@@ -881,7 +881,7 @@ function readErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function createWorkflowCallMetadata(
+function createProjectCallMetadata(
   title: string,
   metadata: Partial<NodeMetadata> | undefined,
 ): NodeMetadata {
@@ -892,22 +892,22 @@ function createWorkflowCallMetadata(
   };
 }
 
-function createWorkflowCallInfoNode(
+function createProjectCallInfoNode(
   metadata: NodeMetadata | undefined,
 ): NodeExecutionInfoProvider & StandardNodeNameProvider & NodeMetadataProvider {
-  return createControlFlowInfoNode("run-workflow", metadata ?? createWorkflowCallMetadata("Run workflow", undefined));
+  return createControlFlowInfoNode("run-workflow", metadata ?? createProjectCallMetadata("Run workflow", undefined));
 }
 
-function createWorkflowCallExecutionInfo<Input, Output>(options: {
+function createProjectCallExecutionInfo<Input, Output>(options: {
   workflow: Definition<Input, Output>;
-  conversationMode: RunWorkflowConversationMode;
-  kvMode: RunWorkflowKVMode;
+  conversationMode: RunProjectConversationMode;
+  kvMode: RunProjectKVMode;
   outputVisibility: "visible" | "hidden";
-  outputBridge?: RunWorkflowOutputBridge;
+  outputBridge?: RunProjectOutputBridge;
 }): {
   projectName: string;
-  conversationMode: RunWorkflowConversationMode;
-  kvMode: RunWorkflowKVMode;
+  conversationMode: RunProjectConversationMode;
+  kvMode: RunProjectKVMode;
   outputVisibility: "visible" | "hidden";
   outputBridge: boolean;
 } {
@@ -920,13 +920,13 @@ function createWorkflowCallExecutionInfo<Input, Output>(options: {
   };
 }
 
-function resolveRunWorkflowOutputVisibility(
-  options: RunWorkflowOptions<unknown> | undefined,
+function resolveRunProjectOutputVisibility(
+  options: RunProjectOptions<unknown> | undefined,
 ): "visible" | "hidden" {
   return options?.outputVisibility ?? "visible";
 }
 
-interface RunWorkflowOutputBridge {
+interface RunProjectOutputBridge {
   handleChunk(event: NodeExecutionHookChunkEvent): Promise<void>;
   handleFinish(event: NodeExecutionHookFinishEvent): Promise<void>;
   emitReturnedOutputIfNeeded(output: unknown): Promise<void>;
@@ -934,9 +934,9 @@ interface RunWorkflowOutputBridge {
   readError(): unknown | undefined;
 }
 
-function createRunWorkflowOutputBridge<Output>(
-  options: RunWorkflowOptions<Output> | undefined,
-): RunWorkflowOutputBridge | undefined {
+function createRunProjectOutputBridge<Output>(
+  options: RunProjectOptions<Output> | undefined,
+): RunProjectOutputBridge | undefined {
   if (options?.onOutputChunk === undefined && options?.onOutput === undefined) {
     return undefined;
   }
@@ -954,7 +954,7 @@ function createRunWorkflowOutputBridge<Output>(
       await handler();
     } catch (error) {
       handlerError = error;
-      throw createRunWorkflowOutputBridgeHookError(error);
+      throw createRunProjectOutputBridgeHookError(error);
     }
   }
 
@@ -1000,11 +1000,11 @@ function createRunWorkflowOutputBridge<Output>(
   };
 }
 
-function createRunWorkflowNodeHooks(
+function createRunProjectNodeHooks(
   nodeHooks: RunContext["nodeHooks"],
   options: {
     outputVisibility: "visible" | "hidden";
-    outputBridge?: RunWorkflowOutputBridge;
+    outputBridge?: RunProjectOutputBridge;
   },
 ): RunContext["nodeHooks"] {
   if (nodeHooks === undefined && options.outputBridge === undefined) {
@@ -1048,15 +1048,15 @@ function hideOutputEventIfNeeded<Event extends NodeExecutionHookFinishEvent>(
   };
 }
 
-function createRunWorkflowOutputBridgeHookError(error: unknown): Error {
+function createRunProjectOutputBridgeHookError(error: unknown): Error {
   const bridgeError = new Error(readErrorMessage(error));
-  bridgeError.name = "RunWorkflowOutputBridgeHandlerError";
+  bridgeError.name = "RunProjectOutputBridgeHandlerError";
   (bridgeError as { cause?: unknown }).cause = error;
   (bridgeError as { [RUN_STEAMHARNESS_OUTPUT_BRIDGE_ERROR]?: true })[RUN_STEAMHARNESS_OUTPUT_BRIDGE_ERROR] = true;
   return bridgeError;
 }
 
-function isRunWorkflowOutputBridgeHookError(error: unknown): boolean {
+function isRunProjectOutputBridgeHookError(error: unknown): boolean {
   return Boolean(
     typeof error === "object" &&
     error !== null &&
@@ -1127,7 +1127,7 @@ async function safeCallNodeHook<Event>(
   try {
     await hook(event);
   } catch (error) {
-    if (isRunWorkflowOutputBridgeHookError(error)) {
+    if (isRunProjectOutputBridgeHookError(error)) {
       throw error;
     }
     return;

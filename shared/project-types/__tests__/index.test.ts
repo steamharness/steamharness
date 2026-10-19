@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  getWorkflowProjectTypeDefinition,
-  getWorkflowProjectTypeLabel,
-  getWorkflowProjectTypeLabelKey,
-  isWorkflowExecutorProjectType,
-  isWorkflowProjectType,
+  getProjectKindDefinition,
+  getProjectKindLabel,
+  getProjectKindLabelKey,
+  isExecutorProjectKind,
+  isProjectKind,
   STEAMHARNESS_EXECUTOR_PROJECT_TYPES,
   STEAMHARNESS_PROJECT_TYPE_DEFINITIONS,
   STEAMHARNESS_PROJECT_TYPES,
@@ -26,15 +26,15 @@ describe("project type registry", () => {
 
     expect(STEAMHARNESS_EXECUTOR_PROJECT_TYPES).toEqual(registeredExecutorTypes);
     expect(STEAMHARNESS_EXECUTOR_PROJECT_TYPES).toEqual(["workflow", "conversation"]);
-    expect(isWorkflowExecutorProjectType("kanban")).toBe(false);
-    expect(getWorkflowProjectTypeDefinition("kanban").hasExecutor).toBe(false);
+    expect(isExecutorProjectKind("kanban")).toBe(false);
+    expect(getProjectKindDefinition("kanban").hasExecutor).toBe(false);
   });
 
   it("provides labels and card defaults through the same registry", () => {
-    expect(getWorkflowProjectTypeLabel("conversation")).toBe("Conversation");
-    expect(getWorkflowProjectTypeLabelKey("workflow")).toBe("projectTypeWorkflow");
-    expect(getWorkflowProjectTypeLabelKey("conversation")).toBe("projectTypeConversation");
-    expect(getWorkflowProjectTypeDefinition("kanban")).toMatchObject({
+    expect(getProjectKindLabel("conversation")).toBe("Conversation");
+    expect(getProjectKindLabelKey("workflow")).toBe("projectTypeProject");
+    expect(getProjectKindLabelKey("conversation")).toBe("projectTypeConversation");
+    expect(getProjectKindDefinition("kanban")).toMatchObject({
       label: "Kanban",
       labelKey: "projectTypeKanban",
       defaultIcon: "boxes",
@@ -44,9 +44,9 @@ describe("project type registry", () => {
 
   it("keeps runtime guards aligned with registered types", () => {
     for (const projectType of STEAMHARNESS_PROJECT_TYPES) {
-      expect(isWorkflowProjectType(projectType)).toBe(true);
+      expect(isProjectKind(projectType)).toBe(true);
     }
-    expect(isWorkflowProjectType("dashboard")).toBe(false);
-    expect(isWorkflowProjectType(undefined)).toBe(false);
+    expect(isProjectKind("dashboard")).toBe(false);
+    expect(isProjectKind(undefined)).toBe(false);
   });
 });

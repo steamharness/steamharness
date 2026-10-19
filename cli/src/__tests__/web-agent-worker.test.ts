@@ -33,8 +33,8 @@ it('controls the real worker over IPC and replays pending commands after reopeni
     const port = (model.address() as { port: number }).port;
     await writeFile(path.join(directory, 'index.ts'), `
       import { existsSync, writeFileSync } from 'node:fs';
-      const registry = workflow.createAgentRegistry();
-      registry.install(workflow.defineAgentExtension({ name: 'ipc-extension', tasks: [workflow.defineAgentTask({
+      const registry = steamharness.createAgentRegistry();
+      registry.install(steamharness.defineAgentExtension({ name: 'ipc-extension', tasks: [steamharness.defineAgentTask({
         name: 'ipc.timer', version: 1,
         initial: input => ({ phase: 'sleep', wakeAt: input.wakeAt }),
         phases: { sleep: async (task, api, ctx) => {
@@ -43,9 +43,9 @@ it('controls the real worker over IPC and replays pending commands after reopeni
         } },
         abort: async (_task, api, ctx) => { await api.commit(() => ({ status: 'terminal', outcome: { status: 'aborted' } }), ctx); },
       })] }));
-      export const executor = workflow.defineExecutor({
+      export const executor = steamharness.defineExecutor({
         projectType: 'conversation',
-        workflow: workflow.createAgentConversationWorkflow({
+        workflow: steamharness.createAgentConversationProject({
           projectName: 'IPC', projectName: 'ipc', outputItemId: 'answer',
           provider: 'openai', model: 'ipc-test', apiKind: 'openai-completions',
           baseUrl: 'http://127.0.0.1:${port}/v1', apiKey: 'offline-fixture', contextWindow: 8192,
@@ -59,7 +59,7 @@ it('controls the real worker over IPC and replays pending commands after reopeni
         }),
         conversation: { durable: { enabled: true }, recovery: { enabled: true } },
         tools: [{ name: 'update_plan', enabled: true, autoApprove: true }], params: [],
-        createInput({ args }) { return workflow.createAgentProjectInput(args); },
+        createInput({ args }) { return steamharness.createAgentProjectInput(args); },
       });
     `);
     const inspected = await runtime.inspect([directory]);

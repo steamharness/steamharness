@@ -7,16 +7,16 @@
 
 export {
   STEAMHARNESS_CAPABILITIES,
-  createWorkflowCapabilityServer,
-  createWorkflowCapabilityTools,
-  findWorkflowCapability,
-  isWorkflowCapabilityAvailable,
-  listWorkflowCapabilityToolIds,
-  runWorkflowCapabilityAction,
+  createProjectCapabilityServer,
+  createProjectCapabilityTools,
+  findProjectCapability,
+  isProjectCapabilityAvailable,
+  listProjectCapabilityToolIds,
+  runProjectCapabilityAction,
   type CapabilityContext,
 } from "./assemble";
 
-export { selectWorkflowStorage } from "./storage";
+export { selectProjectStorage } from "./storage";
 export {
   KANBAN_METHODS_MCP_SERVER_ID, KANBAN_METHODS_MCP_TOOL_NAME, KANBAN_METHODS_MCP_TOOL_ID,
   KANBAN_METHODS_CAPABILITY, readKanbanMethodsBridgeConfig, runKanbanMethodsAction,

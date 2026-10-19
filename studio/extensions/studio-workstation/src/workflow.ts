@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { projectTypeLabels, projectVersion, projectDisplayName, type Project } from './workflow-types';
 import type { AccountController } from './workflow-auth';
 import type { Launcher, WebSession } from './workflow-cli-types';
-import { workflowFrameHtml } from './workflow-webview';
+import { projectFrameHtml } from './workflow-webview';
 import { AssistantViewProvider, type AssistantConversation } from './assistant-view';
 import { ResourceViews } from './workflow-resources-view';
 import { TraceView } from './workflow-trace-view';
@@ -12,8 +12,8 @@ import { RelatedProjectsView } from './workflow-related-projects-view';
 import { VersionsView } from './workflow-versions-view';
 import type { ProjectVersionStatus } from './steamharness-server-projects';
 import { assistantWorkspaceAvailable } from './assistant-workspace';
-import { bindWorkflowClipboard } from './workflow-clipboard';
-import { bindWorkflowResourceCards, type ResourceCardResult } from './workflow-resource-cards';
+import { bindProjectClipboard } from './workflow-clipboard';
+import { bindProjectResourceCards, type ResourceCardResult } from './workflow-resource-cards';
 import { projectTypeIcons as icons } from './projects';
 import type { ProjectIcons } from './project-icons';
 
@@ -21,7 +21,7 @@ const ignored = new Set(['node_modules', 'vendor', 'dist', 'out', 'build', 'upst
 const containers = new Set(['workspace', 'workflow', 'projects', 'examples']);
 const utf8 = new TextDecoder();
 
-export async function findWorkflowCandidates(root: vscode.Uri, depth = 0): Promise<vscode.Uri[]> {
+export async function findProjectCandidates(root: vscode.Uri, depth = 0): Promise<vscode.Uri[]> {
   if (depth > 4) { return []; }
   try {
     const pkg = JSON.parse(utf8.decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(root, 'package.json'))));
@@ -31,7 +31,7 @@ export async function findWorkflowCandidates(root: vscode.Uri, depth = 0): Promi
   try { children = await vscode.workspace.fs.readDirectory(root); } catch { return []; }
   const nested = await Promise.all(children
     .filter(([name, type]) => type === vscode.FileType.Directory && !name.startsWith('.') && !ignored.has(name) && (depth === 0 || containers.has(name) || containers.has(root.path.split('/').at(-1) ?? '')))
-    .map(([name]) => findWorkflowCandidates(vscode.Uri.joinPath(root, name), depth + 1)));
+    .map(([name]) => findProjectCandidates(vscode.Uri.joinPath(root, name), depth + 1)));
   return nested.flat();
 }
 
@@ -61,7 +61,7 @@ class ProjectsProvider implements vscode.TreeDataProvider<Project> {
   }
 }
 
-export async function activateWorkflow(context: vscode.ExtensionContext, launcher: Launcher, output: vscode.OutputChannel, account: AccountController, projectIcons?: ProjectIcons): Promise<{
+export async function activateProject(context: vscode.ExtensionContext, launcher: Launcher, output: vscode.OutputChannel, account: AccountController, projectIcons?: ProjectIcons): Promise<{
   getProjects(): Project[]; onDidChangeProjects: vscode.Event<void>;
   getVersionStatus(project: Project): ProjectVersionStatus; onDidChangeVersions: vscode.Event<void>;
 }> {
@@ -197,8 +197,8 @@ export async function activateWorkflow(context: vscode.ExtensionContext, launche
       if (closed || !projectAvailable(project)) { await close(); throw new Error('Workflow workspace has closed.'); }
       panel.webview.options = { enableScripts: true, localResourceRoots: [], portMapping: [{ webviewPort: Number(new URL(session.ready.url).port), extensionHostPort: Number(new URL(session.ready.url).port) }] };
       const traceBinding = trace.bind(project, session.ready.traceProtocolVersion, panel.webview);
-      const clipboardBinding = bindWorkflowClipboard(panel.webview);
-      const resourceBinding = bindWorkflowResourceCards(panel.webview, session.ready.url, async result => {
+      const clipboardBinding = bindProjectClipboard(panel.webview);
+      const resourceBinding = bindProjectResourceCards(panel.webview, session.ready.url, async result => {
         if (closed) { throw new Error(t('Unable to open the resource.')); }
         await openCard(result, project, session, address);
       });
@@ -206,7 +206,7 @@ export async function activateWorkflow(context: vscode.ExtensionContext, launche
         if (message?.type === 'workflow-account' && message.version === 1) { account.open(); }
         else if (!clipboardBinding.receive(message) && !resourceBinding.receive(message)) { traceBinding.receive(message); }
       }));
-      panel.webview.html = workflowFrameHtml(address.href, project.name, project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language);
+      panel.webview.html = projectFrameHtml(address.href, project.name, project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language);
       if ('reveal' in panel) {
         panel.title = projectDisplayName(project); panel.iconPath = new vscode.ThemeIcon(icons[project.projectType]);
         workspaces.set(project.uri, { panel, project, running: true, close });
@@ -265,11 +265,11 @@ export async function activateWorkflow(context: vscode.ExtensionContext, launche
       const disposal = preview.onDidDispose(() => { clearTimeout(timer); listener.dispose(); disposal.dispose(); reject(new Error(t('Unable to open the resource.'))); });
     }) : Promise.resolve();
     preview.iconPath = new vscode.ThemeIcon(card.kind === 'knowledge' ? 'book' : card.kind === 'kv' ? 'database' : 'preview');
-    const clipboard = bindWorkflowClipboard(preview.webview);
+    const clipboard = bindProjectClipboard(preview.webview);
     const subscriptions = [clipboard, preview.webview.onDidReceiveMessage(message => clipboard.receive(message)),
       vscode.window.onDidChangeActiveColorTheme(() => void preview.webview.postMessage({ type: 'workflow-host', theme: theme() })), session.onExit(() => preview.dispose())];
     preview.onDidDispose(() => { for (const listener of subscriptions) { listener.dispose(); } });
-    preview.webview.html = workflowFrameHtml(url.href, card.title, owner.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language);
+    preview.webview.html = projectFrameHtml(url.href, card.title, owner.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language);
     if (result.action === 'window') {
       try { await ready; preview.reveal(); await vscode.commands.executeCommand('workbench.action.moveEditorToNewWindow'); }
       catch (error) { preview.dispose(); throw error; }
@@ -278,7 +278,7 @@ export async function activateWorkflow(context: vscode.ExtensionContext, launche
   const assistant = new AssistantViewProvider(context, launcher, output, (project, view) => createWorkspace(project, undefined, view));
   const resources = new ResourceViews(context, launcher, account, output);
   const trace = new TraceView(context, openProject, output);
-  const related = new RelatedProjectsView(context, output, findWorkflowCandidates, projectIcons);
+  const related = new RelatedProjectsView(context, output, findProjectCandidates, projectIcons);
   const prepareUpgrade = async (project: Project, signal: AbortSignal): Promise<vscode.Disposable> => {
     signal.throwIfAborted();
     if (!projectAvailable(project) || upgrading.has(project.uri)) { throw new Error(t('The project is no longer available for upgrading.')); }
@@ -326,7 +326,7 @@ export async function activateWorkflow(context: vscode.ExtensionContext, launche
   const inspectProjects = async (epoch: number): Promise<void> => {
     if (upgrading.size) { return; }
     if (!launcher.available || !vscode.workspace.isTrusted) { provider.projects = []; launcher.updateAnalysisProjects?.([]); provider.refresh(); updateEntry(); return; }
-    const candidates = (await Promise.all((vscode.workspace.workspaceFolders ?? []).map(folder => findWorkflowCandidates(folder.uri)))).flat();
+    const candidates = (await Promise.all((vscode.workspace.workspaceFolders ?? []).map(folder => findProjectCandidates(folder.uri)))).flat();
     if (disposed || epoch !== scanEpoch || upgrading.size) { return; }
     const byPath = new Map(candidates.map(uri => [uri.fsPath, uri]));
     const result = await launcher.inspect([...byPath.keys()]);

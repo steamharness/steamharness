@@ -40,7 +40,7 @@ await context.storage.server.persistentValue.setValue("release", "ready");
 
 每个位置都包含相同的 `kv` 和 `persistentValue`：顶层方法直接访问当前项目，`.conversation` 访问当前项目的当前会话。两类数据使用强制隔离的存储域，相同 key 不会互相覆盖。`context.kv`、`context.persistentValue`、`.workflow` 和全局作用域均不存在。
 
-`local` 项目只能使用 `context.storage.local`，`server` 项目只能使用 `context.storage.server`。`both` 项目可以在同一次运行中显式访问任一位置，但两端始终是独立数据集。`runWorkflow(..., { kvMode: "isolated" })` 会同时隔离本地和服务器 KV 的 project/conversation scope。
+`local` 项目只能使用 `context.storage.local`，`server` 项目只能使用 `context.storage.server`。`both` 项目可以在同一次运行中显式访问任一位置，但两端始终是独立数据集。`runProject(..., { kvMode: "isolated" })` 会同时隔离本地和服务器 KV 的 project/conversation scope。
 
 ## 服务器身份
 

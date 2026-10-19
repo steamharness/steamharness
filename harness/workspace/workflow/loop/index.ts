@@ -2,7 +2,7 @@ import type { LoopInput, LoopOutputPayload, LoopState } from "./interface";
 
 const LOOP_RESULT_ITEM_ID = "loop-result";
 
-const seedNode = workflow.createInputNode<LoopInput, LoopState>({
+const seedNode = steamharness.createInputNode<LoopInput, LoopState>({
   name: "loop-seed",
   parse(input) {
     return {
@@ -16,7 +16,7 @@ const seedNode = workflow.createInputNode<LoopInput, LoopState>({
   },
 });
 
-const addRoundNode = workflow.createInputNode<LoopState & { value: number; index: number }, LoopState>({
+const addRoundNode = steamharness.createInputNode<LoopState & { value: number; index: number }, LoopState>({
   name: "add-round",
   parse(input) {
     const total = input.total + input.value;
@@ -31,7 +31,7 @@ const addRoundNode = workflow.createInputNode<LoopState & { value: number; index
   },
 });
 
-const burstBoostNode = workflow.createInputNode<LoopState & { value: number; index: number; iteration: number }, LoopState>({
+const burstBoostNode = steamharness.createInputNode<LoopState & { value: number; index: number; iteration: number }, LoopState>({
   name: "burst-boost",
   parse(input) {
     const boost = clampBoost(input.value, input.target - input.total);
@@ -48,7 +48,7 @@ const burstBoostNode = workflow.createInputNode<LoopState & { value: number; ind
   },
 });
 
-const steadyBoostNode = workflow.createInputNode<LoopState & { iteration: number }, LoopState>({
+const steadyBoostNode = steamharness.createInputNode<LoopState & { iteration: number }, LoopState>({
   name: "steady-boost",
   parse(input) {
     const boost = clampBoost(3, input.target - input.total);
@@ -65,7 +65,7 @@ const steadyBoostNode = workflow.createInputNode<LoopState & { iteration: number
   },
 });
 
-const finishBoostNode = workflow.createInputNode<LoopState & { iteration: number }, LoopState>({
+const finishBoostNode = steamharness.createInputNode<LoopState & { iteration: number }, LoopState>({
   name: "finish-boost",
   parse(input) {
     const boost = clampBoost(2, input.target - input.total);
@@ -82,7 +82,7 @@ const finishBoostNode = workflow.createInputNode<LoopState & { iteration: number
   },
 });
 
-const auditBoostNode = workflow.createInputNode<LoopState & { iteration: number }, LoopState>({
+const auditBoostNode = steamharness.createInputNode<LoopState & { iteration: number }, LoopState>({
   name: "boost-audit",
   parse(input) {
     return {
@@ -95,12 +95,12 @@ const auditBoostNode = workflow.createInputNode<LoopState & { iteration: number 
   },
 });
 
-const outputNode = workflow.createOutputNode<LoopState, LoopOutputPayload>({
+const outputNode = steamharness.createOutputNode<LoopState, LoopOutputPayload>({
   name: "loop-output",
   async *stream(input) {
     // String chunks use host-generated ids. Stream the loop report as
     // one stable item so live output and final report do not duplicate.
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_start",
       item: {
         id: LOOP_RESULT_ITEM_ID,
@@ -110,19 +110,19 @@ const outputNode = workflow.createOutputNode<LoopState, LoopOutputPayload>({
         collapsed: false,
       },
     });
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_delta",
       itemId: LOOP_RESULT_ITEM_ID,
       delta: createLoopOutputContent(input),
     });
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_end",
       itemId: LOOP_RESULT_ITEM_ID,
     });
   },
   format(stream, input) {
     return {
-      ...workflow.createOutputPayload({
+      ...steamharness.createOutputPayload({
         items: stream.items,
       }),
       rounds: input.rounds,
@@ -134,28 +134,28 @@ const outputNode = workflow.createOutputNode<LoopState, LoopOutputPayload>({
   },
 });
 
-export const loopWorkflow = workflow.defineWorkflow<LoopInput, LoopOutputPayload>({
+export const loopProject = steamharness.defineProject<LoopInput, LoopOutputPayload>({
   name: "loop",
   async run(input, context) {
-    const seed = await workflow.runNode(seedNode, input, context);
+    const seed = await steamharness.runNode(seedNode, input, context);
 
-    const forResult = await workflow.runFor(seed, context, {
+    const forResult = await steamharness.runFor(seed, context, {
       name: "Round loop",
       maxIterations: 6,
       items: (state) => Array.from({ length: state.rounds }, (_, index) => index + 1),
       async run(state, value, index, loopContext) {
-        return workflow.runNode(addRoundNode, { ...state, value, index }, loopContext);
+        return steamharness.runNode(addRoundNode, { ...state, value, index }, loopContext);
       },
     });
 
     // Keep the loop sample visually rich enough to exercise nested
     // runWhile -> runIf -> runFor -> node rendering in the App Diagram.
-    const whileResult = await workflow.runWhile(forResult, context, {
+    const whileResult = await steamharness.runWhile(forResult, context, {
       name: "Boost until target",
       maxIterations: 8,
       condition: (state) => state.total < state.target,
       async run(state, loopContext, iteration) {
-        const routed = await workflow.runIf<LoopState, LoopState>(state, loopContext, {
+        const routed = await steamharness.runIf<LoopState, LoopState>(state, loopContext, {
           name: "Choose boost strategy",
           branches: [
             {
@@ -163,12 +163,12 @@ export const loopWorkflow = workflow.defineWorkflow<LoopInput, LoopOutputPayload
               description: "Use multiple passes when the remaining gap is large.",
               condition: (current) => current.target - current.total >= 7,
               async run(current, branchContext) {
-                return workflow.runFor(current, branchContext, {
+                return steamharness.runFor(current, branchContext, {
                   name: "Burst passes",
                   maxIterations: 3,
                   items: () => [4, 3],
                   async run(passState, value, index, passContext) {
-                    return workflow.runNode(burstBoostNode, { ...passState, value, index, iteration }, passContext);
+                    return steamharness.runNode(burstBoostNode, { ...passState, value, index, iteration }, passContext);
                   },
                 });
               },
@@ -178,7 +178,7 @@ export const loopWorkflow = workflow.defineWorkflow<LoopInput, LoopOutputPayload
               description: "Use a controlled boost for a medium remaining gap.",
               condition: (current) => current.target - current.total > 2,
               async run(current, branchContext) {
-                return workflow.runNode(steadyBoostNode, { ...current, iteration }, branchContext);
+                return steamharness.runNode(steadyBoostNode, { ...current, iteration }, branchContext);
               },
             },
           ],
@@ -186,18 +186,18 @@ export const loopWorkflow = workflow.defineWorkflow<LoopInput, LoopOutputPayload
             label: "finish",
             description: "Use an exact top-up for the final gap.",
             async run(current, branchContext) {
-              return workflow.runNode(finishBoostNode, { ...current, iteration }, branchContext);
+              return steamharness.runNode(finishBoostNode, { ...current, iteration }, branchContext);
             },
           },
         });
 
-        return workflow.runNode(auditBoostNode, { ...routed, iteration }, loopContext);
+        return steamharness.runNode(auditBoostNode, { ...routed, iteration }, loopContext);
       },
     });
 
-    const result = await workflow.runStreamNode(outputNode, whileResult, context);
+    const result = await steamharness.runStreamNode(outputNode, whileResult, context);
     if (result.output === undefined) {
-      throw new workflow.HarnessError({
+      throw new steamharness.HarnessError({
         type: "execution",
         message: "Loop output was not created.",
       });
@@ -207,14 +207,14 @@ export const loopWorkflow = workflow.defineWorkflow<LoopInput, LoopOutputPayload
   },
 });
 
-export const executor = workflow.defineExecutor<LoopInput, LoopOutputPayload>({
+export const executor = steamharness.defineExecutor<LoopInput, LoopOutputPayload>({
   projectType: "workflow",
   defaultEntrypoint: "main",
   entrypoints: [
-    workflow.defineEntrypoint<LoopInput, LoopOutputPayload>({
+    steamharness.defineEntrypoint<LoopInput, LoopOutputPayload>({
       id: "main",
       title: "Loop",
-      workflow: loopWorkflow,
+      workflow: loopProject,
       params: [
         {
           name: "rounds",
@@ -240,8 +240,8 @@ export const executor = workflow.defineExecutor<LoopInput, LoopOutputPayload>({
   ],
 });
 
-export { loopWorkflow as workflow };
-export default loopWorkflow;
+export { loopProject as workflow };
+export default loopProject;
 
 function createLoopOutputContent(input: LoopState): string {
   return [

@@ -420,7 +420,7 @@ test("resuming and restoring an interrupted response cannot reuse its billed usa
     reportUsage: usage => { billed.push(usage); },
   })) { /* drain */ }
   const restored = JSON.parse(JSON.stringify(runtime.readTranscript!())) as AgentMessage[];
-  const index = restored.findIndex(message => "workflowInterrupted" in message);
+  const index = restored.findIndex(message => "projectInterrupted" in message);
   assert.ok(index > 0);
   const interrupted = restored[index] as typeof partial;
   assert.equal(interrupted.usage.totalTokens, billed[0]?.totalTokens, "diagnostic billed usage is retained");

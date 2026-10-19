@@ -1,16 +1,16 @@
 ---
-title: "defineWorkflow"
+title: "defineProject"
 description: "定义 workflow 本体、输入输出类型和主执行函数。"
 ---
 
-# defineWorkflow
+# defineProject
 
-`workflow.defineWorkflow<Input, Output>()` 用来定义业务流程本体。它只返回传入的定义对象，真正的执行由本地 executor 或 CLI 完成。
+`workflow.defineProject<Input, Output>()` 用来定义业务流程本体。它只返回传入的定义对象，真正的执行由本地 executor 或 CLI 完成。
 
 ## 签名
 
 ```ts
-workflow.defineWorkflow<Input, Output>(
+workflow.defineProject<Input, Output>(
   workflow: Definition<Input, Output>,
 ): Definition<Input, Output>
 ```
@@ -69,7 +69,7 @@ interface Output extends RunPayload {
   }>;
 }
 
-export const exampleWorkflow = workflow.defineWorkflow<Input, Output>({
+export const exampleProject = workflow.defineProject<Input, Output>({
   name: "example",
   async run(input, context) {
     const parsed = await workflow.runNode(inputNode, input, context);

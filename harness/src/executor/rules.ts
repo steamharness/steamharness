@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
-import { workflowRuntimeApi } from "../runtime-api";
+import { projectRuntimeApi } from "../runtime-api";
 import { HarnessError } from "../workflow/index";
 import type {
   ConversationDefinition,
@@ -11,7 +11,7 @@ import type {
   ParamDefinition,
   ParamLayout,
 } from "./types";
-import { assertWorkflowParamDeclarations, normalizeWorkflowParamDeclarations, readWorkflowParamDefinitionError } from "./param-definition";
+import { assertProjectParamDeclarations, normalizeProjectParamDeclarations, readProjectParamDefinitionError } from "./param-definition";
 import { assertConversationFooter } from "./conversation-footer";
 import { assertConversationUserInput } from "./conversation-input";
 import { assertConversationCommands } from "./conversation-commands";
@@ -20,8 +20,8 @@ import type { TokenUsageDefinition } from "../token-usage/index";
 import type { ToolPermissionDefinition } from "../tool-permissions/index";
 import {
   STEAMHARNESS_PROJECT_TYPE_MIGRATION_EXAMPLE,
-  assertNeverWorkflowExecutorProjectType,
-  isWorkflowExecutorProjectType,
+  assertNeverExecutorProjectKind,
+  isExecutorProjectKind,
   type ExecutorProjectType,
 } from "../project-types";
 
@@ -29,11 +29,11 @@ export type ScriptRuleViolationType =
   | "duplicate_script_declaration"
   | "duplicate_node_name"
   | "declaration_conflicts_with_node"
-  | "workflow_output_type_not_executor_result"
+  | "project_output_type_not_executor_result"
   | "invalid_executor_project_type"
   | "legacy_conversation_enabled"
-  | "invalid_workflow_entrypoints"
-  | "legacy_workflow_executor_fields"
+  | "invalid_project_entrypoints"
+  | "legacy_project_executor_fields"
   | "invalid_executor_param_configuration"
   | "project_type_configuration_conflict";
 
@@ -128,7 +128,7 @@ export interface StructureNode {
 
 export interface StructureCall {
   order: number;
-  callee: "runNode" | "runStreamNode" | "runIf" | "runFor" | "runWhile" | "runWorkflow";
+  callee: "runNode" | "runStreamNode" | "runIf" | "runFor" | "runWhile" | "runProject";
   nodeRef: string;
   standardName?: string;
   location: ScriptRuleLocation;
@@ -169,7 +169,7 @@ export interface StructureCallTreeItem {
   kind: "call";
   order: number;
   callOrder: number;
-  callee: "runNode" | "runStreamNode" | "runIf" | "runFor" | "runWhile" | "runWorkflow";
+  callee: "runNode" | "runStreamNode" | "runIf" | "runFor" | "runWhile" | "runProject";
   nodeRef: string;
   standardName?: string;
   location: ScriptRuleLocation;
@@ -242,13 +242,13 @@ export interface StructureLoopTreeItem {
 
 export interface StructureTree {
   kind: "workflow-run";
-  workflowRef?: string;
-  workflowKey?: string;
+  projectRef?: string;
+  projectKey?: string;
   location: ScriptRuleLocation;
   children: StructureTreeItem[];
 }
 
-export interface StructureWorkflow {
+export interface StructureProject {
   name: string;
   dir: string;
   files: string[];
@@ -277,7 +277,7 @@ export interface StructureExecutionNode {
   order: number;
   callId: string;
   callOrder: number;
-  callee: "runNode" | "runStreamNode" | "runIf" | "runFor" | "runWhile" | "runWorkflow";
+  callee: "runNode" | "runStreamNode" | "runIf" | "runFor" | "runWhile" | "runProject";
   nodeId: string;
   standardName?: string;
   location: ScriptRuleLocation;
@@ -339,7 +339,7 @@ export interface StructureWarning {
 
 export interface StructureInspection {
   projectType?: ExecutorProjectType;
-  workflow: StructureWorkflow;
+  workflow: StructureProject;
   definitions: StructureDefinitions;
   diagnostics: StructureDiagnostics;
   defaultEntrypoint?: string;
@@ -369,9 +369,9 @@ export interface StructureEntrypoint {
   registry?: NodeRegistryItem[];
 }
 
-interface AnalyzedWorkflowEntrypoint extends Omit<StructureEntrypoint, "execution" | "projectName"> {
-  workflowRef: string;
-  workflowKey?: string;
+interface AnalyzedProjectEntrypoint extends Omit<StructureEntrypoint, "execution" | "projectName"> {
+  projectRef: string;
+  projectKey?: string;
   projectName?: string;
   location: ScriptRuleLocation;
 }
@@ -393,14 +393,14 @@ interface ModuleBindings {
   exportAllModuleSpecifiers: string[];
 }
 
-interface AnalyzedWorkflowModule {
+interface AnalyzedProjectModule {
   analysis: ScriptAnalysis;
   bindings: ModuleBindings;
   filePath: string;
   sourceFile: ts.SourceFile;
 }
 
-interface ResolvedWorkflowDefinition {
+interface ResolvedProjectDefinition {
   key: string;
   name: string;
 }
@@ -410,7 +410,7 @@ export interface ScriptInspection {
   violations: ScriptRuleViolation[];
 }
 
-export interface ValidateWorkflowScriptsOptions {
+export interface ValidateProjectScriptsOptions {
   cwd: string;
   projectName: string;
   projectDir: string;
@@ -432,7 +432,7 @@ export interface NodeNameOccurrence {
 
 export interface OutputTypeOccurrence {
   name: string;
-  extendsWorkflowExecutorResult: boolean;
+  extendsProjectExecutorResult: boolean;
   location: ScriptRuleLocation;
 }
 
@@ -440,7 +440,7 @@ export interface ScriptAnalysis {
   declarations: ScriptNameOccurrence[];
   nodeNames: NodeNameOccurrence[];
   definedNodes: DefinedNode[];
-  workflowOutputTypes: OutputTypeOccurrence[];
+  projectOutputTypes: OutputTypeOccurrence[];
   structureNodes: StructureNode[];
   structureCalls: StructureCall[];
   structureApiCalls: StructureApiCall[];
@@ -459,8 +459,8 @@ export interface ScriptAnalysis {
   executorTokenUsage?: TokenUsageDefinition;
   executorRegistry?: NodeRegistryItem[];
   executorDefaultEntrypoint?: string;
-  executorEntrypoints?: AnalyzedWorkflowEntrypoint[];
-  workflowDefinitions: Record<string, string>;
+  executorEntrypoints?: AnalyzedProjectEntrypoint[];
+  projectDefinitions: Record<string, string>;
 }
 
 const NODE_FACTORY_DEFAULT_NAMES = {
@@ -477,14 +477,14 @@ const NODE_FACTORY_DEFAULT_NAMES = {
 
 const NODE_FACTORY_NAMES = new Set(Object.keys(NODE_FACTORY_DEFAULT_NAMES));
 const STEAMHARNESS_RUNTIME_API_NAMES = new Set([
-  ...Object.keys(workflowRuntimeApi),
-  "defineWorkflowExecutor",
+  ...Object.keys(projectRuntimeApi),
+  "defineProjectExecutor",
 ]);
 
-export function validateWorkflowScripts(
-  options: ValidateWorkflowScriptsOptions,
+export function validateProjectScripts(
+  options: ValidateProjectScriptsOptions,
 ): ScriptInspection {
-  const inspection = inspectWorkflowScripts(options);
+  const inspection = inspectProjectScripts(options);
 
   if (inspection.violations.length === 0) {
     return inspection;
@@ -494,16 +494,16 @@ export function validateWorkflowScripts(
     type: "input_validation",
     message: `Workflow "${options.projectName}" script validation failed.`,
     metadata: {
-      workflow: options.projectName,
+      project: options.projectName,
       violations: inspection.violations,
     },
   });
 }
 
-export function inspectWorkflowScripts(
-  options: ValidateWorkflowScriptsOptions,
+export function inspectProjectScripts(
+  options: ValidateProjectScriptsOptions,
 ): ScriptInspection {
-  const scriptPaths = findWorkflowScriptPaths(options.projectDir);
+  const scriptPaths = findProjectScriptPaths(options.projectDir);
 
   if (scriptPaths.length === 0) {
     return {
@@ -512,20 +512,20 @@ export function inspectWorkflowScripts(
     };
   }
 
-  const analysis = analyzeWorkflowScripts(options.cwd, scriptPaths);
+  const analysis = analyzeProjectScripts(options.cwd, scriptPaths);
 
   return {
     definedNodes: analysis.definedNodes,
-    violations: findWorkflowScriptRuleViolations(analysis, {
+    violations: findProjectScriptRuleViolations(analysis, {
       projectName: options.projectName,
     }),
   };
 }
 
-export function inspectWorkflowStructure(
-  options: ValidateWorkflowScriptsOptions,
+export function inspectProjectStructure(
+  options: ValidateProjectScriptsOptions,
 ): StructureInspection {
-  const scriptPaths = findWorkflowScriptPaths(options.projectDir);
+  const scriptPaths = findProjectScriptPaths(options.projectDir);
 
   if (scriptPaths.length === 0) {
     return {
@@ -561,9 +561,9 @@ export function inspectWorkflowStructure(
     };
   }
 
-  const analysis = analyzeWorkflowScripts(options.cwd, scriptPaths);
+  const analysis = analyzeProjectScripts(options.cwd, scriptPaths);
 
-  return createWorkflowStructureInspection({
+  return createProjectStructureInspection({
     projectName: options.projectName,
     projectDir: options.projectDir,
     files: scriptPaths.map((scriptPath) => path.relative(options.cwd, scriptPath)),
@@ -571,7 +571,7 @@ export function inspectWorkflowStructure(
   });
 }
 
-export function analyzeWorkflowScriptSource(
+export function analyzeProjectScriptSource(
   sourceText: string,
   fileName = "index.ts",
 ): ScriptAnalysis {
@@ -586,12 +586,12 @@ export function analyzeWorkflowScriptSource(
   return analyzeSourceFile(process.cwd(), fileName, sourceFile);
 }
 
-export function validateWorkflowScriptSource(
+export function validateProjectScriptSource(
   sourceText: string,
   fileName = "index.ts",
 ): ScriptRuleViolation[] {
-  return findWorkflowScriptRuleViolations(
-    analyzeWorkflowScriptSource(sourceText, fileName),
+  return findProjectScriptRuleViolations(
+    analyzeProjectScriptSource(sourceText, fileName),
   );
 }
 
@@ -604,13 +604,13 @@ function createMissingExecutorViolation(): ScriptRuleViolation {
     type: "invalid_executor_project_type",
     name: "executor",
     message: createProjectTypeRuleMessage(
-      'Workflow must export workflow.defineExecutor({ projectType: "workflow" | "conversation", ... }).',
+      'Project must export steamharness.defineExecutor({ projectType: "workflow" | "conversation", ... }).',
     ),
     locations: [],
   };
 }
 
-function findWorkflowScriptRuleViolations(
+function findProjectScriptRuleViolations(
   analysis: ScriptAnalysis,
   options: {
     projectName?: string;
@@ -625,30 +625,30 @@ function findWorkflowScriptRuleViolations(
       analysis.declarations,
       analysis.nodeNames,
     ),
-    ...findUnknownWorkflowEntrypointReferences(analysis),
-    ...findWorkflowOutputTypeViolations(analysis.workflowOutputTypes, options),
+    ...findUnknownProjectEntrypointReferences(analysis),
+    ...findProjectOutputTypeViolations(analysis.projectOutputTypes, options),
   ];
 }
 
-function findUnknownWorkflowEntrypointReferences(
+function findUnknownProjectEntrypointReferences(
   analysis: ScriptAnalysis,
 ): ScriptRuleViolation[] {
   if (analysis.executorProjectType !== "workflow") return [];
 
   return (analysis.executorEntrypoints ?? []).flatMap((entrypoint) => (
-    entrypoint.workflowKey !== undefined &&
-    Object.hasOwn(analysis.workflowDefinitions, entrypoint.workflowKey)
+    entrypoint.projectKey !== undefined &&
+    Object.hasOwn(analysis.projectDefinitions, entrypoint.projectKey)
       ? []
       : [{
-          type: "invalid_workflow_entrypoints" as const,
+          type: "invalid_project_entrypoints" as const,
           name: entrypoint.id,
-          message: `Workflow entrypoint "${entrypoint.id}" must reference a workflow defined with workflow.defineWorkflow(...) in this project.`,
+          message: `Workflow entrypoint "${entrypoint.id}" must reference a project defined with steamharness.defineProject(...) in this project.`,
           locations: [entrypoint.location],
         }]
   ));
 }
 
-function createWorkflowStructureInspection(options: {
+function createProjectStructureInspection(options: {
   projectName: string;
   projectDir: string;
   files: string[];
@@ -664,13 +664,13 @@ function createWorkflowStructureInspection(options: {
     ...(entrypoint.description === undefined ? {} : { description: entrypoint.description }),
     ...(entrypoint.group === undefined ? {} : { group: entrypoint.group }),
     projectName: entrypoint.projectName ??
-      (entrypoint.workflowKey === undefined
+      (entrypoint.projectKey === undefined
         ? undefined
-        : options.analysis.workflowDefinitions[entrypoint.workflowKey]) ??
-      entrypoint.workflowRef,
-    execution: createWorkflowStructureExecution(
+        : options.analysis.projectDefinitions[entrypoint.projectKey]) ??
+      entrypoint.projectRef,
+    execution: createProjectStructureExecution(
       options.analysis.structureTrees.filter((tree) => (
-        entrypoint.workflowKey !== undefined && tree.workflowKey === entrypoint.workflowKey
+        entrypoint.projectKey !== undefined && tree.projectKey === entrypoint.projectKey
       )),
       nodesById,
     ),
@@ -704,7 +704,7 @@ function createWorkflowStructureInspection(options: {
           .filter((variable) => {
             return (
               !nodeIds.has(variable.name) &&
-              variable.name !== "workflow" &&
+              variable.name !== "steamharness" &&
               variable.name !== "executor"
             );
           })
@@ -722,7 +722,7 @@ function createWorkflowStructureInspection(options: {
     },
     diagnostics: {
       warnings: options.analysis.structureWarnings,
-      violations: findWorkflowScriptRuleViolations(options.analysis, {
+      violations: findProjectScriptRuleViolations(options.analysis, {
         projectName: options.projectName,
       }),
     },
@@ -732,7 +732,7 @@ function createWorkflowStructureInspection(options: {
           entrypoints: entrypoints ?? [],
         }
       : {
-          execution: createWorkflowStructureExecution(
+          execution: createProjectStructureExecution(
             options.analysis.structureTrees,
             nodesById,
           ),
@@ -747,7 +747,7 @@ function createWorkflowStructureInspection(options: {
   };
 }
 
-function createWorkflowStructureExecution(
+function createProjectStructureExecution(
   trees: StructureTree[],
   nodesById: Record<string, StructureNode>,
 ): StructureExecution {
@@ -758,13 +758,13 @@ function createWorkflowStructureExecution(
     location: firstTree?.location,
     children: trees.flatMap((tree) => {
       return tree.children.map((item) => {
-        return convertWorkflowStructureTreeItem(item, nodesById);
+        return convertProjectStructureTreeItem(item, nodesById);
       });
     }),
   };
 }
 
-function convertWorkflowStructureTreeItem(
+function convertProjectStructureTreeItem(
   item: StructureTreeItem,
   nodesById: Record<string, StructureNode>,
 ): StructureExecutionItem {
@@ -816,7 +816,7 @@ function convertWorkflowStructureTreeItem(
         condition: branch.condition,
         location: branch.location,
         children: branch.children.map((child) => {
-          return convertWorkflowStructureTreeItem(child, nodesById);
+          return convertProjectStructureTreeItem(child, nodesById);
         }),
       })),
     };
@@ -851,7 +851,7 @@ function convertWorkflowStructureTreeItem(
       decision,
       location: item.location,
       children: item.children.map((child) => {
-        return convertWorkflowStructureTreeItem(child, nodesById);
+        return convertProjectStructureTreeItem(child, nodesById);
       }),
     };
   }
@@ -868,7 +868,7 @@ function convertWorkflowStructureTreeItem(
       condition: branch.condition,
       location: branch.location,
       children: branch.children.map((child) => {
-        return convertWorkflowStructureTreeItem(child, nodesById);
+        return convertProjectStructureTreeItem(child, nodesById);
       }),
     })),
   };
@@ -970,12 +970,12 @@ function resolveStructureValue(
   return value;
 }
 
-function analyzeWorkflowScripts(cwd: string, scriptPaths: string[]): ScriptAnalysis {
+function analyzeProjectScripts(cwd: string, scriptPaths: string[]): ScriptAnalysis {
   const analysis: ScriptAnalysis = {
     declarations: [],
     nodeNames: [],
     definedNodes: [],
-    workflowOutputTypes: [],
+    projectOutputTypes: [],
     structureNodes: [],
     structureCalls: [],
     structureApiCalls: [],
@@ -994,10 +994,10 @@ function analyzeWorkflowScripts(cwd: string, scriptPaths: string[]): ScriptAnaly
     executorRegistry: undefined,
     executorDefaultEntrypoint: undefined,
     executorEntrypoints: undefined,
-    workflowDefinitions: {},
+    projectDefinitions: {},
   };
 
-  const modules = scriptPaths.map((scriptPath): AnalyzedWorkflowModule => {
+  const modules = scriptPaths.map((scriptPath): AnalyzedProjectModule => {
     const sourceText = readFileSync(scriptPath, "utf8");
     const sourceFile = ts.createSourceFile(
       scriptPath,
@@ -1008,7 +1008,7 @@ function analyzeWorkflowScripts(cwd: string, scriptPaths: string[]): ScriptAnaly
     );
     return {
       analysis: analyzeSourceFile(cwd, scriptPath, sourceFile),
-      bindings: collectWorkflowModuleBindings(sourceFile),
+      bindings: collectProjectModuleBindings(sourceFile),
       filePath: path.resolve(scriptPath),
       sourceFile,
     };
@@ -1017,12 +1017,12 @@ function analyzeWorkflowScripts(cwd: string, scriptPaths: string[]): ScriptAnaly
 
   for (const module of modules) {
     for (const entrypoint of module.analysis.executorEntrypoints ?? []) {
-      const definition = resolveWorkflowDefinition({
+      const definition = resolveProjectDefinition({
         filePath: module.filePath,
-        localName: entrypoint.workflowRef,
+        localName: entrypoint.projectRef,
         modulesByPath,
       });
-      entrypoint.workflowKey = definition?.key;
+      entrypoint.projectKey = definition?.key;
       entrypoint.projectName = definition?.name;
     }
   }
@@ -1045,7 +1045,7 @@ function analyzeWorkflowScripts(cwd: string, scriptPaths: string[]): ScriptAnaly
         order: definedNodeOffset + node.order,
       })),
     );
-    analysis.workflowOutputTypes.push(...fileAnalysis.workflowOutputTypes);
+    analysis.projectOutputTypes.push(...fileAnalysis.projectOutputTypes);
     analysis.structureNodes.push(
       ...fileAnalysis.structureNodes.map((node) => ({
         ...node,
@@ -1086,7 +1086,7 @@ function analyzeWorkflowScripts(cwd: string, scriptPaths: string[]): ScriptAnaly
     );
     analysis.structureTrees.push(
       ...fileAnalysis.structureTrees.map((tree) => {
-        return offsetWorkflowStructureTreeCallOrder(tree, structureCallOffset);
+        return offsetProjectStructureTreeCallOrder(tree, structureCallOffset);
       }),
     );
     analysis.structureVariables.push(...fileAnalysis.structureVariables);
@@ -1133,15 +1133,15 @@ function analyzeWorkflowScripts(cwd: string, scriptPaths: string[]): ScriptAnaly
     if (fileAnalysis.executorEntrypoints && !analysis.executorEntrypoints) {
       analysis.executorEntrypoints = fileAnalysis.executorEntrypoints;
     }
-    for (const [workflowKey, projectName] of Object.entries(fileAnalysis.workflowDefinitions)) {
-      analysis.workflowDefinitions[workflowKey] = projectName;
+    for (const [projectKey, projectName] of Object.entries(fileAnalysis.projectDefinitions)) {
+      analysis.projectDefinitions[projectKey] = projectName;
     }
   }
 
   return analysis;
 }
 
-function collectWorkflowModuleBindings(sourceFile: ts.SourceFile): ModuleBindings {
+function collectProjectModuleBindings(sourceFile: ts.SourceFile): ModuleBindings {
   const bindings: ModuleBindings = {
     imports: {},
     exports: {},
@@ -1187,7 +1187,7 @@ function collectWorkflowModuleBindings(sourceFile: ts.SourceFile): ModuleBinding
       const expression = unwrapExpression(statement.expression);
       if (ts.isIdentifier(expression)) {
         bindings.exports.default = { localName: expression.text };
-      } else if (isWorkflowDefineWorkflowCall(expression)) {
+      } else if (isProjectDefineProjectCall(expression)) {
         bindings.exports.default = { localName: "default" };
       }
       continue;
@@ -1217,33 +1217,33 @@ function collectWorkflowModuleBindings(sourceFile: ts.SourceFile): ModuleBinding
   return bindings;
 }
 
-function resolveWorkflowDefinition(options: {
+function resolveProjectDefinition(options: {
   filePath: string;
   localName: string;
-  modulesByPath: Map<string, AnalyzedWorkflowModule>;
-}): ResolvedWorkflowDefinition | undefined {
+  modulesByPath: Map<string, AnalyzedProjectModule>;
+}): ResolvedProjectDefinition | undefined {
   return resolveLocal(options.filePath, options.localName, new Set<string>());
 
   function resolveLocal(
     filePath: string,
     localName: string,
     visited: Set<string>,
-  ): ResolvedWorkflowDefinition | undefined {
+  ): ResolvedProjectDefinition | undefined {
     const visitKey = `local\0${filePath}\0${localName}`;
     if (visited.has(visitKey)) return undefined;
     visited.add(visitKey);
 
     const module = options.modulesByPath.get(filePath);
     if (module === undefined) return undefined;
-    const definitionKey = createWorkflowDefinitionKey(filePath, localName);
-    const projectName = module.analysis.workflowDefinitions[definitionKey];
+    const definitionKey = createProjectDefinitionKey(filePath, localName);
+    const projectName = module.analysis.projectDefinitions[definitionKey];
     if (projectName !== undefined) {
       return { key: definitionKey, name: projectName };
     }
 
     const imported = module.bindings.imports[localName];
     if (imported === undefined) return undefined;
-    const importedFilePath = resolveWorkflowModulePath(
+    const importedFilePath = resolveProjectModulePath(
       filePath,
       imported.moduleSpecifier,
       options.modulesByPath,
@@ -1257,7 +1257,7 @@ function resolveWorkflowDefinition(options: {
     filePath: string,
     exportedName: string,
     visited: Set<string>,
-  ): ResolvedWorkflowDefinition | undefined {
+  ): ResolvedProjectDefinition | undefined {
     const visitKey = `export\0${filePath}\0${exportedName}`;
     if (visited.has(visitKey)) return undefined;
     visited.add(visitKey);
@@ -1269,7 +1269,7 @@ function resolveWorkflowDefinition(options: {
       return resolveLocal(filePath, exported.localName, visited);
     }
     if (exported?.moduleSpecifier !== undefined && exported.importedName !== undefined) {
-      const exportedFilePath = resolveWorkflowModulePath(
+      const exportedFilePath = resolveProjectModulePath(
         filePath,
         exported.moduleSpecifier,
         options.modulesByPath,
@@ -1279,9 +1279,9 @@ function resolveWorkflowDefinition(options: {
         : resolveExport(exportedFilePath, exported.importedName, visited);
     }
 
-    let resolved: ResolvedWorkflowDefinition | undefined;
+    let resolved: ResolvedProjectDefinition | undefined;
     for (const moduleSpecifier of module.bindings.exportAllModuleSpecifiers) {
-      const exportedFilePath = resolveWorkflowModulePath(
+      const exportedFilePath = resolveProjectModulePath(
         filePath,
         moduleSpecifier,
         options.modulesByPath,
@@ -1296,10 +1296,10 @@ function resolveWorkflowDefinition(options: {
   }
 }
 
-function resolveWorkflowModulePath(
+function resolveProjectModulePath(
   fromFilePath: string,
   moduleSpecifier: string,
-  modulesByPath: Map<string, AnalyzedWorkflowModule>,
+  modulesByPath: Map<string, AnalyzedProjectModule>,
 ): string | undefined {
   if (!moduleSpecifier.startsWith(".")) return undefined;
 
@@ -1318,7 +1318,7 @@ function resolveWorkflowModulePath(
     .find((candidate) => modulesByPath.has(candidate));
 }
 
-function createWorkflowDefinitionKey(filePath: string, localName: string): string {
+function createProjectDefinitionKey(filePath: string, localName: string): string {
   return `${path.resolve(filePath)}\0${localName}`;
 }
 
@@ -1343,7 +1343,7 @@ function offsetStructureReferenceCallOrder<
   return value;
 }
 
-function offsetWorkflowStructureTreeCallOrder(
+function offsetProjectStructureTreeCallOrder(
   tree: StructureTree,
   callOffset: number,
 ): StructureTree {
@@ -1354,12 +1354,12 @@ function offsetWorkflowStructureTreeCallOrder(
   return {
     ...tree,
     children: tree.children.map((item) => {
-      return offsetWorkflowStructureTreeItemCallOrder(item, callOffset);
+      return offsetProjectStructureTreeItemCallOrder(item, callOffset);
     }),
   };
 }
 
-function offsetWorkflowStructureTreeItemCallOrder(
+function offsetProjectStructureTreeItemCallOrder(
   item: StructureTreeItem,
   callOffset: number,
 ): StructureTreeItem {
@@ -1392,7 +1392,7 @@ function offsetWorkflowStructureTreeItemCallOrder(
       branches: item.branches.map((branch) => ({
         ...branch,
         children: branch.children.map((child) => {
-          return offsetWorkflowStructureTreeItemCallOrder(child, callOffset);
+          return offsetProjectStructureTreeItemCallOrder(child, callOffset);
         }),
       })),
     };
@@ -1412,7 +1412,7 @@ function offsetWorkflowStructureTreeItemCallOrder(
       input: offsetStructureReferenceCallOrder(item.input, callOffset),
       output: offsetStructureReferenceCallOrder(item.output, callOffset),
       children: item.children.map((child) => {
-        return offsetWorkflowStructureTreeItemCallOrder(child, callOffset);
+        return offsetProjectStructureTreeItemCallOrder(child, callOffset);
       }),
     };
   }
@@ -1422,7 +1422,7 @@ function offsetWorkflowStructureTreeItemCallOrder(
     branches: item.branches.map((branch) => ({
       ...branch,
       children: branch.children.map((child) => {
-        return offsetWorkflowStructureTreeItemCallOrder(child, callOffset);
+        return offsetProjectStructureTreeItemCallOrder(child, callOffset);
       }),
     })),
   };
@@ -1437,7 +1437,7 @@ function analyzeSourceFile(
     declarations: [],
     nodeNames: [],
     definedNodes: [],
-    workflowOutputTypes: [],
+    projectOutputTypes: [],
     structureNodes: [],
     structureCalls: [],
     structureApiCalls: [],
@@ -1456,34 +1456,34 @@ function analyzeSourceFile(
     executorRegistry: undefined,
     executorDefaultEntrypoint: undefined,
     executorEntrypoints: undefined,
-    workflowDefinitions: {},
+    projectDefinitions: {},
   };
   const scopeStack = [createScopeKey(filePath, "source", 0)];
   const constValues = new Map<string, StructureValue>();
   const nodeIdsByVariable = new Map<string, string>();
   const nodeNamesById = new Map<string, string>();
   const outputVariables = new Map<string, StructureReference>();
-  const workflowInputNames = new Set<string>();
+  const projectInputNames = new Set<string>();
   const structureCallsByNode = new WeakMap<ts.CallExpression, StructureCall>();
-  const structureWorkflowCallsByNode = new WeakMap<ts.CallExpression, StructureCall>();
+  const structureProjectCallsByNode = new WeakMap<ts.CallExpression, StructureCall>();
   const structureRunIfByNode = new WeakMap<ts.CallExpression, StructureRunIfTreeItem>();
   const structureLoopByNode = new WeakMap<ts.CallExpression, StructureLoopTreeItem>();
   let treeItemOrder = 0;
 
   visitSourceFile(sourceFile);
-  collectWorkflowRunTrees(sourceFile);
+  collectProjectRunTrees(sourceFile);
 
   return analysis;
 
   function visitSourceFile(node: ts.Node): void {
     collectDeclaration(node);
     collectTopLevelConst(node);
-    collectWorkflowDefinitionMetadata(node);
+    collectProjectDefinitionMetadata(node);
     collectNodeName(node);
-    collectWorkflowOutputType(node);
-    collectWorkflowApiCall(node);
+    collectProjectOutputType(node);
+    collectProjectApiCall(node);
     collectRunNodeCall(node);
-    collectRunWorkflowCall(node);
+    collectRunProjectCall(node);
     collectRunIfCall(node);
     collectRunLoopCall(node);
     collectExecutorParams(node);
@@ -1495,7 +1495,7 @@ function analyzeSourceFile(
     collectExecutorRegistry(node);
 
     if (createsDeclarationScope(node)) {
-      collectWorkflowRunInputNames(node);
+      collectProjectRunInputNames(node);
       withScope(node, () => {
         ts.forEachChild(node, visitSourceFile);
       });
@@ -1570,20 +1570,20 @@ function analyzeSourceFile(
     });
   }
 
-  function collectWorkflowOutputType(node: ts.Node): void {
+  function collectProjectOutputType(node: ts.Node): void {
     if (ts.isTypeAliasDeclaration(node)) {
-      analysis.workflowOutputTypes.push({
+      analysis.projectOutputTypes.push({
         name: node.name.text,
-        extendsWorkflowExecutorResult: isWorkflowExecutorResultTypeNode(node.type),
+        extendsProjectExecutorResult: isProjectExecutorResultTypeNode(node.type),
         location: createLocation(cwd, filePath, sourceFile, node),
       });
       return;
     }
 
     if (ts.isInterfaceDeclaration(node)) {
-      analysis.workflowOutputTypes.push({
+      analysis.projectOutputTypes.push({
         name: node.name.text,
-        extendsWorkflowExecutorResult: interfaceExtendsWorkflowExecutorResult(node),
+        extendsProjectExecutorResult: interfaceExtendsProjectExecutorResult(node),
         location: createLocation(cwd, filePath, sourceFile, node),
       });
     }
@@ -1623,22 +1623,22 @@ function analyzeSourceFile(
     });
   }
 
-  function collectWorkflowDefinitionMetadata(node: ts.Node): void {
+  function collectProjectDefinitionMetadata(node: ts.Node): void {
     if (
       !ts.isCallExpression(node) ||
-      !isWorkflowDefineWorkflowCall(node) ||
+      !isProjectDefineProjectCall(node) ||
       currentScopeKey() !== scopeStack[0]
     ) {
       return;
     }
-    const variableName = readWorkflowDefinitionBindingName(node);
+    const variableName = readProjectDefinitionBindingName(node);
     const objectArg = node.arguments[0];
     if (variableName === undefined) return;
-    const workflowOptions = objectArg === undefined ? undefined : unwrapExpression(objectArg);
-    const projectName = workflowOptions !== undefined && ts.isObjectLiteralExpression(workflowOptions)
-      ? readStringProperty(workflowOptions, "name")
+    const projectOptions = objectArg === undefined ? undefined : unwrapExpression(objectArg);
+    const projectName = projectOptions !== undefined && ts.isObjectLiteralExpression(projectOptions)
+      ? readStringProperty(projectOptions, "name")
       : undefined;
-    analysis.workflowDefinitions[createWorkflowDefinitionKey(filePath, variableName)] =
+    analysis.projectDefinitions[createProjectDefinitionKey(filePath, variableName)] =
       projectName ?? variableName;
   }
 
@@ -1650,7 +1650,7 @@ function analyzeSourceFile(
       return;
     }
 
-    if (!isWorkflowDefineExecutorCall(node)) {
+    if (!isProjectDefineExecutorCall(node)) {
       return;
     }
 
@@ -1677,7 +1677,7 @@ function analyzeSourceFile(
 
   function collectExecutorParamResolver(node: ts.Node): void {
     if (!ts.isCallExpression(node) || analysis.executorParamResolver !== undefined) return;
-    if (!isWorkflowDefineExecutorCall(node)) return;
+    if (!isProjectDefineExecutorCall(node)) return;
     const objectArg = node.arguments[0];
     if (!objectArg || !ts.isObjectLiteralExpression(objectArg)) return;
     const resolver = objectArg.properties.find((property) => (
@@ -1696,7 +1696,7 @@ function analyzeSourceFile(
       return;
     }
 
-    if (!isWorkflowDefineExecutorCall(node)) {
+    if (!isProjectDefineExecutorCall(node)) {
       return;
     }
 
@@ -1746,7 +1746,7 @@ function analyzeSourceFile(
       return;
     }
 
-    if (!isWorkflowDefineExecutorCall(node)) {
+    if (!isProjectDefineExecutorCall(node)) {
       return;
     }
 
@@ -1798,7 +1798,7 @@ function analyzeSourceFile(
   }
 
   function collectExecutorProjectType(node: ts.Node): void {
-    if (!ts.isCallExpression(node) || !isWorkflowDefineExecutorCall(node)) {
+    if (!ts.isCallExpression(node) || !isProjectDefineExecutorCall(node)) {
       return;
     }
 
@@ -1819,10 +1819,10 @@ function analyzeSourceFile(
     const declaredProjectType = projectTypeProperty !== undefined && ts.isStringLiteralLike(projectTypeProperty.initializer)
       ? projectTypeProperty.initializer.text
       : undefined;
-    const projectType = isWorkflowExecutorProjectType(declaredProjectType)
+    const projectType = isExecutorProjectKind(declaredProjectType)
       ? declaredProjectType
       : inferStaticExecutorProjectType(objectArg);
-    if (projectTypeProperty === undefined || !isWorkflowExecutorProjectType(declaredProjectType)) {
+    if (projectTypeProperty === undefined || !isExecutorProjectKind(declaredProjectType)) {
       analysis.structureWarnings.push({
         message: projectType === undefined
           ? "Executor project type could not be inferred statically and will be resolved at runtime."
@@ -1892,12 +1892,12 @@ function analyzeSourceFile(
           });
           break;
         default:
-          assertNeverWorkflowExecutorProjectType(projectType);
+          assertNeverExecutorProjectKind(projectType);
       }
     }
 
     if (projectType === "workflow") {
-      collectWorkflowEntrypoints(objectArg, location);
+      collectProjectEntrypoints(objectArg, location);
     }
   }
 
@@ -1916,7 +1916,7 @@ function analyzeSourceFile(
     return undefined;
   }
 
-  function collectWorkflowEntrypoints(
+  function collectProjectEntrypoints(
     executorObject: ts.ObjectLiteralExpression,
     executorLocation: ScriptRuleLocation,
   ): void {
@@ -1935,7 +1935,7 @@ function analyzeSourceFile(
       const property = findStaticPropertyAssignment(executorObject, key);
       if (property !== undefined) {
         analysis.executorConfigurationViolations.push({
-          type: "legacy_workflow_executor_fields",
+          type: "legacy_project_executor_fields",
           name: key,
           message: `Workflow executors no longer accept top-level ${key}. Move it into workflow.defineEntrypoint(...).`,
           locations: [createLocation(cwd, filePath, sourceFile, property)],
@@ -1949,7 +1949,7 @@ function analyzeSourceFile(
       !ts.isStringLiteralLike(defaultProperty.initializer)
     ) {
       analysis.executorConfigurationViolations.push({
-        type: "invalid_workflow_entrypoints",
+        type: "invalid_project_entrypoints",
         name: "defaultEntrypoint",
         message: "Workflow executor defaultEntrypoint must be a static string literal.",
         locations: [defaultProperty === undefined
@@ -1966,7 +1966,7 @@ function analyzeSourceFile(
       !ts.isArrayLiteralExpression(entrypointsProperty.initializer)
     ) {
       analysis.executorConfigurationViolations.push({
-        type: "invalid_workflow_entrypoints",
+        type: "invalid_project_entrypoints",
         name: "entrypoints",
         message: "Workflow executor entrypoints must be a non-empty static array.",
         locations: [entrypointsProperty === undefined
@@ -1977,7 +1977,7 @@ function analyzeSourceFile(
     }
     if (entrypointsProperty.initializer.elements.length === 0) {
       analysis.executorConfigurationViolations.push({
-        type: "invalid_workflow_entrypoints",
+        type: "invalid_project_entrypoints",
         name: "entrypoints",
         message: "Workflow executor entrypoints must contain at least one entrypoint.",
         locations: [createLocation(cwd, filePath, sourceFile, entrypointsProperty)],
@@ -1985,7 +1985,7 @@ function analyzeSourceFile(
       return;
     }
 
-    const entrypoints: AnalyzedWorkflowEntrypoint[] = [];
+    const entrypoints: AnalyzedProjectEntrypoint[] = [];
     const ids = new Set<string>();
     const groups = new Map<string, {
       definition: EntrypointGroupDefinition;
@@ -1994,12 +1994,12 @@ function analyzeSourceFile(
     for (const element of entrypointsProperty.initializer.elements) {
       if (
         !ts.isCallExpression(element) ||
-        readWorkflowApiCallName(element.expression) !== "defineEntrypoint"
+        readProjectApiCallName(element.expression) !== "defineEntrypoint"
       ) {
         analysis.executorConfigurationViolations.push({
-          type: "invalid_workflow_entrypoints",
+          type: "invalid_project_entrypoints",
           name: "entrypoints",
-          message: "Each entrypoints element must directly call workflow.defineEntrypoint({...}).",
+          message: "Each entrypoints element must directly call steamharness.defineEntrypoint({...}).",
           locations: [createLocation(cwd, filePath, sourceFile, element)],
         });
         continue;
@@ -2007,9 +2007,9 @@ function analyzeSourceFile(
       const entrypointObject = element.arguments[0];
       if (entrypointObject === undefined || !ts.isObjectLiteralExpression(entrypointObject)) {
         analysis.executorConfigurationViolations.push({
-          type: "invalid_workflow_entrypoints",
+          type: "invalid_project_entrypoints",
           name: "entrypoints",
-          message: "workflow.defineEntrypoint(...) must receive an inline object literal.",
+          message: "steamharness.defineEntrypoint(...) must receive an inline object literal.",
           locations: [createLocation(cwd, filePath, sourceFile, element)],
         });
         continue;
@@ -2022,10 +2022,10 @@ function analyzeSourceFile(
       const groupProperty = entrypointObject.properties.find((property) =>
         hasPropertyName(property) && readStructurePropertyName(property.name) === "group"
       );
-      const workflowRef = readIdentifierProperty(entrypointObject, "workflow");
+      const projectRef = readIdentifierProperty(entrypointObject, "workflow");
       if (id === undefined || !STEAMHARNESS_ENTRYPOINT_ID_PATTERN.test(id)) {
         analysis.executorConfigurationViolations.push({
-          type: "invalid_workflow_entrypoints",
+          type: "invalid_project_entrypoints",
           name: id ?? "id",
           message: `Workflow entrypoint id must match ${STEAMHARNESS_ENTRYPOINT_ID_PATTERN}.`,
           locations: [createLocation(cwd, filePath, sourceFile, entrypointObject)],
@@ -2034,7 +2034,7 @@ function analyzeSourceFile(
       }
       if (ids.has(id)) {
         analysis.executorConfigurationViolations.push({
-          type: "invalid_workflow_entrypoints",
+          type: "invalid_project_entrypoints",
           name: id,
           message: `Workflow executor declares duplicate entrypoint id "${id}".`,
           locations: [createLocation(cwd, filePath, sourceFile, entrypointObject)],
@@ -2044,7 +2044,7 @@ function analyzeSourceFile(
       ids.add(id);
       if (title === undefined || title.trim() === "") {
         analysis.executorConfigurationViolations.push({
-          type: "invalid_workflow_entrypoints",
+          type: "invalid_project_entrypoints",
           name: id,
           message: `Workflow entrypoint "${id}" must declare a non-empty static title.`,
           locations: [createLocation(cwd, filePath, sourceFile, entrypointObject)],
@@ -2059,7 +2059,7 @@ function analyzeSourceFile(
         )
       ) {
         analysis.executorConfigurationViolations.push({
-          type: "invalid_workflow_entrypoints",
+          type: "invalid_project_entrypoints",
           name: id,
           message: `Workflow entrypoint "${id}" description must be a static string literal when provided.`,
           locations: [createLocation(cwd, filePath, sourceFile, descriptionProperty)],
@@ -2080,7 +2080,7 @@ function analyzeSourceFile(
           )
         ) {
           analysis.executorConfigurationViolations.push({
-            type: "invalid_workflow_entrypoints",
+            type: "invalid_project_entrypoints",
             name: group.definition.id,
             message: `Workflow entrypoint group "${group.definition.id}" must use identical title and order in every entrypoint.`,
             locations: [existing.location, group.location],
@@ -2089,9 +2089,9 @@ function analyzeSourceFile(
           groups.set(group.definition.id, group);
         }
       }
-      if (workflowRef === undefined) {
+      if (projectRef === undefined) {
         analysis.executorConfigurationViolations.push({
-          type: "invalid_workflow_entrypoints",
+          type: "invalid_project_entrypoints",
           name: id,
           message: `Workflow entrypoint "${id}" must reference a statically named workflow definition.`,
           locations: [createLocation(cwd, filePath, sourceFile, entrypointObject)],
@@ -2104,9 +2104,9 @@ function analyzeSourceFile(
         title,
         description: readStringProperty(entrypointObject, "description"),
         group: group?.definition,
-        workflowRef,
-        workflowKey: createWorkflowDefinitionKey(filePath, workflowRef),
-        projectName: analysis.workflowDefinitions[createWorkflowDefinitionKey(filePath, workflowRef)],
+        projectRef,
+        projectKey: createProjectDefinitionKey(filePath, projectRef),
+        projectName: analysis.projectDefinitions[createProjectDefinitionKey(filePath, projectRef)],
         location: createLocation(cwd, filePath, sourceFile, entrypointObject),
         params: paramDeclarations?.params,
         paramLayout: paramDeclarations?.layout,
@@ -2124,7 +2124,7 @@ function analyzeSourceFile(
       !ids.has(analysis.executorDefaultEntrypoint)
     ) {
       analysis.executorConfigurationViolations.push({
-        type: "invalid_workflow_entrypoints",
+        type: "invalid_project_entrypoints",
         name: "defaultEntrypoint",
         message: `Workflow executor defaultEntrypoint "${analysis.executorDefaultEntrypoint}" does not match a declared entrypoint.`,
         locations: [defaultProperty === undefined
@@ -2142,7 +2142,7 @@ function analyzeSourceFile(
       return;
     }
 
-    if (!isWorkflowDefineExecutorCall(node)) {
+    if (!isProjectDefineExecutorCall(node)) {
       return;
     }
 
@@ -2183,7 +2183,7 @@ function analyzeSourceFile(
       return;
     }
 
-    if (!isWorkflowDefineExecutorCall(node)) {
+    if (!isProjectDefineExecutorCall(node)) {
       return;
     }
 
@@ -2236,7 +2236,7 @@ function analyzeSourceFile(
     if (property === undefined) return undefined;
     if (!ts.isPropertyAssignment(property)) {
       analysis.executorConfigurationViolations.push({
-        type: "invalid_workflow_entrypoints",
+        type: "invalid_project_entrypoints",
         name: entrypointId,
         message: `Workflow entrypoint "${entrypointId}" group must be an inline object literal.`,
         locations: [createLocation(cwd, filePath, sourceFile, property)],
@@ -2246,7 +2246,7 @@ function analyzeSourceFile(
     const initializer = unwrapExpression(property.initializer);
     if (!ts.isObjectLiteralExpression(initializer)) {
       analysis.executorConfigurationViolations.push({
-        type: "invalid_workflow_entrypoints",
+        type: "invalid_project_entrypoints",
         name: entrypointId,
         message: `Workflow entrypoint "${entrypointId}" group must be an inline object literal.`,
         locations: [createLocation(cwd, filePath, sourceFile, property)],
@@ -2265,7 +2265,7 @@ function analyzeSourceFile(
     });
     if (invalidProperty !== undefined) {
       analysis.executorConfigurationViolations.push({
-        type: "invalid_workflow_entrypoints",
+        type: "invalid_project_entrypoints",
         name: entrypointId,
         message: `Workflow entrypoint "${entrypointId}" group must contain only one static id, title, and optional order property.`,
         locations: [createLocation(cwd, filePath, sourceFile, invalidProperty)],
@@ -2276,7 +2276,7 @@ function analyzeSourceFile(
     const id = readStringProperty(initializer, "id");
     if (id === undefined || id.trim() === "") {
       analysis.executorConfigurationViolations.push({
-        type: "invalid_workflow_entrypoints",
+        type: "invalid_project_entrypoints",
         name: entrypointId,
         message: `Workflow entrypoint "${entrypointId}" group id must be a non-empty static string literal.`,
         locations: [createLocation(cwd, filePath, sourceFile, property)],
@@ -2286,7 +2286,7 @@ function analyzeSourceFile(
     const title = readStringProperty(initializer, "title");
     if (title === undefined || title.trim() === "") {
       analysis.executorConfigurationViolations.push({
-        type: "invalid_workflow_entrypoints",
+        type: "invalid_project_entrypoints",
         name: entrypointId,
         message: `Workflow entrypoint "${entrypointId}" group title must be a non-empty static string literal.`,
         locations: [createLocation(cwd, filePath, sourceFile, property)],
@@ -2303,7 +2303,7 @@ function analyzeSourceFile(
         : Number.NaN;
       if (!Number.isInteger(order) || order < 0) {
         analysis.executorConfigurationViolations.push({
-          type: "invalid_workflow_entrypoints",
+          type: "invalid_project_entrypoints",
           name: entrypointId,
           message: `Workflow entrypoint "${entrypointId}" group order must be a non-negative static integer when provided.`,
           locations: [createLocation(cwd, filePath, sourceFile, orderProperty)],
@@ -2407,7 +2407,7 @@ function analyzeSourceFile(
         });
         continue;
       }
-      const error = readWorkflowParamDefinitionError(param, {
+      const error = readProjectParamDefinitionError(param, {
         options: findStaticPropertyAssignment(element, "options") !== undefined,
       });
       if (error !== undefined) {
@@ -2442,8 +2442,8 @@ function analyzeSourceFile(
     }
     if (analysis.executorConfigurationViolations.length > initialViolationCount) return undefined;
     try {
-      assertWorkflowParamDeclarations(declarations, owner === "Conversation executor" ? "conversation" : "workflow");
-      return normalizeWorkflowParamDeclarations(declarations);
+      assertProjectParamDeclarations(declarations, owner === "Conversation executor" ? "conversation" : "workflow");
+      return normalizeProjectParamDeclarations(declarations);
     } catch (error) {
       analysis.executorConfigurationViolations.push({
         type: "invalid_executor_param_configuration",
@@ -2936,7 +2936,7 @@ function analyzeSourceFile(
     return { enabled: true, outputItemId };
   }
 
-  function collectWorkflowRunInputNames(node: ts.Node): void {
+  function collectProjectRunInputNames(node: ts.Node): void {
     if (!ts.isMethodDeclaration(node) || !ts.isIdentifier(node.name) || node.name.text !== "run") {
       return;
     }
@@ -2944,7 +2944,7 @@ function analyzeSourceFile(
     const firstParameter = node.parameters[0];
 
     if (firstParameter !== undefined && ts.isIdentifier(firstParameter.name)) {
-      workflowInputNames.add(firstParameter.name.text);
+      projectInputNames.add(firstParameter.name.text);
     }
   }
 
@@ -2956,12 +2956,12 @@ function analyzeSourceFile(
     ensureRunNodeTreeCall(node);
   }
 
-  function collectRunWorkflowCall(node: ts.Node): void {
-    if (!ts.isCallExpression(node) || !isRunWorkflowCall(node)) {
+  function collectRunProjectCall(node: ts.Node): void {
+    if (!ts.isCallExpression(node) || !isRunProjectCall(node)) {
       return;
     }
 
-    ensureRunWorkflowTreeCall(node);
+    ensureRunProjectTreeCall(node);
   }
 
   function ensureRunNodeTreeCall(node: ts.CallExpression): StructureCall {
@@ -3037,20 +3037,20 @@ function analyzeSourceFile(
     return call;
   }
 
-  function ensureRunWorkflowTreeCall(node: ts.CallExpression): StructureCall {
-    const existing = structureWorkflowCallsByNode.get(node);
+  function ensureRunProjectTreeCall(node: ts.CallExpression): StructureCall {
+    const existing = structureProjectCallsByNode.get(node);
     if (existing !== undefined) {
       return existing;
     }
 
-    const workflowRef = describeWorkflowRef(node.arguments[0]);
+    const projectRef = describeProjectRef(node.arguments[0]);
     const input = describeInputRef(node.arguments[1]);
     const output = describeOutputRef(node);
     const order = analysis.structureCalls.length + 1;
     const call: StructureCall = {
       order,
-      callee: "runWorkflow",
-      nodeRef: workflowRef.id,
+      callee: "runProject",
+      nodeRef: projectRef.id,
       standardName: "run-workflow",
       location: createLocation(cwd, filePath, sourceFile, node),
       arguments: node.arguments.map((argument, index) => ({
@@ -3060,7 +3060,7 @@ function analyzeSourceFile(
           index === 0
             ? {
                 kind: "node",
-                nodeId: workflowRef.id,
+                nodeId: projectRef.id,
                 standardName: "run-workflow",
                 callOrder: order,
               }
@@ -3073,13 +3073,13 @@ function analyzeSourceFile(
     };
 
     analysis.structureCalls.push(call);
-    structureWorkflowCallsByNode.set(node, call);
+    structureProjectCallsByNode.set(node, call);
     analysis.structureEdges.push({
       order: analysis.structureEdges.length + 1,
       from: input,
       to: {
         kind: "node",
-        nodeId: workflowRef.id,
+        nodeId: projectRef.id,
         standardName: "run-workflow",
         callOrder: order,
       },
@@ -3090,7 +3090,7 @@ function analyzeSourceFile(
         order: analysis.structureEdges.length + 1,
         from: {
           kind: "node",
-          nodeId: workflowRef.id,
+          nodeId: projectRef.id,
           standardName: "run-workflow",
           callOrder: order,
         },
@@ -3102,7 +3102,7 @@ function analyzeSourceFile(
       outputVariables.set(output.name, {
         kind: "node-output",
         callOrder: order,
-        nodeId: workflowRef.id,
+        nodeId: projectRef.id,
         variable: output.name,
       });
     }
@@ -3207,7 +3207,7 @@ function analyzeSourceFile(
       return existing;
     }
 
-    const source = readWorkflowApiCallName(node.expression) === "runFor" ? "run-for" : "run-while";
+    const source = readProjectApiCallName(node.expression) === "runFor" ? "run-for" : "run-while";
     const input = describeInputRef(node.arguments[0]);
     const output = describeOutputRef(node);
     const order = analysis.structureCalls.length + 1;
@@ -3282,12 +3282,12 @@ function analyzeSourceFile(
     return loopItem;
   }
 
-  function collectWorkflowApiCall(node: ts.Node): void {
+  function collectProjectApiCall(node: ts.Node): void {
     if (!ts.isCallExpression(node)) {
       return;
     }
 
-    const method = readKnownWorkflowApiCallName(node.expression);
+    const method = readKnownProjectApiCallName(node.expression);
     if (method === undefined) {
       return;
     }
@@ -3309,23 +3309,23 @@ function analyzeSourceFile(
     analysis.structureApiCalls.push(call);
   }
 
-  function collectWorkflowRunTrees(node: ts.Node): void {
-    if (isWorkflowRunMethod(node) && node.body !== undefined) {
+  function collectProjectRunTrees(node: ts.Node): void {
+    if (isProjectRunMethod(node) && node.body !== undefined) {
       // Only workflow definitions own the top-level execution tree; runIf branch handlers
       // are parsed from their branch object so they do not drift into the diagram root.
-      const workflowRef = readWorkflowDefinitionBindingName(findWorkflowDefinitionCall(node));
+      const projectRef = readProjectDefinitionBindingName(findProjectDefinitionCall(node));
       analysis.structureTrees.push({
         kind: "workflow-run",
-        workflowRef,
-        workflowKey: workflowRef === undefined
+        projectRef,
+        projectKey: projectRef === undefined
           ? undefined
-          : createWorkflowDefinitionKey(filePath, workflowRef),
+          : createProjectDefinitionKey(filePath, projectRef),
         location: createLocation(cwd, filePath, sourceFile, node),
         children: describeStatements(node.body.statements),
       });
     }
 
-    ts.forEachChild(node, collectWorkflowRunTrees);
+    ts.forEachChild(node, collectProjectRunTrees);
   }
 
   function describeStatements(
@@ -3642,8 +3642,8 @@ function analyzeSourceFile(
         return;
       }
 
-      if (ts.isCallExpression(current) && isRunWorkflowCall(current)) {
-        items.push(createCallTreeItem(ensureRunWorkflowTreeCall(current)));
+      if (ts.isCallExpression(current) && isRunProjectCall(current)) {
+        items.push(createCallTreeItem(ensureRunProjectTreeCall(current)));
         return;
       }
 
@@ -3903,7 +3903,7 @@ function analyzeSourceFile(
     };
   }
 
-  function describeWorkflowRef(expression: ts.Expression | undefined): {
+  function describeProjectRef(expression: ts.Expression | undefined): {
     id: string;
   } {
     if (expression !== undefined && ts.isIdentifier(expression)) {
@@ -3934,7 +3934,7 @@ function analyzeSourceFile(
         return nodeOutput;
       }
 
-      if (workflowInputNames.has(expression.text)) {
+      if (projectInputNames.has(expression.text)) {
         return {
           kind: "workflow-input",
           name: expression.text,
@@ -3976,17 +3976,17 @@ function analyzeSourceFile(
   }
 }
 
-function findWorkflowScriptPaths(projectDir: string): string[] {
+function findProjectScriptPaths(projectDir: string): string[] {
   if (!existsSync(projectDir)) {
     return [];
   }
 
-  return collectWorkflowScriptPaths(projectDir).sort((left, right) => {
+  return collectProjectScriptPaths(projectDir).sort((left, right) => {
     return left.localeCompare(right);
   });
 }
 
-function collectWorkflowScriptPaths(directory: string): string[] {
+function collectProjectScriptPaths(directory: string): string[] {
   const entries = readdirSync(directory);
   const scriptPaths: string[] = [];
 
@@ -3999,7 +3999,7 @@ function collectWorkflowScriptPaths(directory: string): string[] {
     const stat = statSync(entryPath);
 
     if (stat.isDirectory()) {
-      scriptPaths.push(...collectWorkflowScriptPaths(entryPath));
+      scriptPaths.push(...collectProjectScriptPaths(entryPath));
       continue;
     }
 
@@ -4119,7 +4119,7 @@ function findDeclarationNodeNameConflicts(
   return violations;
 }
 
-function findWorkflowOutputTypeViolations(
+function findProjectOutputTypeViolations(
   outputTypes: OutputTypeOccurrence[],
   options: {
     projectName?: string;
@@ -4129,15 +4129,15 @@ function findWorkflowOutputTypeViolations(
     return [];
   }
 
-  const expectedTypeName = createWorkflowOutputTypeName(options.projectName);
+  const expectedTypeName = createProjectOutputTypeName(options.projectName);
   const matchedOutputTypes = outputTypes.filter((outputType) => {
     return outputType.name === expectedTypeName;
   });
 
   return matchedOutputTypes
-    .filter((outputType) => !outputType.extendsWorkflowExecutorResult)
+    .filter((outputType) => !outputType.extendsProjectExecutorResult)
     .map((outputType) => ({
-      type: "workflow_output_type_not_executor_result",
+      type: "project_output_type_not_executor_result",
       name: outputType.name,
       message: `Workflow output type "${outputType.name}" must extend ExecutorResult.`,
       locations: [outputType.location],
@@ -4211,7 +4211,7 @@ function readPropertyName(name: ts.PropertyName): string[] {
 }
 
 function readNodeFactoryName(expression: ts.LeftHandSideExpression): string | undefined {
-  const name = readWorkflowApiCallName(expression);
+  const name = readProjectApiCallName(expression);
 
   if (name === undefined) {
     return undefined;
@@ -4221,29 +4221,29 @@ function readNodeFactoryName(expression: ts.LeftHandSideExpression): string | un
 }
 
 function isRunNodeCall(node: ts.CallExpression): boolean {
-  const name = readWorkflowApiCallName(node.expression);
+  const name = readProjectApiCallName(node.expression);
 
   return name === "runNode" || name === "runStreamNode";
 }
 
-function isRunWorkflowCall(node: ts.CallExpression): boolean {
-  return readWorkflowApiCallName(node.expression) === "runWorkflow";
+function isRunProjectCall(node: ts.CallExpression): boolean {
+  return readProjectApiCallName(node.expression) === "runProject";
 }
 
 function isRunIfCall(node: ts.CallExpression): boolean {
-  return readWorkflowApiCallName(node.expression) === "runIf";
+  return readProjectApiCallName(node.expression) === "runIf";
 }
 
 function isRunLoopCall(node: ts.CallExpression): boolean {
-  const name = readWorkflowApiCallName(node.expression);
+  const name = readProjectApiCallName(node.expression);
 
   return name === "runFor" || name === "runWhile";
 }
 
-function readKnownWorkflowApiCallName(
+function readKnownProjectApiCallName(
   expression: ts.LeftHandSideExpression,
 ): string | undefined {
-  const name = readWorkflowApiCallName(expression);
+  const name = readProjectApiCallName(expression);
 
   if (name === undefined || !STEAMHARNESS_RUNTIME_API_NAMES.has(name)) {
     return undefined;
@@ -4252,7 +4252,7 @@ function readKnownWorkflowApiCallName(
   return name;
 }
 
-function isWorkflowRunMethod(node: ts.Node): node is ts.MethodDeclaration {
+function isProjectRunMethod(node: ts.Node): node is ts.MethodDeclaration {
   if (
     !ts.isMethodDeclaration(node) ||
     !ts.isIdentifier(node.name) ||
@@ -4261,10 +4261,10 @@ function isWorkflowRunMethod(node: ts.Node): node is ts.MethodDeclaration {
     return false;
   }
 
-  return findWorkflowDefinitionCall(node) !== undefined;
+  return findProjectDefinitionCall(node) !== undefined;
 }
 
-function findWorkflowDefinitionCall(node: ts.MethodDeclaration): ts.CallExpression | undefined {
+function findProjectDefinitionCall(node: ts.MethodDeclaration): ts.CallExpression | undefined {
   const parent = node.parent;
   if (!ts.isObjectLiteralExpression(parent)) return undefined;
 
@@ -4272,7 +4272,7 @@ function findWorkflowDefinitionCall(node: ts.MethodDeclaration): ts.CallExpressi
   while (isTransparentExpressionParent(expression.parent, expression)) {
     expression = expression.parent;
   }
-  return isWorkflowDefineWorkflowCall(expression.parent) ? expression.parent : undefined;
+  return isProjectDefineProjectCall(expression.parent) ? expression.parent : undefined;
 }
 
 function createsTreeTraversalBoundary(node: ts.Node): boolean {
@@ -4287,29 +4287,29 @@ function createsTreeTraversalBoundary(node: ts.Node): boolean {
 }
 
 function readRunNodeCallee(node: ts.CallExpression): "runNode" | "runStreamNode" {
-  if (readWorkflowApiCallName(node.expression) === "runStreamNode") {
+  if (readProjectApiCallName(node.expression) === "runStreamNode") {
     return "runStreamNode";
   }
 
   return "runNode";
 }
 
-function isWorkflowDefineExecutorCall(node: ts.CallExpression): boolean {
-  return readWorkflowApiCallName(node.expression) === "defineExecutor" ||
-    readWorkflowApiCallName(node.expression) === "defineWorkflowExecutor";
+function isProjectDefineExecutorCall(node: ts.CallExpression): boolean {
+  return readProjectApiCallName(node.expression) === "defineExecutor" ||
+    readProjectApiCallName(node.expression) === "defineProjectExecutor";
 }
 
-function isWorkflowDefineWorkflowCall(node: ts.Node): node is ts.CallExpression {
-  return ts.isCallExpression(node) && readWorkflowApiCallName(node.expression) === "defineWorkflow";
+function isProjectDefineProjectCall(node: ts.Node): node is ts.CallExpression {
+  return ts.isCallExpression(node) && readProjectApiCallName(node.expression) === "defineProject";
 }
 
-function readWorkflowApiCallName(
+function readProjectApiCallName(
   expression: ts.LeftHandSideExpression,
 ): string | undefined {
   if (
     ts.isPropertyAccessExpression(expression) &&
     ts.isIdentifier(expression.expression) &&
-    expression.expression.text === "workflow"
+    expression.expression.text === "steamharness"
   ) {
     return expression.name.text;
   }
@@ -4338,7 +4338,7 @@ function readAssignedVariableName(node: ts.Node): string | undefined {
   return undefined;
 }
 
-function readWorkflowDefinitionBindingName(node: ts.Node | undefined): string | undefined {
+function readProjectDefinitionBindingName(node: ts.Node | undefined): string | undefined {
   if (node === undefined) return undefined;
   const assignedName = readAssignedVariableName(node);
   if (assignedName !== undefined) return assignedName;
@@ -4433,7 +4433,7 @@ function unwrapExpression(expression: ts.Expression): ts.Expression {
   return current;
 }
 
-function interfaceExtendsWorkflowExecutorResult(
+function interfaceExtendsProjectExecutorResult(
   node: ts.InterfaceDeclaration,
 ): boolean {
   return (
@@ -4441,26 +4441,26 @@ function interfaceExtendsWorkflowExecutorResult(
       return (
         clause.token === ts.SyntaxKind.ExtendsKeyword &&
         clause.types.some((type) => {
-          return isWorkflowExecutorResultExpression(type.expression);
+          return isProjectExecutorResultExpression(type.expression);
         })
       );
     }) ?? false
   );
 }
 
-function isWorkflowExecutorResultTypeNode(typeNode: ts.TypeNode): boolean {
+function isProjectExecutorResultTypeNode(typeNode: ts.TypeNode): boolean {
   if (ts.isTypeReferenceNode(typeNode)) {
-    return isWorkflowExecutorResultEntityName(typeNode.typeName);
+    return isProjectExecutorResultEntityName(typeNode.typeName);
   }
 
   if (ts.isIntersectionTypeNode(typeNode) || ts.isUnionTypeNode(typeNode)) {
-    return typeNode.types.some(isWorkflowExecutorResultTypeNode);
+    return typeNode.types.some(isProjectExecutorResultTypeNode);
   }
 
   return false;
 }
 
-function isWorkflowExecutorResultExpression(expression: ts.Expression): boolean {
+function isProjectExecutorResultExpression(expression: ts.Expression): boolean {
   if (ts.isIdentifier(expression)) {
     return expression.text === "ExecutorResult";
   }
@@ -4472,7 +4472,7 @@ function isWorkflowExecutorResultExpression(expression: ts.Expression): boolean 
   return false;
 }
 
-function isWorkflowExecutorResultEntityName(name: ts.EntityName): boolean {
+function isProjectExecutorResultEntityName(name: ts.EntityName): boolean {
   if (ts.isIdentifier(name)) {
     return name.text === "ExecutorResult";
   }
@@ -4551,7 +4551,7 @@ function normalizeComparableName(name: string): string {
   return normalized === "" ? name.trim().toLowerCase() : normalized;
 }
 
-function createWorkflowOutputTypeName(projectName: string): string {
+function createProjectOutputTypeName(projectName: string): string {
   const words = projectName
     .split(/[^a-zA-Z0-9]+/g)
     .map((word) => word.trim())

@@ -5,7 +5,7 @@ import { runInNewContext } from 'node:vm';
 register();
 const { TraceStore } = await import('../extensions/studio-workstation/src/workflow-trace-store.ts');
 const { traceRows, filterTraceRows } = await import('../extensions/studio-workstation/webview/trace-model.ts');
-const { workflowFrameHtml } = await import('../extensions/studio-workstation/src/workflow-webview.ts');
+const { projectFrameHtml } = await import('../extensions/studio-workstation/src/workflow-webview.ts');
 const project = (id, projectType = 'conversation') => ({ id, name: id, uri: `file:///${id}`, projectType });
 const snapshot = (project, extra = {}) => ({ project, ...extra });
 const send = (binding, snapshot) => binding.receive({ type: 'workflow-trace', version: 1, kind: 'state', snapshot });
@@ -98,13 +98,13 @@ test('model classification uses Core metadata and preserves node display names',
 });
 
 test('the outer webview configures an immediately loaded frame and validates trace and account messages', () => {
-  const html = workflowFrameHtml('http://127.0.0.1:3000/', 'Example', 'file:///project', 'dark', 'nonce', 'zh-cn');
+  const html = projectFrameHtml('http://127.0.0.1:3000/', 'Example', 'file:///project', 'dark', 'nonce', 'zh-cn');
   const listeners = {}, sent = [], frameMessages = [], contextMenus = [], child = { postMessage: (...args) => frameMessages.push(args) };
   const frame = { contentWindow: child, addEventListener: (name, callback) => { listeners[name] = callback; },
     getBoundingClientRect: () => ({ left: 10, top: 20, width: 400, height: 300 }),
     dispatchEvent: event => contextMenus.push({ type: event.type, ...event }),
     set src(value) {
-      assert.equal(new URL(value).searchParams.get('workflowLocale'), 'zh-CN');
+      assert.equal(new URL(value).searchParams.get('projectLocale'), 'zh-CN');
       assert.equal(typeof listeners.load, 'function');
       assert.equal(typeof listeners.message, 'function');
       listeners.load();

@@ -3,8 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import {
   createInjectedKanbanParams,
-  inspectLocalWorkflowStructure,
-  runLocalWorkflowWithReport,
+  inspectLocalProjectStructure,
+  runLocalProjectWithReport,
 } from "steamharness";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -20,7 +20,7 @@ describe("workspace steamharness Kanban contract", () => {
   it("inspects package metadata, the HTML entry, and manifest params without an executor", async () => {
     const projectDir = await createKanbanProject();
 
-    const structure = inspectLocalWorkflowStructure({ projectDir: projectDir });
+    const structure = inspectLocalProjectStructure({ projectDir: projectDir });
 
     expect(structure.projectType).toBe("kanban");
     expect(structure.kanban?.entry).toBe("index.html");
@@ -35,7 +35,7 @@ describe("workspace steamharness Kanban contract", () => {
   it("rejects workflow execution for a static Kanban package", async () => {
     const projectDir = await createKanbanProject();
 
-    await expect(runLocalWorkflowWithReport({ projectDir: projectDir })).rejects.toThrow(
+    await expect(runLocalProjectWithReport({ projectDir: projectDir })).rejects.toThrow(
       /static HTML project.*does not support workflow execution/,
     );
   });

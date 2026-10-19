@@ -5,7 +5,7 @@ import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import type { Connection } from './workflow-auth-client';
-import { sanitizeWorkflowEnvironment } from './workflow-auth-client';
+import { sanitizeProjectEnvironment } from './workflow-auth-client';
 import type { Project } from './workflow-types';
 import type { WebReady, WebSession, RelatedProjectBinding } from './workflow-cli-types';
 
@@ -39,7 +39,7 @@ export async function resolveProjectCli(projectDir: string): Promise<{ entry: st
 }
 
 export function createProjectCliEnvironment(base: NodeJS.ProcessEnv = process.env, studioControl?: StudioControlConfiguration): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = sanitizeWorkflowEnvironment(base);
+  const env: NodeJS.ProcessEnv = sanitizeProjectEnvironment(base);
   env.ELECTRON_RUN_AS_NODE = '1';
   for (const key of ['TSX_TSCONFIG_PATH', 'STEAMHARNESS_LOCAL_HARNESS_ROOT', 'STEAMHARNESS_LOCAL_SHARED_ROOT', 'STEAMHARNESS_LOCAL_SOURCE_MODE',
     'STEAMHARNESS_DEVELOPER_ASSISTANT_HOST', 'STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR', 'STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST',

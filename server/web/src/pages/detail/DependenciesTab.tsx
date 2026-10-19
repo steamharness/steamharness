@@ -4,7 +4,7 @@ import type {
   ProjectKVAccessRule,
   RelatedProjectKVGrant,
 } from "@steamharness/project-info";
-import { getWorkflowProjectTypeLabelKey } from "@steamharness/project-types";
+import { getProjectKindLabelKey } from "@steamharness/project-types";
 import {
   Check,
   ChevronsUpDown,
@@ -272,7 +272,7 @@ export function DependenciesTab({ project, detail, onNavigateProjectTab, refresh
     try {
       const [relationsResponse, projectsResponse, accessResponse, dependenciesResponse] = await Promise.all([
         apiClient.listRelatedProjects(project.id),
-        project.canManage ? apiClient.listWorkflows() : undefined,
+        project.canManage ? apiClient.listProjects() : undefined,
         project.canManage ? apiClient.listSourceAccessRequests(project.id) : undefined,
         project.projectType === "kanban"
           ? apiClient.getProjectDependencies(project.id, target)
@@ -338,7 +338,7 @@ export function DependenciesTab({ project, detail, onNavigateProjectTab, refresh
     .sort((left, right) => compareStrings(left.name, right.name));
   const projectOptions = selectableProjects.map((item) => ({
     value: item.id,
-    label: `${item.name} - ${translateDynamicKey(getWorkflowProjectTypeLabelKey(item.projectType))}`,
+    label: `${item.name} - ${translateDynamicKey(getProjectKindLabelKey(item.projectType))}`,
   }));
   const pendingRequests = sourceAccess?.requests.filter((request) => request.status === "pending") ?? [];
   const activeCapabilities = sourceAccess?.grants.filter((grant) => grant.revokedAt === undefined) ?? [];

@@ -1,8 +1,8 @@
-export function workflowFrameHtml(url: string, title: string, projectUri: string, theme: 'light' | 'dark', nonce: string, language = 'en'): string {
+export function projectFrameHtml(url: string, title: string, projectUri: string, theme: 'light' | 'dark', nonce: string, language = 'en'): string {
   const address = new URL(url);
   if (address.protocol !== 'http:' && address.protocol !== 'https:') { throw new Error('Invalid SteamHarness Web URL.'); }
   const locale = language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en';
-  address.searchParams.set('workflowLocale', locale);
+  address.searchParams.set('projectLocale', locale);
   const escape = (value: string): string => value.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]!));
   const literal = (value: string): string => JSON.stringify(value).replace(/</g, '\\u003c');
   return `<!doctype html><html lang="${locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">

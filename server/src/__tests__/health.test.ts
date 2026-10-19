@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { createWorkflowServerHealthData } from "../health";
+import { createProjectServerHealthData } from "../health";
 
 test("health payload prefers deployed release metadata for server and server-web", async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "steamharness-server-health-"));
@@ -49,7 +49,7 @@ test("health payload prefers deployed release metadata for server and server-web
       "utf8",
     );
 
-    const health = await createWorkflowServerHealthData({
+    const health = await createProjectServerHealthData({
       mode: "production",
       startedAt: "2026-06-29T09:00:00Z",
       serverRoot,
@@ -107,7 +107,7 @@ test("health payload prefers deployed release metadata for server and server-web
       },
     });
 
-    const englishHealth = await createWorkflowServerHealthData({
+    const englishHealth = await createProjectServerHealthData({
       mode: "production",
       startedAt: "2026-06-29T09:00:00Z",
       serverRoot,
@@ -160,7 +160,7 @@ test("alpha health reads only alpha release metadata from the shared release roo
     await writeFile(path.join(serverRoot, "package.json"), JSON.stringify({ version: alphaVersion }), "utf8");
     await writeFile(path.join(serverRoot, "web", "package.json"), JSON.stringify({ version: alphaVersion }), "utf8");
 
-    const health = await createWorkflowServerHealthData({
+    const health = await createProjectServerHealthData({
       channel: "alpha",
       serverRoot,
       metadataRoot,
@@ -203,7 +203,7 @@ test("health payload reports the loaded build when stable metadata points at ano
       "utf8",
     );
 
-    const health = await createWorkflowServerHealthData({
+    const health = await createProjectServerHealthData({
       serverRoot,
       metadataRoot,
       locale: "en",
@@ -238,7 +238,7 @@ test("health payload falls back to local manifests when release metadata is abse
     await writeFile(path.join(serverRoot, "web", "package.json"), JSON.stringify({ version: "0.3.1" }), "utf8");
     await writeFile(path.join(serverRoot, "node_modules", "steamharness", "package.json"), JSON.stringify({ version: "0.2.4" }), "utf8");
 
-    const health = await createWorkflowServerHealthData({
+    const health = await createProjectServerHealthData({
       mode: "development",
       startedAt: "2026-06-29T09:30:00Z",
       serverRoot,

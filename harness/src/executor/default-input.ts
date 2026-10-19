@@ -1,4 +1,4 @@
-import { parseWorkflowFileReferences, type FileReference } from "../files/index";
+import { parseProjectFileReferences, type FileReference } from "../files/index";
 
 export interface ConversationDefaultInputValue {
   message: string;
@@ -22,9 +22,9 @@ export function parseConversationDefaultInputArgs(
 
   return {
     message: messageValues.at(-1)?.trim() ?? "",
-    images: imageValues.flatMap((value) => parseWorkflowFileReferences(value)),
-    videos: videoValues.flatMap((value) => parseWorkflowFileReferences(value)),
-    files: fileValues.flatMap((value) => parseWorkflowFileReferences(value)),
+    images: imageValues.flatMap((value) => parseProjectFileReferences(value)),
+    videos: videoValues.flatMap((value) => parseProjectFileReferences(value)),
+    files: fileValues.flatMap((value) => parseProjectFileReferences(value)),
   };
 }
 

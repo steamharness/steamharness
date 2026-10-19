@@ -11,8 +11,8 @@ const workspace = path.dirname(studio);
 const cli = path.join(workspace, 'cli');
 const web = path.join(cli, 'dist/web');
 const proofDir = path.join(studio, '.studio/quick-parameters');
-const { inspectLocalWorkflowStructure } = await import(pathToFileURL(path.join(workspace, 'core/dist/index.js')).href);
-const report = inspectLocalWorkflowStructure({ projectDir: path.join(workspace, 'build-in/build-in-developer-assistant') });
+const { inspectLocalProjectStructure } = await import(pathToFileURL(path.join(workspace, 'core/dist/index.js')).href);
+const report = inspectLocalProjectStructure({ projectDir: path.join(workspace, 'build-in/build-in-developer-assistant') });
 assert.deepEqual(report.diagnostics.violations, []);
 assert.equal(report.params.some(field => field.name === 'contextWindow'), false);
 const bundled = await build({ entryPoints: [path.join(cli, 'src/web/ui/parameter-actions.ts')], bundle: true,

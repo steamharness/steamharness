@@ -499,15 +499,15 @@ test("DatabaseRepository reserves active deployment versions and claims deployme
 
   try {
     assert.deepEqual(
-      await repository.listWorkflowVersionReservations(DEMO_WF_ID, "deployment-a"),
+      await repository.listProjectVersionReservations(DEMO_WF_ID, "deployment-a"),
       ["0.0.2", "0.0.3"],
     );
-    assert.equal(await repository.transitionWorkflowDeploymentStatus({
+    assert.equal(await repository.transitionProjectDeploymentStatus({
       id: "deployment-a",
       from: ["planned", "failed"],
       status: "preparing",
     }), true);
-    assert.equal(await repository.transitionWorkflowDeploymentStatus({
+    assert.equal(await repository.transitionProjectDeploymentStatus({
       id: "deployment-a",
       from: ["planned", "failed"],
       status: "preparing",
@@ -572,14 +572,14 @@ test("DatabaseRepository keeps one pending source request and grants capability 
   pool.end = async () => {};
 
   try {
-    const first = await repository.createWorkflowProjectAccessRequest({
+    const first = await repository.createProjectAccessRequest({
       id: requestRow.id,
       projectId: DEMO_WF_ID,
       requesterUserId: "user-requester",
       capability: "download_source",
       reason: requestRow.reason,
     });
-    const second = await repository.createWorkflowProjectAccessRequest({
+    const second = await repository.createProjectAccessRequest({
       id: "00000000-0000-4000-8000-000000000052",
       projectId: DEMO_WF_ID,
       requesterUserId: "user-requester",
@@ -592,7 +592,7 @@ test("DatabaseRepository keeps one pending source request and grants capability 
       /on conflict \(project_id, requester_user_id, capability\)[\s\S]*where status = 'pending'/.test(query.sql)
     )));
 
-    const approved = await repository.resolveWorkflowProjectAccessRequest({
+    const approved = await repository.resolveProjectAccessRequest({
       projectId: DEMO_WF_ID,
       requestId: requestRow.id,
       status: "approved",
@@ -996,7 +996,7 @@ test("DatabaseRepository reconnects the KV revision listener and replays a revis
   const originalEnd = pool.end;
   pool.connect = async () => clients[connectionCount++]!;
   pool.end = async () => {};
-  Reflect.set(repository, "workflowKVRevisionReconnectDelayMs", 1);
+  Reflect.set(repository, "projectKVRevisionReconnectDelayMs", 1);
   const events: Array<{ projectId: string; revision: string }> = [];
   let unsubscribe: (() => Promise<void>) | undefined;
 
@@ -1066,7 +1066,7 @@ test("DatabaseRepository orders reconnect snapshots before buffered revision not
   const originalEnd = pool.end;
   pool.connect = async () => clients[connectionCount++]!;
   pool.end = async () => {};
-  Reflect.set(repository, "workflowKVRevisionReconnectDelayMs", 1);
+  Reflect.set(repository, "projectKVRevisionReconnectDelayMs", 1);
   const events: Array<{ projectId: string; revision: string }> = [];
   let unsubscribe: (() => Promise<void>) | undefined;
 
@@ -1100,7 +1100,7 @@ test("Storage.listProjectKVEntries preserves exact ID filter case", async () => 
     repoRoot: process.cwd(),
     dataRoot,
     db: {
-      getWorkflow: async () => createDbWorkflowRecord(DEMO_WF_ID, null),
+      getProject: async () => createDbProjectRecord(DEMO_WF_ID, null),
       listProjectKVEntries: async (options: unknown) => {
         calls.push(options);
         return { items: [], hasMore: false, total: 0 };
@@ -1140,7 +1140,7 @@ test("Storage.deleteProjectKVEntry deletes one exact scoped entry", async () => 
     repoRoot: process.cwd(),
     dataRoot,
     db: {
-      getWorkflow: async () => createDbWorkflowRecord(DEMO_WF_ID, null),
+      getProject: async () => createDbProjectRecord(DEMO_WF_ID, null),
       deleteValue: async (options: unknown) => {
         calls.push(options);
         return true;
@@ -1178,7 +1178,7 @@ test("Storage.deleteProjectKVEntry omits the conversation for project scope", as
     repoRoot: process.cwd(),
     dataRoot,
     db: {
-      getWorkflow: async () => createDbWorkflowRecord(DEMO_WF_ID, null),
+      getProject: async () => createDbProjectRecord(DEMO_WF_ID, null),
       deleteValue: async (options: unknown) => {
         calls.push(options);
         return true;
@@ -1212,7 +1212,7 @@ test("Storage.deleteProjectKVEntry reports an already-removed entry as missing",
     repoRoot: process.cwd(),
     dataRoot,
     db: {
-      getWorkflow: async () => createDbWorkflowRecord(DEMO_WF_ID, null),
+      getProject: async () => createDbProjectRecord(DEMO_WF_ID, null),
       deleteValue: async () => false,
     } as unknown as DatabaseRepository,
   });
@@ -1238,7 +1238,7 @@ test("Storage.deleteProjectKVEntry requires a conversation id for conversation s
     repoRoot: process.cwd(),
     dataRoot,
     db: {
-      getWorkflow: async () => createDbWorkflowRecord(DEMO_WF_ID, null),
+      getProject: async () => createDbProjectRecord(DEMO_WF_ID, null),
       deleteValue: async () => true,
     } as unknown as DatabaseRepository,
   });
@@ -1265,7 +1265,7 @@ test("Storage.getProjectKVEntry preserves exact key and conversation case", asyn
     repoRoot: process.cwd(),
     dataRoot,
     db: {
-      getWorkflow: async () => createDbWorkflowRecord(DEMO_WF_ID, null),
+      getProject: async () => createDbProjectRecord(DEMO_WF_ID, null),
       getProjectKVEntry: async (options: unknown) => {
         calls.push(options);
         return createKVSummary("Thread.State", { value: { ok: true } });
@@ -1558,7 +1558,7 @@ test("Storage.getProjectTokenUsage preserves conversation filter case", async ()
     repoRoot: process.cwd(),
     dataRoot,
     db: {
-      getWorkflow: async () => createDbWorkflowRecord(DEMO_WF_ID, null),
+      getProject: async () => createDbProjectRecord(DEMO_WF_ID, null),
       getProjectTokenUsage: async (options: unknown) => {
         calls.push(options);
         return {
@@ -1589,7 +1589,7 @@ test("Storage.getProjectTokenUsage preserves conversation filter case", async ()
 test("Storage restores an owned UUID binding and synchronizes its full declaration atomically", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-project-restore-"));
   const existing = {
-    ...createDbWorkflowRecord(DEMO_WF_ID, null),
+    ...createDbProjectRecord(DEMO_WF_ID, null),
     ownerUserId: "owner-1",
     projectInfo: {
       ...DECLARED_SERVER_PROJECT_INFO,
@@ -1614,13 +1614,13 @@ test("Storage restores an owned UUID binding and synchronizes its full declarati
     repoRoot: process.cwd(),
     dataRoot,
     db: {
-      getWorkflow: async () => existing,
-      getWorkflowMember: async () => undefined,
-      updateWorkflowProjectInfo: async (projectId: string, projectName: string, value: unknown) => {
+      getProject: async () => existing,
+      getProjectMember: async () => undefined,
+      updateProjectInfo: async (projectId: string, projectName: string, value: unknown) => {
         updates.push({ projectId, projectName, projectInfo: value });
         return { ...existing, name: projectName, projectInfo: value };
       },
-      updateWorkflowProjectCard: async (projectId: string, value: unknown) => {
+      updateProjectCard: async (projectId: string, value: unknown) => {
         updates.push({ projectId, projectCard: value });
         return { ...existing, projectCard: value };
       },
@@ -1712,7 +1712,7 @@ test("AccountRepository.getUserProfilesByIds returns a keyed profile map", async
   }
 });
 
-test("Storage.listWorkflows returns uploaded package project card metadata", async () => {
+test("Storage.listProjects returns uploaded package project card metadata", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-project-card-"));
   const storage = new Storage({
     serverRoot: process.cwd(),
@@ -1739,7 +1739,7 @@ test("Storage.listWorkflows returns uploaded package project card metadata", asy
       "utf8",
     );
 
-    const workflows = await storage.listWorkflows();
+    const workflows = await storage.listProjects();
 
     assert.equal(workflows[0]?.id, DEMO_CONV_WF_ID);
     assert.equal(workflows[0]?.projectType, "conversation");
@@ -1771,19 +1771,19 @@ test("Storage stores cropped project card images by content hash", async () => {
     const saved = await storage.saveProjectCardImage({
       projectName: DEMO_WF_ID,
       buffer: webp,
-      origin: "https://workflow.example/",
+      origin: "https://steamharness.example/",
     });
     const resolved = await storage.getProjectCardImage(DEMO_WF_ID, saved.hash);
 
     assert.equal(saved.mimeType, "image/webp");
     assert.equal(saved.size, webp.byteLength);
-    assert.equal(saved.url, `https://workflow.example/project-card-images/${DEMO_WF_ID}/${saved.hash}.webp`);
+    assert.equal(saved.url, `https://steamharness.example/project-card-images/${DEMO_WF_ID}/${saved.hash}.webp`);
     assert.deepEqual(await readFile(resolved.filePath), webp);
     await assert.rejects(
       storage.saveProjectCardImage({
         projectName: DEMO_WF_ID,
         buffer: Buffer.from("not-webp"),
-        origin: "https://workflow.example",
+        origin: "https://steamharness.example",
       }),
       /valid WebP/,
     );
@@ -1799,7 +1799,7 @@ test("Storage rejects the first upload when executor type differs from the empty
     repoRoot: process.cwd(),
     dataRoot,
     db: {
-      getWorkflow: async () => createDbWorkflowRecord(DEMO_WF_ID, null),
+      getProject: async () => createDbProjectRecord(DEMO_WF_ID, null),
       listVersions: async () => [],
     } as unknown as DatabaseRepository,
   });
@@ -1941,7 +1941,7 @@ test("Storage keeps immutable project card images after metadata changes", async
     repoRoot: process.cwd(),
     dataRoot,
     db: {
-      updateWorkflowProjectCard: async (projectId: string, projectCard: unknown) => {
+      updateProjectCard: async (projectId: string, projectCard: unknown) => {
         cards.push(projectCard);
         return {
           id: projectId,
@@ -1958,12 +1958,12 @@ test("Storage keeps immutable project card images after metadata changes", async
     const firstImage = await storage.saveProjectCardImage({
       projectName: DEMO_WF_ID,
       buffer: first,
-      origin: "https://workflow.example",
+      origin: "https://steamharness.example",
     });
     const secondImage = await storage.saveProjectCardImage({
       projectName: DEMO_WF_ID,
       buffer: second,
-      origin: "https://workflow.example",
+      origin: "https://steamharness.example",
     });
     const projectCard = {
       icon: "workflow" as const,
@@ -2002,8 +2002,8 @@ test("Storage shares concurrent database draft materialization and reuses its re
     repoRoot: process.cwd(),
     dataRoot,
     db: {
-      getWorkflow: async () => ({
-        ...createDbWorkflowRecord(DEMO_WF_ID, null),
+      getProject: async () => ({
+        ...createDbProjectRecord(DEMO_WF_ID, null),
         hasDraft: true,
         updatedAt: revision,
       }),
@@ -2122,8 +2122,8 @@ test("Storage retries database source materialization after a failed task", asyn
     repoRoot: process.cwd(),
     dataRoot,
     db: {
-      getWorkflow: async () => ({
-        ...createDbWorkflowRecord(DEMO_WF_ID, null),
+      getProject: async () => ({
+        ...createDbProjectRecord(DEMO_WF_ID, null),
         hasDraft: true,
       }),
       readDraftFiles: async () => {
@@ -2224,9 +2224,9 @@ test("DatabaseRepository publish and deployment operations use separate postgres
   publishLockPool.end = async () => {};
 
   try {
-    const result = await repository.withWorkflowPublishLock(DEMO_WF_ID, async () => "published");
+    const result = await repository.withProjectPublishLock(DEMO_WF_ID, async () => "published");
     const deploymentId = "00000000-0000-4000-8000-000000000099";
-    const deploymentResult = await repository.withWorkflowDeploymentLock(
+    const deploymentResult = await repository.withProjectDeploymentLock(
       deploymentId,
       async () => "deployed",
     );
@@ -2251,7 +2251,7 @@ test("DatabaseRepository publish and deployment operations use separate postgres
   }
 });
 
-test("DatabaseRepository.withWorkflowPublishLock does not occupy storage pool clients", async () => {
+test("DatabaseRepository.withProjectPublishLock does not occupy storage pool clients", async () => {
   const repository = new DatabaseRepository("postgresql://example.invalid/postgres");
   const lockQueries: Array<{ sql: string; params: unknown[] }> = [];
   const storageQueries: Array<{ sql: string; params: unknown[] }> = [];
@@ -2299,7 +2299,7 @@ test("DatabaseRepository.withWorkflowPublishLock does not occupy storage pool cl
   publishLockPool.end = async () => {};
 
   try {
-    await repository.withWorkflowPublishLock(DEMO_WF_ID, async () => {
+    await repository.withProjectPublishLock(DEMO_WF_ID, async () => {
       await repository.updateProjectName(DEMO_WF_ID, "Demo");
     });
 
@@ -2468,8 +2468,8 @@ test("Storage gives concurrent project deployments distinct reserved versions", 
     ["00000000-0000-4000-8000-000000000012", createDeployment("00000000-0000-4000-8000-000000000012")],
   ]);
   const db = {
-    getWorkflowDeployment: async (id: string) => deployments.get(id),
-    updateWorkflowDeploymentItem: async (input: {
+    getProjectDeployment: async (id: string) => deployments.get(id),
+    updateProjectDeploymentItem: async (input: {
       deploymentId: string;
       projectId: string;
       status: "planned";
@@ -2482,13 +2482,13 @@ test("Storage gives concurrent project deployments distinct reserved versions", 
       assert.ok(item);
       Object.assign(item, input, { updatedAt: "2026-08-05T00:00:01.000Z" });
     },
-    listWorkflowVersionReservations: async (projectId: string) => [...deployments.values()]
+    listProjectVersionReservations: async (projectId: string) => [...deployments.values()]
       .flatMap((deployment) => deployment.items)
       .filter((item) => item.projectId === projectId && item.plannedVersion !== undefined)
       .map((item) => item.plannedVersion!),
     listVersions: async () => [],
-    getWorkflow: async () => undefined,
-    withWorkflowPublishLock: async (_projectId: string, operation: () => Promise<unknown>) => operation(),
+    getProject: async () => undefined,
+    withProjectPublishLock: async (_projectId: string, operation: () => Promise<unknown>) => operation(),
   } as unknown as DatabaseRepository;
   const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot, db });
   const reserve = Reflect.get(storage, "reserveProjectGroupDeploymentVersions") as (
@@ -2513,8 +2513,8 @@ test("Storage skips active deployment reservations for ordinary publish versions
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-publish-reservations-"));
   const db = {
     listVersions: async () => [{ version: "0.0.2" }],
-    getWorkflow: async () => ({ latest: "0.0.2" }),
-    listWorkflowVersionReservations: async () => ["0.0.3", "0.0.4"],
+    getProject: async () => ({ latest: "0.0.2" }),
+    listProjectVersionReservations: async () => ["0.0.3", "0.0.4"],
   } as unknown as DatabaseRepository;
   const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot, db });
   const resolveNextVersion = Reflect.get(storage, "resolveNextVersion") as (
@@ -2557,7 +2557,7 @@ test("Storage resets and re-reserves every item before re-preparing a failed dep
   };
   let resetCalls = 0;
   const db = {
-    resetWorkflowDeploymentItemsForPreparation: async () => {
+    resetProjectDeploymentItemsForPreparation: async () => {
       resetCalls += 1;
       Object.assign(deployment.items[0]!, {
         status: "planned",
@@ -2566,14 +2566,14 @@ test("Storage resets and re-reserves every item before re-preparing a failed dep
         preparedSourceHash: undefined,
       });
     },
-    getWorkflowDeployment: async () => deployment,
-    updateWorkflowDeploymentItem: async (input: { plannedVersion: string }) => {
+    getProjectDeployment: async () => deployment,
+    updateProjectDeploymentItem: async (input: { plannedVersion: string }) => {
       Object.assign(deployment.items[0]!, input);
     },
     listVersions: async () => [{ version: "0.0.8" }],
-    getWorkflow: async () => ({ latest: "0.0.8" }),
-    listWorkflowVersionReservations: async () => [],
-    withWorkflowPublishLock: async (_projectId: string, operation: () => Promise<unknown>) => operation(),
+    getProject: async () => ({ latest: "0.0.8" }),
+    listProjectVersionReservations: async () => [],
+    withProjectPublishLock: async (_projectId: string, operation: () => Promise<unknown>) => operation(),
   } as unknown as DatabaseRepository;
   const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot, db });
   const reserve = Reflect.get(storage, "reserveProjectGroupDeploymentVersions") as (
@@ -2627,7 +2627,7 @@ test("Storage rejects project-group publishing while a relationship is pending",
     }],
   };
   const db = {
-    getWorkflow: async () => createDbWorkflowRecord(DEMO_CONV_WF_ID, null),
+    getProject: async () => createDbProjectRecord(DEMO_CONV_WF_ID, null),
   } as unknown as DatabaseRepository;
   const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot, db });
   const sourceRoot = path.join(dataRoot, "projects", DEMO_WF_ID, "draft", "source");
@@ -2679,9 +2679,9 @@ test("Storage offers a source request link only when the pinned dependency sourc
   internals["resolveSourceTarget"] = async () => ({ resolvedTarget: "1.0.0" });
   internals["readVersionDependencyLocks"] = async () => [dependency];
   internals["requireProjectDependencyDatabase"] = () => ({
-    getWorkflow: async (projectId: string) => projectId === DEMO_WF_ID
+    getProject: async (projectId: string) => projectId === DEMO_WF_ID
       ? {
-          ...createDbWorkflowRecord(DEMO_WF_ID, null),
+          ...createDbProjectRecord(DEMO_WF_ID, null),
           projectInfo: {
             ...DECLARED_SERVER_PROJECT_INFO,
             relatedProjects: [{
@@ -2695,7 +2695,7 @@ test("Storage offers a source request link only when the pinned dependency sourc
           },
         }
       : {
-          ...createDbWorkflowRecord(DEMO_CONV_WF_ID, null),
+          ...createDbProjectRecord(DEMO_CONV_WF_ID, null),
           name: "Stock data",
           projectInfo: {
             ...DECLARED_SERVER_PROJECT_INFO,
@@ -2772,11 +2772,11 @@ test("Storage accepts a replacement package after deployment preparation was int
   const internals = storage as unknown as Record<string, unknown>;
   internals["getProjectGroupDeployment"] = async () => deployment;
   internals["requireProjectDependencyDatabase"] = () => ({
-    transitionWorkflowDeploymentStatus: async ({ from }: { from: string[] }) => {
+    transitionProjectDeploymentStatus: async ({ from }: { from: string[] }) => {
       transitionFrom = from;
       return true;
     },
-    updateWorkflowDeployment: async ({ status }: { status: DeploymentRecord["status"] }) => {
+    updateProjectDeployment: async ({ status }: { status: DeploymentRecord["status"] }) => {
       deployment.status = status;
     },
   });
@@ -2817,8 +2817,8 @@ test("Storage resumes a persisted project-group preparation after restart", asyn
     status: "preparing",
   } as DeploymentRecord;
   const db = {
-    getWorkflowDeployment: async () => deployment,
-    updateWorkflowDeployment: async () => deployment,
+    getProjectDeployment: async () => deployment,
+    updateProjectDeployment: async () => deployment,
   } as unknown as DatabaseRepository;
   const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot, db });
   let scheduledDeploymentId: string | undefined;
@@ -2866,7 +2866,7 @@ async function writePublishableDraft(dataRoot: string, projectName: string): Pro
   );
   await writeFile(
     path.join(sourceRoot, "index.ts"),
-    `const draftWorkflow = workflow.defineWorkflow({ name: "${projectName}", run: async () => ({ errCode: 0, errMessage: "" }) });\nexport const executor = workflow.defineExecutor({ projectType: "workflow", defaultEntrypoint: "main", entrypoints: [workflow.defineEntrypoint({ id: "main", title: "Main", workflow: draftWorkflow, createInput: () => ({ errCode: 0, errMessage: "" }) })] });\nexport default draftWorkflow;\n`,
+    `const draftProject = steamharness.defineProject({ name: "${projectName}", run: async () => ({ errCode: 0, errMessage: "" }) });\nexport const executor = steamharness.defineExecutor({ projectType: "workflow", defaultEntrypoint: "main", entrypoints: [steamharness.defineEntrypoint({ id: "main", title: "Main", workflow: draftProject, createInput: () => ({ errCode: 0, errMessage: "" }) })] });\nexport default draftProject;\n`,
     "utf8",
   );
   await writeFile(path.join(sourceRoot, "README.md"), `# ${projectName}\n`, "utf8");
@@ -2897,8 +2897,8 @@ async function writeFileVersion(
   await writeFile(
     path.join(versionRoot, "source", "index.ts"),
     projectType === "workflow"
-      ? `const defined = workflow.defineWorkflow({ name: "test", run: async () => ({ errCode: 0, errMessage: "" }) });\nexport default workflow.defineExecutor({ projectType: "workflow", defaultEntrypoint: "main", entrypoints: [workflow.defineEntrypoint({ id: "main", title: "Main", workflow: defined, createInput: () => ({ errCode: 0, errMessage: "" }) })] });\n`
-      : `const defined = workflow.defineWorkflow({ name: "test", run: async () => ({ errCode: 0, errMessage: "" }) });\nexport default workflow.defineExecutor({ projectType: "conversation", workflow: defined, createInput: () => ({ errCode: 0, errMessage: "" }) });\n`,
+      ? `const defined = steamharness.defineProject({ name: "test", run: async () => ({ errCode: 0, errMessage: "" }) });\nexport default steamharness.defineExecutor({ projectType: "workflow", defaultEntrypoint: "main", entrypoints: [steamharness.defineEntrypoint({ id: "main", title: "Main", workflow: defined, createInput: () => ({ errCode: 0, errMessage: "" }) })] });\n`
+      : `const defined = steamharness.defineProject({ name: "test", run: async () => ({ errCode: 0, errMessage: "" }) });\nexport default steamharness.defineExecutor({ projectType: "conversation", workflow: defined, createInput: () => ({ errCode: 0, errMessage: "" }) });\n`,
     "utf8",
   );
   await writeFile(
@@ -2938,7 +2938,7 @@ async function writeFileBackedProject(
   );
 }
 
-function createDbWorkflowRecord(projectId: string, latest: string | null) {
+function createDbProjectRecord(projectId: string, latest: string | null) {
   return {
     id: projectId,
     name: projectId,
@@ -3039,7 +3039,7 @@ function createKVSummary(key: string, overrides: Partial<KVEntryDetail> = {}): K
 }
 
 function createMemoryKVStore(): KVStore & {
-  getWorkflow(projectId: string): Promise<ReturnType<typeof createDbWorkflowRecord>>;
+  getProject(projectId: string): Promise<ReturnType<typeof createDbProjectRecord>>;
   values: Map<string, unknown>;
   sources: Map<string, unknown>;
   getValueWithRevision(input: KVStoreGetInput): Promise<{ value: unknown; revision: string } | undefined>;
@@ -3065,8 +3065,8 @@ function createMemoryKVStore(): KVStore & {
   }) => [input.storageKind, input.scope, input.projectId, input.conversationId ?? "", input.key].join(":");
 
   return {
-    async getWorkflow(projectId) {
-      return createDbWorkflowRecord(projectId, null);
+    async getProject(projectId) {
+      return createDbProjectRecord(projectId, null);
     },
     values,
     sources,

@@ -1,7 +1,7 @@
 import type { Request } from "express";
 import {
   getRequestPrincipal,
-  getWorkflowAuthContext,
+  getProjectAuthContext,
   type AuthenticatedPrincipal,
 } from "./auth";
 import type {
@@ -27,7 +27,7 @@ export async function recordAuditEventForRequest(
   req: Request,
   event: AuditRouteEvent,
 ): Promise<void> {
-  const accountDb = getWorkflowAuthContext().accountDb;
+  const accountDb = getProjectAuthContext().accountDb;
   if (!accountDb) {
     return;
   }
@@ -42,7 +42,7 @@ export async function recordAuditEventForRequest(
 export async function listAuditEvents(
   options: AuditEventListOptions,
 ): Promise<AuditEventPage> {
-  const accountDb = getWorkflowAuthContext().accountDb;
+  const accountDb = getProjectAuthContext().accountDb;
   if (!accountDb) {
     throw new Error("Account storage is not configured.");
   }

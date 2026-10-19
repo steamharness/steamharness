@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { inspectLocalWorkflowStructure, HarnessError } from "../index";
+import { inspectLocalProjectStructure, HarnessError } from "../index";
 
 test("Workflow structure exposes validated schedule presets", async () => {
   const projectDir = await createScriptProject("workflow", {
@@ -22,7 +22,7 @@ test("Workflow structure exposes validated schedule presets", async () => {
     }],
   });
   try {
-    const report = inspectLocalWorkflowStructure({ projectDir });
+    const report = inspectLocalProjectStructure({ projectDir });
     assert.deepEqual(report.schedulePresets, [{
       id: "market-sync",
       title: "Market sync",
@@ -54,7 +54,7 @@ test("schedule presets must reference an existing Workflow entrypoint", async ()
   });
   try {
     assert.throws(
-      () => inspectLocalWorkflowStructure({ projectDir }),
+      () => inspectLocalProjectStructure({ projectDir }),
       (error: unknown) => error instanceof HarnessError && /unknown entrypoint/.test(error.message),
     );
   } finally {
@@ -83,7 +83,7 @@ test("schedule presets must satisfy the selected entrypoint static params", asyn
     });
     try {
       assert.throws(
-        () => inspectLocalWorkflowStructure({ projectDir }),
+        () => inspectLocalProjectStructure({ projectDir }),
         (error: unknown) => error instanceof HarnessError && expected.test(error.message),
       );
     } finally {
@@ -112,8 +112,8 @@ test("Conversation and Kanban projects reject schedule presets", async () => {
       writeFile(path.join(kanbanDir, "dist", "index.html"), "<!doctype html>")),
   ]);
   try {
-    assert.throws(() => inspectLocalWorkflowStructure({ projectDir: conversationDir }), /Only Workflow/);
-    assert.throws(() => inspectLocalWorkflowStructure({ projectDir: kanbanDir }), /Only Workflow/);
+    assert.throws(() => inspectLocalProjectStructure({ projectDir: conversationDir }), /Only Workflow/);
+    assert.throws(() => inspectLocalProjectStructure({ projectDir: kanbanDir }), /Only Workflow/);
   } finally {
     await Promise.all([
       rm(conversationDir, { recursive: true, force: true }),
@@ -135,14 +135,14 @@ async function createScriptProject(
       steamHarness,
     })),
     writeFile(path.join(projectDir, "index.ts"), projectType === "workflow" ? `
-      const main = workflow.defineWorkflow({
+      const main = steamharness.defineProject({
         name: "main",
         run(input) { return input; },
       });
-      export const executor = workflow.defineExecutor({
+      export const executor = steamharness.defineExecutor({
         projectType: "workflow",
         defaultEntrypoint: "main",
-        entrypoints: [workflow.defineEntrypoint({
+        entrypoints: [steamharness.defineEntrypoint({
           id: "main",
           title: "Main",
           workflow: main,
@@ -161,11 +161,11 @@ async function createScriptProject(
         })],
       });
     ` : `
-      const main = workflow.defineWorkflow({
+      const main = steamharness.defineProject({
         name: "main",
         run(input) { return input; },
       });
-      export const executor = workflow.defineExecutor({
+      export const executor = steamharness.defineExecutor({
         projectType: "conversation",
         workflow: main,
         createInput() { return { errCode: 0, errMessage: "" }; },

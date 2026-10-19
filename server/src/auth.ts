@@ -1,7 +1,7 @@
 
 import type { NextFunction, Request, Response } from "express";
 import { type AccountRepository } from "./account-db";
-import { createWorkflowAuthServiceFromEnv, encodeCookieSession, getConfiguredAdminKey, getRequestPrincipal, hasConfiguredAdminKey, hasPermission, parseCookieHeader, readCookieSession, type AuthenticatedPrincipal, type AuthService } from "./account-auth";
+import { createProjectAuthServiceFromEnv, encodeCookieSession, getConfiguredAdminKey, getRequestPrincipal, hasConfiguredAdminKey, hasPermission, parseCookieHeader, readCookieSession, type AuthenticatedPrincipal, type AuthService } from "./account-auth";
 import type { PermissionKey } from "./permissions";
 import { fail, HttpError } from "./protocol";
 import { getRequestT, localizeHttpErrorMessage, localizeServerMessage } from "./i18n";
@@ -20,18 +20,18 @@ export interface AuthContext {
 
 let authContext: AuthContext = {};
 
-export function configureWorkflowAuthContext(context: AuthContext): void {
+export function configureProjectAuthContext(context: AuthContext): void {
   authContext = context;
 }
 
-export function ensureWorkflowAuthService(accountDb?: AccountRepository): AuthService | undefined {
+export function ensureProjectAuthService(accountDb?: AccountRepository): AuthService | undefined {
   if (authContext.authService) {
     return authContext.authService;
   }
   if (!accountDb) {
     return undefined;
   }
-  const authService = createWorkflowAuthServiceFromEnv(accountDb);
+  const authService = createProjectAuthServiceFromEnv(accountDb);
   if (authService) {
     authContext = { ...authContext, authService, accountDb };
   }
@@ -184,7 +184,7 @@ export function clearAuthSessionCookie(res: Response): void {
   }
 }
 
-export function getWorkflowAuthContext(): AuthContext {
+export function getProjectAuthContext(): AuthContext {
   return authContext;
 }
 

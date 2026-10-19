@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { runLocalWorkflowWithReport } from "steamharness";
+import { runLocalProjectWithReport } from "steamharness";
 
 const fixtureB64 = "Z3B0LWltYWdlLWZpeHR1cmU=";
 
@@ -169,7 +169,7 @@ async function runWithMockEnv(options: {
   const ownsKvStoreDir = options.kvStoreDir === undefined;
   const kvStoreDir = options.kvStoreDir ?? await mkdtemp(`${os.tmpdir()}/steamharness-gpt-image-test-`);
   try {
-    return await runLocalWorkflowWithReport({
+    return await runLocalProjectWithReport({
       projectDir: path.resolve(process.cwd(), "workflow/gpt-image"),
       projectName: "gpt-image",
       args: options.args,

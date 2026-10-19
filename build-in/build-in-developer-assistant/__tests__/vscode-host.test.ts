@@ -3,13 +3,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentInput, AgentProjectOptions, AgentToolSet, McpServerConnection, NodeContext, ExecutorContext } from "steamharness";
-import { installWorkflowRuntimeGlobal } from "steamharness/runtime-api";
+import { installProjectRuntimeGlobal } from "steamharness/runtime-api";
 import { createAgentRuntime } from "steamharness";
 import { createDeveloperAssistantSystemPrompt } from "../assistant-prompt";
 
 const temporary: string[] = [];
 afterEach(async () => {
-  installWorkflowRuntimeGlobal();
+  installProjectRuntimeGlobal();
   vi.resetModules();
   vi.unstubAllEnvs();
   await Promise.all(temporary.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
@@ -17,20 +17,20 @@ afterEach(async () => {
 
 async function loadHost(environment: Record<string, string> = {}, connection?: McpServerConnection) {
   vi.resetModules();
-  const runtime = installWorkflowRuntimeGlobal();
+  const runtime = installProjectRuntimeGlobal();
   let options: AgentProjectOptions = {};
   const connect = vi.fn(runtime.connectMcpServer);
   if (connection) connect.mockResolvedValue(connection);
   const getEnv = vi.fn((name: string) => environment[name]);
   const approve = vi.fn(async () => ({ approved: true }));
-  globalThis.workflow = {
+  globalThis.steamharness = {
     ...runtime,
     getEnv,
     connectMcpServer: connect,
     createToolApprovalGate: () => ({ ...runtime.createToolApprovalGate(), approve }),
-    createAgentConversationWorkflow: (value: AgentProjectOptions = {}) => {
+    createAgentConversationProject: (value: AgentProjectOptions = {}) => {
       options = value;
-      return runtime.createAgentConversationWorkflow(value);
+      return runtime.createAgentConversationProject(value);
     },
   };
   const module = await import("../index");

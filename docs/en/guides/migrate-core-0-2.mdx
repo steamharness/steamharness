@@ -87,4 +87,4 @@ CLI 0.2 constrains its Core peer to `0.2.x` and validates the installed Core, th
 - `server`: fails without login or a UUID binding; after login and same-UUID binding, reads and writes server data and rejects the local location explicitly.
 - `both`: the local path works offline; the server path works only after login and binding, and the two datasets never synchronize automatically.
 
-Also verify local and server KV under `runWorkflow(..., { kvMode: "isolated" })` and confirm that every Knowledge call receives the intended storage location. For related-project access, confirm that both packages declare the relationship and pass every local directory explicitly with `--related-project alias=/absolute/project/path`.
+Also verify local and server KV under `runProject(..., { kvMode: "isolated" })` and confirm that every Knowledge call receives the intended storage location. For related-project access, confirm that both packages declare the relationship and pass every local directory explicitly with `--related-project alias=/absolute/project/path`.

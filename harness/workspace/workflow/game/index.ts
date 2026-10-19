@@ -16,8 +16,8 @@ import type {
   WeaponBrief,
 } from "./interface";
 
-const llmProvider = workflow.createLLMProviderRef("default", () => {
-  return workflow.createLLMProviderFromEnv();
+const llmProvider = steamharness.createLLMProviderRef("default", () => {
+  return steamharness.createLLMProviderFromEnv();
 });
 
 const defaultTask = "城市攻坚战任务";
@@ -30,7 +30,7 @@ const WEAPON_DESCRIPTION_ITEM_ID = "weapon-description";
 const STORY_ITEM_ID = "story";
 const GAME_RESULT_ITEM_ID = "game-result";
 
-const inputNode = workflow.createInputNode<GameInput, MissionSeed>({
+const inputNode = steamharness.createInputNode<GameInput, MissionSeed>({
   name: "game-input",
   parse(input) {
     const task = input.trim() || defaultTask;
@@ -48,32 +48,32 @@ const inputNode = workflow.createInputNode<GameInput, MissionSeed>({
   },
 });
 
-const weaponDescriptionOutputNode = workflow.createOutputNode<LoadoutPlan, WeaponBrief>({
+const weaponDescriptionOutputNode = steamharness.createOutputNode<LoadoutPlan, WeaponBrief>({
   name: "weapon-description-output",
   async *stream(input, context) {
     // Keep streamed LLM text in stable items so App/report merging is
     // deterministic for every visible output node.
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_start",
       item: createTextOutputItem(WEAPON_DESCRIPTION_ITEM_ID, ""),
     });
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_delta",
       itemId: WEAPON_DESCRIPTION_ITEM_ID,
       delta: weaponDescriptionLabel,
     });
 
-    const provider = workflow.getLLMProvider(context, "weapon-description-output", llmProvider);
+    const provider = steamharness.getLLMProvider(context, "weapon-description-output", llmProvider);
     for await (const chunk of provider.stream(createWeaponDescriptionInput(input))) {
       if (chunk.type === "text-delta") {
-        yield workflow.createOutputItemChunk({
+        yield steamharness.createOutputItemChunk({
           type: "output_item_delta",
           itemId: WEAPON_DESCRIPTION_ITEM_ID,
           delta: chunk.text,
         });
       }
     }
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_end",
       itemId: WEAPON_DESCRIPTION_ITEM_ID,
     });
@@ -88,7 +88,7 @@ const weaponDescriptionOutputNode = workflow.createOutputNode<LoadoutPlan, Weapo
   },
 });
 
-const attachmentAdviceNode = workflow.createLLMNode<WeaponBrief, AttachmentBrief>({
+const attachmentAdviceNode = steamharness.createLLMNode<WeaponBrief, AttachmentBrief>({
   name: "attachment-advice-llm",
   provider: llmProvider,
   mapInput(input) {
@@ -120,7 +120,7 @@ const attachmentAdviceNode = workflow.createLLMNode<WeaponBrief, AttachmentBrief
   },
 });
 
-const medicineAdviceNode = workflow.createLLMNode<AttachmentBrief, MedicineBrief>({
+const medicineAdviceNode = steamharness.createLLMNode<AttachmentBrief, MedicineBrief>({
   name: "medicine-advice-llm",
   provider: llmProvider,
   mapInput(input) {
@@ -153,7 +153,7 @@ const medicineAdviceNode = workflow.createLLMNode<AttachmentBrief, MedicineBrief
   },
 });
 
-const armorAdviceNode = workflow.createLLMNode<MedicineBrief, ArmorBrief>({
+const armorAdviceNode = steamharness.createLLMNode<MedicineBrief, ArmorBrief>({
   name: "armor-advice-llm",
   provider: llmProvider,
   mapInput(input) {
@@ -184,30 +184,30 @@ const armorAdviceNode = workflow.createLLMNode<MedicineBrief, ArmorBrief>({
   },
 });
 
-const storyOutputNode = workflow.createOutputNode<ArmorBrief, GameStory>({
+const storyOutputNode = steamharness.createOutputNode<ArmorBrief, GameStory>({
   name: "story-output",
   async *stream(input, context) {
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_start",
       item: createTextOutputItem(STORY_ITEM_ID, ""),
     });
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_delta",
       itemId: STORY_ITEM_ID,
       delta: storyLabel,
     });
 
-    const provider = workflow.getLLMProvider(context, "story-output", llmProvider);
+    const provider = steamharness.getLLMProvider(context, "story-output", llmProvider);
     for await (const chunk of provider.stream(createStoryInput(input))) {
       if (chunk.type === "text-delta") {
-        yield workflow.createOutputItemChunk({
+        yield steamharness.createOutputItemChunk({
           type: "output_item_delta",
           itemId: STORY_ITEM_ID,
           delta: chunk.text,
         });
       }
     }
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_end",
       itemId: STORY_ITEM_ID,
     });
@@ -222,7 +222,7 @@ const storyOutputNode = workflow.createOutputNode<ArmorBrief, GameStory>({
   },
 });
 
-const missionStatusNode = workflow.createQuestionClassifierNode({
+const missionStatusNode = steamharness.createQuestionClassifierNode({
   name: "mission-status-classifier",
   provider: llmProvider,
   userDescription: [
@@ -248,30 +248,30 @@ const missionStatusNode = workflow.createQuestionClassifierNode({
   },
 });
 
-const outputNode = workflow.createOutputNode<GameResultDraft, GameResultOutput>({
+const outputNode = steamharness.createOutputNode<GameResultDraft, GameResultOutput>({
   name: "game-output",
   async *stream(input) {
     // Use a stable output item while streaming so App replaces the
     // live game result with the final report item instead of keeping both.
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_start",
       item: createGameResultItem(""),
     });
     for await (const char of streamText(input.content)) {
-      yield workflow.createOutputItemChunk({
+      yield steamharness.createOutputItemChunk({
         type: "output_item_delta",
         itemId: GAME_RESULT_ITEM_ID,
         delta: char,
       });
     }
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_end",
       itemId: GAME_RESULT_ITEM_ID,
     });
   },
   format(stream, input) {
     return {
-      ...workflow.createOutputPayload({
+      ...steamharness.createOutputPayload({
         items: stream.items.length > 0 ? stream.items : [createGameResultItem(input.content.trim())],
       }),
       task: input.task,
@@ -291,13 +291,13 @@ const outputNode = workflow.createOutputNode<GameResultDraft, GameResultOutput>(
   },
 });
 
-export const gameWorkflow = workflow.defineWorkflow<GameInput, GameResultOutput>({
+export const gameProject = steamharness.defineProject<GameInput, GameResultOutput>({
   name: "game",
   async run(input, context) {
-    const seed = await workflow.runNode(inputNode, input, context);
+    const seed = await steamharness.runNode(inputNode, input, context);
     // Exercise runIf across equipment, medicine, and armor paths so the
     // App Diagram has multi-level branches and visible LLM work to render.
-    const weaponPlan = await workflow.runIf(seed, context, {
+    const weaponPlan = await steamharness.runIf(seed, context, {
       name: "Weapon branch",
       branches: [
         {
@@ -325,7 +325,7 @@ export const gameWorkflow = workflow.defineWorkflow<GameInput, GameResultOutput>
         }),
       },
     });
-    const attachmentPlan = await workflow.runIf(weaponPlan, context, {
+    const attachmentPlan = await steamharness.runIf(weaponPlan, context, {
       name: "Attachment branch",
       branches: [
         {
@@ -345,17 +345,17 @@ export const gameWorkflow = workflow.defineWorkflow<GameInput, GameResultOutput>
       },
     });
     const weaponBrief = requireOutput(
-      (await workflow.runStreamNode(weaponDescriptionOutputNode, attachmentPlan, context)).output,
+      (await steamharness.runStreamNode(weaponDescriptionOutputNode, attachmentPlan, context)).output,
     );
-    const attachmentBrief = await workflow.runNode(attachmentAdviceNode, weaponBrief, context);
-    const medicinePlan = await workflow.runIf(attachmentBrief, context, {
+    const attachmentBrief = await steamharness.runNode(attachmentAdviceNode, weaponBrief, context);
+    const medicinePlan = await steamharness.runIf(attachmentBrief, context, {
       name: "Medicine branch",
       branches: [
         {
           label: "heavy attrition kit",
           condition: (plan) => plan.attrition >= 0.7,
           async run(plan, runContext) {
-            const armorPlan = await workflow.runIf(plan, runContext, {
+            const armorPlan = await steamharness.runIf(plan, runContext, {
               name: "Nested armor triage",
               branches: [
                 {
@@ -384,8 +384,8 @@ export const gameWorkflow = workflow.defineWorkflow<GameInput, GameResultOutput>
         run: (plan) => ({ ...plan, medicine: "field-bandage", armor: "recon-vest" }),
       },
     });
-    const medicineBrief = await workflow.runNode(medicineAdviceNode, medicinePlan, context);
-    const armorPlan = await workflow.runIf(medicineBrief, context, {
+    const medicineBrief = await steamharness.runNode(medicineAdviceNode, medicinePlan, context);
+    const armorPlan = await steamharness.runIf(medicineBrief, context, {
       name: "Armor branch",
       branches: [
         {
@@ -404,12 +404,12 @@ export const gameWorkflow = workflow.defineWorkflow<GameInput, GameResultOutput>
         run: (plan) => ({ ...plan, armor: "light-plate" as GameArmor }),
       },
     });
-    const armorBrief = await workflow.runNode(armorAdviceNode, armorPlan, context);
+    const armorBrief = await steamharness.runNode(armorAdviceNode, armorPlan, context);
     const gameStory = requireOutput(
-      (await workflow.runStreamNode(storyOutputNode, armorBrief, context)).output,
+      (await steamharness.runStreamNode(storyOutputNode, armorBrief, context)).output,
     );
-    const missionStatus = await workflow.runNode(missionStatusNode, gameStory.story, context);
-    const result = await workflow.runStreamNode(
+    const missionStatus = await steamharness.runNode(missionStatusNode, gameStory.story, context);
+    const result = await steamharness.runStreamNode(
       outputNode,
       createMissionResult(gameStory, missionStatus),
       context,
@@ -419,14 +419,14 @@ export const gameWorkflow = workflow.defineWorkflow<GameInput, GameResultOutput>
   },
 });
 
-export const executor = workflow.defineExecutor<GameInput, GameResultOutput>({
+export const executor = steamharness.defineExecutor<GameInput, GameResultOutput>({
   projectType: "workflow",
   defaultEntrypoint: "main",
   entrypoints: [
-    workflow.defineEntrypoint<GameInput, GameResultOutput>({
+    steamharness.defineEntrypoint<GameInput, GameResultOutput>({
       id: "main",
       title: "Game",
-      workflow: gameWorkflow,
+      workflow: gameProject,
       tokenUsage: {
         enabled: true,
         display: true,
@@ -461,8 +461,8 @@ export const executor = workflow.defineExecutor<GameInput, GameResultOutput>({
   ],
 });
 
-export { gameWorkflow as workflow };
-export default gameWorkflow;
+export { gameProject as workflow };
+export default gameProject;
 
 function createGameResultItem(content: string) {
   return createTextOutputItem(GAME_RESULT_ITEM_ID, content, "Game Result");

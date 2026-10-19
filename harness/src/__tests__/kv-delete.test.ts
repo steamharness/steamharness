@@ -4,10 +4,10 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
-  createLocalWorkflowKVStore,
-  createWorkflowKVContext,
-  getLocalWorkflowKVEntry,
-  listLocalWorkflowKVEntries,
+  createLocalProjectKVStore,
+  createProjectKVContext,
+  getLocalProjectKVEntry,
+  listLocalProjectKVEntries,
 } from "../index";
 
 const PROJECT_ID = "demo";
@@ -24,14 +24,14 @@ test("local KV delete removes the entry, its metadata and its inspection index r
   const rootDir = await createRootDir("index");
 
   try {
-    const store = createLocalWorkflowKVStore({ rootDir });
+    const store = createLocalProjectKVStore({ rootDir });
     await store.setValue({ ...projectInput("keep"), value: { keep: true } });
     await store.setValue({ ...projectInput("drop"), value: { drop: true } });
 
     assert.equal(await store.deleteValue(projectInput("drop")), true);
     assert.equal(await store.getValue(projectInput("drop")), undefined);
     // The detail path reads the entry file and the metadata file, so both must go.
-    assert.equal(await getLocalWorkflowKVEntry({
+    assert.equal(await getLocalProjectKVEntry({
       rootDir,
       storageKind: "kv",
       scope: "project",
@@ -39,7 +39,7 @@ test("local KV delete removes the entry, its metadata and its inspection index r
       key: "drop",
     }), undefined);
 
-    const page = await listLocalWorkflowKVEntries({
+    const page = await listLocalProjectKVEntries({
       rootDir,
       storageKind: "kv",
       scope: "project",
@@ -59,7 +59,7 @@ test("local KV delete keeps a stored null distinct from a missing entry", async 
   const rootDir = await createRootDir("null");
 
   try {
-    const store = createLocalWorkflowKVStore({ rootDir });
+    const store = createLocalProjectKVStore({ rootDir });
     await store.setValue({ ...projectInput("explicit-null"), value: null });
 
     // A stored null is a real entry: it reads back, and delete reports a removal.
@@ -76,8 +76,8 @@ test("KV context exposes deleteValue on both the project and conversation namesp
   const rootDir = await createRootDir("context");
 
   try {
-    const store = createLocalWorkflowKVStore({ rootDir });
-    const kv = createWorkflowKVContext({
+    const store = createLocalProjectKVStore({ rootDir });
+    const kv = createProjectKVContext({
       store,
       projectId: PROJECT_ID,
       conversationId: "conversation-1",
@@ -102,11 +102,11 @@ test("a delete staged inside one namespace lock commits as a delete", async () =
   const rootDir = await createRootDir("transaction");
 
   try {
-    const store = createLocalWorkflowKVStore({ rootDir });
+    const store = createLocalProjectKVStore({ rootDir });
     await store.setValue({ ...projectInput("set-then-delete"), value: "first" });
     await store.setValue({ ...projectInput("delete-then-set"), value: "first" });
 
-    const kv = createWorkflowKVContext({ store, projectId: PROJECT_ID });
+    const kv = createProjectKVContext({ store, projectId: PROJECT_ID });
     await kv.withLock!(async () => {
       // Staging replaces any earlier write for the same key, so the last
       // operation in the lock is the one that commits.
@@ -129,7 +129,7 @@ test("a crashed commit replays a staged delete from its journal", async () => {
   const rootDir = await createRootDir("recovery");
 
   try {
-    const store = createLocalWorkflowKVStore({ rootDir });
+    const store = createLocalProjectKVStore({ rootDir });
     const input = projectInput("recovered");
     const journalPath = path.join(rootDir, ".transactions", "crashed-delete.json");
     await store.setValue({ ...input, value: "stale" });
@@ -146,7 +146,7 @@ test("a crashed commit replays a staged delete from its journal", async () => {
     assert.equal(await store.getValue(input), undefined);
     assert.equal((await readdir(path.dirname(journalPath))).includes(path.basename(journalPath)), false);
 
-    const page = await listLocalWorkflowKVEntries({
+    const page = await listLocalProjectKVEntries({
       rootDir,
       storageKind: "kv",
       scope: "project",
@@ -162,7 +162,7 @@ test("a journal carrying an ambiguous delete record fails recovery loudly", asyn
   const rootDir = await createRootDir("invalid-journal");
 
   try {
-    const store = createLocalWorkflowKVStore({ rootDir });
+    const store = createLocalProjectKVStore({ rootDir });
     // The first operation stamps the root's storage-format marker, and an
     // unstamped root has its legacy data directories cleared. Use the store
     // once so the journal written below is the one recovery actually reads.

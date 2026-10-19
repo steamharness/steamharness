@@ -78,7 +78,7 @@ test('the built-in analysis prepares a runnable Kanban and connects its own CLI 
   runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name),
     process: { ...process, env: { ...process.env, STUDIO_STEAMHARNESS_SOURCE: source.root } }, AbortController, AbortSignal, URL, Buffer, setTimeout, clearTimeout, queueMicrotask,
   }, { importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER });
-  const runtime = module.exports.createWorkflowRuntime({ extensionUri: { fsPath: extension }, globalStorageUri: { fsPath: storage },
+  const runtime = module.exports.createProjectRuntime({ extensionUri: { fsPath: extension }, globalStorageUri: { fsPath: storage },
     globalState: { get: () => imports } }, { getConnection: () => undefined, onDidChange: () => ({ dispose() {} }) });
   t.after(() => runtime.dispose());
   runtime.updateAnalysisProjects([current]);

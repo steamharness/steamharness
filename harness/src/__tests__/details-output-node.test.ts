@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { analyzeWorkflowScriptSource } from "../executor/rules";
+import { analyzeProjectScriptSource } from "../executor/rules";
 import {
   addOutputItem,
   createOutputItem,
@@ -9,9 +9,9 @@ import {
   createOutputPayload,
   createOutputStreamAccumulator,
   createDetailsOutputNode,
-  createDisabledWorkflowConversationContext,
-  createDisabledWorkflowTokenUsageContext,
-  createWorkflowRelatedProjectsContext,
+  createDisabledProjectConversationContext,
+  createDisabledProjectTokenUsageContext,
+  createProjectRelatedProjectsContext,
   isOutputContentType,
   isOutputItemStreamChunk,
   type KVContext,
@@ -19,7 +19,7 @@ import {
 } from "../index";
 import { runNode, runStreamNode } from "../workflow/index";
 import type { RunContext } from "../types/index";
-import { createWorkflowExecutionReport } from "../executor/report";
+import { createProjectExecutionReport } from "../executor/report";
 
 test("ring presentation survives output helpers and stream patches", () => {
   const item = createOutputItem({
@@ -56,7 +56,7 @@ test("createDetailsOutputNode formats a standard collapsible output item", async
       "- 列表",
       "- **加粗**",
     ].join("\n"),
-  }, createTestWorkflowContext());
+  }, createTestProjectContext());
 
   assert.equal(output.errCode, 0);
   assert.equal(output.errMessage, "");
@@ -84,7 +84,7 @@ test("createDetailsOutputNode supports custom icon and object content", async ()
     content: (input) => ({ score: input.score, passed: input.score >= 80 }),
   });
 
-  const output = await runNode(node, { name: "alpha", score: 92 }, createTestWorkflowContext());
+  const output = await runNode(node, { name: "alpha", score: 92 }, createTestProjectContext());
 
   assert.equal(output.items.length, 1);
   assert.equal(output.items[0]?.title, "Result for alpha");
@@ -94,18 +94,18 @@ test("createDetailsOutputNode supports custom icon and object content", async ()
 });
 
 test("workflow structure recognizes createDetailsOutputNode as output", () => {
-  const analysis = analyzeWorkflowScriptSource(`
-    const detailsNode = workflow.createDetailsOutputNode({
+  const analysis = analyzeProjectScriptSource(`
+    const detailsNode = steamharness.createDetailsOutputNode({
       name: "output",
       title: "Summary",
       content: "Body",
       icon: "success",
     });
 
-    export const demo = workflow.defineWorkflow({
+    export const demo = steamharness.defineProject({
       name: "demo",
       async run(input, context) {
-        return workflow.runNode(detailsNode, input, context);
+        return steamharness.runNode(detailsNode, input, context);
       },
     });
   `);
@@ -116,25 +116,25 @@ test("workflow structure recognizes createDetailsOutputNode as output", () => {
 });
 
 test("workflow structure recognizes executor tokenUsage configuration", () => {
-  const analysis = analyzeWorkflowScriptSource(`
-    const outputNode = workflow.createOutputNode({
+  const analysis = analyzeProjectScriptSource(`
+    const outputNode = steamharness.createOutputNode({
       name: "output",
       format(input) {
         return { errCode: 0, errMessage: "", content: String(input) };
       },
     });
 
-    export const demo = workflow.defineWorkflow({
+    export const demo = steamharness.defineProject({
       name: "demo",
       async run(input, context) {
-        return workflow.runNode(outputNode, input, context);
+        return steamharness.runNode(outputNode, input, context);
       },
     });
 
-    export const executor = workflow.defineExecutor({
+    export const executor = steamharness.defineExecutor({
       projectType: "workflow",
       defaultEntrypoint: "main",
-      entrypoints: [workflow.defineEntrypoint({
+      entrypoints: [steamharness.defineEntrypoint({
         id: "main",
         title: "Main",
         workflow: demo,
@@ -154,25 +154,25 @@ test("workflow structure recognizes executor tokenUsage configuration", () => {
 });
 
 test("workflow structure preserves textarea and date-related executor param controls", () => {
-  const analysis = analyzeWorkflowScriptSource(`
-    const outputNode = workflow.createOutputNode({
+  const analysis = analyzeProjectScriptSource(`
+    const outputNode = steamharness.createOutputNode({
       name: "output",
       format(input) {
         return { errCode: 0, errMessage: "", content: String(input.prompt) };
       },
     });
 
-    export const demo = workflow.defineWorkflow({
+    export const demo = steamharness.defineProject({
       name: "demo",
       async run(input, context) {
-        return workflow.runNode(outputNode, input, context);
+        return steamharness.runNode(outputNode, input, context);
       },
     });
 
-    export const executor = workflow.defineExecutor({
+    export const executor = steamharness.defineExecutor({
       projectType: "workflow",
       defaultEntrypoint: "main",
-      entrypoints: [workflow.defineEntrypoint({
+      entrypoints: [steamharness.defineEntrypoint({
         id: "main",
         title: "Main",
         workflow: demo,
@@ -313,7 +313,7 @@ test("execution reports preserve ring display declarations and raw values", () =
     id: "quota", title: "Quota", content: { value: 57, total: 100, unit: "MB" },
     display: { type: "ring", placement: "composer-right" },
   }] });
-  const report = createWorkflowExecutionReport({
+  const report = createProjectExecutionReport({
     runId: "run-quota", projectName: "quota", status: "success",
     startedAt: new Date("2026-10-14T00:00:00.000Z"), endedAt: new Date("2026-10-14T00:00:01.000Z"),
     result: { ok: true, data: payload }, nodes: [],
@@ -342,7 +342,7 @@ test("final execution reports retain video content types during normalization", 
     }],
   });
 
-  const report = createWorkflowExecutionReport({
+  const report = createProjectExecutionReport({
     runId: "run-video",
     projectName: "video",
     startedAt,
@@ -440,7 +440,7 @@ test("createOutputNode stream format receives text, items and chunks", async () 
     },
   });
 
-  const result = await runStreamNode(node, "body", createTestWorkflowContext());
+  const result = await runStreamNode(node, "body", createTestProjectContext());
 
   assert.equal(result.output?.text, "prefix:");
   assert.equal(result.output?.chunkCount, 2);
@@ -449,17 +449,17 @@ test("createOutputNode stream format receives text, items and chunks", async () 
   assert.equal(result.output?.items[1]?.content, "body");
 });
 
-function createTestWorkflowContext(): RunContext {
+function createTestProjectContext(): RunContext {
   const kv = createMemoryKVContext();
 
   return {
     providers: {},
     storage: {
-      local: { kv, persistentValue: createMemoryKVContext(), relatedProjects: createWorkflowRelatedProjectsContext() },
-      server: { kv: createMemoryKVContext(), persistentValue: createMemoryKVContext(), relatedProjects: createWorkflowRelatedProjectsContext() },
+      local: { kv, persistentValue: createMemoryKVContext(), relatedProjects: createProjectRelatedProjectsContext() },
+      server: { kv: createMemoryKVContext(), persistentValue: createMemoryKVContext(), relatedProjects: createProjectRelatedProjectsContext() },
     },
-    conversation: createDisabledWorkflowConversationContext(),
-    tokenUsage: createDisabledWorkflowTokenUsageContext(),
+    conversation: createDisabledProjectConversationContext(),
+    tokenUsage: createDisabledProjectTokenUsageContext(),
   };
 }
 

@@ -17,7 +17,7 @@ interface ConversationKnowledgeDraft {
   messageCount: number;
 }
 
-const inputNode = workflow.createInputNode<ConversationKnowledgeInput, ConversationKnowledgeInput>({
+const inputNode = steamharness.createInputNode<ConversationKnowledgeInput, ConversationKnowledgeInput>({
   name: "conversation-knowledge-input",
   parse(input) {
     return {
@@ -28,29 +28,29 @@ const inputNode = workflow.createInputNode<ConversationKnowledgeInput, Conversat
   },
 });
 
-const outputNode = workflow.createOutputNode<ConversationKnowledgeDraft & { dryRun: boolean }, ConversationKnowledgeOutputPayload>({
+const outputNode = steamharness.createOutputNode<ConversationKnowledgeDraft & { dryRun: boolean }, ConversationKnowledgeOutputPayload>({
   name: "conversation-knowledge-output",
   async *stream(input) {
     // App merges live output items with the final report by id. Use
     // a structured item here so the preview shown while running is the same
     // item that ends up in report.json.
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_start",
       item: createKnowledgeOutputItem(input, ""),
     });
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_delta",
       itemId: input.documentId,
       delta: input.markdown,
     });
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_end",
       itemId: input.documentId,
     });
   },
   format(stream, input) {
     return {
-      ...workflow.createOutputPayload({
+      ...steamharness.createOutputPayload({
         items: stream.items.length > 0
           ? stream.items
           : [createKnowledgeOutputItem(input, input.markdown)],
@@ -66,10 +66,10 @@ const outputNode = workflow.createOutputNode<ConversationKnowledgeDraft & { dryR
   },
 });
 
-export const conversationKnowledgeWorkflow = workflow.defineWorkflow<ConversationKnowledgeInput, ConversationKnowledgeOutputPayload>({
+export const conversationKnowledgeProject = steamharness.defineProject<ConversationKnowledgeInput, ConversationKnowledgeOutputPayload>({
   name: "conversation-knowledge",
   async run(input, context) {
-    const parsed = await workflow.runNode(inputNode, input, context);
+    const parsed = await steamharness.runNode(inputNode, input, context);
     const conversationId = requireConversationId(context.conversation.conversationId);
     const title = parsed.title ?? createDefaultTitle(conversationId);
     await context.conversation.setTitle(title);
@@ -98,15 +98,15 @@ export const conversationKnowledgeWorkflow = workflow.defineWorkflow<Conversatio
     // Each conversation maps to one PersistentValue-backed knowledge document.
     // dry-run keeps preview-only runs from writing to either configured backend.
     if (!parsed.dryRun) {
-      const existing = await workflow.getKnowledgeDocument(context.storage.local, draft.documentId);
+      const existing = await steamharness.getKnowledgeDocument(context.storage.local, draft.documentId);
       if (existing === undefined) {
-        await workflow.createKnowledgeDocument(context.storage.local, {
+        await steamharness.createKnowledgeDocument(context.storage.local, {
           id: draft.documentId,
           title: draft.title,
           markdown: draft.markdown,
         });
       } else {
-        await workflow.editKnowledgeDocument(context.storage.local, {
+        await steamharness.editKnowledgeDocument(context.storage.local, {
           id: draft.documentId,
           title: draft.title,
           markdown: draft.markdown,
@@ -114,7 +114,7 @@ export const conversationKnowledgeWorkflow = workflow.defineWorkflow<Conversatio
       }
     }
 
-    const result = await workflow.runStreamNode(outputNode, {
+    const result = await steamharness.runStreamNode(outputNode, {
       ...draft,
       dryRun: parsed.dryRun,
       messageCount: draft.messageCount,
@@ -124,9 +124,9 @@ export const conversationKnowledgeWorkflow = workflow.defineWorkflow<Conversatio
   },
 });
 
-export const executor = workflow.defineExecutor<ConversationKnowledgeInput, ConversationKnowledgeOutputPayload>({
+export const executor = steamharness.defineExecutor<ConversationKnowledgeInput, ConversationKnowledgeOutputPayload>({
   projectType: "conversation",
-  workflow: conversationKnowledgeWorkflow,
+  workflow: conversationKnowledgeProject,
   params: [
     {
       kind: "auxiliary",
@@ -156,8 +156,8 @@ export const executor = workflow.defineExecutor<ConversationKnowledgeInput, Conv
   },
 });
 
-export { conversationKnowledgeWorkflow as workflow };
-export default conversationKnowledgeWorkflow;
+export { conversationKnowledgeProject as workflow };
+export default conversationKnowledgeProject;
 
 function createKnowledgeOutputItem(
   input: ConversationKnowledgeDraft & { dryRun: boolean },
@@ -178,7 +178,7 @@ function createKnowledgeOutputItem(
 }
 
 function parseInput(args: string[]): ConversationKnowledgeInput {
-  const defaults = workflow.parseConversationDefaultInputArgs(args);
+  const defaults = steamharness.parseConversationDefaultInputArgs(args);
   const defaultMessage = defaults.message.trim();
   const messageParts: string[] = [];
   let title: string | undefined;
@@ -282,7 +282,7 @@ function requireConversationId(value: string | undefined): string {
     return value.trim();
   }
 
-  throw new workflow.HarnessError({
+  throw new steamharness.HarnessError({
     type: "input_validation",
     message: "conversation-knowledge requires a conversation id.",
   });
@@ -306,7 +306,7 @@ function escapeMarkdownInline(value: string): string {
 
 function requireOutput(output: ConversationKnowledgeOutputPayload | undefined): ConversationKnowledgeOutputPayload {
   if (output === undefined) {
-    throw new workflow.HarnessError({
+    throw new steamharness.HarnessError({
       type: "execution",
       message: "Conversation knowledge output was not created.",
     });

@@ -4,28 +4,28 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
-  analyzeWorkflowScriptSource,
-  runLocalWorkflowWithReport,
+  analyzeProjectScriptSource,
+  runLocalProjectWithReport,
 } from "../index";
 
 test("tool approval honors executor defaults, host overrides, waiting approval and resume", async () => {
-  const projectDir = await createToolApprovalWorkflow();
+  const projectDir = await createToolApprovalProject();
 
-  const autoApproved = await runLocalWorkflowWithReport({
+  const autoApproved = await runLocalProjectWithReport({
     projectDir,
     args: ["--tool", "search"],
   });
   assert.equal(autoApproved.status, "success");
   assertSuccessfulToolResult(autoApproved.result, "search", "search:ran");
 
-  const disabledByDefault = await runLocalWorkflowWithReport({
+  const disabledByDefault = await runLocalProjectWithReport({
     projectDir,
     args: ["--tool", "write"],
   });
   assert.equal(disabledByDefault.status, "failed");
   assertReportedToolDenial(disabledByDefault.result, "Tool \"write\" is disabled");
 
-  const enabledByHost = await runLocalWorkflowWithReport({
+  const enabledByHost = await runLocalProjectWithReport({
     projectDir,
     args: ["--tool", "write"],
     toolPermissionPolicies: {
@@ -36,7 +36,7 @@ test("tool approval honors executor defaults, host overrides, waiting approval a
   assert.equal(enabledByHost.status, "success");
   assertSuccessfulToolResult(enabledByHost.result, "write", "write:ran");
 
-  const waiting = await runLocalWorkflowWithReport({
+  const waiting = await runLocalProjectWithReport({
     projectDir,
     runId: "run-approval",
     args: ["--tool", "review"],
@@ -58,7 +58,7 @@ test("tool approval honors executor defaults, host overrides, waiting approval a
   assert.equal(waiting.pendingUserInput?.metadata?.toolName, "review");
   assert.equal(waiting.pendingUserInput?.params[0]?.name, "approved");
 
-  const approved = await runLocalWorkflowWithReport({
+  const approved = await runLocalProjectWithReport({
     projectDir,
     runId: "run-approval",
     args: ["--tool", "review"],
@@ -83,7 +83,7 @@ test("tool approval honors executor defaults, host overrides, waiting approval a
   assert.equal(approved.status, "success");
   assertSuccessfulToolResult(approved.result, "review", "review:ran");
 
-  const rejected = await runLocalWorkflowWithReport({
+  const rejected = await runLocalProjectWithReport({
     projectDir,
     args: ["--tool", "review"],
     toolPermissionPolicies: {
@@ -109,11 +109,11 @@ test("tool approval honors executor defaults, host overrides, waiting approval a
 });
 
 test("workflow structure extracts executor tool registrations", () => {
-  const analysis = analyzeWorkflowScriptSource(`
-    export const executor = workflow.defineExecutor({
+  const analysis = analyzeProjectScriptSource(`
+    export const executor = steamharness.defineExecutor({
       projectType: "workflow",
       defaultEntrypoint: "main",
-      entrypoints: [workflow.defineEntrypoint({
+      entrypoints: [steamharness.defineEntrypoint({
         id: "main", title: "Main", workflow: demo,
         tools: [
           { name: "search", label: "Search", description: "Find data", enabled: true, autoApprove: false },
@@ -135,16 +135,16 @@ test("workflow structure extracts executor tool registrations", () => {
 });
 
 test("local workflow reports preserve aborted status and terminal events", async () => {
-  const projectDir = await createToolApprovalWorkflow();
+  const projectDir = await createToolApprovalProject();
   const controller = new AbortController();
   const eventTypes: string[] = [];
 
-  const report = await runLocalWorkflowWithReport({
+  const report = await runLocalProjectWithReport({
     projectDir,
     abortSignal: controller.signal,
     onRuntimeEvent(event) {
       eventTypes.push(event.type);
-      if (event.type === "workflow_started") {
+      if (event.type === "project_started") {
         controller.abort(new Error("Cancelled by test."));
       }
     },
@@ -152,10 +152,10 @@ test("local workflow reports preserve aborted status and terminal events", async
 
   assert.equal(report.status, "aborted");
   assert.equal((report.result.ok ? report.result.data as { errCode?: number } : {}).errCode, 499);
-  assert.deepEqual(eventTypes, ["workflow_started", "workflow_aborted"]);
+  assert.deepEqual(eventTypes, ["project_started", "project_aborted"]);
 });
 
-async function createToolApprovalWorkflow(): Promise<string> {
+async function createToolApprovalProject(): Promise<string> {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-tool-approval-"));
 
   await writeFile(
@@ -181,14 +181,14 @@ async function createToolApprovalWorkflow(): Promise<string> {
       "import type { ToolApprovalPayload } from \"./interface\";",
       "",
       "interface ToolInput { tool: string; }",
-      "const approval = workflow.createToolApprovalGate();",
+      "const approval = steamharness.createToolApprovalGate();",
       "const tools = {",
       "  search: approval.wrap(\"search\", () => \"search:ran\"),",
       "  write: approval.wrap(\"write\", () => \"write:ran\"),",
       "  review: approval.wrap(\"review\", () => \"review:ran\"),",
       "};",
       "",
-      "export const toolApprovalWorkflow = workflow.defineWorkflow<ToolInput, ToolApprovalPayload>({",
+      "export const toolApprovalProject = steamharness.defineProject<ToolInput, ToolApprovalPayload>({",
       "  name: \"tool-approval-test\",",
       "  async run(input, context) {",
       "    const runTool = tools[input.tool as keyof typeof tools];",
@@ -197,11 +197,11 @@ async function createToolApprovalWorkflow(): Promise<string> {
       "  },",
       "});",
       "",
-      "export const executor = workflow.defineExecutor<ToolInput, ToolApprovalPayload>({",
+      "export const executor = steamharness.defineExecutor<ToolInput, ToolApprovalPayload>({",
       "  projectType: \"workflow\",",
       "  defaultEntrypoint: \"main\",",
-      "  entrypoints: [workflow.defineEntrypoint<ToolInput, ToolApprovalPayload>({",
-      "    id: \"main\", title: \"Main\", workflow: toolApprovalWorkflow,",
+      "  entrypoints: [steamharness.defineEntrypoint<ToolInput, ToolApprovalPayload>({",
+      "    id: \"main\", title: \"Main\", workflow: toolApprovalProject,",
       "    tools: [",
       "    { name: \"search\", label: \"Search\", description: \"Search data\", enabled: true, autoApprove: true },",
       "    { name: \"write\", label: \"Write\", description: \"Write data\", enabled: false, autoApprove: false },",
@@ -214,8 +214,8 @@ async function createToolApprovalWorkflow(): Promise<string> {
       "  })],",
       "});",
       "",
-      "export { toolApprovalWorkflow as workflow };",
-      "export default toolApprovalWorkflow;",
+      "export { toolApprovalProject as workflow };",
+      "export default toolApprovalProject;",
       "",
     ].join("\n"),
   );
@@ -224,7 +224,7 @@ async function createToolApprovalWorkflow(): Promise<string> {
 }
 
 function assertReportedToolDenial(
-  result: Awaited<ReturnType<typeof runLocalWorkflowWithReport>>["result"],
+  result: Awaited<ReturnType<typeof runLocalProjectWithReport>>["result"],
   message: string,
 ) {
   assert.equal(result.ok, true);
@@ -239,7 +239,7 @@ function assertReportedToolDenial(
 }
 
 function assertSuccessfulToolResult(
-  result: Awaited<ReturnType<typeof runLocalWorkflowWithReport>>["result"],
+  result: Awaited<ReturnType<typeof runLocalProjectWithReport>>["result"],
   tool: string,
   value: string,
 ) {

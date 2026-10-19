@@ -7,11 +7,11 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  createWorkflowMcpServer,
-  workflowReportToMcpResult,
+  createProjectMcpServer,
+  projectReportToMcpResult,
   type McpExecutionReport,
   type McpRunner,
-  type CreateWorkflowMcpServerOptions,
+  type CreateProjectMcpServerOptions,
 } from "../index";
 
 const openConnections: Array<{ close(): Promise<void> }> = [];
@@ -26,12 +26,12 @@ describe("workflow MCP server", () => {
       runner: { run: vi.fn(), resume: vi.fn() },
       fileInputMode: "local" as const,
     };
-    expect(() => createWorkflowMcpServer({
+    expect(() => createProjectMcpServer({
       ...base,
       projectId: "../secrets",
       structure: { projectType: "workflow", workflow: { name: "bad" }, entrypoints: [] },
     })).toThrow(/safe non-empty identifier/);
-    expect(() => createWorkflowMcpServer({
+    expect(() => createProjectMcpServer({
       ...base,
       projectId: "project-1",
       structure: {
@@ -43,7 +43,7 @@ describe("workflow MCP server", () => {
         ],
       },
     })).toThrow(/duplicate entrypoint id/);
-    expect(() => createWorkflowMcpServer({
+    expect(() => createProjectMcpServer({
       ...base,
       projectId: "project-1",
       structure: {
@@ -69,7 +69,7 @@ describe("workflow MCP server", () => {
       },
     };
     const expectInvalid = (param: Record<string, unknown>, pattern: RegExp) => {
-      expect(() => createWorkflowMcpServer({
+      expect(() => createProjectMcpServer({
         ...base,
         structure: {
           ...base.structure,
@@ -92,7 +92,7 @@ describe("workflow MCP server", () => {
     expectInvalid({ name: "value", type: "string", required: "yes" }, /invalid required/);
     expectInvalid({ name: "value", type: "string", defaultValue: 1 }, /invalid defaultValue/);
     expectInvalid({ name: "value", type: "string", description: { text: "bad" } }, /invalid description/);
-    expect(() => createWorkflowMcpServer({
+    expect(() => createProjectMcpServer({
       ...base,
       structure: {
         ...base.structure,
@@ -150,7 +150,7 @@ describe("workflow MCP server", () => {
 
   it("closes the audit event when a valid tool call fails before creating a run", async () => {
     const onAudit = vi.fn();
-    const server = createWorkflowMcpServer({
+    const server = createProjectMcpServer({
       projectId: "11111111-1111-4111-8111-111111111111",
       structure: {
         projectType: "workflow",
@@ -176,7 +176,7 @@ describe("workflow MCP server", () => {
   });
 
   it("keeps Workflow projects with no entrypoints available as an empty MCP server", async () => {
-    const server = createWorkflowMcpServer({
+    const server = createProjectMcpServer({
       projectId: "11111111-1111-4111-8111-111111111111",
       structure: {
         projectType: "workflow",
@@ -462,7 +462,7 @@ describe("workflow MCP server", () => {
         }),
         cancel: vi.fn(async () => undefined),
       };
-      const beforeRun: CreateWorkflowMcpServerOptions["beforeRun"] = failure === "beforeRun"
+      const beforeRun: CreateProjectMcpServerOptions["beforeRun"] = failure === "beforeRun"
         ? async ({ runId }) => {
             if (runId) throw new Error("resume preflight failed");
           }
@@ -496,7 +496,7 @@ describe("workflow MCP server", () => {
       }),
       resume: vi.fn(),
     };
-    const server = createWorkflowMcpServer({
+    const server = createProjectMcpServer({
       projectId: "11111111-1111-4111-8111-111111111111",
       structure: {
         projectType: "workflow",
@@ -529,7 +529,7 @@ describe("workflow MCP server", () => {
   });
 
   it("crops successful and failed reports to the public MCP result", () => {
-    const success = workflowReportToMcpResult(successReport("main", "Main workflow", []), {
+    const success = projectReportToMcpResult(successReport("main", "Main workflow", []), {
       id: "main",
       title: "Main workflow",
     });
@@ -541,7 +541,7 @@ describe("workflow MCP server", () => {
       output: { args: [] },
     });
 
-    const failed = workflowReportToMcpResult({
+    const failed = projectReportToMcpResult({
       runId: "run-2",
       status: "failed",
       result: { ok: true, data: { errCode: 42, errMessage: "Not available", output: null } },
@@ -554,7 +554,7 @@ describe("workflow MCP server", () => {
       },
     });
 
-    const rejectedResult = workflowReportToMcpResult({
+    const rejectedResult = projectReportToMcpResult({
       runId: "run-rejected",
       status: "success",
       result: { ok: false, error: { message: "Execution was rejected" } },
@@ -567,7 +567,7 @@ describe("workflow MCP server", () => {
       },
     });
 
-    const redacted = workflowReportToMcpResult({
+    const redacted = projectReportToMcpResult({
       runId: "run-3",
       status: "failed",
       result: {
@@ -588,9 +588,9 @@ describe("workflow MCP server", () => {
 async function connect(
   runner: McpRunner,
   elicitationResponses?: Array<ElicitResult | (() => Promise<ElicitResult>)>,
-  beforeRun?: CreateWorkflowMcpServerOptions["beforeRun"],
+  beforeRun?: CreateProjectMcpServerOptions["beforeRun"],
 ): Promise<{ client: Client; serverTransport: InMemoryTransport }> {
-  const server = createWorkflowMcpServer({
+  const server = createProjectMcpServer({
     projectId: "11111111-1111-4111-8111-111111111111",
     structure: {
       projectType: "workflow",

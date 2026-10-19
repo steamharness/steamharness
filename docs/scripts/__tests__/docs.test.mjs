@@ -142,7 +142,7 @@ test("standalone Docs rejects the removed Desktop app identity", () => {
     "@steamharness/app",
     "minAppVersion",
     "appVersion",
-    "workflow.isApp()",
+    "steamharness.isApp()",
     "https://example.test/app/stable/latest.yml",
     "app/v1.2.3",
     "source=app",
@@ -157,7 +157,7 @@ test("standalone Docs rejects the removed Desktop app identity", () => {
 
   assert.doesNotThrow(() => validateStandaloneDocsSource(
     "example.mdx",
-    "Desktop uses workflow.isDesktop(), source=desktop, desktop/v1.2.3, and SteamHarness.app.",
+    "Desktop uses steamharness.isDesktop(), source=desktop, desktop/v1.2.3, and SteamHarness.app.",
   ));
 });
 

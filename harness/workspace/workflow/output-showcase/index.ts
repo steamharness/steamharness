@@ -55,10 +55,10 @@ const RANDOM_TOOL_RESULTS = [
   ].join("\n"),
 ] as const;
 
-const introOutputNode = workflow.createOutputNode<OutputShowcaseInput>({
+const introOutputNode = steamharness.createOutputNode<OutputShowcaseInput>({
   name: "intro-output",
   async *stream(input, context) {
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_start",
       item: {
         id: INTRO_ITEM_ID,
@@ -81,20 +81,20 @@ const introOutputNode = workflow.createOutputNode<OutputShowcaseInput>({
       signal: context.abortSignal,
     });
 
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_end",
       itemId: INTRO_ITEM_ID,
     });
   },
   format(stream) {
-    return workflow.createOutputPayload({ items: stream.items });
+    return steamharness.createOutputPayload({ items: stream.items });
   },
 });
 
-const toolOutputNode = workflow.createOutputNode<OutputShowcaseInput & { toolSummary: string }>({
+const toolOutputNode = steamharness.createOutputNode<OutputShowcaseInput & { toolSummary: string }>({
   name: "tool-output",
   async *stream(input, context) {
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_start",
       item: {
         id: TOOL_ITEM_ID,
@@ -127,7 +127,7 @@ const toolOutputNode = workflow.createOutputNode<OutputShowcaseInput & { toolSum
     await wait(finishDelayMs, context.abortSignal);
     throwIfAborted(context.abortSignal);
 
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_delta",
       itemId: TOOL_ITEM_ID,
       delta: buildToolSuccessDelta(input.toolSummary),
@@ -142,20 +142,20 @@ const toolOutputNode = workflow.createOutputNode<OutputShowcaseInput & { toolSum
       },
     });
 
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_end",
       itemId: TOOL_ITEM_ID,
     });
   },
   format(stream) {
-    return workflow.createOutputPayload({ items: stream.items });
+    return steamharness.createOutputPayload({ items: stream.items });
   },
 });
 
-const postToolOutputNode = workflow.createOutputNode<OutputShowcaseInput>({
+const postToolOutputNode = steamharness.createOutputNode<OutputShowcaseInput>({
   name: "post-tool-output",
   async *stream(input, context) {
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_start",
       item: {
         id: POST_TOOL_ITEM_ID,
@@ -175,17 +175,17 @@ const postToolOutputNode = workflow.createOutputNode<OutputShowcaseInput>({
       signal: context.abortSignal,
     });
 
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_end",
       itemId: POST_TOOL_ITEM_ID,
     });
   },
   format(stream) {
-    return workflow.createOutputPayload({ items: stream.items });
+    return steamharness.createOutputPayload({ items: stream.items });
   },
 });
 
-const confirmationNode = workflow.createUserInputNode<
+const confirmationNode = steamharness.createUserInputNode<
   OutputShowcaseInput,
   OutputShowcaseConfirmationPayload
 >({
@@ -236,7 +236,7 @@ const confirmationNode = workflow.createUserInputNode<
   },
 });
 
-const timerNode = workflow.createTimerNode({
+const timerNode = steamharness.createTimerNode({
   name: "long-task-timer",
   title: "长任务计时",
   metadata: {
@@ -246,10 +246,10 @@ const timerNode = workflow.createTimerNode({
   },
 });
 
-const preTaskOutputNode = workflow.createOutputNode<OutputShowcaseInput>({
+const preTaskOutputNode = steamharness.createOutputNode<OutputShowcaseInput>({
   name: "pre-task-output",
   async *stream(_input, context) {
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_start",
       item: {
         id: PRE_TASK_ITEM_ID,
@@ -270,17 +270,17 @@ const preTaskOutputNode = workflow.createOutputNode<OutputShowcaseInput>({
       signal: context.abortSignal,
     });
 
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_end",
       itemId: PRE_TASK_ITEM_ID,
     });
   },
   format(stream) {
-    return workflow.createOutputPayload({ items: stream.items });
+    return steamharness.createOutputPayload({ items: stream.items });
   },
 });
 
-const finishedOutputNode = workflow.createOutputNode<
+const finishedOutputNode = steamharness.createOutputNode<
   OutputShowcaseInput & {
     toolSummary: string;
     longTaskTimerId: string;
@@ -289,7 +289,7 @@ const finishedOutputNode = workflow.createOutputNode<
 >({
   name: "finished-output",
   async *stream(input, context) {
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_start",
       item: {
         id: FINISHED_ITEM_ID,
@@ -314,14 +314,14 @@ const finishedOutputNode = workflow.createOutputNode<
       signal: context.abortSignal,
     });
 
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_end",
       itemId: FINISHED_ITEM_ID,
     });
   },
   format(stream, input) {
     return {
-      ...workflow.createOutputPayload({ items: stream.items }),
+      ...steamharness.createOutputPayload({ items: stream.items }),
       projectName: input.projectName,
       toolSummary: input.toolSummary,
       confirmed: true,
@@ -331,7 +331,7 @@ const finishedOutputNode = workflow.createOutputNode<
   },
 });
 
-const skippedOutputNode = workflow.createOutputNode<
+const skippedOutputNode = steamharness.createOutputNode<
   OutputShowcaseInput & {
     toolSummary: string;
     pageSnapshot: OutputShowcaseDisplaySnapshot;
@@ -339,7 +339,7 @@ const skippedOutputNode = workflow.createOutputNode<
 >({
   name: "skipped-output",
   async *stream(input, context) {
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_start",
       item: {
         id: SKIPPED_ITEM_ID,
@@ -363,14 +363,14 @@ const skippedOutputNode = workflow.createOutputNode<
       signal: context.abortSignal,
     });
 
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_end",
       itemId: SKIPPED_ITEM_ID,
     });
   },
   format(stream, input) {
     return {
-      ...workflow.createOutputPayload({ items: stream.items }),
+      ...steamharness.createOutputPayload({ items: stream.items }),
       projectName: input.projectName,
       toolSummary: input.toolSummary,
       confirmed: false,
@@ -380,7 +380,7 @@ const skippedOutputNode = workflow.createOutputNode<
   },
 });
 
-const rawJsonOutputNode = workflow.createOutputNode<{
+const rawJsonOutputNode = steamharness.createOutputNode<{
   projectName: string;
   toolSummary: string;
   confirmed: boolean;
@@ -389,7 +389,7 @@ const rawJsonOutputNode = workflow.createOutputNode<{
 }>({
   name: "raw-json-output",
   async *stream(input, context) {
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_start",
       item: {
         id: RAW_JSON_ITEM_ID,
@@ -408,14 +408,14 @@ const rawJsonOutputNode = workflow.createOutputNode<{
       signal: context.abortSignal,
     });
 
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_end",
       itemId: RAW_JSON_ITEM_ID,
     });
   },
   format(stream, input) {
     return {
-      ...workflow.createOutputPayload({ items: stream.items }),
+      ...steamharness.createOutputPayload({ items: stream.items }),
       projectName: input.projectName,
       toolSummary: input.toolSummary,
       confirmed: input.confirmed,
@@ -425,51 +425,51 @@ const rawJsonOutputNode = workflow.createOutputNode<{
   },
 });
 
-interface OutputShowcaseWorkflowState extends OutputShowcaseInput {
+interface OutputShowcaseProjectState extends OutputShowcaseInput {
   toolSummary: string;
   confirmation: OutputShowcaseConfirmationPayload;
 }
 
-export const outputShowcaseWorkflow = workflow.defineWorkflow<
+export const outputShowcaseProject = steamharness.defineProject<
   OutputShowcaseInput,
   OutputShowcaseOutputPayload
 >({
   name: "output-showcase",
   async run(input, context) {
     // 1. 项目介绍
-    await workflow.runStreamNode(introOutputNode, input, context);
+    await steamharness.runStreamNode(introOutputNode, input, context);
 
     // 2. 模拟工具调用：节点内部会先显示“进行中”，再切到“成功”。
     const toolSummary = pickRandomToolResult();
-    await workflow.runStreamNode(toolOutputNode, { ...input, toolSummary }, context);
-    await workflow.runStreamNode(postToolOutputNode, input, context);
+    await steamharness.runStreamNode(toolOutputNode, { ...input, toolSummary }, context);
+    await steamharness.runStreamNode(postToolOutputNode, input, context);
 
     // 4. 用户确认
-    const confirmation = await workflow.runNode(confirmationNode, input, context);
+    const confirmation = await steamharness.runNode(confirmationNode, input, context);
 
-    const state: OutputShowcaseWorkflowState = {
+    const state: OutputShowcaseProjectState = {
       ...input,
       toolSummary,
       confirmation,
     };
 
     // 5. 用户确认分支
-    return workflow.runIf(state, context, {
+    return steamharness.runIf(state, context, {
       name: "用户确认分支",
       branches: [
         {
           label: "执行长任务",
           condition: (value) => value.confirmation.values.confirmed === true,
           run: async (value, branchContext) => {
-            await workflow.runStreamNode(preTaskOutputNode, value, branchContext);
-            const timer = await workflow.runNode(timerNode, {
+            await steamharness.runStreamNode(preTaskOutputNode, value, branchContext);
+            const timer = await steamharness.runNode(timerNode, {
               timerId: LONG_TASK_TIMER_ID,
               title: "长任务计时",
               metadata: { phase: "running" },
             }, branchContext);
             await wait(value.taskDurationMs, branchContext.abortSignal);
             throwIfAborted(branchContext.abortSignal);
-            await workflow.endTimer(timer, branchContext, {
+            await steamharness.endTimer(timer, branchContext, {
               message: "业务阶段已显式结束",
               metadata: { waitedMs: value.taskDurationMs },
             });
@@ -480,7 +480,7 @@ export const outputShowcaseWorkflow = workflow.defineWorkflow<
               longTaskTimerId: timer.timerId,
               timerDurationMs: value.taskDurationMs,
             });
-            await workflow.runStreamNode(
+            await steamharness.runStreamNode(
               finishedOutputNode,
               {
                 ...value,
@@ -489,7 +489,7 @@ export const outputShowcaseWorkflow = workflow.defineWorkflow<
               },
               branchContext,
             );
-            return workflow.runStreamNode(rawJsonOutputNode, {
+            return steamharness.runStreamNode(rawJsonOutputNode, {
               projectName: value.projectName,
               toolSummary: value.toolSummary,
               confirmed: true,
@@ -508,11 +508,11 @@ export const outputShowcaseWorkflow = workflow.defineWorkflow<
             confirmed: false,
             longTaskTimerId: "",
           });
-          await workflow.runStreamNode(skippedOutputNode, {
+          await steamharness.runStreamNode(skippedOutputNode, {
             ...value,
             pageSnapshot,
           }, branchContext);
-          return workflow.runStreamNode(rawJsonOutputNode, {
+          return steamharness.runStreamNode(rawJsonOutputNode, {
             projectName: value.projectName,
             toolSummary: value.toolSummary,
             confirmed: false,
@@ -525,18 +525,18 @@ export const outputShowcaseWorkflow = workflow.defineWorkflow<
   },
 });
 
-export const executor = workflow.defineExecutor<
+export const executor = steamharness.defineExecutor<
   OutputShowcaseInput,
   OutputShowcaseOutputPayload
 >({
   projectType: "workflow",
   defaultEntrypoint: "main",
   entrypoints: [
-    workflow.defineEntrypoint<OutputShowcaseInput, OutputShowcaseOutputPayload>(
+    steamharness.defineEntrypoint<OutputShowcaseInput, OutputShowcaseOutputPayload>(
       {
         id: "main",
         title: "Output Showcase",
-        workflow: outputShowcaseWorkflow,
+        workflow: outputShowcaseProject,
         params: [
           {
             name: "projectName",
@@ -579,8 +579,8 @@ export const executor = workflow.defineExecutor<
   ],
 });
 
-export { outputShowcaseWorkflow as workflow };
-export default outputShowcaseWorkflow;
+export { outputShowcaseProject as workflow };
+export default outputShowcaseProject;
 
 function parseInput(args: string[]): OutputShowcaseInput {
   let projectName = "output-showcase";
@@ -665,7 +665,7 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
     return;
   }
 
-  throw new workflow.HarnessError({
+  throw new steamharness.HarnessError({
     type: "execution_aborted",
     message: "Output showcase run was cancelled.",
     cause: signal.reason,
@@ -682,7 +682,7 @@ async function* createSlowOutputItemText(options: {
   const pieces = [...splitText(options.text, options.size ?? DEFAULT_TEXT_CHUNK_SIZE)];
   for (const [index, piece] of pieces.entries()) {
     throwIfAborted(options.signal);
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_delta",
       itemId: options.itemId,
       delta: piece,

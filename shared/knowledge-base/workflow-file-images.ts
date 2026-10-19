@@ -1,5 +1,5 @@
 export interface FileBlobClient {
-  fetchWorkflowFile(fileId: string): Promise<Blob>;
+  fetchProjectFile(fileId: string): Promise<Blob>;
 }
 
 interface KnowledgeImageCacheState {
@@ -9,7 +9,7 @@ interface KnowledgeImageCacheState {
 
 const knowledgeImageCacheStates = new WeakMap<Map<string, string>, KnowledgeImageCacheState>();
 
-export function readWorkflowFileIdFromMarkdownImageSrc(src: string, origin = readCurrentOrigin()): string | null {
+export function readProjectFileIdFromMarkdownImageSrc(src: string, origin = readCurrentOrigin()): string | null {
   const trimmed = src.trim();
   if (!trimmed) return null;
 
@@ -48,7 +48,7 @@ export async function resolveKnowledgeImageSrc(
     origin?: string;
   },
 ): Promise<string | null | undefined> {
-  const fileId = readWorkflowFileIdFromMarkdownImageSrc(src, options.origin);
+  const fileId = readProjectFileIdFromMarkdownImageSrc(src, options.origin);
   if (!fileId) return undefined;
 
   const cached = options.cache.get(fileId);
@@ -62,7 +62,7 @@ export async function resolveKnowledgeImageSrc(
   // rendered <img> never has to make an unauthenticated raw request. Keeping
   // the Promise in the session also prevents duplicate Markdown references
   // from downloading and allocating separate object URLs.
-  const request = options.client.fetchWorkflowFile(fileId)
+  const request = options.client.fetchProjectFile(fileId)
     .then((blob) => {
       const url = URL.createObjectURL(blob);
       if (state.disposed) {

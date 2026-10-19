@@ -18,7 +18,7 @@ Core API 分组记录业务 workflow 可直接使用的 `workflow.*` 运行时 A
 
 | API | 说明 |
 | --- | --- |
-| [`defineWorkflow`](/core-api/define-workflow) | 定义 workflow 本体，描述主执行函数。 |
+| [`defineProject`](/core-api/define-workflow) | 定义 workflow 本体，描述主执行函数。 |
 | [`defineEntrypoint`](/core-api/define-entrypoint) | 定义 Workflow 项目中可独立运行的扁平入口及其参数、工具和 registry。 |
 | [`defineExecutor`](/core-api/define-executor) | 定义 Workflow 的入口目录，或 Conversation 的单入口执行配置。 |
 | [`parseConversationDefaultInputArgs`](/core-api/parse-conversation-default-input-args) | 解析 conversation 默认输入框序列化出的 `--message`、`--images` 和 `--files`。 |
@@ -39,7 +39,7 @@ Core API 分组记录业务 workflow 可直接使用的 `workflow.*` 运行时 A
 | [`runIf`](/core-api/run-if) | 执行 if / else-if / else 分支，并把分支选择写入运行报告和 Diagram。 |
 | [`runFor`](/core-api/run-for) | 执行可追踪的 for 循环，并让 Diagram 用循环容器展示循环体。 |
 | [`runWhile`](/core-api/run-while) | 执行可追踪的 while 循环，并让 Diagram 用循环容器展示循环体。 |
-| [`runWorkflow`](/core-api/run-workflow) | 在当前上下文中调用另一个 workflow，复用 KV、会话、provider、token usage 和 trace。 |
+| [`runProject`](/core-api/run-workflow) | 在当前上下文中调用另一个 workflow，复用 KV、会话、provider、token usage 和 trace。 |
 | [`Knowledge Documents`](/core-api/knowledge-documents) | 通过显式的本地或服务器存储上下文管理项目内 markdown 知识库文档。 |
 | [`getEnv`](/core-api/get-env) | 读取当前 runtime 环境中的非空变量。 |
 | [`getRuntimePlatform` / `isCli` / `isDesktop`](/core-api/runtime-platform) | 判断当前 workflow 的执行宿主是 CLI 还是本地桌面宿主。 |

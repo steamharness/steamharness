@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
-import { workflowRuntimeApi } from "../runtime-api";
+import { projectRuntimeApi } from "../runtime-api";
 
 // Core 是运行时 API 的唯一来源，而面向项目生成 agent 的 workflow-generator
 // skill 在三个仓库里各有一份 vendored 副本。新增或改名运行时 API 时，若不同步
@@ -14,7 +14,7 @@ const skillRoot = path.resolve(import.meta.dirname, "../../.agents/skills/workfl
 const apiReferencePath = path.join(skillRoot, "references", "steamharness-api.md");
 const skillPath = path.join(skillRoot, "SKILL.md");
 
-function mentionsWorkflowMember(corpus: string, member: string): boolean {
+function mentionsProjectMember(corpus: string, member: string): boolean {
   // 用标识符边界而不是裸子串：`createOutputItem` 是 `createOutputItemChunk` 的前缀。
   return new RegExp(`workflow\\.${member}(?![\\w-])`).test(corpus);
 }
@@ -27,7 +27,7 @@ test("the vendored generator skill documents every runtime API member", async ()
     await Promise.all([skillPath, apiReferencePath, ...referenceFiles].map((file) => readFile(file, "utf8")))
   ).join("\n");
 
-  const missing = Object.keys(workflowRuntimeApi).filter((name) => !mentionsWorkflowMember(corpus, name));
+  const missing = Object.keys(projectRuntimeApi).filter((name) => !mentionsProjectMember(corpus, name));
 
   assert.deepEqual(
     missing,

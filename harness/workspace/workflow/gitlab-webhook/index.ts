@@ -7,7 +7,7 @@ import type {
 type JsonRecord = Record<string, unknown>;
 const GITLAB_WEBHOOK_SUMMARY_ITEM_ID = "gitlab-webhook-summary";
 
-const inputNode = workflow.createInputNode<GitlabWebhookInput, GitlabWebhookInput>({
+const inputNode = steamharness.createInputNode<GitlabWebhookInput, GitlabWebhookInput>({
   name: "gitlab-webhook-input",
   parse(input) {
     return {
@@ -17,12 +17,12 @@ const inputNode = workflow.createInputNode<GitlabWebhookInput, GitlabWebhookInpu
   },
 });
 
-const outputNode = workflow.createOutputNode<GitlabWebhookEventSummary, GitlabWebhookOutputPayload>({
+const outputNode = steamharness.createOutputNode<GitlabWebhookEventSummary, GitlabWebhookOutputPayload>({
   name: "gitlab-webhook-output",
   async *stream(summary) {
     // Keep the live summary item id aligned with the final report so
     // conversation rendering does not keep both copies.
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_start",
       item: {
         id: GITLAB_WEBHOOK_SUMMARY_ITEM_ID,
@@ -32,12 +32,12 @@ const outputNode = workflow.createOutputNode<GitlabWebhookEventSummary, GitlabWe
         collapsed: false,
       },
     });
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_delta",
       itemId: GITLAB_WEBHOOK_SUMMARY_ITEM_ID,
       delta: formatSummaryLines(summary),
     });
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_end",
       itemId: GITLAB_WEBHOOK_SUMMARY_ITEM_ID,
     });
@@ -65,7 +65,7 @@ const outputNode = workflow.createOutputNode<GitlabWebhookEventSummary, GitlabWe
     const state = await context.conversation.getValue();
 
     return {
-      ...workflow.createOutputPayload({
+      ...steamharness.createOutputPayload({
         items: stream.items,
       }),
       event: summary.event,
@@ -80,20 +80,20 @@ const outputNode = workflow.createOutputNode<GitlabWebhookEventSummary, GitlabWe
   },
 });
 
-export const gitlabWebhookWorkflow = workflow.defineWorkflow<GitlabWebhookInput, GitlabWebhookOutputPayload>({
+export const gitlabWebhookProject = steamharness.defineProject<GitlabWebhookInput, GitlabWebhookOutputPayload>({
   name: "gitlab-webhook",
   async run(input, context) {
-    const parsed = await workflow.runNode(inputNode, input, context);
+    const parsed = await steamharness.runNode(inputNode, input, context);
     const summary = summarizeGitLabPayload(parsed.payload, parsed.message);
-    const result = await workflow.runStreamNode(outputNode, summary, context);
+    const result = await steamharness.runStreamNode(outputNode, summary, context);
 
     return requireOutput(result.output);
   },
 });
 
-export const executor = workflow.defineExecutor<GitlabWebhookInput, GitlabWebhookOutputPayload>({
+export const executor = steamharness.defineExecutor<GitlabWebhookInput, GitlabWebhookOutputPayload>({
   projectType: "conversation",
-  workflow: gitlabWebhookWorkflow,
+  workflow: gitlabWebhookProject,
   params: [
     {
       kind: "auxiliary",
@@ -109,7 +109,7 @@ export const executor = workflow.defineExecutor<GitlabWebhookInput, GitlabWebhoo
     },
   ],
   createInput({ args }) {
-    const defaults = workflow.parseConversationDefaultInputArgs(args);
+    const defaults = steamharness.parseConversationDefaultInputArgs(args);
     let payload = "";
 
     for (let i = 0; i < args.length; i++) {
@@ -128,8 +128,8 @@ export const executor = workflow.defineExecutor<GitlabWebhookInput, GitlabWebhoo
   },
 });
 
-export { gitlabWebhookWorkflow as workflow };
-export default gitlabWebhookWorkflow;
+export { gitlabWebhookProject as workflow };
+export default gitlabWebhookProject;
 
 function readOutputItemText(
   items: Array<{ id: string; content: unknown }>,

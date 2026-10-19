@@ -553,11 +553,11 @@ class ProjectAgentRuntime implements AgentRuntime {
             lastDeltaUpdate = now;
           }
         } else if (event.type === "message_start" || event.type === "message_end" || event.type === "agent_end" ||
-            (event as { type: string }).type === "workflow_session") {
+            (event as { type: string }).type === "project_session") {
           publishContextUsage();
         }
         const durableUsage = event as unknown as { type: string; usage?: Usage; recordId?: string };
-        if (durableUsage.type === "workflow_usage" && durableUsage.usage !== undefined && host?.reportUsage !== undefined) {
+        if (durableUsage.type === "project_usage" && durableUsage.usage !== undefined && host?.reportUsage !== undefined) {
           try {
             await host.reportUsage({ ...sumAgentUsage([durableUsage.usage])!, recordId: durableUsage.recordId });
           } catch (error) {
@@ -890,8 +890,8 @@ export function normalizeAgentEvent(event: {
   type: string;
   [key: string]: unknown;
 }): AgentStreamEvent[] {
-  if (event.type === "workflow_session") return [{ type: "session", snapshot: event["snapshot"] as import("./session-types").AgentSessionSnapshot }];
-  if (event.type === "workflow_retry") return [{ type: "retry", attempt: Number(event["attempt"]),
+  if (event.type === "project_session") return [{ type: "session", snapshot: event["snapshot"] as import("./session-types").AgentSessionSnapshot }];
+  if (event.type === "project_retry") return [{ type: "retry", attempt: Number(event["attempt"]),
     maxAttempts: Number(event["maxAttempts"] ?? AGENT_PROVIDER_MAX_RETRIES), reason: String(event["reason"]),
     kind: (event["kind"] ?? "dropped") as AgentTurnContinuationKind }];
   if (event.type === "message_update") {

@@ -5,7 +5,7 @@ description: "Upload project sources and optionally publish an immutable version
 
 # workspace upload
 
-Server safely extracts archives, validates static metadata and files, hashes sources and saves them. It never installs dependencies, builds projects or loads uploaded code. Without `--file`, CLI packages according to the project-root `.workflowignore`; `.gitignore` is unrelated.
+Server safely extracts archives, validates static metadata and files, hashes sources and saves them. It never installs dependencies, builds projects or loads uploaded code. Without `--file`, CLI packages according to the project-root `.steamharnessignore`; `.gitignore` is unrelated.
 
 ```bash
 steamharness workspace upload <project> [--path <dir>] [--file <archive>] [--create] [--release-log <text>] [--no-wait]
@@ -25,7 +25,7 @@ Every package declares `package.json.steamHarness.projectType`. Workflow/Convers
 
 `POST /api/workflows/{workflow}/package` returns a job. CLI polls `GET /api/workflows/{workflow}/preparations/{jobId}`. Stages are `queued`, `extracting`, `validating`, `committing`; statuses are `queued`, `preparing`, `success`, `failed`. Resume inspection with `workspace preparation <project> <jobId>`.
 
-Extraction rejects traversal, links, special members and conflicting paths. Failed uploads preserve existing drafts and immutable versions. Explicitly exclude local credentials, dependencies and user data with `.workflowignore`.
+Extraction rejects traversal, links, special members and conflicting paths. Failed uploads preserve existing drafts and immutable versions. Explicitly exclude local credentials, dependencies and user data with `.steamharnessignore`.
 
 ## Project Groups
 

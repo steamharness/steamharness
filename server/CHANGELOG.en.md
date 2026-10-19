@@ -174,7 +174,7 @@ All notable public changes of this release unit are recorded here.
   Migration: browser runs move to the Desktop home Web build, and the console only manages cloud projects.
 - The Server execution surface drops local dependency install, builds, Node subprocesses, and local fallback.
   Migration: project versions must be built and run by a remote Runner against a fixed Core, runtime protocol, architecture, and OCI digest.
-- `listWorkflows` no longer accepts `origin`, and project summaries no longer return `embedEnabled` or `embedPublicUrl`.
+- `listProjects` no longer accepts `origin`, and project summaries no longer return `embedEnabled` or `embedPublicUrl`.
   Migration: callers rely on the default project list fields instead of an Embed toggle.
 - Anonymous `/web` visits redirect to login and back, and `?next=` only accepts route names rather than arbitrary paths.
   Migration: never put an absolute path in `next`, which is rejected to avoid an open redirect.
@@ -213,6 +213,6 @@ All notable public changes of this release unit are recorded here.
 ### Removed
 
 - Removed `GET/PUT /api/projects/{projectId}/embed` and every `/embed/**` route.
-- Removed the `wfembed` host and `STEAMHARNESS_EMBED_PUBLIC_BASE_URL`; `workflow_embed_configs` stays expand-only.
+- Removed the `wfembed` host and `STEAMHARNESS_EMBED_PUBLIC_BASE_URL`; `project_embed_configs` stays expand-only.
 - Removed the Server Web `/web` entry page with its runnable version list and `next=web` redirect.
 - Removed the `server-live` release unit, the `/api/desktop/v1/*` and `/api/web-runs/*` routes, and the `web` release target.

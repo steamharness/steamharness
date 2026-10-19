@@ -1,20 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  createDisabledWorkflowTokenUsageContext,
+  createDisabledProjectTokenUsageContext,
   MockLLMProvider,
-  createWorkflowConversationContext,
-  createWorkflowRelatedProjectsContext,
-  createWorkflowTokenUsageContext,
+  createProjectConversationContext,
+  createProjectRelatedProjectsContext,
+  createProjectTokenUsageContext,
   type KVContext,
 } from "../index";
-import { analyzeWorkflowScriptSource } from "../executor/rules";
+import { analyzeProjectScriptSource } from "../executor/rules";
 import {
   readEntrypointOutput,
   runNode,
   runStreamNode,
-  runWorkflow,
-  safeRunWorkflow,
+  runProject,
+  safeRunProject,
   HarnessError,
 } from "../workflow/index";
 import type {
@@ -40,8 +40,8 @@ test("readEntrypointOutput unwraps a payload and refuses to unwrap a failure", (
   assert.equal(readEntrypointOutput(undefined), undefined);
 });
 
-test("runWorkflow calls a child workflow inside the parent context", async () => {
-  const context = createTestWorkflowContext();
+test("runProject calls a child workflow inside the parent context", async () => {
+  const context = createTestProjectContext();
   await context.storage.local.kv.setValue("shared-key", "from-parent");
 
   const child: Definition<{ value: number }, { value: number; shared: unknown }> = {
@@ -54,7 +54,7 @@ test("runWorkflow calls a child workflow inside the parent context", async () =>
     },
   };
 
-  const output = await runWorkflow(child, { value: 4 }, context);
+  const output = await runProject(child, { value: 4 }, context);
 
   assert.deepEqual(output, {
     value: 5,
@@ -62,8 +62,8 @@ test("runWorkflow calls a child workflow inside the parent context", async () =>
   });
 });
 
-test("runWorkflow shares persistentValue with child workflows", async () => {
-  const context = createTestWorkflowContext();
+test("runProject shares persistentValue with child workflows", async () => {
+  const context = createTestProjectContext();
   await context.storage.local.persistentValue.setValue("shared-key", "from-persistent-parent");
 
   const child: Definition<Record<string, never>, { value: unknown }> = {
@@ -75,17 +75,17 @@ test("runWorkflow shares persistentValue with child workflows", async () => {
     },
   };
 
-  const output = await runWorkflow(child, {}, context);
+  const output = await runProject(child, {}, context);
 
   assert.deepEqual(output, {
     value: "from-persistent-parent",
   });
 });
 
-test("runWorkflow emits a parent trace wrapper and keeps child node events in the same trace", async () => {
+test("runProject emits a parent trace wrapper and keeps child node events in the same trace", async () => {
   const starts: NodeExecutionHookStartEvent[] = [];
   const finishes: NodeExecutionHookFinishEvent[] = [];
-  const context = createTestWorkflowContext({
+  const context = createTestProjectContext({
     onStart(event) {
       starts.push(event);
     },
@@ -106,7 +106,7 @@ test("runWorkflow emits a parent trace wrapper and keeps child node events in th
     },
   };
 
-  const output = await runWorkflow(child, { message: "hello" }, context, {
+  const output = await runProject(child, { message: "hello" }, context, {
     name: "Nested child",
     metadata: {
       title: "Nested child trace",
@@ -126,9 +126,9 @@ test("runWorkflow emits a parent trace wrapper and keeps child node events in th
   });
 });
 
-test("safeRunWorkflow top-level execution does not emit a synthetic run-workflow node", async () => {
+test("safeRunProject top-level execution does not emit a synthetic run-workflow node", async () => {
   const starts: NodeExecutionHookStartEvent[] = [];
-  const context = createTestWorkflowContext({
+  const context = createTestProjectContext({
     onStart(event) {
       starts.push(event);
     },
@@ -146,16 +146,16 @@ test("safeRunWorkflow top-level execution does not emit a synthetic run-workflow
     },
   };
 
-  const result = await safeRunWorkflow(topLevel, {}, context);
+  const result = await safeRunProject(topLevel, {}, context);
 
   assert.deepEqual(result, { ok: true, data: "ok" });
   assert.deepEqual(starts.map((event) => event.nodeName), ["top-child-node"]);
 });
 
-test("runWorkflow options with only name keep shared conversation and visible output defaults", async () => {
+test("runProject options with only name keep shared conversation and visible output defaults", async () => {
   const chunks: NodeExecutionHookChunkEvent[] = [];
   const finishes: NodeExecutionHookFinishEvent[] = [];
-  const context = createTestWorkflowContext({
+  const context = createTestProjectContext({
     conversationId: "thread-defaults",
     onChunk(event) {
       chunks.push(event);
@@ -187,7 +187,7 @@ test("runWorkflow options with only name keep shared conversation and visible ou
     },
   };
 
-  const output = await runWorkflow(child, {}, context, {
+  const output = await runProject(child, {}, context, {
     name: "Only display name",
   });
   const parentState = await context.conversation.getValue();
@@ -205,8 +205,8 @@ test("runWorkflow options with only name keep shared conversation and visible ou
   });
 });
 
-test("runWorkflow shared-readonly conversation lets the child read but not write transcript or title", async () => {
-  const context = createTestWorkflowContext({
+test("runProject shared-readonly conversation lets the child read but not write transcript or title", async () => {
+  const context = createTestProjectContext({
     conversationId: "thread-1",
   });
   await context.conversation.appendMessage({ role: "user", content: "parent message" });
@@ -227,7 +227,7 @@ test("runWorkflow shared-readonly conversation lets the child read but not write
     },
   };
 
-  const output = await runWorkflow(child, {}, context, {
+  const output = await runProject(child, {}, context, {
     name: "Readonly child",
     conversationMode: "shared-readonly",
   });
@@ -242,9 +242,9 @@ test("runWorkflow shared-readonly conversation lets the child read but not write
   assert.equal(parentState.title, "Parent title");
 });
 
-test("runWorkflow passes abortSignal, providers, files, and tokenUsage through to the child", async () => {
+test("runProject passes abortSignal, providers, files, and tokenUsage through to the child", async () => {
   const controller = new AbortController();
-  const tokenUsage = createWorkflowTokenUsageContext({
+  const tokenUsage = createProjectTokenUsageContext({
     definition: { enabled: true },
     kv: createMemoryKVContext(),
     projectId: "parent",
@@ -256,7 +256,7 @@ test("runWorkflow passes abortSignal, providers, files, and tokenUsage through t
       throw new Error("not used");
     },
   };
-  const context = createTestWorkflowContext({
+  const context = createTestProjectContext({
     abortSignal: controller.signal,
     providers: { llm: new MockLLMProvider({ text: "mock-provider" }) },
     files,
@@ -281,7 +281,7 @@ test("runWorkflow passes abortSignal, providers, files, and tokenUsage through t
     },
   };
 
-  const output = await runWorkflow(child, {}, context, {
+  const output = await runProject(child, {}, context, {
     name: "Context child",
   });
 
@@ -294,51 +294,51 @@ test("runWorkflow passes abortSignal, providers, files, and tokenUsage through t
   assert.equal(tokenUsage.getRunUsage().totalTokens, 3);
 });
 
-test("runWorkflow isolates local and server child KV namespaces", async () => {
-  const context = createTestWorkflowContext();
+test("runProject isolates local and server child KV namespaces", async () => {
+  const context = createTestProjectContext();
   await context.storage.local.kv.setValue("state", "parent-workflow");
   await context.storage.local.kv.conversation.setValue("state", "parent-conversation");
   await context.storage.server.kv.setValue("state", "parent-server-workflow");
 
   const child: Definition<Record<string, never>, {
-    beforeWorkflow: unknown;
+    beforeProject: unknown;
     beforeConversation: unknown;
-    afterWorkflow: unknown;
+    afterProject: unknown;
     afterConversation: unknown;
-    beforeServerWorkflow: unknown;
-    afterServerWorkflow: unknown;
+    beforeServerProject: unknown;
+    afterServerProject: unknown;
   }> = {
     name: "child-workflow",
     async run(input, childContext) {
-      const beforeWorkflow = await childContext.storage.local.kv.getValue("state");
+      const beforeProject = await childContext.storage.local.kv.getValue("state");
       const beforeConversation = await childContext.storage.local.kv.conversation.getValue("state");
-      const beforeServerWorkflow = await childContext.storage.server.kv.getValue("state");
+      const beforeServerProject = await childContext.storage.server.kv.getValue("state");
       await childContext.storage.local.kv.setValue("state", "child-workflow");
       await childContext.storage.local.kv.conversation.setValue("state", "child-conversation");
       await childContext.storage.server.kv.setValue("state", "child-server-workflow");
       return {
-        beforeWorkflow,
+        beforeProject,
         beforeConversation,
-        afterWorkflow: await childContext.storage.local.kv.getValue("state"),
+        afterProject: await childContext.storage.local.kv.getValue("state"),
         afterConversation: await childContext.storage.local.kv.conversation.getValue("state"),
-        beforeServerWorkflow,
-        afterServerWorkflow: await childContext.storage.server.kv.getValue("state"),
+        beforeServerProject,
+        afterServerProject: await childContext.storage.server.kv.getValue("state"),
       };
     },
   };
 
-  const output = await runWorkflow(child, {}, context, {
+  const output = await runProject(child, {}, context, {
     name: "Isolated KV child",
     kvMode: "isolated",
   });
 
   assert.deepEqual(output, {
-    beforeWorkflow: undefined,
+    beforeProject: undefined,
     beforeConversation: undefined,
-    afterWorkflow: "child-workflow",
+    afterProject: "child-workflow",
     afterConversation: "child-conversation",
-    beforeServerWorkflow: undefined,
-    afterServerWorkflow: "child-server-workflow",
+    beforeServerProject: undefined,
+    afterServerProject: "child-server-workflow",
   });
   assert.equal(await context.storage.local.kv.getValue("state"), "parent-workflow");
   assert.equal(await context.storage.local.kv.conversation.getValue("state"), "parent-conversation");
@@ -348,12 +348,12 @@ test("runWorkflow isolates local and server child KV namespaces", async () => {
   );
 });
 
-test("runWorkflow stops recursive workflow composition at maxDepth", async () => {
-  const context = createTestWorkflowContext();
+test("runProject stops recursive workflow composition at maxDepth", async () => {
+  const context = createTestProjectContext();
   const recursive: Definition<{ depth: number }, number> = {
     name: "recursive-workflow",
     async run(input, childContext) {
-      return runWorkflow(recursive, { depth: input.depth + 1 }, childContext, {
+      return runProject(recursive, { depth: input.depth + 1 }, childContext, {
         name: "Recursive child",
         maxDepth: 2,
       });
@@ -361,18 +361,18 @@ test("runWorkflow stops recursive workflow composition at maxDepth", async () =>
   };
 
   await assert.rejects(
-    () => runWorkflow(recursive, { depth: 0 }, context, {
+    () => runProject(recursive, { depth: 0 }, context, {
       name: "Recursive root",
       maxDepth: 2,
     }),
-    /runWorkflow exceeded maxDepth \(2\)/,
+    /runProject exceeded maxDepth \(2\)/,
   );
 });
 
-test("runWorkflow hidden output visibility suppresses child output chunks", async () => {
+test("runProject hidden output visibility suppresses child output chunks", async () => {
   const chunks: NodeExecutionHookChunkEvent[] = [];
   const finishes: NodeExecutionHookFinishEvent[] = [];
-  const context = createTestWorkflowContext({
+  const context = createTestProjectContext({
     onChunk(event) {
       chunks.push(event);
     },
@@ -397,7 +397,7 @@ test("runWorkflow hidden output visibility suppresses child output chunks", asyn
     },
   };
 
-  await runWorkflow(child, {}, context, {
+  await runProject(child, {}, context, {
     name: "Hidden child",
     outputVisibility: "hidden",
   });
@@ -406,10 +406,10 @@ test("runWorkflow hidden output visibility suppresses child output chunks", asyn
   assert.equal(finishes.find((event) => event.nodeName === "output")?.outputVisibility, "hidden");
 });
 
-test("runWorkflow can route child streaming output chunks to a parent handler", async () => {
+test("runProject can route child streaming output chunks to a parent handler", async () => {
   const bridgedChunks: unknown[] = [];
   const visibleChunks: NodeExecutionHookChunkEvent[] = [];
-  const context = createTestWorkflowContext({
+  const context = createTestProjectContext({
     onChunk(event) {
       visibleChunks.push(event);
     },
@@ -432,7 +432,7 @@ test("runWorkflow can route child streaming output chunks to a parent handler", 
     },
   };
 
-  await runWorkflow(child, {}, context, {
+  await runProject(child, {}, context, {
     name: "Bridge child stream",
     outputVisibility: "hidden",
     onOutputChunk(chunk) {
@@ -444,9 +444,9 @@ test("runWorkflow can route child streaming output chunks to a parent handler", 
   assert.equal(visibleChunks.length, 0);
 });
 
-test("runWorkflow fails fast when an output bridge handler throws", async () => {
+test("runProject fails fast when an output bridge handler throws", async () => {
   const visibleErrors: NodeExecutionHookFinishEvent[] = [];
-  const context = createTestWorkflowContext({
+  const context = createTestProjectContext({
     onFinish(event) {
       if (event.status === "failed") {
         visibleErrors.push(event);
@@ -475,7 +475,7 @@ test("runWorkflow fails fast when an output bridge handler throws", async () => 
   };
 
   await assert.rejects(
-    () => runWorkflow(child, {}, context, {
+    () => runProject(child, {}, context, {
       name: "Bridge failure child",
       outputVisibility: "hidden",
       onOutputChunk() {
@@ -495,9 +495,9 @@ test("runWorkflow fails fast when an output bridge handler throws", async () => 
   assert.equal(visibleErrors.at(-1)?.nodeName, "run-workflow");
 });
 
-test("runWorkflow can route child final output when the child is not streaming", async () => {
+test("runProject can route child final output when the child is not streaming", async () => {
   const bridgedOutputs: unknown[] = [];
-  const context = createTestWorkflowContext();
+  const context = createTestProjectContext();
   const child: Definition<Record<string, never>, { errCode: number; errMessage: string; items: Array<{ title: string; content: string }> }> = {
     name: "child-workflow",
     async run() {
@@ -514,7 +514,7 @@ test("runWorkflow can route child final output when the child is not streaming",
     },
   };
 
-  const output = await runWorkflow(child, {}, context, {
+  const output = await runProject(child, {}, context, {
     name: "Bridge child final output",
     outputVisibility: "hidden",
     onOutput(childOutput) {
@@ -525,41 +525,41 @@ test("runWorkflow can route child final output when the child is not streaming",
   assert.deepEqual(bridgedOutputs, [output]);
 });
 
-test("workflow structure records runWorkflow calls in the execution tree", () => {
-  const analysis = analyzeWorkflowScriptSource(`
-    import childWorkflow from "../child";
+test("workflow structure records runProject calls in the execution tree", () => {
+  const analysis = analyzeProjectScriptSource(`
+    import childProject from "../child";
 
-    const outputNode = workflow.createOutputNode({
+    const outputNode = steamharness.createOutputNode({
       name: "output",
       format(input) {
         return { errCode: 0, errMessage: "", content: String(input.value) };
       },
     });
 
-    export const demo = workflow.defineWorkflow({
+    export const demo = steamharness.defineProject({
       name: "demo",
       async run(input, context) {
-        const childOutput = await workflow.runWorkflow(childWorkflow, input, context, {
+        const childOutput = await steamharness.runProject(childProject, input, context, {
           name: "Child workflow",
           conversationMode: "shared-readonly",
         });
 
-        return workflow.runNode(outputNode, childOutput, context);
+        return steamharness.runNode(outputNode, childOutput, context);
       },
     });
   `);
 
-  assert.equal(analysis.structureCalls.filter((call) => call.callee === "runWorkflow").length, 1);
+  assert.equal(analysis.structureCalls.filter((call) => call.callee === "runProject").length, 1);
   assert.equal(analysis.structureTrees.length, 1);
 
-  const workflowCall = analysis.structureTrees[0]?.children[0];
-  assert.equal(workflowCall?.kind, "call");
-  assert.equal(workflowCall.callee, "runWorkflow");
-  assert.equal(workflowCall.standardName, "run-workflow");
-  assert.equal(workflowCall.nodeRef, "childWorkflow");
+  const projectCall = analysis.structureTrees[0]?.children[0];
+  assert.equal(projectCall?.kind, "call");
+  assert.equal(projectCall.callee, "runProject");
+  assert.equal(projectCall.standardName, "run-workflow");
+  assert.equal(projectCall.nodeRef, "childProject");
 });
 
-function createTestWorkflowContext(options: {
+function createTestProjectContext(options: {
   onStart?: (event: NodeExecutionHookStartEvent) => void;
   onChunk?: (event: NodeExecutionHookChunkEvent) => void;
   onFinish?: (event: NodeExecutionHookFinishEvent) => void;
@@ -574,16 +574,16 @@ function createTestWorkflowContext(options: {
   return {
     providers: options.providers ?? {},
     storage: {
-      local: { kv, persistentValue: createMemoryKVContext(), relatedProjects: createWorkflowRelatedProjectsContext() },
-      server: { kv: createMemoryKVContext(), persistentValue: createMemoryKVContext(), relatedProjects: createWorkflowRelatedProjectsContext() },
+      local: { kv, persistentValue: createMemoryKVContext(), relatedProjects: createProjectRelatedProjectsContext() },
+      server: { kv: createMemoryKVContext(), persistentValue: createMemoryKVContext(), relatedProjects: createProjectRelatedProjectsContext() },
     },
-    conversation: createWorkflowConversationContext({
+    conversation: createProjectConversationContext({
       enabled: options.conversationId !== undefined,
       conversationId: options.conversationId,
       projectName: "parent-workflow",
       kv,
     }),
-    tokenUsage: options.tokenUsage ?? createDisabledWorkflowTokenUsageContext(),
+    tokenUsage: options.tokenUsage ?? createDisabledProjectTokenUsageContext(),
     files: options.files,
     abortSignal: options.abortSignal,
     nodeHooks: {

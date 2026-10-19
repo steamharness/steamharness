@@ -6,23 +6,23 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initI18n } from "@steamharness/i18n";
-import { ensureWorkflowProjectCreated, decodeWorkflowFileContent, findLocalWorkflowDependencies, formatForbiddenMessage, materializeProjectGroupDownload, normalizeWorkflowFilePath, packWorkflow, packProjectGroup, readProjectGroupContexts, getPreparation, main, parseArgs, readWorkflowPackageContext, resolveRepoRoot, stageWorkflowWithLocalDependencies, waitForDeviceToken, waitForProjectGroupPreparation, waitForPreparation } from "../workspace";
+import { ensureProjectCreated, decodeProjectFileContent, findLocalProjectDependencies, formatForbiddenMessage, materializeProjectGroupDownload, normalizeProjectFilePath, packProject, packProjectGroup, readProjectGroupContexts, getPreparation, main, parseArgs, readProjectPackageContext, resolveRepoRoot, stageProjectWithLocalDependencies, waitForDeviceToken, waitForProjectGroupPreparation, waitForPreparation } from "../workspace";
 
 const VALID_STEAMHARNESS_SOURCE = [
-  "export const mainWorkflow = workflow.defineWorkflow({",
+  "export const mainProject = steamharness.defineProject({",
   "  name: \"main\",",
   "  async run(input) { return input; },",
   "});",
-  "export const executor = workflow.defineExecutor({",
+  "export const executor = steamharness.defineExecutor({",
   "  projectType: \"workflow\",",
   "  defaultEntrypoint: \"main\",",
-  "  entrypoints: [workflow.defineEntrypoint({",
-  "    id: \"main\", title: \"Main\", workflow: mainWorkflow,",
+  "  entrypoints: [steamharness.defineEntrypoint({",
+  "    id: \"main\", title: \"Main\", workflow: mainProject,",
   "    createInput() { return { errCode: 0, errMessage: \"\" }; },",
   "  })],",
   "});",
-  "export { mainWorkflow as workflow };",
-  "export default mainWorkflow;",
+  "export { mainProject as workflow };",
+  "export default mainProject;",
   "",
 ].join("\n");
 
@@ -102,14 +102,14 @@ describe("server workspace CLI helpers", () => {
     await writeFile(path.join(dependencyDir, "index.ts"), VALID_STEAMHARNESS_SOURCE);
 
     const packed = await packProjectGroup({
-      workflowArg: "root",
+      projectArg: "root",
       sourcePath: rootDir,
       dependencyOptions: [`worker=${dependencyDir}`],
       contexts: {
-        root: await readWorkflowPackageContext("root", rootDir),
+        root: await readProjectPackageContext("root", rootDir),
         dependencies: [{
           alias: "worker",
-          packageContext: await readWorkflowPackageContext("worker", dependencyDir),
+          packageContext: await readProjectPackageContext("worker", dependencyDir),
         }],
         locks: [{ alias: "worker", projectId: dependencyId, delivery: "included" }],
       },
@@ -211,7 +211,7 @@ describe("server workspace CLI helpers", () => {
 
     try {
       const contexts = await readProjectGroupContexts({
-        workflowArg: "board",
+        projectArg: "board",
         sourcePath: kanbanDir,
         dependencyOptions: [`stocks=${projectDir}`],
       });
@@ -229,7 +229,7 @@ describe("server workspace CLI helpers", () => {
         },
       }));
       await expect(readProjectGroupContexts({
-        workflowArg: "board",
+        projectArg: "board",
         sourcePath: kanbanDir,
         dependencyOptions: [`stocks=${projectDir}`],
       })).rejects.toThrow("not confirmed by both project manifests");
@@ -255,7 +255,7 @@ describe("server workspace CLI helpers", () => {
 
     try {
       await expect(readProjectGroupContexts({
-        workflowArg: "board",
+        projectArg: "board",
         sourcePath: root,
         dependencyOptions: [],
       })).rejects.toThrow("cannot reference the current project");
@@ -287,7 +287,7 @@ describe("server workspace CLI helpers", () => {
     await writeFile(path.join(sourceDir, "workflow-auth.json"), "{\"apiKey\":\"secret\"}\n");
 
     try {
-      await stageWorkflowWithLocalDependencies({
+      await stageProjectWithLocalDependencies({
         workspaceRoot: path.dirname(sourceDir),
         projectDir: sourceDir,
         projectName: "workflow",
@@ -534,7 +534,7 @@ describe("server workspace CLI helpers", () => {
         skippedDependencies: [{
           dependency: createPublishedDependencyLock(dependencyProjectId),
           reason: "permission_required",
-          requestUrl: "https://workflow.example/access-requests/token",
+          requestUrl: "https://steamharness.example/access-requests/token",
         }],
         projects: [{
           projectId: rootProjectId,
@@ -882,7 +882,7 @@ describe("server workspace CLI helpers", () => {
   it("packages executable project source without requiring a README", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-optional-readme-"));
     const sourceProjectDir = path.join(root, "source");
-    const archivePath = path.join(root, "workflow.tgz");
+    const archivePath = path.join(root, "steamharness.tgz");
     await mkdir(sourceProjectDir, { recursive: true });
     await writeFile(path.join(sourceProjectDir, "package.json"), JSON.stringify({
       id: "a7e15f8a-e179-4986-8b0d-1e69a0e65b51",
@@ -890,12 +890,12 @@ describe("server workspace CLI helpers", () => {
       version: "0.1.0",
     }));
     await writeFile(path.join(sourceProjectDir, "index.ts"), "export default {};\n");
-    await expect(packWorkflow("optional-readme", archivePath, sourceProjectDir))
+    await expect(packProject("optional-readme", archivePath, sourceProjectDir))
       .resolves.toBe(archivePath);
     await rm(root, { recursive: true, force: true });
   });
 
-  it("packs a configured Kanban artifact using only .workflowignore", async () => {
+  it("packs a configured Kanban artifact using only .steamharnessignore", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-kanban-pack-"));
     const sourceDir = path.join(root, "kanban");
     const archivePath = path.join(root, "kanban.tgz");
@@ -912,16 +912,16 @@ describe("server workspace CLI helpers", () => {
     await mkdir(path.join(sourceDir, "dist", "pages"), { recursive: true });
     await mkdir(path.join(sourceDir, "src"), { recursive: true });
     await writeFile(path.join(sourceDir, ".gitignore"), "dist/\n");
-    await writeFile(path.join(sourceDir, ".workflowignore"), "src/\ndist/**/*.map\n");
+    await writeFile(path.join(sourceDir, ".steamharnessignore"), "src/\ndist/**/*.map\n");
     await writeFile(path.join(sourceDir, "dist", "pages", "board.htm"), "<!doctype html><title>Kanban</title>\n");
     await writeFile(path.join(sourceDir, "dist", "board.png"), Buffer.from([0, 1, 2, 255]));
     await writeFile(path.join(sourceDir, "dist", "app.js.map"), "{}");
     await writeFile(path.join(sourceDir, "src", "main.ts"), "source");
 
-    await expect(packWorkflow("kanban", archivePath, sourceDir)).resolves.toBe(archivePath);
+    await expect(packProject("kanban", archivePath, sourceDir)).resolves.toBe(archivePath);
     const contents = await runTarList(archivePath);
     expect(contents).toContain("workspace/workflow/kanban/.gitignore");
-    expect(contents).toContain("workspace/workflow/kanban/.workflowignore");
+    expect(contents).toContain("workspace/workflow/kanban/.steamharnessignore");
     expect(contents).toContain("workspace/workflow/kanban/dist/pages/board.htm");
     expect(contents).toContain("workspace/workflow/kanban/dist/board.png");
     expect(contents).not.toContain("workspace/workflow/kanban/dist/app.js.map");
@@ -930,14 +930,14 @@ describe("server workspace CLI helpers", () => {
   });
 
   it("decodes base64 download files without changing legacy text files", () => {
-    expect(decodeWorkflowFileContent({ path: "index.html", content: "<main />" }))
+    expect(decodeProjectFileContent({ path: "index.html", content: "<main />" }))
       .toBe("<main />");
-    expect(decodeWorkflowFileContent({
+    expect(decodeProjectFileContent({
       path: "board.png",
       content: Buffer.from([0, 1, 2, 255]).toString("base64"),
       encoding: "base64",
     })).toEqual(Buffer.from([0, 1, 2, 255]));
-    expect(() => decodeWorkflowFileContent({
+    expect(() => decodeProjectFileContent({
       path: "broken.png",
       content: "not base64!",
       encoding: "base64",
@@ -1100,10 +1100,10 @@ describe("server workspace CLI helpers", () => {
   });
 
   it("rejects unsafe download paths without hiding valid server snapshot files", () => {
-    expect(normalizeWorkflowFilePath("./src/index.ts")).toBe("src/index.ts");
-    expect(normalizeWorkflowFilePath("node_modules/pkg/index.js")).toBe("node_modules/pkg/index.js");
-    expect(normalizeWorkflowFilePath(".env.local")).toBe(".env.local");
-    expect(() => normalizeWorkflowFilePath("../secret.env")).toThrow(/Invalid workflow file path/);
+    expect(normalizeProjectFilePath("./src/index.ts")).toBe("src/index.ts");
+    expect(normalizeProjectFilePath("node_modules/pkg/index.js")).toBe("node_modules/pkg/index.js");
+    expect(normalizeProjectFilePath(".env.local")).toBe(".env.local");
+    expect(() => normalizeProjectFilePath("../secret.env")).toThrow(/Invalid workflow file path/);
   });
 
   it("resolves the standalone Core repository root from its workspace", async () => {
@@ -1235,7 +1235,7 @@ describe("server workspace CLI helpers", () => {
     const previousRepoRoot = process.env.STEAMHARNESS_REPO_ROOT;
     process.env.STEAMHARNESS_REPO_ROOT = root;
     try {
-      const context = await readWorkflowPackageContext("hello", undefined);
+      const context = await readProjectPackageContext("hello", undefined);
       expect(context.projectId).toBe("8bd4fef2-e083-4201-a89f-6f7d0676df53");
       expect(context.projectName).toBe("Hello Workflow");
       expect(context.projectDir).toBe(projectDir);
@@ -1266,8 +1266,8 @@ describe("server workspace CLI helpers", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     try {
-      const packageContext = await readWorkflowPackageContext("hello", undefined);
-      await expect(ensureWorkflowProjectCreated({
+      const packageContext = await readProjectPackageContext("hello", undefined);
+      await expect(ensureProjectCreated({
         packageContext,
         server: "http://127.0.0.1:7125",
         token: "api-key",
@@ -1308,8 +1308,8 @@ describe("server workspace CLI helpers", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     try {
-      const packageContext = await readWorkflowPackageContext("hello", undefined);
-      const created = await ensureWorkflowProjectCreated({
+      const packageContext = await readProjectPackageContext("hello", undefined);
+      const created = await ensureProjectCreated({
         packageContext,
         server: "http://127.0.0.1:7125",
         token: "api-key",
@@ -1365,8 +1365,8 @@ describe("server workspace CLI helpers", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     try {
-      const packageContext = await readWorkflowPackageContext("hello", undefined);
-      await expect(ensureWorkflowProjectCreated({
+      const packageContext = await readProjectPackageContext("hello", undefined);
+      await expect(ensureProjectCreated({
         packageContext,
         server: "http://127.0.0.1:7125",
         token: "api-key",
@@ -1388,7 +1388,7 @@ describe("server workspace CLI helpers", () => {
     await writeFile(
       path.join(projectDir, "index.ts"),
       [
-        'import { openaiAgentsWorkflow } from "../openai-agents/index";',
+        'import { openaiAgentsProject } from "../openai-agents/index";',
         'import type { ParsedAgentInput } from "../deltafore-agent/interface";',
         '/// <reference path="../deltafore-agent/globals.d.ts" />',
         "",
@@ -1396,7 +1396,7 @@ describe("server workspace CLI helpers", () => {
       "utf8",
     );
 
-    expect(await findLocalWorkflowDependencies(projectDir)).toEqual([
+    expect(await findLocalProjectDependencies(projectDir)).toEqual([
       "deltafore-agent",
       "openai-agents",
     ]);
@@ -1425,7 +1425,7 @@ describe("server workspace CLI helpers", () => {
     await writeFile(
       path.join(sourceProjectDir, "index.ts"),
       [
-        'import { openaiAgentsWorkflow } from "../openai-agents/index";',
+        'import { openaiAgentsProject } from "../openai-agents/index";',
         'import { createFinalAnswerInput } from "../deltafore-agent/agent/decision";',
         "",
       ].join("\n"),
@@ -1434,7 +1434,7 @@ describe("server workspace CLI helpers", () => {
     await writeFile(path.join(sourceProjectDir, "interface.ts"), "export type Foo = string;\n", "utf8");
     await writeFile(path.join(sourceProjectDir, "README.md"), "# Deltaforce\n", "utf8");
     await writeFile(path.join(siblingOpenaiDir, "package.json"), '{"name":"openai-agents"}\n', "utf8");
-    await writeFile(path.join(siblingOpenaiDir, "index.ts"), "export const openaiAgentsWorkflow = {};\n", "utf8");
+    await writeFile(path.join(siblingOpenaiDir, "index.ts"), "export const openaiAgentsProject = {};\n", "utf8");
     await writeFile(path.join(siblingOpenaiDir, "README.md"), "# OpenAI agents\n", "utf8");
     await writeFile(path.join(siblingDeltaforeDir, "package.json"), '{"name":"deltafore-agent"}\n', "utf8");
     await writeFile(path.join(siblingDeltaforeDir, "index.ts"), "export default {};\n", "utf8");
@@ -1446,7 +1446,7 @@ describe("server workspace CLI helpers", () => {
       "utf8",
     );
 
-    await stageWorkflowWithLocalDependencies({
+    await stageProjectWithLocalDependencies({
       workspaceRoot,
       projectDir: sourceProjectDir,
       projectName: "deltaforce-openai-agent",
@@ -1481,7 +1481,7 @@ describe("server workspace CLI helpers", () => {
     await writeFile(
       path.join(sourceProjectDir, "index.ts"),
       [
-        'import { openaiAgentsWorkflow } from "../openai-agents/index";',
+        'import { openaiAgentsProject } from "../openai-agents/index";',
         'import { createFinalAnswerInput } from "../deltafore-agent/agent/decision";',
         "",
       ].join("\n"),
@@ -1490,7 +1490,7 @@ describe("server workspace CLI helpers", () => {
     await writeFile(path.join(sourceProjectDir, "interface.ts"), "export type Foo = string;\n", "utf8");
     await writeFile(path.join(sourceProjectDir, "README.md"), "# Deltaforce\n", "utf8");
     await writeFile(path.join(siblingOpenaiDir, "package.json"), '{"name":"openai-agents"}\n', "utf8");
-    await writeFile(path.join(siblingOpenaiDir, "index.ts"), "export const openaiAgentsWorkflow = {};\n", "utf8");
+    await writeFile(path.join(siblingOpenaiDir, "index.ts"), "export const openaiAgentsProject = {};\n", "utf8");
     await writeFile(path.join(siblingOpenaiDir, "README.md"), "# OpenAI agents\n", "utf8");
     await writeFile(path.join(siblingDeltaforeDir, "package.json"), '{"name":"deltafore-agent"}\n', "utf8");
     await writeFile(path.join(siblingDeltaforeDir, "index.ts"), "export default {};\n", "utf8");
@@ -1505,7 +1505,7 @@ describe("server workspace CLI helpers", () => {
     const previousRepoRoot = process.env.STEAMHARNESS_REPO_ROOT;
     process.env.STEAMHARNESS_REPO_ROOT = root;
     try {
-      const packedPath = await packWorkflow("deltaforce-openai-agent", archivePath, sourceProjectDir);
+      const packedPath = await packProject("deltaforce-openai-agent", archivePath, sourceProjectDir);
       expect(packedPath).toBe(archivePath);
 
       const result = await runTarList(archivePath);
@@ -1541,11 +1541,11 @@ describe("server workspace CLI helpers", () => {
     await writeFile(path.join(sourceProjectDir, ".env"), "SECRET=1\n", "utf8");
     await writeFile(path.join(sourceProjectDir, ".env.example"), "SECRET=\n", "utf8");
     await writeFile(path.join(sourceProjectDir, ".DS_Store"), "temporary", "utf8");
-    await writeFile(path.join(sourceProjectDir, ".workflowignore"), ".env\n.DS_Store\n", "utf8");
+    await writeFile(path.join(sourceProjectDir, ".steamharnessignore"), ".env\n.DS_Store\n", "utf8");
 
     // CLI packaging only transports source; dependency installation
     // remains a server concern after upload.
-    await expect(packWorkflow(
+    await expect(packProject(
       "manual-dependencies",
       archivePath,
       sourceProjectDir,
@@ -1557,7 +1557,7 @@ describe("server workspace CLI helpers", () => {
     expect(contents).toContain("workspace/workflow/manual-dependencies/package.json");
     expect(contents).toContain("workspace/workflow/manual-dependencies/README.md");
     expect(contents).toContain("workspace/workflow/manual-dependencies/.env.example");
-    expect(contents).toContain("workspace/workflow/manual-dependencies/.workflowignore");
+    expect(contents).toContain("workspace/workflow/manual-dependencies/.steamharnessignore");
     expect(contents).not.toContain("workspace/workflow/manual-dependencies/.env\n");
     expect(contents).not.toContain(".DS_Store");
   });
@@ -1568,11 +1568,11 @@ describe("server workspace CLI helpers", () => {
     const packsDir = path.join(root, "app-packs");
     const workspaceRoot = path.join(root, "external-workflows");
     const sourceProjectDir = path.join(workspaceRoot, "conversation");
-    const siblingWorkflowDir = path.join(workspaceRoot, "openai-agents");
+    const siblingProjectDir = path.join(workspaceRoot, "openai-agents");
 
     await mkdir(appRuntimeRoot, { recursive: true });
     await mkdir(sourceProjectDir, { recursive: true });
-    await mkdir(siblingWorkflowDir, { recursive: true });
+    await mkdir(siblingProjectDir, { recursive: true });
     await writeFile(
       path.join(sourceProjectDir, "package.json"),
       JSON.stringify({
@@ -1584,13 +1584,13 @@ describe("server workspace CLI helpers", () => {
     );
     await writeFile(
       path.join(sourceProjectDir, "index.ts"),
-      'import { openaiAgentsWorkflow } from "../openai-agents/index";\n',
+      'import { openaiAgentsProject } from "../openai-agents/index";\n',
       "utf8",
     );
     await writeFile(path.join(sourceProjectDir, "README.md"), "# Conversation\n", "utf8");
-    await writeFile(path.join(siblingWorkflowDir, "package.json"), '{"name":"openai-agents"}\n', "utf8");
-    await writeFile(path.join(siblingWorkflowDir, "index.ts"), "export const openaiAgentsWorkflow = {};\n", "utf8");
-    await writeFile(path.join(siblingWorkflowDir, "README.md"), "# OpenAI agents\n", "utf8");
+    await writeFile(path.join(siblingProjectDir, "package.json"), '{"name":"openai-agents"}\n', "utf8");
+    await writeFile(path.join(siblingProjectDir, "index.ts"), "export const openaiAgentsProject = {};\n", "utf8");
+    await writeFile(path.join(siblingProjectDir, "README.md"), "# OpenAI agents\n", "utf8");
 
     const previousRepoRoot = process.env.STEAMHARNESS_REPO_ROOT;
     const previousPacksDir = process.env.STEAMHARNESS_WORKSPACE_PACKS_DIR;
@@ -1600,7 +1600,7 @@ describe("server workspace CLI helpers", () => {
       // App-packaged uploads pass --path for the local project and
       // need temporary archives outside app.asar while still copying sibling
       // workflow imports from the source folder's parent.
-      const packedPath = await packWorkflow("conversation", undefined, sourceProjectDir);
+      const packedPath = await packProject("conversation", undefined, sourceProjectDir);
       expect(packedPath.startsWith(packsDir)).toBe(true);
 
       const result = await runTarList(packedPath);

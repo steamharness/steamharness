@@ -23,11 +23,11 @@ describe('web account authentication', () => {
       .mockResolvedValueOnce(envelope({ profile, principal: { expiresAt: '2027-01-01T00:00:00Z' } }))
       .mockResolvedValueOnce(envelope({ loggedOut: true }));
     vi.stubGlobal('fetch', fetcher);
-    await loginWebAccount('https://workflow.test', ' test@example.com ', 'test-password');
+    await loginWebAccount('https://steamharness.test', ' test@example.com ', 'test-password');
     expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ email: 'test@example.com', password: 'test-password', source: 'cli', clientName: 'SteamHarness CLI Web' });
     expect(fetcher.mock.calls[1][1].headers).toEqual({ Authorization: 'Bearer test-api-key' });
-    expect(fetcher.mock.calls[2]).toEqual(['https://workflow.test/api/auth/logout', expect.objectContaining({ method: 'POST', headers: { Cookie: 'workflow-session=test-session' } })]);
-    expect(await readCliAuthConfig()).toEqual({ serverUrl: 'https://workflow.test', apiKey: 'test-api-key', user: profile, source: 'password', expiresAt: '2027-01-01T00:00:00Z' });
+    expect(fetcher.mock.calls[2]).toEqual(['https://steamharness.test/api/auth/logout', expect.objectContaining({ method: 'POST', headers: { Cookie: 'workflow-session=test-session' } })]);
+    expect(await readCliAuthConfig()).toEqual({ serverUrl: 'https://steamharness.test', apiKey: 'test-api-key', user: profile, source: 'password', expiresAt: '2027-01-01T00:00:00Z' });
     expect(JSON.stringify(await readCliAuthConfig())).not.toContain('test-password');
   });
 
@@ -36,8 +36,8 @@ describe('web account authentication', () => {
     const fetcher = vi.fn().mockResolvedValueOnce(envelope({ authenticated: true, accessToken: 'test-api-key', apiKey: { id: 'key-id' } }, { 'Set-Cookie': 'workflow-session=test-session; HttpOnly' }))
       .mockResolvedValueOnce(envelope({ profile: null })).mockResolvedValue(envelope({ ok: true }));
     vi.stubGlobal('fetch', fetcher);
-    await expect(loginWebAccount('https://workflow.test', 'test@example.com', 'test-password')).rejects.toThrow('account profile');
-    expect(fetcher.mock.calls[2][0]).toBe('https://workflow.test/api/auth/api-keys/key-id');
+    await expect(loginWebAccount('https://steamharness.test', 'test@example.com', 'test-password')).rejects.toThrow('account profile');
+    expect(fetcher.mock.calls[2][0]).toBe('https://steamharness.test/api/auth/api-keys/key-id');
     expect(fetcher.mock.calls[2][1]).toMatchObject({ method: 'DELETE', headers: { Cookie: 'workflow-session=test-session' } });
     expect(await readCliAuthConfig()).toEqual({ serverUrl: '', apiKey: '' });
   });
@@ -45,8 +45,8 @@ describe('web account authentication', () => {
   it('redacts credentials in upstream errors and rejects empty credentials without a request', async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ errCode: 1, errMessage: 'rejected test-password' }), { status: 400 }));
     vi.stubGlobal('fetch', fetcher);
-    await expect(loginWebAccount('https://workflow.test', 'test@example.com', 'test-password')).rejects.toThrow('rejected [redacted]');
-    await expect(loginWebAccount('https://workflow.test', '', 'test-password')).rejects.toThrow();
+    await expect(loginWebAccount('https://steamharness.test', 'test@example.com', 'test-password')).rejects.toThrow('rejected [redacted]');
+    await expect(loginWebAccount('https://steamharness.test', '', 'test-password')).rejects.toThrow();
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 });

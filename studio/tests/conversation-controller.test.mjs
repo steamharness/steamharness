@@ -4,7 +4,7 @@ import { register } from 'tsx/esm/api';
 
 register();
 const { ConversationController } = await import('../extensions/studio-workstation/src/conversation-controller.ts');
-const { resolvedWorkflowValues, redactWorkflowData, workflowFormValue } = await import('../extensions/studio-workstation/src/workflow-types.ts');
+const { resolvedProjectValues, redactProjectData, projectFormValue } = await import('../extensions/studio-workstation/src/workflow-types.ts');
 const { conversationResourceCards } = await import('../extensions/studio-workstation/src/resource-cards.ts');
 const project = { id: '5ee91340-71ed-4b74-ac97-f523eaa0c9a0', uri: 'file:///fixture', folderPath: '/fixture', name: 'Fixture', projectType: 'conversation', fields: [], entrypoints: [], conversation: { inputQueue: { enabled: true } } };
 const input = (text) => ({ text, params: {}, attachments: [] });
@@ -146,10 +146,10 @@ test('storage failures fail before executing and leave no background rejection',
 });
 
 test('resolved input types match Core and diagnostic redaction preserves legitimate resolver patches', () => {
-  assert.deepEqual(resolvedWorkflowValues([{ name: 'approved', type: 'boolean' }, { name: 'count', type: 'number' }, { name: 'data', type: 'string', format: 'json' }], { approved: 'true', count: '1.5', data: '{"answer":42}' }), { approved: true, count: 1.5, data: { answer: 42 } });
+  assert.deepEqual(resolvedProjectValues([{ name: 'approved', type: 'boolean' }, { name: 'count', type: 'number' }, { name: 'data', type: 'string', format: 'json' }], { approved: 'true', count: '1.5', data: '{"answer":42}' }), { approved: true, count: 1.5, data: { answer: 42 } });
   const data = { apiKey: 'sensitive', params: { secretChoice: { value: 'allowed' } }, message: 'token-value' };
-  assert.deepEqual(redactWorkflowData(data, ['token-value'], false), { ...data, message: '[redacted]' });
-  assert.equal(redactWorkflowData(data).apiKey, '[redacted]');
+  assert.deepEqual(redactProjectData(data, ['token-value'], false), { ...data, message: '[redacted]' });
+  assert.equal(redactProjectData(data).apiKey, '[redacted]');
 });
 
 test('business timers merge live events with final reports and stop on cancellation', async () => {
@@ -173,7 +173,7 @@ test('resumed inputs preserve structured defaults and managed file references', 
     { name: 'files', type: 'file', multiple: true }, { name: 'data', type: 'string', format: 'json' },
     { name: 'tags', type: 'string', multiple: true },
   ], defaultValues: { files: [file], data: { answer: 42 }, tags: ['a', 'b'] } };
-  assert.equal(workflowFormValue(pending.params[0], pending.defaultValues.files), JSON.stringify([file]));
+  assert.equal(projectFormValue(pending.params[0], pending.defaultValues.files), JSON.stringify([file]));
   await f.finish(0, { status: 'waiting_for_input', pendingUserInput: pending });
   await f.controller.resume(f.controller.current.messages.at(-1).id, pending.requestId, {}); await flush();
   assert.deepEqual(f.calls[1].request.resolvedInputs[0].values, pending.defaultValues);

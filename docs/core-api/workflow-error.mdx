@@ -39,7 +39,7 @@ new workflow.HarnessError(options: ErrorOptions)
 | `tool_permission_denied` | 工具权限策略、审批拒绝 | 当前 run 不允许调用该工具。 |
 | `node_execution` | 普通节点执行失败 | 普通节点抛出的未知错误。 |
 | `provider_call` | LLM provider 解析或调用 | provider 缺失、绑定错误或调用失败。 |
-| `workflow_execution` | workflow `run` 失败 | workflow 主流程失败。 |
+| `project_execution` | workflow `run` 失败 | workflow 主流程失败。 |
 | `stream_interrupted` | 流式节点或 provider stream | 流式输出中断或失败。 |
 
 ## 实例字段
@@ -76,7 +76,7 @@ new workflow.HarnessError(options: ErrorOptions)
 | `stream_interrupted` | `499` |
 | `provider_call` | `502` |
 | `node_execution` | `500` |
-| `workflow_execution` | `500` |
+| `project_execution` | `500` |
 
 ## 示例
 

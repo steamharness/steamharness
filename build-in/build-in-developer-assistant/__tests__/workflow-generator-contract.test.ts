@@ -5,8 +5,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
-import { workflowRuntimeApi } from "steamharness/runtime-api";
-import { inspectWorkflowStructure } from "steamharness/executor/rules";
+import { projectRuntimeApi } from "steamharness/runtime-api";
+import { inspectProjectStructure } from "steamharness/executor/rules";
 
 // 这组断言守住 project assistant 生成器 skill 的契约：Core 新增运行时 API 或
 // executor/entrypoint 定义字段后，只要依赖版本 bump 到包含该变化的 Core，
@@ -139,7 +139,7 @@ describe("workflow-generator contract", () => {
 
   it("keeps the Agent project example statically discoverable", () => {
     const exampleDir = path.join(skillRoot, "assets", "examples", "agent-conversation");
-    const structure = inspectWorkflowStructure({
+    const structure = inspectProjectStructure({
       cwd: exampleDir,
       projectDir: exampleDir,
       projectName: "assistant",
@@ -162,11 +162,11 @@ describe("workflow-generator contract", () => {
 
   it("documents every runtime API member of the pinned Core version", async () => {
     const corpus = await readSkillCorpus();
-    const missing = Object.keys(workflowRuntimeApi)
+    const missing = Object.keys(projectRuntimeApi)
       .filter((name) => !HOST_INTERNAL_RUNTIME_API.has(name))
-      .filter((name) => !mentionsIdentifier(corpus, `workflow.${name}`));
+      .filter((name) => !mentionsIdentifier(corpus, `steamharness.${name}`));
 
-    expect(missing, `skills/workflow-generator 未覆盖这些 workflow.* 成员：${missing.join(", ")}`).toEqual([]);
+    expect(missing, `skills/workflow-generator 未覆盖这些 steamharness.* 成员：${missing.join(", ")}`).toEqual([]);
   });
 
   it("documents every executor, entrypoint and param definition field", async () => {
@@ -212,12 +212,12 @@ describe("workflow-generator contract", () => {
     const directory = await mkdtemp(path.join(tmpdir(), "workflow-standard-input-"));
     try {
       execFileSync("python3", [path.join(skillRoot, "scripts/create_workflow.py"), "standard-input", "--project-type", "conversation", "--dir", directory], { encoding: "utf8" });
-      const structure = inspectWorkflowStructure({ cwd: directory, projectName: "standard-input", projectDir: directory });
+      const structure = inspectProjectStructure({ cwd: directory, projectName: "standard-input", projectDir: directory });
       expect(structure.diagnostics.violations).toEqual([]);
       expect(structure.params ?? []).toEqual([]);
       expect(structure.conversation).toBeUndefined();
       const source = await readFile(path.join(directory, "index.ts"), "utf8");
-      expect(source).toContain("workflow.parseConversationDefaultInputArgs(args).message");
+      expect(source).toContain("steamharness.parseConversationDefaultInputArgs(args).message");
       expect(await readFile(path.join(directory, "README.md"), "utf8")).toContain('steamharness run . -- --message "input text"');
     } finally {
       await rm(directory, { recursive: true, force: true });
@@ -237,7 +237,7 @@ describe("workflow-generator contract", () => {
     const forbidden: Array<[string, RegExp]> = [
       ["package", /@steamharness\/app\b/u],
       ["environment", /\b(?:STEAMHARNESS_APP_[A-Z0-9_]*|APP_LOCAL_[A-Z0-9_]*)\b/u],
-      ["config-file", /\bworkflow-app\.json\b/u],
+      ["config-file", /\bproject-app\.json\b/u],
       ["runtime-helper", /\b(?:workflow\.)?isApp\s*(?:\(|:)/u],
       ["runtime-marker", /STEAMHARNESS_RUNTIME_PLATFORM\s*=\s*["'`]?app\b/u],
       ["runtime-value", /\b(?:runtime|platform)\s*[:=]\s*["'`]app["'`]/u],

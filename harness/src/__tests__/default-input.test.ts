@@ -3,12 +3,12 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { inspectLocalWorkflowStructure } from "../executor/index";
+import { inspectLocalProjectStructure } from "../executor/index";
 import { parseConversationDefaultInputArgs } from "../executor/default-input";
-import { defineWorkflowExecutor } from "../executor/definition";
-import { assertWorkflowParamDeclarations } from "../executor/param-definition";
-import { analyzeWorkflowScriptSource } from "../executor/rules";
-import { defineWorkflow } from "../workflow/index";
+import { defineProjectExecutor } from "../executor/definition";
+import { assertProjectParamDeclarations } from "../executor/param-definition";
+import { analyzeProjectScriptSource } from "../executor/rules";
+import { defineProject } from "../workflow/index";
 
 test("parseConversationDefaultInputArgs reads fixed default composer flags", () => {
   const result = parseConversationDefaultInputArgs([
@@ -81,13 +81,13 @@ test("conversation inputQueue is exposed through structure reports", async () =>
         type: "module",
       }), "utf8"),
       writeFile(path.join(projectDir, "index.ts"), `
-        const conversationWorkflow = workflow.defineWorkflow({
+        const conversationProject = steamharness.defineProject({
           name: "conversation",
           run(input) { return input; },
         });
-        export const executor = workflow.defineExecutor({
+        export const executor = steamharness.defineExecutor({
           projectType: "conversation",
-          workflow: conversationWorkflow,
+          workflow: conversationProject,
           conversation: {
             inputQueue: { enabled: true },
             openai: { enabled: true, outputItemId: "assistant-response" },
@@ -95,12 +95,12 @@ test("conversation inputQueue is exposed through structure reports", async () =>
           },
           createInput() { return { errCode: 0, errMessage: "" }; },
         });
-        export { conversationWorkflow as workflow };
-        export default conversationWorkflow;
+        export { conversationProject as workflow };
+        export default conversationProject;
       `, "utf8"),
     ]);
 
-    const report = inspectLocalWorkflowStructure({ projectDir, projectName: "conversation" });
+    const report = inspectLocalProjectStructure({ projectDir, projectName: "conversation" });
     assert.equal(report.projectType, "conversation");
     assert.equal("defaultInput" in (report.conversation ?? {}), false);
     assert.equal(report.conversation?.attachments?.videos, true);
@@ -117,16 +117,16 @@ test("conversation inputQueue is exposed through structure reports", async () =>
 test("Conversation needs no input setting and rejects removed input settings", () => {
   const definition = {
     projectType: "conversation" as const,
-    workflow: defineWorkflow({ name: "standard-input", run: (input: string) => input }),
+    workflow: defineProject({ name: "standard-input", run: (input: string) => input }),
     createInput: ({ args }: { args: string[] }) => parseConversationDefaultInputArgs(args).message,
   };
-  assert.equal(defineWorkflowExecutor(definition), definition);
+  assert.equal(defineProjectExecutor(definition), definition);
   for (const enabled of [true, false]) {
-    assert.throws(() => defineWorkflowExecutor({
+    assert.throws(() => defineProjectExecutor({
       ...definition,
       conversation: { defaultInput: { enabled } } as never,
     }), /conversation\.defaultInput was removed/);
-    const analysis = analyzeWorkflowScriptSource(`workflow.defineExecutor({
+    const analysis = analyzeProjectScriptSource(`steamharness.defineExecutor({
       projectType: "conversation", workflow: flow,
       conversation: { "defaultInput": { enabled: ${enabled} } },
       createInput() { return {}; },
@@ -136,22 +136,22 @@ test("Conversation needs no input setting and rejects removed input settings", (
 });
 
 test("Conversation rejects custom main fields and flags owned by its standard input", () => {
-  assert.throws(() => assertWorkflowParamDeclarations([
+  assert.throws(() => assertProjectParamDeclarations([
     { name: "question", flag: "--question", type: "string", control: "textarea" },
   ], "conversation"), /standard message input/);
   for (const flag of ["--message", "--images", "--videos", "--files"]) {
-    assert.throws(() => assertWorkflowParamDeclarations([{
+    assert.throws(() => assertProjectParamDeclarations([{
       kind: "auxiliary", id: "input", label: "Input",
       fields: [{ name: "custom", flag, type: "string" }],
     }], "conversation"), /reserved for the standard input/);
   }
-  const analysis = analyzeWorkflowScriptSource(`workflow.defineExecutor({
+  const analysis = analyzeProjectScriptSource(`steamharness.defineExecutor({
     projectType: "conversation", workflow: flow,
     params: [{ name: "question", flag: "--question", type: "string", control: "textarea" }],
     createInput() { return {}; },
   });`);
   assert.equal(analysis.executorConfigurationViolations.some(violation => /standard message input/.test(violation.message)), true);
-  assert.doesNotThrow(() => assertWorkflowParamDeclarations([
+  assert.doesNotThrow(() => assertProjectParamDeclarations([
     { name: "question", flag: "--question", type: "string", control: "textarea" },
   ], "workflow"));
 });

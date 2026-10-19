@@ -1,12 +1,12 @@
 import { Controller } from './workflow-controller';
-import { parseWorkflowArgs, type Draft } from './workflow-workspace';
+import { parseProjectArgs, type Draft } from './workflow-workspace';
 import {
-  workflowParameters, workflowParamArgs, workflowParamValue, redactWorkflowData,
+  projectParameters, projectParamArgs, projectParamValue, redactProjectData,
   type Runtime, type Project, type ParamState, type ParamValues,
 } from './workflow-types';
 
 type Message = Record<string, any>;
-export function createWorkflowActions(controller: Controller, runtime: Runtime, project: Project, revision: () => number, changed: () => void) {
+export function createProjectActions(controller: Controller, runtime: Runtime, project: Project, revision: () => number, changed: () => void) {
   const states = new Map<string, Record<string, ParamState>>();
   const epochs = new Map<string, number>();
   let limit = 30, query = '';
@@ -18,17 +18,17 @@ export function createWorkflowActions(controller: Controller, runtime: Runtime, 
   const values = (supplied: unknown, id?: string): ParamValues => {
     if (!supplied || typeof supplied !== 'object' || Array.isArray(supplied)
       || Object.values(supplied).some(value => typeof value !== 'string' && !(Array.isArray(value) && value.every(item => typeof item === 'string')))) { throw new Error('Invalid parameters.'); }
-    return Object.fromEntries(workflowParameters(project, id).fields.map(field => [field.name,
-      workflowParamValue(field, (supplied as ParamValues)[field.name] ?? field.defaultValue ?? (field.type === 'boolean' ? 'false' : ''))]));
+    return Object.fromEntries(projectParameters(project, id).fields.map(field => [field.name,
+      projectParamValue(field, (supplied as ParamValues)[field.name] ?? field.defaultValue ?? (field.type === 'boolean' ? 'false' : ''))]));
   };
   const resolve = async (message: Message, id?: string) => {
-    const key = id ?? '', parameters = workflowParameters(project, id);
+    const key = id ?? '', parameters = projectParameters(project, id);
     const params = values(message.params ?? controller.draft(id).values, id);
     const mode = message.inputMode === 'raw' ? 'raw' as const : 'form' as const;
     const epoch = (epochs.get(key) ?? 0) + 1; epochs.set(key, epoch);
     const auth = revision();
     await controller.updateDraft(id, { values: params, rawArgs: String(message.rawArgs ?? controller.draft(id).rawArgs).slice(0, 100_000), inputMode: mode });
-    const args = mode === 'raw' ? parseWorkflowArgs(String(message.rawArgs ?? '[]')) : workflowParamArgs(parameters.fields, params, states.get(key));
+    const args = mode === 'raw' ? parseProjectArgs(String(message.rawArgs ?? '[]')) : projectParamArgs(parameters.fields, params, states.get(key));
     const trigger = message.trigger?.kind === 'param' && parameters.fields.some(field => field.name === message.trigger.paramName)
       ? { kind: 'param' as const, paramName: String(message.trigger.paramName) } : { kind: message.trigger?.kind === 'input' ? 'input' as const : 'init' as const };
     const result = parameters.paramResolver?.enabled ? await runtime.resolveParams(project, { args, inputMode: mode, draftText: '', trigger }, id) : { params: {} };
@@ -37,7 +37,7 @@ export function createWorkflowActions(controller: Controller, runtime: Runtime, 
     for (const [name, patch] of Object.entries(result.params ?? {})) {
       if (!parameters.fields.some(field => field.name === name)) { continue; }
       next[name] = { ...next[name], ...patch, options: { ...next[name]?.options, ...patch.options } };
-      if (patch.value !== undefined) { params[name] = patch.value === null ? workflowParamValue(parameters.fields.find(field => field.name === name)!) : patch.value; }
+      if (patch.value !== undefined) { params[name] = patch.value === null ? projectParamValue(parameters.fields.find(field => field.name === name)!) : patch.value; }
     }
     states.set(key, next);
     await controller.updateDraft(id, { values: params, rawArgs: String(message.rawArgs ?? controller.draft(id).rawArgs).slice(0, 100_000), inputMode: mode });
@@ -98,10 +98,10 @@ export function createWorkflowActions(controller: Controller, runtime: Runtime, 
         case 'workflow-export': {
           const record = controller.runs.find(record => record.id === message.id);
           if (!record) { throw new Error('Run no longer exists.'); }
-          replies.push({ type: 'download', name: `workflow-${record.id}.json`, content: JSON.stringify(redactWorkflowData(record, [], false), null, 2) }); break;
+          replies.push({ type: 'download', name: `workflow-${record.id}.json`, content: JSON.stringify(redactProjectData(record, [], false), null, 2) }); break;
         }
         case 'tool-policy': {
-          const tools = workflowParameters(project, id).tools ?? [];
+          const tools = projectParameters(project, id).tools ?? [];
           const policies = Object.fromEntries(tools.map(tool => [tool.name, {
             enabled: typeof message.policies?.[tool.name]?.enabled === 'boolean' ? message.policies[tool.name].enabled : tool.enabled,
             autoApprove: typeof message.policies?.[tool.name]?.autoApprove === 'boolean' ? message.policies[tool.name].autoApprove : tool.autoApprove,

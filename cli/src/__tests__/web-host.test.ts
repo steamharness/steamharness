@@ -22,7 +22,7 @@ it('processes logout and close while an earlier host authentication is pending',
   } as unknown as Awaited<ReturnType<typeof startWebServer>>);
   const input = Readable.from([
     JSON.stringify({ type: 'configure', surface: 'editor', connection: null }),
-    JSON.stringify({ type: 'auth', connection: { serverUrl: 'https://workflow.test', accessToken: 'host-test-token' } }),
+    JSON.stringify({ type: 'auth', connection: { serverUrl: 'https://steamharness.test', accessToken: 'host-test-token' } }),
     JSON.stringify({ type: 'auth', connection: null }),
     JSON.stringify({ type: 'related-projects', relatedProjects }),
     JSON.stringify({ type: 'related-projects', relatedProjects: [] }),
@@ -34,7 +34,7 @@ it('processes logout and close while an earlier host authentication is pending',
     expect(await main(['--host-stdio', '--json', '--no-open'])).toBe(0);
     expect(JSON.parse(output.mock.calls[0][0])).toMatchObject({ accountProtocolVersion: 1, relatedProjectsProtocolVersion: 1 });
     await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
-    expect(setHostConnection).toHaveBeenNthCalledWith(1, { serverUrl: 'https://workflow.test', accessToken: 'host-test-token' });
+    expect(setHostConnection).toHaveBeenNthCalledWith(1, { serverUrl: 'https://steamharness.test', accessToken: 'host-test-token' });
     expect(setHostConnection).toHaveBeenNthCalledWith(2, undefined);
     expect(setHostRelatedProjects).toHaveBeenNthCalledWith(1, relatedProjects);
     expect(setHostRelatedProjects).toHaveBeenNthCalledWith(2, []);

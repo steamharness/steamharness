@@ -66,7 +66,7 @@ export class ServerApiClient {
     }
   }
 
-  async fetchWorkflowFile(
+  async fetchProjectFile(
     fileId: string,
     options?: { download?: boolean; signal?: AbortSignal },
   ): Promise<Blob> {
@@ -81,10 +81,10 @@ export class ServerApiClient {
         const text = await res.text();
         const payload = parseApiResponse(text);
         const message = payload && payload.errCode !== 0
-          ? translateSteamHarnessError(payload.data, payload.errMessage || tCommon("workflowFileReadFailed"))
+          ? translateSteamHarnessError(payload.data, payload.errMessage || tCommon("projectFileReadFailed"))
           : text.trim() !== ""
             ? tCommon("serverNonJsonErrorResponse", { body: trim(text.trim()) })
-            : tCommon("workflowFileReadFailed");
+            : tCommon("projectFileReadFailed");
         throw new Error(formatHttpError(res, message));
       }
       return res.blob();
@@ -349,7 +349,7 @@ export class ServerApiClient {
     });
   }
 
-  listWorkflows(): Promise<ApiResponse<Summary[]>> {
+  listProjects(): Promise<ApiResponse<Summary[]>> {
     return this.request<Summary[]>("/api/projects");
   }
 

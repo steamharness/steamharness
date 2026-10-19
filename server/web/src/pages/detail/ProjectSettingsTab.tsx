@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { ArrowUpRight, BookOpenText, Check, Copy, Database, Link2, Users } from "lucide-react";
 import { formatDateTime } from "@steamharness/i18n";
 import { translateDynamicKey, useTranslation } from "@steamharness/i18n/react";
-import { getWorkflowProjectTypeLabelKey } from "@steamharness/project-types";
+import { getProjectKindLabelKey } from "@steamharness/project-types";
 import {
   Badge, Card, CardAction, CardContent, CardHeader, CardTitle,
   Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, IconActionButton, PageStats, Switch,
@@ -11,9 +11,9 @@ import {
 import { ConfirmActionDialog, type ConfirmAction } from "@/components/ConfirmActionDialog";
 import { UserIdentity } from "@/components/UserIdentity";
 import {
-  getWorkflowProjectDisplayName,
-  getWorkflowProjectServerStorageAccess,
-  listWorkflowProjectDeclarationLabels,
+  getProjectDisplayName,
+  getProjectServerStorageAccess,
+  listProjectDeclarationLabels,
 } from "@/utils/project-presentation";
 import { CopyButton } from "./CopyButton";
 import type { DetailPageProps } from "./types";
@@ -23,7 +23,7 @@ export function ProjectSettingsTab({ project, busy, onUpdateVisibility, onNaviga
   const [action, setAction] = useState<ConfirmAction | null>(null);
   const loading = Boolean(busy.project);
   const isPublic = project.visibility === "public";
-  const storageAccess = getWorkflowProjectServerStorageAccess(project);
+  const storageAccess = getProjectServerStorageAccess(project);
   const storageMode = project.projectInfo.dataStorage?.mode;
   const storageModeLabel = storageMode === "both" ? t("projectStorageModeBoth")
     : storageMode === "server" ? t("projectStorageModeServer")
@@ -33,7 +33,7 @@ export function ProjectSettingsTab({ project, busy, onUpdateVisibility, onNaviga
     : storageMode === "server" ? t("projectStorageAllowedServer")
     : storageMode === "local" ? t("projectStorageAllowedLocal")
     : t("projectStorageAllowedNone");
-  const declarations = listWorkflowProjectDeclarationLabels(project);
+  const declarations = listProjectDeclarationLabels(project);
   const localizedNames = Object.entries(project.projectInfo.localizedNames);
   const entries = [
     { tab: "members", label: t("projectSettingsMembersEntry"), icon: Users },
@@ -51,7 +51,7 @@ export function ProjectSettingsTab({ project, busy, onUpdateVisibility, onNaviga
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
         <div className="min-w-0 flex-1 basis-64">
           <h1 className="text-xl font-semibold">{t("detailNavSettings")}</h1>
-          <p className="mt-1 break-words text-sm text-muted-foreground">{getWorkflowProjectDisplayName(project, i18n.language)}</p>
+          <p className="mt-1 break-words text-sm text-muted-foreground">{getProjectDisplayName(project, i18n.language)}</p>
         </div>
         <PageStats items={[
           { label: t("storageVersions"), value: project.versions.length },
@@ -73,7 +73,7 @@ export function ProjectSettingsTab({ project, busy, onUpdateVisibility, onNaviga
               </div>
               <SettingsDetail label={t("projectSettingsDefaultName")}>{project.name}</SettingsDetail>
               <SettingsDetail label={i18n.t("projectType")}>
-                <Badge variant="secondary">{translateDynamicKey(getWorkflowProjectTypeLabelKey(project.projectType))}</Badge>
+                <Badge variant="secondary">{translateDynamicKey(getProjectKindLabelKey(project.projectType))}</Badge>
               </SettingsDetail>
               <div className="min-w-0 sm:col-span-2">
                 <dt className="text-muted-foreground">{t("projectSettingsLocalizedNames")}</dt>
@@ -117,7 +117,7 @@ export function ProjectSettingsTab({ project, busy, onUpdateVisibility, onNaviga
                 <Switch id="project-public" checked={isPublic} disabled={loading || !project.canManage} onCheckedChange={checked => setAction({
                   title: t(checked ? "projectSettingsSetPublicConfirm" : "projectSettingsSetPrivateConfirm"),
                   description: t(checked ? "projectSettingsSetPublicConfirmDescription" : "projectSettingsSetPrivateConfirmDescription"),
-                  details: <span className="break-words">{getWorkflowProjectDisplayName(project, i18n.language)}</span>,
+                  details: <span className="break-words">{getProjectDisplayName(project, i18n.language)}</span>,
                   confirmLabel: t("commonSave"), tone: "warning",
                   onConfirm: () => onUpdateVisibility(checked ? "public" : "private"),
                 })} />

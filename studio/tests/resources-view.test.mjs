@@ -135,7 +135,7 @@ test('the host supplies the view kind and rejects untrusted workspace operations
 });
 
 test('logout aborts resource work and clears the renderer generation', async t => {
-  const { provider, send, calls, state, accountChanged } = fixture(t, undefined, { serverUrl: 'https://workflow.test', accessToken: 'test-token' }); provider.update([project('project')]);
+  const { provider, send, calls, state, accountChanged } = fixture(t, undefined, { serverUrl: 'https://steamharness.test', accessToken: 'test-token' }); provider.update([project('project')]);
   await send('kv'); const generation = state('kv').generation; accountChanged();
   assert.equal(calls[0][2].aborted, true); assert.ok(state('kv').generation > generation);
 });
@@ -143,7 +143,7 @@ test('logout aborts resource work and clears the renderer generation', async t =
 test('repeated account checks and unchanged project scans preserve in-flight resource requests', async t => {
   let finish;
   const pending = new Promise(resolve => { finish = resolve; });
-  const connection = { serverUrl: 'https://workflow.test', accessToken: 'test-token' };
+  const connection = { serverUrl: 'https://steamharness.test', accessToken: 'test-token' };
   const { provider, send, calls, state, messages, accountChanged } = fixture(t, () => pending, connection);
   const projects = [project('project')]; provider.update(projects, projects[0]);
   const generation = state('kv').generation;
@@ -157,7 +157,7 @@ test('repeated account checks and unchanged project scans preserve in-flight res
 });
 
 test('a new account token invalidates both resource panels', t => {
-  const connection = { serverUrl: 'https://workflow.test', accessToken: 'test-token' };
+  const connection = { serverUrl: 'https://steamharness.test', accessToken: 'test-token' };
   const { provider, state, accountChanged } = fixture(t, undefined, connection); provider.update([project('project')]);
   const generation = state('kv').generation;
   accountChanged('authenticated', { ...connection, accessToken: 'other-account' });
@@ -175,7 +175,7 @@ test('copy uses the VS Code clipboard and ignores a previous project context', a
 });
 
 test('an unauthorized resource request expires the captured account and refreshes the login state', async t => {
-  const connection = { serverUrl: 'https://workflow.test', accessToken: 'test-token' };
+  const connection = { serverUrl: 'https://steamharness.test', accessToken: 'test-token' };
   const { provider, send, state, invalidated } = fixture(t, async () => { throw Object.assign(new Error('Expired'), { status: 401 }); }, connection);
   provider.update([project('project')]); const generation = state('kv').generation;
   await send('kv');

@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { validateWorkflowValues, type Project } from '../web/workflow-types';
+import { validateProjectValues, type Project } from '../web/workflow-types';
 import type { RunRecord } from '../web/workflow-workspace';
 
 const host = vi.hoisted(() => ({ postMessage: vi.fn(), getState: vi.fn(), setState: vi.fn() }));
-vi.mock('../web/ui/host', () => ({ acquireWorkflowHost: () => host }));
+vi.mock('../web/ui/host', () => ({ acquireProjectHost: () => host }));
 vi.mock('../web/ui/workflow-fields', () => ({ Fields: class { close() {} render() {} update() {} } }));
 vi.mock('../web/ui/conversation-output', () => ({ ConversationOutput: class { update() {} } }));
 vi.mock('../web/ui/conversation-tools', () => ({ ConversationTools: class { closeUsage() {} } }));
@@ -78,7 +78,7 @@ describe('Workflow request alerts', () => {
     const { element, emit, request, fail, select } = await fixture();
     element('run').click();
     let validation = '';
-    try { validateWorkflowValues(project.entrypoints[0].fields!, {}); } catch (error) { validation = (error as Error).message; }
+    try { validateProjectValues(project.entrypoints[0].fields!, {}); } catch (error) { validation = (error as Error).message; }
     expect(validation).toContain('Theme'); fail(request('workflow-run'), validation);
     expect(element('error').hidden).toBe(false); expect(element('error').textContent).toBe(validation);
     select('state'); expect(element('error').hidden).toBe(true);

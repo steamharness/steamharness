@@ -40,7 +40,7 @@ await context.storage.server.persistentValue.setValue("release", "ready");
 
 Each location provides the same `kv` and `persistentValue` APIs. Top-level methods access the current project directly, while `.conversation` accesses the current conversation in that project. KV and PersistentValue use separate storage domains, so an identical key never overlaps across the two kinds. `context.kv`, `context.persistentValue`, `.workflow`, and a global scope do not exist.
 
-A `local` project can use only `context.storage.local`, and a `server` project can use only `context.storage.server`. A `both` project may explicitly access either location during one run, but the two locations remain separate datasets. `runWorkflow(..., { kvMode: "isolated" })` isolates project and conversation KV for both local and server storage.
+A `local` project can use only `context.storage.local`, and a `server` project can use only `context.storage.server`. A `both` project may explicitly access either location during one run, but the two locations remain separate datasets. `runProject(..., { kvMode: "isolated" })` isolates project and conversation KV for both local and server storage.
 
 ## Server identity
 

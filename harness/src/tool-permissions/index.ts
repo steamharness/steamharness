@@ -73,11 +73,11 @@ export interface ToolApprovalGate {
 export function createToolApprovalGate(): ToolApprovalGate {
   return {
     approve(input, context) {
-      return requireWorkflowToolApproval(context, input);
+      return requireProjectToolApproval(context, input);
     },
     wrap(name, fn, options) {
       return async (context, ...args) => {
-        await requireWorkflowToolApproval(context, {
+        await requireProjectToolApproval(context, {
           name,
           label: options?.label,
           description: options?.description,
@@ -90,7 +90,7 @@ export function createToolApprovalGate(): ToolApprovalGate {
   };
 }
 
-export function createWorkflowToolPermissionContext(options: {
+export function createProjectToolPermissionContext(options: {
   definitions?: ToolPermissionDefinition[];
   policies?: ToolPermissionPolicyMap;
   userInput?: NodeContext["userInput"];
@@ -116,11 +116,11 @@ export function createWorkflowToolPermissionContext(options: {
       return normalizedName === undefined ? undefined : resolved.get(normalizedName);
     },
     requireToolApproval(input) {
-      return requireWorkflowToolApproval({
+      return requireProjectToolApproval({
         toolPermissions: context,
         userInput: options.userInput,
         metadata: {
-          workflow: options.projectName,
+          project: options.projectName,
           runId: options.runId,
         },
       }, input);
@@ -203,7 +203,7 @@ export function parseToolPermissionPoliciesJson(
       );
 }
 
-export async function requireWorkflowToolApproval(
+export async function requireProjectToolApproval(
   context: Pick<NodeContext, "toolPermissions" | "userInput" | "metadata">,
   input: ToolApprovalRequestInput,
 ): Promise<ToolApprovalDecision> {
@@ -310,7 +310,7 @@ function createToolApprovalRequest(options: {
   input: ToolApprovalRequestInput;
   metadata?: Record<string, unknown>;
 }): UserInputRequest {
-  const workflow = normalizeRequestIdPart(options.metadata?.["workflow"]) ?? "workflow";
+  const requestScope = normalizeRequestIdPart(options.metadata?.["project"]) ?? "project";
   const runId = normalizeRequestIdPart(options.metadata?.["runId"]) ?? "run";
   const tool = normalizeRequestIdPart(options.tool.name) ?? "tool";
   const title = `批准工具：${options.input.label ?? options.tool.label ?? options.tool.name}`;
@@ -320,7 +320,7 @@ function createToolApprovalRequest(options: {
     `工具 ${options.tool.name} 请求执行。`;
 
   return {
-    requestId: `${workflow}:${runId}:tool-approval:${tool}:${createHash("sha256").update(JSON.stringify([
+    requestId: `${requestScope}:${runId}:tool-approval:${tool}:${createHash("sha256").update(JSON.stringify([
       options.input.callId, canonicalArguments(options.input.arguments), options.tool,
     ])).digest("hex")}`,
     nodeName: "tool-approval",

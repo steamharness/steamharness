@@ -1,7 +1,7 @@
 import {
   STEAMHARNESS_RELATED_PROJECT_ALIAS_PATTERN,
-  isWorkflowProjectAccessAllowed,
-  resolveWorkflowRelatedProjectAccess,
+  isProjectAccessAllowed,
+  resolveProjectRelatedProjectAccess,
   type ProjectAccessRule,
   type ProjectInfoContract,
   type RelatedProjectGrant,
@@ -28,7 +28,7 @@ import {
   type KnowledgeSearchResultRecord,
 } from "../knowledge/index";
 import {
-  normalizeWorkflowKVKey,
+  normalizeProjectKVKey,
   type KVNamespace,
   type KVNamespaceMutation,
 } from "./index";
@@ -124,7 +124,7 @@ export interface RelatedProjectResolverProject {
   runner?: RelatedProjectRunner;
 }
 
-export function createWorkflowRelatedProjectsContext(
+export function createProjectRelatedProjectsContext(
   resolver?: RelatedProjectKVResolver,
 ): RelatedProjectsContext {
   const contexts = new Map<string, RelatedProjectStorageContext>();
@@ -146,7 +146,7 @@ export function createWorkflowRelatedProjectsContext(
   };
 }
 
-export function createDeclaredWorkflowRelatedProjectKVResolver(options: {
+export function createDeclaredProjectRelatedProjectKVResolver(options: {
   getConsumerProject():
     | Promise<Omit<RelatedProjectResolverProject, "kv">>
     | Omit<RelatedProjectResolverProject, "kv">;
@@ -164,7 +164,7 @@ export function createDeclaredWorkflowRelatedProjectKVResolver(options: {
       if (target === undefined || target.projectId.toLowerCase() !== relation.projectId.toLowerCase()) {
         return undefined;
       }
-      const access = resolveWorkflowRelatedProjectAccess({
+      const access = resolveProjectRelatedProjectAccess({
         consumerProjectId: consumer.projectId,
         consumerProjectInfo: consumer.projectInfo,
         targetProjectId: target.projectId,
@@ -190,19 +190,19 @@ function createRelatedProjectKVNamespace(
 ): KVNamespace {
   return {
     async getValue(rawKey) {
-      const key = normalizeWorkflowKVKey(rawKey);
+      const key = normalizeProjectKVKey(rawKey);
       const resolved = await resolveRelatedProject(alias, resolver);
       assertRelatedProjectAccess(resolved.grant.read, alias, key, "read");
       return resolved.kv.getValue(key);
     },
     async setValue(rawKey, value) {
-      const key = normalizeWorkflowKVKey(rawKey);
+      const key = normalizeProjectKVKey(rawKey);
       const resolved = await resolveRelatedProject(alias, resolver);
       assertRelatedProjectAccess(resolved.grant.write, alias, key, "write");
       await resolved.kv.setValue(key, value);
     },
     async deleteValue(rawKey) {
-      const key = normalizeWorkflowKVKey(rawKey);
+      const key = normalizeProjectKVKey(rawKey);
       const resolved = await resolveRelatedProject(alias, resolver);
       // Deleting is a mutation of the target project's entry, so it needs the
       // same write grant that writing one does.
@@ -210,7 +210,7 @@ function createRelatedProjectKVNamespace(
       return resolved.kv.deleteValue(key);
     },
     async updateValue(rawKey, updater) {
-      const key = normalizeWorkflowKVKey(rawKey);
+      const key = normalizeProjectKVKey(rawKey);
       const resolved = await resolveRelatedProject(alias, resolver);
       assertRelatedProjectAccess(resolved.grant.read, alias, key, "read");
       assertRelatedProjectAccess(resolved.grant.write, alias, key, "write");
@@ -322,7 +322,7 @@ function createRestrictedKnowledgeNamespace(
   const persistentValue = resolved.persistentValue!;
   const assertAccess = (key: string, operation: "read" | "write"): void => {
     const rule = operation === "read" ? resolved.grant.knowledge?.read : resolved.grant.knowledge?.write;
-    if (isKnowledgeDocumentStorageKey(key) && isWorkflowProjectAccessAllowed(rule, key)) return;
+    if (isKnowledgeDocumentStorageKey(key) && isProjectAccessAllowed(rule, key)) return;
     throw new HarnessError({
       type: "input_validation",
       message: `Related project "${alias}" does not grant ${operation} access to this knowledge document.`,
@@ -332,22 +332,22 @@ function createRestrictedKnowledgeNamespace(
 
   const namespace: KVNamespace = {
     async getValue(rawKey) {
-      const key = normalizeWorkflowKVKey(rawKey);
+      const key = normalizeProjectKVKey(rawKey);
       assertAccess(key, "read");
       return persistentValue.getValue(key);
     },
     async setValue(rawKey, value) {
-      const key = normalizeWorkflowKVKey(rawKey);
+      const key = normalizeProjectKVKey(rawKey);
       assertAccess(key, "write");
       await persistentValue.setValue(key, value);
     },
     async deleteValue(rawKey) {
-      const key = normalizeWorkflowKVKey(rawKey);
+      const key = normalizeProjectKVKey(rawKey);
       assertAccess(key, "write");
       return persistentValue.deleteValue(key);
     },
     async updateValue(rawKey, updater) {
-      const key = normalizeWorkflowKVKey(rawKey);
+      const key = normalizeProjectKVKey(rawKey);
       assertAccess(key, "read");
       assertAccess(key, "write");
       return persistentValue.updateValue(key, updater);
@@ -404,7 +404,7 @@ async function listRelatedProjectEntrypoints(
   // Only what the grant covers: a list that includes calls which would be
   // refused reads as "you may call these", and the model acts on that.
   return entrypoints.filter((entrypoint) =>
-    isWorkflowProjectAccessAllowed(resolved.grant.entrypoints, entrypoint.id));
+    isProjectAccessAllowed(resolved.grant.entrypoints, entrypoint.id));
 }
 
 async function runRelatedProjectEntrypoint(
@@ -415,7 +415,7 @@ async function runRelatedProjectEntrypoint(
 ): Promise<unknown> {
   const entrypointId = normalizeRelatedProjectEntrypointId(rawEntrypointId);
   const resolved = await resolveRelatedProject(alias, resolver);
-  if (!isWorkflowProjectAccessAllowed(resolved.grant.entrypoints, entrypointId)) {
+  if (!isProjectAccessAllowed(resolved.grant.entrypoints, entrypointId)) {
     throw new HarnessError({
       type: "input_validation",
       message: `Related project "${alias}" does not grant this project access to entrypoint "${entrypointId}".`,
@@ -454,7 +454,7 @@ function assertRelatedProjectAccess(
   key: string,
   operation: "read" | "write",
 ): void {
-  if (isWorkflowProjectAccessAllowed(rule, key)) return;
+  if (isProjectAccessAllowed(rule, key)) return;
   throw new HarnessError({
     type: "input_validation",
     message: `Related project "${alias}" does not grant ${operation} access to this KV key.`,

@@ -5,9 +5,9 @@ import type {
   ProjectKVAccessRule,
 } from "@steamharness/project-info";
 import {
-  createDeclaredWorkflowRelatedProjectKVResolver,
+  createDeclaredProjectRelatedProjectKVResolver,
   createKnowledgeDocument,
-  createWorkflowRelatedProjectsContext,
+  createProjectRelatedProjectsContext,
   type KVNamespace,
   type KVNamespaceMutation,
 } from "../index";
@@ -23,8 +23,8 @@ test("confirmed related projects use the target grant and recheck revocation", a
     createRelation("consumer", CONSUMER_ID, { mode: "all" }, { mode: "none" }),
   ]);
   const targetKV = createMemoryNamespace({ "catalog:item": { stock: 2 } });
-  const relatedProjects = createWorkflowRelatedProjectsContext(
-    createDeclaredWorkflowRelatedProjectKVResolver({
+  const relatedProjects = createProjectRelatedProjectsContext(
+    createDeclaredProjectRelatedProjectKVResolver({
       getConsumerProject: () => ({ projectId: CONSUMER_ID, projectInfo: consumerInfo }),
       getTargetProject: (projectId) => projectId === TARGET_ID
         ? { projectId: TARGET_ID, projectInfo: targetInfo, kv: targetKV }
@@ -77,8 +77,8 @@ test("prefix grants are enforced independently and updateValue requires both", a
       { mode: "prefixes", prefixes: ["write:", "shared:"] },
     ),
   ]);
-  const related = createWorkflowRelatedProjectsContext(
-    createDeclaredWorkflowRelatedProjectKVResolver({
+  const related = createProjectRelatedProjectsContext(
+    createDeclaredProjectRelatedProjectKVResolver({
       getConsumerProject: () => ({
         projectId: CONSUMER_ID,
         projectInfo: createProjectInfo([
@@ -112,8 +112,8 @@ test("prefix grants are enforced independently and updateValue requires both", a
 
 test("single-sided declarations stay pending and related KV is not recursive", async () => {
   const targetKV = createMemoryNamespace();
-  const relatedProjects = createWorkflowRelatedProjectsContext(
-    createDeclaredWorkflowRelatedProjectKVResolver({
+  const relatedProjects = createProjectRelatedProjectsContext(
+    createDeclaredProjectRelatedProjectKVResolver({
       getConsumerProject: () => ({
         projectId: CONSUMER_ID,
         projectInfo: createProjectInfo([
@@ -147,12 +147,12 @@ test("local and server related-project resolvers stay isolated", async () => {
   const localKV = createMemoryNamespace({ value: "local" });
   const serverKV = createMemoryNamespace({ value: "server" });
   const createResolver = (kv: KVNamespace) =>
-    createDeclaredWorkflowRelatedProjectKVResolver({
+    createDeclaredProjectRelatedProjectKVResolver({
       getConsumerProject: () => ({ projectId: CONSUMER_ID, projectInfo }),
       getTargetProject: () => ({ projectId: TARGET_ID, projectInfo: targetInfo, kv }),
     });
-  const local = createWorkflowRelatedProjectsContext(createResolver(localKV));
-  const server = createWorkflowRelatedProjectsContext(createResolver(serverKV));
+  const local = createProjectRelatedProjectsContext(createResolver(localKV));
+  const server = createProjectRelatedProjectsContext(createResolver(serverKV));
 
   assert.equal(await local.get("inventory").kv.getValue("value"), "local");
   assert.equal(await server.get("inventory").kv.getValue("value"), "server");
@@ -184,8 +184,8 @@ interface RelatedProjectFixture {
  * it can reach the target project at all, a way to run it.
  */
 function createKnowledgeFixture(fixture: RelatedProjectFixture) {
-  return createWorkflowRelatedProjectsContext(
-    createDeclaredWorkflowRelatedProjectKVResolver({
+  return createProjectRelatedProjectsContext(
+    createDeclaredProjectRelatedProjectKVResolver({
       getConsumerProject: () => ({
         projectId: CONSUMER_ID,
         projectInfo: createProjectInfo([

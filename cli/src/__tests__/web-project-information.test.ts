@@ -1,6 +1,6 @@
 import { afterEach, expect, it } from 'vitest';
 import { initI18n } from '@steamharness/i18n';
-import { createDefaultWorkflowProjectInfo } from '@steamharness/project-info';
+import { createDefaultProjectInfo } from '@steamharness/project-info';
 import { projectInformation } from '../web/ui/project-information';
 import type { Project } from '../web/workflow-types';
 
@@ -11,7 +11,7 @@ afterEach(() => initI18n({ preference: 'zh-CN' }));
 
 it.each(['en', 'zh-CN'] as const)('shows authored metadata in %s and preserves declared names and permission direction', language => {
   initI18n({ preference: language });
-  const sections = projectInformation({ ...project, projectInfo: { ...createDefaultWorkflowProjectInfo(),
+  const sections = projectInformation({ ...project, projectInfo: { ...createDefaultProjectInfo(),
     localizedNames: { en: 'Display name', 'zh-CN': '\u9879\u76ee\u540d\u79f0' }, declarations: ['multilingual', 'custom'],
     platformSupport: { mode: 'specific', platforms: ['macos', 'linux'] },
     relatedProjects: [{ alias: 'notes', projectId: 'a79eef03-8c24-4353-a867-edc28e8f5c20',

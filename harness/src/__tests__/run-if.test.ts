@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { analyzeWorkflowScriptSource } from "../executor/rules";
+import { analyzeProjectScriptSource } from "../executor/rules";
 import {
-  createDisabledWorkflowConversationContext,
-  createDisabledWorkflowTokenUsageContext,
-  createWorkflowRelatedProjectsContext,
+  createDisabledProjectConversationContext,
+  createDisabledProjectTokenUsageContext,
+  createProjectRelatedProjectsContext,
   type KVContext,
 } from "../index";
 import { runIf } from "../workflow/index";
@@ -12,7 +12,7 @@ import type { NodeExecutionHookFinishEvent, RunContext } from "../types/index";
 
 test("runIf selects elseif branches and emits branch node hooks", async () => {
   const finishes: NodeExecutionHookFinishEvent[] = [];
-  const context = createTestWorkflowContext({
+  const context = createTestProjectContext({
     onFinish(event) {
       finishes.push(event);
     },
@@ -54,7 +54,7 @@ test("runIf selects elseif branches and emits branch node hooks", async () => {
 });
 
 test("runIf uses else when no branch matches", async () => {
-  const result = await runIf("plain", createTestWorkflowContext(), {
+  const result = await runIf("plain", createTestProjectContext(), {
     branches: [
       {
         label: "contains error",
@@ -71,25 +71,25 @@ test("runIf uses else when no branch matches", async () => {
 });
 
 test("workflow structure keeps nested runIf inside its branch", () => {
-  const analysis = analyzeWorkflowScriptSource(`
-    const outputNode = workflow.createOutputNode({
+  const analysis = analyzeProjectScriptSource(`
+    const outputNode = steamharness.createOutputNode({
       name: "output",
       format(input) {
         return { errCode: 0, errMessage: "", content: String(input) };
       },
     });
 
-    export const demo = workflow.defineWorkflow({
+    export const demo = steamharness.defineProject({
       name: "demo",
       async run(input, context) {
-        const result = await workflow.runIf(input, context, {
+        const result = await steamharness.runIf(input, context, {
           name: "Outer branch",
           branches: [
             {
               label: "outer match",
               condition: (value) => value === "nested",
               async run(value, innerContext) {
-                return workflow.runIf(value, innerContext, {
+                return steamharness.runIf(value, innerContext, {
                   name: "Nested branch",
                   branches: [
                     {
@@ -112,7 +112,7 @@ test("workflow structure keeps nested runIf inside its branch", () => {
           },
         });
 
-        return workflow.runNode(outputNode, result, context);
+        return steamharness.runNode(outputNode, result, context);
       },
     });
   `);
@@ -130,7 +130,7 @@ test("workflow structure keeps nested runIf inside its branch", () => {
   assert.equal(nested.label, "Nested branch");
 });
 
-function createTestWorkflowContext(options: {
+function createTestProjectContext(options: {
   onFinish?: (event: NodeExecutionHookFinishEvent) => void;
 } = {}): RunContext {
   const kv = createMemoryKVContext();
@@ -138,11 +138,11 @@ function createTestWorkflowContext(options: {
   return {
     providers: {},
     storage: {
-      local: { kv, persistentValue: createMemoryKVContext(), relatedProjects: createWorkflowRelatedProjectsContext() },
-      server: { kv: createMemoryKVContext(), persistentValue: createMemoryKVContext(), relatedProjects: createWorkflowRelatedProjectsContext() },
+      local: { kv, persistentValue: createMemoryKVContext(), relatedProjects: createProjectRelatedProjectsContext() },
+      server: { kv: createMemoryKVContext(), persistentValue: createMemoryKVContext(), relatedProjects: createProjectRelatedProjectsContext() },
     },
-    conversation: createDisabledWorkflowConversationContext(),
-    tokenUsage: createDisabledWorkflowTokenUsageContext(),
+    conversation: createDisabledProjectConversationContext(),
+    tokenUsage: createDisabledProjectTokenUsageContext(),
     nodeHooks: {
       onNodeFinish: options.onFinish,
     },

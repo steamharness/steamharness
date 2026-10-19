@@ -1,5 +1,5 @@
 import type { RelatedProject } from "../project-info/index";
-import { isWorkflowUuid } from "../workflow-ids/index";
+import { isProjectUuid } from "../workflow-ids/index";
 
 export const STEAMHARNESS_PROJECT_GROUP_VERSION = 1;
 export const STEAMHARNESS_PROJECT_GROUP_MANIFEST_FILE = "project-group.json";
@@ -120,7 +120,7 @@ export interface ProjectCapabilityGrant {
   revokedAt?: string;
 }
 
-export function createExternalWorkflowProjectDependencyLocks(
+export function createExternalProjectDependencyLocks(
   relatedProjects: readonly RelatedProject[],
 ): ProjectDependencyLock[] {
   return relatedProjects.map((relatedProject) => ({
@@ -130,7 +130,7 @@ export function createExternalWorkflowProjectDependencyLocks(
   }));
 }
 
-export function createWorkflowProjectDependencyLocks(
+export function createProjectDependencyLocks(
   relatedProjects: readonly RelatedProject[],
   selections: readonly ProjectDependencySelection[],
 ): ProjectDependencyLock[] {
@@ -164,7 +164,7 @@ export function createWorkflowProjectDependencyLocks(
   return locks;
 }
 
-export function parseWorkflowProjectDependencyLocks(
+export function parseProjectDependencyLocks(
   value: unknown,
   options: { published?: boolean } = {},
 ): ProjectDependencyLock[] {
@@ -195,7 +195,7 @@ export function parseWorkflowProjectDependencyLocks(
   });
 }
 
-export function parseWorkflowProjectGroupManifest(
+export function parseProjectGroupManifest(
   value: unknown,
 ): ProjectGroupManifestV1 {
   if (!isRecord(value) || value["version"] !== STEAMHARNESS_PROJECT_GROUP_VERSION) {
@@ -290,7 +290,7 @@ export function parseWorkflowProjectGroupManifest(
     );
   }
 
-  const dependencies = parseWorkflowProjectDependencyLocks(value["dependencies"]);
+  const dependencies = parseProjectDependencyLocks(value["dependencies"]);
   const selfReference = dependencies.find((dependency) => dependency.projectId === rootProjectId);
   if (selfReference !== undefined) {
     throw dependencyError(
@@ -331,7 +331,7 @@ export function parseWorkflowProjectGroupManifest(
   };
 }
 
-export function finalizeWorkflowProjectDependencyLock(
+export function finalizeProjectDependencyLock(
   dependency: ProjectDependencyLock,
   published: { version: string; sourceHash: string } | undefined,
 ): ProjectDependencyLock {
@@ -473,7 +473,7 @@ function readSafeGroupPath(value: unknown, field: string): string {
 
 function readUuid(value: unknown, field: string): string {
   const result = readNonEmptyString(value, field);
-  if (!isWorkflowUuid(result)) {
+  if (!isProjectUuid(result)) {
     throw dependencyError("uuidRequired", `Project group ${field} must be a UUID.`, { field });
   }
   return result;

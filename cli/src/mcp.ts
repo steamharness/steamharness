@@ -5,8 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
-  createLocalWorkflowMcpFileResolver,
-  createWorkflowMcpServer,
+  createLocalProjectMcpFileResolver,
+  createProjectMcpServer,
   type McpExecutionReport,
   type McpRunSnapshot,
   type McpRunSnapshotMessage,
@@ -14,14 +14,14 @@ import {
   type McpStructureReport,
 } from "@steamharness/workflow-mcp";
 import {
-  isWorkflowAuthConfigLoggedIn,
-  normalizeWorkflowAuthConfig,
-  resolveWorkflowDesktopConfigFilePath,
+  isProjectAuthConfigLoggedIn,
+  normalizeProjectAuthConfig,
+  resolveProjectDesktopConfigFilePath,
 } from "@steamharness/auth-config";
 import { i18n } from "@steamharness/i18n";
 import { readCliAuthConfigSync } from "./auth-config";
 import { parseCliRelatedProjectSpec, type CliRelatedProjectSpec } from "./related-projects";
-import { assertWorkflowUuid } from "@steamharness/workflow-ids";
+import { assertProjectUuid } from "@steamharness/workflow-ids";
 
 export const STEAMHARNESS_MCP_CLI_ENTRYPOINT_ENV = "STEAMHARNESS_MCP_CLI_ENTRYPOINT";
 export const STEAMHARNESS_MCP_DESKTOP_AUDIT_IPC_ENV = "STEAMHARNESS_MCP_DESKTOP_AUDIT_IPC";
@@ -58,19 +58,19 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     return 0;
   }
 
-  const options = parseWorkflowMcpCliOptions(argv);
-  const projectId = readWorkflowProjectId(options.projectDir);
+  const options = parseProjectMcpCliOptions(argv);
+  const projectId = readProjectId(options.projectDir);
   const runner = new McpCliRunner({
     ...options,
-    workerEntrypoint: resolveWorkflowMcpWorkerEntrypoint(),
-  }, createWorkflowMcpDesktopAuditWriter());
+    workerEntrypoint: resolveProjectMcpWorkerEntrypoint(),
+  }, createProjectMcpDesktopAuditWriter());
   const structure = await runner.inspectStructure();
-  const server = createWorkflowMcpServer({
+  const server = createProjectMcpServer({
     projectId,
     structure,
     runner,
     fileInputMode: "local",
-    resolveFiles: createLocalWorkflowMcpFileResolver({ fileStoreDir: options.fileStoreDir }),
+    resolveFiles: createLocalProjectMcpFileResolver({ fileStoreDir: options.fileStoreDir }),
     instructions: `Run entrypoints from workflow project ${structure.workflow.name}. Reconnect after project changes.`,
   });
   const transport = new StdioServerTransport();
@@ -90,13 +90,13 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   return 0;
 }
 
-export function parseWorkflowMcpCliOptions(argv: string[]): McpCliOptions {
-  const workflowArg = argv[0]?.trim();
-  if (!workflowArg || workflowArg.startsWith("-")) {
+export function parseProjectMcpCliOptions(argv: string[]): McpCliOptions {
+  const projectArg = argv[0]?.trim();
+  if (!projectArg || projectArg.startsWith("-")) {
     throw new Error("steamharness mcp requires a workflow project directory as its first argument.");
   }
-  const projectDir = path.resolve(process.cwd(), workflowArg);
-  assertWorkflowDirectory(projectDir);
+  const projectDir = path.resolve(process.cwd(), projectArg);
+  assertProjectDirectory(projectDir);
   let dataDir = path.join(os.homedir(), ".steamharness");
   let fileStoreDir: string | undefined;
   let kvStoreDir: string | undefined;
@@ -155,7 +155,7 @@ export class McpCliRunner implements McpRunner {
 
   async inspectStructure(): Promise<McpStructureReport> {
     const result = await this.runWorker(["structure", this.options.projectDir]);
-    const extracted = extractTrailingJson(result.stdout, isWorkflowMcpStructureCandidate);
+    const extracted = extractTrailingJson(result.stdout, isProjectMcpStructureCandidate);
     if (!extracted || result.exitCode !== 0) {
       const diagnostics = extracted ?? extractTrailingJson(result.stdout, isRecord);
       throw new Error(readWorkerFailure(result, diagnostics?.value));
@@ -262,7 +262,7 @@ export class McpCliRunner implements McpRunner {
     reason: string,
   ): Promise<void> {
     const endedAt = new Date().toISOString();
-    const report = createSyntheticWorkflowMcpReport({
+    const report = createSyntheticProjectMcpReport({
       runId,
       projectName: this.projectName,
       entrypointId: state.entrypointId,
@@ -314,7 +314,7 @@ export class McpCliRunner implements McpRunner {
       exitCode: 0,
       stdout: previousStdout,
       stderr: previousStderr,
-      report: createSyntheticWorkflowMcpReport({
+      report: createSyntheticProjectMcpReport({
         runId,
         projectName: this.projectName,
         entrypointId: options.entrypointId,
@@ -351,7 +351,7 @@ export class McpCliRunner implements McpRunner {
     let result: WorkerResult | undefined;
     try {
       result = await this.runWorker(hostArgs, options.signal);
-      const extracted = extractTrailingJson(result.stdout, isWorkflowMcpExecutionCandidate);
+      const extracted = extractTrailingJson(result.stdout, isProjectMcpExecutionCandidate);
       if (!extracted) {
         const diagnostics = extractTrailingJson(result.stdout, isRecord);
         throw new Error(readWorkerFailure(result, diagnostics?.value));
@@ -393,7 +393,7 @@ export class McpCliRunner implements McpRunner {
       const message = formatError(aborted ? options.signal.reason ?? error : error);
       const exitCode = aborted ? 130 : diagnostics?.exitCode ?? 1;
       const persistedStderr = appendDiagnostic(stderr, message);
-      const report = createSyntheticWorkflowMcpReport({
+      const report = createSyntheticProjectMcpReport({
         runId,
         projectName: this.projectName,
         entrypointId: options.entrypointId,
@@ -436,13 +436,13 @@ export class McpCliRunner implements McpRunner {
   }
 
   private runWorker(args: string[], signal?: AbortSignal): Promise<WorkerResult> {
-    const mainScript = this.options.workerEntrypoint ?? resolveWorkflowMcpWorkerEntrypoint();
+    const mainScript = this.options.workerEntrypoint ?? resolveProjectMcpWorkerEntrypoint();
     const execArgs = workerExecArguments(process.execArgv, mainScript);
     const child = spawn(process.execPath, [...execArgs, mainScript, ...args], {
       cwd: this.options.projectDir,
       env: {
         ...process.env,
-        ...readSavedWorkflowMcpAuthEnv(this.options),
+        ...readSavedProjectMcpAuthEnv(this.options),
         ELECTRON_RUN_AS_NODE: process.env.ELECTRON_RUN_AS_NODE ?? "1",
         ...(this.options.desktopConfigDir
           ? { STEAMHARNESS_DESKTOP_CONFIG_DIR: this.options.desktopConfigDir }
@@ -532,7 +532,7 @@ type McpIpcSend = (
   callback: (error: Error | null) => void,
 ) => boolean;
 
-export function createWorkflowMcpDesktopAuditWriter(options: {
+export function createProjectMcpDesktopAuditWriter(options: {
   env?: NodeJS.ProcessEnv;
   send?: McpIpcSend;
 } = {}): McpRunSnapshotWriter | undefined {
@@ -545,7 +545,7 @@ export function createWorkflowMcpDesktopAuditWriter(options: {
 
   return (snapshot) => new Promise<void>((resolve, reject) => {
     try {
-      send({ type: "workflow_mcp_run_snapshot", snapshot }, (error) => {
+      send({ type: "project_mcp_run_snapshot", snapshot }, (error) => {
         if (error) reject(error);
         else resolve();
       });
@@ -555,7 +555,7 @@ export function createWorkflowMcpDesktopAuditWriter(options: {
   });
 }
 
-function createSyntheticWorkflowMcpReport(options: {
+function createSyntheticProjectMcpReport(options: {
   runId: string;
   projectName: string;
   entrypointId: string;
@@ -587,7 +587,7 @@ function createSyntheticWorkflowMcpReport(options: {
     : {
         ok: false,
         error: {
-          type: options.status === "aborted" ? "workflow_cancelled" : "execution",
+          type: options.status === "aborted" ? "project_cancelled" : "execution",
           message: options.message ?? "Workflow execution did not complete.",
         },
       };
@@ -651,7 +651,7 @@ export function workerExecArguments(execArgv: readonly string[], entrypoint: str
   ));
 }
 
-export function resolveWorkflowMcpWorkerEntrypoint(
+export function resolveProjectMcpWorkerEntrypoint(
   processArgv: readonly string[] = process.argv,
   processEnv: NodeJS.ProcessEnv = process.env,
 ): string {
@@ -708,20 +708,20 @@ function extractTrailingJson<T>(
   return undefined;
 }
 
-function isWorkflowMcpReportCandidate(value: unknown): boolean {
-  return isWorkflowMcpStructureCandidate(value) || isWorkflowMcpExecutionCandidate(value);
+function isProjectMcpReportCandidate(value: unknown): boolean {
+  return isProjectMcpStructureCandidate(value) || isProjectMcpExecutionCandidate(value);
 }
 
-function isWorkflowMcpStructureCandidate(value: unknown): value is McpStructureReport {
+function isProjectMcpStructureCandidate(value: unknown): value is McpStructureReport {
   return isRecord(value) && typeof value.projectType === "string" &&
     isRecord(value.workflow) && typeof value.workflow.name === "string";
 }
 
-function isWorkflowMcpExecutionCandidate(value: unknown): value is McpExecutionReport {
-  return isRecord(value) && typeof value.runId === "string" && isWorkflowMcpRunStatus(value.status);
+function isProjectMcpExecutionCandidate(value: unknown): value is McpExecutionReport {
+  return isRecord(value) && typeof value.runId === "string" && isProjectMcpRunStatus(value.status);
 }
 
-function isWorkflowMcpRunStatus(value: unknown): boolean {
+function isProjectMcpRunStatus(value: unknown): boolean {
   return value === "running" || value === "waiting_for_input" || value === "success" ||
     value === "failed" || value === "aborted" || value === "timed_out";
 }
@@ -767,16 +767,16 @@ function compactWorkerErrorMessage(value: string): string {
   return compact.length <= 500 ? compact : `${compact.slice(0, 497)}...`;
 }
 
-function readWorkflowProjectId(projectDir: string): string {
+function readProjectId(projectDir: string): string {
   const packagePath = path.join(projectDir, "package.json");
   const packageJson = JSON.parse(readFileSync(packagePath, "utf8")) as unknown;
   if (!isRecord(packageJson) || typeof packageJson["id"] !== "string" || packageJson["id"].trim() === "") {
     throw new Error("Workflow MCP requires package.json to contain an immutable project id.");
   }
-  return assertWorkflowUuid(packageJson["id"], "Workflow MCP project id");
+  return assertProjectUuid(packageJson["id"], "Workflow MCP project id");
 }
 
-function assertWorkflowDirectory(projectDir: string): void {
+function assertProjectDirectory(projectDir: string): void {
   let info;
   try {
     info = lstatSync(projectDir);
@@ -788,7 +788,7 @@ function assertWorkflowDirectory(projectDir: string): void {
   }
 }
 
-export function readSavedWorkflowMcpAuthEnv(
+export function readSavedProjectMcpAuthEnv(
   options: McpCliOptions,
   processEnv: NodeJS.ProcessEnv = process.env,
 ): Record<string, string> {
@@ -810,10 +810,10 @@ export function readSavedWorkflowMcpAuthEnv(
     ...(options.cliAuthDir ? { STEAMHARNESS_CLI_AUTH_DIR: options.cliAuthDir } : {}),
   };
   const desktopAuth = readDesktopAuth(options.desktopConfigDir);
-  const auth = desktopAuth && isWorkflowAuthConfigLoggedIn(desktopAuth)
+  const auth = desktopAuth && isProjectAuthConfigLoggedIn(desktopAuth)
     ? desktopAuth
     : readCliAuthConfigSync(env);
-  if (!isWorkflowAuthConfigLoggedIn(auth)) return {};
+  if (!isProjectAuthConfigLoggedIn(auth)) return {};
   return {
     STEAMHARNESS_SERVER_URL: auth.serverUrl,
     STEAMHARNESS_SERVER_ADMIN_KEY: auth.apiKey,
@@ -823,10 +823,10 @@ export function readSavedWorkflowMcpAuthEnv(
 function readDesktopAuth(configDir: string | undefined) {
   if (!configDir) return undefined;
   try {
-    const raw = JSON.parse(readFileSync(resolveWorkflowDesktopConfigFilePath({
+    const raw = JSON.parse(readFileSync(resolveProjectDesktopConfigFilePath({
       STEAMHARNESS_DESKTOP_CONFIG_DIR: configDir,
     }), "utf8")) as unknown;
-    return normalizeWorkflowAuthConfig(isRecord(raw) && "auth" in raw ? raw["auth"] : raw);
+    return normalizeProjectAuthConfig(isRecord(raw) && "auth" in raw ? raw["auth"] : raw);
   } catch {
     return undefined;
   }

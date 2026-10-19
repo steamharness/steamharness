@@ -20,33 +20,33 @@ Core 内置「工作流能力」工具，把项目跟它周围的东西接起来
 ## 签名
 
 ```ts
-const tools: AgentTool[] = await workflow.createWorkflowCapabilityTools({
+const tools: AgentTool[] = await workflow.createProjectCapabilityTools({
   context: NodeContext,
   approve?: (toolId: string, args: unknown) => Promise<void>,
   globalMemory?: boolean,
 });
 
-const server: Server = await workflow.createWorkflowCapabilityServer(toolId, {
+const server: Server = await workflow.createProjectCapabilityServer(toolId, {
   context: NodeContext,
   approve?: (toolId: string, args: unknown) => Promise<void>,
 });
 
-const result: unknown = await workflow.runWorkflowCapabilityAction(toolId, context, args);
-const toolIds: string[] = workflow.listWorkflowCapabilityToolIds({ globalMemory?: boolean });
+const result: unknown = await workflow.runProjectCapabilityAction(toolId, context, args);
+const toolIds: string[] = workflow.listProjectCapabilityToolIds({ globalMemory?: boolean });
 ```
 
 | 成员 | 说明 |
 | --- | --- |
-| `createWorkflowCapabilityTools(options)` | 返回可以交给 agent 的原生工具，放进 `extraTools` 或 [createAgentNode](./create-agent-node.mdx) 的 `createTools`。 |
-| `createWorkflowCapabilityServer(toolId, options)` | 取其中一个能力的 MCP 服务端，自己 `connect(transport)`；工具 id 未知时抛错。 |
-| `runWorkflowCapabilityAction(toolId, context, args)` | 按工具 id 直接执行一个动作。 |
-| `listWorkflowCapabilityToolIds(options)` | 列出这一轮会出现的工具 id。 |
+| `createProjectCapabilityTools(options)` | 返回可以交给 agent 的原生工具，放进 `extraTools` 或 [createAgentNode](./create-agent-node.mdx) 的 `createTools`。 |
+| `createProjectCapabilityServer(toolId, options)` | 取其中一个能力的 MCP 服务端，自己 `connect(transport)`；工具 id 未知时抛错。 |
+| `runProjectCapabilityAction(toolId, context, args)` | 按工具 id 直接执行一个动作。 |
+| `listProjectCapabilityToolIds(options)` | 列出这一轮会出现的工具 id。 |
 
 ## 工具审批
 
 这些工具**不受 `permissionPolicy` 约束**——策略只管内置的 7 个编码工具，见 [createAgent](./create-agent.mdx) 的「自带工具」。它们由宿主自己的工具目录治理：项目在 `executor.tools` 里声明这些工具 id，声明里的 `enabled` 决定是否暴露、`autoApprove` 决定是否自动批准。把 `approve` 接到 `workflow.createToolApprovalGate().approve(...)` 上就是同一条审批链。
 
-审批暂停后要用 `runWorkflowCapabilityAction` 恢复：暂停的那一轮已经结束，调用只能按宿主批准的那个工具 id 重新寻址，不能靠当初建它的闭包。
+审批暂停后要用 `runProjectCapabilityAction` 恢复：暂停的那一轮已经结束，调用只能按宿主批准的那个工具 id 重新寻址，不能靠当初建它的闭包。
 
 ## 参数校验
 
@@ -66,13 +66,13 @@ const toolIds: string[] = workflow.listWorkflowCapabilityToolIds({ globalMemory?
 
 ## 宿主配置
 
-宿主配置只在宿主注入回环桥时可用：`STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL` 与 `STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN` 必须同时存在，且地址必须是不带凭据的 `http://127.0.0.1` 回环地址。任一条件不满足，这一项不暴露——地址不合规时 `isWorkflowCapabilityAvailable` 返回 `false`，不会因为一个配置错误中断其它能力；真正调用时才抛出地址不合规的原因，而不是带着令牌去连。
+宿主配置只在宿主注入回环桥时可用：`STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL` 与 `STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN` 必须同时存在，且地址必须是不带凭据的 `http://127.0.0.1` 回环地址。任一条件不满足，这一项不暴露——地址不合规时 `isProjectCapabilityAvailable` 返回 `false`，不会因为一个配置错误中断其它能力；真正调用时才抛出地址不合规的原因，而不是带着令牌去连。
 
 ## Conversation 资源卡片
 
 Core 知识库和 KV 工具的成功结果可以携带资源卡片摘要，宿主按自身能力展示并打开对应资源。资源目标保留知识库文档 ID 或 KV 键，打开时重新校验权限。
 
-使用 `createAgentNode` / `createAgentConversationWorkflow` 的自定义工具，也可以在成功结果的 `details.resourceCard` 中声明摘要。Core 将它原样传入现有工具输出，共享运行界面自动生成卡片；工具的 `content` 和普通消息接口保持原样。`kind` 支持 `knowledge`、`kv`、`project`、`kanban`、`browser`、`file`，`operation` 为 `read`、`write`、`open` 或 `show`，`title` 可选且最多 200 字符；`target` 使用下文同样的目标字段。关联项目必须填写实际资源的 `source` 和 `projectId`，不能填 Agent 自己的 ID。失败结果保留工具错误，不生成成功卡片。此摘要不执行写入或固定命令；控制固定与 Kanban 参数使用显式卡片能力。
+使用 `createAgentNode` / `createAgentConversationProject` 的自定义工具，也可以在成功结果的 `details.resourceCard` 中声明摘要。Core 将它原样传入现有工具输出，共享运行界面自动生成卡片；工具的 `content` 和普通消息接口保持原样。`kind` 支持 `knowledge`、`kv`、`project`、`kanban`、`browser`、`file`，`operation` 为 `read`、`write`、`open` 或 `show`，`title` 可选且最多 200 字符；`target` 使用下文同样的目标字段。关联项目必须填写实际资源的 `source` 和 `projectId`，不能填 Agent 自己的 ID。失败结果保留工具错误，不生成成功卡片。此摘要不执行写入或固定命令；控制固定与 Kanban 参数使用显式卡片能力。
 
 ```ts
 return {
@@ -116,7 +116,7 @@ const approval = workflow.createToolApprovalGate();
 const node = workflow.createAgentNode({
   provider: "anthropic",
   async createTools(context) {
-    return workflow.createWorkflowCapabilityTools({
+    return workflow.createProjectCapabilityTools({
       context,
       globalMemory: true,
       approve: (toolId, args) => approval.approve({ name: toolId, arguments: args }, context),

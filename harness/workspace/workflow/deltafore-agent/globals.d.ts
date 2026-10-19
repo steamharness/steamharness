@@ -37,7 +37,7 @@ type RunDetailsOutputStaticContent =
   | readonly unknown[]
   | Record<string, unknown>;
 
-declare const workflow: {
+declare const steamharness: {
   createOutputPayload(input?: {
     items?: Array<{
       id?: string;
@@ -145,7 +145,7 @@ declare const workflow: {
         }
     >;
   };
-  defineWorkflow<Input, Output>(definition: {
+  defineProject<Input, Output>(definition: {
     name: string;
     run(input: Input, context: unknown): Promise<Output> | Output;
   }): {
@@ -187,8 +187,8 @@ declare const workflow: {
     chunks: RunOutputStreamChunk[];
     output: Output | undefined;
   }>;
-  runWorkflow<Input, Output>(
-    childWorkflow: {
+  runProject<Input, Output>(
+    childProject: {
       name: string;
       run(input: Input, context: unknown): Promise<Output> | Output;
     },

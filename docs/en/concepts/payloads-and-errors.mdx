@@ -82,7 +82,7 @@ The underlying safe run will first normalize the execution result of workflow:
 ```ts
 type RunResult<T> =
   | { ok: true; data: T }
-  | { ok: false; error: SerializedWorkflowError };
+  | { ok: false; error: SerializedProjectError };
 ```
 
 When generating an execution report,runtime converts the failure result of `ok: false` into a readable payload:
@@ -132,4 +132,4 @@ Errors are serialized to avoid directly exposing the full stack or the original 
 
 - A local local host run writes stdout, stderr, and the report to the local run cache.
 - `waiting_for_input` run will keep `pendingUserInput`, and CLI Web can submit the answer to restore the same `runId`.
-- The external blocking API returns `data.error`;streaming API fails through SSE `error` or final `workflow_finished` expression.
+- The external blocking API returns `data.error`;streaming API fails through SSE `error` or final `project_finished` expression.

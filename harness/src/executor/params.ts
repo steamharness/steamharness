@@ -7,13 +7,13 @@ import type {
   ParamValue,
   ParamValues,
 } from "./types";
-import { assertWorkflowParamDefinitions, isWorkflowDateParamControl, normalizeWorkflowParamDeclarations } from "./param-definition";
+import { assertProjectParamDefinitions, isProjectDateParamControl, normalizeProjectParamDeclarations } from "./param-definition";
 
-export function parseWorkflowParamValues(
+export function parseProjectParamValues(
   params: ParamDeclaration[] | undefined,
   args: string[],
 ): ParamValues {
-  const definitions = normalizeWorkflowParamDeclarations(params).params;
+  const definitions = normalizeProjectParamDeclarations(params).params;
   const values: ParamValues = Object.fromEntries(definitions.map((param) => [
     param.name,
     isMultiParam(param) ? readMultiValue(param.defaultValue ?? "") : param.defaultValue ?? "",
@@ -58,12 +58,12 @@ export function parseWorkflowParamValues(
   return values;
 }
 
-export function validateWorkflowParamResolveResult(
+export function validateProjectParamResolveResult(
   params: ParamDeclaration[] | undefined,
   result: ParamResolveResult,
 ): ParamResolveResult {
-  const fields = normalizeWorkflowParamDeclarations(params).params;
-  assertWorkflowParamDefinitions(fields);
+  const fields = normalizeProjectParamDeclarations(params).params;
+  assertProjectParamDefinitions(fields);
   const definitions = new Map(fields.map((param) => [param.name, param]));
   const patches: Record<string, ParamStatePatch> = {};
 
@@ -74,7 +74,7 @@ export function validateWorkflowParamResolveResult(
       throw resolverError(`Parameter patch "${name}" must be an object.`);
     }
     if (
-      isWorkflowDateParamControl(param.control) &&
+      isProjectDateParamControl(param.control) &&
       (patch.resolvedOptions !== undefined || patch.options !== undefined)
     ) {
       throw resolverError(`Date parameter "${name}" cannot resolve options.`);

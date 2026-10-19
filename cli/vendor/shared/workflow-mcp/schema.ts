@@ -17,22 +17,22 @@ export class McpInvalidParamsError extends Error {
   }
 }
 
-export function isWorkflowMcpMultiParam(param: McpParamDefinition): boolean {
+export function isProjectMcpMultiParam(param: McpParamDefinition): boolean {
   return param.multiple === true || param.control === "checkboxes";
 }
 
-export function canWorkflowParamsUseMcpFormElicitation(
+export function canProjectParamsUseMcpFormElicitation(
   params: readonly McpParamDefinition[],
 ): boolean {
   return params.every((param) => {
     if (param.type === "file") return false;
-    if (!isWorkflowMcpMultiParam(param)) return true;
+    if (!isProjectMcpMultiParam(param)) return true;
     return (param.type === "string" || param.type === "positional") &&
       (param.options?.length ?? 0) > 0;
   });
 }
 
-export function workflowParamsToMcpInputSchema(
+export function projectParamsToMcpInputSchema(
   params: readonly McpParamDefinition[] | undefined,
   fileInputMode: McpFileInputMode,
 ): z.ZodObject<Record<string, z.ZodType>> {
@@ -45,7 +45,7 @@ export function workflowParamsToMcpInputSchema(
   return z.object(shape).strict();
 }
 
-export function workflowParamsToMcpJsonSchema(
+export function projectParamsToMcpJsonSchema(
   params: readonly McpParamDefinition[] | undefined,
   fileInputMode: McpFileInputMode,
 ): McpJsonSchema {
@@ -65,7 +65,7 @@ export function workflowParamsToMcpJsonSchema(
   };
 }
 
-export function workflowParamsToMcpElicitationSchema(
+export function projectParamsToMcpElicitationSchema(
   params: readonly McpParamDefinition[],
   defaultValues: Record<string, unknown> | undefined,
 ): {
@@ -77,7 +77,7 @@ export function workflowParamsToMcpElicitationSchema(
     throw new McpInvalidParamsError("File fields cannot be requested through MCP elicitation.");
   }
 
-  const schema = workflowParamsToMcpJsonSchema(params, "local");
+  const schema = projectParamsToMcpJsonSchema(params, "local");
   const properties = Object.fromEntries(params.map((param) => {
     const name = param.name;
     const property = schema.properties[name] ?? {};
@@ -85,7 +85,7 @@ export function workflowParamsToMcpElicitationSchema(
     if (allowed.format === "time") delete allowed.format;
     const override = defaultValues?.[name];
     if (override !== undefined) {
-      const normalized = normalizeWorkflowMcpValue(param, override, "local");
+      const normalized = normalizeProjectMcpValue(param, override, "local");
       if (normalized === undefined) delete allowed.default;
       else allowed.default = normalized;
     }
@@ -123,7 +123,7 @@ function createParamSchema(
     });
   }
 
-  if (isWorkflowMcpMultiParam(param)) {
+  if (isProjectMcpMultiParam(param)) {
     schema = z.array(schema).min(param.required === true ? 1 : 0);
   }
 
@@ -182,12 +182,12 @@ function createParamJsonSchema(
   const optionValues = normalizeOptionValues(param);
   if (optionValues.length > 0) schema.enum = optionValues;
 
-  const defaultValue = normalizeWorkflowMcpDefaultValue(param, fileInputMode);
+  const defaultValue = normalizeProjectMcpDefaultValue(param, fileInputMode);
   if (defaultValue !== undefined) schema.default = defaultValue;
   schema.title = title;
   if (description) schema.description = description;
 
-  if (!isWorkflowMcpMultiParam(param)) return schema;
+  if (!isProjectMcpMultiParam(param)) return schema;
   const itemSchema = { ...schema };
   delete itemSchema.default;
   delete itemSchema.title;
@@ -218,20 +218,20 @@ function normalizeOptionValues(param: McpParamDefinition): Array<string | number
   return param.options.map((option) => option.value);
 }
 
-export function normalizeWorkflowMcpDefaultValue(
+export function normalizeProjectMcpDefaultValue(
   param: McpParamDefinition,
   fileInputMode: McpFileInputMode,
 ): unknown {
   if (param.defaultValue === undefined) return undefined;
-  return normalizeWorkflowMcpValue(param, param.defaultValue, fileInputMode);
+  return normalizeProjectMcpValue(param, param.defaultValue, fileInputMode);
 }
 
-function normalizeWorkflowMcpValue(
+function normalizeProjectMcpValue(
   param: McpParamDefinition,
   rawValue: unknown,
   fileInputMode: McpFileInputMode,
 ): unknown {
-  if (isWorkflowMcpMultiParam(param)) {
+  if (isProjectMcpMultiParam(param)) {
     if (rawValue === "") return [];
     let values: unknown[];
     if (Array.isArray(rawValue)) {

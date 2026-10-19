@@ -1,7 +1,7 @@
 export const STEAMHARNESS_PROJECT_CORE_VERSION = "0.2.0";
 export const STEAMHARNESS_PROJECT_CLI_VERSION = "0.2.0";
 
-export function upgradeWorkflowRuntimeDependencies(
+export function upgradeProjectRuntimeDependencies(
   packageJson: Record<string, unknown>,
 ): Record<string, unknown> {
   const nextPackageJson = { ...packageJson };

@@ -22,7 +22,7 @@ const SKILLS_DIRECTORY = path.join(import.meta.dirname, "skills");
 
 // One gate for the process: it is stateless apart from the run it is handed,
 // and every tool it guards is addressed by the id the host granted.
-const toolApproval = workflow.createToolApprovalGate();
+const toolApproval = steamharness.createToolApprovalGate();
 
 /**
  * Core owns the whole pipeline — input parsing, the agent stream, approval
@@ -31,11 +31,11 @@ const toolApproval = workflow.createToolApprovalGate();
  * What is left here is the assistant's identity: the workspace it was pointed
  * at, the persona that workspace implies, and the capabilities Studio offers.
  */
-const assistantWorkflow = workflow.createAgentConversationWorkflow({
+const assistantProject = steamharness.createAgentConversationProject({
   projectName: STEAMHARNESS_NAME,
   outputItemId: OUTPUT_ITEM_ID,
   session: { subagents: { tools: ["read", "grep", "find", "ls"], maxAgents: 4 }, planFork: "asOf", toolSearch: {},
-    codeMode: workflow.getEnv("STEAMHARNESS_DEVELOPER_ASSISTANT_CODE_MODE") === "true" ? {} : undefined },
+    codeMode: steamharness.getEnv("STEAMHARNESS_DEVELOPER_ASSISTANT_CODE_MODE") === "true" ? {} : undefined },
   async createTools(context): Promise<AgentToolSet> {
     readAssistantHost();
     const approve = async (toolId: string, args: unknown): Promise<void> => {
@@ -48,12 +48,12 @@ const assistantWorkflow = workflow.createAgentConversationWorkflow({
       "workflow-memory_global_memory",
       "workflow-ui_present_card",
     ]);
-    const capabilities = (await workflow.createWorkflowCapabilityTools({
+    const capabilities = (await steamharness.createProjectCapabilityTools({
       context,
       globalMemory: true,
       approve,
     })).filter((tool) => capabilityToolIdsToOffer.has(tool.name));
-    const skills = await workflow.createSkillTools({ directories: [SKILLS_DIRECTORY], approve });
+    const skills = await steamharness.createSkillTools({ directories: [SKILLS_DIRECTORY], approve });
     const control = await createStudioControlTools(approve,
       readDeveloperAssistantPermissionPolicy(context.metadata?.studioControlPermissionPolicy as string | undefined),
       toolId => context.toolPermissions?.getTool(toolId)?.enabled !== false);
@@ -73,9 +73,9 @@ const assistantWorkflow = workflow.createAgentConversationWorkflow({
  * report the host renders, and anything reached through a function call is
  * invisible to it.
  */
-export const executor = workflow.defineExecutor<AgentInput, AgentOutputPayload>({
+export const executor = steamharness.defineExecutor<AgentInput, AgentOutputPayload>({
   projectType: "conversation",
-  workflow: assistantWorkflow,
+  workflow: assistantProject,
   conversation: {
     recovery: { enabled: true },
     durable: { enabled: true },
@@ -266,7 +266,7 @@ export const executor = workflow.defineExecutor<AgentInput, AgentOutputPayload>(
       ],
     },
   ],
-  resolveParams: workflow.createAgentProjectParamResolver(),
+  resolveParams: steamharness.createAgentProjectParamResolver(),
   createContext({ paramValues }) {
     return { metadata: { studioControlPermissionPolicy: readDeveloperAssistantPermissionPolicy(paramValues.permissionPolicy) } };
   },
@@ -274,11 +274,11 @@ export const executor = workflow.defineExecutor<AgentInput, AgentOutputPayload>(
     const workdir = readAssistantWorkdir();
     const manifest = await loadDeveloperAssistantWorkspaceManifest(
       workdir,
-      workflow.getEnv(ASSISTANT_WORKSPACE_MANIFEST_ENV),
+      steamharness.getEnv(ASSISTANT_WORKSPACE_MANIFEST_ENV),
     );
     const { paramValues } = context;
     const permissionPolicy = readDeveloperAssistantPermissionPolicy(paramValues.permissionPolicy);
-    const openai = workflow.readOpenAIConversationHostInput(context);
+    const openai = steamharness.readOpenAIConversationHostInput(context);
 
     // Scope and permission policy travel with each run rather than the node.
     const scope: Partial<AgentInput> = {
@@ -309,7 +309,7 @@ export const executor = workflow.defineExecutor<AgentInput, AgentOutputPayload>(
       } satisfies AgentInput;
     }
 
-    const defaults = workflow.parseConversationDefaultInputArgs(context.args);
+    const defaults = steamharness.parseConversationDefaultInputArgs(context.args);
     return {
       ...scope,
       errCode: 0,
@@ -329,13 +329,13 @@ export const executor = workflow.defineExecutor<AgentInput, AgentOutputPayload>(
   },
 });
 
-export { assistantWorkflow as workflow };
-export default assistantWorkflow;
+export { assistantProject as workflow };
+export default assistantProject;
 
 function readAssistantWorkdir(): string {
-  const workdir = (workflow.getEnv(ASSISTANT_WORKDIR_ENV) ?? "").trim();
+  const workdir = (steamharness.getEnv(ASSISTANT_WORKDIR_ENV) ?? "").trim();
   if (workdir === "") {
-    throw new workflow.HarnessError({
+    throw new steamharness.HarnessError({
       type: "input_validation",
       message: "小助手缺少经过宿主校验的目标工作区目录。",
     });
@@ -344,9 +344,9 @@ function readAssistantWorkdir(): string {
 }
 
 function readAssistantHost(): DeveloperAssistantHost {
-  const host = (workflow.getEnv("STEAMHARNESS_DEVELOPER_ASSISTANT_HOST") ?? "vscode").trim();
+  const host = (steamharness.getEnv("STEAMHARNESS_DEVELOPER_ASSISTANT_HOST") ?? "vscode").trim();
   if (host === "vscode") return host;
-  throw new workflow.HarnessError({ type: "input_validation", message: `Unsupported assistant host: ${host}` });
+  throw new steamharness.HarnessError({ type: "input_validation", message: `Unsupported assistant host: ${host}` });
 }
 
 /** The last user message, which is the turn this run answers. */

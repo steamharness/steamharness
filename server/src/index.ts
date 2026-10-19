@@ -5,11 +5,11 @@ import { createServer, type Server as HttpServer } from "node:http";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { configureWorkflowAuthContext, ensureWorkflowAuthService } from "./auth";
+import { configureProjectAuthContext, ensureProjectAuthService } from "./auth";
 import { AccountRepository } from "./account-db";
 import { DEFAULT_DEV_SERVER_PORT, DEFAULT_PRODUCTION_SERVER_PORT, listenServerWithDevPortFallback } from "./dev-port";
 import { loadServerEnv } from "./env";
-import { createWorkflowServerHealthData } from "./health";
+import { createProjectServerHealthData } from "./health";
 import { ensureServerI18n, getRequestT, localizeHttpErrorMessage, localizeServerMessage, resolveRequestLocale } from "./i18n";
 import { resolveServerPathRoots } from "./paths";
 import { fail, toHttpError } from "./protocol";
@@ -18,7 +18,7 @@ import { createAdminAliasRouter, createAuthRouter, createMeAliasRouter } from ".
 import { createKanbanPreviewAssetRouter } from "./routes/kanban-preview-assets";
 import { createProjectCardImageRouter } from "./routes/project-card-images";
 import { createStorageAssetRouter } from "./routes/storage-assets";
-import { isWorkflowLocalStorage } from "./local-storage";
+import { isProjectLocalStorage } from "./local-storage";
 import { createPublicSystemAiUnavailableHandler } from "./public-system-ai";
 import { createStorageFromEnv } from "./storage";
 import { createWebDevServerOptions } from "./web-dev";
@@ -34,8 +34,8 @@ const accountDb = databaseUrl
   : undefined;
 await accountDb?.init();
 const storage = await createStorageFromEnv();
-const authService = ensureWorkflowAuthService(accountDb);
-configureWorkflowAuthContext({
+const authService = ensureProjectAuthService(accountDb);
+configureProjectAuthContext({
   accountDb,
   authService,
   dataDir: storage.dataRoot,
@@ -70,7 +70,7 @@ app.use(
 app.get("/health", (req, res) => {
   // Stage B exposes deployed server/server-web release data here so
   // docs can distinguish the live 7130+ deployment from 712x dev manifests.
-  void createWorkflowServerHealthData({
+  void createProjectServerHealthData({
     startedAt: serverStartedAt,
     buildInfo: storage.getBuildInfo(),
     locale: resolveRequestLocale(req),
@@ -112,7 +112,7 @@ app.use("/project-card-images", createProjectCardImageRouter(storage));
 // Locally stored public objects (avatars) are served straight from disk. Mounted
 // here — before the authenticated /api tree and before the Vite/SPA fallback —
 // because a later mount would be shadowed by the SPA catch-all.
-if (isWorkflowLocalStorage(storage.objectStorage)) {
+if (isProjectLocalStorage(storage.objectStorage)) {
   app.use("/storage", createStorageAssetRouter(storage.objectStorage));
 }
 

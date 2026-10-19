@@ -1,9 +1,9 @@
-import { readWorkflowCliAuthConfigSync } from "../auth-config";
+import { readProjectCliAuthConfigSync } from "../auth-config";
 import {
-  createWorkflowFileStore,
-  createWorkflowFileCreateUnavailableError,
-  normalizeWorkflowFileReference,
-  createResolvedWorkflowFile,
+  createProjectFileStore,
+  createProjectFileCreateUnavailableError,
+  normalizeProjectFileReference,
+  createResolvedProjectFile,
   type CreateFileInput,
   type FileReference,
   type FileStore,
@@ -16,36 +16,36 @@ interface ApiResponse<T> {
   data?: T;
 }
 
-export interface RemoteWorkflowFileStoreOptions {
+export interface RemoteProjectFileStoreOptions {
   serverUrl: string;
   token: string;
   projectName: string;
   conversationId?: string;
 }
 
-export class RemoteWorkflowFileStore implements FileStore {
+export class RemoteProjectFileStore implements FileStore {
   private readonly serverUrl: string;
   private readonly token: string;
   private readonly projectName: string;
   private readonly conversationId?: string;
   private readonly fallbackStore: FileStore;
 
-  constructor(options: RemoteWorkflowFileStoreOptions) {
+  constructor(options: RemoteProjectFileStoreOptions) {
     this.serverUrl = normalizeServerUrl(options.serverUrl);
     this.token = options.token.trim();
     this.projectName = options.projectName;
     this.conversationId = options.conversationId;
-    this.fallbackStore = createWorkflowFileStore({});
+    this.fallbackStore = createProjectFileStore({});
   }
 
   async resolveFile(reference: FileReference) {
     if (reference.storage !== "server") return this.fallbackStore.resolveFile(reference);
-    const normalized = normalizeWorkflowFileReference(reference);
+    const normalized = normalizeProjectFileReference(reference);
     if (normalized.projectId !== undefined && normalized.projectId !== this.projectName) {
       throw new HarnessError({ type: "input_validation", message: "Workflow file belongs to another project." });
     }
-    if (this.serverUrl === "" || this.token === "") throw createWorkflowFileCreateUnavailableError();
-    return createResolvedWorkflowFile(normalized, async () => {
+    if (this.serverUrl === "" || this.token === "") throw createProjectFileCreateUnavailableError();
+    return createResolvedProjectFile(normalized, async () => {
       // Use the managed endpoint, never a caller-supplied URL or path with credentials.
       const response = await fetch(
         `${this.serverUrl}/api/projects/files/${encodeURIComponent(normalized.id)}`,
@@ -65,7 +65,7 @@ export class RemoteWorkflowFileStore implements FileStore {
 
   async createFile(input: CreateFileInput): Promise<FileReference> {
     if (this.serverUrl === "" || this.token === "") {
-      throw createWorkflowFileCreateUnavailableError();
+      throw createProjectFileCreateUnavailableError();
     }
 
     const query = new URLSearchParams({
@@ -125,14 +125,14 @@ export class RemoteWorkflowFileStore implements FileStore {
       });
     }
 
-    return normalizeWorkflowFileReference({
+    return normalizeProjectFileReference({
       ...reference,
       url: reference.url ?? `/api/projects/files/${encodeURIComponent(reference.id)}`,
     });
   }
 }
 
-export function createRemoteWorkflowFileStoreFromEnv(options: {
+export function createRemoteProjectFileStoreFromEnv(options: {
   env?: NodeJS.ProcessEnv;
   projectName: string;
   conversationId?: string;
@@ -146,7 +146,7 @@ export function createRemoteWorkflowFileStoreFromEnv(options: {
   const token = explicitToken?.trim();
 
   if (serverUrl !== undefined && serverUrl !== "" && token !== undefined && token !== "") {
-    return new RemoteWorkflowFileStore({
+    return new RemoteProjectFileStore({
       serverUrl,
       token,
       projectName: options.projectName,
@@ -154,12 +154,12 @@ export function createRemoteWorkflowFileStoreFromEnv(options: {
     });
   }
 
-  const authConfig = readWorkflowCliAuthConfigSync(env);
+  const authConfig = readProjectCliAuthConfigSync(env);
   if (authConfig.serverUrl.trim() === "" || authConfig.apiKey.trim() === "") {
     return undefined;
   }
 
-  return new RemoteWorkflowFileStore({
+  return new RemoteProjectFileStore({
     serverUrl: authConfig.serverUrl,
     token: authConfig.apiKey,
     projectName: options.projectName,

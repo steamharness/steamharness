@@ -16,7 +16,7 @@ import { DependenciesTab } from "./detail/DependenciesTab";
 import { type DetailPageProps } from "./detail/types";
 import type { Summary } from "../types";
 import { cn } from "@/lib/utils";
-import { getWorkflowProjectServerStorageAccess } from "@/utils/project-presentation";
+import { getProjectServerStorageAccess } from "@/utils/project-presentation";
 
 export type { DetailPageProps } from "./detail/types";
 
@@ -68,7 +68,7 @@ export function resolveDetailTab(
 export function DetailPage(props: DetailPageProps) {
   const { detail, busy, onRefresh } = props;
   const activeTab = resolveDetailTab(props.project, props.activeTab);
-  const storageAccess = getWorkflowProjectServerStorageAccess(props.project);
+  const storageAccess = getProjectServerStorageAccess(props.project);
 
   return (
     <div className="flex h-full flex-col">

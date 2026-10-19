@@ -26,7 +26,7 @@ const TEXT_EXTENSIONS = new Set([
 const REMOVED_CONTRACTS = Object.freeze([
   ["package", /@steamharness\/app\b/u],
   ["environment", /\b(?:STEAMHARNESS_APP_[A-Z0-9_]*|APP_LOCAL_[A-Z0-9_]*)\b/u],
-  ["config-file", /\bworkflow-app\.json\b/u],
+  ["config-file", /\bproject-app\.json\b/u],
   ["runtime-helper", /\b(?:workflow\.)?isApp\s*(?:\(|:)/u],
   ["runtime-marker", /STEAMHARNESS_RUNTIME_PLATFORM\s*=\s*["'`]?app\b/u],
   ["runtime-value", /\b(?:normalized|runtime|platform|source|value)\s*(?:===?|:|=)\s*["'`]app["'`]/u],

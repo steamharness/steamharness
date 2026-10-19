@@ -16,7 +16,7 @@ test('the assistant owns its app and dependencies and never borrows the opened p
   const templateDir = path.join(directory, 'template');
   await mkdir(path.join(templateDir, 'skills/workflow-generator'), { recursive: true });
   await writeFile(path.join(templateDir, 'package.json'), JSON.stringify({ id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', name: 'Project Assistant', type: 'module', devDependencies: { 'steamharness': 'link:../harness' } }));
-  await writeFile(path.join(templateDir, 'index.ts'), 'export const executor = workflow.defineExecutor({});');
+  await writeFile(path.join(templateDir, 'index.ts'), 'export const executor = steamharness.defineExecutor({});');
   await writeFile(path.join(templateDir, 'skills/workflow-generator/SKILL.md'), 'Assistant skill');
   const userProject = path.join(directory, 'opened-project');
   await mkdir(userProject);
@@ -32,6 +32,6 @@ test('the assistant owns its app and dependencies and never borrows the opened p
   assert.equal(await readFile(path.join(application, 'skills/workflow-generator/SKILL.md'), 'utf8'), 'Assistant skill');
   assert.equal(await prepareAssistantApplication(options), application);
   await assert.rejects(prepareAssistantApplication({ ...options, dependencySources: [userProject] }));
-  await writeFile(path.join(templateDir, 'index.ts'), 'export const executor = workflow.defineExecutor({ params: [] });');
+  await writeFile(path.join(templateDir, 'index.ts'), 'export const executor = steamharness.defineExecutor({ params: [] });');
   assert.notEqual(await prepareAssistantApplication(options), application, 'Updated assistant templates must use a fresh app without overwriting a running version.');
 });

@@ -1,5 +1,5 @@
 
-import type { ProjectKind as SharedWorkflowProjectType } from "@steamharness/project-types";
+import type { ProjectKind as SharedProjectKind } from "@steamharness/project-types";
 import type { ProjectInfoContract, RelatedProject, RelatedProjectKVGrant } from "@steamharness/project-info";
 import type { ProjectAccessRequest, ProjectCapabilityGrant, ProjectDependencyLock, ProjectDependencyStatusResult } from "@steamharness/project-dependencies";
 
@@ -243,7 +243,7 @@ export interface AccountInvitation {
 export interface AccountInvitationLookupResult {
   invitation: AccountInvitation;
 }
-export type ProjectKind = SharedWorkflowProjectType;
+export type ProjectKind = SharedProjectKind;
 export type ProjectCardIconName =
   | "workflow"
   | "message-circle"

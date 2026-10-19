@@ -2,7 +2,7 @@ import { EventEmitter } from "node:events";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
-import { runLocalWorkflowWithReport } from "steamharness";
+import { runLocalProjectWithReport } from "steamharness";
 import { decodeHexAudio } from "../lib/audio";
 import { synthesizeMinimaxSpeech, type WebSocketLike } from "../lib/minimax-websocket";
 import {
@@ -45,7 +45,7 @@ describe("minimax audio helpers", () => {
 
 describe("minimax dry-run synthesis", () => {
   it("returns a playable wav data URL output item", async () => {
-    const report = await runLocalWorkflowWithReport({
+    const report = await runLocalProjectWithReport({
       projectDir: path.resolve(process.cwd(), "workflow/minimax-speech-t2a"),
       projectName: "minimax-speech-t2a",
       args: [
@@ -75,7 +75,7 @@ describe("minimax dry-run synthesis", () => {
   });
 
   it("does not serialize the MiniMax API key into runtime node input", async () => {
-    const report = await runLocalWorkflowWithReport({
+    const report = await runLocalProjectWithReport({
       projectDir: path.resolve(process.cwd(), "workflow/minimax-speech-t2a"),
       projectName: "minimax-speech-t2a",
       args: [

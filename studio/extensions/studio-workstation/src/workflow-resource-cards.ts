@@ -7,7 +7,7 @@ export interface ResourceCardTarget {
 }
 export interface ResourceCardResult { id: string; url: string; action: 'open' | 'window' | 'project'; card: ResourceCardTarget; project?: import('./workflow-types').Project }
 
-export function bindWorkflowResourceCards(webview: vscode.Webview, sessionUrl: string, open: (result: ResourceCardResult) => Promise<void>) {
+export function bindProjectResourceCards(webview: vscode.Webview, sessionUrl: string, open: (result: ResourceCardResult) => Promise<void>) {
   const controller = new AbortController();
   let pending = 0;
   return {

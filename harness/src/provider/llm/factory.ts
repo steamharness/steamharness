@@ -107,14 +107,14 @@ export function createLLMProviderFromEnv(
   });
 }
 
-export function createLLMProviderFromWorkflowEnv(): LLMProvider {
-  const type = parseLLMProviderType(readRequiredWorkflowEnv("LLM_TYPE", ["TYPE"]));
+export function createLLMProviderFromProjectEnv(): LLMProvider {
+  const type = parseLLMProviderType(readRequiredProjectEnv("LLM_TYPE", ["TYPE"]));
 
   return createLLMProvider({
     type,
-    apiKey: readRequiredWorkflowEnv("LLM_API_KEY", ["API_KEY", "APIKEY"]),
-    baseURL: readOptionalWorkflowEnv("LLM_BASE_URL", ["BASE_URL"]),
-    model: readOptionalWorkflowEnv("LLM_MODEL", ["MODEL"]),
+    apiKey: readRequiredProjectEnv("LLM_API_KEY", ["API_KEY", "APIKEY"]),
+    baseURL: readOptionalProjectEnv("LLM_BASE_URL", ["BASE_URL"]),
+    model: readOptionalProjectEnv("LLM_MODEL", ["MODEL"]),
     defaults: {
       maxRetries: 1,
     },
@@ -201,8 +201,8 @@ function readOptionalProviderEnv(
   return undefined;
 }
 
-function readRequiredWorkflowEnv(name: string, aliases: string[] = []): string {
-  const value = readOptionalWorkflowEnv(name, aliases);
+function readRequiredProjectEnv(name: string, aliases: string[] = []): string {
+  const value = readOptionalProjectEnv(name, aliases);
 
   if (value === undefined) {
     throw new HarnessError({
@@ -218,7 +218,7 @@ function readRequiredWorkflowEnv(name: string, aliases: string[] = []): string {
   return value;
 }
 
-function readOptionalWorkflowEnv(name: string, aliases: string[] = []): string | undefined {
+function readOptionalProjectEnv(name: string, aliases: string[] = []): string | undefined {
   for (const key of [name, ...aliases]) {
     const value = getEnv(key);
 

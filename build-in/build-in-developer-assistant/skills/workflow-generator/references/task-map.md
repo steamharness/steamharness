@@ -4,9 +4,9 @@
 
 | 要完成的任务 | 首选入口 / 公开类型 | 详细契约与示例 | 验证 |
 | --- | --- | --- | --- |
-| 新建或调整 Workflow 的多个入口 | `workflow.defineWorkflow`、`defineExecutor`、`defineEntrypoint`；`EntrypointDefinition`、`ExecutorDefinition` | `steamharness-api.md`「Workflow 与 Executor」；`scripts/create_workflow.py` | `steamharness structure` 检查入口与执行序列 |
-| 新建普通 Conversation | `workflow.defineWorkflow`、`defineExecutor`；`ConversationExecutorDefinition`、`ExecutorContext` | `steamharness-api.md`「Workflow 与 Executor」；`scripts/create_workflow.py --project-type conversation` | `structure` 后做一次隔离存储的 run |
-| 新建有参数与工具的 Agent 项目 | `workflow.createAgentConversationWorkflow`、`createAgentProjectInput`、`createAgentProjectParamResolver`；`AgentInput`、`AgentOutputPayload`、`RuntimeApi` | `assets/examples/agent-conversation/index.ts`；`steamharness-api.md`「Agent（pi SDK 能力层）」 | `structure` 检查参数、工具、conversation 与 token usage |
+| 新建或调整 Workflow 的多个入口 | `workflow.defineProject`、`defineExecutor`、`defineEntrypoint`；`EntrypointDefinition`、`ExecutorDefinition` | `steamharness-api.md`「Workflow 与 Executor」；`scripts/create_workflow.py` | `steamharness structure` 检查入口与执行序列 |
+| 新建普通 Conversation | `workflow.defineProject`、`defineExecutor`；`ConversationExecutorDefinition`、`ExecutorContext` | `steamharness-api.md`「Workflow 与 Executor」；`scripts/create_workflow.py --project-type conversation` | `structure` 后做一次隔离存储的 run |
+| 新建有参数与工具的 Agent 项目 | `workflow.createAgentConversationProject`、`createAgentProjectInput`、`createAgentProjectParamResolver`；`AgentInput`、`AgentOutputPayload`、`RuntimeApi` | `assets/examples/agent-conversation/index.ts`；`steamharness-api.md`「Agent（pi SDK 能力层）」 | `structure` 检查参数、工具、conversation 与 token usage |
 | 在已有 workflow 中嵌入 Agent 节点 | `workflow.createAgentNode`；`AgentNodeOptions`、`AgentInput` | `steamharness-api.md`「Agent（pi SDK 能力层）」与「节点」 | 对节点做类型检查及运行 smoke |
 | 仅在宿主或测试中构造 Agent executor | `workflow.defineAgentConversationExecutor`；`AgentProjectOptions` | `steamharness-api.md`「Agent（pi SDK 能力层）」 | 不把返回对象当作项目的静态声明 |
 | 定义 Workflow 主字段、Conversation Quick/Mode/Auxiliary 或联动 | `ParamDeclaration`、`ConversationParamDeclaration`、`ParamResolverContext`、`ParamResolveResult` | `references/param-panels.md`；`steamharness-api.md`「参数」 | `structure` 检查 `params` 与 `paramLayout.actions` |

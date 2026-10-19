@@ -36,7 +36,7 @@ export interface ObjectStorage {
  * for artifact reads, so the backend must throw an error it recognizes: a missing
  * artifact reported as 500 would look like a server fault to every caller.
  */
-export function isWorkflowStorageNotFoundError(error: unknown): boolean {
+export function isProjectStorageNotFoundError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
   const record = error as Error & { status?: number; statusCode?: number; code?: string };
   return record.status === 404

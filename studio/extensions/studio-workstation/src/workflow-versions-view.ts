@@ -4,7 +4,7 @@ import { localizationHtml } from './localization-host';
 import { projectVersion, projectDisplayName, type Project } from './workflow-types';
 import type { Launcher } from './workflow-cli-types';
 import type { AccountController } from './workflow-auth';
-import { AuthError, normalizeWorkflowServerUrl, type Connection } from './workflow-auth-client';
+import { AuthError, normalizeProjectServerUrl, type Connection } from './workflow-auth-client';
 import { ProjectServerClient, compareProjectVersions, parseServerProjectShareLink, type DownloadedServerProject, type ProjectVersionStatus, type ServerProject, type ServerProjectVersion, type UpdatedServerProject, type VersionsState } from './steamharness-server-projects';
 import { IMPORTED_PROJECTS_KEY, readImportedProjects } from './projects';
 
@@ -400,7 +400,7 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
         void vscode.window.showInformationMessage(t('Sign in to {0} to import this project.', share.serverUrl));
         return;
       }
-      if (normalizeWorkflowServerUrl(connection.serverUrl) !== share.serverUrl) {
+      if (normalizeProjectServerUrl(connection.serverUrl) !== share.serverUrl) {
         throw new Error(t('This link belongs to {0}. Sign in to that server before importing.', share.serverUrl));
       }
       const key = JSON.stringify(connection);

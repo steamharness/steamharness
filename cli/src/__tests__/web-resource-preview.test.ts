@@ -25,7 +25,7 @@ async function fixture() {
   await writeFile(path.join(related.folderPath, 'dist/index.html'), '<html><head></head><body>Map preview</body></html>');
   const runtime = { inspect: vi.fn(async () => ({ projects: [related], errors: [] })), readResource: vi.fn(async () => ({ id: 'doc', markdown: '# Document' })),
     kanbanBridge: vi.fn(async () => ({ key: 'map' })) } as unknown as Runtime;
-  let connection: { serverUrl: string; accessToken: string } | undefined = { serverUrl: 'https://workflow.test', accessToken: 'test-only-token' };
+  let connection: { serverUrl: string; accessToken: string } | undefined = { serverUrl: 'https://steamharness.test', accessToken: 'test-only-token' };
   const previews = new ResourcePreviews(owner, runtime, storageDir, () => connection, () => [{ alias: 'map', projectDir: related.folderPath }]);
   const card = (kind: ResourceCard['kind'], target: Record<string, string>, extra: Partial<ResourceCard> = {}): ResourceCard => ({ id: 'card', kind, title: 'Resource', target, ...extra });
   return { root, owner, related, runtime, storageDir, previews, card, logout: () => { connection = undefined; previews.clear(); } };
@@ -49,7 +49,7 @@ describe('resource previews', () => {
     const { previews, card } = await fixture();
     const fetcher = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ errCode: 0, data: { id: 'doc', markdown: '# Foreign document' } })));
     const result = await previews.open(card('knowledge', { source: 'server', projectId: 'database', documentId: 'doc' }));
-    expect(fetcher).toHaveBeenCalledWith('https://workflow.test/api/projects/database/knowledge-documents/doc', expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer test-only-token' }), redirect: 'error' }));
+    expect(fetcher).toHaveBeenCalledWith('https://steamharness.test/api/projects/database/knowledge-documents/doc', expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer test-only-token' }), redirect: 'error' }));
     expect(result.data.format).toBe('markdown'); expect(JSON.stringify(result)).not.toContain('test-only-token');
     fetcher.mockResolvedValue(new Response(JSON.stringify({ errCode: 403, errMessage: 'Access denied' }), { status: 403 }));
     await expect(previews.open(card('knowledge', { source: 'server', projectId: 'private', documentId: 'doc' }))).rejects.toThrow('Access denied');
@@ -119,7 +119,7 @@ describe('resource previews', () => {
 
   it('discards a pending remote asset after resource access changes', async () => {
     const { previews, card } = await fixture();
-    const prefix = 'https://workflow.test/api/projects/board/kanban/previews/nonce/browser/local/';
+    const prefix = 'https://steamharness.test/api/projects/board/kanban/previews/nonce/browser/local/';
     const fetcher = vi.spyOn(globalThis, 'fetch').mockImplementation(async url => new Response(JSON.stringify({ errCode: 0, data:
       String(url).endsWith('/structure') ? { structure: { projectType: 'kanban' } } : {
         manifest: { params: [] }, configurations: [], preview: { url: `${prefix}index.html`, nonce: 'nonce' },
@@ -136,7 +136,7 @@ describe('resource previews', () => {
     const { owner, runtime, storageDir } = await fixture();
     vi.mocked(runtime.inspect).mockResolvedValue({ projects: [owner], errors: [] });
     runtime.dispose = vi.fn();
-    const connection = { serverUrl: 'https://workflow.test', accessToken: 'test-only-token' }, originalFetch = globalThis.fetch;
+    const connection = { serverUrl: 'https://steamharness.test', accessToken: 'test-only-token' }, originalFetch = globalThis.fetch;
     vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => String(url).endsWith('/api/auth/me')
       ? Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'user', email: 'test@example.com', displayName: 'User' } } })))
       : originalFetch(url, init));
@@ -167,7 +167,7 @@ describe('resource previews', () => {
   it('keeps remote Kanban assets available after verifying the same account', async () => {
     const { owner, runtime, storageDir } = await fixture();
     vi.mocked(runtime.inspect).mockResolvedValue({ projects: [owner], errors: [] }); runtime.dispose = vi.fn();
-    const connection = { serverUrl: 'https://workflow.test', accessToken: 'test-only-token' }, originalFetch = globalThis.fetch;
+    const connection = { serverUrl: 'https://steamharness.test', accessToken: 'test-only-token' }, originalFetch = globalThis.fetch;
     vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => {
       const address = String(url);
       if (!address.startsWith(connection.serverUrl)) { return originalFetch(url, init); }

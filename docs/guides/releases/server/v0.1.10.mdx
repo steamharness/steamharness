@@ -22,7 +22,7 @@ description: "Server v0.1.10 的更新说明。"
   迁移：浏览器中的运行改由 Desktop 首页的 Web 构建承担，管理端只负责管理云端项目。
 - Server 执行面已移除本机依赖安装、构建、Node 子进程和本机回退。
   迁移：项目版本必须由远程 Runner 按固定 Core、Runtime Protocol、架构和 OCI digest 构建与运行。
-- `listWorkflows` 不再接受 `origin` 参数，项目摘要不再返回 `embedEnabled` 与 `embedPublicUrl`。
+- `listProjects` 不再接受 `origin` 参数，项目摘要不再返回 `embedEnabled` 与 `embedPublicUrl`。
   迁移：调用方改用项目列表默认字段，不再依赖 Embed 开关。
 - 匿名访问 `/web` 先跳登录页并在登录后回跳，`?next=` 只接受路由名而非任意路径。
   迁移：不要把绝对路径放进 `next`，否则会被拒绝以避免开放重定向。
@@ -60,7 +60,7 @@ description: "Server v0.1.10 的更新说明。"
 
 #### 移除
 
-- 移除 `GET/PUT /api/workflows/{workflowName}/embed` 与全部 `/embed/**` 路由。
-- 移除 `wfembed` 域名与 `STEAMHARNESS_EMBED_PUBLIC_BASE_URL`；`workflow_embed_configs` 表按 expand-only 保留。
+- 移除 `GET/PUT /api/workflows/{projectName}/embed` 与全部 `/embed/**` 路由。
+- 移除 `wfembed` 域名与 `STEAMHARNESS_EMBED_PUBLIC_BASE_URL`；`project_embed_configs` 表按 expand-only 保留。
 - 移除 Server Web 的 `/web` 入口页及其可运行版本列表与 `next=web` 回跳。
 - 移除 `server-live` 发布单元、`/api/desktop/v1/*` 与 `/api/web-runs/*` 路由和 `web` 发行目标。

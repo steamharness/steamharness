@@ -1,31 +1,31 @@
 import { describe, expect, it } from "vitest";
 import {
-  inspectWorkflowProjectTypeSources,
-  readWorkflowProjectTypeFromSources,
+  inspectProjectTypeSources,
+  readProjectTypeFromSources,
 } from "@steamharness/project-types/source";
 
 describe("project type source inspection", () => {
   it("extracts both supported project types", () => {
-    expect(readWorkflowProjectTypeFromSources([{ fileName: "index.ts", sourceText: executor('projectType: "workflow",') }]))
+    expect(readProjectTypeFromSources([{ fileName: "index.ts", sourceText: executor('projectType: "workflow",') }]))
       .toBe("workflow");
-    expect(readWorkflowProjectTypeFromSources([{ fileName: "index.ts", sourceText: executor(`
+    expect(readProjectTypeFromSources([{ fileName: "index.ts", sourceText: executor(`
       projectType: "conversation",
       conversation: { inputQueue: { enabled: true } },
     `) }])).toBe("conversation");
   });
 
-  it("extracts project type from the named defineWorkflowExecutor entry", () => {
-    expect(readWorkflowProjectTypeFromSources([{
+  it("extracts project type from the named defineProjectExecutor entry", () => {
+    expect(readProjectTypeFromSources([{
       fileName: "index.ts",
       sourceText: executor('projectType: "workflow",').replace(
-        "workflow.defineExecutor",
-        "defineWorkflowExecutor",
+        "steamharness.defineExecutor",
+        "defineProjectExecutor",
       ),
     }])).toBe("workflow");
   });
 
   it("accepts quoted static property names", () => {
-    expect(readWorkflowProjectTypeFromSources([{
+    expect(readProjectTypeFromSources([{
       fileName: "index.ts",
       sourceText: executor(`
         "projectType": "conversation",
@@ -35,14 +35,14 @@ describe("project type source inspection", () => {
   });
 
   it("rejects missing and unknown project types with a migration example", () => {
-    expect(() => readWorkflowProjectTypeFromSources([{ fileName: "index.ts", sourceText: executor("") }]))
+    expect(() => readProjectTypeFromSources([{ fileName: "index.ts", sourceText: executor("") }]))
       .toThrow(/Migration example:[\s\S]*projectType: "conversation"/);
-    expect(() => readWorkflowProjectTypeFromSources([{ fileName: "index.ts", sourceText: executor('projectType: "agent",') }]))
+    expect(() => readProjectTypeFromSources([{ fileName: "index.ts", sourceText: executor('projectType: "agent",') }]))
       .toThrow(/Unknown executor projectType "agent"/);
   });
 
   it("rejects legacy enabled and workflow conversation settings", () => {
-    const inspection = inspectWorkflowProjectTypeSources([{ fileName: "index.ts", sourceText: executor(`
+    const inspection = inspectProjectTypeSources([{ fileName: "index.ts", sourceText: executor(`
       projectType: "workflow",
       conversation: { enabled: true },
     `) }]);
@@ -53,7 +53,7 @@ describe("project type source inspection", () => {
   });
 
   it("rejects conflicting project types across source files", () => {
-    const inspection = inspectWorkflowProjectTypeSources([
+    const inspection = inspectProjectTypeSources([
       { fileName: "index.ts", sourceText: executor('projectType: "workflow",') },
       { fileName: "secondary.ts", sourceText: executor('projectType: "conversation",') },
     ]);
@@ -69,14 +69,14 @@ describe("project type source inspection", () => {
 });
 
 it.each([true, false])("rejects removed defaultInput settings with enabled=%s", enabled => {
-  expect(() => readWorkflowProjectTypeFromSources([{
+  expect(() => readProjectTypeFromSources([{
     fileName: "index.ts",
     sourceText: executor(`projectType: "conversation", conversation: { defaultInput: { enabled: ${enabled} } },`),
   }])).toThrow(/conversation\.defaultInput was removed/);
 });
 
 function executor(properties: string): string {
-  return `workflow.defineExecutor({
+  return `steamharness.defineExecutor({
     ${properties}
     workflow: demo,
     createInput() { return {}; },

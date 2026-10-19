@@ -39,7 +39,7 @@ new workflow.HarnessError(options: ErrorOptions)
 | `tool_permission_denied` |Tool Permission Policy, Approval Deny|The current run does not allow the tool to be called.|
 | `node_execution` |Normal node execution failed|An unknown error thrown by a normal node.|
 | `provider_call` |LLM provider parse or call|Missing provider, binding error, or call failure.|
-| `workflow_execution` |workflow `run` failed|workflow Main process failed.|
+| `project_execution` |workflow `run` failed|workflow Main process failed.|
 | `stream_interrupted` |streaming node or provider stream|Streaming output is interrupted or failed.|
 
 ## Instance field
@@ -76,7 +76,7 @@ Running the report maps the failure type to payload `errCode`.
 | `stream_interrupted` | `499` |
 | `provider_call` | `502` |
 | `node_execution` | `500` |
-| `workflow_execution` | `500` |
+| `project_execution` | `500` |
 
 ## Example
 

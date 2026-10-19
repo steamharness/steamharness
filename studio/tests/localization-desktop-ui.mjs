@@ -117,12 +117,12 @@ async function verify(language) {
     const runButton = page.locator('.part.titlebar .studio-workflow-run .action-label');
     assert.ok((await runButton.getAttribute('aria-label'))?.includes(t('Run Project')));
     await runButton.click();
-    const workflow = await frameFor('#workflow-title'); await workflow.locator('#workflow-form[aria-busy=false]').waitFor();
-    assert.equal((await workflow.locator('#run').innerText()).trim(), t('Run'));
-    await workflow.locator('#input-mode [data-mode=raw]').click();
-    await workflow.locator('#raw-args').fill(JSON.stringify(['--subject', '\u4e2d\u6587\u6267\u884c\u53c2\u6570', '--rounds', '2', '--delay', '5', '--review', 'false']));
-    await workflow.locator('#run:not([disabled])').click(); await workflow.locator('#run-meta').filter({ hasText: t('Completed') }).waitFor();
-    await workflow.locator('#open-trace').click();
+    const projectFrame = await frameFor('#workflow-title'); await projectFrame.locator('#workflow-form[aria-busy=false]').waitFor();
+    assert.equal((await projectFrame.locator('#run').innerText()).trim(), t('Run'));
+    await projectFrame.locator('#input-mode [data-mode=raw]').click();
+    await projectFrame.locator('#raw-args').fill(JSON.stringify(['--subject', '\u4e2d\u6587\u6267\u884c\u53c2\u6570', '--rounds', '2', '--delay', '5', '--review', 'false']));
+    await projectFrame.locator('#run:not([disabled])').click(); await projectFrame.locator('#run-meta').filter({ hasText: t('Completed') }).waitFor();
+    await projectFrame.locator('#open-trace').click();
     const trace = await frameFor('#trace-app');
     assert.equal(await trace.locator('#trace-search').getAttribute('placeholder'), t('Search trace'));
     assert.equal(await trace.locator('[data-mode=duration] span:last-child').innerText(), t('Duration'));

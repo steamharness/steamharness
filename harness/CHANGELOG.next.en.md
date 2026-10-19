@@ -31,6 +31,8 @@
 
 ### Breaking Changes
 
+- **Product rename**: the SDK global `workflow` is now `steamharness`; `defineWorkflow`, `runWorkflow`, `defineWorkflowExecutor` and `defineWorkflowEntrypoint` are now `defineProject`, `runProject`, `defineProjectExecutor` and `defineProjectEntrypoint`, and the remaining `Workflow*` exports were renamed with them.
+- **Field rename**: `workflowId` / `workflowName` are now `projectId` / `projectName`; `WorkflowError` is now `HarnessError`, the `workflow_execution` error type is now `execution`, and the `workflow` metadata key is now `project`.
 - Conversation removes its enable setting and custom main fields, and legacy configurations now fail structure validation.
   Migration: declare attachments as `conversation.attachments` and keep parameters in Auxiliary / Quick / Mode / Slash only.
 - Executor `params` become ordered action declarations, and the legacy `panel` declaration is no longer accepted.

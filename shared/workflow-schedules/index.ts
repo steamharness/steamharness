@@ -117,7 +117,7 @@ export interface ScheduleRecordWithPreview extends ScheduleRecord {
   preview: ScheduleOccurrencePreview;
 }
 
-export function createWorkflowScheduleLocalizedError(
+export function createProjectScheduleLocalizedError(
   key: string,
   message: string,
   values?: Record<string, unknown>,
@@ -132,7 +132,7 @@ export function createWorkflowScheduleLocalizedError(
   });
 }
 
-export function getWorkflowScheduleFireReasonI18n(
+export function getProjectScheduleFireReasonI18n(
   reason: string,
 ): ScheduleI18nDescriptor | undefined {
   const stableKey = STABLE_FIRE_REASON_KEYS[reason];
@@ -153,14 +153,14 @@ export function getWorkflowScheduleFireReasonI18n(
   return undefined;
 }
 
-export function parseWorkflowSchedulePresets(
+export function parseProjectSchedulePresets(
   value: unknown,
   projectType: string,
 ): SchedulePreset[] {
   if (value === undefined) return [];
   if (projectType !== "workflow") {
     throw scheduleError(
-      "onlyWorkflowPresets",
+      "onlyProjectPresets",
       "Only Workflow projects can declare steamHarness.schedulePresets.",
     );
   }
@@ -201,8 +201,8 @@ export function parseWorkflowSchedulePresets(
     const title = readBoundedString(record.title, `${field}.title`, STEAMHARNESS_SCHEDULE_NAME_MAX_LENGTH);
     const description = readOptionalBoundedString(record.description, `${field}.description`, 500);
     const entrypointId = readString(record.entrypointId, `${field}.entrypointId`);
-    const timezone = validateWorkflowScheduleTimezone(readString(record.timezone, `${field}.timezone`));
-    const trigger = parseWorkflowScheduleTrigger(record.trigger, `${field}.trigger`, timezone);
+    const timezone = validateProjectScheduleTimezone(readString(record.timezone, `${field}.timezone`));
+    const trigger = parseProjectScheduleTrigger(record.trigger, `${field}.trigger`, timezone);
     const paramValues = readRecord(record.paramValues, `${field}.paramValues`);
     assertJsonValue(paramValues, `${field}.paramValues`);
 
@@ -218,7 +218,7 @@ export function parseWorkflowSchedulePresets(
   });
 }
 
-export function parseWorkflowScheduleTrigger(
+export function parseProjectScheduleTrigger(
   value: unknown,
   field = "trigger",
   timezone?: string,
@@ -310,7 +310,7 @@ export function parseWorkflowScheduleTrigger(
   return { kind, weekdays, windows, intervalMinutes: Number(intervalMinutes) };
 }
 
-export function parseWorkflowScheduleInput(value: unknown): ScheduleInput {
+export function parseProjectScheduleInput(value: unknown): ScheduleInput {
   const record = readRecord(value, "schedule");
   assertOnlyFields(record, "schedule", [
     "name",
@@ -330,8 +330,8 @@ export function parseWorkflowScheduleInput(value: unknown): ScheduleInput {
   if (!STEAMHARNESS_SCHEDULE_PRESET_ID_PATTERN.test(entrypointId)) {
     throw scheduleError("entrypointInvalid", "schedule.entrypointId is invalid.");
   }
-  const timezone = validateWorkflowScheduleTimezone(readString(record.timezone, "schedule.timezone"));
-  const trigger = parseWorkflowScheduleTrigger(record.trigger, "schedule.trigger", timezone);
+  const timezone = validateProjectScheduleTimezone(readString(record.timezone, "schedule.timezone"));
+  const trigger = parseProjectScheduleTrigger(record.trigger, "schedule.trigger", timezone);
   const paramValues = readRecord(record.paramValues, "schedule.paramValues");
   assertJsonValue(paramValues, "schedule.paramValues");
   return {
@@ -345,7 +345,7 @@ export function parseWorkflowScheduleInput(value: unknown): ScheduleInput {
   };
 }
 
-export function validateWorkflowScheduleParamValues(
+export function validateProjectScheduleParamValues(
   paramValues: Record<string, unknown>,
   params: readonly ScheduleParamDefinition[],
   field = "schedule.paramValues",
@@ -389,12 +389,12 @@ export function validateWorkflowScheduleParamValues(
   }
 }
 
-export function previewWorkflowSchedule(
+export function previewProjectSchedule(
   input: Pick<ScheduleInput, "trigger" | "timezone">,
   after: Date | string | number = new Date(),
 ): ScheduleOccurrencePreview {
   return {
-    nextRuns: listNextWorkflowScheduleOccurrences({
+    nextRuns: listNextProjectScheduleOccurrences({
       trigger: input.trigger,
       timezone: input.timezone,
       after,
@@ -403,7 +403,7 @@ export function previewWorkflowSchedule(
   };
 }
 
-export function advanceWorkflowSchedulePastMissed(options: {
+export function advanceProjectSchedulePastMissed(options: {
   trigger: ScheduleTrigger;
   timezone: string;
   nextFireAt: Date | string | number;
@@ -417,7 +417,7 @@ export function advanceWorkflowSchedulePastMissed(options: {
   if (nextFireAt.getTime() > now.getTime()) return { missed: false, nextFireAt };
   return {
     missed: true,
-    nextFireAt: getNextWorkflowScheduleOccurrence({
+    nextFireAt: getNextProjectScheduleOccurrence({
       trigger: options.trigger,
       timezone: options.timezone,
       after: now,
@@ -425,7 +425,7 @@ export function advanceWorkflowSchedulePastMissed(options: {
   };
 }
 
-export function isWorkflowScheduleFireMissed(options: {
+export function isProjectScheduleFireMissed(options: {
   scheduledFor: Date | string | number;
   now: Date | string | number;
   missedAfterMs: number;
@@ -444,7 +444,7 @@ export function isWorkflowScheduleFireMissed(options: {
   return now.getTime() - scheduledFor.getTime() >= options.missedAfterMs;
 }
 
-export function validateWorkflowScheduleTimezone(value: string): string {
+export function validateProjectScheduleTimezone(value: string): string {
   const timezone = value.trim();
   if (timezone === "") {
     throw scheduleError("timezoneRequired", "Schedule timezone must be a non-empty IANA timezone.");
@@ -461,13 +461,13 @@ export function validateWorkflowScheduleTimezone(value: string): string {
   return timezone;
 }
 
-export function listNextWorkflowScheduleOccurrences(options: {
+export function listNextProjectScheduleOccurrences(options: {
   trigger: ScheduleTrigger;
   timezone: string;
   after: Date | string | number;
   count?: number;
 }): Date[] {
-  const timezone = validateWorkflowScheduleTimezone(options.timezone);
+  const timezone = validateProjectScheduleTimezone(options.timezone);
   const after = new Date(options.after);
   if (!Number.isFinite(after.getTime())) {
     throw scheduleError("occurrenceStartInvalid", "Schedule occurrence start time is invalid.");
@@ -480,7 +480,7 @@ export function listNextWorkflowScheduleOccurrences(options: {
     );
   }
 
-  const trigger = parseWorkflowScheduleTrigger(options.trigger, "trigger", timezone);
+  const trigger = parseProjectScheduleTrigger(options.trigger, "trigger", timezone);
   if (trigger.kind === "cron") {
     const expression = CronExpressionParser.parse(trigger.expression, {
       currentDate: after,
@@ -492,12 +492,12 @@ export function listNextWorkflowScheduleOccurrences(options: {
   return listNextWindowOccurrences(trigger, timezone, after, count);
 }
 
-export function getNextWorkflowScheduleOccurrence(options: {
+export function getNextProjectScheduleOccurrence(options: {
   trigger: ScheduleTrigger;
   timezone: string;
   after: Date | string | number;
 }): Date {
-  return listNextWorkflowScheduleOccurrences({ ...options, count: 1 })[0]!;
+  return listNextProjectScheduleOccurrences({ ...options, count: 1 })[0]!;
 }
 
 function listNextWindowOccurrences(
@@ -780,7 +780,7 @@ const STABLE_FIRE_REASON_KEYS: Readonly<Record<string, string>> = Object.freeze(
   "Missed triggers were skipped while Desktop was not actively scheduling.": "missedWhileDesktopInactive",
   "Interrupted local schedule fire could not be recovered.": "localRecoveryFailed",
   "Desktop exited before the scheduled Workflow run started.": "desktopExitedBeforeRun",
-  "Only Workflow projects can be scheduled.": "workflowProjectRequired",
+  "Only Workflow projects can be scheduled.": "projectRequired",
   'Desktop workflow schedules must use resolvedTarget "dev".': "desktopDevTargetRequired",
   "Unable to inspect the local Workflow structure.": "localStructureUnavailable",
   "Scheduled Workflow did not produce a run record.": "runRecordMissing",
@@ -817,5 +817,5 @@ function scheduleError(
   message: string,
   values?: Record<string, unknown>,
 ): ScheduleLocalizedError {
-  return createWorkflowScheduleLocalizedError(`validation.${key}`, message, values);
+  return createProjectScheduleLocalizedError(`validation.${key}`, message, values);
 }

@@ -3,20 +3,20 @@ import {
   __test_createDelayedToolEventBuffer,
   createPiAgentSessionSnapshot,
   createPiAgentTokenUsageReport,
-  createWorkflowToolPermissionExtension,
+  createProjectToolPermissionExtension,
 } from "../pi-sdk";
 import { KNOWLEDGE_DOCUMENTS_TOOL_NAME } from "../knowledge-documents-tool";
 import {
-  createDisabledWorkflowConversationContext,
-  createDisabledWorkflowTokenUsageContext,
-  createWorkflowRelatedProjectsContext,
-  createWorkflowToolPermissionContext,
+  createDisabledProjectConversationContext,
+  createDisabledProjectTokenUsageContext,
+  createProjectRelatedProjectsContext,
+  createProjectToolPermissionContext,
   type KVContext,
 } from "steamharness";
-import { installWorkflowRuntimeGlobal } from "steamharness/runtime-api";
+import { installProjectRuntimeGlobal } from "steamharness/runtime-api";
 import type { RunContext } from "steamharness/types/context";
 
-installWorkflowRuntimeGlobal();
+installProjectRuntimeGlobal();
 
 describe("pi-agent SDK adapter", () => {
   it("reads token usage from the current Pi SDK getSessionStats method", () => {
@@ -191,7 +191,7 @@ async function createToolCallHandler(context: RunContext) {
     toolCallId: string;
     input: Record<string, unknown>;
   }) => Promise<{ block?: boolean; reason?: string } | undefined>> = [];
-  const extension = createWorkflowToolPermissionExtension(context);
+  const extension = createProjectToolPermissionExtension(context);
   await extension({
     on(event, handler) {
       expect(event).toBe("tool_call");
@@ -212,23 +212,23 @@ function createToolContext(
       local: {
         kv: createMemoryKVContext(),
         persistentValue: createMemoryKVContext(),
-        relatedProjects: createWorkflowRelatedProjectsContext(),
+        relatedProjects: createProjectRelatedProjectsContext(),
       },
       server: {
         kv: createMemoryKVContext(),
         persistentValue: createMemoryKVContext(),
-        relatedProjects: createWorkflowRelatedProjectsContext(),
+        relatedProjects: createProjectRelatedProjectsContext(),
       },
     },
-    conversation: createDisabledWorkflowConversationContext(),
-    tokenUsage: createDisabledWorkflowTokenUsageContext(),
+    conversation: createDisabledProjectConversationContext(),
+    tokenUsage: createDisabledProjectTokenUsageContext(),
     userInput: {
       async getResolvedInput() {
         return undefined;
       },
       async requestInput() {},
     },
-    toolPermissions: createWorkflowToolPermissionContext({
+    toolPermissions: createProjectToolPermissionContext({
       projectName: "pi-agent",
       runId: "pi-agent-sdk-test-run",
       definitions: [

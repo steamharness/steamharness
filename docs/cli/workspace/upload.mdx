@@ -5,7 +5,7 @@ description: "上传项目源码并可选发布不可变版本。"
 
 # workspace upload
 
-上传仅进行安全解包、静态元数据和文件校验、哈希与保存。服务器不会安装依赖、构建或加载项目代码。未传 `--file` 时，CLI 按项目根 `.workflowignore` 打包；`.gitignore` 不参与。
+上传仅进行安全解包、静态元数据和文件校验、哈希与保存。服务器不会安装依赖、构建或加载项目代码。未传 `--file` 时，CLI 按项目根 `.steamharnessignore` 打包；`.gitignore` 不参与。
 
 ```bash
 steamharness workspace upload <project> [--path <dir>] [--file <archive>] [--create] [--release-log <text>] [--no-wait]
@@ -25,7 +25,7 @@ steamharness workspace upload <project> [--path <dir>] [--file <archive>] [--cre
 
 `POST /api/workflows/{workflow}/package` 返回任务。CLI 默认轮询 `GET /api/workflows/{workflow}/preparations/{jobId}`。阶段为 `queued`、`extracting`、`validating`、`committing`，状态为 `queued`、`preparing`、`success`、`failed`。可用 `workspace preparation <project> <jobId>` 继续查询。
 
-解包拒绝路径穿越、符号链接、特殊成员和大小冲突。失败上传不会替换已有草稿或历史快照。请在 `.workflowignore` 中明确排除本机凭据、依赖和用户数据。
+解包拒绝路径穿越、符号链接、特殊成员和大小冲突。失败上传不会替换已有草稿或历史快照。请在 `.steamharnessignore` 中明确排除本机凭据、依赖和用户数据。
 
 ## 项目组
 

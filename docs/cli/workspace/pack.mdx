@@ -36,22 +36,22 @@ pnpm exec steamharness workspace pack <workflow> [--path <workflow-dir>] [--outp
 | 输出目录 | `<repo-root>/workspace/.packs` |
 | 输出文件名 | `<workflow>-<UTC timestamp>.tgz` |
 
-## `.workflowignore`
+## `.steamharnessignore`
 
-`pack` 只读取项目根目录 `.workflowignore`，不读取根目录或嵌套目录中的 `.gitignore`。语法支持注释、目录规则、通配符、`**` 和 `!` 反向包含，路径按 `/` 匹配。
+`pack` 只读取项目根目录 `.steamharnessignore`，不读取根目录或嵌套目录中的 `.gitignore`。语法支持注释、目录规则、通配符、`**` 和 `!` 反向包含，路径按 `/` 匹配。
 
 | 场景 | 行为 |
 | --- | --- |
 | 缺失、空文件或仅有注释 | 上传项目下全部普通文件，并输出文件数量和总大小警告。 |
-| `.workflowignore` 自身命中规则 | 仍会保留在归档中。 |
+| `.steamharnessignore` 自身命中规则 | 仍会保留在归档中。 |
 | `package.json`、项目入口或已有 `kanban.json` 被排除 | 打包失败，并指出生效规则。 |
 | 符号链接、特殊文件或大小写冲突路径 | 拒绝打包，不由忽略规则放行，避免归档在 Windows、macOS 和 Linux 间出现覆盖差异。 |
 
-Kanban 不会自动保留 `dist` 或其它产物目录；它们也不会被宿主暗中排除。应在 `.workflowignore` 中保留实际 `artifactDir`，同时按需排除 `src/`、测试和 source map。`.gitignore` 是否忽略产物与上传无关。
+Kanban 不会自动保留 `dist` 或其它产物目录；它们也不会被宿主暗中排除。应在 `.steamharnessignore` 中保留实际 `artifactDir`，同时按需排除 `src/`、测试和 source map。`.gitignore` 是否忽略产物与上传无关。
 
 ## 项目组归档
 
-项目组根必须是带 `steamHarness.projectInfo.relatedProjects` 的 Kanban。每个 `--dependency` alias 必须命中双方已确认的直接关系，且本地依赖的 UUID 必须与声明一致；待确认关系不能作为 included 依赖。同一个关联 UUID 只打包一次。归档包含 `project-group.json`、根项目包和选中的依赖项目包；每个项目仍按自己的 `.workflowignore` 选择源码。
+项目组根必须是带 `steamHarness.projectInfo.relatedProjects` 的 Kanban。每个 `--dependency` alias 必须命中双方已确认的直接关系，且本地依赖的 UUID 必须与声明一致；待确认关系不能作为 included 依赖。同一个关联 UUID 只打包一次。归档包含 `project-group.json`、根项目包和选中的依赖项目包；每个项目仍按自己的 `.steamharnessignore` 选择源码。
 
 打包会拒绝符号链接、特殊 tar 成员，以及 `.env*`、KV、PersistentValue、定时计划、运行历史、SQLite、`workflow-auth.json` 和其它宿主用户配置；根 Kanban 也不能把自己的 UUID 声明为来源项目。项目组不携带本地运行数据，也不会修改任何 Server 状态；数据初始化由开发者在本地运行 Workflow，并显式选择本地或服务器存储完成。
 

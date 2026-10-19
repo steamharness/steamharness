@@ -156,7 +156,7 @@ Trace 右上角更多菜单以文字列出压缩上下文、重置上下文及�
 
 `STEAMHARNESS_KV_STORE_DIR` 与 `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR` 互不复用：前者控制 `context.storage.local.kv`，后者控制 `context.storage.local.persistentValue` 和本地知识库。两者都按顶层 `package.json.id` 的 UUID 隔离当前项目。`context.storage.server` 始终使用同一项目 UUID 与已登录服务器连接，不受这两个本地目录影响。项目必须声明 `dataStorage.mode`；禁止或不可用的位置直接报错，本地数据不会自动同步到服务器。`--related-project` 只解析明确传入的目录，不扫描父目录或兄弟目录，也不会让关联访问递归穿过第二层关系：被调起来的项目自己不带关联解析器。服务器位置只选择数据后端，关联入口始终在本地执行。
 
-这两个目录是本地运行共有的资源，不要在不同项目或不同 Core / CLI 版本之间共用同一个目录。条目布局随版本演进：早期版本写 `global` / `workflow` / `conversation` 作用域和 `workflowName` 字段，当前版本只保留 project / conversation 并写 `projectId`，另有 `.workflow-storage-format.json` 标记。旧版本在同一个目录里读到不认识的条目会以 `Local workflow KV entry is invalid and cannot be read safely.` 失败，当前版本遇到没有标记的目录则按当前格式重建并删除原有数据目录。排查这类错误时先确认进程实际拿到的 `STEAMHARNESS_*_STORE_DIR`，不要删除正在使用的目录。
+这两个目录是本地运行共有的资源，不要在不同项目或不同 Core / CLI 版本之间共用同一个目录。条目布局随版本演进：早期版本写 `global` / `workflow` / `conversation` 作用域和 `projectName` 字段，当前版本只保留 project / conversation 并写 `projectId`，另有 `.workflow-storage-format.json` 标记。旧版本在同一个目录里读到不认识的条目会以 `Local workflow KV entry is invalid and cannot be read safely.` 失败，当前版本遇到没有标记的目录则按当前格式重建并删除原有数据目录。排查这类错误时先确认进程实际拿到的 `STEAMHARNESS_*_STORE_DIR`，不要删除正在使用的目录。
 
 ## 退出码
 

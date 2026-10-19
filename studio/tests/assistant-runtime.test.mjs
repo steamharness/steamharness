@@ -23,11 +23,11 @@ test('an installed extension symlink uses monorepo dependencies with tools scope
   await mkdir(template, { recursive: true });
   const manifest = { id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', type: 'module' };
   await writeFile(path.join(template, 'package.json'), JSON.stringify({ ...manifest, testInspectionError: 'Workflow "Project Assistant" script validation failed.' }));
-  await writeFile(path.join(template, 'index.ts'), 'export const executor = workflow.defineExecutor({});');
+  await writeFile(path.join(template, 'index.ts'), 'export const executor = steamharness.defineExecutor({});');
   const controlTemplate = path.join(extension, 'dist/studio-control');
   await mkdir(controlTemplate);
   await writeFile(path.join(controlTemplate, 'package.json'), JSON.stringify({ id: '09145339-e3dd-4bb2-ac9b-6c180ef51933', type: 'module' }));
-  await writeFile(path.join(controlTemplate, 'index.ts'), 'export const executor = workflow.defineExecutor({});');
+  await writeFile(path.join(controlTemplate, 'index.ts'), 'export const executor = steamharness.defineExecutor({});');
   const linked = path.join(directory, 'vscode/extensions/studio-workstation');
   await mkdir(path.dirname(linked), { recursive: true });
   await symlink(extension, linked, process.platform === 'win32' ? 'junction' : 'dir');
@@ -47,7 +47,7 @@ test('an installed extension symlink uses monorepo dependencies with tools scope
     process: { ...process, env: { ...process.env, STUDIO_STEAMHARNESS_SOURCE: source.root } },
     AbortController, AbortSignal, URL, Buffer, setTimeout, clearTimeout, queueMicrotask,
   });
-  const runtime = module.exports.createWorkflowRuntime({ extensionUri: { fsPath: linked }, globalStorageUri: { fsPath: storage } },
+  const runtime = module.exports.createProjectRuntime({ extensionUri: { fsPath: linked }, globalStorageUri: { fsPath: storage } },
     { getConnection: () => undefined, onDidChange: () => disposable });
   t.after(() => runtime.dispose());
   const failed = await runtime.inspectAssistant(target, [target]);

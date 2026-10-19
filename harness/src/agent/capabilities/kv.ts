@@ -2,7 +2,7 @@ import { CONVERSATION_STATE_KEY } from "../../conversation/index";
 import { TOKEN_USAGE_ENTRY_KEY_PREFIX, TOKEN_USAGE_TOTAL_KEY } from "../../token-usage/index";
 import { HarnessError } from "../../workflow/errors";
 import type { NodeContext } from "../../types/context";
-import { selectWorkflowStorage } from "./storage";
+import { selectProjectStorage } from "./storage";
 import type { Capability } from "./types";
 
 export const KV_MCP_SERVER_ID = "workflow-kv";
@@ -60,7 +60,7 @@ export async function runKvAction(
     });
   }
 
-  const storage = selectWorkflowStorage(context);
+  const storage = selectProjectStorage(context);
   const namespace = args.scope === "project" ? storage.kv : storage.kv.conversation;
   const key = readKey(args.key);
   assertKeyWritable(args.scope, key);

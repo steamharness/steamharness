@@ -95,7 +95,7 @@ try {
   assert.equal(await page.locator('.trace-agent-conversation[aria-current=true]').innerText(), 'Main');
   assert.match(await page.locator('.trace-agent-conversation[data-selected=true]').innerText(), /subagent/);
   await page.locator('[data-focus=conversation-3]').click(); action = await lastAction(); assert.equal(action.action.targetId, 3); assert.equal(action.action.conversationId, 2);
-  await selectTab('records'); assert.match(await page.locator('#trace-agent').innerText(), /workflow.plan/); assert.doesNotMatch(await page.locator('#trace-agent').innerText(), /workflow.reset/);
+  await selectTab('records'); assert.match(await page.locator('#trace-agent').innerText(), /steamharness.plan/); assert.doesNotMatch(await page.locator('#trace-agent').innerText(), /steamharness.reset/);
   state.selection.sessionId = 'fork'; state.generation++; await publish(); await selectTab('tasks'); await page.locator('[data-focus=fork-source]').click();
   assert.equal((await lastAction()).action.targetSessionId, 'main');
   await page.locator('#trace-agent-actions').click(); assert.equal(await page.locator('[data-action=foreground]').isVisible(), false); assert.equal(await page.locator('[data-action=all]').isVisible(), false); await page.keyboard.press('Escape');

@@ -1,9 +1,9 @@
 import type {
   RunOutputPayload,
-  RunPayload as CoreWorkflowPayload,
+  RunPayload as CoreProjectPayload,
 } from "steamharness";
 
-export interface RunPayload extends CoreWorkflowPayload {}
+export interface RunPayload extends CoreProjectPayload {}
 
 export interface StudioControlInput extends RunPayload {
   operation: string;

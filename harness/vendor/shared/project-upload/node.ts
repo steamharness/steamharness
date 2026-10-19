@@ -2,11 +2,11 @@ import { copyFile, lstat, mkdir, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import {
   STEAMHARNESS_IGNORE_FILE,
-  createWorkflowUploadPortablePathKey,
-  createWorkflowUploadMatcher,
-  hasWorkflowIgnoreRules,
-  normalizeWorkflowUploadPath,
-  resolveWorkflowUploadRequiredPaths,
+  createProjectUploadPortablePathKey,
+  createProjectUploadMatcher,
+  hasProjectIgnoreRules,
+  normalizeProjectUploadPath,
+  resolveProjectUploadRequiredPaths,
 } from "./index";
 
 export interface UploadFileEntry {
@@ -16,30 +16,30 @@ export interface UploadFileEntry {
 }
 
 export interface UploadPlan {
-  workflowIgnorePresent: boolean;
-  workflowIgnoreConfigured: boolean;
+  projectIgnorePresent: boolean;
+  projectIgnoreConfigured: boolean;
   files: UploadFileEntry[];
   ignoredPaths: string[];
   totalBytes: number;
   requiredPaths: string[];
 }
 
-export async function createWorkflowUploadPlan(rootDir: string): Promise<UploadPlan> {
+export async function createProjectUploadPlan(rootDir: string): Promise<UploadPlan> {
   const projectRoot = path.resolve(rootDir);
-  const workflowIgnorePath = path.join(projectRoot, STEAMHARNESS_IGNORE_FILE);
-  const workflowIgnoreStat = await lstat(workflowIgnorePath).catch(() => undefined);
-  if (workflowIgnoreStat?.isSymbolicLink()) {
+  const projectIgnorePath = path.join(projectRoot, STEAMHARNESS_IGNORE_FILE);
+  const projectIgnoreStat = await lstat(projectIgnorePath).catch(() => undefined);
+  if (projectIgnoreStat?.isSymbolicLink()) {
     throw new Error(`${STEAMHARNESS_IGNORE_FILE} must be a regular file.`);
   }
-  const workflowIgnorePresent = workflowIgnoreStat?.isFile() === true;
-  if (workflowIgnoreStat !== undefined && !workflowIgnorePresent) {
+  const projectIgnorePresent = projectIgnoreStat?.isFile() === true;
+  if (projectIgnoreStat !== undefined && !projectIgnorePresent) {
     throw new Error(`${STEAMHARNESS_IGNORE_FILE} must be a regular file.`);
   }
-  const workflowIgnoreContent = workflowIgnorePresent
-    ? await readWorkflowUploadUtf8File(workflowIgnorePath, STEAMHARNESS_IGNORE_FILE)
+  const projectIgnoreContent = projectIgnorePresent
+    ? await readProjectUploadUtf8File(projectIgnorePath, STEAMHARNESS_IGNORE_FILE)
     : undefined;
-  const matcher = createWorkflowUploadMatcher(
-    workflowIgnoreContent,
+  const matcher = createProjectUploadMatcher(
+    projectIgnoreContent,
   );
   const files: UploadFileEntry[] = [];
   const availableRegularPaths = new Set<string>();
@@ -50,8 +50,8 @@ export async function createWorkflowUploadPlan(rootDir: string): Promise<UploadP
     const entries = await readdir(currentDir, { withFileTypes: true });
     for (const entry of entries) {
       const absolutePath = path.join(currentDir, entry.name);
-      const relativePath = normalizeWorkflowUploadPath(path.relative(projectRoot, absolutePath));
-      const portablePath = createWorkflowUploadPortablePathKey(relativePath);
+      const relativePath = normalizeProjectUploadPath(path.relative(projectRoot, absolutePath));
+      const portablePath = createProjectUploadPortablePathKey(relativePath);
       const conflictingPath = portablePaths.get(portablePath);
       if (conflictingPath !== undefined && conflictingPath !== relativePath) {
         throw new Error(
@@ -86,11 +86,11 @@ export async function createWorkflowUploadPlan(rootDir: string): Promise<UploadP
   if (!availableRegularPaths.has("package.json")) {
     throw new Error("Workflow package must contain package.json.");
   }
-  const packageJson = parsePackageJson(await readWorkflowUploadUtf8File(
+  const packageJson = parsePackageJson(await readProjectUploadUtf8File(
     path.join(projectRoot, "package.json"),
     "package.json",
   ));
-  const requiredPaths = resolveWorkflowUploadRequiredPaths(
+  const requiredPaths = resolveProjectUploadRequiredPaths(
     packageJson,
     availableRegularPaths,
   );
@@ -102,8 +102,8 @@ export async function createWorkflowUploadPlan(rootDir: string): Promise<UploadP
   }
 
   return {
-    workflowIgnorePresent,
-    workflowIgnoreConfigured: hasWorkflowIgnoreRules(workflowIgnoreContent),
+    projectIgnorePresent,
+    projectIgnoreConfigured: hasProjectIgnoreRules(projectIgnoreContent),
     files,
     ignoredPaths,
     totalBytes: files.reduce((total, file) => total + file.size, 0),
@@ -111,11 +111,11 @@ export async function createWorkflowUploadPlan(rootDir: string): Promise<UploadP
   };
 }
 
-export async function copyWorkflowUploadFiles(
+export async function copyProjectUploadFiles(
   sourceDir: string,
   targetDir: string,
 ): Promise<UploadPlan> {
-  const plan = await createWorkflowUploadPlan(sourceDir);
+  const plan = await createProjectUploadPlan(sourceDir);
   await mkdir(targetDir, { recursive: true });
   for (const file of plan.files) {
     const targetPath = path.join(targetDir, ...file.path.split("/"));
@@ -133,7 +133,7 @@ function parsePackageJson(content: string): unknown {
   }
 }
 
-async function readWorkflowUploadUtf8File(filePath: string, label: string): Promise<string> {
+async function readProjectUploadUtf8File(filePath: string, label: string): Promise<string> {
   const content = await readFile(filePath);
   try {
     return new TextDecoder("utf-8", { fatal: true }).decode(content);

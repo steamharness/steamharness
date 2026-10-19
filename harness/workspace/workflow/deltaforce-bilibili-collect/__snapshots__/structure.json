@@ -36,7 +36,7 @@
     {
       "id": "main",
       "title": "Bilibili Collect",
-      "projectName": "deltaforceBilibiliCollectWorkflow",
+      "projectName": "deltaforceBilibiliCollectProject",
       "params": [
         {
           "name": "videoUrl",

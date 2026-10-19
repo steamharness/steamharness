@@ -48,6 +48,9 @@
 
 ### Breaking Changes
 
+- **API paths**: project endpoints moved from `/api/workflows` to `/api/projects`, and `workflowId` / `workflowName` are now `projectId` / `projectName`.
+- **Upload convention**: the ignore file is now `.steamharnessignore`, and the upload package header is `X-SteamHarness-Package-Name`.
+- **Project templates**: the runtime global is now `steamharness`, and entrypoints use `steamharness.defineProject`.
 - Conversation removes its enable setting and custom main fields, with attachments moving to `conversation.attachments`.
   Migration: declare attachments through `conversation.attachments` and parameters through Auxiliary, Quick, Mode, and Slash.
 

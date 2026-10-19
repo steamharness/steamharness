@@ -73,7 +73,7 @@ export function estimateAgentTokens(value: string): number {
 export function estimateAgentContextTokens(messages: readonly AgentMessage[]): number {
   let usageStart = 0;
   for (let index = 0; index < messages.length; index += 1) {
-    const reset = (messages[index] as AgentMessage & { workflowContextUsageReset?: number }).workflowContextUsageReset;
+    const reset = (messages[index] as AgentMessage & { projectContextUsageReset?: number }).projectContextUsageReset;
     if (typeof reset === "number" && Number.isInteger(reset) && reset >= 0) {
       usageStart = index + 1 + reset;
     }
@@ -82,7 +82,7 @@ export function estimateAgentContextTokens(messages: readonly AgentMessage[]): n
     const message = messages[index] as Message;
     if (message.role !== "assistant" || message.stopReason === "error" ||
         message.stopReason === "aborted" || message.stopReason === "pending" ||
-        (message as AgentMessage & { workflowContextUsageInvalid?: boolean }).workflowContextUsageInvalid === true) continue;
+        (message as AgentMessage & { projectContextUsageInvalid?: boolean }).projectContextUsageInvalid === true) continue;
     const tokens = readAgentUsageTokens(message.usage);
     if (tokens > 0) {
       return tokens + estimateContextMessages(messages.slice(index + 1));
@@ -178,7 +178,7 @@ export async function compactAgentMessages(options: {
     ],
     timestamp: readLastTimestamp(options.messages),
     // Retained responses measured the old context; this marker survives transcript persistence.
-    workflowContextUsageReset: tail.length,
+    projectContextUsageReset: tail.length,
   } as unknown as AgentMessage;
 
   return {

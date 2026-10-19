@@ -2,13 +2,13 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  createDeclaredWorkflowRelatedProjectKVResolver,
-  createWorkflowKVContext,
-  createWorkflowPersistentValueContext,
-  createWorkflowRelatedProjectsContext,
-  inspectLocalWorkflowStructure,
+  createDeclaredProjectRelatedProjectKVResolver,
+  createProjectKVContext,
+  createProjectPersistentValueContext,
+  createProjectRelatedProjectsContext,
+  inspectLocalProjectStructure,
   readEntrypointOutput,
-  runLocalWorkflowWithReport,
+  runLocalProjectWithReport,
   type ExecutionReport,
   type ExecutionStorageOptions,
   type KVStore,
@@ -64,7 +64,7 @@ describe.each(["local", "server"] as const)("%s data hierarchy", (location) => {
     const hierarchy = await loadHierarchy(location);
 
     for (const project of Object.values(hierarchy.byRole)) {
-      const structure = inspectLocalWorkflowStructure({
+      const structure = inspectLocalProjectStructure({
         projectDir: path.join(STEAMHARNESS_ROOT, project.slug),
         projectName: project.slug,
       });
@@ -212,7 +212,7 @@ async function createHierarchyRunner(location: StorageLocation) {
   function createTargetRunner(target: HierarchyProject) {
     return {
       async listEntrypoints() {
-        const structure = inspectLocalWorkflowStructure({
+        const structure = inspectLocalProjectStructure({
           projectDir: path.join(STEAMHARNESS_ROOT, target.slug),
           projectName: target.slug,
         });
@@ -223,7 +223,7 @@ async function createHierarchyRunner(location: StorageLocation) {
         }));
       },
       async run(entrypointId: string, args: readonly string[]): Promise<unknown> {
-        const report = await runLocalWorkflowWithReport({
+        const report = await runLocalProjectWithReport({
           projectDir: path.join(STEAMHARNESS_ROOT, target.slug),
           projectName: target.slug,
           entrypointId,
@@ -245,7 +245,7 @@ async function createHierarchyRunner(location: StorageLocation) {
   }
 
   function createResolver(consumer: HierarchyProject) {
-    return createDeclaredWorkflowRelatedProjectKVResolver({
+    return createDeclaredProjectRelatedProjectKVResolver({
       getConsumerProject: () => ({
         projectId: consumer.projectId,
         projectInfo: consumer.projectInfo,
@@ -257,11 +257,11 @@ async function createHierarchyRunner(location: StorageLocation) {
           : {
               projectId: target.projectId,
               projectInfo: target.projectInfo,
-              kv: createWorkflowKVContext({
+              kv: createProjectKVContext({
                 store: selectedStore,
                 projectId: target.projectId,
               }),
-              persistentValue: createWorkflowPersistentValueContext({
+              persistentValue: createProjectPersistentValueContext({
                 store: persistentValueStore,
                 projectId: target.projectId,
               }),
@@ -292,7 +292,7 @@ async function createHierarchyRunner(location: StorageLocation) {
     if (input.id !== undefined) args.push("--id", input.id);
     if (input.content !== undefined) args.push("--content", input.content);
 
-    return runLocalWorkflowWithReport({
+    return runLocalProjectWithReport({
       projectDir: path.join(STEAMHARNESS_ROOT, project.slug),
       projectName: project.slug,
       entrypointId: entrypoint,
@@ -306,7 +306,7 @@ async function createHierarchyRunner(location: StorageLocation) {
     fallbackStore,
     /** One project's related-project surface, for assertions the workflows cannot make. */
     relatedProjectsFor(role: keyof typeof hierarchy.byRole) {
-      return createWorkflowRelatedProjectsContext(createResolver(hierarchy.byRole[role]));
+      return createProjectRelatedProjectsContext(createResolver(hierarchy.byRole[role]));
     },
   };
 }

@@ -21,7 +21,7 @@ function fixture(t, options = {}) {
   const commands = new Map(), storage = new Map(), accountChanged = new Emitter(), visibility = new Emitter(), messages = [], requests = [];
   const local = { uri: 'file:///demo', folderPath: path.resolve('/demo'), id, name: 'Demo', projectType: 'workflow', fields: [], entrypoints: [], manifest: { version: '1.0.0' } };
   const f = { local, storage, requests, errors: [], infos: [], uploads: [], downloads: [], opens: [], notes: 'New version',
-    connection: options.signedOut ? undefined : { serverUrl: 'https://workflow.test', accessToken: 'host-token' },
+    connection: options.signedOut ? undefined : { serverUrl: 'https://steamharness.test', accessToken: 'host-token' },
     projects: [{ id, name: 'Demo', latest: '0.9.0', canManage: true, sourceDownload: { allowed: true, available: true } },
       { id: otherId, name: 'Other', latest: '2.0.0', canManage: false, sourceDownload: { allowed: false, available: true } }],
     versions: new Map([[id, [{ version: '0.9.0', latest: true, releaseLog: '<script>project notes</script>', dependencies: [] }]], [otherId, [{ version: '2.0.0', latest: true, dependencies: [] }]]]),

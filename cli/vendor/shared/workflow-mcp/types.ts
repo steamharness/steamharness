@@ -184,7 +184,7 @@ export interface McpRunSnapshot {
 }
 
 export interface McpRunSnapshotMessage {
-  type: "workflow_mcp_run_snapshot";
+  type: "project_mcp_run_snapshot";
   snapshot: McpRunSnapshot;
 }
 

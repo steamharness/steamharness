@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { register } from 'tsx/esm/api';
 register();
 const { inspectProjectCli, resolveProjectCli, startProjectCli } = await import('../extensions/studio-workstation/src/workflow-cli-process.ts');
-import { workflowFrameHtml } from '../extensions/studio-workstation/src/workflow-webview.ts';
+import { projectFrameHtml } from '../extensions/studio-workstation/src/workflow-webview.ts';
 
 async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startupDelay = 0, assistantProtocol = 1, accountProtocol = 1, relatedProtocol = 1) {
   const directory = await fs.mkdtemp(path.join(tmpdir(), 'studio-project-cli-'));
@@ -120,7 +120,7 @@ test('a CLI without dedicated assistant support cannot silently run the workspac
 
 test('host credentials use stdin and can change without restarting the CLI', async t => {
   const { options } = await fixture(t);
-  const connection = { serverUrl: 'https://workflow.test', accessToken: 'private-host-token' };
+  const connection = { serverUrl: 'https://steamharness.test', accessToken: 'private-host-token' };
   const session = await startProjectCli({ ...options, connection });
   t.after(() => session.close());
   const origin = new URL(session.ready.url).origin;
@@ -250,18 +250,18 @@ test('an unexpected CLI exit is reported and the project can start again', async
 
 test('startup failures redact the injected account token', async t => {
   const { options } = await fixture(t, 'broken', 1, true);
-  await assert.rejects(startProjectCli({ ...options, connection: { serverUrl: 'https://workflow.test', accessToken: 'secret-fixture-token' } }), error => {
+  await assert.rejects(startProjectCli({ ...options, connection: { serverUrl: 'https://steamharness.test', accessToken: 'secret-fixture-token' } }), error => {
     assert.ok(!error.message.includes('secret-fixture-token'));
     assert.match(error.message, /redacted/); return true;
   });
 });
 
 test('the tab contains a CLI frame and no second conversation renderer', () => {
-  const html = workflowFrameHtml(`http://127.0.0.1:3000/#session=${'a'.repeat(64)}`, '<User project>', 'file:///user/project', 'dark', 'fixture');
+  const html = projectFrameHtml(`http://127.0.0.1:3000/#session=${'a'.repeat(64)}`, '<User project>', 'file:///user/project', 'dark', 'fixture');
   assert.match(html, /<iframe/); assert.match(html, /frame-src http:\/\/127.0.0.1:3000/);
   assert.match(html, /&lt;User project&gt;/); assert.match(html, /vscode.setState/);
   assert.doesNotMatch(html, /workflow-ui\.js|id="app"|core\.mjs/);
-  assert.throws(() => workflowFrameHtml('javascript:alert(1)', 'Project', 'user', 'dark', 'fixture'), /Invalid/);
+  assert.throws(() => projectFrameHtml('javascript:alert(1)', 'Project', 'user', 'dark', 'fixture'), /Invalid/);
 });
 
 for (const language of ['en', 'zh-cn']) {
@@ -272,8 +272,8 @@ for (const language of ['en', 'zh-cn']) {
     const result = await fetch(new URL(session.ready.url).origin).then(response => response.json());
     const normalized = language === 'en' ? 'en' : 'zh-CN';
     assert.equal(result.args[result.args.indexOf('--locale') + 1], normalized);
-    const html = workflowFrameHtml(session.ready.url, 'Project', 'project', 'dark', 'test', language);
-    assert.ok(html.includes(`workflowLocale=${normalized}`));
+    const html = projectFrameHtml(session.ready.url, 'Project', 'project', 'dark', 'test', language);
+    assert.ok(html.includes(`projectLocale=${normalized}`));
     assert.ok(html.includes(`locale:"${normalized}"`));
     assert.ok(html.includes(`<html lang="${normalized}">`));
   });

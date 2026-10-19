@@ -4,15 +4,15 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
-  inspectLocalWorkflowStructure,
-  resolveLocalWorkflowParams,
-  runLocalWorkflowWithReport,
+  inspectLocalProjectStructure,
+  resolveLocalProjectParams,
+  runLocalProjectWithReport,
 } from "../index";
 
 test("inspects a Kanban project without an executor", async () => {
   const projectDir = await createKanbanFixture();
   try {
-    const report = inspectLocalWorkflowStructure({ projectDir: projectDir });
+    const report = inspectLocalProjectStructure({ projectDir: projectDir });
     assert.equal(report.projectType, "kanban");
     assert.equal(report.kanban?.entry, "index.html");
     assert.deepEqual(report.params, [{ name: "title", type: "string", defaultValue: "Roadmap" }]);
@@ -26,11 +26,11 @@ test("rejects run and parameter resolver commands for Kanban", async () => {
   const projectDir = await createKanbanFixture();
   try {
     await assert.rejects(
-      runLocalWorkflowWithReport({ projectDir: projectDir }),
+      runLocalProjectWithReport({ projectDir: projectDir }),
       /static HTML project.*does not support workflow execution/,
     );
     await assert.rejects(
-      resolveLocalWorkflowParams({
+      resolveLocalProjectParams({
         projectDir: projectDir,
         request: { draftText: "", args: [], inputMode: "form", trigger: { kind: "init" } },
       }),
@@ -61,7 +61,7 @@ test("inspects a Kanban project from a configured artifact directory", async () 
       writeFile(path.join(projectDir, "dist", "pages", "board.html"), "<!doctype html>"),
     ]);
 
-    const report = inspectLocalWorkflowStructure({ projectDir: projectDir });
+    const report = inspectLocalProjectStructure({ projectDir: projectDir });
     assert.deepEqual(report.kanban, {
       artifactDir: "dist",
       entry: "pages/board.html",
@@ -97,7 +97,7 @@ test("rejects removed Kanban dataSources declarations", async () => {
     ]);
 
     assert.throws(
-      () => inspectLocalWorkflowStructure({ projectDir: projectDir }),
+      () => inspectLocalProjectStructure({ projectDir: projectDir }),
       /dataSources was removed/,
     );
   } finally {
@@ -127,7 +127,7 @@ test("rejects a configured Kanban artifact entry through a symbolic-link directo
     }));
 
     assert.throws(
-      () => inspectLocalWorkflowStructure({ projectDir: projectDir }),
+      () => inspectLocalProjectStructure({ projectDir: projectDir }),
       /must contain regular artifact entry dist\/index\.html/,
     );
   } finally {

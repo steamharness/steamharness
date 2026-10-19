@@ -3,7 +3,7 @@ import test from "node:test";
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { isWorkflowStorageNotFoundError } from "../object-storage";
+import { isProjectStorageNotFoundError } from "../object-storage";
 import { LocalStorage } from "../local-storage";
 
 const PUBLIC_BASE_URL = "https://storage.example.com/";
@@ -62,7 +62,7 @@ test("local misses produce the shared not-found shape", async () => {
     await assert.rejects(
       storage.downloadPrivateBuffer(missingKey),
       (error: unknown) => {
-        assert.equal(isWorkflowStorageNotFoundError(error), true);
+        assert.equal(isProjectStorageNotFoundError(error), true);
         assert.equal((error as { status?: number }).status, 404);
         assert.equal((error as { code?: string }).code, "NoSuchKey");
         assert.match((error as Error).message, /not found/u);
@@ -71,7 +71,7 @@ test("local misses produce the shared not-found shape", async () => {
     );
     await assert.rejects(
       storage.assertPrivateObject(missingKey),
-      (error: unknown) => isWorkflowStorageNotFoundError(error),
+      (error: unknown) => isProjectStorageNotFoundError(error),
     );
   });
 });
@@ -118,7 +118,7 @@ test("local private files stream both directions with exclusive destinations", a
 
     await assert.rejects(
       storage.downloadPrivateFile("projects/demo/missing/source.tar.gz", path.join(root, "missing.tar.gz")),
-      (error: unknown) => isWorkflowStorageNotFoundError(error),
+      (error: unknown) => isProjectStorageNotFoundError(error),
     );
   });
 });

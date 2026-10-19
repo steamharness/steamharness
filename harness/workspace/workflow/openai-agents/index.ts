@@ -46,7 +46,7 @@ const OPENAI_AGENTS_TOOL_NAMES = [
   "read_context",
   "custom_tools",
 ];
-const toolApproval = workflow.createToolApprovalGate();
+const toolApproval = steamharness.createToolApprovalGate();
 
 disableOpenAIAgentsTracing();
 
@@ -104,12 +104,12 @@ interface NodeRunContext {
   abortSignal?: AbortSignal;
 }
 
-const inputNode = workflow.createInputNode<OpenAIAgentsInput, OpenAIAgentsParsedInput>({
+const inputNode = steamharness.createInputNode<OpenAIAgentsInput, OpenAIAgentsParsedInput>({
   name: "openai-agents-input",
   parse(input) {
     const message = input.message.trim();
     if (message === "") {
-      throw new workflow.HarnessError({
+      throw new steamharness.HarnessError({
         type: "input_validation",
         message: "Message is required.",
         nodeName: "openai-agents-input",
@@ -229,7 +229,7 @@ interface AgentsSdkRunnerLike {
   ): Promise<AgentsSdkRunResultSnapshot | AgentsSdkStreamedRunResult>;
 }
 
-const outputNode = workflow.createOutputNode<OpenAIAgentsStreamRunInput, OpenAIAgentsOutputPayload>({
+const outputNode = steamharness.createOutputNode<OpenAIAgentsStreamRunInput, OpenAIAgentsOutputPayload>({
   name: "openai-agents-output",
   async *stream(input, context) {
     const itemId = "openai-agents-answer";
@@ -254,7 +254,7 @@ const outputNode = workflow.createOutputNode<OpenAIAgentsStreamRunInput, OpenAIA
           yield createAnswerItemStartChunk(itemId);
         }
         await input.streamRecorder?.onTextDelta?.(event.delta);
-        yield workflow.createOutputItemChunk({
+        yield steamharness.createOutputItemChunk({
           type: "output_item_delta",
           itemId,
           delta: event.delta,
@@ -266,12 +266,12 @@ const outputNode = workflow.createOutputNode<OpenAIAgentsStreamRunInput, OpenAIA
           answerStarted = true;
           answerEnded = true;
           yield createAnswerItemStartChunk(itemId);
-          yield workflow.createOutputItemChunk({
+          yield steamharness.createOutputItemChunk({
             type: "output_item_delta",
             itemId,
             delta: answer,
           });
-          yield workflow.createOutputItemChunk({ type: "output_item_end", itemId });
+          yield steamharness.createOutputItemChunk({ type: "output_item_end", itemId });
         }
       } else if (event.type === "output_chunk") {
         yield event.chunk;
@@ -281,7 +281,7 @@ const outputNode = workflow.createOutputNode<OpenAIAgentsStreamRunInput, OpenAIA
     }
 
     if (answerStarted && !answerEnded) {
-      yield workflow.createOutputItemChunk({ type: "output_item_end", itemId });
+      yield steamharness.createOutputItemChunk({ type: "output_item_end", itemId });
     }
   },
   async format(stream, input, context) {
@@ -345,7 +345,7 @@ const outputNode = workflow.createOutputNode<OpenAIAgentsStreamRunInput, OpenAIA
         ];
 
     return {
-      ...workflow.createOutputPayload({
+      ...steamharness.createOutputPayload({
         items: items.filter((item) => item.id !== "openai-agents-run-result"),
       }),
       mode: runResult.details.mode,
@@ -362,14 +362,14 @@ const outputNode = workflow.createOutputNode<OpenAIAgentsStreamRunInput, OpenAIA
   },
 });
 
-export const openaiAgentsWorkflow = workflow.defineWorkflow<OpenAIAgentsInput, OpenAIAgentsOutputPayload>({
+export const openaiAgentsProject = steamharness.defineProject<OpenAIAgentsInput, OpenAIAgentsOutputPayload>({
   name: "openai-agents",
   async run(input, context) {
-    const parsed = await workflow.runNode(inputNode, input, context) as OpenAIAgentsParsedInput;
+    const parsed = await steamharness.runNode(inputNode, input, context) as OpenAIAgentsParsedInput;
     const state = await context.conversation.getValue();
     const runCount = Number(await context.storage.local.kv.conversation.getValue(RUN_COUNT_KEY) ?? 0) + 1;
     const facts = readAgentFacts(await context.storage.local.kv.conversation.getValue(FACTS_KEY));
-    const result = await workflow.runStreamNode(
+    const result = await steamharness.runStreamNode(
       outputNode,
       {
         ...parsed,
@@ -384,9 +384,9 @@ export const openaiAgentsWorkflow = workflow.defineWorkflow<OpenAIAgentsInput, O
   },
 });
 
-export const executor = workflow.defineExecutor<OpenAIAgentsInput, OpenAIAgentsOutputPayload>({
+export const executor = steamharness.defineExecutor<OpenAIAgentsInput, OpenAIAgentsOutputPayload>({
   projectType: "conversation",
-  workflow: openaiAgentsWorkflow,
+  workflow: openaiAgentsProject,
   tokenUsage: {
     enabled: true,
     display: true,
@@ -444,7 +444,7 @@ export const executor = workflow.defineExecutor<OpenAIAgentsInput, OpenAIAgentsO
     {
       name: "custom_tools",
       label: "Custom Tools",
-      description: "Allow custom OpenAI Agents SDK tools supplied by a reusable parent workflow.",
+      description: "Allow custom OpenAI Agents SDK tools supplied by a reusable parent steamharness.",
       enabled: true,
       autoApprove: true,
     },
@@ -488,8 +488,8 @@ export const executor = workflow.defineExecutor<OpenAIAgentsInput, OpenAIAgentsO
   },
 });
 
-export { openaiAgentsWorkflow as workflow };
-export default openaiAgentsWorkflow;
+export { openaiAgentsProject as workflow };
+export default openaiAgentsProject;
 
 async function runLiveAgent(
   input: OpenAIAgentsRunInput,
@@ -499,15 +499,15 @@ async function runLiveAgent(
     onOutputChunk(chunk: unknown): Promise<void>;
   },
 ): Promise<OpenAIAgentsStreamResult> {
-  const apiKey = normalizeOptionalString(workflow.getEnv("OPENAI_API_KEY")) ?? normalizeOptionalString(workflow.getEnv("LLM_API_KEY"));
+  const apiKey = normalizeOptionalString(steamharness.getEnv("OPENAI_API_KEY")) ?? normalizeOptionalString(steamharness.getEnv("LLM_API_KEY"));
   if (apiKey === undefined && input.agentRunner === undefined) {
-    throw new workflow.HarnessError({
+    throw new steamharness.HarnessError({
       type: "input_validation",
       message: "OPENAI_API_KEY or LLM_API_KEY is required for OpenAI Agents SDK runs.",
       nodeName: "openai-agents-output",
     });
   }
-  const baseURL = normalizeOptionalString(workflow.getEnv("OPENAI_BASE_URL")) ?? normalizeOptionalString(workflow.getEnv("LLM_BASE_URL"));
+  const baseURL = normalizeOptionalString(steamharness.getEnv("OPENAI_BASE_URL")) ?? normalizeOptionalString(steamharness.getEnv("LLM_BASE_URL"));
   const shellWorkdir = input.localShell ? resolveAgentShellWorkdir(input.workdir) : input.workdir;
 
   const toolEvents: AgentToolCallSummary[] = [];
@@ -786,7 +786,7 @@ export async function approveOpenAIAgentsRunTools(input: {
 }
 
 function createAnswerItemStartChunk(itemId: string) {
-  return workflow.createOutputItemChunk({
+  return steamharness.createOutputItemChunk({
     type: "output_item_start",
     item: {
       id: itemId,
@@ -831,7 +831,7 @@ function createToolOutputReporter(events: {
 
       run.startReady = visible
         ? (async () => {
-            await events.onOutputChunk(workflow.createOutputItemChunk({
+            await events.onOutputChunk(steamharness.createOutputItemChunk({
               type: "output_item_start",
               item: {
                 id: run.id,
@@ -867,7 +867,7 @@ function createToolOutputReporter(events: {
       const itemId = `openai-agents-tool-approval-${sequence}-${normalizeOutputItemIdSegment(input.name)}`;
       const displayName = normalizeOptionalString(input.label) ?? input.name;
       const statusText = input.status === "approved" ? "已批准" : "已拒绝";
-      await events.onOutputChunk(workflow.createOutputItemChunk({
+      await events.onOutputChunk(steamharness.createOutputItemChunk({
         type: "output_item_start",
         item: {
           id: itemId,
@@ -889,7 +889,7 @@ function createToolOutputReporter(events: {
           },
         },
       }));
-      await events.onOutputChunk(workflow.createOutputItemChunk({
+      await events.onOutputChunk(steamharness.createOutputItemChunk({
         type: "output_item_end",
         itemId,
       }));
@@ -900,7 +900,7 @@ function createToolOutputReporter(events: {
       const endedAt = new Date().toISOString();
       const durationMs = Math.max(0, Date.now() - run.startedAtMs);
       const uiStatus = status === "completed" ? "success" : "failed";
-      await events.onOutputChunk(workflow.createOutputItemChunk({
+      await events.onOutputChunk(steamharness.createOutputItemChunk({
         type: "output_item_delta",
         itemId: run.id,
         delta: formatToolFinishMarkdown({
@@ -923,7 +923,7 @@ function createToolOutputReporter(events: {
           },
         },
       }));
-      await events.onOutputChunk(workflow.createOutputItemChunk({
+      await events.onOutputChunk(steamharness.createOutputItemChunk({
         type: "output_item_end",
         itemId: run.id,
       }));
@@ -1163,12 +1163,12 @@ function isSensitiveKey(key: string): boolean {
   return /authorization|api[_-]?key|token|secret|password|cookie/i.test(key);
 }
 
-function readApprovalRequestId(error: workflow.HarnessError): string | undefined {
+function readApprovalRequestId(error: steamharness.HarnessError): string | undefined {
   const requestId = error.metadata?.["requestId"];
   return typeof requestId === "string" ? requestId : undefined;
 }
 
-function readApprovalValues(error: workflow.HarnessError): Record<string, unknown> | undefined {
+function readApprovalValues(error: steamharness.HarnessError): Record<string, unknown> | undefined {
   const values = error.metadata?.["values"];
   return isRecord(values) ? values : undefined;
 }
@@ -1555,7 +1555,7 @@ export function disableOpenAIAgentsTracing(): void {
 
 function requireOpenAIAgentsOutput(value: OpenAIAgentsOutputPayload | undefined): OpenAIAgentsOutputPayload {
   if (value === undefined) {
-    throw new workflow.HarnessError({
+    throw new steamharness.HarnessError({
       type: "node_execution",
       message: "OpenAI Agents output node did not return an output payload.",
       nodeName: "openai-agents-output",
@@ -1567,7 +1567,7 @@ function requireOpenAIAgentsOutput(value: OpenAIAgentsOutputPayload | undefined)
 
 function requireOpenAIAgentsStreamResult(value: OpenAIAgentsStreamResult | undefined): OpenAIAgentsStreamResult {
   if (value === undefined) {
-    throw new workflow.HarnessError({
+    throw new steamharness.HarnessError({
       type: "node_execution",
       message: "OpenAI Agents stream finished without run details.",
       nodeName: "openai-agents-output",
@@ -1626,7 +1626,7 @@ function resolveAgentShellWorkdir(workdir: string): string {
   try {
     return resolveLocalShellWorkdir(workdir);
   } catch (cause) {
-    throw new workflow.HarnessError({
+    throw new steamharness.HarnessError({
       type: "input_validation",
       message: `Invalid --workdir: ${cause instanceof Error ? cause.message : String(cause)}`,
       nodeName: "openai-agents-output",
@@ -1658,7 +1658,7 @@ async function reportTokenUsage(
 }
 
 function parseInput(args: string[]): OpenAIAgentsInput {
-  const defaults = workflow.parseConversationDefaultInputArgs(args);
+  const defaults = steamharness.parseConversationDefaultInputArgs(args);
   const defaultMessage = defaults.message.trim();
   let message = defaults.message;
   let model: string | undefined;
@@ -1726,7 +1726,7 @@ function createLocalShellTools(input: {
           });
           return { approve: true };
         } catch (error) {
-          if (error instanceof workflow.HarnessError && error.type === "tool_permission_denied") {
+          if (error instanceof steamharness.HarnessError && error.type === "tool_permission_denied") {
             await input.toolReporter?.approval({
               name: "local_shell",
               label: input.context.toolPermissions?.getTool("local_shell")?.label,

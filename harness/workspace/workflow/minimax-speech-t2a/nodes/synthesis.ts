@@ -5,7 +5,7 @@ import type {
   MinimaxSpeechResult,
 } from "../interface";
 
-export const synthesisNode = workflow.createInputNode<MinimaxSpeechInput, MinimaxSpeechResult>({
+export const synthesisNode = steamharness.createInputNode<MinimaxSpeechInput, MinimaxSpeechResult>({
   name: "minimax-speech-synthesis",
   async parse(input, context) {
     if (input.dryRun) {

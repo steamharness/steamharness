@@ -1,7 +1,7 @@
 import type { RuntimeApi } from "steamharness/runtime-api";
 
-export const workflow = new Proxy({} as RuntimeApi, {
+export const steamharness = new Proxy({} as RuntimeApi, {
   get(_target, property) {
-    return globalThis.workflow?.[property as keyof RuntimeApi];
+    return globalThis.steamharness?.[property as keyof RuntimeApi];
   },
 });

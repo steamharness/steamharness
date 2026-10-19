@@ -2,17 +2,17 @@ import type { AgentInput, AgentOutputPayload } from "steamharness";
 import type { RuntimeApi } from "steamharness/runtime-api";
 
 // Start from a Conversation scaffold. The host installs this global at runtime.
-const workflow = globalThis.workflow as RuntimeApi | undefined;
+const steamharness = globalThis.steamharness as RuntimeApi | undefined;
 if (workflow === undefined) throw new Error("The workflow runtime is not installed.");
 
-const agentWorkflow = workflow.createAgentConversationWorkflow({
+const agentProject = steamharness.createAgentConversationProject({
   projectName: "assistant",
   outputItemId: "assistant-answer",
 });
 
-export const executor = workflow.defineExecutor<AgentInput, AgentOutputPayload>({
+export const executor = steamharness.defineExecutor<AgentInput, AgentOutputPayload>({
   projectType: "conversation",
-  workflow: agentWorkflow,
+  workflow: agentProject,
   conversation: {
     recovery: { enabled: true },
     commands: [
@@ -44,10 +44,10 @@ export const executor = workflow.defineExecutor<AgentInput, AgentOutputPayload>(
     ] },
     { kind: "slash", name: "plan", flag: "--plan", type: "boolean", label: "Plan", defaultValue: "false" },
   ],
-  resolveParams: workflow.createAgentProjectParamResolver(),
+  resolveParams: steamharness.createAgentProjectParamResolver(),
   createInput({ args, paramValues }) {
-    return { ...workflow.createAgentProjectInput(args), agent: paramValues.plan === "true" ? "plan" : "build" };
+    return { ...steamharness.createAgentProjectInput(args), agent: paramValues.plan === "true" ? "plan" : "build" };
   },
 });
 
-export default agentWorkflow;
+export default agentProject;

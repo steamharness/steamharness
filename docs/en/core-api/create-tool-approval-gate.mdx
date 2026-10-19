@@ -47,7 +47,7 @@ export const executor = workflow.defineExecutor<Input, OutputPayload>({
     workflow.defineEntrypoint<Input, OutputPayload>({
       id: "main",
       title: "Full workflow",
-      workflow: toolWorkflow,
+      workflow: toolProject,
       tools: [
         {
           name: "search",

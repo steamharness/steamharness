@@ -1,11 +1,11 @@
 import type { ConversationExecutorDefinition, ConversationParamDeclaration } from "../executor/types";
-import { defineWorkflowExecutor } from "../executor/definition";
+import { defineProjectExecutor } from "../executor/definition";
 import { createOutputNode, createOutputPayload } from "../node/output/index";
 import { createInputNode } from "../node/input/index";
 import { parseConversationDefaultInputArgs } from "../executor/default-input";
 import { parseAgentModelAttributes } from "./model-attributes";
 import type { NodeContext } from "../types/index";
-import { defineWorkflow, runNode, runStreamNode } from "../workflow/index";
+import { defineProject, runNode, runStreamNode } from "../workflow/index";
 import type { Definition } from "../types/index";
 import { HarnessError } from "../workflow/errors";
 import {
@@ -44,7 +44,7 @@ const DEFAULT_OUTPUT_ITEM_ID = "agent-answer";
  * factory that returns the whole executor hides all four. So the *logic* lives
  * here and the project composes the declaration around it.
  */
-export function createAgentConversationWorkflow(
+export function createAgentConversationProject(
   options: AgentProjectOptions = {},
 ): Definition<AgentInput, AgentOutputPayload> {
   const executorName = options.executorName ?? "agent";
@@ -127,7 +127,7 @@ export function createAgentConversationWorkflow(
     },
   });
 
-  return defineWorkflow<AgentInput, AgentOutputPayload>({
+  return defineProject<AgentInput, AgentOutputPayload>({
     name: executorName,
     async run(input, context) {
       const parsed = await runNode(inputNode, input, context);
@@ -164,7 +164,7 @@ export function createAgentProjectInput(
  *
  * Convenience for callers that are not a project — an embedding host, or a
  * test — and therefore never go through structure validation. A project that
- * has to pass the structure contract composes `createAgentConversationWorkflow`
+ * has to pass the structure contract composes `createAgentConversationProject`
  * and `createAgentProjectInput` into its own inline executor instead.
  */
 export function defineAgentConversationExecutor(
@@ -177,7 +177,7 @@ export function defineAgentConversationExecutor(
   // conversation type — a builtin that receives the union would lose `workflow`.
   const definition: ConversationExecutorDefinition<AgentInput, AgentOutputPayload> = {
     projectType: "conversation",
-    workflow: createAgentConversationWorkflow(options),
+    workflow: createAgentConversationProject(options),
     conversation: {
       recovery: { enabled: true },
       ...(options.session ? { durable: { enabled: true as const } } : {}),
@@ -195,7 +195,7 @@ export function defineAgentConversationExecutor(
     },
   };
 
-  defineWorkflowExecutor<AgentInput, AgentOutputPayload>(definition);
+  defineProjectExecutor<AgentInput, AgentOutputPayload>(definition);
   return definition;
 }
 

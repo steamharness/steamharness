@@ -10,7 +10,7 @@ import { McpInvalidParamsError } from "./schema";
 
 export const STEAMHARNESS_MCP_MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
 
-export function createLocalWorkflowMcpFileResolver(options: {
+export function createLocalProjectMcpFileResolver(options: {
   fileStoreDir: string;
   now?: () => Date;
   createId?: () => string;
@@ -144,7 +144,7 @@ function isSafeManagedFileId(value: string): boolean {
     /^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(value);
 }
 
-export function createServerWorkflowMcpFileResolver(options: {
+export function createServerProjectMcpFileResolver(options: {
   readFile(projectId: string, fileId: string): Promise<McpManagedFileReference | undefined>;
 }): McpFileResolver {
   return async (values, context) => {

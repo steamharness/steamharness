@@ -9,9 +9,9 @@ export const STEAMHARNESS_PROJECT_PLATFORM_DEFINITIONS = [
   { id: "web", labelKey: "projectPlatformWeb" },
 ] as const;
 
-export type KnownWorkflowProjectDeclaration =
+export type KnownProjectDeclaration =
   (typeof STEAMHARNESS_PROJECT_DECLARATION_DEFINITIONS)[number]["id"];
-export type KnownWorkflowProjectPlatform =
+export type KnownProjectPlatform =
   (typeof STEAMHARNESS_PROJECT_PLATFORM_DEFINITIONS)[number]["id"];
 
 export const STEAMHARNESS_PROJECT_DATA_STORAGE_MODES = ["local", "server", "both"] as const;
@@ -97,13 +97,13 @@ export interface ProjectInfoContract {
   relatedProjects: RelatedProject[];
 }
 
-export type DeclaredWorkflowProjectInfo = Omit<ProjectInfoContract, "dataStorage"> & {
+export type DeclaredProjectInfo = Omit<ProjectInfoContract, "dataStorage"> & {
   dataStorage: ProjectDataStorage;
 };
 
 const PROJECT_INFO_ID_PATTERN = /^[a-z][a-z0-9-]*$/;
 
-export function createDefaultWorkflowProjectInfo(): DeclaredWorkflowProjectInfo {
+export function createDefaultProjectInfo(): DeclaredProjectInfo {
   return {
     localizedNames: {},
     declarations: [],
@@ -113,7 +113,7 @@ export function createDefaultWorkflowProjectInfo(): DeclaredWorkflowProjectInfo 
   };
 }
 
-export function createUndeclaredWorkflowProjectInfo(): ProjectInfoContract {
+export function createUndeclaredProjectInfo(): ProjectInfoContract {
   return {
     localizedNames: {},
     declarations: [],
@@ -123,7 +123,7 @@ export function createUndeclaredWorkflowProjectInfo(): ProjectInfoContract {
   };
 }
 
-export function normalizeWorkflowProjectInfo(value: unknown): ProjectInfoContract {
+export function normalizeProjectInfo(value: unknown): ProjectInfoContract {
   if (!isRecord(value)) {
     throw new Error("steamHarness.projectInfo must be an object.");
   }
@@ -137,38 +137,38 @@ export function normalizeWorkflowProjectInfo(value: unknown): ProjectInfoContrac
   return { localizedNames, declarations, platformSupport, dataStorage, relatedProjects };
 }
 
-export function normalizeDeclaredWorkflowProjectInfo(value: unknown): DeclaredWorkflowProjectInfo {
-  const normalized = normalizeWorkflowProjectInfo(value);
+export function normalizeDeclaredProjectInfoInput(value: unknown): DeclaredProjectInfo {
+  const normalized = normalizeProjectInfo(value);
   if (normalized.dataStorage === null) {
     throw new Error(
       "steamHarness.projectInfo.dataStorage.mode must be declared as local, server, or both.",
     );
   }
-  return normalized as DeclaredWorkflowProjectInfo;
+  return normalized as DeclaredProjectInfo;
 }
 
-export function readWorkflowProjectInfo(packageJson: unknown): ProjectInfoContract {
-  if (!isRecord(packageJson)) return createUndeclaredWorkflowProjectInfo();
+export function readProjectInfo(packageJson: unknown): ProjectInfoContract {
+  if (!isRecord(packageJson)) return createUndeclaredProjectInfo();
   const steamHarness = packageJson["steamHarness"];
   if (!isRecord(steamHarness) || steamHarness["projectInfo"] === undefined) {
-    return createUndeclaredWorkflowProjectInfo();
+    return createUndeclaredProjectInfo();
   }
-  const projectInfo = normalizeWorkflowProjectInfo(steamHarness["projectInfo"]);
+  const projectInfo = normalizeProjectInfo(steamHarness["projectInfo"]);
   const projectId = typeof packageJson["id"] === "string" ? packageJson["id"].trim() : undefined;
   if (projectId !== undefined && projectId !== "") {
-    assertWorkflowRelatedProjects(projectInfo, projectId);
+    assertProjectRelatedProjects(projectInfo, projectId);
   }
   return projectInfo;
 }
 
-export function writeWorkflowProjectInfo(
+export function writeProjectInfo(
   packageJson: Record<string, unknown>,
-  projectInfo: DeclaredWorkflowProjectInfo,
+  projectInfo: DeclaredProjectInfo,
 ): Record<string, unknown> {
-  const normalized = normalizeDeclaredWorkflowProjectInfo(projectInfo);
+  const normalized = normalizeDeclaredProjectInfoInput(projectInfo);
   const projectId = typeof packageJson["id"] === "string" ? packageJson["id"].trim() : undefined;
   if (projectId !== undefined && projectId !== "") {
-    assertWorkflowRelatedProjects(normalized, projectId);
+    assertProjectRelatedProjects(normalized, projectId);
   }
   const steamHarness = isRecord(packageJson["steamHarness"])
     ? packageJson["steamHarness"]
@@ -178,13 +178,13 @@ export function writeWorkflowProjectInfo(
     ...packageJson,
     steamHarness: {
       ...steamHarness,
-      projectInfo: serializeWorkflowProjectInfo(normalized),
+      projectInfo: serializeProjectInfo(normalized),
     },
   };
 }
 
-export function serializeWorkflowProjectInfo(projectInfo: ProjectInfoContract): Record<string, unknown> {
-  const normalized = normalizeWorkflowProjectInfo(projectInfo);
+export function serializeProjectInfo(projectInfo: ProjectInfoContract): Record<string, unknown> {
+  const normalized = normalizeProjectInfo(projectInfo);
   return {
     localizedNames: { ...normalized.localizedNames },
     declarations: [...normalized.declarations],
@@ -194,18 +194,18 @@ export function serializeWorkflowProjectInfo(projectInfo: ProjectInfoContract): 
     dataStorage: normalized.dataStorage === null
       ? null
       : { mode: normalized.dataStorage.mode },
-    relatedProjects: normalized.relatedProjects.map(serializeWorkflowRelatedProject),
+    relatedProjects: normalized.relatedProjects.map(serializeProjectRelatedProject),
   };
 }
 
-export function createDefaultWorkflowRelatedProjectGrant(): RelatedProjectKVGrant {
+export function createDefaultProjectRelatedProjectGrant(): RelatedProjectKVGrant {
   return {
     read: { mode: "all" },
     write: { mode: "none" },
   };
 }
 
-export function assertWorkflowRelatedProjects(
+export function assertProjectRelatedProjects(
   projectInfo: ProjectInfoContract,
   currentProjectId: string,
 ): void {
@@ -221,7 +221,7 @@ export function assertWorkflowRelatedProjects(
   }
 }
 
-export function findWorkflowRelatedProject(
+export function findProjectRelatedProject(
   projectInfo: ProjectInfoContract,
   alias: string,
 ): RelatedProject | undefined {
@@ -229,14 +229,14 @@ export function findWorkflowRelatedProject(
   return projectInfo.relatedProjects.find((relation) => relation.alias === normalizedAlias);
 }
 
-export function resolveWorkflowRelatedProjectAccess(input: {
+export function resolveProjectRelatedProjectAccess(input: {
   consumerProjectId: string;
   consumerProjectInfo: ProjectInfoContract;
   targetProjectId: string;
   targetProjectInfo: ProjectInfoContract;
   alias: string;
 }): ResolvedRelatedProjectAccess | undefined {
-  const consumer = findWorkflowRelatedProject(input.consumerProjectInfo, input.alias);
+  const consumer = findProjectRelatedProject(input.consumerProjectInfo, input.alias);
   if (consumer?.projectId.toLowerCase() !== input.targetProjectId.trim().toLowerCase()) {
     return undefined;
   }
@@ -253,7 +253,7 @@ export function resolveWorkflowRelatedProjectAccess(input: {
  * `undefined` is a rule that was never written, and answers the same as
  * `{ mode: "none" }`: a capability nobody granted is not granted by default.
  */
-export function isWorkflowProjectAccessAllowed(
+export function isProjectAccessAllowed(
   rule: ProjectAccessRule | undefined,
   value: string,
 ): boolean {
@@ -262,15 +262,15 @@ export function isWorkflowProjectAccessAllowed(
   return rule.prefixes.some((prefix) => value.startsWith(prefix));
 }
 
-/** @deprecated Renamed to {@link isWorkflowProjectAccessAllowed}: entrypoint ids use it too. */
-export function isWorkflowProjectKVAccessAllowed(
+/** @deprecated Renamed to {@link isProjectAccessAllowed}: entrypoint ids use it too. */
+export function isProjectKVAccessAllowed(
   rule: ProjectAccessRule,
   key: string,
 ): boolean {
-  return isWorkflowProjectAccessAllowed(rule, key);
+  return isProjectAccessAllowed(rule, key);
 }
 
-export function isWorkflowProjectDataStorageLocationAllowed(
+export function isProjectDataStorageLocationAllowed(
   projectInfo: ProjectInfoContract,
   location: ProjectDataStorageLocation,
 ): boolean {
@@ -278,7 +278,7 @@ export function isWorkflowProjectDataStorageLocationAllowed(
   return mode === "both" || mode === location;
 }
 
-export function assertWorkflowProjectDataStorageLocationAllowed(
+export function assertProjectDataStorageLocationAllowed(
   projectInfo: ProjectInfoContract,
   location: ProjectDataStorageLocation,
 ): void {
@@ -295,7 +295,7 @@ export function assertWorkflowProjectDataStorageLocationAllowed(
   }
 }
 
-export function resolveWorkflowProjectName(
+export function resolveProjectName(
   defaultName: string,
   projectInfo: ProjectInfoContract,
   locale?: string,
@@ -319,21 +319,21 @@ export function resolveWorkflowProjectName(
   return fallback;
 }
 
-export function listWorkflowProjectSearchNames(
+export function listProjectSearchNames(
   defaultName: string,
   projectInfo: ProjectInfoContract,
 ): string[] {
   return uniqueStrings([defaultName, ...Object.values(projectInfo.localizedNames)], false);
 }
 
-export function matchesWorkflowProjectSearch(
+export function matchesProjectSearch(
   defaultName: string,
   projectInfo: ProjectInfoContract,
   query: string,
 ): boolean {
   const normalizedQuery = query.trim().toLocaleLowerCase();
   if (normalizedQuery === "") return true;
-  return listWorkflowProjectSearchNames(defaultName, projectInfo)
+  return listProjectSearchNames(defaultName, projectInfo)
     .some((name) => name.toLocaleLowerCase().includes(normalizedQuery));
 }
 
@@ -517,7 +517,7 @@ function normalizeProjectAccessRule(value: unknown, field: string): ProjectAcces
   return { mode: "prefixes", prefixes };
 }
 
-function serializeWorkflowRelatedProject(relation: RelatedProject): Record<string, unknown> {
+function serializeProjectRelatedProject(relation: RelatedProject): Record<string, unknown> {
   const grant = relation.grantToRelatedProject;
   const knowledge = grant.knowledge;
   return {

@@ -6,7 +6,7 @@ import ts from 'typescript';
 
 register();
 const { configureLocalization, t, locale } = await import('../extensions/studio-workstation/src/localization.ts');
-const { workflowInfoItems } = await import('../extensions/studio-workstation/src/workflow-info.ts');
+const { projectInfoItems } = await import('../extensions/studio-workstation/src/workflow-info.ts');
 const { traceRows } = await import('../extensions/studio-workstation/webview/trace-model.ts');
 const json = async path => JSON.parse(await readFile(new URL(`../extensions/studio-workstation/${path}`, import.meta.url), 'utf8'));
 const english = await json('l10n/bundle.l10n.json'), chinese = await json('l10n/bundle.l10n.zh-cn.json');
@@ -42,15 +42,15 @@ test('every translated contribution resolves in English and Chinese', async () =
   for (const match of JSON.stringify(manifest.contributes).matchAll(/%([^%]+)%/g)) {
     assert.ok(en[match[1]], match[1]); assert.ok(zh[match[1]], match[1]);
   }
-  assert.equal(en['command.openWorkflow'], 'Run Project');
-  assert.equal(zh['command.openWorkflow'], '\u8fd0\u884c\u9879\u76ee');
+  assert.equal(en['command.openProject'], 'Run Project');
+  assert.equal(zh['command.openProject'], '\u8fd0\u884c\u9879\u76ee');
 });
 
 for (const language of ['en', 'zh-cn']) {
   test(`${language} localizes information and traces while preserving project values and execution content`, () => {
     configureLocalization(language === 'en' ? {} : chinese, language);
     const project = { id: 'project-id', name: '\u6211\u7684\u9879\u76ee', projectType: 'workflow', folderPath: '/project', entrypoints: [] };
-    const items = workflowInfoItems(project, { description: '\u539f\u59cb\u63cf\u8ff0', steamHarness: { projectInfo: {
+    const items = projectInfoItems(project, { description: '\u539f\u59cb\u63cf\u8ff0', steamHarness: { projectInfo: {
       declarations: ['multilingual'], localizedNames: { en: 'My project', 'zh-CN': '\u6211\u7684\u9879\u76ee' }, dataStorage: { mode: 'both' },
     } } });
     assert.equal(items[0].label, language === 'en' ? 'Basic Information' : '\u57fa\u672c\u4fe1\u606f');

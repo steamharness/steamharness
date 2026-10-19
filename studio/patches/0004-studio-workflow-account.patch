@@ -35,7 +35,7 @@ index 4c4affa1451..8d9315e1141 100644
 +			ContextKeyExpr.equals('studio.accountAvailable', true),
 +			authenticated ? ContextKeyExpr.equals('studio.authenticated', true) : undefined
 +		),
-+		group: '0_workflow'
++		group: '0_project'
 +	});
 +}
 +

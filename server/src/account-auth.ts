@@ -702,7 +702,7 @@ export function getConfiguredAdminKey(): string {
   return process.env.STEAMHARNESS_SERVER_ADMIN_KEY?.trim() ?? "";
 }
 
-export function createWorkflowAuthServiceFromEnv(accountDb: AccountRepository): AuthService | undefined {
+export function createProjectAuthServiceFromEnv(accountDb: AccountRepository): AuthService | undefined {
   const databaseUrl = process.env.STEAMHARNESS_DATABASE_URL?.trim();
   return databaseUrl ? new AuthService({ databaseUrl, accountDb }) : undefined;
 }
@@ -732,7 +732,7 @@ export function readCookieSession(value: string): AuthCookieSession | undefined 
   try {
     const decodedValue = value.trim().startsWith("{") ? value : decodeURIComponent(value);
     const parsed = JSON.parse(decodedValue) as { v?: unknown; payload?: unknown; sig?: unknown };
-    if (parsed.v !== 1 || !isWorkflowAuthCookieSession(parsed.payload) || typeof parsed.sig !== "string") {
+    if (parsed.v !== 1 || !isProjectAuthCookieSession(parsed.payload) || typeof parsed.sig !== "string") {
       return undefined;
     }
     const secret = getAuthCookieSecret();
@@ -846,7 +846,7 @@ function readAuthPublicBaseUrl(redirectTo?: string): string {
   return `http://127.0.0.1:${process.env.STEAMHARNESS_SERVER_PORT?.trim() || "7130"}`;
 }
 
-function isWorkflowAuthCookieSession(value: unknown): value is AuthCookieSession {
+function isProjectAuthCookieSession(value: unknown): value is AuthCookieSession {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const record = value as { kind?: unknown; refreshToken?: unknown };
   return record.kind === "admin_key"

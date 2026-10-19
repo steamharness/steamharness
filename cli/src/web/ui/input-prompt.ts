@@ -1,5 +1,5 @@
 import { t } from '../localization';
-import { validateWorkflowValues, workflowFormValue, type InputRequest, type ParamValues, type Field } from '../workflow-types';
+import { validateProjectValues, projectFormValue, type InputRequest, type ParamValues, type Field } from '../workflow-types';
 import { iconButton } from './ui';
 
 interface PromptOptions {
@@ -22,7 +22,7 @@ export class InputPrompt {
     this.steps = [...new Set(request.params.map((field) => field.step ?? 1))].sort((a, b) => a - b);
     for (const field of request.params) {
       const value = request.defaultValues?.[field.name] ?? field.defaultValue ?? '';
-      this.values[field.name] = workflowFormValue(field, value);
+      this.values[field.name] = projectFormValue(field, value);
     }
     this.root.className = 'input-prompt';
     const title = document.createElement('h2'); title.textContent = request.title;
@@ -43,7 +43,7 @@ export class InputPrompt {
   }
 
   private submit(values = this.values): void {
-    try { validateWorkflowValues(this.request.params, values); this.busy = true; this.error = ''; this.render(); this.options.submit(values); }
+    try { validateProjectValues(this.request.params, values); this.busy = true; this.error = ''; this.render(); this.options.submit(values); }
     catch (error) { this.error = String(error instanceof Error ? error.message : error); this.render(); }
   }
 

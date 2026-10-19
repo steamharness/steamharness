@@ -620,7 +620,7 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
     const directory = typeof context.metadata?.["agentStoreDir"] === "string"
       ? context.metadata["agentStoreDir"] : path.join(input.workdir ?? this.options.workdir ?? process.cwd(), ".workflow", "agents");
     const sessionDirectory = agentConversationDirectory(directory, context.conversation?.conversationId ?? "ephemeral");
-    const identity = JSON.stringify([context.metadata?.["workflow"], key]);
+    const identity = JSON.stringify([context.metadata?.["project"], key]);
     const runtimeOptions: AgentRuntimeInternalOptions = {
       ...this.options,
       session: input.hostInput === undefined ? this.options.session : undefined,

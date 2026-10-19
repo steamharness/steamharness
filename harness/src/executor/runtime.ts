@@ -4,19 +4,19 @@ import type {
   UserInputResolved,
 } from "../types/index";
 import {
-  createWorkflowTimerContext,
+  createProjectTimerContext,
   type TimerContext,
 } from "../timer/index";
 import {
-  createWorkflowFailure,
+  createProjectFailure,
   HarnessError,
   type RunResult,
 } from "../workflow/index";
 import {
   combineNodeExecutionHooks,
   createNodeExecutionReporter,
-  createWorkflowExecutionReport,
-  resolveWorkflowResultStatus,
+  createProjectExecutionReport,
+  resolveProjectResultStatus,
   type OutputReport,
   type ExecutionReport,
   type RuntimeEvent,
@@ -88,10 +88,10 @@ export class Runtime {
   private status: RunStatus = "running";
 
   constructor(options: RuntimeOptions) {
-    this.runId = options.runId ?? createWorkflowRunId();
+    this.runId = options.runId ?? createProjectRunId();
     this.projectName = options.projectName;
     this.startedAt = new Date();
-    this.abortController = createWorkflowAbortController(options.abortSignal);
+    this.abortController = createProjectAbortController(options.abortSignal);
     this.layers = options.layers ?? [];
     this.onRuntimeEvent = options.onRuntimeEvent;
     this.reporter = createNodeExecutionReporter({
@@ -99,7 +99,7 @@ export class Runtime {
       projectName: this.projectName,
       onRuntimeEvent: (event) => this.emitRuntimeEvent(event),
     });
-    this.timers = createWorkflowTimerContext({
+    this.timers = createProjectTimerContext({
       onTimerStart: (event) =>
         this.reporter.emitTimerStarted({
           runId: this.runId,
@@ -113,7 +113,7 @@ export class Runtime {
           timer: event.timer,
         }),
     });
-    this.timeout = createWorkflowTimeout(options.timeoutMs, this.abortController);
+    this.timeout = createProjectTimeout(options.timeoutMs, this.abortController);
     this.nodeHooks = combineNodeExecutionHooks(
       this.reporter.hooks,
       ...this.layers.map((layer) => layer.createNodeHooks?.(this)),
@@ -160,7 +160,7 @@ export class Runtime {
     if (this.started) return;
     this.started = true;
 
-    await this.reporter.emitWorkflowStarted({
+    await this.reporter.emitProjectStarted({
       runId: this.runId,
       projectName: this.projectName,
       entrypointId: entrypoint?.id,
@@ -208,20 +208,20 @@ export class Runtime {
   async finish<Output>(
     options: RuntimeFinishOptions<Output>,
   ): Promise<ExecutionReport<Output>> {
-    clearWorkflowTimeout(this.timeout);
+    clearProjectTimeout(this.timeout);
     this.endedAt = new Date();
     const outputs = this.reporter.getOutputs();
     const pendingUserInput = this.reporter.getPendingUserInput();
     const resolvedUserInputs = this.reporter.getResolvedUserInputs();
     this.status = pendingUserInput === undefined
-      ? resolveWorkflowRunStatus(options.result, this.abortSignal, outputs)
+      ? resolveProjectRunStatus(options.result, this.abortSignal, outputs)
       : "waiting_for_input";
 
     // Timers can outlive business code when a workflow aborts or
     // returns early; close them before the terminal workflow event/report.
     await this.timers.clearRunningTimers();
 
-    await this.reporter.emitWorkflowFinished({
+    await this.reporter.emitProjectFinished({
       runId: this.runId,
       projectName: this.projectName,
       entrypointId: options.entrypointId,
@@ -235,7 +235,7 @@ export class Runtime {
       outputs,
     });
 
-    const report = createWorkflowExecutionReport({
+    const report = createProjectExecutionReport({
       runId: this.runId,
       projectName: this.projectName,
       entrypointId: options.entrypointId,
@@ -272,7 +272,7 @@ export class Runtime {
   }
 }
 
-export function createWorkflowRuntime(
+export function createProjectRuntime(
   options: RuntimeOptions,
 ): Runtime {
   return new Runtime(options);
@@ -327,13 +327,13 @@ export function createRuntimePersistenceLayer(
   };
 }
 
-export function createWorkflowRunId(): string {
+export function createProjectRunId(): string {
   return `${new Date().toISOString().replace(/[-:.TZ]/g, "")}-${Math.random()
     .toString(36)
     .slice(2, 10)}`;
 }
 
-export function createWorkflowAbortError(
+export function createProjectAbortError(
   signal: AbortSignal,
   projectName: string,
 ): HarnessError {
@@ -344,7 +344,7 @@ export function createWorkflowAbortError(
       type: "execution_aborted",
       message: `Workflow "${projectName}" timed out after ${reason.timeoutMs}ms.`,
       metadata: {
-        workflow: projectName,
+        project: projectName,
         reason: "timeout",
         timeoutMs: reason.timeoutMs,
       },
@@ -361,21 +361,21 @@ export function createWorkflowAbortError(
       ? reason.message
       : `Workflow "${projectName}" execution was aborted.`,
     metadata: {
-      workflow: projectName,
+      project: projectName,
       reason: "abort",
     },
     cause: reason,
   });
 }
 
-export function createAbortedWorkflowResult(
+export function createAbortedProjectResult(
   signal: AbortSignal,
   projectName: string,
 ): RunResult<never> {
-  return createWorkflowFailure(createWorkflowAbortError(signal, projectName));
+  return createProjectFailure(createProjectAbortError(signal, projectName));
 }
 
-function createWorkflowAbortController(abortSignal: AbortSignal | undefined): AbortController {
+function createProjectAbortController(abortSignal: AbortSignal | undefined): AbortController {
   const controller = new AbortController();
 
   if (abortSignal === undefined) {
@@ -398,7 +398,7 @@ function createWorkflowAbortController(abortSignal: AbortSignal | undefined): Ab
   return controller;
 }
 
-function createWorkflowTimeout(
+function createProjectTimeout(
   timeoutMs: number | undefined,
   controller: AbortController,
 ): ReturnType<typeof setTimeout> | undefined {
@@ -411,7 +411,7 @@ function createWorkflowTimeout(
   }, timeoutMs);
 }
 
-function clearWorkflowTimeout(timeout: ReturnType<typeof setTimeout> | undefined): void {
+function clearProjectTimeout(timeout: ReturnType<typeof setTimeout> | undefined): void {
   if (timeout !== undefined) {
     clearTimeout(timeout);
   }
@@ -422,16 +422,16 @@ function throwIfAborted(signal: AbortSignal, projectName: string): void {
     return;
   }
 
-  throw createWorkflowAbortError(signal, projectName);
+  throw createProjectAbortError(signal, projectName);
 }
 
-function resolveWorkflowRunStatus(
+function resolveProjectRunStatus(
   result: RunResult<unknown>,
   signal: AbortSignal,
   outputs: OutputReport[] = [],
 ): RunStatus {
   if (result.ok) {
-    return resolveWorkflowResultStatus(result, outputs);
+    return resolveProjectResultStatus(result, outputs);
   }
 
   if (signal.aborted && signal.reason instanceof TimeoutError) {

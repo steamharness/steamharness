@@ -25,7 +25,7 @@ export interface ConversationState {
   values: Record<string, unknown>;
 }
 
-export interface AppendWorkflowConversationMessageInput {
+export interface AppendProjectConversationMessageInput {
   /** A stable projection identity replaces the same message when replayed. */
   id?: string;
   role: ConversationRole;
@@ -40,7 +40,7 @@ export interface ConversationContext {
   setValue(key: string, value: unknown): Promise<ConversationState>;
   setTitle(title: string): Promise<ConversationState | undefined>;
   appendMessage(
-    message: AppendWorkflowConversationMessageInput,
+    message: AppendProjectConversationMessageInput,
   ): Promise<ConversationState>;
 }
 
@@ -56,11 +56,11 @@ export interface ConversationRuntimeOptions {
   }) => Promise<void> | void;
 }
 
-export function createWorkflowConversationContext(
+export function createProjectConversationContext(
   options: ConversationRuntimeOptions,
 ): ConversationContext {
   if (options.enabled !== true) {
-    return createDisabledWorkflowConversationContext();
+    return createDisabledProjectConversationContext();
   }
 
   if (options.kv === undefined) {
@@ -68,7 +68,7 @@ export function createWorkflowConversationContext(
       type: "input_validation",
       message:
         "Workflow conversation is enabled, but no workflow KV context was configured.",
-      metadata: { workflow: options.projectName },
+      metadata: { project: options.projectName },
     });
   }
 
@@ -78,10 +78,10 @@ export function createWorkflowConversationContext(
       type: "input_validation",
       message:
         "Workflow conversation is enabled, but no conversation id was configured.",
-      metadata: { workflow: options.projectName },
+      metadata: { project: options.projectName },
     });
   }
-  const store = createWorkflowConversationStore({
+  const store = createProjectConversationStore({
     projectName: options.projectName,
     conversationId,
     kv: options.kv,
@@ -98,7 +98,7 @@ export function createWorkflowConversationContext(
   };
 }
 
-export function createDisabledWorkflowConversationContext(): ConversationContext {
+export function createDisabledProjectConversationContext(): ConversationContext {
   return {
     enabled: false,
     async getValue() {
@@ -118,7 +118,7 @@ export function createDisabledWorkflowConversationContext(): ConversationContext
   };
 }
 
-function createWorkflowConversationStore(options: {
+function createProjectConversationStore(options: {
   projectName: string;
   conversationId: string;
   kv: KVContext;
@@ -131,11 +131,11 @@ function createWorkflowConversationStore(options: {
   readState(): Promise<ConversationState>;
   setValue(key: string, value: unknown): Promise<ConversationState>;
   setTitle(title: string): Promise<ConversationState | undefined>;
-  appendMessage(message: AppendWorkflowConversationMessageInput): Promise<ConversationState>;
+  appendMessage(message: AppendProjectConversationMessageInput): Promise<ConversationState>;
 } {
   async function readState(): Promise<ConversationState> {
     const value = await options.kv.conversation.getValue(CONVERSATION_STATE_KEY);
-    if (isWorkflowConversationState(value)) {
+    if (isProjectConversationState(value)) {
       return value;
     }
 
@@ -189,7 +189,7 @@ function createWorkflowConversationStore(options: {
     async appendMessage(message) {
       const id = message.id ?? randomUUID();
       return await options.kv.conversation.updateValue(CONVERSATION_STATE_KEY, current => {
-        const state = isWorkflowConversationState(current) ? current
+        const state = isProjectConversationState(current) ? current
           : createInitialConversationState(options.projectName, options.conversationId);
         const existing = state.messages.findIndex(entry => entry.id === id);
         const now = new Date().toISOString();
@@ -250,7 +250,7 @@ function normalizeOptionalTitle(value: string): string | undefined {
   return title === "" ? undefined : title;
 }
 
-function isWorkflowConversationState(
+function isProjectConversationState(
   value: unknown,
 ): value is ConversationState {
   return (
@@ -261,25 +261,25 @@ function isWorkflowConversationState(
     typeof value.createdAt === "string" &&
     typeof value.updatedAt === "string" &&
     Array.isArray(value.messages) &&
-    value.messages.every(isWorkflowConversationMessage) &&
+    value.messages.every(isProjectConversationMessage) &&
     isRecord(value.values)
   );
 }
 
-function isWorkflowConversationMessage(
+function isProjectConversationMessage(
   value: unknown,
 ): value is ConversationMessageContract {
   return (
     isRecord(value) &&
     typeof value.id === "string" &&
-    isWorkflowConversationRole(value.role) &&
+    isProjectConversationRole(value.role) &&
     typeof value.content === "string" &&
     typeof value.createdAt === "string" &&
     (value.metadata === undefined || isRecord(value.metadata))
   );
 }
 
-function isWorkflowConversationRole(value: unknown): value is ConversationRole {
+function isProjectConversationRole(value: unknown): value is ConversationRole {
   return value === "user" || value === "assistant" || value === "system" || value === "tool";
 }
 

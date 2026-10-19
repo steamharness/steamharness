@@ -97,8 +97,8 @@ it('executes dedicated assistant skills using its own runtime and independent wo
   await writeFile(path.join(assistantProjectDir, 'index.ts'), `
     import path from 'node:path';
     import { readFile } from 'node:fs/promises';
-    const flow = workflow.defineWorkflow({ name: 'assistant-tools', async run() {
-      const tools = await workflow.createSkillTools({ directories: [path.join(import.meta.dirname, 'skills')] });
+    const flow = steamharness.defineProject({ name: 'assistant-tools', async run() {
+      const tools = await steamharness.createSkillTools({ directories: [path.join(import.meta.dirname, 'skills')] });
       const skill = tools.find(tool => tool.name === 'skill');
       const listed = await skill.execute('list', { action: 'list' });
       const read = await skill.execute('read', { action: 'read', skill: 'fixture-skill' });
@@ -108,7 +108,7 @@ it('executes dedicated assistant skills using its own runtime and independent wo
         listed: JSON.parse(listed.content[0].text), read: JSON.parse(read.content[0].text),
         text: await readFile(path.join(workdir, 'user.txt'), 'utf8'), workspace };
     } });
-    export const executor = workflow.defineExecutor({ projectType: 'conversation', workflow: flow,
+    export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow: flow,
       tools: [{ name: 'skill', enabled: true, autoApprove: true }], createInput() { return {}; } });
   `);
   const runtime = createWebRuntime(runtimeProjectDir, path.join(directory, 'data'), () => undefined);

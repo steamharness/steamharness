@@ -7,22 +7,22 @@ import {
   translateSteamHarnessError,
 } from "@steamharness/i18n";
 import {
-  getNextWorkflowScheduleOccurrence,
-  advanceWorkflowSchedulePastMissed,
-  getWorkflowScheduleFireReasonI18n,
-  isWorkflowScheduleFireMissed,
-  listNextWorkflowScheduleOccurrences,
-  parseWorkflowSchedulePresets,
-  parseWorkflowScheduleTrigger,
-  parseWorkflowScheduleInput,
-  previewWorkflowSchedule,
-  validateWorkflowScheduleParamValues,
-  validateWorkflowScheduleTimezone,
+  getNextProjectScheduleOccurrence,
+  advanceProjectSchedulePastMissed,
+  getProjectScheduleFireReasonI18n,
+  isProjectScheduleFireMissed,
+  listNextProjectScheduleOccurrences,
+  parseProjectSchedulePresets,
+  parseProjectScheduleTrigger,
+  parseProjectScheduleInput,
+  previewProjectSchedule,
+  validateProjectScheduleParamValues,
+  validateProjectScheduleTimezone,
 } from "../index";
 
 describe("workflow schedules", () => {
   it("includes both window boundaries and skips the lunch break", () => {
-    const occurrences = listNextWorkflowScheduleOccurrences({
+    const occurrences = listNextProjectScheduleOccurrences({
       timezone: "Asia/Shanghai",
       after: "2026-08-03T03:25:00.000Z",
       count: 4,
@@ -43,7 +43,7 @@ describe("workflow schedules", () => {
   });
 
   it("evaluates five-field Cron in the requested timezone", () => {
-    expect(getNextWorkflowScheduleOccurrence({
+    expect(getNextProjectScheduleOccurrence({
       timezone: "Asia/Shanghai",
       after: "2026-08-03T01:29:30.000Z",
       trigger: { kind: "cron", expression: "30 9 * * 1-5" },
@@ -51,20 +51,20 @@ describe("workflow schedules", () => {
   });
 
   it("rejects seconds Cron, overlapping windows, and invalid timezones", () => {
-    expect(() => parseWorkflowScheduleTrigger({ kind: "cron", expression: "0 30 9 * * 1-5" }))
+    expect(() => parseProjectScheduleTrigger({ kind: "cron", expression: "0 30 9 * * 1-5" }))
       .toThrow(/five fields/);
-    expect(() => listNextWorkflowScheduleOccurrences({
+    expect(() => listNextProjectScheduleOccurrences({
       timezone: "Asia/Shanghai",
       after: "2026-08-03T01:29:30.000Z",
       trigger: { kind: "cron", expression: "0 30 9 * * 1-5" },
     })).toThrow(/five fields/);
-    expect(() => parseWorkflowScheduleTrigger({
+    expect(() => parseProjectScheduleTrigger({
       kind: "window-interval",
       weekdays: [1],
       windows: [{ start: "09:30", end: "11:30" }, { start: "11:30", end: "12:00" }],
       intervalMinutes: 5,
     })).toThrow(/must not overlap/);
-    expect(() => parseWorkflowSchedulePresets([{
+    expect(() => parseProjectSchedulePresets([{
       id: "daily",
       title: "Daily",
       entrypointId: "main",
@@ -77,7 +77,7 @@ describe("workflow schedules", () => {
   it("attaches descriptors so validation errors follow the active language", async () => {
     let failure: unknown;
     try {
-      validateWorkflowScheduleTimezone("Not/A_Timezone");
+      validateProjectScheduleTimezone("Not/A_Timezone");
     } catch (error) {
       failure = error;
     }
@@ -101,7 +101,7 @@ describe("workflow schedules", () => {
   });
 
   it("localizes persisted fire reasons when the active language changes", async () => {
-    const descriptor = getWorkflowScheduleFireReasonI18n(
+    const descriptor = getProjectScheduleFireReasonI18n(
       'Previous fire "fire-1" is still running.',
     );
     expect(descriptor).toEqual({
@@ -123,7 +123,7 @@ describe("workflow schedules", () => {
   });
 
   it("recovers localization data from persisted dependency preflight failures", () => {
-    expect(getWorkflowScheduleFireReasonI18n([
+    expect(getProjectScheduleFireReasonI18n([
       "Workflow project dependencies are not installed.",
       "Project: /workspace/prices",
       "Missing: package-a, package-b",
@@ -139,7 +139,7 @@ describe("workflow schedules", () => {
   });
 
   it("parses Workflow presets and rejects them on non-Workflow projects", () => {
-    const presets = parseWorkflowSchedulePresets([{
+    const presets = parseProjectSchedulePresets([{
       id: "market-sync",
       title: "Market sync",
       entrypointId: "sync-minute",
@@ -154,11 +154,11 @@ describe("workflow schedules", () => {
     }], "workflow");
 
     expect(presets[0]?.trigger).toMatchObject({ weekdays: [1, 5] });
-    expect(() => parseWorkflowSchedulePresets([], "kanban")).toThrow(/Only Workflow/);
+    expect(() => parseProjectSchedulePresets([], "kanban")).toThrow(/Only Workflow/);
   });
 
   it("normalizes schedule input and returns five future occurrences", () => {
-    const input = parseWorkflowScheduleInput({
+    const input = parseProjectScheduleInput({
       name: " Market sync ",
       enabled: true,
       resolvedTarget: "1.2.3",
@@ -173,7 +173,7 @@ describe("workflow schedules", () => {
       paramValues: {},
     });
     expect(input.name).toBe("Market sync");
-    expect(previewWorkflowSchedule(input, "2026-08-02T00:00:00.000Z").nextRuns).toEqual([
+    expect(previewProjectSchedule(input, "2026-08-02T00:00:00.000Z").nextRuns).toEqual([
       "2026-08-03T01:30:00.000Z",
       "2026-08-03T01:35:00.000Z",
       "2026-08-03T01:40:00.000Z",
@@ -196,7 +196,7 @@ describe("workflow schedules", () => {
       { name: "tags", type: "string" as const, multiple: true, options: [{ value: "a" }, { value: "b" }] },
     ];
 
-    expect(() => validateWorkflowScheduleParamValues({
+    expect(() => validateProjectScheduleParamValues({
       symbols: "000725.SZ",
       limit: 20,
       enabled: false,
@@ -204,20 +204,20 @@ describe("workflow schedules", () => {
       dateRange: "2026-07-01/2026-08-04",
       tags: ["a", "b"],
     }, params)).not.toThrow();
-    expect(() => validateWorkflowScheduleParamValues({}, params)).toThrow(/symbols is required/);
-    expect(() => validateWorkflowScheduleParamValues({ symbols: "000725.SZ", extra: true }, params))
+    expect(() => validateProjectScheduleParamValues({}, params)).toThrow(/symbols is required/);
+    expect(() => validateProjectScheduleParamValues({ symbols: "000725.SZ", extra: true }, params))
       .toThrow(/unknown parameter.*extra/);
-    expect(() => validateWorkflowScheduleParamValues({ symbols: "000725.SZ", limit: "many" }, params))
+    expect(() => validateProjectScheduleParamValues({ symbols: "000725.SZ", limit: "many" }, params))
       .toThrow(/limit must be a number/);
-    expect(() => validateWorkflowScheduleParamValues({ symbols: "000725.SZ", enabled: "maybe" }, params))
+    expect(() => validateProjectScheduleParamValues({ symbols: "000725.SZ", enabled: "maybe" }, params))
       .toThrow(/enabled must be a boolean/);
-    expect(() => validateWorkflowScheduleParamValues({ symbols: "000725.SZ", period: "monthly" }, params))
+    expect(() => validateProjectScheduleParamValues({ symbols: "000725.SZ", period: "monthly" }, params))
       .toThrow(/unsupported option "monthly"/);
-    expect(() => validateWorkflowScheduleParamValues({
+    expect(() => validateProjectScheduleParamValues({
       symbols: "000725.SZ",
       dateRange: "2026-08-04/2026-07-01",
     }, params)).toThrow(/non-decreasing range/);
-    expect(() => validateWorkflowScheduleParamValues({ symbols: "000725.SZ", tags: [] }, [
+    expect(() => validateProjectScheduleParamValues({ symbols: "000725.SZ", tags: [] }, [
       { ...params.at(-1)!, required: true },
       params[0]!,
     ])).toThrow(/tags is required/);
@@ -230,12 +230,12 @@ describe("workflow schedules", () => {
       windows: [{ start: "02:30", end: "02:30" }],
       intervalMinutes: 5,
     };
-    expect(getNextWorkflowScheduleOccurrence({
+    expect(getNextProjectScheduleOccurrence({
       timezone: "America/New_York",
       after: "2026-03-08T06:00:00.000Z",
       trigger,
     }).toISOString()).toBe("2026-03-15T06:30:00.000Z");
-    expect(advanceWorkflowSchedulePastMissed({
+    expect(advanceProjectSchedulePastMissed({
       timezone: "Asia/Shanghai",
       nextFireAt: "2026-08-03T01:30:00.000Z",
       now: "2026-08-03T02:00:00.000Z",
@@ -245,12 +245,12 @@ describe("workflow schedules", () => {
 
   it("treats the exact missed-fire threshold consistently", () => {
     const scheduledFor = "2026-08-03T01:30:00.000Z";
-    expect(isWorkflowScheduleFireMissed({
+    expect(isProjectScheduleFireMissed({
       scheduledFor,
       now: "2026-08-03T01:30:59.999Z",
       missedAfterMs: 60_000,
     })).toBe(false);
-    expect(isWorkflowScheduleFireMissed({
+    expect(isProjectScheduleFireMissed({
       scheduledFor,
       now: "2026-08-03T01:31:00.000Z",
       missedAfterMs: 60_000,

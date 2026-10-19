@@ -86,7 +86,7 @@ describe('Kanban CLI Web workspace', () => {
     expect((await state()).kanban.configuration.params).toEqual({ title: 'Roadmap', limit: 5, visible: true, tags: ['a'] });
     await action('save', { values: { title: 'Custom', limit: '12', visible: 'false', tags: '["b"]', invented: 'ignored' } });
     expect((await state()).kanban.configuration.params).toEqual({ title: 'Custom', limit: 12, visible: false, tags: ['b'] });
-    expect(app.controller).toBeUndefined(); expect(app.workflowController).toBeUndefined();
+    expect(app.controller).toBeUndefined(); expect(app.projectController).toBeUndefined();
     const stored = JSON.parse(await readFile(path.join(webProjectDataDirectory(dataDir, directory), 'kanban.json'), 'utf8'));
     expect(stored.configurations[0].values.invented).toBeUndefined();
     await expect(readFile(path.join(webProjectDataDirectory(dataDir, directory), 'conversations.json'))).rejects.toHaveProperty('code', 'ENOENT');
@@ -195,7 +195,7 @@ describe('Kanban CLI Web workspace', () => {
     const relation = (alias: string, projectId: string, read = ['visible:'], write: string[] = []) => ({ alias, projectId, grantToRelatedProject: { read: { mode: 'prefixes', prefixes: read }, write: write.length ? { mode: 'prefixes', prefixes: write } : { mode: 'none' } } });
     await writeFile(path.join(directory, 'package.json'), JSON.stringify({ ...pkg, steamHarness: { ...pkg.steamHarness, projectInfo: { dataStorage: { mode: 'local' }, relatedProjects: [relation('target', targetId)] } } }));
     await writeFile(path.join(target, 'package.json'), JSON.stringify({ id: targetId, name: 'Target', steamHarness: { projectInfo: { dataStorage: { mode: 'local' }, relatedProjects: [relation('board', id)] } } }));
-    const kv = core.createWorkflowKVContext({ projectId: targetId, store: core.createLocalWorkflowKVStore({ rootDir: path.join(webProjectDataDirectory(dataDir, await realpath(target)), 'kv'), storageKind: 'kv' }) });
+    const kv = core.createProjectKVContext({ projectId: targetId, store: core.createLocalProjectKVStore({ rootDir: path.join(webProjectDataDirectory(dataDir, await realpath(target)), 'kv'), storageKind: 'kv' }) });
     await kv.setValue('visible:tasks', [1]); await post({ type: 'kanban-refresh' });
     expect((await state()).kanban.missingRelatedProjectAliases).toEqual([]);
     expect(await runKanbanDataCall(core, app.project, dataDir, { requestId: 'direct', operation: 'relatedProject.kv.getValue', input: { alias: 'target', key: 'visible:tasks' } })).toEqual([1]);

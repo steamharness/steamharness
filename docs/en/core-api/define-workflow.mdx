@@ -1,16 +1,16 @@
 ---
-title: "defineWorkflow"
+title: "defineProject"
 description: "Define a workflow body, its input and output types, and its main execution function."
 ---
 
-# defineWorkflow
+# defineProject
 
-Use `workflow.defineWorkflow<Input, Output>()` to define a business workflow. It returns the definition object unchanged; an executor or local CLI runtime performs the actual execution.
+Use `workflow.defineProject<Input, Output>()` to define a business workflow. It returns the definition object unchanged; an executor or local CLI runtime performs the actual execution.
 
 ## Signature
 
 ```ts
-workflow.defineWorkflow<Input, Output>(
+workflow.defineProject<Input, Output>(
   workflow: Definition<Input, Output>,
 ): Definition<Input, Output>
 ```
@@ -69,7 +69,7 @@ interface Output extends RunPayload {
   }>;
 }
 
-export const exampleWorkflow = workflow.defineWorkflow<Input, Output>({
+export const exampleProject = workflow.defineProject<Input, Output>({
   name: "example",
   async run(input, context) {
     const parsed = await workflow.runNode(inputNode, input, context);

@@ -53,7 +53,7 @@ for (const [language, expected] of [['en', 'English project'], ['zh-cn', 'Chines
       process: { ...process, env: { ...process.env, LANG: 'zh_CN.UTF-8', LC_ALL: 'zh_CN.UTF-8', STEAMHARNESS_LOCALE: 'zh-CN' } },
       AbortController, AbortSignal, URL, setTimeout, clearTimeout, queueMicrotask,
     });
-    const runtime = module.exports.createWorkflowRuntime({ extensionUri: { fsPath: directory }, globalStorageUri: { fsPath: path.join(directory, 'storage') } },
+    const runtime = module.exports.createProjectRuntime({ extensionUri: { fsPath: directory }, globalStorageUri: { fsPath: path.join(directory, 'storage') } },
       { getConnection: () => undefined, onDidChange: () => ({ dispose() {} }) });
     t.after(() => runtime.dispose());
     const inspection = await runtime.inspect([directory]);

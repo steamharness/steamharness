@@ -82,7 +82,7 @@ const outputNode = workflow.createOutputNode<Parsed, OutputPayload>({
 ```ts
 type RunResult<T> =
   | { ok: true; data: T }
-  | { ok: false; error: SerializedWorkflowError };
+  | { ok: false; error: SerializedProjectError };
 ```
 
 生成执行报告时，runtime 会把 `ok: false` 的失败结果转换为可读 payload：
@@ -132,4 +132,4 @@ Runtime event 会发出 `user_input_requested` 和 `user_input_resolved`。等�
 
 - 本地运行会把本地 stdout/stderr 和 report 写进本地运行缓存。
 - `waiting_for_input` run 会继续保留 `pendingUserInput`，CLI Web 可以提交答案恢复同一个 `runId`。
-- 外部 blocking API 返回 `data.error`；streaming API 通过 SSE `error` 或最终 `workflow_finished` 表达失败。
+- 外部 blocking API 返回 `data.error`；streaming API 通过 SSE `error` 或最终 `project_finished` 表达失败。

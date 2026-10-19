@@ -48,6 +48,9 @@
 
 ### 破坏性变更
 
+- **API 路径**：项目接口从 `/api/workflows` 改为 `/api/projects`，项目字段 `workflowId` / `workflowName` 改为 `projectId` / `projectName`。
+- **上传约定**：忽略文件从 `.workflowignore` 改为 `.steamharnessignore`，上传包名请求头改为 `X-SteamHarness-Package-Name`。
+- **项目模板**：模板内的运行时全局 `workflow` 改为 `steamharness`，入口改用 `steamharness.defineProject`。
 - Conversation 移除输入开关与自定义主字段，附件能力改为 `conversation.attachments`。
   迁移：附件声明改用 `conversation.attachments`，参数通过 Auxiliary / Quick / Mode / Slash 声明。
 

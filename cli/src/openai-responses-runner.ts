@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import {
-  inspectLocalWorkflowStructure,
+  inspectLocalProjectStructure,
   isOutputItemStreamChunk,
-  runLocalWorkflowWithReport,
+  runLocalProjectWithReport,
   type NodeExecutionHooks,
   type ExecutionReport,
 } from "steamharness";
@@ -20,8 +20,8 @@ import {
 interface RunnerDependencies {
   readInput?: () => string;
   writeFrame?: (frame: OpenAIInternalRunnerFrame) => void;
-  inspectProject?: typeof inspectLocalWorkflowStructure;
-  runWorkflow?: typeof runLocalWorkflowWithReport;
+  inspectProject?: typeof inspectLocalProjectStructure;
+  runProject?: typeof runLocalProjectWithReport;
   abortSignal?: AbortSignal;
 }
 
@@ -54,7 +54,7 @@ export async function runOpenAIResponsesRunner(
     request = parseOpenAIInternalRunnerRequest(
       (dependencies.readInput ?? (() => readFileSync(0, "utf8")))(),
     );
-    const inspectProject = dependencies.inspectProject ?? inspectLocalWorkflowStructure;
+    const inspectProject = dependencies.inspectProject ?? inspectLocalProjectStructure;
     const structure = inspectProject({ projectDir: request.projectPath });
     const conversation = structure.conversation as typeof structure.conversation & {
       openai?: { enabled?: boolean; outputItemId?: string };
@@ -70,8 +70,8 @@ export async function runOpenAIResponsesRunner(
     const outputItemId = conversation.openai.outputItemId;
     writeFrame({ type: "ready", executionId: request.executionId });
 
-    const runWorkflow = dependencies.runWorkflow ?? runLocalWorkflowWithReport;
-    executionReport = await (runWorkflow as unknown as (options: {
+    const runProject = dependencies.runProject ?? runLocalProjectWithReport;
+    executionReport = await (runProject as unknown as (options: {
       projectDir: string;
       runId: string;
       hostInput: unknown;

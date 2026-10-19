@@ -146,15 +146,15 @@ export const DEFAULT_AUTHENTICATED_PERMISSION_KEYS: PermissionKey[] = [
 
 const PERMISSION_KEY_SET = new Set<PermissionKey>(ALL_STEAMHARNESS_PERMISSION_KEYS);
 
-export function isWorkflowPermissionKey(value: string): value is PermissionKey {
+export function isProjectPermissionKey(value: string): value is PermissionKey {
   return PERMISSION_KEY_SET.has(value as PermissionKey);
 }
 
-export function listWorkflowPermissions(): PermissionDefinition[] {
+export function listProjectPermissions(): PermissionDefinition[] {
   return [...PERMISSION_DEFINITIONS];
 }
 
-export function listWorkflowPermissionGroups(): PermissionGroup[] {
+export function listProjectPermissionGroups(): PermissionGroup[] {
   return Object.entries(
     PERMISSION_DEFINITIONS.reduce<Record<string, PermissionDefinition[]>>((groups, definition) => {
       const items = groups[definition.group] ?? [];
@@ -169,12 +169,12 @@ export function listWorkflowPermissionGroups(): PermissionGroup[] {
   }));
 }
 
-export function normalizeWorkflowPermissionKeys(
+export function normalizeProjectPermissionKeys(
   values: Iterable<string>,
 ): PermissionKey[] {
   const normalized = new Set<PermissionKey>();
   for (const value of values) {
-    if (!isWorkflowPermissionKey(value)) {
+    if (!isProjectPermissionKey(value)) {
       throw new Error(`Unknown workflow permission "${value}".`);
     }
     normalized.add(value);
@@ -186,7 +186,7 @@ export function permissionImpliesAdmin(permission: PermissionKey): boolean {
   return permission === "system.admin";
 }
 
-export function listBuiltinWorkflowRoles(): BuiltinRoleDefinition[] {
+export function listBuiltinProjectRoles(): BuiltinRoleDefinition[] {
   return BUILTIN_STEAMHARNESS_ROLES.map((role) => ({
     ...role,
     permissions: [...role.permissions],

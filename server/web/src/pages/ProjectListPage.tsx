@@ -3,9 +3,9 @@ import { useMemo, useState } from "react";
 import { Bot, Boxes, Brain, Code2, Cpu, Database, FileText, FolderKanban, GitBranch, MessageCircle, Search, Workflow, Zap } from "lucide-react";
 import { translateDynamicKey, useTranslation } from "@steamharness/i18n/react";
 import { i18n } from "@steamharness/i18n";
-import { matchesWorkflowProjectSearch } from "@steamharness/project-info";
+import { matchesProjectSearch } from "@steamharness/project-info";
 import type { ProjectCardIconName, ProjectCardMetadata, ProjectKind, Summary } from "../types";
-import { getWorkflowProjectTypeDefinition, getWorkflowProjectTypeLabelKey } from "@steamharness/project-types";
+import { getProjectKindDefinition, getProjectKindLabelKey } from "@steamharness/project-types";
 import { formatDate } from "../utils/format";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +19,7 @@ import { TableLoadingRows } from "@/components/ui/table-loading-rows";
 import { Field, FieldTitle } from "@/components/ui/field";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { UserIdentity, createUserIdentitySearchText } from "@/components/UserIdentity";
-import { getWorkflowProjectDisplayName } from "@/utils/project-presentation";
+import { getProjectDisplayName } from "@/utils/project-presentation";
 
 // keeps the project management table aligned with the shared 20-row pager.
 const PROJECT_TABLE_PAGE_SIZE = 20;
@@ -49,7 +49,7 @@ function getProjectCardIconComponent(icon: ProjectCardIconName) {
 
 function getProjectTypeIconComponent(projectType: ProjectKind) {
   return getProjectCardIconComponent(
-    getWorkflowProjectTypeDefinition(projectType).defaultIcon,
+    getProjectKindDefinition(projectType).defaultIcon,
   );
 }
 
@@ -81,7 +81,7 @@ export function ProjectListPage({
     return projects.filter((p) => {
       const kindLabel = getProjectKindLabel(p.projectType);
       const uploaderText = createUserIdentitySearchText(getProjectUploaderIdentity(p));
-      const matchesQuery = !needle || matchesWorkflowProjectSearch(p.name, p.projectInfo, needle) || [
+      const matchesQuery = !needle || matchesProjectSearch(p.name, p.projectInfo, needle) || [
         p.id,
         p.latest ?? "",
         p.projectType,
@@ -236,7 +236,7 @@ function ProjectRow({
 }) {
   const { t } = useTranslation("serverWeb");
   const ProjectTypeIcon = getProjectTypeIconComponent(project.projectType);
-  const displayName = getWorkflowProjectDisplayName(project, i18n.language);
+  const displayName = getProjectDisplayName(project, i18n.language);
   return (
     <TableRow
       onClick={() => onOpenDetail(project)}
@@ -311,7 +311,7 @@ function ProjectUploaderSummary({ project }: { project: Summary }) {
 }
 
 function getProjectKindLabel(kind: ProjectKind): string {
-  return translateDynamicKey(getWorkflowProjectTypeLabelKey(kind));
+  return translateDynamicKey(getProjectKindLabelKey(kind));
 }
 
 function getProjectUploaderIdentity(project: Summary) {

@@ -9,9 +9,9 @@ import {
   resolveLocalStoragePublicBaseUrl,
   resolveLocalStorageRootFromEnv,
   resolveStorageAvatarBaseUrlOrigin,
-  resolveWorkflowStorageDriver,
+  resolveProjectStorageDriver,
 } from "../storage-driver";
-import { createWorkflowObjectStorageFromEnv } from "../storage";
+import { createProjectObjectStorageFromEnv } from "../storage";
 
 const DATA_ROOT = path.join(os.tmpdir(), "workflow-storage-driver-data");
 
@@ -26,31 +26,31 @@ function withSilencedWarnings<T>(run: () => T): T {
 }
 
 test("storage driver defaults to local and rejects unknown values", () => {
-  assert.equal(resolveWorkflowStorageDriver({}), "local");
-  assert.equal(resolveWorkflowStorageDriver({ STEAMHARNESS_STORAGE_DRIVER: "" }), "local");
+  assert.equal(resolveProjectStorageDriver({}), "local");
+  assert.equal(resolveProjectStorageDriver({ STEAMHARNESS_STORAGE_DRIVER: "" }), "local");
   // Case and surrounding whitespace are tolerated.
-  assert.equal(resolveWorkflowStorageDriver({ STEAMHARNESS_STORAGE_DRIVER: "local" }), "local");
-  assert.equal(resolveWorkflowStorageDriver({ STEAMHARNESS_STORAGE_DRIVER: " LOCAL " }), "local");
-  assert.equal(resolveWorkflowStorageDriver({ STEAMHARNESS_STORAGE_DRIVER: "Local" }), "local");
+  assert.equal(resolveProjectStorageDriver({ STEAMHARNESS_STORAGE_DRIVER: "local" }), "local");
+  assert.equal(resolveProjectStorageDriver({ STEAMHARNESS_STORAGE_DRIVER: " LOCAL " }), "local");
+  assert.equal(resolveProjectStorageDriver({ STEAMHARNESS_STORAGE_DRIVER: "Local" }), "local");
 
   // A backend this build does not implement must fail closed rather than
   // silently storing objects somewhere the environment did not name.
-  assert.throws(() => resolveWorkflowStorageDriver({ STEAMHARNESS_STORAGE_DRIVER: "oss" }), /must be "local"/u);
-  assert.throws(() => resolveWorkflowStorageDriver({ STEAMHARNESS_STORAGE_DRIVER: "s3" }), /must be "local"/u);
-  assert.throws(() => resolveWorkflowStorageDriver({ STEAMHARNESS_STORAGE_DRIVER: "false" }), /must be "local"/u);
+  assert.throws(() => resolveProjectStorageDriver({ STEAMHARNESS_STORAGE_DRIVER: "oss" }), /must be "local"/u);
+  assert.throws(() => resolveProjectStorageDriver({ STEAMHARNESS_STORAGE_DRIVER: "s3" }), /must be "local"/u);
+  assert.throws(() => resolveProjectStorageDriver({ STEAMHARNESS_STORAGE_DRIVER: "false" }), /must be "local"/u);
 });
 
 test("object storage selection always wires the local driver", async () => {
   const root = path.join(DATA_ROOT, "selection");
 
   // A checkout with no storage configuration at all still gets a usable backend.
-  const defaulted = withSilencedWarnings(() => createWorkflowObjectStorageFromEnv({
+  const defaulted = withSilencedWarnings(() => createProjectObjectStorageFromEnv({
     dataRoot: root,
     env: { STEAMHARNESS_SERVER_DEV: "1" },
   }));
   assert.ok(defaulted instanceof LocalStorage);
 
-  const local = withSilencedWarnings(() => createWorkflowObjectStorageFromEnv({
+  const local = withSilencedWarnings(() => createProjectObjectStorageFromEnv({
     dataRoot: root,
     env: { STEAMHARNESS_STORAGE_DRIVER: "local", STEAMHARNESS_SERVER_DEV: "1" },
   }));

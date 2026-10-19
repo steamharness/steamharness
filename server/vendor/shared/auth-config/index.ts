@@ -32,18 +32,18 @@ const DEFAULT_MAC_PLATFORM = "darwin";
 const DEFAULT_WINDOWS_PLATFORM = "win32";
 const DEFAULT_OTHER_PLATFORM = "linux";
 
-export function createEmptyWorkflowAuthConfig(): AuthConfig {
+export function createEmptyProjectAuthConfig(): AuthConfig {
   return {
     serverUrl: "",
     apiKey: "",
   };
 }
 
-export function normalizeWorkflowAuthConfig(
+export function normalizeProjectAuthConfig(
   value: unknown,
 ): AuthConfig {
   if (!isRecord(value)) {
-    return createEmptyWorkflowAuthConfig();
+    return createEmptyProjectAuthConfig();
   }
 
   const aiServerUrl = readString(value.aiServerUrl);
@@ -72,15 +72,15 @@ export function normalizeWorkflowAuthConfig(
   };
 }
 
-export function isWorkflowAuthConfigLoggedIn(config: AuthConfig): boolean {
+export function isProjectAuthConfigLoggedIn(config: AuthConfig): boolean {
   return config.serverUrl.trim() !== "" && config.apiKey.trim() !== "";
 }
 
-export function isWorkflowAuthConfigAiLoggedIn(config: AuthConfig): boolean {
+export function isProjectAuthConfigAiLoggedIn(config: AuthConfig): boolean {
   return (config.aiServerUrl ?? "").trim() !== "" && (config.aiApiKey ?? "").trim() !== "";
 }
 
-export function isWorkflowAuthExpiringSoon(
+export function isProjectAuthExpiringSoon(
   expiresAt: string | undefined,
   options: { now?: number; thresholdMs?: number } = {},
 ): boolean {
@@ -96,7 +96,7 @@ export function isWorkflowAuthExpiringSoon(
   return expiresAtMs - now <= thresholdMs;
 }
 
-export function resolveWorkflowCliAuthDir(
+export function resolveProjectCliAuthDir(
   env: AuthEnvLike = readProcessEnv(),
 ): string {
   if (readString(env.STEAMHARNESS_CLI_AUTH_DIR)) {
@@ -120,13 +120,13 @@ export function resolveWorkflowCliAuthDir(
   );
 }
 
-export function resolveWorkflowCliAuthFilePath(
+export function resolveProjectCliAuthFilePath(
   env: AuthEnvLike = readProcessEnv(),
 ): string {
-  return joinPath(resolveWorkflowCliAuthDir(env), STEAMHARNESS_AUTH_FILE_NAME);
+  return joinPath(resolveProjectCliAuthDir(env), STEAMHARNESS_AUTH_FILE_NAME);
 }
 
-export function resolveWorkflowDesktopConfigDir(
+export function resolveProjectDesktopConfigDir(
   env: AuthEnvLike = readProcessEnv(),
 ): string {
   if (readString(env.STEAMHARNESS_DESKTOP_CONFIG_DIR)) {
@@ -150,10 +150,10 @@ export function resolveWorkflowDesktopConfigDir(
   );
 }
 
-export function resolveWorkflowDesktopConfigFilePath(
+export function resolveProjectDesktopConfigFilePath(
   env: AuthEnvLike = readProcessEnv(),
 ): string {
-  return joinPath(resolveWorkflowDesktopConfigDir(env), STEAMHARNESS_DESKTOP_CONFIG_FILE_NAME);
+  return joinPath(resolveProjectDesktopConfigDir(env), STEAMHARNESS_DESKTOP_CONFIG_FILE_NAME);
 }
 
 function resolveHomeDir(env: AuthEnvLike): string {

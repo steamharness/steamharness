@@ -16,7 +16,7 @@ function callTitle(item: Extract<ExecutionItem, { kind: 'node' }>): string | und
   }
   return undefined;
 }
-export function layoutWorkflowGraph(project: Project, entrypointId?: string, run?: Pick<RunRecord, 'nodes'>) {
+export function layoutProjectGraph(project: Project, entrypointId?: string, run?: Pick<RunRecord, 'nodes'>) {
   const nodes: GraphNode[] = [], edges: GraphEdge[] = [], diagnostics: string[] = [];
   const execution = project.entrypoints.find(entry => entry.id === entrypointId)?.execution ?? project.execution;
   const used = new Set<string>();

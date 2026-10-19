@@ -6,7 +6,7 @@ import type {
   UserInputRequest,
 } from "../../types/index";
 import type { ParamDefinition } from "../../executor/types";
-import { assertWorkflowParamDefinitions, isWorkflowDateParamControl } from "../../executor/param-definition";
+import { assertProjectParamDefinitions, isProjectDateParamControl } from "../../executor/param-definition";
 import { HarnessError } from "../../workflow/errors";
 
 export interface UserInputPayload extends RunPayload {
@@ -70,7 +70,7 @@ class UserInputNode<Input, Output extends RunPayload> extends BaseNode<Input, Ou
         ...options.metadata,
       },
     });
-    assertWorkflowParamDefinitions(options.params);
+    assertProjectParamDefinitions(options.params);
     this.options = options;
   }
 
@@ -144,7 +144,7 @@ class UserInputNode<Input, Output extends RunPayload> extends BaseNode<Input, Ou
     // context finished registering the request (fire-and-forget
     // requestInput resolves before the abort propagates). Same surface
     // as the catch path above so the executor's existing
-    // createAbortedWorkflowResult handler picks it up.
+    // createAbortedProjectResult handler picks it up.
     if (context.abortSignal?.aborted === true) {
       throw new HarnessError({
         type: "execution_aborted",
@@ -169,7 +169,7 @@ class UserInputNode<Input, Output extends RunPayload> extends BaseNode<Input, Ou
       this.options.createRequestId?.(input, context) ??
       createDefaultRequestId(context, nodeName);
     const params = definition?.params ?? this.options.params;
-    assertWorkflowParamDefinitions(params);
+    assertProjectParamDefinitions(params);
 
     return {
       requestId,
@@ -185,7 +185,7 @@ class UserInputNode<Input, Output extends RunPayload> extends BaseNode<Input, Ou
 }
 
 function cloneParamDefinition(param: ParamDefinition): ParamDefinition {
-  if (isWorkflowDateParamControl(param.control)) {
+  if (isProjectDateParamControl(param.control)) {
     return {
       ...param,
       ...(param.accept === undefined ? {} : { accept: [...param.accept] }),
@@ -207,10 +207,10 @@ function cloneDefaultValues(
 }
 
 function createDefaultRequestId(context: NodeContext, nodeName: string): string {
-  const workflow = normalizeRequestIdPart(context.metadata?.["workflow"]) ?? "workflow";
+  const requestScope = normalizeRequestIdPart(context.metadata?.["project"]) ?? "project";
   const runId = normalizeRequestIdPart(context.metadata?.["runId"]) ?? "run";
   const node = normalizeRequestIdPart(nodeName) ?? "user-input";
-  return `${workflow}:${runId}:${node}`;
+  return `${requestScope}:${runId}:${node}`;
 }
 
 function normalizeRequestIdPart(value: unknown): string | undefined {

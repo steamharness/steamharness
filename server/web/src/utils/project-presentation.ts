@@ -1,5 +1,5 @@
 
-import { STEAMHARNESS_PROJECT_DECLARATION_DEFINITIONS, STEAMHARNESS_PROJECT_PLATFORM_DEFINITIONS, isWorkflowProjectDataStorageLocationAllowed, resolveWorkflowProjectName } from "@steamharness/project-info";
+import { STEAMHARNESS_PROJECT_DECLARATION_DEFINITIONS, STEAMHARNESS_PROJECT_PLATFORM_DEFINITIONS, isProjectDataStorageLocationAllowed, resolveProjectName } from "@steamharness/project-info";
 import type { Summary } from "../types";
 
 
@@ -21,26 +21,26 @@ const PLATFORM_LABEL_KEYS = new Map<string, string>(
   STEAMHARNESS_PROJECT_PLATFORM_DEFINITIONS.map((definition) => [definition.id, definition.labelKey]),
 );
 
-export function getWorkflowProjectDisplayName(
+export function getProjectDisplayName(
   project: Pick<Summary, "name" | "projectInfo">,
   locale: string,
 ): string {
-  return resolveWorkflowProjectName(project.name, project.projectInfo, locale);
+  return resolveProjectName(project.name, project.projectInfo, locale);
 }
 
 
 
-export function getWorkflowProjectServerStorageAccess(
+export function getProjectServerStorageAccess(
   project: Pick<Summary, "projectInfo">,
 ): ProjectServerStorageAccess {
   const mode = project.projectInfo.dataStorage?.mode ?? null;
-  if (isWorkflowProjectDataStorageLocationAllowed(project.projectInfo, "server")) {
+  if (isProjectDataStorageLocationAllowed(project.projectInfo, "server")) {
     return { allowed: true, mode: mode as "server" | "both" };
   }
   return { allowed: false, mode: mode === "local" ? "local" : null };
 }
 
-export function listWorkflowProjectDeclarationLabels(
+export function listProjectDeclarationLabels(
   project: Pick<Summary, "projectInfo">,
 ): ProjectPresentationLabel[] {
   return project.projectInfo.declarations.map((id) => ({
@@ -49,7 +49,7 @@ export function listWorkflowProjectDeclarationLabels(
   }));
 }
 
-export function listWorkflowProjectPlatformLabels(
+export function listProjectPlatformLabels(
   project: Pick<Summary, "projectInfo">,
 ): ProjectPresentationLabel[] {
   if (project.projectInfo.platformSupport.mode === "agnostic") {

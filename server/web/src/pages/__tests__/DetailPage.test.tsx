@@ -39,7 +39,7 @@ describe("DetailPage management tabs", () => {
       errCode: 0, errMessage: "", data: { projectId: "demo", relatedProjects: [] },
     });
     const requests = vi.spyOn(apiClient, "listSourceAccessRequests");
-    const projects = vi.spyOn(apiClient, "listWorkflows");
+    const projects = vi.spyOn(apiClient, "listProjects");
     renderDetailPage({ activeTab: "dependencies", project: { ...createProject(), canManage: false, canWriteData: false } });
     await screen.findByText("没有关联项目");
     expect(requests).not.toHaveBeenCalled();
@@ -63,7 +63,7 @@ describe("DetailPage management tabs", () => {
       errMessage: "",
       data: { requests: [], grants: [] },
     });
-    const listProjects = vi.spyOn(apiClient, "listWorkflows").mockResolvedValue({ errCode: 0, errMessage: "", data: [] });
+    const listProjects = vi.spyOn(apiClient, "listProjects").mockResolvedValue({ errCode: 0, errMessage: "", data: [] });
 
     renderDetailPage({
       activeTab: "dependencies",
@@ -90,7 +90,7 @@ describe("DetailPage management tabs", () => {
       errMessage: "",
       data: { requests: [], grants: [] },
     });
-    const listProjects = vi.spyOn(apiClient, "listWorkflows").mockResolvedValue({
+    const listProjects = vi.spyOn(apiClient, "listProjects").mockResolvedValue({
       errCode: 0,
       errMessage: "",
       data: [],
@@ -121,7 +121,7 @@ describe("DetailPage management tabs", () => {
       errMessage: "",
       data: { requests: [], grants: [] },
     });
-    vi.spyOn(apiClient, "listWorkflows").mockResolvedValue({
+    vi.spyOn(apiClient, "listProjects").mockResolvedValue({
       errCode: 0,
       errMessage: "",
       data: [],
@@ -144,7 +144,7 @@ describe("DetailPage management tabs", () => {
     vi.spyOn(apiClient, "listSourceAccessRequests").mockReturnValue(new Promise((resolve) => {
       resolveRequests = resolve;
     }));
-    vi.spyOn(apiClient, "listWorkflows").mockResolvedValue({ errCode: 0, errMessage: "", data: [] });
+    vi.spyOn(apiClient, "listProjects").mockResolvedValue({ errCode: 0, errMessage: "", data: [] });
 
     renderDetailPage({ activeTab: "dependencies", project: createProject() });
 
@@ -689,7 +689,7 @@ function mockRelatedProjectManagement(options: {
     errMessage: "",
     data: { projectId: "demo", relatedProjects: options.relatedProjects ?? [] },
   });
-  const listProjects = vi.spyOn(apiClient, "listWorkflows").mockResolvedValue({
+  const listProjects = vi.spyOn(apiClient, "listProjects").mockResolvedValue({
     errCode: 0,
     errMessage: "",
     data: options.projects ?? [],

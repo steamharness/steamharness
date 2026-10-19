@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import express from "express";
-import { LocalStorage, isWorkflowLocalStorage } from "../../local-storage";
+import { LocalStorage, isProjectLocalStorage } from "../../local-storage";
 import { fail, toHttpError } from "../../protocol";
 import { createStorageAssetRouter } from "../storage-assets";
 
@@ -107,7 +107,7 @@ test("storage asset route cannot serve private objects", async () => {
 });
 
 test("storage asset router only mounts for local object storage", () => {
-  assert.equal(isWorkflowLocalStorage(new LocalStorage({
+  assert.equal(isProjectLocalStorage(new LocalStorage({
     root: path.join(tmpdir(), "workflow-storage-assets-gate"),
     publicBaseUrl: "https://storage.example.com/",
   })), true);

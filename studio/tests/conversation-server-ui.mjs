@@ -9,10 +9,10 @@ import { chromium } from '../upstream/vscode/node_modules/playwright/index.mjs';
 import { desktopLocaleLaunch } from './desktop-localization.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const workflowRoot = process.env.STUDIO_STEAMHARNESS_SOURCE || path.resolve(root, '..');
+const projectDirectory = process.env.STUDIO_STEAMHARNESS_SOURCE || path.resolve(root, '..');
 const conversationProject = process.env.STUDIO_CONVERSATION_PROJECT_DIR;
 assert.ok(conversationProject && path.isAbsolute(conversationProject), 'STUDIO_CONVERSATION_PROJECT_DIR must point to a conversation project configured for the dev server.');
-const env = parseEnv(await fs.readFile(path.join(workflowRoot, 'server/.env'), 'utf8'));
+const env = parseEnv(await fs.readFile(path.join(projectDirectory, 'server/.env'), 'utf8'));
 assert.ok(env.STEAMHARNESS_BOOTSTRAP_ADMIN_EMAIL && env.STEAMHARNESS_BOOTSTRAP_ADMIN_PASSWORD, 'Dev server test credentials are required.');
 const serverUrl = `http://localhost:${env.STEAMHARNESS_SERVER_PORT || '7126'}`;
 assert.ok((await fetch(`${serverUrl}/health`)).ok, 'Dev server must be online.');

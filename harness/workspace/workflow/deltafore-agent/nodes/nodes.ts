@@ -25,11 +25,11 @@ import {
 import type { DeltaforeApiConfig } from "../tools/openapi";
 import { runTool } from "../tools/runner";
 
-const llmProvider = workflow.createLLMProviderRef("default", () => {
-  return workflow.createLLMProviderFromEnv();
+const llmProvider = steamharness.createLLMProviderRef("default", () => {
+  return steamharness.createLLMProviderFromEnv();
 });
 
-export const inputNode = workflow.createInputNode<DeltaforeAgentInput, ParsedAgentInput>({
+export const inputNode = steamharness.createInputNode<DeltaforeAgentInput, ParsedAgentInput>({
   name: "deltafore-agent-input",
   parse(input: DeltaforeAgentInput) {
     const query = input.query.trim() || DEFAULT_QUERY;
@@ -43,7 +43,7 @@ export const inputNode = workflow.createInputNode<DeltaforeAgentInput, ParsedAge
   },
 });
 
-export const agentDecisionNode = workflow.createLLMNode<AgentDecisionInput, ReactThoughtPayload>({
+export const agentDecisionNode = steamharness.createLLMNode<AgentDecisionInput, ReactThoughtPayload>({
   name: "react-thought-llm",
   provider: llmProvider,
   mapInput(input: AgentDecisionInput, context: NodeRunContext) {
@@ -62,11 +62,11 @@ export const agentDecisionNode = workflow.createLLMNode<AgentDecisionInput, Reac
   },
 });
 
-export const thoughtOutputNode = workflow.createOutputNode<ThoughtOutputInput, ThoughtOutputPayload>({
+export const thoughtOutputNode = steamharness.createOutputNode<ThoughtOutputInput, ThoughtOutputPayload>({
   name: "react-thought-output",
   async *stream(input: ThoughtOutputInput) {
     const itemId = `thought-${input.round}`;
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_start",
       item: {
         id: itemId,
@@ -78,28 +78,28 @@ export const thoughtOutputNode = workflow.createOutputNode<ThoughtOutputInput, T
     });
     for (const chunk of streamChunks(input.thought.summary, 6)) {
       await tick();
-      yield workflow.createOutputItemChunk({
+      yield steamharness.createOutputItemChunk({
         type: "output_item_delta",
         itemId,
         delta: chunk,
       });
     }
-    yield workflow.createOutputItemChunk({ type: "output_item_end", itemId });
+    yield steamharness.createOutputItemChunk({ type: "output_item_end", itemId });
   },
   format(stream, input: ThoughtOutputInput) {
     return {
-      ...workflow.createOutputPayload({ items: [] }),
+      ...steamharness.createOutputPayload({ items: [] }),
       round: input.round,
     };
   },
 });
 
-export const toolNode = workflow.createOutputNode<ToolExecutionInput, ToolExecutionPayload>({
+export const toolNode = steamharness.createOutputNode<ToolExecutionInput, ToolExecutionPayload>({
   name: "equipment-tool",
   async *stream(input: ToolExecutionInput, context: NodeRunContext) {
     const config = readDeltaforeApiConfig(context);
     const itemId = createToolItemId(input);
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_start",
       item: {
         id: itemId,
@@ -120,12 +120,12 @@ export const toolNode = workflow.createOutputNode<ToolExecutionInput, ToolExecut
     const result = await runTool(config, input.toolCall, {
       signal: context.abortSignal,
     });
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_delta",
       itemId,
       delta: createToolResultContent(result),
     });
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_delta",
       itemId,
       delta: {
@@ -144,7 +144,7 @@ export const toolNode = workflow.createOutputNode<ToolExecutionInput, ToolExecut
         },
       },
     });
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_end",
       itemId,
     });
@@ -164,11 +164,11 @@ export const toolNode = workflow.createOutputNode<ToolExecutionInput, ToolExecut
   },
 });
 
-export const answerOutputNode = workflow.createOutputNode<FinalAnswerInput, DeltaforeAgentOutputPayload>({
+export const answerOutputNode = steamharness.createOutputNode<FinalAnswerInput, DeltaforeAgentOutputPayload>({
   name: "deltafore-agent-output",
   async *stream(input: FinalAnswerInput) {
     const itemId = `answer-${Date.now()}`;
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_start",
       item: {
         id: itemId,
@@ -181,14 +181,14 @@ export const answerOutputNode = workflow.createOutputNode<FinalAnswerInput, Delt
 
     for (const chunk of streamChunks(input.content, 8)) {
       await tick();
-      yield workflow.createOutputItemChunk({
+      yield steamharness.createOutputItemChunk({
         type: "output_item_delta",
         itemId,
         delta: chunk,
       });
     }
 
-    yield workflow.createOutputItemChunk({ type: "output_item_end", itemId });
+    yield steamharness.createOutputItemChunk({ type: "output_item_end", itemId });
   },
   async format(stream, input: FinalAnswerInput, context: NodeRunContext) {
     const answer = input.content.trim();
@@ -212,7 +212,7 @@ export const answerOutputNode = workflow.createOutputNode<FinalAnswerInput, Delt
     });
 
     return {
-      ...workflow.createOutputPayload({
+      ...steamharness.createOutputPayload({
         errCode: input.errCode,
         errMessage: input.errMessage,
         items: stream.items,

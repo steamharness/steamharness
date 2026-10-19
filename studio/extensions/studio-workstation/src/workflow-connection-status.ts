@@ -4,8 +4,8 @@ import * as vscode from 'vscode';
 import type { AccountController } from './workflow-auth';
 import type { AccountState } from './workflow-auth-client';
 
-export function registerWorkflowConnectionStatus(account: AccountController): vscode.Disposable {
-  const status = vscode.window.createStatusBarItem('workflowConnection', vscode.StatusBarAlignment.Left, 120);
+export function registerProjectConnectionStatus(account: AccountController): vscode.Disposable {
+  const status = vscode.window.createStatusBarItem('projectConnection', vscode.StatusBarAlignment.Left, 120);
   status.name = t('SteamHarness Server');
   status.command = 'studio.openAccount';
 

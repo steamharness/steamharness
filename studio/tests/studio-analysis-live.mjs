@@ -45,7 +45,7 @@ try {
     AbortController, AbortSignal, URL, Buffer, setTimeout, clearTimeout, queueMicrotask,
   }, { importModuleDynamically: constants.USE_MAIN_CONTEXT_DEFAULT_LOADER });
   let imports = [reference];
-  runtime = module.exports.createWorkflowRuntime({ extensionUri: { fsPath: path.join(root, 'extensions/studio-workstation') },
+  runtime = module.exports.createProjectRuntime({ extensionUri: { fsPath: path.join(root, 'extensions/studio-workstation') },
     globalStorageUri: { fsPath: storage }, globalState: { get: () => imports } },
   { getConnection: () => undefined, onDidChange: () => ({ dispose() {} }) });
   runtime.updateAnalysisProjects([reference]);

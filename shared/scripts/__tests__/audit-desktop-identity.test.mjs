@@ -20,7 +20,7 @@ test("Desktop identity audit scans the relocated built-in production files by de
   try {
     await Promise.all(SPLIT_REPOSITORIES.map(repository => mkdir(path.join(splitRoot, repository), { recursive: true })));
     await writeFiles(path.join(splitRoot, "build-in/build-in-developer-assistant"), {
-      "src/runtime.ts": "workflow.isApp();\n",
+      "src/runtime.ts": "steamharness.isApp();\n",
     });
     await assert.rejects(auditDesktopIdentity({ splitRoot }), error => {
       assert.equal(error.violations[0].repository, "build-in/build-in-developer-assistant");
@@ -40,7 +40,7 @@ test("Desktop identity audit rejects aliases and fallbacks in production files",
       'const platform = value === "app" ? "desktop" : value;',
       'const legacyEnvironment = "STEAMHARNESS_APP_RUNTIME_EVENTS";',
       'const legacyChannel = "local-app-state:get";',
-      "workflow.isApp();",
+      "steamharness.isApp();",
     ].join("\n"),
   });
 

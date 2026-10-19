@@ -4,7 +4,7 @@ import type {
   NodeMetadataInput,
 } from "../../types/index";
 import {
-  parseWorkflowFileReferences,
+  parseProjectFileReferences,
   type FileReference,
   type ResolvedFile,
 } from "../../files/index";
@@ -50,7 +50,7 @@ class FileInputNode extends BaseNode<unknown, ResolvedFile[]> {
       });
     }
 
-    const references = parseWorkflowFileReferences(input);
+    const references = parseProjectFileReferences(input);
     if (!this.multiple && references.length > 1) {
       throw new HarnessError({
         type: "input_validation",

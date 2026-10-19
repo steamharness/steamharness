@@ -122,7 +122,7 @@ export interface PiAgentSessionRunner {
 }
 
 export interface PiAgentSessionRuntimeHooks {
-  onPendingApproval?: (error: workflow.HarnessError) => void;
+  onPendingApproval?: (error: steamharness.HarnessError) => void;
 }
 
 export type PiAgentSessionFactory = (

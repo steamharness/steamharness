@@ -1,18 +1,18 @@
 ---
-title: "runWorkflow"
+title: "runProject"
 description: "Invoke another workflow in the current RunContext while reusing the parent context."
 ---
 
-# runWorkflow
+# runProject
 
-Use `workflow.runWorkflow()` to invoke an imported `Definition<Input, Output>` from another workflow. It reuses the parent `RunContext`, making it suitable for composing reusable workflows as part of a larger workflow.
+Use `workflow.runProject()` to invoke an imported `Definition<Input, Output>` from another workflow. It reuses the parent `RunContext`, making it suitable for composing reusable workflows as part of a larger workflow.
 
-This is distinct from a project entrypoint. An entrypoint is a flat target that CLI and local hosts can start directly. `runWorkflow()` composes business logic inside one run. Running an entrypoint never runs the default or another entrypoint automatically. When a main flow needs to invoke a child flow, the selected entrypoint's workflow explicitly calls `runWorkflow(childWorkflow, ...)`.
+This is distinct from a project entrypoint. An entrypoint is a flat target that CLI and local hosts can start directly. `runProject()` composes business logic inside one run. Running an entrypoint never runs the default or another entrypoint automatically. When a main flow needs to invoke a child flow, the selected entrypoint's workflow explicitly calls `runProject(childProject, ...)`.
 
 ## Signature
 
 ```ts
-workflow.runWorkflow<Input, Output>(
+workflow.runProject<Input, Output>(
   workflow: Definition<Input, Output>,
   input: Input,
   context: RunContext,
@@ -43,15 +43,15 @@ workflow.runWorkflow<Input, Output>(
 | `options.kvMode` | `"shared" \| "isolated"` | How the child workflow uses parent KV. Defaults to `shared`; `isolated` prefixes project and conversation KV keys with the child workflow name. |
 | `options.outputVisibility` | `"visible" \| "hidden"` | Whether child-workflow output enters the parent's visible output. Defaults to `visible`. |
 | `options.emitNode` | `boolean` | Whether to add a `run-workflow` wrapper node to the parent trace. Defaults to `true`; top-level executor entries do not use this wrapper path. |
-| `options.maxDepth` | `number` | Maximum nested `runWorkflow` depth. Defaults to `16` to prevent recursive or cyclic calls. |
+| `options.maxDepth` | `number` | Maximum nested `runProject` depth. Defaults to `16` to prevent recursive or cyclic calls. |
 | `options.onOutputChunk` | `(chunk, event) => void` | Receives child output-stream chunks, which a parent output node can forward unchanged. |
 | `options.onOutput` | `(output, event?) => void` | Receives non-streaming child output, or its final return value when the child has no output node. |
 
 ## Context reuse
 
-By default, the child workflow uses the same `storage`, `conversation`, `tokenUsage`, `files`, `providers`, `abortSignal`, and `nodeHooks`. It does not create a standalone run report: the `runWorkflow` call and child-node events are both included in the parent workflow trace. The ordinary top-level execution entry, `safeRunWorkflow`, calls `workflow.run(input, context)` directly and does not add a synthetic `run-workflow` wrapper node at the root.
+By default, the child workflow uses the same `storage`, `conversation`, `tokenUsage`, `files`, `providers`, `abortSignal`, and `nodeHooks`. It does not create a standalone run report: the `runProject` call and child-node events are both included in the parent workflow trace. The ordinary top-level execution entry, `safeRunProject`, calls `workflow.run(input, context)` directly and does not add a synthetic `run-workflow` wrapper node at the root.
 
-Workflows may nest `runWorkflow()` calls, but the default total depth is limited to `16`. This depth exists only in the execution trace. It does not create a nested entrypoint path or change the entrypoint identity used by APIs, permissions, or history.
+Workflows may nest `runProject()` calls, but the default total depth is limited to `16`. This depth exists only in the execution trace. It does not create a nested entrypoint path or change the entrypoint identity used by APIs, permissions, or history.
 
 `conversationMode: "shared-readonly"` gives a child workflow a read-only snapshot of the parent conversation. `appendMessage`, `setValue`, and `setTitle` do not write back to the parent session. Let the parent workflow append user and assistant transcripts and set the title when you need to avoid duplicate writes.
 
@@ -63,7 +63,7 @@ The runtime adds a `run-workflow` wrapper node to the parent trace by default. `
 
 ```json
 {
-  "workflowName": "openai-agents",
+  "projectName": "openai-agents",
   "conversationMode": "shared-readonly",
   "kvMode": "isolated",
   "outputVisibility": "hidden",
@@ -71,21 +71,21 @@ The runtime adds a `run-workflow` wrapper node to the parent trace by default. `
 }
 ```
 
-Both `runWorkflow(child, input, context)` and `runWorkflow(child, input, context, { name })` keep `conversationMode: "shared"` and `outputVisibility: "visible"`. Adding a trace label alone does not change session writes or output visibility. Pass `conversationMode: "shared-readonly"` and `outputVisibility: "hidden"` explicitly when the parent must manage the conversation and output itself.
+Both `runProject(child, input, context)` and `runProject(child, input, context, { name })` keep `conversationMode: "shared"` and `outputVisibility: "visible"`. Adding a trace label alone does not change session writes or output visibility. Pass `conversationMode: "shared-readonly"` and `outputVisibility: "hidden"` explicitly when the parent must manage the conversation and output itself.
 
-To display a called workflow's output unchanged, invoke `runWorkflow` from a parent output node's `stream` function and provide `onOutputChunk` and `onOutput`. `onOutputChunk` runs for every output chunk from a streaming child node. `onOutput` runs when a non-streaming child output node finishes, or when a child without an output node returns its final payload.
+To display a called workflow's output unchanged, invoke `runProject` from a parent output node's `stream` function and provide `onOutputChunk` and `onOutput`. `onOutputChunk` runs for every output chunk from a streaming child node. `onOutput` runs when a non-streaming child output node finishes, or when a child without an output node returns its final payload.
 
-`onOutputChunk` and `onOutput` are part of execution semantics. If either handler throws, `runWorkflow` fails early and stops bridging later output. The error metadata includes `outputBridgeFailed: true`.
+`onOutputChunk` and `onOutput` are part of execution semantics. If either handler throws, `runProject` fails early and stops bridging later output. The error metadata includes `outputBridgeFailed: true`.
 
-Static structural analysis recognizes `workflow.runWorkflow(childWorkflow, input, context, options)` as a `run-workflow` execution node. Dynamically assembled workflow references still run, but Diagram can show them only as expressions.
+Static structural analysis recognizes `workflow.runProject(childProject, input, context, options)` as a `run-workflow` execution node. Dynamically assembled workflow references still run, but Diagram can show them only as expressions.
 
 ## Example
 
 ```ts
-import { openaiAgentsWorkflow } from "../openai-agents/index";
+import { openaiAgentsProject } from "../openai-agents/index";
 
-const agentOutput = await workflow.runWorkflow(
-  openaiAgentsWorkflow,
+const agentOutput = await workflow.runProject(
+  openaiAgentsProject,
   {
     message: input.query,
     defaultTools: false,
@@ -120,7 +120,7 @@ const outputNode = workflow.createOutputNode({
     // workflow or replace it with an existing async iterable or queue utility.
     const queue = createAsyncQueue();
 
-    const childRun = workflow.runWorkflow(childWorkflow, input, context, {
+    const childRun = workflow.runProject(childProject, input, context, {
       conversationMode: "shared-readonly",
       kvMode: "isolated",
       outputVisibility: "hidden",
@@ -145,7 +145,7 @@ const outputNode = workflow.createOutputNode({
 
 | Situation | Error type | Description |
 | --- | --- | --- |
-| Child workflow throws | `workflow_execution` | The runtime wraps the original error and retains the child workflow name in metadata. |
+| Child workflow throws | `project_execution` | The runtime wraps the original error and retains the child workflow name in metadata. |
 | Execution was aborted before it began | `execution_aborted` | Derived from the parent `context.abortSignal`. |
-| Nesting is too deep | `workflow_execution` | Aborts when `maxDepth` is exceeded, preventing stack overflow from recursive or cyclic calls. |
-| Output-bridge handler throws | `stream_interrupted` or `workflow_execution` | `metadata.outputBridgeFailed` is `true`, and the handler error is retained as the cause. |
+| Nesting is too deep | `project_execution` | Aborts when `maxDepth` is exceeded, preventing stack overflow from recursive or cyclic calls. |
+| Output-bridge handler throws | `stream_interrupted` or `project_execution` | `metadata.outputBridgeFailed` is `true`, and the handler error is retained as the cause. |

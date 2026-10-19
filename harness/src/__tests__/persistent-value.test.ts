@@ -9,16 +9,16 @@ import test from "node:test";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import {
-  createRemoteWorkflowRelatedProjectKVStoreFromEnv,
-  createRemoteWorkflowStorageStoreFromEnv,
-  RemoteWorkflowStorageStore,
-  createLocalWorkflowKVStore,
+  createRemoteProjectRelatedProjectKVStoreFromEnv,
+  createRemoteProjectStorageStoreFromEnv,
+  RemoteProjectStorageStore,
+  createLocalProjectKVStore,
   createKnowledgeDocument,
-  createWorkflowKVContext,
-  createWorkflowPersistentValueContext,
+  createProjectKVContext,
+  createProjectPersistentValueContext,
   deleteKnowledgeDocument,
   editKnowledgeDocument,
-  runLocalWorkflowWithReport,
+  runLocalProjectWithReport,
   HarnessError,
   type KVStore,
 } from "../index";
@@ -27,7 +27,7 @@ const PERSISTENT_TEST_PROJECT_ID = "11111111-1111-4111-8111-111111111111";
 
 test("persistentValue writes current-project and conversation scopes through the injected store", async () => {
   const store = createMemoryKVStore();
-  const persistentValue = createWorkflowPersistentValueContext({
+  const persistentValue = createProjectPersistentValueContext({
     store,
     projectId: "demo",
     conversationId: "conv-1",
@@ -47,7 +47,7 @@ test("persistentValue writes current-project and conversation scopes through the
 });
 
 test("persistentValue updateValue uses the injected store", async () => {
-  const persistentValue = createWorkflowPersistentValueContext({
+  const persistentValue = createProjectPersistentValueContext({
     store: createMemoryKVStore(),
     projectId: "demo",
   });
@@ -61,7 +61,7 @@ test("persistentValue updateValue uses the injected store", async () => {
 });
 
 test("persistentValue without a server store fails on get set and update calls", async () => {
-  const persistentValue = createWorkflowPersistentValueContext({
+  const persistentValue = createProjectPersistentValueContext({
     projectId: "demo",
     conversationId: "conv-1",
   });
@@ -73,11 +73,11 @@ test("persistentValue without a server store fails on get set and update calls",
 
 test("local kv fallback remains usable when persistentValue is unavailable", async () => {
   const rootDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-persistent-value-test-"));
-  const kv = createWorkflowKVContext({
-    store: createLocalWorkflowKVStore({ rootDir }),
+  const kv = createProjectKVContext({
+    store: createLocalProjectKVStore({ rootDir }),
     projectId: "demo",
   });
-  const persistentValue = createWorkflowPersistentValueContext({
+  const persistentValue = createProjectPersistentValueContext({
     projectId: "demo",
   });
 
@@ -96,7 +96,7 @@ test("local KV immediately recovers a fresh lock left by a dead process", async 
     await writeFile(path.join(rootDir, ".workflow-storage-format.json.lock"), JSON.stringify({
       token: "crashed-owner", pid: exited.pid, createdAt: new Date().toISOString(),
     }));
-    const kv = createWorkflowKVContext({ store: createLocalWorkflowKVStore({ rootDir }), projectId: "demo" });
+    const kv = createProjectKVContext({ store: createLocalProjectKVStore({ rootDir }), projectId: "demo" });
     await kv.setValue("recovered", true);
     assert.equal(await kv.getValue("recovered"), true);
   } finally {
@@ -128,10 +128,10 @@ test("concurrent stale-lock recovery cannot remove another recovery's newly acqu
   });
   syncBuiltinESMExports();
   try {
-    const left = createWorkflowKVContext({ store: createLocalWorkflowKVStore({ rootDir }), projectId: "left" });
+    const left = createProjectKVContext({ store: createLocalProjectKVStore({ rootDir }), projectId: "left" });
     const writing = left.setValue("value", 1);
     await firstReclaim;
-    const right = createWorkflowKVContext({ store: createLocalWorkflowKVStore({ rootDir }), projectId: "right" });
+    const right = createProjectKVContext({ store: createLocalProjectKVStore({ rootDir }), projectId: "right" });
     await Promise.all([writing, right.setValue("value", 2)]);
     assert.equal(overlapping, false, "stale deletions must be serialized until the owner is rechecked");
     assert.equal(await left.getValue("value"), 1); assert.equal(await right.getValue("value"), 2);
@@ -143,7 +143,7 @@ test("concurrent stale-lock recovery cannot remove another recovery's newly acqu
 
 test("local KV reuses same-namespace locks and rejects cross-namespace access", async () => {
   const rootDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-persistent-value-nested-lock-"));
-  const store = createLocalWorkflowKVStore({ rootDir });
+  const store = createLocalProjectKVStore({ rootDir });
 
   try {
     const withNamespaceLock = store.withNamespaceLock;
@@ -216,7 +216,7 @@ test("local KV reuses same-namespace locks and rejects cross-namespace access", 
 
 test("knowledge mutations reject PersistentValue stores without an atomic namespace capability", async () => {
   const store = createMemoryKVStore();
-  const persistentValue = createWorkflowPersistentValueContext({
+  const persistentValue = createProjectPersistentValueContext({
     store,
     projectId: "demo",
   });
@@ -233,7 +233,7 @@ test("knowledge mutations reject PersistentValue stores without an atomic namesp
 });
 
 test("persistentValue conversation scope still requires a conversation id", async () => {
-  const persistentValue = createWorkflowPersistentValueContext({
+  const persistentValue = createProjectPersistentValueContext({
     store: createMemoryKVStore(),
     projectId: "demo",
   });
@@ -263,7 +263,7 @@ test("remote persistentValue store proxies get and set through server API", asyn
       data: { ok: true },
     };
   });
-  const store = new RemoteWorkflowStorageStore({
+  const store = new RemoteProjectStorageStore({
     serverUrl: server.url,
     token: "server-token",
     projectId: PERSISTENT_TEST_PROJECT_ID,
@@ -319,7 +319,7 @@ test("remote store proxies delete and reports whether the server removed an entr
       data: { removed: removed.shift() ?? false },
     };
   });
-  const store = new RemoteWorkflowStorageStore({
+  const store = new RemoteProjectStorageStore({
     serverUrl: server.url,
     token: "server-token",
     projectId: PERSISTENT_TEST_PROJECT_ID,
@@ -356,7 +356,7 @@ test("remote store rejects a delete response without a removal flag", async () =
     errMessage: "",
     data: { ok: true },
   }));
-  const store = new RemoteWorkflowStorageStore({
+  const store = new RemoteProjectStorageStore({
     serverUrl: server.url,
     token: "server-token",
     projectId: PERSISTENT_TEST_PROJECT_ID,
@@ -387,7 +387,7 @@ test("remote related-project KV addresses the consumer alias without sending the
       : { errCode: 0, errMessage: "", data: { ok: true } };
   });
   const consumerProjectId = "99999999-9999-4999-8999-999999999999";
-  const store = createRemoteWorkflowRelatedProjectKVStoreFromEnv({
+  const store = createRemoteProjectRelatedProjectKVStoreFromEnv({
     consumerProjectId,
     targetProjectId: PERSISTENT_TEST_PROJECT_ID,
     alias: "inventory",
@@ -453,7 +453,7 @@ test("remote persistentValue updateValue retries a compare-and-set conflict", as
     }
     return { errCode: 400, errMessage: "Expected get or compare-and-set." };
   });
-  const store = new RemoteWorkflowStorageStore({
+  const store = new RemoteProjectStorageStore({
     serverUrl: server.url,
     token: "server-token",
     projectId: PERSISTENT_TEST_PROJECT_ID,
@@ -495,7 +495,7 @@ test("remote persistentValue updateValue rejects an unversioned server response"
     }
     return { errCode: 400, errMessage: "compare-and-set must not be called without a revision." };
   });
-  const store = new RemoteWorkflowStorageStore({
+  const store = new RemoteProjectStorageStore({
     serverUrl: server.url,
     token: "server-token",
     projectId: PERSISTENT_TEST_PROJECT_ID,
@@ -573,8 +573,8 @@ test("remote persistentValue sends each knowledge mutation as one atomic server 
         return { errCode: 400, errMessage: "Unsupported knowledge mutation." };
     }
   });
-  const persistentValue = createWorkflowPersistentValueContext({
-    store: new RemoteWorkflowStorageStore({
+  const persistentValue = createProjectPersistentValueContext({
+    store: new RemoteProjectStorageStore({
       serverUrl: server.url,
       token: "server-token",
       projectId: PERSISTENT_TEST_PROJECT_ID,
@@ -637,12 +637,12 @@ test("remote persistentValue sends each knowledge mutation as one atomic server 
 });
 
 test("remote persistentValue store from env reads server connection", () => {
-  const store = createRemoteWorkflowStorageStoreFromEnv(PERSISTENT_TEST_PROJECT_ID, "persistent_value", {
+  const store = createRemoteProjectStorageStoreFromEnv(PERSISTENT_TEST_PROJECT_ID, "persistent_value", {
     STEAMHARNESS_SERVER_URL: " http://127.0.0.1:8787/ ",
     STEAMHARNESS_SERVER_ADMIN_KEY: " token ",
   } as NodeJS.ProcessEnv);
 
-  assert.ok(store instanceof RemoteWorkflowStorageStore);
+  assert.ok(store instanceof RemoteProjectStorageStore);
 });
 
 test("remote persistentValue store from env falls back to saved CLI auth file", async () => {
@@ -657,15 +657,15 @@ test("remote persistentValue store from env falls back to saved CLI auth file", 
     "utf8",
   );
 
-  const store = createRemoteWorkflowStorageStoreFromEnv(PERSISTENT_TEST_PROJECT_ID, "persistent_value", {
+  const store = createRemoteProjectStorageStoreFromEnv(PERSISTENT_TEST_PROJECT_ID, "persistent_value", {
     STEAMHARNESS_CLI_AUTH_DIR: authDir,
   } as NodeJS.ProcessEnv);
 
-  assert.ok(store instanceof RemoteWorkflowStorageStore);
+  assert.ok(store instanceof RemoteProjectStorageStore);
 });
 
 test("local workflow uses configured server PersistentValue store", async () => {
-  const projectDir = await createPersistentValueWorkflow("server");
+  const projectDir = await createPersistentValueProject("server");
   const requests: Array<Record<string, unknown>> = [];
   const values = new Map<string, unknown>();
   const server = await listenPersistentValueServer(async (body) => {
@@ -682,7 +682,7 @@ test("local workflow uses configured server PersistentValue store", async () => 
   });
 
   try {
-    const report = await runLocalWorkflowWithReport({
+    const report = await runLocalProjectWithReport({
       projectDir,
       env: {
         STEAMHARNESS_SERVER_URL: server.url,
@@ -699,11 +699,11 @@ test("local workflow uses configured server PersistentValue store", async () => 
 });
 
 test("local workflow uses an explicit local PersistentValue directory before remote env", async () => {
-  const projectDir = await createPersistentValueWorkflow();
+  const projectDir = await createPersistentValueProject();
   const persistentValueStoreDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-local-persistent-value-"));
 
   try {
-    const report = await runLocalWorkflowWithReport({
+    const report = await runLocalProjectWithReport({
       projectDir,
       storage: {
         host: "local",
@@ -716,7 +716,7 @@ test("local workflow uses an explicit local PersistentValue directory before rem
     });
 
     assert.equal(report.status, "success");
-    const localStore = createLocalWorkflowKVStore({ rootDir: persistentValueStoreDir, storageKind: "persistent_value" });
+    const localStore = createLocalProjectKVStore({ rootDir: persistentValueStoreDir, storageKind: "persistent_value" });
     assert.equal(await localStore.getValue({
       storageKind: "persistent_value",
       scope: "project",
@@ -730,12 +730,12 @@ test("local workflow uses an explicit local PersistentValue directory before rem
 });
 
 test("injected PersistentValue store takes priority over an explicit local directory", async () => {
-  const projectDir = await createPersistentValueWorkflow();
+  const projectDir = await createPersistentValueProject();
   const persistentValueStoreDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-local-persistent-value-"));
   const persistentValueStore = createMemoryKVStore();
 
   try {
-    const report = await runLocalWorkflowWithReport({
+    const report = await runLocalProjectWithReport({
       projectDir,
       storage: {
         host: "local",
@@ -752,7 +752,7 @@ test("injected PersistentValue store takes priority over an explicit local direc
       persistentValueStore.values.get(`persistent_value:project:${PERSISTENT_TEST_PROJECT_ID}::local-key`),
       "from-local-run",
     );
-    const localStore = createLocalWorkflowKVStore({ rootDir: persistentValueStoreDir, storageKind: "persistent_value" });
+    const localStore = createLocalProjectKVStore({ rootDir: persistentValueStoreDir, storageKind: "persistent_value" });
     assert.equal(await localStore.getValue({
       storageKind: "persistent_value",
       scope: "project",
@@ -821,7 +821,7 @@ function createMemoryKVStore(): KVStore & {
   };
 }
 
-async function createPersistentValueWorkflow(
+async function createPersistentValueProject(
   storageLocation: "local" | "server" = "local",
 ): Promise<string> {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-persistent-local-"));
@@ -840,32 +840,32 @@ async function createPersistentValueWorkflow(
   await writeFile(
     path.join(projectDir, "index.ts"),
     [
-      "const outputNode = workflow.createOutputNode({",
+      "const outputNode = steamharness.createOutputNode({",
       "  name: \"output\",",
       "  format() {",
       "    return { errCode: 0, errMessage: \"\", items: [] };",
       "  },",
       "});",
       "",
-      "export const persistentCliWorkflow = workflow.defineWorkflow({",
+      "export const persistentCliProject = steamharness.defineProject({",
       "  name: \"persistent-cli-test\",",
       "  async run(input, context) {",
       `    await context.storage.${storageLocation}.persistentValue.setValue("local-key", "from-local-run");`,
-      "    return workflow.runNode(outputNode, input, context);",
+      "    return steamharness.runNode(outputNode, input, context);",
       "  },",
       "});",
       "",
-      "export const executor = workflow.defineExecutor({",
+      "export const executor = steamharness.defineExecutor({",
       "  projectType: \"workflow\",",
       "  defaultEntrypoint: \"main\",",
-      "  entrypoints: [workflow.defineEntrypoint({",
-      "    id: \"main\", title: \"Main\", workflow: persistentCliWorkflow,",
+      "  entrypoints: [steamharness.defineEntrypoint({",
+      "    id: \"main\", title: \"Main\", workflow: persistentCliProject,",
       "    createInput() { return {}; },",
       "  })],",
       "});",
       "",
-      "export { persistentCliWorkflow as workflow };",
-      "export default persistentCliWorkflow;",
+      "export { persistentCliProject as workflow };",
+      "export default persistentCliProject;",
       "",
     ].join("\n"),
   );

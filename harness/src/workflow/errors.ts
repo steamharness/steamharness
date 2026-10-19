@@ -32,7 +32,7 @@ export interface ErrorOptions {
 
 export type ErrorFallbackOptions = Omit<ErrorOptions, "cause">;
 
-export interface SerializedWorkflowError {
+export interface SerializedProjectError {
   type: ErrorType;
   message: string;
   nodeName?: string;
@@ -47,7 +47,7 @@ export interface SuccessResult<Output> {
 
 export interface FailureResult {
   ok: false;
-  error: SerializedWorkflowError;
+  error: SerializedProjectError;
 }
 
 export type RunResult<Output> =
@@ -70,12 +70,12 @@ export class HarnessError extends Error {
   }
 }
 
-export function toWorkflowError(
+export function toProjectError(
   error: unknown,
   fallback: ErrorFallbackOptions & { cause?: unknown },
 ): HarnessError {
   if (error instanceof HarnessError) {
-    return enrichWorkflowError(error, fallback);
+    return enrichProjectError(error, fallback);
   }
 
   return new HarnessError({
@@ -84,8 +84,8 @@ export function toWorkflowError(
   });
 }
 
-export function serializeWorkflowError(error: unknown): SerializedWorkflowError {
-  const workflowError =
+export function serializeProjectError(error: unknown): SerializedProjectError {
+  const projectError =
     error instanceof HarnessError
       ? error
       : new HarnessError({
@@ -95,22 +95,22 @@ export function serializeWorkflowError(error: unknown): SerializedWorkflowError 
         });
 
   return {
-    type: workflowError.type,
-    message: workflowError.message,
-    nodeName: workflowError.nodeName,
-    metadata: workflowError.metadata,
-    cause: workflowError.safeCause,
+    type: projectError.type,
+    message: projectError.message,
+    nodeName: projectError.nodeName,
+    metadata: projectError.metadata,
+    cause: projectError.safeCause,
   };
 }
 
-export function createWorkflowFailure(error: unknown): FailureResult {
+export function createProjectFailure(error: unknown): FailureResult {
   return {
     ok: false,
-    error: serializeWorkflowError(error),
+    error: serializeProjectError(error),
   };
 }
 
-function enrichWorkflowError(
+function enrichProjectError(
   error: HarnessError,
   fallback: ErrorFallbackOptions & { cause?: unknown },
 ): HarnessError {
@@ -138,7 +138,7 @@ function sanitizeErrorCause(error: unknown): ErrorCause | undefined {
     return undefined;
   }
 
-  if (isWorkflowErrorCause(error)) {
+  if (isProjectErrorCause(error)) {
     return {
       name: error.name,
       message: error.message,
@@ -324,7 +324,7 @@ function isValidationIssue(value: unknown): value is { path?: unknown; message: 
   );
 }
 
-function isWorkflowErrorCause(value: unknown): value is ErrorCause {
+function isProjectErrorCause(value: unknown): value is ErrorCause {
   return (
     typeof value === "object" &&
     value !== null &&

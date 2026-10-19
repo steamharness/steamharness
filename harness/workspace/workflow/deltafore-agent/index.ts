@@ -23,10 +23,10 @@ import {
 } from "./nodes/nodes";
 import { createDeltaforeApiConfig, DEFAULT_OPENAPI_URL } from "./tools/openapi";
 
-export const deltaforeAgentWorkflow = workflow.defineWorkflow<DeltaforeAgentInput, DeltaforeAgentOutputPayload>({
+export const deltaforeAgentProject = steamharness.defineProject<DeltaforeAgentInput, DeltaforeAgentOutputPayload>({
   name: "deltafore-agent",
   async run(input, context) {
-    const parsed = await workflow.runNode(inputNode, input, context);
+    const parsed = await steamharness.runNode(inputNode, input, context);
     const conversationContext = context as NodeRunContext;
     await conversationContext.conversation?.setTitle(createConversationTitle(parsed.query));
     const conversationState = await conversationContext.conversation?.getValue();
@@ -47,14 +47,14 @@ export const deltaforeAgentWorkflow = workflow.defineWorkflow<DeltaforeAgentInpu
       usedObjectIDs: [],
     };
 
-    const loopState = await workflow.runWhile(seed, context, {
+    const loopState = await steamharness.runWhile(seed, context, {
       name: "ReAct loop",
       maxIterations: parsed.maxRounds,
       condition: (state) => state.phase === "thinking",
       async run(state, loopContext, iteration) {
         const round = iteration + 1;
 
-        const thought = await workflow.runNode(
+        const thought = await steamharness.runNode(
           agentDecisionNode,
           { errCode: 0, errMessage: "", query: state.query, maxRounds: state.maxRounds, round, history: state.history, steps: state.steps, compactedHistory: state.compactedHistory },
           loopContext,
@@ -85,13 +85,13 @@ export const deltaforeAgentWorkflow = workflow.defineWorkflow<DeltaforeAgentInpu
           };
         }
 
-        await workflow.runStreamNode(
+        await steamharness.runStreamNode(
           thoughtOutputNode,
           { errCode: 0, errMessage: "", round, thought: thought.thought, action: thought.action },
           loopContext,
         );
 
-        const toolPayload = await workflow.runStreamNode(
+        const toolPayload = await steamharness.runStreamNode(
           toolNode,
           { errCode: 0, errMessage: "", round, toolCall: thought.action },
           loopContext,
@@ -133,7 +133,7 @@ export const deltaforeAgentWorkflow = workflow.defineWorkflow<DeltaforeAgentInpu
           { errCode: 0, errMessage: "", query: loopState.query, maxRounds: loopState.maxRounds, round: loopState.round, history: loopState.history, steps: loopState.steps },
         );
 
-    const output = await workflow.runStreamNode(
+    const output = await steamharness.runStreamNode(
       answerOutputNode,
       createFinalAnswerInput(parsed, finalThought, loopState.steps, history),
       context,
@@ -143,9 +143,9 @@ export const deltaforeAgentWorkflow = workflow.defineWorkflow<DeltaforeAgentInpu
   },
 });
 
-export const executor = workflow.defineExecutor<DeltaforeAgentInput, DeltaforeAgentOutputPayload>({
+export const executor = steamharness.defineExecutor<DeltaforeAgentInput, DeltaforeAgentOutputPayload>({
   projectType: "conversation",
-  workflow: deltaforeAgentWorkflow,
+  workflow: deltaforeAgentProject,
   tokenUsage: {
     enabled: true,
     display: true,
@@ -174,7 +174,7 @@ export const executor = workflow.defineExecutor<DeltaforeAgentInput, DeltaforeAg
     },
   ],
   createInput({ args }) {
-    const defaults = workflow.parseConversationDefaultInputArgs(args);
+    const defaults = steamharness.parseConversationDefaultInputArgs(args);
     return parseInputArgs(args, { message: defaults.message });
   },
   async createContext({ env, abortSignal }) {
@@ -192,8 +192,8 @@ export const executor = workflow.defineExecutor<DeltaforeAgentInput, DeltaforeAg
   },
 });
 
-export { deltaforeAgentWorkflow as workflow };
-export default deltaforeAgentWorkflow;
+export { deltaforeAgentProject as workflow };
+export default deltaforeAgentProject;
 
 function requireOutput(output: DeltaforeAgentOutputPayload | undefined): DeltaforeAgentOutputPayload {
   if (output === undefined) {

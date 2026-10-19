@@ -123,7 +123,7 @@ try {
   });
   await page.setViewportSize({ width: 1440, height: 980 });
   await page.locator('.part.titlebar .studio-workflow-run').waitFor({ timeout: 45_000 });
-  await command(`Workflow: ${catalog['command.openWorkflowAccount']}`);
+  await command(`Workflow: ${catalog['command.openProjectAccount']}`);
   const account = await frameFor('#account-app');
   await account.locator('#login-email').fill('connection@example.test'); await account.locator('#login-password').fill('test-password');
   await account.locator('#login-submit').click(); await account.locator('#account-status.connected').waitFor();
@@ -146,7 +146,7 @@ try {
   await knowledge.locator('#detail-edit').click(); await knowledge.locator('#detail-body').fill('Unsaved content survives account checks'); await watchResources(knowledge);
   const before = { ...counts }; delay = 300;
   for (let index = 0; index < 3; index++) {
-    await command(`Workflow: ${catalog['command.validateWorkflowLogin']}`);
+    await command(`Workflow: ${catalog['command.validateProjectLogin']}`);
     await pause(450);
   }
   await writeFile(manifestPath, manifestText); await pause(1800);
@@ -161,7 +161,7 @@ try {
   proof.resizeWarnings = (await readFile(logPath, 'utf8')).match(/ResizeObserver loop/g)?.length ?? 0;
   assert.equal(proof.resizeWarnings, 0, 'Webviews must not continuously emit ResizeObserver loop warnings.');
   unauthorized = true;
-  await command(`Workflow: ${catalog['command.validateWorkflowLogin']}`);
+  await command(`Workflow: ${catalog['command.validateProjectLogin']}`);
   await page.waitForFunction(() => !document.querySelector('.accounts-avatar')?.getAttribute('src'));
   await knowledge.locator('#resource-login').waitFor();
   proof.checks.push('an actual 401 clears the avatar and exposes sign-in for server resources');

@@ -11,7 +11,7 @@ function fixture(fetcher) {
   const module = { exports: {} }, opened = [], messages = [];
   runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? {} : require(name),
     URL, URLSearchParams, AbortController, AbortSignal, fetch: fetcher });
-  const binding = module.exports.bindWorkflowResourceCards({ postMessage: async message => { messages.push(message); } },
+  const binding = module.exports.bindProjectResourceCards({ postMessage: async message => { messages.push(message); } },
     `http://127.0.0.1:3333/#session=${'a'.repeat(64)}`, async resource => { opened.push(resource); });
   return { binding, opened, messages };
 }

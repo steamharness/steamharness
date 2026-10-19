@@ -43,7 +43,7 @@ steamharness 支持 `workflow`、`conversation` 和 `kanban` 三种项目类型�
 当前 `workflow` 全局对象来自 Core 仓库 `src/runtime-api.ts`，包含：
 
 ```ts
-workflow.defineWorkflow
+workflow.defineProject
 workflow.defineEntrypoint
 workflow.defineExecutor
 workflow.parseConversationDefaultInputArgs
@@ -69,7 +69,7 @@ workflow.runStreamNode
 workflow.runIf
 workflow.runFor
 workflow.runWhile
-workflow.runWorkflow
+workflow.runProject
 workflow.listKnowledgeDocuments
 workflow.getKnowledgeDocument
 workflow.createKnowledgeDocument
@@ -92,10 +92,10 @@ workflow.HarnessError
 
 ## Workflow
 
-Workflow 是业务流程本体，由 `workflow.defineWorkflow<Input, Output>()` 定义：
+Workflow 是业务流程本体，由 `workflow.defineProject<Input, Output>()` 定义：
 
 ```ts
-export const exampleWorkflow = workflow.defineWorkflow<Input, OutputPayload>({
+export const exampleProject = workflow.defineProject<Input, OutputPayload>({
   name: "example",
   async run(input, context) {
     const parsed = await workflow.runNode(inputNode, input, context);
@@ -222,16 +222,16 @@ const boosted = await workflow.runWhile(rounded, context, {
 
 本地宿主 diagram 使用两类信息展示 workflow：
 
-- 静态结构来自 TypeScript 源码分析。所有已知 `workflow.*` runtime API 调用会写入 `definitions.apiCalls`，并以静态 API 节点展示，例如 `workflow.createInputNode`、`workflow.defineWorkflow`、`workflow.getEnv`。这些节点帮助理解源码使用了哪些平台能力，但不会单独执行，也不会串进 `Input -> Result` 执行路径。
-- 运行状态来自 `workflow.runNode` / `workflow.runStreamNode` / `workflow.runIf` / `workflow.runFor` / `workflow.runWhile` / `workflow.runWorkflow` 的 `nodeHooks` 报告。只有真正被这些 API 执行的节点会显示运行中、成功、失败、耗时和错误。
+- 静态结构来自 TypeScript 源码分析。所有已知 `workflow.*` runtime API 调用会写入 `definitions.apiCalls`，并以静态 API 节点展示，例如 `workflow.createInputNode`、`workflow.defineProject`、`workflow.getEnv`。这些节点帮助理解源码使用了哪些平台能力，但不会单独执行，也不会串进 `Input -> Result` 执行路径。
+- 运行状态来自 `workflow.runNode` / `workflow.runStreamNode` / `workflow.runIf` / `workflow.runFor` / `workflow.runWhile` / `workflow.runProject` 的 `nodeHooks` 报告。只有真正被这些 API 执行的节点会显示运行中、成功、失败、耗时和错误。
 
 `workflow.runIf` 会作为 `run-if` 分支节点展示，本地宿主会使用分支图标和语义色与 LLM、输出、provider、question-classifier 区分。完成事件的 `executionInfo` 会记录 `selectedBranch`、`selectedBranchIndex` 和 `description`，用于 Trace 查看实际走到了哪条分支。静态结构分析优先识别对象字面量形式的 `branches` / `else`；动态拼装分支仍可运行，但 Diagram 无法完整展开所有静态路径。
 
 `workflow.runFor` 和 `workflow.runWhile` 会作为 `run-for` / `run-while` 循环节点展示。本地宿主 Diagram 会用带语义色的矩形背景容器包裹循环体 children，循环头节点仍可点击查看 `items`、`condition`、`maxIterations` 和运行时迭代信息。循环体可以继续嵌套 `workflow.runIf`、`workflow.runFor` 或 `workflow.runWhile`，用于表达 while 内部分支和多层循环。静态结构分析优先识别对象字面量形式的 loop options；动态拼装 options 仍可运行，但 Diagram 无法完整展开循环体。
 
-`workflow.runWorkflow` 会作为 `run-workflow` 调用节点展示。子 workflow 不会创建独立 run report，子节点事件会进入父 trace；顶层 executor 入口不会额外插入这个包裹节点。默认 `conversationMode: "shared"`、`kvMode: "shared"`、`outputVisibility: "visible"`，只传 `name` 不会改变会话或输出语义；当父 workflow 传入 `conversationMode: "shared-readonly"` 时，子 workflow 可以读取父会话快照，但不会追加 transcript 或修改标题。子 workflow 会写专属 KV 状态时，可同时传入 `kvMode: "isolated"`。
+`workflow.runProject` 会作为 `run-workflow` 调用节点展示。子 workflow 不会创建独立 run report，子节点事件会进入父 trace；顶层 executor 入口不会额外插入这个包裹节点。默认 `conversationMode: "shared"`、`kvMode: "shared"`、`outputVisibility: "visible"`，只传 `name` 不会改变会话或输出语义；当父 workflow 传入 `conversationMode: "shared-readonly"` 时，子 workflow 可以读取父会话快照，但不会追加 transcript 或修改标题。子 workflow 会写专属 KV 状态时，可同时传入 `kvMode: "isolated"`。
 
-Entrypoint 不作为 Diagram 中的嵌套节点，也不表达父子关系。项目对外只暴露一层独立入口；需要多级业务编排时继续嵌套 `workflow.runWorkflow()`，默认最大深度为 `16`。
+Entrypoint 不作为 Diagram 中的嵌套节点，也不表达父子关系。项目对外只暴露一层独立入口；需要多级业务编排时继续嵌套 `workflow.runProject()`，默认最大深度为 `16`。
 
 内置节点工厂返回的普通节点继承 `BaseNode`，流式节点继承 `BaseStreamNode`；它们共同提供 `name`、`standardName`、`metadata` 和 `getExecutionInfo()` 等公共信息。Diagram 不直接绑定 `BaseNode` 类，而是读取 `NodeDefinition` / `StreamNodeDefinition` 执行协议和运行报告，因此未来自定义节点只要符合协议，也能被执行与记录。
 
@@ -260,7 +260,7 @@ export const executor = workflow.defineExecutor<Input, OutputPayload>({
       id: "main",
       title: "完整流程",
       group: { id: "operations", title: "业务操作", order: 10 },
-      workflow: exampleWorkflow,
+      workflow: exampleProject,
       params: [
         {
           name: "message",
@@ -280,13 +280,13 @@ export const executor = workflow.defineExecutor<Input, OutputPayload>({
 
 点击或请求任一 entrypoint 都只创建该入口的 run，不先执行 `main`。入口 ID 项目内唯一，使用 `/^[a-z][a-z0-9_-]{0,63}$/`；`entrypoints` 必须是非空静态数组，`defaultEntrypoint` 必须命中其中一项。各入口独立声明 `workflow`、`params`、`resolveParams`、`createInput`、provider、tools、token usage、registry 和 context factory。入口还可以声明静态 `group: { id, title, order? }`，其中 `id`、`title` 必须是非空字符串，`order` 必须是非负整数；相同分区 ID 的标题和排序必须完全一致（包括是否省略 `order`）。旧 Workflow 顶层执行字段不再接受。
 
-只要存在一个显式分组，本地宿主 Run 工作区就按分区展示入口：显式 `order` 升序排列，同值按首次出现顺序；未设置 `order` 的分区随后按首次出现顺序，未声明分组的入口进入本地化“未分组”分区。分区可独立折叠，首次进入只展开默认入口所在分区，运行或出现活动/结果入口时会重新展开对应分区；展开状态仅按稳定 `workflowId + resolved target` 持久化。没有任何分组时保留原有平铺界面。CLI 和本地定时任务仍只使用入口 ID。
+只要存在一个显式分组，本地宿主 Run 工作区就按分区展示入口：显式 `order` 升序排列，同值按首次出现顺序；未设置 `order` 的分区随后按首次出现顺序，未声明分组的入口进入本地化“未分组”分区。分区可独立折叠，首次进入只展开默认入口所在分区，运行或出现活动/结果入口时会重新展开对应分区；展开状态仅按稳定 `projectId + resolved target` 持久化。没有任何分组时保留原有平铺界面。CLI 和本地定时任务仍只使用入口 ID。
 
 项目可以通过 `package.json.steamHarness.schedulePresets` 为某个入口声明建议定时计划。Structure 会校验预设 ID、入口、时区、触发规则和 JSON 参数，并把目录交给本地宿主；预设不会自动启用。参见 [Workflow 定时运行](/concepts/workflow-schedules)。
 
 Conversation executor 保持单入口，把 `workflow`、`params`、`createInput` 等字段直接放在 executor 上，不声明或接受 entrypoint。Executor 的 `projectType` 只允许 `"workflow"` 或 `"conversation"`。Kanban 在 `package.json.steamHarness.projectType` 中声明 `"kanban"`，不能伪造 executor。
 
-`createInput` 会接收 `workflowName`、`workflowDir`、`args`、`paramValues`、`env`、`abortSignal` 和可选 `conversationId`。Workflow 还会收到所选 `entrypointId`、`entrypointTitle`；相同字段会写入 `RunContext.metadata`、report 和本地运行记录。本地宿主通过所选执行配置把参数转换为 workflow input；取消运行时，`abortSignal` 会传播到 workflow context，便于长耗时 provider/SDK 调用及时停止。
+`createInput` 会接收 `projectName`、`projectDir`、`args`、`paramValues`、`env`、`abortSignal` 和可选 `conversationId`。Workflow 还会收到所选 `entrypointId`、`entrypointTitle`；相同字段会写入 `RunContext.metadata`、report 和本地运行记录。本地宿主通过所选执行配置把参数转换为 workflow input；取消运行时，`abortSignal` 会传播到 workflow context，便于长耗时 provider/SDK 调用及时停止。
 
 `resolveParams` 可以按当前参数返回 `value`、`visible`、`disabled` 和单个 option 状态补丁，也可以用 `resolvedOptions` 数组替换参数当前的完整选项列表，或用 `null` 恢复静态选项。初始化以及 main、Advanced、Quick 的 Form 参数变化都会触发求值。`visible: false` 不会隐式清空旧值；互斥参数应同时返回 `value: null`，避免隐藏值继续进入 `args` 和 `paramValues`。动态列表适合读取服务器提供的 provider、model 或 variant 目录；读取必须可取消、限时，且不能在参数求值期间写入运行数据。
 
@@ -302,7 +302,7 @@ export const executor = workflow.defineExecutor<Input, OutputPayload>({
     workflow.defineEntrypoint({
       id: "main",
       title: "完整流程",
-      workflow: exampleWorkflow,
+      workflow: exampleProject,
       registry: [
         {
           name: "output",

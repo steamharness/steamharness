@@ -29,11 +29,11 @@ steamharness structure [workflow-dir]
 | `manifest` |List of optional v1 parameters for Kanban.|
 | `schedulePresets` |Workflow Proposed plan declared in `package.json.steamHarness.schedulePresets` and validated;Conversation and Kanban do not accept this field.|
 | `defaultEntrypoint` |The default Workflow entrypoint ID.|
-| `entrypoints` |The Workflow entrypoint catalog. Each item contains `id`, `title`, optional `description`, `group`, `workflowName`, `execution`, parameters, tools, and registry. A `group` has the static inline shape `{ id, title, order? }`.|
+| `entrypoints` |The Workflow entrypoint catalog. Each item contains `id`, `title`, optional `description`, `group`, `projectName`, `execution`, parameters, tools, and registry. A `group` has the static inline shape `{ id, title, order? }`.|
 | `workflow` |workflow name and underlying information.|
 | `definitions.nodes` |The statically recognized node definition.|
 | `definitions.variables` |Statically identified key variables.|
-| `execution` |The derived execution structure comprises the `runNode`, `runStreamNode`, `runIf`, `runFor`, `runWhile`, `runWorkflow`, and question-classifier branches; return expressions such as `return workflow.runNode(...)`, `return workflow.runIf(...)`, and `return workflow.runFor(...)` are likewise incorporated into their respective branches or loops.|
+| `execution` |The derived execution structure comprises the `runNode`, `runStreamNode`, `runIf`, `runFor`, `runWhile`, `runProject`, and question-classifier branches; return expressions such as `return workflow.runNode(...)`, `return workflow.runIf(...)`, and `return workflow.runFor(...)` are likewise incorporated into their respective branches or loops.|
 | `diagnostics` |warnings, violations, and structural analysis errors.|
 | `params` |executor `params` declaration.|
 | `conversation` |executor conversation configuration.|

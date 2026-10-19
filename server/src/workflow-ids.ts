@@ -1,11 +1,11 @@
 export {
   assertSafeProjectId,
-  assertWorkflowUuid,
-  createInvalidWorkflowUuidMessage,
+  assertProjectUuid,
+  createInvalidProjectUuidMessage,
   createUnsafeProjectIdMessage,
   isSafeProjectId,
-  isWorkflowUuid,
-  resolveWorkflowRoot,
+  isProjectUuid,
+  resolveProjectRoot,
   STEAMHARNESS_ID_PATTERN,
   STEAMHARNESS_UUID_PATTERN,
 } from "@steamharness/workflow-ids";

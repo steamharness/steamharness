@@ -12,8 +12,8 @@ All notable public changes of this release unit are recorded here.
 
 ### Breaking Changes
 
-- Project packaging reads only the root `.workflowignore`; other ignore files no longer apply.
-  Migration: explicitly exclude credentials, dependency directories, and temporary files in `.workflowignore`.
+- Project packaging reads only the root `.steamharnessignore`; other ignore files no longer apply.
+  Migration: explicitly exclude credentials, dependency directories, and temporary files in `.steamharnessignore`.
 
 ### Added
 

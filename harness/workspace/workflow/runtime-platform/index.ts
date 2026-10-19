@@ -1,16 +1,16 @@
 import type { RuntimePlatformInput, RuntimePlatformOutputPayload } from "./interface";
 
-const outputNode = workflow.createOutputNode<RuntimePlatformInput, RuntimePlatformOutputPayload>({
+const outputNode = steamharness.createOutputNode<RuntimePlatformInput, RuntimePlatformOutputPayload>({
   name: "runtime-platform-output",
   format() {
-    const platform = workflow.getRuntimePlatform();
+    const platform = steamharness.getRuntimePlatform();
     const flags = {
-      isCli: workflow.isCli(),
-      isDesktop: workflow.isDesktop(),
+      isCli: steamharness.isCli(),
+      isDesktop: steamharness.isDesktop(),
     };
 
     return {
-      ...workflow.createOutputPayload({
+      ...steamharness.createOutputPayload({
         items: [{
           title: "Runtime Platform",
           content: {
@@ -27,28 +27,28 @@ const outputNode = workflow.createOutputNode<RuntimePlatformInput, RuntimePlatfo
   },
 });
 
-export const runtimePlatformWorkflow = workflow.defineWorkflow<RuntimePlatformInput, RuntimePlatformOutputPayload>({
+export const runtimePlatformProject = steamharness.defineProject<RuntimePlatformInput, RuntimePlatformOutputPayload>({
   name: "runtime-platform",
   run(input, context) {
     // Sample workflow exercises all runtime platform helpers.
-    return workflow.runNode(outputNode, input, context);
+    return steamharness.runNode(outputNode, input, context);
   },
 });
 
-export const executor = workflow.defineExecutor<
+export const executor = steamharness.defineExecutor<
   RuntimePlatformInput,
   RuntimePlatformOutputPayload
 >({
   projectType: "workflow",
   defaultEntrypoint: "main",
   entrypoints: [
-    workflow.defineEntrypoint<
+    steamharness.defineEntrypoint<
       RuntimePlatformInput,
       RuntimePlatformOutputPayload
     >({
       id: "main",
       title: "Runtime Platform",
-      workflow: runtimePlatformWorkflow,
+      workflow: runtimePlatformProject,
       createInput() {
         return {};
       },
@@ -56,5 +56,5 @@ export const executor = workflow.defineExecutor<
   ],
 });
 
-export { runtimePlatformWorkflow as workflow };
-export default runtimePlatformWorkflow;
+export { runtimePlatformProject as workflow };
+export default runtimePlatformProject;

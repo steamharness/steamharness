@@ -28,7 +28,7 @@ const SESSION_ID_STATE_KEY = "claude-agent.sessionId";
 const DEFAULT_ALLOWED_TOOLS = ["Read", "Edit", "Glob", "Grep", "Bash"];
 const DEFAULT_PERMISSION_MODE: PermissionMode = "acceptEdits";
 const PERMISSION_MODES: PermissionMode[] = ["acceptEdits", "dontAsk", "bypassPermissions", "default"];
-const KNOWLEDGE_DOCUMENTS_ALLOWED_TOOL = "mcp__workflow-knowledge-documents__knowledge_documents";
+const KNOWLEDGE_DOCUMENTS_ALLOWED_TOOL = "mcp__steamharness-knowledge-documents__knowledge_documents";
 // keeps Claude Agent built-in tools visible in the shared permission
 // panel and lets canUseTool enforce host overrides at call time.
 const REGISTERED_CLAUDE_TOOLS = [
@@ -57,9 +57,9 @@ const REGISTERED_CLAUDE_TOOLS = [
   "ExitWorktree",
   KNOWLEDGE_DOCUMENTS_ALLOWED_TOOL,
 ];
-const toolApproval = workflow.createToolApprovalGate();
+const toolApproval = steamharness.createToolApprovalGate();
 
-const inputNode = workflow.createInputNode<ClaudeAgentInput, ClaudeAgentParsedInput>({
+const inputNode = steamharness.createInputNode<ClaudeAgentInput, ClaudeAgentParsedInput>({
   name: "claude-agent-input",
   parse(input, context) {
     const rawDir = input.workdir ?? "~";
@@ -89,12 +89,12 @@ const inputNode = workflow.createInputNode<ClaudeAgentInput, ClaudeAgentParsedIn
   },
 });
 
-const outputNode = workflow.createOutputNode<ClaudeAgentSessionInput, ClaudeAgentOutputPayload>({
+const outputNode = steamharness.createOutputNode<ClaudeAgentSessionInput, ClaudeAgentOutputPayload>({
   name: "claude-agent-output",
   async *stream(input, context) {
-    const baseUrlEnv = readOptionalString(workflow.getEnv("ANTHROPIC_BASE_URL"));
-    const apiKeyEnv = readOptionalString(workflow.getEnv("ANTHROPIC_API_KEY"));
-    let pendingToolApprovalError: workflow.HarnessError | undefined;
+    const baseUrlEnv = readOptionalString(steamharness.getEnv("ANTHROPIC_BASE_URL"));
+    const apiKeyEnv = readOptionalString(steamharness.getEnv("ANTHROPIC_API_KEY"));
+    let pendingToolApprovalError: steamharness.HarnessError | undefined;
     const pendingToolApprovalItems: ToolApprovalOutputItemInput[] = [];
     let toolCallCount = 0;
     let toolApprovalCount = 0;
@@ -158,7 +158,7 @@ const outputNode = workflow.createOutputNode<ClaudeAgentSessionInput, ClaudeAgen
         }
         toolApprovalCount++;
         for (const chunk of createToolApprovalDecisionChunks(item, toolApprovalCount)) {
-          yield workflow.createOutputItemChunk(chunk);
+          yield steamharness.createOutputItemChunk(chunk);
         }
       }
       throwPendingToolApprovalError(pendingToolApprovalError);
@@ -171,7 +171,7 @@ const outputNode = workflow.createOutputNode<ClaudeAgentSessionInput, ClaudeAgen
             activeBlockType = "text";
             textBlockCount++;
             currentTextItemId = `claude-agent-text-${textBlockCount}`;
-            yield workflow.createOutputItemChunk({
+            yield steamharness.createOutputItemChunk({
               type: "output_item_start",
               item: { id: currentTextItemId, title: "Output", content: "", contentType: "markdown", collapsed: false },
             });
@@ -182,7 +182,7 @@ const outputNode = workflow.createOutputNode<ClaudeAgentSessionInput, ClaudeAgen
               for (const chunk of createToolResultChunks(lastToolItemId, "success", lastToolResult, {
                 startInfo: lastToolStart,
               })) {
-                yield workflow.createOutputItemChunk(chunk);
+                yield steamharness.createOutputItemChunk(chunk);
               }
             }
             lastToolResult = undefined;
@@ -191,7 +191,7 @@ const outputNode = workflow.createOutputNode<ClaudeAgentSessionInput, ClaudeAgen
             lastToolItemId = `claude-agent-tool-${toolCallCount}`;
             lastToolStart = summarizeToolInputForDisplay(activeToolName, block.input);
             for (const chunk of createToolUseChunks({ name: activeToolName, input: block.input }, toolCallCount)) {
-              yield workflow.createOutputItemChunk(chunk);
+              yield steamharness.createOutputItemChunk(chunk);
             }
           } else if (block.type === "tool_result") {
             activeBlockType = "tool_result";
@@ -202,12 +202,12 @@ const outputNode = workflow.createOutputNode<ClaudeAgentSessionInput, ClaudeAgen
           if (delta.type === "text_delta" && activeBlockType === "text" && currentTextItemId) {
             const text = delta.text as string;
             if (text) {
-              yield workflow.createOutputItemChunk({ type: "output_item_delta", itemId: currentTextItemId, delta: text });
+              yield steamharness.createOutputItemChunk({ type: "output_item_delta", itemId: currentTextItemId, delta: text });
             }
           }
         } else if (event.type === "content_block_stop") {
           if (activeBlockType === "text" && currentTextItemId) {
-            yield workflow.createOutputItemChunk({ type: "output_item_end", itemId: currentTextItemId });
+            yield steamharness.createOutputItemChunk({ type: "output_item_end", itemId: currentTextItemId });
             currentTextItemId = undefined;
           }
           activeBlockType = null;
@@ -217,7 +217,7 @@ const outputNode = workflow.createOutputNode<ClaudeAgentSessionInput, ClaudeAgen
           for (const chunk of createToolResultChunks(lastToolItemId, "success", lastToolResult, {
             startInfo: lastToolStart,
           })) {
-            yield workflow.createOutputItemChunk(chunk);
+            yield steamharness.createOutputItemChunk(chunk);
           }
           lastToolItemId = undefined;
           lastToolResult = undefined;
@@ -233,7 +233,7 @@ const outputNode = workflow.createOutputNode<ClaudeAgentSessionInput, ClaudeAgen
 
     throwPendingToolApprovalError(pendingToolApprovalError);
     if (currentTextItemId) {
-      yield workflow.createOutputItemChunk({ type: "output_item_end", itemId: currentTextItemId });
+      yield steamharness.createOutputItemChunk({ type: "output_item_end", itemId: currentTextItemId });
     }
   },
   async format(stream, input, context) {
@@ -248,7 +248,7 @@ const outputNode = workflow.createOutputNode<ClaudeAgentSessionInput, ClaudeAgen
     });
 
     return {
-      ...workflow.createOutputPayload({ items: stream.items }),
+      ...steamharness.createOutputPayload({ items: stream.items }),
       prompt: input.prompt,
       toolCallCount: toolItems.length,
       resultSubtype: "success",
@@ -256,17 +256,17 @@ const outputNode = workflow.createOutputNode<ClaudeAgentSessionInput, ClaudeAgen
   },
 });
 
-export const claudeAgentWorkflow = workflow.defineWorkflow<ClaudeAgentInput, ClaudeAgentOutputPayload>({
+export const claudeAgentProject = steamharness.defineProject<ClaudeAgentInput, ClaudeAgentOutputPayload>({
   name: "claude-agent",
   async run(input, context) {
-    const parsed = await workflow.runNode(inputNode, input, context);
+    const parsed = await steamharness.runNode(inputNode, input, context);
     const state = await context.conversation.getValue();
     const storedSessionId = readOptionalString(state.values[SESSION_ID_STATE_KEY]);
     const isResume = storedSessionId !== undefined;
     const sessionId = storedSessionId ?? randomUUID();
     await context.conversation.setValue(SESSION_ID_STATE_KEY, sessionId);
 
-    const result = await workflow.runStreamNode(
+    const result = await steamharness.runStreamNode(
       outputNode,
       { ...parsed, sessionId, isResume },
       context,
@@ -275,9 +275,9 @@ export const claudeAgentWorkflow = workflow.defineWorkflow<ClaudeAgentInput, Cla
   },
 });
 
-export const executor = workflow.defineExecutor<ClaudeAgentInput, ClaudeAgentOutputPayload>({
+export const executor = steamharness.defineExecutor<ClaudeAgentInput, ClaudeAgentOutputPayload>({
   projectType: "conversation",
-  workflow: claudeAgentWorkflow,
+  workflow: claudeAgentProject,
   tokenUsage: {
     enabled: true,
     display: true,
@@ -445,7 +445,7 @@ export const executor = workflow.defineExecutor<ClaudeAgentInput, ClaudeAgentOut
       autoApprove: true,
     },
     {
-      name: "mcp__workflow-knowledge-documents__knowledge_documents",
+      name: "mcp__steamharness-knowledge-documents__knowledge_documents",
       label: "Knowledge Documents",
       description: "Manage PersistentValue-backed project markdown knowledge documents through the Claude MCP tool.",
       enabled: true,
@@ -521,13 +521,13 @@ export const executor = workflow.defineExecutor<ClaudeAgentInput, ClaudeAgentOut
   },
 });
 
-export { claudeAgentWorkflow as workflow };
+export { claudeAgentProject as workflow };
 export {
   createCanUseTool as __test_createCanUseTool,
   inputNode as __test_inputNode,
   outputNode as __test_outputNode,
 };
-export default claudeAgentWorkflow;
+export default claudeAgentProject;
 
 function requireOutput(output: ClaudeAgentOutputPayload | undefined): ClaudeAgentOutputPayload {
   if (output === undefined) {
@@ -536,7 +536,7 @@ function requireOutput(output: ClaudeAgentOutputPayload | undefined): ClaudeAgen
   return output;
 }
 
-function throwPendingToolApprovalError(error: workflow.HarnessError | undefined): void {
+function throwPendingToolApprovalError(error: steamharness.HarnessError | undefined): void {
   if (error !== undefined) {
     // Claude Agent SDK turns canUseTool rejections into a model-visible
     // denial result. Re-throw from the workflow stream so shared user-input owns
@@ -546,7 +546,7 @@ function throwPendingToolApprovalError(error: workflow.HarnessError | undefined)
 }
 
 function parseInputArgs(args: string[]): ClaudeAgentInput {
-  const defaults = workflow.parseConversationDefaultInputArgs(args);
+  const defaults = steamharness.parseConversationDefaultInputArgs(args);
   const defaultMessage = defaults.message.trim();
   let prompt = defaults.message;
   let systemPrompt: string | undefined;
@@ -594,7 +594,7 @@ function parseInputArgs(args: string[]): ClaudeAgentInput {
     allowedTools,
     permissionMode,
     workdir,
-    model: readOptionalString(model) ?? readOptionalString(workflow.getEnv("ANTHROPIC_MODEL")),
+    model: readOptionalString(model) ?? readOptionalString(steamharness.getEnv("ANTHROPIC_MODEL")),
     knowledgeTools: knowledgeTools ?? true,
   };
 }
@@ -679,10 +679,10 @@ function resolveClaudePermissionMode(
     };
   },
 ): PermissionMode {
-  const needsWorkflowApproval = context.toolPermissions?.definitions?.some((definition) =>
+  const needsProjectApproval = context.toolPermissions?.definitions?.some((definition) =>
     context.toolPermissions?.getTool(definition.name)?.autoApprove === false
   ) === true;
-  if (!needsWorkflowApproval) {
+  if (!needsProjectApproval) {
     return requestedMode;
   }
 
@@ -696,7 +696,7 @@ function createCanUseTool(context: {
   toolPermissions?: {
     getTool(name: string): { label?: string; description?: string } | undefined;
   };
-}, onPendingApproval?: (error: workflow.HarnessError) => void, onApprovalDecision?: (item: ToolApprovalOutputItemInput) => void): CanUseTool {
+}, onPendingApproval?: (error: steamharness.HarnessError) => void, onApprovalDecision?: (item: ToolApprovalOutputItemInput) => void): CanUseTool {
   return async (toolName, toolInput, options): Promise<PermissionResult> => {
     const tool = context.toolPermissions?.getTool(toolName);
     const approvalInput = {
@@ -723,7 +723,7 @@ function createCanUseTool(context: {
       }
       return { behavior: "allow", updatedInput: toolInput };
     } catch (error) {
-      if (error instanceof workflow.HarnessError && error.type === "tool_permission_denied") {
+      if (error instanceof steamharness.HarnessError && error.type === "tool_permission_denied") {
         onApprovalDecision?.({
           rawToolName: toolName,
           label: approvalInput.label,
@@ -739,7 +739,7 @@ function createCanUseTool(context: {
           message: error.message,
         };
       }
-      if (error instanceof workflow.HarnessError && error.type === "user_input_required") {
+      if (error instanceof steamharness.HarnessError && error.type === "user_input_required") {
         onPendingApproval?.(error);
       }
       throw error;
@@ -758,12 +758,12 @@ interface ToolApprovalOutputItemInput {
   values?: Record<string, unknown>;
 }
 
-function readApprovalRequestId(error: workflow.HarnessError): string | undefined {
+function readApprovalRequestId(error: steamharness.HarnessError): string | undefined {
   const requestId = error.metadata?.["requestId"];
   return typeof requestId === "string" ? requestId : undefined;
 }
 
-function readApprovalValues(error: workflow.HarnessError): Record<string, unknown> | undefined {
+function readApprovalValues(error: steamharness.HarnessError): Record<string, unknown> | undefined {
   const values = error.metadata?.["values"];
   return isRecord(values) ? values : undefined;
 }

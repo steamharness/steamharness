@@ -1,7 +1,7 @@
 import type { RuntimeApi } from 'steamharness/runtime-api';
 import type { RunOutputPayload } from 'steamharness';
 
-const workflow = (globalThis as unknown as { workflow: RuntimeApi }).workflow;
+const steamharness = (globalThis as unknown as { steamharness: RuntimeApi }).steamharness;
 interface Input {
   errCode: number; errMessage: string; subject: string; style: string; rounds: number;
   review: boolean; delay: number; note: string; files: unknown[]; fail: boolean;
@@ -12,13 +12,13 @@ function inputFiles(value: unknown): unknown[] {
   const parsed: unknown = JSON.parse(value);
   return Array.isArray(parsed) ? parsed : parsed ? [parsed] : [];
 }
-const prepareNode = workflow.createInputNode<Input>({
+const prepareNode = steamharness.createInputNode<Input>({
   name: 'prepare',
   parse(input) { console.log(`Preparing ${input.subject}`); return input; },
 });
-const conciseNode = workflow.createInputNode<Input>({ name: 'concise', parse: input => ({ ...input, note: 'Brief summary' }) });
-const detailedNode = workflow.createInputNode<Input>({ name: 'detailed', parse: input => ({ ...input, note: 'Detailed summary' }) });
-const step = workflow.createInputNode<Input>({
+const conciseNode = steamharness.createInputNode<Input>({ name: 'concise', parse: input => ({ ...input, note: 'Brief summary' }) });
+const detailedNode = steamharness.createInputNode<Input>({ name: 'detailed', parse: input => ({ ...input, note: 'Detailed summary' }) });
+const step = steamharness.createInputNode<Input>({
   name: 'iteration',
   async parse(input, context) {
     context.abortSignal.throwIfAborted(); await new Promise(resolve => setTimeout(resolve, input.delay));
@@ -26,61 +26,61 @@ const step = workflow.createInputNode<Input>({
     console.log(`Iteration for ${input.subject}`); return input;
   },
 });
-const previewNode = workflow.createOutputNode<Input, RunOutputPayload>({
+const previewNode = steamharness.createOutputNode<Input, RunOutputPayload>({
   name: 'preview',
   async *stream(input, context) {
     const text = `## ${input.subject}\n\n${input.note}\n\n\u5df2\u5b8c\u6210 ${input.rounds} \u8f6e\u672c\u5730\u5904\u7406\u3002`;
-    yield workflow.createOutputItemChunk({ type: 'output_item_start', item: { id: 'preview', title: 'Preview', contentType: 'markdown', content: '' } });
+    yield steamharness.createOutputItemChunk({ type: 'output_item_start', item: { id: 'preview', title: 'Preview', contentType: 'markdown', content: '' } });
     for (const delta of text.match(/.{1,5}|\n/g) ?? []) {
       context.abortSignal.throwIfAborted(); await new Promise(resolve => setTimeout(resolve, input.delay));
-      yield workflow.createOutputItemChunk({ type: 'output_item_delta', itemId: 'preview', delta });
+      yield steamharness.createOutputItemChunk({ type: 'output_item_delta', itemId: 'preview', delta });
     }
-    yield workflow.createOutputItemChunk({ type: 'output_item_end', itemId: 'preview' });
+    yield steamharness.createOutputItemChunk({ type: 'output_item_end', itemId: 'preview' });
   },
-  format: stream => workflow.createOutputPayload({ items: stream.items }),
+  format: stream => steamharness.createOutputPayload({ items: stream.items }),
 });
-const reviewNode = workflow.createUserInputNode<Input>({
+const reviewNode = steamharness.createUserInputNode<Input>({
   name: 'review', title: '\u786e\u8ba4\u5bfc\u51fa', description: '\u5ba1\u6838\u7ed3\u679c',
   params: [
     { name: 'approved', type: 'boolean', label: '\u6279\u51c6\u5bfc\u51fa', required: true },
     { name: 'notes', type: 'string', control: 'textarea', label: '\u5907\u6ce8' },
   ], defaultValues: { approved: true },
 });
-const exportResult = workflow.createOutputNode<Input, RunOutputPayload>({
+const exportResult = steamharness.createOutputNode<Input, RunOutputPayload>({
   name: 'export',
   async format(input, context) {
     const text = `${input.subject}\n${input.note}\nRounds: ${input.rounds}\nFiles: ${input.files.length}\n`;
     const file = await context.files.createFile({ name: 'workflow-result.txt', mimeType: 'text/plain', buffer: new TextEncoder().encode(text) });
-    return workflow.createOutputPayload({ items: [{ id: 'export', title: 'Export', contentType: 'markdown', content: `[workflow-result.txt](${file.path ?? file.url ?? file.id})` }] });
+    return steamharness.createOutputPayload({ items: [{ id: 'export', title: 'Export', contentType: 'markdown', content: `[workflow-result.txt](${file.path ?? file.url ?? file.id})` }] });
   },
 });
-const report = workflow.defineWorkflow<Input, RunOutputPayload>({
+const report = steamharness.defineProject<Input, RunOutputPayload>({
   name: 'studio-report',
   async run(input, context) {
-    const prepared = await workflow.runNode(prepareNode, input, context);
-    const selected = await workflow.runIf(prepared, context, {
-      name: 'Style', branches: [{ label: 'Brief', condition: value => value.style === 'brief', run: (value, branchContext) => workflow.runNode(conciseNode, value, branchContext) }],
-      else: { label: 'Detailed', run: (value, branchContext) => workflow.runNode(detailedNode, value, branchContext) },
+    const prepared = await steamharness.runNode(prepareNode, input, context);
+    const selected = await steamharness.runIf(prepared, context, {
+      name: 'Style', branches: [{ label: 'Brief', condition: value => value.style === 'brief', run: (value, branchContext) => steamharness.runNode(conciseNode, value, branchContext) }],
+      else: { label: 'Detailed', run: (value, branchContext) => steamharness.runNode(detailedNode, value, branchContext) },
     });
-    const looped = await workflow.runFor(selected, context, {
+    const looped = await steamharness.runFor(selected, context, {
       name: 'Rounds', items: () => Array.from({ length: Math.min(10, Math.max(1, input.rounds)) }, (_, index) => index),
-      run: (value, _item, _index, loopContext) => workflow.runNode(step, value, loopContext),
+      run: (value, _item, _index, loopContext) => steamharness.runNode(step, value, loopContext),
     });
-    const output = await workflow.runStreamNode(previewNode, looped, context);
+    const output = await steamharness.runStreamNode(previewNode, looped, context);
     if (input.review) {
-      const decision = await workflow.runNode(reviewNode, looped, context);
+      const decision = await steamharness.runNode(reviewNode, looped, context);
       if (!decision.values.approved) { return output.output!; }
     }
-    const exported = await workflow.runNode(exportResult, looped, context);
-    return workflow.createOutputPayload({ items: [...output.output!.items, ...exported.items] });
+    const exported = await steamharness.runNode(exportResult, looped, context);
+    return steamharness.createOutputPayload({ items: [...output.output!.items, ...exported.items] });
   },
 });
-const echo = workflow.defineWorkflow<Input, RunOutputPayload>({
-  name: 'studio-echo', async run(input, context) { return (await workflow.runStreamNode(previewNode, input, context)).output!; },
+const echo = steamharness.defineProject<Input, RunOutputPayload>({
+  name: 'studio-echo', async run(input, context) { return (await steamharness.runStreamNode(previewNode, input, context)).output!; },
 });
-export const executor = workflow.defineExecutor({
+export const executor = steamharness.defineExecutor({
   projectType: 'workflow', defaultEntrypoint: 'report', entrypoints: [
-    workflow.defineEntrypoint({
+    steamharness.defineEntrypoint({
       id: 'report', title: '\u751f\u6210\u62a5\u544a', description: '\u79bb\u7ebf\u62a5\u544a\u5904\u7406', group: { id: 'reports', title: '\u62a5\u544a', order: 1 }, workflow: report,
       params: [
         { name: 'subject', flag: '--subject', type: 'string', label: '\u4e3b\u9898', required: true, defaultValue: '\u672c\u5730\u5de5\u4f5c\u6d41' },
@@ -103,7 +103,7 @@ export const executor = workflow.defineExecutor({
       createInput: context => ({ errCode: 0, errMessage: '', subject: String(context.paramValues.subject), style: String(context.paramValues.style || 'brief'), rounds: Number(context.paramValues.rounds || 2),
         review: String(context.paramValues.review ?? 'true') === 'true', delay: Math.max(0, Math.min(2000, Number(context.paramValues.delay ?? 50))), note: '', files: inputFiles(context.paramValues.files), fail: String(context.paramValues.fail ?? 'false') === 'true' }),
     }),
-    workflow.defineEntrypoint({
+    steamharness.defineEntrypoint({
       id: 'echo', title: '\u6d41\u5f0f\u9884\u89c8', group: { id: 'utilities', title: '\u5de5\u5177', order: 2 }, workflow: echo,
       params: [{ name: 'subject', flag: '--subject', type: 'string', label: '\u4e3b\u9898', defaultValue: '\u6d41\u5f0f\u8f93\u51fa', required: true }],
       createInput: context => ({ errCode: 0, errMessage: '', subject: String(context.paramValues.subject), note: 'Offline preview', rounds: 1, review: false, delay: 25, style: 'brief', files: [], fail: false }),

@@ -1,4 +1,4 @@
-import { readWorkflowCliAuthConfigSync } from "../../auth-config";
+import { readProjectCliAuthConfigSync } from "../../auth-config";
 import { HarnessError } from "../../workflow/errors";
 import { createLLMProvider } from "./factory";
 import {
@@ -417,7 +417,7 @@ function resolveServerLLMConnection(env: NodeJS.ProcessEnv): ServerLLMConnection
   );
   if (specific) return specific;
 
-  const saved = readWorkflowCliAuthConfigSync(env);
+  const saved = readProjectCliAuthConfigSync(env);
   if (saved.aiServerUrl?.trim() && saved.aiApiKey?.trim()) {
     return normalizeConnection(saved.aiServerUrl, saved.aiApiKey);
   }
@@ -445,7 +445,7 @@ function readConnectionPair(
       type: "input_validation",
       message: `${names} must be configured together.`,
       metadata: {
-        steamHarnessI18n: createI18nDescriptor("workflowServerConnectionPairRequired", { names }),
+        steamHarnessI18n: createI18nDescriptor("projectServerConnectionPairRequired", { names }),
       },
     });
   }
@@ -460,21 +460,21 @@ function normalizeConnection(serverUrl: string, token: string): ServerLLMConnect
     throw new HarnessError({
       type: "input_validation",
       message: "The SteamHarness Server URL is invalid.",
-      metadata: { steamHarnessI18n: createI18nDescriptor("workflowServerUrlInvalid") },
+      metadata: { steamHarnessI18n: createI18nDescriptor("projectServerUrlInvalid") },
     });
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new HarnessError({
       type: "input_validation",
       message: "The SteamHarness Server URL must use HTTP or HTTPS.",
-      metadata: { steamHarnessI18n: createI18nDescriptor("workflowServerUrlProtocolInvalid") },
+      metadata: { steamHarnessI18n: createI18nDescriptor("projectServerUrlProtocolInvalid") },
     });
   }
   if (parsed.username || parsed.password || parsed.search || parsed.hash) {
     throw new HarnessError({
       type: "input_validation",
       message: "The SteamHarness Server URL must not contain credentials, query parameters, or fragments.",
-      metadata: { steamHarnessI18n: createI18nDescriptor("workflowServerUrlInvalid") },
+      metadata: { steamHarnessI18n: createI18nDescriptor("projectServerUrlInvalid") },
     });
   }
   return { serverUrl: parsed.toString().replace(/\/$/, ""), token: token.trim() };
@@ -659,7 +659,7 @@ async function readApiResponse<T>(response: Response): Promise<ApiResponse<T>> {
   return {
     errCode: response.status,
     errMessage: `SteamHarness Server returned an invalid response (HTTP ${response.status}).`,
-    steamHarnessI18n: createI18nDescriptor("workflowServerInvalidResponse", { status: response.status }),
+    steamHarnessI18n: createI18nDescriptor("projectServerInvalidResponse", { status: response.status }),
   };
 }
 
@@ -692,7 +692,7 @@ function protocolError(): HarnessError {
     type: "provider_call",
     message: "The private AI service returned an invalid AI credential catalog.",
     metadata: {
-      steamHarnessI18n: createI18nDescriptor("workflowServerInvalidAiCatalog"),
+      steamHarnessI18n: createI18nDescriptor("projectServerInvalidAiCatalog"),
     },
   });
 }

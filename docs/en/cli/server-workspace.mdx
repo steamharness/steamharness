@@ -13,7 +13,7 @@ description: "Manage Server project uploads, immutable source versions and data 
 | --- | --- |
 | [login](/en/cli/workspace/login), [logout](/en/cli/workspace/logout), [status](/en/cli/workspace/status) | Sign in, sign out and inspect connection status. |
 | [health](/en/cli/workspace/health) | Check Server health. |
-| [pack](/en/cli/workspace/pack) | Package files using `.workflowignore`. |
+| [pack](/en/cli/workspace/pack) | Package files using `.steamharnessignore`. |
 | [upload](/en/cli/workspace/upload) | Upload source or a project group; optionally publish. |
 | `preparation` | Read file processing progress and failures. |
 | [publish](/en/cli/workspace/publish) | Save an immutable source version and update latest. |
@@ -50,7 +50,7 @@ steamharness workspace versions hello
 steamharness workspace download hello --target latest --path ./downloaded-hello
 ```
 
-The project argument accepts a UUID, name or local directory. CLI prefers the directory's stable `package.json.id`. Packaging uses each root's `.workflowignore`, ignoring `.gitignore`; required entries and the rules file cannot be excluded. Included dependencies lock exact versions and source hashes. Downloads check each project's source permission and report skip reasons and request links. Downloads have no operating system restriction.
+The project argument accepts a UUID, name or local directory. CLI prefers the directory's stable `package.json.id`. Packaging uses each root's `.steamharnessignore`, ignoring `.gitignore`; required entries and the rules file cannot be excluded. Included dependencies lock exact versions and source hashes. Downloads check each project's source permission and report skip reasons and request links. Downloads have no operating system restriction.
 
 ## Business Files
 

@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
-  runLocalWorkflowWithReport,
+  runLocalProjectWithReport,
   type KVStore,
 } from "../index";
 
@@ -14,21 +14,21 @@ test("local, server, and both declarations enforce their storage boundaries", as
   const localStore = createMemoryKVStore();
   const serverStore = createMemoryKVStore();
   const projects = await Promise.all([
-    createStorageWorkflow("local"),
-    createStorageWorkflow("server"),
-    createStorageWorkflow("both"),
+    createStorageProject("local"),
+    createStorageProject("server"),
+    createStorageProject("both"),
   ]);
 
   try {
-    const localReport = await runStorageWorkflow(projects[0]!, "local", localStore, serverStore);
+    const localReport = await runStorageProject(projects[0]!, "local", localStore, serverStore);
     assert.equal(localReport.status, "success");
     assert.equal(localStore.values.get(`kv:project:${PROJECT_ID}:value`), "local");
 
-    const deniedServer = await runStorageWorkflow(projects[0]!, "server", localStore, serverStore);
+    const deniedServer = await runStorageProject(projects[0]!, "server", localStore, serverStore);
     assert.equal(deniedServer.status, "failed");
     assert.match(readReportError(deniedServer), /does not allow server storage access/);
 
-    const serverReport = await runStorageWorkflow(projects[1]!, "server", localStore, serverStore);
+    const serverReport = await runStorageProject(projects[1]!, "server", localStore, serverStore);
     assert.equal(serverReport.status, "success");
     assert.equal(serverStore.values.get(`kv:project:${PROJECT_ID}:value`), "server");
     assert.equal(
@@ -40,8 +40,8 @@ test("local, server, and both declarations enforce their storage boundaries", as
       PROJECT_ID,
     );
 
-    const bothLocal = await runStorageWorkflow(projects[2]!, "local", localStore, serverStore);
-    const bothServer = await runStorageWorkflow(projects[2]!, "server", localStore, serverStore);
+    const bothLocal = await runStorageProject(projects[2]!, "local", localStore, serverStore);
+    const bothServer = await runStorageProject(projects[2]!, "server", localStore, serverStore);
     assert.equal(bothLocal.status, "success");
     assert.equal(bothServer.status, "success");
   } finally {
@@ -50,9 +50,9 @@ test("local, server, and both declarations enforce their storage boundaries", as
 });
 
 test("both mode stays usable offline until server storage is accessed", async () => {
-  const projectDir = await createStorageWorkflow("both");
+  const projectDir = await createStorageProject("both");
   try {
-    const local = await runLocalWorkflowWithReport({
+    const local = await runLocalProjectWithReport({
       projectDir,
       args: ["--target", "local"],
       storage: {
@@ -66,7 +66,7 @@ test("both mode stays usable offline until server storage is accessed", async ()
     });
     assert.equal(local.status, "success");
 
-    const server = await runLocalWorkflowWithReport({
+    const server = await runLocalProjectWithReport({
       projectDir,
       args: ["--target", "server"],
       storage: {
@@ -86,15 +86,15 @@ test("both mode stays usable offline until server storage is accessed", async ()
 });
 
 test("legacy storage declarations are rejected and removed context getters are absent", async () => {
-  const legacyDir = await createStorageWorkflow(undefined);
-  const migratedDir = await createStorageWorkflow("local", true);
+  const legacyDir = await createStorageProject(undefined);
+  const migratedDir = await createStorageProject("local", true);
   try {
     await assert.rejects(
-      () => runLocalWorkflowWithReport({ projectDir: legacyDir }),
+      () => runLocalProjectWithReport({ projectDir: legacyDir }),
       /dataStorage\.mode must be declared before this project can run or access data/,
     );
 
-    const report = await runLocalWorkflowWithReport({
+    const report = await runLocalProjectWithReport({
       projectDir: migratedDir,
       storage: { host: "local", local: { kvStore: createMemoryKVStore() } },
     });
@@ -107,13 +107,13 @@ test("legacy storage declarations are rejected and removed context getters are a
   }
 });
 
-async function runStorageWorkflow(
+async function runStorageProject(
   projectDir: string,
   target: "local" | "server",
   localStore: KVStore,
   serverStore: KVStore,
 ) {
-  return runLocalWorkflowWithReport({
+  return runLocalProjectWithReport({
     projectDir,
     args: ["--target", target],
     storage: {
@@ -127,7 +127,7 @@ async function runStorageWorkflow(
   });
 }
 
-async function createStorageWorkflow(
+async function createStorageProject(
   mode: "local" | "server" | "both" | undefined,
   useLegacyGetter = false,
 ): Promise<string> {
@@ -141,7 +141,7 @@ async function createStorageWorkflow(
       : { steamHarness: { projectInfo: { dataStorage: { mode } } } }),
   }));
   await writeFile(path.join(projectDir, "index.ts"), `
-    const storageWorkflow = workflow.defineWorkflow({
+    const storageProject = steamharness.defineProject({
       name: "storage-context-test",
       async run(input, context) {
         ${useLegacyGetter
@@ -159,21 +159,21 @@ async function createStorageWorkflow(
         return { errCode: 0, errMessage: "", target: input.target };
       },
     });
-    export const executor = workflow.defineExecutor({
+    export const executor = steamharness.defineExecutor({
       projectType: "workflow",
       defaultEntrypoint: "main",
-      entrypoints: [workflow.defineEntrypoint({
+      entrypoints: [steamharness.defineEntrypoint({
         id: "main",
         title: "Main",
-        workflow: storageWorkflow,
+        workflow: storageProject,
         params: [{ name: "target", flag: "--target", type: "string", defaultValue: "local" }],
         createInput({ paramValues }) {
           return { target: String(paramValues.target ?? "local") };
         },
       })],
     });
-    export { storageWorkflow as workflow };
-    export default storageWorkflow;
+    export { storageProject as workflow };
+    export default storageProject;
   `);
   return projectDir;
 }
@@ -207,7 +207,7 @@ function createMemoryKVStore(): KVStore & {
   };
 }
 
-function readReportError(report: Awaited<ReturnType<typeof runLocalWorkflowWithReport>>): string {
+function readReportError(report: Awaited<ReturnType<typeof runLocalProjectWithReport>>): string {
   return report.result.ok
     ? String((report.result.data as { errMessage?: string }).errMessage ?? "")
     : report.result.error.message;

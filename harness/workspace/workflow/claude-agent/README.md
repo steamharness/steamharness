@@ -56,7 +56,7 @@ This workflow registers Claude Agent tools with steamharness tool permissions:
 `BashOutput`, `KillBash`, `WebFetch`, `WebSearch`, `Task`, `ExitPlanMode`,
 `ListMcpResources`, `ReadMcpResource`, `NotebookRead`, `NotebookEdit`,
 `TodoRead`, `TodoWrite`, `AskUserQuestion`, `EnterWorktree`, `ExitWorktree`, and
-`mcp__workflow-knowledge-documents__knowledge_documents`. They are enabled and
+`mcp__steamharness-knowledge-documents__knowledge_documents`. They are enabled and
 auto-approved by default so CLI runs follow the executor defaults. App and
 server embed runs can override those defaults from the Run workspace permissions
 panel; disabled registered tools are removed from the SDK `tools` list, and

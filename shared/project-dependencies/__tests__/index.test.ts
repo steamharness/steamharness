@@ -6,12 +6,12 @@ import {
   translateSteamHarnessError,
 } from "@steamharness/i18n";
 import {
-  createExternalWorkflowProjectDependencyLocks,
-  createWorkflowProjectDependencyLocks,
-  finalizeWorkflowProjectDependencyLock,
+  createExternalProjectDependencyLocks,
+  createProjectDependencyLocks,
+  finalizeProjectDependencyLock,
   isProjectGroupHostDataPath,
-  parseWorkflowProjectDependencyLocks,
-  parseWorkflowProjectGroupManifest,
+  parseProjectDependencyLocks,
+  parseProjectGroupManifest,
 } from "../index";
 
 const ROOT_ID = "00000000-0000-4000-8000-000000000001";
@@ -29,7 +29,7 @@ describe("workflow project dependencies", () => {
   it("attaches translatable descriptors to malformed project-group input", async () => {
     let failure: unknown;
     try {
-      parseWorkflowProjectGroupManifest({ version: 2 });
+      parseProjectGroupManifest({ version: 2 });
     } catch (error) {
       failure = error;
     }
@@ -51,39 +51,39 @@ describe("workflow project dependencies", () => {
   });
 
   it("derives locks from confirmed related projects", () => {
-    expect(createExternalWorkflowProjectDependencyLocks(relatedProjects)).toEqual([{
+    expect(createExternalProjectDependencyLocks(relatedProjects)).toEqual([{
       alias: "stocks",
       projectId: SOURCE_ID,
       delivery: "external",
     }]);
-    expect(createWorkflowProjectDependencyLocks(relatedProjects, [{
+    expect(createProjectDependencyLocks(relatedProjects, [{
       alias: "stocks",
       delivery: "included",
     }])[0]?.delivery).toBe("included");
   });
 
   it("requires published included locks to pin exact version and source hash", () => {
-    expect(() => parseWorkflowProjectDependencyLocks([{
-      ...createWorkflowProjectDependencyLocks(relatedProjects, [{ alias: "stocks", delivery: "included" }])[0],
+    expect(() => parseProjectDependencyLocks([{
+      ...createProjectDependencyLocks(relatedProjects, [{ alias: "stocks", delivery: "included" }])[0],
     }], { published: true })).toThrow("must pin version and sourceHash");
 
-    expect(finalizeWorkflowProjectDependencyLock(
-      createWorkflowProjectDependencyLocks(relatedProjects, [{ alias: "stocks", delivery: "included" }])[0]!,
+    expect(finalizeProjectDependencyLock(
+      createProjectDependencyLocks(relatedProjects, [{ alias: "stocks", delivery: "included" }])[0]!,
       { version: "1.2.3", sourceHash: "a".repeat(64) },
     )).toMatchObject({ version: "1.2.3", sourceHash: "a".repeat(64) });
   });
 
   it("rejects malformed optional lock and manifest fields instead of treating them as absent", () => {
-    const included = createWorkflowProjectDependencyLocks(relatedProjects, [{
+    const included = createProjectDependencyLocks(relatedProjects, [{
       alias: "stocks",
       delivery: "included",
     }])[0]!;
-    expect(() => parseWorkflowProjectDependencyLocks([{
+    expect(() => parseProjectDependencyLocks([{
       ...included,
       version: 12,
       sourceHash: "a".repeat(64),
     }], { published: true })).toThrow("dependencies[0].version must be a non-empty string");
-    expect(() => parseWorkflowProjectGroupManifest({
+    expect(() => parseProjectGroupManifest({
       version: 1,
       rootProjectId: ROOT_ID,
       projects: [{
@@ -97,7 +97,7 @@ describe("workflow project dependencies", () => {
   });
 
   it("validates a project-group manifest and its included archive mapping", () => {
-    expect(parseWorkflowProjectGroupManifest({
+    expect(parseProjectGroupManifest({
       version: 1,
       rootProjectId: ROOT_ID,
       projects: [
@@ -113,7 +113,7 @@ describe("workflow project dependencies", () => {
   });
 
   it("accepts exact project versions and rejects malformed ones", () => {
-    const manifest = parseWorkflowProjectGroupManifest({
+    const manifest = parseProjectGroupManifest({
       version: 1,
       rootProjectId: ROOT_ID,
       projects: [{
@@ -125,7 +125,7 @@ describe("workflow project dependencies", () => {
       dependencies: [],
     });
     expect(manifest.projects[0]?.version).toBe("0.1.2");
-    expect(() => parseWorkflowProjectGroupManifest({
+    expect(() => parseProjectGroupManifest({
       version: 1,
       rootProjectId: ROOT_ID,
       projects: [{
@@ -139,10 +139,10 @@ describe("workflow project dependencies", () => {
   });
 
   it("rejects duplicate dependency aliases and unmatched included projects", () => {
-    const duplicate = createExternalWorkflowProjectDependencyLocks(relatedProjects)[0]!;
-    expect(() => parseWorkflowProjectDependencyLocks([duplicate, duplicate]))
+    const duplicate = createExternalProjectDependencyLocks(relatedProjects)[0]!;
+    expect(() => parseProjectDependencyLocks([duplicate, duplicate]))
       .toThrow("alias \"stocks\" is duplicated");
-    expect(() => parseWorkflowProjectGroupManifest({
+    expect(() => parseProjectGroupManifest({
       version: 1,
       rootProjectId: ROOT_ID,
       projects: [{ projectId: ROOT_ID, role: "root", archivePath: "projects/root.tgz" }],
@@ -151,7 +151,7 @@ describe("workflow project dependencies", () => {
   });
 
   it("rejects a project-group dependency that references the root project", () => {
-    expect(() => parseWorkflowProjectGroupManifest({
+    expect(() => parseProjectGroupManifest({
       version: 1,
       rootProjectId: ROOT_ID,
       projects: [{ projectId: ROOT_ID, role: "root", archivePath: "projects/root.tgz" }],

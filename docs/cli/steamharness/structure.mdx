@@ -29,11 +29,11 @@ steamharness structure [workflow-dir]
 | `manifest` | Kanban 的可选 v1 参数清单。 |
 | `schedulePresets` | Workflow 在 `package.json.steamHarness.schedulePresets` 中声明并通过校验的建议计划；Conversation 和 Kanban 不接受该字段。 |
 | `defaultEntrypoint` | Workflow 的默认入口 ID。 |
-| `entrypoints` | Workflow 入口目录；每项包含 `id`、`title`、可选 `description`、`group`、`workflowName`、`execution`、参数、工具和 registry。`group` 为 `{ id, title, order? }` 时，字段均来自静态内联声明。 |
+| `entrypoints` | Workflow 入口目录；每项包含 `id`、`title`、可选 `description`、`group`、`projectName`、`execution`、参数、工具和 registry。`group` 为 `{ id, title, order? }` 时，字段均来自静态内联声明。 |
 | `workflow` | workflow 名称和基础信息。 |
 | `definitions.nodes` | 静态识别到的节点定义。 |
 | `definitions.variables` | 静态识别到的关键变量。 |
-| `execution` | 推导出的执行结构，包含 `runNode`、`runStreamNode`、`runIf`、`runFor`、`runWhile`、`runWorkflow` 和 question-classifier 分支；`return workflow.runNode(...)`、`return workflow.runIf(...)`、`return workflow.runFor(...)` 等返回表达式同样会纳入所属 branch/loop。 |
+| `execution` | 推导出的执行结构，包含 `runNode`、`runStreamNode`、`runIf`、`runFor`、`runWhile`、`runProject` 和 question-classifier 分支；`return workflow.runNode(...)`、`return workflow.runIf(...)`、`return workflow.runFor(...)` 等返回表达式同样会纳入所属 branch/loop。 |
 | `diagnostics` | warnings、violations 和结构分析错误。 |
 | `params` | executor `params` 声明。 |
 | `conversation` | executor conversation 配置。 |

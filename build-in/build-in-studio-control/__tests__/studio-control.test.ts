@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 beforeEach(() => {
   vi.resetModules();
-  globalThis.workflow = {
-    defineWorkflow: (value: unknown) => value,
+  globalThis.steamharness = {
+    defineProject: (value: unknown) => value,
     defineExecutor: (value: unknown) => value,
     defineEntrypoint: (value: unknown) => value,
     createOutputPayload: (input: { items?: unknown[] }) => ({ errCode: 0, errMessage: "", items: input.items ?? [] }),
@@ -18,8 +18,8 @@ afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 describe("Studio Control workflow", () => {
   it("passes the runtime's static validation and exposes only supported entrypoints", async () => {
-    const { inspectLocalWorkflowStructure } = await import("steamharness");
-    expect(() => inspectLocalWorkflowStructure({ projectDir: path.resolve(import.meta.dirname, "..") })).not.toThrow();
+    const { inspectLocalProjectStructure } = await import("steamharness");
+    expect(() => inspectLocalProjectStructure({ projectDir: path.resolve(import.meta.dirname, "..") })).not.toThrow();
     const { executor } = await import("../index");
     expect(executor.entrypoints?.map(entry => entry.id)).toEqual([
       "studio_state", "get_related_projects", "open_file", "get_diagnostics", "set_theme", "open_terminal", "show_view",
@@ -71,9 +71,9 @@ describe("Studio Control workflow", () => {
     vi.stubEnv("STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN", "test-token");
     const fetcher = vi.fn(async () => Response.json({ ok: true, value: { theme: "Dark" } }));
     vi.stubGlobal("fetch", fetcher);
-    const { studioControlWorkflow } = await import("../index");
+    const { studioControlProject } = await import("../index");
     const controller = new AbortController();
-    const result = await studioControlWorkflow.run!({ errCode: 0, errMessage: "", operation: "studio.state.get", input: {} }, { abortSignal: controller.signal } as never);
+    const result = await studioControlProject.run!({ errCode: 0, errMessage: "", operation: "studio.state.get", input: {} }, { abortSignal: controller.signal } as never);
     expect(result).toMatchObject({ errCode: 0, errMessage: "", value: { theme: "Dark" }, items: [{ contentType: "json" }] });
     controller.abort();
     expect(fetcher.mock.calls[0]).toBeDefined();
@@ -83,8 +83,8 @@ describe("Studio Control workflow", () => {
     vi.stubEnv("STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL", "http://127.0.0.1:1234/studio-control");
     vi.stubEnv("STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN", "test-token");
     vi.stubGlobal("fetch", async () => Response.json({ ok: false, error: { code, message: "Host failure" } }, { status: 400 }));
-    const { studioControlWorkflow } = await import("../index");
-    await expect(studioControlWorkflow.run!({ operation: "studio.state.get", input: {} } as never, {} as never))
+    const { studioControlProject } = await import("../index");
+    await expect(studioControlProject.run!({ operation: "studio.state.get", input: {} } as never, {} as never))
       .rejects.toMatchObject({ message: "Host failure", type });
   });
 
@@ -92,7 +92,7 @@ describe("Studio Control workflow", () => {
     vi.stubEnv("STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL", "http://127.0.0.1:1234/studio-control");
     vi.stubEnv("STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN", "test-token");
     vi.stubGlobal("fetch", async () => { throw "offline"; });
-    const { studioControlWorkflow } = await import("../index");
-    await expect(studioControlWorkflow.run!({ operation: "studio.state.get", input: {} } as never, {} as never)).rejects.toThrow("offline");
+    const { studioControlProject } = await import("../index");
+    await expect(studioControlProject.run!({ operation: "studio.state.get", input: {} } as never, {} as never)).rejects.toThrow("offline");
   });
 });

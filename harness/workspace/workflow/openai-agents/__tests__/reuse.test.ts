@@ -1,11 +1,11 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { installWorkflowRuntimeGlobal } from "steamharness/runtime-api";
+import { installProjectRuntimeGlobal } from "steamharness/runtime-api";
 import {
-  createDisabledWorkflowTokenUsageContext,
-  createWorkflowRelatedProjectsContext,
-  createWorkflowToolPermissionContext,
-  createWorkflowTokenUsageContext,
-  createWorkflowConversationContext,
+  createDisabledProjectTokenUsageContext,
+  createProjectRelatedProjectsContext,
+  createProjectToolPermissionContext,
+  createProjectTokenUsageContext,
+  createProjectConversationContext,
   type KVContext,
 } from "steamharness";
 import type {
@@ -18,9 +18,9 @@ import type { NodeExecutionHookChunkEvent, RunContext } from "steamharness/types
 import { tool } from "@openai/agents";
 import { z } from "zod";
 
-installWorkflowRuntimeGlobal();
+installProjectRuntimeGlobal();
 
-let openaiAgentsWorkflow: typeof import("../index").openaiAgentsWorkflow;
+let openaiAgentsProject: typeof import("../index").openaiAgentsProject;
 let createOpenAIAgentTools: typeof import("../index").createOpenAIAgentTools;
 let approveOpenAIAgentsRunTools: typeof import("../index").approveOpenAIAgentsRunTools;
 let runAgentWithStreamingFallback: typeof import("../index").runAgentWithStreamingFallback;
@@ -30,7 +30,7 @@ let runAgentStream: typeof import("../index").runAgentStream;
 
 beforeAll(async () => {
   const module = await import("../index");
-  openaiAgentsWorkflow = module.openaiAgentsWorkflow;
+  openaiAgentsProject = module.openaiAgentsProject;
   createOpenAIAgentTools = module.createOpenAIAgentTools;
   approveOpenAIAgentsRunTools = module.approveOpenAIAgentsRunTools;
   runAgentWithStreamingFallback = module.runAgentWithStreamingFallback;
@@ -88,20 +88,20 @@ describe("openai-agents reusable mode", () => {
         local: {
           kv,
           persistentValue: kv,
-          relatedProjects: createWorkflowRelatedProjectsContext(),
+          relatedProjects: createProjectRelatedProjectsContext(),
         },
       },
-      conversation: createWorkflowConversationContext({
+      conversation: createProjectConversationContext({
         enabled: true,
         conversationId: "reuse-thread",
         projectName: "openai-agents",
         kv,
       }),
-      tokenUsage: createDisabledWorkflowTokenUsageContext(),
+      tokenUsage: createDisabledProjectTokenUsageContext(),
     };
     await context.conversation.appendMessage({ role: "user", content: "existing" });
 
-    const result = await openaiAgentsWorkflow.run({
+    const result = await openaiAgentsProject.run({
       message: "Use the custom tool",
       model: "fake-model",
       defaultTools: false,
@@ -149,7 +149,7 @@ describe("openai-agents reusable mode", () => {
         chunks.push(event);
       },
     });
-    const result = await openaiAgentsWorkflow.run({
+    const result = await openaiAgentsProject.run({
       message: "stream please",
       model: "fake-model",
       defaultTools: false,
@@ -186,7 +186,7 @@ describe("openai-agents reusable mode", () => {
   it("reports cache read and write token details from SDK usage aliases", async () => {
     const context = createOpenAIAgentsContext({ tokenUsageEnabled: true });
 
-    const result = await openaiAgentsWorkflow.run({
+    const result = await openaiAgentsProject.run({
       message: "report cache usage",
       model: "fake-model",
       defaultTools: false,
@@ -248,7 +248,7 @@ describe("openai-agents reusable mode", () => {
       },
     });
 
-    const result = await openaiAgentsWorkflow.run({
+    const result = await openaiAgentsProject.run({
       message: "Use the custom tool",
       model: "fake-model",
       defaultTools: false,
@@ -361,7 +361,7 @@ describe("openai-agents reusable mode", () => {
       createDelayedTool("third_delayed_tool", 160),
     ];
 
-    await openaiAgentsWorkflow.run({
+    await openaiAgentsProject.run({
       message: "Use delayed tools",
       model: "fake-model",
       defaultTools: false,
@@ -475,7 +475,7 @@ describe("openai-agents reusable mode", () => {
         chunks.push(event);
       },
     });
-    const result = await openaiAgentsWorkflow.run({
+    const result = await openaiAgentsProject.run({
       message: "Create and search a knowledge document",
       model: "fake-model",
       defaultTools: false,
@@ -1098,7 +1098,7 @@ function createToolContext(
           },
         },
         persistentValue,
-        relatedProjects: createWorkflowRelatedProjectsContext(),
+        relatedProjects: createProjectRelatedProjectsContext(),
       },
     },
     conversation: {
@@ -1120,7 +1120,7 @@ function createToolContext(
       },
       async requestInput() {},
     },
-    toolPermissions: createWorkflowToolPermissionContext({
+    toolPermissions: createProjectToolPermissionContext({
       projectName: "openai-agents",
       runId: "openai-agents-test-run",
       definitions: [
@@ -1146,14 +1146,14 @@ function createOpenAIAgentsContext(options: {
   const kv = createMemoryKVContext();
   const persistentValue = createMemoryKVContext();
   const tokenUsage = options.tokenUsageEnabled === true
-    ? createWorkflowTokenUsageContext({
+    ? createProjectTokenUsageContext({
       definition: { enabled: true, display: true },
       kv,
       projectId: "1e43f54c-f4eb-431f-8033-dc2bf0c19903",
       runId: "openai-agents-test-run",
       conversationId: "stream-thread",
     })
-    : createDisabledWorkflowTokenUsageContext();
+    : createDisabledProjectTokenUsageContext();
 
   return {
     providers: {},
@@ -1161,15 +1161,15 @@ function createOpenAIAgentsContext(options: {
       local: {
         kv,
         persistentValue,
-        relatedProjects: createWorkflowRelatedProjectsContext(),
+        relatedProjects: createProjectRelatedProjectsContext(),
       },
       server: {
         kv: createMemoryKVContext(),
         persistentValue: createMemoryKVContext(),
-        relatedProjects: createWorkflowRelatedProjectsContext(),
+        relatedProjects: createProjectRelatedProjectsContext(),
       },
     },
-    conversation: createWorkflowConversationContext({
+    conversation: createProjectConversationContext({
       enabled: true,
       conversationId: "stream-thread",
       projectName: "openai-agents",

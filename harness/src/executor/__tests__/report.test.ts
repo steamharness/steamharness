@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createNodeExecutionReporter,
-  createWorkflowExecutionReport,
+  createProjectExecutionReport,
   type RuntimeEvent,
 } from "../report";
 import { HarnessError } from "../../workflow/errors";
@@ -18,7 +18,7 @@ test("workflow report exposes provider cause status and url in errMessage", () =
   cause.url = "http://localhost:9000/responses";
   cause.isRetryable = false;
 
-  const report = createWorkflowExecutionReport({
+  const report = createProjectExecutionReport({
     runId: "run-provider-failed",
     projectName: "provider failure",
     startedAt: new Date("2026-05-26T00:00:00.000Z"),
@@ -71,7 +71,7 @@ test("workflow report records durable user input pauses without failed finish ev
   };
 
   await reporter.emitUserInputRequested(request);
-  await reporter.emitWorkflowFinished({
+  await reporter.emitProjectFinished({
     runId: "run-input",
     projectName: "input-workflow",
     status: "waiting_for_input",
@@ -89,7 +89,7 @@ test("workflow report records durable user input pauses without failed finish ev
   assert.equal(reporter.getPendingUserInput()?.requestId, "request-input");
   assert.deepEqual(events.map((event) => event.type), ["user_input_requested"]);
 
-  const report = createWorkflowExecutionReport({
+  const report = createProjectExecutionReport({
     runId: "run-input",
     projectName: "input-workflow",
     status: "waiting_for_input",

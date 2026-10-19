@@ -5,10 +5,10 @@ import path from "node:path";
 import test from "node:test";
 import {
   readOpenAIConversationHostInput,
-  resolveLocalWorkflowParams,
-  resolveWorkspaceWorkflowParams,
-  runLocalWorkflowWithReport,
-  runWorkspaceWorkflowWithReport,
+  resolveLocalProjectParams,
+  resolveWorkspaceProjectParams,
+  runLocalProjectWithReport,
+  runWorkspaceProjectWithReport,
   HarnessError,
   type OpenAIConversationHostInput,
 } from "../index";
@@ -57,7 +57,7 @@ test("local and workspace execution plus param resolution receive hostInput", as
       steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
     }), "utf8");
     await writeFile(path.join(projectDir, "index.ts"), `
-      const openaiWorkflow = workflow.defineWorkflow({
+      const openaiProject = steamharness.defineProject({
         name: "openai-host-input",
         run(input, context) {
           return {
@@ -66,13 +66,13 @@ test("local and workspace execution plus param resolution receive hostInput", as
           };
         },
       });
-      export const executor = workflow.defineExecutor({
+      export const executor = steamharness.defineExecutor({
         projectType: "conversation",
-        workflow: openaiWorkflow,
+        workflow: openaiProject,
         conversation: { openai: { enabled: true, outputItemId: "assistant-response" } },
         params: [{ kind: "auxiliary", id: "options", label: "Options", fields: [{ name: "modelEcho", flag: "--model", type: "string" }] }],
         createInput(context) {
-          const input = workflow.readOpenAIConversationHostInput(context);
+          const input = steamharness.readOpenAIConversationHostInput(context);
           return {
             errCode: 0,
             errMessage: "",
@@ -82,19 +82,19 @@ test("local and workspace execution plus param resolution receive hostInput", as
           };
         },
         resolveParams(context) {
-          const input = workflow.readOpenAIConversationHostInput(context);
+          const input = steamharness.readOpenAIConversationHostInput(context);
           return { params: { modelEcho: { value: input?.model ?? "missing" } } };
         },
         createContext(context) {
-          const input = workflow.readOpenAIConversationHostInput(context);
+          const input = steamharness.readOpenAIConversationHostInput(context);
           return { metadata: { hostModel: input?.model } };
         },
       });
-      export default openaiWorkflow;
+      export default openaiProject;
     `, "utf8");
 
-    const local = await runLocalWorkflowWithReport({ projectDir, hostInput });
-    const workspace = await runWorkspaceWorkflowWithReport({ cwd, projectName, hostInput });
+    const local = await runLocalProjectWithReport({ projectDir, hostInput });
+    const workspace = await runWorkspaceProjectWithReport({ cwd, projectName, hostInput });
     for (const report of [local, workspace]) {
       assert.equal(report.status, "success");
       assert.match(JSON.stringify(report.result), /resp_test/u);
@@ -108,10 +108,10 @@ test("local and workspace execution plus param resolution receive hostInput", as
       inputMode: "form" as const,
       trigger: { kind: "init" as const },
     };
-    assert.deepEqual(await resolveLocalWorkflowParams({ projectDir, hostInput, request }), {
+    assert.deepEqual(await resolveLocalProjectParams({ projectDir, hostInput, request }), {
       params: { modelEcho: { value: "provider/model" } },
     });
-    assert.deepEqual(await resolveWorkspaceWorkflowParams({ cwd, projectName, hostInput, request }), {
+    assert.deepEqual(await resolveWorkspaceProjectParams({ cwd, projectName, hostInput, request }), {
       params: { modelEcho: { value: "provider/model" } },
     });
   } finally {

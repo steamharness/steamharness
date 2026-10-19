@@ -44,7 +44,7 @@ type OutputItemChunk =
 
 type RunOutputStreamChunk = string | OutputItemChunk;
 
-declare const workflow: {
+declare const steamharness: {
   HarnessError: new (input: ErrorInput) => Error;
   createInputNode<Input, Output>(options: {
     name?: string;
@@ -80,7 +80,7 @@ declare const workflow: {
     [key: string]: unknown;
   }): OutputPayloadShape;
   createOutputItemChunk(chunk: OutputItemChunk): OutputItemChunk;
-  defineWorkflow<Input, Output>(definition: {
+  defineProject<Input, Output>(definition: {
     name: string;
     run(input: Input, context: RuntimeContextShape): Promise<Output> | Output;
   }): {

@@ -70,7 +70,7 @@ export interface TokenUsageContextOptions {
   onUpdate?(aggregate: TokenUsageAggregate): Promise<void> | void;
 }
 
-export function createDisabledWorkflowTokenUsageContext(): TokenUsageContext {
+export function createDisabledProjectTokenUsageContext(): TokenUsageContext {
   return {
     enabled: false,
     display: false,
@@ -83,11 +83,11 @@ export function createDisabledWorkflowTokenUsageContext(): TokenUsageContext {
   };
 }
 
-export function createWorkflowTokenUsageContext(
+export function createProjectTokenUsageContext(
   options: TokenUsageContextOptions,
 ): TokenUsageContext {
   if (options.definition?.enabled !== true) {
-    return createDisabledWorkflowTokenUsageContext();
+    return createDisabledProjectTokenUsageContext();
   }
 
   // Token usage is executor-level opt-in: enabled controls KV writes, while
@@ -201,7 +201,7 @@ export function addTokenUsageAggregate(
   };
 }
 
-export function isWorkflowTokenUsageAggregate(value: unknown): value is TokenUsageAggregate {
+export function isProjectTokenUsageAggregate(value: unknown): value is TokenUsageAggregate {
   return isRecord(value) &&
     isFiniteNumber(value.inputTokens) &&
     isFiniteNumber(value.outputTokens) &&
@@ -213,7 +213,7 @@ export function isWorkflowTokenUsageAggregate(value: unknown): value is TokenUsa
     (value.updatedAt === undefined || typeof value.updatedAt === "string");
 }
 
-export function isWorkflowTokenUsageEntry(value: unknown): value is TokenUsageEntry {
+export function isProjectTokenUsageEntry(value: unknown): value is TokenUsageEntry {
   return readStoredTokenUsageEntry(value) !== undefined;
 }
 

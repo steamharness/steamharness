@@ -1,9 +1,9 @@
 import ts from "typescript";
 import {
   STEAMHARNESS_PROJECT_TYPE_MIGRATION_EXAMPLE,
-  assertNeverWorkflowExecutorProjectType,
-  formatWorkflowProjectTypeMigrationMessage,
-  isWorkflowExecutorProjectType,
+  assertNeverExecutorProjectKind,
+  formatProjectKindMigrationMessage,
+  isExecutorProjectKind,
   type ExecutorProjectType,
 } from "./index";
 
@@ -30,7 +30,7 @@ export class ProjectTypeMigrationError extends Error {
   }
 }
 
-export function inspectWorkflowProjectTypeSources(
+export function inspectProjectTypeSources(
   sources: Array<{ fileName: string; sourceText: string }>,
 ): ProjectTypeSourceInspection {
   const violations: ProjectTypeSourceViolation[] = [];
@@ -54,7 +54,7 @@ export function inspectWorkflowProjectTypeSources(
       if (!objectArgument || !ts.isObjectLiteralExpression(objectArgument)) {
         violations.push(createViolation(
           "invalid_executor_project_type",
-          formatWorkflowProjectTypeMigrationMessage("workflow.defineExecutor must receive a static object with projectType"),
+          formatProjectKindMigrationMessage("project.defineExecutor must receive a static object with projectType"),
           source.fileName,
         ));
         return;
@@ -65,17 +65,17 @@ export function inspectWorkflowProjectTypeSources(
       if (!projectTypeProperty || !ts.isStringLiteralLike(projectTypeProperty.initializer)) {
         violations.push(createViolation(
           "invalid_executor_project_type",
-          formatWorkflowProjectTypeMigrationMessage("Executor projectType is missing or must be a string literal"),
+          formatProjectKindMigrationMessage("Executor projectType is missing or must be a string literal"),
           source.fileName,
         ));
         return;
       }
 
       const projectType = projectTypeProperty.initializer.text;
-      if (!isWorkflowExecutorProjectType(projectType)) {
+      if (!isExecutorProjectKind(projectType)) {
         violations.push(createViolation(
           "invalid_executor_project_type",
-          formatWorkflowProjectTypeMigrationMessage(`Unknown executor projectType "${projectType}"`),
+          formatProjectKindMigrationMessage(`Unknown executor projectType "${projectType}"`),
           source.fileName,
         ));
         return;
@@ -119,7 +119,7 @@ export function inspectWorkflowProjectTypeSources(
           ));
           break;
         default:
-          assertNeverWorkflowExecutorProjectType(projectType);
+          assertNeverExecutorProjectKind(projectType);
       }
     });
   }
@@ -127,7 +127,7 @@ export function inspectWorkflowProjectTypeSources(
   if (executorCount === 0) {
     violations.push(createViolation(
       "invalid_executor_project_type",
-      formatWorkflowProjectTypeMigrationMessage("Workflow must define an executor with projectType"),
+      formatProjectKindMigrationMessage("Workflow must define an executor with projectType"),
       sources[0]?.fileName ?? "index.ts",
     ));
   }
@@ -147,10 +147,10 @@ export function inspectWorkflowProjectTypeSources(
   };
 }
 
-export function readWorkflowProjectTypeFromSources(
+export function readProjectTypeFromSources(
   sources: Array<{ fileName: string; sourceText: string }>,
 ): ExecutorProjectType {
-  const inspection = inspectWorkflowProjectTypeSources(sources);
+  const inspection = inspectProjectTypeSources(sources);
   if (inspection.violations.length > 0 || inspection.projectType === undefined) {
     throw new ProjectTypeMigrationError(inspection.violations);
   }
@@ -172,13 +172,13 @@ function visit(node: ts.Node, visitor: (node: ts.Node) => void): void {
 
 function isDefineExecutorCall(node: ts.CallExpression): boolean {
   if (ts.isIdentifier(node.expression)) {
-    return node.expression.text === "defineWorkflowExecutor";
+    return node.expression.text === "defineProjectExecutor";
   }
   return ts.isPropertyAccessExpression(node.expression) &&
     ts.isIdentifier(node.expression.expression) &&
     node.expression.expression.text === "workflow" &&
     (node.expression.name.text === "defineExecutor" ||
-      node.expression.name.text === "defineWorkflowExecutor");
+      node.expression.name.text === "defineProjectExecutor");
 }
 
 function findProperty(

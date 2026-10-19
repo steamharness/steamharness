@@ -61,7 +61,7 @@ describe("the runtime API index", () => {
   // only safe answer, and these are the shapes that would do it.
   it("refuses a runtime member it cannot name", async () => {
     const coreSource = await createCoreSource({
-      "runtime-api.ts": "const outer = {};\nconst workflowRuntimeApi = { ...outer, defineWorkflow };\n",
+      "runtime-api.ts": "const outer = {};\nconst projectRuntimeApi = { ...outer, defineProject };\n",
     });
 
     await expect(readRuntimeNamespaceMembers(coreSource)).rejects.toThrow(/cannot read/);

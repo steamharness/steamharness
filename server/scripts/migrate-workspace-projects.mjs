@@ -9,7 +9,7 @@ import pg from "pg";
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export function isWorkflowUuid(value) {
+export function isProjectUuid(value) {
   return UUID_PATTERN.test(String(value ?? "").trim());
 }
 
@@ -17,7 +17,7 @@ export function collectLegacyProjectIds(workflows) {
   return [...new Set(
     workflows
       .map((workflow) => String(workflow.id ?? "").trim())
-      .filter((projectId) => projectId !== "" && !isWorkflowUuid(projectId)),
+      .filter((projectId) => projectId !== "" && !isProjectUuid(projectId)),
   )].sort((left, right) => left.localeCompare(right));
 }
 
@@ -36,7 +36,7 @@ export function collectArtifactObjectPaths(versionRows) {
   return [...paths].sort((left, right) => left.localeCompare(right));
 }
 
-export async function listWorkspaceWorkflowProjects(workspaceRoot) {
+export async function listWorkspaceProjects(workspaceRoot) {
   const entries = await readdir(workspaceRoot, { withFileTypes: true });
   const projects = [];
 
@@ -56,7 +56,7 @@ export async function listWorkspaceWorkflowProjects(workspaceRoot) {
     }
 
     const projectId = typeof packageJson.id === "string" ? packageJson.id.trim() : "";
-    if (!isWorkflowUuid(projectId)) {
+    if (!isProjectUuid(projectId)) {
       throw new Error(`Project "${entry.name}" package.json must include a UUID id.`);
     }
 
@@ -89,7 +89,7 @@ export async function listLegacyLocalProjectIds(dataRoot) {
   }
 
   return entries
-    .filter((entry) => entry.isDirectory() && !isWorkflowUuid(entry.name))
+    .filter((entry) => entry.isDirectory() && !isProjectUuid(entry.name))
     .map((entry) => entry.name)
     .sort((left, right) => left.localeCompare(right));
 }
@@ -138,7 +138,7 @@ export async function findManagedFileDirectoriesForProjectIds(filesRoot, project
 }
 
 export async function syncWorkspaceProjects(options) {
-  const workspaceProjects = await listWorkspaceWorkflowProjects(options.workspaceRoot);
+  const workspaceProjects = await listWorkspaceProjects(options.workspaceRoot);
   const workspaceProjectIds = workspaceProjects.map((project) => project.projectId);
 
   const pool = new pg.Pool({
@@ -179,7 +179,7 @@ export async function syncWorkspaceProjects(options) {
         // 旧版 non-UUID 项目不再兼容保留，连同 KV/知识库引用一起清掉，
         // 避免 workspace UUID 项目上传后界面和统计继续混入历史脏数据。
         await client.query(
-          `delete from workflow_kv_entries
+          `delete from project_kv_entries
             where project_name_key = any($1::text[])
                or last_project_name = any($1::text[])`,
           [legacyProjectIds],
@@ -217,14 +217,14 @@ export async function syncWorkspaceProjects(options) {
         existingProjectIdSet.add(project.projectId);
       }
 
-      const archivePath = await packWorkflowProject(project, tempRoot, options.workspaceRoot);
-      await uploadWorkflowArchive({
+      const archivePath = await packProject(project, tempRoot, options.workspaceRoot);
+      await uploadProjectArchive({
         serverUrl: options.serverUrl,
         adminToken: options.adminToken,
         projectId: project.projectId,
         archivePath,
       });
-      await publishWorkflowProject({
+      await publishProject({
         serverUrl: options.serverUrl,
         adminToken: options.adminToken,
         projectId: project.projectId,
@@ -233,7 +233,7 @@ export async function syncWorkspaceProjects(options) {
       uploadedProjectIds.push(project.projectId);
     }
 
-    const workflowsResponse = await fetchApiJson(
+    const projectsResponse = await fetchApiJson(
       `${trimTrailingSlash(options.serverUrl)}/api/projects`,
       {
         method: "GET",
@@ -242,14 +242,14 @@ export async function syncWorkspaceProjects(options) {
         },
       },
     );
-    assertApiOk(workflowsResponse, "Failed to list workflows after migration.");
+    assertApiOk(projectsResponse, "Failed to list workflows after migration.");
 
-    const remoteWorkflows = Array.isArray(workflowsResponse.data) ? workflowsResponse.data : [];
-    const remoteProjectIds = remoteWorkflows
+    const remoteProjects = Array.isArray(projectsResponse.data) ? projectsResponse.data : [];
+    const remoteProjectIds = remoteProjects
       .map((workflow) => String(workflow?.id ?? "").trim())
       .filter((projectId) => projectId !== "")
       .sort((left, right) => left.localeCompare(right));
-    const remainingLegacyIds = remoteProjectIds.filter((projectId) => !isWorkflowUuid(projectId));
+    const remainingLegacyIds = remoteProjectIds.filter((projectId) => !isProjectUuid(projectId));
     const missingProjectIds = workspaceProjectIds.filter(
       (projectId) => !remoteProjectIds.includes(projectId),
     );
@@ -357,7 +357,7 @@ function requireValue(argv, index, label) {
   return value;
 }
 
-async function packWorkflowProject(project, tempRoot, workspaceRoot) {
+async function packProject(project, tempRoot, workspaceRoot) {
   const archivePath = path.join(tempRoot, "packs", `${project.dirName}.tgz`);
   await rm(archivePath, { force: true });
   await mkdir(path.dirname(archivePath), { recursive: true });
@@ -365,7 +365,7 @@ async function packWorkflowProject(project, tempRoot, workspaceRoot) {
   await rm(stagingDir, { recursive: true, force: true });
   await mkdir(path.join(stagingDir, "workspace", "workflow"), { recursive: true });
 
-  await stageWorkflowWithLocalDependencies({
+  await stageProjectWithLocalDependencies({
     workspaceRoot,
     projectDir: project.projectDir,
     projectName: project.dirName,
@@ -378,7 +378,7 @@ async function packWorkflowProject(project, tempRoot, workspaceRoot) {
   return archivePath;
 }
 
-async function stageWorkflowWithLocalDependencies(options) {
+async function stageProjectWithLocalDependencies(options) {
   const queue = [options.projectName];
   const visited = new Set();
 
@@ -398,8 +398,8 @@ async function stageWorkflowWithLocalDependencies(options) {
       );
     }
 
-    await copyWorkflowSource(sourceDir, path.join(options.stagingRoot, currentProjectName));
-    for (const dependency of await findLocalWorkflowDependencies(sourceDir)) {
+    await copyProjectSource(sourceDir, path.join(options.stagingRoot, currentProjectName));
+    for (const dependency of await findLocalProjectDependencies(sourceDir)) {
       if (!visited.has(dependency)) {
         queue.push(dependency);
       }
@@ -407,7 +407,7 @@ async function stageWorkflowWithLocalDependencies(options) {
   }
 }
 
-async function copyWorkflowSource(sourceDir, targetDir) {
+async function copyProjectSource(sourceDir, targetDir) {
   await mkdir(targetDir, { recursive: true });
   await cpDirectory(sourceDir, targetDir);
 }
@@ -443,7 +443,7 @@ function shouldExcludePackagePath(relativePath) {
   return name.endsWith(".tmp");
 }
 
-async function findLocalWorkflowDependencies(sourceDir) {
+async function findLocalProjectDependencies(sourceDir) {
   const discovered = new Set();
 
   for (const fileName of ["index.ts", "interface.ts", "globals.d.ts"]) {
@@ -488,7 +488,7 @@ async function ensureRemoteProjectExists({ serverUrl, adminToken, project }) {
   assertApiOk(response, `Failed to create project ${project.dirName}.`);
 }
 
-async function uploadWorkflowArchive({ serverUrl, adminToken, projectId, archivePath }) {
+async function uploadProjectArchive({ serverUrl, adminToken, projectId, archivePath }) {
   const archiveName = path.basename(archivePath);
   const archiveBuffer = await readFile(archivePath);
   const response = await fetchApiJson(
@@ -507,7 +507,7 @@ async function uploadWorkflowArchive({ serverUrl, adminToken, projectId, archive
   assertApiOk(response, `Failed to upload package for workflow ${projectId}.`);
 }
 
-async function publishWorkflowProject({ serverUrl, adminToken, projectId, releaseLog }) {
+async function publishProject({ serverUrl, adminToken, projectId, releaseLog }) {
   const response = await fetchApiJson(
     `${trimTrailingSlash(serverUrl)}/api/projects/${encodeURIComponent(projectId)}/publish`,
     {

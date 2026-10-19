@@ -1,5 +1,11 @@
 # Unreleased
 
+### 破坏性变更
+
+- 项目 API 从 `/api/workflows` 改为 `/api/projects`，字段改为 `projectId` / `projectName`，请求头 `X-Workflow-Locale` 改为 `X-SteamHarness-Locale`。
+- 数据库表 `workflows` / `workflow_*` 改为 `projects` / `project_*`，账户表去掉 `workflow_` 前缀；发布前执行 `docker-internal/deploy/migrate-project-tables.sql`。
+- 审计事件类型 `workflow.*` 改为 `project.*`；对象存储前缀与磁盘数据目录改为 `projects/`。
+
 ### 变更
 
 - 变更 发布 API 支持版本和源码哈希校验，阻止发布被其他操作替换的草稿。

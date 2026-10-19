@@ -8,7 +8,7 @@ import { studioProjectIcon } from '../upstream/vscode/src/vs/workbench/common/st
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/project-icons.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
 const id = '294b1eec-23fa-42cf-9fd3-2417f71c0570';
 const manifest = (type, identity = id) => JSON.stringify({ id: identity, steamHarness: { projectType: type } });
-const executor = type => `throw new Error('Must never execute'); export const executor = workflow.defineExecutor({ projectType: '${type}' });`;
+const executor = type => `throw new Error('Must never execute'); export const executor = steamharness.defineExecutor({ projectType: '${type}' });`;
 class Emitter {
   listeners = new Set();
   event = callback => { this.listeners.add(callback); return { dispose: () => this.listeners.delete(callback) }; };
@@ -91,7 +91,7 @@ test('ordinary folders, broken declarations, misleading strings and conflicting 
   f.files.set('file:///ordinary/index.ts', executor('workflow'));
   f.files.set('file:///broken/package.json', '{');
   f.files.set('file:///text/package.json', manifest());
-  f.files.set('file:///text/index.ts', '// workflow.defineExecutor({ projectType: "conversation" })\nconst text = "projectType: workflow";');
+  f.files.set('file:///text/index.ts', '// steamharness.defineExecutor({ projectType: "conversation" })\nconst text = "projectType: workflow";');
   f.files.set('file:///conflict/package.json', manifest());
   f.files.set('file:///conflict/a.ts', executor('workflow'));
   f.files.set('file:///conflict/b.ts', executor('conversation'));

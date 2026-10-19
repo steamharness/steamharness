@@ -4,21 +4,21 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
-  analyzeWorkflowScriptSource,
-  inspectWorkflowScripts,
-  inspectWorkflowStructure,
-  validateWorkflowScriptSource,
+  analyzeProjectScriptSource,
+  inspectProjectScripts,
+  inspectProjectStructure,
+  validateProjectScriptSource,
 } from "../executor/rules";
-import { runLocalWorkflowWithReport } from "../executor/index";
+import { runLocalProjectWithReport } from "../executor/index";
 
 test("executor projectType is extracted as the structure mode", () => {
-  const workflowAnalysis = analyzeWorkflowScriptSource(createExecutorSource('projectType: "workflow",'));
-  const conversationAnalysis = analyzeWorkflowScriptSource(createExecutorSource(`
+  const projectAnalysis = analyzeProjectScriptSource(createExecutorSource('projectType: "workflow",'));
+  const conversationAnalysis = analyzeProjectScriptSource(createExecutorSource(`
     projectType: "conversation",
     conversation: { attachments: { images: true } },
   `));
 
-  assert.equal(workflowAnalysis.executorProjectType, "workflow");
+  assert.equal(projectAnalysis.executorProjectType, "workflow");
   assert.equal(conversationAnalysis.executorProjectType, "conversation");
   assert.deepEqual(conversationAnalysis.executorConversation, {
     attachments: { images: true },
@@ -26,7 +26,7 @@ test("executor projectType is extracted as the structure mode", () => {
 });
 
 test("quoted executor project type and conversation keys are extracted", () => {
-  const analysis = analyzeWorkflowScriptSource(createExecutorSource(`
+  const analysis = analyzeProjectScriptSource(createExecutorSource(`
     "projectType": "conversation",
     "conversation": { "attachments": { images: true } },
   `));
@@ -38,8 +38,8 @@ test("quoted executor project type and conversation keys are extracted", () => {
 });
 
 test("missing and unknown executor project types use compatibility inference", () => {
-  const missing = analyzeWorkflowScriptSource(createExecutorSource(""));
-  const unknown = analyzeWorkflowScriptSource(createExecutorSource('projectType: "agent",'));
+  const missing = analyzeProjectScriptSource(createExecutorSource(""));
+  const unknown = analyzeProjectScriptSource(createExecutorSource('projectType: "agent",'));
 
   assert.equal(missing.executorProjectType, "conversation");
   assert.equal(unknown.executorProjectType, "conversation");
@@ -50,29 +50,29 @@ test("missing and unknown executor project types use compatibility inference", (
 });
 
 test("static validation only rejects a missing executor and defers dynamic configuration", () => {
-  const noExecutor = validateWorkflowScriptSource(`
-    export const demoWorkflow = workflow.defineWorkflow({
+  const noExecutor = validateProjectScriptSource(`
+    export const demoProject = steamharness.defineProject({
       name: "demo",
       run() { return { errCode: 0, errMessage: "" }; },
     });
   `);
-  const dynamicExecutor = analyzeWorkflowScriptSource(`
-    const demoWorkflow = workflow.defineWorkflow({
+  const dynamicExecutor = analyzeProjectScriptSource(`
+    const demoProject = steamharness.defineProject({
       name: "demo",
       run() { return { errCode: 0, errMessage: "" }; },
     });
     const config = {
       projectType: "workflow",
-      workflow: demoWorkflow,
+      workflow: demoProject,
       createInput() { return { errCode: 0, errMessage: "" }; },
     };
-    export const executor = workflow.defineExecutor(config);
+    export const executor = steamharness.defineExecutor(config);
   `);
 
   assert.equal(
     noExecutor.some((violation) =>
       violation.type === "invalid_executor_project_type" &&
-      /must export workflow\.defineExecutor/.test(violation.message)
+      /must export steamharness\.defineExecutor/.test(violation.message)
     ),
     true,
   );
@@ -90,13 +90,13 @@ test("workflow script inspection rejects a project without an executor", async (
   const projectDir = await mkdtemp(path.join(tmpdir(), "steamharness-project-type-no-executor-"));
   try {
     await writeFile(path.join(projectDir, "index.ts"), `
-      export const demoWorkflow = workflow.defineWorkflow({
+      export const demoProject = steamharness.defineProject({
         name: "demo",
         run() { return { errCode: 0, errMessage: "" }; },
       });
     `, "utf8");
 
-    const inspection = inspectWorkflowScripts({
+    const inspection = inspectProjectScripts({
       cwd: projectDir,
       projectDir,
       projectName: "no-executor",
@@ -114,11 +114,11 @@ test("workflow script inspection rejects a project without an executor", async (
 });
 
 test("legacy conversation settings produce warnings instead of blocking execution", () => {
-  const legacy = analyzeWorkflowScriptSource(createExecutorSource(`
+  const legacy = analyzeProjectScriptSource(createExecutorSource(`
     projectType: "conversation",
     conversation: { enabled: true },
   `));
-  const conflict = analyzeWorkflowScriptSource(createExecutorSource(`
+  const conflict = analyzeProjectScriptSource(createExecutorSource(`
     projectType: "workflow",
     conversation: { inputQueue: { enabled: true } },
   `));
@@ -128,7 +128,7 @@ test("legacy conversation settings produce warnings instead of blocking executio
   assert.equal(legacy.structureWarnings.some((warning) => /conversation\.enabled/.test(warning.message)), true);
   assert.equal(conflict.structureWarnings.some((warning) => /ignored/.test(warning.message)), true);
 
-  const quotedLegacy = analyzeWorkflowScriptSource(createExecutorSource(`
+  const quotedLegacy = analyzeProjectScriptSource(createExecutorSource(`
     "projectType": "conversation",
     "conversation": { "enabled": true },
   `));
@@ -143,7 +143,7 @@ test("structure inspection warns about conflicting executor project types across
       writeFile(path.join(projectDir, "secondary.ts"), createExecutorSource('projectType: "conversation",'), "utf8"),
     ]);
 
-    const inspection = inspectWorkflowStructure({
+    const inspection = inspectProjectStructure({
       cwd: projectDir,
       projectDir,
       projectName: "conflicting-project-types",
@@ -175,7 +175,7 @@ test("runtime infers a legacy conversation executor without projectType", async 
         steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
       }), "utf8"),
       writeFile(path.join(projectDir, "index.ts"), `
-        const legacyWorkflow = workflow.defineWorkflow({
+        const legacyProject = steamharness.defineProject({
           name: "legacy-conversation-runtime",
           async run(_input, context) {
             return {
@@ -185,16 +185,16 @@ test("runtime infers a legacy conversation executor without projectType", async 
             };
           },
         });
-        export const executor = workflow.defineExecutor({
+        export const executor = steamharness.defineExecutor({
           conversation: { enabled: true },
-          workflow: legacyWorkflow,
+          workflow: legacyProject,
           createInput() { return { errCode: 0, errMessage: "" }; },
         });
-        export default legacyWorkflow;
+        export default legacyProject;
       `, "utf8"),
     ]);
 
-    const report = await runLocalWorkflowWithReport({
+    const report = await runLocalProjectWithReport({
       projectDir,
       projectName: "legacy-conversation-runtime",
       conversationId: "legacy-thread",
@@ -222,24 +222,24 @@ test("runtime infers a Workflow executor with entrypoints but no projectType", a
         steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
       }), "utf8"),
       writeFile(path.join(projectDir, "index.ts"), `
-        const inferredWorkflow = workflow.defineWorkflow({
+        const inferredProject = steamharness.defineProject({
           name: "inferred-workflow-runtime",
           async run() { return { errCode: 0, errMessage: "", inferred: true }; },
         });
-        export const executor = workflow.defineExecutor({
+        export const executor = steamharness.defineExecutor({
           defaultEntrypoint: "main",
-          entrypoints: [workflow.defineEntrypoint({
+          entrypoints: [steamharness.defineEntrypoint({
             id: "main",
             title: "Main",
-            workflow: inferredWorkflow,
+            workflow: inferredProject,
             createInput() { return { errCode: 0, errMessage: "" }; },
           })],
         });
-        export default inferredWorkflow;
+        export default inferredProject;
       `, "utf8"),
     ]);
 
-    const report = await runLocalWorkflowWithReport({
+    const report = await runLocalProjectWithReport({
       projectDir,
       projectName: "inferred-workflow-runtime",
     });
@@ -262,30 +262,30 @@ test("projectType alone controls runtime conversation context", async () => {
       writeRuntimeProject(conversationDir, "conversation"),
     ]);
 
-    const [workflowReport, conversationReport] = await Promise.all([
-      runLocalWorkflowWithReport({
+    const [projectReport, conversationReport] = await Promise.all([
+      runLocalProjectWithReport({
         projectDir,
         projectName: "workflow-mode",
         conversationId: "ignored-thread",
       }),
-      runLocalWorkflowWithReport({
+      runLocalProjectWithReport({
         projectDir: conversationDir,
         projectName: "conversation-mode",
         conversationId: "active-thread",
       }),
     ]);
 
-    assert.equal(workflowReport.result.ok, true);
+    assert.equal(projectReport.result.ok, true);
     assert.equal(conversationReport.result.ok, true);
-    if (!workflowReport.result.ok || !conversationReport.result.ok) return;
-    const workflowOutput = (workflowReport.result.data as {
+    if (!projectReport.result.ok || !conversationReport.result.ok) return;
+    const projectOutput = (projectReport.result.data as {
       output?: Record<string, unknown>;
     }).output;
     const conversationOutput = (conversationReport.result.data as {
       output?: Record<string, unknown>;
     }).output;
-    assert.equal(workflowOutput?.["conversationEnabled"], false);
-    assert.equal(workflowOutput?.["conversationId"], undefined);
+    assert.equal(projectOutput?.["conversationEnabled"], false);
+    assert.equal(projectOutput?.["conversationId"], undefined);
     assert.deepEqual({
       conversationEnabled: conversationOutput?.["conversationEnabled"],
       conversationId: conversationOutput?.["conversationId"],
@@ -311,7 +311,7 @@ test("runtime reports static violations before server storage connection checks"
       }), "utf8"),
       writeFile(path.join(projectDir, "index.ts"), `
         export const projectType = "workflow";
-        export const workflow = globalThis.workflow.defineWorkflow({
+        export const workflow = globalThis.steamharness.defineProject({
           name: "legacy-runtime",
           run() { return { errCode: 0, errMessage: "" }; },
         });
@@ -322,7 +322,7 @@ test("runtime reports static violations before server storage connection checks"
       `, "utf8"),
     ]);
 
-    const report = await runLocalWorkflowWithReport({
+    const report = await runLocalProjectWithReport({
       projectDir,
       projectName: "legacy-runtime",
       env: {} as NodeJS.ProcessEnv,
@@ -344,21 +344,21 @@ function createExecutorSource(configuration: string): string {
   const execution = /projectType\s*:\s*["']workflow["']/.test(configuration)
     ? `
       defaultEntrypoint: "main",
-      entrypoints: [workflow.defineEntrypoint({
+      entrypoints: [steamharness.defineEntrypoint({
         id: "main",
         title: "Main",
-        workflow: demoWorkflow,
+        workflow: demoProject,
         createInput() { return { errCode: 0, errMessage: "" }; },
       })],`
     : `
-      workflow: demoWorkflow,
+      workflow: demoProject,
       createInput() { return { errCode: 0, errMessage: "" }; },`;
   return `
-    const demoWorkflow = workflow.defineWorkflow({
+    const demoProject = steamharness.defineProject({
       name: "demo",
       run() { return { errCode: 0, errMessage: "" }; },
     });
-    export const executor = workflow.defineExecutor({
+    export const executor = steamharness.defineExecutor({
       ${configuration}
       ${execution}
     });
@@ -381,7 +381,7 @@ async function writeRuntimeProject(
       steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
     }), "utf8"),
     writeFile(path.join(projectDir, "index.ts"), `
-      const runtimeWorkflow = workflow.defineWorkflow({
+      const runtimeProject = steamharness.defineProject({
         name: "${projectType}-mode",
         async run(_input, context) {
           return {
@@ -394,20 +394,20 @@ async function writeRuntimeProject(
           };
         },
       });
-      export const executor = workflow.defineExecutor({
+      export const executor = steamharness.defineExecutor({
         projectType: "${projectType}",
         ${projectType === "workflow" ? `
         defaultEntrypoint: "main",
-        entrypoints: [workflow.defineEntrypoint({
+        entrypoints: [steamharness.defineEntrypoint({
           id: "main",
           title: "Main",
-          workflow: runtimeWorkflow,
+          workflow: runtimeProject,
           createInput() { return { errCode: 0, errMessage: "" }; },
         })],` : `
-        workflow: runtimeWorkflow,
+        workflow: runtimeProject,
         createInput() { return { errCode: 0, errMessage: "" }; },`}
       });
-      export default runtimeWorkflow;
+      export default runtimeProject;
     `, "utf8"),
   ]);
 }

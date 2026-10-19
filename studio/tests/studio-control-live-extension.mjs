@@ -6,7 +6,7 @@ import { createStudioControlHandler } from '../extensions/studio-workstation/src
 import { startStudioControlBridge } from '../extensions/studio-workstation/src/studio-control-bridge.ts';
 import { IMPORTED_PROJECTS_KEY } from '../extensions/studio-workstation/src/projects.ts';
 import { prepareStudioControlApplication } from '../extensions/studio-workstation/src/assistant-application.ts';
-import { createWorkflowRuntime } from '../extensions/studio-workstation/src/workflow-runtime-node.ts';
+import { createProjectRuntime } from '../extensions/studio-workstation/src/workflow-runtime-node.ts';
 
 export function activate(context) {
   void run(context).then(report => writeFile(process.env.STUDIO_CONTROL_TEST_REPORT, JSON.stringify(report, null, 2)))
@@ -39,8 +39,8 @@ async function run(context) {
   const controller = new AbortController();
   const bridge = await startStudioControlBridge(createStudioControlHandler({ workdir,
     roots: [{ folderPath: workdir, uri: folder.uri.toString(), name: folder.name }] }, controller.signal, context), controller.signal);
-  const { installWorkflowRuntimeGlobal } = await import(process.env.STUDIO_CONTROL_TEST_RUNTIME_API);
-  const runtime = installWorkflowRuntimeGlobal();
+  const { installProjectRuntimeGlobal } = await import(process.env.STUDIO_CONTROL_TEST_RUNTIME_API);
+  const runtime = installProjectRuntimeGlobal();
   const collection = vscode.languages.createDiagnosticCollection('studio-control-live');
   const terminals = new Set(vscode.window.terminals);
   const themeConfiguration = vscode.workspace.getConfiguration('workbench');
@@ -144,7 +144,7 @@ async function run(context) {
         process.platform === 'win32' ? 'junction' : 'dir');
     }
     await writeFile(path.join(projectDirectory, 'control.txt'), 'first\nsecond line\n');
-    launcher = createWorkflowRuntime({ extensionUri: studio.extensionUri, globalStorageUri: context.globalStorageUri, globalState: context.globalState },
+    launcher = createProjectRuntime({ extensionUri: studio.extensionUri, globalStorageUri: context.globalStorageUri, globalState: context.globalState },
       { getConnection: () => undefined, onDidChange: () => ({ dispose() {} }) });
     const inspected = await launcher.inspect([projectDirectory]);
     assert.deepEqual(inspected.errors, []);
@@ -155,7 +155,7 @@ async function run(context) {
     projectSession = await launcher.start(project, 'editor');
     assert.equal(projectSession.ready.project.projectType, 'workflow');
     const projectCall = async (id, params = {}) => {
-      const run = await runWorkflow(projectSession, id, params);
+      const run = await runProject(projectSession, id, params);
       assert.equal(run.status, 'success', `${id}: ${run.error ?? JSON.stringify(run.report)}`);
       return run.items[0].content;
     };
@@ -172,7 +172,7 @@ async function run(context) {
     assert.equal(vscode.workspace.getConfiguration('workbench').get('colorTheme'), state.theme);
     assert.equal((await projectCall('open_terminal')).cwd, await realpath(projectDirectory));
     assert.equal((await projectCall('show_view', { view: 'explorer' })).view, 'explorer');
-    const denied = await runWorkflow(projectSession, 'open_file', { filePath: external });
+    const denied = await runProject(projectSession, 'open_file', { filePath: external });
     assert.equal(denied.status, 'failed'); assert.match(denied.error, /only access/);
     checks.push('normal Workflow: inspect and run all seven imported source entrypoints without an assistant, defaulting to the project directory and workspace scope');
     const projectUrl = projectSession.ready.url;
@@ -185,7 +185,7 @@ async function run(context) {
     await writeFile(path.join(projectDirectory, 'package.json'), JSON.stringify(otherManifest));
     const other = (await launcher.inspect([projectDirectory])).projects[0];
     projectSession = await launcher.start({ ...other, uri: project.uri }, 'editor');
-    const unconnected = await runWorkflow(projectSession, 'studio_state');
+    const unconnected = await runProject(projectSession, 'studio_state');
     assert.equal(unconnected.status, 'failed'); assert.match(unconnected.error, /available only inside SteamHarness Studio/);
     checks.push('normal Workflow isolation: another project receives no control connection');
 
@@ -207,7 +207,7 @@ async function run(context) {
   }
 }
 
-async function runWorkflow(session, entrypointId, params = {}) {
+async function runProject(session, entrypointId, params = {}) {
   const url = new URL(session.ready.url);
   const capability = new URLSearchParams(url.hash.slice(1)).get('session');
   const post = async message => {

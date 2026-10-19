@@ -4,14 +4,14 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
-  createLocalWorkflowPersistentValueContext,
-  createWorkflowRelatedProjectsContext,
-  createDisabledWorkflowTokenUsageContext,
+  createLocalProjectPersistentValueContext,
+  createProjectRelatedProjectsContext,
+  createDisabledProjectTokenUsageContext,
   createKnowledgeDocument,
   createKnowledgeMarkdownPreview,
-  createWorkflowConversationContext,
-  createWorkflowKVContext,
-  createWorkflowPersistentValueContext,
+  createProjectConversationContext,
+  createProjectKVContext,
+  createProjectPersistentValueContext,
   deleteKnowledgeDocument,
   editKnowledgeDocument,
   getKnowledgeDocument,
@@ -230,7 +230,7 @@ test("knowledge document mutations unlink empty non-head index pages", async () 
 test("knowledge helpers accept a narrow local PersistentValue context", async () => {
   const rootDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-local-knowledge-"));
   const context = {
-    persistentValue: createLocalWorkflowPersistentValueContext({
+    persistentValue: createLocalProjectPersistentValueContext({
       rootDir,
       projectId: "local-project",
     }),
@@ -255,13 +255,13 @@ test("local knowledge mutations serialize one PersistentValue project namespace"
   const mutationCount = 32;
   const rootDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-local-knowledge-lock-"));
   const firstContext = {
-    persistentValue: createLocalWorkflowPersistentValueContext({
+    persistentValue: createLocalProjectPersistentValueContext({
       rootDir,
       projectId: "local-project",
     }),
   };
   const secondContext = {
-    persistentValue: createLocalWorkflowPersistentValueContext({
+    persistentValue: createLocalProjectPersistentValueContext({
       rootDir,
       projectId: "local-project",
     }),
@@ -680,9 +680,9 @@ test("knowledge document line range validates range size", async () => {
 });
 
 function createTestContext(store: KVStore): StorageLocationContext {
-  const kv = createWorkflowKVContext({ store: createMemoryKVStore(), projectId: "demo" });
-  const persistentValue = createWorkflowPersistentValueContext({ store, projectId: "demo" });
-  return { kv, persistentValue, relatedProjects: createWorkflowRelatedProjectsContext() };
+  const kv = createProjectKVContext({ store: createMemoryKVStore(), projectId: "demo" });
+  const persistentValue = createProjectPersistentValueContext({ store, projectId: "demo" });
+  return { kv, persistentValue, relatedProjects: createProjectRelatedProjectsContext() };
 }
 
 function createMemoryKVStore(options: {

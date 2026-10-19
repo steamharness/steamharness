@@ -126,7 +126,7 @@ class TimerNode extends BaseNode<TimerNodeInput | undefined, TimerPayload> {
   }
 }
 
-export function createWorkflowTimerContext(options: {
+export function createProjectTimerContext(options: {
   onTimerStart?(event: TimerStartEvent): Promise<void> | void;
   onTimerFinish?(event: TimerFinishEvent): Promise<void> | void;
   now?: () => Date;
@@ -193,7 +193,7 @@ export function createWorkflowTimerContext(options: {
   return {
     async start(input = {}) {
       const startedAt = now();
-      const timerId = normalizeTimerId(input.timerId) ?? createWorkflowTimerId();
+      const timerId = normalizeTimerId(input.timerId) ?? createProjectTimerId();
       if (timers.has(timerId)) {
         throw new HarnessError({
           type: "execution",
@@ -276,6 +276,6 @@ function normalizeTimerTitle(value: string | undefined): string {
   return normalized === undefined || normalized === "" ? "Timer" : normalized;
 }
 
-function createWorkflowTimerId(): string {
+function createProjectTimerId(): string {
   return `timer-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }

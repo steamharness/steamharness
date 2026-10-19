@@ -170,7 +170,7 @@ export function readSteamHarnessI18nDescriptor(value: unknown): SteamHarnessI18n
     if (isSteamHarnessI18nDescriptor(direct)) return direct;
 
     return visit(candidate["metadata"]) ??
-      visit(candidate["workflowError"]) ??
+      visit(candidate["projectError"]) ??
       visit(candidate["error"]) ??
       visit(candidate["data"]) ??
       visit(candidate["cause"]);
@@ -261,7 +261,7 @@ function readErrorMessage(value: unknown): string | undefined {
     if (typeof message === "string" && message.trim() !== "") return message.trim();
     const errMessage = candidate["errMessage"];
     if (typeof errMessage === "string" && errMessage.trim() !== "") return errMessage.trim();
-    return visit(candidate["workflowError"]) ??
+    return visit(candidate["projectError"]) ??
       visit(candidate["error"]) ??
       visit(candidate["data"]) ??
       visit(candidate["cause"]);

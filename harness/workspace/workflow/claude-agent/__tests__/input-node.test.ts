@@ -1,19 +1,19 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { installWorkflowRuntimeGlobal } from "steamharness/runtime-api";
+import { installProjectRuntimeGlobal } from "steamharness/runtime-api";
 import {
-  createDisabledWorkflowConversationContext,
-  createDisabledWorkflowTokenUsageContext,
-  createWorkflowRelatedProjectsContext,
-  createWorkflowToolPermissionContext,
+  createDisabledProjectConversationContext,
+  createDisabledProjectTokenUsageContext,
+  createProjectRelatedProjectsContext,
+  createProjectToolPermissionContext,
   type KVContext,
 } from "steamharness";
 import type { NodeContext } from "steamharness/types/context";
 import type { ClaudeAgentInput, ClaudeAgentParsedInput } from "../interface";
 
-installWorkflowRuntimeGlobal();
+installProjectRuntimeGlobal();
 
 const EXPECTED_KNOWLEDGE_TOOL =
-  "mcp__workflow-knowledge-documents__knowledge_documents";
+  "mcp__steamharness-knowledge-documents__knowledge_documents";
 
 type InputNodeLike = {
   parse(input: ClaudeAgentInput, context: NodeContext): Promise<ClaudeAgentParsedInput>;
@@ -194,23 +194,23 @@ function createNodeContext(
       local: {
         kv: createMemoryKVContext(),
         persistentValue: createMemoryKVContext(),
-        relatedProjects: createWorkflowRelatedProjectsContext(),
+        relatedProjects: createProjectRelatedProjectsContext(),
       },
       server: {
         kv: createMemoryKVContext(),
         persistentValue: createMemoryKVContext(),
-        relatedProjects: createWorkflowRelatedProjectsContext(),
+        relatedProjects: createProjectRelatedProjectsContext(),
       },
     },
-    conversation: createDisabledWorkflowConversationContext(),
-    tokenUsage: createDisabledWorkflowTokenUsageContext(),
+    conversation: createDisabledProjectConversationContext(),
+    tokenUsage: createDisabledProjectTokenUsageContext(),
     userInput: {
       async getResolvedInput() {
         return resolvedInput;
       },
       async requestInput() {},
     },
-    toolPermissions: createWorkflowToolPermissionContext({
+    toolPermissions: createProjectToolPermissionContext({
       projectName: "claude-agent",
       runId: "claude-agent-test-run",
       definitions: [

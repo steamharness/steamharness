@@ -2,9 +2,9 @@ import type { SmokeInput, SmokeOutputPayload } from "./interface";
 
 const SMOKE_OUTPUT_ITEM_ID = "smoke-output";
 
-const inputNode = workflow.createInputNode<SmokeInput>();
+const inputNode = steamharness.createInputNode<SmokeInput>();
 
-const outputNode = workflow.createOutputNode<SmokeInput, SmokeOutputPayload>({
+const outputNode = steamharness.createOutputNode<SmokeInput, SmokeOutputPayload>({
   name: "smoke-output",
   metadata: {
     type: "smoke-output",
@@ -19,7 +19,7 @@ const outputNode = workflow.createOutputNode<SmokeInput, SmokeOutputPayload>({
 
     // Use a stable item id for live chunks so App can replace the
     // running output with the final report instead of appending a duplicate.
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_start",
       item: {
         id: SMOKE_OUTPUT_ITEM_ID,
@@ -31,20 +31,20 @@ const outputNode = workflow.createOutputNode<SmokeInput, SmokeOutputPayload>({
     });
     for (const part of ["smoke", ":", input.message]) {
       if (context.abortSignal?.aborted) {
-        throw new workflow.HarnessError({
+        throw new steamharness.HarnessError({
           type: "execution_aborted",
           message: "Smoke workflow was aborted.",
           nodeName: "smoke-output",
           cause: context.abortSignal.reason,
         });
       }
-      yield workflow.createOutputItemChunk({
+      yield steamharness.createOutputItemChunk({
         type: "output_item_delta",
         itemId: SMOKE_OUTPUT_ITEM_ID,
         delta: part,
       });
     }
-    yield workflow.createOutputItemChunk({
+    yield steamharness.createOutputItemChunk({
       type: "output_item_end",
       itemId: SMOKE_OUTPUT_ITEM_ID,
     });
@@ -67,7 +67,7 @@ const outputNode = workflow.createOutputNode<SmokeInput, SmokeOutputPayload>({
       : undefined;
 
     return {
-      ...workflow.createOutputPayload({
+      ...steamharness.createOutputPayload({
         errCode: input.mode === "payload-fail" ? 409 : 0,
         errMessage: input.mode === "payload-fail" ? "Smoke payload failure." : "",
         items: stream.items,
@@ -81,13 +81,13 @@ const outputNode = workflow.createOutputNode<SmokeInput, SmokeOutputPayload>({
   },
 });
 
-export const smokeWorkflow = workflow.defineWorkflow<SmokeInput, SmokeOutputPayload>({
+export const smokeProject = steamharness.defineProject<SmokeInput, SmokeOutputPayload>({
   name: "smoke",
   async run(input, context) {
-    const parsed = await workflow.runNode(inputNode, input, context);
+    const parsed = await steamharness.runNode(inputNode, input, context);
 
     if (parsed.mode === "fail") {
-      throw new workflow.HarnessError({
+      throw new steamharness.HarnessError({
         type: "execution",
         message: "Smoke fixture failure.",
         metadata: { mode: parsed.mode },
@@ -102,9 +102,9 @@ export const smokeWorkflow = workflow.defineWorkflow<SmokeInput, SmokeOutputPayl
       await new Promise((resolve) => setTimeout(resolve, parsed.waitMs));
     }
 
-    const result = await workflow.runStreamNode(outputNode, parsed, context);
+    const result = await steamharness.runStreamNode(outputNode, parsed, context);
     if (result.output === undefined) {
-      throw new workflow.HarnessError({
+      throw new steamharness.HarnessError({
         type: "execution",
         message: "Smoke output was not created.",
       });
@@ -114,9 +114,9 @@ export const smokeWorkflow = workflow.defineWorkflow<SmokeInput, SmokeOutputPayl
   },
 });
 
-export const executor = workflow.defineExecutor<SmokeInput, SmokeOutputPayload>({
+export const executor = steamharness.defineExecutor<SmokeInput, SmokeOutputPayload>({
   projectType: "conversation",
-  workflow: smokeWorkflow,
+  workflow: smokeProject,
   registry: [
     {
       name: "smoke-output",
@@ -157,11 +157,11 @@ export const executor = workflow.defineExecutor<SmokeInput, SmokeOutputPayload>(
   },
 });
 
-export { smokeWorkflow as workflow };
-export default smokeWorkflow;
+export { smokeProject as workflow };
+export default smokeProject;
 
 function parseSmokeInput(args: string[]): SmokeInput {
-  const defaults = workflow.parseConversationDefaultInputArgs(args);
+  const defaults = steamharness.parseConversationDefaultInputArgs(args);
   let message = defaults.message.trim() === "" ? "ok" : defaults.message;
   let mode: SmokeInput["mode"] = "ok";
   let waitMs = 0;

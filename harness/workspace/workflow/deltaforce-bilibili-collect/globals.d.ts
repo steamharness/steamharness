@@ -67,7 +67,7 @@ interface ErrorInput {
   cause?: unknown;
 }
 
-declare const workflow: {
+declare const steamharness: {
   HarnessError: new (input: ErrorInput) => Error;
   createOutputPayload(input?: {
     items?: RunOutputItemInput[];
@@ -95,7 +95,7 @@ declare const workflow: {
     stream(input: Input, context: RuntimeContextShape): AsyncIterable<RunOutputStreamChunk>;
     finalize(chunks: RunOutputStreamChunk[], context: RuntimeContextShape, input?: Input): Promise<Output> | Output;
   };
-  defineWorkflow<Input, Output>(definition: {
+  defineProject<Input, Output>(definition: {
     name: string;
     run(input: Input, context: RuntimeContextShape): Promise<Output> | Output;
   }): {

@@ -33,14 +33,14 @@ workflow.parseConversationDefaultInputArgs(
 |Missing value|The flag is ignored.|
 |Other parameters|Reserved for business code to parse, this helper does not process.|
 
-`--images`, `--videos`, and `--files` accept file reference JSON or local path strings using `parseWorkflowFileReferences()`, just like the file input node. Only projects with `attachments.videos: true` use `--videos`; existing projects with only `files: true` continue to serialize videos under `--files`.
+`--images`, `--videos`, and `--files` accept file reference JSON or local path strings using `parseProjectFileReferences()`, just like the file input node. Only projects with `attachments.videos: true` use `--videos`; existing projects with only `files: true` continue to serialize videos under `--files`.
 
 ## executor Configuration
 
 ```ts
 export const executor = workflow.defineExecutor<Input, OutputPayload>({
   projectType: "conversation",
-  workflow: conversationWorkflow,
+  workflow: conversationProject,
   conversation: {
     attachments: {
       images: true,
