@@ -94,8 +94,8 @@ async function assertBuildSource(sourceDir, commitSha) {
   }
   await readFile(path.join(sourceDir, "index.html"), "utf8");
   await readFile(path.join(sourceDir, "en", "index.html"), "utf8");
-  await readFile(path.join(sourceDir, ".workflow", "activate-docs.mjs"), "utf8");
-  await readFile(path.join(sourceDir, ".workflow", "serve-docs.mjs"), "utf8");
+  await readFile(path.join(sourceDir, ".steamharness", "activate-docs.mjs"), "utf8");
+  await readFile(path.join(sourceDir, ".steamharness", "serve-docs.mjs"), "utf8");
 }
 
 async function readReleaseCommit(releaseRoot) {

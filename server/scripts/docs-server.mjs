@@ -86,7 +86,7 @@ async function serve() {
 
   await new Promise((resolve, reject) => {
     const server = app.listen(port, host, () => {
-      console.log(`[workflow-docs] serving ${docsRoot} on http://${host}:${port}`);
+      console.log(`[steamharness-docs] serving ${docsRoot} on http://${host}:${port}`);
       resolve(undefined);
     });
     server.on("error", reject);
@@ -133,7 +133,7 @@ async function start() {
     process.exit(1);
   }
 
-  console.log(`workflow docs server started with pid ${child.pid}`);
+  console.log(`SteamHarness docs server started with pid ${child.pid}`);
   console.log(`url: http://${host}:${port}`);
   console.log(`root: ${resolveDocsRoot()}`);
   console.log(`log: ${logFile}`);
@@ -144,7 +144,7 @@ async function stop(options = {}) {
 
   if (pid === undefined) {
     if (!options.quiet) {
-      console.log("workflow docs server is not running");
+      console.log("SteamHarness docs server is not running");
     }
     return;
   }
@@ -168,7 +168,7 @@ async function stop(options = {}) {
   await rm(pidFile, { force: true });
 
   if (!options.quiet) {
-    console.log(`workflow docs server stopped pid ${pid}`);
+    console.log(`SteamHarness docs server stopped pid ${pid}`);
   }
 }
 
@@ -176,7 +176,7 @@ async function status() {
   const pid = await readPid();
 
   if (pid !== undefined && isProcessAlive(pid)) {
-    console.log(`workflow docs server is running with pid ${pid}`);
+    console.log(`SteamHarness docs server is running with pid ${pid}`);
     console.log(`url: http://${host}:${port}`);
     console.log(`root: ${resolveDocsRoot()}`);
     console.log(`log: ${logFile}`);
@@ -185,11 +185,11 @@ async function status() {
 
   if (pid !== undefined) {
     await rm(pidFile, { force: true });
-    console.log(`workflow docs server is not running; removed stale pid file for pid ${pid}`);
+    console.log(`SteamHarness docs server is not running; removed stale pid file for pid ${pid}`);
     return;
   }
 
-  console.log("workflow docs server is not running");
+  console.log("SteamHarness docs server is not running");
 }
 
 async function prepareDocsRoot() {

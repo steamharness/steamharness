@@ -12,10 +12,10 @@ import os from "node:os";
 import path from "node:path";
 
 test("alpha deployment isolates code, runtime state and cache from stable", () => {
-  const paths = resolveAlphaDeploymentPaths("/srv/workflow-release");
-  assert.equal(paths.currentLink, "/srv/workflow-release/deployments/server/alpha/current");
-  assert.equal(paths.dataRoot, "/srv/workflow-release/server-data/alpha");
-  assert.equal(paths.runRoot, "/srv/workflow-release/deployments/server/alpha/run");
+  const paths = resolveAlphaDeploymentPaths("/srv/steamharness-release");
+  assert.equal(paths.currentLink, "/srv/steamharness-release/deployments/server/alpha/current");
+  assert.equal(paths.dataRoot, "/srv/steamharness-release/server-data/alpha");
+  assert.equal(paths.runRoot, "/srv/steamharness-release/deployments/server/alpha/run");
 });
 
 test("alpha deployment retention keeps the newest three versions", async () => {
@@ -51,7 +51,7 @@ test("alpha deployment command runner reports non-zero exits", async () => {
 });
 
 test("alpha recovery restarts the deployed current release without reserving a new version", async () => {
-  const root = await import("node:fs/promises").then(({ mkdtemp }) => mkdtemp(path.join(os.tmpdir(), "workflow-alpha-recovery-")));
+  const root = await import("node:fs/promises").then(({ mkdtemp }) => mkdtemp(path.join(os.tmpdir(), "steamharness-alpha-recovery-")));
   const paths = resolveAlphaDeploymentPaths(root);
   const version = "0.1.5-20260815001";
   const releaseDir = path.join(paths.releasesRoot, version);

@@ -3,7 +3,7 @@ import process from "node:process";
 import pg from "pg";
 
 const containerName = `steamharness-postgres-test-${process.pid}`;
-const password = "workflow-test-password";
+const password = "steamharness-test-password";
 let started = false;
 
 try {

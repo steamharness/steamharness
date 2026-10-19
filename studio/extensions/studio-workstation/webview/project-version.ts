@@ -1,6 +1,6 @@
 import { t } from './localization';
 import { escapeHtml as text, iconHtml } from './ui';
-import type { ProjectVersionStatus } from '../src/workflow-server-projects';
+import type { ProjectVersionStatus } from '../src/steamharness-server-projects';
 
 export function projectVersionHtml(update: ProjectVersionStatus, busy = false): string {
   const labels: Record<ProjectVersionStatus['status'], string> = {

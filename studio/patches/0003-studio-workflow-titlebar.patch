@@ -43,11 +43,11 @@ index b1df33f2..53dfd3dc 100644
  
 +MenuRegistry.appendMenuItem(MenuId.TitleBarAdjacentCenter, {
 +	command: {
-+		id: 'studio.openWorkflow',
-+		get title() { return MenuRegistry.getCommand('studio.openWorkflow')?.title ?? localize('studio.runWorkflowProject', "Run Project"); },
++		id: 'studio.openProject',
++		get title() { return MenuRegistry.getCommand('studio.openProject')?.title ?? localize('studio.runWorkflowProject', "Run Project"); },
 +		icon: Codicon.play
 +	},
-+	when: ContextKeyExpr.equals('studio.workflowAvailable', true),
++	when: ContextKeyExpr.equals('studio.projectAvailable', true),
 +	group: '0_studio',
 +	order: 0
 +});
@@ -91,7 +91,7 @@ index 41154e42..5a9c1410 100644
  					primaryGroup: () => true,
  				},
 -				actionViewItemProvider: (action, options) => createActionViewItem(this.instantiationService, action, options),
-+				actionViewItemProvider: (action, options) => action instanceof MenuItemAction && action.id === 'studio.openWorkflow'
++				actionViewItemProvider: (action, options) => action instanceof MenuItemAction && action.id === 'studio.openProject'
 +					? this.instantiationService.createInstance(StudioWorkflowRunActionViewItem, action, options)
 +					: createActionViewItem(this.instantiationService, action, options),
  				hoverDelegate: this.hoverDelegate

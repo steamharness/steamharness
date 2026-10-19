@@ -49,7 +49,7 @@ export class ResourceViews implements vscode.Disposable {
     }
     const changed = restored || JSON.stringify(selected) !== JSON.stringify(this.selected);
     this.selected = selected;
-    void vscode.commands.executeCommand('setContext', 'studio.workflowResourcesAvailable', this.projects.length > 0);
+    void vscode.commands.executeCommand('setContext', 'studio.projectResourcesAvailable', this.projects.length > 0);
     if (changed) { this.reset(); } else { this.publish(); }
   }
 
@@ -63,7 +63,7 @@ export class ResourceViews implements vscode.Disposable {
     if (!this.projects.some(item => item.uri === project.uri)) { this.projects.push(project); }
     this.selected = project;
     this.navigation.clear(); this.navigation.set(kind, target); this.reset();
-    await vscode.commands.executeCommand('setContext', 'studio.workflowResourcesAvailable', true);
+    await vscode.commands.executeCommand('setContext', 'studio.projectResourcesAvailable', true);
     await vscode.commands.executeCommand(`studio.${kind}.focus`);
     this.views.get(kind)?.show(true); this.publish();
   }

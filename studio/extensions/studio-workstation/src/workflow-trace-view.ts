@@ -38,7 +38,7 @@ export class TraceView {
     const available = state.projects.length > 0;
     if (available !== this.available) {
       this.available = available;
-      void vscode.commands.executeCommand('setContext', 'studio.workflowTraceAvailable', available);
+      void vscode.commands.executeCommand('setContext', 'studio.projectTraceAvailable', available);
     }
     if (!this.view) { return; }
     const project = state.projects.find(project => project.uri === state.selection.projectUri);

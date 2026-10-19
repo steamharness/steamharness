@@ -6,7 +6,7 @@ import test from "node:test";
 import { createServerRunPlan } from "../dev.mjs";
 
 test("a fresh Server checkout reports bootstrap instructions before preparing sibling sources", async (t) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "workflow-server-uninstalled-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "steamharness-server-uninstalled-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   let preparedSiblings = false;
   for (const hotReload of [true, false]) {
@@ -29,7 +29,7 @@ test("Server development plan watches Server, Core, Shared, and Vite Web sources
   const root = path.resolve("checkout", "server");
   const harnessRoot = path.resolve("checkout", "core");
   const sharedRoot = path.resolve("checkout", "shared");
-  const tsconfigPath = path.join(root, ".workflow-local", "tsconfig.json");
+  const tsconfigPath = path.join(root, ".steamharness-local", "tsconfig.json");
   const plan = await createServerRunPlan({
     root,
     env: {},
@@ -58,7 +58,7 @@ test("Server start plan runs source without Server or Web hot reload", async () 
   const root = path.resolve("checkout", "server");
   const harnessRoot = path.resolve("checkout", "core");
   const sharedRoot = path.resolve("checkout", "shared");
-  const tsconfigPath = path.join(root, ".workflow-local", "tsconfig.json");
+  const tsconfigPath = path.join(root, ".steamharness-local", "tsconfig.json");
   const plan = await createServerRunPlan({
     root,
     env: { STEAMHARNESS_SERVER_HMR: "1" },
@@ -137,7 +137,7 @@ test("Server development plan preserves Node options and adds the development co
     prepareDevelopment: async () => ({
       harnessRoot,
       sharedRoot,
-      tsconfigPath: path.join(root, ".workflow-local", "tsconfig.json"),
+      tsconfigPath: path.join(root, ".steamharness-local", "tsconfig.json"),
     }),
   });
 

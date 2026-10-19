@@ -147,8 +147,8 @@ index 9d181da5..d8bbecda 100644
  			if (!state.projects.length && !state.pending.length) { append(root, $('p.studio-start-muted', undefined, text('noCurrent'))); }
  			for (const project of state.projects) {
 -				const row = append(root, $('.studio-start-project'));
--				this.button(row, project.name, studioProjectIcon(project.projectType) ?? 'folder', 'studio.openWorkflow', { uri: project.uri }, false, false, store);
--				this.button(row, text('source'), 'code', 'studio.openWorkflowSource', { uri: project.uri }, false, true, store);
+-				this.button(row, project.name, studioProjectIcon(project.projectType) ?? 'folder', 'studio.openProject', { uri: project.uri }, false, false, store);
+-				this.button(row, text('source'), 'code', 'studio.openProjectSource', { uri: project.uri }, false, true, store);
 +				const card = append(root, $('article.studio-start-project-card'));
 +				const heading = append(card, $('.studio-start-project-heading'));
 +				append(heading, $(`span.codicon.codicon-${studioProjectIcon(project.projectType) ?? 'folder'}`)).setAttribute('aria-hidden', 'true');
@@ -156,8 +156,8 @@ index 9d181da5..d8bbecda 100644
 +				append(card, $('p.studio-start-project-type', undefined, text(`type.${project.projectType}`)));
 +				append(card, $('p.studio-start-project-path', undefined, project.folderPath));
 +				const actions = append(card, $('.studio-start-project-actions'));
-+				this.button(actions, text('run'), 'play', 'studio.openWorkflow', { uri: project.uri }, false, false, store).classList.add('studio-start-primary');
-+				this.button(actions, text('source'), 'code', 'studio.openWorkflowSource', { uri: project.uri }, false, true, store);
++				this.button(actions, text('run'), 'play', 'studio.openProject', { uri: project.uri }, false, false, store).classList.add('studio-start-primary');
++				this.button(actions, text('source'), 'code', 'studio.openProjectSource', { uri: project.uri }, false, true, store);
  			}
  			for (const project of state.pending) {
  				const row = append(root, $('.studio-start-pending'));

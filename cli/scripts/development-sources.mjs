@@ -18,7 +18,7 @@ export async function prepareDevelopmentSources({
     throw new Error(`Local Shared source must be on a development branch: ${sharedRoot}`);
   }
 
-  const outputRoot = path.join(root, ".workflow-local");
+  const outputRoot = path.join(root, ".steamharness-local");
   const tsconfigPath = path.join(outputRoot, "tsconfig.json");
   const sharedPaths = await createSharedCompilerPaths(sharedRoot);
   await mkdir(outputRoot, { recursive: true });

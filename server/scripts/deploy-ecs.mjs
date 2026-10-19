@@ -10,11 +10,11 @@ const execFileAsync = promisify(execFile);
 const REMOTE_HOST = "60.205.8.151";
 const REMOTE_PORT = "22";
 const EXPECTED_FINGERPRINT = "SHA256:ErClJwyZdPzwEU05QWHex4Od9ytRxbn5iAw4Mt+GVcU";
-const REMOTE_ROOT = "/srv/workflow-release";
+const REMOTE_ROOT = "/srv/steamharness-release";
 const IMAGES = ["postgres:15-alpine", "postgres:18-alpine", "nginx:1.27-alpine", "certbot/certbot:v2.11.0"];
 
 export async function withRemote(options, action) {
-  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "workflow-ecs-ssh-"));
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "steamharness-ecs-ssh-"));
   const key = path.join(tempRoot, "id_ed25519");
   const knownHosts = path.join(tempRoot, "known_hosts");
   try {
@@ -26,7 +26,7 @@ export async function withRemote(options, action) {
   }
 }
 
-export function createRemoteClient({ key, knownHosts, host = REMOTE_HOST, port = REMOTE_PORT, user = "root", root = "/srv/workflow-release" }) {
+export function createRemoteClient({ key, knownHosts, host = REMOTE_HOST, port = REMOTE_PORT, user = "root", root = "/srv/steamharness-release" }) {
   if (host !== REMOTE_HOST || String(port) !== REMOTE_PORT) throw new Error("ECS deployment is restricted to 60.205.8.151:22.");
   if (path.resolve(root) !== REMOTE_ROOT) throw new Error(`ECS deployment root is fixed at ${REMOTE_ROOT}.`);
   const ssh = ["-i", key, "-p", String(port), "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", `UserKnownHostsFile=${knownHosts}`, `${user}@${host}`];
@@ -102,7 +102,7 @@ async function prepareImages(client) {
 async function transferImageFromFallback(client, image) {
   const fallbackConfig = getImageFallbackConfig();
   const fallback = fallbackConfig.host;
-  const fallbackTempRoot = await mkdtemp(path.join(os.tmpdir(), "workflow-ecs-fallback-"));
+  const fallbackTempRoot = await mkdtemp(path.join(os.tmpdir(), "steamharness-ecs-fallback-"));
   try {
     const fallbackKey = fallbackConfig.key;
     const fallbackKeyPath = fallbackKey ? path.join(fallbackTempRoot, "id_ed25519") : "";

@@ -4,7 +4,7 @@ import type { Launcher } from './workflow-cli-types';
 import type { AccountController } from './workflow-auth';
 import { projectVersion, type Project } from './workflow-types';
 import type { CreatedProject, PendingProjectSetup, ProjectCreationDialog, ProjectCreationDialogResult, StudioStartState } from './start-page-types';
-import { parseServerProjectShareLink, type ProjectVersionStatus } from './workflow-server-projects';
+import { parseServerProjectShareLink, type ProjectVersionStatus } from './steamharness-server-projects';
 import { IMPORTED_PROJECTS_KEY, readImportedProjects, rememberImportedProjects, type RecentProject } from './projects';
 
 const PENDING_KEY = 'studio.pendingProjectSetups';
@@ -122,7 +122,7 @@ export class StudioStartController implements vscode.Disposable {
       vscode.workspace.onDidGrantWorkspaceTrust(() => this.resumeProjectSetup()),
       vscode.window.onDidChangeWindowState(state => { if (state.focused) { this.resumeProjectSetup(); } }),
       vscode.workspace.onDidChangeConfiguration(event => {
-        if (event.affectsConfiguration('studio.workflow.nodePath') || event.affectsConfiguration('studio.workflow.serverUrl')) {
+        if (event.affectsConfiguration('studio.project.nodePath') || event.affectsConfiguration('studio.project.serverUrl')) {
           this.environmentNeeded = true; schedule();
         }
       }));
@@ -303,7 +303,7 @@ export class StudioStartController implements vscode.Disposable {
     const uri = vscode.Uri.file(project.directory).toString();
     await this.context.globalState.update(IMPORTED_PROJECTS_KEY, rememberImportedProjects(readImportedProjects(this.context.globalState.get(IMPORTED_PROJECTS_KEY)), [{ id: project.id, name: project.name, uri }]));
     await this.remember(project);
-    await vscode.commands.executeCommand('studio.refreshWorkflows');
+    await vscode.commands.executeCommand('studio.refreshProjects');
   }
 
   private async updatePending(project?: PendingProjectSetup, removeId = project?.id): Promise<void> {

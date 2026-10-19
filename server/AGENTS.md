@@ -14,9 +14,9 @@
 
 - 仓库根就是 Server 根；不要再假设外层 monorepo、`server/` 子目录或 `packages/**` 存在。
 - Core 使用 `package.json` 中精确的 `steamharness` npm 版本。不得通过 TypeScript path alias 回连同级 Core 源码。
-- Server 始终通过由 `vendor/shared` 刷新的 `.shared/*` 普通目录安装 Shared workspace 依赖；`dev` 和功能分支仅由运行时生成的 `.workflow-local/tsconfig.json` 与 Server Web Vite alias 指向同级 `../shared` 源码，`main`、tag、detached checkout 和 CI 不得启用该 alias。业务源码统一导入 `@steamharness/*`。
+- Server 始终通过由 `vendor/shared` 刷新的 `.shared/*` 普通目录安装 Shared workspace 依赖；`dev` 和功能分支仅由运行时生成的 `.steamharness-local/tsconfig.json` 与 Server Web Vite alias 指向同级 `../shared` 源码，`main`、tag、detached checkout 和 CI 不得启用该 alias。业务源码统一导入 `@steamharness/*`。
 - `pnpm dev` 在 `dev` 和功能分支直接 watch Server、同级 Core/Shared 源码，并由 Server 同源挂载 Server Web Vite HMR；`pnpm start:local` 保持同样的源码模式和开发端口，但关闭 Server watch 与 Server Web HMR。仓库已有的 `pnpm start` 仍用于运行已构建的 `dist/index.js`。在 `main`、tag 和 detached checkout 必须先执行 `build:all`，再只运行 `dist/index.js` 与 `public` 静态 Web。`STEAMHARNESS_REPOSITORY_MODE=main` 只能强制收紧到发布模式。
-- 跨仓 Core alias 只能写入运行时生成且被忽略的 `.workflow-local/tsconfig.json`，不得进入提交。提交前和 CI 必须同时执行普通 `pnpm check:boundaries` 与 `STEAMHARNESS_REPOSITORY_MODE=main pnpm check:boundaries`。
+- 跨仓 Core alias 只能写入运行时生成且被忽略的 `.steamharness-local/tsconfig.json`，不得进入提交。提交前和 CI 必须同时执行普通 `pnpm check:boundaries` 与 `STEAMHARNESS_REPOSITORY_MODE=main pnpm check:boundaries`。
 - Node.js 脚本必须兼容 Windows、macOS 和 Linux 路径；文件路径使用 `node:path`，ESM 入口使用 `pathToFileURL(path.resolve(process.argv[1]))` 或 `fileURLToPath(import.meta.url)` 比较。
 - 只允许提交不含凭据的 `*.env.example`。真实开发 `.env` 保留在本机并由 Git 忽略；正式发布配置必须使用作用域为 `production` 的受保护 GitLab CI/CD Variables 注入。任何输出和测试日志都不得泄露 token、密码、密钥或完整连接串。
 

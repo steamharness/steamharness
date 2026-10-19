@@ -64,7 +64,7 @@ async function start() {
   if (!ready) {
     if (!isProcessAlive(child.pid)) {
       await rm(pidFile, { force: true });
-      console.error("workflow server exited during startup");
+      console.error("SteamHarness server exited during startup");
     } else {
       process.kill(child.pid, "SIGTERM");
       await waitForExit(child.pid, 5000);
@@ -73,13 +73,13 @@ async function start() {
         await waitForExit(child.pid, 5000);
       }
       await rm(pidFile, { force: true });
-      console.error("workflow server did not become healthy before timeout");
+      console.error("SteamHarness server did not become healthy before timeout");
     }
     console.error(`log: ${logFile}`);
     process.exit(1);
   }
 
-  console.log(`workflow server started with pid ${child.pid}`);
+  console.log(`SteamHarness server started with pid ${child.pid}`);
   console.log(`url: http://localhost:${readPort()}`);
   console.log(`log: ${logFile}`);
 }
@@ -89,7 +89,7 @@ async function stop(options = {}) {
 
   if (pid === undefined) {
     if (!options.quiet) {
-      console.log("workflow server is not running");
+      console.log("SteamHarness server is not running");
     }
     return;
   }
@@ -113,7 +113,7 @@ async function stop(options = {}) {
   await rm(pidFile, { force: true });
 
   if (!options.quiet) {
-    console.log(`workflow server stopped pid ${pid}`);
+    console.log(`SteamHarness server stopped pid ${pid}`);
   }
 }
 
@@ -121,18 +121,18 @@ async function status() {
   const pid = await readPid();
 
   if (pid !== undefined && isProcessAlive(pid)) {
-    console.log(`workflow server is running with pid ${pid}`);
+    console.log(`SteamHarness server is running with pid ${pid}`);
     console.log(`log: ${logFile}`);
     return;
   }
 
   if (pid !== undefined) {
     await rm(pidFile, { force: true });
-    console.log(`workflow server is not running; removed stale pid file for pid ${pid}`);
+    console.log(`SteamHarness server is not running; removed stale pid file for pid ${pid}`);
     return;
   }
 
-  console.log("workflow server is not running");
+  console.log("SteamHarness server is not running");
 }
 
 async function assertEntryExists() {

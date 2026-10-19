@@ -26,7 +26,7 @@ export async function recoverDocs(options = {}) {
   }
   const deployment = parseDocsDeploymentMetadata(JSON.parse(await readFile(path.join(deployRoot, "deployment.json"), "utf8")));
   const execute = options.runCommand ?? runCommand;
-  const workRoot = await mkdtemp(path.join(os.tmpdir(), "workflow-docs-recovery-"));
+  const workRoot = await mkdtemp(path.join(os.tmpdir(), "steamharness-docs-recovery-"));
   const sourceRoot = path.join(workRoot, "source");
   const env = { ...process.env, ...(options.env ?? {}), CI_COMMIT_SHA: deployment.commitSha };
 

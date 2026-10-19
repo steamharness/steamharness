@@ -1,6 +1,6 @@
 import { t } from './localization';
 import { escapeHtml, iconHtml } from './ui';
-import type { VersionsState } from '../src/workflow-server-projects';
+import type { VersionsState } from '../src/steamharness-server-projects';
 import { projectVersionHtml } from './project-version';
 import './versions.css';
 

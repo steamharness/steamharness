@@ -19,7 +19,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFile } from 'node:fs/promises';
 import type { ProjectType } from './projects';
-import { uploadServerProject, downloadServerProject } from './workflow-server-projects-node';
+import { uploadServerProject, downloadServerProject } from './steamharness-server-projects-node';
 
 export function createWorkflowRuntime(context: vscode.ExtensionContext, account: AccountController): Launcher {
   const sessions = new Set<WebSession>();

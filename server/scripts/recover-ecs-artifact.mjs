@@ -21,7 +21,7 @@ export async function recoverArtifact() {
   const { channel, version } = parseImmutableRef(ref);
   if ((channel === "alpha" ? "alpha" : "production") !== process.env.CI_ENVIRONMENT_NAME) throw new Error("Artifact channel does not match the protected CI environment.");
   if (process.platform !== "linux" || process.arch !== "x64") throw new Error("Build ECS artifacts on the Linux x64 Runner.");
-  const temp = await mkdtemp(path.join(os.tmpdir(), "workflow-immutable-runtime-"));
+  const temp = await mkdtemp(path.join(os.tmpdir(), "steamharness-immutable-runtime-"));
   try {
     const checkout = path.join(temp, "source");
     const repository = String((await exec("git", ["remote", "get-url", "origin"])).stdout).trim();

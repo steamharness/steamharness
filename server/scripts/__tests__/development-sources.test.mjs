@@ -7,7 +7,7 @@ import test from "node:test";
 import { createSharedCompilerPaths, prepareDevelopmentSources } from "../development-sources.mjs";
 
 test("development sources map Shared package entrypoints and subpaths to the sibling repository", async () => {
-  const sharedRoot = await mkdtemp(path.join(os.tmpdir(), "workflow-server-compiler-paths-"));
+  const sharedRoot = await mkdtemp(path.join(os.tmpdir(), "steamharness-server-compiler-paths-"));
   await Promise.all([
     createPackage(sharedRoot, "i18n", { name: "@steamharness/i18n", types: "./index.ts" }),
     createPackage(sharedRoot, "project-types", { name: "@steamharness/project-types", main: "./index.ts" }),
@@ -25,7 +25,7 @@ test("development sources map Shared package entrypoints and subpaths to the sib
 });
 
 test("development sources repair the Core and Shared checkouts before generating the tsconfig", async () => {
-  const splitRoot = await mkdtemp(path.join(os.tmpdir(), "workflow-server-dev-sources-"));
+  const splitRoot = await mkdtemp(path.join(os.tmpdir(), "steamharness-server-dev-sources-"));
   const serverRoot = path.join(splitRoot, "server");
   await mkdir(serverRoot, { recursive: true });
   await writeFile(path.join(serverRoot, "tsconfig.json"), "{}\n");
@@ -46,7 +46,7 @@ test("development sources repair the Core and Shared checkouts before generating
   });
 
   assert.deepEqual(ensured, [[sharedRoot, harnessRoot]]);
-  assert.equal(sources.tsconfigPath, path.join(serverRoot, ".workflow-local", "tsconfig.json"));
+  assert.equal(sources.tsconfigPath, path.join(serverRoot, ".steamharness-local", "tsconfig.json"));
 });
 
 async function createPackage(root, directory, manifest) {

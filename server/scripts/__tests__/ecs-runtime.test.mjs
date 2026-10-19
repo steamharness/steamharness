@@ -255,13 +255,13 @@ test("a config change actually reaches the running nginx", async () => {
   // refused by whatever server block used to be the default — which is how the
   // ACME challenge for a new name fails while the file on disk looks right.
   const agent = await readEcsFile("ecs-runtime-agent.sh");
-  assert.match(agent, /reload_nginx_config\(\) \{[\s\S]*?grep -qx workflow-ecs-nginx \|\| return 0[\s\S]*?nginx -s reload/u);
+  assert.match(agent, /reload_nginx_config\(\) \{[\s\S]*?grep -qx steamharness-ecs-nginx \|\| return 0[\s\S]*?nginx -s reload/u);
   // Both paths that pick a config have to reach it: the bootstrap that installs
   // one, and the ensure/recover path that brings the services back up.
   assert.match(agent, /ensure_compose\(\)[\s\S]*?reload_nginx_config/u);
   assert.match(agent, /bootstrap\(\)[\s\S]*?select_nginx_config[\s\S]*?reload_nginx_config/u);
   // A host with no nginx container yet must not fail the bootstrap.
-  assert.match(agent, /workflow-ecs-nginx \|\| return 0/u);
+  assert.match(agent, /steamharness-ecs-nginx \|\| return 0/u);
 });
 
 test("a live hostname is never proxied to another service on port 80", async () => {

@@ -10,12 +10,12 @@ import { decodeEcsKey } from "./ecs-ssh-key.mjs";
 const execFileAsync = promisify(execFile);
 const HOST = "60.205.8.151";
 const FINGERPRINT = "SHA256:ErClJwyZdPzwEU05QWHex4Od9ytRxbn5iAw4Mt+GVcU";
-const REMOTE_ROOT = "/srv/workflow-release";
+const REMOTE_ROOT = "/srv/steamharness-release";
 
 export async function ensureEcsRelease(options = {}) {
-  const remoteRoot = process.env.STEAMHARNESS_REMOTE_ROOT ?? "/srv/workflow-release";
+  const remoteRoot = process.env.STEAMHARNESS_REMOTE_ROOT ?? "/srv/steamharness-release";
   if (path.resolve(remoteRoot) !== REMOTE_ROOT) throw new Error(`ECS deployment root is fixed at ${REMOTE_ROOT}.`);
-  const temp = await mkdtemp(path.join(os.tmpdir(), "workflow-docs-recovery-"));
+  const temp = await mkdtemp(path.join(os.tmpdir(), "steamharness-docs-recovery-"));
   const key = path.join(temp, "id_ed25519");
   const knownHosts = path.join(temp, "known_hosts");
   try {

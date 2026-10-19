@@ -26,7 +26,7 @@ export async function prepareDevelopmentSources({
   // it is only a pinned devDependency version.
   await ensureSiblings({ roots: [sharedRoot, harnessRoot], env });
 
-  const outputRoot = path.join(root, ".workflow-local");
+  const outputRoot = path.join(root, ".steamharness-local");
   const tsconfigPath = path.join(outputRoot, "tsconfig.json");
   const sharedPaths = await createSharedCompilerPaths(sharedRoot);
   await mkdir(outputRoot, { recursive: true });

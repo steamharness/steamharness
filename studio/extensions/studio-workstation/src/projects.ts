@@ -10,7 +10,7 @@ export interface RecentProject {
   version?: string;
 }
 
-export const IMPORTED_PROJECTS_KEY = 'studio.importedWorkflowProjects';
+export const IMPORTED_PROJECTS_KEY = 'studio.importedProjects';
 
 export interface ImportedProject {
   id: string;

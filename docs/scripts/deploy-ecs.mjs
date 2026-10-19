@@ -11,7 +11,7 @@ const execFileAsync = promisify(execFile);
 const HOST = "60.205.8.151";
 const PORT = "22";
 const FINGERPRINT = "SHA256:ErClJwyZdPzwEU05QWHex4Od9ytRxbn5iAw4Mt+GVcU";
-const REMOTE_ROOT = "/srv/workflow-release";
+const REMOTE_ROOT = "/srv/steamharness-release";
 
 export async function deployDocsToEcs(options = {}) {
   const root = path.resolve(options.root ?? path.resolve(import.meta.dirname, ".."));
@@ -20,7 +20,7 @@ export async function deployDocsToEcs(options = {}) {
   if (!/^[0-9a-f]{40}$/u.test(commitSha)) throw new Error("Docs deployment requires an exact commit SHA.");
   const remoteRoot = process.env.STEAMHARNESS_REMOTE_ROOT ?? REMOTE_ROOT;
   if (path.resolve(remoteRoot) !== REMOTE_ROOT) throw new Error(`ECS deployment root is fixed at ${REMOTE_ROOT}.`);
-  const temp = await mkdtemp(path.join(os.tmpdir(), "workflow-docs-ecs-"));
+  const temp = await mkdtemp(path.join(os.tmpdir(), "steamharness-docs-ecs-"));
   const key = path.join(temp, "id_ed25519");
   const knownHosts = path.join(temp, "known_hosts");
   const archive = path.join(temp, `docs-${commitSha}.tgz`);

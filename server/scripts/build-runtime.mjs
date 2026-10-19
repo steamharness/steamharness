@@ -19,8 +19,8 @@ export async function buildRuntime(options = {}) {
   if (!new Set(["stable", "alpha"]).has(channel)) throw new Error("Runtime channel must be stable or alpha.");
   if (!VERSION_PATTERN.test(version)) throw new Error("Runtime version must be a stable or Alpha version.");
   if (!COMMIT_PATTERN.test(commitSha)) throw new Error("Runtime artifact requires an exact commit SHA.");
-  const output = path.resolve(options.output ?? path.join(repoRoot, ".release", `workflow-server-${channel}-${version}.tgz`));
-  const workRoot = await fsTempDirectory("workflow-runtime-");
+  const output = path.resolve(options.output ?? path.join(repoRoot, ".release", `steamharness-server-${channel}-${version}.tgz`));
+  const workRoot = await fsTempDirectory("steamharness-runtime-");
   const staging = path.join(workRoot, "runtime");
   try {
     await execFileAsync("corepack", ["pnpm", "--filter", "@steamharness/server", "deploy", "--prod", "--legacy", staging], {

@@ -145,7 +145,7 @@ export async function syncWorkspaceProjects(options) {
     connectionString: options.databaseUrl,
   });
 
-  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "workflow-workspace-sync-"));
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "steamharness-workspace-sync-"));
 
   try {
     const existingRows = (await pool.query(

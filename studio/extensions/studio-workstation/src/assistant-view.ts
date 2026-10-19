@@ -29,7 +29,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
       vscode.workspace.onDidGrantWorkspaceTrust(() => this.bind()),
       vscode.window.onDidChangeActiveTextEditor(() => this.scheduleBind()),
       vscode.workspace.onDidChangeConfiguration(event => {
-        if (event.affectsConfiguration('studio.workflow.nodePath')) { this.key = ''; void this.bind(); }
+        if (event.affectsConfiguration('studio.project.nodePath')) { this.key = ''; void this.bind(); }
       }),
       vscode.commands.registerCommand('studio.openAssistant', () => this.show()),
       vscode.commands.registerCommand('studio.newAssistantConversation', () => this.command('new')),

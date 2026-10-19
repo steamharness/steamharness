@@ -9,7 +9,7 @@ export const SPLIT_REPOSITORIES = Object.freeze([
 
 const IGNORED_DIRECTORIES = new Set([
   ".agents", ".ci-artifacts", ".git", ".pnpm-store", ".release", ".shared",
-  ".workflow-local", "__snapshots__", "__tests__", "coverage", "dist",
+  ".steamharness-local", "__snapshots__", "__tests__", "coverage", "dist",
   "node_modules", "out", "public", "release", "test-results", "vendor",
 ]);
 const IGNORED_FILES = new Set([

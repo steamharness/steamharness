@@ -20,7 +20,7 @@ for (const language of ['en', 'zh-cn']) {
   const dataDir = path.join(directory, 'u'); await mkdir(path.join(dataDir, 'User'), { recursive: true });
   const server = await createAssistantTestServer();
   await writeFile(path.join(dataDir, 'User/settings.json'), JSON.stringify({ 'workbench.colorTheme': 'Light Modern', 'window.autoDetectColorScheme': false,
-    'git.openRepositoryInParentFolders': 'never', 'studio.workflow.serverUrl': server.connection.serverUrl }));
+    'git.openRepositoryInParentFolders': 'never', 'studio.project.serverUrl': server.connection.serverUrl }));
   for (const folder of ['A', 'B']) {
     await mkdir(path.join(directory, folder)); await writeFile(path.join(directory, folder, 'scope.txt'), `Contents from ${folder}`);
   }

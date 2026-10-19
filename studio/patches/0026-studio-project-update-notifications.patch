@@ -55,15 +55,15 @@ index a2d0465d..992ee111 100644
 +				}
  				append(card, $('p.studio-start-project-path', undefined, project.folderPath));
  				const actions = append(card, $('.studio-start-project-actions'));
--				this.button(actions, text('run'), 'play', 'studio.openWorkflow', { uri: project.uri }, false, false, store).classList.add('studio-start-primary');
+-				this.button(actions, text('run'), 'play', 'studio.openProject', { uri: project.uri }, false, false, store).classList.add('studio-start-primary');
 +				if (updateAvailable) {
 +					const upgrade = this.button(actions, text('upgrade'), 'arrow-circle-up', 'studio.upgradeProject', { uri: project.uri }, false, false, store);
 +					upgrade.classList.add('studio-start-primary');
 +					upgrade.disabled = !project.update?.canDownload || !!project.update?.busy;
 +					if (!project.update?.canDownload) { upgrade.title = text('downloadUnavailable'); }
 +				}
-+				const run = this.button(actions, text('run'), 'play', 'studio.openWorkflow', { uri: project.uri }, false, updateAvailable, store);
++				const run = this.button(actions, text('run'), 'play', 'studio.openProject', { uri: project.uri }, false, updateAvailable, store);
 +				if (!updateAvailable) { run.classList.add('studio-start-primary'); }
  				this.button(actions, text('upload'), 'cloud-upload', 'studio.uploadProject', { uri: project.uri }, false, true, store);
- 				this.button(actions, text('source'), 'code', 'studio.openWorkflowSource', { uri: project.uri }, false, true, store);
+ 				this.button(actions, text('source'), 'code', 'studio.openProjectSource', { uri: project.uri }, false, true, store);
  			}

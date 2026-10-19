@@ -61,7 +61,7 @@ async function handleRequest({ request, response, root, deployment }) {
     await sendNotFound({ request, response, root, deployment });
     return;
   }
-  if (pathname.split("/").includes(".workflow") || pathname.includes("\0")) {
+  if (pathname.split("/").includes(".steamharness") || pathname.includes("\0")) {
     await sendNotFound({ request, response, root, deployment });
     return;
   }

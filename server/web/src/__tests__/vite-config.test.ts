@@ -7,7 +7,7 @@ import { readLocalSharedAliases } from "../../vite.config";
 
 describe("Server Web Vite configuration", () => {
   it("aliases local Shared package entrypoints and subpaths for HMR", async () => {
-    const sharedRoot = await mkdtemp(path.join(os.tmpdir(), "workflow-server-web-vite-shared-"));
+    const sharedRoot = await mkdtemp(path.join(os.tmpdir(), "steamharness-server-web-vite-shared-"));
     const packageRoot = path.join(sharedRoot, "run-workspace-input");
     const releaseToolsRoot = path.join(sharedRoot, "release-tools");
     await Promise.all([

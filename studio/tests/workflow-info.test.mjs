@@ -92,7 +92,7 @@ function fixture(t, read) {
 test('ordinary workspaces and the independent assistant never expose the information tab', async t => {
   const { provider, contexts, state } = fixture(t, () => ({}));
   await provider.update([{ ...project('Assistant', 'conversation'), assistant: { standalone: true } }, project('Other', 'other')]);
-  assert.deepEqual([...contexts], [['studio.workflowInfoAvailable', false], ['studio.workflowInfoMultipleProjects', false]]);
+  assert.deepEqual([...contexts], [['studio.projectInfoAvailable', false], ['studio.projectInfoMultipleProjects', false]]);
   assert.equal(state().items.length, 0);
   assert.equal(state().project, undefined);
 });
@@ -124,7 +124,7 @@ test('project selection persists until the active project changes and source ope
   const uuid = fields(state().items).uuid;
   await commands.get('studio.copyProjectInfoValue')(uuid);
   assert.deepEqual(copied, [second.id]);
-  assert.equal(contexts.get('studio.workflowInfoMultipleProjects'), true);
+  assert.equal(contexts.get('studio.projectInfoMultipleProjects'), true);
   await provider.update([first, second], second); await provider.update([first, second], first);
   assert.equal(values(state().items).name, 'First');
 });

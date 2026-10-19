@@ -10,7 +10,7 @@ import { TraceView } from './workflow-trace-view';
 import { InfoView } from './workflow-info-view';
 import { RelatedProjectsView } from './workflow-related-projects-view';
 import { VersionsView } from './workflow-versions-view';
-import type { ProjectVersionStatus } from './workflow-server-projects';
+import type { ProjectVersionStatus } from './steamharness-server-projects';
 import { assistantWorkspaceAvailable } from './assistant-workspace';
 import { bindWorkflowClipboard } from './workflow-clipboard';
 import { bindWorkflowResourceCards, type ResourceCardResult } from './workflow-resource-cards';
@@ -54,9 +54,9 @@ class ProjectsProvider implements vscode.TreeDataProvider<Project> {
     item.resourceUri = vscode.Uri.parse(project.uri);
     item.description = [projectTypeLabels[project.projectType], projectVersion(project)].filter(Boolean).join(' \u00b7 ');
     item.tooltip = `${projectDisplayName(project)}\n${project.folderPath}`;
-    item.contextValue = 'studio.workflowProject';
+    item.contextValue = 'studio.project';
     item.iconPath = new vscode.ThemeIcon(icons[project.projectType]);
-    item.command = { command: 'studio.openWorkflow', title: t("Run Project"), arguments: [project] };
+    item.command = { command: 'studio.openProject', title: t("Run Project"), arguments: [project] };
     return item;
   }
 }
@@ -67,7 +67,7 @@ export async function activateWorkflow(context: vscode.ExtensionContext, launche
 }> {
   const provider = new ProjectsProvider();
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 110);
-  status.command = 'studio.openWorkflow';
+  status.command = 'studio.openProject';
   const versionStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 109);
   versionStatus.name = t('Project Updates');
   versionStatus.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
@@ -119,7 +119,7 @@ export async function activateWorkflow(context: vscode.ExtensionContext, launche
     versions.update(provider.projects, target);
     void info.update(provider.projects, target);
     updateVersionEntry();
-    void vscode.commands.executeCommand('setContext', 'studio.workflowAvailable', !!target);
+    void vscode.commands.executeCommand('setContext', 'studio.projectAvailable', !!target);
     if (!target) { status.hide(); return; }
     status.text = t("$(play) Run Project \u00B7 {0}", projectDisplayName(target));
     status.tooltip = target.folderPath; status.show();
@@ -162,7 +162,7 @@ export async function activateWorkflow(context: vscode.ExtensionContext, launche
     } finally { starting.delete(controller); startingSources.delete(controller); startingDone.delete(controller); finishStarting(); disposedPanel?.dispose(); }
     sessions.add(session);
     sessionSources.set(session, sources);
-    const panel = sidebar ?? restored ?? vscode.window.createWebviewPanel('studio.workflow', projectDisplayName(project), vscode.ViewColumn.Active, { enableScripts: true, retainContextWhenHidden: true });
+    const panel = sidebar ?? restored ?? vscode.window.createWebviewPanel('studio.project', projectDisplayName(project), vscode.ViewColumn.Active, { enableScripts: true, retainContextWhenHidden: true });
     const listeners: vscode.Disposable[] = [];
     let closed = false;
     const close = (): Promise<void> => {
@@ -375,7 +375,7 @@ export async function activateWorkflow(context: vscode.ExtensionContext, launche
   });
   const watcher = vscode.workspace.createFileSystemWatcher('**/{package.json,index.ts,kanban.json}');
   context.subscriptions.push(launcher, provider, status, versionStatus, versions.onDidChangeVersions(updateVersionEntry),
-    vscode.window.registerWebviewPanelSerializer('studio.workflow', { deserializeWebviewPanel: async (panel, state: { projectUri?: string } | undefined) => {
+    vscode.window.registerWebviewPanelSerializer('studio.project', { deserializeWebviewPanel: async (panel, state: { projectUri?: string } | undefined) => {
       await initialScan;
       let project = provider.projects.find(entry => entry.uri === state?.projectUri);
       if (!project && state?.projectUri && launcher.inspectAnalysis) {
@@ -388,17 +388,17 @@ export async function activateWorkflow(context: vscode.ExtensionContext, launche
       const created = createWorkspace(project, panel); opening.set(project.uri, created);
       try { await created; } finally { opening.delete(project.uri); }
     } }),
-    register('studio.openWorkflow', openProject), register('studio.refreshWorkflows', refresh),
+    register('studio.openProject', openProject), register('studio.refreshProjects', refresh),
     register('studio.openAnalysis', async () => {
       if (!launcher.inspectAnalysis) { throw new Error(t('Studio Analysis is unavailable in this environment.')); }
       await openProject(await launcher.inspectAnalysis());
     }),
-    register('studio.openWorkflowSource', async (target?: Project) => {
+    register('studio.openProjectSource', async (target?: Project) => {
       const selected = target?.uri ? provider.projects.find(entry => entry.uri === target.uri) : currentProject();
       if (selected) { await vscode.window.showTextDocument(vscode.Uri.joinPath(vscode.Uri.parse(selected.uri), 'package.json')); }
     }),
-    register('studio.openWorkflowDemo', () => openProject(provider.projects.find(entry => entry.id === 'b20a7d1d-b6f5-4b0c-8589-265d56fc879a') ?? currentProject())),
-    register('studio.openWorkflowCli', async () => {
+    register('studio.openProjectDemo', () => openProject(provider.projects.find(entry => entry.id === 'b20a7d1d-b6f5-4b0c-8589-265d56fc879a') ?? currentProject())),
+    register('studio.openProjectCli', async () => {
       const project = currentProject();
       if (!project || !vscode.workspace.isTrusted || !launcher.available) { return; }
       const entry = await launcher.cliEntry(project.folderPath);

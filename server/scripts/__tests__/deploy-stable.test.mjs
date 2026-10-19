@@ -21,8 +21,8 @@ test("stable deployment identity includes both units and the release commit", ()
     commitSha,
   }), "server-0.1.5__web-0.1.5__aaaaaaaaaaaa");
   assert.equal(
-    resolveStableDeploymentPaths("/srv/workflow-release").currentLink,
-    "/srv/workflow-release/deployments/server/stable/current",
+    resolveStableDeploymentPaths("/srv/steamharness-release").currentLink,
+    "/srv/steamharness-release/deployments/server/stable/current",
   );
 });
 
@@ -67,7 +67,7 @@ test("stable definition records localized notes and stable dependencies", async 
 
 test("stable deployment packages, activates, writes metadata, and verifies health", async () => {
   const repoRoot = await createFixture();
-  const releaseRoot = await mkdtemp(path.join(os.tmpdir(), "workflow-stable-root-"));
+  const releaseRoot = await mkdtemp(path.join(os.tmpdir(), "steamharness-stable-root-"));
   const calls = [];
   try {
     const result = await deployStableRelease({
@@ -112,7 +112,7 @@ test("stable deployment packages, activates, writes metadata, and verifies healt
 });
 
 async function createFixture() {
-  const root = await mkdtemp(path.join(os.tmpdir(), "workflow-stable-fixture-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "steamharness-stable-fixture-"));
   await mkdir(path.join(root, "web"), { recursive: true });
   await Promise.all([
     writeFile(path.join(root, "package.json"), `${JSON.stringify({

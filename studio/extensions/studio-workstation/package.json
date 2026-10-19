@@ -10,7 +10,7 @@
   "main": "./dist/extension.js",
   "browser": "./dist/extension-web.js",
   "l10n": "./l10n",
-  "activationEvents": ["onStartupFinished", "onWebviewPanel:studio.workflow", "onCommand:studio.internalStartPageVisibility"],
+  "activationEvents": ["onStartupFinished", "onWebviewPanel:studio.project", "onCommand:studio.internalStartPageVisibility"],
   "extensionKind": ["workspace"],
   "capabilities": {
     "untrustedWorkspaces": { "supported": true },
@@ -51,7 +51,7 @@
       { "command": "studio.openRecentProject", "title": "%command.openRecentProject%", "category": "Studio" },
       { "command": "studio.removeRecentProject", "title": "%command.removeRecentProject%", "category": "Studio", "icon": "$(close)" },
       { "command": "studio.clearRecentProjects", "title": "%command.clearRecentProjects%", "category": "Studio", "icon": "$(clear-all)" },
-      { "command": "studio.openWorkflow", "title": "%command.openWorkflow%", "category": "Workflow", "icon": "$(play)" },
+      { "command": "studio.openProject", "title": "%command.openWorkflow%", "category": "Workflow", "icon": "$(play)" },
       { "command": "studio.uploadProject", "title": "%command.uploadProject%", "category": "Workflow", "icon": "$(cloud-upload)" },
       { "command": "studio.upgradeProject", "title": "%command.upgradeProject%", "category": "Workflow", "icon": "$(arrow-circle-up)" },
       { "command": "studio.downloadProject", "title": "%command.downloadProject%", "category": "Workflow", "icon": "$(cloud-download)" },
@@ -61,19 +61,19 @@
       { "command": "studio.openAssistant", "title": "%command.openAssistant%", "category": "Workflow", "icon": "$(hubot)" },
       { "command": "studio.newAssistantConversation", "title": "%command.newAssistantConversation%", "category": "Workflow", "icon": "$(edit)" },
       { "command": "studio.searchAssistantConversations", "title": "%command.searchAssistantConversations%", "category": "Workflow", "icon": "$(search)" },
-      { "command": "studio.refreshWorkflows", "title": "%command.refreshWorkflows%", "category": "Workflow", "icon": "$(refresh)" },
+      { "command": "studio.refreshProjects", "title": "%command.refreshWorkflows%", "category": "Workflow", "icon": "$(refresh)" },
       { "command": "studio.refreshResources", "title": "%command.refreshResources%", "category": "Workflow", "icon": "$(refresh)" },
       { "command": "studio.selectInfoProject", "title": "%command.selectInfoProject%", "category": "Workflow", "icon": "$(list-selection)" },
       { "command": "studio.openInfoProjectSource", "title": "%command.openInfoProjectSource%", "category": "Workflow", "icon": "$(json)" },
       { "command": "studio.copyProjectInfoValue", "title": "%command.copyProjectInfoValue%", "category": "Workflow", "icon": "$(copy)" },
       { "command": "studio.openRelatedProject", "title": "%command.openRelatedProject%", "category": "Workflow", "icon": "$(link-external)" },
       { "command": "studio.refreshRelatedProjects", "title": "%command.refreshRelatedProjects%", "category": "Workflow", "icon": "$(refresh)" },
-      { "command": "studio.openWorkflowSource", "title": "%command.openWorkflowSource%", "category": "Workflow", "icon": "$(code)" },
-      { "command": "studio.openWorkflowDemo", "title": "%command.openWorkflowDemo%", "category": "Workflow", "icon": "$(comment-discussion)" },
-      { "command": "studio.openWorkflowCli", "title": "%command.openWorkflowCli%", "category": "Workflow", "icon": "$(terminal)" },
-      { "command": "studio.openWorkflowAccount", "title": "%command.openWorkflowAccount%", "category": "Workflow", "icon": "$(account)" },
-      { "command": "studio.validateWorkflowLogin", "title": "%command.validateWorkflowLogin%", "category": "Workflow", "icon": "$(verified)" },
-      { "command": "studio.logoutWorkflow", "title": "%command.logoutWorkflow%", "category": "Workflow", "icon": "$(sign-out)" }
+      { "command": "studio.openProjectSource", "title": "%command.openWorkflowSource%", "category": "Workflow", "icon": "$(code)" },
+      { "command": "studio.openProjectDemo", "title": "%command.openWorkflowDemo%", "category": "Workflow", "icon": "$(comment-discussion)" },
+      { "command": "studio.openProjectCli", "title": "%command.openWorkflowCli%", "category": "Workflow", "icon": "$(terminal)" },
+      { "command": "studio.openAccount", "title": "%command.openWorkflowAccount%", "category": "Workflow", "icon": "$(account)" },
+      { "command": "studio.validateLogin", "title": "%command.validateWorkflowLogin%", "category": "Workflow", "icon": "$(verified)" },
+      { "command": "studio.logout", "title": "%command.logoutWorkflow%", "category": "Workflow", "icon": "$(sign-out)" }
     ],
     "viewsContainers": {
       "activitybar": [
@@ -88,13 +88,13 @@
       ]
     },
     "views": {
-      "explorer": [{ "id": "studio.relatedProjects", "name": "%view.studio.relatedProjects%", "icon": "$(references)", "when": "studio.workflowInfoAvailable" }],
-      "studio-info": [{ "id": "studio.projectInfo", "name": "%container.studio-info%", "type": "webview", "when": "studio.workflowInfoAvailable" }],
+      "explorer": [{ "id": "studio.relatedProjects", "name": "%view.studio.relatedProjects%", "icon": "$(references)", "when": "studio.projectInfoAvailable" }],
+      "studio-info": [{ "id": "studio.projectInfo", "name": "%container.studio-info%", "type": "webview", "when": "studio.projectInfoAvailable" }],
       "studio-versions": [{ "id": "studio.versions", "name": "%container.studio-versions%", "type": "webview" }],
       "studio-assistant": [{ "id": "studio.developerAssistant", "name": "%container.studio-assistant%", "type": "webview" }],
-      "studio-kv": [{ "id": "studio.kv", "name": "KV", "type": "webview", "when": "studio.workflowResourcesAvailable" }],
-      "studio-knowledge": [{ "id": "studio.knowledge", "name": "%container.studio-knowledge%", "type": "webview", "when": "studio.workflowResourcesAvailable" }],
-      "studio-trace": [{ "id": "studio.trace", "name": "%container.studio-trace%", "type": "webview", "when": "studio.workflowTraceAvailable" }]
+      "studio-kv": [{ "id": "studio.kv", "name": "KV", "type": "webview", "when": "studio.projectResourcesAvailable" }],
+      "studio-knowledge": [{ "id": "studio.knowledge", "name": "%container.studio-knowledge%", "type": "webview", "when": "studio.projectResourcesAvailable" }],
+      "studio-trace": [{ "id": "studio.trace", "name": "%container.studio-trace%", "type": "webview", "when": "studio.projectTraceAvailable" }]
     },
     "menus": {
       "explorer/context": [
@@ -107,9 +107,9 @@
         { "command": "studio.refreshVersions", "when": "view == studio.versions", "group": "navigation@1" },
         { "command": "studio.downloadProject", "when": "view == studio.versions", "group": "navigation@2" },
         { "command": "studio.refreshRelatedProjects", "when": "view == studio.relatedProjects", "group": "navigation" },
-        { "command": "studio.selectInfoProject", "when": "view == studio.projectInfo && studio.workflowInfoMultipleProjects", "group": "navigation@1" },
+        { "command": "studio.selectInfoProject", "when": "view == studio.projectInfo && studio.projectInfoMultipleProjects", "group": "navigation@1" },
         { "command": "studio.openInfoProjectSource", "when": "view == studio.projectInfo", "group": "navigation@2" },
-        { "command": "studio.refreshWorkflows", "when": "view == studio.projectInfo", "group": "navigation@3" }
+        { "command": "studio.refreshProjects", "when": "view == studio.projectInfo", "group": "navigation@3" }
       ],
       "view/item/context": [
         { "command": "studio.openRelatedProject", "when": "view == studio.relatedProjects && viewItem == studio.relatedProjectImported", "group": "inline" }
@@ -117,7 +117,7 @@
       "editor/title": [
         { "command": "studio.refreshDocumentPreview", "when": "activeCustomEditorId == studio.documentPreview || activeCustomEditorId == studio.formulaPreview", "group": "navigation@1" },
         { "command": "studio.openDocumentPreview", "when": "resourceExtname =~ /\\.(tex|latex)$/i && activeCustomEditorId != studio.formulaPreview", "group": "navigation@1" },
-        { "command": "studio.openWorkflow", "when": "studio.workflowAvailable", "group": "navigation@0" }
+        { "command": "studio.openProject", "when": "studio.projectAvailable", "group": "navigation@0" }
       ]
     },
     "configuration": {
@@ -126,13 +126,13 @@
         "studio.startPage.enabled": {
           "type": "boolean", "default": true, "description": "%config.startPage.enabled%"
         },
-        "studio.workflow.serverUrl": {
+        "studio.project.serverUrl": {
           "type": "string", "default": "http://localhost:7126", "scope": "application",
-          "description": "%config.studio.workflow.serverUrl%"
+          "description": "%config.studio.project.serverUrl%"
         },
-        "studio.workflow.nodePath": {
+        "studio.project.nodePath": {
           "type": "string", "default": "", "scope": "machine", "restricted": true,
-          "description": "%config.studio.workflow.nodePath%"
+          "description": "%config.studio.project.nodePath%"
         },
         "studio.recentProjects.limit": {
           "type": "integer", "default": 12, "minimum": 1, "maximum": 50,

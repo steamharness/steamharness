@@ -32,7 +32,7 @@ export async function activateDocsService(options = {}) {
     throw new Error("Docs activation requires an absolute Node.js executable path.");
   }
   const nodeBin = path.resolve(rawNodeBin);
-  const serverScript = path.join(releaseRoot, ".workflow", "serve-docs.mjs");
+  const serverScript = path.join(releaseRoot, ".steamharness", "serve-docs.mjs");
   await access(nodeBin, constants.X_OK);
   await Promise.all([
     assertFile(path.join(releaseRoot, "index.html"), "Docusaurus index"),

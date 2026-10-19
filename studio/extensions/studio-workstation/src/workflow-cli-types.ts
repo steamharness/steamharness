@@ -3,7 +3,7 @@ import type { Connection } from './workflow-auth-client';
 import type { ResourceRequest } from './workflow-resources-types';
 import type { CreatedProject, ProjectCreationInput, StartEnvironment, StartSummary, StartTemplate } from './start-page-types';
 import type { ProjectType } from './projects';
-import type { DownloadedServerProject, ProjectTransferProgress, UpdatedServerProject } from './workflow-server-projects';
+import type { DownloadedServerProject, ProjectTransferProgress, UpdatedServerProject } from './steamharness-server-projects';
 
 export interface RelatedProjectBinding { alias: string; projectDir: string }
 

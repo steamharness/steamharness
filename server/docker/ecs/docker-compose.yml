@@ -1,16 +1,16 @@
-name: workflow-ecs
+name: steamharness-ecs
 
 services:
-  workflow-postgres:
+  server-postgres:
     image: postgres:15-alpine
-    container_name: workflow-ecs-postgres
+    container_name: steamharness-ecs-postgres
     restart: unless-stopped
     command: postgres -c max_connections=40 -c shared_buffers=32MB -c work_mem=2MB
     ports:
       - "127.0.0.1:7125:5432"
     environment:
-      POSTGRES_DB: ${STEAMHARNESS_POSTGRES_DB:-workflow}
-      POSTGRES_USER: ${STEAMHARNESS_POSTGRES_USER:-workflow}
+      POSTGRES_DB: ${STEAMHARNESS_POSTGRES_DB:-steamharness}
+      POSTGRES_USER: ${STEAMHARNESS_POSTGRES_USER:-steamharness}
       POSTGRES_PASSWORD: ${STEAMHARNESS_POSTGRES_PASSWORD:?Set STEAMHARNESS_POSTGRES_PASSWORD}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
@@ -23,7 +23,7 @@ services:
 
   nginx:
     image: nginx:1.27-alpine
-    container_name: workflow-ecs-nginx
+    container_name: steamharness-ecs-nginx
     restart: unless-stopped
     network_mode: host
     healthcheck:

@@ -5,7 +5,7 @@ import { projectVersion, projectDisplayName, type Project } from './workflow-typ
 import type { Launcher } from './workflow-cli-types';
 import type { AccountController } from './workflow-auth';
 import { AuthError, normalizeWorkflowServerUrl, type Connection } from './workflow-auth-client';
-import { ProjectServerClient, compareProjectVersions, parseServerProjectShareLink, type DownloadedServerProject, type ProjectVersionStatus, type ServerProject, type ServerProjectVersion, type UpdatedServerProject, type VersionsState } from './workflow-server-projects';
+import { ProjectServerClient, compareProjectVersions, parseServerProjectShareLink, type DownloadedServerProject, type ProjectVersionStatus, type ServerProject, type ServerProjectVersion, type UpdatedServerProject, type VersionsState } from './steamharness-server-projects';
 import { IMPORTED_PROJECTS_KEY, readImportedProjects } from './projects';
 
 interface ProjectUploadSession {
@@ -94,7 +94,7 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
     const versionChanged = local && projectVersion(local) !== (this.preferred && projectVersion(this.preferred));
     this.preferred = local;
     if (changed) { this.serverProject = local && this.serverProjects.get(local.id); this.versions = []; }
-    void vscode.commands.executeCommand('setContext', 'studio.workflowUploadAvailable', !!local && !!this.launcher.uploadProject && vscode.workspace.isTrusted);
+    void vscode.commands.executeCommand('setContext', 'studio.projectUploadAvailable', !!local && !!this.launcher.uploadProject && vscode.workspace.isTrusted);
     if (projectsChanged || changed || versionChanged) { this.schedule(); }
     this.publish();
   }
@@ -232,7 +232,7 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
       } finally {
         guard?.dispose(); this.busy = false; this.publish();
         if (!this.disposed) {
-          await vscode.commands.executeCommand('studio.refreshWorkflows').then(undefined, error => this.output.appendLine(`Project refresh: ${String(error)}`));
+          await vscode.commands.executeCommand('studio.refreshProjects').then(undefined, error => this.output.appendLine(`Project refresh: ${String(error)}`));
           if (result || guard) { await vscode.commands.executeCommand('studio.refreshProjects'); }
           await this.reload();
         }

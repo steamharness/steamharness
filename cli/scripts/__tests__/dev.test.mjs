@@ -7,7 +7,7 @@ test("CLI development plan executes local CLI and Core sources", async () => {
   const root = path.resolve("checkout", "cli");
   const harnessRoot = path.resolve("checkout", "core");
   const sharedRoot = path.resolve("checkout", "shared");
-  const tsconfigPath = path.join(root, ".workflow-local", "tsconfig.json");
+  const tsconfigPath = path.join(root, ".steamharness-local", "tsconfig.json");
   const plan = await createCliRunPlan({
     root,
     env: {},

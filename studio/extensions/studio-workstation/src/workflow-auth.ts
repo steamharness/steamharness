@@ -7,7 +7,7 @@ import {
   type AccountState, type Connection,
 } from './workflow-auth-client';
 
-const SECRET_KEY = 'studio.workflow.account';
+const SECRET_KEY = 'studio.project.account';
 const PROVIDER_ID = 'studio-workflow';
 
 export class AccountController implements vscode.Disposable {
@@ -26,7 +26,7 @@ export class AccountController implements vscode.Disposable {
       delete: () => context.secrets.delete(SECRET_KEY),
     }, (state) => {
       this.change.fire(state);
-      void vscode.commands.executeCommand('setContext', 'studio.workflowAuthenticated', !!this.account.getSession());
+      void vscode.commands.executeCommand('setContext', 'studio.authenticated', !!this.account.getSession());
       void this.panel?.webview.postMessage({ type: 'account', state });
       const session = this.authenticationSession();
       if (JSON.stringify(session) !== JSON.stringify(this.previousSession)) {
@@ -66,14 +66,14 @@ export class AccountController implements vscode.Disposable {
           if (this.authenticationSession()?.id === sessionId) { await this.account.logout(); }
         },
       }, { supportsMultipleAccounts: false }),
-      vscode.commands.registerCommand('studio.openWorkflowAccount', () => this.open()),
-      vscode.commands.registerCommand('studio.validateWorkflowLogin', () => this.account.verify()),
-      vscode.commands.registerCommand('studio.logoutWorkflow', () => this.account.logout()),
+      vscode.commands.registerCommand('studio.openAccount', () => this.open()),
+      vscode.commands.registerCommand('studio.validateLogin', () => this.account.verify()),
+      vscode.commands.registerCommand('studio.logout', () => this.account.logout()),
       context.secrets.onDidChange((event) => {
         if (event.key === SECRET_KEY) { void this.account.restore().catch(() => undefined); }
       }),
       vscode.workspace.onDidChangeConfiguration((event) => {
-        if (event.affectsConfiguration('studio.workflow.serverUrl')) {
+        if (event.affectsConfiguration('studio.project.serverUrl')) {
           void this.account.changeServer(this.configuredServer()).catch(() => undefined);
         }
       }),
@@ -96,7 +96,7 @@ export class AccountController implements vscode.Disposable {
   }
 
   async initialize(): Promise<void> {
-    await vscode.commands.executeCommand('setContext', 'studio.workflowAccountAvailable', true);
+    await vscode.commands.executeCommand('setContext', 'studio.accountAvailable', true);
     await this.account.restore();
   }
   getState(): AccountState { return this.account.getState(); }
@@ -112,7 +112,7 @@ export class AccountController implements vscode.Disposable {
 
   open(): void {
     if (this.panel) { this.panel.reveal(); return; }
-    const panel = vscode.window.createWebviewPanel('studio.workflowAccount', t("SteamHarness Account"), vscode.ViewColumn.Active, {
+    const panel = vscode.window.createWebviewPanel('studio.account', t("SteamHarness Account"), vscode.ViewColumn.Active, {
       enableScripts: true, retainContextWhenHidden: false,
       localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')],
     });
@@ -156,7 +156,7 @@ export class AccountController implements vscode.Disposable {
   }
 
   dispose(): void {
-    void vscode.commands.executeCommand('setContext', 'studio.workflowAccountAvailable', false);
+    void vscode.commands.executeCommand('setContext', 'studio.accountAvailable', false);
     this.panel?.dispose();
     for (const disposable of this.disposables) { disposable.dispose(); }
   }

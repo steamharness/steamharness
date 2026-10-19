@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-ROOT="${STEAMHARNESS_REMOTE_ROOT:-/srv/workflow-release}"
+ROOT="${STEAMHARNESS_REMOTE_ROOT:-/srv/steamharness-release}"
 COMPOSE_DIR="$ROOT/compose"
 COMPOSE_FILE="$COMPOSE_DIR/docker-compose.yml"
 ENV_FILE="$ROOT/.env"
@@ -12,7 +12,7 @@ log() { printf '[ecs-agent] %s\n' "$*"; }
 die() { printf '[ecs-agent] ERROR: %s\n' "$*" >&2; exit 1; }
 
 compose() {
-  local -a args=(compose --project-name workflow-ecs --file "$COMPOSE_FILE")
+  local -a args=(compose --project-name steamharness-ecs --file "$COMPOSE_FILE")
   [[ -f "$ENV_FILE" ]] && args+=(--env-file "$ENV_FILE")
   docker "${args[@]}" "$@"
 }
@@ -74,7 +74,7 @@ bootstrap() {
 # ACME challenge for a new name being refused while the file on disk looks
 # correct. Reloading here is what makes a config change actually take effect.
 reload_nginx_config() {
-  docker ps --format '{{.Names}}' | grep -qx workflow-ecs-nginx || return 0
+  docker ps --format '{{.Names}}' | grep -qx steamharness-ecs-nginx || return 0
   compose exec --no-tty nginx nginx -t
   compose exec --no-tty nginx nginx -s reload
   log "Nginx reloaded with the selected configuration"
@@ -84,7 +84,7 @@ ensure_compose() {
   ensure_docker
   compose config --quiet
   compose up --detach --no-recreate --pull never --wait --wait-timeout 180 \
-    workflow-postgres nginx
+    server-postgres nginx
   reload_nginx_config
 }
 

@@ -230,7 +230,7 @@ index 00000000..9c46b7e2
 +		const quick = this.section(grid, 'quick');
 +		for (const [label, icon, command] of [
 +			['openFolder', 'folder-opened', 'studio.openFolder'], ['openWorkspace', 'file-submodule', 'studio.openWorkspace'],
-+			['assistant', 'hubot', 'studio.openAssistant'], ['account', 'account', 'studio.openWorkflowAccount'], ['settings', 'settings-gear', 'studio.openSettings'],
++			['assistant', 'hubot', 'studio.openAssistant'], ['account', 'account', 'studio.openAccount'], ['settings', 'settings-gear', 'studio.openSettings'],
 +		]) { this.button(quick, label, icon, command); }
 +		this.error = append(inner, $('p.studio-start-error'));
 +		this.error.setAttribute('role', 'status');
@@ -324,8 +324,8 @@ index 00000000..9c46b7e2
 +			if (!state.projects.length && !state.pending.length) { append(root, $('p.studio-start-muted', undefined, text('noCurrent'))); }
 +			for (const project of state.projects) {
 +				const row = append(root, $('.studio-start-project'));
-+				this.button(row, project.name, icons[project.projectType] ?? 'folder', 'studio.openWorkflow', { uri: project.uri }, false, false, store);
-+				this.button(row, text('source'), 'code', 'studio.openWorkflowSource', { uri: project.uri }, false, true, store);
++				this.button(row, project.name, icons[project.projectType] ?? 'folder', 'studio.openProject', { uri: project.uri }, false, false, store);
++				this.button(row, text('source'), 'code', 'studio.openProjectSource', { uri: project.uri }, false, true, store);
 +			}
 +			for (const project of state.pending) {
 +				const row = append(root, $('.studio-start-pending'));

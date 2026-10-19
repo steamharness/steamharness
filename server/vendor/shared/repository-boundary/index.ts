@@ -5,7 +5,7 @@ import ts from "typescript";
 
 const SOURCE_EXTENSIONS = new Set([".cjs", ".cts", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx"]);
 const IGNORED_DIRECTORIES = new Set([
-  ".git", ".pnpm-store", ".release", ".workflow-local", "coverage", "dist", "node_modules", "out", "public", "release", "vendor",
+  ".git", ".pnpm-store", ".release", ".steamharness-local", "coverage", "dist", "node_modules", "out", "public", "release", "vendor",
 ]);
 
 export interface RepositoryBoundaryViolation {
@@ -242,7 +242,7 @@ function isMissingPathError(error: unknown): error is NodeJS.ErrnoException {
 
 function listTrackedDevelopmentAdapters(root: string): string[] {
   try {
-    return execFileSync("git", ["ls-files", "-z", "--", ".workflow-local"], {
+    return execFileSync("git", ["ls-files", "-z", "--", ".steamharness-local"], {
       cwd: root,
       encoding: "buffer",
       stdio: ["ignore", "pipe", "ignore"],

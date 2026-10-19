@@ -9,7 +9,7 @@ import { promisify } from "node:util";
 import { decodePrivateKey, withRemote } from "./deploy-ecs.mjs";
 
 const exec = promisify(execFile);
-const ROOT = "/srv/workflow-release";
+const ROOT = "/srv/steamharness-release";
 const SOURCE_ROOT = "/Volumes/store/steamharness-prod";
 const quote = (value) => `'${String(value).replaceAll("'", "'\\''")}'`;
 
@@ -20,7 +20,7 @@ export function validateMigrationId(value) {
 
 export async function migrateEcs() {
   const id = validateMigrationId(process.env.STEAMHARNESS_MIGRATION_ID);
-  const temp = await mkdtemp(path.join(os.tmpdir(), "workflow-migration-"));
+  const temp = await mkdtemp(path.join(os.tmpdir(), "steamharness-migration-"));
   try {
     return await withRemote({ root: ROOT }, async (target) => {
       const completed = await target.output(`test -f ${ROOT}/migration-audit/data-restored.json`).then(() => true, () => false);

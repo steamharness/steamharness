@@ -1,5 +1,5 @@
 import type { RecentProject } from './projects';
-import type { ProjectVersionStatus } from './workflow-server-projects';
+import type { ProjectVersionStatus } from './steamharness-server-projects';
 
 export interface StartTemplate {
   id: string;

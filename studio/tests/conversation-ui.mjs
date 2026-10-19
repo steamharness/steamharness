@@ -168,7 +168,7 @@ try {
   });
   await page.setViewportSize({ width: 1440, height: 1000 });
   const run = page.locator('.part.titlebar .studio-workflow-run').getByRole('button', { name: '\u8fd0\u884c\u9879\u76ee', exact: true }); await run.waitFor({ timeout: 45000 });
-  assert.equal(page.frames().some((frame) => frame.url().includes('studio.workflow')), false);
+  assert.equal(page.frames().some((frame) => frame.url().includes('studio.project')), false);
   await run.click(); let frame = await frameFor('#message'); await ready(frame);
   await frame.evaluate(() => window.addEventListener('message', (event) => { if (event.data.type === 'state') { window.__studioConversationProofState = event.data; } }));
   proof.checks.folderRecognitionAndNativeTab = true;

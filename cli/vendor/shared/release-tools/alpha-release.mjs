@@ -11,7 +11,7 @@ const MANIFEST_PATH_PATTERN = /(^|\/)package\.json$/u;
 const RELEASE_METADATA_PATH_PATTERNS = Object.freeze([
   /^\.ci-artifacts(?:\/|$)/u,
   /^\.release(?:\/|$)/u,
-  /^\.workflow-local(?:\/|$)/u,
+  /^\.steamharness-local(?:\/|$)/u,
   /^\.gitlab-ci\.yml$/u,
   /(?:^|\/)(?:AGENTS|CLAUDE)\.md$/u,
   /^(?:\.agents|\.claude|\.codex)(?:\/|$)/u,

@@ -188,9 +188,9 @@ index 9c46b7e2..9d181da5 100644
  			if (!state.projects.length && !state.pending.length) { append(root, $('p.studio-start-muted', undefined, text('noCurrent'))); }
  			for (const project of state.projects) {
  				const row = append(root, $('.studio-start-project'));
--				this.button(row, project.name, icons[project.projectType] ?? 'folder', 'studio.openWorkflow', { uri: project.uri }, false, false, store);
-+				this.button(row, project.name, studioProjectIcon(project.projectType) ?? 'folder', 'studio.openWorkflow', { uri: project.uri }, false, false, store);
- 				this.button(row, text('source'), 'code', 'studio.openWorkflowSource', { uri: project.uri }, false, true, store);
+-				this.button(row, project.name, icons[project.projectType] ?? 'folder', 'studio.openProject', { uri: project.uri }, false, false, store);
++				this.button(row, project.name, studioProjectIcon(project.projectType) ?? 'folder', 'studio.openProject', { uri: project.uri }, false, false, store);
+ 				this.button(row, text('source'), 'code', 'studio.openProjectSource', { uri: project.uri }, false, true, store);
  			}
  			for (const project of state.pending) {
 @@ -219,7 +219,7 @@ export class StudioStartView extends Disposable {

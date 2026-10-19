@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { t, locale } from './localization';
 import { AuthError, type Connection } from './workflow-auth-client';
-import { ProjectServerClient, type DownloadedServerProject, type ProjectPreparation, type ProjectTransferProgress } from './workflow-server-projects';
+import { ProjectServerClient, type DownloadedServerProject, type ProjectPreparation, type ProjectTransferProgress } from './steamharness-server-projects';
 
 interface TransferOptions {
   cliEntry: string; runtimeDirectory: string; nodePath: string; connection: Connection;

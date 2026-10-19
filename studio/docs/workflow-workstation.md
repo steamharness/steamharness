@@ -51,11 +51,11 @@ Studio 从项目目录解析 `@steamharness/cli` 的 `steamharness` bin。项目
 
 内嵌页面中的正文与代码复制使用 VS Code 原生剪贴板，并等待宿主确认成功，避免 iframe 的浏览器剪贴板权限限制。独立浏览器运行页仍使用浏览器剪贴板。
 
-机器级设置 `studio.workflow.nodePath` 可指定 Node；默认使用扩展宿主可用的 Node。**Workflow: 打开内置 CLI** 在原生终端中使用当前项目的 CLI。
+机器级设置 `studio.project.nodePath` 可指定 Node；默认使用扩展宿主可用的 Node。**Workflow: 打开内置 CLI** 在原生终端中使用当前项目的 CLI。
 
 ## 服务器与登录
 
-应用级设置 `studio.workflow.serverUrl` 选择 SteamHarness Server，项目配置不能覆盖该地址；变更服务器后需要重新登录。开发默认地址是 `http://localhost:7126`。
+应用级设置 `studio.project.serverUrl` 选择 SteamHarness Server，项目配置不能覆盖该地址；变更服务器后需要重新登录。开发默认地址是 `http://localhost:7126`。
 
 左下角账号入口提供 **登录与管理账号**。工作站向 `/api/auth/login` 提交邮箱、密码及现有协议字段 `source: desktop`，然后通过 `/api/auth/me` 验证身份。这一认证来源字段不代表项目执行平台；CLI Web 的实际 runtime platform 是 `cli`。
 

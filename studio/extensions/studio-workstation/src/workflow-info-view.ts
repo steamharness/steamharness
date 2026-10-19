@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 import { projectTypeIcons } from './projects';
 import { projectDisplayName, type Project } from './workflow-types';
 import { workflowInfoItems, type InfoItem, type InfoState } from './workflow-info';
-import type { ProjectVersionStatus } from './workflow-server-projects';
+import type { ProjectVersionStatus } from './steamharness-server-projects';
 
 export class InfoView implements vscode.WebviewViewProvider, vscode.Disposable {
   private view?: vscode.WebviewView;
@@ -23,7 +23,7 @@ export class InfoView implements vscode.WebviewViewProvider, vscode.Disposable {
     context.subscriptions.push(this,
       vscode.window.registerWebviewViewProvider('studio.projectInfo', this, { webviewOptions: { retainContextWhenHidden: true } }),
       vscode.commands.registerCommand('studio.selectInfoProject', () => this.select()),
-      vscode.commands.registerCommand('studio.openInfoProjectSource', () => this.selected && vscode.commands.executeCommand('studio.openWorkflowSource', this.selected)),
+      vscode.commands.registerCommand('studio.openInfoProjectSource', () => this.selected && vscode.commands.executeCommand('studio.openProjectSource', this.selected)),
       vscode.commands.registerCommand('studio.copyProjectInfoValue', (item?: InfoItem) => this.copy(item?.id)),
       versions.onDidChangeVersions(() => this.publish()),
     );
@@ -34,8 +34,8 @@ export class InfoView implements vscode.WebviewViewProvider, vscode.Disposable {
     const changedPreferred = preferred?.uri !== this.preferredUri;
     this.preferredUri = preferred?.uri;
     const selected = this.projects.find(project => project.uri === (changedPreferred ? preferred?.uri : this.selected?.uri)) ?? this.projects[0];
-    void vscode.commands.executeCommand('setContext', 'studio.workflowInfoAvailable', this.projects.length > 0);
-    void vscode.commands.executeCommand('setContext', 'studio.workflowInfoMultipleProjects', this.projects.length > 1);
+    void vscode.commands.executeCommand('setContext', 'studio.projectInfoAvailable', this.projects.length > 0);
+    void vscode.commands.executeCommand('setContext', 'studio.projectInfoMultipleProjects', this.projects.length > 1);
     if (selected !== this.selected) { this.selected = selected; return this.reload(); }
     return this.loading;
   }

@@ -1,6 +1,6 @@
 import { t } from './localization';
 import type { Project } from './workflow-types';
-import type { ProjectVersionStatus } from './workflow-server-projects';
+import type { ProjectVersionStatus } from './steamharness-server-projects';
 
 export interface InfoItem {
   id: string;

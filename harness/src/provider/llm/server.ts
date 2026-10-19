@@ -226,7 +226,7 @@ class ServerLLMCredentialManager {
         }
         return createLLMProvider({
           type: record.providerType,
-          apiKey: "workflow-server-proxy",
+          apiKey: "steamharness-server-proxy",
           baseURL: joinServerUrl(this.connection.serverUrl, record.proxyPath),
           model,
           system: options.system,

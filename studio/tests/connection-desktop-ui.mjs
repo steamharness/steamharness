@@ -57,7 +57,7 @@ const manifestText = JSON.stringify(manifest);
 await writeFile(manifestPath, manifestText);
 const userData = path.join(directory, 'user');
 await mkdir(path.join(userData, 'User'), { recursive: true });
-await writeFile(path.join(userData, 'User/settings.json'), JSON.stringify({ 'studio.workflow.serverUrl': serverUrl,
+await writeFile(path.join(userData, 'User/settings.json'), JSON.stringify({ 'studio.project.serverUrl': serverUrl,
   'workbench.startupEditor': 'none', 'workbench.colorTheme': 'Light Modern', 'git.openRepositoryInParentFolders': 'never' }));
 const freePort = createServer(); await new Promise(resolve => freePort.listen(0, '127.0.0.1', resolve));
 const port = freePort.address().port; await new Promise(resolve => freePort.close(resolve));

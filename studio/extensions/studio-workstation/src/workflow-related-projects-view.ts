@@ -5,7 +5,7 @@ import { IMPORTED_PROJECTS_KEY, projectId, readImportedProjects, readRecentProje
 import type { ProjectIcons } from './project-icons';
 import type { Project } from './workflow-types';
 import type { RelatedProjectBinding } from './workflow-cli-types';
-import type { DownloadedServerProject } from './workflow-server-projects';
+import type { DownloadedServerProject } from './steamharness-server-projects';
 
 interface RelatedProjectItem extends RelatedProject {
   ownerUri: string;

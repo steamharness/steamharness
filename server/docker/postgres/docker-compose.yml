@@ -8,8 +8,8 @@ services:
     ports:
       - "127.0.0.1:7125:5432"
     environment:
-      POSTGRES_DB: ${STEAMHARNESS_POSTGRES_DB:-workflow}
-      POSTGRES_USER: ${STEAMHARNESS_POSTGRES_USER:-workflow}
+      POSTGRES_DB: ${STEAMHARNESS_POSTGRES_DB:-steamharness}
+      POSTGRES_USER: ${STEAMHARNESS_POSTGRES_USER:-steamharness}
       POSTGRES_PASSWORD: ${STEAMHARNESS_POSTGRES_PASSWORD:?Set STEAMHARNESS_POSTGRES_PASSWORD}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]

@@ -25,15 +25,15 @@ index 4c4affa1451..8d9315e1141 100644
  import { createCodexAccountMenuActions, ICodexAccountService, shouldShowCodexAccount } from '../../services/agentHost/browser/codexAccountService.js';
  
 +for (const [id, title, authenticated] of [
-+	['studio.openWorkflowAccount', localize('studio.workflowAccount', "\u767b\u5f55\u4e0e\u7ba1\u7406\u8d26\u53f7"), false],
-+	['studio.validateWorkflowLogin', localize('studio.validateWorkflowLogin', "\u9a8c\u8bc1\u767b\u5f55"), true],
-+	['studio.logoutWorkflow', localize('studio.logoutWorkflow', "\u9000\u51fa\u767b\u5f55"), true],
++	['studio.openAccount', localize('studio.account', "\u767b\u5f55\u4e0e\u7ba1\u7406\u8d26\u53f7"), false],
++	['studio.validateLogin', localize('studio.validateLogin', "\u9a8c\u8bc1\u767b\u5f55"), true],
++	['studio.logout', localize('studio.logout', "\u9000\u51fa\u767b\u5f55"), true],
 +] as const) {
 +	MenuRegistry.appendMenuItem(MenuId.AccountsContext, {
 +		command: { id, title },
 +		when: ContextKeyExpr.and(
-+			ContextKeyExpr.equals('studio.workflowAccountAvailable', true),
-+			authenticated ? ContextKeyExpr.equals('studio.workflowAuthenticated', true) : undefined
++			ContextKeyExpr.equals('studio.accountAvailable', true),
++			authenticated ? ContextKeyExpr.equals('studio.authenticated', true) : undefined
 +		),
 +		group: '0_workflow'
 +	});

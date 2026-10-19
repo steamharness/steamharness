@@ -72,9 +72,9 @@ export type DetailState = {
   loadErrors?: Partial<Record<"versions" | "members" | "invitations" | "dataSummary", string>>;
 };
 
-export const THEME_STORAGE_KEY = "workflow-server-admin:theme";
+export const THEME_STORAGE_KEY = "steamharness-server-admin:theme";
 
-export const LOCALE_STORAGE_KEY = "workflow-server-admin:locale";
+export const LOCALE_STORAGE_KEY = "steamharness-server-admin:locale";
 
 export const DEFAULT_DETAIL: DetailState = {
   versions: null,

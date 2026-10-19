@@ -17,7 +17,7 @@ test("ECS SSH key accepts PEM and Base64 file variable contents", () => {
 });
 
 test("ECS bootstrap uploads Compose files into the configured Compose root", () => {
-  assert.equal(getEcsComposeSource("/srv/workflow"), "/srv/workflow/docker/ecs/");
+  assert.equal(getEcsComposeSource("/srv/steamharness"), "/srv/steamharness/docker/ecs/");
 });
 
 test("ECS image fallback can use an explicit CI SSH target", () => {

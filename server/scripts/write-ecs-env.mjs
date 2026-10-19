@@ -29,12 +29,12 @@ export function buildEcsEnv({ kind, env = process.env } = {}) {
   const keys = kind === "compose" ? COMPOSE_KEYS : RUNTIME_KEYS;
   const values = Object.fromEntries(keys.map((key) => [key, String(env[key] ?? "").trim()]));
   for (const key of REQUIRED[kind]) if (!values[key]) throw new Error(`Missing ${key} for ECS ${kind} environment.`);
-  values.STEAMHARNESS_RELEASE_STORAGE_ROOT = "/srv/workflow-release";
+  values.STEAMHARNESS_RELEASE_STORAGE_ROOT = "/srv/steamharness-release";
   if (kind !== "compose") {
     values.STEAMHARNESS_DATABASE_URL = buildLocalDatabaseUrl(values, env);
     values.STEAMHARNESS_RELEASE_CHANNEL = kind;
     values.STEAMHARNESS_SERVER_PORT = kind === "alpha" ? "7140" : "7130";
-    values.STEAMHARNESS_SERVER_DATA_DIR = `/srv/workflow-release/server-data/${kind}`;
+    values.STEAMHARNESS_SERVER_DATA_DIR = `/srv/steamharness-release/server-data/${kind}`;
   }
   return serializeEnvValues(kind, values);
 }
@@ -46,9 +46,9 @@ function serializeEnvValues(kind, values) {
 }
 
 function buildLocalDatabaseUrl(values, env) {
-  const user = values.STEAMHARNESS_POSTGRES_USER || "workflow";
+  const user = values.STEAMHARNESS_POSTGRES_USER || "steamharness";
   const password = String(env.STEAMHARNESS_POSTGRES_PASSWORD ?? "");
-  const database = values.STEAMHARNESS_POSTGRES_DB || "workflow";
+  const database = values.STEAMHARNESS_POSTGRES_DB || "steamharness";
   if (!password) throw new Error("Missing STEAMHARNESS_POSTGRES_PASSWORD for ECS runtime environment.");
   return `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(password)}@127.0.0.1:7125/${encodeURIComponent(database)}`;
 }

@@ -135,7 +135,7 @@ test('creation opens the project before installation and hands progress, logs an
   target.manifestId = id; target.install = undefined; await target.execute('studio.retryProjectSetup', id);
   assert.equal((await target.state()).pending.length, 0); assert.equal(target.remembered.id, id); assert.equal(f.created, 1);
   assert.equal(target.calls.some(([name]) => name === 'vscode.openFolder'), false);
-  assert.ok(target.calls.some(([name]) => name === 'studio.refreshWorkflows'));
+  assert.ok(target.calls.some(([name]) => name === 'studio.refreshProjects'));
 });
 
 test('form and window-choice cancellation create nothing, while install cancellation stays in the project window', async t => {

@@ -74,7 +74,7 @@ const config = {
         id: "openapi",
         docsPluginId: "default",
         config: {
-          workflowZh: {
+          openapiZh: {
             specPath: ".docusaurus-openapi/steamharness.zh.yaml",
             outputDir: "./reference",
             showSchemas: true,
@@ -84,7 +84,7 @@ const config = {
               sidebarCollapsed: true,
             },
           },
-          workflowEn: {
+          openapiEn: {
             specPath: ".docusaurus-openapi/steamharness.en.yaml",
             outputDir: "en/reference",
             showSchemas: true,

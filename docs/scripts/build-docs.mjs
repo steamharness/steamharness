@@ -22,7 +22,7 @@ export async function buildDocs(options = {}) {
   await mkdir(path.dirname(outputDir), { recursive: true });
   await cp(siteDir, outputDir, { recursive: true });
 
-  const runtimeDir = path.join(outputDir, ".workflow");
+  const runtimeDir = path.join(outputDir, ".steamharness");
   await mkdir(runtimeDir, { recursive: true });
   await Promise.all([
     cp(path.join(root, "scripts", "activate-docs.mjs"), path.join(runtimeDir, "activate-docs.mjs")),

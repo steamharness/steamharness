@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import { promisify } from 'node:util';
 import { register } from 'tsx/esm/api';
 register();
-const { uploadServerProject, downloadServerProject } = await import('../extensions/studio-workstation/src/workflow-server-projects-node.ts');
+const { uploadServerProject, downloadServerProject } = await import('../extensions/studio-workstation/src/steamharness-server-projects-node.ts');
 const cliEntry = process.env.STUDIO_WORKSPACE_CLI;
 const projectId = '784af2d9-240a-45d1-a659-452a21867934';
 const dependencyId = '4c8bed84-e667-446e-860d-663caa5c3587';

@@ -7,7 +7,7 @@ import type { AccountState } from './workflow-auth-client';
 export function registerWorkflowConnectionStatus(account: AccountController): vscode.Disposable {
   const status = vscode.window.createStatusBarItem('workflowConnection', vscode.StatusBarAlignment.Left, 120);
   status.name = t('SteamHarness Server');
-  status.command = 'studio.openWorkflowAccount';
+  status.command = 'studio.openAccount';
 
   const update = (state: AccountState): void => {
     let icon = 'debug-disconnect', label = t('Server Disconnected');

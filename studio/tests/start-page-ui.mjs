@@ -210,7 +210,7 @@ for (const language of ['en', 'zh-cn']) {
     for (const project of initial.start.projects) {
       const card = start().locator('.studio-start-project-card').filter({ has: page.locator('h3', { hasText: project.name }) });
       assert.equal(await card.locator('.studio-start-project-path').textContent(), project.folderPath);
-      assert.equal(await card.locator('[data-action="studio.openWorkflow"] .studio-start-action-label').textContent(), initial.start.labels.run);
+      assert.equal(await card.locator('[data-action="studio.openProject"] .studio-start-action-label').textContent(), initial.start.labels.run);
       assert.equal(await card.locator('.studio-start-project-type').textContent(), initial.start.labels[`type.${project.projectType}`]);
     }
     check(`${language}: single creation entry and current-project cards with name, type, path and Run`);
@@ -388,7 +388,7 @@ for (const language of ['en', 'zh-cn']) {
     await command('workbench.action.joinAllGroups'); await page.setViewportSize({ width: 1440, height: 1000 });
     check(`${language}: saved empty file and diff excluded, narrow split layout`);
     const conversation = projects.find(project => project.name === 'conversation-round-output');
-    await start().locator(`.studio-start-current [data-action="studio.openWorkflow"][data-uri="${pathToFileURL(conversation.directory).href}"]`).click();
+    await start().locator(`.studio-start-current [data-action="studio.openProject"][data-uri="${pathToFileURL(conversation.directory).href}"]`).click();
     const frame = await until(() => findFrame('#message', pathToFileURL(conversation.directory).href), Boolean, 'Conversation runtime did not open');
     await frame.locator('#parameters[aria-busy=false]').waitFor({ state: 'attached' });
     await frame.locator('#message').fill('Offline'); await frame.locator('#message').press('Enter');
@@ -403,7 +403,7 @@ for (const language of ['en', 'zh-cn']) {
     if (language === 'en') {
       for (const name of ['kanban-default', 'kanban-parameters']) {
         const board = projects.find(project => project.name === name);
-        await command('studio.openWorkflow', { uri: pathToFileURL(board.directory).href });
+        await command('studio.openProject', { uri: pathToFileURL(board.directory).href });
         const boardFrame = await until(() => findFrame('#task-title'), Boolean, `${name} did not load`);
         await boardFrame.locator('#add-task:not(:disabled)').waitFor();
         await boardFrame.locator('#task-title').fill('Offline task'); await boardFrame.locator('#add-task').click();
@@ -424,14 +424,14 @@ for (const language of ['en', 'zh-cn']) {
       check('en: both offline task boards create, move and persist tasks');
     }
     await command('studio.openStart');
-    await start().locator('.studio-start-current [data-action="studio.openWorkflowSource"]').first().click();
+    await start().locator('.studio-start-current [data-action="studio.openProjectSource"]').first().click();
     await until(() => call({ action: 'state' }), state => state.active?.endsWith('/package.json'), 'Source entry did not open');
     await command('studio.openStart'); await start().locator('[data-action="studio.openAnalysis"]').click();
     await until(() => findFrame('#content .stats'), Boolean, 'Built-in Analysis did not load');
     check(`${language}: source and real built-in Analysis`);
     await command('studio.openStart'); await start().locator('[data-action="studio.openAssistant"]').click();
     await page.locator('.webview').first().waitFor({ state: 'attached' });
-    await start().locator('[data-action="studio.openWorkflowAccount"]').click();
+    await start().locator('[data-action="studio.openAccount"]').click();
     await until(async () => {
       for (const frame of page.frames()) { if (await frame.locator('#login-form').isVisible().catch(() => false)) { return true; } }
       return await page.locator('.tab').filter({ hasText: initial.start.labels.account }).count() > 0;

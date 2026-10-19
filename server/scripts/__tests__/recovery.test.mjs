@@ -37,11 +37,11 @@ test("Docker recovery validates the persistent release root without a local down
     STEAMHARNESS_BOOTSTRAP_ADMIN_PASSWORD: "x",
     STEAMHARNESS_DATABASE_URL: "postgres://example",
     STEAMHARNESS_POSTGRES_PASSWORD: "x",
-    STEAMHARNESS_LOCAL_STORAGE_ROOT: "/srv/workflow-release/object-storage",
+    STEAMHARNESS_LOCAL_STORAGE_ROOT: "/srv/steamharness-release/object-storage",
     STEAMHARNESS_API_PUBLIC_BASE_URL: "https://api.steamharness.example.com",
-    STEAMHARNESS_RELEASE_STORAGE_ROOT: "/srv/workflow-release",
+    STEAMHARNESS_RELEASE_STORAGE_ROOT: "/srv/steamharness-release",
   });
-  assert.equal(env.STEAMHARNESS_RELEASE_STORAGE_ROOT, "/srv/workflow-release");
+  assert.equal(env.STEAMHARNESS_RELEASE_STORAGE_ROOT, "/srv/steamharness-release");
   assert.equal(env.STEAMHARNESS_DOWNLOAD_ROOT, undefined);
 });
 
@@ -71,5 +71,5 @@ test("stable recovery accepts only recorded stable Server releases", () => {
     version: "0.1.4",
     deploymentId: "../outside",
   }), /invalid deployment id/u);
-  assert.equal(resolveStableRecoveryPaths("/srv/workflow-release").currentLink, "/srv/workflow-release/deployments/server/stable/current");
+  assert.equal(resolveStableRecoveryPaths("/srv/steamharness-release").currentLink, "/srv/steamharness-release/deployments/server/stable/current");
 });

@@ -6,7 +6,7 @@ import test from "node:test";
 import { createWorkflowServerHealthData } from "../health";
 
 test("health payload prefers deployed release metadata for server and server-web", async () => {
-  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "workflow-server-health-"));
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "steamharness-server-health-"));
 
   try {
     const serverRoot = path.join(tempRoot, "server");
@@ -135,7 +135,7 @@ test("health payload prefers deployed release metadata for server and server-web
 });
 
 test("alpha health reads only alpha release metadata from the shared release root", async () => {
-  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "workflow-server-health-alpha-"));
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "steamharness-server-health-alpha-"));
   try {
     const serverRoot = path.join(tempRoot, "server");
     const metadataRoot = path.join(tempRoot, "releases");
@@ -182,7 +182,7 @@ test("alpha health reads only alpha release metadata from the shared release roo
 });
 
 test("health payload reports the loaded build when stable metadata points at another deployment", async () => {
-  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "workflow-server-health-stale-metadata-"));
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "steamharness-server-health-stale-metadata-"));
 
   try {
     const serverRoot = path.join(tempRoot, "server");
@@ -228,7 +228,7 @@ test("health payload reports the loaded build when stable metadata points at ano
 });
 
 test("health payload falls back to local manifests when release metadata is absent", async () => {
-  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "workflow-server-health-fallback-"));
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "steamharness-server-health-fallback-"));
 
   try {
     const serverRoot = path.join(tempRoot, "server");

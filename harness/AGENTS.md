@@ -7,8 +7,8 @@
 
 - 本仓库维护 `steamharness` Core，仓库根就是 npm 包根；`workspace/**` 也归本仓维护，用于公开示例和 CLI/Core 兼容烟测。
 - Shared workspace 依赖始终从已提交的 `vendor/shared` 刷新为 `.shared/*` 普通目录，刷新必须保留 pnpm 生成的包级 `node_modules`；不得把 `.shared/*` 链接到同级仓库。
-- 同级 Shared 源码只由 CLI 和 Server 的 `dev` 运行入口通过运行时生成的 `.workflow-local/tsconfig.json` / Vite alias 加载；`main`、tag、detached checkout 和 CI 必须只消费 `.shared/*` 的 vendor 快照。`STEAMHARNESS_REPOSITORY_MODE=main` 只能强制收紧到发布模式。
-- `.workflow-local` 以及任何跨仓 tsconfig/path alias 都不得提交。提交前和 CI 必须同时执行普通 `pnpm check:boundaries` 与 `STEAMHARNESS_REPOSITORY_MODE=main pnpm check:boundaries`。
+- 同级 Shared 源码只由 CLI 和 Server 的 `dev` 运行入口通过运行时生成的 `.steamharness-local/tsconfig.json` / Vite alias 加载；`main`、tag、detached checkout 和 CI 必须只消费 `.shared/*` 的 vendor 快照。`STEAMHARNESS_REPOSITORY_MODE=main` 只能强制收紧到发布模式。
+- `.steamharness-local` 以及任何跨仓 tsconfig/path alias 都不得提交。提交前和 CI 必须同时执行普通 `pnpm check:boundaries` 与 `STEAMHARNESS_REPOSITORY_MODE=main pnpm check:boundaries`。
 - Core 不得相对导入同级 CLI、Studio、Server 或内置项目源码。CLI 联动变更在同级 `../cli` 完成，公开文档在同级 `../docs` 完成。
 - 修改 Core 基础定义、公开 exports、节点 API、executor/provider 类型或 runtime report 时，必须同步 `.agents/skills/workflow-generator` 的 API 参考和生成规则。
 - 所有节点 payload 必须继承 `RunPayload`，成功结果统一包含 `errCode: 0, errMessage: ""`。

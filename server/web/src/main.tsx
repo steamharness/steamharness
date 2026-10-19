@@ -4,7 +4,7 @@ import "./styles.css";
 import { App } from "./App";
 import { initI18n } from "@steamharness/i18n/react";
 
-initI18n({ storageKey: "workflow-server-admin:locale" });
+initI18n({ storageKey: "steamharness-server-admin:locale" });
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Root element not found");

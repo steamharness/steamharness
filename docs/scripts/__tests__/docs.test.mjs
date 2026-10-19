@@ -36,13 +36,13 @@ test("OpenAPI exposes storage APIs without project execution contracts", async (
 
     assert.equal(specification.components.schemas.OpenAIResponse, undefined);
     for (const endpoint of [
-      "/api/projects/{projectName}/run", "/api/projects/{projectName}/runs",
-      "/api/projects/{projectName}/structure", "/api/projects/{projectName}/resolve-params",
+      "/api/projects/{projectId}/run", "/api/projects/{projectId}/runs",
+      "/api/projects/{projectId}/structure", "/api/projects/{projectId}/resolve-params",
       "/api/admin/runners", "/v1/responses",
     ]) assert.equal(specification.paths[endpoint], undefined);
     for (const endpoint of [
-      "/api/project-storage", "/api/projects/{projectName}/knowledge-documents",
-      "/api/projects/{projectName}/source-archive",
+      "/api/project-storage", "/api/projects/{projectId}/knowledge-documents",
+      "/api/projects/{projectId}/source-archive",
     ]) assert.ok(specification.paths[endpoint], endpoint);
     const legacyPrivateCatalog = ["sub", "2api"].join("");
     const legacyLlmModels = ["llm-", "models"].join("");
@@ -64,8 +64,8 @@ test("Docusaurus keeps docs-only routes and local search aligned", () => {
 
   assert.equal(docsOptions.routeBasePath, "/");
   assert.equal(searchOptions.docsRouteBasePath, docsOptions.routeBasePath);
-  assert.equal(docusaurusConfig.plugins[1][1].config.workflowZh.specPath, ".docusaurus-openapi/steamharness.zh.yaml");
-  assert.equal(docusaurusConfig.plugins[1][1].config.workflowEn.specPath, ".docusaurus-openapi/steamharness.en.yaml");
+  assert.equal(docusaurusConfig.plugins[1][1].config.openapiZh.specPath, ".docusaurus-openapi/steamharness.zh.yaml");
+  assert.equal(docusaurusConfig.plugins[1][1].config.openapiEn.specPath, ".docusaurus-openapi/steamharness.en.yaml");
   assert.deepEqual(docusaurusConfig.i18n.locales, ["zh-Hans", "en"]);
 });
 
@@ -198,8 +198,8 @@ test("Docs build packages the generated Docusaurus site and runtime with the exa
     assert.equal(deployment.framework, "docusaurus");
     assert.equal(deployment.apiBaseUrl, "https://api.steamharness.yuhe.space");
     assert.match(await readFile(path.join(outputDir, "index.html"), "utf8"), /Built docs/u);
-    assert.ok((await lstat(path.join(outputDir, ".workflow", "activate-docs.mjs"))).isFile());
-    assert.ok((await lstat(path.join(outputDir, ".workflow", "serve-docs.mjs"))).isFile());
+    assert.ok((await lstat(path.join(outputDir, ".steamharness", "activate-docs.mjs"))).isFile());
+    assert.ok((await lstat(path.join(outputDir, ".steamharness", "serve-docs.mjs"))).isFile());
     for (const generatedPath of ["docs.json", "docusaurus.config.mjs", "scripts", "openapi"]) {
       await assert.rejects(lstat(path.join(outputDir, generatedPath)), { code: "ENOENT" });
     }
@@ -209,7 +209,7 @@ test("Docs build packages the generated Docusaurus site and runtime with the exa
 });
 
 test("Docs static server resolves Docusaurus routes and protects deployment internals", async () => {
-  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "workflow-docs-server-"));
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "steamharness-docs-server-"));
   const siteRoot = path.join(tempRoot, "site");
   const port = await reservePort();
   let server;
@@ -228,7 +228,7 @@ test("Docs static server resolves Docusaurus routes and protects deployment inte
     assert.equal(asset.status, 200);
     assert.equal(asset.headers.get("cache-control"), "public, max-age=31536000, immutable");
 
-    const hiddenRuntime = await fetch(`http://127.0.0.1:${port}/.workflow/serve-docs.mjs`);
+    const hiddenRuntime = await fetch(`http://127.0.0.1:${port}/.steamharness/serve-docs.mjs`);
     assert.equal(hiddenRuntime.status, 404);
     assert.match(await hiddenRuntime.text(), /Custom not found/u);
 
@@ -250,7 +250,7 @@ test("Docs static server resolves Docusaurus routes and protects deployment inte
 });
 
 test("Docs deploy atomically switches current and rolls it back when the hook fails", async () => {
-  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "workflow-docs-deploy-"));
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "steamharness-docs-deploy-"));
   const sourceDir = path.join(tempRoot, "source");
   const deployRoot = path.join(tempRoot, "published", "docs");
   try {
@@ -287,7 +287,7 @@ test("Docs deploy atomically switches current and rolls it back when the hook fa
 });
 
 test("Docs activation preflights and replaces a legacy Mint PID with the exact Docusaurus release", async () => {
-  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "workflow-docs-activation-"));
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "steamharness-docs-activation-"));
   const runtimeRoot = path.join(tempRoot, "runtime");
   const productionPort = await reservePort();
   const preflightPort = await reservePort();
@@ -384,7 +384,7 @@ async function writeDocsSite(siteRoot, commitSha, body) {
   await writeDocusaurusBuild(siteRoot, body);
   await Promise.all([
     mkdir(path.join(siteRoot, "guides", "studio", "overview"), { recursive: true }),
-    mkdir(path.join(siteRoot, ".workflow"), { recursive: true }),
+    mkdir(path.join(siteRoot, ".steamharness"), { recursive: true }),
   ]);
   await Promise.all([
     writeFile(
@@ -397,8 +397,8 @@ async function writeDocsSite(siteRoot, commitSha, body) {
       framework: "docusaurus",
       commitSha,
     })}\n`, "utf8"),
-    cp(path.join(root, "scripts", "activate-docs.mjs"), path.join(siteRoot, ".workflow", "activate-docs.mjs")),
-    cp(path.join(root, "scripts", "serve-docs.mjs"), path.join(siteRoot, ".workflow", "serve-docs.mjs")),
+    cp(path.join(root, "scripts", "activate-docs.mjs"), path.join(siteRoot, ".steamharness", "activate-docs.mjs")),
+    cp(path.join(root, "scripts", "serve-docs.mjs"), path.join(siteRoot, ".steamharness", "serve-docs.mjs")),
   ]);
 }
 

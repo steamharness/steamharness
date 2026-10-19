@@ -40,7 +40,7 @@ index 474f4acb..bf9ea04f 100644
  		for (const [label, icon, command] of [
  			['openFolder', 'folder-opened', 'studio.openFolder'], ['openWorkspace', 'file-submodule', 'studio.openWorkspace'],
 +			['download', 'cloud-download', 'studio.downloadProject'], ['versions', 'versions', 'studio.versions.focus'],
- 			['assistant', 'hubot', 'studio.openAssistant'], ['account', 'account', 'studio.openWorkflowAccount'], ['settings', 'settings-gear', 'studio.openSettings'],
+ 			['assistant', 'hubot', 'studio.openAssistant'], ['account', 'account', 'studio.openAccount'], ['settings', 'settings-gear', 'studio.openSettings'],
  		]) { this.button(quick, label, icon, command); }
  		this.error = append(inner, $('p.studio-start-error'));
 @@ -221,10 +222,11 @@ export class StudioStartView extends Disposable {
@@ -51,9 +51,9 @@ index 474f4acb..bf9ea04f 100644
 +				append(card, $('p.studio-start-project-type', undefined, [text(`type.${project.projectType}`), project.version].filter(Boolean).join(' \u00b7 ')));
  				append(card, $('p.studio-start-project-path', undefined, project.folderPath));
  				const actions = append(card, $('.studio-start-project-actions'));
- 				this.button(actions, text('run'), 'play', 'studio.openWorkflow', { uri: project.uri }, false, false, store).classList.add('studio-start-primary');
+ 				this.button(actions, text('run'), 'play', 'studio.openProject', { uri: project.uri }, false, false, store).classList.add('studio-start-primary');
 +				this.button(actions, text('upload'), 'cloud-upload', 'studio.uploadProject', { uri: project.uri }, false, true, store);
- 				this.button(actions, text('source'), 'code', 'studio.openWorkflowSource', { uri: project.uri }, false, true, store);
+ 				this.button(actions, text('source'), 'code', 'studio.openProjectSource', { uri: project.uri }, false, true, store);
  			}
  			for (const project of state.pending) {
 @@ -241,7 +243,8 @@ export class StudioStartView extends Disposable {
@@ -80,7 +80,7 @@ index c73bd8d0..04fc0c57 100644
 +		get title() { return MenuRegistry.getCommand('studio.uploadProject')?.title ?? localize('studio.uploadProject', "Upload Project"); },
 +		icon: Codicon.cloudUpload
 +	},
-+	when: ContextKeyExpr.equals('studio.workflowUploadAvailable', true),
++	when: ContextKeyExpr.equals('studio.projectUploadAvailable', true),
 +	group: '0_studio',
 +	order: 1
 +});
@@ -96,8 +96,8 @@ index 1753b4c1..95b9dc5e 100644
  				toolbarOptions: {
  					primaryGroup: () => true,
  				},
--				actionViewItemProvider: (action, options) => action instanceof MenuItemAction && action.id === 'studio.openWorkflow'
-+				actionViewItemProvider: (action, options) => action instanceof MenuItemAction && ['studio.openWorkflow', 'studio.uploadProject'].includes(action.id)
+-				actionViewItemProvider: (action, options) => action instanceof MenuItemAction && action.id === 'studio.openProject'
++				actionViewItemProvider: (action, options) => action instanceof MenuItemAction && ['studio.openProject', 'studio.uploadProject'].includes(action.id)
  					? this.instantiationService.createInstance(StudioWorkflowRunActionViewItem, action, options)
  					: createActionViewItem(this.instantiationService, action, options),
  				hoverDelegate: this.hoverDelegate
