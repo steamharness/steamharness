@@ -88,7 +88,7 @@ export class AccountPanel {
     const state = this.state;
     if (!state) { return; }
     const signedIn = !!state.user && ['authenticated', 'checking', 'error'].includes(state.status);
-    const name = signedIn ? state.user!.displayName || state.user!.email || 'Workflow' : this.pending ? t("Signing in...") : t("Sign in to Workflow");
+    const name = signedIn ? state.user!.displayName || state.user!.email || 'SteamHarness' : this.pending ? t("Signing in...") : t("Sign in to SteamHarness");
     this.button.querySelector('.web-account-name')!.textContent = name;
     this.button.title = this.button.ariaLabel = state.error || state.user?.email || name;
     const avatarKey = `${state.serverUrl}\n${state.user?.avatarUrl ?? ''}`;

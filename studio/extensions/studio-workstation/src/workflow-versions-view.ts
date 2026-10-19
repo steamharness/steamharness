@@ -232,8 +232,8 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
       } finally {
         guard?.dispose(); this.busy = false; this.publish();
         if (!this.disposed) {
-          await vscode.commands.executeCommand('studio.refreshProjects').then(undefined, error => this.output.appendLine(`Project refresh: ${String(error)}`));
-          if (result || guard) { await vscode.commands.executeCommand('studio.refreshProjects'); }
+          await vscode.commands.executeCommand('studio.refreshProjectView').then(undefined, error => this.output.appendLine(`Project refresh: ${String(error)}`));
+          if (result || guard) { await vscode.commands.executeCommand('studio.refreshProjectView'); }
           await this.reload();
         }
       }

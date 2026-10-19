@@ -308,7 +308,7 @@
   "Show password": "显示密码",
   "Show runs": "显示运行记录",
   "Sign in": "登录",
-  "Sign in to Workflow": "登录 Workflow",
+  "Sign in to SteamHarness": "登录 SteamHarness",
   "Sign in to SteamHarness Server to connect Kanban data.": "请登录 SteamHarness Server 以连接看板数据。",
   "Sign in to SteamHarness Server, then refresh parameters.": "请先登录 SteamHarness Server，然后刷新参数。",
   "Sign out": "退出登录",

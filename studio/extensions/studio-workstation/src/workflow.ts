@@ -388,7 +388,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       const created = createWorkspace(project, panel); opening.set(project.uri, created);
       try { await created; } finally { opening.delete(project.uri); }
     } }),
-    register('studio.openProject', openProject), register('studio.refreshProjects', refresh),
+    register('studio.openProject', openProject), register('studio.refreshProjectView', refresh),
     register('studio.openAnalysis', async () => {
       if (!launcher.inspectAnalysis) { throw new Error(t('Studio Analysis is unavailable in this environment.')); }
       await openProject(await launcher.inspectAnalysis());
