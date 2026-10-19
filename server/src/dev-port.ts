@@ -35,7 +35,7 @@ export async function listenServerWithDevPortFallback(
       }
 
       const nextPort = port + 1;
-      options.logger?.warn(`[workflow-server] port ${port} is in use; trying ${nextPort}.`);
+      options.logger?.warn(`[steamharness-server] port ${port} is in use; trying ${nextPort}.`);
       port = nextPort;
     }
   }

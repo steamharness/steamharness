@@ -78,7 +78,7 @@ app.get("/health", (req, res) => {
     res.json({ errCode: 0, errMessage: "", data });
   }).catch((error) => {
     console.warn(
-      "[workflow-server] failed to assemble release health metadata.",
+      "[steamharness-server] failed to assemble release health metadata.",
       error instanceof Error ? error.message : error,
     );
     res.json({
@@ -159,7 +159,7 @@ const actualPort = await listenServerWithDevPortFallback(server, {
 let shutdownPromise: Promise<void> | undefined;
 const requestShutdown = (signal: NodeJS.Signals) => {
   if (shutdownPromise !== undefined) return;
-  console.log(`[workflow-server] received ${signal}; shutting down.`);
+  console.log(`[steamharness-server] received ${signal}; shutting down.`);
   const serverStop = closeHttpServer(server);
   const shutdown = (async () => {
     server.closeAllConnections?.();
@@ -171,7 +171,7 @@ const requestShutdown = (signal: NodeJS.Signals) => {
   void shutdown.then(
     () => process.exit(process.exitCode ?? 0),
     (error) => {
-      console.error("[workflow-server] graceful shutdown failed.", error);
+      console.error("[steamharness-server] graceful shutdown failed.", error);
       process.exit(1);
     },
   );
@@ -179,12 +179,12 @@ const requestShutdown = (signal: NodeJS.Signals) => {
 process.once("SIGINT", requestShutdown);
 process.once("SIGTERM", requestShutdown);
 
-console.log(`[workflow-server] listening on http://localhost:${actualPort}`);
-console.log(`[workflow-server] data root: ${storage.dataRoot}`);
+console.log(`[steamharness-server] listening on http://localhost:${actualPort}`);
+console.log(`[steamharness-server] data root: ${storage.dataRoot}`);
 
 // 管理端支持 env 管理员账号密码登录后，缺少 admin key 不再等于整套管理登录不可用。
 if (!process.env.STEAMHARNESS_SERVER_ADMIN_KEY && !process.env.STEAMHARNESS_BOOTSTRAP_ADMIN_EMAIL?.trim()) {
-  console.warn("[workflow-server] Neither STEAMHARNESS_SERVER_ADMIN_KEY nor STEAMHARNESS_BOOTSTRAP_ADMIN_EMAIL is set; admin bootstrap login may be unavailable.");
+  console.warn("[steamharness-server] Neither STEAMHARNESS_SERVER_ADMIN_KEY nor STEAMHARNESS_BOOTSTRAP_ADMIN_EMAIL is set; admin bootstrap login may be unavailable.");
 }
 
 function readNumberEnv(name: string, fallback: number): number {
@@ -238,11 +238,11 @@ async function mountWebApp(options: {
       });
 
       const reloadMode = viteOptions.server.hmr === false ? "manual reload" : "HMR";
-      console.log(`[workflow-server] web dev middleware: server/web via Vite ${reloadMode}`);
+      console.log(`[steamharness-server] web dev middleware: server/web via Vite ${reloadMode}`);
       return { mode: "vite" };
     } catch (error) {
       console.warn(
-        "[workflow-server] failed to start server/web Vite middleware; falling back to server/public.",
+        "[steamharness-server] failed to start server/web Vite middleware; falling back to server/public.",
         error instanceof Error ? error.message : error,
       );
     }

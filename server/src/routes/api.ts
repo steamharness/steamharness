@@ -46,7 +46,7 @@ function recordSourceDownloadsOnFinish(
   res.once("finish", () => {
     if (res.statusCode < 200 || res.statusCode >= 300) return;
     void storage.recordSourceDownloads(downloads).catch(() => {
-      console.warn("[workflow-server] failed to record source download counts.");
+      console.warn("[steamharness-server] failed to record source download counts.");
     });
   });
 }

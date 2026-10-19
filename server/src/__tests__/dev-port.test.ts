@@ -23,7 +23,7 @@ test("listenServerWithDevPortFallback tries the next port in dev mode", async ()
 
     // covers dev server recovery when the configured port is busy.
     assert.equal(actualPort, basePort + 1);
-    assert.deepEqual(warnings, [`[workflow-server] port ${basePort} is in use; trying ${basePort + 1}.`]);
+    assert.deepEqual(warnings, [`[steamharness-server] port ${basePort} is in use; trying ${basePort + 1}.`]);
   } finally {
     await closeServer(server);
     await closeServer(blocker);

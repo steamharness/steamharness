@@ -23,7 +23,7 @@ export function formatPostgresPoolError(label: string, error: unknown): string {
   const details = readPostgresErrorDetails(error);
   const suffix = details.length > 0 ? ` ${details.join(" ")}` : "";
 
-  return `[workflow-server] ${label} PostgreSQL idle client error; future queries will reconnect.${suffix}`;
+  return `[steamharness-server] ${label} PostgreSQL idle client error; future queries will reconnect.${suffix}`;
 }
 
 function readPostgresErrorDetails(error: unknown): string[] {

@@ -107,7 +107,7 @@ export function resolveLocalStoragePublicBaseUrl(env: NodeJS.ProcessEnv = proces
 
   const port = env.STEAMHARNESS_SERVER_PORT?.trim() || env.PORT?.trim() || String(DEFAULT_DEV_SERVER_PORT);
   console.warn(
-    `[workflow-server] STEAMHARNESS_API_PUBLIC_BASE_URL is not set; local object storage will mint `
+    `[steamharness-server] STEAMHARNESS_API_PUBLIC_BASE_URL is not set; local object storage will mint `
     + `http://${LOOPBACK_HOST}:${port} URLs. Browsers and the Desktop App on other machines `
     + "will not be able to load these assets.",
   );

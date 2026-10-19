@@ -534,7 +534,7 @@ export class Storage {
     await this.resumePendingPreparationJobs();
     await this.resumePendingProjectGroupPreparations();
     if (this.artifacts) void this.artifacts.init().catch(() => {
-      console.warn("[workflow-server] artifact storage initialization failed; continuing with degraded artifact availability.");
+      console.warn("[steamharness-server] artifact storage initialization failed; continuing with degraded artifact availability.");
     });
   }
 

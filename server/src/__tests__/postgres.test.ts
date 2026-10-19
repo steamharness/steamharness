@@ -36,6 +36,6 @@ test("createPostgresPool consumes idle client errors", async () => {
 test("formatPostgresPoolError includes non-Error values", () => {
   assert.equal(
     formatPostgresPoolError("test", "terminated"),
-    "[workflow-server] test PostgreSQL idle client error; future queries will reconnect. terminated",
+    "[steamharness-server] test PostgreSQL idle client error; future queries will reconnect. terminated",
   );
 });
