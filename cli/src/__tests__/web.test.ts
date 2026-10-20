@@ -141,11 +141,11 @@ describe('steamharness web', () => {
     const firstClient = crypto.randomUUID(), secondClient = crypto.randomUUID();
     const ready = async (clientId: string) => (await (await post({ type: 'ready', clientId })).json()).messages.find((reply: any) => reply.type === 'state');
     const initial = await ready(firstClient), first = initial.activeId, second = crypto.randomUUID();
-    expect((await post({ type: 'navigate', clientId: firstClient, requestId: 1, id: first, updates: [] })).status).toBe(200);
     expect((await post({ type: 'navigate', clientId: secondClient, requestId: 1, id: second,
       updates: [{ id: second, create: true, draft: { text: 'Second draft', attachments: [] } }] })).status).toBe(200);
     expect((await ready(firstClient)).activeId).toBe(first);
     expect((await ready(secondClient)).activeId).toBe(second);
+    expect((await ready(crypto.randomUUID())).activeId).toBe(second);
     for (const [clientId, sessionId, text] of [[firstClient, first, 'First page'], [secondClient, second, 'Second page']]) {
       expect((await post({ type: 'send', clientId, sessionId, text, params: {}, attachments: [] })).status).toBe(200);
     }
@@ -160,6 +160,43 @@ describe('steamharness web', () => {
       expect(state.sessions.find((session: any) => session.id === first).messages[0].content).toBe('First page');
       expect(state.sessions.find((session: any) => session.id === second).messages[0].content).toBe('Second page');
     }
+  });
+
+  it.each([false, true])('restores the last selected conversation after reopening (older conversation=%s)', async older => {
+    const { directory, app, post, runtime } = await fixture();
+    const clientId = crypto.randomUUID(), first = app.controller.activeId, second = crypto.randomUUID();
+    expect((await post({ type: 'send', clientId, sessionId: first, text: 'First run', params: {}, attachments: [] })).status).toBe(200);
+    await app.controller.idle();
+    expect((await post({ type: 'navigate', clientId, requestId: 1, id: second,
+      updates: [{ id: second, create: true, draft: { text: 'Second draft', attachments: [] } }] })).status).toBe(200);
+    expect((await post({ type: 'send', clientId, sessionId: second, text: 'Last run', params: {}, attachments: [] })).status).toBe(200);
+    await app.controller.idle();
+    if (older) {
+      expect((await post({ type: 'navigate', clientId, requestId: 2, id: first, updates: [] })).status).toBe(200);
+      expect((await post({ type: 'navigate', clientId, requestId: 1, id: second, updates: [] })).status).toBe(200);
+    }
+    await app.close();
+    const next = await startWebServer({ projectDir: directory, dataDir: path.join(directory, 'data'), runtime }); services.push(next);
+    expect(next.controller.activeId).toBe(older ? first : second);
+    expect(next.controller.current.messages[0].content).toBe(older ? 'First run' : 'Last run');
+    expect(runtime.run).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['new', 'select'])('updates a pinned page selection for legacy %s requests', async type => {
+    const { app, post } = await fixture();
+    const clientId = crypto.randomUUID(), first = app.controller.activeId;
+    await post({ type: 'ready', clientId });
+    await app.controller.recordCommand('fixture', 'First conversation');
+    await app.controller.create();
+    const id = app.controller.activeId;
+    await app.controller.recordCommand('fixture', 'Second conversation');
+    await app.controller.select(first);
+    expect((await post({ type, clientId, id })).status).toBe(200);
+    const response = await (await post({ type: 'ready', clientId })).json();
+    const selected = response.messages.find((reply: any) => reply.type === 'state').activeId;
+    expect(selected).toBe(app.controller.activeId);
+    expect(selected).not.toBe(first);
+    if (type === 'select') expect(selected).toBe(id);
   });
 
   it.each([

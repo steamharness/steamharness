@@ -30,6 +30,7 @@
 
 ### Fixed
 
+- Restore the last selected conversation when reopening a project in Studio / CLI Web, while keeping each open window's selection independent.
 - Fix profile image data URLs not displaying in CLI Web. Refresh avatars, names and avatar removal periodically without interrupting tasks on transient network failures.
 - Fixed downloads reusing a different local version by UUID and incorrectly reporting a root or pinned dependency as already downloaded.
 - Fixed published source downloads being rejected when a project declares pending relationships.

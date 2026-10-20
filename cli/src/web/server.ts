@@ -81,6 +81,10 @@ export async function startWebServer(options: WebOptions) {
   const blockedClients = new Set<ServerResponse>();
   const pendingFrames = new WeakMap<ServerResponse, string>();
   const sessionIdPattern = /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i;
+  const rememberSelection = (clientId: string, id: string) => {
+    selections.set(clientId, id);
+    if (selections.size > 256) selections.delete(selections.keys().next().value!);
+  };
   const publicFile = (file: Attachment) => ({ ...file, previewUrl: `/api/file/${encodeURIComponent(file.id)}` });
   const publicValue = (value: unknown): any => {
     if (Array.isArray(value)) { return value.map(publicValue); }
@@ -94,6 +98,8 @@ export async function startWebServer(options: WebOptions) {
   // Preserve project-owned data keys; remove host credentials by their actual values.
   const state = (clientId?: string) => {
     const selected = controller?.sessions.find(entry => entry.id === selections.get(clientId ?? '')) ?? controller?.current;
+    // Pin open pages before navigation changes the persisted default for new pages.
+    if (clientId && selected) rememberSelection(clientId, selected.id);
     return publicValue(redactProjectData({ type: 'state', stateRevision: ++stateRevision, project,
     ...(isKanban ? { kanban: kanbanController!.state() } : isProject ? projectActions!.state() : { sessions: controller.sessions, activeId: selected.id, running: sessionRunning(selected), parameterValues: selected.parameterValues ?? {} }),
     account: { ...account, user: account.user && { userId: account.user.userId, email: account.user.email, displayName: account.user.displayName, avatarUrl: account.user.avatarUrl } },
@@ -311,9 +317,8 @@ export async function startWebServer(options: WebOptions) {
         updates.push({ id: update.id, create: update.create === true, draft: { text: update.draft.text, editingQueueId: update.draft.editingQueueId, attachments: await readAttachments(update.draft.attachments, update.id) } });
       }
       if (navigationSequences.get(message.clientId) === message.requestId) {
-        await conversationController.navigate(message.id, updates, false);
-        selections.set(message.clientId, message.id);
-        if (selections.size > 256) selections.delete(selections.keys().next().value!);
+        await conversationController.navigate(message.id, updates);
+        rememberSelection(message.clientId, message.id);
       }
       return reply();
     }
@@ -407,8 +412,14 @@ export async function startWebServer(options: WebOptions) {
         replies.push(state(message.clientId), { type: command ? 'command-executed' : 'sent', ...(command ? { command: command.command } : {}), projectUri: project.uri, sessionId: current.id, requestId: message.requestId }); break;
       }
       case 'stop': await controller.stop(current); break;
-      case 'new': await controller.updateDraft(current.id, String(message.text ?? ''), await readAttachments(message.attachments ?? [], current.id)); await controller.create(); break;
-      case 'select': await controller.select(String(message.id)); break;
+      case 'new':
+        await controller.updateDraft(current.id, String(message.text ?? ''), await readAttachments(message.attachments ?? [], current.id)); await controller.create();
+        if (message.clientId) rememberSelection(message.clientId, controller.activeId);
+        break;
+      case 'select':
+        await controller.select(String(message.id));
+        if (message.clientId) rememberSelection(message.clientId, controller.activeId);
+        break;
       case 'draft': await controller.updateDraft(current.id, String(message.text ?? ''), await readAttachments(message.attachments ?? [], current.id)); break;
       case 'retry': await controller.retry(String(message.messageId), current); break;
       case 'resume': await controller.resume(String(message.messageId), String(message.requestId), message.values ?? {}, current); break;
