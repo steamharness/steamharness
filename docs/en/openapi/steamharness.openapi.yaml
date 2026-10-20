@@ -5892,6 +5892,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ProjectConfigurationField"
+        shadowedCustomFields:
+          description: Custom definitions temporarily hidden by same-name project declarations, retained for later restoration.
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectConfigurationField"
         configurations:
           type: array
           minItems: 1

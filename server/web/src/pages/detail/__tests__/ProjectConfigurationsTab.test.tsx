@@ -41,3 +41,33 @@ it("offers custom fields for an empty declaration",async()=>{
  expect(await screen.findByRole("button",{name:"Add field"})).toBeTruthy();
  expect(screen.getByText("No fields. Add a custom configuration field.")).toBeTruthy();
 });
+
+it("ignores a previous visit's save response after returning to the same project",async()=>{
+ let finishSave!:(value:ReturnType<typeof ok>)=>void;
+ vi.spyOn(apiClient,"projectConfigurations").mockImplementation((_id,call)=>call.action==="get"
+   ? Promise.resolve(ok(initial())) : new Promise(resolve=>{finishSave=resolve;}));
+ const view=render(<ProjectConfigurationsTab project={project}/>);
+ fireEvent.change(await screen.findByLabelText("label"),{target:{value:"Previous visit"}});
+ fireEvent.click(screen.getByRole("button",{name:"Save"}));
+ view.rerender(<ProjectConfigurationsTab project={{...project,id:"project-b"}}/>);
+ await waitFor(()=>expect(screen.getByLabelText("label")).toHaveProperty("value","Original"));
+ view.rerender(<ProjectConfigurationsTab project={project}/>);
+ await waitFor(()=>expect(screen.getByLabelText("label")).toHaveProperty("value","Original"));
+ fireEvent.change(screen.getByLabelText("label"),{target:{value:"Current draft"}});
+ const saved=initial();saved.revision=1;saved.configurations[0]!.values.label="Previous visit";
+ await act(async()=>finishSave(ok(saved)));
+ expect(screen.getByLabelText("label")).toHaveProperty("value","Current draft");
+ expect(screen.getByRole("button",{name:"Save"})).toBeEnabled();
+});
+
+it.each([23,null,{old:true}])("allows repairing a previous value after its field changes to multiple options: %j",async value=>{
+ const state=createConfigurationState([{name:"tags",type:"json",defaultValue:value}],()=>"default");
+ state.fields=[{name:"tags",type:"string",multiple:true,options:[{value:"east"},{value:"west"}]}];
+ const service=vi.spyOn(apiClient,"projectConfigurations").mockResolvedValue(ok(state));
+ render(<ProjectConfigurationsTab project={project}/>);
+ const east=await screen.findByRole("checkbox",{name:"east"});
+ expect(east).not.toBeChecked();
+ fireEvent.click(east);
+ fireEvent.click(screen.getByRole("button",{name:"Save"}));
+ expect(service).toHaveBeenLastCalledWith(project.id,expect.objectContaining({action:"save",values:{tags:["east"]}}),"draft");
+});

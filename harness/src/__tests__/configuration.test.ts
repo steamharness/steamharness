@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile, symlink } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rm, writeFile, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -47,6 +47,39 @@ test("configuration scope isolates asynchronous runs and freezes nested values",
   } finally { delete process.env.PROJECT_CONFIG_TEST; }
 });
 
+test("schema changes retain inactive values and shadowed custom definitions on disk", async () => {
+  const temp = await mkdtemp(path.join(os.tmpdir(),"configuration-schema-"));
+  try {
+    const rootDir = path.join(temp,"values");
+    const store = await createLocalProjectConfigurationStore(temp,{rootDir});
+    const declared = [{name:"label",type:"string"}];
+    const declare = (fields:unknown[]) => writeFile(path.join(temp,"configuration.json"),JSON.stringify({version:1,fields}));
+    await declare(declared);
+    let state = await store.read();
+    state = await store.dispatch({action:"field.save",revision:state.revision,field:{name:"custom",type:"boolean"}}) as ProjectConfigurationState;
+    await store.dispatch({action:"save",revision:state.revision,id:state.activeConfigurationId,values:{label:"saved",custom:false}});
+    await declare([{name:"custom",type:"boolean",label:"Declared"}]);
+    assert.deepEqual((await store.snapshot()).values,{custom:false});
+    state = await store.read();
+    await store.dispatch({action:"rename",revision:state.revision,id:state.activeConfigurationId,name:"Changed"});
+    await declare(declared);
+    state = await (await createLocalProjectConfigurationStore(temp,{rootDir})).read();
+    assert.deepEqual(state.customFields,[{name:"custom",type:"boolean"}]);
+    assert.deepEqual((await store.snapshot()).values,{label:"saved",custom:false});
+  } finally { await rm(temp,{recursive:true,force:true}); }
+});
+
+test("configuration lookup returns only explicitly configured keys", () => {
+  withProjectConfiguration({id:"empty", name:"Empty", revision:0, values:{}}, () => {
+    assert.equal(getConfig("toString"), undefined);
+    assert.equal(getConfig("hasOwnProperty"), undefined);
+  });
+  withProjectConfiguration({id:"named", name:"Named", revision:0, values:{toString:"configured", hasOwnProperty:false}}, () => {
+    assert.equal(getConfig("toString"), "configured");
+    assert.equal(getConfig("hasOwnProperty"), false);
+  });
+});
+
 test("independent local processes enforce the same configuration revision", async () => {
   const temp = await mkdtemp(path.join(os.tmpdir(), "configuration-processes-"));
   try {
@@ -68,10 +101,10 @@ test("independent local processes enforce the same configuration revision", asyn
   } finally { await rm(temp, {recursive:true, force:true}); }
 });
 
-test("an automatically assigned run ID keeps its configuration when waiting input resumes", async () => {
+for (const explicit of [false,true]) test(`an automatically assigned run ID keeps its ${explicit ? "explicit" : "local"} configuration when waiting input resumes`, async () => {
   const {runLocalProjectWithReport} = await import("../index");
   const project = await mkdtemp(path.join(os.tmpdir(), "configuration-resume-"));
-  const key = createHash("sha256").update(project).digest("hex");
+  const key = createHash("sha256").update(await realpath(project)).digest("hex");
   const root = path.join(os.homedir(), ".steamharness", "configurations");
   try {
     await writeFile(path.join(project, "package.json"), JSON.stringify({id:"793fdc09-0b24-4750-9f88-3a19fa777712", name:"config-resume", type:"module", steamHarness:{projectInfo:{dataStorage:{mode:"local"}}}}));
@@ -85,7 +118,7 @@ test("an automatically assigned run ID keeps its configuration when waiting inpu
       export const executor = steamharness.defineExecutor({projectType:"workflow", defaultEntrypoint:"main", entrypoints:[steamharness.defineEntrypoint({id:"main", title:"Main", workflow:task, createInput(){return {};}})]});
       export default task;
     `);
-    const waiting = await runLocalProjectWithReport({projectDir:project, userInput:{requestInput() {}, getResolvedInput() {return undefined;}}});
+    const waiting = await runLocalProjectWithReport({projectDir:project, configuration:explicit ? {id:"provided",name:"Provided",revision:4,values:{label:"explicit"}} : undefined, userInput:{requestInput() {}, getResolvedInput() {return undefined;}}});
     assert.equal(waiting.status, "waiting_for_input", JSON.stringify(waiting.result));
     const store = await createLocalProjectConfigurationStore(project);
     const state = await store.read();
@@ -93,7 +126,7 @@ test("an automatically assigned run ID keeps its configuration when waiting inpu
     const userInput = {requestInput() {}, getResolvedInput(requestId: string) {return {requestId, nodeName:"confirm", values:{approved:true}, submittedAt:new Date()};}};
     const resumed = await runLocalProjectWithReport({projectDir:project, runId:waiting.runId, userInput});
     assert.equal(resumed.result.ok, true);
-    assert.equal(resumed.result.ok && (resumed.result.data as any).output.label, "before");
+    assert.equal(resumed.result.ok && (resumed.result.data as any).output.label, explicit ? "explicit" : "before");
     const next = await runLocalProjectWithReport({projectDir:project, userInput});
     assert.equal(next.result.ok && (next.result.data as any).output.label, "after");
   } finally {
@@ -105,7 +138,8 @@ test("an automatically assigned run ID keeps its configuration when waiting inpu
 test("executor, parameter resolver, nodes and provider factory share one immutable run configuration", async () => {
   const {runLocalProjectWithReport,resolveLocalProjectParams,createLLMProviderFromConfig}=await import("../index");
   const project=await mkdtemp(path.join(os.tmpdir(),"configuration-executor-"));
-  const rootDir=path.join(project,"private-values");
+  const key=createHash("sha256").update(await realpath(project)).digest("hex");
+  const root=path.join(os.homedir(),".steamharness","configurations");
   try {
     await writeFile(path.join(project,"package.json"),JSON.stringify({id:"4c225ac1-1ab8-4196-8cba-4d5548eefcb0",name:"Configuration",type:"module",steamHarness:{projectInfo:{dataStorage:{mode:"local"}}}}));
     await writeFile(path.join(project,"index.ts"), `
@@ -117,10 +151,21 @@ export default task;
     const result=await runLocalProjectWithReport({projectDir:project,configuration});
     assert.equal((result.result.ok ? result.result.data as any : undefined)?.output?.value,"frozen");
     assert.deepEqual((result.result.ok ? result.result.data as any : undefined)?.output?.nested,{active:true});
+    const generation=`${result.runId}:configuration:2`;
+    const changed={...configuration,revision:2,values:{label:"updated",nested:{active:false}}};
+    const reloaded=await runLocalProjectWithReport({projectDir:project,runId:result.runId,configurationRunId:generation,configuration:changed});
+    assert.equal((reloaded.result.ok ? reloaded.result.data as any : undefined)?.output?.value,"updated");
+    const recovered=await runLocalProjectWithReport({projectDir:project,runId:result.runId,configurationRunId:generation});
+    assert.equal((recovered.result.ok ? recovered.result.data as any : undefined)?.output?.value,"updated");
+    const original=await runLocalProjectWithReport({projectDir:project,runId:result.runId});
+    assert.equal((original.result.ok ? original.result.data as any : undefined)?.output?.value,"frozen");
     const resolved=await resolveLocalProjectParams({projectDir:project,configuration,request:{draftText:"",args:[],inputMode:"form",trigger:{kind:"init"}}});
     assert.equal(resolved.params?.label?.value,"frozen");
     assert.throws(()=>createLLMProviderFromConfig({}),/Missing required configuration/);
-  }finally{await rm(project,{recursive:true,force:true});}
+  }finally{
+    await rm(project,{recursive:true,force:true});
+    await Promise.all([rm(path.join(root,`${key}.json`),{force:true}),rm(path.join(root,`${key}.json.lock.sqlite`),{force:true}),rm(path.join(root,"snapshots",key),{recursive:true,force:true})]);
+  }
 });
 
 

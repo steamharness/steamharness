@@ -11,6 +11,8 @@ steamharness.getConfig<T extends ConfigurationValue = ConfigurationValue>(key: s
 
 Returns a value from the current execution configuration without string conversion or trimming. Supported values include strings, numbers, booleans, arrays, objects and null. Missing keys and calls outside an execution scope return `undefined`. The generic type is a caller assertion; declarations and writes validate actual values. Nested values are frozen. `context.config` exposes the same values in executor, resolver and node contexts.
 
+Only own configuration keys are read. Names such as `toString` return a value only when explicitly configured and are subject to required-field validation.
+
 ```ts
 const enabled = steamharness.getConfig<boolean>("enabled") ?? false;
 const token = steamharness.getConfig<string>("API_KEY");

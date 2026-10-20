@@ -32,6 +32,8 @@ Workflow、Conversation、Kanban 使用同一套项目配置。Studio 与 CLI We
 
 可以新建、复制、重命名、切换和删除命名配置，始终至少保留一套。取消“设置值”清除覆盖值；存在声明默认值时恢复默认值。缺少必填项可先保存，开始运行时才校验。新增声明字段使用默认值，移除声明字段后不再向运行暴露对应值。
 
+移除声明字段或查看其他源码版本不会删除已保存值；再次声明同名字段时可恢复原值。同名项目声明暂时隐藏已有自定义字段定义，声明移除后恢复自定义定义。运行和导出只包含当前有效字段；显式删除自定义字段仍会清除所有配置中的对应值。
+
 保存使用 `revision` 检查和原子写入。其他窗口或小助手修改配置时，面板更新已提交状态；有草稿时保留输入并提示冲突。刷新并丢弃草稿后再重新编辑；失败请求不会写入部分结果。
 
 Studio、独立 CLI 与 CLI Web 共用本机用户目录下的配置存储，按规范化后的项目真实路径隔离。Server 按项目和登录账号隔离，拥有项目读取权限的账号可以管理自己的配置。配置值不写入项目源码、源码下载包或版本快照。本地与 Server 的配置通过导入导出搬运。
@@ -57,6 +59,8 @@ const task = steamharness.defineProject({
 ```
 
 SDK 提供 `ProjectConfigurationSnapshot`、`context.config` 和 `steamharness.getConfig(key)`。配置快照贯通参数解析器、executor、节点和 Agent，按运行隔离并冻结，不写入全局 `process.env`。运行之外的 `getConfig` 返回 `undefined`。直接使用 SDK 时可以向执行接口传入显式 `configuration` 快照，或通过 `createLocalProjectConfigurationStore(projectDir)` 管理本地配置。
+
+显式快照也按 `runId` 保存，恢复时可省略 `configuration`，仍使用最初保存的值。宿主为保留同一 `runId` 的持久会话更新配置时，传入新的 `configurationRunId`；之后恢复该代配置需继续传入相同的 `configurationRunId`。本地存储的 `snapshot({ runId, configuration })` 同样只在该身份首次使用时保存传入快照。
 
 - Workflow 开始执行时冻结配置；恢复等待任务继续使用原快照。
 - Conversation 的下一轮执行使用新配置；持久 Agent 在当前任务、排队输入和审批处理结束后重建运行配置，保留会话历史、分支和恢复状态。

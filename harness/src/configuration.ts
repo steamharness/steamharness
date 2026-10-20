@@ -13,7 +13,10 @@ import {
 export * from "@steamharness/project-configuration";
 
 const scope = new AsyncLocalStorage<ProjectConfigurationSnapshot>();
-export function getConfig<T extends ConfigurationValue = ConfigurationValue>(key: string): T | undefined { return scope.getStore()?.values[key] as T | undefined; }
+export function getConfig<T extends ConfigurationValue = ConfigurationValue>(key: string): T | undefined {
+  const values = scope.getStore()?.values;
+  return values && Object.hasOwn(values, key) ? values[key] as T : undefined;
+}
 export function getProjectConfiguration(): ProjectConfigurationSnapshot | undefined { return scope.getStore(); }
 export function withProjectConfiguration<T>(snapshot: ProjectConfigurationSnapshot, run: () => T): T {
   const value = structuredClone(snapshot);
@@ -79,16 +82,17 @@ export async function createLocalProjectConfigurationStore(projectDir: string, o
         await atomic(filename, next); return next;
       });
     },
-    async snapshot(options: { id?: string; runId?: string; required?: boolean } = {}): Promise<ProjectConfigurationSnapshot> {
+    async snapshot(options: { id?: string; runId?: string; required?: boolean; configuration?: ProjectConfigurationSnapshot } = {}): Promise<ProjectConfigurationSnapshot> {
+      const provided = options.configuration === undefined ? undefined : structuredClone(parseSnapshot(options.configuration));
       const runFile = options.runId ? path.join(root, "snapshots", key, `${createHash("sha256").update(options.runId).digest("hex")}.json`) : undefined;
       if (runFile) return exclusive(async () => {
         try { return parseSnapshot(JSON.parse(await readFile(runFile, "utf8"))); }
         catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-        const snapshot = configurationSnapshot(await load(), options.id, options.required !== false);
+        const snapshot = provided ?? configurationSnapshot(await load(), options.id, options.required !== false);
         await atomic(runFile, snapshot);
         return snapshot;
       });
-      return configurationSnapshot(await read(), options.id, options.required !== false);
+      return provided ?? configurationSnapshot(await read(), options.id, options.required !== false);
     },
   };
 }

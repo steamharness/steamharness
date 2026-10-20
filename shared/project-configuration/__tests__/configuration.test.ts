@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyConfigurationAction, createConfigurationState, configurationSnapshot, exportConfigurations, parseConfigurationDefinition, type ProjectConfigurationAction } from "../index";
+import { applyConfigurationAction, createConfigurationState, configurationSnapshot, exportConfigurations, parseConfigurationDefinition, readConfigurationState, type ProjectConfigurationAction } from "../index";
 let serial = 0;
 const id = () => `config-${++serial}`;
 const fields = parseConfigurationDefinition({version:1, fields:[
@@ -49,6 +49,38 @@ describe("portable project configurations", () => {
     const state = createConfigurationState(fields,id);
     for (const values of [{data:NaN},{count:"1"},{choice:["x"]},{unknown:true}]) expect(() => applyConfigurationAction(state,{action:"save",revision:0,id:state.activeConfigurationId,values:values as any},id)).toThrow();
   });
+});
+
+it("keeps inactive declared values across schema visits without exposing them to runs or exports", () => {
+  const declared = [{name:"token",type:"string" as const}];
+  let state = createConfigurationState(declared,id);
+  state = applyConfigurationAction(state,{action:"save",revision:0,id:state.activeConfigurationId,values:{token:"saved"}},id);
+  const older = readConfigurationState(state,[],id);
+  expect(configurationSnapshot(older).values).toEqual({});
+  expect(exportConfigurations(older).configurations[0]!.values).toEqual({});
+  const edited = applyConfigurationAction(older,{action:"rename",revision:older.revision,id:older.activeConfigurationId,name:"Renamed"},id);
+  const restored = readConfigurationState(JSON.parse(JSON.stringify(edited)),declared,id);
+  expect(configurationSnapshot(restored).values).toEqual({token:"saved"});
+});
+
+it("restores a custom definition after a project declaration stops shadowing it", () => {
+  let state = createConfigurationState([],id);
+  state = applyConfigurationAction(state,{action:"field.save",revision:0,field:{name:"token",type:"string",secret:true}},id);
+  state = applyConfigurationAction(state,{action:"save",revision:state.revision,id:state.activeConfigurationId,values:{token:"saved"}},id);
+  const shadowed = readConfigurationState(state,[{name:"token",type:"string",label:"Declared"}],id);
+  expect(shadowed.customFields).toEqual([]);
+  expect(() => applyConfigurationAction(shadowed,{action:"field.delete",revision:shadowed.revision,key:"token"},id)).toThrow("Only custom");
+  const restored = readConfigurationState(JSON.parse(JSON.stringify(shadowed)),[],id);
+  expect(restored.customFields).toEqual([{name:"token",type:"string",secret:true}]);
+  expect(configurationSnapshot(restored).values.token).toBe("saved");
+  const deleted = applyConfigurationAction(restored,{action:"field.delete",revision:restored.revision,key:"token"},id);
+  expect(deleted.configurations[0]!.values).toEqual({});
+  expect(readConfigurationState(deleted,[],id).fields).toEqual([]);
+});
+
+it("requires an own value for fields whose names also exist on Object.prototype", () => {
+  const state = createConfigurationState([{name:"toString",type:"string",required:true}],id);
+  expect(() => configurationSnapshot(state)).toThrow("Missing required configuration");
 });
 
 it("renames custom keys across profiles and rejects a conflicting type without partial changes", () => {

@@ -1,16 +1,20 @@
 import { expect, it } from 'vitest';
 import { once } from 'node:events';
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createLocalProjectConfigurationStore } from 'steamharness';
 import type { AgentSessionSnapshot } from 'steamharness/agent';
 import { createWebRuntime } from '../web/runtime';
 import { resolveHarnessRoot } from './harness-source';
 
 it('controls the real worker over IPC and replays pending commands after reopening SQLite', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'workflow-agent-ipc-'));
+  const configurationKey = createHash('sha256').update(await realpath(directory)).digest('hex');
+  const configurationRoot = path.join(os.homedir(), '.steamharness', 'configurations');
   let calls = 0;
   const model = createServer(async (request, response) => {
     for await (const _chunk of request) { /* Consume the model request. */ }
@@ -29,6 +33,8 @@ it('controls the real worker over IPC and replays pending commands after reopeni
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(harnessRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
     await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: '8912f599-21e5-4ef3-9008-ccf0ac7c242d', name: 'agent-ipc', version: '1.0.0', steamHarness: { projectType: 'conversation', projectInfo: { dataStorage: { mode: 'local' } } } }));
+    const declareConfiguration = (label: string) => writeFile(path.join(directory, 'configuration.json'), JSON.stringify({version:1,fields:[{name:'label',type:'string',defaultValue:label}]}));
+    await declareConfiguration('first');
     model.listen(0, '127.0.0.1'); await once(model, 'listening');
     const port = (model.address() as { port: number }).port;
     await writeFile(path.join(directory, 'index.ts'), `
@@ -51,6 +57,7 @@ it('controls the real worker over IPC and replays pending commands after reopeni
           baseUrl: 'http://127.0.0.1:${port}/v1', apiKey: 'offline-fixture', contextWindow: 8192,
           tools: [], session: { registry, codeMode: {}, compaction: { enabled: false } },
           async createTools() {
+            writeFileSync(new URL('./configuration-seen', import.meta.url), steamharness.getConfig('label') ?? 'missing');
             const marker = new URL('./started', import.meta.url);
             if (existsSync(marker)) await new Promise(resolve => setTimeout(resolve, 6000));
             else writeFileSync(marker, 'started');
@@ -94,12 +101,17 @@ it('controls the real worker over IPC and replays pending commands after reopeni
     expect(snapshot!.turns.map(turn => turn.items.map(item => item.content).join(''))).toEqual(['Answer 1', 'Answer 2']);
     expect(calls).toBe(2);
     runtime.cancel('ipc-run'); await run; run = undefined;
+    expect(await readFile(path.join(directory, 'configuration-seen'), 'utf8')).toBe('first');
+    const configurations = await createLocalProjectConfigurationStore(directory);
+    const currentConfiguration = await configurations.read();
+    await configurations.dispatch({action:'save',revision:currentConfiguration.revision,id:currentConfiguration.activeConfigurationId,values:{label:'second'}});
     snapshot = undefined;
     const plan = { type: 'plan' as const, requestId: 'recovered-plan', expectedVersion: 0, items: [{ id: 'keep', text: 'Survive slow tool initialization', status: 'pending' as const }] };
-    run = runtime.run({ ...request, agentCommands: [{ scopeId: 'ipc-session', command: submit }, { scopeId: 'ipc-session', command: plan }, { scopeId: 'ipc-session', command: task }] }, events).catch(error => error);
+    run = runtime.run({ ...request, configurationRunId:'ipc-config-v2', agentCommands: [{ scopeId: 'ipc-session', command: submit }, { scopeId: 'ipc-session', command: plan }, { scopeId: 'ipc-session', command: task }] }, events).catch(error => error);
     await expect.poll(() => snapshot?.turns.find(turn => turn.requestId === 'ipc-second')?.status, { timeout: 15_000 }).toBe('done');
     await expect.poll(() => snapshot?.plan.version, { timeout: 2000 }).toBe(1);
     expect(snapshot!.plan.items).toEqual(plan.items);
+    expect(await readFile(path.join(directory, 'configuration-seen'), 'utf8')).toBe('second');
     expect(snapshot!.ownerId).not.toBe(ownerId);
     expect(calls).toBe(2);
     expect(await runtime.agentControl!('ipc-run', task, 'ipc-session')).toEqual(taskReceipt);
@@ -112,5 +124,6 @@ it('controls the real worker over IPC and replays pending commands after reopeni
     runtime.dispose(); await run;
     await new Promise<void>(resolve => { model.close(() => resolve()); model.closeAllConnections(); });
     await rm(directory, { recursive: true, force: true });
+    await Promise.all([rm(path.join(configurationRoot,`${configurationKey}.json`),{force:true}),rm(path.join(configurationRoot,`${configurationKey}.json.lock.sqlite`),{force:true}),rm(path.join(configurationRoot,'snapshots',configurationKey),{recursive:true,force:true})]);
   }
 }, 40_000);

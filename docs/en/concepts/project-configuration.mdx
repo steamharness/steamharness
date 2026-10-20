@@ -32,6 +32,8 @@ Keys start with a letter or underscore and then allow letters, digits, underscor
 
 Create, copy, rename, select and delete named profiles. At least one profile must remain. Uncheck Set value to clear an override and use the declared default when present. Incomplete required fields may be saved; execution validates them. New declared fields use defaults, and removed fields no longer reach the runtime.
 
+Removing a declaration or visiting another source version retains saved values, so restoring the field restores its value. A project declaration temporarily hides an existing custom definition with the same name; removing that declaration restores the custom definition. Runs and exports include only currently effective fields. Explicitly deleting a custom field still clears its value from every profile.
+
 Writes check `revision` and commit atomically. Changes from another window or the assistant update committed state. Unsaved drafts keep their original version and content, with a conflict message. Refresh and discard the draft before editing again. Failed requests do not partially write data.
 
 Studio, standalone CLI and CLI Web share local user storage, isolated by the canonical real project path. Server storage is isolated by project and signed-in account. Accounts with project read access manage their own profiles. Values stay outside source files, source downloads and immutable source versions. Transfer configurations between local and Server storage with import/export.
@@ -55,6 +57,8 @@ const task = steamharness.defineProject({
 ```
 
 The SDK exposes `ProjectConfigurationSnapshot`, `context.config` and `steamharness.getConfig(key)`. Parameter resolvers, executors, nodes and agents share an immutable execution scope. Configuration never enters global `process.env`. Outside an execution scope, `getConfig` returns `undefined`. Direct SDK callers may supply an explicit `configuration` snapshot or use `createLocalProjectConfigurationStore(projectDir)`.
+
+Explicit snapshots are also persisted by `runId`: resuming without `configuration` reuses the original values. Hosts that reload configuration for a durable session retaining its `runId` pass a new `configurationRunId`; resuming that generation must keep the same `configurationRunId`. The local store's `snapshot({ runId, configuration })` also persists the supplied snapshot only on the first use of that identity.
 
 - Workflow freezes configuration at execution start and reuses it when resuming a waiting task.
 - Conversation uses current configuration on the next turn. Durable agents reload after their current tasks, queued inputs and approvals finish, preserving history, branches and recovery state.

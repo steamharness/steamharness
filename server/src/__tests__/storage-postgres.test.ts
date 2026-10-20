@@ -104,6 +104,13 @@ test("PostgreSQL stores static project groups, immutable versions and independen
     const versions = await storage.listVersions(boardId);
     assert.equal(versions.latest, "1.0.0");
     assert.equal(versions.versions[0]?.dependencies[0]?.version, "1.0.0");
+    await storage.saveDraftFiles({projectName:boardId,files:[{path:"configuration.json",content:JSON.stringify({version:1,fields:[{name:"newField",type:"string"}]})}]});
+    const draftConfiguration=await storage.projectConfigurations(configurationOptions,{action:"get"}) as typeof state;
+    await storage.projectConfigurations(configurationOptions,{action:"save",revision:draftConfiguration.revision,id:draftConfiguration.activeConfigurationId,values:{newField:"saved"}});
+    const olderConfiguration=await storage.projectConfigurations({...configurationOptions,target:"1.0.0"},{action:"get"}) as typeof state;
+    await storage.projectConfigurations({...configurationOptions,target:"1.0.0"},{action:"rename",revision:olderConfiguration.revision,id:olderConfiguration.activeConfigurationId,name:"Retained"});
+    const restoredConfiguration=await storage.projectConfigurations(configurationOptions,{action:"get"}) as typeof state;
+    assert.equal(restoredConfiguration.configurations.find(item=>item.id===draftConfiguration.activeConfigurationId)!.values.newField,"saved");
     const snapshot = await storage.getDownloadableSourceFiles({ projectName: boardId, target: "1.0.0" });
     const copyId = randomUUID();
     await storage.cloneProject({ projectName: boardId, sourceTarget: "1.0.0",

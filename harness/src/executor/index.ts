@@ -137,6 +137,8 @@ export interface RunWorkspaceProjectOptions {
   projectName: string;
   args?: string[];
   configuration?: ProjectConfigurationSnapshot;
+  /** Persist a distinct configuration generation when a durable session retains its run ID. */
+  configurationRunId?: string;
   env?: NodeJS.ProcessEnv;
   providers?: ProviderRegistry;
   nodeHooks?: NodeExecutionHooks;
@@ -163,6 +165,8 @@ export interface RunLocalProjectOptions {
   projectName?: string;
   args?: string[];
   configuration?: ProjectConfigurationSnapshot;
+  /** Persist a distinct configuration generation when a durable session retains its run ID. */
+  configurationRunId?: string;
   env?: NodeJS.ProcessEnv;
   providers?: ProviderRegistry;
   nodeHooks?: NodeExecutionHooks;
@@ -2967,19 +2971,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export async function runWorkspaceProjectWithReport(options: Parameters<typeof runWorkspaceProjectWithReportInternal>[0]): ReturnType<typeof runWorkspaceProjectWithReportInternal> {
   const runId = options.runId ?? createProjectRunId();
-  const snapshot = options.configuration ?? await (await createLocalProjectConfigurationStore(resolveProjectLocation(options.cwd ?? process.cwd(), options.projectName).projectDir)).snapshot({ runId });
+  const snapshot = await (await createLocalProjectConfigurationStore(resolveProjectLocation(options.cwd ?? process.cwd(), options.projectName).projectDir)).snapshot({ runId: options.configurationRunId ?? runId, configuration: options.configuration });
   return withProjectConfiguration(snapshot, () => runWorkspaceProjectWithReportInternal({ ...options, runId, configuration: snapshot }));
 }
 
 export async function debugWorkspaceProjectNodeWithReport(options: Parameters<typeof debugWorkspaceProjectNodeWithReportInternal>[0]): ReturnType<typeof debugWorkspaceProjectNodeWithReportInternal> {
   const runId = options.runId ?? createProjectRunId();
-  const snapshot = options.configuration ?? await (await createLocalProjectConfigurationStore(resolveProjectLocation(options.cwd ?? process.cwd(), options.projectName).projectDir)).snapshot({ runId });
+  const snapshot = await (await createLocalProjectConfigurationStore(resolveProjectLocation(options.cwd ?? process.cwd(), options.projectName).projectDir)).snapshot({ runId: options.configurationRunId ?? runId, configuration: options.configuration });
   return withProjectConfiguration(snapshot, () => debugWorkspaceProjectNodeWithReportInternal({ ...options, runId, configuration: snapshot }));
 }
 
 export async function runLocalProjectWithReport(options: RunLocalProjectOptions = {}): ReturnType<typeof runLocalProjectWithReportInternal> {
   const runId = options.runId ?? createProjectRunId();
-  const snapshot = options.configuration ?? await (await createLocalProjectConfigurationStore(resolveLocalProjectDir(options.projectDir))).snapshot({ runId });
+  const snapshot = await (await createLocalProjectConfigurationStore(resolveLocalProjectDir(options.projectDir))).snapshot({ runId: options.configurationRunId ?? runId, configuration: options.configuration });
   return withProjectConfiguration(snapshot, () => runLocalProjectWithReportInternal({ ...options, runId, configuration: snapshot }));
 }
 

@@ -1864,6 +1864,26 @@ test("Storage atomically checks project configuration versions and isolates acco
   }finally{await rm(dataRoot,{recursive:true,force:true});}
 });
 
+test("Storage keeps draft configuration values when an older version is read and edited", async () => {
+  const dataRoot = await mkdtemp(path.join(tmpdir(), "project-configuration-targets-"));
+  const draft = path.join(dataRoot,"projects",DEMO_WF_ID,"draft","source");
+  const version = path.join(dataRoot,"projects",DEMO_WF_ID,"versions","0.1.0","source");
+  const storage = new Storage({serverRoot:process.cwd(),repoRoot:process.cwd(),dataRoot,buildInfo:testBuildInfo});
+  try {
+    await mkdir(draft,{recursive:true});await mkdir(version,{recursive:true});
+    await writeFile(path.join(draft,"configuration.json"),JSON.stringify({version:1,fields:[{name:"newField",type:"string"}]}));
+    await writeFile(path.join(version,"configuration.json"),JSON.stringify({version:1,fields:[]}));
+    const options={projectName:DEMO_WF_ID,actorId:"user-a",target:"draft"};
+    const initial=await storage.projectConfigurations(options,{action:"get"}) as import("@steamharness/project-configuration").ProjectConfigurationState;
+    await storage.projectConfigurations(options,{action:"save",revision:initial.revision,id:initial.activeConfigurationId,values:{newField:"saved"}});
+    const older=await storage.projectConfigurations({...options,target:"0.1.0"},{action:"get"}) as typeof initial;
+    await storage.projectConfigurations({...options,target:"0.1.0"},{action:"rename",revision:older.revision,id:older.activeConfigurationId,name:"Renamed"});
+    const restored=await storage.projectConfigurations(options,{action:"get"}) as typeof initial;
+    assert.equal(restored.configurations[0]!.values.newField,"saved");
+    assert.equal(restored.configurations[0]!.name,"Renamed");
+  }finally{await rm(dataRoot,{recursive:true,force:true});}
+});
+
 test("Storage keeps immutable project card images after metadata changes", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-project-card-history-"));
   const cards: unknown[] = [];

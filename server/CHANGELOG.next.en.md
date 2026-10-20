@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Fixed] Retain newer field values and shadowed custom definitions when reading or editing configurations for older source versions in file and PostgreSQL storage.
+
 - [Added] Generic project configuration APIs and new project/account-scoped storage replace the Kanban-only endpoints, with revision checks, atomic import/export, custom fields and shared static-preview values. Existing configuration data is not migrated.
 
 ### Project Avatars

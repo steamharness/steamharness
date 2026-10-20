@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Fixed] Ignore save responses from a previous project visit to preserve current drafts, and allow repairing previous non-array values after a field changes to multiple options.
+
 - [Added] Add project configurations to all project detail pages, with field/value editing, profile management, import/export and recovery for conflicts, failed saves and empty states.
 
 ### Project Avatars

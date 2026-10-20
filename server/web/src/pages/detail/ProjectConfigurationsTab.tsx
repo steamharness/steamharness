@@ -15,7 +15,7 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
   const file = useRef<HTMLInputElement>(null);
   const [loading,setLoading] = useState(true), [retry,setRetry] = useState(0);
   const editingRef = useRef(false), busyRef = useRef(false), latestRef = useRef<ProjectConfigurationState>(undefined);
-  const scopeRef = useRef("");
+  const scopeRef = useRef<symbol|undefined>(undefined);
   const target = project.hasDraft ? "draft" : "latest";
   const accept = (next: ProjectConfigurationState, force = false) => {
     if (latestRef.current && next.revision < latestRef.current.revision) return;
@@ -28,8 +28,7 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
     }))); setSetKeys(Object.keys(current.values)); dirtyRef.current=false; setDirty(false);
   };
   useEffect(()=>{
-    const scope=`${project.id}:${target}`;
-    scopeRef.current=scope;
+    scopeRef.current=Symbol();
     let closed=false, reading=false;
     dirtyRef.current=false;editingRef.current=false;latestRef.current=undefined;busyRef.current=false;setBusy(false);
     setState(undefined);setLatest(undefined);setDirty(false);setLoading(true);setError("");setModal(undefined);setField(undefined);
@@ -45,7 +44,7 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
       finally{reading=false;if(!closed)setLoading(false);}
     };
     void load(); const poll=setInterval(()=>void load(),2000);
-    return()=>{closed=true;scopeRef.current="";clearInterval(poll);};
+    return()=>{closed=true;scopeRef.current=undefined;clearInterval(poll);};
   },[project.id,target,retry]);
   const edit=()=>{dirtyRef.current=true;setDirty(true);};
   const clean=()=>{if(dirtyRef.current){setError(t("configurationDraftFirst"));return false;}return true;};
@@ -104,7 +103,7 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
           const change=(value:string)=>{setValues(values=>({...values,[f.name]:value}));edit();};
           return <Field key={f.name} data-disabled={busy}>
             <div className="flex items-center gap-2"><Checkbox aria-label={`${t("configurationSetValue")}: ${f.label||f.name}`} checked={set} disabled={busy} onCheckedChange={checked=>{setSetKeys(keys=>checked?[...keys,f.name]:keys.filter(k=>k!==f.name));edit();}}/><FieldLabel htmlFor={`configuration-${f.name}`}>{f.label||f.name}{f.required?" *":""}</FieldLabel></div>
-            {f.options&&f.multiple?<FieldSet disabled={busy||!set}><FieldLegend variant="label">{f.label||f.name}</FieldLegend>{f.options.map(option=>{let selected:string[]=[];try{selected=JSON.parse(value||"[]");}catch{}return <Field key={option.value} orientation="horizontal"><Checkbox id={`configuration-${f.name}-${option.value}`} checked={selected.includes(option.value)} onCheckedChange={checked=>change(JSON.stringify(checked?[...selected,option.value]:selected.filter(v=>v!==option.value)))}/><FieldLabel htmlFor={`configuration-${f.name}-${option.value}`}>{option.label||option.value}</FieldLabel></Field>;})}</FieldSet>
+            {f.options&&f.multiple?<FieldSet disabled={busy||!set}><FieldLegend variant="label">{f.label||f.name}</FieldLegend>{f.options.map(option=>{let selected:string[]=[];try{const parsed:unknown=JSON.parse(value||"[]");if(Array.isArray(parsed))selected=parsed.filter((item):item is string=>typeof item==="string");}catch{}return <Field key={option.value} orientation="horizontal"><Checkbox id={`configuration-${f.name}-${option.value}`} checked={selected.includes(option.value)} onCheckedChange={checked=>change(JSON.stringify(checked?[...selected,option.value]:selected.filter(v=>v!==option.value)))}/><FieldLabel htmlFor={`configuration-${f.name}-${option.value}`}>{option.label||option.value}</FieldLabel></Field>;})}</FieldSet>
             :f.options?<SelectField id={`configuration-${f.name}`} disabled={busy||!set} value={value} options={f.options.map(o=>({value:o.value,label:o.label||o.value}))} onValueChange={change}/>
             :f.type==="json"||f.multiple?<Textarea id={`configuration-${f.name}`} disabled={busy||!set} rows={4} value={value} onChange={event=>change(event.target.value)}/>
             :f.type==="boolean"?<Checkbox id={`configuration-${f.name}`} disabled={busy||!set} checked={value==="true"} onCheckedChange={checked=>change(String(checked))}/>

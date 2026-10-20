@@ -388,6 +388,8 @@ const title = locale === "en" ? "Market data" : "股票行情";
 
 所有类型使用 `configuration.json` 声明字段，用项目配置面板管理实际值。SDK 的 `getConfig(key)` 与 `context.config` 读取冻结的 ProjectConfigurationSnapshot；不加载项目 env 或回退到 process.env。Workflow 恢复沿用旧快照，Conversation 下一轮使用新值，持久 Agent 在任务边界重载，Kanban 保存立即更新。Studio 与独立 CLI 共用按真实路径隔离的本地存储；Server 按项目和账号隔离，导入导出搬运字段和全部值，包括敏感值。
 
+执行接口的显式 `configuration` 也按 `runId` 持久冻结，恢复可省略快照。宿主在持久会话任务边界更新配置且保留 runId 时，使用新的 `configurationRunId`，恢复这一代时继续传入该身份；`createLocalProjectConfigurationStore(...).snapshot({runId,configuration})` 遵循相同的首次保存规则。读取只匹配自身键，不把对象原型成员当配置。切换声明或 Server 版本保留暂时不生效的值和被声明隐藏的自定义定义；运行和导出只包含当前有效字段，显式删除自定义字段仍清除值。
+
 ## 必需本地类型
 
 在 `interface.ts` 或等价本地文件中保留这些最小类型：

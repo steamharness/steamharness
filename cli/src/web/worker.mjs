@@ -167,7 +167,7 @@ try {
         abortSignal: controller.signal,
       }));
     } else if (request.method === 'run') {
-      const configuration = request.configuration ?? await (await core.createLocalProjectConfigurationStore(projectDir)).snapshot({runId:request.configurationRunId ?? request.runId});
+      const configuration = await (await core.createLocalProjectConfigurationStore(projectDir)).snapshot({runId:request.configurationRunId ?? request.runId,configuration:request.configuration});
       let agentControl;
       let runFinished = false;
       if (request.project.conversation?.durable?.enabled) {
@@ -206,6 +206,7 @@ try {
       }
       const running = runLocalProjectWithReport({
         configuration,
+        configurationRunId: request.configurationRunId,
         projectDir: request.project.folderPath,
         args: request.args,
         entrypointId: request.entrypointId,

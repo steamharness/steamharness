@@ -20,6 +20,8 @@ export interface ProjectConfiguration {
 }
 export interface ProjectConfigurationState {
   version: 1; revision: number; fields: ProjectConfigurationField[]; customFields: ProjectConfigurationField[];
+  /** Custom definitions temporarily hidden by a declaration with the same name. */
+  shadowedCustomFields?: ProjectConfigurationField[];
   configurations: ProjectConfiguration[]; activeConfigurationId: string;
 }
 export interface ProjectConfigurationSnapshot { id: string; name: string; revision: number; values: ConfigurationValues }
@@ -100,23 +102,28 @@ export function createConfigurationState(fields: ProjectConfigurationField[], id
 export function readConfigurationState(stored: unknown, declared: ProjectConfigurationField[], id: () => string): ProjectConfigurationState {
   if (stored === undefined) { const state = createConfigurationState(declared, id); state.activeConfigurationId = state.configurations[0]!.id; return state; }
   if (!record(stored) || stored.version !== 1 || !Number.isSafeInteger(stored.revision) || Number(stored.revision) < 0 || !Array.isArray(stored.customFields) || !Array.isArray(stored.configurations) || !stored.configurations.length) return invalid("Invalid project configuration store.");
-  const customFields = stored.customFields.map(parseConfigurationField).filter(field => !declared.some(item => item.name === field.name));
+  if (stored.shadowedCustomFields !== undefined && !Array.isArray(stored.shadowedCustomFields)) return invalid("Invalid shadowed custom configuration fields.");
+  const allCustomFields = [...stored.customFields, ...(stored.shadowedCustomFields as unknown[] | undefined ?? [])].map(parseConfigurationField);
+  if (new Set(allCustomFields.map(field => field.name)).size !== allCustomFields.length) return invalid("Duplicate custom configuration field.");
+  const customFields = allCustomFields.filter(field => !declared.some(item => item.name === field.name));
+  const shadowedCustomFields = allCustomFields.filter(field => declared.some(item => item.name === field.name));
   const fields = [...declared, ...customFields];
   if (new Set(fields.map(field => field.name)).size !== fields.length) return invalid("Duplicate configuration field.");
   const configurations = stored.configurations.map(entry => {
     if (!record(entry) || typeof entry.id !== "string" || !entry.id || !record(entry.values) || !isConfigurationValue(entry.values) || typeof entry.createdAt !== "string" || typeof entry.updatedAt !== "string") return invalid("Invalid stored configuration.");
-    return { ...entry, name: name(entry.name), values: Object.fromEntries(Object.entries(entry.values).filter(([key]) => fields.some(field => field.name === key))) } as ProjectConfiguration;
+    Object.keys(entry.values).forEach(configurationKey);
+    return { ...entry, name: name(entry.name), values: structuredClone(entry.values) } as ProjectConfiguration;
   });
   if (new Set(configurations.map(item => item.id)).size !== configurations.length) return invalid("Duplicate configuration ID.");
-  return { version: 1, revision: Number(stored.revision), fields, customFields, configurations,
+  return { version: 1, revision: Number(stored.revision), fields, customFields, ...(shadowedCustomFields.length ? {shadowedCustomFields} : {}), configurations,
     activeConfigurationId: configurations.some(item => item.id === stored.activeConfigurationId) ? String(stored.activeConfigurationId) : configurations[0]!.id };
 }
 export function configurationSnapshot(state: ProjectConfigurationState, configurationId = state.activeConfigurationId, required = true): ProjectConfigurationSnapshot {
   const current = state.configurations.find(item => item.id === configurationId);
   if (!current) return invalid("Configuration no longer exists.");
-  const resolved = { ...configurationDefaults(state.fields), ...current.values };
+  const resolved = { ...configurationDefaults(state.fields), ...Object.fromEntries(state.fields.flatMap(field => Object.hasOwn(current.values, field.name) ? [[field.name, current.values[field.name]!]] : [])) };
   values(state.fields, resolved);
-  if (required) for (const field of state.fields) if (field.required && (resolved[field.name] === undefined || resolved[field.name] === "" || resolved[field.name] === null)) invalid(`Missing required configuration: ${field.name}. Open Project configurations.`);
+  if (required) for (const field of state.fields) if (field.required && (!Object.hasOwn(resolved,field.name) || resolved[field.name] === "" || resolved[field.name] === null)) invalid(`Missing required configuration: ${field.name}. Open Project configurations.`);
   return { id: current.id, name: current.name, revision: state.revision, values: resolved };
 }
 export function exportConfigurations(state: ProjectConfigurationState, id?: string): ProjectConfigurationExport {
