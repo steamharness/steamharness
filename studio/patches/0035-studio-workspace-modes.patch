@@ -303,10 +303,10 @@ index 86e8fd3c9e9..ee7d5f3904c 100644
  	setViewContainerBadgeEnablementState(id: string, badgesEnabled: boolean): void;
 diff --git a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
 new file mode 100644
-index 00000000000..3233bc23bcf
+index 00000000000..e2757f0b779
 --- /dev/null
 +++ b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
-@@ -0,0 +1,286 @@
+@@ -0,0 +1,288 @@
 +/*---------------------------------------------------------------------------------------------
 + *  Copyright (c) Microsoft Corporation. All rights reserved.
 + *  Licensed under the MIT License. See License.txt in the project root for license information.
@@ -553,15 +553,17 @@ index 00000000000..3233bc23bcf
 +			if (snapshot.visible[index]) { this.layout.setSize(part, snapshot.sizes[index]); }
 +		}
 +		const mainPart = this.groups.mainPart;
-+		if (snapshot.groups.length === mainPart.groups.length && snapshot.groups.every(id => mainPart.getGroup(id))) {
++		// A maximized grid serializes its expanded size alongside cached hidden sizes.
++		// Reapplying that layout would shrink the hidden groups on every switch.
++		if (!snapshot.editorMaximized && snapshot.groups.length === mainPart.groups.length && snapshot.groups.every(id => mainPart.getGroup(id))) {
 +			mainPart.applyLayout(snapshot.editorLayout);
-+			if (snapshot.editorMaximized) {
-+				mainPart.arrangeGroups(GroupsArrangement.MAXIMIZE, mainPart.getGroup(snapshot.activeGroup) ?? mainPart.activeGroup);
-+			}
 +		}
 +		const previous = this.ideEditor;
 +		if (previous && mainPart.getGroup(previous.group.id)?.contains(previous.editor)) { await this.editors.openEditor(previous.editor, undefined, previous.group); }
-+		// Opening an editor can unmaximize the panel, so restore this state last.
++		// Opening an editor can unmaximize a group or the panel, so restore these states last.
++		if (snapshot.editorMaximized && mainPart.getGroup(snapshot.activeGroup)) {
++			mainPart.arrangeGroups(GroupsArrangement.MAXIMIZE, snapshot.activeGroup);
++		}
 +		if (snapshot.visible[2] && this.layout.isPanelMaximized() !== !!snapshot.panelMaximized) { this.layout.toggleMaximizedPanel(); }
 +		this.layout.setAuxiliaryBarMaximized(snapshot.auxiliaryMaximized);
 +		this.ideEditor = undefined;

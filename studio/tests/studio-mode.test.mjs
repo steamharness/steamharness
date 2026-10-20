@@ -118,7 +118,7 @@ function fixture(t, saved = new Map()) {
   const module = { exports: {} };
   runInNewContext(compiled, { exports: module.exports, module, require: () => new Proxy(common, { get: (object, key) => key in object ? object[key] : service }) });
   const controller = new module.exports.StudioModeContribution(layout, groups,
-    { openEditor: (editor, options, group) => group.openEditor(editor) }, views, descriptors, context, configuration, storage,
+    { openEditor: (editor, options, group) => { groupMaximized = false; return group.openEditor(editor); } }, views, descriptors, context, configuration, storage,
     { executeCommand: async () => { calls.push('prepare'); return f.prepare(); } }, { error: error => errors.push(String(error)) });
   t.after(() => controller.dispose());
   return f;
@@ -269,6 +269,7 @@ test('returning to IDE restores an originally maximized editor group', async t =
   const f = fixture(t); f.mainPart.arrangeGroups();
   f.publish(true); await f.run('EnterSteamMode'); await f.run('EnterIdeMode');
   assert.equal(f.mainPart.hasMaximizedGroup(), true);
+  assert.equal(f.calls.some(call => Array.isArray(call) && call[0] === 'restoreGroups'), false);
 });
 
 test('a skipped animation still completes the mode change without an unhandled rejection', async t => {

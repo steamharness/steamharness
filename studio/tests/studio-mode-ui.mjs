@@ -232,13 +232,21 @@ for (const language of ['en', 'zh-cn']) {
     }).length);
     await command('workbench.action.splitEditorRight');
     await until(visibleGroups, value => value === 2, 'IDE did not open two editor groups');
+    const groupWidths = () => page.locator('.part.editor .editor-group-container').evaluateAll(elements => elements.map(element => element.getBoundingClientRect().width));
+    const originalWidths = await groupWidths();
     await command('workbench.action.toggleMaximizeEditorGroup');
     await until(visibleGroups, value => value === 1, 'Editor group did not maximize');
-    await command('studio.enterSteamMode'); await command('studio.enterIdeMode');
-    assert.equal(await visibleGroups(), 1);
-    assert.equal((await call({ action: 'state' })).active, source);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await command('studio.enterSteamMode'); await command('studio.enterIdeMode');
+      await until(visibleGroups, value => value === 1, 'Original maximized editor group was not restored');
+      assert.equal((await call({ action: 'state' })).active, source);
+      await page.waitForTimeout(100);
+      assert.equal(await visibleGroups(), 1);
+    }
     await command('workbench.action.toggleMaximizeEditorGroup');
     await until(visibleGroups, value => value === 2, 'Restored editor group could not unmaximize');
+    const restoredWidths = await groupWidths();
+    assert.ok(restoredWidths.every((width, index) => Math.abs(width - originalWidths[index]) < 2), JSON.stringify({ originalWidths, restoredWidths }));
     check(`${language}: maximized editor groups and their active source restore correctly`);
 
     if (!(await partState()).panel.visible) { await command('workbench.action.togglePanel'); }
