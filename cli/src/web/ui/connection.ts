@@ -15,6 +15,8 @@ export class BrowserConnection {
   private handshake?: AbortController;
   private epoch = 0;
   private retry?: ReturnType<typeof setTimeout>;
+  private connectTimer?: ReturnType<typeof setTimeout>;
+  private heartbeatTimer?: ReturnType<typeof setTimeout>;
   private snapshotTimer?: ReturnType<typeof setTimeout>;
   private status: ConnectionState = 'connecting';
   private attempts = 0;
@@ -58,6 +60,8 @@ export class BrowserConnection {
     this.handshake?.abort(); this.handshake = undefined; this.connecting = undefined;
     this.source?.close(); this.source = undefined;
     clearTimeout(this.retry);
+    clearTimeout(this.connectTimer);
+    clearTimeout(this.heartbeatTimer);
     clearTimeout(this.snapshotTimer);
     this.manual = false;
   }
@@ -83,7 +87,9 @@ export class BrowserConnection {
     this.manual = manual;
     const epoch = this.epoch, handshake = this.handshake = new AbortController();
     const active = () => epoch === this.epoch && !this.closed && navigator.onLine;
-    const signal = AbortSignal.any([handshake.signal, AbortSignal.timeout(10_000)]);
+    const signal = handshake.signal;
+    // Advance recovery even if an obsolete network request has not settled its abort.
+    this.connectTimer = setTimeout(() => { if (active()) { this.interrupted(); } }, 10_000);
     this.update(manual || this.attempts ? 'reconnecting' : 'connecting');
     this.connecting = (async () => {
       try {
@@ -98,31 +104,48 @@ export class BrowserConnection {
         if (session.status === 401) { this.update('expired'); return; }
         if (!session.ok) { throw new Error('Cannot connect to the project.'); }
         // Embedded card snapshots must not each reserve a browser HTTP connection.
-        if (!this.live) { await this.snapshot(epoch); return; }
+        if (!this.live) { await this.snapshot(epoch, signal); return; }
         const eventsUrl = new URL(this.fileUrl('/api/events'), location.href);
         eventsUrl.searchParams.set('clientId', this.clientId);
         await new Promise<void>(resolve => {
           const source = this.source = new EventSource(eventsUrl.href);
           const finish = () => { signal.removeEventListener('abort', aborted); resolve(); };
-          const aborted = () => { if (active()) { this.interrupted(); } finish(); };
+          const aborted = () => finish();
+          const alive = () => {
+            if (!active()) { return; }
+            clearTimeout(this.heartbeatTimer);
+            this.heartbeatTimer = setTimeout(() => { if (active()) { this.interrupted(); } }, 45_000);
+          };
           signal.addEventListener('abort', aborted, { once: true });
-          source.onopen = () => { if (active()) { this.attempts = 0; this.manual = false; this.update('connected'); } finish(); };
-          source.onmessage = event => { if (active()) { this.emit(this.publicFiles(JSON.parse(event.data))); } };
+          source.onopen = alive;
+          source.addEventListener('heartbeat', alive);
+          source.onmessage = event => {
+            if (!active()) { return; }
+            let message: Message;
+            try { message = this.publicFiles(JSON.parse(event.data)); }
+            catch { this.interrupted(); finish(); return; }
+            alive(); this.emit(message);
+            if (active() && message?.type === 'state' && this.status !== 'connected') {
+              clearTimeout(this.connectTimer);
+              this.attempts = 0; this.manual = false; this.update('connected'); finish();
+            }
+          };
           source.onerror = () => { if (active()) { this.interrupted(); } finish(); };
           if (signal.aborted) { aborted(); }
         });
       } catch { if (active()) { this.interrupted(); } }
     })().finally(() => {
       if (epoch !== this.epoch) { return; }
+      clearTimeout(this.connectTimer);
       this.connecting = undefined; this.handshake = undefined;
       if (this.manual) { this.manual = false; this.update(this.status); }
     });
     return this.connecting;
   }
 
-  private async snapshot(epoch: number): Promise<void> {
+  private async snapshot(epoch: number, signal = AbortSignal.timeout(10_000)): Promise<void> {
     if (epoch !== this.epoch || this.closed) { return; }
-    const response = await fetch('/api/resource-state', { headers: this.headers(), signal: AbortSignal.timeout(10_000) });
+    const response = await fetch('/api/resource-state', { headers: this.headers(), signal });
     if (epoch !== this.epoch || this.closed) { return; }
     if (response.status === 401) { this.disconnect(); this.update('expired'); return; }
     if (!response.ok) { throw new Error('Cannot connect to the project.'); }

@@ -31,6 +31,7 @@
 ### Fixed
 
 - Restore the last selected conversation when reopening a project in Studio / CLI Web, while keeping each open window's selection independent.
+- Recover stalled Web connections with handshake and snapshot deadlines, observable SSE heartbeats, and continued backoff retries during temporary outages. Retry replaces the old connection immediately and restores the complete state without rerunning background tasks.
 - Fix profile image data URLs not displaying in CLI Web. Refresh avatars, names and avatar removal periodically without interrupting tasks on transient network failures.
 - Fixed downloads reusing a different local version by UUID and incorrectly reporting a root or pinned dependency as already downloaded.
 - Fixed published source downloads being rejected when a project declares pending relationships.

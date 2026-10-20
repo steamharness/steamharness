@@ -282,6 +282,27 @@ describe('steamharness web', () => {
     } finally { for (const socket of sockets) { socket.destroy(); } await new Promise<void>(resolve => proxy.close(() => resolve())); }
   });
 
+  it('sends observable SSE heartbeats while the project is idle', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const { app, cookie } = await fixture();
+    const response = await fetch(`${app.origin}/api/events`, { headers: { Cookie: cookie } });
+    const reader = response.body!.getReader();
+    try {
+      expect(new TextDecoder().decode((await reader.read()).value)).toContain('"type":"state"');
+      const next = (async () => {
+        let frames = '';
+        while (!frames.includes('event: heartbeat\ndata: {}\n\n')) {
+          const frame = await reader.read();
+          if (frame.done) throw new Error('Event stream closed before its heartbeat.');
+          frames += new TextDecoder().decode(frame.value);
+        }
+        return frames;
+      })();
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(await next).toContain('event: heartbeat\ndata: {}\n\n');
+    } finally { await reader.cancel(); }
+  });
+
   it('injects and clears host login without writing host credentials to CLI configuration', async () => {
     const { app, cookie, post } = await fixture();
     const realFetch = globalThis.fetch;

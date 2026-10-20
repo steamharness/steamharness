@@ -530,7 +530,7 @@ export async function startWebServer(options: WebOptions) {
           const clientId = url.searchParams.get('clientId') ?? '';
           clientIds.set(response, clientId);
           response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' }); writeFrame(response, `data: ${JSON.stringify(state(clientId))}\n\n`); clients.add(response);
-          const heartbeat = setInterval(() => { if (!blockedClients.has(response)) writeFrame(response, ': heartbeat\n\n'); }, 20_000);
+          const heartbeat = setInterval(() => { if (!blockedClients.has(response)) writeFrame(response, 'event: heartbeat\ndata: {}\n\n'); }, 20_000);
           response.once('close', () => { clearInterval(heartbeat); clients.delete(response); blockedClients.delete(response); pendingFrames.delete(response); disconnectKanban?.(); }); return;
         }
         if (url.pathname === '/api/message' && request.method === 'POST') {
