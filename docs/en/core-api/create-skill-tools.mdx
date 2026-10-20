@@ -1,48 +1,131 @@
 ---
 title: "createSkillTools"
-description: "Offer skills as a tool the model reads on demand, not as prompt text."
+description: "Register the skill tool to discover guides and read SKILL.md and reference files on demand."
 ---
 
 # createSkillTools
 
-`workflow.createSkillTools()` returns one `skill` tool: the model uses it to list what skills exist and read the one it needs.
+`workflow.createSkillTools()` returns the model-callable `skill` tool, displayed as **List and read skill guides**. The model discovers the project's task guides, reads the selected guide, then reads its reference files as needed. Guide contents enter the context when read.
 
-A skill's body runs to tens of thousands of characters and matters on a minority of turns, so injecting it into the system prompt spends that budget every turn and buys nothing. Reading on demand costs less, and it is also how the model reaches the references a skill points at.
+The returned array always contains one tool. That entry point can access multiple guides: “1 tool” in the permissions panel counts the `skill` entry point. The actual guide names and count come from `list`.
 
 ## Signature
 
 ```ts
-const tools: AgentTool[] = await workflow.createSkillTools({
-  directories: string[],
-  approve?: (toolId: string, args: unknown) => Promise<void>,
-});
+function createSkillTools(options: {
+  directories: readonly string[];
+  approve?: (toolId: string, args: unknown) => Promise<void>;
+}): Promise<AgentTool[]>;
 ```
 
 ## Options
 
 | Parameter | Type | Description |
 | --- | --- | --- |
-| `directories` | `string[]` | Roots to look for skills in, in priority order. The first root's copy of a skill wins, so a project's own copy overrides the one shipped with the host. |
-| `approve` | `(toolId, args) => Promise<void>` | Consulted before each call; throwing blocks it, and a `user_input_required` throw pauses the run. |
+| `directories` | `readonly string[]` | Skill roots in priority order. Each immediate child directory containing `SKILL.md` becomes a skill. When names overlap, the first root's copy wins. Prefer absolute paths. |
+| `approve` | `(toolId, args) => Promise<void>` | Optional hook before every `list` and `read` call; `toolId` is always `skill`. Connect it to project tool approvals. Throwing blocks the call; `user_input_required` pauses the turn for approval. |
+
+Discovery uses the roots passed through `directories`. Project Assistant passes its bundled skills directory; other projects can supply their own roots.
 
 ## What a skill is
 
-A skill is a directory holding a `SKILL.md`, taking its name and description from the file's `name` and `description` frontmatter. Without frontmatter it takes the directory name; without a `SKILL.md` it is not a skill at all. A root that does not exist simply has no skills in it — that is not an error.
+A skill contains an entry guide and optional references, scripts or templates:
 
-## Actions
+```text
+skills/                       ← one entry in directories
+  release-guide/
+    SKILL.md
+    references/checklist.md
+    scripts/check.mjs
+```
 
-| Action | Description |
-| --- | --- |
-| `list` | Reports each skill's name, description and file listing (at most 60 paths). |
-| `read` | Returns one file of one skill; `SKILL.md` by default. |
+`SKILL.md` may declare single-line frontmatter fields:
 
-`path` cannot leave the skill directory: `..` traversal, absolute paths and symlinks pointing outside are all refused, and a file that does not exist is named. One file over 200,000 characters is truncated and flagged in the result.
+```md
+---
+name: release-guide
+description: Check build and delivery results against the project's release checklist.
+---
 
-An approval resume runs the same action again through `workflow.runSkillAction(directories, args)`.
+# Release checks
 
-## Example
+Read references/checklist.md before following the checklist.
+```
+
+`name` is the name used by `read`, falling back to the directory name. `description` is the discovery summary, falling back to an empty string. Only these two single-line fields are extracted; write multiline YAML descriptions as one line. A `SKILL.md` without frontmatter still defines a skill. Directories without an entry file are skipped, and a missing root returns no skills.
+
+## Tool arguments
+
+| Argument | Type | Description |
+| --- | --- | --- |
+| `action` | `"list" \| "read"` | Required. `list` discovers guides; `read` returns one file from a selected guide. |
+| `skill` | `string` | Required for `read`: use the complete name returned by `list`. Ignored by `list`. |
+| `path` | `string` | For `read`, a path relative to the skill directory. Omit it or pass an empty string to read `SKILL.md`. Ignored by `list`. |
+
+Use the following sequence.
+
+### 1. Discover available guides
+
+```json
+{ "action": "list" }
+```
+
+The tool returns JSON in a text block. Its decoded payload looks like this:
+
+```json
+{
+  "action": "list",
+  "skills": [{
+    "name": "release-guide",
+    "description": "Check build and delivery results against the project's release checklist.",
+    "files": ["SKILL.md", "references/checklist.md", "scripts/check.mjs"],
+    "filesTruncated": false
+  }]
+}
+```
+
+Choose the guides relevant to the task using their names and summaries. Each guide lists at most 60 files; `filesTruncated: true` means more files exist. Guides are sorted by name. When none are available, `skills` is `[]`.
+
+### 2. Read the entry guide
+
+```json
+{ "action": "read", "skill": "release-guide" }
+```
+
+The decoded result includes the file contents:
+
+```json
+{
+  "action": "read",
+  "skill": "release-guide",
+  "path": "SKILL.md",
+  "content": "---\nname: release-guide\ndescription: Check build and delivery results against the project's release checklist.\n---\n\n# Release checks\n\nRead references/checklist.md before following the checklist.\n",
+  "truncated": false
+}
+```
+
+Read the entry guide before following its instructions.
+
+### 3. Read needed references
+
+```json
+{ "action": "read", "skill": "release-guide", "path": "references/checklist.md" }
+```
+
+`path` starts at `release-guide/`. Reference results use the same `action`, `skill`, `path`, `content` and `truncated` fields. Reading `scripts/check.mjs` returns its source text; carrying out commands, file edits and other steps uses the appropriate tools and their permissions and approvals.
+
+## Read scope and errors
+
+Files are read as UTF-8. Both the resolved path and any symlink's real target must remain inside the selected skill directory. Paths that escape it, external symlinks, missing files and directory paths raise errors. Unknown-skill errors list the available names so the caller can select again.
+
+A file returns at most 200,000 characters, setting `truncated: true` when it exceeds that limit. Split instructions across reference files when complete reads are required; a truncated result is partial content.
+
+## Agent integration
 
 ```ts
+import path from "node:path";
+import * as workflow from "steamharness";
+
 const approval = workflow.createToolApprovalGate();
 
 const node = workflow.createAgentNode({
@@ -50,8 +133,14 @@ const node = workflow.createAgentNode({
   async createTools(context) {
     return workflow.createSkillTools({
       directories: [path.join(import.meta.dirname, "skills")],
-      approve: (toolId, args) => approval.approve({ name: toolId, arguments: args }, context),
+      approve: async (toolId, args) => {
+        await approval.approve({ name: toolId, arguments: args }, context);
+      },
     });
   },
 });
 ```
+
+To use project tool permissions, declare `name: "skill"` in the executor's `tools` with its default enable and auto-approve policies. Enabling this tool allows guide discovery and reads; edits, commands and other actions use their respective tools' permissions.
+
+Host flows such as approval recovery can call `workflow.runSkillAction(directories, args)` to execute the same `list` / `read` action, returning the decoded object shown above. This function performs the file action; the host handles approval before calling it. `createSkillTools()` runs the `approve` hook at the tool-call entry point.

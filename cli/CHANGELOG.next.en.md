@@ -2,6 +2,7 @@
 
 ### Tool permissions
 
+- Show tool descriptions directly in expanded permission sections, preserving multiline usage instructions.
 - Group CLI Web tool permissions by common tool types and namespaces, with counts and initially collapsed sections that retain their expanded state on the page. Search names and descriptions to expand matching results, then clear the search to restore the previous sections.
 
 ### Project Avatars

@@ -1,5 +1,9 @@
 # Unreleased
 
+### Skill tools
+
+- Clarify the `skill` display name, purpose and arguments, including discovery, entry and reference reads, result fields and truncation limits.
+
 ### Pi Durable
 
 - [Fixed] Emit automatic retry records after interrupted content and before its continuation instead of appending them at completion. Durable sessions and reopened history retain their position and collapsed details.

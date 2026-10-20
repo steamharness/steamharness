@@ -125,8 +125,8 @@ export const executor = steamharness.defineExecutor<AgentInput, AgentOutputPaylo
     },
     {
       name: "skill",
-      label: "Skills",
-      description: "List the written procedures available for this workspace and read the one a task calls for.",
+      label: "List and read skill guides",
+      description: "Browse the task guides bundled with this assistant.\nlist: list skill names, descriptions and files.\nread: set skill to a listed name; omit path for SKILL.md, or supply a relative reference path such as references/task-map.md.\nRead the guide before following its steps. The bundled workflow-generator covers SteamHarness project development. File edits and commands use the corresponding tools and permissions.",
       enabled: true,
       autoApprove: true,
     },

@@ -52,6 +52,7 @@ export function toolPermissions(tools: Tool[], policies: ToolPolicies, changed: 
     const row = document.createElement('tr'); const label = document.createElement('td');
     const title = tool.label || tool.name; label.textContent = title; label.title = tool.description || tool.name;
     if (title !== tool.name) { const name = document.createElement('small'); name.className = 'permission-tool-name'; name.textContent = tool.name; label.append(name); }
+    if (tool.description) { const description = document.createElement('p'); description.className = 'permission-tool-description'; description.textContent = tool.description; label.append(description); }
     row.append(label);
     for (const property of ['enabled', 'autoApprove'] as const) {
       const cell = document.createElement('td'), checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = draft[tool.name][property]!;

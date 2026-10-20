@@ -298,6 +298,7 @@ main { grid-area: main; min-width: 0; min-height: 0; display: flex; flex-directi
 .tool-group-title { flex: 1; min-width: 0; font-weight: 500; overflow-wrap: anywhere; }
 .tool-group-count { flex-shrink: 0; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .permission-tool-name { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
+.permission-tool-description { margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; white-space: pre-wrap; }
 .permissions-table { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; }
 .permissions-table td, .permissions-table th { padding: 10px 8px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
 .permissions-table th { font-weight: 500; }

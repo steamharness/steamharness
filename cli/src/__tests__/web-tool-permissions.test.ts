@@ -110,11 +110,14 @@ it('keeps hidden tool policies and independent defaults when changing a filtered
   f.search(''); expect(read.checked).toBe(false);
 });
 
-it('localizes section controls and counts without interpreting tool names or labels as HTML', () => {
+it('localizes section controls and counts and displays descriptions without interpreting tool text as HTML', () => {
   initI18n({ preference: 'zh-CN' });
-  const f = fixture([{ name: 'read', label: '<img src=x onerror=alert(1)>' }, { name: '<project>_fetch', label: '获取资料' }]);
+  const description = '先列出技能。\n再读取 SKILL.md；示例：<script>read()</script>';
+  const f = fixture([{ name: 'read', label: '<img src=x onerror=alert(1)>', description }, { name: '<project>_fetch', label: '获取资料' }]);
   expect(f.section('文件工具').textContent).toContain('<img src=x onerror=alert(1)>');
   expect(f.root.querySelector('img')).toBeNull();
+  expect(f.section('文件工具').querySelector('.permission-tool-description')?.textContent).toBe(description);
+  expect(f.root.querySelector('script')).toBeNull();
   expect(f.section('<project>').querySelector('.tool-group-count')?.textContent).toBe('1 个工具');
   expect(f.root.querySelector('[type=search]')?.ariaLabel).toBe('搜索工具');
   f.search('获取'); expect(f.root.querySelector('.tool-count')?.textContent).toBe('匹配 1 / 2 个工具');

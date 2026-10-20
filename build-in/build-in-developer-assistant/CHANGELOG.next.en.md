@@ -1,5 +1,9 @@
 # Unreleased
 
+### Skill tools
+
+- Rename `skill` to “List and read skill guides”, explain `list`, `read`, the default `SKILL.md` and reference paths, and distinguish the section's tool count from its guide count.
+
 ### Pi Durable
 
 - [Fixed] Update per-turn model usage and per-conversation context contracts, isolate fork consumption, and include system instructions and tool declarations in estimates. Verify the actual assistant's answer usage and standard composer rings remain consistent after recovery.

@@ -1,48 +1,131 @@
 ---
 title: "createSkillTools"
-description: "把技能做成一个按需读取的工具，而不是每轮注入的提示词。"
+description: "注册 skill 工具，按需发现技能、读取 SKILL.md 和引用文件。"
 ---
 
 # createSkillTools
 
-`workflow.createSkillTools()` 返回一个 `skill` 工具，模型用它列出有哪些技能、再读需要的那一份。
+`workflow.createSkillTools()` 返回供模型调用的 `skill` 工具，显示名为 **List and read skill guides**。它让模型发现当前项目提供的操作指南，读取所选指南，再按需读取指南引用的文件。技能正文在调用后进入上下文。
 
-技能的正文往往几万字符，而大多数轮次用不上，所以注入系统提示词会在每一轮花掉这份预算却什么也不换；让模型自己按需读取，它还能顺着技能里的指引去读引用文件。
+函数返回的数组始终只有一个工具。这个入口可以访问多份技能；权限面板里的“1 个工具”表示一个 `skill` 入口，实际技能名称和数量由 `list` 返回。
 
 ## 签名
 
 ```ts
-const tools: AgentTool[] = await workflow.createSkillTools({
-  directories: string[],
-  approve?: (toolId: string, args: unknown) => Promise<void>,
-});
+function createSkillTools(options: {
+  directories: readonly string[];
+  approve?: (toolId: string, args: unknown) => Promise<void>;
+}): Promise<AgentTool[]>;
 ```
 
 ## 选项
 
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
-| `directories` | `string[]` | 查找技能的根目录，按优先级排序。先出现的目录里的同名技能胜出，所以项目自带的副本会压过随宿主一起发布的那份。 |
-| `approve` | `(toolId, args) => Promise<void>` | 每次调用前询问；抛错即阻止这次调用，抛 `user_input_required` 则暂停本轮。 |
+| `directories` | `readonly string[]` | 技能根目录，按优先级排列。每个根目录的直接子目录若含 `SKILL.md`，就作为一个技能。多个根目录出现相同技能名时使用排在前面的那份。建议传入绝对路径。 |
+| `approve` | `(toolId, args) => Promise<void>` | 可选调用前置钩子；每次 `list` 和 `read` 都会调用，`toolId` 固定为 `skill`。可接入项目工具审批；抛错阻止调用，抛 `user_input_required` 暂停本轮等待审批。 |
+
+只扫描 `directories` 指定的根目录。小助手通过这里传入自身随包提供的技能目录；其它项目可以传入自己的目录。
 
 ## 技能是什么
 
-一个技能就是一个含 `SKILL.md` 的目录。名字与描述取 `SKILL.md` frontmatter 里的 `name` 与 `description`；没有 frontmatter 时用目录名，没有 `SKILL.md` 的目录不是技能。根目录不存在只是「这个根里没有技能」，不是错误。
+技能包含一份入口说明和可选的参考资料、脚本或模板，例如：
 
-## 工具动作
+```text
+skills/                       ← directories 中的一项
+  release-guide/
+    SKILL.md
+    references/checklist.md
+    scripts/check.mjs
+```
 
-| 动作 | 说明 |
-| --- | --- |
-| `list` | 列出每个技能的名字、描述和文件清单（清单最多 60 条）。 |
-| `read` | 读技能里的一个文件；`path` 省略时读 `SKILL.md`。 |
+`SKILL.md` 可以声明单行 frontmatter：
 
-`path` 只能落在该技能目录内：`..` 越界、绝对路径和指向目录外的软链接都会被拒绝，不存在的文件会点名说是哪一个。单个文件超过 200 000 字符会被截断并在结果里标注。
+```md
+---
+name: release-guide
+description: 按项目发布清单检查构建与交付结果。
+---
 
-审批恢复时用 `workflow.runSkillAction(directories, args)` 按同样的动作重跑。
+# 发布检查
 
-## 示例
+开始前读取 references/checklist.md，再按清单执行。
+```
+
+`name` 是调用 `read` 时使用的技能名；未声明时使用目录名。`description` 是发现技能时展示的摘要；未声明时为空字符串。frontmatter 只提取这两个单行字段，多行 YAML 描述应改为单行。没有 frontmatter 的 `SKILL.md` 仍可作为技能；缺少入口文件的目录跳过，不存在的根目录返回空结果。
+
+## 调用参数
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| `action` | `"list" \| "read"` | 必填。`list` 发现技能；`read` 读取某个技能的一份文件。 |
+| `skill` | `string` | `read` 时必填，使用 `list` 返回的完整技能名。`list` 忽略此参数。 |
+| `path` | `string` | `read` 时指定相对于技能目录的文件路径，省略或为空时读取 `SKILL.md`。`list` 忽略此参数。 |
+
+建议按以下顺序调用。
+
+### 1. 发现可用技能
+
+```json
+{ "action": "list" }
+```
+
+工具返回的文本是 JSON，解析后形如：
+
+```json
+{
+  "action": "list",
+  "skills": [{
+    "name": "release-guide",
+    "description": "按项目发布清单检查构建与交付结果。",
+    "files": ["SKILL.md", "references/checklist.md", "scripts/check.mjs"],
+    "filesTruncated": false
+  }]
+}
+```
+
+先根据名称和摘要选择当前任务需要的技能。每份技能的文件清单最多 60 条，`filesTruncated: true` 表示清单还有未列出的文件；技能列表按名称排序，没有可用技能时 `skills` 为 `[]`。
+
+### 2. 读取技能入口
+
+```json
+{ "action": "read", "skill": "release-guide" }
+```
+
+解析后的结果包含文件正文：
+
+```json
+{
+  "action": "read",
+  "skill": "release-guide",
+  "path": "SKILL.md",
+  "content": "---\nname: release-guide\ndescription: 按项目发布清单检查构建与交付结果。\n---\n\n# 发布检查\n\n开始前读取 references/checklist.md，再按清单执行。\n",
+  "truncated": false
+}
+```
+
+模型应先读取入口说明，再依照其中的步骤开展任务。
+
+### 3. 读取需要的引用文件
+
+```json
+{ "action": "read", "skill": "release-guide", "path": "references/checklist.md" }
+```
+
+`path` 从 `release-guide/` 开始计算，引用文件的结果沿用 `action`、`skill`、`path`、`content` 和 `truncated` 字段。读取 `scripts/check.mjs` 会返回脚本文本；执行脚本、修改文件等后续操作由对应工具完成，并遵守各自的权限与审批。
+
+## 读取范围和错误
+
+文件按 UTF-8 读取。解析后的路径以及软链接的真实目标都必须处于所选技能目录内。越界路径、目录外的软链接、缺失文件和目录路径会报错；未知技能报错时列出可用技能名，便于重新选择。
+
+单份文件最多返回 200 000 字符，超出部分截断并设置 `truncated: true`。需要完整读取的说明可以拆分为多个引用文件；截断结果只能视为部分内容。
+
+## 接入 Agent
 
 ```ts
+import path from "node:path";
+import * as workflow from "steamharness";
+
 const approval = workflow.createToolApprovalGate();
 
 const node = workflow.createAgentNode({
@@ -50,8 +133,14 @@ const node = workflow.createAgentNode({
   async createTools(context) {
     return workflow.createSkillTools({
       directories: [path.join(import.meta.dirname, "skills")],
-      approve: (toolId, args) => approval.approve({ name: toolId, arguments: args }, context),
+      approve: async (toolId, args) => {
+        await approval.approve({ name: toolId, arguments: args }, context);
+      },
     });
   },
 });
 ```
+
+接入项目工具权限时，在 executor 的 `tools` 中声明 `name: "skill"`，并设置默认启用和自动批准策略。启用该工具允许模型发现和读取技能；实际文件编辑、命令和其它操作仍使用相应工具的权限。
+
+审批恢复等宿主流程可以使用 `workflow.runSkillAction(directories, args)` 直接执行相同的 `list` / `read` 动作，返回上面展示的结果对象。该函数只负责文件动作，调用前的审批由宿主完成；`createSkillTools()` 负责在工具调用入口执行 `approve` 钩子。

@@ -42,39 +42,46 @@ interface SkillEntry {
 }
 
 /**
- * Offers skills as one tool rather than as prompt text.
+ * Returns one `skill` tool for discovering and reading written task guides.
  *
- * A skill's body is large — tens of thousands of characters of procedure that
- * matters on maybe one turn in twenty — so injection would spend that budget
- * every turn to no effect. The model lists what exists and reads the one it
- * needs, which is also how it can read the references a skill points at.
+ * Call `{ action: "list" }` to discover names, descriptions and relative file
+ * paths. Select a returned name, then call `{ action: "read", skill: name }`
+ * for its SKILL.md. Read referenced files with the same action and a `path`
+ * relative to that skill's directory. File listings and content carry explicit
+ * truncation flags. Every tool call passes through `approve` when supplied.
+ *
+ * Reading makes instructions available to the agent; following their steps
+ * uses the agent's other tools and those tools' permissions.
  */
 export async function createSkillTools(options: SkillToolOptions): Promise<AgentTool[]> {
   const Type = options.Type ?? await loadTypebox();
 
   const tool = {
     name: SKILL_TOOL_NAME,
-    label: "Skills",
+    label: "List and read skill guides",
     description: [
-      "List the skill guides available to this project, and read one.",
-      "A skill is a written procedure for a kind of task; read its SKILL.md before starting that kind of work,",
-      "then read the files it points at as you need them.",
-    ].join(" "),
+      "Discover and read the task guides in this project's configured skill directories.",
+      '1. Call {"action":"list"} to get skill names, descriptions and relative file paths. Select a guide relevant to the user\'s task.',
+      '2. Call {"action":"read","skill":"<listed name>"} to read that guide\'s SKILL.md before following its instructions.',
+      '3. Read any needed reference with {"action":"read","skill":"<listed name>","path":"references/guide.md"}. Paths are relative to the selected skill directory.',
+      `Results are JSON: list returns skills with files and filesTruncated (at most ${MAX_SKILL_FILE_LISTING} paths per skill); read returns skill, path, content and truncated (at most ${MAX_SKILL_FILE_CHARS} characters). A truncated result is incomplete.`,
+      "This tool reads guide and script contents. Carry out instructed file edits, commands or other actions with the appropriate tools and their permissions.",
+    ].join("\n"),
     parameters: Type.Unsafe({
       type: "object",
       properties: {
         action: {
           type: "string",
           enum: ["list", "read"],
-          description: '"list" reports every available skill; "read" returns one file of one skill.',
+          description: '"list": discover available skill names, descriptions and files. "read": read one file from the named skill; start with SKILL.md, then read relevant references.',
         },
         skill: {
           type: "string",
-          description: 'Skill name, exactly as "list" reported it. Required for "read".',
+          description: 'Required for "read": use the exact name returned by "list", not the display description or a directory path. Ignored by "list".',
         },
         path: {
           type: "string",
-          description: `File inside the skill directory, relative to it. Defaults to ${SKILL_ENTRY_FILE}.`,
+          description: `For "read": a file path relative to the selected skill directory, such as references/guide.md or scripts/check.mjs. Omit it to read ${SKILL_ENTRY_FILE}. The resolved file must remain inside that directory. Ignored by "list".`,
         },
       },
       required: ["action"],

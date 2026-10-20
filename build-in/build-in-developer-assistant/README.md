@@ -8,6 +8,8 @@ Studio 内置的独立小助手，基于 Core Agent 能力运行，使用宿主�
 
 本仓直接维护 `skills/workflow-generator`，通过 `skill` 工具按需列出与读取，不安装到用户全局目录。实现 SteamHarness 时，小助手先读取该技能和相关 API 引用；其它任务仅选用相关技能。必需引用缺失或不可完整读取时，报告未验证阶段并停止对应操作。
 
+工具权限中的 **Skills** 是技能分区，里面的 **List and read skill guides**（`skill`）是统一读取入口。分区中的“1 个工具”只表示这个入口，不代表只能使用一份技能。可以让小助手“列出可用技能”，它会调用 `{"action":"list"}` 返回名称、用途和文件清单；随后用 `{"action":"read","skill":"workflow-generator"}` 读取技能正文，再用 `{"action":"read","skill":"workflow-generator","path":"references/task-map.md"}` 读取引用。`path` 相对于所选技能目录。读取脚本会返回脚本文本，执行步骤由小助手使用相应工具完成。完整参数、返回值和读取限制见 [createSkillTools](../../docs/core-api/create-skill-tools.mdx)。
+
 小助手自身的 Knowledge、KV 和记忆与被协助项目的数据分离。工具不提供本运行作用域的 Knowledge 与 KV，避免把小助手存储误当成用户项目的数据。`global_memory` 只保存稳定偏好与长期决策，不保存凭据或临时进度。项目声明 `dataStorage.mode: "both"`，由运行平台选择存储；本地 CLI 使用本地存储，不自动同步到 Server。
 
 本项目位于 monorepo 的 `build-in/build-in-developer-assistant`，harness 与 CLI 通过 `link:../../harness`、`link:../../cli` 使用。Studio 构建时从 `build-in/build-in-developer-assistant` 读取内置小助手源码，开发依赖可从本仓解析。修改后执行 `pnpm typecheck`、`pnpm test`、`pnpm coverage`、`pnpm build` 和 `git diff --check`。Studio 的集成说明见其 `docs/workflow-workstation.md`。
