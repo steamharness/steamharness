@@ -398,6 +398,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       const project = currentProject();
       if (!project || !projectAvailable(project)) { return false; }
       await openProject(project);
+      workspaces.get(project.uri)?.panel.reveal(vscode.ViewColumn.One);
       return workspaces.get(project.uri)?.running === true;
     }),
     register('studio.openAnalysis', async () => {

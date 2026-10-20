@@ -53,23 +53,27 @@ function fixture(t, saved = new Map()) {
   const sizes = new Map(Object.values(parts).map((part, index) => [part, { width: 48 + index * 100, height: 720 }]));
   const active = new Map([[0, 'files'], [1, 'studio-kv'], [2, 'studio-assistant']]);
   const document = { documentElement: { classList: { add() {}, remove() {} } },
-    startViewTransition: callback => { calls.push('transition'); const finished = Promise.resolve().then(callback); return { updateCallbackDone: finished, finished }; } };
+    startViewTransition: callback => { calls.push('transition'); const finished = Promise.resolve().then(callback); return { ready: Promise.resolve(), updateCallbackDone: finished, finished }; } };
   const win = { document, matchMedia: () => ({ matches: false }) };
   const mainContainer = { classList: { add() {}, remove() {} } };
-  let maximized = false, options = false;
+  let maximized = false, groupMaximized = false, options = false;
   const layout = {
     mainContainer, mainContainerDimension: { width: 1440, height: 900 },
     isVisible: part => visible.get(part), getSize: part => ({ ...sizes.get(part) }),
     setPartHidden: (hidden, part) => visible.set(part, !hidden), setSize: (part, size) => sizes.set(part, { ...size }),
     isAuxiliaryBarMaximized: () => maximized, setAuxiliaryBarMaximized: value => { maximized = value; },
+    isPanelMaximized: () => visible.get('panel') && !visible.get('editor') && !maximized,
+    toggleMaximizedPanel: () => visible.set('editor', !visible.get('editor')),
   };
   const editor = { id: 'dirty source', isDirty: true }, result = { id: 'retained project webview' };
   const group = { id: 1, activeEditor: editor, contains: candidate => [editor, result].includes(candidate),
-    openEditor: async candidate => { group.activeEditor = candidate; calls.push(['editor', candidate.id]); } };
+    openEditor: async candidate => { group.activeEditor = candidate; visible.set('editor', true); calls.push(['editor', candidate.id]); } };
   const editorLayout = { orientation: 0, groups: [{ size: .6 }, { size: .4 }] };
-  const groups = { activeGroup: group, groups: [group, { id: 2 }], getGroup: id => groups.groups.find(group => group.id === id),
-    getLayout: () => editorLayout, applyLayout: value => calls.push(['restoreGroups', value]), arrangeGroups: () => calls.push('maximizeGroup'),
+  const mainPart = { activeGroup: group, groups: [group, { id: 2 }], getGroup: id => mainPart.groups.find(group => group.id === id),
+    getLayout: () => editorLayout, applyLayout: value => { groupMaximized = false; calls.push(['restoreGroups', value]); },
+    arrangeGroups: () => { groupMaximized = true; calls.push('maximizeGroup'); }, hasMaximizedGroup: () => groupMaximized,
     enforcePartOptions: () => { options = true; return { dispose: () => { options = false; } }; } };
+  const groups = { ...mainPart, mainPart };
   const views = {
     getVisibleViewContainer: location => containers.get(active.get(location)),
     openView: async id => { calls.push(['view', id]); const container = containers.get(viewContainers[id]); if (container) { active.set(container.location, container.id); visible.set(container.location === 2 ? 'auxiliary' : container.location === 1 ? 'panel' : 'sidebar', true); } },
@@ -97,8 +101,8 @@ function fixture(t, saved = new Map()) {
     store: (key, value) => pending.set(key, structuredClone(value)), remove: key => pending.set(key, undefined),
     flush: async () => { for (const [key, value] of pending) { if (value === undefined) { saved.delete(key); } else { saved.set(key, value); } } pending.clear(); } };
   const context = { createKey: id => ({ set: value => settings.set(id, value) }) };
-  const f = { calls, saved, visible, sizes, active, containers, settings, errors, state, editor, result, group, layout, groups, win,
-    prepare: async () => { group.activeEditor = result; return true; },
+  const f = { calls, saved, visible, sizes, active, containers, settings, errors, state, editor, result, group, layout, groups, mainPart, views, win,
+    prepare: async () => { group.activeEditor = result; visible.set('editor', true); return true; },
     publish: available => { state.state.available = available; stateChange.fire(state.state); },
     run: (name, ...args) => commands.get(`studio.internal${name}`)(undefined, ...args),
     get options() { return options; } };
@@ -106,14 +110,15 @@ function fixture(t, saved = new Map()) {
   const common = {
     getWindow: () => win, Sequencer, Codicon: { tools: {} }, Disposable, DisposableStore, MutableDisposable, localize2: (key, value) => ({ value, original: value }),
     CommandsRegistry: { registerCommand: register }, ConfigurationTarget: { MEMORY: 8 }, ContextKeyExpr: { has: () => true },
-    SyncDescriptor: class {}, Registry: { as: () => ({ registerViewContainer: value => value, registerViews() {} }) },
+    SyncDescriptor: class {}, Registry: { as: () => ({ registerViewContainer: value => containers.get(value.id) ?? value, registerViews() {} }) },
     StorageScope: { WORKSPACE: 1 }, StorageTarget: { MACHINE: 1 }, StudioSteamTools: class {}, studioModeState: state,
     ViewPane: class {}, ViewPaneContainer: class {}, WorkbenchPhase: { AfterRestored: 3 }, registerWorkbenchContribution2() {},
     Extensions: {}, ViewContainerLocation: locations, GroupsArrangement: { MAXIMIZE: 0 }, Parts: parts,
   };
   const module = { exports: {} };
   runInNewContext(compiled, { exports: module.exports, module, require: () => new Proxy(common, { get: (object, key) => key in object ? object[key] : service }) });
-  const controller = new module.exports.StudioModeContribution(layout, groups, views, descriptors, context, configuration, storage,
+  const controller = new module.exports.StudioModeContribution(layout, groups,
+    { openEditor: (editor, options, group) => group.openEditor(editor) }, views, descriptors, context, configuration, storage,
     { executeCommand: async () => { calls.push('prepare'); return f.prepare(); } }, { error: error => errors.push(String(error)) });
   t.after(() => controller.dispose());
   return f;
@@ -164,6 +169,38 @@ test('rapid mode requests coalesce while a project is preparing', async t => {
   assert.equal(f.calls.filter(call => call === 'maximizeGroup').length, 0);
 });
 
+for (const failure of ['unavailable', 'error']) {
+  test(`an outdated ${failure} preparation cannot cancel a newer Steam request`, async t => {
+    const f = fixture(t); f.publish(true);
+    let finish, fail;
+    f.prepare = () => new Promise((resolve, reject) => { finish = resolve; fail = reject; });
+    const first = f.run('EnterSteamMode');
+    await new Promise(resolve => setImmediate(resolve));
+    f.prepare = async () => true;
+    const latest = f.run('EnterSteamMode');
+    if (failure === 'error') { fail(new Error('outdated project startup')); } else { finish(false); }
+    await Promise.all([first, latest]);
+    assert.equal(f.state.steam, true); assert.equal(f.state.busy, false);
+    assert.equal(f.calls.filter(call => call === 'prepare').length, 2);
+    assert.equal(f.calls.filter(call => Array.isArray(call) && call[0] === 'editor').length, 0);
+  });
+}
+
+test('a superseded layout failure rolls back before retrying the newest Steam request', async t => {
+  const f = fixture(t); f.publish(true);
+  let fail;
+  const openView = f.views.openView;
+  f.views.openView = () => new Promise((resolve, reject) => { fail = reject; });
+  const first = f.run('EnterSteamMode');
+  await new Promise(resolve => setImmediate(resolve));
+  f.views.openView = openView;
+  const latest = f.run('EnterSteamMode');
+  fail(new Error('outdated tool view'));
+  await Promise.all([first, latest]);
+  assert.equal(f.state.steam, true); assert.equal(f.saved.get('studio.workbenchMode'), 'steam');
+  assert.equal(f.calls.filter(call => call === 'prepare').length, 2);
+});
+
 test('project removal restores the IDE and persisted tool positions after a restart', async t => {
   const f = fixture(t); f.publish(true); await f.run('EnterSteamMode'); await f.run('OpenSteamTool', 'knowledge');
   const saved = new Map(f.saved);
@@ -202,4 +239,45 @@ test('reduced motion applies the layout immediately and each mode retains its ow
   await f.run('EnterIdeMode'); await f.run('EnterSteamMode');
   assert.equal(f.sizes.get('auxiliary').width, 512);
   assert.equal(f.calls.includes('transition'), false);
+});
+
+test('mode changes use the main editor part even when an auxiliary editor window is active', async t => {
+  const f = fixture(t);
+  const auxiliary = { id: 3, activeEditor: { id: 'auxiliary source' } };
+  f.groups.activeGroup = auxiliary;
+  f.groups.groups = [...f.mainPart.groups, auxiliary];
+  f.groups.getLayout = () => assert.fail('must not capture the active auxiliary window');
+  f.groups.applyLayout = () => assert.fail('must not restore into the active auxiliary window');
+  f.groups.arrangeGroups = () => assert.fail('must not maximize the active auxiliary window');
+  f.publish(true); await f.run('EnterSteamMode');
+  f.groups.groups.pop(); // Closing an auxiliary window must not block main-window restoration.
+  await f.run('EnterIdeMode');
+  assert.equal(f.group.activeEditor, f.editor);
+  assert.equal(f.calls.filter(call => Array.isArray(call) && call[0] === 'restoreGroups').length, 1);
+});
+
+test('returning to IDE restores an originally maximized panel after reopening the source editor', async t => {
+  const f = fixture(t); f.visible.set('editor', false);
+  assert.equal(f.layout.isPanelMaximized(), true);
+  f.publish(true); await f.run('EnterSteamMode');
+  assert.equal(f.visible.get('editor'), true);
+  await f.run('EnterIdeMode');
+  assert.equal(f.layout.isPanelMaximized(), true);
+});
+
+test('returning to IDE restores an originally maximized editor group', async t => {
+  const f = fixture(t); f.mainPart.arrangeGroups();
+  f.publish(true); await f.run('EnterSteamMode'); await f.run('EnterIdeMode');
+  assert.equal(f.mainPart.hasMaximizedGroup(), true);
+});
+
+test('a skipped animation still completes the mode change without an unhandled rejection', async t => {
+  const f = fixture(t);
+  f.win.document.startViewTransition = callback => {
+    const finished = Promise.resolve().then(callback);
+    return { ready: Promise.reject(new Error('Transition was skipped')), updateCallbackDone: finished, finished };
+  };
+  f.publish(true); await f.run('EnterSteamMode'); await f.run('EnterIdeMode');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.state.steam, false); assert.equal(f.state.busy, false);
 });

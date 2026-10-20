@@ -225,6 +225,43 @@ for (const language of ['en', 'zh-cn']) {
     assert.equal(await page.locator('.studio-steam-tools h2').textContent(), language === 'en' ? 'Open Tools' : '打开工具');
     check(`${language}: the workspace restores Steam mode after reload`);
     await command('studio.enterIdeMode');
+
+    const source = await call({ action: 'untitled', text: 'Restore the maximized source group.' });
+    const visibleGroups = () => page.locator('.part.editor .editor-group-container').evaluateAll(elements => elements.filter(element => {
+      const rect = element.getBoundingClientRect(); return rect.width > 0 && rect.height > 0 && getComputedStyle(element).display !== 'none';
+    }).length);
+    await command('workbench.action.splitEditorRight');
+    await until(visibleGroups, value => value === 2, 'IDE did not open two editor groups');
+    await command('workbench.action.toggleMaximizeEditorGroup');
+    await until(visibleGroups, value => value === 1, 'Editor group did not maximize');
+    await command('studio.enterSteamMode'); await command('studio.enterIdeMode');
+    assert.equal(await visibleGroups(), 1);
+    assert.equal((await call({ action: 'state' })).active, source);
+    await command('workbench.action.toggleMaximizeEditorGroup');
+    await until(visibleGroups, value => value === 2, 'Restored editor group could not unmaximize');
+    check(`${language}: maximized editor groups and their active source restore correctly`);
+
+    if (!(await partState()).panel.visible) { await command('workbench.action.togglePanel'); }
+    await command('workbench.action.toggleEditorVisibility');
+    const editorVisible = () => page.locator('.part.editor').evaluate(element => {
+      const rect = element.getBoundingClientRect(); return rect.width > 0 && rect.height > 0 && getComputedStyle(element).display !== 'none';
+    });
+    await until(editorVisible, value => !value, 'Panel did not maximize');
+    await command('studio.enterSteamMode'); assert.equal(await editorVisible(), true);
+    await command('studio.enterIdeMode'); assert.equal(await editorVisible(), false);
+    assert.equal((await partState()).panel.visible, true);
+    await command('workbench.action.toggleEditorVisibility');
+    check(`${language}: a maximized panel restores after returning from Steam mode`);
+
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.evaluate(() => {
+      const start = document.startViewTransition.bind(document);
+      document.startViewTransition = callback => { const transition = start(callback); transition.skipTransition(); return transition; };
+    });
+    await command('studio.enterSteamMode'); await command('studio.enterIdeMode');
+    await page.waitForTimeout(100);
+    assert.equal(await page.locator('html.studio-mode-transition').count(), 0);
+    check(`${language}: skipped transition animations still finish without page errors`);
   } catch (error) {
     const logs = path.join(directory, 'server/data/logs');
     for (const file of await readdir(logs, { recursive: true })) {

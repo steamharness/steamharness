@@ -303,10 +303,10 @@ index 86e8fd3c9e9..ee7d5f3904c 100644
  	setViewContainerBadgeEnablementState(id: string, badgesEnabled: boolean): void;
 diff --git a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
 new file mode 100644
-index 00000000000..6194e6fa341
+index 00000000000..3233bc23bcf
 --- /dev/null
 +++ b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
-@@ -0,0 +1,261 @@
+@@ -0,0 +1,286 @@
 +/*---------------------------------------------------------------------------------------------
 + *  Copyright (c) Microsoft Corporation. All rights reserved.
 + *  Licensed under the MIT License. See License.txt in the project root for license information.
@@ -331,6 +331,7 @@ index 00000000000..6194e6fa341
 +import { EditorInput } from '../../../common/editor/editorInput.js';
 +import { Extensions, IViewContainersRegistry, IViewDescriptorService, IViewsRegistry, ViewContainerLocation } from '../../../common/views.js';
 +import { EditorGroupLayout, GroupsArrangement, IEditorGroup, IEditorGroupsService } from '../../../services/editor/common/editorGroupsService.js';
++import { IEditorService } from '../../../services/editor/common/editorService.js';
 +import { IWorkbenchLayoutService, Parts } from '../../../services/layout/browser/layoutService.js';
 +import { IViewsService } from '../../../services/views/common/viewsService.js';
 +
@@ -351,6 +352,9 @@ index 00000000000..6194e6fa341
 +	sizes: { width: number; height: number }[];
 +	containers: (string | undefined)[];
 +	auxiliaryMaximized: boolean;
++	panelMaximized: boolean;
++	editorMaximized: boolean;
++	activeGroup: number;
 +	sideBarMemoryLocation?: string;
 +	editorLayout: EditorGroupLayout;
 +	groups: number[];
@@ -399,6 +403,7 @@ index 00000000000..6194e6fa341
 +	constructor(
 +		@IWorkbenchLayoutService private readonly layout: IWorkbenchLayoutService,
 +		@IEditorGroupsService private readonly groups: IEditorGroupsService,
++		@IEditorService private readonly editors: IEditorService,
 +		@IViewsService private readonly views: IViewsService,
 +		@IViewDescriptorService private readonly descriptors: IViewDescriptorService,
 +		@IContextKeyService private readonly contextKeys: IContextKeyService,
@@ -439,25 +444,33 @@ index 00000000000..6194e6fa341
 +			studioModeState.setMode(this.steam, true);
 +			try {
 +				if (next) {
-+					const group = this.groups.activeGroup;
++					const group = this.groups.mainPart.activeGroup;
 +					if (!this.snapshot && group.activeEditor) { this.ideEditor = { group, editor: group.activeEditor }; }
 +					this.captureIde();
 +					// Preparing can start a worker. Keep it outside the short layout animation.
-+					if (!await this.commands.executeCommand<boolean>('studio.internalPrepareSteamProject')) {
++					let prepared: boolean | undefined;
++					try {
++						prepared = await this.commands.executeCommand<boolean>('studio.internalPrepareSteamProject');
++					} catch (error) {
++						if (revision !== this.revision || this._store.isDisposed) { return; }
++						throw error;
++					}
++					if (revision !== this.revision || !studioModeState.state.available || this._store.isDisposed) { return; }
++					if (!prepared) {
 +						this.requested = false;
 +						if (this.snapshot) { await this.restoreIde(); }
 +						await this.rememberMode(false);
 +						return;
 +					}
-+					if (revision !== this.revision || !studioModeState.state.available || this._store.isDisposed) { return; }
 +				}
 +				await this.transition(() => next ? this.enterSteam() : this.restoreIde());
 +				await this.rememberMode(next);
 +			} catch (error) {
-+				this.requested = false;
++				if (this._store.isDisposed) { return; }
++				if (revision === this.revision) { this.requested = false; }
 +				await this.restoreIde();
 +				await this.rememberMode(false);
-+				throw error;
++				if (revision === this.revision) { throw error; }
 +			} finally { studioModeState.setMode(this.steam, false); }
 +		});
 +	}
@@ -479,8 +492,11 @@ index 00000000000..6194e6fa341
 +				sizes: sideParts.map(part => this.layout.getSize(part)),
 +				containers: [ViewContainerLocation.Sidebar, ViewContainerLocation.Panel, ViewContainerLocation.AuxiliaryBar].map(location => this.views.getVisibleViewContainer(location)?.id),
 +				auxiliaryMaximized: this.layout.isAuxiliaryBarMaximized(),
++				panelMaximized: this.layout.isPanelMaximized(),
++				editorMaximized: this.groups.mainPart.hasMaximizedGroup(),
++				activeGroup: this.groups.mainPart.activeGroup.id,
 +				sideBarMemoryLocation: this.configuration.inspect<string>('workbench.sideBar.location').memoryValue,
-+				editorLayout: this.groups.getLayout(), groups: this.groups.groups.map(group => group.id),
++				editorLayout: this.groups.mainPart.getLayout(), groups: this.groups.mainPart.groups.map(group => group.id),
 +			};
 +			this.saveSnapshot();
 +		}
@@ -495,11 +511,11 @@ index 00000000000..6194e6fa341
 +		this.layout.mainContainer.classList.add('studio-steam-mode');
 +		this.layout.setAuxiliaryBarMaximized(false);
 +		this.editorOptions.value = this.groups.enforcePartOptions({ showTabs: 'none' });
-+		const containers = new Set(Object.values(toolViews).map(id => this.descriptors.getViewContainerByViewId(id)));
++		const containers = new Set([toolsContainer, ...Object.values(toolViews).map(id => this.descriptors.getViewContainerByViewId(id))]);
 +		for (const container of containers) {
 +			if (container) { this.toolLocations.add(this.descriptors.overrideViewContainerLocation(container, ViewContainerLocation.AuxiliaryBar)); }
 +		}
-+		this.groups.arrangeGroups(GroupsArrangement.MAXIMIZE);
++		this.groups.mainPart.arrangeGroups(GroupsArrangement.MAXIMIZE);
 +		for (const part of [Parts.ACTIVITYBAR_PART, Parts.SIDEBAR_PART, Parts.PANEL_PART]) { this.layout.setPartHidden(true, part); }
 +		this.layout.setPartHidden(false, Parts.EDITOR_PART);
 +		await this.openTools();
@@ -536,11 +552,17 @@ index 00000000000..6194e6fa341
 +			this.layout.setPartHidden(!snapshot.visible[index], part);
 +			if (snapshot.visible[index]) { this.layout.setSize(part, snapshot.sizes[index]); }
 +		}
-+		if (snapshot.groups.length === this.groups.groups.length && snapshot.groups.every(id => this.groups.getGroup(id))) {
-+			this.groups.applyLayout(snapshot.editorLayout);
++		const mainPart = this.groups.mainPart;
++		if (snapshot.groups.length === mainPart.groups.length && snapshot.groups.every(id => mainPart.getGroup(id))) {
++			mainPart.applyLayout(snapshot.editorLayout);
++			if (snapshot.editorMaximized) {
++				mainPart.arrangeGroups(GroupsArrangement.MAXIMIZE, mainPart.getGroup(snapshot.activeGroup) ?? mainPart.activeGroup);
++			}
 +		}
 +		const previous = this.ideEditor;
-+		if (previous && this.groups.getGroup(previous.group.id)?.contains(previous.editor)) { await previous.group.openEditor(previous.editor); }
++		if (previous && mainPart.getGroup(previous.group.id)?.contains(previous.editor)) { await this.editors.openEditor(previous.editor, undefined, previous.group); }
++		// Opening an editor can unmaximize the panel, so restore this state last.
++		if (snapshot.visible[2] && this.layout.isPanelMaximized() !== !!snapshot.panelMaximized) { this.layout.toggleMaximizedPanel(); }
 +		this.layout.setAuxiliaryBarMaximized(snapshot.auxiliaryMaximized);
 +		this.ideEditor = undefined;
 +		this.snapshot = undefined;
@@ -555,8 +577,11 @@ index 00000000000..6194e6fa341
 +			document.documentElement.classList.add('studio-mode-transition');
 +			try {
 +				const transition = document.startViewTransition(change);
++				// A background tab or skipped animation can reject ready even when the layout succeeds.
++				void transition.ready.catch(() => undefined);
++				const finished = transition.finished.catch(() => undefined);
 +				await transition.updateCallbackDone;
-+				await transition.finished.catch(() => undefined);
++				await finished;
 +			} finally { document.documentElement.classList.remove('studio-mode-transition'); }
 +		} else {
 +			await change();
@@ -569,48 +594,72 @@ index 00000000000..6194e6fa341
 +
 +registerWorkbenchContribution2(StudioModeContribution.ID, StudioModeContribution, WorkbenchPhase.AfterRestored);
 diff --git a/src/vs/workbench/services/views/browser/viewDescriptorService.ts b/src/vs/workbench/services/views/browser/viewDescriptorService.ts
-index 4ea78aecb09..b9b4b718908 100644
+index 4ea78aecb09..aa025f40435 100644
 --- a/src/vs/workbench/services/views/browser/viewDescriptorService.ts
 +++ b/src/vs/workbench/services/views/browser/viewDescriptorService.ts
 @@ -62,6 +62,7 @@ export class ViewDescriptorService extends Disposable implements IViewDescriptor
  	private readonly viewContainersRegistry: IViewContainersRegistry;
  
  	private viewContainersCustomLocations: Map<string, ViewContainerLocation>;
-+	private readonly viewContainerLocationOverrides = new Map<string, ViewContainerLocation>();
++	private readonly viewContainerLocationOverrides = new Map<string, { location: ViewContainerLocation; requestedIndex: number | undefined }>();
  	private viewDescriptorsCustomLocations: Map<string, string>;
  	private viewContainerBadgeEnablementStates: Map<string, boolean>;
  
-@@ -304,7 +305,29 @@ export class ViewDescriptorService extends Disposable implements IViewDescriptor
+@@ -304,7 +305,31 @@ export class ViewDescriptorService extends Disposable implements IViewDescriptor
  	}
  
  	getViewContainerLocation(viewContainer: ViewContainer): ViewContainerLocation {
 -		return this.viewContainersCustomLocations.get(viewContainer.id) ?? this.getDefaultViewContainerLocation(viewContainer);
-+		return this.viewContainerLocationOverrides.get(viewContainer.id) ?? this.viewContainersCustomLocations.get(viewContainer.id) ?? this.getDefaultViewContainerLocation(viewContainer);
++		return this.viewContainerLocationOverrides.get(viewContainer.id)?.location ?? this.viewContainersCustomLocations.get(viewContainer.id) ?? this.getDefaultViewContainerLocation(viewContainer);
 +	}
 +
 +	overrideViewContainerLocation(viewContainer: ViewContainer, location: ViewContainerLocation): IDisposable {
 +		const from = this.getViewContainerLocation(viewContainer);
-+		if (from === location || !this.canMoveViews()) { return Disposable.None; }
-+		const previousIndex = viewContainer.requestedIndex;
++		if (!this.canMoveViews()) { return Disposable.None; }
++		const override = { location, requestedIndex: viewContainer.requestedIndex };
 +		const previousOverride = this.viewContainerLocationOverrides.get(viewContainer.id);
 +		const notify = (from: ViewContainerLocation, to: ViewContainerLocation) => {
 +			this.getOrCreateDefaultViewContainerLocationContextKey(viewContainer).set(to === this.getDefaultViewContainerLocation(viewContainer));
 +			this._onDidChangeContainerLocation.fire({ viewContainer, from, to });
 +			this._onDidChangeLocation.fire({ views: this.getViewsByContainer(viewContainer), from, to });
 +		};
-+		this.viewContainerLocationOverrides.set(viewContainer.id, location);
-+		viewContainer.requestedIndex = undefined;
-+		notify(from, location);
++		this.viewContainerLocationOverrides.set(viewContainer.id, override);
++		if (from !== location) {
++			viewContainer.requestedIndex = undefined;
++			notify(from, location);
++		}
 +		return toDisposable(() => {
 +			if (previousOverride === undefined) { this.viewContainerLocationOverrides.delete(viewContainer.id); }
 +			else { this.viewContainerLocationOverrides.set(viewContainer.id, previousOverride); }
-+			viewContainer.requestedIndex = previousIndex;
++			viewContainer.requestedIndex = override.requestedIndex;
 +			const restored = this.getViewContainerLocation(viewContainer);
 +			if (restored !== location) { notify(location, restored); }
 +		});
  	}
  
  	getDefaultViewContainerLocation(viewContainer: ViewContainer): ViewContainerLocation {
+@@ -504,7 +529,8 @@ export class ViewDescriptorService extends Disposable implements IViewDescriptor
+ 	private moveViewContainerToLocationWithoutSaving(viewContainer: ViewContainer, location: ViewContainerLocation, requestedIndex?: number): void {
+ 		const from = this.getViewContainerLocation(viewContainer);
+ 		const to = location;
+-		if (from !== to) {
++		const override = this.viewContainerLocationOverrides.get(viewContainer.id);
++		if (from !== to || override) {
+ 			const isGeneratedViewContainer = this.isGeneratedContainerId(viewContainer.id);
+ 			const isDefaultViewContainerLocation = to === this.getDefaultViewContainerLocation(viewContainer);
+ 			if (isGeneratedViewContainer || !isDefaultViewContainerLocation) {
+@@ -512,6 +538,11 @@ export class ViewDescriptorService extends Disposable implements IViewDescriptor
+ 			} else {
+ 				this.viewContainersCustomLocations.delete(viewContainer.id);
+ 			}
++			// Keep temporary placement active; apply the user's preference when it ends.
++			if (override) {
++				override.requestedIndex = requestedIndex;
++				return;
++			}
+ 			this.getOrCreateDefaultViewContainerLocationContextKey(viewContainer).set(isGeneratedViewContainer || isDefaultViewContainerLocation);
+ 
+ 			viewContainer.requestedIndex = requestedIndex;
 diff --git a/src/vs/workbench/workbench.common.main.ts b/src/vs/workbench/workbench.common.main.ts
 index 9ef754ebefb..7d025906501 100644
 --- a/src/vs/workbench/workbench.common.main.ts
