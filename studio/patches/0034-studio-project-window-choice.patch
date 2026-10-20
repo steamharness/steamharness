@@ -1,0 +1,186 @@
+diff --git a/src/vs/platform/menubar/electron-main/menubar.ts b/src/vs/platform/menubar/electron-main/menubar.ts
+index a3f53de08e8..8d6dd1e5851 100644
+--- a/src/vs/platform/menubar/electron-main/menubar.ts
++++ b/src/vs/platform/menubar/electron-main/menubar.ts
+@@ -24,6 +24,7 @@ import { ITelemetryService } from '../../telemetry/common/telemetry.js';
+ import { IUpdateService, StateType } from '../../update/common/update.js';
+ import { INativeRunActionInWindowRequest, INativeRunKeybindingInWindowRequest, IWindowOpenable, hasNativeMenu } from '../../window/common/window.js';
+ import { IWindowsCountChangedEvent, IWindowsMainService, OpenContext } from '../../windows/electron-main/windows.js';
++import { openWithProjectWindowChoice } from '../../windows/electron-main/studioProjectWindow.js';
+ import { IWorkspacesHistoryMainService } from '../../workspaces/electron-main/workspacesHistoryMainService.js';
+ import { Disposable } from '../../../base/common/lifecycle.js';
+ 
+@@ -566,14 +567,19 @@ export class Menubar extends Disposable {
+ 			label: item.label,
+ 			click: async (menuItem, win, event) => {
+ 				const openInNewWindow = this.isOptionClick(event);
+-				const success = (await this.windowsMainService.open({
++				const opened = await openWithProjectWindowChoice({
+ 					context: OpenContext.MENU,
++					contextWindowId: win?.id,
+ 					cli: this.environmentMainService.args,
+ 					urisToOpen: [openable],
+ 					forceNewWindow: openInNewWindow,
+ 					gotoLineMode: false,
+ 					remoteAuthority: item.remoteAuthority
+-				})).length > 0;
++				}, this.windowsMainService, (id, dialog) => this.nativeHostMainService.showMessageBox(id, dialog));
++				if (!opened) {
++					return; // Cancelling must not remove a valid recent project.
++				}
++				const success = opened.length > 0;
+ 
+ 				if (!success) {
+ 					await this.workspacesHistoryMainService.removeRecentlyOpened([revivedUri]);
+diff --git a/src/vs/platform/native/electron-main/nativeHostMainService.ts b/src/vs/platform/native/electron-main/nativeHostMainService.ts
+index ac7480e8cad..3a437422398 100644
+--- a/src/vs/platform/native/electron-main/nativeHostMainService.ts
++++ b/src/vs/platform/native/electron-main/nativeHostMainService.ts
+@@ -36,6 +36,7 @@ import { IThemeMainService } from '../../theme/electron-main/themeMainService.js
+ import { defaultWindowState, ICodeWindow } from '../../window/electron-main/window.js';
+ import { IColorScheme, IOpenedAuxiliaryWindow, IOpenedMainWindow, IOpenEmptyWindowOptions, IOpenWindowOptions, IPoint, IRectangle, IWindowOpenable } from '../../window/common/window.js';
+ import { defaultBrowserWindowOptions, IWindowsMainService, OpenContext } from '../../windows/electron-main/windows.js';
++import { openWithProjectWindowChoice } from '../../windows/electron-main/studioProjectWindow.js';
+ import { isWorkspaceIdentifier, toWorkspaceIdentifier } from '../../workspace/common/workspace.js';
+ import { IWorkspacesManagementMainService } from '../../workspaces/electron-main/workspacesManagementMainService.js';
+ import { VSBuffer } from '../../../base/common/buffer.js';
+@@ -287,7 +288,7 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
+ 
+ 	private async doOpenWindow(windowId: number | undefined, toOpen: IWindowOpenable[], options: IOpenWindowOptions = Object.create(null)): Promise<void> {
+ 		if (toOpen.length > 0) {
+-			const windows = await this.windowsMainService.open({
++			const windows = await openWithProjectWindowChoice({
+ 				context: OpenContext.API,
+ 				contextWindowId: windowId,
+ 				urisToOpen: toOpen,
+@@ -305,14 +306,14 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
+ 				remoteAuthority: options.remoteAuthority || undefined,
+ 				forceProfile: options.forceProfile,
+ 				forceTempProfile: options.forceTempProfile,
+-			});
++			}, this.windowsMainService, (id, dialog) => this.showMessageBox(id, dialog));
+ 
+ 			// Hand off a chat session to the opened window so it restores both the
+ 			// folder and the session (e.g. the Agents window "Open in VS Code" flow).
+ 			// Only meaningful when exactly one window is opened so the session is
+ 			// not sent to an ambiguous target.
+ 			const chatSessionToOpen = options.chatSessionToOpen;
+-			if (chatSessionToOpen && windows.length === 1) {
++			if (chatSessionToOpen && windows?.length === 1) {
+ 				windows[0].sendWhenReady('vscode:openChatSession', CancellationToken.None, URI.revive(chatSessionToOpen).toString());
+ 			}
+ 		}
+@@ -636,14 +637,14 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
+ 	}
+ 
+ 	private async doOpenPicked(openable: IWindowOpenable[], options: INativeOpenDialogOptions, windowId: number | undefined): Promise<void> {
+-		await this.windowsMainService.open({
++		await openWithProjectWindowChoice({
+ 			context: OpenContext.DIALOG,
+ 			contextWindowId: windowId,
+ 			cli: this.environmentMainService.args,
+ 			urisToOpen: openable,
+ 			forceNewWindow: options.forceNewWindow,
+ 			/* remoteAuthority will be determined based on openable */
+-		});
++		}, this.windowsMainService, (id, dialog) => this.showMessageBox(id, dialog));
+ 	}
+ 
+ 	//#endregion
+diff --git a/src/vs/platform/window/common/studioProjectWindow.ts b/src/vs/platform/window/common/studioProjectWindow.ts
+new file mode 100644
+index 00000000000..9fb0e2f3886
+--- /dev/null
++++ b/src/vs/platform/window/common/studioProjectWindow.ts
+@@ -0,0 +1,27 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { getNLSLanguage, localize } from '../../../nls.js';
++import { hasWorkspaceFileExtension } from '../../workspace/common/workspace.js';
++import { IOpenWindowOptions, IWindowOpenable, isFileToOpen, isFolderToOpen, isWorkspaceToOpen } from './window.js';
++
++export function shouldChooseProjectWindow(toOpen: readonly IWindowOpenable[], options?: IOpenWindowOptions): boolean {
++	return !options?.forceNewWindow && !options?.forceReuseWindow && !options?.addMode && !options?.removeMode
++		&& toOpen.some(openable => isFolderToOpen(openable) || isWorkspaceToOpen(openable)
++			|| isFileToOpen(openable) && hasWorkspaceFileExtension(openable.fileUri));
++}
++
++export function projectWindowLabels(): { message: string; newWindow: string; currentWindow: string; cancel: string } {
++	// Fork-specific strings are not included in the published VS Code language pack.
++	if (getNLSLanguage()?.toLowerCase() === 'zh-cn') {
++		return { message: '在何处打开项目？', newWindow: '在新窗口打开', currentWindow: '在当前窗口打开', cancel: '取消' };
++	}
++	return {
++		message: localize('studio.projectWindow.message', "Where would you like to open the project?"),
++		newWindow: localize('studio.projectWindow.newWindow', "Open in New Window"),
++		currentWindow: localize('studio.projectWindow.currentWindow', "Open in Current Window"),
++		cancel: localize('studio.projectWindow.cancel', "Cancel")
++	};
++}
+diff --git a/src/vs/platform/windows/electron-main/studioProjectWindow.ts b/src/vs/platform/windows/electron-main/studioProjectWindow.ts
+new file mode 100644
+index 00000000000..2cedec05c24
+--- /dev/null
++++ b/src/vs/platform/windows/electron-main/studioProjectWindow.ts
+@@ -0,0 +1,27 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import type { MessageBoxOptions, MessageBoxReturnValue } from 'electron';
++import { projectWindowLabels, shouldChooseProjectWindow } from '../../window/common/studioProjectWindow.js';
++import type { ICodeWindow } from '../../window/electron-main/window.js';
++import type { IOpenConfiguration, IWindowsMainService } from './windows.js';
++
++export async function openWithProjectWindowChoice(openConfig: IOpenConfiguration, windows: IWindowsMainService,
++	showMessageBox: (windowId: number | undefined, options: MessageBoxOptions) => Promise<MessageBoxReturnValue>): Promise<ICodeWindow[] | undefined> {
++	if (shouldChooseProjectWindow(openConfig.urisToOpen ?? [], openConfig)) {
++		const window = (typeof openConfig.contextWindowId === 'number' ? windows.getWindowById(openConfig.contextWindowId) : undefined)
++			?? windows.getFocusedWindow() ?? windows.getLastActiveWindow();
++		const labels = projectWindowLabels();
++		const { response } = await showMessageBox(window?.id, {
++			type: 'question', message: labels.message,
++			buttons: [labels.newWindow, labels.currentWindow, labels.cancel], defaultId: 0, cancelId: 2, noLink: true
++		});
++		if ((response !== 0 && response !== 1) || window?.win?.isDestroyed()) {
++			return;
++		}
++		openConfig = { ...openConfig, contextWindowId: window?.id, forceNewWindow: response === 0, forceReuseWindow: response === 1 };
++	}
++	return windows.open(openConfig);
++}
+diff --git a/src/vs/workbench/services/host/browser/browserHostService.ts b/src/vs/workbench/services/host/browser/browserHostService.ts
+index 3815713423e..de5f0a6e4f8 100644
+--- a/src/vs/workbench/services/host/browser/browserHostService.ts
++++ b/src/vs/workbench/services/host/browser/browserHostService.ts
+@@ -45,6 +45,7 @@ import { VSBuffer } from '../../../../base/common/buffer.js';
+ import { MarkdownString } from '../../../../base/common/htmlContent.js';
+ import { CancellationToken } from '../../../../base/common/cancellation.js';
+ import { showBrowserToast } from './toasts.js';
++import { projectWindowLabels, shouldChooseProjectWindow } from '../../../../platform/window/common/studioProjectWindow.js';
+ 
+ enum HostShutdownReason {
+ 
+@@ -249,6 +250,18 @@ export class BrowserHostService extends Disposable implements IHostService {
+ 	}
+ 
+ 	private async doOpenWindow(toOpen: IWindowOpenable[], options?: IOpenWindowOptions): Promise<void> {
++		if (shouldChooseProjectWindow(toOpen, options)) {
++			const labels = projectWindowLabels();
++			const { result } = await this.dialogService.prompt<boolean>({
++				type: Severity.Info, message: labels.message,
++				buttons: [{ label: labels.newWindow, run: () => true }, { label: labels.currentWindow, run: () => false }],
++				cancelButton: labels.cancel
++			});
++			if (result === undefined || this._store.isDisposed) {
++				return;
++			}
++			options = { ...options, forceNewWindow: result, forceReuseWindow: !result };
++		}
+ 		const payload = this.preservePayload(false /* not an empty window */, options);
+ 		const fileOpenables: IFileToOpen[] = [];
+ 
