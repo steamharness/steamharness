@@ -1104,13 +1104,13 @@ function AppContent() {
       id: "settings",
       label: t("navSettings"),
       icon: CONSOLE_NAV_ICONS.settings,
-      onClick: () => navigateTo({ page: "settings", tab: "profile" }),
+      children: settingsNavItems,
     },
     adminNavItems.length > 0 ? {
       id: "admin",
       label: t("navAdminCenter"),
       icon: CONSOLE_NAV_ICONS.admin,
-      onClick: () => navigateTo({ page: "admin", tab: adminTab }),
+      children: adminNavItems,
     } : null,
   ].filter((item): item is NonNullable<typeof item> => item !== null);
   const workbenchPrincipalActions = [
@@ -1232,7 +1232,7 @@ function AppContent() {
       principalAvatarUrl={principalAvatarUrl}
       principalMenuActions={workbenchPrincipalActions}
       currentLabel={navigationLabel}
-      navigationLabel={navigationLabel}
+      navigationLabel={page === "detail" ? navigationLabel : undefined}
       breadcrumbs={
         page === "detail"
           ? [
@@ -1254,7 +1254,7 @@ function AppContent() {
         ) : null
       }
       secondaryActions={refreshActions}
-      navItems={page === "detail" ? detailNavItems : page === "admin" ? adminNavItems : settingsNavItems}
+      navItems={page === "detail" ? detailNavItems : consoleNavItems}
       navGroups={page === "detail" ? detailNavGroups : undefined}
       onBrandClick={() => navigateTo({ page: "projects" })}
       onLogout={logout}

@@ -5,7 +5,7 @@
 
 ### Changed
 
-- Changed project, Settings and Admin Center pages to use dedicated navigation, replacing stacked global and page menus with one sidebar, a return to Project Workbench and only the current page highlighted.
+- Changed Settings and Admin Center to expand submenus in the main sidebar, retaining Project Workbench and other entries while switching pages and filtering admin entries by permission; project details keep dedicated navigation.
 - Changed the console to shadcn Blocks and New York components, unifying navigation, tables, forms, dialogs and themes while removing private styling and notifications.
 - Changed the console to remove execution statistics, logs, schedules, environment variables, Webhook and Runner pages while retaining project and data management.
 - Changed role descriptions to project and data permissions, removed obsolete execution types and copy, and added bilingual data write and KV descriptions.
