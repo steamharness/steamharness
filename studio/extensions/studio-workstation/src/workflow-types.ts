@@ -54,6 +54,7 @@ export interface ParamRequest {
 }
 
 export interface Project extends Parameters {
+  projectCard?: import('@steamharness/project-card-metadata').ProjectCardMetadata;
   id: string;
   uri: string;
   folderPath: string;

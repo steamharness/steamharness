@@ -7,6 +7,12 @@ description: "Manage members, invitations, source access, related projects, and 
 
 Project managers use Server Web to manage members, invitations, source access, and related projects. Server stores project metadata, permissions, and version snapshots; it never executes uploaded project code.
 
+## Project avatars
+
+Project lists, details, and settings display avatars from `projectCard.icon`, `iconColor`, and `iconBackgroundColor`. New projects without an avatar use their project type's icon with randomly generated, saved foreground and background colors. Their contrast ratio is at least 4.5:1. Refreshing the page or reconnecting an existing project does not generate new colors.
+
+Older projects without avatar metadata use their project type's default icon and colors. `iconUrl` remains readable for compatibility, while these views consistently use the icon and colors.
+
 ## Members and invitations
 
 Member roles are `owner`, `manager`, `writer`, and `viewer`. A role controls settings, membership, versions, and data actions; source-download permission is checked independently from data permission.

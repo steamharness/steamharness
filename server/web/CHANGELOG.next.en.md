@@ -1,5 +1,9 @@
 # Unreleased
 
+### Project Avatars
+
+- Project lists, detail headers, overviews, and settings consistently display avatars from the projectCard icon and colors.
+
 ### Added
 
 

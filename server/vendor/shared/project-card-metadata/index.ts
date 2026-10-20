@@ -178,6 +178,11 @@ export function normalizeProjectCardMetadata(
   };
 }
 
+export function generateProjectCardMetadata(projectType: ProjectKind, random: () => number = Math.random): ProjectCardMetadata {
+  const { iconColor, iconBackgroundColor } = generateProjectCardColorPair(random);
+  return { icon: defaultProjectCardIcon(projectType), iconColor, iconBackgroundColor };
+}
+
 export function validateProjectCardMetadata(value: unknown): ProjectCardMetadata {
   if (!isRecord(value)) {
     throw new Error("Project card metadata must be an object.");

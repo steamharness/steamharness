@@ -1,5 +1,6 @@
 import { t } from './localization';
 import * as vscode from 'vscode';
+import { projectAvatarDataUrl } from '@steamharness/project-card-metadata/avatar';
 import { projectTypeLabels, projectVersion, projectDisplayName, type Project } from './workflow-types';
 import type { AccountController } from './workflow-auth';
 import type { Launcher, WebSession } from './workflow-cli-types';
@@ -14,7 +15,6 @@ import type { ProjectVersionStatus } from './steamharness-server-projects';
 import { assistantWorkspaceAvailable } from './assistant-workspace';
 import { bindProjectClipboard } from './workflow-clipboard';
 import { bindProjectResourceCards, type ResourceCardResult } from './workflow-resource-cards';
-import { projectTypeIcons as icons } from './projects';
 import type { ProjectIcons } from './project-icons';
 
 const ignored = new Set(['node_modules', 'vendor', 'dist', 'out', 'build', 'upstream']);
@@ -41,7 +41,7 @@ class ProjectsProvider implements vscode.TreeDataProvider<Project> {
   private published = '';
   projects: Project[] = [];
   refresh(): void {
-    const signature = JSON.stringify(this.projects.map(({ uri, id, name, projectType, folderPath, manifest }) => ({ uri, id, name, projectType, folderPath, version: manifest?.version })));
+    const signature = JSON.stringify(this.projects.map(({ uri, id, name, projectType, projectCard, folderPath, manifest }) => ({ uri, id, name, projectType, projectCard, folderPath, version: manifest?.version })));
     if (signature === this.published) { return; }
     this.published = signature;
     this.change.fire();
@@ -55,7 +55,7 @@ class ProjectsProvider implements vscode.TreeDataProvider<Project> {
     item.description = [projectTypeLabels[project.projectType], projectVersion(project)].filter(Boolean).join(' \u00b7 ');
     item.tooltip = `${projectDisplayName(project)}\n${project.folderPath}`;
     item.contextValue = 'studio.project';
-    item.iconPath = new vscode.ThemeIcon(icons[project.projectType]);
+    item.iconPath = vscode.Uri.parse(projectAvatarDataUrl(project.projectCard, project.projectType));
     item.command = { command: 'studio.openProject', title: t("Run Project"), arguments: [project] };
     return item;
   }
@@ -208,7 +208,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       }));
       panel.webview.html = projectFrameHtml(address.href, project.name, project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language);
       if ('reveal' in panel) {
-        panel.title = projectDisplayName(project); panel.iconPath = new vscode.ThemeIcon(icons[project.projectType]);
+        panel.title = projectDisplayName(project); panel.iconPath = vscode.Uri.parse(projectAvatarDataUrl(project.projectCard, project.projectType));
         workspaces.set(project.uri, { panel, project, running: true, close });
         listeners.push(panel.onDidChangeViewState(scheduleEntry));
       }

@@ -30,7 +30,7 @@ describe("ProjectListPage management table", () => {
     expect(within(table).queryByText("Alpha Workflow")).toBeNull();
   });
 
-  it("renders project card kind and custom image metadata from uploaded packages", () => {
+  it("renders the uploaded project glyph and colors as its avatar", () => {
     renderProjectList({
       projects: [
         createProject({
@@ -48,11 +48,11 @@ describe("ProjectListPage management table", () => {
     });
 
     expect(screen.getByText("对话")).toBeTruthy();
-    const image = screen.getByRole("img", { name: "Conversation Demo 图标" });
-    expect(image.getAttribute("src")).toBe("https://example.test/bot.png");
     const projectIcon = screen.getByTestId("project-card-icon-conversation-demo");
-    expect(projectIcon.style.backgroundColor).toBe("rgb(124, 58, 237)");
-    expect(projectIcon.style.color).toBe("rgb(248, 250, 252)");
+    const svg = decodeURIComponent(projectIcon.querySelector("img")!.getAttribute("src")!.split(",")[1]);
+    expect(svg).toContain('fill="#7c3aed"');
+    expect(svg).toContain('stroke="#f8fafc"');
+    expect(svg).not.toContain("example.test");
   });
 
   it("updates project type labels when the interface language changes", async () => {
@@ -171,8 +171,11 @@ describe("ProjectListPage management table", () => {
       ],
     });
 
-    expect(screen.getByTestId("project-card-icon-alpha").querySelector("svg")).toBeTruthy();
-    expect(screen.getByTestId("project-card-icon-legacy").querySelector("svg")).toBeTruthy();
+    const alpha = screen.getByTestId("project-card-icon-alpha").querySelector("img")!;
+    const legacy = screen.getByTestId("project-card-icon-legacy").querySelector("img")!;
+    expect(alpha.src).toMatch(/^data:image\/svg\+xml,/);
+    expect(legacy.src).toBe(alpha.src);
+    expect(decodeURIComponent(alpha.src.split(",")[1])).toContain("<path");
     expect(screen.getByTestId("project-card-icon-alpha").querySelector('img[src="/brand/steamharness-icon-mark.svg"]')).toBeNull();
     expect(screen.getByTestId("project-card-icon-legacy").querySelector('img[src="/brand/steamharness-icon-mark.svg"]')).toBeNull();
   });

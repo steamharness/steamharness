@@ -9,6 +9,13 @@
     ".": {
       "types": "./index.ts",
       "import": "./index.ts"
+    },
+    "./avatar": {
+      "types": "./avatar.ts",
+      "import": "./avatar.ts"
     }
+  },
+  "dependencies": {
+    "lucide": "^0.468.0"
   }
 }

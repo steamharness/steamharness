@@ -1,7 +1,7 @@
 import { t } from './localization';
 import { localizationHtml } from './localization-host';
 import * as vscode from 'vscode';
-import { projectTypeIcons } from './projects';
+import { projectAvatarDataUrl } from '@steamharness/project-card-metadata/avatar';
 import { projectDisplayName, type Project } from './workflow-types';
 import { projectInfoItems, type InfoItem, type InfoState } from './workflow-info';
 import type { ProjectVersionStatus } from './steamharness-server-projects';
@@ -66,7 +66,7 @@ export class InfoView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   private async select(): Promise<void> {
     const picked = await vscode.window.showQuickPick(this.projects.map(project => ({
-      label: projectDisplayName(project), iconPath: new vscode.ThemeIcon(projectTypeIcons[project.projectType]), description: project.projectType, detail: project.folderPath, project,
+      label: projectDisplayName(project), iconPath: vscode.Uri.parse(projectAvatarDataUrl(project.projectCard, project.projectType)), description: project.projectType, detail: project.folderPath, project,
     })), { title: t("Select Project"), placeHolder: t("Project") });
     const selected = this.projects.find(project => project.uri === picked?.project.uri);
     if (selected && selected !== this.selected) { this.selected = selected; await this.reload(); }
@@ -76,7 +76,7 @@ export class InfoView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (!this.view) { return; }
     this.view.description = this.selected && projectDisplayName(this.selected);
     const state: InfoState = { type: 'info-state', generation: this.generation,
-      project: this.selected && { uri: this.selected.uri, name: this.selected.name }, items: this.items,
+      project: this.selected && { uri: this.selected.uri, name: this.selected.name, avatarUrl: projectAvatarDataUrl(this.selected.projectCard, this.selected.projectType) }, items: this.items,
       update: this.selected && !this.selected.builtin ? this.versions.getVersionStatus(this.selected) : undefined };
     void this.view.webview.postMessage(state);
   }
@@ -89,7 +89,7 @@ export class InfoView implements vscode.WebviewViewProvider, vscode.Disposable {
     const nonce = globalThis.crypto.randomUUID().replace(/-/g, '');
     const asset = (name: string): string => view.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'dist', name)).toString();
     view.webview.html = `<!DOCTYPE html><html lang="${vscode.env.language}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${view.webview.cspSource}; font-src ${view.webview.cspSource}; script-src 'nonce-${nonce}';">
+      <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src ${view.webview.cspSource}; font-src ${view.webview.cspSource}; script-src 'nonce-${nonce}';">
       <link rel="stylesheet" href="${asset('codicons/codicon.css')}"><link rel="stylesheet" href="${asset('info-ui.css')}">
       </head><body><main id="info-app"></main><div id="info-announcement" class="sr-only" role="status"></div>${localizationHtml(nonce)}<script nonce="${nonce}" src="${asset('info-ui.js')}"></script></body></html>`;
     this.listeners.push(view.webview.onDidReceiveMessage(message => this.receive(message)),

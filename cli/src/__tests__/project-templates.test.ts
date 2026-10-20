@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createProjectFromTemplate, listProjectTemplates, validateProjectName } from '../project-templates';
 import { createWebRuntime } from '../web/runtime';
 import { resolveHarnessRoot } from './harness-source';
+import { defaultProjectCardIcon, getProjectCardColorContrastRatio } from '@steamharness/project-card-metadata';
 
 const folders: string[] = [];
 const versions = { harness: '0.2.4-20260929001', cli: '0.2.4-20261013009.codex-studio-integration' };
@@ -39,12 +40,16 @@ describe('project templates', () => {
       expect(manifest).toMatchObject({ id: created.id, private: true, devDependencies: { 'steamharness': versions.harness, '@steamharness/cli': versions.cli },
         steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } });
       expect(JSON.stringify(manifest)).not.toMatch(/link:|file:|workspace:|\/Users\//);
+      const card = manifest.steamHarness.projectCard;
+      expect(card.icon).toBe(defaultProjectCardIcon(template.projectType));
+      expect(getProjectCardColorContrastRatio(card.iconColor, card.iconBackgroundColor)).toBeGreaterThanOrEqual(4.5);
       for (const filename of template.files) { expect((await readFile(path.join(created.directory, filename))).length).toBeGreaterThan(0); }
       await linkCore(created.directory);
       const runtime = createWebRuntime(created.directory, path.join(parentDirectory, 'data'), () => {});
       try {
         const inspected = await runtime.inspect([created.directory]); expect(inspected.errors).toEqual([]);
         const project = { ...inspected.projects[0], uri: pathToFileURL(created.directory).href }; expect(project.projectType).toBe(template.projectType);
+        expect(project.projectCard).toMatchObject(card);
         if (template.projectType === 'kanban') { continue; }
         const execute = (round: number) => runtime.run({ project, conversationId: 'persistent-chat', runId: `round-${round}`,
           entrypointId: project.defaultEntrypoint, args: template.projectType === 'conversation' ? ['--message', 'Local reply'] : [] }, () => {});

@@ -15,7 +15,7 @@ class Emitter {
   fire(value) { for (const callback of this.listeners) { callback(value); } }
   dispose() { this.listeners.clear(); }
 }
-const uri = value => ({ fsPath: value.startsWith('file:') ? fileURLToPath(value) : value, toString: () => value.startsWith('file:') ? value : pathToFileURL(value).href });
+const uri = value => ({ fsPath: value.startsWith('file:') ? fileURLToPath(value) : value, toString: () => /^[\w-]+:/.test(value) ? value : pathToFileURL(value).href });
 const plain = value => JSON.parse(JSON.stringify(value));
 function fixture(t, options = {}) {
   const commands = new Map(), storage = new Map(), accountChanged = new Emitter(), visibility = new Emitter(), messages = [], requests = [];
@@ -205,6 +205,19 @@ test('an account change while choosing a download cannot transfer the prior sele
   f.pick = () => f.accountChange({ serverUrl: 'https://other.test', accessToken: 'other-token' });
   await f.command('studio.downloadProject');
   assert.equal(f.downloads.length, 0); assert.match(f.errors.at(-1), /Account changed/);
+});
+
+test('the download picker displays the server project avatar', async t => {
+  const f = fixture(t);
+  f.projects[0].projectType = 'conversation';
+  f.projects[0].projectCard = { icon: 'bot', iconColor: '#123456', iconBackgroundColor: '#f0f4f8' };
+  let avatar;
+  f.pick = items => { if (items[0].project) { avatar = items[0].iconPath.toString(); } };
+  await f.command('studio.downloadProject');
+  const svg = decodeURIComponent(avatar.split(',')[1]);
+  assert.match(svg, /stroke="#123456"/);
+  assert.match(svg, /fill="#f0f4f8"/);
+  assert.equal(f.downloads.length, 1);
 });
 
 test('an account change before the progress action starts cannot download a prior selection', async t => {

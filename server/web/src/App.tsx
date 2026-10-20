@@ -22,6 +22,7 @@ import { ProjectSourceSharePage } from "./pages/ProjectSourceSharePage";
 import { DeviceApprovalPage } from "./pages/DeviceApprovalPage";
 import type { KVFilters } from "./pages/ProjectKVPage";
 import { ProjectListPage } from "./pages/ProjectListPage";
+import { ProjectAvatar } from "./components/ProjectAvatar";
 import { RolesPage } from "./pages/RolesPage";
 import { UsersPage } from "./pages/UsersPage";
 import { type AccountViewState, type AuditFilters, type AuditViewState, type AdminRolesState, type AdminUsersState, DEFAULT_AUDIT_FILTERS, DEFAULT_DETAIL, LOCALE_STORAGE_KEY, THEME_STORAGE_KEY, type AppRoute, type AsyncState, type DetailTab, type DetailState, type SettingsTab, type SessionState, type ThemeMode } from "./state";
@@ -1248,9 +1249,12 @@ function AppContent() {
       }
       headerExtras={
         page === "detail" && selectedProject ? (
+          <div className="flex min-w-0 items-center gap-2">
+          <ProjectAvatar card={selectedProject.projectCard} projectType={selectedProject.projectType} />
           <Badge variant="outline" className="max-w-40 truncate">
             {selectedProject.latest ? t("appHeaderVersionBadge", { version: selectedProject.latest }) : t("appHeaderNoVersion")}
           </Badge>
+          </div>
         ) : null
       }
       secondaryActions={refreshActions}

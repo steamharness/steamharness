@@ -1,5 +1,9 @@
 # Unreleased
 
+### 项目头像
+
+- 新建项目未提供头像时，自动保存项目类型图标和对比度至少为 4.5:1 的随机图标色与背景色；重新绑定已有项目保留原头像。
+
 ### 破坏性变更
 
 - 项目 API 从 `/api/workflows` 改为 `/api/projects`，字段改为 `projectId` / `projectName`，请求头 `X-Workflow-Locale` 改为 `X-SteamHarness-Locale`。

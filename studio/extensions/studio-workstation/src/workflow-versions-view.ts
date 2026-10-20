@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { projectAvatarDataUrl } from '@steamharness/project-card-metadata/avatar';
 import { t } from './localization';
 import { localizationHtml } from './localization-host';
 import { projectVersion, projectDisplayName, type Project } from './workflow-types';
@@ -373,7 +374,10 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
     const client = new ProjectServerClient(credentials);
     const projects = await this.progress(t('Download Project'), signal => client.projects(signal));
     assertAccount();
-    const picked = await vscode.window.showQuickPick(projects.map(project => ({ label: project.name, description: project.latest ?? '', project })), { title: t('Download Project') });
+    const picked = await vscode.window.showQuickPick(projects.map(project => ({
+      label: project.name, description: project.latest ?? '',
+      iconPath: vscode.Uri.parse(projectAvatarDataUrl(project.projectCard, project.projectType)), project,
+    })), { title: t('Download Project') });
     if (!picked) { return; }
     assertAccount();
     const versions = await this.progress(t('Download Project'), signal => client.versions(picked.project.id, signal));

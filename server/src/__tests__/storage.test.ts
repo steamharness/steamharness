@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
 import test from "node:test";
+import { defaultProjectCardIcon, getProjectCardColorContrastRatio, type ProjectCardMetadata } from "@steamharness/project-card-metadata";
 import { Header } from "tar";
 import type { KVNamespaceLockInput, KVStore, KVStoreGetInput, KVStoreSetInput } from "steamharness";
 import { AccountRepository } from "../account-db";
@@ -1584,6 +1585,23 @@ test("Storage.getProjectTokenUsage preserves conversation filter case", async ()
   } finally {
     await rm(dataRoot, { recursive: true, force: true });
   }
+});
+
+test("Storage creates a readable random avatar when no projectCard is supplied", async () => {
+  const dataRoot = await mkdtemp(path.join(tmpdir(), "project-avatar-create-"));
+  let saved: ProjectCardMetadata | undefined;
+  const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot,
+    db: { getProject: async () => undefined, createProjectRecord: async (input: { projectCard: ProjectCardMetadata }) => {
+      saved = input.projectCard;
+      return createDbProjectRecord(DEMO_WF_ID, null);
+    } } as unknown as DatabaseRepository });
+  try {
+    for (const projectType of ["workflow", "conversation", "kanban"] as const) {
+      await storage.createProject({ projectId: DEMO_WF_ID, projectName: "Demo", projectType, projectInfo: DECLARED_SERVER_PROJECT_INFO });
+      assert.equal(saved!.icon, defaultProjectCardIcon(projectType));
+      assert.ok(getProjectCardColorContrastRatio(saved!.iconColor!, saved!.iconBackgroundColor) >= 4.5);
+    }
+  } finally { await rm(dataRoot, { recursive: true, force: true }); }
 });
 
 test("Storage restores an owned UUID binding and synchronizes its full declaration atomically", async () => {

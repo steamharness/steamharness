@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   generateProjectCardColorPair,
+  generateProjectCardMetadata,
+  defaultProjectCardIcon,
   getProjectCardColorContrastRatio,
   getProjectCardColorRelativeLuminance,
   normalizeProjectAppCardMetadata,
@@ -12,6 +14,17 @@ import {
 } from "@steamharness/project-card-metadata";
 
 describe("project-card-metadata package", () => {
+  it.each(["workflow", "conversation", "kanban"] as const)("generates a readable %s avatar using its type icon", type => {
+    const dark = generateProjectCardMetadata(type, () => 0.25);
+    const light = generateProjectCardMetadata(type, () => 0.75);
+    expect(dark.icon).toBe(defaultProjectCardIcon(type));
+    expect(light.icon).toBe(defaultProjectCardIcon(type));
+    expect(dark).not.toEqual(light);
+    for (const card of [dark, light]) {
+      expect(getProjectCardColorContrastRatio(card.iconColor!, card.iconBackgroundColor)).toBeGreaterThanOrEqual(4.5);
+      expect(card.iconUrl).toBeUndefined();
+    }
+  });
   it("reads namespaced projectCard metadata from package.json", () => {
     const metadata = readProjectCardMetadataFromPackageJson(
       {

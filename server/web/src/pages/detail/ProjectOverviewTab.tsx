@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { ProjectAvatar } from "@/components/ProjectAvatar";
 import { ArrowUpRight, BookOpenText, CircleAlert, Database, Download, Link2, Package, RefreshCw, Settings2, Users, type LucideIcon } from "lucide-react";
 import { translateDynamicKey, useTranslation } from "@steamharness/i18n/react";
 import { formatDateTime } from "@steamharness/i18n";
@@ -44,6 +45,7 @@ export function ProjectOverviewTab({ project, detail, busy, onNavigateTab, onRef
     <div className="@container flex min-w-0 flex-col gap-4 p-4 lg:p-6">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
         <div className="flex min-w-0 flex-1 basis-64 flex-wrap items-center gap-3">
+          <ProjectAvatar card={project.projectCard} projectType={project.projectType} size="md" />
           <h1 className="min-w-0 max-w-full text-xl font-semibold break-words">{getProjectDisplayName(project, i18n.language)}</h1>
           <Badge variant="secondary">{translateDynamicKey(getProjectKindLabelKey(project.projectType))}</Badge>
           <Badge variant="outline">{project.latest ?? t("storageUnpublished")}</Badge>

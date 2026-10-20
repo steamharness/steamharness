@@ -16,7 +16,7 @@ import { isProjectStorageNotFoundError, type ObjectStorage } from "./object-stor
 import { resolveProjectStorageDriver } from "./storage-driver";
 import { resolveServerDataRootFromEnv } from "./release-paths";
 import { createInvalidProjectUuidMessage, createUnsafeProjectIdMessage, isSafeProjectId, isProjectUuid, resolveProjectRoot } from "./workflow-ids";
-import { readProjectCardMetadataFromPackageJson, type ProjectCardMetadata } from "@steamharness/project-card-metadata";
+import { generateProjectCardMetadata, readProjectCardMetadataFromPackageJson, type ProjectCardMetadata } from "@steamharness/project-card-metadata";
 import { assertProjectDataStorageLocationAllowed, createDefaultProjectRelatedProjectGrant, isProjectAccessAllowed, isProjectKVAccessAllowed, normalizeDeclaredProjectInfoInput, normalizeProjectInfo, readProjectInfo, resolveProjectRelatedProjectAccess, writeProjectInfo, type DeclaredProjectInfo, type ProjectInfoContract, type RelatedProject, type RelatedProjectKVGrant } from "@steamharness/project-info";
 import { KANBAN_MANIFEST_FILE, areKanbanValuesEqual, createInjectedKanbanParams, createKanbanContentSecurityPolicy, createKanbanArtifactEntryPath, createDefaultKanbanValues, injectKanbanBridge, isSafeKanbanPublicAssetPath, parseKanbanManifestText, readKanbanArtifactConfig, readKanbanAssetMimeType, readPackageProjectType, sanitizeKanbanValues, type KanbanConfiguration, type KanbanArtifactConfig, type KanbanManifest } from "@steamharness/kanban-project";
 import { readRequiredCoreVersion } from "@steamharness/runtime-compatibility";
@@ -613,7 +613,7 @@ export class Storage {
         projectId,
         projectName,
         projectType: options.projectType,
-        projectCard: options.projectCard ?? createDefaultProjectCardMetadata(options.projectType),
+        projectCard: options.projectCard ?? generateProjectCardMetadata(options.projectType),
         projectInfo,
         packageVersion: "0.0.0",
         ownerUserId: options.ownerUserId,
@@ -5212,13 +5212,6 @@ function readRequiredPackageString(
   }
 
   return value.trim();
-}
-
-function createDefaultProjectCardMetadata(projectType: ProjectKind): ProjectCardMetadata {
-  return readProjectCardMetadataFromPackageJson(
-    {},
-    projectType,
-  );
 }
 
 async function resolvePackageRoot(extractDir: string, expectedId?: string): Promise<string> {

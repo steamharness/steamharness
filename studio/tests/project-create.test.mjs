@@ -5,8 +5,10 @@ import { build } from 'esbuild';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { register } from 'tsx/esm/api';
+import { resolveMonorepoRoot, readJSON } from '../scripts/distribution.mjs';
 
 register();
+const { getProjectCardColorContrastRatio } = await import('@steamharness/project-card-metadata');
 const { installProjectDependencies, projectTemplatesRuntime } = await import('../extensions/studio-workstation/src/project-create-node.ts');
 
 async function fixture(t, managers) {
@@ -73,8 +75,9 @@ test('the shipped template runtime uses the host locale and exact bundled versio
   const extension = path.join(directory, 'extension'); await mkdir(path.join(extension, 'dist'), { recursive: true });
   await build({ entryPoints: ['vendor/project-templates/project-templates.ts'], bundle: true, platform: 'node', format: 'esm', outfile: path.join(extension, 'dist/project-templates.mjs') });
   await cp('vendor/project-templates/project-templates', path.join(extension, 'dist/project-templates'), { recursive: true });
-  const pinned = JSON.parse(await readFile('examples/conversation/package.json', 'utf8')).devDependencies;
-  await writeFile(path.join(extension, 'dist/project-template-versions.json'), JSON.stringify({ harness: pinned['steamharness'], cli: pinned['@steamharness/cli'] }));
+  const monorepo = await resolveMonorepoRoot();
+  const [harness, cli] = await Promise.all(['harness', 'cli'].map(name => readJSON(path.join(monorepo, name, 'package.json'))));
+  await writeFile(path.join(extension, 'dist/project-template-versions.json'), JSON.stringify({ harness: harness.version, cli: cli.version }));
   const runtime = projectTemplatesRuntime(extension, 'zh-cn');
   const templates = await runtime.templates(); assert.equal(templates.length, 7); assert.equal(templates[0].name, '\u5de5\u4f5c\u6d41');
   const input = { templateId: 'workflow-starter', name: 'Created', parentDirectory: directory };
@@ -90,6 +93,9 @@ test('the shipped template runtime uses the host locale and exact bundled versio
   const manifest = JSON.parse(await readFile(path.join(created.directory, 'package.json'), 'utf8'));
   const versions = JSON.parse(await readFile(path.join(extension, 'dist/project-template-versions.json'), 'utf8'));
   assert.deepEqual(manifest.devDependencies, { 'steamharness': versions.harness, '@steamharness/cli': versions.cli });
+  const card = manifest.steamHarness.projectCard;
+  assert.equal(card.icon, 'workflow');
+  assert.ok(getProjectCardColorContrastRatio(card.iconColor, card.iconBackgroundColor) >= 4.5);
 });
 
 test('the standalone snapshot matches CLI source when checked out together', async () => {

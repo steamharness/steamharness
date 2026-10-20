@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { generateProjectCardMetadata } from '@steamharness/project-card-metadata';
 
 export type ProjectTemplateType = 'workflow' | 'conversation' | 'kanban';
 export interface ProjectTemplateDefinition {
@@ -90,6 +91,7 @@ export async function createProjectFromTemplate(request: CreateProjectFromTempla
     devDependencies: { 'steamharness': request.versions.harness, '@steamharness/cli': request.versions.cli },
     steamHarness: {
       projectType: template.projectType,
+      projectCard: generateProjectCardMetadata(template.projectType),
       ...(template.projectType === 'kanban' ? { kanban: {} } : {}),
       projectInfo: { localizedNames: { en: name, 'zh-CN': name }, platformSupport: { mode: 'agnostic' }, dataStorage: { mode: 'local' } },
     },

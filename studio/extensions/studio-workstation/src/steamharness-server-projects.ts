@@ -1,8 +1,10 @@
 import { t, locale } from './localization';
 import { AuthError, normalizeProjectServerUrl, type Connection } from './workflow-auth-client';
+import type { ProjectCardMetadata } from '@steamharness/project-card-metadata';
+import type { ProjectKind } from './workflow-types';
 
 export interface ServerProject {
-  id: string; name: string; projectType: string; latest: string | null;
+  id: string; name: string; projectType: ProjectKind; projectCard?: ProjectCardMetadata; latest: string | null;
   canManage?: boolean;
   sourceDownload?: { allowed: boolean; available: boolean; target: string | null };
 }

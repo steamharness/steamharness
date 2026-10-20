@@ -14,7 +14,7 @@ export interface InfoItem {
 export interface InfoState {
   type: 'info-state';
   generation: number;
-  project?: Pick<Project, 'uri' | 'name'>;
+  project?: Pick<Project, 'uri' | 'name'> & { avatarUrl?: string };
   items: InfoItem[];
   update?: ProjectVersionStatus;
 }

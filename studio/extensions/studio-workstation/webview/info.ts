@@ -50,7 +50,8 @@ function render(next: InfoState): void {
       ${iconHtml(status?.id === 'error' ? 'warning' : status ? 'loading' : 'info')}
       <div><p>${escapeHtml(status?.label ?? t("No project selected"))}</p>${status?.value ? `<p class="status-detail">${escapeHtml(status.value)}</p>` : ''}</div></div>`;
   } else {
-    app.innerHTML = (next.update ? projectVersionHtml(next.update) : '') + next.items.map(item => renderItem(item)).join('');
+    app.innerHTML = `<div class="info-project-heading">${next.project.avatarUrl ? `<img src="${escapeHtml(next.project.avatarUrl)}" alt="">` : ''}<strong>${escapeHtml(next.project.name)}</strong></div>`
+      + (next.update ? projectVersionHtml(next.update) : '') + next.items.map(item => renderItem(item)).join('');
     const upgrade = app.querySelector<HTMLButtonElement>('[data-action="upgrade"]');
     if (upgrade) {
       upgrade.onclick = () => host.postMessage({ type: 'upgrade', generation: state!.generation, projectUri: state!.project!.uri });

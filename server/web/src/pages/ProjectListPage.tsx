@@ -4,7 +4,8 @@ import { Bot, Boxes, Brain, Code2, Cpu, Database, FileText, FolderKanban, GitBra
 import { translateDynamicKey, useTranslation } from "@steamharness/i18n/react";
 import { i18n } from "@steamharness/i18n";
 import { matchesProjectSearch } from "@steamharness/project-info";
-import type { ProjectCardIconName, ProjectCardMetadata, ProjectKind, Summary } from "../types";
+import type { ProjectCardIconName, ProjectKind, Summary } from "../types";
+import { ProjectAvatar } from "@/components/ProjectAvatar";
 import { getProjectKindDefinition, getProjectKindLabelKey } from "@steamharness/project-types";
 import { formatDate } from "../utils/format";
 import { Button } from "@/components/ui/button";
@@ -245,7 +246,7 @@ function ProjectRow({
     >
       <TableCell className="px-3 py-3">
         <div className="flex min-w-0 items-center gap-3">
-          <ProjectCardIcon projectId={project.id} projectName={displayName} card={project.projectCard} />
+          <ProjectAvatar projectId={project.id} card={project.projectCard} projectType={project.projectType} />
           <div className="flex min-w-0 flex-col gap-1">
             <Button variant="link" className="h-auto min-w-0 max-w-full justify-start p-0" title={displayName}
               onClick={event => { event.stopPropagation(); onOpenDetail(project); }}><span className="truncate">{displayName}</span></Button>
@@ -271,35 +272,6 @@ function ProjectRow({
 }
 
 
-
-function ProjectCardIcon({ projectId, projectName, card }: { projectId: string; projectName: string; card: ProjectCardMetadata }) {
-  const { t } = useTranslation("serverWeb");
-  const Icon = getProjectCardIconComponent(card.icon);
-
-  return (
-    <span
-      data-testid={`project-card-icon-${projectId}`}
-      className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-md border border-border"
-      style={{
-        backgroundColor: card.iconBackgroundColor,
-        color: card.iconColor ?? "#ffffff",
-      }}
-      aria-hidden={card.iconUrl === undefined ? true : undefined}
-    >
-      {card.iconUrl === undefined ? (
-        <Icon className="size-4" />
-      ) : (
-        <img
-          src={card.iconUrl}
-          alt={t("projectListIconAlt", { projectName })}
-          className="size-full object-cover"
-          loading="lazy"
-          referrerPolicy="no-referrer"
-        />
-      )}
-    </span>
-  );
-}
 
 function ProjectUploaderSummary({ project }: { project: Summary }) {
   const { t } = useTranslation("serverWeb");

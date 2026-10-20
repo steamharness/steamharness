@@ -833,11 +833,15 @@ paths:
         `projectCard` 与 `visibility` 可选。Server 在一个请求中原子保存完整项目声明并把创建者记为
         owner，不先创建默认记录再二次同步，也不接收项目源码。已有且由同一账号管理的同 UUID、
         名称与类型请求会恢复绑定并刷新声明；其它冲突返回 `409`。
+        新项目省略 `projectCard` 时使用项目类型图标，随机生成并保存对比度至少为 4.5:1 的配色；
+        已有项目省略该字段时保持原头像。
 
         An authenticated user or administrator creates or recovers a same-UUID server project from the
         UUID in local `package.json.id`. `projectId`, `name`, `projectType`, and complete `projectInfo`
         containing `dataStorage.mode` are required. Server stores the complete declaration atomically;
         it does not create a default record first or accept project source.
+        Omitting `projectCard` on a new project generates and persists a type icon with random colors
+        whose contrast ratio is at least 4.5:1. Omitting it on an existing project preserves its avatar.
       operationId: createProject
       requestBody:
         required: true
@@ -1294,8 +1298,9 @@ paths:
       summary: 更新项目卡片元数据
       description: |
         保存完整的纯视觉 `projectCard`，仅接受图标、图片 URL、图标颜色和背景颜色。
-        上传自定义图片后，客户端把图片接口返回的 URL 写入 `iconUrl` 再调用本接口；
-        省略 `iconUrl` 会恢复内置图标展示。项目类型由静态 `package.json.steamHarness.projectType` 声明，
+        `iconUrl` 为旧客户端保留；Server Web 与 Studio 使用图标、图标颜色和背景颜色展示项目头像。
+        Server Web and Studio render project avatars from the icon and colors; `iconUrl` is retained for legacy clients.
+        项目类型由静态 `package.json.steamHarness.projectType` 声明，
         不能通过本接口修改。
       operationId: updateProjectCard
       parameters:
@@ -4049,9 +4054,8 @@ components:
           type: string
           format: uri
           description: |
-            Optional image URL used instead of the icon token. New Desktop uploads use the
-            Server-generated `/project-card-images/...` WebP URL; existing external http(s)
-            values remain readable for backward compatibility.
+            Optional legacy image URL retained for backward compatibility. Server Web and Studio
+            render project avatars from icon, iconColor, and iconBackgroundColor instead.
         iconColor:
           type: string
           pattern: ^#[0-9a-fA-F]{6}$

@@ -140,6 +140,9 @@ importers:
       '@steamharness/openai-responses':
         specifier: workspace:*
         version: link:../shared/openai-responses
+      '@steamharness/project-card-metadata':
+        specifier: workspace:*
+        version: link:../shared/project-card-metadata
       '@steamharness/project-dependencies':
         specifier: workspace:*
         version: link:../shared/project-dependencies
@@ -618,7 +621,11 @@ importers:
 
   shared/openai-responses: {}
 
-  shared/project-card-metadata: {}
+  shared/project-card-metadata:
+    dependencies:
+      lucide:
+        specifier: ^0.468.0
+        version: 0.468.0
 
   shared/project-dependencies:
     dependencies:

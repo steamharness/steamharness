@@ -1,5 +1,10 @@
 # Unreleased
 
+### Project Avatars
+
+- Start, recent projects, project lists, related projects, Project Information, run tabs, and project pickers consistently show project icons and colors; new projects save random avatars with sufficient contrast.
+- Fixed project creation failing when template dependencies used version ranges by bundling exact compatible versions.
+
 ### Pi Durable
 
 - Move all durable Agent Tasks, Plan, Records and Usage capabilities into Trace while retaining its timeline, search and history. Add task details, child/fork navigation, versioned plan updates, compaction/reset and scoped cancellation. Follow the open conversation by default, inspect history independently, retain scroll/expansion/focus and disable offline actions, with bilingual themes and narrow layouts.

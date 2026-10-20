@@ -6,6 +6,7 @@ import { readProjectInfo, resolveProjectRelatedProjectAccess, isProjectAccessAll
 import type { Project } from './workflow-types';
 
 export { readProjectInfo, resolveProjectName } from '@steamharness/project-info';
+export { readProjectCardMetadataFromPackageJson } from '@steamharness/project-card-metadata';
 export const webProjectDataDirectory = (storageDir: string, projectDir: string) => path.join(storageDir, createHash('sha256').update(projectDir).digest('hex').slice(0, 24));
 
 export async function localKanbanRelatedProjects(project: Project) {

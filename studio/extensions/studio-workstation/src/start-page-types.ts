@@ -35,7 +35,7 @@ export interface StudioStartState {
   version: 1;
   labels: Record<string, string>;
   templates: StartTemplate[];
-  projects: Array<{ uri: string; name: string; version?: string; projectType: string; folderPath: string; update?: ProjectVersionStatus }>;
+  projects: Array<{ uri: string; name: string; version?: string; projectType: string; folderPath: string; avatarUrl?: string; update?: ProjectVersionStatus }>;
   recent: RecentProject[];
   pending: PendingProjectSetup[];
   environment: StartEnvironment & { studio: string; vscode: string; account: string; server: string };

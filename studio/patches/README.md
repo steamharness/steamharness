@@ -52,4 +52,6 @@
 
 `0030-studio-project-upload-options.patch` 让原生上传框展示宿主提供的通用复选项，并独立显示上传成功后的后续操作结果；成功后锁定选项与上传入口。
 
+`0031-studio-project-avatars.patch` 让开始页项目卡片、最近项目和打开最近列表展示项目声明的图标与配色，保留未识别目录和工作区的原有图标。
+
 新内核修改应通过 `git diff` 导出统一格式补丁，并排除脚本生成的 `product.json` 及 Studio 扩展链接。品牌配置由 `config/product.json` 维护。

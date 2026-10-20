@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { ProjectAvatar } from "@/components/ProjectAvatar";
 import { ArrowUpRight, BookOpenText, Check, Copy, Database, Link2, Users } from "lucide-react";
 import { formatDateTime } from "@steamharness/i18n";
 import { translateDynamicKey, useTranslation } from "@steamharness/i18n/react";
@@ -49,6 +50,7 @@ export function ProjectSettingsTab({ project, busy, onUpdateVisibility, onNaviga
   return (
     <div className="@container flex min-w-0 flex-col gap-4 p-4 lg:p-6">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+        <ProjectAvatar card={project.projectCard} projectType={project.projectType} size="md" />
         <div className="min-w-0 flex-1 basis-64">
           <h1 className="text-xl font-semibold">{t("detailNavSettings")}</h1>
           <p className="mt-1 break-words text-sm text-muted-foreground">{getProjectDisplayName(project, i18n.language)}</p>

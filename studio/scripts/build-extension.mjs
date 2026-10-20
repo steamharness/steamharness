@@ -1,7 +1,7 @@
 import * as esbuild from 'esbuild';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { ROOT, builtinProjectDirectory } from './distribution.mjs';
+import { ROOT, builtinProjectDirectory, resolveMonorepoRoot, readJSON } from './distribution.mjs';
 import * as fs from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { buildDocumentPreviews } from './document-preview.mjs';
@@ -13,8 +13,9 @@ export async function buildExtension({ watch = false } = {}) {
     bundle: true, platform: 'node', format: 'esm', target: 'node22' });
   await fs.rm(path.join(directory, 'dist/project-templates'), { recursive: true, force: true });
   await fs.cp(path.join(templates, 'project-templates'), path.join(directory, 'dist/project-templates'), { recursive: true });
-  const versions = JSON.parse(await fs.readFile(path.join(ROOT, 'examples/conversation/package.json'), 'utf8')).devDependencies;
-  await fs.writeFile(path.join(directory, 'dist/project-template-versions.json'), JSON.stringify({ harness: versions['steamharness'], cli: versions['@steamharness/cli'] }));
+  const monorepo = await resolveMonorepoRoot();
+  const [harness, cli] = await Promise.all(['harness', 'cli'].map(name => readJSON(path.join(monorepo, name, 'package.json'))));
+  await fs.writeFile(path.join(directory, 'dist/project-template-versions.json'), JSON.stringify({ harness: harness.version, cli: cli.version }));
   const shared = {
     absWorkingDir: directory,
     entryPoints: ['src/extension.ts'],

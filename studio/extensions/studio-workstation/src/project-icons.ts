@@ -1,8 +1,10 @@
 import * as vscode from 'vscode';
+import { readProjectCardMetadataFromPackageJson } from '@steamharness/project-card-metadata';
+import { projectAvatarDataUrl } from '@steamharness/project-card-metadata/avatar';
 import { projectId, type ProjectType } from './projects';
 import type { Launcher } from './workflow-cli-types';
 
-interface Detection { type?: ProjectType; version?: string; checked: number; pending?: Promise<ProjectType | undefined> }
+interface Detection { type?: ProjectType; version?: string; avatarUrl?: string; checked: number; pending?: Promise<ProjectType | undefined> }
 const ignored = new Set(['node_modules', 'dist', 'out', 'build', 'vendor', 'upstream']);
 
 /** Reads declarations only. Recent folders must never supply executable inspection code. */
@@ -28,6 +30,7 @@ export class ProjectIcons implements vscode.Disposable {
   }
 
   getVersion(uri: string): string | undefined { void this.resolve(uri); return this.cache.get(uri)?.version; }
+  getAvatarUrl(uri: string): string | undefined { void this.resolve(uri); return this.cache.get(uri)?.avatarUrl; }
 
   refresh(): void {
     if (this.disposed) { return; }
@@ -42,10 +45,10 @@ export class ProjectIcons implements vscode.Disposable {
     if ([...this.cache.keys()].some(uri => file.toString().startsWith(`${uri}/`))) { this.refresh(); }
   }
 
-  async resolveMany(uris: string[]): Promise<Array<{ uri: string; projectType?: ProjectType; version?: string }>> {
-    const queue = [...new Set(uris)], results: Array<{ uri: string; projectType?: ProjectType; version?: string }> = [];
+  async resolveMany(uris: string[]): Promise<Array<{ uri: string; projectType?: ProjectType; version?: string; avatarUrl?: string }>> {
+    const queue = [...new Set(uris)], results: Array<{ uri: string; projectType?: ProjectType; version?: string; avatarUrl?: string }> = [];
     await Promise.all(Array.from({ length: Math.min(4, queue.length) }, async () => {
-      for (let uri = queue.shift(); uri; uri = queue.shift()) { results.push({ uri, projectType: await this.resolve(uri), version: this.cache.get(uri)?.version }); }
+      for (let uri = queue.shift(); uri; uri = queue.shift()) { results.push({ uri, projectType: await this.resolve(uri), version: this.cache.get(uri)?.version, avatarUrl: this.cache.get(uri)?.avatarUrl }); }
     }));
     return results;
   }
@@ -59,16 +62,19 @@ export class ProjectIcons implements vscode.Disposable {
     if (entry.pending) { return entry.pending; }
     if (Date.now() - entry.checked < 15_000) { return Promise.resolve(entry.type); }
     const generation = this.generation;
-    let version: string | undefined;
-    const pending = this.detect(root, value => { version = value; }).then(type => {
+    let manifest: Record<string, unknown> | undefined;
+    const pending = this.detect(root, value => { manifest = value; }).then(type => {
       if (this.disposed) { return undefined; }
       if (generation !== this.generation) { return this.resolve(uri); }
-      const changed = entry.type !== type || entry.version !== version;
+      const version = typeof manifest?.version === 'string' ? manifest.version : undefined;
+      const avatarUrl = type && manifest ? projectAvatarDataUrl(readProjectCardMetadataFromPackageJson(manifest, type), type) : undefined;
+      const changed = entry.type !== type || entry.version !== version || entry.avatarUrl !== avatarUrl;
       entry.type = type;
       entry.version = version;
+      entry.avatarUrl = avatarUrl;
       if (changed) { this.publish(); }
       return type;
-    }, error => { this.log(`Project icon ${uri}: ${String(error)}`); return entry.type; }).finally(() => {
+    }).catch(error => { this.log(`Project icon ${uri}: ${String(error)}`); return entry.type; }).finally(() => {
       if (entry.pending === pending) { entry.pending = undefined; entry.checked = Date.now(); }
     });
     entry.pending = pending;
@@ -80,7 +86,7 @@ export class ProjectIcons implements vscode.Disposable {
     this.timer = setTimeout(() => { if (!this.disposed) { this.changes.fire(); } }, 100);
   }
 
-  private async detect(root: vscode.Uri, setVersion: (version?: string) => void): Promise<ProjectType | undefined> {
+  private async detect(root: vscode.Uri, setManifest: (manifest: Record<string, unknown>) => void): Promise<ProjectType | undefined> {
     if (!['file', 'vscode-remote'].includes(root.scheme)) { return undefined; }
     const read = async (uri: vscode.Uri): Promise<string> => {
       if ((await vscode.workspace.fs.stat(uri)).size > 1_048_576) { throw new Error('Project declaration is too large.'); }
@@ -93,7 +99,7 @@ export class ProjectIcons implements vscode.Disposable {
       throw error;
     }
     if (!projectId(pkg?.id)) { return undefined; }
-    setVersion(typeof pkg.version === 'string' ? pkg.version : undefined);
+    setManifest(pkg);
     if (pkg.steamHarness?.projectType === 'kanban') { return 'kanban'; }
     if (!this.launcher.analyzeProjectType) { return undefined; }
     const sources: Array<{ name: string; text: string }> = [];

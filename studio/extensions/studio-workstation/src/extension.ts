@@ -22,6 +22,7 @@ class RecentProjectsProvider {
   getChildren(): RecentProject[] {
     return readRecentProjects(this.context.globalState.get(RECENT_PROJECTS_KEY)).map(project => ({ ...project,
       projectType: project.kind === 'folder' ? this.icons.get(project.uri) : undefined,
+      avatarUrl: project.kind === 'folder' ? this.icons.getAvatarUrl(project.uri) : undefined,
       version: project.kind === 'folder' ? this.icons.getVersion(project.uri) : undefined }));
   }
 
@@ -31,7 +32,7 @@ class RecentProjectsProvider {
     item.resourceUri = vscode.Uri.parse(project.uri);
     item.description = [project.version, item.resourceUri.fsPath].filter(Boolean).join(' \u00b7 ');
     item.tooltip = [project.label, project.version, item.resourceUri.fsPath].filter(Boolean).join('\n');
-    item.iconPath = new vscode.ThemeIcon(project.projectType ? projectTypeIcons[project.projectType] : project.kind === 'workspace' ? 'file-submodule' : 'folder');
+    item.iconPath = project.avatarUrl ? vscode.Uri.parse(project.avatarUrl) : new vscode.ThemeIcon(project.projectType ? projectTypeIcons[project.projectType] : project.kind === 'workspace' ? 'file-submodule' : 'folder');
     item.command = { command: 'studio.openRecentProject', title: t('Open Project'), arguments: [project] };
     return item;
   }

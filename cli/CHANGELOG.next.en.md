@@ -1,5 +1,9 @@
 # Unreleased
 
+### Project Avatars
+
+- Project templates save a type icon with random colors at a contrast ratio of at least 4.5:1 in the manifest; static inspection returns avatar metadata to Studio.
+
 ### Pi Durable
 
 - [Fixed] Keep automatic retry records at the affected response's interruption point, followed by resumed content. Completing a run or reopening history no longer appends Retry below the complete answer; details still expand in place.

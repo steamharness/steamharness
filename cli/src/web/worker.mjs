@@ -78,7 +78,7 @@ try {
 } = await import(coreUrl);
   const core = await import(coreUrl);
   const language = /^zh/i.test(process.env[core.STEAMHARNESS_RUNTIME_LOCALE_ENV] ?? process.env.STEAMHARNESS_LOCALE ?? 'en') ? 'zh-CN' : 'en';
-  const { readProjectInfo, resolveProjectName, runKanbanDataCall } = await import(new URL(import.meta.url.includes('/src/web/') ? './kanban-data.ts' : './kanban-data.mjs', import.meta.url));
+  const { readProjectInfo, readProjectCardMetadataFromPackageJson, resolveProjectName, runKanbanDataCall } = await import(new URL(import.meta.url.includes('/src/web/') ? './kanban-data.ts' : './kanban-data.mjs', import.meta.url));
   if (request.method === 'inspect') {
     const projects = [];
     const errors = [];
@@ -95,6 +95,7 @@ try {
           name: resolveProjectName(pkg.name ?? path.basename(folderPath), projectInfo, language),
           manifest: Object.fromEntries(['name', 'version', 'description'].filter(key => typeof pkg[key] === 'string').map(key => [key, pkg[key]])),
           projectType: structure.projectType,
+          projectCard: readProjectCardMetadataFromPackageJson(pkg, structure.projectType),
           ...parameters(structure),
           entrypoints: (structure.entrypoints ?? []).map((entry) => ({ id: entry.id, title: entry.title, group: entry.group, description: entry.description, execution: entry.execution, ...parameters(entry) })),
           definitions: structure.definitions,

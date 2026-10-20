@@ -11,6 +11,7 @@ interface RelatedProjectItem extends RelatedProject {
   ownerUri: string;
   imported?: ImportedProject;
   projectType?: ProjectType;
+  avatarUrl?: string;
 }
 
 export async function readProjectManifest(uri: vscode.Uri): Promise<unknown> {
@@ -103,6 +104,7 @@ export class RelatedProjectsView implements vscode.TreeDataProvider<RelatedProje
       vscode.window.onDidChangeWindowState(state => { if (state.focused) { this.scheduleReload(); } }),
     );
     this.ready = this.migrate(discover).catch(error => output.appendLine(`Related projects: ${String(error)}`));
+    if (icons) { context.subscriptions.push(icons.onDidChange(() => this.scheduleReload())); }
   }
 
   update(projects: Project[], preferred?: Project): Promise<void> {
@@ -228,7 +230,7 @@ export class RelatedProjectsView implements vscode.TreeDataProvider<RelatedProje
       const items = await Promise.all(relations.map(async relation => {
         const imported = await resolveImportedRelatedProject(this.context, relation, project!.uri);
         const detected = imported ? await this.icons?.resolveMany([imported.uri]) : undefined;
-        return { ...relation, ownerUri: project!.uri, imported, projectType: detected?.[0]?.projectType };
+        return { ...relation, ownerUri: project!.uri, imported, projectType: detected?.[0]?.projectType, avatarUrl: detected?.[0]?.avatarUrl };
       }));
       if (generation !== this.generation) { return; }
       this.items = items;
@@ -285,7 +287,8 @@ export class RelatedProjectsView implements vscode.TreeDataProvider<RelatedProje
     treeItem.id = `${item.ownerUri}:${item.alias}:${item.projectId}`;
     treeItem.description = item.imported ? [item.imported.name, item.imported.version].filter(Boolean).join(' \u00b7 ') : t("Not imported");
     treeItem.tooltip = `${item.alias}\n${item.projectId}\n${item.imported ? vscode.Uri.parse(item.imported.uri).fsPath : t("Not imported")}`;
-    treeItem.iconPath = new vscode.ThemeIcon(item.projectType ? projectTypeIcons[item.projectType] : item.imported ? 'folder' : 'link');
+    treeItem.iconPath = item.avatarUrl ? vscode.Uri.parse(item.avatarUrl)
+      : new vscode.ThemeIcon(item.projectType ? projectTypeIcons[item.projectType] : item.imported ? 'folder' : 'link');
     treeItem.contextValue = item.imported ? 'studio.relatedProjectImported' : 'studio.relatedProjectMissing';
     treeItem.command = { command: 'studio.openRelatedProject', title: t("Open Related Project in New Window"), arguments: [item] };
     return treeItem;

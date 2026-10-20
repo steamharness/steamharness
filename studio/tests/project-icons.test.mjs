@@ -99,6 +99,22 @@ test('ordinary folders, broken declarations, misleading strings and conflicting 
   assert.deepEqual(await f.types(...uris), Object.fromEntries(uris.map(uri => [uri, undefined])));
 });
 
+test('project avatars refresh when only projectCard colors change and ignore image URLs', async t => {
+  const f = fixture(t), root = 'file:///board';
+  const card = { icon: 'database', iconColor: '#112233', iconBackgroundColor: '#aabbcc', iconUrl: 'https://example.com/private.png' };
+  const pkg = { id, steamHarness: { projectType: 'kanban', projectCard: card } };
+  f.files.set(`${root}/package.json`, JSON.stringify(pkg));
+  const first = (await f.icons.resolveMany([root]))[0].avatarUrl;
+  assert.match(decodeURIComponent(first), /stroke="#112233"/);
+  assert.doesNotMatch(decodeURIComponent(first), /example.com/);
+  pkg.steamHarness.projectCard.iconColor = '#334455';
+  f.files.set(`${root}/package.json`, JSON.stringify(pkg)); f.icons.refresh();
+  const second = (await f.icons.resolveMany([root]))[0].avatarUrl;
+  assert.notEqual(first, second);
+  assert.match(decodeURIComponent(second), /stroke="#334455"/);
+  assert.equal(f.icons.getAvatarUrl(root), second);
+});
+
 test('parallel requests share reads; refresh preserves the last icon on transient failure and clears removed declarations', async t => {
   const f = fixture(t), root = 'file:///project', pkg = `${root}/package.json`;
   f.files.set(pkg, manifest('kanban'));

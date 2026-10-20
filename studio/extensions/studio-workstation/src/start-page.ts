@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { projectAvatarDataUrl } from '@steamharness/project-card-metadata/avatar';
 import { t } from './localization';
 import type { Launcher } from './workflow-cli-types';
 import type { AccountController } from './workflow-auth';
@@ -172,6 +173,7 @@ export class StudioStartController implements vscode.Disposable {
     if (this.disposed) { return; }
     this.state.projects = this.projects.getProjects().filter(project => !project.assistant && !project.builtin)
       .map(project => ({ uri: project.uri, name: project.name, projectType: project.projectType, folderPath: project.folderPath,
+        avatarUrl: projectAvatarDataUrl(project.projectCard, project.projectType),
         update: this.projects.getVersionStatus(project),
         ...(projectVersion(project) ? { version: projectVersion(project) } : {}) }));
     this.state.recent = this.recent.getChildren();

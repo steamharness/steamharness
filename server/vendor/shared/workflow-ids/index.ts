@@ -19,7 +19,7 @@ export function isProjectUuid(value: string): boolean {
   return STEAMHARNESS_UUID_PATTERN.test(value.trim());
 }
 
-export function assertSafeProjectId(value: string, label = "workflow id"): string {
+export function assertSafeProjectId(value: string, label = "project id"): string {
   const normalized = value.trim();
 
   if (!isSafeProjectId(normalized)) {
@@ -29,7 +29,7 @@ export function assertSafeProjectId(value: string, label = "workflow id"): strin
   return normalized;
 }
 
-export function assertProjectUuid(value: string, label = "workflow id"): string {
+export function assertProjectUuid(value: string, label = "project id"): string {
   const normalized = value.trim();
 
   if (!isProjectUuid(normalized)) {
@@ -39,11 +39,11 @@ export function assertProjectUuid(value: string, label = "workflow id"): string 
   return normalized;
 }
 
-export function createUnsafeProjectIdMessage(value: string, label = "workflow id"): string {
+export function createUnsafeProjectIdMessage(value: string, label = "project id"): string {
   return `Invalid ${label} "${value}".`;
 }
 
-export function createInvalidProjectUuidMessage(value: string, label = "workflow id"): string {
+export function createInvalidProjectUuidMessage(value: string, label = "project id"): string {
   return `Invalid ${label} "${value}". Expected a UUID.`;
 }
 
@@ -57,5 +57,5 @@ export function resolveProjectRoot(projectsRoot: string, projectId: string): str
     return resolved;
   }
 
-  throw new Error(`Resolved workflow root for "${projectId}" is outside workflows root.`);
+  throw new Error(`Resolved project root for "${projectId}" is outside projects root.`);
 }

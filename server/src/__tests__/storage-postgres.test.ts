@@ -8,6 +8,7 @@ import pg from "pg";
 import { create as createTar } from "tar";
 import type { DeclaredProjectInfo } from "@steamharness/project-info";
 import type { ProjectGroupManifestV1 } from "@steamharness/project-dependencies";
+import { defaultProjectCardIcon, getProjectCardColorContrastRatio } from "@steamharness/project-card-metadata";
 import { LocalStorage } from "../local-storage";
 import { ArtifactStorage, DatabaseRepository } from "../persistence";
 import { Storage } from "../storage";
@@ -48,6 +49,11 @@ test("PostgreSQL stores static project groups, immutable versions and independen
       const created = await storage.createProject({ projectId: id, projectName: type,
         projectType: type, projectInfo: info, ownerUserId: "owner", createdByUserId: "owner" });
       assert.equal(created.visibility, "private");
+      const card = (await db.getProject(id))!.projectCard;
+      assert.equal(card.icon, defaultProjectCardIcon(type));
+      assert.ok(getProjectCardColorContrastRatio(card.iconColor!, card.iconBackgroundColor) >= 4.5);
+      await storage.createProject({ projectId: id, projectName: type, projectType: type, projectInfo: info, ownerUserId: "owner" });
+      assert.deepEqual((await db.getProject(id))!.projectCard, card);
       assert.equal((await storage.getProjectAccessSummary(id, "owner")).member?.role, "owner");
       for (const role of ["manager", "writer", "viewer"] as const) {
         await storage.setProjectMember({ projectId: id, userId: role, role });
@@ -56,7 +62,7 @@ test("PostgreSQL stores static project groups, immutable versions and independen
       const manifest = { id, name: type, version: "1.0.0",
         devDependencies: { "steamharness": packageVersion },
         scripts: { build: "node must-not-run.cjs", postinstall: "node must-not-run.cjs" },
-        steamHarness: { projectType: type, projectInfo: info, ...(type === "kanban" ? { kanban: {} } : {}) } };
+        steamHarness: { projectType: type, projectCard: card, projectInfo: info, ...(type === "kanban" ? { kanban: {} } : {}) } };
       const files = [
         { path: "package.json", content: JSON.stringify(manifest) },
         { path: type === "kanban" ? "index.html" : "index.ts", content: type === "kanban"

@@ -178,11 +178,14 @@ test('form validation returns inline errors and current-project cards receive pa
   const validation = await f.execute('studio.internalValidateProjectCreation', { name: 'Existing', templateId: 'workflow-starter', parentDirectory: f.parent });
   assert.match(validation.error, /already exists/);
   f.projects = [
-    { id, name: 'Board', uri: 'file:///board', folderPath: '/board', projectType: 'kanban' },
+    { id, name: 'Board', uri: 'file:///board', folderPath: '/board', projectType: 'kanban', projectCard: { icon: 'boxes', iconColor: '#112233', iconBackgroundColor: '#aabbcc' } },
     { id, name: 'Assistant', uri: 'file:///assistant', projectType: 'conversation', assistant: {} },
   ];
   await f.execute('studio.refreshStart');
-  assert.deepEqual(Array.from((await f.state()).projects), [{ uri: 'file:///board', folderPath: '/board', name: 'Board', projectType: 'kanban',
+  const [{ avatarUrl, ...project }] = (await f.state()).projects;
+  assert.match(decodeURIComponent(avatarUrl), /stroke="#112233"/);
+  assert.match(decodeURIComponent(avatarUrl), /fill="#aabbcc"/);
+  assert.deepEqual([project], [{ uri: 'file:///board', folderPath: '/board', name: 'Board', projectType: 'kanban',
     update: { status: 'unpublished', canDownload: false } }]);
 });
 

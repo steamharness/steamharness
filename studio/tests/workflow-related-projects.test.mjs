@@ -147,13 +147,19 @@ test('restoring a downloaded dependency cannot substitute a different version of
   assert.equal(state.get(IMPORTED_PROJECTS_KEY).some(entry => entry.uri === 'file:///Other'), false);
 });
 
-test('imported relations use the detected project type while missing imports keep their link icon', async t => {
+test('imported relations use their project avatar while missing imports keep their link icon', async t => {
   const state = new Map([[IMPORTED_PROJECTS_KEY, [imported('Notes')]]]);
   const files = new Map([['file:///Owner/package.json', manifest('Owner', ids[0], [relation(), relation('missing', ids[2])])],
     ['file:///Notes/package.json', manifest('Notes', ids[1])]]);
-  const { provider } = fixture(t, { state, files, icons: { resolveMany: async uris => uris.map(uri => ({ uri, projectType: 'conversation' })) } });
+  const avatarUrl = 'data:image/svg+xml,%3Csvg%2F%3E';
+  const { provider } = fixture(t, { state, files, icons: {
+    onDidChange: () => ({ dispose() {} }),
+    resolveMany: async uris => uris.map(uri => ({ uri, projectType: 'conversation', avatarUrl })),
+  } });
   await provider.update([project('Owner')]);
-  assert.deepEqual(Array.from(provider.getChildren(), item => provider.getTreeItem(item).iconPath.id), ['comment-discussion', 'link']);
+  const [importedItem, missingItem] = provider.getChildren();
+  assert.equal(provider.getTreeItem(importedItem).iconPath.toString(), avatarUrl);
+  assert.equal(provider.getTreeItem(missingItem).iconPath.id, 'link');
 });
 
 for (const [language, expected] of [['en', 'English notes'], ['zh-cn', 'Chinese notes'], ['fr', 'English notes']]) {

@@ -8,6 +8,7 @@ export interface RecentProject {
   lastOpened: number;
   projectType?: ProjectType;
   version?: string;
+  avatarUrl?: string;
 }
 
 export const IMPORTED_PROJECTS_KEY = 'studio.importedProjects';

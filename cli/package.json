@@ -43,6 +43,7 @@
     "@steamharness/i18n": "workspace:*",
     "@steamharness/kanban-project": "workspace:*",
     "@steamharness/openai-responses": "workspace:*",
+    "@steamharness/project-card-metadata": "workspace:*",
     "@steamharness/project-dependencies": "workspace:*",
     "@steamharness/project-info": "workspace:*",
     "@steamharness/project-upload": "workspace:*",
