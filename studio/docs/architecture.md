@@ -13,7 +13,7 @@ Studio 使用 VS Code OSS 的工作台、Monaco 编辑器、语言服务、扩�
 | 名称、协议、系统标识、扩展市场、遥测 | `config/product.json` |
 | 项目入口、命令、树视图及业务集成 | `extensions/studio-workstation` |
 | 简体中文界面 | 官方扩展 `MS-CEINTL.vscode-language-pack-zh-hans` |
-| 编辑器布局、原生服务、核心 API 修改 | `upstream/vscode/src`，提交到 fork 的 `codex/studio` 分支，对应补丁保留在 `patches` |
+| 编辑器布局、原生服务、核心 API 修改 | `upstream/vscode/src`，日常提交到 fork 的 `steamharness-dev` 分支，测试与正式通道使用 `steamharness-alpha`、`steamharness-main`；对应补丁保留在 `patches` |
 | 构建和启动流程 | `scripts` |
 | 上游版本 | 子模块 Git 提交与 `config/upstream.json` |
 

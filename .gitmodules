@@ -1,4 +1,5 @@
 [submodule "studio/upstream/vscode"]
 	path = studio/upstream/vscode
 	url = git@github.com:GRCmade/vscode.git
+	branch = steamharness-dev
 	shallow = true

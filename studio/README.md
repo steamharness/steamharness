@@ -19,7 +19,7 @@ studio/
   .studio/                        本地运行数据，不提交
 ```
 
-底座基于 [VS Code 1.141.0](https://github.com/microsoft/vscode/releases/tag/1.141.0)，原始上游提交为 `2a59476c9bfcb90b3ddc372c36762471b7dfad1c`。Studio 内核维护在 fork 的 `codex/studio` 分支，实际使用的提交固定在子模块引用和 `config/upstream.json` 中。可以从 `upstream/vscode/src` 开始定制内核；初次使用浅克隆。
+底座基于 [VS Code 1.141.0](https://github.com/microsoft/vscode/releases/tag/1.141.0)，原始上游提交为 `2a59476c9bfcb90b3ddc372c36762471b7dfad1c`。Studio 内核维护在 fork 的 `steamharness-dev`、`steamharness-alpha`、`steamharness-main` 分支，分别对应开源仓库的 `dev`、`alpha`、`main` 通道。实际使用的提交固定在子模块引用和 `config/upstream.json` 中。可以从 `upstream/vscode/src` 开始定制内核；初次使用浅克隆。
 
 ## 本地初始化
 
@@ -143,7 +143,7 @@ GitLab CI 在推送后自动执行框架测试、Studio 类型检查和两端扩
 
 ## 品牌与上游维护
 
-VS Code 源码使用 [GRCmade/vscode 的 codex/studio 分支](https://github.com/GRCmade/vscode/tree/codex/studio)，`.gitmodules` 与 `config/upstream.json` 均指向该仓库，拉取源码需要 GitHub SSH 访问权限。当前内核定制和品牌配置已提交到 fork，`patches` 中保留对应补丁，准备脚本会跳过已合并的补丁。后续在 fork 中维护内核提交时，先推送源码提交，再同步更新 `config/upstream.json` 与子模块提交引用。
+VS Code 源码使用 [GRCmade/vscode 的 steamharness-dev 分支](https://github.com/GRCmade/vscode/tree/steamharness-dev)进行日常开发；`steamharness-alpha` 和 `steamharness-main` 分别维护测试与正式通道，fork 原有的 `main` 保留其历史。`.gitmodules` 的远端更新默认跟随 `steamharness-dev`，普通子模块初始化仍按已提交的引用检出；`config/upstream.json` 固定同一内核提交。拉取源码需要 GitHub SSH 访问权限。当前内核定制和品牌配置已提交到 fork，`patches` 中保留对应补丁，准备脚本会跳过已合并的补丁。后续在 fork 中维护内核提交时，先推送源码提交，再同步更新 `config/upstream.json` 与子模块提交引用。
 
 品牌的持久配置是 `config/product.json`。上游 `product.json`、开发期 `product.overrides.json` 和 Studio 扩展链接由脚本生成；检测到手动改动或冲突会停止，避免覆盖。Web 配置注入品牌、扩展市场和正确的上游 API 版本。源码补丁放入 `patches/*.patch`，按文件名排序，已应用的补丁不会重复应用。
 
