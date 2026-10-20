@@ -117,6 +117,10 @@ function initialize(): void {
   const latest = document.querySelector<HTMLButtonElement>('#latest')!;
   let followingLatest = true;
   let transcriptScrollTop = transcript.scrollTop;
+  let transcriptScrollHeight = transcript.scrollHeight;
+  let transcriptViewportHeight = transcript.clientHeight;
+  let transcriptScrollbarActive = false;
+  let transcriptTouchY: number | undefined;
   let transcriptLayoutFrame: number | undefined;
   const transcriptResize = new ResizeObserver(syncTranscriptLayout);
   transcriptResize.observe(transcript);
@@ -859,10 +863,12 @@ function initialize(): void {
     transcriptLayoutFrame = requestAnimationFrame(() => {
       transcriptLayoutFrame = undefined;
       // Composer changes and asynchronously sized content must settle before following the end.
-      if (followingLatest) {
+      if (followingLatest && !transcriptScrollbarActive) {
         transcript.scrollTop = transcript.scrollHeight;
         transcriptScrollTop = transcript.scrollTop;
       }
+      transcriptScrollHeight = transcript.scrollHeight;
+      transcriptViewportHeight = transcript.clientHeight;
       updateLatest();
     });
   }
@@ -1098,16 +1104,47 @@ function initialize(): void {
   document.querySelector('#refresh-params')!.addEventListener('click', () => requestParams({ kind: 'init' }));
   entrypoint.addEventListener('change', () => { ++requestId; resolving = false; renderParameters(); });
   transcript.addEventListener('scroll', () => {
-    // Following the end can emit a delayed scroll event after content grows again.
+    const resized = transcript.scrollHeight !== transcriptScrollHeight || transcript.clientHeight !== transcriptViewportHeight;
+    // Regrouping cards can shrink the content and clamp scrollTop before it grows
+    // again. The delayed layout scroll must not cancel following the latest output.
     if (transcript.scrollTop !== transcriptScrollTop) {
-      followingLatest = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 100;
+      if (!followingLatest || !resized || transcriptScrollbarActive) {
+        const remaining = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight;
+        followingLatest = remaining < 100 && (transcript.scrollTop > transcriptScrollTop || remaining <= 1);
+      }
       transcriptScrollTop = transcript.scrollTop;
     }
+    if (followingLatest && resized) { syncTranscriptLayout(); }
     updateLatest();
   }, { passive: true });
+  // Reader input takes precedence even when a resize is waiting for its frame.
+  transcript.addEventListener('wheel', event => { if (event.deltaY < 0) { followingLatest = false; } }, { passive: true });
+  transcript.addEventListener('keydown', event => {
+    if (event.defaultPrevented || (event.target instanceof Element && event.target.closest('input, textarea, select, [contenteditable]'))) { return; }
+    if (['ArrowUp', 'PageUp', 'Home'].includes(event.key) || event.key === ' ' && event.shiftKey) { followingLatest = false; }
+  });
+  transcript.addEventListener('touchstart', event => { transcriptTouchY = event.touches.length === 1 ? event.touches[0].clientY : undefined; }, { passive: true });
+  transcript.addEventListener('touchmove', event => {
+    const y = event.touches.length === 1 ? event.touches[0].clientY : undefined;
+    if (y !== undefined && transcriptTouchY !== undefined && y > transcriptTouchY) { followingLatest = false; }
+    transcriptTouchY = y;
+  }, { passive: true });
+  transcript.addEventListener('pointerdown', event => { if (event.target === transcript) { transcriptScrollbarActive = true; } }, { passive: true });
+  const releaseTranscriptScrollbar = (): void => {
+    if (!transcriptScrollbarActive) { return; }
+    if (transcript.scrollTop !== transcriptScrollTop) {
+      const remaining = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight;
+      followingLatest = remaining < 100 && (transcript.scrollTop > transcriptScrollTop || remaining <= 1);
+      transcriptScrollTop = transcript.scrollTop;
+    }
+    transcriptScrollbarActive = false; syncTranscriptLayout();
+  };
+  window.addEventListener('pointerup', releaseTranscriptScrollbar, { passive: true });
+  window.addEventListener('pointercancel', releaseTranscriptScrollbar, { passive: true });
   latest.addEventListener('click', () => { followingLatest = true; syncTranscriptLayout(); });
   window.addEventListener('resize', () => { closeSessionMenu(); sizeComposer(); syncTranscriptLayout(); positionHistory(); });
   window.addEventListener('pagehide', () => {
+    transcriptScrollbarActive = false; transcriptTouchY = undefined;
     transcriptResize.disconnect();
     if (transcriptLayoutFrame !== undefined) { cancelAnimationFrame(transcriptLayoutFrame); transcriptLayoutFrame = undefined; }
   });

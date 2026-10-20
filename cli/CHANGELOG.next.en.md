@@ -1,5 +1,9 @@
 # Unreleased
 
+### Conversation scrolling
+
+- Keep the latest output visible when resource cards arrive together or previews resize asynchronously. Preserve the reading position when scrolling up, and resume following after clicking Go to latest message.
+
 ### Resource Card Refresh
 
 - Fixed map and other resource cards failing to refresh after preview IDs expired. Refresh resolves the saved card in its original conversation or run, checks current access, loads the latest content, and shows a loading icon with retry available after a failure.
