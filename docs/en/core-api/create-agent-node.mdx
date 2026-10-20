@@ -107,6 +107,8 @@ The answer never gets pushed into a detail block by response metadata such as `f
 
 Automatic retries appear as collapsed `partType: "retry"` details after interrupted content and before its continuation. Live output, durable session `turns[].items`, and restored history retain the same order; completing a run does not append the record again below the answer.
 
+A complete successful model response resets the retry count, so later failures in the same answer start at `Retry 1 / 10`. Retry records retain separate output item IDs even when their attempt numbers restart at 1.
+
 Shared runtime UI displays plans marked with `metadata.plan: true` as preview cards. Open a card to read the complete Markdown; closing returns focus to the card. Plans retain their original output position, and run results and history replay use the same presentation. Ordinary answers remain inline in the conversation body.
 
 When confirmation resumes the same run, new plans, text, and activity rows use independent identifiers. Earlier output remains intact, so a revised plan cannot replace the previous one or move resumed text before the answer. The host API's declared `agent-answer` identifier stays fixed so it can read the complete response.

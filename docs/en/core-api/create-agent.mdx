@@ -335,6 +335,8 @@ A model call that fails recoverably — a dropped connection, `408` / `409` / `4
 
 **A lost tool call (`kind: "lost-call"`) is continued as well.** Every adapter normalises "the model is calling a tool" to the same `stopReason`, and each sets it from the provider's own field — independently of whether the tool-call block survived. So "says there is a tool call, has none" is the message contradicting itself, and the only thing that produces it is a call dropped on the way here (a block type the adapter skips, a relay that eats the block, truncated arguments). Such a message used to end the turn as a successful text-only answer: nothing in the interface looked wrong, and the action the model had decided on vanished. It now triggers a continuation whose `retry` row carries `kind: "lost-call"`, and the prompt says plainly that the response claimed a tool call, none arrived, and the call has to be made again. It shares the connection budget rather than the output-limit one — losing part of the answer is a transport problem — and when that budget runs out the error says how many calls went missing.
 
+Retry and continuation counts track consecutive failures. A complete successful model response, including a valid tool-calling response, resets the counts. Later failures in the same answer start again at `Retry 1 / 10` with the full ten-retry budget. A complete success also resets the separate two-attempt output-limit budget. Receiving partial text or reasoning, or reopening an unfinished run, does not reset the budget. Every retry remains a separate history record even when its attempt number repeats.
+
 ## Example
 
 ```ts

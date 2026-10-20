@@ -310,6 +310,7 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
     let reasoningIndex = 0;
     let textOpen = false;
     let textIndex = 0;
+    let retryIndex = 0;
     // Whether this turn put anything at all in front of the host. A turn that
     // did not has to say so, or a host waiting for output waits forever. A
     // failed turn is the exception: it is explained by its error row.
@@ -489,7 +490,7 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
               kind: event.kind,
             });
             yield* createAgentRetryChunks({
-              itemId: createAgentOutputItemId(`retry-${outputScopeId}-${event.attempt}`),
+              itemId: createAgentOutputItemId(`retry-${outputScopeId}-${++retryIndex}`),
               attempt: event.attempt,
               maxAttempts: event.maxAttempts,
               reason: event.reason,

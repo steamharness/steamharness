@@ -319,6 +319,7 @@ export type AgentStreamEvent =
    */
   | {
       type: "retry";
+      /** One-based within the current consecutive failure sequence; a complete successful response resets it. */
       attempt: number;
       maxAttempts: number;
       reason: string;

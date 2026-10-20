@@ -1148,6 +1148,27 @@ test("a stream cut off mid-answer is continued, and the turn says so", async () 
   });
 });
 
+test("restarted retry sequences keep separate rows after a successful tool request", async () => {
+  const { ai, faux, models, model } = await createFauxModel();
+  faux.setResponses([
+    ai.fauxAssistantMessage("First partial", { stopReason: "error", errorMessage: "terminated" }),
+    ai.fauxAssistantMessage([ai.fauxToolCall("ls", { path: "." })], { stopReason: "toolUse" }),
+    ai.fauxAssistantMessage("Second partial", { stopReason: "error", errorMessage: "terminated" }),
+    ai.fauxAssistantMessage("Finished"),
+  ]);
+  await withTempDir(async workdir => {
+    const executor = defineAgentConversationExecutor({ models, resolvedModel: model });
+    const result = await executor.workflow.run({ prompt: "Inspect then continue", errCode: 0, errMessage: "", workdir }, createContext("retry-reset"));
+    const retries = result.items.filter(item => item.metadata?.partType === "retry");
+    assert.equal(retries.length, 2);
+    assert.equal(new Set(retries.map(item => item.id)).size, 2);
+    assert.deepEqual(retries.map(item => (item.content as { attempt: number }).attempt), [1, 1]);
+    const positions = retries.map(item => result.items.indexOf(item));
+    assert.ok(positions[0]! < result.items.findIndex(item => item.content === "Second partial"));
+    assert.ok(positions[1]! > result.items.findIndex(item => item.content === "Second partial"));
+  });
+});
+
 test("a retry follows interrupted thinking before the resumed answer", async () => {
   const { ai, faux, models, model } = await createFauxModel();
   faux.setResponses([

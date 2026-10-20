@@ -355,20 +355,31 @@ export class DurableAgent {
         beforeRequest: async (_request, api) => {
           const root = (await harness.conversation(api.conversationId, context))!;
           const logicalRequestId = this.session ? await this.session.requestIdFor(root.id) : requestId;
-          await root.commit(async tx => {
+          const history = await root.context(context);
+          const last = [...history.entries].reverse().find(entry => entry.model?.[0]?.role === "assistant");
+          const message = last?.model?.[0] as InterruptedMessage | undefined;
+          const exhausted = await root.commit(async tx => {
             const run = await tx.doc(RunDoc, root.id, logicalRequestId, null);
+            if (run.failure) return run.failure;
+            // Reset only after a committed, complete model response. Promoted
+            // interrupted text looks like a stop but must retain its budget.
+            if (last !== undefined && last.id > run.cutoff && message !== undefined && !message.projectContextUsageInvalid
+              && (message.stopReason === "stop" || message.stopReason === "toolUse" && message.content.some(block => block.type === "toolCall"))) {
+              run.continuations["count:transport"] = 0;
+              run.continuations["count:length"] = 0;
+            }
             for (const [taskId, data] of Object.entries(run.pendingRetries ?? {})) {
               await tx.appendEntry(root.id, { kind: "project.retry", data });
               delete run.pendingRetries[taskId];
             }
           }, context);
+          if (exhausted) throw new HarnessError({ type: "execution", message: exhausted });
           this.attemptId = `${api.taskId}:${randomUUID()}`;
           if (this.options.session) {
             const { ProviderDoc } = await import("@earendil-works/pi-durable");
             const identity = await harness.snapshot(ProviderDoc, root.id, context);
             if (identity?.sessionId) this.modelAttempts.set(identity.sessionId, this.attemptId);
           }
-          const history = await root.context(context);
           const partials = history.entries.filter(entry => entry.byTaskId === api.taskId &&
             entry.model?.[0]?.role === "assistant" && entry.model[0].stopReason === "aborted" &&
             entry.model[0].content.some(block => block.type === "text" || block.type === "thinking"));
@@ -400,16 +411,20 @@ export class DurableAgent {
             }, context);
             if (failure) throw new HarnessError({ type: "execution", message: failure });
           }
-          const last = [...history.entries].reverse().find(entry => entry.model?.[0]?.role === "assistant");
-          const message = last?.model?.[0];
           if (last !== undefined && message?.role === "assistant" && message.stopReason === "error") {
-            await root.commit(async tx => {
+            const failure = await root.commit(async tx => {
               const run = await tx.doc(RunDoc, root.id, logicalRequestId, null);
               if (last.id <= run.cutoff || run.retries[last.id] !== undefined) return;
-              const attempt = Object.keys(run.retries).length + 1;
+              const attempt = Number(run.continuations["count:transport"] ?? 0) + 1;
+              run.continuations["count:transport"] = attempt;
               run.retries[last.id] = attempt;
+              if (attempt > 10) {
+                run.failure = `The model request failed ${attempt} times in a row (${message.errorMessage ?? "Model request interrupted"}).`;
+                return run.failure;
+              }
               await tx.appendEntry(root.id, { kind: "project.retry", data: { attempt, maxAttempts: 10, kind: "dropped", reason: message.errorMessage ?? "Model request interrupted" } });
             }, context);
+            if (failure) throw new HarnessError({ type: "execution", message: failure });
           }
           if (partials.length > 0) return { messages: (await root.context(context)).messages };
         },
@@ -553,6 +568,7 @@ export class DurableAgent {
   }
 
   private streamModel(...args: Parameters<Models["streamSimple"]>): ReturnType<Models["streamSimple"]> {
+    if (this.fatalFailure !== undefined) throw this.fatalFailure;
     const source = this.models.streamSimple(...args);
     const stream = createAssistantMessageEventStream();
     const requestId = this.activeRequest;

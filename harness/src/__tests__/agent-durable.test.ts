@@ -24,14 +24,88 @@ async function message(child: ChildProcess, type: string): Promise<Record<string
     child.on("message", receive); child.on("exit", end);
   });
 }
-function agent(databasePath?: string) {
+function agent(databasePath?: string, retryDelayMs?: number) {
   const faux = ai.fauxProvider({ models: [{ id: "test", contextWindow: 100_000, maxTokens: 100 }] });
   const models = ai.createModels(); models.setProvider(faux.provider);
-  const instance = new DurableAgent({ databasePath, models, initialState: {
+  const instance = new DurableAgent({ databasePath, models, retryDelayMs, initialState: {
     systemPrompt: "Test", model: models.getModel("faux", "test")!, thinkingLevel: "off", messages: [], tools: [],
   } });
   return { instance, faux };
 }
+
+for (const kind of ["dropped", "empty", "lost-call", "length"] as const) {
+  test(`successful tool responses reset the ${kind} retry sequence and budget`, async t => {
+    const { instance, faux } = agent(undefined, 0);
+    t.after(() => instance.close());
+    let calls = 0;
+    instance.state.tools = [{ name: "inspect", label: "Inspect", description: "Test", parameters: ai.Type.Object({}),
+      execute: async () => { calls++; return { content: [ai.fauxText("Inspected")], details: {} }; } }];
+    const limit = kind === "length" ? 2 : 10;
+    const failures = () => Array.from({ length: limit }, () => ai.fauxAssistantMessage(kind === "empty" ? [] : "Partial answer", {
+      stopReason: kind === "length" ? "length" : kind === "lost-call" ? "toolUse" : "error", errorMessage: "terminated",
+    }));
+    faux.setResponses([...failures(), ai.fauxAssistantMessage([ai.fauxToolCall("inspect", {})], { stopReason: "toolUse" }),
+      ...failures(), ai.fauxAssistantMessage("Finished")]);
+    const attempts: number[] = [];
+    instance.subscribe(event => {
+      const retry = event as unknown as { type: string; attempt: number; maxAttempts: number };
+      if (retry.type === "project_retry") { attempts.push(retry.attempt); assert.equal(retry.maxAttempts, limit); }
+    });
+    await instance.prompt("Inspect and continue");
+    assert.equal(instance.state.errorMessage, undefined);
+    assert.equal(calls, 1);
+    assert.equal(faux.state.callCount, 2 * limit + 2);
+    const sequence = Array.from({ length: limit }, (_, index) => index + 1);
+    assert.deepEqual(attempts, [...sequence, ...sequence]);
+  });
+}
+
+for (const first of ["empty", "partial"] as const) {
+  test(`switching between empty failures and partial streams retains the retry budget when starting ${first}`, async t => {
+    const { instance, faux } = agent(undefined, 0);
+    t.after(() => instance.close());
+    faux.setResponses(Array.from({ length: 12 }, (_, index) => ai.fauxAssistantMessage((index % 2 === 0) === (first === "empty") ? [] : "Partial", {
+      stopReason: "error", errorMessage: "terminated",
+    })));
+    const attempts: number[] = [];
+    instance.subscribe(event => {
+      const retry = event as unknown as { type: string; attempt: number };
+      if (retry.type === "project_retry") attempts.push(retry.attempt);
+    });
+    await instance.prompt("Continue").catch(error => assert.match(error.message, /11 times in a row/));
+    assert.match(instance.state.errorMessage ?? "", /11 times in a row/);
+    assert.equal(faux.state.callCount, 11);
+    assert.deepEqual(attempts, Array.from({ length: 10 }, (_, index) => index + 1));
+  });
+}
+
+test("a committed successful response resets the retry budget after reopening a paused SQLite run", async t => {
+  const directory = await mkdtemp(path.join(tmpdir(), "agent-retry-reset-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const database = path.join(directory, "session.sqlite");
+  const tool = { name: "inspect", label: "Inspect", description: "Test", parameters: ai.Type.Object({}),
+    execute: async () => ({ content: [ai.fauxText("Inspected")], details: {} }) };
+  const first = agent(database, 0);
+  first.instance.state.tools = [tool]; first.instance.requestId = "same-run";
+  first.instance.beforeToolCall = async () => ({ block: true, reason: "Waiting", pause: new HarnessError({ type: "user_input_required", message: "Approve?" }) });
+  first.faux.setResponses([ai.fauxAssistantMessage("Partial", { stopReason: "error", errorMessage: "terminated" }),
+    ai.fauxAssistantMessage([ai.fauxToolCall("inspect", {})], { stopReason: "toolUse" })]);
+  try { await first.instance.prompt("Inspect"); } finally { await first.instance.close(); }
+  const reopened = agent(database, 0);
+  t.after(() => reopened.instance.close());
+  reopened.instance.state.tools = [tool]; reopened.instance.requestId = "same-run";
+  reopened.faux.setResponses([...Array.from({ length: 10 }, () => ai.fauxAssistantMessage("Resumed partial", { stopReason: "error", errorMessage: "terminated" })),
+    ai.fauxAssistantMessage("Finished")]);
+  const attempts: number[] = [];
+  reopened.instance.subscribe(event => {
+    const retry = event as unknown as { type: string; attempt: number };
+    if (retry.type === "project_retry") attempts.push(retry.attempt);
+  });
+  await reopened.instance.prompt("Inspect");
+  assert.equal(reopened.instance.state.errorMessage, undefined);
+  assert.equal(reopened.faux.state.callCount, 11);
+  assert.deepEqual(attempts, [1, ...Array.from({ length: 10 }, (_, index) => index + 1)]);
+});
 function latch<T = void>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>(done => { resolve = done; });

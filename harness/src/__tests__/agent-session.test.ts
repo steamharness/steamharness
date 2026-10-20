@@ -78,6 +78,35 @@ test("retry records stay between interrupted and resumed text in live and reopen
   assert.deepEqual(reopened.snapshot().turns.find(turn => turn.requestId === "retry-turn")!.items, items);
 });
 
+test("session retry counters restart after successful tool requests and preserve both records on replay", async t => {
+  const directory = await mkdtemp(path.join(tmpdir(), "agent-session-retry-reset-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const database = path.join(directory, "session.sqlite"), first = session({ compaction: { enabled: false } }, database);
+  first.instance.state.tools = [{ name: "inspect", label: "Inspect", description: "Test", parameters: ai.Type.Object({}),
+    execute: async () => ({ content: [ai.fauxText("Inspected")], details: {} }) }];
+  first.faux.setResponses([
+    ai.fauxAssistantMessage("First partial", { stopReason: "error", errorMessage: "terminated" }),
+    ai.fauxAssistantMessage([ai.fauxToolCall("inspect", {})], { stopReason: "toolUse" }),
+    ai.fauxAssistantMessage("Second partial", { stopReason: "error", errorMessage: "terminated" }),
+    ai.fauxAssistantMessage("Finished"),
+  ]);
+  first.instance.requestId = "retry-reset";
+  const running = first.instance.prompt("Inspect");
+  t.after(async () => { first.lease.resolve(); await running; await first.instance.close(); });
+  await until(() => first.snapshot()?.turns.some(turn => turn.status === "done"));
+  const items = first.snapshot().turns.find(turn => turn.requestId === "retry-reset")!.items;
+  const retries = items.filter(item => item.metadata?.partType === "retry");
+  assert.equal(new Set(retries.map(item => item.id)).size, 2);
+  assert.deepEqual(retries.map(item => (item.content as { attempt: number }).attempt), [1, 1]);
+  first.lease.resolve(); await running; await first.instance.close();
+  const reopened = session({ compaction: { enabled: false } }, database);
+  reopened.instance.requestId = "retry-reset"; reopened.lease.resolve();
+  t.after(() => reopened.instance.close());
+  await reopened.instance.prompt("Inspect");
+  assert.equal(reopened.faux.state.callCount, 0);
+  assert.deepEqual(reopened.snapshot().turns.find(turn => turn.requestId === "retry-reset")!.items, items);
+});
+
 test("turn usage and live context isolate forks, cached tool rounds and SQLite replay", async t => {
   const directory = await mkdtemp(path.join(tmpdir(), "agent-session-usage-"));
   t.after(() => rm(directory, { recursive: true, force: true }));

@@ -6,6 +6,8 @@
 
 ### Pi Durable
 
+- [Fixed] Align retry guidance with budgets resetting after a successful model response. Later failures restart at Retry 1 / 10 while records with repeated attempt numbers remain separate.
+
 - [Fixed] Update per-turn model usage and per-conversation context contracts, isolate fork consumption, and include system instructions and tool declarations in estimates. Verify the actual assistant's answer usage and standard composer rings remain consistent after recovery.
 
 - [Improved] Align generation guidance with next-turn queuing, atomic send-now promotion and fork confirmation, preserving the standard composer and original input identity.

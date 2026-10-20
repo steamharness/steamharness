@@ -6,6 +6,8 @@
 
 ### Pi Durable
 
+- [Fixed] Reset retry and continuation budgets after a complete successful model response so later failures restart at Retry 1 / 10. Consecutive failures, interrupted streams and process recovery retain their current budget; retry records with repeated numbers remain separate and preserve their history positions.
+
 - [Fixed] Emit automatic retry records after interrupted content and before its continuation instead of appending them at completion. Durable sessions and reopened history retain their position and collapsed details.
 
 - [Fixed] Project durable model usage per answer turn without mixing independent forks, inherited history or follow-ups, while retaining failed retries and in-turn compaction consumption. Publish current context occupancy per conversation through follow-ups, streaming, compaction and reset; uncalibrated estimates include actual system instructions, prompt sections and tool declarations.
