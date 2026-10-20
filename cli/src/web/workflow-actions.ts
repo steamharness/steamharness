@@ -47,7 +47,7 @@ export function createProjectActions(controller: Controller, runtime: Runtime, p
     const filtered = controller.runs.filter(record => !query || `${record.title} ${record.entrypointId ?? ''} ${record.args.join(' ')}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
     const runs = filtered.slice(0, limit).map(({ id, title, entrypointId, status, createdAt, updatedAt, durationMs }) => ({ id, title, entrypointId, status, createdAt, updatedAt, durationMs }));
     return { runs, selectedId: controller.workspace.selectedId, run: controller.current, occupiedId: controller.workspace.occupiedId,
-      occupiedRun: controller.occupied, running: controller.running, drafts: controller.workspace.drafts,
+      occupiedRun: controller.occupied, running: controller.running, runningCount: controller.runs.filter(run => run.status === 'running').length, drafts: controller.workspace.drafts,
       history: { pageSize: 30, total: filtered.length, hasMore: filtered.length > limit, query }, migratedConversations: controller.workspace.migratedConversations };
   };
   return {

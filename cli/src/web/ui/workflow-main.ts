@@ -8,6 +8,7 @@ import { ConversationOutput } from './conversation-output';
 import { InputPrompt } from './input-prompt';
 import { ConversationTools } from './conversation-tools';
 import { iconHtml, iconButton, escapeHtml } from './ui';
+import { runStatusLabels as statusLabels, workflowHistoryStatus, updateHistoryStatus, updateRunningCount } from './history-status';
 import { aiUsageButton, narrowMenuDismiss, projectInfoButton, toolPermissionsButton } from './toolbar';
 import { projectParameters, projectParamValue, type Project, type ParamState, type ParamValues, type Attachment } from '../workflow-types';
 import type { Draft, RunRecord } from '../workflow-workspace';
@@ -23,19 +24,16 @@ interface State {
   drafts: Record<string, Draft>;
   history: { total: number; hasMore: boolean; query: string };
   running: boolean;
+  runningCount?: number;
   account: AccountState;
   authenticationRevision: number;
 }
-const statusLabels: Record<string, string> = {
-  running: t("Running"), waiting_for_input: t("Waiting for input"), success: t("Completed"), failed: t("Failed"),
-  aborted: t("Stopped"), timed_out: t("Timed out"), interrupted: t("Interrupted"),
-};
 const app = document.querySelector<HTMLElement>('#app')!;
 const host = acquireProjectHost();
 app.classList.add('workflow-app');
 app.innerHTML = `
   <header class="toolbar"><div class="project-title"><button id="menu-toggle" class="icon-button" aria-label="${t("Show runs")}" title="${t("Show runs")}">${iconHtml('layout-sidebar-left')}</button><h1 id="workflow-title">Workflow</h1></div><div class="toolbar-actions">${aiUsageButton()}${toolPermissionsButton()}${projectInfoButton()}</div></header>
-  <aside id="project-menu" class="project-menu" aria-label="${t("Runs")}"><div class="menu-heading"><span>${t("Runs")}</span><div class="menu-actions"><button id="history-toggle" class="icon-button" aria-label="${t("Search runs")}" title="${t("Search runs")}">${iconHtml('search')}</button><button id="new" class="icon-button" aria-label="${t("New run")}" title="${t("New run")}">${iconHtml('add')}</button><button id="hide-menu" class="icon-button" aria-label="${t("Hide runs")}" title="${t("Hide runs")}">${iconHtml('chevron-left')}</button></div></div><section id="run-history"><nav id="run-list"></nav><div id="empty-history" class="no-history">${t("No runs")}</div><button id="load-more-history" class="all-history" hidden>${iconHtml('chevron-down')}<span>${t("Load more")}</span></button></section></aside>
+  <aside id="project-menu" class="project-menu" aria-label="${t("Runs")}"><div class="menu-heading"><div class="menu-title"><span>${t("Runs")}</span><span id="running-count" class="running-count" hidden></span></div><div class="menu-actions"><button id="history-toggle" class="icon-button" aria-label="${t("Search runs")}" title="${t("Search runs")}">${iconHtml('search')}</button><button id="new" class="icon-button" aria-label="${t("New run")}" title="${t("New run")}">${iconHtml('add')}</button><button id="hide-menu" class="icon-button" aria-label="${t("Hide runs")}" title="${t("Hide runs")}">${iconHtml('chevron-left')}</button></div></div><section id="run-history"><nav id="run-list"></nav><div id="empty-history" class="no-history">${t("No runs")}</div><button id="load-more-history" class="all-history" hidden>${iconHtml('chevron-down')}<span>${t("Load more")}</span></button></section></aside>
   <main><div id="error" class="error" role="alert" hidden></div><div id="active-run" class="workflow-active" hidden><button id="show-active" class="workflow-active-link"></button><button id="stop-active" class="icon-button" title="${t("Stop run")}" aria-label="${t("Stop run")}">${iconHtml('debug-stop')}</button></div>
     <div id="workspace-scroll" class="workspace-scroll"><section id="entrypoints" class="workflow-entrypoints" aria-label="${t("Workflow entrypoint")}"></section>
       <section id="run-detail" class="workflow-run" hidden><header class="run-heading"><div><h2 id="run-title"></h2><div id="run-meta"></div></div><div class="run-heading-actions"><button id="rerun" class="icon-button" title="${t("Rerun")}" aria-label="${t("Rerun")}">${iconHtml('debug-restart')}</button><button id="export-run" class="icon-button" title="${t("Export record")}" aria-label="${t("Export record")}">${iconHtml('export')}</button><button id="delete-run" class="icon-button" title="${t("Delete record")}" aria-label="${t("Delete record")}">${iconHtml('trash')}</button></div></header>
@@ -158,16 +156,29 @@ function controls(): void {
   app.dataset.connection = connected ? 'connected' : 'disconnected';
 }
 function historyRows(root: HTMLElement): void {
-  root.replaceChildren();
-  for (const run of state?.runs ?? []) {
-    const row = document.createElement('button'); row.className = `session workflow-history-row${state?.run?.id === run.id ? ' active' : ''}`; row.dataset.runId = run.id;
-    const label = document.createElement('span'); label.textContent = run.title;
-    const meta = document.createElement('small'); meta.className = 'run-list-meta';
-    const status = document.createElement('span'); status.className = 'run-status'; status.dataset.status = run.status; status.textContent = statusLabels[run.status] ?? run.status;
-    const time = document.createElement('time'); time.textContent = new Date(run.createdAt).toLocaleString(locale(), { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-    meta.append(status, time); row.append(label, meta); row.onclick = () => { fields.close(); post({ type: 'workflow-select', id: run.id }); element<HTMLDialogElement>('history-dialog').close(); };
-    root.append(row);
+  const existing = new Map(Array.from(root.children).map(row => [(row as HTMLElement).dataset.runId!, row as HTMLButtonElement]));
+  for (const [index, run] of (state?.runs ?? []).entries()) {
+    let row = existing.get(run.id);
+    if (!row) {
+      row = document.createElement('button'); row.dataset.runId = run.id;
+      const label = document.createElement('span'); label.className = 'session-title';
+      const meta = document.createElement('small'); meta.className = 'run-list-meta';
+      const status = document.createElement('span'); status.className = 'history-status';
+      meta.append(status, document.createElement('time')); row.append(label, meta);
+      row.onclick = () => { fields.close(); post({ type: 'workflow-select', id: run.id }); element<HTMLDialogElement>('history-dialog').close(); };
+    }
+    existing.delete(run.id);
+    row.className = `session workflow-history-row${state?.run?.id === run.id ? ' active' : ''}`;
+    row.title = run.title;
+    row.setAttribute('aria-current', String(state?.run?.id === run.id));
+    row.children[0].textContent = run.title;
+    const [status, time] = Array.from(row.children[1].children) as HTMLElement[];
+    updateHistoryStatus(status, workflowHistoryStatus(run.status));
+    time.textContent = new Date(run.createdAt).toLocaleString(locale(), { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const current = root.children[index] ?? null;
+    if (current !== row) { root.insertBefore(row, current); }
   }
+  for (const row of existing.values()) { row.remove(); }
 }
 function changeTab(value: string): void {
   tab = value;
@@ -246,6 +257,8 @@ function applyState(next: State): void {
     Object.assign(drafts, structuredClone(next.drafts)); draftsLoaded = true;
   }
   element('workflow-title').textContent = next.project.name;
+  const runningCount = next.runningCount ?? Number(next.occupiedRun?.status === 'running');
+  updateRunningCount(element('running-count'), runningCount, t('Running workflows: {0}', runningCount));
   historyRows(element('run-list')); historyRows(element('search-results'));
   element('empty-history').hidden = next.runs.length > 0; element('load-more-history').hidden = element('search-more').hidden = !next.history.hasMore;
   element('active-run').hidden = !next.occupiedRun;

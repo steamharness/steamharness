@@ -13,6 +13,7 @@ import { activeAgentActivity } from './agent-activity';
 import { ComposerOutput, composerOutputItems } from './output-display';
 import type { ConnectionState } from './connection';
 import { iconHtml as icon, escapeHtml as escape, iconButton, updateIcon } from './ui';
+import { conversationHistoryStatus, updateHistoryStatus, updateConversationRunningCount } from './history-status';
 import { aiUsageButton, narrowMenuDismiss, projectInfoButton, toolPermissionsButton } from './toolbar';
 import './style.css';
 import {
@@ -39,7 +40,7 @@ function initialize(): void {
       <div class="toolbar-actions"><button id="new" class="icon-button" title="${t("New conversation")}" aria-label="${t("New conversation")}">${icon('comment-add')}</button>${aiUsageButton()}${toolPermissionsButton()}${projectInfoButton()}</div>
     </header>
     <aside id="project-menu" class="project-menu" aria-label="${t("Conversations")}">
-      <div class="menu-heading"><span id="menu-label">${t("Conversations")}</span><div class="menu-actions"><button id="history-toggle" class="icon-button" title="${t("Search conversations")}" aria-label="${t("Search conversations")}" aria-haspopup="dialog" aria-controls="history-popover" aria-expanded="false" popovertarget="history-popover">${icon('search')}</button><button id="hide-menu" class="icon-button" title="${t("Hide conversations")}" aria-label="${t("Hide conversations")}">${icon('chevron-left')}</button></div></div>
+      <div class="menu-heading"><div class="menu-title"><span id="menu-label">${t("Conversations")}</span><span id="running-count" class="running-count" hidden></span></div><div class="menu-actions"><button id="history-toggle" class="icon-button" title="${t("Search conversations")}" aria-label="${t("Search conversations")}" aria-haspopup="dialog" aria-controls="history-popover" aria-expanded="false" popovertarget="history-popover">${icon('search')}</button><button id="hide-menu" class="icon-button" title="${t("Hide conversations")}" aria-label="${t("Hide conversations")}">${icon('chevron-left')}</button></div></div>
       <section id="chats"><nav id="session-list" aria-label="${t("Conversation history")}"></nav><button id="load-more-history" class="all-history" hidden>${icon('chevron-down')}<span>${t("Load more")}</span></button><button id="all-history" class="all-history" aria-haspopup="dialog" aria-controls="history-popover" aria-expanded="false" popovertarget="history-popover" hidden></button><div id="no-history" class="no-history" hidden>${t("No conversations")}</div></section>
     </aside>
     <main><div class="transcript-area"><div id="transcript" class="transcript" role="log" aria-label="${t("Conversation messages")}" aria-live="polite" aria-relevant="additions"><div id="transcript-content" class="transcript-content"></div></div><button id="latest" class="icon-button latest-button" title="${t("Go to latest message")}" aria-label="${t("Go to latest message")}" hidden>${icon('arrow-down')}</button></div>
@@ -456,6 +457,7 @@ function initialize(): void {
       let button = existing.get(entry.id);
       if (!button) {
         button = document.createElement('button'); button.type = 'button'; button.dataset.sessionId = entry.id;
+        button.innerHTML = '<span class="session-title"></span><span class="history-status" hidden></span><time></time>';
         button.addEventListener('click', () => { navigate(entry.id); closeHistory(); dismissNarrowMenu(); });
         button.setAttribute('aria-haspopup', 'menu'); button.setAttribute('aria-controls', sessionMenu.id); button.setAttribute('aria-expanded', 'false');
         button.addEventListener('contextmenu', (event) => { event.preventDefault(); openSessionMenu(entry.id, event.currentTarget as HTMLButtonElement, event); });
@@ -467,12 +469,13 @@ function initialize(): void {
       }
       existing.delete(entry.id);
       button.className = `session${entry.id === state.activeId ? ' active' : ''}${button === sessionMenuTrigger ? ' context-active' : ''}`;
-      const context = entry.agent?.contexts.find(context => context.conversationId === (entry.agentConversationId ?? entry.agent?.conversationId));
-      const background = context?.backgroundCount ?? entry.agent?.backgroundCount ?? 0;
-      const status = entry.messages.some((message) => message.pendingInput) ? t("Pending approval") : sessionRunning(entry) ? t("Running")
-        : background ? t('Background tasks: {0}', background) : entry.messages.at(-1)?.status === 'failed' ? t("Failed") : relativeTime(entry);
-      const content = `<span>${entry.titleLocked ? icon('lock-small') : ''}${escape(entry.title)}</span><time>${status}</time>`;
-      if (button.innerHTML !== content) { button.innerHTML = content; }
+      const [label, indicator, time] = Array.from(button.children) as HTMLElement[];
+      const title = `${entry.titleLocked ? icon('lock-small') : ''}${escape(entry.title)}`;
+      if (label.innerHTML !== title) { label.innerHTML = title; }
+      const status = conversationHistoryStatus(entry);
+      updateHistoryStatus(indicator, status);
+      time.hidden = !!status;
+      if (!status) { time.textContent = relativeTime(entry); }
       button.title = entry.title;
       button.setAttribute('aria-current', String(entry.id === state.activeId));
       const current = list.children[index] ?? null;
@@ -490,6 +493,7 @@ function initialize(): void {
   function renderHistory(revealActive = false): void {
     if (!state) { return; }
     const sessions = matchingSessions('');
+    updateConversationRunningCount(document.querySelector('#running-count')!, sessions);
     const activeIndex = sessions.findIndex((entry) => entry.id === state!.activeId);
     let visible: ConversationSession[];
     if (narrow.matches) {

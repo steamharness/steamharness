@@ -7,7 +7,6 @@ vi.mock('../web/ui/host', () => ({ acquireProjectHost: () => host }));
 vi.mock('../web/ui/workflow-fields', () => ({ Fields: class { close() {} render() {} update() {} } }));
 vi.mock('../web/ui/conversation-output', () => ({ ConversationOutput: class { update() {} } }));
 vi.mock('../web/ui/conversation-tools', () => ({ ConversationTools: class { closeUsage() {} } }));
-vi.mock('../web/ui/ui', () => ({ iconHtml: () => '', iconButton: () => ({}), escapeHtml: (value: string) => value }));
 vi.mock('../web/ui/toolbar', () => ({ aiUsageButton: () => '', toolPermissionsButton: () => '', projectInfoButton: () => '', narrowMenuDismiss: () => () => {} }));
 
 class Element {
@@ -15,19 +14,36 @@ class Element {
   disabled = false;
   open = false;
   textContent = '';
-  innerHTML = '';
+  private html = '';
+  get innerHTML() { return this.html; }
+  set innerHTML(value: string) {
+    this.html = value;
+    this.replaceChildren();
+    const icon = value.match(/^<span class="([^"]+)" aria-hidden="true"><\/span>$/);
+    if (icon) { const glyph = new Element(); glyph.className = icon[1]; this.append(glyph); }
+  }
   className = '';
+  title = '';
+  ariaLabel = '';
   value = '';
   dataset: Record<string, string> = {};
   children: Element[] = [];
+  parentElement?: Element;
+  attributes = new Map<string, string>();
+  get childNodes() { return this.children; }
+  get firstElementChild() { return this.children[0]; }
+  get lastElementChild() { return this.children.at(-1); }
   onclick?: () => void;
   events = new Map<string, (event: { preventDefault(): void }) => void>();
-  classList = { add: vi.fn(), toggle: vi.fn() };
-  append(...elements: Element[]) { this.children.push(...elements); }
+  classList = { add: vi.fn(), toggle: vi.fn(), contains: (value: string) => this.className.split(' ').includes(value) };
+  append(...elements: Element[]) { for (const element of elements) { this.insertBefore(element, null); } }
+  insertBefore(element: Element, before: Element | null) {
+    element.remove(); this.children.splice(before ? this.children.indexOf(before) : this.children.length, 0, element); element.parentElement = this;
+  }
   prepend() {}
-  remove() {}
-  replaceChildren(...elements: Element[]) { this.children = elements; }
-  setAttribute() {}
+  remove() { if (this.parentElement) { this.parentElement.children = this.parentElement.children.filter(child => child !== this); this.parentElement = undefined; } }
+  replaceChildren(...elements: Element[]) { for (const child of [...this.children]) { child.remove(); } this.append(...elements); }
+  setAttribute(name: string, value: string) { this.attributes.set(name, value); }
   addEventListener(type: string, callback: (event: { preventDefault(): void }) => void) { this.events.set(type, callback); }
   querySelector() { return undefined; }
   querySelectorAll(selector: string) { return selector === '.workflow-entry' ? this.children.filter(child => child.className === 'workflow-entry') : []; }
@@ -43,10 +59,10 @@ const project: Project = {
   ],
 };
 function state(run?: RunRecord) {
-  return { type: 'state', project, drafts: {}, runs: run ? [run] : [], run, running: false,
+  return { type: 'state', project, drafts: {}, runs: run ? [run] : [], run, running: false, runningCount: run?.status === 'running' ? 1 : 0,
     history: { total: run ? 1 : 0, hasMore: false, query: '' }, account: { status: 'unauthenticated' }, authenticationRevision: 0 };
 }
-function record(status: 'success' | 'failed'): RunRecord {
+function record(status: RunRecord['status']): RunRecord {
   return { id: status, scopeId: status, title: 'Get Studio state', entrypointId: 'state', status, createdAt: 1, updatedAt: 1,
     args: [], params: {}, policies: {}, items: [], files: [], events: [], nodes: [], logs: '', resolvedInputs: [],
     ...(status === 'failed' ? { error: 'Run failure' } : {}) };
@@ -134,5 +150,48 @@ describe('Workflow request alerts', () => {
     element('new').click(); const selection = request('workflow-select');
     emit(state()); fail(selection, 'Unable to save selection');
     expect(element('error').hidden).toBe(false); expect(element('error').textContent).toBe('Unable to save selection');
+  });
+});
+
+describe('Workflow history indicators', () => {
+  it('keeps rows and spinning glyphs stable across streamed updates, selection changes and reordering', async () => {
+    const { element, emit, request } = await fixture();
+    const running = record('running'), completed = record('success');
+    emit({ ...state(running), runs: [running, completed] });
+    const row = element('run-list').children[0], status = row.children[1].children[0], glyph = status.firstElementChild;
+    expect(status.textContent).toBe(''); expect(status.title).toBe('Running');
+    expect(status.ariaLabel).toBe('Running'); expect(glyph.className).toContain('codicon-loading');
+    for (let index = 0; index < 4; index++) {
+      emit({ ...state(completed), runningCount: 1, runs: [running, completed] });
+      expect(element('run-list').children[0]).toBe(row); expect(status.firstElementChild).toBe(glyph);
+    }
+    emit({ ...state(completed), runningCount: 1, runs: [completed, { ...running, title: 'Renamed running workflow' }] });
+    expect(element('run-list').children[1]).toBe(row); expect(status.firstElementChild).toBe(glyph);
+    expect(row.children[0].textContent).toBe('Renamed running workflow'); row.click();
+    expect(request('workflow-select').id).toBe(running.id);
+    emit({ ...state(completed), runs: [completed, { ...running, status: 'failed' }] });
+    expect(status.firstElementChild).toBe(glyph); expect(glyph.className).toContain('codicon-error');
+    expect(status.title).toBe('Failed'); expect(status.textContent).toBe('');
+    emit(state(completed)); expect(element('run-list').children).toHaveLength(1);
+  });
+
+  it('uses the project running count even when search or pagination hides the running record', async () => {
+    const { element, emit } = await fixture();
+    emit({ ...state(), runningCount: 1, history: { total: 40, hasMore: true, query: 'No match' } });
+    const count = element('running-count'), glyph = count.firstElementChild;
+    expect(element('run-list').children).toHaveLength(0); expect(count.hidden).toBe(false);
+    expect(count.lastElementChild!.textContent).toBe('1'); expect(count.ariaLabel).toBe('Running workflows: 1');
+    emit({ ...state(record('success')), runningCount: 1 });
+    expect(count.hidden).toBe(false); expect(count.firstElementChild).toBe(glyph);
+    emit(state(record('success'))); expect(count.hidden).toBe(true);
+  });
+
+  it('keeps the count working with an existing host that has not restarted to provide runningCount', async () => {
+    const { element, emit } = await fixture();
+    const { runningCount: _, ...previousState } = state();
+    emit({ ...previousState, occupiedRun: record('running') });
+    expect(element('running-count').hidden).toBe(false); expect(element('running-count').lastElementChild!.textContent).toBe('1');
+    emit({ ...previousState, occupiedRun: record('waiting_for_input') }); expect(element('running-count').hidden).toBe(true);
+    emit(previousState); expect(element('running-count').hidden).toBe(true);
   });
 });

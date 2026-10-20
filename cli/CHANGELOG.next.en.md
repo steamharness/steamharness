@@ -42,6 +42,7 @@
 
 ### Changes
 
+- [Improved] Use status icons in CLI Web conversation and workflow history, with continuously spinning indicators for running entries. Show the project's running count beside the list heading independently of search and pagination, excluding idle durable workers.
 - Remove Workspace remote execution and release targets; uploads use static project types and downloads have no platform restriction.
 
 ### New Features

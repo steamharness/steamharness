@@ -25,6 +25,15 @@ h1 { font-size: 14px; font-weight: 500; margin: 0; min-width: 0; overflow: hidde
 .menu-open .project-menu { display: flex; flex-direction: column; }
 .menu-heading { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 6px; min-height: 52px; padding: 8px 10px 8px 16px; font-size: 12px; color: var(--muted); }
 .menu-heading > span { min-width: 0; white-space: nowrap; }
+.menu-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.menu-title > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.running-count { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; font-size: 11px; font-variant-numeric: tabular-nums; }
+.running-count > span:last-child { min-width: 1ch; text-align: center; }
+.history-status { display: inline-flex; flex: 0 0 16px; align-items: center; justify-content: center; width: 16px; height: 16px; }
+.running-count > .codicon, .history-status > .codicon { display: inline-block; width: 16px; height: 16px; font-size: 14px; line-height: 16px; }
+.running-count > .codicon-loading, .history-status > .codicon-loading { animation: spin 1.2s linear infinite; }
+.history-status[data-status=success] { color: var(--vscode-testing-iconPassed); }
+.history-status[data-status=failed], .history-status[data-status=timed_out] { color: var(--vscode-errorForeground); }
 .menu-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .history-search { display: flex; align-items: center; gap: 7px; border-bottom: 1px solid var(--border); margin: 12px 16px 8px; padding: 0 0 8px; color: var(--muted); }
 .history-search input { flex: 1; width: 100%; border: none; background: transparent; min-height: 26px; padding: 0; font-size: 12px; }
@@ -32,9 +41,9 @@ h1 { font-size: 14px; font-weight: 500; margin: 0; min-width: 0; overflow: hidde
 #chats { min-height: 0; overflow: auto; overflow-anchor: none; }
 #session-list { padding: 0 8px; }
 .session { display: flex; align-items: center; justify-content: space-between; gap: 10px; border: none; background: transparent; border-radius: 4px; width: 100%; min-width: 0; height: 38px; padding: 0 10px; text-align: left; }
-.session > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.session > .session-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .session time { flex-shrink: 0; color: var(--muted); font-size: 10px; }
-.session > span > .codicon { font-size: 12px; margin-right: 6px; }
+.session-title > .codicon { font-size: 12px; margin-right: 6px; }
 .session:hover { background: var(--vscode-list-hoverBackground); }
 .session.active { background: var(--selection); }
 .session.context-active { background: var(--vscode-list-hoverBackground); }

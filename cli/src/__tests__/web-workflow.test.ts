@@ -317,6 +317,18 @@ describe('SteamHarness Web routing and history', () => {
     await post({ type: 'workflow-history', query: '' }); expect((await state()).runs).toHaveLength(30);
   });
 
+  it('counts running workflows outside the current search and history page', async () => {
+    const { app, post, state } = await service();
+    const c = app.projectController!;
+    const run = await c.start({ entrypointId: 'main', params: { subject: 'Seed' } }); await c.idle();
+    c.runs.splice(0, 1, ...Array.from({ length: 40 }, (_, index) => ({ ...run, id: String(index), title: `Run ${index}`, status: index === 39 ? 'running' as const : 'success' as const })));
+    expect(await state()).toMatchObject({ runningCount: 1, history: { hasMore: true } });
+    await post({ type: 'workflow-history', query: 'Missing run' });
+    expect(await state()).toMatchObject({ runs: [], runningCount: 1 });
+    c.runs.at(-1)!.status = 'waiting_for_input'; expect((await state()).runningCount).toBe(0);
+    c.runs.at(-1)!.status = 'success'; expect((await state()).runningCount).toBe(0);
+  });
+
   it('rejects stale resolver results, keeping drafts isolated per entrypoint and respecting the input mode', async () => {
     const { app, post, runtime: r } = await service();
     let finish!: (value: { params: Record<string, ParamState> }) => void;

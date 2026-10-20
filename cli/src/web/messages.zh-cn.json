@@ -288,6 +288,8 @@
   "Run subtask": "运行子任务",
   "Run timed out": "运行超时",
   "Running": "运行中",
+  "Running conversations: {0}": "运行中的对话：{0}",
+  "Running workflows: {0}": "运行中的工作流：{0}",
   "Running...": "正在运行...",
   "Runs": "运行记录",
   "Save": "保存",
