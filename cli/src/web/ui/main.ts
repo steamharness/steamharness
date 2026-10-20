@@ -19,6 +19,7 @@ import {
   projectParameters,
   projectParamValue,
   mergeProjectParamStates,
+  messageSettled,
   sessionRunning,
   type ConversationMessage, type ConversationSession, type ConversationDraftUpdate, type Project, type Field,
   type ParamValues, type ParamValue, type ParamState, type ParamRequest,
@@ -810,7 +811,7 @@ function initialize(): void {
   function updateMessage(view: MessageView, message: ConversationMessage): void {
     view.message = message;
     view.root.classList.toggle('streaming', message.status === 'running' || message.status === 'sending');
-    view.root.querySelector<HTMLElement>('.message-actions')!.hidden = message.role === 'assistant' && !!message.pendingInput;
+    view.root.querySelector<HTMLElement>('.message-actions')!.hidden = message.role === 'assistant' && !messageSettled(message);
     for (const action of view.root.querySelectorAll<HTMLButtonElement>('.trace-message, .export-message')) action.hidden = submissions.local(message);
     updateMessageMetadata(view);
     if (message.role === 'user') { view.content.textContent = message.content; }

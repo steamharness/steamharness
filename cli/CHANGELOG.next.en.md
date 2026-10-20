@@ -6,7 +6,7 @@
 
 - [Fixed] Show the latest plan document and its approval state in the task sidebar even when the model does not call `update_plan`. Keep the correct plan through revisions, execution and reopening using approval boundaries; execution steps remain separately persisted and editable.
 
-- [Fixed] Hide answer footer actions while awaiting plan approval or user input. Retain original and revised plans, decisions and execution output across resumed reports and durable snapshots. Reopening durable history restores the complete plan from saved snapshots without rerunning models or tools.
+- [Fixed] Hide answer footer actions while sending, running, awaiting plan approval or user input, or stopping. Show Trace, copy, retry and export once the answer has finished, keeping actions available for finished historical answers. Retain original and revised plans, decisions and execution output across resumed reports and durable snapshots. Reopening durable history restores the complete plan from saved snapshots without rerunning models or tools.
 
 - [Fixed] Display durable usage per answer turn with call, input, output and cache details, keeping other forks out of the original answer. The composer ring uses the open conversation's latest standard outputs after follow-ups, forks, compaction and resets, and labels nonzero occupancy below one percent explicitly.
 

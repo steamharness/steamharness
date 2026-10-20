@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot, AgentSessionTurn } from 'steamharness/agent';
 import { ConversationController } from '../web/conversation-controller';
-import type { Project, Report, Runtime } from '../web/workflow-types';
+import { messageSettled, type Project, type Report, type Runtime } from '../web/workflow-types';
 
 const controllers: ConversationController[] = [];
 afterEach(() => { for (const controller of controllers.splice(0)) controller.dispose(); });
@@ -47,6 +47,7 @@ it('deduplicates a committed durable turn without requiring saved input presenta
 it('keeps the owner alive after its inline answer and confirms a lost IPC receipt from the durable snapshot', async () => {
   const f = fixture(); await f.start();
   expect(f.controller.running).toBe(false); expect(f.controller.hasRuns).toBe(true);
+  expect(f.controller.current.activeRunId).toBeTruthy(); expect(messageSettled(f.controller.current.messages[1])).toBe(true);
   vi.mocked(f.runtime.agentControl!).mockImplementation(() => new Promise(() => {}));
   const pending = f.controller.agentCommand(f.controller.current.id, { type: 'plan', requestId: 'plan', expectedVersion: 0, items: [] });
   await vi.waitFor(() => expect(f.runtime.agentControl).toHaveBeenCalledOnce());

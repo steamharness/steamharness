@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ConversationController } from '../web/conversation-controller';
 import { composerOutputItems } from '../web/ui/output-display';
-import type { ConversationSession, InputRequest, Project, Report, Runtime } from '../web/workflow-types';
+import { messageSettled, type ConversationMessage, type ConversationSession, type InputRequest, type Project, type Report, type Runtime } from '../web/workflow-types';
 
 function fixture() {
   const project: Project = { id: 'test', uri: '', folderPath: '/test', name: 'Conversation', projectType: 'conversation', fields: [], entrypoints: [] };
@@ -13,6 +13,40 @@ function fixture() {
   const controller = new ConversationController(project, runtime, {}, { save, changed: vi.fn(), log: vi.fn() });
   return { controller, runtime, save };
 }
+
+describe('Conversation answer action visibility', () => {
+  it.each(['sending', 'running', 'waiting_for_input'])('keeps actions hidden while the answer is %s', status => {
+    expect(messageSettled({ role: 'assistant', content: 'Partial answer', status })).toBe(false);
+  });
+
+  it.each(['success', 'failed', 'aborted', 'timed_out', undefined])('allows actions for a finished answer with status %s', status => {
+    expect(messageSettled({ role: 'assistant', content: 'Finished answer', status })).toBe(true);
+  });
+
+  it('waits for outstanding approval, submission and cancellation instead of exposing terminal actions early', () => {
+    const answer: ConversationMessage = { role: 'assistant', content: 'Plan', status: 'success' };
+    const request = { requestId: 'approval', nodeName: 'gate', title: 'Approve?', params: [] };
+    expect(messageSettled({ ...answer, pendingInput: request })).toBe(false);
+    expect(messageSettled({ ...answer, submittingInput: { ...request, values: {}, submittedAt: '2026-10-20T00:00:00Z' } })).toBe(false);
+    expect(messageSettled({ ...answer, status: 'aborted', cancelRequested: true })).toBe(false);
+    expect(messageSettled({ ...answer, status: 'failed', recovering: true })).toBe(true);
+  });
+
+  it('retains finished historical actions while the next answer runs and restores its actions after failure', async () => {
+    const { controller, runtime } = fixture();
+    vi.mocked(runtime.run).mockResolvedValueOnce({ status: 'success' });
+    await controller.send({ text: 'First', params: {}, attachments: [] }); await controller.idle();
+    const first = controller.current.messages.at(-1)!;
+    let finish!: (report: Report) => void;
+    vi.mocked(runtime.run).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    await controller.send({ text: 'Second', params: {}, attachments: [] });
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    const current = controller.current.messages.at(-1)!;
+    expect(controller.running).toBe(true); expect(messageSettled(first)).toBe(true); expect(messageSettled(current)).toBe(false);
+    finish({ status: 'failed' }); await controller.idle();
+    expect(messageSettled(current)).toBe(true); controller.dispose();
+  });
+});
 
 describe('Conversation execution lifecycle', () => {
   it.each(['message-time', 'array-order'] as const)('restores legacy conversation selection using %s when session timestamps are missing', kind => {

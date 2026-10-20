@@ -261,6 +261,11 @@ export interface ConversationSession {
 
 export interface ConversationDraftUpdate { id: string; create?: boolean; draft: NonNullable<ConversationSession['draft']> }
 
+export function messageSettled(message: ConversationMessage): boolean {
+  return !['sending', 'running', 'waiting_for_input'].includes(message.status ?? '')
+    && !message.pendingInput && !message.submittingInput && !message.cancelRequested;
+}
+
 export function sessionRunning(session: ConversationSession): boolean {
   if (!session.agent) return !!session.activeRunId;
   const id = session.agentConversationId ?? session.agent.conversationId;
