@@ -33,7 +33,7 @@ const deferred = () => {
 const RunDoc = defineDocFamily({
   kind: "project.agent.run", version: 1, scope: "conversation", history: "latest", fork: "initial", family: true,
   initial: () => ({ cutoff: 0, initialized: false as boolean, approvals: {} as JsonObject, usage: {} as JsonObject,
-    retries: {} as JsonObject, continuations: {} as JsonObject, failure: "", end: 0 }),
+    retries: {} as JsonObject, continuations: {} as JsonObject, pendingRetries: {} as JsonObject, failure: "", end: 0 }),
 });
 
 export interface DurableAgentState {
@@ -346,7 +346,8 @@ export class DurableAgent {
             }
             const prompt = createAgentStreamResumePrompt({ kind, reason, keptPartial: message.content.length > 0 });
             run.continuations[api.taskId] = prompt;
-            await tx.appendEntry(root.id, { kind: "project.retry", data: { attempt, maxAttempts, reason, kind } });
+            // onYield precedes the assistant commit; its successor publishes the retry after that answer.
+            (run.pendingRetries ??= {})[api.taskId] = { attempt, maxAttempts, reason, kind };
             return prompt;
           }, context);
           return continuation === undefined ? undefined : { continue: continuation };
@@ -354,6 +355,13 @@ export class DurableAgent {
         beforeRequest: async (_request, api) => {
           const root = (await harness.conversation(api.conversationId, context))!;
           const logicalRequestId = this.session ? await this.session.requestIdFor(root.id) : requestId;
+          await root.commit(async tx => {
+            const run = await tx.doc(RunDoc, root.id, logicalRequestId, null);
+            for (const [taskId, data] of Object.entries(run.pendingRetries ?? {})) {
+              await tx.appendEntry(root.id, { kind: "project.retry", data });
+              delete run.pendingRetries[taskId];
+            }
+          }, context);
           this.attemptId = `${api.taskId}:${randomUUID()}`;
           if (this.options.session) {
             const { ProviderDoc } = await import("@earendil-works/pi-durable");
@@ -716,6 +724,9 @@ export class DurableAgent {
         break;
       }
       case "message_end": if (event.entry.id > cutoff) await this.entry(event.entry, false); break;
+      case "entry_appended":
+        if (event.entry.id > cutoff && event.entry.kind === "project.retry") await this.entry(event.entry, false);
+        break;
       case "tool_execution_start": await this.toolStart(event.toolCallId, event.toolName, event.args); break;
       case "tool_execution_update": await this.emit({ ...event, toolCallId: this.projectedCalls.get(event.toolCallId)?.id ?? event.toolCallId, partialResult: event.details } as AgentEvent); break;
       case "tool_execution_end": {

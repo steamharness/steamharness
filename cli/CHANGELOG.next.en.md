@@ -2,6 +2,8 @@
 
 ### Pi Durable
 
+- [Fixed] Keep automatic retry records at the affected response's interruption point, followed by resumed content. Completing a run or reopening history no longer appends Retry below the complete answer; details still expand in place.
+
 - Move the complete durable Agent task panel into Studio Trace. Remove the CLI Web sidebar, entry and width state while retaining transcripts, queues and forks. The host bridge carries deduplicated task snapshots, plan approval boundaries and explicit conversation controls, validates owners and returns action errors.
 
 - [Fixed] Show the latest plan document and its approval state in the task sidebar even when the model does not call `update_plan`. Keep the correct plan through revisions, execution and reopening using approval boundaries; execution steps remain separately persisted and editable.

@@ -97,13 +97,15 @@ Pi Durable Harness 是唯一执行历史来源。会话节点按项目存储目�
 | --- | --- |
 | `agent-session` | 版本化会话快照，供任务/计划/记录/用量视图投影；不得作为主回答或详情正文显示。 |
 | `agent-answer` | 助手回答，`contentType: "markdown"`、不折叠，直接平铺在对话正文里。只在**宿主驱动的运行**里产出：适配器按 id 读回响应正文，那里必须是整轮完整文本。 |
-| `agent-part` | 详情行，`metadata.partType` 取 `reasoning`、`text`、`tool`、`compaction`、`plan`、`patch` 或 `file`。 |
+| `agent-part` | 详情行，`metadata.partType` 取 `reasoning`、`text`、`tool`、`retry`、`compaction`、`plan`、`patch` 或 `file`。 |
 | `agent-notice` | 提示或计划正文；计划带 `metadata.plan: true`，审批结果等普通提示不带该标记。 |
 | `agent-error` | 运行失败。 |
 
 `partType: "text"` 是会话运行写的正文：两条活动行之间的每段文字各占一行，写在它被说出的位置——模型先说一句再调用工具时，那句话就在那次调用的上方，而不是跟在末尾。会话消息的正文由这些行按顺序拼回。宿主驱动的运行不用这些行，它的正文全部流进 `agent-answer` 那一个条目。
 
 正文回答不会因为 `finishReason`、usage 等响应元数据被塞进详情块。
+
+自动重试以折叠的 `partType: "retry"` 详情行显示在中断内容之后、续写内容之前。实时输出、持久会话的 `turns[].items` 和历史恢复保留相同顺序，运行结束不会把该记录再追加到回答末尾。
 
 共享运行界面将带 `metadata.plan: true` 的计划显示为预览卡片；点击卡片可阅读完整 Markdown，关闭后回到原卡片。计划卡片保留在原输出位置，运行结果和历史回放使用相同展示。普通回答继续平铺在对话正文中。
 

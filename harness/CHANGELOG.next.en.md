@@ -2,6 +2,8 @@
 
 ### Pi Durable
 
+- [Fixed] Emit automatic retry records after interrupted content and before its continuation instead of appending them at completion. Durable sessions and reopened history retain their position and collapsed details.
+
 - [Fixed] Project durable model usage per answer turn without mixing independent forks, inherited history or follow-ups, while retaining failed retries and in-turn compaction consumption. Publish current context occupancy per conversation through follow-ups, streaming, compaction and reset; uncalibrated estimates include actual system instructions, prompt sections and tool declarations.
 
 - Fix durable streaming of thinking, text and tool block starts and deltas, preventing sparse content indices, type access failures and repeated text. Runtime exceptions settle unfinished tasks and queues under the same owner, persist the failure and publish current terminal state, so reopening cannot continue failed work. Normal host shutdown still preserves recovery checkpoints.

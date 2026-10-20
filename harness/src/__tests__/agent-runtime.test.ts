@@ -1394,6 +1394,9 @@ test("a stream cut off mid-answer is continued rather than failed", async () => 
     assert.equal(retries[0]?.attempt, 1);
     assert.equal(retries[0]?.maxAttempts, 10);
     assert.equal(retries[0]?.reason, "terminated");
+    assert.deepEqual(events.flatMap(event => event.type === "text_delta" ? [`text:${event.delta}`]
+      : event.type === "retry" ? [`retry:${event.attempt}`] : []),
+    ["text:half an answer", "retry:1", "text: and the rest"]);
   });
 
   // The half answer is what the continuation is asked from. Sending the

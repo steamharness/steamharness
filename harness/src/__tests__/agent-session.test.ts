@@ -47,6 +47,37 @@ function reportScriptedUsage(instance: DurableAgent, messages: ai.AssistantMessa
   };
 }
 
+test("retry records stay between interrupted and resumed text in live and reopened turns", async t => {
+  const directory = await mkdtemp(path.join(tmpdir(), "agent-session-retry-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const database = path.join(directory, "session.sqlite"), first = session({ compaction: { enabled: false } }, database);
+  first.faux.setResponses([
+    ai.fauxAssistantMessage("Before interruption", { stopReason: "error", errorMessage: "terminated" }),
+    ai.fauxAssistantMessage("After first retry", { stopReason: "error", errorMessage: "terminated" }),
+    ai.fauxAssistantMessage("Final answer"),
+  ]);
+  first.instance.requestId = "retry-turn";
+  const running = first.instance.prompt("Continue after interruptions");
+  t.after(async () => { first.lease.resolve(); await running; await first.instance.close(); });
+  await until(() => first.snapshot()?.turns.some(turn => turn.status === "done"));
+  const items = first.snapshot().turns.find(turn => turn.requestId === "retry-turn")!.items;
+  assert.deepEqual(items.map(item => item.metadata?.partType), ["text", "retry", "text", "retry", "text"]);
+  const retries = items.filter(item => item.metadata?.partType === "retry");
+  assert.equal(new Set(retries.map(item => item.id)).size, 2);
+  assert.ok(retries.every(item => item.collapsed));
+  assert.deepEqual(retries.map(item => {
+    const content = item.content as { attempt: number; maxAttempts: number; reason: string };
+    return [content.attempt, content.maxAttempts, content.reason];
+  }), [[1, 10, "terminated"], [2, 10, "terminated"]]);
+  first.lease.resolve(); await running; await first.instance.close();
+  const reopened = session({ compaction: { enabled: false } }, database);
+  reopened.instance.requestId = "retry-turn"; reopened.lease.resolve();
+  t.after(() => reopened.instance.close());
+  await reopened.instance.prompt("Continue after interruptions");
+  assert.equal(reopened.faux.state.callCount, 0);
+  assert.deepEqual(reopened.snapshot().turns.find(turn => turn.requestId === "retry-turn")!.items, items);
+});
+
 test("turn usage and live context isolate forks, cached tool rounds and SQLite replay", async t => {
   const directory = await mkdtemp(path.join(tmpdir(), "agent-session-usage-"));
   t.after(() => rm(directory, { recursive: true, force: true }));

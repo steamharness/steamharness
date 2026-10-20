@@ -12,6 +12,9 @@ import type { RunOutputItemInput } from "../node/output/index";
 import type { TokenUsageAggregate } from "../token-usage/index";
 import { estimateAgentContextTokens, readAgentContextUsage } from "./compaction";
 import { durableContextMessages } from "./durable-context";
+import { createAgentRetryChunks } from "./output-items";
+import { createAgentStreamRetryText } from "./plan";
+import type { AgentTurnContinuationKind } from "./types";
 import type { AgentPlanItem, AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt, AgentSessionResources, AgentSessionSnapshot, AgentSessionTask, AgentSessionTurn } from "./session-types";
 
 const SessionDoc = defineDoc({
@@ -640,11 +643,21 @@ export function projectSessionEntries(entries: readonly EntryRecord[], partial: 
       }
     }
   };
-  for (const entry of entries) for (const message of entry.model ?? []) {
-    if (message.role === "assistant") append(message, String(entry.id));
-    if (message.role === "toolResult") {
-      const item = calls.get(message.toolCallId);
-      if (item) { item.content = { ...object(item.content), output: { content: message.content, details: message.details }, status: message.isError ? "failed" : "success" }; item.metadata!.status = message.isError ? "failed" : "success"; }
+  for (const entry of entries) {
+    if (entry.kind === "project.retry") {
+      const data = object(entry.data), attempt = Number(data.attempt), maxAttempts = Number(data.maxAttempts ?? 10);
+      const retry = createAgentStreamRetryText({ attempt, maxAttempts, kind: data.kind as AgentTurnContinuationKind | undefined });
+      for (const chunk of createAgentRetryChunks({ itemId: `agent-session-${scope}-${entry.id}-retry`, attempt, maxAttempts,
+        reason: String(data.reason), title: retry.title, message: retry.content })) {
+        if (chunk.type === "output_item_start") items.push(chunk.item);
+      }
+    }
+    for (const message of entry.model ?? []) {
+      if (message.role === "assistant") append(message, String(entry.id));
+      if (message.role === "toolResult") {
+        const item = calls.get(message.toolCallId);
+        if (item) { item.content = { ...object(item.content), output: { content: message.content, details: message.details }, status: message.isError ? "failed" : "success" }; item.metadata!.status = message.isError ? "failed" : "success"; }
+      }
     }
   }
   if (partial) append(partial, "partial");

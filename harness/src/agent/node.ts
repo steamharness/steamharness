@@ -482,6 +482,7 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
           case "retry": {
             produced = true;
             yield* closeText();
+            yield* flushReasoning();
             const retry = createAgentStreamRetryText({
               attempt: event.attempt,
               maxAttempts: event.maxAttempts,

@@ -1137,12 +1137,28 @@ test("a stream cut off mid-answer is continued, and the turn says so", async () 
     const rows = result.items.filter((item) => item.metadata?.["partType"] === "retry");
     assert.equal(rows.length, 1, "the interruption has to be visible, not silent");
     assert.equal(rows[0]?.collapsed, true);
+    assert.deepEqual(result.items.filter(item => item.metadata?.["kind"] === AGENT_OUTPUT_KINDS.part)
+      .map(item => item.metadata?.["partType"]), ["text", "retry", "text"]);
 
     const text = result.items
       .map((item) => (typeof item.content === "string" ? item.content : ""))
       .join("");
     assert.match(text, /half an answer/);
     assert.match(text, /and the rest/);
+  });
+});
+
+test("a retry follows interrupted thinking before the resumed answer", async () => {
+  const { ai, faux, models, model } = await createFauxModel();
+  faux.setResponses([
+    ai.fauxAssistantMessage([ai.fauxThinking("Partial reasoning")], { stopReason: "error", errorMessage: "terminated" }),
+    ai.fauxAssistantMessage("Recovered answer"),
+  ] as never[]);
+  await withTempDir(async workdir => {
+    const executor = defineAgentConversationExecutor({ models, resolvedModel: model });
+    const result = await executor.workflow.run({ prompt: "Think then answer", errCode: 0, errMessage: "", workdir }, createContext("thinking-retry"));
+    assert.deepEqual(result.items.filter(item => item.metadata?.kind === AGENT_OUTPUT_KINDS.part)
+      .map(item => item.metadata?.partType), ["reasoning", "retry", "text"]);
   });
 });
 
