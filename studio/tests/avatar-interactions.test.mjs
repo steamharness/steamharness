@@ -25,7 +25,7 @@ test('project avatar patches apply repeatedly to the pinned kernel without chang
   const git = args => execFileSync('git', args, { cwd: kernel, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   git(['init', '-q']);
   await mkdir(path.join(fixture, 'patches'));
-  const patches = ['0031-studio-project-avatars.patch', '0032-studio-avatar-actions.patch'];
+  const patches = ['0031-studio-project-avatars.patch', '0032-studio-avatar-actions.patch', '0033-studio-start-recent-avatar-spacing.patch'];
   for (const name of patches) {
     await copyFile(path.join(ROOT, 'patches', name), path.join(fixture, 'patches', name));
   }

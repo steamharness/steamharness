@@ -1,0 +1,13 @@
+diff --git a/src/vs/workbench/browser/parts/editor/media/studioStart.css b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+index ca73a8b68b8..bbe6f61bf58 100644
+--- a/src/vs/workbench/browser/parts/editor/media/studioStart.css
++++ b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+@@ -64,6 +64,8 @@
+ .studio-start-project-path { margin:0; min-height:36px; font-size:12px; line-height:18px; color:var(--vscode-descriptionForeground); overflow-wrap:anywhere; }
+ .studio-start-project-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:auto; padding-top:14px; }
+ .studio-start-project { display:grid; grid-template-columns:minmax(0,1fr) 32px; align-items:start; gap:4px; }
++.studio-start-recent [data-action="studio.openRecentProject"] { grid-template-columns:24px minmax(0,1fr); align-items:center; gap:12px; }
++.studio-start-recent [data-action="studio.openRecentProject"] > .codicon { justify-self:center; }
+ .studio-start-recent [data-action="studio.removeRecentProject"] { opacity:0; pointer-events:none; }
+ .studio-start-recent .studio-start-project:hover > [data-action="studio.removeRecentProject"], .studio-start-recent .studio-start-project:focus-within > [data-action="studio.removeRecentProject"] { opacity:1; pointer-events:auto; }
+ .studio-start-stats { display:grid; grid-template-columns:minmax(90px,auto) minmax(0,1fr); gap:0 16px; margin:0 0 12px; line-height:20px; }

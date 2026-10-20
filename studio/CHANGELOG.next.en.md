@@ -64,6 +64,7 @@
 
 ### Fixed
 
+- Fixed recent-project avatars touching their names on Start, with consistent spacing and label alignment for project avatars and folder icons.
 - Fix profile image data URLs being discarded in Studio. Refresh avatars and names when returning to the window and periodically, preserving the active connection and ignoring stale refresh results.
 - Fixed the Start logo moving above its title in narrow editor groups; the logo stays beside the title and actions wrap based on the editor width.
 - Fixed transfers potentially uploading or downloading a prior selection through a new account after switching accounts during project selection, saves, or progress startup.
