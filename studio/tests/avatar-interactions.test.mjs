@@ -24,14 +24,21 @@ test('project avatar patches apply repeatedly to the pinned kernel without chang
   }
   const git = args => execFileSync('git', args, { cwd: kernel, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   git(['init', '-q']);
+  await mkdir(path.join(fixture, 'patches'));
+  const patches = ['0031-studio-project-avatars.patch', '0032-studio-avatar-actions.patch'];
+  for (const name of patches) {
+    await copyFile(path.join(ROOT, 'patches', name), path.join(fixture, 'patches', name));
+  }
+  for (const name of [...patches].reverse()) {
+    const patch = path.join(fixture, 'patches', name);
+    try { git(['apply', '--reverse', '--check', patch]); }
+    catch { continue; }
+    git(['apply', '--reverse', patch]);
+  }
   git(['add', '--all']);
   git(['-c', 'user.name=Studio Test', '-c', 'user.email=studio@example.invalid', '-c', 'commit.gpgsign=false',
     '-c', `core.hooksPath=${path.join(fixture, 'hooks')}`, 'commit', '--quiet', '-m', 'pinned kernel fixture']);
   const index = git(['write-tree']);
-  await mkdir(path.join(fixture, 'patches'));
-  for (const name of ['0031-studio-project-avatars.patch', '0032-studio-avatar-actions.patch']) {
-    await copyFile(path.join(ROOT, 'patches', name), path.join(fixture, 'patches', name));
-  }
   await applyPatches(fixture, kernel);
   const first = await Promise.all(files.map(file => readFile(path.join(kernel, file), 'utf8')));
   await applyPatches(fixture, kernel);
