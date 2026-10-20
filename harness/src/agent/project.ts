@@ -329,7 +329,13 @@ export function createAgentProjectParams(options: AgentProjectOptions = {}): Con
           type: "string",
           required: false,
           label: "模型属性（JSON）",
-          description: "自定义端点模型的属性：input / reasoning / contextWindow / maxTokens / cost / thinkingLevelMap。使用系统 AI 时由目录提供，无需填写。",
+          description: "自定义端点模型的属性：input / reasoning / webSearch / contextWindow / maxTokens / cost / thinkingLevelMap。使用系统 AI 时由目录提供，无需填写。",
+        },
+        {
+          name: "webSearch", flag: "--web-search", type: "string", required: false,
+          label: "联网搜索", description: "自动跟随模型能力；可显式开启或关闭 OpenAI / Anthropic 原生搜索。",
+          control: "select", defaultValue: options.webSearch === undefined ? "" : String(options.webSearch),
+          options: [{ value: "", label: "自动" }, { value: "true", label: "开启" }, { value: "false", label: "关闭" }],
         },
       ],
     },
@@ -512,6 +518,14 @@ function createAgentInputFromArgs(
         if (raw !== undefined) {
           input.modelAttributes = parseAgentModelAttributes(raw);
         }
+        break;
+      }
+      case "--web-search": {
+        const value = args[++index] ?? "";
+        if (value !== "" && value !== "true" && value !== "false") {
+          throw new HarnessError({ type: "input_validation", message: "--web-search must be true or false." });
+        }
+        input.webSearch = value === "" ? undefined : value === "true";
         break;
       }
       default:

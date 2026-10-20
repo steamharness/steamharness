@@ -12,6 +12,7 @@ import type { AgentInputModality, AgentModelAttributes, AgentModelCost } from ".
 const MODEL_ATTRIBUTE_KEYS: ReadonlySet<string> = new Set([
   "name",
   "reasoning",
+  "webSearch",
   "input",
   "cost",
   "contextWindow",
@@ -58,6 +59,9 @@ export function parseAgentModelAttributes(value: unknown): AgentModelAttributes 
   }
   if ("reasoning" in record) {
     attributes.reasoning = readBoolean(record.reasoning, "reasoning");
+  }
+  if ("webSearch" in record) {
+    attributes.webSearch = readBoolean(record.webSearch, "webSearch");
   }
   if ("input" in record) {
     attributes.input = readInputModalities(record.input);

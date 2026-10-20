@@ -14,6 +14,7 @@ test("model attributes round-trip through the string and object forms", () => {
   const expected = {
     name: "DeepSeek V4.1 Flash",
     reasoning: true,
+    webSearch: true,
     input: ["text", "image"],
     cost: { input: 0.3, output: 1.2, cacheRead: 0.03, cacheWrite: 0 },
     contextWindow: 1_048_576,
@@ -149,6 +150,7 @@ test("the catalogue record becomes agent attributes, window and all", () => {
       thinkingLevelMap: { off: "none", max: "max" },
     })),
     {
+      webSearch: false,
       reasoning: true,
       input: ["text", "image"],
       contextWindow: 1_048_576,
@@ -163,7 +165,7 @@ test("a Server that knows nothing leaves the runtime on its own defaults", () =>
   // All-false capabilities are what an unrecognized model reports; turning
   // those into attributes would pin the model to values nobody chose.
   assert.equal(toAgentModelAttributes(undefined), undefined);
-  assert.equal(toAgentModelAttributes(createDetails({})), undefined);
+  assert.deepEqual(toAgentModelAttributes(createDetails({})), { webSearch: false });
 });
 
 test("the capability summary alone does not decide the model's reasoning", () => {
@@ -175,6 +177,6 @@ test("the capability summary alone does not decide the model's reasoning", () =>
       capabilities: { vision: false, webSearch: false, reasoning: false, toolCalling: false },
       contextWindow: 1_048_576,
     })),
-    { contextWindow: 1_048_576 },
+    { contextWindow: 1_048_576, webSearch: false },
   );
 });

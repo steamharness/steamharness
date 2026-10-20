@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { HarnessError } from "../workflow/errors";
+import { parseAgentWebSearch, type AgentSearchMessage } from "./web-search";
 import { DurableAgent } from "./durable-agent";
 import { withStreamingMessage } from "./durable-context";
 import type { AgentSessionCommand, AgentSessionReceipt } from "./session-types";
@@ -105,6 +106,7 @@ export async function createAgentRuntime(
     baseUrl: options.baseUrl,
     apiKey: options.apiKey,
     apiKind: options.apiKind,
+    webSearch: options.webSearch,
     modelAttributes: options.modelAttributes,
     models: options.models,
     resolvedModel: options.resolvedModel,
@@ -253,6 +255,7 @@ class ProjectAgentRuntime implements AgentRuntime {
       baseUrl: parsed.baseUrl,
       apiKey: parsed.apiKey,
       apiKind: parsed.apiKind,
+      webSearch: parsed.webSearch,
       permissionPolicy: parsed.permissionPolicy,
       modelAttributesKey: stableModelAttributesKey(parsed.modelAttributes),
     };
@@ -272,6 +275,7 @@ class ProjectAgentRuntime implements AgentRuntime {
         baseUrl: next.baseUrl,
         apiKey: next.apiKey,
         apiKind: next.apiKind,
+        webSearch: next.webSearch,
         // A per-run window wins over the attributes, which are the model's own
         // value from the catalogue. Both are absent for a model pi's catalogue
         // can answer, and the catalogue keeps that model's record either way.
@@ -648,6 +652,7 @@ interface AgentConnection {
   baseUrl?: string;
   apiKey?: string;
   apiKind?: AgentApiKind;
+  webSearch?: boolean;
   /** Decides the tool scope, so a change rebuilds the tool set too. */
   permissionPolicy?: AgentPermissionPolicy;
   /**
@@ -683,6 +688,7 @@ function readConnection(options: AgentRuntimeOptions): AgentConnection {
     baseUrl: options.baseUrl,
     apiKey: options.apiKey,
     apiKind: options.apiKind,
+    webSearch: options.webSearch,
     // Mirrors the default `parseAgentInput` applies, so a run that names no
     // policy is not mistaken for a change.
     permissionPolicy: options.permissionPolicy ?? DEFAULT_AGENT_PERMISSION_POLICY,
@@ -696,6 +702,7 @@ function sameModelConnection(left: AgentConnection, right: AgentConnection): boo
     left.baseUrl === right.baseUrl &&
     left.apiKey === right.apiKey &&
     left.apiKind === right.apiKind &&
+    left.webSearch === right.webSearch &&
     left.modelAttributesKey === right.modelAttributesKey;
 }
 
@@ -820,6 +827,7 @@ export function parseAgentInput(
     baseUrl: readOptionalString(input.baseUrl) ?? options.baseUrl,
     apiKey: readOptionalString(input.apiKey) ?? options.apiKey,
     apiKind: input.apiKind ?? options.apiKind,
+    webSearch: parseAgentWebSearch(input.webSearch ?? options.webSearch),
     systemPrompt: readOptionalString(input.systemPrompt) ?? options.systemPrompt,
     effort: resolveRunEffort(input.effort, options.effort),
     agent: parseAgentMode(input.agent ?? options.mode ?? DEFAULT_AGENT_MODE),
@@ -849,6 +857,12 @@ export function normalizeAgentEvent(event: {
   type: string;
   [key: string]: unknown;
 }): AgentStreamEvent[] {
+  if (event.type === "project_web_search") return [{ type: "web_search", search: event["search"] as import("./types").AgentWebSearch }];
+  if (event.type === "message_end") {
+    const message = event["message"] as AgentSearchMessage | undefined;
+    const sources = message?.projectWebSearch?.sources;
+    return sources?.length ? [{ type: "sources", sources }] : [];
+  }
   if (event.type === "project_compaction") return [{ type: "compaction", phase: event["phase"] as "start" | "end",
     auto: event["auto"] === true, ...(typeof event["summary"] === "string" ? { summary: event["summary"] } : {}) }];
   if (event.type === "project_session") return [{ type: "session", snapshot: event["snapshot"] as import("./session-types").AgentSessionSnapshot }];

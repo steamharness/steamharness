@@ -60,6 +60,8 @@ export type {
   AgentRuntime,
   AgentRuntimeOptions,
   AgentStreamEvent,
+  AgentSearchSource,
+  AgentWebSearch,
   AgentToolApprovalRequest,
   AgentToolFactory,
   AgentToolSet,

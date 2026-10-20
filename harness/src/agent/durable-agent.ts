@@ -14,7 +14,9 @@ import type { Api, AssistantMessage, ImageContent, Message, Model, Models, ToolC
 import { createAssistantMessageEventStream, isRetryableAssistantError } from "@earendil-works/pi-ai";
 import { estimateMessageTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { HarnessError } from "../workflow/errors";
-import type { AgentAskResume, AgentContextUsage } from "./types";
+import type { AgentAskResume, AgentContextUsage, AgentWebSearch } from "./types";
+import type { AgentSearchMessage, AgentSearchStreamOptions } from "./web-search";
+import { AGENT_SEARCH_RESUME_PROMPT } from "./web-search";
 import { DEFAULT_AGENT_COMPACTION_SETTINGS, estimateAgentContextTokens, readAgentContextUsage,
   findCompactionSplitIndex, shouldCompactAgent, summarizeAgentMessages, type AgentCompactionSettings } from "./compaction";
 import { createAgentStreamResumePrompt } from "./plan";
@@ -83,6 +85,7 @@ export class DurableAgent {
   private commandReady = deferred();
   private prompting = false;
   private readonly modelAttempts = new Map<string, string>();
+  private rootModelSessionId?: string;
   private readonly registry = createRegistry();
   private readonly listeners = new Set<(event: AgentEvent) => void | Promise<void>>();
   private projected: AgentMessage[];
@@ -102,6 +105,7 @@ export class DurableAgent {
   private attemptId = "";
   private readonly usageEmitted = new Set<string>();
   private readonly approvedCalls = new Set<string>();
+  private readonly searchStates = new Map<string, string>();
   private seeded = false;
   private fatalFailure?: unknown;
   private failActive?: (error: unknown) => void;
@@ -314,6 +318,7 @@ export class DurableAgent {
     const requestId = this.requestId ?? randomUUID();
     this.activeRequest = requestId;
     this.entries.clear(); this.toolsStarted.clear(); this.toolsEnded.clear(); this.projectedCalls.clear();
+    this.searchStates.clear();
     this.compactionsStarted.clear(); this.compactionsEnded.clear();
     this.usageEmitted.clear();
     this.state.errorMessage = undefined;
@@ -343,6 +348,27 @@ export class DurableAgent {
         onYield: async (message, api) => {
           const root = (await harness.conversation(api.conversationId, context))!;
           const logicalRequestId = this.session ? await this.session.requestIdFor(root.id) : requestId;
+          if (message.rawStopReason === "pause_turn" && (message as AgentSearchMessage).projectWebSearch) {
+            const continuation = await root.commit(async tx => {
+              const run = await tx.doc(RunDoc, root.id, logicalRequestId, null);
+              const existing = run.continuations[api.taskId];
+              if (typeof existing === "string") return existing;
+              if (existing === false) return;
+              const attempt = Number(run.continuations["count:search"] ?? 0) + 1;
+              run.continuations["count:search"] = attempt;
+              if (attempt > 3) {
+                run.continuations[api.taskId] = false;
+                run.failure = "The provider paused web search more than 3 times. Retry or narrow the search.";
+                for (const search of (message as AgentSearchMessage).projectWebSearch!.searches) if (search.status === "running") {
+                  search.status = "failed"; search.error = run.failure;
+                }
+                return;
+              }
+              run.continuations[api.taskId] = AGENT_SEARCH_RESUME_PROMPT;
+              return AGENT_SEARCH_RESUME_PROMPT;
+            }, context);
+            return continuation === undefined ? undefined : { continue: continuation };
+          }
           const kind = (message as InterruptedMessage).projectInterrupted ? "dropped"
             : message.stopReason === "length" && message.content.length > 0 ? "length"
             : message.stopReason === "toolUse" && !message.content.some(block => block.type === "toolCall") ? "lost-call" : undefined;
@@ -399,6 +425,7 @@ export class DurableAgent {
             const { ProviderDoc } = await import("@earendil-works/pi-durable");
             const identity = await harness.snapshot(ProviderDoc, root.id, context);
             if (identity?.sessionId) this.modelAttempts.set(identity.sessionId, this.attemptId);
+            if (root.id === this.root!.id) this.rootModelSessionId = identity?.sessionId;
           }
           const partials = history.entries.filter(entry => entry.byTaskId === api.taskId &&
             entry.model?.[0]?.role === "assistant" && entry.model[0].stopReason === "aborted" &&
@@ -697,7 +724,11 @@ export class DurableAgent {
 
   private streamModel(...args: Parameters<Models["streamSimple"]>): ReturnType<Models["streamSimple"]> {
     if (this.fatalFailure !== undefined) throw this.fatalFailure;
-    const source = this.models.streamSimple(...args);
+    const source = this.models.streamSimple(args[0], args[1], { ...args[2],
+      onAgentWebSearch: (search: AgentWebSearch) => {
+        if (!this.options.session || args[2]?.sessionId === this.rootModelSessionId) return this.emitWebSearch(search);
+      },
+    } as AgentSearchStreamOptions);
     const stream = createAssistantMessageEventStream();
     const requestId = this.activeRequest;
     const recordId = this.options.session ? this.modelAttempts.get(args[2]?.sessionId ?? "") ?? `aux:${randomUUID()}` : this.attemptId;
@@ -733,6 +764,13 @@ export class DurableAgent {
     if (this.usageEmitted.has(recordId)) return;
     this.usageEmitted.add(recordId);
     await this.emit({ type: "project_usage", recordId, usage } as unknown as AgentEvent);
+  }
+
+  private async emitWebSearch(search: AgentWebSearch): Promise<void> {
+    const key = JSON.stringify(search);
+    if (this.searchStates.get(search.id) === key) return;
+    this.searchStates.set(search.id, key);
+    await this.emit({ type: "project_web_search", search } as unknown as AgentEvent);
   }
 
   private async flushUsage(): Promise<void> {
@@ -813,6 +851,7 @@ export class DurableAgent {
       const message = original.role === "assistant" && original.stopReason === "aborted"
         ? { ...original, content: original.content.filter(block => block.type !== "toolCall") } : original;
       if (message.role === "assistant") {
+        for (const search of (message as AgentSearchMessage).projectWebSearch?.searches ?? []) await this.emitWebSearch(search);
         for (const call of message.content) if (call.type === "toolCall") {
           this.projectedCalls.set(call.id, { id: `${entry.id}:${call.id}`, arguments: call.arguments });
         }

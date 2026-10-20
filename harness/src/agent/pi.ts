@@ -11,6 +11,7 @@ import type { AgentThinkingLevel } from "./effort";
 import type { AgentModelAttributes } from "./types";
 import type { TypeboxLike } from "./tools";
 import { HarnessError } from "../workflow/errors";
+import { withAgentWebSearch, resolveAgentWebSearch } from "./web-search";
 
 /**
  * How many times one model call may be retried before the run fails.
@@ -157,6 +158,7 @@ export interface PiRuntimeOptions {
   baseUrl?: string;
   apiKey?: string;
   apiKind?: AgentApiKind;
+  webSearch?: boolean;
   contextWindow?: number;
   maxTokens?: number;
   /** Collection to resolve against. Tests pass one holding a faux provider. */
@@ -166,8 +168,8 @@ export interface PiRuntimeOptions {
   /**
    * What the caller knows about the model behind `baseUrl`.
    *
-   * The custom-model path is the only consumer: a model the catalogue can
-   * resolve keeps the catalogue's own record.
+   * Model records from the catalogue keep their own attributes. The search
+   * capability also controls native tools for catalogue models.
    */
   modelAttributes?: AgentModelAttributes;
 }
@@ -238,6 +240,12 @@ export async function createPiRuntime(options: PiRuntimeOptions): Promise<PiRunt
     }
     models.setProvider(await createCustomProvider(ai, providerId, model, options));
   }
+
+  const apiKind = model.api === CUSTOM_API_ID
+    ? options.apiKind ?? (providerId === "anthropic" ? "anthropic-messages" : "openai-completions")
+    : model.api;
+  const webSearch = resolveAgentWebSearch(apiKind, options.webSearch, options.modelAttributes?.webSearch);
+  models = withAgentWebSearch(ai, models, { model, apiKind, enabled: webSearch });
 
   return {
     Type: ai.Type,

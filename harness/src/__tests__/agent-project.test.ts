@@ -260,7 +260,7 @@ test("defineAgentConversationExecutor produces a complete conversation executor"
   const paramNames = normalizeProjectParamDeclarations(executor.params).params.map((param) => param.name);
   assert.deepEqual(
     paramNames,
-    ["workdir", "provider", "model", "effort", "agent", "contextWindow", "modelAttributes", "permissionPolicy"],
+    ["workdir", "provider", "model", "effort", "agent", "contextWindow", "modelAttributes", "webSearch", "permissionPolicy"],
   );
 });
 
@@ -1944,4 +1944,47 @@ test("--model-attributes reaches the run as parsed attributes", () => {
 
   assert.deepEqual(input.modelAttributes, { contextWindow: 4_242, input: ["text"] });
   assert.equal(input.prompt, "describe it");
+});
+
+test("--web-search preserves automatic mode and validates explicit per-run choices", () => {
+  for (const [value, expected] of [["", undefined], ["true", true], ["false", false]] as const) {
+    assert.equal(createAgentProjectInput(["--web-search", value, "Search"], {}).webSearch, expected);
+  }
+  assert.equal(createAgentProjectInput(["Search"], {}).webSearch, undefined);
+  assert.throws(() => createAgentProjectInput(["--web-search", "yes", "Search"], {}), /true or false/);
+});
+
+test("native searches render activities and escaped source links without exposing provider replay data", async () => {
+  const { ai, faux, models, model } = await createFauxModel();
+  const message = ai.fauxAssistantMessage("A sourced answer.");
+  const sources = [{ url: "https://example.test/source", title: "Notes [release] <img>" }];
+  Object.assign(message, { projectWebSearch: { api: "anthropic-messages", sources,
+    searches: [{ id: "search-1", status: "success", query: "Latest release", sources }],
+    native: [{ type: "web_search_tool_result", content: [{ encrypted_content: "opaque-provider-search-data" }] }] } });
+  // The faux adapter reconstructs portable messages, so add the provider metadata
+  // where the real adapter wrapper adds it: on the stream's committed message.
+  faux.setResponses([message]);
+  const streamSimple = models.streamSimple.bind(models);
+  models.streamSimple = (...args) => {
+    const source = streamSimple(...args), stream = ai.createAssistantMessageEventStream();
+    void (async () => {
+      for await (const event of source) {
+        if (event.type === "done") Object.assign(event.message, { projectWebSearch: (message as unknown as { projectWebSearch: unknown }).projectWebSearch });
+        stream.push(event);
+      }
+      stream.end(await source.result());
+    })();
+    return stream;
+  };
+  await withTempDir(async workdir => {
+    const executor = defineAgentConversationExecutor({ models, resolvedModel: model });
+    const result = await executor.workflow.run({ prompt: "Search", workdir, errCode: 0, errMessage: "" }, createContext("search-output"));
+    assert.equal(result.toolCallCount, 1);
+    const activity = result.items.find(item => item.metadata?.partType === "tool");
+    assert.equal(activity?.metadata?.status, "success");
+    assert.match(JSON.stringify(activity?.content), /Latest release/);
+    const source = result.items.find(item => item.metadata?.kind === "agent-notice");
+    assert.equal(source?.content, "- [Notes \\[release\\] \\<img\\>](<https://example.test/source>)");
+    assert.doesNotMatch(JSON.stringify(result.items), /encrypted_content|opaque-provider-search-data/);
+  });
 });

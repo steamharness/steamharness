@@ -22,6 +22,9 @@ const node = workflow.createAgentNode({
   model?: string,
   baseUrl?: string,
   apiKey?: string,
+  apiKind?: "openai-responses" | "anthropic-messages" | "openai-completions",
+  modelAttributes?: AgentModelAttributes,
+  webSearch?: boolean,
   effort?: AgentEffort,
   permissionPolicy?: AgentPermissionPolicy,
   mode?: AgentMode,
@@ -92,6 +95,8 @@ Pi Durable Harness 是唯一执行历史来源。会话节点按项目存储目�
 扩展运行通过 `session.registry` 注册任务与 hooks；`createTools` 可返回 `{ tools, catalogs, close? }`，配合 `session.toolSearch: {}` 延迟连接授权目录。启用时还需在工具权限列表声明 `tool_search`；显式启用 `session.codeMode` 时声明 `codemode`，嵌套调用继续使用原工具权限。`session.environment` 指定稳定执行目标，`storage` 可替代自动 SQLite 选择。资源和备份约束见 [扩展执行与恢复](./create-agent.mdx#扩展执行与恢复)。
 
 ## 输出项
+
+模型声明支持联网搜索时默认添加 OpenAI Responses / Anthropic Messages 原生搜索工具，`webSearch: false` 可逐轮关闭。搜索活动使用 `partType: "tool"` 详情行（`tool: "web_search"`），来源使用带可点击链接的 `agent-notice`；`toolCallCount` 包含这些原生搜索活动。搜索与来源随会话保存，也出现在持久会话对应轮次的 `turns[].items` 中；提供方用于续聊的原始搜索内容不显示在输出项中。协议与开关见 [联网搜索](./create-agent.mdx#联网搜索)。
 
 | `metadata.kind` | 含义 |
 | --- | --- |

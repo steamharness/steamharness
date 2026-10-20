@@ -20,6 +20,8 @@ const agent = await workflow.createAgent({
   model?: string,
   baseUrl?: string,
   apiKey?: string,
+  apiKind?: "openai-responses" | "anthropic-messages" | "openai-completions",
+  webSearch?: boolean,
   modelAttributes?: AgentModelAttributes,
   effort?: AgentEffort,
   permissionPolicy?: AgentPermissionPolicy,
@@ -59,6 +61,8 @@ The returned runtime exposes:
 | `provider` / `model` | `string` | Provider and model id. A self-hosted endpoint must also provide `baseUrl`. |
 | `baseUrl` / `apiKey` | `string` | Endpoint and key for a self-hosted gateway. Defaults come from the matching environment variables. |
 | `modelAttributes` | `AgentModelAttributes` | The attribute record for the model a custom endpoint serves. See "Model attributes" below. |
+| `apiKind` | `string` | Custom endpoint protocol. OpenAI native search requires `openai-responses`. |
+| `webSearch` | `boolean` | Follows the model search capability by default. `false` disables it; `true` explicitly enables it. See "Web search" below. |
 | `effort` | `AgentEffort` | Default reasoning effort. |
 | `permissionPolicy` | `AgentPermissionPolicy` | Default permission policy. |
 | `mode` | `AgentMode` | Default run mode. |
@@ -166,6 +170,7 @@ Offline `cancelAgentConversation({ agentStoreDir, conversationId, registry? })` 
 | `images` | `AgentImageInput[]` | Images as `{ data, mimeType }`. |
 | `imageFiles` | `FileReference[]` | Attachments as host file references, resolved through the workflow file store by the run's input node. An unreadable reference, or one that is not an image, ends the turn with an error naming the file rather than quietly dropping the attachment. Once resolved it becomes `images`, and nothing downstream sees that a reference was involved. |
 | `modelAttributes` | `AgentModelAttributes` | Overrides the runtime option of the same name. See "Model attributes" below. |
+| `webSearch` | `boolean` | Follows the model search capability by default. `false` disables it; `true` explicitly enables it. See "Web search" below. |
 | `workdir` | `string` | Overrides the runtime's working directory. |
 | `allowedDirectories` | `string[]` | Overrides the roots the tools may reach. Relative entries resolve against this turn's `workdir`; omitting it leaves `workdir` alone. |
 | `systemPrompt` | `string` | This turn's system prompt. Applies per run and overrides the option of the same name. |
@@ -203,6 +208,7 @@ const agent = await workflow.createAgent({
 | --- | --- | --- |
 | `name` | `string` | Display name, at most 200 characters. Defaults to the model id. |
 | `reasoning` | `boolean` | Whether the model does reasoning at all. |
+| `webSearch` | `boolean` | Whether the endpoint supports native web search. `true` enables it by default. |
 | `input` | `("text" \| "image")[]` | Input modalities the model accepts; `image` decides whether a turn hands pictures to the model. |
 | `cost` | `{ input, output, cacheRead, cacheWrite }` | Per-million-token prices; all four are non-negative numbers. |
 | `contextWindow` | `number` | The context window. |
@@ -213,9 +219,37 @@ Without a declaration the runtime can only fall back to its own description of t
 
 An explicit `contextWindow` / `maxTokens` option still outranks `modelAttributes`, because it is the per-run override the caller passed on purpose. A `modelAttributes` passed on one run overrides the runtime option of the same name.
 
-Attributes written as JSON text (a project param or `--model-attributes`) are validated first: a key outside `name`, `reasoning`, `input`, `cost`, `contextWindow`, `maxTokens` and `thinkingLevelMap`, a mistyped value, or an out-of-range number fails with `input_validation` instead of being silently dropped — a typo that got dropped would make the run look like the model ignored the setting. A programmatic caller that passes the object directly is not re-validated: its fields reach the runtime as given.
+Attributes written as JSON text (a project param or `--model-attributes`) are validated first: a key outside `name`, `reasoning`, `webSearch`, `input`, `cost`, `contextWindow`, `maxTokens` and `thinkingLevelMap`, a mistyped value, or an out-of-range number fails with `input_validation` instead of being silently dropped — a typo that got dropped would make the run look like the model ignored the setting. A programmatic caller that passes the object directly is not re-validated: its fields reach the runtime as given.
 
 `modelAttributes` is for declaring a model on an endpoint owned by the caller. System service configuration is not part of the public workflow configuration surface; public projects should provide their own provider environment variables and model attributes.
+
+## Web search
+
+Agents support OpenAI Responses `web_search` and Anthropic Messages `web_search_20250305` (at most 5 uses per request). Declaring `modelAttributes.webSearch: true` enables it by default. Set the runtime option or per-run `AgentInput.webSearch` to `false` to disable it; a per-run value takes precedence. A custom endpoint with no capability declaration can explicitly enable `webSearch: true`. Enabling search when the capability is explicitly `false`, or with another protocol, fails with `input_validation`.
+
+```ts
+const agent = await workflow.createAgent({
+  provider: "openai",
+  model: "your-search-capable-model",
+  baseUrl: "https://api.openai.com/v1",
+  apiKind: "openai-responses",
+  modelAttributes: { webSearch: true },
+});
+try {
+  for await (const event of agent.run({ prompt: "Find the latest release notes and cite sources", errCode: 0, errMessage: "" })) {
+    if (event.type === "web_search") console.log(event.search);
+    if (event.type === "sources") console.log(event.sources);
+  }
+} finally {
+  await agent.close();
+}
+```
+
+Enabling search adds the provider tool beside existing local tools. The model decides whether to call it. The endpoint and model must support that native tool; this path does not support OpenAI Chat Completions. Context summarization requests do not add search tools.
+
+The `web_search` event carries `search: { id, status, query?, sources, error? }`, where status is `running`, `success`, or `failed`. The `sources` event carries `sources: { url, title?, citedText? }[]`. Search records, citations, and provider content needed for follow-up requests are saved with assistant messages. Valid history is replayed even when search is disabled on the next run; native content is only replayed for the same provider and model. Anthropic `pause_turn` responses resume automatically, with at most 3 continuations before an error.
+
+Convenience Agent projects expose automatic, on, and off choices under model settings: `--web-search ""`, `--web-search true`, and `--web-search false`. Projects with static inline parameters must declare this parameter themselves.
 
 ## Your own tools
 
@@ -291,6 +325,8 @@ Question pauses and plan approval are separate stages: `ask_user` itself neither
 | `text_delta` | Answer text delta. |
 | `thinking_delta` | Reasoning delta. |
 | `tool` | Tool call start / update / end. |
+| `web_search` | A native search snapshot: `search: { id, status, query?, sources, error? }`. |
+| `sources` | Sources returned by the current assistant response: `sources: { url, title?, citedText? }[]`. |
 | `plan` | Plan text start / end. |
 | `compaction` | Compaction start / end; the end event carries the summary. |
 | `retry` | An attempt at carrying on a turn whose stream died mid-answer, hit the model's output limit, or lost a tool call, with `attempt` / `maxAttempts` / `reason` / `kind` (`dropped` / `length` / `lost-call`). |

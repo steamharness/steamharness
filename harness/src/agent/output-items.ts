@@ -1,4 +1,14 @@
 import type { OutputItemStreamChunk, RunOutputItemInput } from "../node/output/index";
+import type { AgentSearchSource } from "./types";
+
+export function formatAgentSearchSources(sources: readonly AgentSearchSource[]): string {
+  return sources.flatMap(source => {
+    try { if (!["http:", "https:"].includes(new URL(source.url).protocol)) return []; } catch { return []; }
+    const label = (source.title || source.url).replace(/[\\`*_[\]{}()!|<>]/g, "\\$&").replace(/[\r\n]/g, " ");
+    const url = source.url.replace(/[\\<>\s]/g, char => encodeURIComponent(char));
+    return [`- [${label}](<${url}>)`];
+  }).join("\n");
+}
 
 /**
  * Output-item metadata this package emits.

@@ -12,9 +12,10 @@ import type { RunOutputItemInput } from "../node/output/index";
 import type { TokenUsageAggregate } from "../token-usage/index";
 import { estimateAgentContextTokens, readAgentContextUsage } from "./compaction";
 import { durableContextMessages } from "./durable-context";
-import { createAgentRetryChunks } from "./output-items";
+import { createAgentRetryChunks, formatAgentSearchSources } from "./output-items";
 import { createAgentStreamRetryText } from "./plan";
 import type { AgentTurnContinuationKind } from "./types";
+import type { AgentSearchMessage } from "./web-search";
 import type { AgentPlanItem, AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt, AgentSessionResources, AgentSessionSnapshot, AgentSessionTask, AgentSessionTurn } from "./session-types";
 
 const SessionDoc = defineDoc({
@@ -633,6 +634,11 @@ export function projectSessionEntries(entries: readonly EntryRecord[], partial: 
   const items: RunOutputItemInput[] = [];
   const calls = new Map<string, RunOutputItemInput>();
   const append = (message: AssistantMessage, id: string) => {
+    const search = (message as AgentSearchMessage).projectWebSearch;
+    for (const activity of search?.searches ?? []) items.push({ id: `agent-session-${scope}-${id}-search-${activity.id}`,
+      title: "Web search", content: { tool: "web_search", input: activity.query ? { query: activity.query } : {},
+        output: { sources: activity.sources }, status: activity.status, ...(activity.error ? { error: activity.error } : {}) },
+      contentType: "json", collapsed: true, metadata: { kind: "agent-part", partType: "tool", status: activity.status } });
     for (const [index, block] of message.content.entries()) {
       const itemId = `agent-session-${scope}-${id}-${index}`;
       if (block.type === "text") items.push({ id: itemId, title: "Output", content: block.text, contentType: "markdown", collapsed: false, metadata: { kind: "agent-part", partType: "text" } });
@@ -642,6 +648,8 @@ export function projectSessionEntries(entries: readonly EntryRecord[], partial: 
         calls.set(block.id, item); items.push(item);
       }
     }
+    if (search?.sources.length) items.push({ id: `agent-session-${scope}-${id}-sources`, title: "Search sources",
+      content: formatAgentSearchSources(search.sources), contentType: "markdown", collapsed: false, metadata: { kind: "agent-notice", status: "success" } });
   };
   for (const entry of entries) {
     if (entry.kind === "project.retry") {

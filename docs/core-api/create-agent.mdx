@@ -20,6 +20,8 @@ const agent = await workflow.createAgent({
   model?: string,
   baseUrl?: string,
   apiKey?: string,
+  apiKind?: "openai-responses" | "anthropic-messages" | "openai-completions",
+  webSearch?: boolean,
   modelAttributes?: AgentModelAttributes,
   effort?: AgentEffort,
   permissionPolicy?: AgentPermissionPolicy,
@@ -60,6 +62,8 @@ const agent = await workflow.createAgent({
 | `provider` / `model` | `string` | 模型提供方与模型 id；自建端点需要同时提供 `baseUrl`。 |
 | `baseUrl` / `apiKey` | `string` | 自建网关或兼容端点的地址与密钥；缺省时从对应环境变量读取。 |
 | `modelAttributes` | `AgentModelAttributes` | 自建端点上该模型的属性声明，见下方「模型属性」。 |
+| `apiKind` | `string` | 自建端点的请求协议；OpenAI 原生搜索须用 `openai-responses`。 |
+| `webSearch` | `boolean` | 默认跟随模型的搜索能力；`false` 关闭，`true` 显式开启。见下方「联网搜索」。 |
 | `effort` | `AgentEffort` | 默认思考强度。 |
 | `permissionPolicy` | `AgentPermissionPolicy` | 默认权限策略。 |
 | `mode` | `AgentMode` | 默认运行模式。 |
@@ -169,6 +173,7 @@ Studio Trace 在原轨迹页旁提供任务、计划、记录、用量四个 tab
 | `images` | `AgentImageInput[]` | `{ data, mimeType }` 形式的图片。 |
 | `imageFiles` | `FileReference[]` | 宿主文件引用形式的附件，由运行时的输入节点通过工作流文件存储解析。不可读或不是图片的引用会让本轮以命名到具体文件的错误结束，而不是静默丢掉附件。解析后它会变成 `images`，下游看不到引用这一步。 |
 | `modelAttributes` | `AgentModelAttributes` | 覆盖运行时选项里的同名项，见下方「模型属性」。 |
+| `webSearch` | `boolean` | 默认跟随模型的搜索能力；`false` 关闭，`true` 显式开启。见下方「联网搜索」。 |
 | `workdir` | `string` | 覆盖运行时的工作目录。 |
 | `allowedDirectories` | `string[]` | 覆盖工具可访问的根目录；相对路径按本轮的 `workdir` 解析，省略时只有 `workdir`。 |
 | `systemPrompt` | `string` | 本轮的系统提示词，逐轮生效并覆盖运行时选项里的同名项。 |
@@ -206,6 +211,7 @@ const agent = await workflow.createAgent({
 | --- | --- | --- |
 | `name` | `string` | 显示名称；不超过 200 个字符，缺省时用模型 id。 |
 | `reasoning` | `boolean` | 模型自身是否具备推理能力。 |
+| `webSearch` | `boolean` | 端点是否支持原生联网搜索；为 `true` 时默认启用。 |
 | `input` | `("text" \| "image")[]` | 该模型接受的输入模态；`image` 决定本轮会不会把图片交给模型。 |
 | `cost` | `{ input, output, cacheRead, cacheWrite }` | 每百万 token 的价格，四项都是非负数字。 |
 | `contextWindow` | `number` | 上下文窗口。 |
@@ -216,9 +222,37 @@ const agent = await workflow.createAgent({
 
 显式传入的 `contextWindow` / `maxTokens` 选项仍然高于 `modelAttributes`，因为那是调用方为这一轮特意给出的覆盖。一次运行里传的 `modelAttributes` 覆盖运行时选项里的同名项。
 
-属性写成 JSON 文本时（项目参数或 `--model-attributes`）会先经过校验：出现 `name`、`reasoning`、`input`、`cost`、`contextWindow`、`maxTokens`、`thinkingLevelMap` 之外的键，或者类型不符、取值越界，都会以 `input_validation` 失败，而不是被静默丢弃——一个拼错的字段被丢掉，运行看起来就像模型忽略了它。编程式调用直接传对象时，Core 不会再替调用方校验一遍，字段按原样交给运行时。
+属性写成 JSON 文本时（项目参数或 `--model-attributes`）会先经过校验：出现 `name`、`reasoning`、`webSearch`、`input`、`cost`、`contextWindow`、`maxTokens`、`thinkingLevelMap` 之外的键，或者类型不符、取值越界，都会以 `input_validation` 失败，而不是被静默丢弃——一个拼错的字段被丢掉，运行看起来就像模型忽略了它。编程式调用直接传对象时，Core 不会再替调用方校验一遍，字段按原样交给运行时。
 
 `modelAttributes` 只用于调用方自建端点的模型声明。系统服务配置不属于公开 workflow 的配置面；公开项目应通过自己的 provider 环境变量提供模型属性。
+
+## 联网搜索
+
+Agent 支持 OpenAI Responses 的 `web_search` 和 Anthropic Messages 的 `web_search_20250305`（每次请求最多使用 5 次）。`modelAttributes.webSearch: true` 声明能力后默认开启；运行时选项或本轮 `AgentInput.webSearch: false` 可关闭，本轮值优先。自建端点未声明能力时，显式 `webSearch: true` 也可开启；能力明确为 `false`，或使用其他协议时，开启请求会报 `input_validation`。
+
+```ts
+const agent = await workflow.createAgent({
+  provider: "openai",
+  model: "your-search-capable-model",
+  baseUrl: "https://api.openai.com/v1",
+  apiKind: "openai-responses",
+  modelAttributes: { webSearch: true },
+});
+try {
+  for await (const event of agent.run({ prompt: "查找最新发布说明并注明来源", errCode: 0, errMessage: "" })) {
+    if (event.type === "web_search") console.log(event.search);
+    if (event.type === "sources") console.log(event.sources);
+  }
+} finally {
+  await agent.close();
+}
+```
+
+开启会在已有本地工具之外添加提供方的搜索工具，由模型决定是否调用。它不强制每轮搜索，也不把搜索交给本地工具执行。端点和所选模型须实际支持该原生工具；OpenAI Chat Completions 协议不支持这条路径。上下文压缩的摘要请求不添加搜索工具。
+
+`web_search` 事件包含 `search: { id, status, query?, sources, error? }`，状态为 `running`、`success` 或 `failed`。`sources` 事件包含 `sources: { url, title?, citedText? }[]`。搜索记录、引用及续聊需要的提供方内容随 assistant 消息保存；关闭下一轮搜索后仍会回传有效历史，切换提供方或模型时不会跨模型回传原生内容。Anthropic 的 `pause_turn` 自动续接，最多 3 次，超出后报错。
+
+便捷 Agent 项目的「模型设置」提供自动、开启、关闭三种选择，对应 `--web-search ""`、`--web-search true`、`--web-search false`。静态内联参数的项目需自行声明该参数。
 
 ## 自带工具
 
@@ -294,6 +328,8 @@ prompt 恰好是 `/compact` 或 `/summarize`，或显式传 `compact: true` 时�
 | `text_delta` | 回答正文增量。 |
 | `thinking_delta` | 推理内容增量。 |
 | `tool` | 工具调用的 start / update / end。 |
+| `web_search` | 原生搜索活动快照，包含 `search: { id, status, query?, sources, error? }`。 |
+| `sources` | 本次 assistant 响应返回的来源，包含 `sources: { url, title?, citedText? }[]`。 |
 | `plan` | plan 正文的 start / end。 |
 | `compaction` | 压缩的 start / end，结束事件会带上摘要。 |
 | `retry` | 回答中途断流、撞上模型输出上限、或工具调用丢失后继续本轮的尝试，带上 `attempt` / `maxAttempts` / `reason` / `kind`（`dropped` / `length` / `lost-call`）。 |

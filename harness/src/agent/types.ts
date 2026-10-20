@@ -99,6 +99,8 @@ export interface AgentModelAttributes {
   name?: string;
   /** Whether the model does reasoning at all. */
   reasoning?: boolean;
+  /** Whether the endpoint supports provider-managed web search. */
+  webSearch?: boolean;
   input?: readonly AgentInputModality[];
   cost?: AgentModelCost;
   /** Context window the "used / total" row divides by. */
@@ -179,6 +181,8 @@ export interface AgentInput extends RunPayload {
   apiKey?: string;
   /** Wire protocol of `baseUrl`; the host's AI bridge sets this per run. */
   apiKind?: AgentApiKind;
+  /** Omit to follow the model's search capability; false disables search. */
+  webSearch?: boolean;
   /**
    * Attributes for the model a custom endpoint serves.
    *
@@ -227,6 +231,7 @@ export interface AgentParsedInput {
   baseUrl?: string;
   apiKey?: string;
   apiKind?: AgentApiKind;
+  webSearch?: boolean;
   systemPrompt?: string;
   effort: AgentEffort;
   agent: AgentMode;
@@ -295,8 +300,24 @@ export interface AgentPendingApproval {
  */
 export type AgentTurnContinuationKind = "dropped" | "length" | "lost-call";
 
+export interface AgentSearchSource {
+  url: string;
+  title?: string;
+  citedText?: string;
+}
+
+export interface AgentWebSearch {
+  id: string;
+  status: "running" | "success" | "failed";
+  query?: string;
+  sources: AgentSearchSource[];
+  error?: string;
+}
+
 export type AgentStreamEvent =
   | { type: "session"; snapshot: AgentSessionSnapshot }
+  | { type: "web_search"; search: AgentWebSearch }
+  | { type: "sources"; sources: AgentSearchSource[] }
   | { type: "text_delta"; delta: string }
   | { type: "thinking_delta"; delta: string }
   | {
@@ -397,6 +418,8 @@ export interface AgentRuntimeOptions {
   apiKey?: string;
   /** Wire protocol of `baseUrl`. Required to reach a Responses-style endpoint. */
   apiKind?: AgentApiKind;
+  /** Omit to enable search only when modelAttributes.webSearch is true. */
+  webSearch?: boolean;
   effort?: AgentEffort;
   permissionPolicy?: AgentPermissionPolicy;
   mode?: AgentMode;

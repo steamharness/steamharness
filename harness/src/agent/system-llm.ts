@@ -198,10 +198,9 @@ export async function startAgentSystemLLMRuntime(options: {
 /**
  * The Server's catalogue record as agent model attributes.
  *
- * Only fields the Server actually carries are copied, and a record with none
- * of them yields `undefined` — a Server that knows nothing about the model
- * must leave the runtime on its own defaults rather than pinning the model to
- * empty values it never chose.
+ * Only fields the Server actually carries are copied. Search availability is
+ * authoritative even when false; unknown models must not enable a native
+ * search tool that the endpoint did not advertise.
  *
  * `capabilities.reasoning` deliberately does not become `attributes.reasoning`:
  * it is the display summary the Server keeps for the model picker, where an
@@ -215,6 +214,7 @@ export function toAgentModelAttributes(
   if (details === undefined) return undefined;
 
   const attributes: AgentModelAttributes = {};
+  attributes.webSearch = details.capabilities.webSearch;
   if (details.reasoning !== undefined) attributes.reasoning = details.reasoning;
   const input = details.input?.filter(isAgentInputModality);
   if (input !== undefined && input.length > 0) attributes.input = input;

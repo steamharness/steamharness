@@ -7,6 +7,7 @@ import * as ai from "@earendil-works/pi-ai";
 import { DurableAgent } from "../agent/durable-agent";
 import type { AgentSessionSnapshot } from "../agent/session-types";
 import { projectSessionUsage } from "../agent/session";
+import type { AgentSearchMessage, AgentSearchStreamOptions } from "../agent/web-search";
 
 function latch() {
   let resolve!: () => void;
@@ -46,6 +47,44 @@ function reportScriptedUsage(instance: DurableAgent, messages: ai.AssistantMessa
     return stream;
   };
 }
+
+test("fork search activities stay in their own turn and never stream into the root answer", async t => {
+  const { instance, faux, lease, snapshot } = session({ compaction: { enabled: false } });
+  faux.setResponses([ai.fauxAssistantMessage("Root answer"), ai.fauxAssistantMessage("Fork answer")]);
+  const base = instance.models.streamSimple.bind(instance.models);
+  let call = 0;
+  instance.models.streamSimple = (...args) => {
+    const search = { id: `search-${++call}`, status: "success" as const, query: `Query ${call}`,
+      sources: [{ url: `https://example.test/${call}`, title: `Source ${call}` }] };
+    const source = base(...args), stream = ai.createAssistantMessageEventStream();
+    void (async () => {
+      await (args[2] as AgentSearchStreamOptions)?.onAgentWebSearch?.(search);
+      for await (const event of source) {
+        if (event.type === "done") (event.message as AgentSearchMessage).projectWebSearch = {
+          api: "anthropic-messages", searches: [search], sources: search.sources, native: [{ encrypted_content: "opaque-data" }],
+        };
+        stream.push(event);
+      }
+      stream.end(await source.result());
+    })();
+    return stream;
+  };
+  const live: string[] = [];
+  instance.subscribe(event => { if (event.type === "project_web_search" as string) live.push((event as unknown as { search: { id: string } }).search.id); });
+  instance.requestId = "root-search";
+  const running = instance.prompt("Search root");
+  t.after(async () => { lease.resolve(); await running; await instance.close(); });
+  await until(() => snapshot()?.turns.some(turn => turn.status === "done"));
+  const root = snapshot().turns.find(turn => turn.requestId === "root-search")!;
+  const fork = await instance.control({ type: "fork", requestId: "fork-search", entryId: root.answerId! });
+  await instance.control({ type: "submit", requestId: "child-search", targetId: fork.forkId, prompt: "Search fork", mode: "followUp" });
+  await until(() => snapshot().turns.some(turn => turn.requestId === "child-search" && turn.status === "done"));
+  assert.deepEqual(live, ["search-1"]);
+  const child = snapshot().turns.find(turn => turn.requestId === "child-search")!;
+  assert.match(JSON.stringify(child.items), /Query 2|Source 2/);
+  assert.doesNotMatch(JSON.stringify(child.items), /opaque-data|encrypted_content/);
+  assert.doesNotMatch(JSON.stringify(root.items), /Query 2/);
+});
 
 test("retry records stay between interrupted and resumed text in live and reopened turns", async t => {
   const directory = await mkdtemp(path.join(tmpdir(), "agent-session-retry-"));

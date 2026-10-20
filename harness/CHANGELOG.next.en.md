@@ -1,5 +1,7 @@
 # Unreleased
 
+- Agents enable native OpenAI / Anthropic web search when the model declares support, with per-run controls, search activities and source links, persisted citations and follow-up context, bounded pause continuations, interruption recovery, and isolated child conversations.
+
 ### Context compaction
 
 - [Fixed] Check context before every model request in ordinary Agents and durable sessions, compacting at 90% by default across tool loops and custom windows. Recover from overflow with bounded retries and summarize oversized history in chunks while retaining tool call pairs, cancellation guarantees and complete usage.

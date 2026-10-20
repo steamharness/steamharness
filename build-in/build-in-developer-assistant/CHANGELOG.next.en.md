@@ -1,5 +1,7 @@
 # Unreleased
 
+- Generator guidance now covers Agent native web search capability declarations, per-run controls, protocol limits, activity and source outputs, and persistent follow-up context.
+
 ### Context compaction
 
 - Update Agent guidance for automatic compaction at 90% before every model request, including tool loops, overflow recovery, bounded summaries and their limits.

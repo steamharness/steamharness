@@ -22,6 +22,9 @@ const node = workflow.createAgentNode({
   model?: string,
   baseUrl?: string,
   apiKey?: string,
+  apiKind?: "openai-responses" | "anthropic-messages" | "openai-completions",
+  modelAttributes?: AgentModelAttributes,
+  webSearch?: boolean,
   effort?: AgentEffort,
   permissionPolicy?: AgentPermissionPolicy,
   mode?: AgentMode,
@@ -92,6 +95,8 @@ Use the external workflow conversationId as scopeId and snapshot numeric `target
 Extension execution uses `session.registry` for tasks and hooks. `createTools` may return `{ tools, catalogs, close? }` with `session.toolSearch: {}` for authorized lazy catalogs. Declare `tool_search` in explicit tool permissions; also declare `codemode` when opting into `session.codeMode`. Nested calls retain their existing permissions. `session.environment` selects a stable execution target, and `storage` replaces automatic SQLite selection. See [extension execution and recovery](./create-agent.mdx#extension-execution-and-recovery) for lifecycle and backup constraints.
 
 ## Output items
+
+When the model declares web search support, the node enables OpenAI Responses or Anthropic Messages native search by default. Set `webSearch: false` per run to disable it. Search activities use `partType: "tool"` detail rows (`tool: "web_search"`); sources use `agent-notice` items with clickable links. `toolCallCount` includes these native search activities. Search records and sources persist with the conversation and appear in the corresponding durable turn’s `turns[].items`. Provider replay content is excluded from output items. See [Web search](./create-agent.mdx#web-search) for protocols and overrides.
 
 | `metadata.kind` | Meaning |
 | --- | --- |

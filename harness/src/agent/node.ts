@@ -25,6 +25,7 @@ import {
   createAgentTextChunks,
   createAgentToolChunks,
   createAgentPlanChunks,
+  formatAgentSearchSources,
   orderAgentOutputItems,
   AGENT_OUTPUT_KINDS,
   AGENT_ANSWER_ITEM_ID,
@@ -376,6 +377,30 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
     try {
       for await (const event of runtime.run(runInput, host)) {
         switch (event.type) {
+          case "web_search": {
+            yield* flushPlanText();
+            yield* closeText();
+            yield* flushReasoning();
+            produced = true;
+            const search = event.search;
+            yield* createAgentToolChunks({ itemId: createAgentOutputItemId(`search-${outputScopeId}-${search.id}`),
+              toolName: "web_search", title: readRuntimeLocaleSafe() === "zh-CN" ? "联网搜索" : "Web search",
+              status: search.status, input: search.query ? { query: search.query } : {},
+              ...(search.status === "running" ? {} : { output: { sources: search.sources }, error: search.error }),
+              started: toolInputs.has(search.id) });
+            toolInputs.set(search.id, search.query);
+            break;
+          }
+          case "sources": {
+            produced = true;
+            yield* flushPlanText();
+            yield* flushReasoning();
+            yield* closeText();
+            yield* createAgentNoticeChunks({ id: `sources-${outputScopeId}-${textIndex++}`,
+              title: readRuntimeLocaleSafe() === "zh-CN" ? "搜索来源" : "Search sources",
+              content: formatAgentSearchSources(event.sources) });
+            break;
+          }
           case "session": {
             const snapshot = { ...event.snapshot, contexts: event.snapshot.contexts.map(scope => ({ ...scope,
               outputs: scope.contextUsage ? [createContextUsageItem(scope.contextUsage, readSessionKey(this.options, context))] : [],
@@ -635,6 +660,7 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
       baseUrl: input.baseUrl ?? this.options.baseUrl,
       apiKey: input.apiKey ?? this.options.apiKey,
       apiKind: input.apiKind ?? this.options.apiKind,
+      webSearch: input.webSearch ?? this.options.webSearch,
       // The run's own attributes are resolved before this (system AI attaches
       // the catalogue's record), so a runtime built for this turn starts on
       // the right model rather than being rebuilt on the first `applyConnection`.
@@ -718,11 +744,12 @@ export async function resolveAgentSystemAIInput(
       baseUrl: runtime.baseUrl,
       apiKey: runtime.apiKey,
       apiKind: runtime.protocol === "anthropic" ? "anthropic-messages" : "openai-responses",
-      // The catalogue fills this in for the model it resolved. A caller that
-      // named its own attributes keeps them: it decided on purpose, and the
-      // catalogue is only ever a better-informed default.
-      ...(input.modelAttributes === undefined && runtime.modelAttributes !== undefined
-        ? { modelAttributes: runtime.modelAttributes }
+      // Keep the caller's attribute overrides while taking native search
+      // availability from the endpoint that will execute the request.
+      ...(runtime.modelAttributes !== undefined
+        ? { modelAttributes: { ...runtime.modelAttributes, ...input.modelAttributes,
+          // Search availability belongs to the endpoint; per-run webSearch is the opt-out.
+          webSearch: runtime.modelAttributes.webSearch } }
         : {}),
     },
     close: () => runtime.close(),
