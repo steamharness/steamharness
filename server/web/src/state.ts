@@ -21,7 +21,7 @@ export type SessionState =
       };
     };
 
-export type DetailTab = "project" | "settings" | "members" | "invitations" | "dependencies" | "knowledge" | "versions" | "kv";
+export type DetailTab = "configurations" | "project" | "settings" | "members" | "invitations" | "dependencies" | "knowledge" | "versions" | "kv";
 
 export type AdminTab = "users" | "roles" | "audit";
 export type SettingsTab = "profile" | "appearance" | "api-keys";

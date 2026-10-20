@@ -96,3 +96,7 @@ Successful calls write the same value to text `content` and `structuredContent`:
 `output` comes only from `report.result.data.output`. Failure, a nonzero business `errCode`, cancellation, or timeout adds a compact `error` and sets `isError: true`. Full reports, node details, stdout, stderr, and internal credentials are never returned. Invalid argument shapes use MCP `InvalidParams`.
 
 KV, PersistentValue, Knowledge, and managed files use the command's supplied or default data directories.
+
+## Project configurations
+
+All three project types expose fields, named profiles and complete import/export. Studio and local CLI share local storage; Server values are per project and account. Studio Control can query and manage configurations even when the panel is closed. See [Project configurations](/en/concepts/project-configuration) for the JSON actions, version checks and execution snapshot rules.

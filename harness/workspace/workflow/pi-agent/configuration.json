@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "fields": [
+    {
+      "name": "PI_API_KEY",
+      "type": "string",
+      "secret": true
+    },
+    {
+      "name": "PI_AGENT_PROVIDER",
+      "type": "string",
+      "defaultValue": "anthropic"
+    },
+    {
+      "name": "ANTHROPIC_API_KEY",
+      "type": "string",
+      "secret": true
+    },
+    {
+      "name": "ANTHROPIC_BASE_URL",
+      "type": "string"
+    },
+    {
+      "name": "ANTHROPIC_MODEL",
+      "type": "string"
+    },
+    {
+      "name": "OPENAI_API_KEY",
+      "type": "string",
+      "secret": true
+    },
+    {
+      "name": "OPENAI_BASE_URL",
+      "type": "string"
+    },
+    {
+      "name": "OPENAI_MODEL",
+      "type": "string"
+    },
+    {
+      "name": "OPENAPI_API_KEY",
+      "type": "string",
+      "secret": true
+    },
+    {
+      "name": "OPENAPI_BASE_URL",
+      "type": "string"
+    },
+    {
+      "name": "OPENAPI_MODEL",
+      "type": "string"
+    },
+    {
+      "name": "PI_ANTHROPIC_API_KEY",
+      "type": "string",
+      "secret": true
+    },
+    {
+      "name": "PI_OPENAI_API_KEY",
+      "type": "string",
+      "secret": true
+    }
+  ]
+}

@@ -61,3 +61,8 @@ steamharness json . \
 | `--tool-delay-ms` | 模拟工具调用的等待时长（毫秒） | `3000` |
 | `--task-duration-ms` | 确认后长任务的等待时长（毫秒） | `10000` |
 | `--stream-delay-ms` | 每段流式文字之间的等待时长（毫秒） | `120` |
+
+
+## Project configuration
+
+Declare fields in `configuration.json` and enter values in Project configurations (Studio or `steamharness web .`). Read them with `workflow.getConfig(key)` or `context.config`. Local CLI and Studio share values; project env files are not loaded.

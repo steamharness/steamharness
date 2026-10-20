@@ -175,6 +175,7 @@ export interface Report {
 }
 
 export interface Run {
+  configurationRunId?: string;
   agentCommands?: { command: AgentSessionCommand; scopeId: string; attachments?: Attachment[] }[];
   project: Project;
   conversationId: string;
@@ -235,10 +236,10 @@ export interface ConversationMessage {
   timers?: TimerRecord[];
 }
 
-export interface ConversationQueuedInput { id: string; requestId?: string; text: string; params: ParamValues; states?: Record<string, ParamState>; entrypointId?: string; attachments: Attachment[]; createdAt: number }
+export interface ConversationQueuedInput { configurationPending?: boolean; id: string; requestId?: string; text: string; params: ParamValues; states?: Record<string, ParamState>; entrypointId?: string; attachments: Attachment[]; createdAt: number }
 
 export interface ConversationSession {
-  agentParameters?: { args: string[]; entrypointId?: string; policies: unknown };
+  agentParameters?: { configurationRevision?: number; args: string[]; entrypointId?: string; policies: unknown };
   agent?: AgentSessionSnapshot;
   agentOwnerId?: string;
   agentConversationId?: number;

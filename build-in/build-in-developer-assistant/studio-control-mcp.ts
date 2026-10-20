@@ -1,15 +1,16 @@
+const readHostEnvironment = (key: string) => process.env[key];
 import type { AgentToolSet, McpServerDefinition } from "steamharness";
 import type { DeveloperAssistantPermissionPolicy } from "./interface";
-import { workflow } from "./workflow-runtime";
+import { steamharness } from "./workflow-runtime";
 
 const environmentKeys = ["STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL", "STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN"];
-const rawDefinition = steamharness.getEnv("STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER");
-const environment: NodeJS.ProcessEnv = Object.fromEntries(environmentKeys.map(key => [key, steamharness.getEnv(key)]));
+const rawDefinition = readHostEnvironment("STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER");
+const environment: NodeJS.ProcessEnv = Object.fromEntries(environmentKeys.map(key => [key, readHostEnvironment(key)]));
 
 // Capability credentials belong only to the control child, never to coding-tool shells.
 for (const key of ["STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER", ...environmentKeys]) delete process.env[key];
 
-const toolNames = new Set(["studio_state", "get_related_projects", "open_file", "get_diagnostics", "set_theme", "open_terminal", "show_view"]);
+const toolNames = new Set(["get_configurations", "manage_configurations", "open_configurations","studio_state", "get_related_projects", "open_file", "get_diagnostics", "set_theme", "open_terminal", "show_view"]);
 
 export async function createStudioControlTools(approve: (toolId: string, args: unknown) => Promise<void>, permissionPolicy: DeveloperAssistantPermissionPolicy,
   enabled: (toolId: string) => boolean): Promise<AgentToolSet> {

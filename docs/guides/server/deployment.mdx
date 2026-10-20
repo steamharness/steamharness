@@ -11,7 +11,7 @@ SteamHarness Server 可以本地开发，也可以作为自托管服务部署。
 
 | 环境 | 用途 | 建议 |
 | --- | --- | --- |
-| 开发环境 | 本地调试 Server 和项目 | 从 `*.env.example` 复制本机 `.env`；真实 `.env` 由 Git 忽略。 |
+| 开发环境 | 本地调试 Server | Server 部署变量从 `*.env.example` 复制到本机 `.env`；项目业务值在项目配置面板填写。真实 `.env` 由 Git 忽略。 |
 | 生产环境 | 提供管理端、项目与数据 API | 使用受保护的 CI/CD Variables 或只存在于部署主机的 `.env.production`。 |
 
 首次运行 Server：

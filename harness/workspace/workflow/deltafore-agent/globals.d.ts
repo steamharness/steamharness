@@ -133,7 +133,7 @@ declare const steamharness: {
     run(input: Input, context: unknown): Promise<Output> | Output;
   };
   createLLMProviderRef(id: string, fallback: () => unknown): unknown;
-  createLLMProviderFromEnv(): unknown;
+  createLLMProviderFromConfig(): unknown;
   getLLMProvider(context: unknown, nodeName: string, provider: unknown): {
     stream(input: unknown): AsyncIterable<
       | {

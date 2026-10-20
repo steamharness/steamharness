@@ -415,6 +415,7 @@ function createTestProjectContext(
   options: Pick<NodeContext, "nodeHooks"> = {},
 ): NodeContext {
   return {
+    config: {},
     providers: {},
     storage: {
       local: { kv: createMemoryKVContext(), persistentValue: createMemoryKVContext(), relatedProjects: createProjectRelatedProjectsContext() },

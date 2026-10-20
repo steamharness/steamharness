@@ -20,7 +20,7 @@ function load(code, vscode = {}) {
   return module.exports;
 }
 
-async function fixture(t) {
+async function fixture(t, services) {
   const root = await mkdtemp(path.join(tmpdir(), 'studio-control-host-')); t.after(() => rm(root, { recursive: true, force: true }));
   const workdir = path.join(root, 'workspace'), linked = path.join(root, 'linked'), outside = path.join(root, 'outside');
   for (const directory of [workdir, linked, outside]) { await mkdir(directory); await writeFile(path.join(directory, 'index.ts'), 'first\nsecond\n'); }
@@ -54,7 +54,7 @@ async function fixture(t) {
   };
   const controller = new AbortController();
   const state = new Map([[IMPORTED_PROJECTS_KEY, []]]);
-  const execute = load(hostCode, vscode).createStudioControlHandler({ workdir, roots }, controller.signal, { globalState: { get: key => state.get(key) } });
+  const execute = load(hostCode, vscode).createStudioControlHandler({ workdir, roots }, controller.signal, { globalState: { get: key => state.get(key) } }, services);
   return { execute, vscode, events, controller, roots, workdir, linked, outside, uri, state };
 }
 
@@ -295,7 +295,7 @@ test('the loopback service authenticates calls, rejects browser requests and mal
   assert.equal((await fetch(bridge.url, { method: 'GET', headers })).status, 403);
   for (const invalid of ['invalid', JSON.stringify({ operation: 'studio.state.get', input: [] }), JSON.stringify({ operation: 'studio.state.get', input: {}, extra: true }),
     ...['unknown', null, [], true].map(permissionPolicy => JSON.stringify({ operation: 'studio.state.get', input: {}, permissionPolicy })),
-    JSON.stringify({ operation: 'studio.state.get', input: { text: 'x'.repeat(70_000) } })]) {
+    JSON.stringify({ operation: 'studio.state.get', input: { text: 'x'.repeat(1024 * 1024 + 1) } })]) {
     assert.equal((await fetch(bridge.url, { method: 'POST', headers, body: invalid })).status, 400);
   }
   assert.equal(count, 0);
@@ -312,4 +312,39 @@ test('the loopback service authenticates calls, rejects browser requests and mal
 test('an already canceled session cannot create a control endpoint', async () => {
   const controller = new AbortController(); controller.abort();
   await assert.rejects(load(bridgeCode).startStudioControlBridge(async () => null, controller.signal));
+});
+
+test('configuration operations work with the panel closed and keep explicit targets and versions',async t=>{
+  const calls=[];
+  const f=await fixture(t,{configuration:async(input,signal)=>{calls.push(input);assert.equal(signal,f.controller.signal);return {revision:3};}});
+  await saveManifest(f.workdir,manifest(ids[0]));
+  assert.equal((await f.execute('studio.configurations.get',{storage:'local',projectDir:f.workdir})).revision,3);
+  await f.execute('studio.configurations.manage',{storage:'local',projectDir:f.workdir,call:{action:'field.save',revision:3,field:{name:'custom',type:'json'}}});
+  await f.execute('studio.configurations.get',{storage:'local',projectDir:f.workdir,id:'profile',export:true},'read-only');
+  assert.equal(calls[0].projectDir,await realpath(f.workdir));
+  assert.equal(calls[1].call.revision,3);assert.equal(calls[2].call.action,'export');
+  assert.equal(f.events.length,0);
+  await assert.rejects(f.execute('studio.configurations.manage',{storage:'local',projectDir:f.workdir,call:{action:'delete',revision:3,id:'profile'}},'read-only'),/Read-only/);
+  await assert.rejects(f.execute('studio.configurations.manage',{storage:'local',projectDir:f.workdir,call:{action:'save'}},'auto'),/Invalid configuration/);
+  await saveManifest(f.outside,manifest(ids[1]));
+  await saveManifest(f.linked,manifest(ids[2]));
+  await assert.rejects(f.execute('studio.configurations.get',{storage:'local',projectDir:f.outside}),/registered workspace/);
+  await f.execute('studio.configurations.get',{storage:'local',projectDir:f.outside},'auto');
+  await assert.rejects(f.execute('studio.configurations.get',{storage:'server',projectId:ids[1],target:'latest'}),/registered workspace/);
+  await f.execute('studio.configurations.get',{storage:'server',projectId:ids[0],target:'latest'});
+  await f.execute('studio.configurations.open',{storage:'local',projectDir:f.workdir});
+  assert.equal(calls.at(-1).open,true);
+});
+test('configuration errors preserve the underlying conflict code',async t=>{
+  const f=await fixture(t,{configuration:async()=>{throw Object.assign(new Error('Configuration changed'),{code:'CONFIGURATION_CONFLICT'});}});
+  await saveManifest(f.workdir,manifest(ids[0]));
+  await assert.rejects(f.execute('studio.configurations.manage',{storage:'local',projectDir:f.workdir,call:{action:'rename',revision:0,id:'profile',name:'new'}}),{code:'CONFIGURATION_CONFLICT'});
+});
+test('configuration declarations respect the registered workspace boundary',async t=>{
+  const f=await fixture(t,{configuration:async()=>({revision:0})});
+  await saveManifest(f.workdir,manifest(ids[0]));
+  await writeFile(path.join(f.outside,'configuration.json'),JSON.stringify({version:1,fields:[]}));
+  await symlink(path.join(f.outside,'configuration.json'),path.join(f.workdir,'configuration.json'));
+  await assert.rejects(f.execute('studio.configurations.get',{storage:'local',projectDir:f.workdir}),/registered workspace/);
+  assert.equal((await f.execute('studio.configurations.get',{storage:'local',projectDir:f.workdir},'auto')).revision,0);
 });

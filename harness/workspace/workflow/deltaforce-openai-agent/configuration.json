@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "fields": [
+    {
+      "name": "DELTAFORE_OPENAPI_URL",
+      "type": "string"
+    },
+    {
+      "name": "DELTAFORE_API_BASE_URL",
+      "type": "string"
+    },
+    {
+      "name": "OPENAI_API_KEY",
+      "type": "string",
+      "secret": true
+    },
+    {
+      "name": "OPENAI_BASE_URL",
+      "type": "string"
+    },
+    {
+      "name": "OPENAI_MODEL",
+      "type": "string"
+    },
+    {
+      "name": "LLM_API_KEY",
+      "type": "string",
+      "secret": true
+    },
+    {
+      "name": "LLM_BASE_URL",
+      "type": "string"
+    },
+    {
+      "name": "LLM_MODEL",
+      "type": "string"
+    },
+    {
+      "name": "DELTAFORCE_OPENAI_AGENT_MOCK",
+      "type": "string"
+    }
+  ]
+}

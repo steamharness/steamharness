@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Changed] Declare analysis dashboard fields in `configuration.json` and manage actual values through project configurations.
+
 ### New Features
 
 - **Local analytics dashboard**: charts, run trends, activity lists, and filterable exportable detail tables built from real project and run data.

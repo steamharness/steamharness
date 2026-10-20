@@ -28,7 +28,7 @@ Core API 分组记录业务 workflow 可直接使用的 `workflow.*` 运行时 A
 | [`createToolApprovalGate`](/core-api/create-tool-approval-gate) | 创建工具审批包装器；结合 executor `tools` 注册项和 `context.toolPermissions` 复用 user-input 等待/恢复协议审批工具调用。 |
 | [`createLLMNode`](/core-api/create-llm-node) | 创建非流式 LLM 调用节点。 |
 | [`createLLMStreamNode`](/core-api/create-llm-stream-node) | 创建流式 LLM 调用节点。 |
-| [`createLLMProviderFromEnv`](/core-api/create-llm-provider-from-env) | 从 workflow runtime 环境变量创建 LLM provider。 |
+| [`createLLMProviderFromConfig`](/core-api/create-llm-provider-from-config) | 从当前运行的项目配置快照创建 LLM provider。 |
 | [`createLLMProviderRef`](/core-api/create-llm-provider-ref) | 创建可延迟解析的 provider 引用。 |
 | [`createOutputNode`](/core-api/create-output-node) | 创建同步或流式输出节点；`createOutputItem`、`createOutputPayload`、`addOutputItem` 和 `createOutputItemChunk` 也在该页说明。 |
 | [`createDetailsOutputNode`](/core-api/create-details-output-node) | 创建独立可折叠 output item 的便捷输出节点。 |
@@ -41,7 +41,7 @@ Core API 分组记录业务 workflow 可直接使用的 `workflow.*` 运行时 A
 | [`runWhile`](/core-api/run-while) | 执行可追踪的 while 循环，并让 Diagram 用循环容器展示循环体。 |
 | [`runProject`](/core-api/run-workflow) | 在当前上下文中调用另一个 workflow，复用 KV、会话、provider、token usage 和 trace。 |
 | [`Knowledge Documents`](/core-api/knowledge-documents) | 通过显式的本地或服务器存储上下文管理项目内 markdown 知识库文档。 |
-| [`getEnv`](/core-api/get-env) | 读取当前 runtime 环境中的非空变量。 |
+| [`getConfig`](/core-api/get-config) | 读取当前运行快照中的原生类型配置值。 |
 | [`getRuntimePlatform` / `isCli` / `isDesktop`](/core-api/runtime-platform) | 判断当前 workflow 的执行宿主是 CLI 还是本地桌面宿主。 |
 | [`getRuntimeLocale`](/core-api/runtime-locale) | 读取当前运行宿主选择的简体中文或英文，用于已启用国际化的用户可见输出。 |
 | [`getLLMProvider`](/core-api/get-llm-provider) | 按上下文、节点名和 provider source 解析 LLM provider。 |
@@ -62,6 +62,7 @@ Core API 分组记录业务 workflow 可直接使用的 `workflow.*` 运行时 A
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
+| `config` | `ConfigurationValues` | 当前运行冻结的项目配置值。 |
 | `providers` | `ProviderRegistry` | LLM provider 注册表和绑定表。 |
 | `storage` | `StorageContext` | `local` 与 `server` 两个显式位置，每个位置都包含三层 `kv` 和 `persistentValue`。项目 `dataStorage.mode` 严格限制可访问位置；Core 0.2 不再提供顶层 `context.kv` / `context.persistentValue`。 |
 | `conversation` | `ConversationContext` | 会话状态读写入口。`setTitle` 可安全建议 UI 标题；未启用会话时其它读写会抛错。 |

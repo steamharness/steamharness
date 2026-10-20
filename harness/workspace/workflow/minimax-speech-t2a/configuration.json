@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "fields": [
+    {
+      "name": "MINIMAX_API_KEY",
+      "type": "string",
+      "secret": true
+    }
+  ]
+}

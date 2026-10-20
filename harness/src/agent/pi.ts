@@ -7,6 +7,7 @@ import type {
   MutableModels,
   SimpleStreamOptions,
 } from "@earendil-works/pi-ai";
+import { getConfig, currentConfigurationValues } from "../configuration";
 import type { AgentThinkingLevel } from "./effort";
 import type { AgentModelAttributes } from "./types";
 import type { TypeboxLike } from "./tools";
@@ -84,22 +85,14 @@ function loadPiAllProviders(): Promise<PiAllProvidersModule> {
   return allProvidersModule;
 }
 
-/**
- * One provider collection per process.
- *
- * Building the catalog is the expensive part of resolving a model, and a
- * conversation project resolves one every turn. Sharing the collection also
- * means a custom endpoint registered by one run is reusable by the next.
- */
-let modelsCollection: MutableModels | undefined;
-
+/** Provider authentication reads only the configuration captured for this run. */
 async function loadBuiltinModels(): Promise<MutableModels> {
-  if (modelsCollection === undefined) {
-    const providers = await loadPiAllProviders();
-    modelsCollection = providers.builtinModels();
-  }
-
-  return modelsCollection;
+  const providers = await loadPiAllProviders();
+  const config = structuredClone(currentConfigurationValues());
+  return providers.builtinModels({ authContext: {
+    env: async key => typeof config[key] === "string" ? config[key] as string : undefined,
+    fileExists: async () => false,
+  } });
 }
 
 /** `api` id for models this package registers against a caller-supplied endpoint. */
@@ -250,7 +243,7 @@ export async function createPiRuntime(options: PiRuntimeOptions): Promise<PiRunt
   return {
     Type: ai.Type,
     models,
-    streamFn: createRetryingStreamFn(ai, models),
+    streamFn: createRetryingStreamFn(ai, models, options.apiKey),
     model,
     providerId,
     modelId: model.id,
@@ -291,13 +284,13 @@ const AGENT_RETRY_MAX_DELAY_MS = 8_000;
  * replaying the request would leave both versions in the transcript. A failure
  * after that point stays fatal, exactly as before.
  */
-function createRetryingStreamFn(ai: PiAiModule, models: MutableModels): PiStreamFn {
+function createRetryingStreamFn(ai: PiAiModule, models: MutableModels, apiKey?: string): PiStreamFn {
   const streamFn = async (
     model: Model<Api>,
     context: Context,
     options?: SimpleStreamOptions,
   ) => {
-    const requestOptions: SimpleStreamOptions = { ...options, maxRetries: 0 };
+    const requestOptions: SimpleStreamOptions = { ...options, ...(apiKey === undefined ? {} : { apiKey }), maxRetries: 0 };
     const budget = options?.maxRetries ?? AGENT_PROVIDER_MAX_RETRIES;
     // The first call stays on the synchronous path: `streamSimple` throws
     // outright when the request cannot even be built (missing auth), and pi's
@@ -546,7 +539,7 @@ async function createCustomProvider(
     ? "anthropic-messages"
     : "openai-completions"));
 
-  const apiKey = options.apiKey ?? readProviderEnvApiKey(providerId);
+  const apiKey = options.apiKey ?? readProviderConfigApiKey(providerId);
 
   return ai.createProvider({
     id: providerId,
@@ -579,13 +572,13 @@ function readSupportedThinkingLevels(ai: PiAiModule, model: Model<Api>): AgentTh
   return levels.length === 0 ? ["off"] : levels;
 }
 
-export function readProviderEnvApiKey(providerId: string): string | undefined {
+export function readProviderConfigApiKey(providerId: string): string | undefined {
   const candidates = providerId === "anthropic"
     ? ["ANTHROPIC_API_KEY", "PI_ANTHROPIC_API_KEY", "PI_API_KEY"]
     : ["OPENAI_API_KEY", "PI_OPENAI_API_KEY", "PI_API_KEY"];
 
   for (const name of candidates) {
-    const value = process.env[name];
+    const value = getConfig(name);
     if (typeof value === "string" && value.trim() !== "") {
       return value.trim();
     }

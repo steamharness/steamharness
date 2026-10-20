@@ -10,6 +10,7 @@ export const server: typeof Enserver = {
   accountDisabled: "账号已停用。",
   userAccountRequired: "需要用户账号。",
   invitationLoginRequired: "接受邀请前需要登录账号。",
+  projectConfigurationLoginRequired: "使用项目配置前需要登录账号。",
   kanbanLoginRequired: "使用看板配置前需要登录账号。",
   projectDataStorageDeclarationRequired: "项目“{{projectId}}”未声明 steamHarness.projectInfo.dataStorage.mode，不能访问服务器数据。请先在 package.json 中声明存储模式。",
   projectDataStorageServerForbidden: "项目“{{projectId}}”的数据存储模式“{{mode}}”不允许使用服务器存储，不能访问服务器数据。",

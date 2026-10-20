@@ -10,7 +10,6 @@ and keeps the smoke fixture offline through an explicit `--dry-run`.
 ```bash
 cd workspace/workflow/pi-agent
 pnpm install
-cp .env.example .env
 ```
 
 The SDK supports its normal `~/.pi/agent` auth and model configuration. This
@@ -81,7 +80,7 @@ Conversation 模式下，默认 composer 会固定映射到 `--message`；旧的
   `setRuntimeApiKey(...)`.
 - Advanced Run workspace provider switching through the `--provider` radio
   param, rendered in the existing auxiliary / Advanced options panel.
-- `ModelRegistry.registerProvider(...)` base URL overrides from env or
+- `ModelRegistry.registerProvider(...)` base URL overrides from project configuration or
   `--base-url`, plus optional `ModelRegistry.find(provider, model)` lookup for
   pinned live runs.
 - Pi `session.subscribe(...)` events bridged into
@@ -105,3 +104,8 @@ Conversation 模式下，默认 composer 会固定映射到 `--message`；旧的
 fixture, structure snapshot, output items, conversation metadata, and token usage
 report. Normal runs are live by default, require provider credentials, and may
 execute Pi tools in the selected working directory.
+
+
+## Project configuration
+
+Declare fields in `configuration.json` and enter values in Project configurations (Studio or `steamharness web .`). Read them with `workflow.getConfig(key)` or `context.config`. Local CLI and Studio share values; project env files are not loaded.

@@ -5,12 +5,12 @@ description: "创建延迟解析的 LLM provider 引用。"
 
 # createLLMProviderRef
 
-`workflow.createLLMProviderRef()` 创建一个 provider 引用对象。LLM 节点执行时会通过 `getLLMProvider` 按节点名、provider id、绑定表和 fallback 解析出实际 provider。
+`steamharness.createLLMProviderRef()` 创建一个 provider 引用对象。LLM 节点执行时会通过 `getLLMProvider` 按节点名、provider id、绑定表和 fallback 解析出实际 provider。
 
 ## 签名
 
 ```ts
-workflow.createLLMProviderRef(
+steamharness.createLLMProviderRef(
   id: string,
   fallback?: LLMProviderSource,
 ): LLMProviderRef
@@ -52,11 +52,11 @@ workflow.createLLMProviderRef(
 ## 示例
 
 ```ts
-const defaultProvider = workflow.createLLMProviderRef("default", () => {
-  return workflow.createLLMProviderFromEnv();
+const defaultProvider = steamharness.createLLMProviderRef("default", () => {
+  return steamharness.createLLMProviderFromConfig();
 });
 
-const llmNode = workflow.createLLMNode({
+const llmNode = steamharness.createLLMNode({
   provider: defaultProvider,
   mapInput(input) {
     return { prompt: input.message };
@@ -68,6 +68,6 @@ const llmNode = workflow.createLLMNode({
 
 | 场景 | 做法 |
 | --- | --- |
-| 本地默认 provider | `createLLMProviderRef("default", () => workflow.createLLMProviderFromEnv())` |
+| 本地默认 provider | `createLLMProviderRef("default", () => steamharness.createLLMProviderFromConfig())` |
 | server 按节点绑定模型 | 使用节点名在 `llmProviderBindings` 中配置。 |
 | 多 provider 切换 | 传不同 provider id，或者使用 resolver。 |

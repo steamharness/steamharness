@@ -93,7 +93,6 @@
     "@types/node": "^25.6.0",
     "ai": "^6.0.169",
     "cron-parser": "5.7.0",
-    "dotenv": "^17.4.2",
     "typescript": "^6.0.3"
   },
   "devDependencies": {
@@ -114,7 +113,8 @@
     "@vitest/coverage-v8": "^4.1.7",
     "semver": "^7.7.4",
     "tsup": "^8.5.1",
-    "tsx": "^4.21.0"
+    "tsx": "^4.21.0",
+    "@steamharness/project-configuration": "workspace:*"
   },
   "engines": {
     "node": ">=22.19.0"

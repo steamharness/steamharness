@@ -9,7 +9,7 @@ from pathlib import Path
 
 KANBAN_TEMPLATE_ROOT = Path(__file__).resolve().parent.parent / "assets" / "kanban"
 KANBAN_TEMPLATE_FILES = (
-    ".workflowignore",
+    ".steamharnessignore",
     "index.html",
     "board-state.js",
     "board-storage.js",
@@ -44,7 +44,6 @@ coverage/
 *.tsbuildinfo
 .env
 .env.*
-!.env.example
 """
 
 
@@ -72,7 +71,7 @@ def main() -> None:
     parser.add_argument(
         "--with-kanban-params",
         action="store_true",
-        help="Kanban 项目额外生成示例 kanban.json 参数清单。",
+        help="Kanban 项目额外生成示例 configuration.json 参数清单。",
     )
     parser.add_argument(
         "--dir",
@@ -113,13 +112,15 @@ def main() -> None:
                 workflow_dir / relative_path,
                 render_kanban_template(relative_path, workflow_name, args.with_kanban_params),
             )
+        if not args.with_kanban_params:
+            write_file(workflow_dir / "configuration.json", json.dumps({"version": 1, "fields": []}, indent=2) + "\n")
         print(f"已创建 Kanban：{workflow_dir}")
         print(f"可检查：steamharness structure {workflow_dir}")
         return
 
     type_name = to_pascal_case(workflow_name)
-    write_file(workflow_dir / ".workflowignore", STEAMHARNESS_IGNORE)
-    write_file(workflow_dir / ".env.example", env_example())
+    write_file(workflow_dir / ".steamharnessignore", STEAMHARNESS_IGNORE)
+    write_file(workflow_dir / "configuration.json", json.dumps({"version": 1, "fields": []}, indent=2) + "\n")
     write_file(workflow_dir / "interface.ts", interface_ts(type_name))
     write_file(workflow_dir / "index.ts", index_ts(workflow_name, type_name, args.prompt, args.project_type))
     write_file(workflow_dir / "README.md", readme_md(workflow_name, args.description, args.project_type))
@@ -151,7 +152,7 @@ def write_file(path: Path, content: str) -> None:
 
 
 def kanban_template_files(with_params: bool) -> tuple[str, ...]:
-    return KANBAN_TEMPLATE_FILES + (("kanban.json",) if with_params else ())
+    return KANBAN_TEMPLATE_FILES + (("configuration.json",) if with_params else ())
 
 
 def render_kanban_template(relative_path: str, name: str, with_params: bool) -> str:
@@ -272,12 +273,6 @@ def resolve_dependency_versions() -> tuple[str, str]:
     )
 
 
-def env_example() -> str:
-    return '''# 在这里添加 workflow 专用环境变量。
-# 保持提交此文件，只写占位值或安全的非密默认值。
-'''
-
-
 def interface_ts(type_name: str) -> str:
     return f'''export interface RunPayload {{
   errCode: number;
@@ -349,7 +344,7 @@ def index_ts(name: str, type_name: str, prompt: str, project_type: str) -> str:
     if project_type == "workflow":
         executor_definition = f'''  defaultEntrypoint: "main",
   entrypoints: [
-    workflow.defineEntrypoint<{type_name}Input, {type_name}OutputPayload>({{
+    steamharness.defineEntrypoint<{type_name}Input, {type_name}OutputPayload>({{
       id: "main",
       title: "{name}",
       // 需要把多个入口折叠成 Desktop / CLI Web 里的分区时，给同一业务域的入口
@@ -387,7 +382,7 @@ def index_ts(name: str, type_name: str, prompt: str, project_type: str) -> str:
     else:
         executor_definition = f'''  workflow: {workflow_const},
   createInput({{ args }}) {{
-    return workflow.parseConversationDefaultInputArgs(args).message;
+    return steamharness.parseConversationDefaultInputArgs(args).message;
   }},'''
     return f'''import type {{
   {type_name}Input,
@@ -396,7 +391,7 @@ def index_ts(name: str, type_name: str, prompt: str, project_type: str) -> str:
 
 const defaultPrompt = "{escaped_prompt}";
 
-const outputNode = workflow.createOutputNode<{type_name}Input, {type_name}OutputPayload>({{
+const outputNode = steamharness.createOutputNode<{type_name}Input, {type_name}OutputPayload>({{
   name: "{name}-output",
   async *stream(input) {{
     const content = input.trim() === "" ? defaultPrompt : input.trim();
@@ -413,16 +408,16 @@ const outputNode = workflow.createOutputNode<{type_name}Input, {type_name}Output
   }},
 }});
 
-export const {workflow_const} = workflow.defineWorkflow<{type_name}Input, {type_name}OutputPayload>({{
+export const {workflow_const} = steamharness.defineProject<{type_name}Input, {type_name}OutputPayload>({{
   name: "{name}",
   async run(input, context) {{
-    const result = await workflow.runStreamNode(outputNode, input, context);
+    const result = await steamharness.runStreamNode(outputNode, input, context);
 
     return requireOutput(result.output);
   }},
 }});
 
-export const executor = workflow.defineExecutor<{type_name}Input, {type_name}OutputPayload>({{
+export const executor = steamharness.defineExecutor<{type_name}Input, {type_name}OutputPayload>({{
   projectType: "{project_type}",
 {executor_definition}
 }});

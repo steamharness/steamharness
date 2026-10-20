@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Added] Generic project configuration APIs and new project/account-scoped storage replace the Kanban-only endpoints, with revision checks, atomic import/export, custom fields and shared static-preview values. Existing configuration data is not migrated.
+
 ### Project Avatars
 
 - New projects without avatar metadata save their type icon with random foreground and background colors at a contrast ratio of at least 4.5:1; reconnecting existing projects preserves their avatar.

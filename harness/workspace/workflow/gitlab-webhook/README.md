@@ -76,3 +76,8 @@ GitLab Project hooks do not reliably emit fork creation events for the source
 project. If a `project_create` or `fork` payload reaches this workflow, it is
 summarized as `event=fork`; otherwise fork creation requires a GitLab system or
 group hook outside this project-only test case.
+
+
+## Project configuration
+
+Declare fields in `configuration.json` and enter values in Project configurations (Studio or `steamharness web .`). Read them with `workflow.getConfig(key)` or `context.config`. Local CLI and Studio share values; project env files are not loaded.

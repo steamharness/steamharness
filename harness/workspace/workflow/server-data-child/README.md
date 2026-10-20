@@ -17,3 +17,8 @@ pnpm exec steamharness json . --entrypoint store --related-project "grandchild=$
 ```
 
 运行服务器组前需要登录 Server，并确保三个 UUID 已绑定对应云端项目。本项目是父项目与孙项目之间唯一的关系节点，但关联 KV 权限不会递归传递。
+
+
+## Project configuration
+
+Declare fields in `configuration.json` and enter values in Project configurations (Studio or `steamharness web .`). Read them with `workflow.getConfig(key)` or `context.config`. Local CLI and Studio share values; project env files are not loaded.

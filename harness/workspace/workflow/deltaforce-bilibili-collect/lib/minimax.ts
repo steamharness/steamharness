@@ -219,8 +219,8 @@ export class MinimaxClient {
   }
 }
 
-export function readMinimaxApiKey(env: NodeJS.ProcessEnv = process.env): string | undefined {
-  const candidate = env.MINIMAX_API_KEY ?? env.MINIMAX_VIDEO_API_KEY;
+export function readMinimaxApiKey(config: Record<string, unknown> = Object.fromEntries(["MINIMAX_API_KEY","MINIMAX_VIDEO_API_KEY","MINIMAX_BASE_URL","FFMPEG_PATH","FFMPEG_BIN"].map(key => [key, steamharness.getConfig<string>(key)]))): string | undefined {
+  const candidate = config.MINIMAX_API_KEY ?? config.MINIMAX_VIDEO_API_KEY;
   if (typeof candidate !== "string") {
     return undefined;
   }
@@ -238,8 +238,8 @@ export function readMinimaxApiKeyFromMetadata(metadata: unknown): string | undef
     : undefined;
 }
 
-export function readMinimaxBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
-  const candidate = env.MINIMAX_BASE_URL;
+export function readMinimaxBaseUrl(config: Record<string, unknown> = Object.fromEntries(["MINIMAX_API_KEY","MINIMAX_VIDEO_API_KEY","MINIMAX_BASE_URL","FFMPEG_PATH","FFMPEG_BIN"].map(key => [key, steamharness.getConfig<string>(key)]))): string {
+  const candidate = config.MINIMAX_BASE_URL;
   if (typeof candidate !== "string") {
     return DEFAULT_MINIMAX_BASE_URL;
   }

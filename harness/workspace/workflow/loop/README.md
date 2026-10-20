@@ -16,3 +16,8 @@ state until the target is reached. The `runWhile` body intentionally contains a
 and branch levels inside the while container. In the App Diagram, loop bodies
 should be wrapped in a tinted loop container while their inner nodes remain
 clickable.
+
+
+## Project configuration
+
+Declare fields in `configuration.json` and enter values in Project configurations (Studio or `steamharness web .`). Read them with `workflow.getConfig(key)` or `context.config`. Local CLI and Studio share values; project env files are not loaded.

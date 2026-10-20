@@ -84,3 +84,8 @@ conversation state so nested workflow reuse does not duplicate transcript rows.
 
 第二阶段开始，这个 conversation 示例统一把默认 composer 映射到
 `--message`；旧的 `--query` 仍保留给 CLI 兼容。
+
+
+## Project configuration
+
+Declare fields in `configuration.json` and enter values in Project configurations (Studio or `steamharness web .`). Read them with `workflow.getConfig(key)` or `context.config`. Local CLI and Studio share values; project env files are not loaded.

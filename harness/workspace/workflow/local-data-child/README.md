@@ -17,3 +17,8 @@ pnpm exec steamharness json . --entrypoint store --related-project "grandchild=$
 ```
 
 两条关系都只在本地 KV 域生效，不会回退到服务器存储。
+
+
+## Project configuration
+
+Declare fields in `configuration.json` and enter values in Project configurations (Studio or `steamharness web .`). Read them with `workflow.getConfig(key)` or `context.config`. Local CLI and Studio share values; project env files are not loaded.

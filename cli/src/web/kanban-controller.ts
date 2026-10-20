@@ -1,12 +1,14 @@
+import { createLocalProjectConfigurationStore } from 'steamharness';
+import { configurationSnapshot, type ProjectConfigurationState } from '@steamharness/project-configuration';
 import { t } from './localization';
-import { randomUUID, createHash } from 'node:crypto';
-import { mkdir, readFile, readdir, rename, writeFile, stat } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { watch, type FSWatcher } from 'node:fs';
 import {
-  createDefaultKanbanValues, sanitizeKanbanValues, createInjectedKanbanParams, createKanbanBridgeError, parseKanbanBridgeCall,
-  readKanbanArtifactConfig, parseKanbanManifestText, consumeKanbanRelatedProjectRevisionStream,
-  type KanbanConfiguration, type KanbanInjectedConfiguration, type KanbanParamDefinition, type KanbanRelatedProjectRevision,
+  createKanbanBridgeError, parseKanbanBridgeCall,
+  readKanbanArtifactConfig, consumeKanbanRelatedProjectRevisionStream,
+  type KanbanInjectedConfiguration, type KanbanParamDefinition, type KanbanRelatedProjectRevision,
 } from '@steamharness/kanban-project';
 import { KanbanPreview } from './kanban-preview';
 import { KanbanMethodHub } from './kanban-methods';
@@ -17,17 +19,15 @@ import type { Project, Runtime } from './workflow-types';
 import { requestStudioAnalysis } from './local-analysis';
 
 type Message = Record<string, any>;
-interface Workspace { version: 1; revision: number; configurations: KanbanConfiguration[]; activeConfigurationId?: string }
 interface Hooks { changed(): void; emit(message: Record<string, unknown>): void; connection(): WebConnection | undefined; log(message: string): void }
 
 export class KanbanController {
-  workspace: Workspace = { version: 1, revision: 0, configurations: [] };
+  workspace!: ProjectConfigurationState;
   params: KanbanParamDefinition[] = [];
   preview!: KanbanPreview;
   relatedProjectRevisions: KanbanRelatedProjectRevision[] = [];
   missingRelatedProjectAliases: string[] = [];
   relatedProjectWarning = '';
-  private pendingSave = Promise.resolve();
   private updates = Promise.resolve();
   private poll?: ReturnType<typeof setInterval>;
   private feed?: AbortController;
@@ -39,24 +39,21 @@ export class KanbanController {
   private refreshTimer?: ReturnType<typeof setTimeout>;
   private refreshing?: Promise<void>;
   private readonly requests = new Set<AbortController>();
-  private readonly historyPath: string;
   readonly methods: KanbanMethodHub;
   constructor(readonly project: Project, private readonly runtime: Runtime, private readonly storageDir: string, private readonly hooks: Hooks) {
-    this.historyPath = path.join(webProjectDataDirectory(storageDir, project.folderPath), 'kanban.json');
     this.methods = new KanbanMethodHub(() => this.configuration(), message => hooks.emit(message));
   }
-  get current(): KanbanConfiguration | undefined { return this.workspace.configurations.find(item => item.id === this.workspace.activeConfigurationId); }
   configuration(): KanbanInjectedConfiguration {
-    const active = this.current;
-    return active ? { id: active.id, name: active.name, params: createInjectedKanbanParams(this.params, active.values) } : { id: '', name: '', params: {} };
+    const snapshot = configurationSnapshot(this.workspace, undefined, false);
+    return { id: snapshot.id, name: snapshot.name, params: snapshot.values };
+  }
+  configurationChanged(state: ProjectConfigurationState): void {
+    this.workspace = state;
+    if (this.preview) { this.newPreview(); this.hooks.changed(); }
   }
   state() { return { ...this.workspace, params: this.params, configuration: this.configuration(), preview: { url: this.preview.url, nonce: this.preview.nonce }, relatedProjectRevisions: this.relatedProjectRevisions, missingRelatedProjectAliases: this.missingRelatedProjectAliases, relatedProjectWarning: this.relatedProjectWarning }; }
   async initialize(): Promise<void> {
-    try {
-      const saved = JSON.parse(await readFile(this.historyPath, 'utf8'));
-      if (saved.version !== 1 || !Array.isArray(saved.configurations) || saved.configurations.some((item: KanbanConfiguration) => typeof item.id !== 'string' || typeof item.name !== 'string' || !item.values || typeof item.values !== 'object')) { throw new Error('Invalid Kanban configuration history.'); }
-      this.workspace = { ...saved, revision: Number.isSafeInteger(saved.revision) ? saved.revision : 0 };
-    } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') { throw error; } }
+    this.workspace ??= await (await createLocalProjectConfigurationStore(this.project.folderPath)).read();
     await this.refresh();
     try {
       this.watcher = watch(this.project.folderPath, { recursive: true }, (_event, filename) => {
@@ -64,7 +61,7 @@ export class KanbanController {
         const data = path.relative(this.project.folderPath, webProjectDataDirectory(this.storageDir, this.project.folderPath)).replaceAll('\\', '/');
         if (!file || file.split('/').some(part => part.startsWith('.') || part === 'node_modules') || file.startsWith(`${data}/`)) { return; }
         const artifact = this.project.kanban!.artifactDir;
-        if (file !== 'package.json' && file !== 'kanban.json' && artifact !== '.' && file !== artifact && !file.startsWith(`${artifact}/`)) { return; }
+        if (file !== 'package.json' && file !== 'configuration.json' && artifact !== '.' && file !== artifact && !file.startsWith(`${artifact}/`)) { return; }
         clearTimeout(this.refreshTimer); this.refreshTimer = setTimeout(() => void this.refresh().catch(error => this.hooks.log(String(error))), 400);
       });
       this.watcher.on('error', error => this.hooks.log(String(error)));
@@ -88,34 +85,13 @@ export class KanbanController {
     const pkg = JSON.parse(await readFile(path.join(this.project.folderPath, 'package.json'), 'utf8'));
     const artifact = readKanbanArtifactConfig(pkg);
     const projectInfo = readProjectInfo(pkg);
-    let params: KanbanParamDefinition[];
-    try { params = parseKanbanManifestText(await readFile(path.join(this.project.folderPath, 'kanban.json'), 'utf8')).params; }
-    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') { throw error; } params = []; }
-    const workspace = structuredClone(this.workspace);
-    for (const item of workspace.configurations) { item.values = sanitizeKanbanValues(params, item.values); }
-    if (!workspace.configurations.length && params.length) { this.create(workspace, params); }
-    workspace.activeConfigurationId = workspace.configurations.find(item => item.id === workspace.activeConfigurationId)?.id ?? workspace.configurations[0]?.id;
-    workspace.revision++; await this.persist(workspace);
-    this.workspace = workspace; this.params = params;
-    this.project.kanban = artifact; this.project.projectInfo = projectInfo; this.project.fields = params;
+    this.params = [];
+    this.project.kanban = artifact; this.project.projectInfo = projectInfo;
     this.newPreview();
     this.authenticationChanged();
     await this.updateLocalRevisions(); this.hooks.changed();
   }
   private newPreview(): void { this.generation++; this.methods.clear(); this.preview = new KanbanPreview(this.project.folderPath, this.project.kanban!, () => this.configuration()); }
-  private create(workspace: Workspace, params: KanbanParamDefinition[], values = createDefaultKanbanValues(params), name?: string): KanbanConfiguration {
-    if (!name) { let index = 1; while (workspace.configurations.some(item => item.name === t("Configuration {0}", index))) { index++; } name = t("Configuration {0}", index); }
-    const date = new Date().toISOString(), item = { id: randomUUID(), name, values: { ...values }, createdAt: date, updatedAt: date };
-    workspace.configurations.push(item); workspace.activeConfigurationId = item.id; return item;
-  }
-  async persist(workspace = this.workspace): Promise<void> {
-    const content = JSON.stringify(workspace);
-    this.pendingSave = this.pendingSave.catch(() => undefined).then(async () => {
-      await mkdir(path.dirname(this.historyPath), { recursive: true }); const temp = `${this.historyPath}.${process.pid}.tmp`;
-      await writeFile(temp, content, { mode: 0o600 }); await rename(temp, this.historyPath);
-    });
-    return this.pendingSave;
-  }
   async handle(message: Message): Promise<Message[]> {
     if (message.type === 'kanban-method-state') { if (message.nonce !== this.preview.nonce) { throw new Error('Kanban preview changed.'); } this.methods.publish(message); return []; }
     if (message.type === 'kanban-method-reply') { this.methods.reply(message); return []; }
@@ -128,37 +104,7 @@ export class KanbanController {
       } catch (error) { return [{ type: 'kanban-bridge-result', requestId: message.requestId, ok: false, error: createKanbanBridgeError(error) }]; }
     }
     if (message.type === 'kanban-refresh') { await this.refresh(); return [{ type: 'kanban-updated', requestId: message.requestId, kanban: this.state() }]; }
-    if (message.type !== 'kanban-configuration') { throw new Error(`Unsupported Kanban action: ${message.type}`); }
-    return this.update(() => this.configure(message));
-  }
-  private async configure(message: Message): Promise<Message[]> {
-    if (message.revision !== this.workspace.revision) { throw new Error('Kanban configuration changed. Try again.'); }
-    const workspace = structuredClone(this.workspace);
-    const action = String(message.action), item = workspace.configurations.find(item => item.id === message.id);
-    let previewChanged = false;
-    if (!['create', 'duplicate', 'rename', 'save', 'select', 'delete'].includes(action)) { throw new Error('Unknown Kanban configuration action.'); }
-    if (action !== 'create' && !item) { throw new Error('Kanban configuration no longer exists.'); }
-    switch (action) {
-      case 'create': if (!this.params.length) { throw new Error('The project does not define parameters.'); } this.create(workspace, this.params); previewChanged = true; break;
-      case 'duplicate': this.create(workspace, this.params, sanitizeKanbanValues(this.params, item!.values), `${item!.name} (copy)`); previewChanged = true; break;
-      case 'rename': {
-        if (typeof message.name !== 'string' || !message.name.trim() || message.name.length > 200) { throw new Error('Invalid configuration name.'); }
-        item!.name = message.name.trim(); item!.updatedAt = new Date().toISOString(); break;
-      }
-      case 'save': {
-        if (!message.values || typeof message.values !== 'object' || Array.isArray(message.values) || Object.values(message.values).some(value => typeof value !== 'string')) { throw new Error('Invalid Kanban parameters.'); }
-        item!.values = sanitizeKanbanValues(this.params, message.values); item!.updatedAt = new Date().toISOString(); break;
-      }
-      case 'select': workspace.activeConfigurationId = item!.id; previewChanged = true; break;
-      case 'delete': {
-        if (workspace.configurations.length <= 1) { throw new Error('The last configuration cannot be deleted.'); }
-        workspace.configurations = workspace.configurations.filter(value => value !== item);
-        if (item!.id === workspace.activeConfigurationId) { workspace.activeConfigurationId = workspace.configurations[0].id; previewChanged = true; } break;
-      }
-    }
-    workspace.revision++; await this.persist(workspace); this.workspace = workspace;
-    if (previewChanged) { this.newPreview(); } this.hooks.changed();
-    return [{ type: 'kanban-updated', requestId: message.requestId, kanban: this.state() }];
+    throw new Error(`Unsupported Kanban action: ${message.type}`);
   }
   async bridge(call: Parameters<NonNullable<Runtime['kanbanBridge']>>[1]): Promise<unknown> {
     if (this.disposed) { throw new Error('Kanban has closed.'); }
@@ -219,5 +165,5 @@ export class KanbanController {
     if (generation !== this.generation || this.disposed) { return; }
     if (JSON.stringify([missing, revisions]) !== JSON.stringify([this.missingRelatedProjectAliases, this.relatedProjectRevisions])) { this.missingRelatedProjectAliases = missing; this.relatedProjectRevisions = revisions; this.hooks.changed(); }
   }
-  async close(): Promise<void> { this.disposed = true; this.watcher?.close(); clearTimeout(this.refreshTimer); this.methods.clear(); clearInterval(this.poll); clearTimeout(this.retry); this.feed?.abort(); for (const request of this.requests) { request.abort(); } await this.updates; await this.pendingSave; }
+  async close(): Promise<void> { this.disposed = true; this.watcher?.close(); clearTimeout(this.refreshTimer); this.methods.clear(); clearInterval(this.poll); clearTimeout(this.retry); this.feed?.abort(); for (const request of this.requests) { request.abort(); } await this.updates; }
 }

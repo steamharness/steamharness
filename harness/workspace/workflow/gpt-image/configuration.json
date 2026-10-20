@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "fields": [
+    {
+      "name": "OPENAI_API_KEY",
+      "type": "string",
+      "secret": true
+    },
+    {
+      "name": "OPENAI_BASE_URL",
+      "type": "string"
+    }
+  ]
+}

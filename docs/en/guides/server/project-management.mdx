@@ -38,3 +38,7 @@ A related write checks consumer data-write permission and target write grants. S
 Project-group publication statically validates archives and hashes, then locks dependencies to exact versions. Downloads check source permission per project and return skip reasons.
 
 Account, permission, API key, device sign-in, upload, publication, and data administration are audited. Reading audit logs requires `audit.read`, and credential fields are always redacted.
+
+## Project configurations
+
+All three project types expose fields, named profiles and complete import/export. Studio and local CLI share local storage; Server values are per project and account. Studio Control can query and manage configurations even when the panel is closed. See [Project configurations](/en/concepts/project-configuration) for the JSON actions, version checks and execution snapshot rules.

@@ -21,3 +21,8 @@ steamharness json . -- --title "Fixture Timer" --milliseconds 2000
 ```
 
 The final report contains `report.timers` with one `success` timer. App Run workspace, public Embed, and server/web run replay render that record as a timer card; while it is running, the same card shows the live elapsed duration.
+
+
+## Project configuration
+
+Declare fields in `configuration.json` and enter values in Project configurations (Studio or `steamharness web .`). Read them with `workflow.getConfig(key)` or `context.config`. Local CLI and Studio share values; project env files are not loaded.

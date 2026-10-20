@@ -3,10 +3,10 @@ import type { RuntimeApi } from "steamharness/runtime-api";
 
 // Start from a Conversation scaffold. The host installs this global at runtime.
 const steamharness = globalThis.steamharness as RuntimeApi | undefined;
-if (workflow === undefined) throw new Error("The workflow runtime is not installed.");
+if (steamharness === undefined) throw new Error("The workflow runtime is not installed.");
 
 const agentProject = steamharness.createAgentConversationProject({
-  projectName: "assistant",
+  executorName: "assistant",
   outputItemId: "assistant-answer",
 });
 

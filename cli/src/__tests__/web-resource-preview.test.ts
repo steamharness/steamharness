@@ -5,13 +5,14 @@ import path from 'node:path';
 import { initI18n } from '@steamharness/i18n';
 import { ResourcePreviews } from '../web/resource-preview';
 import { startWebServer } from '../web/server';
-import { webProjectDataDirectory } from '../web/kanban-data';
+import { createLocalProjectConfigurationStore } from 'steamharness';
+import { createConfigurationState } from '@steamharness/project-configuration';
 import type { ResourceCard } from '../web/resource-cards';
 import type { Project, Runtime } from '../web/workflow-types';
 
-const folders: string[] = [];
+const folders: string[] = [], openedPreviews: ResourcePreviews[] = [];
 beforeEach(() => initI18n({ preference: 'en' }));
-afterEach(async () => { vi.restoreAllMocks(); for (const directory of folders.splice(0)) { await rm(directory, { recursive: true, force: true }); } });
+afterEach(async () => { for(const previews of openedPreviews.splice(0))previews.close(); vi.restoreAllMocks(); for (const directory of folders.splice(0)) { await rm(directory, { recursive: true, force: true }); } });
 
 async function fixture() {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'workflow-resource-'))); folders.push(root);
@@ -27,6 +28,7 @@ async function fixture() {
     kanbanBridge: vi.fn(async () => ({ key: 'map' })) } as unknown as Runtime;
   let connection: { serverUrl: string; accessToken: string } | undefined = { serverUrl: 'https://steamharness.test', accessToken: 'test-only-token' };
   const previews = new ResourcePreviews(owner, runtime, storageDir, () => connection, () => [{ alias: 'map', projectDir: related.folderPath }]);
+  openedPreviews.push(previews);
   const card = (kind: ResourceCard['kind'], target: Record<string, string>, extra: Partial<ResourceCard> = {}): ResourceCard => ({ id: 'card', kind, title: 'Resource', target, ...extra });
   return { root, owner, related, runtime, storageDir, previews, card, logout: () => { connection = undefined; previews.clear(); } };
 }
@@ -78,14 +80,20 @@ describe('resource previews', () => {
 
   it('isolates named and temporary map configurations without persisting or selecting them', async () => {
     const { previews, related, storageDir, card } = await fixture();
-    const directory = webProjectDataDirectory(storageDir, related.folderPath); await mkdir(directory, { recursive: true });
-    const saved = JSON.stringify({ activeConfigurationId: 'active', configurations: [{ id: 'active', name: 'Active', values: { title: 'Active' } }, { id: 'other', name: 'Other', values: { title: 'Other' } }] });
-    await writeFile(path.join(directory, 'kanban.json'), saved);
-    const first = await previews.open(card('kanban', { source: 'local', projectId: related.id, configurationId: 'other' }, { preview: true, kanban: { mode: 'preview', values: { title: 'Temporary' } } }));
+    await writeFile(path.join(related.folderPath,'configuration.json'),JSON.stringify({version:1,fields:[{name:'title',type:'string',defaultValue:'Default'}]}));
+    const store=await createLocalProjectConfigurationStore(related.folderPath);
+    let state=await store.read(); const active=state.activeConfigurationId;
+    state=await store.dispatch({action:'save',revision:state.revision,id:active,values:{title:'Active'}}) as typeof state;
+    state=await store.dispatch({action:'create',revision:state.revision,name:'Other'}) as typeof state;
+    const other=state.activeConfigurationId;
+    state=await store.dispatch({action:'save',revision:state.revision,id:other,values:{title:'Other'}}) as typeof state;
+    state=await store.dispatch({action:'select',revision:state.revision,id:active}) as typeof state;
+    const saved=await store.read();
+    const first = await previews.open(card('kanban', { source: 'local', projectId: related.id, configurationId: other }, { preview: true, kanban: { mode: 'preview', values: { title: 'Temporary' } } }));
     const second = await previews.open(card('project', { source: 'local', projectId: related.id }, { preview: true }));
-    expect(first.data.kanban?.configuration).toMatchObject({ id: 'other', params: { title: 'Temporary' } });
-    expect(second.data.kanban?.configuration).toMatchObject({ id: 'active', params: { title: 'Active' } });
-    expect(await readFile(path.join(directory, 'kanban.json'), 'utf8')).toBe(saved);
+    expect(first.data.kanban?.configuration).toMatchObject({ id: other, params: { title: 'Temporary' } });
+    expect(second.data.kanban?.configuration).toMatchObject({ id: active, params: { title: 'Active' } });
+    expect(await store.read()).toEqual(saved);
     expect(String((await previews.asset(new URL(first.data.kanban!.url, 'http://localhost')))?.content)).toContain('Temporary');
     await expect(previews.open(card('kanban', { source: 'local', projectId: related.id, configurationId: 'deleted' }))).rejects.toThrow();
   });
@@ -121,7 +129,7 @@ describe('resource previews', () => {
     const { previews, card } = await fixture();
     const prefix = 'https://steamharness.test/api/projects/board/kanban/previews/nonce/browser/local/';
     const fetcher = vi.spyOn(globalThis, 'fetch').mockImplementation(async url => new Response(JSON.stringify({ errCode: 0, data:
-      String(url).endsWith('/structure') ? { structure: { projectType: 'kanban' } } : {
+      String(url).endsWith('/structure') ? { structure: { projectType: 'kanban' } } : String(url).endsWith('/configurations') ? createConfigurationState([],()=> 'default') : {
         manifest: { params: [] }, configurations: [], preview: { url: `${prefix}index.html`, nonce: 'nonce' },
       } })));
     const result = await previews.open(card('kanban', { source: 'server', projectId: 'board' }));
@@ -173,6 +181,7 @@ describe('resource previews', () => {
       if (!address.startsWith(connection.serverUrl)) { return originalFetch(url, init); }
       const data = address.endsWith('/api/auth/me') ? { profile: { userId: 'user', email: 'test@example.com', displayName: 'User' } }
         : address.endsWith('/structure') ? { structure: { projectType: 'kanban' } }
+        : address.endsWith('/configurations') ? createConfigurationState([],()=> 'default')
         : address.endsWith('/kanban') ? { manifest: { params: [] }, configurations: [],
           preview: { url: `${connection.serverUrl}/api/projects/board/kanban/previews/nonce/browser/local/index.html`, nonce: 'nonce' } }
         : undefined;
@@ -261,4 +270,16 @@ describe('resource previews', () => {
       expect(await (await request({ type: 'resource-refresh', id: opened.id, reference })).json()).toMatchObject({ message: 'Access denied' });
     } finally { await app.close(); }
   });
+});
+
+it('refreshes a related map card after its configuration changes through another surface',async()=>{
+  const {previews,related,card}=await fixture();
+  const store=await createLocalProjectConfigurationStore(related.folderPath);
+  let state=await store.read();
+  state=await store.dispatch({action:'field.save',revision:state.revision,field:{name:'label',type:'string'}}) as typeof state;
+  const opened=await previews.open(card('kanban',{source:'local',projectId:related.id}));
+  await store.dispatch({action:'save',revision:state.revision,id:state.activeConfigurationId,values:{label:'updated'}});
+  await vi.waitFor(()=>expect(()=>previews.get(opened.id)).toThrow(),{timeout:2500});
+  const refreshed=await previews.open(card('kanban',{source:'local',projectId:related.id}));
+  expect(refreshed.data.kanban?.configuration.params.label).toBe('updated');
 });

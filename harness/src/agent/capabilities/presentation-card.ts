@@ -1,5 +1,5 @@
 import type { NodeContext } from "../../types/context";
-import { readHostConfigurationBridgeConfig, runHostConfigurationAction } from "./host-configuration";
+import { isConfigurationValue } from "@steamharness/project-configuration";
 import type { Capability } from "./types";
 
 export const PRESENTATION_CARD_MCP_SERVER_ID = "workflow-ui";
@@ -18,7 +18,7 @@ export interface PresentationCardToolArgs {
   preview?: boolean;
   title?: string;
   kanban?: {
-    mode: "preview" | "save";
+    mode: "preview";
     values: Record<string, unknown>;
   };
 }
@@ -67,7 +67,7 @@ export async function runPresentationCardAction(
       throw new Error("Kanban parameters require a Kanban card.");
     }
     const mode = args.kanban.mode;
-    if (mode !== "preview" && mode !== "save") throw new Error("Kanban card mode is invalid.");
+    if (mode !== "preview") throw new Error("Use Studio Control manage_configurations to save project configurations with an explicit target and revision.");
     if (!isRecord(args.kanban.values) || Object.keys(args.kanban.values).length > 100) {
       throw new Error("Kanban card values must be a small object.");
     }
@@ -77,24 +77,7 @@ export async function runPresentationCardAction(
       }
       return [key, value];
     }));
-    if (mode === "save") {
-      if (target.source !== "current") {
-        throw new Error("Saving Kanban parameters requires the current host Kanban project.");
-      }
-    }
     kanban = { mode, values };
-  }
-  if (args.kind === "kanban" && target.source === "current" && !target.configurationId
-    && readHostConfigurationBridgeConfig()) {
-    const state = await runHostConfigurationAction({ action: "get" });
-    if (isRecord(state) && typeof state.activeConfigurationId === "string") {
-      target.configurationId = state.activeConfigurationId;
-    }
-  }
-  if (kanban?.mode === "save") {
-    await runHostConfigurationAction({ action: "update", values: kanban.values,
-      ...(target.configurationId ? { configurationId: target.configurationId } : {}),
-    });
   }
   return {
     action: "upsert",
@@ -146,11 +129,7 @@ function readTarget(kind: PresentationCardKind, value: unknown): Record<string, 
   return target;
 }
 
-function isKanbanValue(value: unknown): boolean {
-  return typeof value === "string" || typeof value === "boolean"
-    || (typeof value === "number" && Number.isFinite(value))
-    || (Array.isArray(value) && value.every((item) => typeof item === "string"));
-}
+function isKanbanValue(value: unknown): boolean { return isConfigurationValue(value); }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -161,7 +140,7 @@ export const PRESENTATION_CARD_CAPABILITY: Capability = {
   toolName: PRESENTATION_CARD_MCP_TOOL_NAME,
   toolId: PRESENTATION_CARD_MCP_TOOL_ID,
   title: "Conversation resource card",
-  description: "Show, update, pin, or remove a resource card in the current Conversation. preview controls the Kanban or Desktop browser preview; Kanban projects and browser cards preview and pin by default. Set target.configurationId to preview a specific named Kanban configuration without selecting or modifying the host configuration. Omitted IDs on current-host Kanban cards bind to the configuration active when this command runs. Kanban parameter mode=preview is temporary; mode=save writes the referenced host configuration.",
+  description: "Show, update, pin, or remove a resource card in the current Conversation. preview controls the Kanban or Desktop browser preview; Kanban projects and browser cards preview and pin by default. Set target.configurationId to preview a specific named Kanban configuration without selecting or modifying the host configuration. Omitted IDs use the active configuration when the preview opens. Kanban parameter mode=preview is temporary. Persist values with Studio Control manage_configurations using an explicit target, configuration ID and revision.",
   inputSchema: {
     type: "object",
     properties: {
@@ -169,7 +148,7 @@ export const PRESENTATION_CARD_CAPABILITY: Capability = {
       cardId: { type: "string", minLength: 1, maxLength: 128 },
       kind: { type: "string", enum: [...CARD_KINDS] },
       target: { type: "object", additionalProperties: { type: "string" },
-        description: "Resource target. Kanban/project previews accept configurationId, the ID returned by host_project_configuration get. Previewing it does not change the host selection.",
+        description: "Resource target. Kanban/project previews accept configurationId, the ID returned by Studio Control get_configurations. Previewing it does not change the host selection.",
       },
       pinned: { type: "boolean" },
       preview: { type: "boolean" },
@@ -177,7 +156,7 @@ export const PRESENTATION_CARD_CAPABILITY: Capability = {
       kanban: {
         type: "object",
         properties: {
-          mode: { type: "string", enum: ["preview", "save"] },
+          mode: { type: "string", enum: ["preview"] },
           values: { type: "object" },
         },
         required: ["mode", "values"],

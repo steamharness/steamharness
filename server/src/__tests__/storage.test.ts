@@ -1837,118 +1837,31 @@ test("Storage rejects the first upload when executor type differs from the empty
   }
 });
 
-test("Storage serializes Kanban saves and later configuration selection", async () => {
-  const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-kanban-lock-"));
+test("Storage atomically checks project configuration versions and isolates accounts", async () => {
+  const dataRoot = await mkdtemp(path.join(tmpdir(), "project-configuration-storage-"));
   const sourceRoot = path.join(dataRoot, "projects", DEMO_WF_ID, "draft", "source");
-  const storage = new Storage({
-    serverRoot: process.cwd(),
-    repoRoot: process.cwd(),
-    dataRoot,
-    buildInfo: testBuildInfo,
-  });
-
+  const storage = new Storage({serverRoot:process.cwd(),repoRoot:process.cwd(),dataRoot,buildInfo:testBuildInfo});
   try {
-    await mkdir(sourceRoot, { recursive: true });
-    await Promise.all([
-      writeFile(path.join(sourceRoot, "package.json"), JSON.stringify({
-        id: DEMO_WF_ID,
-        name: "Kanban Lock Demo",
-        version: "0.1.0",
-        devDependencies: testToolchainDependencies,
-        steamHarness: { projectType: "kanban", projectInfo: DECLARED_SERVER_PROJECT_INFO },
-      }), "utf8"),
-      writeFile(path.join(sourceRoot, "index.html"), "<!doctype html><html><body></body></html>", "utf8"),
-      writeFile(path.join(sourceRoot, "kanban.json"), JSON.stringify({
-        version: 1,
-        params: [{ name: "title", type: "string", defaultValue: "Roadmap" }],
-      }), "utf8"),
-    ]);
-
-    const initial = await storage.getKanbanWorkspace({
-      projectName: DEMO_WF_ID,
-      target: "draft",
-      actorId: "user-a",
-    });
-    const firstConfigurationId = initial.activeConfigurationId!;
-    const created = await storage.createKanbanConfiguration({
-      projectName: DEMO_WF_ID,
-      target: "draft",
-      actorId: "user-a",
-    });
-    const secondConfigurationId = created.activeConfigurationId!;
-    await storage.selectKanbanConfiguration({
-      projectName: DEMO_WF_ID,
-      target: "draft",
-      actorId: "user-a",
-      configurationId: firstConfigurationId,
-    });
-
-    const localStore = storage as unknown as {
-      writeLocalKanbanConfigurationState: (
-        projectName: string,
-        actorId: string,
-        state: unknown,
-      ) => Promise<void>;
-    };
-    const originalWrite = localStore.writeLocalKanbanConfigurationState.bind(storage);
-    let notifySaveStarted!: () => void;
-    let releaseSave!: () => void;
-    const saveStarted = new Promise<void>((resolve) => {
-      notifySaveStarted = resolve;
-    });
-    const saveGate = new Promise<void>((resolve) => {
-      releaseSave = resolve;
-    });
-    let delayNextWrite = true;
-    localStore.writeLocalKanbanConfigurationState = async (...args) => {
-      if (delayNextWrite) {
-        delayNextWrite = false;
-        notifySaveStarted();
-        await saveGate;
-      }
-      await originalWrite(...args);
-    };
-
-    const savePromise = storage.saveKanbanConfigurationValues({
-      projectName: DEMO_WF_ID,
-      target: "draft",
-      actorId: "user-a",
-      configurationId: firstConfigurationId,
-      values: { title: "Saved title" },
-    });
-    await saveStarted;
-
-    let selectionSettled = false;
-    const selectPromise = storage.selectKanbanConfiguration({
-      projectName: DEMO_WF_ID,
-      target: "draft",
-      actorId: "user-a",
-      configurationId: secondConfigurationId,
-    }).then((workspace) => {
-      selectionSettled = true;
-      return workspace;
-    });
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    assert.equal(selectionSettled, false);
-
-    releaseSave();
-    const [saved, selected] = await Promise.all([savePromise, selectPromise]);
-    assert.equal(saved.activeConfigurationId, firstConfigurationId);
-    assert.equal(selected.activeConfigurationId, secondConfigurationId);
-    assert.equal(
-      selected.configurations.find((configuration) => configuration.id === firstConfigurationId)?.values.title,
-      "Saved title",
-    );
-
-    const persisted = await storage.getKanbanWorkspace({
-      projectName: DEMO_WF_ID,
-      target: "draft",
-      actorId: "user-a",
-    });
-    assert.equal(persisted.activeConfigurationId, secondConfigurationId);
-  } finally {
-    await rm(dataRoot, { recursive: true, force: true });
-  }
+    await mkdir(sourceRoot,{recursive:true});
+    await writeFile(path.join(sourceRoot,"package.json"),JSON.stringify({id:DEMO_WF_ID,name:"Configurations",version:"0.1.0",devDependencies:testToolchainDependencies,steamHarness:{projectType:"kanban",projectInfo:DECLARED_SERVER_PROJECT_INFO}}));
+    await writeFile(path.join(sourceRoot,"index.html"),"<!doctype html>");
+    await writeFile(path.join(sourceRoot,"configuration.json"),JSON.stringify({version:1,fields:[{name:"title",type:"string",defaultValue:"Roadmap"}]}));
+    const options={projectName:DEMO_WF_ID,actorId:"user-a",target:"draft"};
+    const initial=await storage.projectConfigurations(options,{action:"get"}) as import("@steamharness/project-configuration").ProjectConfigurationState;
+    const writes=await Promise.allSettled(["one","two"].map(title=>storage.projectConfigurations(options,{action:"save",revision:initial.revision,id:initial.activeConfigurationId,values:{title}})));
+    assert.equal(writes.filter(write=>write.status==="fulfilled").length,1);
+    const failed=writes.find(write=>write.status==="rejected") as PromiseRejectedResult;
+    assert.equal((failed.reason as {statusCode:number}).statusCode,409);
+    const state=await storage.projectConfigurations(options,{action:"get"}) as typeof initial;
+    assert.equal(state.revision,initial.revision+1);
+    const other=await storage.projectConfigurations({...options,actorId:"user-b"},{action:"get"}) as typeof initial;
+    assert.equal(other.configurations[0]?.values.title,"Roadmap");
+    const before=structuredClone(state);
+    await assert.rejects(storage.projectConfigurations(options,{action:"import",revision:state.revision,document:{version:1,kind:"steamharness-project-configurations",fields:[{name:"title",type:"number"}],configurations:[{name:"Invalid",values:{title:2}}]}}));
+    assert.deepEqual(await storage.projectConfigurations(options,{action:"get"}),before);
+    const workspace=await storage.getKanbanWorkspace(options);
+    assert.equal(workspace.configurations[0]?.values.title,state.configurations[0]?.values.title);
+  }finally{await rm(dataRoot,{recursive:true,force:true});}
 });
 
 test("Storage keeps immutable project card images after metadata changes", async () => {

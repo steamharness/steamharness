@@ -90,7 +90,7 @@ try {
   await promptService.post({ type: 'workflow-run', entrypointId: 'waiting', params: {} });
   await waitFor(async () => (await promptService.state()).runs.some(run => run.status === 'waiting_for_input'), 'real user input');
   const dashboard = path.join(data, 'Analysis'); await mkdir(dashboard);
-  for (const name of ['package.json', 'kanban.json', 'index.html', 'assets']) await cp(path.join(root, name), path.join(dashboard, name), { recursive: true });
+  for (const name of ['package.json', 'configuration.json', 'index.html', 'assets']) await cp(path.join(root, name), path.join(dashboard, name), { recursive: true });
   await symlink(dependencies, path.join(dashboard, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
   const manifest = JSON.parse(await readFile(path.join(dashboard, 'package.json'), 'utf8'));
   const coreVersion = JSON.parse(await readFile(path.join(dependencies, 'steamharness/package.json'), 'utf8')).version;

@@ -49,15 +49,7 @@ export {
   type GlobalMemoryToolArgs,
 } from "./global-memory";
 
-export {
-  HOST_CONFIGURATION_MCP_SERVER_ID,
-  HOST_CONFIGURATION_MCP_TOOL_ID,
-  HOST_CONFIGURATION_MCP_TOOL_NAME,
-  HOST_CONFIGURATION_CAPABILITY,
-  readHostConfigurationBridgeConfig,
-  runHostConfigurationAction,
-  type HostConfigurationToolArgs,
-} from "./host-configuration";
+export { readHostConfigurationBridgeConfig } from "./host-configuration";
 
 export {
   PRESENTATION_CARD_MCP_SERVER_ID,

@@ -1,0 +1,87 @@
+---
+title: "项目配置"
+description: "Workflow、Conversation、Kanban 共用的字段、命名配置、导入导出和运行快照。"
+---
+
+# 项目配置
+
+Workflow、Conversation、Kanban 使用同一套项目配置。Studio 与 CLI Web 从工具栏打开“项目配置”，Server Web 从项目详情的配置页管理。没有声明字段时仍可添加自定义字段。
+
+## 声明字段
+
+项目根目录的 `configuration.json` 只声明结构和安全默认值，实际配置值通过面板管理：
+
+```json
+{
+  "version": 1,
+  "fields": [
+    { "name": "API_KEY", "type": "string", "label": "API key", "secret": true, "required": true },
+    { "name": "retries", "type": "number", "defaultValue": 2 },
+    { "name": "enabled", "type": "boolean", "defaultValue": false },
+    { "name": "regions", "type": "string", "multiple": true, "options": [{ "value": "east" }, { "value": "west" }] },
+    { "name": "metadata", "type": "json", "defaultValue": { "tags": [] } }
+  ]
+}
+```
+
+字段支持 `string`、有限 `number`、`boolean` 和 `json`，字符串可用 `options` 声明枚举，`multiple: true` 表示字符串数组。可选属性为 `label`、`description`、`defaultValue`、`required`、`secret`、`control`、`options`。默认值使用原生 JSON 类型；敏感字段不要写真实默认值。配置字段与执行输入参数是两套结构，配置不支持文件或位置参数；页面内文件上传继续使用文件 API。
+
+字段名以字母或下划线开头，后续允许字母、数字、下划线、点和连字符，最长 200 字符。字段名必须唯一。用户和小助手可以管理自定义字段，自定义字段结构属于整个项目，各套配置分别保存值。声明字段由 `configuration.json` 管理，自定义字段不能覆盖声明字段。重命名自定义字段会同步所有配置中的键；删除会清除所有配置中的对应值。
+
+## 管理配置
+
+可以新建、复制、重命名、切换和删除命名配置，始终至少保留一套。取消“设置值”清除覆盖值；存在声明默认值时恢复默认值。缺少必填项可先保存，开始运行时才校验。新增声明字段使用默认值，移除声明字段后不再向运行暴露对应值。
+
+保存使用 `revision` 检查和原子写入。其他窗口或小助手修改配置时，面板更新已提交状态；有草稿时保留输入并提示冲突。刷新并丢弃草稿后再重新编辑；失败请求不会写入部分结果。
+
+Studio、独立 CLI 与 CLI Web 共用本机用户目录下的配置存储，按规范化后的项目真实路径隔离。Server 按项目和登录账号隔离，拥有项目读取权限的账号可以管理自己的配置。配置值不写入项目源码、源码下载包或版本快照。本地与 Server 的配置通过导入导出搬运。
+
+## 导入与导出
+
+导出当前或全部配置，得到版本为 `1`、`kind` 为 `steamharness-project-configurations` 的 JSON 文件，包含字段定义和完整有效值，包括敏感值。文件中的配置包含名称和值，不包含原配置 ID。
+
+导入默认新增配置、重新生成 ID 并保留当前选择。未存在的字段添加为自定义字段；同名字段类型、多选属性或选项冲突、未知字段值、无效类型、无效 JSON 或超过 1 MiB 的请求会整批拒绝，不留下部分字段或配置。妥善保管含敏感值的导出文件。
+
+## 运行时读取
+
+```ts
+const token = steamharness.getConfig<string>("API_KEY");
+
+const task = steamharness.defineProject({
+  name: "configured-task",
+  async run(input, context) {
+    const enabled = context.config.enabled;
+    return { errCode: 0, errMessage: "", enabled };
+  },
+});
+```
+
+SDK 提供 `ProjectConfigurationSnapshot`、`context.config` 和 `steamharness.getConfig(key)`。配置快照贯通参数解析器、executor、节点和 Agent，按运行隔离并冻结，不写入全局 `process.env`。运行之外的 `getConfig` 返回 `undefined`。直接使用 SDK 时可以向执行接口传入显式 `configuration` 快照，或通过 `createLocalProjectConfigurationStore(projectDir)` 管理本地配置。
+
+- Workflow 开始执行时冻结配置；恢复等待任务继续使用原快照。
+- Conversation 的下一轮执行使用新配置；持久 Agent 在当前任务、排队输入和审批处理结束后重建运行配置，保留会话历史、分支和恢复状态。
+- Kanban 保存后更新主页面与资源卡片预览，HTML 仍通过 `window.steamHarnessKanban.getConfiguration().params` 读取原生值，并监听 `steamharness:kanban-configuration-change`。指定配置 ID 的预览引用该配置；配置删除后显示不可用。
+
+项目业务配置不自动读取 `.env`，不使用 `.env.example`，也不回退到进程环境变量。旧项目 env 和旧 Kanban 配置不迁移。请重新在面板填写配置。Server 部署、CI 和 Studio 内部通信变量继续由宿主管理。
+
+## CLI 与小助手
+
+无界面本地接口使用 JSON 输入输出，和面板共用同一个存储：
+
+```sh
+printf '%s' '{"action":"get"}' | steamharness configuration ./my-project
+```
+
+小助手通过 Studio Control 的 `get_configurations`、`manage_configurations` 和 `open_configurations` 操作。工具的 `input` 是 JSON 字符串：本地指定 `storage: "local"` 和 `projectDir`；Server 指定 `storage: "server"`、`projectId`、`target`（`draft`、`latest` 或版本）。操作不依赖面板打开。
+
+```json
+{
+  "storage": "local",
+  "projectDir": "/projects/my-project",
+  "call": { "action": "save", "revision": 3, "id": "profile-id", "values": { "enabled": true }, "unset": ["API_KEY"] }
+}
+```
+
+查询返回字段、配置列表、当前 ID 与 `revision`。管理支持 `create`、`duplicate`、`rename`、`save`、`select`、`delete`、`field.save`、`field.delete`、`import`。读取工具的 `export: true` 导出全部，指定 `id` 导出当前配置。所有写操作必须传查询到的 revision；配置值操作显式指定 id。只读模式拒绝管理操作，目录与项目范围沿用 Studio 现有权限策略。冲突时保留拟修改内容，重新查询并协调后重试。
+
+Server API 使用 `GET /api/projects/:id/configurations?target=draft` 读取，`POST /api/projects/:id/configurations` 提交 `{ "target": "draft", "call": { ... } }`。成功返回统一 `errCode: 0` 包装，版本冲突返回 HTTP 409 和 `data.code: "CONFIGURATION_CONFLICT"`。配置 API 只保存静态结构和值，Server 不执行项目。

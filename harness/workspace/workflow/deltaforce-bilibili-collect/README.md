@@ -87,7 +87,7 @@ workflow updates the existing entry instead of creating a duplicate.
 
 ## Environment
 
-`.env.example` documents every knob. The important ones are:
+`configuration.json` declares every configuration field. The important ones are:
 
 ```bash
 MINIMAX_API_KEY=...                  # required for real runs

@@ -1,12 +1,4 @@
-import { config as loadEnvFile } from "dotenv";
 import { HarnessError } from "../workflow/errors";
-
-export function loadProjectEnv(envPath: string): void {
-  loadEnvFile({
-    path: envPath,
-    quiet: true,
-  });
-}
 
 export function readRequiredEnv(
   env: NodeJS.ProcessEnv,

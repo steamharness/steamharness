@@ -1,7 +1,7 @@
 import type { HelloInput, HelloOutputPayload } from "./interface";
 
 const llmProvider = steamharness.createLLMProviderRef("default", () => {
-  return steamharness.createLLMProviderFromEnv();
+  return steamharness.createLLMProviderFromConfig();
 });
 
 const llmNode = steamharness.createLLMStreamNode<HelloInput>({

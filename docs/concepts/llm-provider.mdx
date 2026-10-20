@@ -1,6 +1,6 @@
 ---
 title: "LLM Provider"
-description: "在 workflow 中声明自有 LLM provider、环境变量和节点。"
+description: "在 workflow 中声明自有 LLM provider、项目配置和节点。"
 ---
 
 # LLM Provider
@@ -12,19 +12,19 @@ LLM 能力通过统一的 provider 接口注入 workflow。公开 workflow 使�
 推荐在 workflow 中创建 provider ref，让节点运行时读取配置：
 
 ```ts
-const llmProvider = workflow.createLLMProviderRef("default", () => {
-  return workflow.createLLMProviderFromEnv();
+const llmProvider = steamharness.createLLMProviderRef("default", () => {
+  return steamharness.createLLMProviderFromConfig();
 });
 ```
 
-节点运行时才解析 provider，避免业务代码在模块加载阶段读取环境变量。
+节点运行时才解析 provider，避免业务代码在模块加载阶段读取业务配置。
 
 ## LLM 节点
 
 非流式节点：
 
 ```ts
-const llmNode = workflow.createLLMNode<Input>({
+const llmNode = steamharness.createLLMNode<Input>({
   name: "answer-llm",
   provider: llmProvider,
   mapInput(input) {
@@ -40,7 +40,7 @@ const llmNode = workflow.createLLMNode<Input>({
 流式节点使用同一个 provider：
 
 ```ts
-const llmStreamNode = workflow.createLLMStreamNode<Input>({
+const llmStreamNode = steamharness.createLLMStreamNode<Input>({
   name: "answer-stream",
   provider: llmProvider,
   mapInput(input) {
@@ -49,18 +49,18 @@ const llmStreamNode = workflow.createLLMStreamNode<Input>({
 });
 ```
 
-## 项目环境变量
+## 项目配置字段
 
-`workflow.createLLMProviderFromEnv()` 读取以下变量：
+`steamharness.createLLMProviderFromConfig()` 读取以下字段：
 
 - `LLM_TYPE`
 - `LLM_API_KEY`
 - `LLM_BASE_URL`
 - `LLM_MODEL`
 
-这些变量来自项目 `.env` 和宿主进程环境，已有进程变量优先。`LLM_BASE_URL` 必须是没有用户名、密码、查询参数或片段的 HTTP(S) 地址。
+在 `configuration.json` 声明这些字段，然后通过项目配置面板填写值。值来自本次运行的冻结快照，不回退读取 `.env` 或进程变量。`LLM_BASE_URL` 必须是没有用户名、密码、查询参数或片段的 HTTP(S) 地址。
 
-第三方服务可以使用自己的环境变量和 `workflow.getEnv()`，但不能读取宿主的账户凭据或系统服务配置。
+项目业务值来自[项目配置](/concepts/project-configuration)，不加载项目 env，也不回退读取进程变量。宿主部署和通信配置由宿主单独管理。
 
 ## Provider 类型与错误
 

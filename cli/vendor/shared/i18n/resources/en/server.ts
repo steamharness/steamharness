@@ -8,6 +8,7 @@ export const server = {
   accountDisabled: "Account is disabled.",
   userAccountRequired: "A user account is required.",
   invitationLoginRequired: "Account login is required to accept invitations.",
+  projectConfigurationLoginRequired: "Account login is required to use project configurations.",
   kanbanLoginRequired: "Account login is required to use Kanban configurations.",
   projectDataStorageDeclarationRequired: "Project \"{{projectId}}\" cannot access server data because steamHarness.projectInfo.dataStorage.mode is not declared. Declare the storage mode in package.json before retrying.",
   projectDataStorageServerForbidden: "Project \"{{projectId}}\" cannot access server data because data storage mode \"{{mode}}\" does not allow server storage.",

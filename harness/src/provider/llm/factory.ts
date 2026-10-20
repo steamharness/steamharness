@@ -1,6 +1,6 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
-import { getEnv } from "../../env";
+import { getConfig, currentConfigurationValues, type ConfigurationValues } from "../../configuration";
 import { AiSdkLLMProvider } from "./ai-sdk";
 import type { LLMCallSettings, LLMProvider } from "./types";
 import { HarnessError } from "../../workflow/errors";
@@ -91,30 +91,31 @@ export function createLLMProvider(
   }
 }
 
-export function createLLMProviderFromEnv(
-  env: NodeJS.ProcessEnv = process.env,
+export function createLLMProviderFromConfig(
+  config: ConfigurationValues = currentConfigurationValues(),
 ): LLMProvider {
-  const type = parseLLMProviderType(readRequiredProviderEnv(env, "LLM_TYPE", ["TYPE"]));
+  const env = Object.fromEntries(Object.entries(config).map(([key, value]) => [key, typeof value === "string" ? value : undefined]));
+  const type = parseLLMProviderType(readRequiredProviderConfig(env, "LLM_TYPE", ["TYPE"]));
 
   return createLLMProvider({
     type,
-    apiKey: readRequiredProviderEnv(env, "LLM_API_KEY", ["API_KEY", "APIKEY"]),
-    baseURL: readOptionalProviderEnv(env, "LLM_BASE_URL", ["BASE_URL"]),
-    model: readOptionalProviderEnv(env, "LLM_MODEL", ["MODEL"]),
+    apiKey: readRequiredProviderConfig(env, "LLM_API_KEY", ["API_KEY", "APIKEY"]),
+    baseURL: readOptionalProviderConfig(env, "LLM_BASE_URL", ["BASE_URL"]),
+    model: readOptionalProviderConfig(env, "LLM_MODEL", ["MODEL"]),
     defaults: {
       maxRetries: 1,
     },
   });
 }
 
-export function createLLMProviderFromProjectEnv(): LLMProvider {
-  const type = parseLLMProviderType(readRequiredProjectEnv("LLM_TYPE", ["TYPE"]));
+export function createLLMProviderFromProjectConfig(): LLMProvider {
+  const type = parseLLMProviderType(readRequiredProjectConfig("LLM_TYPE", ["TYPE"]));
 
   return createLLMProvider({
     type,
-    apiKey: readRequiredProjectEnv("LLM_API_KEY", ["API_KEY", "APIKEY"]),
-    baseURL: readOptionalProjectEnv("LLM_BASE_URL", ["BASE_URL"]),
-    model: readOptionalProjectEnv("LLM_MODEL", ["MODEL"]),
+    apiKey: readRequiredProjectConfig("LLM_API_KEY", ["API_KEY", "APIKEY"]),
+    baseURL: readOptionalProjectConfig("LLM_BASE_URL", ["BASE_URL"]),
+    model: readOptionalProjectConfig("LLM_MODEL", ["MODEL"]),
     defaults: {
       maxRetries: 1,
     },
@@ -164,19 +165,19 @@ function normalizeOptionalValue(value: string | undefined): string | undefined {
   return value.trim();
 }
 
-function readRequiredProviderEnv(
+function readRequiredProviderConfig(
   env: NodeJS.ProcessEnv,
   name: string,
   aliases: string[] = [],
 ): string {
-  const value = readOptionalProviderEnv(env, name, aliases);
+  const value = readOptionalProviderConfig(env, name, aliases);
 
   if (value === undefined) {
     throw new HarnessError({
       type: "input_validation",
-      message: `Missing required environment variable: ${name}.`,
+      message: `Missing required configuration: ${name}.`,
       metadata: {
-        env: name,
+        configuration: name,
         aliases,
       },
     });
@@ -185,7 +186,7 @@ function readRequiredProviderEnv(
   return value;
 }
 
-function readOptionalProviderEnv(
+function readOptionalProviderConfig(
   env: NodeJS.ProcessEnv,
   name: string,
   aliases: string[] = [],
@@ -201,15 +202,15 @@ function readOptionalProviderEnv(
   return undefined;
 }
 
-function readRequiredProjectEnv(name: string, aliases: string[] = []): string {
-  const value = readOptionalProjectEnv(name, aliases);
+function readRequiredProjectConfig(name: string, aliases: string[] = []): string {
+  const value = readOptionalProjectConfig(name, aliases);
 
   if (value === undefined) {
     throw new HarnessError({
       type: "input_validation",
-      message: `Missing required environment variable: ${name}.`,
+      message: `Missing required configuration: ${name}.`,
       metadata: {
-        env: name,
+        configuration: name,
         aliases,
       },
     });
@@ -218,9 +219,9 @@ function readRequiredProjectEnv(name: string, aliases: string[] = []): string {
   return value;
 }
 
-function readOptionalProjectEnv(name: string, aliases: string[] = []): string | undefined {
+function readOptionalProjectConfig(name: string, aliases: string[] = []): string | undefined {
   for (const key of [name, ...aliases]) {
-    const value = getEnv(key);
+    const value = typeof getConfig(key) === "string" ? getConfig(key) as string : undefined;
 
     if (value !== undefined) {
       return value;

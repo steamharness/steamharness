@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Added] Add project configurations to all project detail pages, with field/value editing, profile management, import/export and recovery for conflicts, failed saves and empty states.
+
 ### Project Avatars
 
 - Project list avatars open their projects; standalone avatars support previews. User avatars open the displayed profile, and personal profile avatars select an upload, with keyboard focus restored on close.

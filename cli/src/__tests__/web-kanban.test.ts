@@ -20,7 +20,7 @@ async function fixture(options: { server?: boolean; artifact?: boolean; noParams
   await writeFile(path.join(directory, 'package.json'), JSON.stringify(pkg));
   const artifactRoot = options.artifact ? path.join(directory, 'dist/pages') : directory;
   await mkdir(artifactRoot, { recursive: true }); await writeFile(path.join(artifactRoot, 'index.html'), '<!doctype html><script>window.boardLoaded = true;</script><h1>Board</h1>'); await writeFile(path.join(artifactRoot, 'board.js'), 'window.assetLoaded = true;');
-  if (!options.noParams) { await writeFile(path.join(directory, 'kanban.json'), JSON.stringify({ version: 1, params: [{ name: 'title', type: 'string', defaultValue: 'Roadmap' }, { name: 'limit', type: 'number', defaultValue: '5' }, { name: 'visible', type: 'boolean', defaultValue: 'true' }, { name: 'tags', type: 'string', multiple: true, defaultValue: '["a"]' }] })); }
+  if (!options.noParams) { await writeFile(path.join(directory, 'configuration.json'), JSON.stringify({ version: 1, fields: [{ name: 'title', type: 'string', defaultValue: 'Roadmap' }, { name: 'limit', type: 'number', defaultValue: 5 }, { name: 'visible', type: 'boolean', defaultValue: true }, { name: 'tags', type: 'string', multiple: true, defaultValue: ['a'] }] })); }
   const runtime: Runtime = { available: true, inspect: vi.fn(async () => ({ projects: [descriptor], errors: [] })), resolveParams: vi.fn(async () => ({})), run: vi.fn(async () => ({ status: 'success' })), uploadFiles: vi.fn(async () => []), readFile: vi.fn(), deleteFiles: vi.fn(), cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(), readResource: vi.fn(), cancel: vi.fn(), dispose: vi.fn(), kanbanBridge: vi.fn(async (_project, call) => ({ operation: call.operation })) };
   const dataDir = path.join(root, 'data');
   vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(root, 'auth')); vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
@@ -33,7 +33,7 @@ async function fixture(options: { server?: boolean; artifact?: boolean; noParams
   const token = new URL(app.url).hash.slice('#session='.length);
   const post = (message: object) => fetch(`${app.origin}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
   const state = async () => (await post({ type: 'ready' }).then(response => response.json())).messages[0];
-  const action = async (action: string, extra: object = {}) => { const current = (await state()).kanban; return post({ type: 'kanban-configuration', action, id: current.activeConfigurationId, revision: current.revision, ...extra }); };
+  const action = async (action: string, extra: object = {}) => { const current = (await state()).kanban; return post({ type: 'project-configuration', call: {action, id: current.activeConfigurationId, revision: current.revision, ...extra} }); };
   const bridge = async (operation: string, input = {}) => { const current = (await state()).kanban; return post({ type: 'kanban-bridge', nonce: current.preview.nonce, requestId: 'request', call: { requestId: 'bridge', operation, input } }).then(response => response.json()).then(value => value.messages[0]); };
   return { app, root, directory, dataDir, pkg, post, state, action, bridge, runtime };
 }
@@ -71,7 +71,7 @@ describe('Kanban CLI Web workspace', () => {
   });
   it('preserves custom parameter and bridge data keys that resemble credential names', async () => {
     const { directory, post, state, action, bridge, runtime } = await fixture();
-    await writeFile(path.join(directory, 'kanban.json'), JSON.stringify({ version: 1, params: [{ name: 'apiKey', type: 'string', defaultValue: 'project-key' }] }));
+    await writeFile(path.join(directory, 'configuration.json'), JSON.stringify({ version: 1, fields: [{ name: 'apiKey', type: 'string', defaultValue: 'project-key' }] }));
     await post({ type: 'kanban-refresh' });
     expect((await state()).kanban.configuration.params.apiKey).toBe('project-key');
     await action('save', { values: { apiKey: 'updated-key' } });
@@ -79,15 +79,32 @@ describe('Kanban CLI Web workspace', () => {
     vi.mocked(runtime.kanbanBridge!).mockResolvedValue({ apiKey: 'stored-project-key', secretLabel: 'business data' });
     expect((await bridge('kv.getValue', { key: 'settings' })).value).toEqual({ apiKey: 'stored-project-key', secretLabel: 'business data' });
   });
+  it('exports complete configuration values even when they match a host credential or attachment shape', async () => {
+    const {app,directory,post,state,action}=await fixture();
+    const realFetch=globalThis.fetch;
+    vi.spyOn(globalThis,'fetch').mockImplementation((url,options)=>String(url).startsWith('https://configuration.test')
+      ? Promise.resolve(new Response(JSON.stringify({errCode:0,data:{profile:{userId:'user',email:'user@example.com',displayName:'User'}}}))) : realFetch(url,options));
+    await app.setHostConnection({serverUrl:'https://configuration.test',accessToken:'explicit-project-key'});
+    await writeFile(path.join(directory,'configuration.json'),JSON.stringify({version:1,fields:[{name:'credentials',type:'json',secret:true}]}));
+    await post({type:'kanban-refresh'});
+    const credentials={apiKey:'explicit-project-key',file:{id:`wf_${'a'.repeat(32)}`,mimeType:'application/json',path:'literal-json-value'}};
+    await action('save',{values:{credentials}});
+    const current=await state();
+    expect(current.configurations.configurations[0].values.credentials).toEqual(credentials);
+    expect(JSON.stringify(current.account)).not.toContain('explicit-project-key');
+    const result=await post({type:'project-configuration',call:{action:'export'}}).then(response=>response.json());
+    expect(result.messages[0].value.configurations[0].values.credentials).toEqual(credentials);
+  });
 
   it('routes to a dedicated page and persists only user-declared configuration values', async () => {
     const { app, action, state, directory, dataDir } = await fixture();
     expect(await fetch(app.origin).then(response => response.text())).toContain('/assets/kanban-workspace.js');
     expect((await state()).kanban.configuration.params).toEqual({ title: 'Roadmap', limit: 5, visible: true, tags: ['a'] });
-    await action('save', { values: { title: 'Custom', limit: '12', visible: 'false', tags: '["b"]', invented: 'ignored' } });
+    expect((await action('save', {values:{invented:'rejected'}})).status).toBe(400);
+    await action('save', { values: { title: 'Custom', limit: 12, visible: false, tags: ['b'] } });
     expect((await state()).kanban.configuration.params).toEqual({ title: 'Custom', limit: 12, visible: false, tags: ['b'] });
     expect(app.controller).toBeUndefined(); expect(app.projectController).toBeUndefined();
-    const stored = JSON.parse(await readFile(path.join(webProjectDataDirectory(dataDir, directory), 'kanban.json'), 'utf8'));
+    const stored = await (await core.createLocalProjectConfigurationStore(directory)).read();
     expect(stored.configurations[0].values.invented).toBeUndefined();
     await expect(readFile(path.join(webProjectDataDirectory(dataDir, directory), 'conversations.json'))).rejects.toHaveProperty('code', 'ENOENT');
   });
@@ -96,7 +113,7 @@ describe('Kanban CLI Web workspace', () => {
     await action('save', { values: { title: 'First' } }); await action('duplicate');
     const copy = (await state()).kanban; expect(copy.configurations).toHaveLength(2); expect(copy.configuration.params.title).toBe('First');
     await action('rename', { name: 'Second' }); expect((await state()).kanban.configuration.name).toBe('Second');
-    expect((await post({ type: 'kanban-configuration', action: 'save', id: first.activeConfigurationId, revision: first.revision, values: { title: 'Stale' } })).status).toBe(400);
+    expect((await post({ type: 'project-configuration', call:{action: 'save', id: first.activeConfigurationId, revision: first.revision, values: { title: 'Stale' }} })).status).toBe(400);
     await action('select', { id: first.activeConfigurationId }); expect((await state()).kanban.preview.nonce).not.toBe(copy.preview.nonce);
     await action('delete'); expect((await state()).kanban.configurations).toHaveLength(1); expect((await action('delete')).status).toBe(400);
     expect((await action('rename', { name: ' ' })).status).toBe(400); expect((await action('save', { values: { title: 2 } })).status).toBe(400);
@@ -107,8 +124,8 @@ describe('Kanban CLI Web workspace', () => {
   it('keeps the committed configuration and revision after a failed save so the same action can be retried', async () => {
     const { app, state, post } = await fixture();
     const before = (await state()).kanban;
-    vi.spyOn(app.kanbanController!, 'persist').mockRejectedValueOnce(new Error('Disk unavailable'));
-    const message = { type: 'kanban-configuration', action: 'save', id: before.activeConfigurationId, revision: before.revision, values: { title: 'Retry' } };
+    vi.spyOn(app.configurations, 'dispatch').mockRejectedValueOnce(new Error('Disk unavailable'));
+    const message = { type: 'project-configuration', call:{action: 'save', id: before.activeConfigurationId, revision: before.revision, values: { title: 'Retry' }} };
     expect((await post(message)).status).toBe(400);
     const failed = (await state()).kanban;
     expect(failed.revision).toBe(before.revision); expect(failed.configuration).toEqual(before.configuration);
@@ -116,31 +133,23 @@ describe('Kanban CLI Web workspace', () => {
     expect((await post(message)).status).toBe(200);
     expect((await state()).kanban.configuration.params.title).toBe('Retry');
   });
-  it('serializes build refresh with configuration saves and publishes only committed snapshots', async () => {
-    const { app, state, post, directory } = await fixture();
-    const controller = app.kanbanController!, before = (await state()).kanban;
-    const persist = controller.persist.bind(controller);
-    let release!: () => void;
-    vi.spyOn(controller, 'persist').mockImplementationOnce(async workspace => {
-      await new Promise<void>(resolve => { release = resolve; }); await persist(workspace);
-    });
-    const saving = post({ type: 'kanban-configuration', action: 'save', id: before.activeConfigurationId, revision: before.revision, values: { title: 'Saved' } });
-    let refreshing: Promise<void> | undefined;
-    try {
-      await vi.waitFor(() => expect(release).toBeDefined());
-      expect((await state()).kanban.revision).toBe(before.revision);
-      await writeFile(path.join(directory, 'kanban.json'), JSON.stringify({ version: 1, params: [{ name: 'title', type: 'string' }, { name: 'new', type: 'string', defaultValue: 'New' }] }));
-      refreshing = controller.refresh();
-    } finally { release(); await saving; await refreshing; }
+  it('refreshes declarations without overwriting committed values and rejects a stale editor', async () => {
+    const { app, state, action, post, directory } = await fixture();
+    await action('save', { values: { title: 'Saved' } });
+    const before = (await state()).kanban;
+    await writeFile(path.join(directory, 'configuration.json'), JSON.stringify({ version: 1, fields: [{ name: 'title', type: 'string' }, { name: 'new', type: 'string', defaultValue: 'New' }] }));
+    await post({type:'kanban-refresh'});
     const next = (await state()).kanban;
-    expect(next.configuration.params).toEqual({ title: 'Saved', new: 'New' });
-    expect(next.revision).toBe(before.revision + 2);
+    expect(next.configuration.params).toEqual({title:'Saved',new:'New'});
+    expect(next.revision).toBe(before.revision+1);
+    expect((await post({type:'project-configuration',call:{action:'save',revision:before.revision,id:before.activeConfigurationId,values:{title:'Stale'}}})).ok).toBe(false);
+    expect(app.configurations.state.revision).toBe(next.revision);
   });
   it('retains the previous preview and project declaration after an invalid manifest refresh', async () => {
     const { app, state, post, directory, pkg } = await fixture();
     const before = (await state()).kanban, artifact = { ...app.project.kanban! };
     await writeFile(path.join(directory, 'package.json'), JSON.stringify({ ...pkg, steamHarness: { ...pkg.steamHarness, kanban: { artifactDir: 'other', entry: 'index.html' } } }));
-    await writeFile(path.join(directory, 'kanban.json'), '{');
+    await writeFile(path.join(directory, 'configuration.json'), '{');
     expect((await post({ type: 'kanban-refresh' })).status).toBe(400);
     expect(app.project.kanban).toEqual(artifact);
     expect((await state()).kanban).toEqual(before);
@@ -150,7 +159,7 @@ describe('Kanban CLI Web workspace', () => {
     const response = await fetch(`${app.origin}${preview.url}`); expect(response.status).toBe(200);
     expect(await response.text()).toContain('"steamHarnessKanban"'); expect(response.headers.get('Content-Security-Policy')).toContain(`nonce-${preview.nonce}`);
     const script = await fetch(`${app.origin}/kanban/${preview.nonce}/pages/board.js`, { headers: { Origin: 'null' } }); expect(script.status).toBe(200); expect(script.headers.get('Access-Control-Allow-Origin')).toBe('*');
-    for (const name of ['package.json', 'kanban.json', '%2e%2e%2fpackage.json', '%5cpackage.json', '.env']) { expect((await fetch(`${app.origin}/kanban/${preview.nonce}/${name}`)).status).toBe(404); }
+    for (const name of ['package.json', 'configuration.json', '%2e%2e%2fpackage.json', '%5cpackage.json', '.env']) { expect((await fetch(`${app.origin}/kanban/${preview.nonce}/${name}`)).status).toBe(404); }
     await writeFile(path.join(directory, 'outside.js'), 'secret');
     try { await symlink(path.join(directory, 'outside.js'), path.join(directory, 'dist/linked.js')); } catch (error) { if (process.platform === 'win32' && (error as NodeJS.ErrnoException).code === 'EPERM') { return; } throw error; }
     expect((await fetch(`${app.origin}/kanban/${preview.nonce}/linked.js`)).status).toBe(404);
@@ -167,14 +176,14 @@ describe('Kanban CLI Web workspace', () => {
   });
   it('loads projects without a parameter manifest and refreshes build outputs and parameter definitions', async () => {
     const { directory, state, action, post } = await fixture({ noParams: true });
-    expect((await state()).kanban.configurations).toEqual([]); expect((await action('create')).status).toBe(400);
-    await writeFile(path.join(directory, 'kanban.json'), JSON.stringify({ version: 1, params: [{ name: 'custom', type: 'string', defaultValue: 'New' }] }));
+    expect((await state()).kanban.configurations).toHaveLength(1); expect((await action('create')).status).toBe(200);
+    await writeFile(path.join(directory, 'configuration.json'), JSON.stringify({ version: 1, fields: [{ name: 'custom', type: 'string', defaultValue: 'New' }] }));
     await post({ type: 'kanban-refresh' }); expect((await state()).kanban.configuration.params).toEqual({ custom: 'New' });
     const beforeBuild = (await state()).kanban;
     await writeFile(path.join(directory, 'board.js'), 'window.assetLoaded = "rebuilt";');
     await vi.waitFor(async () => expect((await state()).kanban.preview.nonce).not.toBe(beforeBuild.preview.nonce), { timeout: 3000 });
     const afterBuild = (await state()).kanban;
-    expect(afterBuild.activeConfigurationId).toBe(beforeBuild.activeConfigurationId); expect(afterBuild.revision).toBeGreaterThan(beforeBuild.revision);
+    expect(afterBuild.activeConfigurationId).toBe(beforeBuild.activeConfigurationId); expect(afterBuild.revision).toBe(beforeBuild.revision);
   });
   it('uses the project installed Core for local KV and knowledge without executing a workflow', async () => {
     const { app, bridge } = await fixture({ real: true });

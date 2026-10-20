@@ -349,23 +349,23 @@ export const executor = steamharness.defineExecutor<
       createInput({ args }) {
         return parseInputArgs(args);
       },
-      createContext({ env, projectName, conversationId }) {
+      createContext({ config, projectName, conversationId }) {
         return {
           metadata: {
-            bilibiliCredential: readBilibiliCredential(env),
+            bilibiliCredential: readBilibiliCredential(config),
             minimaxApiKey: readString(
-              env.MINIMAX_API_KEY ?? env.MINIMAX_VIDEO_API_KEY,
+              config.MINIMAX_API_KEY ?? config.MINIMAX_VIDEO_API_KEY,
             ),
-            minimaxBaseUrl: readString(env.MINIMAX_BASE_URL),
+            minimaxBaseUrl: readString(config.MINIMAX_BASE_URL),
             serverUpload: readServerUploadConfig(
-              env,
+              config,
               projectName,
               conversationId,
             ),
-            bilibiliDownloadMock: env.DELTAFORCE_BILIBILI_DOWNLOAD_MOCK === "1",
+            bilibiliDownloadMock: config.DELTAFORCE_BILIBILI_DOWNLOAD_MOCK === "1",
             minimaxDryRun:
-              env.MINIMAX_DRY_RUN === "1" ||
-              env.DELTAFORCE_BILIBILI_COLLECT_DRY_RUN === "1",
+              config.MINIMAX_DRY_RUN === "1" ||
+              config.DELTAFORCE_BILIBILI_COLLECT_DRY_RUN === "1",
           },
         };
       },
@@ -481,16 +481,16 @@ function readArgValue(args: string[], index: number, flag: string): string {
   return value;
 }
 
-function readBilibiliCredential(env: NodeJS.ProcessEnv): BilibiliCredentialConfig {
+function readBilibiliCredential(config: Record<string, any>): BilibiliCredentialConfig {
   return {
-    sessdata: normalizeOptionalText(env.BILIBILI_SESSDATA ?? env.SESSDATA),
-    biliJct: normalizeOptionalText(env.BILIBILI_BILI_JCT ?? env.BILI_JCT ?? env.bili_jct),
-    buvid3: normalizeOptionalText(env.BILIBILI_BUVID3),
+    sessdata: normalizeOptionalText(config.BILIBILI_SESSDATA ?? config.SESSDATA),
+    biliJct: normalizeOptionalText(config.BILIBILI_BILI_JCT ?? config.BILI_JCT ?? config.bili_jct),
+    buvid3: normalizeOptionalText(config.BILIBILI_BUVID3),
   };
 }
 
 function readServerUploadConfig(
-  env: NodeJS.ProcessEnv,
+  config: Record<string, any>,
   projectName: string,
   conversationId: string | undefined,
 ): ServerUploadConfig {

@@ -2,7 +2,7 @@ import { t } from '../localization';
 import './style.css';
 import './kanban-style.css';
 import { acquireProjectHost } from './host';
-import { Fields } from './workflow-fields';
+import { mountProjectConfigurations, projectConfigurationsButton } from './project-configurations';
 import { requestAction } from './action-dialog';
 import { ConversationTools } from './conversation-tools';
 import { updateProjectAvatar } from './avatar';
@@ -11,19 +11,17 @@ import { aiUsageButton, narrowMenuDismiss, projectInfoButton } from './toolbar';
 import {
   createKanbanMethodSession, parseKanbanBridgeCall, createKanbanBridgeError,
   KANBAN_BRIDGE_MAX_PENDING_REQUESTS, KANBAN_PREVIEW_READY_MESSAGE, KANBAN_BRIDGE_REQUEST_MESSAGE, KANBAN_BRIDGE_RESPONSE_MESSAGE,
-  type KanbanConfiguration, type KanbanInjectedConfiguration, type KanbanPresentationMode,
+  type KanbanInjectedConfiguration, type KanbanPresentationMode,
 } from '@steamharness/kanban-project';
 import { projectParamValue, type Project, type ParamValues } from '../workflow-types';
 
 type Message = Record<string, any>;
-interface KanbanState { revision: number; configurations: KanbanConfiguration[]; activeConfigurationId?: string; configuration: KanbanInjectedConfiguration; params: Project['fields']; preview: { url: string; nonce: string }; relatedProjectRevisions: { alias: string; revision: string }[]; missingRelatedProjectAliases: string[]; relatedProjectWarning: string }
+interface KanbanState { revision: number; configurations: {id:string;name:string}[]; activeConfigurationId?: string; configuration: KanbanInjectedConfiguration; params: Project['fields']; preview: { url: string; nonce: string }; relatedProjectRevisions: { alias: string; revision: string }[]; missingRelatedProjectAliases: string[]; relatedProjectWarning: string }
 const app = document.querySelector<HTMLElement>('#app')!, host = acquireProjectHost();
 app.classList.add('kanban-app');
 app.innerHTML = `
-<header class="toolbar"><div class="project-title"><button id="menu-toggle" class="icon-button" aria-label="${t("Show Kanban configurations")}" title="${t("Show Kanban configurations")}">${iconHtml('layout-sidebar-left')}</button><h1 id="kanban-title">Kanban</h1></div><div class="toolbar-actions"><div id="preview-modes" class="kanban-modes" role="group" aria-label="${t("Preview size")}"></div><button id="dimensions" class="icon-button" title="${t("Resize preview")}" aria-label="${t("Resize preview")}" hidden>${iconHtml('settings')}</button><button id="refresh" class="icon-button" title="${t("Refresh Kanban")}" aria-label="${t("Refresh Kanban")}">${iconHtml('refresh')}</button>${aiUsageButton()}<button id="methods" class="icon-button" title="${t("Page methods")}" aria-label="${t("Page methods")}">${iconHtml('wrench')}</button>${projectInfoButton()}</div></header>
-<aside id="project-menu" class="project-menu" aria-label="${t("Kanban configurations")}"><div class="menu-heading"><span>${t("Kanban configurations")}</span><button id="hide-menu" class="icon-button" title="${t("Hide Kanban configurations")}" aria-label="${t("Hide Kanban configurations")}">${iconHtml('chevron-left')}</button></div><div id="configuration-editor"><div class="kanban-configuration-controls"><select id="configuration" aria-label="${t("Current configuration")}"></select><button id="create" class="icon-button" title="${t("New configuration")}" aria-label="${t("New configuration")}">${iconHtml('add')}</button><button id="configuration-actions" class="icon-button" title="${t("Configuration actions")}" aria-label="${t("Configuration actions")}">${iconHtml('ellipsis')}</button></div><div id="save-error" class="error" hidden role="alert"><span></span><button id="retry-save" class="icon-button" title="${t("Retry save")}" aria-label="${t("Retry save")}">${iconHtml('refresh')}</button></div><div id="kanban-fields"></div><div id="parameter-actions"></div></div></aside>
+<header class="toolbar"><div class="project-title"><h1 id="kanban-title">Kanban</h1></div><div class="toolbar-actions"><div id="preview-modes" class="kanban-modes" role="group" aria-label="${t("Preview size")}"></div><button id="dimensions" class="icon-button" title="${t("Resize preview")}" aria-label="${t("Resize preview")}" hidden>${iconHtml('settings')}</button><button id="refresh" class="icon-button" title="${t("Refresh Kanban")}" aria-label="${t("Refresh Kanban")}">${iconHtml('refresh')}</button>${projectConfigurationsButton()}${aiUsageButton()}<button id="methods" class="icon-button" title="${t("Page methods")}" aria-label="${t("Page methods")}">${iconHtml('wrench')}</button>${projectInfoButton()}</div></header>
 <main><div id="error" class="error" hidden role="alert"></div><div id="related-warning" class="kanban-warning" hidden role="status"></div><div id="preview-stage"><div id="preview-viewport"><iframe id="kanban-preview" title="Kanban" sandbox="allow-scripts"></iframe><button id="resize-preview" class="kanban-resize" title="${t("Resize preview")}" aria-label="${t("Resize preview")}" hidden>${iconHtml('arrow-both')}</button></div><div id="preview-status" class="kanban-status" role="status"><span class="codicon codicon-loading"></span><span>${t("Loading Kanban")}</span><button id="retry-preview" class="icon-button" title="${t("Retry")}" aria-label="${t("Retry")}" hidden>${iconHtml('refresh')}</button></div><div id="preview-offline" hidden></div></div></main>
-<dialog id="configuration-dialog" class="conversation-dialog"><header><h2>${t("Configuration actions")}</h2><button id="close-configurations" class="icon-button" title="${t("Close")}" aria-label="${t("Close")}">${iconHtml('close')}</button></header><div class="dialog-body configuration-command-list"></div></dialog>
 <dialog id="dimensions-dialog" class="conversation-dialog"><header><h2>${t("Preview size")}</h2><button id="close-dimensions" class="icon-button" title="${t("Close")}" aria-label="${t("Close")}">${iconHtml('close')}</button></header><form class="dialog-body"><label>${t("Width")}<input id="preview-width" type="number" min="160" max="4096" required></label><label>${t("Height")}<input id="preview-height" type="number" min="96" max="4096" required></label><div class="dimension-actions"><button id="reset-dimensions" type="button">${iconHtml('discard')}${t("Reset")}</button><button type="submit">${iconHtml('check')}${t("Apply")}</button></div></form></dialog>
 <dialog id="methods-dialog" class="conversation-dialog"><header><h2>${t("Page methods")}</h2><button id="close-methods" class="icon-button" title="${t("Close")}" aria-label="${t("Close")}">${iconHtml('close')}</button></header><div class="dialog-body"><select id="method-name" aria-label="${t("Page methods")}"></select><p id="method-description"></p><pre id="method-schema"></pre><label class="method-input">${t("Parameters JSON")}<textarea id="method-args" rows="5">{}</textarea></label><button id="invoke-method" type="button">${iconHtml('play')}${t("Execute")}</button><pre id="method-result" role="status"></pre></div></dialog>`;
 const element = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id)! as T;
@@ -34,19 +32,14 @@ const saved = host.getState() as { menuOpen?: boolean; mode?: KanbanPresentation
 const defaults = { phone: { width: 390, height: 844 }, tablet: { width: 768, height: 1024 }, card: { width: 360, height: 200 } };
 let sizes = { ...defaults, ...saved?.sizes }, mode: KanbanPresentationMode = saved?.mode ?? 'fullscreen';
 if (!['fullscreen', 'phone', 'tablet', 'card'].includes(mode)) { mode = 'fullscreen'; }
-let menuOpen = saved?.menuOpen ?? !narrow.matches, state: KanbanState | undefined, project: Project | undefined;
+let menuOpen = false, state: KanbanState | undefined, project: Project | undefined;
 let connected = false, working = false, methodWorking = false, transitioning = false, dirty = false, editing = 0, signature = '', previewKey = '', authRevision = -1;
 let values: ParamValues = {}, saveTimer: ReturnType<typeof setTimeout> | undefined, readyTimer: ReturnType<typeof setTimeout> | undefined, pendingBridge = 0;
 let methodSession: ReturnType<typeof createKanbanMethodSession> | undefined;
 const methodCalls = new Map<string, AbortController>();
-const fields = new Fields(element('kanban-fields'), element('parameter-actions'), {
-  values: () => values, states: () => ({}), disabled: () => !connected || transitioning, loading: () => working,
-  change: (name, value) => { values[name] = value; dirty = true; editing++; controls(); clearTimeout(saveTimer); saveTimer = setTimeout(() => void save().catch(showError), 250); },
-  file: name => void chooseFile(name).catch(showError),
-  downloadFile: id => void downloadFile(id).catch(showError),
-});
-function persist(): void { host.setState({ menuOpen, mode, sizes }); }
-function menu(open: boolean): void { menuOpen = open; app.classList.toggle('menu-open', open); element('menu-toggle').hidden = open; element('menu-toggle').setAttribute('aria-expanded', String(open)); persist(); layoutPreview(); }
+mountProjectConfigurations(host);
+function persist(): void { host.setState({ mode, sizes }); }
+function menu(_open: boolean): void { app.classList.remove('menu-open'); layoutPreview(); }
 function request(message: Message): Promise<Message> {
   if (!connected) { return Promise.reject(new Error(t("Connection interrupted."))); }
   const requestId = crypto.randomUUID();
@@ -56,32 +49,8 @@ function request(message: Message): Promise<Message> {
   });
 }
 function showError(error: unknown): void { element('error').textContent = (error as Error).message ?? String(error); element('error').hidden = false; }
-function configurationValues(current: KanbanState): ParamValues {
-  const stored = current.configurations.find(item => item.id === current.activeConfigurationId)?.values ?? {};
-  return Object.fromEntries(current.params.map(field => [field.name, projectParamValue(field, stored[field.name] ?? field.defaultValue ?? '')]));
-}
-async function save(): Promise<void> {
-  clearTimeout(saveTimer); if (!dirty || !state || working) { return; }
-  const version = editing, id = state.activeConfigurationId;
-  working = true; controls();
-  try {
-    const encoded = Object.fromEntries(Object.entries(values).map(([name, value]) => [name, Array.isArray(value) ? JSON.stringify(value) : value]));
-    const reply = await request({ type: 'kanban-configuration', action: 'save', id, revision: state.revision, values: encoded });
-    state = reply.kanban; if (editing === version) { dirty = false; values = configurationValues(state!); }
-    inject(); element('save-error').hidden = true;
-  } catch (error) { element('save-error').querySelector('span')!.textContent = (error as Error).message; element('save-error').hidden = false; throw error; }
-  finally { working = false; controls(); if (dirty && connected && editing !== version) { saveTimer = setTimeout(() => void save().catch(showError), 250); } }
-}
-async function action(action: string, extra: Message = {}): Promise<void> {
-  if (working || !state) { return; } await save(); working = true; transitioning = true; controls();
-  try {
-    const reply = await request({ type: 'kanban-configuration', action, id: state.activeConfigurationId, revision: state.revision, ...extra });
-    dirty = false; update(reply.kanban); element('error').hidden = true;
-  } finally { working = false; transitioning = false; controls(); }
-}
 function controls(): void {
-  fields.update();
-  for (const id of ['configuration', 'create', 'configuration-actions', 'refresh', 'retry-save']) { (element(id) as HTMLButtonElement).disabled = !connected || working; }
+  for (const id of ['refresh']) { (element(id) as HTMLButtonElement).disabled = !connected || working; }
   element<HTMLButtonElement>('methods').disabled = !connected || !methodSession?.getState().ready;
   element<HTMLButtonElement>('invoke-method').disabled = !connected || methodWorking || !methodSession?.getState().methods.length;
   element('preview-offline').hidden = connected;
@@ -89,13 +58,7 @@ function controls(): void {
 }
 function update(next: KanbanState): void {
   if (state && next.revision < state.revision) { return; }
-  const changed = next.activeConfigurationId !== state?.activeConfigurationId;
   state = next;
-  if (changed || !dirty && !working) { values = configurationValues(next); dirty = false; }
-  const select = element<HTMLSelectElement>('configuration'); select.replaceChildren(...next.configurations.map(item => new Option(item.name, item.id))); select.value = next.activeConfigurationId ?? '';
-  const nextSignature = JSON.stringify(next.params);
-  if (signature !== nextSignature) { signature = nextSignature; fields.render({ fields: next.params }); }
-  element('configuration-editor').hidden = !next.params.length;
   element('related-warning').textContent = next.relatedProjectWarning || (next.missingRelatedProjectAliases.length ? t("Related projects are unavailable: {0}", next.missingRelatedProjectAliases.join(', ')) : '');
   element('related-warning').hidden = !element('related-warning').textContent;
   if (previewKey !== next.preview.url) { mountPreview(); } else { inject(); }
@@ -121,31 +84,6 @@ function mountPreview(): void {
   frame.sandbox.add('allow-forms', 'allow-downloads'); frame.src = state.preview.url; frame.title = project?.name ?? 'Kanban'; layoutPreview();
 }
 frame.addEventListener('load', inject);
-async function downloadFile(id: string): Promise<void> {
-  const reply = await request({ type: 'kanban-bridge', nonce: state!.preview.nonce, call: { requestId: crypto.randomUUID(), operation: 'files.readFile', input: { fileId: id } } });
-  if (!reply.ok) { throw new Error(reply.error.message); }
-  const bytes = Uint8Array.from(atob(reply.value.base64), value => value.charCodeAt(0));
-  const url = URL.createObjectURL(new Blob([bytes], { type: reply.value.file.mimeType }));
-  const link = document.createElement('a'); link.href = url; link.download = reply.value.file.name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1_000);
-}
-async function chooseFile(name: string): Promise<void> {
-  const picker = document.createElement('input'); picker.type = 'file'; const field = state?.params.find(field => field.name === name); picker.multiple = !!field?.multiple; picker.accept = field?.accept?.join(',') ?? '';
-  picker.onchange = async () => {
-    const id = state?.activeConfigurationId;
-    try {
-      const files = await Promise.all(Array.from(picker.files ?? []).map(file => new Promise<Message>((resolve, reject) => {
-        if (file.size > 50 * 1024 * 1024) { reject(new Error(t("File exceeds 50 MiB."))); return; }
-        const reader = new FileReader(); reader.onerror = () => reject(reader.error); reader.onload = () => resolve({ name: file.name, mimeType: file.type || 'application/octet-stream', base64: String(reader.result).split(',')[1] }); reader.readAsDataURL(file);
-      })));
-      if (files.length > 32) { throw new Error(t("Select up to 32 files.")); }
-      const references = [];
-      for (const file of files) { const reply = await request({ type: 'kanban-bridge', nonce: state!.preview.nonce, call: { requestId: crypto.randomUUID(), operation: 'files.createFile', input: file } }); if (!reply.ok) { throw new Error(reply.error.message); } references.push(reply.value); }
-      if (id !== state?.activeConfigurationId) { return; }
-      const previous = field?.multiple ? JSON.parse(String(values[name] || '[]')) : [];
-      values[name] = JSON.stringify([...previous, ...references]); dirty = true; editing++; fields.update(); await save();
-    } catch (error) { showError(error); }
-  }; picker.click();
-}
 function layoutPreview(): void {
   const stage = element('preview-stage'), viewport = element('preview-viewport'); app.dataset.previewMode = mode;
   element('dimensions').hidden = mode === 'fullscreen'; element('resize-preview').hidden = mode === 'fullscreen';
@@ -160,24 +98,7 @@ function layoutPreview(): void {
 for (const [value, label, icon] of [['fullscreen', t("Full screen"), 'screen-full'], ['phone', t("Phone"), 'device-mobile'], ['tablet', t("Tablet"), 'device-desktop'], ['card', t("Card"), 'preview']]) {
   const button = iconButton(icon, label, () => { mode = value as KanbanPresentationMode; layoutPreview(); inject(); persist(); }); button.dataset.mode = value; element('preview-modes').append(button);
 }
-element('menu-toggle').onclick = () => menu(true); element('hide-menu').onclick = () => menu(false);
-document.querySelector('main')!.addEventListener('click', narrowMenuDismiss(narrow, () => menuOpen, () => menu(false)));
-element<HTMLSelectElement>('configuration').onchange = () => { const id = element<HTMLSelectElement>('configuration').value; void action('select', { id }).catch(showError); };
-element('create').onclick = () => void action('create').catch(showError);
-element('retry-save').onclick = () => void save().then(() => { element('error').hidden = true; }).catch(showError);
-element('configuration-actions').onclick = () => {
-  const dialog = element<HTMLDialogElement>('configuration-dialog'), body = dialog.querySelector('.dialog-body')!; body.replaceChildren();
-  for (const [actionName, title, icon] of [['rename', t("Rename"), 'edit'], ['duplicate', t("Copy"), 'copy'], ['delete', t("Delete"), 'trash']]) {
-    const button = document.createElement('button'); button.innerHTML = `${iconHtml(icon)}<span>${title}</span>`; button.disabled = actionName === 'delete' && (state?.configurations.length ?? 0) <= 1;
-    button.onclick = async () => { dialog.close();
-      const name = actionName === 'rename' ? await requestAction({ title: t("Rename configuration"), label: t("Configuration name"), value: state?.configuration.name, confirm: t("Save") })
-        : actionName === 'delete' ? await requestAction({ title: t("Delete this configuration?"), confirm: t("Delete"), danger: true }) : '';
-      if (name !== undefined) { void action(actionName, { name }).catch(showError); }
-    }; body.append(button);
-  } dialog.showModal();
-};
-element('close-configurations').onclick = () => element<HTMLDialogElement>('configuration-dialog').close();
-element('refresh').onclick = element('retry-preview').onclick = () => { void (async () => { await save(); const result = await request({ type: 'kanban-refresh' }); update(result.kanban); })().catch(showError); };
+element('refresh').onclick = element('retry-preview').onclick = () => { void (async () => { const result = await request({ type: 'kanban-refresh' }); update(result.kanban); })().catch(showError); };
 element('dimensions').onclick = () => { if (mode === 'fullscreen') { return; } element<HTMLInputElement>('preview-width').value = String(sizes[mode].width); element<HTMLInputElement>('preview-height').value = String(sizes[mode].height); element<HTMLDialogElement>('dimensions-dialog').showModal(); };
 element('close-dimensions').onclick = () => element<HTMLDialogElement>('dimensions-dialog').close();
 element('dimensions-dialog').querySelector('form')!.onsubmit = event => { event.preventDefault(); if (mode === 'fullscreen') { return; } sizes[mode] = { width: Number(element<HTMLInputElement>('preview-width').value), height: Number(element<HTMLInputElement>('preview-height').value) }; layoutPreview(); persist(); element<HTMLDialogElement>('dimensions-dialog').close(); };
@@ -227,7 +148,7 @@ window.addEventListener('message', event => {
   }
   if (message.type === 'kanban-method-cancel') { methodCalls.get(message.requestId)?.abort(); return; }
   if (message.requestId && pending.has(message.requestId)) { const waiting = pending.get(message.requestId)!; clearTimeout(waiting.timer); pending.delete(message.requestId); message.type === 'error' ? waiting.reject(new Error(message.message)) : waiting.resolve(message); }
-  if (message.type === 'connection') { connected = message.status === 'connected'; controls(); if (connected) { publishMethods(); if (dirty) { clearTimeout(saveTimer); saveTimer = setTimeout(() => void save().catch(showError), 250); } } else { dialogs.closeUsage(); for (const waiting of pending.values()) { clearTimeout(waiting.timer); waiting.reject(new Error(t("Connection interrupted."))); } pending.clear(); for (const call of methodCalls.values()) { call.abort(); } } }
+  if (message.type === 'connection') { connected = message.status === 'connected'; controls(); if (connected) { publishMethods();  } else { dialogs.closeUsage(); for (const waiting of pending.values()) { clearTimeout(waiting.timer); waiting.reject(new Error(t("Connection interrupted."))); } pending.clear(); for (const call of methodCalls.values()) { call.abort(); } } }
   if (message.type === 'state') { project = message.project; element('kanban-title').textContent = project!.name;
     updateProjectAvatar(element('project-info'), project!);
     if (authRevision !== message.authenticationRevision) { authRevision = message.authenticationRevision; previewKey = ''; dialogs.closeUsage(); }

@@ -132,6 +132,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
       editHost = event.data.clipboardVersion === 1;
       if (editHost) { window.parent.postMessage({ type: 'workflow-edit', version: 1 }, '*'); }
     }
+    if (event.data.openConfigurations === true) emit({type:'project-configurations-open'});
     if (event.data.resourceVersion === 1) { resourceHost = true; }
     if (event.data.nativePasteVersion !== undefined) { nativePasteHost = event.data.nativePasteVersion === 1; }
     if (event.data.resourceError) { emit(event.data.resourceError); }

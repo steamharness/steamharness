@@ -1,6 +1,6 @@
 import { callStudioControlHost } from "./host-bridge";
 import type { StudioControlInput, StudioControlOutputPayload } from "./interface";
-import { workflow } from "./workflow-runtime";
+import { steamharness } from "./workflow-runtime";
 
 type ParamValues = Record<string, string | string[] | undefined>;
 
@@ -29,6 +29,27 @@ export const executor = steamharness.defineExecutor<StudioControlInput, StudioCo
   projectType: "workflow",
   defaultEntrypoint: "studio_state",
   entrypoints: [
+    steamharness.defineEntrypoint({
+      id: "get_configurations", title: "Read or export project configurations",
+      description: "Project configurations for workflow, conversation and kanban, including when the panel is closed. Specify storage local with projectDir, or server with projectId and target. Query before writing; pass revision and configuration id. Supported calls: create, duplicate, rename, save (typed values and unset keys), select, delete, field.save (field and optional old key), field.delete, import (complete document). Import generates IDs and preserves selection; invalid batches are rejected. Exports include sensitive values. Read-only mode rejects mutations.",
+      workflow: studioControlProject,
+      params: [{name:"input",flag:"--input",type:"string",required:true,label:"Configuration request (JSON)"}],
+      createInput: ({paramValues}) => createInput("studio.configurations.get", JSON.parse(readRequiredString(paramValues,"input"))),
+    }),
+    steamharness.defineEntrypoint({
+      id: "manage_configurations", title: "Manage project configurations",
+      description: "Project configurations for workflow, conversation and kanban, including when the panel is closed. Specify storage local with projectDir, or server with projectId and target. Query before writing; pass revision and configuration id. Supported calls: create, duplicate, rename, save (typed values and unset keys), select, delete, field.save (field and optional old key), field.delete, import (complete document). Import generates IDs and preserves selection; invalid batches are rejected. Exports include sensitive values. Read-only mode rejects mutations.",
+      workflow: studioControlProject,
+      params: [{name:"input",flag:"--input",type:"string",required:true,label:"Configuration request (JSON)"}],
+      createInput: ({paramValues}) => createInput("studio.configurations.manage", JSON.parse(readRequiredString(paramValues,"input"))),
+    }),
+    steamharness.defineEntrypoint({
+      id: "open_configurations", title: "Open project configurations",
+      description: "Project configurations for workflow, conversation and kanban, including when the panel is closed. Specify storage local with projectDir, or server with projectId and target. Query before writing; pass revision and configuration id. Supported calls: create, duplicate, rename, save (typed values and unset keys), select, delete, field.save (field and optional old key), field.delete, import (complete document). Import generates IDs and preserves selection; invalid batches are rejected. Exports include sensitive values. Read-only mode rejects mutations.",
+      workflow: studioControlProject,
+      params: [{name:"input",flag:"--input",type:"string",required:true,label:"Configuration request (JSON)"}],
+      createInput: ({paramValues}) => createInput("studio.configurations.open", JSON.parse(readRequiredString(paramValues,"input"))),
+    }),
     steamharness.defineEntrypoint({
       id: "studio_state",
       title: "Get Studio state",

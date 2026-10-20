@@ -113,3 +113,7 @@ npm run dev
 By default, `setup` skips the NuGet download of the Foundry Local / ONNX native runtime, which is used only for upstream chat's on-device dictation. Studio's editor and Workflow features do not require it, and other native dependencies are still installed normally. To use that dictation feature, set `FOUNDRY_LOCAL_SKIP_INSTALL` to `0` and rerun `npm run setup` with accessible NuGet feeds for the SDK.
 
 Use `npm run dev:web` for the browser workstation. This guide covers source execution; installation packages and release channels are configured separately.
+
+## Project configurations
+
+All three project types expose fields, named profiles and complete import/export. Studio and local CLI share local storage; Server values are per project and account. Studio Control can query and manage configurations even when the panel is closed. See [Project configurations](/en/concepts/project-configuration) for the JSON actions, version checks and execution snapshot rules.

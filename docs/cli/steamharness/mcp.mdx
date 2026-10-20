@@ -96,3 +96,7 @@ MCP host 通过隔离的 worker 执行现有 `structure` / `json` 链路。stdio
 `output` 只来自 `report.result.data.output`。失败、非零业务 `errCode`、取消或超时会增加精简 `error` 并设置 `isError: true`；不会返回完整 report、节点明细、stdout、stderr 或内部凭据。参数格式错误使用 MCP `InvalidParams`。
 
 KV、PersistentValue、知识库和 managed files 使用命令传入或默认的数据目录。
+
+## 项目配置
+
+三种项目类型均支持字段、命名配置及完整导入导出。Studio 与本地 CLI 共用本地存储，Server 按项目和账号隔离。面板关闭时 Studio Control 仍能查询和管理配置。JSON 操作、版本检查和运行快照规则见[项目配置](/concepts/project-configuration)。

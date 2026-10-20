@@ -32,7 +32,7 @@ export async function startStudioControlBridge(
       let size = 0;
       for await (const chunk of request) {
         size += chunk.length;
-        if (size > 64 * 1024) { throw new Error('Studio Control request is too large.'); }
+        if (size > 1024 * 1024) { throw new Error('Studio Control request is too large.'); }
         chunks.push(chunk);
       }
       const call: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
@@ -45,7 +45,7 @@ export async function startStudioControlBridge(
       const value = await execute(call.operation, call.input, (call.permissionPolicy ?? 'workspace') as StudioControlPermissionPolicy);
       reply(response, 200, { ok: true, value });
     } catch (error) {
-      reply(response, 400, { ok: false, error: { code: 'STUDIO_CONTROL_INVALID_REQUEST', message: error instanceof Error ? error.message : String(error) } });
+      reply(response, 400, { ok: false, error: { code: isRecord(error) && typeof error.code === 'string' ? error.code : 'STUDIO_CONTROL_INVALID_REQUEST', message: error instanceof Error ? error.message : String(error) } });
     }
   });
   server.requestTimeout = 10_000;

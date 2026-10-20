@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Added] Share project configurations across Workflow, Conversation and Kanban, including a headless configuration command, custom fields, named profiles, full import/export and preserved conflicting drafts. Durable sessions reload after active work, and Kanban pages and resource previews update together. Business configuration no longer loads `.env`.
+
 ### Conversation scrolling
 
 - Keep the latest output visible when resource cards arrive together or previews resize asynchronously. Preserve the reading position when scrolling up, and resume following after clicking Go to latest message.

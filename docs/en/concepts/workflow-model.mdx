@@ -43,63 +43,63 @@ The root `package.json` is the sole source of truth for project information. Its
 The current `workflow` global object comes from `src/runtime-api.ts` in the Core repository and contains:
 
 ```ts
-workflow.defineProject
-workflow.defineEntrypoint
-workflow.defineExecutor
-workflow.parseConversationDefaultInputArgs
-workflow.createInputNode
-workflow.createFileInputNode
-workflow.createUserInputNode
-workflow.createToolApprovalGate
-workflow.createLLMNode
-workflow.createLLMStreamNode
-workflow.createLLMProviderFromEnv
-workflow.createLLMProviderRef
-workflow.createOutputNode
-workflow.createDetailsOutputNode
-workflow.createOutputItem
-workflow.createOutputPayload
-workflow.addOutputItem
-workflow.createOutputItemChunk
-workflow.createTimerNode
-workflow.endTimer
-workflow.createQuestionClassifierNode
-workflow.runNode
-workflow.runStreamNode
-workflow.runIf
-workflow.runFor
-workflow.runWhile
-workflow.runProject
+steamharness.defineProject
+steamharness.defineEntrypoint
+steamharness.defineExecutor
+steamharness.parseConversationDefaultInputArgs
+steamharness.createInputNode
+steamharness.createFileInputNode
+steamharness.createUserInputNode
+steamharness.createToolApprovalGate
+steamharness.createLLMNode
+steamharness.createLLMStreamNode
+steamharness.createLLMProviderFromConfig
+steamharness.createLLMProviderRef
+steamharness.createOutputNode
+steamharness.createDetailsOutputNode
+steamharness.createOutputItem
+steamharness.createOutputPayload
+steamharness.addOutputItem
+steamharness.createOutputItemChunk
+steamharness.createTimerNode
+steamharness.endTimer
+steamharness.createQuestionClassifierNode
+steamharness.runNode
+steamharness.runStreamNode
+steamharness.runIf
+steamharness.runFor
+steamharness.runWhile
+steamharness.runProject
 workflow.listKnowledgeDocuments
-workflow.getKnowledgeDocument
-workflow.createKnowledgeDocument
+steamharness.getKnowledgeDocument
+steamharness.createKnowledgeDocument
 workflow.editKnowledgeDocument
 workflow.deleteKnowledgeDocument
 workflow.searchKnowledgeDocuments
-workflow.readKnowledgeDocumentLines
-workflow.getEnv
-workflow.getRuntimePlatform
-workflow.getRuntimeLocale
-workflow.isCli
-workflow.isDesktop
-workflow.getLLMProvider
-workflow.HarnessError
+steamharness.readKnowledgeDocumentLines
+steamharness.getConfig
+steamharness.getRuntimePlatform
+steamharness.getRuntimeLocale
+steamharness.isCli
+steamharness.isDesktop
+steamharness.getLLMProvider
+steamharness.HarnessError
 ```
 
-`workflow.getRuntimeLocale()` returns `"zh-CN"` or `"en"` selected by the local host. It defaults to `"zh-CN"` when a host does not inject a language. A project that explicitly supports localization should apply this value consistently to visible output, errors, date formatting, and number formatting rather than inferring a browser or machine language. Static package, entrypoint, and parameter manifests retain the project's default language.
+`steamharness.getRuntimeLocale()` returns `"zh-CN"` or `"en"` selected by the local host. It defaults to `"zh-CN"` when a host does not inject a language. A project that explicitly supports localization should apply this value consistently to visible output, errors, date formatting, and number formatting rather than inferring a browser or machine language. Static package, entrypoint, and parameter manifests retain the project's default language.
 
 See [Core API](/en/core-api/overview) for complete methods, parameters, and runtime objects.
 
 ## Workflow
 
-A Workflow defines the business process through `workflow.defineProject<Input, Output>()`:
+A Workflow defines the business process through `steamharness.defineProject<Input, Output>()`:
 
 ```ts
-export const exampleProject = workflow.defineProject<Input, OutputPayload>({
+export const exampleProject = steamharness.defineProject<Input, OutputPayload>({
   name: "example",
   async run(input, context) {
-    const parsed = await workflow.runNode(inputNode, input, context);
-    const result = await workflow.runStreamNode(outputNode, parsed, context);
+    const parsed = await steamharness.runNode(inputNode, input, context);
+    const result = await steamharness.runStreamNode(outputNode, parsed, context);
     return result.output;
   },
 });
@@ -112,20 +112,20 @@ export const exampleProject = workflow.defineProject<Input, OutputPayload>({
 Node is the smallest executable unit, which is divided into normal nodes, streaming nodes, branch nodes, and loop nodes:
 
 ```ts
-const inputNode = workflow.createInputNode<Input, Parsed>({
+const inputNode = steamharness.createInputNode<Input, Parsed>({
   name: "input",
   parse(input) {
     return { message: input.message.trim() };
   },
 });
 
-const outputNode = workflow.createOutputNode<Parsed, OutputPayload>({
+const outputNode = steamharness.createOutputNode<Parsed, OutputPayload>({
   name: "output",
   async *stream(input) {
     yield input.message;
   },
   format(stream) {
-    return workflow.createOutputPayload({
+    return steamharness.createOutputPayload({
       items: stream.items,
     });
   },
@@ -134,18 +134,18 @@ const outputNode = workflow.createOutputNode<Parsed, OutputPayload>({
 
 The current protocol of the output payload is `RunOutputPayload.items: OutputItem[]`. Each item is an independently presentable and collapsible message block containing `id`, `title`, `content`, optional `icon`/`iconPreset`, `contentType`, `collapsed`, and `metadata`. `contentType` only determines how to render: `markdown`, `text`, `json`, `audio`, or `video`; objects and arrays should be placed directly into `content`, not stringified as Markdown code blocks in advance. `audio` content uses `{ src, mimeType, name, size, durationMs?, format? }`, and `src` can be a safe `data:audio/...;base64,...` or `http(s)` URL. `video` content uses `{ src, mimeType: "video/mp4", name, durationMs?, format?: "mp4" }`, and `src` only accepts a `data:video/mp4;base64,...` value or a publicly reachable `http(s)` URL; the UI plays it through the native `<video controls preload="metadata" playsInline>` element. Signed OSS URLs fall under `http(s)` but are not cached, so do not publish generated video assets only as signed OSS URLs without a stable fallback. Missing required fields or an unsafe `src` cause a text-preview fallback that surfaces a localized message such as `videoPlaybackUnsupported`; never leave `src` empty and never combine non-`http(s)`/`data` schemes such as `file://` or `blob:`.
 
-`workflow.createDetailsOutputNode` is a convenient node to create independent collapsible output item. It will convert `{ title, content, icon }` to `items: [{ title, content, icon, contentType, collapsed: true }]` and still be collected by local CLI according to `output` standard node. `workflow.createTimerNode` will create a standard common node named `timer` to start business timing. `workflow.endTimer(timer, context, { status, message })` explicitly ends timing and writes to `report.timers`. unfinished running timer will be automatically marked as `cleared` before workflow ends to avoid UI remaining running state. `workflow.runNode` returns the output of the node;`workflow.runStreamNode` returns `{ chunks, output }`, where `chunks` is the raw streaming chunk array and `output` is the final payload generated by `finalize` or `format`. The `format` of the streaming `createOutputNode({ stream, format })` receives the accumulated `{ text, items, chunks }`; string chunk is automatically written to a default Markdown item, and the structured output can be sent using `workflow.createOutputItemChunk(...)` `output_item_start`, `output_item_delta`, `output_item_end`. In addition to merging `content`, `output_item_delta` can also carry `item` patch updates `title`, `icon`, `collapsed`, `contentType`, or `metadata.status` to show the state change of the tool call from running to success/failed. `workflow.runIf` checks the if / else-if / else branch in order, executes the corresponding `run` when hit, and logs the selected branch with the `branch-node` run event. `workflow.runFor` and `workflow.runWhile` record the loop itself as a traceable node, keeping the loop body visible in local host Diagram.
+`steamharness.createDetailsOutputNode` is a convenient node to create independent collapsible output item. It will convert `{ title, content, icon }` to `items: [{ title, content, icon, contentType, collapsed: true }]` and still be collected by local CLI according to `output` standard node. `steamharness.createTimerNode` will create a standard common node named `timer` to start business timing. `steamharness.endTimer(timer, context, { status, message })` explicitly ends timing and writes to `report.timers`. unfinished running timer will be automatically marked as `cleared` before workflow ends to avoid UI remaining running state. `steamharness.runNode` returns the output of the node;`steamharness.runStreamNode` returns `{ chunks, output }`, where `chunks` is the raw streaming chunk array and `output` is the final payload generated by `finalize` or `format`. The `format` of the streaming `createOutputNode({ stream, format })` receives the accumulated `{ text, items, chunks }`; string chunk is automatically written to a default Markdown item, and the structured output can be sent using `steamharness.createOutputItemChunk(...)` `output_item_start`, `output_item_delta`, `output_item_end`. In addition to merging `content`, `output_item_delta` can also carry `item` patch updates `title`, `icon`, `collapsed`, `contentType`, or `metadata.status` to show the state change of the tool call from running to success/failed. `steamharness.runIf` checks the if / else-if / else branch in order, executes the corresponding `run` when hit, and logs the selected branch with the `branch-node` run event. `steamharness.runFor` and `steamharness.runWhile` record the loop itself as a traceable node, keeping the loop body visible in local host Diagram.
 
-`workflow.createUserInputNode` inserts a manually entered point in workflow that can be permanently restored. The `params` of the node uses the same field definition as the current Workflow entrypoint(Conversation is executor). CLI Web renders these fields in its local run form. When the external agent dynamically generates problems, the title, description, fields and default values can be generated for this request through `resolveRequest(input, context)` without side effects. If the value is not committed during the first execution,runtime issues a `user_input_requested` event,report writes `pendingUserInput`, and the run status becomes `waiting_for_input`; after submitting the answer, the same `runId` will resume execution with `resolvedUserInputs` and issue `user_input_resolved`. Workflow The exact target and the original entry in the run snapshot are used for restoration. The entry cannot be switched. CLI does not read stdin, and will output a waiting report when encountering this node. You need to continue by `steamharness json --run-id <id> --resolved-user-inputs-json '<json>'` injecting the answer.
+`steamharness.createUserInputNode` inserts a manually entered point in workflow that can be permanently restored. The `params` of the node uses the same field definition as the current Workflow entrypoint(Conversation is executor). CLI Web renders these fields in its local run form. When the external agent dynamically generates problems, the title, description, fields and default values can be generated for this request through `resolveRequest(input, context)` without side effects. If the value is not committed during the first execution,runtime issues a `user_input_requested` event,report writes `pendingUserInput`, and the run status becomes `waiting_for_input`; after submitting the answer, the same `runId` will resume execution with `resolvedUserInputs` and issue `user_input_resolved`. Workflow The exact target and the original entry in the run snapshot are used for restoration. The entry cannot be switched. CLI does not read stdin, and will output a waiting report when encountering this node. You need to continue by `steamharness json --run-id <id> --resolved-user-inputs-json '<json>'` injecting the answer.
 
-`workflow.createToolApprovalGate` uses the same set of wait/resume agreement approval tool calls. Workflow first declares the tool in `tools` of the current entrypoint,Conversation uses executor `tools`, and then calls gate in the business code; If the tool is not registered, it will return `input_validation`, and if it is disabled, it will return `tool_permission_denied`. when manual confirmation is required, a `tool-approval` request will be generated and run will be suspended to `waiting_for_input`.
+`steamharness.createToolApprovalGate` uses the same set of wait/resume agreement approval tool calls. Workflow first declares the tool in `tools` of the current entrypoint,Conversation uses executor `tools`, and then calls gate in the business code; If the tool is not registered, it will return `input_validation`, and if it is disabled, it will return `tool_permission_denied`. when manual confirmation is required, a `tool-approval` request will be generated and run will be suspended to `waiting_for_input`.
 
 ## Branch
 
-`workflow.runIf` is suitable for writing business conditions as traceable workflow branches, rather than just plain TypeScript `if`:
+`steamharness.runIf` is suitable for writing business conditions as traceable workflow branches, rather than just plain TypeScript `if`:
 
 ```ts
-const plan = await workflow.runIf(seed, context, {
+const plan = await steamharness.runIf(seed, context, {
   name: "Weapon branch",
   branches: [
     {
@@ -166,40 +166,40 @@ const plan = await workflow.runIf(seed, context, {
 });
 ```
 
-The first element in the `branches` array appears as `if` in Diagram, subsequent elements appear as `else-if`, and `else` appears as a fallback branch. The `run` of the branch can continue to call `workflow.runNode`, `workflow.runStreamNode`, or it can nest another `workflow.runIf` to form a multi-level branch.
+The first element in the `branches` array appears as `if` in Diagram, subsequent elements appear as `else-if`, and `else` appears as a fallback branch. The `run` of the branch can continue to call `steamharness.runNode`, `steamharness.runStreamNode`, or it can nest another `steamharness.runIf` to form a multi-level branch.
 
 ## Loop
 
-`workflow.runFor` and `workflow.runWhile` are suitable for writing business loops as traceable workflow loops instead of just plain TypeScript `for`/`while`:
+`steamharness.runFor` and `steamharness.runWhile` are suitable for writing business loops as traceable workflow loops instead of just plain TypeScript `for`/`while`:
 
 ```ts
-const rounded = await workflow.runFor(seed, context, {
+const rounded = await steamharness.runFor(seed, context, {
   name: "Round loop",
   maxIterations: 6,
   items: (state) => Array.from({ length: state.rounds }, (_, index) => index + 1),
   async run(state, value, index, loopContext) {
-    return workflow.runNode(addRoundNode, { ...state, value, index }, loopContext);
+    return steamharness.runNode(addRoundNode, { ...state, value, index }, loopContext);
   },
 });
 
-const boosted = await workflow.runWhile(rounded, context, {
+const boosted = await steamharness.runWhile(rounded, context, {
   name: "Boost until target",
   maxIterations: 8,
   condition: (state) => state.total < state.target,
   async run(state, loopContext, iteration) {
-    return workflow.runIf(state, loopContext, {
+    return steamharness.runIf(state, loopContext, {
       name: "Choose boost strategy",
       branches: [
         {
           label: "burst",
           condition: (current) => current.target - current.total >= 7,
           async run(current, branchContext) {
-            return workflow.runFor(current, branchContext, {
+            return steamharness.runFor(current, branchContext, {
               name: "Burst passes",
               maxIterations: 3,
               items: () => [4, 3],
               async run(passState, value, index, passContext) {
-                return workflow.runNode(boostNode, { ...passState, value, index, iteration }, passContext);
+                return steamharness.runNode(boostNode, { ...passState, value, index, iteration }, passContext);
               },
             });
           },
@@ -208,7 +208,7 @@ const boosted = await workflow.runWhile(rounded, context, {
       else: {
         label: "finish",
         async run(current, branchContext) {
-          return workflow.runNode(boostNode, { ...current, iteration }, branchContext);
+          return steamharness.runNode(boostNode, { ...current, iteration }, branchContext);
         },
       },
     });
@@ -222,16 +222,16 @@ const boosted = await workflow.runWhile(rounded, context, {
 
 local host diagram use two types of information to present workflow:
 
-- Static structure from TypeScript source code analysis. All known `workflow.*` runtime API calls are written to `definitions.apiCalls` and exposed as static API nodes, such as `workflow.createInputNode`, `workflow.defineProject`, `workflow.getEnv`. These nodes help understand which platform capabilities are used by the source code, but are not executed individually or strung into the `Input -> Result` execution path.
-- The running status is from the `nodeHooks` report of `workflow.runNode` / `workflow.runStreamNode` / `workflow.runIf` / `workflow.runFor` / `workflow.runWhile`/`workflow.runProject`. Only nodes that are actually executed by these API s will show running, success, failure, elapsed time, and errors.
+- Static structure from TypeScript source code analysis. All known `workflow.*` runtime API calls are written to `definitions.apiCalls` and exposed as static API nodes, such as `steamharness.createInputNode`, `steamharness.defineProject`, `steamharness.getConfig`. These nodes help understand which platform capabilities are used by the source code, but are not executed individually or strung into the `Input -> Result` execution path.
+- The running status is from the `nodeHooks` report of `steamharness.runNode` / `steamharness.runStreamNode` / `steamharness.runIf` / `steamharness.runFor` / `steamharness.runWhile`/`steamharness.runProject`. Only nodes that are actually executed by these API s will show running, success, failure, elapsed time, and errors.
 
-`workflow.runIf` will be displayed as a `run-if` branch node, and local host will use the branch icon and semantic color to distinguish from LLM, output, provider, question-classifier. `executionInfo` of the completion event logs `selectedBranch`, `selectedBranchIndex`, and `description` for Trace to see which branch was actually taken. Static structural analysis prioritizes `branches` / `else` in the form of object literals; dynamic assembly branches can still run, but Diagram cannot fully expand all static paths.
+`steamharness.runIf` will be displayed as a `run-if` branch node, and local host will use the branch icon and semantic color to distinguish from LLM, output, provider, question-classifier. `executionInfo` of the completion event logs `selectedBranch`, `selectedBranchIndex`, and `description` for Trace to see which branch was actually taken. Static structural analysis prioritizes `branches` / `else` in the form of object literals; dynamic assembly branches can still run, but Diagram cannot fully expand all static paths.
 
-`workflow.runFor` and `workflow.runWhile` are exposed as `run-for` / `run-while` loop nodes. local host Diagram will wrap the loop body children with a rectangular background container with semantic color. The loop head node can still be clicked to view `items`, `condition`, `maxIterations` and runtime iteration information. Loop bodies can continue to nest `workflow.runIf`, `workflow.runFor`, or `workflow.runWhile` to express internal while branches and multi-level loops. Static structural analysis prioritizes the identification of loop options in the form of object literals; dynamic assembly options can still run, but Diagram cannot fully expand the loop body.
+`steamharness.runFor` and `steamharness.runWhile` are exposed as `run-for` / `run-while` loop nodes. local host Diagram will wrap the loop body children with a rectangular background container with semantic color. The loop head node can still be clicked to view `items`, `condition`, `maxIterations` and runtime iteration information. Loop bodies can continue to nest `steamharness.runIf`, `steamharness.runFor`, or `steamharness.runWhile` to express internal while branches and multi-level loops. Static structural analysis prioritizes the identification of loop options in the form of object literals; dynamic assembly options can still run, but Diagram cannot fully expand the loop body.
 
-`workflow.runProject` is shown as a `run-workflow` invocation node. The child workflow does not create an independent run report, and the child node events will enter the parent trace; the top-level executor entry will not insert this package node. Default `conversationMode: "shared"`, `kvMode: "shared"`, `outputVisibility: "visible"`, passing only `name` does not change session or output semantics; when the parent workflow passes in `conversationMode: "shared-readonly"`, the child workflow can read the parent session snapshot, but does not append transcript or modify the title. When the child workflow will write the exclusive KV state, it can pass in the `kvMode: "isolated"` at the same time.
+`steamharness.runProject` is shown as a `run-workflow` invocation node. The child workflow does not create an independent run report, and the child node events will enter the parent trace; the top-level executor entry will not insert this package node. Default `conversationMode: "shared"`, `kvMode: "shared"`, `outputVisibility: "visible"`, passing only `name` does not change session or output semantics; when the parent workflow passes in `conversationMode: "shared-readonly"`, the child workflow can read the parent session snapshot, but does not append transcript or modify the title. When the child workflow will write the exclusive KV state, it can pass in the `kvMode: "isolated"` at the same time.
 
-Entrypoint is not a nested node in Diagram and does not express a parent-child relationship. The project exposes only one layer of independent entry. When multi-level business orchestration is required, the `workflow.runProject()` is continuously nested. The default maximum depth is `16`.
+Entrypoint is not a nested node in Diagram and does not express a parent-child relationship. The project exposes only one layer of independent entry. When multi-level business orchestration is required, the `steamharness.runProject()` is continuously nested. The default maximum depth is `16`.
 
 The normal nodes returned by the built-in node factory inherit `BaseNode` and the streaming nodes inherit `BaseStreamNode`; together they provide common information such as `name`, `standardName`, `metadata`, and `getExecutionInfo()`. Diagram does not bind the `BaseNode` class directly, but reads the `NodeDefinition` / `StreamNodeDefinition` execution protocol and runs the report, so future custom nodes can be executed and recorded as long as they conform to the protocol.
 
@@ -240,23 +240,23 @@ The normal nodes returned by the built-in node factory inherit `BaseNode` and th
 The only built-in provider name for the current executor is `"llm"`. LLM provider through `createLLMProviderRef` delay parsing:
 
 ```ts
-const llmProvider = workflow.createLLMProviderRef("default", () => {
-  return workflow.createLLMProviderFromEnv();
+const llmProvider = steamharness.createLLMProviderRef("default", () => {
+  return steamharness.createLLMProviderFromConfig();
 });
 ```
 
-Business nodes rely on the unified provider interface and are not directly bound to specific manufacturers. `createLLMProviderFromEnv` reads `LLM_TYPE`, `LLM_API_KEY`, `LLM_BASE_URL`, and `LLM_MODEL` from the workflow runtime environment.
+Project business values come from [Project configurations](/en/concepts/project-configuration), without project env loading or process-variable fallback. Host deployment and transport settings remain separate.
 
 ## Executor
 
 An executor is the project's static execution configuration. Hosts use it to discover the project and run it. A Workflow project declares one default entrypoint and any number of independently runnable entrypoints:
 
 ```ts
-export const executor = workflow.defineExecutor<Input, OutputPayload>({
+export const executor = steamharness.defineExecutor<Input, OutputPayload>({
   projectType: "workflow",
   defaultEntrypoint: "main",
   entrypoints: [
-    workflow.defineEntrypoint<Input, OutputPayload>({
+    steamharness.defineEntrypoint<Input, OutputPayload>({
       id: "main",
       title: "Complete workflow",
       group: { id: "operations", title: "Operations", order: 10 },
@@ -286,7 +286,7 @@ Projects can use `package.json.steamHarness.schedulePresets` to propose schedule
 
 Conversation executor keeps a single entry, places fields such as `workflow`, `params`, and `createInput` directly on executor, and does not declare or accept entrypoint. `projectType` of Executor only allows `"workflow"` or `"conversation"`. Kanban declares `"kanban"` in `package.json.steamHarness.projectType` and cannot forge executor.
 
-`createInput` receives `projectName`, `projectDir`, `args`, `paramValues`, `env`, `abortSignal`, and optional `conversationId`. Workflow also receives the selected `entrypointId` and `entrypointTitle`; the same fields are written to `RunContext.metadata`, reports, and local run records. The local host converts parameters to workflow input through the selected execution configuration. Cancellation propagates `abortSignal` to the workflow context so long-running provider and SDK calls can stop promptly.
+`createInput` receives `projectName`, `projectDir`, `args`, `paramValues`, `config`, `abortSignal`, and optional `conversationId`. Workflow also receives the selected `entrypointId` and `entrypointTitle`; the same fields are written to `RunContext.metadata`, reports, and local run records. The local host converts parameters to workflow input through the selected execution configuration. Cancellation propagates `abortSignal` to the workflow context so long-running provider and SDK calls can stop promptly.
 
 `resolveParams` can return `value`, `visible`, `disabled`, and a single option status patch as the current parameter, or replace the current full list of options for the parameter with an `resolvedOptions` array, or restore the static options with `null`. Initialization and changes to the Form parameters of main, Advanced, and Quick will trigger evaluation. `visible: false` does not implicitly empty old values; mutex parameters should also return `value: null` to prevent hidden values from continuing into `args` and `paramValues`. Dynamic lists are suitable for reading provider, model, or variant directories provided by the server; reads must be cancelable, time-limited, and run data cannot be written during parameter evaluation.
 
@@ -295,11 +295,11 @@ Conversation executor keeps a single entry, places fields such as `workflow`, `p
 Registry is used for single-node debugging and structure demonstration. The registry of Workflow belongs to the concrete entrypoint and must be a static array literal:
 
 ```ts
-export const executor = workflow.defineExecutor<Input, OutputPayload>({
+export const executor = steamharness.defineExecutor<Input, OutputPayload>({
   projectType: "workflow",
   defaultEntrypoint: "main",
   entrypoints: [
-    workflow.defineEntrypoint({
+    steamharness.defineEntrypoint({
       id: "main",
       title: "Complete workflow",
       workflow: exampleProject,
@@ -353,4 +353,4 @@ The workflow package declares exact Core and CLI dev dependencies, plus any requ
 
 `steamharness` must be an exact SemVer; `^`, `0.2.x`, `workspace:*`, and other ranges are rejected. Local hosts and CLI evaluate the project's required Core before execution but compare only `major.minor`: any patch or exact prerelease on that line runs directly, while a major or minor change requires a host upgrade. `@steamharness/cli` is also pinned exactly but versioned independently and does not replace Core runtime compatibility. Core 0.2 projects must also declare `steamHarness.projectInfo.dataStorage.mode` explicitly.
 
-The minimum package of Kanban uses `steamHarness.projectType: "kanban"`, and the directory only requires `package.json + index.html`; parameterized items are added with optional `kanban.json`. The Kanban package records the Core and CLI versions equally precisely, so that project management tools maintain a uniform dependency model;Kanban itself does not implement Core runtime.
+The minimum package of Kanban uses `steamHarness.projectType: "kanban"`, and the directory only requires `package.json + index.html`; parameterized items are added with optional `configuration.json`. The Kanban package records the Core and CLI versions equally precisely, so that project management tools maintain a uniform dependency model;Kanban itself does not implement Core runtime.

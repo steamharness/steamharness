@@ -5,8 +5,6 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import {
   GLOBAL_MEMORY_CAPABILITY,
   GLOBAL_MEMORY_MCP_TOOL_ID,
-  HOST_CONFIGURATION_CAPABILITY,
-  HOST_CONFIGURATION_MCP_TOOL_ID,
   KNOWLEDGE_CAPABILITY,
   KNOWLEDGE_MCP_TOOL_ID,
   KV_CAPABILITY,
@@ -19,7 +17,6 @@ import {
   isProjectCapabilityAvailable,
   listProjectCapabilityToolIds,
   readHostConfigurationBridgeConfig,
-  runHostConfigurationAction,
   runProjectCapabilityAction,
   selectProjectStorage,
 } from "../agent/capabilities/index";
@@ -323,117 +320,6 @@ test("global memory refuses what looks like a credential", async () => {
   );
 });
 
-test("host configuration is only reachable when the host brought a bridge", async () => {
-  const previousUrl = process.env[BRIDGE_URL_ENV];
-  const previousToken = process.env[BRIDGE_TOKEN_ENV];
-  delete process.env[BRIDGE_URL_ENV];
-  delete process.env[BRIDGE_TOKEN_ENV];
-
-  try {
-    assert.equal(readHostConfigurationBridgeConfig(), undefined);
-    await assert.rejects(
-      () => runProjectCapabilityAction(HOST_CONFIGURATION_MCP_TOOL_ID, createContext(), { action: "get" }),
-      /unavailable/u,
-    );
-
-    // A bridge that is not an authenticated loopback endpoint is refused
-    // rather than dialled — the token would go somewhere it does not belong.
-    process.env[BRIDGE_URL_ENV] = "https://example.com/bridge";
-    process.env[BRIDGE_TOKEN_ENV] = "token";
-    assert.throws(() => readHostConfigurationBridgeConfig(), /authenticated loopback/u);
-
-    process.env[BRIDGE_URL_ENV] = "http://127.0.0.1:4321/bridge";
-    assert.deepEqual(readHostConfigurationBridgeConfig(), {
-      url: "http://127.0.0.1:4321/bridge",
-      token: "token",
-    });
-  } finally {
-    restoreEnv(BRIDGE_URL_ENV, previousUrl);
-    restoreEnv(BRIDGE_TOKEN_ENV, previousToken);
-  }
-});
-
-test("host configuration speaks the bridge protocol and surfaces its refusal", async () => {
-  const requests: { url: string; body: unknown; authorization: string | null }[] = [];
-  const config = { url: "http://127.0.0.1:4321/bridge", token: "secret" };
-
-  const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
-    const headers = new Headers(init?.headers);
-    requests.push({
-      url: String(input),
-      body: JSON.parse(String(init?.body)) as unknown,
-      authorization: headers.get("Authorization"),
-    });
-    return new Response(JSON.stringify({ ok: true, value: { id: "cfg-1" } }), { status: 200 });
-  }) as typeof fetch;
-
-  assert.deepEqual(
-    await runHostConfigurationAction({ action: "update", configurationName: "Release", values: { tag: "v1" } }, config, fetchImpl),
-    { id: "cfg-1" },
-  );
-  assert.deepEqual(requests, [{
-    url: "http://127.0.0.1:4321/bridge",
-    body: { operation: "kanban.configuration.update", input: { configurationName: "Release", values: { tag: "v1" } } },
-    authorization: "Bearer secret",
-  }]);
-
-  const failing = (async () => new Response(JSON.stringify({
-    ok: false,
-    error: { code: "not_found", message: "No configuration matches." },
-  }), { status: 200 })) as typeof fetch;
-
-  await assert.rejects(
-    () => runHostConfigurationAction({ action: "get" }, config, failing),
-    (error: Error & { code?: string }) => {
-      assert.equal(error.message, "No configuration matches.");
-      assert.equal(error.code, "not_found");
-      return true;
-    },
-  );
-});
-
-test("host configuration checks the shape its schema promises", async () => {
-  const config = { url: "http://127.0.0.1:4321/bridge", token: "secret" };
-  let called = 0;
-  const fetchImpl = (async () => {
-    called += 1;
-    return new Response(JSON.stringify({ ok: true, value: null }), { status: 200 });
-  }) as typeof fetch;
-
-  // Nothing validates arguments on the way in — a client is handed the schema
-  // but is not obliged to honour it — so a malformed key would otherwise reach
-  // the host bridge and come back in the bridge's vocabulary.
-  await assert.rejects(
-    () => runHostConfigurationAction({ action: "update", values: { "": "x" } }, config, fetchImpl),
-    /keys must be 1-200 characters/u,
-  );
-  await assert.rejects(
-    () => runHostConfigurationAction(
-      { action: "update", values: { ["k".repeat(201)]: "x" } },
-      config,
-      fetchImpl,
-    ),
-    /keys must be 1-200 characters/u,
-  );
-  await assert.rejects(
-    () => runHostConfigurationAction({ action: "update", values: { tag: { nested: true } } }, config, fetchImpl),
-    /strings, finite numbers, booleans, or string arrays/u,
-  );
-  await assert.rejects(
-    () => runHostConfigurationAction({ action: "update", values: { tag: Number.NaN } }, config, fetchImpl),
-    /strings, finite numbers, booleans, or string arrays/u,
-  );
-  assert.equal(called, 0, "a malformed value must not reach the host bridge");
-
-  // The shapes the schema does promise still travel.
-  await runHostConfigurationAction(
-    { action: "update", values: { tag: "v1", retries: 3, enabled: true, hosts: ["a", "b"] } },
-    config,
-    fetchImpl,
-  );
-  assert.equal(called, 1);
-});
-
 test("memory is left out of a run the host did not offer it", () => {
   const previousUrl = process.env[BRIDGE_URL_ENV];
   const previousToken = process.env[BRIDGE_TOKEN_ENV];
@@ -453,8 +339,7 @@ test("memory is left out of a run the host did not offer it", () => {
 
     // The catalogue still describes it — it is the environment, not the
     // declaration, that decided.
-    assert.equal(STEAMHARNESS_CAPABILITIES.length, 6);
-    assert.equal(isProjectCapabilityAvailable(HOST_CONFIGURATION_MCP_TOOL_ID), false);
+    assert.equal(STEAMHARNESS_CAPABILITIES.length, 5);
     assert.equal(isProjectCapabilityAvailable(KNOWLEDGE_MCP_TOOL_ID), true);
     assert.equal(isProjectCapabilityAvailable(GLOBAL_MEMORY_MCP_TOOL_ID), true);
     assert.equal(findProjectCapability(KV_MCP_TOOL_ID), KV_CAPABILITY);
@@ -463,12 +348,10 @@ test("memory is left out of a run the host did not offer it", () => {
 
     process.env[BRIDGE_URL_ENV] = "http://127.0.0.1:4321/bridge";
     process.env[BRIDGE_TOKEN_ENV] = "token";
-    assert.equal(isProjectCapabilityAvailable(HOST_CONFIGURATION_MCP_TOOL_ID), true);
     assert.deepEqual(listProjectCapabilityToolIds(), [
       KNOWLEDGE_MCP_TOOL_ID,
       KV_MCP_TOOL_ID,
-      HOST_CONFIGURATION_MCP_TOOL_ID,
-      PRESENTATION_CARD_MCP_TOOL_ID,
+          PRESENTATION_CARD_MCP_TOOL_ID,
     ]);
   } finally {
     restoreEnv(BRIDGE_URL_ENV, previousUrl);
@@ -520,8 +403,7 @@ test("the agent rendering gates, approves and reports like a tool should", async
     KNOWLEDGE_MCP_TOOL_ID,
     KV_MCP_TOOL_ID,
     GLOBAL_MEMORY_MCP_TOOL_ID,
-    HOST_CONFIGURATION_MCP_TOOL_ID,
-    PRESENTATION_CARD_MCP_TOOL_ID,
+      PRESENTATION_CARD_MCP_TOOL_ID,
   ]);
 
   const kv = tools[1] as unknown as {

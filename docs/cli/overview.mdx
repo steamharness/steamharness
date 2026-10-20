@@ -57,7 +57,7 @@ pnpm exec steamharness workspace run hello --target latest --message "hello"
 
 `steamharness run/json` 要求项目显式声明 `steamHarness.projectInfo.dataStorage.mode`。`STEAMHARNESS_KV_STORE_DIR` 只控制 `context.storage.local.kv`，`STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR` 只控制 `context.storage.local.persistentValue` 和本地知识库；二者按项目 UUID 隔离且互不回退。`context.storage.server` 使用顶层项目 UUID，并从 `STEAMHARNESS_SERVER_URL` / `STEAMHARNESS_SERVER_ADMIN_KEY` 或 workspace CLI 保存的 `workflow-auth.json` 取得登录连接。`local` 可离线运行，`server` 必须登录并绑定同 UUID，`both` 由源码显式选择位置；两端数据不会自动同步。关联项目目录必须用可重复的 `--related-project alias=/绝对项目目录` 显式传入，CLI 不会扫描父目录或兄弟目录；本地运行时该关系还包含目标项目的知识库与入口调用（按目标项目的授权），服务器位置仅用于数据访问，关联入口仍在本地执行。`context.files.createFile(...)` 仍使用服务器连接写入 server 文件 API；输入附件解析仍由 `STEAMHARNESS_FILE_STORE_DIR` 控制。
 
-workspace CLI 会读取当前工作目录的 `.env`；显式设置 `STEAMHARNESS_REPO_ROOT` 时还会读取该项目根目录的 `.env`。CLI 仓库根目录的 `.env.example` 提供了最小配置模板。
+项目业务值来自[项目配置](/concepts/project-configuration)，不加载项目 env，也不回退读取进程变量。宿主部署和通信配置由宿主单独管理。
 
 ## 输出约定
 

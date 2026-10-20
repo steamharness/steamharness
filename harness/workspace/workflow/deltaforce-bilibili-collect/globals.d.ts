@@ -35,7 +35,7 @@ interface ExecutorContextShape {
   projectName: string;
   projectDir: string;
   args: string[];
-  env: NodeJS.ProcessEnv;
+  config: Record<string, any>;
   abortSignal: AbortSignal;
   conversationId?: string;
 }

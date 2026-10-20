@@ -6,6 +6,9 @@ You can also open this project folder in Studio and use Run Project to select an
 
 | Entrypoint | Capability |
 | --- | --- |
+| `get_configurations` | Query or fully export fields, profiles, values, selection and revision for an explicit local or Server project |
+| `manage_configurations` | Manage profiles and custom fields, set or clear values, or atomically import; revision checks apply and read-only mode rejects writes |
+| `open_configurations` | Open the selected project's configuration panel |
 | `studio_state` | Read the run's permission policy, path access, workspace, active editor, installed themes and supported views |
 | `get_related_projects` | Read declared related projects, UUIDs, names, Studio import status and verified directories |
 | `open_file` | Open a permitted file at an optional one-based line and column |
@@ -13,6 +16,8 @@ You can also open this project folder in Studio and use Run Project to select an
 | `set_theme` | Select an installed theme by the name returned by the state tool |
 | `open_terminal` | Open a terminal in a permitted directory without sending or executing commands |
 | `show_view` | Show Explorer, Search, Source Control, Terminal or Assistant |
+
+Configuration operations work with the panel closed. Pass a JSON `input` with `storage: "local"` plus `projectDir`, or `storage: "server"` plus `projectId` and `target`. Query first, then pass the returned `revision` and explicit profile `id` for value/profile changes. Import generates new IDs and preserves selection. Exports include all sensitive values. See [Project configurations](../../docs/en/concepts/project-configuration.mdx).
 
 The optional `projectDir` parameter of `get_related_projects` selects a Workflow project allowed by the current permission policy, defaulting to the running project directory or the assistant's working directory. The result includes the source `projectId`, `projectDir` and a `relatedProjects` list. Each entry has `alias`, `projectId`, `imported`, `name`, `uri` and `projectDir`. Queries revalidate imported UUIDs. Missing or unavailable imports retain their declaration, with null names and directories. Remote imports return their URI with a null local directory. Import status does not imply mutual data-access grants; the run's Permission controls file access.
 
@@ -26,4 +31,4 @@ Legacy Desktop Dock, launch-at-login, updates, cloud-app publication and Desktop
 
 Development dependencies use `link:../../harness` and `link:../../cli` inside the aggregate. After installation, run `pnpm typecheck`, `pnpm test`, `pnpm coverage` and `pnpm build`. Existing built-in packaging tooling is retained for future releases; this migration delivers source and host integration only.
 
-Run `npm run test:studio-control-live` from the aggregate's `studio` directory to call all seven packaged tools through real stdio MCP and an isolated VS Code Node extension host, including permission changes and session revocation. It also verifies all seven imported source entrypoints through ordinary project launch and run APIs, including the default project directory and connection isolation. It uses a headless browser and a temporary workspace, leaving visible desktop windows and the system clipboard untouched. It closes its server and terminals and restores the test instance's theme. Results are saved to `studio/.studio/studio-control-live/results.json`. A built Studio, installed assistant dependencies and Chrome are required; `STUDIO_CONTROL_TEST_BROWSER` can select another Playwright browser channel.
+Run `npm run test:studio-control-live` from the aggregate's `studio` directory to call the seven packaged editor tools through real stdio MCP and an isolated VS Code Node extension host, including permission changes and session revocation. It also verifies the seven imported editor entrypoints through ordinary project launch and run APIs, including the default project directory and connection isolation. It uses a headless browser and a temporary workspace, leaving visible desktop windows and the system clipboard untouched. It closes its server and terminals and restores the test instance's theme. Results are saved to `studio/.studio/studio-control-live/results.json`. A built Studio, installed assistant dependencies and Chrome are required; `STUDIO_CONTROL_TEST_BROWSER` can select another Playwright browser channel.

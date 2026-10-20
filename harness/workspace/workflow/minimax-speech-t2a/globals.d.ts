@@ -7,7 +7,7 @@ interface ExecutorContextShape {
   projectName: string;
   projectDir: string;
   args: string[];
-  env: NodeJS.ProcessEnv;
+  config: Record<string, unknown>;
   abortSignal: AbortSignal;
 }
 
@@ -115,5 +115,5 @@ declare const steamharness: {
     input: Input,
     context: RuntimeContextShape,
   ): Promise<{ chunks: RunOutputStreamChunk[]; output: Output | undefined }>;
-  getEnv(name: string): string | undefined;
+  getConfig<T = string>(name: string): T | undefined;
 };

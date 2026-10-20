@@ -29,7 +29,7 @@ const inputNode = steamharness.createInputNode<PiAgentInput, PiAgentParsedInput>
       });
     }
 
-    const provider = normalizeProvider(input.provider ?? steamharness.getEnv("PI_AGENT_PROVIDER"));
+    const provider = normalizeProvider(input.provider ?? steamharness.getConfig<string>("PI_AGENT_PROVIDER"));
     const knowledgeTools = input.knowledgeTools !== false;
 
     return {
@@ -57,8 +57,8 @@ const outputNode = steamharness.createOutputNode<PiAgentRunInput, PiAgentOutputP
   async *stream(input, context) {
     let pendingToolApprovalError: steamharness.HarnessError | undefined;
     const sessionFactory = input.sessionFactory ?? createPiAgentSessionFactory({
-      getEnv(name) {
-        return steamharness.getEnv(name);
+      getConfig(name) {
+        return steamharness.getConfig<string>(name);
       },
       context,
       onPendingApproval(error) {
@@ -370,20 +370,20 @@ function normalizeProvider(value: unknown): PiAgentProvider {
 
 function readProviderModelEnv(provider: PiAgentProvider): string | undefined {
   if (provider === "openai") {
-    return normalizeOptionalString(steamharness.getEnv("OPENAI_MODEL")) ??
-      normalizeOptionalString(steamharness.getEnv("OPENAPI_MODEL"));
+    return normalizeOptionalString(steamharness.getConfig<string>("OPENAI_MODEL")) ??
+      normalizeOptionalString(steamharness.getConfig<string>("OPENAPI_MODEL"));
   }
 
-  return normalizeOptionalString(steamharness.getEnv("ANTHROPIC_MODEL"));
+  return normalizeOptionalString(steamharness.getConfig<string>("ANTHROPIC_MODEL"));
 }
 
 function readProviderBaseUrlEnv(provider: PiAgentProvider): string | undefined {
   if (provider === "openai") {
-    return normalizeOptionalString(steamharness.getEnv("OPENAI_BASE_URL")) ??
-      normalizeOptionalString(steamharness.getEnv("OPENAPI_BASE_URL"));
+    return normalizeOptionalString(steamharness.getConfig<string>("OPENAI_BASE_URL")) ??
+      normalizeOptionalString(steamharness.getConfig<string>("OPENAPI_BASE_URL"));
   }
 
-  return normalizeOptionalString(steamharness.getEnv("ANTHROPIC_BASE_URL"));
+  return normalizeOptionalString(steamharness.getConfig<string>("ANTHROPIC_BASE_URL"));
 }
 
 function normalizeTools(value: unknown, knowledgeTools = true): string[] {

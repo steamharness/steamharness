@@ -75,6 +75,20 @@ test("PostgreSQL stores static project groups, immutable versions and independen
       for (const file of files) await writeFile(path.join(source, file.path), file.content);
       await createTar({ cwd: source, file: path.join(groupDir, `${id}.tar.gz`), gzip: true }, ["."]);
     }
+    const configurationOptions={projectName:boardId,actorId:"owner",target:"draft"};
+    const state=await storage.projectConfigurations(configurationOptions,{action:"get"}) as import("@steamharness/project-configuration").ProjectConfigurationState;
+    const results=await Promise.allSettled([
+      storage.projectConfigurations(configurationOptions,{action:"create",revision:state.revision,name:"First"}),
+      storage.projectConfigurations(configurationOptions,{action:"create",revision:state.revision,name:"Second"}),
+    ]);
+    assert.equal(results.filter(result=>result.status==="fulfilled").length,1);
+    const other=await storage.projectConfigurations({...configurationOptions,actorId:"viewer"},{action:"get"}) as typeof state;
+    assert.equal(other.configurations.length,1);
+    assert.notEqual(other.activeConfigurationId,state.activeConfigurationId);
+    const saved=await storage.projectConfigurations(configurationOptions,{action:"get"}) as typeof state;
+    assert.equal(saved.configurations.length,2);
+    await assert.rejects(storage.projectConfigurations(configurationOptions,{action:"import",revision:saved.revision,document:{version:1,kind:"steamharness-project-configurations",fields:[{name:"x",type:"number"}],configurations:[{name:"good",values:{x:1}},{name:"invalid",values:{x:"bad"}}]}}));
+    assert.deepEqual(await storage.projectConfigurations(configurationOptions,{action:"get"}),saved);
     const manifest: ProjectGroupManifestV1 = { version: 1, rootProjectId: boardId,
       projects: [
         { projectId: boardId, role: "root", archivePath: `${boardId}.tar.gz`, version: "1.0.0" },

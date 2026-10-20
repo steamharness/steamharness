@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "fields": [
+    {
+      "name": "title",
+      "type": "string",
+      "label": "Board Title",
+      "defaultValue": "My Board"
+    },
+    {
+      "name": "showDone",
+      "type": "boolean",
+      "label": "Show Completed Tasks",
+      "defaultValue": true
+    }
+  ]
+}

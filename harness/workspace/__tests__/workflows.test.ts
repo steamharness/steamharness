@@ -8,6 +8,7 @@ import {
   runLocalProjectWithReport,
   HarnessError,
   type LLMChatInput,
+  type ProjectConfigurationSnapshot,
   type ExecutionReport,
   type ExecutionStorageOptions,
   type FileReference,
@@ -173,7 +174,7 @@ describe("workspace workflow offline runtime smoke", () => {
       projectDir: projectDirectory(projectName),
       projectName,
       args: await resolveFixtureArgs(projectName, fixture.args),
-      env: createFixtureEnv(projectName),
+      configuration: createFixtureConfiguration(projectName),
       conversationId: fixture.conversationId,
       storage: await createFixtureStorage(projectName),
       providers: {
@@ -563,7 +564,7 @@ describe("workspace workflow output-showcase resume", () => {
     expect(readOutputContent(longTaskOutput)).toContain("长任务执行完毕");
     expect(readOutputContent(longTaskOutput)).toContain("工具摘要");
     expect(readOutputContent(longTaskOutput)).toContain("当前页面全部展示内容组成的原始 JSON");
-    expect(readOutputContent(longTaskOutput)).toContain("\"projectName\": \"output-showcase\"");
+    expect(readOutputContent(longTaskOutput)).toContain("\"projectName\": \"output-showcase-fixture\"");
     expect(readOutputContent(longTaskOutput)).toContain("\"confirmed\": true");
     expect(longTaskItems.some((item) =>
       item.id === "output-showcase-finished" &&
@@ -1245,21 +1246,23 @@ function createFixtureLLMProvider(projectName: ProjectName): MockLLMProvider {
   });
 }
 
-function createFixtureEnv(projectName: ProjectName): NodeJS.ProcessEnv | undefined {
+function createFixtureConfiguration(projectName: ProjectName): ProjectConfigurationSnapshot {
+  return { id: "fixture", name: "Fixture", revision: 0, values: fixtureValues(projectName) };
+}
+
+function fixtureValues(projectName: ProjectName): Record<string, string> {
   if (projectName === "gpt-image") {
     return {
-      ...process.env,
       GPT_IMAGE_MOCK: "1",
       GPT_IMAGE_MOCK_B64: "Z3B0LWltYWdlLWZpeHR1cmU=",
     };
   }
 
   if (!isDeltaforceFixtureProject(projectName)) {
-    return undefined;
+    return {};
   }
 
   return {
-    ...process.env,
     DELTAFORE_OPENAPI_URL: "http://hookcode.win:7222/openapi.json",
     DELTAFORE_API_BASE_URL: "http://hookcode.win:7222",
     OPENAI_API_KEY: "fixture-openai-key",

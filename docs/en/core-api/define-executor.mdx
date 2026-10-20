@@ -5,12 +5,12 @@ description: "Defines a Workflow project's entrypoints or a Conversation project
 
 # defineExecutor
 
-`workflow.defineExecutor<Input, Output>()` declares a project's execution contract. A Workflow executor declares its default entrypoint and independently runnable `entrypoints`; a Conversation executor declares its workflow, parameters, and input construction directly on the executor.
+`steamharness.defineExecutor<Input, Output>()` declares a project's execution contract. A Workflow executor declares its default entrypoint and independently runnable `entrypoints`; a Conversation executor declares its workflow, parameters, and input construction directly on the executor.
 
 ## Signature
 
 ```ts
-workflow.defineExecutor<Input, Output>(
+steamharness.defineExecutor<Input, Output>(
   definition: ExecutorDefinition<Input, Output>,
 ): ExecutorDefinition<Input, Output>
 ```
@@ -27,7 +27,7 @@ workflow.defineExecutor<Input, Output>(
 | --- | --- | --- |
 | `projectType` | `"workflow"` |The project type. Required.|
 | `defaultEntrypoint` | `string` |The entrypoint ID used when no entrypoint is selected. It must be a string literal that names an item in `entrypoints`.|
-| `entrypoints` | `EntrypointDefinition[]` |A non-empty array of static entrypoint definitions. Each item must call [`workflow.defineEntrypoint()`](/en/core-api/define-entrypoint) directly.|
+| `entrypoints` | `EntrypointDefinition[]` |A non-empty array of static entrypoint definitions. Each item must call [`steamharness.defineEntrypoint()`](/en/core-api/define-entrypoint) directly.|
 
 `workflow`, `params`, `createInput`, `resolveParams`, `createContext`, `requiredProviders`, `tools`, `tokenUsage`, and `registry` are entrypoint-specific Workflow fields and cannot appear at the top level of an executor. Hosts display entrypoints in declaration order. Selecting one creates a run for that entrypoint directly; the default entrypoint does not run first.
 
@@ -39,7 +39,7 @@ Workflow can declare the proposed schedule in `package.json.steamHarness.schedul
 | --- | --- | --- |
 | `projectType` | `"conversation"` |The type tag for the Conversation item. Required.|
 | `workflow` | `Definition<Input, Output>` |Conversation is unique to workflow. Required.|
-| `createInput` | `(context) => Input` |Converts args, environment, and session IDs into business inputs. Required.|
+| `createInput` | `(context) => Input` |Converts args, configuration snapshots, and session IDs into business inputs. Required.|
 | `resolveParams` | `(context) => ParamResolveResult` |Optional parameter linkage callback.|
 | `createContext` | `(context) => Partial<RunContext>` |Add providers, metadata and hooks.|
 | `requiredProviders` | `ExecutorProviderName[]` |Declares a required provider.|
@@ -66,7 +66,7 @@ Durable Agent projects can declare inline `conversation.recovery: { enabled: tru
 | `env` | `NodeJS.ProcessEnv` |A collection of environment variables.|
 | `abortSignal` | `AbortSignal` | An interrupt signal; CLI Web cancellation is passed to workflow and SDK/provider calls that support signals. |
 | `conversationId` | `string \| undefined` |The session ID.|
-| `toolPermissionPolicies` | `ToolPermissionPolicyMap \| undefined` |The tool policy override value passed in by the host. workflow usually does not read this field directly, but uses `context.toolPermissions` or `workflow.createToolApprovalGate()`.|
+| `toolPermissionPolicies` | `ToolPermissionPolicyMap \| undefined` |The tool policy override value passed in by the host. workflow usually does not read this field directly, but uses `context.toolPermissions` or `steamharness.createToolApprovalGate()`.|
 
 ## `ParamDeclaration`
 
@@ -288,12 +288,12 @@ The mutex example hides and clears the range after selecting a single day, hides
 
 Every executor must declare `projectType` statically. `projectType: "conversation"` enables conversation IDs, context, and session storage; code running in a workflow can call `context.conversation.setTitle(title)` to suggest a readable session title for shared runtime UI or CLI Web. `projectType: "workflow"` prohibits a `conversation` declaration, leaves session context disabled, and requires static `defaultEntrypoint` and `entrypoints`. Missing or unknown types, and the legacy `conversation.enabled`, are rejected as migration errors rather than treated as Workflow projects.
 
-`workflow.defineExecutor(...)` must receive an inline object literal, and the result must be the module's named or default `executor` export. Do not assign the configuration to a variable first or continue using legacy top-level exports such as `workflow`, `createInput`, or `projectType`. Static structure analysis does not execute configuration code, and runtime does not assemble those fields into an executor.
+`steamharness.defineExecutor(...)` must receive an inline object literal, and the result must be the module's named or default `executor` export. Do not assign the configuration to a variable first or continue using legacy top-level exports such as `workflow`, `createInput`, or `projectType`. Static structure analysis does not execute configuration code, and runtime does not assemble those fields into an executor.
 
 Conversation always uses the standard message input. It needs no enable setting and cannot be disabled or replaced with a custom main form. Declare optional attachment capabilities directly in `conversation.attachments`. The removed `conversation.defaultInput` configuration is rejected:
 
 ```ts
-export const executor = workflow.defineExecutor<Input, Output>({
+export const executor = steamharness.defineExecutor<Input, Output>({
   projectType: "conversation",
   workflow: conversationProject,
   conversation: {
@@ -308,7 +308,7 @@ export const executor = workflow.defineExecutor<Input, Output>({
     },
   },
   createInput({ args }) {
-    return workflow.parseConversationDefaultInputArgs(args);
+    return steamharness.parseConversationDefaultInputArgs(args);
   },
 });
 ```
@@ -320,11 +320,11 @@ The host renders the standard input without automatically modifying `RunContext`
 - Common file attachments:`--files`
 - Video attachments: `--videos` when `attachments.videos: true` is enabled.
 
-Direct use of [`workflow.parseConversationDefaultInputArgs(args)`](/en/core-api/parse-conversation-default-input-args) is recommended:
+Direct use of [`steamharness.parseConversationDefaultInputArgs(args)`](/en/core-api/parse-conversation-default-input-args) is recommended:
 
 ```ts
 createInput({ args }) {
-  const defaults = workflow.parseConversationDefaultInputArgs(args);
+  const defaults = steamharness.parseConversationDefaultInputArgs(args);
   return {
     message: defaults.message,
     images: defaults.images,
@@ -352,16 +352,16 @@ After `tokenUsage.enabled` is enabled,runtime writes the token usage to KV and t
 
 `tools` Default permission for registering workflow business tools. Each tool contains stable `name`, and optional `label`, `description`, `enabled`, and `autoApprove`. `enabled` default `true`,`autoApprove` default `false`. CLI Web can cache user selections and pass in override values before running;runtime only accepts `enabled/autoApprove` overrides for registered tools, and unknown tools are ignored.
 
-code running in a workflow can use [`workflow.createToolApprovalGate()](/en/core-api/create-tool-approval-gate) to wrap tool functions. When the tool is not registered, it will fail as `input_validation`; When the tool is disabled, it will be rejected as `tool_permission_denied`; When the tool is enabled but not automatically approved, the waiting/recovery protocol of `workflow.createUserInputNode(...)` will be reused to generate a `tool-approval` request. After approval, the same run will continue and `tool_permission_denied` will be returned after rejection.
+code running in a workflow can use [`steamharness.createToolApprovalGate()](/en/core-api/create-tool-approval-gate) to wrap tool functions. When the tool is not registered, it will fail as `input_validation`; When the tool is disabled, it will be rejected as `tool_permission_denied`; When the tool is enabled but not automatically approved, the waiting/recovery protocol of `steamharness.createUserInputNode(...)` will be reused to generate a `tool-approval` request. After approval, the same run will continue and `tool_permission_denied` will be returned after rejection.
 
 ## Example
 
 ```ts
-export const executor = workflow.defineExecutor<Input, Output>({
+export const executor = steamharness.defineExecutor<Input, Output>({
   projectType: "workflow",
   defaultEntrypoint: "main",
   entrypoints: [
-    workflow.defineEntrypoint<Input, Output>({
+    steamharness.defineEntrypoint<Input, Output>({
       id: "main",
       title: "Full workflow",
       workflow: exampleProject,

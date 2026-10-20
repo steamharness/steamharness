@@ -1,10 +1,11 @@
 import ignore, { type Ignore } from "ignore";
 import {
-  KANBAN_MANIFEST_FILE,
   createKanbanArtifactEntryPath,
   readKanbanArtifactConfig,
   readPackageProjectType,
 } from "../kanban-project/index";
+
+import { PROJECT_CONFIGURATION_FILE } from "../project-configuration/index";
 
 export const STEAMHARNESS_IGNORE_FILE = ".steamharnessignore";
 
@@ -38,10 +39,10 @@ export function resolveProjectUploadRequiredPaths(
     return [
       "package.json",
       createKanbanArtifactEntryPath(artifact),
-      ...(normalizedAvailablePaths.has(KANBAN_MANIFEST_FILE) ? [KANBAN_MANIFEST_FILE] : []),
+      ...(normalizedAvailablePaths.has(PROJECT_CONFIGURATION_FILE) ? [PROJECT_CONFIGURATION_FILE] : []),
     ];
   }
-  return ["package.json", "index.ts"];
+  return ["package.json", "index.ts", ...(normalizedAvailablePaths.has(PROJECT_CONFIGURATION_FILE) ? [PROJECT_CONFIGURATION_FILE] : [])];
 }
 
 export function createProjectUploadMatcher(content?: string): UploadMatcher {

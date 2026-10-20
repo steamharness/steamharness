@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "fields": [
+    {"name": "LLM_TYPE", "type": "string", "defaultValue": "openai-responses", "options": [{"value": "openai-responses"}, {"value": "openai-completion"}, {"value": "anthropic"}]},
+    {"name": "LLM_API_KEY", "type": "string", "secret": true},
+    {"name": "LLM_BASE_URL", "type": "string"},
+    {"name": "LLM_MODEL", "type": "string"},
+    {"name": "DELTAFORE_OPENAPI_URL", "type": "string"},
+    {"name": "DELTAFORE_API_BASE_URL", "type": "string"}
+  ]
+}

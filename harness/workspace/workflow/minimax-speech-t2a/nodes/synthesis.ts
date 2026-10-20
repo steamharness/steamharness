@@ -28,7 +28,7 @@ export const synthesisNode = steamharness.createInputNode<MinimaxSpeechInput, Mi
 
     const apiKey = readContextApiKey(context);
     if (apiKey === undefined) {
-      throw new Error("MiniMax speech synthesis requires MINIMAX_API_KEY. Set it in .env or pass --dry-run.");
+      throw new Error("MiniMax speech synthesis requires MINIMAX_API_KEY. Set it in Project configurations or pass --dry-run.");
     }
 
     const audio = await synthesizeMinimaxSpeech({

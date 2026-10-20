@@ -200,7 +200,7 @@ export async function runUpload(
   const apiKey = readMinimaxApiKeyFromMetadata(context.metadata) ?? readMinimaxApiKey();
   if (apiKey === undefined) {
     throw new Error(
-      "Minimax upload requires MINIMAX_API_KEY. Set it in .env or pass --dry-run for offline mode.",
+      "Minimax upload requires MINIMAX_API_KEY. Set it in Project configurations or pass --dry-run for offline mode.",
     );
   }
   const client = new MinimaxClient({
@@ -240,7 +240,7 @@ export async function runUnderstand(
   const apiKey = readMinimaxApiKeyFromMetadata(context.metadata) ?? readMinimaxApiKey();
   if (apiKey === undefined) {
     throw new Error(
-      "Minimax understand requires MINIMAX_API_KEY. Set it in .env or pass --dry-run for offline mode.",
+      "Minimax understand requires MINIMAX_API_KEY. Set it in Project configurations or pass --dry-run for offline mode.",
     );
   }
   const client = new MinimaxClient({

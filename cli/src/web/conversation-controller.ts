@@ -10,6 +10,7 @@ import {
 } from './workflow-types';
 
 interface ControllerOptions {
+  configurationRevision?(): number;
   save(sessions: ConversationSession[], activeId: string): Promise<void>;
   changed(): void;
   log(message: string): void;
@@ -21,6 +22,7 @@ export class ConversationController {
   activeId: string;
   private readonly tasks = new Map<string, RunTask>();
   private disposed = false;
+  private readonly reloading = new Map<string, Promise<void>>();
   private readonly removing = new Set<string>();
   private readonly agentWaiters = new Map<string, { ownerId: string; targetId?: number; requestId: string; promise: Promise<AgentSessionReceipt>; resolve(receipt: AgentSessionReceipt): void; reject(error: Error): void }>();
   private readonly agentSaves = new Map<string, ReturnType<typeof setTimeout>>();
@@ -180,6 +182,15 @@ export class ConversationController {
       if (owner.messages.some(message => message.pendingInput)) throw new Error(t("Awaiting confirmation"));
       const args = projectParamArgs(parameters.fields, input.params, input.states);
       const previous = owner.agentParameters;
+      const configChanged = previous && previous.configurationRevision !== this.options.configurationRevision?.();
+      if (configChanged) {
+        if (owner.agent?.tasks.length || owner.agent?.turns.some(turn => turn.status === 'queued' || turn.status === 'placed')) {
+          (entry.queuedInputs ??= []).push({...queued,configurationPending:true});
+          if (!preserveDraft) entry.draft = { text: '', attachments: [] };
+          this.changed(); await this.persist(); return;
+        }
+        await this.reloadConfiguration(owner);
+      }
       const changed = previous && (JSON.stringify(previous.args) !== JSON.stringify(args) || previous.entrypointId !== input.entrypointId || JSON.stringify(previous.policies) !== JSON.stringify(owner.toolPermissionPolicies));
       if (changed) {
         if (owner.agent?.tasks.length || !owner.agent) throw new Error(t('Wait for active tasks before changing session settings.'));
@@ -232,7 +243,7 @@ export class ConversationController {
       ] as const) { if (files.length) { args.push(flag, JSON.stringify(files.map(({ previewUrl: _, ...reference }) => reference))); } }
     } else if (input.text) { args.push(...this.rawArgs(input.text)); }
     if (!answer) {
-      if (this.project.conversation?.durable?.enabled) entry.agentParameters = { args: projectParamArgs(parameters.fields, input.params, input.states), entrypointId: input.entrypointId, policies: JSON.parse(JSON.stringify(entry.toolPermissionPolicies ?? {})) };
+      if (this.project.conversation?.durable?.enabled) entry.agentParameters = { configurationRevision: this.options.configurationRevision?.(), args: projectParamArgs(parameters.fields, input.params, input.states), entrypointId: input.entrypointId, policies: JSON.parse(JSON.stringify(entry.toolPermissionPolicies ?? {})) };
       if (!entry.messages.length && !entry.titleLocked) { entry.title = (input.text || input.attachments[0]?.name || t("Workflow run")).slice(0, 80); }
       entry.messages.push({ id: globalThis.crypto.randomUUID(), role: 'user', content: input.text || '', attachments: input.attachments, args, input, entrypointId: input.entrypointId, createdAt: Date.now() });
       answer = { id: input.id, role: 'assistant', content: '', items: [], status: 'running', createdAt: Date.now(), model: typeof input.params.model === 'string' ? input.params.model : undefined, args, entrypointId: input.entrypointId, events: [] };
@@ -240,6 +251,7 @@ export class ConversationController {
       entry.messages.push(answer);
     }
     const request: Run = {
+      configurationRunId: this.project.conversation?.durable?.enabled ? `${answer.runId}:configuration:${entry.agentParameters?.configurationRevision ?? 0}` : undefined,
       project: this.project, conversationId: entry.id, args: answer.args ?? args, runId: answer.runId,
       entrypointId: answer.entrypointId, toolPermissionPolicies: entry.toolPermissionPolicies,
       resolvedInputs: [...(answer.resolvedInputs ?? []), ...(answer.submittingInput ? [answer.submittingInput] : [])],
@@ -431,8 +443,8 @@ export class ConversationController {
       entry.agentConversationId ??= snapshot.conversationId;
       const turns = snapshot.turns.filter(turn => turn.conversationId === entry.agentConversationId);
       const anchors = entry === owner ? entry.messages.filter(message => message.role === 'assistant' && message.runId) : [];
-      entry.queuedInputs = turns.filter(turn => turn.status === 'queued').map(turn => entry.agentInputs?.[turn.requestId]
-        ?? { id: turn.requestId, text: turn.prompt, params: {}, attachments: [], createdAt: entry.updatedAt ?? Date.now() });
+      entry.queuedInputs = [...turns.filter(turn => turn.status === 'queued').map(turn => entry.agentInputs?.[turn.requestId]
+        ?? { id: turn.requestId, text: turn.prompt, params: {}, attachments: [], createdAt: entry.updatedAt ?? Date.now() }), ...(entry.queuedInputs??[]).filter(input=>input.configurationPending)];
       for (const turn of turns) {
         const input = entry.agentInputs?.[turn.requestId];
         if (turn.status === 'unanswered' && entry.agentInputs) delete entry.agentInputs[turn.requestId];
@@ -475,6 +487,7 @@ export class ConversationController {
         answer.items = [...outputTurns.flatMap(part => part.items), ...extras]; answer.content = outputText(answer.items);
       }
     }
+    if (!restore) this.configurationChanged();
     for (const receipt of snapshot.receipts) this.acknowledgeAgent(owner, receipt);
     if (!restore && !this.agentSaves.has(owner.id)) this.agentSaves.set(owner.id, setTimeout(() => {
       this.agentSaves.delete(owner.id); void this.persist().catch(error => this.options.log(String(error)));
@@ -520,6 +533,45 @@ export class ConversationController {
       }
       throw error;
     } finally { clearTimeout(timeout); if (this.agentWaiters.get(key)?.promise === confirmed) this.agentWaiters.delete(key); }
+  }
+  configurationChanged(): void {
+    if (this.disposed || !this.project.conversation?.durable?.enabled) return;
+    for (const owner of this.sessions.filter(entry => !entry.agentOwnerId)) {
+      if (owner.agentParameters && owner.agentParameters.configurationRevision !== this.options.configurationRevision?.()) {
+        void this.reloadConfiguration(owner).catch(error => this.options.log(String(error)));
+      }
+    }
+  }
+  private reloadConfiguration(owner: ConversationSession): Promise<void> {
+    const existing = this.reloading.get(owner.id);
+    if (existing) return existing;
+    if (this.disposed || !owner.agent || !owner.agentParameters || owner.agentParameters.configurationRevision === this.options.configurationRevision?.()
+      || owner.agent.tasks.length || owner.agent.turns.some(turn => turn.status === 'queued' || turn.status === 'placed')
+      || this.sessions.some(entry => (entry.agentOwnerId ?? entry.id) === owner.id && entry.messages.some(message => message.pendingInput))) return Promise.resolve();
+    // Defer cancellation until the snapshot's receipts have been acknowledged.
+    const reload = Promise.resolve().then(async () => {
+      await this.retireAgentOwner(owner);
+      if (this.disposed || !this.sessions.includes(owner)) return;
+      owner.agentParameters!.configurationRevision = this.options.configurationRevision?.();
+      const anchor = [...owner.messages].reverse().find(message => message.role === 'assistant' && message.runId && message.args);
+      if (anchor) this.start(owner, { id: anchor.id!, text: '', params: {}, attachments: [], createdAt: Date.now() }, anchor);
+      await this.persist();
+    }).finally(() => { if (this.reloading.get(owner.id) === reload) this.reloading.delete(owner.id); });
+    this.reloading.set(owner.id, reload);
+    void reload.then(async () => {
+      if (this.disposed) return;
+      for (const entry of this.sessions.filter(entry => (entry.agentOwnerId ?? entry.id) === owner.id)) {
+        while (entry.queuedInputs?.length) {
+          const input = entry.queuedInputs.shift()!;
+          delete input.configurationPending;
+          try { await this.send(input, entry, true, input.id); }
+          catch (error) { entry.queuedInputs.unshift(input); throw error; }
+          // A newer edit may have queued this input again until the next idle boundary.
+          if (entry.queuedInputs.some(queued => queued.id === input.id)) break;
+        }
+      }
+    }).catch(error => this.options.log(String(error)));
+    return reload;
   }
   private rejectAgentWaiters(ownerId: string, error: Error): void {
     for (const [id, waiter] of this.agentWaiters) if (waiter.ownerId === ownerId) { waiter.reject(error); this.agentWaiters.delete(id); }

@@ -177,10 +177,11 @@ export const executor = steamharness.defineExecutor<DeltaforeAgentInput, Deltafo
     const defaults = steamharness.parseConversationDefaultInputArgs(args);
     return parseInputArgs(args, { message: defaults.message });
   },
-  async createContext({ env, abortSignal }) {
+  async createContext({ config: configuration, abortSignal }) {
+    const config = configuration as Record<string, string | undefined>;
     const deltaforeApi = await createDeltaforeApiConfig({
-      baseUrl: env.DELTAFORE_API_BASE_URL,
-      openApiUrl: env.DELTAFORE_OPENAPI_URL ?? DEFAULT_OPENAPI_URL,
+      baseUrl: config.DELTAFORE_API_BASE_URL,
+      openApiUrl: config.DELTAFORE_OPENAPI_URL ?? DEFAULT_OPENAPI_URL,
       signal: abortSignal,
     });
 

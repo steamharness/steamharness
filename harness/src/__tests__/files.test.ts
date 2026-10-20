@@ -24,7 +24,7 @@ test("video paths and managed references retain MIME type and bytes through file
     const kv = createProjectKVContext({ store: createLocalProjectKVStore({ rootDir }), projectId: "media-test" });
     const storage = { kv, persistentValue: kv, relatedProjects: createProjectRelatedProjectsContext() };
     const context = {
-      files: store, providers: {}, storage: { local: storage, server: storage },
+      files: store, config: {}, providers: {}, storage: { local: storage, server: storage },
       conversation: createDisabledProjectConversationContext(), tokenUsage: createDisabledProjectTokenUsageContext(),
     };
     const node = createFileInputNode({ accept: ["image/*", "video/*"] });

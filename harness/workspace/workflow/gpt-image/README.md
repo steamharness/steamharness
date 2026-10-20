@@ -10,12 +10,10 @@ CLI, App, and Web runs.
 ```bash
 cd workspace/workflow/gpt-image
 pnpm install
-cp .env.example .env
 ```
 
 For a real local run you can copy `OPENAI_API_KEY` and `OPENAI_BASE_URL` from
-`workspace/workflow/game/.env` into this workflow's `.env`. App and Web runs use
-the saved project environment values through `workflow.getEnv`.
+Enter API keys and other business values in Project configurations; no project env file is loaded.
 
 ## Run
 
@@ -96,3 +94,8 @@ workflow does not create a new output file record.
 
 旧的 `--prompt` 仍保留给 CLI 兼容，但新的默认输入框协议统一使用
 `--message + --images`。
+
+
+## Project configuration
+
+Declare fields in `configuration.json` and enter values in Project configurations (Studio or `steamharness web .`). Read them with `workflow.getConfig(key)` or `context.config`. Local CLI and Studio share values; project env files are not loaded.

@@ -44,7 +44,7 @@ pnpm exec steamharness workspace pack <workflow> [--path <workflow-dir>] [--outp
 | --- | --- |
 | 缺失、空文件或仅有注释 | 上传项目下全部普通文件，并输出文件数量和总大小警告。 |
 | `.steamharnessignore` 自身命中规则 | 仍会保留在归档中。 |
-| `package.json`、项目入口或已有 `kanban.json` 被排除 | 打包失败，并指出生效规则。 |
+| `package.json`、项目入口或已有 `configuration.json` 被排除 | 打包失败，并指出生效规则。 |
 | 符号链接、特殊文件或大小写冲突路径 | 拒绝打包，不由忽略规则放行，避免归档在 Windows、macOS 和 Linux 间出现覆盖差异。 |
 
 Kanban 不会自动保留 `dist` 或其它产物目录；它们也不会被宿主暗中排除。应在 `.steamharnessignore` 中保留实际 `artifactDir`，同时按需排除 `src/`、测试和 source map。`.gitignore` 是否忽略产物与上传无关。

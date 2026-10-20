@@ -35,3 +35,8 @@ steamharness json . \
 ```
 
 Use `"allowed": false` to test the denied branch.
+
+
+## Project configuration
+
+Declare fields in `configuration.json` and enter values in Project configurations (Studio or `steamharness web .`). Read them with `workflow.getConfig(key)` or `context.config`. Local CLI and Studio share values; project env files are not loaded.

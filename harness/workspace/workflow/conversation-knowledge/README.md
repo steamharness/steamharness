@@ -41,3 +41,8 @@ the same conversation id; no automatic synchronization is performed.
 
 第二阶段开始，这个示例的默认 composer 固定映射到 `--message`；`--title`
 和 `--dry-run` 继续作为辅助参数保留在 Advanced options / CLI 里。
+
+
+## Project configuration
+
+Declare fields in `configuration.json` and enter values in Project configurations (Studio or `steamharness web .`). Read them with `workflow.getConfig(key)` or `context.config`. Local CLI and Studio share values; project env files are not loaded.

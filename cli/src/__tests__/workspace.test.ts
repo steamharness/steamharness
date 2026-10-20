@@ -279,7 +279,7 @@ describe("server workspace CLI helpers", () => {
     await writeFile(path.join(sourceDir, "index.ts"), VALID_STEAMHARNESS_SOURCE);
     await writeFile(path.join(sourceDir, ".env"), "SECRET=value\n");
     await writeFile(path.join(sourceDir, ".envrc"), "export SECRET=value\n");
-    await writeFile(path.join(sourceDir, ".env.example"), "SECRET=\n");
+    await writeFile(path.join(sourceDir, "configuration.json"), '{"version":1,"fields":[]}\n');
     await writeFile(path.join(sourceDir, "steamharness.sqlite-wal"), "local sqlite state\n");
     await writeFile(path.join(sourceDir, ".workflow-kv", "value.json"), "{}\n");
     await writeFile(path.join(sourceDir, ".workflow-persistent-values", "value.json"), "{}\n");
@@ -296,7 +296,7 @@ describe("server workspace CLI helpers", () => {
       });
       const staged = path.join(stagingRoot, "workflow");
       expect(existsSync(path.join(staged, "package.json"))).toBe(true);
-      expect(existsSync(path.join(staged, ".env.example"))).toBe(true);
+      expect(existsSync(path.join(staged, "configuration.json"))).toBe(true);
       expect(existsSync(path.join(staged, ".env"))).toBe(false);
       expect(existsSync(path.join(staged, ".envrc"))).toBe(false);
       expect(existsSync(path.join(staged, "steamharness.sqlite-wal"))).toBe(false);
@@ -1539,7 +1539,7 @@ describe("server workspace CLI helpers", () => {
     await writeFile(path.join(sourceProjectDir, "index.ts"), "export default {};\n", "utf8");
     await writeFile(path.join(sourceProjectDir, "README.md"), "# Manual dependencies\n", "utf8");
     await writeFile(path.join(sourceProjectDir, ".env"), "SECRET=1\n", "utf8");
-    await writeFile(path.join(sourceProjectDir, ".env.example"), "SECRET=\n", "utf8");
+    await writeFile(path.join(sourceProjectDir, "configuration.json"), '{"version":1,"fields":[]}\n', "utf8");
     await writeFile(path.join(sourceProjectDir, ".DS_Store"), "temporary", "utf8");
     await writeFile(path.join(sourceProjectDir, ".steamharnessignore"), ".env\n.DS_Store\n", "utf8");
 
@@ -1556,7 +1556,7 @@ describe("server workspace CLI helpers", () => {
     const contents = await runTarList(archivePath);
     expect(contents).toContain("workspace/workflow/manual-dependencies/package.json");
     expect(contents).toContain("workspace/workflow/manual-dependencies/README.md");
-    expect(contents).toContain("workspace/workflow/manual-dependencies/.env.example");
+    expect(contents).toContain("workspace/workflow/manual-dependencies/configuration.json");
     expect(contents).toContain("workspace/workflow/manual-dependencies/.steamharnessignore");
     expect(contents).not.toContain("workspace/workflow/manual-dependencies/.env\n");
     expect(contents).not.toContain(".DS_Store");

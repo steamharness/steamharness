@@ -43,63 +43,63 @@ steamharness 支持 `workflow`、`conversation` 和 `kanban` 三种项目类型�
 当前 `workflow` 全局对象来自 Core 仓库 `src/runtime-api.ts`，包含：
 
 ```ts
-workflow.defineProject
-workflow.defineEntrypoint
-workflow.defineExecutor
-workflow.parseConversationDefaultInputArgs
-workflow.createInputNode
-workflow.createFileInputNode
-workflow.createUserInputNode
-workflow.createToolApprovalGate
-workflow.createLLMNode
-workflow.createLLMStreamNode
-workflow.createLLMProviderFromEnv
-workflow.createLLMProviderRef
-workflow.createOutputNode
-workflow.createDetailsOutputNode
-workflow.createOutputItem
-workflow.createOutputPayload
-workflow.addOutputItem
-workflow.createOutputItemChunk
-workflow.createTimerNode
-workflow.endTimer
-workflow.createQuestionClassifierNode
-workflow.runNode
-workflow.runStreamNode
-workflow.runIf
-workflow.runFor
-workflow.runWhile
-workflow.runProject
+steamharness.defineProject
+steamharness.defineEntrypoint
+steamharness.defineExecutor
+steamharness.parseConversationDefaultInputArgs
+steamharness.createInputNode
+steamharness.createFileInputNode
+steamharness.createUserInputNode
+steamharness.createToolApprovalGate
+steamharness.createLLMNode
+steamharness.createLLMStreamNode
+steamharness.createLLMProviderFromConfig
+steamharness.createLLMProviderRef
+steamharness.createOutputNode
+steamharness.createDetailsOutputNode
+steamharness.createOutputItem
+steamharness.createOutputPayload
+steamharness.addOutputItem
+steamharness.createOutputItemChunk
+steamharness.createTimerNode
+steamharness.endTimer
+steamharness.createQuestionClassifierNode
+steamharness.runNode
+steamharness.runStreamNode
+steamharness.runIf
+steamharness.runFor
+steamharness.runWhile
+steamharness.runProject
 workflow.listKnowledgeDocuments
-workflow.getKnowledgeDocument
-workflow.createKnowledgeDocument
+steamharness.getKnowledgeDocument
+steamharness.createKnowledgeDocument
 workflow.editKnowledgeDocument
 workflow.deleteKnowledgeDocument
 workflow.searchKnowledgeDocuments
-workflow.readKnowledgeDocumentLines
-workflow.getEnv
-workflow.getRuntimePlatform
-workflow.getRuntimeLocale
-workflow.isCli
-workflow.isDesktop
-workflow.getLLMProvider
-workflow.HarnessError
+steamharness.readKnowledgeDocumentLines
+steamharness.getConfig
+steamharness.getRuntimePlatform
+steamharness.getRuntimeLocale
+steamharness.isCli
+steamharness.isDesktop
+steamharness.getLLMProvider
+steamharness.HarnessError
 ```
 
-`workflow.getRuntimeLocale()` 返回当前本地宿主选择的 `"zh-CN"` 或 `"en"`。没有宿主语言标记时默认 `"zh-CN"`；明确支持国际化的项目应把用户可见输出、错误、日期和数字格式统一跟随该值，而不是自行探测浏览器或机器语言。静态 package、入口和参数清单保持项目默认语言。
+`steamharness.getRuntimeLocale()` 返回当前本地宿主选择的 `"zh-CN"` 或 `"en"`。没有宿主语言标记时默认 `"zh-CN"`；明确支持国际化的项目应把用户可见输出、错误、日期和数字格式统一跟随该值，而不是自行探测浏览器或机器语言。静态 package、入口和参数清单保持项目默认语言。
 
 完整方法、参数和运行对象请看 [Core API](/core-api/overview)。
 
 ## Workflow
 
-Workflow 是业务流程本体，由 `workflow.defineProject<Input, Output>()` 定义：
+Workflow 是业务流程本体，由 `steamharness.defineProject<Input, Output>()` 定义：
 
 ```ts
-export const exampleProject = workflow.defineProject<Input, OutputPayload>({
+export const exampleProject = steamharness.defineProject<Input, OutputPayload>({
   name: "example",
   async run(input, context) {
-    const parsed = await workflow.runNode(inputNode, input, context);
-    const result = await workflow.runStreamNode(outputNode, parsed, context);
+    const parsed = await steamharness.runNode(inputNode, input, context);
+    const result = await steamharness.runStreamNode(outputNode, parsed, context);
     return result.output;
   },
 });
@@ -112,20 +112,20 @@ Workflow 的 `run` 接收 `input` 和 `context`，并返回最终 payload。执�
 Node 是最小可执行单元，分为普通节点、流式节点、分支节点和循环节点：
 
 ```ts
-const inputNode = workflow.createInputNode<Input, Parsed>({
+const inputNode = steamharness.createInputNode<Input, Parsed>({
   name: "input",
   parse(input) {
     return { message: input.message.trim() };
   },
 });
 
-const outputNode = workflow.createOutputNode<Parsed, OutputPayload>({
+const outputNode = steamharness.createOutputNode<Parsed, OutputPayload>({
   name: "output",
   async *stream(input) {
     yield input.message;
   },
   format(stream) {
-    return workflow.createOutputPayload({
+    return steamharness.createOutputPayload({
       items: stream.items,
     });
   },
@@ -134,18 +134,18 @@ const outputNode = workflow.createOutputNode<Parsed, OutputPayload>({
 
 输出 payload 的当前协议是 `RunOutputPayload.items: OutputItem[]`。每个 item 都是一个可独立展示和折叠的消息块，包含 `id`、`title`、`content`、可选 `icon` / `iconPreset`、`contentType`、`collapsed` 和 `metadata`。`contentType` 只决定渲染方式：`markdown`、`text`、`json`、`audio` 或 `video`；对象和数组应直接放进 `content`，不要提前 stringify 成 Markdown code block。`audio` content 使用 `{ src, mimeType, name, size, durationMs?, format? }`，`src` 可为安全 `data:audio/...;base64,...` 或 `http(s)` URL。`video` content 使用 `{ src, mimeType: "video/mp4", name, durationMs?, format?: "mp4" }`，`src` 同样只接受 `data:video/mp4;base64,...` 或公开 `http(s)` URL，UI 通过浏览器原生 `<video controls preload="metadata" playsInline>` 播放；签名 OSS URL 视为 `http(s)` 但不缓存，不要作为不可重建视频产物的唯一发布形式。缺失必填字段或 `src` 不安全时会降级为文本预览并显示 `videoPlaybackUnsupported` 之类的文案，不要把 `src` 留空或使用 `file://`、`blob:` 等本地 URL。
 
-`workflow.createDetailsOutputNode` 是创建独立可折叠 output item 的便捷节点，会把 `{ title, content, icon }` 转成 `items: [{ title, content, icon, contentType, collapsed: true }]`，并仍按 `output` 标准节点被本地 CLI 收集。`workflow.createTimerNode` 会创建标准名为 `timer` 的普通节点，用于启动业务计时；`workflow.endTimer(timer, context, { status, message })` 显式结束计时并写入 `report.timers`，未结束的 running timer 会在 workflow 收尾前自动标记为 `cleared`，避免 UI 残留运行态。`workflow.runNode` 返回节点输出；`workflow.runStreamNode` 返回 `{ chunks, output }`，其中 `chunks` 是原始流式 chunk 数组，`output` 是 `finalize` 或 `format` 生成的最终 payload。流式 `createOutputNode({ stream, format })` 的 `format` 接收累积后的 `{ text, items, chunks }`；字符串 chunk 会自动写入一个默认 Markdown item，结构化输出可使用 `workflow.createOutputItemChunk(...)` 发送 `output_item_start`、`output_item_delta`、`output_item_end`。`output_item_delta` 除了合并 `content`，还可以携带 `item` patch 更新 `title`、`icon`、`collapsed`、`contentType` 或 `metadata.status`，用于展示工具调用从 running 到 success / failed 的状态变化。`workflow.runIf` 会按顺序检查 if / else-if / else 分支，命中后执行对应 `run`，并用 `branch-node` 运行事件记录所选分支。`workflow.runFor` 和 `workflow.runWhile` 会把循环本身记录为可追踪节点，让循环体在本地宿主 Diagram 中保持可见。
+`steamharness.createDetailsOutputNode` 是创建独立可折叠 output item 的便捷节点，会把 `{ title, content, icon }` 转成 `items: [{ title, content, icon, contentType, collapsed: true }]`，并仍按 `output` 标准节点被本地 CLI 收集。`steamharness.createTimerNode` 会创建标准名为 `timer` 的普通节点，用于启动业务计时；`steamharness.endTimer(timer, context, { status, message })` 显式结束计时并写入 `report.timers`，未结束的 running timer 会在 workflow 收尾前自动标记为 `cleared`，避免 UI 残留运行态。`steamharness.runNode` 返回节点输出；`steamharness.runStreamNode` 返回 `{ chunks, output }`，其中 `chunks` 是原始流式 chunk 数组，`output` 是 `finalize` 或 `format` 生成的最终 payload。流式 `createOutputNode({ stream, format })` 的 `format` 接收累积后的 `{ text, items, chunks }`；字符串 chunk 会自动写入一个默认 Markdown item，结构化输出可使用 `steamharness.createOutputItemChunk(...)` 发送 `output_item_start`、`output_item_delta`、`output_item_end`。`output_item_delta` 除了合并 `content`，还可以携带 `item` patch 更新 `title`、`icon`、`collapsed`、`contentType` 或 `metadata.status`，用于展示工具调用从 running 到 success / failed 的状态变化。`steamharness.runIf` 会按顺序检查 if / else-if / else 分支，命中后执行对应 `run`，并用 `branch-node` 运行事件记录所选分支。`steamharness.runFor` 和 `steamharness.runWhile` 会把循环本身记录为可追踪节点，让循环体在本地宿主 Diagram 中保持可见。
 
-`workflow.createUserInputNode` 会在 workflow 中插入一个可持久恢复的人工输入点。节点的 `params` 使用与当前 Workflow entrypoint（Conversation 则为 executor）相同的字段定义，CLI Web 会用同一套 Run workspace 表单展示；外部 agent 动态产生问题时，可以通过无副作用的 `resolveRequest(input, context)` 为本次请求生成标题、说明、字段和默认值。首次执行时如果没有提交值，runtime 发出 `user_input_requested` 事件，report 写入 `pendingUserInput`，run 状态变为 `waiting_for_input`；提交答案后，同一个 `runId` 会带着 `resolvedUserInputs` 恢复执行，并发出 `user_input_resolved`。Workflow 恢复固定使用 run 快照中的精确目标和原入口，不能切换入口。CLI 不读取 stdin，遇到该节点时会输出等待报告，需要通过 `steamharness json --run-id <id> --resolved-user-inputs-json '<json>'` 注入答案继续。
+`steamharness.createUserInputNode` 会在 workflow 中插入一个可持久恢复的人工输入点。节点的 `params` 使用与当前 Workflow entrypoint（Conversation 则为 executor）相同的字段定义，CLI Web 会用同一套 Run workspace 表单展示；外部 agent 动态产生问题时，可以通过无副作用的 `resolveRequest(input, context)` 为本次请求生成标题、说明、字段和默认值。首次执行时如果没有提交值，runtime 发出 `user_input_requested` 事件，report 写入 `pendingUserInput`，run 状态变为 `waiting_for_input`；提交答案后，同一个 `runId` 会带着 `resolvedUserInputs` 恢复执行，并发出 `user_input_resolved`。Workflow 恢复固定使用 run 快照中的精确目标和原入口，不能切换入口。CLI 不读取 stdin，遇到该节点时会输出等待报告，需要通过 `steamharness json --run-id <id> --resolved-user-inputs-json '<json>'` 注入答案继续。
 
-`workflow.createToolApprovalGate` 使用同一套等待/恢复协议审批工具调用。Workflow 先在当前 entrypoint 的 `tools` 中声明工具，Conversation 则使用 executor `tools`，再在业务代码中调用 gate；工具未注册会返回 `input_validation`，被禁用会返回 `tool_permission_denied`，需要人工确认时会生成 `tool-approval` 请求并把 run 暂停为 `waiting_for_input`。
+`steamharness.createToolApprovalGate` 使用同一套等待/恢复协议审批工具调用。Workflow 先在当前 entrypoint 的 `tools` 中声明工具，Conversation 则使用 executor `tools`，再在业务代码中调用 gate；工具未注册会返回 `input_validation`，被禁用会返回 `tool_permission_denied`，需要人工确认时会生成 `tool-approval` 请求并把 run 暂停为 `waiting_for_input`。
 
 ## Branch
 
-`workflow.runIf` 适合把业务条件写成可追踪的 workflow 分支，而不是只写在普通 TypeScript `if` 里：
+`steamharness.runIf` 适合把业务条件写成可追踪的 workflow 分支，而不是只写在普通 TypeScript `if` 里：
 
 ```ts
-const plan = await workflow.runIf(seed, context, {
+const plan = await steamharness.runIf(seed, context, {
   name: "Weapon branch",
   branches: [
     {
@@ -166,40 +166,40 @@ const plan = await workflow.runIf(seed, context, {
 });
 ```
 
-`branches` 数组中的第一个元素在 Diagram 中显示为 `if`，后续元素显示为 `else-if`，`else` 会显示成 fallback 分支。分支的 `run` 里可以继续调用 `workflow.runNode`、`workflow.runStreamNode`，也可以嵌套另一个 `workflow.runIf` 形成多层分支。
+`branches` 数组中的第一个元素在 Diagram 中显示为 `if`，后续元素显示为 `else-if`，`else` 会显示成 fallback 分支。分支的 `run` 里可以继续调用 `steamharness.runNode`、`steamharness.runStreamNode`，也可以嵌套另一个 `steamharness.runIf` 形成多层分支。
 
 ## Loop
 
-`workflow.runFor` 和 `workflow.runWhile` 适合把业务循环写成可追踪的 workflow 循环，而不是只写在普通 TypeScript `for` / `while` 里：
+`steamharness.runFor` 和 `steamharness.runWhile` 适合把业务循环写成可追踪的 workflow 循环，而不是只写在普通 TypeScript `for` / `while` 里：
 
 ```ts
-const rounded = await workflow.runFor(seed, context, {
+const rounded = await steamharness.runFor(seed, context, {
   name: "Round loop",
   maxIterations: 6,
   items: (state) => Array.from({ length: state.rounds }, (_, index) => index + 1),
   async run(state, value, index, loopContext) {
-    return workflow.runNode(addRoundNode, { ...state, value, index }, loopContext);
+    return steamharness.runNode(addRoundNode, { ...state, value, index }, loopContext);
   },
 });
 
-const boosted = await workflow.runWhile(rounded, context, {
+const boosted = await steamharness.runWhile(rounded, context, {
   name: "Boost until target",
   maxIterations: 8,
   condition: (state) => state.total < state.target,
   async run(state, loopContext, iteration) {
-    return workflow.runIf(state, loopContext, {
+    return steamharness.runIf(state, loopContext, {
       name: "Choose boost strategy",
       branches: [
         {
           label: "burst",
           condition: (current) => current.target - current.total >= 7,
           async run(current, branchContext) {
-            return workflow.runFor(current, branchContext, {
+            return steamharness.runFor(current, branchContext, {
               name: "Burst passes",
               maxIterations: 3,
               items: () => [4, 3],
               async run(passState, value, index, passContext) {
-                return workflow.runNode(boostNode, { ...passState, value, index, iteration }, passContext);
+                return steamharness.runNode(boostNode, { ...passState, value, index, iteration }, passContext);
               },
             });
           },
@@ -208,7 +208,7 @@ const boosted = await workflow.runWhile(rounded, context, {
       else: {
         label: "finish",
         async run(current, branchContext) {
-          return workflow.runNode(boostNode, { ...current, iteration }, branchContext);
+          return steamharness.runNode(boostNode, { ...current, iteration }, branchContext);
         },
       },
     });
@@ -222,16 +222,16 @@ const boosted = await workflow.runWhile(rounded, context, {
 
 本地宿主 diagram 使用两类信息展示 workflow：
 
-- 静态结构来自 TypeScript 源码分析。所有已知 `workflow.*` runtime API 调用会写入 `definitions.apiCalls`，并以静态 API 节点展示，例如 `workflow.createInputNode`、`workflow.defineProject`、`workflow.getEnv`。这些节点帮助理解源码使用了哪些平台能力，但不会单独执行，也不会串进 `Input -> Result` 执行路径。
-- 运行状态来自 `workflow.runNode` / `workflow.runStreamNode` / `workflow.runIf` / `workflow.runFor` / `workflow.runWhile` / `workflow.runProject` 的 `nodeHooks` 报告。只有真正被这些 API 执行的节点会显示运行中、成功、失败、耗时和错误。
+- 静态结构来自 TypeScript 源码分析。所有已知 `workflow.*` runtime API 调用会写入 `definitions.apiCalls`，并以静态 API 节点展示，例如 `steamharness.createInputNode`、`steamharness.defineProject`、`steamharness.getConfig`。这些节点帮助理解源码使用了哪些平台能力，但不会单独执行，也不会串进 `Input -> Result` 执行路径。
+- 运行状态来自 `steamharness.runNode` / `steamharness.runStreamNode` / `steamharness.runIf` / `steamharness.runFor` / `steamharness.runWhile` / `steamharness.runProject` 的 `nodeHooks` 报告。只有真正被这些 API 执行的节点会显示运行中、成功、失败、耗时和错误。
 
-`workflow.runIf` 会作为 `run-if` 分支节点展示，本地宿主会使用分支图标和语义色与 LLM、输出、provider、question-classifier 区分。完成事件的 `executionInfo` 会记录 `selectedBranch`、`selectedBranchIndex` 和 `description`，用于 Trace 查看实际走到了哪条分支。静态结构分析优先识别对象字面量形式的 `branches` / `else`；动态拼装分支仍可运行，但 Diagram 无法完整展开所有静态路径。
+`steamharness.runIf` 会作为 `run-if` 分支节点展示，本地宿主会使用分支图标和语义色与 LLM、输出、provider、question-classifier 区分。完成事件的 `executionInfo` 会记录 `selectedBranch`、`selectedBranchIndex` 和 `description`，用于 Trace 查看实际走到了哪条分支。静态结构分析优先识别对象字面量形式的 `branches` / `else`；动态拼装分支仍可运行，但 Diagram 无法完整展开所有静态路径。
 
-`workflow.runFor` 和 `workflow.runWhile` 会作为 `run-for` / `run-while` 循环节点展示。本地宿主 Diagram 会用带语义色的矩形背景容器包裹循环体 children，循环头节点仍可点击查看 `items`、`condition`、`maxIterations` 和运行时迭代信息。循环体可以继续嵌套 `workflow.runIf`、`workflow.runFor` 或 `workflow.runWhile`，用于表达 while 内部分支和多层循环。静态结构分析优先识别对象字面量形式的 loop options；动态拼装 options 仍可运行，但 Diagram 无法完整展开循环体。
+`steamharness.runFor` 和 `steamharness.runWhile` 会作为 `run-for` / `run-while` 循环节点展示。本地宿主 Diagram 会用带语义色的矩形背景容器包裹循环体 children，循环头节点仍可点击查看 `items`、`condition`、`maxIterations` 和运行时迭代信息。循环体可以继续嵌套 `steamharness.runIf`、`steamharness.runFor` 或 `steamharness.runWhile`，用于表达 while 内部分支和多层循环。静态结构分析优先识别对象字面量形式的 loop options；动态拼装 options 仍可运行，但 Diagram 无法完整展开循环体。
 
-`workflow.runProject` 会作为 `run-workflow` 调用节点展示。子 workflow 不会创建独立 run report，子节点事件会进入父 trace；顶层 executor 入口不会额外插入这个包裹节点。默认 `conversationMode: "shared"`、`kvMode: "shared"`、`outputVisibility: "visible"`，只传 `name` 不会改变会话或输出语义；当父 workflow 传入 `conversationMode: "shared-readonly"` 时，子 workflow 可以读取父会话快照，但不会追加 transcript 或修改标题。子 workflow 会写专属 KV 状态时，可同时传入 `kvMode: "isolated"`。
+`steamharness.runProject` 会作为 `run-workflow` 调用节点展示。子 workflow 不会创建独立 run report，子节点事件会进入父 trace；顶层 executor 入口不会额外插入这个包裹节点。默认 `conversationMode: "shared"`、`kvMode: "shared"`、`outputVisibility: "visible"`，只传 `name` 不会改变会话或输出语义；当父 workflow 传入 `conversationMode: "shared-readonly"` 时，子 workflow 可以读取父会话快照，但不会追加 transcript 或修改标题。子 workflow 会写专属 KV 状态时，可同时传入 `kvMode: "isolated"`。
 
-Entrypoint 不作为 Diagram 中的嵌套节点，也不表达父子关系。项目对外只暴露一层独立入口；需要多级业务编排时继续嵌套 `workflow.runProject()`，默认最大深度为 `16`。
+Entrypoint 不作为 Diagram 中的嵌套节点，也不表达父子关系。项目对外只暴露一层独立入口；需要多级业务编排时继续嵌套 `steamharness.runProject()`，默认最大深度为 `16`。
 
 内置节点工厂返回的普通节点继承 `BaseNode`，流式节点继承 `BaseStreamNode`；它们共同提供 `name`、`standardName`、`metadata` 和 `getExecutionInfo()` 等公共信息。Diagram 不直接绑定 `BaseNode` 类，而是读取 `NodeDefinition` / `StreamNodeDefinition` 执行协议和运行报告，因此未来自定义节点只要符合协议，也能被执行与记录。
 
@@ -240,23 +240,23 @@ Entrypoint 不作为 Diagram 中的嵌套节点，也不表达父子关系。项
 当前 executor 的内置 provider 名称只有 `"llm"`。LLM provider 通过 `createLLMProviderRef` 延迟解析：
 
 ```ts
-const llmProvider = workflow.createLLMProviderRef("default", () => {
-  return workflow.createLLMProviderFromEnv();
+const llmProvider = steamharness.createLLMProviderRef("default", () => {
+  return steamharness.createLLMProviderFromConfig();
 });
 ```
 
-业务节点依赖统一 provider 接口，不直接绑定具体厂商。`createLLMProviderFromEnv` 会从 workflow runtime 环境读取 `LLM_TYPE`、`LLM_API_KEY`、`LLM_BASE_URL` 和 `LLM_MODEL`。
+项目业务值来自[项目配置](/concepts/project-configuration)，不加载项目 env，也不回退读取进程变量。宿主部署和通信配置由宿主单独管理。
 
 ## Executor
 
 Executor 是平台发现和运行项目的入口目录。Workflow 项目声明一个默认入口和多个可独立启动的 entrypoint：
 
 ```ts
-export const executor = workflow.defineExecutor<Input, OutputPayload>({
+export const executor = steamharness.defineExecutor<Input, OutputPayload>({
   projectType: "workflow",
   defaultEntrypoint: "main",
   entrypoints: [
-    workflow.defineEntrypoint<Input, OutputPayload>({
+    steamharness.defineEntrypoint<Input, OutputPayload>({
       id: "main",
       title: "完整流程",
       group: { id: "operations", title: "业务操作", order: 10 },
@@ -286,7 +286,7 @@ export const executor = workflow.defineExecutor<Input, OutputPayload>({
 
 Conversation executor 保持单入口，把 `workflow`、`params`、`createInput` 等字段直接放在 executor 上，不声明或接受 entrypoint。Executor 的 `projectType` 只允许 `"workflow"` 或 `"conversation"`。Kanban 在 `package.json.steamHarness.projectType` 中声明 `"kanban"`，不能伪造 executor。
 
-`createInput` 会接收 `projectName`、`projectDir`、`args`、`paramValues`、`env`、`abortSignal` 和可选 `conversationId`。Workflow 还会收到所选 `entrypointId`、`entrypointTitle`；相同字段会写入 `RunContext.metadata`、report 和本地运行记录。本地宿主通过所选执行配置把参数转换为 workflow input；取消运行时，`abortSignal` 会传播到 workflow context，便于长耗时 provider/SDK 调用及时停止。
+`createInput` 会接收 `projectName`、`projectDir`、`args`、`paramValues`、`config`、`abortSignal` 和可选 `conversationId`。Workflow 还会收到所选 `entrypointId`、`entrypointTitle`；相同字段会写入 `RunContext.metadata`、report 和本地运行记录。本地宿主通过所选执行配置把参数转换为 workflow input；取消运行时，`abortSignal` 会传播到 workflow context，便于长耗时 provider/SDK 调用及时停止。
 
 `resolveParams` 可以按当前参数返回 `value`、`visible`、`disabled` 和单个 option 状态补丁，也可以用 `resolvedOptions` 数组替换参数当前的完整选项列表，或用 `null` 恢复静态选项。初始化以及 main、Advanced、Quick 的 Form 参数变化都会触发求值。`visible: false` 不会隐式清空旧值；互斥参数应同时返回 `value: null`，避免隐藏值继续进入 `args` 和 `paramValues`。动态列表适合读取服务器提供的 provider、model 或 variant 目录；读取必须可取消、限时，且不能在参数求值期间写入运行数据。
 
@@ -295,11 +295,11 @@ Conversation executor 保持单入口，把 `workflow`、`params`、`createInput
 Registry 用于单节点调试和结构展示。Workflow 的 registry 属于具体 entrypoint，并且必须是静态数组字面量：
 
 ```ts
-export const executor = workflow.defineExecutor<Input, OutputPayload>({
+export const executor = steamharness.defineExecutor<Input, OutputPayload>({
   projectType: "workflow",
   defaultEntrypoint: "main",
   entrypoints: [
-    workflow.defineEntrypoint({
+    steamharness.defineEntrypoint({
       id: "main",
       title: "完整流程",
       workflow: exampleProject,
@@ -353,4 +353,4 @@ workflow package 精确声明 Core 与 CLI 的 dev dependency，同时按需声�
 
 `steamharness` 必须是精确 SemVer，不能写 `^`、`0.2.x`、`workspace:*` 或其它 range。本地宿主与 CLI 在运行前用项目要求的 Core 版本计算兼容性，但只比较 `major.minor`：同线任意 patch 或精确预发布版本可直接运行，major 或 minor 变化需要升级宿主。`@steamharness/cli` 同样固定精确版本但独立发版，不替代 Core 运行兼容判断。Core 0.2 项目还必须显式声明 `steamHarness.projectInfo.dataStorage.mode`。
 
-Kanban 的最小 package 使用 `steamHarness.projectType: "kanban"`，目录只要求 `package.json + index.html`；参数化项目再增加可选 `kanban.json`。Kanban package 同样精确记录 Core 与 CLI 版本，以便项目管理工具保持统一依赖模型；Kanban 本身不执行 Core runtime。
+Kanban 的最小 package 使用 `steamHarness.projectType: "kanban"`，目录只要求 `package.json + index.html`；参数化项目再增加可选 `configuration.json`。Kanban package 同样精确记录 Core 与 CLI 版本，以便项目管理工具保持统一依赖模型；Kanban 本身不执行 Core runtime。

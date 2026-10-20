@@ -2,6 +2,8 @@
 
 - [Fixed] Keep IDE / Steam layout changes in the main window, restore maximized panels and editor groups, preserve tool placement preferences, ignore outdated startup failures, and handle skipped transition animations without unhandled errors.
 
+- [Added] Share project configuration panels and local storage with the standalone CLI for all three project types. Studio Control can query, fully manage, import and export local or Server configurations with the panel closed, subject to project scope and read-only permissions.
+
 ### Opening Projects
 
 - Recent projects, the File menu, Ctrl+R, folders/workspaces, related projects, resource cards, downloads/imports, and installation retries consistently offer a new or current window; cancelling leaves the window and installation unchanged.

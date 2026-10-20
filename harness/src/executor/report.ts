@@ -14,7 +14,7 @@ import type {
   ParamLayout,
 } from "./types";
 import type { ProjectKind } from "../project-types";
-import type { KanbanManifest } from "@steamharness/kanban-project";
+import type { ProjectConfigurationDefinition } from "../configuration";
 import type {
   SchedulePreset,
   ScheduleSourceMetadata,
@@ -256,6 +256,7 @@ export interface DefinitionEvent {
 
 export interface StructureReport {
   projectType: ProjectKind;
+  configuration?: ProjectConfigurationDefinition;
   workflow: StructureProject;
   definitions: StructureDefinitions;
   defaultEntrypoint?: string;
@@ -273,7 +274,6 @@ export interface StructureReport {
   kanban?: {
     artifactDir: string;
     entry: string;
-    manifest?: KanbanManifest;
   };
 }
 

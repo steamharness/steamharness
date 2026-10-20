@@ -36,8 +36,8 @@ export function runFfmpeg(command: string, args: string[], signal: AbortSignal |
   });
 }
 
-export async function resolveFfmpegPath(env: NodeJS.ProcessEnv = process.env): Promise<string> {
-  const explicit = readString(env.FFMPEG_PATH) ?? readString(env.FFMPEG_BIN);
+export async function resolveFfmpegPath(config: Record<string, unknown> = Object.fromEntries(["MINIMAX_API_KEY","MINIMAX_VIDEO_API_KEY","MINIMAX_BASE_URL","FFMPEG_PATH","FFMPEG_BIN"].map(key => [key, steamharness.getConfig<string>(key)]))): Promise<string> {
+  const explicit = readString(config.FFMPEG_PATH) ?? readString(config.FFMPEG_BIN);
   if (explicit !== undefined) {
     return explicit;
   }

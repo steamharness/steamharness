@@ -26,7 +26,7 @@ import type { DeltaforeApiConfig } from "../tools/openapi";
 import { runTool } from "../tools/runner";
 
 const llmProvider = steamharness.createLLMProviderRef("default", () => {
-  return steamharness.createLLMProviderFromEnv();
+  return steamharness.createLLMProviderFromConfig();
 });
 
 export const inputNode = steamharness.createInputNode<DeltaforeAgentInput, ParsedAgentInput>({

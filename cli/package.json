@@ -8,7 +8,6 @@
     "steamharness": "./dist/index.js"
   },
   "files": [
-    ".env.example",
     "dist",
     "README.md"
   ],
@@ -29,7 +28,6 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
-    "dotenv": "^17.4.2",
     "import-meta-resolve": "4.2.0",
     "tsx": "^4.21.0",
     "zod": "4.4.3"
@@ -61,7 +59,8 @@
     "steamharness": "0.1.1",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.7"
+    "vitest": "^4.1.7",
+    "@steamharness/project-configuration": "workspace:*"
   },
   "repository": {
     "type": "git",

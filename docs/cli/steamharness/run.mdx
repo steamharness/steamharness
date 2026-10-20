@@ -45,7 +45,7 @@ file 参数接收本地路径或 JSON file reference。声明 `control: "audio"`
 | 加载环境 | 执行前加载 workflow 目录下 `.env`。 |
 | 选择入口 | Workflow 按 `--entrypoint` 或 `defaultEntrypoint` 选择执行配置；Conversation 使用 executor 本身。 |
 | 创建输入 | 调用所选入口或 Conversation executor 的 `createInput(context)`。 |
-| 执行 workflow | 只调用所选配置的 `workflow.run(input, context)`，普通节点会触发 CLI 输出 hooks。 |
+| 执行 workflow | 只调用所选配置的 `steamharness.run(input, context)`，普通节点会触发 CLI 输出 hooks。 |
 | 设置退出码 | workflow 失败、暂停等待输入或 payload `errCode` 非 `0` 时退出码为 `1`。 |
 
 ## 输出
@@ -84,3 +84,7 @@ steamharness run . --json -- --message "debug"
 | workflow 调用 PersistentValue 或知识库 helper | 必须传入 `context.storage.local` 或 `.server`。本地位置使用 `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR`；服务器位置使用项目 UUID 与 `STEAMHARNESS_SERVER_URL` / `STEAMHARNESS_SERVER_ADMIN_KEY` 或 workspace 登录态。禁止或不可用的位置直接报错，不会回退或同步。 |
 | workflow 调用关联项目的 KV / 知识库 / 入口 | 为每个直接关系重复传入 `--related-project`。CLI 校验目录、UUID、alias 和双方当前声明；单边待确认关系不可用，也不会递归解析目标项目的其它关系。关联 KV 用 `STEAMHARNESS_KV_STORE_DIR`（缺省为共享临时目录）；关联知识库需要显式配置 `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR`，未配置时知识库不可达并明确报错，不会回退或新建临时目录；目标入口的子运行与关系共用同一份目录，入口失败时抛出的是该入口自己的错误信息。 |
 | workflow 调用 `context.files.createFile(...)` | 本地运行会读取同一 server 连接并上传到 server 文件 API；未连接 server 时调用会报错，不会写入本地文件 store。 |
+
+## 项目配置
+
+三种项目类型均支持字段、命名配置及完整导入导出。Studio 与本地 CLI 共用本地存储，Server 按项目和账号隔离。面板关闭时 Studio Control 仍能查询和管理配置。JSON 操作、版本检查和运行快照规则见[项目配置](/concepts/project-configuration)。

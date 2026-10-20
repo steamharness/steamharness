@@ -5,7 +5,7 @@ description: "静态分析 Workflow、Conversation 或 Kanban 项目结构。"
 
 # steamharness structure
 
-`steamharness structure` 不执行项目。命令会先校验完整的 `package.json.steamHarness.projectInfo` 合同；Workflow/Conversation 再读取脚本并报告节点、执行顺序、参数、conversation 配置和 debug registry，Kanban 则读取 `package.json` 中的产物配置、对应 HTML 入口和可选 `kanban.json`。
+`steamharness structure` 不执行项目。命令会先校验完整的 `package.json.steamHarness.projectInfo` 合同；Workflow/Conversation 再读取脚本并报告节点、执行顺序、参数、conversation 配置和 debug registry，Kanban 则读取 `package.json` 中的产物配置、对应 HTML 入口和可选 `configuration.json`。
 
 ## 命令格式
 
@@ -33,7 +33,7 @@ steamharness structure [workflow-dir]
 | `workflow` | workflow 名称和基础信息。 |
 | `definitions.nodes` | 静态识别到的节点定义。 |
 | `definitions.variables` | 静态识别到的关键变量。 |
-| `execution` | 推导出的执行结构，包含 `runNode`、`runStreamNode`、`runIf`、`runFor`、`runWhile`、`runProject` 和 question-classifier 分支；`return workflow.runNode(...)`、`return workflow.runIf(...)`、`return workflow.runFor(...)` 等返回表达式同样会纳入所属 branch/loop。 |
+| `execution` | 推导出的执行结构，包含 `runNode`、`runStreamNode`、`runIf`、`runFor`、`runWhile`、`runProject` 和 question-classifier 分支；`return steamharness.runNode(...)`、`return steamharness.runIf(...)`、`return steamharness.runFor(...)` 等返回表达式同样会纳入所属 branch/loop。 |
 | `diagnostics` | warnings、violations 和结构分析错误。 |
 | `params` | executor `params` 声明。 |
 | `conversation` | executor conversation 配置。 |
@@ -48,7 +48,7 @@ steamharness structure [workflow-dir]
 | 发现脚本规则 violations | 输出包含 `diagnostics.error` 的结构 JSON，退出码为 `1`。分组不是静态内联对象、分组字段无效，或同一 `group.id` 的 `title`/`order` 不一致时，会报告明确 violation。 |
 | workflow 文件无法加载 | 输出错误结构 JSON，退出码为 `1`。 |
 
-Workflow/Conversation 结构分析要求源码中存在可静态读取的 `workflow.defineExecutor({ ... })`。完全缺少 executor、把动态变量传给 `defineExecutor(config)`、缺少或声明未知 `projectType`、Workflow 携带 Conversation 配置，以及遗留 `conversation.enabled` 都会产生带迁移示例的 violation。Kanban 不需要 executor，但必须在 package 中声明类型并提供配置后的普通 HTML 入口；绝对路径、目录逃逸、符号链接、保留目录和无效 `kanban.json` 会直接报错。
+Workflow/Conversation 结构分析要求源码中存在可静态读取的 `steamharness.defineExecutor({ ... })`。完全缺少 executor、把动态变量传给 `defineExecutor(config)`、缺少或声明未知 `projectType`、Workflow 携带 Conversation 配置，以及遗留 `conversation.enabled` 都会产生带迁移示例的 violation。Kanban 不需要 executor，但必须在 package 中声明类型并提供配置后的普通 HTML 入口；绝对路径、目录逃逸、符号链接、保留目录和无效 `configuration.json` 会直接报错。
 
 ## 示例
 

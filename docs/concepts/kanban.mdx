@@ -1,6 +1,6 @@
 ---
 title: "Kanban HTML 项目"
-description: "使用静态产物目录、HTML 入口、可选 kanban.json 和命名配置构建可发布的 Kanban 界面。"
+description: "使用静态产物目录、HTML 入口、可选 configuration.json 和命名配置构建可发布的 Kanban 界面。"
 ---
 
 # Kanban HTML 项目
@@ -42,7 +42,7 @@ roadmap-kanban/
 
 示例中的 Core 与 CLI `0.2.0` 是当前精确兼容基线。新模板会写入当前 Core 与 CLI 版本；已有 Kanban 项目缺少这些依赖或 `dataStorage` 声明时，必须补齐并同步 lockfile，不能使用 `^`、`~`、`workspace:*` 或其它 range。Kanban 页面不导入或执行 Core runtime，Server 将 `devDependencies.steamharness` 作为静态包元数据校验，不加载运行时。
 
-未配置入口时，产物目录默认为项目根目录 `.`，HTML 入口默认为 `index.html`，因此已有项目不需要迁移入口配置。Kanban 不应包含为运行而创建的 `index.ts`、`interface.ts` 或 `workflow.defineExecutor(...)`。没有 `kanban.json` 时，宿主隐藏全部配置控件，让 HTML 画布占满工作区。
+未配置入口时，产物目录默认为项目根目录 `.`，HTML 入口默认为 `index.html`，因此已有项目不需要迁移入口配置。Kanban 不应包含为运行而创建的 `index.ts`、`interface.ts` 或 `steamharness.defineExecutor(...)`。没有声明字段时仍保留项目配置入口，可以添加自定义字段。
 
 标题栏右侧提供全屏、手机、平板和小卡片四种预览模式，默认全屏填满可用预览区。手机默认为 `390×844`、平板为 `768×1024`、小卡片为 `360×200`（CSS 像素）。除全屏外，预览图外下方右侧集中显示调整尺寸、恢复默认和拖动手柄：调整图标可输入宽高，拖动手柄可改变大小，也支持方向键。三个控件都在图外，不覆盖地图内容，也不占用 iframe 内的显示尺寸。重置图标恢复当前模式默认值，各模式在本次工作区内分别保留自定义尺寸。宽度范围为 `160–4096px`，高度为 `96–4096px`；固定尺寸超出可用区域时可在预览区滚动。切换与调整会改变页面的真实视口，保留配置、草稿、上传和页面状态，不重新加载 iframe。模式图标支持尺寸提示和方向键选择。
 
@@ -90,81 +90,19 @@ CLI Web 和 Server 加载已构建的静态产物，不自动安装前端依赖�
 
 纯 HTML、CSS、JavaScript、图片和字体通常可以跨操作系统使用。依赖原生模块、本机绝对路径、`node_modules` 或特定开发服务器的输出不属于受支持的静态浏览器产物。
 
-## 参数清单
+## 项目配置字段
 
-需要让同一个页面显示多组效果时，在根目录增加 `kanban.json`：
-
-```json
-{
-  "version": 1,
-  "params": [
-    {
-      "name": "title",
-      "type": "string",
-      "label": "看板标题",
-      "defaultValue": "产品路线图"
-    },
-    {
-      "name": "accent",
-      "type": "string",
-      "label": "强调色",
-      "control": "radio",
-      "defaultValue": "#2563eb",
-      "options": [
-        { "value": "#2563eb", "label": "蓝色" },
-        { "value": "#0f766e", "label": "青色" }
-      ]
-    },
-    {
-      "name": "columns",
-      "type": "string",
-      "label": "显示列",
-      "control": "checkboxes",
-      "multiple": true,
-      "options": [
-        { "value": "todo", "label": "待处理" },
-        { "value": "doing", "label": "进行中" },
-        { "value": "done", "label": "已完成" }
-      ]
-    }
-  ]
-}
-```
-
-`version` 当前必须为 `1`。`params` 直接复用 `ParamDefinition`：
-
-| 能力 | 字段 |
-| --- | --- |
-| 文本、长文本 | `type: "string"`，可选 `control: "textarea"` |
-| 数字 | `type: "number"` |
-| 开关 | `type: "boolean"` |
-| 位置参数兼容 | `type: "positional"` |
-| 文件 | `type: "file"`，可选 `accept`、`multiple`、`format: "json"` |
-| 单选枚举 | `options` 配合 `control: "select"` 或 `"radio"` |
-| 多选枚举 | `multiple: true` 配合 `control: "checkboxes"` |
-
-字段名在同一清单中必须唯一。参数默认值保存在 `defaultValue` 中；宿主会把 number、boolean 和多选值转换为 JSON 原生值后再注入页面。file 参数只注入平台文件引用的安全字段，不包含本地绝对路径或服务器存储路径。
-
-要在左侧配置顶部提供底图上传，将图片参数放在 `params` 第一项：
+Kanban 和 Workflow、Conversation 共用[项目配置](/concepts/project-configuration)。在 `configuration.json` 中声明原生类型字段；没有声明字段时仍可打开配置面板并添加自定义字段。文件上传在页面内通过文件 API 完成。
 
 ```json
-{
-  "name": "imageFile",
-  "type": "file",
-  "label": "底图",
-  "accept": ["image/png", "image/jpeg", "image/webp", "image/gif"],
-  "format": "json",
-  "multiple": false
-}
+{"version":1,"fields":[
+  {"name":"title","type":"string","defaultValue":"Roadmap"},
+  {"name":"enabled","type":"boolean","defaultValue":true},
+  {"name":"columns","type":"string","multiple":true,"options":[{"value":"todo"},{"value":"done"}]}
+]}
 ```
 
-上传使用当前项目的服务器文件存储，图片字段展示缩略图，点击可放大；其它文件展示文件名和大小。`multiple: false` 时再次上传替换该字段引用，移除只清除参数，不自动删除服务器文件。上传失败保留原值，配置切换或预览刷新后的迟到结果不会写入其它配置。上传要求登录当前 Server 并存在同 UUID 项目，单文件上限 50 MiB。
-
-页面从 `getConfiguration().params.imageFile` 取得文件引用数组，通过 `files.readFile(reference.id)` 鉴权读取字节，再创建 Blob URL 显示图片。监听配置变化以应用换图或清除；底图与标注的尺寸确认、保存和保留规则由页面实现。
-
-`kanban.json` 适合描述同一页面的标题、主题、过滤条件、显示列和布局模式。任务、卡片、记录等页面业务数据应在 HTML 界面内提供新建、编辑和删除操作，再通过 KV Bridge 持久化。不要把业务列表编码成逗号分隔的 textarea 参数，让用户到配置区维护看板内容。
-
-通过 Server 文件 API 保存图片、字体等二进制静态资源时，使用 `encoding: "base64"` 标记 `content`；读取、发布和源码下载会保留该编码和原始字节。文本文件不填写 `encoding`。
+配置适合标题、过滤条件和布局等页面展示与行为。任务、卡片和记录由页面提供增删改，再通过 KV Bridge 持久化。
 
 ## 读取当前配置
 
@@ -277,7 +215,7 @@ window.steamHarnessKanban = {
 };
 ```
 
-`getRuntimeLocale()` 异步返回当前 CLI Web 或 Server Web 宿主选择的 `"zh-CN"` 或 `"en"`。明确支持国际化的 Kanban 应将页面文案、错误、ARIA 标签、日期和数字格式一并切换；旧宿主、Bridge 缺失或调用失败时必须回退到项目默认中文。`kanban.json` 仍是静态清单，不能按运行时语言动态替换。
+`getRuntimeLocale()` 异步返回当前 CLI Web 或 Server Web 宿主选择的 `"zh-CN"` 或 `"en"`。明确支持国际化的 Kanban 应将页面文案、错误、ARIA 标签、日期和数字格式一并切换；旧宿主、Bridge 缺失或调用失败时必须回退到项目默认中文。`configuration.json` 仍是静态清单，不能按运行时语言动态替换。
 
 KV key 由页面定义，宿主始终把当前项目 Bridge 限制在项目 scope。`setValue` 的 value 必须是有限数字、字符串、布尔值、`null`、数组或仅包含这些值的普通对象，不能传入 `undefined`、函数、循环引用或其它不可 JSON 序列化值。当前版本不提供 KV list 或 delete；需要覆盖状态时写入新值。
 
@@ -354,17 +292,7 @@ window.addEventListener("pagehide", () => URL.revokeObjectURL(imageUrl), { once:
 
 ## 命名配置
 
-只要 `kanban.json.params` 非空，宿主就会为当前用户维护命名配置：
-
-- 第一次打开时创建“默认配置”。
-- 新建配置使用参数默认值。
-- 复制配置继承当前值。
-- 修改参数后实时通知页面，并在约 300ms 防抖后保存。
-- 可以重命名、选择或删除配置，但最后一个配置不能删除。
-- 配置按项目和用户隔离，不写回源码，也不会在不同登录用户之间共享。
-- `kanban.json` 参数发生变化后，已有配置会补齐新增参数的默认值并移除废弃字段。
-
-桌面宽度使用左侧参数设置区和右侧 HTML 画布。设置区顶部的配置选择器负责切换配置，新建使用独立入口，重命名、复制和删除位于当前配置的操作菜单；参数控件在其下方全宽排列，保存状态固定显示在标题栏。低于 `760px` 的工作区容器使用顶部配置入口与参数抽屉，因此同一看板即使位于较窄面板中也会自动切换布局。配置加载、保存和删除失败时保留当前值，并提供原位重试。
+统一面板支持显式保存、多套配置、自定义字段及完整导入导出，最后一套配置不能删除。本地 Studio 与 CLI 按项目真实路径共用配置，Server 按项目和账号隔离。保存后主页面和资源卡片预览立即更新。并发冲突保留编辑草稿。值保存在源码之外，不迁移旧 Kanban 配置。
 
 ## 相对资源与安全边界
 
@@ -392,7 +320,7 @@ HTML 中的 CSS、JavaScript、图片和字体必须使用产物目录内相对�
 
 规则支持注释、目录、通配符、`**` 和 `!` 反向包含，路径统一按 `/` 匹配。缺少 `.steamharnessignore`、文件为空或只有注释时，会上传项目根目录下的全部普通文件，并在 CLI 上传前显示文件数量和总大小警告。`.steamharnessignore` 自身始终保留在上传包中。
 
-以下文件不能被排除：`package.json`、Workflow/Conversation 入口、Kanban 配置后的 HTML 入口，以及已存在的 `kanban.json`。如果规则忽略了必需文件，上传会指出命中的规则。符号链接、特殊设备文件、目录逃逸、单文件和包体大小限制属于独立安全校验，不会被忽略规则绕过。
+以下文件不能被排除：`package.json`、Workflow/Conversation 入口、Kanban 配置后的 HTML 入口，以及已存在的 `configuration.json`。如果规则忽略了必需文件，上传会指出命中的规则。符号链接、特殊设备文件、目录逃逸、单文件和包体大小限制属于独立安全校验，不会被忽略规则绕过。
 
 推荐的 Kanban 配置：
 
@@ -407,7 +335,7 @@ coverage/
 *.tsbuildinfo
 .env
 .env.*
-!.env.example
+!configuration.json
 
 src/
 tests/
@@ -476,6 +404,6 @@ python .agents/skills/workflow-generator/scripts/create_workflow.py roadmap \
   --dir ./roadmap-kanban --project-type kanban --with-kanban-params
 ```
 
-两条命令都会生成完整的可编辑看板工程，包括 `.steamharnessignore`、`package.json`、`index.html`、`board-state.js`、`board-storage.js`、README 和纯逻辑测试。`--with-kanban-params` 额外生成只包含标题和强调色的 `kanban.json`；任务始终在页面内新建、编辑、拖拽和删除，并通过 KV Bridge 按配置隔离保存。
+两条命令都会生成完整的可编辑看板工程，包括 `.steamharnessignore`、`package.json`、`index.html`、`board-state.js`、`board-storage.js`、README 和纯逻辑测试。所有 scaffold 都生成 `configuration.json`；`--with-kanban-params` 加入标题和强调色字段；任务始终在页面内新建、编辑、拖拽和删除，并通过 KV Bridge 按配置隔离保存。
 
 生成器默认创建简体中文项目，不会自动加入翻译资源、语言切换或 locale 检测。只有明确要求国际化或多语言支持，并说明目标语言后，才会为项目加入对应适配。

@@ -15,3 +15,8 @@ output node. Its App form intentionally exposes the three details-output inputs
 directly: an icon radio group, a title input, and a Markdown content input. In
 the App conversation and Output panel, the result should render as a clickable
 collapsed output item.
+
+
+## Project configuration
+
+Declare fields in `configuration.json` and enter values in Project configurations (Studio or `steamharness web .`). Read them with `workflow.getConfig(key)` or `context.config`. Local CLI and Studio share values; project env files are not loaded.

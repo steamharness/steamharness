@@ -44,7 +44,7 @@ pnpm exec steamharness workspace pack <workflow> [--path <workflow-dir>] [--outp
 | --- | --- |
 |Missing, empty file, or only comments|Upload all common files under the project, and output the number of files and the total size warning.|
 |`.steamharnessignore` Self hit rule|will remain in the archive.|
-|`package.json`, entry, or existing `kanban.json` excluded|Packing failed and the effective rule was indicated.|
+|`package.json`, entry, or existing `configuration.json` excluded|Packing failed and the effective rule was indicated.|
 |Symbolic links, special files, or case-conflict paths|Reject packaging, not by ignoring the rule release, to avoid the archive coverage differences between Windows, macOS and Linux.|
 
 Kanban does not automatically preserve `dist` or other product directories; they are not implicitly excluded by the host. You should keep the actual `artifactDir` in `.steamharnessignore`, while excluding `src/`, test, and source map as needed. `.gitignore` Whether to ignore the product is independent of the upload.

@@ -12,7 +12,7 @@ const views: Record<string, string> = {
   'source-control': 'workbench.view.scm', terminal: 'workbench.action.terminal.focus',
   assistant: 'studio.openAssistant',
 };
-const operations = ['studio.state.get', 'studio.relatedProjects.get', 'studio.file.open', 'studio.diagnostics.get', 'studio.theme.set', 'studio.terminal.open', 'studio.view.show'];
+const operations = ['studio.configurations.get', 'studio.configurations.manage', 'studio.configurations.open', 'studio.state.get', 'studio.relatedProjects.get', 'studio.file.open', 'studio.diagnostics.get', 'studio.theme.set', 'studio.terminal.open', 'studio.view.show'];
 
 export const STUDIO_CONTROL_PROJECT_ID = '09145339-e3dd-4bb2-ac9b-6c180ef51933';
 
@@ -26,7 +26,9 @@ export function studioControlWorkspaceAvailable(scope: NonNullable<Project['assi
     && scope.roots.every(root => folders.some(folder => folder.uri === root.uri && folder.folderPath === root.folderPath));
 }
 
-export function createStudioControlHandler(assistant: NonNullable<Project['assistant']>, signal: AbortSignal, context: Pick<vscode.ExtensionContext, 'globalState'>) {
+export function createStudioControlHandler(assistant: NonNullable<Project['assistant']>, signal: AbortSignal, context: Pick<vscode.ExtensionContext, 'globalState'>, services?: {
+  configuration(input: Record<string, unknown>, signal: AbortSignal): Promise<unknown>;
+}) {
   const installedThemes = (): string[] => [...new Set(vscode.extensions.all.flatMap(extension =>
     (extension.packageJSON?.contributes?.themes ?? []).flatMap((theme: { id?: string; label?: string }) =>
       typeof (theme.id ?? theme.label) === 'string' ? [theme.id ?? theme.label as string] : [])))].sort();
@@ -50,6 +52,9 @@ export function createStudioControlHandler(assistant: NonNullable<Project['assis
       return candidate;
     };
     const keys: Record<string, string[]> = {
+      'studio.configurations.get': ['storage', 'projectDir', 'projectId', 'target', 'id', 'export'],
+      'studio.configurations.manage': ['storage', 'projectDir', 'projectId', 'target', 'call'],
+      'studio.configurations.open': ['storage', 'projectDir', 'projectId', 'target'],
       'studio.state.get': [], 'studio.relatedProjects.get': ['projectDir'], 'studio.file.open': ['filePath', 'line', 'column'],
       'studio.diagnostics.get': ['filePath'], 'studio.theme.set': ['theme'],
       'studio.terminal.open': ['cwd'], 'studio.view.show': ['view'],
@@ -68,6 +73,53 @@ export function createStudioControlHandler(assistant: NonNullable<Project['assis
       return input[key] as number;
     };
     switch (operation) {
+      case 'studio.configurations.get': case 'studio.configurations.manage': case 'studio.configurations.open': {
+        if (!['local','server'].includes(requiredString('storage'))) throw new Error(t('Invalid configuration storage.'));
+        const reading = operation === 'studio.configurations.get';
+        if (operation === 'studio.configurations.manage' && permissionPolicy === 'read-only') throw new Error(t('Read-only mode does not allow configuration changes.'));
+        const requestedTarget=optionalString('target');
+        if(input.storage==='local'&&requestedTarget!==undefined)throw new Error(t('Use target only for Server configurations.'));
+        if(input.export!==undefined&&typeof input.export!=='boolean')throw new Error(t('Invalid configuration action.'));
+        const target: Record<string,unknown> = {storage:input.storage,...(requestedTarget?{target:requestedTarget}:{})};
+        if(input.storage==='local') {
+          if(input.projectId!==undefined) throw new Error(t('Use projectDir for local configurations.'));
+          const directory=await allowedPath(requiredString('projectDir'));
+          if(!(await stat(directory)).isDirectory())throw new Error(t('Studio Control requires a directory.'));
+          await allowedPath(path.join(directory,'package.json'));
+          try { await allowedPath(path.join(directory,'configuration.json')); }
+          catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+          const manifest=await readProjectManifest(vscode.Uri.file(directory));
+          if(!projectId((manifest as {id?:unknown}|null)?.id))throw new Error(t('Studio Control requires a Workflow project directory.'));
+          target.projectDir=directory;
+        } else {
+          if(input.projectDir!==undefined)throw new Error(t('Use projectId for Server configurations.'));
+          target.target=requiredString('target');
+          const id=requiredString('projectId').toLowerCase();
+          if(!projectId(id))throw new Error(t('Invalid project identifier.'));
+          if(permissionPolicy!=='auto') {
+            const allowed=new Set<string>();
+            for(const root of assistant.roots) {
+              const manifest=await readProjectManifest(vscode.Uri.file(root.folderPath));
+              const own=projectId((manifest as {id?:unknown}|null)?.id);if(own)allowed.add(own.toLowerCase());
+              for(const related of readRelatedProjects(manifest))allowed.add(related.projectId.toLowerCase());
+            }
+            if(!allowed.has(id))throw new Error(t('Server project must belong to the registered workspace.'));
+          }
+          target.projectId=id;
+        }
+        assertAvailable();
+        if(!services)throw new Error(t('Project configurations are unavailable.'));
+        if(operation==='studio.configurations.open')return services.configuration({...target,open:true},signal);
+        const call=reading?{action:input.export===true?'export':'get',id:optionalString('id')}:input.call;
+        if(!call||typeof call!=='object'||Array.isArray(call))throw new Error(t('Invalid configuration action.'));
+        if(!reading) {
+          const action=(call as Record<string,unknown>).action,revision=(call as Record<string,unknown>).revision;
+          if(['get','export'].includes(String(action)))throw new Error(t('Use the configuration query tool for reads.'));
+          if(!['create','duplicate','rename','save','select','delete','field.save','field.delete','import'].includes(String(action)) || !Number.isSafeInteger(revision) || Number(revision)<0)throw new Error(t('Invalid configuration action.'));
+        }
+        return services.configuration({...target,call},signal);
+      }
+
       case 'studio.state.get': {
         let activeEditor: unknown = null;
         const editor = vscode.window.activeTextEditor;

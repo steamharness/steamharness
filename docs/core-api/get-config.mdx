@@ -1,0 +1,19 @@
+---
+title: "getConfig"
+description: "读取当前项目配置快照中的原生值。"
+---
+
+# getConfig
+
+```ts
+steamharness.getConfig<T extends ConfigurationValue = ConfigurationValue>(key: string): T | undefined
+```
+
+从当前运行快照读取值，不转换为字符串也不裁剪空白。支持字符串、数字、布尔、数组、对象及 null。字段不存在或当前没有运行作用域时返回 `undefined`。泛型由调用方声明，实际类型由字段定义及保存时校验。嵌套值被冻结。executor、参数解析器和节点的 `context.config` 读取相同的值。
+
+```ts
+const enabled = steamharness.getConfig<boolean>("enabled") ?? false;
+const token = steamharness.getConfig<string>("API_KEY");
+```
+
+此 API 替换业务 `getEnv`，不读取进程变量或项目 env 文件。字段声明、存储、快照和导入导出见[项目配置](/concepts/project-configuration)。

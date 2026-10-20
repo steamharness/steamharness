@@ -211,18 +211,19 @@ export const executor = steamharness.defineExecutor<DeltaforceOpenAIAgentInput, 
     const defaults = steamharness.parseConversationDefaultInputArgs(args);
     return parseInputArgs(args, { message: defaults.message });
   },
-  async createContext({ env, abortSignal }) {
+  async createContext({ config: configuration, abortSignal }) {
+    const config = configuration as Record<string, string | undefined>;
     const deltaforeApi = await createDeltaforeApiConfig({
-      baseUrl: env.DELTAFORE_API_BASE_URL,
-      openApiUrl: env.DELTAFORE_OPENAPI_URL ?? DEFAULT_OPENAPI_URL,
+      baseUrl: config.DELTAFORE_API_BASE_URL,
+      openApiUrl: config.DELTAFORE_OPENAPI_URL ?? DEFAULT_OPENAPI_URL,
       signal: abortSignal,
     });
 
     return {
       metadata: {
         deltaforeApi,
-        openaiModel: normalizeOptionalString(env.OPENAI_MODEL) ?? normalizeOptionalString(env.LLM_MODEL),
-        mockAgentRunner: env.DELTAFORCE_OPENAI_AGENT_MOCK === "1",
+        openaiModel: normalizeOptionalString(config.OPENAI_MODEL) ?? normalizeOptionalString(config.LLM_MODEL),
+        mockAgentRunner: config.DELTAFORCE_OPENAI_AGENT_MOCK === "1",
       },
     };
   },

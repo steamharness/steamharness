@@ -1,6 +1,6 @@
 ---
 title: "Kanban HTML Projects"
-description: "Build publishable Kanban interfaces from a static artifact directory, an HTML entry point, an optional kanban.json file, and named configurations."
+description: "Build publishable Kanban interfaces from a static artifact directory, an HTML entry point, an optional configuration.json file, and named configurations."
 ---
 
 # Kanban HTML Projects
@@ -42,7 +42,7 @@ roadmap-kanban/
 
 Core and CLI `0.2.0` in the example are the current exact compatibility baseline. New templates write the current Core and CLI versions. Existing Kanban projects must add missing dependencies and the `dataStorage` declaration, then update their lockfile; do not use `^`, `~`, `workspace:*`, or another version range. A Kanban page does not import or execute the Core runtime, but Server validates `devDependencies.steamharness` as static package metadata without loading the runtime.
 
-When no entry point is configured, the artifact directory defaults to the project root (`.`) and the HTML entry point defaults to `index.html`. Existing projects therefore do not need to migrate their entry-point configuration. A Kanban project should not include an `index.ts`, `interface.ts`, or `workflow.defineExecutor(...)` solely to make it runnable. Without `kanban.json`, the host hides all configuration controls and lets the HTML canvas fill the workspace.
+When no entry point is configured, the artifact directory defaults to the project root (`.`) and the HTML entry point defaults to `index.html`. Existing projects therefore do not need to migrate their entry-point configuration. A Kanban project should not include an `index.ts`, `interface.ts`, or `steamharness.defineExecutor(...)` solely to make it runnable. The configuration toolbar remains available without declared fields.
 
 The header offers Full screen, Phone, Tablet, and Small card preview modes. Full screen fills the available preview area by default. The default sizes are `390×844` for Phone, `768×1024` for Tablet, and `360×200` CSS pixels for Small card. Every mode except Full screen groups the adjustment icon, reset icon, and drag handle below the preview on the right. All three controls stay outside the image, without covering map content or reducing the iframe's display dimensions. The adjustment icon opens width and height inputs; the handle supports dragging and arrow keys. The reset icon restores the current mode's default dimensions. Each mode retains its custom dimensions within the current workspace. Width ranges from `160–4096px` and height from `96–4096px`; larger previews scroll within the preview area. Switching or resizing changes the page's actual viewport while preserving configurations, drafts, uploads, and page state without reloading the iframe. Mode icons provide size tooltips and arrow-key selection.
 
@@ -90,81 +90,19 @@ CLI Web and Server load built static artifacts. They do not install frontend dep
 
 Plain HTML, CSS, JavaScript, images, and fonts normally work across operating systems. Output that depends on native modules, an absolute local path, `node_modules`, or a specific development server is not a supported static browser artifact.
 
-## Parameter Manifest
+## Project configuration fields
 
-To expose multiple presentations of the same page, add `kanban.json` in the project root:
-
-```json
-{
-  "version": 1,
-  "params": [
-    {
-      "name": "title",
-      "type": "string",
-      "label": "Board title",
-      "defaultValue": "Product roadmap"
-    },
-    {
-      "name": "accent",
-      "type": "string",
-      "label": "Accent color",
-      "control": "radio",
-      "defaultValue": "#2563eb",
-      "options": [
-        { "value": "#2563eb", "label": "Blue" },
-        { "value": "#0f766e", "label": "Teal" }
-      ]
-    },
-    {
-      "name": "columns",
-      "type": "string",
-      "label": "Visible columns",
-      "control": "checkboxes",
-      "multiple": true,
-      "options": [
-        { "value": "todo", "label": "To do" },
-        { "value": "doing", "label": "In progress" },
-        { "value": "done", "label": "Done" }
-      ]
-    }
-  ]
-}
-```
-
-`version` must currently be `1`. `params` directly uses `ParamDefinition`:
-
-| Capability | Fields |
-| --- | --- |
-| Text and long text | `type: "string"`, optionally `control: "textarea"` |
-| Number | `type: "number"` |
-| Toggle | `type: "boolean"` |
-| Positional-argument compatibility | `type: "positional"` |
-| File | `type: "file"`, optionally `accept`, `multiple`, or `format: "json"` |
-| Single-select enum | `options` with `control: "select"` or `"radio"` |
-| Multi-select enum | `multiple: true` with `control: "checkboxes"` |
-
-Each field name must be unique within the manifest. Defaults live in `defaultValue`; the host converts number, Boolean, and multi-select values to native JSON values before injecting them into the page. A file parameter receives only safe fields from a managed platform file reference, never a local absolute path or server storage path.
-
-To put a base-image uploader at the top of the left configuration panel, declare the image parameter first in `params`:
+Kanban uses the same [project configurations](/en/concepts/project-configuration) as Workflow and Conversation. Declare native typed fields in `configuration.json`; the panel remains available without declared fields, allowing custom fields. File uploads belong to the page and its file API.
 
 ```json
-{
-  "name": "imageFile",
-  "type": "file",
-  "label": "Base image",
-  "accept": ["image/png", "image/jpeg", "image/webp", "image/gif"],
-  "format": "json",
-  "multiple": false
-}
+{"version":1,"fields":[
+  {"name":"title","type":"string","defaultValue":"Roadmap"},
+  {"name":"enabled","type":"boolean","defaultValue":true},
+  {"name":"columns","type":"string","multiple":true,"options":[{"value":"todo"},{"value":"done"}]}
+]}
 ```
 
-Uploads use the current project's Server file storage. Image fields show clickable thumbnails with an enlarged preview; other files show their name and size. With `multiple: false`, another upload replaces the field's reference. Removing it clears the parameter without automatically deleting the Server file. Failed uploads retain the previous value, and late responses after a configuration switch or preview refresh cannot update another configuration. Uploads require a signed-in Server connection and a same-UUID project, with a 50 MiB limit per file.
-
-Read the reference array from `getConfiguration().params.imageFile`, authenticate byte reads with `files.readFile(reference.id)`, and create a Blob URL to display the image. Listen for configuration changes to replace or clear it. The page implements size confirmation and persistence rules for its base image and annotations.
-
-Use `kanban.json` for a page title, theme, filters, visible columns, and layout modes. Let the HTML interface create, edit, and delete business data such as tasks, cards, and records, then persist it through the KV bridge. Do not encode a business list into comma-separated textarea parameters just so it can be maintained in the configuration panel.
-
-When saving binary static assets such as images and fonts through the Server file API, set `encoding: "base64"` on `content`. Reading, publishing, and source downloads preserve that encoding and the original bytes. Text files do not need `encoding`.
+Use configurations for presentation and behavior such as titles, filters and layout modes. Create, edit and delete tasks in the page, then persist them through the KV bridge.
 
 ## Read the Current Configuration
 
@@ -277,7 +215,7 @@ window.steamHarnessKanban = {
 };
 ```
 
-`getRuntimeLocale()` asynchronously returns `"zh-CN"` or `"en"` selected by the current CLI Web or Server Web host. A Kanban that explicitly supports localization should switch page copy, errors, ARIA labels, date formatting, and number formatting together. It must fall back to the project's default Chinese when an older host lacks the Bridge or the call fails. `kanban.json` remains a static manifest and cannot be dynamically replaced by the runtime language.
+`getRuntimeLocale()` asynchronously returns `"zh-CN"` or `"en"` selected by the current CLI Web or Server Web host. A Kanban that explicitly supports localization should switch page copy, errors, ARIA labels, date formatting, and number formatting together. It must fall back to the project's default Chinese when an older host lacks the Bridge or the call fails. `configuration.json` remains a static manifest and cannot be dynamically replaced by the runtime language.
 
 The page defines KV keys, while the host always confines the current-project bridge to project scope. A `setValue` value must be a finite number, string, Boolean, `null`, array, or plain object containing only those values. Do not pass `undefined`, a function, a circular reference, or another non-JSON-serializable value. The current version has no KV list or delete API; overwrite a state value by writing a replacement.
 
@@ -352,19 +290,9 @@ Upload and verify a replacement first, save its new KV reference, and only then 
 
 The knowledge-base list reads at most 100 documents at a time. Search caps `pageSize` and `maxMatches` at 1000 and `beforeLines` and `afterLines` at 50. A single `readDocumentLines` call reads at most 1000 lines, and `endLine` cannot be smaller than `startLine`. Out-of-range calls are rejected before reaching storage.
 
-## Named Configurations
+## Named configurations
 
-Whenever `kanban.json.params` is non-empty, the host manages named configurations for the current user:
-
-- The first open creates a Default Configuration.
-- A new configuration starts with parameter defaults.
-- Duplicating a configuration copies its current values.
-- Parameter changes notify the page immediately and are saved with about a 300 ms debounce.
-- Configurations can be renamed, selected, and deleted, except that the last one cannot be deleted.
-- Configurations are isolated by project and user, are not written back to source, and are not shared between logged-in users.
-- When `kanban.json` parameters change, existing configurations receive defaults for new parameters and drop obsolete fields.
-
-On desktop widths, the workspace places parameter settings on the left and the HTML canvas on the right. The selector at the top of the settings area switches configurations; a separate action creates one, while rename, duplicate, and delete live in the current configuration's action menu. Parameter controls fill the available width below and save status stays in the title bar. Below a `760px` workspace container, the UI switches to a top configuration control and parameter drawer, so the same preview adapts even in a narrow panel. A load, save, or delete failure keeps current values and offers an in-place retry.
+The common panel supports explicit saves, profiles, custom fields and complete import/export. The last profile cannot be deleted. Local Studio and CLI share values by canonical project path; Server isolates values by project and account. Configuration changes immediately update main and resource-card previews. Dirty editors preserve their drafts on version conflicts. Values stay outside source files; old Kanban values are not migrated.
 
 ## Relative Resources and Security Boundaries
 
@@ -392,7 +320,7 @@ The root `.steamharnessignore` is the only ignore configuration used when CLI pa
 
 Rules support comments, directories, globs, `**`, and `!` re-inclusion. Paths are always matched with `/`. When `.steamharnessignore` is missing, empty, or contains only comments, every regular file under the project root is uploaded; CLI shows the file count and total size first. `.steamharnessignore` itself is always included in the upload package.
 
-These files cannot be excluded: `package.json`, the Workflow or Conversation entry point, the configured Kanban HTML entry point, and an existing `kanban.json`. If a rule excludes a required file, upload identifies the matching rule. Symbolic links, special device files, directory escape, individual-file limits, and package-size limits are independent security checks and cannot be bypassed with ignore rules.
+These files cannot be excluded: `package.json`, the Workflow or Conversation entry point, the configured Kanban HTML entry point, and an existing `configuration.json`. If a rule excludes a required file, upload identifies the matching rule. Symbolic links, special device files, directory escape, individual-file limits, and package-size limits are independent security checks and cannot be bypassed with ignore rules.
 
 Recommended rules for a Kanban project:
 
@@ -407,7 +335,7 @@ coverage/
 *.tsbuildinfo
 .env
 .env.*
-!.env.example
+!configuration.json
 
 src/
 tests/
@@ -476,6 +404,6 @@ python .agents/skills/workflow-generator/scripts/create_workflow.py roadmap \
   --dir ./roadmap-kanban --project-type kanban --with-kanban-params
 ```
 
-Both commands generate a complete editable Kanban project with `.steamharnessignore`, `package.json`, `index.html`, `board-state.js`, `board-storage.js`, a README, and pure-logic tests. `--with-kanban-params` also creates `kanban.json` with only a title and accent color. Tasks are always created, edited, dragged, and deleted in the page, then persisted per configuration through the KV bridge.
+Both commands generate a complete editable Kanban project with `.steamharnessignore`, `package.json`, `index.html`, `board-state.js`, `board-storage.js`, a README, and pure-logic tests. Every scaffold includes `configuration.json`; `--with-kanban-params` populates it with only a title and accent color. Tasks are always created, edited, dragged, and deleted in the page, then persisted per configuration through the KV bridge.
 
 The generator creates a Simplified Chinese project by default and does not automatically add translation resources, a language switch, or locale detection. It adds those adaptations only after you explicitly request internationalization or multilingual support and identify the target languages.

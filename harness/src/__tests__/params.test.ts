@@ -349,7 +349,7 @@ test("static structure and runtime resolver share quick param metadata", async (
   });
 });
 
-test("server-only parameter resolution loads project server credentials before importing user code", async () => {
+test("server-only parameter resolution ignores project env and requires a host connection", async () => {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-server-param-resolver-"));
   const projectId = "917a6ac8-c01a-43db-b892-71c1d922bb92";
   const importMarker = "__projectServerParamResolverImported";
@@ -410,13 +410,8 @@ test("server-only parameter resolution loads project server credentials before i
       "STEAMHARNESS_SERVER_ADMIN_KEY=project-env-key",
       "",
     ].join("\n"));
-    assert.deepEqual(await resolveLocalProjectParams({
-      projectDir,
-      request,
-    }), {
-      params: { value: { value: "server" } },
-    });
-    assert.equal((globalThis as Record<string, unknown>)[importMarker], true);
+    await assert.rejects(resolveLocalProjectParams({projectDir, request}), /authenticated server connection/);
+    assert.equal((globalThis as Record<string, unknown>)[importMarker], undefined);
 
     assert.deepEqual(await resolveLocalProjectParams({
       projectDir,

@@ -40,6 +40,7 @@ export interface DetailPageProps {
 
 export function getTabLabel(tab: DetailTab): string {
   const map: Record<DetailTab, string> = {
+    configurations: "projectConfigurations",
     project: "detailNavOverview",
     settings: "detailNavSettings",
     members: "detailNavMembers",

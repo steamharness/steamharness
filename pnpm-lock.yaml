@@ -109,9 +109,6 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: 1.29.0
         version: 1.29.0(zod@4.4.3)
-      dotenv:
-        specifier: ^17.4.2
-        version: 17.4.2
       import-meta-resolve:
         specifier: 4.2.0
         version: 4.2.0
@@ -143,6 +140,9 @@ importers:
       '@steamharness/project-card-metadata':
         specifier: workspace:*
         version: link:../shared/project-card-metadata
+      '@steamharness/project-configuration':
+        specifier: workspace:*
+        version: link:../shared/project-configuration
       '@steamharness/project-dependencies':
         specifier: workspace:*
         version: link:../shared/project-dependencies
@@ -218,9 +218,6 @@ importers:
       cron-parser:
         specifier: 5.7.0
         version: 5.7.0
-      dotenv:
-        specifier: ^17.4.2
-        version: 17.4.2
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -252,6 +249,9 @@ importers:
       '@steamharness/openai-responses':
         specifier: workspace:*
         version: link:../shared/openai-responses
+      '@steamharness/project-configuration':
+        specifier: workspace:*
+        version: link:../shared/project-configuration
       '@steamharness/project-dependencies':
         specifier: workspace:*
         version: link:../shared/project-dependencies
@@ -340,6 +340,9 @@ importers:
       '@steamharness/cli':
         specifier: link:../cli
         version: link:../cli
+      '@steamharness/project-configuration':
+        specifier: workspace:*
+        version: link:../shared/project-configuration
       '@steamharness/repository-boundary':
         specifier: workspace:*
         version: link:../shared/repository-boundary
@@ -470,6 +473,9 @@ importers:
         specifier: ^6.3.0
         version: 6.4.4(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1)
     devDependencies:
+      '@steamharness/project-configuration':
+        specifier: workspace:*
+        version: link:../../shared/project-configuration
       '@testing-library/jest-dom':
         specifier: 6.9.1
         version: 6.9.1
@@ -626,6 +632,8 @@ importers:
       lucide:
         specifier: ^0.468.0
         version: 0.468.0
+
+  shared/project-configuration: {}
 
   shared/project-dependencies:
     dependencies:

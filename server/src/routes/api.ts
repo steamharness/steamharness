@@ -1,3 +1,4 @@
+import type { ProjectConfigurationAction } from "@steamharness/project-configuration";
 
 import { randomBytes } from "node:crypto";
 import { Router, type NextFunction, type Request, type Response } from "express";
@@ -71,9 +72,9 @@ function requireRequestPermission(req: Request, permission: PermissionKey): Auth
   return principal;
 }
 
-function requireKanbanConfigurationActorId(principal: AuthenticatedPrincipal): string {
+function requireProjectConfigurationActorId(principal: AuthenticatedPrincipal): string {
   if (!("userId" in principal) || principal.userId.trim() === "") {
-    throw new HttpError(401, 401, "Account login is required to use Kanban configurations.");
+    throw new HttpError(401, 401, "Account login is required to use project configurations.");
   }
   return principal.userId;
 }
@@ -1256,7 +1257,7 @@ export function createApiRouter(
       const workspace = await storage.getKanbanWorkspace({
         projectName: req.params.name,
         target,
-        actorId: requireKanbanConfigurationActorId(principal),
+        actorId: requireProjectConfigurationActorId(principal),
       });
       res.json(ok(await invokeServerKanbanBridge(
         storage,
@@ -1921,12 +1922,12 @@ export function createApiRouter(
       const workspace = await storage.getKanbanWorkspace({
         projectName: req.params.name,
         target: readOptionalString(req.query["target"], "target"),
-        actorId: requireKanbanConfigurationActorId(principal),
+        actorId: requireProjectConfigurationActorId(principal),
       });
       const previewCapability = await storage.issueKanbanPreviewCapability({
         projectName: req.params.name,
         target: workspace.resolvedTarget,
-        actorId: requireKanbanConfigurationActorId(principal),
+        actorId: requireProjectConfigurationActorId(principal),
       });
       const nonce = randomBytes(18).toString("base64url");
       res.json(ok({
@@ -1940,82 +1941,18 @@ export function createApiRouter(
     }),
   );
 
-  router.post(
-    "/projects/:name/kanban/configurations",
-    authenticate,
-    json,
-    asyncHandler(async (req, res) => {
-      const { principal } = await requireProjectReadAccess(req, storage);
-      const body = isRecord(req.body) ? req.body : {};
-      res.status(201).json(ok(await storage.createKanbanConfiguration({
-        projectName: req.params.name,
-        target: readOptionalString(body["target"], "target"),
-        actorId: requireKanbanConfigurationActorId(principal),
-        sourceConfigurationId: readOptionalString(body["sourceConfigurationId"], "sourceConfigurationId"),
-      })));
-    }),
-  );
-
-  router.patch(
-    "/projects/:name/kanban/configurations/:configurationId",
-    authenticate,
-    json,
-    asyncHandler(async (req, res) => {
-      const { principal } = await requireProjectReadAccess(req, storage);
-      const body = isRecord(req.body) ? req.body : {};
-      const common = {
-        projectName: req.params.name,
-        target: readOptionalString(body["target"], "target"),
-        actorId: requireKanbanConfigurationActorId(principal),
-        configurationId: req.params.configurationId,
-      };
-      if (body["name"] !== undefined) {
-        res.json(ok(await storage.renameKanbanConfiguration({
-          ...common,
-          name: requireString(body["name"], "name"),
-        })));
-        return;
-      }
-      if (body["values"] !== undefined) {
-        res.json(ok(await storage.saveKanbanConfigurationValues({
-          ...common,
-          values: readRequiredRecord(body["values"], "values"),
-        })));
-        return;
-      }
-      throw new HttpError(400, 400, "Kanban configuration patch requires name or values.");
-    }),
-  );
-
-  router.put(
-    "/projects/:name/kanban/active-configuration",
-    authenticate,
-    json,
-    asyncHandler(async (req, res) => {
-      const { principal } = await requireProjectReadAccess(req, storage);
-      const body = isRecord(req.body) ? req.body : {};
-      res.json(ok(await storage.selectKanbanConfiguration({
-        projectName: req.params.name,
-        target: readOptionalString(body["target"], "target"),
-        actorId: requireKanbanConfigurationActorId(principal),
-        configurationId: requireString(body["configurationId"], "configurationId"),
-      })));
-    }),
-  );
-
-  router.delete(
-    "/projects/:name/kanban/configurations/:configurationId",
-    authenticate,
-    asyncHandler(async (req, res) => {
-      const { principal } = await requireProjectReadAccess(req, storage);
-      res.json(ok(await storage.deleteKanbanConfiguration({
-        projectName: req.params.name,
-        target: readOptionalString(req.query["target"], "target"),
-        actorId: requireKanbanConfigurationActorId(principal),
-        configurationId: req.params.configurationId,
-      })));
-    }),
-  );
+  router.get("/projects/:name/configurations", authenticate, asyncHandler(async (req,res) => {
+    const {principal} = await requireProjectReadAccess(req,storage);
+    res.setHeader("Cache-Control", "no-store");
+    res.json(ok(await storage.projectConfigurations({projectName:req.params.name,actorId:requireProjectConfigurationActorId(principal),target:readOptionalString(req.query["target"],"target")},{action:"get"})));
+  }));
+  router.post("/projects/:name/configurations", authenticate, json, asyncHandler(async (req,res) => {
+    const {principal} = await requireProjectReadAccess(req,storage);
+    const body = readRequiredRecord(req.body,"body");
+    const call = readRequiredRecord(body["call"],"call") as unknown as ProjectConfigurationAction;
+    res.setHeader("Cache-Control", "no-store");
+    res.json(ok(await storage.projectConfigurations({projectName:req.params.name,actorId:requireProjectConfigurationActorId(principal),target:readOptionalString(body["target"],"target")},call)));
+  }));
 
   router.get(
     "/projects/:name/members",

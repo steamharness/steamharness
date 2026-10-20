@@ -55,7 +55,7 @@ import {
   createToolApprovalGate,
 } from "./tool-permissions/index";
 import {
-  createLLMProviderFromProjectEnv,
+  createLLMProviderFromProjectConfig,
   createLLMProviderRef,
   getServerLLMCredentials,
 } from "./provider/llm/index";
@@ -73,7 +73,7 @@ import {
   endTimer,
 } from "./timer/index";
 import { HarnessError, defineProject, runFor, runIf, runNode, runStreamNode, runWhile, runProject } from "./workflow/index";
-import { getEnv } from "./env";
+import { getConfig } from "./configuration";
 import { getRuntimeLocale } from "./runtime-locale";
 import { getRuntimePlatform, isCli, isDesktop } from "./runtime-platform";
 
@@ -99,7 +99,7 @@ export const projectRuntimeApi = {
   createKnowledgeDocument,
   createInputNode,
   createLLMNode,
-  createLLMProviderFromEnv: createLLMProviderFromProjectEnv,
+  createLLMProviderFromConfig: createLLMProviderFromProjectConfig,
   createLLMProviderRef,
   createLLMStreamNode,
   createMcpTools,
@@ -121,7 +121,7 @@ export const projectRuntimeApi = {
   defineProject,
   editKnowledgeDocument,
   endTimer,
-  getEnv,
+  getConfig,
   getKnowledgeDocument,
   getRuntimeLocale,
   getRuntimePlatform,

@@ -1,3 +1,4 @@
+import { ProjectConfigurations } from './project-configurations';
 import { t } from './localization';
 import { locale } from './localization';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -61,7 +62,7 @@ export async function startWebServer(options: WebOptions) {
   if (!options.runtime) { assertLocalCliCoreCompatible(projectDir, descriptor.runtime!.harnessVersion); }
   if (!['conversation', 'workflow', 'kanban'].includes(descriptor.projectType)) { runtime.dispose(); throw new Error('Unsupported Workflow project type.'); }
   const project: Project = descriptor;
-  const resources = new ResourcePreviews(project, runtime, storageDir, () => connection, () => relatedProjects, () => resourceProjects);
+  const resources = new ResourcePreviews(project, runtime, storageDir, () => connection, () => relatedProjects, () => resourceProjects, () => broadcast());
   const key = createHash('sha256').update(project.assistant ? `assistant:${project.id}:${project.assistant.workdir}` : projectDir).digest('hex').slice(0, 24);
   const historyPath = path.join(storageDir, key, 'conversations.json');
   let saved: { sessions?: ConversationSession[]; activeId?: string; selectionVersion?: number } = {};
@@ -100,10 +101,12 @@ export async function startWebServer(options: WebOptions) {
     const selected = controller?.sessions.find(entry => entry.id === selections.get(clientId ?? '')) ?? controller?.current;
     // Pin open pages before navigation changes the persisted default for new pages.
     if (clientId && selected) rememberSelection(clientId, selected.id);
-    return publicValue(redactProjectData({ type: 'state', stateRevision: ++stateRevision, project,
+    const result = publicValue(redactProjectData({ type: 'state', stateRevision: ++stateRevision, project, configurationError: configurations.error,
     ...(isKanban ? { kanban: kanbanController!.state() } : isProject ? projectActions!.state() : { sessions: controller.sessions, activeId: selected.id, running: sessionRunning(selected), parameterValues: selected.parameterValues ?? {} }),
     account: { ...account, user: account.user && { userId: account.user.userId, email: account.user.email, displayName: account.user.displayName, avatarUrl: account.user.avatarUrl } },
     authenticationRevision: authRevision, resourceRevision: resources.revision }, [...sensitiveTokens], false));
+    // Configuration values are user-owned JSON, including explicitly entered credentials.
+    return {...result, configurations: configurations.state};
   };
   const writeFrame = (client: ServerResponse, data: string) => {
     if (blockedClients.has(client)) { pendingFrames.set(client, data); return; }
@@ -120,7 +123,23 @@ export async function startWebServer(options: WebOptions) {
     if (broadcastTimer) { return; }
     broadcastTimer = setTimeout(() => { broadcastTimer = undefined; activity?.changed(); for (const client of clients) { writeFrame(client, `data: ${JSON.stringify(state(clientIds.get(client)))}\n\n`); } }, 30);
   };
-  const conversationController = isProject || isKanban ? undefined : new ConversationController(project, runtime, saved, {
+  let conversationController: ConversationController | undefined;
+  let kanbanController: KanbanController | undefined;
+  let configurationSignature = '';
+  const configurations = new ProjectConfigurations(projectDir, () => {
+    const signature=JSON.stringify(configurations.state);
+    if(signature!==configurationSignature) {
+      configurationSignature=signature;
+      kanbanController?.configurationChanged(configurations.state);
+      conversationController?.configurationChanged();
+      resources.clear();
+    }
+    broadcast();
+  });
+  await configurations.initialize();
+  configurationSignature=JSON.stringify(configurations.state);
+  conversationController = isProject || isKanban ? undefined : new ConversationController(project, runtime, saved, {
+    configurationRevision: () => configurations.state.revision,
     changed: broadcast,
     log: message => process.stderr.write(`${message}\n`),
     save: (sessions, activeId) => {
@@ -159,8 +178,9 @@ export async function startWebServer(options: WebOptions) {
     },
   }) : undefined;
   const projectActions = projectController ? createProjectActions(projectController, runtime, project, () => authRevision, broadcast) : undefined;
-  const kanbanController = isKanban ? new KanbanController(project, runtime, storageDir, { changed: broadcast, emit: message => { for (const client of clients) { client.write(`data: ${JSON.stringify(message)}\n\n`); } }, connection: () => connection, log: message => process.stderr.write(`${message}\n`) }) : undefined;
-  if (kanbanController) { try { await kanbanController.initialize(); } catch (error) { await kanbanController.close(); runtime.dispose(); throw error; } }
+  kanbanController = isKanban ? new KanbanController(project, runtime, storageDir, { changed: broadcast, emit: message => { for (const client of clients) { client.write(`data: ${JSON.stringify(message)}\n\n`); } }, connection: () => connection, log: message => process.stderr.write(`${message}\n`) }) : undefined;
+  if (kanbanController) kanbanController.configurationChanged(configurations.state);
+  if (kanbanController) { try { await kanbanController.initialize(); } catch (error) { configurations.close(); resources.close(); await kanbanController.close(); runtime.dispose(); throw error; } }
   if (projectController) { await projectController.persist(); }
   const stopForAuthentication = async () => {
     for (const session of conversationController?.sessions ?? []) { await conversationController!.stop(session); }
@@ -284,6 +304,11 @@ export async function startWebServer(options: WebOptions) {
   const handleMessage = async (message: Message): Promise<Message[]> => {
     if (typeof message.type !== 'string') { throw new Error('Invalid message.'); }
     if (message.projectUri && message.projectUri !== project.uri) { throw new Error('Project changed.'); }
+    if (message.type === 'ready') await configurations.refresh().catch(() => undefined);
+    if (message.type === 'kanban-refresh') await configurations.refresh();
+    if (message.type === 'project-configuration') {
+      return [{ type: 'project-configuration-result', requestId: message.requestId, value: await configurations.dispatch(message.call) }];
+    }
     if (message.type === 'resource-data') {
       try { return [{ type: 'resource-data', requestId: message.requestId, data: resources.get(String(message.id)) }]; }
       catch (error) { if (!message.reference) { throw error; } }
@@ -556,7 +581,7 @@ export async function startWebServer(options: WebOptions) {
           const concurrent = ['navigate', 'resolve', 'ready', 'usage', 'resource', 'resource-data', 'resource-refresh', 'resource-select', 'resource-bridge', 'kanban-bridge', 'kanban-method-state', 'kanban-method-reply', 'kanban-methods'].includes(message.type);
           const task = concurrent ? operation() : mutations.catch(() => undefined).then(operation);
           if (!concurrent) { mutations = task; }
-          await task; json(response, 200, { messages: redactProjectData(messages, [...sensitiveTokens], false) }); return;
+          await task; json(response, 200, { messages: messages.map(message => message.type === 'state' || message.type === 'project-configuration-result' ? message : redactProjectData(message, [...sensitiveTokens], false)) }); return;
         }
         if (url.pathname.startsWith('/api/file/') && request.method === 'GET') {
           const file = await runtime.readFile(project, decodeURIComponent(url.pathname.slice('/api/file/'.length)));
@@ -582,7 +607,7 @@ export async function startWebServer(options: WebOptions) {
     })().catch(error => { if (!response.headersSent) { json(response, 400, { message: String(redactProjectData((error as Error).message, [...sensitiveTokens])) }); } else { response.end(); } });
   });
   try { await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(options.port ?? 0, '127.0.0.1', () => { server.off('error', reject); resolve(); }); }); }
-  catch (error) { clearInterval(authPoll); conversationController?.dispose(); projectController?.dispose(); await kanbanController?.close(); runtime.dispose(); throw error; }
+  catch (error) { configurations.close(); resources.close(); clearInterval(authPoll); conversationController?.dispose(); projectController?.dispose(); await kanbanController?.close(); runtime.dispose(); throw error; }
   origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   activity = createLocalActivityWriter(path.dirname(historyPath), project, () => ({
     runs: summarizeLocalRuns(projectController?.runs, conversationController?.sessions),
@@ -593,7 +618,7 @@ export async function startWebServer(options: WebOptions) {
   conversationController?.recover();
   let closing: Promise<void> | undefined;
   return {
-    origin, url: `${origin}/#session=${capability}`, project, controller, projectController, kanbanController,
+    origin, url: `${origin}/#session=${capability}`, project, configurations, controller, projectController, kanbanController,
     setHostRelatedProjects: (value: NonNullable<WebHostConfiguration['relatedProjects']>) => { relatedProjects = value; resources.clear(); },
     setHostResourceProjects: (value: string[]) => { resourceProjects = value; resources.clear(); },
     setHostConnection: async (value: WebConnection | undefined) => {
@@ -606,7 +631,7 @@ export async function startWebServer(options: WebOptions) {
     },
     close: () => closing ??= (async () => {
       authEpoch++; authCheck?.abort();
-      clearInterval(authPoll); if (broadcastTimer) { clearTimeout(broadcastTimer); } login?.kill(); conversationController?.dispose(); projectController?.dispose(); runtime.dispose();
+      configurations.close(); resources.close(); clearInterval(authPoll); if (broadcastTimer) { clearTimeout(broadcastTimer); } login?.kill(); conversationController?.dispose(); projectController?.dispose(); runtime.dispose();
       await kanbanController?.close();
       for (const client of clients) { client.end(); }
       await new Promise<void>(resolve => server.close(() => resolve()));

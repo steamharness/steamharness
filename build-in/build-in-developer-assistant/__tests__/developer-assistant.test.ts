@@ -15,7 +15,7 @@ const RUN_SCOPED_CORE_TOOL_NAMES = [
   "workflow-kv_kv_store",
 ];
 const CODING_TOOL_NAMES = ["read", "write", "edit", "bash", "grep", "find", "ls"];
-const CONTROL_TOOL_NAMES = ["workflow-studio_studio_state", "workflow-studio_get_related_projects", "workflow-studio_get_diagnostics", "workflow-studio_open_file",
+const CONTROL_TOOL_NAMES = ["workflow-studio_get_configurations", "workflow-studio_manage_configurations", "workflow-studio_open_configurations", "workflow-studio_studio_state", "workflow-studio_get_related_projects", "workflow-studio_get_diagnostics", "workflow-studio_open_file",
   "workflow-studio_set_theme", "workflow-studio_open_terminal", "workflow-studio_show_view"];
 const SESSION_TOOL_NAMES = ["tool_search", "codemode", "update_plan", "subagent"];
 const EXPECTED_TOOL_NAMES = [...SESSION_TOOL_NAMES, ...CONTROL_TOOL_NAMES, ...CORE_TOOL_NAMES, ...CODING_TOOL_NAMES];
@@ -86,7 +86,7 @@ describe("developer assistant workflow", () => {
     );
     expect(structure.tools?.filter(tool => CONTROL_TOOL_NAMES.includes(tool.name))).toEqual(
       CONTROL_TOOL_NAMES.map(name => expect.objectContaining({ name, enabled: true,
-        autoApprove: ["workflow-studio_studio_state", "workflow-studio_get_related_projects", "workflow-studio_get_diagnostics"].includes(name) })),
+        autoApprove: ["workflow-studio_get_configurations", "workflow-studio_studio_state", "workflow-studio_get_related_projects", "workflow-studio_get_diagnostics"].includes(name) })),
     );
     for (const name of RUN_SCOPED_CORE_TOOL_NAMES) {
       expect(structure.tools?.some((tool) => tool.name === name)).toBe(false);
@@ -128,7 +128,7 @@ describe("developer assistant workflow", () => {
     expect(source).toContain("allowedDirectories: [");
     expect(source).toContain('root.role === "linked"');
     expect(source).toContain("systemPrompt: createDeveloperAssistantSystemPrompt(manifest, readAssistantHost(), permissionPolicy)");
-    expect(source).toContain('(steamharness.getEnv(ASSISTANT_WORKDIR_ENV) ?? "").trim()');
+    expect(source).toContain('(readHostEnvironment(ASSISTANT_WORKDIR_ENV) ?? "").trim()');
     expect(source).toContain("ASSISTANT_WORKSPACE_MANIFEST_ENV");
     expect(source).toContain("steamharness.readOpenAIConversationHostInput(context)");
     expect(source).toContain("steamharness.parseConversationDefaultInputArgs(context.args)");

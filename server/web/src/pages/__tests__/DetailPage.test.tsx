@@ -31,7 +31,7 @@ describe("DetailPage management tabs", () => {
     const project = { ...createProject(), projectType };
     const navItems = getDetailNavItems(project);
     const tabKeys = navItems.map((item) => item.tab as string);
-    expect(tabKeys).toEqual(["project", "settings", "members", "dependencies", "knowledge", "versions", "kv"]);
+    expect(tabKeys).toEqual(["project", "configurations", "settings", "dependencies", "versions", "members", "invitations", "knowledge", "kv"]);
   });
 
   it("lets viewers inspect relations without requesting management data", async () => {

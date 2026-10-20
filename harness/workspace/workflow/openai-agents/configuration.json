@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "fields": [
+    {
+      "name": "OPENAI_API_KEY",
+      "type": "string",
+      "secret": true
+    },
+    {
+      "name": "OPENAI_BASE_URL",
+      "type": "string"
+    },
+    {
+      "name": "LLM_API_KEY",
+      "type": "string",
+      "secret": true
+    },
+    {
+      "name": "LLM_BASE_URL",
+      "type": "string"
+    }
+  ]
+}

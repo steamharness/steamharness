@@ -1,10 +1,11 @@
+import { createLocalProjectConfigurationStore } from 'steamharness';
+import { configurationSnapshot, type ProjectConfigurationState } from '@steamharness/project-configuration';
 import { randomUUID } from 'node:crypto';
 import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
-  createDefaultKanbanValues, createInjectedKanbanParams, parseKanbanManifestText, sanitizeKanbanValues,
-  parseKanbanBridgeCall, type KanbanInjectedConfiguration, type KanbanParamDefinition,
+  parseKanbanBridgeCall, type KanbanInjectedConfiguration,
 } from '@steamharness/kanban-project';
 import { readProjectInfo, isProjectDataStorageLocationAllowed } from '@steamharness/project-info';
 import type { CliRelatedProjectSpec } from '../related-projects';
@@ -12,7 +13,6 @@ import type { ResourceCard } from './resource-cards';
 import type { Project, Runtime } from './workflow-types';
 import type { WebConnection } from './runtime';
 import { KanbanPreview } from './kanban-preview';
-import { webProjectDataDirectory } from './kanban-data';
 import { t, locale } from './localization';
 
 export interface ResourcePreviewData {
@@ -32,11 +32,30 @@ interface PreviewEntry {
 export class ResourcePreviews {
   private readonly entries = new Map<string, PreviewEntry>();
   private generation = 0;
+  private poll?: ReturnType<typeof setInterval>;
+  private polling = false;
+  private readonly configurationReaders = new Map<string, { read(): Promise<ProjectConfigurationState>; revision: number }>();
   constructor(private readonly owner: Project, private readonly runtime: Runtime, private readonly storageDir: string,
     private readonly connection: () => WebConnection | undefined, private readonly related: () => readonly CliRelatedProjectSpec[],
-    private readonly resourceProjects: () => readonly string[] = () => []) {}
+    private readonly resourceProjects: () => readonly string[] = () => [], private readonly changed: () => void = () => {}) {}
 
-  clear(): void { this.generation++; this.entries.clear(); }
+  clear(): void { this.generation++; this.entries.clear(); this.configurationReaders.clear(); }
+  close(): void { this.clear(); clearInterval(this.poll); }
+  private watchConfiguration(key: string, revision: number, read: () => Promise<ProjectConfigurationState>): void {
+    this.configurationReaders.set(key, { read, revision });
+    this.poll ??= setInterval(() => {
+      if (this.polling || !this.configurationReaders.size) return;
+      this.polling = true;
+      const generation = this.generation;
+      void Promise.all([...this.configurationReaders.values()].map(async reader => {
+        try { return (await reader.read()).revision !== reader.revision; }
+        catch { return false; } // A failed request must not publish an uncommitted configuration.
+      })).then(changes => {
+        if (generation === this.generation && changes.some(Boolean)) { this.clear(); this.changed(); }
+      }).finally(() => { this.polling = false; });
+    }, 1000);
+    this.poll.unref();
+  }
   get revision(): number { return this.generation; }
 
   private async server(id: string, suffix: string, init: RequestInit = {}): Promise<any> {
@@ -109,10 +128,11 @@ export class ResourcePreviews {
       data.format = 'browser'; data.content = target.url;
     } else if (card.kind === 'kanban' || project?.projectType === 'kanban' && card.preview !== false) {
       if (project?.projectType !== 'kanban') { throw new Error(t('This project does not provide a Kanban preview.')); }
-      let params: KanbanParamDefinition[], configurations: { id: string; name: string; values: Record<string, string> }[], activeId: string | undefined;
+      let configurations: ProjectConfigurationState;
       if (target.source === 'server') {
         const workspace = await this.server(project.id, '/kanban');
-        params = workspace.manifest?.params ?? []; configurations = workspace.configurations; activeId = workspace.activeConfigurationId;
+        configurations = await this.server(project.id, '/configurations');
+        this.watchConfiguration(`server:${project.id}`, configurations.revision, () => this.server(project.id, '/configurations'));
         const connection = this.connection()!, url = new URL(workspace.preview.url, `${connection.serverUrl}/`);
         const expected = `/api/projects/${encodeURIComponent(project.id)}/kanban/previews/`;
         if (url.origin !== new URL(connection.serverUrl).origin || !url.pathname.startsWith(expected) || url.search || url.hash) { throw new Error(t('Invalid resource preview URL.')); }
@@ -122,18 +142,12 @@ export class ResourcePreviews {
         entry.remote = { url, prefix: assetPrefix, connection };
         data.kanban = { url: `/resource-assets/${id}/${url.pathname.slice(assetPrefix.length)}`, nonce: workspace.preview.nonce, configuration: { id: '', name: '', params: {} } };
       } else {
-        params = project.fields as KanbanParamDefinition[];
-        try { params = parseKanbanManifestText(await readFile(path.join(project.folderPath, 'kanban.json'), 'utf8')).params; }
-        catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') { throw error; } }
-        let workspace: { configurations?: typeof configurations; activeConfigurationId?: string } = {};
-        try { workspace = JSON.parse(await readFile(path.join(webProjectDataDirectory(this.storageDir, project.folderPath), 'kanban.json'), 'utf8')); }
-        catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') { throw error; } }
-        configurations = workspace.configurations ?? []; activeId = workspace.activeConfigurationId;
+        const store = await createLocalProjectConfigurationStore(project.folderPath);
+        configurations = await store.read();
+        this.watchConfiguration(`local:${project.folderPath}`, configurations.revision, () => store.read());
       }
-      const selected = configurations.find(item => item.id === (target.configurationId ?? activeId));
-      if (target.configurationId && !selected) { throw new Error(t('This preview configuration no longer exists.')); }
-      const values = sanitizeKanbanValues(params, { ...(selected?.values ?? createDefaultKanbanValues(params)), ...(card.kanban?.mode === 'preview' ? card.kanban.values : {}) });
-      const configuration = { id: selected?.id ?? id, name: selected?.name ?? card.title, params: createInjectedKanbanParams(params, values) };
+      const snapshot = configurationSnapshot(configurations, target.configurationId ?? configurations.activeConfigurationId, false);
+      const configuration = { id: snapshot.id, name: snapshot.name, params: { ...snapshot.values, ...(card.kanban?.mode === 'preview' ? card.kanban.values : {}) } };
       if (!entry.remote) {
         if (!project.kanban) { throw new Error(t('This project does not provide a Kanban preview.')); }
         entry.local = new KanbanPreview(project.folderPath, project.kanban, () => configuration);

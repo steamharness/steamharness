@@ -28,7 +28,7 @@ The Core API section documents the `workflow.*` runtime API available directly t
 | [`createToolApprovalGate`](/en/core-api/create-tool-approval-gate) |Create tool approval wrappers; combine executor `tools` registry entries and `context.toolPermissions` reuse user-input to wait for/resume protocol approval tool calls.|
 | [`createLLMNode`](/en/core-api/create-llm-node) |Create a non-streaming LLM call node.|
 | [`createLLMStreamNode`](/en/core-api/create-llm-stream-node) |Create a streaming LLM call node.|
-| [`createLLMProviderFromEnv`](/en/core-api/create-llm-provider-from-env) |Create a LLM provider from the workflow runtime environment variable.|
+| [`createLLMProviderFromConfig`](/en/core-api/create-llm-provider-from-config) |Create an LLM provider from the current project configuration snapshot.|
 | [`createLLMProviderRef`](/en/core-api/create-llm-provider-ref) |Creates a provider reference that can be deferred resolved.|
 | [`createOutputNode`](/en/core-api/create-output-node) |Creating a synchronous or streaming output node;`createOutputItem`, `createOutputPayload`, `addOutputItem`, and `createOutputItemChunk` are also described on this page.|
 | [`createDetailsOutputNode`](/en/core-api/create-details-output-node) |A convenient output node for creating independent, foldable output items.|
@@ -41,7 +41,7 @@ The Core API section documents the `workflow.*` runtime API available directly t
 | [`runWhile`](/en/core-api/run-while) |Execute the traceable while loop and let Diagram display the loop body with the loop container.|
 | [`runProject`](/en/core-api/run-workflow) |Call another workflow in the current context, multiplexing KV, session, provider, token usage, and trace.|
 | [`Knowledge Documents`](/en/core-api/knowledge-documents) | Manage project Markdown Knowledge documents through an explicit local or server storage context. |
-| [`getEnv`](/en/core-api/get-env) |Reads a non-empty variable in the current runtime environment.|
+| [`getConfig`](/en/core-api/get-config) |Read a native JSON configuration value from the current run snapshot.|
 | [`getRuntimePlatform` / `isCli` / `isDesktop`](/en/core-api/runtime-platform) |Determine whether the execution host for the current workflow is CLI or a local desktop host.|
 | [`getRuntimeLocale`](/en/core-api/runtime-locale) |Reads the Simplified Chinese or English language selected by the current host for localized visible output.|
 | [`getLLMProvider`](/en/core-api/get-llm-provider) |Resolves LLM provider by context, node name, and provider source.|
@@ -62,6 +62,7 @@ Most API runs around `input`, `context`, `node`, and `payload`.
 
 |Field|Type|Description|
 | --- | --- | --- |
+| `config` | `ConfigurationValues` | Immutable configuration values for this run. |
 | `providers` | `ProviderRegistry` |LLM provider the registry and binding tables.|
 | `storage` | `StorageContext` | Explicit `local` and `server` locations, each with three-scope `kv` and `persistentValue`. The project `dataStorage.mode` strictly limits accessible locations. Core 0.2 no longer provides top-level `context.kv` or `context.persistentValue`. |
 | `conversation` | `ConversationContext` |Session state read/write entry. `setTitle` can safely suggest UI title; other reads and writes will throw errors when the session is not enabled.|

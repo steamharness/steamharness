@@ -1,6 +1,6 @@
 # Executor 参数入口与控件
 
-`workflow.defineExecutor`（Conversation）或 `workflow.defineEntrypoint`（Workflow）的 `params` 是有序声明数组。Workflow 的普通字段直接写在数组中；Conversation 固定使用标准主输入框，其 `params` 只允许 `kind: "auxiliary"`、`kind: "quick"`、`kind: "mode"`、`kind: "slash"` 独立动作入口，不允许普通主字段。源码字段不写 `panel`。`control` 只决定字段控件形态，不决定它所在的入口。
+`steamharness.defineExecutor`（Conversation）或 `steamharness.defineEntrypoint`（Workflow）的 `params` 是有序声明数组。Workflow 的普通字段直接写在数组中；Conversation 固定使用标准主输入框，其 `params` 只允许 `kind: "auxiliary"`、`kind: "quick"`、`kind: "mode"`、`kind: "slash"` 独立动作入口，不允许普通主字段。源码字段不写 `panel`。`control` 只决定字段控件形态，不决定它所在的入口。
 
 ```ts
 params: [

@@ -5,7 +5,7 @@ description: "Perform static analysis on the project structure of Workflow, Conv
 
 # steamharness structure
 
-`steamharness structure` does not execute the project. It first validates the complete `package.json.steamHarness.projectInfo` contract. Workflow and Conversation then read the script and report nodes, execution order, parameters, conversation configuration, and the debug registry; Kanban reads the artifact configuration in `package.json`, its HTML entry, and optional `kanban.json`.
+`steamharness structure` does not execute the project. It first validates the complete `package.json.steamHarness.projectInfo` contract. Workflow and Conversation then read the script and report nodes, execution order, parameters, conversation configuration, and the debug registry; Kanban reads the artifact configuration in `package.json`, its HTML entry, and optional `configuration.json`.
 
 ## Command Format
 
@@ -33,7 +33,7 @@ steamharness structure [workflow-dir]
 | `workflow` |workflow name and underlying information.|
 | `definitions.nodes` |The statically recognized node definition.|
 | `definitions.variables` |Statically identified key variables.|
-| `execution` |The derived execution structure comprises the `runNode`, `runStreamNode`, `runIf`, `runFor`, `runWhile`, `runProject`, and question-classifier branches; return expressions such as `return workflow.runNode(...)`, `return workflow.runIf(...)`, and `return workflow.runFor(...)` are likewise incorporated into their respective branches or loops.|
+| `execution` |The derived execution structure comprises the `runNode`, `runStreamNode`, `runIf`, `runFor`, `runWhile`, `runProject`, and question-classifier branches; return expressions such as `return steamharness.runNode(...)`, `return steamharness.runIf(...)`, and `return steamharness.runFor(...)` are likewise incorporated into their respective branches or loops.|
 | `diagnostics` |warnings, violations, and structural analysis errors.|
 | `params` |executor `params` declaration.|
 | `conversation` |executor conversation configuration.|
@@ -48,7 +48,7 @@ steamharness structure [workflow-dir]
 |Discovery Script Rule violations|Output structure JSON containing `diagnostics.error` with exit code `1`. A non-inline group, invalid group field, or inconsistent `title`/`order` for one `group.id` produces a precise violation.|
 |workflow File cannot be loaded|Output error structure JSON, exit code is `1`.|
 
-Workflow/Conversation structural analysis requires that the source code contain a `workflow.defineExecutor({ ... })` that can be read statically. Completely missing executor, passing dynamic variables to `defineExecutor(config)`, missing or declaring unknown `projectType`, Workflow carrying Conversation configuration, and legacy `conversation.enabled` all produce violation with migration examples. Kanban is not required executor, but the type must be declared in the package and a configured, standard HTML entry point must be provided; absolute paths, directory traversal, symbolic links, reserved directories, and invalid `kanban.json` will result in an immediate error.
+Workflow/Conversation structural analysis requires that the source code contain a `steamharness.defineExecutor({ ... })` that can be read statically. Completely missing executor, passing dynamic variables to `defineExecutor(config)`, missing or declaring unknown `projectType`, Workflow carrying Conversation configuration, and legacy `conversation.enabled` all produce violation with migration examples. Kanban is not required executor, but the type must be declared in the package and a configured, standard HTML entry point must be provided; absolute paths, directory traversal, symbolic links, reserved directories, and invalid `configuration.json` will result in an immediate error.
 
 ## Example
 

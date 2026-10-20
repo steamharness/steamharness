@@ -1,3 +1,4 @@
+import { isConfigurationValue, type ConfigurationValues } from "@steamharness/project-configuration";
 import type { OutputItem } from './workflow-types';
 
 export interface ResourceCardReference {
@@ -15,7 +16,7 @@ export interface ResourceCard {
   itemId?: string;
   preview?: boolean;
   pinned?: boolean;
-  kanban?: { mode: 'preview' | 'save'; values: Record<string, string> };
+  kanban?: { mode: 'preview' | 'save'; values: ConfigurationValues };
 }
 const record = (value: unknown): Record<string, unknown> | undefined => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 const string = (value: unknown): string | undefined => typeof value === 'string' && value.trim() ? value.trim() : undefined;
@@ -80,7 +81,7 @@ export function conversationResourceCards(items: OutputItem[], projectId: string
       ...(typeof descriptor.preview === 'boolean' ? { preview: descriptor.preview } : {}),
       ...(typeof descriptor.pinned === 'boolean' ? { pinned: descriptor.pinned } : {}),
       ...(kind === 'kanban' && ['preview', 'save'].includes(String(kanban?.mode)) && values && Object.keys(values).length <= 100
-        && Object.values(values).every(value => typeof value === 'string') ? { kanban: { mode: kanban!.mode as 'preview' | 'save', values: values as Record<string, string> } } : {}),
+        && isConfigurationValue(values) ? { kanban: { mode: kanban!.mode as 'preview' | 'save', values: values as ConfigurationValues } } : {}),
     });
   }
   return [...cards.values()];

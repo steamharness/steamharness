@@ -92,8 +92,9 @@ const inputNode = steamharness.createInputNode<ClaudeAgentInput, ClaudeAgentPars
 const outputNode = steamharness.createOutputNode<ClaudeAgentSessionInput, ClaudeAgentOutputPayload>({
   name: "claude-agent-output",
   async *stream(input, context) {
-    const baseUrlEnv = readOptionalString(steamharness.getEnv("ANTHROPIC_BASE_URL"));
-    const apiKeyEnv = readOptionalString(steamharness.getEnv("ANTHROPIC_API_KEY"));
+    const baseUrl = readOptionalString(context.config.ANTHROPIC_BASE_URL);
+    const apiKey = readOptionalString(context.config.ANTHROPIC_API_KEY);
+    if (apiKey === undefined) throw new steamharness.HarnessError({type:"input_validation", message:"ANTHROPIC_API_KEY is required in Project configurations.", nodeName:"claude-agent-output"});
     let pendingToolApprovalError: steamharness.HarnessError | undefined;
     const pendingToolApprovalItems: ToolApprovalOutputItemInput[] = [];
     let toolCallCount = 0;
@@ -121,22 +122,17 @@ const outputNode = steamharness.createOutputNode<ClaudeAgentSessionInput, Claude
         cwd: input.workdir,
         includePartialMessages: true,
         ...(input.model !== undefined ? { model: input.model } : {}),
-        ...((baseUrlEnv !== undefined || apiKeyEnv !== undefined) ? {
-          env: {
-            ...process.env,
-            ...(baseUrlEnv !== undefined ? { ANTHROPIC_BASE_URL: baseUrlEnv } : {}),
-            ...(apiKeyEnv !== undefined ? {
-              ANTHROPIC_API_KEY: apiKeyEnv,
-              // Force an empty Claude config dir so stored ~/.claude credentials
-              // don't override the custom API key from workflow env config.
-              CLAUDE_CONFIG_DIR: (() => {
-                const dir = path.join(os.tmpdir(), "workflow-claude-agent-empty-config");
-                mkdirSync(dir, { recursive: true });
-                return dir;
-              })(),
-            } : {}),
-          },
-        } : {}),
+        env: {
+          ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^(ANTHROPIC_|CLAUDE_CODE_USE_(BEDROCK|VERTEX|FOUNDRY)$|CLAUDE_CODE_OAUTH_TOKEN$)/.test(key))),
+          ANTHROPIC_BASE_URL: baseUrl ?? "https://api.anthropic.com",
+          ANTHROPIC_API_KEY: apiKey,
+          // Keep stored Claude credentials separate from project configuration.
+          CLAUDE_CONFIG_DIR: (() => {
+            const dir = path.join(os.tmpdir(), "workflow-claude-agent-empty-config");
+            mkdirSync(dir, { recursive: true });
+            return dir;
+          })(),
+        },
         ...(input.knowledgeTools
           ? {
               mcpServers: {
@@ -503,7 +499,7 @@ export const executor = steamharness.defineExecutor<ClaudeAgentInput, ClaudeAgen
           shortFlag: "-m",
           type: "string",
           required: false,
-          description: "Claude model id (e.g. claude-sonnet-4-6). Falls back to ANTHROPIC_MODEL env var, then the SDK default.",
+          description: "Claude model id (e.g. claude-sonnet-4-6). Falls back to ANTHROPIC_MODEL configuration, then the SDK default.",
         },
         {
           name: "knowledgeTools",
@@ -594,7 +590,7 @@ function parseInputArgs(args: string[]): ClaudeAgentInput {
     allowedTools,
     permissionMode,
     workdir,
-    model: readOptionalString(model) ?? readOptionalString(steamharness.getEnv("ANTHROPIC_MODEL")),
+    model: readOptionalString(model) ?? readOptionalString(steamharness.getConfig<string>("ANTHROPIC_MODEL")),
     knowledgeTools: knowledgeTools ?? true,
   };
 }

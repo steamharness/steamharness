@@ -1990,80 +1990,31 @@ paths:
             application/octet-stream: {}
         "404":
           $ref: "#/components/responses/HarnessError"
-  /api/projects/{projectId}/kanban/configurations:
-    post:
-      tags:
-        - Admin Projects
-      summary: 新建或复制 Kanban 配置
-      operationId: createKanbanConfiguration
+  /api/projects/{projectId}/configurations:
+    get:
+      tags: [Admin Projects]
+      summary: Read account-scoped configurations for any project type
+      description: Requires project read access and an account identity. Values are isolated by project and account. The Server only reads static declarations and never executes project code.
+      operationId: getProjectConfigurations
       parameters:
         - $ref: "#/components/parameters/ProjectName"
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/KanbanCreateConfigurationRequest"
-      responses:
-        "201":
-          description: 创建后的完整配置状态；新配置同时成为活动配置。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/KanbanWorkspaceStateResponse"
-        "409":
-          $ref: "#/components/responses/HarnessError"
-  /api/projects/{projectId}/kanban/configurations/{configurationId}:
-    patch:
-      tags:
-        - Admin Projects
-      summary: 重命名 Kanban 配置或保存参数值
-      operationId: updateKanbanConfiguration
-      parameters:
-        - $ref: "#/components/parameters/ProjectName"
-        - $ref: "#/components/parameters/KanbanConfigurationId"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/KanbanPatchConfigurationRequest"
-      responses:
-        "200":
-          description: 更新后的完整配置状态。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/KanbanWorkspaceStateResponse"
-        "400":
-          $ref: "#/components/responses/HarnessError"
-        "404":
-          $ref: "#/components/responses/HarnessError"
-    delete:
-      tags:
-        - Admin Projects
-      summary: 删除 Kanban 配置
-      description: 最后一个配置不可删除；删除活动配置后会选择剩余的第一个配置。
-      operationId: deleteKanbanConfiguration
-      parameters:
-        - $ref: "#/components/parameters/ProjectName"
-        - $ref: "#/components/parameters/KanbanConfigurationId"
         - $ref: "#/components/parameters/TargetQuery"
       responses:
         "200":
-          description: 删除后的完整配置状态。
+          description: Current fields, profiles, selection and revision. Cache-Control is no-store.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/KanbanWorkspaceStateResponse"
-        "409":
+                $ref: "#/components/schemas/ProjectConfigurationResponse"
+        "401":
           $ref: "#/components/responses/HarnessError"
-  /api/projects/{projectId}/kanban/active-configuration:
-    put:
-      tags:
-        - Admin Projects
-      summary: 切换活动 Kanban 配置
-      operationId: selectKanbanConfiguration
+        "403":
+          $ref: "#/components/responses/HarnessError"
+    post:
+      tags: [Admin Projects]
+      summary: Manage or export account-scoped project configurations
+      description: Mutations require the queried revision. Imports are atomic, generate new IDs and preserve selection. Exports contain all effective values, including sensitive fields. The last profile cannot be deleted. Read access permits managing only the caller's own values.
+      operationId: manageProjectConfigurations
       parameters:
         - $ref: "#/components/parameters/ProjectName"
       requestBody:
@@ -2071,16 +2022,33 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/KanbanSelectConfigurationRequest"
+              type: object
+              properties:
+                target:
+                  type: string
+                  default: draft
+                call:
+                  $ref: "#/components/schemas/ProjectConfigurationAction"
+              required: [call]
       responses:
         "200":
-          description: 切换后的完整配置状态。
+          description: Committed state, or portable export for the export action. Cache-Control is no-store.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/KanbanWorkspaceStateResponse"
-        "404":
+                $ref: "#/components/schemas/ProjectConfigurationResponse"
+        "400":
           $ref: "#/components/responses/HarnessError"
+        "401":
+          $ref: "#/components/responses/HarnessError"
+        "403":
+          $ref: "#/components/responses/HarnessError"
+        "409":
+          description: Revision conflict; data.code is CONFIGURATION_CONFLICT and no mutation was committed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiFailure"
   /api/projects/{projectId}/draft/files:
     put:
       tags:
@@ -5749,31 +5717,153 @@ components:
       required:
         - version
         - params
-    KanbanConfiguration:
+    ProjectConfigurationField:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          pattern: '^[A-Za-z_][A-Za-z0-9_.-]{0,199}$'
+        type:
+          type: string
+          enum: [string, number, boolean, json]
+        label:
+          type: string
+        description:
+          type: string
+        defaultValue:
+          description: Native JSON default. Never store real secrets in source declarations.
+        required:
+          type: boolean
+        secret:
+          type: boolean
+        multiple:
+          type: boolean
+          description: Supported for string fields; values are string arrays.
+        control:
+          type: string
+          enum: [text, textarea, select, radio, checkboxes]
+        options:
+          type: array
+          items:
+            type: object
+            properties:
+              value:
+                type: string
+              label:
+                type: string
+            required: [value]
+      required: [name, type]
+    ProjectConfigurationProfile:
       type: object
       properties:
         id:
           type: string
-          format: uuid
         name:
           type: string
         values:
           type: object
-          additionalProperties:
-            type: string
-          description: 宿主持久化的表单字符串值；注入页面时按参数定义转换为 JSON 原生值。
+          additionalProperties: true
         createdAt:
           type: string
           format: date-time
         updatedAt:
           type: string
           format: date-time
-      required:
-        - id
-        - name
-        - values
-        - createdAt
-        - updatedAt
+      required: [id, name, values, createdAt, updatedAt]
+    ProjectConfigurationState:
+      type: object
+      properties:
+        version:
+          type: integer
+          enum: [1]
+        revision:
+          type: integer
+          minimum: 0
+        fields:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectConfigurationField"
+        customFields:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectConfigurationField"
+        configurations:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/ProjectConfigurationProfile"
+        activeConfigurationId:
+          type: string
+      required: [version, revision, fields, customFields, configurations, activeConfigurationId]
+    ProjectConfigurationExport:
+      type: object
+      properties:
+        version:
+          type: integer
+          enum: [1]
+        kind:
+          type: string
+          enum: [steamharness-project-configurations]
+        fields:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectConfigurationField"
+        configurations:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              values:
+                type: object
+                additionalProperties: true
+            required: [name, values]
+      required: [version, kind, fields, configurations]
+    ProjectConfigurationAction:
+      type: object
+      description: At most 1 MiB. Revision is mandatory for every mutation. Profile mutations require id; create takes optional name. Save merges typed values and removes overrides named in unset. Field edits use field and optional old key. Import takes a complete document. Export optionally filters by id.
+      properties:
+        action:
+          type: string
+          enum: [get, export, create, duplicate, rename, save, select, delete, field.save, field.delete, import]
+        revision:
+          type: integer
+          minimum: 0
+        id:
+          type: string
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        values:
+          type: object
+          additionalProperties: true
+        unset:
+          type: array
+          items:
+            type: string
+        field:
+          $ref: "#/components/schemas/ProjectConfigurationField"
+        key:
+          type: string
+        document:
+          $ref: "#/components/schemas/ProjectConfigurationExport"
+      required: [action]
+    ProjectConfigurationResponse:
+      allOf:
+        - $ref: "#/components/schemas/ApiSuccessBase"
+        - type: object
+          properties:
+            data:
+              oneOf:
+                - $ref: "#/components/schemas/ProjectConfigurationState"
+                - $ref: "#/components/schemas/ProjectConfigurationExport"
+          required: [data]
+    KanbanConfiguration:
+      $ref: "#/components/schemas/ProjectConfigurationProfile"
     KanbanPreview:
       type: object
       properties:
@@ -5903,41 +5993,6 @@ components:
               $ref: "#/components/schemas/KanbanWorkspaceResult"
           required:
             - data
-    KanbanCreateConfigurationRequest:
-      type: object
-      properties:
-        target:
-          type: string
-        sourceConfigurationId:
-          type: string
-          format: uuid
-          description: 存在时复制指定配置；省略时使用参数默认值创建新配置。
-    KanbanPatchConfigurationRequest:
-      type: object
-      properties:
-        target:
-          type: string
-        name:
-          type: string
-        values:
-          type: object
-          additionalProperties:
-            type: string
-      oneOf:
-        - required:
-            - name
-        - required:
-            - values
-    KanbanSelectConfigurationRequest:
-      type: object
-      properties:
-        target:
-          type: string
-        configurationId:
-          type: string
-          format: uuid
-      required:
-        - configurationId
     AuditEventPageResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"

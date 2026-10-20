@@ -25,7 +25,7 @@ import {
 } from "@steamharness/project-info";
 import { isProjectKind, parseProjectFileReferences, RemoteProjectFileStore, type ProjectKind } from "steamharness";
 import { clearCliAuthConfig, readCliAuthConfig, readCliAuthConfigSync, writeCliAuthConfig } from "./auth-config";
-import { findWorkspaceRepositoryRoot, loadCliEnv } from "./env";
+import { findWorkspaceRepositoryRoot } from "./env";
 import {
   getCurrentLocale,
   i18n,
@@ -169,7 +169,7 @@ const DEFAULT_SERVER_URL = "http://localhost:7125";
 const CLI_MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_DEVICE_FLOW_CLIENT_NAME = "Workflow Workspace CLI";
 
-loadCliEnv();
+
 
 export async function main(
   argv = process.argv.slice(2),

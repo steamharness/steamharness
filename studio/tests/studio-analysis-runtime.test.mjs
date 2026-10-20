@@ -20,7 +20,7 @@ test('the built-in analysis prepares a runnable Kanban and connects its own CLI 
   const assistant = path.join(extension, 'dist/developer-assistant'); await mkdir(assistant, { recursive: true });
   await writeFile(path.join(assistant, 'package.json'), JSON.stringify({ id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', type: 'module' }));
   const template = path.join(extension, 'dist/analysis');
-  for (const name of ['package.json', 'kanban.json', 'index.html', 'assets']) {
+  for (const name of ['package.json', 'configuration.json', 'index.html', 'assets']) {
     await cp(new URL(`../../build-in/build-in-analysis/${name}`, import.meta.url), path.join(template, name), { recursive: true });
   }
   const cli = path.join(source.projectDir, 'node_modules/@steamharness/cli/dist'); await mkdir(path.join(cli, 'web'));

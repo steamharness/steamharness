@@ -17,7 +17,7 @@ import type {
 } from "./interface";
 
 const llmProvider = steamharness.createLLMProviderRef("default", () => {
-  return steamharness.createLLMProviderFromEnv();
+  return steamharness.createLLMProviderFromConfig();
 });
 
 const defaultTask = "城市攻坚战任务";

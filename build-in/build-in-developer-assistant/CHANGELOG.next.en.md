@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Added] Let the assistant manage all project configurations and custom fields through Studio Control, including headless operations and complete import/export. Generate `configuration.json` for every project type and remove business env scaffolds and the legacy host configuration tool.
+
 - Generator guidance now covers Agent native web search capability declarations, per-run controls, protocol limits, activity and source outputs, and persistent follow-up context.
 
 ### Context compaction

@@ -1,9 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   __test_createDelayedToolEventBuffer,
   createPiAgentSessionSnapshot,
   createPiAgentTokenUsageReport,
   createProjectToolPermissionExtension,
+  configurePiProjectAuthentication,
+  createPiAgentSessionFactory,
 } from "../pi-sdk";
 import { KNOWLEDGE_DOCUMENTS_TOOL_NAME } from "../knowledge-documents-tool";
 import {
@@ -19,6 +21,26 @@ import type { RunContext } from "steamharness/types/context";
 installProjectRuntimeGlobal();
 
 describe("pi-agent SDK adapter", () => {
+  it("captures configuration credentials and blocks the SDK's process environment fallback", async () => {
+    vi.stubEnv("ANTHROPIC_API_KEY", "environment-key");
+    try {
+      let key: string | undefined = "project-key";
+      const auth = configurePiProjectAuthentication({
+        setRuntimeApiKey() {},
+        async getApiKey(_provider: string) {return process.env.ANTHROPIC_API_KEY;},
+        hasAuth(_provider: string) {return true;},
+      }, {getConfig: name => name === "ANTHROPIC_API_KEY" ? key : undefined});
+      key = "changed";
+      expect(await auth.getApiKey("anthropic")).toBe("project-key");
+      expect(await auth.getApiKey("google")).toBeUndefined();
+      expect(auth.hasAuth("google")).toBe(false);
+      key = undefined;
+      const empty = configurePiProjectAuthentication(auth, {getConfig: () => undefined});
+      expect(await empty.getApiKey("anthropic")).toBeUndefined();
+      expect(empty.hasAuth("anthropic")).toBe(false);
+      await expect(createPiAgentSessionFactory({getConfig:()=>undefined})({prompt:"test",workdir:process.cwd(),provider:"anthropic",tools:[],explicitTools:true,knowledgeTools:false,dryRun:false})).rejects.toMatchObject({type:"input_validation"});
+    } finally {vi.unstubAllEnvs();}
+  });
   it("reads token usage from the current Pi SDK getSessionStats method", () => {
     const snapshot = createPiAgentSessionSnapshot({
       sessionId: "session-current",

@@ -104,6 +104,16 @@ beforeAll(async () => {
 });
 
 describe("claude-agent tool approval stream", () => {
+  it("requires a project key even when the parent process has Claude credentials", async () => {
+    vi.stubEnv("ANTHROPIC_API_KEY", "environment-key");
+    try {
+      const {query} = await import("@anthropic-ai/claude-agent-sdk");
+      const calls = vi.mocked(query).mock.calls.length;
+      const context = createNodeContext([]); context.config = {};
+      await expect(outputNode.stream(createSessionInput(), context).next()).rejects.toMatchObject({type:"input_validation"});
+      expect(vi.mocked(query).mock.calls).toHaveLength(calls);
+    } finally {vi.unstubAllEnvs();}
+  });
   it("pauses the workflow when the SDK continues after a pending tool approval", async () => {
     const requests: UserInputRequest[] = [];
     const chunks: unknown[] = [];
@@ -204,6 +214,7 @@ function createNodeContext(
   resolvedInput?: UserInputResolved,
 ): NodeContext {
   return {
+    config: {ANTHROPIC_API_KEY:"fixture-key"},
     providers: {},
     storage: {
       local: {

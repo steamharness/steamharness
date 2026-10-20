@@ -18,11 +18,15 @@ type ExtensionFactory = (pi: {
   ): void;
 }) => void | Promise<void>;
 
+interface PiAuthStorage {
+  setRuntimeApiKey(provider: string, apiKey: string): void;
+  getApiKey(provider: string): Promise<string | undefined>;
+  hasAuth(provider: string): boolean;
+}
+
 interface PiCodingAgentModule {
   AuthStorage: {
-    inMemory(): {
-      setRuntimeApiKey(provider: string, apiKey: string): void;
-    };
+    inMemory(): PiAuthStorage;
   };
   getAgentDir(): string;
   createAgentSession(options: Record<string, unknown>): Promise<{ session: PiLiveSession }>;
@@ -87,7 +91,7 @@ type PiAgentSdkEvent =
   };
 
 export interface PiAgentRuntimeOptions {
-  getEnv(name: string): string | undefined;
+  getConfig(name: string): string | undefined;
   context?: unknown;
   onPendingApproval?: (error: steamharness.HarnessError) => void;
 }
@@ -163,12 +167,12 @@ async function createLivePiAgentSession(
   input: PiAgentParsedInput,
   options: PiAgentRuntimeOptions,
 ): Promise<PiAgentSessionRunner> {
-  const piSdk = await import("@earendil-works/pi-coding-agent") as PiCodingAgentModule;
-  const authStorage = piSdk.AuthStorage.inMemory();
   const apiKey = readProviderApiKey(input.provider, options);
-  if (apiKey !== undefined) {
-    authStorage.setRuntimeApiKey(input.provider, apiKey);
+  if (apiKey === undefined) {
+    throw new steamharness.HarnessError({type:"input_validation", message:"A Pi provider API key is required in Project configurations."});
   }
+  const piSdk = await import("@earendil-works/pi-coding-agent") as PiCodingAgentModule;
+  const authStorage = configurePiProjectAuthentication(piSdk.AuthStorage.inMemory(), options);
   const modelRegistry = piSdk.ModelRegistry.inMemory(authStorage);
   registerProviderRuntimeConfig(modelRegistry, input, apiKey);
   const model = input.model ? modelRegistry.find(input.provider, input.model) : undefined;
@@ -525,18 +529,30 @@ function createRuntimeModelConfig(provider: PiAgentProvider, modelId: string, ba
   };
 }
 
+/** Capture only project credentials; Pi's default auth store also consults process variables. */
+export function configurePiProjectAuthentication<T extends PiAuthStorage>(authStorage: T, options: PiAgentRuntimeOptions): T {
+  const keys = new Map<string,string>();
+  for (const provider of ["anthropic", "openai"] as const) {
+    const key = readProviderApiKey(provider, options);
+    if (key !== undefined) {keys.set(provider, key); authStorage.setRuntimeApiKey(provider, key);}
+  }
+  authStorage.getApiKey = async provider => keys.get(provider);
+  authStorage.hasAuth = provider => keys.has(provider);
+  return authStorage;
+}
+
 function readProviderApiKey(provider: PiAgentProvider, options: PiAgentRuntimeOptions): string | undefined {
   if (provider === "openai") {
-    return readOptionalString(options.getEnv("OPENAI_API_KEY")) ??
-      readOptionalString(options.getEnv("OPENAPI_API_KEY")) ??
-      readOptionalString(options.getEnv("PI_OPENAI_API_KEY")) ??
-      readOptionalString(options.getEnv("PI_API_KEY"));
+    return readOptionalString(options.getConfig("OPENAI_API_KEY")) ??
+      readOptionalString(options.getConfig("OPENAPI_API_KEY")) ??
+      readOptionalString(options.getConfig("PI_OPENAI_API_KEY")) ??
+      readOptionalString(options.getConfig("PI_API_KEY"));
   }
 
-  return readOptionalString(options.getEnv("ANTHROPIC_API_KEY")) ??
-    readOptionalString(options.getEnv("PI_ANTHROPIC_API_KEY")) ??
-    readOptionalString(options.getEnv("PI_API_KEY")) ??
-    readOptionalString(options.getEnv("OPENAI_API_KEY"));
+  return readOptionalString(options.getConfig("ANTHROPIC_API_KEY")) ??
+    readOptionalString(options.getConfig("PI_ANTHROPIC_API_KEY")) ??
+    readOptionalString(options.getConfig("PI_API_KEY")) ??
+    readOptionalString(options.getConfig("OPENAI_API_KEY"));
 }
 
 function readSessionUsage(stats: { tokens?: Record<string, unknown> } | undefined): PiAgentUsage | undefined {

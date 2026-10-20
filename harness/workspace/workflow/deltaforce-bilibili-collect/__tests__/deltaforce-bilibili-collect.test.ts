@@ -333,7 +333,7 @@ describe("deltaforce-bilibili-collect helpers", () => {
 describe("deltaforce-bilibili-collect workflow runtime", () => {
   it("writes knowledge through PersistentValue on mocked real runs", async () => {
     const persistentValueStore = createMemoryKVStore();
-    const report = await runWithMockEnv({
+    const report = await runWithMockConfiguration({
       args: [
         "--video-url",
         "https://www.bilibili.com/video/BV1uv411q7Mv",
@@ -343,7 +343,7 @@ describe("deltaforce-bilibili-collect workflow runtime", () => {
         "Mock M3 Real Run",
       ],
       persistentValueStore,
-      env: {
+      values: {
         DELTAFORCE_BILIBILI_DOWNLOAD_MOCK: "1",
         MINIMAX_DRY_RUN: "1",
       },
@@ -382,7 +382,7 @@ describe("deltaforce-bilibili-collect workflow runtime", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const persistentValueStore = createMemoryKVStore();
-    const report = await runWithMockEnv({
+    const report = await runWithMockConfiguration({
       args: [
         "--dry-run",
         "--video-url",
@@ -411,7 +411,7 @@ describe("deltaforce-bilibili-collect workflow runtime", () => {
       transcript: "远端 MiniMax M3 输出 fixture。",
     });
     vi.stubGlobal("fetch", fetchMock);
-    const report = await runWithMockEnv({
+    const report = await runWithMockConfiguration({
       args: [
         "--video-url",
         "https://www.bilibili.com/video/BV1uv411q7Mv",
@@ -421,7 +421,7 @@ describe("deltaforce-bilibili-collect workflow runtime", () => {
         "Remote M3 Run",
       ],
       persistentValueStore,
-      env: {
+      values: {
         DELTAFORCE_BILIBILI_DOWNLOAD_MOCK: "1",
         MINIMAX_API_KEY: "test-key",
       },
@@ -446,7 +446,7 @@ describe("deltaforce-bilibili-collect workflow runtime", () => {
   it("streams in-progress output chunks between collection steps", async () => {
     const persistentValueStore = createMemoryKVStore();
     const chunks: string[] = [];
-    const report = await runWithMockEnv({
+    const report = await runWithMockConfiguration({
       args: [
         "--video-url",
         "https://www.bilibili.com/video/BV1uv411q7Mv",
@@ -456,7 +456,7 @@ describe("deltaforce-bilibili-collect workflow runtime", () => {
         "Streaming Progress Run",
       ],
       persistentValueStore,
-      env: {
+      values: {
         DELTAFORCE_BILIBILI_DOWNLOAD_MOCK: "1",
         MINIMAX_DRY_RUN: "1",
       },
@@ -495,7 +495,7 @@ describe("deltaforce-bilibili-collect workflow runtime", () => {
       transcript: "复用 mm_file 的理解结果。",
     });
     vi.stubGlobal("fetch", fetchMock);
-    const report = await runWithMockEnv({
+    const report = await runWithMockConfiguration({
       args: [
         "--mm-file",
         "reused-file-1",
@@ -505,7 +505,7 @@ describe("deltaforce-bilibili-collect workflow runtime", () => {
         "Reuse Existing MiniMax File",
       ],
       persistentValueStore,
-      env: {
+      values: {
         MINIMAX_API_KEY: "test-key",
       },
     });
@@ -524,7 +524,7 @@ describe("deltaforce-bilibili-collect workflow runtime", () => {
   });
 
   it("rejects runs when both videoUrl and mm_file are missing", async () => {
-    const report = await runWithMockEnv({
+    const report = await runWithMockConfiguration({
       args: [
         "--question",
         "讲了什么",
@@ -537,7 +537,7 @@ describe("deltaforce-bilibili-collect workflow runtime", () => {
 
   it("keeps streamed progress and appends the final transcript as plain text output", async () => {
     const persistentValueStore = createMemoryKVStore();
-    const report = await runWithMockEnv({
+    const report = await runWithMockConfiguration({
       args: [
         "--dry-run",
         "--video-url",
@@ -572,10 +572,10 @@ describe("deltaforce-bilibili-collect workflow runtime", () => {
   });
 });
 
-async function runWithMockEnv(options: {
+async function runWithMockConfiguration(options: {
   args: string[];
   persistentValueStore?: KVStore;
-  env?: Record<string, string>;
+  values?: Record<string, string>;
   onRuntimeEvent?(event: RuntimeEvent): Promise<void> | void;
 }) {
   const kvStoreDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-bilibili-test-"));
@@ -584,10 +584,7 @@ async function runWithMockEnv(options: {
       projectDir: path.resolve(process.cwd(), "workflow/deltaforce-bilibili-collect"),
       projectName: "deltaforce-bilibili-collect",
       args: options.args,
-      env: {
-        ...process.env,
-        ...options.env,
-      },
+      configuration: { id: "fixture", name: "Fixture", revision: 0, values: options.values ?? {} },
       storage: {
         host: "local",
         local: {

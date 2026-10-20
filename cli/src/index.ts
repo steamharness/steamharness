@@ -17,6 +17,8 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   const prepared = prepareCliInvocation(argv);
   argv = prepared.argv;
 
+  if (argv[0] === "configuration") return (await import("./configuration")).main(argv.slice(1));
+
   if (argv[0] === "web") {
     const webCli = await import("./web");
     return webCli.main(argv.slice(1));
@@ -50,7 +52,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
 }
 
 function formatHelp(): string {
-  return `${i18n.t("rootHelp", { ns: "cli" })}\n\n  steamharness web [project-directory]  ${i18n.language.startsWith('zh') ? '\u5728\u6d4f\u89c8\u5668\u6253\u5f00\u672c\u5730\u9879\u76ee' : 'Open a local project in a browser'}`;
+  return `${i18n.t("rootHelp", { ns: "cli" })}\n\n  steamharness configuration [project-directory] < request.json  ${i18n.language.startsWith('zh') ? '读取或管理项目配置' : 'Read or manage project configurations'}\n  steamharness web [project-directory]  ${i18n.language.startsWith('zh') ? '\u5728\u6d4f\u89c8\u5668\u6253\u5f00\u672c\u5730\u9879\u76ee' : 'Open a local project in a browser'}`;
 }
 
 /**

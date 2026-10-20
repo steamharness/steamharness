@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "fields": [
+    {
+      "name": "title",
+      "type": "string",
+      "label": "看板名称",
+      "defaultValue": "项目计划",
+      "required": true
+    },
+    {
+      "name": "description",
+      "type": "string",
+      "control": "textarea",
+      "label": "看板描述",
+      "defaultValue": "Studio 本地工作区"
+    },
+    {
+      "name": "priority",
+      "type": "string",
+      "control": "select",
+      "label": "优先级",
+      "defaultValue": "all",
+      "options": [
+        {
+          "value": "all",
+          "label": "全部"
+        },
+        {
+          "value": "high",
+          "label": "高优先级"
+        },
+        {
+          "value": "normal",
+          "label": "普通"
+        }
+      ]
+    },
+    {
+      "name": "density",
+      "type": "string",
+      "control": "radio",
+      "label": "布局",
+      "defaultValue": "comfortable",
+      "options": [
+        {
+          "value": "comfortable",
+          "label": "舒适"
+        },
+        {
+          "value": "compact",
+          "label": "紧凑"
+        }
+      ]
+    },
+    {
+      "name": "labels",
+      "type": "string",
+      "control": "checkboxes",
+      "label": "标签",
+      "defaultValue": "[\"design\",\"development\",\"test\"]",
+      "options": [
+        {
+          "value": "design",
+          "label": "设计"
+        },
+        {
+          "value": "development",
+          "label": "开发"
+        },
+        {
+          "value": "test",
+          "label": "测试"
+        }
+      ]
+    },
+    {
+      "name": "showCompleted",
+      "type": "boolean",
+      "label": "显示已完成",
+      "defaultValue": true
+    },
+    {
+      "name": "limit",
+      "type": "number",
+      "label": "每列上限",
+      "defaultValue": 20.0
+    }
+  ]
+}

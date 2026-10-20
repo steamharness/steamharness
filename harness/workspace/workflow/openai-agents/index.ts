@@ -2,7 +2,7 @@ import {
   Agent,
   imageGenerationTool,
   Runner,
-  setDefaultOpenAIClient,
+  OpenAIProvider,
   setTraceProcessors,
   setTracingDisabled,
   shellTool,
@@ -499,7 +499,7 @@ async function runLiveAgent(
     onOutputChunk(chunk: unknown): Promise<void>;
   },
 ): Promise<OpenAIAgentsStreamResult> {
-  const apiKey = normalizeOptionalString(steamharness.getEnv("OPENAI_API_KEY")) ?? normalizeOptionalString(steamharness.getEnv("LLM_API_KEY"));
+  const apiKey = normalizeOptionalString(steamharness.getConfig<string>("OPENAI_API_KEY")) ?? normalizeOptionalString(steamharness.getConfig<string>("LLM_API_KEY"));
   if (apiKey === undefined && input.agentRunner === undefined) {
     throw new steamharness.HarnessError({
       type: "input_validation",
@@ -507,7 +507,7 @@ async function runLiveAgent(
       nodeName: "openai-agents-output",
     });
   }
-  const baseURL = normalizeOptionalString(steamharness.getEnv("OPENAI_BASE_URL")) ?? normalizeOptionalString(steamharness.getEnv("LLM_BASE_URL"));
+  const baseURL = normalizeOptionalString(steamharness.getConfig<string>("OPENAI_BASE_URL")) ?? normalizeOptionalString(steamharness.getConfig<string>("LLM_BASE_URL"));
   const shellWorkdir = input.localShell ? resolveAgentShellWorkdir(input.workdir) : input.workdir;
 
   const toolEvents: AgentToolCallSummary[] = [];
@@ -534,9 +534,7 @@ async function runLiveAgent(
     toolReporter,
   });
 
-  if (apiKey !== undefined) {
-    setDefaultOpenAIClient(new OpenAI({ apiKey, baseURL }));
-  }
+  const modelProvider = apiKey === undefined ? undefined : new OpenAIProvider({openAIClient:new OpenAI({apiKey,baseURL:baseURL??"https://api.openai.com/v1",organization:null,project:null})});
   const agent = new Agent<typeof sdkContext>({
     name: input.agentName,
     model: input.model,
@@ -571,6 +569,7 @@ async function runLiveAgent(
   });
 
   const result = await runAgent(input, {
+    modelProvider,
     agent,
     message: input.message,
     context: sdkContext,
@@ -1176,6 +1175,7 @@ function readApprovalValues(error: steamharness.HarnessError): Record<string, un
 async function runAgent(
   input: OpenAIAgentsRunInput,
   runnerInput: {
+    modelProvider?: OpenAIProvider;
     agent: Agent<any, any>;
     message: string;
     context: unknown;
@@ -1193,7 +1193,7 @@ async function runAgent(
     return result;
   }
 
-  const runner = new Runner({ tracingDisabled: true });
+  const runner = new Runner({ tracingDisabled: true, modelProvider: runnerInput.modelProvider });
   runner.on("agent_tool_start", (_context, _agent, toolValue, details) => {
     const fallbackName = isRecord(toolValue) && typeof toolValue.name === "string"
       ? toolValue.name

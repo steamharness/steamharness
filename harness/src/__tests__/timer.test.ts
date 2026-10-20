@@ -127,6 +127,7 @@ test("workflow structure recognizes timer node and endTimer API call", () => {
 function createTestProjectContext(timers: RunContext["timers"]): RunContext {
   const kv = createMemoryKVContext();
   return {
+    config: {},
     providers: {},
     storage: {
       local: { kv, persistentValue: kv, relatedProjects: createProjectRelatedProjectsContext() },

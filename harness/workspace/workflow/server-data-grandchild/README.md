@@ -15,3 +15,8 @@ pnpm exec steamharness json . --entrypoint get --related-project "parent=$PARENT
 ```
 
 运行服务器组前需要登录 Server，并确保三个 UUID 已绑定对应云端项目。对父项目的越级访问必须失败，这一行为由 workspace 层级访问测试维护。
+
+
+## Project configuration
+
+Declare fields in `configuration.json` and enter values in Project configurations (Studio or `steamharness web .`). Read them with `workflow.getConfig(key)` or `context.config`. Local CLI and Studio share values; project env files are not loaded.

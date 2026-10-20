@@ -1,0 +1,15 @@
+.project-configurations { width: min(760px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); color: var(--vscode-foreground); background: var(--vscode-editor-background); }
+.project-configurations .dialog-body { overflow-y: auto; min-height: 0; }
+.configuration-toolbar { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+.project-configurations button, .project-configurations select, .project-configurations input:not([type=checkbox]), .project-configurations textarea { border: 1px solid var(--vscode-panel-border); border-radius: 4px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); padding: 6px 10px; min-height: 32px; font: inherit; }
+.project-configurations button { cursor: pointer; background: var(--vscode-button-secondaryBackground); }
+.project-configurations button:disabled { opacity: .5; cursor: default; }
+.project-configurations button:focus-visible, .project-configurations input:focus-visible, .project-configurations textarea:focus-visible, .project-configurations select:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.configuration-toolbar select { flex: 1; min-width: 120px; }
+.configuration-fields { display: flex; flex-direction: column; gap: 16px; }
+.configuration-fields section { border-bottom: 1px solid var(--vscode-panel-border); padding-bottom: 16px; }
+.configuration-fields label { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+.configuration-fields > label { align-items: start; flex-direction: column; }
+.configuration-fields input:not([type=checkbox]), .configuration-fields textarea, .configuration-fields select { width: 100%; box-sizing: border-box; }
+.configuration-fields small { display: block; color: var(--vscode-descriptionForeground); margin: 6px 0; overflow-wrap: anywhere; }
+.configuration-fields button { margin-right: 6px; }

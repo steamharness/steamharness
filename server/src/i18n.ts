@@ -34,6 +34,8 @@ const STABLE_ERROR_MESSAGE_KEYS: Readonly<Record<string, string>> = Object.freez
   "Account is disabled.": "server:accountDisabled",
   "A user account is required.": "server:userAccountRequired",
   "Account login is required to accept invitations.": "server:invitationLoginRequired",
+  "Account login is required to use project configurations.": "server:projectConfigurationLoginRequired",
+  "Login is required to use project configurations.": "server:projectConfigurationLoginRequired",
   "Account login is required to use Kanban configurations.": "server:kanbanLoginRequired",
   "Login is required to use Kanban configurations.": "server:kanbanLoginRequired",
   "steamHarness.projectInfo must be an object.": "server:projectInfoObjectRequired",

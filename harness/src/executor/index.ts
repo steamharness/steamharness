@@ -29,7 +29,7 @@ import {
   type ProjectDataStorageLocation,
   type ProjectInfoContract,
 } from "@steamharness/project-info";
-import { loadProjectEnv } from "./env";
+import { createLocalProjectConfigurationStore, withProjectConfiguration, currentConfigurationValues, type ProjectConfigurationSnapshot, parseConfigurationDefinition, PROJECT_CONFIGURATION_FILE } from "../configuration";
 import {
   combineNodeExecutionHooks,
   createNodeExecutionReporter,
@@ -121,10 +121,8 @@ import {
   type ProjectKind,
 } from "../project-types";
 import {
-  KANBAN_MANIFEST_FILE,
   createKanbanArtifactEntryPath,
   createKanbanExecutionUnsupportedMessage,
-  parseKanbanManifestText,
   readKanbanArtifactConfig,
   readPackageProjectType,
 } from "@steamharness/kanban-project";
@@ -138,6 +136,7 @@ export interface RunWorkspaceProjectOptions {
   cwd?: string;
   projectName: string;
   args?: string[];
+  configuration?: ProjectConfigurationSnapshot;
   env?: NodeJS.ProcessEnv;
   providers?: ProviderRegistry;
   nodeHooks?: NodeExecutionHooks;
@@ -163,6 +162,7 @@ export interface RunLocalProjectOptions {
   projectDir?: string;
   projectName?: string;
   args?: string[];
+  configuration?: ProjectConfigurationSnapshot;
   env?: NodeJS.ProcessEnv;
   providers?: ProviderRegistry;
   nodeHooks?: NodeExecutionHooks;
@@ -224,7 +224,7 @@ export async function runWorkspaceProject(
   return report.result;
 }
 
-export async function runWorkspaceProjectWithReport(
+async function runWorkspaceProjectWithReportInternal(
   options: RunWorkspaceProjectOptions,
 ): Promise<ExecutionReport<unknown>> {
   const cwd = options.cwd ?? process.cwd();
@@ -288,7 +288,6 @@ export async function runWorkspaceProjectWithReport(
     }
 
     runtime.throwIfAborted();
-    loadProjectEnv(path.join(projectDir, ".env"));
     assertProjectStorageHostAvailable({
       declaration: projectStorageDeclaration,
       env,
@@ -318,7 +317,7 @@ export async function runWorkspaceProjectWithReport(
       entrypointTitle: selected.entrypointTitle,
       args,
       paramValues: parseProjectParamValues(execution.params, args),
-      env,
+      config: currentConfigurationValues(),
       abortSignal: runtime.abortSignal,
       hostInput: options.hostInput,
       conversationId: options.conversationId,
@@ -377,6 +376,7 @@ export async function runWorkspaceProjectWithReport(
     });
     const context: RunContext = {
       ...extraContext,
+      config: currentConfigurationValues(),
       providers: mergeProviderRegistries(extraContext.providers, options.providers),
       storage: executorStorage.storage,
       conversation,
@@ -439,7 +439,7 @@ export async function runWorkspaceProjectWithReport(
   });
 }
 
-export async function debugWorkspaceProjectNodeWithReport(
+async function debugWorkspaceProjectNodeWithReportInternal(
   options: RunWorkspaceProjectOptions & {
     nodeName: string;
   },
@@ -495,7 +495,6 @@ export async function debugWorkspaceProjectNodeWithReport(
     }
 
     runtime.throwIfAborted();
-    loadProjectEnv(path.join(projectDir, ".env"));
     assertProjectStorageHostAvailable({
       declaration: projectStorageDeclaration,
       env,
@@ -525,7 +524,7 @@ export async function debugWorkspaceProjectNodeWithReport(
       entrypointTitle: selected.entrypointTitle,
       args,
       paramValues: parseProjectParamValues(execution.params, args),
-      env,
+      config: currentConfigurationValues(),
       abortSignal: runtime.abortSignal,
       hostInput: options.hostInput,
       conversationId: options.conversationId,
@@ -586,6 +585,7 @@ export async function debugWorkspaceProjectNodeWithReport(
     });
     const context: RunContext = {
       ...extraContext,
+      config: currentConfigurationValues(),
       providers: mergeProviderRegistries(extraContext.providers, options.providers),
       storage: executorStorage.storage,
       conversation,
@@ -752,7 +752,7 @@ export async function runLocalProject(
   return report.result;
 }
 
-export async function runLocalProjectWithReport(
+async function runLocalProjectWithReportInternal(
   options: RunLocalProjectOptions = {},
 ): Promise<ExecutionReport<unknown>> {
   const projectDir = resolveLocalProjectDir(options.projectDir);
@@ -822,7 +822,6 @@ export async function runLocalProjectWithReport(
       });
     }
 
-    loadProjectEnv(path.join(projectDir, ".env"));
     assertProjectStorageHostAvailable({
       declaration: projectStorageDeclaration,
       env,
@@ -863,7 +862,7 @@ export async function runLocalProjectWithReport(
       entrypointTitle: selected.entrypointTitle,
       args,
       paramValues: parseProjectParamValues(execution.params, args),
-      env,
+      config: currentConfigurationValues(),
       abortSignal: abortController.signal,
       hostInput: options.hostInput,
       conversationId: options.conversationId,
@@ -926,6 +925,7 @@ export async function runLocalProjectWithReport(
     });
     const context: RunContext = {
       ...extraContext,
+      config: currentConfigurationValues(),
       providers: mergeProviderRegistries(extraContext.providers, options.providers),
       storage: executorStorage.storage,
       conversation,
@@ -1125,6 +1125,7 @@ export function inspectWorkspaceProjectStructure(options: {
     projectType,
     workflow: scriptInspection.workflow,
     definitions: scriptInspection.definitions,
+    configuration: readConfigurationDeclaration(projectDir),
     diagnostics: scriptInspection.diagnostics,
     ...(projectType === "workflow"
       ? {
@@ -1165,10 +1166,6 @@ export function inspectLocalProjectStructure(options: {
         metadata: { project: projectName, projectDir, artifact },
       });
     }
-    const manifestPath = path.join(projectDir, KANBAN_MANIFEST_FILE);
-    const manifest = existsSync(manifestPath)
-      ? parseKanbanManifestText(readFileSync(manifestPath, "utf8"))
-      : undefined;
     return {
       projectType: "kanban",
       workflow: {
@@ -1179,8 +1176,8 @@ export function inspectLocalProjectStructure(options: {
       definitions: { nodes: {}, apiCalls: [], variables: {}, registry: {} },
       execution: { kind: "sequence", children: [] },
       diagnostics: { warnings: [], violations: [] },
-      params: manifest?.params,
-      kanban: { ...artifact, manifest },
+      configuration: readConfigurationDeclaration(projectDir),
+      kanban: artifact,
     };
   }
 
@@ -1211,6 +1208,7 @@ export function inspectLocalProjectStructure(options: {
     projectType,
     workflow: scriptInspection.workflow,
     definitions: scriptInspection.definitions,
+    configuration: readConfigurationDeclaration(projectDir),
     diagnostics: scriptInspection.diagnostics,
     ...(projectType === "workflow"
       ? {
@@ -1231,6 +1229,11 @@ export function inspectLocalProjectStructure(options: {
   };
 }
 
+function readConfigurationDeclaration(projectDir: string) {
+  const file = path.join(projectDir, PROJECT_CONFIGURATION_FILE);
+  return existsSync(file) ? parseConfigurationDefinition(JSON.parse(readFileSync(file, "utf8"))) : { version: 1 as const, fields: [] };
+}
+
 function resolveInspectedProjectType(
   inspection: {
     projectType?: ExecutorProjectType;
@@ -1249,6 +1252,7 @@ export async function resolveWorkspaceProjectParams(options: {
   projectName: string;
   entrypointId?: string;
   request: ParamResolveRequest;
+  configuration?: ProjectConfigurationSnapshot;
   env?: NodeJS.ProcessEnv;
   abortSignal?: AbortSignal;
   hostInput?: unknown;
@@ -1265,6 +1269,7 @@ export async function resolveWorkspaceProjectParams(options: {
     storage: options.storage,
     entrypointId: options.entrypointId,
     request: options.request,
+    configuration: options.configuration,
     env: options.env,
     abortSignal: options.abortSignal,
     hostInput: options.hostInput,
@@ -1276,6 +1281,7 @@ export async function resolveLocalProjectParams(options: {
   projectName?: string;
   entrypointId?: string;
   request: ParamResolveRequest;
+  configuration?: ProjectConfigurationSnapshot;
   env?: NodeJS.ProcessEnv;
   abortSignal?: AbortSignal;
   hostInput?: unknown;
@@ -1293,13 +1299,14 @@ export async function resolveLocalProjectParams(options: {
     storage: options.storage,
     entrypointId: options.entrypointId,
     request: options.request,
+    configuration: options.configuration,
     env: options.env,
     abortSignal: options.abortSignal,
     hostInput: options.hostInput,
   });
 }
 
-async function resolveProjectParamsFromModule(options: {
+async function resolveProjectParamsFromModuleInternal(options: {
   projectName: string;
   projectDir: string;
   modulePath: string;
@@ -1307,13 +1314,13 @@ async function resolveProjectParamsFromModule(options: {
   storage?: ExecutionStorageOptions;
   entrypointId?: string;
   request: ParamResolveRequest;
+  configuration?: ProjectConfigurationSnapshot;
   env?: NodeJS.ProcessEnv;
   abortSignal?: AbortSignal;
   hostInput?: unknown;
 }): Promise<ParamResolveResult> {
   const abortSignal = options.abortSignal ?? new AbortController().signal;
   if (abortSignal.aborted) throw abortSignal.reason;
-  loadProjectEnv(path.join(options.projectDir, ".env"));
   assertProjectStorageHostAvailable({
     declaration: options.declaration,
     env: options.env,
@@ -1338,7 +1345,7 @@ async function resolveProjectParamsFromModule(options: {
     entrypointTitle: selected.entrypointTitle,
     args,
     paramValues: parseProjectParamValues(execution.params, args),
-    env: options.env ?? process.env,
+    config: currentConfigurationValues(),
     abortSignal,
     hostInput: options.hostInput,
     draftText: options.request.draftText,
@@ -1423,6 +1430,7 @@ function readInputConversationId(input: unknown): string | undefined {
 
 function createExecutorStorageContexts(options: {
   declaration: ProjectStorageDeclaration;
+  configuration?: ProjectConfigurationSnapshot;
   env?: NodeJS.ProcessEnv;
   projectName: string;
   runId?: string;
@@ -1466,6 +1474,7 @@ function createExecutorStorageLocationContext(options: {
   location: ProjectDataStorageLocation;
   declaration: ProjectStorageDeclaration;
   backend?: ExecutionStorageBackendOptions;
+  configuration?: ProjectConfigurationSnapshot;
   env?: NodeJS.ProcessEnv;
   projectName: string;
   runId?: string;
@@ -1665,6 +1674,7 @@ function resolveProjectExecutionHostLocation(
 
 function assertProjectStorageHostAvailable(options: {
   declaration: ProjectStorageDeclaration;
+  configuration?: ProjectConfigurationSnapshot;
   env?: NodeJS.ProcessEnv;
   projectName: string;
   options?: ExecutionStorageOptions;
@@ -2856,6 +2866,7 @@ function formatProjectStructureError(
 }
 
 function createExecutorFileStore(options: {
+  configuration?: ProjectConfigurationSnapshot;
   env?: NodeJS.ProcessEnv;
   projectName: string;
   conversationId?: string;
@@ -2952,4 +2963,27 @@ function throwIfRunLocalProjectAborted(signal: AbortSignal, projectName: string)
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export async function runWorkspaceProjectWithReport(options: Parameters<typeof runWorkspaceProjectWithReportInternal>[0]): ReturnType<typeof runWorkspaceProjectWithReportInternal> {
+  const runId = options.runId ?? createProjectRunId();
+  const snapshot = options.configuration ?? await (await createLocalProjectConfigurationStore(resolveProjectLocation(options.cwd ?? process.cwd(), options.projectName).projectDir)).snapshot({ runId });
+  return withProjectConfiguration(snapshot, () => runWorkspaceProjectWithReportInternal({ ...options, runId, configuration: snapshot }));
+}
+
+export async function debugWorkspaceProjectNodeWithReport(options: Parameters<typeof debugWorkspaceProjectNodeWithReportInternal>[0]): ReturnType<typeof debugWorkspaceProjectNodeWithReportInternal> {
+  const runId = options.runId ?? createProjectRunId();
+  const snapshot = options.configuration ?? await (await createLocalProjectConfigurationStore(resolveProjectLocation(options.cwd ?? process.cwd(), options.projectName).projectDir)).snapshot({ runId });
+  return withProjectConfiguration(snapshot, () => debugWorkspaceProjectNodeWithReportInternal({ ...options, runId, configuration: snapshot }));
+}
+
+export async function runLocalProjectWithReport(options: RunLocalProjectOptions = {}): ReturnType<typeof runLocalProjectWithReportInternal> {
+  const runId = options.runId ?? createProjectRunId();
+  const snapshot = options.configuration ?? await (await createLocalProjectConfigurationStore(resolveLocalProjectDir(options.projectDir))).snapshot({ runId });
+  return withProjectConfiguration(snapshot, () => runLocalProjectWithReportInternal({ ...options, runId, configuration: snapshot }));
+}
+
+async function resolveProjectParamsFromModule(options: Parameters<typeof resolveProjectParamsFromModuleInternal>[0]): Promise<ParamResolveResult> {
+  const snapshot = options.configuration ?? await (await createLocalProjectConfigurationStore(options.projectDir)).snapshot({ required: false });
+  return withProjectConfiguration(snapshot, () => resolveProjectParamsFromModuleInternal(options));
 }

@@ -1,0 +1,85 @@
+---
+title: "Project configurations"
+description: "Shared fields, named configurations, import/export and execution snapshots for all three project types."
+---
+
+# Project configurations
+
+Workflow, Conversation and Kanban share one configuration model. Open Project configurations from the Studio or CLI Web toolbar, or the configuration tab in Server Web project details. Projects without declared fields can still add custom fields.
+
+## Declare fields
+
+The project root `configuration.json` declares structure and safe defaults. Manage actual values in the panel:
+
+```json
+{
+  "version": 1,
+  "fields": [
+    { "name": "API_KEY", "type": "string", "secret": true, "required": true },
+    { "name": "retries", "type": "number", "defaultValue": 2 },
+    { "name": "enabled", "type": "boolean", "defaultValue": false },
+    { "name": "regions", "type": "string", "multiple": true, "options": [{ "value": "east" }, { "value": "west" }] },
+    { "name": "metadata", "type": "json", "defaultValue": { "tags": [] } }
+  ]
+}
+```
+
+Types are `string`, finite `number`, `boolean` and `json`. String fields support enum `options` and `multiple: true` for string arrays. Optional properties are `label`, `description`, `defaultValue`, `required`, `secret`, `control` and `options`. Defaults use native JSON types. Keep real sensitive values out of declarations. Configuration fields are separate from execution input parameters; file and positional controls are not configuration types. Upload files through the file API in the page.
+
+Keys start with a letter or underscore and then allow letters, digits, underscores, dots and hyphens, up to 200 characters. Keys must be unique. Custom field definitions belong to the whole project, while each profile stores its own values. Users and assistants can create, edit, rename and delete custom fields. Declarations remain managed by `configuration.json`; custom fields cannot override them. Renaming a custom key updates every profile. Deleting it clears that key from every profile.
+
+## Manage profiles
+
+Create, copy, rename, select and delete named profiles. At least one profile must remain. Uncheck Set value to clear an override and use the declared default when present. Incomplete required fields may be saved; execution validates them. New declared fields use defaults, and removed fields no longer reach the runtime.
+
+Writes check `revision` and commit atomically. Changes from another window or the assistant update committed state. Unsaved drafts keep their original version and content, with a conflict message. Refresh and discard the draft before editing again. Failed requests do not partially write data.
+
+Studio, standalone CLI and CLI Web share local user storage, isolated by the canonical real project path. Server storage is isolated by project and signed-in account. Accounts with project read access manage their own profiles. Values stay outside source files, source downloads and immutable source versions. Transfer configurations between local and Server storage with import/export.
+
+## Import and export
+
+Export the current profile or all profiles as JSON with `version: 1` and `kind: "steamharness-project-configurations"`. The file includes field definitions and complete effective values, including sensitive values. Profiles contain names and values, without original IDs.
+
+Import adds profiles with new IDs and preserves the active selection. Missing fields become custom fields. Conflicting types, multiple flags or options, undeclared value keys, invalid JSON/types and requests above 1 MiB reject the entire batch. No partial fields or profiles are written. Store exported sensitive values carefully.
+
+## Runtime access
+
+```ts
+const token = steamharness.getConfig<string>("API_KEY");
+const task = steamharness.defineProject({
+  name: "configured-task",
+  async run(input, context) {
+    return { errCode: 0, errMessage: "", enabled: context.config.enabled };
+  },
+});
+```
+
+The SDK exposes `ProjectConfigurationSnapshot`, `context.config` and `steamharness.getConfig(key)`. Parameter resolvers, executors, nodes and agents share an immutable execution scope. Configuration never enters global `process.env`. Outside an execution scope, `getConfig` returns `undefined`. Direct SDK callers may supply an explicit `configuration` snapshot or use `createLocalProjectConfigurationStore(projectDir)`.
+
+- Workflow freezes configuration at execution start and reuses it when resuming a waiting task.
+- Conversation uses current configuration on the next turn. Durable agents reload after their current tasks, queued inputs and approvals finish, preserving history, branches and recovery state.
+- Saving Kanban configuration updates both the main page and resource previews. HTML reads native values from `window.steamHarnessKanban.getConfiguration().params` and listens for `steamharness:kanban-configuration-change`. Previews with an explicit profile ID keep that reference; deleting the profile makes it unavailable.
+
+Business configuration does not load `.env`, use `.env.example`, or fall back to process variables. Existing project env and old Kanban profiles are not migrated. Enter values again in the panel. Server deployment, CI and internal Studio transport variables remain host managed.
+
+## CLI and assistant tools
+
+Use the same local storage without a UI through JSON input/output:
+
+```sh
+printf '%s' '{"action":"get"}' | steamharness configuration ./my-project
+```
+
+Studio Control exposes `get_configurations`, `manage_configurations` and `open_configurations`. Each tool accepts an `input` JSON string. Local requests specify `storage: "local"` and `projectDir`. Server requests specify `storage: "server"`, `projectId` and `target` (`draft`, `latest`, or a version). The panel can be closed.
+
+```json
+{
+  "storage": "local",
+  "projectDir": "/projects/my-project",
+  "call": { "action": "save", "revision": 3, "id": "profile-id", "values": { "enabled": true }, "unset": ["API_KEY"] }
+}
+```
+
+Queries return fields, profiles, active ID and revision. Management actions are `create`, `duplicate`, `rename`, `save`, `select`, `delete`, `field.save`, `field.delete` and `import`. Query with `export: true` to export all profiles, optionally specifying `id` for one profile. Every mutation requires the queried revision; profile value operations also specify the ID. Read-only mode rejects management, and Studio retains its existing directory/project permission policy. Preserve proposed values, query again and reconcile conflicts before retrying.
+
+Read Server configuration with `GET /api/projects/:id/configurations?target=draft`. Submit `{ "target": "draft", "call": { ... } }` to `POST /api/projects/:id/configurations`. Success uses the standard `errCode: 0` envelope. Conflicts return HTTP 409 and `data.code: "CONFIGURATION_CONFLICT"`. Server stores static definitions and values without executing project code.

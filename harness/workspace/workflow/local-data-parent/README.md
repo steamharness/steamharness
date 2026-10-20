@@ -16,3 +16,8 @@ pnpm exec steamharness json . --entrypoint get --related-project "child=$CHILD_D
 ```
 
 父项目没有声明孙项目，关联 KV 权限不会通过子项目递归传递。
+
+
+## Project configuration
+
+Declare fields in `configuration.json` and enter values in Project configurations (Studio or `steamharness web .`). Read them with `workflow.getConfig(key)` or `context.config`. Local CLI and Studio share values; project env files are not loaded.

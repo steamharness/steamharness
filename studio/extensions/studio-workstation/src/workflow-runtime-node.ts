@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 import * as path from 'node:path';
 import { realpath } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
-import { inspectProjectCli, resolveProjectCli, startProjectCli, type StudioControlConfiguration } from './workflow-cli-process';
+import { inspectProjectCli, resolveProjectCli, startProjectCli, requestProjectCliConfiguration, type StudioControlConfiguration } from './workflow-cli-process';
 import type { Launcher, WebSession } from './workflow-cli-types';
 import type { AccountController } from './workflow-auth';
 import { prepareAssistantApplication, prepareStudioControlApplication, prepareAnalysisApplication, ANALYSIS_PROJECT_ID } from './assistant-application';
@@ -25,6 +25,25 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
   const sessions = new Set<WebSession>();
   const controller = new AbortController();
   const executable = (): string => vscode.workspace.getConfiguration('studio').get<string>('project.nodePath') || process.execPath;
+  const configurationService = {
+    configuration: async (input: Record<string,unknown>, signal: AbortSignal): Promise<unknown> => {
+      assertAvailable();
+      if(input.storage==='local') {
+        if(input.open) { await vscode.commands.executeCommand('studio.openProjectConfigurations',input.projectDir); return {opened:true,storage:'local',projectDir:input.projectDir}; }
+        return requestProjectCliConfiguration(String(input.projectDir),executable(),input.call as Record<string,unknown>,signal);
+      }
+      const connection=account.getConnection();if(!connection)throw new Error(t('Sign in to SteamHarness Server first.'));
+      if(input.open) { await vscode.env.openExternal(vscode.Uri.parse(`${connection.serverUrl}/detail/${encodeURIComponent(String(input.projectId))}/configurations`)); return {opened:true,storage:'server',projectId:input.projectId}; }
+      const call=input.call as Record<string,unknown>;
+      const address=`${connection.serverUrl}/api/projects/${encodeURIComponent(String(input.projectId))}/configurations`;
+      const response=await fetch(call.action==='get'?`${address}?target=${encodeURIComponent(String(input.target??'draft'))}`:address,{
+        method:call.action==='get'?'GET':'POST',headers:{Authorization:`Bearer ${connection.accessToken}`,'Content-Type':'application/json'},
+        ...(call.action==='get'?{}:{body:JSON.stringify({call,target:input.target??'draft'})}),signal:AbortSignal.any([signal,AbortSignal.timeout(30_000)]),redirect:'error'});
+      const result=await response.json() as {errCode:number;errMessage:string;data:unknown};
+      if(!response.ok||result.errCode!==0)throw Object.assign(new Error(result.errMessage||t('Configuration request failed.')),{code:(result.data as {code?:string}|undefined)?.code});
+      return result.data;
+    },
+  };
   const templates = projectTemplatesRuntime(context.extensionUri.fsPath, vscode.env.language);
   let assistantApplication: Promise<string> | undefined;
   const assistantDirectory = (): Promise<string> => {
@@ -202,7 +221,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
         let studioControl: StudioControlConfiguration | undefined;
         if (project.assistant) {
           const directory = await studioControlDirectory();
-          bridge = await startStudioControlBridge(createStudioControlHandler(project.assistant, runSignal, context), runSignal);
+          bridge = await startStudioControlBridge(createStudioControlHandler(project.assistant, runSignal, context, configurationService), runSignal);
           studioControl = { url: bridge.url, token: bridge.token, mcpServer: JSON.stringify({
             id: 'workflow-studio', command: [executable(), (await resolveProjectCli(directory)).entry, 'mcp', directory,
               '--data-dir', path.join(context.globalStorageUri.fsPath, 'workflow', 'studio-control', 'data')],
@@ -217,7 +236,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
             .map(folder => ({ uri: folder.uri.toString(), folderPath: folder.uri.fsPath, name: folder.name }));
           const scope = { workdir: project.folderPath, roots };
           if (!studioControlWorkspaceAvailable(scope, roots)) { throw new Error(t('Studio Control workspace is no longer available.')); }
-          bridge = await startStudioControlBridge(createStudioControlHandler(scope, runSignal, context), runSignal);
+          bridge = await startStudioControlBridge(createStudioControlHandler(scope, runSignal, context, configurationService), runSignal);
           studioControl = { url: bridge.url, token: bridge.token };
         }
         const session = await startProjectCli({ projectDir: project.folderPath, nodePath: executable(),

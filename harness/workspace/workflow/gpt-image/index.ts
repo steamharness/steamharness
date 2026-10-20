@@ -327,8 +327,8 @@ export const executor = steamharness.defineExecutor<GptImageInput, GptImageOutpu
   createInput({ args }) {
     return parseInput(args);
   },
-  createContext({ env }) {
-    const imageRunner = createEnvImageRunner(env);
+  createContext({ config }) {
+    const imageRunner = createConfigurationImageRunner(config as Record<string, string | undefined>);
 
     return imageRunner === undefined
       ? {}
@@ -360,8 +360,8 @@ async function runGptImage(
     background: input.background,
     inputFidelity: input.inputFidelity,
     moderation: input.moderation,
-    apiKey: readOptionalEnv("OPENAI_API_KEY", "LLM_API_KEY"),
-    baseURL: readOptionalEnv("OPENAI_BASE_URL", "LLM_BASE_URL"),
+    apiKey: readOptionalConfig("OPENAI_API_KEY", "LLM_API_KEY"),
+    baseURL: readOptionalConfig("OPENAI_BASE_URL", "LLM_BASE_URL"),
   });
 
   if (result.b64Json.trim() === "") {
@@ -384,7 +384,7 @@ function createOpenAIImageRunner(): GptImageRunner {
     if (apiKey === undefined) {
       throw new steamharness.HarnessError({
         type: "input_validation",
-        message: "Missing required environment variable: OPENAI_API_KEY.",
+        message: "Missing required configuration: OPENAI_API_KEY.",
         nodeName: "gpt-image-output",
         metadata: {
           aliases: ["LLM_API_KEY"],
@@ -395,7 +395,9 @@ function createOpenAIImageRunner(): GptImageRunner {
     const { default: OpenAI, toFile } = await import("openai");
     const client = new OpenAI({
       apiKey,
-      baseURL: input.baseURL,
+      baseURL: input.baseURL ?? "https://api.openai.com/v1",
+      organization: null,
+      project: null,
     });
     const baseParams = createImageParams(input);
     const response = input.mode === "edit"
@@ -439,17 +441,17 @@ function readContextImageRunner(context: {
   return typeof runner === "function" ? runner as GptImageRunner : undefined;
 }
 
-function createEnvImageRunner(env: NodeJS.ProcessEnv): GptImageRunner | undefined {
-  if (env.GPT_IMAGE_MOCK !== "1") {
+function createConfigurationImageRunner(config: Record<string, string | undefined>): GptImageRunner | undefined {
+  if (config.GPT_IMAGE_MOCK !== "1") {
     return undefined;
   }
 
   return async (input) => {
     // keeps this external-service sample in the default offline
-    // workspace suite; real image calls stay opt-in through normal env keys.
-    if (env.GPT_IMAGE_MOCK_TRACE_FILE !== undefined) {
+    // workspace suite; real image calls stay opt-in through project configuration fields.
+    if (config.GPT_IMAGE_MOCK_TRACE_FILE !== undefined) {
       const { appendFile } = await import("node:fs/promises");
-      await appendFile(env.GPT_IMAGE_MOCK_TRACE_FILE, `${JSON.stringify({
+      await appendFile(config.GPT_IMAGE_MOCK_TRACE_FILE, `${JSON.stringify({
         mode: input.mode,
         prompt: input.prompt,
         imageIds: input.images.map((file) => file.id),
@@ -457,9 +459,9 @@ function createEnvImageRunner(env: NodeJS.ProcessEnv): GptImageRunner | undefine
     }
 
     return {
-      b64Json: env.GPT_IMAGE_MOCK_B64 ?? "Z3B0LWltYWdlLWZpeHR1cmU=",
-      mimeType: env.GPT_IMAGE_MOCK_MIME_TYPE ?? `image/${input.outputFormat}`,
-      revisedPrompt: env.GPT_IMAGE_MOCK_REVISED_PROMPT ?? input.prompt,
+      b64Json: config.GPT_IMAGE_MOCK_B64 ?? "Z3B0LWltYWdlLWZpeHR1cmU=",
+      mimeType: config.GPT_IMAGE_MOCK_MIME_TYPE ?? `image/${input.outputFormat}`,
+      revisedPrompt: config.GPT_IMAGE_MOCK_REVISED_PROMPT ?? input.prompt,
     };
   };
 }
@@ -847,9 +849,9 @@ function requireOutput<Output>(output: Output | undefined): Output {
   return output;
 }
 
-function readOptionalEnv(...keys: string[]): string | undefined {
+function readOptionalConfig(...keys: string[]): string | undefined {
   for (const key of keys) {
-    const value = steamharness.getEnv(key);
+    const value = steamharness.getConfig<string>(key);
     if (value !== undefined && value.trim() !== "") {
       return value;
     }

@@ -1,3 +1,4 @@
+import { ProjectConfigurationsTab } from "./detail/ProjectConfigurationsTab";
 
 import { BookOpenText, CircleAlert, Database, LayoutDashboard, Link2, Mail, Package, Settings2, Users, type LucideIcon } from "lucide-react";
 import type { DetailTab } from "../state";
@@ -27,6 +28,7 @@ export const DETAIL_NAV_GROUPS: Array<{
 }> = [
   { id: "project", label: "projectSettingsProjectInfo", items: [
     { tab: "project", label: "detailNavOverview", icon: LayoutDashboard },
+    { tab: "configurations", label: "projectConfigurations", icon: Settings2 },
     { tab: "settings", label: "detailNavSettings", icon: Settings2 },
     { tab: "dependencies", label: "detailNavRelatedProjects", icon: Link2 },
     { tab: "versions", label: "detailNavVersions", icon: Package },
@@ -80,6 +82,7 @@ export function DetailPage(props: DetailPageProps) {
           />
         ) : null}
         {activeTab === "project" && <ProjectOverviewTab {...props} />}
+        {activeTab === "configurations" && <ProjectConfigurationsTab key={props.project.id} project={props.project} />}
         {activeTab === "settings" && <ProjectSettingsTab {...props} />}
         {activeTab === "members" && <ProjectMembersTab {...props} />}
         {activeTab === "invitations" && <ProjectInvitationsTab key={props.project.id} {...props} />}

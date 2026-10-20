@@ -434,6 +434,7 @@ function createNodeContext(
   llm?: LLMProvider,
 ): NodeContext {
   return {
+    config: {},
     providers: llm === undefined ? {} : { llm },
     storage: {
       local: { kv, persistentValue: kv, relatedProjects: createProjectRelatedProjectsContext() },

@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "fields": [
+    {
+      "name": "ANTHROPIC_API_KEY",
+      "type": "string",
+      "secret": true
+    },
+    {
+      "name": "ANTHROPIC_BASE_URL",
+      "type": "string"
+    },
+    {
+      "name": "ANTHROPIC_MODEL",
+      "type": "string"
+    }
+  ]
+}

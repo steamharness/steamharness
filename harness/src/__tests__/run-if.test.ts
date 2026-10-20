@@ -136,6 +136,7 @@ function createTestProjectContext(options: {
   const kv = createMemoryKVContext();
 
   return {
+    config: {},
     providers: {},
     storage: {
       local: { kv, persistentValue: createMemoryKVContext(), relatedProjects: createProjectRelatedProjectsContext() },

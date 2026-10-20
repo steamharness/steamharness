@@ -5,7 +5,7 @@ import type {
 } from "./interface";
 
 const llmProvider = steamharness.createLLMProviderRef("default", () => {
-  return steamharness.createLLMProviderFromEnv();
+  return steamharness.createLLMProviderFromConfig();
 });
 const CLASSIFICATION_RESULT_ITEM_ID = "classification-result";
 

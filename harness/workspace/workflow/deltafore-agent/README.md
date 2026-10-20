@@ -11,7 +11,7 @@ Default endpoints:
 - API base URL: `http://hookcode.win:7222`
 - Swagger UI reference: `http://hookcode.win:7223`
 
-You can override the live service with:
+Use Project configurations to set `LLM_TYPE`, `LLM_API_KEY`, `LLM_BASE_URL` and `LLM_MODEL`. You can override the live service with these configuration fields:
 
 - `DELTAFORE_OPENAPI_URL`
 - `DELTAFORE_API_BASE_URL`
@@ -63,10 +63,9 @@ Tool results separate UI preview from reasoning evidence. `preview` is only a sm
 
 ## Run
 
-Create `.env` with an LLM provider:
+Enter API keys and other business values in Project configurations; no project env file is loaded.
 
 ```bash
-cp ../hello/.env.example .env
 ```
 
 Inspect structure:
@@ -96,3 +95,8 @@ steamharness json . --conversation-id deltafore-agent-demo -- --message "继续�
 
 Conversation 模式下，默认 composer 固定映射到 `--message`；旧的 positional
 文本和 `--query` 仍保留 CLI 兼容。
+
+
+## Project configuration
+
+Declare fields in `configuration.json` and enter values in Project configurations (Studio or `steamharness web .`). Read them with `workflow.getConfig(key)` or `context.config`. Local CLI and Studio share values; project env files are not loaded.

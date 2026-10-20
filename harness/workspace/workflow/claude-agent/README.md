@@ -10,11 +10,9 @@ conversation state.
 ```bash
 cd workspace/workflow/claude-agent
 pnpm install
-cp .env.example .env
 ```
 
-Set `ANTHROPIC_API_KEY` in `.env` for local CLI runs. App and server runs should
-set the same key through the saved workflow environment values for that target.
+Set `ANTHROPIC_API_KEY` in Project configurations before running.
 
 Optional environment values (also settable per-run via flags):
 
@@ -113,3 +111,8 @@ because it starts an external Claude Code process and requires
 `ANTHROPIC_API_KEY`. `pnpm test:workspace` still verifies the smoke fixture,
 structure snapshot, executor params, conversation metadata, and token usage
 metadata. Live SDK behavior should be checked with the opt-in commands above.
+
+
+## Project configuration
+
+Declare fields in `configuration.json` and enter values in Project configurations (Studio or `steamharness web .`). Read them with `workflow.getConfig(key)` or `context.config`. Local CLI and Studio share values; project env files are not loaded.

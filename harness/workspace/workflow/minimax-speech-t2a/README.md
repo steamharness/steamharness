@@ -20,7 +20,6 @@ may use `contentType: "audio"`.
 ## Environment
 
 ```bash
-cp .env.example .env
 ```
 
 - `MINIMAX_API_KEY`: required only for live MiniMax calls.
@@ -92,3 +91,8 @@ The visible output item is:
 The first version intentionally uses a data URL instead of
 `context.files.createFile(...)` so local CLI/App runs do not require server file
 storage.
+
+
+## Project configuration
+
+Declare fields in `configuration.json` and enter values in Project configurations (Studio or `steamharness web .`). Read them with `workflow.getConfig(key)` or `context.config`. Local CLI and Studio share values; project env files are not loaded.

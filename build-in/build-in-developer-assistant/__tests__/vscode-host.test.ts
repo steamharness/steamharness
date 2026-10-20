@@ -21,11 +21,12 @@ async function loadHost(environment: Record<string, string> = {}, connection?: M
   let options: AgentProjectOptions = {};
   const connect = vi.fn(runtime.connectMcpServer);
   if (connection) connect.mockResolvedValue(connection);
-  const getEnv = vi.fn((name: string) => environment[name]);
+  for(const [key,value] of Object.entries(environment)) vi.stubEnv(key,value);
+  const getConfig = vi.fn((name: string) => environment[name]);
   const approve = vi.fn(async () => ({ approved: true }));
   globalThis.steamharness = {
     ...runtime,
-    getEnv,
+    getConfig: getConfig as typeof runtime.getConfig,
     connectMcpServer: connect,
     createToolApprovalGate: () => ({ ...runtime.createToolApprovalGate(), approve }),
     createAgentConversationProject: (value: AgentProjectOptions = {}) => {
@@ -34,7 +35,7 @@ async function loadHost(environment: Record<string, string> = {}, connection?: M
     },
   };
   const module = await import("../index");
-  return { module, options, connect, approve, getEnv };
+  return { module, options, connect, approve, getConfig };
 }
 
 describe("VS Code assistant host", () => {
@@ -118,7 +119,7 @@ describe("VS Code assistant host", () => {
       "workflow-memory_global_memory", "workflow-ui_present_card", "skill",
     ]);
     expect(host.connect).not.toHaveBeenCalled();
-    expect(host.getEnv.mock.calls.every(([name]) => !name.startsWith("STEAMHARNESS_DESKTOP_CONTROL"))).toBe(true);
+    expect(host.getConfig.mock.calls.every(([name]) => !name.startsWith("STEAMHARNESS_DESKTOP_CONTROL"))).toBe(true);
     expect(tools.close).toBeUndefined();
     const skill = tools.tools.find((tool) => tool.name === "skill")!;
     const result = await skill.execute("list", { action: "list" });

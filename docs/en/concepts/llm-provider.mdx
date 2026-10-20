@@ -1,30 +1,30 @@
 ---
 title: "LLM Provider"
-description: "Declare an owned LLM provider, its environment variables, and its workflow nodes."
+description: "Declare an owned LLM provider, its project configuration fields, and its workflow nodes."
 ---
 
 # LLM Provider
 
-LLM capability is injected into a workflow through one provider interface. Public workflows use their own provider configuration and API key; the Server does not store or proxy third-party model credentials for a workflow.
+LLM capability is injected into a workflow through one provider interface. Public workflows use their own provider configuration and API key; the Server does not store or proxy third-party model credentials for a steamharness.
 
 ## Create a provider ref
 
 Create a provider ref so that nodes resolve configuration when they run:
 
 ```ts
-const llmProvider = workflow.createLLMProviderRef("default", () => {
-  return workflow.createLLMProviderFromEnv();
+const llmProvider = steamharness.createLLMProviderRef("default", () => {
+  return steamharness.createLLMProviderFromConfig();
 });
 ```
 
-The node resolves the provider at runtime instead of reading environment variables while the module is loading.
+The node resolves the provider at runtime instead of reading business configuration while the module is loading.
 
 ## LLM nodes
 
 Non-streaming node:
 
 ```ts
-const llmNode = workflow.createLLMNode<Input>({
+const llmNode = steamharness.createLLMNode<Input>({
   name: "answer-llm",
   provider: llmProvider,
   mapInput(input) {
@@ -40,7 +40,7 @@ const llmNode = workflow.createLLMNode<Input>({
 Streaming nodes use the same provider:
 
 ```ts
-const llmStreamNode = workflow.createLLMStreamNode<Input>({
+const llmStreamNode = steamharness.createLLMStreamNode<Input>({
   name: "answer-stream",
   provider: llmProvider,
   mapInput(input) {
@@ -49,18 +49,18 @@ const llmStreamNode = workflow.createLLMStreamNode<Input>({
 });
 ```
 
-## Project environment variables
+## Project configuration fields
 
-`workflow.createLLMProviderFromEnv()` reads:
+`steamharness.createLLMProviderFromConfig()` reads:
 
 - `LLM_TYPE`
 - `LLM_API_KEY`
 - `LLM_BASE_URL`
 - `LLM_MODEL`
 
-The values come from the project `.env` and the host process environment, with existing process variables taking precedence. `LLM_BASE_URL` must be an HTTP(S) URL without credentials, query parameters, or a fragment.
+Declare these fields in `configuration.json` and enter their values in Project configurations. Values come from the immutable run snapshot and never fall back to `.env` or process variables. `LLM_BASE_URL` must be an HTTP(S) URL without credentials, query parameters, or a fragment.
 
-Third-party services can use their own environment variables with `workflow.getEnv()`, but they cannot read host account credentials or system service configuration.
+Third-party services use their own fields through `steamharness.getConfig()`. Host account credentials and transport settings remain host managed.
 
 ## Provider types and errors
 

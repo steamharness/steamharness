@@ -15,8 +15,8 @@ test("inspects a Kanban project without an executor", async () => {
     const report = inspectLocalProjectStructure({ projectDir: projectDir });
     assert.equal(report.projectType, "kanban");
     assert.equal(report.kanban?.entry, "index.html");
-    assert.deepEqual(report.params, [{ name: "title", type: "string", defaultValue: "Roadmap" }]);
-    assert.deepEqual(report.workflow.files, ["index.html", "kanban.json", "package.json"]);
+    assert.deepEqual(report.configuration?.fields, [{ name: "title", type: "string", defaultValue: "Roadmap" }]);
+    assert.deepEqual(report.workflow.files, ["configuration.json", "index.html", "package.json"]);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -65,7 +65,6 @@ test("inspects a Kanban project from a configured artifact directory", async () 
     assert.deepEqual(report.kanban, {
       artifactDir: "dist",
       entry: "pages/board.html",
-      manifest: undefined,
     });
     assert.ok(report.workflow.files.includes("dist/pages/board.html"));
   } finally {
@@ -151,9 +150,9 @@ async function createKanbanFixture(): Promise<string> {
         },
     })),
     writeFile(path.join(projectDir, "index.html"), "<!doctype html><title>Kanban</title>"),
-    writeFile(path.join(projectDir, "kanban.json"), JSON.stringify({
+    writeFile(path.join(projectDir, "configuration.json"), JSON.stringify({
       version: 1,
-      params: [{ name: "title", type: "string", defaultValue: "Roadmap" }],
+      fields: [{ name: "title", type: "string", defaultValue: "Roadmap" }],
     })),
   ]);
   return projectDir;

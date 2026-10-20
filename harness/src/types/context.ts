@@ -107,6 +107,7 @@ export interface StorageContext {
 }
 
 export interface NodeContext {
+  config: import("../configuration").ConfigurationValues;
   providers: ProviderRegistry;
   storage: StorageContext;
   conversation: ConversationContext;

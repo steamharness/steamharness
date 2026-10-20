@@ -113,3 +113,7 @@ npm run dev
 `setup` 默认跳过 Foundry Local / ONNX 原生运行库的 NuGet 下载。这项运行库仅用于上游聊天的本地语音听写；Studio 的编辑器和 Workflow 功能不依赖它，其它原生依赖仍正常安装。需要该语音功能时，将 `FOUNDRY_LOCAL_SKIP_INSTALL` 设为 `0` 后重新运行 `npm run setup`，并确保 SDK 使用的 NuGet 下载源可访问。
 
 浏览器工作站使用 `npm run dev:web`。当前文档提供源码运行入口；安装包和发布通道后续单独配置。
+
+## 项目配置
+
+三种项目类型均支持字段、命名配置及完整导入导出。Studio 与本地 CLI 共用本地存储，Server 按项目和账号隔离。面板关闭时 Studio Control 仍能查询和管理配置。JSON 操作、版本检查和运行快照规则见[项目配置](/concepts/project-configuration)。

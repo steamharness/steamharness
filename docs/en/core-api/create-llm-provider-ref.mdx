@@ -5,12 +5,12 @@ description: "Creates a deferred-resolved LLM provider reference."
 
 # createLLMProviderRef
 
-`workflow.createLLMProviderRef()` Creates a provider reference object. When the LLM node is executed, the actual provider is resolved by the `getLLMProvider` node name, provider id, binding table, and fallback.
+`steamharness.createLLMProviderRef()` Creates a provider reference object. When the LLM node is executed, the actual provider is resolved by the `getLLMProvider` node name, provider id, binding table, and fallback.
 
 ## Signature
 
 ```ts
-workflow.createLLMProviderRef(
+steamharness.createLLMProviderRef(
   id: string,
   fallback?: LLMProviderSource,
 ): LLMProviderRef
@@ -52,11 +52,11 @@ workflow.createLLMProviderRef(
 ## Example
 
 ```ts
-const defaultProvider = workflow.createLLMProviderRef("default", () => {
-  return workflow.createLLMProviderFromEnv();
+const defaultProvider = steamharness.createLLMProviderRef("default", () => {
+  return steamharness.createLLMProviderFromConfig();
 });
 
-const llmNode = workflow.createLLMNode({
+const llmNode = steamharness.createLLMNode({
   provider: defaultProvider,
   mapInput(input) {
     return { prompt: input.message };
@@ -68,6 +68,6 @@ const llmNode = workflow.createLLMNode({
 
 |Scene|Method|
 | --- | --- |
-|Local Default provider| `createLLMProviderRef("default", () => workflow.createLLMProviderFromEnv())` |
+|Local Default provider| `createLLMProviderRef("default", () => steamharness.createLLMProviderFromConfig())` |
 |server per-node binding model|Use the node name to configure in `llmProviderBindings`.|
 |Multi-provider switching|Pass a different provider id, or use resolver.|

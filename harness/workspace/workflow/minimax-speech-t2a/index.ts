@@ -20,7 +20,7 @@ export const minimaxSpeechT2aProject = steamharness.defineProject<MinimaxSpeechI
       ...context,
       metadata: {
         ...context.metadata,
-        minimaxApiKey: steamharness.getEnv("MINIMAX_API_KEY"),
+        minimaxApiKey: steamharness.getConfig<string>("MINIMAX_API_KEY"),
       },
     });
     return steamharness.runNode(outputNode, synthesized, context);

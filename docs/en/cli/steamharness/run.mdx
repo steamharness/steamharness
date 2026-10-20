@@ -45,7 +45,7 @@ File parameters accept a local path or JSON file reference. A parameter declared
 |Load Environment|Execute before loading workflow directory `.env`.|
 |Select entrance|Workflow Press `--entrypoint` or `defaultEntrypoint` to select the execution configuration;Conversation uses executor itself.|
 |Create Input|Invokes the `createInput(context)` of the selected entry or Conversation executor.|
-|Execute workflow|Only `workflow.run(input, context)` of the selected configuration is called, and the normal node will trigger CLI output hooks.|
+|Execute workflow|Only `steamharness.run(input, context)` of the selected configuration is called, and the normal node will trigger CLI output hooks.|
 |Set Exit Code|The exit code is `1` if workflow fails, pauses waiting for input, or payload `errCode` is not `0`.|
 
 ## Output
@@ -84,3 +84,7 @@ steamharness run . --json -- --message "debug"
 | workflow calls PersistentValue or a Knowledge helper | Pass `context.storage.local` or `.server` explicitly. Local uses `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR`; server uses the project UUID and `STEAMHARNESS_SERVER_URL` / `STEAMHARNESS_SERVER_ADMIN_KEY` or workspace login. A forbidden or unavailable location fails without fallback or synchronization. |
 | workflow accesses related-project KV | Repeat `--related-project` for every direct relationship. CLI validates the directory, UUID, alias, and both current declarations. A one-sided pending relationship is unavailable, and resolution never recurses through the target's other relationships. |
 |workflow call `context.files.createFile(...)`|The local operation reads the connection to the same server and uploads it to the server file API. If the server is not connected, the call will report an error and will not be written to the local file store.|
+
+## Project configurations
+
+All three project types expose fields, named profiles and complete import/export. Studio and local CLI share local storage; Server values are per project and account. Studio Control can query and manage configurations even when the panel is closed. See [Project configurations](/en/concepts/project-configuration) for the JSON actions, version checks and execution snapshot rules.

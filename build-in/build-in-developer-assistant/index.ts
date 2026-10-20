@@ -1,3 +1,4 @@
+const readHostEnvironment = (key: string) => process.env[key];
 import path from "node:path";
 import type {
   AgentInput,
@@ -5,7 +6,7 @@ import type {
   AgentToolSet,
 } from "steamharness";
 import { createDeveloperAssistantSystemPrompt, type DeveloperAssistantHost } from "./assistant-prompt";
-import { workflow } from "./workflow-runtime";
+import { steamharness } from "./workflow-runtime";
 import { loadDeveloperAssistantWorkspaceManifest } from "./workspace-manifest";
 import { createStudioControlTools } from "./studio-control-mcp";
 import type {
@@ -32,10 +33,10 @@ const toolApproval = steamharness.createToolApprovalGate();
  * at, the persona that workspace implies, and the capabilities Studio offers.
  */
 const assistantProject = steamharness.createAgentConversationProject({
-  projectName: STEAMHARNESS_NAME,
+  executorName: STEAMHARNESS_NAME,
   outputItemId: OUTPUT_ITEM_ID,
   session: { subagents: { tools: ["read", "grep", "find", "ls"], maxAgents: 4 }, planFork: "asOf", toolSearch: {},
-    codeMode: steamharness.getEnv("STEAMHARNESS_DEVELOPER_ASSISTANT_CODE_MODE") === "true" ? {} : undefined },
+    codeMode: steamharness.getConfig("STEAMHARNESS_DEVELOPER_ASSISTANT_CODE_MODE") === true ? {} : undefined },
   async createTools(context): Promise<AgentToolSet> {
     readAssistantHost();
     const approve = async (toolId: string, args: unknown): Promise<void> => {
@@ -102,6 +103,9 @@ export const executor = steamharness.defineExecutor<AgentInput, AgentOutputPaylo
     { name: "codemode", label: "Code Mode", description: "Compose authorized tools in an isolated QuickJS script when enabled by the host.", enabled: true, autoApprove: true },
     { name: "update_plan", label: "Task plan", description: "Save task steps and progress in this conversation.", enabled: true, autoApprove: true },
     { name: "subagent", label: "Delegate task", description: "Delegate a task with the project's restricted read-only tools.", enabled: true, autoApprove: true },
+    { name: "workflow-studio_get_configurations", label: "Project configurations", description: "Query or export local/Server project configurations with the panel closed.", enabled: true, autoApprove: true },
+    { name: "workflow-studio_manage_configurations", label: "Manage project configurations", description: "Create, copy, rename, select or delete profiles; set/clear values; manage custom fields and import complete configurations with revision checks.", enabled: true, autoApprove: false },
+    { name: "workflow-studio_open_configurations", label: "Open project configurations", description: "Display the configuration panel for a specific project and storage.", enabled: true, autoApprove: false },
     { name: "workflow-studio_studio_state", label: "Studio state", description: "Read the current Studio workspace, editor and supported capabilities.", enabled: true, autoApprove: true },
     { name: "workflow-studio_get_related_projects", label: "Related projects", description: "Read a permitted project's declared related projects and verified Studio imports.", enabled: true, autoApprove: true },
     { name: "workflow-studio_get_diagnostics", label: "Studio diagnostics", description: "Read errors and warnings within the selected permission policy's file scope.", enabled: true, autoApprove: true },
@@ -274,7 +278,7 @@ export const executor = steamharness.defineExecutor<AgentInput, AgentOutputPaylo
     const workdir = readAssistantWorkdir();
     const manifest = await loadDeveloperAssistantWorkspaceManifest(
       workdir,
-      steamharness.getEnv(ASSISTANT_WORKSPACE_MANIFEST_ENV),
+      readHostEnvironment(ASSISTANT_WORKSPACE_MANIFEST_ENV),
     );
     const { paramValues } = context;
     const permissionPolicy = readDeveloperAssistantPermissionPolicy(paramValues.permissionPolicy);
@@ -333,7 +337,7 @@ export { assistantProject as workflow };
 export default assistantProject;
 
 function readAssistantWorkdir(): string {
-  const workdir = (steamharness.getEnv(ASSISTANT_WORKDIR_ENV) ?? "").trim();
+  const workdir = (readHostEnvironment(ASSISTANT_WORKDIR_ENV) ?? "").trim();
   if (workdir === "") {
     throw new steamharness.HarnessError({
       type: "input_validation",
@@ -344,7 +348,7 @@ function readAssistantWorkdir(): string {
 }
 
 function readAssistantHost(): DeveloperAssistantHost {
-  const host = (steamharness.getEnv("STEAMHARNESS_DEVELOPER_ASSISTANT_HOST") ?? "vscode").trim();
+  const host = (readHostEnvironment("STEAMHARNESS_DEVELOPER_ASSISTANT_HOST") ?? "vscode").trim();
   if (host === "vscode") return host;
   throw new steamharness.HarnessError({ type: "input_validation", message: `Unsupported assistant host: ${host}` });
 }

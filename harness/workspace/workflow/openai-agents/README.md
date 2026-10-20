@@ -10,12 +10,10 @@ through the current `RunOutputPayload.items` protocol.
 ```bash
 cd workspace/workflow/openai-agents
 npm install
-cp .env.example .env
 ```
 
-Set `OPENAI_API_KEY` in `.env`. Set `OPENAI_BASE_URL` when the SDK should call
-a compatible endpoint instead of the default OpenAI API. Terminal runs load `.env`; App and server runs use saved
-workflow environment values through `workflow.getEnv`.
+Enter API keys and other business values in Project configurations; no project env file is loaded.
+workflow environment values through `workflow.getConfig`.
 
 ## Run
 
@@ -87,7 +85,7 @@ manual approval.
 
 - `@openai/agents` as a real workflow-owned npm dependency.
 - `OPENAI_API_KEY` and optional `OPENAI_BASE_URL` read with
-  `workflow.getEnv(...)`.
+  `workflow.getConfig(...)`.
 - `Agent`, `run`, `setDefaultOpenAIClient`, `tool`, and `shellTool` from the
   Agents SDK.
 - Agents SDK streaming via `Runner.run(..., { stream: true })`, bridged into
@@ -207,3 +205,8 @@ The sample defines these tools:
 The final answer is emitted as the inline Markdown `Output` item. Function tool
 activity is emitted before or between answer chunks as a collapsed `Tool:
 <name>` item with parameters, status, duration, and a compact result preview.
+
+
+## Project configuration
+
+Declare fields in `configuration.json` and enter values in Project configurations (Studio or `steamharness web .`). Read them with `workflow.getConfig(key)` or `context.config`. Local CLI and Studio share values; project env files are not loaded.

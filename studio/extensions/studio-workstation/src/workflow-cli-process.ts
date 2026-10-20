@@ -180,3 +180,19 @@ export async function startProjectCli(options: {
     };
   } catch (error) { await close(); throw error; }
 }
+
+/** Configuration RPC uses the project's installed CLI, without a running Web session. */
+export async function requestProjectCliConfiguration(projectDir: string, nodePath: string, call: Record<string, unknown>, signal: AbortSignal): Promise<unknown> {
+  const {entry}=await resolveProjectCli(projectDir);
+  return new Promise((resolve,reject)=>{
+    const child=spawn(nodePath,[entry,'configuration',projectDir],{cwd:projectDir,env:environment(),shell:false,stdio:['pipe','pipe','pipe'],signal});
+    let stdout='',stderr='';
+    const timeout=setTimeout(()=>child.kill('SIGKILL'),30_000);
+    child.stdin.on('error',()=>undefined); child.stdin.end(JSON.stringify(call));
+    child.stdout.setEncoding('utf8');child.stderr.setEncoding('utf8');
+    child.stdout.on('data',text=>{stdout+=text;if(stdout.length>4*1024*1024)child.kill('SIGKILL');});
+    child.stderr.on('data',text=>{stderr=(stderr+text).slice(-2000);});
+    child.on('error',error=>{clearTimeout(timeout);reject(error);});
+    child.on('close',()=>{clearTimeout(timeout);try{const result=JSON.parse(stdout);if(result.ok)resolve(result.value);else reject(Object.assign(new Error(result.error?.message||'Configuration request failed.'),{code:result.error?.code}));}catch(error){reject(new Error(stderr||'Invalid configuration response.'));}});
+  });
+}

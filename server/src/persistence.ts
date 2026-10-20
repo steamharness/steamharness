@@ -1,3 +1,4 @@
+import type { ProjectConfigurationState } from "@steamharness/project-configuration";
 
 import { createHash } from "node:crypto";
 import type pg from "pg";
@@ -298,6 +299,13 @@ export class DatabaseRepository implements KVStore {
 
 
 
+
+      create table if not exists project_configurations (
+        project_id text not null references projects(id) on delete cascade,
+        user_id text not null,
+        state jsonb not null,
+        primary key (project_id, user_id)
+      );
 
       create table if not exists project_kanban_configurations (
         project_id text not null references projects(id) on delete cascade,
@@ -1579,6 +1587,21 @@ export class DatabaseRepository implements KVStore {
       }
     }
     return versions;
+  }
+
+  async projectConfigurationState(projectId: string, userId: string,
+    update: (stored: unknown) => ProjectConfigurationState): Promise<ProjectConfigurationState> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      // Covers the absent-row case as well as concurrent writers on different Server instances.
+      await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [JSON.stringify([projectId, userId, "configuration"])]);
+      const stored = await client.query<{state: ProjectConfigurationState}>("select state from project_configurations where project_id=$1 and user_id=$2 for update", [projectId,userId]);
+      const next = update(stored.rows[0]?.state);
+      await client.query("insert into project_configurations(project_id,user_id,state) values($1,$2,$3::jsonb) on conflict(project_id,user_id) do update set state=excluded.state", [projectId,userId,JSON.stringify(next)]);
+      await client.query("commit"); return next;
+    } catch (error) { await client.query("rollback"); throw error; }
+    finally { client.release(); }
   }
 
   async readKanbanConfigurationState(

@@ -6,6 +6,9 @@ Studio Control 是连接 Studio VS Code 扩展宿主的内置 Workflow 项目，
 
 | 入口 | 能力 |
 | --- | --- |
+| `get_configurations` | 查询或完整导出明确的本地/Server 项目的字段、配置、值、选择和版本 |
+| `manage_configurations` | 管理配置和自定义字段、设置或清除值、原子导入；检查版本并拒绝只读写入 |
+| `open_configurations` | 打开目标项目的配置面板 |
 | `studio_state` | 读取本轮权限、目录访问范围、当前工作区、活动编辑器、已安装主题和可打开的视图 |
 | `get_related_projects` | 查询项目声明的关联项目、UUID、名称、Studio 导入状态及核验后的目录 |
 | `open_file` | 打开当前权限允许的文件，可指定从 1 开始的行、列 |
@@ -13,6 +16,8 @@ Studio Control 是连接 Studio VS Code 扩展宿主的内置 Workflow 项目，
 | `set_theme` | 按状态查询返回的名称切换已安装主题 |
 | `open_terminal` | 在当前权限允许的目录打开终端，不发送或执行命令 |
 | `show_view` | 打开文件、搜索、源代码管理、终端或小助手视图 |
+
+配置操作不依赖面板打开。JSON `input` 指定 `storage: "local"` 和 `projectDir`，或 `storage: "server"`、`projectId`、`target`。先查询，再给写入操作传返回的 `revision`；值和配置修改显式指定 `id`。导入生成新 ID 并保留当前选择，导出包含全部敏感值。详见[项目配置](../../docs/concepts/project-configuration.mdx)。
 
 `get_related_projects` 的可选参数 `projectDir` 指定当前权限允许的 Workflow 项目目录；省略时使用项目运行目录或小助手的工作目录。结果包含源项目的 `projectId`、`projectDir` 和 `relatedProjects` 列表。每项包含 `alias`、`projectId`、`imported`、`name`、`uri` 和 `projectDir`。查询会重新校验导入项目的 UUID；未导入或不可用的项目仍返回声明，但名称与目录为 `null`。远程导入仅返回 URI，本地目录为 `null`。已导入状态不代表双向数据授权；文件访问由本轮 Permission 决定。
 
@@ -26,4 +31,4 @@ Studio 为每个小助手会话创建临时的认证回环接口，注入 `STEAM
 
 开发依赖在聚合仓库中引用 `link:../../harness` 和 `link:../../cli`。安装后执行 `pnpm typecheck`、`pnpm test`、`pnpm coverage` 和 `pnpm build`。现有内置项目打包工具保留以便后续发布，本次只交付源码和宿主集成。
 
-在聚合仓库的 `studio` 目录中执行 `npm run test:studio-control-live`，通过真实 stdio MCP 调用隔离的 VS Code Node 扩展宿主，验证 Studio 打包副本的全部 7 项功能、权限切换和会话撤销；同时通过普通项目的启动和运行接口验证导入源码的全部 7 个入口、项目默认目录和连接隔离。该检查使用无头浏览器和临时工作区，不操作本机可见窗口或剪贴板；完成后关闭服务和终端，并恢复测试实例的主题。结果保存在 `studio/.studio/studio-control-live/results.json`。需要已构建的 Studio、已安装的小助手依赖及 Chrome；可用 `STUDIO_CONTROL_TEST_BROWSER` 指定 Playwright 的其他浏览器 channel。
+在聚合仓库的 `studio` 目录中执行 `npm run test:studio-control-live`，通过真实 stdio MCP 调用隔离的 VS Code Node 扩展宿主，验证 Studio 打包副本的7 项编辑器功能、权限切换和会话撤销；同时通过普通项目的启动和运行接口验证导入源码的7 个编辑器入口、项目默认目录和连接隔离。该检查使用无头浏览器和临时工作区，不操作本机可见窗口或剪贴板；完成后关闭服务和终端，并恢复测试实例的主题。结果保存在 `studio/.studio/studio-control-live/results.json`。需要已构建的 Studio、已安装的小助手依赖及 Chrome；可用 `STUDIO_CONTROL_TEST_BROWSER` 指定 Playwright 的其他浏览器 channel。

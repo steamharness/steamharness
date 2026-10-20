@@ -1,3 +1,5 @@
+import { applyConfigurationAction, configurationSnapshot, exportConfigurations, parseConfigurationDefinition, readConfigurationState, validateConfigurationAction, ProjectConfigurationError, type ProjectConfigurationAction, type ProjectConfigurationState, type ProjectConfigurationExport, type ProjectConfiguration } from "@steamharness/project-configuration";
+import { createLocalProjectConfigurationStore } from "steamharness";
 
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { cp, lstat, mkdir, open, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
@@ -9,7 +11,7 @@ import { createProjectUploadPortablePathKey } from "@steamharness/project-upload
 import { createKnowledgeDocument, createProjectKVContext, createProjectPersistentValueContext, createProjectRelatedProjectsContext, deleteKnowledgeDocument, editKnowledgeDocument, getKnowledgeDocument, isProjectKind, listKnowledgeDocumentPage, searchKnowledgeDocuments, readKnowledgeDocumentLines, HarnessError, type KVScope, type KVStore, type KVStoreGetInput, type KVWriteSource, type StorageKind, type ProjectKind, type StorageLocationContext, type KnowledgeDocument, type KnowledgeDocumentSummaryRecord, type KnowledgeSearchResultRecord, type KnowledgeDocumentLinesResult, type TokenUsageAggregate, type TokenUsageEntry, describeKnowledgeMutationKeys, isKnowledgeDocumentStorageKey } from "steamharness";
 import { getAuthCookieSecret } from "./account-auth";
 import { resolveServerPathRoots } from "./paths";
-import { ArtifactStorage, createObjectPath, DatabaseRepository, type ProjectMemberRecord, type ProjectInvitationRecord, type ProjectRole, type Visibility, type DbRecord, type DbVersionRecord, type KanbanConfigurationStateRecord, type ProjectStorageRevisionEvent, type DeploymentRecord } from "./persistence";
+import { ArtifactStorage, createObjectPath, DatabaseRepository, type ProjectMemberRecord, type ProjectInvitationRecord, type ProjectRole, type Visibility, type DbRecord, type DbVersionRecord, type ProjectStorageRevisionEvent, type DeploymentRecord } from "./persistence";
 import { HttpError, toHttpErrorWithStatus } from "./protocol";
 import { createProjectLocalStorageFromEnv } from "./local-storage";
 import { isProjectStorageNotFoundError, type ObjectStorage } from "./object-storage";
@@ -18,7 +20,7 @@ import { resolveServerDataRootFromEnv } from "./release-paths";
 import { createInvalidProjectUuidMessage, createUnsafeProjectIdMessage, isSafeProjectId, isProjectUuid, resolveProjectRoot } from "./workflow-ids";
 import { generateProjectCardMetadata, readProjectCardMetadataFromPackageJson, type ProjectCardMetadata } from "@steamharness/project-card-metadata";
 import { assertProjectDataStorageLocationAllowed, createDefaultProjectRelatedProjectGrant, isProjectAccessAllowed, isProjectKVAccessAllowed, normalizeDeclaredProjectInfoInput, normalizeProjectInfo, readProjectInfo, resolveProjectRelatedProjectAccess, writeProjectInfo, type DeclaredProjectInfo, type ProjectInfoContract, type RelatedProject, type RelatedProjectKVGrant } from "@steamharness/project-info";
-import { KANBAN_MANIFEST_FILE, areKanbanValuesEqual, createInjectedKanbanParams, createKanbanContentSecurityPolicy, createKanbanArtifactEntryPath, createDefaultKanbanValues, injectKanbanBridge, isSafeKanbanPublicAssetPath, parseKanbanManifestText, readKanbanArtifactConfig, readKanbanAssetMimeType, readPackageProjectType, sanitizeKanbanValues, type KanbanConfiguration, type KanbanArtifactConfig, type KanbanManifest } from "@steamharness/kanban-project";
+import { createKanbanContentSecurityPolicy, createKanbanArtifactEntryPath, injectKanbanBridge, isSafeKanbanPublicAssetPath, readKanbanArtifactConfig, readKanbanAssetMimeType, readPackageProjectType, type KanbanArtifactConfig } from "@steamharness/kanban-project";
 import { readRequiredCoreVersion } from "@steamharness/runtime-compatibility";
 import { readServerBuildInfo, type ServerBuildInfo } from "./build-info";
 import { STEAMHARNESS_PROJECT_GROUP_MANIFEST_FILE, createExternalProjectDependencyLocks, finalizeProjectDependencyLock, isProjectGroupHostDataPath, parseProjectDependencyLocks, parseProjectGroupManifest, type ProjectAccessRequest, type ProjectCapabilityGrant, type ProjectDependencyLock, type ProjectDependencyStatusResult, type ProjectDownloadPlan, type ProjectGroupManifestV1 } from "@steamharness/project-dependencies";
@@ -426,8 +428,7 @@ export interface KanbanWorkspaceState {
   artifactDir: string;
   entry: string;
   relatedProjects: RelatedProject[];
-  manifest?: KanbanManifest;
-  configurations: KanbanConfiguration[];
+  configurations: ProjectConfiguration[];
   activeConfigurationId?: string;
 }
 
@@ -492,7 +493,6 @@ export class Storage {
   private readonly preparationLocks = new Map<string, Promise<void>>();
   private readonly activePreparationJobs = new Set<string>();
   private readonly activeDeploymentPreparations = new Set<string>();
-  private readonly kanbanConfigurationLocks = new Map<string, Promise<void>>();
   // HTML and its subresources can resolve the same database-backed
   // source concurrently; share materialization instead of deleting one directory twice.
   private readonly sourceMaterializationTasks = new Map<string, Promise<void>>();
@@ -2500,8 +2500,10 @@ export class Storage {
     target?: string;
     actorId: string;
   }): Promise<KanbanWorkspaceState> {
-    return this.withKanbanConfigurationLock(options.projectName, options.actorId, () =>
-      this.getKanbanWorkspaceUnlocked(options));
+    const project = await this.resolveKanbanProject(options.projectName, options.target);
+    const state = await this.projectConfigurations(options, {action: "get"}) as ProjectConfigurationState;
+    return { ...project, configurations: state.configurations.map(item => ({ ...item, values: configurationSnapshot(state, item.id, false).values })), activeConfigurationId: state.activeConfigurationId };
+
   }
 
   async resolveKanbanRelatedProject(options: {
@@ -2573,44 +2575,6 @@ export class Storage {
       this.projectStorageRevisionSubscription = undefined;
       if (subscription) await (await subscription)();
     };
-  }
-
-  private async getKanbanWorkspaceUnlocked(options: {
-    projectName: string;
-    target?: string;
-    actorId: string;
-  }): Promise<KanbanWorkspaceState> {
-    const project = await this.resolveKanbanProject(options.projectName, options.target);
-    const actorId = requireKanbanActorId(options.actorId);
-    const params = project.manifest?.params ?? [];
-    if (params.length === 0) {
-      return { ...project, configurations: [], activeConfigurationId: undefined };
-    }
-    let state = await this.readStoredKanbanConfigurationState(options.projectName, actorId);
-    if (state.configurations.length === 0) {
-      const now = new Date().toISOString();
-      const configuration: KanbanConfiguration = {
-        id: randomUUID(),
-        name: "默认配置",
-        values: createDefaultKanbanValues(params),
-        createdAt: now,
-        updatedAt: now,
-      };
-      await this.ensureStoredKanbanConfiguration(options.projectName, actorId, configuration);
-      state = await this.readStoredKanbanConfigurationState(options.projectName, actorId);
-    }
-    const configurations = state.configurations.map((configuration) => ({
-      ...configuration,
-      values: sanitizeKanbanValues(params, configuration.values),
-    }));
-    for (let index = 0; index < configurations.length; index += 1) {
-      const configuration = configurations[index]!;
-      if (!areKanbanValuesEqual(configuration.values, state.configurations[index]!.values)) {
-        await this.saveStoredKanbanConfiguration(options.projectName, actorId, configuration);
-      }
-    }
-    state = { ...state, configurations };
-    return { ...project, ...state };
   }
 
   async issueKanbanPreviewCapability(options: {
@@ -2708,7 +2672,7 @@ export class Storage {
         ? {
             id: active.id,
             name: active.name,
-            params: createInjectedKanbanParams(workspace.manifest?.params ?? [], active.values),
+            params: active.values,
           }
         : { id: "default", name: "默认配置", params: {} };
       const html = injectKanbanBridge(content.toString("utf8"), configuration, nonce);
@@ -2748,110 +2712,32 @@ export class Storage {
     return capability.actorId;
   }
 
-  async createKanbanConfiguration(options: {
-    projectName: string;
-    target?: string;
-    actorId: string;
-    sourceConfigurationId?: string;
-  }): Promise<KanbanWorkspaceState> {
-    return this.withKanbanConfigurationLock(options.projectName, options.actorId, async () => {
-      const workspace = await this.getKanbanWorkspaceUnlocked(options);
-      const params = workspace.manifest?.params ?? [];
-      if (params.length === 0) {
-        throw new HttpError(409, 409, "Kanban project has no configurable parameters.");
+  async projectConfigurations(options: { projectName: string; actorId: string; target?: string }, call: ProjectConfigurationAction): Promise<ProjectConfigurationState | ProjectConfigurationExport> {
+    this.assertProjectId(options.projectName);
+    const actor = requireKanbanActorId(options.actorId);
+    const source = await this.resolveSourceTarget(options.projectName, options.target ?? "draft");
+    try {
+      validateConfigurationAction(call);
+      if (!this.db) {
+        const store = await createLocalProjectConfigurationStore(source.sourceDir, {
+          rootDir: path.join(this.dataRoot, "project-configurations"), storageKey: JSON.stringify([options.projectName, actor]),
+        });
+        return await store.dispatch(call);
       }
-      const source = options.sourceConfigurationId
-        ? requireKanbanConfiguration(workspace.configurations, options.sourceConfigurationId)
-        : undefined;
-      const now = new Date().toISOString();
-      const configuration: KanbanConfiguration = {
-        id: randomUUID(),
-        name: source
-          ? `${source.name} 副本`
-          : `配置 ${workspace.configurations.length + 1}`,
-        values: source
-          ? sanitizeKanbanValues(params, source.values)
-          : createDefaultKanbanValues(params),
-        createdAt: now,
-        updatedAt: now,
-      };
-      await this.saveStoredKanbanConfiguration(options.projectName, options.actorId, configuration);
-      await this.setStoredActiveKanbanConfiguration(options.projectName, options.actorId, configuration.id);
-      return this.getKanbanWorkspaceUnlocked(options);
-    });
-  }
-
-  async renameKanbanConfiguration(options: {
-    projectName: string;
-    target?: string;
-    actorId: string;
-    configurationId: string;
-    name: string;
-  }): Promise<KanbanWorkspaceState> {
-    return this.withKanbanConfigurationLock(options.projectName, options.actorId, async () => {
-      const workspace = await this.getKanbanWorkspaceUnlocked(options);
-      const current = requireKanbanConfiguration(workspace.configurations, options.configurationId);
-      const name = options.name.trim();
-      if (name === "") throw new HttpError(400, 400, "Kanban configuration name must not be empty.");
-      await this.saveStoredKanbanConfiguration(options.projectName, options.actorId, {
-        ...current,
-        name,
-        updatedAt: new Date().toISOString(),
+      let fields: ProjectConfigurationState["fields"] = [];
+      try { fields = parseConfigurationDefinition(JSON.parse(await readFile(path.join(source.sourceDir, "configuration.json"), "utf8"))).fields; }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+      const initialId = `default-${createHash("sha256").update(JSON.stringify([options.projectName, actor])).digest("hex").slice(0,24)}`;
+      const state = await this.db.projectConfigurationState(options.projectName, actor, stored => {
+        const current = readConfigurationState(stored, fields, () => initialId);
+        if (stored && JSON.stringify((stored as ProjectConfigurationState).fields) !== JSON.stringify(current.fields)) current.revision++;
+        return call.action === "get" || call.action === "export" ? current : applyConfigurationAction(current,call,randomUUID);
       });
-      return this.getKanbanWorkspaceUnlocked(options);
-    });
-  }
-
-  async saveKanbanConfigurationValues(options: {
-    projectName: string;
-    target?: string;
-    actorId: string;
-    configurationId: string;
-    values: Record<string, unknown>;
-  }): Promise<KanbanWorkspaceState> {
-    return this.withKanbanConfigurationLock(options.projectName, options.actorId, async () => {
-      const workspace = await this.getKanbanWorkspaceUnlocked(options);
-      const current = requireKanbanConfiguration(workspace.configurations, options.configurationId);
-      await this.saveStoredKanbanConfiguration(options.projectName, options.actorId, {
-        ...current,
-        values: sanitizeKanbanValues(workspace.manifest?.params ?? [], options.values),
-        updatedAt: new Date().toISOString(),
-      });
-      return this.getKanbanWorkspaceUnlocked(options);
-    });
-  }
-
-  async selectKanbanConfiguration(options: {
-    projectName: string;
-    target?: string;
-    actorId: string;
-    configurationId: string;
-  }): Promise<KanbanWorkspaceState> {
-    return this.withKanbanConfigurationLock(options.projectName, options.actorId, async () => {
-      const workspace = await this.getKanbanWorkspaceUnlocked(options);
-      requireKanbanConfiguration(workspace.configurations, options.configurationId);
-      await this.setStoredActiveKanbanConfiguration(options.projectName, options.actorId, options.configurationId);
-      return this.getKanbanWorkspaceUnlocked(options);
-    });
-  }
-
-  async deleteKanbanConfiguration(options: {
-    projectName: string;
-    target?: string;
-    actorId: string;
-    configurationId: string;
-  }): Promise<KanbanWorkspaceState> {
-    return this.withKanbanConfigurationLock(options.projectName, options.actorId, async () => {
-      const workspace = await this.getKanbanWorkspaceUnlocked(options);
-      requireKanbanConfiguration(workspace.configurations, options.configurationId);
-      if (workspace.configurations.length <= 1) {
-        throw new HttpError(409, 409, "The last Kanban configuration cannot be deleted.");
-      }
-      await this.deleteStoredKanbanConfiguration(options.projectName, options.actorId, options.configurationId);
-      const nextId = workspace.configurations.find((item) => item.id !== options.configurationId)?.id;
-      if (nextId) await this.setStoredActiveKanbanConfiguration(options.projectName, options.actorId, nextId);
-      return this.getKanbanWorkspaceUnlocked(options);
-    });
+      return call.action === "export" ? exportConfigurations(state,call.id) : state;
+    } catch (error) {
+      if (error instanceof ProjectConfigurationError) throw new HttpError(error.code === "CONFIGURATION_CONFLICT" ? 409 : 400, error.code === "CONFIGURATION_CONFLICT" ? 409 : 400, error.message, {code:error.code});
+      throw error;
+    }
   }
 
   async saveDraftFiles(options: {
@@ -3561,31 +3447,6 @@ export class Storage {
       conversationId: normalizeExactFilter(options.conversationId),
       includeEntries: options.includeEntries === true,
     });
-  }
-
-  private async withKanbanConfigurationLock<T>(
-    projectName: string,
-    actorId: string,
-    operation: () => Promise<T>,
-  ): Promise<T> {
-    const key = `${projectName}:${requireKanbanActorId(actorId)}`;
-    const previous = this.kanbanConfigurationLocks.get(key) ?? Promise.resolve();
-    let release: () => void = () => {};
-    const current = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const chained = previous.catch(() => undefined).then(() => current);
-    this.kanbanConfigurationLocks.set(key, chained);
-
-    await previous.catch(() => undefined);
-    try {
-      return await operation();
-    } finally {
-      release();
-      if (this.kanbanConfigurationLocks.get(key) === chained) {
-        this.kanbanConfigurationLocks.delete(key);
-      }
-    }
   }
 
   private async ensureEditableDraft(
@@ -4583,10 +4444,6 @@ export class Storage {
     if (metadata.projectType !== "kanban") {
       throw new HttpError(409, 409, `Project "${metadata.name}" is not a Kanban project.`);
     }
-    const manifestPath = path.join(resolved.sourceDir, KANBAN_MANIFEST_FILE);
-    const manifest = await exists(manifestPath)
-      ? parseKanbanManifestText(await readFile(manifestPath, "utf8"))
-      : undefined;
     return {
       projectId: projectName,
       projectName: metadata.name,
@@ -4594,111 +4451,7 @@ export class Storage {
       resolvedTarget: resolved.resolvedTarget,
       ...readKanbanArtifactConfig(await readPackageJson(resolved.sourceDir)),
       relatedProjects: metadata.projectInfo.relatedProjects.map(cloneRelatedProject),
-      manifest,
     };
-  }
-
-  private async readStoredKanbanConfigurationState(
-    projectName: string,
-    actorId: string,
-  ): Promise<KanbanConfigurationStateRecord> {
-    const normalizedActorId = requireKanbanActorId(actorId);
-    if (this.db) {
-      return this.db.readKanbanConfigurationState(projectName, normalizedActorId);
-    }
-    return normalizeStoredKanbanConfigurationState(
-      await readJson<unknown>(this.kanbanConfigurationStatePath(projectName, normalizedActorId)),
-    );
-  }
-
-  private async ensureStoredKanbanConfiguration(
-    projectName: string,
-    actorId: string,
-    configuration: KanbanConfiguration,
-  ): Promise<void> {
-    const normalizedActorId = requireKanbanActorId(actorId);
-    if (this.db) {
-      await this.db.ensureKanbanConfiguration(projectName, normalizedActorId, configuration);
-      return;
-    }
-    const state = await this.readStoredKanbanConfigurationState(projectName, normalizedActorId);
-    if (state.configurations.length > 0) return;
-    await this.writeLocalKanbanConfigurationState(projectName, normalizedActorId, {
-      configurations: [configuration],
-      activeConfigurationId: configuration.id,
-    });
-  }
-
-  private async saveStoredKanbanConfiguration(
-    projectName: string,
-    actorId: string,
-    configuration: KanbanConfiguration,
-  ): Promise<void> {
-    const normalizedActorId = requireKanbanActorId(actorId);
-    if (this.db) {
-      await this.db.saveKanbanConfiguration(projectName, normalizedActorId, configuration);
-      return;
-    }
-    const state = await this.readStoredKanbanConfigurationState(projectName, normalizedActorId);
-    const existingIndex = state.configurations.findIndex((item) => item.id === configuration.id);
-    const configurations = [...state.configurations];
-    if (existingIndex === -1) configurations.push(configuration);
-    else configurations[existingIndex] = configuration;
-    await this.writeLocalKanbanConfigurationState(projectName, normalizedActorId, {
-      configurations,
-      activeConfigurationId: state.activeConfigurationId ?? configuration.id,
-    });
-  }
-
-  private async setStoredActiveKanbanConfiguration(
-    projectName: string,
-    actorId: string,
-    configurationId: string,
-  ): Promise<void> {
-    const normalizedActorId = requireKanbanActorId(actorId);
-    if (this.db) {
-      await this.db.setActiveKanbanConfiguration(projectName, normalizedActorId, configurationId);
-      return;
-    }
-    const state = await this.readStoredKanbanConfigurationState(projectName, normalizedActorId);
-    await this.writeLocalKanbanConfigurationState(projectName, normalizedActorId, {
-      ...state,
-      activeConfigurationId: configurationId,
-    });
-  }
-
-  private async deleteStoredKanbanConfiguration(
-    projectName: string,
-    actorId: string,
-    configurationId: string,
-  ): Promise<void> {
-    const normalizedActorId = requireKanbanActorId(actorId);
-    if (this.db) {
-      await this.db.deleteKanbanConfiguration(projectName, normalizedActorId, configurationId);
-      return;
-    }
-    const state = await this.readStoredKanbanConfigurationState(projectName, normalizedActorId);
-    await this.writeLocalKanbanConfigurationState(projectName, normalizedActorId, {
-      configurations: state.configurations.filter((item) => item.id !== configurationId),
-      activeConfigurationId: state.activeConfigurationId === configurationId
-        ? undefined
-        : state.activeConfigurationId,
-    });
-  }
-
-  private async writeLocalKanbanConfigurationState(
-    projectName: string,
-    actorId: string,
-    state: KanbanConfigurationStateRecord,
-  ): Promise<void> {
-    const target = this.kanbanConfigurationStatePath(projectName, actorId);
-    await mkdir(path.dirname(target), { recursive: true });
-    await writeJson(target, state);
-  }
-
-  private kanbanConfigurationStatePath(projectName: string, actorId: string): string {
-    const actorKey = createHash("sha256").update(actorId).digest("hex");
-    return path.join(this.projectDirectory(projectName), "kanban-configurations", `${actorKey}.json`);
   }
 
   private async withKnowledgeContext<T>(
@@ -5079,6 +4832,11 @@ async function validateProjectPackage(
     throw new HttpError(400, 400, "Workflow package must contain package.json.");
   }
 
+  const configurationPath = path.join(sourceDir, "configuration.json");
+  if (await exists(configurationPath)) {
+    try { parseConfigurationDefinition(JSON.parse(await readFile(configurationPath, "utf8"))); }
+    catch (error) { throw new HttpError(400, 400, readErrorMessage(error)); }
+  }
   const packageJson = await readPackageJson(sourceDir);
   if (readPackageProjectType(packageJson) === "kanban") {
     let artifact: KanbanArtifactConfig;
@@ -5097,18 +4855,6 @@ async function validateProjectPackage(
       await assertKanbanAssetHasNoSymbolicLinks(sourceDir, artifactEntryPath);
     } catch {
       throw new HttpError(400, 400, `Kanban artifact entry ${artifactEntryPath} must not contain symbolic links.`);
-    }
-    const manifestPath = path.join(sourceDir, KANBAN_MANIFEST_FILE);
-    if (await exists(manifestPath)) {
-      try {
-        parseKanbanManifestText(await readFile(manifestPath, "utf8"));
-      } catch (error) {
-        throw new HttpError(
-          400,
-          400,
-          error instanceof Error ? error.message : `Invalid ${KANBAN_MANIFEST_FILE}.`,
-        );
-      }
     }
     // Static Kanban projects follow the same Core compatibility contract.
     return readProjectPackageMetadata(
@@ -5931,57 +5677,8 @@ function normalizeOptionalText(value: string | undefined): string | undefined {
 
 function requireKanbanActorId(value: string): string {
   const normalized = value.trim();
-  if (normalized === "") throw new HttpError(401, 401, "Login is required to use Kanban configurations.");
+  if (normalized === "") throw new HttpError(401, 401, "Login is required to use project configurations.");
   return normalized;
-}
-
-function requireKanbanConfiguration(
-  configurations: KanbanConfiguration[],
-  configurationId: string,
-): KanbanConfiguration {
-  const configuration = configurations.find((item) => item.id === configurationId);
-  if (!configuration) {
-    throw new HttpError(404, 404, `Kanban configuration "${configurationId}" does not exist.`);
-  }
-  return configuration;
-}
-
-function normalizeStoredKanbanConfigurationState(
-  value: unknown,
-): KanbanConfigurationStateRecord {
-  if (!isRecord(value) || !Array.isArray(value["configurations"])) {
-    return { configurations: [] };
-  }
-  const configurations = value["configurations"].flatMap((item): KanbanConfiguration[] => {
-    if (
-      !isRecord(item) ||
-      typeof item["id"] !== "string" ||
-      typeof item["name"] !== "string" ||
-      typeof item["createdAt"] !== "string" ||
-      typeof item["updatedAt"] !== "string"
-    ) {
-      return [];
-    }
-    return [{
-      id: item["id"],
-      name: item["name"],
-      values: sanitizeKanbanStoredValues(item["values"]),
-      createdAt: item["createdAt"],
-      updatedAt: item["updatedAt"],
-    }];
-  });
-  const activeConfigurationId = typeof value["activeConfigurationId"] === "string" &&
-    configurations.some((item) => item.id === value["activeConfigurationId"])
-    ? value["activeConfigurationId"]
-    : configurations[0]?.id;
-  return { configurations, activeConfigurationId };
-}
-
-function sanitizeKanbanStoredValues(value: unknown): Record<string, string> {
-  if (!isRecord(value)) return {};
-  return Object.fromEntries(Object.entries(value).filter(
-    (entry): entry is [string, string] => typeof entry[1] === "string",
-  ));
 }
 
 function normalizeKanbanNonce(value: string): string {

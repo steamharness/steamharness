@@ -109,8 +109,9 @@ export async function createProjectFromTemplate(request: CreateProjectFromTempla
   }
   try {
     await writeFile(path.join(directory, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' });
-    await writeFile(path.join(directory, '.gitignore'), 'node_modules/\ndist/\n.env\n.env.*\n!.env.example\n*.log\n', { flag: 'wx' });
-    await writeFile(path.join(directory, '.steamharnessignore'), '.git/\nnode_modules/\ndist/\n.env\n.env.*\n!.env.example\n*.log\n', { flag: 'wx' });
+    await writeFile(path.join(directory, '.gitignore'), 'node_modules/\ndist/\n.env\n.env.*\n*.log\n', { flag: 'wx' });
+    await writeFile(path.join(directory, '.steamharnessignore'), '.git/\nnode_modules/\ndist/\n.env\n.env.*\n*.log\n', { flag: 'wx' });
+    if (!files.some(file => file.filename === 'configuration.json')) await writeFile(path.join(directory,'configuration.json'), JSON.stringify({version:1,fields:[]},null,2)+'\n',{flag:'wx'});
     for (const file of files) {
       request.signal?.throwIfAborted();
       await mkdir(path.dirname(path.join(directory, file.filename)), { recursive: true });

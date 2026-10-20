@@ -12,7 +12,6 @@ Core ships built-in workflow capabilities, the tools that connect a project to i
 | Knowledge documents | `workflow-knowledge` | `workflow-knowledge_knowledge_documents` |
 | KV | `workflow-kv` | `workflow-kv_kv_store` |
 | Cross-session memory | `workflow-memory` | `workflow-memory_global_memory` |
-| Host configuration | `workflow-host` | `workflow-host_host_project_configuration` |
 | Conversation resource card | `workflow-ui` | `workflow-ui_present_card` |
 
 The tool ids are stable: a host grants, approves and resumes by them, so do not rename them.
@@ -20,18 +19,18 @@ The tool ids are stable: a host grants, approves and resumes by them, so do not 
 ## Signature
 
 ```ts
-const tools: AgentTool[] = await workflow.createProjectCapabilityTools({
+const tools: AgentTool[] = await steamharness.createProjectCapabilityTools({
   context: NodeContext,
   approve?: (toolId: string, args: unknown) => Promise<void>,
   globalMemory?: boolean,
 });
 
-const server: Server = await workflow.createProjectCapabilityServer(toolId, {
+const server: Server = await steamharness.createProjectCapabilityServer(toolId, {
   context: NodeContext,
   approve?: (toolId: string, args: unknown) => Promise<void>,
 });
 
-const result: unknown = await workflow.runProjectCapabilityAction(toolId, context, args);
+const result: unknown = await steamharness.runProjectCapabilityAction(toolId, context, args);
 const toolIds: string[] = workflow.listProjectCapabilityToolIds({ globalMemory?: boolean });
 ```
 
@@ -44,7 +43,7 @@ const toolIds: string[] = workflow.listProjectCapabilityToolIds({ globalMemory?:
 
 ## Tool approval
 
-These tools are **not governed by `permissionPolicy`** — that policy only covers the seven built-in coding tools, as [createAgent](./create-agent.mdx) explains under "Your own tools". The host's own catalogue governs them: a project declares these tool ids in `executor.tools`, `enabled` decides whether one is exposed, and `autoApprove` decides whether it needs approval. Wiring `approve` to `workflow.createToolApprovalGate().approve(...)` puts them on the same approval chain.
+These tools are **not governed by `permissionPolicy`** — that policy only covers the seven built-in coding tools, as [createAgent](./create-agent.mdx) explains under "Your own tools". The host's own catalogue governs them: a project declares these tool ids in `executor.tools`, `enabled` decides whether one is exposed, and `autoApprove` decides whether it needs approval. Wiring `approve` to `steamharness.createToolApprovalGate().approve(...)` puts them on the same approval chain.
 
 Resuming a paused approval goes through `runProjectCapabilityAction`: the paused turn is over, and the approved call can only be addressed by the tool id the host approved, not by the closure that built it.
 
@@ -102,21 +101,21 @@ return {
 }
 ```
 
-`kanban.mode: "preview"` temporarily overrides parameters in that card and its Dock preview; it is separate from the top-level `preview` display switch. `save` uses the existing host named-configuration update path and requires `target.source` to be `current` and a local host configuration bridge. History replay restores display state without repeating writes. Cards show resource summaries; KV values and knowledge bodies are read only after opening them. Hosted Web supports server resources and temporary Kanban previews. Local files, the built-in browser, and local configuration writes require Electron.
+`kanban.mode: "preview"` applies temporary native JSON overrides to that preview. Save values through Studio Control `manage_configurations` with an explicit storage, project, configuration ID and revision. History replay never writes configurations.
 
-Kanban cards and `project` cards that point to Kanban accept `target.configurationId` to reference an exact named configuration. Obtain the ID from `host_project_configuration`. Previewing it does not select or modify the host configuration: history cards, pinned previews, and Dock views keep showing Configuration 1 after the workspace switches to Default. A deleted configuration produces an unavailable message instead of falling back to the active configuration. When a current-host Kanban card omits the ID and a host configuration bridge is available, the tool records the configuration active when the command runs. Other cards without an ID remember their configuration on first load. Switching the workspace does not clear temporary preview parameters; only explicit `save` writes the referenced host configuration.
+Kanban and project cards accept `target.configurationId` from Studio Control `get_configurations`. Explicit IDs keep a fixed profile without selecting it. Missing IDs use the active profile when opening the preview. A deleted profile is unavailable. See [Project configurations](/en/concepts/project-configuration).
 
 Pinned previews have a border on every side. The bottom handle supports pointer and keyboard height adjustments, capped at `50%` of the conversation content area. Each client remembers the height per conversation, and smaller containers retain the cap. Collapsed previews keep only their title.
 
 ## Example
 
 ```ts
-const approval = workflow.createToolApprovalGate();
+const approval = steamharness.createToolApprovalGate();
 
-const node = workflow.createAgentNode({
+const node = steamharness.createAgentNode({
   provider: "anthropic",
   async createTools(context) {
-    return workflow.createProjectCapabilityTools({
+    return steamharness.createProjectCapabilityTools({
       context,
       globalMemory: true,
       approve: (toolId, args) => approval.approve({ name: toolId, arguments: args }, context),

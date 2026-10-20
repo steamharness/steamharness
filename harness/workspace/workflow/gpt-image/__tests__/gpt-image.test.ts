@@ -8,7 +8,7 @@ const fixtureB64 = "Z3B0LWltYWdlLWZpeHR1cmU=";
 
 describe("gpt-image workflow", () => {
   it("uses generate mode when no input images are provided", async () => {
-    const report = await runWithMockEnv({
+    const report = await runWithMockConfiguration({
       args: [
         "--prompt",
         "Generate a small badge",
@@ -35,7 +35,7 @@ describe("gpt-image workflow", () => {
     const conversationId = "gpt-image-follow-up-thread";
 
     try {
-      const firstReport = await runWithMockEnv({
+      const firstReport = await runWithMockConfiguration({
         args: [
           "--prompt",
           "Design a square logo with teal line art",
@@ -50,7 +50,7 @@ describe("gpt-image workflow", () => {
       expect(firstOutput.historyLength).toBe(2);
       expect(firstOutput.modelPrompt).toBe("Design a square logo with teal line art");
 
-      const secondReport = await runWithMockEnv({
+      const secondReport = await runWithMockConfiguration({
         args: [
           "--prompt",
           "Make it warmer and add a small badge",
@@ -81,7 +81,7 @@ describe("gpt-image workflow", () => {
     const imageReference = createFixtureImageReference();
 
     try {
-      const firstReport = await runWithMockEnv({
+      const firstReport = await runWithMockConfiguration({
         args: [
           "--prompt",
           "Use this reference image as a clean square app icon",
@@ -100,7 +100,7 @@ describe("gpt-image workflow", () => {
       expect(firstOutput.inputImageCount).toBe(1);
       expect(firstOutput.contextImageCount).toBe(0);
 
-      const secondReport = await runWithMockEnv({
+      const secondReport = await runWithMockConfiguration({
         args: [
           "--prompt",
           "Keep the same icon shape but make it warmer",
@@ -135,7 +135,7 @@ describe("gpt-image workflow", () => {
   });
 
   it("rejects transparent background for gpt-image-2 before provider calls", async () => {
-    const report = await runWithMockEnv({
+    const report = await runWithMockConfiguration({
       args: [
         "--prompt",
         "Generate a transparent badge",
@@ -159,7 +159,7 @@ describe("gpt-image workflow", () => {
   });
 });
 
-async function runWithMockEnv(options: {
+async function runWithMockConfiguration(options: {
   args: string[];
   mimeType?: string;
   conversationId?: string;
@@ -174,13 +174,12 @@ async function runWithMockEnv(options: {
       projectName: "gpt-image",
       args: options.args,
       conversationId: options.conversationId,
-      env: {
-        ...process.env,
+      configuration: { id: "fixture", name: "Fixture", revision: 0, values: {
         GPT_IMAGE_MOCK: "1",
         GPT_IMAGE_MOCK_B64: fixtureB64,
         ...(options.mimeType === undefined ? {} : { GPT_IMAGE_MOCK_MIME_TYPE: options.mimeType }),
         ...(options.traceFile === undefined ? {} : { GPT_IMAGE_MOCK_TRACE_FILE: options.traceFile }),
-      },
+      } },
       storage: {
         host: "local",
         local: { kvStoreDir },

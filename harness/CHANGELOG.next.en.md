@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Changed] Replace business env with `configuration.json` declarations and project configurations: add run-scoped `context.config`, `getConfig`, local storage and recovery snapshots, custom fields, named profiles, revision checks and complete import/export. Existing env and Kanban profiles are not migrated; host transport variables remain.
+
 - Agents enable native OpenAI / Anthropic web search when the model declares support, with per-run controls, search activities and source links, persisted citations and follow-up context, bounded pause continuations, interruption recovery, and isolated child conversations.
 
 ### Context compaction

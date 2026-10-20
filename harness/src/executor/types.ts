@@ -185,7 +185,7 @@ export interface ExecutorContext {
   entrypointTitle?: string;
   args: string[];
   paramValues: ParamValues;
-  env: NodeJS.ProcessEnv;
+  config: import("../configuration").ConfigurationValues;
   abortSignal: AbortSignal;
   /** Host-owned structured input that is intentionally separate from argv and persisted run metadata. */
   hostInput?: unknown;

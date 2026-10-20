@@ -16,7 +16,7 @@ const skillPath = path.join(skillRoot, "SKILL.md");
 
 function mentionsProjectMember(corpus: string, member: string): boolean {
   // 用标识符边界而不是裸子串：`createOutputItem` 是 `createOutputItemChunk` 的前缀。
-  return new RegExp(`workflow\\.${member}(?![\\w-])`).test(corpus);
+  return new RegExp(`steamharness\\.${member}(?![\\w-])`).test(corpus);
 }
 
 test("the vendored generator skill documents every runtime API member", async () => {

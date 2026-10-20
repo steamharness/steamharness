@@ -3032,3 +3032,33 @@ function createTokenUsageAggregate(totalTokens: number) {
     updatedAt: "2026-05-22T00:00:00.000Z",
   };
 }
+
+test("project configurations use account-scoped generic routes and preserve version conflicts", async () => {
+  const calls: unknown[] = [];
+  const storage = createStorageStub({ projectConfigurations: async (options, call) => {
+    calls.push({options,call});
+    if(call.action === 'save') throw new HttpError(409,409,'Configuration changed',{code:'CONFIGURATION_CONFLICT'});
+    return {version:1,revision:2,fields:[],customFields:[],configurations:[],activeConfigurationId:'profile'};
+  }});
+  const server = await listen(storage,createApiKeyPrincipal('cli'));
+  try {
+    const read = await fetch(server.url('/api/projects/demo/configurations?target=latest'));
+    assert.equal(read.status,200); assert.equal(read.headers.get('cache-control'),'no-store');
+    const input = {target:'latest',call:{action:'save',revision:1,id:'profile',values:{enabled:false,data:{nested:[null,1]}}}};
+    const write = await fetch(server.url('/api/projects/demo/configurations'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)});
+    assert.equal(write.status,409); assert.deepEqual((await write.json()).data,{code:'CONFIGURATION_CONFLICT'});
+    assert.deepEqual(calls,[{options:{projectName:'demo',actorId:'user-1',target:'latest'},call:{action:'get'}},{options:{projectName:'demo',actorId:'user-1',target:'latest'},call:input.call}]);
+    const old=await fetch(server.url('/api/projects/demo/kanban/configurations'),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    assert.equal(old.status,404);
+  } finally {await server.close();}
+});
+
+test("configuration routes reject unreadable projects before reaching the store", async () => {
+  let called=false;
+  const storage=createStorageStub({assertReadableProject:()=>{throw new HttpError(403,403,"Forbidden");},projectConfigurations:async()=>{called=true;throw new Error('must not run');}});
+  const server=await listen(storage,createPrincipal([]));
+  try {for(const method of ['GET','POST']) {
+    const response=await fetch(server.url('/api/projects/demo/configurations'),{method,...(method==='POST'?{headers:{'Content-Type':'application/json'},body:JSON.stringify({call:{action:'get'}})}:{})});
+    assert.notEqual(response.status,200);
+  }assert.equal(called,false);}finally{await server.close();}
+});

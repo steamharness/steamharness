@@ -1,0 +1,29 @@
+---
+title: "createLLMProviderFromConfig"
+description: "Create an LLM provider from project configuration."
+---
+
+# createLLMProviderFromConfig
+
+```ts
+steamharness.createLLMProviderFromConfig(): LLMProvider
+createLLMProviderFromConfig(config?: ConfigurationValues): LLMProvider
+```
+
+The runtime factory reads the current execution snapshot. The named SDK export also accepts an explicit configuration object. Neither reads environment variables.
+
+| Key | Aliases | Meaning |
+| --- | --- | --- |
+| `LLM_TYPE` | `TYPE` | `openai-completion`, `openai-responses`, `anthropic` |
+| `LLM_API_KEY` | `API_KEY`, `APIKEY` | Required API key |
+| `LLM_BASE_URL` | `BASE_URL` | Optional endpoint |
+| `LLM_MODEL` | `MODEL` | Optional model |
+
+Declare these string fields in `configuration.json` and enter values in Project configurations. Mark API key fields sensitive. Missing required keys or unknown provider types produce `input_validation`. Defaults are `gpt-4.1-mini` for OpenAI and `claude-3-haiku-20240307` for Anthropic.
+
+```ts
+const provider = steamharness.createLLMProviderRef("default", () =>
+  steamharness.createLLMProviderFromConfig());
+```
+
+See [Project configurations](/en/concepts/project-configuration).

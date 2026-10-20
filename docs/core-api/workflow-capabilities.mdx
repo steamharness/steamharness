@@ -12,7 +12,6 @@ Core 内置「工作流能力」工具，把项目跟它周围的东西接起来
 | 知识库文档 | `workflow-knowledge` | `workflow-knowledge_knowledge_documents` |
 | KV | `workflow-kv` | `workflow-kv_kv_store` |
 | 跨会话记忆 | `workflow-memory` | `workflow-memory_global_memory` |
-| 宿主配置 | `workflow-host` | `workflow-host_host_project_configuration` |
 | Conversation 资源卡片 | `workflow-ui` | `workflow-ui_present_card` |
 
 工具 id 是稳定的：宿主按它授权、审批和恢复，所以不要改名。
@@ -20,18 +19,18 @@ Core 内置「工作流能力」工具，把项目跟它周围的东西接起来
 ## 签名
 
 ```ts
-const tools: AgentTool[] = await workflow.createProjectCapabilityTools({
+const tools: AgentTool[] = await steamharness.createProjectCapabilityTools({
   context: NodeContext,
   approve?: (toolId: string, args: unknown) => Promise<void>,
   globalMemory?: boolean,
 });
 
-const server: Server = await workflow.createProjectCapabilityServer(toolId, {
+const server: Server = await steamharness.createProjectCapabilityServer(toolId, {
   context: NodeContext,
   approve?: (toolId: string, args: unknown) => Promise<void>,
 });
 
-const result: unknown = await workflow.runProjectCapabilityAction(toolId, context, args);
+const result: unknown = await steamharness.runProjectCapabilityAction(toolId, context, args);
 const toolIds: string[] = workflow.listProjectCapabilityToolIds({ globalMemory?: boolean });
 ```
 
@@ -44,7 +43,7 @@ const toolIds: string[] = workflow.listProjectCapabilityToolIds({ globalMemory?:
 
 ## 工具审批
 
-这些工具**不受 `permissionPolicy` 约束**——策略只管内置的 7 个编码工具，见 [createAgent](./create-agent.mdx) 的「自带工具」。它们由宿主自己的工具目录治理：项目在 `executor.tools` 里声明这些工具 id，声明里的 `enabled` 决定是否暴露、`autoApprove` 决定是否自动批准。把 `approve` 接到 `workflow.createToolApprovalGate().approve(...)` 上就是同一条审批链。
+这些工具**不受 `permissionPolicy` 约束**——策略只管内置的 7 个编码工具，见 [createAgent](./create-agent.mdx) 的「自带工具」。它们由宿主自己的工具目录治理：项目在 `executor.tools` 里声明这些工具 id，声明里的 `enabled` 决定是否暴露、`autoApprove` 决定是否自动批准。把 `approve` 接到 `steamharness.createToolApprovalGate().approve(...)` 上就是同一条审批链。
 
 审批暂停后要用 `runProjectCapabilityAction` 恢复：暂停的那一轮已经结束，调用只能按宿主批准的那个工具 id 重新寻址，不能靠当初建它的闭包。
 
@@ -102,21 +101,21 @@ return {
 }
 ```
 
-`kanban.mode: "preview"` 只覆盖该卡片及其 Dock 预览中的参数，与顶层 `preview` 展开开关无关；`save` 调用现有宿主命名配置更新链路，要求 `target.source` 为 `current` 且宿主提供本地配置桥。历史回放只恢复卡片展示，不重复执行保存。卡片只显示资源摘要；KV 值和知识库正文需点击后读取。托管 Web 支持服务端资源与临时 Kanban 预览，本地文件、内置浏览器及本地配置写入仅在 Electron 可用。
+`kanban.mode: "preview"` 为预览提供临时原生 JSON 覆盖值。保存请使用 Studio Control `manage_configurations`，显式指定存储位置、项目、配置 ID 与 revision。历史回放不写配置。
 
-Kanban 和指向 Kanban 的 `project` 卡片可用 `target.configurationId` 精确引用命名配置；ID 来自 `host_project_configuration` 的读取结果。预览不会选中或修改宿主配置，工作区切换到“默认配置”后，引用“配置 1”的历史卡片、固定预览和 Dock 仍展示“配置 1”。配置被删除时显示不可用提示，不回退到当前活动配置。当前宿主 Kanban 卡片省略 ID 且宿主配置桥可用时，工具会记录调用当时的活动配置 ID；其它未指定 ID 的卡片在首次加载时记住配置。临时预览参数不会因工作区切换而清除，只有显式 `save` 才写入引用的宿主配置。
+Kanban 和 project 卡片可以使用 Studio Control `get_configurations` 返回的 ID 设置 `target.configurationId`。指定 ID 只预览该配置，不切换当前配置；省略 ID 时使用打开预览时的当前配置。配置删除后报告不可用。参见[项目配置](/concepts/project-configuration)。
 
 固定预览区四周有边框，底部手柄支持拖动和键盘调整高度，最高占对话内容区的 `50%`。高度按当前客户端的会话保存，容器缩小时自动遵守上限；收起预览后只保留标题。
 
 ## 示例
 
 ```ts
-const approval = workflow.createToolApprovalGate();
+const approval = steamharness.createToolApprovalGate();
 
-const node = workflow.createAgentNode({
+const node = steamharness.createAgentNode({
   provider: "anthropic",
   async createTools(context) {
-    return workflow.createProjectCapabilityTools({
+    return steamharness.createProjectCapabilityTools({
       context,
       globalMemory: true,
       approve: (toolId, args) => approval.approve({ name: toolId, arguments: args }, context),

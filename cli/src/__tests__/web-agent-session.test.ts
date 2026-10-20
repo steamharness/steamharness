@@ -5,7 +5,7 @@ import { messageSettled, type Project, type Report, type Runtime } from '../web/
 
 const controllers: ConversationController[] = [];
 afterEach(() => { for (const controller of controllers.splice(0)) controller.dispose(); });
-function fixture() {
+function fixture(configurationRevision?: () => number) {
   const project: Project = { id: 'durable', uri: '', folderPath: '/fixture', name: 'Agent', projectType: 'conversation', entrypoints: [],
     fields: [{ name: 'model', flag: '--model', type: 'string' }], conversation: { durable: { enabled: true }, recovery: { enabled: true }, inputQueue: { enabled: true } } };
   const runs: { emit(event: Record<string, unknown>): void; finish(report: Report): void }[] = [];
@@ -15,7 +15,7 @@ function fixture() {
     cancel: vi.fn(() => runs.at(-1)?.finish({ status: 'aborted' })),
   };
   const save = vi.fn(async () => {});
-  const controller = new ConversationController(project, runtime, {}, { save, changed: vi.fn(), log: vi.fn() }); controllers.push(controller);
+  const controller = new ConversationController(project, runtime, {}, { save, changed: vi.fn(), log: vi.fn(), configurationRevision }); controllers.push(controller);
   const snapshot = (): AgentSessionSnapshot => ({ version: 1, ownerId: 'owner', revision: 1, conversationId: 1, foreground: false, backgroundCount: 0, epoch: 0,
     configuration: { version: 0, provider: 'fixture', model: 'one', effort: 'off' }, prompt: { hash: 'digest', version: 1 }, plan: { version: 0, items: [] },
     tasks: [], history: [], receipts: [], records: [], usage: [], conversations: [{ id: 1, title: 'Main', background: false }], contexts: [],
@@ -414,5 +414,37 @@ it('retains interrupted commands and does not reject another target with the sam
   expect(await two).toEqual(receipt);
   expect(owner.agentCommands).toHaveLength(1);
   expect(f.controller.sessions.find(session => session.id === forkId)?.agentCommands).toEqual([]);
+  await f.finish();
+});
+
+it('reloads configuration only at an idle boundary and retains history and queued inputs', async () => {
+  let revision=0;
+  const f=fixture(()=>revision);await f.start();
+  const owner=f.controller.current, originalRun=owner.activeRunId, history=owner.messages[1].content;
+  const active=f.snapshot();active.turns[0].status='placed';f.emit({...active,revision:2});
+  revision=1;f.controller.configurationChanged();
+  expect(f.runtime.cancel).not.toHaveBeenCalled();
+  await f.controller.send({text:'Next configuration',params:{model:'one'},attachments:[]},owner,true,'next-config');
+  expect(owner.queuedInputs).toHaveLength(1);expect(f.runtime.agentControl).not.toHaveBeenCalled();
+  vi.mocked(f.runtime.agentControl!).mockResolvedValue({requestId:'next-config',conversationId:1,status:'accepted'});
+  f.emit({...f.snapshot(),revision:3});
+  await vi.waitFor(()=>expect(f.runs).toHaveLength(2));
+  await vi.waitFor(()=>expect(f.runtime.agentControl).toHaveBeenCalledOnce());
+  expect(f.runtime.run).toHaveBeenLastCalledWith(expect.objectContaining({runId:originalRun,conversationId:owner.id,configurationRunId:`${originalRun}:configuration:1`}),expect.any(Function));
+  expect(owner.messages[1].content).toBe(history);expect(owner.queuedInputs).toHaveLength(0);
+  expect(f.runtime.deleteConversation).not.toHaveBeenCalled();
+  await f.finish();
+});
+it('waits for an in-flight configuration reload before accepting another input', async () => {
+  let revision=0;const f=fixture(()=>revision);await f.start();
+  let release!:()=>void;
+  vi.mocked(f.runtime.cancel).mockImplementation(()=>{release=()=>f.runs[0].finish({status:'aborted'});});
+  vi.mocked(f.runtime.agentControl!).mockResolvedValue({requestId:'after-reload',conversationId:1,status:'accepted'});
+  revision=1;f.controller.configurationChanged();
+  await vi.waitFor(()=>expect(release).toBeDefined());
+  const sending=f.controller.send({text:'After reload',params:{model:'one'},attachments:[]},f.controller.current,true,'after-reload');
+  await Promise.resolve();expect(f.runtime.agentControl).not.toHaveBeenCalled();
+  release();await sending;
+  expect(f.runs).toHaveLength(2);expect(f.runtime.agentControl).toHaveBeenCalledOnce();
   await f.finish();
 });

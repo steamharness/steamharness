@@ -64,6 +64,7 @@
     "@steamharness/i18n": "workspace:*",
     "@steamharness/kanban-project": "workspace:*",
     "@steamharness/project-card-metadata": "workspace:*",
+    "@steamharness/project-configuration": "workspace:*",
     "@steamharness/project-dependencies": "workspace:*",
     "@steamharness/project-info": "workspace:*",
     "@steamharness/project-types": "workspace:*",
@@ -75,9 +76,9 @@
     "express": "^4.21.0",
     "ipaddr.js": "1.9.1",
     "pg": "^8.20.0",
+    "steamharness": "0.1.1",
     "tar": "^7.5.14",
     "unzipper": "^0.12.3",
-    "steamharness": "0.1.1",
     "zod": "4.4.3"
   },
   "devDependencies": {

@@ -162,16 +162,18 @@ try {
         projectDir: request.project.folderPath,
         entrypointId: request.entrypointId,
         request: request.request,
+        configuration: request.configuration,
         storage,
         abortSignal: controller.signal,
       }));
     } else if (request.method === 'run') {
+      const configuration = request.configuration ?? await (await core.createLocalProjectConfigurationStore(projectDir)).snapshot({runId:request.configurationRunId ?? request.runId});
       let agentControl;
       let runFinished = false;
       if (request.project.conversation?.durable?.enabled) {
         const agent = await import(resolve('steamharness/agent', pathToFileURL(path.join(runtimeProjectDir, 'package.json')).href));
         agentHost = agent.createAgentSessionHost(request.conversationId);
-        agentControl = async ({ command, scopeId, attachments }) => {
+        agentControl = async ({ command, scopeId, attachments }) => core.withProjectConfiguration(configuration, async () => {
           if (typeof scopeId !== 'string' || !command || typeof command.requestId !== 'string') throw new Error('Invalid agent command.');
           let prepared = command;
           if (attachments?.length) {
@@ -193,7 +195,7 @@ try {
               await new Promise(resolve => setTimeout(resolve, 25));
             }
           }
-        };
+        });
         process.on('message', async message => {
           if (message?.type !== 'agent-control') return;
           try {
@@ -203,6 +205,7 @@ try {
         });
       }
       const running = runLocalProjectWithReport({
+        configuration,
         projectDir: request.project.folderPath,
         args: request.args,
         entrypointId: request.entrypointId,
