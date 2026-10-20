@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { localizationHtml } from './localization-host';
+import { webviewContextMenu } from './webview-context-menu';
 import { TraceStore } from './workflow-trace-store';
 import type { Project } from './workflow-types';
 import type { TraceTarget } from './workflow-trace-types';
@@ -54,7 +55,7 @@ export class TraceView {
     view.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')] };
     const nonce = globalThis.crypto.randomUUID().replace(/-/g, '');
     const asset = (name: string): string => view.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'dist', name)).toString();
-    view.webview.html = `<!DOCTYPE html><html lang="${vscode.env.language}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    view.webview.html = `<!DOCTYPE html><html lang="${vscode.env.language}"><head>${webviewContextMenu(this.context, view)}<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
       <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${view.webview.cspSource}; font-src ${view.webview.cspSource}; img-src ${view.webview.cspSource} https: data:; script-src 'nonce-${nonce}';">
       <link rel="stylesheet" href="${asset('codicons/codicon.css')}"><link rel="stylesheet" href="${asset('trace-ui.css')}">
       </head><body><div id="trace-app"></div>${localizationHtml(nonce)}<script nonce="${nonce}" src="${asset('trace-ui.js')}"></script></body></html>`;

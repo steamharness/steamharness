@@ -91,7 +91,11 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     if (input) { input.focus({ preventScroll: true }); contextInput = lastInput = captureInput(input); }
     else { contextInput = lastInput = undefined; }
     contextText = selectedText(input ?? event.target);
-    window.parent.postMessage({ type: 'workflow-contextmenu', version: 1, x: event.clientX, y: event.clientY }, '*');
+    const field = input as HTMLInputElement | HTMLTextAreaElement | null;
+    const editable = !!input && !field?.readOnly && !field?.disabled;
+    const selection = !!contextText;
+    if (!editable && !selection) { return; }
+    window.parent.postMessage({ type: 'workflow-contextmenu', version: 1, x: event.clientX, y: event.clientY, editable, selection }, '*');
   });
   addEventListener('copy', event => {
     if (!editHost || event.defaultPrevented || !selectedText()) { return; }

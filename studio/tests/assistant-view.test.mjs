@@ -17,6 +17,9 @@ function fixture(t, options = {}) {
   const commands = new Map();
   const disposable = { dispose() {} };
   const events = {};
+  const receivers = new Set(), disposals = new Set();
+  events.message = message => Promise.all([...receivers].map(receive => receive(message)));
+  events.dispose = () => { for (const dispose of [...disposals]) { dispose(); } };
   const inspections = [], projects = [], sessions = [], messages = [], executions = [];
   const uri = folder('/extension').uri;
   const vscode = {
@@ -47,8 +50,8 @@ function fixture(t, options = {}) {
   });
   t.after(() => provider.dispose());
   const view = { webview: { options: {}, cspSource: 'https://test.vscode-webview.net', asWebviewUri: uri => uri,
-    onDidReceiveMessage: callback => { events.message = callback; return disposable; }, postMessage: async message => { messages.push(message); } },
-    onDidDispose: callback => { events.dispose = callback; return disposable; }, show() {},
+    onDidReceiveMessage: callback => { receivers.add(callback); return { dispose: () => receivers.delete(callback) }; }, postMessage: async message => { messages.push(message); } },
+    onDidDispose: callback => { disposals.add(callback); return { dispose: () => disposals.delete(callback) }; }, show() {},
   };
   const flushEditor = async () => {
     t.mock.timers.tick(150);

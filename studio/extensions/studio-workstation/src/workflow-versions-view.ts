@@ -3,6 +3,7 @@ import { openProjectFolder } from './project-window';
 import { projectAvatarDataUrl } from '@steamharness/project-card-metadata/avatar';
 import { t } from './localization';
 import { localizationHtml } from './localization-host';
+import { webviewContextMenu } from './webview-context-menu';
 import { projectVersion, projectDisplayName, type Project } from './workflow-types';
 import type { Launcher } from './workflow-cli-types';
 import type { AccountController } from './workflow-auth';
@@ -473,7 +474,7 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
     view.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')] };
     const nonce = globalThis.crypto.randomUUID().replace(/-/g, '');
     const asset = (name: string): string => view.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'dist', name)).toString();
-    view.webview.html = `<!DOCTYPE html><html lang="${vscode.env.language}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    view.webview.html = `<!DOCTYPE html><html lang="${vscode.env.language}"><head>${webviewContextMenu(this.context, view)}<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
       <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${view.webview.cspSource}; font-src ${view.webview.cspSource}; script-src 'nonce-${nonce}';">
       <link rel="stylesheet" href="${asset('codicons/codicon.css')}"><link rel="stylesheet" href="${asset('versions-ui.css')}"></head>
       <body><main id="versions-app"></main>${localizationHtml(nonce)}<script nonce="${nonce}" src="${asset('versions-ui.js')}"></script></body></html>`;

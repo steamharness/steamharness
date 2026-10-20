@@ -51,7 +51,7 @@ async function fixture(t) {
     setInterval: (callback, ms) => { const timer = { callback, ms, unref() {} }; intervals.add(timer); return timer; },
     clearInterval: timer => intervals.delete(timer),
   });
-  const context = { secrets: { get: async () => stored, store: async value => { stored = value; }, delete: async () => { stored = undefined; }, onDidChange: secretsChanged.event } };
+  const context = { subscriptions: [], secrets: { get: async () => stored, store: async value => { stored = value; }, delete: async () => { stored = undefined; }, onDidChange: secretsChanged.event } };
   const controller = new module.exports.AccountController(context);
   t.after(() => controller.dispose());
   await controller.initialize();

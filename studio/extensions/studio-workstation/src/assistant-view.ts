@@ -1,5 +1,6 @@
 import { t } from './localization';
 import * as vscode from 'vscode';
+import { webviewContextMenu } from './webview-context-menu';
 import { createAssistantProject, DEVELOPER_ASSISTANT_PROJECT_ID } from './assistant-workspace';
 import type { AssistantWorkspaceFolder, Project } from './workflow-types';
 import type { Launcher } from './workflow-cli-types';
@@ -96,12 +97,12 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
       this.targetUri = target?.uri ?? '';
       view.description = target?.name;
       if (!this.runtime.available) {
-        view.webview.html = welcomeHtml(view.webview, this.context.extensionUri, t("Node extension host is unavailable"));
+        view.webview.html = welcomeHtml(this.context, view, t("Node extension host is unavailable"));
         this.key = key;
         return;
       }
       if (!target || !vscode.workspace.isTrusted) {
-        view.webview.html = welcomeHtml(view.webview, this.context.extensionUri,
+        view.webview.html = welcomeHtml(this.context, view,
           target ? t("Trust the current workspace first.") : t("Open a folder to use Assistant."), target ? undefined : 'assistant-open-folder');
         this.key = key;
         return;
@@ -121,7 +122,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
     }).catch((error) => {
       this.output.appendLine(`Project Assistant: ${String(error)}`);
       if (!this.disposed && this.view && epoch === this.epoch) {
-        this.view.webview.html = welcomeHtml(this.view.webview, this.context.extensionUri, t("Failed to load Assistant"), 'assistant-retry', error instanceof Error ? error.message : String(error));
+        this.view.webview.html = welcomeHtml(this.context, this.view, t("Failed to load Assistant"), 'assistant-retry', error instanceof Error ? error.message : String(error));
       }
     });
     return this.binding;
@@ -137,12 +138,13 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
   dispose(): void { this.disposed = true; ++this.epoch; clearTimeout(this.bindTimer); void this.closeConversation(); }
 }
 
-function welcomeHtml(webview: vscode.Webview, extension: vscode.Uri, label: string, action?: string, detail?: string): string {
+function welcomeHtml(context: vscode.ExtensionContext, view: vscode.WebviewView, label: string, action?: string, detail?: string): string {
+  const webview = view.webview, extension = context.extensionUri;
   const nonce = globalThis.crypto.randomUUID().replace(/-/g, '');
   const escape = (text: string): string => text.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!);
-  return `<!doctype html><html lang="${vscode.env.language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  return `<!doctype html><html lang="${vscode.env.language}"><head>${webviewContextMenu(context, view)}<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
     <link rel="stylesheet" href="${escape(webview.asWebviewUri(vscode.Uri.joinPath(extension, 'dist/scrollbars.css')).toString())}">
-    <style nonce="${nonce}">body{padding:20px 16px;color:var(--vscode-descriptionForeground);font:var(--vscode-font-size) var(--vscode-font-family)}p{white-space:pre-wrap;overflow-wrap:anywhere}button{color:var(--vscode-button-foreground);background:var(--vscode-button-background);border:0;padding:6px 10px;cursor:pointer}</style></head><body><div role="status"><p>${escape(label)}</p>${detail ? `<p>${escape(detail)}</p>` : ''}${action ? `<button id="assistant-action">${escape(action === 'assistant-open-folder' ? t("Open Folder") : t("Retry"))}</button>` : ''}</div>
-    ${action ? `<script nonce="${nonce}">const vscode = acquireVsCodeApi(); document.getElementById('assistant-action').onclick = () => vscode.postMessage({type:${JSON.stringify(action)}});</script>` : ''}</body></html>`;
+    <style nonce="${nonce}">body{padding:20px 16px;color:var(--vscode-descriptionForeground);font:var(--vscode-font-size) var(--vscode-font-family)}p{white-space:pre-wrap;overflow-wrap:anywhere}button{color:var(--vscode-button-foreground);background:var(--vscode-button-background);border:0;padding:6px 10px;cursor:pointer}</style></head><body><div role="status"><p>${escape(label)}</p>${detail ? `<p>${escape(detail)}</p>` : ''}${action ? `<button id="assistant-action" data-action="${escape(action)}">${escape(action === 'assistant-open-folder' ? t("Open Folder") : t("Retry"))}</button>` : ''}</div>
+    <script nonce="${nonce}" src="${escape(webview.asWebviewUri(vscode.Uri.joinPath(extension, 'dist/welcome-ui.js')).toString())}"></script></body></html>`;
 }

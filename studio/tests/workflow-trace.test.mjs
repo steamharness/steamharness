@@ -100,7 +100,9 @@ test('model classification uses Core metadata and preserves node display names',
 test('the outer webview configures an immediately loaded frame and validates trace and account messages', () => {
   const html = projectFrameHtml('http://127.0.0.1:3000/', 'Example', 'file:///project', 'dark', 'nonce', 'zh-cn');
   const listeners = {}, sent = [], frameMessages = [], contextMenus = [], child = { postMessage: (...args) => frameMessages.push(args) };
+  let frameContext;
   const frame = { contentWindow: child, addEventListener: (name, callback) => { listeners[name] = callback; },
+    setAttribute: (_key, value) => { frameContext = JSON.parse(value); },
     getBoundingClientRect: () => ({ left: 10, top: 20, width: 400, height: 300 }),
     dispatchEvent: event => contextMenus.push({ type: event.type, ...event }),
     set src(value) {
@@ -170,13 +172,18 @@ test('the outer webview configures an immediately loaded frame and validates tra
   assert.deepEqual(JSON.parse(JSON.stringify(frameMessages.at(-1)[0])), { type: 'workflow-host', editCommand: 'copy' });
   listeners.message({ source: child, origin: 'http://127.0.0.1:3000', data: { ...capability, command: 'paste' } });
   assert.deepEqual(JSON.parse(JSON.stringify(contextMenus.shift())), { type: 'vscode-webview-paste', bubbles: true });
-  const context = (source, origin, data = {}) => listeners.message({ source, origin, data: { type: 'workflow-contextmenu', version: 1, x: 40, y: 50, ...data } });
+  const context = (source, origin, data = {}) => listeners.message({ source, origin, data: { type: 'workflow-contextmenu', version: 1, x: 40, y: 50, editable: true, selection: false, ...data } });
   context({}, 'http://127.0.0.1:3000'); context(child, 'http://foreign');
   context(child, 'http://127.0.0.1:3000', { x: '40' }); context(child, 'http://127.0.0.1:3000', { x: 401 });
   document.activeElement = undefined; context(child, 'http://127.0.0.1:3000'); document.activeElement = frame;
   assert.equal(contextMenus.length, 0);
   context(child, 'http://127.0.0.1:3000');
+  assert.deepEqual(frameContext, { preventDefaultContextMenuItems: false, studioFrameSelection: false });
   assert.deepEqual(JSON.parse(JSON.stringify(contextMenus)), [{ type: 'contextmenu', bubbles: true, cancelable: true, clientX: 50, clientY: 70 }]);
+  context(child, 'http://127.0.0.1:3000', { editable: false, selection: false }); assert.equal(contextMenus.length, 1);
+  context(child, 'http://127.0.0.1:3000', { editable: 'true', selection: 'true' }); assert.equal(contextMenus.length, 1);
+  context(child, 'http://127.0.0.1:3000', { editable: false, selection: true });
+  assert.deepEqual(frameContext, { preventDefaultContextMenuItems: true, studioFrameSelection: true }); contextMenus.pop();
   document.activeElement = undefined; assert.equal(edit({ command: 'paste', clipboard: nativeClipboard }), true);
   assert.equal(frameMessages.at(-1)[0].restoreFocus, true); assert.equal(edit('paste'), false);
   document.activeElement = frame;

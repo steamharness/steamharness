@@ -2,6 +2,7 @@ import { t, locale } from './localization';
 import './account.css';
 import { renderAccountSections } from './account-sections';
 import type { AccountState } from '../src/workflow-auth-client';
+import { installContextMenu, type ContextAction } from './context-menu';
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
 
@@ -42,6 +43,18 @@ const verify = document.querySelector<HTMLButtonElement>('#verify-login')!;
 let state: AccountState | undefined;
 let pending = false;
 let copyTimer: ReturnType<typeof setTimeout> | undefined;
+installContextMenu(vscode, target => {
+  if (!target.closest('#account-app')) { return []; }
+  const actions: ContextAction[] = [];
+  const copy = target.closest('.inline-value')?.querySelector<HTMLButtonElement>('[data-copy]');
+  if (copy && !copy.disabled) { actions.push({ id: 'copy', run: () => copy.click() }); }
+  if (state?.user && !pending) {
+    actions.push({ id: 'editProfile', run: () => vscode.postMessage({ type: 'open-profile' }) },
+      { id: 'manageSessions', run: () => vscode.postMessage({ type: 'open-sessions' }) },
+      { id: 'refresh', run: () => verify.click() }, { id: 'signOut', run: () => vscode.postMessage({ type: 'logout' }) });
+  }
+  return actions;
+}, () => JSON.stringify([state?.status, state?.user?.userId, state?.serverUrl, pending]));
 
 function render(next: AccountState): void {
   state = next;

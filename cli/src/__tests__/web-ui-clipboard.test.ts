@@ -88,10 +88,15 @@ it('the UI host accepts clipboard replies only from its parent and exposes the c
   const input = { focus: vi.fn(), setSelectionRange: vi.fn(), matches: vi.fn((selector: string) => selector !== 'input[type=password]'), isConnected: true, value: 'Before selection After', selectionStart: 7, selectionEnd: 16, selectionDirection: 'forward' }, target = new TargetElement(), preventDefault = vi.fn();
   target.closest.mockReturnValue(null);
   const contextMenu = (defaultPrevented = false) => listeners.get('contextmenu')!({ target, defaultPrevented, preventDefault, clientX: 40, clientY: 50 });
-  contextMenu(); expect(sent.shift()).toEqual({ type: 'workflow-contextmenu', version: 1, x: 40, y: 50 }); preventDefault.mockClear();
+  contextMenu(); expect(sent).toEqual([]); preventDefault.mockClear();
   target.closest.mockReturnValue(input); contextMenu(true); expect(sent).toEqual([]);
   contextMenu(); expect(preventDefault).toHaveBeenCalledOnce(); expect(input.focus).toHaveBeenCalledWith({ preventScroll: true });
-  expect(sent.shift()).toEqual({ type: 'workflow-contextmenu', version: 1, x: 40, y: 50 });
+  expect(sent.shift()).toEqual({ type: 'workflow-contextmenu', version: 1, x: 40, y: 50, editable: true, selection: false });
+  Object.assign(input, { readOnly: true });
+  vi.mocked(selectedText).mockReturnValue('readonly selection'); contextMenu();
+  expect(sent.shift()).toEqual({ type: 'workflow-contextmenu', version: 1, x: 40, y: 50, editable: false, selection: true });
+  vi.mocked(selectedText).mockReturnValue(''); contextMenu(); expect(sent).toEqual([]);
+  Object.assign(input, { readOnly: false });
   const keydown = (extra: Record<string, unknown> = {}) => listeners.get('keydown')!({ target, key: 'v', ctrlKey: false, metaKey: true, preventDefault, stopPropagation: vi.fn(), ...extra });
   keydown(); expect(sent).toEqual([]);
   receive(parent, { nativePasteVersion: 1 });

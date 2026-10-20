@@ -1,5 +1,6 @@
 import { t } from './localization';
 import { localizationHtml } from './localization-host';
+import { webviewContextMenu } from './webview-context-menu';
 import * as vscode from 'vscode';
 import { projectVersion, projectDisplayName, type Project } from './workflow-types';
 import type { Launcher } from './workflow-cli-types';
@@ -95,7 +96,7 @@ export class ResourceViews implements vscode.Disposable {
     this.views.set(kind, view);
     this.published.delete(kind);
     view.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')] };
-    view.webview.html = this.html(kind, view.webview);
+    view.webview.html = this.html(kind, view);
     const listener = view.webview.onDidReceiveMessage(message => void this.receive(kind, view, message));
     const visibility = view.onDidChangeVisibility(() => { if (view.visible) { this.publish(kind); } });
     const disposal = view.onDidDispose(() => {
@@ -169,10 +170,11 @@ export class ResourceViews implements vscode.Disposable {
     } finally { if (mutation && generation === this.generation) { this.busy.delete(kind); } }
   }
 
-  private html(kind: ResourceKind, webview: vscode.Webview): string {
+  private html(kind: ResourceKind, view: vscode.WebviewView): string {
+    const webview = view.webview;
     const nonce = globalThis.crypto.randomUUID().replace(/-/g, '');
     const asset = (name: string): string => webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'dist', name)).toString();
-    return `<!DOCTYPE html><html lang="${vscode.env.language}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    return `<!DOCTYPE html><html lang="${vscode.env.language}"><head>${webviewContextMenu(this.context, view)}<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
       <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; font-src ${webview.cspSource}; img-src ${webview.cspSource} https: data:; script-src 'nonce-${nonce}';">
       <link rel="stylesheet" href="${asset('codicons/codicon.css')}"><link rel="stylesheet" href="${asset('resources-ui.css')}">
       </head><body data-resource-kind="${kind}"><div id="resources-app"></div>${localizationHtml(nonce)}<script nonce="${nonce}" src="${asset('resources-ui.js')}"></script></body></html>`;

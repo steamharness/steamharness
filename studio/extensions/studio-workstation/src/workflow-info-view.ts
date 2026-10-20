@@ -1,5 +1,6 @@
 import { t } from './localization';
 import { localizationHtml } from './localization-host';
+import { webviewContextMenu } from './webview-context-menu';
 import * as vscode from 'vscode';
 import { projectAvatarDataUrl } from '@steamharness/project-card-metadata/avatar';
 import { projectDisplayName, type Project } from './workflow-types';
@@ -88,7 +89,7 @@ export class InfoView implements vscode.WebviewViewProvider, vscode.Disposable {
     view.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')] };
     const nonce = globalThis.crypto.randomUUID().replace(/-/g, '');
     const asset = (name: string): string => view.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'dist', name)).toString();
-    view.webview.html = `<!DOCTYPE html><html lang="${vscode.env.language}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    view.webview.html = `<!DOCTYPE html><html lang="${vscode.env.language}"><head>${webviewContextMenu(this.context, view)}<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
       <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src ${view.webview.cspSource}; font-src ${view.webview.cspSource}; script-src 'nonce-${nonce}';">
       <link rel="stylesheet" href="${asset('codicons/codicon.css')}"><link rel="stylesheet" href="${asset('info-ui.css')}">
       </head><body><main id="info-app"></main><div id="info-announcement" class="sr-only" role="status"></div>${localizationHtml(nonce)}<script nonce="${nonce}" src="${asset('info-ui.js')}"></script></body></html>`;
@@ -100,6 +101,9 @@ export class InfoView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   private async receive(message: { type?: string; generation?: number; projectUri?: string; itemId?: string }): Promise<void> {
     if (message.type === 'ready') { this.publish(); return; }
+    if (message.generation !== this.generation || message.projectUri !== this.selected?.uri) { return; }
+    if (message.type === 'source' && this.selected) { await vscode.commands.executeCommand('studio.openProjectSource', this.selected); return; }
+    if (message.type === 'refresh') { await this.reload(); return; }
     if (message.type === 'upgrade' && message.generation === this.generation && message.projectUri === this.selected?.uri) {
       await vscode.commands.executeCommand('studio.upgradeProject', this.selected); return;
     }

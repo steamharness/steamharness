@@ -3,11 +3,27 @@ import { escapeHtml, iconHtml } from './ui';
 import type { VersionsState } from '../src/steamharness-server-projects';
 import { projectVersionHtml } from './project-version';
 import './versions.css';
+import { installContextMenu, type ContextAction } from './context-menu';
 
 declare function acquireVsCodeApi(): { postMessage(message: object): void };
 const host = acquireVsCodeApi();
 const app = document.querySelector<HTMLElement>('#versions-app')!;
 let state: VersionsState | undefined, signature = '';
+installContextMenu(host, (target, copy) => {
+  if (!state || !target.closest('#versions-app')) { return []; }
+  const post = (type: string, version?: string): void => host.postMessage({ type, generation: state!.generation, projectId: state!.project?.id, version });
+  if (!state.signedIn) { return [{ id: 'signIn', run: () => post('sign-in') }]; }
+  const version = state.versions.find(version => version.version === target.closest<HTMLElement>('article.version')?.dataset.version);
+  const actions: ContextAction[] = [];
+  if (version) {
+    if (state.canDownload && !state.busy && !state.loading) { actions.push({ id: 'download', run: () => post('download', version.version) }); }
+    actions.push({ id: 'copyVersion', run: () => copy(version.version) });
+    if (version.sourceHash) { actions.push({ id: 'copyHash', run: () => copy(version.sourceHash!) }); }
+    if (version.releaseLog) { actions.push({ id: 'copyReleaseNotes', run: () => copy(version.releaseLog!) }); }
+  }
+  if (!state.busy && !state.loading) { actions.push({ id: 'refresh', run: () => post('refresh') }); }
+  return actions;
+}, () => JSON.stringify([state?.generation, state?.project?.id, state?.busy, state?.loading, state?.signedIn, state?.canDownload]));
 const text = escapeHtml;
 const iconButton = (action: string, icon: string, label: string, disabled = false, version = ''): string =>
   `<button type="button" class="icon-button" data-action="${action}" data-version="${text(version)}" title="${text(label)}" aria-label="${text(label)}"${disabled ? ' disabled' : ''}>${iconHtml(icon)}</button>`;

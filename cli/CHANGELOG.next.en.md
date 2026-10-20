@@ -1,5 +1,9 @@
 # Unreleased
 
+### Studio Context Menus
+
+- Match project page context menus to their targets: keep editing actions in inputs, offer Copy for read-only text selections, and omit Cut/Paste on empty areas.
+
 ### Tool permissions
 
 - Show tool descriptions directly in expanded permission sections, preserving multiline usage instructions.

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { t } from './localization';
 import { localizationHtml } from './localization-host';
+import { webviewContextMenu } from './webview-context-menu';
 import { DOCUMENT_PREVIEW_LIMIT, LATEX_PREVIEW_LIMIT, DOCUMENT_PREVIEW_VIEW, FORMULA_PREVIEW_VIEW,
   documentPreviewKind, documentPreviewView, type DocumentPreviewKind, type PreviewMessage } from './document-preview-types';
 
@@ -61,7 +62,7 @@ export class DocumentPreviewProvider implements vscode.CustomReadonlyEditorProvi
     panel.webview.options = { enableScripts: true, localResourceRoots: [root] };
     const nonce = globalThis.crypto.randomUUID().replace(/-/g, '');
     const asset = (name: string): string => panel.webview.asWebviewUri(vscode.Uri.joinPath(root, name)).toString();
-    panel.webview.html = `<!DOCTYPE html><html lang="${vscode.env.language}"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    panel.webview.html = `<!DOCTYPE html><html lang="${vscode.env.language}"><head>${webviewContextMenu(this.context, panel)}<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
       <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${panel.webview.cspSource} data: blob:; style-src ${panel.webview.cspSource} 'unsafe-inline'; font-src ${panel.webview.cspSource} data:; script-src 'nonce-${nonce}' ${panel.webview.cspSource} 'wasm-unsafe-eval'; worker-src ${panel.webview.cspSource} blob:; connect-src ${panel.webview.cspSource} data: blob:; frame-src 'self' blob:;">
       <link rel="stylesheet" href="${asset('codicons/codicon.css')}"><link rel="stylesheet" href="${asset('document-preview/main.css')}">
       </head><body><div id="preview-app"></div>${localizationHtml(nonce)}<script type="module" nonce="${nonce}" src="${asset('document-preview/main.js')}"></script></body></html>`;

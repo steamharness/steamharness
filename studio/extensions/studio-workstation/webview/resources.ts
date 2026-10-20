@@ -1,6 +1,8 @@
 import { t, locale } from './localization';
 import { escapeHtml, iconHtml, markdownHtml } from './ui';
 import './resources.css';
+import { installContextMenu, type ContextAction } from './context-menu';
+import { resourceMenuActions, sameResource } from './resource-context';
 import type { ResourceDetail, ResourceKind, ResourcePage, ResourceRequest, ResourceRow, ResourceSource } from '../src/workflow-resources-types';
 
 declare function acquireVsCodeApi(): { postMessage(message: object): void; getState(): Record<string, string> | undefined; setState(state: object): void };
@@ -49,8 +51,38 @@ let dirty = false, authenticated = false, saving = false, readOnly = false;
 const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void }>();
 search.value = saved.query ?? '';
 if (scopeSelect) { scopeSelect.value = saved.scope ?? ''; }
+newButton.disabled = true;
 
 function persist(): void { vscode.setState({ query: search.value, scope: scopeSelect?.value ?? '', source: source ?? '', projectUri }); }
+const dataContext = (): string => JSON.stringify([generation, projectUri, source]);
+const contextVersion = (): string => JSON.stringify([generation, projectUri, source, readOnly, authenticated, saving]);
+const copyText = (text: string): void => vscode.postMessage({ type: 'copy', generation, projectUri, text });
+const contentText = (value: ResourceDetail): string => knowledge ? value.markdown ?? '' : JSON.stringify(value.value, null, 2) ?? '';
+installContextMenu(vscode, target => {
+  const item = target.closest<HTMLElement>('.resource-row');
+  const row = item ? rows.find(row => row.id === item.dataset.id) : target.closest('#resource-detail') ? currentRow : undefined;
+  const area = item ? 'row' : target.closest('#resource-detail') ? 'detail' : 'list';
+  if ((area !== 'list' && !row) || !target.closest('.resource-workspace')) { return []; }
+  const actions = resourceMenuActions({ kind, source, readOnly, authenticated, saving, hasProject: !!projectUri,
+    target: area, editing: !!detail.querySelector('#detail-form') });
+  return actions.map(id => ({ id, run: async () => {
+    const version = contextVersion();
+    try {
+      if (id === 'refresh') { document.querySelector<HTMLButtonElement>('#resource-refresh')!.click(); }
+      else if (id === 'newKey' || id === 'newDocument') { newButton.click(); }
+      else if (row) {
+        if (id === 'copyKey' || id === 'copyId') { copyText((knowledge ? row.documentId : row.key) ?? row.id); }
+        else if (id === 'copyContent') {
+          const value = await request<ResourceDetail | null>({ action: 'get', key: row.key, scope: row.scope, conversationId: row.conversationId, documentId: row.documentId });
+          if (version === contextVersion() && value) { copyText(contentText(value)); }
+        } else if (id === 'delete') { await remove(row); }
+        else if (id === 'open' || id === 'edit') {
+          if (await canDiscard() && version === contextVersion() && await select(row) && id === 'edit') { renderDetail(true); }
+        }
+      }
+    } catch (failure) { if (version === contextVersion()) { error((failure as Error).message); } }
+  } } satisfies ContextAction));
+}, contextVersion);
 function error(value?: string): void { errorBox.hidden = !value; errorBox.textContent = value ?? ''; }
 function request<T>(input: Omit<ResourceRequest, 'kind'>): Promise<T> {
   const id = ++serial;
@@ -90,13 +122,13 @@ async function load(reset = false): Promise<void> {
     sourceSelect.innerHTML = page.sources.map(value => `<option value="${value}">${value === 'local' ? t("Local") : t("Server")}</option>`).join('');
     sourceSelect.value = source; sourceSelect.disabled = page.sources.length === 1;
     login.hidden = source !== 'server' || authenticated;
-    newButton.disabled = !knowledge && source === 'server';
+    newButton.disabled = !source || source === 'server' && (!knowledge || !authenticated);
     rows = page.items; renderRows();
     count.textContent = `${page.total} ${page.search ? t("matches") : knowledge ? t("documents") : t("items")} \u00b7 ${pageIndex + 1}`;
     previous.disabled = pageIndex === 0; next.disabled = !page.hasMore;
     if (page.nextCursor) { cursors[pageIndex + 1] = page.nextCursor; }
     if (currentRow && !dirty && !saving) {
-      const row = rows.find(row => row.id === currentRow?.id || knowledge && row.documentId === currentRow?.documentId);
+      const row = rows.find(row => sameResource(kind, row, currentRow));
       if (row) { await select(row); } else { clearDetail(); }
     }
     persist();
@@ -109,7 +141,7 @@ async function load(reset = false): Promise<void> {
       sourceSelect.value = source ?? ''; sourceSelect.disabled = storage.sources.length === 1;
     }
     error(storage.message); login.hidden = source !== 'server' || authenticated;
-    newButton.disabled = !knowledge && source === 'server';
+    newButton.disabled = !source || source === 'server' && (!knowledge || !authenticated);
     if (!rows.length) { list.innerHTML = `<div class="resource-empty">${t("Unable to load data")}</div>`; }
   } finally { if (epoch === listEpoch) { app.dataset.loading = 'false'; list.setAttribute('aria-busy', 'false'); } }
 }
@@ -131,25 +163,27 @@ function renderRows(): void {
     list.append(item);
   }
 }
-async function select(row: ResourceRow): Promise<void> {
+async function select(row: ResourceRow): Promise<boolean> {
   const epoch = ++detailEpoch, version = generation;
-  currentRow = row; dirty = false; renderRows(); app.classList.add('show-detail');
+  currentRow = row; currentDetail = undefined; dirty = false; renderRows(); app.classList.add('show-detail');
   detail.innerHTML = `<div class="resource-empty">${t("Loading")}</div>`;
   try {
     const value = await request<ResourceDetail | null>({ action: 'get', key: row.key, scope: row.scope, conversationId: row.conversationId, documentId: row.documentId });
-    if (epoch !== detailEpoch || version !== generation) { return; }
+    if (epoch !== detailEpoch || version !== generation) { return false; }
     if (!value) { throw new Error(t("This item no longer exists. Please refresh.")); }
-    currentDetail = value; renderDetail(false);
+    currentDetail = value; renderDetail(false); return true;
   } catch (failure) { if (epoch === detailEpoch && version === generation) { error((failure as Error).message); } }
+  return false;
 }
 function renderDetail(edit: boolean, create = false): void {
   const value = currentDetail ?? {};
   const title = knowledge ? value.title ?? '' : value.key ?? '';
   const body = knowledge ? value.markdown ?? '' : JSON.stringify(value.value, null, 2) ?? '';
-  const editable = !readOnly && (knowledge || source === 'local');
+  const writable = !readOnly && (source === 'local' || source === 'server' && authenticated);
+  const editable = writable && (knowledge || source === 'local');
   detail.innerHTML = `<header class="detail-toolbar">${button('detail-back', 'arrow-left', t("Back to list"))}<span class="detail-title" title="${escapeHtml(title)}">${escapeHtml(create ? knowledge ? t("New document") : t("New key") : title)}</span><span id="detail-dirty" hidden>${t("Unsaved")}</span><span class="toolbar-spacer"></span>
     ${edit ? button('detail-save', 'save', t("Save")) + button('detail-cancel', 'close', t("Cancel editing")) : editable ? button('detail-edit', 'edit', t("Edit")) : ''}
-    ${!edit ? button('detail-copy', 'copy', t("Copy")) + (readOnly ? '' : button('detail-delete', 'trash', t("Delete"))) : ''}</header>
+    ${!edit ? button('detail-copy', 'copy', t("Copy")) + (writable ? button('detail-delete', 'trash', t("Delete")) : '') : ''}</header>
     ${edit ? `<form id="detail-form" class="detail-form"><div class="detail-fields"><label>${knowledge ? t("Title") : 'Key'}<input id="detail-title-input" value="${escapeHtml(title)}" required ${!knowledge && !create ? 'readonly' : ''}></label>
       ${!knowledge ? `<label>${t("Scope")}<span class="select-control"><select id="detail-scope" ${create ? '' : 'disabled'}><option value="project">${t("Project")}</option><option value="conversation">${t("Session")}</option></select>${iconHtml('chevron-down')}</span></label><label id="detail-conversation-label">${t("Session ID")}<input id="detail-conversation" value="${escapeHtml(value.conversationId ?? '')}" ${create ? '' : 'readonly'}></label>` : ''}</div>
       <textarea id="detail-body" spellcheck="false" aria-label="${knowledge ? 'Markdown' : 'JSON'}">${escapeHtml(body)}</textarea></form>`
@@ -179,7 +213,7 @@ function renderDetail(edit: boolean, create = false): void {
 }
 async function save(create: boolean): Promise<void> {
   if (saving) { return; }
-  const version = generation;
+  const version = generation, context = dataContext();
   const title = document.querySelector<HTMLInputElement>('#detail-title-input')!.value.trim();
   const body = document.querySelector<HTMLTextAreaElement>('#detail-body')!.value;
   const scope = document.querySelector<HTMLSelectElement>('#detail-scope')?.value as ResourceRequest['scope'];
@@ -190,29 +224,38 @@ async function save(create: boolean): Promise<void> {
     if (!knowledge && scope === 'conversation' && !conversationId) { throw new Error(t("Please enter a session ID.")); }
     saving = true; document.querySelector<HTMLButtonElement>('#detail-save')!.disabled = true;
     const result = await request<ResourceDetail>({ action: 'save', create, title, markdown: body, key: title, value, scope, conversationId, documentId: currentDetail?.id });
-    if (version !== generation) { return; }
+    if (context !== dataContext()) { return; }
     dirty = false; currentDetail = result;
     currentRow = knowledge ? { id: result.id!, documentId: result.id!, title: result.title!, preview: '' }
       : { id: JSON.stringify([result.scope, result.conversationId ?? '', result.key]), key: result.key, scope: result.scope, conversationId: result.conversationId, title, preview: '' };
     renderDetail(false); error(); await load(true);
-  } catch (failure) { if (version === generation) { error((failure as Error).message); } }
-  finally { saving = false; const saveButton = document.querySelector<HTMLButtonElement>('#detail-save'); if (saveButton) { saveButton.disabled = false; } }
+  } catch (failure) { if (context === dataContext()) { error((failure as Error).message); } }
+  finally { if (version === generation) { saving = false; const saveButton = document.querySelector<HTMLButtonElement>('#detail-save'); if (saveButton) { saveButton.disabled = false; } } }
 }
-async function remove(): Promise<void> {
-  if (!currentRow || saving) { return; }
-  const version = generation;
+async function remove(row = currentRow): Promise<void> {
+  if (!row || saving || readOnly || source === 'server' && !authenticated) { return; }
+  const context = contextVersion();
+  if ((sameResource(kind, row, currentRow) && !await canDiscard()) || context !== contextVersion()) { return; }
+  const version = generation, dataVersion = dataContext();
   try {
     saving = true;
-    const result = await request<{ cancelled?: boolean }>({ action: 'delete', key: currentRow.key, scope: currentRow.scope, conversationId: currentRow.conversationId, documentId: currentRow.documentId, title: currentRow.title });
-    if (version !== generation || result.cancelled) { return; }
-    clearDetail(); await load(true);
-  } catch (failure) { if (version === generation) { error((failure as Error).message); } }
-  finally { saving = false; }
+    const result = await request<{ cancelled?: boolean }>({ action: 'delete', key: row.key, scope: row.scope, conversationId: row.conversationId, documentId: row.documentId, title: row.title });
+    if (dataVersion !== dataContext() || result.cancelled) { return; }
+    if (sameResource(kind, row, currentRow)) { clearDetail(); }
+    await load(true);
+  } catch (failure) { if (dataVersion === dataContext()) { error((failure as Error).message); } }
+  finally { if (version === generation) { saving = false; } }
 }
 
-document.querySelector<HTMLButtonElement>('#resource-refresh')!.onclick = async () => { if (await canDiscard()) { dirty = false; await load(); } };
+document.querySelector<HTMLButtonElement>('#resource-refresh')!.onclick = async () => {
+  const context = contextVersion();
+  if (!saving && await canDiscard() && context === contextVersion()) { dirty = false; await load(); }
+};
 newButton.onclick = async () => {
-  if (await canDiscard()) { clearDetail(); currentDetail = {}; app.classList.add('show-detail'); renderDetail(true, true); }
+  const context = contextVersion();
+  if (projectUri && source && !saving && !readOnly && !newButton.disabled && await canDiscard() && context === contextVersion()) {
+    clearDetail(); currentDetail = {}; app.classList.add('show-detail'); renderDetail(true, true);
+  }
 };
 login.onclick = () => vscode.postMessage({ type: 'login' });
 projectSelect.onchange = async () => {
@@ -243,7 +286,7 @@ window.addEventListener('message', event => {
     if (generation === message.generation) { return; }
     for (const task of pending.values()) { task.reject(new Error('Project data context changed.')); } pending.clear();
     const changed = projectUri !== message.selected;
-    projectUri = message.selected ?? ''; generation = message.generation;
+    projectUri = message.selected ?? ''; generation = message.generation; saving = false; newButton.disabled = true;
     app.dataset.projectUri = projectUri; rows = []; cursors = [undefined]; pageIndex = 0; ++listEpoch; clearDetail(); error();
     if (changed) { source = saved.projectUri === projectUri ? saved.source as ResourceSource || undefined : undefined; }
     if (message.source) { source = message.source; }

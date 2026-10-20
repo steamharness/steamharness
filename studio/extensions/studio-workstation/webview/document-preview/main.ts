@@ -3,6 +3,7 @@ import { samePreviewBytes, type DocumentPreviewKind, type PreviewMessage } from 
 import { button, element, type PreviewContext, type PreviewRenderer, type PreviewState, type PreviewView } from './view';
 import '../scrollbars.css';
 import './style.css';
+import { installContextMenu } from '../context-menu';
 
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void; getState(): Partial<PreviewState> | undefined; setState(state: PreviewState): void };
 const vscode = acquireVsCodeApi();
@@ -23,6 +24,7 @@ const content = element('main', 'preview-content'); content.id = 'preview-conten
 toolbar.append(format, tools, readonly, refresh); app.append(toolbar, status, content);
 let generation = 0, controller: AbortController | undefined, view: PreviewView | undefined, bytes: Uint8Array | undefined;
 let failed = false, queue = Promise.resolve();
+installContextMenu(vscode, () => [{ id: 'refresh', run: () => refresh.click() }], () => generation);
 const showError = (error: unknown): void => {
   failed = true; refresh.classList.remove('busy'); status.hidden = false; status.setAttribute('role', 'alert');
   status.replaceChildren(element('strong', '', t('Unable to preview file')), element('span', '', error instanceof Error ? error.message : String(error)));

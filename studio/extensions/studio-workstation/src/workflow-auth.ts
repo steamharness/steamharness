@@ -1,5 +1,6 @@
 import { t } from './localization';
 import { localizationHtml } from './localization-host';
+import { webviewContextMenu } from './webview-context-menu';
 import * as vscode from 'vscode';
 import { registerProjectConnectionStatus } from './workflow-connection-status';
 import { AccountSections } from './account-sections';
@@ -146,7 +147,7 @@ export class AccountController implements vscode.Disposable {
     });
     this.panel = panel;
     panel.iconPath = new vscode.ThemeIcon('account');
-    panel.webview.html = this.html(panel.webview);
+    panel.webview.html = this.html(panel);
     let busy = false;
     const listeners: vscode.Disposable[] = [];
     listeners.push(panel.onDidDispose(() => {
@@ -199,10 +200,11 @@ export class AccountController implements vscode.Disposable {
     }));
   }
 
-  private html(webview: vscode.Webview): string {
+  private html(panel: vscode.WebviewPanel): string {
+    const webview = panel.webview;
     const asset = (name: string): string => webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'dist', name)).toString();
     const nonce = globalThis.crypto.randomUUID().replace(/-/g, '');
-    return `<!doctype html><html lang="${vscode.env.language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    return `<!doctype html><html lang="${vscode.env.language}"><head>${webviewContextMenu(this.context, panel)}<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
       <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; font-src ${webview.cspSource}; img-src ${webview.cspSource} https: http: data:; script-src 'nonce-${nonce}';">
       <link rel="stylesheet" href="${asset('codicons/codicon.css')}"><link rel="stylesheet" href="${asset('account-ui.css')}"><title>Workflow</title></head>
       <body><main id="account-app"></main>${localizationHtml(nonce)}<script nonce="${nonce}" src="${asset('account-ui.js')}"></script></body></html>`;

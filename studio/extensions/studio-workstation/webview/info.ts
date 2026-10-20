@@ -3,6 +3,7 @@ import { escapeHtml, iconHtml } from './ui';
 import type { InfoItem, InfoState } from '../src/workflow-info';
 import { projectVersionHtml } from './project-version';
 import './info.css';
+import { installContextMenu, type ContextAction } from './context-menu';
 
 interface SavedState { sections?: Record<string, Record<string, boolean>> }
 declare function acquireVsCodeApi(): { postMessage(message: object): void; getState(): SavedState | undefined; setState(state: SavedState): void };
@@ -12,6 +13,18 @@ const app = document.querySelector<HTMLElement>('#info-app')!;
 const saved = host.getState() ?? {};
 const sections = saved.sections ?? {};
 let state: InfoState | undefined, signature = '';
+installContextMenu(host, target => {
+  if (!state?.project || !target.closest('#info-app')) { return []; }
+  const actions: ContextAction[] = [];
+  const field = target.closest('[data-field]');
+  const copy = field?.querySelector<HTMLButtonElement>('[data-copy]');
+  if (copy) { actions.push({ id: 'copy', run: () => copy.click() }); }
+  const section = target.closest<HTMLDetailsElement>('details[data-section]');
+  if (section) { actions.push({ id: section.open ? 'collapse' : 'expand', run: () => { section.open = !section.open; } }); }
+  actions.push({ id: 'openSource', run: () => host.postMessage({ type: 'source', generation: state!.generation, projectUri: state!.project!.uri }) },
+    { id: 'refresh', run: () => host.postMessage({ type: 'refresh', generation: state!.generation, projectUri: state!.project!.uri }) });
+  return actions;
+}, () => JSON.stringify([state?.generation, state?.project?.uri]));
 
 function renderItem(item: InfoItem, nested = false): string {
   const id = escapeHtml(item.id), label = escapeHtml(item.label);

@@ -27,8 +27,11 @@ export function projectFrameHtml(url: string, title: string, projectUri: string,
             frame.dispatchEvent(new Event('vscode-webview-paste',{bubbles:true}));
           }
           if(event.origin===origin&&event.data?.type==='workflow-contextmenu'&&event.data.version===1&&editCommands&&document.activeElement===frame){
-            const {x,y}=event.data,rect=frame.getBoundingClientRect();
-            if(Number.isFinite(x)&&Number.isFinite(y)&&x>=0&&y>=0&&x<=rect.width&&y<=rect.height){contextMenu=true;frame.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:rect.left+x,clientY:rect.top+y}));}
+            const {x,y,editable,selection}=event.data,rect=frame.getBoundingClientRect();
+            if((editable===true||selection===true)&&Number.isFinite(x)&&Number.isFinite(y)&&x>=0&&y>=0&&x<=rect.width&&y<=rect.height){
+              frame.setAttribute('data-vscode-context',JSON.stringify({preventDefaultContextMenuItems:editable!==true,studioFrameSelection:selection===true}));
+              contextMenu=true;frame.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:rect.left+x,clientY:rect.top+y}));
+            }
           }
           if(event.origin===origin&&['workflow-trace','workflow-account','workflow-clipboard','workflow-resource'].includes(event.data?.type)&&event.data.version===1)vscode.postMessage(event.data);
           return;

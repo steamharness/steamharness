@@ -5,6 +5,7 @@ import { traceRows, filterTraceRows, traceDuration, type TraceRow, type TraceLan
 import type { TracePanelState, TraceTarget } from '../src/workflow-trace-types';
 import { TraceAgentView, type AgentTab } from './trace-agent';
 import { agentSession } from './trace-agent-model';
+import { installContextMenu, type ContextAction } from './context-menu';
 
 interface Host { postMessage(message: unknown): void; getState(): unknown; setState(state: unknown): void }
 const host = (globalThis as unknown as { acquireVsCodeApi(): Host }).acquireVsCodeApi();
@@ -41,6 +42,22 @@ let query = '', key = '', rows: TraceRow[] = [];
 const views = new Map<string, { root: HTMLDetailsElement; signature: string }>();
 const post = (message: Record<string, unknown>) => { if (state) { host.postMessage({ generation: state.generation, projectUri: state.selection.projectUri, ...message }); } };
 const agent = new TraceAgentView(element('trace-agent'), element('trace-actions'), action => post({ type: 'agent-action', action }), text => post({ type: 'copy', text }));
+installContextMenu(host, (target, copy) => {
+  if (!target.closest('#trace-app')) { return []; }
+  const root = target.closest<HTMLElement>('[data-row-id]');
+  const row = rows.find(row => row.id === root?.dataset.rowId);
+  const details = target.closest<HTMLDetailsElement>('details.trace-row, details.trace-agent-record');
+  const actions: ContextAction[] = [];
+  if (details) { actions.push({ id: details.open ? 'collapse' : 'expand', run: () => { details.open = !details.open; } }); }
+  if (row) {
+    actions.push({ id: 'copyRecord', run: () => copy([row.title, ...row.sections.map(section => `${section.label}\n${section.value}`)].join('\n\n')) });
+    if (!details) { actions.unshift({ id: 'open', run: () => focusRow(row.id) }); }
+  } else {
+    const content = target.closest<HTMLElement>('.trace-task-detail, .trace-agent-record, .trace-plan-document, .trace-agent-fields, .trace-agent-usage');
+    if (content?.textContent) { actions.push({ id: 'copyRecord', run: () => copy(content.textContent!) }); }
+  }
+  return actions;
+}, () => JSON.stringify([state?.generation, state?.selection]), target => target.closest('details.trace-row') ?? target);
 for (const [id, label, glyph] of tabs) {
   const button = document.createElement('button'); button.id = `trace-tab-${id}`; button.dataset.tab = id;
   button.setAttribute('role', 'tab'); button.setAttribute('aria-controls', id === 'trace' ? 'trace-execution' : 'trace-agent');
@@ -115,7 +132,7 @@ function timeline(filtered: TraceRow[]): void {
       const position = mode === 'duration' ? (row.start! - start) / span * 100 : mode === 'rounds' ? (row.turn - 1 + roundEntries.indexOf(row) / roundEntries.length) / turns * 100 : index / entries.length * 100;
       const width = mode === 'duration' ? ((row.end ?? (row.status === 'running' ? Date.now() : row.start!)) - row.start!) / span * 100
         : mode === 'rounds' ? 85 / turns / roundEntries.length : 85 / entries.length;
-      const bar = document.createElement('button'); bar.className = `trace-bar status-${row.status ?? 'success'}`;
+      const bar = document.createElement('button'); bar.className = `trace-bar status-${row.status ?? 'success'}`; bar.dataset.rowId = row.id;
       bar.style.left = `${Math.max(0, Math.min(99.4, position))}%`; bar.style.width = `${Math.min(100 - Math.min(99.4, position), Math.max(.6, width))}%`;
       bar.title = `${row.title}${row.durationMs !== undefined ? ` \u00b7 ${traceDuration(row.durationMs)}` : ''}`; bar.setAttribute('aria-label', bar.title); bar.onclick = () => focusRow(row.id); track.append(bar);
     }
