@@ -429,11 +429,17 @@ export async function startWebServer(options: WebOptions) {
         await controller.persist(); broadcast(); break;
       }
       case 'queue-edit': await controller.editQueued(String(message.id), current); break;
-      case 'queue-remove': await controller.removeQueued(String(message.id), current); break;
+      case 'queue-remove':
+      case 'queue-promote': {
+        if (message.requestId !== undefined && (typeof message.requestId !== 'string' || !sessionIdPattern.test(message.requestId))) throw new Error('Invalid queue action identity.');
+        if (message.type === 'queue-remove') await controller.removeQueued(String(message.id), current, message.requestId);
+        else await controller.promoteQueued(String(message.id), current, message.requestId);
+        replies.push(state(message.clientId), { type: 'queue-updated', projectUri: project.uri, sessionId: current.id, requestId: message.requestId, id: message.id });
+        break;
+      }
       case 'queue-cancel-edit': await controller.cancelQueueEdit(current); break;
       case 'queue-run': await controller.runQueued(current); break;
       case 'queue-reorder': if (Array.isArray(message.ids) && message.ids.every((id: unknown) => typeof id === 'string')) { await controller.reorderQueued(message.ids, current); } break;
-      case 'queue-promote': await controller.promoteQueued(String(message.id), current); break;
       case 'session-action': {
         const session = controller.sessions.find(entry => entry.id === message.id);
         if (!session) { throw new Error('Conversation no longer exists.'); }

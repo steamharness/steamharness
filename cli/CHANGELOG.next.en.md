@@ -12,6 +12,8 @@
 
 - Show Conversation messages, attachments and delivery status immediately on send, or a pending queue item while busy. Save conversations and resolve parameters in the background, preserve new drafts across acknowledgements, and retain failed sends for retries under their original request identity.
 
+- [Fixed] Keep queued message controls in place and loading icons spinning while saving, sending now or withdrawing, with immediate per-message feedback. Newly submitted messages can request withdrawal before confirmation, and failed actions retain the input and a retry action without duplicate submissions.
+
 - Preserve a failed durable owner report and its original error even when the primary answer has completed. Update Core's streaming block and failure settlement behavior so a failed answer does not leave tasks appearing active or resume them on reopening.
 
 - [Improved] Split Tasks into equal-height conversation/active-task and completed-task regions with independent scrolling, and mark the open conversation. Show all loaded history and expand arguments, results and errors beside the selected task, with an action to open its conversation.

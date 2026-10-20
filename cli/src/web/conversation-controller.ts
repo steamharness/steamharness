@@ -626,7 +626,11 @@ export class ConversationController {
     (entry.parameterValues ??= {})[input.entrypointId ?? ''] = input.params;
     this.changed(); await this.persist();
   }
-  async removeQueued(id: string, entry = this.current): Promise<void> {
+  async removeQueued(id: string, entry = this.current, requestId: string = globalThis.crypto.randomUUID()): Promise<void> {
+    if (this.project.conversation?.durable?.enabled) {
+      if (entry.queuedInputs?.some(input => input.id === id)) await this.agentCommand(entry.id, { type: 'withdraw', requestId, inputId: id });
+      return;
+    }
     entry.queuedInputs = (entry.queuedInputs ?? []).filter((input) => input.id !== id);
     if (entry.draft?.editingQueueId === id) { entry.draft = { text: '', attachments: [] }; }
     this.changed(); await this.persist();
@@ -641,11 +645,11 @@ export class ConversationController {
     if (ids.length !== queue.length || new Set(ids).size !== queue.length || ids.some((id) => !queue.some((input) => input.id === id))) { return; }
     entry.queuedInputs = ids.map((id) => queue.find((input) => input.id === id)!); this.changed(); await this.persist();
   }
-  async promoteQueued(id: string, entry = this.current): Promise<void> {
+  async promoteQueued(id: string, entry = this.current, requestId: string = globalThis.crypto.randomUUID()): Promise<void> {
     const queue = entry.queuedInputs ?? [];
     if (!queue.some((input) => input.id === id)) { return; }
     if (this.project.conversation?.durable?.enabled) {
-      await this.agentCommand(entry.id, { type: 'promote', requestId: globalThis.crypto.randomUUID(), inputId: id });
+      await this.agentCommand(entry.id, { type: 'promote', requestId, inputId: id });
       return;
     }
     await this.reorderQueued([id, ...queue.filter((input) => input.id !== id).map((input) => input.id)], entry);

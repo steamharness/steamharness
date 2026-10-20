@@ -284,6 +284,27 @@ it.each([false, true])('promotes a durable queued input without restarting its o
   await f.finish();
 });
 
+it.each(['removeQueued', 'promoteQueued'] as const)('waits for a durable %s receipt using the supplied request identity without changing the draft or owner', async method => {
+  const f = fixture(); await f.start();
+  const initial = f.snapshot();
+  f.emit({ ...initial, revision: 2, turns: [...initial.turns,
+    { requestId: 'queued', conversationId: 1, prompt: 'Keep my input', mode: 'followUp', status: 'queued', epoch: 0, items: [] }] });
+  await f.controller.updateDraft(f.controller.current.id, 'Next draft', []);
+  let accept!: (receipt: AgentSessionReceipt) => void;
+  vi.mocked(f.runtime.agentControl!).mockImplementation(() => new Promise(resolve => { accept = resolve; }));
+  const pending = f.controller[method]('queued', f.controller.current, 'queue-action');
+  await vi.waitFor(() => expect(f.runtime.agentControl).toHaveBeenCalledOnce());
+  expect(vi.mocked(f.runtime.agentControl!).mock.calls[0][1]).toMatchObject({
+    type: method === 'removeQueued' ? 'withdraw' : 'promote', requestId: 'queue-action', inputId: 'queued', targetId: 1,
+  });
+  expect(f.controller.current.queuedInputs?.[0].text).toBe('Keep my input');
+  expect(f.controller.current.draft?.text).toBe('Next draft');
+  expect(f.runtime.cancel).not.toHaveBeenCalled(); expect(f.runtime.run).toHaveBeenCalledOnce();
+  accept({ requestId: 'queue-action', conversationId: 1, status: 'accepted' }); await pending;
+  expect(f.controller.current.agentCommands).toEqual([]); expect(f.controller.current.draft?.text).toBe('Next draft');
+  await f.finish();
+});
+
 it('never starts Harness queued inputs through the old host queue when its owner exits', async () => {
   const f = fixture(); await f.start();
   f.emit({ ...f.snapshot(), revision: 2, turns: [...f.snapshot().turns,

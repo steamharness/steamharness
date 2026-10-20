@@ -118,6 +118,26 @@ it('does not tear down a new event stream when an older mutation fails', async (
   expect(fixture.updates.at(-1)).toBe('connected'); expect([...fixture.timers.values()].map(timer => timer.delay)).toEqual([45_000]);
 });
 
+it.each(['queue-promote', 'queue-remove'])('times out a stalled %s request and reconnects without automatically replaying it', async type => {
+  const fixture = await connectionFixture(200);
+  fixture.listeners.get('online')!(); await vi.waitFor(() => expect(fixture.source()).toBeDefined()); fixture.open();
+  const controller = new AbortController();
+  const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValueOnce(controller.signal);
+  try {
+    fixture.fetcher.mockImplementationOnce((_url, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(new Error('Timed out')), { once: true });
+    }));
+    const pending = expect(fixture.connection.request({ type, requestId: randomUUID(), sessionId: 'original', id: 'queued' })).rejects.toThrow('Connection interrupted.');
+    expect(timeout).toHaveBeenCalledWith(35_000);
+    controller.abort(); await pending;
+    expect(fixture.updates.at(-1)).toBe('reconnecting');
+    const old = fixture.source();
+    fixture.fire(2_000); await vi.waitFor(() => expect(fixture.source()).not.toBe(old)); fixture.open();
+    expect(fixture.updates.at(-1)).toBe('connected');
+    expect(fixture.fetcher.mock.calls.filter(([url]) => url === '/api/message')).toHaveLength(1);
+  } finally { timeout.mockRestore(); }
+});
+
 it('times out a stream that opens without a snapshot and reconnects without waiting for an error event', async () => {
   const fixture = await connectionFixture(200);
   fixture.listeners.get('online')!(); await vi.waitFor(() => expect(fixture.source()).toBeDefined());

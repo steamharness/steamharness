@@ -3,6 +3,7 @@ import type { AccountState } from '../workflow-auth-client';
 import { ParameterActions } from './parameter-actions';
 import { ConversationComposer } from './conversation-composer';
 import { ConversationSubmissions, type ConversationSubmission } from './conversation-submissions';
+import { ConversationQueue } from './conversation-queue';
 import { InputPrompt } from './input-prompt';
 import { ConversationTools } from './conversation-tools';
 import { requestAction } from './action-dialog';
@@ -136,6 +137,12 @@ function initialize(): void {
     navigation: state ? (navigationNeeded || draftUpdates.size) ? { projectUri: state.project.uri, activeId: preferredSessionId ?? state.activeId, updates: [...draftUpdates.values()] } : undefined : saved.navigation }); };
   const post = (message: Record<string, unknown>): void => { if (state) { vscode.postMessage({ projectUri: state.project.uri, sessionId: state.activeId, ...message }); } };
   const currentSession = () => state?.sessions.find((session) => session.id === state?.activeId);
+  const queueView = new ConversationQueue(document.querySelector<HTMLElement>('#input-queue')!, {
+    action: action => { void vscode.postMessage(action); },
+    edit: id => { saveDraft(); post({ type: 'queue-edit', id }); },
+    reorder: ids => post({ type: 'queue-reorder', ids }),
+    resume: () => post({ type: 'queue-run' }),
+  });
   const dialogs = new ConversationTools();
   const contentSearch = new ContentSearch(transcript);
   const currentParameters = () => projectParameters(state!.project, entrypoint.value || undefined);
@@ -422,6 +429,7 @@ function initialize(): void {
     attach.hidden = !conversation || !Object.values(state.project.conversation?.attachments ?? {}).some(Boolean);
     attach.disabled = busy() || uploading > 0 || !navigationReady();
     for (const control of Array.from(document.querySelectorAll<HTMLButtonElement>('.param-file-button'))) { control.disabled = busy() || resolving; }
+    renderQueue();
   }
 
   function sessionTime(session: ConversationSession): number {
@@ -705,48 +713,11 @@ function initialize(): void {
   }
 
   function renderQueue(): void {
-    const queue = currentSession()?.queuedInputs ?? [];
-    const container = document.querySelector<HTMLElement>('#input-queue')!; container.replaceChildren(); container.hidden = !queue.length;
-    if (!queue.length) { return; }
-    const heading = document.createElement('div'); heading.className = 'queue-heading'; heading.textContent = t("Queued messages ({0})", queue.length);
-    if (!state!.project.conversation?.durable?.enabled && !state!.running && !currentSession()?.messages.some((message) => message.pendingInput)) { heading.append(iconButton('play', t("Resume queue"), () => post({ type: 'queue-run' }))); }
-    container.append(heading);
-    if (state?.project.conversation?.durable?.enabled) {
-      for (const input of queue) {
-        const row = document.createElement('div'); row.className = 'queued-input';
-        const label = document.createElement('span'); label.textContent = input.text || input.attachments.map(file => file.name).join(', '); label.title = label.textContent;
-        if (submissions.get(input.id)) {
-          const status = document.createElement('span'); status.className = 'queued-input-status'; status.title = t('Sending'); status.setAttribute('role', 'status'); status.setAttribute('aria-label', t('Sending')); status.innerHTML = icon('loading');
-          row.append(label, status);
-          container.append(row); continue;
-        }
-        const sendNow = iconButton('send', t('Send now'), () => post({ type: 'queue-promote', id: input.id }));
-        sendNow.disabled = !connectionAvailable || !navigationReady() || currentSession()?.agent?.turns.some(turn => turn.requestId === input.id && turn.mode === 'steer') === true;
-        row.append(label, sendNow, iconButton('close', t('Withdraw input'), () => post({ type: 'agent-command', command: { type: 'withdraw', requestId: crypto.randomUUID(), inputId: input.id } })));
-        container.append(row);
-      }
-      return;
-    }
-    for (const [index, input] of queue.entries()) {
-      const row = document.createElement('div'); row.className = 'queued-input'; row.dataset.id = input.id; row.draggable = true;
-      const label = document.createElement('span'); label.textContent = input.text || input.attachments.map((file) => file.name).join(', '); label.title = label.textContent;
-      if (submissions.get(input.id)) {
-        const status = document.createElement('span'); status.className = 'queued-input-status'; status.title = t('Sending'); status.setAttribute('role', 'status'); status.setAttribute('aria-label', t('Sending')); status.innerHTML = icon('loading');
-        row.draggable = false; row.append(label, status);
-        container.append(row); continue;
-      }
-      row.append(label, iconButton('edit', t("Edit"), () => { saveDraft(); post({ type: 'queue-edit', id: input.id }); }), iconButton('arrow-up', t("Move up"), () => {
-        const ids = queue.map((entry) => entry.id); [ids[index - 1], ids[index]] = [ids[index], ids[index - 1]]; post({ type: 'queue-reorder', ids });
-      }), iconButton('send', t("Send now"), () => post({ type: 'queue-promote', id: input.id })), iconButton('close', t("Delete"), () => post({ type: 'queue-remove', id: input.id })));
-      row.querySelectorAll<HTMLButtonElement>('button')[1].disabled = index === 0;
-      row.addEventListener('dragstart', (event) => { event.dataTransfer?.setData('application/x-studio-queue', input.id); });
-      row.addEventListener('dragover', (event) => { if (event.dataTransfer?.types.includes('application/x-studio-queue')) { event.preventDefault(); } });
-      row.addEventListener('drop', (event) => {
-        const id = event.dataTransfer?.getData('application/x-studio-queue'); if (!id || !queue.some((entry) => entry.id === id)) { return; }
-        event.preventDefault(); const ids = queue.filter((entry) => entry.id !== id).map((entry) => entry.id); ids.splice(index, 0, id); post({ type: 'queue-reorder', ids });
-      });
-      container.append(row);
-    }
+    const session = currentSession();
+    if (!state || !session) return;
+    queueView.update({ projectUri: state.project.uri, session, sessions: state.sessions, durable: state.project.conversation?.durable?.enabled === true,
+      ready: connectionAvailable && navigationReady(),
+      pendingIds: new Set(submissions.list().filter(entry => entry.projectUri === state!.project.uri).map(entry => entry.input.id)) });
   }
 
   async function uploadFiles(files: File[]): Promise<void> {
@@ -946,7 +917,7 @@ function initialize(): void {
       if (queued?.entrypointId) { entrypoint.value = queued.entrypointId; }
       sizeComposer();
     }
-    renderHistory(switching); updateSessionMenu(); renderQueue();
+    renderHistory(switching); updateSessionMenu();
     document.querySelector<HTMLElement>('#editing-queue')!.hidden = !editingQueueId;
     attachmentList(document.querySelector('#draft-attachments')!, draftFiles, true);
     if (!session.messages.length) {
@@ -1159,6 +1130,7 @@ function initialize(): void {
   let renderScheduled = false;
   window.addEventListener('message', (event) => {
     const message = event.data;
+    if (queueView.receive(message)) return;
     if (message.type === 'connection') {
       const restored = !connectionAvailable && message.status === 'connected';
       connectionStatus = message.status;

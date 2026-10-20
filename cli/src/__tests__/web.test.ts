@@ -163,6 +163,32 @@ describe('steamharness web', () => {
     }
   });
 
+  it.each(['queue-promote', 'queue-remove'] as const)('acknowledges %s only after completion and binds it to the original conversation', async type => {
+    const { app, post } = await fixture();
+    const original = app.controller.current;
+    await app.controller.recordCommand('fixture', 'Original conversation');
+    await app.controller.create();
+    const selected = app.controller.current;
+    let finish!: () => void;
+    const method = type === 'queue-promote' ? 'promoteQueued' : 'removeQueued';
+    const operation = vi.spyOn(app.controller, method).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    const requestId = crypto.randomUUID();
+    let completed = false;
+    const pending = post({ type, sessionId: original.id, id: 'queued', requestId }).then(response => { completed = true; return response; });
+    await vi.waitFor(() => expect(operation).toHaveBeenCalledOnce());
+    expect(operation).toHaveBeenCalledWith('queued', original, requestId); expect(completed).toBe(false);
+    finish();
+    const response = await pending; expect(response.status).toBe(200);
+    const { messages } = await response.json();
+    expect(messages).toContainEqual({ type: 'queue-updated', projectUri: app.controller.project.uri, sessionId: original.id, requestId, id: 'queued' });
+    expect(messages.find((reply: any) => reply.type === 'state').activeId).toBe(selected.id);
+    expect((await post({ type, sessionId: original.id, id: 'queued', requestId: 'invalid' })).status).toBe(400);
+    expect(operation).toHaveBeenCalledOnce();
+    operation.mockResolvedValue(undefined);
+    expect((await post({ type, sessionId: original.id, id: 'queued' })).status).toBe(200);
+    expect(operation).toHaveBeenCalledTimes(2);
+  });
+
   it.each([false, true])('restores the last selected conversation after reopening (older conversation=%s)', async older => {
     const { directory, app, post, runtime } = await fixture();
     const clientId = crypto.randomUUID(), first = app.controller.activeId, second = crypto.randomUUID();

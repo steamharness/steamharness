@@ -196,8 +196,13 @@ main { grid-area: main; min-width: 0; min-height: 0; display: flex; flex-directi
 .input-queue { max-height: 20vh; overflow: auto; margin-bottom: 8px; border-top: 1px solid var(--border); }
 .queue-heading, .queued-input, .editing-queue { display: flex; align-items: center; gap: 4px; min-height: 32px; }
 .queue-heading { justify-content: space-between; font-size: 11px; color: var(--muted); }
-.queued-input > span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.queued-input > .queued-input-status { flex: 0 0 28px; display: flex; justify-content: center; color: var(--muted); }
+.queued-input { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; }
+.queued-input-label { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.queued-input-status { max-width: 120px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.queued-input-actions { grid-column: 3; display: flex; flex-shrink: 0; gap: 4px; }
+.queued-input .codicon-loading { display: inline-block; width: 16px; height: 16px; line-height: 16px; animation: spin 1.2s linear infinite; }
+.queued-input-error { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; padding-bottom: 4px; color: var(--vscode-errorForeground); font-size: 12px; }
+.queued-input-error > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .editing-queue { justify-content: space-between; color: var(--muted); font-size: 11px; }
 .resource-cards { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .resource-card { display: block; width: 100%; min-width: 0; margin: 8px 0; border: 1px solid var(--border); border-radius: 6px; background: var(--vscode-editor-background); overflow: hidden; container-type: inline-size; }

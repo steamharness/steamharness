@@ -166,7 +166,8 @@ export class BrowserConnection {
     try {
       const body = { ...message, clientId: this.clientId };
       // Navigation is independent of the event stream and must not wait on its handshake.
-      const signal = ['ready', 'navigate'].includes(message.type) ? AbortSignal.timeout(10_000) : undefined;
+      const signal = ['ready', 'navigate'].includes(message.type) ? AbortSignal.timeout(10_000)
+        : ['queue-promote', 'queue-remove'].includes(message.type) ? AbortSignal.timeout(35_000) : undefined;
       response = await fetch('/api/message', { method: 'POST', headers: { ...this.headers(), 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
     } catch { if (epoch === this.epoch && !this.closed) { this.interrupted(); } throw new ConnectionError(t("Connection interrupted.")); }
     if (this.closed) { throw new ConnectionError(t("Connection changed.")); }
