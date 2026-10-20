@@ -12,7 +12,6 @@ import {
   estimateAgentContextTokens,
   findCompactionSplitIndex,
   readAgentContextUsage,
-  shouldCompactAgent,
   type AgentCompactionResult,
   type AgentCompactionSettings,
 } from "./compaction";
@@ -236,7 +235,6 @@ class ProjectAgentRuntime implements AgentRuntime {
       return;
     }
 
-    if (!this.options.session && await agent.canCompact(input.requestId)) yield* this.compactOversizedTranscript(agent, parsed, host);
     yield* this.runPrompt(parsed, agent, input, host);
   }
 
@@ -325,6 +323,8 @@ class ProjectAgentRuntime implements AgentRuntime {
         databasePath: this.options.databasePath,
         storage: this.options.storage,
         retryDelayMs: this.options.retryDelayMs,
+        compaction: this.compactionSettings(),
+        contextUsage: () => this.getContextUsage(),
       });
     }
 
@@ -391,48 +391,6 @@ class ProjectAgentRuntime implements AgentRuntime {
     yield { type: "compaction", phase: "end", auto, summary: result.summary };
   }
 
-  /**
-   * Compacts a transcript that no longer fits, before the model is asked with it.
-   *
-   * A conversation's transcript outlives the process that wrote it, so nothing
-   * bounds it between turns: a long session is restored already past the
-   * window, and a request that big fails outright rather than degrading. This
-   * is the turn where that has to be noticed.
-   *
-   * The row is only written once the compaction worked. A failed one leaves the
-   * turn to fail on its own terms, which says something true about the request
-   * — where a row claiming a compaction succeeded would not.
-   */
-  private async *compactOversizedTranscript(
-    agent: PiAgent,
-    parsed: AgentParsedInput,
-    host?: AgentHost,
-  ): AsyncIterable<AgentStreamEvent> {
-    const settings = this.compactionSettings();
-    const usage = readAgentContextUsage({
-      used: readTranscriptTokens(agent.state.messages),
-      contextWindow: parsed.contextWindow ?? this.pi.model.contextWindow,
-    });
-    if (!shouldCompactAgent(usage, settings)) {
-      return;
-    }
-    if (findCompactionSplitIndex(agent.state.messages, settings.keepRecentTokens) <= 0) {
-      return;
-    }
-
-    let result: AgentCompactionResult;
-    try {
-      result = await this.compactTranscript(agent, settings, host);
-    } catch {
-      return;
-    }
-
-    yield { type: "compaction", phase: "start", auto: true };
-    yield { type: "compaction", phase: "end", auto: true, summary: result.summary };
-    const contextUsage = this.getContextUsage();
-    if (contextUsage !== undefined) yield { type: "context_usage", usage: contextUsage };
-  }
-
   private compactionSettings(): AgentCompactionSettings {
     return this.options.compaction ?? DEFAULT_AGENT_COMPACTION_SETTINGS;
   }
@@ -445,7 +403,7 @@ class ProjectAgentRuntime implements AgentRuntime {
   ): Promise<AgentCompactionResult> {
     const result = await compactAgentMessages({
       models: this.pi.models,
-      model: this.pi.model,
+      model: { ...this.pi.model, contextWindow: this.contextWindow ?? this.pi.model.contextWindow },
       messages: agent.state.messages,
       settings,
       signal: host?.abortSignal,
@@ -518,6 +476,7 @@ class ProjectAgentRuntime implements AgentRuntime {
     const unsubscribe = agent.subscribe(async (event) => {
       try {
         for (const normalized of normalizeAgentEvent(event as never)) {
+          if (normalized.type === "compaction" && normalized.phase === "end" && normalized.summary !== undefined) this.contextMeasurement = undefined;
           if (normalized.type === "session") {
             const snapshot = normalized.snapshot;
             const key = JSON.stringify([snapshot.epoch, snapshot.configuration.version, snapshot.records.filter(record =>
@@ -553,7 +512,7 @@ class ProjectAgentRuntime implements AgentRuntime {
             lastDeltaUpdate = now;
           }
         } else if (event.type === "message_start" || event.type === "message_end" || event.type === "agent_end" ||
-            (event as { type: string }).type === "project_session") {
+            (event as { type: string }).type === "project_session" || (event as { type: string }).type === "project_compaction") {
           publishContextUsage();
         }
         const durableUsage = event as unknown as { type: string; usage?: Usage; recordId?: string };
@@ -890,6 +849,8 @@ export function normalizeAgentEvent(event: {
   type: string;
   [key: string]: unknown;
 }): AgentStreamEvent[] {
+  if (event.type === "project_compaction") return [{ type: "compaction", phase: event["phase"] as "start" | "end",
+    auto: event["auto"] === true, ...(typeof event["summary"] === "string" ? { summary: event["summary"] } : {}) }];
   if (event.type === "project_session") return [{ type: "session", snapshot: event["snapshot"] as import("./session-types").AgentSessionSnapshot }];
   if (event.type === "project_retry") return [{ type: "retry", attempt: Number(event["attempt"]),
     maxAttempts: Number(event["maxAttempts"] ?? AGENT_PROVIDER_MAX_RETRIES), reason: String(event["reason"]),
@@ -977,10 +938,6 @@ export function sumAgentUsage(usages: readonly Usage[]): AgentUsage | undefined 
     cacheWriteTokens: 0,
     reasoningTokens: 0,
   });
-}
-
-function readTranscriptTokens(messages: readonly AgentMessage[]): number {
-  return estimateAgentContextTokens(messages);
 }
 
 /**

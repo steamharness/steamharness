@@ -3,17 +3,20 @@ import { BACKGROUND_CONTEXT, awaitWithContext, type Context } from "@earendil-wo
 import { copyJson, type JsonValue } from "@earendil-works/chord";
 import { applyImmutable } from "@earendil-works/chord/delta";
 import {
-  Harness, MemoryStorage, ToolTask, GenerationTask, LiveDoc, createRegistry, defineDocFamily,
+  Harness, MemoryStorage, ToolTask, GenerationTask, CompactionTask, LiveDoc, createRegistry, defineDocFamily,
   defineExtension, hook, section, watchEvents,
   type AgentEvent as DurableEvent, type AgentEventStream, type Conversation,
-  type EntryRecord, type JsonObject, type Storage, type ToolRegistration,
+  type EntryRecord, type JsonObject, type Storage, type ToolRegistration, type HookApi,
 } from "@earendil-works/pi-durable";
 import { CodingTools } from "@earendil-works/pi-durable/tools";
 import type { AgentEvent, AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
-import type { Api, AssistantMessage, ImageContent, Model, Models, ToolCall } from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, ImageContent, Message, Model, Models, ToolCall, Usage } from "@earendil-works/pi-ai";
 import { createAssistantMessageEventStream, isRetryableAssistantError } from "@earendil-works/pi-ai";
+import { estimateMessageTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { HarnessError } from "../workflow/errors";
-import type { AgentAskResume } from "./types";
+import type { AgentAskResume, AgentContextUsage } from "./types";
+import { DEFAULT_AGENT_COMPACTION_SETTINGS, estimateAgentContextTokens, readAgentContextUsage,
+  findCompactionSplitIndex, shouldCompactAgent, summarizeAgentMessages, type AgentCompactionSettings } from "./compaction";
 import { createAgentStreamResumePrompt } from "./plan";
 import { openAgentStorage, type AgentStorageFactory } from "./storage";
 import { AgentExtensionResources, mergeAgentRegistries } from "./extensions";
@@ -57,6 +60,8 @@ export interface DurableAgentOptions {
   databasePath?: string;
   storage?: AgentStorageFactory;
   retryDelayMs?: number;
+  compaction?: AgentCompactionSettings;
+  contextUsage?: () => AgentContextUsage | undefined;
 }
 
 type ApprovalResult = { block: true; reason: string; pause?: HarnessError } | undefined;
@@ -90,6 +95,8 @@ export class DurableAgent {
   private readonly entries = new Set<number>();
   private readonly toolsStarted = new Set<string>();
   private readonly toolsEnded = new Set<string>();
+  private readonly compactionsStarted = new Set<number>();
+  private readonly compactionsEnded = new Set<number>();
   private readonly projectedCalls = new Map<string, { id: string; arguments: unknown }>();
   private delivery: Promise<void> = Promise.resolve();
   private attemptId = "";
@@ -122,14 +129,13 @@ export class DurableAgent {
       const dynamicModels = new Proxy({} as Models, {
         get: (_target, key) => {
           if (key === "streamSimple") return this.streamModel.bind(this);
-          if (key === "completeSimple" && this.options.session) return async (...args: Parameters<Models["completeSimple"]>) => {
-            const message = await this.models.completeSimple(...args);
-            const id = `compaction:${randomUUID()}`;
-            await this.root!.commit(async tx => { (await tx.doc(RunDoc, this.root!.id, this.activeRequest, null)).usage[id] = json(message.usage); }, context);
-            await this.session?.recordCompactionUsage(args[2]?.sessionId, id, message.usage);
-            await this.emitUsage(id, message.usage);
-            return message;
+          if (key === "getModel") return (provider: string, modelId: string) => {
+            const model = provider === this.state.model.provider && modelId === this.state.model.id
+              ? this.state.model : this.models.getModel(provider, modelId);
+            return model && provider === this.state.model.provider && modelId === this.state.model.id && this.state.contextWindow
+              ? { ...model, contextWindow: this.state.contextWindow } : model;
           };
+          if (key === "completeSimple") return this.summarize.bind(this);
           const value = Reflect.get(this.models, key, this.models);
           return typeof value === "function" ? value.bind(this.models) : value;
         },
@@ -138,6 +144,19 @@ export class DurableAgent {
       await this.resources.install(this.registry, tool => this.adaptTool(tool));
       const registry = mergeAgentRegistries(this.registry, this.options.session?.registry);
       registry.snapshot();
+      const compactionPolicy = () => {
+        const settings = this.compactionSettings();
+        const window = this.state.contextWindow ?? this.state.model.contextWindow;
+        const split = findCompactionSplitIndex(this.state.messages, settings.keepRecentTokens);
+        const recent = this.state.messages.slice(split).reduce((tokens, message) => tokens + estimateMessageTokens(message as Message), 0);
+        // A very large older turn must not pin all history merely because the
+        // safe suffix after it is smaller than the preferred recent budget.
+        return { enabled: settings.enabled, keepRecentTokens: split > 0 ? Math.min(settings.keepRecentTokens, recent) : settings.keepRecentTokens,
+          // Pi uses a strict `>` comparison; reserve one extra token to include 90%.
+          reserveTokens: Math.max(window - Math.ceil(window * settings.threshold) + 1,
+            this.options.session?.compaction?.reserveTokens ?? 0),
+          backgroundTokens: this.options.session?.compaction?.backgroundTokens ?? 0 };
+      };
       this.harness = await Harness.open(storage, {
         models: dynamicModels, registry,
         env: (target, ctx) => this.resources!.environment(target, ctx),
@@ -147,7 +166,7 @@ export class DurableAgent {
         },
         settings: {
           retry: { enabled: true, maxRetries: 10, baseDelayMs: this.options.retryDelayMs ?? 500, maxAgentDelayMs: 8_000 },
-          stream: { maxRetries: 0 }, compaction: this.options.session ? { enabled: true, ...this.options.session.compaction } : { enabled: false },
+          stream: { maxRetries: 0 }, get compaction() { return compactionPolicy(); },
           progress: { partialIntervalMs: 50, outputIntervalMs: 100 },
           toolExecution: "sequential",
         },
@@ -295,6 +314,7 @@ export class DurableAgent {
     const requestId = this.requestId ?? randomUUID();
     this.activeRequest = requestId;
     this.entries.clear(); this.toolsStarted.clear(); this.toolsEnded.clear(); this.projectedCalls.clear();
+    this.compactionsStarted.clear(); this.compactionsEnded.clear();
     this.usageEmitted.clear();
     this.state.errorMessage = undefined;
     this.aborting = undefined;
@@ -352,7 +372,7 @@ export class DurableAgent {
           }, context);
           return continuation === undefined ? undefined : { continue: continuation };
         },
-        beforeRequest: async (_request, api) => {
+        beforeRequest: async (_request, api, requestContext) => {
           const root = (await harness.conversation(api.conversationId, context))!;
           const logicalRequestId = this.session ? await this.session.requestIdFor(root.id) : requestId;
           const history = await root.context(context);
@@ -426,7 +446,8 @@ export class DurableAgent {
             }, context);
             if (failure) throw new HarnessError({ type: "execution", message: failure });
           }
-          if (partials.length > 0) return { messages: (await root.context(context)).messages };
+          const compacted = await this.compactBeforeRequest(root, api, requestContext);
+          if (compacted || partials.length > 0) return { messages: (await root.context(context)).messages };
         },
       }), hook(ToolTask, {
         beforeTool: async (call, api, callContext) => {
@@ -567,6 +588,113 @@ export class DurableAgent {
     return decision;
   }
 
+  private compactionSettings(): AgentCompactionSettings {
+    return { ...(this.options.compaction ?? DEFAULT_AGENT_COMPACTION_SETTINGS), ...this.options.session?.compaction };
+  }
+
+  private async compactBeforeRequest(root: Conversation, api: HookApi, requestContext: Context): Promise<boolean> {
+    const settings = this.compactionSettings();
+    if (!settings.enabled) return false;
+    const generation = await this.harness!.getTask(api.taskId, requestContext);
+    const checkpoint = generation?.state.checkpoint;
+    if (checkpoint && typeof checkpoint === "object" && "compacted" in checkpoint) return false;
+    const view = await root.context(requestContext);
+    if (findCompactionSplitIndex(view.messages.filter(message => message.role !== "system") as AgentMessage[], settings.keepRecentTokens) <= 0) return false;
+    if (root.id === this.root!.id) await this.refresh();
+    const model = (await root.agent(requestContext)).model;
+    const measurement = root.id === this.root!.id ? this.options.contextUsage?.() : undefined;
+    const usage = readAgentContextUsage({
+      used: measurement?.used ?? estimateAgentContextTokens(durableContextMessages(view)),
+      contextWindow: model && api.models.getModel(model.provider, model.modelId)?.contextWindow,
+    });
+    if (!shouldCompactAgent(usage, settings)) return false;
+    const requestId = this.session ? await this.session.requestIdFor(root.id) : this.activeRequest;
+    // The child identity is committed with its status. Recovery joins it instead
+    // of starting another summary; a no-op cannot create an unbounded loop.
+    const taskId = await root.commit(async tx => {
+      const run = await tx.doc(RunDoc, root.id, requestId, null);
+      const key = `compaction:${api.taskId}`;
+      if (typeof run.continuations[key] === "number") return run.continuations[key] as number;
+      const id = await tx.createTask(CompactionTask, { reason: "threshold" as const },
+        { conversationId: root.id, ownership: { kind: "task", taskId: api.taskId } });
+      const live = await tx.doc(LiveDoc, root.id);
+      (live.compactions ??= []).push({ taskId: id, reason: "threshold", blocking: true, attempt: 1 });
+      run.continuations[key] = id;
+      return id;
+    }, requestContext);
+    if (root.id === this.root!.id) await this.projectCompaction(taskId, "start", true);
+    const settled = await this.harness!.waitForTask(taskId as import("@earendil-works/pi-durable").TaskId<import("@earendil-works/pi-durable").CompactionResult>, requestContext);
+    const outcome = settled.state.outcome;
+    if (outcome.status !== "completed") {
+      const reason = outcome.status === "failed" || outcome.status === "faulted" ? outcome.error.message
+        : outcome.status === "orphaned" ? outcome.reason : "aborted";
+      throw new HarnessError({ type: "execution", message: `Context compaction ${outcome.status}: ${reason}` });
+    }
+    if (root.id === this.root!.id) await this.refresh();
+    const entry = outcome.result.entryId === undefined ? undefined : (await root.context(requestContext)).entries.find(entry => entry.id === outcome.result.entryId);
+    if (root.id === this.root!.id) await this.projectCompaction(taskId, "end", true, readCompactionSummary(entry));
+    return outcome.result.entryId !== undefined;
+  }
+
+  private async projectCompaction(taskId: number, phase: "start" | "end", auto: boolean, summary?: string): Promise<void> {
+    const emitted = phase === "start" ? this.compactionsStarted : this.compactionsEnded;
+    if (emitted.has(taskId)) return;
+    emitted.add(taskId);
+    await this.emit({ type: "project_compaction", phase, auto, summary } as unknown as AgentEvent);
+  }
+
+  /** Native compaction uses the same bounded summarizer as explicit /compact. */
+  private async summarize(...args: Parameters<Models["completeSimple"]>): ReturnType<Models["completeSimple"]> {
+    let last: AssistantMessage | undefined;
+    let total: Usage | undefined;
+    const onUsage = async (usage: Usage): Promise<void> => {
+      if (!total) total = structuredClone(usage);
+      else {
+        for (const key of ["input", "output", "cacheRead", "cacheWrite", "totalTokens", "reasoning", "cacheWrite1h"] as const) {
+          if (usage[key] !== undefined) total[key] = (total[key] ?? 0) + usage[key];
+        }
+        for (const key of ["input", "output", "cacheRead", "cacheWrite", "total"] as const) total.cost[key] += usage.cost[key];
+      }
+      const id = `compaction:${randomUUID()}`;
+      await this.root!.commit(async tx => { (await tx.doc(RunDoc, this.root!.id, this.activeRequest, null)).usage[id] = json(usage); }, context);
+      await this.session?.recordCompactionUsage(args[2]?.sessionId, id, usage);
+      await this.emitUsage(id, usage);
+    };
+    const nativeSummary = args[1].messages.some(message => message.role === "system" &&
+      typeof message.content === "string" && message.content.startsWith("You are a context summarization assistant."));
+    if (!nativeSummary) {
+      const message = await this.models.completeSimple(...args);
+      await onUsage(message.usage);
+      return message;
+    }
+    let instructions = args[1].systemPrompt;
+    const messages = args[1].messages.filter(message => message.role !== "system").map(message => {
+      if (message.role !== "user") return message;
+      const text = typeof message.content === "string" ? message.content
+        : message.content.flatMap(block => block.type === "text" ? [block.text] : []).join("\n");
+      const source = text.match(/^<conversation>\n([\s\S]*)\n<\/conversation>\n\n([\s\S]*)$/);
+      const focus = source?.[2]?.match(/\n\nAdditional focus: ([\s\S]*)$/)?.[1];
+      if (focus) instructions = [instructions, focus].filter(Boolean).join("\n\n");
+      return source ? { ...message, content: source[1]! } : message;
+    }) as AgentMessage[];
+    const summary = await summarizeAgentMessages({
+      models: { completeSimple: async (model, summaryContext, options) => {
+        last = await this.models.completeSimple(model, summaryContext, { ...args[2], ...options });
+        return last;
+      } },
+      model: args[0], messages, instructions, signal: args[2]?.signal,
+      reserveTokens: Math.min(args[2]?.maxTokens ?? this.compactionSettings().reserveTokens, this.compactionSettings().reserveTokens),
+      onUsage,
+    }).catch(error => {
+      // Let Durable apply its persisted retry policy to an incomplete provider
+      // response. A cancelled invocation must never place a late summary.
+      if (!args[2]?.signal?.aborted && last && last.stopReason !== "stop") return undefined;
+      throw error;
+    });
+    if (summary === undefined) return { ...last!, usage: total! };
+    return { ...last!, content: [{ type: "text", text: summary }], usage: total! };
+  }
+
   private streamModel(...args: Parameters<Models["streamSimple"]>): ReturnType<Models["streamSimple"]> {
     if (this.fatalFailure !== undefined) throw this.fatalFailure;
     const source = this.models.streamSimple(...args);
@@ -617,9 +745,14 @@ export class DurableAgent {
       throw new HarnessError({ type: "execution", message: "Cannot replace agent context while durable tasks are active." });
     }
     const messages = this.state.messages;
-    await this.root!.commit(tx => tx.appendEntry(this.root!.id, {
-      kind: "project.context", head: "self", model: json(messages) as unknown as AgentMessage[],
-    }), context);
+    await this.root!.commit(async tx => {
+      // Per-message entries let Durable cut a restored transcript at a safe
+      // turn boundary instead of treating all restored history as one entry.
+      await tx.appendEntry(this.root!.id, { kind: "project.context", head: "self", model: [] });
+      for (const message of messages) await tx.appendEntry(this.root!.id, {
+        kind: "project.context", model: [json(message) as unknown as AgentMessage],
+      });
+    }, context);
     this.projected = messages;
   }
 
@@ -665,6 +798,13 @@ export class DurableAgent {
   private async entry(entry: EntryRecord, replay: boolean): Promise<void> {
     if (this.entries.has(entry.id)) return;
     this.entries.add(entry.id);
+    if (entry.kind === "pi.compaction") {
+      const taskId = entry.byTaskId ?? entry.id;
+      const data = entry.data;
+      const auto = !data || typeof data !== "object" || Array.isArray(data) || data["reason"] !== "manual";
+      await this.projectCompaction(taskId, "start", auto);
+      await this.projectCompaction(taskId, "end", auto, readCompactionSummary(entry));
+    }
     if (entry.kind === "project.retry") {
       await this.emit({ type: "project_retry", ...entry.data as JsonObject } as unknown as AgentEvent);
       return;
@@ -714,6 +854,16 @@ export class DurableAgent {
     if ("parentTaskId" in event && event.parentTaskId !== undefined) return;
     await this.refresh();
     switch (event.type) {
+      case "compaction_start":
+        await this.projectCompaction(event.taskId, "start", event.reason !== "manual");
+        break;
+      case "compaction_end": {
+        if (event.error) break;
+        const view = await this.root!.context(context);
+        const entry = [...view.entries].reverse().find(entry => entry.kind === "pi.compaction" && entry.byTaskId === event.taskId);
+        await this.projectCompaction(event.taskId, "end", event.reason !== "manual", readCompactionSummary(entry));
+        break;
+      }
       case "snapshot":
         for (const entry of event.entries) if (entry.id > cutoff) await this.entry(entry, true);
         if (event.generation?.message) await this.replaceMessage(event.generation.message);
@@ -761,6 +911,12 @@ export class DurableAgent {
 
 function json(value: unknown): JsonValue {
   return JSON.parse(JSON.stringify(value)) as JsonValue;
+}
+
+function readCompactionSummary(entry: EntryRecord | undefined): string | undefined {
+  const content = entry?.model?.[0]?.content;
+  const text = typeof content === "string" ? content : content?.flatMap(block => block.type === "text" ? [block.text] : []).join("\n");
+  return text?.match(/<summary>\n([\s\S]*)\n<\/summary>/)?.[1];
 }
 
 type InterruptedMessage = AssistantMessage & { projectInterrupted?: string; projectContextUsageInvalid?: boolean };

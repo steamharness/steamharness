@@ -3,10 +3,8 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AgentContextUsage } from "./types";
 
 /**
- * Compaction is driven by this package, not by pi: the SDK ships the summary
- * helpers but wires nothing into a running agent, and the built-in OpenCode
- * project only ever compacts on an explicit `/compact`. Matching that keeps
- * the agent predictable — a long run never loses its transcript mid-turn.
+ * Core checks context before each model request, including tool continuations.
+ * Durable compaction keeps committed history while replacing model context.
  */
 export interface AgentCompactionSettings {
   enabled: boolean;
@@ -20,7 +18,7 @@ export interface AgentCompactionSettings {
 
 export const DEFAULT_AGENT_COMPACTION_SETTINGS: AgentCompactionSettings = {
   enabled: true,
-  threshold: 0.8,
+  threshold: 0.9,
   reserveTokens: 16_000,
   keepRecentTokens: 8_000,
 };
@@ -166,6 +164,7 @@ export async function compactAgentMessages(options: {
     instructions: options.instructions,
     signal: options.signal,
     onUsage: options.onUsage,
+    reserveTokens: settings.reserveTokens,
   });
 
   const summaryMessage: AgentMessage = {
@@ -189,47 +188,70 @@ export async function compactAgentMessages(options: {
   };
 }
 
-async function summarizeAgentMessages(options: {
-  models: MutableModels;
+export async function summarizeAgentMessages(options: {
+  models: Pick<MutableModels, "completeSimple">;
   model: Model<Api>;
   messages: AgentMessage[];
   instructions?: string;
   signal?: AbortSignal;
   onUsage?: (usage: Usage) => void | Promise<void>;
+  reserveTokens?: number;
 }): Promise<string> {
   const systemPrompt = options.instructions === undefined || options.instructions.trim() === ""
     ? AGENT_SUMMARIZATION_SYSTEM_PROMPT
     : `${AGENT_SUMMARIZATION_SYSTEM_PROMPT}\n\nAdditional instructions:\n${options.instructions.trim()}`;
 
-  const context: Context = {
-    systemPrompt,
-    messages: [{
-      role: "user",
-      content: [{ type: "text", text: serializeAgentMessages(options.messages) }],
-      timestamp: readLastTimestamp(options.messages),
-    }],
-  };
-
-  const message: AssistantMessage = await options.models.completeSimple(options.model, context, {
-    ...(options.signal === undefined ? {} : { signal: options.signal }),
-  });
-  await options.onUsage?.(message.usage);
-  options.signal?.throwIfAborted();
-  if (message.stopReason !== "stop") {
-    throw new Error(message.errorMessage?.trim() || `The model returned an incomplete compaction summary (${message.stopReason}).`);
+  const window = options.model.contextWindow;
+  const maxTokens = Math.max(1, Math.min(options.model.maxTokens,
+    options.reserveTokens ?? DEFAULT_AGENT_COMPACTION_SETTINGS.reserveTokens, Math.floor(window / 5)));
+  // Bound the summarizer too: restored histories and one large tool result can
+  // already exceed the window. Keep room for framing and the summary response.
+  const budget = Math.floor(window - maxTokens - estimateAgentTokens(systemPrompt) - 64);
+  if (budget <= 0) throw new Error("The model context window is too small for context compaction.");
+  let source = serializeAgentMessages(options.messages);
+  while (true) {
+    const chunks = splitSummarySource(source, budget);
+    const summaries: string[] = [];
+    for (const chunk of chunks) {
+      options.signal?.throwIfAborted();
+      const context: Context = { systemPrompt, messages: [{ role: "user",
+        content: [{ type: "text", text: chunk }], timestamp: readLastTimestamp(options.messages) }] };
+      const message: AssistantMessage = await options.models.completeSimple(options.model, context, {
+        maxTokens, ...(options.signal === undefined ? {} : { signal: options.signal }),
+      });
+      await options.onUsage?.(message.usage);
+      options.signal?.throwIfAborted();
+      if (message.stopReason !== "stop" || message.content.some(block => block.type === "toolCall")) {
+        throw new Error(message.errorMessage?.trim() || `The model returned an incomplete compaction summary (${message.stopReason}).`);
+      }
+      const text = message.content.filter((block): block is { type: "text"; text: string } => block.type === "text")
+        .map(block => block.text).join("\n").trim();
+      if (!text) throw new Error("The model returned an empty compaction summary.");
+      summaries.push(text);
+    }
+    if (summaries.length === 1) return summaries[0]!;
+    const merged = summaries.join("\n\n");
+    if (estimateAgentTokens(merged) >= estimateAgentTokens(source)) {
+      throw new Error("Context compaction summaries did not reduce the conversation size.");
+    }
+    source = merged;
   }
+}
 
-  const text = message.content
-    .filter((block): block is { type: "text"; text: string } => block.type === "text")
-    .map((block) => block.text)
-    .join("\n")
-    .trim();
-
-  if (text === "") {
-    throw new Error("The model returned an empty compaction summary.");
+/** Split without losing text or splitting a Unicode code point. */
+function splitSummarySource(source: string, budget: number): string[] {
+  const chunks: string[] = [];
+  let chunk = "";
+  let quarters = 0;
+  for (const character of source) {
+    const cost = isWideCodePoint(character.codePointAt(0) ?? 0) ? 4 : 1;
+    if (quarters + cost > budget * 4 && chunk) {
+      chunks.push(chunk); chunk = ""; quarters = 0;
+    }
+    chunk += character; quarters += cost;
   }
-
-  return text;
+  if (chunk || !chunks.length) chunks.push(chunk);
+  return chunks;
 }
 
 /**

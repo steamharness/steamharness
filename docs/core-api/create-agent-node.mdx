@@ -81,7 +81,7 @@ Pi Durable Harness 是唯一执行历史来源。会话节点按项目存储目�
 - 崩溃时结果不明的工具只有声明 `replay: "safe"` 才能自动重做。默认 `never`；内置写文件、编辑和 bash 都不自动重放，错误结果供模型核查后决定下一步。外部副作用仍需业务幂等保障。
 - 存储或投影失败会终止运行，旧 KV transcript 不再读取；无需迁移旧数据。不会回退为无历史运行。
 - 非 Conversation 节点、或携带 `hostInput` 的网关运行默认使用 MemoryStorage；显式 `databasePath` 可改变存储选择。网关输入不会写入普通 Conversation 历史。
-- 普通模式的压缩或直接替换上下文必须等待 Durable 活动任务结束；session 的 compact/reset 使用 Harness 事务与输入边界协调，不能直接覆盖 transcript。
+- 手动 `/compact` 或直接替换上下文必须等待 Durable 活动任务结束。自动压缩在每次模型请求前检查，默认达到窗口的 90% 时执行；工具循环中的压缩与 session compact/reset 都使用 Harness 事务与输入边界协调，不能直接覆盖 transcript。
 
 ## 常驻会话宿主
 

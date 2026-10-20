@@ -1,5 +1,9 @@
 # Unreleased
 
+### Context compaction
+
+- Update Agent guidance for automatic compaction at 90% before every model request, including tool loops, overflow recovery, bounded summaries and their limits.
+
 ### Skill tools
 
 - Rename `skill` to “List and read skill guides”, explain `list`, `read`, the default `SKILL.md` and reference paths, and distinguish the section's tool count from its guide count.

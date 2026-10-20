@@ -76,7 +76,7 @@ const agent = await workflow.createAgent({
 | --- | --- |
 | `subagents` | 显式启用委派：`{ tools: string[], maxAgents?: number, models?: { provider, modelId }[] }`。工具只能取父 Agent 与白名单的交集；默认继承父模型，显式选模型须命中精确 provider/modelId 白名单；子 Agent 禁止再次委派，活动委派默认最多 4 个。 |
 | `nativeTools` | Pi Durable `ToolRegistration[]`；可用 `api.executeTool()` 嵌套调用，仍执行 caller 限制、权限审批及取消传播。 |
-| `compaction` | `{ enabled?, reserveTokens?, keepRecentTokens?, backgroundTokens? }`，使用 Durable 后台、阈值和溢出压缩；不走普通轮前压缩。 |
+| `compaction` | `{ enabled?, reserveTokens?, keepRecentTokens?, backgroundTokens? }`。默认在每次模型请求前检查，达到上下文窗口的 90% 时先压缩；`reserveTokens` 可要求更早预留空间，`backgroundTokens` 可提前启动后台压缩。`enabled: false` 关闭自动阈值与溢出恢复，仍可手动压缩。 |
 | `planFork` | `initial`、`current` 或 `asOf`（默认）：分叉计划为空初始值、当前值或分叉点值。 |
 | `registry` | `AgentRegistryReader`，安装项目自己的任务、工具、提示 sections 和 hooks；支持 install/uninstall 热更新。 |
 | `toolSearch` | `{ catalogs?: AgentToolCatalog[] }`，显式启用 `tool_search`；只发现宿主授权的目录。 |
@@ -267,7 +267,9 @@ prompt 恰好是 `/compact` 或 `/summarize`，或显式传 `compact: true` 时�
 
 总结请求的模型 usage 通过 `host.reportUsage` 上报，包含失败或取消响应已经消耗的 token；这份计费用量不作为总结后的上下文占用。直接调用 `compactAgentMessages` 时，可传 `onUsage(usage)` 接收模型返回的 pi `Usage`，回调在摘要校验前执行。
 
-**记录超出窗口时会自动压缩。** 如果本轮开始的记录已经超过压缩阈值（例如恢复出来的一段很长的历史），运行时会在调用模型之前先压缩一次，再让本轮正常跑，事件与手动压缩同形但 `auto: true`。压缩失败不写这一行、也不会让本轮失败——请求本身会把问题报出来；不会产出一行声称压缩成功、实际没有压缩的记录。
+**达到上下文窗口的 90% 时自动压缩。** 普通 Agent 与持久会话都会在每次模型请求前检查当前占用，包括同一轮中工具执行后的下一次请求。达到阈值先压缩较早的历史，再继续运行；`contextWindow` 覆盖值同样用于压缩判断。事件与手动压缩同形但 `auto: true`，执行时发送 start，成功后发送 end。压缩失败或取消时保留原记录，压缩失败会结束本次运行并报告原因。
+
+如果提供方仍返回明确的上下文超限错误，运行时会尝试一次压缩后重试；再次超限会报告错误，不无限重试。已经超限的历史会分块生成摘要，再合并摘要，每次摘要请求都为输出预留空间，所有摘要调用均计入用量。自动压缩保留最近的消息及完整的工具调用与结果；若剩余单条输入或工具结果本身仍超出窗口，需要缩短输入或工具输出。
 
 自动压缩的摘要只覆盖较早的部分：切分点从末尾按 token 窗口回退，并对齐到用户轮次；最近的窗口里没有用户轮次时退到最近的 assistant 轮次，最新一条消息永远保留。手动总结覆盖完整已有上下文，在摘要中保留目标、已做决策和未完成工作。
 

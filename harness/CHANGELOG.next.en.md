@@ -1,5 +1,9 @@
 # Unreleased
 
+### Context compaction
+
+- [Fixed] Check context before every model request in ordinary Agents and durable sessions, compacting at 90% by default across tool loops and custom windows. Recover from overflow with bounded retries and summarize oversized history in chunks while retaining tool call pairs, cancellation guarantees and complete usage.
+
 ### Skill tools
 
 - Clarify the `skill` display name, purpose and arguments, including discovery, entry and reference reads, result fields and truncation limits.

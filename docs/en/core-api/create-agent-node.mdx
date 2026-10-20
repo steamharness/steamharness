@@ -81,7 +81,7 @@ The Pi Durable Harness owns execution history. Conversation nodes select SQLite 
 - Calls with unknown results after a crash are repeated only with `replay: "safe"`. The default is `never`; built-in write, edit and bash tools return an interruption error for model inspection. External side effects still require application idempotency.
 - Storage or projection failures stop execution. Old KV transcripts are not read or migrated, and failures never fall back to execution without history.
 - Non-Conversation nodes and gateway runs carrying `hostInput` use MemoryStorage by default. An explicit `databasePath` overrides storage selection. Gateway input does not enter ordinary Conversation history.
-- Ordinary compaction or direct context replacement requires no active Durable tasks. Session compact/reset coordinates through Harness transactions and input boundaries; never overwrite the transcript directly.
+- Manual `/compact` or direct context replacement requires no active Durable tasks. Automatic compaction checks before every model request and runs at 90% of the window by default. Compaction during tool loops and session compact/reset coordinate through Harness transactions and input boundaries; never overwrite the transcript directly.
 
 ## Persistent session hosts
 

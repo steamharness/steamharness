@@ -75,7 +75,7 @@ The returned runtime exposes:
 | --- | --- |
 | `subagents` | Opt in with `{ tools: string[], maxAgents?: number, models?: { provider, modelId }[] }`. Child tools intersect the parent tools and this allowlist. Children inherit the parent model unless selecting an exact allowed provider/modelId. Children cannot delegate again; the default limit is 4 active delegations. |
 | `nativeTools` | Pi Durable `ToolRegistration[]`. Nested `api.executeTool()` calls retain caller restrictions, approval hooks, and cancellation propagation. |
-| `compaction` | `{ enabled?, reserveTokens?, keepRecentTokens?, backgroundTokens? }`; use Durable background, threshold, and overflow compaction instead of the ordinary pre-turn path. |
+| `compaction` | `{ enabled?, reserveTokens?, keepRecentTokens?, backgroundTokens? }`. Check before every model request and compact at 90% of the context window by default. `reserveTokens` can reserve space earlier; `backgroundTokens` can start background compaction earlier. `enabled: false` disables automatic threshold and overflow recovery while retaining manual compaction. |
 | `planFork` | `initial`, `current`, or `asOf` (default): inherit the empty initial plan, current plan, or plan at the fork point. |
 
 Every command has a stable `requestId` and optional numeric `targetId` from the snapshot (defaults to the main conversation). The API copies commands before waiting for readiness or queuing, so later caller mutations do not change the operation. Reusing an identity with different content fails; retransmission returns the original receipt.
@@ -264,7 +264,9 @@ Only a non-empty summary from a normally completed model response replaces the c
 
 Summary responses report model usage through `host.reportUsage`, including tokens consumed by failed or cancelled responses. Billed usage does not become the compacted context occupancy. Direct callers of `compactAgentMessages` can pass `onUsage(usage)` to receive the model's pi `Usage` before summary validation.
 
-**A transcript that no longer fits is compacted automatically.** When the record a turn starts from is already past the compaction threshold — a long restored history, say — the runtime compacts it before the model is called and lets the turn proceed, emitting the same events with `auto: true`. A failed compaction writes no row and does not fail the turn: the request itself reports the problem, and nothing claims a compaction that did not happen.
+**Context is compacted automatically at 90% of the window.** Ordinary Agents and durable sessions check occupancy before every model request, including requests following tool execution in the same turn. At the threshold, older history is compacted before execution continues. A `contextWindow` override also controls this check. Events have `auto: true`, with start when compaction begins and end after success. Failure or cancellation preserves the original history; a compaction failure ends the run with its cause.
+
+If the provider still returns an explicit context overflow error, the runtime attempts compaction and retries once. Another overflow reports the error instead of retrying indefinitely. History already beyond the window is summarized in bounded chunks and then merged, reserving output space for each summary request and billing every call. Automatic compaction retains recent messages and complete tool call/result pairs. If a remaining input or tool result alone exceeds the window, shorten that input or output.
 
 Automatic compaction summarizes only the older part: the split point walks back from the end by token window and aligns to a user turn; when the kept window holds no user turn, it falls back to the nearest assistant turn, and the newest message is always kept. Explicit summarization includes the full context and preserves the goal, decisions, and unresolved work in its summary.
 

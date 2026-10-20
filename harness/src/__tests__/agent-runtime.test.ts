@@ -382,7 +382,7 @@ test("uncalibrated context includes durable system sections and tool declaration
 });
 
 test("compacted and restored context ignores retained responses that measured the old prompt", async () => {
-  const { pi, ai } = await createFauxRuntime([() => ai.fauxAssistantMessage("summary")]);
+  const { pi, ai } = await createFauxRuntime(Array.from({ length: 3 }, () => () => ai.fauxAssistantMessage("summary")));
   const retained = ai.fauxAssistantMessage("tail");
   retained.usage = { ...retained.usage, input: 850, output: 50, totalTokens: 900 };
   const result = await compactAgentMessages({
