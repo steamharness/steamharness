@@ -7,6 +7,7 @@ import type { AccountController } from './workflow-auth';
 import { AuthError, normalizeProjectServerUrl, type Connection } from './workflow-auth-client';
 import { ProjectServerClient, compareProjectVersions, parseServerProjectShareLink, type DownloadedServerProject, type ProjectVersionStatus, type ServerProject, type ServerProjectVersion, type UpdatedServerProject, type VersionsState } from './steamharness-server-projects';
 import { IMPORTED_PROJECTS_KEY, readImportedProjects } from './projects';
+import { getProjectUploadProvider, type ProjectUploadCompletion, type ProjectUploadExtension } from './project-upload-extension';
 
 interface ProjectUploadSession {
   id: string;
@@ -14,8 +15,9 @@ interface ProjectUploadSession {
   version: string;
   connection: Connection;
   controller?: AbortController;
-  task?: Promise<{ success?: boolean; error?: string }>;
+  task?: Promise<ProjectUploadCompletion & { success?: boolean; error?: string }>;
   uploaded?: boolean;
+  extension?: ProjectUploadExtension;
 }
 
 export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -62,7 +64,7 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
     command('studio.refreshVersions', () => this.reload());
     command('studio.downloadProject', () => this.chooseDownload());
     command('studio.importProjectFromLink', (link?: string) => this.importFromLink(link));
-    command('studio.internalUploadProject', (input: { id: string; releaseLog: string }) => this.submitUpload(input));
+    command('studio.internalUploadProject', (input: { id: string; releaseLog: string; options?: Record<string, boolean> }) => this.submitUpload(input));
     command('studio.internalCancelProjectUpload', (id: string) => {
       if (this.uploadSession?.id === id) { this.uploadSession.controller?.abort(); }
     });
@@ -269,8 +271,12 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
       if (typeof manifest?.version === 'string') { version = manifest.version; }
     } catch { /* Report manifest validation in the upload dialog when submitted. */ }
     this.uploadSession = { id: globalThis.crypto.randomUUID(), project, version, connection };
+    this.uploadSession.extension = await getProjectUploadProvider()?.prepare({ projectId: project.id, version, connection, signal: this.lifetime.signal });
+    this.lifetime.signal.throwIfAborted();
+    if (JSON.stringify(this.account.getConnection()) !== JSON.stringify(connection)) { throw new Error(t('Account changed. Try again.')); }
     await vscode.commands.executeCommand('studio.internalShowProjectUpload', {
       id: this.uploadSession.id, name: project.name, version, serverUrl: connection.serverUrl, folderPath: project.folderPath,
+      options: this.uploadSession.extension?.options,
       labels: { title: t('Upload Project'), project: t('Project'), version: t('Version'), server: t('Server'),
         directory: t('Project Folder'), releaseLog: t('Release Notes'), upload: t('Upload'), cancel: t('Cancel'), close: t('Close'), unavailable: t('Unavailable'),
         preparing: t('Preparing upload...'), uploading: t('Uploading...'), cancelling: t('Cancelling...'), failed: t('Project transfer failed.'),
@@ -278,7 +284,7 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
     });
   }
 
-  private async submitUpload(input: { id: string; releaseLog: string }): Promise<{ success?: boolean; error?: string }> {
+  private async submitUpload(input: { id: string; releaseLog: string; options?: Record<string, boolean> }): Promise<ProjectUploadCompletion & { success?: boolean; error?: string }> {
     const session = this.uploadSession;
     if (!session || input?.id !== session.id || typeof input.releaseLog !== 'string' || session.uploaded || session.task) {
       return { error: t('Project transfer failed.') };
@@ -288,10 +294,14 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
     const accountListener = this.account.onDidChange(state => {
       if (state.status !== 'checking' && JSON.stringify(this.account.getConnection()) !== JSON.stringify(session.connection)) { controller.abort(); }
     });
-    const task = this.performUpload(session, input.releaseLog, signal).then(() => {
-      session.uploaded = true;
-      return { success: true };
+    const values: Record<string, boolean> = {};
+    for (const option of session.extension?.options ?? []) {
+      values[option.id] = typeof input.options?.[option.id] === 'boolean' ? input.options[option.id] : option.checked;
+    }
+    const task = this.performUpload(session, input.releaseLog, values, signal).then(result => {
+      return { success: true, ...result };
     }, error => {
+      if (session.uploaded) { return { success: true, warning: true, message: t('Project uploaded, but the follow-up action failed.') }; }
       const message = signal.aborted ? t('Upload cancelled.') : error instanceof Error ? error.message : String(error);
       this.output.appendLine(`Project upload: ${message}`);
       return { error: message };
@@ -301,7 +311,7 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
     finally { session.task = undefined; accountListener.dispose(); }
   }
 
-  private async performUpload(session: ProjectUploadSession, releaseLog: string, signal: AbortSignal): Promise<void> {
+  private async performUpload(session: ProjectUploadSession, releaseLog: string, values: Record<string, boolean>, signal: AbortSignal): Promise<ProjectUploadCompletion | void> {
     const assertAvailable = (): void => {
       signal.throwIfAborted();
       if (JSON.stringify(this.account.getConnection()) !== JSON.stringify(session.connection)) { throw new Error(t('Account changed. Try again.')); }
@@ -338,7 +348,11 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
     await this.launcher.uploadProject!({ ...project, manifest: { ...project.manifest, version: session.version } }, releaseLog, signal, progress => {
       void vscode.commands.executeCommand('studio.internalUpdateProjectUpload', { id: session.id, message: progress.message }).then(undefined, () => {});
     });
-    await this.reload();
+    session.uploaded = true;
+    try {
+      assertAvailable();
+      return await session.extension?.complete(values, signal);
+    } finally { await this.reload(); }
   }
 
   private async chooseDownload(): Promise<void> {

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { AccountSectionProvider } from './account-section-types';
+import { registerProjectUploadProvider } from './project-upload-extension';
 
 interface LayerAccount {
   setAiConnection?: (connection: { serverUrl: string; accessToken: string } | undefined) => void;
@@ -29,10 +30,11 @@ export async function activateInternalLayer(
         vscode: typeof import('vscode');
         output: vscode.OutputChannel;
         account?: LayerAccount;
+        uploads: { registerProvider: typeof registerProjectUploadProvider };
       }) => Promise<void> | void;
     }>;
     const layer = await loader(env.STEAMHARNESS_STUDIO_INTERNAL_MODULE);
-    await layer.activate?.({ context, vscode, output, account });
+    await layer.activate?.({ context, vscode, output, account, uploads: { registerProvider: registerProjectUploadProvider } });
   } catch (error) {
     output.appendLine(`[internal-layer] ${String(error)}`);
   }

@@ -80,6 +80,7 @@
   "Project management permission is required.": "需要项目管理权限。",
   "Project transfer timed out.": "项目传输超时。",
   "Project transfer failed.": "项目传输失败。",
+  "Project uploaded, but the follow-up action failed.": "项目已上传，后续操作失败。",
   "Packing and uploading project": "正在打包并上传项目",
   "Waiting for file processing": "正在等待文件处理",
   "Extracting project files": "正在解包项目文件",

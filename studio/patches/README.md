@@ -50,4 +50,6 @@
 
 `0029-studio-account-menu-focus.patch` 将账号菜单的初始焦点放在弹层容器，避免默认高亮个人信息按钮，并保留键盘导航与焦点提示。
 
+`0030-studio-project-upload-options.patch` 让原生上传框展示宿主提供的通用复选项，并独立显示上传成功后的后续操作结果；成功后锁定选项与上传入口。
+
 新内核修改应通过 `git diff` 导出统一格式补丁，并排除脚本生成的 `product.json` 及 Studio 扩展链接。品牌配置由 `config/product.json` 维护。

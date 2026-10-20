@@ -20,6 +20,7 @@
 
 ### Added
 
+- Added a generic upload provider hook for optional checkboxes and post-upload actions, retaining successful transfer results when a follow-up action fails to prevent duplicate uploads.
 - Added an upload button beside Run to publish local source as a Server project version.
 - Added a Versions sidebar with history, release notes, uploader, related versions, and downloads.
 - Added downloads into independent version folders under the default project location, with unique names for repeated downloads.

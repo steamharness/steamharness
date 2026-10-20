@@ -80,6 +80,7 @@
   "Project management permission is required.": "Project management permission is required.",
   "Project transfer timed out.": "Project transfer timed out.",
   "Project transfer failed.": "Project transfer failed.",
+  "Project uploaded, but the follow-up action failed.": "Project uploaded, but the follow-up action failed.",
   "Packing and uploading project": "Packing and uploading project",
   "Waiting for file processing": "Waiting for file processing",
   "Extracting project files": "Extracting project files",

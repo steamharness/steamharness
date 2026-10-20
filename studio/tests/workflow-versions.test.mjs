@@ -6,7 +6,7 @@ import { runInNewContext } from 'node:vm';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 
-const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-versions-view.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
+const compiled = await build({ stdin: { contents: "export { VersionsView } from './extensions/studio-workstation/src/workflow-versions-view'; export { registerProjectUploadProvider } from './extensions/studio-workstation/src/project-upload-extension';", resolveDir: process.cwd() }, bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
 const require = createRequire(import.meta.url);
 const id = '784af2d9-240a-45d1-a659-452a21867934', otherId = '4c8bed84-e667-446e-860d-663caa5c3587';
 class Emitter {
@@ -37,11 +37,13 @@ function fixture(t, options = {}) {
       executeCommand: async (name, ...args) => {
         if (name === 'vscode.openFolder') { f.opens.push(args); }
         if (name === 'studio.internalShowProjectUpload') {
+          f.uploadDialog = args[0];
           f.uploadResult = undefined;
           if (f.notes === undefined) { return; }
           await f.input?.();
           f.cancel = () => commands.get('studio.internalCancelProjectUpload')(args[0].id);
-          f.uploadResult = await commands.get('studio.internalUploadProject')({ id: args[0].id, releaseLog: f.notes });
+          f.submit = () => commands.get('studio.internalUploadProject')({ id: args[0].id, releaseLog: f.notes, options: f.uploadOptions });
+          f.uploadResult = await f.submit();
           return;
         }
         return commands.get(name)?.(...args);
@@ -61,6 +63,7 @@ function fixture(t, options = {}) {
   runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name),
     AbortController, AbortSignal, TextDecoder, URL, Response, fetch: fetcher, setTimeout, clearTimeout,
     setInterval: () => ({}), clearInterval() {}, crypto: globalThis.crypto, Error, DOMException });
+  if (options.uploadProvider) { context.subscriptions.push(module.exports.registerProjectUploadProvider(options.uploadProvider)); }
   const launcher = {
     uploadProject: async (project, notes, signal) => { f.uploads.push({ project, notes }); await f.upload?.(signal); f.versions.set(project.id, [...f.versions.get(project.id), { version: project.manifest.version, latest: true, dependencies: [] }]); },
     downloadProject: async (projectId, version, signal) => { f.downloads.push({ projectId, version }); await f.download?.(signal); return [{ id: projectId, name: 'Demo', version, directory: path.resolve('/defaults/demo-0.9.0'), role: 'root' }]; },
@@ -244,4 +247,48 @@ test('upload locks preparation and cancellation releases the action state', asyn
   const uploading = f.command('studio.uploadProject'); await started;
   await f.command('studio.uploadProject'); assert.equal(f.uploads.length, 1);
   f.cancel(); await uploading; assert.equal(f.state().busy, false); assert.equal(f.errors.length, 0);
+});
+
+test('upload extensions receive only their boolean options after a successful transfer', async t => {
+  const completed = [];
+  const f = fixture(t, { uploadProvider: { prepare: async context => {
+    assert.equal(context.projectId, id);
+    return { options: [{ id: 'review', label: 'Submit for review', checked: true }], complete: async values => {
+      completed.push(plain(values)); return { message: 'Submitted for review.' };
+    } };
+  } } });
+  f.uploadOptions = { review: false, unknown: true };
+  await f.command('studio.uploadProject');
+  assert.deepEqual(completed, [{ review: false }]);
+  assert.equal(f.uploadDialog.options[0].checked, true);
+  assert.equal(f.uploadResult.message, 'Submitted for review.');
+  assert.equal(f.uploadResult.success, true);
+  assert.ok((await f.submit()).error);
+  assert.equal(f.uploads.length, 1);
+});
+
+test('follow-up failures cannot retry an uploaded version, and failed transfers never run follow-up actions', async t => {
+  let completions = 0;
+  const f = fixture(t, { uploadProvider: { prepare: async () => ({ options: [], complete: async () => { completions++; throw new Error('follow-up failed'); } }) } });
+  f.upload = () => { throw new Error('transfer failed'); };
+  await f.command('studio.uploadProject');
+  assert.equal(completions, 0); assert.ok(f.uploadResult.error);
+  f.upload = undefined;
+  await f.command('studio.uploadProject');
+  assert.equal(completions, 1);
+  assert.equal(f.uploadResult.success, true); assert.equal(f.uploadResult.warning, true);
+  assert.match(f.uploadResult.message, /uploaded/);
+  assert.ok((await f.submit()).error);
+});
+
+test('account changes while loading upload options cannot open or submit a stale upload', async t => {
+  let resolveOptions;
+  const f = fixture(t, { uploadProvider: { prepare: () => new Promise(resolve => { resolveOptions = resolve; }) } });
+  const uploading = f.command('studio.uploadProject');
+  while (!resolveOptions) { await new Promise(resolve => setTimeout(resolve, 1)); }
+  f.accountChange({ serverUrl: 'https://other.test', accessToken: 'other-token' });
+  resolveOptions({ options: [], complete: async () => assert.fail('must not run') });
+  await uploading;
+  assert.equal(f.uploadDialog, undefined); assert.equal(f.uploads.length, 0);
+  assert.match(f.errors.at(-1), /Account changed/);
 });
