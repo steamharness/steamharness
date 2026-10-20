@@ -64,7 +64,7 @@ export async function startWebServer(options: WebOptions) {
   const resources = new ResourcePreviews(project, runtime, storageDir, () => connection, () => relatedProjects, () => resourceProjects);
   const key = createHash('sha256').update(project.assistant ? `assistant:${project.id}:${project.assistant.workdir}` : projectDir).digest('hex').slice(0, 24);
   const historyPath = path.join(storageDir, key, 'conversations.json');
-  let saved: { sessions?: ConversationSession[]; activeId?: string } = {};
+  let saved: { sessions?: ConversationSession[]; activeId?: string; selectionVersion?: number } = {};
   if (project.projectType !== 'kanban') { try { saved = JSON.parse(await readFile(historyPath, 'utf8')); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') { runtime.dispose(); throw new Error(`Cannot read conversation history: ${String(error)}`); } } }
   let pendingSave = Promise.resolve();
   let broadcastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -124,7 +124,7 @@ export async function startWebServer(options: WebOptions) {
     changed: broadcast,
     log: message => process.stderr.write(`${message}\n`),
     save: (sessions, activeId) => {
-      const content = JSON.stringify({ sessions, activeId });
+      const content = JSON.stringify({ sessions, activeId, selectionVersion: 1 });
       pendingSave = pendingSave.catch(() => undefined).then(async () => {
         await mkdir(path.dirname(historyPath), { recursive: true });
         const temp = `${historyPath}.${process.pid}.tmp`;

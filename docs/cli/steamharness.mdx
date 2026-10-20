@@ -68,6 +68,8 @@ steamharness <command> [workflow-dir] [options] [--] [...args]
 
 运行 `pnpm exec steamharness web . --no-open` 可启动当前项目的本地 Web 界面。Workflow 展示入口和独立运行历史；Conversation 展示对话历史。对话回复下方的“轨迹”入口包含执行事件、工具调用和日志。嵌入 Studio 时，该入口定位到底部的轨迹面板；在普通浏览器中打开执行详情。Workflow 运行标题栏也提供轨迹入口。
 
+重新打开 Conversation 项目时恢复上次选中的对话，各个已打开的窗口保留自己的选择。旧历史首次打开时按最近活动时间选择对话，之后保存新的选择；切换对话不会重新执行模型或工具。
+
 Workflow 的必填参数校验等请求错误只提示当前操作。新建运行、切换入口或运行记录、再次运行时清除旧提示，之前请求的迟到错误不会重新显示；已保存运行的失败详情仍可从历史记录查看。
 
 项目执行没有固定的总时长限制；Conversation、Workflow 和 Studio 小助手可以持续运行，直到完成、失败或手动停止。普通 Workflow 关闭 Studio 项目运行页会取消执行；启用 `conversation.recovery: { enabled: true }` 的 Conversation（包括小助手）关闭宿主后保留检查点，再次打开时显示“恢复中”并继续原运行。

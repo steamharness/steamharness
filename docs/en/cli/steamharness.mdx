@@ -68,6 +68,8 @@ steamharness <command> [workflow-dir] [options] [--] [...args]
 
 Run `pnpm exec steamharness web . --no-open` to start the local Web interface for the current project. Workflow shows entrypoints and independent run history; Conversation shows conversation history. The Trace action below an assistant reply contains execution events, tool calls and logs. When embedded in Studio, it opens the bottom trace panel at that reply; in a regular browser, it opens execution details. Workflow run headings also include a Trace action.
 
+Reopening a Conversation project restores the last selected conversation, while each open window retains its own selection. Legacy history initially opens the conversation with the most recent activity, then remembers new selections. Switching conversations does not rerun models or tools.
+
 Workflow request errors, including required parameter validation, apply to the current operation. Creating a new run, switching entrypoints or run records, or starting another run clears the previous alert. Late failures from earlier requests cannot restore it; saved run failures remain available in history.
 
 Project execution has no fixed overall time limit. Conversation, Workflow and the Studio Assistant can continue until they complete, fail or are manually stopped. Closing a Studio project run page cancels ordinary Workflows. Conversations with `conversation.recovery: { enabled: true }`, including Project Assistant, preserve checkpoints when the host closes and show Recovering when reopened to continue the original run.

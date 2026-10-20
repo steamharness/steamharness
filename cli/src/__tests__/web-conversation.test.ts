@@ -15,6 +15,25 @@ function fixture() {
 }
 
 describe('Conversation execution lifecycle', () => {
+  it.each(['message-time', 'array-order'] as const)('restores legacy conversation selection using %s when session timestamps are missing', kind => {
+    const { controller, runtime, save } = fixture();
+    const sessions = ['first', 'latest', 'last'].map((id, index) => ({
+      ...controller.current, id, createdAt: undefined, updatedAt: undefined,
+      messages: kind === 'message-time' ? [{ role: 'user' as const, content: id, createdAt: [10, 30, 20][index] }] : [],
+    }));
+    const restored = new ConversationController(controller.project, runtime, { sessions, activeId: 'first' }, { save, changed: vi.fn(), log: vi.fn() });
+    expect(restored.activeId).toBe(kind === 'message-time' ? 'latest' : 'last');
+    expect(runtime.run).not.toHaveBeenCalled();
+  });
+
+  it('restores a versioned selection even when another conversation has newer activity', () => {
+    const { controller, runtime, save } = fixture();
+    const sessions = ['selected', 'newer'].map((id, index) => ({ ...controller.current, id, updatedAt: index + 1 }));
+    const restored = new ConversationController(controller.project, runtime, { sessions, activeId: 'selected', selectionVersion: 1 }, { save, changed: vi.fn(), log: vi.fn() });
+    expect(restored.activeId).toBe('selected');
+    expect(runtime.run).not.toHaveBeenCalled();
+  });
+
   it('edits a queued message using its explicit target and deduplicates retries before and after consumption', async () => {
     const { controller, runtime } = fixture();
     controller.project.conversation = { inputQueue: { enabled: true } };
@@ -206,7 +225,7 @@ describe('Conversation execution lifecycle', () => {
     const revision = session.parameterRevisions![''].review;
     finish({ status: 'success', resolvedUserInputs: [resolved] }); await controller.idle();
     expect(session.parameterRevisions![''].review).toBe(revision);
-    const restored = new ConversationController(controller.project, runtime, { sessions: save.mock.calls.at(-1)![0], activeId: session.id },
+    const restored = new ConversationController(controller.project, runtime, { sessions: save.mock.calls.at(-1)![0], activeId: session.id, selectionVersion: 1 },
       { save, changed: vi.fn(), log: vi.fn() });
     expect(restored.current.parameterValues?.[''].review).toBe('false');
     expect(restored.current.draft).toEqual(draft);

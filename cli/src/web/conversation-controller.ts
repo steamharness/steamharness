@@ -25,10 +25,9 @@ export class ConversationController {
   private readonly agentWaiters = new Map<string, { ownerId: string; targetId?: number; requestId: string; promise: Promise<AgentSessionReceipt>; resolve(receipt: AgentSessionReceipt): void; reject(error: Error): void }>();
   private readonly agentSaves = new Map<string, ReturnType<typeof setTimeout>>();
 
-  constructor(readonly project: Project, private readonly runtime: Runtime, saved: { sessions?: ConversationSession[]; activeId?: string }, private readonly options: ControllerOptions) {
+  constructor(readonly project: Project, private readonly runtime: Runtime, saved: { sessions?: ConversationSession[]; activeId?: string; selectionVersion?: number }, private readonly options: ControllerOptions) {
     this.sessions = (saved.sessions ?? []).filter((entry) => typeof entry.id === 'string' && typeof entry.title === 'string' && Array.isArray(entry.messages));
     if (!this.sessions.length) { this.sessions.push(this.blank()); }
-    this.activeId = this.sessions.some((entry) => entry.id === saved.activeId) ? saved.activeId! : this.sessions.at(-1)!.id;
     for (const entry of this.sessions) {
       entry.createdAt ??= entry.messages[0]?.createdAt ?? 0;
       entry.updatedAt ??= entry.messages.at(-1)?.createdAt ?? entry.createdAt;
@@ -42,6 +41,9 @@ export class ConversationController {
         }
       }
     }
+    // Legacy histories could retain the first ID even after navigating elsewhere.
+    const latest = this.sessions.reduce((latest, entry) => entry.updatedAt! >= latest.updatedAt! ? entry : latest);
+    this.activeId = saved.selectionVersion === 1 && this.sessions.some(entry => entry.id === saved.activeId) ? saved.activeId! : latest.id;
     for (const entry of this.sessions) if (!entry.agentOwnerId && entry.agent) this.projectAgent(entry, entry.agent, true);
   }
   get current(): ConversationSession { return this.sessions.find((entry) => entry.id === this.activeId)!; }

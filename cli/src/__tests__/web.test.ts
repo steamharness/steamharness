@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, mkdir, readFile, rm, writeFile, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, realpath, rm, writeFile, symlink } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { request as httpRequest } from 'node:http';
 import { createServer as createProxy, connect as connectSocket, type Socket } from 'node:net';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 import { parseWebArgs } from '../web';
 import { startWebServer } from '../web/server';
 import { createWebRuntime, sanitizeWebWorkerEnvironment } from '../web/runtime';
@@ -180,6 +181,34 @@ describe('steamharness web', () => {
     expect(next.controller.activeId).toBe(older ? first : second);
     expect(next.controller.current.messages[0].content).toBe(older ? 'First run' : 'Last run');
     expect(runtime.run).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['stale', 'missing', 'deleted'] as const)('opens the most recently active conversation from legacy history with a %s selection', async selection => {
+    const { directory, app, runtime } = await fixture();
+    const template = app.controller.current;
+    await app.close();
+    const sessions = [10, 20, 50, 30, 40].map((updatedAt, index) => ({
+      ...template, id: crypto.randomUUID(), title: `Conversation ${index + 1}`, createdAt: index + 1, updatedAt,
+      messages: [{ role: 'user', content: `Message ${index + 1}`, createdAt: updatedAt }],
+    }));
+    const key = createHash('sha256').update(await realpath(directory)).digest('hex').slice(0, 24);
+    const historyPath = path.join(directory, 'data', key, 'conversations.json');
+    await writeFile(historyPath, JSON.stringify({ sessions, activeId: selection === 'stale' ? sessions[0].id : selection === 'deleted' ? crypto.randomUUID() : undefined }));
+    const next = await startWebServer({ projectDir: directory, dataDir: path.join(directory, 'data'), runtime }); services.push(next);
+    expect(next.controller.activeId).toBe(sessions[2].id);
+    const token = new URLSearchParams(new URL(next.url).hash.slice(1)).get('session');
+    const auth = await fetch(`${next.origin}/api/session`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+    const cookie = auth.headers.get('set-cookie')!.split(';')[0];
+    const events = await fetch(`${next.origin}/api/events?clientId=${crypto.randomUUID()}`, { headers: { Cookie: cookie } });
+    const reader = events.body!.getReader();
+    try {
+      const state = JSON.parse(new TextDecoder().decode((await reader.read()).value).slice('data: '.length));
+      expect(state.activeId).toBe(sessions[2].id);
+      expect(state.sessions).toEqual(sessions);
+    } finally { await reader.cancel(); }
+    await next.close();
+    expect(JSON.parse(await readFile(historyPath, 'utf8'))).toMatchObject({ selectionVersion: 1, activeId: sessions[2].id });
+    expect(runtime.run).not.toHaveBeenCalled();
   });
 
   it.each(['new', 'select'])('updates a pinned page selection for legacy %s requests', async type => {
