@@ -2,6 +2,7 @@
 
 ### Project Avatars
 
+- Use square avatars with small corner radii throughout CLI Web messages and account views, removing the backing color once an image loads to avoid surrounding padding.
 - CLI Web displays clickable project avatars before response duration and account avatars beside user messages. Project toolbars use the current project avatar, with stable updates and image fallbacks.
 - Project templates save a type icon with random colors at a contrast ratio of at least 4.5:1 in the manifest; static inspection returns avatar metadata to Studio.
 
