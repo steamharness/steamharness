@@ -76,6 +76,8 @@ Reopening a Conversation project restores the last selected conversation, while 
 
 Conversation and workflow history use status icons, with a spinning circle for running entries and details on hover. The right side of the page header shows the current project's running conversation or workflow count while any are running, including when the sidebar is collapsed or hidden on narrow screens, independently of search, pagination or the shortened narrow-screen list. Idle durable workers do not count as running.
 
+Tool permissions in the upper-right header group common tool types such as files, shell commands, Agent, knowledge, data storage and Studio. Other tools are grouped by their service or custom name prefix; tools without a prefix appear under Other tools. Sections show tool counts, start collapsed and retain their expanded state on the current page. Searching tool names, display names and descriptions automatically expands matching sections; clearing the search restores the previous state. Enable and auto-approve settings remain independent for each tool.
+
 Agent automatic retry records stay at the affected response's interruption point, with expandable details and resumed content following them. Completing a run or reopening history retains that position without appending another Retry below the complete answer.
 
 Workflow request errors, including required parameter validation, apply to the current operation. Creating a new run, switching entrypoints or run records, or starting another run clears the previous alert. Late failures from earlier requests cannot restore it; saved run failures remain available in history.

@@ -1,5 +1,9 @@
 # Unreleased
 
+### Tool permissions
+
+- Group CLI Web tool permissions by common tool types and namespaces, with counts and initially collapsed sections that retain their expanded state on the page. Search names and descriptions to expand matching results, then clear the search to restore the previous sections.
+
 ### Project Avatars
 
 - Use square avatars with small corner radii throughout CLI Web messages and account views, removing the backing color once an image loads to avoid surrounding padding.

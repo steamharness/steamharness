@@ -288,11 +288,22 @@ main { grid-area: main; min-width: 0; min-height: 0; display: flex; flex-directi
 .action-dialog input { width: 100%; min-width: 0; padding: 8px; color: inherit; background: var(--vscode-input-background); border: 1px solid var(--border); border-radius: 4px; }
 .action-dialog .prompt-navigation { justify-content: flex-end; margin-top: 16px; }
 .action-dialog .danger { color: var(--vscode-errorForeground); }
-.permissions-table { width: 100%; border-collapse: collapse; text-align: left; }
+.tool-search { width: 100%; min-height: 36px; padding: 8px 10px; color: inherit; background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--border)); border-radius: 4px; }
+.tool-count { margin: 12px 0; color: var(--muted); font-size: 12px; }
+.tool-permission-section { border-top: 1px solid var(--border); }
+.tool-permission-section > summary { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 4px; cursor: pointer; list-style: none; }
+.tool-permission-section > summary:hover { background: var(--vscode-toolbar-hoverBackground); }
+.tool-permission-section > summary > .codicon { flex-shrink: 0; }
+.tool-permission-section[open] > summary > .codicon { transform: rotate(90deg); }
+.tool-group-title { flex: 1; min-width: 0; font-weight: 500; overflow-wrap: anywhere; }
+.tool-group-count { flex-shrink: 0; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.permission-tool-name { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
+.permissions-table { width: 100%; table-layout: fixed; border-collapse: collapse; text-align: left; }
 .permissions-table td, .permissions-table th { padding: 10px 8px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
-.permissions-table th { font-weight: 500; white-space: nowrap; }
-.permissions-table td:first-child { width: 65%; }
-.permissions-table td:not(:first-child) { text-align: center; }
+.permissions-table th { font-weight: 500; }
+.permissions-table th:nth-child(2) { width: 64px; }
+.permissions-table th:nth-child(3) { width: 90px; }
+.permissions-table td:not(:first-child), .permissions-table th:not(:first-child) { text-align: center; }
 .usage-balance { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 10px; padding: 4px 0 20px; }
 .usage-balance > span { flex-basis: 100%; color: var(--muted); font-size: 12px; }
 .usage-balance > strong { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }

@@ -5,6 +5,7 @@ import { iconButton, markdownHtml, iconHtml, escapeHtml } from './ui';
 import { projectInformation } from './project-information';
 import { usageAmount, usagePeriods } from './ai-usage';
 import { imagePreview } from './image-preview';
+import { toolPermissions } from './tool-permissions';
 
 export class ConversationTools {
   private readonly dialog = document.createElement('dialog');
@@ -14,6 +15,7 @@ export class ConversationTools {
   private usageRequestId?: string;
   private refresh?: HTMLButtonElement;
   private disposeImage?: () => void;
+  private readonly toolSections = new Map<string, boolean>();
   constructor() {
     this.dialog.className = 'conversation-dialog';
     this.title.id = 'conversation-dialog-title'; this.dialog.setAttribute('aria-labelledby', this.title.id);
@@ -57,25 +59,7 @@ export class ConversationTools {
 
   permissions(parameters: Parameters, policies: ToolPolicies, changed: (policies: ToolPolicies) => void): void {
     this.show(t("Tool permissions"));
-    const tools = parameters.tools ?? [];
-    const count = document.createElement('p'); count.className = 'tool-count'; count.textContent = t("{0} tools", tools.length); this.body.append(count);
-    const table = document.createElement('table'); table.className = 'permissions-table';
-    table.innerHTML = `<thead><tr><th>${t("Tool")}</th><th>${t("Enable")}</th><th>${t("Auto-approve")}</th></tr></thead>`;
-    const body = document.createElement('tbody'); const draft: ToolPolicies = {};
-    for (const tool of tools) {
-      draft[tool.name] = { enabled: policies[tool.name]?.enabled ?? tool.enabled ?? true, autoApprove: policies[tool.name]?.autoApprove ?? tool.autoApprove ?? false };
-      const row = document.createElement('tr'); const label = document.createElement('td'); label.textContent = tool.label || tool.name;
-      label.title = tool.description || tool.name; row.append(label);
-      for (const property of ['enabled', 'autoApprove'] as const) {
-        const cell = document.createElement('td'); const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = draft[tool.name][property]!;
-        checkbox.ariaLabel = `${tool.label || tool.name} ${property === 'enabled' ? t("Enable") : t("Auto-approve")}`;
-        checkbox.addEventListener('change', () => { draft[tool.name][property] = checkbox.checked; changed(draft); });
-        cell.append(checkbox); row.append(cell);
-      }
-      body.append(row);
-    }
-    table.append(body); this.body.append(table);
-    if (!tools.length) { const empty = document.createElement('p'); empty.textContent = t("No tools declared by this project"); this.body.append(empty); }
+    this.body.append(toolPermissions(parameters.tools ?? [], policies, changed, this.toolSections));
   }
 
   usage(load: (requestId: string) => void): void {
