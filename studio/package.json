@@ -27,6 +27,7 @@
     "test:studio-control-live": "node tests/studio-control-live.mjs",
     "test:analysis-live": "node tests/studio-analysis-live.mjs",
     "test:start-ui": "node tests/start-page-ui.mjs",
+    "test:mode-ui": "node tests/studio-mode-ui.mjs",
     "test:account-menu-ui": "node tests/account-menu-ui.mjs",
     "test:create-live": "node tests/project-create-live.mjs",
     "test:desktop": "node scripts/studio.mjs test:desktop",

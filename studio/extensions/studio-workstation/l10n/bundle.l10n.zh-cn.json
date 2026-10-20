@@ -582,5 +582,21 @@
   "Expires in {0} days": "将在 {0} 天后到期",
   "Updated {0}": "更新于 {0}",
   "Unable to refresh this section. Try again.": "此区域刷新失败，请重试。",
-  "Unable to complete account action.": "无法完成账号操作。"
+  "Unable to complete account action.": "无法完成账号操作。",
+  "Workspace Mode": "工作区模式",
+  "Switch to IDE Mode": "切换到 IDE 模式",
+  "Switch to Steam Mode": "切换到 Steam 模式",
+  "Steam Mode is available for SteamHarness projects.": "Steam 模式仅适用于 SteamHarness 项目。",
+  "Open Tools": "打开工具",
+  "Everything you need for your project, in one place.": "在这里打开项目所需的工具。",
+  "KV Storage": "KV 存储",
+  "Browse and edit project data": "查看和编辑项目数据",
+  "Knowledge Base": "知识库",
+  "Manage documents and knowledge": "管理文档和知识",
+  "Project Information": "项目信息",
+  "View project details and configuration": "查看项目详情和配置",
+  "Work with your coding assistant": "与编程小助手协作",
+  "Manage project versions and updates": "管理项目版本和更新",
+  "Run Trace": "运行追踪",
+  "Inspect execution history and logs": "查看执行历史和日志"
 }

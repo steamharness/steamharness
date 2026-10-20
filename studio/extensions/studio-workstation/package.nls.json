@@ -88,5 +88,9 @@
   "command.openDocumentPreview": "Open Preview",
   "command.refreshDocumentPreview": "Refresh Preview",
   "editor.documentPreview": "Document Preview",
-  "editor.formulaPreview": "LaTeX Formula Preview"
+  "editor.formulaPreview": "LaTeX Formula Preview",
+  "command.toggleMode": "Toggle IDE / Steam Mode",
+  "command.enterIdeMode": "Switch to IDE Mode",
+  "command.enterSteamMode": "Switch to Steam Mode",
+  "command.openSteamTools": "Open Tools"
 }

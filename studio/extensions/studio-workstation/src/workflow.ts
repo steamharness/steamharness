@@ -17,6 +17,7 @@ import { bindProjectClipboard } from './workflow-clipboard';
 import { bindProjectResourceCards, type ResourceCardResult } from './workflow-resource-cards';
 import type { ProjectIcons } from './project-icons';
 import { openProjectFolder } from './project-window';
+import { StudioModeController } from './studio-mode';
 
 const ignored = new Set(['node_modules', 'vendor', 'dist', 'out', 'build', 'upstream']);
 const containers = new Set(['workspace', 'workflow', 'projects', 'examples']);
@@ -85,6 +86,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
   const upgrading = new Set<string>();
   let disposed = false, scanEpoch = 0;
   let initialScan = Promise.resolve();
+  let projectScanReady = false;
   let refreshTimer: ReturnType<typeof setTimeout> | undefined;
   let entryTimer: ReturnType<typeof setTimeout> | undefined;
   let refreshing: Promise<void> | undefined;
@@ -121,6 +123,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     void info.update(provider.projects, target);
     updateVersionEntry();
     void vscode.commands.executeCommand('setContext', 'studio.projectAvailable', !!target);
+    if (projectScanReady) { mode.update(!!target && vscode.workspace.isTrusted); }
     if (!target) { status.hide(); return; }
     status.text = t("$(play) Run Project \u00B7 {0}", projectDisplayName(target));
     status.tooltip = target.folderPath; status.show();
@@ -277,6 +280,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     }
   };
   const assistant = new AssistantViewProvider(context, launcher, output, (project, view) => createWorkspace(project, undefined, view));
+  const mode = new StudioModeController(context, output);
   const resources = new ResourceViews(context, launcher, account, output);
   const trace = new TraceView(context, openProject, output);
   const related = new RelatedProjectsView(context, output, findProjectCandidates, projectIcons);
@@ -390,6 +394,12 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       try { await created; } finally { opening.delete(project.uri); }
     } }),
     register('studio.openProject', openProject), register('studio.refreshProjectView', refresh),
+    vscode.commands.registerCommand('studio.internalPrepareSteamProject', async () => {
+      const project = currentProject();
+      if (!project || !projectAvailable(project)) { return false; }
+      await openProject(project);
+      return workspaces.get(project.uri)?.running === true;
+    }),
     register('studio.openAnalysis', async () => {
       if (!launcher.inspectAnalysis) { throw new Error(t('Studio Analysis is unavailable in this environment.')); }
       await openProject(await launcher.inspectAnalysis());
@@ -420,6 +430,8 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     { dispose: () => { disposed = true; ++scanEpoch; clearTimeout(refreshTimer); resumeRefresh?.(); resumeRefresh = undefined; clearTimeout(entryTimer); closeTerminals(); for (const controller of starting.keys()) { controller.abort(); } for (const entry of workspaces.values()) { entry.panel.dispose(); } for (const session of sessions) { void session.close(); } } });
   initialScan = refresh().catch(error => output.appendLine(`Workflow: ${String(error)}`));
   await initialScan;
+  projectScanReady = true;
+  updateEntry();
   void assistant.showInitially().catch(error => output.appendLine(`Project Assistant: ${String(error)}`));
   return { getProjects: () => [...provider.projects], onDidChangeProjects: provider.onDidChangeTreeData,
     getVersionStatus: project => versions.getVersionStatus(project), onDidChangeVersions: versions.onDidChangeVersions };

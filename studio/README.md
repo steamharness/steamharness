@@ -85,6 +85,8 @@ npm run dev:web -- --port 3050 --default-folder /absolute/path/to/project
 
 打开 `examples/conversation` 可以试用不需要模型凭据的本地对话演示。聚合仓库中的小助手位于 `../build-in/build-in-developer-assistant`；真实模型对话需要项目的 SteamHarness Server 和 AI 凭据配置。
 
+标题栏左侧可切换 **IDE / Steam** 模式。IDE 保留编辑器布局；Steam 隐藏活动栏、文件侧栏和底部面板，左侧显示项目运行页面，右侧通过“打开工具”使用 KV、知识库、项目信息、小助手、版本管理和运行追踪。返回 IDE 会恢复原有布局和编辑器，运行页面及未保存文件会保留。模式按工作区记忆，工具位置只在当前窗口临时调整；普通文件夹不能进入 Steam 模式。过渡动画遵循系统的“减少动态效果”设置。
+
 小助手还通过 `build-in/build-in-studio-control` 源码连接 VS Code：读取工作区和诊断、查询项目的关联声明与导入状态、打开文件并定位行列、切换已安装主题、打开终端及常用视图。`get_related_projects` 返回别名、UUID、名称、Studio 导入状态及核验后的目录；每次查询重新校验 UUID，不自动导入或代替数据授权。Permission 默认选择 Auto approve，提示词与控制工具均允许访问进程有权限的任意本地目录；Workspace / Read only 保留工作区目录限制。每个小助手会话拥有独立的认证回环接口，关闭会话、移除工作区或撤销信任后失效。工具沿用现有权限与 Build/Plan 审批，终端工具不执行命令。纯浏览器扩展不提供本地控制服务，需使用 Node 扩展宿主。
 
 Studio Control 也可以作为普通 Workflow 项目打开：安装依赖后，在 Studio 中打开 `../build-in/build-in-studio-control`，点击 **运行项目** 并选择入口即可运行全部控制功能，无需小助手或模型配置。Studio 自动创建控制连接，默认目录为项目目录，文件访问限定在当前工作区；关闭运行页面后连接撤销，工作区子目录同样支持。

@@ -1,0 +1,614 @@
+diff --git a/src/vs/workbench/browser/parts/media/studioMode.css b/src/vs/workbench/browser/parts/media/studioMode.css
+new file mode 100644
+index 00000000000..75a1725798d
+--- /dev/null
++++ b/src/vs/workbench/browser/parts/media/studioMode.css
+@@ -0,0 +1,132 @@
++.monaco-workbench .studio-mode-switcher {
++	/* Match native title bar actions above the window's draggable layer. */
++	position: relative;
++	z-index: 2500;
++	display: flex;
++	flex: 0 0 auto;
++	align-items: center;
++	gap: 2px;
++	margin: 0 8px;
++	padding: 2px;
++	border: 1px solid var(--vscode-widget-border, transparent);
++	border-radius: 7px;
++	background: color-mix(in srgb, var(--vscode-foreground) 4%, var(--vscode-sideBar-background, var(--vscode-editor-background)));
++	-webkit-app-region: no-drag;
++}
++
++.monaco-workbench .studio-mode-switcher button,
++.monaco-workbench .studio-steam-tools-action {
++	position: relative;
++	z-index: 2500;
++	display: inline-flex;
++	align-items: center;
++	justify-content: center;
++	gap: 6px;
++	min-height: 24px;
++	padding: 2px 8px;
++	border: 0;
++	border-radius: 5px;
++	background: transparent;
++	color: inherit;
++	font: inherit;
++	font-size: 11px;
++	cursor: pointer;
++	white-space: nowrap;
++	-webkit-app-region: no-drag;
++	transition: background-color 160ms ease, color 160ms ease, opacity 160ms ease;
++}
++
++.monaco-workbench .studio-mode-switcher button[aria-pressed="true"] {
++	background: var(--vscode-editor-background);
++	box-shadow: 0 1px 3px #0002;
++}
++
++.monaco-workbench .studio-mode-switcher .studio-mode-steam[aria-pressed="true"] {
++	color: var(--vscode-testing-iconPassed, var(--vscode-textLink-foreground));
++}
++
++.monaco-workbench .studio-mode-switcher button:disabled {
++	opacity: .45;
++	cursor: default;
++}
++
++.monaco-workbench .studio-mode-switcher button:focus-visible,
++.monaco-workbench .studio-steam-tools-action:focus-visible,
++.monaco-workbench .studio-steam-tool:focus-visible {
++	outline: 1px solid var(--vscode-focusBorder);
++	outline-offset: 2px;
++}
++
++.monaco-workbench .studio-steam-tools-action[hidden] { display: none; }
++.monaco-workbench .studio-steam-tools-action:hover { background: var(--vscode-toolbar-hoverBackground); }
++
++.monaco-workbench .studio-steam-tools {
++	height: 100%;
++	box-sizing: border-box;
++	display: flex;
++	align-items: safe center;
++	justify-content: center;
++	padding: 28px 24px;
++	overflow: auto;
++	container-type: inline-size;
++	user-select: text;
++	-webkit-user-select: text;
++	scrollbar-width: none;
++}
++
++.monaco-workbench .studio-steam-tools:hover,
++.monaco-workbench .studio-steam-tools:focus-within { scrollbar-width: thin; }
++.monaco-workbench .studio-steam-tools-content { width: 100%; max-width: 560px; text-align: center; }
++.monaco-workbench .studio-steam-tools-emblem { color: var(--vscode-descriptionForeground); font-size: 28px; }
++.monaco-workbench .studio-steam-tools h2 { margin: 18px 0 8px; font-size: 23px; font-weight: 600; }
++.monaco-workbench .studio-steam-tools p { margin: 0 0 30px; color: var(--vscode-descriptionForeground); line-height: 1.6; }
++.monaco-workbench .studio-steam-tools-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
++
++.monaco-workbench .studio-steam-tool {
++	display: flex;
++	flex-direction: column;
++	align-items: center;
++	justify-content: center;
++	gap: 10px;
++	min-width: 0;
++	min-height: 116px;
++	padding: 20px 10px;
++	border: 1px solid var(--vscode-widget-border, transparent);
++	border-radius: 10px;
++	background: color-mix(in srgb, var(--vscode-foreground) 4%, var(--vscode-sideBar-background, var(--vscode-editor-background)));
++	color: var(--vscode-foreground);
++	font: inherit;
++	cursor: pointer;
++	user-select: text;
++	-webkit-user-select: text;
++	transition: transform 180ms ease, background-color 180ms ease, border-color 180ms ease;
++}
++
++.monaco-workbench .studio-steam-tool:hover { transform: translateY(-2px); background: var(--vscode-list-hoverBackground); border-color: var(--vscode-focusBorder); }
++.monaco-workbench .studio-steam-tool > .codicon { font-size: 23px; color: var(--vscode-textLink-foreground); }
++.monaco-workbench .studio-steam-tool[data-tool="kv"] > .codicon { color: var(--vscode-testing-iconPassed, var(--vscode-textLink-foreground)); }
++.monaco-workbench .studio-steam-tool[data-tool="knowledge"] > .codicon { color: var(--vscode-symbolIcon-classForeground, var(--vscode-textLink-foreground)); }
++.monaco-workbench .studio-steam-tool-label { font-weight: 500; }
++.monaco-workbench .studio-steam-tool-hint { color: var(--vscode-descriptionForeground); font-size: 11px; line-height: 1.5; }
++
++@container (min-width: 480px) {
++	.monaco-workbench .studio-steam-tools-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
++}
++
++@container (max-width: 230px) {
++	.monaco-workbench .studio-steam-tools-grid { grid-template-columns: minmax(0, 1fr); }
++}
++
++html.studio-mode-transition::view-transition-old(root) { animation: studio-mode-out 120ms ease both; }
++html.studio-mode-transition::view-transition-new(root) { animation: studio-mode-in 240ms cubic-bezier(.2, .8, .2, 1) both; }
++@keyframes studio-mode-out { to { opacity: 0; transform: translateY(3px); } }
++@keyframes studio-mode-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
++
++@media (prefers-reduced-motion: reduce) {
++	.monaco-workbench .studio-mode-switcher button,
++	.monaco-workbench .studio-steam-tools-action,
++	.monaco-workbench .studio-steam-tool { transition: none; }
++	.monaco-workbench .studio-steam-tool:hover { transform: none; }
++	html.studio-mode-transition::view-transition-old(root),
++	html.studio-mode-transition::view-transition-new(root) { animation: none; }
++}
+diff --git a/src/vs/workbench/browser/parts/studioMode.ts b/src/vs/workbench/browser/parts/studioMode.ts
+new file mode 100644
+index 00000000000..b6b8ab26116
+--- /dev/null
++++ b/src/vs/workbench/browser/parts/studioMode.ts
+@@ -0,0 +1,113 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import './media/studioMode.css';
++import { $, addDisposableListener, append, clearNode } from '../../../base/browser/dom.js';
++import { Emitter } from '../../../base/common/event.js';
++import { Disposable, DisposableStore } from '../../../base/common/lifecycle.js';
++import { CommandsRegistry, ICommandService } from '../../../platform/commands/common/commands.js';
++import { INotificationService } from '../../../platform/notification/common/notification.js';
++
++export interface StudioModeState {
++	available: boolean;
++	labels: Record<string, string>;
++}
++
++const stateChange = new Emitter<StudioModeState>();
++const modeChange = new Emitter<void>();
++export const studioModeState = {
++	state: { available: false, labels: {} } as StudioModeState,
++	steam: false,
++	busy: false,
++	onDidChangeState: stateChange.event,
++	onDidChangeMode: modeChange.event,
++	setMode(steam: boolean, busy: boolean): void {
++		this.steam = steam;
++		this.busy = busy;
++		modeChange.fire();
++	}
++};
++
++CommandsRegistry.registerCommand('studio.internalUpdateModeState', (_accessor, state: StudioModeState) => {
++	studioModeState.state = state;
++	stateChange.fire(state);
++});
++
++/** Title bar controls share the native window-control spacing and drag exclusion. */
++export class StudioModeSwitcher extends Disposable {
++	constructor(left: HTMLElement, right: HTMLElement,
++		@ICommandService private readonly commands: ICommandService,
++		@INotificationService private readonly notifications: INotificationService
++	) {
++		super();
++		const element = append(left, $('.studio-mode-switcher', { role: 'group' }));
++		const ide = append(element, $('button.studio-mode-ide', { type: 'button' })) as HTMLButtonElement;
++		append(ide, $('span.codicon.codicon-code', { 'aria-hidden': 'true' }));
++		append(ide, $('span', undefined, 'IDE'));
++		const steam = append(element, $('button.studio-mode-steam', { type: 'button' })) as HTMLButtonElement;
++		append(steam, $('span.codicon.codicon-rocket', { 'aria-hidden': 'true' }));
++		append(steam, $('span', undefined, 'Steam'));
++		const tools = append(right, $('button.studio-steam-tools-action', { type: 'button' })) as HTMLButtonElement;
++		append(tools, $('span.codicon.codicon-tools', { 'aria-hidden': 'true' }));
++		const toolsLabel = append(tools, $('span'));
++		const update = () => {
++			const { state, steam: active, busy } = studioModeState;
++			element.setAttribute('aria-label', state.labels.mode ?? 'Workspace Mode');
++			ide.title = state.labels.switchToIde ?? 'Switch to IDE Mode';
++			steam.title = state.labels[state.available ? 'switchToSteam' : 'unavailable'] ?? 'Steam Mode';
++			ide.setAttribute('aria-pressed', String(!active));
++			steam.setAttribute('aria-pressed', String(active));
++			ide.disabled = busy;
++			steam.disabled = busy || !state.available;
++			tools.hidden = !active;
++			tools.disabled = busy;
++			tools.title = toolsLabel.textContent = state.labels.tools ?? 'Open Tools';
++		};
++		for (const [button, command] of [[ide, 'studio.internalEnterIdeMode'], [steam, 'studio.internalEnterSteamMode'], [tools, 'studio.internalOpenSteamTools']] as const) {
++			this._register(addDisposableListener(button, 'click', () => {
++				void this.commands.executeCommand(command).catch(error => this.notifications.error(error));
++			}));
++		}
++		this._register(studioModeState.onDidChangeState(update));
++		this._register(studioModeState.onDidChangeMode(update));
++		update();
++	}
++}
++
++/** Native tool launcher; opening a card reveals the existing retained project view. */
++export class StudioSteamTools extends Disposable {
++	readonly element: HTMLElement;
++	private readonly buttons = this._register(new DisposableStore());
++
++	constructor(parent: HTMLElement,
++		@ICommandService private readonly commands: ICommandService,
++		@INotificationService private readonly notifications: INotificationService
++	) {
++		super();
++		this.element = append(parent, $('.studio-steam-tools'));
++		this._register(studioModeState.onDidChangeState(() => this.render()));
++		this.render();
++	}
++
++	private render(): void {
++		this.buttons.clear();
++		clearNode(this.element);
++		const labels = studioModeState.state.labels;
++		const content = append(this.element, $('.studio-steam-tools-content'));
++		append(content, $('span.studio-steam-tools-emblem.codicon.codicon-tools', { 'aria-hidden': 'true' }));
++		append(content, $('h2', undefined, labels.tools ?? 'Open Tools'));
++		append(content, $('p', undefined, labels.toolsHint ?? ''));
++		const grid = append(content, $('.studio-steam-tools-grid'));
++		for (const [id, icon] of [['kv', 'database'], ['knowledge', 'book'], ['info', 'package'], ['assistant', 'hubot'], ['versions', 'versions'], ['trace', 'history']] as const) {
++			const button = append(grid, $('button.studio-steam-tool', { type: 'button', 'data-tool': id, title: labels[`${id}Hint`] ?? '' }));
++			append(button, $(`span.codicon.codicon-${icon}`, { 'aria-hidden': 'true' }));
++			append(button, $('span.studio-steam-tool-label', undefined, labels[id] ?? id));
++			append(button, $('span.studio-steam-tool-hint', undefined, labels[`${id}Hint`] ?? ''));
++			this.buttons.add(addDisposableListener(button, 'click', () => {
++				void this.commands.executeCommand('studio.internalOpenSteamTool', id).catch(error => this.notifications.error(error));
++			}));
++		}
++	}
++}
+diff --git a/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts b/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
+index 1f6bdba1059..143b54a4cff 100644
+--- a/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
++++ b/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
+@@ -30,6 +30,7 @@ import { IContextKey, IContextKeyService } from '../../../../platform/contextkey
+ import { IHostService } from '../../../services/host/browser/host.js';
+ import { WindowTitle } from './windowTitle.js';
+ import { CommandCenterControl } from './commandCenterControl.js';
++import { StudioModeSwitcher } from '../studioMode.js';
+ import { Categories } from '../../../../platform/action/common/actionCommonCategories.js';
+ import { HiddenItemStrategy, MenuWorkbenchToolBar, WorkbenchToolBar } from '../../../../platform/actions/browser/toolbar.js';
+ import { IActionViewItemService } from '../../../../platform/actions/browser/actionViewItemService.js';
+@@ -482,6 +483,9 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
+ 		this.leftContent = append(this.rootContainer, $('.titlebar-left'));
+ 		this.centerContent = append(this.rootContainer, $('.titlebar-center'));
+ 		this.rightContent = append(this.rootContainer, $('.titlebar-right'));
++		if (!this.isAuxiliary && hasCustomTitlebar(this.configurationService, this.titleBarStyle)) {
++			this._register(this.instantiationService.createInstance(StudioModeSwitcher, this.leftContent, this.rightContent));
++		}
+ 
+ 		// App Icon (Windows, Linux)
+ 		if ((isWindows || isLinux) && !hasNativeTitlebar(this.configurationService, this.titleBarStyle)) {
+diff --git a/src/vs/workbench/common/views.ts b/src/vs/workbench/common/views.ts
+index 86e8fd3c9e9..ee7d5f3904c 100644
+--- a/src/vs/workbench/common/views.ts
++++ b/src/vs/workbench/common/views.ts
+@@ -632,6 +632,8 @@ export interface IViewDescriptorService {
+ 
+ 	readonly onDidChangeContainerLocation: Event<{ viewContainer: ViewContainer; from: ViewContainerLocation; to: ViewContainerLocation }>;
+ 	moveViewContainerToLocation(viewContainer: ViewContainer, location: ViewContainerLocation, requestedIndex?: number, reason?: string): void;
++	/** Override a container location in this window until disposed, without saving profile customizations. */
++	overrideViewContainerLocation(viewContainer: ViewContainer, location: ViewContainerLocation): IDisposable;
+ 
+ 	getViewContainerBadgeEnablementState(id: string): boolean;
+ 	setViewContainerBadgeEnablementState(id: string, badgesEnabled: boolean): void;
+diff --git a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+new file mode 100644
+index 00000000000..6194e6fa341
+--- /dev/null
++++ b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+@@ -0,0 +1,261 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { getWindow } from '../../../../base/browser/dom.js';
++import { Sequencer } from '../../../../base/common/async.js';
++import { Codicon } from '../../../../base/common/codicons.js';
++import { Disposable, DisposableStore, MutableDisposable, IDisposable } from '../../../../base/common/lifecycle.js';
++import { localize2 } from '../../../../nls.js';
++import { CommandsRegistry, ICommandService } from '../../../../platform/commands/common/commands.js';
++import { ConfigurationTarget, IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
++import { ContextKeyExpr, IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
++import { SyncDescriptor } from '../../../../platform/instantiation/common/descriptors.js';
++import { INotificationService } from '../../../../platform/notification/common/notification.js';
++import { Registry } from '../../../../platform/registry/common/platform.js';
++import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
++import { StudioSteamTools, studioModeState } from '../../../browser/parts/studioMode.js';
++import { ViewPane } from '../../../browser/parts/views/viewPane.js';
++import { ViewPaneContainer } from '../../../browser/parts/views/viewPaneContainer.js';
++import { WorkbenchPhase, registerWorkbenchContribution2 } from '../../../common/contributions.js';
++import { EditorInput } from '../../../common/editor/editorInput.js';
++import { Extensions, IViewContainersRegistry, IViewDescriptorService, IViewsRegistry, ViewContainerLocation } from '../../../common/views.js';
++import { EditorGroupLayout, GroupsArrangement, IEditorGroup, IEditorGroupsService } from '../../../services/editor/common/editorGroupsService.js';
++import { IWorkbenchLayoutService, Parts } from '../../../services/layout/browser/layoutService.js';
++import { IViewsService } from '../../../services/views/common/viewsService.js';
++
++const TOOLS_CONTAINER = 'studio-steam-tools';
++const TOOLS_VIEW = 'studio.steamTools';
++const MODE_KEY = 'studio.workbenchMode';
++const SNAPSHOT_KEY = 'studio.ideLayout';
++const STEAM_WIDTH_KEY = 'studio.steamToolsWidth';
++const toolsTitle = localize2('studioSteamTools', "Open Tools");
++const sideParts = [Parts.ACTIVITYBAR_PART, Parts.SIDEBAR_PART, Parts.PANEL_PART, Parts.AUXILIARYBAR_PART] as const;
++const toolViews: Record<string, string> = {
++	kv: 'studio.kv', knowledge: 'studio.knowledge', info: 'studio.projectInfo',
++	assistant: 'studio.developerAssistant', versions: 'studio.versions', trace: 'studio.trace',
++};
++
++interface IdeLayout {
++	visible: boolean[];
++	sizes: { width: number; height: number }[];
++	containers: (string | undefined)[];
++	auxiliaryMaximized: boolean;
++	sideBarMemoryLocation?: string;
++	editorLayout: EditorGroupLayout;
++	groups: number[];
++}
++
++class SteamToolsPane extends ViewPane {
++	protected override renderBody(container: HTMLElement): void {
++		super.renderBody(container);
++		this._register(this.instantiationService.createInstance(StudioSteamTools, container));
++		const update = () => this.updateTitle(studioModeState.state.labels.tools ?? 'Open Tools');
++		this._register(studioModeState.onDidChangeState(update));
++		update();
++	}
++}
++
++const toolsContainer = Registry.as<IViewContainersRegistry>(Extensions.ViewContainersRegistry).registerViewContainer({
++	id: TOOLS_CONTAINER,
++	title: toolsTitle,
++	icon: Codicon.tools,
++	ctorDescriptor: new SyncDescriptor(ViewPaneContainer, [TOOLS_CONTAINER, { mergeViewWithContainerWhenSingleView: true }]),
++	storageId: TOOLS_CONTAINER,
++	hideIfEmpty: true,
++}, ViewContainerLocation.AuxiliaryBar, { doNotRegisterOpenCommand: true });
++Registry.as<IViewsRegistry>(Extensions.ViewsRegistry).registerViews([{
++	id: TOOLS_VIEW,
++	name: toolsTitle,
++	ctorDescriptor: new SyncDescriptor(SteamToolsPane),
++	when: ContextKeyExpr.has('studio.steamMode'),
++	canToggleVisibility: false,
++	canMoveView: false,
++}], toolsContainer);
++
++/** Switch layouts without replacing project editors or writing user settings. */
++export class StudioModeContribution extends Disposable {
++	static readonly ID = 'workbench.contrib.studioMode';
++	private readonly sequencer = new Sequencer();
++	private readonly editorOptions = this._register(new MutableDisposable<IDisposable>());
++	private readonly toolLocations = this._register(new DisposableStore());
++	private snapshot: IdeLayout | undefined;
++	private ideEditor: { group: IEditorGroup; editor: EditorInput } | undefined;
++	private steam = false;
++	private requested: boolean;
++	private initialized = false;
++	private revision = 0;
++
++	constructor(
++		@IWorkbenchLayoutService private readonly layout: IWorkbenchLayoutService,
++		@IEditorGroupsService private readonly groups: IEditorGroupsService,
++		@IViewsService private readonly views: IViewsService,
++		@IViewDescriptorService private readonly descriptors: IViewDescriptorService,
++		@IContextKeyService private readonly contextKeys: IContextKeyService,
++		@IConfigurationService private readonly configuration: IConfigurationService,
++		@IStorageService private readonly storage: IStorageService,
++		@ICommandService private readonly commands: ICommandService,
++		@INotificationService notifications: INotificationService,
++	) {
++		super();
++		toolsTitle.value = studioModeState.state.labels.tools ?? toolsTitle.original;
++		this.snapshot = storage.getObject<IdeLayout>(SNAPSHOT_KEY, StorageScope.WORKSPACE);
++		this.requested = storage.get(MODE_KEY, StorageScope.WORKSPACE) === 'steam';
++		this._register(CommandsRegistry.registerCommand('studio.internalToggleMode', () => this.request(!this.requested)));
++		this._register(CommandsRegistry.registerCommand('studio.internalEnterIdeMode', () => this.request(false)));
++		this._register(CommandsRegistry.registerCommand('studio.internalEnterSteamMode', () => this.request(true)));
++		this._register(CommandsRegistry.registerCommand('studio.internalOpenSteamTools', () => this.sequencer.queue(() => this.openTools())));
++		this._register(CommandsRegistry.registerCommand('studio.internalOpenSteamTool', (_accessor, id: string) => this.sequencer.queue(() => this.openTool(id))));
++		this._register(studioModeState.onDidChangeState(state => {
++			toolsTitle.value = state.labels.tools ?? toolsTitle.original;
++			if (!this.initialized || !state.available) {
++				this.initialized = true;
++				void this.request(this.requested && state.available).catch(error => notifications.error(error));
++			}
++		}));
++		if (studioModeState.state.labels.mode) {
++			this.initialized = true;
++			void this.request(this.requested && studioModeState.state.available).catch(error => notifications.error(error));
++		}
++	}
++
++	private request(steam: boolean): Promise<void> {
++		this.requested = steam && studioModeState.state.available;
++		const revision = ++this.revision;
++		return this.sequencer.queue(async () => {
++			if (revision !== this.revision || this._store.isDisposed) { return; }
++			const next = this.requested;
++			if (next === this.steam && (next || !this.snapshot)) { return; }
++			studioModeState.setMode(this.steam, true);
++			try {
++				if (next) {
++					const group = this.groups.activeGroup;
++					if (!this.snapshot && group.activeEditor) { this.ideEditor = { group, editor: group.activeEditor }; }
++					this.captureIde();
++					// Preparing can start a worker. Keep it outside the short layout animation.
++					if (!await this.commands.executeCommand<boolean>('studio.internalPrepareSteamProject')) {
++						this.requested = false;
++						if (this.snapshot) { await this.restoreIde(); }
++						await this.rememberMode(false);
++						return;
++					}
++					if (revision !== this.revision || !studioModeState.state.available || this._store.isDisposed) { return; }
++				}
++				await this.transition(() => next ? this.enterSteam() : this.restoreIde());
++				await this.rememberMode(next);
++			} catch (error) {
++				this.requested = false;
++				await this.restoreIde();
++				await this.rememberMode(false);
++				throw error;
++			} finally { studioModeState.setMode(this.steam, false); }
++		});
++	}
++
++	private async rememberMode(steam: boolean): Promise<void> {
++		this.storage.store(MODE_KEY, steam ? 'steam' : 'ide', StorageScope.WORKSPACE, StorageTarget.MACHINE);
++		// Browser refresh can happen before the normal delayed storage write.
++		await this.storage.flush();
++	}
++
++	private saveSnapshot(): void {
++		this.storage.store(SNAPSHOT_KEY, this.snapshot, StorageScope.WORKSPACE, StorageTarget.MACHINE);
++	}
++
++	private captureIde(): void {
++		if (!this.snapshot) {
++			this.snapshot = {
++				visible: sideParts.map(part => this.layout.isVisible(part)),
++				sizes: sideParts.map(part => this.layout.getSize(part)),
++				containers: [ViewContainerLocation.Sidebar, ViewContainerLocation.Panel, ViewContainerLocation.AuxiliaryBar].map(location => this.views.getVisibleViewContainer(location)?.id),
++				auxiliaryMaximized: this.layout.isAuxiliaryBarMaximized(),
++				sideBarMemoryLocation: this.configuration.inspect<string>('workbench.sideBar.location').memoryValue,
++				editorLayout: this.groups.getLayout(), groups: this.groups.groups.map(group => group.id),
++			};
++			this.saveSnapshot();
++		}
++	}
++
++	private async enterSteam(): Promise<void> {
++		// The secondary sidebar is opposite the primary sidebar. Override only memory,
++		// so Steam tools stay on the right even when the user's IDE sidebar is on the right.
++		await this.configuration.updateValue('workbench.sideBar.location', 'left', ConfigurationTarget.MEMORY);
++		this.steam = true;
++		this.contextKeys.createKey<boolean>('studio.steamMode', false).set(true);
++		this.layout.mainContainer.classList.add('studio-steam-mode');
++		this.layout.setAuxiliaryBarMaximized(false);
++		this.editorOptions.value = this.groups.enforcePartOptions({ showTabs: 'none' });
++		const containers = new Set(Object.values(toolViews).map(id => this.descriptors.getViewContainerByViewId(id)));
++		for (const container of containers) {
++			if (container) { this.toolLocations.add(this.descriptors.overrideViewContainerLocation(container, ViewContainerLocation.AuxiliaryBar)); }
++		}
++		this.groups.arrangeGroups(GroupsArrangement.MAXIMIZE);
++		for (const part of [Parts.ACTIVITYBAR_PART, Parts.SIDEBAR_PART, Parts.PANEL_PART]) { this.layout.setPartHidden(true, part); }
++		this.layout.setPartHidden(false, Parts.EDITOR_PART);
++		await this.openTools();
++		const width = this.storage.getNumber(STEAM_WIDTH_KEY, StorageScope.WORKSPACE, Math.round(this.layout.mainContainerDimension.width * .45));
++		this.layout.setSize(Parts.AUXILIARYBAR_PART, { width: Math.min(Math.max(280, width), Math.max(170, this.layout.mainContainerDimension.width - 320)), height: this.layout.getSize(Parts.AUXILIARYBAR_PART).height });
++	}
++
++	private async openTools(): Promise<void> {
++		if (!this.steam) { return; }
++		await this.views.openView(TOOLS_VIEW, true);
++	}
++
++	private async openTool(id: string): Promise<void> {
++		if (!this.steam || !Object.hasOwn(toolViews, id)) { return; }
++		const view = toolViews[id];
++		const container = this.descriptors.getViewContainerByViewId(view);
++		if (!container || !this.snapshot) { return; }
++		await this.views.openView(view, true);
++	}
++
++	private async restoreIde(): Promise<void> {
++		const snapshot = this.snapshot;
++		if (!snapshot) { return; }
++		if (this.steam) { this.storage.store(STEAM_WIDTH_KEY, this.layout.getSize(Parts.AUXILIARYBAR_PART).width, StorageScope.WORKSPACE, StorageTarget.MACHINE); }
++		this.steam = false;
++		this.contextKeys.createKey('studio.steamMode', false).set(false);
++		this.layout.mainContainer.classList.remove('studio-steam-mode');
++		this.editorOptions.clear();
++		this.toolLocations.clear();
++		await this.configuration.updateValue('workbench.sideBar.location', snapshot.sideBarMemoryLocation, ConfigurationTarget.MEMORY);
++		this.views.closeViewContainer(TOOLS_CONTAINER);
++		for (const id of snapshot.containers) { if (id) { await this.views.openViewContainer(id, false); } }
++		for (const [index, part] of sideParts.entries()) {
++			this.layout.setPartHidden(!snapshot.visible[index], part);
++			if (snapshot.visible[index]) { this.layout.setSize(part, snapshot.sizes[index]); }
++		}
++		if (snapshot.groups.length === this.groups.groups.length && snapshot.groups.every(id => this.groups.getGroup(id))) {
++			this.groups.applyLayout(snapshot.editorLayout);
++		}
++		const previous = this.ideEditor;
++		if (previous && this.groups.getGroup(previous.group.id)?.contains(previous.editor)) { await previous.group.openEditor(previous.editor); }
++		this.layout.setAuxiliaryBarMaximized(snapshot.auxiliaryMaximized);
++		this.ideEditor = undefined;
++		this.snapshot = undefined;
++		this.storage.remove(SNAPSHOT_KEY, StorageScope.WORKSPACE);
++	}
++
++	private async transition(change: () => Promise<void>): Promise<void> {
++		const win = getWindow(this.layout.mainContainer);
++		const document = win.document;
++		if (win.matchMedia('(prefers-reduced-motion: reduce)').matches) { await change(); return; }
++		if (document.startViewTransition) {
++			document.documentElement.classList.add('studio-mode-transition');
++			try {
++				const transition = document.startViewTransition(change);
++				await transition.updateCallbackDone;
++				await transition.finished.catch(() => undefined);
++			} finally { document.documentElement.classList.remove('studio-mode-transition'); }
++		} else {
++			await change();
++			for (const part of [Parts.EDITOR_PART, Parts.AUXILIARYBAR_PART]) {
++				this.layout.getContainer(win, part)?.animate([{ opacity: .6, transform: 'translateY(5px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)' });
++			}
++		}
++	}
++}
++
++registerWorkbenchContribution2(StudioModeContribution.ID, StudioModeContribution, WorkbenchPhase.AfterRestored);
+diff --git a/src/vs/workbench/services/views/browser/viewDescriptorService.ts b/src/vs/workbench/services/views/browser/viewDescriptorService.ts
+index 4ea78aecb09..b9b4b718908 100644
+--- a/src/vs/workbench/services/views/browser/viewDescriptorService.ts
++++ b/src/vs/workbench/services/views/browser/viewDescriptorService.ts
+@@ -62,6 +62,7 @@ export class ViewDescriptorService extends Disposable implements IViewDescriptor
+ 	private readonly viewContainersRegistry: IViewContainersRegistry;
+ 
+ 	private viewContainersCustomLocations: Map<string, ViewContainerLocation>;
++	private readonly viewContainerLocationOverrides = new Map<string, ViewContainerLocation>();
+ 	private viewDescriptorsCustomLocations: Map<string, string>;
+ 	private viewContainerBadgeEnablementStates: Map<string, boolean>;
+ 
+@@ -304,7 +305,29 @@ export class ViewDescriptorService extends Disposable implements IViewDescriptor
+ 	}
+ 
+ 	getViewContainerLocation(viewContainer: ViewContainer): ViewContainerLocation {
+-		return this.viewContainersCustomLocations.get(viewContainer.id) ?? this.getDefaultViewContainerLocation(viewContainer);
++		return this.viewContainerLocationOverrides.get(viewContainer.id) ?? this.viewContainersCustomLocations.get(viewContainer.id) ?? this.getDefaultViewContainerLocation(viewContainer);
++	}
++
++	overrideViewContainerLocation(viewContainer: ViewContainer, location: ViewContainerLocation): IDisposable {
++		const from = this.getViewContainerLocation(viewContainer);
++		if (from === location || !this.canMoveViews()) { return Disposable.None; }
++		const previousIndex = viewContainer.requestedIndex;
++		const previousOverride = this.viewContainerLocationOverrides.get(viewContainer.id);
++		const notify = (from: ViewContainerLocation, to: ViewContainerLocation) => {
++			this.getOrCreateDefaultViewContainerLocationContextKey(viewContainer).set(to === this.getDefaultViewContainerLocation(viewContainer));
++			this._onDidChangeContainerLocation.fire({ viewContainer, from, to });
++			this._onDidChangeLocation.fire({ views: this.getViewsByContainer(viewContainer), from, to });
++		};
++		this.viewContainerLocationOverrides.set(viewContainer.id, location);
++		viewContainer.requestedIndex = undefined;
++		notify(from, location);
++		return toDisposable(() => {
++			if (previousOverride === undefined) { this.viewContainerLocationOverrides.delete(viewContainer.id); }
++			else { this.viewContainerLocationOverrides.set(viewContainer.id, previousOverride); }
++			viewContainer.requestedIndex = previousIndex;
++			const restored = this.getViewContainerLocation(viewContainer);
++			if (restored !== location) { notify(location, restored); }
++		});
+ 	}
+ 
+ 	getDefaultViewContainerLocation(viewContainer: ViewContainer): ViewContainerLocation {
+diff --git a/src/vs/workbench/workbench.common.main.ts b/src/vs/workbench/workbench.common.main.ts
+index 9ef754ebefb..7d025906501 100644
+--- a/src/vs/workbench/workbench.common.main.ts
++++ b/src/vs/workbench/workbench.common.main.ts
+@@ -389,6 +389,7 @@ import './contrib/surveys/browser/languageSurveys.contribution.js';
+ // Welcome
+ import './contrib/welcomeGettingStarted/browser/gettingStarted.contribution.js';
+ import './contrib/studioStart/browser/studioStart.contribution.js';
++import './contrib/studioMode/browser/studioMode.contribution.js';
+ import './contrib/welcomeAgentSessions/browser/agentSessionsWelcome.contribution.js';
+ import './contrib/welcomeWalkthrough/browser/walkThrough.contribution.js';
+ import './contrib/welcomeViews/common/viewsWelcome.contribution.js';

@@ -582,5 +582,21 @@
   "Expires in {0} days": "Expires in {0} days",
   "Updated {0}": "Updated {0}",
   "Unable to refresh this section. Try again.": "Unable to refresh this section. Try again.",
-  "Unable to complete account action.": "Unable to complete account action."
+  "Unable to complete account action.": "Unable to complete account action.",
+  "Workspace Mode": "Workspace Mode",
+  "Switch to IDE Mode": "Switch to IDE Mode",
+  "Switch to Steam Mode": "Switch to Steam Mode",
+  "Steam Mode is available for SteamHarness projects.": "Steam Mode is available for SteamHarness projects.",
+  "Open Tools": "Open Tools",
+  "Everything you need for your project, in one place.": "Everything you need for your project, in one place.",
+  "KV Storage": "KV Storage",
+  "Browse and edit project data": "Browse and edit project data",
+  "Knowledge Base": "Knowledge Base",
+  "Manage documents and knowledge": "Manage documents and knowledge",
+  "Project Information": "Project Information",
+  "View project details and configuration": "View project details and configuration",
+  "Work with your coding assistant": "Work with your coding assistant",
+  "Manage project versions and updates": "Manage project versions and updates",
+  "Run Trace": "Run Trace",
+  "Inspect execution history and logs": "Inspect execution history and logs"
 }

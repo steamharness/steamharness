@@ -35,6 +35,10 @@
     ],
     "authentication": [{ "id": "studio-steamharness", "label": "SteamHarness" }],
     "commands": [
+      { "command": "studio.toggleMode", "title": "%command.toggleMode%", "category": "Studio", "enablement": "studio.projectAvailable || studio.steamMode" },
+      { "command": "studio.enterIdeMode", "title": "%command.enterIdeMode%", "category": "Studio", "enablement": "studio.steamMode" },
+      { "command": "studio.enterSteamMode", "title": "%command.enterSteamMode%", "category": "Studio", "enablement": "studio.projectAvailable" },
+      { "command": "studio.openSteamTools", "title": "%command.openSteamTools%", "category": "Studio", "enablement": "studio.steamMode" },
       { "command": "studio.context.retry", "title": "%context.retry%", "category": "Studio" },
       { "command": "studio.context.open", "title": "%context.open%", "category": "Studio" },
       { "command": "studio.context.edit", "title": "%context.edit%", "category": "Studio" },
@@ -151,6 +155,10 @@
         { "command": "studio.openDocumentPreview", "when": "!explorerResourceIsFolder && resourceExtname =~ /\\.(pdf|docx|pptx|xlsx|tex|latex|png|jpe?g|jfif|gif|webp|bmp|avif|svg|ico|heic|heif)$/i", "group": "navigation@2" }
       ],
       "commandPalette": [
+        { "command": "studio.toggleMode", "when": "studio.projectAvailable || studio.steamMode" },
+        { "command": "studio.enterIdeMode", "when": "studio.steamMode" },
+        { "command": "studio.enterSteamMode", "when": "studio.projectAvailable" },
+        { "command": "studio.openSteamTools", "when": "studio.steamMode" },
         { "command": "studio.context.retry", "when": "false" },
         { "command": "studio.context.open", "when": "false" },
         { "command": "studio.context.edit", "when": "false" },
