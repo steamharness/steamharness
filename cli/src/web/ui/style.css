@@ -25,9 +25,7 @@ h1 { font-size: 14px; font-weight: 500; margin: 0; min-width: 0; overflow: hidde
 .menu-open .project-menu { display: flex; flex-direction: column; }
 .menu-heading { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 6px; min-height: 52px; padding: 8px 10px 8px 16px; font-size: 12px; color: var(--muted); }
 .menu-heading > span { min-width: 0; white-space: nowrap; }
-.menu-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.menu-title > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.running-count { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; font-size: 11px; font-variant-numeric: tabular-nums; }
+.running-count { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; height: 28px; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .running-count > span:last-child { min-width: 1ch; text-align: center; }
 .history-status { display: inline-flex; flex: 0 0 16px; align-items: center; justify-content: center; width: 16px; height: 16px; }
 .running-count > .codicon, .history-status > .codicon { display: inline-block; width: 16px; height: 16px; font-size: 14px; line-height: 16px; }

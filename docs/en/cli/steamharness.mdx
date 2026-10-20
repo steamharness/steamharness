@@ -70,7 +70,7 @@ Run `pnpm exec steamharness web . --no-open` to start the local Web interface fo
 
 Reopening a Conversation project restores the last selected conversation, while each open window retains its own selection. Legacy history initially opens the conversation with the most recent activity, then remembers new selections. Switching conversations does not rerun models or tools.
 
-Conversation and workflow history use status icons, with a spinning circle for running entries and details on hover. The list heading shows the current project's running conversation or workflow count while any are running, independently of search, pagination or the shortened narrow-screen list. Idle durable workers do not count as running.
+Conversation and workflow history use status icons, with a spinning circle for running entries and details on hover. The right side of the page header shows the current project's running conversation or workflow count while any are running, including when the sidebar is collapsed or hidden on narrow screens, independently of search, pagination or the shortened narrow-screen list. Idle durable workers do not count as running.
 
 Workflow request errors, including required parameter validation, apply to the current operation. Creating a new run, switching entrypoints or run records, or starting another run clears the previous alert. Late failures from earlier requests cannot restore it; saved run failures remain available in history.
 
