@@ -24,3 +24,5 @@
 - Added project-bound file create, read, and delete on the Kanban bridge, up to 50 MiB, rejecting other projects and conversation attachments.
 
 ### Fixed
+
+- Fix direct navigation and refresh of the Server Web `/projects` page returning a JSON 404 from the removed API route guard.

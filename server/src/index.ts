@@ -10,13 +10,14 @@ import { AccountRepository } from "./account-db";
 import { DEFAULT_DEV_SERVER_PORT, DEFAULT_PRODUCTION_SERVER_PORT, listenServerWithDevPortFallback } from "./dev-port";
 import { loadServerEnv } from "./env";
 import { createProjectServerHealthData } from "./health";
-import { ensureServerI18n, getRequestT, localizeHttpErrorMessage, localizeServerMessage, resolveRequestLocale } from "./i18n";
+import { ensureServerI18n, getRequestT, localizeHttpErrorMessage, resolveRequestLocale } from "./i18n";
 import { resolveServerPathRoots } from "./paths";
 import { fail, toHttpError } from "./protocol";
 import { createApiRouter } from "./routes/api";
 import { createAdminAliasRouter, createAuthRouter, createMeAliasRouter } from "./routes/auth";
 import { createKanbanPreviewAssetRouter } from "./routes/kanban-preview-assets";
 import { createProjectCardImageRouter } from "./routes/project-card-images";
+import { createRemovedApiRouter } from "./routes/removed-api";
 import { createStorageAssetRouter } from "./routes/storage-assets";
 import { isProjectLocalStorage } from "./local-storage";
 import { createPublicSystemAiUnavailableHandler } from "./public-system-ai";
@@ -104,9 +105,10 @@ app.get("/health", (req, res) => {
   });
 });
 
+app.use(createRemovedApiRouter());
+
 // Project card images are public presentation assets. Upload and metadata
 // changes remain protected by the authenticated project routes below.
-app.use(["/v1", "/webhooks", "/projects"], (req, res) => { res.status(404).json(fail(404, localizeServerMessage("API route not found.", getRequestT(req)))); });
 app.use("/project-card-images", createProjectCardImageRouter(storage));
 
 // Locally stored public objects (avatars) are served straight from disk. Mounted
