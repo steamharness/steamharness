@@ -20,6 +20,7 @@ import {
   McpCliRunner,
 } from "../mcp";
 import { main as cliMain } from "../index";
+import { resolveHarnessVersion } from "./harness-source";
 
 const cliPath = path.resolve("dist/index.js");
 const temporaryDirectories: string[] = [];
@@ -586,7 +587,7 @@ async function createMcpProject(relatedProjectId?: string): Promise<string> {
     id: "11111111-1111-4111-8111-111111111111",
     name: "@steamharness/mcp-test-workflow",
     type: "module",
-    devDependencies: { "steamharness": "0.2.0" },
+    devDependencies: { "steamharness": await resolveHarnessVersion() },
     steamHarness: {
       projectInfo: {
         dataStorage: { mode: "local" },
@@ -686,7 +687,7 @@ async function createConversationProject(): Promise<string> {
     id: "22222222-2222-4222-8222-222222222222",
     name: "@steamharness/mcp-test-conversation",
     type: "module",
-    devDependencies: { "steamharness": "0.2.0" },
+    devDependencies: { "steamharness": await resolveHarnessVersion() },
     steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
   }), "utf8");
   await writeFile(path.join(projectDir, "index.ts"), [

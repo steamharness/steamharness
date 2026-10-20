@@ -19,3 +19,8 @@ export async function resolveHarnessRoot(): Promise<string> {
   }
   return root;
 }
+
+export async function resolveHarnessVersion(): Promise<string> {
+  const manifest = JSON.parse(await readFile(path.join(await resolveHarnessRoot(), "package.json"), "utf8")) as { version: string };
+  return manifest.version;
+}

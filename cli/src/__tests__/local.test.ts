@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { it } from "vitest";
@@ -20,6 +21,7 @@ import {
 } from "../local";
 import type { CliProjectKVStore } from "../related-projects";
 import { prepareCliInvocation } from "../locale";
+import { resolveHarnessVersion } from "./harness-source";
 
 it("run command preserves workflow args after explicit separator", async () => {
   const projectDir = await createArgsEchoProject();
@@ -174,25 +176,30 @@ it("local commands require an exact project Core version and allow patch changes
     await readFile(new URL("../../package.json", import.meta.url), "utf8"),
   ) as { devDependencies: Record<string, string> };
   const cliRequiredCoreVersion = cliManifest.devDependencies["steamharness"];
+  const hostCoreVersion = await resolveHarnessVersion();
+  const semver = createRequire(import.meta.url)("semver") as { parse(value: string): { major: number; minor: number; patch: number } };
+  const version = semver.parse(hostCoreVersion);
+  const projectRequiredCoreVersion = `${version.major}.${version.minor}.${version.patch + 1}`;
+  const incompatibleVersion = `${version.major}.${version.minor + 1}.0`;
 
   try {
-    manifest.devDependencies["steamharness"] = "0.2.99";
+    manifest.devDependencies["steamharness"] = projectRequiredCoreVersion;
     await writeFile(packagePath, JSON.stringify(manifest), "utf8");
-    assert.deepEqual(assertLocalCliCoreCompatible(projectDir, "0.2.0"), {
+    assert.deepEqual(assertLocalCliCoreCompatible(projectDir, hostCoreVersion), {
       cliRequiredCoreVersion,
-      projectRequiredCoreVersion: "0.2.99",
+      projectRequiredCoreVersion,
     });
 
-    manifest.devDependencies["steamharness"] = "0.3.0";
+    manifest.devDependencies["steamharness"] = incompatibleVersion;
     await writeFile(packagePath, JSON.stringify(manifest), "utf8");
     assert.throws(
-      () => assertLocalCliCoreCompatible(projectDir, "0.2.9"),
-      /requires exact Core 0\.3\.0 \(0\.3\.x compatibility line\).*provides Core 0\.2\.9/,
+      () => assertLocalCliCoreCompatible(projectDir, hostCoreVersion),
+      /requires exact Core.*compatibility line.*provides Core/,
     );
 
-    manifest.devDependencies["steamharness"] = "^0.2.0";
+    manifest.devDependencies["steamharness"] = `^${hostCoreVersion}`;
     await writeFile(packagePath, JSON.stringify(manifest), "utf8");
-    assert.throws(() => assertLocalCliCoreCompatible(projectDir, "0.2.0"), /exact SemVer/);
+    assert.throws(() => assertLocalCliCoreCompatible(projectDir, hostCoreVersion), /exact SemVer/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -205,14 +212,15 @@ it.each(["build-in", "ci-namespace"])("nested built-ins resolve Core from the ag
   await mkdir(path.join(root, "harness"));
   const packagePath = path.join(directory, "package.json");
   const manifest = { devDependencies: { "steamharness": "link:../../harness" } };
-  await writeFile(path.join(root, "harness/package.json"), JSON.stringify({ name: "steamharness", version: "0.2.99" }));
+  const version = await resolveHarnessVersion();
+  await writeFile(path.join(root, "harness/package.json"), JSON.stringify({ name: "steamharness", version }));
   await writeFile(packagePath, JSON.stringify(manifest));
   try {
-    assert.equal(assertLocalCliCoreCompatible(directory, "0.2.4", { mode: "dev" }).projectRequiredCoreVersion, "0.2.99");
-    assert.throws(() => assertLocalCliCoreCompatible(directory, "0.2.4", { mode: "main" }), /exact published version/);
+    assert.equal(assertLocalCliCoreCompatible(directory, version, { mode: "dev" }).projectRequiredCoreVersion, version);
+    assert.throws(() => assertLocalCliCoreCompatible(directory, version, { mode: "main" }), /exact published version/);
     manifest.devDependencies["steamharness"] = "link:../../../core";
     await writeFile(packagePath, JSON.stringify(manifest));
-    assert.throws(() => assertLocalCliCoreCompatible(directory, "0.2.4", { mode: "dev" }), /inside the workspace root/);
+    assert.throws(() => assertLocalCliCoreCompatible(directory, version, { mode: "dev" }), /inside the workspace root/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
@@ -514,7 +522,7 @@ async function createArgsEchoProject(declareStorage = true): Promise<string> {
       id: "11111111-1111-4111-8111-111111111111",
       name: "@steamharness/cli-test-workflow",
       type: "module",
-      devDependencies: { "steamharness": "0.2.0" },
+      devDependencies: { "steamharness": await resolveHarnessVersion() },
       ...(declareStorage
         ? { steamHarness: { projectInfo: { dataStorage: { mode: "local" } } } }
         : {}),
@@ -610,7 +618,7 @@ async function createPersistentValueCliProject(): Promise<string> {
     JSON.stringify({
       id: "22222222-2222-4222-8222-222222222222",
       type: "module",
-      devDependencies: { "steamharness": "0.2.0" },
+      devDependencies: { "steamharness": await resolveHarnessVersion() },
       steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
     }),
   );

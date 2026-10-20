@@ -7,7 +7,7 @@ import * as core from 'steamharness';
 import { startWebServer } from '../web/server';
 import { runKanbanDataCall, webProjectDataDirectory } from '../web/kanban-data';
 import type { Project, Runtime } from '../web/workflow-types';
-import { resolveHarnessRoot } from './harness-source';
+import { resolveHarnessRoot, resolveHarnessVersion } from './harness-source';
 
 const folders: string[] = [], apps: Awaited<ReturnType<typeof startWebServer>>[] = [];
 afterEach(async () => { for (const app of apps.splice(0)) { await app.close(); } for (const folder of folders.splice(0)) { await rm(folder, { recursive: true, force: true }); } vi.unstubAllEnvs(); vi.restoreAllMocks(); });
@@ -16,7 +16,7 @@ async function fixture(options: { server?: boolean; artifact?: boolean; noParams
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'steamharness-kanban-'))); folders.push(root);
   const directory = path.join(root, 'board'); await mkdir(directory);
   const descriptor: Project = { id, name: 'Board', uri: '', folderPath: directory, projectType: 'kanban', fields: [], entrypoints: [] };
-  const pkg = { id, name: 'Board', type: 'module', devDependencies: { 'steamharness': '0.2.4-20260929001' }, steamHarness: { projectType: 'kanban', kanban: options.artifact ? { artifactDir: 'dist', entry: 'pages/index.html' } : {}, projectInfo: { dataStorage: { mode: options.server ? 'server' : 'local' } } } };
+  const pkg = { id, name: 'Board', type: 'module', devDependencies: { 'steamharness': await resolveHarnessVersion() }, steamHarness: { projectType: 'kanban', kanban: options.artifact ? { artifactDir: 'dist', entry: 'pages/index.html' } : {}, projectInfo: { dataStorage: { mode: options.server ? 'server' : 'local' } } } };
   await writeFile(path.join(directory, 'package.json'), JSON.stringify(pkg));
   const artifactRoot = options.artifact ? path.join(directory, 'dist/pages') : directory;
   await mkdir(artifactRoot, { recursive: true }); await writeFile(path.join(artifactRoot, 'index.html'), '<!doctype html><script>window.boardLoaded = true;</script><h1>Board</h1>'); await writeFile(path.join(artifactRoot, 'board.js'), 'window.assetLoaded = true;');
