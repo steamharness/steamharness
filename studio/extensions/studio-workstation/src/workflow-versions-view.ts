@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { openProjectFolder } from './project-window';
 import { projectAvatarDataUrl } from '@steamharness/project-card-metadata/avatar';
 import { t } from './localization';
 import { localizationHtml } from './localization-host';
@@ -446,7 +447,7 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
   private async offerOpenFolder(message: string, label: string, directory: string): Promise<void> {
     try {
       const answer = await vscode.window.showInformationMessage(message, label);
-      if (answer === label && !this.disposed) { await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(directory), { forceNewWindow: true }); }
+      if (answer === label && !this.disposed) { await openProjectFolder(vscode.Uri.file(directory), () => !this.disposed); }
     } catch (error) { this.report(error); }
   }
 

@@ -16,6 +16,7 @@ import { assistantWorkspaceAvailable } from './assistant-workspace';
 import { bindProjectClipboard } from './workflow-clipboard';
 import { bindProjectResourceCards, type ResourceCardResult } from './workflow-resource-cards';
 import type { ProjectIcons } from './project-icons';
+import { openProjectFolder } from './project-window';
 
 const ignored = new Set(['node_modules', 'vendor', 'dist', 'out', 'build', 'upstream']);
 const containers = new Set(['workspace', 'workflow', 'projects', 'examples']);
@@ -250,7 +251,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       if ((card.kind === 'project' && card.preview !== true || result.action === 'project') && project?.folderPath) {
         const workspaceProject = provider.projects.find(entry => entry.uri === project.uri);
         if (workspaceProject) { await openProject(workspaceProject); }
-        else { await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.parse(project.uri), { forceNewWindow: true }); }
+        else { await openProjectFolder(vscode.Uri.parse(project.uri), () => !disposed); }
         return;
       }
     }

@@ -25,7 +25,7 @@ function fixture(t, options = {}) {
     projects: [{ id, name: 'Demo', latest: '0.9.0', canManage: true, sourceDownload: { allowed: true, available: true } },
       { id: otherId, name: 'Other', latest: '2.0.0', canManage: false, sourceDownload: { allowed: false, available: true } }],
     versions: new Map([[id, [{ version: '0.9.0', latest: true, releaseLog: '<script>project notes</script>', dependencies: [] }]], [otherId, [{ version: '2.0.0', latest: true, dependencies: [] }]]]),
-    manifest: { id, version: '1.0.0' }, documents: [], openDownload: false };
+    manifest: { id, version: '1.0.0' }, documents: [], openDownload: false, windowChoice: 'new' };
   const context = { subscriptions: [], extensionUri: uri(path.resolve('/extension')), globalState: { get: key => storage.get(key), update: async (key, value) => storage.set(key, value) } };
   const view = { visible: true, webview: { cspSource: 'vscode-resource:', asWebviewUri: value => value, postMessage: value => { messages.push(plain(value)); return Promise.resolve(true); }, onDidReceiveMessage: new Emitter().event },
     onDidChangeVisibility: visibility.event, onDidDispose: new Emitter().event };
@@ -49,7 +49,11 @@ function fixture(t, options = {}) {
         return commands.get(name)?.(...args);
       } },
     window: { state: { focused: true }, registerWebviewViewProvider: () => ({ dispose() {} }), onDidChangeWindowState: new Emitter().event,
-      showErrorMessage: async message => f.errors.push(message), showInformationMessage: async (message, action) => { f.infos.push(message); return f.openDownload ? action : undefined; },
+      showErrorMessage: async message => f.errors.push(message), showInformationMessage: async (message, action, newWindow, currentWindow) => {
+        f.infos.push(message);
+        if (typeof action === 'object' && action.modal) { return f.windowChoice === 'new' ? newWindow : f.windowChoice === 'current' ? currentWindow : undefined; }
+        return f.openDownload ? action : undefined;
+      },
       showQuickPick: async items => { await f.pick?.(items); return items[0]; }, showInputBox: async () => { await f.input?.(); return f.notes; },
       withProgress: async (_options, action) => { await f.beforeProgress?.(); const changed = new Emitter(); f.cancel = () => changed.fire(); return action({ report() {} }, { onCancellationRequested: changed.event, isCancellationRequested: false }); } },
   };
@@ -194,11 +198,25 @@ test('data write access alone does not enable an upload', async t => {
 test('downloads register exact version directories and open only the downloaded root in a new window', async t => {
   const f = fixture(t); await f.command('studio.refreshVersions'); f.openDownload = true;
   await f.message({ type: 'download', version: '0.9.0' });
+  await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(f.downloads, [{ projectId: id, version: '0.9.0' }]);
   assert.equal(f.remembered[0].version, '0.9.0');
   assert.equal(f.opens.length, 1); assert.equal(f.opens[0][1].forceNewWindow, true); assert.match(f.opens[0][0].fsPath, /demo-0.9.0$/);
   await f.message({ type: 'download', version: 'not-a-published-version' }); assert.equal(f.downloads.length, 1);
 });
+
+for (const choice of ['current', undefined]) {
+  test(`download opening respects the ${choice ?? 'cancelled'} window choice`, async t => {
+    const f = fixture(t); await f.command('studio.refreshVersions'); f.openDownload = true; f.windowChoice = choice;
+    await f.message({ type: 'download', version: '0.9.0' });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(f.downloads.length, 1);
+    assert.equal(f.remembered[0].version, '0.9.0');
+    assert.equal(f.opens.length, choice === 'current' ? 1 : 0);
+    if (f.opens.length) { assert.deepEqual(plain(f.opens[0][1]), { forceNewWindow: false, forceReuseWindow: true }); }
+    assert.deepEqual(f.errors, []);
+  });
+}
 
 test('an account change while choosing a download cannot transfer the prior selection', async t => {
   const f = fixture(t); await f.command('studio.refreshVersions');

@@ -172,6 +172,22 @@ test('current-window creation hands installation to the reloaded target workspac
   assert.equal((await target.state()).pending.length, 0);
 });
 
+test('retrying setup from another workspace asks for a window before changing the installation handoff', async t => {
+  const f = fixture(t);
+  await f.execute('studio.createProject');
+  const pending = JSON.stringify(f.storage.get('studio.pendingProjectSetups'));
+  f.newWindow = undefined;
+  await f.execute('studio.retryProjectSetup', id);
+  await f.execute('studio.openCreatedProject', id);
+  assert.equal(f.calls.filter(([name]) => name === 'vscode.openFolder').length, 1);
+  assert.equal(JSON.stringify(f.storage.get('studio.pendingProjectSetups')), pending);
+  assert.deepEqual(f.installs, []);
+  f.newWindow = false;
+  await f.execute('studio.retryProjectSetup', id);
+  const opened = f.calls.filter(([name]) => name === 'vscode.openFolder').at(-1);
+  assert.deepEqual({ ...opened[2] }, { forceNewWindow: false, forceReuseWindow: true });
+});
+
 test('form validation returns inline errors and current-project cards receive paths and types', async t => {
   const f = fixture(t);
   f.validate = () => { throw Object.assign(new Error('conflict'), { code: 'directory-exists' }); };

@@ -40,7 +40,7 @@
   "command.selectInfoProject": "选择项目",
   "command.openInfoProjectSource": "打开项目声明",
   "command.copyProjectInfoValue": "复制值",
-  "command.openRelatedProject": "用新窗口打开关联项目",
+  "command.openRelatedProject": "打开关联项目",
   "command.refreshRelatedProjects": "刷新关联项目",
   "command.openProjectSource": "打开项目源码",
   "command.openProjectDemo": "打开本地对话演示",

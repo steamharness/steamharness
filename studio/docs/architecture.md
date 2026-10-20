@@ -25,7 +25,9 @@ Studio 使用 VS Code OSS 的工作台、Monaco 编辑器、语言服务、扩�
 
 开始工作台通过原生 `StudioStartView` 共用空编辑器组、Untitled overlay 和可序列化的 Start EditorPane。版本化 `StudioStartState` 从工作站扩展提供模板、扫描结果、最近项目、账户、环境和 Analysis 摘要；可见实例统一管理 5 秒轮询，变化防抖并忽略过期读取。Untitled 只在可编辑、非 diff、空文档下覆盖显示，输入仍由 Monaco 处理。
 
-模板唯一来源在 CLI 的 `src/project-templates.ts` 与 `src/project-templates/catalog.json`。Studio 的 `vendor/project-templates` 保存独立构建副本，修改后执行 `node scripts/sync-project-templates.mjs`；聚合检出的单元测试检查副本一致性。构建将模块、清单和资源复制到扩展 `dist`，精确 Core/CLI 版本复用已验证的 `examples/conversation/package.json`。项目目录独占创建后，先保存安装交接请求，再使用 `forceNewWindow` 打开。新窗口激活时匹配唯一工作区根目录并校验 UUID，在受信任工作区消费请求后安装；创建窗口不执行安装，失败、取消或重载不会重新自动安装。重试在目标项目窗口执行，从其他窗口重试时先重新打开项目窗口；成功后刷新当前窗口的项目列表，不额外打开窗口。
+模板唯一来源在 CLI 的 `src/project-templates.ts` 与 `src/project-templates/catalog.json`。Studio 的 `vendor/project-templates` 保存独立构建副本，修改后执行 `node scripts/sync-project-templates.mjs`；聚合检出的单元测试检查副本一致性。构建将模块、清单和资源复制到扩展 `dist`，精确 Core/CLI 版本复用已验证的 `examples/conversation/package.json`。创建目录前选择新窗口或当前窗口，取消不写入项目；目录独占创建后先保存安装交接请求，再使用对应的 `forceNewWindow` / `forceReuseWindow` 打开。目标窗口激活时匹配唯一工作区根目录并校验 UUID，在受信任工作区消费请求后安装；失败、取消或重载不会重新自动安装。`project-window.ts` 统一最近项目、文件夹/工作区、关联项目、下载/导入和资源卡片的窗口选择；重试在目标项目窗口执行，从其他窗口重试时先选择并打开项目窗口，取消不更新安装交接请求。成功后刷新当前窗口的项目列表，不额外打开窗口。
+
+内核补丁 `0034-studio-project-window-choice.patch` 覆盖原生 File 菜单、Ctrl+R、系统最近项目和 Web 工作站。普通项目打开先选择目标窗口；显式的 `forceNewWindow` / `forceReuseWindow` 继续直接执行，避免扩展已选择后重复询问。添加/移除工作区目录和普通文件编辑保留原行为。取消原生最近项目的窗口选择时保留最近记录，启动恢复仍使用原来的恢复路径。
 
 `npm run test:start-ui` 在隔离数据目录启动 Web 工作台和 `headless: true` 浏览器，覆盖两个入口、输入/DOM 粘贴、撤销、分栏、恢复、语言、主题与真实项目入口。它不启动 Electron，不访问系统剪贴板。
 

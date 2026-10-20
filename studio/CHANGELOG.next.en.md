@@ -1,5 +1,9 @@
 # Unreleased
 
+### Opening Projects
+
+- Recent projects, the File menu, Ctrl+R, folders/workspaces, related projects, resource cards, downloads/imports, and installation retries consistently offer a new or current window; cancelling leaves the window and installation unchanged.
+
 ### Project Avatars
 
 - Start, recent projects, project lists, related projects, Project Information, run tabs, and project pickers consistently show project icons and colors; new projects save random avatars with sufficient contrast.

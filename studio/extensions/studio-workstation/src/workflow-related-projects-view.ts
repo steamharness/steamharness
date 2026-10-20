@@ -1,5 +1,6 @@
 import { t } from './localization';
 import * as vscode from 'vscode';
+import { openProjectFolder } from './project-window';
 import { IMPORTED_PROJECTS_KEY, projectId, readImportedProjects, readRecentProjects, readRelatedProjects, rememberImportedProjects,
   projectTypeIcons, type ImportedProject, type RelatedProject, type ProjectType } from './projects';
 import type { ProjectIcons } from './project-icons';
@@ -273,7 +274,7 @@ export class RelatedProjectsView implements vscode.TreeDataProvider<RelatedProje
         await this.remember([project]);
         void this.reload();
       }
-      await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.parse(project.uri), { forceNewWindow: true });
+      await openProjectFolder(vscode.Uri.parse(project.uri), () => !this.disposed);
     } catch (error) {
       this.output.appendLine(`Related projects: ${String(error)}`);
       await vscode.window.showErrorMessage(t("Unable to open the related project."));
@@ -290,7 +291,7 @@ export class RelatedProjectsView implements vscode.TreeDataProvider<RelatedProje
     treeItem.iconPath = item.avatarUrl ? vscode.Uri.parse(item.avatarUrl)
       : new vscode.ThemeIcon(item.projectType ? projectTypeIcons[item.projectType] : item.imported ? 'folder' : 'link');
     treeItem.contextValue = item.imported ? 'studio.relatedProjectImported' : 'studio.relatedProjectMissing';
-    treeItem.command = { command: 'studio.openRelatedProject', title: t("Open Related Project in New Window"), arguments: [item] };
+    treeItem.command = { command: 'studio.openRelatedProject', title: t('Open Related Project'), arguments: [item] };
     return treeItem;
   }
 

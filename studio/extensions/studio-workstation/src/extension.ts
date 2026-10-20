@@ -9,6 +9,7 @@ import { activateProjectAccount, type AccountController } from './workflow-auth'
 import { activateDocumentPreviews } from './document-preview';
 import { StudioStartController } from './start-page';
 import { activateInternalLayer } from './internal-layer';
+import { openProjectFolder } from './project-window';
 
 const RECENT_PROJECTS_KEY = 'studio.recentProjects';
 
@@ -97,7 +98,7 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
       canSelectFolders: true, canSelectFiles: false, canSelectMany: false, openLabel: t('Open Project'),
     });
     if (folders?.[0]) {
-      await vscode.commands.executeCommand('vscode.openFolder', folders[0]);
+      await openProjectFolder(folders[0]);
     }
   });
   register('studio.openWorkspace', async () => {
@@ -106,7 +107,7 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
       filters: { [t('Workspace')]: ['code-workspace'] }, openLabel: t('Open Workspace'),
     });
     if (files?.[0]) {
-      await vscode.commands.executeCommand('vscode.openFolder', files[0]);
+      await openProjectFolder(files[0]);
     }
   });
   register('studio.openRecentProject', async (project?: RecentProject) => {
@@ -123,7 +124,7 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
       }
       return;
     }
-    await vscode.commands.executeCommand('vscode.openFolder', uri);
+    await openProjectFolder(uri);
   });
   register('studio.removeRecentProject', async (project?: RecentProject) => {
     if (project) {

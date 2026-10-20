@@ -7,6 +7,7 @@ import { projectVersion, type Project } from './workflow-types';
 import type { CreatedProject, PendingProjectSetup, ProjectCreationDialog, ProjectCreationDialogResult, StudioStartState } from './start-page-types';
 import { parseServerProjectShareLink, type ProjectVersionStatus } from './steamharness-server-projects';
 import { IMPORTED_PROJECTS_KEY, readImportedProjects, rememberImportedProjects, type RecentProject } from './projects';
+import { chooseProjectWindow, openProjectFolder, type ProjectWindowOptions } from './project-window';
 
 const PENDING_KEY = 'studio.pendingProjectSetups';
 
@@ -111,7 +112,7 @@ export class StudioStartController implements vscode.Disposable {
     }));
     register('studio.openCreatedProject', async (id?: string) => {
       const project = this.pending().find(entry => entry.id === id);
-      if (project) { await this.validateCreated(project); await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(project.directory), { forceNewWindow: true }); }
+      if (project) { await this.validateCreated(project); await openProjectFolder(vscode.Uri.file(project.directory), () => !this.disposed); }
     });
     const schedule = (): void => {
       ++this.revision;
@@ -152,10 +153,13 @@ export class StudioStartController implements vscode.Disposable {
     });
   }
 
-  private async openProjectWindow(project: CreatedProject, forceNewWindow = true): Promise<void> {
+  private async openProjectWindow(project: CreatedProject, options?: ProjectWindowOptions): Promise<void> {
+    options ??= await chooseProjectWindow();
+    if (!options) { return; }
+    this.creation.signal.throwIfAborted();
     await this.updatePending({ ...project, status: 'failed', installOnOpen: true, error: t('Project setup is incomplete.') });
     this.creation.signal.throwIfAborted();
-    await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(project.directory), { forceNewWindow, forceReuseWindow: !forceNewWindow });
+    await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(project.directory), options);
   }
 
   private async setupInProjectWindow(project: PendingProjectSetup): Promise<void> {
@@ -251,13 +255,11 @@ export class StudioStartController implements vscode.Disposable {
       if (!input) { return; }
       if ('shareUrl' in input) { await vscode.commands.executeCommand('studio.importProjectFromLink', input.shareUrl); return; }
       if (!request.templates.some(template => template.id === input.templateId)) { return; }
-      const newWindow = t('Open in New Window'), currentWindow = t('Open in Current Window');
-      const target = await vscode.window.showInformationMessage(t('Where would you like to open the new project?'),
-        { modal: true }, newWindow, currentWindow);
-      if (target !== newWindow && target !== currentWindow) { return; }
+      const options = await chooseProjectWindow(t('Where would you like to open the new project?'));
+      if (!options) { return; }
       this.creation.signal.throwIfAborted();
       const project = await this.launcher.createProject!(input, this.creation.signal);
-      await this.openProjectWindow(project, target === newWindow);
+      await this.openProjectWindow(project, options);
     });
   }
 

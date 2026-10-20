@@ -19,7 +19,7 @@ function fixture(t, { files = new Map(), state = new Map([[IMPORTED_PROJECTS_KEY
   if (mockTimers) { t.mock.timers.enable({ apis: ['setTimeout'] }); }
   const commands = new Map(), opened = [], warnings = [], errors = [], output = [], view = { dispose() {} };
   const disposable = { dispose() {} };
-  let warningChoice, folderChoice, focused;
+  let warningChoice, folderChoice, focused, windowChoice = 'new';
   const uri = value => { const parsed = new URL(value); return { toString: () => value, path: parsed.pathname, fsPath: parsed.pathname, scheme: parsed.protocol.slice(0, -1) }; };
   const FileType = { File: 1, Directory: 2 };
   const vscode = {
@@ -30,6 +30,7 @@ function fixture(t, { files = new Map(), state = new Map([[IMPORTED_PROJECTS_KEY
     window: { createTreeView: () => view, onDidChangeWindowState: callback => { focused = callback; return disposable; },
       showWarningMessage: async (...args) => { warnings.push(args); return warningChoice; },
       showOpenDialog: async () => folderChoice ? [uri(folderChoice)] : undefined,
+      showInformationMessage: async (_message, _options, newWindow, currentWindow) => windowChoice === 'new' ? newWindow : windowChoice === 'current' ? currentWindow : undefined,
       showErrorMessage: async message => { errors.push(message); },
     },
     workspace: { fs: {
@@ -60,6 +61,7 @@ function fixture(t, { files = new Map(), state = new Map([[IMPORTED_PROJECTS_KEY
     async root => (discover ? await discover(root.toString()) : [root.toString()]).map(uri), icons);
   t.after(() => provider.dispose());
   return { provider, state, commands, opened, warnings, errors, output, view,
+    selectWindow: choice => { windowChoice = choice; },
     selectImport: (folder, action = "Import Project") => { warningChoice = action; folderChoice = folder; },
     focus: async () => {
       focused({ focused: true });
@@ -79,8 +81,22 @@ test('an imported related project opens its verified folder in a new window', as
   const item = provider.getChildren()[0], tree = provider.getTreeItem(item);
   assert.deepEqual([tree.label, tree.description, tree.contextValue], ['notes', 'Notes', 'studio.relatedProjectImported']);
   await commands.get('studio.openRelatedProject')(item);
-  assert.deepEqual(JSON.parse(JSON.stringify(opened)), [{ id: 'vscode.openFolder', uri: 'file:///Notes', options: { forceNewWindow: true } }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(opened)), [{ id: 'vscode.openFolder', uri: 'file:///Notes', options: { forceNewWindow: true, forceReuseWindow: false } }]);
   assert.deepEqual(warnings, []);
+});
+
+test('related projects offer the current window and leave it unchanged when the choice is cancelled', async t => {
+  const state = new Map([[IMPORTED_PROJECTS_KEY, [imported('Notes')]]]);
+  const files = new Map([['file:///Owner/package.json', manifest('Owner', ids[0], [relation()])], ['file:///Notes/package.json', manifest('Notes', ids[1])]]);
+  const f = fixture(t, { state, files });
+  await f.provider.update([project('Owner')]);
+  const item = f.provider.getChildren()[0];
+  f.selectWindow(undefined);
+  await f.commands.get('studio.openRelatedProject')(item);
+  assert.deepEqual(f.opened, []);
+  f.selectWindow('current');
+  await f.commands.get('studio.openRelatedProject')(item);
+  assert.deepEqual(JSON.parse(JSON.stringify(f.opened[0].options)), { forceNewWindow: false, forceReuseWindow: true });
 });
 
 test('downloaded roots bind their own dependency version instead of another imported copy of its UUID', async t => {

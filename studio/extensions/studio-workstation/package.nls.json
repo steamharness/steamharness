@@ -40,7 +40,7 @@
   "command.selectInfoProject": "Select Project",
   "command.openInfoProjectSource": "Open Project Manifest",
   "command.copyProjectInfoValue": "Copy Value",
-  "command.openRelatedProject": "Open Related Project in New Window",
+  "command.openRelatedProject": "Open Related Project",
   "command.refreshRelatedProjects": "Refresh Related Projects",
   "command.openProjectSource": "Open Project Source",
   "command.openProjectDemo": "Open Local Conversation Demo",
