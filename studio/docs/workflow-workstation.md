@@ -73,7 +73,7 @@ Studio 打开的 Workflow、Conversation、Kanban 和小助手统一使用工作
 
 ## 验证入口
 
-`npm run test:mode-ui` 使用隔离的无头浏览器验证 IDE / Steam 切换、中英文工具、明暗主题、800–1440px 布局、未保存文件和运行页面保留，以及刷新后的模式恢复；截图与报告位于 `.studio/studio-mode-ui/`。可设置 `STEAMHARNESS_UI_LANGUAGE_PACK=/absolute/path/to/language-pack` 复用已安装的中文语言包，避免测试启动时联网下载。它不会打开本机前台窗口，macOS 原生窗口按钮仍需在对应完整测试环境验证。
+`npm run test:mode-ui` 使用隔离的无头浏览器验证 IDE / Steam 切换、中英文工具、明暗主题、800–1440px 布局、未保存文件和运行页面保留，以及刷新后的模式恢复；同时验证 macOS 标题栏在缩放和全屏状态下的留白布局。截图与报告位于 `.studio/studio-mode-ui/`。可设置 `STEAMHARNESS_UI_LANGUAGE_PACK=/absolute/path/to/language-pack` 复用已安装的中文语言包，避免测试启动时联网下载。它不会打开本机前台窗口，macOS 原生窗口按钮仍需在对应完整测试环境验证。
 
 `npm run check` 执行扩展类型检查和离线单元测试；`npm run build:extension` 构建 Node 与浏览器扩展产物。这两项不启动工作站或真实模型服务。
 

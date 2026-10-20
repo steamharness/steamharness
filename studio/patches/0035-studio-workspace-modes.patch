@@ -1,9 +1,9 @@
 diff --git a/src/vs/workbench/browser/parts/media/studioMode.css b/src/vs/workbench/browser/parts/media/studioMode.css
 new file mode 100644
-index 00000000000..75a1725798d
+index 00000000000..82fa423afa6
 --- /dev/null
 +++ b/src/vs/workbench/browser/parts/media/studioMode.css
-@@ -0,0 +1,132 @@
+@@ -0,0 +1,143 @@
 +.monaco-workbench .studio-mode-switcher {
 +	/* Match native title bar actions above the window's draggable layer. */
 +	position: relative;
@@ -18,6 +18,15 @@ index 00000000000..75a1725798d
 +	border-radius: 7px;
 +	background: color-mix(in srgb, var(--vscode-foreground) 4%, var(--vscode-sideBar-background, var(--vscode-editor-background)));
 +	-webkit-app-region: no-drag;
++}
++
++/* Native macOS leaves the left title bar empty for its unscaled window buttons. */
++.monaco-workbench.mac:not(.web):not(.fullscreen) .studio-mode-switcher {
++	margin-left: calc(70px / var(--zoom-factor, 1) + 8px);
++}
++
++.monaco-workbench.mac:not(.web):not(.fullscreen) .titlebar-container.counter-zoom .studio-mode-switcher {
++	margin-left: 78px;
 +}
 +
 +.monaco-workbench .studio-mode-switcher button,
@@ -38,6 +47,8 @@ index 00000000000..75a1725798d
 +	font-size: 11px;
 +	cursor: pointer;
 +	white-space: nowrap;
++	user-select: text;
++	-webkit-user-select: text;
 +	-webkit-app-region: no-drag;
 +	transition: background-color 160ms ease, color 160ms ease, opacity 160ms ease;
 +}

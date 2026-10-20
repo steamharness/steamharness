@@ -88,6 +88,31 @@ for (const language of ['en', 'zh-cn']) {
     await command('studio.enterSteamMode'); assert.equal(await page.locator('.studio-steam-mode').count(), 0);
     check(`${language}: ordinary folder stays in IDE mode`);
 
+    if (language === 'en') {
+      const geometry = await page.locator('.studio-mode-switcher').evaluate(switcher => {
+        const shell = document.createElement('div'); shell.className = 'monaco-workbench mac';
+        shell.style.cssText = 'position:fixed;left:-10000px;top:0;width:800px;height:35px;';
+        shell.innerHTML = '<div class="part titlebar"><div class="titlebar-container"><div class="titlebar-left"></div></div></div>';
+        const titlebar = shell.querySelector('.titlebar-container');
+        const left = shell.querySelector('.titlebar-left'); left.append(switcher.cloneNode(true));
+        document.body.append(shell);
+        const measurements = [];
+        for (const zoom of [1, 1.5, .8]) {
+          // Match Electron's zoomed content while its native window controls remain unscaled.
+          shell.style.zoom = String(zoom); shell.style.setProperty('--zoom-factor', String(zoom));
+          titlebar.classList.toggle('counter-zoom', zoom < 1);
+          const rect = left.querySelector('.studio-mode-switcher').getBoundingClientRect();
+          measurements.push(rect.left - left.getBoundingClientRect().left);
+        }
+        shell.style.zoom = '1'; shell.classList.add('fullscreen'); titlebar.classList.remove('counter-zoom');
+        const fullscreen = left.querySelector('.studio-mode-switcher').getBoundingClientRect().left - left.getBoundingClientRect().left;
+        shell.remove(); return { measurements, fullscreen };
+      });
+      assert.ok(geometry.measurements.every(inset => inset >= 70), JSON.stringify(geometry));
+      assert.ok(geometry.fullscreen < 16);
+      check('macOS: mode controls clear native window buttons at different zoom levels and reclaim the space in fullscreen');
+    }
+
     const project = path.join(folder, 'conversation'); await mkdir(project);
     await mkdir(path.join(project, 'node_modules/@steamharness'), { recursive: true });
     await symlink(path.resolve(ROOT, '../harness'), path.join(project, 'node_modules/steamharness'), 'dir');
