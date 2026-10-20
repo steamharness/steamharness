@@ -16,7 +16,7 @@ import { createProjectActions } from './workflow-actions';
 import { migrateProjectHistory, type WorkspaceContract } from './workflow-workspace';
 import { createWebRuntime, cliRoot, type WebConnection } from './runtime';
 import { redactProjectData, validateProjectValues, validateConversationCommandStates, mergeProjectParamStates, projectParameters, projectParamArgs, type Runtime, type Project, type ConversationSession, type ConversationDraftUpdate, type Attachment, type ParamValues, type ParamState } from './workflow-types';
-import { conversationResourceCards } from './resource-cards';
+import { conversationResourceCards, type ResourceCardReference } from './resource-cards';
 import type { AccountState } from './workflow-auth-client';
 import { loginWebAccount } from './account-auth';
 import type { WebHostConfiguration } from './host-config';
@@ -264,13 +264,34 @@ export async function startWebServer(options: WebOptions) {
     if (!Array.isArray(files) || files.length > 32) { throw new Error('Invalid attachments.'); }
     return Promise.all(files.map(async file => { if (typeof file?.id !== 'string') { throw new Error('Invalid attachment.'); } const { reference } = await runtime.readFile(project, file.id); if (reference.conversationId !== sessionId) { throw new Error('Attachment belongs to another conversation.'); } return reference; }));
   };
+  const findResourceCard = (reference: ResourceCardReference) => {
+    let items, scopeId, source: ResourceCardReference;
+    if (projectController) {
+      const run = projectController.runs.find(run => run.id === reference.runId);
+      if (!run) { throw new Error(t('Run no longer exists.')); }
+      items = run.items; scopeId = run.scopeId;
+      source = { runId: run.id, cardId: reference.cardId };
+    } else {
+      const current = reference.sessionId ? conversationController?.sessions.find(entry => entry.id === reference.sessionId) : conversationController?.current;
+      if (!current) { throw new Error(t('Conversation no longer exists.')); }
+      items = current.messages.find(answer => answer.id === reference.messageId)?.items ?? []; scopeId = current.id;
+      source = { sessionId: current.id, messageId: reference.messageId, cardId: reference.cardId };
+    }
+    const card = conversationResourceCards(items, project.id, scopeId, project.projectInfo?.dataStorage?.mode === 'server' ? 'server' : 'local').find(card => card.id === reference.cardId);
+    if (!card) { throw new Error(t('This resource no longer exists.')); }
+    return { card, reference: source };
+  };
   const handleMessage = async (message: Message): Promise<Message[]> => {
     if (typeof message.type !== 'string') { throw new Error('Invalid message.'); }
     if (message.projectUri && message.projectUri !== project.uri) { throw new Error('Project changed.'); }
-    if (message.type === 'resource-data') { return [{ type: 'resource-data', requestId: message.requestId, data: resources.get(String(message.id)) }]; }
-    if (message.type === 'resource-refresh' || message.type === 'resource-select') {
-      const card = resources.get(String(message.id)).card;
-      const selection = message.type === 'resource-select' ? message.selection : undefined;
+    if (message.type === 'resource-data') {
+      try { return [{ type: 'resource-data', requestId: message.requestId, data: resources.get(String(message.id)) }]; }
+      catch (error) { if (!message.reference) { throw error; } }
+    }
+    if (['resource-data', 'resource-refresh', 'resource-select'].includes(message.type)) {
+      // Only a saved card may restore an expired preview; never accept a client-supplied resource target.
+      const card = message.reference ? findResourceCard(message.reference).card : resources.get(String(message.id)).card;
+      const selection = message.selection;
       const target = { ...card.target };
       if (selection && ['kv', 'knowledge'].includes(card.kind)) {
         for (const key of card.kind === 'knowledge' ? ['documentId'] : ['key', 'scope', 'conversationId']) {
@@ -283,21 +304,10 @@ export async function startWebServer(options: WebOptions) {
     if (message.type === 'resource-bridge') { return [{ type: 'resource-bridge', requestId: message.requestId, value: await resources.bridge(String(message.id), message.call) }]; }
     if (message.type === 'resource') {
       if (!['open', 'inline', 'window', 'project', undefined].includes(message.action)) { throw new Error(t('Invalid resource action.')); }
-      let items, scopeId;
-      if (projectController) {
-        const run = projectController.runs.find(run => run.id === message.runId);
-        if (!run) { throw new Error(t('Run no longer exists.')); }
-        items = run.items; scopeId = run.scopeId;
-      } else {
-        const current = message.sessionId ? conversationController?.sessions.find(entry => entry.id === message.sessionId) : conversationController?.current;
-        if (!current) { throw new Error(t('Conversation no longer exists.')); }
-        items = current.messages.find(answer => answer.id === message.messageId)?.items ?? []; scopeId = current.id;
-      }
-      const card = conversationResourceCards(items, project.id, scopeId, project.projectInfo?.dataStorage?.mode === 'server' ? 'server' : 'local').find(card => card.id === message.cardId);
-      if (!card) { throw new Error(t('This resource no longer exists.')); }
+      const { card, reference } = findResourceCard(message as ResourceCardReference);
       const preview = await resources.open(card);
       return [{ type: 'resource-preview', requestId: message.requestId, cardId: card.id, action: message.action ?? 'open',
-        id: preview.id, url: preview.url, card, project: preview.data.project }];
+        id: preview.id, url: `${preview.url}&resourceRef=${encodeURIComponent(JSON.stringify(reference))}`, card, project: preview.data.project }];
     }
     if (kanbanController && !['ready', 'login', 'verify', 'logout', 'usage'].includes(message.type)) { return kanbanController.handle(message); }
     if (projectActions && !['ready', 'login', 'verify', 'logout', 'usage'].includes(message.type)) { return publicValue(await projectActions.handle(message)); }

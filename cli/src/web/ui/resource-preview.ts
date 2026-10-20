@@ -2,8 +2,9 @@ import { t } from '../localization';
 import './style.css';
 import './resource-preview.css';
 import { acquireProjectHost } from './host';
-import { iconButton, markdownHtml } from './ui';
+import { iconButton, markdownHtml, updateIcon } from './ui';
 import type { ResourcePreviewData } from '../resource-preview';
+import type { ResourceCardReference } from '../resource-cards';
 import { KANBAN_PREVIEW_READY_MESSAGE, KANBAN_BRIDGE_REQUEST_MESSAGE, KANBAN_BRIDGE_RESPONSE_MESSAGE,
   KANBAN_BRIDGE_MAX_PENDING_REQUESTS, parseKanbanBridgeCall, createKanbanBridgeError } from '@steamharness/kanban-project';
 
@@ -13,6 +14,8 @@ app.className = 'resource-preview-app';
 app.innerHTML = '<header class="resource-preview-toolbar"><div><h1></h1><span></span></div></header><main><div class="resource-preview-status" role="status"></div><div class="resource-preview-content"></div></main><aside id="project-menu" hidden></aside>';
 const host = acquireProjectHost({ live: false }), status = app.querySelector<HTMLElement>('.resource-preview-status')!, content = app.querySelector<HTMLElement>('.resource-preview-content')!;
 let id = location.pathname.split('/').at(-1)!, connected = false, data: ResourcePreviewData | undefined, frame: HTMLIFrameElement | undefined;
+let reference: ResourceCardReference | undefined, selection: Message | undefined;
+try { reference = JSON.parse(new URL(location.href).searchParams.get('resourceRef') ?? 'null') ?? undefined; } catch { /* Older preview URLs have no saved-card reference. */ }
 let readyTimer: ReturnType<typeof setTimeout> | undefined, pendingBridge = 0, epoch = 0, authRevision: number | undefined, resourceRevision: number | undefined;
 const pending = new Map<string, { resolve(message: Message): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
 function request(message: Message): Promise<Message> {
@@ -33,6 +36,7 @@ function inject(): void {
 }
 function render(next: ResourcePreviewData): void {
   data = next; frame = undefined; clearTimeout(readyTimer); content.replaceChildren(); status.hidden = true;
+  selection = ['kv', 'knowledge'].includes(next.card.kind) ? next.card.target : undefined;
   app.querySelector('header a')?.remove();
   app.dataset.format = next.format;
   app.querySelector('h1')!.textContent = next.card.title;
@@ -60,12 +64,16 @@ function render(next: ResourcePreviewData): void {
   } else if (next.format === 'markdown') { const article = document.createElement('article'); article.className = 'markdown'; article.innerHTML = markdownHtml(typeof value === 'string' ? value : value.markdown); content.append(article); }
   else { const pre = document.createElement('pre'); pre.textContent = typeof value === 'string' ? value : JSON.stringify(value, null, 2); content.append(pre); }
 }
-async function load(selection?: Message): Promise<void> {
+async function load(nextSelection?: Message): Promise<void> {
+  if (nextSelection) { selection = nextSelection; }
   const generation = ++epoch; status.hidden = false; status.textContent = t('Loading...'); status.setAttribute('role', 'status');
-  try { const reply = await request({ type: selection ? 'resource-select' : data ? 'resource-refresh' : 'resource-data', selection }); if (generation === epoch) { id = reply.id ?? id; render(reply.data); } }
+  clearTimeout(readyTimer); frame = undefined; content.replaceChildren(); refresh.disabled = true; updateIcon(refresh.querySelector('.codicon')!, 'loading');
+  try { const reply = await request({ type: nextSelection ? 'resource-select' : data ? 'resource-refresh' : 'resource-data', reference, selection }); if (generation === epoch) { id = reply.id ?? id; render(reply.data); } }
   catch (error) { if (generation === epoch) { content.replaceChildren(); fail(error); } }
+  finally { if (generation === epoch) { refresh.disabled = false; updateIcon(refresh.querySelector('.codicon')!, 'refresh'); } }
 }
-app.querySelector('header')!.append(iconButton('refresh', t('Refresh'), () => void load()));
+const refresh = iconButton('refresh', t('Refresh'), () => void load());
+app.querySelector('header')!.append(refresh);
 addEventListener('message', event => {
   const message: Message = event.data;
   if (event.source === frame?.contentWindow) {

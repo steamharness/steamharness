@@ -1,5 +1,12 @@
 import type { OutputItem } from './workflow-types';
 
+export interface ResourceCardReference {
+  cardId: string;
+  sessionId?: string;
+  messageId?: string;
+  runId?: string;
+}
+
 export interface ResourceCard {
   id: string;
   kind: 'kv' | 'knowledge' | 'project' | 'browser' | 'file' | 'kanban';

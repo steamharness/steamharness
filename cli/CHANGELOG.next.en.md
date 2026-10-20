@@ -1,5 +1,9 @@
 # Unreleased
 
+### Resource Card Refresh
+
+- Fixed map and other resource cards failing to refresh after preview IDs expired. Refresh resolves the saved card in its original conversation or run, checks current access, loads the latest content, and shows a loading icon with retry available after a failure.
+
 ### Studio Context Menus
 
 - Match project page context menus to their targets: keep editing actions in inputs, offer Copy for read-only text selections, and omit Cut/Paste on empty areas.

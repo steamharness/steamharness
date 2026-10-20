@@ -192,4 +192,73 @@ describe('resource previews', () => {
       expect(await (await asset()).text()).toBe('Remote board artifact');
     } finally { await app.close(); }
   });
+
+  it('refreshes an expired map card from its original conversation and rechecks imported projects', async () => {
+    const { owner, related, runtime, storageDir } = await fixture();
+    vi.mocked(runtime.inspect).mockImplementation(async directories => ({ projects: [directories[0] === owner.folderPath ? owner : related], errors: [] }));
+    runtime.dispose = vi.fn();
+    const app = await startWebServer({ projectDir: owner.folderPath, dataDir: storageDir, runtime,
+      host: { surface: 'editor', resourceProjects: [related.folderPath] } });
+    const request = (message: object) => fetch(new URL('/api/message', app.url), { method: 'POST',
+      headers: { Authorization: `Bearer ${new URL(app.url).hash.slice('#session='.length)}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
+    const original = app.controller.current;
+    original.messages.push({ id: 'answer', role: 'assistant', content: '', items: [{ metadata: { kind: 'agent-part', partType: 'tool' },
+      content: { tool: 'map_open_kanban', status: 'success', output: { details: { resourceCard: {
+        action: 'upsert', cardId: 'map', kind: 'project', title: 'Map', target: { source: 'local', projectId: related.id }, preview: true,
+      } } } } }] });
+    try {
+      const opened = (await (await request({ type: 'resource', messageId: 'answer', cardId: 'map' })).json()).messages[0];
+      const reference = JSON.parse(new URL(opened.url, app.url).searchParams.get('resourceRef')!);
+      expect(reference).toEqual({ sessionId: original.id, messageId: 'answer', cardId: 'map' });
+      const first = (await (await request({ type: 'resource-data', id: opened.id })).json()).messages[0].data;
+      await app.controller.create();
+      expect(app.controller.current.id).not.toBe(original.id);
+      await writeFile(path.join(related.folderPath, 'dist/index.html'), '<html><head></head><body>Updated map</body></html>');
+      for (const type of ['resource-refresh', 'resource-data']) {
+        app.setHostResourceProjects([related.folderPath]);
+        expect((await request({ type, id: opened.id })).ok).toBe(false);
+        const response = await request({ type, id: opened.id, reference });
+        expect(response.ok).toBe(true);
+        const fresh = (await response.json()).messages[0];
+        expect(fresh.id).not.toBe(opened.id);
+        expect(fresh.data.kanban.nonce).not.toBe(first.kanban.nonce);
+        expect(await (await fetch(new URL(fresh.data.kanban.url, app.url))).text()).toContain('Updated map');
+        expect((await fetch(new URL(first.kanban.url, app.url))).status).toBe(404);
+      }
+      app.setHostResourceProjects([]);
+      expect(await (await request({ type: 'resource-refresh', id: opened.id, reference,
+        target: { projectId: owner.id }, selection: { projectId: owner.id } })).json()).toMatchObject({ message: expect.stringContaining('Import or open') });
+      app.setHostResourceProjects([related.folderPath]);
+      expect((await request({ type: 'resource-refresh', id: opened.id, reference: { ...reference, cardId: 'forged' } })).ok).toBe(false);
+      original.messages.length = 0;
+      expect(await (await request({ type: 'resource-refresh', id: opened.id, reference })).json()).toMatchObject({ message: 'This resource no longer exists.' });
+    } finally { await app.close(); }
+  });
+
+  it('rechecks server access when recovering an expired saved card', async () => {
+    const { owner, runtime, storageDir } = await fixture();
+    vi.mocked(runtime.inspect).mockResolvedValue({ projects: [owner], errors: [] }); runtime.dispose = vi.fn();
+    const connection = { serverUrl: 'https://steamharness.test', accessToken: 'test-only-token' }, originalFetch = globalThis.fetch;
+    const remote = vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => String(url).startsWith(connection.serverUrl)
+      ? Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: String(url).endsWith('/api/auth/me')
+        ? { profile: { userId: 'user', email: 'test@example.com', displayName: 'User' } } : { markdown: '# Server document' } })))
+      : originalFetch(url, init));
+    const app = await startWebServer({ projectDir: owner.folderPath, dataDir: storageDir, runtime, host: { surface: 'editor', connection } });
+    const request = (message: object) => originalFetch(new URL('/api/message', app.url), { method: 'POST',
+      headers: { Authorization: `Bearer ${new URL(app.url).hash.slice('#session='.length)}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
+    app.controller.current.messages.push({ id: 'answer', role: 'assistant', content: '', items: [{ metadata: { kind: 'agent-part', partType: 'tool' },
+      content: { tool: 'workflow-ui_present_card', status: 'success', output: { action: 'upsert', cardId: 'doc', kind: 'knowledge',
+        target: { source: 'server', projectId: owner.id, documentId: 'doc' } } } }] });
+    try {
+      const opened = (await (await request({ type: 'resource', messageId: 'answer', cardId: 'doc' })).json()).messages[0];
+      const reference = JSON.parse(new URL(opened.url, app.url).searchParams.get('resourceRef')!);
+      await app.setHostConnection(undefined);
+      const calls = remote.mock.calls.length;
+      expect(await (await request({ type: 'resource-refresh', id: opened.id, reference })).json()).toMatchObject({ message: 'Please sign in to preview this server resource.' });
+      expect(remote).toHaveBeenCalledTimes(calls);
+      await app.setHostConnection(connection);
+      remote.mockResolvedValue(new Response(JSON.stringify({ errCode: 403, errMessage: 'Access denied' }), { status: 403 }));
+      expect(await (await request({ type: 'resource-refresh', id: opened.id, reference })).json()).toMatchObject({ message: 'Access denied' });
+    } finally { await app.close(); }
+  });
 });
