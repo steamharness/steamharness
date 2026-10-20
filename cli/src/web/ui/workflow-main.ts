@@ -7,6 +7,7 @@ import { Fields } from './workflow-fields';
 import { ConversationOutput } from './conversation-output';
 import { InputPrompt } from './input-prompt';
 import { ConversationTools } from './conversation-tools';
+import { updateProjectAvatar } from './avatar';
 import { iconHtml, iconButton, escapeHtml } from './ui';
 import { runStatusLabels as statusLabels, workflowHistoryStatus, updateHistoryStatus, updateRunningCount } from './history-status';
 import { aiUsageButton, narrowMenuDismiss, projectInfoButton, toolPermissionsButton } from './toolbar';
@@ -138,6 +139,7 @@ function renderEntrypoints(): void {
   selectEntrypoint(entries.some(entry => entry.id === saved.entrypointId) ? saved.entrypointId : defaultId || undefined);
 }
 function controls(): void {
+  if (state) { updateProjectAvatar(element('project-info'), state.project); }
   element<HTMLButtonElement>('run').disabled = disabled() || resolving;
   element<HTMLButtonElement>('rerun').disabled = !connected || !!state?.running || submitting;
   element<HTMLButtonElement>('delete-run').disabled = !connected || state?.run?.id === state?.occupiedId;

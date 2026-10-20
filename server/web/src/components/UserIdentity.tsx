@@ -3,6 +3,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { i18n, useTranslation } from "@steamharness/i18n/react";
 import { cn } from "@/lib/utils";
 import { getAvatarFallbackText } from "@steamharness/avatar-fallback";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 export interface UserIdentityValue {
   userId?: string | null;
@@ -25,6 +27,7 @@ interface UserIdentityProps {
   showUserId?: boolean;
   className?: string;
   contentClassName?: string;
+  interactive?: boolean;
 }
 
 const SIZE_STYLES: Record<UserIdentitySize, {
@@ -87,6 +90,7 @@ export function UserIdentity({
   showUserId = true,
   className,
   contentClassName,
+  interactive = true,
 }: UserIdentityProps) {
   const { t } = useTranslation("serverWeb");
   const styles = SIZE_STYLES[size];
@@ -98,17 +102,28 @@ export function UserIdentity({
   const emailLine = showEmail && email && email !== primary ? email : undefined;
   const userIdLine = showUserId && userId && userId !== primary && userId !== emailLine ? userId : undefined;
   const avatarRadius = avatarShape === "rounded" ? "rounded-md" : "rounded-full";
+  const avatar = (large = false) => <Avatar className={cn(large ? "size-32" : styles.avatar, avatarRadius, "shrink-0")}>
+    {avatarUrl ? <AvatarImage src={avatarUrl} alt="" /> : null}
+    <AvatarFallback className={avatarRadius}>
+      <span className={cn("font-semibold", large ? "text-3xl" : styles.fallbackText)}>{getAvatarFallbackText({ displayName, email, userId }, "?")}</span>
+    </AvatarFallback>
+  </Avatar>;
+  const profileLabel = t("userIdentityDetails", { name: primary });
 
   return (
     <div className={cn("flex min-w-0 items-center gap-2.5", className)}>
-      <Avatar className={cn(styles.avatar, avatarRadius, "shrink-0")}>
-        {avatarUrl ? <AvatarImage src={avatarUrl} alt={i18n.t("userAvatarAlt", { name: primary })} /> : null}
-        <AvatarFallback className={avatarRadius}>
-          <span className={cn("font-semibold ", styles.fallbackText)}>
-            {getAvatarFallbackText({ displayName, email, userId }, "?")}
-          </span>
-        </AvatarFallback>
-      </Avatar>
+      {interactive ? <Dialog>
+        <DialogTrigger asChild><Button type="button" variant="ghost" className={cn(styles.avatar, avatarRadius, "shrink-0 p-0")}
+          title={profileLabel} aria-label={profileLabel} onClick={event => event.stopPropagation()}>{avatar()}</Button></DialogTrigger>
+        <DialogContent aria-describedby={undefined} onClick={event => event.stopPropagation()}>
+          <DialogHeader><DialogTitle>{primary}</DialogTitle></DialogHeader>
+          <div className="flex min-w-0 flex-col items-center gap-3">
+            {avatar(true)}
+            {emailLine ? <p className="max-w-full break-all text-sm">{emailLine}</p> : null}
+            {userIdLine ? <p className="max-w-full break-all font-mono text-xs text-muted-foreground">{userIdLine}</p> : null}
+          </div>
+        </DialogContent>
+      </Dialog> : avatar()}
       <div className={cn("grid min-w-0 flex-1 gap-0.5 text-left leading-tight", contentClassName)}>
         <div className="flex min-w-0 items-center gap-1.5">
           <span className={cn("truncate font-medium text-foreground", styles.primary)} title={primary}>

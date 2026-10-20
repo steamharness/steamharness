@@ -54,4 +54,6 @@
 
 `0031-studio-project-avatars.patch` 让开始页项目卡片、最近项目和打开最近列表展示项目声明的图标与配色，保留未识别目录和工作区的原有图标。
 
+`0032-studio-avatar-actions.patch` 为开始页项目头像增加可键盘访问的打开项目入口，沿用运行项目按钮的命令和反馈。
+
 新内核修改应通过 `git diff` 导出统一格式补丁，并排除脚本生成的 `product.json` 及 Studio 扩展链接。品牌配置由 `config/product.json` 维护。

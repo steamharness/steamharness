@@ -1,6 +1,7 @@
 import { t, locale } from '../localization';
 import type { AccountState } from '../workflow-auth-client';
 import { iconHtml } from './ui';
+import { updateUserAvatar } from './avatar';
 import './account.css';
 
 type AccountAction = { type: 'login'; serverUrl: string; email?: string; password?: string } | { type: 'verify' | 'logout' };
@@ -10,7 +11,7 @@ export class AccountPanel {
   private readonly dialog = document.createElement('dialog');
   private state?: AccountState;
   private pending = false;
-  private avatarKey = '';
+  private returnFocus?: HTMLElement;
 
   constructor(menu: HTMLElement, private readonly request: (action: AccountAction) => Promise<void>, private readonly openHostAccount?: () => void) {
     this.button.id = 'web-account';
@@ -44,7 +45,7 @@ export class AccountPanel {
       </div>`;
     document.body.append(this.dialog);
     this.element<HTMLButtonElement>('#close-account').addEventListener('click', () => this.dialog.close());
-    this.dialog.addEventListener('close', () => { this.element<HTMLInputElement>('#login-password').value = ''; this.button.focus(); });
+    this.dialog.addEventListener('close', () => { this.element<HTMLInputElement>('#login-password').value = ''; (this.returnFocus?.isConnected ? this.returnFocus : this.button).focus({ preventScroll: true }); });
     this.element<HTMLFormElement>('#login-form').addEventListener('submit', event => {
       event.preventDefault();
       if (this.pending || !this.element<HTMLFormElement>('#login-form').reportValidity()) { return; }
@@ -73,6 +74,7 @@ export class AccountPanel {
 
   open(): void {
     if (this.openHostAccount) { this.openHostAccount(); return; }
+    if (!this.dialog.open && document.activeElement && document.activeElement instanceof HTMLElement) { this.returnFocus = document.activeElement; }
     this.render();
     if (!this.dialog.open) { this.dialog.showModal(); }
   }
@@ -91,23 +93,7 @@ export class AccountPanel {
     const name = signedIn ? state.user!.displayName || state.user!.email || 'SteamHarness' : this.pending ? t("Signing in...") : t("Sign in to SteamHarness");
     this.button.querySelector('.web-account-name')!.textContent = name;
     this.button.title = this.button.ariaLabel = state.error || state.user?.email || name;
-    const avatarKey = `${state.serverUrl}\n${state.user?.avatarUrl ?? ''}`;
-    if (avatarKey !== this.avatarKey) {
-      this.avatarKey = avatarKey;
-      for (const avatar of [this.button.querySelector<HTMLElement>('.web-avatar')!, this.element<HTMLElement>('.account-avatar')]) {
-        avatar.innerHTML = iconHtml('account');
-        if (!state.user?.avatarUrl) { continue; }
-        let url: URL;
-        try { url = new URL(state.user.avatarUrl, `${state.serverUrl}/`); } catch { continue; }
-        const imageData = /^data:image\/(png|jpe?g|webp|gif);base64,/i.test(url.href) && url.href.length <= 1024 * 1024;
-        if ((!['http:', 'https:'].includes(url.protocol) && !imageData) || url.username || url.password) { continue; }
-        const image = document.createElement('img');
-        image.src = url.toString(); image.alt = ''; image.hidden = true; image.referrerPolicy = 'no-referrer';
-        image.addEventListener('load', () => { image.hidden = false; (avatar.firstElementChild as HTMLElement).hidden = true; });
-        image.addEventListener('error', () => { image.hidden = true; (avatar.firstElementChild as HTMLElement).hidden = false; });
-        avatar.append(image);
-      }
-    }
+    for (const avatar of [this.button.querySelector<HTMLElement>('.web-avatar')!, this.element<HTMLElement>('.account-avatar')]) { updateUserAvatar(avatar, state); }
     this.element<HTMLFormElement>('#login-form').hidden = signedIn;
     this.element<HTMLElement>('#account-profile').hidden = !signedIn;
     const server = this.element<HTMLInputElement>('#server-url');

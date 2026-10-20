@@ -110,6 +110,8 @@ export function AccountPage({
             <CardContent className="flex flex-col gap-5">
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-center gap-4">
+                  <Button type="button" variant="ghost" className="size-[72px] shrink-0 rounded-lg p-0"
+                    title={t("accountAvatarUpload")} aria-label={t("accountAvatarUpload")} onClick={() => fileInputRef.current?.click()}>
                   <Avatar className="size-[72px] rounded-lg">
                     {avatarUrl ? <AvatarImage src={avatarUrl} alt={t("accountAvatarAlt")} /> : null}
                     <AvatarFallback className="rounded-lg">
@@ -122,6 +124,7 @@ export function AccountPage({
                       </span>
                     </AvatarFallback>
                   </Avatar>
+                  </Button>
                   <div>
                     <div className="text-sm font-medium text-foreground">{t("accountAvatarLabel")}</div>
                     <div className="mt-1 text-sm leading-6 text-muted-foreground">

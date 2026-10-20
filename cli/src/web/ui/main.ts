@@ -15,6 +15,7 @@ import type { ConnectionState } from './connection';
 import { iconHtml as icon, escapeHtml as escape, iconButton, updateIcon } from './ui';
 import { conversationHistoryStatus, updateHistoryStatus, updateConversationRunningCount } from './history-status';
 import { aiUsageButton, narrowMenuDismiss, projectInfoButton, toolPermissionsButton } from './toolbar';
+import { updateProjectAvatar, updateUserAvatar } from './avatar';
 import './style.css';
 import {
   projectParameters,
@@ -63,6 +64,7 @@ function initialize(): void {
   }
   interface MessageView {
     root: HTMLElement; content: HTMLDivElement; metadata: HTMLSpanElement; error: HTMLParagraphElement;
+    avatar: HTMLButtonElement;
     message: ConversationMessage; output?: ConversationOutput;
     attachments: HTMLDivElement; promptRoot: HTMLDivElement; prompt?: InputPrompt;
     extrasSignature?: string;
@@ -757,7 +759,16 @@ function initialize(): void {
     root.innerHTML = `<div class="message-body"><header class="message-header"><span class="message-metadata"></span><time class="message-date"${!timestamp ? ' hidden' : ''}>${escape(timestamp)}</time></header><div class="attachments" hidden></div><div class="message-content"></div><div class="message-prompt"></div><p class="message-error" hidden></p><div class="message-actions"><button class="icon-button copy-message" title="${t("Copy message")}" aria-label="${t("Copy message")}">${icon('copy')}</button></div></div>`;
     if (timestamp) { root.querySelector<HTMLTimeElement>('.message-date')!.dateTime = new Date(message.createdAt!).toISOString(); }
     if (message.role === 'user') { root.querySelector('.message-actions')!.prepend(root.querySelector('.message-date')!); }
+    const avatar = iconButton('account', message.role === 'user' ? t("SteamHarness Account") : t("Project information"), () => {
+      if (message.role === 'user') { vscode.postMessage({ type: 'login' }); }
+      else if (state) { parameterActions.close(); dialogs.projectInfo(state.project); }
+    });
+    avatar.classList.add('message-avatar', message.role === 'user' ? 'user-avatar' : 'project-avatar');
+    avatar.setAttribute('aria-haspopup', 'dialog');
+    if (message.role === 'user') { root.append(avatar); }
+    else { root.querySelector('.message-header')!.prepend(avatar); }
     const view: MessageView = { root, content: root.querySelector('.message-content')!, metadata: root.querySelector('.message-metadata')!, error: root.querySelector('.message-error')!, message,
+      avatar,
       attachments: root.querySelector('.attachments')!, promptRoot: root.querySelector('.message-prompt')!,
     };
     root.querySelector<HTMLButtonElement>('.copy-message')!.addEventListener('click', (event) => copy(view.message.content, event.currentTarget as HTMLButtonElement));
@@ -814,6 +825,8 @@ function initialize(): void {
 
   function updateMessage(view: MessageView, message: ConversationMessage): void {
     view.message = message;
+    if (message.role === 'user') { updateUserAvatar(view.avatar, state?.account); }
+    else { updateProjectAvatar(view.avatar, state!.project); }
     view.root.classList.toggle('streaming', message.status === 'running' || message.status === 'sending');
     view.root.querySelector<HTMLElement>('.message-actions')!.hidden = message.role === 'assistant' && !messageSettled(message);
     for (const action of view.root.querySelectorAll<HTMLButtonElement>('.trace-message, .export-message')) action.hidden = submissions.local(message);
@@ -862,6 +875,7 @@ function initialize(): void {
     if (fromServer) submissions.retain(next.project.uri, new Set(next.sessions.map(session => session.id)));
     next = { ...next, sessions: next.sessions.map(session => submissions.project(next.project.uri, session, fromServer)) };
     state = next;
+    updateProjectAvatar(document.querySelector<HTMLElement>('#project-info')!, next.project);
     if (submissionCount !== submissions.list().length) persist();
     const session = next.sessions.find((entry) => entry.id === next.activeId);
     if (!session) { return; }

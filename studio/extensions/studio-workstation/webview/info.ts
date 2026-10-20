@@ -50,8 +50,19 @@ function render(next: InfoState): void {
       ${iconHtml(status?.id === 'error' ? 'warning' : status ? 'loading' : 'info')}
       <div><p>${escapeHtml(status?.label ?? t("No project selected"))}</p>${status?.value ? `<p class="status-detail">${escapeHtml(status.value)}</p>` : ''}</div></div>`;
   } else {
-    app.innerHTML = `<div class="info-project-heading">${next.project.avatarUrl ? `<img src="${escapeHtml(next.project.avatarUrl)}" alt="">` : ''}<strong>${escapeHtml(next.project.name)}</strong></div>`
+    const avatar = next.project.avatarUrl?.startsWith('data:image/svg+xml,') ? escapeHtml(next.project.avatarUrl) : undefined;
+    const name = escapeHtml(next.project.name), previewLabel = escapeHtml(t("Project avatar"));
+    app.innerHTML = `<div class="info-project-heading">${avatar ? `<button type="button" class="info-avatar" data-action="avatar" title="${previewLabel}" aria-label="${previewLabel}" aria-haspopup="dialog"><img src="${avatar}" alt=""></button>` : ''}<strong>${name}</strong></div>`
+      + (avatar ? `<dialog class="avatar-dialog" aria-label="${name}"><button type="button" class="copy-button" data-close-avatar title="${escapeHtml(t("Close"))}" aria-label="${escapeHtml(t("Close"))}">${iconHtml('close')}</button><img src="${avatar}" alt="${name}"></dialog>` : '')
       + (next.update ? projectVersionHtml(next.update) : '') + next.items.map(item => renderItem(item)).join('');
+    const avatarButton = app.querySelector<HTMLButtonElement>('[data-action="avatar"]');
+    if (avatarButton) {
+      const preview = app.querySelector<HTMLDialogElement>('.avatar-dialog')!;
+      avatarButton.onclick = () => preview.showModal();
+      preview.querySelector<HTMLButtonElement>('[data-close-avatar]')!.onclick = () => preview.close();
+      preview.addEventListener('click', event => { if (event.target === preview) { const rect = preview.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) { preview.close(); } } });
+      if (versionAction === 'avatar' && previousUri === next.project?.uri) { avatarButton.focus({ preventScroll: true }); }
+    }
     const upgrade = app.querySelector<HTMLButtonElement>('[data-action="upgrade"]');
     if (upgrade) {
       upgrade.onclick = () => host.postMessage({ type: 'upgrade', generation: state!.generation, projectUri: state!.project!.uri });

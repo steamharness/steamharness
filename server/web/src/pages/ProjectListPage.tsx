@@ -246,7 +246,7 @@ function ProjectRow({
     >
       <TableCell className="px-3 py-3">
         <div className="flex min-w-0 items-center gap-3">
-          <ProjectAvatar projectId={project.id} card={project.projectCard} projectType={project.projectType} />
+          <ProjectAvatar projectId={project.id} card={project.projectCard} projectType={project.projectType} label={displayName} onClick={() => onOpenDetail(project)} />
           <div className="flex min-w-0 flex-col gap-1">
             <Button variant="link" className="h-auto min-w-0 max-w-full justify-start p-0" title={displayName}
               onClick={event => { event.stopPropagation(); onOpenDetail(project); }}><span className="truncate">{displayName}</span></Button>

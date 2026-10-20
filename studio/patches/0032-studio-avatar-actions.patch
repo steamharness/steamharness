@@ -1,0 +1,30 @@
+diff --git a/src/vs/workbench/browser/parts/editor/studioStart.ts b/src/vs/workbench/browser/parts/editor/studioStart.ts
+index 7d8a49898e5..6846f208718 100644
+--- a/src/vs/workbench/browser/parts/editor/studioStart.ts
++++ b/src/vs/workbench/browser/parts/editor/studioStart.ts
+@@ -222,10 +222,10 @@ export class StudioStartView extends Disposable {
+ 				const updateAvailable = project.update?.status === 'upgrade';
+ 				card.classList.toggle('studio-start-project-update', updateAvailable);
+ 				const heading = append(card, $('.studio-start-project-heading'));
++				const avatar = this.button(heading, `${text('run')} \u00b7 ${project.name}`, studioProjectIcon(project.projectType) ?? 'folder', 'studio.openProject', { uri: project.uri }, false, true, store);
++				avatar.classList.add('studio-start-project-avatar-button');
+ 				if (project.avatarUrl?.startsWith('data:image/svg+xml,')) {
+-					append(heading, $('img.studio-start-project-avatar', { src: project.avatarUrl, alt: '' }));
+-				} else {
+-					append(heading, $(`span.codicon.codicon-${studioProjectIcon(project.projectType) ?? 'folder'}`)).setAttribute('aria-hidden', 'true');
++					avatar.firstElementChild?.replaceWith($('img.studio-start-project-avatar', { src: project.avatarUrl, alt: '' }));
+ 				}
+ 				append(heading, $('h3', undefined, project.name));
+ 				append(card, $('p.studio-start-project-type', undefined, text(`type.${project.projectType}`)));
+diff --git a/src/vs/workbench/browser/parts/editor/media/studioStart.css b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+index b244924e86a..ca73a8b68b8 100644
+--- a/src/vs/workbench/browser/parts/editor/media/studioStart.css
++++ b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+@@ -51,6 +51,7 @@
+ .studio-start-project-card, .studio-start-loading-card { display:flex; flex-direction:column; box-sizing:border-box; min-width:0; padding:16px; border:1px solid var(--vscode-widget-border,var(--vscode-panel-border)); border-radius:6px; }
+ .studio-start-project-heading { display:grid; grid-template-columns:48px minmax(0,1fr); align-items:center; gap:12px; }
+ .studio-start-project-avatar { width:48px; height:48px; border-radius:6px; }
++.studio-start-project-avatar-button { width:48px; height:48px; padding:0; border:0; border-radius:6px; background:transparent; }
+ .studio-start-recent-avatar { width:24px; height:24px; flex:0 0 24px; border-radius:4px; }
+ .studio-start-project-heading > .codicon { line-height:20px; color:var(--vscode-descriptionForeground); }
+ .studio-start-project-heading h3 { margin:0; font-size:14px; font-weight:600; line-height:20px; overflow-wrap:anywhere; }

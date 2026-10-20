@@ -59,6 +59,8 @@ Studio 从项目目录解析 `@steamharness/cli` 的 `steamharness` bin。项目
 
 左下角头像打开 SteamHarness 账号弹层，展示头像、昵称、邮箱与服务器连接状态，提供个人信息、刷新账号资料和退出入口；未登录时提供登录入口。扩展账号授权仍可通过命令面板管理。工作站向 `/api/auth/login` 提交邮箱、密码及现有协议字段 `source: desktop`，然后通过 `/api/auth/me` 验证身份。这一认证来源字段不代表项目执行平台；CLI Web 的实际 runtime platform 是 `cli`。
 
+对话回答的时长左侧显示项目头像，点击查看项目资料；用户消息右侧的账号头像打开账号入口。开始页项目头像可直接打开项目，信息面板头像可点击放大预览。最近项目和项目树中的头像沿用原有项目打开操作。
+
 密码只用于当前请求。API Key 和登录会话 Cookie 使用 VS Code SecretStorage 保存，Webview 只接收公开账号资料；项目进程和 CLI 使用当前连接的 API Key。退出时停止相关运行并撤销本次凭据；临时连接失败时可在账号页重试验证。
 
 Studio 打开的 Workflow、Conversation、Kanban 和小助手统一使用工作站账号。Studio 未登录或退出登录后，项目忽略独立 CLI 保存的账号和环境变量凭据；项目内的账号入口打开 Studio 账号页。独立运行 `steamharness web` 仍使用 CLI 的登录配置。项目 CLI 必须支持 `accountProtocolVersion: 1`；旧版本需要更新后再打开。

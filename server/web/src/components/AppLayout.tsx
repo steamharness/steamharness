@@ -195,7 +195,7 @@ function AccountMenu({ label, email, avatarUrl, actions, onLogout }: {
         <DropdownMenuTrigger asChild>
           <SidebarMenuButton size="lg" className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground">
             <UserIdentity user={{ displayName: label, email, avatarUrl }} fallbackLabel={t("appLayoutAccountMenuLabel")}
-              size="sm" avatarShape="rounded" showUserId={false} className="min-w-0 flex-1" />
+              size="sm" avatarShape="rounded" showUserId={false} interactive={false} className="min-w-0 flex-1" />
             <ChevronsUpDown className="ml-auto size-4" />
           </SidebarMenuButton>
         </DropdownMenuTrigger>

@@ -2,6 +2,7 @@
 
 ### Project Avatars
 
+- Project list avatars open their projects; standalone avatars support previews. User avatars open the displayed profile, and personal profile avatars select an upload, with keyboard focus restored on close.
 - Project lists, detail headers, overviews, and settings consistently display avatars from the projectCard icon and colors.
 
 ### Added

@@ -5,6 +5,7 @@ import { acquireProjectHost } from './host';
 import { Fields } from './workflow-fields';
 import { requestAction } from './action-dialog';
 import { ConversationTools } from './conversation-tools';
+import { updateProjectAvatar } from './avatar';
 import { iconHtml, iconButton } from './ui';
 import { aiUsageButton, narrowMenuDismiss, projectInfoButton } from './toolbar';
 import {
@@ -228,6 +229,7 @@ window.addEventListener('message', event => {
   if (message.requestId && pending.has(message.requestId)) { const waiting = pending.get(message.requestId)!; clearTimeout(waiting.timer); pending.delete(message.requestId); message.type === 'error' ? waiting.reject(new Error(message.message)) : waiting.resolve(message); }
   if (message.type === 'connection') { connected = message.status === 'connected'; controls(); if (connected) { publishMethods(); if (dirty) { clearTimeout(saveTimer); saveTimer = setTimeout(() => void save().catch(showError), 250); } } else { dialogs.closeUsage(); for (const waiting of pending.values()) { clearTimeout(waiting.timer); waiting.reject(new Error(t("Connection interrupted."))); } pending.clear(); for (const call of methodCalls.values()) { call.abort(); } } }
   if (message.type === 'state') { project = message.project; element('kanban-title').textContent = project!.name;
+    updateProjectAvatar(element('project-info'), project!);
     if (authRevision !== message.authenticationRevision) { authRevision = message.authenticationRevision; previewKey = ''; dialogs.closeUsage(); }
     element('usage').hidden = message.account.status !== 'authenticated' || !message.account.aiConfigured; update(message.kanban);
   }

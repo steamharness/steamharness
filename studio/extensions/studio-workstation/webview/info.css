@@ -9,6 +9,12 @@ button { font: inherit; color: inherit; }
 .info-project-heading { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 12px 0 16px; }
 .info-project-heading img { width: 40px; height: 40px; flex: 0 0 40px; border-radius: 6px; }
 .info-project-heading strong { min-width: 0; overflow-wrap: anywhere; font-size: 14px; }
+.info-avatar { display: grid; place-items: center; width: 40px; height: 40px; flex: 0 0 40px; padding: 0; border: 0; border-radius: 6px; background: transparent; cursor: zoom-in; }
+.info-avatar:hover { outline: 2px solid var(--vscode-toolbar-hoverBackground); outline-offset: 2px; }
+.avatar-dialog { width: min(320px, calc(100vw - 24px)); padding: 32px; color: var(--vscode-foreground); background: var(--vscode-editorWidget-background, var(--vscode-sideBar-background)); border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); border-radius: 6px; }
+.avatar-dialog::backdrop { background: #0006; }
+.avatar-dialog > img { display: block; width: 100%; aspect-ratio: 1; border-radius: 6px; }
+.avatar-dialog .copy-button { position: absolute; top: 6px; right: 6px; opacity: 1; }
 .info-section { min-width: 0; border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); }
 .info-section:last-child { border-bottom: 0; }
 summary { display: flex; align-items: center; gap: 7px; min-height: 36px; padding: 8px 0; list-style: none; cursor: pointer; }
