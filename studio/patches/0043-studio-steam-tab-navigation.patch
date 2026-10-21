@@ -1,0 +1,161 @@
+diff --git a/src/vs/workbench/browser/parts/auxiliarybar/auxiliaryBarPart.ts b/src/vs/workbench/browser/parts/auxiliarybar/auxiliaryBarPart.ts
+index 423ffa06db5..c38cb2a006c 100644
+--- a/src/vs/workbench/browser/parts/auxiliarybar/auxiliaryBarPart.ts
++++ b/src/vs/workbench/browser/parts/auxiliarybar/auxiliaryBarPart.ts
+@@ -103,7 +103,7 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
+ 			Parts.AUXILIARYBAR_PART,
+ 			{
+ 				hasTitle: true,
+-				titleHeight: () => studioModeState.steam && studioSteamWorkspaceState.instances.length ? 70 : undefined,
++				titleHeight: () => studioModeState.steam ? (studioSteamWorkspaceState.instances.length ? 80 : 40) : undefined,
+ 				trailingSeparator: true,
+ 				borderWidth: () => (this.getColor(SIDE_BAR_BORDER) || this.getColor(contrastBorder)) ? 1 : 0,
+ 			},
+@@ -137,11 +137,19 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
+ 		this._register(this.visibleViewContainersTracker.onDidChange((e) => this.onDidChangeAutoHideViewContainers(e)));
+ 
+ 		this.configuration = this.resolveConfiguration();
+-		this._register(studioModeState.onDidChangeMode(() => this.updateCompositeBar()));
++		const relayoutSteamNavigation = () => {
++			const dimension = this.getRelayoutDimension();
++			const position = this.contentPosition;
++			if (dimension && position) { this.layout(dimension.width, dimension.height, position.top, position.left); }
++		};
++		this._register(studioModeState.onDidChangeMode(() => {
++			this.updateCompositeBar();
++			relayoutSteamNavigation();
++		}));
+ 		let hasInstances = false;
+ 		this._register(studioSteamWorkspaceState.onDidChange(() => {
+ 			const visible = studioSteamWorkspaceState.instances.length > 0;
+-			if (visible !== hasInstances) { hasInstances = visible; layoutService.layout(); }
++			if (visible !== hasInstances) { hasInstances = visible; relayoutSteamNavigation(); }
+ 		}));
+ 
+ 		this._register(configurationService.onDidChangeConfiguration(e => {
+diff --git a/src/vs/workbench/browser/parts/media/studioMode.css b/src/vs/workbench/browser/parts/media/studioMode.css
+index d119b342845..038e7e557a7 100644
+--- a/src/vs/workbench/browser/parts/media/studioMode.css
++++ b/src/vs/workbench/browser/parts/media/studioMode.css
+@@ -85,7 +85,10 @@
+ .monaco-workbench.studio-steam-mode .part.auxiliarybar > .title > .global-actions { display: none; }
+ .monaco-workbench.studio-steam-mode .part.auxiliarybar.pane-composite-part > .title.composite > .title-actions { order: 2; flex: 0 0 auto; }
+ .monaco-workbench.studio-steam-mode .part.auxiliarybar > .title {
+-	padding-left: var(--vscode-spacing-size60);
++	box-sizing: border-box;
++	/* Steam navigation keeps its insets across the native density presets. */
++	padding: 0 var(--vscode-spacing-size120) !important;
++	background: color-mix(in srgb, var(--vscode-foreground) 8%, var(--vscode-sideBar-background, var(--vscode-editor-background)));
+ 	-webkit-app-region: drag;
+ }
+ .monaco-workbench.studio-steam-mode .studio-steam-tabs {
+@@ -95,7 +98,7 @@
+ 	min-width: 0;
+ 	height: 100%;
+ 	gap: var(--vscode-spacing-size80);
+-	padding-right: var(--vscode-spacing-size240);
++	padding-right: var(--vscode-spacing-size120);
+ 	user-select: text;
+ 	-webkit-user-select: text;
+ }
+@@ -167,7 +170,7 @@
+ /* This part shares the auxiliary card; it must not inherit main-editor floating margins. */
+ .monaco-workbench .part.auxiliarybar > .part.editor.studio-steam-editors {
+ 	position: absolute;
+-	inset: 35px 0 0;
++	inset: var(--vscode-spacing-size400) 0 0;
+ 	margin: 0;
+ 	border: 0;
+ 	border-radius: 0;
+@@ -296,13 +299,14 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
+ 	-webkit-app-region: drag;
+ }
+ .monaco-workbench .studio-steam-window-chrome { left: 0; }
+-.monaco-workbench .studio-steam-tools-chrome { right: 0; height: 35px; }
++.monaco-workbench .studio-steam-tools-chrome { right: 0; height: var(--vscode-spacing-size400); }
+ .monaco-workbench .studio-steam-tools-chrome.tools-hidden { height: 52px; }
+ .monaco-workbench .studio-steam-window-chrome[hidden],
+ .monaco-workbench .studio-steam-tools-chrome[hidden] { display: none; }
+ .monaco-workbench .studio-steam-window-chrome .studio-mode-switcher { margin-top: 0; margin-bottom: 0; }
+ .monaco-workbench .part.auxiliarybar > .title > .studio-steam-tools-chrome { position: static; order: 3; flex-shrink: 0; }
+ .monaco-workbench .studio-steam-tools-chrome .studio-steam-toggle-tools { margin-right: var(--vscode-spacing-size80); }
++.monaco-workbench .part.auxiliarybar > .title > .studio-steam-tools-chrome .studio-steam-toggle-tools { margin-right: 0; }
+ .monaco-workbench .studio-steam-tools-chrome > .window-controls-container {
+ 	display: flex;
+ 	order: 2;
+@@ -317,8 +321,8 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
+ .monaco-workbench .studio-steam-tools-chrome .window-close:hover { background: var(--vscode-statusBarItem-errorBackground); color: var(--vscode-statusBarItem-errorForeground); }
+ .monaco-workbench.fullscreen .studio-steam-tools-chrome > .window-controls-container { display: none; }
+ .monaco-workbench.studio-steam-mode > .monaco-grid-view .part.editor:not(.modal-editor-part) { border: 0; border-radius: 0; }
+-/* Non-floating PartLayout allocates the classic 35px header metric. */
+-.monaco-workbench.studio-steam-mode .part.auxiliarybar > .title { height: 35px; }
++/* Keep these row heights in sync with the auxiliary PartLayout title metric. */
++.monaco-workbench.studio-steam-mode .part.auxiliarybar > .title { height: var(--vscode-spacing-size400); }
+ 
+ /* Tool categories lead; instance tabs sit directly underneath at the content tier. */
+ .monaco-workbench .studio-steam-instances { display: none; }
+@@ -326,19 +330,19 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
+ 	position: relative;
+ 	align-items: flex-start;
+ }
+-.monaco-workbench.studio-steam-mode .part.auxiliarybar > .title.studio-steam-has-instances { height: 70px; }
++.monaco-workbench.studio-steam-mode .part.auxiliarybar > .title.studio-steam-has-instances { height: calc(2 * var(--vscode-spacing-size400)); }
+ .monaco-workbench.studio-steam-mode .part.auxiliarybar > .title > .title-actions { display: none; }
+-.monaco-workbench.studio-steam-mode .studio-steam-tabs { height: 35px; }
++.monaco-workbench.studio-steam-mode .studio-steam-tabs { height: var(--vscode-spacing-size400); }
+ .monaco-workbench.studio-steam-mode .studio-steam-instances {
+ 	position: absolute;
+-	inset: 35px 0 auto;
++	inset: var(--vscode-spacing-size400) 0 auto;
+ 	display: flex;
+ 	align-items: center;
+-	height: 35px;
++	height: var(--vscode-spacing-size400);
+ 	box-sizing: border-box;
+-	gap: var(--vscode-spacing-size40);
+-	padding: 0 var(--vscode-spacing-size240) 0 var(--vscode-spacing-size60);
+-	background: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-sideBar-background));
++	gap: var(--vscode-spacing-size80);
++	padding: 0 var(--vscode-spacing-size120);
++	background: inherit;
+ 	user-select: text;
+ 	-webkit-user-select: text;
+ }
+@@ -346,11 +350,11 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
+ .monaco-workbench .studio-steam-instances button[hidden] { display: none; }
+ .monaco-workbench .studio-steam-instance-list {
+ 	display: flex;
+-	flex: 0 1 auto;
+-	align-items: stretch;
++	flex: 1;
++	align-items: center;
+ 	min-width: 0;
+-	max-width: calc(100% - 72px);
+ 	height: 100%;
++	gap: var(--vscode-spacing-size60);
+ 	overflow-x: auto;
+ 	scrollbar-width: none;
+ 	-webkit-app-region: no-drag;
+@@ -362,10 +366,13 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
+ 	flex: 0 0 auto;
+ 	min-width: 80px;
+ 	max-width: 240px;
++	height: var(--vscode-spacing-size280);
++	box-sizing: border-box;
+ 	gap: var(--vscode-spacing-size80);
+ 	padding: 0 var(--vscode-spacing-size120);
+ 	color: var(--vscode-tab-inactiveForeground);
+-	border-right: var(--vscode-strokeThickness) solid var(--vscode-tab-border, transparent);
++	border: var(--vscode-strokeThickness) solid var(--vscode-contrastBorder, transparent);
++	border-radius: var(--vscode-cornerRadius-small);
+ }
+ .monaco-workbench .studio-steam-instance.active { color: var(--vscode-tab-activeForeground); background: var(--vscode-tab-activeBackground); }
+ .monaco-workbench .studio-steam-instance:hover { background: var(--vscode-tab-hoverBackground); }
+@@ -384,6 +391,7 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
+ .monaco-workbench .studio-steam-instance .studio-steam-tab-close { flex-shrink: 0; width: var(--vscode-spacing-size160); padding: 0; opacity: 0; font-size: var(--vscode-codiconFontSize-compact); }
+ .monaco-workbench .studio-steam-instance:is(.active, :hover, :focus-within) .studio-steam-tab-close { opacity: 1; }
+ .monaco-workbench .studio-steam-instances :is(.studio-steam-new-instance, .studio-steam-instance-actions) { flex-shrink: 0; width: var(--vscode-spacing-size280); height: var(--vscode-spacing-size280); border-radius: var(--vscode-cornerRadius-small); }
++.monaco-workbench .studio-steam-instances .studio-steam-new-instance { background: color-mix(in srgb, var(--vscode-foreground) 6%, var(--vscode-sideBar-background, var(--vscode-editor-background))); }
+ .monaco-workbench .studio-steam-instances :is(.studio-steam-new-instance, .studio-steam-instance-actions, .studio-steam-tab-close):hover { background: var(--vscode-toolbar-hoverBackground); }
+ .monaco-workbench .studio-steam-instances button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+ 
