@@ -23,6 +23,7 @@
   "context.editProfile": "编辑资料",
   "context.manageSessions": "管理会话",
   "command.uploadProject": "上传项目",
+  "command.openProjectInTab": "在标签页中打开项目",
   "command.upgradeProject": "升级项目",
   "command.downloadProject": "下载项目",
   "command.importProjectFromLink": "从链接导入",

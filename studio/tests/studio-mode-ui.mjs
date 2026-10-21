@@ -86,6 +86,12 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       assert.ok(filename.startsWith(assets + path.sep));
       await route.fulfill({ path: filename, headers: { 'Access-Control-Allow-Origin': '*' } });
     });
+    await context.route(/https:\/\/[^/]+\.vscode-resource\.vscode-cdn\.net\/.*\/extensions\/simple-browser\/media\//, async route => {
+      const relative = decodeURIComponent(new URL(route.request().url()).pathname.split('/extensions/simple-browser/media/')[1]);
+      const assets = path.join(upstream.directory, 'extensions/simple-browser/media'), filename = path.resolve(assets, relative);
+      assert.ok(filename.startsWith(assets + path.sep));
+      await route.fulfill({ path: filename, headers: { 'Access-Control-Allow-Origin': '*' } });
+    });
     page = await context.newPage();
     page.on('dialog', dialog => dialog.type() === 'beforeunload' ? dialog.accept() : dialog.dismiss());
     page.on('pageerror', error => errors.push(`${language}: ${error.message}`));
@@ -150,6 +156,8 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       return [part, { visible: !!rect?.width && !!rect?.height && getComputedStyle(element).display !== 'none', width: rect?.width }];
     })));
     const before = await partState();
+    const layoutButtons = page.locator('.titlebar-right .action-toolbar-container :is([class*="codicon-panel-"], [class*="codicon-auxiliarybar-"][class*="layout-icon"], .codicon-configure-layout-icon)');
+    const ideLayoutButtons = await layoutButtons.count(); assert.ok(ideLayoutButtons > 0);
 
     // Hold the real result iframe so startup and cancellation cannot pass on an already loaded page.
     let releaseFrame, frameHeld = false;
@@ -196,9 +204,23 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     });
     await steam.click(); await page.locator('.studio-steam-tools').waitFor({ timeout: 90_000 });
     await until(() => page.locator('.studio-mode-switcher').getAttribute('aria-busy'), value => value === 'false', 'Steam mode switch did not finish');
+    assert.equal(await page.locator('.studio-steam-tool').count(), 9);
     const during = await partState();
     assert.equal(during.activitybar.visible, false); assert.equal(during.sidebar.visible, false); assert.equal(during.panel.visible, false);
     assert.equal(during.auxiliarybar.visible, true);
+    assert.equal(await layoutButtons.count(), 0);
+    const toggleTools = page.locator('.studio-steam-toggle-tools');
+    await toggleTools.waitFor();
+    assert.equal(await toggleTools.getAttribute('aria-label'), language === 'en' ? 'Hide Tools' : '隐藏工具区');
+    assert.equal(await toggleTools.getAttribute('aria-expanded'), 'true');
+    const trailingControl = await toggleTools.evaluate(toggle => {
+      const rect = toggle.getBoundingClientRect();
+      const siblings = [...toggle.parentElement.children].filter(element => element !== toggle && !element.classList.contains('window-controls-container'));
+      return siblings.every(element => !element.getBoundingClientRect().width || element.getBoundingClientRect().right <= rect.left + 1);
+    });
+    assert.equal(trailingControl, true, 'Tool visibility control must follow the other titlebar actions');
+    assert.equal(await page.locator('.titlebar-right .action-toolbar-container :is(.codicon-close, .codicon-split-editor, .codicon-split-editor-vertical)').count(), 0);
+    check(`${language}: Steam keeps only the trailing tools visibility control and removes other layout and runtime editor actions`);
     const geometry = await page.locator('.part.editor:not(.studio-steam-editors)').boundingBox(), toolsGeometry = await page.locator('.part.auxiliarybar').boundingBox();
     assert.ok(geometry.x < toolsGeometry.x && geometry.x + geometry.width <= toolsGeometry.x + 2);
     check(`${language}: Steam places project results on the left and tools on the right`);
@@ -223,8 +245,16 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       assert.equal(frame.isDetached(), false);
     }
     check(`${language}: split, new group, layout, move, copy and join commands preserve the runtime surface`);
-    for (const tool of ['kv', 'knowledge', 'info', 'assistant', 'versions', 'trace']) {
+    for (const tool of ['kv', 'knowledge', 'info', 'assistant', 'versions', 'trace', 'terminal']) {
       await command('studio.openSteamTools'); await page.locator(`.studio-steam-tool[data-tool="${tool}"]`).click();
+      if (tool === 'terminal') {
+        const terminal = page.locator('.part.auxiliarybar .integrated-terminal');
+        await terminal.waitFor();
+        const rect = await terminal.boundingBox(); assert.ok(rect.x >= toolsGeometry.x && rect.width > 100);
+        assert.equal(await page.locator('.studio-steam-tab[data-tab=terminal] .studio-steam-tab-select').innerText(), language === 'en' ? 'Terminal' : '终端');
+        assert.equal((await partState()).panel.visible, false);
+        continue;
+      }
       const selector = { kv: 'body[data-resource-kind=kv]', knowledge: 'body[data-resource-kind=knowledge]', info: '#info-app', assistant: '#app', versions: '#versions-app', trace: '#trace-app' }[tool];
       await until(async () => {
         for (const candidate of page.frames()) {
@@ -239,22 +269,69 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       }, Boolean, `Tool view did not open: ${tool}`);
       assert.equal((await partState()).panel.visible, false);
     }
-    check(`${language}: all six tools open in the right sidebar`);
+    check(`${language}: all seven tools including the native terminal open in the right sidebar`);
 
     const tabList = page.locator('.studio-steam-tab-list');
     const toolTabs = tabList.locator('.studio-steam-tab:not([data-tab^="editor:"])');
-    assert.equal(await toolTabs.count(), 6);
+    assert.equal(await toolTabs.count(), 7);
     await page.locator('.studio-steam-tab[data-tab=kv] .studio-steam-tab-select').click();
     await page.locator('.studio-steam-tab[data-tab=info] .studio-steam-tab-close').click();
-    assert.equal(await toolTabs.count(), 5);
+    assert.equal(await toolTabs.count(), 6);
     await page.locator('.studio-steam-add-tab').click();
     // Native menus suppress mouse-up for their first 100ms to avoid accidental selections.
     await page.waitForTimeout(150);
     await page.locator('.context-view').getByText(language === 'en' ? 'Project Information' : '项目信息', { exact: true }).click();
-    await until(() => toolTabs.count(), value => value === 6, 'Add menu did not restore the closed tool tab');
+    await until(() => toolTabs.count(), value => value === 7, 'Add menu did not restore the closed tool tab');
     await command('studio.internalOpenSteamTool', 'kv');
-    assert.equal(await toolTabs.count(), 6);
+    assert.equal(await toolTabs.count(), 7);
     check(`${language}: tools use dynamic closable tabs and the add menu reopens tools without duplicate tabs`);
+
+    const savedTabLabels = await tabList.locator('[role=tab]').allTextContents();
+    const assertToolsToggle = async () => {
+      await toggleTools.click();
+      await until(partState, state => !state.auxiliarybar.visible, 'Tools did not collapse');
+      assert.equal(await toggleTools.getAttribute('aria-expanded'), 'false');
+      assert.equal(await toggleTools.getAttribute('aria-label'), language === 'en' ? 'Show Tools' : '显示工具区');
+      assert.ok((await page.locator('.part.editor:not(.studio-steam-editors)').boundingBox()).width > geometry.width);
+      assert.equal(frame.isDetached(), false); assert.equal(frame.url(), resultUrl);
+      await toggleTools.click();
+      await until(partState, state => state.auxiliarybar.visible, 'Tools did not expand');
+      assert.equal(await toggleTools.getAttribute('aria-expanded'), 'true');
+    };
+    await assertToolsToggle();
+    assert.deepEqual(await tabList.locator('[role=tab]').allTextContents(), savedTabLabels);
+    assert.equal(await page.locator('.studio-steam-tab.active').getAttribute('data-tab'), 'kv');
+    check(`${language}: the trailing toggle hides and restores tools without losing tabs, the selected tool or the live runtime`);
+
+    const tabStyle = await toolTabs.first().evaluate(element => {
+      const style = getComputedStyle(element), next = element.nextElementSibling;
+      return { radius: parseFloat(style.borderRadius), gap: next.getBoundingClientRect().left - element.getBoundingClientRect().right,
+        filled: style.backgroundColor !== 'rgba(0, 0, 0, 0)', height: element.getBoundingClientRect().height };
+    });
+    assert.ok(tabStyle.radius >= 4 && tabStyle.gap >= 6 && tabStyle.filled && tabStyle.height >= 24, JSON.stringify(tabStyle));
+    const headerSpace = await page.locator('.part.auxiliarybar > .title').evaluate(element => ({
+      width: element.clientWidth, tabs: element.querySelector('.studio-steam-tabs').getBoundingClientRect().width,
+      actions: element.querySelector('.title-actions').getBoundingClientRect().width,
+    }));
+    assert.ok(headerSpace.tabs + headerSpace.actions >= headerSpace.width - 24, JSON.stringify(headerSpace));
+    const tabIds = await tabList.locator('.studio-steam-tab').evaluateAll(elements => elements.map(element => element.dataset.tab));
+    for (const width of [1024, 800]) {
+      await page.setViewportSize({ width, height: 960 });
+      const labels = await tabList.locator('.studio-steam-tab-label').evaluateAll(elements => elements.map(element => ({
+        width: element.clientWidth, scroll: element.scrollWidth, overflow: getComputedStyle(element).textOverflow,
+      })));
+      assert.ok(labels.some(label => label.scroll > label.width && label.overflow === 'ellipsis'), JSON.stringify(labels));
+      const add = await page.locator('.studio-steam-add-tab').boundingBox(), sidebar = await page.locator('.part.auxiliarybar').boundingBox();
+      assert.ok(add.x >= sidebar.x && add.x + add.width <= sidebar.x + sidebar.width + 1);
+      await tabList.locator('.studio-steam-tab.active [role=tab]').press('End');
+      await until(() => page.locator('.studio-steam-tab.active').getAttribute('data-tab'), value => value === tabIds.at(-1), 'Keyboard navigation did not reach the last tab');
+      await tabList.locator('.studio-steam-tab.active [role=tab]').press('Home');
+      await until(() => page.locator('.studio-steam-tab.active').getAttribute('data-tab'), value => value === tabIds[0], 'Keyboard navigation did not return to the first tab');
+    }
+    await page.setViewportSize({ width: 1440, height: 960 });
+    await command('studio.internalOpenSteamTool', 'kv');
+    await page.screenshot({ path: path.join(proof, `${language}-rounded-tabs.png`) });
+    check(`${language}: rounded tool tabs retain spacing, truncate dense labels and keep the add button and keyboard navigation usable`);
 
     const projectGroupBefore = (await call({ action: 'state' })).groups.find(group => group.column === 1);
     assert.ok(projectGroupBefore.tabs.some(tab => tab.active && tab.viewType?.endsWith('studio.project')));
@@ -320,6 +397,10 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     assert.ok(probeRect.y >= rightRect.y && probeRect.y + probeRect.height <= rightRect.y + rightRect.height);
     // This checks hit testing across webview overlays as well as DOM visibility.
     await probe.locator('#workspace-probe').click({ trial: true });
+    const activeProbeTab = await page.locator('.studio-steam-tab.active').getAttribute('data-tab');
+    await assertToolsToggle();
+    assert.equal(await page.locator('.studio-steam-tab.active').getAttribute('data-tab'), activeProbeTab);
+    await probe.locator('#workspace-probe').click({ trial: true });
     await page.screenshot({ path: path.join(proof, `${language}-workspace-tabs.png`) });
     check(`${language}: account status, explicit first-column files, settings, diffs and generic webviews open on the right while the live project and its result stay intact`);
     await call({ action: 'webview', viewType: 'studio.project', title: 'Secondary Project Probe' });
@@ -374,6 +455,8 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     await writeFile(path.join(proof, `${language}-transitions.json`), JSON.stringify(transitions, null, 2));
     check(`${language}: the workspace slides in opposite directions while the titlebar stays fixed`);
     const after = await partState();
+    assert.equal(await layoutButtons.count(), ideLayoutButtons);
+    assert.equal(await toggleTools.isVisible(), false);
     for (const part of Object.keys(before)) {
       assert.equal(after[part].visible, before[part].visible, part);
       if (before[part].visible) { assert.ok(Math.abs(after[part].width - before[part].width) < 2, part); }
@@ -473,6 +556,87 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     await page.waitForTimeout(100);
     assert.equal(await page.locator('html.studio-mode-transition').count(), 0);
     check(`${language}: skipped transition animations still finish without page errors`);
+
+    await command('workbench.action.terminal.focus');
+    await page.locator('.part.panel .integrated-terminal').waitFor();
+    await call({ action: 'terminalInput', text: `export STEAMHARNESS_MODE_TEST='mode-${language}'` });
+    await command('studio.enterSteamMode');
+    await command('workbench.action.terminal.focus');
+    await page.locator('.part.auxiliarybar .integrated-terminal').waitFor();
+    await command('workbench.action.terminal.new');
+    await command('workbench.action.terminal.split');
+    assert.equal((await partState()).panel.visible, false);
+    assert.equal(await page.locator('.studio-steam-tab[data-tab=terminal]').count(), 1);
+    await page.locator('.studio-steam-tab[data-tab=terminal] .studio-steam-tab-close').click();
+    await command('workbench.action.terminal.focus');
+    await page.locator('.part.auxiliarybar .integrated-terminal').waitFor();
+    assert.equal(await page.locator('.studio-steam-tab[data-tab=terminal]').count(), 1);
+    assert.equal((await partState()).panel.visible, false);
+    await command('studio.enterIdeMode');
+    await command('workbench.action.terminal.focus');
+    await page.locator('.part.panel .integrated-terminal').waitFor();
+    const terminalProbe = path.join(directory, 'terminal-session.txt');
+    const quotedProbe = `'${terminalProbe.replaceAll("'", "'\\''")}'`;
+    await call({ action: 'terminalInput', text: `printf '%s' "$STEAMHARNESS_MODE_TEST" > ${quotedProbe}` });
+    await until(async () => await exists(terminalProbe) ? readFile(terminalProbe, 'utf8') : undefined,
+      value => value === `mode-${language}`, 'Mode changes lost the existing shell session');
+    await command('workbench.action.terminal.killAll');
+    check(`${language}: terminal commands, new sessions and splits use tools; closing its tab and returning to IDE retain the shell session`);
+
+    await command('studio.enterSteamMode'); await command('studio.openSteamTools');
+    const browserUrl = 'https://steam-browser.example.test/';
+    await context.route(url => url.origin === new URL(browserUrl).origin, route => route.fulfill({ contentType: 'text/html', body: '<input id="browser-tool-probe" value="Browser tool">' }));
+    await page.locator('.studio-steam-tool[data-tool=browser]').click();
+    const urlPicker = page.locator('.quick-input-widget input'); await urlPicker.fill(browserUrl); await urlPicker.press('Enter');
+    const browserFrame = await until(async () => {
+      for (const candidate of page.frames()) { if (await candidate.locator('#browser-tool-probe').isVisible().catch(() => false)) { return candidate; } }
+    }, Boolean, 'Browser did not open a working page in the tool workspace');
+    const browserTabId = await page.locator('.studio-steam-tab.active').getAttribute('data-tab');
+    await browserFrame.locator('#browser-tool-probe').fill('Retain this browser state');
+    const browserRect = await browserFrame.locator('#browser-tool-probe').boundingBox(), browserToolsRect = await page.locator('.part.auxiliarybar').boundingBox();
+    assert.ok(browserRect.x >= browserToolsRect.x && browserRect.x + browserRect.width <= browserToolsRect.x + browserToolsRect.width);
+    await command('studio.openSteamTools');
+    await page.locator(`.studio-steam-tab[data-tab="${browserTabId}"] .studio-steam-tab-select`).click();
+    assert.equal(await browserFrame.locator('#browser-tool-probe').inputValue(), 'Retain this browser state');
+    await browserFrame.locator('#browser-tool-probe').click({ trial: true });
+    check(`${language}: the browser tool loads an interactive page on the right and retains its tab state`);
+
+    await command('studio.openSteamTools'); await page.locator('.studio-steam-tool[data-tool=project]').click();
+    await page.locator('.quick-input-widget').waitFor(); await page.locator('.quick-input-widget input').press('Escape');
+    const otherProject = path.join(directory, 'external-project'); await mkdir(otherProject);
+    await mkdir(path.join(otherProject, 'node_modules/@steamharness'), { recursive: true });
+    await symlink(path.resolve(ROOT, '../harness'), path.join(otherProject, 'node_modules/steamharness'), 'dir');
+    await symlink(path.resolve(ROOT, '../cli'), path.join(otherProject, 'node_modules/@steamharness/cli'), 'dir');
+    await copyFile(path.join(project, 'index.ts'), path.join(otherProject, 'index.ts'));
+    const otherManifest = structuredClone(manifest); otherManifest.id = '71d1bc8c-7701-4a75-9ab0-1e301c353239'; otherManifest.name = 'external-tool-project';
+    otherManifest.steamHarness.projectInfo.localizedNames = { en: 'External Tool Project', 'zh-cn': '工具区外部项目' };
+    await writeFile(path.join(otherProject, 'package.json'), JSON.stringify(otherManifest));
+    const foldersBeforeOther = (await call({ action: 'state' })).folders;
+    await command('studio.openProjectInTab', otherProject);
+    const findProjectFrame = uri => until(async () => {
+      for (const candidate of page.frames()) {
+        if (await candidate.locator('#message').isVisible().catch(() => false)
+          && await candidate.locator('#app').getAttribute('data-project-uri').catch(() => undefined) === uri) { return candidate; }
+      }
+    }, Boolean, `Project frame did not open: ${uri}`);
+    const otherFrame = await findProjectFrame(pathToFileURL(otherProject).href);
+    await otherFrame.locator('#message').fill(`other-project-${language}`); await otherFrame.locator('#send').click();
+    await until(() => otherFrame.locator('.message.assistant').allTextContents(), values => values.join('').includes(`other-project-${language}`), 'The other project did not run');
+    const otherRect = await otherFrame.locator('#message').boundingBox(); assert.ok(otherRect.x >= browserToolsRect.x);
+    const leftProjectFrame = await findProjectFrame(pathToFileURL(project).href);
+    const leftRect = await leftProjectFrame.locator('#message').boundingBox(); assert.ok(leftRect.x < browserToolsRect.x);
+    await command('studio.openProjectInTab', otherProject);
+    assert.deepEqual((await call({ action: 'state' })).folders, foldersBeforeOther);
+    await rm(readyFile, { force: true });
+    const otherReloaded = page.waitForEvent('domcontentloaded', { timeout: 60_000 }); await call({ action: 'reload' }); await otherReloaded;
+    bridge = await until(readReady, value => value.port || value.error, 'Studio extension restart timed out', 120_000); assert.equal(bridge.error, undefined);
+    await until(() => steam.getAttribute('aria-pressed').catch(() => undefined), value => value === 'true', 'Steam mode did not restore', 120_000);
+    const restoredOther = await findProjectFrame(pathToFileURL(otherProject).href), restoredLeft = await findProjectFrame(pathToFileURL(project).href);
+    const restoredToolsRect = await page.locator('.part.auxiliarybar').boundingBox();
+    assert.ok((await restoredOther.locator('#message').boundingBox()).x >= restoredToolsRect.x);
+    assert.ok((await restoredLeft.locator('#message').boundingBox()).x < restoredToolsRect.x);
+    assert.deepEqual((await call({ action: 'state' })).folders, foldersBeforeOther);
+    check(`${language}: another real project runs in a right-hand tab and reload preserves both project surfaces and the original workspace`);
   } catch (error) {
     console.error(error.stack ?? error);
     const logs = path.join(directory, 'server/data/logs');

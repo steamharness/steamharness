@@ -23,6 +23,7 @@
   "context.editProfile": "Edit Profile",
   "context.manageSessions": "Manage Sessions",
   "command.uploadProject": "Upload Project",
+  "command.openProjectInTab": "Open Project in Tab",
   "command.upgradeProject": "Upgrade Project",
   "command.downloadProject": "Download Project",
   "command.importProjectFromLink": "Import from Link",

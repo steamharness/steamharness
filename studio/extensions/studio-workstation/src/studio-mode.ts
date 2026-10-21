@@ -35,6 +35,7 @@ export class StudioModeController {
       loading: t('Loading project...'),
       unavailable: t('Steam Mode is available for SteamHarness projects.'),
       tools: t('Open Tools'), toolsHint: t('Everything you need for your project, in one place.'),
+      hideTools: t('Hide Tools'), showTools: t('Show Tools'),
       workspace: t('Tool Workspace'), addTool: t('Open Tool'), closeTab: t('Close {0}'),
       moveEditorsError: t('Unable to move tool workspace editors back to the IDE.'),
       kv: t('KV Storage'), kvHint: t('Browse and edit project data'),
@@ -43,6 +44,9 @@ export class StudioModeController {
       assistant: t('Assistant'), assistantHint: t('Work with your coding assistant'),
       versions: t('Versions'), versionsHint: t('Manage project versions and updates'),
       trace: t('Run Trace'), traceHint: t('Inspect execution history and logs'),
+      terminal: t('Terminal'), terminalHint: t('Run commands in your project'),
+      browser: t('Browser'), browserHint: t('Browse a website in a workspace tab'),
+      project: t('Open Other Project'), projectHint: t('Run another project in a workspace tab'),
     } })).catch(error => { this.available = undefined; this.output.appendLine(`Studio mode: ${String(error)}`); });
   }
 }

@@ -41,6 +41,11 @@ export async function activate(context) {
           // Acknowledge before the extension host is restarted by the native command.
           setTimeout(() => { void vscode.commands.executeCommand('workbench.action.reloadWindow'); }, 50);
         }
+        else if (input.action === 'terminalInput') {
+          const terminal = vscode.window.terminals[input.index ?? 0];
+          if (!terminal) { throw new Error('Missing test terminal'); }
+          terminal.sendText(input.text);
+        }
         else if (input.action === 'diff') {
           const a = await vscode.workspace.openTextDocument({ content: '' }), b = await vscode.workspace.openTextDocument({ content: '' });
           await vscode.commands.executeCommand('vscode.diff', a.uri, b.uri, 'Empty diff');

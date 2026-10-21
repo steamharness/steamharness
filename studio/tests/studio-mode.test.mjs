@@ -46,9 +46,10 @@ function fixture(t, saved = new Map()) {
     ['studio-info', { id: 'studio-info', location: 0 }], ['studio-assistant', { id: 'studio-assistant', location: 2 }],
     ['studio-versions', { id: 'studio-versions', location: 0 }], ['studio-trace', { id: 'studio-trace', location: 1 }],
     ['studio-steam-tools', { id: 'studio-steam-tools', location: 2 }], ['files', { id: 'files', location: 0 }],
+    ['terminal', { id: 'terminal', location: 1 }],
   ]);
   const viewContainers = { 'studio.kv': 'studio-kv', 'studio.knowledge': 'studio-knowledge', 'studio.projectInfo': 'studio-info',
-    'studio.developerAssistant': 'studio-assistant', 'studio.versions': 'studio-versions', 'studio.trace': 'studio-trace', 'studio.steamTools': 'studio-steam-tools' };
+    'studio.developerAssistant': 'studio-assistant', 'studio.versions': 'studio-versions', 'studio.trace': 'studio-trace', 'studio.steamTools': 'studio-steam-tools', terminal: 'terminal' };
   const visible = new Map(Object.values(parts).map(part => [part, true]));
   const sizes = new Map(Object.values(parts).map((part, index) => [part, { width: 48 + index * 100, height: 720 }]));
   const active = new Map([[0, 'files'], [1, 'studio-kv'], [2, 'studio-assistant']]);
@@ -75,7 +76,7 @@ function fixture(t, saved = new Map()) {
     getGroups: () => mainPart.groups,
     getLayout: () => editorLayout, applyLayout: value => { groupMaximized = false; calls.push(['restoreGroups', value]); },
     arrangeGroups: (_arrangement, target = mainPart.activeGroup) => { groupMaximized = true; calls.push('maximizeGroup'); calls.push(['maximizeGroupTarget', typeof target === 'number' ? target : target.id]); }, hasMaximizedGroup: () => groupMaximized,
-    enforcePartOptions: () => { options = true; return { dispose: () => { options = false; } }; } };
+    enforcePartOptions: value => { options = value; return { dispose: () => { options = false; } }; } };
   const groups = { ...mainPart, mainPart };
   const views = {
     getVisibleViewContainer: location => containers.get(active.get(location)),
@@ -116,6 +117,9 @@ function fixture(t, saved = new Map()) {
     CommandsRegistry: { registerCommand: register }, ConfigurationTarget: { MEMORY: 8 }, ContextKeyExpr: { has: () => true },
     SyncDescriptor: class {}, Registry: { as: () => ({ registerViewContainer: value => containers.get(value.id) ?? value, registerViews() {} }) },
     StorageScope: { WORKSPACE: 1 }, StorageTarget: { MACHINE: 1 }, StudioSteamTools: class {}, studioModeState: state,
+    studioSteamToolDefinitions: Object.keys(viewContainers).filter(view => view !== 'studio.steamTools').map(view => ({
+      id: { 'studio.projectInfo': 'info', 'studio.developerAssistant': 'assistant' }[view] ?? view.replace('studio.', ''), view,
+    })).concat([{ id: 'browser', command: 'simpleBrowser.show' }, { id: 'project', command: 'studio.openProjectInTab' }]),
     StudioModeLoading: class { show() { f.loading = true; calls.push('loading'); } hide() { f.loading = false; } dispose() {} },
     ViewPane: class {}, ViewPaneContainer: class {}, WorkbenchPhase: { AfterRestored: 3 }, registerWorkbenchContribution2() {},
     Extensions: {}, ViewContainerLocation: locations, GroupsArrangement: { MAXIMIZE: 0 }, GroupsOrder: { GRID_APPEARANCE: 2 }, Parts: parts,
@@ -124,11 +128,15 @@ function fixture(t, saved = new Map()) {
   runInNewContext(compiled, { exports: module.exports, module, require: () => new Proxy(common, { get: (object, key) => key in object ? object[key] : service }) });
   const controller = new module.exports.StudioModeContribution(layout, groups,
     { openEditor: (editor, options, group) => { groupMaximized = false; return group.openEditor(editor); } }, views, descriptors, context, configuration, storage,
-    { executeCommand: async (command, ...args) => { if (command === 'studio.internalCancelSteamPreparation') { calls.push('cancelPreparation'); return f.cancelPreparation(); } calls.push('prepare'); const ready = await f.prepare(...args); if (ready) { f.projectOpen = true; } return ready; } }, { error: error => errors.push(String(error)) }, { createInstance: () => ({
+    { executeCommand: async (command, ...args) => {
+      if (command === 'studio.internalCancelSteamPreparation') { calls.push('cancelPreparation'); return f.cancelPreparation(); }
+      if (command !== 'studio.internalPrepareSteamProject') { calls.push(['command', command, ...args]); return f.toolCommand?.(command); }
+      calls.push('prepare'); const ready = await f.prepare(...args); if (ready) { f.projectOpen = true; } return ready;
+    } }, { error: error => errors.push(String(error)) }, { createInstance: () => ({
       get hasProject() { return f.projectOpen; },
       activate: () => views.openView('studio.steamTools', true),
       home: () => views.openView('studio.steamTools', true),
-      openTool: id => views.openView({ kv: 'studio.kv', knowledge: 'studio.knowledge', info: 'studio.projectInfo', assistant: 'studio.developerAssistant', versions: 'studio.versions', trace: 'studio.trace' }[id], true),
+      openTool: id => views.openView(common.studioSteamToolDefinitions.find(tool => tool.id === id)?.view, true),
       deactivate: async () => undefined, select() {}, close() {}, dispose() {},
     }) });
   t.after(() => controller.dispose());
@@ -146,7 +154,7 @@ test('Steam mode keeps the existing result and restores IDE parts, tools, groups
   const f = fixture(t); f.settings.set('side', 'right');
   const beforeVisible = new Map(f.visible), beforeSizes = new Map(f.sizes), beforeActive = new Map(f.active);
   f.publish(true); await f.run('EnterSteamMode');
-  assert.equal(f.state.steam, true); assert.equal(f.options, true);
+  assert.equal(f.state.steam, true); assert.deepEqual({ ...f.options }, { showTabs: 'none', editorActionsLocation: 'hidden' });
   assert.equal(f.group.activeEditor, f.result);
   for (const part of ['activity', 'sidebar', 'panel']) { assert.equal(f.visible.get(part), false); }
   assert.equal(f.settings.get('side'), 'left');
@@ -165,6 +173,46 @@ test('Steam mode keeps the existing result and restores IDE parts, tools, groups
   assert.equal(f.group.activeEditor, f.editor); assert.equal(f.editor.isDirty, true);
   assert.equal(f.saved.has('studio.ideLayout'), false);
   assert.equal(f.calls.filter(call => call === 'prepare').length, 1);
+});
+
+test('terminal tool and native view opens share the right workspace and restore the IDE location', async t => {
+  const f = fixture(t); f.publish(true); await f.run('EnterSteamMode');
+  await f.run('OpenSteamTool', 'terminal');
+  assert.equal(f.containers.get('terminal').location, 2);
+  assert.equal(f.active.get(2), 'terminal'); assert.equal(f.visible.get('panel'), false);
+  await f.run('OpenSteamTools'); await f.views.openView('terminal', true);
+  assert.equal(f.active.get(2), 'terminal'); assert.equal(f.visible.get('panel'), false);
+  await f.run('EnterIdeMode');
+  assert.equal(f.containers.get('terminal').location, 1);
+  await f.views.openView('terminal', true);
+  assert.equal(f.active.get(1), 'terminal');
+});
+
+test('browser and project tools invoke native commands without inventing view tabs', async t => {
+  const f = fixture(t); f.publish(true); await f.run('EnterSteamMode');
+  await f.run('OpenSteamTool', 'browser'); await f.run('OpenSteamTool', 'project');
+  assert.deepEqual(f.calls.filter(call => Array.isArray(call) && call[0] === 'command'), [
+    ['command', 'simpleBrowser.show'], ['command', 'studio.openProjectInTab'],
+  ]);
+});
+
+test('opening another project cannot replace the pinned runtime on retry or reload', async t => {
+  const f = fixture(t); f.state.state.projectUri = 'file:///original'; f.publish(true);
+  await f.run('EnterSteamMode');
+  f.state.state.projectUri = 'file:///other'; f.projectOpen = false;
+  let prepared; f.prepare = async uri => { prepared = uri; return true; };
+  await f.run('EnterSteamMode'); assert.equal(prepared, 'file:///original');
+  const restored = fixture(t, new Map(f.saved)); restored.state.state.projectUri = 'file:///other';
+  restored.prepare = async uri => { prepared = uri; return true; }; restored.publish(true);
+  await restored.run('EnterSteamMode'); assert.equal(prepared, 'file:///original');
+});
+
+test('a pending browser or project picker does not block returning to IDE', async t => {
+  const f = fixture(t); f.publish(true); await f.run('EnterSteamMode');
+  let finish; f.toolCommand = () => new Promise(resolve => { finish = resolve; });
+  const picking = f.run('OpenSteamTool', 'project');
+  await f.run('EnterIdeMode'); assert.equal(f.state.steam, false);
+  finish(); await picking;
 });
 
 test('rapid mode requests coalesce while a project is preparing', async t => {

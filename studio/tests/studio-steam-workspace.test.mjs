@@ -45,7 +45,8 @@ class EditorInput {
 class WebviewInput extends EditorInput {
   constructor(name, uri) { super(name); this.webview = { providedViewType: 'studio.project', state: JSON.stringify({ projectUri: uri }) }; }
 }
-const tools = ['kv', 'knowledge', 'info', 'assistant', 'versions', 'trace'].map(id => ({ id, icon: id, view: `studio.${id}` }));
+const tools = [...['kv', 'knowledge', 'info', 'assistant', 'versions', 'trace'].map(id => ({ id, icon: id, view: `studio.${id}` })),
+  { id: 'terminal', icon: 'terminal', view: 'terminal' }, { id: 'browser', command: 'simpleBrowser.show' }, { id: 'project', command: 'studio.openProjectInTab' }];
 function fixture(t, saved = new Map()) {
   const toDisposable = dispose => ({ dispose });
   const load = (code, common) => {
@@ -170,6 +171,11 @@ test('tool order and selection restore after reload and externally opened views 
   assert.deepEqual(Array.from(second.tabs, tab => tab.id), ['knowledge', 'kv']); assert.equal(second.active, 'kv');
   second.viewChange.fire({ id: 'studio.trace', visible: true });
   assert.equal(second.active, 'trace'); assert.equal(second.tabs.length, 3);
+  second.viewChange.fire({ id: 'terminal', visible: true });
+  assert.equal(second.active, 'terminal'); assert.equal(second.tabs.length, 4);
+  await second.workspace.close('terminal');
+  second.viewChange.fire({ id: 'terminal', visible: true });
+  assert.equal(second.active, 'terminal'); assert.equal(second.tabs.length, 4);
 });
 
 test('closing and reopening a project routes a new uninitialized panel to the runtime without a stale input reference', async t => {
@@ -181,6 +187,32 @@ test('closing and reopening a project routes a new uninitialized panel to the ru
   assert.equal(f.policy.getEditorOpenTarget(new WebviewInput('Other project', 'file:///other'), f.left), f.right);
   assert.equal(f.locked, true);
   await f.workspace.deactivate(f.left); assert.equal(f.locked, false);
+});
+
+test('restoring multiple projects uses the pinned runtime URI even when the other project is active', async t => {
+  const f = fixture(t), original = new WebviewInput('Original', 'file:///original'), other = new WebviewInput('Other', 'file:///other');
+  await f.left.openEditor(other); await f.right.openEditor(original);
+  f.state.state.projectUri = 'file:///other';
+  await f.workspace.activate('file:///original');
+  assert.ok(f.left.contains(original)); assert.ok(f.right.contains(other));
+  await f.left.closeEditor(original); original.dispose();
+  const uninitializedTool = new WebviewInput('Other tool project'); uninitializedTool.webview.providedViewType = 'studio.projectTool';
+  assert.equal(f.policy.getEditorOpenTarget(uninitializedTool, f.left), f.right);
+  const reopened = new WebviewInput('Original', 'file:///original');
+  assert.equal(f.policy.getEditorOpenTarget(reopened, f.left), f.left);
+  assert.equal(f.policy.getEditorOpenTarget(other, f.left), f.right);
+});
+
+test('moving IDE sources during reload preserves the restored active tool editor', async t => {
+  const saved = new Map([['studio.steamWorkspaceTabs', { tools: [], active: 'editor' }], ['studio.workbenchMode', 'steam']]);
+  const f = fixture(t, saved), project = new WebviewInput('Project', 'file:///project');
+  const source = new EditorInput('IDE source'), other = new WebviewInput('Other project', 'file:///other');
+  await f.left.openEditor(project); await f.left.openEditor(source); await f.right.openEditor(other);
+  const move = f.left.moveEditors;
+  f.left.moveEditors = (entries, target) => { const result = move(entries, target); target.activeEditor = source; return result; };
+  await f.workspace.activate();
+  assert.equal(f.right.activeEditor, other);
+  assert.equal(f.tabs.find(tab => tab.id === f.active)?.label, 'Other project');
 });
 
 test('split copies get independent tabs and closing one preserves the other group input', async t => {

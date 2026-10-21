@@ -18,6 +18,7 @@ import { bindProjectResourceCards, type ResourceCardResult } from './workflow-re
 import type { ProjectIcons } from './project-icons';
 import { openProjectFolder } from './project-window';
 import { StudioModeController } from './studio-mode';
+import { chooseProjectTab, inspectProjectTab } from './project-tabs';
 
 const ignored = new Set(['node_modules', 'vendor', 'dist', 'out', 'build', 'upstream']);
 const containers = new Set(['workspace', 'workflow', 'projects', 'examples']);
@@ -107,12 +108,20 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
   const assertNotUpgrading = (sources: string[]): void => {
     if ([...upgrading].some(uri => usesProject(sources, uri))) { throw new Error(t('This project is being upgraded. Wait for the upgrade to finish.')); }
   };
-  const configurationProjects = new Map<string,Project>();
+  const externalProjects = new Map<string, Project>();
+  const resolveProjectTab = async (uri: vscode.Uri): Promise<Project> => {
+    const known = provider.projects.find(project => project.uri === uri.toString()) ?? externalProjects.get(uri.toString());
+    if (known) { return known; }
+    const inspected = await inspectProjectTab(uri, launcher);
+    const project = externalProjects.get(inspected.uri) ?? inspected;
+    if (!disposed) { externalProjects.set(project.uri, project); }
+    return project;
+  };
   const projectAvailable = (project: Project): boolean => {
     const roots = vscode.workspace.workspaceFolders ?? [];
     return !disposed && vscode.workspace.isTrusted && (project.assistant
       ? assistantWorkspaceAvailable(project.assistant, roots.filter(folder => folder.uri.scheme === 'file').map(folder => ({ uri: folder.uri.toString(), folderPath: folder.uri.fsPath, name: folder.name })))
-      : project.builtin === 'analysis' || configurationProjects.get(project.uri) === project || roots.some(root => project.uri === root.uri.toString() || project.uri.startsWith(`${root.uri.toString()}/`)));
+      : project.builtin === 'analysis' || externalProjects.get(project.uri) === project || roots.some(root => project.uri === root.uri.toString() || project.uri.startsWith(`${root.uri.toString()}/`)));
   };
   const updateEntry = (): void => {
     clearTimeout(entryTimer); entryTimer = undefined;
@@ -146,7 +155,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     clearTimeout(entryTimer);
     entryTimer = setTimeout(updateEntry, 150);
   };
-  const createWorkspace = async (project: Project, restored?: vscode.WebviewPanel, sidebar?: vscode.WebviewView, viewColumn = vscode.ViewColumn.Active, signal?: AbortSignal): Promise<AssistantConversation> => {
+  const createWorkspace = async (project: Project, restored?: vscode.WebviewPanel, sidebar?: vscode.WebviewView, viewColumn = vscode.ViewColumn.Active, signal?: AbortSignal, toolTab = false): Promise<AssistantConversation> => {
     await settling.get(project.uri);
     signal?.throwIfAborted();
     if (!projectAvailable(project)) { restored?.dispose(); throw new Error('Workflow workspace is unavailable.'); }
@@ -174,7 +183,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     } finally { signal?.removeEventListener('abort', abort); starting.delete(controller); startingSources.delete(controller); startingDone.delete(controller); finishStarting(); disposedPanel?.dispose(); }
     sessions.add(session);
     sessionSources.set(session, sources);
-    const panel = sidebar ?? restored ?? vscode.window.createWebviewPanel('studio.project', projectDisplayName(project), viewColumn, { enableScripts: true, retainContextWhenHidden: true });
+    const panel = sidebar ?? restored ?? vscode.window.createWebviewPanel(toolTab ? 'studio.projectTool' : 'studio.project', projectDisplayName(project), viewColumn, { enableScripts: true, retainContextWhenHidden: true });
     const listeners: vscode.Disposable[] = [];
     let frameReady!: () => void;
     const ready = new Promise<void>(resolve => { frameReady = resolve; });
@@ -266,9 +275,9 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       check();
     });
   };
-  const openProject = async (target?: Project, viewColumn?: vscode.ViewColumn, signal?: AbortSignal): Promise<void> => {
+  const openProject = async (target?: Project, viewColumn?: vscode.ViewColumn, signal?: AbortSignal, toolTab = false): Promise<void> => {
     signal?.throwIfAborted();
-    const selected = target?.builtin === 'analysis' ? target : target?.uri ? provider.projects.find(entry => entry.uri === target.uri) ?? configurationProjects.get(target.uri) : currentProject();
+    const selected = target?.builtin === 'analysis' ? target : target?.uri ? provider.projects.find(entry => entry.uri === target.uri) ?? externalProjects.get(target.uri) : currentProject();
     if (!selected) { return; }
     assertNotUpgrading([selected.folderPath]);
     await settling.get(selected.uri);
@@ -285,7 +294,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     }
     const existing = workspaces.get(selected.uri);
     if (existing?.running) { await revealProject(existing.panel, viewColumn, signal); return; }
-    const created = (async () => { await existing?.close(); return createWorkspace(selected, existing?.panel, undefined, viewColumn, signal); })(); opening.set(selected.uri, created);
+    const created = (async () => { await existing?.close(); return createWorkspace(selected, existing?.panel, undefined, viewColumn, signal, toolTab); })(); opening.set(selected.uri, created);
     try {
       await created; signal?.throwIfAborted();
       const panel = workspaces.get(selected.uri)?.panel;
@@ -429,20 +438,26 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     catch (error) { output.appendLine(String(error)); await vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error)); }
   });
   const watcher = vscode.workspace.createFileSystemWatcher('**/{package.json,index.ts,configuration.json}');
+  const projectSerializer: vscode.WebviewPanelSerializer = { deserializeWebviewPanel: async (panel, state: { projectUri?: string } | undefined) => {
+    await initialScan;
+    let project = provider.projects.find(entry => entry.uri === state?.projectUri) ?? (state?.projectUri ? externalProjects.get(state.projectUri) : undefined);
+    if (!project && state?.projectUri && vscode.workspace.isTrusted && launcher.available) {
+      try { project = await resolveProjectTab(vscode.Uri.parse(state.projectUri)); }
+      catch { /* Non-file built-in projects have their own resolver below. */ }
+    }
+    if (!project && state?.projectUri && launcher.inspectAnalysis) {
+      try { const analysis = await launcher.inspectAnalysis(); if (analysis.uri === state.projectUri) project = analysis; }
+      catch { panel.dispose(); return; }
+    }
+    if (!project) { panel.dispose(); return; }
+    await opening.get(project.uri);
+    if (workspaces.has(project.uri)) { panel.dispose(); return; }
+    const created = createWorkspace(project, panel); opening.set(project.uri, created);
+    try { await created; } finally { opening.delete(project.uri); }
+  } };
   context.subscriptions.push(launcher, provider, status, versionStatus, versions.onDidChangeVersions(updateVersionEntry),
-    vscode.window.registerWebviewPanelSerializer('studio.project', { deserializeWebviewPanel: async (panel, state: { projectUri?: string } | undefined) => {
-      await initialScan;
-      let project = provider.projects.find(entry => entry.uri === state?.projectUri);
-      if (!project && state?.projectUri && launcher.inspectAnalysis) {
-        try { const analysis = await launcher.inspectAnalysis(); if (analysis.uri === state.projectUri) project = analysis; }
-        catch { panel.dispose(); return; }
-      }
-      if (!project) { panel.dispose(); return; }
-      await opening.get(project.uri);
-      if (workspaces.has(project.uri)) { panel.dispose(); return; }
-      const created = createWorkspace(project, panel); opening.set(project.uri, created);
-      try { await created; } finally { opening.delete(project.uri); }
-    } }),
+    vscode.window.registerWebviewPanelSerializer('studio.project', projectSerializer),
+    vscode.window.registerWebviewPanelSerializer('studio.projectTool', projectSerializer),
     register('studio.openProjectConfigurations', async (projectDir: string) => {
       if (!vscode.workspace.isTrusted) throw new Error(t('Trust the current workspace first.'));
       const uri = vscode.Uri.file(projectDir).toString();
@@ -452,7 +467,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         const inspected=await launcher.inspect([projectDir]);
         const candidate=inspected.projects.find(project=>project.folderPath===projectDir);
         if(!candidate)throw new Error(t('Studio Control requires a Workflow project directory.'));
-        project={...candidate,uri};configurationProjects.set(uri,project);
+        project={...candidate,uri};externalProjects.set(uri,project);
       }
       await openProject(project);
       const entry = workspaces.get(project.uri);
@@ -465,9 +480,16 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       return {opened:true};
     }),
     register('studio.openProject', (target?: Project, viewColumn?: vscode.ViewColumn) => openProject(target, viewColumn)), register('studio.refreshProjectView', refresh),
+    register('studio.openProjectInTab', async (target?: string) => {
+      if (!vscode.workspace.isTrusted) { throw new Error(t('Trust the current workspace first.')); }
+      const uri = await chooseProjectTab([...provider.projects, ...externalProjects.values()], target);
+      if (!uri || disposed) { return; }
+      const project = await resolveProjectTab(uri);
+      if (!disposed) { await openProject(project, undefined, undefined, true); }
+    }),
     vscode.commands.registerCommand('studio.internalCancelSteamPreparation', () => steamPreparation?.abort()),
     vscode.commands.registerCommand('studio.internalPrepareSteamProject', async (projectUri?: string) => {
-      const project = projectUri ? provider.projects.find(project => project.uri === projectUri) ?? configurationProjects.get(projectUri) : currentProject();
+      const project = projectUri ? provider.projects.find(project => project.uri === projectUri) ?? externalProjects.get(projectUri) : currentProject();
       if (!project || !projectAvailable(project)) { return false; }
       steamPreparation?.abort();
       const controller = new AbortController();
@@ -501,7 +523,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       await openProject(await launcher.inspectAnalysis());
     }),
     register('studio.openProjectSource', async (target?: Project) => {
-      const selected = target?.uri ? provider.projects.find(entry => entry.uri === target.uri) ?? configurationProjects.get(target.uri) : currentProject();
+      const selected = target?.uri ? provider.projects.find(entry => entry.uri === target.uri) ?? externalProjects.get(target.uri) : currentProject();
       if (selected) { await vscode.window.showTextDocument(vscode.Uri.joinPath(vscode.Uri.parse(selected.uri), 'package.json')); }
     }),
     register('studio.openProjectDemo', () => openProject(provider.projects.find(entry => entry.id === 'b20a7d1d-b6f5-4b0c-8589-265d56fc879a') ?? currentProject())),

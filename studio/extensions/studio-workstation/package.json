@@ -10,7 +10,7 @@
   "main": "./dist/extension.js",
   "browser": "./dist/extension-web.js",
   "l10n": "./l10n",
-  "activationEvents": ["onStartupFinished", "onWebviewPanel:studio.project", "onCommand:studio.internalStartPageVisibility"],
+  "activationEvents": ["onStartupFinished", "onWebviewPanel:studio.project", "onWebviewPanel:studio.projectTool", "onCommand:studio.internalStartPageVisibility"],
   "extensionKind": ["workspace"],
   "capabilities": {
     "untrustedWorkspaces": { "supported": true },
@@ -79,6 +79,7 @@
       { "command": "studio.removeRecentProject", "title": "%command.removeRecentProject%", "category": "Studio", "icon": "$(close)" },
       { "command": "studio.clearRecentProjects", "title": "%command.clearRecentProjects%", "category": "Studio", "icon": "$(clear-all)" },
       { "command": "studio.openProject", "title": "%command.openProject%", "category": "Project", "icon": "$(play)" },
+      { "command": "studio.openProjectInTab", "title": "%command.openProjectInTab%", "category": "Project", "icon": "$(folder-opened)" },
       { "command": "studio.uploadProject", "title": "%command.uploadProject%", "category": "Project", "icon": "$(cloud-upload)" },
       { "command": "studio.upgradeProject", "title": "%command.upgradeProject%", "category": "Project", "icon": "$(arrow-circle-up)" },
       { "command": "studio.downloadProject", "title": "%command.downloadProject%", "category": "Project", "icon": "$(cloud-download)" },
