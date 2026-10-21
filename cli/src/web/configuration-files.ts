@@ -1,4 +1,4 @@
-import { CONFIGURATION_FILE_MAX_BYTES, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationField } from '@steamharness/project-configuration';
+import { CONFIGURATION_FILE_MAX_BYTES, parseConfigurationFile, validateConfigurationFileSelection, configurationSnapshot, type ProjectConfigurationState, type ProjectConfigurationField } from '@steamharness/project-configuration';
 import type { WebConnection } from './runtime';
 
 /** Configuration files always use project-scoped Server storage, independent of run history. */
@@ -22,4 +22,31 @@ export async function uploadConfigurationFile(projectId: string, field: ProjectC
   if (reference.projectId !== projectId || reference.size !== bytes.length) throw new Error('Invalid server file reference.');
   validateConfigurationFileSelection(field, reference);
   return reference;
+}
+
+/** Read configuration attachments through their narrow account/version permission, not project data access. */
+export async function readConfigurationFile(projectId: string, state: ProjectConfigurationState, fileId: string, connection: WebConnection | undefined, options: { target?: string; signal?: AbortSignal } = {}) {
+  let reference;
+  for (const profile of state.configurations) for (const field of state.fields.filter(field => field.type === 'file')) {
+    const value = configurationSnapshot(state, profile.id, false).values[field.name];
+    const refs = value === undefined ? [] : (field.multiple && Array.isArray(value) ? value : [value]).map(parseConfigurationFile);
+    reference ??= refs.find(ref => ref.id === fileId);
+  }
+  if (!reference) return;
+  const unavailable = (cause?: unknown) => Object.assign(new Error('Configuration file is unavailable.', { cause }), { code: 'KANBAN_FILE_UNAVAILABLE' });
+  if (!connection) throw unavailable();
+  const target = options.target ?? 'draft';
+  try {
+    const response = await fetch(`${connection.serverUrl}/api/projects/${encodeURIComponent(projectId)}/configurations/files/${encodeURIComponent(fileId)}?target=${encodeURIComponent(target)}`, {
+      headers: { Authorization: `Bearer ${connection.accessToken}` }, redirect: 'error',
+      signal: options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(120_000)]) : AbortSignal.timeout(120_000),
+    });
+    // A project-managed file can predate the attachment API. Let the caller try
+    // its authenticated project bridge; permission and server failures must stop here.
+    if (response.status === 404) return;
+    if (!response.ok) throw unavailable();
+    const data = Buffer.from(await response.arrayBuffer());
+    if (data.length !== reference.size) throw unavailable();
+    return { file: reference, base64: data.toString('base64') };
+  } catch (error) { throw unavailable(error); }
 }

@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Fixed] Read configured Kanban basemaps through the authenticated project file bridge when the attachment endpoint returns 404. Preserve original image bytes, report file errors for permission or transfer failures, and cancel reads when the host closes or authentication changes.
+
 - [Fixed] Allow stopping the current task during event-stream interruptions, bypass ordinary mutation queues for stop and cancel controls, and show pending, confirmed and failed stop feedback. Manual reconnect shows immediate progress and failure feedback and releases obsolete requests without replaying business operations.
 
 - [Fixed] Remove the 2 MiB limit from file resource cards. Load original image bytes through scoped asset URLs and fit images to the preview; preserve full text and Markdown content.

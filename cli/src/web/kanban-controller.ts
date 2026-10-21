@@ -1,3 +1,4 @@
+import { readConfigurationFile } from './configuration-files';
 import { createLocalProjectConfigurationStore } from 'steamharness';
 import { configurationSnapshot, type ProjectConfigurationState } from '@steamharness/project-configuration';
 import { t } from './localization';
@@ -120,10 +121,14 @@ export class KanbanController {
       if (!connection) { throw Object.assign(new Error('SteamHarness Server login is required.'), { code: call.operation.startsWith('files.') ? 'KANBAN_FILE_UNAVAILABLE' : 'KANBAN_BRIDGE_UNAVAILABLE' }); }
       const abort = new AbortController(); this.requests.add(abort);
       try {
-        const response = await fetch(`${connection.serverUrl}/api/projects/${encodeURIComponent(this.project.id)}/kanban/bridge`, { method: 'POST', headers: { Authorization: `Bearer ${connection.accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ call }), redirect: 'error', signal: AbortSignal.any([abort.signal, AbortSignal.timeout(call.operation.startsWith('files.') ? 120_000 : 15_000)]) });
-        const value = await response.json();
-        if (!response.ok || value.errCode !== 0) { throw Object.assign(new Error('Kanban Server operation failed.'), { code: call.operation.startsWith('files.') ? 'KANBAN_FILE_UNAVAILABLE' : 'KANBAN_DATA_OPERATION_FAILED' }); }
-        result = value.data ?? null;
+        const file = call.operation === 'files.readFile' ? await readConfigurationFile(this.project.id, this.workspace, String(call.input.fileId), connection, { signal: abort.signal }) : undefined;
+        if (file) { result = file; }
+        else {
+          const response = await fetch(`${connection.serverUrl}/api/projects/${encodeURIComponent(this.project.id)}/kanban/bridge`, { method: 'POST', headers: { Authorization: `Bearer ${connection.accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ call }), redirect: 'error', signal: AbortSignal.any([abort.signal, AbortSignal.timeout(call.operation.startsWith('files.') ? 120_000 : 15_000)]) });
+          const value = await response.json();
+          if (!response.ok || value.errCode !== 0) { throw Object.assign(new Error('Kanban Server operation failed.'), { code: call.operation.startsWith('files.') ? 'KANBAN_FILE_UNAVAILABLE' : 'KANBAN_DATA_OPERATION_FAILED' }); }
+          result = value.data ?? null;
+        }
       } finally { this.requests.delete(abort); }
     } else {
       if (!this.runtime.kanbanBridge) { throw new Error('Project Core does not support Kanban data.'); }

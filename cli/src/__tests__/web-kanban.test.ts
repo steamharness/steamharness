@@ -253,4 +253,79 @@ describe('Kanban CLI Web workspace', () => {
     expect(remote).toHaveBeenCalledWith(expect.stringContaining(`/api/projects/${id}/kanban/bridge`), expect.objectContaining({ redirect: 'error' }));
     await app.setHostConnection(undefined); expect((await bridge('kv.getValue', { key: 'board' })).ok).toBe(false);
   });
+
+  it('reads a configured basemap larger than 2 MiB through the project bridge when attachments return 404', async () => {
+    const { app, directory, post, action, bridge, runtime } = await fixture({ server: true, noParams: true });
+    await writeFile(path.join(directory, 'configuration.json'), JSON.stringify({ version: 1, fields: [{ name: 'image', type: 'file' }] }));
+    await post({ type: 'kanban-refresh' });
+    const bytes = Buffer.alloc(3 * 1024 * 1024 + 13, 137);
+    const file = { id: 'wf_ab12', name: 'basemap.png', mimeType: 'image/png', size: bytes.length, storage: 'server', projectId: id };
+    expect((await action('save', { values: { image: file } })).ok).toBe(true);
+    const original = fetch, routes: string[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation((url, options) => {
+      if (!String(url).startsWith('https://basemap.test')) return original(url, options);
+      expect(options?.headers).toMatchObject({ Authorization: 'Bearer basemap-token' });
+      const route = new URL(String(url)).pathname;
+      if (route.endsWith('/api/auth/me')) return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'user', email: 'user@example.com', displayName: 'User' } } })));
+      if (route.endsWith('/related-project-revisions')) return Promise.resolve(new Response('', { status: 404 }));
+      routes.push(route);
+      if (route.includes('/configurations/files/')) return Promise.resolve(new Response(JSON.stringify({ errCode: 404, errMessage: 'API route not found.' }), { status: 404 }));
+      expect(JSON.parse(options!.body as string).call).toMatchObject({ operation: 'files.readFile', input: { fileId: file.id } });
+      return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { file, base64: bytes.toString('base64') } })));
+    });
+    await app.setHostConnection({ serverUrl: 'https://basemap.test', accessToken: 'basemap-token' });
+    const reply = await bridge('files.readFile', { fileId: file.id });
+    expect(reply.ok).toBe(true);
+    expect(reply.value.file).toEqual(file);
+    expect(Buffer.from(reply.value.base64, 'base64').equals(bytes)).toBe(true);
+    expect(routes).toEqual([`/api/projects/${id}/configurations/files/${file.id}`, `/api/projects/${id}/kanban/bridge`]);
+    expect(runtime.kanbanBridge).not.toHaveBeenCalled();
+  });
+
+  it.each([403, 500])('does not retry configuration attachment HTTP %s errors through another file route', async status => {
+    const { app, directory, post, action, bridge, runtime } = await fixture({ server: true, noParams: true });
+    await writeFile(path.join(directory, 'configuration.json'), JSON.stringify({ version: 1, fields: [{ name: 'image', type: 'file' }] }));
+    await post({ type: 'kanban-refresh' });
+    const file = { id: 'wf_ab12', name: 'basemap.png', mimeType: 'image/png', size: 3, storage: 'server', projectId: id };
+    await action('save', { values: { image: file } });
+    const original = fetch, requests = vi.fn();
+    vi.spyOn(globalThis, 'fetch').mockImplementation((url, options) => {
+      if (!String(url).startsWith('https://basemap.test')) return original(url, options);
+      if (String(url).endsWith('/api/auth/me')) return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'user', email: 'user@example.com', displayName: 'User' } } })));
+      if (String(url).includes('/related-project-revisions')) return Promise.resolve(new Response('', { status: 404 }));
+      requests(url);
+      return Promise.resolve(new Response('private server detail', { status }));
+    });
+    await app.setHostConnection({ serverUrl: 'https://basemap.test', accessToken: 'basemap-token' });
+    expect(await bridge('files.readFile', { fileId: file.id })).toMatchObject({ ok: false, error: { code: 'KANBAN_FILE_UNAVAILABLE', message: 'Kanban file is unavailable in this project.' } });
+    expect(requests).toHaveBeenCalledOnce();
+    expect(String(requests.mock.calls[0]![0])).toContain('/configurations/files/');
+    expect(runtime.kanbanBridge).not.toHaveBeenCalled();
+  });
+
+  it.each(['close', 'authenticationChanged'] as const)('cancels a configured image read on %s and rejects late bytes', async operation => {
+    const { app, directory, post, action } = await fixture({ server: true, noParams: true });
+    await writeFile(path.join(directory, 'configuration.json'), JSON.stringify({ version: 1, fields: [{ name: 'image', type: 'file' }] }));
+    await post({ type: 'kanban-refresh' });
+    const file = { id: 'wf_ab12', name: 'basemap.png', mimeType: 'image/png', size: 3, storage: 'server', projectId: id };
+    await action('save', { values: { image: file } });
+    const original = fetch;
+    let complete: ((response: Response) => void) | undefined, signal: AbortSignal | undefined;
+    vi.spyOn(globalThis, 'fetch').mockImplementation((url, options) => {
+      if (!String(url).startsWith('https://basemap.test')) return original(url, options);
+      if (String(url).endsWith('/api/auth/me')) return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'user', email: 'user@example.com', displayName: 'User' } } })));
+      if (String(url).includes('/related-project-revisions')) return Promise.resolve(new Response('', { status: 404 }));
+      signal = options!.signal as AbortSignal;
+      return new Promise<Response>(resolve => { complete = resolve; });
+    });
+    await app.setHostConnection({ serverUrl: 'https://basemap.test', accessToken: 'basemap-token' });
+    const controller = app.kanbanController!;
+    const reading = controller.bridge({ requestId: 'image', operation: 'files.readFile', input: { fileId: file.id } });
+    const rejected = expect(reading).rejects.toMatchObject({ code: 'KANBAN_BRIDGE_SESSION_INVALID' });
+    await vi.waitFor(() => expect(complete).toBeTypeOf('function'));
+    await controller[operation]();
+    expect(signal!.aborted).toBe(true);
+    complete!(new Response('png'));
+    await rejected;
+  });
 });
