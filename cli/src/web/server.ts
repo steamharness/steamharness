@@ -380,7 +380,7 @@ export async function startWebServer(options: WebOptions) {
         if (message.agentOwner !== undefined && current.agent?.ownerId !== message.agentOwner) throw new Error(t('Task state changed. Refresh the trace and try again.'));
         const receipt = await controller.agentCommand(current.id, message.command);
         const fork = receipt.forkId === undefined ? undefined : controller.sessions.find(entry => entry.agentOwnerId === (current.agentOwnerId ?? current.id) && entry.agentConversationId === receipt.forkId);
-        replies.push(state(message.clientId), { type: 'agent-receipt', receipt, sessionId: current.id, forkSessionId: fork?.id });
+        replies.push(state(message.clientId), { type: 'agent-receipt', receipt, projectUri: project.uri, sessionId: current.id, requestId: message.command.requestId, forkSessionId: fork?.id });
         break;
       }
       case 'agent-open': {
@@ -457,7 +457,12 @@ export async function startWebServer(options: WebOptions) {
         await controller.send({ text, params, states, entrypointId, attachments }, current, !!command || message.preserveDraft === true, message.requestId, message.mode, message.editingQueueId);
         replies.push(state(message.clientId), { type: command ? 'command-executed' : 'sent', ...(command ? { command: command.command } : {}), projectUri: project.uri, sessionId: current.id, requestId: message.requestId }); break;
       }
-      case 'stop': await controller.stop(current); break;
+      case 'stop': {
+        if (message.runId !== undefined && current.activeRunId !== message.runId) throw new Error(t('Task state changed. Refresh the trace and try again.'));
+        await controller.stop(current);
+        replies.push(state(message.clientId), { type: 'stopped', projectUri: project.uri, sessionId: current.id, requestId: message.requestId });
+        break;
+      }
       case 'new':
         await controller.updateDraft(current.id, String(message.text ?? ''), await readAttachments(message.attachments ?? [], current.id)); await controller.create();
         if (message.clientId) rememberSelection(message.clientId, controller.activeId);
@@ -589,7 +594,8 @@ export async function startWebServer(options: WebOptions) {
           const message = await readBody(request);
           let messages: Message[] = [];
           const operation = () => handleMessage(message).then(value => { messages = value; });
-          const concurrent = ['navigate', 'resolve', 'ready', 'usage', 'resource', 'resource-data', 'resource-refresh', 'resource-select', 'resource-bridge', 'kanban-bridge', 'kanban-method-state', 'kanban-method-reply', 'kanban-methods'].includes(message.type);
+          const concurrent = ['stop', 'workflow-stop', 'navigate', 'resolve', 'ready', 'usage', 'resource', 'resource-data', 'resource-refresh', 'resource-select', 'resource-bridge', 'kanban-bridge', 'kanban-method-state', 'kanban-method-reply', 'kanban-methods'].includes(message.type)
+            || message.type === 'agent-command' && message.command?.type === 'cancel';
           const task = concurrent ? operation() : mutations.catch(() => undefined).then(operation);
           if (!concurrent) { mutations = task; }
           await task; json(response, 200, { messages: messages.map(message => message.type === 'state' || message.type === 'project-configuration-result' || message.type === 'project-configuration-upload-result' ? message : redactProjectData(message, [...sensitiveTokens], false)) }); return;

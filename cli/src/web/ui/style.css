@@ -70,6 +70,7 @@ h1 { font-size: 14px; font-weight: 500; margin: 0; min-width: 0; overflow: hidde
 #all-session-list { overflow: auto; min-height: 0; padding: 6px 8px 10px; }
 .parameter-feedback { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .parameter-status { display: flex; gap: 6px; align-items: center; padding-bottom: 8px; color: var(--muted); font-size: 11px; }
+.stop-feedback { padding-bottom: 8px; color: var(--muted); font-size: 12px; }
 .parameter-status .codicon, .refreshing .codicon, .pending .codicon, .send-button > .codicon-loading { animation: spin 1.2s linear infinite; }
 .parameter-error { flex: 1 1 220px; min-width: 0; font-size: 13px; line-height: 1.6; margin-bottom: 8px; color: var(--vscode-errorForeground); overflow-wrap: anywhere; }
 .no-history { padding: 16px 18px; color: var(--muted); font-size: 12px; }

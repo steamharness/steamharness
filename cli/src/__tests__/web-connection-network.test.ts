@@ -14,12 +14,29 @@ it('recovers automatic and manual connections over real HTTP/SSE without replayi
     const listeners = new Map();
     const messages = [];
     let available = false, heartbeat = true, sessions = 0, connections = 0, commands = 0, version = 1;
+    let eventsAvailable = true, stalled = false, obsoleteClosed = false;
     const server = createServer((request, response) => {
       const url = new URL(request.url, 'http://localhost');
-      if (url.pathname === '/api/message') commands++;
+      if (url.pathname === '/api/message') {
+        commands++;
+        let body = '';
+        request.on('data', chunk => { body += chunk; });
+        request.on('end', () => {
+          const message = JSON.parse(body);
+          if (message.type === 'send') {
+            stalled = true;
+            response.on('close', () => { obsoleteClosed = true; });
+            response.writeHead(200, { 'Content-Type': 'application/json' }); response.flushHeaders(); return;
+          }
+          assert.equal(message.type, 'stop'); assert.equal(message.sessionId, 'original');
+          response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ messages: [{ type: 'stopped', sessionId: message.sessionId }] }));
+        });
+        return;
+      }
       if (url.pathname === '/api/session') sessions++;
       if (!available) { response.writeHead(503).end(); return; }
       if (url.pathname === '/api/events') {
+        if (!eventsAvailable) { response.writeHead(503).end(); return; }
         connections++; streams.add(response);
         response.writeHead(200, { 'Content-Type': 'text/event-stream' });
         response.write('data: ' + JSON.stringify({ type: 'state', version, running: false, queuedInputs: [{ id: 'existing' }] }) + '\\n\\n');
@@ -77,6 +94,19 @@ it('recovers automatic and manual connections over real HTTP/SSE without replayi
         await waitFor(() => connections > beforeSilence && messages.some(message => message.type === 'state' && message.version === 3));
         assert.equal(commands, 0, 'Reconnecting must not replay a model or tool command');
         assert(messages.filter(message => message.type === 'state').every(message => message.queuedInputs[0].id === 'existing'));
+
+        const obsolete = connection.request({ type: 'send', sessionId: 'original', requestId: 'input' }).then(() => { throw new Error('Obsolete response was accepted'); }, error => error.message);
+        await waitFor(() => stalled);
+        await connection.reconnect();
+        assert.match(await obsolete, /Connection interrupted|Connection changed/);
+        await waitFor(() => obsoleteClosed);
+        eventsAvailable = false;
+        for (const stream of streams) stream.destroy();
+        await waitFor(() => messages.at(-1)?.status === 'reconnecting');
+        assert.deepEqual(await connection.request({ type: 'stop', sessionId: 'original' }), [{ type: 'stopped', sessionId: 'original' }]);
+        eventsAvailable = true;
+        await waitFor(() => messages.at(-1)?.status === 'connected');
+        assert.equal(commands, 2, 'Recovery must release stale requests and issue a stop only once');
         console.log('HTTP/SSE automatic recovery, manual Retry, heartbeat recovery, and command isolation passed');
       } finally {
         listeners.get('pagehide')?.();

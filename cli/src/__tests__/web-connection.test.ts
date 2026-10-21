@@ -182,6 +182,69 @@ it('manual Retry cancels a pending attempt and reads a new snapshot immediately'
   expect([...fixture.timers.values()].map(timer => timer.delay)).toEqual([45_000]);
 });
 
+it('releases obsolete HTTP requests on Retry without replaying them or interrupting a pending stop', async () => {
+  const fixture = await connectionFixture(200);
+  fixture.listeners.get('online')!(); await vi.waitFor(() => expect(fixture.source()).toBeDefined()); fixture.open();
+  let oldSignal!: AbortSignal, stopSignal!: AbortSignal, finishOld!: (response: Response) => void, finishStop!: (response: Response) => void;
+  fixture.fetcher.mockImplementationOnce((_url, options) => { oldSignal = options.signal; return new Promise(resolve => { finishOld = resolve; }); });
+  const old = expect(fixture.connection.request({ type: 'resource-data' })).rejects.toThrow('Connection changed.');
+  fixture.fetcher.mockImplementationOnce((_url, options) => { stopSignal = options.signal; return new Promise(resolve => { finishStop = resolve; }); });
+  const stopping = fixture.connection.request({ type: 'agent-command', command: { type: 'cancel', requestId: 'stop' }, sessionId: 'original' });
+  const previous = fixture.source();
+  const reconnecting = fixture.connection.reconnect();
+  expect(oldSignal.aborted).toBe(true); expect(stopSignal.aborted).toBe(false);
+  await vi.waitFor(() => expect(fixture.source()).not.toBe(previous)); fixture.open(); await reconnecting;
+  finishOld(new Response(JSON.stringify({ messages: [{ type: 'state', stale: true }] }))); await old;
+  finishStop(new Response(JSON.stringify({ messages: [{ type: 'stopped', sessionId: 'original' }] })));
+  expect(await stopping).toEqual([{ type: 'stopped', sessionId: 'original' }]);
+  expect(fixture.updates.at(-1)).toBe('connected');
+  expect(fixture.fetcher.mock.calls.filter(([url]) => url === '/api/message')).toHaveLength(2);
+});
+
+it('aborts a departed page during response-body reads, including cancellation requests', async () => {
+  const fixture = await connectionFixture(200);
+  let signal!: AbortSignal, finish!: (reply: object) => void;
+  fixture.fetcher.mockReset().mockImplementationOnce(async (_url, options) => {
+    signal = options.signal;
+    return { ok: true, status: 200, json: () => new Promise(resolve => { finish = resolve; }) };
+  });
+  const result = expect(fixture.connection.request({ type: 'stop' })).rejects.toThrow('Connection changed.');
+  await vi.waitFor(() => expect(finish).toBeDefined()); fixture.listeners.get('pagehide')!();
+  expect(signal.aborted).toBe(true);
+  finish({ messages: [{ type: 'state' }] }); await result;
+  expect(fixture.source()).toBeUndefined();
+});
+
+it('reports a failed manual attempt and resets the feedback on a successful retry', async () => {
+  const fixture = await connectionFixture(503);
+  await fixture.connection.reconnect();
+  expect(fixture.messages.at(-1)).toMatchObject({ status: 'reconnecting', manual: false, retryFailed: true });
+  const reconnect = fixture.connection.reconnect();
+  expect(fixture.messages.at(-1)).toMatchObject({ manual: true, retryFailed: false });
+  await vi.waitFor(() => expect(fixture.source()).toBeDefined()); fixture.fire(10_000);
+  expect(fixture.messages.at(-1)).toMatchObject({ manual: false, retryFailed: true });
+  await reconnect;
+  const previous = fixture.source();
+  const retry = fixture.connection.reconnect();
+  await vi.waitFor(() => expect(fixture.source()).not.toBe(previous)); fixture.open(); await retry;
+  expect(fixture.messages.at(-1)).toMatchObject({ status: 'connected', manual: false, retryFailed: false });
+});
+
+it.each(['stop', 'cancel'])('bounds a stalled %s control even while the event stream is unavailable', async type => {
+  const fixture = await connectionFixture(200);
+  const controller = new AbortController();
+  const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValueOnce(controller.signal);
+  try {
+    fixture.fetcher.mockImplementationOnce((_url, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(new Error('Timed out')), { once: true });
+    }));
+    const pending = expect(fixture.connection.request(type === 'stop' ? { type } : { type: 'agent-command', command: { type: 'cancel' } })).rejects.toThrow('Connection interrupted.');
+    expect(timeout).toHaveBeenCalledWith(35_000);
+    controller.abort(); await pending;
+    expect(fixture.updates.at(-1)).toBe('reconnecting');
+  } finally { timeout.mockRestore(); }
+});
+
 it('keeps retrying a temporary outage with bounded backoff and reconnects when the service recovers', async () => {
   const fixture = await connectionFixture(503);
   fixture.fetcher.mockResolvedValue(new Response(null, { status: 503 }));

@@ -85,6 +85,10 @@ function initialize(): void {
   let connectionAvailable = true;
   let connectionStatus: ConnectionState = 'connected';
   let manualReconnect = false;
+  let reconnectFailed = false;
+  interface StopRequest { projectUri: string; sessionId: string; requestId: string; runId?: string; agentOwner?: string; phase: 'pending' | 'accepted' | 'failed'; error?: string; timer?: ReturnType<typeof setTimeout> }
+  const stopRequests = new Map<string, StopRequest>();
+  window.addEventListener('pagehide', () => { for (const request of stopRequests.values()) { clearTimeout(request.timer); } stopRequests.clear(); });
   let preferredSessionId: string | undefined;
   let serverSessionId: string | undefined;
   let navigationNeeded = false;
@@ -166,6 +170,8 @@ function initialize(): void {
   const navigationReady = (): boolean => !!state && !navigationNeeded && !navigationRequest && !localSessions.has(state.activeId) && state.activeId === serverSessionId;
   const emptyConnection = connectionFeedback();
   transcript.append(emptyConnection);
+  const stopFeedback = document.createElement('div'); stopFeedback.id = 'stop-feedback'; stopFeedback.hidden = true;
+  document.querySelector('.composer-area')!.prepend(stopFeedback);
   const parameterActions = new ParameterActions(document.querySelector('#parameter-actions')!, {
     current: () => ({ values: values(), states: paramStates, disabled: busy(), loading: resolving }),
     fieldRoot: (name) => fields.get(name)!.root,
@@ -421,11 +427,18 @@ function initialize(): void {
     parameterActions.update();
     conversationComposer.update();
     const hasInput = !!textarea.value.trim() || draftFiles.length > 0;
-    const stop = state.running && (!canQueue() || !hasInput);
-    updateIcon(sendButton, stop ? 'debug-stop' : submitting || pendingSend() || uploading ? 'loading' : conversation ? 'arrow-up' : 'play');
-    sendButton.title = sendButton.ariaLabel = stop ? t("Stop") : editingQueueId ? t("Save queued message") : conversation ? t("Send") : t("Run");
+    const stopping = stopRequests.get(`${state.project.uri}:${state.activeId}`);
+    const pendingStop = stopping?.phase === 'pending';
+    const stop = state.running && (!connectionAvailable || !canQueue() || !hasInput);
+    updateIcon(sendButton, pendingStop ? 'loading' : stop ? 'debug-stop' : submitting || pendingSend() || uploading ? 'loading' : conversation ? 'arrow-up' : 'play');
+    sendButton.title = sendButton.ariaLabel = pendingStop ? t("Stopping...") : stop ? t("Stop") : editingQueueId ? t("Save queued message") : conversation ? t("Send") : t("Run");
+    sendButton.setAttribute('aria-busy', String(pendingStop));
     sendButton.classList.toggle('stop', stop);
-    sendButton.disabled = !connectionAvailable || !conversation && !navigationReady() || !stop && (submitting || pendingSend() || !conversation && resolving || uploading > 0 || conversation && !hasInput);
+    sendButton.disabled = pendingStop || !stop && (!connectionAvailable || !conversation && !navigationReady() || submitting || pendingSend() || !conversation && resolving || uploading > 0 || conversation && !hasInput);
+    stopFeedback.hidden = !stopping;
+    stopFeedback.className = stopping?.phase === 'failed' ? 'error' : 'stop-feedback';
+    stopFeedback.setAttribute('role', stopping?.phase === 'failed' ? 'alert' : 'status');
+    stopFeedback.textContent = pendingStop ? t("Stopping...") : stopping?.phase === 'accepted' ? t("Stop request accepted.") : stopping?.error ?? '';
     textarea.disabled = busy() && !pendingSend();
     entrypoint.disabled = busy() || resolving;
     document.querySelector<HTMLButtonElement>('#new')!.disabled = false;
@@ -676,7 +689,14 @@ function initialize(): void {
   function connectionFeedback(): HTMLDivElement {
     const root = document.createElement('div'); root.className = 'message-connection'; root.hidden = true;
     const label = document.createElement('span'); label.className = 'message-connection-status'; label.setAttribute('role', 'status');
-    const retry = iconButton('refresh', t("Retry"), () => vscode.postMessage({ type: 'reconnect' }));
+    const retry = iconButton('refresh', t("Retry"), async () => {
+      if (manualReconnect) { return; }
+      manualReconnect = true; reconnectFailed = false; updateConnectionFeedback();
+      try { await vscode.postMessage({ type: 'reconnect' }); }
+      catch {
+        manualReconnect = false; reconnectFailed = true; updateConnectionFeedback();
+      }
+    });
     retry.classList.add('connection-retry');
     const title = document.createElement('span'); title.textContent = t("Retry"); retry.append(title);
     root.append(label, retry);
@@ -687,13 +707,17 @@ function initialize(): void {
     const target = [...(currentSession()?.messages ?? [])].reverse().find(message => message.role === 'assistant');
     const interrupted = connectionStatus !== 'connected';
     const label = connectionStatus === 'connecting' ? t("Connecting to project") : connectionStatus === 'expired' ? `${t("Project connection expired")}. ${t("Reopen using the project's run URL.")}`
-      : connectionStatus === 'offline' ? `${t("Connection interrupted")}. ${t("Reconnection will start when the network is available.")}` : `${t("Connection interrupted")} \u00b7 ${t("Reconnecting...")}`;
+      : connectionStatus === 'offline' ? `${t("Connection interrupted")}. ${t("Reconnection will start when the network is available.")}`
+        : reconnectFailed ? t("Reconnection failed. Retrying automatically; you can retry now.") : `${t("Connection interrupted")} \u00b7 ${t("Reconnecting...")}`;
     const update = (root: HTMLDivElement, visible: boolean) => {
       root.hidden = !interrupted || !visible;
       root.querySelector('.message-connection-status')!.textContent = label;
       const retry = root.querySelector<HTMLButtonElement>('button')!;
       retry.disabled = manualReconnect || connectionStatus === 'offline' || connectionStatus === 'expired';
       retry.classList.toggle('refreshing', manualReconnect);
+      retry.setAttribute('aria-busy', String(manualReconnect));
+      retry.title = retry.ariaLabel = manualReconnect ? t("Reconnecting...") : t("Retry");
+      retry.querySelector('span:last-child')!.textContent = retry.title;
     };
     update(emptyConnection, !target);
     for (const view of messages.values()) {
@@ -884,6 +908,14 @@ function initialize(): void {
     if (fromServer) submissions.retain(next.project.uri, new Set(next.sessions.map(session => session.id)));
     next = { ...next, sessions: next.sessions.map(session => submissions.project(next.project.uri, session, fromServer)) };
     state = next;
+    for (const [key, request] of stopRequests) {
+      const target = next.sessions.find(session => session.id === request.sessionId);
+      const replaced = request.agentOwner ? target?.agent?.ownerId !== request.agentOwner
+        : !!target?.activeRunId && target.activeRunId !== request.runId;
+      if (request.projectUri !== next.project.uri || !target || replaced) {
+        clearTimeout(request.timer); stopRequests.delete(key);
+      }
+    }
     updateProjectAvatar(document.querySelector<HTMLElement>('#project-info')!, next.project);
     if (submissionCount !== submissions.list().length) persist();
     const session = next.sessions.find((entry) => entry.id === next.activeId);
@@ -1010,14 +1042,12 @@ function initialize(): void {
   }
 
   function send(): void {
-    if (!state || !connectionAvailable || state.project.projectType !== 'conversation' && !navigationReady()) { return; }
-    if (conversationComposer.submitCommand()) { return; }
+    if (!state) { return; }
+    if (stopRequests.get(`${state.project.uri}:${state.activeId}`)?.phase === 'pending') { return; }
     const hasInput = !!textarea.value.trim() || draftFiles.length > 0;
-    if (state.running && (!canQueue() || !hasInput)) {
-      if (state.project.conversation?.durable?.enabled) post({ type: 'agent-command', command: { type: 'cancel', scope: 'foreground', requestId: crypto.randomUUID() } });
-      else post({ type: 'stop' });
-      return;
-    }
+    if (state.running && (!connectionAvailable || !canQueue() || !hasInput)) { void stopCurrent(); return; }
+    if (!connectionAvailable || state.project.projectType !== 'conversation' && !navigationReady()) { return; }
+    if (conversationComposer.submitCommand()) { return; }
     if (busy() || state.project.projectType !== 'conversation' && resolving || uploading || state.project.projectType === 'conversation' && !hasInput) { return; }
     for (const [name, view] of fields) {
       if (view.root.hidden || paramStates[name]?.disabled) { continue; }
@@ -1032,6 +1062,7 @@ function initialize(): void {
       }
     }
     document.querySelector<HTMLElement>('#error')!.hidden = true;
+    stopRequests.delete(`${state.project.uri}:${state.activeId}`);
     if (state.project.projectType === 'conversation') {
       const session = currentSession()!;
       const input = { id: crypto.randomUUID(), text: textarea.value, params: structuredClone(values()), entrypointId: entrypoint.value,
@@ -1048,6 +1079,36 @@ function initialize(): void {
     submitting = true;
     updateControls();
     clearTimeout(draftTimer); post({ type: 'send', requestId: crypto.randomUUID(), mode: 'followUp', text: textarea.value, params: values(), entrypointId: entrypoint.value, attachments: draftFiles });
+  }
+
+  function finishStop(message: Record<string, any>): boolean {
+    const id = message.requestId ?? message.receipt?.requestId;
+    const request = [...stopRequests.values()].find(request => request.requestId === id
+      && request.sessionId === message.sessionId && (!message.projectUri || request.projectUri === message.projectUri));
+    if (!request) { return message.type === 'error' && message.errorScope === 'stop'; }
+    if (request.phase === 'accepted' || request.phase === 'failed' && message.type === 'error') { return true; }
+    clearTimeout(request.timer);
+    request.phase = message.type === 'error' ? 'failed' : 'accepted';
+    request.error = message.type === 'error' ? t("Stop was not confirmed: {0}. Retry or reconnect to check its result.", message.message) : undefined;
+    updateControls(); return true;
+  }
+
+  async function stopCurrent(): Promise<void> {
+    if (!state) { return; }
+    const key = `${state.project.uri}:${state.activeId}`;
+    const previous = stopRequests.get(key);
+    if (previous?.phase === 'pending') { return; }
+    const request: StopRequest = { projectUri: state.project.uri, sessionId: state.activeId,
+      requestId: previous?.phase === 'failed' ? previous.requestId : crypto.randomUUID(),
+      runId: currentSession()?.activeRunId, agentOwner: currentSession()?.agent?.ownerId, phase: 'pending' };
+    stopRequests.set(key, request);
+    request.timer = setTimeout(() => finishStop({ ...request, type: 'error', message: t("The server did not confirm the stop request.") }), 35_000);
+    updateControls();
+    const message = state.project.conversation?.durable?.enabled
+      ? { type: 'agent-command', agentOwner: request.agentOwner, command: { type: 'cancel', scope: 'foreground', requestId: request.requestId } }
+      : { type: 'stop', runId: request.runId };
+    try { await vscode.postMessage({ ...message, projectUri: request.projectUri, sessionId: request.sessionId, requestId: request.requestId, errorScope: 'stop' }); }
+    catch (error) { finishStop({ ...request, type: 'error', message: String((error as Error)?.message ?? error) }); }
   }
 
   textarea.addEventListener('input', () => {
@@ -1191,14 +1252,15 @@ function initialize(): void {
     const message = event.data;
     // ConversationOutput owns inline preview errors, including late replies from older cards.
     if (message.type === 'error' && message.requestType === 'resource' && message.requestId) { return; }
+    if (['stopped', 'agent-receipt', 'error'].includes(message.type) && finishStop(message)) { return; }
     if (queueView.receive(message)) return;
     if (message.type === 'connection') {
       const restored = !connectionAvailable && message.status === 'connected';
       connectionStatus = message.status;
       manualReconnect = !!message.manual;
+      reconnectFailed = !!message.retryFailed;
       connectionAvailable = message.status === 'connected';
       if (!connectionAvailable) { resolving = false; requestId++; dialogs.closeUsage(); }
-      sendButton.disabled = !connectionAvailable || sendButton.disabled;
       updateControls();
       updateConnectionFeedback(); syncTranscriptLayout();
       if (restored && state) { syncNavigation(); dispatchSubmissions(); paramsNeedInit = true; requestParams({ kind: 'init' }); }

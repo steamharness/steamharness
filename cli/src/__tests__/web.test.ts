@@ -24,10 +24,22 @@ afterEach(async () => { for (const app of services.splice(0)) { await app.close(
 
 async function accountState(app: Awaited<ReturnType<typeof startWebServer>>, cookie: string) {
   const events = await fetch(`${app.origin}/api/events`, { headers: { Cookie: cookie } });
+  return (await initialState(events)).account;
+}
+
+async function initialState(events: Response) {
   const reader = events.body!.getReader();
-  const state = JSON.parse(new TextDecoder().decode((await reader.read()).value).slice('data: '.length));
-  await reader.cancel();
-  return state.account;
+  const decoder = new TextDecoder();
+  let buffer = '';
+  try {
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) throw new Error('Event stream closed before its state snapshot.');
+      buffer += decoder.decode(chunk.value, { stream: true });
+      const end = buffer.search(/\r?\n\r?\n/);
+      if (end >= 0) return JSON.parse(buffer.slice(0, end).slice('data: '.length));
+    }
+  } finally { await reader.cancel(); }
 }
 
 async function fixture(host?: WebHostConfiguration, beforeStart?: () => Promise<void>, projectType: Project['projectType'] = 'conversation') {
@@ -137,6 +149,48 @@ describe('steamharness web', () => {
     expect(app.controller.current.draft?.text).toBe('Next draft');
   });
 
+  it.each(['stop', 'cancel'])('handles %s for the requested session while another mutation is stalled', async type => {
+    const { app, post } = await fixture();
+    const target = app.controller.current;
+    target.messages.push({ id: 'answer', role: 'assistant', content: 'Working', status: 'running' });
+    await app.controller.create();
+    expect(app.controller.current.id).not.toBe(target.id);
+    let release!: () => void;
+    const draft = vi.spyOn(app.controller, 'updateDraft').mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const stalled = post({ type: 'draft', sessionId: target.id, text: 'Saved draft', attachments: [] });
+    const stop = vi.spyOn(app.controller, 'stop').mockResolvedValue();
+    const command = vi.spyOn(app.controller, 'agentCommand').mockImplementation(async (_id, message) => ({ requestId: message.requestId, status: 'accepted', conversationId: 1 }));
+    let queued: Promise<Response> | undefined;
+    try {
+      await vi.waitFor(() => expect(draft).toHaveBeenCalledOnce());
+      queued = post({ type: 'agent-command', sessionId: target.id, command: { type: 'compact', requestId: 'compact' } });
+      const requestId = crypto.randomUUID();
+      const response = await post({ type: type === 'cancel' ? 'agent-command' : 'stop', sessionId: target.id, requestId,
+        ...(type === 'cancel' ? { command: { type: 'cancel', scope: 'foreground', requestId } } : {}) });
+      expect(response.status).toBe(200);
+      const replies = (await response.json()).messages;
+      expect(replies).toContainEqual(expect.objectContaining({ type: type === 'cancel' ? 'agent-receipt' : 'stopped', projectUri: app.project.uri, sessionId: target.id, requestId }));
+      expect(replies.some((reply: any) => reply.type === 'state')).toBe(true);
+      if (type === 'cancel') expect(command).toHaveBeenCalledWith(target.id, { type: 'cancel', scope: 'foreground', requestId });
+      else expect(stop).toHaveBeenCalledWith(target);
+      expect(command.mock.calls.some(([, message]) => message.type === 'compact')).toBe(false);
+    } finally {
+      release?.(); await stalled; await queued;
+    }
+    expect(command.mock.calls.some(([, message]) => message.type === 'compact')).toBe(true);
+  });
+
+  it('rejects a delayed stop after the session starts a different run', async () => {
+    const { app, post } = await fixture();
+    const target = app.controller.current;
+    target.activeRunId = 'new-run';
+    const stop = vi.spyOn(app.controller, 'stop').mockResolvedValue();
+    expect((await post({ type: 'stop', sessionId: target.id, runId: 'old-run' })).status).toBe(400);
+    expect(stop).not.toHaveBeenCalled();
+    expect((await post({ type: 'stop', sessionId: target.id, runId: 'new-run' })).status).toBe(200);
+    expect(stop).toHaveBeenCalledWith(target);
+  });
+
   it('keeps page selections independent and routes sends to their explicit conversations', async () => {
     const { app, cookie, post, runtime } = await fixture();
     const firstClient = crypto.randomUUID(), secondClient = crypto.randomUUID();
@@ -154,9 +208,7 @@ describe('steamharness web', () => {
     expect(vi.mocked(runtime.run).mock.calls.map(([request]) => request.conversationId)).toEqual([first, second]);
     for (const [clientId, selected] of [[firstClient, first], [secondClient, second]]) {
       const events = await fetch(`${app.origin}/api/events?clientId=${clientId}`, { headers: { Cookie: cookie } });
-      const reader = events.body!.getReader();
-      const state = JSON.parse(new TextDecoder().decode((await reader.read()).value).slice('data: '.length));
-      await reader.cancel();
+      const state = await initialState(events);
       expect(state.activeId).toBe(selected);
       expect(state.sessions.find((session: any) => session.id === first).messages[0].content).toBe('First page');
       expect(state.sessions.find((session: any) => session.id === second).messages[0].content).toBe('Second page');
@@ -226,12 +278,9 @@ describe('steamharness web', () => {
     const auth = await fetch(`${next.origin}/api/session`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
     const cookie = auth.headers.get('set-cookie')!.split(';')[0];
     const events = await fetch(`${next.origin}/api/events?clientId=${crypto.randomUUID()}`, { headers: { Cookie: cookie } });
-    const reader = events.body!.getReader();
-    try {
-      const state = JSON.parse(new TextDecoder().decode((await reader.read()).value).slice('data: '.length));
-      expect(state.activeId).toBe(sessions[2].id);
-      expect(state.sessions).toEqual(sessions);
-    } finally { await reader.cancel(); }
+    const state = await initialState(events);
+    expect(state.activeId).toBe(sessions[2].id);
+    expect(state.sessions).toEqual(sessions);
     await next.close();
     expect(JSON.parse(await readFile(historyPath, 'utf8'))).toMatchObject({ selectionVersion: 1, activeId: sessions[2].id });
     expect(runtime.run).not.toHaveBeenCalled();

@@ -13,6 +13,7 @@ export class BrowserConnection {
   private banner?: HTMLElement;
   private connecting?: Promise<void>;
   private handshake?: AbortController;
+  private readonly requests = new Map<AbortController, boolean>();
   private epoch = 0;
   private retry?: ReturnType<typeof setTimeout>;
   private connectTimer?: ReturnType<typeof setTimeout>;
@@ -22,6 +23,7 @@ export class BrowserConnection {
   private attempts = 0;
   private closed = false;
   private manual = false;
+  private retryFailed = false;
   private token = new URLSearchParams(location.hash.slice(1)).get('session') ?? new URLSearchParams(location.search).get('session') ?? sessionStorage.getItem('steamharness-web-session');
 
   constructor(private readonly emit: (message: Message) => void, private readonly live = true, showBanner = true) {
@@ -36,23 +38,27 @@ export class BrowserConnection {
       }
       void this.connect();
     });
-    addEventListener('offline', () => { this.disconnect(); this.update('offline'); });
+    addEventListener('offline', () => { this.abortRequests(true); this.disconnect(); this.update('offline'); });
     addEventListener('online', () => { void this.connect(); });
-    addEventListener('pagehide', () => { this.closed = true; this.disconnect(); });
+    addEventListener('pagehide', () => { this.closed = true; this.abortRequests(true); this.disconnect(); });
     addEventListener('pageshow', event => { if (event.persisted) { this.closed = false; void this.connect(); } });
   }
 
   private update(status: ConnectionState): void {
     this.status = status;
-    this.emit({ type: 'connection', status, manual: this.manual });
+    this.emit({ type: 'connection', status, manual: this.manual, retryFailed: this.retryFailed });
     if (!this.banner) { return; }
     this.banner.hidden = status === 'connected';
     this.banner.dataset.status = status;
     const retrying = status === 'connecting' || status === 'reconnecting';
     this.banner.querySelector('.connection-icon')!.innerHTML = iconHtml(retrying ? 'loading' : status === 'expired' ? 'warning' : 'debug-disconnect');
     this.banner.querySelector('strong')!.textContent = status === 'connecting' ? t("Connecting to project") : status === 'expired' ? t("Project connection expired") : t("Connection interrupted");
-    this.banner.querySelector('.connection-copy > span')!.textContent = status === 'reconnecting' ? t("Reconnecting...") : status === 'offline' ? t("Reconnection will start when the network is available.") : status === 'expired' ? t("Reopen using the project's run URL.") : '';
-    (this.banner.querySelector('button') as HTMLButtonElement).disabled = status === 'offline' || this.manual;
+    this.banner.querySelector('.connection-copy > span')!.textContent = status === 'offline' ? t("Reconnection will start when the network is available.") : status === 'expired' ? t("Reopen using the project's run URL.")
+      : this.retryFailed ? t("Reconnection failed. Retrying automatically; you can retry now.") : status === 'reconnecting' ? t("Reconnecting...") : '';
+    const retry = this.banner.querySelector('button')!;
+    retry.disabled = status === 'offline' || status === 'expired' || this.manual;
+    retry.setAttribute('aria-busy', String(this.manual));
+    retry.querySelector('span:last-child')!.textContent = this.manual ? t("Reconnecting...") : t("Reconnect");
   }
 
   private disconnect(): void {
@@ -67,12 +73,15 @@ export class BrowserConnection {
   }
 
   private interrupted(): void {
+    if (this.manual) { this.retryFailed = true; }
+    this.abortRequests();
     this.disconnect();
     this.update(navigator.onLine ? 'reconnecting' : 'offline');
     if (!this.closed && navigator.onLine) { this.retry = setTimeout(() => { void this.connect(); }, Math.min(2_000 * 2 ** this.attempts++, 30_000)); }
   }
 
   reconnect(): Promise<void> {
+    this.abortRequests();
     this.disconnect();
     this.attempts = 0;
     return this.connect(true);
@@ -85,6 +94,7 @@ export class BrowserConnection {
     if (!navigator.onLine) { this.update('offline'); return Promise.resolve(); }
     this.disconnect();
     this.manual = manual;
+    if (manual) { this.retryFailed = false; }
     const epoch = this.epoch, handshake = this.handshake = new AbortController();
     const active = () => epoch === this.epoch && !this.closed && navigator.onLine;
     const signal = handshake.signal;
@@ -127,7 +137,7 @@ export class BrowserConnection {
             alive(); this.emit(message);
             if (active() && message?.type === 'state' && this.status !== 'connected') {
               clearTimeout(this.connectTimer);
-              this.attempts = 0; this.manual = false; this.update('connected'); finish();
+              this.attempts = 0; this.manual = false; this.retryFailed = false; this.update('connected'); finish();
             }
           };
           source.onerror = () => { if (active()) { this.interrupted(); } finish(); };
@@ -151,7 +161,7 @@ export class BrowserConnection {
     if (!response.ok) { throw new Error('Cannot connect to the project.'); }
     const state = await response.json();
     if (epoch !== this.epoch || this.closed) { return; }
-    if (this.status !== 'connected') { this.attempts = 0; this.manual = false; this.update('connected'); }
+    if (this.status !== 'connected') { this.attempts = 0; this.manual = false; this.retryFailed = false; this.update('connected'); }
     this.emit(state);
     this.snapshotTimer = setTimeout(() => {
       void this.snapshot(epoch).catch(() => { if (epoch === this.epoch && !this.closed) { this.interrupted(); } });
@@ -162,22 +172,40 @@ export class BrowserConnection {
     if (this.closed || !navigator.onLine) { throw new ConnectionError(t("Connection interrupted.")); }
     if (this.status === 'expired') { throw new ConnectionError(t("Project connection expired.")); }
     const epoch = this.epoch;
-    let response: Response;
+    const controller = new AbortController();
+    const control = message.type === 'stop' || message.type === 'workflow-stop' || message.type === 'agent-command' && message.command?.type === 'cancel';
+    this.requests.set(controller, control);
     try {
       const body = { ...message, clientId: this.clientId };
       // Navigation is independent of the event stream and must not wait on its handshake.
-      const signal = ['ready', 'navigate'].includes(message.type) ? AbortSignal.timeout(10_000)
-        : ['queue-promote', 'queue-remove'].includes(message.type) ? AbortSignal.timeout(35_000) : undefined;
-      response = await fetch('/api/message', { method: 'POST', headers: { ...this.headers(), 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
-    } catch { if (epoch === this.epoch && !this.closed) { this.interrupted(); } throw new ConnectionError(t("Connection interrupted.")); }
-    if (this.closed) { throw new ConnectionError(t("Connection changed.")); }
-    if (response.status === 401) { if (epoch === this.epoch) { this.disconnect(); this.update('expired'); } throw new ConnectionError(t("Project connection expired.")); }
-    let reply: Message;
-    try { reply = await response.json(); }
-    catch { if (epoch === this.epoch && !this.closed) { this.interrupted(); } throw new ConnectionError(t("Connection interrupted.")); }
-    if (this.closed) { throw new ConnectionError(t("Connection changed.")); }
-    if (!response.ok) { throw new Error(reply.message || 'Request failed.'); }
-    return (reply.messages ?? []).map((message: Message) => this.publicFiles(message));
+      const timeout = ['ready', 'navigate'].includes(message.type) ? 10_000
+        : control || ['queue-promote', 'queue-remove'].includes(message.type) ? 35_000 : 60_000;
+      const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(timeout)]);
+      let response: Response, reply: Message;
+      try {
+        response = await fetch('/api/message', { method: 'POST', headers: { ...this.headers(), 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
+        if (this.closed || controller.signal.aborted) { throw new ConnectionError(t("Connection changed.")); }
+        if (response.status === 401) {
+          if (epoch === this.epoch) { this.abortRequests(true); this.disconnect(); this.update('expired'); }
+          throw new ConnectionError(t("Project connection expired."));
+        }
+        reply = await response.json();
+      } catch (error) {
+        if (error instanceof ConnectionError) { throw error; }
+        if (epoch === this.epoch && !this.closed && !controller.signal.aborted) { this.interrupted(); }
+        throw new ConnectionError(t("Connection interrupted."));
+      }
+      if (this.closed || controller.signal.aborted) { throw new ConnectionError(t("Connection changed.")); }
+      if (!response.ok) { throw new Error(reply.message || 'Request failed.'); }
+      return (reply.messages ?? []).map((message: Message) => this.publicFiles(message));
+    } finally { this.requests.delete(controller); }
+  }
+
+  private abortRequests(includeControls = false): void {
+    for (const [controller, control] of this.requests) {
+      // Stopping remains independent of event-stream recovery.
+      if (includeControls || !control) { controller.abort(); this.requests.delete(controller); }
+    }
   }
 
   private headers(): Record<string, string> { return this.token ? { Authorization: `Bearer ${this.token}` } : {}; }
