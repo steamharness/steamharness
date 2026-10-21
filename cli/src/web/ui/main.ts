@@ -1189,6 +1189,8 @@ function initialize(): void {
   let renderScheduled = false;
   window.addEventListener('message', (event) => {
     const message = event.data;
+    // ConversationOutput owns inline preview errors, including late replies from older cards.
+    if (message.type === 'error' && message.requestType === 'resource' && message.requestId) { return; }
     if (queueView.receive(message)) return;
     if (message.type === 'connection') {
       const restored = !connectionAvailable && message.status === 'connected';

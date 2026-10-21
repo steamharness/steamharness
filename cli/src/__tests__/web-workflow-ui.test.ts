@@ -91,6 +91,15 @@ async function fixture() {
 }
 
 describe('Workflow request alerts', () => {
+  it('keeps request-scoped resource failures out of the run alert', async () => {
+    const { element, emit } = await fixture();
+    emit({ type: 'error', requestType: 'resource', requestId: 'map-preview', message: 'Preview failed' });
+    expect(element('error').hidden).toBe(true);
+    emit({ type: 'error', requestType: 'workflow-start', message: 'Run failed' });
+    expect(element('error').hidden).toBe(false);
+    expect(element('error').textContent).toBe('Run failed');
+  });
+
   it('keeps required validation and clears its alert when a later run succeeds and a new run is opened', async () => {
     const { element, emit, request, fail, select } = await fixture();
     element('run').click();

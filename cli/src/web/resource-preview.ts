@@ -82,8 +82,16 @@ export class ResourcePreviews {
       return { ...structure, id, uri: `workflow-server:${id}`, folderPath: '', name: snapshot.projectName ?? card.title, projectType: structure.projectType,
         fields: structure.params ?? [], entrypoints: structure.entrypoints ?? [] };
     }
-    if (id === this.owner.id) { return this.owner; }
-    for (const directory of new Set([...this.related().map(binding => binding.projectDir), ...this.resourceProjects()])) {
+    const workspace = card.kind === 'kanban' || card.kind === 'project' ? this.owner.assistant?.workdir : undefined;
+    if (id === this.owner.id) {
+      if (!workspace) { return this.owner; }
+      // The dedicated assistant owns the conversation; its workspace owns project previews.
+      const root = await realpath(workspace), inspected = await this.runtime.inspect([root]);
+      const project = inspected.projects.find(project => path.resolve(project.folderPath) === root);
+      if (!project) { throw new Error(t('The resource project is unavailable.')); }
+      return { ...project, uri: pathToFileURL(root).href };
+    }
+    for (const directory of new Set([...this.related().map(binding => binding.projectDir), ...this.resourceProjects(), ...(workspace ? [workspace] : [])])) {
       let root: string, pkg;
       try { root = await realpath(directory); pkg = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')); }
       catch { continue; }

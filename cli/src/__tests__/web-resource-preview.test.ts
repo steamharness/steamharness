@@ -7,6 +7,7 @@ import { ResourcePreviews } from '../web/resource-preview';
 import { startWebServer } from '../web/server';
 import { createLocalProjectConfigurationStore } from 'steamharness';
 import { createConfigurationState } from '@steamharness/project-configuration';
+import { readProjectInfo } from '@steamharness/project-info';
 import type { ResourceCard } from '../web/resource-cards';
 import type { Project, Runtime } from '../web/workflow-types';
 
@@ -45,6 +46,38 @@ describe('resource previews', () => {
     const { owner, related, runtime, storageDir, card } = await fixture();
     const previews = new ResourcePreviews(owner, runtime, storageDir, () => undefined, () => [], () => [related.folderPath]);
     expect((await previews.open(card('project', { source: 'local', projectId: related.id }, { preview: false }))).data.project?.id).toBe(related.id);
+  });
+
+  it.each(['kanban', 'project'] as const)('resolves current assistant %s cards to its workspace project', async kind => {
+    const { owner, related, runtime, storageDir, card } = await fixture();
+    owner.assistant = { workdir: related.folderPath, roots: [{ uri: 'file:///map', folderPath: related.folderPath, name: 'Map' }] };
+    const previews = new ResourcePreviews(owner, runtime, storageDir, () => undefined, () => []);
+    openedPreviews.push(previews);
+    const result = await previews.open(card(kind, { source: 'local', projectId: owner.id }));
+    expect(result.data).toMatchObject({ format: 'kanban', project: { id: related.id, folderPath: related.folderPath, projectType: 'kanban' } });
+    expect(runtime.inspect).toHaveBeenCalledWith([related.folderPath]);
+    expect(String((await previews.asset(new URL(result.data.kanban!.url, 'http://localhost')))?.content)).toContain('Map preview');
+  });
+
+  it('resolves explicit assistant workspace cards without requiring an imported project', async () => {
+    const { owner, related, runtime, storageDir, card } = await fixture();
+    owner.assistant = { workdir: related.folderPath, roots: [{ uri: 'file:///map', folderPath: related.folderPath, name: 'Map' }] };
+    const previews = new ResourcePreviews(owner, runtime, storageDir, () => undefined, () => []);
+    openedPreviews.push(previews);
+    expect((await previews.open(card('project', { source: 'local', projectId: related.id }, { preview: false }))).data.project?.id).toBe(related.id);
+  });
+
+  it('does not substitute another imported project when the assistant workspace has no project', async () => {
+    const { owner, related, runtime, storageDir, card } = await fixture();
+    const workdir = path.join(owner.folderPath, 'folder');
+    await mkdir(workdir);
+    owner.assistant = { workdir, roots: [{ uri: 'file:///folder', folderPath: workdir, name: 'Folder' }] };
+    vi.mocked(runtime.inspect).mockResolvedValue({ projects: [], errors: ['No project found.'] });
+    const previews = new ResourcePreviews(owner, runtime, storageDir, () => undefined, () => [], () => [related.folderPath]);
+    openedPreviews.push(previews);
+    await expect(previews.open(card('kanban', { source: 'local', projectId: owner.id }))).rejects.toThrow('The resource project is unavailable.');
+    expect(runtime.inspect).toHaveBeenCalledWith([workdir]);
+    expect(runtime.inspect).toHaveBeenCalledTimes(1);
   });
 
   it('checks Server read access for foreign Knowledge and keeps credentials out of the preview data', async () => {
@@ -199,6 +232,63 @@ describe('resource previews', () => {
       expect(await (await asset()).text()).toBe('Remote board artifact');
       expect((await request({ type: 'verify' })).ok).toBe(true);
       expect(await (await asset()).text()).toBe('Remote board artifact');
+    } finally { await app.close(); }
+  });
+
+  it('opens and restores a current assistant map card with its named configuration and server data', async () => {
+    const { owner, related, runtime, storageDir } = await fixture();
+    await writeFile(path.join(related.folderPath, 'configuration.json'), JSON.stringify({ version: 1, fields: [{ name: 'title', type: 'string' }] }));
+    const store = await createLocalProjectConfigurationStore(related.folderPath);
+    await store.read();
+    let configuration = await store.read();
+    const configurationId = configuration.activeConfigurationId;
+    configuration = await store.dispatch({ action: 'save', revision: configuration.revision, id: configurationId, values: { title: 'Named map' } }) as typeof configuration;
+    configuration = await store.dispatch({ action: 'create', revision: configuration.revision, name: 'Another map' }) as typeof configuration;
+    const map: Project = { ...related, projectInfo: readProjectInfo({ steamHarness: { projectInfo: { dataStorage: { mode: 'server' } } } }) };
+    vi.mocked(runtime.inspect).mockImplementation(async directories => ({ projects: [directories[0] === owner.folderPath ? owner : map], errors: [] }));
+    runtime.dispose = vi.fn();
+    const originalFetch = globalThis.fetch, connection = { serverUrl: 'https://steamharness.test', accessToken: 'test-only-token' };
+    const fetcher = vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => {
+      if (String(url).endsWith('/api/auth/me')) {
+        return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'user', email: 'user@example.test', displayName: 'User' } } })));
+      }
+      if (String(url) === `${connection.serverUrl}/api/projects/${map.id}/kanban/bridge`) {
+        return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { key: 'map', value: { points: ['Spawn'] } } })));
+      }
+      return originalFetch(url, init);
+    });
+    const app = await startWebServer({ projectDir: owner.folderPath, dataDir: storageDir, runtime,
+      host: { surface: 'assistant', assistantProjectDir: owner.folderPath, connection,
+        assistant: { workdir: map.folderPath, roots: [{ uri: 'file:///map', folderPath: map.folderPath, name: 'Map' }] } } });
+    const request = async (message: object) => {
+      const response = await originalFetch(new URL('/api/message', app.url), { method: 'POST',
+        headers: { Authorization: `Bearer ${new URL(app.url).hash.slice('#session='.length)}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
+      const body = await response.json();
+      expect(body, JSON.stringify(body)).toHaveProperty('messages');
+      expect(response.ok).toBe(true);
+      return body.messages[0];
+    };
+    const presentation = { action: 'upsert', cardId: 'spawn-point', kind: 'kanban', title: 'Map · Spawn', pinned: true, preview: true,
+      target: { source: 'current', configurationId } };
+    app.controller.current.messages.push({ id: 'answer', role: 'assistant', content: '', items: [{ metadata: { kind: 'agent-part', partType: 'tool' },
+      content: { tool: 'workflow-ui_present_card', input: presentation, status: 'success', output: { content: [{ type: 'text', text: JSON.stringify(presentation) }], details: {} } } }] });
+    try {
+      const opened = await request({ type: 'resource', messageId: 'answer', cardId: 'spawn-point', action: 'inline' });
+      expect(opened.project).toMatchObject({ id: map.id, folderPath: map.folderPath });
+      const reference = JSON.parse(new URL(opened.url, app.url).searchParams.get('resourceRef')!);
+      for (const message of [{ type: 'resource-data', id: opened.id }, { type: 'resource-refresh', reference }]) {
+        const preview = await request(message);
+        expect(preview.data).toMatchObject({ format: 'kanban', project: { id: map.id },
+          kanban: { configuration: { id: configurationId, params: { title: 'Named map' } } } });
+        expect(await (await originalFetch(new URL(preview.data.kanban.url, app.url))).text()).toContain('Map preview');
+        const call = { requestId: 'read', operation: 'kv.getValue', input: { key: 'map' } };
+        expect(await request({ type: 'resource-bridge', id: preview.id ?? opened.id, call })).toMatchObject({ value: { value: { points: ['Spawn'] } } });
+        expect(fetcher).toHaveBeenCalledWith(`${connection.serverUrl}/api/projects/${map.id}/kanban/bridge`,
+          expect.objectContaining({ body: JSON.stringify({ call }), headers: expect.objectContaining({ Authorization: 'Bearer test-only-token' }) }));
+      }
+      expect(await store.read()).toEqual(configuration);
+      expect(runtime.kanbanBridge).not.toHaveBeenCalled();
+      expect(app.project.id).toBe(owner.id);
     } finally { await app.close(); }
   });
 

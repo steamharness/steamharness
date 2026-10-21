@@ -320,6 +320,7 @@ addEventListener('message', event => {
     }
   } else if (message?.type === 'usage') { dialogs.usageResult(message.requestId, message.usage); }
   else if (message?.type === 'error') {
+    if (message.requestType === 'resource' && message.requestId) { return; }
     if (message.requestType === 'usage') { dialogs.usageResult(message.requestId, undefined, message.message); return; }
     if (message.errorScope !== undefined && message.errorScope !== errorScope) { return; }
     submitting = false; resolving = false; controls();
