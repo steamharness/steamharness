@@ -90,7 +90,7 @@ export async function inspectProjectCli(projectDir: string, nodePath: string, si
 }
 
 export async function startProjectCli(options: {
-  projectDir: string; dataDir: string; nodePath: string; theme: 'dark' | 'light'; locale?: string;
+  projectDir: string; dataDir: string; nodePath: string; theme: 'dark' | 'light'; locale?: string; port?: number;
   surface: 'editor' | 'assistant'; connection?: Connection; assistant?: Project['assistant']; signal?: AbortSignal;
   assistantProjectDir?: string;
   expectedProjectId?: string;
@@ -101,7 +101,7 @@ export async function startProjectCli(options: {
   const { entry } = await resolveProjectCli(options.projectDir);
   options.signal?.throwIfAborted();
   const connection = sanitizeConnectionForSurface(options.connection, options.surface);
-  const child: ChildProcess = spawn(options.nodePath, [entry, '--locale', options.locale?.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en', 'web', options.projectDir, '--port', '0', '--no-open', '--json', '--theme', options.theme, '--host-stdio', '--data-dir', options.dataDir],
+  const child: ChildProcess = spawn(options.nodePath, [entry, '--locale', options.locale?.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en', 'web', options.projectDir, '--port', String(options.port ?? 0), '--no-open', '--json', '--theme', options.theme, '--host-stdio', '--data-dir', options.dataDir],
     { cwd: options.projectDir, env: environment(options.studioControl), shell: false, stdio: ['pipe', 'pipe', 'pipe'], signal: options.signal });
   const events = new EventEmitter();
   const secrets = new Set([options.connection?.accessToken, options.connection?.aiAccessToken, options.studioControl?.token].filter((token): token is string => !!token));

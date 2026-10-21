@@ -1,6 +1,7 @@
 import { t } from '../localization';
 import { AccountPanel } from './account';
 import { BrowserConnection, ConnectionError } from './connection';
+import { HostConnectionRecovery } from './connection-recovery';
 import { requestAction } from './action-dialog';
 import { TraceBridge } from './trace-bridge';
 import { ClipboardBridge } from './clipboard-bridge';
@@ -118,11 +119,13 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     if (event.button !== 2) { contextInput = undefined; contextText = undefined; }
     if (event.target instanceof Element && !event.target.closest('textarea, input, [contenteditable=true]')) { lastInput = undefined; }
   });
+  const recovery = new HostConnectionRecovery(message => window.parent.postMessage(message, '*'));
+  addEventListener('pagehide', () => recovery.close());
   const connection = new BrowserConnection(message => {
     if (message.type === 'state' && message.account) { accountPanel.update(message.account); }
     trace.receive(message);
     emit(message);
-  }, options.live, options.connectionBanner);
+  }, options.live, options.connectionBanner, () => recovery.recover());
   const request = async (message: Message) => {
     for (const entry of await connection.request(message)) { handleReply(entry); }
   };
@@ -140,6 +143,8 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     }
     if (event.data.openConfigurations === true) emit({type:'project-configurations-open'});
     if (event.data.resourceVersion === 1) { resourceHost = true; }
+    if (event.data.recoveryVersion === 1) recovery.enabled = true;
+    if (event.data.recovery) recovery.receive(event.data.recovery);
     if (event.data.nativePasteVersion !== undefined) { nativePasteHost = event.data.nativePasteVersion === 1; }
     if (event.data.resourceError) { emit(event.data.resourceError); }
     if ((event.data.restoreFocus === true || document.activeElement === document.body)

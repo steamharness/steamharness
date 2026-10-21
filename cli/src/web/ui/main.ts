@@ -13,6 +13,7 @@ import { ConversationOutput } from './conversation-output';
 import { activeAgentActivity } from './agent-activity';
 import { ComposerOutput, composerOutputItems } from './output-display';
 import type { ConnectionState } from './connection';
+import { StateRevisions } from './state-revisions';
 import { iconHtml as icon, escapeHtml as escape, iconButton, updateIcon } from './ui';
 import { conversationHistoryStatus, updateHistoryStatus, updateConversationRunningCount } from './history-status';
 import { aiUsageButton, narrowMenuDismiss, projectInfoButton, toolPermissionsButton } from './toolbar';
@@ -86,7 +87,7 @@ function initialize(): void {
   let connectionStatus: ConnectionState = 'connected';
   let manualReconnect = false;
   let reconnectFailed = false;
-  interface StopRequest { projectUri: string; sessionId: string; requestId: string; runId?: string; agentOwner?: string; phase: 'pending' | 'accepted' | 'failed'; error?: string; timer?: ReturnType<typeof setTimeout> }
+  interface StopRequest { projectUri: string; sessionId: string; requestId: string; runId?: string; agentOwner?: string; taskIds?: number[]; phase: 'pending' | 'accepted' | 'failed'; error?: string; timer?: ReturnType<typeof setTimeout> }
   const stopRequests = new Map<string, StopRequest>();
   window.addEventListener('pagehide', () => { for (const request of stopRequests.values()) { clearTimeout(request.timer); } stopRequests.clear(); });
   let preferredSessionId: string | undefined;
@@ -910,7 +911,9 @@ function initialize(): void {
     state = next;
     for (const [key, request] of stopRequests) {
       const target = next.sessions.find(session => session.id === request.sessionId);
-      const replaced = request.agentOwner ? target?.agent?.ownerId !== request.agentOwner
+      const recoveringStop = request.phase === 'pending' && request.runId === target?.activeRunId && request.taskIds?.length
+        && request.taskIds.every(id => target?.agent?.tasks.some(task => task.id === id));
+      const replaced = request.agentOwner ? target?.agent?.ownerId !== request.agentOwner && !recoveringStop
         : !!target?.activeRunId && target.activeRunId !== request.runId;
       if (request.projectUri !== next.project.uri || !target || replaced) {
         clearTimeout(request.timer); stopRequests.delete(key);
@@ -1100,12 +1103,16 @@ function initialize(): void {
     if (previous?.phase === 'pending') { return; }
     const request: StopRequest = { projectUri: state.project.uri, sessionId: state.activeId,
       requestId: previous?.phase === 'failed' ? previous.requestId : crypto.randomUUID(),
-      runId: currentSession()?.activeRunId, agentOwner: currentSession()?.agent?.ownerId, phase: 'pending' };
+      runId: currentSession()?.activeRunId, agentOwner: currentSession()?.agent?.ownerId,
+      taskIds: currentSession()?.agent?.tasks.map(task => task.id), phase: 'pending' };
     stopRequests.set(key, request);
-    request.timer = setTimeout(() => finishStop({ ...request, type: 'error', message: t("The server did not confirm the stop request.") }), 35_000);
+    // Allow the host to restore the process before waiting for its cancellation receipt.
+    request.timer = setTimeout(() => finishStop({ ...request, type: 'error', message: t("The server did not confirm the stop request.") }), 90_000);
     updateControls();
     const message = state.project.conversation?.durable?.enabled
-      ? { type: 'agent-command', agentOwner: request.agentOwner, command: { type: 'cancel', scope: 'foreground', requestId: request.requestId } }
+      ? { type: 'agent-command', agentOwner: request.agentOwner, runId: request.runId,
+        taskIds: request.taskIds,
+        command: { type: 'cancel', scope: 'foreground', requestId: request.requestId } }
       : { type: 'stop', runId: request.runId };
     try { await vscode.postMessage({ ...message, projectUri: request.projectUri, sessionId: request.sessionId, requestId: request.requestId, errorScope: 'stop' }); }
     catch (error) { finishStop({ ...request, type: 'error', message: String((error as Error)?.message ?? error) }); }
@@ -1246,7 +1253,7 @@ function initialize(): void {
   document.querySelector('main')!.addEventListener('dragover', (event) => { if (event.dataTransfer?.types.includes('Files') && !document.querySelector<HTMLElement>('#attach')!.hidden) { event.preventDefault(); } });
   document.querySelector('main')!.addEventListener('drop', (event) => { const files = Array.from(event.dataTransfer?.files ?? []); if (files.length) { event.preventDefault(); void uploadFiles(files); } });
   let pendingState: State | undefined;
-  let latestStateRevision = -1;
+  const stateRevisions = new StateRevisions();
   let renderScheduled = false;
   window.addEventListener('message', (event) => {
     const message = event.data;
@@ -1316,10 +1323,7 @@ function initialize(): void {
       return;
     }
     if (message.type === 'state') {
-      if (typeof message.stateRevision === 'number') {
-        if (message.stateRevision <= latestStateRevision) { return; }
-        latestStateRevision = message.stateRevision;
-      }
+      if (!stateRevisions.accept(message)) return;
       pendingState = message;
       if (!renderScheduled) {
         renderScheduled = true;

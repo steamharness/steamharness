@@ -206,7 +206,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
         throw error;
       }
     },
-    start: async (project, surface, signal, relatedProjects, resourceProjects) => {
+    start: async (project, surface, signal, relatedProjects, resourceProjects, port) => {
       assertAvailable();
       if (project.assistant) { assertAssistantWorkspace(project.assistant); }
       if (project.assistant?.standalone) {
@@ -246,7 +246,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
           resourceProjects,
           dataDir: path.join(context.globalStorageUri.fsPath, 'workflow', 'web'),
           theme: theme === vscode.ColorThemeKind.Light || theme === vscode.ColorThemeKind.HighContrastLight ? 'light' : 'dark',
-          surface, connection, locale: vscode.env.language, assistant: project.assistant, studioControl, signal: runSignal });
+          surface, connection, locale: vscode.env.language, assistant: project.assistant, studioControl, signal: runSignal, port });
         const sessionBridge = bridge;
         void session.closed.then(() => sessionBridge?.close());
         if (controller.signal.aborted) { await session.close(); throw new Error('Workflow host has stopped.'); }

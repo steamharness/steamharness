@@ -7,7 +7,7 @@ export interface ResourceCardTarget {
 }
 export interface ResourceCardResult { id: string; url: string; action: 'open' | 'window' | 'project'; card: ResourceCardTarget; project?: import('./workflow-types').Project }
 
-export function bindProjectResourceCards(webview: vscode.Webview, sessionUrl: string, open: (result: ResourceCardResult) => Promise<void>) {
+export function bindProjectResourceCards(webview: vscode.Webview, sessionUrl: string | (() => string), open: (result: ResourceCardResult) => Promise<void>) {
   const controller = new AbortController();
   let pending = 0;
   return {
@@ -20,7 +20,7 @@ export function bindProjectResourceCards(webview: vscode.Webview, sessionUrl: st
         runId: request.runId, sessionId: request.sessionId, projectUri: request.projectUri };
       pending++;
       void (async () => {
-        const url = new URL(sessionUrl), token = new URLSearchParams(url.hash.slice(1)).get('session');
+        const url = new URL(typeof sessionUrl === 'function' ? sessionUrl() : sessionUrl), token = new URLSearchParams(url.hash.slice(1)).get('session');
         const response = await fetch(new URL('/api/message', url), { method: 'POST', redirect: 'error',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(action),
           signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]) });

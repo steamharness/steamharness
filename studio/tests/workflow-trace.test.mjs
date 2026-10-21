@@ -133,7 +133,7 @@ test('the outer webview configures an immediately loaded frame and validates tra
     MouseEvent: class { constructor(type, options) { this.type = type; Object.assign(this, options); } },
     Event: class { constructor(type, options) { this.type = type; Object.assign(this, options); } },
   });
-  assert.deepEqual(JSON.parse(JSON.stringify(frameMessages)), [[{ type: 'workflow-host', theme: 'dark', locale: 'zh-CN', traceVersion: 1, clipboardVersion: 1, nativePasteVersion: 1, resourceVersion: 1 }, 'http://127.0.0.1:3000']]);
+  assert.deepEqual(JSON.parse(JSON.stringify(frameMessages)), [[{ type: 'workflow-host', theme: 'dark', locale: 'zh-CN', traceVersion: 1, clipboardVersion: 1, nativePasteVersion: 1, resourceVersion: 1, recoveryVersion: 1 }, 'http://127.0.0.1:3000']]);
   assert.equal(sent.shift().type, 'workflow-frame-ready');
   const data = { type: 'workflow-trace', version: 1, kind: 'open' };
   listeners.message({ source: {}, origin: 'http://127.0.0.1:3000', data });
@@ -163,6 +163,12 @@ test('the outer webview configures an immediately loaded frame and validates tra
   assert.equal(sent.length, 3);
   listeners.message({ source: child, origin: 'http://127.0.0.1:3000', data: resource });
   assert.equal(sent.length, 4); assert.equal(sent[3].request.cardId, 'saved-card');
+  const recovery = { type: 'workflow-reconnect', version: 1, requestId: 'retry-1' };
+  listeners.message({ source: {}, origin: 'http://127.0.0.1:3000', data: recovery });
+  listeners.message({ source: child, origin: 'http://foreign', data: recovery });
+  assert.equal(sent.length, 4);
+  listeners.message({ source: child, origin: 'http://127.0.0.1:3000', data: recovery });
+  assert.equal(sent.pop(), recovery);
   const edit = detail => { let prevented = false; listeners['vscode-webview-exec-command']({ detail, preventDefault: () => { prevented = true; } }); return prevented; };
   assert.equal(edit('paste'), false);
   const capability = { type: 'workflow-edit', version: 1 };

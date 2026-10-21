@@ -1062,3 +1062,25 @@ describe('steamharness web', () => {
     } finally { clearTimeout(remainder); if (child.exitCode === null) { child.kill('SIGKILL'); await closed; } }
   }, 15_000);
 });
+
+it('binds a stop across process replacement to the original run and exact task identities', async () => {
+  const { app, post } = await fixture();
+  const current = app.controller.current;
+  current.activeRunId = 'restored-run';
+  current.agent = { version: 1, ownerId: 'replacement', revision: 1, conversationId: 1, foreground: true, backgroundCount: 0, epoch: 0,
+    configuration: { version: 0, provider: 'fixture', model: 'test', effort: 'off' }, prompt: { hash: 'digest', version: 1 }, plan: { version: 0, items: [] },
+    conversations: [{ id: 1, title: 'Main', background: false }],
+    tasks: [{ id: 42, conversationId: 1, kind: 'pi.generation', label: 'Model', status: 'running', background: false, stopping: false, blockedOn: [] }],
+    history: [], turns: [], receipts: [], records: [], contexts: [], usage: [] };
+  const control = vi.spyOn(app.controller, 'agentCommand').mockResolvedValue({ requestId: 'original-stop', conversationId: 1, status: 'accepted' });
+  const request = { type: 'agent-command', sessionId: current.id, agentOwner: 'exited-owner', runId: 'restored-run', taskIds: [42], errorScope: 'stop',
+    command: { type: 'cancel', scope: 'foreground', requestId: 'original-stop' } };
+  expect((await post({ ...request, taskIds: [43] })).status).toBe(400);
+  expect((await post({ ...request, runId: 'another-run' })).status).toBe(400);
+  expect((await post({ ...request, taskIds: [] })).status).toBe(400);
+  expect((await post({ ...request, command: { ...request.command, type: 'reset' } })).status).toBe(400);
+  expect(control).not.toHaveBeenCalled();
+  const stopped = await post(request);
+  expect(stopped.status, await stopped.text()).toBe(200);
+  expect(control).toHaveBeenCalledExactlyOnceWith(current.id, request.command);
+});

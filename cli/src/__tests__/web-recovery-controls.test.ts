@@ -33,8 +33,8 @@ it('provides immediate Retry feedback and confirms or retries a scoped stop whil
     { id: 'answer', role: 'assistant', content: 'Working', status: 'running' },
   ] };
   const emit = (data: object) => window.dispatchEvent(new MessageEvent('message', { data }));
-  const render = async (sessions = [session], activeId = session.id) => {
-    emit({ type: 'state', project, sessions, activeId, running: true });
+  const render = async (sessions = [session], activeId = session.id, revision = {}) => {
+    emit({ type: 'state', project, sessions, activeId, running: true, ...revision });
     await vi.advanceTimersByTimeAsync(1);
   };
   const stopMessages = () => host.postMessage.mock.calls.map(([message]) => message).filter(message => message.type === 'stop' || message.command?.type === 'cancel');
@@ -99,19 +99,27 @@ it('provides immediate Retry feedback and confirms or retries a scoped stop whil
   project.conversation!.durable = { enabled: true };
   session.agent = { version: 1, ownerId: 'owner', revision: 1, conversationId: 1, foreground: true, backgroundCount: 0, epoch: 0,
     configuration: { version: 0, provider: 'fixture', model: 'test', effort: 'off' }, prompt: { hash: 'digest', version: 1 }, plan: { version: 0, items: [] },
-    conversations: [{ id: 1, title: 'Main', background: false }], tasks: [], history: [], turns: [], receipts: [], records: [], contexts: [], usage: [] };
-  await render();
+    conversations: [{ id: 1, title: 'Main', background: false }],
+    tasks: [{ id: 42, conversationId: 1, kind: 'pi.generation', label: 'Model', status: 'running', background: false, stopping: false, blockedOn: [] }],
+    history: [], turns: [], receipts: [], records: [], contexts: [], usage: [] };
+  await render([session], session.id, { serverInstanceId: 'exited', stateRevision: 100 });
   send.click();
   const durable = stopMessages().at(-1)!;
-  expect(durable).toMatchObject({ type: 'agent-command', projectUri: project.uri, sessionId: session.id, agentOwner: 'owner',
+  expect(durable).toMatchObject({ type: 'agent-command', projectUri: project.uri, sessionId: session.id, agentOwner: 'owner', taskIds: [42], runId: session.activeRunId,
     command: { type: 'cancel', scope: 'foreground', requestId: durable.requestId } });
-  session.activeRunId = 'resumed-worker'; await render();
+  const restored = { ...session, agent: { ...session.agent, ownerId: 'replacement' } };
+  await render([restored], session.id, { serverInstanceId: 'restored', stateRevision: 1 });
+  expect(send.disabled).toBe(true); expect(feedback.textContent).toBe('Stopping...');
+  await render([session], session.id, { serverInstanceId: 'exited', stateRevision: 101 });
   expect(send.disabled).toBe(true); expect(feedback.textContent).toBe('Stopping...');
   await vi.advanceTimersByTimeAsync(35_000);
+  expect(send.disabled).toBe(true); expect(feedback.textContent).toBe('Stopping...');
+  await vi.advanceTimersByTimeAsync(55_000);
   expect(send.disabled).toBe(false); expect(feedback.textContent).toContain('The server did not confirm the stop request.');
   send.click();
   const retried = stopMessages().at(-1)!;
   expect(retried.requestId).toBe(durable.requestId);
+  expect(retried.agentOwner).toBe('replacement');
   emit({ type: 'agent-receipt', sessionId: session.id, receipt: { requestId: retried.requestId, status: 'accepted' } });
   expect(feedback.textContent).toBe('Stop request accepted.'); expect(send.getAttribute('aria-busy')).toBe('false');
 });

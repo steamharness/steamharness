@@ -15,8 +15,13 @@ it('recovers automatic and manual connections over real HTTP/SSE without replayi
     const messages = [];
     let available = false, heartbeat = true, sessions = 0, connections = 0, commands = 0, version = 1;
     let eventsAvailable = true, stalled = false, obsoleteClosed = false;
+    let expectedToken = 'test-capability', recoveries = 0;
+    let recoverHost = async () => undefined;
     const server = createServer((request, response) => {
       const url = new URL(request.url, 'http://localhost');
+      if (request.headers.authorization !== 'Bearer ' + expectedToken && url.searchParams.get('session') !== expectedToken) {
+        response.writeHead(401).end('{}'); return;
+      }
       if (url.pathname === '/api/message') {
         commands++;
         let body = '';
@@ -70,7 +75,7 @@ it('recovers automatic and manual connections over real HTTP/SSE without replayi
           const timer = setTimeout(() => { timers.delete(timer); callback(); }, delay === 10000 ? 1000 : delay === 45000 ? 1000 : 20);
           timers.add(timer); return timer;
         }, timer => { clearTimeout(timer); timers.delete(timer); });
-        connection = new BrowserConnection(message => messages.push(message), true, false);
+        connection = new BrowserConnection(message => messages.push(message), true, false, () => recoverHost());
         await waitFor(() => sessions >= 3);
         available = true;
         await waitFor(() => messages.at(-1)?.status === 'connected');
@@ -107,6 +112,31 @@ it('recovers automatic and manual connections over real HTTP/SSE without replayi
         eventsAvailable = true;
         await waitFor(() => messages.at(-1)?.status === 'connected');
         assert.equal(commands, 2, 'Recovery must release stale requests and issue a stop only once');
+        const port = server.address().port;
+        const exitService = async () => {
+          for (const stream of streams) stream.destroy();
+          server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
+        };
+        recoverHost = async () => {
+          if (!server.listening) {
+            recoveries++; expectedToken = String(recoveries).repeat(64); version++;
+            await new Promise(resolve => server.listen(port, '127.0.0.1', resolve));
+          }
+          return expectedToken;
+        };
+        await exitService();
+        await connection.reconnect();
+        assert.equal(recoveries, 1, 'Manual Retry must ask the host to restore an exited service');
+        assert.equal(messages.at(-1).status, 'connected');
+        assert.equal(commands, 2, 'Restoring the service must not resend the failed input');
+        await exitService();
+        assert.deepEqual(await connection.request({ type: 'stop', sessionId: 'original', requestId: 'stop-across-exit' }), [{ type: 'stopped', sessionId: 'original' }]);
+        assert.equal(recoveries, 2, 'Stop must restore the exited control endpoint');
+        assert.equal(commands, 3, 'Only the explicit Stop is delivered to the restored service');
+        await waitFor(() => messages.at(-1)?.status === 'connected');
+        await exitService();
+        await waitFor(() => recoveries === 3 && messages.at(-1)?.status === 'connected');
+        assert.equal(commands, 3, 'Automatic process recovery must not replay a command');
         console.log('HTTP/SSE automatic recovery, manual Retry, heartbeat recovery, and command isolation passed');
       } finally {
         listeners.get('pagehide')?.();

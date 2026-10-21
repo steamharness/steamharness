@@ -20,6 +20,7 @@ import type { ProjectIcons } from './project-icons';
 import { openProjectFolder } from './project-window';
 import { StudioModeController } from './studio-mode';
 import { chooseProjectTab, inspectProjectTab } from './project-tabs';
+import { RecoverableWebSession } from './workflow-session';
 
 const ignored = new Set(['node_modules', 'vendor', 'dist', 'out', 'build', 'upstream']);
 const containers = new Set(['workspace', 'workflow', 'projects', 'examples']);
@@ -190,6 +191,13 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     } catch (error) {
       restored?.dispose(); controller.signal.throwIfAborted(); throw error;
     } finally { signal?.removeEventListener('abort', abort); starting.delete(controller); startingSources.delete(controller); startingDone.delete(controller); finishStarting(); disposedPanel?.dispose(); }
+    const recoverable = new RecoverableWebSession(session, async (port, recoverySignal) => {
+      if (!projectAvailable(project)) throw new Error('Workflow workspace is unavailable.');
+      const bindings = await related.bindings(project), resourceProjects = await related.resourceProjects();
+      assertNotUpgrading([project.folderPath, ...bindings.map(binding => binding.projectDir), ...resourceProjects]);
+      return launcher.start(project, sidebar ? 'assistant' : 'editor', recoverySignal, bindings, resourceProjects, port);
+    });
+    session = recoverable;
     sessions.add(session);
     sessionSources.set(session, sources);
     const panel = sidebar ?? restored ?? vscode.window.createWebviewPanel(toolTab ? 'studio.projectTool' : 'studio.project', projectDisplayName(project), viewColumn, { enableScripts: true, retainContextWhenHidden: true });
@@ -229,13 +237,30 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       signal?.throwIfAborted();
       if (closed || !projectAvailable(project)) { await close(); throw new Error('Workflow workspace has closed.'); }
       panel.webview.options = { enableScripts: true, localResourceRoots: [], portMapping: [{ webviewPort: Number(new URL(session.ready.url).port), extensionHostPort: Number(new URL(session.ready.url).port) }] };
-      const traceBinding = trace.bind(project, session.ready.traceProtocolVersion, panel.webview);
+      let traceBinding = trace.bind(project, session.ready.traceProtocolVersion, panel.webview);
       const clipboardBinding = bindProjectClipboard(panel.webview);
-      const resourceBinding = bindProjectResourceCards(panel.webview, session.ready.url, async result => {
+      const resourceBinding = bindProjectResourceCards(panel.webview, () => session.ready.url, async result => {
         if (closed) { throw new Error(t('Unable to open the resource.')); }
         await openCard(result, project, session, address);
       });
-      listeners.push(traceBinding, clipboardBinding, resourceBinding, panel.webview.onDidReceiveMessage(message => {
+      listeners.push({ dispose: () => traceBinding.dispose() }, clipboardBinding, resourceBinding, panel.webview.onDidReceiveMessage(message => {
+        if (message?.type === 'workflow-reconnect' && message.version === 1 && typeof message.requestId === 'string' && message.requestId.length <= 64) {
+          void recoverable.reconnect().then(async restarted => {
+            if (closed) return;
+            if (restarted) {
+              traceBinding.dispose(); traceBinding = trace.bind(project, session.ready.traceProtocolVersion, panel.webview);
+              const entry = workspaces.get(project.uri);
+              if (entry?.close === close) entry.running = true;
+              updateEntry();
+            }
+            const token = new URLSearchParams(new URL(session.ready.url).hash.slice(1)).get('session');
+            await panel.webview.postMessage({ type: 'workflow-host', recovery: { requestId: message.requestId, ...(token ? { token } : {}) } });
+          }).catch(error => {
+            output.appendLine(`SteamHarness Web recovery: ${String(error)}`);
+            if (!closed) void panel.webview.postMessage({ type: 'workflow-host', recovery: { requestId: message.requestId, error: String((error as Error).message) } });
+          });
+          return;
+        }
         if (message?.type === 'workflow-frame-ready') {
           const entry = workspaces.get(project.uri);
           if (entry?.close === close) { entry.loaded = true; }
@@ -256,7 +281,6 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       listeners.push(vscode.window.onDidChangeActiveColorTheme(() => void panel.webview.postMessage({ type: 'workflow-host', theme: theme() })),
         session.onExit(() => {
           traceBinding.dispose();
-          sessions.delete(session); sessionSources.delete(session); sessionStops.delete(session);
           if (!closed) {
             const entry = workspaces.get(project.uri);
             if (entry?.close === close) { entry.running = false; }

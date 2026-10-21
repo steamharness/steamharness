@@ -26,7 +26,8 @@ export class BrowserConnection {
   private retryFailed = false;
   private token = new URLSearchParams(location.hash.slice(1)).get('session') ?? new URLSearchParams(location.search).get('session') ?? sessionStorage.getItem('steamharness-web-session');
 
-  constructor(private readonly emit: (message: Message) => void, private readonly live = true, showBanner = true) {
+  constructor(private readonly emit: (message: Message) => void, private readonly live = true, showBanner = true,
+    private readonly recoverHost?: () => Promise<string | undefined>) {
     if (this.token) { const query = new URLSearchParams(location.search); query.delete('session'); sessionStorage.setItem('steamharness-web-session', this.token); history.replaceState(null, '', `${location.pathname}${query.size ? `?${query}` : ''}`); }
     queueMicrotask(() => {
       if (showBanner) {
@@ -80,11 +81,28 @@ export class BrowserConnection {
     if (!this.closed && navigator.onLine) { this.retry = setTimeout(() => { void this.connect(); }, Math.min(2_000 * 2 ** this.attempts++, 30_000)); }
   }
 
-  reconnect(): Promise<void> {
+  async reconnect(): Promise<void> {
     this.abortRequests();
     this.disconnect();
     this.attempts = 0;
+    const epoch = this.epoch;
+    this.manual = true; this.retryFailed = false; this.update('reconnecting');
+    try { await this.recoverHostSession(); }
+    catch {
+      if (epoch === this.epoch && !this.closed) this.interrupted();
+      return;
+    }
+    if (epoch !== this.epoch || this.closed) return;
     return this.connect(true);
+  }
+
+  private async recoverHostSession(): Promise<boolean> {
+    const token = await this.recoverHost?.();
+    if (!token || this.closed) return false;
+    const changed = token !== this.token;
+    this.token = token;
+    sessionStorage.setItem('steamharness-web-session', token);
+    return changed;
   }
 
   private connect(manual = false): Promise<void> {
@@ -103,6 +121,14 @@ export class BrowserConnection {
     this.update(manual || this.attempts ? 'reconnecting' : 'connecting');
     this.connecting = (async () => {
       try {
+        if (this.attempts && this.recoverHost) {
+          // The host startup has its own bounded deadline. Do not let the
+          // shorter HTTP handshake timer cancel a process still being restored.
+          clearTimeout(this.connectTimer);
+          await this.recoverHostSession();
+          if (!active()) return;
+          this.connectTimer = setTimeout(() => { if (active()) this.interrupted(); }, 10_000);
+        }
         if (this.token) {
           const session = await fetch('/api/session', { method: 'POST', headers: { Authorization: `Bearer ${this.token}` }, signal });
           if (!active()) { return; }
@@ -170,34 +196,44 @@ export class BrowserConnection {
 
   async request(message: Message): Promise<Message[]> {
     if (this.closed || !navigator.onLine) { throw new ConnectionError(t("Connection interrupted.")); }
-    if (this.status === 'expired') { throw new ConnectionError(t("Project connection expired.")); }
     const epoch = this.epoch;
     const controller = new AbortController();
     const control = message.type === 'stop' || message.type === 'workflow-stop' || message.type === 'agent-command' && message.command?.type === 'cancel';
+    const signal = control && this.recoverHost ? AbortSignal.any([controller.signal, AbortSignal.timeout(90_000)]) : controller.signal;
     this.requests.set(controller, control);
     try {
+      // Only explicit cancellation can cross process recovery. A failed send or
+      // tool action is never replayed by this transport.
+      if (control && this.recoverHost && await this.recoverHostSession()) { this.disconnect(); void this.connect(); }
+      if (this.status === 'expired') { throw new ConnectionError(t("Project connection expired.")); }
+      if (this.closed || signal.aborted) throw new ConnectionError(t('Connection changed.'));
       const body = { ...message, clientId: this.clientId };
       // Navigation is independent of the event stream and must not wait on its handshake.
       const timeout = ['ready', 'navigate'].includes(message.type) ? 10_000
         : control || ['queue-promote', 'queue-remove'].includes(message.type) ? 35_000 : 60_000;
-      const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(timeout)]);
-      let response: Response, reply: Message;
-      try {
-        response = await fetch('/api/message', { method: 'POST', headers: { ...this.headers(), 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal });
-        if (this.closed || controller.signal.aborted) { throw new ConnectionError(t("Connection changed.")); }
-        if (response.status === 401) {
-          if (epoch === this.epoch) { this.abortRequests(true); this.disconnect(); this.update('expired'); }
-          throw new ConnectionError(t("Project connection expired."));
+      for (let attempt = 0; ; attempt++) {
+        let response: Response, reply: Message;
+        try {
+          response = await fetch('/api/message', { method: 'POST', headers: { ...this.headers(), 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.any([signal, AbortSignal.timeout(timeout)]) });
+          if (this.closed || signal.aborted) { throw new ConnectionError(t("Connection changed.")); }
+          if (response.status === 401) {
+            if (epoch === this.epoch) { this.abortRequests(true); this.disconnect(); this.update('expired'); }
+            throw new ConnectionError(t("Project connection expired."));
+          }
+          reply = await response.json();
+        } catch (error) {
+          if (error instanceof ConnectionError) { throw error; }
+          if (control && !attempt && !signal.aborted && await this.recoverHostSession()) {
+            if (this.closed || signal.aborted) throw new ConnectionError(t('Connection changed.'));
+            this.disconnect(); void this.connect(); continue;
+          }
+          if (epoch === this.epoch && !this.closed && !controller.signal.aborted) { this.interrupted(); }
+          throw new ConnectionError(t("Connection interrupted."));
         }
-        reply = await response.json();
-      } catch (error) {
-        if (error instanceof ConnectionError) { throw error; }
-        if (epoch === this.epoch && !this.closed && !controller.signal.aborted) { this.interrupted(); }
-        throw new ConnectionError(t("Connection interrupted."));
+        if (this.closed || signal.aborted) { throw new ConnectionError(t("Connection changed.")); }
+        if (!response.ok) { throw new Error(reply.message || 'Request failed.'); }
+        return (reply.messages ?? []).map((message: Message) => this.publicFiles(message));
       }
-      if (this.closed || controller.signal.aborted) { throw new ConnectionError(t("Connection changed.")); }
-      if (!response.ok) { throw new Error(reply.message || 'Request failed.'); }
-      return (reply.messages ?? []).map((message: Message) => this.publicFiles(message));
     } finally { this.requests.delete(controller); }
   }
 

@@ -7,6 +7,7 @@ import { runInNewContext } from 'node:vm';
 import { register } from 'tsx/esm/api';
 register();
 const { inspectProjectCli, resolveProjectCli, startProjectCli } = await import('../extensions/studio-workstation/src/workflow-cli-process.ts');
+const { RecoverableWebSession } = await import('../extensions/studio-workstation/src/workflow-session.ts');
 import { projectFrameHtml } from '../extensions/studio-workstation/src/workflow-webview.ts';
 
 async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startupDelay = 0, assistantProtocol = 1, accountProtocol = 1, relatedProtocol = 1) {
@@ -34,7 +35,7 @@ async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startup
           if(${fail}) {console.error(message.connection?.accessToken);process.exit(1);}
           const studioControl={hasUrl:!!process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL,hasToken:!!process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN,mcpServer:process.env.STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER??null,permissionPolicy:process.env.STEAMHARNESS_STUDIO_CONTROL_PERMISSION_POLICY??null};
           server=createServer((request,response)=>{response.setHeader('Content-Type','application/json');response.end(JSON.stringify({configuration,args,pid:process.pid,authMessages,studioControl}));});
-          setTimeout(()=>server.listen(0,'127.0.0.1',()=>console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:${protocol},accountProtocolVersion:${accountProtocol},relatedProjectsProtocolVersion:${relatedProtocol},assistantProtocolVersion:${assistantProtocol},url:'http://127.0.0.1:'+server.address().port+'/#session='+'a'.repeat(64),project:{id:message.assistantProjectDir?assistantId:'user',name:message.assistantProjectDir?'Project Assistant':version,projectType:'conversation'},runtime:{harnessVersion:version,harnessPath:process.cwd()+'/node_modules/steamharness/dist/index.js'}}))),${startupDelay});
+          setTimeout(()=>server.listen(Number(args[args.indexOf('--port')+1]??0),'127.0.0.1',()=>console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:${protocol},accountProtocolVersion:${accountProtocol},relatedProjectsProtocolVersion:${relatedProtocol},assistantProtocolVersion:${assistantProtocol},url:'http://127.0.0.1:'+server.address().port+'/#session='+'a'.repeat(64),project:{id:message.assistantProjectDir?assistantId:'user',name:message.assistantProjectDir?'Project Assistant':version,projectType:'conversation'},runtime:{harnessVersion:version,harnessPath:process.cwd()+'/node_modules/steamharness/dist/index.js'}}))),${startupDelay});
         } else if(message.type==='auth') {authMessages++;configuration.connection=message.connection;}
         else if(message.type==='related-projects') {configuration.relatedProjects=message.relatedProjects;}
         else if(message.type==='close') {input.close();process.stdin.pause();server?.close();}
@@ -310,3 +311,69 @@ for (const language of ['en', 'zh-cn']) {
     assert.ok(html.includes(`<html lang="${normalized}">`));
   });
 }
+
+test('Retry restores an exited CLI on the same origin and never duplicates a live process', async t => {
+  const { options } = await fixture(t);
+  const first = await startProjectCli(options);
+  let starts = 0, exits = 0, closed = false;
+  const session = new RecoverableWebSession(first, async (port, signal) => {
+    starts++;
+    return startProjectCli({ ...options, port, signal });
+  });
+  t.after(() => session.close());
+  session.onExit(() => exits++);
+  void session.closed.then(() => { closed = true; });
+  const origin = new URL(first.ready.url).origin;
+  const initial = await fetch(origin).then(response => response.json());
+  assert.equal(await session.reconnect(), false);
+  assert.equal(starts, 0);
+  process.kill(initial.pid);
+  await first.closed;
+  assert.equal(exits, 1); assert.equal(closed, false);
+  const connection = { serverUrl: 'https://current.test', accessToken: 'latest-account' };
+  session.updateAuth(connection);
+  session.updateRelatedProjects([{ alias: 'latest', projectDir: options.projectDir }]);
+  assert.deepEqual(await Promise.all([session.reconnect(), session.reconnect()]), [true, true]);
+  assert.equal(starts, 1); assert.equal(new URL(session.ready.url).origin, origin);
+  let recovered;
+  for (let i = 0; i < 100; i++) {
+    recovered = await fetch(origin).then(response => response.json());
+    if (recovered.configuration.connection?.accessToken === connection.accessToken && recovered.configuration.relatedProjects[0]?.alias === 'latest') break;
+  }
+  assert.notEqual(recovered.pid, initial.pid);
+  assert.equal(recovered.configuration.connection.accessToken, connection.accessToken);
+  assert.equal(recovered.configuration.relatedProjects[0].alias, 'latest');
+  await session.close(); assert.equal(closed, true);
+  await assert.rejects(session.reconnect(), /closed/);
+});
+
+test('closing a page cancels CLI recovery before another owner can be left running', async t => {
+  const { options } = await fixture(t);
+  const first = await startProjectCli(options);
+  const pid = (await fetch(new URL(first.ready.url).origin).then(response => response.json())).pid;
+  let entered;
+  const starting = new Promise(resolve => { entered = resolve; });
+  const session = new RecoverableWebSession(first, (port, signal) => new Promise((resolve, reject) => {
+    entered(); signal.addEventListener('abort', () => reject(new Error('Recovery aborted')), { once: true });
+  }));
+  t.after(() => session.close());
+  process.kill(pid); await first.closed;
+  const reconnecting = session.reconnect();
+  const rejected = assert.rejects(reconnecting, /aborted/);
+  await starting; await session.close(); await rejected;
+});
+
+test('a failed CLI restart leaves Retry available for the next attempt', async t => {
+  const { options } = await fixture(t);
+  const first = await startProjectCli(options);
+  const pid = (await fetch(new URL(first.ready.url).origin).then(response => response.json())).pid;
+  let fail = true;
+  const session = new RecoverableWebSession(first, (port, signal) => {
+    if (fail) return Promise.reject(new Error('Dependencies are not ready'));
+    return startProjectCli({ ...options, port, signal });
+  });
+  t.after(() => session.close());
+  process.kill(pid); await first.closed;
+  await assert.rejects(session.reconnect(), /Dependencies/);
+  fail = false; assert.equal(await session.reconnect(), true);
+});

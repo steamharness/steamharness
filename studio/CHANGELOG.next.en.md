@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Fixed] Restore an exited project or Assistant CLI on its original port from Retry or Stop without replacing the page or drafts. Coalesce recovery requests, retain the latest account and related projects, and cancel recovery when the workspace closes.
+
 - [Improved] Steam tools initially occupy one third of the window. Manually resized widths are saved per workspace and restored after hiding, mode switches and reloads; temporary window constraints preserve the preferred width.
 
 - Added configuration permission queries, recipient previews and author draft management through Studio Control with read-only enforcement; local RPC uses the current account and publishing checks the draft revision.

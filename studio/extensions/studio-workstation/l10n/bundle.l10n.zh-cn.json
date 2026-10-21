@@ -637,5 +637,7 @@
   "Instance Actions": "实例操作",
   "New Terminal With Profile": "使用配置文件新建终端",
   "Split Terminal": "拆分终端",
-  "Rename Terminal": "重命名终端"
+  "Rename Terminal": "重命名终端",
+  "Workflow workspace has closed.": "项目工作区已关闭。",
+  "Workflow recovery did not restore the original project address.": "项目恢复未能还原原来的服务地址。"
 }

@@ -72,6 +72,7 @@ export async function startWebServer(options: WebOptions) {
   let pendingSave = Promise.resolve();
   let broadcastTimer: ReturnType<typeof setTimeout> | undefined;
   let stateRevision = 0;
+  const serverInstanceId = randomBytes(16).toString('hex');
   let authRevision = 0;
   let activity: ReturnType<typeof createLocalActivityWriter> | undefined;
   const isProject = project.projectType === 'workflow';
@@ -103,7 +104,7 @@ export async function startWebServer(options: WebOptions) {
     const selected = controller?.sessions.find(entry => entry.id === selections.get(clientId ?? '')) ?? controller?.current;
     // Pin open pages before navigation changes the persisted default for new pages.
     if (clientId && selected) rememberSelection(clientId, selected.id);
-    const result = publicValue(redactProjectData({ type: 'state', stateRevision: ++stateRevision, project, configurationError: configurations.error,
+    const result = publicValue(redactProjectData({ type: 'state', serverInstanceId, stateRevision: ++stateRevision, project, configurationError: configurations.error,
     ...(isKanban ? { kanban: kanbanController!.state() } : isProject ? projectActions!.state() : { sessions: controller.sessions, activeId: selected.id, running: sessionRunning(selected), parameterValues: selected.parameterValues ?? {} }),
     account: { ...account, user: account.user && { userId: account.user.userId, email: account.user.email, displayName: account.user.displayName, avatarUrl: account.user.avatarUrl } },
     authenticationRevision: authRevision, resourceRevision: resources.revision }, [...sensitiveTokens], false));
@@ -379,7 +380,15 @@ export async function startWebServer(options: WebOptions) {
       case 'ready': replies.push(state(message.clientId)); break;
       case 'agent-command': {
         if (!message.command || typeof message.command.requestId !== 'string' || message.command.requestId.length > 256) throw new Error('Invalid agent command.');
-        if (message.agentOwner !== undefined && current.agent?.ownerId !== message.agentOwner) throw new Error(t('Task state changed. Refresh the trace and try again.'));
+        if (message.agentOwner !== undefined && current.agent?.ownerId !== message.agentOwner) {
+          // A stopped process can be replaced while the user's explicit Stop
+          // is in flight. Permit it only for the very same run and task set.
+          const sameTasks = Array.isArray(message.taskIds) && message.taskIds.length > 0
+            && message.taskIds.every((id: unknown) => Number.isSafeInteger(id))
+            && JSON.stringify([...message.taskIds].sort((a, b) => a - b)) === JSON.stringify(current.agent?.tasks.map(task => task.id).sort((a, b) => a - b));
+          if (message.errorScope !== 'stop' || message.command.type !== 'cancel' || message.command.scope !== 'foreground'
+            || !message.runId || message.runId !== current.activeRunId || !sameTasks) throw new Error(t('Task state changed. Refresh the trace and try again.'));
+        }
         const receipt = await controller.agentCommand(current.id, message.command);
         const fork = receipt.forkId === undefined ? undefined : controller.sessions.find(entry => entry.agentOwnerId === (current.agentOwnerId ?? current.id) && entry.agentConversationId === receipt.forkId);
         replies.push(state(message.clientId), { type: 'agent-receipt', receipt, projectUri: project.uri, sessionId: current.id, requestId: message.command.requestId, forkSessionId: fork?.id });

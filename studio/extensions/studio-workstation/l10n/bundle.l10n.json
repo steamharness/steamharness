@@ -637,5 +637,7 @@
   "Instance Actions": "Instance Actions",
   "New Terminal With Profile": "New Terminal With Profile",
   "Split Terminal": "Split Terminal",
-  "Rename Terminal": "Rename Terminal"
+  "Rename Terminal": "Rename Terminal",
+  "Workflow workspace has closed.": "Workflow workspace has closed.",
+  "Workflow recovery did not restore the original project address.": "Workflow recovery did not restore the original project address."
 }

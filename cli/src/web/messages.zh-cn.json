@@ -508,5 +508,8 @@
   "Inherit": "继承",
   "Delete path": "删除子路径",
   "JSON Pointer": "JSON Pointer 路径",
-  "Add path": "添加子路径"
+  "Add path": "添加子路径",
+  "Project recovery timed out.": "项目恢复超时。",
+  "Invalid recovered project connection.": "恢复后的项目连接无效。",
+  "Project page has closed.": "项目页面已关闭。"
 }

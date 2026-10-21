@@ -1,4 +1,5 @@
 import { t } from '../localization';
+import { StateRevisions } from './state-revisions';
 type Message = Record<string, any>;
 
 // Only execution data crosses into an embedding host; account and draft state stay here.
@@ -25,7 +26,7 @@ export class TraceBridge {
   private enabled = false;
   private snapshot?: Message;
   private status = 'connecting';
-  private revision = -1;
+  private readonly revisions = new StateRevisions();
   private activeId?: string;
   constructor(private readonly send: (message: Message) => void) {}
   get active(): boolean { return this.enabled; }
@@ -35,10 +36,7 @@ export class TraceBridge {
   }
   receive(message: Message): void {
     if (message.type === 'state') {
-      if (typeof message.stateRevision === 'number') {
-        if (message.stateRevision <= this.revision) return;
-        this.revision = message.stateRevision;
-      }
+      if (!this.revisions.accept(message)) return;
       this.snapshot = traceSnapshot(message);
       if (this.snapshot) { if (this.activeId) this.snapshot.activeId = this.activeId; this.publish('state', { snapshot: this.snapshot }); }
     }
