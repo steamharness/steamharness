@@ -14,15 +14,19 @@ export function projectFrameHtml(url: string, title: string, projectUri: string,
     <script nonce="${nonce}">
       const vscode=acquireVsCodeApi(),frame=document.getElementById('workflow-frame'),origin=${literal(address.origin)};
       let theme=${literal(theme)},windowChrome=${literal(windowChrome)},editCommands=false,contextMenu=false;
+      const clearDragRegions=()=>vscode.postMessage({type:'studio-window-drag-regions',version:1,width:1,height:1,regions:[]});
       vscode.setState({projectUri:${literal(projectUri)}});
       addEventListener('vscode-webview-exec-command',event=>{
         const command=typeof event.detail==='string'?event.detail:event.detail?.command;
         if(!editCommands||document.activeElement!==frame&&!contextMenu||!['paste','copy','cut','selectAll','undo','redo'].includes(command))return;
         event.preventDefault();frame.contentWindow.postMessage({type:'workflow-host',editCommand:command,...(contextMenu?{restoreFocus:true}:{}),...(command==='paste'&&event.detail?.clipboard?{clipboardData:event.detail.clipboard}:{})},origin);contextMenu=false;
       });
-      frame.addEventListener('load',()=>{editCommands=false;contextMenu=false;frame.contentWindow.postMessage({type:'workflow-host',theme,windowChrome,locale:${literal(locale)},traceVersion:1,clipboardVersion:1,nativePasteVersion:document.documentElement.dataset.vscodeNativeClipboard==='1'?1:0,resourceVersion:1},origin);vscode.postMessage({type:'workflow-frame-ready'});});
+      frame.addEventListener('load',()=>{if(windowChrome?.active)clearDragRegions();editCommands=false;contextMenu=false;frame.contentWindow.postMessage({type:'workflow-host',theme,windowChrome,locale:${literal(locale)},traceVersion:1,clipboardVersion:1,nativePasteVersion:document.documentElement.dataset.vscodeNativeClipboard==='1'?1:0,resourceVersion:1},origin);vscode.postMessage({type:'workflow-frame-ready'});});
       addEventListener('message',event=>{
         if(event.source===frame.contentWindow){
+          if(event.origin===origin&&event.data?.type==='workflow-window-drag'&&event.data.version===1&&windowChrome?.active===true){
+            const {width,height,regions}=event.data;vscode.postMessage({type:'studio-window-drag-regions',version:1,width,height,regions});
+          }
           if(event.origin===origin&&event.data?.type==='workflow-edit'&&event.data.version===1)editCommands=true;
           if(event.origin===origin&&event.data?.type==='workflow-edit'&&event.data.version===1&&event.data.command==='paste'&&document.activeElement===frame&&document.documentElement.dataset.vscodeNativeClipboard==='1'){
             contextMenu=false;
@@ -40,7 +44,7 @@ export function projectFrameHtml(url: string, title: string, projectUri: string,
         }
         if(event.data?.type!=='workflow-host')return;
         if(event.data.theme==='dark'||event.data.theme==='light')theme=event.data.theme;
-        if(event.data.windowChrome)windowChrome=event.data.windowChrome;
+        if(event.data.windowChrome){windowChrome=event.data.windowChrome;if(!windowChrome.active)clearDragRegions();}
         frame.contentWindow.postMessage(event.data,origin);
       });
       frame.src=${literal(address.href)};

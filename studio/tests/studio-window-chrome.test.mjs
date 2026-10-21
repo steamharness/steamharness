@@ -31,3 +31,42 @@ test('native macOS controls use the embedded header height at every zoom and res
     assert.equal(updates.at(-1).height, Math.round(35 * scale));
   }
 });
+
+const dragSource = await readFile(new URL('../upstream/vscode/src/vs/workbench/contrib/webview/browser/studioWindowDrag.ts', import.meta.url), 'utf8');
+const dragCompiled = ts.transpileModule(dragSource, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
+function dragFixture() {
+  class Disposable {
+    disposables = [];
+    _register(value) { this.disposables.push(value); return value; }
+    dispose() { this.disposables.forEach(value => value.dispose()); }
+  }
+  const document = { createElement: () => ({ ownerDocument: document, style: {}, children: [], setAttribute() {},
+    appendChild(child) { this.children.push(child); }, replaceChildren() { this.children = []; }, remove() { this.removed = true; } }) };
+  const parent = document.createElement();
+  const module = { exports: {} };
+  runInNewContext(dragCompiled, { module, exports: module.exports, require: () => ({ Disposable, toDisposable: dispose => ({ dispose }) }) });
+  const drag = new module.exports.StudioWindowDragRegions({ ownerDocument: document, parentElement: parent });
+  return { drag, overlay: parent.children[0] };
+}
+
+test('project drag regions stay anchored to their own webview at different sizes and dispose with it', () => {
+  const { drag, overlay } = dragFixture();
+  drag.update({ version: 1, width: 800, height: 600, regions: [{ x: 200, y: 0, width: 400, height: 48 }] });
+  assert.deepEqual(overlay.children[0].style, { left: '25%', top: '0%', width: '50%', height: '8%' });
+  drag.update({ version: 1, width: 1600, height: 1200, regions: [{ x: 400, y: 0, width: 800, height: 48 }] });
+  assert.deepEqual(overlay.children[0].style, { left: '25%', top: '0%', width: '50%', height: '4%' });
+  drag.update({ version: 1, width: 800, height: 600, regions: [] });
+  assert.equal(overlay.children.length, 0);
+  drag.dispose(); assert.equal(overlay.removed, true);
+});
+
+test('malformed or out-of-header native geometry clears old regions instead of blocking project content', () => {
+  const { drag, overlay } = dragFixture();
+  const valid = { version: 1, width: 800, height: 600, regions: [{ x: 200, y: 0, width: 400, height: 48 }] };
+  for (const invalid of [{ ...valid, width: NaN }, { ...valid, version: 2 }, { ...valid, regions: null },
+    ...[{ x: -1 }, { y: 256 }, { width: 801 }, { height: Infinity }].map(change => ({ ...valid, regions: [{ ...valid.regions[0], ...change }] }))]) {
+    drag.update(valid); assert.equal(overlay.children.length, 1);
+    drag.update(invalid); assert.equal(overlay.children.length, 0);
+  }
+  drag.dispose();
+});

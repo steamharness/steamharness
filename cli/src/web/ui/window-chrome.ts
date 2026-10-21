@@ -1,4 +1,5 @@
 import './window-chrome.css';
+import { ProjectWindowDragRegions } from './window-drag';
 
 interface WindowChrome { active: boolean; height: number; left: number; right: number }
 
@@ -9,13 +10,15 @@ export class ProjectWindowChrome {
   private readonly observer: MutationObserver;
   private readonly app = document.querySelector<HTMLElement>('#app')!;
   private active = false;
+  private readonly drag: ProjectWindowDragRegions | undefined;
 
-  constructor() {
+  constructor(send?: ConstructorParameters<typeof ProjectWindowDragRegions>[1]) {
     this.slot.className = 'studio-window-controls-slot';
     this.slot.setAttribute('aria-hidden', 'true');
     this.observer = new MutationObserver(() => this.layout());
     this.observer.observe(this.app, { attributes: true, attributeFilter: ['class'] });
     this.narrow.addEventListener('change', this.layout);
+    if (send) { this.drag = new ProjectWindowDragRegions(this.app, send); }
   }
 
   update(value: WindowChrome): void {
@@ -30,6 +33,7 @@ export class ProjectWindowChrome {
   }
 
   private readonly layout = (): void => {
+    this.drag?.update(this.active);
     if (!this.active) { this.slot.remove(); return; }
     const menu = !this.narrow.matches && this.app.classList.contains('menu-open') ? this.app.querySelector('#project-menu') : null;
     const parent = menu ?? this.app.querySelector('.toolbar > .project-title');
@@ -37,6 +41,7 @@ export class ProjectWindowChrome {
   };
 
   dispose(): void {
+    this.drag?.dispose();
     this.observer.disconnect(); this.narrow.removeEventListener('change', this.layout); this.slot.remove();
   }
 }

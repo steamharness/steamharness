@@ -1,0 +1,318 @@
+diff --git a/src/vs/workbench/browser/parts/media/studioMode.css b/src/vs/workbench/browser/parts/media/studioMode.css
+index b302683d3b81fe228d1b75aab800fb78a61baf1b..d119b342845879943d9e3b7279a11de26fa97e8c 100644
+--- a/src/vs/workbench/browser/parts/media/studioMode.css
++++ b/src/vs/workbench/browser/parts/media/studioMode.css
+@@ -24,7 +24,6 @@
+ }
+ 
+ .monaco-workbench .studio-mode-switcher button,
+-.monaco-workbench .studio-steam-tools-action,
+ .monaco-workbench .studio-steam-toggle-tools {
+ 	position: relative;
+ 	z-index: 2500;
+@@ -63,16 +62,13 @@
+ }
+ 
+ .monaco-workbench .studio-mode-switcher button:focus-visible,
+-.monaco-workbench .studio-steam-tools-action:focus-visible,
+ .monaco-workbench .studio-steam-toggle-tools:focus-visible,
+ .monaco-workbench .studio-steam-tool:focus-visible {
+ 	outline: 1px solid var(--vscode-focusBorder);
+ 	outline-offset: 2px;
+ }
+ 
+-.monaco-workbench .studio-steam-tools-action[hidden],
+ .monaco-workbench .studio-steam-toggle-tools[hidden] { display: none; }
+-.monaco-workbench .studio-steam-tools-action:hover,
+ .monaco-workbench .studio-steam-toggle-tools:hover { background: var(--vscode-toolbar-hoverBackground); }
+ .monaco-workbench .studio-steam-toggle-tools {
+ 	order: 1;
+@@ -88,7 +84,10 @@
+ .monaco-workbench.studio-steam-mode .part.auxiliarybar > .title > .title-label,
+ .monaco-workbench.studio-steam-mode .part.auxiliarybar > .title > .global-actions { display: none; }
+ .monaco-workbench.studio-steam-mode .part.auxiliarybar.pane-composite-part > .title.composite > .title-actions { order: 2; flex: 0 0 auto; }
+-.monaco-workbench.studio-steam-mode .part.auxiliarybar > .title { padding-left: var(--vscode-spacing-size60); }
++.monaco-workbench.studio-steam-mode .part.auxiliarybar > .title {
++	padding-left: var(--vscode-spacing-size60);
++	-webkit-app-region: drag;
++}
+ .monaco-workbench.studio-steam-mode .studio-steam-tabs {
+ 	display: flex;
+ 	align-items: center;
+@@ -96,18 +95,20 @@
+ 	min-width: 0;
+ 	height: 100%;
+ 	gap: var(--vscode-spacing-size80);
++	padding-right: var(--vscode-spacing-size240);
+ 	user-select: text;
+ 	-webkit-user-select: text;
+ }
+ .monaco-workbench .studio-steam-tab-list {
+ 	display: flex;
+ 	align-items: center;
+-	flex: 1;
++	flex: 0 1 auto;
+ 	min-width: 0;
+ 	height: 100%;
+ 	gap: var(--vscode-spacing-size80);
+ 	overflow-x: auto;
+ 	scrollbar-width: none;
++	-webkit-app-region: no-drag;
+ }
+ .monaco-workbench .studio-steam-tab-list:hover { scrollbar-width: thin; }
+ .monaco-workbench .studio-steam-tab {
+@@ -133,6 +134,7 @@
+ }
+ .monaco-workbench .studio-steam-tab:hover { background: var(--vscode-tab-hoverBackground); }
+ .monaco-workbench .studio-steam-tabs button {
++	-webkit-app-region: no-drag;
+ 	border: 0;
+ 	border-radius: var(--vscode-cornerRadius-small);
+ 	background: transparent;
+@@ -161,7 +163,6 @@
+ .monaco-workbench .studio-steam-tabs .studio-steam-add-tab { width: var(--vscode-spacing-size280); height: var(--vscode-spacing-size280); flex-shrink: 0; padding: var(--vscode-spacing-size60); background: color-mix(in srgb, var(--vscode-foreground) 6%, var(--vscode-sideBar-background, var(--vscode-editor-background))); }
+ .monaco-workbench .studio-steam-tabs :is(.studio-steam-add-tab, .studio-steam-tab-close):hover { background: var(--vscode-toolbar-hoverBackground); }
+ .monaco-workbench .studio-steam-tabs button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+-.monaco-workbench .studio-steam-empty-tabs { padding: 0 var(--vscode-spacing-size120); align-self: center; color: var(--vscode-descriptionForeground); }
+ .monaco-workbench.studio-steam-mode .part.auxiliarybar { position: relative; }
+ /* This part shares the auxiliary card; it must not inherit main-editor floating margins. */
+ .monaco-workbench .part.auxiliarybar > .part.editor.studio-steam-editors {
+@@ -273,7 +274,6 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
+ 
+ @media (prefers-reduced-motion: reduce) {
+ 	.monaco-workbench .studio-mode-switcher button,
+-	.monaco-workbench .studio-steam-tools-action,
+ 	.monaco-workbench .studio-steam-toggle-tools,
+ 	.monaco-workbench .studio-steam-tab,
+ 	.monaco-workbench .studio-steam-tool { transition: none; }
+@@ -303,7 +303,6 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
+ .monaco-workbench .studio-steam-window-chrome .studio-mode-switcher { margin-top: 0; margin-bottom: 0; }
+ .monaco-workbench .part.auxiliarybar > .title > .studio-steam-tools-chrome { position: static; order: 3; flex-shrink: 0; }
+ .monaco-workbench .studio-steam-tools-chrome .studio-steam-toggle-tools { margin-right: var(--vscode-spacing-size80); }
+-.monaco-workbench .studio-steam-tools-chrome .studio-steam-tools-action { font-size: var(--vscode-fontSize-label2); }
+ .monaco-workbench .studio-steam-tools-chrome > .window-controls-container {
+ 	display: flex;
+ 	order: 2;
+@@ -336,6 +335,9 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
+ 	display: flex;
+ 	align-items: center;
+ 	height: 35px;
++	box-sizing: border-box;
++	gap: var(--vscode-spacing-size40);
++	padding: 0 var(--vscode-spacing-size240) 0 var(--vscode-spacing-size60);
+ 	background: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-sideBar-background));
+ 	user-select: text;
+ 	-webkit-user-select: text;
+@@ -344,12 +346,14 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
+ .monaco-workbench .studio-steam-instances button[hidden] { display: none; }
+ .monaco-workbench .studio-steam-instance-list {
+ 	display: flex;
++	flex: 0 1 auto;
+ 	align-items: stretch;
+ 	min-width: 0;
+ 	max-width: calc(100% - 72px);
+ 	height: 100%;
+ 	overflow-x: auto;
+ 	scrollbar-width: none;
++	-webkit-app-region: no-drag;
+ }
+ .monaco-workbench .studio-steam-instance-list:hover { scrollbar-width: thin; }
+ .monaco-workbench .studio-steam-instance {
+@@ -366,6 +370,7 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
+ .monaco-workbench .studio-steam-instance.active { color: var(--vscode-tab-activeForeground); background: var(--vscode-tab-activeBackground); }
+ .monaco-workbench .studio-steam-instance:hover { background: var(--vscode-tab-hoverBackground); }
+ .monaco-workbench .studio-steam-instances button {
++	-webkit-app-region: no-drag;
+ 	border: 0;
+ 	background: transparent;
+ 	color: inherit;
+@@ -381,3 +386,17 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
+ .monaco-workbench .studio-steam-instances :is(.studio-steam-new-instance, .studio-steam-instance-actions) { flex-shrink: 0; width: var(--vscode-spacing-size280); height: var(--vscode-spacing-size280); border-radius: var(--vscode-cornerRadius-small); }
+ .monaco-workbench .studio-steam-instances :is(.studio-steam-new-instance, .studio-steam-instance-actions, .studio-steam-tab-close):hover { background: var(--vscode-toolbar-hoverBackground); }
+ .monaco-workbench .studio-steam-instances button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
++
++/* Child frames cannot declare native window drag regions. Mirror only their empty header space. */
++.monaco-workbench .studio-project-drag-regions {
++	display: none;
++	position: absolute;
++	inset: 0;
++	pointer-events: none;
++}
++.monaco-workbench.studio-steam-mode .studio-project-drag-regions { display: block; }
++.monaco-workbench .studio-project-drag-region {
++	position: absolute;
++	-webkit-app-region: drag;
++}
++.monaco-workbench:not(.web) .studio-project-drag-region { pointer-events: auto; }
+diff --git a/src/vs/workbench/browser/parts/studioMode.ts b/src/vs/workbench/browser/parts/studioMode.ts
+index b94fbf787144d9e844fe6b6f844600a4015830ec..8461315b3349e3bc4317a19e52a6283211b4b6eb 100644
+--- a/src/vs/workbench/browser/parts/studioMode.ts
++++ b/src/vs/workbench/browser/parts/studioMode.ts
+@@ -89,9 +89,6 @@ export class StudioModeSwitcher extends Disposable {
+ 		const steam = append(element, $('button.studio-mode-steam', { type: 'button' })) as HTMLButtonElement;
+ 		const steamIcon = append(steam, $('span.codicon.codicon-rocket', { 'aria-hidden': 'true' }));
+ 		append(steam, $('span', undefined, 'Steam'));
+-		const tools = append(right, $('button.studio-steam-tools-action', { type: 'button' })) as HTMLButtonElement;
+-		append(tools, $('span.codicon.codicon-tools', { 'aria-hidden': 'true' }));
+-		const toolsLabel = append(tools, $('span'));
+ 		const toggle = append(right, $('button.studio-steam-toggle-tools', { type: 'button', 'aria-controls': Parts.AUXILIARYBAR_PART })) as HTMLButtonElement;
+ 		const toggleIcon = append(toggle, $('span.codicon', { 'aria-hidden': 'true' }));
+ 		const toggleHover = this._register(hoverService.setupManagedHover(getDefaultHoverDelegate('mouse'), toggle, ''));
+@@ -125,7 +122,7 @@ export class StudioModeSwitcher extends Disposable {
+ 			const modeParent = active ? dock : left;
+ 			const toolsParent = active ? toolsDock : right;
+ 			if (element.parentElement !== modeParent) { modeParent.append(element); }
+-			if (tools.parentElement !== toolsParent) { toolsParent.append(tools, toggle); }
++			if (toggle.parentElement !== toolsParent) { toolsParent.append(toggle); }
+ 			const toolsVisible = layout.isVisible(Parts.AUXILIARYBAR_PART);
+ 			const title = active && toolsVisible ? layout.getContainer(getWindow(dock), Parts.AUXILIARYBAR_PART)?.querySelector(':scope > .title') : undefined;
+ 			const dockParent = title ?? layout.mainContainer;
+@@ -141,9 +138,6 @@ export class StudioModeSwitcher extends Disposable {
+ 			steamIcon.className = busy && targetSteam ? 'codicon codicon-loading codicon-modifier-spin' : 'codicon codicon-rocket';
+ 			ide.disabled = busy && !targetSteam;
+ 			steam.disabled = !state.available || busy && targetSteam;
+-			tools.hidden = !active;
+-			tools.disabled = busy;
+-			tools.title = toolsLabel.textContent = state.labels.tools ?? 'Open Tools';
+ 			const visible = layout.isVisible(Parts.AUXILIARYBAR_PART);
+ 			toggle.hidden = !active;
+ 			toggle.disabled = busy;
+@@ -154,7 +148,7 @@ export class StudioModeSwitcher extends Disposable {
+ 			toggleIcon.className = `codicon codicon-layout-sidebar-right${visible ? '' : '-off'}`;
+ 			scheduleChrome();
+ 		};
+-		for (const [button, command] of [[ide, 'studio.internalEnterIdeMode'], [steam, 'studio.internalEnterSteamMode'], [tools, 'studio.internalOpenSteamTools'], [toggle, 'workbench.action.toggleAuxiliaryBar']] as const) {
++		for (const [button, command] of [[ide, 'studio.internalEnterIdeMode'], [steam, 'studio.internalEnterSteamMode'], [toggle, 'workbench.action.toggleAuxiliaryBar']] as const) {
+ 			this._register(addDisposableListener(button, 'click', () => {
+ 				void this.commands.executeCommand(command).catch(error => this.notifications.error(error));
+ 			}));
+@@ -223,11 +217,11 @@ export class StudioSteamTabs extends Disposable {
+ 	) {
+ 		super();
+ 		this.element = append(parent, $('.studio-steam-tabs'));
+-		this.list = append(this.element, $('.studio-steam-tab-list', { role: 'tablist' }));
+ 		this.add = append(this.element, $('button.studio-steam-add-tab.codicon.codicon-add', { type: 'button', 'aria-haspopup': 'menu' })) as HTMLButtonElement;
++		this.list = append(this.element, $('.studio-steam-tab-list', { role: 'tablist' }));
+ 		this.instances = append(parent, $('.studio-steam-instances'));
+-		this.instanceList = append(this.instances, $('.studio-steam-instance-list', { role: 'tablist' }));
+ 		this.newInstance = append(this.instances, $('button.studio-steam-new-instance.codicon.codicon-add', { type: 'button' })) as HTMLButtonElement;
++		this.instanceList = append(this.instances, $('.studio-steam-instance-list', { role: 'tablist' }));
+ 		this._register(addDisposableListener(this.newInstance, 'click', () => { void this.run('studio.internalNewSteamInstance', studioSteamWorkspaceState.tool); }));
+ 		this.instanceActions = append(this.instances, $('button.studio-steam-instance-actions.codicon.codicon-chevron-down', { type: 'button', 'aria-haspopup': 'menu' })) as HTMLButtonElement;
+ 		this._register(addDisposableListener(this.instanceActions, 'click', () => this.contextMenu.showContextMenu({
+@@ -286,7 +280,6 @@ export class StudioSteamTabs extends Disposable {
+ 		const labels = studioModeState.state.labels;
+ 		const selectCommand = instances ? 'studio.internalSelectSteamInstance' : 'studio.internalSelectSteamTab';
+ 		const closeCommand = instances ? 'studio.internalCloseSteamInstance' : 'studio.internalCloseSteamTab';
+-		if (!instances && !tabs.length) { append(list, $('span.studio-steam-empty-tabs', undefined, labels.tools ?? 'Open Tools')); }
+ 		for (const [index, tab] of tabs.entries()) {
+ 			const item = append(list, $(instances ? '.studio-steam-instance' : '.studio-steam-tab', { 'data-tab': tab.id, 'data-icon': tab.icon }));
+ 			item.classList.toggle('active', tab.id === active); item.classList.toggle('dirty', !!tab.dirty);
+diff --git a/src/vs/workbench/contrib/webview/browser/studioWindowDrag.ts b/src/vs/workbench/contrib/webview/browser/studioWindowDrag.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..c9818271c144705356b8264e2b607616da34f517
+--- /dev/null
++++ b/src/vs/workbench/contrib/webview/browser/studioWindowDrag.ts
+@@ -0,0 +1,44 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { Disposable, toDisposable } from '../../../../base/common/lifecycle.js';
++
++interface DragRegion { x: number; y: number; width: number; height: number }
++interface DragRegionsMessage { version: number; width: number; height: number; regions: DragRegion[] }
++
++/** Mirror an embedded project header into the owning renderer's native drag surface. */
++export class StudioWindowDragRegions extends Disposable {
++	private readonly element: HTMLElement;
++
++	constructor(frame: HTMLIFrameElement) {
++		super();
++		this.element = frame.ownerDocument.createElement('div');
++		this.element.className = 'studio-project-drag-regions';
++		this.element.setAttribute('aria-hidden', 'true');
++		frame.parentElement?.appendChild(this.element);
++		this._register(toDisposable(() => this.element.remove()));
++	}
++
++	update(message: DragRegionsMessage): void {
++		this.element.replaceChildren();
++		if (message.version !== 1 || ![message.width, message.height].every(n => Number.isFinite(n) && n > 0 && n <= 32768)
++			|| !Array.isArray(message.regions) || message.regions.length > 128) {
++			return;
++		}
++		const regions = message.regions.filter(region => region && [region.x, region.y, region.width, region.height].every(Number.isFinite)
++			&& region.x >= 0 && region.y >= 0 && region.width > 0 && region.height > 0
++			&& region.x + region.width <= message.width && region.y + region.height <= Math.min(256, message.height));
++		if (regions.length !== message.regions.length) { return; }
++		for (const region of regions) {
++			const element = this.element.ownerDocument.createElement('div');
++			element.className = 'studio-project-drag-region';
++			Object.assign(element.style, {
++				left: `${region.x / message.width * 100}%`, top: `${region.y / message.height * 100}%`,
++				width: `${region.width / message.width * 100}%`, height: `${region.height / message.height * 100}%`,
++			});
++			this.element.appendChild(element);
++		}
++	}
++}
+diff --git a/src/vs/workbench/contrib/webview/browser/webviewElement.ts b/src/vs/workbench/contrib/webview/browser/webviewElement.ts
+index 67df1d7140c8df1190266e272071719d19adeeec..d204b6348f5744c95dab608827656c9930c6e51c 100644
+--- a/src/vs/workbench/contrib/webview/browser/webviewElement.ts
++++ b/src/vs/workbench/contrib/webview/browser/webviewElement.ts
+@@ -12,7 +12,7 @@ import { promiseWithResolvers, ThrottledDelayer } from '../../../../base/common/
+ import { CancellationTokenSource } from '../../../../base/common/cancellation.js';
+ import { Emitter, Event } from '../../../../base/common/event.js';
+ import { Lazy } from '../../../../base/common/lazy.js';
+-import { Disposable, DisposableStore, IDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
++import { Disposable, DisposableStore, IDisposable, MutableDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
+ import { COI } from '../../../../base/common/network.js';
+ import { observableValue } from '../../../../base/common/observable.js';
+ import { listenStream } from '../../../../base/common/stream.js';
+@@ -37,6 +37,7 @@ import { loadLocalResource, WebviewResourceResponse } from './resourceLoading.js
+ import { WebviewThemeDataProvider } from './themeing.js';
+ import { areWebviewContentOptionsEqual, IWebviewElement, WebviewContentOptions, WebviewExtensionDescription, WebviewInitInfo, WebviewMessageReceivedEvent, WebviewOptions } from './webview.js';
+ import { WebviewFindDelegate, WebviewFindWidget } from './webviewFindWidget.js';
++import { StudioWindowDragRegions } from './studioWindowDrag.js';
+ import { FromWebviewMessage, KeyEvent, ToWebviewMessage, WebViewDragEvent } from './webviewMessages.js';
+ 
+ interface WebviewContent {
+@@ -139,6 +140,7 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
+ 	private readonly _portMappingManager: WebviewPortMappingManager;
+ 
+ 	private readonly _resourceLoadingDisposables = this._register(new DisposableStore());
++	private readonly _studioWindowDrag = this._register(new MutableDisposable<StudioWindowDragRegions>());
+ 
+ 	private _contextKeyService: IContextKeyService | undefined;
+ 
+@@ -211,6 +213,12 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
+ 		}));
+ 
+ 		this._register(this.on('onmessage', ({ message, transfer }) => {
++			if (message?.type === 'studio-window-drag-regions' && this.providedViewType === 'studio.project'
++				&& this.extension?.id.value === 'studio.studio-workstation' && this.element?.parentElement) {
++				const drag = this._studioWindowDrag.value ?? (this._studioWindowDrag.value = new StudioWindowDragRegions(this.element));
++				drag.update(message);
++				return;
++			}
+ 			this._onMessage.fire({ message, transfer });
+ 		}));
+ 
+@@ -492,6 +500,7 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
+ 		this._registerMessageHandler(targetWindow);
+ 
+ 		if (this._webviewFindWidget) {
++			this._webviewFindWidget.getDomNode().style.setProperty('-webkit-app-region', 'no-drag');
+ 			element.appendChild(this._webviewFindWidget.getDomNode());
+ 		}
+ 
+@@ -677,6 +686,7 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
+ 	}
+ 
+ 	private doUpdateContent(newContent: WebviewContent) {
++		this._studioWindowDrag.clear();
+ 		this._logService.debug(`Webview(${this.id}): will update content`);
+ 
+ 		this._content = newContent;

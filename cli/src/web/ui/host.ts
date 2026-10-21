@@ -128,7 +128,9 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   };
   addEventListener('message', event => {
     if (window.parent === window || event.source !== window.parent || event.data?.type !== 'workflow-host') { return; }
-    if (event.data.windowChrome && (event.data.windowChrome.active === true || windowChrome)) { (windowChrome ??= new ProjectWindowChrome()).update(event.data.windowChrome); }
+    if (event.data.windowChrome && (event.data.windowChrome.active === true || windowChrome)) {
+      (windowChrome ??= new ProjectWindowChrome(message => window.parent.postMessage(message, '*'))).update(event.data.windowChrome);
+    }
     if (event.data.theme === 'dark' || event.data.theme === 'light') { document.documentElement.dataset.theme = event.data.theme; }
     if (event.data.traceVersion !== undefined) { trace.enable(event.data.traceVersion); }
     if (event.data.clipboardVersion !== undefined) {

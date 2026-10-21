@@ -266,19 +266,30 @@ test('the tab contains a CLI frame and no second conversation renderer', () => {
 });
 
 test('the project frame retains the latest native chrome reservation across iframe loads', () => {
-  const listeners = new Map(), frameListeners = new Map(), messages = [];
+  const listeners = new Map(), frameListeners = new Map(), messages = [], native = [];
   const frame = { contentWindow: { postMessage: message => messages.push(message) }, addEventListener: (type, callback) => frameListeners.set(type, callback) };
   const initial = { active: true, projectUri: 'file:///project', height: 52, left: 228, right: 0, revision: 1 };
   const html = projectFrameHtml('http://127.0.0.1:3000/', 'Project', initial.projectUri, 'dark', 'fixture', 'en', initial);
   runInNewContext(/<script nonce="fixture">([\s\S]*?)<\/script>/.exec(html)[1], {
-    acquireVsCodeApi: () => ({ setState() {}, postMessage() {} }),
+    acquireVsCodeApi: () => ({ setState() {}, postMessage: message => native.push(JSON.parse(JSON.stringify(message))) }),
     document: { getElementById: () => frame, documentElement: { dataset: {} } },
     addEventListener: (type, callback) => listeners.set(type, callback),
   });
   frameListeners.get('load')();
   assert.deepEqual(JSON.parse(JSON.stringify(messages.at(-1).windowChrome)), initial);
+  const drag = { type: 'workflow-window-drag', version: 1, width: 800, height: 600, regions: [{ x: 300, y: 0, width: 100, height: 52 }] };
+  const event = { source: frame.contentWindow, origin: 'http://127.0.0.1:3000', data: drag };
+  const before = native.length;
+  listeners.get('message')({ ...event, origin: 'https://unrelated.example' });
+  assert.equal(native.length, before);
+  listeners.get('message')(event);
+  assert.deepEqual(native.at(-1), { ...drag, type: 'studio-window-drag-regions' });
   const next = { ...initial, active: false, revision: 2 };
   listeners.get('message')({ data: { type: 'workflow-host', windowChrome: next } });
+  assert.deepEqual(native.at(-1).regions, []);
+  const cleared = native.length;
+  listeners.get('message')(event);
+  assert.equal(native.length, cleared);
   // An embedded page cannot change its own host reservation.
   listeners.get('message')({ source: frame.contentWindow, origin: 'http://127.0.0.1:3000', data: { type: 'workflow-host', windowChrome: initial } });
   frameListeners.get('load')();

@@ -228,6 +228,14 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       assert.ok(rect.y <= 1 && Math.abs(rect.height - 960) <= 1, JSON.stringify(rect));
     }
     check(`${language}: Steam fills the window with project results and tools and removes the title and status bars`);
+    assert.equal(await page.locator('.studio-steam-empty-tabs, .studio-steam-tools-action').count(), 0);
+    const cleanHeader = await page.locator('.part.auxiliarybar > .title').evaluate(title => {
+      const add = title.querySelector('.studio-steam-add-tab'), list = title.querySelector('.studio-steam-tab-list');
+      return { addFirst: add.nextElementSibling === list, drag: getComputedStyle(title).getPropertyValue('-webkit-app-region'),
+        addDrag: getComputedStyle(add).getPropertyValue('-webkit-app-region'), controls: title.querySelectorAll('.studio-steam-tools-chrome button').length };
+    });
+    assert.deepEqual(cleanHeader, { addFirst: true, drag: 'drag', addDrag: 'no-drag', controls: 1 });
+    check(`${language}: the empty tool header puts New on the left and keeps only the visibility toggle on the right`);
 
     const frame = await until(async () => {
       for (const frame of page.frames()) {
@@ -236,11 +244,25 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       }
     }, Boolean, 'Project result frame did not open');
     await frame.locator('#app[data-studio-window-chrome]').waitFor();
+    const assertDragRegions = async () => {
+      await until(() => page.locator('.studio-project-drag-region').count(), count => count > 0, 'Project header drag regions did not reach the native renderer');
+      const offset = await (await frame.frameElement()).boundingBox();
+      const excluded = await frame.locator('.toolbar :is(button, .project-heading, h1, .project-name, .running-count, .studio-window-controls-slot)').evaluateAll(elements => elements
+        .map(element => { const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; })
+        .filter(rect => rect.width > 0 && rect.height > 0));
+      await until(() => page.locator('.studio-project-drag-region').evaluateAll(elements => elements.map(element => {
+        const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };
+      })), regions => regions.length > 0 && regions.every(region => excluded.every(control =>
+        region.x + region.width <= offset.x + control.x + .5 || region.x >= offset.x + control.x + control.width - .5
+        || region.y + region.height <= offset.y + control.y + .5 || region.y >= offset.y + control.y + control.height - .5)),
+      'Native project drag regions covered an interactive control or selectable title');
+    };
     const assertChromeSlot = async parent => {
       await until(() => frame.locator('.studio-window-controls-slot').evaluate((slot, parent) => slot.parentElement.matches(parent), parent), Boolean, `Native controls slot did not move to ${parent}`);
       const slot = await frame.locator('.studio-window-controls-slot').boundingBox();
       const controls = await page.locator('.studio-steam-window-chrome').boundingBox();
       assert.ok(Math.abs(slot.x - controls.x) <= 1 && Math.abs(slot.y - controls.y) <= 1 && slot.width >= controls.width - 1, JSON.stringify({ slot, controls }));
+      await assertDragRegions();
     };
     if (await frame.locator('#hide-menu').isVisible()) { await frame.locator('#hide-menu').click(); }
     await assertChromeSlot('.project-title');
@@ -255,6 +277,13 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
 
     await frame.locator('#app[data-run-state=idle]').waitFor();
     await until(() => frame.locator('.message.assistant').count(), value => value > 0, 'Local project did not produce a result');
+    await frame.locator('#project-info').click();
+    await frame.locator('dialog[open]').waitFor();
+    await until(() => page.locator('.studio-project-drag-region').count(), count => count === 0, 'Modal dialogs must suspend native project dragging');
+    await page.keyboard.press('Escape');
+    await frame.locator('dialog[open]').waitFor({ state: 'detached' });
+    await assertDragRegions();
+    check(`${language}: project header drag regions exclude controls and text, follow menu layout and suspend for dialogs`);
     await page.setViewportSize({ width: 1100, height: 960 });
     await frame.locator('#menu-toggle').click();
     await assertChromeSlot('.project-title');

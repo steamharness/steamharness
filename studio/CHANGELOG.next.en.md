@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Improved] Remove duplicate Open Tools labels, place New on the left and keep only the tools visibility toggle on the right. Empty areas of project and tool headers drag the application window while controls, tabs and selectable text remain interactive.
+
 - [Added] Rounded Steam tool tabs with truncated labels, add and close controls, and a trailing titlebar toggle for the tool area. Nine tools now include the terminal, browser and other projects on the right; sessions survive hiding tools and mode switches, and reload restores the selected tool editor and the original left-hand runtime.
 
 - [Added] Use dynamic, closable tabs and an add-tool menu in the Steam tool workspace. Accounts, files, settings, diffs, and other editors open on the right while the project and its results stay on the left. Unsaved documents survive returning to IDE, and tool editors restore after reload.
