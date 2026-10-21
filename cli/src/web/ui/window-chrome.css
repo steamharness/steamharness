@@ -12,7 +12,20 @@
 }
 #app[data-studio-window-chrome] > .toolbar:has(.studio-window-controls-slot) { padding-left: 0; }
 #app[data-studio-window-chrome] > .project-menu > .studio-window-controls-slot { flex-basis: var(--studio-window-chrome-height); }
+
+/* Native controls sit above the iframe's top layer. Center every modal below them,
+   including dialogs appended to body and nested configuration/action dialogs. */
+:root[data-studio-window-chrome] .conversation-dialog {
+  inset-block: calc(var(--studio-window-chrome-height) + 12px) 12px;
+  max-height: max(0px, calc(100dvh - var(--studio-window-chrome-height) - 24px));
+}
+:root[data-studio-window-chrome] .conversation-dialog[open] { display: flex; flex-direction: column; overflow: clip; }
+:root[data-studio-window-chrome] .conversation-dialog > header { flex-shrink: 0; }
+:root[data-studio-window-chrome] .conversation-dialog .dialog-body { flex: 1 1 auto; min-height: 0; max-height: none; }
+:root[data-studio-window-chrome] .image-dialog .dialog-body { display: flex; flex-direction: column; }
+
 @media (max-width: 480px) {
-  #app[data-studio-window-chrome] > .toolbar > .project-title { flex-basis: 100%; }
+  #app[data-studio-window-chrome] > .toolbar { flex-wrap: wrap; row-gap: 0; }
+  #app[data-studio-window-chrome] > .toolbar > .project-title { flex-basis: 100%; flex-wrap: wrap; }
   #app[data-studio-window-chrome] > .toolbar > .toolbar-actions { margin-left: auto; }
 }

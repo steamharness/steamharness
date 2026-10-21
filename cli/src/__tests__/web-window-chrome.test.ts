@@ -9,15 +9,18 @@ function fixture() {
   const menu = { prepend: vi.fn((slot: { parentElement: object }) => { slot.parentElement = menu; }) };
   const title = { prepend: vi.fn((slot: { parentElement: object }) => { slot.parentElement = title; }) };
   const slot = { className: '', parentElement: undefined as object | undefined, setAttribute: vi.fn(), remove: vi.fn(() => { slot.parentElement = undefined; }) };
-  const app = { classList: { contains: () => menuOpen }, toggleAttribute: vi.fn(), style: { setProperty: (key: string, value: string) => style.set(key, value) },
+  const app = { classList: { contains: () => menuOpen }, toggleAttribute: vi.fn(), removeAttribute: vi.fn(),
     querySelector: (selector: string) => selector === '#project-menu' ? menu : title };
+  const root = { toggleAttribute: vi.fn(), removeAttribute: vi.fn(), style: {
+    setProperty: (key: string, value: string) => style.set(key, value), removeProperty: (key: string) => style.delete(key),
+  } };
   const media = { matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() };
   const disconnect = vi.fn();
-  vi.stubGlobal('document', { createElement: () => slot, querySelector: () => app });
+  vi.stubGlobal('document', { documentElement: root, createElement: () => slot, querySelector: () => app });
   vi.stubGlobal('matchMedia', () => media);
   vi.stubGlobal('MutationObserver', class { constructor(callback: () => void) { changed = callback; } observe() {} disconnect = disconnect; });
   const chrome = new ProjectWindowChrome();
-  return { chrome, slot, app, title, menu, media, style, disconnect, changed: () => changed(), menuOpen: () => { menuOpen = true; changed(); } };
+  return { chrome, slot, app, root, title, menu, media, style, disconnect, changed: () => changed(), menuOpen: () => { menuOpen = true; changed(); } };
 }
 
 it('moves the native controls reservation between the project title and expanded menu without remounting content', () => {
@@ -39,12 +42,28 @@ it('reserves the hidden tool bar actions and removes the reservation when return
   f.menuOpen();
   expect(f.slot.parentElement).toBeUndefined();
   expect(f.app.toggleAttribute).toHaveBeenLastCalledWith('data-studio-window-chrome', false);
+  expect(f.root.toggleAttribute).toHaveBeenLastCalledWith('data-studio-window-chrome', false);
   f.chrome.dispose();
   expect(f.disconnect).toHaveBeenCalledOnce();
+});
+
+it('shares validated safe-area measurements with body-level dialogs and clears them on disposal', () => {
+  const f = fixture();
+  f.chrome.update({ active: true, height: 52, left: 228, right: 104 });
+  expect(f.root.toggleAttribute).toHaveBeenLastCalledWith('data-studio-window-chrome', true);
+  expect(Object.fromEntries(f.style)).toEqual({ '--studio-window-chrome-height': '52px', '--studio-window-chrome-left': '228px', '--studio-window-chrome-right': '104px' });
+  f.chrome.update({ active: true, height: 64, left: 190, right: 0 });
+  expect(f.style.get('--studio-window-chrome-height')).toBe('64px');
+  f.chrome.dispose();
+  expect(f.root.removeAttribute).toHaveBeenCalledWith('data-studio-window-chrome');
+  expect(f.app.removeAttribute).toHaveBeenCalledWith('data-studio-window-chrome');
+  expect(f.style.size).toBe(0);
 });
 
 it.each([NaN, Infinity, -1, 1001])('ignores invalid native geometry (%s)', left => {
   const f = fixture();
   f.chrome.update({ active: true, height: 52, left, right: 0 });
   expect(f.app.toggleAttribute).not.toHaveBeenCalled();
+  expect(f.root.toggleAttribute).not.toHaveBeenCalled();
+  expect(f.style.size).toBe(0);
 });

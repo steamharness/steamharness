@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Fixed] Keep Steam project configurations, field editors, rename and project information dialogs clear of native window and mode controls. Close and configuration save actions remain accessible with menus or tools hidden, and in narrow or short windows.
+
 - [Fixed] Keep the Assistant input and bottom controls accessible in short windows and with long drafts, in both the default tool and additional tabs.
 
 - [Added] A native Editor tool in Steam with file tabs below the tool row and Explorer, Search and Source Control on its right. Resize the sidebar, create and save files, and retain native unsaved-file confirmation and document state across tools and IDE mode.

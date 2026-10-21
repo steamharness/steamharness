@@ -9,6 +9,7 @@ export class ProjectWindowChrome {
   private readonly narrow = matchMedia('(max-width: 680px)');
   private readonly observer: MutationObserver;
   private readonly app = document.querySelector<HTMLElement>('#app')!;
+  private readonly root = document.documentElement;
   private active = false;
   private readonly drag: ProjectWindowDragRegions | undefined;
 
@@ -26,9 +27,11 @@ export class ProjectWindowChrome {
     if (!value || typeof value.active !== 'boolean' || ![value.height, value.left, value.right].every(n => Number.isFinite(n) && n >= 0 && n <= 1000)) { return; }
     this.active = value.active;
     this.app.toggleAttribute('data-studio-window-chrome', this.active);
-    this.app.style.setProperty('--studio-window-chrome-height', `${value.height}px`);
-    this.app.style.setProperty('--studio-window-chrome-left', `${value.left}px`);
-    this.app.style.setProperty('--studio-window-chrome-right', `${value.right}px`);
+    // Dialogs live under body, outside #app, and need the same native safe area.
+    this.root.toggleAttribute('data-studio-window-chrome', this.active);
+    this.root.style.setProperty('--studio-window-chrome-height', `${value.height}px`);
+    this.root.style.setProperty('--studio-window-chrome-left', `${value.left}px`);
+    this.root.style.setProperty('--studio-window-chrome-right', `${value.right}px`);
     this.layout();
   }
 
@@ -43,5 +46,8 @@ export class ProjectWindowChrome {
   dispose(): void {
     this.drag?.dispose();
     this.observer.disconnect(); this.narrow.removeEventListener('change', this.layout); this.slot.remove();
+    this.app.removeAttribute('data-studio-window-chrome');
+    this.root.removeAttribute('data-studio-window-chrome');
+    for (const edge of ['height', 'left', 'right']) { this.root.style.removeProperty(`--studio-window-chrome-${edge}`); }
   }
 }

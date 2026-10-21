@@ -63,7 +63,9 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     for (const stream of [child.stdout, child.stderr]) { stream.on('data', chunk => { log += chunk.toString().replaceAll(token, '[redacted]'); }); }
     const address = await until(() => log, value => /Web UI available at http:\/\/[^:/\s]+:(\d+)/.test(value) || /Extension host agent listening on (\d+)/.test(value), 'Studio server startup timed out');
     const port = /Web UI available at http:\/\/[^:/\s]+:(\d+)/.exec(address)?.[1] ?? /Extension host agent listening on (\d+)/.exec(address)?.[1];
-    browser = await chromium.launch({ channel: process.env.STEAMHARNESS_UI_BROWSER ?? 'chrome', headless: true, args: ['--disable-features=LocalNetworkAccessChecks'] });
+    const executablePath = process.env.STEAMHARNESS_UI_BROWSER_PATH;
+    browser = await chromium.launch({ ...(executablePath ? { executablePath } : { channel: process.env.STEAMHARNESS_UI_BROWSER ?? 'chrome' }),
+      headless: true, args: ['--disable-features=LocalNetworkAccessChecks'] });
     const context = await browser.newContext({ viewport: { width: 1440, height: 960 }, locale: language === 'en' ? 'en-US' : 'zh-CN' });
     await context.addCookies([{ name: 'vscode.nls.locale', value: language, domain: '127.0.0.1', path: '/' }]);
     await context.addInitScript(language => { globalThis._VSCODE_NLS_LANGUAGE = language; }, language);
@@ -148,6 +150,10 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       '@steamharness/cli': JSON.parse(await readFile(path.resolve(ROOT, '../cli/package.json'), 'utf8')).version,
     };
     await writeFile(path.join(project, 'package.json'), JSON.stringify(manifest));
+    await writeFile(path.join(project, 'configuration.json'), JSON.stringify({ version: 1,
+      fields: Array.from({ length: 17 }, (_, index) => ({ name: `field_${index}`, type: 'string',
+        description: 'A project configuration field used to verify scrolling in a short window.', defaultValue: `Value ${index}` })),
+    }));
     await command('studio.refreshProjectView');
     await until(() => steam.isEnabled(), Boolean, 'Project mode did not become available');
     const documentUri = await call({ action: 'untitled', text: 'Preserve this unsaved document during mode switches.' });
@@ -284,6 +290,64 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     await frame.locator('dialog[open]').waitFor({ state: 'detached' });
     await assertDragRegions();
     check(`${language}: project header drag regions exclude controls and text, follow menu layout and suspend for dialogs`);
+    const assertDialogFits = async dialog => {
+      await dialog.waitFor();
+      const offset = await (await frame.frameElement()).boundingBox();
+      const chrome = await page.locator('.studio-steam-window-chrome').boundingBox();
+      const bounds = await dialog.boundingBox(), header = await dialog.locator(':scope > header').boundingBox();
+      const viewport = await frame.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+      assert.ok(bounds.y >= chrome.y + chrome.height + 8 - 1, JSON.stringify({ bounds, chrome }));
+      assert.ok(bounds.x >= offset.x && bounds.x + bounds.width <= offset.x + viewport.width + 1, JSON.stringify({ bounds, offset, viewport }));
+      assert.ok(bounds.y + bounds.height <= offset.y + viewport.height - 8 + 1, JSON.stringify({ bounds, offset, viewport }));
+      assert.ok(header.y >= bounds.y && header.y + header.height <= bounds.y + bounds.height);
+      assert.equal(await dialog.evaluate(element => element.scrollTop), 0, 'The dialog header must stay fixed while its body scrolls');
+      await dialog.locator(':scope > header > button').last().click({ trial: true });
+      const footer = dialog.locator('.configuration-footer').last();
+      if (await footer.count()) {
+        const rect = await footer.boundingBox();
+        assert.ok(rect.y >= bounds.y + header.height && rect.y + rect.height <= bounds.y + bounds.height, JSON.stringify({ rect, bounds }));
+        await footer.locator('button:enabled').first().click({ trial: true });
+      }
+    };
+    const configurations = frame.locator('dialog.project-configurations:not(.configuration-field-editor)');
+    const closeDialog = async dialog => { await dialog.locator(':scope > header > button').last().click(); await dialog.waitFor({ state: 'hidden' }); };
+    for (const viewport of [{ width: 1440, height: 960 }, { width: 1100, height: 600 }, { width: 800, height: 360 }, { width: 1440, height: 320 }]) {
+      await page.setViewportSize(viewport);
+      for (const toolsVisible of [true, false]) {
+        if ((await toggleTools.getAttribute('aria-expanded') === 'true') !== toolsVisible) { await toggleTools.click(); }
+        for (const menuOpen of [false, true]) {
+          if ((await frame.locator('#hide-menu').isVisible()) !== menuOpen) { await frame.locator(menuOpen ? '#menu-toggle' : '#hide-menu').click(); }
+          await frame.locator('#project-configurations').click();
+          await until(() => configurations.locator('.configuration-field').count(), count => count === 17, 'Project configuration fields did not load');
+          await assertDialogFits(configurations);
+          const body = configurations.locator('.dialog-body');
+          assert.ok(await body.evaluate(element => element.scrollHeight > element.clientHeight));
+          await body.evaluate(element => { element.scrollTop = element.scrollHeight; });
+          await assertDialogFits(configurations);
+          if (viewport.height === 320 && toolsVisible && !menuOpen) { await page.screenshot({ path: path.join(proof, `${language}-steam-dialog-safe-area.png`) }); }
+          const lastField = await configurations.locator('.configuration-field').last().boundingBox(), bodyRect = await body.boundingBox();
+          assert.ok(lastField.y + lastField.height <= bodyRect.y + bodyRect.height + 1);
+          await body.evaluate(element => { element.scrollTop = 0; });
+          await configurations.locator('.configuration-add-field').click();
+          const fieldEditor = frame.locator('.configuration-field-editor');
+          await assertDialogFits(fieldEditor);
+          await fieldEditor.locator('.dialog-body').evaluate(element => { element.scrollTop = element.scrollHeight; });
+          await assertDialogFits(fieldEditor); await closeDialog(fieldEditor);
+          await configurations.getByRole('button', { name: language === 'en' ? 'Configuration actions' : '配置操作', exact: true }).click();
+          await configurations.getByRole('menuitem', { name: language === 'en' ? 'Rename' : '重命名', exact: true }).click();
+          const rename = frame.locator('.action-dialog'); await assertDialogFits(rename); await closeDialog(rename);
+          await closeDialog(configurations);
+        }
+      }
+      for (const selector of ['#project-info', '#tools']) {
+        await frame.locator(selector).click();
+        const dialog = frame.locator('dialog[open]'); await assertDialogFits(dialog); await closeDialog(dialog);
+      }
+    }
+    check(`${language}: configurations, nested field editors, rename, information and permissions clear window controls with menus and tools open or closed at short and narrow sizes`);
+    await page.setViewportSize({ width: 1440, height: 960 });
+    if (await toggleTools.getAttribute('aria-expanded') !== 'true') { await toggleTools.click(); }
+    if (await frame.locator('#hide-menu').isVisible()) { await frame.locator('#hide-menu').click(); }
     await page.setViewportSize({ width: 1100, height: 960 });
     await frame.locator('#menu-toggle').click();
     await assertChromeSlot('.project-title');
@@ -411,7 +475,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       assert.equal(await toggleTools.getAttribute('aria-label'), language === 'en' ? 'Show Tools' : '显示工具区');
       assert.ok((await page.locator('.part.editor:not(.studio-steam-editors)').boundingBox()).width > geometry.width);
       assert.equal(frame.isDetached(), false); assert.equal(frame.url(), resultUrl);
-      await until(() => frame.locator('#app').evaluate(app => Number.parseFloat(app.style.getPropertyValue('--studio-window-chrome-right'))), value => value > 0, 'Hidden tool controls were not reserved by the project header');
+      await until(() => frame.locator('#app').evaluate(app => Number.parseFloat(getComputedStyle(app).getPropertyValue('--studio-window-chrome-right'))), value => value > 0, 'Hidden tool controls were not reserved by the project header');
       await toggleTools.click();
       await until(partState, state => state.auxiliarybar.visible, 'Tools did not expand');
       assert.equal(await toggleTools.getAttribute('aria-expanded'), 'true');
@@ -625,6 +689,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     }
     check(`${language}: tools render in light/dark themes from 800 to 1440px without overflow`);
     await command('studio.enterIdeMode');
+    await frame.locator('html:not([data-studio-window-chrome])').waitFor({ state: 'attached' });
     const transitions = await page.evaluate(() => window.studioModeTransitions);
     for (const direction of ['steam', 'ide']) {
       const transition = transitions.find(transition => transition.direction === direction && transition.animations.length === 2);

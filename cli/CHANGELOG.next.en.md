@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Fixed] Keep project configurations and other dialogs below native window and mode controls in Studio Steam mode. Short windows retain headers, close buttons and configuration save controls while content scrolls, including nested field editors and rename dialogs.
+
 - [Fixed] Resize conversation and Studio Assistant composers to the available height. Long drafts, attachments and primary parameters scroll within the input area, keeping the input and Send button accessible in short windows.
 
 - [Fixed] Drag the Studio window from empty areas of the project header in Steam mode. Controls and title text retain normal clicks and selection; dialogs and IDE mode suspend the drag surface.
