@@ -1,15 +1,59 @@
-.project-configurations { width: min(760px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); color: var(--vscode-foreground); background: var(--vscode-editor-background); }
-.project-configurations .dialog-body { overflow-y: auto; min-height: 0; }
-.configuration-toolbar { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
-.project-configurations button, .project-configurations select, .project-configurations input:not([type=checkbox]), .project-configurations textarea { border: 1px solid var(--vscode-panel-border); border-radius: 4px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); padding: 6px 10px; min-height: 32px; font: inherit; }
-.project-configurations button { cursor: pointer; background: var(--vscode-button-secondaryBackground); }
+.project-configurations { width: min(720px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); color: var(--vscode-foreground, var(--vscode-editor-foreground)); background: var(--vscode-editor-background); }
+.project-configurations[open] { display: flex; flex-direction: column; overflow: hidden; }
+.project-configurations > header, .configuration-profiles, .configuration-footer { flex-shrink: 0; }
+.project-configurations .dialog-body { max-height: none; overflow-y: auto; min-height: 0; scrollbar-width: thin; scrollbar-color: transparent transparent; }
+.project-configurations .dialog-body:hover { scrollbar-color: var(--vscode-scrollbarSlider-background) transparent; }
+.project-configurations button:not(.icon-button):not(.session-action), .project-configurations select, .project-configurations input:not([type=checkbox]), .project-configurations textarea { border: 1px solid var(--vscode-input-border, var(--border)); border-radius: 4px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); padding: 6px 10px; min-height: 32px; font: inherit; }
+.project-configurations button:not(.icon-button):not(.session-action) { display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
+.project-configurations button:not(.icon-button):not(.session-action):hover:not(:disabled) { background: var(--vscode-button-secondaryHoverBackground, var(--vscode-toolbar-hoverBackground)); }
+.project-configurations .icon-button { color: inherit; }
 .project-configurations button:disabled { opacity: .5; cursor: default; }
 .project-configurations button:focus-visible, .project-configurations input:focus-visible, .project-configurations textarea:focus-visible, .project-configurations select:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
-.configuration-toolbar select { flex: 1; min-width: 120px; }
+.configuration-profiles { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.configuration-profiles > label { display: block; margin-bottom: 8px; color: var(--muted); font-size: 12px; }
+.configuration-profile-controls { display: flex; align-items: center; gap: 6px; }
+.configuration-profile-controls select { flex: 1; min-width: 0; width: 0; }
+.configuration-profile-controls .configuration-transfer { margin-left: 6px; }
+.configuration-body { flex: 1 1 auto; }
+.configuration-fields-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+.configuration-fields-heading h3 { margin: 0; font-size: 12px; font-weight: 500; }
+.configuration-count { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.configuration-add-field { margin-left: auto; }
 .configuration-fields { display: flex; flex-direction: column; gap: 16px; }
-.configuration-fields section { border-bottom: 1px solid var(--vscode-panel-border); padding-bottom: 16px; }
-.configuration-fields label { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
-.configuration-fields > label { align-items: start; flex-direction: column; }
+.configuration-field { min-width: 0; border-bottom: 1px solid var(--border); padding-bottom: 16px; }
+.configuration-field:last-child { border-bottom: 0; padding-bottom: 0; }
+.configuration-field-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; min-height: 28px; }
+.configuration-field-heading label { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.configuration-fields input[type=checkbox] { flex-shrink: 0; min-height: 14px; width: 14px; height: 14px; margin: 0; accent-color: var(--vscode-button-background); }
+.configuration-field-actions { display: flex; align-items: center; gap: 2px; }
+.configuration-field-actions button:last-child:hover { color: var(--vscode-errorForeground); }
+.configuration-field-control { position: relative; }
 .configuration-fields input:not([type=checkbox]), .configuration-fields textarea, .configuration-fields select { width: 100%; box-sizing: border-box; }
-.configuration-fields small { display: block; color: var(--vscode-descriptionForeground); margin: 6px 0; overflow-wrap: anywhere; }
-.configuration-fields button { margin-right: 6px; }
+.configuration-fields :is(input, textarea, select):disabled { opacity: .6; }
+.configuration-fields textarea { resize: vertical; }
+.configuration-fields small { display: block; color: var(--muted); margin-top: 6px; line-height: 1.5; overflow-wrap: anywhere; }
+.configuration-secret > input { padding-right: 36px !important; }
+.configuration-secret > .icon-button { position: absolute; right: 2px; top: 2px; }
+.configuration-empty { display: flex; min-height: 156px; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; color: var(--muted); }
+.configuration-empty > .codicon { font-size: 28px; }
+.configuration-empty p { margin: 0; max-width: 38ch; line-height: 1.6; }
+.configuration-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--border); }
+.configuration-status { flex: 1; min-width: 0; margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted); overflow-wrap: anywhere; }
+.configuration-status.error { color: var(--vscode-errorForeground); }
+.configuration-footer-actions { display: flex; flex-shrink: 0; align-items: center; gap: 8px; }
+.project-configurations button.configuration-primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border-color: transparent; }
+.project-configurations button.configuration-primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); }
+.configuration-menu { width: min(260px, calc(100vw - 32px)); }
+.configuration-menu-notice { margin: 6px 6px 4px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 11px; line-height: 1.5; color: var(--muted); }
+.configuration-field-editor { width: min(520px, calc(100vw - 24px)); }
+.configuration-editor-form { display: flex; flex-direction: column; min-height: 0; }
+.configuration-field-editor .configuration-fields > label { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.configuration-field-editor .configuration-fields > label:has(input[type=checkbox]) { flex-direction: row-reverse; justify-content: flex-end; align-items: center; }
+.configuration-editor-actions { justify-content: flex-end; }
+@media (max-width: 480px) {
+  .project-configurations { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); }
+  .project-configurations > header, .project-configurations .dialog-body, .configuration-profiles, .configuration-footer { padding-left: 12px; padding-right: 12px; }
+  .configuration-footer { flex-wrap: wrap; }
+  .configuration-status:not(:empty) { flex-basis: 100%; }
+  .configuration-footer-actions { margin-left: auto; }
+}

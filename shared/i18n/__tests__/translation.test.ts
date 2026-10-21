@@ -7,6 +7,16 @@ import {
 } from "../index";
 
 describe("translation resolution", () => {
+  it("translates configuration sections and icon menus with Chinese fallback", () => {
+    const labels = () => (["configurationActions", "configurationTransfer", "configurationFields", "configurationUnsaved"] as const).map(key => i18n.t(key, {ns: "serverWeb"}));
+    initI18n({preference: "en"});
+    expect(labels()).toEqual(["Configuration actions", "Import / export", "Configuration fields", "Unsaved changes"]);
+    initI18n({preference: "zh-CN"});
+    const chinese = ["配置操作", "导入 / 导出", "配置字段", "未保存的更改"];
+    expect(labels()).toEqual(chinese);
+    i18n.changeLanguage("fr");
+    expect(labels()).toEqual(chinese);
+  });
   it.each(["en", "zh-CN"])("keeps %s CLI help focused on local execution and remote storage", (locale) => {
     initI18n({ preference: locale as "en" | "zh-CN" });
     const help = i18n.t("rootHelp", { ns: "cli" });

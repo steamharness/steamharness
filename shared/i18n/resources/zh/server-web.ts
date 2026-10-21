@@ -2,6 +2,10 @@ import type { serverWeb as EnServerWeb } from "../en/server-web";
 
 export const serverWeb: typeof EnServerWeb = {
   projectConfigurations: "项目配置",
+  configurationActions: "配置操作",
+  configurationTransfer: "导入 / 导出",
+  configurationFields: "配置字段",
+  configurationUnsaved: "未保存的更改",
   configurationExportNotice: "导出包含所有配置值，包括敏感字段。",
   configurationDraftFirst: "请先保存或放弃草稿，再操作配置。",
   configurationConflict: "配置已变更，编辑草稿已保留。请刷新后再保存。",

@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import { ArrowRightLeftIcon, CheckIcon, CopyIcon, DownloadIcon, ImportIcon, MoreHorizontalIcon, PencilIcon, PlusIcon, RotateCcwIcon, Trash2Icon } from "lucide-react";
 import { useTranslation } from "@steamharness/i18n/react";
 import { parseConfigurationField, type ConfigurationValues, type ProjectConfigurationAction, type ProjectConfigurationField, type ProjectConfigurationState, type ProjectConfigurationExport } from "@steamharness/project-configuration";
 import { apiClient } from "../../api";
-import { Alert, AlertDescription, Button, Checkbox, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, Empty, EmptyHeader, EmptyTitle, Field, FieldDescription, FieldGroup, FieldLabel, FieldSet, FieldLegend, Input, SelectField, Skeleton, Textarea } from "@/components/ui";
+import { Alert, AlertDescription, Button, Checkbox, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, Empty, EmptyHeader, EmptyTitle, Field, FieldDescription, FieldGroup, FieldLabel, FieldSet, FieldLegend, Input, SelectField, Separator, Skeleton, Textarea } from "@/components/ui";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { DetailPageProps } from "./types";
 
 export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"project">) {
@@ -85,35 +87,57 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
   const startField=(value?:ProjectConfigurationField)=>{if(!clean())return;editingRef.current=true;setError("");setOriginalKey(value?.name??"");setField(value??{name:"",type:"string"});setDefaultText(value?.defaultValue===undefined?"":JSON.stringify(value.defaultValue));setOptionsText(value?.options?.map(o=>o.value).join("\n")??"");};
   const open=(action:"create"|"duplicate"|"rename"|"delete")=>{if(!clean())return;editingRef.current=true;setError("");setName(action==="rename"?state!.configurations.find(c=>c.id===state!.activeConfigurationId)!.name:"");setModal(action);};
   return <section className="flex flex-col gap-6 p-6">
-    <div><h2>{t("projectConfigurations")}</h2><p className="text-sm text-muted-foreground">{t("configurationExportNotice")}</p></div>
+    <h2>{t("projectConfigurations")}</h2>
     {error&&<Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
     {!state?<>{loading?<Skeleton className="h-10 w-full"/>:<Button variant="outline" onClick={()=>setRetry(value=>value+1)}>{t("configurationRefresh")}</Button>}</>:<>
       {dirty&&latest?.revision!==state.revision&&<Alert><AlertDescription>{t("configurationConflict")}</AlertDescription></Alert>}
-      <div className="flex flex-wrap items-center gap-2">
-        <SelectField aria-label={t("configurationCurrent")} disabled={busy} value={state.activeConfigurationId} options={state.configurations.map(c=>({value:c.id,label:c.name}))} onValueChange={id=>{if(clean())void dispatch({action:"select",id});}} className="w-auto"/>
-        {(["create","duplicate","rename","delete"] as const).map(action=><Button key={action} variant="outline" disabled={busy||action==="delete"&&state.configurations.length===1} onClick={()=>open(action)}>{t(`configurationAction_${action}`)}</Button>)}
-        <Button variant="outline" disabled={busy} onClick={()=>startField()}>{t("configurationAddField")}</Button>
-        <Button variant="outline" disabled={busy} onClick={()=>void download(false)}>{t("configurationExportCurrent")}</Button><Button variant="outline" disabled={busy} onClick={()=>void download(true)}>{t("configurationExportAll")}</Button>
-        <Button variant="outline" disabled={busy} onClick={()=>{if(clean())file.current?.click();}}>{t("configurationImport")}</Button>
+      <Field>
+        <FieldLabel htmlFor="configuration-profile">{t("configurationCurrent")}</FieldLabel>
+        <div className="flex items-center gap-2">
+          <SelectField id="configuration-profile" disabled={busy} value={state.activeConfigurationId} options={state.configurations.map(c=>({value:c.id,label:c.name}))} onValueChange={id=>{if(clean())void dispatch({action:"select",id});}} className="min-w-0 flex-1"/>
+          <Button variant="ghost" size="icon" disabled={busy} title={t("configurationAction_create")} aria-label={t("configurationAction_create")} onClick={()=>open("create")}><PlusIcon/></Button>
+          <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={busy} title={t("configurationActions")} aria-label={t("configurationActions")}><MoreHorizontalIcon/></Button></DropdownMenuTrigger>
+            <DropdownMenuContent align="end"><DropdownMenuGroup>
+              <DropdownMenuLabel>{t("configurationActions")}</DropdownMenuLabel>
+              <DropdownMenuItem onSelect={()=>void dispatch({action:"duplicate",id:state.activeConfigurationId})} disabled={busy||dirty}><CopyIcon/>{t("configurationAction_duplicate")}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={()=>open("rename")} disabled={busy}><PencilIcon/>{t("configurationAction_rename")}</DropdownMenuItem>
+              <DropdownMenuItem variant="destructive" onSelect={()=>open("delete")} disabled={busy||state.configurations.length===1}><Trash2Icon/>{t("configurationAction_delete")}</DropdownMenuItem>
+            </DropdownMenuGroup></DropdownMenuContent>
+          </DropdownMenu>
+          <Separator orientation="vertical" className="h-6"/>
+          <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={busy} title={t("configurationTransfer")} aria-label={t("configurationTransfer")}><ArrowRightLeftIcon/></Button></DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="max-w-72"><DropdownMenuGroup>
+              <DropdownMenuLabel>{t("configurationTransfer")}</DropdownMenuLabel>
+              <DropdownMenuItem onSelect={()=>{if(clean())file.current?.click();}}><ImportIcon/>{t("configurationImport")}</DropdownMenuItem>
+              <DropdownMenuSeparator/>
+              <DropdownMenuItem onSelect={()=>void download(false)}><DownloadIcon/>{t("configurationExportCurrent")}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={()=>void download(true)}><DownloadIcon/>{t("configurationExportAll")}</DropdownMenuItem>
+            </DropdownMenuGroup><DropdownMenuSeparator/><FieldDescription className="px-2 py-1.5">{t("configurationExportNotice")}</FieldDescription></DropdownMenuContent>
+          </DropdownMenu>
+        </div>
         <input ref={file} type="file" accept=".json,application/json" hidden onChange={event=>{const scope=scopeRef.current;const input=event.currentTarget,selected=input.files?.[0];input.value="";if(!selected)return;void(async()=>{try{if(selected.size>1024*1024)throw new Error(t("configurationTooLarge"));const document=JSON.parse(await selected.text()) as ProjectConfigurationExport;if(scope===scopeRef.current&&clean())await dispatch({action:"import",document});}catch(e){if(scope===scopeRef.current)setError((e as Error).message);}})();}}/>
-      </div>
+      </Field>
+      <Separator/>
+      <div className="flex items-center justify-between gap-2"><h3>{t("configurationFields")} <span className="text-muted-foreground">{state.fields.length}</span></h3><Button variant="outline" size="sm" disabled={busy} onClick={()=>startField()}><PlusIcon data-icon="inline-start"/>{t("configurationAddField")}</Button></div>
       {!state.fields.length?<Empty><EmptyHeader><EmptyTitle>{t("configurationEmpty")}</EmptyTitle></EmptyHeader></Empty>:<FieldGroup>
         {state.fields.map(f=>{
           const set=setKeys.includes(f.name),value=values[f.name]??"",custom=state.customFields.some(c=>c.name===f.name);
           const change=(value:string)=>{setValues(values=>({...values,[f.name]:value}));edit();};
           return <Field key={f.name} data-disabled={busy}>
-            <div className="flex items-center gap-2"><Checkbox aria-label={`${t("configurationSetValue")}: ${f.label||f.name}`} checked={set} disabled={busy} onCheckedChange={checked=>{setSetKeys(keys=>checked?[...keys,f.name]:keys.filter(k=>k!==f.name));edit();}}/><FieldLabel htmlFor={`configuration-${f.name}`}>{f.label||f.name}{f.required?" *":""}</FieldLabel></div>
+            <div className="flex items-center gap-2"><Checkbox aria-label={`${t("configurationSetValue")}: ${f.label||f.name}`} checked={set} disabled={busy} onCheckedChange={checked=>{setSetKeys(keys=>checked?[...keys,f.name]:keys.filter(k=>k!==f.name));edit();}}/><FieldLabel htmlFor={`configuration-${f.name}`} className="min-w-0 flex-1 wrap-anywhere">{f.label||f.name}{f.required?" *":""}</FieldLabel>
+              {custom&&<div className="flex gap-1"><Button variant="ghost" size="icon" disabled={busy} title={t("configurationEditField")} aria-label={t("configurationEditField")} onClick={()=>startField(f)}><PencilIcon/></Button><Button variant="ghost" size="icon" disabled={busy} title={t("configurationDeleteField")} aria-label={t("configurationDeleteField")} onClick={()=>{if(clean())void dispatch({action:"field.delete",key:f.name});}}><Trash2Icon/></Button></div>}
+            </div>
             {f.options&&f.multiple?<FieldSet disabled={busy||!set}><FieldLegend variant="label">{f.label||f.name}</FieldLegend>{f.options.map(option=>{let selected:string[]=[];try{const parsed:unknown=JSON.parse(value||"[]");if(Array.isArray(parsed))selected=parsed.filter((item):item is string=>typeof item==="string");}catch{}return <Field key={option.value} orientation="horizontal"><Checkbox id={`configuration-${f.name}-${option.value}`} checked={selected.includes(option.value)} onCheckedChange={checked=>change(JSON.stringify(checked?[...selected,option.value]:selected.filter(v=>v!==option.value)))}/><FieldLabel htmlFor={`configuration-${f.name}-${option.value}`}>{option.label||option.value}</FieldLabel></Field>;})}</FieldSet>
             :f.options?<SelectField id={`configuration-${f.name}`} disabled={busy||!set} value={value} options={f.options.map(o=>({value:o.value,label:o.label||o.value}))} onValueChange={change}/>
             :f.type==="json"||f.multiple?<Textarea id={`configuration-${f.name}`} disabled={busy||!set} rows={4} value={value} onChange={event=>change(event.target.value)}/>
             :f.type==="boolean"?<Checkbox id={`configuration-${f.name}`} disabled={busy||!set} checked={value==="true"} onCheckedChange={checked=>change(String(checked))}/>
             :<Input id={`configuration-${f.name}`} disabled={busy||!set} type={f.type==="number"?"number":f.secret?"password":"text"} step="any" value={value} onChange={event=>change(event.target.value)}/>}
             <FieldDescription>{f.description||f.name}</FieldDescription>
-            {custom&&<div className="flex gap-2"><Button variant="ghost" disabled={busy} onClick={()=>startField(f)}>{t("configurationEditField")}</Button><Button variant="ghost" disabled={busy} onClick={()=>{if(clean())void dispatch({action:"field.delete",key:f.name});}}>{t("configurationDeleteField")}</Button></div>}
           </Field>;
         })}
       </FieldGroup>}
-      <div className="flex gap-2"><Button disabled={busy||!dirty} onClick={save}>{t("configurationSave")}</Button><Button variant="outline" disabled={busy} onClick={()=>{if(latest){accept(latest,true);setError("");}}}>{t("configurationDiscard")}</Button></div>
+      <Separator/>
+      <div className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 bg-background py-3"><p role="status" className="text-sm text-muted-foreground">{dirty?t("configurationUnsaved"):""}</p><div className="ml-auto flex items-center gap-2"><Button variant="ghost" size="icon" disabled={busy} title={t("configurationDiscard")} aria-label={t("configurationDiscard")} onClick={()=>{if(latest){accept(latest,true);setError("");}}}><RotateCcwIcon/></Button><Button disabled={busy||!dirty} onClick={save}><CheckIcon data-icon="inline-start"/>{t("configurationSave")}</Button></div></div>
     </>}
     <Dialog open={!!modal} onOpenChange={open=>{if(!open&&!busy){editingRef.current=false;setModal(undefined);if(latest)accept(latest);}}}><DialogContent><DialogHeader><DialogTitle>{modal?t(`configurationAction_${modal}`):""}</DialogTitle></DialogHeader>
       {error&&<Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}

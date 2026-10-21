@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Improved] Separate project configuration profiles, fields and saving. Group copy, rename and import/export into icon menus, use labeled icons for secondary actions, and keep saving and conflicting drafts accessible on narrow screens.
+
 - [Fixed] Mount account access in the toolbar on Kanban pages without a sidebar, preventing initialization errors that leave the page connecting and loading indefinitely. Animate the loading indicator from the initial render.
 
 - [Fixed] Retain values across configuration schema changes and preserve distinct worker configuration snapshots when durable sessions reload and resume.

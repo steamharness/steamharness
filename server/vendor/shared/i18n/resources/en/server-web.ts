@@ -1,5 +1,9 @@
 export const serverWeb = {
   projectConfigurations: "Project configurations",
+  configurationActions: "Configuration actions",
+  configurationTransfer: "Import / export",
+  configurationFields: "Configuration fields",
+  configurationUnsaved: "Unsaved changes",
   configurationExportNotice: "Exports include every value, including sensitive fields.",
   configurationDraftFirst: "Save or discard your draft before changing configurations.",
   configurationConflict: "Configuration changed. Your draft is preserved. Refresh before saving.",

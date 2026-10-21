@@ -1,7 +1,7 @@
 import {act,fireEvent,render,screen,waitFor} from "@testing-library/react";
 import {afterEach,beforeEach,expect,it,vi} from "vitest";
 import {i18n} from "@steamharness/i18n/react";
-import {createConfigurationState} from "@steamharness/project-configuration";
+import {applyConfigurationAction,createConfigurationState} from "@steamharness/project-configuration";
 import {apiClient} from "../../../api";
 import {ProjectConfigurationsTab} from "../ProjectConfigurationsTab";
 import type {Summary} from "../../../types";
@@ -40,6 +40,40 @@ it("offers custom fields for an empty declaration",async()=>{
  render(<ProjectConfigurationsTab project={project}/>);
  expect(await screen.findByRole("button",{name:"Add field"})).toBeTruthy();
  expect(screen.getByText("No fields. Add a custom configuration field.")).toBeTruthy();
+});
+it("groups profile and transfer actions in accessible icon menus",async()=>{
+ vi.spyOn(apiClient,"projectConfigurations").mockResolvedValue(ok(initial()));
+ render(<ProjectConfigurationsTab project={project}/>);
+ await screen.findByLabelText("label");
+ expect(screen.getByRole("heading",{name:"Configuration fields 2"})).toBeTruthy();
+ expect(screen.queryByText(/Exports include every value/)).toBeNull();
+ expect(screen.getByRole("button",{name:"New configuration"}).textContent).toBe("");
+ const actions=screen.getByRole("button",{name:"Configuration actions"});
+ fireEvent.keyDown(actions,{key:"ArrowDown"});
+ const remove=await screen.findByRole("menuitem",{name:"Delete configuration"});
+ expect(remove).toHaveAttribute("aria-disabled","true");
+ fireEvent.keyDown(remove,{key:"Escape"});
+ await waitFor(()=>expect(screen.queryByRole("menu")).toBeNull());
+ const transfer=screen.getByRole("button",{name:"Import / export"});
+ fireEvent.keyDown(transfer,{key:"ArrowDown"});
+ expect(await screen.findByRole("menuitem",{name:"Export all"})).toBeTruthy();
+ expect(screen.getByText(/Exports include every value/)).toBeTruthy();
+ fireEvent.keyDown(screen.getByRole("menu"),{key:"Escape"});
+ await waitFor(()=>expect(transfer).toHaveFocus());
+});
+it("copies a configuration from the menu and places custom field icons beside its heading",async()=>{
+ let state=applyConfigurationAction(initial(),{action:"field.save",revision:0,field:{name:"custom",type:"string"}},()=>"other");
+ const service=vi.spyOn(apiClient,"projectConfigurations").mockImplementation(async(_id,call)=>{
+   state=call.action==="get"?state:applyConfigurationAction(state,call,()=>"copy");return ok(state);
+ });
+ render(<ProjectConfigurationsTab project={project}/>);await screen.findByLabelText("custom");
+ expect(screen.getByRole("button",{name:"Edit field"}).textContent).toBe("");
+ fireEvent.keyDown(screen.getByRole("button",{name:"Configuration actions"}),{key:"ArrowDown"});
+ fireEvent.click(await screen.findByRole("menuitem",{name:"Copy configuration"}));
+ await waitFor(()=>expect(state.configurations).toHaveLength(2));
+ expect(service).toHaveBeenLastCalledWith(project.id,expect.objectContaining({action:"duplicate",id:"default",revision:1}),"draft");
+ fireEvent.change(screen.getByLabelText("custom"),{target:{value:"Draft"}});
+ expect(screen.getByRole("status").textContent).toBe("Unsaved changes");
 });
 
 it("ignores a previous visit's save response after returning to the same project",async()=>{
