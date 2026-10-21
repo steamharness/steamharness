@@ -52,6 +52,8 @@ Each project uses its own installed `steamharness` and `@steamharness/cli`. Clos
 
 Core Agent uses the standard output presentation protocol to pin its context ring to the right of the composer. Hover or keyboard focus opens a light gray tooltip with the percentage and exact token counts. Each conversation retains its own output, including while awaiting confirmation and after reopening history.
 
+Conversation and Assistant composers adapt to the available height. In short windows, long drafts, attachments and primary parameters scroll within the input area while Send and parameter controls remain visible. The default Assistant tool and additional Assistant tabs in Steam use the same layout.
+
 The built-in assistant uses an independent working directory and offers coding tools, bundled skills, global memory and resource cards. Studio Control connects to the VS Code extension host to read the workspace and active editor, inspect errors and warnings, open files at a line and column, select installed themes, open terminals and show Explorer, Search, Source Control or Assistant.
 
 In the assistant's tool permissions, **Skills** is the section and **List and read skill guides** (`skill`) is its reading entry point. “1 tool” counts that entry point; `list` reports the guide names and count. Ask the assistant to “list available skills”: it calls `{"action":"list"}` to discover bundled guides, then `{"action":"read","skill":"workflow-generator"}` to read the SteamHarness project development guide, using `path` for any needed references. Guides are not installed in the user's global directory. File edits and commands use the corresponding tools. See [createSkillTools](/en/core-api/create-skill-tools) for complete examples.

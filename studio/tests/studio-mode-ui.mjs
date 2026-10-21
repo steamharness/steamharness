@@ -313,6 +313,37 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
         if (visible) { return candidate; }
       }
     }, Boolean, `Tool view did not open: ${selector}`);
+    const assertAssistantFits = async (assistant, instance) => {
+      const message = assistant.locator('#message');
+      const draft = await message.inputValue();
+      for (const text of ['', Array.from({ length: 30 }, (_, index) => `Draft line ${index}`).join('\n')]) {
+        await message.fill(text);
+        for (const [width, height] of [[1440, 960], [1440, 760], [1440, 600], [1440, 480], [1440, 360], [1440, 280], [1000, 480], [800, 360]]) {
+          await page.setViewportSize({ width, height });
+          // Nested cross-origin frames receive their viewport after the host layout.
+          await until(async () => {
+            const tools = await page.locator('.part.auxiliarybar').boundingBox();
+            const app = await assistant.locator('#app').boundingBox();
+            return Math.abs(app.y + await assistant.evaluate(() => innerHeight) - tools.y - tools.height) < 1;
+          }, Boolean, `Assistant viewport did not follow the tools: ${instance} at ${height}`);
+          const geometry = await assistant.evaluate(() => ({ viewport: innerHeight,
+            composer: document.querySelector('.composer-area').getBoundingClientRect().toJSON(),
+            input: document.querySelector('#message').getBoundingClientRect().toJSON(),
+          }));
+          assert.ok(geometry.composer.bottom <= geometry.viewport + 1, JSON.stringify({ instance, height, geometry }));
+          assert.ok(geometry.input.height >= 24 && geometry.input.bottom <= geometry.viewport + 1, JSON.stringify({ instance, height, geometry }));
+          assert.ok(await assistant.locator('#send').evaluate(button => {
+            const rect = button.getBoundingClientRect();
+            return button.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.bottom - 2));
+          }), `Assistant send button is clipped: ${instance} at ${height}`);
+          assert.equal(await message.inputValue(), text);
+        }
+      }
+      await page.screenshot({ path: path.join(proof, `${language}-assistant-${instance}-short.png`) });
+      await message.fill(draft);
+      await page.setViewportSize({ width: 1440, height: 960 });
+      check(`${language}: ${instance} Assistant keeps the input and Send visible across eight window sizes with empty and multiline drafts`);
+    };
     for (const tool of ['kv', 'knowledge', 'info', 'assistant', 'versions', 'trace', 'terminal']) {
       await command('studio.openSteamTools'); await page.locator(`.studio-steam-tool[data-tool="${tool}"]`).click();
       if (tool === 'terminal') {
@@ -323,7 +354,8 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
         assert.equal((await partState()).panel.visible, false);
         continue;
       }
-      await visibleToolFrame(toolSelectors[tool]);
+      const toolFrame = await visibleToolFrame(toolSelectors[tool]);
+      if (tool === 'assistant') { await assertAssistantFits(toolFrame, 'default'); }
       assert.equal((await partState()).panel.visible, false);
     }
     check(`${language}: all seven tools including the native terminal open in the right sidebar`);
@@ -351,6 +383,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       await page.locator('.studio-steam-new-instance').click();
       await until(() => instanceList.locator('.studio-steam-instance').count(), value => value === 2, `Missing second ${tool} instance`);
       const created = await visibleToolFrame(toolSelectors[tool]); assert.notEqual(created, original);
+      if (tool === 'assistant') { await assertAssistantFits(created, 'new'); }
       const createdId = await instanceList.locator('.active').getAttribute('data-tab');
       if (['kv', 'knowledge'].includes(tool)) { await created.locator('#resource-search').fill(`${tool}-second`); }
       assert.equal(await tabList.locator(`.studio-steam-tab[data-tab=${tool}]`).count(), 1);

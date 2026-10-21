@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Fixed] Resize conversation and Studio Assistant composers to the available height. Long drafts, attachments and primary parameters scroll within the input area, keeping the input and Send button accessible in short windows.
+
 - [Fixed] Drag the Studio window from empty areas of the project header in Steam mode. Controls and title text retain normal clicks and selection; dialogs and IDE mode suspend the drag surface.
 
 - [Improved] Integrate Studio Steam window controls and mode switching into the project menu or title, filling the window with runtime and tools while adapting to collapsed menus, narrow layouts and tool visibility.

@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Fixed] Keep the Assistant input and bottom controls accessible in short windows and with long drafts, in both the default tool and additional tabs.
+
 - [Added] A native Editor tool in Steam with file tabs below the tool row and Explorer, Search and Source Control on its right. Resize the sidebar, create and save files, and retain native unsaved-file confirmation and document state across tools and IDE mode.
 
 - [Improved] Remove duplicate Open Tools labels, place New on the left and keep only the tools visibility toggle on the right. Empty areas of project and tool headers drag the application window while controls, tabs and selectable text remain interactive.
