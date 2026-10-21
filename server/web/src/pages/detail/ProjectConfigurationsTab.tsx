@@ -8,6 +8,10 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem,
 import type { DetailPageProps } from "./types";
 import { formatBytes } from "../../utils/format";
 
+function fieldValueText(field:ProjectConfigurationField, value:unknown):string {
+  return value===undefined?"":field.type==="json"||field.type==="file"||field.multiple?JSON.stringify(value,null,2):String(value);
+}
+
 export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"project">) {
   const {t} = useTranslation("serverWeb");
   const [state,setState] = useState<ProjectConfigurationState>(), [latest,setLatest] = useState<ProjectConfigurationState>();
@@ -28,7 +32,7 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
     const current=next.configurations.find(item=>item.id===next.activeConfigurationId)!;
     setState(next); setValues(Object.fromEntries(next.fields.map(field=>{
       const value=Object.hasOwn(current.values,field.name)?current.values[field.name]:field.defaultValue;
-      return [field.name,value===undefined?"":field.type==="json"||field.type==="file"||field.multiple?JSON.stringify(value,null,2):String(value)];
+      return [field.name,fieldValueText(field,value)];
     }))); setSetKeys(Object.keys(current.values)); dirtyRef.current=false; setDirty(false);
   };
   useEffect(()=>{
@@ -145,17 +149,20 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
       {!state.fields.length?<Empty><EmptyHeader><EmptyTitle>{t("configurationEmpty")}</EmptyTitle></EmptyHeader></Empty>:<FieldGroup>
         {state.fields.map(f=>{
           const set=setKeys.includes(f.name),value=values[f.name]??"",custom=state.customFields.some(c=>c.name===f.name);
-          const change=(value:string)=>{setValues(values=>({...values,[f.name]:value}));edit();};
+          const change=(value:string)=>{setValues(values=>({...values,[f.name]:value}));setSetKeys(keys=>[...new Set([...keys,f.name])]);edit();};
+          const reset=()=>{setValues(values=>({...values,[f.name]:fieldValueText(f,f.defaultValue)}));setSetKeys(keys=>keys.filter(key=>key!==f.name));edit();};
+          const resetLabel=t(f.defaultValue===undefined?"configurationClearValue":"configurationRestoreDefault",{name:f.label||f.name});
           return <Field key={f.name} data-disabled={busy}>
-            <div className="flex items-center gap-2"><Checkbox aria-label={`${t("configurationSetValue")}: ${f.label||f.name}`} checked={set} disabled={busy} onCheckedChange={checked=>{setSetKeys(keys=>checked?[...keys,f.name]:keys.filter(k=>k!==f.name));edit();}}/><FieldLabel htmlFor={`configuration-${f.name}`} className="min-w-0 flex-1 wrap-anywhere">{f.label||f.name}{f.required?" *":""}</FieldLabel>
+            <div className="flex items-center gap-2"><FieldLabel htmlFor={`configuration-${f.name}`} className="min-w-0 flex-1 wrap-anywhere">{f.label||f.name}{f.required?" *":""}</FieldLabel>
+              {f.type!=="file"&&<Button variant="ghost" size="icon" disabled={busy||!set} title={resetLabel} aria-label={resetLabel} onClick={reset}><RotateCcwIcon/></Button>}
               {custom&&<div className="flex gap-1"><Button variant="ghost" size="icon" disabled={busy} title={t("configurationEditField")} aria-label={t("configurationEditField")} onClick={()=>startField(f)}><PencilIcon/></Button><Button variant="ghost" size="icon" disabled={busy} title={t("configurationDeleteField")} aria-label={t("configurationDeleteField")} onClick={()=>{if(clean())void dispatch({action:"field.delete",key:f.name});}}><Trash2Icon/></Button></div>}
             </div>
-            {f.type==="file"?<ConfigurationFileInput field={f} value={value} busy={busy} uploading={uploading===f.name} onUpload={files=>void uploadFiles(f,files)} onClear={()=>{setValues(values=>({...values,[f.name]:""}));setSetKeys(keys=>keys.filter(key=>key!==f.name));edit();}}/>
-            :f.options&&f.multiple?<FieldSet disabled={busy||!set}><FieldLegend variant="label">{f.label||f.name}</FieldLegend>{f.options.map(option=>{let selected:string[]=[];try{const parsed:unknown=JSON.parse(value||"[]");if(Array.isArray(parsed))selected=parsed.filter((item):item is string=>typeof item==="string");}catch{}return <Field key={option.value} orientation="horizontal"><Checkbox id={`configuration-${f.name}-${option.value}`} checked={selected.includes(option.value)} onCheckedChange={checked=>change(JSON.stringify(checked?[...selected,option.value]:selected.filter(v=>v!==option.value)))}/><FieldLabel htmlFor={`configuration-${f.name}-${option.value}`}>{option.label||option.value}</FieldLabel></Field>;})}</FieldSet>
-            :f.options?<SelectField id={`configuration-${f.name}`} disabled={busy||!set} value={value} options={f.options.map(o=>({value:o.value,label:o.label||o.value}))} onValueChange={change}/>
-            :f.type==="json"||f.multiple?<Textarea id={`configuration-${f.name}`} disabled={busy||!set} rows={4} value={value} onChange={event=>change(event.target.value)}/>
-            :f.type==="boolean"?<Checkbox id={`configuration-${f.name}`} disabled={busy||!set} checked={value==="true"} onCheckedChange={checked=>change(String(checked))}/>
-            :<Input id={`configuration-${f.name}`} disabled={busy||!set} type={f.type==="number"?"number":f.secret?"password":"text"} step="any" value={value} onChange={event=>change(event.target.value)}/>}
+            {f.type==="file"?<ConfigurationFileInput field={f} value={value} busy={busy} uploading={uploading===f.name} overridden={set} onUpload={files=>void uploadFiles(f,files)} onClear={reset}/>
+            :f.options&&f.multiple?<FieldSet disabled={busy}><FieldLegend variant="label">{f.label||f.name}</FieldLegend>{f.options.map(option=>{let selected:string[]=[];try{const parsed:unknown=JSON.parse(value||"[]");if(Array.isArray(parsed))selected=parsed.filter((item):item is string=>typeof item==="string");}catch{}return <Field key={option.value} orientation="horizontal"><Checkbox id={`configuration-${f.name}-${option.value}`} checked={selected.includes(option.value)} onCheckedChange={checked=>change(JSON.stringify(checked?[...selected,option.value]:selected.filter(v=>v!==option.value)))}/><FieldLabel htmlFor={`configuration-${f.name}-${option.value}`}>{option.label||option.value}</FieldLabel></Field>;})}</FieldSet>
+            :f.options?<SelectField id={`configuration-${f.name}`} disabled={busy} value={value} options={f.options.map(o=>({value:o.value,label:o.label||o.value}))} onValueChange={change}/>
+            :f.type==="json"||f.multiple?<Textarea id={`configuration-${f.name}`} disabled={busy} rows={4} value={value} onChange={event=>change(event.target.value)}/>
+            :f.type==="boolean"?<Checkbox id={`configuration-${f.name}`} disabled={busy} checked={value==="true"} onCheckedChange={checked=>change(String(checked))}/>
+            :<Input id={`configuration-${f.name}`} disabled={busy} type={f.type==="number"?"number":f.secret?"password":"text"} step="any" value={value} onChange={event=>change(event.target.value)}/>}
             <FieldDescription>{f.description||f.name}</FieldDescription>
           </Field>;
         })}
@@ -184,13 +191,13 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
   </section>;
 }
 
-function ConfigurationFileInput({field,value,busy,uploading,onUpload,onClear}:{field:ProjectConfigurationField;value:string;busy:boolean;uploading:boolean;onUpload(files:File[]):void;onClear():void}) {
+function ConfigurationFileInput({field,value,busy,uploading,overridden,onUpload,onClear}:{field:ProjectConfigurationField;value:string;busy:boolean;uploading:boolean;overridden:boolean;onUpload(files:File[]):void;onClear():void}) {
   const {t}=useTranslation("serverWeb"), input=useRef<HTMLInputElement>(null);
   let references:ProjectConfigurationFile[]=[];
   try {const parsed:unknown=value?JSON.parse(value):undefined;references=(parsed===undefined?[]:field.multiple&&Array.isArray(parsed)?parsed:[parsed]).map(parseConfigurationFile);}catch{}
   return <div className="flex flex-col gap-2">
     {references.length?references.map(file=><div key={file.id} className="flex min-w-0 items-center gap-2"><FileIcon aria-hidden="true"/><span className="min-w-0 flex-1 wrap-anywhere">{file.name}</span><FieldDescription>{formatBytes(file.size)}</FieldDescription></div>):<FieldDescription>{t("configurationFileEmpty")}</FieldDescription>}
-    <div className="flex items-center gap-2"><Button id={`configuration-${field.name}`} variant="outline" size="sm" disabled={busy} onClick={()=>input.current?.click()}><UploadIcon data-icon="inline-start"/>{t(uploading?"configurationFileUploading":references.length?"configurationFileReplace":"configurationFileChoose")}</Button><Button variant="ghost" size="icon" title={t("configurationFileClear")} aria-label={t("configurationFileClear")} disabled={busy||!references.length} onClick={onClear}><XIcon/></Button></div>
+    <div className="flex items-center gap-2"><Button id={`configuration-${field.name}`} variant="outline" size="sm" disabled={busy} onClick={()=>input.current?.click()}><UploadIcon data-icon="inline-start"/>{t(uploading?"configurationFileUploading":references.length?"configurationFileReplace":"configurationFileChoose")}</Button><Button variant="ghost" size="icon" title={t("configurationFileClear")} aria-label={t("configurationFileClear")} disabled={busy||!overridden} onClick={onClear}><XIcon/></Button></div>
     <input ref={input} type="file" hidden accept={field.accept?.join(",")} multiple={!!field.multiple} disabled={busy} aria-label={t("configurationFileFor",{name:field.label||field.name})} onChange={event=>{const files=Array.from(event.currentTarget.files??[]);event.currentTarget.value="";onUpload(files);}}/>
     <FieldDescription role={uploading?"status":undefined}>{t("configurationFileStorage")}</FieldDescription>
   </div>;

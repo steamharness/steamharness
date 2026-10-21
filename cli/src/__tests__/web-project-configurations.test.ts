@@ -69,15 +69,61 @@ it('creates a custom file field with accept types through the field editor',asyn
  expect(state.customFields[0]).toMatchObject({name:'photo',type:'file',accept:['image/png','.webp']});
  expect(document.querySelector('input[aria-label="Choose file for photo"]')).toBeTruthy();
 });
-it('asks for a file when an empty single-file override is enabled',async()=>{
- state=createConfigurationState([{name:'image',type:'file'}],()=> 'file-profile');
+it('leaves an unselected file unset while saving another field directly',async()=>{
+ state=createConfigurationState([{name:'image',type:'file'},{name:'title',type:'string'}],()=> 'file-profile');
  document.getElementById('project-configurations')!.click();await settle();
- const toggle=document.querySelector<HTMLInputElement>('input[aria-label="Set value for image"]')!;toggle.checked=true;toggle.dispatchEvent(new Event('change'));
- button('Save').click();await settle();expect(document.body.textContent).toContain('Choose a file before saving.');expect(state.revision).toBe(0);
+ expect(document.querySelector('.configuration-field-heading input[type=checkbox]')).toBeNull();
+ expect(title().disabled).toBe(false);title().value='Map';title().dispatchEvent(new Event('input'));
+ button('Save').click();await settle();expect(state.configurations[0]!.values).toEqual({title:'Map'});
 });
 afterEach(()=>{if(listener)window.removeEventListener('message',listener);listener=undefined;document.body.replaceChildren();vi.restoreAllMocks();});
 const button=(text:string)=>[...document.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.ariaLabel===text||b.textContent===text)!;
 const title=()=>document.querySelector<HTMLInputElement>('input[aria-label="title"]')!;
+it('edits inherited values directly and resets overrides without saving untouched defaults',async()=>{
+ state=createConfigurationState([
+  {name:'title',type:'string',defaultValue:'Original'}, {name:'blank',type:'string'},
+  {name:'count',type:'number',defaultValue:2}, {name:'active',type:'boolean',defaultValue:true},
+  {name:'data',type:'json',defaultValue:{original:true}},
+  {name:'mode',type:'string',options:[{value:'auto'},{value:'manual'}],defaultValue:'auto'},
+  {name:'tags',type:'string',multiple:true,options:[{value:'east'},{value:'west'}],defaultValue:['east']},
+ ],()=> 'profile');state.configurations[0]!.values={};
+ document.getElementById('project-configurations')!.click();await settle();
+ const input=(key:string)=>document.querySelector<HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement>(`[aria-label="${key}"]`)!;
+ for(const key of ['title','blank','count','active','data','mode','tags'])expect(input(key).disabled).toBe(false);
+ expect(document.querySelectorAll('.configuration-field-heading input')).toHaveLength(0);
+ const set=(key:string,value:string)=>{input(key).value=value;input(key).dispatchEvent(new Event('input'));};
+ set('title','');set('blank','');set('count','0');set('data','null');set('mode','manual');
+ (input('active') as HTMLInputElement).click();
+ const tags=input('tags') as HTMLSelectElement;tags.options[0]!.selected=false;tags.options[1]!.selected=true;tags.dispatchEvent(new Event('change'));
+ button('Save').click();await settle();
+ expect(state.configurations[0]!.values).toEqual({title:'',blank:'',count:0,active:false,data:null,mode:'manual',tags:['west']});
+ for(const key of ['title','count','active','data','mode','tags'])button(`Restore default for ${key}`).click();
+ button('Clear value for blank').click();
+ expect(input('title').value).toBe('Original');expect(input('count').value).toBe('2');
+ expect((input('active') as HTMLInputElement).checked).toBe(true);expect(input('data').value).toBe('{\n  "original": true\n}');
+ expect(input('mode').value).toBe('auto');expect(Array.from((input('tags') as HTMLSelectElement).selectedOptions).map(o=>o.value)).toEqual(['east']);
+ set('title','Only this field');button('Save').click();await settle();
+ expect(state.configurations[0]!.values).toEqual({title:'Only this field'});
+ expect(input('count').disabled).toBe(false);expect(input('data').value).toContain('original');
+});
+it('restores a default file immediately when its override is cleared',async()=>{
+ state=createConfigurationState([{name:'image',type:'file',defaultValue:imageFile}],()=> 'profile');
+ state.configurations[0]!.values.image={...imageFile,id:'wf_cd34',name:'replacement.png'};
+ document.getElementById('project-configurations')!.click();await settle();
+ button('Clear file selection').click();expect(document.body.textContent).toContain('底图.png');expect(document.body.textContent).not.toContain('replacement.png');
+ button('Save').click();await settle();expect(state.configurations[0]!.values).toEqual({});
+ expect(document.body.textContent).toContain('底图.png');
+});
+it('keeps an optional enum unset until selected, including its first option',async()=>{
+ state=createConfigurationState([{name:'title',type:'string'},{name:'mode',type:'string',options:[{value:'auto'},{value:'manual'}]}],()=> 'profile');
+ document.getElementById('project-configurations')!.click();await settle();
+ const mode=()=>document.querySelector<HTMLSelectElement>('select[aria-label="mode"]')!;
+ expect(mode().selectedIndex).toBe(-1);title().value='Draft';title().dispatchEvent(new Event('input'));
+ button('Save').click();await settle();expect(state.configurations[0]!.values).toEqual({title:'Draft'});
+ mode().value='auto';mode().dispatchEvent(new Event('change'));button('Save').click();await settle();
+ expect(state.configurations[0]!.values).toEqual({title:'Draft',mode:'auto'});
+ button('Clear value for mode').click();expect(mode().selectedIndex).toBe(-1);
+});
 it('opens the common editor without declared fields and accepts external open commands',async()=>{
  state=createConfigurationState([],()=> 'empty');message({type:'project-configurations-open'});await settle();
  expect(document.querySelector('dialog')?.open).toBe(true);

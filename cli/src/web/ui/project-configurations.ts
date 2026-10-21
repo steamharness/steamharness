@@ -34,7 +34,7 @@ export function mountProjectConfigurations(host: Host): void {
   fieldsHeader.append(fieldsTitle, fieldCount);
   body.append(fieldsHeader,fields); dialog.append(heading,toolbar,body,actions); document.body.append(dialog);
   let latest: ProjectConfigurationState | undefined, draft: ProjectConfigurationState | undefined, dirty = false, working = false, editingField = false;
-  const readers = new Map<string, () => unknown>(), enabled = new Map<string, HTMLInputElement>();
+  const readers = new Map<string, () => unknown>(), overrides = new Set<string>(), resets = new Map<string, HTMLButtonElement>();
   const pending = new Map<string,{resolve(value:any):void;reject(error:Error):void;timer:ReturnType<typeof setTimeout>}>();
   const error = (e: unknown) => { status.textContent = t((e as Error).message ?? String(e)); status.classList.add('error'); };
   function button(text: string, run: () => void): HTMLButtonElement { const b = document.createElement('button'); b.type = 'button'; b.textContent = text; b.onclick = run; return b; }
@@ -76,7 +76,7 @@ export function mountProjectConfigurations(host: Host): void {
     const requestId = crypto.randomUUID();
     return new Promise((resolve,reject) => { const timer = setTimeout(() => { pending.delete(requestId); reject(new Error(t('The request timed out. Check the current status.'))); },timeout); pending.set(requestId,{resolve,reject,timer}); host.postMessage({...message,requestId}); });
   }
-  function changed() { dirty = true; save.disabled = working; status.textContent = t('Unsaved changes'); status.classList.remove('error'); }
+  function changed(key?: string) { if (key) overrides.add(key); dirty = true; updateActions(); status.textContent = t('Unsaved changes'); status.classList.remove('error'); }
   function lockControls(root: ParentNode): () => void {
     const controls = [...root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement>('input,textarea,select,button')].map(control => [control, control.disabled] as const);
     for (const [control] of controls) control.disabled = true;
@@ -101,7 +101,7 @@ export function mountProjectConfigurations(host: Host): void {
     try {
       const values: ConfigurationValues = {}, unset: string[] = [];
       for (const field of draft.fields) {
-        if (!enabled.get(field.name)?.checked) { unset.push(field.name); continue; }
+        if (!overrides.has(field.name)) { unset.push(field.name); continue; }
         values[field.name] = readers.get(field.name)!() as any;
       }
       await dispatch({action:'save',id:draft.activeConfigurationId,values,unset});
@@ -137,6 +137,7 @@ export function mountProjectConfigurations(host: Host): void {
     for (const control of [select,create,addField,...menus.flatMap(menu => [menu.trigger,...menu.items])]) control.disabled = working || !draft;
     profilesMenu.items[2]!.disabled = working || !draft || draft.configurations.length <= 1;
     refresh.disabled = working; save.disabled = working || !dirty || !draft;
+    for (const [key, reset] of resets) reset.disabled = working || !overrides.has(key);
   }
   updateActions();
   async function download(all: boolean) {
@@ -191,7 +192,7 @@ export function mountProjectConfigurations(host: Host): void {
     } catch (e) { message.textContent=(e as Error).message; } finally { apply.disabled = false; } })(); };
     editor.append(editorHeader,form); document.body.append(editor); editor.addEventListener('close',()=>{ editingField = false; editor.remove(); addField.focus(); if(latest && !dirty) { draft = undefined; render(latest); } },{once:true}); editor.showModal(); key.focus();
   }
-  function fileControl(field: ProjectConfigurationField, value: unknown, toggle: HTMLInputElement): HTMLElement {
+  function fileControl(field: ProjectConfigurationField, value: unknown): HTMLElement {
     const control=document.createElement('div'); control.className='configuration-file';
     const list=document.createElement('div'); list.className='configuration-file-list';
     const picker=document.createElement('input'); picker.type='file'; picker.hidden=true; picker.accept=field.accept?.join(',')??''; picker.multiple=!!field.multiple; picker.ariaLabel=t('Choose file for {0}',field.label||field.name);
@@ -199,10 +200,11 @@ export function mountProjectConfigurations(host: Host): void {
     try { references=(value===undefined?[]:field.multiple&&Array.isArray(value)?value:[value]).map(parseConfigurationFile); }
     catch(e) { error(e); }
     readers.set(field.name,()=>{if(!field.multiple&&!references.length)throw new Error(t('Choose a file before saving.'));return field.multiple?references:references[0];});
-    const choose=button(t('Choose file'),()=>picker.click()); choose.prepend(document.createRange().createContextualFragment(iconHtml('cloud-upload')));
-    const clear=iconButton('clear-all',t('Clear file selection'),()=>{references=[];toggle.checked=false;changed();display();});
+    const choose=button(t('Choose file'),()=>picker.click()); choose.id=`configuration-field-${field.name}`; choose.prepend(document.createRange().createContextualFragment(iconHtml('cloud-upload')));
+    const clear=iconButton('clear-all',t('Clear file selection'),()=>{references=(field.defaultValue===undefined?[]:field.multiple&&Array.isArray(field.defaultValue)?field.defaultValue:[field.defaultValue]).map(parseConfigurationFile);overrides.delete(field.name);changed();display();});
+    resets.set(field.name,clear);
     function display() {
-      list.replaceChildren(); clear.disabled=!references.length;
+      list.replaceChildren(); clear.disabled=working||!overrides.has(field.name);
       choose.lastChild!.textContent=t(references.length?'Replace file':'Choose file');
       for(const reference of references) {
         const row=document.createElement('div'); row.className='configuration-file-reference';
@@ -225,12 +227,11 @@ export function mountProjectConfigurations(host: Host): void {
           uploaded.push(parseConfigurationFile(await send({type:'project-configuration-upload',id,revision:scope.revision,key:field.name,file:{name:file.name,mimeType:file.type||'application/octet-stream',data}},120_000)));
         }
         if(draft!==scope)return;
-        references=uploaded;toggle.checked=true;changed();display();
+        references=uploaded;changed(field.name);display();
         if(latest?.revision!==draft.revision)error(new Error(t('Configuration changed. Your draft is preserved. Refresh before saving.')));
       } catch(e) {if(draft===scope)error(e);}
       finally {working=false;unlock();display();updateActions();}
     })();
-    toggle.onchange=()=>{changed();display();};
     const actions=document.createElement('div'); actions.className='configuration-file-actions';actions.append(choose,clear);control.append(list,actions,picker);display();return control;
   }
   function render(next: ProjectConfigurationState) {
@@ -239,29 +240,38 @@ export function mountProjectConfigurations(host: Host): void {
     if ((editingField || working) && draft) return;
     if (dirty && draft) { if (draft.revision !== next.revision) error(new Error(t('Configuration changed. Your draft is preserved. Refresh before saving.'))); return; }
     if (draft?.revision === next.revision) return;
-    draft = structuredClone(next); dirty = false; fields.replaceChildren(); readers.clear(); enabled.clear();
+    draft = structuredClone(next); dirty = false; fields.replaceChildren(); readers.clear(); overrides.clear(); resets.clear();
     select.replaceChildren(...next.configurations.map(c=>new Option(c.name,c.id))); select.value=next.activeConfigurationId;
     const values = next.configurations.find(c=>c.id===next.activeConfigurationId)!.values;
+    for (const key of Object.keys(values)) overrides.add(key);
     status.textContent = ''; status.classList.remove('error'); save.disabled=true; fieldCount.textContent=String(next.fields.length); updateActions();
     if (!next.fields.length) { const empty=document.createElement('div'); empty.className='configuration-empty'; empty.innerHTML=iconHtml('settings-gear'); const text=document.createElement('p'); text.textContent=t('No configuration fields. Add a custom field to get started.'); empty.append(text); fields.append(empty); }
     for (const field of next.fields) {
       const row=document.createElement('section'); row.className='configuration-field'; const fieldHeading=document.createElement('div'); fieldHeading.className='configuration-field-heading';
-      const title=document.createElement('label'), toggle=document.createElement('input'); toggle.type='checkbox'; toggle.checked=Object.hasOwn(values,field.name); toggle.ariaLabel=t('Set value for {0}',field.name); toggle.title=toggle.ariaLabel; enabled.set(field.name,toggle);
-      const caption=document.createElement('span'); caption.textContent=(field.label || field.name)+(field.required?' *':''); title.append(toggle,caption); fieldHeading.append(title); row.append(fieldHeading);
+      const title=document.createElement('label'); title.htmlFor=`configuration-field-${field.name}`; title.textContent=(field.label || field.name)+(field.required?' *':''); fieldHeading.append(title); row.append(fieldHeading);
+      const controls=document.createElement('div'); controls.className='configuration-field-actions'; fieldHeading.append(controls);
       if (next.customFields.some(f=>f.name===field.name)) {
-        const controls=document.createElement('div'); controls.className='configuration-field-actions'; controls.append(iconButton('edit',t('Edit field'),()=>{if(clean())void editField(field);}),iconButton('trash',t('Delete field'),()=>{if(clean())void dispatch({action:'field.delete',key:field.name});})); fieldHeading.append(controls);
+        const remove=iconButton('trash',t('Delete field'),()=>{if(clean())void dispatch({action:'field.delete',key:field.name});}); remove.dataset.action='delete';
+        controls.append(iconButton('edit',t('Edit field'),()=>{if(clean())void editField(field);}),remove);
       }
       const value=Object.hasOwn(values,field.name) ? values[field.name] : field.defaultValue;
       if(field.type==='file') {
-        row.append(fileControl(field,value,toggle));
+        row.append(fileControl(field,value));
         const help=document.createElement('small');help.textContent=field.description??t('Files are uploaded to the server. Save to apply the selection.');row.append(help);fields.append(row);continue;
       }
       let input: HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement;
-      if (field.options) { const select=document.createElement('select'); select.multiple=!!field.multiple; for (const option of field.options) { const o=new Option(option.label??option.value,option.value); o.selected=field.multiple ? Array.isArray(value)&&value.includes(option.value) : value===option.value; select.add(o); } input=select; readers.set(field.name,()=>field.multiple ? Array.from(select.selectedOptions).map(o=>o.value) : select.value); }
+      if (field.options) { const select=document.createElement('select'); select.multiple=!!field.multiple; for (const option of field.options) { const o=new Option(option.label??option.value,option.value); o.selected=field.multiple ? Array.isArray(value)&&value.includes(option.value) : value===option.value; select.add(o); } if(!field.multiple)select.value=value===undefined?'':String(value); input=select; readers.set(field.name,()=>field.multiple ? Array.from(select.selectedOptions).map(o=>o.value) : select.value); }
       else if (field.type==='json'||field.multiple) { const text=document.createElement('textarea'); text.rows=4; text.value=value===undefined?'':JSON.stringify(value,null,2); input=text; readers.set(field.name,()=>JSON.parse(text.value)); }
       else { const text=document.createElement('input'); text.type=field.type==='boolean'?'checkbox':field.type==='number'?'number':field.secret?'password':'text'; text.step='any'; text.value=value===undefined?'':String(value); text.checked=value===true; input=text; readers.set(field.name,()=>field.type==='boolean'?text.checked:field.type==='number'?(text.value.trim()?Number(text.value):NaN):text.value); }
-      input.ariaLabel=field.label||field.name; input.disabled=!toggle.checked;
-      toggle.onchange=()=>{input.disabled=!toggle.checked;changed();}; input.oninput=changed; input.onchange=changed;
+      input.id=title.htmlFor; input.ariaLabel=field.label||field.name;
+      input.oninput=()=>changed(field.name); input.onchange=()=>changed(field.name);
+      const reset=iconButton('discard',t(field.defaultValue===undefined?'Clear value for {0}':'Restore default for {0}',field.label||field.name),()=>{
+        const value=field.defaultValue;
+        if(input instanceof HTMLSelectElement) {if(field.multiple)for(const option of input.options)option.selected=Array.isArray(value)&&value.includes(option.value);else input.value=value===undefined?'':String(value);}
+        else if(input instanceof HTMLInputElement&&field.type==='boolean')input.checked=value===true;
+        else input.value=value===undefined?'':field.type==='json'||field.multiple?JSON.stringify(value,null,2):String(value);
+        overrides.delete(field.name);changed();input.focus();
+      }); resets.set(field.name,reset);controls.prepend(reset);
       const control=document.createElement('div'); control.className='configuration-field-control'; control.append(input); row.append(control);
       if (field.secret && input instanceof HTMLInputElement && input.type==='password') {
         const reveal=iconButton('eye',t('Show sensitive values'),()=>{const hidden=input.type==='password'; input.type=hidden?'text':'password'; updateIcon(reveal,hidden?'eye-closed':'eye'); reveal.title=reveal.ariaLabel=t(hidden?'Hide sensitive values':'Show sensitive values'); reveal.ariaPressed=String(hidden);}); reveal.ariaPressed='false'; control.classList.add('configuration-secret'); control.append(reveal);
@@ -269,6 +279,7 @@ export function mountProjectConfigurations(host: Host): void {
       const help=document.createElement('small'); help.textContent=field.description??field.name; row.append(help);
       fields.append(row);
     }
+    updateActions();
   }
   trigger.onclick = () => { if (latest) render(latest); dialog.showModal(); void request({action:'get'}).then(render).catch(error); };
   dialog.addEventListener('close',()=>{hideMenus();trigger.focus();});

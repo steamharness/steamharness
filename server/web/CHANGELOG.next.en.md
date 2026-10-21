@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Improved] Edit project configuration fields directly without a Set value checkbox. Reset icons restore defaults or clear overrides; boolean and multiple-choice controls retain their checkboxes.
+
 - Fixed: project configuration file fields choose and upload files to Server storage, then save references. Type restrictions, replacement and clearing preserve the previous value when uploads fail.
 
 - [Improved] Separate configuration management, fields and saving. Group secondary actions in icon menus, show export details with those actions, and use labeled icons for custom field editing and draft refresh.

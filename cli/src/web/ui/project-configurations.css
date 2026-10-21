@@ -26,7 +26,7 @@
 .configuration-field-heading label { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; overflow-wrap: anywhere; }
 .configuration-fields input[type=checkbox] { flex-shrink: 0; min-height: 14px; width: 14px; height: 14px; margin: 0; accent-color: var(--vscode-button-background); }
 .configuration-field-actions { display: flex; align-items: center; gap: 2px; }
-.configuration-field-actions button:last-child:hover { color: var(--vscode-errorForeground); }
+.configuration-field-actions button[data-action=delete]:hover { color: var(--vscode-errorForeground); }
 .configuration-field-control { position: relative; }
 .configuration-fields input:not([type=checkbox]), .configuration-fields textarea, .configuration-fields select { width: 100%; box-sizing: border-box; }
 .configuration-fields :is(input, textarea, select):disabled { opacity: .6; }

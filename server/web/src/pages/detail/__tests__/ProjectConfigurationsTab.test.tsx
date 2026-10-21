@@ -53,7 +53,7 @@ it("creates custom file definitions with accept restrictions through the panel",
  render(<ProjectConfigurationsTab project={project}/>);fireEvent.click(await screen.findByRole("button",{name:"Add field"}));
  fireEvent.change(screen.getByLabelText("Field key"),{target:{value:"photo"}});
  fireEvent.keyDown(screen.getByRole("combobox",{name:"Field type"}),{key:"ArrowDown"});
- fireEvent.click(await screen.findByRole("option",{name:"file",exact:true}));
+ fireEvent.click(await screen.findByRole("option",{name:"file"}));
  fireEvent.change(screen.getByLabelText("Accepted file types (one per line)"),{target:{value:"image/png\n.webp"}});
  fireEvent.click(screen.getAllByRole("button",{name:"Save"}).at(-1)!);
  await waitFor(()=>expect(state.customFields[0]).toMatchObject({name:"photo",type:"file",accept:["image/png",".webp"]}));
@@ -64,6 +64,58 @@ it.each(["workflow","conversation","kanban"] as const)("shows the same configura
  render(<ProjectConfigurationsTab project={{...project,projectType}}/>);
  expect(await screen.findByLabelText("label")).toHaveProperty("value","Original");
  expect(screen.getByRole("button",{name:"Add field"})).toBeTruthy();
+});
+it("edits inherited defaults directly and preserves explicit empty, false, zero and null values",async()=>{
+ let state=createConfigurationState([
+  {name:"label",type:"string",defaultValue:"Original"},{name:"blank",type:"string"},
+  {name:"count",type:"number",defaultValue:2},{name:"active",type:"boolean",defaultValue:true},
+  {name:"data",type:"json",defaultValue:{original:true}},
+  {name:"mode",type:"string",options:[{value:"auto"},{value:"manual"}],defaultValue:"auto"},
+  {name:"tags",type:"string",multiple:true,options:[{value:"east"},{value:"west"}],defaultValue:["east"]},
+ ],()=>"default");state.configurations[0]!.values={};
+ vi.spyOn(apiClient,"projectConfigurations").mockImplementation(async(_id,call)=>ok(call.action==="get"?state:(state=applyConfigurationAction(state,call,()=>"new"))));
+ const {container}=render(<ProjectConfigurationsTab project={project}/>);
+ await screen.findByLabelText("label");
+ expect(screen.queryByRole("checkbox",{name:/Set value/})).toBeNull();
+ for(const key of ["label","blank","count","active","data","mode","east","west"])expect(screen.getByLabelText(key)).toBeEnabled();
+ fireEvent.change(screen.getByLabelText("label"),{target:{value:""}});
+ fireEvent.change(screen.getByLabelText("blank"),{target:{value:"custom"}});fireEvent.change(screen.getByLabelText("blank"),{target:{value:""}});
+ fireEvent.change(screen.getByLabelText("count"),{target:{value:"0"}});fireEvent.change(screen.getByLabelText("data"),{target:{value:"null"}});
+ fireEvent.click(screen.getByLabelText("active"));fireEvent.click(screen.getByLabelText("east"));fireEvent.click(screen.getByLabelText("west"));
+ fireEvent.keyDown(screen.getByLabelText("mode"),{key:"ArrowDown"});fireEvent.click(await screen.findByRole("option",{name:"manual"}));
+ fireEvent.click(screen.getByRole("button",{name:"Save"}));
+ await waitFor(()=>expect(state.configurations[0]!.values).toEqual({label:"",blank:"",count:0,active:false,data:null,mode:"manual",tags:["west"]}));
+ await waitFor(()=>expect(screen.getByRole("button",{name:"Restore default for label"})).toBeEnabled());
+ for(const key of ["label","count","active","data","mode","tags"])fireEvent.click(screen.getByRole("button",{name:`Restore default for ${key}`}));
+ fireEvent.click(screen.getByRole("button",{name:"Clear value for blank"}));
+ expect(screen.getByLabelText("label")).toHaveValue("Original");expect(screen.getByLabelText("count")).toHaveValue(2);
+ expect(screen.getByLabelText("active")).toBeChecked();expect(screen.getByLabelText("east")).toBeChecked();expect(screen.getByLabelText("west")).not.toBeChecked();
+ expect(screen.getByLabelText("data")).toHaveValue('{\n  "original": true\n}');expect(container.querySelector('button[id="configuration-mode"]')).toHaveTextContent("auto");
+ fireEvent.change(screen.getByLabelText("label"),{target:{value:"Only this field"}});fireEvent.click(screen.getByRole("button",{name:"Save"}));
+ await waitFor(()=>expect(state.configurations[0]!.values).toEqual({label:"Only this field"}));
+ expect(screen.getByLabelText("count")).toBeEnabled();expect(screen.getByLabelText("data")).toHaveValue('{\n  "original": true\n}');
+});
+it("shows the inherited file immediately after clearing an override",async()=>{
+ let state=createConfigurationState([{name:"image",type:"file",defaultValue:imageFile}],()=>"default");
+ state.configurations[0]!.values.image={...imageFile,id:"wf_cd34",name:"replacement.png"};
+ vi.spyOn(apiClient,"projectConfigurations").mockImplementation(async(_id,call)=>ok(call.action==="get"?state:(state=applyConfigurationAction(state,call,()=>"new"))));
+ render(<ProjectConfigurationsTab project={project}/>);await screen.findByText("replacement.png");
+ fireEvent.click(screen.getByRole("button",{name:"Clear file selection"}));expect(screen.getByText("底图.png")).toBeTruthy();
+ fireEvent.click(screen.getByRole("button",{name:"Save"}));await waitFor(()=>expect(state.configurations[0]!.values).toEqual({}));
+ expect(screen.getByText("底图.png")).toBeTruthy();
+});
+it("keeps an optional enum unset until selected, including its first option",async()=>{
+ let state=createConfigurationState([{name:"label",type:"string"},{name:"mode",type:"string",options:[{value:"auto"},{value:"manual"}]}],()=>"default");
+ vi.spyOn(apiClient,"projectConfigurations").mockImplementation(async(_id,call)=>ok(call.action==="get"?state:(state=applyConfigurationAction(state,call,()=>"new"))));
+ render(<ProjectConfigurationsTab project={project}/>);await screen.findByLabelText("mode");
+ expect(screen.getByLabelText("mode")).toHaveTextContent(/^$/);
+ fireEvent.change(screen.getByLabelText("label"),{target:{value:"Draft"}});fireEvent.click(screen.getByRole("button",{name:"Save"}));
+ await waitFor(()=>expect(state.configurations[0]!.values).toEqual({label:"Draft"}));
+ await waitFor(()=>expect(screen.getByLabelText("mode")).toBeEnabled());
+ fireEvent.keyDown(screen.getByLabelText("mode"),{key:"ArrowDown"});fireEvent.click(await screen.findByRole("option",{name:"auto"}));
+ fireEvent.click(screen.getByRole("button",{name:"Save"}));await waitFor(()=>expect(state.configurations[0]!.values).toEqual({label:"Draft",mode:"auto"}));
+ await waitFor(()=>expect(screen.getByRole("button",{name:"Clear value for mode"})).toBeEnabled());
+ fireEvent.click(screen.getByRole("button",{name:"Clear value for mode"}));expect(screen.getByLabelText("mode")).toHaveTextContent(/^$/);
 });
 it("preserves a draft after a conflict, sends native values and can discard it",async()=>{
  const state=initial();const service=vi.spyOn(apiClient,"projectConfigurations").mockResolvedValue(ok(state));
