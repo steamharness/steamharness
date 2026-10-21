@@ -609,5 +609,7 @@
   "Server project must belong to the registered workspace.": "Server project must belong to the registered workspace.",
   "Project configurations are unavailable.": "Project configurations are unavailable.",
   "Use the configuration query tool for reads.": "Use the configuration query tool for reads.",
-  "Configuration request failed.": "Configuration request failed."
+  "Configuration request failed.": "Configuration request failed.",
+  "Loading project...": "Loading project...",
+  "The project view did not finish loading. Try again.": "The project view did not finish loading. Try again."
 }

@@ -132,8 +132,52 @@ for (const language of ['en', 'zh-cn']) {
       return [part, { visible: !!rect?.width && !!rect?.height && getComputedStyle(element).display !== 'none', width: rect?.width }];
     })));
     const before = await partState();
+
+    // Hold the real result iframe so startup and cancellation cannot pass on an already loaded page.
+    let releaseFrame, frameHeld = false;
+    const frameGate = new Promise(resolve => { releaseFrame = resolve; });
+    const frameRoute = url => url.searchParams.has('projectLocale');
+    const projectNames = new Set([manifest.name, ...Object.values(manifest.steamHarness.projectInfo.localizedNames)]);
+    await context.route(frameRoute, async route => {
+      const title = await route.request().frame().parentFrame()?.locator('#workflow-frame').getAttribute('title').catch(() => undefined);
+      if (!frameHeld && projectNames.has(title)) { frameHeld = true; await frameGate; }
+      await route.continue();
+    });
+    try {
+      await steam.click();
+      await page.locator('.studio-mode-loading').waitFor();
+      assert.equal(await page.locator('.studio-mode-loading').innerText(), language === 'en' ? 'Loading project...' : '正在加载项目…');
+      await until(() => frameHeld, Boolean, 'The project iframe was not requested', 90_000);
+      assert.equal(await page.locator('.studio-mode-switcher').getAttribute('aria-busy'), 'true');
+      assert.equal(await page.locator('html.studio-mode-transition').count(), 0);
+      await page.screenshot({ path: path.join(proof, `${language}-loading.png`) });
+      await page.locator('.studio-mode-ide').click();
+      await until(() => page.locator('.studio-mode-switcher').getAttribute('aria-busy'), value => value === 'false', 'IDE waited for the blocked project iframe');
+      assert.equal(await steam.getAttribute('aria-pressed'), 'false');
+      assert.equal(await page.locator('.studio-mode-loading').isVisible(), false);
+      assert.equal((await call({ action: 'state' })).active, documentUri);
+    } finally {
+      releaseFrame(); await context.unroute(frameRoute);
+    }
+    check(`${language}: slow frame loading stays visible and returning to IDE cancels the wait`);
+
+    await page.evaluate(() => {
+      const start = document.startViewTransition.bind(document);
+      window.studioModeTransitions = [];
+      document.startViewTransition = callback => {
+        const direction = document.documentElement.classList.contains('studio-mode-enter-steam') ? 'steam' : 'ide';
+        const transition = start(callback);
+        void transition.ready.then(() => {
+          window.studioModeTransitions.push({ direction, animations: document.getAnimations().filter(animation =>
+            ['studio-mode-in', 'studio-mode-out'].includes(animation.animationName)).map(animation => ({
+            name: animation.animationName, transforms: animation.effect.getKeyframes().map(frame => frame.transform),
+          })), titlebar: getComputedStyle(document.documentElement, '::view-transition-new(studio-mode-titlebar)').animationName });
+        }, () => undefined);
+        return transition;
+      };
+    });
     await steam.click(); await page.locator('.studio-steam-tools').waitFor({ timeout: 90_000 });
-    await until(() => steam.getAttribute('aria-pressed'), value => value === 'true', 'Steam mode switch did not finish');
+    await until(() => page.locator('.studio-mode-switcher').getAttribute('aria-busy'), value => value === 'false', 'Steam mode switch did not finish');
     const during = await partState();
     assert.equal(during.activitybar.visible, false); assert.equal(during.sidebar.visible, false); assert.equal(during.panel.visible, false);
     assert.equal(during.auxiliarybar.visible, true);
@@ -201,6 +245,16 @@ for (const language of ['en', 'zh-cn']) {
     }
     check(`${language}: tools render in light/dark themes from 800 to 1440px without overflow`);
     await command('studio.enterIdeMode');
+    const transitions = await page.evaluate(() => window.studioModeTransitions);
+    for (const direction of ['steam', 'ide']) {
+      const transition = transitions.find(transition => transition.direction === direction && transition.animations.length === 2);
+      assert.ok(transition, JSON.stringify(transitions));
+      assert.equal(transition.titlebar, 'none');
+      const incoming = transition.animations.find(animation => animation.name === 'studio-mode-in');
+      assert.ok(incoming.transforms[0].includes(direction === 'steam' ? '100%' : '-100%'), JSON.stringify(incoming));
+    }
+    await writeFile(path.join(proof, `${language}-transitions.json`), JSON.stringify(transitions, null, 2));
+    check(`${language}: the workspace slides in opposite directions while the titlebar stays fixed`);
     const after = await partState();
     for (const part of Object.keys(before)) {
       assert.equal(after[part].visible, before[part].visible, part);
@@ -236,12 +290,15 @@ for (const language of ['en', 'zh-cn']) {
     const originalWidths = await groupWidths();
     await command('workbench.action.toggleMaximizeEditorGroup');
     await until(visibleGroups, value => value === 1, 'Editor group did not maximize');
-    for (let attempt = 0; attempt < 3; attempt++) {
-      await command('studio.enterSteamMode'); await command('studio.enterIdeMode');
-      await until(visibleGroups, value => value === 1, 'Original maximized editor group was not restored');
-      assert.equal((await call({ action: 'state' })).active, source);
-      await page.waitForTimeout(100);
-      assert.equal(await visibleGroups(), 1);
+    for (const reducedMotion of ['reduce', 'no-preference']) {
+      await page.emulateMedia({ reducedMotion });
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await command('studio.enterSteamMode'); await command('studio.enterIdeMode');
+        await until(visibleGroups, value => value === 1, 'Original maximized editor group was not restored');
+        assert.equal((await call({ action: 'state' })).active, source);
+        await page.waitForTimeout(100);
+        assert.equal(await visibleGroups(), 1);
+      }
     }
     await command('workbench.action.toggleMaximizeEditorGroup');
     await until(visibleGroups, value => value === 2, 'Restored editor group could not unmaximize');

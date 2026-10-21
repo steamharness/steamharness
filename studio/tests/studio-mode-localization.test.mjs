@@ -32,6 +32,7 @@ for (const language of ['en', 'zh-cn']) {
     const labels = calls[1][1].labels;
     assert.equal(labels.tools, language === 'en' ? 'Open Tools' : '打开工具');
     assert.equal(labels.switchToSteam, language === 'en' ? 'Switch to Steam Mode' : '切换到 Steam 模式');
+    assert.equal(labels.loading, language === 'en' ? 'Loading project...' : '正在加载项目…');
     for (const id of ['kv', 'knowledge', 'info', 'assistant', 'versions', 'trace']) {
       assert.ok(labels[id]); assert.ok(labels[`${id}Hint`]);
       assert.equal(/\p{Script=Han}/u.test(labels[id]), language !== 'en');
@@ -39,5 +40,9 @@ for (const language of ['en', 'zh-cn']) {
     for (const [id, native] of [['toggleMode', 'ToggleMode'], ['enterIdeMode', 'EnterIdeMode'], ['enterSteamMode', 'EnterSteamMode'], ['openSteamTools', 'OpenSteamTools']]) {
       await callbacks.get(`studio.${id}`)(); assert.equal(calls.at(-1)[0], `studio.internal${native}`);
     }
+    controller.update(true, 'file:///project-one', true);
+    controller.update(true, 'file:///project-one', true);
+    controller.update(true, 'file:///project-two', false);
+    assert.deepEqual(calls.slice(-2).map(call => [call[1].projectUri, call[1].ready]), [['file:///project-one', true], ['file:///project-two', false]]);
   });
 }

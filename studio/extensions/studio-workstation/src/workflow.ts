@@ -73,7 +73,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
   const versionStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 109);
   versionStatus.name = t('Project Updates');
   versionStatus.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-  const workspaces = new Map<string, { panel: vscode.WebviewPanel; project: Project; running: boolean; ready: Promise<void>; close(): Promise<void> }>();
+  const workspaces = new Map<string, { panel: vscode.WebviewPanel; project: Project; running: boolean; loaded: boolean; ready: Promise<void>; close(): Promise<void> }>();
   const opening = new Map<string, Promise<AssistantConversation>>();
   const starting = new Map<AbortController, Project>();
   const startingSources = new Map<AbortController, string[]>();
@@ -93,6 +93,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
   let refreshRequested = false;
   let resumeRefresh: (() => void) | undefined;
   let cliConnection = JSON.stringify(account.getConnection());
+  let steamPreparation: AbortController | undefined;
   const currentProject = (): Project | undefined => {
     const uri = vscode.window.activeTextEditor?.document.uri;
     return (uri ? [...provider.projects].sort((a, b) => b.uri.length - a.uri.length).find(entry => uri.toString().startsWith(`${entry.uri}/`)) : undefined)
@@ -124,7 +125,8 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     void info.update(provider.projects, target);
     updateVersionEntry();
     void vscode.commands.executeCommand('setContext', 'studio.projectAvailable', !!target);
-    if (projectScanReady) { mode.update(!!target && vscode.workspace.isTrusted); }
+    const workspace = target ? workspaces.get(target.uri) : undefined;
+    if (projectScanReady) { mode.update(!!target && vscode.workspace.isTrusted, target?.uri, !!workspace?.running && workspace.loaded); }
     if (!target) { status.hide(); return; }
     status.text = t("$(play) Run Project \u00B7 {0}", projectDisplayName(target));
     status.tooltip = target.folderPath; status.show();
@@ -144,10 +146,13 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     clearTimeout(entryTimer);
     entryTimer = setTimeout(updateEntry, 150);
   };
-  const createWorkspace = async (project: Project, restored?: vscode.WebviewPanel, sidebar?: vscode.WebviewView, viewColumn = vscode.ViewColumn.Active): Promise<AssistantConversation> => {
+  const createWorkspace = async (project: Project, restored?: vscode.WebviewPanel, sidebar?: vscode.WebviewView, viewColumn = vscode.ViewColumn.Active, signal?: AbortSignal): Promise<AssistantConversation> => {
     await settling.get(project.uri);
+    signal?.throwIfAborted();
     if (!projectAvailable(project)) { restored?.dispose(); throw new Error('Workflow workspace is unavailable.'); }
     const controller = new AbortController();
+    const abort = (): void => controller.abort();
+    signal?.addEventListener('abort', abort, { once: true });
     let finishStarting!: () => void;
     startingDone.set(controller, new Promise<void>(resolve => { finishStarting = resolve; }));
     starting.set(controller, project);
@@ -161,10 +166,12 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       startingSources.set(controller, sources);
       session = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: t("Starting SteamHarness Web") }, async () =>
         launcher.start(project, sidebar ? 'assistant' : 'editor', controller.signal, bindings, resourceProjects));
-      if (controller.signal.aborted || !projectAvailable(project)) { await session.close(); throw new Error('Workflow workspace has closed.'); }
+      if (controller.signal.aborted || !projectAvailable(project)) {
+        await session.close(); controller.signal.throwIfAborted(); throw new Error('Workflow workspace has closed.');
+      }
     } catch (error) {
-      restored?.dispose(); throw error;
-    } finally { starting.delete(controller); startingSources.delete(controller); startingDone.delete(controller); finishStarting(); disposedPanel?.dispose(); }
+      restored?.dispose(); controller.signal.throwIfAborted(); throw error;
+    } finally { signal?.removeEventListener('abort', abort); starting.delete(controller); startingSources.delete(controller); startingDone.delete(controller); finishStarting(); disposedPanel?.dispose(); }
     sessions.add(session);
     sessionSources.set(session, sources);
     const panel = sidebar ?? restored ?? vscode.window.createWebviewPanel('studio.project', projectDisplayName(project), viewColumn, { enableScripts: true, retainContextWhenHidden: true });
@@ -201,6 +208,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       const external = await vscode.env.asExternalUri(local);
       const address = new URL(external.toString());
       address.hash = new URL(session.ready.url).hash;
+      signal?.throwIfAborted();
       if (closed || !projectAvailable(project)) { await close(); throw new Error('Workflow workspace has closed.'); }
       panel.webview.options = { enableScripts: true, localResourceRoots: [], portMapping: [{ webviewPort: Number(new URL(session.ready.url).port), extensionHostPort: Number(new URL(session.ready.url).port) }] };
       const traceBinding = trace.bind(project, session.ready.traceProtocolVersion, panel.webview);
@@ -210,14 +218,18 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         await openCard(result, project, session, address);
       });
       listeners.push(traceBinding, clipboardBinding, resourceBinding, panel.webview.onDidReceiveMessage(message => {
-        if (message?.type === 'workflow-frame-ready') frameReady();
+        if (message?.type === 'workflow-frame-ready') {
+          const entry = workspaces.get(project.uri);
+          if (entry?.close === close) { entry.loaded = true; }
+          frameReady(); updateEntry();
+        }
         if (message?.type === 'workflow-account' && message.version === 1) { account.open(); }
         else if (!clipboardBinding.receive(message) && !resourceBinding.receive(message)) { traceBinding.receive(message); }
       }));
       panel.webview.html = projectFrameHtml(address.href, project.name, project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language);
       if ('reveal' in panel) {
         panel.title = projectDisplayName(project); panel.iconPath = vscode.Uri.parse(projectAvatarDataUrl(project.projectCard, project.projectType));
-        workspaces.set(project.uri, { panel, project, running: true, ready, close });
+        workspaces.set(project.uri, { panel, project, running: true, loaded: false, ready, close });
         listeners.push(panel.onDidChangeViewState(scheduleEntry));
       }
       listeners.push(vscode.window.onDidChangeActiveColorTheme(() => void panel.webview.postMessage({ type: 'workflow-host', theme: theme() })),
@@ -227,6 +239,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
           if (!closed) {
             const entry = workspaces.get(project.uri);
             if (entry?.close === close) { entry.running = false; }
+            updateEntry();
             output.appendLine(`SteamHarness Web stopped: ${project.name}`);
           }
         }));
@@ -234,17 +247,50 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       updateEntry(); return { dispose: close, closed: session.closed };
     } catch (error) { await close(); if ('reveal' in panel) { panel.dispose(); } throw error; }
   };
-  const openProject = async (target?: Project, viewColumn?: vscode.ViewColumn): Promise<void> => {
+  const revealProject = (panel: vscode.WebviewPanel, viewColumn?: vscode.ViewColumn, signal?: AbortSignal, reveal = true): Promise<void> => {
+    if (!signal) { if (reveal) { panel.reveal(viewColumn); } return Promise.resolve(); }
+    signal.throwIfAborted();
+    if (panel.active && (viewColumn === undefined || panel.viewColumn === viewColumn)) { return Promise.resolve(); }
+    return new Promise<void>((resolve, reject) => {
+      const finish = (error?: unknown): void => {
+        clearTimeout(timeout); changed.dispose(); closed.dispose(); signal.removeEventListener('abort', aborted);
+        if (error) { reject(error); } else { resolve(); }
+      };
+      const check = (): void => { if (panel.active && (viewColumn === undefined || panel.viewColumn === viewColumn)) { finish(); } };
+      const aborted = (): void => finish(signal.reason);
+      const changed = panel.onDidChangeViewState(check);
+      const closed = panel.onDidDispose(() => finish(new Error(t('The project is no longer open.'))));
+      const timeout = setTimeout(() => finish(new Error(t('The project view did not finish loading. Try again.'))), 20_000);
+      signal.addEventListener('abort', aborted, { once: true });
+      if (reveal) { panel.reveal(viewColumn); }
+      check();
+    });
+  };
+  const openProject = async (target?: Project, viewColumn?: vscode.ViewColumn, signal?: AbortSignal): Promise<void> => {
+    signal?.throwIfAborted();
     const selected = target?.builtin === 'analysis' ? target : target?.uri ? provider.projects.find(entry => entry.uri === target.uri) ?? configurationProjects.get(target.uri) : currentProject();
     if (!selected) { return; }
     assertNotUpgrading([selected.folderPath]);
     await settling.get(selected.uri);
+    signal?.throwIfAborted();
     const pending = opening.get(selected.uri);
-    if (pending) { await pending; workspaces.get(selected.uri)?.panel.reveal(viewColumn); return; }
+    if (pending) {
+      try { await pending; }
+      catch (error) {
+        signal?.throwIfAborted();
+        // A new mode request may arrive while its canceled startup is still settling.
+        if (!signal || !(error instanceof Error) || error.name !== 'AbortError') { throw error; }
+      }
+      signal?.throwIfAborted();
+    }
     const existing = workspaces.get(selected.uri);
-    if (existing?.running) { existing.panel.reveal(viewColumn); return; }
-    const created = (async () => { await existing?.close(); return createWorkspace(selected, existing?.panel, undefined, viewColumn); })(); opening.set(selected.uri, created);
-    try { await created; if (existing && viewColumn !== undefined) { workspaces.get(selected.uri)?.panel.reveal(viewColumn); } } finally { opening.delete(selected.uri); }
+    if (existing?.running) { await revealProject(existing.panel, viewColumn, signal); return; }
+    const created = (async () => { await existing?.close(); return createWorkspace(selected, existing?.panel, undefined, viewColumn, signal); })(); opening.set(selected.uri, created);
+    try {
+      await created; signal?.throwIfAborted();
+      const panel = workspaces.get(selected.uri)?.panel;
+      if (panel && (signal || existing && viewColumn !== undefined)) { await revealProject(panel, viewColumn, signal, !!existing); }
+    } finally { opening.delete(selected.uri); }
   };
   const openCard = async (result: ResourceCardResult, owner: Project, session: WebSession, origin: URL): Promise<void> => {
     const { card, project } = result;
@@ -418,12 +464,37 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       } finally { clearTimeout(timeout); }
       return {opened:true};
     }),
-    register('studio.openProject', openProject), register('studio.refreshProjectView', refresh),
-    vscode.commands.registerCommand('studio.internalPrepareSteamProject', async () => {
-      const project = currentProject();
+    register('studio.openProject', (target?: Project, viewColumn?: vscode.ViewColumn) => openProject(target, viewColumn)), register('studio.refreshProjectView', refresh),
+    vscode.commands.registerCommand('studio.internalCancelSteamPreparation', () => steamPreparation?.abort()),
+    vscode.commands.registerCommand('studio.internalPrepareSteamProject', async (projectUri?: string) => {
+      const project = projectUri ? provider.projects.find(project => project.uri === projectUri) ?? configurationProjects.get(projectUri) : currentProject();
       if (!project || !projectAvailable(project)) { return false; }
-      await openProject(project, vscode.ViewColumn.One);
-      return workspaces.get(project.uri)?.running === true;
+      steamPreparation?.abort();
+      const controller = new AbortController();
+      steamPreparation = controller;
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      let panelClosed: vscode.Disposable | undefined;
+      let abort!: () => void;
+      const canceled = new Promise<never>((_resolve, reject) => {
+        abort = () => reject(controller.signal.reason);
+        controller.signal.addEventListener('abort', abort, { once: true });
+      });
+      try {
+        await Promise.race([openProject(project, vscode.ViewColumn.One, controller.signal), canceled]);
+        const entry = workspaces.get(project.uri);
+        if (!entry?.running) { return false; }
+        panelClosed = entry.panel.onDidDispose(() => controller.abort());
+        await Promise.race([entry.ready, canceled, new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(() => reject(new Error(t('The project view did not finish loading. Try again.'))), 20_000);
+        })]);
+        return !controller.signal.aborted && entry.running && projectAvailable(project);
+      } catch (error) {
+        if (controller.signal.aborted) { return false; }
+        throw error;
+      } finally {
+        clearTimeout(timeout); panelClosed?.dispose(); controller.signal.removeEventListener('abort', abort);
+        if (steamPreparation === controller) { steamPreparation = undefined; }
+      }
     }),
     register('studio.openAnalysis', async () => {
       if (!launcher.inspectAnalysis) { throw new Error(t('Studio Analysis is unavailable in this environment.')); }
@@ -452,7 +523,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     vscode.window.onDidCloseTerminal(terminal => terminals.delete(terminal)),
     account.onDidChange(state => { if (state.status !== 'checking') { const next = JSON.stringify(account.getConnection()); if (state.status === 'signed-out' || next !== cliConnection) { closeTerminals(); } cliConnection = next; } }),
     watcher, watcher.onDidChange(changedFile), watcher.onDidCreate(changedFile), watcher.onDidDelete(changedFile),
-    { dispose: () => { disposed = true; ++scanEpoch; clearTimeout(refreshTimer); resumeRefresh?.(); resumeRefresh = undefined; clearTimeout(entryTimer); closeTerminals(); for (const controller of starting.keys()) { controller.abort(); } for (const entry of workspaces.values()) { entry.panel.dispose(); } for (const session of sessions) { void session.close(); } } });
+    { dispose: () => { disposed = true; steamPreparation?.abort(); ++scanEpoch; clearTimeout(refreshTimer); resumeRefresh?.(); resumeRefresh = undefined; clearTimeout(entryTimer); closeTerminals(); for (const controller of starting.keys()) { controller.abort(); } for (const entry of workspaces.values()) { entry.panel.dispose(); } for (const session of sessions) { void session.close(); } } });
   initialScan = refresh().catch(error => output.appendLine(`Workflow: ${String(error)}`));
   await initialScan;
   projectScanReady = true;

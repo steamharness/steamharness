@@ -4,6 +4,8 @@ import { t } from './localization';
 /** Publish inspected project availability and host-localized labels to the native workbench. */
 export class StudioModeController {
   private available?: boolean;
+  private projectUri?: string;
+  private ready?: boolean;
 
   constructor(context: vscode.ExtensionContext, private readonly output: vscode.OutputChannel) {
     for (const [command, native] of [
@@ -22,12 +24,15 @@ export class StudioModeController {
     }
   }
 
-  update(available: boolean): void {
-    if (available === this.available) { return; }
+  update(available: boolean, projectUri?: string, ready = false): void {
+    if (available === this.available && projectUri === this.projectUri && ready === this.ready) { return; }
     this.available = available;
-    void Promise.resolve(vscode.commands.executeCommand('studio.internalUpdateModeState', { available, labels: {
+    this.projectUri = projectUri;
+    this.ready = ready;
+    void Promise.resolve(vscode.commands.executeCommand('studio.internalUpdateModeState', { available, projectUri, ready, labels: {
       mode: t('Workspace Mode'), ide: 'IDE', steam: 'Steam',
       switchToIde: t('Switch to IDE Mode'), switchToSteam: t('Switch to Steam Mode'),
+      loading: t('Loading project...'),
       unavailable: t('Steam Mode is available for SteamHarness projects.'),
       tools: t('Open Tools'), toolsHint: t('Everything you need for your project, in one place.'),
       kv: t('KV Storage'), kvHint: t('Browse and edit project data'),

@@ -39,7 +39,7 @@ const locations = { Sidebar: 0, Panel: 1, AuxiliaryBar: 2 };
 function fixture(t, saved = new Map()) {
   const commands = new Map(), stateChange = new Emitter(), calls = [], settings = new Map(), errors = [];
   const state = { state: { available: false, labels: {} }, steam: false, busy: false, onDidChangeState: stateChange.event,
-    setMode(steam, busy) { this.steam = steam; this.busy = busy; } };
+    setMode(steam, busy, targetSteam = steam) { this.steam = steam; this.busy = busy; this.targetSteam = targetSteam; } };
   const register = (id, handler) => { commands.set(id, handler); return { dispose: () => commands.delete(id) }; };
   const containers = new Map([
     ['studio-kv', { id: 'studio-kv', location: 1 }], ['studio-knowledge', { id: 'studio-knowledge', location: 1 }],
@@ -52,13 +52,15 @@ function fixture(t, saved = new Map()) {
   const visible = new Map(Object.values(parts).map(part => [part, true]));
   const sizes = new Map(Object.values(parts).map((part, index) => [part, { width: 48 + index * 100, height: 720 }]));
   const active = new Map([[0, 'files'], [1, 'studio-kv'], [2, 'studio-assistant']]);
-  const document = { documentElement: { classList: { add() {}, remove() {} } },
-    startViewTransition: callback => { calls.push('transition'); const finished = Promise.resolve().then(callback); return { ready: Promise.resolve(), updateCallbackDone: finished, finished }; } };
-  const win = { document, matchMedia: () => ({ matches: false }) };
+  const classes = new Set();
+  const document = { documentElement: { classList: { add: (...names) => names.forEach(name => classes.add(name)), remove: (...names) => names.forEach(name => classes.delete(name)) } },
+    startViewTransition: callback => { calls.push('transition'); const finished = Promise.resolve().then(callback); return { ready: Promise.resolve(), updateCallbackDone: finished, finished, skipTransition: () => calls.push('skipTransition') }; } };
+  const win = { document, setTimeout, clearTimeout, matchMedia: () => ({ matches: false }) };
   const mainContainer = { classList: { add() {}, remove() {} } };
   let maximized = false, groupMaximized = false, options = false;
   const layout = {
     mainContainer, mainContainerDimension: { width: 1440, height: 900 },
+    getContainer: () => ({ animate: frames => { calls.push(['animate', frames]); return { finished: Promise.resolve() }; } }),
     isVisible: part => visible.get(part), getSize: part => ({ ...sizes.get(part) }),
     setPartHidden: (hidden, part) => visible.set(part, !hidden), setSize: (part, size) => sizes.set(part, { ...size }),
     isAuxiliaryBarMaximized: () => maximized, setAuxiliaryBarMaximized: value => { maximized = value; },
@@ -70,8 +72,9 @@ function fixture(t, saved = new Map()) {
     openEditor: async candidate => { group.activeEditor = candidate; visible.set('editor', true); calls.push(['editor', candidate.id]); } };
   const editorLayout = { orientation: 0, groups: [{ size: .6 }, { size: .4 }] };
   const mainPart = { activeGroup: group, groups: [group, { id: 2 }], getGroup: id => mainPart.groups.find(group => group.id === id),
+    getGroups: () => mainPart.groups,
     getLayout: () => editorLayout, applyLayout: value => { groupMaximized = false; calls.push(['restoreGroups', value]); },
-    arrangeGroups: () => { groupMaximized = true; calls.push('maximizeGroup'); }, hasMaximizedGroup: () => groupMaximized,
+    arrangeGroups: (_arrangement, target = mainPart.activeGroup) => { groupMaximized = true; calls.push('maximizeGroup'); calls.push(['maximizeGroupTarget', typeof target === 'number' ? target : target.id]); }, hasMaximizedGroup: () => groupMaximized,
     enforcePartOptions: () => { options = true; return { dispose: () => { options = false; } }; } };
   const groups = { ...mainPart, mainPart };
   const views = {
@@ -101,8 +104,9 @@ function fixture(t, saved = new Map()) {
     store: (key, value) => pending.set(key, structuredClone(value)), remove: key => pending.set(key, undefined),
     flush: async () => { for (const [key, value] of pending) { if (value === undefined) { saved.delete(key); } else { saved.set(key, value); } } pending.clear(); } };
   const context = { createKey: id => ({ set: value => settings.set(id, value) }) };
-  const f = { calls, saved, visible, sizes, active, containers, settings, errors, state, editor, result, group, layout, groups, mainPart, views, win,
+  const f = { calls, saved, visible, sizes, active, containers, settings, errors, state, editor, result, group, layout, groups, mainPart, views, win, classes, loading: false,
     prepare: async () => { group.activeEditor = result; visible.set('editor', true); return true; },
+    cancelPreparation: () => undefined,
     publish: available => { state.state.available = available; stateChange.fire(state.state); },
     run: (name, ...args) => commands.get(`studio.internal${name}`)(undefined, ...args),
     get options() { return options; } };
@@ -112,14 +116,15 @@ function fixture(t, saved = new Map()) {
     CommandsRegistry: { registerCommand: register }, ConfigurationTarget: { MEMORY: 8 }, ContextKeyExpr: { has: () => true },
     SyncDescriptor: class {}, Registry: { as: () => ({ registerViewContainer: value => containers.get(value.id) ?? value, registerViews() {} }) },
     StorageScope: { WORKSPACE: 1 }, StorageTarget: { MACHINE: 1 }, StudioSteamTools: class {}, studioModeState: state,
+    StudioModeLoading: class { show() { f.loading = true; calls.push('loading'); } hide() { f.loading = false; } dispose() {} },
     ViewPane: class {}, ViewPaneContainer: class {}, WorkbenchPhase: { AfterRestored: 3 }, registerWorkbenchContribution2() {},
-    Extensions: {}, ViewContainerLocation: locations, GroupsArrangement: { MAXIMIZE: 0 }, Parts: parts,
+    Extensions: {}, ViewContainerLocation: locations, GroupsArrangement: { MAXIMIZE: 0 }, GroupsOrder: { GRID_APPEARANCE: 2 }, Parts: parts,
   };
   const module = { exports: {} };
   runInNewContext(compiled, { exports: module.exports, module, require: () => new Proxy(common, { get: (object, key) => key in object ? object[key] : service }) });
   const controller = new module.exports.StudioModeContribution(layout, groups,
     { openEditor: (editor, options, group) => { groupMaximized = false; return group.openEditor(editor); } }, views, descriptors, context, configuration, storage,
-    { executeCommand: async () => { calls.push('prepare'); return f.prepare(); } }, { error: error => errors.push(String(error)) });
+    { executeCommand: async (command, ...args) => { if (command === 'studio.internalCancelSteamPreparation') { calls.push('cancelPreparation'); return f.cancelPreparation(); } calls.push('prepare'); return f.prepare(...args); } }, { error: error => errors.push(String(error)) });
   t.after(() => controller.dispose());
   return f;
 }
@@ -166,7 +171,7 @@ test('rapid mode requests coalesce while a project is preparing', async t => {
   await Promise.all([entering, leaving]);
   assert.equal(f.state.steam, false); assert.equal(f.state.busy, false);
   assert.equal(f.saved.has('studio.ideLayout'), false);
-  assert.equal(f.calls.filter(call => call === 'maximizeGroup').length, 0);
+  assert.equal(f.calls.filter(call => call === 'maximizeGroup').length, 1);
 });
 
 for (const failure of ['unavailable', 'error']) {
@@ -198,7 +203,8 @@ test('a superseded layout failure rolls back before retrying the newest Steam re
   fail(new Error('outdated tool view'));
   await Promise.all([first, latest]);
   assert.equal(f.state.steam, true); assert.equal(f.saved.get('studio.workbenchMode'), 'steam');
-  assert.equal(f.calls.filter(call => call === 'prepare').length, 2);
+  assert.equal(f.calls.filter(call => call === 'prepare').length, 1);
+  assert.equal(f.calls.filter(call => Array.isArray(call) && call[0] === 'restoreGroups').length, 1);
 });
 
 test('project removal restores the IDE and persisted tool positions after a restart', async t => {
@@ -227,10 +233,64 @@ test('failed preparation, invalid tools and duplicate updates preserve the curre
   await f.run('EnterSteamMode'); assert.equal(f.state.steam, false); assert.equal(f.options, false);
   f.prepare = async () => true; await f.run('EnterSteamMode');
   const count = f.calls.length;
+  const moves = f.calls.filter(call => Array.isArray(call) && call[0] === 'move' && call[1] === 'studio-kv').length;
   await f.run('OpenSteamTool', '__proto__'); f.publish(true); f.publish(true);
   await f.run('EnterSteamMode'); assert.equal(f.calls.length, count);
   await f.run('OpenSteamTool', 'kv'); await f.run('OpenSteamTool', 'kv');
-  assert.equal(f.calls.filter(call => Array.isArray(call) && call[0] === 'move' && call[1] === 'studio-kv').length, 1);
+  assert.equal(f.calls.filter(call => Array.isArray(call) && call[0] === 'move' && call[1] === 'studio-kv').length, moves);
+});
+
+test('cold startup shows the live Steam layout while preparation is pending', async t => {
+  const f = fixture(t); f.publish(true);
+  let finish;
+  f.prepare = () => new Promise(resolve => { finish = resolve; });
+  const entering = f.run('EnterSteamMode');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual({ steam: f.state.steam, busy: f.state.busy, loading: f.loading, sidebar: f.visible.get('sidebar'), transitions: f.classes.size },
+    { steam: true, busy: true, loading: true, sidebar: false, transitions: 0 });
+  finish(true); await entering;
+  assert.equal(f.loading, false); assert.equal(f.state.busy, false);
+});
+
+test('returning to IDE cancels pending preparation without waiting for project readiness', async t => {
+  const f = fixture(t); f.publish(true);
+  let finish;
+  f.prepare = () => new Promise(resolve => { finish = resolve; });
+  f.cancelPreparation = () => finish(false);
+  const entering = f.run('EnterSteamMode');
+  await new Promise(resolve => setImmediate(resolve));
+  await f.run('EnterIdeMode'); await entering;
+  assert.deepEqual({ steam: f.state.steam, busy: f.state.busy, loading: f.loading, editor: f.group.activeEditor.id },
+    { steam: false, busy: false, loading: false, editor: f.editor.id });
+  assert.equal(f.calls.includes('cancelPreparation'), true);
+});
+
+test('a retained project frame is revealed before capturing the incoming Steam view', async t => {
+  const f = fixture(t); f.state.state.ready = true; f.publish(true);
+  const start = f.win.document.startViewTransition;
+  let incomingLoading;
+  f.win.document.startViewTransition = callback => start(async () => { await callback(); incomingLoading = f.loading; });
+  await f.run('EnterSteamMode');
+  assert.equal(incomingLoading, false); assert.equal(f.group.activeEditor, f.result);
+});
+
+test('a slow layout releases its captured snapshot instead of freezing rendering', async t => {
+  const f = fixture(t); f.publish(true);
+  let finish;
+  const open = f.views.openView;
+  f.views.openView = async (...args) => { await new Promise(resolve => { finish = resolve; }); return open(...args); };
+  const entering = f.run('EnterSteamMode');
+  await new Promise(resolve => setTimeout(resolve, 180));
+  assert.equal(f.calls.includes('skipTransition'), true);
+  finish(); await entering;
+  assert.equal(f.classes.size, 0);
+});
+
+test('the animation fallback slides horizontally in opposite directions', async t => {
+  const f = fixture(t); f.win.document.startViewTransition = undefined; f.publish(true);
+  await f.run('EnterSteamMode'); await f.run('EnterIdeMode');
+  assert.deepEqual(f.calls.filter(call => Array.isArray(call) && call[0] === 'animate').map(call => call[1][0].transform),
+    ['translateX(48px)', 'translateX(48px)', 'translateX(-48px)', 'translateX(-48px)']);
 });
 
 test('reduced motion applies the layout immediately and each mode retains its own tool width', async t => {
@@ -270,6 +330,15 @@ test('returning to IDE restores an originally maximized editor group', async t =
   f.publish(true); await f.run('EnterSteamMode'); await f.run('EnterIdeMode');
   assert.equal(f.mainPart.hasMaximizedGroup(), true);
   assert.equal(f.calls.some(call => Array.isArray(call) && call[0] === 'restoreGroups'), false);
+});
+
+test('Steam maximizes the result column while IDE restores a different maximized source group', async t => {
+  const f = fixture(t);
+  const source = { ...f.group, id: 2 };
+  f.mainPart.groups[1] = source; f.mainPart.activeGroup = source;
+  f.mainPart.arrangeGroups();
+  f.publish(true); await f.run('EnterSteamMode'); await f.run('EnterIdeMode');
+  assert.deepEqual(f.calls.filter(call => Array.isArray(call) && call[0] === 'maximizeGroupTarget').map(call => call[1]), [2, 1, 2]);
 });
 
 test('a skipped animation still completes the mode change without an unhandled rejection', async t => {

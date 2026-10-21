@@ -609,5 +609,7 @@
   "Server project must belong to the registered workspace.": "Server 项目必须属于已登记的工作区。",
   "Project configurations are unavailable.": "项目配置不可用。",
   "Use the configuration query tool for reads.": "读取配置请使用配置查询工具。",
-  "Configuration request failed.": "配置请求失败。"
+  "Configuration request failed.": "配置请求失败。",
+  "Loading project...": "正在加载项目…",
+  "The project view did not finish loading. Try again.": "项目页面未能完成加载，请重试。"
 }
