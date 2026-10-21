@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initI18n } from "@steamharness/i18n";
+import {createConfigurationState,createPublicationDraft,freezeConfigurationTemplate,createLocalProjectConfigurationStore,readCachedConfigurationFile} from "steamharness";
 import { ensureProjectCreated, decodeProjectFileContent, findLocalProjectDependencies, formatForbiddenMessage, materializeProjectGroupDownload, normalizeProjectFilePath, packProject, packProjectGroup, readProjectGroupContexts, getPreparation, main, parseArgs, readProjectPackageContext, resolveRepoRoot, stageProjectWithLocalDependencies, waitForDeviceToken, waitForProjectGroupPreparation, waitForPreparation } from "../workspace";
 
 const VALID_STEAMHARNESS_SOURCE = [
@@ -339,6 +340,42 @@ describe("server workspace CLI helpers", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  it("verifies downloaded configuration bindings and assets before caching them for offline use", async () => {
+    const root=await mkdtemp(path.join(os.tmpdir(),"configuration-download-"));
+    const projectId="7bd4fef2-e083-4201-a89f-6f7d0676df53",targetDir=path.join(root,"project");
+    vi.spyOn(os,"homedir").mockReturnValue(path.join(root,"host"));
+    const bytes=Buffer.from("immutable-background"),reference={id:"wf_abcdef",name:"background.png",mimeType:"image/png",size:bytes.length,storage:"server" as const};
+    const author=createConfigurationState([{name:"background",type:"file",defaultValue:reference,sharing:{includeValue:true,editable:false}}],()=>"default");
+    const template=freezeConfigurationTemplate(createPublicationDraft(author),{projectId,projectVersion:"1.2.3",sourceHash:"a".repeat(64)});
+    template.attachments=[{id:reference.id,path:`configuration-assets/${reference.id}`,sha256:createHash("sha256").update(bytes).digest("hex")}];
+    const download=finalizeProjectGroupDownloadFixture({
+      rootProjectId:projectId,rootVersion:"1.2.3",dependencies:[],complete:true,copyAllowed:true,skippedDependencies:[],
+      projects:[{projectId,projectName:"Project",version:"1.2.3",sourceHash:"",role:"root" as const,files:[
+        {path:"package.json",content:JSON.stringify({id:projectId,name:"Project",version:"1.2.3",steamHarness:{projectType:"kanban"}})},
+        {path:"configuration.json",content:JSON.stringify({version:2,fields:template.fields})},
+        {path:"configuration.template.json",content:JSON.stringify(template)},
+        {path:template.attachments[0]!.path,content:bytes.toString("base64"),encoding:"base64" as const},
+      ]}],
+    });
+    try {
+      const badBinding=structuredClone(download);
+      badBinding.projects[0]!.files[2]!.content=JSON.stringify({...template,projectId:"another-project"});
+      await expect(materializeProjectGroupDownload(finalizeProjectGroupDownloadFixture(badBinding),targetDir)).rejects.toThrow("binding mismatch");
+      expect(existsSync(targetDir)).toBe(false);
+      const badAsset=structuredClone(download);badAsset.projects[0]!.files[3]!.content=Buffer.from("tampered").toString("base64");
+      await expect(materializeProjectGroupDownload(finalizeProjectGroupDownloadFixture(badAsset),targetDir)).rejects.toThrow("attachment hash mismatch");
+      expect(existsSync(targetDir)).toBe(false);
+      await materializeProjectGroupDownload(download,targetDir);
+      const store=await createLocalProjectConfigurationStore(targetDir),state=await store.read();
+      expect((await store.snapshot()).values.background).toEqual(reference);
+      await expect(store.dispatch({action:"save",id:state.activeConfigurationId,revision:state.revision,values:{background:{...reference,id:"wf_123abc"}}})).rejects.toThrow(/locked/);
+      await rm(path.join(targetDir,"configuration-assets"),{recursive:true});
+      expect(Buffer.from((await readCachedConfigurationFile(targetDir,reference.id))!.base64,"base64")).toEqual(bytes);
+      expect(existsSync(path.join(targetDir,".steamharness"))).toBe(false);
+      expect((await readdir(path.join(root,"host",".steamharness","configuration-templates"))).some(name=>name.endsWith(".json"))).toBe(true);
+    } finally {vi.restoreAllMocks();await rm(root,{recursive:true,force:true});}
   });
 
   it.each(["workflow", "conversation", "kanban"])("downloads %s source with unconfirmed related-project declarations", async (projectType) => {

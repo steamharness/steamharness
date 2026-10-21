@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
-import {createConfigurationState,applyConfigurationAction,type ProjectConfigurationState} from '@steamharness/project-configuration';
+import {createConfigurationState,bindConfigurationTemplate,createPublicationDraft,freezeConfigurationTemplate,applyConfigurationAction,type ProjectConfigurationState} from '@steamharness/project-configuration';
 import {mountProjectConfigurations,projectConfigurationsButton} from '../web/ui/project-configurations';
 vi.mock('../web/localization',()=>({t:(text:string,...args:unknown[])=>text.replace(/\{(\d+)\}/g,(_,i)=>String(args[Number(i)]))}));
 let state:ProjectConfigurationState,fail=false;
@@ -194,4 +194,26 @@ it('uses accessible icons for custom fields and sensitive visibility, and edits 
  const key=editor.querySelector<HTMLInputElement>('input')!;expect(key.value).toBe('token');key.value='renamed';
  editor.querySelector('form')!.dispatchEvent(new Event('submit',{cancelable:true}));await settle();
  expect(state.customFields[0]!.name).toBe('renamed');expect(document.querySelector('.configuration-field-editor')).toBeNull();
+});
+
+it('applies published lock rules to direct fields, nested JSON and file controls',async()=>{
+ const author=createConfigurationState([{name:'fixed',type:'string',defaultValue:'Official',sharing:{includeValue:true,editable:false}},{name:'settings',type:'json',defaultValue:{locked:0,open:false},sharing:{includeValue:true},paths:{'/locked':{editable:false}}},{name:'image',type:'file',sharing:{editable:false}}],()=> 'author');
+ state=bindConfigurationTemplate(createConfigurationState([],()=> 'personal'),freezeConfigurationTemplate(createPublicationDraft(author),{projectId:'project',projectVersion:'1.0.0',sourceHash:'a'.repeat(64)}));
+ document.getElementById('project-configurations')!.click();await settle();
+ expect(document.querySelector<HTMLInputElement>('[aria-label="fixed"]')!.disabled).toBe(true);
+ expect(fileInput().disabled).toBe(true);
+ const nested=Array.from(document.querySelectorAll('label')).find(label=>label.textContent==='/locked')!.querySelector('input')!;expect(nested.disabled).toBe(true);
+ expect(Array.from(document.querySelectorAll('label')).find(label=>label.textContent==='/open')!.querySelector('input')!.disabled).toBe(false);
+});
+it('updates author permissions at the same configuration revision and provides per-path publication controls',async()=>{
+ document.getElementById('project-configurations')!.click();await settle();
+ state={...state,canManagePublication:true,publication:createPublicationDraft(state)};message({type:'state',configurations:state});await settle();
+ button('Publication and permissions').click();
+ const pointer=document.querySelector<HTMLInputElement>('[aria-label="data: JSON Pointer"]')!;pointer.value='/connection/host';button('Add path').click();
+ expect(document.querySelector('select[aria-label="/connection/host: Allow user edits"]')).toBeTruthy();
+ button('Recipient preview').click();expect(document.body.textContent).toContain('steamharness-configuration-template');
+ state={...state,canManagePublication:false,publication:undefined};message({type:'state',configurations:state});await settle();
+ expect(button('Publication and permissions').hidden).toBe(true);
+ expect(document.querySelector('.configuration-recipient-preview')).toBeNull();
+ expect(document.querySelector<HTMLElement>('.configuration-body')!.hidden).toBe(false);
 });

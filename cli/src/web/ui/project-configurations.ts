@@ -1,7 +1,7 @@
 import { t } from '../localization';
 import { iconButton, iconHtml, updateIcon } from './ui';
 import { requestAction } from './action-dialog';
-import { parseConfigurationField, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationFile, type ProjectConfigurationAction, type ProjectConfigurationField, type ProjectConfigurationState, type ConfigurationValues } from '@steamharness/project-configuration';
+import { applyTemplateValues,configurationCapability,configurationSnapshot,configurationPointerPart,createPublicationDraft,freezeConfigurationTemplate,type ConfigurationPublicationDraft, parseConfigurationField, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationFile, type ProjectConfigurationAction, type ProjectConfigurationField, type ProjectConfigurationState, type ConfigurationValues } from '@steamharness/project-configuration';
 import './project-configurations.css';
 
 type Host = { postMessage(message: Record<string, unknown>): void };
@@ -32,7 +32,12 @@ export function mountProjectConfigurations(host: Host): void {
   const refresh = iconButton('refresh', t('Refresh and discard draft'), () => void reload());
   footerButtons.append(refresh, save); actions.append(status, footerButtons);
   fieldsHeader.append(fieldsTitle, fieldCount);
-  body.append(fieldsHeader,fields); dialog.append(heading,toolbar,body,actions); document.body.append(dialog);
+  const tabs=document.createElement('nav');tabs.className='configuration-view-tabs';tabs.ariaLabel=t('Project configurations');
+  const valuesTab=button(t('Configuration values'),()=>{body.hidden=false;toolbar.hidden=false;actions.hidden=false;publicationBody.hidden=true;});
+  const publicationTab=button(t('Publication and permissions'),()=>{if(clean()){body.hidden=true;toolbar.hidden=true;actions.hidden=true;publicationBody.hidden=false;renderPublication();}});
+  const publicationBody=document.createElement('div');publicationBody.className='dialog-body configuration-fields';publicationBody.hidden=true;
+  tabs.append(valuesTab,publicationTab);
+  body.append(fieldsHeader,fields); dialog.append(heading,tabs,toolbar,body,publicationBody,actions); document.body.append(dialog);
   let latest: ProjectConfigurationState | undefined, draft: ProjectConfigurationState | undefined, dirty = false, working = false, editingField = false;
   const readers = new Map<string, () => unknown>(), overrides = new Set<string>(), resets = new Map<string, HTMLButtonElement>();
   const pending = new Map<string,{resolve(value:any):void;reject(error:Error):void;timer:ReturnType<typeof setTimeout>}>();
@@ -137,7 +142,7 @@ export function mountProjectConfigurations(host: Host): void {
     for (const control of [select,create,addField,...menus.flatMap(menu => [menu.trigger,...menu.items])]) control.disabled = working || !draft;
     profilesMenu.items[2]!.disabled = working || !draft || draft.configurations.length <= 1;
     refresh.disabled = working; save.disabled = working || !dirty || !draft;
-    for (const [key, reset] of resets) reset.disabled = working || !overrides.has(key);
+    for (const [key, reset] of resets) reset.disabled = working || !overrides.has(key) || !!draft && !configurationCapability(draft,draft.fields.find(f=>f.name===key)!).editable;
   }
   updateActions();
   async function download(all: boolean) {
@@ -192,7 +197,7 @@ export function mountProjectConfigurations(host: Host): void {
     } catch (e) { message.textContent=(e as Error).message; } finally { apply.disabled = false; } })(); };
     editor.append(editorHeader,form); document.body.append(editor); editor.addEventListener('close',()=>{ editingField = false; editor.remove(); addField.focus(); if(latest && !dirty) { draft = undefined; render(latest); } },{once:true}); editor.showModal(); key.focus();
   }
-  function fileControl(field: ProjectConfigurationField, value: unknown): HTMLElement {
+  function fileControl(field: ProjectConfigurationField, value: unknown, defaultValue: unknown): HTMLElement {
     const control=document.createElement('div'); control.className='configuration-file';
     const list=document.createElement('div'); list.className='configuration-file-list';
     const picker=document.createElement('input'); picker.type='file'; picker.hidden=true; picker.accept=field.accept?.join(',')??''; picker.multiple=!!field.multiple; picker.ariaLabel=t('Choose file for {0}',field.label||field.name);
@@ -201,7 +206,7 @@ export function mountProjectConfigurations(host: Host): void {
     catch(e) { error(e); }
     readers.set(field.name,()=>{if(!field.multiple&&!references.length)throw new Error(t('Choose a file before saving.'));return field.multiple?references:references[0];});
     const choose=button(t('Choose file'),()=>picker.click()); choose.id=`configuration-field-${field.name}`; choose.prepend(document.createRange().createContextualFragment(iconHtml('cloud-upload')));
-    const clear=iconButton('clear-all',t('Clear file selection'),()=>{references=(field.defaultValue===undefined?[]:field.multiple&&Array.isArray(field.defaultValue)?field.defaultValue:[field.defaultValue]).map(parseConfigurationFile);overrides.delete(field.name);changed();display();});
+    const clear=iconButton('clear-all',t('Clear file selection'),()=>{references=(defaultValue===undefined?[]:field.multiple&&Array.isArray(defaultValue)?defaultValue:[defaultValue]).map(parseConfigurationFile);overrides.delete(field.name);changed();display();});
     resets.set(field.name,clear);
     function display() {
       list.replaceChildren(); clear.disabled=working||!overrides.has(field.name);
@@ -234,17 +239,68 @@ export function mountProjectConfigurations(host: Host): void {
     })();
     const actions=document.createElement('div'); actions.className='configuration-file-actions';actions.append(choose,clear);control.append(list,actions,picker);display();return control;
   }
+  function jsonObjectControl(field:ProjectConfigurationField,value:unknown,state:ProjectConfigurationState,raw:()=>HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement):HTMLElement {
+    const group=document.createElement('div');group.className='configuration-json-properties';
+    const walk=(item:any,parts:string[])=>{
+      if(item&&typeof item==='object'&&!Array.isArray(item)){for(const [key,entry]of Object.entries(item))walk(entry,[...parts,key]);return;}
+      const pointer=parts.map(key=>`/${configurationPointerPart(key)}`).join(''),cap=configurationCapability(state,field,pointer);
+      const row=document.createElement('label');row.textContent=pointer;const input=document.createElement('input');input.value=typeof item==='string'?item:JSON.stringify(item);input.disabled=!cap.editable;input.title=!cap.editable?t('Locked by the project author for this version'):pointer;
+      input.onchange=()=>{try{const copy=JSON.parse(raw().value);let parent=copy;for(const key of parts.slice(0,-1))parent=parent[key];parent[parts.at(-1)!]=typeof item==='string'?input.value:JSON.parse(input.value);raw().value=JSON.stringify(copy,null,2);changed(field.name);}catch(e){error(e);}};
+      row.append(input);group.append(row);
+    };walk(value,[]);return group;
+  }
+  let publicationDraft:ConfigurationPublicationDraft|undefined;
+  function renderPublication() {
+    if(!draft)return;publicationBody.replaceChildren();
+    publicationDraft??=structuredClone(draft.publication??createPublicationDraft(draft));
+    const publication=publicationDraft;
+    const help=document.createElement('p');help.textContent=t('Only selected profiles are published. Personal values are never included automatically. Save the draft before publishing a project version.');publicationBody.append(help);
+    const available=[...draft.configurations,...publication.configurations.filter(profile=>!draft!.configurations.some(c=>c.id===profile.id))];
+    for(const profile of available){const row=document.createElement('label'),check=document.createElement('input');check.type='checkbox';check.checked=publication.configurations.some(p=>p.id===profile.id);check.onchange=()=>{publication.configurations=check.checked?[...publication.configurations,{id:profile.id,name:profile.name,values:draft!.configurations.some(c=>c.id===profile.id)?configurationSnapshot(draft!,profile.id,false).values:profile.values}]:publication.configurations.filter(p=>p.id!==profile.id);if(!publication.configurations.some(p=>p.id===publication.defaultConfigurationId))publication.defaultConfigurationId=publication.configurations[0]?.id??'';renderPublication();};row.append(check,profile.name);publicationBody.append(row);}
+    const defaultLabel=document.createElement('label');defaultLabel.textContent=t('Default recipient profile');const defaultSelect=document.createElement('select');for(const profile of publication.configurations)defaultSelect.add(new Option(profile.name,profile.id));defaultSelect.value=publication.defaultConfigurationId;defaultSelect.onchange=()=>publication.defaultConfigurationId=defaultSelect.value;defaultLabel.append(defaultSelect);publicationBody.append(defaultLabel);
+    publicationBody.append(button(t('Refresh published values from current profiles'),()=>{for(const profile of publication.configurations)if(draft!.configurations.some(c=>c.id===profile.id))profile.values=configurationSnapshot(draft!,profile.id,false).values;status.textContent=t('Unsaved changes');}));
+    publicationBody.append(button(t('Refresh fields from the project'),()=>{publication.fields=draft!.fields.map(field=>({...field,sharing:publication.fields.find(old=>old.name===field.name)?.sharing??field.sharing,paths:publication.fields.find(old=>old.name===field.name)?.paths??field.paths}));renderPublication();}));
+    for(const field of publication.fields){const section=document.createElement('fieldset'),legend=document.createElement('legend');legend.textContent=field.label||field.name;section.append(legend);
+      for(const [key,label]of [['publish','Publish field'],['includeValue','Include value'],['editable','Allow user edits']] as const){const row=document.createElement('label'),check=document.createElement('input');check.type='checkbox';check.checked=({publish:true,includeValue:false,editable:true,...field.sharing})[key];check.onchange=()=>{field.sharing={...field.sharing,[key]:check.checked};};row.append(check,t(label));section.append(row);}
+      if(field.type==='json') {
+        for(const [pointer,rule] of Object.entries(field.paths??{})) {
+          const group=document.createElement('fieldset'),heading=document.createElement('legend');heading.textContent=pointer;group.append(heading);
+          for(const [key,label]of [['publish','Publish field'],['includeValue','Include value'],['editable','Allow user edits']] as const) {
+            const row=document.createElement('label'),select=document.createElement('select');row.textContent=t(label);select.ariaLabel=`${pointer}: ${t(label)}`;
+            for(const [value,label]of [['inherit','Inherit'],['true','Yes'],['false','No']])select.add(new Option(t(label!),value));
+            select.value=rule[key]===undefined?'inherit':String(rule[key]);select.onchange=()=>{if(select.value==='inherit')delete rule[key];else rule[key]=select.value==='true';};row.append(select);group.append(row);
+          }
+          group.append(iconButton('trash',t('Delete path'),()=>{delete field.paths![pointer];renderPublication();}));section.append(group);
+        }
+        const row=document.createElement('label'),pointer=document.createElement('input');row.textContent=t('JSON Pointer');pointer.ariaLabel=`${field.name}: ${t('JSON Pointer')}`;pointer.placeholder='/connection/host';row.append(pointer);
+        row.append(button(t('Add path'),()=>{try{const next=parseConfigurationField({...field,paths:{...field.paths,[pointer.value]:{}}});field.paths=next.paths;renderPublication();}catch(e){error(e);}}));section.append(row);
+      }
+      publicationBody.append(section);
+    }
+    const preview=document.createElement('pre');preview.className='configuration-recipient-preview';preview.hidden=true;
+    const message=document.createElement('p');message.role='alert';
+    publicationBody.append(button(t('Recipient preview'),()=>{try{preview.textContent=JSON.stringify(freezeConfigurationTemplate(publication,{projectId:'preview',projectVersion:'preview',sourceHash:'0'.repeat(64)}),null,2);preview.hidden=false;message.textContent='';}catch(e){message.textContent=(e as Error).message;}}),button(t('Save publication draft'),()=>void(async()=>{try{freezeConfigurationTemplate(publication,{projectId:'preview',projectVersion:'preview',sourceHash:'0'.repeat(64)});if(await dispatch({action:'publication.save',publication})){publicationDraft=undefined;renderPublication();}else message.textContent=status.textContent;}catch(e){message.textContent=(e as Error).message;}})()),message,preview);
+  }
   function render(next: ProjectConfigurationState) {
     if (latest && next.revision < latest.revision) return;
     latest = next;
+    publicationTab.hidden=!next.canManagePublication;
+    if(!next.canManagePublication) {
+      publicationDraft=undefined;publicationBody.replaceChildren();
+      if(!publicationBody.hidden)valuesTab.click();
+      if(draft) {draft.canManagePublication=false;delete draft.publication;delete draft.publicationPreview;}
+    }
     if ((editingField || working) && draft) return;
     if (dirty && draft) { if (draft.revision !== next.revision) error(new Error(t('Configuration changed. Your draft is preserved. Refresh before saving.'))); return; }
-    if (draft?.revision === next.revision) return;
+    if (draft?.revision === next.revision && JSON.stringify(draft)===JSON.stringify(next)) return;
     draft = structuredClone(next); dirty = false; fields.replaceChildren(); readers.clear(); overrides.clear(); resets.clear();
     select.replaceChildren(...next.configurations.map(c=>new Option(c.name,c.id))); select.value=next.activeConfigurationId;
-    const values = next.configurations.find(c=>c.id===next.activeConfigurationId)!.values;
-    for (const key of Object.keys(values)) overrides.add(key);
-    status.textContent = ''; status.classList.remove('error'); save.disabled=true; fieldCount.textContent=String(next.fields.length); updateActions();
+    const current=next.configurations.find(c=>c.id===next.activeConfigurationId)!;
+    const values = next.template?configurationSnapshot(next,undefined,false).values:current.values;
+    const defaults = {...Object.fromEntries(next.fields.filter(field=>field.defaultValue!==undefined).map(field=>[field.name,field.defaultValue])),...(next.template?applyTemplateValues(next,{...current,deletedPaths:undefined},{}):{})};
+    for (const key of Object.keys(current.values)) overrides.add(key);
+    for (const key of Object.keys(current.deletedPaths??{})) overrides.add(key);
+    status.textContent = next.conflicts?.length?t('Some field types changed. Saved drafts are preserved; resolve them before running.'):''; status.classList.remove('error'); save.disabled=true; fieldCount.textContent=String(next.fields.length); updateActions();
     if (!next.fields.length) { const empty=document.createElement('div'); empty.className='configuration-empty'; empty.innerHTML=iconHtml('settings-gear'); const text=document.createElement('p'); text.textContent=t('No configuration fields. Add a custom field to get started.'); empty.append(text); fields.append(empty); }
     for (const field of next.fields) {
       const row=document.createElement('section'); row.className='configuration-field'; const fieldHeading=document.createElement('div'); fieldHeading.className='configuration-field-heading';
@@ -254,24 +310,29 @@ export function mountProjectConfigurations(host: Host): void {
         const remove=iconButton('trash',t('Delete field'),()=>{if(clean())void dispatch({action:'field.delete',key:field.name});}); remove.dataset.action='delete';
         controls.append(iconButton('edit',t('Edit field'),()=>{if(clean())void editField(field);}),remove);
       }
-      const value=Object.hasOwn(values,field.name) ? values[field.name] : field.defaultValue;
+      const value=Object.hasOwn(values,field.name)?values[field.name]:field.defaultValue,capability=configurationCapability(next,field);
+      if(!capability.editable){const locked=document.createElement('span');locked.innerHTML=iconHtml('lock');locked.title=t('Locked by the project author for this version');fieldHeading.append(locked);}
       if(field.type==='file') {
-        row.append(fileControl(field,value));
+        const file=fileControl(field,value,defaults[field.name]);if(!capability.editable)for(const control of file.querySelectorAll<HTMLButtonElement|HTMLInputElement>('button,input'))control.disabled=true;row.append(file);
         const help=document.createElement('small');help.textContent=field.description??t('Files are uploaded to the server. Save to apply the selection.');row.append(help);fields.append(row);continue;
       }
       let input: HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement;
       if (field.options) { const select=document.createElement('select'); select.multiple=!!field.multiple; for (const option of field.options) { const o=new Option(option.label??option.value,option.value); o.selected=field.multiple ? Array.isArray(value)&&value.includes(option.value) : value===option.value; select.add(o); } if(!field.multiple)select.value=value===undefined?'':String(value); input=select; readers.set(field.name,()=>field.multiple ? Array.from(select.selectedOptions).map(o=>o.value) : select.value); }
       else if (field.type==='json'||field.multiple) { const text=document.createElement('textarea'); text.rows=4; text.value=value===undefined?'':JSON.stringify(value,null,2); input=text; readers.set(field.name,()=>JSON.parse(text.value)); }
       else { const text=document.createElement('input'); text.type=field.type==='boolean'?'checkbox':field.type==='number'?'number':field.secret?'password':'text'; text.step='any'; text.value=value===undefined?'':String(value); text.checked=value===true; input=text; readers.set(field.name,()=>field.type==='boolean'?text.checked:field.type==='number'?(text.value.trim()?Number(text.value):NaN):text.value); }
+      if(field.type==='json' && value && typeof value==='object' && !Array.isArray(value)) {
+        row.append(jsonObjectControl(field,value,next,()=>input));
+      }
+      input.disabled=!capability.editable && !(field.type==='json' && Object.keys(field.paths??{}).some(pointer=>configurationCapability(next,field,pointer).editable));
       input.id=title.htmlFor; input.ariaLabel=field.label||field.name;
       input.oninput=()=>changed(field.name); input.onchange=()=>changed(field.name);
-      const reset=iconButton('discard',t(field.defaultValue===undefined?'Clear value for {0}':'Restore default for {0}',field.label||field.name),()=>{
-        const value=field.defaultValue;
+      const reset=iconButton('discard',t(defaults[field.name]===undefined?'Clear value for {0}':'Restore default for {0}',field.label||field.name),()=>{
+        const value=defaults[field.name];
         if(input instanceof HTMLSelectElement) {if(field.multiple)for(const option of input.options)option.selected=Array.isArray(value)&&value.includes(option.value);else input.value=value===undefined?'':String(value);}
         else if(input instanceof HTMLInputElement&&field.type==='boolean')input.checked=value===true;
         else input.value=value===undefined?'':field.type==='json'||field.multiple?JSON.stringify(value,null,2):String(value);
         overrides.delete(field.name);changed();input.focus();
-      }); resets.set(field.name,reset);controls.prepend(reset);
+      }); if(!capability.editable)reset.disabled=true;resets.set(field.name,reset);controls.prepend(reset);
       const control=document.createElement('div'); control.className='configuration-field-control'; control.append(input); row.append(control);
       if (field.secret && input instanceof HTMLInputElement && input.type==='password') {
         const reveal=iconButton('eye',t('Show sensitive values'),()=>{const hidden=input.type==='password'; input.type=hidden?'text':'password'; updateIcon(reveal,hidden?'eye-closed':'eye'); reveal.title=reveal.ariaLabel=t(hidden?'Hide sensitive values':'Show sensitive values'); reveal.ariaPressed=String(hidden);}); reveal.ariaPressed='false'; control.classList.add('configuration-secret'); control.append(reveal);

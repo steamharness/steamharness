@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added versioned configuration sharing, field and JSON Pointer permissions, verified offline template and attachment caches, and allowed personal overlays while preserving run snapshots and upgrade drafts.
+
 - Fixed: project configuration file fields choose and upload files to Server storage, then save references. Type restrictions, replacement and clearing preserve the previous value when uploads fail.
 
 - [Fixed] Retain saved values and shadowed custom definitions across schema changes, persist explicit SDK snapshots per run with durable configuration generations, and exclude prototype members from configuration lookup and required-field checks.

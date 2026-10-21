@@ -1,5 +1,7 @@
+import {readCachedConfigurationFile} from 'steamharness';
+import {readConfigurationFile} from './configuration-files';
 import { createLocalProjectConfigurationStore } from 'steamharness';
-import { configurationSnapshot, type ProjectConfigurationState } from '@steamharness/project-configuration';
+import { applyConfigurationAction,configurationSnapshot, type ProjectConfigurationState } from '@steamharness/project-configuration';
 import { randomUUID } from 'node:crypto';
 import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -169,8 +171,10 @@ export class ResourcePreviews {
         configurations = await store.read();
         this.watchConfiguration(`local:${project.folderPath}`, configurations.revision, () => store.read());
       }
-      const snapshot = configurationSnapshot(configurations, target.configurationId ?? configurations.activeConfigurationId, false);
-      const configuration = { id: snapshot.id, name: snapshot.name, params: { ...snapshot.values, ...(card.kanban?.mode === 'preview' ? card.kanban.values : {}) } };
+      const configurationId=target.configurationId??configurations.activeConfigurationId;
+      const previewState=card.kanban?.mode==='preview'?applyConfigurationAction(configurations,{action:'save',revision:configurations.revision,id:configurationId,values:card.kanban.values},randomUUID):configurations;
+      const snapshot = configurationSnapshot(previewState, configurationId, false);
+      const configuration = { id: snapshot.id, name: snapshot.name, params: snapshot.values };
       if (!entry.remote) {
         if (!project.kanban) { throw new Error(t('This project does not provide a Kanban preview.')); }
         entry.local = new KanbanPreview(project.folderPath, project.kanban, () => configuration);
@@ -240,6 +244,11 @@ export class ResourcePreviews {
       throw new Error(t('This resource preview is read-only.'));
     }
     if (call.operation === 'runtime.getLocale') { return locale(); }
+    if(call.operation==='files.readFile'&&project.folderPath) {
+      const fileId=String(call.input.fileId),cached=await readCachedConfigurationFile(project.folderPath,fileId);if(cached)return cached;
+      const state=await(await createLocalProjectConfigurationStore(project.folderPath)).read();
+      const file=await readConfigurationFile(project.id,state,fileId,this.connection(),{target:state.template?.projectVersion});if(file)return file;
+    }
     let result: unknown;
     if (data.card.target.source === 'server' || project.projectInfo?.dataStorage?.mode === 'server') {
       result = await this.server(project.id, '/kanban/bridge', { method: 'POST', body: JSON.stringify({ call }) });

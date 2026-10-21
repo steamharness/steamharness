@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added publication drafts, recipient previews and field permissions to configuration tools while preserving project scope, revision checks and read-only restrictions.
+
 - [Added] Expose configuration query, management, import/export and panel tools with explicit project, storage, profile and revision targets. Configuration access works with the panel closed; read-only mode rejects mutations.
 
 ### Changes

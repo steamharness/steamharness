@@ -1,3 +1,4 @@
+import {configurationCapability} from '@steamharness/project-configuration';
 import { ProjectConfigurations } from './project-configurations';
 import { uploadConfigurationFile } from './configuration-files';
 import { t } from './localization';
@@ -136,7 +137,7 @@ export async function startWebServer(options: WebOptions) {
       resources.clear();
     }
     broadcast();
-  });
+  }, () => connection);
   await configurations.initialize();
   configurationSignature=JSON.stringify(configurations.state);
   conversationController = isProject || isKanban ? undefined : new ConversationController(project, runtime, saved, {
@@ -316,6 +317,7 @@ export async function startWebServer(options: WebOptions) {
       if (!current.configurations.some(item => item.id === message.id)) throw new Error('Configuration no longer exists.');
       const field = current.fields.find(item => item.name === message.key);
       if (field?.type !== 'file') throw new Error('Invalid configuration file field.');
+      if(!configurationCapability(current,field).editable)throw new Error('Configuration is locked by the author.');
       const reference = await uploadConfigurationFile(project.id, field, message.file, connection);
       if (epoch !== authEpoch) throw new Error('Account changed. Select the file again.');
       return [{type:'project-configuration-upload-result',requestId:message.requestId,value:reference}];

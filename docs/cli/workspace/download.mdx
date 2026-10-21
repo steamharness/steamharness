@@ -38,3 +38,5 @@ Workflow、Conversation 和 Kanban 均可下载正式版本；项目类型不会
 ```bash
 steamharness workspace download hello --target 1.2.0 --path ./hello-copy
 ```
+
+v2 发布配置只携带作者选定的字段、值和不可变附件副本。下载验证版本源码及附件摘要，将可信配置缓存到源码之外供离线使用。升级保留获准的个人值和自定义字段，新锁定值停止覆盖模板。下载权限不会开放原项目的其他数据。详见[项目配置](/concepts/project-configuration)。

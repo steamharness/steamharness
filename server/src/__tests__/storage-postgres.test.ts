@@ -128,6 +128,26 @@ test("PostgreSQL stores static project groups, immutable versions and independen
     assert.equal(skipped.skippedDependencies[0]?.reason, "permission_required");
     assert.equal(skipped.copyAllowed, false);
 
+    const publicationId=randomUUID();
+    await storage.createProject({projectId:publicationId,projectName:'Shared config',projectType:'workflow',ownerUserId:'owner',projectInfo:{localizedNames:{},declarations:[],platformSupport:{mode:'agnostic'},dataStorage:{mode:'server'},relatedProjects:[]}});
+    await storage.saveDraftFiles({projectName:publicationId,files:[
+      {path:'package.json',content:JSON.stringify({id:publicationId,name:'Shared config',version:'1.0.0',devDependencies:{steamharness:packageVersion},steamHarness:{projectType:'workflow',projectInfo:{localizedNames:{},declarations:[],platformSupport:{mode:'agnostic'},dataStorage:{mode:'server'},relatedProjects:[]}}})},
+      {path:'index.ts',content:'throw new Error("never execute");'},
+      {path:'configuration.json',content:JSON.stringify({version:2,fields:[{name:'fixed',type:'boolean',defaultValue:false,sharing:{includeValue:true,editable:false}},{name:'privateKey',type:'string',defaultValue:'do-not-ship',sharing:{publish:false}}]})},
+    ]});
+    const officialOptions={projectName:publicationId,actorId:'owner'};
+    const official=await storage.projectConfigurations(officialOptions,{action:'get'}) as typeof state;
+    const draftWrites=await Promise.allSettled([1,2].map(()=>storage.projectConfigurations(officialOptions,{action:'publication.save',revision:official.revision,publication:official.publication})));
+    assert.equal(draftWrites.filter(result=>result.status==='fulfilled').length,1,JSON.stringify(draftWrites.map(result=>result.status==='rejected'?(result.reason as Error).message:'saved')));
+    await assert.rejects(storage.projectConfigurations({...officialOptions,actorId:'manager'},{action:'publication.save',revision:official.revision,publication:official.publication}),/owner/);
+    await storage.publish({projectName:publicationId,createdByUserId:'owner',expectedConfigurationRevision:1,expectedSourceHash:official.sourceHash});
+    const immutable=(await db.readConfigurationTemplate(publicationId,'1.0.0'))!;
+    assert.equal(immutable.configurations[0]!.values.fixed,false);assert.ok(!JSON.stringify(immutable).includes('do-not-ship'));
+    await assert.rejects(db.saveConfigurationTemplate(publicationId,'1.0.0',immutable),/duplicate/);
+    const recipient=await storage.projectConfigurations({projectName:publicationId,actorId:'viewer',target:'1.0.0'},{action:'get'}) as typeof state;
+    await assert.rejects(storage.projectConfigurations({projectName:publicationId,actorId:'viewer',target:'1.0.0'},{action:'save',revision:recipient.revision,id:recipient.activeConfigurationId,values:{fixed:true}}),/locked/);
+    assert.equal((await storage.projectConfigurations({projectName:publicationId,actorId:'viewer',target:'1.0.0'},{action:'get'}) as typeof state).revision,recipient.revision);
+
     const entry = { storageKind: "kv" as const, scope: "project" as const, projectId: workerId, key: "stock" };
     await storage.setProjectStorageValue({ ...entry, value: 1, source: { projectId: workerId, runId: "local-run" } });
     const initial = await storage.getProjectStorageValue(entry);

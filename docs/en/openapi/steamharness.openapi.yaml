@@ -1215,6 +1215,7 @@ paths:
       tags:
         - Admin Projects
       summary: Read a project source file
+      description: Source download access includes published versions only. Reading draft additionally requires project management access, so unpublished configuration fields and defaults remain private.
       operationId: getProjectFiles
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2038,11 +2039,89 @@ paths:
             application/octet-stream: {}
         "404":
           $ref: "#/components/responses/HarnessError"
+  /api/projects/{projectId}/configurations/template:
+    get:
+      tags: [Admin Projects]
+      summary: Read an immutable published configuration template
+      operationId: getProjectConfigurationTemplate
+      parameters:
+        - $ref: "#/components/parameters/ProjectName"
+        - $ref: "#/components/parameters/TargetQuery"
+      responses:
+        "200":
+          description: Version template with filtered fields, values, rules and attachment hashes. Requires project read or source-download permission. Missing templates return null data.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessBase"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/ProjectConfigurationTemplate"
+        "403":
+          $ref: "#/components/responses/HarnessError"
+  /api/projects/{projectId}/configurations/files:
+    post:
+      tags: [Admin Projects]
+      summary: Upload a personal configuration attachment after checking field permissions
+      operationId: uploadProjectConfigurationFile
+      parameters:
+        - $ref: "#/components/parameters/ProjectName"
+        - $ref: "#/components/parameters/TargetQuery"
+        - in: query
+          name: key
+          required: true
+          schema: {type: string}
+        - in: query
+          name: fileName
+          required: true
+          schema: {type: string}
+        - in: query
+          name: mimeType
+          required: true
+          schema: {type: string}
+        - in: query
+          name: field
+          description: Optional JSON descriptor for a local custom file field; never overrides an author field. At most 8192 characters.
+          schema: {type: string, maxLength: 8192}
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: {type: string, format: binary}
+      responses:
+        "200":
+          description: One server file reference. Uploads are account isolated and limited to 50 MiB; save the returned reference in a separate configuration mutation.
+        "400":
+          $ref: "#/components/responses/HarnessError"
+        "403":
+          $ref: "#/components/responses/HarnessError"
+  /api/projects/{projectId}/configurations/files/{fileId}:
+    get:
+      tags: [Admin Projects]
+      summary: Read an allowed personal or immutable version attachment
+      operationId: readProjectConfigurationFile
+      parameters:
+        - $ref: "#/components/parameters/ProjectName"
+        - $ref: "#/components/parameters/TargetQuery"
+        - in: path
+          name: fileId
+          required: true
+          schema: {type: string}
+      responses:
+        "200":
+          description: File bytes. Source-download access grants only the template attachments; personal uploads are restricted to their uploading account.
+          content:
+            application/octet-stream:
+              schema: {type: string, format: binary}
+        "404":
+          $ref: "#/components/responses/HarnessError"
   /api/projects/{projectId}/configurations:
     get:
       tags: [Admin Projects]
       summary: Read account-scoped configurations for any project type
-      description: Requires project read access and an account identity. Values are isolated by project and account. The Server only reads static declarations and never executes project code.
+      description: Requires project read or source-download access and an account identity. Values are isolated by project and account. Download access only exposes the version template and permitted personal values. Official drafts require the actual original owner or an administrator. The Server never executes project code.
       operationId: getProjectConfigurations
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2061,7 +2140,7 @@ paths:
     post:
       tags: [Admin Projects]
       summary: Manage or export account-scoped project configurations
-      description: Mutations require the queried revision. Imports are atomic, generate new IDs and preserve selection. Exports contain all effective values, including sensitive fields. The last profile cannot be deleted. Read access permits managing only the caller's own values.
+      description: Mutations require the queried revision. Imports and path permission checks are atomic. Exports contain all readable effective values, including sensitive fields. The last personal profile cannot be deleted. publication.save manages an online author draft using its own revision, and publication.preview filters an optional draft without saving. Both require the original owner or an administrator. Client role fields never grant ownership.
       operationId: manageProjectConfigurations
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2134,6 +2213,7 @@ paths:
       tags:
         - Admin Projects
       summary: Clone a project
+      description: Source download access includes published versions only. Cloning draft additionally requires management access to the original project. Owning the copy never grants configuration publication access to the original.
       operationId: cloneProject
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2274,9 +2354,12 @@ paths:
                   pattern: '^\d+\.\d+\.\d+$'
                 expectedSourceHash:
                   type: string
-                  description: Optional sourceHash from upload preparation. Changed source returns
-                    409 without creating a version.
+                  description: Prepared source hash, required with configuration publication drafts. Changed source returns 409 without creating a version.
                   pattern: '^[a-f0-9]{64}$'
+                expectedConfigurationRevision:
+                  type: integer
+                  minimum: 0
+                  description: Required when a publication draft exists. Must match its revision; the referenced personal configuration revision must also remain unchanged.
       responses:
         "200":
           description: Publish the results.
@@ -5821,6 +5904,72 @@ components:
       required:
         - version
         - params
+    ConfigurationSharingRule:
+      type: object
+      additionalProperties: false
+      properties:
+        publish: {type: boolean, default: true}
+        includeValue: {type: boolean, default: false}
+        editable: {type: boolean, default: true}
+    ConfigurationPublicationProfile:
+      type: object
+      properties:
+        id: {type: string}
+        name: {type: string, minLength: 1, maxLength: 200}
+        values: {type: object, additionalProperties: true}
+      required: [id, name, values]
+    ConfigurationPublicationDraft:
+      type: object
+      properties:
+        revision: {type: integer, minimum: 0}
+        configurationRevision: {type: integer, minimum: 0}
+        configurationAccountId: {type: string, readOnly: true, description: Server-assigned source account for personal revision checks; client values do not grant authority.}
+        fields:
+          type: array
+          items: {$ref: "#/components/schemas/ProjectConfigurationField"}
+        configurations:
+          type: array
+          minItems: 1
+          items: {$ref: "#/components/schemas/ConfigurationPublicationProfile"}
+        defaultConfigurationId: {type: string}
+      required: [revision, configurationRevision, fields, configurations, defaultConfigurationId]
+    ProjectConfigurationTemplate:
+      type: object
+      description: Immutable, filtered version data; defaultValue is omitted. Arrays are indivisible. Excluded names are represented only by opaque deny hashes. The authenticated download validates source and attachment hashes before caching outside project source.
+      properties:
+        version: {type: integer, enum: [2]}
+        kind: {type: string, enum: [steamharness-configuration-template]}
+        projectId: {type: string}
+        projectVersion: {type: string}
+        sourceHash: {type: string, pattern: '^[a-f0-9]{64}$'}
+        draftRevision: {type: integer, minimum: 0}
+        fields:
+          type: array
+          items: {$ref: "#/components/schemas/ProjectConfigurationField"}
+        configurations:
+          type: array
+          minItems: 1
+          items: {$ref: "#/components/schemas/ConfigurationPublicationProfile"}
+        defaultConfigurationId: {type: string}
+        reservedFields:
+          type: array
+          items: {type: string, pattern: '^[a-f0-9]{64}$'}
+        attachments:
+          type: array
+          items:
+            type: object
+            properties:
+              id: {type: string}
+              path: {type: string}
+              sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+            required: [id, path, sha256]
+      required: [version, kind, projectId, projectVersion, sourceHash, draftRevision, fields, configurations, defaultConfigurationId]
+    ProjectConfigurationCapability:
+      type: object
+      properties:
+        editable: {type: boolean}
+        reason: {type: string}
+      required: [editable]
     ProjectConfigurationField:
       type: object
       additionalProperties: false
@@ -5849,7 +5998,7 @@ components:
           enum: [text, textarea, select, radio, checkboxes]
         accept:
           type: array
-          description: File fields only. Accepted MIME types or extensions. Files upload through POST /api/projects/{name}/files and values contain server metadata, never file bytes.
+          description: File fields only. Accepted MIME types or extensions. Files upload through POST /api/projects/{projectId}/configurations/files and values contain server metadata, never file bytes.
           items:
             type: string
         options:
@@ -5862,10 +6011,28 @@ components:
               label:
                 type: string
             required: [value]
+        sharing:
+          $ref: "#/components/schemas/ConfigurationSharingRule"
+        paths:
+          type: object
+          description: JSON Pointer rules, inherited from the parent with more specific rules taking precedence. Excluding the whole field excludes every descendant.
+          additionalProperties: {$ref: "#/components/schemas/ConfigurationSharingRule"}
+        omittedPaths:
+          description: Generated opaque deny hashes for omitted JSON paths, without private path names.
+          type: array
+          items: {type: string, pattern: '^[a-f0-9]{64}$'}
       required: [name, type]
     ProjectConfigurationProfile:
       type: object
       properties:
+        deletedPaths:
+          description: Personal JSON deletion overlays; managed by the service and rechecked against each version's permissions.
+          type: object
+          additionalProperties:
+            type: array
+            items: {type: string}
+        templateId:
+          type: string
         id:
           type: string
         name:
@@ -5909,6 +6076,34 @@ components:
             $ref: "#/components/schemas/ProjectConfigurationProfile"
         activeConfigurationId:
           type: string
+        template:
+          $ref: "#/components/schemas/ProjectConfigurationTemplate"
+        publication:
+          $ref: "#/components/schemas/ConfigurationPublicationDraft"
+        publicationPreview:
+          $ref: "#/components/schemas/ProjectConfigurationTemplate"
+        canManagePublication: {type: boolean}
+        sourceHash: {type: string}
+        fieldCapabilities:
+          type: object
+          additionalProperties:
+            allOf:
+              - $ref: "#/components/schemas/ProjectConfigurationCapability"
+              - type: object
+                properties:
+                  paths:
+                    type: object
+                    additionalProperties: {$ref: "#/components/schemas/ProjectConfigurationCapability"}
+        conflicts:
+          type: array
+          description: Preserved personal drafts whose field types changed on upgrade.
+          items:
+            type: object
+            properties:
+              configurationId: {type: string}
+              key: {type: string}
+              value: {}
+              reason: {type: string}
       required: [version, revision, fields, customFields, configurations, activeConfigurationId]
     ProjectConfigurationExport:
       type: object
@@ -5929,6 +6124,8 @@ components:
           items:
             type: object
             properties:
+              templateId:
+                type: string
               name:
                 type: string
               values:
@@ -5942,7 +6139,7 @@ components:
       properties:
         action:
           type: string
-          enum: [get, export, create, duplicate, rename, save, select, delete, field.save, field.delete, import]
+          enum: [get, export, create, duplicate, rename, save, select, delete, field.save, field.delete, import, publication.save, publication.preview]
         revision:
           type: integer
           minimum: 0
@@ -5965,6 +6162,8 @@ components:
           type: string
         document:
           $ref: "#/components/schemas/ProjectConfigurationExport"
+        publication:
+          $ref: "#/components/schemas/ConfigurationPublicationDraft"
       required: [action]
     ProjectConfigurationResponse:
       allOf:

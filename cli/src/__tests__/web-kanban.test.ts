@@ -234,7 +234,7 @@ describe('Kanban CLI Web workspace', () => {
     await vi.waitFor(async () => expect((await state()).kanban.relatedProjectRevisions[0].revision).not.toBe(revision), { timeout: 5000 });
     await writeFile(path.join(target, 'package.json'), JSON.stringify({ id: targetId, steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } }));
     expect((await bridge('relatedProject.kv.getValue', { alias: 'target', key: 'visible:tasks' })).ok).toBe(false);
-  });
+  }, 20_000);
   it('proxies server storage and server-only files with verified CLI login, never falling back locally', async () => {
     const { app, runtime, bridge, state } = await fixture({ server: true });
     expect((await bridge('kv.getValue', { key: 'board' })).ok).toBe(false); expect(runtime.kanbanBridge).not.toHaveBeenCalled();

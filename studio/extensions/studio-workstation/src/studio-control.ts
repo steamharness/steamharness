@@ -52,7 +52,7 @@ export function createStudioControlHandler(assistant: NonNullable<Project['assis
       return candidate;
     };
     const keys: Record<string, string[]> = {
-      'studio.configurations.get': ['storage', 'projectDir', 'projectId', 'target', 'id', 'export'],
+      'studio.configurations.get': ['storage', 'projectDir', 'projectId', 'target', 'id', 'export', 'preview'],
       'studio.configurations.manage': ['storage', 'projectDir', 'projectId', 'target', 'call'],
       'studio.configurations.open': ['storage', 'projectDir', 'projectId', 'target'],
       'studio.state.get': [], 'studio.relatedProjects.get': ['projectDir'], 'studio.file.open': ['filePath', 'line', 'column'],
@@ -79,6 +79,7 @@ export function createStudioControlHandler(assistant: NonNullable<Project['assis
         if (operation === 'studio.configurations.manage' && permissionPolicy === 'read-only') throw new Error(t('Read-only mode does not allow configuration changes.'));
         const requestedTarget=optionalString('target');
         if(input.storage==='local'&&requestedTarget!==undefined)throw new Error(t('Use target only for Server configurations.'));
+        if(input.preview!==undefined&&typeof input.preview!=='boolean'||input.preview===true&&input.export===true)throw new Error(t('Invalid configuration action.'));
         if(input.export!==undefined&&typeof input.export!=='boolean')throw new Error(t('Invalid configuration action.'));
         const target: Record<string,unknown> = {storage:input.storage,...(requestedTarget?{target:requestedTarget}:{})};
         if(input.storage==='local') {
@@ -110,12 +111,12 @@ export function createStudioControlHandler(assistant: NonNullable<Project['assis
         assertAvailable();
         if(!services)throw new Error(t('Project configurations are unavailable.'));
         if(operation==='studio.configurations.open')return services.configuration({...target,open:true},signal);
-        const call=reading?{action:input.export===true?'export':'get',id:optionalString('id')}:input.call;
+        const call=reading?{action:input.preview===true?'publication.preview':input.export===true?'export':'get',id:optionalString('id')}:input.call;
         if(!call||typeof call!=='object'||Array.isArray(call))throw new Error(t('Invalid configuration action.'));
         if(!reading) {
           const action=(call as Record<string,unknown>).action,revision=(call as Record<string,unknown>).revision;
           if(['get','export'].includes(String(action)))throw new Error(t('Use the configuration query tool for reads.'));
-          if(!['create','duplicate','rename','save','select','delete','field.save','field.delete','import'].includes(String(action)) || !Number.isSafeInteger(revision) || Number(revision)<0)throw new Error(t('Invalid configuration action.'));
+          if(!['create','duplicate','rename','save','select','delete','field.save','field.delete','import','publication.save','publication.preview'].includes(String(action)) || !Number.isSafeInteger(revision) || Number(revision)<0)throw new Error(t('Invalid configuration action.'));
         }
         return services.configuration({...target,call},signal);
       }

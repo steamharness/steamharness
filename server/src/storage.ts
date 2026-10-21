@@ -1,4 +1,5 @@
-import { applyConfigurationAction, configurationSnapshot, exportConfigurations, parseConfigurationDefinition, readConfigurationState, validateConfigurationAction, ProjectConfigurationError, type ProjectConfigurationAction, type ProjectConfigurationState, type ProjectConfigurationExport, type ProjectConfiguration } from "@steamharness/project-configuration";
+import {isDeepStrictEqual} from "node:util";
+import { bindConfigurationTemplate, createPublicationDraft, parsePublicationDraft, freezeConfigurationTemplate, parseConfigurationTemplate, CONFIGURATION_TEMPLATE_FILE, type ConfigurationPublicationDraft, type ProjectConfigurationTemplate, configurationCapability, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationField,parseConfigurationField, applyConfigurationAction, configurationSnapshot, exportConfigurations, parseConfigurationDefinition, readConfigurationState, validateConfigurationAction, ProjectConfigurationError, type ProjectConfigurationAction, type ProjectConfigurationState, type ProjectConfigurationExport, type ProjectConfiguration } from "@steamharness/project-configuration";
 import { createLocalProjectConfigurationStore } from "steamharness";
 
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
@@ -1921,6 +1922,7 @@ export class Storage {
           stage: "prepared",
           plannedVersion,
           preparedSourceHash: result.sourceHash,
+          preparedConfigurationRevision: (await this.configurationPublicationDraft(project.projectId))?.revision,
         });
       }
       await db.updateProjectDeployment({ id: deployment.id, status: "prepared" });
@@ -1937,13 +1939,14 @@ export class Storage {
     return this.getProjectGroupDeployment(deployment.id);
   }
 
-  async publishProjectGroupDeployment(deploymentId: string): Promise<DeploymentRecord> {
+  async publishProjectGroupDeployment(deploymentId: string, authority: {actorId?:string;administrator?:boolean} = {}): Promise<DeploymentRecord> {
     return this.withProjectGroupDeploymentLock(deploymentId, () =>
-      this.publishProjectGroupDeploymentLocked(deploymentId));
+      this.publishProjectGroupDeploymentLocked(deploymentId,authority));
   }
 
   private async publishProjectGroupDeploymentLocked(
     deploymentId: string,
+    authority: {actorId?:string;administrator?:boolean},
   ): Promise<DeploymentRecord> {
     const db = this.requireProjectDependencyDatabase();
     const deployment = await this.getProjectGroupDeployment(deploymentId);
@@ -1997,9 +2000,11 @@ export class Storage {
           const result = await this.publishLocked({
             projectName: project.projectId,
             releaseLog: deployment.releaseLog,
-            createdByUserId: deployment.createdByUserId,
+            createdByUserId: authority.actorId??deployment.createdByUserId,
             expectedVersion: item.plannedVersion,
             expectedSourceHash: item.preparedSourceHash,
+            expectedConfigurationRevision:item.preparedConfigurationRevision,
+            administrator:authority.administrator,
             reservationDeploymentId: deployment.id,
           });
           const publishedManifest = await this.readManifest(project.projectId, result.version);
@@ -2043,10 +2048,12 @@ export class Storage {
           const rootResult = await this.publishLocked({
             projectName: rootProject.projectId,
             releaseLog: deployment.releaseLog,
-            createdByUserId: deployment.createdByUserId,
+            createdByUserId: authority.actorId??deployment.createdByUserId,
             dependencies,
             expectedVersion: rootItem.plannedVersion,
             expectedSourceHash: rootItem.preparedSourceHash,
+            expectedConfigurationRevision:rootItem.preparedConfigurationRevision,
+            administrator:authority.administrator,
             reservationDeploymentId: deployment.id,
           });
           rootVersion = rootResult.version;
@@ -2329,8 +2336,13 @@ export class Storage {
     const sourceHash = item.publishedSourceHash ?? item.preparedSourceHash;
     if (!version || !sourceHash) return undefined;
     const manifest = await this.readManifest(item.projectId, version);
-    if (!manifest || manifest.sourceHash !== sourceHash) return undefined;
-    return { version, sourceHash, manifest };
+    if (!manifest) return undefined;
+    if(manifest.sourceHash!==sourceHash) {
+      if(item.publishedSourceHash) return undefined;
+      const template=await this.configurationTemplate(item.projectId,version);
+      if(!template || template.sourceHash!==item.preparedSourceHash || template.draftRevision!==(item.preparedConfigurationRevision??0)) return undefined;
+    }
+    return { version, sourceHash:manifest.sourceHash, manifest };
   }
 
   private async assertReservedDeploymentVersion(
@@ -2425,6 +2437,8 @@ export class Storage {
 
   async saveManagedFiles(options: {
     projectName: string;
+    /** Written before public metadata so a failed upload never exposes a personal file. */
+    configurationOwnerUserId?: string;
     files: Array<{
       name: string;
       mimeType?: string;
@@ -2460,6 +2474,9 @@ export class Storage {
         touchedDirs.push(entry.dir);
         await mkdir(entry.dir, { recursive: true });
         await writeFile(path.join(entry.dir, "content"), entry.buffer);
+        if (options.configurationOwnerUserId) {
+          await writeJson(path.join(entry.dir, "configuration-owner.json"), { projectId: options.projectName, userId: options.configurationOwnerUserId });
+        }
         await writeJson(path.join(entry.dir, "metadata.json"), entry.ref);
       }
     } catch (cause) {
@@ -2493,6 +2510,13 @@ export class Storage {
     assertManagedFileId(fileId);
     await rm(this.managedFileDir(fileId), { recursive: true, force: true });
     return { id: fileId };
+  }
+
+  /** Configuration uploads are personal even when the containing project is shared. */
+  async assertManagedFileAccountAccess(fileId: string, actorId?: string): Promise<void> {
+    assertManagedFileId(fileId);
+    const owner=await readJson<{userId:string}>(path.join(this.managedFileDir(fileId),'configuration-owner.json'));
+    if(owner && owner.userId!==actorId) throw new HttpError(404,404,'Configuration attachment does not exist.');
   }
 
   async getKanbanWorkspace(options: {
@@ -2712,30 +2736,190 @@ export class Storage {
     return capability.actorId;
   }
 
-  async projectConfigurations(options: { projectName: string; actorId: string; target?: string }, call: ProjectConfigurationAction): Promise<ProjectConfigurationState | ProjectConfigurationExport> {
-    this.assertProjectId(options.projectName);
-    const actor = requireKanbanActorId(options.actorId);
-    const source = await this.resolveSourceTarget(options.projectName, options.target ?? "draft");
+  private async freezeConfigurationAttachments(projectId:string,sourceDir:string,template:ProjectConfigurationTemplate,actorId?:string):Promise<void> {
+    const copies = new Map<string, {id:string;path:string;sha256:string}>();
+    template.attachments = [];
+    for(const configuration of template.configurations) for(const field of template.fields.filter(f=>f.type==='file')) {
+      const value=configuration.values[field.name]; if(value===undefined) continue;
+      const refs=field.multiple ? value as unknown[] : [value];
+      const frozen=[];
+      for(const input of refs) {
+        const ref=parseConfigurationFile(input);
+        await this.assertManagedFileAccountAccess(ref.id,actorId);
+        const file=await this.getManagedFile(ref.id);
+        if(file.metadata.projectId!==projectId) throw new HttpError(403,403,'Configuration attachment belongs to another project.');
+        if(file.metadata.size!==ref.size||file.metadata.name!==ref.name||file.metadata.mimeType!==ref.mimeType)throw new HttpError(400,400,'Invalid server file reference.');
+        let copy=copies.get(ref.id);
+        if(!copy) {
+          const bytes=await readFile(file.filePath),id=createManagedFileId();
+          if(bytes.length!==ref.size) throw new HttpError(409,409,'Configuration attachment changed.');
+          copy={id,path:`configuration-assets/${id}`,sha256:createHash('sha256').update(bytes).digest('hex')};
+          await mkdir(path.join(sourceDir,'configuration-assets'),{recursive:true});
+          await writeFile(path.join(sourceDir,copy.path),bytes,{flag:'wx'});
+          copies.set(ref.id,copy);template.attachments.push(copy);
+        }
+        frozen.push({...ref,id:copy.id});
+      }
+      configuration.values[field.name]=field.multiple ? frozen : frozen[0]!;
+    }
+    if(!template.attachments.length) delete template.attachments;
+  }
+
+  async uploadConfigurationFile(options:{projectName:string;actorId:string;key:string;name:string;mimeType:string;buffer:Buffer;target?:string;administrator?:boolean;field?:unknown}):Promise<ManagedFileReference[]> {
+    try {
+    const state=await this.projectConfigurations(options,{action:'get'}) as ProjectConfigurationState;
+    const field=state.fields.find(f=>f.name===options.key) ?? (options.field===undefined?undefined:parseConfigurationField(options.field));
+    if(!field || field.type!=='file'||field.name!==options.key) throw new HttpError(400,400,'Unknown configuration file field.');
+    if(!state.fields.some(existing=>existing.name===field.name)) applyConfigurationAction(state,{action:'field.save',revision:state.revision,field},randomUUID);
+    if(!configurationCapability(state,field).editable) throw new HttpError(403,403,'Configuration is locked by the author.');
+    validateConfigurationFileSelection(field,{name:options.name,mimeType:options.mimeType,size:options.buffer.length});
+    return await this.saveManagedFiles({projectName:options.projectName,configurationOwnerUserId:options.actorId,files:[{name:options.name,mimeType:options.mimeType,buffer:options.buffer}]});
+    } catch(error) {if(error instanceof ProjectConfigurationError)throw new HttpError(error.code==='CONFIGURATION_FORBIDDEN'?403:400,400,error.message,{code:error.code});throw error;}
+  }
+
+  async configurationAttachment(options:{projectName:string;actorId:string;target?:string},fileId:string):Promise<{metadata:ManagedFileReference;filePath:string}> {
+    const state=await this.projectConfigurations(options,{action:'get'}) as ProjectConfigurationState;
+    try {
+      const file=await this.getManagedFile(fileId);
+      const owner=await readJson<{projectId:string;userId:string}>(path.join(this.managedFileDir(fileId),'configuration-owner.json'));
+      if(owner?.projectId===options.projectName && owner.userId===options.actorId) return file;
+      const access=await this.getProjectAccessSummary(options.projectName,options.actorId);
+      if(!owner && access.ownerUserId===options.actorId && file.metadata.projectId===options.projectName) return file;
+    } catch(error) {if(!(error instanceof HttpError && error.statusCode===404))throw error;}
+    const template=state.template ?? (options.target && options.target!=='draft'?await this.configurationTemplate(options.projectName,options.target):undefined);
+    const asset=template?.attachments?.find(a=>a.id===fileId);
+    if(asset) {
+      const refs=template!.configurations.flatMap(profile=>template!.fields.filter(f=>f.type==='file').flatMap(field=>{
+        const value=profile.values[field.name];return value===undefined?[]:(field.multiple?value as unknown[]:[value]).map(parseConfigurationFile);
+      }));
+      const reference=refs.find(ref=>ref.id===fileId);
+      if(reference) {
+        const source=await this.resolveSourceTarget(options.projectName,template!.projectVersion);
+        return {metadata:{...reference,kind:reference.kind??'file',createdAt:reference.createdAt??''},filePath:path.join(source.sourceDir,asset.path)};
+      }
+    }
+    throw new HttpError(404,404,'Configuration attachment does not exist.');
+  }
+
+  async configurationTemplate(projectName: string, target = "latest"): Promise<ProjectConfigurationTemplate | undefined> {
+    const source = await this.resolveSourceTarget(projectName, target);
+    if (this.db) {
+      const cached = await this.db.readConfigurationTemplate(projectName, source.resolvedTarget);
+      if (cached) return parseConfigurationTemplate(cached);
+    }
+    try { return parseConfigurationTemplate(JSON.parse(await readFile(path.join(source.sourceDir, CONFIGURATION_TEMPLATE_FILE), "utf8"))); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; }
+  }
+
+  private async configurationPublicationDraft(projectId: string, update?: (stored: unknown) => ConfigurationPublicationDraft): Promise<ConfigurationPublicationDraft | undefined> {
+    if (this.db) return this.db.configurationPublicationDraft(projectId, update);
+    const file = path.join(this.projectDirectory(projectId), "configuration-publication.json");
+    let stored: ConfigurationPublicationDraft | undefined;
+    try { stored = parsePublicationDraft(JSON.parse(await readFile(file, "utf8"))); }
+    catch(error) { if((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    if (!update) return stored;
+    const next = update(stored), temporary = `${file}.${randomUUID()}.tmp`;
+    try { await writeJson(temporary,next); await rename(temporary,file); } finally { await rm(temporary,{force:true}); }
+    return next;
+  }
+
+  async projectConfigurations(options: { projectName: string; actorId: string; target?: string; administrator?: boolean }, call: ProjectConfigurationAction): Promise<ProjectConfigurationState | ProjectConfigurationExport> {
     try {
       validateConfigurationAction(call);
+      const run=()=>this.projectConfigurationsUnlocked(options,call);
+      return await (call.action==='get'||call.action==='export'?run():this.withProjectPublishLock(options.projectName,run));
+    } catch(error) {
+      if(error instanceof ProjectConfigurationError) {const status=error.code==='CONFIGURATION_CONFLICT'?409:error.code==='CONFIGURATION_FORBIDDEN'?403:400;throw new HttpError(status,status,error.message,{code:error.code});}
+      throw error;
+    }
+  }
+
+  private async projectConfigurationsUnlocked(options: { projectName: string; actorId: string; target?: string; administrator?: boolean }, call: ProjectConfigurationAction): Promise<ProjectConfigurationState | ProjectConfigurationExport> {
+    this.assertProjectId(options.projectName);
+    const actor = requireKanbanActorId(options.actorId);
+    const access = await this.getProjectAccessSummary(options.projectName, actor);
+    const canManagePublication = access.ownerUserId === actor || options.administrator === true;
+    if(String(call?.action).startsWith("publication.") && !canManagePublication)throw new HttpError(403,403,"Only the project owner or an administrator can manage official configurations.");
+    let target = options.target ?? "draft";
+    if (!canManagePublication && target === "draft") {
+      const publication = await this.configurationPublicationDraft(options.projectName);
+      // Never expose an author's unpublished schema, defaults or private profiles.
+      if (publication) target = "latest";
+    }
+    const source = await this.resolveSourceTarget(options.projectName, target);
+    try {
+      validateConfigurationAction(call);
+      let fields: ProjectConfigurationState["fields"] = [];
+      let definitionVersion = 1;
+      try { const definition = parseConfigurationDefinition(JSON.parse(await readFile(path.join(source.sourceDir, "configuration.json"), "utf8"))); fields = definition.fields; definitionVersion = definition.version; }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+      const template = !canManagePublication && source.resolvedTarget !== 'draft' ? await this.configurationTemplate(options.projectName,source.resolvedTarget) : undefined;
+      if (!canManagePublication && definitionVersion === 2 && !template) fields = [];
+      const references = async (definitions:ProjectConfigurationField[], input:Record<string,unknown>) => {
+        for(const field of definitions.filter(f=>f.type==='file')) {
+          const value=input[field.name];if(value===undefined)continue;
+          const refs=field.multiple?value as unknown[]:[value];
+          if(!Array.isArray(refs))throw new ProjectConfigurationError('Invalid configuration files.');
+          for(const input of refs) {
+            const ref=parseConfigurationFile(input);
+            if(template?.attachments?.some(a=>a.id===ref.id))continue;
+            const file=await this.getManagedFile(ref.id);
+            const owner=await readJson<{userId:string}>(path.join(this.managedFileDir(ref.id),'configuration-owner.json'));
+            if(file.metadata.projectId!==options.projectName || owner && owner.userId!==actor || !owner && !canManagePublication)throw new HttpError(403,403,'Configuration file is not available to this account.');
+            if(file.metadata.size!==ref.size||file.metadata.name!==ref.name||file.metadata.mimeType!==ref.mimeType)throw new HttpError(400,400,'Invalid server file reference.');
+          }
+        }
+      };
+      if(call.values) {
+        const current=await this.projectConfigurations(options,{action:'get'}) as ProjectConfigurationState;
+        await references(current.fields,call.values);
+      }
+      if(call.field?.type==='file' && call.field.defaultValue!==undefined) await references([call.field],{[call.field.name]:call.field.defaultValue});
+      for(const document of [call.document,call.publication])if(document) {
+        await references(document.fields,Object.fromEntries(document.fields.filter(field=>field.defaultValue!==undefined).map(field=>[field.name,field.defaultValue])));
+        for(const profile of document.configurations)await references(document.fields,profile.values);
+      }
+      const initialId = `default-${createHash("sha256").update(JSON.stringify([options.projectName, actor])).digest("hex").slice(0,24)}`;
+      const publicationCall = call.action.startsWith('publication.');
+      if (publicationCall && !canManagePublication) throw new HttpError(403,403,"Only the project owner or an administrator can manage official configurations.");
+      let state: ProjectConfigurationState;
       if (!this.db) {
         const store = await createLocalProjectConfigurationStore(source.sourceDir, {
-          rootDir: path.join(this.dataRoot, "project-configurations"), storageKey: JSON.stringify([options.projectName, actor]),
+          rootDir: path.join(this.dataRoot, "project-configurations"), storageKey: JSON.stringify([options.projectName, actor]), template:template??null,fields,
         });
-        return await store.dispatch(call);
+        const result = await store.dispatch(publicationCall ? {action:'get'} : call);
+        if(call.action === 'export') return result;
+        state = result as ProjectConfigurationState;
+      } else {
+        state = await this.db.projectConfigurationState(options.projectName, actor, stored => {
+          let current = readConfigurationState(stored, template?.fields ?? fields, () => initialId);
+          if (template) current = bindConfigurationTemplate(current,template);
+          else {delete current.template;if (stored && !isDeepStrictEqual((stored as ProjectConfigurationState).fields,current.fields)) current.revision++;}
+          return call.action === "get" || call.action === "export" || publicationCall ? current : applyConfigurationAction(current,call,randomUUID);
+        });
       }
-      let fields: ProjectConfigurationState["fields"] = [];
-      try { fields = parseConfigurationDefinition(JSON.parse(await readFile(path.join(source.sourceDir, "configuration.json"), "utf8"))).fields; }
-      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-      const initialId = `default-${createHash("sha256").update(JSON.stringify([options.projectName, actor])).digest("hex").slice(0,24)}`;
-      const state = await this.db.projectConfigurationState(options.projectName, actor, stored => {
-        const current = readConfigurationState(stored, fields, () => initialId);
-        if (stored && JSON.stringify((stored as ProjectConfigurationState).fields) !== JSON.stringify(current.fields)) current.revision++;
-        return call.action === "get" || call.action === "export" ? current : applyConfigurationAction(current,call,randomUUID);
-      });
+      if (canManagePublication) {
+        const operation = async () => {
+          let draft = await this.configurationPublicationDraft(options.projectName);
+          if(call.action === 'publication.save') {
+            if(call.revision !== state.revision) throw new ProjectConfigurationError("Configuration changed. Refresh before saving your draft.","CONFIGURATION_CONFLICT");
+            const input = parsePublicationDraft(call.publication);
+            draft = await this.configurationPublicationDraft(options.projectName, stored => {
+              if(input.revision !== (stored ? parsePublicationDraft(stored).revision : 0)) throw new ProjectConfigurationError("Publication draft changed. Refresh before saving.","CONFIGURATION_CONFLICT");
+              return {...input,revision:input.revision+1,configurationRevision:state.revision,configurationAccountId:actor};
+            });
+          }
+          state.publication = draft ?? createPublicationDraft(state);
+          state.canManagePublication = true;
+        state.sourceHash = await hashDirectory(source.sourceDir);
+          if(call.action === 'publication.preview') state.publicationPreview = freezeConfigurationTemplate(call.publication??state.publication,{projectId:options.projectName,projectVersion:'preview',sourceHash:'0'.repeat(64)});
+        };
+        await operation();
+      } else state.canManagePublication = false;
+      state.fieldCapabilities=Object.fromEntries(state.fields.map(field=>[field.name,{...configurationCapability(state,field),paths:Object.fromEntries(Object.keys(field.paths??{}).map(pointer=>[pointer,configurationCapability(state,field,pointer)]))}]));
       return call.action === "export" ? exportConfigurations(state,call.id) : state;
     } catch (error) {
-      if (error instanceof ProjectConfigurationError) throw new HttpError(error.code === "CONFIGURATION_CONFLICT" ? 409 : 400, error.code === "CONFIGURATION_CONFLICT" ? 409 : 400, error.message, {code:error.code});
+      if (error instanceof ProjectConfigurationError) { const status = error.code === "CONFIGURATION_CONFLICT" ? 409 : error.code === "CONFIGURATION_FORBIDDEN" ? 403 : 400; throw new HttpError(status,status,error.message,{code:error.code}); }
       throw error;
     }
   }
@@ -2974,6 +3158,8 @@ export class Storage {
     dependencies?: ProjectDependencyLock[];
     expectedVersion?: string;
     expectedSourceHash?: string;
+    expectedConfigurationRevision?: number;
+    administrator?: boolean;
   }): Promise<PublishResult> {
     this.assertProjectId(options.projectName);
 
@@ -2984,7 +3170,7 @@ export class Storage {
 
   private async publishLocked(options: {
     projectName: string; releaseLog?: string; createdByUserId?: string; dependencies?: ProjectDependencyLock[];
-    expectedVersion?: string; expectedSourceHash?: string; reservationDeploymentId?: string;
+    expectedVersion?: string; expectedSourceHash?: string; reservationDeploymentId?: string; expectedConfigurationRevision?: number; administrator?: boolean;
   }): Promise<PublishResult> {
     const tempDir = path.join(this.dataRoot, "tmp", randomUUID());
     const stagedVersionDir = path.join(tempDir, "version");
@@ -3012,10 +3198,43 @@ export class Storage {
       await this.assertVersionPublishable(options.projectName, version, options.reservationDeploymentId);
       const releaseLog = normalizeReleaseLog(options.releaseLog);
       const dependencies = await this.resolvePublishDependencyLocks({ projectName: options.projectName, sourceDir, projectType: metadata.projectType, dependencies: options.dependencies });
-      const sourceHash = await hashDirectory(sourceDir);
-      if (options.expectedSourceHash !== undefined && sourceHash !== options.expectedSourceHash) {
+      const authoredSourceHash = await hashDirectory(sourceDir);
+      if (options.expectedSourceHash !== undefined && authoredSourceHash !== options.expectedSourceHash) {
         throw new HttpError(409, 409, "Project draft changed after preparation.");
       }
+      await rm(path.join(sourceDir,CONFIGURATION_TEMPLATE_FILE),{force:true});
+      await rm(path.join(sourceDir,"configuration-assets"),{recursive:true,force:true});
+      const publication = await this.configurationPublicationDraft(options.projectName);
+      let configurationTemplate: ProjectConfigurationTemplate | undefined;
+      if (publication) {
+        if(options.expectedSourceHash===undefined) throw new HttpError(409,409,"Confirm the current project source hash before publishing configurations.");
+        const access = await this.getProjectAccessSummary(options.projectName, options.createdByUserId);
+        if (access.ownerUserId !== options.createdByUserId && !options.administrator) throw new HttpError(403,403,"Only the project owner or an administrator can publish official configurations.");
+        if(options.expectedConfigurationRevision !== publication.revision) throw new HttpError(409,409,"Confirm the current configuration publication draft before publishing.");
+        const configurationAccountId=publication.configurationAccountId??access.ownerUserId??options.createdByUserId!;
+        // Publication authority was checked above. Read the recorded author's personal revision without binding a recipient template.
+        const ownerState = await this.projectConfigurations({projectName:options.projectName,actorId:configurationAccountId,administrator:true},{action:'get'}) as ProjectConfigurationState;
+        if(ownerState.revision !== publication.configurationRevision) throw new HttpError(409,409,"Configuration changed after publication preparation. Save the publication draft again.");
+        configurationTemplate = freezeConfigurationTemplate(publication,{projectId:options.projectName,projectVersion:version,sourceHash:authoredSourceHash});
+        await this.freezeConfigurationAttachments(options.projectName,sourceDir,configurationTemplate,configurationAccountId);
+        await writeJson(path.join(sourceDir, "configuration.json"), {version:2,fields:configurationTemplate.fields});
+        await writeJson(path.join(sourceDir, CONFIGURATION_TEMPLATE_FILE),configurationTemplate);
+      } else {
+        // v2 opts in to safe sharing defaults, without publishing historical personal values.
+        try {
+          const definition=parseConfigurationDefinition(JSON.parse(await readFile(path.join(sourceDir,'configuration.json'),'utf8')));
+          if(definition.version===2) {
+            const access=await this.getProjectAccessSummary(options.projectName,options.createdByUserId);
+            if(access.ownerUserId && access.ownerUserId!==options.createdByUserId && !options.administrator)throw new HttpError(403,403,'Only the project owner or an administrator can publish official configurations.');
+            const empty=readConfigurationState(undefined,definition.fields,()=> 'default');
+            configurationTemplate=freezeConfigurationTemplate(createPublicationDraft(empty),{projectId:options.projectName,projectVersion:version,sourceHash:authoredSourceHash});
+            await this.freezeConfigurationAttachments(options.projectName,sourceDir,configurationTemplate,options.createdByUserId);
+            await writeJson(path.join(sourceDir,'configuration.json'),{version:2,fields:configurationTemplate.fields});
+            await writeJson(path.join(sourceDir,CONFIGURATION_TEMPLATE_FILE),configurationTemplate);
+          }
+        } catch(error) {if((error as NodeJS.ErrnoException).code!=='ENOENT') throw error;}
+      }
+      const sourceHash = await hashDirectory(sourceDir);
       const artifacts = await this.uploadVersionArtifacts({ projectName: options.projectName, version, sourceHash, sourceDir });
       const manifest: Manifest = { projectId: options.projectName, projectName: metadata.name, version,
         createdAt: new Date().toISOString(), createdByUserId: options.createdByUserId, releaseLog, sourceHash,
@@ -3026,6 +3245,7 @@ export class Storage {
       if (this.db) {
         await this.db.saveVersion({ ...manifest, sourceObjectPath: manifest.sourceObjectPath ?? "", releaseLog, dependencies, updateLatest: false });
         dbVersionCreated = true;
+        if(configurationTemplate) await this.db.saveConfigurationTemplate(options.projectName,version,configurationTemplate);
       }
       await this.activatePublishedVersion({ projectId: options.projectName, projectName: metadata.name, version });
       committed = true;

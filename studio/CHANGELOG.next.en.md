@@ -2,6 +2,8 @@
 
 - [Improved] Steam tools initially occupy one third of the window. Manually resized widths are saved per workspace and restored after hiding, mode switches and reloads; temporary window constraints preserve the preferred width.
 
+- Added configuration permission queries, recipient previews and author draft management through Studio Control with read-only enforcement; local RPC uses the current account and publishing checks the draft revision.
+
 - [Fixed] Keep Steam project configurations, field editors, rename and project information dialogs clear of native window and mode controls. Close and configuration save actions remain accessible with menus or tools hidden, and in narrow or short windows.
 
 - [Fixed] Keep the Assistant input and bottom controls accessible in short windows and with long drafts, in both the default tool and additional tabs.

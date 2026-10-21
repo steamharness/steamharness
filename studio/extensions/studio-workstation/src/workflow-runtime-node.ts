@@ -30,7 +30,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       assertAvailable();
       if(input.storage==='local') {
         if(input.open) { await vscode.commands.executeCommand('studio.openProjectConfigurations',input.projectDir); return {opened:true,storage:'local',projectDir:input.projectDir}; }
-        return requestProjectCliConfiguration(String(input.projectDir),executable(),input.call as Record<string,unknown>,signal);
+        return requestProjectCliConfiguration(String(input.projectDir),executable(),input.call as Record<string,unknown>,signal,account.getConnection());
       }
       const connection=account.getConnection();if(!connection)throw new Error(t('Sign in to SteamHarness Server first.'));
       if(input.open) { await vscode.env.openExternal(vscode.Uri.parse(`${connection.serverUrl}/detail/${encodeURIComponent(String(input.projectId))}/configurations`)); return {opened:true,storage:'server',projectId:input.projectId}; }

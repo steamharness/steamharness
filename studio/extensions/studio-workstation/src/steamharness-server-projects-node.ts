@@ -64,6 +64,8 @@ export async function uploadServerProject(options: TransferOptions & { projectId
     let create = false;
     try { await client.versions(options.projectId, options.signal); }
     catch (error) { if (error instanceof AuthError && error.status === 404) { create = true; } else { throw error; } }
+    const configurations=create?undefined:await client.request<{publication?:{revision:number}}>(`/api/projects/${encodeURIComponent(options.projectId)}/configurations?target=draft`,options.signal);
+    const expectedConfigurationRevision=configurations?.publication?.revision;
     options.progress({ message: t('Packing and uploading project') });
     const job = await runWorkspaceTransfer(options, ['upload', options.projectId, '--path', options.directory, ...(create ? ['--create'] : []), '--no-wait'], temporary) as { jobId: string };
     if (typeof job?.jobId !== 'string') { throw new Error(t('The server returned an invalid response.')); }
@@ -89,7 +91,7 @@ export async function uploadServerProject(options: TransferOptions & { projectId
     }
     options.progress({ message: t('Publishing project version') });
     const published = await client.request<{ version: string }>(`/api/projects/${encodeURIComponent(options.projectId)}/publish`, signal,
-      { releaseLog: options.releaseLog, expectedVersion: options.version, expectedSourceHash: sourceHash });
+      { releaseLog: options.releaseLog, expectedVersion: options.version, expectedSourceHash: sourceHash,expectedConfigurationRevision });
     if (published?.version !== options.version) { throw new Error(t('The server returned an invalid response.')); }
   } finally { await rm(temporary, { recursive: true, force: true }); }
 }

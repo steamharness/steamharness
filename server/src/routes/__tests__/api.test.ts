@@ -885,6 +885,41 @@ test("project info endpoint preserves localized names and future declaration ids
   }
 });
 
+test("source download recipients cannot read or clone unpublished configuration source", async () => {
+  const reads: string[] = [], clones: string[] = [];
+  const storage = createStorageStub({
+    getProjectAccessSummary: async projectId => ({ projectId, projectName: projectId, visibility: "private", ownerUserId: "author" }),
+    hasProjectSourceCapability: async () => true,
+    getFiles: async options => {
+      reads.push(options.target);
+      return { projectId: "demo", projectName: "demo", target: options.target, resolvedTarget: "1.0.0", files: [] };
+    },
+    cloneProject: async options => {
+      clones.push(options.sourceTarget!);
+      return { projectId: "copy", projectName: "copy", sourceTarget: options.sourceTarget!, resolvedSourceTarget: "1.0.0", nextVersion: "1.0.1" };
+    },
+  });
+  const server = await listen(storage, createPrincipal(["projects.create"], { userId: "recipient" }));
+  try {
+    for (const suffix of ["", "?target=draft", "?target=%20draft%20"]) {
+      assert.equal((await fetch(server.url(`/api/projects/demo/files${suffix}`))).status, 403);
+    }
+    for (const sourceTarget of ["draft", " draft "]) {
+      assert.equal((await fetch(server.url("/api/projects/demo/clone"), {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetProjectName: "copy", sourceTarget }),
+      })).status, 403);
+    }
+    assert.deepEqual(reads, []); assert.deepEqual(clones, []);
+    assert.equal((await fetch(server.url("/api/projects/demo/files?target=1.0.0"))).status, 200);
+    assert.equal((await fetch(server.url("/api/projects/demo/clone"), {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ targetProjectName: "copy", sourceTarget: "1.0.0" }),
+    })).status, 200);
+    assert.deepEqual(reads, ["1.0.0"]); assert.deepEqual(clones, ["1.0.0"]);
+  } finally { await server.close(); }
+});
+
 test("source files endpoint does not let a global source permission bypass project read access", async () => {
   let sourceRead = false;
   const storage = createStorageStub({
@@ -1866,7 +1901,7 @@ test("publish endpoint forwards exact version and source preconditions", async (
       body: JSON.stringify({ releaseLog: "Version notes", expectedVersion: "1.2.3", expectedSourceHash: sourceHash }),
     });
     assert.equal(response.errCode, 0);
-    assert.deepEqual(published, [{ projectName: "demo", releaseLog: "Version notes", expectedVersion: "1.2.3", expectedSourceHash: sourceHash, createdByUserId: "user-1" }]);
+    assert.deepEqual(published, [{ projectName: "demo", releaseLog: "Version notes", expectedVersion: "1.2.3", expectedSourceHash: sourceHash, expectedConfigurationRevision: undefined, administrator: true, createdByUserId: "user-1" }]);
     const invalid = await fetchJson(server.url("/api/projects/demo/publish"), {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expectedSourceHash: 123 }),
     });
@@ -2673,6 +2708,8 @@ test("removed execution APIs return JSON 404 before authentication", async () =>
 
 function createStorageStub(overrides: Partial<Storage>): Storage {
   const stub: Partial<Storage> = {
+    assertManagedFileAccountAccess:async()=>{},
+    configurationAttachment:async()=>{throw new HttpError(404,404,"Configuration attachment does not exist.");},
     canWriteProjectData: Storage.prototype.canWriteProjectData,
     assertDataWritableProject: Storage.prototype.assertDataWritableProject,
     hasProjectSourceCapability: async () => false,
@@ -3062,7 +3099,7 @@ test("project configurations use account-scoped generic routes and preserve vers
     const input = {target:'latest',call:{action:'save',revision:1,id:'profile',values:{enabled:false,data:{nested:[null,1]}}}};
     const write = await fetch(server.url('/api/projects/demo/configurations'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)});
     assert.equal(write.status,409); assert.deepEqual((await write.json()).data,{code:'CONFIGURATION_CONFLICT'});
-    assert.deepEqual(calls,[{options:{projectName:'demo',actorId:'user-1',target:'latest'},call:{action:'get'}},{options:{projectName:'demo',actorId:'user-1',target:'latest'},call:input.call}]);
+    assert.deepEqual(calls,[{options:{projectName:'demo',actorId:'user-1',administrator:false,target:'latest'},call:{action:'get'}},{options:{projectName:'demo',actorId:'user-1',administrator:false,target:'latest'},call:input.call}]);
     const old=await fetch(server.url('/api/projects/demo/kanban/configurations'),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     assert.equal(old.status,404);
   } finally {await server.close();}
@@ -3070,10 +3107,30 @@ test("project configurations use account-scoped generic routes and preserve vers
 
 test("configuration routes reject unreadable projects before reaching the store", async () => {
   let called=false;
-  const storage=createStorageStub({assertReadableProject:()=>{throw new HttpError(403,403,"Forbidden");},projectConfigurations:async()=>{called=true;throw new Error('must not run');}});
+  const storage=createStorageStub({canReadProject:()=>false,hasProjectSourceCapability:async()=>false,assertReadableProject:()=>{throw new HttpError(403,403,"Forbidden");},projectConfigurations:async()=>{called=true;throw new Error('must not run');}});
   const server=await listen(storage,createPrincipal([]));
   try {for(const method of ['GET','POST']) {
     const response=await fetch(server.url('/api/projects/demo/configurations'),{method,...(method==='POST'?{headers:{'Content-Type':'application/json'},body:JSON.stringify({call:{action:'get'}})}:{})});
     assert.notEqual(response.status,200);
   }assert.equal(called,false);}finally{await server.close();}
+});
+
+test("configuration download access stays narrow and never trusts client administrator roles",async()=>{
+ const calls:any[]=[];
+ const storage=createStorageStub({canReadProject:()=>false,hasProjectSourceCapability:async()=>true,assertReadableProject:()=>{throw new HttpError(403,403,'Project data is private');},
+  projectConfigurations:async(options,call)=>{calls.push({options,call});return {version:1,revision:0,fields:[],customFields:[],configurations:[],activeConfigurationId:'mine'};},
+  configurationTemplate:async()=>undefined,
+  uploadConfigurationFile:async options=>{calls.push(options);throw new HttpError(403,403,'Configuration is locked by the author');},
+ });
+ const server=await listen(storage,createPrincipal([]));
+ try{
+  assert.equal((await fetch(server.url('/api/projects/demo/configurations'))).status,200);
+  const write=await fetch(server.url('/api/projects/demo/configurations'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({administrator:true,role:'owner',call:{action:'publication.save',revision:0}})});
+  assert.equal(write.status,200);assert.equal(calls[1].options.administrator,false);
+  const template=await fetch(server.url('/api/projects/demo/configurations/template?target=1.0.0'));assert.equal(template.status,200);assert.equal((await template.json()).data,null);
+  assert.equal((await fetch(server.url('/api/projects/demo/configurations/template?target=draft'))).status,400);
+  const file=await fetch(server.url('/api/projects/demo/configurations/files?key=image&fileName=image.png&mimeType=image/png'),{method:'POST',headers:{'Content-Type':'image/png'},body:Buffer.from('file')});
+  assert.equal(file.status,403);assert.equal(calls[2].actorId,'user-1');assert.equal(calls[2].administrator,false);
+  assert.notEqual((await fetch(server.url('/api/projects/demo/files'))).status,200);
+ }finally{await server.close();}
 });

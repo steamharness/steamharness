@@ -155,11 +155,12 @@ test('upload waits for static preparation and only then publishes release notes'
   const f = await fixture(t);
   let polls = 0;
   const remote = await server(t, request => request.url.endsWith('/versions') ? { data: { versions: [] } }
+    : request.url.endsWith('/configurations?target=draft') ? {data:{publication:{revision:4}}}
     : request.method === 'POST' ? { data: { version: '1.2.3' } }
       : { data: { jobId: 'job-1', projectId: id, status: ++polls === 1 ? 'preparing' : 'success', stage: 'validating', result: { projectId: id, sourceHash: 'a'.repeat(64) } } });
   await uploadServerProject({ ...f.options, directory: f.directory, releaseLog: 'New version', connection: { ...f.options.connection, serverUrl: remote.url } });
   assert.equal(remote.requests.at(-1).url, `/api/projects/${id}/publish`);
-  assert.deepEqual(JSON.parse(remote.requests.at(-1).body), { releaseLog: 'New version', expectedVersion: '1.2.3', expectedSourceHash: 'a'.repeat(64) });
+  assert.deepEqual(JSON.parse(remote.requests.at(-1).body), { releaseLog: 'New version', expectedVersion: '1.2.3', expectedSourceHash: 'a'.repeat(64),expectedConfigurationRevision:4 });
   assert.ok(remote.requests.every(request => request.auth === 'Bearer host-secret-token'));
   assert.ok(f.progress.includes('Validating project files'));
   const request = JSON.parse(await fs.readFile(path.join(f.directory, 'request.json'), 'utf8'));

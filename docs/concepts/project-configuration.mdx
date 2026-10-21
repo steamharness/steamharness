@@ -44,7 +44,7 @@ Workflow、Conversation、Kanban 使用同一套项目配置。Studio 与 CLI We
 
 保存使用 `revision` 检查和原子写入。其他窗口或小助手修改配置时，面板更新已提交状态；有草稿时保留输入并提示冲突。刷新并丢弃草稿后再重新编辑；失败请求不会写入部分结果。
 
-Studio、独立 CLI 与 CLI Web 共用本机用户目录下的配置存储，按规范化后的项目真实路径隔离。Server 按项目和登录账号隔离，拥有项目读取权限的账号可以管理自己的配置。配置值不写入项目源码、源码下载包或版本快照。本地与 Server 的配置通过导入导出搬运。
+Studio、独立 CLI 与 CLI Web 共用本机用户目录下的配置存储，按规范化后的项目真实路径隔离。Server 按项目和登录账号隔离，拥有项目读取权限的账号可以管理自己的配置。个人配置值不直接写入项目源码；启用分享后，仅作者显式允许携带的值进入发布模板。本地与 Server 的配置通过导入导出搬运。
 
 ## 导入与导出
 
@@ -97,3 +97,39 @@ printf '%s' '{"action":"get"}' | steamharness configuration ./my-project
 查询返回字段、配置列表、当前 ID 与 `revision`。管理支持 `create`、`duplicate`、`rename`、`save`、`select`、`delete`、`field.save`、`field.delete`、`import`。读取工具的 `export: true` 导出全部，指定 `id` 导出当前配置。所有写操作必须传查询到的 revision；配置值操作显式指定 id。只读模式拒绝管理操作，目录与项目范围沿用 Studio 现有权限策略。冲突时保留拟修改内容，重新查询并协调后重试。
 
 Server API 使用 `GET /api/projects/:id/configurations?target=draft` 读取，`POST /api/projects/:id/configurations` 提交 `{ "target": "draft", "call": { ... } }`。成功返回统一 `errCode: 0` 包装，版本冲突返回 HTTP 409 和 `data.code: "CONFIGURATION_CONFLICT"`。配置 API 只保存静态结构和值，Server 不执行项目。
+
+## 分享配置与权限（v2）
+
+配置值、发布模板和个人覆盖值相互独立。作者在“发布与权限”中选择配置集与默认配置，分别设置 `publish`（发布字段）、`includeValue`（携带值）、`editable`（允许接收者修改）。未设置的规则默认是发布字段、允许修改、不携带值；`defaultValue` 也按值过滤。v1 项目保持原行为，保存发布草稿后才启用分享过滤，不会自动发布历史个人值。
+
+```json
+{
+  "version": 2,
+  "fields": [
+    { "name": "privateToken", "type": "string", "secret": true, "sharing": { "publish": false } },
+    { "name": "userToken", "type": "string", "secret": true },
+    { "name": "endpoint", "type": "string", "defaultValue": "https://api.example.com", "sharing": { "includeValue": true, "editable": false } },
+    { "name": "preferences", "type": "json", "defaultValue": { "region": "default", "theme": "auto" }, "sharing": { "includeValue": true }, "paths": { "/region": { "editable": false } } }
+  ]
+}
+```
+
+JSON 对象的路径使用 JSON Pointer：`/` 编码为 `~1`，`~` 编码为 `~0`。未声明的路径继承父规则，更具体的规则优先；整个字段不发布时，所有子字段都排除。数组作为整体编辑。面板提供子字段编辑及原始 JSON 编辑，服务端按实际变化检查所有路径；替换父对象、清空值、导入及小助手操作均不能绕过锁定。违规批次整体拒绝，返回 `CONFIGURATION_FORBIDDEN`（HTTP 403）。必填且只读的字段没有可发布值时不能发布。
+
+发布前可查看接收者预览。保存草稿会冻结所选配置的值；修改个人值后，需要显式“更新发布值”并重新保存草稿。发布接口同时校验源码摘要和发布草稿版本，并在临时目录生成过滤后的 `configuration.json`、`configuration.template.json` 和 `configuration-assets/`，不改写作者目录。已发布模板与版本固定；源码下载、分享链接和 Store 分发该版本的同一份内容。完整备份仍包含全部可读取值，不能用完整备份代替分享模板。
+
+只有原项目实际所有者或具有现有管理权限的管理员可以保存官方草稿、发布官方模板。普通 manager、下载或复制项目、请求中的角色参数都不能获得原项目所有权。下载用户管理自己的命名配置及自定义字段，不能修改作者字段定义、权限或模板；运行时合并模板与允许的个人值。个人配置只保存实际覆盖值，未修改的初始值随模板升级；仍可编辑的个人修改和自定义字段继续保留，新锁定路径停止应用旧覆盖值。类型冲突保留草稿并提示处理。运行中的 Workflow 和等待恢复任务继续使用原快照。
+
+附件发布时复制为不可变副本，只携带保留字段引用的文件。下载会验证源码和附件摘要，把已验证模板与附件缓存到源码之外；离线可使用已验证版本并修改获准的个人值，官方草稿修改、发布和新版本下载需要联网。重新选择文件必须上传成功才能保存。下载权限仅授予相应模板和附件，不授予原项目其他数据的访问权限。
+
+### 发布接口与小助手
+
+- `GET /api/projects/:id/configurations` 返回个人配置、`fieldCapabilities` 与锁定原因；作者还会收到 `publication` 和当前 `sourceHash`。
+- `POST /api/projects/:id/configurations` 支持 `publication.save`（`revision` 加 `publication`，草稿包含自身 `revision`、字段、配置集和 `defaultConfigurationId`）和 `publication.preview`。草稿版本冲突返回 HTTP 409。
+- `GET /api/projects/:id/configurations/template?target=1.0.0` 只读取已发布模板。
+- `POST /api/projects/:id/configurations/files?key=background&fileName=map.png&mimeType=image/png` 上传个人配置附件；`GET /api/projects/:id/configurations/files/:fileId?target=1.0.0` 只读取授权附件。
+- 发布 `POST /api/projects/:id/publish` 时携带 `expectedSourceHash`、`expectedVersion` 和 `expectedConfigurationRevision`；后者是发布草稿版本。
+
+Studio Control 的 `get_configurations` 会返回权限，`preview: true` 返回接收者预览；`manage_configurations` 支持 `publication.save`。这些操作不依赖面板打开，官方修改必须连接原项目的 Server 并联网；只读模式拒绝所有写入。
+
+分发模板不会包含被排除的字段或子路径名称；生成的不可读规则摘要保留同名冲突与隐藏路径覆盖检查。这些摘要不替代源码下载的身份和完整性验证。

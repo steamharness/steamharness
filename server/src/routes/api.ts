@@ -1,5 +1,6 @@
 import type { ProjectConfigurationAction } from "@steamharness/project-configuration";
 
+import {readFile} from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import express from "express";
@@ -289,6 +290,19 @@ async function canDownloadProjectSourceForPrincipal(
     })) return true;
   } catch {}
   return userId !== undefined && storage.hasProjectSourceCapability(projectId, userId);
+}
+
+function parseJsonBodyField(value:unknown):unknown {
+  if(typeof value!=='string'||value.length>8192) throw new HttpError(400,400,'Invalid configuration field.');
+  try{return JSON.parse(value);}catch{throw new HttpError(400,400,'Invalid configuration field.');}
+}
+async function requireConfigurationAccess(req:Request,storage:Storage):Promise<AuthenticatedPrincipal> {
+  const principal=requireRequestPrincipal(req),projectId=req.params['name'];
+  try {await requireProjectReadAccess(req,storage);return principal;}
+  catch(error) {
+    if(!await canDownloadProjectSourceForPrincipal(storage,principal,projectId)) throw error;
+    return principal;
+  }
 }
 
 async function canManageProjectForPrincipal(
@@ -1141,6 +1155,7 @@ export function createApiRouter(
       }
       const userId = "userId" in principal ? principal.userId : undefined;
       const access = await storage.getProjectAccessSummary(metadata.projectId, userId);
+      await storage.assertManagedFileAccountAccess(req.params.fileId,userId);
       storage.assertReadableProject({
         access,
         canReadAll: hasPermission(principal, "projects.read_all"),
@@ -1163,6 +1178,7 @@ export function createApiRouter(
       }
       const userId = "userId" in principal ? principal.userId : undefined;
       const access = await storage.getProjectAccessSummary(metadata.projectId, userId);
+      await storage.assertManagedFileAccountAccess(req.params.fileId,userId);
       await assertProjectStorageAccessForPrincipal(storage, principal, metadata.projectId, true);
       res.json(ok(await storage.deleteManagedFile(req.params.fileId)));
     }),
@@ -1246,10 +1262,18 @@ export function createApiRouter(
         "knowledge.searchDocuments",
         "knowledge.readDocumentLines",
       ].includes(call.operation);
+      if(call.operation==='files.readFile') {
+        const principal=await requireConfigurationAccess(req,storage);
+        try {
+          const file=await storage.configurationAttachment({projectName:req.params.name,actorId:requireProjectConfigurationActorId(principal),target:readOptionalString(body['target'],'target')},String(call.input['fileId']));
+          res.json(ok({file:file.metadata,base64:(await readFile(file.filePath)).toString('base64')}));return;
+        } catch(error) {if(!(error instanceof HttpError && error.statusCode===404))throw error;}
+      }
       const { principal } = await requireProjectReadAccess(req, storage);
       if (!readOperation) await requireProjectStorageWriteAccess(req, storage);
       // Managed files belong to the project, independently of its preview version.
       if (call.operation.startsWith("files.")) {
+        if(call.input['fileId']) await storage.assertManagedFileAccountAccess(String(call.input['fileId']),"userId" in principal?principal.userId:undefined);
         res.json(ok(await invokeServerKanbanBridge(storage, req.params.name, call)));
         return;
       }
@@ -1651,7 +1675,7 @@ export function createApiRouter(
       for (const project of deployment.manifest.projects) {
         ({ principal } = await requireManageAccess(req, storage, project.projectId));
       }
-      const result = await storage.publishProjectGroupDeployment(deployment.id);
+      const result = await storage.publishProjectGroupDeployment(deployment.id,{actorId:principal&&'userId' in principal?principal.userId:undefined,administrator:!!principal&&hasPermission(principal,'projects.manage_all')});
       await recordRouteAudit(req, {
         principal: principal!,
         eventType: "project.deployment.publish",
@@ -1749,7 +1773,10 @@ export function createApiRouter(
         throw new HttpError(403, 403, "Permission denied.");
       }
       const { name } = req.params;
-      const target = (req.query["target"] as string | undefined) ?? "draft";
+      const target = readOptionalString(req.query["target"], "target")?.trim() || "draft";
+      if (target === "draft" && !await canManageProjectForPrincipal(storage, requireRequestPrincipal(req), name)) {
+        throw new HttpError(403, 403, "Source download access only includes published project versions.");
+      }
       const includeBinary = req.query["includeBinary"] === "true";
       res.json(ok(await storage.getFiles({ projectName: name, target, includeBinary })));
     }),
@@ -1941,17 +1968,37 @@ export function createApiRouter(
     }),
   );
 
+  router.get('/projects/:name/configurations/template',authenticate,asyncHandler(async(req,res)=>{
+    const principal=await requireConfigurationAccess(req,storage);
+    const target=readOptionalString(req.query['target'],'target')??'latest';
+    if(target==='draft') throw new HttpError(400,400,'Select a published configuration version.');
+    res.setHeader('Cache-Control','private, no-store');
+    res.json(ok(await storage.configurationTemplate(req.params.name,target)??null));
+  }));
+  router.post('/projects/:name/configurations/files',authenticate,raw,asyncHandler(async(req,res)=>{
+    const principal=await requireConfigurationAccess(req,storage);
+    res.json(ok(await storage.uploadConfigurationFile({projectName:req.params.name,actorId:requireProjectConfigurationActorId(principal),
+      administrator:hasPermission(principal,'projects.manage_all'),key:requireString(req.query['key'],'key'),
+      target:readOptionalString(req.query['target'],'target'),field:req.query['field']===undefined?undefined:parseJsonBodyField(req.query['field']),name:requireString(req.query['fileName'],'fileName'),
+      mimeType:requireString(req.query['mimeType'],'mimeType'),buffer:Buffer.isBuffer(req.body)?req.body:Buffer.from(req.body as Uint8Array)})));
+  }));
+  router.get('/projects/:name/configurations/files/:fileId',authenticate,asyncHandler(async(req,res)=>{
+    const principal=await requireConfigurationAccess(req,storage);
+    const file=await storage.configurationAttachment({projectName:req.params.name,actorId:requireProjectConfigurationActorId(principal),target:readOptionalString(req.query['target'],'target')},req.params.fileId);
+    res.setHeader('Cache-Control','private, no-store');sendManagedFile(res,file.metadata,file.filePath,req.query['download']==='1');
+  }));
+
   router.get("/projects/:name/configurations", authenticate, asyncHandler(async (req,res) => {
-    const {principal} = await requireProjectReadAccess(req,storage);
+    const principal = await requireConfigurationAccess(req,storage);
     res.setHeader("Cache-Control", "no-store");
-    res.json(ok(await storage.projectConfigurations({projectName:req.params.name,actorId:requireProjectConfigurationActorId(principal),target:readOptionalString(req.query["target"],"target")},{action:"get"})));
+    res.json(ok(await storage.projectConfigurations({projectName:req.params.name,actorId:requireProjectConfigurationActorId(principal),administrator:hasPermission(principal,"projects.manage_all"),target:readOptionalString(req.query["target"],"target")},{action:"get"})));
   }));
   router.post("/projects/:name/configurations", authenticate, json, asyncHandler(async (req,res) => {
-    const {principal} = await requireProjectReadAccess(req,storage);
+    const principal = await requireConfigurationAccess(req,storage);
     const body = readRequiredRecord(req.body,"body");
     const call = readRequiredRecord(body["call"],"call") as unknown as ProjectConfigurationAction;
     res.setHeader("Cache-Control", "no-store");
-    res.json(ok(await storage.projectConfigurations({projectName:req.params.name,actorId:requireProjectConfigurationActorId(principal),target:readOptionalString(body["target"],"target")},call)));
+    res.json(ok(await storage.projectConfigurations({projectName:req.params.name,actorId:requireProjectConfigurationActorId(principal),administrator:hasPermission(principal,"projects.manage_all"),target:readOptionalString(body["target"],"target")},call)));
   }));
 
   router.get(
@@ -2247,12 +2294,16 @@ export function createApiRouter(
         sourceTarget?: unknown;
       };
       const targetProjectName = requireString(body.targetProjectName, "targetProjectName");
+      const sourceTarget = readOptionalString(body.sourceTarget, "sourceTarget")?.trim() || "latest";
+      if (sourceTarget === "draft" && !await canManageProjectForPrincipal(storage, principal, name)) {
+        throw new HttpError(403, 403, "Source download access only includes published project versions.");
+      }
       const result = await storage.cloneProject({
         projectName: name,
         targetProjectName,
         ownerUserId: "userId" in principal ? principal.userId : undefined,
         displayName: typeof body.displayName === "string" ? body.displayName : undefined,
-        sourceTarget: typeof body.sourceTarget === "string" ? body.sourceTarget : undefined,
+        sourceTarget,
       });
       await recordRouteAudit(req, {
         principal,
@@ -2338,6 +2389,8 @@ export function createApiRouter(
         releaseLog: typeof body["releaseLog"] === "string" ? body["releaseLog"] : undefined,
         expectedVersion: readOptionalString(body["expectedVersion"], "expectedVersion"),
         expectedSourceHash: readOptionalString(body["expectedSourceHash"], "expectedSourceHash"),
+        expectedConfigurationRevision: readOptionalNonNegativeInteger(body["expectedConfigurationRevision"], "expectedConfigurationRevision"),
+        administrator: hasPermission(principal,"projects.manage_all"),
         createdByUserId: "userId" in principal ? principal.userId : undefined,
       });
       await recordRouteAudit(req, {

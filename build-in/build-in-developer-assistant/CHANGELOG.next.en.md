@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added guidance and tools for configuration publication and child permissions, lock reasons, author drafts and recipient previews without automatically publishing personal credentials.
+
 - Fixed: project configuration file fields choose and upload files to Server storage, then save references. Type restrictions, replacement and clearing preserve the previous value when uploads fail.
 
 - [Added] Let the assistant manage all project configurations and custom fields through Studio Control, including headless operations and complete import/export. Generate `configuration.json` for every project type and remove business env scaffolds and the legacy host configuration tool.

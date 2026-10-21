@@ -6,10 +6,10 @@ import { getCurrentLocale, translateDynamicKey, translateSteamHarnessError, type
 import type { ProjectDataSummary, SourceShare } from "./types";
 
 export class ServerApiClient {
-  uploadProjectConfigurationFile(id: string, file: File): Promise<ApiResponse<ProjectConfigurationFile[]>> {
+  uploadProjectConfigurationFile(id: string, file: File, key: string, target = "draft"): Promise<ApiResponse<ProjectConfigurationFile[]>> {
     const mimeType = file.type || "application/octet-stream";
-    const query = new URLSearchParams({fileName:file.name,mimeType});
-    return this.request(`/api/projects/${encodeURIComponent(id)}/files?${query}`, {method:"POST",body:file,headers:{"Content-Type":mimeType}});
+    const query = new URLSearchParams({fileName:file.name,mimeType,key,target});
+    return this.request(`/api/projects/${encodeURIComponent(id)}/configurations/files?${query}`, {method:"POST",body:file,headers:{"Content-Type":mimeType}});
   }
   projectConfigurations(id: string, call: ProjectConfigurationAction, target = "draft"): Promise<ApiResponse<ProjectConfigurationState | ProjectConfigurationExport>> {
     return call.action === "get" ? this.request(`/api/projects/${encodeURIComponent(id)}/configurations?target=${encodeURIComponent(target)}`)

@@ -1871,6 +1871,8 @@ test("Storage keeps draft configuration values when an older version is read and
   const storage = new Storage({serverRoot:process.cwd(),repoRoot:process.cwd(),dataRoot,buildInfo:testBuildInfo});
   try {
     await mkdir(draft,{recursive:true});await mkdir(version,{recursive:true});
+    await writeFile(path.join(draft,"package.json"),JSON.stringify({id:DEMO_WF_ID,name:"Configuration targets",version:"0.1.1",devDependencies:testToolchainDependencies,steamHarness:{projectType:"workflow",projectInfo:DECLARED_SERVER_PROJECT_INFO}}));
+    await writeFile(path.join(draft,"index.ts"),'throw new Error("static source only");');
     await writeFile(path.join(draft,"configuration.json"),JSON.stringify({version:1,fields:[{name:"newField",type:"string"}]}));
     await writeFile(path.join(version,"configuration.json"),JSON.stringify({version:1,fields:[]}));
     const options={projectName:DEMO_WF_ID,actorId:"user-a",target:"draft"};

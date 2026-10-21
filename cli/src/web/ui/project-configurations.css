@@ -63,3 +63,9 @@
 .configuration-file-reference > span:not(.codicon) { min-width: 0; flex: 1; overflow-wrap: anywhere; }
 .configuration-file-reference small { flex: none; }
 .configuration-file-actions { display: flex; align-items: center; gap: 6px; }
+
+.configuration-view-tabs { display:flex; gap:8px; padding:0 16px 8px; border-bottom:1px solid var(--border); }
+.configuration-json-properties { display:flex; flex-direction:column; gap:8px; }
+.configuration-json-properties label { display:flex; flex-direction:column; gap:4px; }
+.configuration-recipient-preview { white-space:pre-wrap; overflow:auto; max-height:40vh; }
+.project-configurations [hidden] { display:none; }

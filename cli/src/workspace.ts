@@ -1,3 +1,4 @@
+import type {ProjectConfigurationState} from '@steamharness/project-configuration';
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -23,7 +24,7 @@ import {
   resolveProjectRelatedProjectAccess,
   type ProjectInfoContract,
 } from "@steamharness/project-info";
-import { isProjectKind, parseProjectFileReferences, RemoteProjectFileStore, type ProjectKind } from "steamharness";
+import { cacheVerifiedConfigurationTemplate, parseConfigurationTemplate, CONFIGURATION_TEMPLATE_FILE, isProjectKind, parseProjectFileReferences, RemoteProjectFileStore, type ProjectKind } from "steamharness";
 import { clearCliAuthConfig, readCliAuthConfig, readCliAuthConfigSync, writeCliAuthConfig } from "./auth-config";
 import { findWorkspaceRepositoryRoot } from "./env";
 import {
@@ -959,6 +960,16 @@ async function materializeProjectGroupDownload(
         }));
       }
       await assertDownloadedProjectMetadata(stagingDir, project.projectId, packageJson);
+      const templateFile=project.files.find(file=>file.path===CONFIGURATION_TEMPLATE_FILE);
+      if(templateFile) {
+        const template=parseConfigurationTemplate(JSON.parse(templateFile.content));
+        if(template.projectId!==project.projectId||template.projectVersion!==project.version)throw new Error('Downloaded configuration binding mismatch.');
+        const attachments=(template.attachments??[]).map(asset=>{
+          const file=project.files.find(file=>file.path===asset.path);if(!file)throw new Error('Downloaded configuration attachment is missing.');
+          return {id:asset.id,bytes:Buffer.from(decodeProjectFileContent(file))};
+        });
+        await cacheVerifiedConfigurationTemplate(template,attachments);
+      }
       staged.push({ project, targetDir, stagingDir });
     }
     for (const item of staged) {
@@ -1562,6 +1573,11 @@ async function fetchApi<T = unknown>(options: {
 
   headers["x-steamharness-locale"] = getCurrentLocale();
 
+  if(options.method==='POST' && /^\/api\/projects\/[^/]+\/publish$/.test(options.path) && options.body && typeof options.body==='object') {
+    const configurations=await fetchApi<ProjectConfigurationState>({server:options.server,token:options.token,path:options.path.replace(/\/publish$/,'/configurations?target=draft')});
+    assertApiOk(configurations);
+    if(configurations.data?.publication?.revision) options={...options,body:{...options.body,expectedSourceHash:configurations.data.sourceHash,...options.body,expectedConfigurationRevision:configurations.data.publication.revision}};
+  }
   const response = await fetch(`${trimTrailingSlash(options.server)}${options.path}`, {
     method: options.method ?? "GET",
     headers,

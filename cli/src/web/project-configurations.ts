@@ -1,17 +1,24 @@
 import { createLocalProjectConfigurationStore } from 'steamharness';
-import type { ProjectConfigurationAction, ProjectConfigurationState } from '@steamharness/project-configuration';
+import {configurationPublication} from '../configuration-publication';
+import type {WebConnection} from './runtime';
+import {ProjectConfigurationError,type ProjectConfigurationAction, type ProjectConfigurationState} from '@steamharness/project-configuration';
 
 /** One service for every local surface. Its directory is independent of Web/Studio history. */
 export class ProjectConfigurations {
   private store!: Awaited<ReturnType<typeof createLocalProjectConfigurationStore>>;
-  state!: ProjectConfigurationState;
+  private value!: ProjectConfigurationState;
+  private publicationIdentity = '';
+  private connectionIdentity() { const connection=this.connection();return connection?JSON.stringify([connection.serverUrl,connection.accessToken]):''; }
+  get state(): ProjectConfigurationState {
+    return this.connectionIdentity()===this.publicationIdentity?this.value:{...this.value,publication:undefined,publicationPreview:undefined,canManagePublication:false};
+  }
   private poll?: ReturnType<typeof setInterval>;
   private reading = false;
   error?: string;
-  constructor(private readonly projectDir: string, private readonly changed: () => void) {}
+  constructor(private readonly projectDir: string, private readonly changed: () => void, private readonly connection: () => WebConnection | undefined = () => undefined) {}
   async initialize() {
     this.store = await createLocalProjectConfigurationStore(this.projectDir);
-    this.state = await this.store.read();
+    this.value = {...await this.store.read(),canManagePublication:false};
     this.poll = setInterval(() => {
       if (this.reading) return;
       this.reading = true;
@@ -24,9 +31,10 @@ export class ProjectConfigurations {
   }
   async refresh() {
     try {
-      const next = await this.store.read();
+      const local = await this.store.read();
+      const next = {...local,publication:this.state?.publication,canManagePublication:this.state?.canManagePublication};
       const changed = !!this.error || JSON.stringify(next) !== JSON.stringify(this.state);
-      this.error = undefined; this.state = next; if (changed) this.changed();
+      this.error = undefined; this.value = next; if (changed) this.changed();
       return next;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -35,11 +43,16 @@ export class ProjectConfigurations {
     }
   }
   async dispatch(call: ProjectConfigurationAction) {
-    const result = await this.store.dispatch(call);
+    const identity=this.connectionIdentity(),connection=this.connection(),previous=this.state,remote=call.action.startsWith('publication.') || call.action === 'get';
+    const result = remote
+      ? await configurationPublication(this.projectDir,await this.store.read(),call,connection)
+      : await this.store.dispatch(call);
+    if(identity!==this.connectionIdentity())throw new ProjectConfigurationError('Account changed. Refresh configurations.','CONFIGURATION_ACCOUNT_CHANGED');
     if (call.action !== 'export') {
-      const next = result as ProjectConfigurationState;
+      const next = remote?result as ProjectConfigurationState:{...result as ProjectConfigurationState,publication:previous.publication,canManagePublication:previous.canManagePublication};
       const changed = !!this.error || JSON.stringify(next) !== JSON.stringify(this.state);
-      this.error = undefined; this.state = next; if (changed) this.changed();
+      this.error = undefined; this.value = next;this.publicationIdentity=identity; if (changed) this.changed();
+      return next;
     }
     return result;
   }

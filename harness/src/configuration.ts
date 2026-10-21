@@ -1,3 +1,4 @@
+import {isDeepStrictEqual} from "node:util";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
@@ -7,8 +8,9 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   applyConfigurationAction, configurationSnapshot, exportConfigurations, parseConfigurationDefinition, readConfigurationState,
+  bindConfigurationTemplate, configurationCapability, parseConfigurationTemplate, CONFIGURATION_TEMPLATE_FILE, type ProjectConfigurationTemplate,
   PROJECT_CONFIGURATION_FILE, ProjectConfigurationError, validateConfigurationAction, isConfigurationValue,
-  type ConfigurationValue, type ConfigurationValues, type ProjectConfigurationAction, type ProjectConfigurationSnapshot, type ProjectConfigurationState,
+  type ProjectConfigurationField, type ConfigurationValue, type ConfigurationValues, type ProjectConfigurationAction, type ProjectConfigurationSnapshot, type ProjectConfigurationState,
 } from "@steamharness/project-configuration";
 export * from "@steamharness/project-configuration";
 
@@ -26,7 +28,7 @@ export function withProjectConfiguration<T>(snapshot: ProjectConfigurationSnapsh
 export function currentConfigurationValues(): ConfigurationValues { return scope.getStore()?.values ?? {}; }
 
 /** Shared by Studio, CLI Web, CLI and direct local SDK execution. Values never enter project source. */
-export async function createLocalProjectConfigurationStore(projectDir: string, options: { rootDir?: string; storageKey?: string } = {}) {
+export async function createLocalProjectConfigurationStore(projectDir: string, options: { rootDir?: string; storageKey?: string; template?: ProjectConfigurationTemplate | null; fields?: ProjectConfigurationField[]; templateCacheDir?: string } = {}) {
   const directory = await realpath(projectDir);
   const root = options.rootDir ?? path.join(os.homedir(), ".steamharness", "configurations");
   const key = createHash("sha256").update(options.storageKey ?? directory).digest("hex");
@@ -39,9 +41,28 @@ export async function createLocalProjectConfigurationStore(projectDir: string, o
     let stored: unknown;
     try { stored = JSON.parse(await readFile(filename, "utf8")); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-    const state = readConfigurationState(stored, await declared(), () => `default-${key.slice(0, 24)}`);
-    if (!stored || JSON.stringify((stored as ProjectConfigurationState).fields) !== JSON.stringify(state.fields)) {
-      if (stored) state.revision++;
+    let template = options.template;
+    if (template === undefined && options.storageKey === undefined) {
+      try {
+        const candidate = parseConfigurationTemplate(JSON.parse(await readFile(path.join(directory, CONFIGURATION_TEMPLATE_FILE), "utf8")));
+        const cached = JSON.parse(await readFile(configurationTemplateCachePath(candidate,options.templateCacheDir), "utf8"));
+        if (JSON.stringify(cached) !== JSON.stringify(candidate)) throw new ProjectConfigurationError("Download this configuration version online before using it offline.");
+        template = candidate;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        // Once bound, removing source metadata cannot turn an installed project into an author.
+        template = (stored as ProjectConfigurationState | undefined)?.template;
+        if (!template) {
+          try { await readFile(path.join(directory, CONFIGURATION_TEMPLATE_FILE)); throw new ProjectConfigurationError("Download this configuration version online before using it offline."); }
+          catch (missing) { if ((missing as NodeJS.ErrnoException).code !== 'ENOENT') throw missing; }
+        }
+      }
+    }
+    if(options.template===null && stored) delete (stored as ProjectConfigurationState).template;
+    let state = readConfigurationState(stored, template?.fields ?? options.fields ?? await declared(), () => `default-${key.slice(0, 24)}`);
+    if (template) state = bindConfigurationTemplate(state, template);
+    if (!stored || !isDeepStrictEqual(stored,state)) {
+      if (stored && state.revision === (stored as ProjectConfigurationState).revision) state.revision++;
       await atomic(filename, state);
     }
     return state;
@@ -70,16 +91,18 @@ export async function createLocalProjectConfigurationStore(projectDir: string, o
       try { return await run(); } finally { guard.exec("ROLLBACK"); }
     } finally { guard.close(); }
   };
-  const read = () => exclusive(load);
+  const capabilities = (state: ProjectConfigurationState): ProjectConfigurationState => ({...state,fieldCapabilities:Object.fromEntries(state.fields.map(field=>[field.name,{...configurationCapability(state,field),paths:Object.fromEntries(Object.keys(field.paths??{}).map(pointer=>[pointer,configurationCapability(state,field,pointer)]))}]))});
+  const read = async () => capabilities(await exclusive(load));
   return {
     read,
     async dispatch(call: ProjectConfigurationAction) {
       validateConfigurationAction(call);
+      if (call.action.startsWith('publication.')) throw new ProjectConfigurationError("Official configuration publication requires an online connection.", "CONFIGURATION_ONLINE_REQUIRED");
       if (call.action === "get") return read();
       if (call.action === "export") return exportConfigurations(await read(), call.id);
       return exclusive(async () => {
         const next = applyConfigurationAction(await load(), call, randomUUID);
-        await atomic(filename, next); return next;
+        await atomic(filename, next); return capabilities(next);
       });
     },
     async snapshot(options: { id?: string; runId?: string; required?: boolean; configuration?: ProjectConfigurationSnapshot } = {}): Promise<ProjectConfigurationSnapshot> {
@@ -102,4 +125,36 @@ function parseSnapshot(value: unknown): ProjectConfigurationSnapshot {
   const snapshot = value as ProjectConfigurationSnapshot;
   if (typeof snapshot.id !== "string" || typeof snapshot.name !== "string" || !Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0 || !isConfigurationValue(snapshot.values) || !snapshot.values || typeof snapshot.values !== "object" || Array.isArray(snapshot.values)) throw new ProjectConfigurationError("Invalid run configuration snapshot.");
   return snapshot;
+}
+
+function configurationTemplateCachePath(template: ProjectConfigurationTemplate,cacheDir = path.join(os.homedir(),".steamharness","configuration-templates")): string {
+  return path.join(cacheDir, `${createHash('sha256').update(JSON.stringify(template)).digest('hex')}.json`);
+}
+/** Called only after an authenticated source download and its archive hash have been verified. */
+export async function cacheVerifiedConfigurationTemplate(input: unknown, attachments: {id:string;bytes:Uint8Array}[] = [], options:{cacheDir?:string} = {}): Promise<void> {
+  const template = parseConfigurationTemplate(input), filename = configurationTemplateCachePath(template,options.cacheDir);
+  await mkdir(path.dirname(filename), {recursive:true,mode:0o700});
+  for(const asset of template.attachments??[]) {
+    const data=attachments.find(item=>item.id===asset.id)?.bytes;
+    if(!data || createHash('sha256').update(data).digest('hex')!==asset.sha256) throw new ProjectConfigurationError('Downloaded configuration attachment hash mismatch.');
+    const assetFile=path.join(path.dirname(filename),asset.sha256);
+    await writeFile(assetFile,data,{mode:0o600});
+  }
+  const temporary = `${filename}.${randomUUID()}.tmp`;
+  try { await writeFile(temporary,JSON.stringify(template),{mode:0o600,flag:'wx'}); await rename(temporary,filename); }
+  finally {await rm(temporary,{force:true});}
+}
+
+/** Offline previews read verified cache bytes, never a path supplied by project code. */
+export async function readCachedConfigurationFile(projectDir:string,fileId:string,options:{rootDir?:string;templateCacheDir?:string}={}):Promise<{file:unknown;base64:string}|undefined> {
+  const state=await (await createLocalProjectConfigurationStore(projectDir,options)).read();
+  const asset=state.template?.attachments?.find(item=>item.id===fileId);if(!asset)return;
+  let reference:ConfigurationValue|undefined;
+  for(const configuration of state.template!.configurations) for(const field of state.template!.fields.filter(f=>f.type==='file')) {
+    const value=configuration.values[field.name],files=field.multiple&&Array.isArray(value)?value:[value];
+    reference ??= files.find(item=>item&&typeof item==='object'&&!Array.isArray(item)&&item.id===fileId);
+  }
+  const data=await readFile(path.join(path.dirname(configurationTemplateCachePath(state.template!,options.templateCacheDir)),asset.sha256));
+  if(createHash('sha256').update(data).digest('hex')!==asset.sha256)throw new ProjectConfigurationError('Cached configuration attachment is invalid. Download this version again.');
+  return {file:reference,base64:data.toString('base64')};
 }

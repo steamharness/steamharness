@@ -10,8 +10,8 @@ export async function uploadConfigurationFile(projectId: string, field: ProjectC
     || file.data.length > Math.ceil(CONFIGURATION_FILE_MAX_BYTES / 3) * 4 || file.data.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(file.data)) throw new Error('Invalid configuration file upload.');
   const bytes = Buffer.from(file.data, 'base64');
   validateConfigurationFileSelection(field, {name:file.name,mimeType:file.mimeType,size:bytes.length});
-  const query = new URLSearchParams({fileName:file.name,mimeType:file.mimeType});
-  const response = await fetch(`${connection.serverUrl}/api/projects/${encodeURIComponent(projectId)}/files?${query}`, {
+  const query = new URLSearchParams({fileName:file.name,mimeType:file.mimeType,key:field.name,field:JSON.stringify(field)});
+  const response = await fetch(`${connection.serverUrl}/api/projects/${encodeURIComponent(projectId)}/configurations/files?${query}`, {
     method:'POST', headers:{Authorization:`Bearer ${connection.accessToken}`,'Content-Type':file.mimeType}, body:bytes,
     redirect:'error', signal:AbortSignal.timeout(120_000),
   });

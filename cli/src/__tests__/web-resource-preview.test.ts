@@ -6,8 +6,8 @@ import { crc32, deflateSync } from 'node:zlib';
 import { initI18n } from '@steamharness/i18n';
 import { ResourcePreviews } from '../web/resource-preview';
 import { startWebServer } from '../web/server';
-import { createLocalProjectConfigurationStore } from 'steamharness';
-import { createConfigurationState } from '@steamharness/project-configuration';
+import { cacheVerifiedConfigurationTemplate,createLocalProjectConfigurationStore } from 'steamharness';
+import { createConfigurationState,createPublicationDraft,freezeConfigurationTemplate } from '@steamharness/project-configuration';
 import { readProjectInfo } from '@steamharness/project-info';
 import type { ResourceCard } from '../web/resource-cards';
 import type { Project, Runtime } from '../web/workflow-types';
@@ -141,6 +141,22 @@ describe('resource previews', () => {
     expect(await store.read()).toEqual(saved);
     expect(String((await previews.asset(new URL(first.data.kanban!.url, 'http://localhost')))?.content)).toContain('Temporary');
     await expect(previews.open(card('kanban', { source: 'local', projectId: related.id, configurationId: 'deleted' }))).rejects.toThrow();
+  });
+
+  it('enforces published locks on temporary card values without persisting permitted previews',async()=>{
+    const {root,related,previews,card}=await fixture();
+    vi.spyOn(os,'homedir').mockReturnValue(path.join(root,'host'));
+    const author=createConfigurationState([{name:'settings',type:'json',defaultValue:{locked:0,open:false},sharing:{includeValue:true},paths:{'/locked':{editable:false}}}],()=> 'official');
+    const template=freezeConfigurationTemplate(createPublicationDraft(author),{projectId:related.id,projectVersion:'1.0.0',sourceHash:'a'.repeat(64)});
+    await cacheVerifiedConfigurationTemplate(template);
+    await writeFile(path.join(related.folderPath,'configuration.template.json'),JSON.stringify(template));
+    const store=await createLocalProjectConfigurationStore(related.folderPath),saved=await store.read();
+    const preview=(settings:Record<string,number|boolean>)=>previews.open(card('kanban',{source:'local',projectId:related.id},{kanban:{mode:'preview',values:{settings}}}));
+    await expect(preview({locked:1,open:true})).rejects.toMatchObject({code:'CONFIGURATION_FORBIDDEN'});
+    await expect(preview({open:true})).rejects.toMatchObject({code:'CONFIGURATION_FORBIDDEN'});
+    const opened=await preview({locked:0,open:true});
+    expect(opened.data.kanban!.configuration.params).toEqual({settings:{locked:0,open:true}});
+    expect(await store.read()).toEqual(saved);expect((await store.snapshot()).values.settings).toEqual({locked:0,open:false});
   });
 
   it.each(['notes.txt', 'notes.md'])('preserves %s content beyond 2 MiB', async filename => {

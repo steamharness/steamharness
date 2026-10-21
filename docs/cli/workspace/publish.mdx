@@ -25,3 +25,5 @@ steamharness workspace publish --deployment <id>
 单项目：`POST /api/workflows/{workflow}/publish`，请求体可包含 `releaseLog`。项目组：`POST /api/deployments/{deploymentId}/publish`。
 
 使用 [versions](/cli/workspace/versions) 查看结果，再用 [download](/cli/workspace/download) 下载任意历史版本。
+
+存在配置发布草稿时，CLI 携带草稿版本及已准备的源码摘要。源码、引用的个人配置或草稿版本变化时，Server 拒绝发布。发布仅在临时目录过滤版本配置文件并冻结附件，不修改作者目录；官方模板只允许原项目实际所有者或已有管理权限的管理员发布。详见[项目配置](/concepts/project-configuration)。

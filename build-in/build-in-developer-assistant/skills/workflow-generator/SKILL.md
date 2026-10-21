@@ -236,3 +236,5 @@ Kanban scaffold 额外包含 `board-state.js`、`board-storage.js` 和 `tests/*.
 - 生成文件不包含 secret，也不包含平台 provider 配置。
 - Kanban 的 structure 能识别 `projectType: "kanban"`、`artifactDir`、HTML `entry` 和可选清单；框架源码变化后已有的一次性 build 已成功更新该入口；`run`/`json` 被明确拒绝，页面能响应配置事件、通过项目级 Bridge 持久化数据、按静态 alias 读取关联项目数据、在 Bridge 缺失或失败时降级，且不违反离线 sandbox。涉及项目组交付时，依赖锁仍由宿主发布阶段生成，项目源码不应自行写入 delivery/version/sourceHash，但 `steamHarness.release` 的发行意图必须写在源码里。
 - Workflow 声明定时建议时，structure 能返回 `schedulePresets`，宿主导入后不会自动启用，参数和入口都能通过当前项目校验。
+
+- 可分享配置使用 configuration.json v2 的 sharing（publish/includeValue/editable）与 JSON Pointer paths。默认不携带个人值，默认值也必须过滤。通过 Studio Control 查询权限、管理在线 publication.save 草稿，不能用导入、父对象替换或自定义字段绕过锁定；完整备份与分享模板分开。

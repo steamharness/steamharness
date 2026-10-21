@@ -182,13 +182,13 @@ export async function startProjectCli(options: {
 }
 
 /** Configuration RPC uses the project's installed CLI, without a running Web session. */
-export async function requestProjectCliConfiguration(projectDir: string, nodePath: string, call: Record<string, unknown>, signal: AbortSignal): Promise<unknown> {
+export async function requestProjectCliConfiguration(projectDir: string, nodePath: string, call: Record<string, unknown>, signal: AbortSignal, connection?: Connection): Promise<unknown> {
   const {entry}=await resolveProjectCli(projectDir);
   return new Promise((resolve,reject)=>{
     const child=spawn(nodePath,[entry,'configuration',projectDir],{cwd:projectDir,env:environment(),shell:false,stdio:['pipe','pipe','pipe'],signal});
     let stdout='',stderr='';
     const timeout=setTimeout(()=>child.kill('SIGKILL'),30_000);
-    child.stdin.on('error',()=>undefined); child.stdin.end(JSON.stringify(call));
+    child.stdin.on('error',()=>undefined); child.stdin.end(JSON.stringify({call,connection:connection?{serverUrl:connection.serverUrl,accessToken:connection.accessToken}:null}));
     child.stdout.setEncoding('utf8');child.stderr.setEncoding('utf8');
     child.stdout.on('data',text=>{stdout+=text;if(stdout.length>4*1024*1024)child.kill('SIGKILL');});
     child.stderr.on('data',text=>{stderr=(stderr+text).slice(-2000);});

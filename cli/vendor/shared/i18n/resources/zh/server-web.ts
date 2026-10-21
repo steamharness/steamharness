@@ -1,6 +1,28 @@
 import type { serverWeb as EnServerWeb } from "../en/server-web";
 
 export const serverWeb: typeof EnServerWeb = {
+  configurationTypeConflict: "部分字段类型已变化，旧值草稿已保留，请处理后运行。",
+  configurationRefreshPublishedFields: "从项目更新字段",
+  configurationValues: "配置值",
+  configurationPublication: "发布与权限",
+  configurationLocked: "由项目作者锁定，此版本不可修改",
+  configurationPublicationHelp: "仅发布选中的配置。字段、值与编辑权限分别控制；个人值不会自动发布。保存草稿后在发布项目版本时生效。",
+  configurationPublishedProfiles: "发布的配置集",
+  configurationPublishedDefault: "接收者默认配置",
+  configurationRefreshPublishedValues: "从当前配置更新发布值",
+  configurationRule_publish: "发布字段",
+  configurationRule_includeValue: "携带值",
+  configurationRule_editable: "允许用户修改",
+  configurationRecipientPreview: "接收者预览",
+  configurationSavePublication: "保存发布草稿",
+  configurationInherit: "继承父规则",
+  configurationYes: "是",
+  configurationNo: "否",
+  configurationDeletePath: "删除子字段",
+  configurationJsonPointer: "JSON 子路径（JSON Pointer）",
+  configurationAddPath: "添加路径规则",
+  configurationRawJson: "编辑原始 JSON（保存时检查权限）",
+
   configurationFileAccept: "允许的文件类型（每行一项）",
   configurationFileChoose: "选择文件",
   configurationFileReplace: "替换文件",

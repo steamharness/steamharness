@@ -1610,3 +1610,7 @@ steamharness json . --entrypoint main -- [...args]
 ```bash
 steamharness run . -- [...args]
 ```
+
+### 版本化分享配置
+
+configuration.json v2 字段支持 sharing: {publish?, includeValue?, editable?} 和 JSON Pointer paths: Record<string, rule>。默认发布字段、允许个人修改、不携带值；defaultValue 同样过滤。JSON 对象逐路径检查实际变化，数组整体处理。只有实际项目所有者或管理员能在线保存 publication.save 草稿，选择配置集与默认配置；发布校验源码摘要和草稿版本，冻结模板及附件。get_configurations 返回 fieldCapabilities，preview:true 返回接收者预览。个人导入、重命名和自定义字段不能覆盖锁定值或作者定义。SDK getConfig/context.config 保持冻结快照，已验证模板和附件缓存到源码之外，升级只保留仍允许的个人值，Workflow 恢复沿用原快照。

@@ -46,3 +46,5 @@ Edit fields directly and save changes together. Use the reset icon to restore a 
 All three project types expose fields, named profiles and complete import/export. Studio and local CLI share local storage; Server values are per project and account. Studio Control can query and manage configurations even when the panel is closed. See [Project configurations](/en/concepts/project-configuration) for the JSON actions, version checks and execution snapshot rules.
 
 File configuration fields choose and upload files to project file storage on the Server. Saving applies the references using the existing project file write permissions.
+
+Configuration authors use the separate **Publication and permissions** tab to select profiles, a default, value inclusion and field/JSON Pointer editing rules. Only the original owner or existing administrators may save official drafts. The recipient preview shows the filtered version; personal configuration imports never change official rules. Published source shares and downloads use that same immutable template and its attachment copies. See [Project configurations](/en/concepts/project-configuration).

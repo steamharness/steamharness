@@ -1,7 +1,7 @@
 import {act,fireEvent,render,screen,waitFor} from "@testing-library/react";
 import {afterEach,beforeEach,expect,it,vi} from "vitest";
 import {i18n} from "@steamharness/i18n/react";
-import {applyConfigurationAction,createConfigurationState} from "@steamharness/project-configuration";
+import {applyConfigurationAction,bindConfigurationTemplate,configurationSnapshot,createPublicationDraft,freezeConfigurationTemplate,createConfigurationState} from "@steamharness/project-configuration";
 import {apiClient} from "../../../api";
 import {ProjectConfigurationsTab} from "../ProjectConfigurationsTab";
 import type {Summary} from "../../../types";
@@ -20,7 +20,7 @@ it("uploads files directly to server storage before applying the reference to th
  const input=screen.getByLabelText("Choose file for image");expect(input).toHaveAttribute("accept","image/png");
  expect(screen.queryByRole("textbox")).toBeNull();
  const selected=new File(['png'],"底图.png",{type:"image/png"});fireEvent.change(input,{target:{files:[selected]}});
- expect(upload).toHaveBeenCalledWith("project-a",selected);expect(screen.getByRole("button",{name:"Save"})).toBeDisabled();
+ expect(upload).toHaveBeenCalledWith("project-a",selected,"image","draft");expect(screen.getByRole("button",{name:"Save"})).toBeDisabled();
  await act(async()=>finish(ok([imageFile])));
  expect(screen.getByText("底图.png")).toBeTruthy();fireEvent.click(screen.getByRole("button",{name:"Save"}));
  await waitFor(()=>expect(service).toHaveBeenLastCalledWith("project-a",expect.objectContaining({action:"save",revision:0,values:{image:imageFile}}),"draft"));
@@ -205,4 +205,30 @@ it.each([23,null,{old:true}])("allows repairing a previous value after its field
  fireEvent.click(east);
  fireEvent.click(screen.getByRole("button",{name:"Save"}));
  expect(service).toHaveBeenLastCalledWith(project.id,expect.objectContaining({action:"save",values:{tags:["east"]}}),"draft");
+});
+
+it("shows locked fields and JSON child permissions, and preserves a denied raw edit as a draft",async()=>{
+ const author=createConfigurationState([{name:"fixed",type:"string",defaultValue:"Official",sharing:{includeValue:true,editable:false}},{name:"settings",type:"json",defaultValue:{locked:0,open:false},sharing:{includeValue:true},paths:{"/locked":{editable:false}}}],()=>"author");
+ let state=bindConfigurationTemplate(createConfigurationState([],()=>"personal"),freezeConfigurationTemplate(createPublicationDraft(author),{projectId:project.id,projectVersion:"1.0.0",sourceHash:"a".repeat(64)}));
+ const service=vi.spyOn(apiClient,"projectConfigurations").mockImplementation(async(_id,call)=>{try{if(call.action!=="get")state=applyConfigurationAction(state,call,()=>"new");return ok(state);}catch(error){return {errCode:403,errMessage:(error as Error).message} as any;}});
+ render(<ProjectConfigurationsTab project={project}/>);
+ expect(await screen.findByLabelText("fixed")).toBeDisabled();expect(screen.queryByRole("tab",{name:"Publication and permissions"})).toBeNull();
+ expect(screen.getByLabelText("/locked")).toBeDisabled();expect(screen.getByLabelText("/open")).toBeEnabled();
+ fireEvent.change(screen.getByLabelText("/open"),{target:{value:"true"}});fireEvent.blur(screen.getByLabelText("/open"));
+ fireEvent.click(screen.getByRole("button",{name:"Save"}));
+ await waitFor(()=>expect(configurationSnapshot(state).values.settings).toEqual({locked:0,open:true}));
+ const raw=screen.getByLabelText("Edit raw JSON (permissions checked on save)");fireEvent.change(raw,{target:{value:'{'}});expect(screen.getByLabelText("Edit raw JSON (permissions checked on save)")).toBe(raw);fireEvent.change(raw,{target:{value:'{"open":false}'}});fireEvent.click(screen.getByRole("button",{name:"Save"}));
+ expect(await screen.findByText(/Configuration is locked by the author/)).toBeTruthy();expect(raw).toHaveValue('{"open":false}');
+ expect(service).toHaveBeenCalled();expect(configurationSnapshot(state).values.settings).toEqual({locked:0,open:true});
+});
+it("keeps publication controls separate, previews filtered values and preserves an author draft on conflict",async()=>{
+ const state=initial();state.canManagePublication=true;state.publication=createPublicationDraft(state);
+ vi.spyOn(apiClient,"projectConfigurations").mockImplementation(async(_id,call)=>call.action==="get"?ok(state):{errCode:409,errMessage:"Publication draft changed"} as any);
+ render(<ProjectConfigurationsTab project={project}/>);await screen.findByLabelText("label");
+ fireEvent.mouseDown(screen.getByRole("tab",{name:"Publication and permissions"}),{button:0,ctrlKey:false});
+ const include=screen.getAllByRole("checkbox",{name:"Include value"})[0]!;expect(include).not.toBeChecked();fireEvent.click(include);
+ fireEvent.click(screen.getByRole("button",{name:"Recipient preview"}));
+ expect((screen.getByRole("textbox",{name:"Recipient preview"}) as HTMLTextAreaElement).value).toContain('"Original"');
+ fireEvent.click(screen.getByRole("button",{name:"Save publication draft"}));
+ expect(await screen.findByText("Publication draft changed")).toBeTruthy();expect(include).toBeChecked();
 });

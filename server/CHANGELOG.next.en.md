@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added author publication drafts and immutable version templates with filtered fields, values, defaults and attachments; actual ownership, source hashes and draft revisions are checked, personal data stays account isolated, and denied edits/imports are atomic.
+
 - Fixed: project configuration file fields choose and upload files to Server storage, then save references. Type restrictions, replacement and clearing preserve the previous value when uploads fail.
 
 - [Fixed] Retain newer field values and shadowed custom definitions when reading or editing configurations for older source versions in file and PostgreSQL storage.

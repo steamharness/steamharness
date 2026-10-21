@@ -348,3 +348,13 @@ test('configuration declarations respect the registered workspace boundary',asyn
   await assert.rejects(f.execute('studio.configurations.get',{storage:'local',projectDir:f.workdir}),/registered workspace/);
   assert.equal((await f.execute('studio.configurations.get',{storage:'local',projectDir:f.workdir},'auto')).revision,0);
 });
+
+test('publication preview is available read-only while draft mutations require write permission',async t=>{
+ const calls=[];const f=await fixture(t,{configuration:async input=>{calls.push(input);return {canManagePublication:false,fieldCapabilities:{fixed:{editable:false,reason:'Locked'}}};}});
+ await saveManifest(f.workdir,manifest(ids[0]));
+ const state=await f.execute('studio.configurations.get',{storage:'local',projectDir:f.workdir,preview:true},'read-only');
+ assert.equal(calls[0].call.action,'publication.preview');assert.equal(state.fieldCapabilities.fixed.editable,false);
+ await assert.rejects(f.execute('studio.configurations.get',{storage:'local',projectDir:f.workdir,preview:true,export:true},'read-only'),/preview|export|Invalid/i);
+ await assert.rejects(f.execute('studio.configurations.manage',{storage:'local',projectDir:f.workdir,call:{action:'publication.save',revision:0}},'read-only'),/Read-only/);
+ assert.equal(calls.length,1);
+});

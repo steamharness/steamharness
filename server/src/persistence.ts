@@ -1,4 +1,4 @@
-import type { ProjectConfigurationState } from "@steamharness/project-configuration";
+import type { ProjectConfigurationState, ConfigurationPublicationDraft, ProjectConfigurationTemplate } from "@steamharness/project-configuration";
 
 import { createHash } from "node:crypto";
 import type pg from "pg";
@@ -128,6 +128,7 @@ export interface DeploymentItemRecord {
   stage?: string;
   plannedVersion?: string;
   preparedSourceHash?: string;
+  preparedConfigurationRevision?: number;
   publishedVersion?: string;
   publishedSourceHash?: string;
   error?: string;
@@ -300,6 +301,17 @@ export class DatabaseRepository implements KVStore {
 
 
 
+      create table if not exists project_configuration_drafts (
+        project_id text primary key references projects(id) on delete cascade,
+        draft jsonb not null
+      );
+      create table if not exists project_configuration_templates (
+        project_id text not null,
+        version text not null,
+        template jsonb not null,
+        primary key(project_id, version),
+        foreign key(project_id, version) references project_versions(project_id, version) on delete cascade
+      );
       create table if not exists project_configurations (
         project_id text not null references projects(id) on delete cascade,
         user_id text not null,
@@ -396,6 +408,8 @@ export class DatabaseRepository implements KVStore {
         revoked_at timestamptz,
         primary key (project_id, user_id, capability)
       );
+
+      alter table project_deployment_items add column if not exists prepared_configuration_revision integer;
 
       create index if not exists project_versions_created_at_idx
         on project_versions(project_id, created_at desc);
@@ -778,7 +792,7 @@ export class DatabaseRepository implements KVStore {
     const items = await this.pool.query<DeploymentItemRow>(
       `select deployment_id, project_id, alias,
         role, delivery, status,
-        stage, planned_version, prepared_source_hash, published_version,
+        stage, planned_version, prepared_source_hash, prepared_configuration_revision, published_version,
         published_source_hash, error, updated_at
        from project_deployment_items
        where deployment_id = $1
@@ -829,6 +843,7 @@ export class DatabaseRepository implements KVStore {
     stage?: string;
     plannedVersion?: string;
     preparedSourceHash?: string;
+    preparedConfigurationRevision?: number;
     publishedVersion?: string;
     publishedSourceHash?: string;
     resetPublication?: boolean;
@@ -840,6 +855,7 @@ export class DatabaseRepository implements KVStore {
          stage = $4,
          planned_version = coalesce($5, planned_version),
          prepared_source_hash = coalesce($6, prepared_source_hash),
+         prepared_configuration_revision = coalesce($11, prepared_configuration_revision),
          published_version = case when $10 then null else coalesce($7, published_version) end,
          published_source_hash = case when $10 then null else coalesce($8, published_source_hash) end,
          error = $9,
@@ -856,6 +872,7 @@ export class DatabaseRepository implements KVStore {
         input.publishedSourceHash ?? null,
         input.error ?? null,
         input.resetPublication === true,
+        input.preparedConfigurationRevision ?? null,
       ],
     );
   }
@@ -903,6 +920,7 @@ export class DatabaseRepository implements KVStore {
          stage = 'version_reserved',
          planned_version = null,
          prepared_source_hash = null,
+         prepared_configuration_revision = null,
          published_version = null,
          published_source_hash = null,
          error = null,
@@ -1587,6 +1605,24 @@ export class DatabaseRepository implements KVStore {
       }
     }
     return versions;
+  }
+
+  async configurationPublicationDraft(projectId: string, update?: (stored: unknown) => ConfigurationPublicationDraft): Promise<ConfigurationPublicationDraft | undefined> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [JSON.stringify([projectId,"configuration-publication"])]);
+      const result = await client.query<{draft:ConfigurationPublicationDraft}>("select draft from project_configuration_drafts where project_id=$1 for update",[projectId]);
+      const next = update ? update(result.rows[0]?.draft) : result.rows[0]?.draft;
+      if(update) await client.query("insert into project_configuration_drafts(project_id,draft) values($1,$2::jsonb) on conflict(project_id) do update set draft=excluded.draft",[projectId,JSON.stringify(next)]);
+      await client.query("commit"); return next;
+    } catch(error) {await client.query("rollback");throw error;} finally {client.release();}
+  }
+  async saveConfigurationTemplate(projectId:string, version:string, template:ProjectConfigurationTemplate):Promise<void> {
+    await this.pool.query("insert into project_configuration_templates(project_id,version,template) values($1,$2,$3::jsonb)",[projectId,version,JSON.stringify(template)]);
+  }
+  async readConfigurationTemplate(projectId:string,version:string):Promise<ProjectConfigurationTemplate|undefined> {
+    return (await this.pool.query<{template:ProjectConfigurationTemplate}>("select template from project_configuration_templates where project_id=$1 and version=$2",[projectId,version])).rows[0]?.template;
   }
 
   async projectConfigurationState(projectId: string, userId: string,
@@ -2733,6 +2769,7 @@ interface DeploymentItemRow {
   stage: string | null;
   planned_version: string | null;
   prepared_source_hash: string | null;
+  prepared_configuration_revision: number | null;
   published_version: string | null;
   published_source_hash: string | null;
   error: string | null;
@@ -2894,6 +2931,7 @@ function toProjectDeploymentRecord(
       stage: item.stage ?? undefined,
       plannedVersion: item.planned_version ?? undefined,
       preparedSourceHash: item.prepared_source_hash ?? undefined,
+      preparedConfigurationRevision: item.prepared_configuration_revision ?? undefined,
       publishedVersion: item.published_version ?? undefined,
       publishedSourceHash: item.published_source_hash ?? undefined,
       error: item.error ?? undefined,

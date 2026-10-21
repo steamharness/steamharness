@@ -6,7 +6,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { createLocalProjectConfigurationStore, getConfig, withProjectConfiguration, currentConfigurationValues, type ProjectConfigurationState } from "../configuration";
+import {cacheVerifiedConfigurationTemplate,readCachedConfigurationFile,createConfigurationState,createPublicationDraft,freezeConfigurationTemplate,CONFIGURATION_TEMPLATE_FILE, createLocalProjectConfigurationStore, getConfig, withProjectConfiguration, currentConfigurationValues, type ProjectConfigurationState } from "../configuration";
 
 test("local configuration uses canonical paths, atomic versions and persisted run snapshots", async () => {
   const temp = await mkdtemp(path.join(os.tmpdir(),"project-config-"));
@@ -184,4 +184,31 @@ test("built-in Agent providers use isolated configuration credentials and never 
   } finally {
     if (previous === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = previous;
   }
+});
+
+test("verified templates enforce offline edits, preserve waiting runs, and cache immutable attachments outside source",async()=>{
+  const root=await mkdtemp(path.join(os.tmpdir(),'configuration-offline-'));
+  try {
+    const project=path.join(root,'project'),cacheDir=path.join(root,'cache'),rootDir=path.join(root,'personal');await mkdir(project);
+    const bytes=Buffer.from('versioned-image'),reference={id:'wf_abcdef',name:'background.png',mimeType:'image/png',size:bytes.length,storage:'server' as const};
+    const author=createConfigurationState([{name:'settings',type:'json',defaultValue:{locked:0,open:1},sharing:{includeValue:true},paths:{'/locked':{editable:false}}},{name:'background',type:'file',defaultValue:reference,sharing:{includeValue:true,editable:false}}],()=> 'profile');
+    const template=freezeConfigurationTemplate(createPublicationDraft(author),{projectId:'verified-project',projectVersion:'1.0.0',sourceHash:'a'.repeat(64)});
+    template.attachments=[{id:reference.id,path:`configuration-assets/${reference.id}`,sha256:createHash('sha256').update(bytes).digest('hex')}];
+    await writeFile(path.join(project,CONFIGURATION_TEMPLATE_FILE),JSON.stringify(template));
+    const options={rootDir,templateCacheDir:cacheDir};
+    const store=await createLocalProjectConfigurationStore(project,options);
+    await assert.rejects(store.read(),/online/);
+    await assert.rejects(cacheVerifiedConfigurationTemplate(template,[{id:reference.id,bytes:Buffer.from('wrong')}],{cacheDir}),/hash mismatch/);
+    await cacheVerifiedConfigurationTemplate(template,[{id:reference.id,bytes}],{cacheDir});
+    let state=await store.read();assert.equal((await store.read()).revision,state.revision);
+    const waiting=await store.snapshot({runId:'waiting'});
+    await assert.rejects(store.dispatch({action:'save',revision:state.revision,id:state.activeConfigurationId,values:{settings:{locked:3,open:4}}}),/locked/);
+    state=await store.dispatch({action:'save',revision:state.revision,id:state.activeConfigurationId,values:{settings:{locked:0,open:4}}}) as ProjectConfigurationState;
+    assert.deepEqual((await store.snapshot()).values.settings,{locked:0,open:4});
+    assert.deepEqual(await store.snapshot({runId:'waiting'}),waiting);
+    await rm(path.join(project,CONFIGURATION_TEMPLATE_FILE));
+    assert.deepEqual((await store.snapshot()).values.settings,{locked:0,open:4});
+    const file=await readCachedConfigurationFile(project,reference.id,options);assert.equal(Buffer.from(file!.base64,'base64').toString(),bytes.toString());
+    await assert.rejects(store.dispatch({action:'publication.save',revision:state.revision,publication:createPublicationDraft(state)}),/online/);
+  } finally {await rm(root,{recursive:true,force:true});}
 });
