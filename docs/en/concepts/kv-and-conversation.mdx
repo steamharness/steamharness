@@ -287,6 +287,8 @@ For workflows without Durable session, declaring `conversation.inputQueue: { ena
 
 Local sessions can pass in or generate a conversation id.
 
+CLI Web and Studio show a read-only notice when the same session is already open or running in another window. The duplicate window cannot send, stop, or modify that session, but can read its output or create a different session to run in parallel. Closing the original window releases its page ownership. A resident Agent or background task retains its executing process until it exits, after which another window can recover it. A durable database's main conversation and forks share one executing process. History saves merge only the sessions owned by each window, preserving other windows' messages and drafts.
+
 - local host generates and reuses a conversation id for each local chat session.
 - Local CLI uses `--conversation-id` to select a stable conversation id.
 - Local clients can return a stable `conversationId` from `createInput`.

@@ -170,9 +170,10 @@ try {
       const configuration = await (await core.createLocalProjectConfigurationStore(projectDir)).snapshot({runId:request.configurationRunId ?? request.runId,configuration:request.configuration});
       let agentControl;
       let runFinished = false;
+      let runFailure;
       if (request.project.conversation?.durable?.enabled) {
         const agent = await import(resolve('steamharness/agent', pathToFileURL(path.join(runtimeProjectDir, 'package.json')).href));
-        agentHost = agent.createAgentSessionHost(request.conversationId);
+        agentHost = agent.createAgentSessionHost(request.conversationId, { resume: request.resumeAgent === true });
         agentControl = async ({ command, scopeId, attachments }) => core.withProjectConfiguration(configuration, async () => {
           if (typeof scopeId !== 'string' || !command || typeof command.requestId !== 'string') throw new Error('Invalid agent command.');
           let prepared = command;
@@ -191,7 +192,7 @@ try {
             catch (error) {
               if (error.code !== 'AGENT_NOT_READY') throw error;
               if (controller.signal.aborted) throw Object.assign(new Error('The agent owner disconnected.'), { code: 'STEAMHARNESS_WORKER_INTERRUPTED' });
-              if (runFinished) throw new Error('The workflow ended without an active agent session.');
+              if (runFinished) throw Object.assign(new Error(runFailure ?? 'The workflow ended without an active agent session.'), { code: 'AGENT_SESSION_ENDED' });
               await new Promise(resolve => setTimeout(resolve, 25));
             }
           }
@@ -225,7 +226,10 @@ try {
         },
         abortSignal: controller.signal,
         onRuntimeEvent: (event) => send('event', event),
-      }).finally(() => { runFinished = true; });
+      }).then(report => {
+        if (report.status === 'failed') runFailure = report.result?.error?.message ?? report.result?.data?.errMessage;
+        return report;
+      }, error => { runFailure = error.message; throw error; }).finally(() => { runFinished = true; });
       const initialCommands = (request.agentCommands ?? []).map(async command => {
         try { const receipt = await agentControl?.(command); send('event', { type: 'agent_command_receipt', receipt }); }
         catch (error) { send('event', { type: 'agent_command_failed', requestId: command.command.requestId, targetId: command.command.targetId, message: error.message, code: error.code }); }

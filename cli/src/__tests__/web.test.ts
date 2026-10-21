@@ -72,6 +72,63 @@ async function fixture(host?: WebHostConfiguration, beforeStart?: () => Promise<
 }
 
 describe('steamharness web', () => {
+  it('makes duplicate windows read-only and runs different conversations in independent services without losing history', async () => {
+    const { app: one, directory, runtime: first } = await fixture();
+    const left = crypto.randomUUID(), right = crypto.randomUUID();
+    const post = (app: typeof one, clientId: string, message: object) => fetch(`${app.origin}/api/message`, {
+      method: 'POST', headers: { Authorization: `Bearer ${new URL(app.url).hash.slice('#session='.length)}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId, ...message }),
+    });
+    const replies = async (response: Response) => {
+      const value = await response.json(); expect(response.status, JSON.stringify(value)).toBe(200);
+      return value.messages.find((message: any) => message.type === 'state');
+    };
+    const original = one.controller.activeId;
+    await replies(await post(one, left, { type: 'ready' }));
+    await post(one, left, { type: 'draft', sessionId: original, text: 'Original draft', attachments: [] });
+    const second: Runtime = { ...first, run: vi.fn(), dispose: vi.fn() };
+    const two = await startWebServer({ projectDir: directory, dataDir: path.join(directory, 'data'), runtime: second }); services.push(two);
+    let finishLeft!: (report: Report) => void, finishRight!: (report: Report) => void;
+    vi.mocked(first.run).mockImplementation(() => new Promise(resolve => { finishLeft = resolve; }));
+    vi.mocked(second.run).mockImplementation(() => new Promise(resolve => { finishRight = resolve; }));
+    const streams: ReadableStreamDefaultReader<Uint8Array>[] = [];
+    try {
+      for (const [app, clientId] of [[one, left], [two, right]] as const) {
+        const response = await fetch(`${app.origin}/api/events?session=${new URL(app.url).hash.slice('#session='.length)}&clientId=${clientId}`);
+        const reader = response.body!.getReader(); streams.push(reader); await reader.read();
+      }
+      expect((await replies(await post(two, right, { type: 'ready' }))).conversationAccess.readOnly).toBe(true);
+      const blocked = await post(two, right, { type: 'send', sessionId: original, text: 'Duplicate', params: {}, attachments: [] });
+      expect(blocked.status).toBe(400); expect((await blocked.json()).message).toMatch(/another window|其它/);
+      expect(second.run).not.toHaveBeenCalled();
+      expect((await post(two, right, { type: 'new', sessionId: original, text: 'Stale duplicate draft' })).status).toBe(200);
+      const created = await replies(await post(two, right, { type: 'ready' }));
+      const other = created.activeId;
+      expect(other).not.toBe(original); expect(created.conversationAccess.readOnly).toBe(false);
+      await Promise.all([
+        post(one, left, { type: 'send', sessionId: original, text: 'Left runs', params: {}, attachments: [] }),
+        post(two, right, { type: 'send', sessionId: other, text: 'Right runs', params: {}, attachments: [] }),
+      ]);
+      await vi.waitFor(() => { expect(first.run).toHaveBeenCalledOnce(); expect(second.run).toHaveBeenCalledOnce(); });
+      expect(one.controller.hasRuns).toBe(true); expect(two.controller.hasRuns).toBe(true);
+      finishLeft({ status: 'success' }); finishRight({ status: 'success' });
+      await Promise.all([one.controller.idle(), two.controller.idle()]);
+      const key = createHash('sha256').update(await realpath(directory)).digest('hex').slice(0, 24);
+      const history = JSON.parse(await readFile(path.join(directory, 'data', key, 'conversations.json'), 'utf8'));
+      expect(history.sessions.find((session: any) => session.id === original).messages[0].content).toBe('Left runs');
+      expect(history.sessions.find((session: any) => session.id === other).messages[0].content).toBe('Right runs');
+      await streams[0].cancel();
+      await one.close();
+      expect((await post(two, right, { type: 'select', id: original })).status).toBe(200);
+      const transferred = await replies(await post(two, right, { type: 'ready' }));
+      expect(transferred.conversationAccess.readOnly).toBe(false);
+      expect(transferred.sessions.find((session: any) => session.id === original).messages[0].content).toBe('Left runs');
+    } finally {
+      finishLeft?.({ status: 'aborted' }); finishRight?.({ status: 'aborted' });
+      await Promise.all(streams.map(reader => reader.cancel()));
+    }
+  });
+
   it('removes deployment and credential environment values from project workers', () => {
     const environment = sanitizeWebWorkerEnvironment({
       PATH: '/bin',
@@ -295,7 +352,8 @@ describe('steamharness web', () => {
     const id = app.controller.activeId;
     await app.controller.recordCommand('fixture', 'Second conversation');
     await app.controller.select(first);
-    expect((await post({ type, clientId, id })).status).toBe(200);
+    const changed = await post({ type, clientId, id });
+    expect(changed.status, await changed.text()).toBe(200);
     const response = await (await post({ type: 'ready', clientId })).json();
     const selected = response.messages.find((reply: any) => reply.type === 'state').activeId;
     expect(selected).toBe(app.controller.activeId);
@@ -353,7 +411,8 @@ describe('steamharness web', () => {
     const token = new URLSearchParams(new URL(app.url).hash.slice(1)).get('session')!;
     const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
     expect((await fetch(`${app.origin}/api/session`, { headers })).status).toBe(200);
-    expect((await fetch(`${app.origin}/api/message`, { method: 'POST', headers, body: JSON.stringify({ type: 'new' }) })).status).toBe(200);
+    const created = await fetch(`${app.origin}/api/message`, { method: 'POST', headers, body: JSON.stringify({ type: 'new' }) });
+    expect(created.status, await created.text()).toBe(200);
     const events = await fetch(`${app.origin}/api/events?session=${token}`);
     expect(events.status).toBe(200);
     const reader = events.body!.getReader();
@@ -377,7 +436,8 @@ describe('steamharness web', () => {
     try {
       const headers = { Authorization: `Bearer ${token}`, Origin: origin, 'Content-Type': 'application/json' };
       expect((await fetch(`${origin}/api/session`, { method: 'POST', headers })).status).toBe(200);
-      expect((await fetch(`${origin}/api/message`, { method: 'POST', headers, body: JSON.stringify({ type: 'new' }) })).status).toBe(200);
+      const created = await fetch(`${origin}/api/message`, { method: 'POST', headers, body: JSON.stringify({ type: 'new' }) });
+      expect(created.status, await created.text()).toBe(200);
       const events = await fetch(`${origin}/api/events?session=${token}`, { headers: { Origin: origin } });
       expect(events.status).toBe(200);
       const reader = events.body!.getReader();

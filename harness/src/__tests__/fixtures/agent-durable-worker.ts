@@ -12,6 +12,7 @@ const tool = (name: string, replay: "safe" | "never", execute: () => Promise<unk
 });
 const agent = new DurableAgent({
   databasePath: path.join(directory, "session.sqlite"), models,
+  ...(phase === "attach" ? { resumeSession: true, session: { compaction: { enabled: false } } } : {}),
   initialState: { systemPrompt: "Offline durable test", model: models.getModel("faux", "durable")!,
     thinkingLevel: "off", messages: [], tools: [
       tool("write_once", "never", () => appendFile(path.join(directory, "writes.txt"), "write\n")),
@@ -25,7 +26,7 @@ const agent = new DurableAgent({
       }),
     ] },
 });
-agent.requestId = "logical-input";
+agent.requestId = ["reject", "retry-rejected", "attach"].includes(phase) ? "new-input" : "logical-input";
 const text: string[] = [];
 const tools: string[] = [];
 agent.subscribe(event => {
@@ -59,11 +60,19 @@ if (scenario === "stream" && (phase === "initial" || phase === "reinterrupt")) {
   ...(scenario === "unsafe" ? [] : [ai.fauxToolCall("write_once", {}, { id: "write" })]),
   ai.fauxToolCall("barrier", {}, { id: "barrier" }),
 ], { stopReason: "toolUse" })] : [request => {
+  if (phase === "attach") assertNoReconnectInput(request);
   const result = request.messages.find(message => message.role === "toolResult" && message.toolCallId === "barrier");
   process.send?.({ type: "recovered-result", result });
   return ai.fauxAssistantMessage("Recovered answer");
 }]);
 try {
-  await agent.prompt("Do the task");
+  await agent.prompt(phase === "attach" ? "Reconnect placeholder" : "Do the task");
   process.send?.({ type: "done", text: text.join(""), calls: faux.state.callCount, tools, errorMessage: agent.state.errorMessage });
+} catch (error) {
+  if (phase !== "reject") throw error;
+  process.send?.({ type: "rejected", message: (error as Error).message, calls: faux.state.callCount });
 } finally { await agent.close(); process.disconnect?.(); }
+
+function assertNoReconnectInput(request: ai.TranscriptContext): void {
+  if (JSON.stringify(request.messages).includes("Reconnect placeholder")) throw new Error("Reconnection submitted a new input");
+}

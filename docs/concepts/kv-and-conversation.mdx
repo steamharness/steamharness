@@ -287,6 +287,8 @@ workflow 仍需在 `createInput({ args })` 中显式读取这些参数；推荐�
 
 本地会话可以传入或生成 conversation id。
 
+CLI Web 与 Studio 中，同一会话在其它窗口已打开或运行时会显示只读提示，禁止在重复窗口发送、停止或修改该会话；仍可查看输出或新建不同会话并行运行。关闭原窗口会释放页面占用；常驻 Agent 或后台任务仍由原执行进程持有，进程退出后可由新窗口恢复。同一持久数据库中的主会话与分叉共用执行进程。多个窗口保存历史时仅合并各自拥有的会话变更，保留其它窗口的消息与草稿。
+
 - 本地宿主会为每个本地 chat session 生成并复用 conversation id。
 - 本地 CLI 使用 `--conversation-id` 指定稳定的 conversation id。
 - 本地客户端可以在 `createInput` 中返回稳定的 `conversationId`。

@@ -450,3 +450,6 @@ textarea::placeholder { color: var(--vscode-input-placeholderForeground); }
   .run-options select { max-width: 120px; }
   .param-action { max-width: 190px; }
 }
+
+.conversation-access { flex: none; padding: 10px 16px; color: var(--vscode-editorWarning-foreground, #b89500); background: var(--vscode-editorWarning-background, transparent); border-bottom: 1px solid var(--vscode-panel-border, #444); user-select: text; }
+.conversation-access[hidden] { display: none; }

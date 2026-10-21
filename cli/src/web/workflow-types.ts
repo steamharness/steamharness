@@ -175,6 +175,8 @@ export interface Report {
 }
 
 export interface Run {
+  /** Reattach the durable owner without resubmitting a historical input. */
+  resumeAgent?: boolean;
   configurationRunId?: string;
   agentCommands?: { command: AgentSessionCommand; scopeId: string; attachments?: Attachment[] }[];
   project: Project;

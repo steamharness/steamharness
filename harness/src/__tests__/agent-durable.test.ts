@@ -209,6 +209,33 @@ for (const scenario of ["safe", "unsafe"]) {
   });
 }
 
+for (const phase of ["resume", "attach"]) {
+  test(`busy admission preserves pending work and a ${phase} can complete it without poisoning retries`, async t => {
+    const directory = await mkdtemp(path.join(tmpdir(), "agent-busy-admission-"));
+    const children: ChildProcess[] = [];
+    t.after(async () => {
+      for (const child of children) if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+      await rm(directory, { recursive: true, force: true });
+    });
+    const first = worker(directory, "safe", "initial"); children.push(first);
+    await message(first, "checkpoint");
+    const killed = once(first, "exit"); first.kill("SIGKILL"); await killed;
+    const rejected = worker(directory, "safe", "reject"); children.push(rejected);
+    assert.deepEqual(await message(rejected, "rejected"), { type: "rejected", message: "Conversation 1 is busy", calls: 0 });
+    await once(rejected, "exit");
+    const resumed = worker(directory, "safe", phase); children.push(resumed);
+    const done = await message(resumed, "done");
+    assert.equal(done.text, "Recovered answer"); assert.equal(done.calls, 1);
+    await once(resumed, "exit");
+    assert.equal(await readFile(path.join(directory, "writes.txt"), "utf8"), "write\n");
+    assert.equal(await readFile(path.join(directory, "barriers.txt"), "utf8"), "attempt\nattempt\n");
+    const retried = worker(directory, "safe", "retry-rejected"); children.push(retried);
+    const retry = await message(retried, "done");
+    assert.equal(retry.errorMessage, undefined); assert.equal(retry.calls, 1);
+    await once(retried, "exit");
+  });
+}
+
 test("a completed request replays its answer and billing identity without another model call", async t => {
   const directory = await mkdtemp(path.join(tmpdir(), "workflow-durable-dedupe-"));
   t.after(() => rm(directory, { recursive: true, force: true }));

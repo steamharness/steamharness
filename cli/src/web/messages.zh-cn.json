@@ -509,6 +509,7 @@
   "Delete path": "删除子路径",
   "JSON Pointer": "JSON Pointer 路径",
   "Add path": "添加子路径",
+  "This conversation is open or running in another window. You can read it here or start a new conversation.": "此对话已在其它窗口打开或运行。你可以在此查看，或新建一个对话。",
   "Project recovery timed out.": "项目恢复超时。",
   "Invalid recovered project connection.": "恢复后的项目连接无效。",
   "Project page has closed.": "项目页面已关闭。"

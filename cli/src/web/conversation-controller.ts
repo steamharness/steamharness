@@ -10,12 +10,13 @@ import {
 } from './workflow-types';
 
 interface ControllerOptions {
+  canRun?(session: ConversationSession): boolean;
   configurationRevision?(): number;
   save(sessions: ConversationSession[], activeId: string): Promise<void>;
   changed(): void;
   log(message: string): void;
 }
-interface RunTask { cancelled: boolean; finished: Promise<void>; promote?: boolean }
+interface RunTask { sessionId: string; cancelled: boolean; finished: Promise<void>; promote?: boolean }
 
 export class ConversationController {
   readonly sessions: ConversationSession[];
@@ -51,6 +52,7 @@ export class ConversationController {
   get current(): ConversationSession { return this.sessions.find((entry) => entry.id === this.activeId)!; }
   get running(): boolean { return sessionRunning(this.current); }
   get hasRuns(): boolean { return this.tasks.size > 0; }
+  get executingIds(): Set<string> { return new Set([...this.tasks.values()].map(task => task.sessionId)); }
   private blank(id: string = globalThis.crypto.randomUUID()): ConversationSession {
     const now = Date.now();
     return { id, title: t("New conversation"), createdAt: now, updatedAt: now, messages: [], parameterValues: {}, toolPermissionPolicies: {}, queuedInputs: [], draft: { text: '', attachments: [] } };
@@ -63,22 +65,25 @@ export class ConversationController {
     for (const entry of this.sessions) {
       if (entry.agentOwnerId) continue;
       if (entry.activeRunId) continue;
-      if (entry.messages.some(message => message.cancelRequested)) { void this.stop(entry).catch(error => this.options.log(String(error))); continue; }
+      if (entry.messages.some(message => message.cancelRequested)) {
+        if (!this.options.canRun || this.options.canRun(entry)) void this.stop(entry).catch(error => this.options.log(String(error)));
+        continue;
+      }
       const answer = entry.messages.find(message => message.role === 'assistant' && message.status === 'running' && message.recovering && !message.cancelRequested);
       if (!answer) {
-        const anchor = [...entry.messages].reverse().find(message => message.role === 'assistant' && message.runId && message.args);
+        const anchor = this.agentAnchor(entry);
         const pendingCommands = this.sessions.some(session => (session.agentOwnerId ?? session.id) === entry.id && session.agentCommands?.length);
         const activeAgent = entry.agent && (entry.agent.tasks.length || entry.agent.turns.some(turn => turn.status === 'queued' || turn.status === 'placed'));
-        if (anchor && (activeAgent || pendingCommands)) this.start(entry, { id: anchor.id!, text: '', params: {}, attachments: [], createdAt: Date.now() }, anchor);
+        if (anchor && (activeAgent || pendingCommands) && (!this.options.canRun || this.options.canRun(entry))) this.start(entry, { id: anchor.id!, text: '', params: {}, attachments: [], createdAt: Date.now() }, anchor);
         continue;
       }
       // Durable replays the original stream under its stable output identities.
-      this.start(entry, { id: answer.id!, text: '', params: {}, attachments: [], createdAt: answer.createdAt ?? Date.now() }, answer);
+      if (!this.options.canRun || this.options.canRun(entry)) this.start(entry, { id: answer.id!, text: '', params: {}, attachments: [], createdAt: answer.createdAt ?? Date.now() }, answer);
     }
   }
   private changed(): void { if (!this.disposed) { this.options.changed(); } }
-  async create(): Promise<void> {
-    const blank = this.sessions.find((entry) => !entry.messages.length && !entry.activeRunId && !entry.queuedInputs?.length && !entry.draft?.text && !entry.draft?.attachments.length);
+  async create(force = false): Promise<void> {
+    const blank = force ? undefined : this.sessions.find((entry) => !entry.messages.length && !entry.activeRunId && !entry.queuedInputs?.length && !entry.draft?.text && !entry.draft?.attachments.length);
     const next = blank ?? this.blank();
     next.updatedAt = Date.now();
     if (blank) { this.sessions.splice(this.sessions.indexOf(blank), 1); }
@@ -193,11 +198,16 @@ export class ConversationController {
       }
       const changed = previous && (JSON.stringify(previous.args) !== JSON.stringify(args) || previous.entrypointId !== input.entrypointId || JSON.stringify(previous.policies) !== JSON.stringify(owner.toolPermissionPolicies));
       if (changed) {
-        if (owner.agent?.tasks.length || !owner.agent) throw new Error(t('Wait for active tasks before changing session settings.'));
+        if (owner.agent?.tasks.length || owner.agent?.foreground || owner.agent?.turns.some(turn => turn.status === 'placed' || turn.status === 'queued') || !owner.agent) throw new Error(t('Wait for active tasks before changing session settings.'));
         if (entry !== owner) throw new Error(t('Change workflow settings in the main conversation.'));
         await this.retireAgentOwner(owner);
-        if (!preserveDraft) entry.draft = { text: '', attachments: [] };
-        this.start(entry, queued); await this.persist(); return;
+        const planIndex = args.indexOf('--plan');
+        if (planIndex >= 0 && args[planIndex + 1] !== 'false') {
+          // A new Plan workflow must plan this input and retain its approval lifecycle.
+          if (!preserveDraft) entry.draft = { text: '', attachments: [] };
+          this.start(entry, queued); await this.persist(); return;
+        }
+        owner.agentParameters = { configurationRevision: this.options.configurationRevision?.(), args, entrypointId: input.entrypointId, policies: JSON.parse(JSON.stringify(owner.toolPermissionPolicies ?? {})) };
       }
       const planIndex = previous?.args.indexOf('--plan') ?? -1;
       if (planIndex >= 0 && previous!.args[planIndex + 1] !== 'false' && owner.activeRunId) throw new Error(t("The current session is running."));
@@ -232,6 +242,10 @@ export class ConversationController {
     this.start(entry, queued); await this.persist();
   }
   private start(entry: ConversationSession, input: ConversationQueuedInput, answer?: ConversationMessage): void {
+    if (entry.activeRunId) return;
+    if (this.options.canRun && !this.options.canRun(entry)) throw new Error(t('This conversation is open or running in another window. You can read it here or start a new conversation.'));
+    const resumeAgent = !!answer && this.project.conversation?.durable?.enabled === true && !!entry.agent?.turns.length
+      && !answer.pendingInput && !answer.submittingInput;
     const parameters = projectParameters(this.project, input.entrypointId);
     const args = projectParamArgs(parameters.fields, input.params, input.states);
     if (this.project.projectType === 'conversation') {
@@ -251,8 +265,10 @@ export class ConversationController {
       entry.messages.push(answer);
     }
     const request: Run = {
+      resumeAgent,
       configurationRunId: this.project.conversation?.durable?.enabled ? `${answer.runId}:configuration:${entry.agentParameters?.configurationRevision ?? 0}` : undefined,
-      project: this.project, conversationId: entry.id, args: answer.args ?? args, runId: answer.runId,
+      project: this.project, conversationId: entry.id, args: resumeAgent && entry.agentParameters && answer.args?.includes('--message')
+        ? [...entry.agentParameters.args, ...answer.args.slice(answer.args.indexOf('--message'))] : answer.args ?? args, runId: answer.runId,
       entrypointId: answer.entrypointId, toolPermissionPolicies: entry.toolPermissionPolicies,
       resolvedInputs: [...(answer.resolvedInputs ?? []), ...(answer.submittingInput ? [answer.submittingInput] : [])],
       resumeAfterRequestId: answer.submittingInput?.requestId,
@@ -263,7 +279,7 @@ export class ConversationController {
     if (!answer.submittingInput) { answer.pendingInput = undefined; }
     entry.updatedAt = Date.now();
     entry.activeRunId = answer.runId;
-    const task: RunTask = { cancelled: false, finished: Promise.resolve() };
+    const task: RunTask = { sessionId: entry.id, cancelled: false, finished: Promise.resolve() };
     this.tasks.set(answer.runId!, task);
     this.changed();
     task.finished = this.execute(entry, answer, request, task).catch((error) => this.options.log(`Workflow persistence: ${String(error)}`));
@@ -384,7 +400,7 @@ export class ConversationController {
       if (!restart) this.rejectAgentWaiters(entry.id, Object.assign(new Error('The agent owner disconnected.'), { code: 'STEAMHARNESS_WORKER_INTERRUPTED' }));
       this.changed();
       try { await this.persist(); }
-      finally { if (this.tasks.get(answer.runId!) === task) this.tasks.delete(answer.runId!); }
+      finally { if (this.tasks.get(answer.runId!) === task) this.tasks.delete(answer.runId!); this.changed(); }
       if (restart) this.recover();
       else if (!this.disposed && !this.removing.has(entry.id) && !answer.pendingInput && !answer.cancelRequested && (!task.cancelled || task.promote)) { this.drain(entry); }
     }
@@ -393,6 +409,13 @@ export class ConversationController {
     const owner = this.sessions.find(session => session.id === (entry.agentOwnerId ?? entry.id));
     if (!owner) throw new Error(t("Conversation no longer exists."));
     return owner;
+  }
+  private agentAnchor(owner: ConversationSession): ConversationMessage | undefined {
+    const anchors = owner.messages.filter(message => message.role === 'assistant' && message.runId && message.args);
+    // A rejected bootstrap has no admitted turn and must never become the
+    // historical input used to reconnect an existing durable owner.
+    return [...anchors].reverse().find(message => owner.agent?.turns.some(turn => turn.entryId !== undefined && turn.requestId.startsWith(`${message.runId}:`)))
+      ?? anchors.find(message => message.status !== 'failed') ?? anchors[0];
   }
   async openAgentConversation(sessionId: string, conversationId: number): Promise<string> {
     const entry = this.sessions.find(session => session.id === sessionId);
@@ -513,7 +536,7 @@ export class ConversationController {
     const timeout = setTimeout(() => reject(Object.assign(new Error('Agent command confirmation timed out. Reconnect to check its result.'), { code: 'AGENT_COMMAND_TIMEOUT' })), 30_000);
     const apply = async (): Promise<AgentSessionReceipt> => {
       if (owner.activeRunId) return this.runtime.agentControl!(owner.activeRunId, prepared, entry.id, attachments);
-      const anchor = [...owner.messages].reverse().find(message => message.role === 'assistant' && message.runId && message.args);
+      const anchor = this.agentAnchor(owner);
       if (!anchor) throw new Error('The agent has no resumable owner.');
       this.start(owner, { id: anchor.id!, text: '', params: {}, attachments: [], createdAt: Date.now() }, anchor);
       return confirmed;
@@ -553,7 +576,7 @@ export class ConversationController {
       await this.retireAgentOwner(owner);
       if (this.disposed || !this.sessions.includes(owner)) return;
       owner.agentParameters!.configurationRevision = this.options.configurationRevision?.();
-      const anchor = [...owner.messages].reverse().find(message => message.role === 'assistant' && message.runId && message.args);
+      const anchor = this.agentAnchor(owner);
       if (anchor) this.start(owner, { id: anchor.id!, text: '', params: {}, attachments: [], createdAt: Date.now() }, anchor);
       await this.persist();
     }).finally(() => { if (this.reloading.get(owner.id) === reload) this.reloading.delete(owner.id); });
@@ -638,7 +661,7 @@ export class ConversationController {
       if (!answer) { if (controlError) throw controlError; return; }
       answer.cancelRequested = true; answer.recovering = false; answer.status = 'aborted'; answer.error = t("Stopped");
       entry.activeRunId = answer.runId;
-      const cancellation: RunTask = { cancelled: true, finished: Promise.resolve() };
+      const cancellation: RunTask = { sessionId: entry.id, cancelled: true, finished: Promise.resolve() };
       if (answer.runId) this.tasks.set(answer.runId, cancellation);
       cancellation.finished = (async () => {
         this.changed();
@@ -651,7 +674,7 @@ export class ConversationController {
         } finally {
           delete entry.activeRunId; this.changed();
           try { await this.persist(); }
-          finally { if (answer.runId && this.tasks.get(answer.runId) === cancellation) this.tasks.delete(answer.runId); }
+          finally { if (answer.runId && this.tasks.get(answer.runId) === cancellation) this.tasks.delete(answer.runId); this.changed(); }
         }
       })();
       await cancellation.finished;

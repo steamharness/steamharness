@@ -60,6 +60,43 @@ it('keeps the owner alive after its inline answer and confirms a lost IPC receip
   await f.finish();
 });
 
+it('reconnects an admitted owner instead of replaying the latest rejected bootstrap', async () => {
+  const f = fixture(); await f.start(); await f.finish();
+  const owner = f.controller.current, original = owner.messages[1];
+  owner.messages.push({ role: 'assistant', id: 'rejected', runId: 'rejected', args: ['--model', 'one', '--message', 'Rejected input'], content: '', status: 'failed', error: 'Conversation 1 is busy' });
+  const control = f.controller.agentCommand(owner.id, { type: 'snapshot', requestId: 'reconnect' });
+  void control.catch(() => undefined);
+  await vi.waitFor(() => expect(f.runs).toHaveLength(2));
+  expect(vi.mocked(f.runtime.run).mock.calls[1][0]).toMatchObject({ resumeAgent: true, runId: original.runId, args: ['--model', 'one', '--message', 'First'] });
+  f.emit({ ...f.snapshot(), revision: 2, receipts: [{ requestId: 'reconnect', conversationId: 1, status: 'accepted' }] });
+  await control; await f.finish();
+});
+
+it('changes settings by reattaching the owner and then submitting the new message once', async () => {
+  const f = fixture(); await f.start();
+  const owner = f.controller.current, original = owner.messages[1];
+  const sending = f.controller.send({ text: 'Next message', params: { model: 'two' }, attachments: [] }, owner, true, 'next-model');
+  await vi.waitFor(() => expect(f.runs).toHaveLength(2));
+  expect(vi.mocked(f.runtime.run).mock.calls[1][0]).toMatchObject({ resumeAgent: true, runId: original.runId, args: ['--model', 'two', '--message', 'First'],
+    agentCommands: [{ command: { type: 'submit', prompt: 'Next message', requestId: 'next-model' }, scopeId: owner.id, attachments: [] }] });
+  f.emit({ ...f.snapshot(), revision: 2, receipts: [{ requestId: 'next-model', conversationId: 1, status: 'accepted' }] });
+  await sending;
+  expect(f.runtime.agentControl).not.toHaveBeenCalled();
+  expect(owner.messages).toHaveLength(2);
+  await f.finish();
+});
+
+it('starts a newly enabled Plan workflow with the new input and its approval lifecycle', async () => {
+  const f = fixture(); await f.start();
+  f.controller.project.fields.push({ name: 'plan', flag: '--plan', type: 'string' });
+  await f.controller.send({ text: 'Plan the new task', params: { model: 'two', plan: 'true' }, attachments: [] });
+  await vi.waitFor(() => expect(f.runs).toHaveLength(2));
+  expect(vi.mocked(f.runtime.run).mock.calls[1][0]).toMatchObject({ resumeAgent: false, args: ['--model', 'two', '--plan', 'true', '--message', 'Plan the new task'] });
+  expect(f.controller.current.messages.at(-2)?.content).toBe('Plan the new task');
+  expect(f.runtime.agentControl).not.toHaveBeenCalled();
+  await f.finish();
+});
+
 it('keeps per-turn usage authoritative over owner totals, other forks and final workflow reports', async () => {
   const f = fixture(); await f.start();
   const usage = { inputTokens: 3642, outputTokens: 113, totalTokens: 3755, reasoningTokens: 0, cachedInputTokens: 0, cacheCreationTokens: 0, calls: 1 };
@@ -196,10 +233,12 @@ it('rebuilds idle workflow settings and refuses to change them while tasks run',
   f.emit(busy);
   await expect(f.controller.send({ text: 'New model', params: { model: 'two' }, attachments: [] })).rejects.toThrow(/active tasks|活动任务/);
   f.emit({ ...f.snapshot(), revision: 3 });
-  await f.controller.send({ text: 'New model', params: { model: 'two' }, attachments: [] });
+  const sending = f.controller.send({ text: 'New model', params: { model: 'two' }, attachments: [] }, f.controller.current, false, 'new-model');
   await vi.waitFor(() => expect(f.runs).toHaveLength(2));
+  f.emit({ ...f.snapshot(), revision: 4, receipts: [{ requestId: 'new-model', conversationId: 1, status: 'accepted' }] });
+  await sending;
   expect(f.runtime.cancel).toHaveBeenCalledOnce();
-  expect(vi.mocked(f.runtime.run).mock.calls[1][0].args).toEqual(['--model', 'two', '--message', 'New model']);
+  expect(vi.mocked(f.runtime.run).mock.calls[1][0].args).toEqual(['--model', 'two', '--message', 'First']);
   expect(f.controller.current.messages[1].status).toBe('success');
   await f.finish();
 });

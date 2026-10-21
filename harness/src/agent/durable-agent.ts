@@ -3,7 +3,7 @@ import { BACKGROUND_CONTEXT, awaitWithContext, type Context } from "@earendil-wo
 import { copyJson, type JsonValue } from "@earendil-works/chord";
 import { applyImmutable } from "@earendil-works/chord/delta";
 import {
-  Harness, MemoryStorage, ToolTask, GenerationTask, CompactionTask, LiveDoc, createRegistry, defineDocFamily,
+  Harness, MemoryStorage, ToolTask, GenerationTask, CompactionTask, LiveDoc, ConversationBusy, createRegistry, defineDocFamily,
   defineExtension, hook, section, watchEvents,
   type AgentEvent as DurableEvent, type AgentEventStream, type Conversation,
   type EntryRecord, type JsonObject, type Storage, type ToolRegistration, type HookApi,
@@ -55,6 +55,8 @@ export interface DurableAgentState {
 
 export interface DurableAgentOptions {
   sessionLease?: Promise<void>;
+  /** Reattach the host and scheduler without submitting the workflow's bootstrap prompt. */
+  resumeSession?: boolean;
   workdir?: string;
   session?: AgentSessionOptions;
   initialState: DurableAgentState;
@@ -272,6 +274,12 @@ export class DurableAgent {
     catch (error) {
       this.prompting = false;
       this.commandReady.reject(error);
+      // Admission rejection does not belong to the running turn. Preserve its
+      // checkpoints and keep this request retryable after the current work ends.
+      if (error instanceof ConversationBusy) {
+        this.state.errorMessage = error.message;
+        throw error;
+      }
       try { await this.settleFailure(error); }
       catch (cleanup) { throw new AggregateError([error, cleanup], error instanceof Error ? error.message : String(error)); }
       throw error;
@@ -491,7 +499,8 @@ export class DurableAgent {
     else await root.configure(change, context);
     if (this.session) await this.session.start(this.state.systemPrompt);
     const view = await root.context(context);
-    const run = await root.commit(async tx => {
+    const resuming = this.options.resumeSession === true && this.session !== undefined;
+    const run = resuming ? { cutoff: Math.max(0, ...view.entries.map(entry => entry.id)), end: 0, usage: {} as JsonObject } : await root.commit(async tx => {
       const record = await tx.doc(RunDoc, root.id, requestId, null);
       if (!record.initialized) {
         record.cutoff = Math.max(0, ...view.entries.map(entry => entry.id));
@@ -518,11 +527,19 @@ export class DurableAgent {
       : prompt.find(message => message.role === "user")?.content ?? "";
     try {
       // requestId remains the same after a worker crash or a lost submit acknowledgement.
-      const submission = await root.submit({ type: "input", content, requestId, whenBusy: "reject",
+      const submission = resuming ? undefined : await root.submit({ type: "input", content, requestId, whenBusy: "reject",
         ...(this.session ? { entry: { kind: "project.input", data: { requestId, mode: "reject" } } } : {}) }, context);
       this.commandReady.resolve();
       harness.resume();
-      const settled = await Promise.race([submission.wait(context), pause, fatal]);
+      if (resuming) {
+        await this.session!.emit();
+        if (this.options.sessionLease) await Promise.race([this.options.sessionLease, pause, fatal]);
+        await Promise.race([this.session!.drain(), pause, fatal]);
+        await this.flushUsage();
+        if (parked) { await this.refresh(); await this.close(); }
+        return;
+      }
+      const settled = submission ? await Promise.race([submission.wait(context), pause, fatal]) : undefined;
       // A stopped watch drops queued frames. Reconcile the committed history
       // after its current delivery ends, including for an immediately ready model.
       await this.watch.stop(); this.watch = undefined;
@@ -537,7 +554,7 @@ export class DurableAgent {
       } else if (settled?.status === "unanswered") {
         this.state.errorMessage = typeof settled.detail === "string" ? settled.detail : settled.reason;
       }
-      if (!parked) {
+      if (!parked && !resuming) {
         if (!run.end) await root.commit(async tx => { (await tx.doc(RunDoc, root.id, requestId, null)).end = Math.max(0, ...final.entries.map(entry => entry.id)); }, context);
         await this.refresh();
         const failure = await root.commit(async tx => (await tx.doc(RunDoc, root.id, requestId, null)).failure, context);

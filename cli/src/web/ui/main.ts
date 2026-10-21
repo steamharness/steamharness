@@ -60,7 +60,7 @@ function initialize(): void {
 
   mountProjectConfigurations(vscode);
 
-  interface State { project: Project; sessions: ConversationSession[]; activeId: string; running: boolean; parameterValues?: Record<string, ParamValues>; account?: AccountState; authenticationRevision?: number; parameterRevision?: number }
+  interface State { project: Project; sessions: ConversationSession[]; activeId: string; running: boolean; conversationAccess?: { readOnly: boolean }; parameterValues?: Record<string, ParamValues>; account?: AccountState; authenticationRevision?: number; parameterRevision?: number }
   interface FieldView {
     field: Field; root: HTMLDivElement;
     controls: (HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)[];
@@ -153,6 +153,11 @@ function initialize(): void {
     navigation: state ? (navigationNeeded || draftUpdates.size) ? { projectUri: state.project.uri, activeId: preferredSessionId ?? state.activeId, updates: [...draftUpdates.values()] } : undefined : saved.navigation }); };
   const post = (message: Record<string, unknown>): void => { if (state) { vscode.postMessage({ projectUri: state.project.uri, sessionId: state.activeId, ...message }); } };
   const currentSession = () => state?.sessions.find((session) => session.id === state?.activeId);
+  const readOnly = () => state?.conversationAccess?.readOnly === true;
+  const accessNotice = document.createElement('div');
+  accessNotice.className = 'conversation-access'; accessNotice.setAttribute('role', 'status'); accessNotice.hidden = true;
+  accessNotice.textContent = t('This conversation is open or running in another window. You can read it here or start a new conversation.');
+  document.querySelector('main')!.prepend(accessNotice);
   const queueView = new ConversationQueue(document.querySelector<HTMLElement>('#input-queue')!, {
     action: action => { void vscode.postMessage(action); },
     edit: id => { saveDraft(); post({ type: 'queue-edit', id }); },
@@ -167,7 +172,7 @@ function initialize(): void {
   const hideComposer = (): boolean => state?.project.projectType === 'conversation' && state.project.conversation?.userInput?.hideComposer !== false
     && !!currentSession()?.messages.some(message => message.pendingInput);
   const pendingSend = (): boolean => !!state && submissions.busy(state.project.uri, state.activeId);
-  const busy = (): boolean => submitting || pendingSend() || hideComposer() || (!!state?.running || !!currentSession()?.messages.some((message) => message.pendingInput)) && !canQueue();
+  const busy = (): boolean => readOnly() || submitting || pendingSend() || hideComposer() || (!!state?.running || !!currentSession()?.messages.some((message) => message.pendingInput)) && !canQueue();
   const navigationReady = (): boolean => !!state && !navigationNeeded && !navigationRequest && !localSessions.has(state.activeId) && state.activeId === serverSessionId;
   const emptyConnection = connectionFeedback();
   transcript.append(emptyConnection);
@@ -435,17 +440,19 @@ function initialize(): void {
     sendButton.title = sendButton.ariaLabel = pendingStop ? t("Stopping...") : stop ? t("Stop") : editingQueueId ? t("Save queued message") : conversation ? t("Send") : t("Run");
     sendButton.setAttribute('aria-busy', String(pendingStop));
     sendButton.classList.toggle('stop', stop);
-    sendButton.disabled = pendingStop || !stop && (!connectionAvailable || !conversation && !navigationReady() || submitting || pendingSend() || !conversation && resolving || uploading > 0 || conversation && !hasInput);
+    sendButton.disabled = readOnly() || pendingStop || !stop && (!connectionAvailable || !conversation && !navigationReady() || submitting || pendingSend() || !conversation && resolving || uploading > 0 || conversation && !hasInput);
     stopFeedback.hidden = !stopping;
     stopFeedback.className = stopping?.phase === 'failed' ? 'error' : 'stop-feedback';
     stopFeedback.setAttribute('role', stopping?.phase === 'failed' ? 'alert' : 'status');
     stopFeedback.textContent = pendingStop ? t("Stopping...") : stopping?.phase === 'accepted' ? t("Stop request accepted.") : stopping?.error ?? '';
-    textarea.disabled = busy() && !pendingSend();
+    accessNotice.hidden = !readOnly();
+    textarea.disabled = readOnly() || busy() && !pendingSend();
     entrypoint.disabled = busy() || resolving;
     document.querySelector<HTMLButtonElement>('#new')!.disabled = false;
     const waiting = currentSession()?.messages.some((message) => message.pendingInput);
     app.dataset.runState = state.running ? 'running' : waiting ? 'waiting' : submitting || pendingSend() ? 'submitting' : 'idle';
     document.querySelector<HTMLElement>('#tools')!.hidden = !conversation && !currentParameters().tools?.length;
+    document.querySelector<HTMLButtonElement>('#tools')!.disabled = readOnly();
     // AI usage is a private deployment surface: it only appears when the host
     // injected a system-AI connection (internal Studio), never in the plain
     // open-source CLI web.
@@ -727,7 +734,7 @@ function initialize(): void {
       if (retry) {
         const submission = submissions.forMessage(view.message);
         retry.hidden = interrupted || !!submission && submission.phase !== 'failed';
-        retry.disabled = !!state?.running || pendingSend() || !!view.message.pendingInput || !!retryingMessage || !submission && !navigationReady();
+        retry.disabled = readOnly() || !!state?.running || pendingSend() || !!view.message.pendingInput || !!retryingMessage || !submission && !navigationReady();
       }
     }
   }
@@ -755,7 +762,7 @@ function initialize(): void {
     const session = currentSession();
     if (!state || !session) return;
     queueView.update({ projectUri: state.project.uri, session, sessions: state.sessions, durable: state.project.conversation?.durable?.enabled === true,
-      ready: connectionAvailable && navigationReady(),
+      ready: !readOnly() && connectionAvailable && navigationReady(),
       pendingIds: new Set(submissions.list().filter(entry => entry.projectUri === state!.project.uri).map(entry => entry.input.id)) });
   }
 
@@ -880,9 +887,9 @@ function initialize(): void {
         stop: () => post({ type: 'stop' }),
         files: (name) => post({ type: 'attach', messageId: message.id, requestId: message.pendingInput!.requestId, paramName: name }),
       }); view.promptRoot.append(view.prompt.root);
-      if (message.status === 'running') { view.prompt.setBusy(true); }
+      if (readOnly() || message.status === 'running') { view.prompt.setBusy(true); }
     } else if (!message.pendingInput) { view.prompt?.root.remove(); view.prompt = undefined; }
-    else { view.prompt?.setBusy(message.status === 'running' || !!message.submittingInput, message.error ?? ''); }
+    else { view.prompt?.setBusy(readOnly() || message.status === 'running' || !!message.submittingInput, message.error ?? ''); }
   }
 
   function updateLatest(): void { latest.hidden = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 100; }

@@ -11,6 +11,39 @@ import type { AgentSessionSnapshot } from 'steamharness/agent';
 import { createWebRuntime } from '../web/runtime';
 import { resolveHarnessRoot } from './harness-source';
 
+it('reports the original workflow failure to commands waiting for session startup', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'workflow-agent-startup-'));
+  const configurationKey = createHash('sha256').update(await realpath(directory)).digest('hex');
+  const configurationRoot = path.join(os.homedir(), '.steamharness', 'configurations');
+  const runtime = createWebRuntime(directory, path.join(directory, 'data'), () => undefined);
+  try {
+    await mkdir(path.join(directory, 'node_modules'));
+    await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: crypto.randomUUID(), name: 'startup-failure', version: '1.0.0', steamHarness: { projectType: 'conversation', projectInfo: { dataStorage: { mode: 'local' } } } }));
+    await writeFile(path.join(directory, 'index.ts'), `
+      export const executor = steamharness.defineExecutor({
+        projectType: 'conversation',
+        workflow: steamharness.createAgentConversationProject({
+          projectName: 'startup', outputItemId: 'answer', provider: 'openai', model: 'fixture',
+          apiKey: 'offline-fixture', baseUrl: 'http://127.0.0.1:1/v1', tools: [], session: {},
+          async createTools() { throw new Error('Fixture tool initialization failed'); },
+        }),
+        conversation: { durable: { enabled: true }, recovery: { enabled: true } }, params: [],
+        createInput({ args }) { return steamharness.createAgentProjectInput(args); },
+      });
+    `);
+    const inspected = await runtime.inspect([directory]); expect(inspected.errors).toEqual([]);
+    const events: Record<string, any>[] = [];
+    const report = await runtime.run({ project: { ...inspected.projects[0], uri: '' }, conversationId: 'failed-session', runId: 'failed-run', args: ['--message', 'First'],
+      agentCommands: [{ scopeId: 'failed-session', command: { type: 'snapshot', requestId: 'waiting-snapshot' } }] }, event => events.push(event));
+    expect(report.status).toBe('failed');
+    expect(events.find(event => event.type === 'agent_command_failed')).toMatchObject({ requestId: 'waiting-snapshot', message: expect.stringContaining('Fixture tool initialization failed') });
+  } finally {
+    runtime.dispose(); await rm(directory, { recursive: true, force: true });
+    await Promise.all([rm(path.join(configurationRoot, `${configurationKey}.json`), { force: true }), rm(path.join(configurationRoot, `${configurationKey}.json.lock.sqlite`), { force: true }), rm(path.join(configurationRoot, 'snapshots', configurationKey), { recursive: true, force: true })]);
+  }
+}, 15_000);
+
 it('controls the real worker over IPC and replays pending commands after reopening SQLite', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'workflow-agent-ipc-'));
   const configurationKey = createHash('sha256').update(await realpath(directory)).digest('hex');
@@ -107,7 +140,7 @@ it('controls the real worker over IPC and replays pending commands after reopeni
     await configurations.dispatch({action:'save',revision:currentConfiguration.revision,id:currentConfiguration.activeConfigurationId,values:{label:'second'}});
     snapshot = undefined;
     const plan = { type: 'plan' as const, requestId: 'recovered-plan', expectedVersion: 0, items: [{ id: 'keep', text: 'Survive slow tool initialization', status: 'pending' as const }] };
-    run = runtime.run({ ...request, configurationRunId:'ipc-config-v2', agentCommands: [{ scopeId: 'ipc-session', command: submit }, { scopeId: 'ipc-session', command: plan }, { scopeId: 'ipc-session', command: task }] }, events).catch(error => error);
+    run = runtime.run({ ...request, resumeAgent: true, args: ['--message', 'Reconnect must not submit this prompt'], configurationRunId:'ipc-config-v2', agentCommands: [{ scopeId: 'ipc-session', command: submit }, { scopeId: 'ipc-session', command: plan }, { scopeId: 'ipc-session', command: task }] }, events).catch(error => error);
     await expect.poll(() => snapshot?.turns.find(turn => turn.requestId === 'ipc-second')?.status, { timeout: 15_000 }).toBe('done');
     await expect.poll(() => snapshot?.plan.version, { timeout: 2000 }).toBe(1);
     expect(snapshot!.plan.items).toEqual(plan.items);

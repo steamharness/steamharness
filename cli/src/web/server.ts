@@ -26,6 +26,8 @@ import type { WebHostConfiguration } from './host-config';
 import { inspectWebProject } from './assistant-project';
 import { ResourcePreviews } from './resource-preview';
 import { createLocalActivityWriter, summarizeLocalRuns } from './local-analysis';
+import { ConversationOwnership } from './conversation-ownership';
+import { ConversationHistory } from './conversation-history';
 
 type Message = Record<string, any>;
 export interface WebOptions { projectDir: string; port?: number; dataDir?: string; theme?: 'auto' | 'light' | 'dark'; runtime?: Runtime; host?: WebHostConfiguration }
@@ -70,6 +72,8 @@ export async function startWebServer(options: WebOptions) {
   let saved: { sessions?: ConversationSession[]; activeId?: string; selectionVersion?: number } = {};
   if (project.projectType !== 'kanban') { try { saved = JSON.parse(await readFile(historyPath, 'utf8')); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') { runtime.dispose(); throw new Error(`Cannot read conversation history: ${String(error)}`); } } }
   let pendingSave = Promise.resolve();
+  const ownership = project.projectType === 'conversation' ? new ConversationOwnership(path.join(storageDir, key, 'conversation-owners'), id => conversationController?.sessions.find(session => session.id === id)?.agentOwnerId ?? id) : undefined;
+  const conversationHistory = ownership ? new ConversationHistory(historyPath, saved, ownership) : undefined;
   let broadcastTimer: ReturnType<typeof setTimeout> | undefined;
   let stateRevision = 0;
   const serverInstanceId = randomBytes(16).toString('hex');
@@ -109,7 +113,8 @@ export async function startWebServer(options: WebOptions) {
     account: { ...account, user: account.user && { userId: account.user.userId, email: account.user.email, displayName: account.user.displayName, avatarUrl: account.user.avatarUrl } },
     authenticationRevision: authRevision, resourceRevision: resources.revision }, [...sensitiveTokens], false));
     // Configuration values are user-owned JSON, including explicitly entered credentials.
-    return {...result, configurations: configurations.state};
+    return {...result, configurations: configurations.state,
+      ...(ownership && selected && clientId ? { conversationAccess: ownership.select(clientId, selected.id) } : {}) };
   };
   const writeFrame = (client: ServerResponse, data: string) => {
     if (blockedClients.has(client)) { pendingFrames.set(client, data); return; }
@@ -124,7 +129,12 @@ export async function startWebServer(options: WebOptions) {
   };
   const broadcast = () => {
     if (broadcastTimer) { return; }
-    broadcastTimer = setTimeout(() => { broadcastTimer = undefined; activity?.changed(); for (const client of clients) { writeFrame(client, `data: ${JSON.stringify(state(clientIds.get(client)))}\n\n`); } }, 30);
+    broadcastTimer = setTimeout(() => {
+      broadcastTimer = undefined;
+      if (ownership && conversationController) ownership.update(conversationController.executingIds, new Set(conversationController.sessions.filter(sessionRunning).map(session => session.id)));
+      activity?.changed();
+      for (const client of clients) writeFrame(client, `data: ${JSON.stringify(state(clientIds.get(client)))}\n\n`);
+    }, 30);
   };
   let conversationController: ConversationController | undefined;
   let kanbanController: KanbanController | undefined;
@@ -142,10 +152,15 @@ export async function startWebServer(options: WebOptions) {
   await configurations.initialize();
   configurationSignature=JSON.stringify(configurations.state);
   conversationController = isProject || isKanban ? undefined : new ConversationController(project, runtime, saved, {
+    canRun: session => ownership?.execute(session.id) ?? true,
     configurationRevision: () => configurations.state.revision,
     changed: broadcast,
     log: message => process.stderr.write(`${message}\n`),
     save: (sessions, activeId) => {
+      if (conversationHistory) {
+        pendingSave = pendingSave.catch(() => undefined).then(() => conversationHistory.save(sessions, activeId));
+        return pendingSave;
+      }
       const content = JSON.stringify({ sessions, activeId, selectionVersion: 1 });
       pendingSave = pendingSave.catch(() => undefined).then(async () => {
         await mkdir(path.dirname(historyPath), { recursive: true });
@@ -156,6 +171,24 @@ export async function startWebServer(options: WebOptions) {
     },
   });
   const controller = conversationController!;
+  const refreshHistory = async () => {
+    const acquired = ownership?.takeAcquired() ?? new Set<string>();
+    for (const id of controller?.executingIds ?? []) acquired.delete(id);
+    const history = await conversationHistory?.refresh(acquired);
+    if (!history?.sessions) return;
+    const local = new Map(controller.sessions.map(session => [session.id, session]));
+    const merged = history.sessions.map(session => {
+      if (ownership!.owns(session.id) && !acquired.has(ownership!.scope(session.id)) && local.has(session.id)) return local.get(session.id)!;
+      delete session.activeRunId;
+      for (const message of session.messages) if (message.status === 'running' && message.runId && message.args && project.conversation?.recovery?.enabled) message.recovering = true;
+      return session;
+    });
+    for (const session of controller.sessions) if (!merged.some(item => item.id === session.id) && ownership!.owns(session.id)) merged.push(session);
+    if (!merged.length) return;
+    controller.sessions.splice(0, controller.sessions.length, ...merged);
+    if (!merged.some(session => session.id === controller.activeId)) controller.activeId = merged[0].id;
+    broadcast();
+  };
   const runsPath = path.join(storageDir, key, 'runs.json');
   let workspace: WorkspaceContract | undefined;
   if (isProject) {
@@ -351,6 +384,7 @@ export async function startWebServer(options: WebOptions) {
     if (kanbanController && !['ready', 'login', 'verify', 'logout', 'usage'].includes(message.type)) { return kanbanController.handle(message); }
     if (projectActions && !['ready', 'login', 'verify', 'logout', 'usage'].includes(message.type)) { return publicValue(await projectActions.handle(message)); }
     if (message.type === 'navigate') {
+      await refreshHistory();
       if (!conversationController || typeof message.id !== 'string' || !Array.isArray(message.updates) || message.updates.length > 1000
         || typeof message.clientId !== 'string' || !sessionIdPattern.test(message.clientId) || !Number.isSafeInteger(message.requestId) || message.requestId < 1) { throw new Error('Invalid conversation navigation.'); }
       const reply = () => [state(message.clientId), { type: 'navigated', requestId: message.requestId, activeId: selections.get(message.clientId) ?? conversationController.activeId }];
@@ -366,14 +400,30 @@ export async function startWebServer(options: WebOptions) {
         updates.push({ id: update.id, create: update.create === true, draft: { text: update.draft.text, editingQueueId: update.draft.editingQueueId, attachments: await readAttachments(update.draft.attachments, update.id) } });
       }
       if (navigationSequences.get(message.clientId) === message.requestId) {
-        await conversationController.navigate(message.id, updates);
+        const writable = updates.filter(update => {
+          const session = controller.sessions.find(session => session.id === update.id);
+          try { ownership?.assertWritable(update.id, message.clientId); return true; }
+          catch (error) { if (session && JSON.stringify(update.draft) === JSON.stringify(session.draft)) return false; throw error; }
+        });
+        await refreshHistory();
+        await conversationController.navigate(message.id, writable);
         rememberSelection(message.clientId, message.id);
       }
       return reply();
     }
+    await refreshHistory();
     const replies: Message[] = [];
-    const current = (message.sessionId ? conversationController?.sessions.find(entry => entry.id === message.sessionId) : conversationController?.current) as ConversationSession;
+    let current = (message.sessionId ? conversationController?.sessions.find(entry => entry.id === message.sessionId) : conversationController?.current) as ConversationSession;
     if (!isKanban && !isProject && !current) { throw new Error(t("Conversation no longer exists.")); }
+    const readOnly = ['ready', 'select', 'new', 'agent-open', 'trace', 'logs', 'export-message', 'usage', 'login', 'verify', 'logout'];
+    if (ownership && !readOnly.includes(message.type) && !(message.type === 'session-action' && message.action === 'export')) {
+      const target = message.type === 'session-action' ? controller.sessions.find(session => session.id === message.id) : current;
+      if (target) {
+        ownership.assertWritable(target.id, message.clientId);
+        await refreshHistory();
+        current = controller.sessions.find(session => session.id === current.id)!;
+      }
+    }
     const entrypointId = typeof message.entrypointId === 'string' && message.entrypointId ? message.entrypointId : project.defaultEntrypoint;
     if (entrypointId && !project.entrypoints.some(entry => entry.id === entrypointId)) { throw new Error('Unknown entrypoint.'); }
     switch (message.type) {
@@ -475,7 +525,8 @@ export async function startWebServer(options: WebOptions) {
         break;
       }
       case 'new':
-        await controller.updateDraft(current.id, String(message.text ?? ''), await readAttachments(message.attachments ?? [], current.id)); await controller.create();
+        if (!ownership || !message.clientId || !ownership.select(message.clientId, current.id).readOnly) await controller.updateDraft(current.id, String(message.text ?? ''), await readAttachments(message.attachments ?? [], current.id));
+        await controller.create(true);
         if (message.clientId) rememberSelection(message.clientId, controller.activeId);
         break;
       case 'select':
@@ -594,12 +645,16 @@ export async function startWebServer(options: WebOptions) {
         if (url.pathname === '/api/session' && request.method === 'GET') { json(response, 200, { connected: true }); return; }
         if (url.pathname === '/api/resource-state' && request.method === 'GET') { json(response, 200, { type: 'state', authenticationRevision: authRevision, resourceRevision: resources.revision }); return; }
         if (url.pathname === '/api/events' && request.method === 'GET') {
+          await refreshHistory();
           const disconnectKanban = kanbanController?.methods.connect(url.searchParams.get('clientId') ?? '');
           const clientId = url.searchParams.get('clientId') ?? '';
           clientIds.set(response, clientId);
           response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' }); writeFrame(response, `data: ${JSON.stringify(state(clientId))}\n\n`); clients.add(response);
           const heartbeat = setInterval(() => { if (!blockedClients.has(response)) writeFrame(response, 'event: heartbeat\ndata: {}\n\n'); }, 20_000);
-          response.once('close', () => { clearInterval(heartbeat); clients.delete(response); blockedClients.delete(response); pendingFrames.delete(response); disconnectKanban?.(); }); return;
+          response.once('close', () => {
+            clearInterval(heartbeat); clients.delete(response); blockedClients.delete(response); pendingFrames.delete(response); disconnectKanban?.();
+            if (clientId && ![...clients].some(client => clientIds.get(client) === clientId)) ownership?.disconnect(clientId, broadcast);
+          }); return;
         }
         if (url.pathname === '/api/message' && request.method === 'POST') {
           const message = await readBody(request);
@@ -635,7 +690,7 @@ export async function startWebServer(options: WebOptions) {
     })().catch(error => { if (!response.headersSent) { json(response, 400, { message: String(redactProjectData((error as Error).message, [...sensitiveTokens])) }); } else { response.end(); } });
   });
   try { await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(options.port ?? 0, '127.0.0.1', () => { server.off('error', reject); resolve(); }); }); }
-  catch (error) { configurations.close(); resources.close(); clearInterval(authPoll); conversationController?.dispose(); projectController?.dispose(); await kanbanController?.close(); runtime.dispose(); throw error; }
+  catch (error) { ownership?.close(); configurations.close(); resources.close(); clearInterval(authPoll); conversationController?.dispose(); projectController?.dispose(); await kanbanController?.close(); runtime.dispose(); throw error; }
   origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   activity = createLocalActivityWriter(path.dirname(historyPath), project, () => ({
     runs: summarizeLocalRuns(projectController?.runs, conversationController?.sessions),
@@ -644,6 +699,20 @@ export async function startWebServer(options: WebOptions) {
   }), message => process.stderr.write(`${message}\n`));
   await activity.publish().catch(error => process.stderr.write(`Local activity: ${String(error)}\n`));
   conversationController?.recover();
+  let refreshingHistory = false;
+  let accessSignature = '';
+  const historyPoll = conversationHistory ? setInterval(() => {
+    if (refreshingHistory || !clients.size) return;
+    refreshingHistory = true;
+    void refreshHistory().then(() => {
+      const signature = JSON.stringify([...clients].map(client => {
+        const id = clientIds.get(client) ?? '', selected = selections.get(id) ?? controller.activeId;
+        return [id, selected, ownership!.select(id, selected)];
+      }));
+      if (signature !== accessSignature) { accessSignature = signature; broadcast(); }
+    }).catch(error => process.stderr.write(`Conversation history: ${String(error)}\n`)).finally(() => { refreshingHistory = false; });
+  }, 1_000) : undefined;
+  historyPoll?.unref();
   let closing: Promise<void> | undefined;
   return {
     origin, url: `${origin}/#session=${capability}`, project, configurations, controller, projectController, kanbanController,
@@ -659,6 +728,7 @@ export async function startWebServer(options: WebOptions) {
     },
     close: () => closing ??= (async () => {
       authEpoch++; authCheck?.abort();
+      clearInterval(historyPoll);
       configurations.close(); resources.close(); clearInterval(authPoll); if (broadcastTimer) { clearTimeout(broadcastTimer); } login?.kill(); conversationController?.dispose(); projectController?.dispose(); runtime.dispose();
       await kanbanController?.close();
       for (const client of clients) { client.end(); }
@@ -666,7 +736,7 @@ export async function startWebServer(options: WebOptions) {
       try {
         await conversationController?.idle(); await conversationController?.persist();
         await projectController?.idle(); await projectController?.persist(); await pendingSave;
-      } finally { await activity?.close(); }
+      } finally { ownership?.close(); await activity?.close(); }
     })(),
   };
 }

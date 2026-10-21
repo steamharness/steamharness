@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed busy admission rejection poisoning durable Agent failures or aborting existing work. Hosts can reconnect with `{ resume: true }` to restore controls and scheduling without resubmitting the initial message.
+
 - Fixed inherited child locks under filtered JSON parents. Unverified source upgrades block configuration reads and writes while preserving personal values and waiting-run snapshots.
 
 - Added versioned configuration sharing, field and JSON Pointer permissions, verified offline template and attachment caches, and allowed personal overlays while preserving run snapshots and upgrade drafts.
