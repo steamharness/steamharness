@@ -234,6 +234,28 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       assert.ok(rect.y <= 1 && Math.abs(rect.height - 960) <= 1, JSON.stringify(rect));
     }
     check(`${language}: Steam fills the window with project results and tools and removes the title and status bars`);
+    const toolsWidth = async () => (await partState()).auxiliarybar.width;
+    const assertToolsWidth = expected => until(toolsWidth, width => Math.abs(width - expected) < 2, `Expected tools width ${expected}`);
+    const resizeTools = async width => {
+      const bounds = await page.locator('.part.auxiliarybar').boundingBox();
+      const sashes = page.locator('.monaco-workbench > .monaco-grid-view .monaco-sash.vertical');
+      const index = await sashes.evaluateAll((elements, bounds) => elements.findIndex(element => {
+        const rect = element.getBoundingClientRect();
+        return !element.classList.contains('disabled') && rect.height > bounds.height / 2 && Math.abs(rect.x + rect.width / 2 - bounds.x) < 4;
+      }), bounds);
+      assert.ok(index >= 0, 'The outer tools divider must be draggable');
+      const sash = await sashes.nth(index).boundingBox();
+      await page.mouse.move(sash.x + sash.width / 2, sash.y + sash.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(bounds.x + bounds.width - width, sash.y + sash.height / 2, { steps: 12 });
+      await page.mouse.up();
+      return assertToolsWidth(width);
+    };
+    for (const width of [1440, 1200, 1800, 1440]) {
+      await page.setViewportSize({ width, height: 960 });
+      await assertToolsWidth(Math.round(width / 3));
+    }
+    check(`${language}: tools initially use one third of the window and follow window resizing before a manual adjustment`);
     assert.equal(await page.locator('.studio-steam-empty-tabs, .studio-steam-tools-action').count(), 0);
     const cleanHeader = await page.locator('.part.auxiliarybar > .title').evaluate(title => {
       const add = title.querySelector('.studio-steam-add-tab'), list = title.querySelector('.studio-steam-tab-list');
@@ -290,6 +312,52 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     await frame.locator('dialog[open]').waitFor({ state: 'detached' });
     await assertDragRegions();
     check(`${language}: project header drag regions exclude controls and text, follow menu layout and suspend for dialogs`);
+    if (process.env.STEAMHARNESS_UI_FOCUS === 'tools-width') {
+      const toggleWidth = async expected => {
+        await toggleTools.click(); await until(partState, state => !state.auxiliarybar.visible, 'Tools did not collapse');
+        await toggleTools.click(); await until(partState, state => state.auxiliarybar.visible, 'Tools did not reopen');
+        await assertToolsWidth(expected);
+      };
+      await resizeTools(600); await toggleWidth(600);
+      await page.setViewportSize({ width: 800, height: 960 }); await assertToolsWidth(480);
+      await toggleTools.click(); await until(partState, state => !state.auxiliarybar.visible, 'Narrow tools did not collapse');
+      await page.setViewportSize({ width: 1440, height: 960 });
+      await toggleTools.click(); await assertToolsWidth(600);
+      check(`${language}: the actual outer divider saves its width across hiding and temporary window constraints`);
+      for (const tool of ['kv', 'info', 'terminal']) {
+        await command('studio.internalOpenSteamTool', tool); await assertToolsWidth(600);
+      }
+      const widthFile = path.join(project, 'width-check.txt'); await writeFile(widthFile, 'Tools width regression.');
+      await call({ action: 'file', path: widthFile, column: 1 }); await assertToolsWidth(600);
+      assert.equal(frame.isDetached(), false);
+      await command('studio.enterIdeMode');
+      const restored = await partState();
+      for (const part of Object.keys(before)) {
+        assert.equal(restored[part].visible, before[part].visible, part);
+        if (before[part].visible) { assert.ok(Math.abs(restored[part].width - before[part].width) < 2, part); }
+      }
+      await command('studio.enterSteamMode'); await assertToolsWidth(600);
+      await toggleTools.click(); await until(partState, state => !state.auxiliarybar.visible, 'Tools did not collapse before leaving Steam');
+      await command('studio.enterIdeMode'); await command('studio.enterSteamMode'); await assertToolsWidth(600);
+      check(`${language}: opening tools and files or switching modes preserves both the Steam preference and the separate IDE layout`);
+      for (const [preferred, narrow, hidden] of [[630, false, false], [700, true, true]]) {
+        await resizeTools(preferred);
+        if (narrow) { await page.setViewportSize({ width: 800, height: 960 }); await assertToolsWidth(480); }
+        if (hidden) { await toggleTools.click(); await until(partState, state => !state.auxiliarybar.visible, 'Tools did not hide before reload'); }
+        await rm(readyFile, { force: true });
+        const reloaded = page.waitForEvent('domcontentloaded', { timeout: 60_000 });
+        await call({ action: 'reload' }); await reloaded;
+        bridge = await until(readReady, value => value.port || value.error, 'Extension restart timed out', 120_000);
+        assert.equal(bridge.error, undefined);
+        await until(() => steam.getAttribute('aria-pressed').catch(() => undefined), value => value === 'true', 'Steam was not restored', 120_000);
+        await command('studio.openSteamTools'); await assertToolsWidth(narrow ? 480 : preferred);
+        if (narrow) { await page.setViewportSize({ width: 1440, height: 960 }); await assertToolsWidth(preferred); }
+        await toggleWidth(preferred);
+      }
+      await page.screenshot({ path: path.join(proof, `${language}-tools-width.png`) });
+      check(`${language}: reload directly from Steam restores the last dragged width even with tools hidden in a narrow window`);
+      continue;
+    }
     const assertDialogFits = async dialog => {
       await dialog.waitFor();
       const offset = await (await frame.frameElement()).boundingBox();
@@ -320,7 +388,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
           await frame.locator('#project-configurations').click();
           await until(() => configurations.locator('.configuration-field').count(), count => count === 17, 'Project configuration fields did not load');
           await assertDialogFits(configurations);
-          const body = configurations.locator('.dialog-body');
+          const body = configurations.locator(':scope > .dialog-body:visible');
           assert.ok(await body.evaluate(element => element.scrollHeight > element.clientHeight));
           await body.evaluate(element => { element.scrollTop = element.scrollHeight; });
           await assertDialogFits(configurations);
@@ -469,6 +537,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
 
     const savedTabLabels = await tabList.locator('[role=tab]').allTextContents();
     const assertToolsToggle = async () => {
+      const width = await toolsWidth();
       await toggleTools.click();
       await until(partState, state => !state.auxiliarybar.visible, 'Tools did not collapse');
       assert.equal(await toggleTools.getAttribute('aria-expanded'), 'false');
@@ -479,6 +548,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       await toggleTools.click();
       await until(partState, state => state.auxiliarybar.visible, 'Tools did not expand');
       assert.equal(await toggleTools.getAttribute('aria-expanded'), 'true');
+      await assertToolsWidth(width);
     };
     await assertToolsToggle();
     assert.deepEqual(await tabList.locator('[role=tab]').allTextContents(), savedTabLabels);

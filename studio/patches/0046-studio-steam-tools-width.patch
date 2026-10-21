@@ -1,0 +1,216 @@
+diff --git a/src/vs/base/browser/ui/grid/grid.ts b/src/vs/base/browser/ui/grid/grid.ts
+index ce9a849430057ef929868869f3d78df75abb00aa..e4028a016e6424d3dbcfc726b15dd40a2019efda 100644
+--- a/src/vs/base/browser/ui/grid/grid.ts
++++ b/src/vs/base/browser/ui/grid/grid.ts
+@@ -272,6 +272,11 @@ export class Grid<T extends IView = IView> extends Disposable {
+ 	 */
+ 	readonly onDidScroll: Event<void>;
+ 
++	/**
++	 * Fires after the user resizes views by dragging or resetting a sash.
++	 */
++	readonly onDidSashChange: Event<void>;
++
+ 	/**
+ 	 * A collection of sashes perpendicular to each edge of the grid.
+ 	 * Corner sashes will be created for each intersection.
+@@ -317,6 +322,7 @@ export class Grid<T extends IView = IView> extends Disposable {
+ 
+ 		this.onDidChange = this.gridview.onDidChange;
+ 		this.onDidScroll = this.gridview.onDidScroll;
++		this.onDidSashChange = Event.any(this.gridview.onDidSashChange, Event.signal(this.gridview.onDidSashReset));
+ 		this.onDidChangeViewMaximized = this.gridview.onDidChangeViewMaximized;
+ 	}
+ 
+diff --git a/src/vs/base/browser/ui/grid/gridview.ts b/src/vs/base/browser/ui/grid/gridview.ts
+index 47de4f1de301eb48a4c08de3b2bdbc6f2790e5ae..298eaa3dd8bf85e4e94c2a7d14919da6eb2e72f1 100644
+--- a/src/vs/base/browser/ui/grid/gridview.ts
++++ b/src/vs/base/browser/ui/grid/gridview.ts
+@@ -360,6 +360,8 @@ class BranchNode implements ISplitView<ILayoutContext>, IDisposable {
+ 	readonly onDidSashReset: Event<GridLocation> = this._onDidSashReset.event;
+ 	private splitviewSashResetDisposable: IDisposable = Disposable.None;
+ 	private childrenSashResetDisposable: IDisposable = Disposable.None;
++	private readonly _onDidSashChange = new Relay<void>();
++	readonly onDidSashChange = this._onDidSashChange.event;
+ 
+ 	private _boundarySashes: IRelativeBoundarySashes = {};
+ 	get boundarySashes(): IRelativeBoundarySashes { return this._boundarySashes; }
+@@ -656,6 +658,8 @@ class BranchNode implements ISplitView<ILayoutContext>, IDisposable {
+ 	}
+ 
+ 	private updateChildrenEvents(): void {
++		this._onDidSashChange.input = Event.any(Event.signal(this.splitview.onDidSashChange), ...this.children.map(c => c.onDidSashChange));
++
+ 		const onDidChildrenChange = Event.map(Event.any(...this.children.map(c => c.onDidChange)), () => undefined);
+ 		this.childrenChangeDisposable.dispose();
+ 		this.childrenChangeDisposable = onDidChildrenChange(this._onDidChange.fire, this._onDidChange);
+@@ -740,6 +744,7 @@ class BranchNode implements ISplitView<ILayoutContext>, IDisposable {
+ 		this._onDidChange.dispose();
+ 		this._onDidScroll.dispose();
+ 		this._onDidSashReset.dispose();
++		this._onDidSashChange.dispose();
+ 		this._onDidVisibilityChange.dispose();
+ 
+ 		this.childrenVisibilityChangeDisposable.dispose();
+@@ -783,6 +788,7 @@ class LeafNode implements ISplitView<ILayoutContext>, IDisposable {
+ 
+ 	readonly onDidScroll: Event<void> = Event.None;
+ 	readonly onDidSashReset: Event<GridLocation> = Event.None;
++	readonly onDidSashChange: Event<void> = Event.None;
+ 
+ 	private _onDidLinkedWidthNodeChange = new Relay<number | undefined>();
+ 	private _linkedWidthNode: LeafNode | undefined = undefined;
+@@ -1049,6 +1055,7 @@ export class GridView implements IDisposable {
+ 	private proportionalLayout: boolean;
+ 	private _root!: BranchNode;
+ 	private onDidSashResetRelay = new Relay<GridLocation>();
++	private readonly onDidSashChangeRelay = new Relay<void>();
+ 	private _onDidScroll = new Relay<void>();
+ 	private _onDidChange = new Relay<IViewSize | undefined>();
+ 	private _boundarySashes: IBoundarySashes = {};
+@@ -1073,6 +1080,7 @@ export class GridView implements IDisposable {
+ 		this._root = root;
+ 		this.element.appendChild(root.element);
+ 		this.onDidSashResetRelay.input = root.onDidSashReset;
++		this.onDidSashChangeRelay.input = root.onDidSashChange;
+ 		this._onDidChange.input = Event.map(root.onDidChange, () => undefined); // TODO
+ 		this._onDidScroll.input = root.onDidScroll;
+ 	}
+@@ -1082,6 +1090,11 @@ export class GridView implements IDisposable {
+ 	 */
+ 	readonly onDidSashReset = this.onDidSashResetRelay.event;
+ 
++	/**
++	 * Fires after the user finishes dragging a sash within the grid.
++	 */
++	readonly onDidSashChange = this.onDidSashChangeRelay.event;
++
+ 	/**
+ 	 * Fires whenever the user scrolls a {@link SplitView} within
+ 	 * the grid.
+@@ -1836,6 +1849,7 @@ export class GridView implements IDisposable {
+ 	dispose(): void {
+ 		this._onDidChangeViewMaximized.dispose();
+ 		this.onDidSashResetRelay.dispose();
++		this.onDidSashChangeRelay.dispose();
+ 		this.root.dispose();
+ 		this.element.remove();
+ 	}
+diff --git a/src/vs/sessions/browser/workbench.ts b/src/vs/sessions/browser/workbench.ts
+index 08d44ad947ab3dbdf4db7b4294b4205fd0cac968..1ac7eac6555d826ffddb0dd011012e8ea8d3af13 100644
+--- a/src/vs/sessions/browser/workbench.ts
++++ b/src/vs/sessions/browser/workbench.ts
+@@ -299,6 +299,7 @@ export abstract class Workbench extends Disposable implements IAgentWorkbenchLay
+ 
+ 	private readonly _onDidChangePartVisibility = this._register(new Emitter<IPartVisibilityChangeEvent>());
+ 	readonly onDidChangePartVisibility = this._onDidChangePartVisibility.event;
++	readonly onDidResizeParts: Event<void> = Event.None;
+ 
+ 	private readonly _onWillToggleSidePane = this._register(new Emitter<void>());
+ 	readonly onWillToggleSidePane = this._onWillToggleSidePane.event;
+diff --git a/src/vs/workbench/browser/layout.ts b/src/vs/workbench/browser/layout.ts
+index 6b67b7fca289aba8b71962ead5080f97079ef7fa..3079e8ddc74574eaa7730ef3a734776f58c3878d 100644
+--- a/src/vs/workbench/browser/layout.ts
++++ b/src/vs/workbench/browser/layout.ts
+@@ -180,6 +180,9 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 	private readonly _onDidChangePartVisibility = this._register(new Emitter<IPartVisibilityChangeEvent>());
+ 	readonly onDidChangePartVisibility = this._onDidChangePartVisibility.event;
+ 
++	private readonly _onDidResizeParts = this._register(new Emitter<void>());
++	readonly onDidResizeParts = this._onDidResizeParts.event;
++
+ 	private readonly _onDidChangeNotificationsVisibility = this._register(new Emitter<boolean>());
+ 	readonly onDidChangeNotificationsVisibility = this._onDidChangeNotificationsVisibility.event;
+ 
+@@ -1690,6 +1693,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 		this.mainContainer.prepend(workbenchGrid.element);
+ 		this.mainContainer.setAttribute('role', 'application');
+ 		this.workbenchGrid = workbenchGrid;
++		this._register(workbenchGrid.onDidSashChange(() => this._onDidResizeParts.fire()));
+ 		this.workbenchGrid.edgeSnapping = this.state.runtime.mainWindowFullscreen;
+ 
+ 		for (const part of [titleBar, editorPart, activityBar, panelPart, sideBar, statusBar, auxiliaryBarPart, bannerPart]) {
+@@ -1896,6 +1900,8 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 			default:
+ 				return; // Cannot resize other parts
+ 		}
++
++		this._onDidResizeParts.fire();
+ 	}
+ 
+ 	private setActivityBarHidden(hidden: boolean): void {
+diff --git a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+index 781d0d118f02b06026a307440a622620c5f2db54..ded6839f1293d106da24df4e3f5241081034f3ec 100644
+--- a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
++++ b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+@@ -113,6 +113,16 @@ export class StudioModeContribution extends Disposable {
+ 		toolsTitle.value = studioModeState.state.labels.tools ?? toolsTitle.original;
+ 		this.snapshot = storage.getObject<IdeLayout>(SNAPSHOT_KEY, StorageScope.WORKSPACE);
+ 		this.requested = storage.get(MODE_KEY, StorageScope.WORKSPACE) === 'steam';
++		this._register(layout.onDidResizeParts(() => {
++			if (this.steam && layout.isVisible(Parts.AUXILIARYBAR_PART) && !layout.isAuxiliaryBarMaximized()) {
++				const width = layout.getSize(Parts.AUXILIARYBAR_PART).width;
++				if (Number.isFinite(width) && width > 0) { storage.store(STEAM_WIDTH_KEY, width, StorageScope.WORKSPACE, StorageTarget.MACHINE); }
++			}
++		}));
++		this._register(layout.onDidChangePartVisibility(({ partId, visible }) => {
++			if (partId === Parts.AUXILIARYBAR_PART && visible) { this.restoreToolsWidth(); }
++		}));
++		this._register(layout.onDidLayoutMainContainer(() => this.restoreToolsWidth()));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalToggleMode', () => this.request(!this.requested)));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalEnterIdeMode', () => this.request(false)));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalEnterSteamMode', () => this.request(true)));
+@@ -264,7 +274,15 @@ export class StudioModeContribution extends Disposable {
+ 		for (const part of [Parts.ACTIVITYBAR_PART, Parts.SIDEBAR_PART, Parts.PANEL_PART]) { this.layout.setPartHidden(true, part); }
+ 		this.layout.setPartHidden(false, Parts.EDITOR_PART);
+ 		await this.workspace.activate(projectUri);
+-		const width = this.storage.getNumber(STEAM_WIDTH_KEY, StorageScope.WORKSPACE, Math.round(this.layout.mainContainerDimension.width * .45));
++		this.restoreToolsWidth();
++	}
++
++	private restoreToolsWidth(): void {
++		if (!this.steam || !this.layout.isVisible(Parts.AUXILIARYBAR_PART) || this.layout.isAuxiliaryBarMaximized()) { return; }
++		const defaultWidth = Math.round(this.layout.mainContainerDimension.width / 3);
++		const savedWidth = this.storage.getNumber(STEAM_WIDTH_KEY, StorageScope.WORKSPACE);
++		const width = savedWidth !== undefined && Number.isFinite(savedWidth) && savedWidth > 0 ? savedWidth : defaultWidth;
++		// Constrain the live layout without replacing the user's preferred width.
+ 		this.layout.setSize(Parts.AUXILIARYBAR_PART, { width: Math.min(Math.max(280, width), Math.max(170, this.layout.mainContainerDimension.width - 320)), height: this.layout.getSize(Parts.AUXILIARYBAR_PART).height });
+ 	}
+ 
+@@ -283,7 +301,6 @@ export class StudioModeContribution extends Disposable {
+ 	private async restoreIde(): Promise<void> {
+ 		const snapshot = this.snapshot;
+ 		if (!snapshot) { return; }
+-		if (this.steam) { this.storage.store(STEAM_WIDTH_KEY, this.layout.getSize(Parts.AUXILIARYBAR_PART).width, StorageScope.WORKSPACE, StorageTarget.MACHINE); }
+ 		await this.workspace.deactivate(this.groups.mainPart.getGroup(snapshot.activeGroup) ?? this.groups.mainPart.activeGroup);
+ 		this.steam = false;
+ 		this.projectReady = false;
+diff --git a/src/vs/workbench/services/layout/browser/layoutService.ts b/src/vs/workbench/services/layout/browser/layoutService.ts
+index 8f1904b7c3194375e5ea00a834309cc5664956b4..c90612d9bbcfdba0476694d1a16b7ef97a5b9d67 100644
+--- a/src/vs/workbench/services/layout/browser/layoutService.ts
++++ b/src/vs/workbench/services/layout/browser/layoutService.ts
+@@ -523,6 +523,12 @@ export interface IWorkbenchLayoutService extends ILayoutService {
+ 	 */
+ 	readonly onDidChangePartVisibility: Event<IPartVisibilityChangeEvent>;
+ 
++	/**
++	 * Emits after the user resizes workbench parts with a sash or resize command.
++	 * Window resizing and programmatic layout restoration do not emit this event.
++	 */
++	readonly onDidResizeParts: Event<void>;
++
+ 	/**
+ 	 * Emit when notifications (toasts or center) visibility changes.
+ 	 */
+diff --git a/src/vs/workbench/test/browser/workbenchTestServices.ts b/src/vs/workbench/test/browser/workbenchTestServices.ts
+index e9669ed1683c0697237eb9d1d562569ae8bd3251..3765e58c67dd198f7f4158b754cabc6f39fb89df 100644
+--- a/src/vs/workbench/test/browser/workbenchTestServices.ts
++++ b/src/vs/workbench/test/browser/workbenchTestServices.ts
+@@ -649,6 +649,7 @@ export class TestLayoutService implements IWorkbenchLayoutService {
+ 	readonly onDidChangePanelPosition: Event<string> = Event.None;
+ 	readonly onDidChangePanelAlignment: Event<PanelAlignment> = Event.None;
+ 	readonly onDidChangePartVisibility: Event<IPartVisibilityChangeEvent> = Event.None;
++	readonly onDidResizeParts: Event<void> = Event.None;
+ 	onDidLayoutMainContainer = Event.None;
+ 	onDidLayoutActiveContainer = Event.None;
+ 	onDidLayoutContainer = Event.None;

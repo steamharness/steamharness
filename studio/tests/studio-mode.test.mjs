@@ -38,6 +38,7 @@ const locations = { Sidebar: 0, Panel: 1, AuxiliaryBar: 2 };
 
 function fixture(t, saved = new Map()) {
   const commands = new Map(), stateChange = new Emitter(), calls = [], settings = new Map(), errors = [];
+  const resized = new Emitter(), visibilityChanged = new Emitter(), windowResized = new Emitter();
   const state = { state: { available: false, labels: {} }, steam: false, busy: false, onDidChangeState: stateChange.event,
     setMode(steam, busy, targetSteam = steam) { this.steam = steam; this.busy = busy; this.targetSteam = targetSteam; } };
   const register = (id, handler) => { commands.set(id, handler); return { dispose: () => commands.delete(id) }; };
@@ -60,11 +61,18 @@ function fixture(t, saved = new Map()) {
   const mainContainer = { classList: { add() {}, remove() {} } };
   let maximized = false, groupMaximized = false, options = false;
   const layout = {
+    onDidResizeParts: resized.event, onDidChangePartVisibility: visibilityChanged.event, onDidLayoutMainContainer: windowResized.event,
     setWindowChromeHidden: value => { f.chromeHidden = value; calls.push(['windowChrome', value]); },
     mainContainer, mainContainerDimension: { width: 1440, height: 900 },
     getContainer: () => ({ animate: frames => { calls.push(['animate', frames]); return { finished: Promise.resolve() }; } }),
     isVisible: part => visible.get(part), getSize: part => ({ ...sizes.get(part) }),
-    setPartHidden: (hidden, part) => visible.set(part, !hidden), setSize: (part, size) => sizes.set(part, { ...size }),
+    setPartHidden: (hidden, part) => {
+      if (visible.get(part) === !hidden) { return; }
+      visible.set(part, !hidden);
+      if (hidden && part === 'auxiliary') { sizes.set(part, { ...sizes.get(part), width: 0 }); }
+      visibilityChanged.fire({ partId: part, visible: !hidden });
+    },
+    setSize: (part, size) => sizes.set(part, { ...size }),
     isAuxiliaryBarMaximized: () => maximized, setAuxiliaryBarMaximized: value => { maximized = value; },
     isPanelMaximized: () => visible.get('panel') && !visible.get('editor') && !maximized,
     toggleMaximizedPanel: () => visible.set('editor', !visible.get('editor')),
@@ -109,6 +117,9 @@ function fixture(t, saved = new Map()) {
     flush: async () => { for (const [key, value] of pending) { if (value === undefined) { saved.delete(key); } else { saved.set(key, value); } } pending.clear(); } };
   const context = { createKey: id => ({ set: value => settings.set(id, value) }) };
   const f = { calls, saved, visible, sizes, active, containers, settings, errors, state, editor, result, group, layout, groups, mainPart, views, win, classes, loading: false, projectOpen: false,
+    resizeTools: width => { sizes.set('auxiliary', { ...sizes.get('auxiliary'), width }); resized.fire(); },
+    resizeWindow: width => { layout.mainContainerDimension.width = width; windowResized.fire(layout.mainContainerDimension); },
+    flush: () => storage.flush(),
     prepare: async () => { group.activeEditor = result; visible.set('editor', true); return true; },
     cancelPreparation: () => undefined,
     publish: available => { state.state.available = available; stateChange.fire(state.state); },
@@ -167,7 +178,7 @@ test('Steam mode keeps the existing result and restores IDE parts, tools, groups
   for (const part of ['activity', 'sidebar', 'panel']) { assert.equal(f.visible.get(part), false); }
   assert.equal(f.settings.get('side'), 'left');
   assert.equal(f.active.get(2), 'studio-steam-tools');
-  assert.equal(f.sizes.get('auxiliary').width, 648);
+  assert.equal(f.sizes.get('auxiliary').width, 480);
   await f.run('OpenSteamTool', 'kv'); await f.run('OpenSteamTool', 'info');
   assert.equal(f.containers.get('studio-kv').location, 2);
   assert.equal(f.containers.get('studio-info').location, 2);
@@ -369,10 +380,72 @@ test('the animation fallback slides horizontally in opposite directions', async 
 
 test('reduced motion applies the layout immediately and each mode retains its own tool width', async t => {
   const f = fixture(t); f.win.matchMedia = () => ({ matches: true });
-  f.publish(true); await f.run('EnterSteamMode'); f.sizes.set('auxiliary', { width: 512, height: 720 });
+  f.publish(true); await f.run('EnterSteamMode'); f.resizeTools(512);
   await f.run('EnterIdeMode'); await f.run('EnterSteamMode');
   assert.equal(f.sizes.get('auxiliary').width, 512);
   assert.equal(f.calls.includes('transition'), false);
+});
+
+test('tools default to a third of the window until the user chooses a width', async t => {
+  const f = fixture(t); f.publish(true); await f.run('EnterSteamMode');
+  for (const [windowWidth, toolWidth] of [[1440, 480], [1200, 400], [800, 280], [480, 170], [1800, 600]]) {
+    f.resizeWindow(windowWidth);
+    assert.equal(f.sizes.get('auxiliary').width, toolWidth);
+  }
+  await f.run('EnterIdeMode'); await f.flush();
+  assert.equal(f.saved.has('studio.steamToolsWidth'), false, 'Automatic layout must not become a user preference');
+});
+
+test('dragged tool width survives hiding, mode switches and reload without first leaving Steam', async t => {
+  const f = fixture(t); f.publish(true); await f.run('EnterSteamMode'); f.resizeTools(576);
+  await f.flush();
+  assert.equal(f.saved.get('studio.steamToolsWidth'), 576);
+  f.layout.setPartHidden(true, 'auxiliary');
+  f.layout.setPartHidden(false, 'auxiliary');
+  assert.equal(f.sizes.get('auxiliary').width, 576);
+  f.layout.setPartHidden(true, 'auxiliary');
+  await f.run('EnterIdeMode');
+  assert.equal(f.sizes.get('auxiliary').width, 348, 'The IDE retains its separate width');
+  f.resizeTools(420); // An IDE resize must not overwrite the Steam preference.
+  await f.run('EnterSteamMode');
+  assert.equal(f.sizes.get('auxiliary').width, 576);
+  await f.flush();
+  const restarted = fixture(t, new Map(f.saved));
+  restarted.publish(true); await restarted.run('OpenSteamTools');
+  assert.equal(restarted.sizes.get('auxiliary').width, 576);
+});
+
+test('narrow windows and hidden tools do not overwrite the preferred width across reloads', async t => {
+  const f = fixture(t); f.publish(true); await f.run('EnterSteamMode'); f.resizeTools(720);
+  f.resizeWindow(800);
+  assert.equal(f.sizes.get('auxiliary').width, 480);
+  f.layout.setPartHidden(true, 'auxiliary'); await f.run('EnterIdeMode');
+  await f.flush();
+  assert.equal(f.saved.get('studio.steamToolsWidth'), 720);
+  const restarted = fixture(t, new Map(f.saved)); restarted.resizeWindow(800);
+  restarted.publish(true); await restarted.run('EnterSteamMode');
+  assert.equal(restarted.sizes.get('auxiliary').width, 480);
+  restarted.resizeWindow(1440);
+  assert.equal(restarted.sizes.get('auxiliary').width, 720);
+});
+
+test('hidden, maximized or invalid tool sizes cannot become saved preferences', async t => {
+  const f = fixture(t); f.publish(true); await f.run('EnterSteamMode'); f.resizeTools(600);
+  f.layout.setPartHidden(true, 'auxiliary'); f.resizeTools(0);
+  f.layout.setPartHidden(false, 'auxiliary');
+  f.layout.setAuxiliaryBarMaximized(true); f.resizeTools(1440);
+  f.layout.setAuxiliaryBarMaximized(false);
+  for (const width of [0, -1, NaN, Infinity]) { f.resizeTools(width); }
+  await f.flush();
+  assert.equal(f.saved.get('studio.steamToolsWidth'), 600);
+});
+
+test('invalid stored tool widths fall back to a third of the window', async t => {
+  for (const width of [0, -1, NaN, Infinity]) {
+    const f = fixture(t, new Map([['studio.steamToolsWidth', width]]));
+    f.publish(true); await f.run('EnterSteamMode');
+    assert.equal(f.sizes.get('auxiliary').width, 480);
+  }
 });
 
 test('mode changes use the main editor part even when an auxiliary editor window is active', async t => {
