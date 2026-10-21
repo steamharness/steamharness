@@ -20,12 +20,14 @@ export class InfoView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly versions: {
     getVersionStatus(project: Project): ProjectVersionStatus; onDidChangeVersions: vscode.Event<void>;
-  }) {
-    context.subscriptions.push(this,
+  }, register = true, subscriptions: vscode.Disposable[] = context.subscriptions) {
+    subscriptions.push(this,
+      ...(register ? [
       vscode.window.registerWebviewViewProvider('studio.projectInfo', this, { webviewOptions: { retainContextWhenHidden: true } }),
-      vscode.commands.registerCommand('studio.selectInfoProject', () => this.select()),
+      vscode.commands.registerCommand('studio.selectInfoProject', () => this.selectProject()),
       vscode.commands.registerCommand('studio.openInfoProjectSource', () => this.selected && vscode.commands.executeCommand('studio.openProjectSource', this.selected)),
       vscode.commands.registerCommand('studio.copyProjectInfoValue', (item?: InfoItem) => this.copy(item?.id)),
+      ] : []),
       versions.onDidChangeVersions(() => this.publish()),
     );
   }
@@ -65,7 +67,7 @@ export class InfoView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.publish();
   }
 
-  private async select(): Promise<void> {
+  async selectProject(): Promise<void> {
     const picked = await vscode.window.showQuickPick(this.projects.map(project => ({
       label: projectDisplayName(project), iconPath: vscode.Uri.parse(projectAvatarDataUrl(project.projectCard, project.projectType)), description: project.projectType, detail: project.folderPath, project,
     })), { title: t("Select Project"), placeHolder: t("Project") });

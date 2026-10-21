@@ -103,6 +103,17 @@ test('without a local project the version tab stays empty and signed-out users c
   await f.message({ type: 'sign-in' }); assert.equal(f.signIn, true);
 });
 
+test('manual version project selection stays independent across repeated updates with the same preferred project', async t => {
+  const f = fixture(t), second = { ...f.local, uri: 'file:///second', folderPath: '/second', id: otherId, name: 'Second' };
+  f.provider.update([second, f.local], f.local);
+  await f.command('studio.selectVersionsProject');
+  assert.equal(f.state().project.uri, second.uri);
+  f.provider.update([second, f.local], f.local);
+  assert.equal(f.state().project.uri, second.uri);
+  f.provider.update([second, f.local], second); f.provider.update([second, f.local], f.local);
+  assert.equal(f.state().project.uri, f.local.uri);
+});
+
 test('local version markers and uploads follow the active copy when UUIDs match', async t => {
   const f = fixture(t); await f.command('studio.refreshVersions');
   const copy = { ...f.local, uri: 'file:///copy', folderPath: path.resolve('/copy'), manifest: { version: '1.1.0' } };

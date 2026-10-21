@@ -7,16 +7,18 @@ import type { TraceTarget } from './workflow-trace-types';
 import type { TraceAgentAction } from './workflow-agent-types';
 
 export class TraceView {
-  private readonly store = new TraceStore();
+  private readonly store: TraceStore;
+  private readonly changes = new vscode.EventEmitter<void>();
   private view?: vscode.WebviewView;
   private published = '';
   private available?: boolean;
   private timer?: ReturnType<typeof setTimeout>;
   constructor(private readonly context: vscode.ExtensionContext, private readonly openProject: (project: Project) => Promise<void>,
-    private readonly output: vscode.OutputChannel) {
-    context.subscriptions.push(vscode.window.registerWebviewViewProvider('studio.trace', {
+    private readonly output: vscode.OutputChannel, source?: TraceView, subscriptions: vscode.Disposable[] = context.subscriptions) {
+    this.store = source ? source.store.fork() : new TraceStore();
+    subscriptions.push(this, ...(source ? [source.changes.event(() => this.publish())] : [vscode.window.registerWebviewViewProvider('studio.trace', {
       resolveWebviewView: view => this.resolve(view),
-    }, { webviewOptions: { retainContextWhenHidden: true } }));
+    }, { webviewOptions: { retainContextWhenHidden: true } })]));
   }
   update(projects: Project[], preferred?: Project): void { this.store.update(projects, preferred); this.publish(); }
   bind(project: Project, version: number | undefined, webview: vscode.Webview) {
@@ -35,6 +37,7 @@ export class TraceView {
     this.timer = setTimeout(() => { this.timer = undefined; this.publish(); }, 50);
   }
   private publish(force = false): void {
+    this.changes.fire();
     const state = this.store.state();
     const available = state.projects.length > 0;
     if (available !== this.available) {
@@ -49,7 +52,7 @@ export class TraceView {
     this.published = signature;
     void this.view.webview.postMessage(state);
   }
-  private resolve(view: vscode.WebviewView): void {
+  resolve(view: vscode.WebviewView): void {
     this.view = view;
     this.published = '';
     view.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')] };
@@ -95,4 +98,5 @@ export class TraceView {
       }
     } catch (error) { this.output.appendLine(`Workflow trace: ${String(error)}`); await vscode.window.showErrorMessage(String(error)); }
   }
+  dispose(): void { clearTimeout(this.timer); this.changes.dispose(); this.view = undefined; }
 }

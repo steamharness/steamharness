@@ -627,5 +627,11 @@
   "Use the configuration query tool for reads.": "Use the configuration query tool for reads.",
   "Configuration request failed.": "Configuration request failed.",
   "Loading project...": "Loading project...",
-  "The project view did not finish loading. Try again.": "The project view did not finish loading. Try again."
+  "The project view did not finish loading. Try again.": "The project view did not finish loading. Try again.",
+  "Tool Instances": "Tool Instances",
+  "New {0}": "New {0}",
+  "Instance Actions": "Instance Actions",
+  "New Terminal With Profile": "New Terminal With Profile",
+  "Split Terminal": "Split Terminal",
+  "Rename Terminal": "Rename Terminal"
 }

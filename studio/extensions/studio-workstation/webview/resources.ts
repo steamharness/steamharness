@@ -262,11 +262,12 @@ projectSelect.onchange = async () => {
   if (await canDiscard()) { vscode.postMessage({ type: 'select', projectUri: projectSelect.value }); } else { projectSelect.value = projectUri; }
 };
 sourceSelect.onchange = async () => {
-  if (await canDiscard()) { source = sourceSelect.value as ResourceSource; rows = []; clearDetail(); await load(true); } else { sourceSelect.value = source ?? ''; }
+  if (await canDiscard()) { source = sourceSelect.value as ResourceSource; rows = []; clearDetail(); persist(); await load(true); } else { sourceSelect.value = source ?? ''; }
 };
-if (scopeSelect) { scopeSelect.onchange = async () => { if (await canDiscard()) { clearDetail(); await load(true); } }; }
+if (scopeSelect) { scopeSelect.onchange = async () => { if (await canDiscard()) { clearDetail(); persist(); await load(true); } }; }
 let searchTimer: number | undefined;
 search.oninput = () => {
+  persist();
   window.clearTimeout(searchTimer);
   searchTimer = window.setTimeout(async () => { if (await canDiscard()) { clearDetail(); await load(true); } }, 250);
 };
@@ -293,6 +294,7 @@ window.addEventListener('message', event => {
     const focus = message.focus;
     if (focus) { source = focus.source; search.value = ''; if (scopeSelect) { scopeSelect.value = focus.scope ?? ''; } }
     if (projectUri) {
+      persist();
       const version = generation;
       void load(true).then(async () => {
         if (version === generation && focus && (focus.documentId || focus.key)) {

@@ -37,6 +37,8 @@ export class StudioModeController {
       tools: t('Open Tools'), toolsHint: t('Everything you need for your project, in one place.'),
       hideTools: t('Hide Tools'), showTools: t('Show Tools'),
       workspace: t('Tool Workspace'), addTool: t('Open Tool'), closeTab: t('Close {0}'),
+      instances: t('Tool Instances'), newInstance: t('New {0}'), instanceActions: t('Instance Actions'),
+      terminalProfiles: t('New Terminal With Profile'), terminalSplit: t('Split Terminal'), terminalRename: t('Rename Terminal'), selectProject: t('Select Project'),
       moveEditorsError: t('Unable to move tool workspace editors back to the IDE.'),
       kv: t('KV Storage'), kvHint: t('Browse and edit project data'),
       knowledge: t('Knowledge Base'), knowledgeHint: t('Manage documents and knowledge'),

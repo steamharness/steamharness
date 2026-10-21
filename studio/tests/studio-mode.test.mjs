@@ -139,7 +139,11 @@ function fixture(t, saved = new Map()) {
       get hasProject() { return f.projectOpen; },
       activate: () => views.openView('studio.steamTools', true),
       home: () => views.openView('studio.steamTools', true),
-      openTool: id => views.openView(common.studioSteamToolDefinitions.find(tool => tool.id === id)?.view, true),
+      openTool: id => {
+        const tool = common.studioSteamToolDefinitions.find(tool => tool.id === id);
+        if (tool.command) { calls.push(['command', tool.command]); return f.toolCommand?.(tool.command); }
+        return views.openView(tool.view, true);
+      },
       deactivate: async () => undefined, select() {}, close() {}, dispose() {},
     }) });
   t.after(() => controller.dispose());

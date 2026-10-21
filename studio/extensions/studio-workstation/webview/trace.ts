@@ -32,7 +32,7 @@ const labels: Record<TraceLane, string> = { input: t("Input"), model: t("Model")
 const statuses: Record<string, string> = { connecting: t("Connecting"), connected: t("Connected"), reconnecting: t("Reconnecting"), offline: t("Offline"), expired: t("Connection expired"), closed: t("Project closed"),
   running: t("Running"), success: t("Completed"), failed: t("Failed"), aborted: t("Stopped"), stopped: t("Stopped"), waiting: t("Waiting for input"), waiting_for_input: t("Waiting for input"), timed_out: t("Timed out"), interrupted: t("Interrupted") };
 let state: TracePanelState | undefined;
-const saved = (host.getState() ?? {}) as { mode?: string; follow?: boolean; tab?: string };
+const saved = (host.getState() ?? {}) as { mode?: string; follow?: boolean; tab?: string; projectUri?: string };
 let mode = ['duration', 'rounds', 'calls'].includes(saved.mode ?? '') ? saved.mode! : 'duration', follow = saved.follow ?? true;
 const tabs = [['trace', t('Trace'), 'history'], ['tasks', t('Tasks'), 'list-tree'], ['plan', t('Plan'), 'checklist'], ['records', t('Records'), 'notebook'], ['usage', t('Usage'), 'dashboard']] as const;
 type Tab = 'trace' | AgentTab;
@@ -165,7 +165,7 @@ function renderRow(row: TraceRow): HTMLDetailsElement {
   view.root.replaceChildren(summary, detail); if (focused) { summary.focus({ preventScroll: true }); } return view.root;
 }
 function preferences(): void {
-  host.setState({ mode, follow, tab }); element('trace-follow').setAttribute('aria-pressed', String(follow));
+  host.setState({ mode, follow, tab, projectUri: state?.selection.projectUri ?? saved.projectUri }); element('trace-follow').setAttribute('aria-pressed', String(follow));
   document.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.mode === mode)));
 }
 function render(): void {

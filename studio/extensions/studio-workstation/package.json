@@ -10,7 +10,7 @@
   "main": "./dist/extension.js",
   "browser": "./dist/extension-web.js",
   "l10n": "./l10n",
-  "activationEvents": ["onStartupFinished", "onWebviewPanel:studio.project", "onWebviewPanel:studio.projectTool", "onCommand:studio.internalStartPageVisibility"],
+  "activationEvents": ["onStartupFinished", "onWebviewPanel:studio.tool.kv", "onWebviewPanel:studio.tool.knowledge", "onWebviewPanel:studio.tool.info", "onWebviewPanel:studio.tool.assistant", "onWebviewPanel:studio.tool.versions", "onWebviewPanel:studio.tool.trace", "onWebviewPanel:studio.project", "onWebviewPanel:studio.projectTool", "onCommand:studio.internalStartPageVisibility"],
   "extensionKind": ["workspace"],
   "capabilities": {
     "untrustedWorkspaces": { "supported": true },

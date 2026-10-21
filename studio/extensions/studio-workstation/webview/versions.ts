@@ -5,7 +5,7 @@ import { projectVersionHtml } from './project-version';
 import './versions.css';
 import { installContextMenu, type ContextAction } from './context-menu';
 
-declare function acquireVsCodeApi(): { postMessage(message: object): void };
+declare function acquireVsCodeApi(): { postMessage(message: object): void; setState(state: { projectUri: string }): void };
 const host = acquireVsCodeApi();
 const app = document.querySelector<HTMLElement>('#versions-app')!;
 let state: VersionsState | undefined, signature = '';
@@ -35,6 +35,7 @@ function render(next: VersionsState): void {
   if (state && next.generation < state.generation) { return; }
   const changed = state?.project?.uri !== next.project?.uri;
   state = next;
+  if (next.project) { host.setState({ projectUri: next.project.uri }); }
   const key = JSON.stringify(next);
   if (key === signature) { return; }
   signature = key;

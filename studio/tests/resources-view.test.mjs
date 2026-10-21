@@ -8,7 +8,7 @@ const require = createRequire(import.meta.url);
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-resources-view.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
 const project = (name, projectType = 'conversation') => ({ id: name, uri: `file:///${name}`, folderPath: `/${name}`, name, projectType });
 
-function fixture(t, operation = async () => ({ items: [], total: 0, hasMore: false }), connection) {
+function fixture(t, operation = async () => ({ items: [], total: 0, hasMore: false }), connection, register = true) {
   const providers = new Map(), commands = new Map(), views = new Map(), messages = new Map(), receivers = new Map(), calls = [], contextValues = [], copied = [], invalidated = [];
   let accountChanged;
   const disposable = { dispose() {} };
@@ -24,14 +24,15 @@ function fixture(t, operation = async () => ({ items: [], total: 0, hasMore: fal
   const provider = new module.exports.ResourceViews({ subscriptions: [], extensionUri: {} }, {
     resource: async (...args) => { calls.push(args); return operation(...args); },
   }, { getConnection: () => connection, onDidChange: callback => { accountChanged = callback; return disposable; },
-    invalidate: async current => { invalidated.push(current); connection = undefined; accountChanged({ status: 'expired' }); }, open() {} }, { appendLine() {} });
+    invalidate: async current => { invalidated.push(current); connection = undefined; accountChanged({ status: 'expired' }); }, open() {} }, { appendLine() {} }, register);
   t.after(() => provider.dispose());
   for (const kind of ['kv', 'knowledge']) {
     const sent = []; messages.set(kind, sent);
     const view = { webview: { cspSource: 'self', asWebviewUri: uri => uri,
       onDidReceiveMessage: fn => { receivers.set(kind, fn); return disposable; }, postMessage: async message => { sent.push(message); return true; } },
       onDidChangeVisibility: () => disposable, onDidDispose: () => disposable, show() {} };
-    providers.get(`studio.${kind}`).resolveWebviewView(view); views.set(kind, view);
+    if (register) { providers.get(`studio.${kind}`).resolveWebviewView(view); } else { provider.resolve(kind, view); }
+    views.set(kind, view);
   }
   const state = kind => messages.get(kind).findLast(item => item.type === 'resources-state');
   const send = async (kind, input = { action: 'list' }, extra = {}) => {
@@ -59,6 +60,22 @@ test('both panels follow the active project and explicit project selection', t =
   provider.update(projects, projects[0]); assert.equal(state('kv').selected, projects[1].uri);
   provider.update(projects, projects[1]);
   provider.update(projects, projects[0]); assert.equal(state('knowledge').selected, projects[0].uri);
+});
+
+test('panel instances keep resource selections and pending requests independent without registering singleton commands', async t => {
+  let finish;
+  const first = fixture(t, () => new Promise(resolve => { finish = resolve; }), undefined, false);
+  const second = fixture(t, undefined, undefined, false);
+  const projects = [project('first'), project('second')];
+  first.provider.update(projects, projects[0]); second.provider.update(projects, projects[0]);
+  await first.send('kv'); const signal = first.calls[0][2];
+  second.receivers.get('kv')({ type: 'select', projectUri: projects[1].uri });
+  first.provider.update(projects, projects[0]); second.provider.update(projects, projects[0]);
+  assert.equal(first.state('kv').selected, projects[0].uri); assert.equal(second.state('kv').selected, projects[1].uri);
+  second.provider.dispose(); assert.equal(signal.aborted, false);
+  finish({ items: [{ key: 'retained' }], total: 1 }); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(first.messages.get('kv').at(-1).value.items[0].key, 'retained');
+  assert.equal(first.commands.has('studio.refreshResources'), false);
 });
 
 test('a foreign server card locates the exact document with the owner runtime and read-only access', async t => {

@@ -627,5 +627,11 @@
   "Use the configuration query tool for reads.": "读取配置请使用配置查询工具。",
   "Configuration request failed.": "配置请求失败。",
   "Loading project...": "正在加载项目…",
-  "The project view did not finish loading. Try again.": "项目页面未能完成加载，请重试。"
+  "The project view did not finish loading. Try again.": "项目页面未能完成加载，请重试。",
+  "Tool Instances": "工具实例",
+  "New {0}": "新建{0}",
+  "Instance Actions": "实例操作",
+  "New Terminal With Profile": "使用配置文件新建终端",
+  "Split Terminal": "拆分终端",
+  "Rename Terminal": "重命名终端"
 }

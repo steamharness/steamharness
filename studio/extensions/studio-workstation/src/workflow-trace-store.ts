@@ -9,13 +9,22 @@ interface Source {
 }
 export class TraceStore {
   private projects: Project[] = [];
-  private readonly sources = new Map<string, Source>();
-  private readonly assistants = new Set<string>();
-  private token = 0;
+  private get sources(): Map<string, Source> { return this.shared.sources; }
+  private get assistants(): Set<string> { return this.shared.assistants; }
   private preferred?: string;
   selection: TraceSelection = {};
   generation = 0;
   private reveal = 0;
+
+  constructor(private readonly shared = { sources: new Map<string, Source>(), assistants: new Set<string>(), token: 0 }) {}
+
+  /** Share live connections and cached runs while keeping each view's selection independent. */
+  fork(): TraceStore {
+    const store = new TraceStore(this.shared);
+    store.projects = this.projects; store.preferred = this.preferred;
+    store.selection = { ...this.selection };
+    return store;
+  }
 
   update(projects: Project[], preferred?: Project): void {
     this.projects = projects.filter(project => !project.assistant && ['workflow', 'conversation'].includes(project.projectType));
@@ -35,7 +44,7 @@ export class TraceStore {
     const source = this.sources.get(uri ?? ''); if (source) { source.error = undefined; }
   }
   bind(project: Project, version: number | undefined, send: (message: unknown) => void) {
-    const token = ++this.token;
+    const token = ++this.shared.token;
     const previous = this.sources.get(project.uri);
     const source: Source = { project, token, send, snapshot: previous?.snapshot, runs: previous?.runs ?? new Map(), pending: new Map(), actionErrors: new Map(),
       requested: new Set(), failed: new Set(), status: version === 1 ? 'connecting' : 'unsupported' };

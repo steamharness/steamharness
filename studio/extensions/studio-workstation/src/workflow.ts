@@ -7,6 +7,7 @@ import type { Launcher, WebSession } from './workflow-cli-types';
 import { projectFrameHtml, type ProjectWindowChrome } from './workflow-webview';
 import { AssistantViewProvider, type AssistantConversation } from './assistant-view';
 import { ResourceViews } from './workflow-resources-view';
+import { ToolInstances } from './tool-instances';
 import { TraceView } from './workflow-trace-view';
 import { InfoView } from './workflow-info-view';
 import { RelatedProjectsView } from './workflow-related-projects-view';
@@ -139,6 +140,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     void related.update(provider.projects, target);
     versions.update(provider.projects, target);
     void info.update(provider.projects, target);
+    toolInstances.update(provider.projects, target);
     updateVersionEntry();
     void vscode.commands.executeCommand('setContext', 'studio.projectAvailable', !!target);
     const workspace = target ? workspaces.get(target.uri) : undefined;
@@ -397,6 +399,25 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
   const versions = new VersionsView(context, launcher, account, output, prepareUpgrade,
     (projects, replacedRoot) => related.rememberProjectGroup(projects, replacedRoot));
   const info = new InfoView(context, versions);
+  const toolInstances = new ToolInstances(context, (kind, subscriptions) => {
+    if (kind === 'kv' || kind === 'knowledge') {
+      const resources = new ResourceViews(context, launcher, account, output, false, subscriptions);
+      return { update: (projects, preferred) => resources.update(projects, preferred), resolve: view => resources.resolve(kind, view) };
+    }
+    if (kind === 'trace') {
+      const instance = new TraceView(context, openProject, output, trace, subscriptions);
+      return { update: (projects, preferred) => instance.update(projects, preferred), resolve: view => instance.resolve(view) };
+    }
+    if (kind === 'assistant') {
+      const instance = new AssistantViewProvider(context, launcher, output, (project, view) => createWorkspace(project, undefined, view), false, subscriptions);
+      return { update() {}, resolve: view => instance.resolveWebviewView(view) };
+    }
+    const instance = kind === 'info' ? new InfoView(context, versions, false, subscriptions)
+      : new VersionsView(context, launcher, account, output, prepareUpgrade,
+        (projects, replacedRoot) => related.rememberProjectGroup(projects, replacedRoot), false, subscriptions, versions);
+    return { update: (projects, preferred) => instance.update(projects, preferred), resolve: view => instance.resolveWebviewView(view),
+      selectProject: () => instance.selectProject() };
+  });
   const inspectProjects = async (epoch: number): Promise<void> => {
     if (upgrading.size) { return; }
     if (!launcher.available || !vscode.workspace.isTrusted) { provider.projects = []; launcher.updateAnalysisProjects?.([]); provider.refresh(); updateEntry(); return; }

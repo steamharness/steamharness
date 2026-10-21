@@ -5,7 +5,7 @@ import { projectVersionHtml } from './project-version';
 import './info.css';
 import { installContextMenu, type ContextAction } from './context-menu';
 
-interface SavedState { sections?: Record<string, Record<string, boolean>> }
+interface SavedState { sections?: Record<string, Record<string, boolean>>; projectUri?: string }
 declare function acquireVsCodeApi(): { postMessage(message: object): void; getState(): SavedState | undefined; setState(state: SavedState): void };
 
 const host = acquireVsCodeApi();
@@ -49,6 +49,7 @@ function renderItem(item: InfoItem, nested = false): string {
 function render(next: InfoState): void {
   const previousUri = state?.project?.uri;
   state = next;
+  if (next.project) { host.setState({ sections, projectUri: next.project.uri }); }
   const nextSignature = JSON.stringify([next.project, next.items, next.update]);
   if (signature === nextSignature) { return; }
   signature = nextSignature;
@@ -85,7 +86,7 @@ function render(next: InfoState): void {
       details.addEventListener('toggle', () => {
         const uri = next.project!.uri;
         sections[uri] = { ...sections[uri], [details.dataset.section!]: details.open };
-        host.setState({ sections });
+        host.setState({ sections, projectUri: uri });
       });
     });
     app.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach(button => {

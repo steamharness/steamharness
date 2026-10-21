@@ -12,7 +12,7 @@ for (const language of ['en', 'zh-cn']) {
     const bundle = JSON.parse(await readFile(new URL(`../extensions/studio-workstation/l10n/bundle.l10n${language === 'en' ? '' : '.zh-cn'}.json`, import.meta.url), 'utf8'));
     const events = new Map();
     const app = { innerHTML: '', setAttribute() {}, querySelector() {}, querySelectorAll: () => [] };
-    runInNewContext(code, { acquireVsCodeApi: () => ({ postMessage() {} }),
+    runInNewContext(code, { acquireVsCodeApi: () => ({ postMessage() {}, setState() {} }),
       document: { documentElement: { lang: language }, activeElement: null, querySelector: () => app,
         getElementById: () => ({ textContent: JSON.stringify({ bundle, locale: language }) }) },
       window: { scrollY: 0, scrollTo() {} }, scrollY: 0, addEventListener: (name, listener) => events.set(name, listener) });

@@ -22,13 +22,14 @@ export class ResourceViews implements vscode.Disposable {
   private readonly navigation = new Map<ResourceKind, Record<string, string>>();
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly launcher: Launcher,
-    private readonly account: AccountController, private readonly output: vscode.OutputChannel) {
+    private readonly account: AccountController, private readonly output: vscode.OutputChannel,
+    register = true, subscriptions: vscode.Disposable[] = context.subscriptions) {
     this.connectionKey = JSON.stringify(account.getConnection());
-    context.subscriptions.push(this,
-      ...(['kv', 'knowledge'] as const).map(kind => vscode.window.registerWebviewViewProvider(`studio.${kind}`, {
+    subscriptions.push(this,
+      ...(register ? (['kv', 'knowledge'] as const).map(kind => vscode.window.registerWebviewViewProvider(`studio.${kind}`, {
         resolveWebviewView: view => this.resolve(kind, view),
-      }, { webviewOptions: { retainContextWhenHidden: true } })),
-      vscode.commands.registerCommand('studio.refreshResources', () => this.reset()),
+      }, { webviewOptions: { retainContextWhenHidden: true } })) : []),
+      ...(register ? [vscode.commands.registerCommand('studio.refreshResources', () => this.reset())] : []),
       account.onDidChange(() => {
         const connectionKey = JSON.stringify(account.getConnection());
         if (connectionKey !== this.connectionKey) { this.connectionKey = connectionKey; this.reset(); }
@@ -92,7 +93,7 @@ export class ResourceViews implements vscode.Disposable {
     }
   }
 
-  private resolve(kind: ResourceKind, view: vscode.WebviewView): void {
+  resolve(kind: ResourceKind, view: vscode.WebviewView): void {
     this.views.set(kind, view);
     this.published.delete(kind);
     view.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')] };
@@ -180,5 +181,5 @@ export class ResourceViews implements vscode.Disposable {
       </head><body data-resource-kind="${kind}"><div id="resources-app"></div>${localizationHtml(nonce)}<script nonce="${nonce}" src="${asset('resources-ui.js')}"></script></body></html>`;
   }
 
-  dispose(): void { this.controller.abort(); this.views.clear(); this.published.clear(); }
+  dispose(): void { ++this.generation; this.controller.abort(); this.views.clear(); this.published.clear(); }
 }

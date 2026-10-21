@@ -23,18 +23,19 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
     private readonly runtime: Launcher,
     private readonly output: vscode.OutputChannel,
     private readonly openConversation: (project: Project, view: vscode.WebviewView) => Promise<AssistantConversation>,
+    private readonly register = true, subscriptions: vscode.Disposable[] = context.subscriptions,
   ) {
-    context.subscriptions.push(this,
-      vscode.window.registerWebviewViewProvider('studio.developerAssistant', this, { webviewOptions: { retainContextWhenHidden: true } }),
+    subscriptions.push(this,
+      ...(register ? [vscode.window.registerWebviewViewProvider('studio.developerAssistant', this, { webviewOptions: { retainContextWhenHidden: true } })] : []),
       vscode.workspace.onDidChangeWorkspaceFolders(() => this.bind()),
       vscode.workspace.onDidGrantWorkspaceTrust(() => this.bind()),
-      vscode.window.onDidChangeActiveTextEditor(() => this.scheduleBind()),
+      vscode.window.onDidChangeActiveTextEditor(() => { if (this.register) { this.scheduleBind(); } }),
       vscode.workspace.onDidChangeConfiguration(event => {
         if (event.affectsConfiguration('studio.project.nodePath')) { this.key = ''; void this.bind(); }
       }),
-      vscode.commands.registerCommand('studio.openAssistant', () => this.show()),
+      ...(register ? [vscode.commands.registerCommand('studio.openAssistant', () => this.show()),
       vscode.commands.registerCommand('studio.newAssistantConversation', () => this.command('new')),
-      vscode.commands.registerCommand('studio.searchAssistantConversations', () => this.command('history')),
+      vscode.commands.registerCommand('studio.searchAssistantConversations', () => this.command('history'))] : []),
     );
   }
 
@@ -87,7 +88,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
         .map(folder => ({ uri: folder.uri.toString(), folderPath: folder.uri.fsPath, name: folder.name }));
       const active = vscode.window.activeTextEditor?.document.uri;
       const activeFolder = active && vscode.workspace.getWorkspaceFolder(active);
-      const target = folders.find(folder => folder.uri === activeFolder?.uri.toString())
+      const target = (this.register ? undefined : folders.find(folder => folder.uri === this.targetUri)) ?? folders.find(folder => folder.uri === activeFolder?.uri.toString())
         ?? folders.find(folder => folder.uri === this.targetUri) ?? folders[0];
       const key = JSON.stringify([this.runtime.available, vscode.workspace.isTrusted, target?.uri, folders]);
       if (key === this.key) { return; }

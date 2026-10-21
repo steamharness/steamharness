@@ -1,0 +1,632 @@
+diff --git a/extensions/simple-browser/preview-src/index.ts b/extensions/simple-browser/preview-src/index.ts
+index cfd90a20f85..6ae403425b1 100644
+--- a/extensions/simple-browser/preview-src/index.ts
++++ b/extensions/simple-browser/preview-src/index.ts
+@@ -28,7 +28,7 @@ interface VsCodeApi<State, Message> {
+ 	postMessage(message: Message): void;
+ }
+ 
+-declare function acquireVsCodeApi(): VsCodeApi<SimpleBrowserState, OpenExternalMessage>;
++declare function acquireVsCodeApi(): VsCodeApi<SimpleBrowserState, OpenExternalMessage | { type: 'navigate'; url: string }>;
+ 
+ const vscode = acquireVsCodeApi();
+ 
+@@ -157,6 +157,7 @@ onceDocumentLoaded(() => {
+ 		}
+ 
+ 		vscode.setState({ url: rawUrl });
++		vscode.postMessage({ type: 'navigate', url: rawUrl });
+ 	}
+ });
+ 
+diff --git a/extensions/simple-browser/src/extension.ts b/extensions/simple-browser/src/extension.ts
+index ddcdc52b42d..0524d28439b 100644
+--- a/extensions/simple-browser/src/extension.ts
++++ b/extensions/simple-browser/src/extension.ts
+@@ -58,7 +58,7 @@ export function activate(context: vscode.ExtensionContext) {
+ 		}
+ 	}));
+ 
+-	context.subscriptions.push(vscode.commands.registerCommand(showCommand, async (url?: string) => {
++	context.subscriptions.push(vscode.commands.registerCommand(showCommand, async (url?: string, options?: { forceNew?: boolean }) => {
+ 		if (await shouldUseIntegratedBrowser()) {
+ 			return openInIntegratedBrowser(url);
+ 		}
+@@ -71,7 +71,7 @@ export function activate(context: vscode.ExtensionContext) {
+ 		}
+ 
+ 		if (url) {
+-			manager.show(url);
++			manager.show(url, options);
+ 		}
+ 	}));
+ 
+diff --git a/extensions/simple-browser/src/simpleBrowserManager.ts b/extensions/simple-browser/src/simpleBrowserManager.ts
+index ef485916411..8bc979623ed 100644
+--- a/extensions/simple-browser/src/simpleBrowserManager.ts
++++ b/extensions/simple-browser/src/simpleBrowserManager.ts
+@@ -9,19 +9,21 @@ import { ShowOptions, SimpleBrowserView } from './simpleBrowserView';
+ export class SimpleBrowserManager {
+ 
+ 	private _activeView?: SimpleBrowserView;
++	private readonly _views = new Set<SimpleBrowserView>();
+ 
+ 	constructor(
+ 		private readonly extensionUri: vscode.Uri,
+ 	) { }
+ 
+ 	dispose() {
+-		this._activeView?.dispose();
++		for (const view of [...this._views]) { view.dispose(); }
++		this._views.clear();
+ 		this._activeView = undefined;
+ 	}
+ 
+-	public show(inputUri: string | vscode.Uri, options?: ShowOptions): void {
++	public show(inputUri: string | vscode.Uri, options?: ShowOptions & { forceNew?: boolean }): void {
+ 		const url = typeof inputUri === 'string' ? inputUri : inputUri.toString(true);
+-		if (this._activeView) {
++		if (this._activeView && !options?.forceNew) {
+ 			this._activeView.show(url, options);
+ 		} else {
+ 			const view = SimpleBrowserView.create(this.extensionUri, url, options);
+@@ -39,9 +41,13 @@ export class SimpleBrowserManager {
+ 	}
+ 
+ 	private registerWebviewListeners(view: SimpleBrowserView) {
++		this._views.add(view);
++		const state = view.onDidChangeViewState(() => { if (view.active) { this._activeView = view; } });
+ 		view.onDispose(() => {
++			state.dispose();
++			this._views.delete(view);
+ 			if (this._activeView === view) {
+-				this._activeView = undefined;
++				this._activeView = [...this._views].find(candidate => candidate.active) ?? [...this._views].at(-1);
+ 			}
+ 		});
+ 	}
+diff --git a/extensions/simple-browser/src/simpleBrowserView.ts b/extensions/simple-browser/src/simpleBrowserView.ts
+index 56c5aff5c8a..e4bfec988f8 100644
+--- a/extensions/simple-browser/src/simpleBrowserView.ts
++++ b/extensions/simple-browser/src/simpleBrowserView.ts
+@@ -36,6 +36,8 @@ export class SimpleBrowserView extends Disposable {
+ 
+ 	private readonly _onDidDispose = this._register(new vscode.EventEmitter<void>());
+ 	public readonly onDispose = this._onDidDispose.event;
++	public get active(): boolean { return this._webviewPanel.active; }
++	public get onDidChangeViewState(): vscode.Event<vscode.WebviewPanelOnDidChangeViewStateEvent> { return this._webviewPanel.onDidChangeViewState; }
+ 
+ 	public static create(
+ 		extensionUri: vscode.Uri,
+@@ -72,6 +74,9 @@ export class SimpleBrowserView extends Disposable {
+ 
+ 		this._register(this._webviewPanel.webview.onDidReceiveMessage(e => {
+ 			switch (e.type) {
++				case 'navigate':
++					if (typeof e.url === 'string') { this._webviewPanel.title = e.url; }
++					break;
+ 				case 'openExternal':
+ 					try {
+ 						const url = vscode.Uri.parse(e.url);
+@@ -106,6 +111,7 @@ export class SimpleBrowserView extends Disposable {
+ 	}
+ 
+ 	public show(url: string, options?: ShowOptions) {
++		this._webviewPanel.title = url || SimpleBrowserView.title;
+ 		this._webviewPanel.webview.html = this.getHtml(url);
+ 		this._webviewPanel.reveal(options?.viewColumn, options?.preserveFocus);
+ 	}
+diff --git a/src/vs/workbench/browser/part.ts b/src/vs/workbench/browser/part.ts
+index 059221692f5..5714afbc022 100644
+--- a/src/vs/workbench/browser/part.ts
++++ b/src/vs/workbench/browser/part.ts
+@@ -17,6 +17,7 @@ import { IDisposable, toDisposable } from '../../base/common/lifecycle.js';
+ 
+ export interface IPartOptions {
+ 	readonly hasTitle?: boolean;
++	readonly titleHeight?: () => number | undefined;
+ 	readonly borderWidth?: () => number;
+ }
+ 
+@@ -234,7 +235,7 @@ class PartLayout {
+ 		// Title Size: Width (Fill), Height (Variable).
+ 		let titleSize: Dimension;
+ 		if (this.options.hasTitle) {
+-			const titleHeight = this.layoutService.isFloatingPanelsEnabled() ? PartLayout.AREA_HEIGHT_MODERN_UI : PartLayout.TITLE_HEIGHT;
++			const titleHeight = this.options.titleHeight?.() ?? (this.layoutService.isFloatingPanelsEnabled() ? PartLayout.AREA_HEIGHT_MODERN_UI : PartLayout.TITLE_HEIGHT);
+ 			titleSize = new Dimension(width, Math.min(height, titleHeight));
+ 		} else {
+ 			titleSize = Dimension.None;
+diff --git a/src/vs/workbench/browser/parts/auxiliarybar/auxiliaryBarPart.ts b/src/vs/workbench/browser/parts/auxiliarybar/auxiliaryBarPart.ts
+index 808e1d4608f..423ffa06db5 100644
+--- a/src/vs/workbench/browser/parts/auxiliarybar/auxiliaryBarPart.ts
++++ b/src/vs/workbench/browser/parts/auxiliarybar/auxiliaryBarPart.ts
+@@ -35,7 +35,7 @@ import { IHoverService } from '../../../../platform/hover/browser/hover.js';
+ import { VisibleViewContainersTracker } from '../visibleViewContainersTracker.js';
+ import { Extensions } from '../../panecomposite.js';
+ import { IToolBarResponsiveBehaviorOptions } from '../../../../base/browser/ui/toolbar/toolbar.js';
+-import { StudioSteamTabs, studioModeState } from '../studioMode.js';
++import { StudioSteamTabs, studioModeState, studioSteamWorkspaceState } from '../studioMode.js';
+ 
+ interface IAuxiliaryBarPartConfiguration {
+ 	position: ActivityBarPosition;
+@@ -103,6 +103,7 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
+ 			Parts.AUXILIARYBAR_PART,
+ 			{
+ 				hasTitle: true,
++				titleHeight: () => studioModeState.steam && studioSteamWorkspaceState.instances.length ? 70 : undefined,
+ 				trailingSeparator: true,
+ 				borderWidth: () => (this.getColor(SIDE_BAR_BORDER) || this.getColor(contrastBorder)) ? 1 : 0,
+ 			},
+@@ -137,6 +138,11 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
+ 
+ 		this.configuration = this.resolveConfiguration();
+ 		this._register(studioModeState.onDidChangeMode(() => this.updateCompositeBar()));
++		let hasInstances = false;
++		this._register(studioSteamWorkspaceState.onDidChange(() => {
++			const visible = studioSteamWorkspaceState.instances.length > 0;
++			if (visible !== hasInstances) { hasInstances = visible; layoutService.layout(); }
++		}));
+ 
+ 		this._register(configurationService.onDidChangeConfiguration(e => {
+ 			if (e.affectsConfiguration(LayoutSettings.ACTIVITY_BAR_LOCATION)) {
+diff --git a/src/vs/workbench/browser/parts/media/studioMode.css b/src/vs/workbench/browser/parts/media/studioMode.css
+index 5d96c090f7a..b302683d3b8 100644
+--- a/src/vs/workbench/browser/parts/media/studioMode.css
++++ b/src/vs/workbench/browser/parts/media/studioMode.css
+@@ -320,3 +320,64 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
+ .monaco-workbench.studio-steam-mode > .monaco-grid-view .part.editor:not(.modal-editor-part) { border: 0; border-radius: 0; }
+ /* Non-floating PartLayout allocates the classic 35px header metric. */
+ .monaco-workbench.studio-steam-mode .part.auxiliarybar > .title { height: 35px; }
++
++/* Tool categories lead; instance tabs sit directly underneath at the content tier. */
++.monaco-workbench .studio-steam-instances { display: none; }
++.monaco-workbench.studio-steam-mode .part.auxiliarybar > .title {
++	position: relative;
++	align-items: flex-start;
++}
++.monaco-workbench.studio-steam-mode .part.auxiliarybar > .title.studio-steam-has-instances { height: 70px; }
++.monaco-workbench.studio-steam-mode .part.auxiliarybar > .title > .title-actions { display: none; }
++.monaco-workbench.studio-steam-mode .studio-steam-tabs { height: 35px; }
++.monaco-workbench.studio-steam-mode .studio-steam-instances {
++	position: absolute;
++	inset: 35px 0 auto;
++	display: flex;
++	align-items: center;
++	height: 35px;
++	background: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-sideBar-background));
++	user-select: text;
++	-webkit-user-select: text;
++}
++.monaco-workbench .studio-steam-instances[hidden],
++.monaco-workbench .studio-steam-instances button[hidden] { display: none; }
++.monaco-workbench .studio-steam-instance-list {
++	display: flex;
++	align-items: stretch;
++	min-width: 0;
++	max-width: calc(100% - 72px);
++	height: 100%;
++	overflow-x: auto;
++	scrollbar-width: none;
++}
++.monaco-workbench .studio-steam-instance-list:hover { scrollbar-width: thin; }
++.monaco-workbench .studio-steam-instance {
++	display: flex;
++	align-items: center;
++	flex: 0 0 auto;
++	min-width: 80px;
++	max-width: 240px;
++	gap: var(--vscode-spacing-size80);
++	padding: 0 var(--vscode-spacing-size120);
++	color: var(--vscode-tab-inactiveForeground);
++	border-right: var(--vscode-strokeThickness) solid var(--vscode-tab-border, transparent);
++}
++.monaco-workbench .studio-steam-instance.active { color: var(--vscode-tab-activeForeground); background: var(--vscode-tab-activeBackground); }
++.monaco-workbench .studio-steam-instance:hover { background: var(--vscode-tab-hoverBackground); }
++.monaco-workbench .studio-steam-instances button {
++	border: 0;
++	background: transparent;
++	color: inherit;
++	font: inherit;
++	cursor: pointer;
++	user-select: text;
++	-webkit-user-select: text;
++}
++.monaco-workbench .studio-steam-instances button.codicon { font-family: codicon; font-size: var(--vscode-codiconFontSize); }
++.monaco-workbench .studio-steam-instance .studio-steam-tab-select { justify-content: flex-start; }
++.monaco-workbench .studio-steam-instance .studio-steam-tab-close { flex-shrink: 0; width: var(--vscode-spacing-size160); padding: 0; opacity: 0; font-size: var(--vscode-codiconFontSize-compact); }
++.monaco-workbench .studio-steam-instance:is(.active, :hover, :focus-within) .studio-steam-tab-close { opacity: 1; }
++.monaco-workbench .studio-steam-instances :is(.studio-steam-new-instance, .studio-steam-instance-actions) { flex-shrink: 0; width: var(--vscode-spacing-size280); height: var(--vscode-spacing-size280); border-radius: var(--vscode-cornerRadius-small); }
++.monaco-workbench .studio-steam-instances :is(.studio-steam-new-instance, .studio-steam-instance-actions, .studio-steam-tab-close):hover { background: var(--vscode-toolbar-hoverBackground); }
++.monaco-workbench .studio-steam-instances button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+diff --git a/src/vs/workbench/browser/parts/studioMode.ts b/src/vs/workbench/browser/parts/studioMode.ts
+index 334103c088d..b94fbf78714 100644
+--- a/src/vs/workbench/browser/parts/studioMode.ts
++++ b/src/vs/workbench/browser/parts/studioMode.ts
+@@ -36,9 +36,11 @@ export interface StudioSteamTab { id: string; label: string; icon: string; dirty
+ const workspaceChange = new Emitter<void>();
+ export const studioSteamWorkspaceState = {
+ 	tabs: [] as StudioSteamTab[], active: undefined as string | undefined,
++	instances: [] as StudioSteamTab[], activeInstance: undefined as string | undefined, tool: undefined as string | undefined,
+ 	onDidChange: workspaceChange.event,
+-	update(tabs: StudioSteamTab[], active: string | undefined): void {
+-		this.tabs = tabs; this.active = active; workspaceChange.fire();
++	update(tabs: StudioSteamTab[], active: string | undefined, instances: StudioSteamTab[] = [], activeInstance?: string, tool?: string): void {
++		if (JSON.stringify([this.tabs, this.active, this.instances, this.activeInstance, this.tool]) === JSON.stringify([tabs, active, instances, activeInstance, tool])) { return; }
++		this.tabs = tabs; this.active = active; this.instances = instances; this.activeInstance = activeInstance; this.tool = tool; workspaceChange.fire();
+ 	},
+ };
+ 
+@@ -208,6 +210,10 @@ export class StudioSteamTabs extends Disposable {
+ 	private readonly element: HTMLElement;
+ 	private readonly list: HTMLElement;
+ 	private readonly add: HTMLButtonElement;
++	private readonly instances: HTMLElement;
++	private readonly instanceList: HTMLElement;
++	private readonly newInstance: HTMLButtonElement;
++	private readonly instanceActions: HTMLButtonElement;
+ 	private readonly tabListeners = this._register(new DisposableStore());
+ 
+ 	constructor(parent: HTMLElement,
+@@ -219,6 +225,20 @@ export class StudioSteamTabs extends Disposable {
+ 		this.element = append(parent, $('.studio-steam-tabs'));
+ 		this.list = append(this.element, $('.studio-steam-tab-list', { role: 'tablist' }));
+ 		this.add = append(this.element, $('button.studio-steam-add-tab.codicon.codicon-add', { type: 'button', 'aria-haspopup': 'menu' })) as HTMLButtonElement;
++		this.instances = append(parent, $('.studio-steam-instances'));
++		this.instanceList = append(this.instances, $('.studio-steam-instance-list', { role: 'tablist' }));
++		this.newInstance = append(this.instances, $('button.studio-steam-new-instance.codicon.codicon-add', { type: 'button' })) as HTMLButtonElement;
++		this._register(addDisposableListener(this.newInstance, 'click', () => { void this.run('studio.internalNewSteamInstance', studioSteamWorkspaceState.tool); }));
++		this.instanceActions = append(this.instances, $('button.studio-steam-instance-actions.codicon.codicon-chevron-down', { type: 'button', 'aria-haspopup': 'menu' })) as HTMLButtonElement;
++		this._register(addDisposableListener(this.instanceActions, 'click', () => this.contextMenu.showContextMenu({
++			getAnchor: () => this.instanceActions,
++			getActions: () => (studioSteamWorkspaceState.tool === 'terminal' ? [
++				['terminalProfiles', 'workbench.action.terminal.newWithProfile'], ['terminalSplit', 'workbench.action.terminal.split'], ['terminalRename', 'workbench.action.terminal.rename'],
++			] : [['selectProject', studioSteamWorkspaceState.activeInstance?.startsWith('editor:') ? 'studio.selectToolInstanceProject'
++				: studioSteamWorkspaceState.tool === 'versions' ? 'studio.selectVersionsProject' : 'studio.selectInfoProject']]).map(([label, command]) => toAction({ id: command,
++				label: studioModeState.state.labels[label] ?? label, run: () => this.run(command, command === 'studio.selectToolInstanceProject' ? studioSteamWorkspaceState.tool : undefined),
++			})),
++		})));
+ 		this._register(addDisposableListener(this.add, 'click', () => this.contextMenu.showContextMenu({
+ 			getAnchor: () => this.add,
+ 			getActions: () => studioSteamToolDefinitions.map(tool => toAction({
+@@ -233,24 +253,42 @@ export class StudioSteamTabs extends Disposable {
+ 		this.render();
+ 	}
+ 
+-	private async run(command: string, id?: string, focusTab = false): Promise<void> {
++	private async run(command: string, id?: string, focusTab: boolean | HTMLElement = false): Promise<void> {
+ 		try { await this.commands.executeCommand(command, id); } catch (error) { this.notifications.error(error); }
+ 		if (focusTab) {
+-			(this.list.querySelector<HTMLButtonElement>('.active .studio-steam-tab-select') ?? this.add).focus();
++			const list = typeof focusTab === 'boolean' ? this.list : focusTab;
++			(list.querySelector<HTMLButtonElement>('.active button[role=tab]') ?? this.add).focus();
+ 		}
+ 	}
+ 
+ 	private render(): void {
+-		const focused = this.list.contains(getWindow(this.list).document.activeElement)
+-			? (getWindow(this.list).document.activeElement as HTMLElement).closest<HTMLElement>('[data-tab]')?.dataset.tab : undefined;
+-		this.tabListeners.clear(); clearNode(this.list);
++		this.tabListeners.clear();
+ 		const { tabs, active } = studioSteamWorkspaceState;
+ 		const labels = studioModeState.state.labels;
+ 		this.list.setAttribute('aria-label', labels.workspace ?? 'Tool Workspace');
+ 		this.add.title = labels.addTool ?? 'Open Tool'; this.add.setAttribute('aria-label', this.add.title);
+-		if (!tabs.length) { append(this.list, $('span.studio-steam-empty-tabs', undefined, labels.tools ?? 'Open Tools')); }
++		this.renderTabs(this.list, tabs, active, false);
++		this.instances.hidden = !studioSteamWorkspaceState.instances.length;
++		this.instances.parentElement?.classList.toggle('studio-steam-has-instances', !this.instances.hidden);
++		this.instanceList.setAttribute('aria-label', labels.instances ?? 'Tool Instances');
++		this.newInstance.title = (labels.newInstance ?? 'New {0}').replace('{0}', labels[studioSteamWorkspaceState.tool ?? ''] ?? '');
++		this.newInstance.setAttribute('aria-label', this.newInstance.title);
++		this.instanceActions.hidden = !['terminal', 'info', 'versions'].includes(studioSteamWorkspaceState.tool ?? '');
++		this.instanceActions.title = labels.instanceActions ?? 'Instance Actions';
++		this.instanceActions.setAttribute('aria-label', this.instanceActions.title);
++		this.renderTabs(this.instanceList, studioSteamWorkspaceState.instances, studioSteamWorkspaceState.activeInstance, true);
++	}
++
++	private renderTabs(list: HTMLElement, tabs: StudioSteamTab[], active: string | undefined, instances: boolean): void {
++		const focused = list.contains(getWindow(list).document.activeElement)
++			? (getWindow(list).document.activeElement as HTMLElement).closest<HTMLElement>('[data-tab]')?.dataset.tab : undefined;
++		clearNode(list);
++		const labels = studioModeState.state.labels;
++		const selectCommand = instances ? 'studio.internalSelectSteamInstance' : 'studio.internalSelectSteamTab';
++		const closeCommand = instances ? 'studio.internalCloseSteamInstance' : 'studio.internalCloseSteamTab';
++		if (!instances && !tabs.length) { append(list, $('span.studio-steam-empty-tabs', undefined, labels.tools ?? 'Open Tools')); }
+ 		for (const [index, tab] of tabs.entries()) {
+-			const item = append(this.list, $('.studio-steam-tab', { 'data-tab': tab.id, 'data-icon': tab.icon }));
++			const item = append(list, $(instances ? '.studio-steam-instance' : '.studio-steam-tab', { 'data-tab': tab.id, 'data-icon': tab.icon }));
+ 			item.classList.toggle('active', tab.id === active); item.classList.toggle('dirty', !!tab.dirty);
+ 			const button = append(item, $('button.studio-steam-tab-select', { type: 'button', role: 'tab', 'aria-selected': String(tab.id === active), title: tab.label })) as HTMLButtonElement;
+ 			button.tabIndex = tab.id === (active ?? tabs[0]?.id) ? 0 : -1;
+@@ -258,22 +296,22 @@ export class StudioSteamTabs extends Disposable {
+ 			append(button, $('span.studio-steam-tab-label', undefined, tab.label));
+ 			const closeLabel = (labels.closeTab ?? 'Close {0}').replace('{0}', tab.label);
+ 			const close = append(item, $('button.studio-steam-tab-close.codicon.codicon-close-compact', { type: 'button', 'aria-label': closeLabel, title: closeLabel })) as HTMLButtonElement;
+-			this.tabListeners.add(addDisposableListener(button, 'click', () => { void this.run('studio.internalSelectSteamTab', tab.id); }));
+-			this.tabListeners.add(addDisposableListener(close, 'click', () => { void this.run('studio.internalCloseSteamTab', tab.id); }));
++			this.tabListeners.add(addDisposableListener(button, 'click', () => { void this.run(selectCommand, tab.id); }));
++			this.tabListeners.add(addDisposableListener(close, 'click', () => { void this.run(closeCommand, tab.id); }));
+ 			this.tabListeners.add(addDisposableListener(item, 'auxclick', event => {
+-				if (event.button === 1) { event.preventDefault(); void this.run('studio.internalCloseSteamTab', tab.id); }
++				if (event.button === 1) { event.preventDefault(); void this.run(closeCommand, tab.id); }
+ 			}));
+ 			this.tabListeners.add(addDisposableListener(button, 'keydown', event => {
+ 				let next: number | undefined;
+ 				if (event.key === 'ArrowRight') { next = (index + 1) % tabs.length; }
+ 				else if (event.key === 'ArrowLeft') { next = (index + tabs.length - 1) % tabs.length; }
+ 				else if (event.key === 'Home') { next = 0; } else if (event.key === 'End') { next = tabs.length - 1; }
+-				else if (event.key === 'Delete') { event.preventDefault(); void this.run('studio.internalCloseSteamTab', tab.id, true); }
+-				if (next !== undefined) { event.preventDefault(); void this.run('studio.internalSelectSteamTab', tabs[next].id, true); }
++				else if (event.key === 'Delete') { event.preventDefault(); void this.run(closeCommand, tab.id, list); }
++				if (next !== undefined) { event.preventDefault(); void this.run(selectCommand, tabs[next].id, list); }
+ 			}));
+ 			if (tab.id === focused) { button.focus(); }
+ 		}
+-		this.list.querySelector('.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
++		list.querySelector('.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+ 	}
+ }
+ 
+diff --git a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+index 44b1ae3d482..781d0d118f0 100644
+--- a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
++++ b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+@@ -120,6 +120,9 @@ export class StudioModeContribution extends Disposable {
+ 		this._register(CommandsRegistry.registerCommand('studio.internalOpenSteamTool', (_accessor, id: string) => this.openTool(id)));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalSelectSteamTab', (_accessor, id: string) => this.workspace.select(id)));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalCloseSteamTab', (_accessor, id: string) => this.workspace.close(id)));
++		this._register(CommandsRegistry.registerCommand('studio.internalNewSteamInstance', (_accessor, id?: string) => this.workspace.newInstance(id)));
++		this._register(CommandsRegistry.registerCommand('studio.internalSelectSteamInstance', (_accessor, id: string) => this.workspace.select(id, true)));
++		this._register(CommandsRegistry.registerCommand('studio.internalCloseSteamInstance', (_accessor, id: string) => this.workspace.close(id, true)));
+ 		this._register(studioModeState.onDidChangeState(state => {
+ 			toolsTitle.value = state.labels.tools ?? toolsTitle.original;
+ 			if (!this.initialized || !state.available) {
+@@ -273,7 +276,7 @@ export class StudioModeContribution extends Disposable {
+ 	private async openTool(id: string): Promise<void> {
+ 		const tool = studioSteamToolDefinitions.find(tool => tool.id === id);
+ 		if (!this.steam || !tool) { return; }
+-		if ('command' in tool) { await this.commands.executeCommand(tool.command); }
++		if ('command' in tool) { await this.workspace.openTool(id); }
+ 		else { await this.sequencer.queue(async () => { if (this.steam) { await this.workspace.openTool(id); } }); }
+ 	}
+ 
+diff --git a/src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts b/src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts
+index bca9a0cbae5..fd965bb412e 100644
+--- a/src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts
++++ b/src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts
+@@ -8,6 +8,8 @@ import { RunOnceScheduler } from '../../../../base/common/async.js';
+ import { onUnexpectedError } from '../../../../base/common/errors.js';
+ import { Disposable, DisposableStore, MutableDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
+ import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
++import { ICommandService } from '../../../../platform/commands/common/commands.js';
++import { TerminalLocation } from '../../../../platform/terminal/common/terminal.js';
+ import { studioModeState, studioSteamToolDefinitions, studioSteamWorkspaceState, StudioSteamTab } from '../../../browser/parts/studioMode.js';
+ import { EditorsOrder, IUntypedEditorInput } from '../../../common/editor.js';
+ import { EditorInput } from '../../../common/editor/editorInput.js';
+@@ -19,6 +21,7 @@ import { PreferredGroup } from '../../../services/editor/common/editorService.js
+ import { IWorkbenchLayoutService, Parts } from '../../../services/layout/browser/layoutService.js';
+ import { IViewsService } from '../../../services/views/common/viewsService.js';
+ import { WebviewInput } from '../../webviewPanel/browser/webviewEditorInput.js';
++import { ITerminalGroupService, ITerminalService } from '../../terminal/browser/terminal.js';
+ 
+ const TABS_KEY = 'studio.steamWorkspaceTabs';
+ const HOME_VIEW = 'studio.steamTools';
+@@ -49,6 +52,7 @@ export class StudioSteamWorkspace extends Disposable {
+ 	private editorId = 0;
+ 	private savedActive: string | undefined;
+ 	private visibilityRevision = 0;
++	private readonly selectedInstances = new Map<string, string>();
+ 
+ 	get hasProject(): boolean {
+ 		return !!this.project && !this.project.isDisposed() && !!this.projectGroup?.contains(this.project);
+@@ -60,6 +64,9 @@ export class StudioSteamWorkspace extends Disposable {
+ 		@IViewDescriptorService private readonly descriptors: IViewDescriptorService,
+ 		@IWorkbenchLayoutService private readonly layout: IWorkbenchLayoutService,
+ 		@IStorageService private readonly storage: IStorageService,
++		@ICommandService private readonly commands: ICommandService,
++		@ITerminalService private readonly terminals: ITerminalService,
++		@ITerminalGroupService private readonly terminalGroups: ITerminalGroupService,
+ 	) {
+ 		super();
+ 		const saved = storage.getObject<SavedTabs>(TABS_KEY, StorageScope.WORKSPACE);
+@@ -80,6 +87,9 @@ export class StudioSteamWorkspace extends Disposable {
+ 			}
+ 		}));
+ 		this._register(registerEditorOpenTarget((editor, preferred) => this.target(editor, preferred)));
++		this._register(this.terminalGroups.onDidChangeInstances(() => this.publish()));
++		this._register(this.terminalGroups.onDidChangeActiveInstance(() => this.publish()));
++		this._register(this.terminals.onAnyInstanceTitleChange(() => this.refresh.schedule()));
+ 		const observer = new (getWindow(parent).ResizeObserver)(() => this.layoutEditors());
+ 		observer.observe(parent);
+ 		this._register(this.layout.onDidChangePartVisibility(() => this.layoutEditors()));
+@@ -94,13 +104,18 @@ export class StudioSteamWorkspace extends Disposable {
+ 		const part = this.part = this.partLifetime.add(this.groups.createEmbeddedEditorPart(this.host, 'workbench.parts.studioSteamEditors', studioModeState.state.labels.workspace ?? 'Tool Workspace'));
+ 		this.partLifetime.add(part.enforcePartOptions({ showTabs: 'none', enablePreview: false, closeEmptyGroups: true, editorActionsLocation: 'hidden' }));
+ 		const registerGroup = (group: IEditorGroup) => {
++			let opening: { editor: EditorInput; revision: number } | undefined;
+ 			this.partLifetime.add((group as IEditorGroupView).onWillOpenEditor(event => {
+ 				if (this.enabled && group.activeEditor === event.editor) { this.revealEditor(event.editor, group); }
++				opening = { editor: event.editor, revision: this.visibilityRevision };
+ 			}));
+ 			this.partLifetime.add(group.onDidModelChange(() => this.refresh.schedule()));
+ 			this.partLifetime.add(group.onDidActiveEditorChange(() => {
+ 				this.syncEditors();
+-				if (this.enabled && this.groups.activeGroup === group && group.activeEditor) { this.revealEditor(group.activeEditor, group); }
++				// Closing an input starts an asynchronous native fallback. A later tool
++				// selection owns the surface and must not be replaced when it finishes.
++				if (this.enabled && this.groups.activeGroup === group && group.activeEditor
++					&& opening?.editor === group.activeEditor && opening.revision === this.visibilityRevision) { this.revealEditor(group.activeEditor, group); }
+ 			}));
+ 		};
+ 		part.groups.forEach(registerGroup);
+@@ -193,13 +208,42 @@ export class StudioSteamWorkspace extends Disposable {
+ 	async openTool(id: string): Promise<void> {
+ 		if (!this.enabled) { return; }
+ 		const tool = studioSteamToolDefinitions.find(tool => tool.id === id);
+-		if (!tool || !('view' in tool) || !this.descriptors.getViewContainerByViewId(tool.view)) { return; }
++		if (!tool) { return; }
++		if (this.tabs.some(tab => this.toolFor(tab)?.id === id)) { await this.select(id); return; }
++		if ('command' in tool) { await this.commands.executeCommand(tool.command); return; }
++		if (!this.descriptors.getViewContainerByViewId(tool.view)) { return; }
+ 		if (!this.tabs.some(tab => tab.id === id)) { this.tabs.push({ id, tool }); }
+ 		await this.select(id);
+ 	}
+ 
+-	async select(id: string): Promise<void> {
++	async newInstance(id: string | undefined): Promise<void> {
+ 		if (!this.enabled) { return; }
++		const tool = studioSteamToolDefinitions.find(tool => tool.id === id);
++		if (!tool) { return; }
++		if (tool.id === 'terminal') {
++			const instance = await this.terminals.createTerminal({ location: TerminalLocation.Panel });
++			if (instance && this.enabled) { await this.openTool('terminal'); await this.terminalGroups.focusInstance(instance); }
++		} else if ('command' in tool) {
++			await this.commands.executeCommand(tool.command, undefined, ...(tool.id === 'browser' ? [{ forceNew: true }] : []));
++		} else { await this.commands.executeCommand('studio.createToolInstance', tool.id); }
++	}
++
++	async select(id: string, instance = false): Promise<void> {
++		if (!this.enabled) { return; }
++		if (id.startsWith('terminal:')) {
++			const terminal = this.terminalGroups.instances.find(terminal => `terminal:${terminal.instanceId}` === id);
++			if (terminal) {
++				this.active = 'terminal';
++				await this.views.openView('terminal', true);
++				if (this.enabled && this.active === 'terminal' && this.terminalGroups.instances.includes(terminal)) { await this.terminalGroups.focusInstance(terminal); }
++				this.publish();
++			}
++			return;
++		}
++		if (!instance) {
++			const candidates = this.tabs.filter(tab => this.toolFor(tab)?.id === id);
++			id = candidates.find(tab => tab.id === this.selectedInstances.get(id))?.id ?? candidates[0]?.id ?? id;
++		}
+ 		const tab = this.tabs.find(tab => tab.id === id);
+ 		if (!tab) { return; }
+ 		++this.visibilityRevision; this.active = id; this.publish();
+@@ -211,18 +255,42 @@ export class StudioSteamWorkspace extends Disposable {
+ 		}
+ 	}
+ 
+-	async close(id: string): Promise<void> {
++	async close(id: string, instance = false): Promise<void> {
+ 		if (!this.enabled) { return; }
++		if (id.startsWith('terminal:')) {
++			const terminal = this.terminalGroups.instances.find(terminal => `terminal:${terminal.instanceId}` === id);
++			if (terminal) { await this.terminals.safeDisposeTerminal(terminal); }
++			if (!this.terminalGroups.instances.length && this.active === 'terminal') { await this.home(); }
++			this.publish(); return;
++		}
++		if (!instance && studioSteamToolDefinitions.some(tool => tool.id === id)) {
++			const category = this.tabs.filter(tab => this.toolFor(tab)?.id === id);
++			const wasActive = this.toolFor(this.tabs.find(tab => tab.id === this.active))?.id === id;
++			const part = this.part;
++			for (const tab of category.filter(tab => tab.editor)) {
++				if (!await tab.group!.closeEditor(tab.editor!, { preserveFocus: true })) { this.publish(); return; }
++				if (!this.enabled || this.part !== part) { return; }
++			}
++			this.tabs = this.tabs.filter(tab => !category.some(closed => closed.id === tab.id));
++			this.selectedInstances.delete(id);
++			if (wasActive || !this.active || !this.tabs.some(tab => tab.id === this.active)) {
++				if (this.tabs.length) { await this.select(this.tabs.at(-1)!.id, true); } else { await this.home(); }
++			} else { this.publish(); }
++			return;
++		}
+ 		const index = this.tabs.findIndex(tab => tab.id === id), tab = this.tabs[index];
+ 		if (!tab) { return; }
+ 		const wasActive = this.active === id;
+-		const next = this.tabs[index + 1]?.id ?? this.tabs[index - 1]?.id;
++		const tool = this.toolFor(tab);
++		const siblings = tool ? this.tabs.filter(candidate => this.toolFor(candidate)?.id === tool.id) : [];
++		const siblingIndex = siblings.indexOf(tab);
++		const next = siblings[siblingIndex + 1]?.id ?? siblings[siblingIndex - 1]?.id ?? this.tabs[index + 1]?.id ?? this.tabs[index - 1]?.id;
+ 		const part = this.part;
+ 		if (tab.editor && tab.group && !await tab.group.closeEditor(tab.editor, { preserveFocus: true })) { return; }
+ 		if (!this.enabled || this.part !== part) { return; }
+ 		this.tabs = this.tabs.filter(tab => tab.id !== id);
+ 		if (wasActive) {
+-			if (next && this.tabs.some(tab => tab.id === next)) { await this.select(next); } else { await this.home(); }
++			if (next && this.tabs.some(tab => tab.id === next)) { await this.select(next, true); } else { await this.home(); }
+ 		} else { this.publish(); }
+ 	}
+ 
+@@ -283,11 +351,26 @@ export class StudioSteamWorkspace extends Disposable {
+ 	}
+ 
+ 	private publish(): void {
+-		const tabs: StudioSteamTab[] = this.tabs.map(tab => ({ id: tab.id,
++		const activeTool = this.toolFor(this.tabs.find(tab => tab.id === this.active));
++		if (activeTool && this.active) { this.selectedInstances.set(activeTool.id, this.active); }
++		const describe = (tab: WorkspaceTab): StudioSteamTab => ({ id: tab.id,
+ 			label: tab.tool ? studioModeState.state.labels[tab.id] ?? tab.id : tab.editor!.getName(),
+ 			icon: tab.tool?.icon ?? 'file', dirty: tab.editor?.isDirty(),
+-		}));
+-		studioSteamWorkspaceState.update(tabs, this.active);
++		});
++		const tabs = new Map<string, StudioSteamTab>();
++		for (const tab of this.tabs) {
++			const tool = this.toolFor(tab);
++			const id = tool?.id ?? tab.id;
++			const previous = tabs.get(id);
++			tabs.set(id, { ...(tool ? { id, label: studioModeState.state.labels[id] ?? id, icon: tool.icon } : describe(tab)), dirty: previous?.dirty || tab.editor?.isDirty() });
++		}
++		const instances = activeTool ? this.tabs.filter(tab => this.toolFor(tab)?.id === activeTool.id).flatMap(tab => tab.id === 'terminal'
++			? this.terminalGroups.instances.map(terminal => ({ id: `terminal:${terminal.instanceId}`, label: terminal.title, icon: 'terminal' })) : [describe(tab)]) : [];
++		let selected = this.active;
++		if (activeTool?.id === 'terminal' && this.active === 'terminal') {
++			selected = this.terminalGroups.activeInstance ? `terminal:${this.terminalGroups.activeInstance.instanceId}` : undefined;
++		}
++		studioSteamWorkspaceState.update([...tabs.values()], activeTool?.id ?? this.active, this.enabled ? instances : [], selected, activeTool?.id);
+ 		if (this.enabled) {
+ 			this.savedActive = this.active?.startsWith('editor:') ? 'editor' : this.active;
+ 			this.storage.store(TABS_KEY, { tools: this.tabs.filter(tab => tab.tool).map(tab => tab.id), active: this.savedActive }, StorageScope.WORKSPACE, StorageTarget.MACHINE);
+@@ -295,6 +378,20 @@ export class StudioSteamWorkspace extends Disposable {
+ 		this.layoutEditors();
+ 	}
+ 
++	private toolFor(tab: WorkspaceTab | undefined): typeof studioSteamToolDefinitions[number] | undefined {
++		if (tab?.tool) { return tab.tool; }
++		const editor = tab?.editor;
++		if (!editor) { return undefined; }
++		let id: string | undefined;
++		if (editor instanceof WebviewInput) {
++			const type = editor.webview.providedViewType;
++			id = type?.startsWith('studio.tool.') ? type.slice('studio.tool.'.length)
++				: type === 'simpleBrowser.view' ? 'browser' : type === 'studio.projectTool' ? 'project' : undefined;
++		} else if (editor.typeId === 'workbench.editors.terminal') { id = 'terminal'; }
++		else if (editor.typeId === 'workbench.editorinputs.browser') { id = 'browser'; }
++		return studioSteamToolDefinitions.find(tool => tool.id === id);
++	}
++
+ 	private layoutEditors(): void {
+ 		const visible = this.enabled && !!this.active?.startsWith('editor:') && this.layout.isVisible(Parts.AUXILIARYBAR_PART);
+ 		this.host.hidden = !visible;
+diff --git a/src/vs/workbench/contrib/terminal/browser/terminalTabbedView.ts b/src/vs/workbench/contrib/terminal/browser/terminalTabbedView.ts
+index 7a3dd584458..191252eaa87 100644
+--- a/src/vs/workbench/contrib/terminal/browser/terminalTabbedView.ts
++++ b/src/vs/workbench/contrib/terminal/browser/terminalTabbedView.ts
+@@ -28,6 +28,7 @@ import { containsDragType } from '../../../../platform/dnd/browser/dnd.js';
+ import { getTerminalResourcesFromDragEvent, parseTerminalUri } from './terminalUri.js';
+ import type { IProcessDetails } from '../../../../platform/terminal/common/terminalProcess.js';
+ import { TerminalContribContextKeyStrings } from '../terminalContribExports.js';
++import { studioModeState } from '../../../browser/parts/studioMode.js';
+ 
+ const $ = dom.$;
+ 
+@@ -133,6 +134,7 @@ export class TerminalTabbedView extends Disposable {
+ 				}
+ 			}
+ 		}));
++		this._register(studioModeState.onDidChangeMode(() => this._refreshShowTabs()));
+ 		this._register(Event.any(this._terminalGroupService.onDidChangeInstances, this._terminalGroupService.onDidChangeGroups)(() => {
+ 			this._refreshShowTabs();
+ 			this._updateChatTerminalsEntry();
+@@ -166,6 +168,7 @@ export class TerminalTabbedView extends Disposable {
+ 	}
+ 
+ 	private _shouldShowTabs(): boolean {
++		if (studioModeState.steam) { return false; }
+ 		const enabled = this._terminalConfigurationService.config.tabs.enabled;
+ 		const hide = this._terminalConfigurationService.config.tabs.hideCondition;
+ 		const hiddenChatTerminals = this._terminalChatService.getToolSessionTerminalInstances(true);

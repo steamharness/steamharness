@@ -25,11 +25,14 @@ interface ProjectUploadSession {
 
 export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposable {
   private readonly changes = new vscode.EventEmitter<void>();
+  private readonly operations = new vscode.EventEmitter<void>();
   readonly onDidChangeVersions = this.changes.event;
   private view?: vscode.WebviewView;
   private readonly listeners: vscode.Disposable[] = [];
   private localProjects: Project[] = [];
   private preferred?: Project;
+  private preferredUri?: string;
+  private operationBusy = false;
   private serverProject?: ServerProject;
   private serverProjects = new Map<string, ServerProject>();
   private checked = false;
@@ -54,10 +57,12 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
   constructor(private readonly context: vscode.ExtensionContext, private readonly launcher: Launcher,
     private readonly account: AccountController, private readonly output: vscode.OutputChannel,
     private readonly prepareUpgrade: (project: Project, signal: AbortSignal) => Promise<vscode.Disposable>,
-    private readonly rememberDownload: (projects: DownloadedServerProject[], replacedRoot?: string) => Promise<void>) {
+    private readonly rememberDownload: (projects: DownloadedServerProject[], replacedRoot?: string) => Promise<void>,
+    register = true, subscriptions: vscode.Disposable[] = context.subscriptions, private readonly transferHost?: VersionsView) {
     this.connectionKey = JSON.stringify(account.getConnection());
     const command = <Args extends unknown[]>(name: string, action: (...args: Args) => unknown): void => {
-      context.subscriptions.push(vscode.commands.registerCommand(name, async (...args: Args) => {
+      if (!register) { return; }
+      subscriptions.push(vscode.commands.registerCommand(name, async (...args: Args) => {
         try { return await action(...args); }
         catch (error) { this.report(error); }
       }));
@@ -65,13 +70,15 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
     command('studio.uploadProject', (target?: { uri?: string }) => this.upload(target));
     command('studio.upgradeProject', (target?: { uri?: string }) => this.upgrade(target));
     command('studio.refreshVersions', () => this.reload());
+    command('studio.selectVersionsProject', () => this.selectProject());
     command('studio.downloadProject', () => this.chooseDownload());
     command('studio.importProjectFromLink', (link?: string) => this.importFromLink(link));
     command('studio.internalUploadProject', (input: { id: string; releaseLog: string; options?: Record<string, boolean> }) => this.submitUpload(input));
     command('studio.internalCancelProjectUpload', (id: string) => {
       if (this.uploadSession?.id === id) { this.uploadSession.controller?.abort(); }
     });
-    context.subscriptions.push(this, vscode.window.registerWebviewViewProvider('studio.versions', this, { webviewOptions: { retainContextWhenHidden: true } }),
+    subscriptions.push(this, ...(register ? [vscode.window.registerWebviewViewProvider('studio.versions', this, { webviewOptions: { retainContextWhenHidden: true } })] : []),
+      ...(transferHost ? [transferHost.operations.event(() => this.publish()), transferHost.onDidChangeVersions(() => this.schedule())] : []),
       account.onDidChange(state => {
         if (state.status === 'checking') { return; }
         const key = JSON.stringify(account.getConnection());
@@ -94,7 +101,9 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
     const signature = JSON.stringify(this.localProjects.map(project => [project.uri, project.id, projectVersion(project)]));
     const projectsChanged = signature !== this.projectSignature;
     this.projectSignature = signature;
-    const local = this.localProjects.find(project => project.uri === preferred?.uri) ?? this.localProjects[0];
+    const changedPreferred = preferred?.uri !== this.preferredUri;
+    this.preferredUri = preferred?.uri;
+    const local = this.localProjects.find(project => project.uri === (changedPreferred ? preferred?.uri : this.preferred?.uri)) ?? this.localProjects[0];
     const changed = local?.uri !== this.preferred?.uri || local?.id !== this.preferred?.id;
     const versionChanged = local && projectVersion(local) !== (this.preferred && projectVersion(this.preferred));
     this.preferred = local;
@@ -102,6 +111,16 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
     void vscode.commands.executeCommand('setContext', 'studio.projectUploadAvailable', !!local && !!this.launcher.uploadProject && vscode.workspace.isTrusted);
     if (projectsChanged || changed || versionChanged) { this.schedule(); }
     this.publish();
+  }
+
+  async selectProject(): Promise<void> {
+    const picked = await vscode.window.showQuickPick(this.localProjects.map(project => ({
+      label: projectDisplayName(project), description: project.projectType, detail: project.folderPath, project,
+    })), { title: t('Select Project'), placeHolder: t('Project') });
+    const selected = this.localProjects.find(project => project.uri === picked?.project.uri);
+    if (!selected || selected === this.preferred || this.disposed) { return; }
+    this.preferred = selected; this.serverProject = this.serverProjects.get(selected.id); this.versions = [];
+    this.schedule(); this.publish();
   }
 
   private schedule(): void {
@@ -157,13 +176,15 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
 
   private publish(): void {
     if (this.disposed) { return; }
+    const operationBusy = this.busy || this.choosing;
+    if (operationBusy !== this.operationBusy) { this.operationBusy = operationBusy; this.operations.fire(); }
     const signature = JSON.stringify(this.localProjects.map(project => [project.uri, this.getVersionStatus(project)]));
     if (signature !== this.published) { this.published = signature; this.changes.fire(); }
     if (!this.view) { return; }
     const local = this.preferred;
     const remote = this.serverProject;
     const state: VersionsState = { type: 'versions-state', generation: this.generation, signedIn: !!this.account.getConnection(),
-      loading: this.loading, busy: this.busy || this.choosing, project: local && { id: local.id, name: local.name, uri: local.uri },
+      loading: this.loading, busy: operationBusy || !!this.transferHost?.operationBusy, project: local && { id: local.id, name: local.name, uri: local.uri },
       localVersion: local && projectVersion(local), update: local && this.getVersionStatus(local), versions: this.versions,
       canDownload: !this.error && !!remote?.sourceDownload?.allowed && !!this.launcher.downloadProject,
       transfersAvailable: !!this.launcher.downloadProject, error: this.error };
@@ -487,13 +508,13 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
   private async receive(message: { type?: string; generation?: number; projectId?: string; version?: string }): Promise<void> {
     if (message.type === 'ready') { this.publish(); return; }
     if (message.type === 'sign-in') { this.account.open(); return; }
-    if (message.generation !== this.generation || this.busy) { return; }
+    if (message.generation !== this.generation || this.busy || this.transferHost?.operationBusy) { return; }
     if (message.type === 'refresh') { await this.reload(); return; }
     if (message.projectId !== this.preferred?.id) { return; }
-    if (message.type === 'upgrade') { await this.upgrade(this.preferred); return; }
+    if (message.type === 'upgrade') { await (this.transferHost ?? this).upgrade(this.preferred); return; }
     if (message.type === 'upload') {
       const local = this.preferred;
-      if (local) { await this.upload(local); }
+      if (local) { await (this.transferHost ?? this).upload(local); }
     }
     if (message.type === 'download' && message.version) { await this.download(message.version); }
   }
@@ -506,7 +527,7 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
   }
 
   dispose(): void {
-    this.disposed = true; ++this.generation; clearTimeout(this.timer); clearInterval(this.interval); this.reading?.abort(); this.lifetime.abort(); this.changes.dispose();
+    this.disposed = true; ++this.generation; clearTimeout(this.timer); clearInterval(this.interval); this.reading?.abort(); this.lifetime.abort(); this.changes.dispose(); this.operations.dispose();
     for (const listener of this.listeners.splice(0)) { listener.dispose(); }
   }
 }

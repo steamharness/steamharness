@@ -47,7 +47,7 @@ function fixture(t, options = {}) {
     const session = { closed, finish, disposed: false, dispose: async () => { session.disposed = true; await options.close?.(); finish(); } };
     sessions.push(session);
     return session;
-  });
+  }, options.register ?? true);
   t.after(() => provider.dispose());
   const view = { webview: { options: {}, cspSource: 'https://test.vscode-webview.net', asWebviewUri: uri => uri,
     onDidReceiveMessage: callback => { receivers.add(callback); return { dispose: () => receivers.delete(callback) }; }, postMessage: async message => { messages.push(message); } },
@@ -94,6 +94,19 @@ test('active files select their workspace root and switching stops the old assis
   assert.equal(sessions.length, 2, 'Focusing the assistant must retain the current folder.');
   vscode.window.activeTextEditor = { document: { uri: 'file:///unopened/index.ts' } }; events.editor(); await flushEditor();
   assert.equal(sessions.length, 2, 'A file outside the workspace must not change scope.');
+});
+
+test('an assistant panel pins its own workspace folder while the IDE assistant can follow active files', async t => {
+  const f = fixture(t, { register: false, folders: [folder('/workspace'), folder('/other-project')] });
+  await f.provider.resolveWebviewView(f.view);
+  f.vscode.window.activeTextEditor = { document: { uri: 'file:///other-project/index.ts' } };
+  f.events.editor(); await f.flushEditor();
+  assert.equal(f.sessions.length, 1); assert.equal(f.sessions[0].disposed, false);
+  assert.equal(f.projects[0].assistant.workdir, '/workspace');
+  assert.equal(f.commands.has('studio.newAssistantConversation'), false);
+  f.vscode.workspace.workspaceFolders = [folder('/other-project')];
+  await f.events.folders();
+  assert.equal(f.sessions[0].disposed, true); assert.equal(f.projects.at(-1).assistant.workdir, '/other-project');
 });
 
 test('removing workspace folders stops the assistant and empty workspaces offer Open Folder', async t => {

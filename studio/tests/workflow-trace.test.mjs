@@ -20,6 +20,19 @@ test('trace connections reject late data, mismatched project identities and stal
   store.select(b.uri); assert.equal(store.state().snapshot, undefined);
   store.update([b]); send(next, snapshot(a)); assert.equal(store.availableProjects().length, 1);
 });
+
+test('trace instances share live runs and connection replacement while keeping project and run selections independent', () => {
+  const store = new TraceStore(), a = project('a', 'workflow'), b = project('b', 'workflow'); store.update([a, b], a);
+  const original = store.bind(a, 1, () => {}); send(original, snapshot(a, { runs: [{ id: 'old' }], run: { id: 'latest' } }));
+  const second = store.fork(); second.select(b.uri);
+  assert.equal(store.selection.projectUri, a.uri); assert.equal(second.selection.projectUri, b.uri);
+  second.select(a.uri, { runId: 'old' });
+  const replaced = store.bind(a, 1, () => {}); original.dispose();
+  send(replaced, snapshot(a, { runs: [{ id: 'old' }], run: { id: 'new', logs: 'live output' } }));
+  assert.equal(second.hasConnection(a.uri), true); assert.equal(second.selection.runId, 'old');
+  assert.equal(second.state().snapshot.run.logs, 'live output'); assert.equal(store.selection.runId, undefined);
+  replaced.dispose(); assert.equal(second.state().status, 'closed');
+});
 test('Kanban and a background assistant do not add a trace tab to an ordinary workspace', () => {
   const store = new TraceStore(), assistant = { ...project('assistant'), assistant: { standalone: true } };
   store.update([project('board', 'kanban')]); const binding = store.bind(assistant, 1, () => {});
