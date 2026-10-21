@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { applyConfigurationAction, createConfigurationState, configurationSnapshot, exportConfigurations, parseConfigurationDefinition, readConfigurationState, type ProjectConfigurationAction } from "../index";
+import { applyConfigurationAction, createConfigurationState, configurationSnapshot, exportConfigurations, parseConfigurationDefinition, readConfigurationState, parseConfigurationField, validateConfigurationValue, type ProjectConfigurationAction } from "../index";
 let serial = 0;
 const id = () => `config-${++serial}`;
 const fields = parseConfigurationDefinition({version:1, fields:[
@@ -7,6 +7,30 @@ const fields = parseConfigurationDefinition({version:1, fields:[
   {name:"enabled",type:"boolean"}, {name:"choice",type:"string",options:[{value:"a"},{value:"b"}],multiple:true},
   {name:"data",type:"json"}
 ]}).fields;
+const file={id:"wf_ab12",name:"底图.png",mimeType:"image/png",size:12,storage:"server" as const,projectId:"project"};
+it("stores and round trips validated server file references, without embedding bytes",()=>{
+  const field=parseConfigurationField({name:"image",type:"file",accept:["image/png",".webp"],control:undefined});
+  let state=createConfigurationState([field],id);
+  state=applyConfigurationAction(state,{action:"save",revision:0,id:state.activeConfigurationId,values:{image:file}},id);
+  const document=exportConfigurations(state), target=createConfigurationState([],id);
+  const imported=applyConfigurationAction(target,{action:"import",revision:0,document},id);
+  expect(configurationSnapshot(imported,imported.configurations[1]!.id).values.image).toEqual(file);
+  expect(imported.fields[0]).toEqual(field);
+  const before=structuredClone(target);document.configurations.push({name:"Invalid",values:{image:{...file,path:"local.png"}}});
+  expect(()=>applyConfigurationAction(target,{action:"import",revision:0,document},id)).toThrow("server file reference");
+  expect(target).toEqual(before);
+});
+it("rejects invalid, local, oversized or mismatched files and validates multiple selection",()=>{
+  const field=parseConfigurationField({name:"image",type:"file",accept:["image/*"]});
+  for(const value of [[],null,"map.png",{...file,id:"../../file"},{...file,storage:"local"},{...file,name:"../map.png"},{...file,base64:"abc"},{...file,size:51*1024*1024},{...file,mimeType:"application/json"}]) expect(()=>validateConfigurationValue(field,value)).toThrow();
+  const multiple={...field,multiple:true,required:true};
+  expect(()=>validateConfigurationValue(multiple,[file])).not.toThrow();
+  expect(()=>validateConfigurationValue(multiple,Array(33).fill(file))).toThrow();
+  const state=createConfigurationState([multiple],id);
+  state.configurations[0]!.values.image=[];
+  expect(()=>configurationSnapshot(state)).toThrow("Missing required");
+  for(const field of [{name:"bad",type:"json",accept:[".png"]},{name:"bad",type:"file",accept:["anything"]},{name:"bad",type:"file",options:[]},{name:"bad",type:"file",control:"textarea"}])expect(()=>parseConfigurationField(field)).toThrow();
+});
 describe("portable project configurations", () => {
   it("supports typed values, defaults, clearing, profiles and custom field lifecycle", () => {
     let state = createConfigurationState(fields,id);

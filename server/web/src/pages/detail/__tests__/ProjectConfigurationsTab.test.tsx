@@ -10,6 +10,55 @@ const initial=()=>createConfigurationState([{name:"label",type:"string",defaultV
 const ok=(data:unknown)=>({errCode:0,errMessage:"",data} as any);
 beforeEach(async()=>{await i18n.changeLanguage("en");});
 afterEach(()=>vi.restoreAllMocks());
+const imageFile={id:"wf_ab12",name:"底图.png",mimeType:"image/png",size:3,storage:"server" as const,projectId:"project-a"};
+const fileState=()=>createConfigurationState([{name:"image",type:"file",accept:["image/png"]}],()=>"default");
+it("uploads files directly to server storage before applying the reference to the draft",async()=>{
+ let state=fileState();const service=vi.spyOn(apiClient,"projectConfigurations").mockImplementation(async(_id,call)=>ok(call.action==="get"?state:(state=applyConfigurationAction(state,call,()=>"new"))));
+ let finish!:(value:any)=>void;const upload=vi.spyOn(apiClient,"uploadProjectConfigurationFile").mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+ render(<ProjectConfigurationsTab project={project}/>);
+ await screen.findByLabelText("Choose file for image");
+ const input=screen.getByLabelText("Choose file for image");expect(input).toHaveAttribute("accept","image/png");
+ expect(screen.queryByRole("textbox")).toBeNull();
+ const selected=new File(['png'],"底图.png",{type:"image/png"});fireEvent.change(input,{target:{files:[selected]}});
+ expect(upload).toHaveBeenCalledWith("project-a",selected);expect(screen.getByRole("button",{name:"Save"})).toBeDisabled();
+ await act(async()=>finish(ok([imageFile])));
+ expect(screen.getByText("底图.png")).toBeTruthy();fireEvent.click(screen.getByRole("button",{name:"Save"}));
+ await waitFor(()=>expect(service).toHaveBeenLastCalledWith("project-a",expect.objectContaining({action:"save",revision:0,values:{image:imageFile}}),"draft"));
+ await waitFor(()=>expect(screen.getByRole("button",{name:"Clear file selection"})).toBeEnabled());
+ fireEvent.click(screen.getByRole("button",{name:"Clear file selection"}));fireEvent.click(screen.getByRole("button",{name:"Save"}));
+ await waitFor(()=>expect(service).toHaveBeenLastCalledWith("project-a",expect.objectContaining({action:"save",values:{},unset:["image"]}),"draft"));
+});
+it("keeps the previous reference on failure and validates file type without network side effects",async()=>{
+ const state=fileState();state.configurations[0]!.values.image=imageFile;
+ vi.spyOn(apiClient,"projectConfigurations").mockResolvedValue(ok(state));
+ const upload=vi.spyOn(apiClient,"uploadProjectConfigurationFile").mockResolvedValue({errCode:403,errMessage:"Permission denied"});
+ render(<ProjectConfigurationsTab project={project}/>);await screen.findByText("底图.png");
+ const input=screen.getByLabelText("Choose file for image");
+ fireEvent.change(input,{target:{files:[new File(['png'],"new.png",{type:"image/png"})]}});
+ expect(await screen.findByText("Permission denied")).toBeTruthy();expect(screen.getByText("底图.png")).toBeTruthy();
+ upload.mockClear();fireEvent.change(input,{target:{files:[new File(['bad'],"bad.txt",{type:"text/plain"})]}});
+ expect(await screen.findByText(/not accepted/)).toBeTruthy();expect(upload).not.toHaveBeenCalled();
+});
+it("ignores an upload from a project that has been closed",async()=>{
+ vi.spyOn(apiClient,"projectConfigurations").mockResolvedValue(ok(fileState()));
+ let finish!:(value:any)=>void;vi.spyOn(apiClient,"uploadProjectConfigurationFile").mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+ const {rerender}=render(<ProjectConfigurationsTab project={project}/>);await screen.findByLabelText("Choose file for image");
+ fireEvent.change(screen.getByLabelText("Choose file for image"),{target:{files:[new File(['png'],"底图.png",{type:"image/png"})]}});
+ rerender(<ProjectConfigurationsTab project={{...project,id:"project-b"}}/>);await screen.findByLabelText("Choose file for image");
+ await act(async()=>finish(ok([imageFile])));
+ expect(screen.queryByText("底图.png")).toBeNull();expect(screen.getByRole("button",{name:"Save"})).toBeDisabled();
+});
+it("creates custom file definitions with accept restrictions through the panel",async()=>{
+ let state=initial();vi.spyOn(apiClient,"projectConfigurations").mockImplementation(async(_id,call)=>ok(call.action==="get"?state:(state=applyConfigurationAction(state,call,()=>"new"))));
+ render(<ProjectConfigurationsTab project={project}/>);fireEvent.click(await screen.findByRole("button",{name:"Add field"}));
+ fireEvent.change(screen.getByLabelText("Field key"),{target:{value:"photo"}});
+ fireEvent.keyDown(screen.getByRole("combobox",{name:"Field type"}),{key:"ArrowDown"});
+ fireEvent.click(await screen.findByRole("option",{name:"file",exact:true}));
+ fireEvent.change(screen.getByLabelText("Accepted file types (one per line)"),{target:{value:"image/png\n.webp"}});
+ fireEvent.click(screen.getAllByRole("button",{name:"Save"}).at(-1)!);
+ await waitFor(()=>expect(state.customFields[0]).toMatchObject({name:"photo",type:"file",accept:["image/png",".webp"]}));
+ expect(await screen.findByLabelText("Choose file for photo")).toBeTruthy();
+});
 it.each(["workflow","conversation","kanban"] as const)("shows the same configuration editor for %s",async projectType=>{
  vi.spyOn(apiClient,"projectConfigurations").mockResolvedValue(ok(initial()));
  render(<ProjectConfigurationsTab project={{...project,projectType}}/>);

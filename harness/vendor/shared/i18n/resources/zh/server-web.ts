@@ -1,6 +1,18 @@
 import type { serverWeb as EnServerWeb } from "../en/server-web";
 
 export const serverWeb: typeof EnServerWeb = {
+  configurationFileAccept: "允许的文件类型（每行一项）",
+  configurationFileChoose: "选择文件",
+  configurationFileReplace: "替换文件",
+  configurationFileClear: "清除文件选择",
+  configurationFileEmpty: "尚未选择文件",
+  configurationFileUploading: "正在上传到服务器…",
+  configurationFileStorage: "文件上传到服务器，保存配置后生效。",
+  configurationFileFor: "为 {{name}} 选择文件",
+  configurationFileCount: "最多选择 {{count}} 个文件。",
+  configurationFileInvalid: "服务器文件引用无效。",
+  configurationFileTypeError: "文件类型不符合此配置项的要求。",
+  configurationFileSizeError: "文件无效或超过 50 MiB。",
   projectConfigurations: "项目配置",
   configurationActions: "配置操作",
   configurationTransfer: "导入 / 导出",

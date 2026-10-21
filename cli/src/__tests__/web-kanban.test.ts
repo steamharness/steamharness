@@ -12,6 +12,25 @@ import { resolveHarnessRoot, resolveHarnessVersion } from './harness-source';
 const folders: string[] = [], apps: Awaited<ReturnType<typeof startWebServer>>[] = [];
 afterEach(async () => { for (const app of apps.splice(0)) { await app.close(); } for (const folder of folders.splice(0)) { await rm(folder, { recursive: true, force: true }); } vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 const id = '2bf9074d-ef0b-43b2-84c4-f379f920db92';
+it('uploads configuration files through the project server independently of the preview and rejects stale targets',async()=>{
+  const {app,directory,post}=await fixture({noParams:true});
+  await writeFile(path.join(directory,'configuration.json'),JSON.stringify({version:1,fields:[{name:'image',type:'file',accept:['image/png']}]}));
+  const original=fetch,uploaded=vi.fn();
+  vi.spyOn(globalThis,'fetch').mockImplementation((url,options)=>{
+    if(!String(url).startsWith('https://configuration-files.test'))return original(url,options);
+    if(String(url).includes('/files?')){uploaded(url,options);return Promise.resolve(new Response(JSON.stringify({errCode:0,data:[{id:'wf_ab12',name:'map.png',mimeType:'image/png',size:3,storage:'server',projectId:id}]})));}
+    return Promise.resolve(new Response(JSON.stringify({errCode:0,data:{profile:{userId:'user',email:'user@example.com',displayName:'User'}}})));
+  });
+  await app.setHostConnection({serverUrl:'https://configuration-files.test',accessToken:'map.png'});
+  const current=(await post({type:'ready'}).then(r=>r.json())).messages[0].configurations;
+  const message={type:'project-configuration-upload',key:'image',id:current.activeConfigurationId,revision:current.revision,file:{name:'map.png',mimeType:'image/png',data:'cG5n'}};
+  const response=await post(message).then(r=>r.json());
+  expect(response.messages[0]).toMatchObject({type:'project-configuration-upload-result',value:{id:'wf_ab12',name:'map.png',storage:'server'}});
+  expect(uploaded).toHaveBeenCalledOnce();expect(uploaded.mock.calls[0]![1].body).toEqual(Buffer.from('png'));
+  for(const invalid of [{...message,revision:current.revision+1},{...message,id:'other-profile'},{...message,key:'unknown'}])expect((await post(invalid)).ok).toBe(false);
+  expect(uploaded).toHaveBeenCalledOnce();
+  await app.setHostConnection(undefined);expect((await post(message)).ok).toBe(false);
+});
 async function fixture(options: { server?: boolean; artifact?: boolean; noParams?: boolean; real?: boolean } = {}) {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'steamharness-kanban-'))); folders.push(root);
   const directory = path.join(root, 'board'); await mkdir(directory);

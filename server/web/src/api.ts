@@ -1,4 +1,4 @@
-import type { ProjectConfigurationAction, ProjectConfigurationState, ProjectConfigurationExport } from "@steamharness/project-configuration";
+import type { ProjectConfigurationAction, ProjectConfigurationState, ProjectConfigurationExport, ProjectConfigurationFile } from "@steamharness/project-configuration";
 
 import type { AuthSessionState, ApiResponse, AdminUserSummary, AccountInvitationLookupResult, ApiKeyCreateResult, ApiKeyRecord, AuditEventPage, AuditOutcome, DeviceCodeResult, KVEntryDetail, KVEntryPage, KVEntryScope, KVEntryValueType, KnowledgeDocument, KnowledgeDocumentPageRecord, KnowledgeDocumentLinesResult, KnowledgeDocumentSummaryRecord, KnowledgeSearchResultRecord, MeResult, PermissionGroup, ProjectInvitation, RelatedProjectListResult, ProjectAccessLinkInfo, ProjectAccessRequest, ProjectDependencyStatusResult, ProjectSourceAccessSummary, InvitationAcceptResult, InvitationLookupResult, InvitationRole, ProjectMember, RoleRecord, UserInvitationResult, ServerHealthData, Summary, VersionSummary } from "./types";
 import { getCurrentLocale, translateDynamicKey, translateSteamHarnessError, type CommonResourceKey } from "@steamharness/i18n";
@@ -6,6 +6,11 @@ import { getCurrentLocale, translateDynamicKey, translateSteamHarnessError, type
 import type { ProjectDataSummary, SourceShare } from "./types";
 
 export class ServerApiClient {
+  uploadProjectConfigurationFile(id: string, file: File): Promise<ApiResponse<ProjectConfigurationFile[]>> {
+    const mimeType = file.type || "application/octet-stream";
+    const query = new URLSearchParams({fileName:file.name,mimeType});
+    return this.request(`/api/projects/${encodeURIComponent(id)}/files?${query}`, {method:"POST",body:file,headers:{"Content-Type":mimeType}});
+  }
   projectConfigurations(id: string, call: ProjectConfigurationAction, target = "draft"): Promise<ApiResponse<ProjectConfigurationState | ProjectConfigurationExport>> {
     return call.action === "get" ? this.request(`/api/projects/${encodeURIComponent(id)}/configurations?target=${encodeURIComponent(target)}`)
       : this.request(`/api/projects/${encodeURIComponent(id)}/configurations`, {method:"POST",body:JSON.stringify({target,call})});

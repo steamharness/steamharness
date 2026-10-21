@@ -57,3 +57,9 @@
   .configuration-status:not(:empty) { flex-basis: 100%; }
   .configuration-footer-actions { margin-left: auto; }
 }
+.configuration-file { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.configuration-file-list { display: flex; flex-direction: column; gap: 6px; }
+.configuration-file-reference { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.configuration-file-reference > span:not(.codicon) { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.configuration-file-reference small { flex: none; }
+.configuration-file-actions { display: flex; align-items: center; gap: 6px; }

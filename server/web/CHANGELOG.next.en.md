@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed: project configuration file fields choose and upload files to Server storage, then save references. Type restrictions, replacement and clearing preserve the previous value when uploads fail.
+
 - [Improved] Separate configuration management, fields and saving. Group secondary actions in icon menus, show export details with those actions, and use labeled icons for custom field editing and draft refresh.
 
 - [Fixed] Ignore save responses from a previous project visit to preserve current drafts, and allow repairing previous non-array values after a field changes to multiple options.

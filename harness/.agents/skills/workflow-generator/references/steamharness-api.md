@@ -207,7 +207,7 @@ Kanban 页面必须适配全屏工作区、手机、平板和 Conversation 对�
 }
 ```
 
-`fields` 使用独立的 ProjectConfigurationField，支持 string、number、boolean、枚举、多选和 JSON。默认值使用原生类型，敏感字段用 secret 标记。宿主通过统一项目配置服务保存命名配置。文件通过页面内文件 API 上传。页面读取和监听：
+`fields` 使用独立的 ProjectConfigurationField，支持 string、number、boolean、枚举、多选、JSON 和 file。默认值使用原生类型，敏感字段用 secret 标记。宿主通过统一项目配置服务保存命名配置。文件配置声明 `type: "file"`，可用 `accept: ["image/png", ".json"]` 限制类型；面板直接选择文件并上传到当前 Server，保存值为服务器文件引用（单文件对象，`multiple: true` 为引用数组），不填写文件 JSON、base64 或本机路径，单文件最大 50 MiB。上传失败保留原值，清除配置不删除文件；导出包含完整引用，不包含文件内容。页面内文件 API 也可独立上传。页面读取和监听：
 
 参数用于同一 HTML 页面在不同命名配置下切换标题、主题、过滤条件或显示模式。任务、卡片、记录等业务数据应由页面本身提供新建、编辑和删除操作，并通过 KV Bridge 持久化；不要把业务列表做成逗号分隔的 textarea 参数。
 

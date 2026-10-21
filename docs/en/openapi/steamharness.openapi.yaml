@@ -5830,7 +5830,7 @@ components:
           pattern: '^[A-Za-z_][A-Za-z0-9_.-]{0,199}$'
         type:
           type: string
-          enum: [string, number, boolean, json]
+          enum: [string, number, boolean, json, file]
         label:
           type: string
         description:
@@ -5843,10 +5843,15 @@ components:
           type: boolean
         multiple:
           type: boolean
-          description: Supported for string fields; values are string arrays.
+          description: String arrays for string fields; up to 32 server file references for file fields.
         control:
           type: string
           enum: [text, textarea, select, radio, checkboxes]
+        accept:
+          type: array
+          description: File fields only. Accepted MIME types or extensions. Files upload through POST /api/projects/{name}/files and values contain server metadata, never file bytes.
+          items:
+            type: string
         options:
           type: array
           items:

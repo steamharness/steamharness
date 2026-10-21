@@ -52,6 +52,21 @@ test("Kanban file upload accepts images above the ordinary JSON limit without re
     await server.close();
   }
 });
+test("configuration file uploads persist exact raw bytes in the authenticated project without a conversation", async () => {
+  const bytes=Buffer.from([0,137,255,13,10]), writes:unknown[]=[];
+  const storage=createStorageStub({saveManagedFiles:async options=>{
+    writes.push(options);assert.equal(options.projectName,"demo");assert.deepEqual(options.files[0]!.buffer,bytes);
+    assert.equal(options.files[0]!.name,"底图.png");assert.equal(options.files[0]!.conversationId,undefined);
+    return [{id:"wf_ab12",name:"底图.png",mimeType:"image/png",size:bytes.length,kind:"image",storage:"server",projectId:"demo",createdAt:"2026-10-21T00:00:00Z"}];
+  }});
+  const server=await listen(storage,createApiKeyPrincipal("desktop"));
+  try {
+    const query=new URLSearchParams({fileName:"底图.png",mimeType:"image/png"});
+    const response=await fetchJson(server.url(`/api/projects/demo/files?${query}`),{method:"POST",headers:{"Content-Type":"image/png"},body:bytes});
+    assert.equal(response.errCode,0);assert.equal(writes.length,1);
+    assert.equal((response.data as {storage:string}[])[0]!.storage,"server");
+  }finally{await server.close();}
+});
 
 test("Kanban workspace issues a short-lived preview capability for Bearer-authenticated App users", async () => {
   const storage = createStorageStub({

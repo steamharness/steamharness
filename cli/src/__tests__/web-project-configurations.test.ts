@@ -4,12 +4,14 @@ import {createConfigurationState,applyConfigurationAction,type ProjectConfigurat
 import {mountProjectConfigurations,projectConfigurationsButton} from '../web/ui/project-configurations';
 vi.mock('../web/localization',()=>({t:(text:string,...args:unknown[])=>text.replace(/\{(\d+)\}/g,(_,i)=>String(args[Number(i)]))}));
 let state:ProjectConfigurationState,fail=false;
+let upload=vi.fn();
 let listener: ((event:MessageEvent)=>void) | undefined;
 const message=(data:unknown)=>window.dispatchEvent(new MessageEvent('message',{data,source:null}));
 const settle=()=>new Promise(resolve=>setTimeout(resolve,0));
 beforeEach(()=>{
  state=createConfigurationState([{name:'title',type:'string',defaultValue:'Original'},{name:'data',type:'json',defaultValue:null}],()=> 'profile');
  fail=false;
+ upload=vi.fn();
  Object.defineProperty(HTMLDialogElement.prototype,'showModal',{configurable:true,value:function(this:HTMLDialogElement){this.open=true;}});
  Object.defineProperty(HTMLDialogElement.prototype,'close',{configurable:true,value:function(this:HTMLDialogElement){this.open=false;this.dispatchEvent(new Event('close'));}});
  for(const [method,newState] of [['showPopover','open'],['hidePopover','closed']] as const) Object.defineProperty(HTMLElement.prototype,method,{configurable:true,value:function(this:HTMLElement){
@@ -18,12 +20,60 @@ beforeEach(()=>{
  const original=window.addEventListener.bind(window);
  vi.spyOn(window,'addEventListener').mockImplementation(((type:any,callback:any,...args:any[])=>{if(type==='message')listener=callback;original(type,callback,...args);}) as typeof window.addEventListener);
  document.body.innerHTML=projectConfigurationsButton();
- mountProjectConfigurations({postMessage(message:any){queueMicrotask(()=>{
+ mountProjectConfigurations({postMessage(message:any){queueMicrotask(async()=>{
    try {if(fail)throw new Error('Configuration changed');
+    if(message.type==='project-configuration-upload') {
+      const value=await upload(message);
+      window.dispatchEvent(new MessageEvent('message',{data:{type:'project-configuration-upload-result',requestId:message.requestId,value},source:null}));return;
+    }
     state=message.call.action==='get'?state:applyConfigurationAction(state,message.call,()=>crypto.randomUUID());
     window.dispatchEvent(new MessageEvent('message',{data:{type:'project-configuration-result',requestId:message.requestId,value:state},source:null}));
    }catch(error){window.dispatchEvent(new MessageEvent('message',{data:{type:'error',requestId:message.requestId,message:(error as Error).message},source:null}));}
  });}});
+});
+const imageFile={id:'wf_ab12',name:'底图.png',mimeType:'image/png',size:3,storage:'server' as const,projectId:'project'};
+const fileInput=()=>document.querySelector<HTMLInputElement>('input[type=file][aria-label="Choose file for image"]')!;
+async function selectImage(file=new File(['png'],'底图.png',{type:'image/png'})) {
+ Object.defineProperty(fileInput(),'files',{configurable:true,value:[file]});fileInput().dispatchEvent(new Event('change'));
+ await vi.waitFor(()=>expect(upload).toHaveBeenCalled());await settle();
+}
+it('selects and uploads a file directly, locks pending changes and saves only the returned reference',async()=>{
+ state=createConfigurationState([{name:'image',type:'file',accept:['image/png']}],()=> 'file-profile');
+ let finish!:(value:unknown)=>void;upload.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+ document.getElementById('project-configurations')!.click();await settle();
+ expect(fileInput().accept).toBe('image/png');expect(document.querySelector('textarea')).toBeNull();
+ await selectImage();
+ expect(button('Save').disabled).toBe(true);expect(button('New configuration').disabled).toBe(true);
+ expect(upload).toHaveBeenCalledWith(expect.objectContaining({id:'file-profile',revision:0,key:'image',file:{name:'底图.png',mimeType:'image/png',data:'cG5n'}}));
+ finish(imageFile);await settle();
+ expect(document.body.textContent).toContain('底图.png');expect(button('Save').disabled).toBe(false);
+ button('Save').click();await settle();expect(state.configurations[0]!.values.image).toEqual(imageFile);
+ button('Clear file selection').click();button('Save').click();await settle();expect(state.configurations[0]!.values).toEqual({});
+});
+it('keeps the existing file on upload failure and refuses an unacceptable file before upload',async()=>{
+ state=createConfigurationState([{name:'image',type:'file',accept:['image/png'],defaultValue:imageFile}],()=> 'file-profile');
+ upload.mockRejectedValue(new Error('Permission denied'));
+ document.getElementById('project-configurations')!.click();await settle();
+ await selectImage();expect(document.body.textContent).toContain('Permission denied');expect(document.body.textContent).toContain('底图.png');
+ upload.mockClear();Object.defineProperty(fileInput(),'files',{configurable:true,value:[new File(['data'],'wrong.txt',{type:'text/plain'})]});fileInput().dispatchEvent(new Event('change'));await settle();
+ expect(upload).not.toHaveBeenCalled();expect(document.body.textContent).toContain('not accepted');
+});
+it('creates a custom file field with accept types through the field editor',async()=>{
+ document.getElementById('project-configurations')!.click();await settle();button('Add field').click();
+ const editor=document.querySelector<HTMLDialogElement>('.configuration-field-editor')!;
+ editor.querySelector<HTMLInputElement>('input')!.value='photo';
+ const type=editor.querySelector('select')!;type.value='file';type.dispatchEvent(new Event('change'));
+ const accept=[...editor.querySelectorAll('label')].find(label=>label.textContent?.startsWith('Accepted file types'))!.querySelector('textarea')!;
+ expect(accept.parentElement!.hidden).toBe(false);accept.value='image/png\n.webp';
+ editor.querySelector('form')!.dispatchEvent(new Event('submit',{cancelable:true}));await settle();
+ expect(state.customFields[0]).toMatchObject({name:'photo',type:'file',accept:['image/png','.webp']});
+ expect(document.querySelector('input[aria-label="Choose file for photo"]')).toBeTruthy();
+});
+it('asks for a file when an empty single-file override is enabled',async()=>{
+ state=createConfigurationState([{name:'image',type:'file'}],()=> 'file-profile');
+ document.getElementById('project-configurations')!.click();await settle();
+ const toggle=document.querySelector<HTMLInputElement>('input[aria-label="Set value for image"]')!;toggle.checked=true;toggle.dispatchEvent(new Event('change'));
+ button('Save').click();await settle();expect(document.body.textContent).toContain('Choose a file before saving.');expect(state.revision).toBe(0);
 });
 afterEach(()=>{if(listener)window.removeEventListener('message',listener);listener=undefined;document.body.replaceChildren();vi.restoreAllMocks();});
 const button=(text:string)=>[...document.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.ariaLabel===text||b.textContent===text)!;

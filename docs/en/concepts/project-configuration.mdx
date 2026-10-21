@@ -24,7 +24,13 @@ The project root `configuration.json` declares structure and safe defaults. Mana
 }
 ```
 
-Types are `string`, finite `number`, `boolean` and `json`. String fields support enum `options` and `multiple: true` for string arrays. Optional properties are `label`, `description`, `defaultValue`, `required`, `secret`, `control` and `options`. Defaults use native JSON types. Keep real sensitive values out of declarations. Configuration fields are separate from execution input parameters; file and positional controls are not configuration types. Upload files through the file API in the page.
+Types are `string`, finite `number`, `boolean`, `json` and `file`. String fields support enum `options`. Optional properties are `label`, `description`, `defaultValue`, `required`, `secret`, `control`, `options` and `accept`. Defaults use native JSON types. Keep real sensitive values out of declarations. Configuration fields are separate from execution input parameters.
+
+A `file` field lets users choose a local file and upload it to the connected Server, up to 50 MiB per file, using the existing project file write permissions. `accept` supports MIME types (such as `image/png` or `image/*`) and extensions (such as `.json`); mismatched files are rejected before upload. Successful uploads display the file name and take effect after saving the configuration. Failures preserve the previous reference. A single file value is server metadata containing `id`, `name`, `mimeType`, `size` and `storage: "server"`, without local paths, file bytes or connection credentials. `multiple: true` means a string array for strings or up to 32 server file references for files. Clearing a value removes the configuration reference and keeps the server file.
+
+```json
+{ "name": "imageFile", "type": "file", "label": "Map image", "accept": ["image/png", "image/jpeg", "image/webp", "image/gif"] }
+```
 
 Keys start with a letter or underscore and then allow letters, digits, underscores, dots and hyphens, up to 200 characters. Keys must be unique. Custom field definitions belong to the whole project, while each profile stores its own values. Users and assistants can create, edit, rename and delete custom fields. Declarations remain managed by `configuration.json`; custom fields cannot override them. Renaming a custom key updates every profile. Deleting it clears that key from every profile.
 
@@ -42,9 +48,9 @@ Studio, standalone CLI and CLI Web share local user storage, isolated by the can
 
 ## Import and export
 
-Export the current profile or all profiles as JSON with `version: 1` and `kind: "steamharness-project-configurations"`. The file includes field definitions and complete effective values, including sensitive values. Profiles contain names and values, without original IDs.
+Export the current profile or all profiles as JSON with `version: 1` and `kind: "steamharness-project-configurations"`. The file includes field definitions and complete effective values, including sensitive values. Profiles contain names and values, without original IDs. File fields export complete server references, without binary content; imported references still require access to the original server and project files.
 
-Import adds profiles with new IDs and preserves the active selection. Missing fields become custom fields. Conflicting types, multiple flags or options, undeclared value keys, invalid JSON/types and requests above 1 MiB reject the entire batch. No partial fields or profiles are written. Store exported sensitive values carefully.
+Import adds profiles with new IDs and preserves the active selection. Missing fields become custom fields. Conflicting types, multiple flags, options or accepted file types, undeclared value keys, invalid JSON/types and requests above 1 MiB reject the entire batch. No partial fields or profiles are written. Store exported sensitive values carefully.
 
 ## Runtime access
 

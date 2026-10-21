@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed: project configuration file fields choose and upload files to Server storage, then save references. Type restrictions, replacement and clearing preserve the previous value when uploads fail.
+
 - [Fixed] Retain saved values and shadowed custom definitions across schema changes, persist explicit SDK snapshots per run with durable configuration generations, and exclude prototype members from configuration lookup and required-field checks.
 
 - [Changed] Replace business env with `configuration.json` declarations and project configurations: add run-scoped `context.config`, `getConfig`, local storage and recovery snapshots, custom fields, named profiles, revision checks and complete import/export. Existing env and Kanban profiles are not migrated; host transport variables remain.

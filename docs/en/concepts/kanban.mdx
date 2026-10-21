@@ -92,7 +92,7 @@ Plain HTML, CSS, JavaScript, images, and fonts normally work across operating sy
 
 ## Project configuration fields
 
-Kanban uses the same [project configurations](/en/concepts/project-configuration) as Workflow and Conversation. Declare native typed fields in `configuration.json`; the panel remains available without declared fields, allowing custom fields. File uploads belong to the page and its file API.
+Kanban uses the same [project configurations](/en/concepts/project-configuration) as Workflow and Conversation. Declare native typed fields in `configuration.json`; the panel remains available without declared fields, allowing custom fields. Declare `type: "file"` for files selected and uploaded to the Server in the configuration panel. The page receives server file references and can also upload files through its own file API.
 
 ```json
 {"version":1,"fields":[

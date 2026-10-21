@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRightLeftIcon, CheckIcon, CopyIcon, DownloadIcon, ImportIcon, MoreHorizontalIcon, PencilIcon, PlusIcon, RotateCcwIcon, Trash2Icon } from "lucide-react";
+import { ArrowRightLeftIcon, CheckIcon, CopyIcon, DownloadIcon, FileIcon, ImportIcon, MoreHorizontalIcon, PencilIcon, PlusIcon, RotateCcwIcon, Trash2Icon, UploadIcon, XIcon } from "lucide-react";
 import { useTranslation } from "@steamharness/i18n/react";
-import { parseConfigurationField, type ConfigurationValues, type ProjectConfigurationAction, type ProjectConfigurationField, type ProjectConfigurationState, type ProjectConfigurationExport } from "@steamharness/project-configuration";
+import { parseConfigurationField, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationFile, type ConfigurationValues, type ProjectConfigurationAction, type ProjectConfigurationField, type ProjectConfigurationState, type ProjectConfigurationExport } from "@steamharness/project-configuration";
 import { apiClient } from "../../api";
 import { Alert, AlertDescription, Button, Checkbox, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, Empty, EmptyHeader, EmptyTitle, Field, FieldDescription, FieldGroup, FieldLabel, FieldSet, FieldLegend, Input, SelectField, Separator, Skeleton, Textarea } from "@/components/ui";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { DetailPageProps } from "./types";
+import { formatBytes } from "../../utils/format";
 
 export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"project">) {
   const {t} = useTranslation("serverWeb");
@@ -16,24 +17,25 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
   const [field,setField] = useState<Partial<ProjectConfigurationField>>(), [originalKey,setOriginalKey] = useState(""), [defaultText,setDefaultText] = useState(""), [optionsText,setOptionsText] = useState("");
   const file = useRef<HTMLInputElement>(null);
   const [loading,setLoading] = useState(true), [retry,setRetry] = useState(0);
+  const [uploading,setUploading] = useState("");
   const editingRef = useRef(false), busyRef = useRef(false), latestRef = useRef<ProjectConfigurationState>(undefined);
   const scopeRef = useRef<symbol|undefined>(undefined);
   const target = project.hasDraft ? "draft" : "latest";
   const accept = (next: ProjectConfigurationState, force = false) => {
     if (latestRef.current && next.revision < latestRef.current.revision) return;
     latestRef.current=next;setLatest(next);
-    if ((dirtyRef.current || editingRef.current) && !force) return;
+    if ((dirtyRef.current || editingRef.current || busyRef.current) && !force) return;
     const current=next.configurations.find(item=>item.id===next.activeConfigurationId)!;
     setState(next); setValues(Object.fromEntries(next.fields.map(field=>{
       const value=Object.hasOwn(current.values,field.name)?current.values[field.name]:field.defaultValue;
-      return [field.name,value===undefined?"":field.type==="json"||field.multiple?JSON.stringify(value,null,2):String(value)];
+      return [field.name,value===undefined?"":field.type==="json"||field.type==="file"||field.multiple?JSON.stringify(value,null,2):String(value)];
     }))); setSetKeys(Object.keys(current.values)); dirtyRef.current=false; setDirty(false);
   };
   useEffect(()=>{
     scopeRef.current=Symbol();
     let closed=false, reading=false;
     dirtyRef.current=false;editingRef.current=false;latestRef.current=undefined;busyRef.current=false;setBusy(false);
-    setState(undefined);setLatest(undefined);setDirty(false);setLoading(true);setError("");setModal(undefined);setField(undefined);
+    setState(undefined);setLatest(undefined);setDirty(false);setLoading(true);setError("");setModal(undefined);setField(undefined);setUploading("");
     const load=async()=>{
       if(reading)return; reading=true;
       try {
@@ -41,7 +43,6 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
         if(closed)return;
         if(result.errCode!==0||!result.data)throw new Error(result.errMessage);
         accept(result.data as ProjectConfigurationState);
-        if(!dirtyRef.current&&!editingRef.current)setError("");
       }catch(e){if(!closed)setError((e as Error).message);}
       finally{reading=false;if(!closed)setLoading(false);}
     };
@@ -67,10 +68,32 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
       const typed: ConfigurationValues = {};
       for(const f of state.fields) if(setKeys.includes(f.name)) {
         const text=values[f.name]??"";
-        typed[f.name]=f.type==="json"||f.multiple?JSON.parse(text):f.type==="number"?(text.trim()?Number(text):NaN):f.type==="boolean"?text==="true":text;
+        typed[f.name]=f.type==="json"||f.type==="file"||f.multiple?JSON.parse(text):f.type==="number"?(text.trim()?Number(text):NaN):f.type==="boolean"?text==="true":text;
       }
       void dispatch({action:"save",id:state.activeConfigurationId,values:typed,unset:state.fields.filter(f=>!setKeys.includes(f.name)).map(f=>f.name)});
     }catch(e){setError((e as Error).message);}
+  }
+  async function uploadFiles(field:ProjectConfigurationField, files:File[]) {
+    if(!state||busyRef.current||!files.length)return;
+    const scope=scopeRef.current;
+    busyRef.current=true;setBusy(true);setUploading(field.name);setError("");
+    try {
+      if(files.length>(field.multiple?32:1))throw new Error(t("configurationFileCount",{count:field.multiple?32:1}));
+      for(const file of files)validateConfigurationFileSelection(field,{name:file.name,mimeType:file.type||"application/octet-stream",size:file.size});
+      const references:ProjectConfigurationFile[]=[];
+      for(const file of files) {
+        const result=await apiClient.uploadProjectConfigurationFile(project.id,file);
+        if(scope!==scopeRef.current)return;
+        if(result.errCode!==0)throw new Error(result.errMessage);
+        if(!Array.isArray(result.data)||result.data.length!==1)throw new Error(t("configurationFileInvalid"));
+        const reference=parseConfigurationFile(result.data[0]);
+        if(reference.projectId!==project.id||reference.size!==file.size)throw new Error(t("configurationFileInvalid"));
+        validateConfigurationFileSelection(field,reference);references.push(reference);
+      }
+      setValues(values=>({...values,[field.name]:JSON.stringify(field.multiple?references:references[0])}));
+      setSetKeys(keys=>[...new Set([...keys,field.name])]);edit();
+    }catch(e){if(scope===scopeRef.current){const message=(e as Error).message;setError(message==="This file type is not accepted by the configuration field."?t("configurationFileTypeError"):message==="Invalid file or file exceeds 50 MiB."?t("configurationFileSizeError"):message);}}
+    finally{if(scope===scopeRef.current){busyRef.current=false;setBusy(false);setUploading("");}}
   }
   async function download(all:boolean) {
     if(!state||busyRef.current||!clean())return;
@@ -127,7 +150,8 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
             <div className="flex items-center gap-2"><Checkbox aria-label={`${t("configurationSetValue")}: ${f.label||f.name}`} checked={set} disabled={busy} onCheckedChange={checked=>{setSetKeys(keys=>checked?[...keys,f.name]:keys.filter(k=>k!==f.name));edit();}}/><FieldLabel htmlFor={`configuration-${f.name}`} className="min-w-0 flex-1 wrap-anywhere">{f.label||f.name}{f.required?" *":""}</FieldLabel>
               {custom&&<div className="flex gap-1"><Button variant="ghost" size="icon" disabled={busy} title={t("configurationEditField")} aria-label={t("configurationEditField")} onClick={()=>startField(f)}><PencilIcon/></Button><Button variant="ghost" size="icon" disabled={busy} title={t("configurationDeleteField")} aria-label={t("configurationDeleteField")} onClick={()=>{if(clean())void dispatch({action:"field.delete",key:f.name});}}><Trash2Icon/></Button></div>}
             </div>
-            {f.options&&f.multiple?<FieldSet disabled={busy||!set}><FieldLegend variant="label">{f.label||f.name}</FieldLegend>{f.options.map(option=>{let selected:string[]=[];try{const parsed:unknown=JSON.parse(value||"[]");if(Array.isArray(parsed))selected=parsed.filter((item):item is string=>typeof item==="string");}catch{}return <Field key={option.value} orientation="horizontal"><Checkbox id={`configuration-${f.name}-${option.value}`} checked={selected.includes(option.value)} onCheckedChange={checked=>change(JSON.stringify(checked?[...selected,option.value]:selected.filter(v=>v!==option.value)))}/><FieldLabel htmlFor={`configuration-${f.name}-${option.value}`}>{option.label||option.value}</FieldLabel></Field>;})}</FieldSet>
+            {f.type==="file"?<ConfigurationFileInput field={f} value={value} busy={busy} uploading={uploading===f.name} onUpload={files=>void uploadFiles(f,files)} onClear={()=>{setValues(values=>({...values,[f.name]:""}));setSetKeys(keys=>keys.filter(key=>key!==f.name));edit();}}/>
+            :f.options&&f.multiple?<FieldSet disabled={busy||!set}><FieldLegend variant="label">{f.label||f.name}</FieldLegend>{f.options.map(option=>{let selected:string[]=[];try{const parsed:unknown=JSON.parse(value||"[]");if(Array.isArray(parsed))selected=parsed.filter((item):item is string=>typeof item==="string");}catch{}return <Field key={option.value} orientation="horizontal"><Checkbox id={`configuration-${f.name}-${option.value}`} checked={selected.includes(option.value)} onCheckedChange={checked=>change(JSON.stringify(checked?[...selected,option.value]:selected.filter(v=>v!==option.value)))}/><FieldLabel htmlFor={`configuration-${f.name}-${option.value}`}>{option.label||option.value}</FieldLabel></Field>;})}</FieldSet>
             :f.options?<SelectField id={`configuration-${f.name}`} disabled={busy||!set} value={value} options={f.options.map(o=>({value:o.value,label:o.label||o.value}))} onValueChange={change}/>
             :f.type==="json"||f.multiple?<Textarea id={`configuration-${f.name}`} disabled={busy||!set} rows={4} value={value} onChange={event=>change(event.target.value)}/>
             :f.type==="boolean"?<Checkbox id={`configuration-${f.name}`} disabled={busy||!set} checked={value==="true"} onCheckedChange={checked=>change(String(checked))}/>
@@ -148,13 +172,26 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
       {error&&<Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
       {field&&<FieldSet disabled={busy}><FieldGroup>
         <Field><FieldLabel htmlFor="configuration-key">{t("configurationKey")}</FieldLabel><Input id="configuration-key" value={field.name??""} onChange={e=>setField({...field,name:e.target.value})}/></Field>
-        <Field><FieldLabel htmlFor="configuration-type">{t("configurationType")}</FieldLabel><SelectField id="configuration-type" value={field.type} options={["string","number","boolean","json"].map(value=>({value,label:value}))} onValueChange={type=>setField({...field,type:type as ProjectConfigurationField["type"]})}/></Field>
+        <Field><FieldLabel htmlFor="configuration-type">{t("configurationType")}</FieldLabel><SelectField id="configuration-type" value={field.type} options={["string","number","boolean","json","file"].map(value=>({value,label:value}))} onValueChange={type=>setField({...field,type:type as ProjectConfigurationField["type"],accept:undefined,control:undefined})}/></Field>
         {(["label","description"] as const).map(key=><Field key={key}><FieldLabel htmlFor={`field-${key}`}>{t(key==="label"?"configurationLabel":"configurationDescription")}</FieldLabel><Input id={`field-${key}`} value={field[key]??""} onChange={e=>setField({...field,[key]:e.target.value})}/></Field>)}
         <Field><FieldLabel htmlFor="field-default">{t("configurationDefault")}</FieldLabel><Textarea id="field-default" value={defaultText} onChange={e=>setDefaultText(e.target.value)}/></Field>
-        <Field><FieldLabel htmlFor="field-options">{t("configurationOptions")}</FieldLabel><Textarea id="field-options" value={optionsText} onChange={e=>setOptionsText(e.target.value)}/></Field>
+        {field.type==="string"&&<Field><FieldLabel htmlFor="field-options">{t("configurationOptions")}</FieldLabel><Textarea id="field-options" value={optionsText} onChange={e=>setOptionsText(e.target.value)}/></Field>}
+        {field.type==="file"&&<Field><FieldLabel htmlFor="field-accept">{t("configurationFileAccept")}</FieldLabel><Textarea id="field-accept" placeholder={'image/png\nimage/jpeg\n.json'} value={field.accept?.join("\n")??""} onChange={e=>setField({...field,accept:e.target.value.split("\n")})}/></Field>}
         <FieldSet><FieldLegend>{t("configurationProperties")}</FieldLegend>{(["secret","required","multiple"] as const).map(key=><Field key={key} orientation="horizontal"><Checkbox id={`field-${key}`} checked={!!field[key]} onCheckedChange={checked=>setField({...field,[key]:!!checked})}/><FieldLabel htmlFor={`field-${key}`}>{t(`configurationProperty_${key}`)}</FieldLabel></Field>)}</FieldSet>
       </FieldGroup></FieldSet>}
-      <DialogFooter><Button disabled={busy} onClick={()=>{try{const parsed=parseConfigurationField({...field,...(defaultText.trim()?{defaultValue:JSON.parse(defaultText)}:{defaultValue:undefined}),options:optionsText.trim()?optionsText.split("\n").filter(Boolean).map(value=>({value})):undefined});void dispatch({action:"field.save",field:parsed,key:originalKey||undefined});}catch(e){setError((e as Error).message);}}}>{t("configurationSave")}</Button></DialogFooter>
+      <DialogFooter><Button disabled={busy} onClick={()=>{try{const parsed=parseConfigurationField({...field,...(defaultText.trim()?{defaultValue:JSON.parse(defaultText)}:{defaultValue:undefined}),options:field?.type==="string"&&optionsText.trim()?optionsText.split("\n").filter(Boolean).map(value=>({value})):undefined,accept:field?.type==="file"?field.accept?.map(value=>value.trim()).filter(Boolean):undefined});void dispatch({action:"field.save",field:parsed,key:originalKey||undefined});}catch(e){setError((e as Error).message);}}}>{t("configurationSave")}</Button></DialogFooter>
     </DialogContent></Dialog>
   </section>;
+}
+
+function ConfigurationFileInput({field,value,busy,uploading,onUpload,onClear}:{field:ProjectConfigurationField;value:string;busy:boolean;uploading:boolean;onUpload(files:File[]):void;onClear():void}) {
+  const {t}=useTranslation("serverWeb"), input=useRef<HTMLInputElement>(null);
+  let references:ProjectConfigurationFile[]=[];
+  try {const parsed:unknown=value?JSON.parse(value):undefined;references=(parsed===undefined?[]:field.multiple&&Array.isArray(parsed)?parsed:[parsed]).map(parseConfigurationFile);}catch{}
+  return <div className="flex flex-col gap-2">
+    {references.length?references.map(file=><div key={file.id} className="flex min-w-0 items-center gap-2"><FileIcon aria-hidden="true"/><span className="min-w-0 flex-1 wrap-anywhere">{file.name}</span><FieldDescription>{formatBytes(file.size)}</FieldDescription></div>):<FieldDescription>{t("configurationFileEmpty")}</FieldDescription>}
+    <div className="flex items-center gap-2"><Button id={`configuration-${field.name}`} variant="outline" size="sm" disabled={busy} onClick={()=>input.current?.click()}><UploadIcon data-icon="inline-start"/>{t(uploading?"configurationFileUploading":references.length?"configurationFileReplace":"configurationFileChoose")}</Button><Button variant="ghost" size="icon" title={t("configurationFileClear")} aria-label={t("configurationFileClear")} disabled={busy||!references.length} onClick={onClear}><XIcon/></Button></div>
+    <input ref={input} type="file" hidden accept={field.accept?.join(",")} multiple={!!field.multiple} disabled={busy} aria-label={t("configurationFileFor",{name:field.label||field.name})} onChange={event=>{const files=Array.from(event.currentTarget.files??[]);event.currentTarget.value="";onUpload(files);}}/>
+    <FieldDescription role={uploading?"status":undefined}>{t("configurationFileStorage")}</FieldDescription>
+  </div>;
 }

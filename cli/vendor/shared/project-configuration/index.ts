@@ -4,7 +4,7 @@ export type ConfigurationValue = null | string | number | boolean | Configuratio
 export type ConfigurationValues = Record<string, ConfigurationValue>;
 export interface ProjectConfigurationField {
   name: string;
-  type: "string" | "number" | "boolean" | "json";
+  type: "string" | "number" | "boolean" | "json" | "file";
   label?: string;
   description?: string;
   defaultValue?: ConfigurationValue;
@@ -13,7 +13,15 @@ export interface ProjectConfigurationField {
   multiple?: boolean;
   control?: "text" | "textarea" | "select" | "radio" | "checkboxes";
   options?: { value: string; label?: string }[];
+  /** File extensions or MIME types, using the HTML file input accept syntax. */
+  accept?: string[];
 }
+export const CONFIGURATION_FILE_MAX_BYTES = 50 * 1024 * 1024;
+/** Portable server metadata only; file bytes and host credentials never enter configuration values. */
+export type ProjectConfigurationFile = {
+  id: string; name: string; mimeType: string; size: number; storage: "server";
+  kind?: "image" | "file"; projectId?: string; createdAt?: string;
+};
 export interface ProjectConfigurationDefinition { version: 1; fields: ProjectConfigurationField[] }
 export interface ProjectConfiguration {
   id: string; name: string; values: ConfigurationValues; createdAt: string; updatedAt: string;
@@ -55,17 +63,19 @@ export function isConfigurationValue(value: unknown, depth = 0): value is Config
   return record(value) && Object.entries(value).every(([key, entry]) => !unsafe.has(key) && isConfigurationValue(entry, depth + 1));
 }
 export function parseConfigurationField(value: unknown): ProjectConfigurationField {
-  if (!record(value) || !["string", "number", "boolean", "json"].includes(String(value.type))) return invalid("Invalid configuration field type.");
+  if (!record(value) || !["string", "number", "boolean", "json", "file"].includes(String(value.type))) return invalid("Invalid configuration field type.");
   configurationKey(value.name);
-  const allowed = ["name", "type", "label", "description", "defaultValue", "required", "secret", "multiple", "control", "options"];
+  const allowed = ["name", "type", "label", "description", "defaultValue", "required", "secret", "multiple", "control", "options", "accept"];
   if (Object.keys(value).some(key => !allowed.includes(key))) return invalid("Unknown configuration field property.");
   for (const key of ["label", "description"]) if (value[key] !== undefined && typeof value[key] !== "string") return invalid(`Invalid field ${key}.`);
   for (const key of ["required", "secret", "multiple"]) if (value[key] !== undefined && typeof value[key] !== "boolean") return invalid(`Invalid field ${key}.`);
-  if (value.multiple && value.type !== "string") return invalid("Only string fields support multiple values.");
+  if (value.multiple && value.type !== "string" && value.type !== "file") return invalid("Only string and file fields support multiple values.");
+  if (value.accept !== undefined && (value.type !== "file" || !Array.isArray(value.accept) || !value.accept.every(entry => typeof entry === "string" && /^(?:\.[a-zA-Z0-9.+_-]+|[a-zA-Z0-9!#$&^_.+-]+\/(?:[a-zA-Z0-9!#$&^_.+-]+|\*))$/.test(entry)))) return invalid("Invalid configuration file accept types.");
+  if (value.type === "file" && value.control !== undefined) return invalid("File fields use the file picker control.");
   if (value.control !== undefined && !["text", "textarea", "select", "radio", "checkboxes"].includes(String(value.control))) return invalid("Invalid configuration control.");
   if (value.options !== undefined && (!Array.isArray(value.options) || value.options.some(option => !record(option) || typeof option.value !== "string" || option.label !== undefined && typeof option.label !== "string"))) return invalid("Invalid configuration options.");
   if (value.options !== undefined && (value.type !== "string" || new Set((value.options as {value: string}[]).map(option => option.value)).size !== (value.options as unknown[]).length)) return invalid("Options require unique string values.");
-  const field = structuredClone(value) as unknown as ProjectConfigurationField;
+  const field = structuredClone(Object.fromEntries(Object.entries(value).filter(([,entry]) => entry !== undefined))) as unknown as ProjectConfigurationField;
   if (field.defaultValue !== undefined) validateConfigurationValue(field, field.defaultValue);
   return field;
 }
@@ -76,10 +86,27 @@ export function parseConfigurationDefinition(value: unknown): ProjectConfigurati
   return { version: 1, fields };
 }
 export function validateConfigurationValue(field: ProjectConfigurationField, value: unknown): asserts value is ConfigurationValue {
+  if (field.type === "file") {
+    const files = field.multiple ? value : [value];
+    if (!Array.isArray(files) || files.length > 32) return invalid(`Invalid value for configuration field: ${field.name}.`);
+    for (const file of files) { parseConfigurationFile(file); validateConfigurationFileSelection(field, file as ProjectConfigurationFile); }
+    return;
+  }
   const valid = field.multiple ? Array.isArray(value) && value.every(item => typeof item === "string")
     : field.type === "json" ? isConfigurationValue(value) : typeof value === field.type && (field.type !== "number" || Number.isFinite(value));
   if (!valid) invalid(`Invalid value for configuration field: ${field.name}.`);
   if (field.options && (field.multiple ? value as string[] : [value]).some(item => !field.options!.some(option => option.value === String(item)))) invalid(`Invalid option for configuration field: ${field.name}.`);
+}
+export function validateConfigurationFileSelection(field: ProjectConfigurationField, file: {name: string; mimeType: string; size: number}): void {
+  if (!file.name || file.name.length > 255 || /[/\\\0\r\n]/.test(file.name) || !Number.isSafeInteger(file.size) || file.size < 0 || file.size > CONFIGURATION_FILE_MAX_BYTES) return invalid("Invalid file or file exceeds 50 MiB.");
+  if (!/^[a-zA-Z0-9!#$&^_.+-]+\/[a-zA-Z0-9!#$&^_.+-]+$/.test(file.mimeType)) return invalid("Invalid file MIME type.");
+  if (field.accept?.length && !field.accept.some(type => type.startsWith(".") ? file.name.toLowerCase().endsWith(type.toLowerCase()) : type.endsWith("/*") ? file.mimeType.toLowerCase().startsWith(type.slice(0,-1).toLowerCase()) : file.mimeType.toLowerCase() === type.toLowerCase())) return invalid("This file type is not accepted by the configuration field.");
+}
+export function parseConfigurationFile(value: unknown): ProjectConfigurationFile {
+  if (!record(value) || typeof value.id !== "string" || !/^wf_[a-f0-9]+$/.test(value.id) || value.storage !== "server" || typeof value.name !== "string" || typeof value.mimeType !== "string" || typeof value.size !== "number" || Object.keys(value).some(key => !["id","name","mimeType","size","storage","kind","projectId","createdAt"].includes(key))) return invalid("Invalid server file reference.");
+  if (value.kind !== undefined && value.kind !== "image" && value.kind !== "file" || value.projectId !== undefined && typeof value.projectId !== "string" || value.createdAt !== undefined && typeof value.createdAt !== "string") return invalid("Invalid server file reference.");
+  validateConfigurationFileSelection({name:"file",type:"file"}, value as ProjectConfigurationFile);
+  return structuredClone(value) as ProjectConfigurationFile;
 }
 function values(fields: ProjectConfigurationField[], input: unknown): ConfigurationValues {
   if (!record(input)) return invalid("Configuration values must be an object.");
@@ -123,7 +150,10 @@ export function configurationSnapshot(state: ProjectConfigurationState, configur
   if (!current) return invalid("Configuration no longer exists.");
   const resolved = { ...configurationDefaults(state.fields), ...Object.fromEntries(state.fields.flatMap(field => Object.hasOwn(current.values, field.name) ? [[field.name, current.values[field.name]!]] : [])) };
   values(state.fields, resolved);
-  if (required) for (const field of state.fields) if (field.required && (!Object.hasOwn(resolved,field.name) || resolved[field.name] === "" || resolved[field.name] === null)) invalid(`Missing required configuration: ${field.name}. Open Project configurations.`);
+  if (required) for (const field of state.fields) {
+    const value = resolved[field.name];
+    if (field.required && (!Object.hasOwn(resolved,field.name) || value === "" || value === null || field.multiple && Array.isArray(value) && !value.length)) invalid(`Missing required configuration: ${field.name}. Open Project configurations.`);
+  }
   return { id: current.id, name: current.name, revision: state.revision, values: resolved };
 }
 export function exportConfigurations(state: ProjectConfigurationState, id?: string): ProjectConfigurationExport {
@@ -180,7 +210,7 @@ export function applyConfigurationAction(state: ProjectConfigurationState, call:
       const imported = parseConfigurationDefinition(document).fields;
       for (const field of imported) {
         const existing = next.fields.find(entry => entry.name === field.name);
-        if (existing && (existing.type !== field.type || !!existing.multiple !== !!field.multiple || JSON.stringify(existing.options) !== JSON.stringify(field.options))) return invalid(`Conflicting configuration field: ${field.name}.`);
+        if (existing && (existing.type !== field.type || !!existing.multiple !== !!field.multiple || JSON.stringify(existing.options) !== JSON.stringify(field.options) || JSON.stringify(existing.accept ?? []) !== JSON.stringify(field.accept ?? []))) return invalid(`Conflicting configuration field: ${field.name}.`);
         if (!existing) { next.fields.push(field); next.customFields.push(field); }
       }
       for (const entry of document.configurations) {

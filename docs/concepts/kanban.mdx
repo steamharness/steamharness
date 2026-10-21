@@ -92,7 +92,7 @@ CLI Web 和 Server 加载已构建的静态产物，不自动安装前端依赖�
 
 ## 项目配置字段
 
-Kanban 和 Workflow、Conversation 共用[项目配置](/concepts/project-configuration)。在 `configuration.json` 中声明原生类型字段；没有声明字段时仍可打开配置面板并添加自定义字段。文件上传在页面内通过文件 API 完成。
+Kanban 和 Workflow、Conversation 共用[项目配置](/concepts/project-configuration)。在 `configuration.json` 中声明原生类型字段；没有声明字段时仍可打开配置面板并添加自定义字段。文件配置声明 `type: "file"`，在面板选择并上传到服务器后保存引用；页面内也可通过文件 API 独立上传。
 
 ```json
 {"version":1,"fields":[

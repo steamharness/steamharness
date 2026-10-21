@@ -24,7 +24,13 @@ Workflow、Conversation、Kanban 使用同一套项目配置。Studio 与 CLI We
 }
 ```
 
-字段支持 `string`、有限 `number`、`boolean` 和 `json`，字符串可用 `options` 声明枚举，`multiple: true` 表示字符串数组。可选属性为 `label`、`description`、`defaultValue`、`required`、`secret`、`control`、`options`。默认值使用原生 JSON 类型；敏感字段不要写真实默认值。配置字段与执行输入参数是两套结构，配置不支持文件或位置参数；页面内文件上传继续使用文件 API。
+字段支持 `string`、有限 `number`、`boolean`、`json` 和 `file`，字符串可用 `options` 声明枚举。可选属性为 `label`、`description`、`defaultValue`、`required`、`secret`、`control`、`options`、`accept`。默认值使用原生 JSON 类型；敏感字段不要写真实默认值。配置字段与执行输入参数是两套结构。
+
+`file` 字段直接选择本机文件并上传到当前连接的 Server，单文件上限 50 MiB，沿用项目文件写入权限。`accept` 可声明 MIME 类型（如 `image/png`、`image/*`）或扩展名（如 `.json`）；不符合要求的文件不会上传。上传成功后显示文件名，保存配置才生效；失败保留原引用。单文件值是服务器元数据对象，包含 `id`、`name`、`mimeType`、`size` 和 `storage: "server"`，不包含本地路径、文件内容或连接凭据。`multiple: true` 对字符串表示字符串数组，对文件表示最多 32 个服务器文件引用。清除字段只移除配置引用，不删除服务器文件。
+
+```json
+{ "name": "imageFile", "type": "file", "label": "底图", "accept": ["image/png", "image/jpeg", "image/webp", "image/gif"] }
+```
 
 字段名以字母或下划线开头，后续允许字母、数字、下划线、点和连字符，最长 200 字符。字段名必须唯一。用户和小助手可以管理自定义字段，自定义字段结构属于整个项目，各套配置分别保存值。声明字段由 `configuration.json` 管理，自定义字段不能覆盖声明字段。重命名自定义字段会同步所有配置中的键；删除会清除所有配置中的对应值。
 
@@ -42,9 +48,9 @@ Studio、独立 CLI 与 CLI Web 共用本机用户目录下的配置存储，按
 
 ## 导入与导出
 
-导出当前或全部配置，得到版本为 `1`、`kind` 为 `steamharness-project-configurations` 的 JSON 文件，包含字段定义和完整有效值，包括敏感值。文件中的配置包含名称和值，不包含原配置 ID。
+导出当前或全部配置，得到版本为 `1`、`kind` 为 `steamharness-project-configurations` 的 JSON 文件，包含字段定义和完整有效值，包括敏感值。文件中的配置包含名称和值，不包含原配置 ID。文件字段导出完整服务器引用，不包含文件二进制；导入后仍需能够访问原服务器和项目中的文件。
 
-导入默认新增配置、重新生成 ID 并保留当前选择。未存在的字段添加为自定义字段；同名字段类型、多选属性或选项冲突、未知字段值、无效类型、无效 JSON 或超过 1 MiB 的请求会整批拒绝，不留下部分字段或配置。妥善保管含敏感值的导出文件。
+导入默认新增配置、重新生成 ID 并保留当前选择。未存在的字段添加为自定义字段；同名字段类型、多选属性、选项或文件类型限制冲突、未知字段值、无效类型、无效 JSON 或超过 1 MiB 的请求会整批拒绝，不留下部分字段或配置。妥善保管含敏感值的导出文件。
 
 ## 运行时读取
 

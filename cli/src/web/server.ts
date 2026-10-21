@@ -1,4 +1,5 @@
 import { ProjectConfigurations } from './project-configurations';
+import { uploadConfigurationFile } from './configuration-files';
 import { t } from './localization';
 import { locale } from './localization';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -309,6 +310,16 @@ export async function startWebServer(options: WebOptions) {
     if (message.type === 'project-configuration') {
       return [{ type: 'project-configuration-result', requestId: message.requestId, value: await configurations.dispatch(message.call) }];
     }
+    if (message.type === 'project-configuration-upload') {
+      const current = await configurations.refresh(), epoch = authEpoch;
+      if (message.revision !== current.revision) throw new Error('Configuration changed. Refresh before saving your draft.');
+      if (!current.configurations.some(item => item.id === message.id)) throw new Error('Configuration no longer exists.');
+      const field = current.fields.find(item => item.name === message.key);
+      if (field?.type !== 'file') throw new Error('Invalid configuration file field.');
+      const reference = await uploadConfigurationFile(project.id, field, message.file, connection);
+      if (epoch !== authEpoch) throw new Error('Account changed. Select the file again.');
+      return [{type:'project-configuration-upload-result',requestId:message.requestId,value:reference}];
+    }
     if (message.type === 'resource-data') {
       try { return [{ type: 'resource-data', requestId: message.requestId, data: resources.get(String(message.id)) }]; }
       catch (error) { if (!message.reference) { throw error; } }
@@ -581,7 +592,7 @@ export async function startWebServer(options: WebOptions) {
           const concurrent = ['navigate', 'resolve', 'ready', 'usage', 'resource', 'resource-data', 'resource-refresh', 'resource-select', 'resource-bridge', 'kanban-bridge', 'kanban-method-state', 'kanban-method-reply', 'kanban-methods'].includes(message.type);
           const task = concurrent ? operation() : mutations.catch(() => undefined).then(operation);
           if (!concurrent) { mutations = task; }
-          await task; json(response, 200, { messages: messages.map(message => message.type === 'state' || message.type === 'project-configuration-result' ? message : redactProjectData(message, [...sensitiveTokens], false)) }); return;
+          await task; json(response, 200, { messages: messages.map(message => message.type === 'state' || message.type === 'project-configuration-result' || message.type === 'project-configuration-upload-result' ? message : redactProjectData(message, [...sensitiveTokens], false)) }); return;
         }
         if (url.pathname.startsWith('/api/file/') && request.method === 'GET') {
           const file = await runtime.readFile(project, decodeURIComponent(url.pathname.slice('/api/file/'.length)));
