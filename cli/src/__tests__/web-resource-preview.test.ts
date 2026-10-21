@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { crc32, deflateSync } from 'node:zlib';
 import { initI18n } from '@steamharness/i18n';
 import { ResourcePreviews } from '../web/resource-preview';
 import { startWebServer } from '../web/server';
@@ -32,6 +33,17 @@ async function fixture() {
   openedPreviews.push(previews);
   const card = (kind: ResourceCard['kind'], target: Record<string, string>, extra: Partial<ResourceCard> = {}): ResourceCard => ({ id: 'card', kind, title: 'Resource', target, ...extra });
   return { root, owner, related, runtime, storageDir, previews, card, logout: () => { connection = undefined; previews.clear(); } };
+}
+
+function largePng(): Buffer {
+  const chunk = (type: string, content: Buffer) => {
+    const body = Buffer.concat([Buffer.from(type), content]), size = Buffer.alloc(4), checksum = Buffer.alloc(4);
+    size.writeUInt32BE(content.length); checksum.writeUInt32BE(crc32(body));
+    return Buffer.concat([size, body, checksum]);
+  };
+  return Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), chunk('IHDR', Buffer.from('00000001000000010806000000', 'hex')),
+    chunk('tEXt', Buffer.from(`Comment\0${'x'.repeat(3 * 1024 * 1024)}`)),
+    chunk('IDAT', deflateSync(Buffer.from([0, 255, 0, 0, 255]))), chunk('IEND', Buffer.alloc(0))]);
 }
 
 describe('resource previews', () => {
@@ -131,11 +143,86 @@ describe('resource previews', () => {
     await expect(previews.open(card('kanban', { source: 'local', projectId: related.id, configurationId: 'deleted' }))).rejects.toThrow();
   });
 
+  it.each(['notes.txt', 'notes.md'])('preserves %s content beyond 2 MiB', async filename => {
+    const { previews, card, related } = await fixture();
+    const content = `# Map annotations\n${'Coordinate: 100, 200\n'.repeat(150_000)}Last annotation`;
+    await writeFile(path.join(related.folderPath, filename), content);
+    const result = await previews.open(card('file', { source: 'local', projectId: related.id, filePath: filename }));
+    expect(result.data.format).toBe(filename.endsWith('.md') ? 'markdown' : 'text');
+    expect(result.data.content).toBe(content);
+  });
+
+  it('serves a large assistant workspace image as original bytes through a scoped asset URL', async () => {
+    const { previews, card, owner, related } = await fixture();
+    owner.assistant = { workdir: related.folderPath, roots: [{ uri: 'file:///map', folderPath: related.folderPath, name: 'Map' }] };
+    const bytes = largePng(), filename = '厂区 · 圈选边界.PNG';
+    await writeFile(path.join(related.folderPath, filename), bytes);
+    const result = await previews.open(card('file', { source: 'local', projectId: owner.id, filePath: filename }));
+    expect(result.data).toMatchObject({ format: 'image', content: `/resource-assets/${result.id}/image` });
+    const url = new URL(String(result.data.content), 'http://localhost');
+    const asset = await previews.asset(url);
+    expect(asset?.content).toBeInstanceOf(Buffer);
+    expect((asset!.content as Buffer).equals(bytes)).toBe(true);
+    expect(asset?.headers).toMatchObject({ 'Content-Type': 'image/png', 'Content-Length': String(bytes.length), 'Cache-Control': 'no-store',
+      'Content-Security-Policy': "default-src 'none'; sandbox", 'X-Content-Type-Options': 'nosniff' });
+    for (const suffix of ['other.png', 'image/private.txt', '%2e%2e%2fprivate.txt']) {
+      expect(await previews.asset(new URL(`/resource-assets/${result.id}/${suffix}`, url))).toBeUndefined();
+    }
+  });
+
+  it('rechecks image paths and revokes their asset URLs after resource access changes', async () => {
+    const { previews, card, owner, related, logout } = await fixture();
+    const filename = path.join(related.folderPath, 'map.svg');
+    await writeFile(filename, '<svg xmlns="http://www.w3.org/2000/svg"/>');
+    const result = await previews.open(card('file', { source: 'local', projectId: related.id, filePath: 'map.svg' }));
+    const url = new URL(String(result.data.content), 'http://localhost');
+    expect((await previews.asset(url))?.headers['Content-Type']).toBe('image/svg+xml');
+    await writeFile(path.join(owner.folderPath, 'private.svg'), 'Private');
+    await rm(filename); await symlink(path.join(owner.folderPath, 'private.svg'), filename);
+    expect(await previews.asset(url)).toBeUndefined();
+    await rm(filename); await writeFile(filename, '<svg/>');
+    expect((await previews.asset(url))?.content).toEqual(Buffer.from('<svg/>'));
+    logout();
+    expect(await previews.asset(url)).toBeUndefined();
+    expect(() => previews.get(result.id)).toThrow('Resource access changed');
+  });
+
+  it('does not report a file size error for directory targets', async () => {
+    const { previews, card, related } = await fixture();
+    await expect(previews.open(card('file', { source: 'local', projectId: related.id, filePath: 'dist' }))).rejects.toThrow('The preview target is not a file.');
+  });
+
   it('rejects file symlinks escaping an authorized project', async () => {
     const { previews, card, owner, related } = await fixture();
     await writeFile(path.join(owner.folderPath, 'private.txt'), 'Private');
     await symlink(path.join(owner.folderPath, 'private.txt'), path.join(related.folderPath, 'outside.txt'));
     await expect(previews.open(card('file', { source: 'local', projectId: related.id, filePath: 'outside.txt' }))).rejects.toThrow('File is outside');
+  });
+
+  it('loads large file card images over HTTP without placing binary data in resource messages', async () => {
+    const { owner, related, runtime, storageDir } = await fixture();
+    owner.assistant = { workdir: related.folderPath, roots: [{ uri: 'file:///map', folderPath: related.folderPath, name: 'Map' }] };
+    vi.mocked(runtime.inspect).mockResolvedValue({ projects: [owner], errors: [] }); runtime.dispose = vi.fn();
+    const bytes = largePng(); await writeFile(path.join(related.folderPath, 'map.png'), bytes);
+    const app = await startWebServer({ projectDir: owner.folderPath, dataDir: storageDir, runtime, host: { surface: 'editor' } });
+    const request = (message: object) => fetch(new URL('/api/message', app.url), { method: 'POST',
+      headers: { Authorization: `Bearer ${new URL(app.url).hash.slice('#session='.length)}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
+    try {
+      app.controller.current.messages.push({ id: 'answer', role: 'assistant', content: '', items: [{ metadata: { kind: 'agent-part', partType: 'tool' },
+        content: { tool: 'workflow-ui_present_card', status: 'success', output: { action: 'upsert', cardId: 'image', kind: 'file',
+          target: { source: 'current', filePath: 'map.png' } } } }] });
+      const opened = (await (await request({ type: 'resource', messageId: 'answer', cardId: 'image' })).json()).messages[0];
+      const preview = (await (await request({ type: 'resource-data', id: opened.id })).json()).messages[0].data;
+      expect(preview).toMatchObject({ format: 'image', content: `/resource-assets/${opened.id}/image` });
+      const url = new URL(preview.content, app.url), response = await fetch(url);
+      expect(response.ok).toBe(true); expect(response.headers.get('content-type')).toBe('image/png');
+      expect(Buffer.from(await response.arrayBuffer()).equals(bytes)).toBe(true);
+      const head = await fetch(url, { method: 'HEAD', headers: { Origin: 'null' } });
+      expect(head.ok).toBe(true); expect(head.headers.get('content-length')).toBe(String(bytes.length));
+      expect((await head.arrayBuffer()).byteLength).toBe(0);
+      app.setHostResourceProjects([]);
+      expect((await fetch(url)).status).toBe(404);
+    } finally { await app.close(); }
   });
 
   it('allows preview reads but blocks data mutations and invalidates open previews on logout', async () => {

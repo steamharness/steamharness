@@ -41,6 +41,13 @@ function render(next: ResourcePreviewData): void {
   app.dataset.format = next.format;
   app.querySelector('h1')!.textContent = next.card.title;
   app.querySelector('.resource-preview-toolbar span')!.textContent = [next.card.target.source === 'server' ? t('Server') : t('Local'), next.project?.name].filter(Boolean).join(' / ');
+  if (next.format === 'image') {
+    const image = document.createElement('img'); image.alt = next.card.title;
+    status.hidden = false; status.textContent = t('Loading...');
+    image.onload = () => { if (image.isConnected) { status.hidden = true; } };
+    image.onerror = () => { if (image.isConnected) { fail(new Error(t('Unable to load this preview. Retry or open it separately.'))); } };
+    image.src = String(next.content); content.append(image); return;
+  }
   if (next.format === 'kanban' || next.format === 'browser') {
     frame = document.createElement('iframe'); frame.title = next.card.title; frame.sandbox.add('allow-scripts');
     frame.src = next.kanban?.url ?? String(next.content); content.append(frame);

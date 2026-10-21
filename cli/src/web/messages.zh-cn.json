@@ -400,7 +400,7 @@
   "This resource no longer exists.": "此资源已不存在。",
   "Server source files cannot be previewed by this card.": "此卡片不支持预览服务器源码文件。",
   "File is outside this project.": "文件不在此项目中。",
-  "File preview exceeds 2 MiB.": "文件预览大小超过 2 MiB。",
+  "The preview target is not a file.": "预览目标不是文件。",
   "This project does not provide a Kanban preview.": "此项目不提供看板预览。",
   "Invalid resource preview URL.": "资源预览地址无效。",
   "This preview configuration no longer exists.": "此预览配置已不存在。",

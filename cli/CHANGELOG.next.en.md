@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Fixed] Remove the 2 MiB limit from file resource cards. Load original image bytes through scoped asset URLs and fit images to the preview; preserve full text and Markdown content.
+
 - [Fixed] Preview the workspace project for current-project Kanban and project cards in Studio Assistant, preserving named configurations and Server data access. Reopening saved cards no longer treats the dedicated assistant as the Kanban project.
 - [Fixed] Keep inline resource preview failures in their own card in conversations and workflows, without leaving errors above the composer or affecting later messages and conversations.
 

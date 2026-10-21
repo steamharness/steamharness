@@ -78,3 +78,29 @@ it('recovers after resource revisions without losing the selected knowledge docu
   expect(document.querySelector('article')?.textContent).toContain('Updated document');
   expect(f.refresh.disabled).toBe(false);
 });
+
+it('renders file images and recovers from loading errors without stale image events changing the preview', async () => {
+  const f = await fixture();
+  const data: ResourcePreviewData = { card: { id: 'image', kind: 'file', title: 'Factory boundary', target: { source: 'local', filePath: 'map.png' } },
+    format: 'image', content: '/resource-assets/first/image' };
+  await f.reply({ type: 'resource-data', data });
+  const first = document.querySelector('img')!;
+  expect(first.getAttribute('src')).toBe('/resource-assets/first/image');
+  expect(first.alt).toBe('Factory boundary'); expect(document.querySelector('pre')).toBeNull();
+  first.dispatchEvent(new Event('error'));
+  expect(document.querySelector('[role=alert]')?.textContent).toBe('Unable to load this preview. Retry or open it separately.');
+  f.refresh.click();
+  expect(f.last()).toMatchObject({ type: 'resource-refresh', reference });
+  expect(first.isConnected).toBe(false);
+  await f.reply({ type: 'resource-data', id: 'renewed', data: { ...data, content: '/resource-assets/second/image' } });
+  const second = document.querySelector('img')!;
+  first.dispatchEvent(new Event('error')); first.dispatchEvent(new Event('load'));
+  expect(document.querySelector('.resource-preview-status')?.textContent).toBe('Loading...');
+  expect(document.querySelector('.resource-preview-status')?.hasAttribute('hidden')).toBe(false);
+  second.dispatchEvent(new Event('load'));
+  expect(document.querySelector('.resource-preview-status')?.hasAttribute('hidden')).toBe(true);
+  f.receive({ type: 'state', authenticationRevision: 1, resourceRevision: 1 });
+  f.receive({ type: 'state', authenticationRevision: 2, resourceRevision: 2 });
+  expect(document.querySelector('img')).toBeNull();
+  expect(f.last()).toMatchObject({ type: 'resource-data', id: 'renewed', reference });
+});

@@ -19,13 +19,23 @@ export interface ResourcePreviewData {
   card: ResourceCard;
   project?: Project;
   content?: unknown;
-  format?: 'markdown' | 'text' | 'json' | 'browser' | 'kanban' | 'project';
+  format?: 'markdown' | 'text' | 'json' | 'image' | 'browser' | 'kanban' | 'project';
   kanban?: { url: string; nonce: string; configuration: KanbanInjectedConfiguration };
 }
 interface PreviewEntry {
   data: ResourcePreviewData;
+  file?: { root: string; filename: string; mimeType: string };
   local?: KanbanPreview;
   remote?: { url: URL; prefix: string; connection: WebConnection };
+}
+
+const imageMimeTypes: Record<string, string> = {
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
+  '.webp': 'image/webp', '.avif': 'image/avif', '.svg': 'image/svg+xml', '.bmp': 'image/bmp', '.ico': 'image/vnd.microsoft.icon',
+};
+function insideProject(root: string, filename: string): boolean {
+  const relative = path.relative(root, filename);
+  return relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 }
 
 // Targets come from saved tool results; clients only select a card and an action.
@@ -128,10 +138,15 @@ export class ResourcePreviews {
       if (target.source === 'server') { throw new Error(t('Server source files cannot be previewed by this card.')); }
       const root = await realpath(project!.assistant?.workdir ?? project!.folderPath);
       const filename = await realpath(path.resolve(root, target.filePath));
-      const relative = path.relative(root, filename);
-      if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) { throw new Error(t('File is outside this project.')); }
-      if (!(await stat(filename)).isFile() || (await stat(filename)).size > 2 * 1024 * 1024) { throw new Error(t('File preview exceeds 2 MiB.')); }
-      data.content = await readFile(filename, 'utf8'); data.format = /\.mdx?$/i.test(filename) ? 'markdown' : 'text';
+      if (!insideProject(root, filename)) { throw new Error(t('File is outside this project.')); }
+      if (!(await stat(filename)).isFile()) { throw new Error(t('The preview target is not a file.')); }
+      const mimeType = imageMimeTypes[path.extname(filename).toLowerCase()];
+      if (mimeType) {
+        entry.file = { root, filename, mimeType };
+        data.content = `/resource-assets/${id}/image`; data.format = 'image';
+      } else {
+        data.content = await readFile(filename, 'utf8'); data.format = /\.mdx?$/i.test(filename) ? 'markdown' : 'text';
+      }
     } else if (card.kind === 'browser') {
       data.format = 'browser'; data.content = target.url;
     } else if (card.kind === 'kanban' || project?.projectType === 'kanban' && card.preview !== false) {
@@ -187,7 +202,21 @@ export class ResourcePreviews {
       return;
     }
     const match = /^\/resource-assets\/([^/]+)\/(.+)$/.exec(url.pathname);
-    const remote = match && this.entries.get(match[1])?.remote;
+    const entry = match ? this.entries.get(match[1]) : undefined;
+    if (entry?.file) {
+      if (match![2] !== 'image') { return; }
+      try {
+        // Resolve again so replacing a file or parent directory with a symlink cannot escape its project.
+        const filename = await realpath(entry.file.filename);
+        if (!insideProject(entry.file.root, filename) || !(await stat(filename)).isFile()) { return; }
+        const content = await readFile(filename);
+        if (generation !== this.generation || this.entries.get(match![1]) !== entry) { return; }
+        return { content, headers: { 'Content-Type': entry.file.mimeType, 'Content-Length': String(content.length),
+          'Content-Security-Policy': "default-src 'none'; sandbox", 'Cache-Control': 'no-store',
+          'Access-Control-Allow-Origin': '*', 'X-Content-Type-Options': 'nosniff' } };
+      } catch { return; }
+    }
+    const remote = entry?.remote;
     const connection = this.connection();
     if (!remote || remote.connection.serverUrl !== connection?.serverUrl || remote.connection.accessToken !== connection?.accessToken) { return; }
     const asset = decodeURIComponent(match![2]);
