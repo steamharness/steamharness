@@ -209,7 +209,9 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   queueMicrotask(() => {
     const openHostAccount = document.body.dataset.accountHost === 'true'
       ? () => window.parent.postMessage({ type: 'workflow-account', version: 1 }, '*') : undefined;
-    accountPanel = new AccountPanel(document.querySelector('#project-menu')!, request, openHostAccount);
+    // Pages without a sidebar (Kanban) keep account access in the shared toolbar.
+    const accountContainer = document.querySelector<HTMLElement>('#project-menu') ?? document.querySelector<HTMLElement>('.toolbar-actions')!;
+    accountPanel = new AccountPanel(accountContainer, request, openHostAccount);
   });
   return {
     postMessage: async (message) => {

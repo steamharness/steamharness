@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Fixed] Recognize patches already included in the pinned upstream revision during startup preparation, avoiding false conflicts from overlapping patches while preserving staged and unstaged local edits.
+
 - [Fixed] Keep IDE / Steam layout changes in the main window, restore maximized panels and editor groups, preserve tool placement preferences, ignore outdated startup failures, and handle skipped transition animations without unhandled errors.
 
 - [Added] Share project configuration panels and local storage with the standalone CLI for all three project types. Studio Control can query, fully manage, import and export local or Server configurations with the panel closed, subject to project scope and read-only permissions.

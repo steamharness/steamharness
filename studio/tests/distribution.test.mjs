@@ -185,6 +185,34 @@ test('overlapping patches are recognized after applying and committing the serie
   assert.equal(git(['diff', '--cached'], upstream), staged);
   assert.equal(await fs.readFile(path.join(upstream, 'core.txt'), 'utf8'), 'studio latest\n');
   await fs.writeFile(path.join(upstream, 'core.txt'), 'user changes\n');
-  await assert.rejects(prepareDistribution(root), /conflicts/);
+  await prepareDistribution(root);
+  assert.equal(git(['diff', '--cached'], upstream), staged);
   assert.equal(await fs.readFile(path.join(upstream, 'core.txt'), 'utf8'), 'user changes\n');
+});
+
+test('local edits in a committed multi-file patch do not hide earlier overlapping patches', async t => {
+  const { root, upstream, lock } = await fixture(t);
+  await fs.writeFile(path.join(root, 'patches/0001.patch'),
+    'diff --git a/core.txt b/core.txt\n--- a/core.txt\n+++ b/core.txt\n@@ -1 +1 @@\n-upstream\n+studio\n');
+  await fs.writeFile(path.join(root, 'patches/0002.patch'),
+    'diff --git a/core.txt b/core.txt\n--- a/core.txt\n+++ b/core.txt\n@@ -1 +1 @@\n-studio\n+studio latest\n'
+    + 'diff --git a/mode.txt b/mode.txt\nnew file mode 100644\n--- /dev/null\n+++ b/mode.txt\n@@ -0,0 +1 @@\n+studio mode\n');
+  await prepareDistribution(root);
+  git(['add', 'core.txt', 'mode.txt'], upstream);
+  git(['-c', 'user.name=Studio Test', '-c', 'user.email=studio@example.invalid', '-c', 'commit.gpgsign=false',
+    '-c', 'core.hooksPath=/dev/null', 'commit', '--quiet', '-m', 'commit overlapping patch series'], upstream);
+  await fs.writeFile(path.join(root, 'config/upstream.json'), JSON.stringify({ ...lock, commit: git(['rev-parse', 'HEAD'], upstream) }));
+  await fs.writeFile(path.join(upstream, 'mode.txt'), 'staged mode edit\n');
+  git(['add', 'mode.txt'], upstream);
+  await fs.writeFile(path.join(upstream, 'mode.txt'), 'unstaged mode edit\n');
+  const staged = git(['diff', '--cached'], upstream), unstaged = git(['diff'], upstream);
+  await prepareDistribution(root);
+  await prepareDistribution(root);
+  assert.equal(git(['diff', '--cached'], upstream), staged);
+  assert.equal(git(['diff'], upstream), unstaged);
+  await fs.writeFile(path.join(root, 'patches/0003.patch'),
+    'diff --git a/mode.txt b/mode.txt\n--- a/mode.txt\n+++ b/mode.txt\n@@ -1 +1 @@\n-studio mode\n+new mode\n');
+  await assert.rejects(prepareDistribution(root), /Patch 0003.patch conflicts/);
+  assert.equal(git(['diff', '--cached'], upstream), staged);
+  assert.equal(git(['diff'], upstream), unstaged);
 });

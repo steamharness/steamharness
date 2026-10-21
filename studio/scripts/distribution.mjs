@@ -142,22 +142,26 @@ export async function applyPatches(root, upstream) {
   const directory = await fs.mkdtemp(path.join(tmpdir(), 'studio-patch-index-'));
   const env = { GIT_INDEX_FILE: path.join(directory, 'index') };
   try {
-    git(['read-tree', 'HEAD'], upstream, env);
     const tracked = new Set(git(['--literal-pathspecs', 'ls-tree', '-r', '--name-only', '-z', 'HEAD', '--', ...paths], upstream).split('\0'));
     const snapshot = [];
     for (const filename of paths) {
       if (tracked.has(filename) || await exists(path.join(upstream, filename))) { snapshot.push(filename); }
     }
-    if (snapshot.length) { git(['--literal-pathspecs', 'add', '--all', '--', ...snapshot], upstream, env); }
-    // Peel later patches from a disposable index so overlapping earlier patches remain recognizable.
-    for (const name of [...files].reverse()) {
-      const file = path.join(patches, name);
-      try {
-        git(['apply', '--cached', '--reverse', '--check', file], upstream, env);
-        git(['apply', '--cached', '--reverse', file], upstream, env);
-        applied.add(name);
-      } catch {
-        // Missing or conflicting patches are checked against the real files below.
+    // Recognize patches in the pinned revision independently of local edits. A local
+    // edit can prevent peeling a later patch and otherwise hide an earlier one.
+    for (const source of ['HEAD', 'worktree']) {
+      git(['read-tree', 'HEAD'], upstream, env);
+      if (source === 'worktree' && snapshot.length) { git(['--literal-pathspecs', 'add', '--all', '--', ...snapshot], upstream, env); }
+      // Peel later patches from a disposable index so overlapping earlier patches remain recognizable.
+      for (const name of [...files].reverse()) {
+        const file = path.join(patches, name);
+        try {
+          git(['apply', '--cached', '--reverse', '--check', file], upstream, env);
+          git(['apply', '--cached', '--reverse', file], upstream, env);
+          applied.add(name);
+        } catch {
+          // New patches that conflict with real files are checked below.
+        }
       }
     }
   } finally {
