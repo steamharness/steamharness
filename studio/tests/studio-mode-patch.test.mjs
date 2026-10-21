@@ -10,7 +10,7 @@ test('workspace modes apply repeatably to the pinned kernel, including temporary
   const fixture = await mkdtemp(path.join(tmpdir(), 'studio-mode-patch-'));
   t.after(() => rm(fixture, { recursive: true, force: true }));
   const kernel = path.join(fixture, 'vscode');
-  const names = ['0035-studio-workspace-modes.patch', '0036-studio-webview-focus.patch', '0037-studio-steam-workspace-tabs.patch'];
+  const names = ['0035-studio-workspace-modes.patch', '0036-studio-webview-focus.patch', '0037-studio-steam-workspace-tabs.patch', '0038-studio-steam-group-lifecycle.patch'];
   const upstream = JSON.parse(await readFile(path.join(ROOT, 'config/upstream.json'), 'utf8'));
   const patches = names.map(name => path.join(ROOT, 'patches', name));
   const paths = [...new Set(patches.flatMap(patch => execFileSync('git', ['apply', '--numstat', patch], { cwd: path.join(ROOT, upstream.path), encoding: 'utf8' }).trim().split('\n').map(line => line.split('\t')[2])))];

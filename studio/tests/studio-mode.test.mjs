@@ -104,7 +104,7 @@ function fixture(t, saved = new Map()) {
     store: (key, value) => pending.set(key, structuredClone(value)), remove: key => pending.set(key, undefined),
     flush: async () => { for (const [key, value] of pending) { if (value === undefined) { saved.delete(key); } else { saved.set(key, value); } } pending.clear(); } };
   const context = { createKey: id => ({ set: value => settings.set(id, value) }) };
-  const f = { calls, saved, visible, sizes, active, containers, settings, errors, state, editor, result, group, layout, groups, mainPart, views, win, classes, loading: false,
+  const f = { calls, saved, visible, sizes, active, containers, settings, errors, state, editor, result, group, layout, groups, mainPart, views, win, classes, loading: false, projectOpen: false,
     prepare: async () => { group.activeEditor = result; visible.set('editor', true); return true; },
     cancelPreparation: () => undefined,
     publish: available => { state.state.available = available; stateChange.fire(state.state); },
@@ -124,7 +124,8 @@ function fixture(t, saved = new Map()) {
   runInNewContext(compiled, { exports: module.exports, module, require: () => new Proxy(common, { get: (object, key) => key in object ? object[key] : service }) });
   const controller = new module.exports.StudioModeContribution(layout, groups,
     { openEditor: (editor, options, group) => { groupMaximized = false; return group.openEditor(editor); } }, views, descriptors, context, configuration, storage,
-    { executeCommand: async (command, ...args) => { if (command === 'studio.internalCancelSteamPreparation') { calls.push('cancelPreparation'); return f.cancelPreparation(); } calls.push('prepare'); return f.prepare(...args); } }, { error: error => errors.push(String(error)) }, { createInstance: () => ({
+    { executeCommand: async (command, ...args) => { if (command === 'studio.internalCancelSteamPreparation') { calls.push('cancelPreparation'); return f.cancelPreparation(); } calls.push('prepare'); const ready = await f.prepare(...args); if (ready) { f.projectOpen = true; } return ready; } }, { error: error => errors.push(String(error)) }, { createInstance: () => ({
+      get hasProject() { return f.projectOpen; },
       activate: () => views.openView('studio.steamTools', true),
       home: () => views.openView('studio.steamTools', true),
       openTool: id => views.openView({ kv: 'studio.kv', knowledge: 'studio.knowledge', info: 'studio.projectInfo', assistant: 'studio.developerAssistant', versions: 'studio.versions', trace: 'studio.trace' }[id], true),
@@ -177,6 +178,17 @@ test('rapid mode requests coalesce while a project is preparing', async t => {
   assert.equal(f.state.steam, false); assert.equal(f.state.busy, false);
   assert.equal(f.saved.has('studio.ideLayout'), false);
   assert.equal(f.calls.filter(call => call === 'maximizeGroup').length, 1);
+});
+
+test('closing the ready project invalidates preparation even when Steam mode remains selected', async t => {
+  const f = fixture(t); f.publish(true); await f.run('EnterSteamMode');
+  f.group.activeEditor = undefined;
+  f.projectOpen = false;
+  f.state.state.ready = false; f.publish(true);
+  await f.run('EnterSteamMode');
+  assert.equal(f.calls.filter(call => call === 'prepare').length, 2);
+  assert.equal(f.calls.filter(call => call === 'maximizeGroup').length, 1);
+  assert.equal(f.state.steam, true);
 });
 
 for (const failure of ['unavailable', 'error']) {

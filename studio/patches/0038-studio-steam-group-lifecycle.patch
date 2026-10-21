@@ -1,0 +1,597 @@
+diff --git a/src/vs/workbench/browser/parts/editor/editor.ts b/src/vs/workbench/browser/parts/editor/editor.ts
+index ac63294495c..4e0843dd647 100644
+--- a/src/vs/workbench/browser/parts/editor/editor.ts
++++ b/src/vs/workbench/browser/parts/editor/editor.ts
+@@ -214,6 +214,7 @@ export interface IEditorPartsView {
+ export interface IEditorGroupsView {
+ 
+ 	readonly windowId: number;
++	readonly isGroupLayoutLocked?: boolean;
+ 
+ 	readonly groups: IEditorGroupView[];
+ 	readonly activeGroup: IEditorGroupView;
+diff --git a/src/vs/workbench/browser/parts/editor/editorGroupView.ts b/src/vs/workbench/browser/parts/editor/editorGroupView.ts
+index 5c74049d1b9..f79dbe4f16e 100644
+--- a/src/vs/workbench/browser/parts/editor/editorGroupView.ts
++++ b/src/vs/workbench/browser/parts/editor/editorGroupView.ts
+@@ -1384,7 +1384,26 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
+ 
+ 	//#region moveEditor()
+ 
++	private getMoveCopyTargets(editors: { editor: EditorInput; options?: IEditorOptions }[], preferred: EditorGroupView): Map<EditorGroupView, typeof editors> {
++		const targets = new Map<EditorGroupView, typeof editors>();
++		for (const entry of editors) {
++			const target = getEditorOpenTarget(entry.editor, preferred) as EditorGroupView | undefined ?? preferred;
++			const entries = targets.get(target) ?? [];
++			entries.push(entry);
++			targets.set(target, entries);
++		}
++		return targets;
++	}
++
+ 	moveEditors(editors: { editor: EditorInput; options?: IEditorOptions }[], target: EditorGroupView): boolean {
++		const targets = this.getMoveCopyTargets(editors, target);
++		if ([...targets.keys()].some(group => group !== target)) {
++			let result = true;
++			for (const [group, entries] of targets) {
++				if (!this.moveEditors(entries, group)) { result = false; }
++			}
++			return result;
++		}
+ 
+ 		// Optimization: knowing that we move many editors, we
+ 		// delay the title update to a later point for this group
+@@ -1417,6 +1436,9 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
+ 	}
+ 
+ 	moveEditor(editor: EditorInput, target: EditorGroupView, options?: IEditorOptions, internalOptions?: IInternalMoveCopyOptions): boolean {
++		// Resolve before deciding whether to close the source. Routing only the open
++		// could send a singleton back here and then immediately close it as a move.
++		target = getEditorOpenTarget(editor, target) as EditorGroupView | undefined ?? target;
+ 
+ 		// Move within same group
+ 		if (this === target) {
+@@ -1514,6 +1536,11 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
+ 	//#region copyEditor()
+ 
+ 	copyEditors(editors: { editor: EditorInput; options?: IEditorOptions }[], target: EditorGroupView): void {
++		const targets = this.getMoveCopyTargets(editors, target);
++		if ([...targets.keys()].some(group => group !== target)) {
++			for (const [group, entries] of targets) { this.copyEditors(entries, group); }
++			return;
++		}
+ 
+ 		// Optimization: knowing that we move many editors, we
+ 		// delay the title update to a later point for this group
+@@ -1537,6 +1564,7 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
+ 	}
+ 
+ 	copyEditor(editor: EditorInput, target: EditorGroupView, options?: IEditorOptions, internalOptions?: IInternalEditorTitleControlOptions): void {
++		target = getEditorOpenTarget(editor, target) as EditorGroupView | undefined ?? target;
+ 
+ 		// Move within same group because we do not support to show the same editor
+ 		// multiple times in the same group
+@@ -2045,6 +2073,17 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
+ 	//#region replaceEditors()
+ 
+ 	async replaceEditors(editors: EditorReplacement[]): Promise<void> {
++		const local: EditorReplacement[] = [];
++		for (const entry of editors) {
++			const target = getEditorOpenTarget(entry.replacement, this);
++			if (target && target !== this && this.contains(entry.editor) && getEditorOpenTarget(entry.editor, this) === this) {
++				// A replacement routed to another surface must not close its reserved input.
++				await target.openEditor(entry.replacement, entry.options);
++			} else {
++				local.push(entry);
++			}
++		}
++		editors = local;
+ 
+ 		// Extract active vs. inactive replacements
+ 		let activeReplacement: EditorReplacement | undefined;
+diff --git a/src/vs/workbench/browser/parts/editor/editorPart.ts b/src/vs/workbench/browser/parts/editor/editorPart.ts
+index afa6942390e..3e92c10199e 100644
+--- a/src/vs/workbench/browser/parts/editor/editorPart.ts
++++ b/src/vs/workbench/browser/parts/editor/editorPart.ts
+@@ -8,7 +8,7 @@ import { Part } from '../../part.js';
+ import { Dimension, $, EventHelper, addDisposableGenericMouseDownListener, getWindow, isAncestorOfActiveElement, getActiveElement, isHTMLElement, computeScreenAwareSize } from '../../../../base/browser/dom.js';
+ import { Event, Emitter, Relay, PauseableEmitter } from '../../../../base/common/event.js';
+ import { contrastBorder, editorBackground } from '../../../../platform/theme/common/colorRegistry.js';
+-import { GroupDirection, GroupsArrangement, GroupOrientation, IMergeGroupOptions, MergeGroupMode, GroupsOrder, GroupLocation, IFindGroupScope, EditorGroupLayout, GroupLayoutArgument, IEditorSideGroup, IEditorDropTargetDelegate, IEditorPart, GroupActivationReason, IEditorGroupActivationEvent } from '../../../services/editor/common/editorGroupsService.js';
++import { GroupDirection, GroupsArrangement, GroupOrientation, IMergeGroupOptions, MergeGroupMode, GroupsOrder, GroupLocation, IFindGroupScope, EditorGroupLayout, GroupLayoutArgument, IEditorSideGroup, IEditorDropTargetDelegate, IEditorPart, IEditorGroup, GroupActivationReason, IEditorGroupActivationEvent } from '../../../services/editor/common/editorGroupsService.js';
+ import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
+ import { IView, orthogonal, LayoutPriority, IViewSize, Direction, SerializableGrid, Sizing, ISerializedGrid, ISerializedNode, Orientation, GridBranchNode, isGridBranchNode, GridNode, createSerializedGrid, Grid } from '../../../../base/browser/ui/grid/grid.js';
+ import { GroupIdentifier, EditorInputWithOptions, IEditorPartOptions, IEditorPartOptionsChangeEvent, GroupModelChangeKind } from '../../../common/editor.js';
+@@ -411,8 +411,19 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
+ 		}
+ 	}
+ 
++	private singleGroup: IEditorGroupView | undefined;
++	get isGroupLayoutLocked(): boolean { return !!this.singleGroup; }
++
++	enforceSingleGroup(group: IEditorGroup): IDisposable {
++		const groupView = this.assertGroupView(group.id);
++		this.arrangeGroups(GroupsArrangement.MAXIMIZE, groupView);
++		this.singleGroup = groupView;
++		this.doSetGroupActive(groupView);
++		return toDisposable(() => { if (this.singleGroup === groupView) { this.singleGroup = undefined; } });
++	}
++
+ 	activateGroup(group: IEditorGroupView | GroupIdentifier, preserveWindowOrder?: boolean, reason?: GroupActivationReason): IEditorGroupView {
+-		const groupView = this.assertGroupView(group);
++		const groupView = this.singleGroup ?? this.assertGroupView(group);
+ 		this.doSetGroupActive(groupView, reason);
+ 
+ 		// Ensure window on top unless disabled
+@@ -424,7 +435,7 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
+ 	}
+ 
+ 	restoreGroup(group: IEditorGroupView | GroupIdentifier): IEditorGroupView {
+-		const groupView = this.assertGroupView(group);
++		const groupView = this.singleGroup ?? this.assertGroupView(group);
+ 		this.doRestoreGroup(groupView);
+ 
+ 		return groupView;
+@@ -437,12 +448,14 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
+ 	}
+ 
+ 	setSize(group: IEditorGroupView | GroupIdentifier, size: { width: number; height: number }): void {
++		if (this.singleGroup) { return; }
+ 		const groupView = this.assertGroupView(group);
+ 
+ 		this.gridWidget.resizeView(groupView, size);
+ 	}
+ 
+ 	arrangeGroups(arrangement: GroupsArrangement, target: IEditorGroupView | GroupIdentifier = this.activeGroup): void {
++		if (this.singleGroup) { return; }
+ 		if (this.count < 2) {
+ 			return; // require at least 2 groups to show
+ 		}
+@@ -471,6 +484,7 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
+ 	}
+ 
+ 	toggleMaximizeGroup(target: IEditorGroupView | GroupIdentifier = this.activeGroup): void {
++		if (this.singleGroup) { return; }
+ 		if (this.hasMaximizedGroup()) {
+ 			this.unmaximizeGroup();
+ 		} else {
+@@ -504,6 +518,7 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
+ 	}
+ 
+ 	setGroupOrientation(orientation: GroupOrientation): void {
++		if (this.singleGroup) { return; }
+ 		if (!this.gridWidget) {
+ 			return; // we have not been created yet
+ 		}
+@@ -515,6 +530,7 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
+ 	}
+ 
+ 	applyLayout(layout: EditorGroupLayout): void {
++		if (this.singleGroup) { return; }
+ 		const restoreFocus = this.shouldRestoreFocus(this.container);
+ 
+ 		// Determine how many groups we need overall
+@@ -618,6 +634,8 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
+ 
+ 	addGroup(location: IEditorGroupView | GroupIdentifier, direction: GroupDirection, groupToCopy?: IEditorGroupView): IEditorGroupView {
+ 		const locationView = this.assertGroupView(location);
++		if (locationView.groupsView.isGroupLayoutLocked) { return locationView.groupsView.activeGroup; }
++		if (groupToCopy?.groupsView.isGroupLayoutLocked) { return groupToCopy; }
+ 
+ 		let newGroupView: IEditorGroupView;
+ 
+@@ -741,6 +759,7 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
+ 	}
+ 
+ 	private doSetGroupActive(group: IEditorGroupView, reason = GroupActivationReason.DEFAULT): void {
++		group = this.singleGroup ?? group;
+ 		if (this._activeGroup !== group) {
+ 			const previousActiveGroup = this._activeGroup;
+ 			this._activeGroup = group;
+@@ -770,6 +789,7 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
+ 	}
+ 
+ 	private doRestoreGroup(group: IEditorGroupView): void {
++		if (this.singleGroup) { return; }
+ 		if (!this.gridWidget) {
+ 			return; // method is called as part of state restore very early
+ 		}
+@@ -821,6 +841,7 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
+ 
+ 	removeGroup(group: IEditorGroupView | GroupIdentifier, preserveFocus?: boolean): void {
+ 		const groupView = this.assertGroupView(group);
++		if (groupView.groupsView.isGroupLayoutLocked) { return; }
+ 		if (this.count === 1) {
+ 			return; // Cannot remove the last root group
+ 		}
+@@ -885,6 +906,7 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
+ 	moveGroup(group: IEditorGroupView | GroupIdentifier, location: IEditorGroupView | GroupIdentifier, direction: GroupDirection): IEditorGroupView {
+ 		const sourceView = this.assertGroupView(group);
+ 		const targetView = this.assertGroupView(location);
++		if (sourceView.groupsView.isGroupLayoutLocked || targetView.groupsView.isGroupLayoutLocked) { return sourceView; }
+ 
+ 		if (sourceView.id === targetView.id) {
+ 			throw new Error('Cannot move group into its own');
+@@ -925,6 +947,7 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
+ 	copyGroup(group: IEditorGroupView | GroupIdentifier, location: IEditorGroupView | GroupIdentifier, direction: GroupDirection): IEditorGroupView {
+ 		const groupView = this.assertGroupView(group);
+ 		const locationView = this.assertGroupView(location);
++		if (groupView.groupsView.isGroupLayoutLocked || locationView.groupsView.isGroupLayoutLocked) { return groupView; }
+ 
+ 		const restoreFocus = this.shouldRestoreFocus(groupView.element);
+ 
+@@ -942,6 +965,8 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
+ 	mergeGroup(group: IEditorGroupView | GroupIdentifier, target: IEditorGroupView | GroupIdentifier, options?: IMergeGroupOptions): boolean {
+ 		const sourceView = this.assertGroupView(group);
+ 		const targetView = this.assertGroupView(target);
++		if (sourceView === targetView) { return true; }
++		if (sourceView.groupsView.isGroupLayoutLocked || targetView.groupsView.isGroupLayoutLocked) { return false; }
+ 
+ 		// Collect editors to move/copy
+ 		const editors: EditorInputWithOptions[] = [];
+@@ -1519,6 +1544,7 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
+ 	}
+ 
+ 	applyState(state: IEditorPartUIState | 'empty', options?: IEditorGroupViewOptions): Promise<void> {
++		if (this.singleGroup) { return Promise.resolve(); }
+ 		if (state === 'empty') {
+ 			return this.doApplyEmptyState();
+ 		} else {
+diff --git a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+index fe738a4d797..2030e64fd12 100644
+--- a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
++++ b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+@@ -145,7 +145,7 @@ export class StudioModeContribution extends Disposable {
+ 			if (revision !== this.revision || this._store.isDisposed) { return; }
+ 			const next = this.requested;
+ 			const projectUri = studioModeState.state.projectUri;
+-			if (next === this.steam && (next ? this.projectReady : !this.snapshot)) {
++			if (next === this.steam && (next ? this.projectReady && this.workspace.hasProject : !this.snapshot)) {
+ 				if (!next) { await this.workspace.deactivate(this.groups.mainPart.activeGroup); }
+ 				return;
+ 			}
+diff --git a/src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts b/src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts
+index 9e248a2377e..eaee78fe399 100644
+--- a/src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts
++++ b/src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts
+@@ -6,7 +6,7 @@
+ import { $, append, clearNode, getWindow } from '../../../../base/browser/dom.js';
+ import { RunOnceScheduler } from '../../../../base/common/async.js';
+ import { onUnexpectedError } from '../../../../base/common/errors.js';
+-import { Disposable, DisposableStore, toDisposable } from '../../../../base/common/lifecycle.js';
++import { Disposable, DisposableStore, MutableDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
+ import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
+ import { studioModeState, studioSteamToolDefinitions, studioSteamWorkspaceState, StudioSteamTab } from '../../../browser/parts/studioMode.js';
+ import { EditorsOrder, IUntypedEditorInput } from '../../../common/editor.js';
+@@ -33,17 +33,25 @@ interface WorkspaceTab { id: string; tool?: typeof studioSteamToolDefinitions[nu
+ export class StudioSteamWorkspace extends Disposable {
+ 	private part: IEmbeddedEditorPart | undefined;
+ 	private readonly partLifetime = this._register(new DisposableStore());
++	private readonly modeLifetime = this._register(new DisposableStore());
+ 	private readonly host: HTMLElement;
+ 	private readonly refresh = this._register(new RunOnceScheduler(() => this.syncEditors(), 0));
+ 	private tabs: WorkspaceTab[] = [];
+ 	private active: string | undefined;
+ 	private enabled = false;
++	private projectGroup: IEditorGroup | undefined;
+ 	private project: EditorInput | undefined;
++	private readonly projectLifetime = this._register(new MutableDisposable());
++	private readonly ideGroups = new Map<EditorInput, IEditorGroup>();
+ 	private readonly editorIds = new WeakMap<EditorInput, string>();
+ 	private editorId = 0;
+ 	private savedActive: string | undefined;
+ 	private visibilityRevision = 0;
+ 
++	get hasProject(): boolean {
++		return !!this.project && !this.project.isDisposed() && !!this.projectGroup?.contains(this.project);
++	}
++
+ 	constructor(parent: HTMLElement,
+ 		@IEditorGroupsService private readonly groups: IEditorGroupsService,
+ 		@IViewsService private readonly views: IViewsService,
+@@ -82,34 +90,55 @@ export class StudioSteamWorkspace extends Disposable {
+ 		if (this.part) { return this.part; }
+ 		clearNode(this.host);
+ 		const part = this.part = this.partLifetime.add(this.groups.createEmbeddedEditorPart(this.host, 'workbench.parts.studioSteamEditors', studioModeState.state.labels.workspace ?? 'Tool Workspace'));
+-		this.partLifetime.add(part.enforcePartOptions({ showTabs: 'none', enablePreview: false, closeEmptyGroups: false, editorActionsLocation: 'hidden' }));
++		this.partLifetime.add(part.enforcePartOptions({ showTabs: 'none', enablePreview: false, closeEmptyGroups: true, editorActionsLocation: 'hidden' }));
+ 		const registerGroup = (group: IEditorGroup) => {
+ 			this.partLifetime.add((group as IEditorGroupView).onWillOpenEditor(event => {
+-				if (this.enabled) { this.revealEditor(group.activeEditor ?? event.editor); }
++				if (this.enabled && group.activeEditor === event.editor) { this.revealEditor(event.editor, group); }
+ 			}));
+ 			this.partLifetime.add(group.onDidModelChange(() => this.refresh.schedule()));
+ 			this.partLifetime.add(group.onDidActiveEditorChange(() => {
+ 				this.syncEditors();
+-				if (this.enabled && group.activeEditor) { this.revealEditor(group.activeEditor); }
++				if (this.enabled && this.groups.activeGroup === group && group.activeEditor) { this.revealEditor(group.activeEditor, group); }
+ 			}));
+ 		};
+ 		part.groups.forEach(registerGroup);
+ 		this.partLifetime.add(part.onDidAddGroup(registerGroup));
+ 		this.partLifetime.add(part.onDidRemoveGroup(() => this.refresh.schedule()));
++		this.partLifetime.add(part.onDidActivateGroup(({ group }) => {
++			if (this.enabled && group.activeEditor) { this.revealEditor(group.activeEditor, group); }
++		}));
+ 		void part.whenReady.then(() => { if (this.part === part) { this.syncEditors(); } });
+ 		return part;
+ 	}
+ 
+ 	async activate(): Promise<void> {
++		if (this.enabled) { return; }
+ 		const part = this.ensurePart();
+ 		await part.whenReady;
+ 		const restoreActive = this.savedActive;
++		const projectGroup = this.projectGroup = this.groups.mainPart.getGroups(GroupsOrder.GRID_APPEARANCE)[0];
++		this.modeLifetime.add(this.groups.mainPart.enforceSingleGroup(projectGroup));
++		this.setProject([...this.groups.mainPart.groups, ...part.groups].flatMap(group => group.editors).find(editor => this.matchesProject(editor)));
++		this.modeLifetime.add(projectGroup.onDidCloseEditor(({ editor }) => {
++			if (editor === this.project) { this.setProject(undefined); }
++		}));
++		// Retain IDE ownership for the return trip, but leave no source document
++		// behind the runtime that native close/navigation could reveal on the left.
++		const sourceEditors = projectGroup.getEditors(EditorsOrder.SEQUENTIAL).filter(editor => !this.matchesProject(editor));
++		for (const editor of sourceEditors) { this.ideGroups.set(editor, projectGroup); }
++		if (!projectGroup.moveEditors(sourceEditors.map(editor => ({ editor, options: { preserveFocus: true } })), part.activeGroup)) {
++			throw new Error(studioModeState.state.labels.moveEditorsError ?? 'Unable to move tool workspace editors back to the IDE.');
++		}
++		// Repair restored sessions and projects that were previously opened in another group.
++		for (const group of [...this.groups.mainPart.groups, ...part.groups]) {
++			if (group === projectGroup) { continue; }
++			group.moveEditors(group.getEditors(EditorsOrder.SEQUENTIAL).filter(editor => this.matchesProject(editor))
++				.map(editor => ({ editor, options: { preserveFocus: true } })), projectGroup);
++		}
+ 		this.enabled = true;
+-		// Match the preferred project, rather than exempting every project webview.
+-		this.project = this.groups.mainPart.groups.flatMap(group => group.getEditors(EditorsOrder.SEQUENTIAL)).find(editor => this.matchesProject(editor));
+ 		this.syncEditors();
+ 		if (restoreActive === 'editor' && part.activeGroup.activeEditor) {
+-			this.revealEditor(part.activeGroup.activeEditor);
++			this.revealEditor(part.activeGroup.activeEditor, part.activeGroup);
+ 		} else if (restoreActive && this.tabs.some(tab => tab.tool && tab.id === restoreActive)) {
+ 			await this.select(restoreActive);
+ 		} else { await this.home(); }
+@@ -123,16 +152,28 @@ export class StudioSteamWorkspace extends Disposable {
+ 		part.setVisible(false); this.host.hidden = true;
+ 		// Move inputs, without closing or saving them, so IDE can access every new and dirty editor.
+ 		for (const group of part.groups) {
+-			if (!group.moveEditors(group.getEditors(EditorsOrder.SEQUENTIAL).map(editor => ({ editor, options: { preserveFocus: true } })), target)) {
+-				this.enabled = true;
+-				this.syncEditors();
+-				throw new Error(studioModeState.state.labels.moveEditorsError ?? 'Unable to move tool workspace editors back to the IDE.');
++			const destinations = new Map<IEditorGroup, EditorInput[]>();
++			for (const editor of group.getEditors(EditorsOrder.SEQUENTIAL)) {
++				const original = this.ideGroups.get(editor);
++				const destination = original && this.groups.mainPart.getGroup(original.id) === original ? original : target;
++				const editors = destinations.get(destination) ?? [];
++				editors.push(editor); destinations.set(destination, editors);
++			}
++			for (const [destination, editors] of destinations) {
++				if (!group.moveEditors(editors.map(editor => ({ editor, options: { preserveFocus: true } })), destination)) {
++					this.enabled = true;
++					this.syncEditors();
++					throw new Error(studioModeState.state.labels.moveEditorsError ?? 'Unable to move tool workspace editors back to the IDE.');
++				}
+ 			}
+ 		}
++		this.modeLifetime.clear();
+ 		this.part = undefined;
+ 		this.partLifetime.clear();
+ 		clearNode(this.host);
+-		this.project = undefined;
++		this.projectGroup = undefined;
++		this.setProject(undefined);
++		this.ideGroups.clear();
+ 		this.syncEditors();
+ 	}
+ 
+@@ -157,9 +198,9 @@ export class StudioSteamWorkspace extends Disposable {
+ 		++this.visibilityRevision; this.active = id; this.publish();
+ 		if (tab.tool) { await this.views.openView(tab.tool.view, true); }
+ 		else if (tab.editor && tab.group) {
+-			this.revealEditor(tab.editor);
++			this.revealEditor(tab.editor, tab.group);
+ 			await tab.group.openEditor(tab.editor);
+-			tab.group.focus();
++			if (this.enabled && this.active === id && this.part?.groups.includes(tab.group)) { tab.group.focus(); }
+ 		}
+ 	}
+ 
+@@ -169,52 +210,64 @@ export class StudioSteamWorkspace extends Disposable {
+ 		if (!tab) { return; }
+ 		const wasActive = this.active === id;
+ 		const next = this.tabs[index + 1]?.id ?? this.tabs[index - 1]?.id;
++		const part = this.part;
+ 		if (tab.editor && tab.group && !await tab.group.closeEditor(tab.editor, { preserveFocus: true })) { return; }
++		if (!this.enabled || this.part !== part) { return; }
+ 		this.tabs = this.tabs.filter(tab => tab.id !== id);
+ 		if (wasActive) {
+ 			if (next && this.tabs.some(tab => tab.id === next)) { await this.select(next); } else { await this.home(); }
+ 		} else { this.publish(); }
+ 	}
+ 
++	private setProject(editor: EditorInput | undefined): void {
++		if (this.project === editor) { return; }
++		this.project = editor;
++		this.projectLifetime.value = editor?.onWillDispose(() => this.setProject(undefined));
++	}
++
+ 	private matchesProject(editor: EditorInput): boolean {
+-		if (!(editor instanceof WebviewInput) || editor.webview.providedViewType !== 'studio.project') { return false; }
+-		try { return JSON.parse(editor.webview.state ?? '{}').projectUri === studioModeState.state.projectUri; } catch { return false; }
++		if (editor.isDisposed() || !(editor instanceof WebviewInput) || editor.webview.providedViewType !== 'studio.project') { return false; }
++		if (this.project && !this.project.isDisposed()) { return editor === this.project; }
++		// New panels open before their frame can publish serialized state. Their
++		// placement cannot depend on whether a previously closed input was cached.
++		try {
++			const uri = JSON.parse(editor.webview.state ?? '{}').projectUri;
++			return !uri || uri === studioModeState.state.projectUri;
++		} catch { return false; }
+ 	}
+ 
+ 	private target(editor: EditorInput | IUntypedEditorInput, preferred: PreferredGroup | undefined): IEditorGroup | undefined {
+ 		if (!this.enabled) { return undefined; }
+ 		const explicit = typeof preferred === 'number' && preferred >= 0 ? this.groups.getGroup(preferred) : typeof preferred === 'object' ? preferred : undefined;
++		if (editor instanceof EditorInput && this.matchesProject(editor)) {
++			this.setProject(editor);
++			return this.projectGroup;
++		}
+ 		// Existing auxiliary windows keep their own scoped editor services.
+ 		if (explicit && this.groups.getPart(explicit).windowId !== this.groups.mainPart.windowId) { return undefined; }
+-		const projectGroup = this.groups.mainPart.getGroups(GroupsOrder.GRID_APPEARANCE)[0];
+-		if (editor instanceof EditorInput && (editor === this.project || this.matchesProject(editor)
+-			|| !this.project && editor instanceof WebviewInput && editor.webview.providedViewType === 'studio.project')) {
+-			this.project = editor;
+-			return projectGroup;
+-		}
+ 		if (explicit && this.part?.groups.includes(explicit)) { return explicit; }
+ 		return this.part?.activeGroup;
+ 	}
+ 
+-	private id(editor: EditorInput): string {
++	private id(editor: EditorInput, group: IEditorGroup): string {
+ 		let id = this.editorIds.get(editor);
+ 		if (!id) { id = `editor:${++this.editorId}`; this.editorIds.set(editor, id); }
+-		return id;
++		return `${id}:${group.id}`;
+ 	}
+ 
+ 	private syncEditors(): void {
+-		const editors = this.part?.groups.flatMap(group => group.getEditors(EditorsOrder.SEQUENTIAL).map(editor => ({ id: this.id(editor), editor, group }))) ?? [];
++		const editors = this.part?.groups.flatMap(group => group.getEditors(EditorsOrder.SEQUENTIAL).map(editor => ({ id: this.id(editor, group), editor, group }))) ?? [];
+ 		const current = new Map(editors.map(tab => [tab.id, tab]));
+ 		this.tabs = this.tabs.flatMap(tab => tab.tool ? [tab] : current.has(tab.id) ? [current.get(tab.id)!] : []);
+ 		for (const tab of editors) { if (!this.tabs.some(entry => entry.id === tab.id)) { this.tabs.push(tab); } }
+ 		if (this.active && !this.tabs.some(tab => tab.id === this.active)) {
+-			this.active = this.part?.activeGroup.activeEditor ? this.id(this.part.activeGroup.activeEditor) : undefined;
++			this.active = this.part?.activeGroup.activeEditor ? this.id(this.part.activeGroup.activeEditor, this.part.activeGroup) : undefined;
+ 		}
+ 		this.publish();
+ 	}
+ 
+-	private revealEditor(editor: EditorInput): void {
+-		this.active = this.id(editor); this.publish();
++	private revealEditor(editor: EditorInput, group: IEditorGroup): void {
++		this.active = this.id(editor, group); this.publish();
+ 		const revision = ++this.visibilityRevision;
+ 		// Keep the native auxiliary part open underneath the embedded editor surface.
+ 		void this.views.openView(HOME_VIEW, false).then(() => {
+diff --git a/src/vs/workbench/services/editor/common/editorGroupsService.ts b/src/vs/workbench/services/editor/common/editorGroupsService.ts
+index 3b693d5533a..a7f8a0d2ae3 100644
+--- a/src/vs/workbench/services/editor/common/editorGroupsService.ts
++++ b/src/vs/workbench/services/editor/common/editorGroupsService.ts
+@@ -479,6 +479,9 @@ export interface IEditorGroupsContainer {
+  */
+ export interface IEditorPart extends IEditorGroupsContainer {
+ 
++	/** Reserve one visible group without changing the retained editor grid. */
++	enforceSingleGroup(group: IEditorGroup): IDisposable;
++
+ 	/**
+ 	 * An event for when the editor part is layed out.
+ 	 */
+diff --git a/src/vs/workbench/services/editor/test/browser/editorGroupsService.test.ts b/src/vs/workbench/services/editor/test/browser/editorGroupsService.test.ts
+index 81531edccf0..536204d94cd 100644
+--- a/src/vs/workbench/services/editor/test/browser/editorGroupsService.test.ts
++++ b/src/vs/workbench/services/editor/test/browser/editorGroupsService.test.ts
+@@ -96,6 +96,45 @@ suite('EditorGroupsService', () => {
+ 		assert.strictEqual(parts.parts.some(part => part === embedded), false);
+ 	});
+ 
++	test('single-group surfaces guard split, grid, cross-part moves and merges while retaining the IDE layout', async () => {
++		const [parts, instantiation] = await createParts();
++		const service = disposables.add(instantiation.createInstance(EditorService, undefined));
++		instantiation.stub(IEditorService, service);
++		const main = parts.mainPart, root = main.activeGroup;
++		const hidden = main.addGroup(root, GroupDirection.RIGHT);
++		const project = createTestFileEditorInput(URI.parse('test://fixed-project'), TEST_EDITOR_INPUT_ID);
++		const source = createTestFileEditorInput(URI.parse('test://retained-source'), TEST_EDITOR_INPUT_ID);
++		await root.openEditor(project, { pinned: true });
++		await hidden.openEditor(source, { pinned: true });
++		const originalLayout = main.getLayout();
++		const embedded = disposables.add(parts.createEmbeddedEditorPart($('.part.editor'), 'test.fixedTools', 'Tools'));
++		await embedded.whenReady;
++		const tools = embedded.activeGroup;
++		const lock = disposables.add(main.enforceSingleGroup(root));
++		for (const direction of [GroupDirection.LEFT, GroupDirection.RIGHT, GroupDirection.UP, GroupDirection.DOWN]) {
++			assert.strictEqual(main.addGroup(root, direction), root);
++			assert.strictEqual(parts.copyGroup(root.id, tools.id, direction), root);
++			assert.strictEqual(parts.copyGroup(tools.id, root.id, direction), tools);
++			assert.strictEqual(parts.moveGroup(root.id, tools.id, direction), root);
++			assert.strictEqual(parts.moveGroup(tools.id, root.id, direction), tools);
++		}
++		assert.strictEqual(parts.mergeGroup(root.id, tools.id), false);
++		assert.strictEqual(parts.mergeGroup(tools.id, root.id), false);
++		main.removeGroup(root); main.removeGroup(hidden);
++		main.applyLayout({ orientation: GroupOrientation.VERTICAL, groups: [{}, {}, {}] });
++		main.arrangeGroups(GroupsArrangement.EVEN);
++		main.toggleMaximizeGroup();
++		assert.strictEqual(main.activateGroup(hidden), root);
++		assert.strictEqual(main.restoreGroup(hidden), root);
++		assert.deepStrictEqual(main.groups.map(group => group.editors), [[project], [source]]);
++		assert.strictEqual(main.hasMaximizedGroup(), true);
++		assert.strictEqual(embedded.groups.length, 1);
++		lock.dispose();
++		main.applyLayout(originalLayout);
++		assert.strictEqual(main.hasMaximizedGroup(), false);
++		assert.strictEqual(main.addGroup(root, GroupDirection.RIGHT).isEmpty, true);
++	});
++
+ 	test('groups basics', async function () {
+ 		const instantiationService = workbenchInstantiationService({ contextKeyService: instantiationService => instantiationService.createInstance(MockScopableContextKeyService) }, disposables);
+ 		const [part] = await createPart(instantiationService);
+diff --git a/src/vs/workbench/services/editor/test/browser/editorService.test.ts b/src/vs/workbench/services/editor/test/browser/editorService.test.ts
+index 4c6060d0666..e9accbd725c 100644
+--- a/src/vs/workbench/services/editor/test/browser/editorService.test.ts
++++ b/src/vs/workbench/services/editor/test/browser/editorService.test.ts
+@@ -112,6 +112,38 @@ suite('EditorService', () => {
+ 		assert.strictEqual(right.count, 5);
+ 	});
+ 
++	test('reserved surfaces resolve moves and copies before closing singleton source inputs', async () => {
++		const [part] = await createEditorService();
++		const left = part.activeGroup;
++		const project = createTestFileEditorInput(URI.parse('test://move-project'), TEST_EDITOR_INPUT_ID);
++		project.capabilities = EditorInputCapabilities.Singleton;
++		const file = createTestFileEditorInput(URI.parse('test://move-file'), TEST_EDITOR_INPUT_ID);
++		await left.openEditors([{ editor: project }, { editor: file }]);
++		const right = part.addGroup(left, GroupDirection.RIGHT);
++		disposables.add(registerEditorOpenTarget(editor => editor === project ? left : right));
++		assert.strictEqual(left.moveEditors([{ editor: project }, { editor: file }], right), true);
++		left.copyEditors([{ editor: project }], right);
++		right.moveEditor(file, left);
++		right.copyEditors([{ editor: file }], left);
++		assert.deepStrictEqual([left.editors, right.editors], [[project], [file]]);
++		assert.strictEqual(project.isDisposed(), false);
++	});
++
++	test('replacements opening on another surface retain the reserved source editor', async () => {
++		const [part] = await createEditorService();
++		const left = part.activeGroup;
++		const project = createTestFileEditorInput(URI.parse('test://replace-project'), TEST_EDITOR_INPUT_ID);
++		await left.openEditor(project, { pinned: true });
++		const right = part.addGroup(left, GroupDirection.RIGHT);
++		disposables.add(registerEditorOpenTarget(editor => editor === project ? left : right));
++		const file = createTestFileEditorInput(URI.parse('test://replace-file'), TEST_EDITOR_INPUT_ID);
++		await left.replaceEditors([{ editor: project, replacement: file }]);
++		assert.deepStrictEqual([left.editors, right.editors], [[project], [file]]);
++		const replacement = createTestFileEditorInput(URI.parse('test://replace-file-again'), TEST_EDITOR_INPUT_ID);
++		await right.replaceEditors([{ editor: file, replacement }]);
++		assert.deepStrictEqual([left.editors, right.editors], [[project], [replacement]]);
++	});
++
+ 	test('openEditor() - basics', async () => {
+ 		const [, service, accessor] = await createEditorService();
+ 
+diff --git a/src/vs/workbench/test/browser/workbenchTestServices.ts b/src/vs/workbench/test/browser/workbenchTestServices.ts
+index 89372481529..0f7d00d476a 100644
+--- a/src/vs/workbench/test/browser/workbenchTestServices.ts
++++ b/src/vs/workbench/test/browser/workbenchTestServices.ts
+@@ -939,6 +939,7 @@ export class TestEditorGroupsService implements IEditorGroupsService {
+ 
+ 	partOptions!: IEditorPartOptions;
+ 	enforcePartOptions(options: IEditorPartOptions): IDisposable { return Disposable.None; }
++	enforceSingleGroup(group: IEditorGroup): IDisposable { return Disposable.None; }
+ 
+ 	readonly mainPart = this;
+ 	readonly activeModalEditorPart: IModalEditorPart | undefined = undefined;

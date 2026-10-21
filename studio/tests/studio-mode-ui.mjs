@@ -213,6 +213,16 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     await frame.locator('#app[data-run-state=idle]').waitFor();
     await until(() => frame.locator('.message.assistant').count(), value => value > 0, 'Local project did not produce a result');
     const resultUrl = frame.url();
+    const mainGroups = () => page.locator('.part.editor:not(.studio-steam-editors) .editor-group-container').count();
+    const initialGroups = await mainGroups();
+    for (const action of ['splitEditorRight', 'splitEditorDown', 'newGroupRight', 'newGroupBelow',
+      'editorLayoutTwoColumns', 'editorLayoutTwoRows', 'moveEditorToNextGroup', 'splitEditorToLastGroup', 'joinAllGroups']) {
+      await command('workbench.action.focusFirstEditorGroup');
+      await command(`workbench.action.${action}`);
+      assert.equal(await mainGroups(), initialGroups, `Steam project must not create a split: ${action}`);
+      assert.equal(frame.isDetached(), false);
+    }
+    check(`${language}: split, new group, layout, move, copy and join commands preserve the runtime surface`);
     for (const tool of ['kv', 'knowledge', 'info', 'assistant', 'versions', 'trace']) {
       await command('studio.openSteamTools'); await page.locator(`.studio-steam-tool[data-tool="${tool}"]`).click();
       const selector = { kv: 'body[data-resource-kind=kv]', knowledge: 'body[data-resource-kind=knowledge]', info: '#info-app', assistant: '#app', versions: '#versions-app', trace: '#trace-app' }[tool];
@@ -232,17 +242,18 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     check(`${language}: all six tools open in the right sidebar`);
 
     const tabList = page.locator('.studio-steam-tab-list');
-    assert.equal(await tabList.getByRole('tab').count(), 6);
+    const toolTabs = tabList.locator('.studio-steam-tab:not([data-tab^="editor:"])');
+    assert.equal(await toolTabs.count(), 6);
     await page.locator('.studio-steam-tab[data-tab=kv] .studio-steam-tab-select').click();
     await page.locator('.studio-steam-tab[data-tab=info] .studio-steam-tab-close').click();
-    assert.equal(await tabList.getByRole('tab').count(), 5);
+    assert.equal(await toolTabs.count(), 5);
     await page.locator('.studio-steam-add-tab').click();
     // Native menus suppress mouse-up for their first 100ms to avoid accidental selections.
     await page.waitForTimeout(150);
     await page.locator('.context-view').getByText(language === 'en' ? 'Project Information' : '项目信息', { exact: true }).click();
-    await until(() => tabList.getByRole('tab').count(), value => value === 6, 'Add menu did not restore the closed tool tab');
+    await until(() => toolTabs.count(), value => value === 6, 'Add menu did not restore the closed tool tab');
     await command('studio.internalOpenSteamTool', 'kv');
-    assert.equal(await tabList.getByRole('tab').count(), 6);
+    assert.equal(await toolTabs.count(), 6);
     check(`${language}: tools use dynamic closable tabs and the add menu reopens tools without duplicate tabs`);
 
     const projectGroupBefore = (await call({ action: 'state' })).groups.find(group => group.column === 1);
@@ -274,6 +285,23 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     const fileState = await assertProjectKept();
     await page.locator('.studio-steam-editors .view-line').first().click({ trial: true });
     assert.ok(fileState.groups.filter(group => group.column !== 1).some(group => group.tabs.some(tab => tab.uri === pathToFileURL(toolsFile).href)));
+    const toolsGroups = () => page.locator('.studio-steam-editors .editor-group-container').count();
+    const fileTabs = tabList.locator('.studio-steam-tab').filter({ has: page.getByRole('tab', { name: 'tools-only.txt', exact: true }) });
+    for (const action of ['splitEditorRight', 'splitEditorDown']) {
+      await command(`workbench.action.${action}`);
+      await until(toolsGroups, value => value === 2, 'Tool workspace did not split');
+      await until(() => fileTabs.count(), value => value === 2, 'Split copies must have independent tabs');
+      await fileTabs.last().locator('.studio-steam-tab-close').click();
+      await until(toolsGroups, value => value === 1, 'Closing the split tab did not remove its empty group');
+      await until(() => fileTabs.count(), value => value === 1, 'Closing a split removed the surviving file tab');
+      await assertProjectKept();
+      await fileTabs.getByRole('tab').click();
+    }
+    for (const action of ['moveEditorToFirstGroup', 'splitEditorToFirstGroup']) {
+      await command(`workbench.action.${action}`); await assertProjectKept();
+      assert.equal(await fileTabs.count(), 1);
+    }
+    check(`${language}: right and down tool splits close cleanly; moves and copies into the first column preserve the runtime`);
     await command('workbench.action.openSettings'); await assertProjectKept();
     await call({ action: 'diff' }); await assertProjectKept();
     await call({ action: 'webview' });
@@ -294,6 +322,12 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     await probe.locator('#workspace-probe').click({ trial: true });
     await page.screenshot({ path: path.join(proof, `${language}-workspace-tabs.png`) });
     check(`${language}: account status, explicit first-column files, settings, diffs and generic webviews open on the right while the live project and its result stay intact`);
+    await call({ action: 'webview', viewType: 'studio.project', title: 'Secondary Project Probe' });
+    const secondary = tabList.locator('.studio-steam-tab').filter({ has: page.getByRole('tab', { name: 'Secondary Project Probe', exact: true }) });
+    await secondary.waitFor(); await assertProjectKept();
+    await secondary.locator('.studio-steam-tab-close').click();
+    await secondary.waitFor({ state: 'detached' });
+    check(`${language}: a second uninitialized project panel uses tools without replacing the selected runtime`);
     const rightDocument = await call({ action: 'untitled', text: 'Keep this unsaved tool workspace document.' });
     await assertProjectKept();
 
@@ -358,6 +392,25 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     await call({ action: 'file', path: toolsFile, column: 1 });
     await tabList.getByRole('tab', { name: 'tools-only.txt', exact: true }).waitFor();
     await page.locator('.studio-steam-editors .view-line').first().click({ trial: true });
+    assert.equal(await call({ action: 'closeTab', column: 1, viewType: 'studio.project' }), true);
+    await until(() => page.frames().includes(frame), value => !value, 'Closing the runtime did not dispose its frame');
+    assert.equal(await mainGroups(), initialGroups);
+    await command('studio.enterSteamMode');
+    await until(async () => {
+      const state = await call({ action: 'state' });
+      return state.groups.find(group => group.column === 1)?.tabs.some(tab => tab.active && tab.viewType?.endsWith('studio.project'));
+    }, Boolean, 'Reopening the project must use the left runtime group');
+    const reopenedFrame = await until(async () => {
+      for (const candidate of page.frames()) {
+        if (await candidate.locator('#message').isVisible().catch(() => false)
+          && await candidate.locator('#app').getAttribute('data-project-uri').catch(() => undefined) === pathToFileURL(project).href) { return candidate; }
+      }
+    }, Boolean, 'Reopened runtime did not load');
+    const reopenedRect = await reopenedFrame.locator('#message').boundingBox(), runtimeRect = await page.locator('.part.editor:not(.studio-steam-editors)').boundingBox();
+    assert.ok(reopenedRect.x >= runtimeRect.x && reopenedRect.x < runtimeRect.x + runtimeRect.width);
+    assert.ok(!(await call({ action: 'state' })).groups.filter(group => group.column !== 1).some(group => group.tabs.some(tab => tab.viewType?.endsWith('studio.project'))));
+    check(`${language}: closing and reopening the runtime keeps the project on the left with working content`);
+    await call({ action: 'file', path: toolsFile, column: 1 });
     await rm(readyFile, { force: true });
     const reloaded = page.waitForEvent('domcontentloaded', { timeout: 60_000 });
     // The native reload path flushes editor mementos before unloading the workbench.

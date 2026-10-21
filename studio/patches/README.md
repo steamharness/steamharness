@@ -58,4 +58,6 @@
 
 `0033-studio-start-recent-avatar-spacing.patch` 为最近项目的头像预留完整列宽与文字间距，并让普通文件夹图标和项目头像的名称对齐。
 
+`0038-studio-steam-group-lifecycle.patch` 固定 Steam 左侧运行画布，统一保护分屏、移动、复制、合并及替换操作；右侧分屏标签按分组独立管理，关闭空分组自动回收，项目关闭重开及模式往返保留正确归属。
+
 新内核修改应通过 `git diff` 导出统一格式补丁，并排除脚本生成的 `product.json` 及 Studio 扩展链接。品牌配置由 `config/product.json` 维护。

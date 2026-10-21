@@ -27,9 +27,15 @@ export async function activate(context) {
           result = document.uri.toString();
         } else if (input.action === 'file') { await vscode.window.showTextDocument(vscode.Uri.file(input.path), { viewColumn: input.column }); }
         else if (input.action === 'webview') {
-          const panel = vscode.window.createWebviewPanel('studio-test.generic', 'Workspace Probe', vscode.ViewColumn.One, { enableScripts: true, retainContextWhenHidden: true });
+          const panel = vscode.window.createWebviewPanel(input.viewType ?? 'studio-test.generic', input.title ?? 'Workspace Probe', vscode.ViewColumn.One, { enableScripts: true, retainContextWhenHidden: true });
           panel.webview.html = '<html><body><input id="workspace-probe" value="retained-tool-state"></body></html>';
           context.subscriptions.push(panel);
+        }
+        else if (input.action === 'closeTab') {
+          const group = vscode.window.tabGroups.all.find(group => group.viewColumn === input.column);
+          const tab = group?.tabs.find(tab => input.viewType ? tab.input?.viewType?.endsWith(input.viewType) : tab.label === input.label);
+          if (!tab) { throw new Error(`Missing tab in column ${input.column}`); }
+          result = await vscode.window.tabGroups.close(tab);
         }
         else if (input.action === 'reload') {
           // Acknowledge before the extension host is restarted by the native command.
