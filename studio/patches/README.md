@@ -64,4 +64,6 @@
 
 `0043-studio-steam-tab-navigation.patch` 为 Steam 工具导航和实例标签增加主题背景与四周留白，保持新增按钮在左侧、操作按钮在右侧；同步导航高度与工具内容区布局，实例标签使用独立圆角和间距。
 
+`0044-studio-steam-tab-actions.patch` 将两级新增按钮移到各自标签列表之后，实例下拉按钮紧随新增按钮；工具分类使用更小的标签和文字，导航图标统一采用紧凑尺寸，并在空间不足时保留操作按钮。
+
 新内核修改应通过 `git diff` 导出统一格式补丁，并排除脚本生成的 `product.json` 及 Studio 扩展链接。品牌配置由 `config/product.json` 维护。

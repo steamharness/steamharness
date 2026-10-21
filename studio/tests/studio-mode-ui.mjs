@@ -231,11 +231,11 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     assert.equal(await page.locator('.studio-steam-empty-tabs, .studio-steam-tools-action').count(), 0);
     const cleanHeader = await page.locator('.part.auxiliarybar > .title').evaluate(title => {
       const add = title.querySelector('.studio-steam-add-tab'), list = title.querySelector('.studio-steam-tab-list');
-      return { addFirst: add.nextElementSibling === list, drag: getComputedStyle(title).getPropertyValue('-webkit-app-region'),
+      return { addAfter: list.nextElementSibling === add, drag: getComputedStyle(title).getPropertyValue('-webkit-app-region'),
         addDrag: getComputedStyle(add).getPropertyValue('-webkit-app-region'), controls: title.querySelectorAll('.studio-steam-tools-chrome button').length };
     });
-    assert.deepEqual(cleanHeader, { addFirst: true, drag: 'drag', addDrag: 'no-drag', controls: 1 });
-    check(`${language}: the empty tool header puts New on the left and keeps only the visibility toggle on the right`);
+    assert.deepEqual(cleanHeader, { addAfter: true, drag: 'drag', addDrag: 'no-drag', controls: 1 });
+    check(`${language}: New follows the tool tab list and the visibility toggle stays on the right`);
 
     const frame = await until(async () => {
       for (const frame of page.frames()) {

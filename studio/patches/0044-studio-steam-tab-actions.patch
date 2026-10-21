@@ -1,0 +1,124 @@
+diff --git a/src/vs/workbench/browser/parts/media/studioMode.css b/src/vs/workbench/browser/parts/media/studioMode.css
+index 038e7e557a709e11e14dbe5d81a4531277410d84..4dc8ed205e9c74085dd2b3deb6c4899982667ce4 100644
+--- a/src/vs/workbench/browser/parts/media/studioMode.css
++++ b/src/vs/workbench/browser/parts/media/studioMode.css
+@@ -78,6 +78,9 @@
+ 	margin-right: var(--vscode-spacing-size80);
+ 	padding: var(--vscode-spacing-size60);
+ }
++.monaco-workbench.studio-steam-mode :is(.studio-steam-tabs, .studio-steam-instances, .studio-steam-toggle-tools) .codicon {
++	font-size: var(--vscode-codiconFontSize-compact);
++}
+ .monaco-workbench.studio-steam-mode .titlebar-right > .window-controls-container { order: 2; }
+ 
+ .monaco-workbench .studio-steam-tabs { display: none; }
+@@ -117,13 +120,14 @@
+ .monaco-workbench .studio-steam-tab {
+ 	display: flex;
+ 	align-items: center;
+-	flex: 1 1 160px;
++	flex: 0 1 auto;
+ 	min-width: 72px;
+ 	max-width: 220px;
+-	height: var(--vscode-spacing-size280);
++	height: var(--vscode-spacing-size240);
+ 	box-sizing: border-box;
+ 	gap: var(--vscode-spacing-size20);
+ 	padding: 0 var(--vscode-spacing-size60);
++	font-size: var(--vscode-fontSize-label1);
+ 	border: var(--vscode-strokeThickness) solid var(--vscode-contrastBorder, transparent);
+ 	border-radius: var(--vscode-cornerRadius-small);
+ 	background: color-mix(in srgb, var(--vscode-foreground) 6%, var(--vscode-sideBar-background, var(--vscode-editor-background)));
+@@ -147,7 +151,7 @@
+ 	user-select: text;
+ 	-webkit-user-select: text;
+ }
+-.monaco-workbench .studio-steam-tabs button.codicon { font-family: codicon; font-size: var(--vscode-codiconFontSize); }
++.monaco-workbench .studio-steam-tabs button.codicon { font-family: codicon; }
+ .monaco-workbench .studio-steam-tab-select { display: flex; flex: 1; align-items: center; justify-content: center; gap: var(--vscode-spacing-size60); height: 100%; min-width: 0; padding: 0; }
+ .monaco-workbench .studio-steam-tab-select > .codicon { flex-shrink: 0; color: var(--vscode-symbolIcon-fileForeground, var(--vscode-descriptionForeground)); }
+ .monaco-workbench .studio-steam-tab[data-icon="database"] .studio-steam-tab-select > .codicon { color: var(--vscode-symbolIcon-variableForeground); }
+@@ -163,7 +167,7 @@
+ .monaco-workbench .studio-steam-tab:is(.active, :hover, :focus-within) .studio-steam-tab-close { opacity: 1; }
+ .monaco-workbench .studio-steam-tab.dirty .studio-steam-tab-close { opacity: 1; }
+ .monaco-workbench .studio-steam-tab.dirty:not(:hover):not(:focus-within) .studio-steam-tab-close::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+-.monaco-workbench .studio-steam-tabs .studio-steam-add-tab { width: var(--vscode-spacing-size280); height: var(--vscode-spacing-size280); flex-shrink: 0; padding: var(--vscode-spacing-size60); background: color-mix(in srgb, var(--vscode-foreground) 6%, var(--vscode-sideBar-background, var(--vscode-editor-background))); }
++.monaco-workbench .studio-steam-tabs .studio-steam-add-tab { width: var(--vscode-spacing-size240); height: var(--vscode-spacing-size240); flex-shrink: 0; padding: var(--vscode-spacing-size60); background: color-mix(in srgb, var(--vscode-foreground) 6%, var(--vscode-sideBar-background, var(--vscode-editor-background))); }
+ .monaco-workbench .studio-steam-tabs :is(.studio-steam-add-tab, .studio-steam-tab-close):hover { background: var(--vscode-toolbar-hoverBackground); }
+ .monaco-workbench .studio-steam-tabs button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+ .monaco-workbench.studio-steam-mode .part.auxiliarybar { position: relative; }
+@@ -350,7 +354,7 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
+ .monaco-workbench .studio-steam-instances button[hidden] { display: none; }
+ .monaco-workbench .studio-steam-instance-list {
+ 	display: flex;
+-	flex: 1;
++	flex: 0 1 auto;
+ 	align-items: center;
+ 	min-width: 0;
+ 	height: 100%;
+@@ -366,10 +370,11 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
+ 	flex: 0 0 auto;
+ 	min-width: 80px;
+ 	max-width: 240px;
+-	height: var(--vscode-spacing-size280);
++	height: var(--vscode-spacing-size320);
+ 	box-sizing: border-box;
+ 	gap: var(--vscode-spacing-size80);
+ 	padding: 0 var(--vscode-spacing-size120);
++	font-size: var(--vscode-fontSize-body1);
+ 	color: var(--vscode-tab-inactiveForeground);
+ 	border: var(--vscode-strokeThickness) solid var(--vscode-contrastBorder, transparent);
+ 	border-radius: var(--vscode-cornerRadius-small);
+@@ -386,11 +391,11 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
+ 	user-select: text;
+ 	-webkit-user-select: text;
+ }
+-.monaco-workbench .studio-steam-instances button.codicon { font-family: codicon; font-size: var(--vscode-codiconFontSize); }
++.monaco-workbench .studio-steam-instances button.codicon { font-family: codicon; }
+ .monaco-workbench .studio-steam-instance .studio-steam-tab-select { justify-content: flex-start; }
+ .monaco-workbench .studio-steam-instance .studio-steam-tab-close { flex-shrink: 0; width: var(--vscode-spacing-size160); padding: 0; opacity: 0; font-size: var(--vscode-codiconFontSize-compact); }
+ .monaco-workbench .studio-steam-instance:is(.active, :hover, :focus-within) .studio-steam-tab-close { opacity: 1; }
+-.monaco-workbench .studio-steam-instances :is(.studio-steam-new-instance, .studio-steam-instance-actions) { flex-shrink: 0; width: var(--vscode-spacing-size280); height: var(--vscode-spacing-size280); border-radius: var(--vscode-cornerRadius-small); }
++.monaco-workbench .studio-steam-instances :is(.studio-steam-new-instance, .studio-steam-instance-actions) { flex-shrink: 0; width: var(--vscode-spacing-size240); height: var(--vscode-spacing-size240); padding: 0; border-radius: var(--vscode-cornerRadius-small); }
+ .monaco-workbench .studio-steam-instances .studio-steam-new-instance { background: color-mix(in srgb, var(--vscode-foreground) 6%, var(--vscode-sideBar-background, var(--vscode-editor-background))); }
+ .monaco-workbench .studio-steam-instances :is(.studio-steam-new-instance, .studio-steam-instance-actions, .studio-steam-tab-close):hover { background: var(--vscode-toolbar-hoverBackground); }
+ .monaco-workbench .studio-steam-instances button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+diff --git a/src/vs/workbench/browser/parts/studioMode.ts b/src/vs/workbench/browser/parts/studioMode.ts
+index 8461315b3349e3bc4317a19e52a6283211b4b6eb..bc89f4f368c93dfba42fcc67af9a7279f8353692 100644
+--- a/src/vs/workbench/browser/parts/studioMode.ts
++++ b/src/vs/workbench/browser/parts/studioMode.ts
+@@ -15,6 +15,7 @@ import { getDefaultHoverDelegate } from '../../../base/browser/ui/hover/hoverDel
+ import { IHoverService } from '../../../platform/hover/browser/hover.js';
+ import { IWorkbenchLayoutService, Parts } from '../../services/layout/browser/layoutService.js';
+ import { onDidChangeFullscreen, onDidChangeZoomLevel } from '../../../base/browser/browser.js';
++import { getIconRegistry } from '../../../platform/theme/common/iconRegistry.js';
+ 
+ /** Space reserved by the embedded project for the retained native workbench controls. */
+ export const studioWindowChrome = { active: false, projectUri: undefined as string | undefined, height: 52, left: 0, right: 0, revision: 0 };
+@@ -217,13 +218,13 @@ export class StudioSteamTabs extends Disposable {
+ 	) {
+ 		super();
+ 		this.element = append(parent, $('.studio-steam-tabs'));
+-		this.add = append(this.element, $('button.studio-steam-add-tab.codicon.codicon-add', { type: 'button', 'aria-haspopup': 'menu' })) as HTMLButtonElement;
+ 		this.list = append(this.element, $('.studio-steam-tab-list', { role: 'tablist' }));
++		this.add = append(this.element, $('button.studio-steam-add-tab.codicon.codicon-add-compact', { type: 'button', 'aria-haspopup': 'menu' })) as HTMLButtonElement;
+ 		this.instances = append(parent, $('.studio-steam-instances'));
+-		this.newInstance = append(this.instances, $('button.studio-steam-new-instance.codicon.codicon-add', { type: 'button' })) as HTMLButtonElement;
+ 		this.instanceList = append(this.instances, $('.studio-steam-instance-list', { role: 'tablist' }));
++		this.newInstance = append(this.instances, $('button.studio-steam-new-instance.codicon.codicon-add-compact', { type: 'button' })) as HTMLButtonElement;
+ 		this._register(addDisposableListener(this.newInstance, 'click', () => { void this.run('studio.internalNewSteamInstance', studioSteamWorkspaceState.tool); }));
+-		this.instanceActions = append(this.instances, $('button.studio-steam-instance-actions.codicon.codicon-chevron-down', { type: 'button', 'aria-haspopup': 'menu' })) as HTMLButtonElement;
++		this.instanceActions = append(this.instances, $('button.studio-steam-instance-actions.codicon.codicon-chevron-down-compact', { type: 'button', 'aria-haspopup': 'menu' })) as HTMLButtonElement;
+ 		this._register(addDisposableListener(this.instanceActions, 'click', () => this.contextMenu.showContextMenu({
+ 			getAnchor: () => this.instanceActions,
+ 			getActions: () => (studioSteamWorkspaceState.tool === 'terminal' ? [
+@@ -285,7 +286,8 @@ export class StudioSteamTabs extends Disposable {
+ 			item.classList.toggle('active', tab.id === active); item.classList.toggle('dirty', !!tab.dirty);
+ 			const button = append(item, $('button.studio-steam-tab-select', { type: 'button', role: 'tab', 'aria-selected': String(tab.id === active), title: tab.label })) as HTMLButtonElement;
+ 			button.tabIndex = tab.id === (active ?? tabs[0]?.id) ? 0 : -1;
+-			append(button, $(`span.codicon.codicon-${tab.icon}`, { 'aria-hidden': 'true' }));
++			const icon = getIconRegistry().getIcon(`${tab.icon}-compact`)?.id ?? tab.icon;
++			append(button, $(`span.codicon.codicon-${icon}`, { 'aria-hidden': 'true' }));
+ 			append(button, $('span.studio-steam-tab-label', undefined, tab.label));
+ 			const closeLabel = (labels.closeTab ?? 'Close {0}').replace('{0}', tab.label);
+ 			const close = append(item, $('button.studio-steam-tab-close.codicon.codicon-close-compact', { type: 'button', 'aria-label': closeLabel, title: closeLabel })) as HTMLButtonElement;
