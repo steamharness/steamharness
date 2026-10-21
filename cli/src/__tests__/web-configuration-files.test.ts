@@ -13,6 +13,11 @@ it('uploads exact raw bytes to the authenticated project file service, outside c
   expect(String(url)).toBe(`https://files.test/api/projects/project/configurations/files?${new URLSearchParams({fileName:input.name,mimeType:input.mimeType,key:field.name,field:JSON.stringify(field)})}`);
   expect(options).toMatchObject({method:'POST',headers:{Authorization:'Bearer account-capability','Content-Type':'image/png'},body:bytes,redirect:'error'});
 });
+it('uploads against the installed configuration version instead of the latest template',async()=>{
+  const fetch=vi.spyOn(globalThis,'fetch').mockResolvedValue(new Response(JSON.stringify({errCode:0,data:[reference]})));
+  await uploadConfigurationFile('project',field,input,connection,{target:'v1/old version'});
+  expect(new URL(String(fetch.mock.calls[0]![0])).searchParams.get('target')).toBe('v1/old version');
+});
 it('requires login, validates selection before uploading and rejects paths and malformed payloads',async()=>{
   const fetch=vi.spyOn(globalThis,'fetch');
   await expect(uploadConfigurationFile('project',field,input,undefined)).rejects.toThrow('login');

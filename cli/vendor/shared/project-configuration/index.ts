@@ -389,7 +389,11 @@ export function freezeConfigurationTemplate(input: ConfigurationPublicationDraft
     delete result.defaultValue;
     const omitted=Object.keys(field.paths??{}).filter(pointer=>!configurationRule(field,pointer).publish);
     if(omitted.length) result.omittedPaths=[...new Set([...(field.omittedPaths??[]),...omitted.map(configurationRuleHash)])];
-    if(result.paths) {result.paths=Object.fromEntries(Object.entries(result.paths).filter(([pointer])=>configurationRule(field,pointer).publish));if(!Object.keys(result.paths).length)delete result.paths;}
+    if(result.paths) {
+      // Omitted ancestors are represented only by hashes; freeze inherited rules before removing them.
+      result.paths=Object.fromEntries(Object.keys(result.paths).filter(pointer=>configurationRule(field,pointer).publish).map(pointer=>[pointer,configurationRule(field,pointer)]));
+      if(!Object.keys(result.paths).length)delete result.paths;
+    }
     result.sharing={...configurationRule(field)};
     return result;
   });

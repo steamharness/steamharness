@@ -43,19 +43,22 @@ export async function createLocalProjectConfigurationStore(projectDir: string, o
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     let template = options.template;
     if (template === undefined && options.storageKey === undefined) {
-      try {
-        const candidate = parseConfigurationTemplate(JSON.parse(await readFile(path.join(directory, CONFIGURATION_TEMPLATE_FILE), "utf8")));
-        const cached = JSON.parse(await readFile(configurationTemplateCachePath(candidate,options.templateCacheDir), "utf8"));
-        if (JSON.stringify(cached) !== JSON.stringify(candidate)) throw new ProjectConfigurationError("Download this configuration version online before using it offline.");
-        template = candidate;
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      let source: string | undefined;
+      try { source = await readFile(path.join(directory, CONFIGURATION_TEMPLATE_FILE), "utf8"); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+      if (source === undefined) {
         // Once bound, removing source metadata cannot turn an installed project into an author.
         template = (stored as ProjectConfigurationState | undefined)?.template;
-        if (!template) {
-          try { await readFile(path.join(directory, CONFIGURATION_TEMPLATE_FILE)); throw new ProjectConfigurationError("Download this configuration version online before using it offline."); }
-          catch (missing) { if ((missing as NodeJS.ErrnoException).code !== 'ENOENT') throw missing; }
+      } else {
+        const candidate = parseConfigurationTemplate(JSON.parse(source));
+        let cached: unknown;
+        try { cached = JSON.parse(await readFile(configurationTemplateCachePath(candidate,options.templateCacheDir), "utf8")); }
+        catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+          throw new ProjectConfigurationError("Download this configuration version online before using it offline.");
         }
+        if (JSON.stringify(cached) !== JSON.stringify(candidate)) throw new ProjectConfigurationError("Download this configuration version online before using it offline.");
+        template = candidate;
       }
     }
     if(options.template===null && stored) delete (stored as ProjectConfigurationState).template;

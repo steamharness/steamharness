@@ -2,7 +2,7 @@ import { CONFIGURATION_FILE_MAX_BYTES, parseConfigurationFile, validateConfigura
 import type { WebConnection } from './runtime';
 
 /** Configuration files always use project-scoped Server storage, independent of run history. */
-export async function uploadConfigurationFile(projectId: string, field: ProjectConfigurationField, input: unknown, connection: WebConnection | undefined) {
+export async function uploadConfigurationFile(projectId: string, field: ProjectConfigurationField, input: unknown, connection: WebConnection | undefined, options: { target?: string } = {}) {
   if (!connection) throw new Error('SteamHarness Server login is required.');
   if (!input || typeof input !== 'object') throw new Error('Invalid configuration file upload.');
   const file = input as Record<string, unknown>;
@@ -11,6 +11,7 @@ export async function uploadConfigurationFile(projectId: string, field: ProjectC
   const bytes = Buffer.from(file.data, 'base64');
   validateConfigurationFileSelection(field, {name:file.name,mimeType:file.mimeType,size:bytes.length});
   const query = new URLSearchParams({fileName:file.name,mimeType:file.mimeType,key:field.name,field:JSON.stringify(field)});
+  if (options.target !== undefined) query.set('target', options.target);
   const response = await fetch(`${connection.serverUrl}/api/projects/${encodeURIComponent(projectId)}/configurations/files?${query}`, {
     method:'POST', headers:{Authorization:`Bearer ${connection.accessToken}`,'Content-Type':file.mimeType}, body:bytes,
     redirect:'error', signal:AbortSignal.timeout(120_000),

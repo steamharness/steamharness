@@ -1,6 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {createHash} from 'node:crypto';
-import {applyConfigurationAction,bindConfigurationTemplate,configurationSnapshot,configurationRuleHash,exportConfigurations,createConfigurationState,createPublicationDraft,freezeConfigurationTemplate,parseConfigurationDefinition,parseConfigurationTemplate,validateConfigurationAction,type ProjectConfigurationField} from '../index';
+import {applyConfigurationAction,bindConfigurationTemplate,configurationSnapshot,configurationRule,configurationRuleHash,exportConfigurations,createConfigurationState,createPublicationDraft,freezeConfigurationTemplate,parseConfigurationDefinition,parseConfigurationTemplate,validateConfigurationAction,type ConfigurationValue,type ProjectConfigurationField} from '../index';
 let sequence=0;const id=()=>String(++sequence);
 const binding={projectId:'project',projectVersion:'1.0.0',sourceHash:'a'.repeat(64)};
 function published(fields:ProjectConfigurationField[]) {const author=createConfigurationState(fields,id),draft=createPublicationDraft(author);return freezeConfigurationTemplate(draft,binding);}
@@ -42,6 +42,23 @@ describe('versioned configuration publication',()=>{
     expect(()=>applyConfigurationAction(state,{action:'save',id:state.activeConfigurationId,revision:state.revision,values:{settings:{group:{open:false,private:'mine'}}}},id)).toThrow(/locked/);
     const excluded=published([{name:'settings',type:'json',defaultValue:{open:0},sharing:{publish:false,includeValue:true},paths:{'/open':{publish:true}}}]);
     expect(excluded.fields).toEqual([]);
+  });
+  it('preserves inherited locks and value rules when an omitted parent republishes a child',()=>{
+    const field:ProjectConfigurationField={name:'settings',type:'json',defaultValue:{group:{fixed:0,own:'author-secret'}},sharing:{includeValue:true},paths:{'/group':{publish:false,editable:false,includeValue:false},'/group/fixed':{publish:true,includeValue:true},'/group/own':{publish:true,editable:true}}};
+    const template=published([field]),publishedField=template.fields[0]!;
+    for(const pointer of ['/group/fixed','/group/own']) expect(configurationRule(publishedField,pointer)).toEqual(configurationRule(field,pointer));
+    expect(template.configurations[0]!.values).toEqual({settings:{group:{fixed:0}}});
+    expect(JSON.stringify(template)).not.toContain('author-secret');
+    const state=bindConfigurationTemplate(createConfigurationState([],id),template),before=structuredClone(state);
+    const denied:ConfigurationValue[]=[{group:{fixed:1}},{group:null},{group:{}},null];
+    for(const settings of denied) {
+      expect(()=>applyConfigurationAction(state,{action:'save',id:state.activeConfigurationId,revision:state.revision,values:{settings}},id)).toThrow(/locked/);
+    }
+    const document=exportConfigurations(state);document.configurations.push({name:'Tampered',values:{settings:{group:{fixed:1}}}});
+    expect(()=>applyConfigurationAction(state,{action:'import',revision:state.revision,document},id)).toThrow(/locked/);
+    expect(state).toEqual(before);
+    const next=applyConfigurationAction(state,{action:'save',id:state.activeConfigurationId,revision:state.revision,values:{settings:{group:{fixed:0,own:''}}}},id);
+    expect(configurationSnapshot(next).values.settings).toEqual({group:{fixed:0,own:''}});
   });
   it('round trips multiple templates and adds new version profiles while retaining personal profiles',()=>{
     const author=createConfigurationState([{name:'fixed',type:'number',defaultValue:0,sharing:{includeValue:true,editable:false}}],id);

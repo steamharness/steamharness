@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, realpath, rm, writeFile, symlink } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, realpath, rm, writeFile, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -184,6 +184,34 @@ test("built-in Agent providers use isolated configuration credentials and never 
   } finally {
     if (previous === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = previous;
   }
+});
+
+test("unverified source upgrades reject reads and writes without falling back to an older template",async()=>{
+  const root=await mkdtemp(path.join(os.tmpdir(),'configuration-upgrade-'));
+  try {
+    const project=path.join(root,'project'),cacheDir=path.join(root,'cache'),rootDir=path.join(root,'personal');await mkdir(project);
+    const author=createConfigurationState([{name:'settings',type:'json',defaultValue:{locked:0,open:1},sharing:{includeValue:true},paths:{'/locked':{editable:false}}}],()=> 'official');
+    const first=freezeConfigurationTemplate(createPublicationDraft(author),{projectId:'verified-project',projectVersion:'1.0.0',sourceHash:'a'.repeat(64)});
+    const sourceFile=path.join(project,CONFIGURATION_TEMPLATE_FILE);
+    await cacheVerifiedConfigurationTemplate(first,[],{cacheDir});await writeFile(sourceFile,JSON.stringify(first));
+    const store=await createLocalProjectConfigurationStore(project,{rootDir,templateCacheDir:cacheDir});
+    let state=await store.read();
+    state=await store.dispatch({action:'save',revision:state.revision,id:state.activeConfigurationId,values:{settings:{locked:0,open:9}}}) as ProjectConfigurationState;
+    const waiting=await store.snapshot({runId:'waiting'});
+    const key=createHash('sha256').update(await realpath(project)).digest('hex'),savedFile=path.join(rootDir,`${key}.json`),saved=await readFile(savedFile,'utf8');
+    const next=structuredClone(first);next.projectVersion='2.0.0';next.configurations[0]!.values.settings={locked:2,open:2};
+    await writeFile(sourceFile,JSON.stringify(next));
+    await assert.rejects(store.read(),/online/);
+    await assert.rejects(store.snapshot(),/online/);
+    await assert.rejects(store.dispatch({action:'rename',revision:state.revision,id:state.activeConfigurationId,name:'Unverified'}),/online/);
+    assert.equal(await readFile(savedFile,'utf8'),saved);
+    assert.deepEqual(await store.snapshot({runId:'waiting'}),waiting);
+    await cacheVerifiedConfigurationTemplate(next,[],{cacheDir});
+    state=await store.read();assert.equal(state.template?.projectVersion,'2.0.0');
+    assert.deepEqual((await store.snapshot()).values.settings,{locked:2,open:9});
+    await rm(sourceFile);
+    assert.deepEqual((await store.snapshot()).values.settings,{locked:2,open:9});
+  } finally {await rm(root,{recursive:true,force:true});}
 });
 
 test("verified templates enforce offline edits, preserve waiting runs, and cache immutable attachments outside source",async()=>{

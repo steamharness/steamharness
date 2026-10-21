@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed publication filtering to retain inherited editing and value inclusion rules beneath omitted JSON parents, preventing whole-object replacement or imports from changing locked values.
+
 - Added author publication drafts and immutable version templates with filtered fields, values, defaults and attachments; actual ownership, source hashes and draft revisions are checked, personal data stays account isolated, and denied edits/imports are atomic.
 
 - Fixed: project configuration file fields choose and upload files to Server storage, then save references. Type restrictions, replacement and clearing preserve the previous value when uploads fail.

@@ -318,7 +318,7 @@ export async function startWebServer(options: WebOptions) {
       const field = current.fields.find(item => item.name === message.key);
       if (field?.type !== 'file') throw new Error('Invalid configuration file field.');
       if(!configurationCapability(current,field).editable)throw new Error('Configuration is locked by the author.');
-      const reference = await uploadConfigurationFile(project.id, field, message.file, connection);
+      const reference = await uploadConfigurationFile(project.id, field, message.file, connection, { target: current.template?.projectVersion });
       if (epoch !== authEpoch) throw new Error('Account changed. Select the file again.');
       return [{type:'project-configuration-upload-result',requestId:message.requestId,value:reference}];
     }

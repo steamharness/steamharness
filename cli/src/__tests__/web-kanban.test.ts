@@ -31,6 +31,31 @@ it('uploads configuration files through the project server independently of the 
   expect(uploaded).toHaveBeenCalledOnce();
   await app.setHostConnection(undefined);expect((await post(message)).ok).toBe(false);
 });
+it('keeps uploads on the verified local template version and checks local author locks',async()=>{
+  const {app,root,directory,post,state}=await fixture({noParams:true});
+  vi.spyOn(os,'homedir').mockReturnValue(path.join(root,'host'));
+  const author=core.createConfigurationState([{name:'image',type:'file',accept:['image/png']}],()=> 'official');
+  const template=core.freezeConfigurationTemplate(core.createPublicationDraft(author),{projectId:id,projectVersion:'1.0.0',sourceHash:'a'.repeat(64)});
+  await core.cacheVerifiedConfigurationTemplate(template);
+  await writeFile(path.join(directory,'configuration.template.json'),JSON.stringify(template));
+  const original=fetch,uploaded=vi.fn();
+  vi.spyOn(globalThis,'fetch').mockImplementation((url,options)=>{
+    if(!String(url).startsWith('https://configuration-files.test'))return original(url,options);
+    if(String(url).includes('/files?')){uploaded(url,options);return Promise.resolve(new Response(JSON.stringify({errCode:0,data:[{id:'wf_ab12',name:'map.png',mimeType:'image/png',size:3,storage:'server',projectId:id}]})));}
+    return Promise.resolve(new Response(JSON.stringify({errCode:0,data:{profile:{userId:'user',email:'user@example.com',displayName:'User'}}})));
+  });
+  await app.setHostConnection({serverUrl:'https://configuration-files.test',accessToken:'account-capability'});
+  const current=(await state()).configurations;
+  const message={type:'project-configuration-upload',key:'image',id:current.activeConfigurationId,revision:current.revision,file:{name:'map.png',mimeType:'image/png',data:'cG5n'}};
+  expect((await post(message)).ok).toBe(true);
+  expect(uploaded).toHaveBeenCalledOnce();
+  expect(new URL(String(uploaded.mock.calls[0]![0])).searchParams.get('target')).toBe('1.0.0');
+  const next=structuredClone(template);next.projectVersion='2.0.0';next.fields[0]!.sharing={...next.fields[0]!.sharing,editable:false};
+  await core.cacheVerifiedConfigurationTemplate(next);await writeFile(path.join(directory,'configuration.template.json'),JSON.stringify(next));
+  const changed=(await state()).configurations;
+  expect((await post({...message,revision:changed.revision})).ok).toBe(false);
+  expect(uploaded).toHaveBeenCalledOnce();
+});
 async function fixture(options: { server?: boolean; artifact?: boolean; noParams?: boolean; real?: boolean } = {}) {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'steamharness-kanban-'))); folders.push(root);
   const directory = path.join(root, 'board'); await mkdir(directory);

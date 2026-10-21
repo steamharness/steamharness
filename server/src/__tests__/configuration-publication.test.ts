@@ -70,6 +70,26 @@ test('publication freezes only included attachments and preserves bytes after or
   } finally {await rm(root,{recursive:true,force:true});}
 });
 
+test('configuration file upload permissions follow the selected published version',async()=>{
+ const {root,storage,options}=await fixture([{name:'image',type:'file'}]);
+ try {
+  let author=await storage.projectConfigurations(options,{action:'get'}) as ProjectConfigurationState;
+  await storage.projectConfigurations(options,{action:'publication.save',revision:author.revision,publication:author.publication});
+  await storage.publish({projectName:projectId,createdByUserId:'author',expectedConfigurationRevision:1,expectedSourceHash:author.sourceHash});
+  const source=await storage.getFiles({projectName:projectId,target:'draft'});
+  await storage.saveDraftFiles({projectName:projectId,files:source.files.filter(file=>file.path==='package.json').map(file=>({...file,content:JSON.stringify({...JSON.parse(file.content!),version:'2.0.0'})}))});
+  author=await storage.projectConfigurations(options,{action:'get'}) as ProjectConfigurationState;
+  const publication=structuredClone(author.publication!);publication.fields[0]!.sharing={editable:false};
+  await storage.projectConfigurations(options,{action:'publication.save',revision:author.revision,publication});
+  await storage.publish({projectName:projectId,createdByUserId:'author',expectedConfigurationRevision:2,expectedSourceHash:author.sourceHash});
+  const upload={projectName:projectId,actorId:'downloader',key:'image',name:'mine.png',mimeType:'image/png',buffer:Buffer.from('mine')};
+  await assert.rejects(storage.uploadConfigurationFile({...upload,target:'2.0.0'}),/locked/);
+  const refs=await storage.uploadConfigurationFile({...upload,target:'1.0.0'});
+  assert.equal(refs.length,1);assert.equal(refs[0]!.name,'mine.png');
+  await assert.rejects(storage.uploadConfigurationFile(upload),/locked/);
+ }finally{await rm(root,{recursive:true,force:true});}
+});
+
 test('personal configuration uploads remain account isolated through generic file and import paths',async()=>{
  const {root,storage,options}=await fixture([{name:'image',type:'file'}]);
  try {

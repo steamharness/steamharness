@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed configuration uploads to use the locally verified template version instead of the latest version's field permissions, and preserved inherited child locks during publication filtering.
+
 - [Fixed] Read configured Kanban basemaps through the authenticated project file bridge when the attachment endpoint returns 404. Preserve original image bytes, report file errors for permission or transfer failures, and cancel reads when the host closes or authentication changes.
 
 - [Fixed] Allow stopping the current task during event-stream interruptions, bypass ordinary mutation queues for stop and cancel controls, and show pending, confirmed and failed stop feedback. Manual reconnect shows immediate progress and failure feedback and releases obsolete requests without replaying business operations.

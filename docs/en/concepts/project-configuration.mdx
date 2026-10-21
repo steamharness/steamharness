@@ -114,18 +114,22 @@ Personal values, publication drafts and immutable version templates are separate
 
 Object paths use JSON Pointer: encode `/` as `~1` and `~` as `~0`. Children inherit parent rules, with more specific rules taking precedence. Excluding an entire field excludes all its descendants. Arrays are indivisible. The panel offers property controls and raw JSON editing; the service checks actual changes at every path. Parent replacement, clearing, imports and assistant operations cannot bypass locks. Invalid batches are rejected atomically with `CONFIGURATION_FORBIDDEN` (HTTP 403). Required locked fields need a published value.
 
+When an excluded JSON parent explicitly publishes a child, that child retains its inherited value inclusion and editing rules. Filtering the parent does not remove the child's lock.
+
 Inspect the recipient preview before saving. Drafts freeze selected profile values; after changing personal values, explicitly refresh published values and save the draft again. Publication checks the source digest and draft revision, then generates filtered `configuration.json`, `configuration.template.json` and `configuration-assets/` in a staging directory without changing the author's files. Published templates are fixed to project versions. Source downloads, share links and Store deliver the same version bundle. Complete backups still contain every readable value and are separate from sharing templates.
 
 Only the actual original project owner or an administrator with existing management permission can change official drafts and publish templates. A manager role, downloads, copied projects or client role parameters do not grant ownership of the original project. Recipients manage personal profiles and custom fields, while author definitions, permissions and templates remain immutable. Runtime snapshots combine the template with permitted personal values. Personal profiles store actual overrides only, so untouched initial values follow template upgrades. Upgrades preserve permitted personal changes and custom fields, stop applying newly locked overrides and retain type conflicts as drafts for resolution. Running or waiting Workflow tasks retain their original snapshot.
 
 Publication copies referenced attachments into immutable version files and excludes unshared files. Downloads verify source and attachment digests and cache validated templates and bytes outside source. Validated versions and permitted personal edits work offline; official changes, publication and new version downloads require a connection. Newly selected files must upload successfully before saving. Download permission grants access only to the corresponding template and attachments, never other original project data.
 
+When source changes to an unverified template, configuration reads and writes require downloading that version online first. Personal values stay intact, and running tasks can resume their original snapshots. Attachment uploads use the current verified version's permissions, independently of permission changes in the latest version.
+
 ### API and assistant access
 
 - `GET /api/projects/:id/configurations` returns personal profiles, `fieldCapabilities` and lock reasons; authors also receive `publication` and the current `sourceHash`.
 - `POST /api/projects/:id/configurations` accepts `publication.save` (`revision` plus `publication`, including its own `revision`, fields, profiles and `defaultConfigurationId`) and `publication.preview`. Draft conflicts return HTTP 409.
 - `GET /api/projects/:id/configurations/template?target=1.0.0` reads published templates only.
-- `POST /api/projects/:id/configurations/files?key=background&fileName=map.png&mimeType=image/png` uploads personal attachments; `GET /api/projects/:id/configurations/files/:fileId?target=1.0.0` reads authorized attachments only.
+- `POST /api/projects/:id/configurations/files?target=1.0.0&key=background&fileName=map.png&mimeType=image/png` uploads personal attachments using the specified version's permissions; `GET /api/projects/:id/configurations/files/:fileId?target=1.0.0` reads authorized attachments only.
 - `POST /api/projects/:id/publish` takes `expectedSourceHash`, `expectedVersion` and `expectedConfigurationRevision`, the publication draft revision.
 
 Studio Control `get_configurations` returns permissions; `preview: true` requests a recipient preview. `manage_configurations` supports `publication.save`. Both work with the panel closed. Official changes require online Server storage and owner authorization. Read-only mode rejects writes.

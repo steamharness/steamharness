@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed inherited child locks under filtered JSON parents. Unverified source upgrades block configuration reads and writes while preserving personal values and waiting-run snapshots.
+
 - Added versioned configuration sharing, field and JSON Pointer permissions, verified offline template and attachment caches, and allowed personal overlays while preserving run snapshots and upgrade drafts.
 
 - Fixed: project configuration file fields choose and upload files to Server storage, then save references. Type restrictions, replacement and clearing preserve the previous value when uploads fail.

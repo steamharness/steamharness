@@ -2018,6 +2018,7 @@ paths:
       tags: [Admin Projects]
       summary: Upload a personal configuration attachment after checking field permissions
       operationId: uploadProjectConfigurationFile
+      description: Set target to the installed published version to check its field permissions. Omitting target uses the author's draft or the recipient's latest published template.
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - $ref: "#/components/parameters/TargetQuery"
