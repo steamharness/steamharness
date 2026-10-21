@@ -60,6 +60,7 @@ function fixture(t, saved = new Map()) {
   const mainContainer = { classList: { add() {}, remove() {} } };
   let maximized = false, groupMaximized = false, options = false;
   const layout = {
+    setWindowChromeHidden: value => { f.chromeHidden = value; calls.push(['windowChrome', value]); },
     mainContainer, mainContainerDimension: { width: 1440, height: 900 },
     getContainer: () => ({ animate: frames => { calls.push(['animate', frames]); return { finished: Promise.resolve() }; } }),
     isVisible: part => visible.get(part), getSize: part => ({ ...sizes.get(part) }),
@@ -74,7 +75,9 @@ function fixture(t, saved = new Map()) {
   const editorLayout = { orientation: 0, groups: [{ size: .6 }, { size: .4 }] };
   const mainPart = { activeGroup: group, groups: [group, { id: 2 }], getGroup: id => mainPart.groups.find(group => group.id === id),
     getGroups: () => mainPart.groups,
-    getLayout: () => editorLayout, applyLayout: value => { groupMaximized = false; calls.push(['restoreGroups', value]); },
+    getLayout: () => groupMaximized ? { orientation: 0, groups: [{ size: 1.6 }, { size: .4 }] } : editorLayout,
+    applyLayout: value => { groupMaximized = false; calls.push(['restoreGroups', value]); },
+    toggleMaximizeGroup: () => { groupMaximized = !groupMaximized; calls.push(['toggleMaximizeGroup', groupMaximized]); },
     arrangeGroups: (_arrangement, target = mainPart.activeGroup) => { groupMaximized = true; calls.push('maximizeGroup'); calls.push(['maximizeGroupTarget', typeof target === 'number' ? target : target.id]); }, hasMaximizedGroup: () => groupMaximized,
     enforcePartOptions: value => { options = value; return { dispose: () => { options = false; } }; } };
   const groups = { ...mainPart, mainPart };
@@ -116,7 +119,7 @@ function fixture(t, saved = new Map()) {
     getWindow: () => win, Sequencer, Codicon: { tools: {} }, Disposable, DisposableStore, MutableDisposable, localize2: (key, value) => ({ value, original: value }),
     CommandsRegistry: { registerCommand: register }, ConfigurationTarget: { MEMORY: 8 }, ContextKeyExpr: { has: () => true },
     SyncDescriptor: class {}, Registry: { as: () => ({ registerViewContainer: value => containers.get(value.id) ?? value, registerViews() {} }) },
-    StorageScope: { WORKSPACE: 1 }, StorageTarget: { MACHINE: 1 }, StudioSteamTools: class {}, studioModeState: state,
+    StorageScope: { WORKSPACE: 1 }, StorageTarget: { MACHINE: 1 }, StudioSteamTools: class {}, studioModeState: state, studioWindowChrome: {},
     studioSteamToolDefinitions: Object.keys(viewContainers).filter(view => view !== 'studio.steamTools').map(view => ({
       id: { 'studio.projectInfo': 'info', 'studio.developerAssistant': 'assistant' }[view] ?? view.replace('studio.', ''), view,
     })).concat([{ id: 'browser', command: 'simpleBrowser.show' }, { id: 'project', command: 'studio.openProjectInTab' }]),
@@ -154,6 +157,7 @@ test('Steam mode keeps the existing result and restores IDE parts, tools, groups
   const f = fixture(t); f.settings.set('side', 'right');
   const beforeVisible = new Map(f.visible), beforeSizes = new Map(f.sizes), beforeActive = new Map(f.active);
   f.publish(true); await f.run('EnterSteamMode');
+  assert.equal(f.chromeHidden, true);
   assert.equal(f.state.steam, true); assert.deepEqual({ ...f.options }, { showTabs: 'none', editorActionsLocation: 'hidden' });
   assert.equal(f.group.activeEditor, f.result);
   for (const part of ['activity', 'sidebar', 'panel']) { assert.equal(f.visible.get(part), false); }
@@ -169,6 +173,7 @@ test('Steam mode keeps the existing result and restores IDE parts, tools, groups
   assert.equal(f.settings.get('side'), 'right');
   assert.equal(f.containers.get('studio-kv').location, 1);
   assert.equal(f.containers.get('studio-info').location, 0);
+  assert.equal(f.chromeHidden, false);
   assert.deepEqual(f.visible, beforeVisible); assert.deepEqual(f.sizes, beforeSizes); assert.deepEqual(f.active, beforeActive);
   assert.equal(f.group.activeEditor, f.editor); assert.equal(f.editor.isDirty, true);
   assert.equal(f.saved.has('studio.ideLayout'), false);
@@ -390,11 +395,16 @@ test('returning to IDE restores an originally maximized panel after reopening th
   assert.equal(f.layout.isPanelMaximized(), true);
 });
 
-test('returning to IDE restores an originally maximized editor group', async t => {
+test('returning to IDE restores maximized groups from their original unmaximized proportions', async t => {
   const f = fixture(t); f.mainPart.arrangeGroups();
-  f.publish(true); await f.run('EnterSteamMode'); await f.run('EnterIdeMode');
-  assert.equal(f.mainPart.hasMaximizedGroup(), true);
-  assert.equal(f.calls.some(call => Array.isArray(call) && call[0] === 'restoreGroups'), false);
+  f.publish(true);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await f.run('EnterSteamMode'); await f.run('EnterIdeMode');
+    assert.equal(f.mainPart.hasMaximizedGroup(), true);
+  }
+  const restores = f.calls.filter(call => Array.isArray(call) && call[0] === 'restoreGroups');
+  assert.deepEqual(restores.map(call => JSON.parse(JSON.stringify(call[1]))), Array.from({ length: 3 }, () => ({ orientation: 0, groups: [{ size: .6 }, { size: .4 }] })));
+  assert.ok(f.calls.findIndex(call => Array.isArray(call) && call[0] === 'toggleMaximizeGroup') < f.calls.findIndex(call => Array.isArray(call) && call[0] === 'windowChrome'));
 });
 
 test('Steam maximizes the result column while IDE restores a different maximized source group', async t => {

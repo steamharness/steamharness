@@ -4,7 +4,7 @@ import { projectAvatarDataUrl } from '@steamharness/project-card-metadata/avatar
 import { projectTypeLabels, projectVersion, projectDisplayName, type Project } from './workflow-types';
 import type { AccountController } from './workflow-auth';
 import type { Launcher, WebSession } from './workflow-cli-types';
-import { projectFrameHtml } from './workflow-webview';
+import { projectFrameHtml, type ProjectWindowChrome } from './workflow-webview';
 import { AssistantViewProvider, type AssistantConversation } from './assistant-view';
 import { ResourceViews } from './workflow-resources-view';
 import { TraceView } from './workflow-trace-view';
@@ -95,6 +95,13 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
   let resumeRefresh: (() => void) | undefined;
   let cliConnection = JSON.stringify(account.getConnection());
   let steamPreparation: AbortController | undefined;
+  let windowChrome: ProjectWindowChrome = { active: false, height: 52, left: 0, right: 0, revision: 0 };
+  const chromeFor = (uri: string, primary: boolean): ProjectWindowChrome => ({ ...windowChrome, active: windowChrome.active && primary && windowChrome.projectUri === uri });
+  const syncWindowChrome = (): void => {
+    for (const entry of workspaces.values()) {
+      void entry.panel.webview.postMessage({ type: 'workflow-host', windowChrome: chromeFor(entry.project.uri, entry.panel.viewType === 'studio.project') });
+    }
+  };
   const currentProject = (): Project | undefined => {
     const uri = vscode.window.activeTextEditor?.document.uri;
     return (uri ? [...provider.projects].sort((a, b) => b.uri.length - a.uri.length).find(entry => uri.toString().startsWith(`${entry.uri}/`)) : undefined)
@@ -231,11 +238,14 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
           const entry = workspaces.get(project.uri);
           if (entry?.close === close) { entry.loaded = true; }
           frameReady(); updateEntry();
+          void vscode.commands.executeCommand<ProjectWindowChrome>('studio.internalGetWindowChrome').then(chrome => {
+            if (!closed && chrome && chrome.revision >= windowChrome.revision) { windowChrome = chrome; syncWindowChrome(); }
+          }, () => undefined);
         }
         if (message?.type === 'workflow-account' && message.version === 1) { account.open(); }
         else if (!clipboardBinding.receive(message) && !resourceBinding.receive(message)) { traceBinding.receive(message); }
       }));
-      panel.webview.html = projectFrameHtml(address.href, project.name, project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language);
+      panel.webview.html = projectFrameHtml(address.href, project.name, project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language, chromeFor(project.uri, 'viewType' in panel && panel.viewType === 'studio.project'));
       if ('reveal' in panel) {
         panel.title = projectDisplayName(project); panel.iconPath = vscode.Uri.parse(projectAvatarDataUrl(project.projectCard, project.projectType));
         workspaces.set(project.uri, { panel, project, running: true, loaded: false, ready, close });
@@ -487,6 +497,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       const project = await resolveProjectTab(uri);
       if (!disposed) { await openProject(project, undefined, undefined, true); }
     }),
+    vscode.commands.registerCommand('studio.internalUpdateWindowChrome', (chrome: ProjectWindowChrome) => { if (chrome.revision >= windowChrome.revision) { windowChrome = chrome; syncWindowChrome(); } }),
     vscode.commands.registerCommand('studio.internalCancelSteamPreparation', () => steamPreparation?.abort()),
     vscode.commands.registerCommand('studio.internalPrepareSteamProject', async (projectUri?: string) => {
       const project = projectUri ? provider.projects.find(project => project.uri === projectUri) ?? externalProjects.get(projectUri) : currentProject();

@@ -5,6 +5,7 @@ import { requestAction } from './action-dialog';
 import { TraceBridge } from './trace-bridge';
 import { ClipboardBridge } from './clipboard-bridge';
 import { editText, pasteHostClipboard, selectedText, textEditShortcut, type TextEditCommand } from './edit-commands';
+import { ProjectWindowChrome } from './window-chrome';
 
 type Message = Record<string, any>;
 interface Host { postMessage(message: Message): void | Promise<void | boolean>; getState(): unknown; setState(state: unknown): void }
@@ -22,6 +23,8 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   }, { capture: true });
   const embedded = (globalThis as unknown as { acquireVsCodeApi?: () => Host }).acquireVsCodeApi;
   if (embedded) { return embedded(); }
+  let windowChrome: ProjectWindowChrome | undefined;
+  addEventListener('pagehide', () => windowChrome?.dispose());
   if (document.documentElement.dataset.theme === 'auto') {
     const dark = matchMedia('(prefers-color-scheme: dark)');
     const applyTheme = () => { document.documentElement.dataset.theme = dark.matches ? 'dark' : 'light'; };
@@ -125,6 +128,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   };
   addEventListener('message', event => {
     if (window.parent === window || event.source !== window.parent || event.data?.type !== 'workflow-host') { return; }
+    if (event.data.windowChrome && (event.data.windowChrome.active === true || windowChrome)) { (windowChrome ??= new ProjectWindowChrome()).update(event.data.windowChrome); }
     if (event.data.theme === 'dark' || event.data.theme === 'light') { document.documentElement.dataset.theme = event.data.theme; }
     if (event.data.traceVersion !== undefined) { trace.enable(event.data.traceVersion); }
     if (event.data.clipboardVersion !== undefined) {

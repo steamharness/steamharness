@@ -1,0 +1,435 @@
+diff --git a/src/vs/sessions/browser/workbench.ts b/src/vs/sessions/browser/workbench.ts
+index d42cee5dd72..fe3cf0a70fc 100644
+--- a/src/vs/sessions/browser/workbench.ts
++++ b/src/vs/sessions/browser/workbench.ts
+@@ -2186,6 +2186,8 @@ export abstract class Workbench extends Disposable implements IAgentWorkbenchLay
+ 		}
+ 	}
+ 
++	setWindowChromeHidden(_hidden: boolean): void { /* This window has no embeddable chrome. */ }
++
+ 	setPartHidden(hidden: boolean, part: Parts): void {
+ 		switch (part) {
+ 			case Parts.SIDEBAR_PART:
+diff --git a/src/vs/workbench/browser/layout.ts b/src/vs/workbench/browser/layout.ts
+index 75f9238fd75..dbedc8dcaf9 100644
+--- a/src/vs/workbench/browser/layout.ts
++++ b/src/vs/workbench/browser/layout.ts
+@@ -159,6 +159,8 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 
+ 	//#region Events
+ 
++	private windowChromeHidden = false;
++
+ 	private readonly _onDidChangeZenMode = this._register(new Emitter<boolean>());
+ 	readonly onDidChangeZenMode = this._onDidChangeZenMode.event;
+ 
+@@ -520,12 +522,12 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 
+ 			// The menu bar toggles the title bar in web because it does not need to be shown for window controls only
+ 			if (isWeb && menuBarVisibility === 'toggle') {
+-				this.workbenchGrid.setViewVisible(this.titleBarPartView, shouldShowCustomTitleBar(this.configurationService, mainWindow, this.state.runtime.menuBar.toggled));
++				this.workbenchGrid.setViewVisible(this.titleBarPartView, this.shouldShowTitleBar());
+ 			}
+ 
+ 			// The menu bar toggles the title bar in full screen for toggle and classic settings
+ 			else if (this.state.runtime.mainWindowFullscreen && (menuBarVisibility === 'toggle' || menuBarVisibility === 'classic')) {
+-				this.workbenchGrid.setViewVisible(this.titleBarPartView, shouldShowCustomTitleBar(this.configurationService, mainWindow, this.state.runtime.menuBar.toggled));
++				this.workbenchGrid.setViewVisible(this.titleBarPartView, this.shouldShowTitleBar());
+ 			}
+ 
+ 			// Move layout call to any time the menubar
+@@ -574,7 +576,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 		if (hasCustomTitlebar(this.configurationService)) {
+ 
+ 			// Propagate to grid
+-			this.workbenchGrid.setViewVisible(this.titleBarPartView, shouldShowCustomTitleBar(this.configurationService, mainWindow, this.state.runtime.menuBar.toggled));
++			this.workbenchGrid.setViewVisible(this.titleBarPartView, this.shouldShowTitleBar());
+ 
+ 			// Indicate active window border
+ 			this.updateWindowBorder(true);
+@@ -633,7 +635,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 	}
+ 
+ 	isFloatingPanelsEnabled(): boolean {
+-		return this.configurationService.getValue<boolean>(LayoutSettings.MODERN_UI) === true;
++		return !this.windowChromeHidden && this.configurationService.getValue<boolean>(LayoutSettings.MODERN_UI) === true;
+ 	}
+ 
+ 	isModernUICompact(): boolean {
+@@ -686,7 +688,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 	private updateWindowBorder(skipLayout = false) {
+ 		const theme = this.themeService.getColorTheme();
+ 		const didHaveMainWindowBorder = this.hasMainWindowBorder();
+-		const suppressMainWindowBorder = this.isFloatingPanelsEnabled() && !isHighContrast(theme.type);
++		const suppressMainWindowBorder = this.windowChromeHidden || this.isFloatingPanelsEnabled() && !isHighContrast(theme.type);
+ 
+ 		if (
+ 			isWeb ||
+@@ -1371,7 +1373,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 			case Parts.TITLEBAR_PART:
+ 				return this.initialized ?
+ 					this.workbenchGrid.isViewVisible(this.titleBarPartView) :
+-					shouldShowCustomTitleBar(this.configurationService, mainWindow, this.state.runtime.menuBar.toggled);
++					this.shouldShowTitleBar();
+ 			case Parts.SIDEBAR_PART:
+ 				return !this.stateModel.getRuntimeValue(LayoutStateKeys.SIDEBAR_HIDDEN);
+ 			case Parts.PANEL_PART:
+@@ -1379,7 +1381,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 			case Parts.AUXILIARYBAR_PART:
+ 				return !this.stateModel.getRuntimeValue(LayoutStateKeys.AUXILIARYBAR_HIDDEN);
+ 			case Parts.STATUSBAR_PART:
+-				return !this.stateModel.getRuntimeValue(LayoutStateKeys.STATUSBAR_HIDDEN);
++				return !this.windowChromeHidden && !this.stateModel.getRuntimeValue(LayoutStateKeys.STATUSBAR_HIDDEN);
+ 			case Parts.ACTIVITYBAR_PART:
+ 				return !this.stateModel.getRuntimeValue(LayoutStateKeys.ACTIVITYBAR_HIDDEN);
+ 			case Parts.EDITOR_PART:
+@@ -1631,14 +1633,14 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 		this.stateModel.setRuntimeValue(LayoutStateKeys.STATUSBAR_HIDDEN, hidden);
+ 
+ 		// Adjust CSS
+-		if (hidden) {
++		if (hidden || this.windowChromeHidden) {
+ 			this.mainContainer.classList.add(LayoutClasses.STATUSBAR_HIDDEN);
+ 		} else {
+ 			this.mainContainer.classList.remove(LayoutClasses.STATUSBAR_HIDDEN);
+ 		}
+ 
+ 		// Propagate to grid
+-		this.workbenchGrid.setViewVisible(this.statusBarPartView, !hidden);
++		this.workbenchGrid.setViewVisible(this.statusBarPartView, !hidden && !this.windowChromeHidden);
+ 	}
+ 
+ 	protected createWorkbenchLayout(): void {
+@@ -2328,6 +2330,20 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 		}
+ 	}
+ 
++	private shouldShowTitleBar(): boolean {
++		return !this.windowChromeHidden && shouldShowCustomTitleBar(this.configurationService, mainWindow, this.state.runtime.menuBar.toggled);
++	}
++
++	setWindowChromeHidden(hidden: boolean): void {
++		if (this.windowChromeHidden === hidden) { return; }
++		this.windowChromeHidden = hidden;
++		this.updateFloatingPanels();
++		this.workbenchGrid.setViewVisible(this.titleBarPartView, this.shouldShowTitleBar());
++		const statusVisible = this.isVisible(Parts.STATUSBAR_PART);
++		this.mainContainer.classList.toggle(LayoutClasses.STATUSBAR_HIDDEN, !statusVisible);
++		this.workbenchGrid.setViewVisible(this.statusBarPartView, statusVisible);
++	}
++
+ 	setPartHidden(hidden: boolean, part: Parts): void {
+ 		switch (part) {
+ 			case Parts.ACTIVITYBAR_PART:
+@@ -2374,14 +2390,14 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 	}
+ 
+ 	updateMenubarVisibility(skipLayout: boolean): void {
+-		const shouldShowTitleBar = shouldShowCustomTitleBar(this.configurationService, mainWindow, this.state.runtime.menuBar.toggled);
++		const shouldShowTitleBar = this.shouldShowTitleBar();
+ 		if (!skipLayout && this.workbenchGrid && shouldShowTitleBar !== this.isVisible(Parts.TITLEBAR_PART, mainWindow)) {
+ 			this.workbenchGrid.setViewVisible(this.titleBarPartView, shouldShowTitleBar);
+ 		}
+ 	}
+ 
+ 	updateCustomTitleBarVisibility(): void {
+-		const shouldShowTitleBar = shouldShowCustomTitleBar(this.configurationService, mainWindow, this.state.runtime.menuBar.toggled);
++		const shouldShowTitleBar = this.shouldShowTitleBar();
+ 		const titlebarVisible = this.isVisible(Parts.TITLEBAR_PART);
+ 		if (shouldShowTitleBar !== titlebarVisible) {
+ 			this.workbenchGrid.setViewVisible(this.titleBarPartView, shouldShowTitleBar);
+@@ -2553,7 +2569,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 			this.workbenchGrid.moveView(this.bannerPartView, Sizing.Distribute, this.titleBarPartView, shouldBannerBeFirst ? Direction.Up : Direction.Down);
+ 		}
+ 
+-		this.workbenchGrid.setViewVisible(this.titleBarPartView, shouldShowCustomTitleBar(this.configurationService, mainWindow, this.state.runtime.menuBar.toggled));
++		this.workbenchGrid.setViewVisible(this.titleBarPartView, this.shouldShowTitleBar());
+ 	}
+ 
+ 	private arrangeEditorNodes(nodes: { editor: ISerializedNode; sideBar?: ISerializedNode; auxiliaryBar?: ISerializedNode }, availableHeight: number, availableWidth: number): ISerializedNode {
+@@ -2752,7 +2768,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 						type: 'leaf',
+ 						data: { type: Parts.STATUSBAR_PART },
+ 						size: statusBarHeight,
+-						visible: !this.stateModel.getRuntimeValue(LayoutStateKeys.STATUSBAR_HIDDEN)
++						visible: this.isVisible(Parts.STATUSBAR_PART)
+ 					}
+ 				]
+ 			},
+diff --git a/src/vs/workbench/browser/parts/media/studioMode.css b/src/vs/workbench/browser/parts/media/studioMode.css
+index 2f59ce32d26..5d96c090f7a 100644
+--- a/src/vs/workbench/browser/parts/media/studioMode.css
++++ b/src/vs/workbench/browser/parts/media/studioMode.css
+@@ -283,3 +283,40 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
+ 	html.studio-mode-transition::view-transition-old(root),
+ 	html.studio-mode-transition::view-transition-new(root) { animation: none; }
+ }
++
++/* Retain the actual controls above the root webview overlay while the window chrome is hidden. */
++.monaco-workbench .studio-steam-window-chrome,
++.monaco-workbench .studio-steam-tools-chrome {
++	position: absolute;
++	top: 0;
++	z-index: 2500;
++	display: flex;
++	align-items: center;
++	height: 52px;
++	-webkit-app-region: drag;
++}
++.monaco-workbench .studio-steam-window-chrome { left: 0; }
++.monaco-workbench .studio-steam-tools-chrome { right: 0; height: 35px; }
++.monaco-workbench .studio-steam-tools-chrome.tools-hidden { height: 52px; }
++.monaco-workbench .studio-steam-window-chrome[hidden],
++.monaco-workbench .studio-steam-tools-chrome[hidden] { display: none; }
++.monaco-workbench .studio-steam-window-chrome .studio-mode-switcher { margin-top: 0; margin-bottom: 0; }
++.monaco-workbench .part.auxiliarybar > .title > .studio-steam-tools-chrome { position: static; order: 3; flex-shrink: 0; }
++.monaco-workbench .studio-steam-tools-chrome .studio-steam-toggle-tools { margin-right: var(--vscode-spacing-size80); }
++.monaco-workbench .studio-steam-tools-chrome .studio-steam-tools-action { font-size: var(--vscode-fontSize-label2); }
++.monaco-workbench .studio-steam-tools-chrome > .window-controls-container {
++	display: flex;
++	order: 2;
++	flex-shrink: 0;
++	width: calc(138px / var(--zoom-factor, 1));
++	height: 100%;
++	-webkit-app-region: no-drag;
++}
++.monaco-workbench .studio-steam-tools-chrome > .window-controls-container.wco-enabled { width: calc(100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px)); }
++.monaco-workbench .studio-steam-tools-chrome .window-icon { display: flex; align-items: center; justify-content: center; flex: 1; height: 100%; font-size: var(--vscode-codiconFontSize); }
++.monaco-workbench .studio-steam-tools-chrome .window-icon:hover { background: var(--vscode-toolbar-hoverBackground); }
++.monaco-workbench .studio-steam-tools-chrome .window-close:hover { background: var(--vscode-statusBarItem-errorBackground); color: var(--vscode-statusBarItem-errorForeground); }
++.monaco-workbench.fullscreen .studio-steam-tools-chrome > .window-controls-container { display: none; }
++.monaco-workbench.studio-steam-mode > .monaco-grid-view .part.editor:not(.modal-editor-part) { border: 0; border-radius: 0; }
++/* Non-floating PartLayout allocates the classic 35px header metric. */
++.monaco-workbench.studio-steam-mode .part.auxiliarybar > .title { height: 35px; }
+diff --git a/src/vs/workbench/browser/parts/studioMode.ts b/src/vs/workbench/browser/parts/studioMode.ts
+index ddf9ea935d1..334103c088d 100644
+--- a/src/vs/workbench/browser/parts/studioMode.ts
++++ b/src/vs/workbench/browser/parts/studioMode.ts
+@@ -14,6 +14,11 @@ import { IContextMenuService } from '../../../platform/contextview/browser/conte
+ import { getDefaultHoverDelegate } from '../../../base/browser/ui/hover/hoverDelegateFactory.js';
+ import { IHoverService } from '../../../platform/hover/browser/hover.js';
+ import { IWorkbenchLayoutService, Parts } from '../../services/layout/browser/layoutService.js';
++import { onDidChangeFullscreen, onDidChangeZoomLevel } from '../../../base/browser/browser.js';
++
++/** Space reserved by the embedded project for the retained native workbench controls. */
++export const studioWindowChrome = { active: false, projectUri: undefined as string | undefined, height: 52, left: 0, right: 0, revision: 0 };
++CommandsRegistry.registerCommand('studio.internalGetWindowChrome', () => ({ ...studioWindowChrome }));
+ 
+ export const studioSteamToolDefinitions = [
+ 	{ id: 'kv', icon: 'database', view: 'studio.kv' },
+@@ -88,8 +93,42 @@ export class StudioModeSwitcher extends Disposable {
+ 		const toggle = append(right, $('button.studio-steam-toggle-tools', { type: 'button', 'aria-controls': Parts.AUXILIARYBAR_PART })) as HTMLButtonElement;
+ 		const toggleIcon = append(toggle, $('span.codicon', { 'aria-hidden': 'true' }));
+ 		const toggleHover = this._register(hoverService.setupManagedHover(getDefaultHoverDelegate('mouse'), toggle, ''));
++		const dock = append(layout.mainContainer, $('.studio-steam-window-chrome'));
++		const toolsDock = append(layout.mainContainer, $('.studio-steam-tools-chrome'));
++		dock.hidden = toolsDock.hidden = true;
++		let lastChrome = '', timer: number | undefined;
++		const publishChrome = () => {
++			const visible = layout.isVisible(Parts.AUXILIARYBAR_PART);
++			studioWindowChrome.active = studioModeState.steam;
++			studioWindowChrome.left = dock.offsetWidth;
++			studioWindowChrome.right = visible ? 0 : toolsDock.offsetWidth;
++			const { revision, ...geometry } = studioWindowChrome;
++			const serialized = JSON.stringify(geometry);
++			if (serialized !== lastChrome) {
++				lastChrome = serialized;
++				studioWindowChrome.revision = revision + 1;
++				void this.commands.executeCommand('studio.internalUpdateWindowChrome', { ...studioWindowChrome }).catch(() => undefined);
++			}
++		};
++		const scheduleChrome = () => {
++			getWindow(dock).clearTimeout(timer);
++			timer = getWindow(dock).setTimeout(publishChrome, 0);
++		};
++		const observer = new (getWindow(dock).ResizeObserver)(scheduleChrome);
++		observer.observe(dock); observer.observe(toolsDock);
++		this._register(toDisposable(() => { observer.disconnect(); getWindow(dock).clearTimeout(timer); dock.remove(); toolsDock.remove(); }));
+ 		const update = () => {
+ 			const { state, steam: active, busy, targetSteam } = studioModeState;
++			dock.hidden = toolsDock.hidden = !active;
++			const modeParent = active ? dock : left;
++			const toolsParent = active ? toolsDock : right;
++			if (element.parentElement !== modeParent) { modeParent.append(element); }
++			if (tools.parentElement !== toolsParent) { toolsParent.append(tools, toggle); }
++			const toolsVisible = layout.isVisible(Parts.AUXILIARYBAR_PART);
++			const title = active && toolsVisible ? layout.getContainer(getWindow(dock), Parts.AUXILIARYBAR_PART)?.querySelector(':scope > .title') : undefined;
++			const dockParent = title ?? layout.mainContainer;
++			if (toolsDock.parentElement !== dockParent) { dockParent.append(toolsDock); }
++			toolsDock.classList.toggle('tools-hidden', !toolsVisible);
+ 			element.setAttribute('aria-label', state.labels.mode ?? 'Workspace Mode');
+ 			element.setAttribute('aria-busy', String(busy));
+ 			ide.title = state.labels.switchToIde ?? 'Switch to IDE Mode';
+@@ -111,6 +150,7 @@ export class StudioModeSwitcher extends Disposable {
+ 			toggle.setAttribute('aria-label', toggleLabel);
+ 			toggleHover.update(toggleLabel);
+ 			toggleIcon.className = `codicon codicon-layout-sidebar-right${visible ? '' : '-off'}`;
++			scheduleChrome();
+ 		};
+ 		for (const [button, command] of [[ide, 'studio.internalEnterIdeMode'], [steam, 'studio.internalEnterSteamMode'], [tools, 'studio.internalOpenSteamTools'], [toggle, 'workbench.action.toggleAuxiliaryBar']] as const) {
+ 			this._register(addDisposableListener(button, 'click', () => {
+@@ -120,6 +160,9 @@ export class StudioModeSwitcher extends Disposable {
+ 		this._register(studioModeState.onDidChangeState(update));
+ 		this._register(studioModeState.onDidChangeMode(update));
+ 		this._register(layout.onDidChangePartVisibility(event => { if (event.partId === Parts.AUXILIARYBAR_PART) { update(); } }));
++		this._register(layout.onDidLayoutMainContainer(scheduleChrome));
++		this._register(onDidChangeFullscreen(scheduleChrome));
++		this._register(onDidChangeZoomLevel(scheduleChrome));
+ 		update();
+ 	}
+ }
+diff --git a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+index c4712237c5f..44b1ae3d482 100644
+--- a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
++++ b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+@@ -16,7 +16,7 @@ import { IInstantiationService } from '../../../../platform/instantiation/common
+ import { INotificationService } from '../../../../platform/notification/common/notification.js';
+ import { Registry } from '../../../../platform/registry/common/platform.js';
+ import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
+-import { StudioModeLoading, StudioSteamTools, studioModeState, studioSteamToolDefinitions } from '../../../browser/parts/studioMode.js';
++import { StudioModeLoading, StudioSteamTools, studioModeState, studioWindowChrome, studioSteamToolDefinitions } from '../../../browser/parts/studioMode.js';
+ import { ViewPane } from '../../../browser/parts/views/viewPane.js';
+ import { ViewPaneContainer } from '../../../browser/parts/views/viewPaneContainer.js';
+ import { WorkbenchPhase, registerWorkbenchContribution2 } from '../../../common/contributions.js';
+@@ -47,6 +47,7 @@ interface IdeLayout {
+ 	activeGroup: number;
+ 	sideBarMemoryLocation?: string;
+ 	editorLayout: EditorGroupLayout;
++	editorLayoutUnmaximized?: boolean;
+ 	groups: number[];
+ }
+ 
+@@ -231,12 +232,23 @@ export class StudioModeContribution extends Disposable {
+ 	}
+ 
+ 	private async enterSteam(projectUri: string | undefined): Promise<void> {
++		const mainPart = this.groups.mainPart;
++		if (this.snapshot?.editorMaximized && !this.snapshot.editorLayoutUnmaximized && mainPart.hasMaximizedGroup()) {
++			// Capture the cached proportions before changing the outer window geometry.
++			// Do this inside the transition callback so the expanded IDE does not flash.
++			mainPart.toggleMaximizeGroup();
++			this.snapshot.editorLayout = mainPart.getLayout();
++			this.snapshot.editorLayoutUnmaximized = true;
++			this.saveSnapshot();
++		}
+ 		// The secondary sidebar is opposite the primary sidebar. Override only memory,
+ 		// so Steam tools stay on the right even when the user's IDE sidebar is on the right.
+ 		await this.configuration.updateValue('workbench.sideBar.location', 'left', ConfigurationTarget.MEMORY);
+ 		this.steam = true;
++		studioWindowChrome.projectUri = projectUri;
+ 		this.contextKeys.createKey<boolean>('studio.steamMode', false).set(true);
+ 		this.layout.mainContainer.classList.add('studio-steam-mode');
++		this.layout.setWindowChromeHidden(true);
+ 		this.layout.setAuxiliaryBarMaximized(false);
+ 		this.editorOptions.value = this.groups.mainPart.enforcePartOptions({ showTabs: 'none', editorActionsLocation: 'hidden' });
+ 		const containers = new Set([toolsContainer, ...studioSteamToolDefinitions.flatMap(tool => 'view' in tool ? [this.descriptors.getViewContainerByViewId(tool.view)] : [])]);
+@@ -274,6 +286,7 @@ export class StudioModeContribution extends Disposable {
+ 		this.projectReady = false;
+ 		this.contextKeys.createKey('studio.steamMode', false).set(false);
+ 		this.layout.mainContainer.classList.remove('studio-steam-mode');
++		this.layout.setWindowChromeHidden(false);
+ 		this.editorOptions.clear();
+ 		this.toolLocations.clear();
+ 		await this.configuration.updateValue('workbench.sideBar.location', snapshot.sideBarMemoryLocation, ConfigurationTarget.MEMORY);
+@@ -284,9 +297,9 @@ export class StudioModeContribution extends Disposable {
+ 			if (snapshot.visible[index]) { this.layout.setSize(part, snapshot.sizes[index]); }
+ 		}
+ 		const mainPart = this.groups.mainPart;
+-		// A maximized grid serializes its expanded size alongside cached hidden sizes.
+-		// Reapplying that layout would shrink the hidden groups on every switch.
+-		if (!snapshot.editorMaximized && snapshot.groups.length === mainPart.groups.length && snapshot.groups.every(id => mainPart.getGroup(id))) {
++		// Only apply proportions captured from an unmaximized grid. A maximized grid
++		// mixes expanded and cached sizes, which would shrink hidden groups each time.
++		if ((!snapshot.editorMaximized || snapshot.editorLayoutUnmaximized) && snapshot.groups.length === mainPart.groups.length && snapshot.groups.every(id => mainPart.getGroup(id))) {
+ 			mainPart.applyLayout(snapshot.editorLayout);
+ 		}
+ 		const previous = this.ideEditor;
+diff --git a/src/vs/workbench/electron-browser/parts/titlebar/titlebarPart.ts b/src/vs/workbench/electron-browser/parts/titlebar/titlebarPart.ts
+index 6ab59321fa2..042f1e89a60 100644
+--- a/src/vs/workbench/electron-browser/parts/titlebar/titlebarPart.ts
++++ b/src/vs/workbench/electron-browser/parts/titlebar/titlebarPart.ts
+@@ -4,7 +4,7 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import { Event } from '../../../../base/common/event.js';
+-import { getZoomFactor } from '../../../../base/browser/browser.js';
++import { getZoomFactor, onDidChangeZoomLevel, onDidChangeFullscreen } from '../../../../base/browser/browser.js';
+ import { $, addDisposableListener, append, EventType, getWindow, getWindowId, hide, show } from '../../../../base/browser/dom.js';
+ import { IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
+ import { IConfigurationService, IConfigurationChangeEvent } from '../../../../platform/configuration/common/configuration.js';
+@@ -31,6 +31,8 @@ import { IKeybindingService } from '../../../../platform/keybinding/common/keybi
+ import { CodeWindow, mainWindow } from '../../../../base/browser/window.js';
+ import { IsWindowAlwaysOnTopContext } from '../../../common/contextkeys.js';
+ 
++import { studioModeState, studioWindowChrome } from '../../../browser/parts/studioMode.js';
++
+ export class NativeTitlebarPart extends BrowserTitlebarPart {
+ 
+ 	//#region IView
+@@ -87,6 +89,12 @@ export class NativeTitlebarPart extends BrowserTitlebarPart {
+ 		this.tahoeOrNewer = isTahoeOrNewer(environmentService.os.release);
+ 
+ 		this.handleWindowsAlwaysOnTop(targetWindow.vscodeWindowId);
++		if (this.hasStudioModeSwitcher) {
++			const update = () => this.updateSteamWindowControls();
++			this._register(studioModeState.onDidChangeMode(update));
++			this._register(onDidChangeZoomLevel(update));
++			this._register(onDidChangeFullscreen(update));
++		}
+ 	}
+ 
+ 	private async handleWindowsAlwaysOnTop(targetWindowId: number): Promise<void> {
+@@ -272,11 +280,25 @@ export class NativeTitlebarPart extends BrowserTitlebarPart {
+ 		}
+ 	}
+ 
++	private updateSteamWindowControls(): void {
++		if (!this.element) { return; }
++		const active = studioModeState.steam;
++		// Preserve custom Linux/Windows controls too when their title bar is removed.
++		if (!isMacintosh && this.windowControlsContainer) {
++			const target = active ? this.layoutService.mainContainer.querySelector('.studio-steam-tools-chrome') : this.element.querySelector('.titlebar-right');
++			if (target && this.windowControlsContainer.parentElement !== target) { target.append(this.windowControlsContainer); }
++		}
++		if (useWindowControlsOverlay(this.configurationService)) {
++			this.cachedWindowControlHeight = undefined;
++			this.layout(this.element.offsetWidth, active ? studioWindowChrome.height : this.minimumHeight);
++		}
++	}
++
+ 	override layout(width: number, height: number): void {
+ 		super.layout(width, height);
+ 
+ 		if (useWindowControlsOverlay(this.configurationService)) {
+-			const newHeight = Math.round(height * getZoomFactor(getWindow(this.element)));
++			const newHeight = Math.round((this.hasStudioModeSwitcher && studioModeState.steam ? studioWindowChrome.height : height) * getZoomFactor(getWindow(this.element)));
+ 			if (newHeight !== this.cachedWindowControlHeight) {
+ 				this.cachedWindowControlHeight = newHeight;
+ 				this.nativeHostService.updateWindowControls({
+diff --git a/src/vs/workbench/services/layout/browser/layoutService.ts b/src/vs/workbench/services/layout/browser/layoutService.ts
+index 6851c3b584c..2eda5971457 100644
+--- a/src/vs/workbench/services/layout/browser/layoutService.ts
++++ b/src/vs/workbench/services/layout/browser/layoutService.ts
+@@ -598,6 +598,9 @@ export interface IWorkbenchLayoutService extends ILayoutService {
+ 	 */
+ 	setPartHidden(hidden: boolean, part: Parts): void;
+ 
++	/** Temporarily hide the main window's title and status bars without changing saved UI state. */
++	setWindowChromeHidden(hidden: boolean): void;
++
+ 	/**
+ 	 * Returns whether the layout surface that represents the secondary sidebar is visible.
+ 	 */
+diff --git a/src/vs/workbench/test/browser/workbenchTestServices.ts b/src/vs/workbench/test/browser/workbenchTestServices.ts
+index 0f7d00d476a..5472c97a8da 100644
+--- a/src/vs/workbench/test/browser/workbenchTestServices.ts
++++ b/src/vs/workbench/test/browser/workbenchTestServices.ts
+@@ -680,6 +680,7 @@ export class TestLayoutService implements IWorkbenchLayoutService {
+ 	async setSideBarHidden(_hidden: boolean): Promise<void> { }
+ 	async setAuxiliaryBarHidden(_hidden: boolean): Promise<void> { }
+ 	async setPartHidden(_hidden: boolean, part: Parts): Promise<void> { }
++	setWindowChromeHidden(_hidden: boolean): void { }
+ 	isSecondarySideBarVisible(): boolean { return false; }
+ 	toggleSecondarySideBar(): void { }
+ 	isPanelHidden(): boolean { return false; }

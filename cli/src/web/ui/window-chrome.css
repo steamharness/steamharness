@@ -1,0 +1,18 @@
+/* The native host draws the controls. This slot gives them a home in the project's own header. */
+#app[data-studio-window-chrome] > .toolbar {
+  min-height: var(--studio-window-chrome-height);
+  padding-top: 0;
+  padding-bottom: 0;
+  padding-right: calc(16px + var(--studio-window-chrome-right));
+}
+#app[data-studio-window-chrome] .studio-window-controls-slot {
+  flex: 0 0 var(--studio-window-chrome-left);
+  width: var(--studio-window-chrome-left);
+  height: var(--studio-window-chrome-height);
+}
+#app[data-studio-window-chrome] > .toolbar:has(.studio-window-controls-slot) { padding-left: 0; }
+#app[data-studio-window-chrome] > .project-menu > .studio-window-controls-slot { flex-basis: var(--studio-window-chrome-height); }
+@media (max-width: 480px) {
+  #app[data-studio-window-chrome] > .toolbar > .project-title { flex-basis: 100%; }
+  #app[data-studio-window-chrome] > .toolbar > .toolbar-actions { margin-left: auto; }
+}

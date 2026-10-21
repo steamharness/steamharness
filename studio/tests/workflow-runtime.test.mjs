@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { tmpdir } from 'node:os';
+import { runInNewContext } from 'node:vm';
 import { register } from 'tsx/esm/api';
 register();
 const { inspectProjectCli, resolveProjectCli, startProjectCli } = await import('../extensions/studio-workstation/src/workflow-cli-process.ts');
@@ -262,6 +263,26 @@ test('the tab contains a CLI frame and no second conversation renderer', () => {
   assert.match(html, /&lt;User project&gt;/); assert.match(html, /vscode.setState/);
   assert.doesNotMatch(html, /workflow-ui\.js|id="app"|core\.mjs/);
   assert.throws(() => projectFrameHtml('javascript:alert(1)', 'Project', 'user', 'dark', 'fixture'), /Invalid/);
+});
+
+test('the project frame retains the latest native chrome reservation across iframe loads', () => {
+  const listeners = new Map(), frameListeners = new Map(), messages = [];
+  const frame = { contentWindow: { postMessage: message => messages.push(message) }, addEventListener: (type, callback) => frameListeners.set(type, callback) };
+  const initial = { active: true, projectUri: 'file:///project', height: 52, left: 228, right: 0, revision: 1 };
+  const html = projectFrameHtml('http://127.0.0.1:3000/', 'Project', initial.projectUri, 'dark', 'fixture', 'en', initial);
+  runInNewContext(/<script nonce="fixture">([\s\S]*?)<\/script>/.exec(html)[1], {
+    acquireVsCodeApi: () => ({ setState() {}, postMessage() {} }),
+    document: { getElementById: () => frame, documentElement: { dataset: {} } },
+    addEventListener: (type, callback) => listeners.set(type, callback),
+  });
+  frameListeners.get('load')();
+  assert.deepEqual(JSON.parse(JSON.stringify(messages.at(-1).windowChrome)), initial);
+  const next = { ...initial, active: false, revision: 2 };
+  listeners.get('message')({ data: { type: 'workflow-host', windowChrome: next } });
+  // An embedded page cannot change its own host reservation.
+  listeners.get('message')({ source: frame.contentWindow, origin: 'http://127.0.0.1:3000', data: { type: 'workflow-host', windowChrome: initial } });
+  frameListeners.get('load')();
+  assert.deepEqual(JSON.parse(JSON.stringify(messages.at(-1).windowChrome)), next);
 });
 
 for (const language of ['en', 'zh-cn']) {

@@ -151,7 +151,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     await command('studio.refreshProjectView');
     await until(() => steam.isEnabled(), Boolean, 'Project mode did not become available');
     const documentUri = await call({ action: 'untitled', text: 'Preserve this unsaved document during mode switches.' });
-    const partState = () => page.evaluate(() => Object.fromEntries(['activitybar', 'sidebar', 'panel', 'auxiliarybar'].map(part => {
+    const partState = () => page.evaluate(() => Object.fromEntries(['activitybar', 'sidebar', 'panel', 'auxiliarybar', 'titlebar', 'statusbar'].map(part => {
       const element = document.querySelector(`.part.${part}`), rect = element?.getBoundingClientRect();
       return [part, { visible: !!rect?.width && !!rect?.height && getComputedStyle(element).display !== 'none', width: rect?.width }];
     })));
@@ -208,6 +208,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     const during = await partState();
     assert.equal(during.activitybar.visible, false); assert.equal(during.sidebar.visible, false); assert.equal(during.panel.visible, false);
     assert.equal(during.auxiliarybar.visible, true);
+    assert.equal(during.titlebar.visible, false); assert.equal(during.statusbar.visible, false);
     assert.equal(await layoutButtons.count(), 0);
     const toggleTools = page.locator('.studio-steam-toggle-tools');
     await toggleTools.waitFor();
@@ -223,7 +224,10 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     check(`${language}: Steam keeps only the trailing tools visibility control and removes other layout and runtime editor actions`);
     const geometry = await page.locator('.part.editor:not(.studio-steam-editors)').boundingBox(), toolsGeometry = await page.locator('.part.auxiliarybar').boundingBox();
     assert.ok(geometry.x < toolsGeometry.x && geometry.x + geometry.width <= toolsGeometry.x + 2);
-    check(`${language}: Steam places project results on the left and tools on the right`);
+    for (const rect of [geometry, toolsGeometry]) {
+      assert.ok(rect.y <= 1 && Math.abs(rect.height - 960) <= 1, JSON.stringify(rect));
+    }
+    check(`${language}: Steam fills the window with project results and tools and removes the title and status bars`);
 
     const frame = await until(async () => {
       for (const frame of page.frames()) {
@@ -231,9 +235,32 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
           && await frame.locator('#app').getAttribute('data-project-uri').catch(() => undefined) === pathToFileURL(project).href) { return frame; }
       }
     }, Boolean, 'Project result frame did not open');
+    await frame.locator('#app[data-studio-window-chrome]').waitFor();
+    const assertChromeSlot = async parent => {
+      await until(() => frame.locator('.studio-window-controls-slot').evaluate((slot, parent) => slot.parentElement.matches(parent), parent), Boolean, `Native controls slot did not move to ${parent}`);
+      const slot = await frame.locator('.studio-window-controls-slot').boundingBox();
+      const controls = await page.locator('.studio-steam-window-chrome').boundingBox();
+      assert.ok(Math.abs(slot.x - controls.x) <= 1 && Math.abs(slot.y - controls.y) <= 1 && slot.width >= controls.width - 1, JSON.stringify({ slot, controls }));
+    };
+    if (await frame.locator('#hide-menu').isVisible()) { await frame.locator('#hide-menu').click(); }
+    await assertChromeSlot('.project-title');
+    await page.screenshot({ path: path.join(proof, `${language}-steam-title-chrome.png`) });
+    await frame.locator('#menu-toggle').click();
+    await assertChromeSlot('#project-menu');
+    await page.screenshot({ path: path.join(proof, `${language}-steam-menu-chrome.png`) });
+    await frame.locator('#hide-menu').click();
+    await assertChromeSlot('.project-title');
+    check(`${language}: native mode controls integrate with the project menu or title and stay clear in narrow layouts`);
     await frame.locator('#message').fill(`mode-persistence-${language}`); await frame.locator('#send').click();
+
     await frame.locator('#app[data-run-state=idle]').waitFor();
     await until(() => frame.locator('.message.assistant').count(), value => value > 0, 'Local project did not produce a result');
+    await page.setViewportSize({ width: 1100, height: 960 });
+    await frame.locator('#menu-toggle').click();
+    await assertChromeSlot('.project-title');
+    await page.setViewportSize({ width: 1440, height: 960 });
+    await assertChromeSlot('#project-menu');
+    await frame.locator('#hide-menu').click();
     const resultUrl = frame.url();
     const mainGroups = () => page.locator('.part.editor:not(.studio-steam-editors) .editor-group-container').count();
     const initialGroups = await mainGroups();
@@ -294,6 +321,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       assert.equal(await toggleTools.getAttribute('aria-label'), language === 'en' ? 'Show Tools' : '显示工具区');
       assert.ok((await page.locator('.part.editor:not(.studio-steam-editors)').boundingBox()).width > geometry.width);
       assert.equal(frame.isDetached(), false); assert.equal(frame.url(), resultUrl);
+      await until(() => frame.locator('#app').evaluate(app => Number.parseFloat(app.style.getPropertyValue('--studio-window-chrome-right'))), value => value > 0, 'Hidden tool controls were not reserved by the project header');
       await toggleTools.click();
       await until(partState, state => state.auxiliarybar.visible, 'Tools did not expand');
       assert.equal(await toggleTools.getAttribute('aria-expanded'), 'true');
@@ -312,8 +340,9 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     const headerSpace = await page.locator('.part.auxiliarybar > .title').evaluate(element => ({
       width: element.clientWidth, tabs: element.querySelector('.studio-steam-tabs').getBoundingClientRect().width,
       actions: element.querySelector('.title-actions').getBoundingClientRect().width,
+      controls: element.querySelector('.studio-steam-tools-chrome').getBoundingClientRect().width,
     }));
-    assert.ok(headerSpace.tabs + headerSpace.actions >= headerSpace.width - 24, JSON.stringify(headerSpace));
+    assert.ok(headerSpace.tabs + headerSpace.actions + headerSpace.controls >= headerSpace.width - 24, JSON.stringify(headerSpace));
     const tabIds = await tabList.locator('.studio-steam-tab').evaluateAll(elements => elements.map(element => element.dataset.tab));
     for (const width of [1024, 800]) {
       await page.setViewportSize({ width, height: 960 });
@@ -321,8 +350,12 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
         width: element.clientWidth, scroll: element.scrollWidth, overflow: getComputedStyle(element).textOverflow,
       })));
       assert.ok(labels.some(label => label.scroll > label.width && label.overflow === 'ellipsis'), JSON.stringify(labels));
-      const add = await page.locator('.studio-steam-add-tab').boundingBox(), sidebar = await page.locator('.part.auxiliarybar').boundingBox();
-      assert.ok(add.x >= sidebar.x && add.x + add.width <= sidebar.x + sidebar.width + 1);
+      await until(() => page.locator('.part.auxiliarybar').evaluate(sidebar => {
+        const add = sidebar.querySelector('.studio-steam-add-tab').getBoundingClientRect();
+        const chrome = sidebar.querySelector('.studio-steam-tools-chrome').getBoundingClientRect();
+        const rect = sidebar.getBoundingClientRect();
+        return { left: rect.left, right: rect.right, addLeft: add.left, addRight: add.right, chromeLeft: chrome.left, width: innerWidth };
+      }), rect => Math.abs(rect.right - rect.width) < 1 && rect.addLeft >= rect.left && rect.addRight <= rect.chromeLeft + 1, 'Native tool controls must remain after the add button while the workbench resizes');
       await tabList.locator('.studio-steam-tab.active [role=tab]').press('End');
       await until(() => page.locator('.studio-steam-tab.active').getAttribute('data-tab'), value => value === tabIds.at(-1), 'Keyboard navigation did not reach the last tab');
       await tabList.locator('.studio-steam-tab.active [role=tab]').press('Home');
@@ -349,7 +382,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       }), Boolean, 'The tool editor must fill the visible right workspace below its tabs');
       return state;
     };
-    await page.locator('.statusbar-item[id*="projectConnection"]').click();
+    await command('studio.openAccount');
     const accountTab = tabList.getByRole('tab', { name: language === 'en' ? 'SteamHarness Account' : 'SteamHarness 账号', exact: true });
     await accountTab.waitFor(); await assertProjectKept();
     const accountFrame = await until(async () => {
@@ -453,7 +486,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       assert.ok(incoming.transforms[0].includes(direction === 'steam' ? '100%' : '-100%'), JSON.stringify(incoming));
     }
     await writeFile(path.join(proof, `${language}-transitions.json`), JSON.stringify(transitions, null, 2));
-    check(`${language}: the workspace slides in opposite directions while the titlebar stays fixed`);
+    check(`${language}: the workspace slides in opposite directions while the mode controls remain accessible`);
     const after = await partState();
     assert.equal(await layoutButtons.count(), ideLayoutButtons);
     assert.equal(await toggleTools.isVisible(), false);
@@ -633,6 +666,8 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     await until(() => steam.getAttribute('aria-pressed').catch(() => undefined), value => value === 'true', 'Steam mode did not restore', 120_000);
     const restoredOther = await findProjectFrame(pathToFileURL(otherProject).href), restoredLeft = await findProjectFrame(pathToFileURL(project).href);
     const restoredToolsRect = await page.locator('.part.auxiliarybar').boundingBox();
+    assert.equal(await restoredOther.locator('#app').getAttribute('data-studio-window-chrome'), null);
+    await restoredLeft.locator('#app[data-studio-window-chrome]').waitFor();
     assert.ok((await restoredOther.locator('#message').boundingBox()).x >= restoredToolsRect.x);
     assert.ok((await restoredLeft.locator('#message').boundingBox()).x < restoredToolsRect.x);
     assert.deepEqual((await call({ action: 'state' })).folders, foldersBeforeOther);
@@ -653,8 +688,8 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
         url: frame.url(), body: await frame.locator('body').innerText({ timeout: 500 }).catch(() => ''),
         html: await frame.locator('body').innerHTML({ timeout: 500 }).then(value => value.slice(-2000)).catch(() => ''),
       }))),
-      layout: await page?.evaluate(() => [...document.querySelectorAll('.studio-steam-editors, .studio-steam-editors .editor-container, .webview-overlay-content, .webview-overlay-content > iframe')].map(element => ({
-        class: element.className, style: element.getAttribute('style'), parentStyle: element.parentElement.getAttribute('style'),
+      layout: await page?.evaluate(() => [...document.querySelectorAll('.part.auxiliarybar, .part.editor, .part.editor .editor-container, .monaco-grid-view, .webview-overlay-content, .webview-overlay-content > iframe')].map(element => ({
+        computed: {height: getComputedStyle(element).height, margin: getComputedStyle(element).margin, padding: getComputedStyle(element).padding, border: getComputedStyle(element).border, box: getComputedStyle(element).boxSizing}, class: element.className, style: element.getAttribute('style'), parentStyle: element.parentElement.getAttribute('style'),
         rect: element.getBoundingClientRect().toJSON(), parentRect: element.parentElement.getBoundingClientRect().toJSON(), visibility: getComputedStyle(element).visibility,
       }))).catch(() => []),
     }, null, 2));
