@@ -38,11 +38,12 @@ async function until(read, accept, message, timeout = 60_000) {
   throw new Error(message);
 }
 
-for (const language of ['en', 'zh-cn']) {
+for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en', 'zh-cn']) {
   const directory = await realpath(await mkdtemp(path.join(tmpdir(), 'studio-mode-ui-')));
   const folder = path.join(directory, 'workspace'), extension = path.join(directory, 'extensions/mode-test');
   const readyFile = path.join(directory, 'ready.json'), token = randomBytes(24).toString('hex');
   let child, browser, page, log = '';
+  const consoleMessages = [];
   try {
     await mkdir(folder); await mkdir(extension, { recursive: true }); await mkdir(path.join(folder, '.vscode'));
     await writeFile(path.join(folder, '.vscode/settings.json'), JSON.stringify({ 'editor.editContext': false,
@@ -66,13 +67,30 @@ for (const language of ['en', 'zh-cn']) {
     const context = await browser.newContext({ viewport: { width: 1440, height: 960 }, locale: language === 'en' ? 'en-US' : 'zh-CN' });
     await context.addCookies([{ name: 'vscode.nls.locale', value: language, domain: '127.0.0.1', path: '/' }]);
     await context.addInitScript(language => { globalThis._VSCODE_NLS_LANGUAGE = language; }, language);
+    await context.addInitScript(() => {
+      if (location.pathname.endsWith('/webview/browser/pre/index.html')) {
+        const url = new URL(location.href);
+        url.searchParams.set('disableServiceWorker', 'true');
+        history.replaceState(null, '', url);
+      }
+    });
     await context.route(/https:\/\/[^/]+\.vscode-cdn\.net\/.*\/webview\/browser\/pre\/(?:index\.html|fake\.html|service-worker\.js)(?:\?|$)/, async route => {
       const filename = path.posix.basename(new URL(route.request().url()).pathname);
       await route.fulfill({ path: path.join(upstream.directory, 'out/vs/workbench/contrib/webview/browser/pre', filename), contentType: filename.endsWith('.js') ? 'application/javascript' : 'text/html' });
     });
+    // Serve the real extension assets alongside the local source webview bootstrap.
+    // The isolated browser must not depend on the remote CDN's resource worker.
+    await context.route(/https:\/\/[^/]+\.vscode-resource\.vscode-cdn\.net\/.*\/extensions\/studio-workstation\/dist\//, async route => {
+      const relative = decodeURIComponent(new URL(route.request().url()).pathname.split('/extensions/studio-workstation/dist/')[1]);
+      const assets = path.join(ROOT, 'extensions/studio-workstation/dist'), filename = path.resolve(assets, relative);
+      assert.ok(filename.startsWith(assets + path.sep));
+      await route.fulfill({ path: filename, headers: { 'Access-Control-Allow-Origin': '*' } });
+    });
     page = await context.newPage();
     page.on('dialog', dialog => dialog.type() === 'beforeunload' ? dialog.accept() : dialog.dismiss());
     page.on('pageerror', error => errors.push(`${language}: ${error.message}`));
+    page.on('console', message => { if (message.type() === 'error') { consoleMessages.push(message.text()); } });
+    page.on('requestfailed', request => { consoleMessages.push(`${request.failure()?.errorText}: ${request.url()}`); });
     await page.goto(`http://127.0.0.1:${port}/?tkn=${token}`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
     const readReady = async () => await exists(readyFile) ? JSON.parse(await readFile(readyFile, 'utf8')) : {};
     let bridge = await until(readReady, value => value.port || value.error, 'Studio extension startup timed out', 120_000);
@@ -181,7 +199,7 @@ for (const language of ['en', 'zh-cn']) {
     const during = await partState();
     assert.equal(during.activitybar.visible, false); assert.equal(during.sidebar.visible, false); assert.equal(during.panel.visible, false);
     assert.equal(during.auxiliarybar.visible, true);
-    const geometry = await page.locator('.part.editor').boundingBox(), toolsGeometry = await page.locator('.part.auxiliarybar').boundingBox();
+    const geometry = await page.locator('.part.editor:not(.studio-steam-editors)').boundingBox(), toolsGeometry = await page.locator('.part.auxiliarybar').boundingBox();
     assert.ok(geometry.x < toolsGeometry.x && geometry.x + geometry.width <= toolsGeometry.x + 2);
     check(`${language}: Steam places project results on the left and tools on the right`);
 
@@ -213,10 +231,76 @@ for (const language of ['en', 'zh-cn']) {
     }
     check(`${language}: all six tools open in the right sidebar`);
 
+    const tabList = page.locator('.studio-steam-tab-list');
+    assert.equal(await tabList.getByRole('tab').count(), 6);
+    await page.locator('.studio-steam-tab[data-tab=kv] .studio-steam-tab-select').click();
+    await page.locator('.studio-steam-tab[data-tab=info] .studio-steam-tab-close').click();
+    assert.equal(await tabList.getByRole('tab').count(), 5);
+    await page.locator('.studio-steam-add-tab').click();
+    // Native menus suppress mouse-up for their first 100ms to avoid accidental selections.
+    await page.waitForTimeout(150);
+    await page.locator('.context-view').getByText(language === 'en' ? 'Project Information' : '项目信息', { exact: true }).click();
+    await until(() => tabList.getByRole('tab').count(), value => value === 6, 'Add menu did not restore the closed tool tab');
+    await command('studio.internalOpenSteamTool', 'kv');
+    assert.equal(await tabList.getByRole('tab').count(), 6);
+    check(`${language}: tools use dynamic closable tabs and the add menu reopens tools without duplicate tabs`);
+
+    const projectGroupBefore = (await call({ action: 'state' })).groups.find(group => group.column === 1);
+    assert.ok(projectGroupBefore.tabs.some(tab => tab.active && tab.viewType?.endsWith('studio.project')));
+    const assertProjectKept = async () => {
+      const state = await call({ action: 'state' });
+      assert.deepEqual(state.groups.find(group => group.column === 1).tabs, projectGroupBefore.tabs);
+      assert.equal(frame.isDetached(), false); assert.equal(frame.url(), resultUrl);
+      assert.ok((await frame.locator('.message.assistant').allTextContents()).join('').includes(`mode-persistence-${language}`));
+      assert.equal(await page.locator('.studio-steam-editors').isVisible(), true);
+      await until(() => page.locator('.studio-steam-editors').evaluate(element => {
+        const rect = element.getBoundingClientRect(), parent = element.parentElement.getBoundingClientRect();
+        return getComputedStyle(element).position === 'absolute' && rect.width > 200 && rect.height > 300
+          && rect.left >= parent.left && rect.right <= parent.right + 1
+          && rect.top >= parent.top && rect.bottom <= parent.bottom + 1;
+      }), Boolean, 'The tool editor must fill the visible right workspace below its tabs');
+      return state;
+    };
+    await page.locator('.statusbar-item[id*="projectConnection"]').click();
+    const accountTab = tabList.getByRole('tab', { name: language === 'en' ? 'SteamHarness Account' : 'SteamHarness 账号', exact: true });
+    await accountTab.waitFor(); await assertProjectKept();
+    const accountFrame = await until(async () => {
+      for (const candidate of page.frames()) { if (await candidate.locator('#login-email').isVisible().catch(() => false)) { return candidate; } }
+    }, Boolean, 'Account content did not open in the tool workspace', 15_000);
+    await accountFrame.locator('#login-email').click({ trial: true });
+    await page.screenshot({ path: path.join(proof, `${language}-workspace-account.png`) });
+    const toolsFile = path.join(folder, 'tools-only.txt'); await writeFile(toolsFile, 'Opened explicitly in the first editor column.');
+    await call({ action: 'file', path: toolsFile, column: 1 });
+    const fileState = await assertProjectKept();
+    await page.locator('.studio-steam-editors .view-line').first().click({ trial: true });
+    assert.ok(fileState.groups.filter(group => group.column !== 1).some(group => group.tabs.some(tab => tab.uri === pathToFileURL(toolsFile).href)));
+    await command('workbench.action.openSettings'); await assertProjectKept();
+    await call({ action: 'diff' }); await assertProjectKept();
+    await call({ action: 'webview' });
+    await tabList.getByRole('tab', { name: 'Workspace Probe', exact: true }).waitFor();
+    await assertProjectKept();
+    const probe = await until(async () => {
+      for (const candidate of page.frames()) { if (await candidate.locator('#workspace-probe').isVisible().catch(() => false)) { return candidate; } }
+    }, Boolean, 'Generic webview did not open in the tool workspace');
+    await probe.locator('#workspace-probe').fill('Preserve this tab state');
+    await page.locator('.studio-steam-tab[data-tab=kv] .studio-steam-tab-select').click();
+    await tabList.getByRole('tab', { name: 'Workspace Probe', exact: true }).click();
+    assert.equal(await probe.locator('#workspace-probe').inputValue(), 'Preserve this tab state');
+    await assertProjectKept();
+    const probeRect = await probe.locator('#workspace-probe').boundingBox(), rightRect = await page.locator('.part.auxiliarybar').boundingBox();
+    assert.ok(probeRect.x >= rightRect.x && probeRect.x + probeRect.width <= rightRect.x + rightRect.width);
+    assert.ok(probeRect.y >= rightRect.y && probeRect.y + probeRect.height <= rightRect.y + rightRect.height);
+    // This checks hit testing across webview overlays as well as DOM visibility.
+    await probe.locator('#workspace-probe').click({ trial: true });
+    await page.screenshot({ path: path.join(proof, `${language}-workspace-tabs.png`) });
+    check(`${language}: account status, explicit first-column files, settings, diffs and generic webviews open on the right while the live project and its result stay intact`);
+    const rightDocument = await call({ action: 'untitled', text: 'Keep this unsaved tool workspace document.' });
+    await assertProjectKept();
+
     for (const theme of ['Default Dark Modern', 'Default Light Modern']) {
       await call({ action: 'theme', theme }); await command('studio.openSteamTools');
       assert.equal(await page.locator('.studio-steam-tools h2').textContent(), language === 'en' ? 'Open Tools' : '打开工具');
-      assert.equal(await page.locator('.part.auxiliarybar .action-item.checked[role=tab] .action-label').textContent(), language === 'en' ? 'Open Tools' : '打开工具');
+      assert.equal(await page.locator('.studio-steam-tab-list').getAttribute('aria-label'), language === 'en' ? 'Tool Workspace' : '工具工作区');
       // Configuration writes finish before asynchronous theme loading and CSS transitions.
       await until(() => page.locator('.studio-steam-tool').first().evaluate(button => {
         const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
@@ -262,6 +346,7 @@ for (const language of ['en', 'zh-cn']) {
     }
     const state = await call({ action: 'state' });
     assert.equal(state.active, documentUri); assert.ok(state.documents.some(document => document.uri === documentUri && document.dirty));
+    assert.ok(state.groups.find(group => group.column === 1).tabs.some(tab => tab.uri === rightDocument && tab.dirty));
     await command('studio.enterSteamMode');
     assert.equal(frame.isDetached(), false); assert.equal(frame.url(), resultUrl);
     assert.ok((await frame.locator('.message.assistant').allTextContents()).join('').includes(`mode-persistence-${language}`));
@@ -270,23 +355,31 @@ for (const language of ['en', 'zh-cn']) {
     await command('studio.enterIdeMode'); await command('studio.enterSteamMode');
     assert.equal(await page.locator('html.studio-mode-transition').count(), 0);
     check(`${language}: reduced motion skips transition effects`);
+    await call({ action: 'file', path: toolsFile, column: 1 });
+    await tabList.getByRole('tab', { name: 'tools-only.txt', exact: true }).waitFor();
+    await page.locator('.studio-steam-editors .view-line').first().click({ trial: true });
     await rm(readyFile, { force: true });
-    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
+    const reloaded = page.waitForEvent('domcontentloaded', { timeout: 60_000 });
+    // The native reload path flushes editor mementos before unloading the workbench.
+    await call({ action: 'reload' });
+    await reloaded;
     bridge = await until(readReady, value => value.port || value.error, 'Studio extension restart timed out', 120_000);
     assert.equal(bridge.error, undefined, bridge.error);
     await until(() => steam.getAttribute('aria-pressed').catch(() => undefined), value => value === 'true', 'Saved Steam mode was not restored after reload', 120_000);
+    await tabList.getByRole('tab', { name: 'tools-only.txt', exact: true }).waitFor();
+    await page.locator('.studio-steam-editors .view-line').first().click({ trial: true });
     await command('studio.openSteamTools');
     assert.equal(await page.locator('.studio-steam-tools h2').textContent(), language === 'en' ? 'Open Tools' : '打开工具');
     check(`${language}: the workspace restores Steam mode after reload`);
     await command('studio.enterIdeMode');
 
     const source = await call({ action: 'untitled', text: 'Restore the maximized source group.' });
-    const visibleGroups = () => page.locator('.part.editor .editor-group-container').evaluateAll(elements => elements.filter(element => {
+    const visibleGroups = () => page.locator('.part.editor:not(.studio-steam-editors) .editor-group-container').evaluateAll(elements => elements.filter(element => {
       const rect = element.getBoundingClientRect(); return rect.width > 0 && rect.height > 0 && getComputedStyle(element).display !== 'none';
     }).length);
     await command('workbench.action.splitEditorRight');
     await until(visibleGroups, value => value === 2, 'IDE did not open two editor groups');
-    const groupWidths = () => page.locator('.part.editor .editor-group-container').evaluateAll(elements => elements.map(element => element.getBoundingClientRect().width));
+    const groupWidths = () => page.locator('.part.editor:not(.studio-steam-editors) .editor-group-container').evaluateAll(elements => elements.map(element => element.getBoundingClientRect().width));
     const originalWidths = await groupWidths();
     await command('workbench.action.toggleMaximizeEditorGroup');
     await until(visibleGroups, value => value === 1, 'Editor group did not maximize');
@@ -308,7 +401,7 @@ for (const language of ['en', 'zh-cn']) {
 
     if (!(await partState()).panel.visible) { await command('workbench.action.togglePanel'); }
     await command('workbench.action.toggleEditorVisibility');
-    const editorVisible = () => page.locator('.part.editor').evaluate(element => {
+    const editorVisible = () => page.locator('.part.editor:not(.studio-steam-editors)').evaluate(element => {
       const rect = element.getBoundingClientRect(); return rect.width > 0 && rect.height > 0 && getComputedStyle(element).display !== 'none';
     });
     await until(editorVisible, value => !value, 'Panel did not maximize');
@@ -328,6 +421,7 @@ for (const language of ['en', 'zh-cn']) {
     assert.equal(await page.locator('html.studio-mode-transition').count(), 0);
     check(`${language}: skipped transition animations still finish without page errors`);
   } catch (error) {
+    console.error(error.stack ?? error);
     const logs = path.join(directory, 'server/data/logs');
     for (const file of await readdir(logs, { recursive: true })) {
       if (file.endsWith('-Studio.log') || file.endsWith('remoteexthost.log')) {
@@ -335,16 +429,24 @@ for (const language of ['en', 'zh-cn']) {
       }
     }
     await writeFile(path.join(proof, `${language}-server.log`), log);
-    await writeFile(path.join(proof, `${language}-errors.json`), JSON.stringify({ errors,
+    await writeFile(path.join(proof, `${language}-errors.json`), JSON.stringify({ errors, consoleMessages,
       auxiliary: await page?.locator('.part.auxiliarybar').evaluate(element => element.innerHTML.slice(0, 15_000)).catch(() => ''),
       frames: page?.frames().map(frame => frame.url()),
+      frameContents: await Promise.all((page?.frames() ?? []).map(async frame => ({
+        url: frame.url(), body: await frame.locator('body').innerText({ timeout: 500 }).catch(() => ''),
+        html: await frame.locator('body').innerHTML({ timeout: 500 }).then(value => value.slice(-2000)).catch(() => ''),
+      }))),
+      layout: await page?.evaluate(() => [...document.querySelectorAll('.studio-steam-editors, .studio-steam-editors .editor-container, .webview-overlay-content, .webview-overlay-content > iframe')].map(element => ({
+        class: element.className, style: element.getAttribute('style'), parentStyle: element.parentElement.getAttribute('style'),
+        rect: element.getBoundingClientRect().toJSON(), parentRect: element.parentElement.getBoundingClientRect().toJSON(), visibility: getComputedStyle(element).visibility,
+      }))).catch(() => []),
     }, null, 2));
     await page?.screenshot({ path: path.join(proof, `${language}-failure.png`) }).catch(() => undefined);
     throw error;
   } finally {
     await browser?.close();
     if (child?.pid) { try { process.kill(-child.pid, 'SIGTERM'); } catch {} }
-    await rm(directory, { recursive: true, force: true });
+    await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 }
 await writeFile(path.join(proof, 'report.json'), JSON.stringify({ checks, errors }, null, 2));

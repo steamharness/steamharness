@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Added] Use dynamic, closable tabs and an add-tool menu in the Steam tool workspace. Accounts, files, settings, diffs, and other editors open on the right while the project and its results stay on the left. Unsaved documents survive returning to IDE, and tool editors restore after reload.
+
 - [Fixed] Recognize patches already included in the pinned upstream revision during startup preparation, avoiding false conflicts from overlapping patches while preserving staged and unstaged local edits.
 
 - [Fixed] Keep IDE / Steam layout changes in the main window, restore maximized panels and editor groups, preserve tool placement preferences, ignore outdated startup failures, and handle skipped transition animations without unhandled errors.

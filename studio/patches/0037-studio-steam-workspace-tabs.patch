@@ -1,0 +1,992 @@
+diff --git a/src/vs/workbench/browser/parts/auxiliarybar/auxiliaryBarPart.ts b/src/vs/workbench/browser/parts/auxiliarybar/auxiliaryBarPart.ts
+index 7f8bd13e5ae..808e1d4608f 100644
+--- a/src/vs/workbench/browser/parts/auxiliarybar/auxiliaryBarPart.ts
++++ b/src/vs/workbench/browser/parts/auxiliarybar/auxiliaryBarPart.ts
+@@ -35,6 +35,7 @@ import { IHoverService } from '../../../../platform/hover/browser/hover.js';
+ import { VisibleViewContainersTracker } from '../visibleViewContainersTracker.js';
+ import { Extensions } from '../../panecomposite.js';
+ import { IToolBarResponsiveBehaviorOptions } from '../../../../base/browser/ui/toolbar/toolbar.js';
++import { StudioSteamTabs, studioModeState } from '../studioMode.js';
+ 
+ interface IAuxiliaryBarPartConfiguration {
+ 	position: ActivityBarPosition;
+@@ -135,6 +136,7 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
+ 		this._register(this.visibleViewContainersTracker.onDidChange((e) => this.onDidChangeAutoHideViewContainers(e)));
+ 
+ 		this.configuration = this.resolveConfiguration();
++		this._register(studioModeState.onDidChangeMode(() => this.updateCompositeBar()));
+ 
+ 		this._register(configurationService.onDidChangeConfiguration(e => {
+ 			if (e.affectsConfiguration(LayoutSettings.ACTIVITY_BAR_LOCATION)) {
+@@ -272,7 +274,14 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
+ 		]);
+ 	}
+ 
++	protected override createTitleArea(parent: HTMLElement): HTMLElement | undefined {
++		const title = super.createTitleArea(parent);
++		if (title) { this._register(this.instantiationService.createInstance(StudioSteamTabs, title)); }
++		return title;
++	}
++
+ 	protected shouldShowCompositeBar(): boolean {
++		if (studioModeState.steam) { return false; }
+ 		if (this.configuration.position === ActivityBarPosition.HIDDEN) {
+ 			return false;
+ 		}
+diff --git a/src/vs/workbench/browser/parts/editor/editorGroupView.ts b/src/vs/workbench/browser/parts/editor/editorGroupView.ts
+index 3fdcc62c6d7..5c74049d1b9 100644
+--- a/src/vs/workbench/browser/parts/editor/editorGroupView.ts
++++ b/src/vs/workbench/browser/parts/editor/editorGroupView.ts
+@@ -18,7 +18,8 @@ import { ProgressBar } from '../../../../base/browser/ui/progressbar/progressbar
+ import { IThemeService, Themable } from '../../../../platform/theme/common/themeService.js';
+ import { editorBackground, contrastBorder } from '../../../../platform/theme/common/colorRegistry.js';
+ import { EDITOR_GROUP_HEADER_TABS_BACKGROUND, EDITOR_GROUP_HEADER_NO_TABS_BACKGROUND, EDITOR_GROUP_EMPTY_BACKGROUND, EDITOR_GROUP_HEADER_BORDER } from '../../../common/theme.js';
+-import { ICloseEditorsFilter, GroupsOrder, ICloseEditorOptions, ICloseAllEditorsOptions, IEditorReplacement, IActiveEditorActions } from '../../../services/editor/common/editorGroupsService.js';
++import { ICloseEditorsFilter, GroupsOrder, ICloseEditorOptions, ICloseAllEditorsOptions, IEditorReplacement, IActiveEditorActions, IEditorGroup } from '../../../services/editor/common/editorGroupsService.js';
++import { getEditorOpenTarget } from '../../../services/editor/common/editorOpenTarget.js';
+ import { EditorPanes } from './editorPanes.js';
+ import { IEditorProgressService } from '../../../../platform/progress/common/progress.js';
+ import { EditorProgressIndicator } from '../../../services/progress/browser/progressIndicator.js';
+@@ -1173,6 +1174,8 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
+ 	}
+ 
+ 	private async doOpenEditor(editor: EditorInput, options?: IEditorOptions, internalOptions?: IInternalEditorOpenOptions): Promise<IEditorPane | undefined> {
++		const target = getEditorOpenTarget(editor, this);
++		if (target && target.id !== this.id) { return target.openEditor(editor, options); }
+ 
+ 		// Guard against invalid editors. Disposed editors
+ 		// should never open because they emit no events
+@@ -1319,6 +1322,17 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
+ 	//#region openEditors()
+ 
+ 	async openEditors(editors: { editor: EditorInput; options?: IEditorOptions }[]): Promise<IEditorPane | undefined> {
++		// Redirect a whole batch before computing indices or updating this group's title control.
++		const targets = new Map<IEditorGroup, typeof editors>();
++		for (const entry of editors) {
++			const target = getEditorOpenTarget(entry.editor, this) ?? this;
++			const entries = targets.get(target) ?? [];
++			entries.push(entry); targets.set(target, entries);
++		}
++		if ([...targets.keys()].some(target => target.id !== this.id)) {
++			const results = await Promises.settled([...targets].map(([target, entries]) => target.openEditors(entries)));
++			return results.find(result => !!result);
++		}
+ 
+ 		// Guard against invalid editors. Disposed editors
+ 		// should never open because they emit no events
+diff --git a/src/vs/workbench/browser/parts/editor/editorParts.ts b/src/vs/workbench/browser/parts/editor/editorParts.ts
+index 8b80b1955a4..c83bdc0cf87 100644
+--- a/src/vs/workbench/browser/parts/editor/editorParts.ts
++++ b/src/vs/workbench/browser/parts/editor/editorParts.ts
+@@ -4,7 +4,7 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import { localize } from '../../../../nls.js';
+-import { EditorGroupLayout, GroupActivationReason, GroupDirection, GroupLocation, GroupOrientation, GroupsArrangement, GroupsOrder, IAuxiliaryEditorPart, IEditorGroupContextKeyProvider, IEditorDropTargetDelegate, IEditorGroupsService, IEditorSideGroup, IEditorWorkingSet, IFindGroupScope, IMergeGroupOptions, IEditorWorkingSetOptions, IEditorPart, IModalEditorPart, IEditorGroupActivationEvent } from '../../../services/editor/common/editorGroupsService.js';
++import { EditorGroupLayout, GroupActivationReason, GroupDirection, GroupLocation, GroupOrientation, GroupsArrangement, GroupsOrder, IAuxiliaryEditorPart, IEditorGroupContextKeyProvider, IEditorDropTargetDelegate, IEditorGroupsService, IEditorSideGroup, IEditorWorkingSet, IFindGroupScope, IMergeGroupOptions, IEditorWorkingSetOptions, IEditorPart, IModalEditorPart, IEditorGroupActivationEvent, IEmbeddedEditorPart } from '../../../services/editor/common/editorGroupsService.js';
+ import { Emitter } from '../../../../base/common/event.js';
+ import { DisposableMap, DisposableStore, IDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
+ import { GroupIdentifier, IEditorPartOptions } from '../../../common/editor.js';
+@@ -22,7 +22,7 @@ import { IThemeService } from '../../../../platform/theme/common/themeService.js
+ import { IAuxiliaryWindowOpenOptions, IAuxiliaryWindowService } from '../../../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
+ import { generateUuid } from '../../../../base/common/uuid.js';
+ import { ContextKeyValue, IContextKey, IContextKeyService, RawContextKey } from '../../../../platform/contextkey/common/contextkey.js';
+-import { getActiveElement, IDimension, isAncestor, isHTMLElement } from '../../../../base/browser/dom.js';
++import { getActiveElement, getWindow, IDimension, isAncestor, isHTMLElement } from '../../../../base/browser/dom.js';
+ import { ServiceCollection } from '../../../../platform/instantiation/common/serviceCollection.js';
+ import { IEditorService } from '../../../services/editor/common/editorService.js';
+ import { DeepPartial } from '../../../../base/common/types.js';
+@@ -30,6 +30,7 @@ import { IStatusbarService } from '../../../services/statusbar/browser/statusbar
+ import { mainWindow } from '../../../../base/browser/window.js';
+ import { IModalEditorPartOptions } from '../../../../platform/editor/common/editor.js';
+ import { EditorPartModalVisibleContext } from '../../../common/contextkeys.js';
++import { Memento } from '../../../common/memento.js';
+ 
+ interface IEditorPartsUIState {
+ 	readonly auxiliary: IAuxiliaryEditorPartState[];
+@@ -122,8 +123,11 @@ export class EditorParts extends MultiWindowParts<EditorPart, IEditorPartsMement
+ 
+ 	private readonly mapPartToInstantiationService = new Map<number /* window ID */, IInstantiationService>();
+ 	private modalPartInstantiationService: IInstantiationService | undefined;
++	private readonly embeddedParts = new Map<EditorPart, IInstantiationService>();
+ 
+ 	getScopedInstantiationService(part: IEditorPart): IInstantiationService {
++		const embeddedService = this.embeddedParts.get(part as EditorPart);
++		if (embeddedService) { return embeddedService; }
+ 
+ 		// Main Part
+ 		if (part === this.mainPart) {
+@@ -158,6 +162,26 @@ export class EditorParts extends MultiWindowParts<EditorPart, IEditorPartsMement
+ 
+ 	//#region Auxiliary Editor Parts
+ 
++	createEmbeddedEditorPart(container: unknown, id: string, label: string): IEmbeddedEditorPart {
++		if (!isHTMLElement(container)) { throw new Error('An embedded editor part requires an HTML container.'); }
++		const disposables = new DisposableStore();
++		const part = this.instantiationService.createInstance(EmbeddedEditorPart, this, id, label, getWindow(container).vscodeWindowId);
++		disposables.add(this.registerPart(part));
++		part.create(container);
++		const service = this.instantiationService.invokeFunction(accessor => disposables.add(part.scopedInstantiationService.createChild(new ServiceCollection(
++			[IEditorService, accessor.get(IEditorService).createScoped(part, disposables)]
++		))));
++		this.embeddedParts.set(part, service);
++		disposables.add(part.onWillDispose(() => {
++			new Memento(id, this.storageService).saveMemento();
++			this.embeddedParts.delete(part);
++			disposables.dispose();
++			for (const group of part.groups) { this._onDidRemoveGroup.fire(group); }
++		}));
++		for (const group of part.groups) { this._onDidAddGroup.fire(group); }
++		return part;
++	}
++
+ 	private readonly _onDidCreateAuxiliaryEditorPart = this._register(new Emitter<IAuxiliaryEditorPart>());
+ 	readonly onDidCreateAuxiliaryEditorPart = this._onDidCreateAuxiliaryEditorPart.event;
+ 
+@@ -389,6 +413,9 @@ export class EditorParts extends MultiWindowParts<EditorPart, IEditorPartsMement
+ 		if (this._parts.size > 1) {
+ 			if (isHTMLElement(groupOrElement)) {
+ 				const element = groupOrElement;
++				for (const part of this.parts) {
++					if (part.element?.contains(element)) { return part; }
++				}
+ 
+ 				return this.getPartByDocument(element.ownerDocument);
+ 			} else {
+@@ -566,7 +593,7 @@ export class EditorParts extends MultiWindowParts<EditorPart, IEditorPartsMement
+ 		// them merge into the main part.
+ 
+ 		for (const part of this.parts) {
+-			if (part === this.mainPart) {
++			if (part === this.mainPart || this.embeddedParts.has(part)) {
+ 				continue; // main part takes care on its own
+ 			}
+ 
+@@ -1039,4 +1066,13 @@ export class EditorParts extends MultiWindowParts<EditorPart, IEditorPartsMement
+ 	//#endregion
+ }
+ 
++/** Save the final model before a temporary embedded surface is removed. */
++class EmbeddedEditorPart extends EditorPart {
++	override dispose(): void {
++		if (this._store.isDisposed) { return; }
++		this.saveState();
++		super.dispose();
++	}
++}
++
+ registerSingleton(IEditorGroupsService, EditorParts, InstantiationType.Eager);
+diff --git a/src/vs/workbench/browser/parts/media/studioMode.css b/src/vs/workbench/browser/parts/media/studioMode.css
+index c40aac1b6d9..a9e346ea03d 100644
+--- a/src/vs/workbench/browser/parts/media/studioMode.css
++++ b/src/vs/workbench/browser/parts/media/studioMode.css
+@@ -71,6 +71,83 @@
+ .monaco-workbench .studio-steam-tools-action[hidden] { display: none; }
+ .monaco-workbench .studio-steam-tools-action:hover { background: var(--vscode-toolbar-hoverBackground); }
+ 
++.monaco-workbench .studio-steam-tabs { display: none; }
++.monaco-workbench.studio-steam-mode .part.auxiliarybar > .title > .title-label,
++.monaco-workbench.studio-steam-mode .part.auxiliarybar > .title > .global-actions { display: none; }
++.monaco-workbench.studio-steam-mode .part.auxiliarybar > .title > .title-actions { order: 2; }
++.monaco-workbench.studio-steam-mode .part.auxiliarybar > .title { padding-left: 0; }
++.monaco-workbench.studio-steam-mode .studio-steam-tabs {
++	display: flex;
++	align-items: center;
++	flex: 1;
++	min-width: 0;
++	height: 100%;
++	gap: var(--vscode-spacing-size40);
++	user-select: text;
++	-webkit-user-select: text;
++}
++.monaco-workbench .studio-steam-tab-list {
++	display: flex;
++	align-items: stretch;
++	min-width: 0;
++	height: 100%;
++	overflow-x: auto;
++	scrollbar-width: none;
++}
++.monaco-workbench .studio-steam-tab-list:hover { scrollbar-width: thin; }
++.monaco-workbench .studio-steam-tab {
++	display: flex;
++	align-items: center;
++	flex-shrink: 0;
++	gap: var(--vscode-spacing-size40);
++	padding: 0 var(--vscode-spacing-size60);
++	border-bottom: 2px solid transparent;
++	color: var(--vscode-tab-inactiveForeground);
++}
++.monaco-workbench .studio-steam-tab.active {
++	color: var(--vscode-tab-activeForeground);
++	background: var(--vscode-tab-activeBackground);
++	border-bottom-color: var(--vscode-tab-activeBorderTop, var(--vscode-focusBorder));
++}
++.monaco-workbench .studio-steam-tab:hover { background: var(--vscode-tab-hoverBackground); }
++.monaco-workbench .studio-steam-tabs button {
++	border: 0;
++	border-radius: var(--vscode-cornerRadius-small);
++	background: transparent;
++	color: inherit;
++	font: inherit;
++	cursor: pointer;
++	user-select: text;
++	-webkit-user-select: text;
++}
++.monaco-workbench .studio-steam-tabs button.codicon { font-family: codicon; font-size: 16px; }
++.monaco-workbench .studio-steam-tab-select { display: flex; align-items: center; gap: var(--vscode-spacing-size60); height: 100%; min-width: 0; }
++.monaco-workbench .studio-steam-tab-label { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
++.monaco-workbench .studio-steam-tabs .studio-steam-tab-close { opacity: 0; width: 20px; height: 20px; padding: 2px; }
++.monaco-workbench .studio-steam-tab:is(.active, :hover, :focus-within) .studio-steam-tab-close { opacity: 1; }
++.monaco-workbench .studio-steam-tab.dirty .studio-steam-tab-close { opacity: 1; }
++.monaco-workbench .studio-steam-tab.dirty:not(:hover):not(:focus-within) .studio-steam-tab-close::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
++.monaco-workbench .studio-steam-tabs .studio-steam-add-tab { width: 24px; height: 24px; flex-shrink: 0; padding: 4px; }
++.monaco-workbench .studio-steam-tabs :is(.studio-steam-add-tab, .studio-steam-tab-close):hover { background: var(--vscode-toolbar-hoverBackground); }
++.monaco-workbench .studio-steam-tabs button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
++.monaco-workbench .studio-steam-empty-tabs { padding: 0 var(--vscode-spacing-size120); align-self: center; color: var(--vscode-descriptionForeground); }
++.monaco-workbench.studio-steam-mode .part.auxiliarybar { position: relative; }
++/* This part shares the auxiliary card; it must not inherit main-editor floating margins. */
++.monaco-workbench .part.auxiliarybar > .part.editor.studio-steam-editors {
++	position: absolute;
++	inset: 35px 0 0;
++	margin: 0;
++	border: 0;
++	border-radius: 0;
++	/* Webview overlays are mounted at the workbench root. */
++	z-index: auto;
++	background: var(--vscode-editor-background);
++}
++.monaco-workbench .part.auxiliarybar > .studio-steam-editors > .content { border-radius: 0; }
++.monaco-workbench .studio-steam-editor-active > .content { visibility: hidden; }
++.monaco-workbench .studio-steam-editors[hidden] { display: none; }
++.monaco-workbench .studio-steam-editor-active > .title > .title-actions { display: none; }
++
+ .monaco-workbench .studio-mode-loading {
+ 	position: absolute;
+ 	z-index: 2490;
+diff --git a/src/vs/workbench/browser/parts/studioMode.ts b/src/vs/workbench/browser/parts/studioMode.ts
+index 21f306003c2..9fd5db555a8 100644
+--- a/src/vs/workbench/browser/parts/studioMode.ts
++++ b/src/vs/workbench/browser/parts/studioMode.ts
+@@ -9,6 +9,27 @@ import { Emitter } from '../../../base/common/event.js';
+ import { Disposable, DisposableStore, toDisposable } from '../../../base/common/lifecycle.js';
+ import { CommandsRegistry, ICommandService } from '../../../platform/commands/common/commands.js';
+ import { INotificationService } from '../../../platform/notification/common/notification.js';
++import { toAction } from '../../../base/common/actions.js';
++import { IContextMenuService } from '../../../platform/contextview/browser/contextView.js';
++
++export const studioSteamToolDefinitions = [
++	{ id: 'kv', icon: 'database', view: 'studio.kv' },
++	{ id: 'knowledge', icon: 'book', view: 'studio.knowledge' },
++	{ id: 'info', icon: 'package', view: 'studio.projectInfo' },
++	{ id: 'assistant', icon: 'hubot', view: 'studio.developerAssistant' },
++	{ id: 'versions', icon: 'versions', view: 'studio.versions' },
++	{ id: 'trace', icon: 'history', view: 'studio.trace' },
++] as const;
++
++export interface StudioSteamTab { id: string; label: string; icon: string; dirty?: boolean }
++const workspaceChange = new Emitter<void>();
++export const studioSteamWorkspaceState = {
++	tabs: [] as StudioSteamTab[], active: undefined as string | undefined,
++	onDidChange: workspaceChange.event,
++	update(tabs: StudioSteamTab[], active: string | undefined): void {
++		this.tabs = tabs; this.active = active; workspaceChange.fire();
++	},
++};
+ 
+ export interface StudioModeState {
+ 	available: boolean;
+@@ -119,6 +140,80 @@ export class StudioModeLoading extends Disposable {
+ 	}
+ }
+ 
++/** One tab strip for retained project tools and native editors in the Steam workspace. */
++export class StudioSteamTabs extends Disposable {
++	private readonly element: HTMLElement;
++	private readonly list: HTMLElement;
++	private readonly add: HTMLButtonElement;
++	private readonly tabListeners = this._register(new DisposableStore());
++
++	constructor(parent: HTMLElement,
++		@ICommandService private readonly commands: ICommandService,
++		@INotificationService private readonly notifications: INotificationService,
++		@IContextMenuService private readonly contextMenu: IContextMenuService,
++	) {
++		super();
++		this.element = append(parent, $('.studio-steam-tabs'));
++		this.list = append(this.element, $('.studio-steam-tab-list', { role: 'tablist' }));
++		this.add = append(this.element, $('button.studio-steam-add-tab.codicon.codicon-add', { type: 'button', 'aria-haspopup': 'menu' })) as HTMLButtonElement;
++		this._register(addDisposableListener(this.add, 'click', () => this.contextMenu.showContextMenu({
++			getAnchor: () => this.add,
++			getActions: () => studioSteamToolDefinitions.map(tool => toAction({
++				id: tool.id, label: studioModeState.state.labels[tool.id] ?? tool.id,
++				class: `codicon codicon-${tool.icon}`,
++				checked: studioSteamWorkspaceState.tabs.some(tab => tab.id === tool.id),
++				run: () => this.run('studio.internalOpenSteamTool', tool.id),
++			})),
++		})));
++		this._register(studioSteamWorkspaceState.onDidChange(() => this.render()));
++		this._register(studioModeState.onDidChangeState(() => this.render()));
++		this.render();
++	}
++
++	private async run(command: string, id?: string, focusTab = false): Promise<void> {
++		try { await this.commands.executeCommand(command, id); } catch (error) { this.notifications.error(error); }
++		if (focusTab) {
++			(this.list.querySelector<HTMLButtonElement>('.active .studio-steam-tab-select') ?? this.add).focus();
++		}
++	}
++
++	private render(): void {
++		const focused = this.list.contains(getWindow(this.list).document.activeElement)
++			? (getWindow(this.list).document.activeElement as HTMLElement).closest<HTMLElement>('[data-tab]')?.dataset.tab : undefined;
++		this.tabListeners.clear(); clearNode(this.list);
++		const { tabs, active } = studioSteamWorkspaceState;
++		const labels = studioModeState.state.labels;
++		this.list.setAttribute('aria-label', labels.workspace ?? 'Tool Workspace');
++		this.add.title = labels.addTool ?? 'Open Tool'; this.add.setAttribute('aria-label', this.add.title);
++		if (!tabs.length) { append(this.list, $('span.studio-steam-empty-tabs', undefined, labels.tools ?? 'Open Tools')); }
++		for (const [index, tab] of tabs.entries()) {
++			const item = append(this.list, $('.studio-steam-tab', { 'data-tab': tab.id }));
++			item.classList.toggle('active', tab.id === active); item.classList.toggle('dirty', !!tab.dirty);
++			const button = append(item, $('button.studio-steam-tab-select', { type: 'button', role: 'tab', 'aria-selected': String(tab.id === active), title: tab.label })) as HTMLButtonElement;
++			button.tabIndex = tab.id === (active ?? tabs[0]?.id) ? 0 : -1;
++			append(button, $(`span.codicon.codicon-${tab.icon}`, { 'aria-hidden': 'true' }));
++			append(button, $('span.studio-steam-tab-label', undefined, tab.label));
++			const closeLabel = (labels.closeTab ?? 'Close {0}').replace('{0}', tab.label);
++			const close = append(item, $('button.studio-steam-tab-close.codicon.codicon-close', { type: 'button', 'aria-label': closeLabel, title: closeLabel })) as HTMLButtonElement;
++			this.tabListeners.add(addDisposableListener(button, 'click', () => { void this.run('studio.internalSelectSteamTab', tab.id); }));
++			this.tabListeners.add(addDisposableListener(close, 'click', () => { void this.run('studio.internalCloseSteamTab', tab.id); }));
++			this.tabListeners.add(addDisposableListener(item, 'auxclick', event => {
++				if (event.button === 1) { event.preventDefault(); void this.run('studio.internalCloseSteamTab', tab.id); }
++			}));
++			this.tabListeners.add(addDisposableListener(button, 'keydown', event => {
++				let next: number | undefined;
++				if (event.key === 'ArrowRight') { next = (index + 1) % tabs.length; }
++				else if (event.key === 'ArrowLeft') { next = (index + tabs.length - 1) % tabs.length; }
++				else if (event.key === 'Home') { next = 0; } else if (event.key === 'End') { next = tabs.length - 1; }
++				else if (event.key === 'Delete') { event.preventDefault(); void this.run('studio.internalCloseSteamTab', tab.id, true); }
++				if (next !== undefined) { event.preventDefault(); void this.run('studio.internalSelectSteamTab', tabs[next].id, true); }
++			}));
++			if (tab.id === focused) { button.focus(); }
++		}
++		this.list.querySelector('.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
++	}
++}
++
+ /** Native tool launcher; opening a card reveals the existing retained project view. */
+ export class StudioSteamTools extends Disposable {
+ 	readonly element: HTMLElement;
+@@ -143,7 +238,7 @@ export class StudioSteamTools extends Disposable {
+ 		append(content, $('h2', undefined, labels.tools ?? 'Open Tools'));
+ 		append(content, $('p', undefined, labels.toolsHint ?? ''));
+ 		const grid = append(content, $('.studio-steam-tools-grid'));
+-		for (const [id, icon] of [['kv', 'database'], ['knowledge', 'book'], ['info', 'package'], ['assistant', 'hubot'], ['versions', 'versions'], ['trace', 'history']] as const) {
++		for (const { id, icon } of studioSteamToolDefinitions) {
+ 			const button = append(grid, $('button.studio-steam-tool', { type: 'button', 'data-tool': id, title: labels[`${id}Hint`] ?? '' }));
+ 			append(button, $(`span.codicon.codicon-${icon}`, { 'aria-hidden': 'true' }));
+ 			append(button, $('span.studio-steam-tool-label', undefined, labels[id] ?? id));
+diff --git a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+index 80af2d84521..fe738a4d797 100644
+--- a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
++++ b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+@@ -12,6 +12,7 @@ import { CommandsRegistry, ICommandService } from '../../../../platform/commands
+ import { ConfigurationTarget, IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
+ import { ContextKeyExpr, IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
+ import { SyncDescriptor } from '../../../../platform/instantiation/common/descriptors.js';
++import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
+ import { INotificationService } from '../../../../platform/notification/common/notification.js';
+ import { Registry } from '../../../../platform/registry/common/platform.js';
+ import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
+@@ -25,6 +26,7 @@ import { EditorGroupLayout, GroupsArrangement, GroupsOrder, IEditorGroup, IEdito
+ import { IEditorService } from '../../../services/editor/common/editorService.js';
+ import { IWorkbenchLayoutService, Parts } from '../../../services/layout/browser/layoutService.js';
+ import { IViewsService } from '../../../services/views/common/viewsService.js';
++import { StudioSteamWorkspace } from './studioSteamWorkspace.js';
+ 
+ const TOOLS_CONTAINER = 'studio-steam-tools';
+ const TOOLS_VIEW = 'studio.steamTools';
+@@ -85,6 +87,7 @@ export class StudioModeContribution extends Disposable {
+ 	private readonly editorOptions = this._register(new MutableDisposable<IDisposable>());
+ 	private readonly toolLocations = this._register(new DisposableStore());
+ 	private readonly loading: StudioModeLoading;
++	private readonly workspace: StudioSteamWorkspace;
+ 	private snapshot: IdeLayout | undefined;
+ 	private ideEditor: { group: IEditorGroup; editor: EditorInput } | undefined;
+ 	private steam = false;
+@@ -104,9 +107,11 @@ export class StudioModeContribution extends Disposable {
+ 		@IStorageService private readonly storage: IStorageService,
+ 		@ICommandService private readonly commands: ICommandService,
+ 		@INotificationService notifications: INotificationService,
++		@IInstantiationService instantiation: IInstantiationService,
+ 	) {
+ 		super();
+ 		this.loading = this._register(new StudioModeLoading(layout.mainContainer, layout.getContainer(getWindow(layout.mainContainer), Parts.EDITOR_PART)));
++		this.workspace = this._register(instantiation.createInstance(StudioSteamWorkspace, layout.getContainer(getWindow(layout.mainContainer), Parts.AUXILIARYBAR_PART)!));
+ 		toolsTitle.value = studioModeState.state.labels.tools ?? toolsTitle.original;
+ 		this.snapshot = storage.getObject<IdeLayout>(SNAPSHOT_KEY, StorageScope.WORKSPACE);
+ 		this.requested = storage.get(MODE_KEY, StorageScope.WORKSPACE) === 'steam';
+@@ -115,6 +120,8 @@ export class StudioModeContribution extends Disposable {
+ 		this._register(CommandsRegistry.registerCommand('studio.internalEnterSteamMode', () => this.request(true)));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalOpenSteamTools', () => this.sequencer.queue(() => this.openTools())));
+ 		this._register(CommandsRegistry.registerCommand('studio.internalOpenSteamTool', (_accessor, id: string) => this.sequencer.queue(() => this.openTool(id))));
++		this._register(CommandsRegistry.registerCommand('studio.internalSelectSteamTab', (_accessor, id: string) => this.workspace.select(id)));
++		this._register(CommandsRegistry.registerCommand('studio.internalCloseSteamTab', (_accessor, id: string) => this.workspace.close(id)));
+ 		this._register(studioModeState.onDidChangeState(state => {
+ 			toolsTitle.value = state.labels.tools ?? toolsTitle.original;
+ 			if (!this.initialized || !state.available) {
+@@ -138,7 +145,10 @@ export class StudioModeContribution extends Disposable {
+ 			if (revision !== this.revision || this._store.isDisposed) { return; }
+ 			const next = this.requested;
+ 			const projectUri = studioModeState.state.projectUri;
+-			if (next === this.steam && (next ? this.projectReady : !this.snapshot)) { return; }
++			if (next === this.steam && (next ? this.projectReady : !this.snapshot)) {
++				if (!next) { await this.workspace.deactivate(this.groups.mainPart.activeGroup); }
++				return;
++			}
+ 			studioModeState.setMode(this.steam, true, next);
+ 			try {
+ 				if (next) {
+@@ -230,7 +240,7 @@ export class StudioModeContribution extends Disposable {
+ 		this.contextKeys.createKey<boolean>('studio.steamMode', false).set(true);
+ 		this.layout.mainContainer.classList.add('studio-steam-mode');
+ 		this.layout.setAuxiliaryBarMaximized(false);
+-		this.editorOptions.value = this.groups.enforcePartOptions({ showTabs: 'none' });
++		this.editorOptions.value = this.groups.mainPart.enforcePartOptions({ showTabs: 'none' });
+ 		const containers = new Set([toolsContainer, ...Object.values(toolViews).map(id => this.descriptors.getViewContainerByViewId(id))]);
+ 		for (const container of containers) {
+ 			if (container) { this.toolLocations.add(this.descriptors.overrideViewContainerLocation(container, ViewContainerLocation.AuxiliaryBar)); }
+@@ -240,28 +250,26 @@ export class StudioModeContribution extends Disposable {
+ 		this.groups.mainPart.arrangeGroups(GroupsArrangement.MAXIMIZE, this.groups.mainPart.getGroups(GroupsOrder.GRID_APPEARANCE)[0]);
+ 		for (const part of [Parts.ACTIVITYBAR_PART, Parts.SIDEBAR_PART, Parts.PANEL_PART]) { this.layout.setPartHidden(true, part); }
+ 		this.layout.setPartHidden(false, Parts.EDITOR_PART);
+-		await this.openTools();
++		await this.workspace.activate();
+ 		const width = this.storage.getNumber(STEAM_WIDTH_KEY, StorageScope.WORKSPACE, Math.round(this.layout.mainContainerDimension.width * .45));
+ 		this.layout.setSize(Parts.AUXILIARYBAR_PART, { width: Math.min(Math.max(280, width), Math.max(170, this.layout.mainContainerDimension.width - 320)), height: this.layout.getSize(Parts.AUXILIARYBAR_PART).height });
+ 	}
+ 
+ 	private async openTools(): Promise<void> {
+ 		if (!this.steam) { return; }
+-		await this.views.openView(TOOLS_VIEW, true);
++		await this.workspace.home();
+ 	}
+ 
+ 	private async openTool(id: string): Promise<void> {
+ 		if (!this.steam || !Object.hasOwn(toolViews, id)) { return; }
+-		const view = toolViews[id];
+-		const container = this.descriptors.getViewContainerByViewId(view);
+-		if (!container || !this.snapshot) { return; }
+-		await this.views.openView(view, true);
++		await this.workspace.openTool(id);
+ 	}
+ 
+ 	private async restoreIde(): Promise<void> {
+ 		const snapshot = this.snapshot;
+ 		if (!snapshot) { return; }
+ 		if (this.steam) { this.storage.store(STEAM_WIDTH_KEY, this.layout.getSize(Parts.AUXILIARYBAR_PART).width, StorageScope.WORKSPACE, StorageTarget.MACHINE); }
++		await this.workspace.deactivate(this.groups.mainPart.getGroup(snapshot.activeGroup) ?? this.groups.mainPart.activeGroup);
+ 		this.steam = false;
+ 		this.projectReady = false;
+ 		this.contextKeys.createKey('studio.steamMode', false).set(false);
+diff --git a/src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts b/src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts
+new file mode 100644
+index 00000000000..9e248a2377e
+--- /dev/null
++++ b/src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts
+@@ -0,0 +1,250 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { $, append, clearNode, getWindow } from '../../../../base/browser/dom.js';
++import { RunOnceScheduler } from '../../../../base/common/async.js';
++import { onUnexpectedError } from '../../../../base/common/errors.js';
++import { Disposable, DisposableStore, toDisposable } from '../../../../base/common/lifecycle.js';
++import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
++import { studioModeState, studioSteamToolDefinitions, studioSteamWorkspaceState, StudioSteamTab } from '../../../browser/parts/studioMode.js';
++import { EditorsOrder, IUntypedEditorInput } from '../../../common/editor.js';
++import { EditorInput } from '../../../common/editor/editorInput.js';
++import { IViewDescriptorService } from '../../../common/views.js';
++import { GroupsOrder, IEditorGroup, IEditorGroupsService, IEmbeddedEditorPart } from '../../../services/editor/common/editorGroupsService.js';
++import { IEditorGroupView } from '../../../browser/parts/editor/editor.js';
++import { registerEditorOpenTarget } from '../../../services/editor/common/editorOpenTarget.js';
++import { PreferredGroup } from '../../../services/editor/common/editorService.js';
++import { IWorkbenchLayoutService, Parts } from '../../../services/layout/browser/layoutService.js';
++import { IViewsService } from '../../../services/views/common/viewsService.js';
++import { WebviewInput } from '../../webviewPanel/browser/webviewEditorInput.js';
++
++const TABS_KEY = 'studio.steamWorkspaceTabs';
++const HOME_VIEW = 'studio.steamTools';
++interface SavedTabs { tools: string[]; active?: string }
++interface WorkspaceTab { id: string; tool?: typeof studioSteamToolDefinitions[number]; editor?: EditorInput; group?: IEditorGroup }
++
++/**
++ * The run surface belongs to the main editor part. All other editor inputs use a
++ * separate, registered editor part inside the tool area, alongside retained views.
++ * Routing happens before opening, including explicit groups and batched requests.
++ */
++export class StudioSteamWorkspace extends Disposable {
++	private part: IEmbeddedEditorPart | undefined;
++	private readonly partLifetime = this._register(new DisposableStore());
++	private readonly host: HTMLElement;
++	private readonly refresh = this._register(new RunOnceScheduler(() => this.syncEditors(), 0));
++	private tabs: WorkspaceTab[] = [];
++	private active: string | undefined;
++	private enabled = false;
++	private project: EditorInput | undefined;
++	private readonly editorIds = new WeakMap<EditorInput, string>();
++	private editorId = 0;
++	private savedActive: string | undefined;
++	private visibilityRevision = 0;
++
++	constructor(parent: HTMLElement,
++		@IEditorGroupsService private readonly groups: IEditorGroupsService,
++		@IViewsService private readonly views: IViewsService,
++		@IViewDescriptorService private readonly descriptors: IViewDescriptorService,
++		@IWorkbenchLayoutService private readonly layout: IWorkbenchLayoutService,
++		@IStorageService private readonly storage: IStorageService,
++	) {
++		super();
++		const saved = storage.getObject<SavedTabs>(TABS_KEY, StorageScope.WORKSPACE);
++		this.tabs = [...new Set(saved?.tools ?? [])].flatMap(id => {
++			const tool = studioSteamToolDefinitions.find(tool => tool.id === id);
++			return tool ? [{ id, tool }] : [];
++		});
++		this.savedActive = saved?.active;
++		this.host = append(parent, $('.part.editor.studio-steam-editors'));
++		this.host.hidden = true;
++		this._register(studioModeState.onDidChangeState(() => this.publish()));
++		this._register(this.views.onDidChangeViewVisibility(event => {
++			if (!this.enabled || !event.visible) { return; }
++			const tool = studioSteamToolDefinitions.find(tool => tool.view === event.id);
++			if (tool) {
++				if (!this.tabs.some(tab => tab.id === tool.id)) { this.tabs.push({ id: tool.id, tool }); }
++				++this.visibilityRevision; this.active = tool.id; this.publish();
++			}
++		}));
++		this._register(registerEditorOpenTarget((editor, preferred) => this.target(editor, preferred)));
++		const observer = new (getWindow(parent).ResizeObserver)(() => this.layoutEditors());
++		observer.observe(parent);
++		this._register(this.layout.onDidChangePartVisibility(() => this.layoutEditors()));
++		this._register(toDisposable(() => { observer.disconnect(); this.host.remove(); studioSteamWorkspaceState.update([], undefined); }));
++		// Restore saved inputs even if a removed project forces the next mode back to IDE.
++		if (storage.get('studio.workbenchMode', StorageScope.WORKSPACE) === 'steam') { this.ensurePart(); }
++	}
++
++	private ensurePart(): IEmbeddedEditorPart {
++		if (this.part) { return this.part; }
++		clearNode(this.host);
++		const part = this.part = this.partLifetime.add(this.groups.createEmbeddedEditorPart(this.host, 'workbench.parts.studioSteamEditors', studioModeState.state.labels.workspace ?? 'Tool Workspace'));
++		this.partLifetime.add(part.enforcePartOptions({ showTabs: 'none', enablePreview: false, closeEmptyGroups: false, editorActionsLocation: 'hidden' }));
++		const registerGroup = (group: IEditorGroup) => {
++			this.partLifetime.add((group as IEditorGroupView).onWillOpenEditor(event => {
++				if (this.enabled) { this.revealEditor(group.activeEditor ?? event.editor); }
++			}));
++			this.partLifetime.add(group.onDidModelChange(() => this.refresh.schedule()));
++			this.partLifetime.add(group.onDidActiveEditorChange(() => {
++				this.syncEditors();
++				if (this.enabled && group.activeEditor) { this.revealEditor(group.activeEditor); }
++			}));
++		};
++		part.groups.forEach(registerGroup);
++		this.partLifetime.add(part.onDidAddGroup(registerGroup));
++		this.partLifetime.add(part.onDidRemoveGroup(() => this.refresh.schedule()));
++		void part.whenReady.then(() => { if (this.part === part) { this.syncEditors(); } });
++		return part;
++	}
++
++	async activate(): Promise<void> {
++		const part = this.ensurePart();
++		await part.whenReady;
++		const restoreActive = this.savedActive;
++		this.enabled = true;
++		// Match the preferred project, rather than exempting every project webview.
++		this.project = this.groups.mainPart.groups.flatMap(group => group.getEditors(EditorsOrder.SEQUENTIAL)).find(editor => this.matchesProject(editor));
++		this.syncEditors();
++		if (restoreActive === 'editor' && part.activeGroup.activeEditor) {
++			this.revealEditor(part.activeGroup.activeEditor);
++		} else if (restoreActive && this.tabs.some(tab => tab.tool && tab.id === restoreActive)) {
++			await this.select(restoreActive);
++		} else { await this.home(); }
++	}
++
++	async deactivate(target: IEditorGroup): Promise<void> {
++		const part = this.part;
++		if (!part) { return; }
++		await part.whenReady;
++		this.enabled = false; ++this.visibilityRevision;
++		part.setVisible(false); this.host.hidden = true;
++		// Move inputs, without closing or saving them, so IDE can access every new and dirty editor.
++		for (const group of part.groups) {
++			if (!group.moveEditors(group.getEditors(EditorsOrder.SEQUENTIAL).map(editor => ({ editor, options: { preserveFocus: true } })), target)) {
++				this.enabled = true;
++				this.syncEditors();
++				throw new Error(studioModeState.state.labels.moveEditorsError ?? 'Unable to move tool workspace editors back to the IDE.');
++			}
++		}
++		this.part = undefined;
++		this.partLifetime.clear();
++		clearNode(this.host);
++		this.project = undefined;
++		this.syncEditors();
++	}
++
++	async home(): Promise<void> {
++		if (!this.enabled) { return; }
++		++this.visibilityRevision; this.active = undefined; this.publish();
++		await this.views.openView(HOME_VIEW, true);
++	}
++
++	async openTool(id: string): Promise<void> {
++		if (!this.enabled) { return; }
++		const tool = studioSteamToolDefinitions.find(tool => tool.id === id);
++		if (!tool || !this.descriptors.getViewContainerByViewId(tool.view)) { return; }
++		if (!this.tabs.some(tab => tab.id === id)) { this.tabs.push({ id, tool }); }
++		await this.select(id);
++	}
++
++	async select(id: string): Promise<void> {
++		if (!this.enabled) { return; }
++		const tab = this.tabs.find(tab => tab.id === id);
++		if (!tab) { return; }
++		++this.visibilityRevision; this.active = id; this.publish();
++		if (tab.tool) { await this.views.openView(tab.tool.view, true); }
++		else if (tab.editor && tab.group) {
++			this.revealEditor(tab.editor);
++			await tab.group.openEditor(tab.editor);
++			tab.group.focus();
++		}
++	}
++
++	async close(id: string): Promise<void> {
++		if (!this.enabled) { return; }
++		const index = this.tabs.findIndex(tab => tab.id === id), tab = this.tabs[index];
++		if (!tab) { return; }
++		const wasActive = this.active === id;
++		const next = this.tabs[index + 1]?.id ?? this.tabs[index - 1]?.id;
++		if (tab.editor && tab.group && !await tab.group.closeEditor(tab.editor, { preserveFocus: true })) { return; }
++		this.tabs = this.tabs.filter(tab => tab.id !== id);
++		if (wasActive) {
++			if (next && this.tabs.some(tab => tab.id === next)) { await this.select(next); } else { await this.home(); }
++		} else { this.publish(); }
++	}
++
++	private matchesProject(editor: EditorInput): boolean {
++		if (!(editor instanceof WebviewInput) || editor.webview.providedViewType !== 'studio.project') { return false; }
++		try { return JSON.parse(editor.webview.state ?? '{}').projectUri === studioModeState.state.projectUri; } catch { return false; }
++	}
++
++	private target(editor: EditorInput | IUntypedEditorInput, preferred: PreferredGroup | undefined): IEditorGroup | undefined {
++		if (!this.enabled) { return undefined; }
++		const explicit = typeof preferred === 'number' && preferred >= 0 ? this.groups.getGroup(preferred) : typeof preferred === 'object' ? preferred : undefined;
++		// Existing auxiliary windows keep their own scoped editor services.
++		if (explicit && this.groups.getPart(explicit).windowId !== this.groups.mainPart.windowId) { return undefined; }
++		const projectGroup = this.groups.mainPart.getGroups(GroupsOrder.GRID_APPEARANCE)[0];
++		if (editor instanceof EditorInput && (editor === this.project || this.matchesProject(editor)
++			|| !this.project && editor instanceof WebviewInput && editor.webview.providedViewType === 'studio.project')) {
++			this.project = editor;
++			return projectGroup;
++		}
++		if (explicit && this.part?.groups.includes(explicit)) { return explicit; }
++		return this.part?.activeGroup;
++	}
++
++	private id(editor: EditorInput): string {
++		let id = this.editorIds.get(editor);
++		if (!id) { id = `editor:${++this.editorId}`; this.editorIds.set(editor, id); }
++		return id;
++	}
++
++	private syncEditors(): void {
++		const editors = this.part?.groups.flatMap(group => group.getEditors(EditorsOrder.SEQUENTIAL).map(editor => ({ id: this.id(editor), editor, group }))) ?? [];
++		const current = new Map(editors.map(tab => [tab.id, tab]));
++		this.tabs = this.tabs.flatMap(tab => tab.tool ? [tab] : current.has(tab.id) ? [current.get(tab.id)!] : []);
++		for (const tab of editors) { if (!this.tabs.some(entry => entry.id === tab.id)) { this.tabs.push(tab); } }
++		if (this.active && !this.tabs.some(tab => tab.id === this.active)) {
++			this.active = this.part?.activeGroup.activeEditor ? this.id(this.part.activeGroup.activeEditor) : undefined;
++		}
++		this.publish();
++	}
++
++	private revealEditor(editor: EditorInput): void {
++		this.active = this.id(editor); this.publish();
++		const revision = ++this.visibilityRevision;
++		// Keep the native auxiliary part open underneath the embedded editor surface.
++		void this.views.openView(HOME_VIEW, false).then(() => {
++			if (revision === this.visibilityRevision) { this.layoutEditors(); }
++		}, onUnexpectedError);
++	}
++
++	private publish(): void {
++		const tabs: StudioSteamTab[] = this.tabs.map(tab => ({ id: tab.id,
++			label: tab.tool ? studioModeState.state.labels[tab.id] ?? tab.id : tab.editor!.getName(),
++			icon: tab.tool?.icon ?? 'file', dirty: tab.editor?.isDirty(),
++		}));
++		studioSteamWorkspaceState.update(tabs, this.active);
++		if (this.enabled) {
++			this.savedActive = this.active?.startsWith('editor:') ? 'editor' : this.active;
++			this.storage.store(TABS_KEY, { tools: this.tabs.filter(tab => tab.tool).map(tab => tab.id), active: this.savedActive }, StorageScope.WORKSPACE, StorageTarget.MACHINE);
++		}
++		this.layoutEditors();
++	}
++
++	private layoutEditors(): void {
++		const visible = this.enabled && !!this.active?.startsWith('editor:') && this.layout.isVisible(Parts.AUXILIARYBAR_PART);
++		this.host.hidden = !visible;
++		this.host.parentElement?.classList.toggle('studio-steam-editor-active', visible);
++		if (visible) {
++			const title = this.host.parentElement?.querySelector(':scope > .title');
++			if (title) { this.host.style.top = `${title.getBoundingClientRect().height}px`; }
++			const rect = this.host.getBoundingClientRect();
++			this.part?.layout(rect.width, rect.height, 0, 0);
++		}
++		this.part?.setVisible(visible);
++	}
++}
+diff --git a/src/vs/workbench/contrib/webviewPanel/browser/webviewEditor.ts b/src/vs/workbench/contrib/webviewPanel/browser/webviewEditor.ts
+index 479d0a39284..bae0631b06a 100644
+--- a/src/vs/workbench/contrib/webviewPanel/browser/webviewEditor.ts
++++ b/src/vs/workbench/contrib/webviewPanel/browser/webviewEditor.ts
+@@ -174,7 +174,9 @@ export class WebviewEditor extends EditorPane {
+ 		// Check if this editor is inside a modal editor
+ 		const modalEditorContainer = this._editorGroupsService.activeModalEditorPart?.modalElement;
+ 		const isModal = isHTMLElement(modalEditorContainer) && this._element && modalEditorContainer.contains(this._element);
+-		this._clippingContainer = isModal ? undefined : this._workbenchLayoutService.getContainer(this.window, Parts.EDITOR_PART);
++		// Embedded editor parts own their own clipping bounds, just like the main editor.
++		this._clippingContainer = isModal ? undefined : this._element?.closest<HTMLElement>('.part.editor')
++			?? this._workbenchLayoutService.getContainer(this.window, Parts.EDITOR_PART);
+ 
+ 		this._webviewVisibleDisposables.clear();
+ 
+diff --git a/src/vs/workbench/services/editor/common/editorGroupFinder.ts b/src/vs/workbench/services/editor/common/editorGroupFinder.ts
+index 138808be5f4..82c81a4bd5d 100644
+--- a/src/vs/workbench/services/editor/common/editorGroupFinder.ts
++++ b/src/vs/workbench/services/editor/common/editorGroupFinder.ts
+@@ -10,6 +10,7 @@ import { EditorInputWithOptions, isEditorInputWithOptions, IUntypedEditorInput,
+ import { EditorInput } from '../../../common/editor/editorInput.js';
+ import { IEditorGroup, GroupsOrder, preferredSideBySideGroupDirection, IEditorGroupsService, IModalEditorPart } from './editorGroupsService.js';
+ import { AUX_WINDOW_GROUP, AUX_WINDOW_GROUP_TYPE, MODAL_GROUP, MODAL_GROUP_TYPE, PreferredGroup, SIDE_GROUP, USE_MODAL_EDITOR_SETTING, UseModalEditorMode } from './editorService.js';
++import { getEditorOpenTarget } from './editorOpenTarget.js';
+ 
+ type FindGroupResult = Promise<[IEditorGroup, EditorActivation | undefined]> | [IEditorGroup, EditorActivation | undefined];
+ 
+@@ -28,6 +29,8 @@ export function findGroup(accessor: ServicesAccessor, editor: EditorInputWithOpt
+ export function findGroup(accessor: ServicesAccessor, editor: EditorInputWithOptions | IUntypedEditorInput, preferredGroup: PreferredGroup | undefined): FindGroupResult {
+ 	const editorGroupService = accessor.get(IEditorGroupsService);
+ 	const configurationService = accessor.get(IConfigurationService);
++	const target = getEditorOpenTarget(isEditorInputWithOptions(editor) ? editor.editor : editor, preferredGroup);
++	if (target) { return handleGroupActivation(target, editor, preferredGroup, editorGroupService); }
+ 
+ 	const group = doFindGroup(editor, preferredGroup, editorGroupService, configurationService);
+ 	if (group instanceof Promise) {
+diff --git a/src/vs/workbench/services/editor/common/editorGroupsService.ts b/src/vs/workbench/services/editor/common/editorGroupsService.ts
+index 0897af3ee2d..3b693d5533a 100644
+--- a/src/vs/workbench/services/editor/common/editorGroupsService.ts
++++ b/src/vs/workbench/services/editor/common/editorGroupsService.ts
+@@ -532,6 +532,12 @@ export interface IAuxiliaryEditorPart extends IEditorPart {
+ 	close(): boolean;
+ }
+ 
++/** An editor surface hosted by another workbench part in the same window. */
++export interface IEmbeddedEditorPart extends IEditorPart, IDisposable {
++	layout(width: number, height: number, top: number, left: number): void;
++	setVisible(visible: boolean): void;
++}
++
+ export interface IModalEditorPart extends IEditorPart {
+ 
+ 	/**
+@@ -680,6 +686,9 @@ export interface IEditorGroupsService extends IEditorGroupsContainer {
+ 	 */
+ 	createAuxiliaryEditorPart(options?: { bounds?: Partial<IRectangle>; compact?: boolean; alwaysOnTop?: boolean }): Promise<IAuxiliaryEditorPart>;
+ 
++	/** Creates a registered editor surface with its own scoped services and persisted editor state. */
++	createEmbeddedEditorPart(container: unknown /* HTMLElement */, id: string, label: string): IEmbeddedEditorPart;
++
+ 	/**
+ 	 * Creates a modal editor part that shows in a modal overlay
+ 	 * on top of the main workbench window.
+diff --git a/src/vs/workbench/services/editor/common/editorOpenTarget.ts b/src/vs/workbench/services/editor/common/editorOpenTarget.ts
+new file mode 100644
+index 00000000000..ee318fbad01
+--- /dev/null
++++ b/src/vs/workbench/services/editor/common/editorOpenTarget.ts
+@@ -0,0 +1,27 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { IDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
++import { IUntypedEditorInput } from '../../../common/editor.js';
++import { EditorInput } from '../../../common/editor/editorInput.js';
++import { IEditorGroup } from './editorGroupsService.js';
++import { PreferredGroup } from './editorService.js';
++
++/** A workbench layout can reserve an editor surface before group selection or model mutation. */
++type EditorOpenTarget = (editor: EditorInput | IUntypedEditorInput, preferredGroup: PreferredGroup | undefined) => IEditorGroup | undefined;
++const targets = new Set<EditorOpenTarget>();
++
++export function registerEditorOpenTarget(target: EditorOpenTarget): IDisposable {
++	targets.add(target);
++	return toDisposable(() => targets.delete(target));
++}
++
++export function getEditorOpenTarget(editor: EditorInput | IUntypedEditorInput, preferredGroup: PreferredGroup | undefined): IEditorGroup | undefined {
++	for (const target of targets) {
++		const group = target(editor, preferredGroup);
++		if (group) { return group; }
++	}
++	return undefined;
++}
+diff --git a/src/vs/workbench/services/editor/test/browser/editorGroupsService.test.ts b/src/vs/workbench/services/editor/test/browser/editorGroupsService.test.ts
+index 039f77f2b03..81531edccf0 100644
+--- a/src/vs/workbench/services/editor/test/browser/editorGroupsService.test.ts
++++ b/src/vs/workbench/services/editor/test/browser/editorGroupsService.test.ts
+@@ -23,6 +23,9 @@ import { IContextKeyService, RawContextKey } from '../../../../../platform/conte
+ import { Emitter } from '../../../../../base/common/event.js';
+ import { isEqual } from '../../../../../base/common/resources.js';
+ import { CloseAllEditorGroupsAction } from '../../../../browser/parts/editor/editorActions.js';
++import { $ } from '../../../../../base/browser/dom.js';
++import { IEditorService } from '../../common/editorService.js';
++import { EditorService } from '../../browser/editorService.js';
+ 
+ suite('EditorGroupsService', () => {
+ 
+@@ -72,6 +75,27 @@ suite('EditorGroupsService', () => {
+ 		return input;
+ 	}
+ 
++	test('embedded editor parts register groups and services independently in the main window', async () => {
++		const [parts, instantiation] = await createParts();
++		const editorService = disposables.add(instantiation.createInstance(EditorService, undefined));
++		instantiation.stub(IEditorService, editorService);
++		const container = $('.part.editor');
++		const embedded = disposables.add(parts.createEmbeddedEditorPart(container, 'test.embeddedEditors', 'Tools'));
++		await embedded.whenReady;
++		assert.strictEqual(embedded.windowId, parts.mainPart.windowId);
++		assert.strictEqual(parts.getPart(embedded.activeGroup.id), embedded);
++		assert.strictEqual(parts.getPart(container), embedded);
++		const scoped = parts.getScopedInstantiationService(embedded).invokeFunction(accessor => accessor.get(IEditorService));
++		assert.notStrictEqual(scoped, editorService);
++		const input = createTestFileEditorInput(URI.parse('test://embedded-editor'), TEST_EDITOR_INPUT_ID);
++		await scoped.openEditor(input, { pinned: true }, embedded.activeGroup);
++		assert.strictEqual(embedded.activeGroup.activeEditor, input);
++		assert.strictEqual(parts.mainPart.activeGroup.count, 0);
++		assert.ok(parts.getGroup(embedded.activeGroup.id));
++		embedded.dispose();
++		assert.strictEqual(parts.parts.some(part => part === embedded), false);
++	});
++
+ 	test('groups basics', async function () {
+ 		const instantiationService = workbenchInstantiationService({ contextKeyService: instantiationService => instantiationService.createInstance(MockScopableContextKeyService) }, disposables);
+ 		const [part] = await createPart(instantiationService);
+diff --git a/src/vs/workbench/services/editor/test/browser/editorService.test.ts b/src/vs/workbench/services/editor/test/browser/editorService.test.ts
+index 5fc13b0f653..4c6060d0666 100644
+--- a/src/vs/workbench/services/editor/test/browser/editorService.test.ts
++++ b/src/vs/workbench/services/editor/test/browser/editorService.test.ts
+@@ -29,6 +29,7 @@ import { IConfigurationService } from '../../../../../platform/configuration/com
+ import { PLAINTEXT_LANGUAGE_ID } from '../../../../../editor/common/languages/modesRegistry.js';
+ import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
+ import { IEditorPaneService } from '../../common/editorPaneService.js';
++import { registerEditorOpenTarget } from '../../common/editorOpenTarget.js';
+ 
+ suite('EditorService', () => {
+ 
+@@ -70,6 +71,47 @@ suite('EditorService', () => {
+ 		return disposables.add(new TestFileEditorInput(resource, typeId));
+ 	}
+ 
++	test('reserved editor surfaces route default, explicit and side opens before group mutation', async () => {
++		const [part, service] = await createEditorService();
++		const left = part.activeGroup;
++		const project = createTestFileEditorInput(URI.parse('test://reserved-project'), TEST_EDITOR_INPUT_ID);
++		await left.openEditor(project, { pinned: true });
++		const right = part.addGroup(left, GroupDirection.RIGHT);
++		disposables.add(registerEditorOpenTarget(editor => editor === project ? left : right));
++		for (const [index, preferred] of [undefined, left.id, left, SIDE_GROUP].entries()) {
++			const input = createTestFileEditorInput(URI.parse(`test://routed-${index}`), TEST_EDITOR_INPUT_ID);
++			assert.strictEqual((await service.openEditor(input, { pinned: true }, preferred))?.group, right);
++		}
++		assert.strictEqual(left.activeEditor, project);
++		assert.strictEqual(left.count, 1);
++		assert.strictEqual(right.count, 4);
++		assert.strictEqual(part.count, 2);
++	});
++
++	test('reserved editor surfaces route resolved and direct batches without mutating the reserved title or model', async () => {
++		const [part, service] = await createEditorService();
++		const left = part.activeGroup;
++		const project = createTestFileEditorInput(URI.parse('test://batch-project'), TEST_EDITOR_INPUT_ID);
++		await left.openEditor(project, { pinned: true });
++		const right = part.addGroup(left, GroupDirection.RIGHT);
++		disposables.add(registerEditorOpenTarget(editor => editor === project ? left : right));
++		const first = createTestFileEditorInput(URI.parse('test://batch-first'), TEST_EDITOR_INPUT_ID);
++		const second = createTestFileEditorInput(URI.parse('test://batch-second'), TEST_EDITOR_INPUT_ID);
++		await service.openEditors([{ editor: first, options: { pinned: true } }, { editor: second, options: { pinned: true } }], left);
++		assert.strictEqual(right.getEditors(EditorsOrder.SEQUENTIAL)[0], first);
++		assert.strictEqual(right.getEditors(EditorsOrder.SEQUENTIAL)[1], second);
++		const third = createTestFileEditorInput(URI.parse('test://batch-third'), TEST_EDITOR_INPUT_ID);
++		const fourth = createTestFileEditorInput(URI.parse('test://batch-fourth'), TEST_EDITOR_INPUT_ID);
++		await left.openEditors([{ editor: third, options: { pinned: true } }, { editor: fourth, options: { pinned: true } }]);
++		assert.strictEqual(right.getIndexOfEditor(fourth), right.getIndexOfEditor(third) + 1);
++		const resolved = await service.openEditor({ resource: URI.parse('test://resolved-batch'), options: { pinned: true } }, left);
++		assert.strictEqual(resolved?.group, right);
++		assert.strictEqual(left.activeEditor, project);
++		assert.strictEqual(left.count, 1);
++		assert.ok([first, second, third, fourth].every(editor => right.contains(editor)));
++		assert.strictEqual(right.count, 5);
++	});
++
+ 	test('openEditor() - basics', async () => {
+ 		const [, service, accessor] = await createEditorService();
+ 
+diff --git a/src/vs/workbench/test/browser/workbenchTestServices.ts b/src/vs/workbench/test/browser/workbenchTestServices.ts
+index e72aeed3424..89372481529 100644
+--- a/src/vs/workbench/test/browser/workbenchTestServices.ts
++++ b/src/vs/workbench/test/browser/workbenchTestServices.ts
+@@ -7,6 +7,7 @@ import { IContextMenuDelegate } from '../../../base/browser/contextmenu.js';
+ import { IDimension } from '../../../base/browser/dom.js';
+ import { Direction, IViewSize } from '../../../base/browser/ui/grid/grid.js';
+ import { mainWindow } from '../../../base/browser/window.js';
++import { IStudioStartService } from '../../browser/parts/editor/studioStart.js';
+ import { timeout } from '../../../base/common/async.js';
+ import { VSBuffer, VSBufferReadable, VSBufferReadableStream } from '../../../base/common/buffer.js';
+ import { CancellationToken } from '../../../base/common/cancellation.js';
+@@ -151,7 +152,7 @@ import { CodeEditorService } from '../../services/editor/browser/codeEditorServi
+ import { EditorPaneService } from '../../services/editor/browser/editorPaneService.js';
+ import { EditorResolverService } from '../../services/editor/browser/editorResolverService.js';
+ import { CustomEditorLabelService, ICustomEditorLabelService } from '../../services/editor/common/customEditorLabelService.js';
+-import { EditorGroupLayout, GroupDirection, GroupOrientation, GroupsArrangement, GroupsOrder, IAuxiliaryEditorPart, ICloseAllEditorsOptions, ICloseEditorOptions, ICloseEditorsFilter, IEditorDropTargetDelegate, IEditorGroup, IEditorGroupActivationEvent, IEditorGroupContextKeyProvider, IEditorGroupsContainer, IEditorGroupsService, IEditorPart, IEditorReplacement, IEditorWorkingSet, IEditorWorkingSetOptions, IFindGroupScope, IMergeGroupOptions, IModalEditorPart } from '../../services/editor/common/editorGroupsService.js';
++import { EditorGroupLayout, GroupDirection, GroupOrientation, GroupsArrangement, GroupsOrder, IAuxiliaryEditorPart, ICloseAllEditorsOptions, ICloseEditorOptions, ICloseEditorsFilter, IEditorDropTargetDelegate, IEditorGroup, IEditorGroupActivationEvent, IEditorGroupContextKeyProvider, IEditorGroupsContainer, IEditorGroupsService, IEditorPart, IEditorReplacement, IEditorWorkingSet, IEditorWorkingSetOptions, IFindGroupScope, IMergeGroupOptions, IModalEditorPart, IEmbeddedEditorPart } from '../../services/editor/common/editorGroupsService.js';
+ import { IEditorPaneService } from '../../services/editor/common/editorPaneService.js';
+ import { IEditorResolverService } from '../../services/editor/common/editorResolverService.js';
+ import { IEditorsChangeEvent, IEditorService, IRevertAllEditorsOptions, ISaveEditorsOptions, ISaveEditorsResult, IVisibleEditorsChangeEvent, PreferredGroup } from '../../services/editor/common/editorService.js';
+@@ -278,6 +279,7 @@ export function workbenchInstantiationService(
+ 	)));
+ 
+ 	instantiationService.stub(IProductService, TestProductService);
++	instantiationService.stub(IStudioStartService, { _serviceBrand: undefined, state: undefined, onDidChange: Event.None, setVisible() { } });
+ 	instantiationService.stub(IEditorWorkerService, new TestEditorWorkerService());
+ 	instantiationService.stub(IWorkingCopyService, disposables.add(new TestWorkingCopyService()));
+ 	const environmentService = overrides?.environmentService ? overrides.environmentService(instantiationService) : TestEnvironmentService;
+@@ -941,6 +943,8 @@ export class TestEditorGroupsService implements IEditorGroupsService {
+ 	readonly mainPart = this;
+ 	readonly activeModalEditorPart: IModalEditorPart | undefined = undefined;
+ 	registerEditorPart(part: any): IDisposable { return Disposable.None; }
++	createEmbeddedEditorPart(): IEmbeddedEditorPart { throw new Error('Method not implemented.'); }
++
+ 	createAuxiliaryEditorPart(): Promise<IAuxiliaryEditorPart> { throw new Error('Method not implemented.'); }
+ 	createModalEditorPart(): Promise<IModalEditorPart> { throw new Error('Method not implemented.'); }
+ }
+@@ -1692,6 +1696,8 @@ export class TestEditorPart extends MainEditorPart implements IEditorGroupsServi
+ 		return Disposable.None;
+ 	}
+ 
++	createEmbeddedEditorPart(): IEmbeddedEditorPart { throw new Error('Method not implemented.'); }
++
+ 	createAuxiliaryEditorPart(): Promise<IAuxiliaryEditorPart> {
+ 		throw new Error('Method not implemented.');
+ 	}

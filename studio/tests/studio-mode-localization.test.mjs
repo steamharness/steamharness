@@ -33,6 +33,10 @@ for (const language of ['en', 'zh-cn']) {
     assert.equal(labels.tools, language === 'en' ? 'Open Tools' : '打开工具');
     assert.equal(labels.switchToSteam, language === 'en' ? 'Switch to Steam Mode' : '切换到 Steam 模式');
     assert.equal(labels.loading, language === 'en' ? 'Loading project...' : '正在加载项目…');
+    assert.equal(labels.workspace, language === 'en' ? 'Tool Workspace' : '工具工作区');
+    assert.equal(labels.addTool, language === 'en' ? 'Open Tool' : '打开工具');
+    assert.equal(labels.closeTab, language === 'en' ? 'Close {0}' : '关闭 {0}');
+    assert.equal(labels.moveEditorsError, language === 'en' ? 'Unable to move tool workspace editors back to the IDE.' : '无法将工具工作区的编辑器移回 IDE。');
     for (const id of ['kv', 'knowledge', 'info', 'assistant', 'versions', 'trace']) {
       assert.ok(labels[id]); assert.ok(labels[`${id}Hint`]);
       assert.equal(/\p{Script=Han}/u.test(labels[id]), language !== 'en');

@@ -25,7 +25,16 @@ export async function activate(context) {
         else if (input.action === 'untitled') {
           const document = await vscode.workspace.openTextDocument({ content: input.text ?? '' }); await vscode.window.showTextDocument(document);
           result = document.uri.toString();
-        } else if (input.action === 'file') { await vscode.window.showTextDocument(vscode.Uri.file(input.path)); }
+        } else if (input.action === 'file') { await vscode.window.showTextDocument(vscode.Uri.file(input.path), { viewColumn: input.column }); }
+        else if (input.action === 'webview') {
+          const panel = vscode.window.createWebviewPanel('studio-test.generic', 'Workspace Probe', vscode.ViewColumn.One, { enableScripts: true, retainContextWhenHidden: true });
+          panel.webview.html = '<html><body><input id="workspace-probe" value="retained-tool-state"></body></html>';
+          context.subscriptions.push(panel);
+        }
+        else if (input.action === 'reload') {
+          // Acknowledge before the extension host is restarted by the native command.
+          setTimeout(() => { void vscode.commands.executeCommand('workbench.action.reloadWindow'); }, 50);
+        }
         else if (input.action === 'diff') {
           const a = await vscode.workspace.openTextDocument({ content: '' }), b = await vscode.workspace.openTextDocument({ content: '' });
           await vscode.commands.executeCommand('vscode.diff', a.uri, b.uri, 'Empty diff');
@@ -42,7 +51,8 @@ export async function activate(context) {
           result = { language: vscode.env.language, start: await vscode.commands.executeCommand('studio.internalGetStartState'),
             folders: vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath),
             active: vscode.window.activeTextEditor?.document.uri.toString(),
-            documents: vscode.workspace.textDocuments.map(document => ({ uri: document.uri.toString(), text: document.getText(), dirty: document.isDirty })) };
+            documents: vscode.workspace.textDocuments.map(document => ({ uri: document.uri.toString(), text: document.getText(), dirty: document.isDirty })),
+            groups: vscode.window.tabGroups.all.map(group => ({ column: group.viewColumn, active: group.isActive, tabs: group.tabs.map(tab => ({ label: tab.label, active: tab.isActive, dirty: tab.isDirty, uri: tab.input?.uri?.toString(), viewType: tab.input?.viewType })) })) };
         }
         response.end(JSON.stringify({ ok: true, result }));
       } catch (error) { response.writeHead(500).end(JSON.stringify({ error: error.stack })); }

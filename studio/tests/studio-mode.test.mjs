@@ -124,7 +124,12 @@ function fixture(t, saved = new Map()) {
   runInNewContext(compiled, { exports: module.exports, module, require: () => new Proxy(common, { get: (object, key) => key in object ? object[key] : service }) });
   const controller = new module.exports.StudioModeContribution(layout, groups,
     { openEditor: (editor, options, group) => { groupMaximized = false; return group.openEditor(editor); } }, views, descriptors, context, configuration, storage,
-    { executeCommand: async (command, ...args) => { if (command === 'studio.internalCancelSteamPreparation') { calls.push('cancelPreparation'); return f.cancelPreparation(); } calls.push('prepare'); return f.prepare(...args); } }, { error: error => errors.push(String(error)) });
+    { executeCommand: async (command, ...args) => { if (command === 'studio.internalCancelSteamPreparation') { calls.push('cancelPreparation'); return f.cancelPreparation(); } calls.push('prepare'); return f.prepare(...args); } }, { error: error => errors.push(String(error)) }, { createInstance: () => ({
+      activate: () => views.openView('studio.steamTools', true),
+      home: () => views.openView('studio.steamTools', true),
+      openTool: id => views.openView({ kv: 'studio.kv', knowledge: 'studio.knowledge', info: 'studio.projectInfo', assistant: 'studio.developerAssistant', versions: 'studio.versions', trace: 'studio.trace' }[id], true),
+      deactivate: async () => undefined, select() {}, close() {}, dispose() {},
+    }) });
   t.after(() => controller.dispose());
   return f;
 }

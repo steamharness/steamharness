@@ -35,6 +35,8 @@ export class StudioModeController {
       loading: t('Loading project...'),
       unavailable: t('Steam Mode is available for SteamHarness projects.'),
       tools: t('Open Tools'), toolsHint: t('Everything you need for your project, in one place.'),
+      workspace: t('Tool Workspace'), addTool: t('Open Tool'), closeTab: t('Close {0}'),
+      moveEditorsError: t('Unable to move tool workspace editors back to the IDE.'),
       kv: t('KV Storage'), kvHint: t('Browse and edit project data'),
       knowledge: t('Knowledge Base'), knowledgeHint: t('Manage documents and knowledge'),
       info: t('Project Information'), infoHint: t('View project details and configuration'),
