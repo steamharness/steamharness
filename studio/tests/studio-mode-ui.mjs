@@ -11,7 +11,7 @@ import { ROOT, assertRuntime, assertUpstream, exists } from '../scripts/distribu
 
 await assertRuntime();
 const upstream = await assertUpstream();
-const proof = path.join(ROOT, '.studio/studio-mode-ui');
+const proof = path.resolve(ROOT, process.env.STEAMHARNESS_UI_PROOF ?? '.studio/studio-mode-ui');
 await mkdir(proof, { recursive: true });
 const checks = [], errors = [];
 const check = message => { checks.push(message); console.log(`[OK] ${message}`); };
@@ -47,7 +47,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
   try {
     await mkdir(folder); await mkdir(extension, { recursive: true }); await mkdir(path.join(folder, '.vscode'));
     await writeFile(path.join(folder, '.vscode/settings.json'), JSON.stringify({ 'editor.editContext': false,
-      'window.autoDetectColorScheme': false, 'workbench.startupEditor': 'none', 'git.enabled': false }));
+      'window.autoDetectColorScheme': false, 'workbench.startupEditor': 'none', 'files.autoSave': 'off', 'git.enabled': false }));
     await writeFile(path.join(extension, 'package.json'), JSON.stringify({ name: 'mode-test', publisher: 'studio-test', version: '0.0.1',
       engines: { vscode: '^1.140.0' }, main: './extension.cjs', extensionKind: ['workspace'], activationEvents: ['onStartupFinished'] }));
     await build({ entryPoints: [path.join(ROOT, 'tests/start-page-ui-extension.mjs')], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], outfile: path.join(extension, 'extension.cjs') });
@@ -204,7 +204,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     });
     await steam.click(); await page.locator('.studio-steam-tools').waitFor({ timeout: 90_000 });
     await until(() => page.locator('.studio-mode-switcher').getAttribute('aria-busy'), value => value === 'false', 'Steam mode switch did not finish');
-    assert.equal(await page.locator('.studio-steam-tool').count(), 9);
+    assert.equal(await page.locator('.studio-steam-tool').count(), 10);
     const during = await partState();
     assert.equal(during.activitybar.visible, false); assert.equal(during.sidebar.visible, false); assert.equal(during.panel.visible, false);
     assert.equal(during.auxiliarybar.visible, true);
@@ -330,17 +330,17 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
 
     const tabList = page.locator('.studio-steam-tab-list');
     const toolTabs = tabList.locator('.studio-steam-tab:not([data-tab^="editor:"])');
-    assert.equal(await toolTabs.count(), 7);
+    assert.equal(await toolTabs.count(), 8);
     await page.locator('.studio-steam-tab[data-tab=kv] .studio-steam-tab-select').click();
     await page.locator('.studio-steam-tab[data-tab=info] .studio-steam-tab-close').click();
-    assert.equal(await toolTabs.count(), 6);
+    assert.equal(await toolTabs.count(), 7);
     await page.locator('.studio-steam-add-tab').click();
     // Native menus suppress mouse-up for their first 100ms to avoid accidental selections.
     await page.waitForTimeout(150);
     await page.locator('.context-view').getByText(language === 'en' ? 'Project Information' : '项目信息', { exact: true }).click();
-    await until(() => toolTabs.count(), value => value === 7, 'Add menu did not restore the closed tool tab');
+    await until(() => toolTabs.count(), value => value === 8, 'Add menu did not restore the closed tool tab');
     await command('studio.internalOpenSteamTool', 'kv');
-    assert.equal(await toolTabs.count(), 7);
+    assert.equal(await toolTabs.count(), 8);
     check(`${language}: tools use dynamic closable tabs and the add menu reopens tools without duplicate tabs`);
 
     const instanceList = page.locator('.studio-steam-instance-list');
@@ -447,13 +447,71 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     }, Boolean, 'Account content did not open in the tool workspace', 15_000);
     await accountFrame.locator('#login-email').click({ trial: true });
     await page.screenshot({ path: path.join(proof, `${language}-workspace-account.png`) });
-    const toolsFile = path.join(folder, 'tools-only.txt'); await writeFile(toolsFile, 'Opened explicitly in the first editor column.');
+    const toolsFile = path.join(project, 'tools-only.txt'); await writeFile(toolsFile, 'Opened explicitly in the first editor column.');
     await call({ action: 'file', path: toolsFile, column: 1 });
     const fileState = await assertProjectKept();
     await page.locator('.studio-steam-editors .view-line').first().click({ trial: true });
     assert.ok(fileState.groups.filter(group => group.column !== 1).some(group => group.tabs.some(tab => tab.uri === pathToFileURL(toolsFile).href)));
     const toolsGroups = () => page.locator('.studio-steam-editors .editor-group-container').count();
-    const fileTabs = tabList.locator('.studio-steam-tab').filter({ has: page.getByRole('tab', { name: 'tools-only.txt', exact: true }) });
+    const fileTabs = instanceList.locator('.studio-steam-instance').filter({ has: page.getByRole('tab', { name: 'tools-only.txt', exact: true }) });
+    const editorTab = tabList.locator('.studio-steam-tab[data-tab=editor]');
+    assert.equal(await editorTab.count(), 1);
+    assert.equal(await editorTab.getByRole('tab').innerText(), language === 'en' ? 'Editor' : '编辑器');
+    const codeSidebar = page.locator('.studio-steam-code-sidebar .part.sidebar');
+    await codeSidebar.waitFor();
+    await until(async () => {
+      const sidebar = await codeSidebar.boundingBox(), editor = await page.locator('.studio-steam-editors').boundingBox();
+      return sidebar && editor && sidebar.x >= editor.x + editor.width - 1 && sidebar.width >= 140 && sidebar.height > 600;
+    }, Boolean, 'Native Explorer must sit to the right of the code editor inside the tool workspace');
+    assert.ok(await codeSidebar.locator('.composite-bar-container .action-item').count() > 0);
+    const divider = page.locator('.studio-steam-editor-workspace > .monaco-split-view2 > .sash-container .monaco-sash.vertical');
+    const dividerRect = await divider.boundingBox(), originalSidebar = await codeSidebar.boundingBox();
+    await page.mouse.move(dividerRect.x + dividerRect.width / 2, dividerRect.y + dividerRect.height / 2);
+    await page.mouse.down(); await page.mouse.move(dividerRect.x - 40, dividerRect.y + dividerRect.height / 2, { steps: 8 }); await page.mouse.up();
+    await until(() => codeSidebar.boundingBox(), rect => rect.width > originalSidebar.width + 30, 'The native sidebar divider did not resize');
+    const sidebarWidth = (await codeSidebar.boundingBox()).width;
+    await command('workbench.files.action.showActiveFileInExplorer');
+    const explorerFile = codeSidebar.locator('.explorer-folders-view').getByText('tools-only.txt', { exact: true });
+    await explorerFile.waitFor();
+    await fileTabs.locator('.studio-steam-tab-close').click();
+    await until(() => fileTabs.count(), count => count === 0, 'The file did not close');
+    await frame.locator('#message').click();
+    await explorerFile.click();
+    await fileTabs.waitFor(); await assertProjectKept();
+    await until(() => fileTabs.getAttribute('class'), value => value.includes('active'), 'A single Explorer click must show its file even when the runtime had focus');
+    await fileTabs.getByRole('tab').click();
+    await until(async () => (await call({ action: 'state' })).active, value => value === pathToFileURL(toolsFile).href, 'Explorer did not activate the opened file in the extension host');
+    await call({ action: 'replace', text: 'Edited and saved from the Steam Editor.' });
+    await until(async () => (await call({ action: 'state' })).documents.find(document => document.uri === pathToFileURL(toolsFile).href), document => document?.dirty && document.text === 'Edited and saved from the Steam Editor.', 'The project file did not retain the unsaved edit');
+    const closingDirtyFile = fileTabs.locator('.studio-steam-tab-close').click();
+    const saveConfirmation = page.locator('.monaco-dialog-box');
+    await saveConfirmation.waitFor(); await page.keyboard.press('Escape'); await closingDirtyFile;
+    await saveConfirmation.waitFor({ state: 'detached' });
+    assert.equal(await fileTabs.count(), 1);
+    await command('workbench.action.files.save');
+    assert.equal(await readFile(toolsFile, 'utf8'), 'Edited and saved from the Steam Editor.');
+    await command('studio.internalOpenSteamTool', 'kv');
+    await command('workbench.action.findInFiles');
+    const searchInput = codeSidebar.locator('.search-widget .search-container textarea');
+    await until(() => searchInput.evaluate(input => input === document.activeElement), Boolean, 'The native Search command must retain focus inside the right sidebar');
+    await searchInput.fill('Edited and saved from the Steam Editor.'); await searchInput.press('Enter');
+    const searchFile = codeSidebar.locator('.results .filematch').getByText('tools-only.txt', { exact: true });
+    await searchFile.waitFor();
+    await fileTabs.locator('.studio-steam-tab-close').click();
+    await until(() => fileTabs.count(), count => count === 0, 'The file did not close before opening a search result');
+    await codeSidebar.locator('.results a.match').first().click();
+    await fileTabs.waitFor(); await assertProjectKept();
+    await command('workbench.files.action.showActiveFileInExplorer');
+    await page.locator('.studio-steam-tab[data-tab=kv] [role=tab]').click();
+    assert.equal(await codeSidebar.isVisible(), false);
+    await editorTab.getByRole('tab').click();
+    await fileTabs.waitFor(); await codeSidebar.waitFor();
+    await assertToolsToggle(); await codeSidebar.waitFor();
+    await until(() => codeSidebar.boundingBox(), rect => Math.abs(rect.width - sidebarWidth) < 2, `Hiding tools must preserve the resized sidebar width (${sidebarWidth})`);
+    await page.screenshot({ path: path.join(proof, `${language}-editor-explorer.png`) });
+    check(`${language}: Editor groups file tabs, opens project files from native Explorer and Search, saves edits, honors dirty-close cancellation and retains the sidebar across tools`);
+    await fileTabs.getByRole('tab').click();
+    await until(async () => (await call({ action: 'state' })).active, value => value === pathToFileURL(toolsFile).href, 'The source tab must have focus before editor commands');
     for (const action of ['splitEditorRight', 'splitEditorDown']) {
       await command(`workbench.action.${action}`);
       await until(toolsGroups, value => value === 2, 'Tool workspace did not split');
@@ -563,7 +621,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     assert.equal(await page.locator('html.studio-mode-transition').count(), 0);
     check(`${language}: reduced motion skips transition effects`);
     await call({ action: 'file', path: toolsFile, column: 1 });
-    await tabList.getByRole('tab', { name: 'tools-only.txt', exact: true }).waitFor();
+    await instanceList.getByRole('tab', { name: 'tools-only.txt', exact: true }).waitFor();
     await page.locator('.studio-steam-editors .view-line').first().click({ trial: true });
     assert.equal(await call({ action: 'closeTab', column: 1, viewType: 'studio.project' }), true);
     await until(() => page.frames().includes(frame), value => !value, 'Closing the runtime did not dispose its frame');
@@ -597,7 +655,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     bridge = await until(readReady, value => value.port || value.error, 'Studio extension restart timed out', 120_000);
     assert.equal(bridge.error, undefined, bridge.error);
     await until(() => steam.getAttribute('aria-pressed').catch(() => undefined), value => value === 'true', 'Saved Steam mode was not restored after reload', 120_000);
-    await tabList.getByRole('tab', { name: 'tools-only.txt', exact: true }).waitFor();
+    await instanceList.getByRole('tab', { name: 'tools-only.txt', exact: true }).waitFor();
     await page.locator('.studio-steam-editors .view-line').first().click({ trial: true });
     await command('studio.internalOpenSteamTool', 'kv');
     await until(() => instanceList.locator('.studio-steam-instance').count(), value => value === 2, 'Reload did not restore the KV instance');

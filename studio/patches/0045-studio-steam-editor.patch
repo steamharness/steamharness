@@ -1,0 +1,751 @@
+diff --git a/src/vs/sessions/browser/workbench.ts b/src/vs/sessions/browser/workbench.ts
+index fe3cf0a70fc04d4e8d055505eee5d6b8afbbf999..08d44ad947ab3dbdf4db7b4294b4205fd0cac968 100644
+--- a/src/vs/sessions/browser/workbench.ts
++++ b/src/vs/sessions/browser/workbench.ts
+@@ -2187,6 +2187,7 @@ export abstract class Workbench extends Disposable implements IAgentWorkbenchLay
+ 	}
+ 
+ 	setWindowChromeHidden(_hidden: boolean): void { /* This window has no embeddable chrome. */ }
++	createEmbeddedSideBar(): never { throw new Error('This window has no primary sidebar to embed.'); }
+ 
+ 	setPartHidden(hidden: boolean, part: Parts): void {
+ 		switch (part) {
+diff --git a/src/vs/workbench/browser/layout.ts b/src/vs/workbench/browser/layout.ts
+index dbedc8dcaf9f1cae3d973c97f436efd04e4f658d..6b67b7fca289aba8b71962ead5080f97079ef7fa 100644
+--- a/src/vs/workbench/browser/layout.ts
++++ b/src/vs/workbench/browser/layout.ts
+@@ -12,7 +12,7 @@ import { isWindows, isLinux, isMacintosh, isWeb, isIOS } from '../../base/common
+ import { EditorInputCapabilities, GroupIdentifier, isResourceEditorInput, IUntypedEditorInput, pathsToEditors } from '../common/editor.js';
+ import { SidebarPart } from './parts/sidebar/sidebarPart.js';
+ import { PanelPart } from './parts/panel/panelPart.js';
+-import { Position, Parts, PartOpensMaximizedOptions, IWorkbenchLayoutService, positionFromString, positionToString, partOpensMaximizedFromString, PanelAlignment, ActivityBarPosition, LayoutSettings, MULTI_WINDOW_PARTS, SINGLE_WINDOW_PARTS, ZenModeSettings, EditorTabsMode, EditorActionsLocation, shouldShowCustomTitleBar, isHorizontal, isMultiWindowPart, IPartVisibilityChangeEvent, isFloatingTopEdgeExposed, ModernUIDensity } from '../services/layout/browser/layoutService.js';
++import { Position, Parts, PartOpensMaximizedOptions, IWorkbenchLayoutService, IEmbeddedSideBar, positionFromString, positionToString, partOpensMaximizedFromString, PanelAlignment, ActivityBarPosition, LayoutSettings, MULTI_WINDOW_PARTS, SINGLE_WINDOW_PARTS, ZenModeSettings, EditorTabsMode, EditorActionsLocation, shouldShowCustomTitleBar, isHorizontal, isMultiWindowPart, IPartVisibilityChangeEvent, isFloatingTopEdgeExposed, ModernUIDensity } from '../services/layout/browser/layoutService.js';
+ import { isTemporaryWorkspace, IWorkspaceContextService, WorkbenchState } from '../../platform/workspace/common/workspace.js';
+ import { IStorageService, StorageScope, StorageTarget } from '../../platform/storage/common/storage.js';
+ import { IConfigurationChangeEvent, IConfigurationService, isConfigured } from '../../platform/configuration/common/configuration.js';
+@@ -27,6 +27,7 @@ import { IEditorService } from '../services/editor/common/editorService.js';
+ import { EditorGroupLayout, GroupActivationReason, GroupOrientation, GroupsOrder, IEditorGroupsService } from '../services/editor/common/editorGroupsService.js';
+ import { SerializableGrid, ISerializableView, ISerializedGrid, Orientation, ISerializedNode, ISerializedLeafNode, Direction, IViewSize, Sizing } from '../../base/browser/ui/grid/grid.js';
+ import { Part } from './part.js';
++import { PartHost } from './partHost.js';
+ import { IStatusbarService } from '../services/statusbar/browser/statusbar.js';
+ import { IFileService } from '../../platform/files/common/files.js';
+ import { isCodeEditor } from '../../editor/browser/editorBrowser.js';
+@@ -287,7 +288,8 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 	private titleBarPartView!: ISerializableView;
+ 	private bannerPartView!: ISerializableView;
+ 	private activityBarPartView!: ISerializableView;
+-	private sideBarPartView!: ISerializableView;
++	private sideBarPartView!: PartHost;
++	private embeddedSideBar: { visible: boolean; requestVisibility: (visible: boolean) => void } | undefined;
+ 	private panelPartView!: ISerializableView;
+ 	private auxiliaryBarPartView!: ISerializableView;
+ 	private editorPartView!: ISerializableView;
+@@ -1272,6 +1274,10 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 		return part;
+ 	}
+ 
++	private getPartView(key: Parts): ISerializableView {
++		return key === Parts.SIDEBAR_PART ? this.sideBarPartView : this.getPart(key);
++	}
++
+ 	registerNotifications(delegate: { onDidChangeNotificationsVisibility: Event<boolean> }): void {
+ 		this._register(delegate.onDidChangeNotificationsVisibility(visible => this._onDidChangeNotificationsVisibility.fire(visible)));
+ 	}
+@@ -1375,7 +1381,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 					this.workbenchGrid.isViewVisible(this.titleBarPartView) :
+ 					this.shouldShowTitleBar();
+ 			case Parts.SIDEBAR_PART:
+-				return !this.stateModel.getRuntimeValue(LayoutStateKeys.SIDEBAR_HIDDEN);
++				return this.embeddedSideBar?.visible ?? !this.stateModel.getRuntimeValue(LayoutStateKeys.SIDEBAR_HIDDEN);
+ 			case Parts.PANEL_PART:
+ 				return !this.stateModel.getRuntimeValue(LayoutStateKeys.PANEL_HIDDEN);
+ 			case Parts.AUXILIARYBAR_PART:
+@@ -1656,7 +1662,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 		// View references for all parts
+ 		this.titleBarPartView = titleBar;
+ 		this.bannerPartView = bannerPart;
+-		this.sideBarPartView = sideBar;
++		this.sideBarPartView = this._register(new PartHost(sideBar));
+ 		this.activityBarPartView = activityBar;
+ 		this.editorPartView = editorPart;
+ 		this.panelPartView = panelPart;
+@@ -1821,11 +1827,11 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 	}
+ 
+ 	getSize(part: Parts): IViewSize {
+-		return this.workbenchGrid.getViewSize(this.getPart(part));
++		return this.workbenchGrid.getViewSize(this.getPartView(part));
+ 	}
+ 
+ 	setSize(part: Parts, size: IViewSize): void {
+-		this.workbenchGrid.resizeView(this.getPart(part), size);
++		this.workbenchGrid.resizeView(this.getPartView(part), size);
+ 	}
+ 
+ 	resizePart(part: Parts, sizeChangeWidth: number, sizeChangeHeight: number): void {
+@@ -1948,6 +1954,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 	}
+ 
+ 	private setSideBarHidden(hidden: boolean): void {
++		if (this.embeddedSideBar) { this.embeddedSideBar.requestVisibility(!hidden); return; }
+ 		if (!hidden && this.setAuxiliaryBarMaximized(false) && this.isVisible(Parts.SIDEBAR_PART)) {
+ 			return; // return: leaving maximised auxiliary bar made this part visible
+ 		}
+@@ -2361,6 +2368,39 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 		}
+ 	}
+ 
++	createEmbeddedSideBar(container: HTMLElement, onDidRequestVisibility: (visible: boolean) => void): IEmbeddedSideBar {
++		if (this.embeddedSideBar) { throw new Error('The primary sidebar already has an embedded host.'); }
++		this.setSideBarHidden(true);
++		const sidebar = this.getPart(Parts.SIDEBAR_PART) as SidebarPart;
++		const host: NonNullable<Layout['embeddedSideBar']> = this.embeddedSideBar = { visible: false, requestVisibility: onDidRequestVisibility };
++		const mount = this.sideBarPartView.mount(container);
++		sidebar.setEmbedded(true);
++		sidebar.element.hidden = true;
++		const setVisible = (visible: boolean) => {
++			if (this.embeddedSideBar !== host || host.visible === visible) { return; }
++			host.visible = visible;
++			sidebar.element.hidden = !visible;
++			if (!visible) { this.paneCompositeService.hideActivePaneComposite(ViewContainerLocation.Sidebar); }
++			else if (!this.paneCompositeService.getActivePaneComposite(ViewContainerLocation.Sidebar)) {
++				const id = this.paneCompositeService.getLastActivePaneCompositeId(ViewContainerLocation.Sidebar);
++				if (id) { void this.paneCompositeService.openPaneComposite(id, ViewContainerLocation.Sidebar, false); }
++			}
++			this._onDidChangePartVisibility.fire({ partId: Parts.SIDEBAR_PART, visible });
++		};
++		return {
++			setVisible,
++			layout: (width, height) => { if (host.visible) { sidebar.layout(width, height, 0, 0); } },
++			dispose: () => {
++				if (this.embeddedSideBar !== host) { return; }
++				setVisible(false);
++				this.embeddedSideBar = undefined;
++				sidebar.element.hidden = false;
++				sidebar.setEmbedded(false);
++				mount.dispose();
++			},
++		};
++	}
++
+ 	toggleSecondarySideBar(): void {
+ 		const visible = !this.isSecondarySideBarVisible();
+ 		this.setPartHidden(!visible, Parts.AUXILIARYBAR_PART);
+@@ -2542,7 +2582,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 			return undefined;
+ 		}
+ 
+-		const neighborViews = this.workbenchGrid.getNeighborViews(this.getPart(part), direction, false);
++		const neighborViews = this.workbenchGrid.getNeighborViews(this.getPartView(part), direction, false);
+ 
+ 		if (!neighborViews) {
+ 			return undefined;
+@@ -2551,7 +2591,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 		for (const neighborView of neighborViews) {
+ 			const neighborPart =
+ 				[Parts.ACTIVITYBAR_PART, Parts.EDITOR_PART, Parts.PANEL_PART, Parts.AUXILIARYBAR_PART, Parts.SIDEBAR_PART, Parts.STATUSBAR_PART, Parts.TITLEBAR_PART]
+-					.find(partId => this.getPart(partId) === neighborView && this.isVisible(partId, mainWindow));
++					.find(partId => this.getPartView(partId) === neighborView && this.isVisible(partId, mainWindow));
+ 
+ 			if (neighborPart !== undefined) {
+ 				return neighborPart;
+diff --git a/src/vs/workbench/browser/partHost.ts b/src/vs/workbench/browser/partHost.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..f5432a8794224f5a2a7ac599687a6cee53c1b747
+--- /dev/null
++++ b/src/vs/workbench/browser/partHost.ts
+@@ -0,0 +1,64 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { $ } from '../../base/browser/dom.js';
++import { IBoundarySashes } from '../../base/browser/ui/sash/sash.js';
++import { ISerializableView, IViewSize } from '../../base/browser/ui/grid/grid.js';
++import { Emitter } from '../../base/common/event.js';
++import { Disposable, IDisposable, toDisposable } from '../../base/common/lifecycle.js';
++import { Part } from './part.js';
++
++/** Keeps a stable grid leaf when a native part is temporarily hosted in another workspace. */
++export class PartHost extends Disposable implements ISerializableView {
++
++	readonly element = $('.workbench-part-host', { style: 'width:100%;height:100%' });
++	private embedded = false;
++	private sashes: IBoundarySashes = {};
++	private readonly change = this._register(new Emitter<IViewSize | undefined>());
++	readonly onDidChange = this.change.event;
++
++	constructor(private readonly part: Part & ISerializableView) {
++		super();
++		this.element.append(part.element);
++		this._register(part.onDidChange(size => { if (!this.embedded) { this.change.fire(size); } }));
++	}
++
++	get minimumWidth(): number { return this.embedded ? 0 : this.part.minimumWidth; }
++	get maximumWidth(): number { return this.embedded ? 0 : this.part.maximumWidth; }
++	get minimumHeight(): number { return this.embedded ? 0 : this.part.minimumHeight; }
++	get maximumHeight(): number { return this.embedded ? 0 : this.part.maximumHeight; }
++	get priority() { return this.part.priority; }
++	get snap() { return this.part.snap; }
++	get preferredWidth() { return this.part.preferredWidth; }
++
++	layout(width: number, height: number, top: number, left: number): void {
++		if (!this.embedded) { this.part.layout(width, height, top, left); }
++	}
++
++	setVisible(visible: boolean): void {
++		if (!this.embedded) { this.part.setVisible(visible); }
++	}
++
++	setBoundarySashes(sashes: IBoundarySashes): void {
++		this.sashes = sashes;
++		if (!this.embedded) { this.part.setBoundarySashes?.(sashes); }
++	}
++
++	mount(container: HTMLElement): IDisposable {
++		if (this.embedded) { throw new Error('The native part already has an embedded host.'); }
++		this.embedded = true;
++		container.append(this.part.element);
++		this.part.setBoundarySashes?.({});
++		this.change.fire(undefined);
++		return toDisposable(() => {
++			this.element.append(this.part.element);
++			this.embedded = false;
++			this.part.setBoundarySashes?.(this.sashes);
++			this.change.fire(undefined);
++		});
++	}
++
++	toJSON(): object { return this.part.toJSON(); }
++}
+diff --git a/src/vs/workbench/browser/parts/auxiliarybar/auxiliaryBarPart.ts b/src/vs/workbench/browser/parts/auxiliarybar/auxiliaryBarPart.ts
+index c38cb2a006c19d9f2b6de92f133e8e66697e43a6..8c78b9329b551eb01495da792214b12e109a0a4a 100644
+--- a/src/vs/workbench/browser/parts/auxiliarybar/auxiliaryBarPart.ts
++++ b/src/vs/workbench/browser/parts/auxiliarybar/auxiliaryBarPart.ts
+@@ -103,7 +103,7 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
+ 			Parts.AUXILIARYBAR_PART,
+ 			{
+ 				hasTitle: true,
+-				titleHeight: () => studioModeState.steam ? (studioSteamWorkspaceState.instances.length ? 80 : 40) : undefined,
++				titleHeight: () => studioModeState.steam ? (studioSteamWorkspaceState.instances.length || studioSteamWorkspaceState.tool === 'editor' ? 80 : 40) : undefined,
+ 				trailingSeparator: true,
+ 				borderWidth: () => (this.getColor(SIDE_BAR_BORDER) || this.getColor(contrastBorder)) ? 1 : 0,
+ 			},
+@@ -148,7 +148,7 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
+ 		}));
+ 		let hasInstances = false;
+ 		this._register(studioSteamWorkspaceState.onDidChange(() => {
+-			const visible = studioSteamWorkspaceState.instances.length > 0;
++			const visible = studioSteamWorkspaceState.instances.length > 0 || studioSteamWorkspaceState.tool === 'editor';
+ 			if (visible !== hasInstances) { hasInstances = visible; relayoutSteamNavigation(); }
+ 		}));
+ 
+diff --git a/src/vs/workbench/browser/parts/media/studioMode.css b/src/vs/workbench/browser/parts/media/studioMode.css
+index 4dc8ed205e9c74085dd2b3deb6c4899982667ce4..69466409ea2185ccb9428b31a48ef970182139d9 100644
+--- a/src/vs/workbench/browser/parts/media/studioMode.css
++++ b/src/vs/workbench/browser/parts/media/studioMode.css
+@@ -172,7 +172,7 @@
+ .monaco-workbench .studio-steam-tabs button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+ .monaco-workbench.studio-steam-mode .part.auxiliarybar { position: relative; }
+ /* This part shares the auxiliary card; it must not inherit main-editor floating margins. */
+-.monaco-workbench .part.auxiliarybar > .part.editor.studio-steam-editors {
++.monaco-workbench .part.auxiliarybar > .studio-steam-editor-workspace {
+ 	position: absolute;
+ 	inset: var(--vscode-spacing-size400) 0 0;
+ 	margin: 0;
+@@ -182,7 +182,34 @@
+ 	z-index: auto;
+ 	background: var(--vscode-editor-background);
+ }
+-.monaco-workbench .part.auxiliarybar > .studio-steam-editors > .content { border-radius: 0; }
++.monaco-workbench .studio-steam-editor-workspace .studio-steam-code-pane,
++.monaco-workbench .studio-steam-editor-workspace .studio-steam-code-sidebar { height: 100%; position: relative; }
++.monaco-workbench .studio-steam-editor-workspace .part.editor.studio-steam-editors {
++	position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; border: 0; border-radius: 0; z-index: auto;
++}
++.monaco-workbench .studio-steam-editors > .content { border-radius: 0; }
++.monaco-workbench .studio-steam-code-sidebar > .part.sidebar {
++	width: 100%; height: 100% !important; margin: 0; border: 0; border-radius: 0;
++	border-left: var(--vscode-strokeThickness) solid var(--vscode-sideBar-border, var(--vscode-widget-border, transparent));
++}
++.monaco-workbench .studio-steam-code-sidebar .part.sidebar > :is(.title, .header) { -webkit-app-region: drag; }
++.monaco-workbench .studio-steam-code-sidebar :is(.composite-bar-container, .title-actions, .title-label) { -webkit-app-region: no-drag; }
++.monaco-workbench .studio-steam-code-empty {
++	display: flex; flex-direction: column; align-items: center; justify-content: center;
++	height: 100%; padding: var(--vscode-spacing-size240); box-sizing: border-box;
++	text-align: center; color: var(--vscode-descriptionForeground); user-select: text; -webkit-user-select: text;
++}
++.monaco-workbench .studio-steam-code-empty button {
++	color: var(--vscode-button-foreground); background: var(--vscode-button-background);
++	border: var(--vscode-strokeThickness) solid var(--vscode-button-border, transparent);
++	border-radius: var(--vscode-cornerRadius-small); padding: var(--vscode-spacing-size60) var(--vscode-spacing-size120);
++	font: inherit; cursor: pointer;
++}
++.monaco-workbench .studio-steam-code-empty button:hover { background: var(--vscode-button-hoverBackground); }
++.monaco-workbench .studio-steam-code-empty button:focus-visible { outline: var(--vscode-strokeThickness) solid var(--vscode-focusBorder); outline-offset: 2px; }
++.monaco-workbench .studio-steam-code-empty[hidden],
++.monaco-workbench .studio-steam-code-sidebar .part.sidebar[hidden],
++.monaco-workbench .studio-steam-editor-workspace[hidden] { display: none; }
+ .monaco-workbench .studio-steam-editor-active > .content { visibility: hidden; }
+ .monaco-workbench .studio-steam-editors[hidden] { display: none; }
+ .monaco-workbench .studio-steam-editor-active > .title > .title-actions { display: none; }
+@@ -395,6 +422,10 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
+ .monaco-workbench .studio-steam-instance .studio-steam-tab-select { justify-content: flex-start; }
+ .monaco-workbench .studio-steam-instance .studio-steam-tab-close { flex-shrink: 0; width: var(--vscode-spacing-size160); padding: 0; opacity: 0; font-size: var(--vscode-codiconFontSize-compact); }
+ .monaco-workbench .studio-steam-instance:is(.active, :hover, :focus-within) .studio-steam-tab-close { opacity: 1; }
++.monaco-workbench .studio-steam-instance.dirty .studio-steam-tab-close { opacity: 1; }
++.monaco-workbench .studio-steam-instance.dirty:not(:hover):not(:focus-within) .studio-steam-tab-close::before {
++	content: ''; display: inline-block; width: var(--vscode-spacing-size60); height: var(--vscode-spacing-size60); border-radius: var(--vscode-cornerRadius-circle); background: currentColor;
++}
+ .monaco-workbench .studio-steam-instances :is(.studio-steam-new-instance, .studio-steam-instance-actions) { flex-shrink: 0; width: var(--vscode-spacing-size240); height: var(--vscode-spacing-size240); padding: 0; border-radius: var(--vscode-cornerRadius-small); }
+ .monaco-workbench .studio-steam-instances .studio-steam-new-instance { background: color-mix(in srgb, var(--vscode-foreground) 6%, var(--vscode-sideBar-background, var(--vscode-editor-background))); }
+ .monaco-workbench .studio-steam-instances :is(.studio-steam-new-instance, .studio-steam-instance-actions, .studio-steam-tab-close):hover { background: var(--vscode-toolbar-hoverBackground); }
+diff --git a/src/vs/workbench/browser/parts/paneCompositePart.ts b/src/vs/workbench/browser/parts/paneCompositePart.ts
+index 7626411fdee04db8044b47b8efb8b75eab589e12..d53ce07924a64e25f1a4eb199cf86e0ff3978ff3 100644
+--- a/src/vs/workbench/browser/parts/paneCompositePart.ts
++++ b/src/vs/workbench/browser/parts/paneCompositePart.ts
+@@ -107,6 +107,7 @@ export interface IPaneCompositePart extends IView {
+ }
+ 
+ export abstract class AbstractPaneCompositePart extends CompositePart<PaneComposite> implements IPaneCompositePart {
++	protected embedded = false;
+ 
+ 	private static readonly MIN_COMPOSITE_BAR_WIDTH = 50;
+ 
+@@ -678,7 +679,7 @@ export abstract class AbstractPaneCompositePart extends CompositePart<PaneCompos
+ 	 * margin, so its width inset is larger on that side.
+ 	 */
+ 	private getFloatingInset(): { width: number; height: number; verticalMargin: number } {
+-		if (!this.layoutService.isFloatingPanelsEnabled()) {
++		if (this.embedded || !this.layoutService.isFloatingPanelsEnabled()) {
+ 			return { width: 0, height: 0, verticalMargin: 0 };
+ 		}
+ 
+diff --git a/src/vs/workbench/browser/parts/sidebar/sidebarPart.ts b/src/vs/workbench/browser/parts/sidebar/sidebarPart.ts
+index cd93a447d1c25441de5df4e4091e2fefc24dc3df..733030278d151a25996c616ecbd67ffa41a74f00 100644
+--- a/src/vs/workbench/browser/parts/sidebar/sidebarPart.ts
++++ b/src/vs/workbench/browser/parts/sidebar/sidebarPart.ts
+@@ -164,6 +164,12 @@ export class SidebarPart extends AbstractPaneCompositePart {
+ 		this.rememberActivityBarVisiblePosition();
+ 	}
+ 
++	/** Retain native view containers while presenting their activity tabs in a nested workspace. */
++	setEmbedded(embedded: boolean): void {
++		this.embedded = embedded;
++		this.onDidChangeActivityBarLocation();
++	}
++
+ 	override updateStyles(): void {
+ 		super.updateStyles();
+ 
+@@ -246,6 +252,7 @@ export class SidebarPart extends AbstractPaneCompositePart {
+ 	}
+ 
+ 	protected shouldShowCompositeBar(): boolean {
++		if (this.embedded) { return true; }
+ 		const activityBarPosition = this.configurationService.getValue<ActivityBarPosition>(LayoutSettings.ACTIVITY_BAR_LOCATION);
+ 		if (activityBarPosition !== ActivityBarPosition.TOP && activityBarPosition !== ActivityBarPosition.BOTTOM) {
+ 			return false;
+@@ -275,6 +282,7 @@ export class SidebarPart extends AbstractPaneCompositePart {
+ 	}
+ 
+ 	protected getCompositeBarPosition(): CompositeBarPosition {
++		if (this.embedded) { return CompositeBarPosition.TOP; }
+ 		const activityBarPosition = this.configurationService.getValue<ActivityBarPosition>(LayoutSettings.ACTIVITY_BAR_LOCATION);
+ 		switch (activityBarPosition) {
+ 			case ActivityBarPosition.TOP: return CompositeBarPosition.TOP;
+diff --git a/src/vs/workbench/browser/parts/studioMode.ts b/src/vs/workbench/browser/parts/studioMode.ts
+index bc89f4f368c93dfba42fcc67af9a7279f8353692..d381737acbd0e55d10d908a7d597aa6d843c08f5 100644
+--- a/src/vs/workbench/browser/parts/studioMode.ts
++++ b/src/vs/workbench/browser/parts/studioMode.ts
+@@ -22,6 +22,7 @@ export const studioWindowChrome = { active: false, projectUri: undefined as stri
+ CommandsRegistry.registerCommand('studio.internalGetWindowChrome', () => ({ ...studioWindowChrome }));
+ 
+ export const studioSteamToolDefinitions = [
++	{ id: 'editor', icon: 'code', editor: true },
+ 	{ id: 'kv', icon: 'database', view: 'studio.kv' },
+ 	{ id: 'knowledge', icon: 'book', view: 'studio.knowledge' },
+ 	{ id: 'info', icon: 'package', view: 'studio.projectInfo' },
+@@ -239,7 +240,7 @@ export class StudioSteamTabs extends Disposable {
+ 			getActions: () => studioSteamToolDefinitions.map(tool => toAction({
+ 				id: tool.id, label: studioModeState.state.labels[tool.id] ?? tool.id,
+ 				class: `codicon codicon-${tool.icon}`,
+-				checked: 'view' in tool ? studioSteamWorkspaceState.tabs.some(tab => tab.id === tool.id) : undefined,
++				checked: !('command' in tool) ? studioSteamWorkspaceState.tabs.some(tab => tab.id === tool.id) : undefined,
+ 				run: () => this.run('studio.internalOpenSteamTool', tool.id),
+ 			})),
+ 		})));
+@@ -263,7 +264,7 @@ export class StudioSteamTabs extends Disposable {
+ 		this.list.setAttribute('aria-label', labels.workspace ?? 'Tool Workspace');
+ 		this.add.title = labels.addTool ?? 'Open Tool'; this.add.setAttribute('aria-label', this.add.title);
+ 		this.renderTabs(this.list, tabs, active, false);
+-		this.instances.hidden = !studioSteamWorkspaceState.instances.length;
++		this.instances.hidden = !studioSteamWorkspaceState.instances.length && studioSteamWorkspaceState.tool !== 'editor';
+ 		this.instances.parentElement?.classList.toggle('studio-steam-has-instances', !this.instances.hidden);
+ 		this.instanceList.setAttribute('aria-label', labels.instances ?? 'Tool Instances');
+ 		this.newInstance.title = (labels.newInstance ?? 'New {0}').replace('{0}', labels[studioSteamWorkspaceState.tool ?? ''] ?? '');
+diff --git a/src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts b/src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts
+index fd965bb412eab5e5acf7951d031696b44c1e60fe..c63b38379cfc9e7a546898b5f7d484341ae682f8 100644
+--- a/src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts
++++ b/src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts
+@@ -3,7 +3,9 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
+-import { $, append, clearNode, getWindow } from '../../../../base/browser/dom.js';
++import { $, addDisposableListener, append, clearNode, getWindow } from '../../../../base/browser/dom.js';
++import { SplitView, Orientation } from '../../../../base/browser/ui/splitview/splitview.js';
++import { Event } from '../../../../base/common/event.js';
+ import { RunOnceScheduler } from '../../../../base/common/async.js';
+ import { onUnexpectedError } from '../../../../base/common/errors.js';
+ import { Disposable, DisposableStore, MutableDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
+@@ -11,23 +13,24 @@ import { IStorageService, StorageScope, StorageTarget } from '../../../../platfo
+ import { ICommandService } from '../../../../platform/commands/common/commands.js';
+ import { TerminalLocation } from '../../../../platform/terminal/common/terminal.js';
+ import { studioModeState, studioSteamToolDefinitions, studioSteamWorkspaceState, StudioSteamTab } from '../../../browser/parts/studioMode.js';
+-import { EditorsOrder, IUntypedEditorInput } from '../../../common/editor.js';
++import { EditorResourceAccessor, EditorsOrder, IUntypedEditorInput, SideBySideEditor } from '../../../common/editor.js';
+ import { EditorInput } from '../../../common/editor/editorInput.js';
+ import { IViewDescriptorService } from '../../../common/views.js';
+ import { GroupsOrder, IEditorGroup, IEditorGroupsService, IEmbeddedEditorPart } from '../../../services/editor/common/editorGroupsService.js';
+ import { IEditorGroupView } from '../../../browser/parts/editor/editor.js';
+ import { registerEditorOpenTarget } from '../../../services/editor/common/editorOpenTarget.js';
+-import { PreferredGroup } from '../../../services/editor/common/editorService.js';
+-import { IWorkbenchLayoutService, Parts } from '../../../services/layout/browser/layoutService.js';
++import { IEditorService, PreferredGroup } from '../../../services/editor/common/editorService.js';
++import { IEmbeddedSideBar, IWorkbenchLayoutService, Parts } from '../../../services/layout/browser/layoutService.js';
+ import { IViewsService } from '../../../services/views/common/viewsService.js';
+ import { WebviewInput } from '../../webviewPanel/browser/webviewEditorInput.js';
++import { CustomEditorInput } from '../../customEditor/browser/customEditorInput.js';
+ import { ITerminalGroupService, ITerminalService } from '../../terminal/browser/terminal.js';
+ 
+ const TABS_KEY = 'studio.steamWorkspaceTabs';
+ const HOME_VIEW = 'studio.steamTools';
+-interface SavedTabs { tools: string[]; active?: string }
+-type ViewTool = Extract<typeof studioSteamToolDefinitions[number], { view: string }>;
+-interface WorkspaceTab { id: string; tool?: ViewTool; editor?: EditorInput; group?: IEditorGroup }
++interface SavedTabs { tools: string[]; active?: string; emptyEditor?: boolean }
++type NativeTool = Exclude<typeof studioSteamToolDefinitions[number], { command: string }>;
++interface WorkspaceTab { id: string; tool?: NativeTool; editor?: EditorInput; group?: IEditorGroup }
+ 
+ /**
+  * The run surface belongs to the main editor part. All other editor inputs use a
+@@ -39,6 +42,16 @@ export class StudioSteamWorkspace extends Disposable {
+ 	private readonly partLifetime = this._register(new DisposableStore());
+ 	private readonly modeLifetime = this._register(new DisposableStore());
+ 	private readonly host: HTMLElement;
++	private readonly surface: HTMLElement;
++	private readonly empty: HTMLElement;
++	private readonly emptyLabel: HTMLElement;
++	private readonly openFile: HTMLButtonElement;
++	private readonly split: SplitView;
++	private readonly sidebarHost: HTMLElement;
++	private readonly sidebar = this._register(new MutableDisposable<IEmbeddedSideBar>());
++	private sidebarRequested = true;
++	private sidebarOpened = false;
++	private sidebarWidth: number;
+ 	private readonly refresh = this._register(new RunOnceScheduler(() => this.syncEditors(), 0));
+ 	private tabs: WorkspaceTab[] = [];
+ 	private active: string | undefined;
+@@ -51,6 +64,7 @@ export class StudioSteamWorkspace extends Disposable {
+ 	private readonly editorIds = new WeakMap<EditorInput, string>();
+ 	private editorId = 0;
+ 	private savedActive: string | undefined;
++	private savedEmptyEditor = false;
+ 	private visibilityRevision = 0;
+ 	private readonly selectedInstances = new Map<string, string>();
+ 
+@@ -67,16 +81,38 @@ export class StudioSteamWorkspace extends Disposable {
+ 		@ICommandService private readonly commands: ICommandService,
+ 		@ITerminalService private readonly terminals: ITerminalService,
+ 		@ITerminalGroupService private readonly terminalGroups: ITerminalGroupService,
++		@IEditorService private readonly editors: IEditorService,
+ 	) {
+ 		super();
+ 		const saved = storage.getObject<SavedTabs>(TABS_KEY, StorageScope.WORKSPACE);
+ 		this.tabs = [...new Set(saved?.tools ?? [])].flatMap(id => {
+ 			const tool = studioSteamToolDefinitions.find(tool => tool.id === id);
+-			return tool && 'view' in tool ? [{ id, tool }] : [];
++			return tool && !('command' in tool) ? [{ id, tool }] : [];
+ 		});
+ 		this.savedActive = saved?.active;
+-		this.host = append(parent, $('.part.editor.studio-steam-editors'));
+-		this.host.hidden = true;
++		this.savedEmptyEditor = saved?.emptyEditor ?? false;
++		this.surface = append(parent, $('.studio-steam-editor-workspace'));
++		this.surface.hidden = true;
++		const editorPane = $('.studio-steam-code-pane');
++		this.host = append(editorPane, $('.part.editor.studio-steam-editors'));
++		this.empty = append(editorPane, $('.studio-steam-code-empty'));
++		append(this.empty, $('span.codicon.codicon-code', { 'aria-hidden': 'true' }));
++		this.emptyLabel = append(this.empty, $('p'));
++		this.openFile = append(this.empty, $('button', { type: 'button' })) as HTMLButtonElement;
++		this._register(addDisposableListener(this.openFile, 'click', () => { void this.commands.executeCommand('workbench.action.quickOpen').catch(onUnexpectedError); }));
++		this.sidebarHost = $('.studio-steam-code-sidebar');
++		this.sidebarWidth = storage.getNumber('studio.steamEditorSidebarWidth', StorageScope.WORKSPACE, 240);
++		this.split = this._register(new SplitView(this.surface, { orientation: Orientation.HORIZONTAL, proportionalLayout: false }));
++		this.split.addView({ element: editorPane, minimumSize: 120, maximumSize: Number.POSITIVE_INFINITY, onDidChange: Event.None,
++			layout: width => { if (!this.host.hidden) { this.part?.layout(width, this.surface.clientHeight, 0, 0); } } }, 400);
++		this.split.addView({ element: this.sidebarHost, minimumSize: 140, maximumSize: 600, onDidChange: Event.None,
++			layout: width => this.sidebar.value?.layout(width, this.surface.clientHeight) }, this.sidebarWidth);
++		this._register(this.split.onDidSashChange(() => {
++			if (this.split.isViewVisible(1)) {
++				this.sidebarWidth = this.split.getViewSize(1);
++				this.storage.store('studio.steamEditorSidebarWidth', this.sidebarWidth, StorageScope.WORKSPACE, StorageTarget.MACHINE);
++			}
++		}));
+ 		this._register(studioModeState.onDidChangeState(() => this.publish()));
+ 		this._register(this.views.onDidChangeViewVisibility(event => {
+ 			if (!this.enabled || !event.visible) { return; }
+@@ -93,7 +129,7 @@ export class StudioSteamWorkspace extends Disposable {
+ 		const observer = new (getWindow(parent).ResizeObserver)(() => this.layoutEditors());
+ 		observer.observe(parent);
+ 		this._register(this.layout.onDidChangePartVisibility(() => this.layoutEditors()));
+-		this._register(toDisposable(() => { observer.disconnect(); this.host.remove(); studioSteamWorkspaceState.update([], undefined); }));
++		this._register(toDisposable(() => { observer.disconnect(); this.surface.remove(); studioSteamWorkspaceState.update([], undefined); }));
+ 		// Restore saved inputs even if a removed project forces the next mode back to IDE.
+ 		if (storage.get('studio.workbenchMode', StorageScope.WORKSPACE) === 'steam') { this.ensurePart(); }
+ 	}
+@@ -112,9 +148,12 @@ export class StudioSteamWorkspace extends Disposable {
+ 			this.partLifetime.add(group.onDidModelChange(() => this.refresh.schedule()));
+ 			this.partLifetime.add(group.onDidActiveEditorChange(() => {
+ 				this.syncEditors();
++				const codePreview = this.toolFor(this.tabs.find(tab => tab.id === this.active))?.id === 'editor'
++					&& this.toolFor(this.tabs.find(tab => tab.editor === group.activeEditor))?.id === 'editor';
+ 				// Closing an input starts an asynchronous native fallback. A later tool
+ 				// selection owns the surface and must not be replaced when it finishes.
+-				if (this.enabled && this.groups.activeGroup === group && group.activeEditor
++				// Explorer and Search also open previews without taking focus from their sidebar.
++				if (this.enabled && (this.groups.activeGroup === group || codePreview) && group.activeEditor
+ 					&& opening?.editor === group.activeEditor && opening.revision === this.visibilityRevision) { this.revealEditor(group.activeEditor, group); }
+ 			}));
+ 		};
+@@ -134,6 +173,7 @@ export class StudioSteamWorkspace extends Disposable {
+ 		const part = this.ensurePart();
+ 		await part.whenReady;
+ 		const restoreActive = this.savedActive;
++		const restoreEmptyEditor = this.savedEmptyEditor;
+ 		const restoredEditor = part.activeGroup.activeEditor;
+ 		const restoredGroup = part.activeGroup;
+ 		const projectGroup = this.projectGroup = this.groups.mainPart.getGroups(GroupsOrder.GRID_APPEARANCE)[0];
+@@ -156,8 +196,15 @@ export class StudioSteamWorkspace extends Disposable {
+ 				.map(editor => ({ editor, options: { preserveFocus: true } })), projectGroup);
+ 		}
+ 		this.enabled = true;
++		this.sidebarRequested = true;
++		this.sidebarOpened = false;
++		this.sidebar.value = this.layout.createEmbeddedSideBar(this.sidebarHost, visible => {
++			this.sidebarRequested = visible;
++			if (visible) { void this.openTool('editor', true).catch(onUnexpectedError); }
++			else { this.layoutEditors(); }
++		});
+ 		this.syncEditors();
+-		if (restoreActive === 'editor' && restoredEditor && restoredGroup.contains(restoredEditor)) {
++		if (restoreActive === 'editor' && !restoreEmptyEditor && restoredEditor && restoredGroup.contains(restoredEditor)) {
+ 			// Moving an IDE source into this group can change its active input.
+ 			await this.select(this.id(restoredEditor, restoredGroup));
+ 		} else if (restoreActive && this.tabs.some(tab => tab.tool && tab.id === restoreActive)) {
+@@ -170,7 +217,8 @@ export class StudioSteamWorkspace extends Disposable {
+ 		if (!part) { return; }
+ 		await part.whenReady;
+ 		this.enabled = false; ++this.visibilityRevision;
+-		part.setVisible(false); this.host.hidden = true;
++		part.setVisible(false); this.surface.hidden = true;
++		this.sidebar.value?.setVisible(false);
+ 		// Move inputs, without closing or saving them, so IDE can access every new and dirty editor.
+ 		for (const group of part.groups) {
+ 			const destinations = new Map<IEditorGroup, EditorInput[]>();
+@@ -188,6 +236,7 @@ export class StudioSteamWorkspace extends Disposable {
+ 				}
+ 			}
+ 		}
++		this.sidebar.clear();
+ 		this.modeLifetime.clear();
+ 		this.part = undefined;
+ 		this.partLifetime.clear();
+@@ -205,22 +254,24 @@ export class StudioSteamWorkspace extends Disposable {
+ 		await this.views.openView(HOME_VIEW, true);
+ 	}
+ 
+-	async openTool(id: string): Promise<void> {
++	async openTool(id: string, preserveFocus = false): Promise<void> {
+ 		if (!this.enabled) { return; }
+ 		const tool = studioSteamToolDefinitions.find(tool => tool.id === id);
+ 		if (!tool) { return; }
+-		if (this.tabs.some(tab => this.toolFor(tab)?.id === id)) { await this.select(id); return; }
++		if (this.tabs.some(tab => this.toolFor(tab)?.id === id)) { await this.select(id, false, preserveFocus); return; }
+ 		if ('command' in tool) { await this.commands.executeCommand(tool.command); return; }
+-		if (!this.descriptors.getViewContainerByViewId(tool.view)) { return; }
++		if ('view' in tool && !this.descriptors.getViewContainerByViewId(tool.view)) { return; }
+ 		if (!this.tabs.some(tab => tab.id === id)) { this.tabs.push({ id, tool }); }
+-		await this.select(id);
++		await this.select(id, false, preserveFocus);
+ 	}
+ 
+ 	async newInstance(id: string | undefined): Promise<void> {
+ 		if (!this.enabled) { return; }
+ 		const tool = studioSteamToolDefinitions.find(tool => tool.id === id);
+ 		if (!tool) { return; }
+-		if (tool.id === 'terminal') {
++		if (tool.id === 'editor') {
++			await this.commands.executeCommand('workbench.action.files.newUntitledFile');
++		} else if (tool.id === 'terminal') {
+ 			const instance = await this.terminals.createTerminal({ location: TerminalLocation.Panel });
+ 			if (instance && this.enabled) { await this.openTool('terminal'); await this.terminalGroups.focusInstance(instance); }
+ 		} else if ('command' in tool) {
+@@ -228,7 +279,7 @@ export class StudioSteamWorkspace extends Disposable {
+ 		} else { await this.commands.executeCommand('studio.createToolInstance', tool.id); }
+ 	}
+ 
+-	async select(id: string, instance = false): Promise<void> {
++	async select(id: string, instance = false, preserveFocus = false): Promise<void> {
+ 		if (!this.enabled) { return; }
+ 		if (id.startsWith('terminal:')) {
+ 			const terminal = this.terminalGroups.instances.find(terminal => `terminal:${terminal.instanceId}` === id);
+@@ -242,16 +293,20 @@ export class StudioSteamWorkspace extends Disposable {
+ 		}
+ 		if (!instance) {
+ 			const candidates = this.tabs.filter(tab => this.toolFor(tab)?.id === id);
+-			id = candidates.find(tab => tab.id === this.selectedInstances.get(id))?.id ?? candidates[0]?.id ?? id;
++			id = candidates.find(tab => tab.id === this.selectedInstances.get(id))?.id ?? candidates.find(tab => tab.editor)?.id ?? candidates[0]?.id ?? id;
+ 		}
+ 		const tab = this.tabs.find(tab => tab.id === id);
+ 		if (!tab) { return; }
+ 		++this.visibilityRevision; this.active = id; this.publish();
+-		if (tab.tool) { await this.views.openView(tab.tool.view, true); }
++		if (tab.tool && 'view' in tab.tool) { await this.views.openView(tab.tool.view, true); }
++		else if (tab.tool?.id === 'editor') {
++			await this.views.openView(HOME_VIEW, false);
++			if (this.enabled && this.active === id) { this.layoutEditors(); }
++		}
+ 		else if (tab.editor && tab.group) {
+ 			this.revealEditor(tab.editor, tab.group);
+-			await tab.group.openEditor(tab.editor);
+-			if (this.enabled && this.active === id && this.part?.groups.includes(tab.group)) { tab.group.focus(); }
++			await this.editors.openEditor(tab.editor, { preserveFocus }, tab.group);
++			if (!preserveFocus && this.enabled && this.active === id && this.part?.groups.includes(tab.group)) { tab.group.focus(); }
+ 		}
+ 	}
+ 
+@@ -335,6 +390,9 @@ export class StudioSteamWorkspace extends Disposable {
+ 		const current = new Map(editors.map(tab => [tab.id, tab]));
+ 		this.tabs = this.tabs.flatMap(tab => tab.tool ? [tab] : current.has(tab.id) ? [current.get(tab.id)!] : []);
+ 		for (const tab of editors) { if (!this.tabs.some(entry => entry.id === tab.id)) { this.tabs.push(tab); } }
++		if (editors.some(tab => this.toolFor(tab)?.id === 'editor') && !this.tabs.some(tab => tab.id === 'editor')) {
++			this.tabs.push({ id: 'editor', tool: studioSteamToolDefinitions.find(tool => tool.id === 'editor')! });
++		}
+ 		if (this.active && !this.tabs.some(tab => tab.id === this.active)) {
+ 			this.active = this.part?.activeGroup.activeEditor ? this.id(this.part.activeGroup.activeEditor, this.part.activeGroup) : undefined;
+ 		}
+@@ -351,6 +409,9 @@ export class StudioSteamWorkspace extends Disposable {
+ 	}
+ 
+ 	private publish(): void {
++		const labels = studioModeState.state.labels;
++		this.emptyLabel.textContent = labels.editorEmpty ?? 'Open a file from Explorer or Quick Open to start editing.';
++		this.openFile.textContent = labels.openFile ?? 'Open File';
+ 		const activeTool = this.toolFor(this.tabs.find(tab => tab.id === this.active));
+ 		if (activeTool && this.active) { this.selectedInstances.set(activeTool.id, this.active); }
+ 		const describe = (tab: WorkspaceTab): StudioSteamTab => ({ id: tab.id,
+@@ -364,7 +425,7 @@ export class StudioSteamWorkspace extends Disposable {
+ 			const previous = tabs.get(id);
+ 			tabs.set(id, { ...(tool ? { id, label: studioModeState.state.labels[id] ?? id, icon: tool.icon } : describe(tab)), dirty: previous?.dirty || tab.editor?.isDirty() });
+ 		}
+-		const instances = activeTool ? this.tabs.filter(tab => this.toolFor(tab)?.id === activeTool.id).flatMap(tab => tab.id === 'terminal'
++		const instances = activeTool ? this.tabs.filter(tab => this.toolFor(tab)?.id === activeTool.id && tab.id !== 'editor').flatMap(tab => tab.id === 'terminal'
+ 			? this.terminalGroups.instances.map(terminal => ({ id: `terminal:${terminal.instanceId}`, label: terminal.title, icon: 'terminal' })) : [describe(tab)]) : [];
+ 		let selected = this.active;
+ 		if (activeTool?.id === 'terminal' && this.active === 'terminal') {
+@@ -373,7 +434,8 @@ export class StudioSteamWorkspace extends Disposable {
+ 		studioSteamWorkspaceState.update([...tabs.values()], activeTool?.id ?? this.active, this.enabled ? instances : [], selected, activeTool?.id);
+ 		if (this.enabled) {
+ 			this.savedActive = this.active?.startsWith('editor:') ? 'editor' : this.active;
+-			this.storage.store(TABS_KEY, { tools: this.tabs.filter(tab => tab.tool).map(tab => tab.id), active: this.savedActive }, StorageScope.WORKSPACE, StorageTarget.MACHINE);
++			this.savedEmptyEditor = this.active === 'editor';
++			this.storage.store(TABS_KEY, { tools: this.tabs.filter(tab => tab.tool).map(tab => tab.id), active: this.savedActive, emptyEditor: this.savedEmptyEditor }, StorageScope.WORKSPACE, StorageTarget.MACHINE);
+ 		}
+ 		this.layoutEditors();
+ 	}
+@@ -386,22 +448,33 @@ export class StudioSteamWorkspace extends Disposable {
+ 		if (editor instanceof WebviewInput) {
+ 			const type = editor.webview.providedViewType;
+ 			id = type?.startsWith('studio.tool.') ? type.slice('studio.tool.'.length)
+-				: type === 'simpleBrowser.view' ? 'browser' : type === 'studio.projectTool' ? 'project' : undefined;
++				: type === 'simpleBrowser.view' ? 'browser' : type === 'studio.projectTool' ? 'project' : editor instanceof CustomEditorInput ? 'editor' : undefined;
+ 		} else if (editor.typeId === 'workbench.editors.terminal') { id = 'terminal'; }
+ 		else if (editor.typeId === 'workbench.editorinputs.browser') { id = 'browser'; }
++		else if (EditorResourceAccessor.getOriginalUri(editor, { supportSideBySide: SideBySideEditor.PRIMARY })) { id = 'editor'; }
+ 		return studioSteamToolDefinitions.find(tool => tool.id === id);
+ 	}
+ 
+ 	private layoutEditors(): void {
+-		const visible = this.enabled && !!this.active?.startsWith('editor:') && this.layout.isVisible(Parts.AUXILIARYBAR_PART);
+-		this.host.hidden = !visible;
+-		this.host.parentElement?.classList.toggle('studio-steam-editor-active', visible);
++		const code = this.toolFor(this.tabs.find(tab => tab.id === this.active))?.id === 'editor';
++		const visible = this.enabled && (code || !!this.active?.startsWith('editor:')) && this.layout.isVisible(Parts.AUXILIARYBAR_PART);
++		const hasInput = !!this.active?.startsWith('editor:');
++		this.surface.hidden = !visible;
++		this.host.hidden = !visible || !hasInput;
++		this.empty.hidden = hasInput;
++		this.surface.parentElement?.classList.toggle('studio-steam-editor-active', visible);
++		this.sidebar.value?.setVisible(visible && code && this.sidebarRequested);
++		if (visible && code && this.sidebarRequested && !this.sidebarOpened) {
++			this.sidebarOpened = true;
++			void this.views.openViewContainer('workbench.view.explorer', false).catch(onUnexpectedError);
++		}
++		this.split.setViewVisible(1, visible && code && this.sidebarRequested);
+ 		if (visible) {
+-			const title = this.host.parentElement?.querySelector(':scope > .title');
+-			if (title) { this.host.style.top = `${title.getBoundingClientRect().height}px`; }
+-			const rect = this.host.getBoundingClientRect();
+-			this.part?.layout(rect.width, rect.height, 0, 0);
++			const title = this.surface.parentElement?.querySelector(':scope > .title');
++			if (title) { this.surface.style.top = `${title.getBoundingClientRect().height}px`; }
++			this.split.layout(this.surface.clientWidth);
++			if (this.split.isViewVisible(1)) { this.split.resizeView(1, Math.min(this.sidebarWidth, Math.max(140, this.surface.clientWidth - 120))); }
+ 		}
+-		this.part?.setVisible(visible);
++		this.part?.setVisible(visible && hasInput);
+ 	}
+ }
+diff --git a/src/vs/workbench/services/layout/browser/layoutService.ts b/src/vs/workbench/services/layout/browser/layoutService.ts
+index 2eda5971457b6a626e4fb8430a107ce882d7b081..8f1904b7c3194375e5ea00a834309cc5664956b4 100644
+--- a/src/vs/workbench/services/layout/browser/layoutService.ts
++++ b/src/vs/workbench/services/layout/browser/layoutService.ts
+@@ -598,6 +598,9 @@ export interface IWorkbenchLayoutService extends ILayoutService {
+ 	 */
+ 	setPartHidden(hidden: boolean, part: Parts): void;
+ 
++	/** Mount the primary sidebar in a nested workspace, retaining native views and commands. */
++	createEmbeddedSideBar(container: HTMLElement, onDidRequestVisibility: (visible: boolean) => void): IEmbeddedSideBar;
++
+ 	/** Temporarily hide the main window's title and status bars without changing saved UI state. */
+ 	setWindowChromeHidden(hidden: boolean): void;
+ 
+@@ -736,6 +739,11 @@ export interface IWorkbenchLayoutService extends ILayoutService {
+ 	getVisibleNeighborPart(part: Parts, direction: Direction): Parts | undefined;
+ }
+ 
++export interface IEmbeddedSideBar extends IDisposable {
++	setVisible(visible: boolean): void;
++	layout(width: number, height: number): void;
++}
++
+ export function shouldShowCustomTitleBar(configurationService: IConfigurationService, window: Window, menuBarToggled?: boolean): boolean {
+ 	if (!hasCustomTitlebar(configurationService)) {
+ 		return false;
+diff --git a/src/vs/workbench/test/browser/workbenchTestServices.ts b/src/vs/workbench/test/browser/workbenchTestServices.ts
+index 5472c97a8dad1cbb99362f3a38a6bd673373eebe..e9669ed1683c0697237eb9d1d562569ae8bd3251 100644
+--- a/src/vs/workbench/test/browser/workbenchTestServices.ts
++++ b/src/vs/workbench/test/browser/workbenchTestServices.ts
+@@ -681,6 +681,7 @@ export class TestLayoutService implements IWorkbenchLayoutService {
+ 	async setAuxiliaryBarHidden(_hidden: boolean): Promise<void> { }
+ 	async setPartHidden(_hidden: boolean, part: Parts): Promise<void> { }
+ 	setWindowChromeHidden(_hidden: boolean): void { }
++	createEmbeddedSideBar(): never { throw new Error('Not implemented'); }
+ 	isSecondarySideBarVisible(): boolean { return false; }
+ 	toggleSecondarySideBar(): void { }
+ 	isPanelHidden(): boolean { return false; }

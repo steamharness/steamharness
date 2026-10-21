@@ -40,6 +40,8 @@ export class StudioModeController {
       instances: t('Tool Instances'), newInstance: t('New {0}'), instanceActions: t('Instance Actions'),
       terminalProfiles: t('New Terminal With Profile'), terminalSplit: t('Split Terminal'), terminalRename: t('Rename Terminal'), selectProject: t('Select Project'),
       moveEditorsError: t('Unable to move tool workspace editors back to the IDE.'),
+      editor: t('Editor'), editorHint: t('Browse and edit current project files'),
+      editorEmpty: t('Open a file from Explorer or Quick Open to start editing.'), openFile: t('Open File'),
       kv: t('KV Storage'), kvHint: t('Browse and edit project data'),
       knowledge: t('Knowledge Base'), knowledgeHint: t('Manage documents and knowledge'),
       info: t('Project Information'), infoHint: t('View project details and configuration'),

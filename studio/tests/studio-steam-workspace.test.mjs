@@ -26,6 +26,8 @@ class DisposableStore extends Disposable {
 }
 class MutableDisposable {
   set value(value) { this.current?.dispose(); this.current = value; }
+  get value() { return this.current; }
+  clear() { this.dispose(); }
   dispose() { this.current?.dispose(); this.current = undefined; }
 }
 class RunOnceScheduler {
@@ -45,7 +47,10 @@ class EditorInput {
 class WebviewInput extends EditorInput {
   constructor(name, uri) { super(name); this.webview = { providedViewType: 'studio.project', state: JSON.stringify({ projectUri: uri }) }; }
 }
-const tools = [...['kv', 'knowledge', 'info', 'assistant', 'versions', 'trace'].map(id => ({ id, icon: id, view: `studio.${id}` })),
+class CustomEditorInput extends WebviewInput {
+  constructor(name, resource) { super(name); this.resource = resource; this.webview.providedViewType = 'test.file-preview'; }
+}
+const tools = [{ id: 'editor', icon: 'code', editor: true }, ...['kv', 'knowledge', 'info', 'assistant', 'versions', 'trace'].map(id => ({ id, icon: id, view: `studio.${id}` })),
   { id: 'terminal', icon: 'terminal', view: 'terminal' }, { id: 'browser', command: 'simpleBrowser.show' }, { id: 'project', command: 'studio.openProjectInTab' }];
 function fixture(t, saved = new Map()) {
   const toDisposable = dispose => ({ dispose });
@@ -92,7 +97,23 @@ function fixture(t, saved = new Map()) {
   let tabs, active, instances, activeInstance, partVisible;
   const workspaceState = { update: (items, selected, children, selectedChild) => { tabs = items; active = selected; instances = children; activeInstance = selectedChild; } };
   const parent = { classList: { toggle() {} }, querySelector: () => undefined };
-  const host = { parentElement: parent, hidden: true, getBoundingClientRect: () => ({ width: 600, height: 800 }), remove() {} };
+  const elements = new Map();
+  const element = selector => {
+    const node = { parentElement: parent, style: {}, hidden: true, clientWidth: 600, clientHeight: 800,
+      getBoundingClientRect: () => ({ width: 600, height: 800 }), remove() {} };
+    elements.set(selector, node); return node;
+  };
+  class SplitView {
+    views = []; visible = [];
+    addView(view, size) { this.views.push({ view, size }); this.visible.push(true); }
+    setViewVisible(index, visible) { this.visible[index] = visible; }
+    isViewVisible(index) { return this.visible[index]; }
+    getViewSize(index) { return this.views[index].size; }
+    resizeView(index, size) { this.views[index].size = size; }
+    layout() { for (const [index, { view, size }] of this.views.entries()) { if (this.visible[index]) { view.layout(size); } } }
+    onDidSashChange = noEvent.event;
+    dispose() {}
+  }
   const part = { groups: [right], activeGroup: right, windowId: 1, whenReady: Promise.resolve(),
     enforcePartOptions: () => toDisposable(() => undefined),
     onDidAddGroup: addedGroup.event, onDidRemoveGroup: noEvent.event, onDidActivateGroup: noEvent.event,
@@ -104,9 +125,16 @@ function fixture(t, saved = new Map()) {
     get activeGroup() { return activeGroup; },
     getGroup: id => [left, right, auxiliary].find(group => group.id === id), getPart: group => ({ windowId: group === auxiliary ? 2 : 1 }) };
   let visibleView;
-  const views = { onDidChangeViewVisibility: viewChange.event, openView: async id => { visibleView = id; viewChange.fire({ id, visible: true }); } };
-  const layout = { onDidChangePartVisibility: noEvent.event, isVisible: () => true };
-  const storage = { get: key => saved.get(key), getObject: key => saved.get(key), store: (key, value) => saved.set(key, structuredClone(value)) };
+  const views = { onDidChangeViewVisibility: viewChange.event, openView: async id => { visibleView = id; viewChange.fire({ id, visible: true }); },
+    openViewContainer: async id => { visibleView = id; } };
+  let sidebarVisible = false, sidebarRequest, sidebarDisposed = false, toolsVisible = true;
+  const layoutChange = new Emitter();
+  const layout = { onDidChangePartVisibility: layoutChange.event, isVisible: () => toolsVisible,
+    createEmbeddedSideBar: (_container, request) => { sidebarRequest = request; return {
+      setVisible: value => { sidebarVisible = value; }, layout() {}, dispose() { sidebarDisposed = true; sidebarVisible = false; },
+    }; } };
+  const storage = { get: key => saved.get(key), getObject: key => saved.get(key), getNumber: (key, _scope, fallback) => saved.get(key) ?? fallback,
+    store: (key, value) => saved.set(key, structuredClone(value)) };
   const calls = [], terminalChanged = new Emitter(), terminalSelected = new Emitter();
   const terminalGroups = { instances: [], activeInstance: undefined, onDidChangeInstances: terminalChanged.event,
     onDidChangeActiveInstance: terminalSelected.event,
@@ -118,20 +146,27 @@ function fixture(t, saved = new Map()) {
       if (terminalGroups.activeInstance === instance) { terminalGroups.activeInstance = terminalGroups.instances.at(-1); }
       terminalChanged.fire(); } };
   const commands = { executeCommand: async (name, ...args) => { calls.push([name, ...args]); } };
-  const exports = load(workspaceCode, { Disposable, DisposableStore, MutableDisposable, RunOnceScheduler, toDisposable, EditorInput, WebviewInput,
-    $: () => host, append: () => host, clearNode() {}, getWindow: () => ({ ResizeObserver: class { observe() {} disconnect() {} } }),
+  const exports = load(workspaceCode, { Disposable, DisposableStore, MutableDisposable, RunOnceScheduler, toDisposable, EditorInput, WebviewInput, CustomEditorInput,
+    $: element, append: (parent, node) => { node.parentElement = parent; return node; }, clearNode() {}, addDisposableListener: () => toDisposable(() => undefined),
+    getWindow: () => ({ ResizeObserver: class { observe() {} disconnect() {} } }), SplitView, Orientation: { HORIZONTAL: 1 }, Event: { None: noEvent.event },
     StorageScope: { WORKSPACE: 1 }, StorageTarget: { MACHINE: 1 }, EditorsOrder: {}, GroupsOrder: {}, Parts: { AUXILIARYBAR_PART: 'auxiliary' }, TerminalLocation: { Panel: 1 },
+    EditorResourceAccessor: { getOriginalUri: editor => editor.resource }, SideBySideEditor: { PRIMARY: 1 },
     studioModeState: state, studioSteamToolDefinitions: tools, studioSteamWorkspaceState: workspaceState,
     registerEditorOpenTarget: policy.registerEditorOpenTarget,
   });
-  const workspace = new exports.StudioSteamWorkspace(parent, groups, views, { getViewContainerByViewId: () => ({}) }, layout, storage, commands, terminals, terminalGroups);
+  const workspace = new exports.StudioSteamWorkspace(parent, groups, views, { getViewContainerByViewId: () => ({}) }, layout, storage, commands, terminals, terminalGroups,
+    { openEditor: (editor, options, group) => group.openEditor(editor, options) });
+  const host = elements.get('.part.editor.studio-steam-editors');
   t.after(() => workspace.dispose());
   return { workspace, policy, left, right, auxiliary, state, saved, viewChange, host, calls, terminalGroups,
     get activeGroup() { return activeGroup; },
     addToolGroup: () => { const group = createGroup(4 + part.groups.length); part.groups.push(group); addedGroup.fire(group); return group; },
     get locked() { return locked; },
     get tabs() { return tabs; }, get active() { return active; }, get instances() { return instances; }, get activeInstance() { return activeInstance; },
-    get partVisible() { return partVisible; }, get visibleView() { return visibleView; } };
+    get partVisible() { return partVisible; }, get visibleView() { return visibleView; },
+    get sidebarVisible() { return sidebarVisible; }, get sidebarDisposed() { return sidebarDisposed; },
+    requestSidebar: visible => sidebarRequest(visible),
+    setToolsVisible: visible => { toolsVisible = visible; layoutChange.fire(); } };
 }
 
 test('Steam reserves only the selected project and routes every other editor and explicit first-column target to tools', async t => {
@@ -337,4 +372,74 @@ test('terminal child tabs select and close actual sessions, honor veto and retai
   await f.workspace.close('terminal'); assert.equal(f.terminalGroups.instances.length, 1);
   await f.workspace.openTool('terminal'); assert.equal(f.instances.length, 1);
   await f.workspace.deactivate(f.left); assert.equal(f.terminalGroups.instances[0], second);
+});
+
+test('the Editor tool opens an empty native workspace with Explorer and creates real untitled files', async t => {
+  const f = fixture(t); await f.workspace.activate();
+  await f.workspace.openTool('editor');
+  assert.equal(f.active, 'editor'); assert.equal(f.instances.length, 0);
+  assert.equal(f.sidebarVisible, true); assert.equal(f.partVisible, false);
+  assert.ok(f.tabs.some(tab => tab.id === 'editor'));
+  await f.workspace.newInstance('editor');
+  assert.deepEqual(f.calls.at(-1), ['workbench.action.files.newUntitledFile']);
+  await f.workspace.deactivate(f.left); assert.equal(f.sidebarDisposed, true);
+});
+
+test('Explorer can show a file in the selected Editor tool while retaining sidebar focus', async t => {
+  const f = fixture(t); await f.workspace.activate();
+  await f.workspace.openTool('editor'); f.left.focus();
+  const source = new EditorInput('index.ts'); source.resource = 'file:///project/index.ts';
+  await f.right.openEditor(source, { preserveFocus: true });
+  assert.equal(f.instances.find(tab => tab.id === f.activeInstance)?.label, 'index.ts');
+  assert.equal(f.partVisible, true); assert.equal(f.activeGroup, f.left);
+});
+
+test('files share one Editor category, retain dirty inputs across tools, and keep an empty editor after closing the last file', async t => {
+  const f = fixture(t), runtime = new WebviewInput('Runtime', 'file:///project');
+  await f.left.openEditor(runtime); await f.workspace.activate();
+  const source = new EditorInput('index.ts'); source.resource = 'file:///project/index.ts'; source.dirty = true;
+  const config = new EditorInput('package.json'); config.resource = 'file:///project/package.json';
+  await f.right.openEditor(source); const sourceId = f.activeInstance;
+  await f.right.openEditor(config); const configId = f.activeInstance;
+  assert.deepEqual(Array.from(f.tabs, tab => tab.id), ['editor']);
+  assert.deepEqual(Array.from(f.instances, tab => tab.label), ['index.ts', 'package.json']);
+  assert.equal(f.tabs[0].dirty, true);
+  await f.workspace.openTool('kv'); assert.equal(f.sidebarVisible, false);
+  await f.workspace.openTool('editor'); assert.equal(f.activeInstance, configId); assert.equal(f.sidebarVisible, true);
+  f.setToolsVisible(false); assert.equal(f.sidebarVisible, false); assert.equal(f.partVisible, false);
+  f.setToolsVisible(true); assert.equal(f.sidebarVisible, true); assert.equal(f.right.activeEditor, config);
+  await f.workspace.close(sourceId, true); await f.workspace.close(configId, true);
+  assert.equal(f.active, 'editor'); assert.equal(f.instances.length, 0); assert.equal(f.partVisible, false);
+  assert.deepEqual(f.left.editors, [runtime]);
+});
+
+test('Editor category close honors the native veto and native sidebar commands reveal the Editor tool', async t => {
+  const f = fixture(t); await f.workspace.activate();
+  const source = new EditorInput('unsaved.ts'); source.resource = 'untitled:unsaved.ts'; source.dirty = true;
+  await f.right.openEditor(source); f.right.veto = true;
+  await f.workspace.close('editor'); assert.equal(f.active, 'editor'); assert.ok(f.right.contains(source));
+  await f.workspace.openTool('kv'); f.requestSidebar(true);
+  assert.equal(f.active, 'editor'); assert.equal(f.sidebarVisible, true);
+  f.requestSidebar(false); assert.equal(f.sidebarVisible, false); assert.equal(f.partVisible, true);
+  f.right.veto = false; await f.workspace.close('editor');
+  assert.equal(f.tabs.some(tab => tab.id === 'editor'), false); assert.equal(f.active, 'kv');
+});
+
+test('file-backed custom editors share Editor tabs while standalone webviews keep their own tool', async t => {
+  const f = fixture(t); await f.workspace.activate();
+  await f.right.openEditor(new CustomEditorInput('image.svg', 'file:///project/image.svg'));
+  assert.deepEqual(Array.from(f.instances, tab => tab.label), ['image.svg']);
+  assert.equal(f.active, 'editor'); assert.equal(f.sidebarVisible, true);
+  const account = new WebviewInput('Account'); account.webview.providedViewType = 'studio.account';
+  await f.right.openEditor(account);
+  assert.deepEqual(Array.from(f.tabs, tab => tab.label), ['editor', 'Account']);
+  assert.equal(f.instances.length, 0); assert.equal(f.sidebarVisible, false);
+});
+
+test('reload restores an empty Editor tool without revealing another tool input underneath', async t => {
+  const saved = new Map([['studio.steamWorkspaceTabs', { tools: ['editor'], active: 'editor', emptyEditor: true }], ['studio.workbenchMode', 'steam']]);
+  const f = fixture(t, saved), browser = new WebviewInput('Browser'); browser.webview.providedViewType = 'simpleBrowser.view';
+  await f.right.openEditor(browser); await f.workspace.activate();
+  assert.equal(f.active, 'editor'); assert.equal(f.instances.length, 0);
+  assert.equal(f.partVisible, false); assert.equal(f.sidebarVisible, true); assert.ok(f.right.contains(browser));
 });
