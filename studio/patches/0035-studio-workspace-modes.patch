@@ -1,6 +1,6 @@
 diff --git a/src/vs/workbench/browser/parts/media/studioMode.css b/src/vs/workbench/browser/parts/media/studioMode.css
 new file mode 100644
-index 00000000000..82fa423afa6
+index 00000000000..6526aa4af55
 --- /dev/null
 +++ b/src/vs/workbench/browser/parts/media/studioMode.css
 @@ -0,0 +1,143 @@
@@ -12,7 +12,7 @@ index 00000000000..82fa423afa6
 +	flex: 0 0 auto;
 +	align-items: center;
 +	gap: 2px;
-+	margin: 0 8px;
++	margin: var(--vscode-spacing-size60) var(--vscode-spacing-size80);
 +	padding: 2px;
 +	border: 1px solid var(--vscode-widget-border, transparent);
 +	border-radius: 7px;
@@ -267,7 +267,7 @@ index 00000000000..b6b8ab26116
 +	}
 +}
 diff --git a/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts b/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
-index 1f6bdba1059..143b54a4cff 100644
+index 1f6bdba1059..b1bbb081df8 100644
 --- a/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
 +++ b/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
 @@ -30,6 +30,7 @@ import { IContextKey, IContextKeyService } from '../../../../platform/contextkey
@@ -278,16 +278,38 @@ index 1f6bdba1059..143b54a4cff 100644
  import { Categories } from '../../../../platform/action/common/actionCommonCategories.js';
  import { HiddenItemStrategy, MenuWorkbenchToolBar, WorkbenchToolBar } from '../../../../platform/actions/browser/toolbar.js';
  import { IActionViewItemService } from '../../../../platform/actions/browser/actionViewItemService.js';
-@@ -482,6 +483,9 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
+@@ -244,6 +245,10 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
+ 	get minimumHeight(): number {
+ 		const wcoEnabled = isWeb && isWCOEnabled();
+ 		let value = this.isCommandCenterVisible || wcoEnabled ? DEFAULT_CUSTOM_TITLEBAR_HEIGHT : 30;
++		if (this.hasStudioModeSwitcher) {
++			// Leave a 6px inset above and below the 32px mode control.
++			value = Math.max(value, 44);
++		}
+ 		if (wcoEnabled) {
+ 			value = Math.max(value, getWCOTitlebarAreaRect(getWindow(this.element))?.height ?? 0);
+ 		}
+@@ -482,6 +487,9 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
  		this.leftContent = append(this.rootContainer, $('.titlebar-left'));
  		this.centerContent = append(this.rootContainer, $('.titlebar-center'));
  		this.rightContent = append(this.rootContainer, $('.titlebar-right'));
-+		if (!this.isAuxiliary && hasCustomTitlebar(this.configurationService, this.titleBarStyle)) {
++		if (this.hasStudioModeSwitcher) {
 +			this._register(this.instantiationService.createInstance(StudioModeSwitcher, this.leftContent, this.rightContent));
 +		}
  
  		// App Icon (Windows, Linux)
  		if ((isWindows || isLinux) && !hasNativeTitlebar(this.configurationService, this.titleBarStyle)) {
+@@ -913,6 +921,10 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
+ 		return !this.isCompact && this.configurationService.getValue<boolean>(LayoutSettings.COMMAND_CENTER) !== false;
+ 	}
+ 
++	protected get hasStudioModeSwitcher(): boolean {
++		return !this.isAuxiliary && hasCustomTitlebar(this.configurationService, this.titleBarStyle);
++	}
++
+ 	private get editorActionsEnabled(): boolean {
+ 		return (this.editorGroupsContainer.partOptions.editorActionsLocation === EditorActionsLocation.TITLEBAR ||
+ 			(
 diff --git a/src/vs/workbench/common/views.ts b/src/vs/workbench/common/views.ts
 index 86e8fd3c9e9..ee7d5f3904c 100644
 --- a/src/vs/workbench/common/views.ts
@@ -595,6 +617,30 @@ index 00000000000..e2757f0b779
 +}
 +
 +registerWorkbenchContribution2(StudioModeContribution.ID, StudioModeContribution, WorkbenchPhase.AfterRestored);
+diff --git a/src/vs/workbench/electron-browser/parts/titlebar/titlebarPart.ts b/src/vs/workbench/electron-browser/parts/titlebar/titlebarPart.ts
+index 87f0035c54c..6ab59321fa2 100644
+--- a/src/vs/workbench/electron-browser/parts/titlebar/titlebarPart.ts
++++ b/src/vs/workbench/electron-browser/parts/titlebar/titlebarPart.ts
+@@ -36,7 +36,7 @@ export class NativeTitlebarPart extends BrowserTitlebarPart {
+ 	//#region IView
+ 
+ 	override get minimumHeight(): number {
+-		if (!isMacintosh) {
++		if (!isMacintosh || this.hasStudioModeSwitcher) {
+ 			return super.minimumHeight;
+ 		}
+ 
+@@ -281,7 +281,9 @@ export class NativeTitlebarPart extends BrowserTitlebarPart {
+ 				this.cachedWindowControlHeight = newHeight;
+ 				this.nativeHostService.updateWindowControls({
+ 					targetWindowId: getWindowId(getWindow(this.element)),
+-					height: newHeight
++					height: newHeight,
++					// Keep the traffic lights inside the mode switcher's fixed native inset as the title bar grows or zooms.
++					horizontalInset: isMacintosh && this.hasStudioModeSwitcher ? 10 : undefined
+ 				});
+ 			}
+ 		}
 diff --git a/src/vs/workbench/services/views/browser/viewDescriptorService.ts b/src/vs/workbench/services/views/browser/viewDescriptorService.ts
 index 4ea78aecb09..aa025f40435 100644
 --- a/src/vs/workbench/services/views/browser/viewDescriptorService.ts
