@@ -1,31 +1,87 @@
 ---
-title: "Getting started"
-description: "Develop and run Workflow projects with Studio and the CLI."
+title: "Project guide"
+description: "Understand SteamHarness through project types, main features, and the development workflow."
 slug: /
 ---
 
-# Develop and run Workflow projects
+# SteamHarness guide
 
-SteamHarness provides the Core runtime, CLI, Studio workstation, and SteamHarness Server. Studio opens local projects; Server Web manages project source, versions, and data on the server.
+SteamHarness is a platform for building, running, and distributing Agent projects. It consists of the Core SDK, CLI, Studio, Server, and the Server Web console. Projects can be developed locally, uploaded to a Server, and published to Store.
 
-## Local development
+## Three project types
 
-1. Install `steamharness` and a version of `@steamharness/cli` supporting the Web host protocol in your project.
-2. Declare the project and its executor using the [Workflow model](/en/concepts/workflow-model).
-3. Open the project folder in Studio and select Run project in the title bar, or run the CLI in a terminal.
+| Type | Form | Best for | Entry point |
+| --- | --- | --- | --- |
+| Workflow | Typed TypeScript workflow | Automation, multi-step tasks, tool orchestration | Entry function + nodes / executor |
+| Conversation | Conversational Agent project | Assistants, Agent conversations | Conversation executor |
+| Kanban | Static HTML / CSS / JavaScript | Boards, visualizations, human-in-the-loop | `index.html` |
 
-```sh
-steamharness structure .
-steamharness run .
-steamharness web .
+### Workflow
+
+A Workflow describes a runnable task chain with nodes and executors: inputs, LLM calls, tools, branches, loops, and outputs are declared through the Runtime API. It is a good fit when a set of operations needs typed steps and reuse.
+
+- Typical uses: data processing, content generation, tool calling, multi-step automation.
+- Start with [Workflow model](/en/concepts/workflow-model) and [Core API](/en/core-api/overview).
+
+### Conversation
+
+Conversation is an Agent project organized around conversation turns, tool calls, and session data. It uses the same Core Runtime, but its entry point is a message or conversation rather than a single task chain.
+
+- Typical uses: assistants, support/operations assistants, Agents that need ongoing context.
+- Start with [KV and conversations](/en/concepts/kv-and-conversation) and [Core API](/en/core-api/overview).
+
+### Kanban
+
+Kanban is a static project made of HTML, CSS, JavaScript, images, and fonts. It loads `index.html`, does not execute the Runtime API, and needs no executor. A restricted bridge lets the page read project KV and knowledge documents.
+
+- Typical uses: boards, maps, dashboards, visual interfaces embedded in conversations or project details.
+- Start with [Kanban HTML projects](/en/concepts/kanban).
+
+## Main features
+
+| Capability | What it does | Entry point |
+| --- | --- | --- |
+| Studio | VS Code OSS-based workstation to open and run local projects, inspect traces, and manage versions and accounts | [Using Studio](/en/guides/studio/overview) |
+| Local CLI | Check project structure, run projects, open the web workspace | [Local CLI](/en/cli/steamharness) |
+| Server and Server Web | Manage project source, versions, members, knowledge, KV, and accounts | [Server Web console](/en/guides/server/overview) |
+| Workspace CLI | Sign in to a Server, upload/download source, publish and switch versions | [Workspace CLI](/en/cli/server-workspace) |
+| Store | Browse, download, and publish project versions | [Store overview](https://docs.steamharness.yuhe.space/en/enhanced/store/overview) |
+| System AI (Enhanced) | Shared models, personal defaults, provider preference, usage, and orders | [System AI guide](https://docs.steamharness.yuhe.space/en/enhanced/ai/feature-comparison) |
+| Built-in projects | Developer Assistant, Codex, Conversation, OpenCode, Pi, and other ready-to-use projects | [Release notes](/en/guides/releases/overview) |
+
+## Development workflow
+
+1. **Create a project**: in Studio, choose New Project, then a Workflow, Conversation, or Kanban type and template; or create the directory manually.
+2. **Declare the project**: add `steamHarness.projectType` (`workflow`, `conversation`, or `kanban`) to the root `package.json`, plus optional `projectInfo` (names, display platforms, data storage, related projects).
+3. **Write the entry point**: Workflow / Conversation use the Core Runtime API for the entry and executor; Kanban starts from `index.html` and static assets.
+4. **Run locally**: open the project in Studio and run it, or use `steamharness structure .`, `steamharness run .`, and `steamharness web .`.
+5. **Upload to a Server**: use the Workspace CLI to sign in, package the source, and publish a version; manage the project, members, and data in the Server Web console.
+6. **Publish to Store** (optional): create a Store entry from a version already on the Server, submit it for review, and list it.
+
+## Project structure
+
+A minimal Workflow / Conversation project usually contains:
+
+```text
+my-project/
+├── package.json   # name, steamHarness.projectType, projectInfo, Core/CLI versions
+├── index.ts       # entry point and executor
+└── ...
 ```
 
-Results appear in the local project view. Open local execution traces and logs for diagnostics. Configure project environment variables in the local runtime.
+A Kanban project only needs:
 
-## Choose an entrypoint
+```text
+my-board/
+├── package.json
+└── index.html
+```
 
-- [Studio workstation](/en/guides/studio/overview): open projects and use workstation and account commands.
-- [Core API](/en/core-api/overview): implement nodes, executors, and project parameters.
-- [Local CLI](/en/cli/steamharness): inspect structure, run projects, and open Web workspaces.
-- [Workspace CLI](/en/cli/server-workspace): manage server projects, upload and download source, and publish versions.
-- [Server Web](/en/guides/server/overview): manage projects, members, relationships, Knowledge, KV, and versions.
+`package.json` is the source of truth for project information. `steamHarness.projectType` selects the project type; `steamHarness.projectInfo` stores localized names, display platforms, data storage, and related projects. Workflow / Conversation must pin exact Core and CLI versions in `devDependencies`; Kanban only uses the Core version as static package metadata.
+
+## Choose your next step
+
+- New to SteamHarness: start with [Using Studio](/en/guides/studio/overview).
+- Writing business logic: see [Core API](/en/core-api/overview) and [Workflow model](/en/concepts/workflow-model).
+- Managing server projects: see [Workspace CLI](/en/cli/server-workspace) and [Server Web console](/en/guides/server/overview).
+- Using System AI or publishing to Store: see [Enhanced features](https://docs.steamharness.yuhe.space/en/enhanced/ai/feature-comparison).

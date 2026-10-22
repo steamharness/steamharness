@@ -41,9 +41,14 @@
             "tab": "指南",
             "groups": [
               {
-                "group": "上手教程",
+                "group": "项目导览",
                 "pages": [
-                  "index",
+                  "index"
+                ]
+              },
+              {
+                "group": "迁移",
+                "pages": [
                   "guides/migrate-core-0-2"
                 ]
               },
@@ -304,9 +309,14 @@
             "tab": "Guides",
             "groups": [
               {
-                "group": "Getting started",
+                "group": "Project overview",
                 "pages": [
-                  "en/index",
+                  "en/index"
+                ]
+              },
+              {
+                "group": "Migration",
+                "pages": [
                   "en/guides/migrate-core-0-2"
                 ]
               },

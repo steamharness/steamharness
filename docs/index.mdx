@@ -1,31 +1,87 @@
 ---
-title: "上手教程"
-description: "使用 Studio 和 CLI 开发、运行 Workflow 项目。"
+title: "项目指南"
+description: "从项目类型、主要功能和开发流程了解 SteamHarness。"
 slug: /
 ---
 
-# 开发和运行 Workflow 项目
+# SteamHarness 指南
 
-SteamHarness 提供 Core 运行时、CLI、Studio 工作站与 SteamHarness Server。Studio 打开本地项目，Server Web 管理端管理服务器上的项目源码、版本和数据。
+SteamHarness 是开发、运行和分发 Agent 项目的平台。它由 Core SDK、CLI、Studio 工作站、Server 与 Server Web 管理端组成；项目可以在本地开发，也可以上传到 Server，并发布到 Store。
 
-## 本地开发
+## 三种项目类型
 
-1. 在项目中安装 `steamharness` 和支持 Web 宿主协议的 `@steamharness/cli`。
-2. 按 [Workflow 模型](/concepts/workflow-model) 声明项目与执行入口。
-3. 在 Studio 中打开项目文件夹，点击顶部的运行项目按钮；也可以在终端运行 CLI。
+| 类型 | 形态 | 适合 | 入口 |
+| --- | --- | --- | --- |
+| Workflow | 类型化的 TypeScript 工作流 | 自动化、多步骤任务、工具编排 | 入口函数 + 节点 / 执行器 |
+| Conversation | 对话型 Agent 项目 | 对话助手、Agent 会话 | 会话执行器 |
+| Kanban | 静态 HTML / CSS / JavaScript | 看板、可视化、人机协作 | `index.html` |
 
-```sh
-steamharness structure .
-steamharness run .
-steamharness web .
+### Workflow
+
+Workflow 用节点和执行器描述一条可运行的任务链：输入、LLM 调用、工具、条件分支、循环和输出都由 Runtime API 声明。适合把一组需要类型约束和可复用步骤的操作串起来。
+
+- 典型场景：数据处理、内容生成、工具调用、多步骤自动化。
+- 从 [Workflow 模型](/concepts/workflow-model) 和 [Core API](/core-api/overview) 开始。
+
+### Conversation
+
+Conversation 是面向对话的 Agent 项目，围绕会话轮次、工具调用和会话数据组织执行。它复用同一套 Core Runtime，但入口以消息和会话为单位。
+
+- 典型场景：对话助手、客服/运营助手、需要持续上下文的 Agent。
+- 从 [KV 与会话](/concepts/kv-and-conversation) 和 [Core API](/core-api/overview) 开始。
+
+### Kanban
+
+Kanban 是由 HTML、CSS、JavaScript、图片和字体组成的静态项目，以 `index.html` 为入口，不执行 Runtime API，也不需要执行器。页面可以通过受限 Bridge 读取项目 KV 和知识库。
+
+- 典型场景：看板、地图、仪表盘、需要嵌入对话或项目详情页的可视化界面。
+- 从 [Kanban HTML 项目](/concepts/kanban) 开始。
+
+## 主要功能
+
+| 能力 | 说明 | 入口 |
+| --- | --- | --- |
+| Studio 工作站 | 基于 VS Code OSS，打开和运行本地项目、查看执行轨迹、管理版本与账号 | [使用 Studio](/guides/studio/overview) |
+| 本地 CLI | 检查项目结构、运行项目、打开 Web 工作区 | [本地 CLI](/cli/steamharness) |
+| Server 与 Server Web | 管理项目源码、版本、成员、知识库、KV 和账号 | [Server Web 管理端](/guides/server/overview) |
+| Workspace CLI | 登录 Server、上传下载源码、发布和切换版本 | [Workspace CLI](/cli/server-workspace) |
+| Store | 浏览、下载和发布项目版本 | [Store 概览](https://docs.steamharness.yuhe.space/enhanced/store/overview) |
+| 系统 AI（增强版） | 共享模型、个人默认模型、供应方偏好、用量与订单 | [系统 AI 指南](https://docs.steamharness.yuhe.space/enhanced/ai/feature-comparison) |
+| 内置项目 | 开发者小助手、Codex、Conversation、OpenCode、Pi 等开箱即用的项目 | [发布日志](/guides/releases/overview) |
+
+## 开发流程
+
+1. **创建项目**：在 Studio 中点击「新建项目」，选择 Workflow、Conversation 或 Kanban 类型和模板；也可以手动创建目录。
+2. **声明项目**：在根 `package.json` 写入 `steamHarness.projectType`（`workflow`、`conversation` 或 `kanban`），以及可选的 `projectInfo`（名称、展示平台、数据存储、关联项目）。
+3. **编写入口**：Workflow / Conversation 使用 Core Runtime API 声明入口和执行器；Kanban 直接编写 `index.html` 及其静态资源。
+4. **本地运行**：在 Studio 中打开项目并点击运行，或在终端执行 `steamharness structure .`、`steamharness run .`、`steamharness web .`。
+5. **上传到 Server**：使用 Workspace CLI 登录、打包源码并发布版本，然后在 Server Web 管理端管理项目、成员和数据。
+6. **发布到 Store**（可选）：从 Server 上已有的版本创建 Store 条目，提交审核并上架。
+
+## 项目结构
+
+一个最小的 Workflow / Conversation 项目通常包含：
+
+```text
+my-project/
+├── package.json   # name、steamHarness.projectType、projectInfo、Core/CLI 版本
+├── index.ts       # 入口与执行器
+└── ...
 ```
 
-运行结果展示在本地项目界面中；需要诊断时查看本地执行轨迹和日志。项目环境变量在本地运行环境中配置。
+Kanban 项目只需要：
 
-## 选择入口
+```text
+my-board/
+├── package.json
+└── index.html
+```
 
-- [Studio 工作站](/guides/studio/overview)：打开项目、使用工作站与账号入口。
-- [Core API](/core-api/overview)：编写节点、执行器和项目参数。
-- [本地 CLI](/cli/steamharness)：检查结构、运行项目和打开 Web 工作区。
-- [Workspace CLI](/cli/server-workspace)：管理服务器项目、上传下载源码和发布版本。
-- [Server Web 管理端](/guides/server/overview)：管理项目、成员、关联项目、知识库、KV 和版本。
+`package.json` 是项目信息的唯一权威来源。`steamHarness.projectType` 决定项目类型；`steamHarness.projectInfo` 保存本地化名称、展示平台、数据存储位置和关联项目。Workflow / Conversation 需要在 `devDependencies` 中精确记录 Core 与 CLI 版本，Kanban 只把 Core 版本作为静态包元数据校验。
+
+## 选择你的下一步
+
+- 第一次使用：从[使用 Studio](/guides/studio/overview)开始。
+- 编写业务逻辑：看 [Core API](/core-api/overview) 和 [Workflow 模型](/concepts/workflow-model)。
+- 管理服务器项目：看 [Workspace CLI](/cli/server-workspace) 和 [Server Web 管理端](/guides/server/overview)。
+- 使用系统 AI 或发布到 Store：看[增强版功能](https://docs.steamharness.yuhe.space/enhanced/ai/feature-comparison)。
