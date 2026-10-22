@@ -28,6 +28,7 @@ import { ResourcePreviews } from './resource-preview';
 import { createLocalActivityWriter, summarizeLocalRuns } from './local-analysis';
 import { ConversationOwnership } from './conversation-ownership';
 import { ConversationHistory } from './conversation-history';
+import { ConversationState } from './conversation-state';
 
 type Message = Record<string, any>;
 export interface WebOptions { projectDir: string; port?: number; dataDir?: string; theme?: 'auto' | 'light' | 'dark'; runtime?: Runtime; host?: WebHostConfiguration }
@@ -87,7 +88,8 @@ export async function startWebServer(options: WebOptions) {
   const selections = new Map<string, string>();
   const clientIds = new WeakMap<ServerResponse, string>();
   const blockedClients = new Set<ServerResponse>();
-  const pendingFrames = new WeakMap<ServerResponse, string>();
+  const pendingStates = new Set<ServerResponse>();
+  const conversationState = new ConversationState();
   const sessionIdPattern = /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i;
   const rememberSelection = (clientId: string, id: string) => {
     selections.set(clientId, id);
@@ -104,28 +106,38 @@ export async function startWebServer(options: WebOptions) {
     return value;
   };
   // Preserve project-owned data keys; remove host credentials by their actual values.
-  const state = (clientId?: string) => {
+  const publicState = (value: unknown) => publicValue(redactProjectData(value, [...sensitiveTokens], false));
+  const sharedState = () => {
+    const result = publicState({ type: 'state', serverInstanceId, project, configurationError: configurations.error,
+    ...(isKanban ? { kanban: kanbanController!.state() } : isProject ? projectActions!.state() : { sessions: conversationState.sessions(controller.sessions) }),
+    account: { ...account, user: account.user && { userId: account.user.userId, email: account.user.email, displayName: account.user.displayName, avatarUrl: account.user.avatarUrl } },
+    authenticationRevision: authRevision, resourceRevision: resources.revision });
+    // Configuration values are user-owned JSON, including explicitly entered credentials.
+    return { ...result, configurations: configurations.state };
+  };
+  const clientState = (clientId?: string) => {
     const selected = controller?.sessions.find(entry => entry.id === selections.get(clientId ?? '')) ?? controller?.current;
     // Pin open pages before navigation changes the persisted default for new pages.
     if (clientId && selected) rememberSelection(clientId, selected.id);
-    const result = publicValue(redactProjectData({ type: 'state', serverInstanceId, stateRevision: ++stateRevision, project, configurationError: configurations.error,
-    ...(isKanban ? { kanban: kanbanController!.state() } : isProject ? projectActions!.state() : { sessions: controller.sessions, activeId: selected.id, running: sessionRunning(selected), parameterValues: selected.parameterValues ?? {} }),
-    account: { ...account, user: account.user && { userId: account.user.userId, email: account.user.email, displayName: account.user.displayName, avatarUrl: account.user.avatarUrl } },
-    authenticationRevision: authRevision, resourceRevision: resources.revision }, [...sensitiveTokens], false));
-    // Configuration values are user-owned JSON, including explicitly entered credentials.
-    return {...result, configurations: configurations.state,
-      ...(ownership && selected && clientId ? { conversationAccess: ownership.select(clientId, selected.id) } : {}) };
+    return publicState({ stateRevision: ++stateRevision,
+      ...(selected ? { activeId: selected.id, running: sessionRunning(selected), parameterValues: selected.parameterValues ?? {} } : {}),
+      ...(ownership && selected && clientId ? { conversationAccess: ownership.select(clientId, selected.id) } : {}) });
   };
+  const state = (clientId?: string) => ({ ...sharedState(), ...clientState(clientId) });
   const writeFrame = (client: ServerResponse, data: string) => {
-    if (blockedClients.has(client)) { pendingFrames.set(client, data); return; }
     if (!client.write(data)) {
       blockedClients.add(client);
       client.once('drain', () => {
         blockedClients.delete(client);
-        const pending = pendingFrames.get(client); pendingFrames.delete(client);
-        if (pending && !client.destroyed) writeFrame(client, pending);
+        if (pendingStates.delete(client) && !client.destroyed) writeState(client);
       });
     }
+  };
+  const writeState = (client: ServerResponse, shared?: string) => {
+    // Apply backpressure before constructing, redacting or serializing history.
+    if (blockedClients.has(client)) { pendingStates.add(client); return; }
+    const base = shared ?? JSON.stringify(sharedState()).slice(0, -1);
+    writeFrame(client, `data: ${base},${JSON.stringify(clientState(clientIds.get(client))).slice(1)}\n\n`);
   };
   const broadcast = () => {
     if (broadcastTimer) { return; }
@@ -133,7 +145,14 @@ export async function startWebServer(options: WebOptions) {
       broadcastTimer = undefined;
       if (ownership && conversationController) ownership.update(conversationController.executingIds, new Set(conversationController.sessions.filter(sessionRunning).map(session => session.id)));
       activity?.changed();
-      for (const client of clients) writeFrame(client, `data: ${JSON.stringify(state(clientIds.get(client)))}\n\n`);
+      const writable = [...clients].filter(client => {
+        if (blockedClients.has(client)) { pendingStates.add(client); return false; }
+        return !client.destroyed;
+      });
+      if (writable.length) {
+        const shared = JSON.stringify(sharedState()).slice(0, -1);
+        for (const client of writable) writeState(client, shared);
+      }
     }, 30);
   };
   let conversationController: ConversationController | undefined;
@@ -649,10 +668,10 @@ export async function startWebServer(options: WebOptions) {
           const disconnectKanban = kanbanController?.methods.connect(url.searchParams.get('clientId') ?? '');
           const clientId = url.searchParams.get('clientId') ?? '';
           clientIds.set(response, clientId);
-          response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' }); writeFrame(response, `data: ${JSON.stringify(state(clientId))}\n\n`); clients.add(response);
+          response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' }); writeState(response); clients.add(response);
           const heartbeat = setInterval(() => { if (!blockedClients.has(response)) writeFrame(response, 'event: heartbeat\ndata: {}\n\n'); }, 20_000);
           response.once('close', () => {
-            clearInterval(heartbeat); clients.delete(response); blockedClients.delete(response); pendingFrames.delete(response); disconnectKanban?.();
+            clearInterval(heartbeat); clients.delete(response); blockedClients.delete(response); pendingStates.delete(response); disconnectKanban?.();
             if (clientId && ![...clients].some(client => clientIds.get(client) === clientId)) ownership?.disconnect(clientId, broadcast);
           }); return;
         }

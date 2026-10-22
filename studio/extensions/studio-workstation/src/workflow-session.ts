@@ -1,5 +1,5 @@
 import type { Connection } from './workflow-auth-client';
-import type { RelatedProjectBinding, WebSession } from './workflow-cli-types';
+import type { RelatedProjectBinding, WebSession, WebSessionExit } from './workflow-cli-types';
 import { t } from './localization';
 
 /** Keep the page lifetime separate from a CLI process which may have exited. */
@@ -8,7 +8,8 @@ export class RecoverableWebSession implements WebSession {
   private closing = false;
   private restarting?: Promise<boolean>;
   private readonly controller = new AbortController();
-  private readonly listeners = new Set<() => void>();
+  private readonly listeners = new Set<(exit?: WebSessionExit) => void>();
+  private exit?: WebSessionExit;
   private exitListener: { dispose(): void };
   private finish!: () => void;
   readonly closed = new Promise<void>(resolve => { this.finish = resolve; });
@@ -20,10 +21,11 @@ export class RecoverableWebSession implements WebSession {
   }
   get ready() { return this.current.ready; }
   private watch(session: WebSession) {
-    return session.onExit(() => {
+    return session.onExit(exit => {
       if (this.closing || session !== this.current) return;
       this.exited = true;
-      for (const listener of this.listeners) listener();
+      this.exit = exit;
+      for (const listener of this.listeners) listener(exit);
     });
   }
   reconnect(): Promise<boolean> {
@@ -45,7 +47,7 @@ export class RecoverableWebSession implements WebSession {
         if (this.related) next.updateRelatedProjects(this.related.projects, this.related.resources);
       } catch (error) { await next.close(); throw error; }
       this.exitListener.dispose();
-      this.current = next; this.exited = false; this.exitListener = this.watch(next);
+      this.current = next; this.exited = false; this.exit = undefined; this.exitListener = this.watch(next);
       return true;
     })().finally(() => { this.restarting = undefined; });
     return this.restarting;
@@ -54,9 +56,9 @@ export class RecoverableWebSession implements WebSession {
   updateRelatedProjects(projects: RelatedProjectBinding[], resources: string[] = []): void {
     this.related = { projects, resources }; if (!this.exited) this.current.updateRelatedProjects(projects, resources);
   }
-  onExit(callback: () => void) {
+  onExit(callback: (exit?: WebSessionExit) => void) {
     this.listeners.add(callback);
-    if (this.exited) queueMicrotask(() => { if (!this.closing && this.exited && this.listeners.has(callback)) callback(); });
+    if (this.exited) queueMicrotask(() => { if (!this.closing && this.exited && this.listeners.has(callback)) callback(this.exit); });
     return { dispose: () => { this.listeners.delete(callback); } };
   }
   async close(): Promise<void> {

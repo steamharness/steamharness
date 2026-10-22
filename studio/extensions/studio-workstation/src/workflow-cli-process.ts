@@ -7,7 +7,7 @@ import { EventEmitter } from 'node:events';
 import type { Connection } from './workflow-auth-client';
 import { sanitizeProjectEnvironment } from './workflow-auth-client';
 import type { Project } from './workflow-types';
-import type { WebReady, WebSession, RelatedProjectBinding } from './workflow-cli-types';
+import type { WebReady, WebSession, WebSessionExit, RelatedProjectBinding } from './workflow-cli-types';
 
 export interface StudioControlConfiguration { mcpServer?: string; url: string; token: string }
 
@@ -109,6 +109,8 @@ export async function startProjectCli(options: {
   let finishClose!: () => void;
   const closed = new Promise<void>(resolve => { finishClose = resolve; });
   let closing = false, finished = false, buffer = '', stderr = '';
+  let exit: WebSessionExit | undefined;
+  const diagnostics = () => cleanError(stderr).slice(-8_000).trim();
   let relatedProjectsKey = JSON.stringify([options.relatedProjects ?? [], options.resourceProjects ?? []]);
   let connectionKey = JSON.stringify(connection ?? null);
   let force: ReturnType<typeof setTimeout> | undefined;
@@ -123,8 +125,15 @@ export async function startProjectCli(options: {
   };
   child.stdin?.on('error', () => undefined);
   child.stdout?.setEncoding('utf8'); child.stderr?.setEncoding('utf8');
-  child.stderr?.on('data', chunk => { stderr = (stderr + chunk).slice(-8_000); });
-  child.once('close', () => { finished = true; clearTimeout(force); events.emit('exit'); finishClose(); });
+  child.stderr?.on('data', chunk => {
+    // Keep enough context to redact a credential spanning a chunk/tail boundary.
+    const overlap = Math.max(0, ...[...secrets].map(token => token.length));
+    stderr = (stderr + chunk).slice(-8_000 - overlap);
+  });
+  child.once('close', (code, signal) => {
+    finished = true; clearTimeout(force); exit = { code, signal, stderr: diagnostics() };
+    events.emit('exit', exit); finishClose();
+  });
   try {
     const ready = await new Promise<WebReady>((resolve, reject) => {
       const timer = setTimeout(() => { child.kill('SIGKILL'); reject(new Error('SteamHarness Web startup timed out.')); }, 45_000);
@@ -133,7 +142,7 @@ export async function startProjectCli(options: {
         if (error) { reject(error); } else { resolve(message!); }
       };
       const failed = (error: Error) => settle(new Error(cleanError(error.message)));
-      const exited = (code: number | null) => failed(new Error(stderr.trim() || `SteamHarness Web exited (${code}).`));
+      const exited = (code: number | null, signal: NodeJS.Signals | null) => failed(new Error(`SteamHarness Web exited (code=${code}, signal=${signal}).${diagnostics() ? `\n${diagnostics()}` : ''}`));
       const received = (chunk: string) => {
         buffer += chunk;
         if (buffer.length > 2_000_000) { child.kill('SIGKILL'); failed(new Error('SteamHarness Web startup output is too large.')); return; }
@@ -176,7 +185,7 @@ export async function startProjectCli(options: {
         relatedProjectsKey = key;
         child.stdin?.write(`${JSON.stringify({ type: 'related-projects', relatedProjects, resourceProjects })}\n`);
       },
-      onExit: callback => { events.on('exit', callback); if (finished) { queueMicrotask(callback); } return { dispose: () => events.off('exit', callback) }; },
+      onExit: callback => { events.on('exit', callback); if (finished) { queueMicrotask(() => { if (events.listeners('exit').includes(callback)) callback(exit); }); } return { dispose: () => events.off('exit', callback) }; },
     };
   } catch (error) { await close(); throw error; }
 }

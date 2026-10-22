@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, readFile, realpath, rm, writeFile, symlink } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { request as httpRequest } from 'node:http';
+import { request as httpRequest, ServerResponse } from 'node:http';
 import { createServer as createProxy, connect as connectSocket, type Socket } from 'node:net';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +17,7 @@ import type { Project, Runtime, Run, Report } from '../web/workflow-types';
 import { initI18n } from '@steamharness/i18n';
 import { t } from '../web/localization';
 import { resolveHarnessRoot } from './harness-source';
+import { ConversationState } from '../web/conversation-state';
 
 const folders: string[] = [];
 const services: Awaited<ReturnType<typeof startWebServer>>[] = [];
@@ -72,6 +73,76 @@ async function fixture(host?: WebHostConfiguration, beforeStart?: () => Promise<
 }
 
 describe('steamharness web', () => {
+  it('keeps raw trace and export data out of live snapshots without changing persisted history', async () => {
+    const { app, cookie, post } = await fixture();
+    const clientId = crypto.randomUUID();
+    await post({ type: 'ready', clientId });
+    const payload = 'raw output '.repeat(100_000);
+    const answer = { id: 'answer', role: 'assistant' as const, content: 'Visible answer', status: 'success', items: [{ id: 'item', content: 'Visible answer' }],
+      events: [
+        { type: 'node_chunk', timestamp: 10, chunk: { type: 'output_item_start', item: { id: 'item', content: payload } } },
+        { type: 'node_chunk', timestamp: 20, chunk: { type: 'output_item_delta', itemId: 'item', delta: payload } },
+        { type: 'node_chunk', timestamp: 30, chunk: { type: 'output_item_end', itemId: 'item', result: payload } },
+      ], report: { status: 'success', result: { data: payload }, outputs: [payload], nodes: [{ executionId: 'node', output: 'Node detail' }] } };
+    app.controller.current.messages.push(answer);
+    await app.controller.persist();
+    const state = await initialState(await fetch(`${app.origin}/api/events?clientId=${clientId}`, { headers: { Cookie: cookie } }));
+    expect(JSON.stringify(state).length).toBeLessThan(20_000);
+    expect(state.sessions[0].messages[0]).toMatchObject({ items: answer.items, report: { nodes: answer.report.nodes } });
+    const trace = await (await post({ type: 'trace', clientId, sessionId: app.controller.activeId, messageId: 'answer' })).json();
+    expect(trace.messages[0].content.events).toEqual(answer.events);
+    expect(trace.messages[0].content.report.result.data).toBe(payload);
+    const exported = await (await post({ type: 'session-action', clientId, id: app.controller.activeId, action: 'export' })).json();
+    expect(JSON.parse(exported.messages[0].content).messages[0]).toEqual(answer);
+    expect(app.controller.current.messages[0].events).toEqual(answer.events);
+  });
+
+  it('skips serialization for blocked clients and sends their latest state after drain while other pages keep receiving updates', async () => {
+    const { app, cookie, post, runtime } = await fixture();
+    let emit!: (event: Record<string, unknown>) => void, finish!: (report: Report) => void;
+    vi.mocked(runtime.run).mockImplementation((_request, onEvent) => {
+      emit = onEvent; return new Promise(resolve => { finish = resolve; });
+    });
+    await post({ type: 'send', text: 'Run', params: {}, attachments: [] });
+    await vi.waitFor(() => expect(emit).toBeDefined());
+    let slow: ServerResponse | undefined, released = false;
+    const write = ServerResponse.prototype.write;
+    vi.spyOn(ServerResponse.prototype, 'write').mockImplementation(function (this: ServerResponse, chunk: any, ...args: any[]) {
+      const result = Reflect.apply(write, this, [chunk, ...args]);
+      if (this.getHeader('Content-Type') === 'text/event-stream' && !slow) slow = this;
+      return this === slow && !released ? false : result;
+    });
+    const readers: ReadableStreamDefaultReader<Uint8Array>[] = [];
+    const next = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
+      let text = '';
+      while (!text.includes('\n\n')) {
+        const chunk = await reader.read();
+        if (chunk.done) throw new Error('Stream closed before snapshot.');
+        text += new TextDecoder().decode(chunk.value);
+      }
+      return JSON.parse(text.split('\n\n')[0].slice('data: '.length));
+    };
+    try {
+      for (let index = 0; index < 2; ++index) {
+        const response = await fetch(`${app.origin}/api/events?clientId=${crypto.randomUUID()}`, { headers: { Cookie: cookie } });
+        const reader = response.body!.getReader(); readers.push(reader); await next(reader);
+      }
+      const snapshots = vi.spyOn(ConversationState.prototype, 'sessions');
+      for (let index = 0; index < 3; ++index) {
+        app.controller.current.title = `Update ${index}`;
+        emit({ type: 'node_chunk', chunk: { type: 'output_item_delta', itemId: 'answer', delta: String(index) } });
+        expect((await next(readers[1])).sessions[0].title).toBe(`Update ${index}`);
+        expect(snapshots).toHaveBeenCalledTimes(index + 1);
+      }
+      released = true; slow!.emit('drain');
+      expect((await next(readers[0])).sessions[0].title).toBe('Update 2');
+      expect(snapshots).toHaveBeenCalledTimes(4);
+    } finally {
+      released = true; finish({ status: 'success' }); await app.controller.idle();
+      await Promise.all(readers.map(reader => reader.cancel()));
+    }
+  });
+
   it('makes duplicate windows read-only and runs different conversations in independent services without losing history', async () => {
     const { app: one, directory, runtime: first } = await fixture();
     const left = crypto.randomUUID(), right = crypto.randomUUID();
@@ -949,7 +1020,9 @@ describe('steamharness web', () => {
     expect(app.controller.current.messages.at(-1)).toMatchObject({ role: 'assistant', status: 'success', content: t("Conversation export ready: {0} ({1} messages).", `conversation-${id}.json`, snapshot.messages.length) });
     expect(runtime.run).toHaveBeenCalledTimes(2);
     const ready = await post({ type: 'ready' }).then(response => response.json());
-    expect(ready.messages[0].sessions.find((session: { id: string }) => session.id === id).messages).toEqual(snapshot.messages);
+    expect(app.controller.current.messages).toEqual(snapshot.messages);
+    expect(ready.messages[0].sessions.find((session: { id: string }) => session.id === id).messages)
+      .toMatchObject(snapshot.messages.map(({ id, role, content }: { id: string; role: string; content: string }) => ({ id, role, content })));
     expect((await post({ type: 'command', command: 'unknown', params: {} })).status).toBe(400);
     expect((await post({ type: 'command', command: 'export', sessionId: 'stale' })).status).toBe(400);
     await post({ type: 'command', command: 'compact', text: 'Ignore this injected prompt', params: {} }); await app.controller.idle();

@@ -16,13 +16,14 @@ export interface WebReady {
   project: Pick<Project, 'id' | 'name' | 'projectType'>;
   runtime: { harnessVersion: string; harnessPath: string };
 }
+export interface WebSessionExit { code: number | null; signal: NodeJS.Signals | null; stderr: string }
 export interface WebSession {
   ready: WebReady;
   closed: Promise<void>;
   close(): Promise<void>;
   updateAuth(connection?: Connection): void;
   updateRelatedProjects(projects: RelatedProjectBinding[], resourceProjects?: string[]): void;
-  onExit(callback: () => void): { dispose(): void };
+  onExit(callback: (exit?: WebSessionExit) => void): { dispose(): void };
 }
 export interface Launcher {
   available: boolean;

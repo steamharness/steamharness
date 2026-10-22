@@ -17,6 +17,7 @@ interface ControllerOptions {
   log(message: string): void;
 }
 interface RunTask { sessionId: string; cancelled: boolean; finished: Promise<void>; promote?: boolean }
+interface PendingSave { promise: Promise<void>; resolve(): void; reject(error: unknown): void }
 
 export class ConversationController {
   readonly sessions: ConversationSession[];
@@ -27,6 +28,8 @@ export class ConversationController {
   private readonly removing = new Set<string>();
   private readonly agentWaiters = new Map<string, { ownerId: string; targetId?: number; requestId: string; promise: Promise<AgentSessionReceipt>; resolve(receipt: AgentSessionReceipt): void; reject(error: Error): void }>();
   private readonly agentSaves = new Map<string, ReturnType<typeof setTimeout>>();
+  private saving = false;
+  private pendingSave?: PendingSave;
 
   constructor(readonly project: Project, private readonly runtime: Runtime, saved: { sessions?: ConversationSession[]; activeId?: string; selectionVersion?: number }, private readonly options: ControllerOptions) {
     this.sessions = (saved.sessions ?? []).filter((entry) => typeof entry.id === 'string' && typeof entry.title === 'string' && Array.isArray(entry.messages));
@@ -64,8 +67,28 @@ export class ConversationController {
     const now = Date.now();
     return { id, title: t("New conversation"), createdAt: now, updatedAt: now, messages: [], parameterValues: {}, toolPermissionPolicies: {}, queuedInputs: [], draft: { text: '', attachments: [] } };
   }
-  async persist(): Promise<void> {
-    await this.options.save(JSON.parse(JSON.stringify(this.sessions)), this.activeId);
+  persist(): Promise<void> {
+    if (!this.pendingSave) {
+      let resolve!: () => void, reject!: (error: unknown) => void;
+      const promise = new Promise<void>((done, failed) => { resolve = done; reject = failed; });
+      this.pendingSave = { promise, resolve, reject };
+    }
+    const pending = this.pendingSave;
+    if (!this.saving) void this.flushSaves();
+    return pending.promise;
+  }
+  private async flushSaves(): Promise<void> {
+    this.saving = true;
+    while (this.pendingSave) {
+      const pending = this.pendingSave; this.pendingSave = undefined;
+      try {
+        // Snapshot only when the writer is ready. Streaming updates coalesce
+        // instead of retaining an unbounded queue of full history copies.
+        await this.options.save(JSON.parse(JSON.stringify(this.sessions)), this.activeId);
+        pending.resolve();
+      } catch (error) { pending.reject(error); }
+    }
+    this.saving = false;
   }
   recover(): void {
     if (!this.project.conversation?.recovery?.enabled || this.disposed) return;

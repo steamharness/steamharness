@@ -49,6 +49,33 @@ describe('Conversation answer action visibility', () => {
 });
 
 describe('Conversation execution lifecycle', () => {
+  it('coalesces a busy history writer and confirms each batch only after its snapshot is saved', async () => {
+    const { controller, save } = fixture();
+    let finishFirst!: () => void, finishSecond!: () => void;
+    save.mockImplementationOnce(() => new Promise(resolve => { finishFirst = resolve; }))
+      .mockImplementationOnce(() => new Promise(resolve => { finishSecond = resolve; }));
+    const first = controller.persist();
+    const pending: Promise<void>[] = [];
+    for (let index = 0; index < 100; ++index) {
+      controller.current.title = `Update ${index}`;
+      pending.push(controller.persist());
+    }
+    expect(save).toHaveBeenCalledOnce();
+    expect(save.mock.calls[0][0][0].title).not.toBe('Update 99');
+    let confirmed = false;
+    void pending.at(-1)!.then(() => { confirmed = true; });
+    finishFirst(); await first;
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save.mock.calls[1][0][0].title).toBe('Update 99');
+    expect(confirmed).toBe(false);
+    finishSecond(); await Promise.all(pending);
+    expect(confirmed).toBe(true);
+    save.mockRejectedValueOnce(new Error('Disk unavailable'));
+    await expect(controller.persist()).rejects.toThrow('Disk unavailable');
+    await controller.persist();
+    expect(save).toHaveBeenCalledTimes(4);
+    controller.dispose();
+  });
   it.each(['message-time', 'array-order'] as const)('restores legacy conversation selection using %s when session timestamps are missing', kind => {
     const { controller, runtime, save } = fixture();
     const sessions = ['first', 'latest', 'last'].map((id, index) => ({

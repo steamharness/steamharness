@@ -279,13 +279,14 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         listeners.push(panel.onDidChangeViewState(scheduleEntry));
       }
       listeners.push(vscode.window.onDidChangeActiveColorTheme(() => void panel.webview.postMessage({ type: 'workflow-host', theme: theme() })),
-        session.onExit(() => {
+        session.onExit(exit => {
           traceBinding.dispose();
           if (!closed) {
             const entry = workspaces.get(project.uri);
             if (entry?.close === close) { entry.running = false; }
             updateEntry();
-            output.appendLine(`SteamHarness Web stopped: ${project.name}`);
+            output.appendLine(`SteamHarness Web stopped: ${project.name}${exit ? `; code=${exit.code}; signal=${exit.signal}` : ''}`);
+            if (exit?.stderr) output.appendLine(exit.stderr);
           }
         }));
       output.appendLine(`SteamHarness Web: ${project.name}; project Core ${session.ready.runtime.harnessVersion}; ${session.ready.runtime.harnessPath}`);

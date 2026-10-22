@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed repeated connection interruptions with large conversation histories: live snapshots carry output and trace summaries while exports retain full events. Pending history writes and slow-client snapshots coalesce, and pages share state serialization. Studio records exit codes, signals, and redacted service diagnostics.
+
 - Added --group-id for creation and first uploads. Uploads and publication require developer access; published downloads require guest access, using current Server memberships.
 
 - Improved Studio and CLI Web recovery: host restarts and internal continuations stay running without flashing “Run interrupted” or finished-answer actions. Only connection retries show Retry; final failures retain their cause.

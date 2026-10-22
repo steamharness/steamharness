@@ -34,7 +34,16 @@ async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startup
           if(args.includes('--inspect')) { console.log(JSON.stringify({assistantProtocolVersion:${assistantProtocol},projects:[{id:assistantId,name:'Project Assistant',folderPath:message.assistantProjectDir,projectType:'conversation',fields:[],entrypoints:[],tools:[{name:'skill'}]}],errors:[]}));input.close();process.stdin.pause();return; }
           if(${fail}) {console.error(message.connection?.accessToken);process.exit(1);}
           const studioControl={hasUrl:!!process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL,hasToken:!!process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN,mcpServer:process.env.STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER??null,permissionPolicy:process.env.STEAMHARNESS_STUDIO_CONTROL_PERMISSION_POLICY??null};
-          server=createServer((request,response)=>{response.setHeader('Content-Type','application/json');response.end(JSON.stringify({configuration,args,pid:process.pid,authMessages,studioControl}));});
+          server=createServer((request,response)=>{
+            response.setHeader('Content-Type','application/json');
+            if(request.url==='/crash') {
+              const token=configuration.connection?.accessToken??'';
+              process.stderr.write('x'.repeat(7995)+token.slice(0,5));
+              setTimeout(()=>{process.stderr.write(token.slice(5)+' '+(configuration.connection?.aiAccessToken??'')+' '+(process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN??'')+' diagnostic tail');response.end('{}');setTimeout(()=>process.exit(23),10);},10);
+              return;
+            }
+            response.end(JSON.stringify({configuration,args,pid:process.pid,authMessages,studioControl}));
+          });
           setTimeout(()=>server.listen(Number(args[args.indexOf('--port')+1]??0),'127.0.0.1',()=>console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:${protocol},accountProtocolVersion:${accountProtocol},relatedProjectsProtocolVersion:${relatedProtocol},assistantProtocolVersion:${assistantProtocol},url:'http://127.0.0.1:'+server.address().port+'/#session='+'a'.repeat(64),project:{id:message.assistantProjectDir?assistantId:'user',name:message.assistantProjectDir?'Project Assistant':version,projectType:'conversation'},runtime:{harnessVersion:version,harnessPath:process.cwd()+'/node_modules/steamharness/dist/index.js'}}))),${startupDelay});
         } else if(message.type==='auth') {authMessages++;configuration.connection=message.connection;}
         else if(message.type==='related-projects') {configuration.relatedProjects=message.relatedProjects;}
@@ -250,6 +259,22 @@ test('an unexpected CLI exit is reported and the project can start again', async
   assert.notEqual(result.pid, pid);
 });
 
+test('runtime exits retain code and bounded diagnostics with rotated credentials redacted', async t => {
+  const { options } = await fixture(t);
+  const session = await startProjectCli({ ...options, connection: { serverUrl: 'https://fixture.test', accessToken: 'old-secret-fixture-token' },
+    studioControl: { url: 'http://127.0.0.1:12345', token: 'control-secret-fixture-token' } });
+  t.after(() => session.close());
+  session.updateAuth({ serverUrl: 'https://fixture.test', accessToken: 'rotated-secret-fixture-token', aiAccessToken: 'ai-secret-fixture-token' });
+  const exited = new Promise(resolve => session.onExit(resolve));
+  await fetch(new URL('/crash', session.ready.url));
+  const exit = await exited; await session.closed;
+  assert.equal(exit.code, 23); assert.equal(exit.signal, null);
+  assert.ok(exit.stderr.length <= 8000);
+  assert.match(exit.stderr, /\[redacted\].*diagnostic tail/);
+  for (const token of ['old-secret-fixture-token', 'rotated-secret-fixture-token', 'ai-secret-fixture-token', 'control-secret-fixture-token']) assert.ok(!exit.stderr.includes(token));
+  assert.deepEqual(await new Promise(resolve => session.onExit(resolve)), exit);
+});
+
 test('startup failures redact the injected account token', async t => {
   const { options } = await fixture(t, 'broken', 1, true);
   await assert.rejects(startProjectCli({ ...options, connection: { serverUrl: 'https://steamharness.test', accessToken: 'secret-fixture-token' } }), error => {
@@ -321,7 +346,8 @@ test('Retry restores an exited CLI on the same origin and never duplicates a liv
     return startProjectCli({ ...options, port, signal });
   });
   t.after(() => session.close());
-  session.onExit(() => exits++);
+  let exitDetails;
+  session.onExit(exit => { exits++; exitDetails = exit; });
   void session.closed.then(() => { closed = true; });
   const origin = new URL(first.ready.url).origin;
   const initial = await fetch(origin).then(response => response.json());
@@ -330,6 +356,7 @@ test('Retry restores an exited CLI on the same origin and never duplicates a liv
   process.kill(initial.pid);
   await first.closed;
   assert.equal(exits, 1); assert.equal(closed, false);
+  assert.ok(exitDetails); assert.ok('code' in exitDetails && 'signal' in exitDetails && 'stderr' in exitDetails);
   const connection = { serverUrl: 'https://current.test', accessToken: 'latest-account' };
   session.updateAuth(connection);
   session.updateRelatedProjects([{ alias: 'latest', projectDir: options.projectDir }]);
