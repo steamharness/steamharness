@@ -69,7 +69,7 @@ async function fixture(t) {
     '-c', 'core.hooksPath=/dev/null', 'commit', '--quiet', '-m', 'test fixture'], upstream);
   const lock = { path: 'upstream/vscode', ref: 'test', commit: git(['rev-parse', 'HEAD'], upstream) };
   await fs.writeFile(path.join(root, 'config/upstream.json'), JSON.stringify(lock));
-  await fs.writeFile(path.join(root, 'config/product.json'), JSON.stringify({ nameShort: 'Studio', nameLong: 'Studio Workstation' }));
+  await fs.writeFile(path.join(root, 'config/product.json'), JSON.stringify({ nameShort: 'SteamHarness', nameLong: 'SteamHarness' }));
   return { root, upstream, source, lock };
 }
 

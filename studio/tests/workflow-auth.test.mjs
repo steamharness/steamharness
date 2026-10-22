@@ -94,7 +94,7 @@ test('desktop password login verifies the issued token and keeps it out of publi
   assert.equal(JSON.parse(f.stored).sessionCookie, 'wf_session=test-cookie');
   assert.equal(JSON.stringify(f.events).includes('test-cookie'), false);
   assert.deepEqual(JSON.parse(f.requests[0].body), {
-    email: user.email, password: 'correct-password', source: 'desktop', clientName: 'Studio Workstation',
+    email: user.email, password: 'correct-password', source: 'desktop', clientName: 'SteamHarness Studio',
   });
   assert.equal(f.requests[0].headers.Authorization, undefined);
   assert.equal(f.requests[1].headers.Authorization, `Bearer ${token}`);
