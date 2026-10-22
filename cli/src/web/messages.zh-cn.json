@@ -1,4 +1,7 @@
 {
+  "Parameter loading timed out. Retry or send the message to validate parameters.": "参数加载超时，请重试或发送消息进行参数校验。",
+  "Cannot load parameters. Retry or send the message to validate parameters.": "无法加载参数，请重试或发送消息进行参数校验。",
+  "Project configuration changed. Send the message again.": "项目配置已变更，请重新发送消息。",
   "Task state changed. Refresh the trace and try again.": "任务状态已变更，请刷新轨迹后重试。",
   "Invalid task action.": "无效的任务操作。",
   "Turn usage: {0} tokens": "本轮用量：{0} tokens",

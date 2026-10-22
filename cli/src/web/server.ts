@@ -80,6 +80,7 @@ export async function startWebServer(options: WebOptions) {
   let stateRevision = 0;
   const serverInstanceId = randomBytes(16).toString('hex');
   let authRevision = 0;
+  let parameterRevision = 0;
   let activity: ReturnType<typeof createLocalActivityWriter> | undefined;
   const isProject = project.projectType === 'workflow';
   const isKanban = project.projectType === 'kanban';
@@ -112,7 +113,7 @@ export async function startWebServer(options: WebOptions) {
     const result = publicState({ type: 'state', serverInstanceId, project, configurationError: configurations.error,
     ...(isKanban ? { kanban: kanbanController!.state() } : isProject ? projectActions!.state() : { sessions: conversationState.sessions(controller.sessions) }),
     account: { ...account, user: account.user && { userId: account.user.userId, email: account.user.email, displayName: account.user.displayName, avatarUrl: account.user.avatarUrl } },
-    authenticationRevision: authRevision, resourceRevision: resources.revision });
+    authenticationRevision: authRevision, parameterRevision, resourceRevision: resources.revision });
     // Configuration values are user-owned JSON, including explicitly entered credentials.
     return { ...result, configurations: configurations.state };
   };
@@ -163,6 +164,8 @@ export async function startWebServer(options: WebOptions) {
     const signature=JSON.stringify(configurations.state);
     if(signature!==configurationSignature) {
       configurationSignature=signature;
+      parameterRevision++;
+      parameterStates.clear();
       kanbanController?.configurationChanged(configurations.state);
       conversationController?.configurationChanged();
       resources.clear();
@@ -486,12 +489,17 @@ export async function startWebServer(options: WebOptions) {
           const epoch = (parameterEpochs.get(stateKey) ?? 0) + 1;
           parameterEpochs.set(stateKey, epoch);
           const revision = authRevision;
-          const parameterRevisions = current.parameterRevisions;
+          const configurationRevision = parameterRevision;
+          const parameterRevisions = JSON.stringify(current.parameterRevisions?.[entrypointId ?? ''] ?? {});
           const states = parameterStates.get(stateKey) ?? {};
           const trigger = message.trigger?.kind === 'param' && parameters.fields.some(field => field.name === message.trigger.paramName)
             ? { kind: 'param' as const, paramName: message.trigger.paramName as string } : { kind: message.trigger?.kind === 'input' ? 'input' as const : 'init' as const };
           const result = parameters.paramResolver?.enabled ? await runtime.resolveParams(project, { draftText: String(message.draftText ?? '').slice(0, 20_000), args: projectParamArgs(parameters.fields, values, states), inputMode: 'form', trigger }, entrypointId) : { params: {} };
-          if (revision !== authRevision || parameterRevisions !== current.parameterRevisions) { break; }
+          const latest = controller.sessions.find(session => session.id === current.id);
+          if (revision !== authRevision || configurationRevision !== parameterRevision || !latest || parameterRevisions !== JSON.stringify(latest.parameterRevisions?.[entrypointId ?? ''] ?? {})) {
+            replies.push(state(message.clientId), { type: 'params', projectUri: project.uri, sessionId: current.id, requestId: message.requestId, stale: true });
+            break;
+          }
           // Reply to every page; only the newest request may persist shared parameters.
           if (parameterEpochs.get(stateKey) === epoch) {
             const nextStates = mergeProjectParamStates(states, result.params);
@@ -500,7 +508,7 @@ export async function startWebServer(options: WebOptions) {
               if (patch.value === null) { delete values[name]; } else if (patch.value !== undefined) { values[name] = patch.value; }
             }
             parameterStates.set(stateKey, nextStates);
-            (current.parameterValues ??= {})[entrypointId ?? ''] = values;
+            (latest.parameterValues ??= {})[entrypointId ?? ''] = values;
             await controller.persist();
           }
           replies.push({ type: 'params', projectUri: project.uri, sessionId: current.id, requestId: message.requestId, params: result.params });
@@ -529,8 +537,10 @@ export async function startWebServer(options: WebOptions) {
         const stateKey = `${current.id}:${entrypointId ?? ''}`;
         parameterEpochs.set(stateKey, (parameterEpochs.get(stateKey) ?? 0) + 1);
         const revision = authRevision;
+        const configurationRevision = parameterRevision;
         const resolved = parameters.paramResolver?.enabled ? await runtime.resolveParams(project, { draftText: text, args: projectParamArgs(parameters.fields, params), inputMode: 'form', trigger: { kind: 'init' } }, entrypointId) : { params: {} };
         if (revision !== authRevision) { throw new Error('Workflow login changed. Send the message again.'); }
+        if (configurationRevision !== parameterRevision) { throw new Error(t('Project configuration changed. Send the message again.')); }
         const states = mergeProjectParamStates(parameterStates.get(stateKey) ?? {}, resolved.params);
         if (project.projectType === 'conversation') { validateConversationCommandStates(parameters.fields, states, project.conversation?.commands); }
         for (const [name, patch] of Object.entries(resolved.params ?? {})) {
@@ -539,6 +549,7 @@ export async function startWebServer(options: WebOptions) {
         validateProjectValues(parameters.fields, params, states);
         const attachments = command ? [] : await readAttachments(message.attachments ?? [], current.id);
         if (revision !== authRevision) { throw new Error('Workflow login changed. Send the message again.'); }
+        if (configurationRevision !== parameterRevision) { throw new Error(t('Project configuration changed. Send the message again.')); }
         parameterStates.set(stateKey, states);
         (current.parameterValues ??= {})[entrypointId ?? ''] = { ...params };
         if (message.mode !== undefined && !['steer', 'followUp', 'reject'].includes(message.mode)) throw new Error('Invalid input mode.');

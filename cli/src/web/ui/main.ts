@@ -48,7 +48,7 @@ function initialize(): void {
       <section id="chats"><nav id="session-list" aria-label="${t("Conversation history")}"></nav><button id="load-more-history" class="all-history" hidden>${icon('chevron-down')}<span>${t("Load more")}</span></button><button id="all-history" class="all-history" aria-haspopup="dialog" aria-controls="history-popover" aria-expanded="false" popovertarget="history-popover" hidden></button><div id="no-history" class="no-history" hidden>${t("No conversations")}</div></section>
     </aside>
     <main><div class="transcript-area"><div id="transcript" class="transcript" role="log" aria-label="${t("Conversation messages")}" aria-live="polite" aria-relevant="additions"><div id="transcript-content" class="transcript-content"></div></div><button id="latest" class="icon-button latest-button" title="${t("Go to latest message")}" aria-label="${t("Go to latest message")}" hidden>${icon('arrow-down')}</button></div>
-      <footer class="composer-area"><div id="error" class="error" role="alert" hidden></div><div id="input-queue" class="input-queue" hidden></div><div id="editing-queue" class="editing-queue" hidden><span>${t("Edit queued message")}</span><button id="cancel-queue-edit" class="icon-button" title="${t("Cancel editing")}" aria-label="${t("Cancel editing")}">${icon('close')}</button></div><section id="parameters" aria-label="${t("Run parameters")}"><div class="parameter-feedback"><div id="parameter-status" class="parameter-status" role="status" hidden>${icon('loading')}<span>${t("Loading parameters...")}</span></div><div id="parameter-error" class="parameter-error" role="alert" hidden></div><button id="refresh-params" class="icon-button" title="${t("Retry loading parameters")}" aria-label="${t("Retry loading parameters")}" hidden>${icon('refresh')}</button><button id="parameter-login" class="parameter-login" hidden>${icon('sign-in')}<span>${t("Sign in to SteamHarness")}</span></button></div><div id="slash-menu" class="slash-menu" hidden></div><div class="composer"><div class="composer-body"><div id="main-fields" class="composer-main-fields" hidden></div><div id="draft-attachments" class="attachments" hidden></div><textarea id="message" rows="2" placeholder="${t("Send a message...")}" aria-label="${t("Message")}"></textarea></div><div class="composer-toolbar"><div class="run-options"><button id="attach" class="icon-button" title="${t("Add attachment")}" aria-label="${t("Add attachment")}" hidden>${icon('attach')}</button><select id="entrypoint" aria-label="${t("Entrypoints")}" hidden></select><div id="parameter-actions" class="parameter-actions" role="group" aria-label="${t("Run parameters")}"></div></div><div class="composer-actions"><button id="send" class="send-button" title="${t("Send")}" aria-label="${t("Send")}">${icon('arrow-up')}</button></div></div></div><div id="composer-footer" class="composer-footer" role="status" hidden></div></section></footer>
+      <footer class="composer-area"><div id="error" class="error" role="alert" hidden></div><div id="input-queue" class="input-queue" hidden></div><div id="editing-queue" class="editing-queue" hidden><span>${t("Edit queued message")}</span><button id="cancel-queue-edit" class="icon-button" title="${t("Cancel editing")}" aria-label="${t("Cancel editing")}">${icon('close')}</button></div><section id="parameters" aria-label="${t("Run parameters")}"><div class="parameter-feedback"><div id="parameter-status" class="parameter-status" role="status" hidden>${icon('loading')}<span>${t("Loading parameters...")}</span></div><div id="parameter-error" class="parameter-error" role="alert" hidden></div><button id="parameter-login" class="parameter-login" hidden>${icon('sign-in')}<span>${t("Sign in to SteamHarness")}</span></button></div><div id="slash-menu" class="slash-menu" hidden></div><div class="composer"><div class="composer-body"><div id="main-fields" class="composer-main-fields" hidden></div><div id="draft-attachments" class="attachments" hidden></div><textarea id="message" rows="2" placeholder="${t("Send a message...")}" aria-label="${t("Message")}"></textarea></div><div class="composer-toolbar"><div class="run-options"><button id="attach" class="icon-button" title="${t("Add attachment")}" aria-label="${t("Add attachment")}" hidden>${icon('attach')}</button><select id="entrypoint" aria-label="${t("Entrypoints")}" hidden></select><div id="parameter-actions" class="parameter-actions" role="group" aria-label="${t("Run parameters")}"></div><button id="refresh-params" class="icon-button" title="${t("Refresh parameters")}" aria-label="${t("Refresh parameters")}" hidden>${icon('refresh')}</button></div><div class="composer-actions"><button id="send" class="send-button" title="${t("Send")}" aria-label="${t("Send")}">${icon('arrow-up')}</button></div></div></div><div id="composer-footer" class="composer-footer" role="status" hidden></div></section></footer>
     </main>
     <div id="history-popover" class="history-popover" popover="auto" role="dialog" aria-label="${t("All conversations")}"><div class="history-popover-toolbar"><label class="history-search">${icon('search')}<input id="search-all-history" type="search" placeholder="${t("Search conversations")}" aria-label="${t("Search all conversations")}"></label><button id="close-history" class="icon-button" title="${t("Close conversation history")}" aria-label="${t("Close conversation history")}">${icon('close')}</button></div><nav id="all-session-list" aria-label="${t("All chats")}"></nav><div id="history-empty" class="no-history" hidden>${t("No matching conversations")}</div></div>
     <div id="session-menu" class="session-menu" popover="manual" role="menu" aria-label="${t("Conversation actions")}">
@@ -61,7 +61,7 @@ function initialize(): void {
 
   mountProjectConfigurations(vscode);
 
-  interface State { project: Project; sessions: ConversationSession[]; activeId: string; running: boolean; conversationAccess?: { readOnly: boolean }; parameterValues?: Record<string, ParamValues>; account?: AccountState; authenticationRevision?: number; parameterRevision?: number }
+  interface State { project: Project; sessions: ConversationSession[]; activeId: string; running: boolean; conversationAccess?: { readOnly: boolean }; parameterValues?: Record<string, ParamValues>; account?: AccountState; authenticationRevision?: number; parameterRevision?: number; serverInstanceId?: string }
   interface FieldView {
     field: Field; root: HTMLDivElement;
     controls: (HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)[];
@@ -84,6 +84,10 @@ function initialize(): void {
   let formKey = '';
   let paramStates: Record<string, ParamState> = {};
   let resolving = false;
+  let parametersReady = false;
+  let parameterOptionsStale = false;
+  let parameterRequest: { id: number; signature: string; timer: ReturnType<typeof setTimeout> } | undefined;
+  const parameterCache = new Map<string, { signature: string; states: Record<string, ParamState> }>();
   let connectionAvailable = true;
   let connectionStatus: ConnectionState = 'connected';
   let manualReconnect = false;
@@ -105,6 +109,7 @@ function initialize(): void {
   let pendingParameterTrigger: ParamRequest['trigger'] | undefined;
   let authenticationRequired = false;
   let inputTimer: ReturnType<typeof setTimeout> | undefined;
+  let composing = false;
   let draftFiles: Attachment[] = [];
   let draftTimer: ReturnType<typeof setTimeout> | undefined;
   let uploading = 0;
@@ -169,6 +174,7 @@ function initialize(): void {
   const contentSearch = new ContentSearch(transcript);
   const currentParameters = () => projectParameters(state!.project, entrypoint.value || undefined);
   const values = (): ParamValues => paramValues[formKey] ??= {};
+  const parametersLoading = (): boolean => resolving && !parametersReady;
   const canQueue = (): boolean => state?.project.conversation?.inputQueue?.enabled === true && (!state.project.conversation.durable?.enabled || values().plan !== 'true');
   const hideComposer = (): boolean => state?.project.projectType === 'conversation' && state.project.conversation?.userInput?.hideComposer !== false
     && !!currentSession()?.messages.some(message => message.pendingInput);
@@ -180,7 +186,7 @@ function initialize(): void {
   const stopFeedback = document.createElement('div'); stopFeedback.id = 'stop-feedback'; stopFeedback.hidden = true;
   document.querySelector('.composer-area')!.prepend(stopFeedback);
   const parameterActions = new ParameterActions(document.querySelector('#parameter-actions')!, {
-    current: () => ({ values: values(), states: paramStates, disabled: busy(), loading: resolving }),
+    current: () => ({ values: values(), states: paramStates, disabled: busy(), loading: parametersLoading() }),
     fieldRoot: (name) => fields.get(name)!.root,
     onChange: (name, value) => setFieldValue(name, value),
     onReset: (names) => {
@@ -195,10 +201,10 @@ function initialize(): void {
     current: () => state ? { scope: formKey, enabled: state.project.projectType === 'conversation', parameters: currentParameters(),
       values: values(), states: paramStates, footer: state.project.conversation?.footer, commands: state.project.conversation?.commands,
       commandDisabled: !connectionAvailable || !navigationReady() || submitting || pendingSend() || uploading > 0 || !!editingQueueId || state.running || !!currentSession()?.messages.some(message => message.pendingInput),
-      disabled: busy(), loading: resolving } : undefined,
+      disabled: busy(), loading: parametersLoading() } : undefined,
     onChange: (name, value) => setFieldValue(name, value),
     onCommand: (command) => {
-      if (!state || !connectionAvailable || !navigationReady() || busy() || resolving || uploading || editingQueueId || state.running || currentSession()?.messages.some(message => message.pendingInput)) { return false; }
+      if (!state || !connectionAvailable || !navigationReady() || busy() || parametersLoading() || uploading || editingQueueId || state.running || currentSession()?.messages.some(message => message.pendingInput)) { return false; }
       clearTimeout(draftTimer); saveDraft(); submitting = true;
       post({ type: 'command', command, params: values() }); updateControls(); return true;
     },
@@ -225,17 +231,59 @@ function initialize(): void {
     textarea.style.height = `${Math.min(240, Math.max(72, textarea.scrollHeight))}px`;
   }
 
-  function requestParams(trigger: ParamRequest['trigger']): void {
+  function parameterSignature(): string {
+    const parameters = currentParameters();
+    return JSON.stringify([formKey, state?.serverInstanceId, state?.authenticationRevision, state?.parameterRevision,
+      parameters, parameters.fields.map(field => [field.name, values()[field.name]]),
+      parameters.fields.some(field => field.resolveOnInput) ? textarea.value : undefined]);
+  }
+
+  function cancelParameterRequest(): void {
+    ++requestId;
+    clearTimeout(inputTimer); inputTimer = undefined;
+    clearTimeout(parameterRequest?.timer); parameterRequest = undefined;
+    resolving = false;
+  }
+  window.addEventListener('pagehide', cancelParameterRequest);
+
+  function scheduleParams(trigger: ParamRequest['trigger'], delay: number): void {
     clearTimeout(inputTimer);
-    if (!state || !connectionAvailable || busy() || !fields.size) { return; }
-    if (!navigationReady()) { paramsNeedInit = true; pendingParameterTrigger = trigger; return; }
+    pendingParameterTrigger = trigger;
+    inputTimer = setTimeout(() => { inputTimer = undefined; requestParams(trigger); }, delay);
+  }
+
+  function requestParams(trigger: ParamRequest['trigger'], force = false): void {
+    clearTimeout(inputTimer); inputTimer = undefined;
+    if (!state || !fields.size || !currentParameters().paramResolver?.enabled) { paramsNeedInit = false; return; }
+    if (!connectionAvailable || busy() || state.running || composing || !navigationReady()) { paramsNeedInit = true; pendingParameterTrigger = trigger; return; }
+    const signature = parameterSignature();
+    const cached = parameterCache.get(formKey);
+    if (!force && cached?.signature === signature) {
+      paramsNeedInit = false; pendingParameterTrigger = undefined;
+      paramStates = structuredClone(cached.states); parametersReady = true; parameterOptionsStale = false;
+      updateFields(); return;
+    }
+    // A worker is expensive to start. Keep one request in flight and resolve
+    // only the latest edit when it finishes; stale replies never change drafts.
+    if (parameterRequest) {
+      if (parameterRequest.signature !== signature) { paramsNeedInit = true; pendingParameterTrigger = trigger; }
+      return;
+    }
     pendingParameterTrigger = undefined;
     paramsNeedInit = false;
     resolving = true;
     paramError.hidden = true;
+    const id = ++requestId;
+    const fail = (error: string): void => { window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'params', projectUri: state?.project.uri, sessionId: state?.activeId, requestId: id, error,
+    } })); };
+    parameterRequest = { id, signature, timer: setTimeout(() => fail(t('Parameter loading timed out. Retry or send the message to validate parameters.')), 40_000) };
     updateControls();
-    vscode.postMessage({ type: 'resolve', projectUri: state.project.uri, sessionId: state.activeId,
-      requestId: ++requestId, entrypointId: entrypoint.value, params: values(), draftText: textarea.value, trigger });
+    try {
+      void Promise.resolve(vscode.postMessage({ type: 'resolve', projectUri: state.project.uri, sessionId: state.activeId,
+        requestId: id, entrypointId: entrypoint.value, params: structuredClone(values()), draftText: textarea.value, trigger }))
+        .then(delivered => { if (delivered === false) fail(t('Cannot load parameters. Retry or send the message to validate parameters.')); }, error => fail(String(error?.message ?? error)));
+    } catch (error) { fail(String((error as Error).message)); }
   }
 
   function createField(field: Field): FieldView {
@@ -282,12 +330,10 @@ function initialize(): void {
       control.addEventListener('change', () => changeField(field.name));
       if (control instanceof HTMLTextAreaElement || control instanceof HTMLInputElement && !['checkbox', 'hidden'].includes(control.type)) {
         control.addEventListener('input', () => {
-          ++requestId;
           editedParams.add(field.name);
           values()[field.name] = control.value;
           persist();
-          clearTimeout(inputTimer);
-          inputTimer = setTimeout(() => requestParams({ kind: 'param', paramName: field.name }), 200);
+          scheduleParams({ kind: 'param', paramName: field.name }, 200);
         });
       }
       root.append(control);
@@ -306,6 +352,8 @@ function initialize(): void {
     formKey = `${project.uri}:${state!.activeId}:${entrypoint.value}`;
     paramValues[formKey] = { ...paramValues[formKey], ...state!.parameterValues?.[entrypoint.value] };
     paramStates = {};
+    parameterOptionsStale = false;
+    parametersReady = !parameters.paramResolver?.enabled;
     authenticationRequired = false;
     paramsNeedInit = parameters.fields.length > 0;
     fields.clear();
@@ -316,6 +364,8 @@ function initialize(): void {
       fields.set(field.name, createField(field));
       if (project.projectType !== 'conversation' && (field.panel === undefined || field.panel === 'main')) { container.append(fields.get(field.name)!.root); }
     }
+    const cached = parameterCache.get(formKey);
+    if (cached?.signature === parameterSignature()) { paramStates = structuredClone(cached.states); parametersReady = true; }
     parameterActions.render(parameters);
     paramError.hidden = true;
     updateFields();
@@ -383,7 +433,7 @@ function initialize(): void {
         catch { view.root.querySelector('.param-file-summary')!.textContent = ''; }
       }
       // Dynamic selects start with an empty catalog; keep restored values for the initial resolver.
-      if (patch?.resolvedOptions !== undefined || !currentParameters().paramResolver?.enabled || (view.field.options?.length ?? 0) > 0) {
+      if (!parameterOptionsStale && (patch?.resolvedOptions !== undefined || !currentParameters().paramResolver?.enabled || (view.field.options?.length ?? 0) > 0)) {
         if (view.field.options !== undefined || ['select', 'radio', 'checkboxes'].includes(view.field.control ?? '')) {
           const allowed = new Set(visibleOptions.filter((option) => !patch?.options?.[option.value]?.disabled).map((option) => option.value));
           value = values()[name] = Array.isArray(value) ? value.filter((entry) => allowed.has(entry)) : value && !allowed.has(value) ? '' : value;
@@ -412,8 +462,8 @@ function initialize(): void {
     if (composerArea.hidden !== hidden) {
       composerArea.hidden = hidden;
       if (hidden) {
-        ++requestId; resolving = false; clearTimeout(inputTimer);
-        paramsNeedInit = fields.size > 0;
+        paramsNeedInit ||= resolving;
+        cancelParameterRequest();
       } else { sizeComposer(); }
       syncTranscriptLayout();
     }
@@ -425,11 +475,12 @@ function initialize(): void {
     }
     const dynamic = currentParameters().paramResolver?.enabled;
     const refresh = document.querySelector<HTMLButtonElement>('#refresh-params')!;
-    refresh.hidden = !dynamic || paramError.hidden;
-    refresh.disabled = busy() || resolving;
-    refresh.classList.toggle('refreshing', resolving);
-    document.querySelector<HTMLElement>('#parameter-status')!.hidden = !resolving || !dynamic;
-    document.querySelector('#parameters')!.setAttribute('aria-busy', String(resolving));
+    refresh.hidden = !dynamic || !fields.size;
+    refresh.disabled = busy() || state.running || resolving;
+    refresh.title = refresh.ariaLabel = paramError.hidden ? t('Refresh parameters') : t('Retry loading parameters');
+    refresh.classList.toggle('refreshing', parametersLoading());
+    document.querySelector<HTMLElement>('#parameter-status')!.hidden = !parametersLoading() || !dynamic;
+    document.querySelector('#parameters')!.setAttribute('aria-busy', String(parametersLoading()));
     document.querySelector<HTMLElement>('#parameter-login')!.hidden = !authenticationRequired || state.account?.status === 'authenticated';
     parameterActions.update();
     conversationComposer.update();
@@ -448,7 +499,7 @@ function initialize(): void {
     stopFeedback.textContent = pendingStop ? t("Stopping...") : stopping?.phase === 'accepted' ? t("Stop request accepted.") : stopping?.error ?? '';
     accessNotice.hidden = !readOnly();
     textarea.disabled = readOnly() || busy() && !pendingSend();
-    entrypoint.disabled = busy() || resolving;
+    entrypoint.disabled = busy() || parametersLoading();
     document.querySelector<HTMLButtonElement>('#new')!.disabled = false;
     const waiting = currentSession()?.messages.some((message) => message.pendingInput);
     app.dataset.runState = state.running ? 'running' : waiting ? 'waiting' : submitting || pendingSend() ? 'submitting' : 'idle';
@@ -461,7 +512,7 @@ function initialize(): void {
     const attach = document.querySelector<HTMLButtonElement>('#attach')!;
     attach.hidden = !conversation || !Object.values(state.project.conversation?.attachments ?? {}).some(Boolean);
     attach.disabled = busy() || uploading > 0 || !navigationReady();
-    for (const control of Array.from(document.querySelectorAll<HTMLButtonElement>('.param-file-button'))) { control.disabled = busy() || resolving; }
+    for (const control of Array.from(document.querySelectorAll<HTMLButtonElement>('.param-file-button'))) { control.disabled = busy() || parametersLoading(); }
     renderQueue();
   }
 
@@ -944,13 +995,19 @@ function initialize(): void {
     const switching = projectChanged || renderedSession !== next.activeId;
     if (switching) { vscode.postMessage({ type: 'trace-active', sessionId: next.activeId }); }
     if (switching) { followingLatest = true; }
-    const authenticationChanged = previous && (previous.authenticationRevision !== next.authenticationRevision || previous.parameterRevision !== next.parameterRevision);
+    const authenticationChanged = previous && previous.authenticationRevision !== next.authenticationRevision;
+    const parametersChanged = previous && (authenticationChanged || previous.parameterRevision !== next.parameterRevision || previous.serverInstanceId !== next.serverInstanceId);
     if (previous && previous.authenticationRevision !== next.authenticationRevision) { dialogs.closeUsage(); }
-    if (authenticationChanged) {
-      ++requestId;
-      resolving = false;
-      paramStates = {};
-      formKey = '';
+    if (parametersChanged) {
+      cancelParameterRequest();
+      parameterCache.clear();
+      paramsNeedInit = true;
+      parameterOptionsStale = true;
+      if (authenticationChanged || previous.serverInstanceId !== next.serverInstanceId) { paramStates = {}; parametersReady = false; }
+    }
+    if (next.running && resolving) {
+      paramsNeedInit = true;
+      cancelParameterRequest();
     }
     document.querySelector('#project-name')!.textContent = next.project.name;
     document.querySelector<HTMLElement>('#project-name')!.hidden = !session.messages.length;
@@ -967,8 +1024,9 @@ function initialize(): void {
       editedParams.clear();
       pendingParameterTrigger = undefined;
       closeSessionMenu();
-      ++requestId;
-      resolving = submitting = false;
+      cancelParameterRequest();
+      submitting = false;
+      composing = false;
       retryingMessage = undefined;
       clearTimeout(inputTimer);
       clearTimeout(draftTimer); draftTimer = undefined; uploading = 0; dialogs.close(); contentSearch.close();
@@ -1020,16 +1078,22 @@ function initialize(): void {
     contentSearch.refresh();
     if (fromServer) { retryingMessage = undefined; }
     updateConnectionFeedback();
-    if (switching || authenticationChanged || editingChanged) { renderParameters(); }
+    if (switching || editingChanged) { renderParameters(); }
     else if (JSON.stringify(previous?.parameterValues) !== JSON.stringify(next.parameterValues)) {
-      for (const [name, value] of Object.entries(next.parameterValues?.[entrypoint.value] ?? {})) { if (!editedParams.has(name)) { values()[name] = value; } }
+      for (const [name, value] of Object.entries(next.parameterValues?.[entrypoint.value] ?? {})) {
+        if (editedParams.has(name) || JSON.stringify(values()[name]) === JSON.stringify(value)) { continue; }
+        values()[name] = value;
+        if (currentParameters().paramResolver?.enabled) { paramsNeedInit = true; parameterOptionsStale = true; parameterCache.delete(formKey); }
+      }
       updateFields();
     }
     const previousRevisions = previous?.sessions.find(entry => entry.id === session.id)?.parameterRevisions?.[entrypoint.value];
     const updatedParams = switching ? [] : Object.entries(session.parameterRevisions?.[entrypoint.value] ?? {})
       .filter(([name, revision]) => revision !== previousRevisions?.[name]).map(([name]) => name);
     if (updatedParams.length) {
-      ++requestId; resolving = false; clearTimeout(inputTimer);
+      cancelParameterRequest();
+      parameterCache.delete(formKey);
+      parameterOptionsStale = currentParameters().paramResolver?.enabled === true;
       for (const name of updatedParams) {
         if (!fields.has(name)) { continue; }
         values()[name] = projectParamValue(fields.get(name)!.field, session.parameterValues?.[entrypoint.value]?.[name]);
@@ -1038,7 +1102,8 @@ function initialize(): void {
       paramsNeedInit = fields.size > 0;
       persist(); updateFields();
     }
-    if (paramsNeedInit && !busy()) { requestParams({ kind: 'init' }); }
+    if (parametersChanged) { updateFields(); }
+    if (paramsNeedInit && !busy() && !inputTimer) { requestParams(pendingParameterTrigger ?? { kind: 'init' }); }
     updateControls();
     if (switching && !next.running && !composerArea.hidden && document.hasFocus()) { textarea.focus(); }
     if (switching) { transcriptScrollTop = transcript.scrollTop; }
@@ -1083,7 +1148,8 @@ function initialize(): void {
         attachments: structuredClone(draftFiles), createdAt: Date.now() };
       submissions.add({ projectUri: state.project.uri, sessionId: session.id, input, phase: 'pending', replacesId: editingQueueId,
         queued: !!editingQueueId || state.running || !!session.queuedInputs?.length });
-      ++requestId; resolving = false; clearTimeout(inputTimer); paramsNeedInit = fields.size > 0;
+      paramsNeedInit ||= resolving || currentParameters().fields.some(field => field.resolveOnInput);
+      cancelParameterRequest();
       editedParams.clear(); textarea.value = ''; draftFiles = []; editingQueueId = undefined;
       session.draft = { text: '', attachments: [] };
       followingLatest = true; sizeComposer(); saveDraft(false); render(state, false);
@@ -1129,15 +1195,19 @@ function initialize(): void {
     catch (error) { finishStop({ ...request, type: 'error', message: String((error as Error)?.message ?? error) }); }
   }
 
+  textarea.addEventListener('compositionstart', () => { composing = true; clearTimeout(inputTimer); inputTimer = undefined; });
+  textarea.addEventListener('compositionend', () => {
+    composing = false;
+    if (state && currentParameters().fields.some(field => field.resolveOnInput)) { scheduleParams({ kind: 'input' }, 350); }
+  });
   textarea.addEventListener('input', () => {
     if (!state) { return; }
     saveDraft(false);
     clearTimeout(draftTimer); draftTimer = setTimeout(saveDraft, 300);
     sizeComposer();
     updateControls();
-    if (currentParameters().fields.some((field) => field.resolveOnInput)) {
-      clearTimeout(inputTimer);
-      inputTimer = setTimeout(() => requestParams({ kind: 'input' }), 350);
+    if (!composing && currentParameters().fields.some((field) => field.resolveOnInput)) {
+      scheduleParams({ kind: 'input' }, 350);
     }
   });
   textarea.addEventListener('keydown', (event) => {
@@ -1183,8 +1253,8 @@ function initialize(): void {
   window.addEventListener('scroll', (event) => {
     if (sessionMenuTrigger && event.target instanceof Node && event.target.contains(sessionMenuTrigger)) { closeSessionMenu(); }
   }, true);
-  document.querySelector('#refresh-params')!.addEventListener('click', () => requestParams({ kind: 'init' }));
-  entrypoint.addEventListener('change', () => { ++requestId; resolving = false; renderParameters(); });
+  document.querySelector('#refresh-params')!.addEventListener('click', () => requestParams({ kind: 'init' }, true));
+  entrypoint.addEventListener('change', () => { cancelParameterRequest(); renderParameters(); });
   transcript.addEventListener('scroll', () => {
     const resized = transcript.scrollHeight !== transcriptScrollHeight || transcript.clientHeight !== transcriptViewportHeight;
     // Regrouping cards can shrink the content and clamp scrollTop before it grows
@@ -1268,6 +1338,13 @@ function initialize(): void {
   let renderScheduled = false;
   window.addEventListener('message', (event) => {
     const message = event.data;
+    if (message.type === 'error' && message.requestType === 'resolve') {
+      if (state && message.requestId === parameterRequest?.id && (!message.sessionId || message.sessionId === state.activeId)) {
+        window.dispatchEvent(new MessageEvent('message', { data: { ...message, type: 'params', error: message.message,
+          projectUri: state.project.uri, sessionId: state.activeId } }));
+      }
+      return;
+    }
     // ConversationOutput owns inline preview errors, including late replies from older cards.
     if (message.type === 'error' && message.requestType === 'resource' && message.requestId) { return; }
     if (['stopped', 'agent-receipt', 'error'].includes(message.type) && finishStop(message)) { return; }
@@ -1278,10 +1355,10 @@ function initialize(): void {
       manualReconnect = !!message.manual;
       reconnectFailed = !!message.retryFailed;
       connectionAvailable = message.status === 'connected';
-      if (!connectionAvailable) { resolving = false; requestId++; dialogs.closeUsage(); }
+      if (!connectionAvailable) { paramsNeedInit ||= resolving; cancelParameterRequest(); dialogs.closeUsage(); }
       updateControls();
       updateConnectionFeedback(); syncTranscriptLayout();
-      if (restored && state) { syncNavigation(); dispatchSubmissions(); paramsNeedInit = true; requestParams({ kind: 'init' }); }
+      if (restored && state) { parameterCache.clear(); syncNavigation(); dispatchSubmissions(); paramsNeedInit = true; requestParams({ kind: 'init' }); }
       return;
     }
     if (message.type === 'agent-opened' || message.type === 'agent-receipt' && message.forkSessionId) {
@@ -1340,8 +1417,15 @@ function initialize(): void {
         renderScheduled = true;
         requestAnimationFrame(() => { renderScheduled = false; if (pendingState) { render(pendingState); pendingState = undefined; } });
       }
-    } else if (message.type === 'params' && state && message.projectUri === state.project.uri && message.sessionId === state.activeId && message.requestId === requestId) {
+    } else if (message.type === 'params' && state && message.projectUri === state.project.uri && message.sessionId === state.activeId && message.requestId === parameterRequest?.id) {
+      const request = parameterRequest!;
+      clearTimeout(request.timer); parameterRequest = undefined;
       resolving = false;
+      if (message.stale) { paramsNeedInit = true; updateControls(); return; }
+      if (request.signature !== parameterSignature()) {
+        if (!inputTimer) { requestParams(pendingParameterTrigger ?? { kind: 'init' }); }
+        updateControls(); return;
+      }
       if (message.error) {
         authenticationRequired = /SteamHarness Server login is not configured|Unauthorized/.test(String(message.error));
         paramError.textContent = String(message.error).includes('SteamHarness Server login is not configured') ? t("Sign in to SteamHarness Server, then refresh parameters.")
@@ -1349,6 +1433,7 @@ function initialize(): void {
         paramError.hidden = false;
       } else {
         authenticationRequired = false;
+        parameterOptionsStale = false;
         const patches = Object.fromEntries(Object.entries(message.params ?? {}).filter(([name]) => fields.has(name))) as Record<string, ParamState>;
         paramStates = mergeProjectParamStates(paramStates, patches);
         for (const [name, patch] of Object.entries(patches)) {
@@ -1356,8 +1441,15 @@ function initialize(): void {
           else if (patch.value !== undefined) { values()[name] = projectParamValue(fields.get(name)!.field, patch.value); }
         }
         updateFields();
+        parametersReady = true;
+        // Cache lives only in this page, scoped by project, conversation,
+        // entrypoint, source definition, identity and configuration revision.
+        parameterCache.delete(formKey);
+        parameterCache.set(formKey, { signature: parameterSignature(), states: structuredClone(paramStates) });
+        if (parameterCache.size > 32) { parameterCache.delete(parameterCache.keys().next().value!); }
         persist();
       }
+      if (paramsNeedInit && !inputTimer) { requestParams(pendingParameterTrigger ?? { kind: 'init' }); }
       updateControls();
     } else if (message.type === 'attachment-cancelled' && message.sessionId === state?.activeId) {
       uploading = Math.max(0, uploading - 1); updateControls();

@@ -21,7 +21,16 @@ import { ConversationState } from '../web/conversation-state';
 
 const folders: string[] = [];
 const services: Awaited<ReturnType<typeof startWebServer>>[] = [];
-afterEach(async () => { for (const app of services.splice(0)) { await app.close(); } for (const folder of folders.splice(0)) { await rm(folder, { recursive: true, force: true }); } vi.useRealTimers(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
+afterEach(async () => {
+  for (const app of services.splice(0)) await app.close();
+  for (const folder of folders.splice(0)) {
+    const key = createHash('sha256').update(await realpath(folder)).digest('hex');
+    const config = path.join(os.homedir(), '.steamharness', 'configurations', `${key}.json`);
+    for (const suffix of ['', '.lock.sqlite', '.lock.sqlite-wal', '.lock.sqlite-shm']) await rm(`${config}${suffix}`, { force: true });
+    await rm(folder, { recursive: true, force: true });
+  }
+  vi.useRealTimers(); vi.unstubAllEnvs(); vi.restoreAllMocks();
+});
 
 async function accountState(app: Awaited<ReturnType<typeof startWebServer>>, cookie: string) {
   const events = await fetch(`${app.origin}/api/events`, { headers: { Cookie: cookie } });
@@ -903,8 +912,46 @@ describe('steamharness web', () => {
     const oldRequest = post({ type: 'resolve', requestId: 1, params: { model: 'chosen', review: 'true' } });
     await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
     await post({ type: 'resume', messageId: app.controller.current.messages.at(-1)!.id, requestId: request.requestId, values: { accepted: true } }); await app.controller.idle();
-    finish({ params: {} }); await oldRequest;
+    finish({ params: {} });
+    const outdated = await oldRequest.then(response => response.json());
+    expect(outdated.messages).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'params', requestId: 1, stale: true })]));
     expect(app.controller.current.parameterValues?.['']).toEqual({ model: 'chosen', review: 'false' });
+  });
+
+  it('invalidates cached parameter options on configuration edits and acknowledges obsolete resolutions', async () => {
+    const { app, runtime, post } = await fixture();
+    const before = (await post({ type: 'ready' }).then(response => response.json())).messages.find((message: any) => message.type === 'state');
+    let finish!: (value: { params: {} }) => void;
+    vi.mocked(runtime.resolveParams).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const resolving = post({ type: 'resolve', requestId: 42, params: { model: 'old' } });
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+    await app.configurations.dispatch({ action: 'field.save', revision: app.configurations.state.revision, field: { name: 'label', type: 'string' } });
+    finish({ params: {} });
+    const result = await resolving.then(response => response.json());
+    expect(result.messages).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'params', requestId: 42, stale: true })]));
+    expect(result.messages.find((message: any) => message.type === 'state').parameterRevision).toBeGreaterThan(before.parameterRevision);
+    expect(app.controller.current.parameterValues ?? {}).toEqual({});
+    await post({ type: 'resolve', requestId: 43, params: { model: 'new' } });
+    expect(app.controller.current.parameterValues).toEqual({ '': { model: 'new' } });
+  });
+
+  it('validates every send against fresh options and rejects configuration changes during validation', async () => {
+    const { app, runtime, post } = await fixture();
+    app.project.fields[0].control = 'select';
+    vi.mocked(runtime.resolveParams).mockResolvedValueOnce({ params: { model: { resolvedOptions: [{ value: 'cached' }] } } });
+    await post({ type: 'resolve', requestId: 1, params: { model: 'cached' } });
+    vi.mocked(runtime.resolveParams).mockResolvedValueOnce({ params: { model: { resolvedOptions: [{ value: 'current' }] } } });
+    expect((await post({ type: 'send', text: 'Validate current options', params: { model: 'cached' }, attachments: [] })).status).toBe(400);
+    expect(runtime.run).not.toHaveBeenCalled();
+    let finish!: (value: { params: {} }) => void;
+    vi.mocked(runtime.resolveParams).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const sending = post({ type: 'send', text: 'Validate current configuration', params: { model: 'current' }, attachments: [] });
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+    await app.configurations.dispatch({ action: 'field.save', revision: app.configurations.state.revision, field: { name: 'label', type: 'string' } });
+    finish({ params: {} });
+    const response = await sending;
+    expect(response.status).toBe(400); expect(await response.text()).toMatch(/configuration changed|项目配置已变更/u);
+    expect(runtime.run).not.toHaveBeenCalled(); expect(app.controller.current.messages).toEqual([]);
   });
 
   it('translates the composer parameter protocol and saves edited parameters before sending', async () => {
