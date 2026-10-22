@@ -48,3 +48,61 @@ it('uses the independent AI identity and returns only model display metadata', a
   expect(JSON.stringify(result)).not.toContain('must-not-leak'); expect(result.entries[0]?.models[0]?.id).toBe('model');
   fetcher.mockClear(); expect((await loadAgentModelCatalog()).unavailable).toBe(true); expect(fetcher).not.toHaveBeenCalled();
 });
+
+it('preserves the selected subscription and model draft when refreshing its catalogue', async () => {
+  const entries = [
+    { id: 'subscription', name: 'Plan', models: [{ id: 'system-model', name: 'First' }] },
+    { id: 'other', name: 'Other plan', models: [{ id: 'other-first', name: 'Other first' }, { id: 'other-second', name: 'Other second' }] },
+  ];
+  const control = mount([], false, vi.fn(async () => ({ entries })));
+  click('System AI');
+  await vi.waitFor(() => expect(document.querySelector<HTMLSelectElement>('[aria-label="Subscribed AI"]')!.options).toHaveLength(2));
+  const subscription = document.querySelector<HTMLSelectElement>('[aria-label="Subscribed AI"]')!;
+  subscription.value = 'other'; subscription.dispatchEvent(new Event('change'));
+  const model = document.querySelector<HTMLSelectElement>('[aria-label="Model ID"]')!;
+  model.value = 'other-second'; model.dispatchEvent(new Event('change'));
+  fill('Model name', 'My selection');
+  click('Refresh system AI models');
+  await vi.waitFor(() => expect(control.loadCatalog).toHaveBeenCalledTimes(2));
+  await vi.waitFor(() => expect(model.options).toHaveLength(2));
+  expect(subscription.value).toBe('other'); expect(model.value).toBe('other-second');
+  click('Apply model');
+  expect(control.read()).toMatchObject([{ name: 'My selection', credentialId: 'other', model: 'other-second' }]);
+});
+
+it('retains subscription guidance when reopening an empty cached catalogue', async () => {
+  const control = mount([], false, vi.fn(async () => ({ entries: [], unavailable: true, subscriptionUrl: 'https://ai.example/settings/ai' })));
+  click('System AI');
+  await vi.waitFor(() => expect(document.body.textContent).toContain('Sign in and configure system AI'));
+  click('Cancel'); click('System AI');
+  await vi.waitFor(() => expect(document.body.textContent).toContain('Sign in and configure system AI'));
+  expect(document.querySelector('a')?.href).toBe('https://ai.example/settings/ai');
+  expect(control.loadCatalog).toHaveBeenCalledTimes(1);
+});
+
+it('retains an unavailable selection after an account change instead of choosing another plan', async () => {
+  const load = vi.fn().mockResolvedValueOnce({ entries: [{ id: 'subscription', name: 'Plan', models: [{ id: 'system-model', name: 'System model' }] }] })
+    .mockResolvedValueOnce({ entries: [{ id: 'different', name: 'Different plan', models: [{ id: 'different-model', name: 'Different model' }] }] });
+  const control = mount([system], false, load);
+  click('Edit model: Subscribed');
+  await vi.waitFor(() => expect(document.querySelector<HTMLSelectElement>('[aria-label="Model ID"]')!.value).toBe('system-model'));
+  control.invalidate();
+  await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+  await vi.waitFor(() => expect(document.querySelector<HTMLSelectElement>('[aria-label="Subscribed AI"]')!.options).toHaveLength(2));
+  expect(document.querySelector<HTMLSelectElement>('[aria-label="Subscribed AI"]')!.value).toBe('subscription');
+  expect(document.querySelector<HTMLSelectElement>('[aria-label="Model ID"]')!.value).toBe('system-model');
+  click('Apply model'); expect(control.read()).toEqual([system]);
+});
+
+it('does not unlock configuration controls when a catalogue request finishes during a save', async () => {
+  let finish!: (result: any) => void;
+  mount([system], false, vi.fn(() => new Promise(resolve => { finish = resolve; })));
+  click('Edit model: Subscribed');
+  const subscription = document.querySelector<HTMLSelectElement>('[aria-label="Subscribed AI"]')!;
+  const model = document.querySelector<HTMLSelectElement>('[aria-label="Model ID"]')!;
+  // The enclosing configuration panel locks its controls while saving.
+  subscription.disabled = true; model.disabled = true;
+  finish({ entries: [{ id: 'subscription', name: 'Plan', models: [{ id: 'system-model', name: 'System model' }] }] });
+  await vi.waitFor(() => expect(model.value).toBe('system-model'));
+  expect(subscription.disabled).toBe(true); expect(model.disabled).toBe(true);
+});

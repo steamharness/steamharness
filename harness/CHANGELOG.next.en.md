@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed live local configuration discovery after Agent source changes without reopening the panel; unchanged sources reuse static analysis results.
+
 - Added configured Agent model lists for system subscriptions and third-party APIs. Composers select saved models, execution freezes configuration and validates subscription access, and third-party connections work without system AI sign-in.
 
 - Improved Agent retry outputs with continuation kinds. Host recovery uses `recovery` for silent continuation while connection retries and final failures remain visible.

@@ -533,6 +533,9 @@ export async function startWebServer(options: WebOptions) {
         if (revision !== authRevision) { throw new Error('Workflow login changed. Send the message again.'); }
         const states = mergeProjectParamStates(parameterStates.get(stateKey) ?? {}, resolved.params);
         if (project.projectType === 'conversation') { validateConversationCommandStates(parameters.fields, states, project.conversation?.commands); }
+        for (const [name, patch] of Object.entries(resolved.params ?? {})) {
+          if (patch.value === null) { delete params[name]; } else if (patch.value !== undefined) { params[name] = patch.value; }
+        }
         validateProjectValues(parameters.fields, params, states);
         const attachments = command ? [] : await readAttachments(message.attachments ?? [], current.id);
         if (revision !== authRevision) { throw new Error('Workflow login changed. Send the message again.'); }

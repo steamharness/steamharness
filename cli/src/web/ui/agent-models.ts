@@ -7,7 +7,8 @@ export function createAgentModelsControl(options: {
   loadCatalog(): Promise<{ entries: AgentModelCatalogEntry[]; subscriptionUrl?: string; unavailable?: boolean }>;
 }) {
   let models = parseAgentModels(options.value ?? []), source: 'system' | 'third-party' = 'system';
-  let editingId: string | undefined, formDirty = false, generation = 0, entries: AgentModelCatalogEntry[] | undefined;
+  let editingId: string | undefined, formDirty = false, generation = 0;
+  let catalog: Awaited<ReturnType<typeof options.loadCatalog>> | undefined;
   const element = document.createElement('div'); element.className = 'configuration-ai-models';
   const toolbar = document.createElement('div'); toolbar.className = 'configuration-ai-toolbar';
   const sources = document.createElement('div'); sources.role = 'group'; sources.ariaLabel = t('AI source'); sources.className = 'configuration-ai-sources';
@@ -37,22 +38,30 @@ export function createAgentModelsControl(options: {
   }
   async function load(refresh = false) {
     const request = ++generation;
+    const saved = models.find(entry => entry.id === editingId);
     const status = document.createElement('div'); status.className = 'configuration-ai-catalog'; status.role = 'status';
-    status.textContent = t('Loading system AI models...'); credential.replaceChildren(); model.replaceChildren(); form.prepend(status);
+    status.textContent = t('Loading system AI models...'); form.prepend(status);
     try {
-      const result = refresh || !entries ? await options.loadCatalog() : { entries };
+      const result = refresh || !catalog ? await options.loadCatalog() : catalog;
       if (request !== generation || !element.isConnected || form.hidden || source !== 'system') return;
-      entries = result.entries;
+      const selectedCredential = credential.value || (saved?.source === 'system' ? saved.credentialId : '');
+      const selectedModel = model.value || saved?.model || '';
+      catalog = result;
+      const entries = result.entries;
       status.replaceChildren();
+      credential.replaceChildren();
       for (const entry of entries) credential.add(new Option(entry.name, entry.id));
-      const saved = models.find(entry => entry.id === editingId);
-      if (saved?.source === 'system') credential.value = saved.credentialId;
+      // A refresh must preserve the draft, including a selection whose
+      // subscription has since disappeared. It must never choose another plan.
+      if (selectedCredential && !entries.some(entry => entry.id === selectedCredential)) credential.add(new Option(selectedCredential, selectedCredential));
+      if (selectedCredential) credential.value = selectedCredential;
       const updateModels = (selected?: string) => {
         model.replaceChildren();
         for (const entry of entries?.find(entry => entry.id === credential.value)?.models ?? []) (model as HTMLSelectElement).add(new Option(entry.name, entry.id));
+        if (selected && ![...(model as HTMLSelectElement).options].some(option => option.value === selected)) (model as HTMLSelectElement).add(new Option(selected, selected));
         if (selected) model.value = selected;
       };
-      updateModels(saved?.model);
+      updateModels(selectedModel);
       credential.onchange = () => { updateModels(); edited(); };
       if (!entries.length) {
         status.textContent = t(result.unavailable ? 'Sign in and configure system AI, or use a third-party model.' : 'No subscribed AI models. Subscribe to system AI to add a model.');
@@ -109,5 +118,5 @@ export function createAgentModelsControl(options: {
     });
   }
   sourceButtons[0]!.ariaPressed = 'true'; sourceButtons[1]!.ariaPressed = 'false'; display();
-  return { element, read() { if (formDirty && !form.hidden) throw new Error(t('Add or cancel the model being edited first.')); return structuredClone(models); }, invalidate() { entries = undefined; ++generation; if (source === 'system' && !form.hidden) { form.querySelector('.configuration-ai-catalog')?.remove(); void load(true); } } };
+  return { element, read() { if (formDirty && !form.hidden) throw new Error(t('Add or cancel the model being edited first.')); return structuredClone(models); }, invalidate() { catalog = undefined; ++generation; if (source === 'system' && !form.hidden) { form.querySelector('.configuration-ai-catalog')?.remove(); void load(true); } } };
 }

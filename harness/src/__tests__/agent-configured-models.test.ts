@@ -72,6 +72,23 @@ test("custom Agent parameter declarations do not receive patches for undeclared 
   assert.deepEqual(await executor.resolveParams!({ args: [], config: snapshot([third]).values } as any), { params: {} });
 });
 
+test("a live configuration store discovers Agent source changes without reopening the panel", async () => {
+  const project = await mkdtemp(path.join(os.tmpdir(), "agent-discovery-refresh-"));
+  try {
+    const source = path.join(project, "index.ts");
+    await writeFile(source, "export const title = 'Ordinary project';");
+    const store = await createLocalProjectConfigurationStore(project, { rootDir: path.join(project, ".configurations") });
+    assert.equal((await store.read()).fields.some(field => field.name === key), false);
+    await writeFile(source, "export const agent = steamharness.createAgentNode();");
+    const enabled = await store.read();
+    assert.equal(enabled.fields[0]?.name, key);
+    await writeFile(source, "export const title = 'Agent removed';");
+    const disabled = await store.read();
+    assert.equal(disabled.fields.some(field => field.name === key), false);
+    assert.ok(disabled.revision > enabled.revision);
+  } finally { await rm(project, { recursive: true, force: true }); }
+});
+
 test("a configured third-party completion uses the saved URL, key and real model ID", async t => {
   const requests: { url?: string; key?: string; model: string }[] = [];
   const server = createServer(async (request, response) => {

@@ -31,6 +31,11 @@ export function currentConfigurationValues(): ConfigurationValues { return scope
 
 /** Static discovery only: opening configuration never imports or executes project code. */
 export function projectUsesConfiguredAgentModels(projectDir: string): boolean {
+  return discoverProjectAgentModels(projectDir);
+}
+
+type AgentModelSourceCache = Map<string, { stamp: string; found: boolean }>;
+function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSourceCache): boolean {
   const skipped = new Set(["node_modules", "vendor", "dist", "out", "build", "test", "tests", "__tests__", "fixtures"]);
   const scan = (directory: string): boolean => {
     if (!existsSync(directory)) return false;
@@ -38,7 +43,12 @@ export function projectUsesConfiguredAgentModels(projectDir: string): boolean {
       if (entry.name.startsWith(".") || skipped.has(entry.name.toLowerCase())) continue;
       const file = path.join(directory, entry.name);
       if (entry.isDirectory()) { if (scan(file)) return true; continue; }
-      if (!entry.isFile() || !/\.[cm]?[jt]sx?$/.test(entry.name) || /(?:\.d|\.test|\.spec)\.[cm]?[jt]sx?$/.test(entry.name) || statSync(file).size > 1024 * 1024) continue;
+      if (!entry.isFile() || !/\.[cm]?[jt]sx?$/.test(entry.name) || /(?:\.d|\.test|\.spec)\.[cm]?[jt]sx?$/.test(entry.name)) continue;
+      const info = statSync(file);
+      if (info.size > 1024 * 1024) continue;
+      const stamp = `${info.ino}:${info.size}:${info.mtimeMs}:${info.ctimeMs}`;
+      const previous = cache?.get(file);
+      if (previous?.stamp === stamp) { if (previous.found) return true; continue; }
       const source = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
       const factories = new Set(["createAgentNode", "createAgentConversationProject", "createAgentProjectParamResolver", "defineAgentConversationExecutor"]);
       const imports = new Set<string>(), namespaces = new Set(["steamharness"]);
@@ -61,7 +71,7 @@ export function projectUsesConfiguredAgentModels(projectDir: string): boolean {
         }
         ts.forEachChild(node, visit);
       };
-      visit(source); if (found) return true;
+      visit(source); cache?.set(file, { stamp, found }); if (found) return true;
     }
     return false;
   };
@@ -78,7 +88,7 @@ export function readProjectConfigurationDefinition(projectDir: string) {
 /** Shared by Studio, CLI Web, CLI and direct local SDK execution. Values never enter project source. */
 export async function createLocalProjectConfigurationStore(projectDir: string, options: { rootDir?: string; storageKey?: string; template?: ProjectConfigurationTemplate | null; fields?: ProjectConfigurationField[]; templateCacheDir?: string } = {}) {
   const directory = await realpath(projectDir);
-  const usesAgentModels = projectUsesConfiguredAgentModels(directory);
+  const agentModelSources: AgentModelSourceCache = new Map();
   const root = options.rootDir ?? path.join(os.homedir(), ".steamharness", "configurations");
   const key = createHash("sha256").update(options.storageKey ?? directory).digest("hex");
   const filename = path.join(root, `${key}.json`), lock = `${filename}.lock.sqlite`;
@@ -86,7 +96,7 @@ export async function createLocalProjectConfigurationStore(projectDir: string, o
     let fields: ProjectConfigurationField[] = [];
     try { fields = parseConfigurationDefinition(JSON.parse(await readFile(path.join(directory, PROJECT_CONFIGURATION_FILE), "utf8"))).fields; }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-    if (usesAgentModels && !fields.some(field => field.name === AGENT_MODELS_CONFIGURATION_KEY)) fields.unshift(structuredClone(AGENT_MODELS_CONFIGURATION_FIELD));
+    if (!fields.some(field => field.name === AGENT_MODELS_CONFIGURATION_KEY) && discoverProjectAgentModels(directory, agentModelSources)) fields.unshift(structuredClone(AGENT_MODELS_CONFIGURATION_FIELD));
     return fields;
   };
   const load = async (): Promise<ProjectConfigurationState> => {

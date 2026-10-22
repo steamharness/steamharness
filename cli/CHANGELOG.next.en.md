@@ -1,5 +1,9 @@
 # Unreleased
 
+- Fixed conversation submission applying resolved model values before validation and execution, so the first configured model is used by default and removed selections are resolved correctly.
+
+- Fixed Studio and CLI Web system AI refreshes resetting draft subscriptions and models. Removed subscriptions never select another model, and reopening an empty catalogue retains sign-in guidance and the subscription link.
+
 - Added system and third-party model lists as the first project configuration field, with on-demand subscriptions, add/edit/delete/default actions and draft protection. Composers only select saved models.
 
 - Improved long-conversation and multi-window performance: reuse unchanged history, skip redundant writes, and checkpoint durable Agent web progress once per second while saving inputs and controls immediately. Coalesce Trace updates, skip hidden panel and inactive timeline work, and share attachment lists during transcript refreshes.
