@@ -62,11 +62,23 @@ export function git(args, cwd, env = {}) {
   return execFileSync('git', args, { cwd, env: { ...process.env, ...env }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 }
 
+/**
+ * `npm --prefix <dir> run <script>` exports npm_config_prefix into the child
+ * environment. nvm refuses to initialise when that value points outside
+ * $NVM_DIR, so every terminal the app spawns would start without node.
+ */
+export function buildChildEnv(env = {}) {
+  const merged = { ...process.env, ...env };
+  delete merged.npm_config_prefix;
+  delete merged.NPM_CONFIG_PREFIX;
+  return merged;
+}
+
 export function run(command, args, cwd, env = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd,
-      env: { ...process.env, ...env },
+      env: buildChildEnv(env),
       stdio: 'inherit',
       shell: process.platform === 'win32',
     });

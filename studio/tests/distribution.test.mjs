@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { test } from 'node:test';
-import { ROOT, assertUpstream, builtinProjectDirectory, git, mergeProduct, prepareDistribution, resolveMonorepoRoot } from '../scripts/distribution.mjs';
+import { ROOT, assertUpstream, buildChildEnv, builtinProjectDirectory, git, mergeProduct, prepareDistribution, resolveMonorepoRoot, run } from '../scripts/distribution.mjs';
 
 const baseProduct = {
   nameShort: 'Code - OSS', nameLong: 'Code - OSS', applicationName: 'code-oss',
@@ -215,4 +215,36 @@ test('local edits in a committed multi-file patch do not hide earlier overlappin
   await assert.rejects(prepareDistribution(root), /Patch 0003.patch conflicts/);
   assert.equal(git(['diff', '--cached'], upstream), staged);
   assert.equal(git(['diff'], upstream), unstaged);
+});
+
+test('the child environment drops npm prefix configuration that would break nvm', (t) => {
+  const inherited = process.env.npm_config_prefix;
+  const inheritedUpper = process.env.NPM_CONFIG_PREFIX;
+  t.after(() => {
+    if (inherited === undefined) delete process.env.npm_config_prefix; else process.env.npm_config_prefix = inherited;
+    if (inheritedUpper === undefined) delete process.env.NPM_CONFIG_PREFIX; else process.env.NPM_CONFIG_PREFIX = inheritedUpper;
+  });
+  process.env.npm_config_prefix = '/tmp/studio';
+  process.env.NPM_CONFIG_PREFIX = '/tmp/studio';
+  const env = buildChildEnv({ KEEP: 'kept' });
+  assert.equal(env.npm_config_prefix, undefined);
+  assert.equal(env.NPM_CONFIG_PREFIX, undefined);
+  assert.equal(env.KEEP, 'kept');
+  assert.equal(env.PATH, process.env.PATH);
+  assert.equal(buildChildEnv({ npm_config_prefix: '/tmp/explicit' }).npm_config_prefix, undefined);
+});
+
+test('a spawned child never sees npm prefix configuration', async (t) => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'studio-child-env-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const output = path.join(directory, 'prefix.txt');
+  const inherited = process.env.npm_config_prefix;
+  t.after(() => {
+    if (inherited === undefined) delete process.env.npm_config_prefix; else process.env.npm_config_prefix = inherited;
+  });
+  process.env.npm_config_prefix = '/tmp/studio';
+  await run(process.execPath,
+    ['-e', `require('fs').writeFileSync(${JSON.stringify(output)}, String(process.env.npm_config_prefix))`],
+    directory);
+  assert.equal(await fs.readFile(output, 'utf8'), 'undefined');
 });
