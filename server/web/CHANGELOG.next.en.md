@@ -30,6 +30,7 @@
 
 - Changed Settings and Admin Center to expand submenus in the main sidebar, retaining Project Workbench and other entries while switching pages and filtering admin entries by permission; project details keep dedicated navigation.
 - Changed the console to shadcn Blocks and New York components, unifying navigation, tables, forms, dialogs and themes while removing private styling and notifications.
+- Removed the invitations block from the project members page; invitations are created, listed and revoked from the dedicated Invitations section.
 - Changed the console to remove execution statistics, logs, schedules, environment variables, Webhook and Runner pages while retaining project and data management.
 - Changed role descriptions to project and data permissions, removed obsolete execution types and copy, and added bilingual data write and KV descriptions.
 - Changed the project information card on the project overview and Settings pages to label the project creator instead of the uploader.

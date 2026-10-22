@@ -8,12 +8,7 @@ import {
 } from "@steamharness/project-access";
 import { useTranslation } from "@steamharness/i18n/react";
 import { apiClient } from "../api";
-import {
-  isApiSuccess,
-  type AccessPage,
-  type ProjectInvitation,
-  type ProjectMember,
-} from "../types";
+import { isApiSuccess, type AccessPage, type ProjectMember } from "../types";
 import {
   Badge,
   Button,
@@ -49,12 +44,10 @@ export function ResourceMembersPanel({
   const { t } = useTranslation("serverWeb");
   const [page, setPage] = useState(1);
   const [members, setMembers] = useState<AccessPage<ProjectMember>>();
-  const [invitations, setInvitations] = useState<ProjectInvitation[]>([]);
   const [userId, setUserId] = useState("");
   const [role, setRole] = useState<ProjectRole>("guest");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [share, setShare] = useState("");
   const [revision, setRevision] = useState(0);
   const [action, setAction] = useState<ConfirmAction | null>(null);
   const request = useRef(0);
@@ -70,22 +63,13 @@ export function ResourceMembersPanel({
   useEffect(() => {
     const serial = ++request.current;
     setBusy(true);
-    void Promise.all([
-      apiClient.resourceMembers(type, id, page),
-      access.capabilities.includes("manageMembers")
-        ? apiClient.resourceInvitations(type, id)
-        : undefined,
-    ]).then(([result, invites]) => {
+    void apiClient.resourceMembers(type, id, page).then((result) => {
       if (serial !== request.current) return;
       setBusy(false);
       if (isApiSuccess(result)) {
         setMembers(result.data);
         setError("");
       } else setError(result.errMessage);
-      if (invites) {
-        if (isApiSuccess(invites)) setInvitations(invites.data);
-        else setError(invites.errMessage);
-      }
     });
     return () => {
       request.current++;
@@ -281,91 +265,6 @@ export function ResourceMembersPanel({
           ))}
         </TableBody>
       </TablePanel>
-      {access.capabilities.includes("manageMembers") && (
-        <>
-          <h3 className="text-base font-semibold">{t("storageInvitations")}</h3>
-          <Button
-            className="self-start"
-            disabled={busy}
-            onClick={() => {
-              void mutate(async () => {
-                const result = await apiClient.inviteResourceMember(
-                  type,
-                  id,
-                  role,
-                );
-                if (isApiSuccess(result))
-                  setShare(
-                    `${window.location.origin}/invite/${encodeURIComponent(result.data.token)}`,
-                  );
-                return result;
-              });
-            }}
-          >
-            {t("storageInvite")} · {roleLabel(role)}
-          </Button>
-          {share && (
-            <Input
-              aria-label={t("storageInvitations")}
-              readOnly
-              value={share}
-              onFocus={(event) => event.target.select()}
-            />
-          )}
-          <TablePanel>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("storageRole")}</TableHead>
-                <TableHead>{t("storageExpiresAt")}</TableHead>
-                <TableHead>{t("storageInvitationStatus")}</TableHead>
-                <TableHead>{t("dependenciesHeaderActions")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {invitations.map((invite) => (
-                <TableRow key={invite.id}>
-                  <TableCell>{roleLabel(invite.role)}</TableCell>
-                  <TableCell>
-                    {new Date(invite.expiresAt).toLocaleString()}
-                  </TableCell>
-                  <TableCell>
-                    {t(
-                      invite.revokedAt
-                        ? "storageRevoked"
-                        : invite.acceptedAt
-                          ? "storageAccepted"
-                          : "storagePending",
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {!invite.revokedAt &&
-                      !invite.acceptedAt &&
-                      (access.capabilities.includes("manageOwners") ||
-                        ["guest", "developer"].includes(invite.role)) && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={busy}
-                          onClick={() => {
-                            void mutate(() =>
-                              apiClient.revokeResourceInvitation(
-                                type,
-                                id,
-                                invite.id,
-                              ),
-                            );
-                          }}
-                        >
-                          {t("commonDelete")}
-                        </Button>
-                      )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </TablePanel>
-        </>
-      )}
       <ConfirmActionDialog
         action={action}
         onOpenChange={(open) => {

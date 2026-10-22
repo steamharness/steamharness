@@ -72,7 +72,6 @@ describe("project and group access", () => {
         pageSize: 20,
       }),
     );
-    vi.spyOn(apiClient, "resourceInvitations").mockResolvedValue(ok([]));
     render(<ResourceMembersPanel type="project" id="project" access={owner} />);
     const row = (await screen.findByText("dev")).closest("tr")!;
     expect(within(row).getByRole("link")).toHaveAttribute(
@@ -109,7 +108,6 @@ describe("project and group access", () => {
         pageSize: 20,
       }),
     );
-    vi.spyOn(apiClient, "resourceInvitations").mockResolvedValue(ok([]));
     vi.spyOn(apiClient, "setResourceMember").mockResolvedValue(
       ok({ removed: true }),
     );
