@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import { once } from 'node:events';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
@@ -10,6 +11,82 @@ import { createLocalProjectConfigurationStore } from 'steamharness';
 import type { AgentSessionSnapshot } from 'steamharness/agent';
 import { createWebRuntime } from '../web/runtime';
 import { resolveHarnessRoot } from './harness-source';
+
+it('preserves the live generation when the worker loses its IPC owner and resumes it after reconnect', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'workflow-agent-disconnect-'));
+  const configurationKey = createHash('sha256').update(await realpath(directory)).digest('hex');
+  const configurationRoot = path.join(os.homedir(), '.steamharness', 'configurations');
+  const runtime = createWebRuntime(directory, path.join(directory, 'data'), () => undefined);
+  let calls = 0, child: ChildProcess | undefined, resumed: Promise<unknown> | undefined;
+  let snapshot: AgentSessionSnapshot | undefined;
+  const events = (event: Record<string, any>) => {
+    if (event.type === 'node_chunk' && event.chunk?.item?.metadata?.kind === 'agent-session') snapshot = event.chunk.item.content;
+  };
+  const model = createServer(async (request, response) => {
+    for await (const _chunk of request) { /* Consume the request. */ }
+    calls++;
+    response.writeHead(200, { 'content-type': 'text/event-stream' });
+    response.write(`data: ${JSON.stringify({ id: 'disconnect', choices: [{ index: 0, delta: { role: 'assistant', content: calls === 1 ? 'Before disconnect' : 'After reconnect' }, finish_reason: null }] })}\n\n`);
+    if (calls > 1) response.end(`data: ${JSON.stringify({ id: 'disconnect', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`);
+  });
+  try {
+    await mkdir(path.join(directory, 'node_modules'));
+    await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: crypto.randomUUID(), name: 'owner-disconnect', version: '1.0.0', steamHarness: { projectType: 'conversation', projectInfo: { dataStorage: { mode: 'local' } } } }));
+    model.listen(0, '127.0.0.1'); await once(model, 'listening');
+    await writeFile(path.join(directory, 'index.ts'), `
+      export const executor = steamharness.defineExecutor({ projectType: 'conversation',
+        workflow: steamharness.createAgentConversationProject({ projectName: 'disconnect', outputItemId: 'answer',
+          provider: 'openai', model: 'fixture', apiKind: 'openai-completions', apiKey: 'offline-fixture',
+          baseUrl: 'http://127.0.0.1:${(model.address() as { port: number }).port}/v1', contextWindow: 8192,
+          tools: [], session: { compaction: { enabled: false } }, }),
+        conversation: { durable: { enabled: true }, recovery: { enabled: true } }, params: [],
+        createInput({ args }) { return steamharness.createAgentProjectInput(args); }, });
+    `);
+    const inspected = await runtime.inspect([directory]); expect(inspected.errors).toEqual([]);
+    const project = { ...inspected.projects[0], uri: '' };
+    const request = { method: 'run', project, conversationId: 'disconnect-session', runId: 'disconnect-run', args: ['--message', 'First'], storageDir: path.join(directory, 'data'), runtimeProjectDir: directory };
+    child = spawn(process.execPath, [fileURLToPath(new URL('../web/worker.mjs', import.meta.url))], { cwd: directory, stdio: ['pipe', 'pipe', 'pipe', 'ipc'] });
+    let output = '', failure = '', lastMessage: unknown;
+    child.stderr!.on('data', chunk => { failure += chunk.toString(); });
+    child.stdout!.setEncoding('utf8'); child.stdout!.on('data', chunk => {
+      output += chunk;
+      let newline: number;
+      while ((newline = output.indexOf('\n')) >= 0) {
+        const line = output.slice(0, newline); output = output.slice(newline + 1);
+        if (line.startsWith('__STEAMHARNESS_WEB__')) {
+          const message = JSON.parse(line.slice('__STEAMHARNESS_WEB__'.length));
+          lastMessage = { kind: message.kind, type: message.value?.type, status: message.value?.status };
+          if (message.kind === 'event') events(message.value);
+        }
+      }
+    });
+    child.stdin!.end(JSON.stringify(request));
+    await expect.poll(() => snapshot?.turns[0]?.items.some(item => item.content === 'Before disconnect'), { timeout: 10_000 }).toBe(true);
+    const exited = once(child, 'exit'); child.disconnect();
+    let timer: ReturnType<typeof setTimeout>;
+    const [code] = await Promise.race([exited, new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error(`Disconnected worker did not exit (code=${child?.exitCode}, signal=${child?.signalCode}): ${failure} ${JSON.stringify(lastMessage)}`)), 5000);
+    })]).finally(() => clearTimeout(timer));
+    expect(code, failure).toBe(0); child = undefined;
+    snapshot = undefined;
+    resumed = runtime.run({ ...request, resumeAgent: true }, events).catch(error => error);
+    await expect.poll(() => snapshot?.turns[0]?.status, { timeout: 10_000 }).toBe('done');
+    expect(snapshot!.turns).toHaveLength(1); expect(calls).toBe(2);
+    expect(snapshot!.turns[0].prompt).toBe('First');
+    expect(JSON.stringify(snapshot!.turns[0].items)).toContain('Before disconnect');
+    expect(JSON.stringify(snapshot!.turns[0].items)).toContain('After reconnect');
+    expect(snapshot!.records.some(record => record.kind === 'project.retry')).toBe(true);
+    await runtime.agentControl!('disconnect-run', { type: 'cancel', requestId: 'cleanup', scope: 'all' }, 'disconnect-session');
+    runtime.cancel('disconnect-run'); await resumed; resumed = undefined;
+  } finally {
+    if (child && child.exitCode === null && child.signalCode === null) { const exited = once(child, 'close'); child.kill('SIGKILL'); await exited; }
+    runtime.dispose(); await resumed;
+    await new Promise<void>(resolve => { model.close(() => resolve()); model.closeAllConnections(); });
+    await rm(directory, { recursive: true, force: true });
+    await Promise.all([rm(path.join(configurationRoot, `${configurationKey}.json`), { force: true }), rm(path.join(configurationRoot, `${configurationKey}.json.lock.sqlite`), { force: true }), rm(path.join(configurationRoot, 'snapshots', configurationKey), { recursive: true, force: true })]);
+  }
+}, 30_000);
 
 it('reports the original workflow failure to commands waiting for session startup', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'workflow-agent-startup-'));

@@ -2,19 +2,23 @@ import type { AgentSessionCommand, AgentSessionReceipt } from "./session-types";
 
 type Handler = (command: AgentSessionCommand) => Promise<AgentSessionReceipt>;
 const handlers = new Map<string, Handler>();
-const hosts = new Map<string, { released: Promise<void>; release(): void; resume: boolean }>();
+const hosts = new Map<string, { released: Promise<void>; suspended: Promise<void>; resume: boolean }>();
 
-/** Keep the workflow's tools and provider alive between inputs. Close before disposing the worker. */
-export function createAgentSessionHost(scopeId: string, options: { resume?: boolean } = {}): { close(): void } {
+/** Keep tools alive between inputs. close() drains work; suspend() preserves it for the next owner. */
+export function createAgentSessionHost(scopeId: string, options: { resume?: boolean } = {}): { close(): void; suspend(): void } {
   if (hosts.has(scopeId)) throw new Error("The agent session already has a host.");
   let release!: () => void;
   const released = new Promise<void>(resolve => { release = resolve; });
-  const host = { released, release, resume: options.resume === true };
+  let suspend!: () => void;
+  const suspended = new Promise<void>(resolve => { suspend = resolve; });
+  const host = { released, suspended, resume: options.resume === true };
   hosts.set(scopeId, host);
-  return { close: () => { if (hosts.get(scopeId) === host) hosts.delete(scopeId); release(); } };
+  const close = () => { if (hosts.get(scopeId) === host) hosts.delete(scopeId); release(); };
+  return { close, suspend: () => { suspend(); close(); } };
 }
 
 export function agentSessionLease(scopeId: string): Promise<void> | undefined { return hosts.get(scopeId)?.released; }
+export function agentSessionSuspended(scopeId: string): Promise<void> | undefined { return hosts.get(scopeId)?.suspended; }
 export function agentSessionResuming(scopeId: string): boolean { return hosts.get(scopeId)?.resume === true; }
 
 /** The host addresses the original workflow conversation, never a database filename. */

@@ -33,6 +33,49 @@ function agent(databasePath?: string, retryDelayMs?: number) {
   return { instance, faux };
 }
 
+for (const partial of [false, true]) test(`unexpected provider aborts retry without replaying completed tools (partial=${partial})`, async t => {
+  const { instance, faux } = agent(undefined, 0);
+  t.after(() => instance.close());
+  let calls = 0;
+  instance.state.tools = [{ name: "inspect", label: "Inspect", description: "Test", parameters: ai.Type.Object({}),
+    execute: async () => { calls++; return { content: [ai.fauxText("Inspected")], details: {} }; } }];
+  faux.setResponses([ai.fauxAssistantMessage([ai.fauxToolCall("inspect", {})], { stopReason: "toolUse" }),
+    ai.fauxAssistantMessage(partial ? [ai.fauxText("Kept partial"), ai.fauxToolCall("inspect", {})] : [], { stopReason: "aborted", errorMessage: "aborted" }),
+    ai.fauxAssistantMessage("Finished")]);
+  const retries: unknown[] = [];
+  instance.subscribe(event => { if ((event as { type: string }).type === "project_retry") retries.push(event); });
+  await instance.prompt("Inspect and finish");
+  assert.equal(instance.state.errorMessage, undefined);
+  assert.equal(calls, 1); assert.equal(faux.state.callCount, 3); assert.equal(retries.length, 1);
+  if (partial) assert.ok(instance.state.messages.some(message => message.role === "assistant" && message.content.some(block => block.type === "text" && block.text === "Kept partial")));
+});
+
+for (const failure of ["eof", "throw"] as const) test(`durable ${failure} stream failures keep partial text and retry instead of hanging or cancelling`, { timeout: 3000 }, async t => {
+  const { instance, faux } = agent(undefined, 0);
+  t.after(() => instance.close());
+  const base = instance.models.streamSimple.bind(instance.models);
+  let requests = 0;
+  instance.models.streamSimple = (...args) => {
+    if (requests++ > 0) return base(...args);
+    const stream = ai.createAssistantMessageEventStream();
+    const partial = ai.fauxAssistantMessage("Kept partial", { stopReason: "pending" });
+    stream.push({ type: "text_delta", contentIndex: 0, delta: "Kept partial", partial }); stream.end();
+    if (failure === "throw") {
+      const iterator = stream[Symbol.asyncIterator].bind(stream);
+      stream[Symbol.asyncIterator] = async function* () {
+        const source = iterator();
+        for (let next = await source.next(); !next.done; next = await source.next()) yield next.value;
+        throw new Error("connection lost");
+      };
+    }
+    return stream;
+  };
+  faux.setResponses([ai.fauxAssistantMessage("Finished")]);
+  await instance.prompt("Continue");
+  assert.equal(instance.state.errorMessage, undefined); assert.equal(requests, 2);
+  assert.ok(instance.state.messages.some(message => message.role === "assistant" && message.content.some(block => block.type === "text" && block.text === "Kept partial")));
+});
+
 for (const kind of ["dropped", "empty", "lost-call", "length"] as const) {
   test(`successful tool responses reset the ${kind} retry sequence and budget`, async t => {
     const { instance, faux } = agent(undefined, 0);

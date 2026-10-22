@@ -44,6 +44,16 @@ it('deduplicates a committed durable turn without requiring saved input presenta
   await f.finish();
 });
 
+it.each(['model_error', 'no_model'])('shows %s as a failure with its reason while the owner remains alive', async reason => {
+  const f = fixture(); await f.start();
+  const initial = f.snapshot();
+  f.emit({ ...initial, revision: 2, turns: [...initial.turns, { requestId: 'failed-follow-up', conversationId: 1,
+    prompt: 'Continue', mode: 'followUp', status: 'unanswered', epoch: 0, entryId: 3, reason, detail: 'Model connection lost after 10 retries', items: [] }] });
+  expect(f.controller.current.messages.at(-1)).toMatchObject({ status: 'failed', error: 'Model connection lost after 10 retries', recovering: false });
+  expect(f.controller.current.activeRunId).toBeTruthy();
+  await f.finish();
+});
+
 it('keeps the owner alive after its inline answer and confirms a lost IPC receipt from the durable snapshot', async () => {
   const f = fixture(); await f.start();
   expect(f.controller.running).toBe(false); expect(f.controller.hasRuns).toBe(true);

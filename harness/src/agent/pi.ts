@@ -13,6 +13,7 @@ import type { AgentModelAttributes } from "./types";
 import type { TypeboxLike } from "./tools";
 import { HarnessError } from "../workflow/errors";
 import { withAgentWebSearch, resolveAgentWebSearch } from "./web-search";
+import { normalizeAssistantCancellation } from "./stream-error";
 
 /**
  * How many times one model call may be retried before the run fails.
@@ -375,12 +376,15 @@ async function pumpAssistantStream(options: AssistantStreamPumpOptions): Promise
   for (let attempt = 0; ; attempt += 1) {
     let failed: AssistantMessage | undefined;
 
-    for await (const event of attemptStream) {
+    for await (const raw of attemptStream) {
+      const message = raw.type === "error" ? normalizeAssistantCancellation(raw.error, signal) : undefined;
+      const event = raw.type === "error" ? { ...raw, error: message!, reason: message!.stopReason as "error" | "aborted" } : raw;
       if (
         event.type === "error" &&
         !contentSent &&
         attempt < budget &&
         event.reason !== "aborted" &&
+        !signal?.aborted &&
         ai.isRetryableAssistantError(event.error)
       ) {
         failed = event.error;

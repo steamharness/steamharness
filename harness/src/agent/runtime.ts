@@ -73,6 +73,7 @@ type PiAgentTool = PiAgent["state"]["tools"][number];
 export interface AgentRuntimeInternalOptions extends AgentRuntimeOptions {
   /** Host lease; pending work outlives the foreground answer. */
   sessionLease?: Promise<void>;
+  sessionSuspend?: Promise<void>;
   resumeSession?: boolean;
   compaction?: AgentCompactionSettings;
   /** Pre-resolved SDK runtime. Tests inject a faux provider through this. */
@@ -324,6 +325,7 @@ class ProjectAgentRuntime implements AgentRuntime {
           toolSearch: { catalogs: [...(this.options.session.toolSearch.catalogs ?? []), ...this.externalCatalogs] },
         } : {}) },
         sessionLease: this.options.sessionLease,
+        sessionSuspend: this.options.sessionSuspend,
         resumeSession: this.options.resumeSession,
         workdir: this.options.workdir,
         databasePath: this.options.databasePath,

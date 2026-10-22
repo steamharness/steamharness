@@ -573,10 +573,13 @@ export class DurableAgentSession {
         const end = submission.status === "done" ? submission.answer : nextInput?.id;
         const visible = submission.entry === undefined ? [] : entries.filter(candidate => candidate.id > submission.entry! && (end === undefined || candidate.id <= end));
         const partial = submission.status === "placed" ? live?.generation?.message as unknown as AssistantMessage | undefined : undefined;
-        turns.push({ requestId: submission.requestId, conversationId: record.id, prompt: typeof prompt === "string" ? prompt : prompt.filter(block => block.type === "text").map(block => block.text).join(""), mode, status: submission.status,
+        const failure = [...visible].reverse().find(entry => entry.kind === "project.failure");
+        const detail = failure ? object(failure.data).message : submission.status === "unanswered" ? submission.detail : undefined;
+        turns.push({ requestId: submission.requestId, conversationId: record.id, prompt: typeof prompt === "string" ? prompt : prompt.filter(block => block.type === "text").map(block => block.text).join(""), mode, status: failure ? "unanswered" : submission.status,
           epoch: entries.filter(entry => entry.kind === "pi.reset" && entry.id < (submission.entry ?? Infinity)).length,
           ...(submission.entry === undefined ? {} : { entryId: submission.entry }), ...(submission.status === "done" ? { answerId: submission.answer } : {}),
-          ...(submission.status === "unanswered" ? { reason: submission.reason } : {}), items: mode === "steer" ? [] : projectSessionEntries(visible, partial, submission.requestId),
+          ...(failure ? { reason: "model_error" } : submission.status === "unanswered" ? { reason: submission.reason } : {}),
+          ...(typeof detail === "string" ? { detail } : {}), items: mode === "steer" ? [] : projectSessionEntries(visible, partial, submission.requestId),
           ...(mode === "steer" ? {} : { usage: projectSessionUsage(visible, submission.requestId) }) });
       }
       for (const entry of entries) if (entry.kind.startsWith("project.") || entry.kind === "pi.reset" || entry.kind === "pi.compaction") {

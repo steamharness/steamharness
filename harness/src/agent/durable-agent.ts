@@ -24,6 +24,7 @@ import { openAgentStorage, type AgentStorageFactory } from "./storage";
 import { AgentExtensionResources, mergeAgentRegistries } from "./extensions";
 import { DurableAgentSession } from "./session";
 import { durableContextMessages } from "./durable-context";
+import { normalizeAssistantCancellation } from "./stream-error";
 import type { AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt } from "./session-types";
 
 const context = BACKGROUND_CONTEXT;
@@ -55,6 +56,7 @@ export interface DurableAgentState {
 
 export interface DurableAgentOptions {
   sessionLease?: Promise<void>;
+  sessionSuspend?: Promise<void>;
   /** Reattach the host and scheduler without submitting the workflow's bootstrap prompt. */
   resumeSession?: boolean;
   workdir?: string;
@@ -296,6 +298,7 @@ export class DurableAgent {
     const failure = error instanceof Error ? error.message : String(error);
     if (this.activeRequest) await this.root.commit(async tx => {
       (await tx.doc(RunDoc, this.root!.id, this.activeRequest, null)).failure = failure;
+      await tx.appendEntry(this.root!.id, { kind: "project.failure", data: { message: failure } });
     }, context);
     // One owner runs every independent fork as well as the root's owned tasks.
     // A reported failure must settle them; only host shutdown preserves work.
@@ -342,7 +345,8 @@ export class DurableAgent {
       sections: [promptSection],
       tools,
       hooks: [hook(GenerationTask, {
-        afterResponse: message => {
+        afterResponse: (message, _api, requestContext) => {
+          Object.assign(message, normalizeAssistantCancellation(message, requestContext.abortSignal));
           if (message.stopReason === "error" && isRetryableAssistantError(message) && message.content.length > 0) {
             // Continue from text already committed to the answer. Calls without a
             // result never become tool intents and must not reach the next request.
@@ -370,6 +374,7 @@ export class DurableAgent {
                 for (const search of (message as AgentSearchMessage).projectWebSearch!.searches) if (search.status === "running") {
                   search.status = "failed"; search.error = run.failure;
                 }
+                await tx.appendEntry(root.id, { kind: "project.failure", data: { message: run.failure } });
                 return;
               }
               run.continuations[api.taskId] = AGENT_SEARCH_RESUME_PROMPT;
@@ -396,6 +401,7 @@ export class DurableAgent {
               run.failure = kind === "length" ? `The model ran out of output tokens mid-answer ${attempt} times in a row (${reason}). Raise maxTokens or split the request.`
                 : kind === "lost-call" ? `A tool call the model made went missing ${attempt} times in a row (${reason}).`
                 : `The model stream was cut off mid-answer ${attempt} times in a row (${reason}).`;
+              await tx.appendEntry(root.id, { kind: "project.failure", data: { message: run.failure } });
               return;
             }
             const prompt = createAgentStreamResumePrompt({ kind, reason, keptPartial: message.content.length > 0 });
@@ -510,6 +516,7 @@ export class DurableAgent {
     }, context);
     let parked = false;
     const pause = new Promise<void>(resolve => { this.park = () => { parked = true; resolve(); }; });
+    void this.options.sessionSuspend?.then(this.park);
     const fatal = new Promise<never>((_resolve, reject) => { this.failActive = reject; });
     void fatal.catch(() => undefined);
     this.watch = await watchEvents(harness, root.id, context);
@@ -526,6 +533,7 @@ export class DurableAgent {
       ? images?.length ? [...(prompt ? [{ type: "text" as const, text: prompt }] : []), ...images] : prompt
       : prompt.find(message => message.role === "user")?.content ?? "";
     try {
+      if (parked) { await this.close(); return; }
       // requestId remains the same after a worker crash or a lost submit acknowledgement.
       const submission = resuming ? undefined : await root.submit({ type: "input", content, requestId, whenBusy: "reject",
         ...(this.session ? { entry: { kind: "project.input", data: { requestId, mode: "reject" } } } : {}) }, context);
@@ -750,19 +758,42 @@ export class DurableAgent {
     const requestId = this.activeRequest;
     const recordId = this.options.session ? this.modelAttempts.get(args[2]?.sessionId ?? "") ?? `aux:${randomUUID()}` : this.attemptId;
     void (async () => {
+      let partial: AssistantMessage | undefined;
+      const interrupted = (cause: unknown): AssistantMessage => ({
+        ...(partial ?? { role: "assistant", content: [], api: args[0].api, provider: args[0].provider,
+          model: args[0].id, timestamp: Date.now(), usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0,
+            totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } }),
+        stopReason: args[2]?.signal?.aborted || cause instanceof Error && cause.name === "AbortError" ? "aborted" : "error",
+        errorMessage: String(cause),
+      });
       try {
-        for await (const event of source) {
-          if (event.type === "done" || event.type === "error") {
-            const message = event.type === "done" ? event.message : event.error;
-            const usage = json(message.usage);
-            await this.root!.commit(async tx => {
-              (await tx.doc(RunDoc, this.root!.id, requestId, null)).usage[recordId] = usage;
-            }, context);
-            if (this.options.session) await this.emitUsage(recordId, usage);
+        let message: AssistantMessage | undefined;
+        try {
+          for await (const event of source) {
+            if (event.type === "done" || event.type === "error") {
+              message = event.type === "done" ? event.message : event.error;
+              break;
+            }
+            partial = event.partial;
+            stream.push(event);
           }
-          stream.push(event);
+        } catch (cause) {
+          // Iterator failures are transport failures; storage/observer failures
+          // below remain fatal and must not be hidden by provider retries.
+          message = interrupted(cause);
         }
-        stream.end(await source.result());
+        // end() without a terminal event leaves result() pending forever. An
+        // already supplied result is valid; otherwise settle a retryable error.
+        message ??= await Promise.race([source.result(), Promise.resolve(undefined)])
+          ?? interrupted("Model stream ended without a terminal event.");
+        const usage = json(message.usage);
+        await this.root!.commit(async tx => {
+          (await tx.doc(RunDoc, this.root!.id, requestId, null)).usage[recordId] = usage;
+        }, context);
+        if (this.options.session) await this.emitUsage(recordId, usage);
+        if (message.stopReason === "error" || message.stopReason === "aborted") stream.push({ type: "error", reason: message.stopReason, error: message });
+        else stream.push({ type: "done", reason: message.stopReason as "stop" | "length" | "toolUse" | "deferred", message });
+        stream.end(message);
       } catch (cause) {
         this.fail(cause);
         // Fail the consumer as well: otherwise a storage failure strands the model task.

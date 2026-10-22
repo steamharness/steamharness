@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { agentConversationDirectory } from "./storage";
-import { agentSessionLease, agentSessionResuming, bindAgentSessionControl } from "./session-control";
+import { agentSessionLease, agentSessionResuming, agentSessionSuspended, bindAgentSessionControl } from "./session-control";
 import path from "node:path";
 import { BaseStreamNode } from "../node/base";
 import {
@@ -652,6 +652,7 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
       ...this.options,
       session: input.hostInput === undefined ? this.options.session : undefined,
       sessionLease: context.conversation?.conversationId && (input.agent ?? this.options.mode) !== "plan" ? agentSessionLease(context.conversation.conversationId) : undefined,
+      sessionSuspend: context.conversation?.conversationId && (input.agent ?? this.options.mode) !== "plan" ? agentSessionSuspended(context.conversation.conversationId) : undefined,
       resumeSession: !!context.conversation?.conversationId && (input.agent ?? this.options.mode) !== "plan" && input.hostInput === undefined && agentSessionResuming(context.conversation.conversationId),
       databasePath: this.options.databasePath ?? (!this.options.storage && context.conversation?.enabled && input.hostInput === undefined
         ? path.join(sessionDirectory, `${createHash("sha256").update(identity).digest("hex")}.sqlite`) : undefined),

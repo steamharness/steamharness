@@ -8,6 +8,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 let ts;
 let assistantScopeDirectory;
 let agentHost;
+let ownerDisconnected = false;
 
 
 const write = process.stdout.write.bind(process.stdout);
@@ -16,7 +17,11 @@ console.log = console.error;
 const controller = new AbortController();
 process.on('SIGTERM', () => { agentHost?.close(); controller.abort(new Error('Stopped.')); });
 process.on('SIGINT', () => { agentHost?.close(); controller.abort(new Error('Stopped.')); });
-process.on('disconnect', () => { agentHost?.close(); controller.abort(new Error('Owner disconnected.')); });
+process.on('disconnect', () => {
+  ownerDisconnected = true;
+  if (agentHost) agentHost.suspend();
+  else controller.abort(new Error('Owner disconnected.'));
+});
 
 
 async function requiresSystemAi(directory) {
@@ -310,5 +315,9 @@ try {
 } finally {
   agentHost?.close();
   if (assistantScopeDirectory) { await rm(assistantScopeDirectory, { recursive: true, force: true }); }
-  if (process.connected) process.disconnect();
+  // Cleanup has joined the durable scheduler and released its storage owner.
+  // A disconnected worker has no further jobs; an unfinished HTTP body must
+  // not keep this orphan alive and prevent the next owner from taking over.
+  if (ownerDisconnected) write('', () => process.exit(process.exitCode ?? 0));
+  else if (process.connected) process.disconnect();
 }

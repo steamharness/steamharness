@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed Assistant recovery after host disconnects: durable work resumes on reconnect, unexpected model interruptions retry automatically, and exhausted retries show their cause on the affected answer.
+
 - Added guidance and tools for configuration publication and child permissions, lock reasons, author drafts and recipient previews without automatically publishing personal credentials.
 
 - Fixed: project configuration file fields choose and upload files to Server storage, then save references. Type restrictions, replacement and clearing preserve the previous value when uploads fail.

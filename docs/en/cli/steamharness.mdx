@@ -165,6 +165,8 @@ Foreground completion, background task count, and connectivity are separate stat
 
 Use `/export` and `/compact` after the foreground becomes idle while its worker stays alive. Reopening the host resumes saved queued inputs. Recovery commands wait for tool initialization and session control; temporary interruptions retain their original request identities. If a fork creation receipt is lost, open the fork from Studio Trace's Tasks tab to recover its history through the fork point and its source link. Confirmations are scoped by owner, target conversation, and requestId. Trace retains runtime events, while session state stores only the latest full snapshot.
 
+If the host control connection drops, a durable Agent preserves unfinished inputs and checkpoints and reconnects to the same work. Reconnecting does not replay completed tools. Model connection failures retry automatically with recorded reasons and attempt counts. Exhausted retries, authentication errors, and configuration errors show a failure with its cause. Explicit Stop remains stopped and does not automatically recover.
+
 Stopping the foreground preserves background subtrees. Stop all includes owned child conversations but excludes independent forks. Closing the host preserves recoverable work; explicit stop persists cancellation. Deleting a child cancels and hides it, retaining underlying history until the root is deleted. Deleting the root removes related views and Agent data. Subagents are project opt-in; Developer Assistant permits at most 4, with read/grep/find/ls and no recursive delegation. Local CLI / Studio hosts schedule persistent execution; this declaration does not provide distributed leases.
 
 ## Local runtime environment

@@ -90,6 +90,8 @@ Pi Durable Harness 是唯一执行历史来源。会话节点按项目存储目�
 
 节点选项设置 `session: { ... }`，executor 内联声明 `conversation: { recovery: { enabled: true }, durable: { enabled: true } }`。宿主在开始 workflow 前从 `steamharness/agent` 调用 `createAgentSessionHost(conversationId)`，随后通过 `controlAgentSession(conversationId, command)` 提交命令。前台结束后 lease 继续保留工具和 bridge，宿主退出时调用返回对象的 `close()`，等待 workflow/后台任务结束再释放运行时；强制关闭进程保留检查点供恢复。CLI Web / Studio 自动处理此生命周期。Plan 模式与 hostInput 不持有 lease，仍走既有审批或网关生命周期。
 
+宿主控制连接丢失或需要立即退出并保留任务时，调用返回对象的 `suspend()`，等待 workflow 退出后再释放资源。它停止本进程调度并保留未完成输入、检查点和已提交正文，不写入取消标记；重新打开后继续原任务。`close()` 继续等待当前工作结束；用户主动停止使用 `cancel` 命令，持久取消后不会自动重试。
+
 重连已有持久 Agent 时使用 `createAgentSessionHost(conversationId, { resume: true })`：重新建立工具、控制通道和任务调度，恢复未完成任务，但不重新提交 workflow 的初始消息。新输入通过 `controlAgentSession` 的 `submit` 命令发送。相同会话只能由一个进程执行；忙碌时以 `reject` 提交的新请求会被拒绝，不会中止当前任务或把拒绝写成该任务的持久失败。Plan 审批恢复仍使用原审批流程。
 
 `scopeId` 使用外部 workflow conversationId；子会话以快照内数字 `targetId` 寻址。快照通过 `metadata.kind: "agent-session"` 辅助输出发送，不显示为正文。Studio Trace 任务视图、队列、计划、父子计量及配置控制见 [createAgent](./create-agent.mdx)。显式工具权限列表需声明 `update_plan`，启用委派时再声明 `subagent`；子 Agent 仍受父工具、模型白名单及审批约束。

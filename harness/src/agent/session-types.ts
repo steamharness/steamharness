@@ -95,6 +95,8 @@ export interface AgentSessionTurn {
   entryId?: number;
   answerId?: number;
   reason?: string;
+  /** Human-readable terminal failure, preserved independently of the reason code. */
+  detail?: string;
   epoch: number;
   items: RunOutputItemInput[];
   /** This turn's model responses, including retries; inherited history is not billed again. */

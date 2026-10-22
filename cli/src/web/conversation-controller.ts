@@ -502,8 +502,9 @@ export class ConversationController {
           answer.tokenUsage = { enabled: true, display: this.project.tokenUsage?.enabled !== false && this.project.tokenUsage?.display !== false, run };
         }
         if (answer.status !== 'failed' && (!restore || answer.status === undefined)) {
-          answer.status = turn.status === 'done' ? 'success' : turn.status === 'unanswered' ? 'aborted' : 'running';
-          answer.error = turn.reason;
+          const stopped = turn.reason === 'aborted';
+          answer.status = turn.status === 'done' ? 'success' : turn.status === 'unanswered' ? stopped ? 'aborted' : 'failed' : 'running';
+          answer.error = turn.detail ?? (turn.status === 'unanswered' ? stopped ? t('Stopped') : turn.reason : undefined);
         }
         if (!restore) answer.recovering = false;
         const extras = answer.items?.filter(item => item.display) ?? [];

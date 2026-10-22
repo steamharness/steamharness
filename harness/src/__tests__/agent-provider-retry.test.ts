@@ -214,10 +214,22 @@ test("a cancelled stream is never replayed", async () => {
   ]);
   const runtime = await createRuntime(models);
 
-  const events = await drain(await runtime.streamFn(runtime.model, CONTEXT));
+  const controller = new AbortController(); controller.abort();
+  const events = await drainEvents(await runtime.streamFn(runtime.model, CONTEXT, { signal: controller.signal }));
 
   assert.equal(state.attempts, 1);
-  assert.equal(events.at(-1), "error");
+  assert.equal(events.at(-1)?.type, "error");
+  assert.equal((events.at(-1) as { error: AssistantMessage }).error.stopReason, "aborted");
+});
+
+test("a provider abort without caller cancellation uses the transport retry budget", async () => {
+  const ai = await import("@earendil-works/pi-ai");
+  const { models, state } = scriptedModels(ai, [
+    [{ type: "error", message: "aborted", reason: "aborted" }], [{ type: "done" }],
+  ]);
+  const runtime = await createRuntime(models);
+  const events = await drain(await runtime.streamFn(runtime.model, CONTEXT));
+  assert.equal(state.attempts, 2); assert.equal(events.at(-1), "done");
 });
 
 /**

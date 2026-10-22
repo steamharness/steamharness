@@ -18,17 +18,73 @@ async function until(check: () => boolean): Promise<void> {
   const deadline = Date.now() + 5000;
   while (!check()) { if (Date.now() > deadline) throw new Error("Session state did not settle."); await new Promise(done => setTimeout(done, 10)); }
 }
-function session(options: import("../agent/session-types").AgentSessionOptions = {}, databasePath?: string) {
+function session(options: import("../agent/session-types").AgentSessionOptions = {}, databasePath?: string, resumeSession = false) {
   const faux = ai.fauxProvider({ models: [{ id: "test", contextWindow: 100_000, maxTokens: 100 }, { id: "other", contextWindow: 100_000, maxTokens: 100 }] });
   const models = ai.createModels(); models.setProvider(faux.provider);
   const lease = latch();
-  const instance = new DurableAgent({ models, databasePath, session: options, sessionLease: lease.promise, initialState: {
+  const suspend = latch();
+  const instance = new DurableAgent({ models, databasePath, session: options, sessionLease: lease.promise, sessionSuspend: suspend.promise, resumeSession, retryDelayMs: 0, initialState: {
     systemPrompt: "Session test", model: models.getModel("faux", "test")!, thinkingLevel: "off", messages: [], tools: [],
   } });
   let snapshot: AgentSessionSnapshot | undefined;
   instance.subscribe(event => { const value = event as unknown as { type: string; snapshot: AgentSessionSnapshot }; if (value.type === "project_session") snapshot = value.snapshot; });
-  return { instance, faux, lease, snapshot: () => snapshot! };
+  return { instance, faux, lease, suspend, snapshot: () => snapshot! };
 }
+
+test("host suspension preserves an active generation and resumes committed text without replaying tools", { timeout: 10_000 }, async t => {
+  const directory = await mkdtemp(path.join(tmpdir(), "agent-host-suspend-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const database = path.join(directory, "session.sqlite");
+  const first = session({ compaction: { enabled: false } }, database);
+  first.instance.requestId = "original";
+  let tools = 0, requests = 0;
+  first.instance.state.tools = [{ name: "inspect", label: "Inspect", description: "Test", parameters: ai.Type.Object({}),
+    execute: async () => { tools++; return { content: [ai.fauxText("Inspected")], details: {} }; } }];
+  first.faux.setResponses([ai.fauxAssistantMessage([ai.fauxToolCall("inspect", {})], { stopReason: "toolUse" })]);
+  const base = first.instance.models.streamSimple.bind(first.instance.models);
+  first.instance.models.streamSimple = (...args) => {
+    if (requests++ === 0) return base(...args);
+    const stream = ai.createAssistantMessageEventStream();
+    const partial = ai.fauxAssistantMessage("Before restart", { stopReason: "pending" });
+    stream.push({ type: "text_delta", contentIndex: 0, delta: "Before restart", partial });
+    args[2]!.signal!.addEventListener("abort", () => {
+      stream.push({ type: "error", reason: "aborted", error: { ...partial, stopReason: "aborted" } }); stream.end();
+    }, { once: true });
+    return stream;
+  };
+  const running = first.instance.prompt("Inspect"); void running.catch(() => undefined);
+  t.after(async () => { first.suspend.resolve(); await running; await first.instance.close(); });
+  await until(() => first.snapshot()?.turns[0]?.items.some(item => item.content === "Before restart") === true);
+  first.suspend.resolve(); await running; await first.instance.close();
+  const second = session({ compaction: { enabled: false } }, database, true);
+  second.instance.requestId = "original";
+  second.faux.setResponses([ai.fauxAssistantMessage("Finished")]);
+  const resumed = second.instance.prompt("Do not submit this bootstrap"); void resumed.catch(() => undefined);
+  t.after(async () => { second.lease.resolve(); await resumed; await second.instance.close(); });
+  await until(() => second.snapshot()?.turns[0]?.status === "done");
+  assert.equal(tools, 1); assert.equal(second.faux.state.callCount, 1);
+  assert.equal(second.snapshot().turns.length, 1);
+  assert.equal(second.snapshot().turns[0]!.prompt, "Inspect");
+  assert.match(JSON.stringify(second.snapshot().turns[0]!.items), /Before restart/);
+  assert.ok(second.snapshot().records.some(record => record.kind === "project.retry"));
+});
+
+for (const partial of [false, true]) test(`a follow-up exposes retry exhaustion with its durable failure reason (partial=${partial})`, async t => {
+  const f = session({ compaction: { enabled: false } });
+  f.faux.setResponses([ai.fauxAssistantMessage("First answer")]);
+  const running = f.instance.prompt("First"); void running.catch(() => undefined);
+  t.after(async () => { f.lease.resolve(); await running; await f.instance.close(); });
+  await until(() => f.snapshot()?.turns[0]?.status === "done");
+  f.faux.setResponses(Array.from({ length: 11 }, () => ai.fauxAssistantMessage(partial ? "Partial" : [], { stopReason: "aborted", errorMessage: "aborted" })));
+  await f.instance.control({ type: "submit", requestId: "follow-up", prompt: "Continue", mode: "followUp" });
+  await until(() => f.snapshot()?.turns[1]?.status === "unanswered");
+  const failed = f.snapshot().turns[1]!;
+  assert.equal(failed.reason, "model_error"); assert.match(failed.detail ?? "", /connection lost/);
+  assert.equal(failed.items.filter(item => item.metadata?.partType === "retry").length, 10);
+  assert.equal(f.snapshot().turns[0]!.status, "done");
+  await f.instance.control({ type: "snapshot", requestId: "read-failure" });
+  assert.deepEqual(f.snapshot().turns[1], failed);
+});
 
 function reportScriptedUsage(instance: DurableAgent, messages: ai.AssistantMessage[]): void {
   const streamSimple = instance.models.streamSimple.bind(instance.models);
