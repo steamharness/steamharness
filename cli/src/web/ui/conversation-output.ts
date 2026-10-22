@@ -4,6 +4,7 @@ import { conversationResourceCards, type ResourceCard } from '../resource-cards'
 import { escapeHtml, iconHtml, iconButton, markdownHtml, mediaUrl, updateIcon } from './ui';
 import { agentActivity, activeAgentActivity, activityGroupSummary, activityValueText, isSilentAgentRetry, type AgentActivity } from './agent-activity';
 import { RingOutput, isComposerOutputItem, ringOutputContent } from './output-display';
+import { attachmentSignature } from './attachment-state';
 
 interface OutputOptions {
   composer?: boolean;
@@ -13,7 +14,7 @@ interface OutputOptions {
   image(src: string, title: string): void;
   resource(card: ResourceCard, action?: 'open' | 'inline' | 'window' | 'project', requestId?: string): void;
 }
-interface OutputView { root: HTMLElement; signature: string }
+interface OutputView { root: HTMLElement; signature: string; filesSignature: string }
 interface OutputEntry { key: string; item?: OutputItem; answer?: ResolvedInput; card?: ResourceCard; text?: string; timer?: TimerRecord; activity?: AgentActivity }
 interface ActivityGroup { root: HTMLDetailsElement; list: HTMLDivElement }
 
@@ -55,7 +56,7 @@ export class ConversationOutput {
 
   private release(root: HTMLElement): void { this.displays.get(root)?.dispose(); this.displays.delete(root); }
 
-  update(message: ConversationMessage, projectId: string, conversationId: string, files: Attachment[], storageSource: 'local' | 'server' = 'local'): void {
+  update(message: ConversationMessage, projectId: string, conversationId: string, files: Attachment[], storageSource: 'local' | 'server' = 'local', filesSignature = attachmentSignature(files)): void {
     const items = (message.items ?? []).filter(item => item.metadata?.kind !== 'agent-session' && !isSilentAgentRetry(item) && (!this.options.composer || !isComposerOutputItem(item)));
     const cards = conversationResourceCards(items, projectId, conversationId, storageSource);
     const cardByItem = new Map(cards.map((card) => [card.itemId, card]));
@@ -91,20 +92,22 @@ export class ConversationOutput {
     const renderEntry = (entry: OutputEntry): HTMLElement => {
       active.add(entry.key);
       const { activity, ...content } = entry;
-      const signature = JSON.stringify([content, activity?.status, files.map((file) => [file.id, file.previewUrl]), message.submittingInput?.requestId === entry.answer?.requestId]);
+      const signature = JSON.stringify([content, activity?.status, message.submittingInput?.requestId === entry.answer?.requestId]);
       let view = this.views.get(entry.key);
+      const changed = !view || view.signature !== signature || view.filesSignature !== filesSignature;
       const display = view && this.displays.get(view.root);
       if (view && display && entry.item && !activity && !entry.card && ringOutputContent(entry.item)) {
-        if (view.signature !== signature) { display.update(entry.item); view.signature = signature; }
+        if (changed) { display.update(entry.item); view.signature = signature; }
       } else if (view?.root instanceof HTMLDetailsElement && view.root.classList.contains('agent-activity-item') && activity) {
-        if (view.signature !== signature) { this.updateActivity(view.root, activity, entry.card); view.signature = signature; }
-      } else if (!view || view.signature !== signature) {
+        if (changed) { this.updateActivity(view.root, activity, entry.card); view.signature = signature; }
+      } else if (!view || changed) {
         const root = entry.answer ? this.answer(entry.answer, message.submittingInput?.requestId === entry.answer.requestId)
           : entry.timer ? this.timer(entry.timer) : activity ? this.activity(activity, entry.key, entry.card) : entry.card ? this.card(entry.card, entry.item) : entry.item ? this.item(entry.item, files) : this.markdown(entry.text ?? '', files);
         if (view?.root instanceof HTMLDetailsElement && root instanceof HTMLDetailsElement) { root.open = view.root.open; }
         if (view) { this.release(view.root); view.root.replaceWith(root); }
-        view = { root, signature }; this.views.set(entry.key, view);
+        view = { root, signature, filesSignature }; this.views.set(entry.key, view);
       }
+      view.filesSignature = filesSignature;
       return view.root;
     };
     const activeGroups = new Set<string>();

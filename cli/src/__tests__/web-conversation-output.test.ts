@@ -1,10 +1,26 @@
 // @vitest-environment jsdom
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { ConversationOutput } from '../web/ui/conversation-output';
-import type { ConversationMessage, OutputItem } from '../web/workflow-types';
+import type { Attachment, ConversationMessage, OutputItem } from '../web/workflow-types';
 
 const outputs: ConversationOutput[] = [];
 afterEach(() => { for (const output of outputs.splice(0)) output.dispose(); document.body.replaceChildren(); });
+
+it('signs a shared attachment list once per update and invalidates unchanged Markdown when a preview changes', () => {
+  const root = document.createElement('div'); document.body.append(root);
+  const output = new ConversationOutput(root, { copy() {}, plan() {}, file() {}, image() {}, resource() {} }); outputs.push(output);
+  const files: Attachment[] = [{ id: 'file', name: 'image.png', path: '/image.png', size: 1, previewUrl: '/old.png', mimeType: 'image/png', kind: 'image', storage: 'local', createdAt: '2026-10-22T00:00:00Z' }];
+  const map = vi.spyOn(files, 'map');
+  const message: ConversationMessage = { role: 'assistant', content: '', status: 'success', items: Array.from({ length: 100 }, (_, index) => ({
+    id: `text-${index}`, content: '[image](/image.png)', contentType: 'markdown',
+  })) };
+  output.update(message, 'project', 'session', files);
+  expect(map).toHaveBeenCalledOnce();
+  const first = root.firstElementChild; expect(first!.querySelector('a')!.getAttribute('href')).toBe('/old.png');
+  output.update(message, 'project', 'session', files); expect(root.firstElementChild).toBe(first);
+  files[0].previewUrl = '/new.png'; output.update(message, 'project', 'session', files);
+  expect(root.firstElementChild).not.toBe(first); expect(root.firstElementChild!.querySelector('a')!.getAttribute('href')).toBe('/new.png');
+});
 
 it.each(['recovery', 'length', 'lost-call'])('silently continues %s while preserving network retry feedback and answer text', kind => {
   const root = document.createElement('div'); document.body.append(root);

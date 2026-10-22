@@ -4,7 +4,7 @@ import { ConversationController } from '../web/conversation-controller';
 import { messageSettled, type Project, type Report, type Runtime } from '../web/workflow-types';
 
 const controllers: ConversationController[] = [];
-afterEach(() => { for (const controller of controllers.splice(0)) controller.dispose(); });
+afterEach(() => { for (const controller of controllers.splice(0)) controller.dispose(); vi.useRealTimers(); });
 function fixture(configurationRevision?: () => number) {
   const project: Project = { id: 'durable', uri: '', folderPath: '/fixture', name: 'Agent', projectType: 'conversation', entrypoints: [],
     fields: [{ name: 'model', flag: '--model', type: 'string' }], conversation: { durable: { enabled: true }, recovery: { enabled: true }, inputQueue: { enabled: true } } };
@@ -30,6 +30,33 @@ function fixture(configurationRevision?: () => number) {
   const finish = async () => { runs.at(-1)?.finish({ status: 'success' }); await controller.idle(); };
   return { controller, runtime, runs, snapshot, emit, start, finish, save };
 }
+
+it('checkpoints streaming projections once a second while explicit saves include the newest frame immediately', async () => {
+  vi.useFakeTimers(); const f = fixture(); await f.start(); f.save.mockClear();
+  const initial = f.snapshot();
+  for (let revision = 2; revision <= 10; revision++) {
+    f.emit({ ...initial, revision }); await vi.advanceTimersByTimeAsync(100);
+  }
+  expect(f.save).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(100); expect(f.save).toHaveBeenCalledOnce();
+  f.emit({ ...initial, revision: 11 });
+  await f.controller.persist(); expect(f.save).toHaveBeenCalledTimes(2);
+  await vi.advanceTimersByTimeAsync(1000); expect(f.save).toHaveBeenCalledTimes(2);
+  await f.finish(); expect(f.save.mock.calls.length).toBeGreaterThan(2);
+});
+
+it('shares a progress checkpoint across concurrently streaming conversations', async () => {
+  vi.useFakeTimers(); const f = fixture(); await f.start(); const first = f.snapshot();
+  await f.controller.create(true); await f.controller.send({ text: 'Second', params: {}, attachments: [] });
+  await vi.waitFor(() => expect(f.runs).toHaveLength(2));
+  f.emit({ ...f.snapshot(), ownerId: 'second-owner' });
+  f.runs[0].emit({ type: 'node_chunk', chunk: { type: 'output_item_start', item: {
+    id: 'agent-session', content: { ...first, revision: 2 }, metadata: { kind: 'agent-session' },
+  } } });
+  f.save.mockClear(); await vi.advanceTimersByTimeAsync(1000); expect(f.save).toHaveBeenCalledOnce();
+  for (const run of f.runs) run.finish({ status: 'success' });
+  await f.controller.idle();
+});
 
 it('deduplicates a committed durable turn without requiring saved input presentation metadata', async () => {
   const f = fixture(); await f.start();

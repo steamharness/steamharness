@@ -25,6 +25,9 @@ export function traceSnapshot(state: Message): Message | undefined {
 export class TraceBridge {
   private enabled = false;
   private snapshot?: Message;
+  private state?: Message;
+  private timer?: ReturnType<typeof setTimeout>;
+  private cooling = false;
   private status = 'connecting';
   private readonly revisions = new StateRevisions();
   private activeId?: string;
@@ -32,28 +35,35 @@ export class TraceBridge {
   get active(): boolean { return this.enabled; }
   enable(version: unknown): void {
     this.enabled = version === 1;
-    if (this.enabled) { this.publish('status', { status: this.status }); if (this.snapshot) { this.publish('state', { snapshot: this.snapshot }); } }
+    if (this.enabled) { this.publish('status', { status: this.status }); this.flush(); }
+    else { clearTimeout(this.timer); this.timer = undefined; this.cooling = false; }
   }
   receive(message: Message): void {
     if (message.type === 'state') {
       if (!this.revisions.accept(message)) return;
-      this.snapshot = traceSnapshot(message);
-      if (this.snapshot) { if (this.activeId) this.snapshot.activeId = this.activeId; this.publish('state', { snapshot: this.snapshot }); }
+      const restarted = this.state?.serverInstanceId !== message.serverInstanceId;
+      this.state = message; this.snapshot = undefined;
+      if (this.enabled && (!this.cooling || restarted)) this.flush();
     }
     if (message.type === 'connection') { this.status = message.status; this.publish('status', { status: this.status }); }
     if (message.type === 'trace-run') { this.publish('run', { run: message.run, runId: message.runId, error: message.error }); }
   }
   open(target: Message): boolean {
     if (!this.enabled) { return false; }
-    this.publish('open', { target: { sessionId: target.sessionId, messageId: target.messageId, runId: target.runId } });
+    this.flush(); this.publish('open', { target: { sessionId: target.sessionId, messageId: target.messageId, runId: target.runId } });
     return true;
   }
   select(sessionId: string): void {
     this.activeId = sessionId;
-    if (this.snapshot) { this.snapshot.activeId = sessionId; this.publish('state', { snapshot: this.snapshot }); }
+    this.snapshot = undefined;
+    if (this.enabled) this.flush();
   }
   command(value: Message): Message | undefined {
-    if (!this.enabled || !this.snapshot) return;
+    if (!this.enabled) return;
+    // Controls validate against the newest received frame, including updates
+    // waiting for publication. Throttling must never accept a stale owner.
+    this.snapshot ??= this.project();
+    if (!this.snapshot) return;
     if (this.snapshot.project.projectType === 'workflow') {
       if (value?.type === 'run' && typeof value.runId === 'string') return { type: 'workflow-trace', id: value.runId };
       if (value?.type === 'more') return { type: 'workflow-history', query: '', more: true };
@@ -81,6 +91,23 @@ export class TraceBridge {
     this.result(value.requestId, t('Invalid task action.'));
   }
   result(requestId: string, error?: string): void { this.publish('command', { requestId, error }); }
+  private project(): Message | undefined {
+    const snapshot = this.state && traceSnapshot(this.state);
+    if (snapshot && this.activeId) snapshot.activeId = this.activeId;
+    return snapshot;
+  }
+  private flush(): void {
+    clearTimeout(this.timer); this.timer = undefined;
+    this.snapshot ??= this.project();
+    if (!this.snapshot) { this.cooling = false; return; }
+    this.publish('state', { snapshot: this.snapshot });
+    const published = this.state;
+    this.cooling = true;
+    this.timer = setTimeout(() => {
+      this.timer = undefined; this.cooling = false;
+      if (this.enabled && this.state !== published) this.flush();
+    }, 100);
+  }
   private validCommand(command: Message | undefined, agent: Message, targetId: number, conversationId: number): boolean {
     if (!command || !agent.conversations.some((entry: Message) => entry.id === targetId)) return false;
     if (command.type === 'cancel' && command.scope === 'task') return agent.tasks.some((task: Message) => task.id === command.taskId && task.conversationId === targetId);

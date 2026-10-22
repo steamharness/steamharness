@@ -1,5 +1,7 @@
 # Unreleased
 
+- Improved long-conversation and multi-window performance: reuse unchanged history, skip redundant writes, and checkpoint durable Agent web progress once per second while saving inputs and controls immediately. Coalesce Trace updates, skip hidden panel and inactive timeline work, and share attachment lists during transcript refreshes.
+
 - Fixed repeated connection interruptions with large conversation histories: live snapshots carry output and trace summaries while exports retain full events. Pending history writes and slow-client snapshots coalesce, and pages share state serialization. Studio records exit codes, signals, and redacted service diagnostics.
 
 - Added --group-id for creation and first uploads. Uploads and publication require developer access; published downloads require guest access, using current Server memberships.

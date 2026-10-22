@@ -10,7 +10,9 @@ function fixture() {
     uploadFiles: vi.fn(), readFile: vi.fn(), deleteFiles: vi.fn(), cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(), readResource: vi.fn(),
   };
   const save = vi.fn(async (_sessions: ConversationSession[], _activeId: string) => {});
-  const controller = new ConversationController(project, runtime, {}, { save, changed: vi.fn(), log: vi.fn() });
+  const controller = new ConversationController(project, runtime, {}, {
+    save: (sessions, activeId) => save(JSON.parse(JSON.stringify(sessions)), activeId), changed: vi.fn(), log: vi.fn(),
+  });
   return { controller, runtime, save };
 }
 

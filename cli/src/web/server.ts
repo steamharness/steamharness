@@ -177,7 +177,7 @@ export async function startWebServer(options: WebOptions) {
     log: message => process.stderr.write(`${message}\n`),
     save: (sessions, activeId) => {
       if (conversationHistory) {
-        pendingSave = pendingSave.catch(() => undefined).then(() => conversationHistory.save(sessions, activeId));
+        pendingSave = conversationHistory.save(sessions, activeId);
         return pendingSave;
       }
       const content = JSON.stringify({ sessions, activeId, selectionVersion: 1 });

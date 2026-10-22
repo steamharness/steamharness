@@ -10,6 +10,7 @@ import { ConversationTools } from './conversation-tools';
 import { requestAction } from './action-dialog';
 import { ContentSearch } from './content-search';
 import { ConversationOutput } from './conversation-output';
+import { attachmentSignature } from './attachment-state';
 import { activeAgentActivity } from './agent-activity';
 import { ComposerOutput, composerOutputItems } from './output-display';
 import type { ConnectionState } from './connection';
@@ -862,7 +863,7 @@ function initialize(): void {
     ] : [])].join('\n');
   }
 
-  function updateMessage(view: MessageView, message: ConversationMessage): void {
+  function updateMessage(view: MessageView, message: ConversationMessage, files: Attachment[], filesSignature: string): void {
     view.message = message;
     if (message.role === 'user') { updateUserAvatar(view.avatar, state?.account); }
     else { updateProjectAvatar(view.avatar, state!.project); }
@@ -871,7 +872,7 @@ function initialize(): void {
     for (const action of view.root.querySelectorAll<HTMLButtonElement>('.trace-message, .export-message')) action.hidden = submissions.local(message);
     updateMessageMetadata(view);
     if (message.role === 'user') { view.content.textContent = message.content; }
-    else { view.output!.update(message, state!.project.id, state!.activeId, (currentSession()?.messages ?? []).flatMap((entry) => [...(entry.files ?? []), ...(entry.attachments ?? [])]), state!.project.projectInfo?.dataStorage?.mode === 'server' ? 'server' : 'local'); }
+    else { view.output!.update(message, state!.project.id, state!.activeId, files, state!.project.projectInfo?.dataStorage?.mode === 'server' ? 'server' : 'local', filesSignature); }
     const error = message.status === 'running' || message.status === 'sending' ? undefined : message.error;
     view.error.textContent = error ?? '';
     view.error.hidden = !error;
@@ -996,6 +997,8 @@ function initialize(): void {
     } else {
       transcriptContent.querySelector('.empty')?.remove();
       const active = new Set<string>();
+      const files = session.messages.flatMap(entry => [...(entry.files ?? []), ...(entry.attachments ?? [])]);
+      const filesSignature = attachmentSignature(files);
       let epoch = 0;
       session.messages.forEach((message, index) => {
         const id = message.id || `${index}:${message.role}`;
@@ -1004,7 +1007,7 @@ function initialize(): void {
         if (!view) { view = createMessage(message); messages.set(id, view); transcriptContent.append(view.root); }
         const current = transcriptContent.children[index] ?? null;
         if (current !== view.root) transcriptContent.insertBefore(view.root, current);
-        updateMessage(view, message);
+        updateMessage(view, message, files, filesSignature);
         let divider = view.root.querySelector<HTMLElement>('.context-epoch');
         if ((message.contextEpoch ?? 0) > epoch) {
           if (!divider) { divider = document.createElement('div'); divider.className = 'context-epoch'; divider.setAttribute('role', 'separator'); view.root.prepend(divider); }

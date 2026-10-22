@@ -168,20 +168,13 @@ function preferences(): void {
   host.setState({ mode, follow, tab, projectUri: state?.selection.projectUri ?? saved.projectUri }); element('trace-follow').setAttribute('aria-pressed', String(follow));
   document.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.mode === mode)));
 }
-function render(): void {
+function renderTrace(): void {
   if (!state) { return; }
-  if ((state.reveal ?? 0) > reveal) { reveal = state.reveal!; tab = 'trace'; }
-  const activeTab = state.snapshot?.durable ? tab : 'trace';
-  element('trace-tabs').hidden = !state.snapshot?.durable;
-  for (const [id] of tabs) { const button = element<HTMLButtonElement>(`trace-tab-${id}`); button.setAttribute('aria-selected', String(id === activeTab)); button.tabIndex = id === activeTab ? 0 : -1; }
-  element('trace-execution').hidden = activeTab !== 'trace'; element('trace-agent').hidden = activeTab === 'trace';
-  element('trace-agent').setAttribute('aria-labelledby', `trace-tab-${activeTab}`);
-  agent.update(state, activeTab === 'trace' ? 'tasks' : activeTab, activeTab !== 'trace');
-  selectors(); preferences();
   const nextKey = JSON.stringify(state.selection);
   if (key !== nextKey) { key = nextKey; views.clear(); element('trace-list').replaceChildren(); scroll.scrollTop = 0; }
   rows = traceRows(state.snapshot, state.selection, state.run);
   const filtered = filterTraceRows(rows, query, mode), ids = new Set(filtered.map(row => row.id));
+  element('trace-count').textContent = t("{0} / {1} records \u00B7 {2} tool calls", filtered.length, rows.length, rows.filter(row => row.lane === 'tool').length);
   for (const [id, view] of views) { if (!ids.has(id)) { view.root.remove(); views.delete(id); } }
   const list = element('trace-list'); list.querySelectorAll('.trace-turn').forEach(heading => heading.remove());
   let turn = -1;
@@ -192,11 +185,22 @@ function render(): void {
   timeline(filtered);
   element('trace-empty').hidden = filtered.length > 0;
   element('trace-empty').textContent = !state.projects.length ? t("No Workflow or Conversation projects") : query ? t("No matching records") : state.loading ? t("Loading trace...") : state.status === 'idle' ? t("No trace loaded") : !state.snapshot ? t("Connecting to project...") : t("No execution records");
+}
+function render(): void {
+  if (!state) { return; }
+  if ((state.reveal ?? 0) > reveal) { reveal = state.reveal!; tab = 'trace'; }
+  const activeTab = state.snapshot?.durable ? tab : 'trace';
+  element('trace-tabs').hidden = !state.snapshot?.durable;
+  for (const [id] of tabs) { const button = element<HTMLButtonElement>(`trace-tab-${id}`); button.setAttribute('aria-selected', String(id === activeTab)); button.tabIndex = id === activeTab ? 0 : -1; }
+  element('trace-execution').hidden = activeTab !== 'trace'; element('trace-agent').hidden = activeTab === 'trace';
+  element('trace-agent').setAttribute('aria-labelledby', `trace-tab-${activeTab}`);
+  agent.update(state, activeTab === 'trace' ? 'tasks' : activeTab, activeTab !== 'trace');
+  selectors(); preferences();
+  if (activeTab === 'trace') { renderTrace(); }
   const notice = state.error ?? (state.status === 'unsupported' ? t("The project CLI does not support the trace panel. Update @steamharness/cli.") : ['offline', 'closed', 'expired', 'reconnecting'].includes(state.status) ? statuses[state.status] : '');
   element('trace-notice').hidden = !notice; element('trace-notice').textContent = notice;
   const sessionAgent = agentSession(state).agent;
-  element('trace-count').textContent = activeTab === 'trace' ? t("{0} / {1} records \u00B7 {2} tool calls", filtered.length, rows.length, rows.filter(row => row.lane === 'tool').length)
-    : !sessionAgent ? t('No task state') : `${sessionAgent.foreground ? t('Responding') : t('Foreground complete')} \u00b7 ${t('Background tasks: {0}', sessionAgent.backgroundCount)}`;
+  if (activeTab !== 'trace') element('trace-count').textContent = !sessionAgent ? t('No task state') : `${sessionAgent.foreground ? t('Responding') : t('Foreground complete')} \u00b7 ${t('Background tasks: {0}', sessionAgent.backgroundCount)}`;
   const active = state.run ?? state.snapshot?.run;
   element('trace-status').textContent = [active ? statuses[active.status] : '', statuses[state.status], traceDuration(active?.durationMs)].filter(Boolean).join(' \u00b7 ');
   if (follow && activeTab === 'trace') { scroll.scrollTop = scroll.scrollHeight; }
@@ -225,5 +229,5 @@ addEventListener('message', event => {
   state = event.data;
   if (renderFrame === undefined) renderFrame = requestAnimationFrame(() => { renderFrame = undefined; render(); });
 });
-setInterval(() => { if (state?.snapshot?.running && !document.hidden) { timeline(filterTraceRows(rows, query, mode)); } }, 1000);
+setInterval(() => { if (state?.snapshot?.running && (tab === 'trace' || !state.snapshot.durable) && !document.hidden) { timeline(filterTraceRows(rows, query, mode)); } }, 1000);
 host.postMessage({ type: 'ready' });

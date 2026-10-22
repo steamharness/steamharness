@@ -44,7 +44,9 @@ export class TraceView {
       this.available = available;
       void vscode.commands.executeCommand('setContext', 'studio.projectTraceAvailable', available);
     }
-    if (!this.view) { return; }
+    // Retained hidden panels keep their last content. Publish the newest state
+    // when revealed without serializing every background streaming frame.
+    if (!this.view?.visible) { return; }
     const project = state.projects.find(project => project.uri === state.selection.projectUri);
     this.view.description = project && [project.name, project.version].filter(Boolean).join(' \u00b7 ');
     const signature = JSON.stringify(state);

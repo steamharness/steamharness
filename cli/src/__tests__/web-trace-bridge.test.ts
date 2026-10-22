@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TraceBridge, traceSnapshot } from '../web/ui/trace-bridge';
 
 const project = { id: 'project', name: 'Example', projectType: 'conversation', privateField: 'private' };
@@ -6,6 +6,24 @@ const state = { type: 'state', project, activeId: 'session', running: true, acco
   sessions: [{ id: 'session', title: 'Title', draft: 'draft', parameterValues: { key: 'draft-key' }, queuedInputs: ['queued'],
     messages: [{ id: 'answer', role: 'assistant', content: 'Answer', status: 'running', events: [{ type: 'node_started' }], items: [{ content: 'live' }] }] }] };
 describe('embedded execution trace bridge', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+  it('does not project standalone states, coalesces host frames and replays only the newest state after enabling', () => {
+    const sent: any[] = [], bridge = new TraceBridge(message => sent.push(message)), projected = vi.fn(() => []);
+    bridge.receive({ ...state, get sessions() { return projected(); } }); expect(projected).not.toHaveBeenCalled();
+    bridge.receive(state); bridge.enable(1);
+    for (let revision = 1; revision <= 100; revision++) bridge.receive({ ...state, stateRevision: revision,
+      sessions: [{ ...state.sessions[0], title: `Revision ${revision}` }] });
+    expect(sent.filter(message => message.kind === 'state')).toHaveLength(1);
+    vi.advanceTimersByTime(100);
+    expect(sent.filter(message => message.kind === 'state')).toHaveLength(2);
+    expect(sent.at(-1).snapshot.sessions[0].title).toBe('Revision 100');
+    vi.advanceTimersByTime(1000); expect(sent.filter(message => message.kind === 'state')).toHaveLength(2);
+    bridge.receive({ ...state, stateRevision: 101 }); bridge.enable(2);
+    vi.advanceTimersByTime(1000); const count = sent.length;
+    bridge.receive({ ...state, stateRevision: 102 }); expect(sent).toHaveLength(count);
+    bridge.enable(1); expect(sent.at(-1).snapshot.sessions[0].title).toBe('Title');
+  });
   it('keeps account, parameters, drafts and unrelated project metadata outside the host snapshot', () => {
     const snapshot = traceSnapshot(state)!;
     expect(snapshot.project).toEqual({ id: 'project', name: 'Example', projectType: 'conversation' });
@@ -73,6 +91,17 @@ describe('embedded execution trace bridge', () => {
       expect(bridge.command({ ...context, ...invalid })).toBeUndefined(); expect(sent.at(-1).kind).toBe('command'); expect(sent.at(-1).error).toBeTruthy();
     }
     bridge.receive({ type: 'connection', status: 'offline' }); expect(bridge.command(context)).toBeUndefined();
+  });
+  it('validates commands against a replacement owner before its throttled state is published', () => {
+    const sent: any[] = [], bridge = new TraceBridge(message => sent.push(message)); bridge.enable(1);
+    bridge.receive(durable()); bridge.receive({ type: 'connection', status: 'connected' }); vi.advanceTimersByTime(50);
+    const next = durable(); next.sessions[0].agent!.ownerId = 'replacement'; next.sessions[1].agent!.ownerId = 'replacement';
+    bridge.receive(next);
+    expect(sent.filter(message => message.kind === 'state').at(-1).snapshot.agents.session.ownerId).toBe('owner');
+    const command = { type: 'agent', sessionId: 'child', ownerId: 'owner', conversationId: 2, requestId: 'cancel', command: { type: 'cancel', scope: 'all' } };
+    expect(bridge.command(command)).toBeUndefined();
+    expect(sent.at(-1)).toMatchObject({ kind: 'command', error: expect.any(String) });
+    expect(bridge.command({ ...command, ownerId: 'replacement' })).toMatchObject({ type: 'agent-command', agentOwner: 'replacement' });
   });
   it('ignores out-of-order frames and marks the actual local conversation during navigation', () => {
     const sent: any[] = [], bridge = new TraceBridge(message => sent.push(message)); bridge.enable(1);

@@ -12,6 +12,7 @@ import {
 interface ControllerOptions {
   canRun?(session: ConversationSession): boolean;
   configurationRevision?(): number;
+  /** Capture mutable inputs synchronously, before returning the save promise. */
   save(sessions: ConversationSession[], activeId: string): Promise<void>;
   changed(): void;
   log(message: string): void;
@@ -27,7 +28,7 @@ export class ConversationController {
   private readonly reloading = new Map<string, Promise<void>>();
   private readonly removing = new Set<string>();
   private readonly agentWaiters = new Map<string, { ownerId: string; targetId?: number; requestId: string; promise: Promise<AgentSessionReceipt>; resolve(receipt: AgentSessionReceipt): void; reject(error: Error): void }>();
-  private readonly agentSaves = new Map<string, ReturnType<typeof setTimeout>>();
+  private agentSave?: ReturnType<typeof setTimeout>;
   private saving = false;
   private pendingSave?: PendingSave;
 
@@ -82,9 +83,9 @@ export class ConversationController {
     while (this.pendingSave) {
       const pending = this.pendingSave; this.pendingSave = undefined;
       try {
-        // Snapshot only when the writer is ready. Streaming updates coalesce
-        // instead of retaining an unbounded queue of full history copies.
-        await this.options.save(JSON.parse(JSON.stringify(this.sessions)), this.activeId);
+        clearTimeout(this.agentSave); this.agentSave = undefined;
+        // The writer captures only the sessions it can persist when ready.
+        await this.options.save(this.sessions, this.activeId);
         pending.resolve();
       } catch (error) { pending.reject(error); }
     }
@@ -544,9 +545,12 @@ export class ConversationController {
     }
     if (!restore) this.configurationChanged();
     for (const receipt of snapshot.receipts) this.acknowledgeAgent(owner, receipt);
-    if (!restore && !this.agentSaves.has(owner.id)) this.agentSaves.set(owner.id, setTimeout(() => {
-      this.agentSaves.delete(owner.id); void this.persist().catch(error => this.options.log(String(error)));
-    }, 100));
+    // Progress is already durable in the Agent store. Checkpoint the Web
+    // projection at most once a second; inputs and control boundaries persist
+    // immediately through their explicit persist() calls.
+    if (!restore && !this.agentSave) this.agentSave = setTimeout(() => {
+      this.agentSave = undefined; void this.persist().catch(error => this.options.log(String(error)));
+    }, 1000);
   }
   async agentCommand(sessionId: string, command: AgentSessionCommand, attachments?: Attachment[]): Promise<AgentSessionReceipt> {
     if (!this.project.conversation?.durable?.enabled || !this.runtime.agentControl) throw new Error('Durable session control is unavailable.');
@@ -782,8 +786,7 @@ export class ConversationController {
   async idle(): Promise<void> { while (this.tasks.size) { await Promise.all([...this.tasks.values()].map((task) => task.finished)); } }
   dispose(): void {
     this.disposed = true;
-    for (const timer of this.agentSaves.values()) clearTimeout(timer);
-    this.agentSaves.clear();
+    clearTimeout(this.agentSave); this.agentSave = undefined;
     void this.persist().catch(error => this.options.log(String(error)));
     for (const owner of this.sessions.filter(session => !session.agentOwnerId)) this.rejectAgentWaiters(owner.id, Object.assign(new Error('The agent host closed.'), { code: 'STEAMHARNESS_WORKER_INTERRUPTED' }));
     if (!this.project.conversation?.recovery?.enabled) for (const entry of this.sessions) void this.stop(entry).catch(error => this.options.log(String(error)));
