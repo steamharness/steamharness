@@ -8,6 +8,7 @@
 studio/
   upstream/vscode/                 VS Code OSS 源码，Git 子模块
   config/upstream.json             上游版本与提交锁
+  config/patches.json              已合入内核的历史补丁指纹与提交
   config/product.json              Studio 品牌、数据目录、扩展市场配置
   config/downloads.json            Electron 与 CI 依赖下载镜像
   config/default-extensions.json   首次启动安装的默认扩展
@@ -151,7 +152,11 @@ GitLab CI 在推送后自动执行框架测试、Studio 类型检查和两端扩
 
 VS Code 源码使用 [GRCmade/vscode 的 steamharness-dev 分支](https://github.com/GRCmade/vscode/tree/steamharness-dev)进行日常开发；`steamharness-alpha` 和 `steamharness-main` 分别维护测试与正式通道，fork 原有的 `main` 保留其历史。`.gitmodules` 的远端更新默认跟随 `steamharness-dev`，普通子模块初始化仍按已提交的引用检出；`config/upstream.json` 固定同一内核提交。拉取源码需要 GitHub SSH 访问权限。当前内核定制和品牌配置已提交到 fork，`patches` 中保留对应补丁，准备脚本会跳过已合并的补丁。后续在 fork 中维护内核提交时，先推送源码提交，再同步更新 `config/upstream.json` 与子模块提交引用。
 
-品牌的持久配置是 `config/product.json`。上游 `product.json`、开发期 `product.overrides.json` 和 Studio 扩展链接由脚本生成；检测到手动改动或冲突会停止，避免覆盖。Web 配置注入品牌、扩展市场和正确的上游 API 版本。源码补丁放入 `patches/*.patch`，按文件名排序，已应用的补丁不会重复应用。
+品牌的持久配置是 `config/product.json`。上游 `product.json`、开发期 `product.overrides.json` 和 Studio 扩展链接由脚本生成；检测到手动改动或冲突会停止，避免覆盖。Web 配置注入品牌、扩展市场和正确的上游 API 版本。源码补丁放入 `patches/*.patch`，按文件名排序。
+
+准备脚本通过 `config/patches.json` 记录的内核提交和补丁 SHA-256 跳过已合入的历史补丁，即使后续重构改写了原补丁内容，也不会重复应用。记录仅对对应提交或可验证的后代提交有效；在固定提交的浅克隆中无需下载历史。新增补丁不写入这份记录，修改补丁后原指纹自动失效。补丁合入 fork 后，再核验内核提交并更新对应记录；固定到不含该记录提交的内核时，不得沿用旧记录。
+
+未合入的新补丁先在临时 Git 索引中验证整个序列，普通应用失败时自动使用补丁中的 blob ID 尝试三方合并。全部成功后才一次性更新源码，保留本地修改与原暂存区；真实冲突会列出补丁和 Git 冲突信息，源码、未跟踪文件与暂存区均保留原状。`prepare`、`dev`、`dev:web` 和私有启动器共用这套机制，无需额外启动参数。
 
 扩展市场默认使用 [Open VSX](https://open-vsx.org/)。上游内置调试扩展仍从其 GitHub Release 下载并校验官方 SHA-256。上游聊天服务配置暂保留以兼容其工作台代码，自有 AI 服务尚未实现。
 

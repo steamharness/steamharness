@@ -1,43 +1,25 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, readFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { build } from 'esbuild';
 import { ROOT, applyPatches } from '../scripts/distribution.mjs';
+import { pinnedKernel } from './helpers/pinned-kernel.mjs';
 
 // Reuse the monorepo's offline DOM test runtime.
 const { JSDOM } = createRequire(new URL('../../shared/package.json', import.meta.url))('jsdom');
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/webview/info.ts'], bundle: true, platform: 'browser', format: 'iife', loader: { '.css': 'empty' }, write: false });
 
 test('project avatar patches apply repeatedly to the pinned kernel without changing the index', async t => {
-  const fixture = await mkdtemp(path.join(tmpdir(), 'studio-avatar-patches-'));
-  t.after(() => rm(fixture, { recursive: true, force: true }));
-  const kernel = path.join(fixture, 'vscode');
-  const upstream = JSON.parse(await readFile(path.join(ROOT, 'config/upstream.json'), 'utf8'));
   const files = ['src/vs/workbench/browser/actions/windowActions.ts', 'src/vs/workbench/browser/parts/editor/studioStart.ts', 'src/vs/workbench/browser/parts/editor/media/studioStart.css'];
-  for (const file of files) {
-    await mkdir(path.dirname(path.join(kernel, file)), { recursive: true });
-    await writeFile(path.join(kernel, file), execFileSync('git', ['show', `${upstream.commit}:${file}`], { cwd: path.join(ROOT, upstream.path) }));
-  }
+  const { root: fixture, upstream: kernel } = await pinnedKernel(t, files);
   const git = args => execFileSync('git', args, { cwd: kernel, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-  git(['init', '-q']);
-  await mkdir(path.join(fixture, 'patches'));
   const patches = ['0031-studio-project-avatars.patch', '0032-studio-avatar-actions.patch', '0033-studio-start-recent-avatar-spacing.patch'];
   for (const name of patches) {
     await copyFile(path.join(ROOT, 'patches', name), path.join(fixture, 'patches', name));
   }
-  for (const name of [...patches].reverse()) {
-    const patch = path.join(fixture, 'patches', name);
-    try { git(['apply', '--reverse', '--check', patch]); }
-    catch { continue; }
-    git(['apply', '--reverse', patch]);
-  }
-  git(['add', '--all']);
-  git(['-c', 'user.name=Studio Test', '-c', 'user.email=studio@example.invalid', '-c', 'commit.gpgsign=false',
-    '-c', `core.hooksPath=${path.join(fixture, 'hooks')}`, 'commit', '--quiet', '-m', 'pinned kernel fixture']);
   const index = git(['write-tree']);
   await applyPatches(fixture, kernel);
   const first = await Promise.all(files.map(file => readFile(path.join(kernel, file), 'utf8')));

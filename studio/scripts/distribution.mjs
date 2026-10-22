@@ -1,9 +1,11 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import * as fs from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { applyPatches } from './patches.mjs';
+
+export { applyPatches };
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -122,61 +124,6 @@ export function mergeProduct(base, overrides) {
     }
   }
   return product;
-}
-
-export async function applyPatches(root, upstream) {
-  const patches = path.join(root, 'patches');
-  const files = (await fs.readdir(patches)).filter((name) => name.endsWith('.patch')).sort();
-  if (!files.length) { return; }
-  const applied = new Set();
-  const paths = new Set();
-  for (const name of files) {
-    const records = git(['apply', '--numstat', '-z', path.join(patches, name)], upstream).split('\0');
-    for (let index = 0; index < records.length; index++) {
-      if (!records[index]) { continue; }
-      const filename = records[index].split('\t').slice(2).join('\t');
-      if (filename) { paths.add(filename); }
-      else { paths.add(records[++index]); paths.add(records[++index]); }
-    }
-  }
-  const directory = await fs.mkdtemp(path.join(tmpdir(), 'studio-patch-index-'));
-  const env = { GIT_INDEX_FILE: path.join(directory, 'index') };
-  try {
-    const tracked = new Set(git(['--literal-pathspecs', 'ls-tree', '-r', '--name-only', '-z', 'HEAD', '--', ...paths], upstream).split('\0'));
-    const snapshot = [];
-    for (const filename of paths) {
-      if (tracked.has(filename) || await exists(path.join(upstream, filename))) { snapshot.push(filename); }
-    }
-    // Recognize patches in the pinned revision independently of local edits. A local
-    // edit can prevent peeling a later patch and otherwise hide an earlier one.
-    for (const source of ['HEAD', 'worktree']) {
-      git(['read-tree', 'HEAD'], upstream, env);
-      if (source === 'worktree' && snapshot.length) { git(['--literal-pathspecs', 'add', '--all', '--', ...snapshot], upstream, env); }
-      // Peel later patches from a disposable index so overlapping earlier patches remain recognizable.
-      for (const name of [...files].reverse()) {
-        const file = path.join(patches, name);
-        try {
-          git(['apply', '--cached', '--reverse', '--check', file], upstream, env);
-          git(['apply', '--cached', '--reverse', file], upstream, env);
-          applied.add(name);
-        } catch {
-          // New patches that conflict with real files are checked below.
-        }
-      }
-    }
-  } finally {
-    await fs.rm(directory, { recursive: true, force: true });
-  }
-  for (const name of files) {
-    if (applied.has(name)) { continue; }
-    const file = path.join(patches, name);
-    try {
-      git(['apply', '--check', file], upstream);
-    } catch (error) {
-      throw new Error(`Patch ${name} conflicts with the current source. Resolve the conflict without discarding local changes.\n${error.stderr ?? error.message}`);
-    }
-    git(['apply', file], upstream);
-  }
 }
 
 export async function prepareDistribution(root = ROOT) {
