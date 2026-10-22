@@ -13,8 +13,7 @@
     "server:dev": "pnpm -C server dev",
     "server:start": "pnpm -C server start:local",
     "studio:dev": "pnpm -C studio run dev",
-    "studio:web": "pnpm -C studio run dev:web",
-    "doc:dev": "pnpm -C docs site:dev"
+    "studio:web": "pnpm -C studio run dev:web"
   },
   "pnpm": {
     "overrides": {

@@ -13,7 +13,7 @@
 | `server/` | Server 与 Server Web 管理端 | `@steamharness/server`、`@steamharness/server-web` |
 | `shared/` | 跨组件源码、发布工具与 i18n 资源（18 个子包） | `@steamharness/shared-workspace`、`@steamharness/*` |
 | `studio/` | 基于 VS Code OSS 的工作站 | `studio-workstation` |
-| `docs/` | 中英文公开文档 | `@steamharness/docs` |
+| `docs/` | 中英文公开文档（Markdown/MDX、导航与 OpenAPI 源；站点由独立工作区构建） | — |
 | `build-in/build-in-developer-assistant/` | 内置小助手项目（skill 真相源） | 随 Studio 分发 |
 | `build-in/build-in-studio-control/` | 内置 Studio 控制扩展宿主 | 随 Studio 分发 |
 | `build-in/build-in-analysis/` | 内置本地与运行数据分析 | 随 Studio 分发 |
@@ -26,11 +26,11 @@ pnpm check                        # skill 与 vendor 副本守卫 + 脚本测试
 pnpm typecheck && pnpm test       # 按依赖顺序跑各包自检
 ```
 
-`studio/` 与 `docs/` 使用各自的工具链（Studio 要求 Node 24.18.0+ 的 24.x 与 npm 11/12），不进入根 pnpm workspace：
+`studio/` 使用自己的工具链（要求 Node 24.18.0+ 的 24.x 与 npm 11/12），不进入根 pnpm workspace。`docs/` 只保存文档内容，不需要安装依赖或构建：
 
 ```sh
 pnpm -C studio install
-pnpm -C docs install
+node docs/scripts/validate-docs.mjs
 ```
 
 Studio 依赖 `studio/upstream/vscode` 子模块（VS Code 上游 fork）：
@@ -53,7 +53,6 @@ pnpm -C harness/workspace install
 | `pnpm check:vendor-copies` | 保证 `shared/release-tools` 在 vendor 目录与内置项目里的逐字节副本不漂移（`--fix` 同步） |
 | `pnpm server:dev` / `pnpm server:start` | 启动 Server（开发监听 / 仅开发源码） |
 | `pnpm studio:dev` / `pnpm studio:web` | 启动工作站 Electron / 浏览器端 |
-| `pnpm doc:dev` | 启动文档站开发服务 |
 
 ## 发布
 

@@ -26,7 +26,7 @@ node --test scripts/__tests__/*.test.mjs
 
 ## 工作区边界
 
-- `harness`、`cli`、`server`、`shared/*`、`build-in/*` 属于根 pnpm workspace，共用一个 lockfile；`studio`（npm + Electron）与 `docs`（Docusaurus）独立安装，不进 workspace；`harness/workspace` 是示例工作流的嵌套 workspace。
+- `harness`、`cli`、`server`、`shared/*`、`build-in/*` 属于根 pnpm workspace，共用一个 lockfile；`studio`（npm + Electron）独立安装，不进 workspace；`docs` 只保存 Markdown/MDX、导航与 OpenAPI 源，不含站点工具链；`harness/workspace` 是示例工作流的嵌套 workspace。
 - 内部专有内容不得进入本仓库。跨仓开发通过私有仓库的 `open-sources/` 子模块完成。
 
 ## 发布
@@ -38,7 +38,7 @@ node --test scripts/__tests__/*.test.mjs
 ## 测试
 
 - 日常测试不得在用户正在使用的本机桌面前台启动 Electron、带窗口的浏览器、原生菜单或系统剪贴板测试；需要真实窗口时转入完整测试环境。详见 `studio/AGENTS.md`。
-- 改动 `harness`、`cli`、`server` 或 `shared/*` 后运行对应包的 `typecheck` 与 `test`；改动 `docs` 运行 `pnpm -C docs validate`；改动内置项目运行其 `test`。
+- 改动 `harness`、`cli`、`server` 或 `shared/*` 后运行对应包的 `typecheck` 与 `test`；改动 `docs` 运行 `node docs/scripts/validate-docs.mjs` 与 `node --test docs/scripts/__tests__/*.test.mjs`；改动内置项目运行其 `test`。
 - `server` 的测试依赖 PostgreSQL 测试容器，先确认 Docker 可用。
 
 ## 秘密
