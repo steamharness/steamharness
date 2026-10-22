@@ -6,6 +6,8 @@ export default defineConfig({
   format: ["esm"],
   platform: "node",
   target: "es2022",
+  // Prefix-only built-ins such as node:sqlite cannot resolve without node:.
+  removeNodeProtocol: false,
   bundle: true,
   external: ["steamharness"],
   // @steamharness/i18n is a TypeScript-only build dependency. Inline it and

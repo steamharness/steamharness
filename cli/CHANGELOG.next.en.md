@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fix: Preserve Node built-in module prefixes in CLI bundles so Assistant and Web startup resolve `node:sqlite` instead of looking for a third-party `sqlite` package.
+
 - [Fixed] Recover an exited Assistant service through Studio when retrying or stopping, restore its original port and refresh connection credentials while preserving the page and drafts. Accept the replacement service state sequence, reject retired snapshots, and bind cancellation to the original run and tasks.
 
 - Fixed duplicate windows opening or running the same conversation: the duplicate view is read-only while different conversations can run in parallel. History saves merge each window's sessions. Durable reconnects and idle model changes no longer resubmit historical input, and startup failures retain their original cause.

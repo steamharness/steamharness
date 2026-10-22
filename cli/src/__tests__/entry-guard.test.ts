@@ -36,6 +36,12 @@ it("runs when the entry is invoked by its real path", async () => {
   assert.match(await runEntry(builtEntry), /structure/);
 });
 
+// Load the dynamic Web bundle with Node itself. Source tests cannot catch a
+// bundler rewriting prefix-only built-ins such as node:sqlite into npm imports.
+it("loads the built Web command and its native module dependencies", async () => {
+  assert.match(await runEntry(builtEntry, ["web", "--help"]), /--no-open/);
+});
+
 // The guard exists so that importing the module — a test, an embedding host —
 // does not run the CLI. The extra argument stands in for the entry path such a
 // process reports, which is never this module.

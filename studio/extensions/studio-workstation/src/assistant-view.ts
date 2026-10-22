@@ -11,6 +11,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
   private view?: vscode.WebviewView;
   private conversation?: AssistantConversation;
   private binding = Promise.resolve();
+  private retrying?: Promise<void>;
   private closing = Promise.resolve();
   private epoch = 0;
   private key = '';
@@ -43,7 +44,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
     this.view = view;
     view.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')] };
     const listener = view.webview.onDidReceiveMessage((message) => {
-      if (message?.type === 'assistant-retry') { this.key = ''; void this.bind(); }
+      if (message?.type === 'assistant-retry') { return this.retry(view); }
       if (message?.type === 'assistant-open-folder') { void vscode.commands.executeCommand('studio.openFolder'); }
     });
     view.onDidDispose(() => {
@@ -78,7 +79,17 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
     return this.closing;
   }
 
-  private bind(): Promise<void> {
+  private async retry(view: vscode.WebviewView): Promise<void> {
+    if (this.disposed || this.view !== view || this.retrying) { return; }
+    this.key = '';
+    view.webview.html = welcomeHtml(this.context, view, t("Retrying Assistant..."), 'assistant-retry', undefined, true);
+    const pending = this.bind(true);
+    this.retrying = pending;
+    try { await pending; }
+    finally { if (this.retrying === pending) { this.retrying = undefined; } }
+  }
+
+  private bind(retry = false): Promise<void> {
     clearTimeout(this.bindTimer); this.bindTimer = undefined;
     const epoch = ++this.epoch;
     this.binding = this.binding.catch(() => undefined).then(async () => {
@@ -123,7 +134,7 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
     }).catch((error) => {
       this.output.appendLine(`Project Assistant: ${String(error)}`);
       if (!this.disposed && this.view && epoch === this.epoch) {
-        this.view.webview.html = welcomeHtml(this.context, this.view, t("Failed to load Assistant"), 'assistant-retry', error instanceof Error ? error.message : String(error));
+        this.view.webview.html = welcomeHtml(this.context, this.view, retry ? t("Assistant retry failed") : t("Failed to load Assistant"), 'assistant-retry', error instanceof Error ? error.message : String(error));
       }
     });
     return this.binding;
@@ -139,13 +150,13 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
   dispose(): void { this.disposed = true; ++this.epoch; clearTimeout(this.bindTimer); void this.closeConversation(); }
 }
 
-function welcomeHtml(context: vscode.ExtensionContext, view: vscode.WebviewView, label: string, action?: string, detail?: string): string {
+function welcomeHtml(context: vscode.ExtensionContext, view: vscode.WebviewView, label: string, action?: string, detail?: string, busy = false): string {
   const webview = view.webview, extension = context.extensionUri;
   const nonce = globalThis.crypto.randomUUID().replace(/-/g, '');
   const escape = (text: string): string => text.replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!);
   return `<!doctype html><html lang="${vscode.env.language}"><head>${webviewContextMenu(context, view)}<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
     <link rel="stylesheet" href="${escape(webview.asWebviewUri(vscode.Uri.joinPath(extension, 'dist/scrollbars.css')).toString())}">
-    <style nonce="${nonce}">body{padding:20px 16px;color:var(--vscode-descriptionForeground);font:var(--vscode-font-size) var(--vscode-font-family)}p{white-space:pre-wrap;overflow-wrap:anywhere}button{color:var(--vscode-button-foreground);background:var(--vscode-button-background);border:0;padding:6px 10px;cursor:pointer}</style></head><body><div role="status"><p>${escape(label)}</p>${detail ? `<p>${escape(detail)}</p>` : ''}${action ? `<button id="assistant-action" data-action="${escape(action)}">${escape(action === 'assistant-open-folder' ? t("Open Folder") : t("Retry"))}</button>` : ''}</div>
+    <style nonce="${nonce}">body{padding:20px 16px;color:var(--vscode-descriptionForeground);font:var(--vscode-font-size) var(--vscode-font-family)}p{white-space:pre-wrap;overflow-wrap:anywhere}button{color:var(--vscode-button-foreground);background:var(--vscode-button-background);border:0;padding:6px 10px;cursor:pointer}button:disabled{cursor:wait;opacity:.7}button[aria-busy="true"]::before{content:'';display:inline-block;width:10px;height:10px;margin-right:6px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;vertical-align:-2px;animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}</style></head><body><div role="status" aria-live="polite" aria-busy="${busy}"><p id="assistant-status">${escape(label)}</p>${detail ? `<p>${escape(detail)}</p>` : ''}${action ? `<button id="assistant-action" data-action="${escape(action)}" data-busy-label="${escape(t("Retrying..."))}" data-busy-status="${escape(t("Retrying Assistant..."))}" aria-busy="${busy}"${busy ? ' disabled' : ''}>${escape(action === 'assistant-open-folder' ? t("Open Folder") : busy ? t("Retrying...") : t("Retry"))}</button>` : ''}</div>
     <script nonce="${nonce}" src="${escape(webview.asWebviewUri(vscode.Uri.joinPath(extension, 'dist/welcome-ui.js')).toString())}"></script></body></html>`;
 }

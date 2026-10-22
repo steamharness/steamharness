@@ -40,8 +40,9 @@ function fixture(t, options = {}) {
     inspect: async () => { throw new Error('The workspace executor must not be used as the assistant.'); },
     inspectAssistant: async (...args) => { inspections.push(args); return options.inspect ? options.inspect(...args) : { projects: [descriptor()], errors: [] }; },
   };
-  const provider = new module.exports.AssistantViewProvider({ subscriptions: [], extensionUri: uri }, runtime, { appendLine() {} }, async project => {
+  const provider = new module.exports.AssistantViewProvider({ subscriptions: [], extensionUri: uri }, runtime, { appendLine() {} }, async (project, view) => {
     projects.push(project);
+    await options.open?.(project, view);
     let finish;
     const closed = new Promise(resolve => { finish = resolve; });
     const session = { closed, finish, disposed: false, dispose: async () => { session.disposed = true; await options.close?.(); finish(); } };
@@ -160,6 +161,52 @@ test('missing assistant dependencies show retry without asking to select another
   events.message({ type: 'assistant-retry' });
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(projects[0].assistant.workdir, '/workspace');
+});
+
+test('retry immediately reports progress, ignores duplicates, shows failures and can succeed on the next attempt', async t => {
+  let attempt = 0, rejectRetry;
+  const f = fixture(t, {
+    inspect: () => {
+      attempt++;
+      if (attempt === 1) { throw new Error('Initial startup failed'); }
+      if (attempt === 2) { return new Promise((_resolve, reject) => { rejectRetry = reject; }); }
+      return { projects: [descriptor()], errors: [] };
+    },
+    open: (_project, view) => { view.webview.html = '<main>Assistant ready</main>'; },
+  });
+  await f.provider.resolveWebviewView(f.view);
+  const retry = f.events.message({ type: 'assistant-retry' });
+  assert.match(f.view.webview.html, /Retrying Assistant\.\.\./);
+  assert.match(f.view.webview.html, /<button[^>]*aria-busy="true"[^>]* disabled/);
+  await new Promise(resolve => setImmediate(resolve));
+  await f.events.message({ type: 'assistant-retry' });
+  assert.equal(attempt, 2, 'A duplicate click must not start another inspection.');
+  rejectRetry(new Error('Tool initialization failed <again>'));
+  await retry;
+  assert.match(f.view.webview.html, /Assistant retry failed/);
+  assert.match(f.view.webview.html, /Tool initialization failed &lt;again&gt;/);
+  assert.doesNotMatch(f.view.webview.html.match(/<button[^>]*>/)[0], /disabled/);
+  await f.events.message({ type: 'assistant-retry' });
+  assert.equal(f.view.webview.html, '<main>Assistant ready</main>');
+  assert.equal(f.sessions.length, 1);
+});
+
+test('a stale retry failure cannot replace the state of a changed workspace', async t => {
+  let attempt = 0, rejectRetry;
+  const f = fixture(t, { inspect: () => {
+    if (++attempt === 1) { throw new Error('Initial startup failed'); }
+    return new Promise((_resolve, reject) => { rejectRetry = reject; });
+  } });
+  await f.provider.resolveWebviewView(f.view);
+  const retry = f.events.message({ type: 'assistant-retry' });
+  await new Promise(resolve => setImmediate(resolve));
+  f.vscode.workspace.workspaceFolders = [];
+  const changed = f.events.folders();
+  rejectRetry(new Error('Stale retry failure'));
+  await Promise.all([retry, changed]);
+  assert.match(f.view.webview.html, /Open a folder/);
+  assert.doesNotMatch(f.view.webview.html, /Stale retry failure|Assistant retry failed/);
+  assert.equal(f.projects.length, 0);
 });
 
 test('the opened project cannot impersonate the dedicated assistant', async t => {
