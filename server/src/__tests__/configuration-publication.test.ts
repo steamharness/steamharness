@@ -20,6 +20,28 @@ async function fixture(fields:ProjectConfigurationField[]) {
   const options={projectName:projectId,actorId:'author'};
   return {root,storage,options,prepared};
 }
+test('published personal configurations do not require a draft for any project role', async () => {
+  const { root, storage, options } = await fixture([{ name: 'endpoint', type: 'string' }]);
+  try {
+    const author = await storage.projectConfigurations(options, { action: 'get' }) as ProjectConfigurationState;
+    await storage.projectConfigurations(options, { action: 'publication.save', revision: author.revision, publication: author.publication! });
+    await storage.publish({ projectName: projectId, createdByUserId: 'author', expectedConfigurationRevision: 1, expectedSourceHash: author.sourceHash });
+    await rm(path.join(root, 'projects', projectId, 'draft'), { recursive: true, force: true });
+    for (const actorId of ['author', 'developer', 'downloader']) {
+      const published = { projectName: projectId, actorId, target: '1.0.0' };
+      const state = await storage.projectConfigurations(published, { action: 'get' }) as ProjectConfigurationState;
+      assert.equal(state.publicationRevision, undefined);
+      const saved = await storage.projectConfigurations(published, {
+        action: 'save', revision: state.revision, id: state.activeConfigurationId, values: { endpoint: `${actorId}.test` },
+      }) as ProjectConfigurationState;
+      assert.equal(configurationSnapshot(saved).values.endpoint, `${actorId}.test`);
+      await storage.projectConfigurations(published, { action: 'export' });
+    }
+    await assert.rejects(storage.projectConfigurations({ ...options, target: 'draft' }, { action: 'get' }), /no draft/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 test('official templates filter source, lock JSON edits, isolate accounts and reject stale drafts',async()=>{
   const {root,storage,options,prepared}=await fixture([
     {name:'private',type:'string',defaultValue:'PRIVATE-MUST-NOT-SHIP',sharing:{publish:false,includeValue:true}},

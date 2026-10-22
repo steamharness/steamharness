@@ -1,5 +1,9 @@
 # Unreleased
 
+- Fixed invitation lists to expose only guest and developer invitations to maintainers, preventing project and group privilege escalation through higher-role tokens.
+- Fixed admin-key request approval to retain system administrator identity. Guest requests use a separate membership-request table without migrating retired source grants or depending on their constraints.
+- Fixed published personal configuration reads, saves and exports to work without a draft; draft publication checks are returned only for the selected draft.
+
 - Fixed startup initialization of administrator and group columns on existing account and project tables, preventing login and project-query failures while preserving data across repeated initialization.
 - Changed business authorization to fixed guest, developer, maintainer and owner roles per project and nested group, with inheritance sources, invitations, guest requests, ownership transfers and last-owner protection. Accounts retain only system administrator identity; the new API and schema do not migrate old role data.
 

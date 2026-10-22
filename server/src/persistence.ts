@@ -1,6 +1,6 @@
 import { HttpError } from "./protocol";
 import { ProjectAccessRepository } from "./project-access";
-import type { ProjectRole } from "@steamharness/project-access";
+import type { AccessActor, ProjectRole } from "@steamharness/project-access";
 import type { ProjectConfigurationState, ConfigurationPublicationDraft, ProjectConfigurationTemplate } from "@steamharness/project-configuration";
 
 import { createHash } from "node:crypto";
@@ -387,7 +387,7 @@ export class DatabaseRepository implements KVStore {
           on delete cascade
       );
 
-      create table if not exists project_access_requests (
+      create table if not exists project_membership_requests (
         id text primary key,
         project_id text not null references projects(id) on delete cascade,
         requester_user_id text not null,
@@ -422,10 +422,10 @@ export class DatabaseRepository implements KVStore {
         on project_storage(storage_kind, project_id, scope, updated_at desc);
       create index if not exists project_storage_last_run_idx
         on project_storage(last_project_id, last_run_id);
-      create index if not exists project_access_requests_project_idx
-        on project_access_requests(project_id, created_at desc);
-      create unique index if not exists project_access_requests_pending_idx
-        on project_access_requests(project_id, requester_user_id)
+      create index if not exists project_membership_requests_project_idx
+        on project_membership_requests(project_id, created_at desc);
+      create unique index if not exists project_membership_requests_pending_idx
+        on project_membership_requests(project_id, requester_user_id)
         where status = 'pending';
 
     `);
@@ -946,13 +946,13 @@ export class DatabaseRepository implements KVStore {
     reason: string;
   }): Promise<ProjectAccessRequest> {
     const result = await this.pool.query<ProjectAccessRequestRow>(
-      `insert into project_access_requests (
+      `insert into project_membership_requests (
          id, project_id, requester_user_id, reason, status,
          created_at, updated_at
        ) values ($1, $2, $3, $4, 'pending', now(), now())
        on conflict (project_id, requester_user_id)
          where status = 'pending'
-       do update set updated_at = project_access_requests.updated_at
+       do update set updated_at = project_membership_requests.updated_at
        returning id, project_id, requester_user_id, reason, status,
          resolved_by_user_id, resolved_at, created_at, updated_at`,
       [input.id, input.projectId, input.requesterUserId, input.reason],
@@ -966,7 +966,7 @@ export class DatabaseRepository implements KVStore {
     const result = await this.pool.query<ProjectAccessRequestRow>(
       `select id, project_id, requester_user_id, reason, status,
         resolved_by_user_id, resolved_at, created_at, updated_at
-       from project_access_requests
+       from project_membership_requests
        where project_id = $1
        order by case status when 'pending' then 0 else 1 end, created_at desc`,
       [projectId],
@@ -981,7 +981,7 @@ export class DatabaseRepository implements KVStore {
     const result = await this.pool.query<ProjectAccessRequestRow>(
       `select id, project_id, requester_user_id, reason, status,
         resolved_by_user_id, resolved_at, created_at, updated_at
-       from project_access_requests
+       from project_membership_requests
        where project_id = $1 and id = $2`,
       [projectId, requestId],
     );
@@ -992,10 +992,14 @@ export class DatabaseRepository implements KVStore {
     projectId: string;
     requestId: string;
     status: "approved" | "rejected";
-    resolvedByUserId?: string;
+    actor: AccessActor;
   }): Promise<ProjectAccessRequest | undefined> {
-    const account=input.resolvedByUserId?await this.getAccessAccount(input.resolvedByUserId):undefined;
-    const row=await this.access.approveRequest(input.projectId,input.requestId,input.status,{userId:input.resolvedByUserId,isSystemAdmin:account?.isSystemAdmin===true});
+    const row = await this.access.approveRequest(
+      input.projectId,
+      input.requestId,
+      input.status,
+      input.actor,
+    );
     return toProjectAccessRequest(row);
   }
 

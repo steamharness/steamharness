@@ -669,10 +669,10 @@ export class ProjectAccessRepository {
     id: string,
     actor: AccessActor,
   ): Promise<ResourceInvitation[]> {
-    await this.assert(type, id, actor, "manageMembers");
+    const access = await this.assert(type, id, actor, "manageMembers");
     const result = await this.pool.query(
-      "select * from resource_invitations where resource_type=$1 and resource_id=$2 order by created_at desc",
-      [type, id],
+      "select * from resource_invitations where resource_type=$1 and resource_id=$2 and ($3::boolean or role in ('guest','developer')) order by created_at desc",
+      [type, id, access.capabilities.includes("manageOwners")],
     );
     return result.rows.map(invitation);
   }
@@ -748,7 +748,7 @@ export class ProjectAccessRepository {
     return this.transaction(async (client) => {
       await this.assert("project", projectId, actor, "manageMembers", client);
       const result = await client.query(
-        "select * from project_access_requests where id=$1 and project_id=$2 and status='pending' for update",
+        "select * from project_membership_requests where id=$1 and project_id=$2 and status='pending' for update",
         [requestId, projectId],
       );
       const row = result.rows[0];
@@ -770,7 +770,7 @@ export class ProjectAccessRepository {
         );
       }
       const updated = await client.query(
-        "update project_access_requests set status=$3,resolved_by_user_id=$4,resolved_at=now(),updated_at=now() where id=$1 and project_id=$2 returning *",
+        "update project_membership_requests set status=$3,resolved_by_user_id=$4,resolved_at=now(),updated_at=now() where id=$1 and project_id=$2 returning *",
         [requestId, projectId, status, actor.userId ?? null],
       );
       return updated.rows[0];

@@ -42,6 +42,8 @@ Directories and member lists search and paginate authorized records on the Serve
 
 Maintainers may grant guest or developer roles and manage users whose effective role is below maintainer. Owners manage every role. Invitation acceptance and request approval recheck current permissions and preserve existing higher roles. Membership invitations expire and are single use; recipients must sign in. Account invitations and password setup are separate from project and group invitations. Server does not send email.
 
+Project and group invitation lists follow the roles the caller can grant: maintainers see guest and developer invitations, while owners and system administrators see every role. System administrators can also approve access requests with an admin key.
+
 Public projects grant every signed-in user guest access without inserting membership records. Private projects accept access requests through published-version share links; approval by a maintainer or owner adds the requester as a guest. Source downloads no longer use separate grants. Revoke approved access through the member page and inspect inherited sources.
 
 Top-level groups and personal projects retain at least one active owner, protected by transactions. Group resources may inherit owners. Transfers require owner access to the resource, its source group when present and its destination. Cycles are prohibited. Only empty groups may be deleted; move their projects and subgroups first.
@@ -72,6 +74,8 @@ Edit fields directly and save changes together. Use the reset icon to restore a 
 
 All three project types expose fields, named profiles and complete import/export. Studio and local CLI share local storage; Server values are per project and account. Studio Control can query and manage configurations even when the panel is closed. See [Project configurations](/en/concepts/project-configuration) for the JSON actions, version checks and execution snapshot rules.
 
-File configuration fields choose and upload files to project file storage on the Server. Saving applies the references using the existing project file write permissions.
+File configuration fields upload personal attachments to Server storage. Field permissions and account isolation apply when saving their references.
 
-Configuration authors use the separate **Publication and permissions** tab to select profiles, a default, value inclusion and field/JSON Pointer editing rules. Only the original owner or existing administrators may save official drafts. The recipient preview shows the filtered version; personal configuration imports never change official rules. Published source shares and downloads use that same immutable template and its attachment copies. See [Project configurations](/en/concepts/project-configuration).
+Configuration authors use the separate **Publication and permissions** tab to select profiles, a default, value inclusion and field/JSON Pointer editing rules. Only maintainers, owners or system administrators may save official drafts. The recipient preview shows the filtered version; personal configuration imports never change official rules. Published source shares and downloads use that same immutable template and its attachment copies. See [Project configurations](/en/concepts/project-configuration).
+
+After selecting a published version, users can read and edit permitted personal configurations even when the project has no draft. Draft publication checks are returned only when reading the draft.

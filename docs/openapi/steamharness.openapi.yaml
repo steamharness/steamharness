@@ -2286,6 +2286,7 @@ paths:
         - Projects & Groups
       summary: 列出邀请 / List invitations
       operationId: listprojectInvitations
+      description: 维护者仅可列出访客和开发者邀请；所有者与系统管理员可列出全部角色邀请。 / Maintainers can list guest and developer invitations only; owners and system administrators can list every role.
       parameters: &a9
         - name: projectId
           in: path
@@ -3119,6 +3120,7 @@ paths:
         - Admin Projects
       summary: 审批项目访问申请
       operationId: resolveSourceAccessRequest
+      description: 维护者、所有者或系统管理员可审批；系统管理员密钥使用相同的全局管理权限。 / Maintainers, owners and system administrators may review requests, including system administrators using an admin key.
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: requestId
@@ -3652,6 +3654,7 @@ paths:
         - Projects & Groups
       summary: 列出邀请 / List invitations
       operationId: listgroupInvitations
+      description: 维护者仅可列出访客和开发者邀请；所有者与系统管理员可列出全部角色邀请。 / Maintainers can list guest and developer invitations only; owners and system administrators can list every role.
       parameters: &a11
         - name: groupId
           in: path
@@ -6475,7 +6478,12 @@ components:
         publicationPreview:
           $ref: "#/components/schemas/ProjectConfigurationTemplate"
         canManagePublication: { type: boolean }
-        sourceHash: { type: string }
+        sourceHash:
+          type: string
+          description: 当前所选源码的摘要；读取已发布版本不会要求草稿存在。 / Hash of the selected source; reading a published version does not require a draft.
+        publicationRevision:
+          type: integer
+          description: 仅开发者及以上读取草稿时提供，用于发布并发校验。 / Provided to developers and above when reading the draft for publication concurrency checks.
         fieldCapabilities:
           type: object
           additionalProperties:

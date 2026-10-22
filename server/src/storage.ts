@@ -2047,7 +2047,7 @@ export class Storage {
     projectId: string;
     requestId: string;
     status: "approved" | "rejected";
-    resolvedByUserId?: string;
+    actor: AccessActor;
   }): Promise<ProjectAccessRequest> {
     const resolved = await this.requireProjectDependencyDatabase().resolveProjectAccessRequest({
       ...options,
@@ -2675,9 +2675,9 @@ export class Storage {
         };
         await operation();
       } else state.canManagePublication = false;
-      if(access.access?.capabilities.includes("publish")) {
+      if(source.resolvedTarget === "draft" && access.access?.capabilities.includes("publish")) {
         state.publicationRevision=(await this.configurationPublicationDraft(options.projectName))?.revision;
-        state.sourceHash=await hashDirectory((await this.resolveSourceTarget(options.projectName,"draft")).sourceDir);
+        state.sourceHash=await hashDirectory(source.sourceDir);
       }
       state.fieldCapabilities=Object.fromEntries(state.fields.map(field=>[field.name,{...configurationCapability(state,field),paths:Object.fromEntries(Object.keys(field.paths??{}).map(pointer=>[pointer,configurationCapability(state,field,pointer)]))}]));
       return call.action === "export" ? exportConfigurations(state,call.id) : state;

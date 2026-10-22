@@ -457,7 +457,7 @@ test("DatabaseRepository.init creates project deployment locks and access-contro
     assert.match(schema, /create table if not exists project_deployment_items/);
     assert.match(schema, /create table if not exists related_project_dependencies/);
     assert.doesNotMatch(schema, /create table if not exists data_source_grants/);
-    assert.match(schema, /create table if not exists project_access_requests/);
+    assert.match(schema, /create table if not exists project_membership_requests/);
     assert.match(schema, /create table if not exists group_members/);
     assert.match(
       schema,
@@ -465,7 +465,7 @@ test("DatabaseRepository.init creates project deployment locks and access-contro
     );
     assert.match(
       schema,
-      /create unique index if not exists project_access_requests_pending_idx[\s\S]*where status = 'pending'/,
+      /create unique index if not exists project_membership_requests_pending_idx[\s\S]*where status = 'pending'/,
     );
   } finally {
     pool.query = originalQuery;

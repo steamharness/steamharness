@@ -1738,7 +1738,7 @@ export function createApiRouter(
     authenticate,
     json,
     asyncHandler(async (req, res) => {
-      const { principal } = await requireProjectManageAccess(req, storage);
+      await requireProjectManageAccess(req, storage);
       const body = isRecord(req.body) ? req.body : {};
       const status = body["status"];
       if (status !== "approved" && status !== "rejected") {
@@ -1748,7 +1748,7 @@ export function createApiRouter(
         projectId: req.params.name,
         requestId: req.params.requestId,
         status,
-        resolvedByUserId: "userId" in principal ? principal.userId : undefined,
+        actor: requestActor(req),
       })));
     }),
   );

@@ -15,6 +15,7 @@ import { Storage } from "../storage";
 import { LocalStorage } from "../local-storage";
 import { ArtifactStorage } from "../persistence";
 import { createApiRouter } from "../routes/api";
+import type { ResourceInvitation } from "../project-access";
 import type { AccessActor } from "@steamharness/project-access";
 import { createDefaultProjectInfo } from "@steamharness/project-info";
 
@@ -39,6 +40,14 @@ test("PostgreSQL startup initializes access columns on existing account and proj
     await accounts.upsertUserProfile({ userId: "ordinary", email: "ordinary@init.test" });
     await pool.query("insert into projects(id,name,project_type,owner_user_id) values('existing','Existing','workflow',$1)", [session.user.userId]);
     await pool.query("insert into project_members(project_id,user_id,role) values('existing',$1,'owner')", [session.user.userId]);
+    // Retired source-download requests are neither read nor migrated into membership requests.
+    await pool.query(`create table project_access_requests (
+      id text primary key,project_id text not null references projects(id),requester_user_id text not null,
+      capability text not null,reason text not null,status text not null,
+      resolved_by_user_id text,resolved_at timestamptz,created_at timestamptz not null,updated_at timestamptz not null);
+      create unique index project_access_requests_pending_idx on project_access_requests(project_id,requester_user_id,capability) where status='pending';
+      insert into project_access_requests(id,project_id,requester_user_id,capability,reason,status,created_at,updated_at)
+      values('retired','existing','ordinary','source.download','Retired request','pending',now(),now())`);
     await pool.query("alter table user_profiles drop column is_system_admin; alter table projects drop column group_id");
     await assert.rejects(auth.signInWithPassword({ email: "admin@init.test", password: "init-test-password" }), /is_system_admin/);
     await assert.rejects(db.access.resolve("project", "existing", { userId: session.user.userId, isSystemAdmin: false }), /group_id/);
@@ -63,6 +72,14 @@ test("PostgreSQL startup initializes access columns on existing account and proj
     assert.equal((await accounts.getUserProfileOrThrow(login.user.userId)).isSystemAdmin, true);
     assert.equal((await pool.query("select count(*)::int as count from user_profiles")).rows[0].count, 2);
     await assert.rejects(pool.query("update projects set group_id='missing' where id='existing'"), /foreign key/);
+    assert.deepEqual(await db.listProjectAccessRequests("existing"), []);
+    assert.equal(await db.getProjectMember("existing", "ordinary"), undefined);
+    const submitted = await db.createProjectAccessRequest({ id: "membership", projectId: "existing", requesterUserId: "ordinary", reason: "Guest access" });
+    const duplicate = await db.createProjectAccessRequest({ id: "duplicate", projectId: "existing", requesterUserId: "ordinary", reason: "Again" });
+    assert.equal(duplicate.id, submitted.id);
+    assert.equal((await db.resolveProjectAccessRequest({ projectId: "existing", requestId: submitted.id, status: "approved", actor }))?.status, "approved");
+    assert.equal((await db.getProjectMember("existing", "ordinary"))?.role, "guest");
+    assert.equal((await pool.query("select capability,status from project_access_requests where id='retired'")).rows[0].status, "pending");
   } finally {
     await auth.close();
     await db.close();
@@ -102,6 +119,9 @@ test(
     });
     const server = createServer();
     let base = "";
+    const previousAdminKey = process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
+    const systemAdminKey = randomUUID();
+    process.env.STEAMHARNESS_SERVER_ADMIN_KEY = systemAdminKey;
     try {
       await accounts.init();
       await db.init();
@@ -111,6 +131,7 @@ test(
       });
       const actors: Record<string, AccessActor> = {};
       const tokens: Record<string, string> = {};
+      tokens.system = systemAdminKey;
       const cookies: Record<string, string> = {};
       for (const name of ["alice", "bob", "carol", "dave", "eve"]) {
         const invited = await auth.inviteUser({
@@ -380,6 +401,7 @@ test(
         files: [
           { path: "package.json", content: JSON.stringify(source) },
           { path: "index.ts", content: 'throw new Error("must not execute")' },
+          { path: "configuration.json", content: JSON.stringify({ version: 1, fields: [{ name: "endpoint", type: "string" }] }) },
         ],
       });
       assert.equal((await db.getProject(projectId))!.name, "Team project");
@@ -421,6 +443,36 @@ test(
         (await published.json()).data.access.effectiveRole,
         "developer",
       );
+      // Bearer invitations may only be enumerated by actors allowed to grant their role.
+      for (const [type, resourceId] of [["project", projectId], ["group", top.id]] as const) {
+        await db.access.setMember(type, resourceId, carol.userId!, "maintainer", alice);
+        const endpoint = `/${type === "project" ? "projects" : "groups"}/${resourceId}/invitations`;
+        const created: ResourceInvitation[] = [];
+        for (const role of ["guest", "developer", "maintainer", "owner"] as const) {
+          const response = await request("alice", endpoint, "POST", { role });
+          assert.equal(response.status, 200);
+          created.push((await response.json()).data.invitation);
+        }
+        for (const cookie of [false, true]) {
+          const response = await request("carol", endpoint, "GET", undefined, cookie);
+          assert.equal(response.status, 200);
+          const visible = (await response.json()).data;
+          assert.ok(visible.every((item: { role: string }) => ["guest", "developer"].includes(item.role)));
+          for (const item of created) {
+            assert.equal(visible.some((row: { id: string }) => row.id === item.id), ["guest", "developer"].includes(item.role));
+            if (["maintainer", "owner"].includes(item.role)) assert.ok(!JSON.stringify(visible).includes(item.token));
+          }
+        }
+        for (const name of ["alice", "system"]) {
+          const visible = (await (await request(name, endpoint)).json()).data;
+          assert.ok(created.every(item => visible.some((row: { id: string }) => row.id === item.id)));
+        }
+        for (const item of created.filter(item => ["maintainer", "owner"].includes(item.role))) {
+          assert.equal((await request("carol", `${endpoint}/${item.id}`, "DELETE")).status, 403);
+          assert.equal((await request("carol", endpoint, "POST", { role: item.role })).status, 403);
+        }
+        assert.equal((await db.access.resolve(type, resourceId, carol)).effectiveRole, "maintainer");
+      }
       assert.equal(
         (
           await request("bob", `/projects/${projectId}/visibility`, "PATCH", {
@@ -515,6 +567,15 @@ test(
           ).status,
           403,
         );
+      // A system key has no user ID; retain its administrator identity through approval.
+      const systemRequest = await db.createProjectAccessRequest({
+        id: randomUUID(), projectId, requesterUserId: eve.userId!, reason: "System key review",
+      });
+      assert.equal((await request("bob", `/projects/${projectId}/access-requests/${systemRequest.id}`, "PATCH", { status: "approved" })).status, 403);
+      assert.equal((await request("system", `/projects/${projectId}/access-requests/${systemRequest.id}`, "PATCH", { status: "approved" })).status, 200);
+      assert.equal((await db.getProjectAccessRequest(projectId, systemRequest.id))?.resolvedByUserId, undefined);
+      assert.equal((await db.getProjectMember(projectId, eve.userId!))?.role, "guest");
+      await db.access.setMember("project", projectId, eve.userId!, undefined, alice);
       const deniedShare = await request(
         "eve",
         `/projects/${projectId}/source-share?target=1.0.0`,
@@ -697,6 +758,17 @@ test(
         alice,
       );
       assert.equal((await bridge("relatedProject.kv.getValue")).status, 403);
+      await pool.query("update projects set has_draft=false where id=$1", [projectId]);
+      await rm(path.join(root, "projects", projectId, "draft"), { recursive: true, force: true });
+      for (const name of ["alice", "bob", "carol"]) {
+        const response = await request(name, `/projects/${projectId}/configurations?target=1.0.0`);
+        assert.equal(response.status, 200);
+        const state = (await response.json()).data;
+        assert.equal(state.publicationRevision, undefined);
+        assert.equal((await request(name, `/projects/${projectId}/configurations`, "POST", {
+          target: "1.0.0", call: { action: "save", revision: state.revision, id: state.activeConfigurationId, values: { endpoint: `${name}.test` } },
+        })).status, 200);
+      }
       await accounts.updateUserProfile(bob.userId!, { status: "disabled" });
       for (const cookie of [false, true])
         assert.ok(
@@ -717,6 +789,8 @@ test(
         /last system/,
       );
     } finally {
+      if (previousAdminKey === undefined) delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
+      else process.env.STEAMHARNESS_SERVER_ADMIN_KEY = previousAdminKey;
       configureProjectAuthContext({});
       await new Promise<void>((resolve) => server.close(() => resolve()));
       await storage.close();
