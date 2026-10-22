@@ -36,10 +36,17 @@ export class ConversationController {
       entry.updatedAt ??= entry.messages.at(-1)?.createdAt ?? entry.createdAt;
       delete entry.activeRunId;
       entry.queuedInputs ??= [];
+      const agent = this.project.conversation?.durable?.enabled
+        ? this.sessions.find(session => session.id === (entry.agentOwnerId ?? entry.id))?.agent : undefined;
       for (const message of entry.messages) {
         if (message.status === 'running') {
           if (message.cancelRequested) { message.status = 'aborted'; message.pendingInput = undefined; }
-          else if (project.conversation?.recovery?.enabled && message.runId && message.args) { message.recovering = true; }
+          else if (project.conversation?.recovery?.enabled && (message.runId && message.args
+            || agent?.turns.some(turn => turn.requestId === message.sessionRequestId
+              && turn.conversationId === (message.sessionConversationId ?? entry.agentConversationId ?? agent.conversationId)
+              && (turn.status === 'placed' || turn.status === 'queued')))) {
+            message.recovering = true; message.error = undefined;
+          }
           else { message.status = message.pendingInput ? 'waiting_for_input' : 'aborted'; message.error = t("Run interrupted"); }
         }
       }
@@ -78,7 +85,8 @@ export class ConversationController {
         continue;
       }
       // Durable replays the original stream under its stable output identities.
-      if (!this.options.canRun || this.options.canRun(entry)) this.start(entry, { id: answer.id!, text: '', params: {}, attachments: [], createdAt: answer.createdAt ?? Date.now() }, answer);
+      const anchor = this.project.conversation?.durable?.enabled && entry.agent?.turns.length ? this.agentAnchor(entry) : answer;
+      if (anchor && (!this.options.canRun || this.options.canRun(entry))) this.start(entry, { id: anchor.id!, text: '', params: {}, attachments: [], createdAt: anchor.createdAt ?? Date.now() }, anchor);
     }
   }
   private changed(): void { if (!this.disposed) { this.options.changed(); } }

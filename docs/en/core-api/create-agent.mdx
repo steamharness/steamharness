@@ -379,6 +379,8 @@ Cancellation follows the current request’s `AbortSignal`. A provider reporting
 
 Retry and continuation counts track consecutive failures. A complete successful model response, including a valid tool-calling response, resets the counts. Later failures in the same answer start again at `Retry 1 / 10` with the full ten-retry budget. A complete success also resets the separate two-attempt output-limit budget. Receiving partial text or reasoning, or reopening an unfinished run, does not reset the budget. Every retry remains a separate history record even when its attempt number repeats.
 
+`retry.kind` distinguishes connection interruptions (`dropped`), host recovery (`recovery`), output limits (`length`), and missing tool calls (`lost-call`). Node retry outputs retain this value in `content.kind`. CLI Web / Studio show only connection retries in the answer; other continuations run silently, preserving existing text and running status, with records available in Trace and exports. Host recovery shares the existing ten-attempt connection budget. Exhausted retries and unrecoverable errors still show the final failure reason; explicit Stop never resumes automatically.
+
 ## Example
 
 ```ts

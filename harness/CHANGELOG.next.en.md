@@ -1,5 +1,7 @@
 # Unreleased
 
+- Improved Agent retry outputs with continuation kinds. Host recovery uses `recovery` for silent continuation while connection retries and final failures remain visible.
+
 - Fixed durable Agent suspension on host disconnect while retaining checkpoints. Unexpected provider aborts and interrupted streams use transport retries; follow-up turns and exhausted continuations preserve their failure details.
 
 - Fixed busy admission rejection poisoning durable Agent failures or aborting existing work. Hosts can reconnect with `{ resume: true }` to restore controls and scheduling without resubmitting the initial message.

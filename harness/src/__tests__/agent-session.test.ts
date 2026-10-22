@@ -66,7 +66,9 @@ test("host suspension preserves an active generation and resumes committed text 
   assert.equal(second.snapshot().turns.length, 1);
   assert.equal(second.snapshot().turns[0]!.prompt, "Inspect");
   assert.match(JSON.stringify(second.snapshot().turns[0]!.items), /Before restart/);
-  assert.ok(second.snapshot().records.some(record => record.kind === "project.retry"));
+  const retry = second.snapshot().turns[0]!.items.find(item => item.metadata?.partType === "retry");
+  assert.equal((retry?.content as { kind?: string })?.kind, "recovery");
+  assert.ok(second.snapshot().records.some(record => record.kind === "project.retry" && (record.data as { kind?: string })?.kind === "recovery"));
 });
 
 for (const partial of [false, true]) test(`a follow-up exposes retry exhaustion with its durable failure reason (partial=${partial})`, async t => {
@@ -81,6 +83,7 @@ for (const partial of [false, true]) test(`a follow-up exposes retry exhaustion 
   const failed = f.snapshot().turns[1]!;
   assert.equal(failed.reason, "model_error"); assert.match(failed.detail ?? "", /connection lost/);
   assert.equal(failed.items.filter(item => item.metadata?.partType === "retry").length, 10);
+  assert.equal((failed.items.find(item => item.metadata?.partType === "retry")?.content as { kind?: string })?.kind, "dropped");
   assert.equal(f.snapshot().turns[0]!.status, "done");
   await f.instance.control({ type: "snapshot", requestId: "read-failure" });
   assert.deepEqual(f.snapshot().turns[1], failed);

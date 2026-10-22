@@ -414,7 +414,7 @@ test("SIGKILL during a partial answer continues committed text without repeating
   const messages = (await request).messages as ai.Message[];
   assert.ok(messages.some(value => value.role === "assistant" && value.content.some(block => block.type === "text" && block.text === "Committed prefix. ")));
   assert.ok(messages.some(value => value.role === "assistant" && value.content.some(block => block.type === "text" && block.text === "Continued ")));
-  assert.match(String(messages.at(-1)?.content), /previous response was cut off/);
+  assert.match(String(messages.at(-1)?.content), /agent host restarted/);
   assert.equal(messages.some(value => value.role === "assistant" && value.content.some(block => block.type === "toolCall")), false);
   assert.equal(done.text, "Committed prefix. Continued answer.");
   assert.deepEqual(done.tools, []);

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Improved Assistant recovery with silent host and internal continuations, without flashing interruption errors. Connection retries and final failure details remain visible; generator guidance now documents retry kinds and presentation.
+
 - Fixed Assistant recovery after host disconnects: durable work resumes on reconnect, unexpected model interruptions retry automatically, and exhausted retries show their cause on the affected answer.
 
 - Added guidance and tools for configuration publication and child permissions, lock reasons, author drafts and recipient previews without automatically publishing personal credentials.

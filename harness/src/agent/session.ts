@@ -659,7 +659,7 @@ export function projectSessionEntries(entries: readonly EntryRecord[], partial: 
       const data = object(entry.data), attempt = Number(data.attempt), maxAttempts = Number(data.maxAttempts ?? 10);
       const retry = createAgentStreamRetryText({ attempt, maxAttempts, kind: data.kind as AgentTurnContinuationKind | undefined });
       for (const chunk of createAgentRetryChunks({ itemId: `agent-session-${scope}-${entry.id}-retry`, attempt, maxAttempts,
-        reason: String(data.reason), title: retry.title, message: retry.content })) {
+        reason: String(data.reason), kind: data.kind as AgentTurnContinuationKind | undefined, title: retry.title, message: retry.content })) {
         if (chunk.type === "output_item_start") items.push(chunk.item);
       }
     }

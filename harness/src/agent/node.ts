@@ -519,6 +519,7 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
               attempt: event.attempt,
               maxAttempts: event.maxAttempts,
               reason: event.reason,
+              kind: event.kind,
               title: retry.title,
               message: retry.content,
             });

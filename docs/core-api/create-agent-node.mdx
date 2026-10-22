@@ -114,7 +114,7 @@ Pi Durable Harness 是唯一执行历史来源。会话节点按项目存储目�
 
 正文回答不会因为 `finishReason`、usage 等响应元数据被塞进详情块。
 
-自动重试以折叠的 `partType: "retry"` 详情行显示在中断内容之后、续写内容之前。实时输出、持久会话的 `turns[].items` 和历史恢复保留相同顺序，运行结束不会把该记录再追加到回答末尾。
+自动重试输出使用 `partType: "retry"`，`content.kind` 区分 `dropped`、`recovery`、`length` 和 `lost-call`。CLI Web / Studio 将网络重试 `dropped` 显示为中断内容之后、续写内容之前的折叠详情行；其它内部续写静默进行，记录保留在 Trace 和导出中。实时输出、持久会话的 `turns[].items` 和历史恢复保留相同顺序，运行结束不会把该记录再追加到回答末尾。
 
 模型请求完整成功后重置重试计数；同一回答后续再次失败时从 `Retry 1 / 10` 开始。每段重试保留独立的输出项 ID，编号重新从 1 开始也不会覆盖先前的记录。
 

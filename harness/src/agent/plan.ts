@@ -204,7 +204,9 @@ export function createAgentStreamResumePrompt(options: {
     ].join("\n");
   }
 
-  const cut = `Your previous response was cut off by a connection error (${options.reason}) before it finished.`;
+  const cut = options.kind === "recovery"
+    ? "The agent host restarted while your previous response was in progress."
+    : `Your previous response was cut off by a connection error (${options.reason}) before it finished.`;
 
   if (options.keptPartial) {
     return [
@@ -235,6 +237,12 @@ export function createAgentStreamRetryText(options: {
 }): { title: string; content: string } {
   const progress = `${options.attempt}/${options.maxAttempts}`;
   const kind = options.kind ?? "dropped";
+
+  if (kind === "recovery") {
+    return readRuntimeLocaleSafe() === "zh-CN"
+      ? { title: `正在继续回答（${progress}）`, content: "宿主恢复后继续未完成的回答，保留已有内容和工具结果。" }
+      : { title: `Continuing response (${progress})`, content: "Continuing the unfinished response after host recovery, preserving committed text and tool results." };
+  }
 
   if (kind === "length") {
     return readRuntimeLocaleSafe() === "zh-CN"

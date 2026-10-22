@@ -135,7 +135,7 @@ if (scenario === "blocks" && phase !== "replay") {
 } else if (scenario === "stream" && phase === "resume") {
   faux.setResponses([request => {
     assert.ok(request.messages.some(message => message.role === "assistant" && message.content.some(block => block.type === "text" && block.text === "Durable assistant ")));
-    assert.match(String(request.messages.at(-1)?.content), /previous response was cut off/);
+    assert.match(String(request.messages.at(-1)?.content), /agent host restarted/);
     return ai.fauxAssistantMessage("continued after interruption.");
   }]);
 } else if (scenario === "crash" && phase === "initial") {

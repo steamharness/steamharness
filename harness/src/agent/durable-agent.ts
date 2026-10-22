@@ -463,9 +463,9 @@ export class DurableAgent {
                   break;
                 }
                 await tx.appendEntry(root.id, {
-                  kind: "project.retry", data: { attempt, maxAttempts: 10, kind: "dropped", reason: "Model request interrupted" },
+                  kind: "project.retry", data: { attempt, maxAttempts: 10, kind: "recovery", reason: "Model request interrupted" },
                   edits: [{ target: entry.id, action: "replace", messages: [message] }],
-                  model: [{ role: "user", content: createAgentStreamResumePrompt({ kind: "dropped", reason: "Model request interrupted", keptPartial: true }), timestamp: Date.now() }],
+                  model: [{ role: "user", content: createAgentStreamResumePrompt({ kind: "recovery", reason: "Model request interrupted", keptPartial: true }), timestamp: Date.now() }],
                 });
               }
               return run.failure;

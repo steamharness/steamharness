@@ -18,6 +18,14 @@ const first = (value: Record<string, unknown>, ...keys: string[]): string | unde
 const normalize = (value: string): string => value.replace(/\s+/g, ' ').trim();
 const matches = (tool: string, ...names: string[]): boolean => names.some((name) => tool === name || tool.endsWith(`_${name}`));
 
+/** Keep internal continuations in Trace; only connection retries appear in the answer. */
+export function isSilentAgentRetry(item: OutputItem): boolean {
+  if (!['agent-part', 'opencode-part', 'opencode-retry'].includes(String(item.metadata?.kind))) return false;
+  let content = record(item.content);
+  if (!content && typeof item.content === 'string') { try { content = record(JSON.parse(item.content)); } catch { return false; } }
+  return (item.metadata?.partType ?? content?.type) === 'retry' && ['recovery', 'length', 'lost-call'].includes(String(content?.kind));
+}
+
 function toolAction(toolName: string, input: Record<string, unknown>): Pick<AgentActivity, 'kind' | 'icon' | 'action' | 'target'> {
   const tool = toolName.toLowerCase().replace(/[-.]/g, '_');
   const path = first(input, 'filePath', 'file_path', 'path', 'file');
@@ -71,6 +79,7 @@ function statusTitle(action: string, target: string | undefined, status: Activit
 
 // Agent and OpenCode use the same structured activity contract as Desktop.
 export function agentActivity(item: OutputItem, message?: ConversationMessage): AgentActivity | undefined {
+  if (isSilentAgentRetry(item)) return;
   const kind = item.metadata?.kind;
   const extraTypes: Record<string, string> = { 'agent-error': 'error', 'opencode-error': 'error', 'opencode-retry': 'retry', 'opencode-diff': 'patch', 'opencode-todo': 'todo', 'opencode-stream-recovery': 'stream_recovery' };
   if (!['agent-part', 'opencode-part'].includes(String(kind)) && !extraTypes[String(kind)]) { return; }

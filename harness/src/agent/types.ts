@@ -296,9 +296,10 @@ export interface AgentPendingApproval {
  * it here a half-written answer would be indistinguishable from a finished one.
  * `lost-call` is the response contradicting itself: it says a tool call is in
  * it and there is none, which is what a dropped tool-call block looks like from
- * this side.
+ * this side. `recovery` resumes committed output after a host restart, rather
+ * than reporting a model connection failure.
  */
-export type AgentTurnContinuationKind = "dropped" | "length" | "lost-call";
+export type AgentTurnContinuationKind = "dropped" | "length" | "lost-call" | "recovery";
 
 export interface AgentSearchSource {
   url: string;
@@ -335,8 +336,8 @@ export type AgentStreamEvent =
    * A model stream that died mid-answer, re-issued as a continuation.
    *
    * The text and tool calls the dropped attempt produced are kept — the turn
-   * carries on from them — so the host has to say that an interruption
-   * happened, or the answer would simply read as if the model repeated itself.
+   * carries on from them. Hosts show dropped-connection retries; host recovery,
+   * output-limit continuations and missing-call recovery continue silently.
    */
   | {
       type: "retry";

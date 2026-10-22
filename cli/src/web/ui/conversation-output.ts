@@ -2,7 +2,7 @@ import { t, locale } from '../localization';
 import type { ConversationMessage, Attachment, OutputItem, ResolvedInput, TimerRecord } from '../workflow-types';
 import { conversationResourceCards, type ResourceCard } from '../resource-cards';
 import { escapeHtml, iconHtml, iconButton, markdownHtml, mediaUrl, updateIcon } from './ui';
-import { agentActivity, activeAgentActivity, activityGroupSummary, activityValueText, type AgentActivity } from './agent-activity';
+import { agentActivity, activeAgentActivity, activityGroupSummary, activityValueText, isSilentAgentRetry, type AgentActivity } from './agent-activity';
 import { RingOutput, isComposerOutputItem, ringOutputContent } from './output-display';
 
 interface OutputOptions {
@@ -56,7 +56,7 @@ export class ConversationOutput {
   private release(root: HTMLElement): void { this.displays.get(root)?.dispose(); this.displays.delete(root); }
 
   update(message: ConversationMessage, projectId: string, conversationId: string, files: Attachment[], storageSource: 'local' | 'server' = 'local'): void {
-    const items = (message.items ?? []).filter(item => item.metadata?.kind !== 'agent-session' && (!this.options.composer || !isComposerOutputItem(item)));
+    const items = (message.items ?? []).filter(item => item.metadata?.kind !== 'agent-session' && !isSilentAgentRetry(item) && (!this.options.composer || !isComposerOutputItem(item)));
     const cards = conversationResourceCards(items, projectId, conversationId, storageSource);
     const cardByItem = new Map(cards.map((card) => [card.itemId, card]));
     const answers = [...new Map([...(message.resolvedInputs ?? []), ...(message.submittingInput ? [message.submittingInput] : [])].map((answer) => [answer.requestId, answer])).values()];

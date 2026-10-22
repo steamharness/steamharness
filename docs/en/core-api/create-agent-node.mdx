@@ -114,7 +114,7 @@ When the model declares web search support, the node enables OpenAI Responses or
 
 The answer never gets pushed into a detail block by response metadata such as `finishReason` or usage.
 
-Automatic retries appear as collapsed `partType: "retry"` details after interrupted content and before its continuation. Live output, durable session `turns[].items`, and restored history retain the same order; completing a run does not append the record again below the answer.
+Automatic retry outputs use `partType: "retry"`, with `content.kind` distinguishing `dropped`, `recovery`, `length`, and `lost-call`. CLI Web / Studio show connection retries (`dropped`) as collapsed details after interrupted content and before its continuation. Other internal continuations run silently, with records retained in Trace and exports. Live output, durable session `turns[].items`, and restored history retain the same order; completing a run does not append the record again below the answer.
 
 A complete successful model response resets the retry count, so later failures in the same answer start at `Retry 1 / 10`. Retry records retain separate output item IDs even when their attempt numbers restart at 1.
 

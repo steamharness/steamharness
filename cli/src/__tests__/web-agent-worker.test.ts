@@ -76,7 +76,7 @@ it('preserves the live generation when the worker loses its IPC owner and resume
     expect(snapshot!.turns[0].prompt).toBe('First');
     expect(JSON.stringify(snapshot!.turns[0].items)).toContain('Before disconnect');
     expect(JSON.stringify(snapshot!.turns[0].items)).toContain('After reconnect');
-    expect(snapshot!.records.some(record => record.kind === 'project.retry')).toBe(true);
+    expect(snapshot!.turns[0].items.find(item => item.metadata?.partType === 'retry')?.content).toMatchObject({ kind: 'recovery' });
     await runtime.agentControl!('disconnect-run', { type: 'cancel', requestId: 'cleanup', scope: 'all' }, 'disconnect-session');
     runtime.cancel('disconnect-run'); await resumed; resumed = undefined;
   } finally {

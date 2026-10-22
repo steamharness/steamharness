@@ -1,5 +1,5 @@
 import type { OutputItemStreamChunk, RunOutputItemInput } from "../node/output/index";
-import type { AgentSearchSource } from "./types";
+import type { AgentSearchSource, AgentTurnContinuationKind } from "./types";
 
 export function formatAgentSearchSources(sources: readonly AgentSearchSource[]): string {
   return sources.flatMap(source => {
@@ -348,6 +348,7 @@ export function createAgentRetryChunks(options: {
   attempt: number;
   maxAttempts: number;
   reason: string;
+  kind?: AgentTurnContinuationKind;
   title: string;
   message: string;
 }): OutputItemStreamChunk[] {
@@ -361,6 +362,7 @@ export function createAgentRetryChunks(options: {
       attempt: options.attempt,
       maxAttempts: options.maxAttempts,
       reason: options.reason,
+      kind: options.kind ?? "dropped",
       message: options.message,
     },
     patch: { title: options.title, iconPreset: "warning" },

@@ -6,6 +6,23 @@ import type { ConversationMessage, OutputItem } from '../web/workflow-types';
 const outputs: ConversationOutput[] = [];
 afterEach(() => { for (const output of outputs.splice(0)) output.dispose(); document.body.replaceChildren(); });
 
+it.each(['recovery', 'length', 'lost-call'])('silently continues %s while preserving network retry feedback and answer text', kind => {
+  const root = document.createElement('div'); document.body.append(root);
+  const output = new ConversationOutput(root, { copy() {}, plan() {}, file() {}, image() {}, resource() {} }); outputs.push(output);
+  const retry = (id: string, kind: string): OutputItem => ({ id, content: { type: 'retry', kind, attempt: 1, maxAttempts: 10, reason: 'fixture' },
+    contentType: 'json', metadata: { kind: 'agent-part', partType: 'retry', status: 'success' } });
+  const items = [{ id: 'body', content: 'Partial answer', contentType: 'markdown' }, retry('internal', kind), retry('network', 'dropped')];
+  output.update({ role: 'assistant', status: 'running', content: '', items }, 'project', 'conversation', []);
+  expect(root.querySelectorAll('[data-kind="retry"]')).toHaveLength(1);
+  expect(root.querySelector('[data-item-id="internal"]')).toBeNull();
+  expect(root.querySelector('[data-item-id="network"]')).not.toBeNull();
+  expect(root.querySelector('.pending')?.textContent).toBe('Responding...');
+  expect(root.textContent).toContain('Partial answer');
+  output.update({ role: 'assistant', status: 'success', content: '', items }, 'project', 'conversation', []);
+  expect(root.querySelectorAll('[data-kind="retry"]')).toHaveLength(1);
+  expect(root.querySelector('.pending')).toBeNull();
+});
+
 it('keeps the retry at its interruption point through completion, expansion and history replay', () => {
   const items: OutputItem[] = [
     { id: 'before', content: 'Before interruption', contentType: 'markdown', metadata: { kind: 'agent-part', partType: 'text' } },

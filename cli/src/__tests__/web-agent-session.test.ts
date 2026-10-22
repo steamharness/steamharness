@@ -54,6 +54,32 @@ it.each(['model_error', 'no_model'])('shows %s as a failure with its reason whil
   await f.finish();
 });
 
+it.each([false, true])('keeps an unfinished durable follow-up running throughout host recovery (fork=%s)', async fork => {
+  const f = fixture(); await f.start();
+  const initial = f.snapshot(), conversationId = fork ? 2 : 1;
+  const frame: AgentSessionSnapshot = { ...initial, revision: 2, foreground: !fork,
+    conversations: [...initial.conversations, ...(fork ? [{ id: 2, title: 'Fork', background: false }] : [])],
+    turns: [...initial.turns, { requestId: 'follow-up', conversationId, prompt: 'Continue', mode: 'followUp', status: 'placed', epoch: 0, entryId: 3,
+      items: [{ id: 'partial', title: 'Output', content: 'Still working', contentType: 'markdown' }] }] };
+  f.emit(frame);
+  const sessionId = fork ? await f.controller.openAgentConversation(f.controller.current.id, 2) : f.controller.current.id;
+  const saved = JSON.parse(JSON.stringify({ sessions: f.controller.sessions, activeId: sessionId, selectionVersion: 1 }));
+  await f.finish();
+  const restored = new ConversationController(f.controller.project, f.runtime, saved, { save: f.save, changed: vi.fn(), log: vi.fn() });
+  controllers.push(restored);
+  const answer = restored.current.messages.at(-1)!;
+  expect(answer.runId).toBeUndefined(); expect(answer.args).toBeUndefined();
+  expect(answer).toMatchObject({ status: 'running', recovering: true, content: 'Still working' });
+  expect(answer.error).toBeUndefined(); expect(messageSettled(answer)).toBe(false);
+  restored.recover();
+  await vi.waitFor(() => expect(f.runs).toHaveLength(2));
+  expect(vi.mocked(f.runtime.run).mock.calls[1][0]).toMatchObject({ resumeAgent: true, runId: f.controller.sessions[0].messages[1].runId });
+  expect(answer.status).toBe('running'); expect(answer.error).toBeUndefined();
+  f.emit({ ...frame, ownerId: 'reconnected', revision: 1 });
+  expect(answer).toMatchObject({ status: 'running', recovering: false, content: 'Still working' });
+  f.runs.at(-1)!.finish({ status: 'success' }); await restored.idle();
+});
+
 it('keeps the owner alive after its inline answer and confirms a lost IPC receipt from the durable snapshot', async () => {
   const f = fixture(); await f.start();
   expect(f.controller.running).toBe(false); expect(f.controller.hasRuns).toBe(true);

@@ -847,7 +847,7 @@ function initialize(): void {
 
   function updateMessageMetadata(view: MessageView): void {
     const message = view.message;
-    const status = message.status === 'sending' ? t('Sending') : message.recovering ? t("Recovering") : message.pendingInput ? t("Awaiting confirmation") : message.status === 'running' ? activeAgentActivity(message)?.label ?? t("Responding") : message.status === 'aborted' ? t("Stopped") : message.status === 'failed' ? t("Failed") : '';
+    const status = message.status === 'sending' ? t('Sending') : message.pendingInput ? t("Awaiting confirmation") : message.status === 'running' ? activeAgentActivity(message)?.label ?? t("Responding") : message.status === 'aborted' ? t("Stopped") : message.status === 'failed' ? t("Failed") : '';
     const seconds = Math.round((message.status === 'running' ? Date.now() - (message.createdAt ?? Date.now()) : message.durationMs ?? 0) / 1000);
     const duration = message.durationMs !== undefined || message.status === 'running' ? t("Duration {0}{1}s", seconds >= 60 ? `${Math.floor(seconds / 60)}m ` : '', seconds % 60) : '';
     const usage = message.tokenUsage?.display ? message.tokenUsage.run : undefined;
@@ -872,8 +872,9 @@ function initialize(): void {
     updateMessageMetadata(view);
     if (message.role === 'user') { view.content.textContent = message.content; }
     else { view.output!.update(message, state!.project.id, state!.activeId, (currentSession()?.messages ?? []).flatMap((entry) => [...(entry.files ?? []), ...(entry.attachments ?? [])]), state!.project.projectInfo?.dataStorage?.mode === 'server' ? 'server' : 'local'); }
-    view.error.textContent = message.error ?? '';
-    view.error.hidden = !message.error;
+    const error = message.status === 'running' || message.status === 'sending' ? undefined : message.error;
+    view.error.textContent = error ?? '';
+    view.error.hidden = !error;
     view.root.querySelector<HTMLButtonElement>('.copy-message')!.disabled = !message.content;
     const fork = view.root.querySelector<HTMLButtonElement>('.fork-message');
     if (fork) { fork.hidden = !state?.project.conversation?.durable?.enabled || !message.entryId; fork.disabled = !connectionAvailable; }
