@@ -37,6 +37,19 @@ Kanban is a static project made of HTML, CSS, JavaScript, images, and fonts. It 
 - Typical uses: boards, maps, dashboards, visual interfaces embedded in conversations or project details.
 - Start with [Kanban HTML projects](/en/concepts/kanban).
 
+## Where projects run
+
+SteamHarness separates **execution** from **management**:
+
+| Location | Executes project code | Purpose |
+| --- | --- | --- |
+| Studio / local CLI | Yes | Run and debug locally, inspect traces |
+| Server | No | Stores source, versions, members, KV, knowledge, and project files |
+| Server Web console | No | Manage projects, members, and data in the browser |
+| Store | No | Browse, download, and publish version archives |
+
+The Server does not install project dependencies, build, or load uploaded project code. A Kanban preview is a static iframe bound to a project, user, and version; it does not inherit account credentials and is not project execution on the Server.
+
 ## Main features
 
 | Capability | What it does | Entry point |
@@ -48,6 +61,42 @@ Kanban is a static project made of HTML, CSS, JavaScript, images, and fonts. It 
 | Store | Browse, download, and publish project versions | [Store overview](https://docs.steamharness.yuhe.space/en/enhanced/store/overview) |
 | System AI (Enhanced) | Shared models, personal defaults, provider preference, usage, and orders | [System AI guide](https://docs.steamharness.yuhe.space/en/enhanced/ai/feature-comparison) |
 | Built-in projects | Developer Assistant, Codex, Conversation, OpenCode, Pi, and other ready-to-use projects | [Release notes](/en/guides/releases/overview) |
+
+## Project data and configuration
+
+The location of project data is declared in `package.json` under `steamHarness.projectInfo.dataStorage`; the runtime rejects access outside the declaration:
+
+| Mode | Allowed location | Notes |
+| --- | --- | --- |
+| `local` | Local only | The CLI can run offline |
+| `server` | Server only | Requires sign-in and the same project UUID binding |
+| `both` | Local and server | Each access explicitly chooses a location |
+
+- **KV / PersistentValue**: accessed through `context.storage.local` or `context.storage.server`; the two sides are separate data sets.
+- **Knowledge and project files**: stored by the Server and managed in the Server Web console.
+- **Project configuration**: `configuration.json` declares fields (string, number, boolean, JSON, file); values are managed in Studio, CLI Web, or the Server Web panel. Mark sensitive fields with `secret: true`.
+- **Related projects**: `projectInfo.relatedProjects` declares an alias, the target project UUID, and read/write grants; both sides must declare the relationship.
+
+Changing `dataStorage` only changes future allowed locations; it does not migrate existing data. See [Project data storage](/en/concepts/data-storage), [Project configuration](/en/concepts/project-configuration), [KV and conversations](/en/concepts/kv-and-conversation), and [File inputs](/en/concepts/files).
+
+## Accounts, permissions, and collaboration
+
+The Server uses accounts and fixed project roles:
+
+| Role | What it can do |
+| --- | --- |
+| `guest` | View the project, released versions, KV, knowledge, files, and previews; download released source and run locally |
+| `developer` | Edit drafts, upload and publish versions, and modify server KV, knowledge, and project files |
+| `maintainer` | Manage project information, public state, official configuration, guests, and developers |
+| `owner` | Assign all roles, manage owners, delete the project, and transfer ownership |
+
+Projects can live in groups, and groups can have nested subgroups. The effective role is the highest of the direct project role and any inherited group role. Public projects grant guest access to every signed-in user; private projects can accept access requests through a released version's share link. See [Project management](/en/guides/server/project-management).
+
+## AI capabilities
+
+In open source, each project owns its model: declare an LLM provider and API key in the project, and nodes read the configuration at runtime. The Server does not store or proxy third-party model credentials. See [LLM provider](/en/concepts/llm-provider).
+
+Enhanced adds System AI on top: the platform maintains the model catalogue, credentials, and billing; users choose a default model and provider preference, subscribe or use balance, and review usage and orders. The Studio assistant uses System AI directly after signing in to a project. See [What Enhanced adds: System AI configuration](https://docs.steamharness.yuhe.space/en/enhanced/ai/feature-comparison).
 
 ## Development workflow
 
@@ -78,6 +127,26 @@ my-board/
 ```
 
 `package.json` is the source of truth for project information. `steamHarness.projectType` selects the project type; `steamHarness.projectInfo` stores localized names, display platforms, data storage, and related projects. Workflow / Conversation must pin exact Core and CLI versions in `devDependencies`; Kanban only uses the Core version as static package metadata.
+
+## Built-in projects
+
+Studio ships with projects you can open or create directly:
+
+| Project | Purpose |
+| --- | --- |
+| Developer Assistant | Helps understand projects, generate code, and carry out development tasks in Studio |
+| Studio Control | Gives Agents controlled access to Studio operations |
+| Studio Analysis | Summarizes local projects and run state |
+| Codex / Conversation / OpenCode / Pi | Ready-to-use Agent / conversation projects |
+
+Built-in projects follow the same project types, versions, and permissions. See [Release notes](/en/guides/releases/overview) for version history.
+
+## Versions, testing, and deployment
+
+- **Versions**: Core, CLI, Server, Server Web, and built-in projects release independently; projects pin exact Core and CLI versions in `devDependencies`. See [Release notes](/en/guides/releases/overview) and [Version compatibility](/en/guides/releases/compatibility).
+- **Migration**: see the [Core 0.1 to 0.2 migration guide](/en/guides/migrate-core-0-2).
+- **Testing**: `steamharness structure .` checks project structure; see [Automated testing](/en/guides/testing) for project tests and repository gates.
+- **Deployment**: see [Deployment and publishing](/en/guides/server/deployment) for Server, Server Web, and Store.
 
 ## Choose your next step
 

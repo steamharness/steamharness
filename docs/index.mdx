@@ -37,6 +37,19 @@ Kanban 是由 HTML、CSS、JavaScript、图片和字体组成的静态项目，�
 - 典型场景：看板、地图、仪表盘、需要嵌入对话或项目详情页的可视化界面。
 - 从 [Kanban HTML 项目](/concepts/kanban) 开始。
 
+## 项目在哪里运行
+
+SteamHarness 把“执行”和“管理”分开：
+
+| 位置 | 执行项目代码 | 作用 |
+| --- | --- | --- |
+| Studio / 本地 CLI | 是 | 本地运行、调试、查看执行轨迹 |
+| Server | 否 | 保存源码、版本、成员、KV、知识库和项目文件 |
+| Server Web 管理端 | 否 | 在浏览器中管理项目、成员和数据 |
+| Store | 否 | 浏览、下载和发布版本归档 |
+
+Server 不安装项目依赖、不构建、也不加载上传的项目代码。Kanban 的预览是绑定项目、用户和版本的静态 iframe，不继承账号凭据，也不等于在 Server 上执行项目。
+
 ## 主要功能
 
 | 能力 | 说明 | 入口 |
@@ -48,6 +61,42 @@ Kanban 是由 HTML、CSS、JavaScript、图片和字体组成的静态项目，�
 | Store | 浏览、下载和发布项目版本 | [Store 概览](https://docs.steamharness.yuhe.space/enhanced/store/overview) |
 | 系统 AI（增强版） | 共享模型、个人默认模型、供应方偏好、用量与订单 | [系统 AI 指南](https://docs.steamharness.yuhe.space/enhanced/ai/feature-comparison) |
 | 内置项目 | 开发者小助手、Codex、Conversation、OpenCode、Pi 等开箱即用的项目 | [发布日志](/guides/releases/overview) |
+
+## 项目数据与配置
+
+项目数据的位置由 `package.json` 的 `steamHarness.projectInfo.dataStorage` 声明，运行时按声明拒绝越界访问：
+
+| 模式 | 允许位置 | 说明 |
+| --- | --- | --- |
+| `local` | 仅本地 | CLI 可离线运行 |
+| `server` | 仅服务器 | 需要登录并绑定同一个项目 UUID |
+| `both` | 本地与服务器 | 每次访问显式选择位置 |
+
+- **KV / PersistentValue**：通过 `context.storage.local` 或 `context.storage.server` 访问；两端数据独立。
+- **知识库与项目文件**：由 Server 保存，Server Web 管理。
+- **项目配置**：`configuration.json` 声明字段（字符串、数字、布尔、JSON、文件），实际值在 Studio、CLI Web 或 Server Web 的面板管理；敏感字段使用 `secret: true`。
+- **关联项目**：`projectInfo.relatedProjects` 声明 alias、目标项目 UUID 和读写授权；双方都声明后才生效。
+
+更改 `dataStorage` 只改变以后允许的位置，不会迁移已有数据。详见[项目数据存储](/concepts/data-storage)、[项目配置](/concepts/project-configuration)、[KV 与会话](/concepts/kv-and-conversation)和[文件输入](/concepts/files)。
+
+## 账号、权限与协作
+
+Server 使用账号和固定的项目角色管理权限：
+
+| 角色 | 能做什么 |
+| --- | --- |
+| `guest` | 查看项目、已发布版本、KV、知识库、文件和预览；下载已发布源码并本地运行 |
+| `developer` | 编辑草稿、上传和发布版本，修改服务器 KV、知识库和项目文件 |
+| `maintainer` | 管理项目信息、公开状态、官方配置，以及访客和开发者 |
+| `owner` | 分配全部角色、管理所有者、删除项目和转移归属 |
+
+项目可以放在组里，组支持多级子组，有效角色取项目直接角色和各级组角色的最高值。公开项目向所有登录用户提供访客权限；私有项目可以通过已发布版本的分享链接申请访问。详见[项目管理](/guides/server/project-management)。
+
+## AI 能力
+
+开源版的项目自己管理模型：在项目中声明 LLM Provider 和 API Key，节点运行时读取配置；Server 不保存或代理第三方模型凭据。详见 [LLM Provider](/concepts/llm-provider)。
+
+增强版在此基础上提供系统 AI：平台统一维护模型目录、凭据和计费，用户可以选择默认模型、供应方偏好、订阅/余额，并查看用量与订单；Studio 小助手登录项目后直接使用系统 AI。详见[增强版比开源版多了什么：系统 AI 配置](https://docs.steamharness.yuhe.space/enhanced/ai/feature-comparison)。
 
 ## 开发流程
 
@@ -78,6 +127,26 @@ my-board/
 ```
 
 `package.json` 是项目信息的唯一权威来源。`steamHarness.projectType` 决定项目类型；`steamHarness.projectInfo` 保存本地化名称、展示平台、数据存储位置和关联项目。Workflow / Conversation 需要在 `devDependencies` 中精确记录 Core 与 CLI 版本，Kanban 只把 Core 版本作为静态包元数据校验。
+
+## 内置项目
+
+Studio 自带一组可以直接打开或创建的项目：
+
+| 项目 | 作用 |
+| --- | --- |
+| 开发者小助手（Project Assistant） | 在 Studio 中协助理解项目、生成代码和执行开发任务 |
+| Studio 控制（Studio Control） | 为 Agent 提供受控的 Studio 操作能力 |
+| Studio 分析（Studio Analysis） | 汇总本地项目与运行状态 |
+| Codex / Conversation / OpenCode / Pi | 开箱即用的 Agent / 对话项目 |
+
+内置项目同样遵循项目类型、版本和权限规则。各项目的版本记录见[发布日志](/guides/releases/overview)。
+
+## 版本、测试与部署
+
+- **版本**：Core、CLI、Server、Server Web 和内置项目各自发版；项目在 `devDependencies` 中固定 Core 与 CLI 版本。兼容性与历史见[发布日志](/guides/releases/overview)和[版本兼容性](/guides/releases/compatibility)。
+- **迁移**：从 Core 0.1 升级到 0.2 见[迁移指南](/guides/migrate-core-0-2)。
+- **测试**：`steamharness structure .` 检查项目结构；项目自己的测试和仓库门禁见[自动化测试](/guides/testing)。
+- **部署**：Server、Server Web 和 Store 的部署见[部署与发布](/guides/server/deployment)。
 
 ## 选择你的下一步
 
