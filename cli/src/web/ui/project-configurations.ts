@@ -12,15 +12,22 @@ export function projectConfigurationsButton(): string {
 export function mountProjectConfigurations(host: Host): void {
   const trigger = document.getElementById('project-configurations')!;
   const dialog = document.createElement('dialog'); dialog.className = 'conversation-dialog project-configurations';
+  let detailId:string|undefined, publicationView=false, publicationDirty=false;
+  const listActionButtons:HTMLButtonElement[]=[];
   const heading = document.createElement('header'), title = document.createElement('h2'); title.textContent = t('Project configurations');
   title.id = 'project-configurations-title'; dialog.setAttribute('aria-labelledby', title.id);
   const close = iconButton('close', t('Close'), () => dialog.close()); heading.append(title, close);
   const body = document.createElement('div'); body.className = 'dialog-body configuration-body';
   const status = document.createElement('p'); status.role = 'status'; status.className = 'configuration-status'; status.textContent = t('Loading...');
   const toolbar = document.createElement('section'); toolbar.className = 'configuration-profiles';
-  const profileLabel = document.createElement('label'); profileLabel.textContent = t('Current configuration'); profileLabel.htmlFor = 'configuration-profile';
+  const profileLabel = document.createElement('h3');profileLabel.className='configuration-profile-name';
   const profileControls = document.createElement('div'); profileControls.className = 'configuration-profile-controls';
-  const select = document.createElement('select'); select.id = profileLabel.htmlFor;
+  const back=iconButton('arrow-left',t('Back to list'),()=>{if(!working&&clean()){detailId=undefined;showView(false);draft=undefined;if(latest)render(latest);}});
+  const useCurrent=iconButton('check',t('Select configuration'),()=>{if(detailId&&clean())void dispatch({action:'select',id:detailId});});
+  const listToolbar=document.createElement('section');listToolbar.className='configuration-profiles configuration-list-toolbar';
+  const listTitle=document.createElement('h3');listTitle.textContent=t('Project configurations');listToolbar.append(listTitle);
+  const listBody=document.createElement('div');listBody.className='dialog-body configuration-list';
+  const list=document.createElement('ul');list.ariaLabel=t('Project configurations');listBody.append(list);
   const fieldsHeader = document.createElement('div'); fieldsHeader.className = 'configuration-fields-heading';
   const fieldsTitle = document.createElement('h3'); fieldsTitle.textContent = t('Configuration fields');
   const fieldCount = document.createElement('span'); fieldCount.className = 'configuration-count';
@@ -33,7 +40,7 @@ export function mountProjectConfigurations(host: Host): void {
   footerButtons.append(refresh, save); actions.append(status, footerButtons);
   fieldsHeader.append(fieldsTitle, fieldCount);
   const tabs=document.createElement('nav');tabs.className='configuration-view-tabs';tabs.ariaLabel=t('Project configurations');
-  const valuesTab=button(t('Configuration values'),()=>showView(false));
+  const valuesTab=button(t('Configuration values'),()=>{if(clean())showView(false);});
   const publicationTab=button(t('Publication and permissions'),()=>{if(clean()){showView(true);renderPublication();}});
   const publicationBody=document.createElement('div');publicationBody.className='dialog-body configuration-publication';publicationBody.hidden=true;
   const publicationFooter=document.createElement('footer');publicationFooter.className='configuration-footer';publicationFooter.hidden=true;
@@ -47,18 +54,19 @@ export function mountProjectConfigurations(host: Host): void {
   });
   const savePublication=button(t('Save publication draft'),()=>void(async()=>{
     if(!publicationDraft)return;
-    try{freezeConfigurationTemplate(publicationDraft,{projectId:'preview',projectVersion:'preview',sourceHash:'0'.repeat(64)});if(await dispatch({action:'publication.save',publication:publicationDraft})){publicationDraft=undefined;renderPublication();publicationStatus.textContent='';publicationStatus.classList.remove('error');}}
+    try{freezeConfigurationTemplate(publicationDraft,{projectId:'preview',projectVersion:'preview',sourceHash:'0'.repeat(64)});if(await dispatch({action:'publication.save',publication:publicationDraft})){publicationDraft=undefined;publicationDirty=false;renderPublication();publicationStatus.textContent='';publicationStatus.classList.remove('error');}}
     catch(e){error(e);}
   })());
   savePublication.className='configuration-primary';savePublication.prepend(document.createRange().createContextualFragment(iconHtml('check')));
-  publicationButtons.append(previewPublication,savePublication);publicationFooter.append(publicationStatus,publicationButtons);
+  const discardPublication=iconButton('discard',t('Refresh and discard publication draft'),()=>{publicationDraft=undefined;publicationDirty=false;renderPublication();publicationStatus.textContent='';publicationStatus.classList.remove('error');});
+  publicationButtons.append(discardPublication,previewPublication,savePublication);publicationFooter.append(publicationStatus,publicationButtons);
   tabs.role='tablist';
   for(const [tab,panel,id]of [[valuesTab,body,'values'],[publicationTab,publicationBody,'publication']]as const){tab.role='tab';tab.id=`configuration-${id}-tab`;panel.id=`configuration-${id}-panel`;panel.role='tabpanel';panel.setAttribute('aria-labelledby',tab.id);tab.setAttribute('aria-controls',panel.id);}
-  function showView(publication:boolean){body.hidden=publication;toolbar.hidden=publication;actions.hidden=publication;publicationBody.hidden=!publication;publicationFooter.hidden=!publication;valuesTab.ariaSelected=String(!publication);publicationTab.ariaSelected=String(publication);valuesTab.tabIndex=publication?-1:0;publicationTab.tabIndex=publication?0:-1;}
+  function showView(publication:boolean){publicationView=publication;body.hidden=!detailId||publication;toolbar.hidden=!detailId;profileControls.hidden=publication;tabs.hidden=!detailId;listToolbar.hidden=!!detailId;listBody.hidden=!!detailId;actions.hidden=!!detailId&&publication;save.hidden=!detailId;publicationBody.hidden=!detailId||!publication;publicationFooter.hidden=!detailId||!publication;valuesTab.ariaSelected=String(!publication);publicationTab.ariaSelected=String(publication);valuesTab.tabIndex=publication?-1:0;publicationTab.tabIndex=publication?0:-1;}
   showView(false);
   tabs.onkeydown=event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)||publicationTab.hidden)return;event.preventDefault();const next=event.key==='Home'?valuesTab:event.key==='End'?publicationTab:document.activeElement===valuesTab?publicationTab:valuesTab;next.click();next.focus();};
   tabs.append(valuesTab,publicationTab);
-  body.append(fieldsHeader,fields); dialog.append(heading,tabs,toolbar,body,publicationBody,actions,publicationFooter); document.body.append(dialog);
+  body.append(fieldsHeader,fields); dialog.append(heading,listToolbar,listBody,toolbar,tabs,body,publicationBody,actions,publicationFooter); document.body.append(dialog);
   let latest: ProjectConfigurationState | undefined, draft: ProjectConfigurationState | undefined, dirty = false, working = false, editingField = false;
   const readers = new Map<string, () => unknown>(), overrides = new Set<string>(), resets = new Map<string, HTMLButtonElement>();
   const pending = new Map<string,{resolve(value:any):void;reject(error:Error):void;timer:ReturnType<typeof setTimeout>}>();
@@ -118,37 +126,39 @@ export function mountProjectConfigurations(host: Host): void {
   async function dispatch(call: ProjectConfigurationAction) {
     if (!draft || working) return false;
     hideMenus(); working = true; const unlock = lockControls(dialog);
-    try { const result = await request({...call,revision:draft.revision}); draft = undefined; dirty = false; render(latest && latest.revision > result.revision ? latest : result); return true; }
+    try { const result = await request({...call,revision:draft.revision});
+      if(call.action==='create'||call.action==='duplicate'){detailId=result.activeConfigurationId;showView(false);}
+      draft = undefined; dirty = false; render(latest && latest.revision > result.revision ? latest : result); return true; }
     catch (e) { error(e); return false; }
     finally { working = false; unlock(); updateActions(); }
   }
   async function commit() {
-    if (!draft || !dirty || working) return;
+    if (!draft || !detailId || !dirty || working) return;
     try {
       const values: ConfigurationValues = {}, unset: string[] = [];
       for (const field of draft.fields) {
         if (!overrides.has(field.name)) { unset.push(field.name); continue; }
         values[field.name] = readers.get(field.name)!() as any;
       }
-      await dispatch({action:'save',id:draft.activeConfigurationId,values,unset});
+      await dispatch({action:'save',id:detailId,values,unset});
     } catch (e) { error(e); }
   }
-  function clean(): boolean { if (dirty) { error(new Error(t('Save or discard your draft before changing configurations.'))); return false; } return true; }
-  async function profile(action: ProjectConfigurationAction['action']) {
+  function clean(): boolean { if (dirty||publicationDirty) { error(new Error(t('Save or discard your draft before changing configurations.'))); return false; } return true; }
+  function openDetails(id:string) {if(working||!clean()||!latest)return;detailId=id;showView(false);draft=undefined;render(latest);back.focus();}
+  async function profileOperation(action: ProjectConfigurationAction['action'],id=detailId) {
     if (!draft || working || !clean()) return;
     editingField = true;
     try {
-    const name = action === 'create' || action === 'rename' ? await requestAction({title:t(action === 'create' ? 'New configuration' : 'Rename configuration'),label:t('Configuration name'),value:action === 'rename' ? draft.configurations.find(c => c.id === draft!.activeConfigurationId)?.name : '',confirm:t('Save')})
+    const name = action === 'create' || action === 'rename' ? await requestAction({title:t(action === 'create' ? 'New configuration' : 'Rename configuration'),label:t('Configuration name'),value:action === 'rename' ? draft.configurations.find(c => c.id === id)?.name : '',confirm:t('Save')})
       : action === 'delete' ? await requestAction({title:t('Delete this configuration?'),confirm:t('Delete'),danger:true}) : '';
-    if (name !== undefined) await dispatch({action,id:draft.activeConfigurationId,...(name ? {name} : {})});
+    if (name !== undefined) await dispatch({action,id,...(name ? {name} : {})});
     } finally { editingField = false; if (latest && !dirty) { draft = undefined; render(latest); } }
   }
-  select.onchange = () => { const id = select.value; if (clean()) void dispatch({action:'select',id}); else select.value = draft!.activeConfigurationId; };
-  const create = iconButton('add', t('New configuration'), () => void profile('create'));
+  const create = iconButton('add', t('New configuration'), () => void profileOperation('create'));
   const profilesMenu = menu('ellipsis', t('Configuration actions'), [
-    {icon:'copy',label:t('Copy'),run:() => void profile('duplicate')},
-    {icon:'edit',label:t('Rename'),run:() => void profile('rename')},
-    {icon:'trash',label:t('Delete'),run:() => void profile('delete'),danger:true},
+    {icon:'copy',label:t('Copy'),run:() => void profileOperation('duplicate')},
+    {icon:'edit',label:t('Rename'),run:() => void profileOperation('rename')},
+    {icon:'trash',label:t('Delete'),run:() => void profileOperation('delete'),danger:true},
   ]);
   const transferMenu = menu('arrow-swap', t('Import / export'), [
     {icon:'import',label:t('Import'),run:importFile},
@@ -162,9 +172,12 @@ export function mountProjectConfigurations(host: Host): void {
   ]);
   const addField = button(t('Add field'), () => { if (draft && clean()) void editField(); });
   addField.className = 'configuration-add-field'; addField.prepend(document.createRange().createContextualFragment(iconHtml('add')));
-  fieldsHeader.append(addField); profileControls.append(select,create,profilesMenu.trigger,transferMenu.trigger); toolbar.append(profileLabel,profileControls);
+  fieldsHeader.append(addField); profileControls.append(useCurrent,profilesMenu.trigger); toolbar.append(back,profileLabel,profileControls);listToolbar.append(create,transferMenu.trigger);
   function updateActions() {
-    for (const control of [select,create,addField,...menus.flatMap(menu => [menu.trigger,...menu.items])]) control.disabled = working || !draft;
+    for (const control of [back,useCurrent,create,addField,...listActionButtons,...menus.flatMap(menu => [menu.trigger,...menu.items])]) control.disabled = working || !draft;
+    for(const control of listActionButtons)if(control.dataset.last==='true')control.disabled=true;
+    transferMenu.items[1]!.hidden=!detailId;
+    useCurrent.hidden=!detailId||detailId===draft?.activeConfigurationId;
     profilesMenu.items[2]!.disabled = working || !draft || draft.configurations.length <= 1;
     refresh.disabled = working; save.disabled = working || !dirty || !draft;
     for (const [key, reset] of resets) reset.disabled = working || !overrides.has(key) || !!draft && !configurationCapability(draft,draft.fields.find(f=>f.name===key)!).editable;
@@ -172,7 +185,7 @@ export function mountProjectConfigurations(host: Host): void {
   updateActions();
   async function download(all: boolean) {
     if (!draft || !clean()) return;
-    try { const document = await request({action:'export',id:all ? undefined : draft.activeConfigurationId});
+    try { const document = await request({action:'export',id:all ? undefined : detailId});
       const url = URL.createObjectURL(new Blob([JSON.stringify(document,null,2)],{type:'application/json'}));
       const a = window.document.createElement('a'); a.href = url; a.download = 'project-configurations.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url),1000);
     } catch (e) { error(e); }
@@ -246,7 +259,7 @@ export function mountProjectConfigurations(host: Host): void {
     }
     picker.onchange=()=>void(async()=>{
       const files=Array.from(picker.files??[]);picker.value='';if(!files.length||working||!draft)return;
-      const scope=draft, id=draft.activeConfigurationId;
+      const scope=draft, id=detailId;
       working=true;const unlock=lockControls(dialog);status.classList.remove('error');status.textContent=t('Uploading to server...');
       try {
         if(files.length>(field.multiple?32:1))throw new Error(t('Select at most {0} files.',field.multiple?32:1));
@@ -277,6 +290,7 @@ export function mountProjectConfigurations(host: Host): void {
   let publicationDraft:ConfigurationPublicationDraft|undefined;
   const openPublicationPaths=new Set<string>();
   function publicationEdited() {
+    publicationDirty=true;
     publicationPreview.hidden=true;
     publicationStatus.textContent=t('Unsaved changes');publicationStatus.classList.remove('error');
   }
@@ -347,21 +361,38 @@ export function mountProjectConfigurations(host: Host): void {
     latest = next;
     publicationTab.hidden=!next.canManagePublication;
     if(!next.canManagePublication) {
-      publicationDraft=undefined;publicationBody.replaceChildren();publicationStatus.textContent='';publicationStatus.classList.remove('error');publicationPreview.textContent='';
-      if(!publicationBody.hidden)valuesTab.click();
+      publicationDraft=undefined;publicationDirty=false;publicationBody.replaceChildren();publicationStatus.textContent='';publicationStatus.classList.remove('error');publicationPreview.textContent='';
+      if(!publicationBody.hidden)showView(false);
       if(draft) {draft.canManagePublication=false;delete draft.publication;delete draft.publicationPreview;}
     }
     if ((editingField || working) && draft) return;
-    if (dirty && draft) { if (draft.revision !== next.revision) error(new Error(t('Configuration changed. Your draft is preserved. Refresh before saving.'))); return; }
+    if ((dirty||publicationDirty) && draft) { if (draft.revision !== next.revision) error(new Error(t('Configuration changed. Your draft is preserved. Refresh before saving.'))); return; }
     if (draft?.revision === next.revision && JSON.stringify(draft)===JSON.stringify(next)) return;
     draft = structuredClone(next); dirty = false; fields.replaceChildren(); readers.clear(); overrides.clear(); resets.clear();
-    select.replaceChildren(...next.configurations.map(c=>new Option(c.name,c.id))); select.value=next.activeConfigurationId;
-    const current=next.configurations.find(c=>c.id===next.activeConfigurationId)!;
-    const values = next.template?configurationSnapshot(next,undefined,false).values:current.values;
+    if(detailId&&!next.configurations.some(c=>c.id===detailId)){detailId=undefined;publicationDraft=undefined;showView(false);}
+    list.replaceChildren();listActionButtons.length=0;
+    for(const profile of next.configurations) {
+      const row=document.createElement('li'),open=button('',()=>openDetails(profile.id));open.className='configuration-profile-link';open.ariaLabel=profile.name;
+      const label=document.createElement('span');label.className='configuration-profile-text';label.textContent=profile.name;open.append(label);
+      if(profile.id===next.activeConfigurationId){const badge=document.createElement('span');badge.className='configuration-active';badge.textContent=t('Current configuration');open.setAttribute('aria-description',badge.textContent);label.append(badge);}
+      open.append(document.createRange().createContextualFragment(iconHtml('chevron-right')));
+      const controls=document.createElement('div');controls.className='configuration-profile-controls';
+      if(profile.id!==next.activeConfigurationId)controls.append(iconButton('check',t('Select configuration')+': '+profile.name,()=>{if(clean())void dispatch({action:'select',id:profile.id});}));
+      controls.append(iconButton('copy',t('Copy')+': '+profile.name,()=>void profileOperation('duplicate',profile.id)),iconButton('edit',t('Rename')+': '+profile.name,()=>void profileOperation('rename',profile.id)));
+      const remove=iconButton('trash',t('Delete')+': '+profile.name,()=>void profileOperation('delete',profile.id));remove.dataset.last=String(next.configurations.length<=1);controls.append(remove);
+      listActionButtons.push(open,...controls.querySelectorAll<HTMLButtonElement>('button'));row.append(open,controls);list.append(row);
+    }
+    const current=next.configurations.find(c=>c.id===(detailId??next.activeConfigurationId))!;
+    profileLabel.textContent=current.name;
+    if(current.id===next.activeConfigurationId){const badge=document.createElement('span');badge.className='configuration-active';badge.textContent=t('Current configuration');profileLabel.append(badge);}
+    (detailId?profileControls:listToolbar).append(transferMenu.trigger);
+    showView(publicationView);
+    const values = next.template?configurationSnapshot(next,current.id,false).values:current.values;
     const defaults = {...Object.fromEntries(next.fields.filter(field=>field.defaultValue!==undefined).map(field=>[field.name,field.defaultValue])),...(next.template?applyTemplateValues(next,{...current,deletedPaths:undefined},{}):{})};
     for (const key of Object.keys(current.values)) overrides.add(key);
     for (const key of Object.keys(current.deletedPaths??{})) overrides.add(key);
     status.textContent = next.conflicts?.length?t('Some field types changed. Saved drafts are preserved; resolve them before running.'):''; status.classList.remove('error'); save.disabled=true; fieldCount.textContent=String(next.fields.length); updateActions();
+    if(!detailId)return;
     if (!next.fields.length) { const empty=document.createElement('div'); empty.className='configuration-empty'; empty.innerHTML=iconHtml('settings-gear'); const text=document.createElement('p'); text.textContent=t('No configuration fields. Add a custom field to get started.'); empty.append(text); fields.append(empty); }
     for (const field of next.fields) {
       const row=document.createElement('section'); row.className='configuration-field'; const fieldHeading=document.createElement('div'); fieldHeading.className='configuration-field-heading';
@@ -403,7 +434,7 @@ export function mountProjectConfigurations(host: Host): void {
     }
     updateActions();
   }
-  trigger.onclick = () => { if (latest) render(latest); dialog.showModal(); void request({action:'get'}).then(render).catch(error); };
+  trigger.onclick = () => { if(!working&&!dirty&&!publicationDirty){detailId=undefined;draft=undefined;showView(false);}if (latest) render(latest); dialog.showModal(); void request({action:'get'}).then(render).catch(error); };
   dialog.addEventListener('close',()=>{hideMenus();trigger.focus();});
   window.addEventListener('message',event=>{
     if(event.source!==null) return;

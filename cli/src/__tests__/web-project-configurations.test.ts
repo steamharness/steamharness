@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {createConfigurationState,bindConfigurationTemplate,createPublicationDraft,freezeConfigurationTemplate,applyConfigurationAction,type ProjectConfigurationState} from '@steamharness/project-configuration';
+import {readFileSync} from 'node:fs';
+import path from 'node:path';
 import {mountProjectConfigurations,projectConfigurationsButton} from '../web/ui/project-configurations';
 vi.mock('../web/localization',()=>({t:(text:string,...args:unknown[])=>text.replace(/\{(\d+)\}/g,(_,i)=>String(args[Number(i)]))}));
 let state:ProjectConfigurationState,fail=false;
@@ -20,6 +22,7 @@ beforeEach(()=>{
  const original=window.addEventListener.bind(window);
  vi.spyOn(window,'addEventListener').mockImplementation(((type:any,callback:any,...args:any[])=>{if(type==='message')listener=callback;original(type,callback,...args);}) as typeof window.addEventListener);
  document.body.innerHTML=projectConfigurationsButton();
+ const styles=document.createElement('style');styles.textContent=readFileSync(path.join(import.meta.dirname,'../web/ui/project-configurations.css'),'utf8');document.body.append(styles);
  mountProjectConfigurations({postMessage(message:any){queueMicrotask(async()=>{
    try {if(fail)throw new Error('Configuration changed');
     if(message.type==='project-configuration-upload') {
@@ -40,7 +43,7 @@ async function selectImage(file=new File(['png'],'底图.png',{type:'image/png'}
 it('selects and uploads a file directly, locks pending changes and saves only the returned reference',async()=>{
  state=createConfigurationState([{name:'image',type:'file',accept:['image/png']}],()=> 'file-profile');
  let finish!:(value:unknown)=>void;upload.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
- document.getElementById('project-configurations')!.click();await settle();
+ await openPanel();
  expect(fileInput().accept).toBe('image/png');expect(document.querySelector('textarea')).toBeNull();
  await selectImage();
  expect(button('Save').disabled).toBe(true);expect(button('New configuration').disabled).toBe(true);
@@ -53,13 +56,13 @@ it('selects and uploads a file directly, locks pending changes and saves only th
 it('keeps the existing file on upload failure and refuses an unacceptable file before upload',async()=>{
  state=createConfigurationState([{name:'image',type:'file',accept:['image/png'],defaultValue:imageFile}],()=> 'file-profile');
  upload.mockRejectedValue(new Error('Permission denied'));
- document.getElementById('project-configurations')!.click();await settle();
+ await openPanel();
  await selectImage();expect(document.body.textContent).toContain('Permission denied');expect(document.body.textContent).toContain('底图.png');
  upload.mockClear();Object.defineProperty(fileInput(),'files',{configurable:true,value:[new File(['data'],'wrong.txt',{type:'text/plain'})]});fileInput().dispatchEvent(new Event('change'));await settle();
  expect(upload).not.toHaveBeenCalled();expect(document.body.textContent).toContain('not accepted');
 });
 it('creates a custom file field with accept types through the field editor',async()=>{
- document.getElementById('project-configurations')!.click();await settle();button('Add field').click();
+ await openPanel();button('Add field').click();
  const editor=document.querySelector<HTMLDialogElement>('.configuration-field-editor')!;
  editor.querySelector<HTMLInputElement>('input')!.value='photo';
  const type=editor.querySelector('select')!;type.value='file';type.dispatchEvent(new Event('change'));
@@ -71,12 +74,16 @@ it('creates a custom file field with accept types through the field editor',asyn
 });
 it('leaves an unselected file unset while saving another field directly',async()=>{
  state=createConfigurationState([{name:'image',type:'file'},{name:'title',type:'string'}],()=> 'file-profile');
- document.getElementById('project-configurations')!.click();await settle();
+ await openPanel();
  expect(document.querySelector('.configuration-field-heading input[type=checkbox]')).toBeNull();
  expect(title().disabled).toBe(false);title().value='Map';title().dispatchEvent(new Event('input'));
  button('Save').click();await settle();expect(state.configurations[0]!.values).toEqual({title:'Map'});
 });
 afterEach(()=>{if(listener)window.removeEventListener('message',listener);listener=undefined;document.body.replaceChildren();vi.restoreAllMocks();});
+async function openPanel() {
+ document.getElementById('project-configurations')!.click();await settle();
+ const entry=document.querySelector<HTMLButtonElement>('.configuration-profile-link')!;entry.click();await settle();
+}
 const button=(text:string)=>[...document.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.ariaLabel===text||b.textContent===text)!;
 const title=()=>document.querySelector<HTMLInputElement>('input[aria-label="title"]')!;
 it('edits inherited values directly and resets overrides without saving untouched defaults',async()=>{
@@ -87,7 +94,7 @@ it('edits inherited values directly and resets overrides without saving untouche
   {name:'mode',type:'string',options:[{value:'auto'},{value:'manual'}],defaultValue:'auto'},
   {name:'tags',type:'string',multiple:true,options:[{value:'east'},{value:'west'}],defaultValue:['east']},
  ],()=> 'profile');state.configurations[0]!.values={};
- document.getElementById('project-configurations')!.click();await settle();
+ await openPanel();
  const input=(key:string)=>document.querySelector<HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement>(`[aria-label="${key}"]`)!;
  for(const key of ['title','blank','count','active','data','mode','tags'])expect(input(key).disabled).toBe(false);
  expect(document.querySelectorAll('.configuration-field-heading input')).toHaveLength(0);
@@ -109,14 +116,14 @@ it('edits inherited values directly and resets overrides without saving untouche
 it('restores a default file immediately when its override is cleared',async()=>{
  state=createConfigurationState([{name:'image',type:'file',defaultValue:imageFile}],()=> 'profile');
  state.configurations[0]!.values.image={...imageFile,id:'wf_cd34',name:'replacement.png'};
- document.getElementById('project-configurations')!.click();await settle();
+ await openPanel();
  button('Clear file selection').click();expect(document.body.textContent).toContain('底图.png');expect(document.body.textContent).not.toContain('replacement.png');
  button('Save').click();await settle();expect(state.configurations[0]!.values).toEqual({});
  expect(document.body.textContent).toContain('底图.png');
 });
 it('keeps an optional enum unset until selected, including its first option',async()=>{
  state=createConfigurationState([{name:'title',type:'string'},{name:'mode',type:'string',options:[{value:'auto'},{value:'manual'}]}],()=> 'profile');
- document.getElementById('project-configurations')!.click();await settle();
+ await openPanel();
  const mode=()=>document.querySelector<HTMLSelectElement>('select[aria-label="mode"]')!;
  expect(mode().selectedIndex).toBe(-1);title().value='Draft';title().dispatchEvent(new Event('input'));
  button('Save').click();await settle();expect(state.configurations[0]!.values).toEqual({title:'Draft'});
@@ -126,13 +133,14 @@ it('keeps an optional enum unset until selected, including its first option',asy
 });
 it('opens the common editor without declared fields and accepts external open commands',async()=>{
  state=createConfigurationState([],()=> 'empty');message({type:'project-configurations-open'});await settle();
+ document.querySelector<HTMLButtonElement>('.configuration-profile-link')!.click();await settle();
  expect(document.querySelector('dialog')?.open).toBe(true);
  expect(button('Add field')).toBeTruthy();expect(document.body.textContent).toContain('No configuration fields.');
  button('Add field').click();
  expect(document.querySelector('.configuration-field-editor')?.getAttribute('aria-label')).toBe('Add field');
 });
 it('keeps dirty values across newer states and failed saves, then refreshes from the service',async()=>{
- document.getElementById('project-configurations')!.click();await settle();
+ await openPanel();
  title().value='Draft';title().dispatchEvent(new Event('input'));
  state={...state,revision:1};message({type:'state',configurations:state});
  expect(title().value).toBe('Draft');expect(document.body.textContent).toContain('draft is preserved');
@@ -140,13 +148,13 @@ it('keeps dirty values across newer states and failed saves, then refreshes from
  fail=false;button('Refresh and discard draft').click();await settle();expect(title().value).toBe('Original');
 });
 it('saves JSON null as a native value without converting it to an empty string',async()=>{
- document.getElementById('project-configurations')!.click();await settle();
+ await openPanel();
  const data=document.querySelector<HTMLTextAreaElement>('textarea[aria-label="data"]')!;
  expect(data.value).toBe('null');data.value='{"enabled":false,"items":[null,0]}';data.dispatchEvent(new Event('input'));
  button('Save').click();await settle();expect(state.configurations[0]!.values.data).toEqual({enabled:false,items:[null,0]});
 });
 it('locks the form during a save and ignores delayed older configuration states',async()=>{
- document.getElementById('project-configurations')!.click();await settle();
+ await openPanel();
  const stale=structuredClone(state);
  title().value='Saved';title().dispatchEvent(new Event('input'));
  button('Save').click();
@@ -158,8 +166,8 @@ it('locks the form during a save and ignores delayed older configuration states'
  expect(title().value).toBe('Saved');
 });
 it('separates profile menus, field editing and the persistent save footer',async()=>{
- document.getElementById('project-configurations')!.click();await settle();
- expect(document.querySelector('.configuration-profiles select')).toBeTruthy();
+ await openPanel();
+ expect(button('Back to list')).toBeTruthy();expect(document.querySelector('.configuration-profiles select')).toBeNull();
  expect(document.querySelector('.configuration-fields-heading')!.contains(button('Add field'))).toBe(true);
  expect(document.querySelector('.configuration-footer')!.contains(button('Save'))).toBe(true);
  expect(button('Close').classList.contains('icon-button')).toBe(true);
@@ -175,7 +183,7 @@ it('separates profile menus, field editing and the persistent save footer',async
  expect(document.querySelector<HTMLDialogElement>('dialog')!.open).toBe(true);
 });
 it('keeps the last profile and performs copy from the compact actions menu',async()=>{
- document.getElementById('project-configurations')!.click();await settle();
+ await openPanel();
  button('Configuration actions').click();expect(button('Delete').disabled).toBe(true);
  button('Copy').click();await settle();
  expect(state.configurations).toHaveLength(2);expect(button('Delete').disabled).toBe(false);
@@ -183,7 +191,7 @@ it('keeps the last profile and performs copy from the compact actions menu',asyn
 });
 it('uses accessible icons for custom fields and sensitive visibility, and edits in a titled dialog',async()=>{
  state=applyConfigurationAction(state,{action:'field.save',revision:0,field:{name:'token',type:'string',secret:true}},()=>crypto.randomUUID());
- document.getElementById('project-configurations')!.click();await settle();
+ await openPanel();
  const secret=document.querySelector<HTMLInputElement>('input[aria-label="token"]')!;
  expect(secret.type).toBe('password');button('Show sensitive values').click();expect(secret.type).toBe('text');
  expect(button('Hide sensitive values').ariaPressed).toBe('true');button('Hide sensitive values').click();expect(secret.type).toBe('password');
@@ -199,14 +207,14 @@ it('uses accessible icons for custom fields and sensitive visibility, and edits 
 it('applies published lock rules to direct fields, nested JSON and file controls',async()=>{
  const author=createConfigurationState([{name:'fixed',type:'string',defaultValue:'Official',sharing:{includeValue:true,editable:false}},{name:'settings',type:'json',defaultValue:{locked:0,open:false},sharing:{includeValue:true},paths:{'/locked':{editable:false}}},{name:'image',type:'file',sharing:{editable:false}}],()=> 'author');
  state=bindConfigurationTemplate(createConfigurationState([],()=> 'personal'),freezeConfigurationTemplate(createPublicationDraft(author),{projectId:'project',projectVersion:'1.0.0',sourceHash:'a'.repeat(64)}));
- document.getElementById('project-configurations')!.click();await settle();
+ await openPanel();
  expect(document.querySelector<HTMLInputElement>('[aria-label="fixed"]')!.disabled).toBe(true);
  expect(fileInput().disabled).toBe(true);
  const nested=Array.from(document.querySelectorAll('label')).find(label=>label.textContent==='/locked')!.querySelector('input')!;expect(nested.disabled).toBe(true);
  expect(Array.from(document.querySelectorAll('label')).find(label=>label.textContent==='/open')!.querySelector('input')!.disabled).toBe(false);
 });
 it('updates author permissions at the same configuration revision and provides per-path publication controls',async()=>{
- document.getElementById('project-configurations')!.click();await settle();
+ await openPanel();
  state={...state,canManagePublication:true,publication:createPublicationDraft(state)};message({type:'state',configurations:state});await settle();
  button('Configuration values').focus();
  document.querySelector('.configuration-view-tabs')!.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
@@ -219,4 +227,48 @@ it('updates author permissions at the same configuration revision and provides p
  expect(button('Publication and permissions').hidden).toBe(true);
  expect(document.querySelector('.configuration-recipient-preview')).toBeNull();
  expect(document.querySelector<HTMLElement>('.configuration-body')!.hidden).toBe(false);
+});
+
+it('starts with the list and edits another profile without selecting it for runs',async()=>{
+ state=applyConfigurationAction(state,{action:'create',name:'Secondary',revision:0},()=> 'secondary');
+ state.activeConfigurationId='profile';state.configurations[1]!.values.title='Second value';
+ document.getElementById('project-configurations')!.click();await settle();
+ expect(document.querySelector<HTMLElement>('.configuration-list')!.hidden).toBe(false);
+ expect(document.querySelector('[aria-label="title"]')).toBeNull();
+ expect(button('Save').hidden).toBe(true);expect(getComputedStyle(button('Save')).display).toBe('none');
+ button('Secondary').click();await settle();expect(title().value).toBe('Second value');expect(state.activeConfigurationId).toBe('profile');
+ title().value='Edited second';title().dispatchEvent(new Event('input'));button('Save').click();await settle();
+ expect(state.configurations[1]!.values.title).toBe('Edited second');expect(state.configurations[0]!.values.title).toBe('Original');expect(state.activeConfigurationId).toBe('profile');
+ button('Back to list').click();expect(document.querySelector('[aria-label="title"]')).toBeNull();
+ button('Select configuration: Secondary').click();await settle();expect(state.activeConfigurationId).toBe('secondary');
+ expect(document.querySelector<HTMLElement>('.configuration-list')!.hidden).toBe(false);
+});
+it('protects both value and publication drafts when returning to the list',async()=>{
+ state={...state,canManagePublication:true,publication:createPublicationDraft(state)};
+ await openPanel();title().value='Draft';title().dispatchEvent(new Event('input'));
+ button('Back to list').click();expect(title().value).toBe('Draft');expect(document.body.textContent).toContain('Save or discard');
+ button('Refresh and discard draft').click();await settle();button('Back to list').click();expect(document.querySelector('[aria-label="title"]')).toBeNull();
+ button('Default').click();button('Publication and permissions').click();
+ const include=document.querySelector<HTMLInputElement>('[aria-label="title: Include value"]')!;include.click();
+ button('Back to list').click();expect(include.checked).toBe(true);expect(document.querySelector<HTMLElement>('.configuration-publication')!.hidden).toBe(false);
+ button('Refresh and discard publication draft').click();button('Back to list').click();
+ expect(document.querySelector<HTMLElement>('.configuration-list')!.hidden).toBe(false);
+});
+it('returns to the list when the viewed profile is deleted externally and keeps a dirty draft',async()=>{
+ state=applyConfigurationAction(state,{action:'create',name:'Secondary',revision:0},()=> 'secondary');
+ document.getElementById('project-configurations')!.click();await settle();button('Secondary').click();
+ state=applyConfigurationAction(state,{action:'delete',id:'secondary',revision:state.revision},()=> 'unused');message({type:'state',configurations:state});
+ expect(document.querySelector<HTMLElement>('.configuration-list')!.hidden).toBe(false);expect(button('Delete: Default').disabled).toBe(true);
+ button('Default').click();title().value='Keep this';title().dispatchEvent(new Event('input'));
+ const newer={...state,revision:state.revision+1};message({type:'state',configurations:newer});
+ expect(title().value).toBe('Keep this');expect(document.body.textContent).toContain('draft is preserved');
+});
+it('creates, renames and deletes configurations from the list',async()=>{
+ document.getElementById('project-configurations')!.click();await settle();button('New configuration').click();
+ const prompt=()=>document.querySelector<HTMLDialogElement>('.action-dialog')!;
+ prompt().querySelector<HTMLInputElement>('input')!.value='Created';prompt().querySelector('form')!.dispatchEvent(new Event('submit',{cancelable:true}));await settle();
+ expect(document.querySelector('.configuration-profile-name')!.textContent).toContain('Created');
+ button('Back to list').click();button('Rename: Created').click();prompt().querySelector<HTMLInputElement>('input')!.value='Renamed';prompt().querySelector('form')!.dispatchEvent(new Event('submit',{cancelable:true}));await settle();
+ expect(button('Renamed')).toBeTruthy();button('Delete: Renamed').click();prompt().querySelector('form')!.dispatchEvent(new Event('submit',{cancelable:true}));await settle();
+ expect(state.configurations).toHaveLength(1);expect(button('Delete: Default').disabled).toBe(true);
 });

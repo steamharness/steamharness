@@ -8,12 +8,12 @@ import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "
 
 const ruleKeys = ["publish", "includeValue", "editable"] as const;
 
-export function ConfigurationPublicationEditor({ state, busy, onSave }: { state: ProjectConfigurationState; busy: boolean; onSave(draft: ConfigurationPublicationDraft): Promise<boolean | undefined> }) {
+export function ConfigurationPublicationEditor({ state, busy, onSave, onDirtyChange }: { state: ProjectConfigurationState; busy: boolean; onSave(draft: ConfigurationPublicationDraft): Promise<boolean | undefined>; onDirtyChange?(dirty:boolean):void }) {
   const { t } = useTranslation("serverWeb");
   const id = useId();
   const [draft, setDraft] = useState(() => structuredClone(state.publication ?? createPublicationDraft(state)));
   const initial = useRef(draft), [error, setError] = useState(""), [preview, setPreview] = useState("");
-  const update = (next: ConfigurationPublicationDraft) => { setDraft(next); setPreview(""); };
+  const update = (next: ConfigurationPublicationDraft) => { setDraft(next); setPreview(""); onDirtyChange?.(true); };
   const editField = (index: number, field: ProjectConfigurationField) => update({ ...draft, fields: draft.fields.map((old, i) => i === index ? field : old) });
   const available = [...state.configurations, ...draft.configurations.filter(profile => !state.configurations.some(c => c.id === profile.id))];
 
@@ -83,12 +83,15 @@ export function ConfigurationPublicationEditor({ state, busy, onSave }: { state:
       </TableBody></Collapsible>)}
     </Table>
     <div className="flex flex-wrap items-center justify-end gap-2">
+      <Button variant="ghost" size="icon" disabled={busy} aria-label={t("configurationDiscard")} title={t("configurationDiscard")} onClick={()=>{
+        const next=structuredClone(state.publication??createPublicationDraft(state));initial.current=next;setDraft(next);setPreview("");setError("");onDirtyChange?.(false);
+      }}><RefreshCwIcon/></Button>
       <Button variant="outline" size="icon" disabled={busy} aria-label={t("configurationRecipientPreview")} title={t("configurationRecipientPreview")} onClick={showPreview}><EyeIcon /></Button>
       <Button disabled={busy} onClick={() => {
         try {
           freezeConfigurationTemplate(draft, { projectId: "preview", projectVersion: "preview", sourceHash: "0".repeat(64) });
           setError("");
-          void onSave(draft).then(saved => { if (saved) { const next = { ...draft, revision: draft.revision + 1 }; initial.current = next; setDraft(next); } });
+          void onSave(draft).then(saved => { if (saved) { const next = { ...draft, revision: draft.revision + 1 }; initial.current = next; setDraft(next); onDirtyChange?.(false); } });
         } catch (error) { setError((error as Error).message); }
       }}><SaveIcon data-icon="inline-start" />{t("configurationSavePublication")}</Button>
     </div>

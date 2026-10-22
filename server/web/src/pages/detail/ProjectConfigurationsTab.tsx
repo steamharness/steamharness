@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowRightLeftIcon, CheckIcon, CopyIcon, DownloadIcon, FileIcon, ImportIcon, MoreHorizontalIcon, PencilIcon, PlusIcon, RotateCcwIcon, Trash2Icon, UploadIcon, XIcon, LockIcon } from "lucide-react";
+import { ArrowLeftIcon, ArrowRightLeftIcon, CheckIcon, ChevronRightIcon, CopyIcon, DownloadIcon, FileIcon, ImportIcon, MoreHorizontalIcon, PencilIcon, PlusIcon, RotateCcwIcon, Trash2Icon, UploadIcon, XIcon, LockIcon } from "lucide-react";
 import { useTranslation } from "@steamharness/i18n/react";
 import {applyTemplateValues, configurationCapability, configurationSnapshot, parseConfigurationField, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationFile, type ConfigurationValues, type ProjectConfigurationAction, type ProjectConfigurationField, type ProjectConfigurationState, type ProjectConfigurationExport } from "@steamharness/project-configuration";
 import { apiClient } from "../../api";
-import { Alert, AlertDescription, Button, Checkbox, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, Empty, EmptyHeader, EmptyTitle, Field, FieldDescription, FieldGroup, FieldLabel, FieldSet, FieldLegend, Input, SelectField, Separator, Skeleton, Textarea } from "@/components/ui";
+import { Alert, AlertDescription, Badge, Button, Checkbox, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, Empty, EmptyHeader, EmptyTitle, Field, FieldDescription, FieldGroup, FieldLabel, FieldSet, FieldLegend, Input, SelectField, Separator, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea } from "@/components/ui";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { DetailPageProps } from "./types";
 import {ConfigurationPublicationEditor} from "./ConfigurationPublicationEditor";
@@ -22,6 +22,8 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
   const [values,setValues] = useState<Record<string,string>>({}), [setKeys,setSetKeys] = useState<string[]>([]);
   const [dirty,setDirty] = useState(false), dirtyRef = useRef(false), [busy,setBusy] = useState(false), [error,setError] = useState("");
   const [modal,setModal] = useState<"create"|"duplicate"|"rename"|"delete">(), [name,setName] = useState("");
+  const [detailId,setDetailId] = useState<string>(), detailRef = useRef<string>(undefined), [modalId,setModalId] = useState<string>();
+  const [detailTab,setDetailTab] = useState("values"), publicationDirtyRef = useRef(false);
   const [field,setField] = useState<Partial<ProjectConfigurationField>>(), [originalKey,setOriginalKey] = useState(""), [defaultText,setDefaultText] = useState(""), [optionsText,setOptionsText] = useState("");
   const file = useRef<HTMLInputElement>(null);
   const [loading,setLoading] = useState(true), [retry,setRetry] = useState(0);
@@ -32,9 +34,11 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
   const accept = (next: ProjectConfigurationState, force = false) => {
     if (latestRef.current && next.revision < latestRef.current.revision) return;
     latestRef.current=next;setLatest(next);
-    if ((dirtyRef.current || editingRef.current || busyRef.current) && !force) return;
-    const current=next.configurations.find(item=>item.id===next.activeConfigurationId)!;
-    const resolved=next.template?configurationSnapshot(next,undefined,false).values:{...Object.fromEntries(next.fields.filter(f=>f.defaultValue!==undefined).map(f=>[f.name,f.defaultValue])),...current.values};
+    if ((dirtyRef.current || publicationDirtyRef.current || editingRef.current || busyRef.current) && !force) return;
+    if(!next.canManagePublication)setDetailTab("values");
+    if(detailRef.current&&!next.configurations.some(item=>item.id===detailRef.current)){detailRef.current=undefined;setDetailId(undefined);publicationDirtyRef.current=false;}
+    const current=next.configurations.find(item=>item.id===(detailRef.current??next.activeConfigurationId))!;
+    const resolved=next.template?configurationSnapshot(next,current.id,false).values:{...Object.fromEntries(next.fields.filter(f=>f.defaultValue!==undefined).map(f=>[f.name,f.defaultValue])),...current.values};
     setState(next); setValues(Object.fromEntries(next.fields.map(field=>{
       const value=resolved[field.name];
       return [field.name,fieldValueText(field,value)];
@@ -44,6 +48,7 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
     scopeRef.current=Symbol();
     let closed=false, reading=false;
     dirtyRef.current=false;editingRef.current=false;latestRef.current=undefined;busyRef.current=false;setBusy(false);
+    detailRef.current=undefined;setDetailId(undefined);setDetailTab("values");publicationDirtyRef.current=false;
     setState(undefined);setLatest(undefined);setDirty(false);setLoading(true);setError("");setModal(undefined);setField(undefined);setUploading("");
     const load=async()=>{
       if(reading)return; reading=true;
@@ -59,7 +64,12 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
     return()=>{closed=true;scopeRef.current=undefined;clearInterval(poll);};
   },[project.id,target,retry]);
   const edit=()=>{dirtyRef.current=true;setDirty(true);};
-  const clean=()=>{if(dirtyRef.current){setError(t("configurationDraftFirst"));return false;}return true;};
+  const clean=()=>{if(dirtyRef.current||publicationDirtyRef.current){setError(t("configurationDraftFirst"));return false;}return true;};
+  const showDetails=(id?:string)=>{
+    if(busyRef.current||!clean())return;
+    detailRef.current=id;setDetailId(id);setDetailTab("values");setError("");
+    if(latestRef.current)accept(latestRef.current,true);
+  };
   async function dispatch(call:ProjectConfigurationAction) {
     if(!state||busyRef.current)return;
     const scope=scopeRef.current;
@@ -68,18 +78,21 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
       const result=await apiClient.projectConfigurations(project.id,{...call,revision:state.revision},target);
       if(scope!==scopeRef.current)return;
       if(result.errCode!==0||!result.data)throw new Error(result.errMessage);
+      if(call.action==="create"||call.action==="duplicate"){
+        detailRef.current=(result.data as ProjectConfigurationState).activeConfigurationId;setDetailId(detailRef.current);setDetailTab("values");
+      }
       editingRef.current=false;accept(result.data as ProjectConfigurationState,true);setModal(undefined);setField(undefined);return true;
     } catch(e) {if(scope===scopeRef.current)setError((e as Error).message);} finally {if(scope===scopeRef.current){busyRef.current=false;setBusy(false);}}
   }
   function save() {
-    if(!state)return;
+    if(!state||!detailId)return;
     try {
       const typed: ConfigurationValues = {};
       for(const f of state.fields) if(setKeys.includes(f.name)) {
         const text=values[f.name]??"";
         typed[f.name]=f.type==="json"||f.type==="file"||f.multiple?JSON.parse(text):f.type==="number"?(text.trim()?Number(text):NaN):f.type==="boolean"?text==="true":text;
       }
-      void dispatch({action:"save",id:state.activeConfigurationId,values:typed,unset:state.fields.filter(f=>!setKeys.includes(f.name)).map(f=>f.name)});
+      void dispatch({action:"save",id:detailId,values:typed,unset:state.fields.filter(f=>!setKeys.includes(f.name)).map(f=>f.name)});
     }catch(e){setError((e as Error).message);}
   }
   async function uploadFiles(field:ProjectConfigurationField, files:File[]) {
@@ -104,12 +117,12 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
     }catch(e){if(scope===scopeRef.current){const message=(e as Error).message;setError(message==="This file type is not accepted by the configuration field."?t("configurationFileTypeError"):message==="Invalid file or file exceeds 50 MiB."?t("configurationFileSizeError"):message);}}
     finally{if(scope===scopeRef.current){busyRef.current=false;setBusy(false);setUploading("");}}
   }
-  async function download(all:boolean) {
+  async function download(all:boolean,id=detailId) {
     if(!state||busyRef.current||!clean())return;
     const scope=scopeRef.current;
     busyRef.current=true;setBusy(true);setError("");
     try {
-      const result=await apiClient.projectConfigurations(project.id,{action:"export",id:all?undefined:state.activeConfigurationId},target);
+      const result=await apiClient.projectConfigurations(project.id,{action:"export",id:all?undefined:id},target);
       if(scope!==scopeRef.current)return;
       if(result.errCode!==0)throw new Error(result.errMessage);
       const url=URL.createObjectURL(new Blob([JSON.stringify(result.data,null,2)],{type:"application/json"}));
@@ -117,41 +130,62 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
     }catch(e){if(scope===scopeRef.current)setError((e as Error).message);}finally{if(scope===scopeRef.current){busyRef.current=false;setBusy(false);}}
   }
   const startField=(value?:ProjectConfigurationField)=>{if(!clean())return;editingRef.current=true;setError("");setOriginalKey(value?.name??"");setField(value??{name:"",type:"string"});setDefaultText(value?.defaultValue===undefined?"":JSON.stringify(value.defaultValue));setOptionsText(value?.options?.map(o=>o.value).join("\n")??"");};
-  const open=(action:"create"|"duplicate"|"rename"|"delete")=>{if(!clean())return;editingRef.current=true;setError("");setName(action==="rename"?state!.configurations.find(c=>c.id===state!.activeConfigurationId)!.name:"");setModal(action);};
-  const current=state?.configurations.find(profile=>profile.id===state.activeConfigurationId);
+  const open=(action:"create"|"duplicate"|"rename"|"delete",id=detailId)=>{if(!clean())return;editingRef.current=true;setError("");setModalId(id);setName(action==="rename"?state!.configurations.find(c=>c.id===id)!.name:"");setModal(action);};
+  const current=state?.configurations.find(profile=>profile.id===detailId);
   const templateDefaults=state?.template&&current?{...Object.fromEntries(state.fields.filter(field=>field.defaultValue!==undefined).map(field=>[field.name,field.defaultValue])),...applyTemplateValues(state,{...current,deletedPaths:undefined},{})}:undefined;
-  return <section className="flex flex-col gap-6 p-6">
-    <h2>{t("projectConfigurations")}</h2>
-    {error&&<Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
-    {!state?<>{loading?<Skeleton className="h-10 w-full"/>:<Button variant="outline" onClick={()=>setRetry(value=>value+1)}>{t("configurationRefresh")}</Button>}</>:<Tabs defaultValue="values"><TabsList><TabsTrigger value="values">{t("configurationValues")}</TabsTrigger>{state.canManagePublication&&<TabsTrigger value="publication">{t("configurationPublication")}</TabsTrigger>}</TabsList><TabsContent value="values"><div className="flex flex-col gap-4">
-      {!!state.conflicts?.length&&<Alert><AlertDescription>{t("configurationTypeConflict")}<pre>{JSON.stringify(state.conflicts,null,2)}</pre></AlertDescription></Alert>}
-      {dirty&&latest?.revision!==state.revision&&<Alert><AlertDescription>{t("configurationConflict")}</AlertDescription></Alert>}
-      <Field>
-        <FieldLabel htmlFor="configuration-profile">{t("configurationCurrent")}</FieldLabel>
-        <div className="flex items-center gap-2">
-          <SelectField id="configuration-profile" disabled={busy} value={state.activeConfigurationId} options={state.configurations.map(c=>({value:c.id,label:c.name}))} onValueChange={id=>{if(clean())void dispatch({action:"select",id});}} className="min-w-0 flex-1"/>
-          <Button variant="ghost" size="icon" disabled={busy} title={t("configurationAction_create")} aria-label={t("configurationAction_create")} onClick={()=>open("create")}><PlusIcon/></Button>
-          <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={busy} title={t("configurationActions")} aria-label={t("configurationActions")}><MoreHorizontalIcon/></Button></DropdownMenuTrigger>
-            <DropdownMenuContent align="end"><DropdownMenuGroup>
-              <DropdownMenuLabel>{t("configurationActions")}</DropdownMenuLabel>
-              <DropdownMenuItem onSelect={()=>void dispatch({action:"duplicate",id:state.activeConfigurationId})} disabled={busy||dirty}><CopyIcon/>{t("configurationAction_duplicate")}</DropdownMenuItem>
-              <DropdownMenuItem onSelect={()=>open("rename")} disabled={busy}><PencilIcon/>{t("configurationAction_rename")}</DropdownMenuItem>
-              <DropdownMenuItem variant="destructive" onSelect={()=>open("delete")} disabled={busy||state.configurations.length===1}><Trash2Icon/>{t("configurationAction_delete")}</DropdownMenuItem>
-            </DropdownMenuGroup></DropdownMenuContent>
-          </DropdownMenu>
-          <Separator orientation="vertical" className="h-6"/>
-          <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={busy} title={t("configurationTransfer")} aria-label={t("configurationTransfer")}><ArrowRightLeftIcon/></Button></DropdownMenuTrigger>
+  const profileMenu=(id:string)=><DropdownMenu>
+    <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={busy} title={t("configurationActions")} aria-label={detailId?t("configurationActions"):t("configurationActions")+": "+state?.configurations.find(c=>c.id===id)?.name}><MoreHorizontalIcon/></Button></DropdownMenuTrigger>
+    <DropdownMenuContent align="end"><DropdownMenuGroup>
+      <DropdownMenuLabel>{t("configurationActions")}</DropdownMenuLabel>
+      <DropdownMenuItem onSelect={()=>{if(clean())void dispatch({action:"duplicate",id});}} disabled={busy||dirty}><CopyIcon/>{t("configurationAction_duplicate")}</DropdownMenuItem>
+      <DropdownMenuItem onSelect={()=>open("rename",id)} disabled={busy}><PencilIcon/>{t("configurationAction_rename")}</DropdownMenuItem>
+      <DropdownMenuItem onSelect={()=>void download(false,id)} disabled={busy}><DownloadIcon/>{t("configurationExportCurrent")}</DropdownMenuItem>
+      <DropdownMenuItem variant="destructive" onSelect={()=>open("delete",id)} disabled={busy||state?.configurations.length===1}><Trash2Icon/>{t("configurationAction_delete")}</DropdownMenuItem>
+    </DropdownMenuGroup></DropdownMenuContent>
+  </DropdownMenu>;
+  const transferMenu=()=><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={busy} title={t("configurationTransfer")} aria-label={t("configurationTransfer")}><ArrowRightLeftIcon/></Button></DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="max-w-72"><DropdownMenuGroup>
               <DropdownMenuLabel>{t("configurationTransfer")}</DropdownMenuLabel>
               <DropdownMenuItem onSelect={()=>{if(clean())file.current?.click();}}><ImportIcon/>{t("configurationImport")}</DropdownMenuItem>
               <DropdownMenuSeparator/>
-              <DropdownMenuItem onSelect={()=>void download(false)}><DownloadIcon/>{t("configurationExportCurrent")}</DropdownMenuItem>
+              {detailId&&<DropdownMenuItem onSelect={()=>void download(false)}><DownloadIcon/>{t("configurationExportCurrent")}</DropdownMenuItem>}
               <DropdownMenuItem onSelect={()=>void download(true)}><DownloadIcon/>{t("configurationExportAll")}</DropdownMenuItem>
             </DropdownMenuGroup><DropdownMenuSeparator/><FieldDescription className="px-2 py-1.5">{t("configurationExportNotice")}</FieldDescription></DropdownMenuContent>
-          </DropdownMenu>
+          </DropdownMenu>;
+  return <section className="flex flex-col gap-6 p-6">
+    <h2>{t("projectConfigurations")}</h2>
+    {error&&<Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+    {!state?<>{loading?<Skeleton className="h-10 w-full"/>:<Button variant="outline" onClick={()=>setRetry(value=>value+1)}>{t("configurationRefresh")}</Button>}</>:<>
+    <input ref={file} type="file" accept=".json,application/json" hidden onChange={event=>{const scope=scopeRef.current;const input=event.currentTarget,selected=input.files?.[0];input.value="";if(!selected)return;void(async()=>{try{if(selected.size>1024*1024)throw new Error(t("configurationTooLarge"));const document=JSON.parse(await selected.text()) as ProjectConfigurationExport;if(scope===scopeRef.current&&clean())await dispatch({action:"import",document});}catch(e){if(scope===scopeRef.current)setError((e as Error).message);}})();}}/>
+    {!current?<>
+      <div className="flex items-center justify-between gap-2">
+        <h3>{t("namedConfigurations",{ns:"common"})} <span className="text-muted-foreground">{state.configurations.length}</span></h3>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="icon" disabled={busy} title={t("configurationAction_create")} aria-label={t("configurationAction_create")} onClick={()=>open("create")}><PlusIcon/></Button>
+          {transferMenu()}
         </div>
-        <input ref={file} type="file" accept=".json,application/json" hidden onChange={event=>{const scope=scopeRef.current;const input=event.currentTarget,selected=input.files?.[0];input.value="";if(!selected)return;void(async()=>{try{if(selected.size>1024*1024)throw new Error(t("configurationTooLarge"));const document=JSON.parse(await selected.text()) as ProjectConfigurationExport;if(scope===scopeRef.current&&clean())await dispatch({action:"import",document});}catch(e){if(scope===scopeRef.current)setError((e as Error).message);}})();}}/>
-      </Field>
+      </div>
+      <Table aria-label={t("projectConfigurations")}>
+        <TableHeader><TableRow><TableHead>{t("configurationName")}</TableHead><TableHead>{t("configurationCurrent")}</TableHead><TableHead className="text-right">{t("configurationActions")}</TableHead></TableRow></TableHeader>
+        <TableBody>{state.configurations.map(profile=><TableRow key={profile.id}>
+          <TableCell className="w-full whitespace-normal"><Button variant="ghost" className="h-auto w-full justify-between gap-2 whitespace-normal text-left" disabled={busy} onClick={()=>showDetails(profile.id)}><span className="min-w-0 wrap-anywhere">{profile.name}</span><ChevronRightIcon data-icon="inline-end"/></Button></TableCell>
+          <TableCell>{profile.id===state.activeConfigurationId&&<Badge variant="secondary">{t("configurationCurrent")}</Badge>}</TableCell>
+          <TableCell><div className="flex items-center justify-end gap-1">
+            {profile.id!==state.activeConfigurationId&&<Button variant="ghost" size="icon" disabled={busy} title={t("selectConfiguration",{ns:"common"})} aria-label={t("selectConfiguration",{ns:"common"})+": "+profile.name} onClick={()=>void dispatch({action:"select",id:profile.id})}><CheckIcon/></Button>}
+            {profileMenu(profile.id)}
+          </div></TableCell>
+        </TableRow>)}</TableBody>
+      </Table>
+    </>:<>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="ghost" size="icon" disabled={busy} title={t("backToList",{ns:"common"})} aria-label={t("backToList",{ns:"common"})} onClick={()=>showDetails()}><ArrowLeftIcon/></Button>
+        <h3 className="min-w-0 flex-1 wrap-anywhere">{current.name}</h3>
+        {current.id===state.activeConfigurationId?<Badge variant="secondary">{t("configurationCurrent")}</Badge>:<Button variant="outline" size="sm" disabled={busy} onClick={()=>{if(clean())void dispatch({action:"select",id:current.id});}}><CheckIcon data-icon="inline-start"/>{t("selectConfiguration",{ns:"common"})}</Button>}
+        {detailTab==="values"&&<>{profileMenu(current.id)}{transferMenu()}</>}
+      </div>
+      <Tabs value={detailTab} onValueChange={value=>{if(clean())setDetailTab(value);}}><TabsList><TabsTrigger value="values">{t("configurationValues")}</TabsTrigger>{state.canManagePublication&&<TabsTrigger value="publication">{t("configurationPublication")}</TabsTrigger>}</TabsList><TabsContent value="values"><div className="flex flex-col gap-4">
+      {!!state.conflicts?.length&&<Alert><AlertDescription>{t("configurationTypeConflict")}<pre>{JSON.stringify(state.conflicts,null,2)}</pre></AlertDescription></Alert>}
+      {dirty&&latest?.revision!==state.revision&&<Alert><AlertDescription>{t("configurationConflict")}</AlertDescription></Alert>}
       <Separator/>
       <div className="flex items-center justify-between gap-2"><h3>{t("configurationFields")} <span className="text-muted-foreground">{state.fields.length}</span></h3><Button variant="outline" size="sm" disabled={busy} onClick={()=>startField()}><PlusIcon data-icon="inline-start"/>{t("configurationAddField")}</Button></div>
       {!state.fields.length?<Empty><EmptyHeader><EmptyTitle>{t("configurationEmpty")}</EmptyTitle></EmptyHeader></Empty>:<FieldGroup className="grid gap-4 md:grid-cols-2">
@@ -182,11 +216,13 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
       </FieldGroup>}
       <Separator/>
       <div className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 bg-background py-3"><p role="status" className="text-sm text-muted-foreground">{dirty?t("configurationUnsaved"):""}</p><div className="ml-auto flex items-center gap-2"><Button variant="ghost" size="icon" disabled={busy} title={t("configurationDiscard")} aria-label={t("configurationDiscard")} onClick={()=>{if(latest){accept(latest,true);setError("");}}}><RotateCcwIcon/></Button><Button disabled={busy||!dirty} onClick={save}><CheckIcon data-icon="inline-start"/>{t("configurationSave")}</Button></div></div>
-    </div></TabsContent>{state.canManagePublication&&<TabsContent value="publication"><ConfigurationPublicationEditor state={state} busy={busy} onSave={publication=>dispatch({action:"publication.save",publication})}/></TabsContent>}</Tabs>}
+    </div></TabsContent>{state.canManagePublication&&<TabsContent value="publication"><ConfigurationPublicationEditor state={state} busy={busy} onDirtyChange={dirty=>{publicationDirtyRef.current=dirty;}} onSave={publication=>dispatch({action:"publication.save",publication})}/></TabsContent>}</Tabs>
+    </>}
+    </>}
     <Dialog open={!!modal} onOpenChange={open=>{if(!open&&!busy){editingRef.current=false;setModal(undefined);if(latest)accept(latest);}}}><DialogContent><DialogHeader><DialogTitle>{modal?t(`configurationAction_${modal}`):""}</DialogTitle></DialogHeader>
       {error&&<Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
       {(modal==="create"||modal==="rename")&&<FieldGroup><Field><FieldLabel htmlFor="configuration-name">{t("configurationName")}</FieldLabel><Input id="configuration-name" disabled={busy} value={name} onChange={e=>setName(e.target.value)}/></Field></FieldGroup>}
-      <DialogFooter><Button disabled={busy} onClick={()=>void dispatch({action:modal!,id:state?.activeConfigurationId,...(modal==="create"||modal==="rename"?{name}:{})})}>{t("configurationConfirm")}</Button></DialogFooter>
+      <DialogFooter><Button disabled={busy} onClick={()=>void dispatch({action:modal!,id:modalId,...(modal==="create"||modal==="rename"?{name}:{})})}>{t("configurationConfirm")}</Button></DialogFooter>
     </DialogContent></Dialog>
     <Dialog open={!!field} onOpenChange={open=>{if(!open&&!busy){editingRef.current=false;setField(undefined);if(latest)accept(latest);}}}><DialogContent className="max-h-[90dvh] overflow-y-auto"><DialogHeader><DialogTitle>{t("configurationEditField")}</DialogTitle></DialogHeader>
       {error&&<Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Improved: project configurations open with a profile list and separate detail views for values and publication rules. Browsing preserves execution selection, and back navigation protects unsaved drafts.
+
 - Improved: project configurations use responsive columns and inline boolean controls without stretched checkboxes. Publication permissions use aligned table columns, a compact profile/action toolbar, and expandable JSON paths.
 
 - Added a publication and permissions tab with profile/default selection, recipient previews, JSON child editors and lock reasons; conflicts preserve edited drafts.

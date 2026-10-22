@@ -36,7 +36,9 @@ Keys start with a letter or underscore and then allow letters, digits, underscor
 
 ## Manage profiles
 
-Switch the current configuration at the top, use the plus icon to create one, and open Configuration actions to copy, rename or delete it. Import / export groups JSON file operations and explains that exports include sensitive values. The fields section has its own Add field action, with pencil and trash icons beside custom fields. The save area shows draft status; its refresh icon reloads configurations and discards the draft. Icons include action labels and support keyboard access.
+Studio, CLI Web and Server Web open on a configuration list that marks the profile used for execution. Click a profile name to open its details and edit its fields. The plus icon creates a profile; row actions copy, rename or delete it. Select configuration changes the execution selection. Viewing or saving another profile preserves that selection. Use Back to list in the detail header; save or discard unsaved values or publication rules before returning.
+
+Import / export groups JSON operations and explains that exports include sensitive values. Export all profiles from the list or the viewed profile from its details. The fields section has its own Add field action, with pencil and trash icons beside custom fields. The save area shows draft status; its refresh icon discards the draft. Icons include action labels and support keyboard access.
 
 Create, copy, rename, select and delete named profiles. At least one profile must remain. Edit fields directly, then click Save at the bottom to apply changes together. The reset icon beside a field removes its override and immediately restores the declared default, or clears and unsets it when there is no default. Untouched fields retain their existing state. Boolean values and multiple options keep their own checkboxes. Incomplete required fields may be saved; execution validates them. New declared fields use defaults, and removed fields no longer reach the runtime.
 

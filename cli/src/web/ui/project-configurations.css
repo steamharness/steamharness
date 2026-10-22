@@ -9,10 +9,19 @@
 .project-configurations .icon-button { color: inherit; }
 .project-configurations button:disabled { opacity: .5; cursor: default; }
 .project-configurations button:focus-visible, .project-configurations input:focus-visible, .project-configurations textarea:focus-visible, .project-configurations select:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
-.configuration-profiles { padding: 14px 16px; border-bottom: 1px solid var(--border); }
-.configuration-profiles > label { display: block; margin-bottom: 8px; color: var(--muted); font-size: 12px; }
+.configuration-profiles { display:flex; align-items:center; gap:8px; padding:14px 16px; border-bottom:1px solid var(--border); }
+.configuration-profile-name { flex:1; min-width:0; margin:0; font-size:13px; font-weight:500; overflow-wrap:anywhere; }
+.configuration-profile-name .configuration-active { margin-left:8px; }
+.configuration-list-toolbar > h3 { flex:1; min-width:0; margin:0; font-size:13px; font-weight:500; }
+.configuration-list { flex:1 1 auto; }
+.configuration-list > ul { list-style:none; padding:0; margin:0; }
+.configuration-list li { display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--border); padding:8px 0; }
+.configuration-list li:last-child { border-bottom:0; }
+.project-configurations button.configuration-profile-link { flex:1; min-width:0; justify-content:flex-start; text-align:left; overflow-wrap:anywhere; background:transparent; border-color:transparent; color:inherit; }
+.configuration-profile-link > .codicon { margin-left:auto; flex-shrink:0; }
+.configuration-profile-text { display:flex; flex:1; min-width:0; flex-wrap:wrap; align-items:center; gap:6px; }
+.configuration-active { display:inline-flex; flex-shrink:0; padding:2px 6px; border-radius:4px; background:var(--vscode-badge-background); color:var(--vscode-badge-foreground); font-size:11px; font-weight:400; }
 .configuration-profile-controls { display: flex; align-items: center; gap: 6px; }
-.configuration-profile-controls select { flex: 1; min-width: 0; width: 0; }
 .configuration-profile-controls .configuration-transfer { margin-left: 6px; }
 .configuration-body { flex: 1 1 auto; }
 .configuration-fields-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
@@ -95,4 +104,4 @@
 .configuration-json-properties { display:flex; flex-direction:column; gap:8px; }
 .configuration-json-properties label { display:flex; flex-direction:column; gap:4px; }
 .configuration-recipient-preview { margin:0; padding:12px; border:1px solid var(--border); border-radius:4px; white-space:pre-wrap; overflow:auto; max-height:40vh; font-size:12px; }
-.project-configurations [hidden] { display:none; }
+.project-configurations [hidden] { display:none !important; }

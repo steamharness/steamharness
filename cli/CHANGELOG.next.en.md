@@ -1,5 +1,7 @@
 # Unreleased
 
+- Improved: Studio and CLI Web open project configurations as a list with separate detail views, explicit execution selection, and draft protection on back navigation.
+
 - Fixed durable workers cancelling live turns when their IPC owner disconnects. Reconnect resumes checkpoints, model and retry failures show their actual causes, and explicit Stop remains a durable cancellation.
 
 - Improved: configuration publication uses a compact profile toolbar and aligned permission columns, expandable JSON paths, an icon action menu, and a fixed preview/save footer shared by Studio and CLI Web.
