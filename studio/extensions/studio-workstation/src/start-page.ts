@@ -71,6 +71,9 @@ export class StudioStartController implements vscode.Disposable {
     private readonly recent: { getChildren(): RecentProject[]; onDidChangeTreeData: vscode.Event<void> },
     private readonly remember: (project: CreatedProject) => Promise<void>, private readonly output: vscode.OutputChannel) {
     this.state = { version: 1, labels: startPageLabels(), templates: [], projects: [], recent: [], pending: [], busy: false,
+      badge: process.env.STEAMHARNESS_STUDIO_INTERNAL === '1'
+        ? (vscode.env.language.toLowerCase().startsWith('zh') ? '增强版' : 'Enhanced')
+        : undefined,
       canCreate: !!launcher.templates && !!launcher.createProject && !!launcher.installDependencies,
       environment: { studio: context.extension.packageJSON.version, vscode: vscode.version, account: '', server: '' } };
     const register = <Args extends unknown[]>(command: string, callback: (...args: Args) => unknown): void => {

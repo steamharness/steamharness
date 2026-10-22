@@ -34,6 +34,8 @@ export interface PendingProjectSetup extends CreatedProject {
 export interface StudioStartState {
   version: 1;
   labels: Record<string, string>;
+  /** Present only in the internal launcher; the public Studio leaves it empty. */
+  badge?: string;
   templates: StartTemplate[];
   projects: Array<{ uri: string; name: string; version?: string; projectType: string; folderPath: string; avatarUrl?: string; update?: ProjectVersionStatus }>;
   recent: RecentProject[];
